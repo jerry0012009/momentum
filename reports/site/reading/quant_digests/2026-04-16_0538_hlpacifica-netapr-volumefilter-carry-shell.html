@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Hyperliquid×Pacifica 机器人只读成“资金费率看板”：对 short-cycle desk，更该先拆的是「predicted funding spread × liquidity+price-spread veto」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Hyperliquid×Pacifica 机器人只读成“资金费率看板”：对 short-cycle desk，更该先拆的是「predicted funding spread × liquidity+price-spread veto」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-16 05:39 UTC</span>
+      <span class="pill">研究时间：2026-04-16 05:38 UTC</span>
+      <span class="pill">类型：2025/2026 GitHub repo source audit（`README.md` + `bot_config.json` + `hyperliquid_pacifica_hedge.py` + `fetch_funding_rates_public.py`）+ Hyperliquid/Pacifica public API portability probe</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/cross-venue/relative-value/stat-arb/delta-neutral/predicted-funding/net-apr/liquidity-filter/price-spread-veto/worst-leg-stop/hyperliquid/pacifica/1m/3m/5m/15m/repo/public-api/cost/risk</span>
+      <span class="pill">证据类型：repo + public-api probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-16_0538_hlpacifica-netapr-volumefilter-carry-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-16 05:38 UTC</li>
+<li>类型：2025/2026 GitHub repo source audit（<code>README.md</code> + <code>bot_config.json</code> + <code>hyperliquid_pacifica_hedge.py</code> + <code>fetch_funding_rates_public.py</code>）+ Hyperliquid/Pacifica public API portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>跨交易所 delta-neutral carry：每轮选 <code>|next funding APR 差|</code> 最大且通过流动性/价差门槛的币，对低 funding 交易所做多、对高 funding 交易所做空，持有到 funding 窗口后退出</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（baseline 级完整壳）</li>
+<li>主题标签：raw-alpha/carry/funding/cross-venue/relative-value/stat-arb/delta-neutral/predicted-funding/net-apr/liquidity-filter/price-spread-veto/worst-leg-stop/hyperliquid/pacifica/1m/3m/5m/15m/repo/public-api/cost/risk</li>
+<li>证据类型：repo + public-api probe</li>
+</ul>
+<h2>1) 先回答：这篇东西的 base alpha 是什么？</h2>
+<p>一句话：<strong>base alpha 不是“机器人框架”，而是“下一 funding 周期的跨 venue funding spread carry（delta-neutral）”。</strong></p>
+<p>也就是：</p>
+<ul>
+<li>先比较 Hyperliquid 与 Pacifica 的 <strong>predicted/next funding</strong>；</li>
+<li>对 funding 更低的一侧做多、funding 更高的一侧做空；</li>
+<li>靠 funding spread 收益，而不是赌方向。</li>
+</ul>
+<h2>2) 来源信息（repo-based）</h2>
+<ul>
+<li><strong>Authors：</strong> GitHub <code>@djienne</code>（仓库维护者）</li>
+<li><strong>Year：</strong> 2025（repo 创建）/ 2025-11（最近主要代码更新）</li>
+<li><strong>Title：</strong> *Hyperliquid-Pacifica Cross-Exchange Funding Rate Delta Neutral Bot*</li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> N/A（仓库）</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/djienne/CROSS_EXCHANGE_DELTA_NEUTRAL_HYPERLIQUID_PACIFICA&gt;">https://github.com/djienne/CROSS_EXCHANGE_DELTA_NEUTRAL_HYPERLIQUID_PACIFICA&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/djienne/CROSS_EXCHANGE_DELTA_NEUTRAL_HYPERLIQUID_PACIFICA&gt;">https://github.com/djienne/CROSS_EXCHANGE_DELTA_NEUTRAL_HYPERLIQUID_PACIFICA&gt;</a></li>
+</ul>
+<h2>3) 这轮 intake 拆出的“可直接复现策略壳”</h2>
+<p>从源码可还原出一条很清晰的流程：</p>
+<ol>
+<li><strong>信号层（alpha body）</strong></li>
+</ol>
+<ul>
+<li>使用两边 <strong>predicted funding</strong>（不是历史已结算 funding）</li>
+<li>计算 <code>net_apr = |APR_hl - APR_pacifica|</code></li>
+<li>决策：<code>long low-funding exchange / short high-funding exchange</code></li>
+</ul>
+<ol>
+<li><strong>admission / veto 层（不是 alpha 本体）</strong></li>
+</ol>
+<ul>
+<li><code>min_net_apr_threshold = 5%</code></li>
+<li>Pacifica 24h 成交额过滤：<code>&gt;= 50M USD</code></li>
+<li>跨交易所价格偏离过滤：<code>&lt;= 0.15%</code></li>
+</ul>
+<ol>
+<li><strong>执行与持有层</strong></li>
+</ol>
+<ul>
+<li>默认 <code>hold_duration_hours = 8</code>（对齐 funding 周期）</li>
+<li><code>wait_between_cycles_minutes = 5</code></li>
+</ul>
+<ol>
+<li><strong>风险层</strong></li>
+</ol>
+<ul>
+<li>动态 stop-loss（按杠杆映射）</li>
+<li>关键点：stop-loss 以 <strong>worst leg</strong>（最差腿）触发，而不是只看净和，防单腿风险扩张</li>
+</ul>
+<p>这已经是 <code>entry/exit/sizing/risk/cost</code> 都能落地的一条完整 raw alpha 壳。</p>
+<h2>4) public-data portability probe（本轮快检）</h2>
+<h3>4.1 数据源与公开性</h3>
+<ul>
+<li>Hyperliquid public API：<code>/info</code>（predictedFundings / allMids）</li>
+<li>Pacifica public API：<code>/api/v1/info</code>、<code>/api/v1/kline</code></li>
+<li><strong>公开性：</strong>公开可访问，无需私钥（快检口径）</li>
+<li><strong>更新频率：</strong>funding 与行情为准实时/高频更新；kline 可用于近 24h 流动性估算</li>
+</ul>
+<h3>4.2 本轮快检产物</h3>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/hl_pacifica_probe_20260416_0536/funding_volume_probe.json</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/hl_pacifica_probe_20260416_0536/funding_volume_probe.csv</code></li>
+</ul>
+<h3>4.3 关键数据点（2026-04-16 05:36 UTC 快照）</h3>
+<p>在有双边 predicted funding 的 <code>13</code> 个符号里：</p>
+<ol>
+<li><strong>只有 1 个符号同时通过 <code>net_apr&gt;=5%</code> + <code>vol&gt;=50M</code> 联合门槛：ETH</strong></li>
+</ol>
+<ul>
+<li>ETH：<code>net_apr ≈ 16.23%</code>，Pacifica 24h volume <code>≈ $398.87M</code>（通过）</li>
+</ul>
+<ol>
+<li><strong>PUMP 的 net_apr 虽高（≈27.54%），但 volume 仅 ≈$2.09M（被 veto）</strong></li>
+<li><strong>SOL 接近边界：net_apr ≈6.36%，但 volume ≈$49.04M，低于 50M 门槛（被 veto）</strong></li>
+</ol>
+<p>这三个点很重要：</p>
+<ul>
+<li>说明该壳并不是“看到高 APR 就冲”；</li>
+<li>流动性 veto 能显著压掉看起来很肥但不可交易的候选；</li>
+<li>在短周期 desk 里，这种 admission 比盲目扩币池更值钱。</li>
+</ul>
+<h2>5) 与 <code>1m/3m/5m/15m</code> 的关系（怎么映射）</h2>
+<p>这条策略天然是“事件驱动 + 短周期执行”：</p>
+<ul>
+<li><strong>信号更新频率：</strong>funding 预测刷新节奏（非逐 bar）</li>
+<li><strong>执行层频率：</strong>可在 <code>1m/3m/5m</code> 做下单、补腿、风控监控</li>
+<li><strong>持有层：</strong>以 <code>8h</code> funding 窗口为主，可在 <code>15m</code> 做 PnL 与风险巡检</li>
+</ul>
+<p>所以它不是纯 <code>1m</code> 方向信号，而是标准的 <strong>carry/stat-arb raw alpha + short-cycle execution shell</strong>。</p>
+<h2>6) 最小可复现实验口径（可直接开跑）</h2>
+<ol>
+<li>Universe：<code>BTC/ETH/SOL/BNB/XRP</code>（先 liquid）</li>
+<li>每小时（或每 30m）抓取 predicted funding，构造 <code>net_apr</code> 排序</li>
+<li>admission：</li>
+</ol>
+<ul>
+<li><code>net_apr &gt;= 5%</code></li>
+<li>Pacifica 24h volume &gt;= 50M</li>
+<li>cross-venue mid/mark spread &lt;= 0.15%</li>
+</ul>
+<ol>
+<li>进场：long low-funding / short high-funding，名义资金对等</li>
+<li>出场：</li>
+</ol>
+<ul>
+<li><code>hold 8h</code> 到点平仓</li>
+<li>或 worst-leg stop-loss 触发提前平仓</li>
+</ul>
+<ol>
+<li>评估（必须 post-cost）：</li>
+</ol>
+<ul>
+<li>funding 收入</li>
+<li>双腿 taker/maker fee</li>
+<li>开平滑点</li>
+<li>失败补腿惩罚（单腿敞口）</li>
+</ul>
+<h2>7) 下一步怎么测（本轮结论后的直接动作）</h2>
+<ol>
+<li><strong>先做 friction ladder（最优先）</strong></li>
+</ol>
+<ul>
+<li>成本档位：<code>6 / 10 / 14 bps</code>（单边综合）</li>
+<li>看 <code>net_apr</code> 门槛是否要从 5% 上调到 8%/12%</li>
+</ul>
+<ol>
+<li><strong>把 volume 门槛做成分层，而不是硬阈值</strong></li>
+</ol>
+<ul>
+<li><code>&gt;=200M</code>：正常仓位</li>
+<li><code>50M~200M</code>：半仓</li>
+<li><code>&lt;50M</code>：禁入</li>
+</ul>
+<ol>
+<li><strong>做“跨 venue 价差持续时间” veto</strong></li>
+</ol>
+<ul>
+<li>不只看瞬时 <code>&lt;=0.15%</code>，而是要求过去 <code>N</code> 分钟大部分样本也在阈值内</li>
+<li>避免开仓时刚好遇到短时错价</li>
+</ul>
+<ol>
+<li><strong>加入强制 flatten 审计</strong></li>
+</ol>
+<ul>
+<li>记录每次 close 后两腿剩余名义敞口</li>
+<li>把“名义 delta-neutral”变成“审计可验证 delta-neutral”</li>
+</ul>
+<p>---</p>
+<h2>参考</h2>
+<ol>
+<li><code>djienne/CROSS_EXCHANGE_DELTA_NEUTRAL_HYPERLIQUID_PACIFICA</code> repo: &lt;<a href="https://github.com/djienne/CROSS_EXCHANGE_DELTA_NEUTRAL_HYPERLIQUID_PACIFICA&gt;">https://github.com/djienne/CROSS_EXCHANGE_DELTA_NEUTRAL_HYPERLIQUID_PACIFICA&gt;</a></li>
+<li>Hyperliquid public API（predicted fundings）: &lt;<a href="https://api.hyperliquid.xyz/info&gt;">https://api.hyperliquid.xyz/info&gt;</a></li>
+<li>Pacifica public API（market info / kline）: &lt;<a href="https://api.pacifica.fi/api/v1/info&gt;">https://api.pacifica.fi/api/v1/info&gt;</a> , &lt;<a href="https://api.pacifica.fi/api/v1/kline&gt;">https://api.pacifica.fi/api/v1/kline&gt;</a></li>
+</ol>
+</body>
+</html>

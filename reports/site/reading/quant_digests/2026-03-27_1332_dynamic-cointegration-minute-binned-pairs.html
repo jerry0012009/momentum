@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 crypto pairs 只做静态二元：这篇 2021 SEF 更该先测的是「dynamic cointegration 选对/选篮子 + minute-binned spread convergence」raw alpha，但当前 `15m` 只在少数 pair pocket 还留净边</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 crypto pairs 只做静态二元：这篇 2021 SEF 更该先测的是「dynamic cointegration 选对/选篮子 + minute-binned spread convergence」raw alpha，但当前 `15m` 只在少数 pair pocket 还留净边</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-27 13:30 UTC</span>
+      <span class="pill">研究时间：2026-03-27 13:32 UTC</span>
+      <span class="pill">类型：2021 Studies in Economics and Finance 开放获取论文（arXiv 全文 PDF 可读）+ Binance USDⓈ-M Perpetual 公共 `15m` 最小 transfer check</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/dynamic-cointegration/minute-binned/pair-selection/basket-selection/johansen/ou-half-life/zscore/binance/perpetual/15m/5m/1m/3m/paper/external-data/cost</span>
+      <span class="pill">证据类型：论文全文证据 + 当前公开市场最小 transfer check</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-27_1332_dynamic-cointegration-minute-binned-pairs.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-27 13:32 UTC</li>
+<li>类型：2021 Studies in Economics and Finance 开放获取论文（arXiv 全文 PDF 可读）+ Binance USDⓈ-M Perpetual 公共 <code>15m</code> 最小 transfer check</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>在可协整的币对/币篮里，短期偏离长期均衡的 spread 会向均值回归；因此应当 long 低估腿、short 高估腿，吃的是 spread convergence，而不是市场单边方向。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/dynamic-cointegration/minute-binned/pair-selection/basket-selection/johansen/ou-half-life/zscore/binance/perpetual/15m/5m/1m/3m/paper/external-data/cost</li>
+<li>证据类型：论文全文证据 + 当前公开市场最小 transfer check</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先把 <strong>base alpha</strong> 说清楚：<strong>这不是“crypto pairs 可能会均值回归”这种泛结论，而是“先动态找出协整关系最稳定、半衰期最短的 pair / basket，再在 spread 的短期异常偏离上做 long-short 收敛”。</strong></p>
+<p>主材料是 <strong>Masood Tadi, Irina Kortchemski (2021), _Evaluation of dynamic cointegration-based pairs trading strategy in the cryptocurrency market_, Studies in Economics and Finance</strong>。这篇东西比普通 pairs baseline 更适合当前 desk 的地方，不在于又讲一遍 cointegration，而在于它把一条 <strong>可以独立落地的完整 raw alpha 链条</strong> 写得比较全：</p>
+<ul>
+<li>数据口径不是老派日频，而是 <strong>minute-binned</strong>；</li>
+<li>formation / trading 不是一把梭，而是 <strong>3 个月 formation + 1 周 trading</strong> 动态滚动；</li>
+<li>不是只做单 pair，还明确测了 <strong>dynamic best-pair</strong> 和 <strong>Johansen basket</strong> 两种版本；</li>
+<li>不是只看 close-to-close 理想化收益，而是把 <strong>best bid/ask、market trades、maker/taker fee、volume 可得性</strong> 一起放进回测口径。</li>
+</ul>
+<p>所以这轮值得 intake，不是因为它“又是一篇 pairs”，而是因为它其实给了我们两个很实用的可拆组件：</p>
+<ol>
+<li><strong>dynamic pair-selection funnel</strong>；</li>
+<li><strong>multi-leg stationary basket</strong>。</li>
+</ol>
+<h2>2. 核心结论</h2>
+<p>先给结论，不绕：</p>
+<ul>
+<li>这篇的 <strong>raw alpha 本体</strong> 是 <code>spread deviation -&gt; convergence</code>，不是 filter，也不是 overlay。</li>
+<li>论文里最强的不是单纯 ADF 还是 KSS，而是：<strong>动态选对 + 半衰期约束 + 真实执行口径</strong>。</li>
+<li>从结果看，<strong>basket 版比单 pair 版更稳</strong>；但真正能不能落到今天的 <code>15m</code>，仍然主要取决于 <strong>换手、成本、pair 选择稳定性</strong>。</li>
+<li>我做的当前 <code>15m</code> transfer check 也支持这个判断：<strong>这条 alpha 不是完全死了，但已经不是“任意 pair 都能活”；它更像要靠 pair pocket 和 cost governance 才能留净边。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目直接相关</h2>
+<p>这轮它之所以应该放进当前 desk 的研究池，是因为它正好补上了两个空位：</p>
+<ol>
+<li><strong>raw alpha 是完整的</strong></li>
+</ol>
+<ul>
+<li>entry：spread z-score 偏离阈值；</li>
+<li>exit：spread 回归阈值；</li>
+<li>sizing：按 cointegration beta / Johansen 权重配腿；</li>
+<li>risk：半衰期、pair stability、最大持有时长；</li>
+<li>cost：maker/taker + quote availability。</li>
+</ul>
+<ol>
+<li><strong>它不是只能服务于“老派双腿 pairs”</strong></li>
+</ol>
+<ul>
+<li>单 pair 版可直接对接我们已有的 <code>5m/15m</code> stat-arb 骨架；</li>
+<li>basket 版可以直接服务后续 <code>multi-leg relative value / stationary basket / cross-sectional spread</code> 的拆解。</li>
+</ul>
+<ol>
+<li><strong>它对当前 desk 的价值，比再找一篇花哨 filter 更直接</strong></li>
+</ol>
+<ul>
+<li>因为它回答的不是“这个 gate 会不会有帮助”，而是：</li>
+<li><strong>spread convergence 这条 raw alpha，在真实 minute-level 执行口径下，到底还能不能做。</strong></li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>relative value / stat-arb / mean reversion / market-neutral</strong></li>
+<li>基础 alpha：<strong>cointegrated spread 的异常偏离会向长期均衡回归</strong></li>
+<li>regime：更偏向 <strong>相关关系稳定、结构未断裂、非单边爆趋势</strong> 的环境</li>
+<li>filter / veto：</li>
+<li>formation 期协整显著性</li>
+<li>half-life 不能太长</li>
+<li>rolling beta / correlation 漂移过大时禁做</li>
+<li>volume / quote size 不足时禁做</li>
+<li>risk / sizing / execution overlay：</li>
+<li>单 pair：按 OLS beta 配对，gross 归一化</li>
+<li>basket：按 Johansen 向量整数化权重构建 stationary portfolio</li>
+<li>必须显式计入 maker/taker fee、funding（如适用）、quote 可成交性</li>
+</ul>
+<p>desk 化最小策略可以写成：</p>
+<ul>
+<li><strong>selection</strong>：在 formation 窗口内，对候选币对/币篮跑 Engle-Granger / KSS / Johansen，选 <code>p-value 合格 + half-life 最短</code> 的候选；</li>
+<li><strong>signal</strong>：<code>z_t = (spread_t - rolling_mean) / rolling_std</code>；</li>
+<li><strong>entry</strong>：<code>|z_t| &gt; z_enter</code> 时，long 低估腿 / short 高估腿；</li>
+<li><strong>exit</strong>：<code>|z_t| &lt; z_exit</code> 或 <code>max_hold</code> 到时退出；</li>
+<li><strong>sizing</strong>：按 <code>1:beta</code> 或 cointegration vector 配腿；</li>
+<li><strong>risk</strong>：若 rolling beta 漂移、quote depth 不足、或 spread 波动结构突变，则整对/整篮 veto；</li>
+<li><strong>cost</strong>：必须按 round-trip bps 扣费，不能只看 gross。</li>
+</ul>
+<h2>4. 论文里真正可拿来复现的东西</h2>
+<h3>4.1 数据与执行口径</h3>
+<ul>
+<li>交易所：<strong>BitMEX</strong></li>
+<li>样本：<strong>2018-09-27 ~ 2019-10-02</strong></li>
+<li>数据频率：<strong>minute-binned</strong></li>
+<li>formation / trading：<strong>3 个月 formation + 1 周 trading</strong>，共 <strong>39 个 trading weeks</strong></li>
+<li>使用数据：minute close、volume、best bid/ask、market trades</li>
+<li>合约池：<code>XBT/USD</code>, <code>ETH/USD</code>, <code>ETH/XBT</code>, <code>EOS/XBT</code>, <code>LTC/XBT</code>, <code>XRP/XBT</code>, <code>BCH/XBT</code>, <code>TRX/XBT</code>, <code>ADA/XBT</code></li>
+<li>费用口径：</li>
+<li>maker fee <strong>-0.0250%</strong></li>
+<li>taker fee <strong>0.0750%</strong></li>
+<li>funding fee（永续）<strong>±0.0100% 每 8 小时</strong></li>
+</ul>
+<p>这点很关键：<strong>它不是“日频收盘价上看起来好看”的论文，而是明确把 crypto 里最常见的 execution friction 放进去了。</strong></p>
+<h3>4.2 Scenario 1：动态 best-pair，每周换 pair</h3>
+<ul>
+<li>formation 期先对候选 pair 做 Engle-Granger / KSS；</li>
+<li>对通过 cointegration 的 pair，用 OU mean-reversion speed 估 half-life；</li>
+<li><strong>只选 half-life 最短</strong> 的 pair 进入下周 trading；</li>
+<li>开平仓规则：</li>
+<li><code>zscore</code> 穿越 <strong>±2</strong> 开仓；</li>
+<li>回到 <strong>±1</strong> 内平仓。</li>
+</ul>
+<p>最值得记的数字：</p>
+<ul>
+<li>ADF 版本平均月收益约 <strong>17.3%</strong>；</li>
+<li>KSS 版本平均月收益约 <strong>13.9%</strong>；</li>
+<li>commission profit 占总利润约 <strong>35%（ADF）/ 26%（KSS）</strong>；</li>
+<li>最大回撤约 <strong>0.15 XBT</strong>；</li>
+<li>Sharpe 约 <strong>6.96（ADF）/ 6.57（KSS）</strong>。</li>
+</ul>
+<p>这里最值钱的结论不是“KSS 一定比 ADF 强”，反而是：</p>
+<ul>
+<li><strong>真正决定可交易性的，不只是谁的统计检验更 fancy，而是 liquidity / execution / half-life 有没有一起过关。</strong></li>
+</ul>
+<h3>4.3 Scenario 2：Johansen basket，比单 pair 更像 desk 组件</h3>
+<p>论文第二个版本不再只选一对，而是让多个币共同组成 stationary spread：</p>
+<ul>
+<li>用 <strong>Johansen test</strong> 找 cointegration vector；</li>
+<li>组合权重按可交易性和 half-life 约束做筛选；</li>
+<li>每周滚动更新组合。</li>
+</ul>
+<p>这版的数字非常重要：</p>
+<ul>
+<li>total realized P&amp;L 约 <strong>1.44 XBT</strong>；</li>
+<li>其中 commission profit 约 <strong>0.81 XBT</strong>；</li>
+<li>P&amp;L 标准差约 <strong>24.7%</strong>；</li>
+<li>Sharpe 约 <strong>7.94</strong>。</li>
+</ul>
+<p>翻成人话：<strong>如果你不把 spread 固定在双腿，而是允许多个相关币一起形成 stationary basket，风险调整后表现会更好。</strong> 这对我们 desk 很直接，因为它说明后续不少 <code>relative value / xs spread</code> 主题，并不一定非要停在 pair level。</p>
+<h3>4.4 Scenario 3：固定 pair 年度全样本，告诉你“哪些 pair pocket 真有东西”</h3>
+<p>作者还做了一个很实用的 sanity check：</p>
+<ul>
+<li>不再每周重新优选，而是固定某个 pair，跑完整个研究窗口；</li>
+<li>这样能看出哪些 pair 天生更适合做 spread convergence。</li>
+</ul>
+<p>最强 pocket 很醒目：</p>
+<ul>
+<li><strong>TRX-ADA</strong>：</li>
+<li>profitable days <strong>81.69%</strong></li>
+<li>pair P&amp;L <strong>3.63 XBT</strong></li>
+<li>cumulative return <strong>363.17%</strong></li>
+<li>max drawdown <strong>-24.12%</strong></li>
+<li>annual pairs Sharpe <strong>20.38</strong></li>
+<li>其他强 pair 还包括：</li>
+<li><strong>LTC-ADA</strong>：annual pairs Sharpe <strong>12.43</strong></li>
+<li><strong>XRP-ADA</strong>：annual pairs Sharpe <strong>11.06</strong></li>
+<li><strong>BCH-ADA</strong>：annual pairs Sharpe <strong>10.21</strong></li>
+</ul>
+<p>同时，论文明确写到：<strong>同样样本下，buy-and-hold 在所有这些固定 pair 对照里都是负收益。</strong></p>
+<p>这对 desk 的启发非常直接：</p>
+<ul>
+<li>不是“pairs 都值得做”；</li>
+<li>而是 <strong>某类币（论文里尤其是 TRX / ADA / XRP）更容易形成可交易的 stat-arb pocket</strong>。</li>
+</ul>
+<h2>5. 这轮最小 transfer check：2026 的 Binance USDⓈ-M <code>15m</code> 还剩什么</h2>
+<p>为了不只复述论文，我做了一个很小但诚实的 desk 映射：</p>
+<ul>
+<li>市场：<strong>Binance USDⓈ-M perpetual</strong></li>
+<li>周期：<strong><code>15m</code></strong></li>
+<li>样本：近 <strong>120 天</strong>（共 <strong>11,520</strong> bars）</li>
+<li>split：前 <strong>60% formation / 后 40% trading</strong></li>
+<li>pairs：直接优先测论文里最强 pocket 的现代映射：</li>
+<li><code>TRXUSDT/ADAUSDT</code></li>
+<li><code>LTCUSDT/ADAUSDT</code></li>
+<li><code>XRPUSDT/ADAUSDT</code></li>
+<li><code>BCHUSDT/ADAUSDT</code></li>
+<li><code>XRPUSDT/TRXUSDT</code></li>
+<li>signal：formation 期 OLS beta，trade 期 spread rolling <code>z-score</code></li>
+<li>rule：</li>
+<li><code>|z| &gt;= 2.0</code> 开仓</li>
+<li><code>|z| &lt;= 0.5</code> 平仓</li>
+<li><code>max_hold = 16 bars</code></li>
+<li>成本：<strong>6 bps round-trip</strong></li>
+</ul>
+<h3>5.1 组合层结论</h3>
+<p>五组 pair 等权平均后：</p>
+<ul>
+<li><strong>gross ≈ +0.062 bps/bar</strong></li>
+<li><strong>net ≈ -0.019 bps/bar</strong></li>
+<li>gross cumulative ≈ <strong>+2.63%</strong></li>
+<li>net cumulative ≈ <strong>-0.85%</strong></li>
+<li>active share ≈ <strong>21.3%</strong></li>
+<li>net annualized Sharpe ≈ <strong>-0.84</strong></li>
+</ul>
+<p>翻译一下：</p>
+<ul>
+<li><strong>base alpha 还在，但组合平均后已经被成本和不稳定 pair 吃掉。</strong></li>
+<li>这说明这条线今天更像 <strong>pair-pocket alpha</strong>，不是 <code>always-on</code> 的全对等权篮子。</li>
+</ul>
+<h3>5.2 单 pair 层最重要的发现</h3>
+<ol>
+<li><strong>TRXUSDT/ADAUSDT 仍然活着</strong></li>
+</ol>
+<ul>
+<li>gross ≈ <strong>+0.125 bps/bar</strong></li>
+<li>net ≈ <strong>+0.051 bps/bar</strong></li>
+<li>gross cumulative ≈ <strong>+5.36%</strong></li>
+<li>net cumulative ≈ <strong>+2.12%</strong></li>
+<li>active share ≈ <strong>19.7%</strong></li>
+<li>net annualized Sharpe ≈ <strong>1.73</strong></li>
+</ul>
+<ol>
+<li>其余大多数论文赢家，到今天 <code>15m</code> 已经 mostly cost-negative</li>
+</ol>
+<ul>
+<li><code>LTC/ADA</code> net ≈ <strong>-0.031 bps/bar</strong></li>
+<li><code>XRP/ADA</code> net ≈ <strong>-0.038 bps/bar</strong></li>
+<li><code>BCH/ADA</code> net ≈ <strong>-0.069 bps/bar</strong></li>
+<li><code>XRP/TRX</code> net ≈ <strong>-0.008 bps/bar</strong></li>
+</ul>
+<ol>
+<li>所以最诚实的 desk 结论是：</li>
+</ol>
+<ul>
+<li><strong>不是 pair alpha 整体失效；</strong></li>
+<li>而是 <strong>只有少数 pocket 在当前成本口径下还剩净边，TRX/ADA 是这轮里最清楚的例子。</strong></li>
+</ul>
+<h2>6. desk 化判断</h2>
+<p>这篇我会明确归类成：<strong>raw alpha / 可直接落地的完整策略骨架</strong>。</p>
+<p>但落地时要说清三件事：</p>
+<ol>
+<li><strong>pair selection 比 entry/exit 更重要</strong></li>
+</ol>
+<ul>
+<li>今天最大的分化，不在于 z-score 公式，而在于你选的是不是“还活着的 pair pocket”。</li>
+</ul>
+<ol>
+<li><strong>basket 可能比 pair 更值得继续追</strong></li>
+</ol>
+<ul>
+<li>论文里 basket Sharpe <strong>7.94</strong> 高于单 pair 版本；</li>
+<li>这说明把 spread 做成多腿 stationary portfolio，可能更接近我们 desk 后续该继续深挖的方向。</li>
+</ul>
+<ol>
+<li><strong>当前 <code>15m</code> 更像 sparse deployment，不像全 universe always-on</strong></li>
+</ol>
+<ul>
+<li>组合平均后转负；</li>
+<li>单 pair 仍有 pocket；</li>
+<li>所以正确姿势更像：<strong>先做 stability funnel，再只上线 surviving pairs。</strong></li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<h3>7.1 第一优先：把 pair-selection funnel 做成显式评分，不再只看一次 formation beta</h3>
+<p>建议下一轮同时打分：</p>
+<ul>
+<li>cointegration p-value</li>
+<li>half-life</li>
+<li>rolling beta drift</li>
+<li>rolling correlation stability</li>
+<li>depth / spread / fee bucket</li>
+<li>最近 30 天 trade count 与 active share</li>
+</ul>
+<h3>7.2 第二优先：把 basket 版从 paper 直接迁到 <code>15m</code></h3>
+<p>这篇最值得继续的，不一定是单 pair，而是：</p>
+<ul>
+<li>在 Binance perp 大币池里跑 <strong>Johansen / sparse basket cointegration</strong>；</li>
+<li>然后测 multi-leg stationary spread 的 net edge。</li>
+</ul>
+<h3>7.3 第三优先：只在 surviving pocket 做 maker / passive execution 复测</h3>
+<p>现在 6 bps round-trip 已经把多数 pair 打回负数。下一步更该测：</p>
+<ul>
+<li>maker-only / maker-heavy 版本</li>
+<li>按 liquidity bucket 分层的 fee cliff</li>
+<li>quote-life / fill probability / participation 上限</li>
+</ul>
+<h3>7.4 第四优先：把 hold rule 从固定 <code>max_hold=16</code> 改成 half-life aware</h3>
+<p>更合理的版本是：</p>
+<ul>
+<li><code>entry</code> 继续用 <code>z</code></li>
+<li><code>hold horizon</code> 按 estimated half-life 分层</li>
+<li><code>exit</code> 比较 <code>z-&gt;0.5</code>, <code>z-&gt;0</code>, <code>time stop</code>, <code>adverse beta drift</code></li>
+</ul>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>论文样本是 <strong>2018~2019 BitMEX</strong>，市场结构和今天已经不同；</li>
+<li>我这轮 transfer check 不是 clean replication，只是 desk 化最小映射；</li>
+<li>但即使如此，paper 和当前数据仍给出同一个方向：</li>
+<li><strong>spread convergence 不是伪命题；</strong></li>
+<li><strong>真正难的是 selection stability 和 cost survival。</strong></li>
+</ul>
+<p>所以它的正确定位不是“今天立刻整篮子上线”，而是：</p>
+<ul>
+<li>作为 <strong>pair/basket stat-arb 家族的高质量 raw alpha 基线</strong>；</li>
+<li>并且明确告诉我们：<strong>别再把精力只花在 z-score 微调上，真正该卷的是 pair funnel、basket 结构和执行口袋。</strong></li>
+</ul>
+<h2>9. 来源</h2>
+<ol>
+<li><strong>Tadi, M., &amp; Kortchemski, I. (2021). _Evaluation of dynamic cointegration-based pairs trading strategy in the cryptocurrency market_. Studies in Economics and Finance, 38(5), 1054–1075.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1108/SEF-12-2020-0497</code></li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2109.10662">https://arxiv.org/abs/2109.10662</a></code></li>
+<li>PDF URL: <code><a href="https://arxiv.org/pdf/2109.10662.pdf">https://arxiv.org/pdf/2109.10662.pdf</a></code></li>
+<li>Publisher URL: <code><a href="https://doi.org/10.1108/SEF-12-2020-0497">https://doi.org/10.1108/SEF-12-2020-0497</a></code></li>
+<li>Repo URL: <code>N/A</code></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures public klines API</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<h2>10. 本地相关产物</h2>
+<ul>
+<li>Digest：<code>research/quant_digests/2026-03-27_1332_dynamic-cointegration-minute-binned-pairs.md</code></li>
+<li>Artifact：<code>reports/artifacts/quant_digests/dynamic_cointegration_pairs_20260327_1332/summary.json</code></li>
+<li>页面 URL（发布后）：<code><a href="https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-03-27_1332_dynamic-cointegration-minute-binned-pairs.html">https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-03-27_1332_dynamic-cointegration-minute-binned-pairs.html</a></code></li>
+</ul>
+</body>
+</html>

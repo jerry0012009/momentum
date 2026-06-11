@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2024 Ledger 论文只读成 DeFi 对冲：对 desk 更该先测的是「delta-neutral CLMM fee harvest × futures carry」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2024 Ledger 论文只读成 DeFi 对冲：对 desk 更该先测的是「delta-neutral CLMM fee harvest × futures carry」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-31 08:58 UTC</span>
+      <span class="pill">研究时间：2026-03-31 08:56 UTC</span>
+      <span class="pill">类型：2024 *Ledger* 开放获取全文 PDF + 表格级 hedge 细节抽取 + Uniswap v3 / Deribit 公开数据映射</span>
+      <span class="pill">主题标签：raw-alpha/liquidity-provision/market-neutral/fee-harvest/carry/clmm/uniswap-v3/options/futures/perpetual/wbtc/usdc/btc/eth/1m/3m/5m/15m/paper/public-data/cost</span>
+      <span class="pill">证据类型：全文方法 + 经验示例组合表 + 资本占用/收益情景 + 风险管理约束</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-31_0856_delta-neutral-clmm-fee-carry-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-31 08:56 UTC</li>
+<li>类型：2024 *Ledger* 开放获取全文 PDF + 表格级 hedge 细节抽取 + Uniswap v3 / Deribit 公开数据映射</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>先用集中流动性在窄价带里吃 swap fee，再用期权静态复制 + short future / perp 把方向风险尽量剥掉，把 PnL 重心从“赌价格”改成“赚 fee + carry”。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/liquidity-provision/market-neutral/fee-harvest/carry/clmm/uniswap-v3/options/futures/perpetual/wbtc/usdc/btc/eth/1m/3m/5m/15m/paper/public-data/cost</li>
+<li>证据类型：全文方法 + 经验示例组合表 + 资本占用/收益情景 + 风险管理约束</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是 <strong>Martin G. Hürtgen &amp; Felix M. Schlütter (2024), _Market Neutral Liquidity Provision in Concentrated Liquidity Pools_</strong>, 发表在 *Ledger*。</p>
+<p>如果只说一句人话，这篇东西真正值得进我们短周期研究池的，不是“DeFi LP 也能被数学化”，而是：</p>
+<p>&gt; <strong>它把原本很像裸多 gamma / 裸多方向暴露的 CLMM fee-harvest，改造成一条能独立复现、且更接近 desk 风格的 market-neutral fee-carry 策略。</strong></p>
+<p>这不是纯解释文，也不只是 overlay。<strong>base alpha 很清楚：价格短时间内如果主要留在工作带宽附近，LP 会吃到 fee；再把 delta / margin 方向暴露拿期权和 futures 尽量中和，剩下的就是 fee income + carry income。</strong></p>
+<p>和昨晚那篇 <code>τ-reset</code> 裸 LP digest 不同，这篇的重点不是“怎样更积极地重置带宽赚更多 fee”，而是：</p>
+<p>&gt; <strong>怎样把 fee-harvest 这条 raw alpha，包进一个更像中性 carry sleeve 的完整策略壳。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>这是完整策略，不是局部过滤器。</strong> 论文明确给了 LP 区间、hedge 结构、资本占用、收益口径、风险管理和现实限制，不是“有个想法你自己补全”。</li>
+<li><strong>alpha 本体不是方向预测，而是带内成交费密度。</strong> 只要价格主要在工作区间里来回走，LP 就收 fee；hedge 的作用是把方向和 collateral 风险尽量削掉，而不是替代 alpha。</li>
+<li><strong>这条策略本质上是 <code>fee harvest + futures carry</code> 的双收益源。</strong> 文中明确写到：short future / short perp 往往还能赚 contango / funding，净卖期权一侧甚至还会先收到期权权利金。</li>
+<li><strong>但它不是“白拿中性收益”。</strong> 真正的大坑是资本效率：你以为自己部署的是 <code>$48.6k</code> LP，实际上整套组合在论文示例里要占掉 <code>$211.6k</code> 资本，绝大头是 short options margin 和其对冲保证金。</li>
+<li><strong>所以最值得 desk 先偷的，不是论文里的连续期权积分推导，而是它给出的完整交易壳：</strong></li>
+</ul>
+<ol>
+<li>选窄 CLMM 区间；</li>
+<li>部署 LP；</li>
+<li>用少数几个 strikes 近似复制 LP payoff；</li>
+<li>用 short future / perp 对冲 BTC 计价的 margin；</li>
+<li>持有期间盯 margin、funding、带内停留率和 fee density。</li>
+</ol>
+<p>一句话概括：</p>
+<p>&gt; <strong>这篇 paper 对 desk 最有价值的，不是“证明 CLMM 能 hedge”，而是把“被动做市 fee-harvest”包装成一条可移植到短周期 book 里的 delta-neutral carry strategy。</strong></p>
+<h2>3. 为什么和当前项目直接相关</h2>
+<p>最近素材池里，direction、pairs、basis、funding 都已经很密，LP 方向也已经有一篇 <code>τ-reset</code> 裸带策略。但我们还缺一张更像真实交易台组件的卡：</p>
+<ul>
+<li>不是纯裸 directional LP；</li>
+<li>不是只讲 execution 或 microstructure；</li>
+<li>而是<strong>完整的“中性 fee-carry sleeve”</strong>。</li>
+</ul>
+<p>这张卡正好补这个空位。</p>
+<p>它和当前 desk 的关系很直接：</p>
+<ol>
+<li><strong>raw alpha 清楚。</strong> 吃的是带内成交费密度，而不是假装自己在预测 K 线方向。</li>
+<li><strong>完整策略壳齐全。</strong> 有 entry / exit / sizing / risk / cost。</li>
+<li><strong>能映射到 <code>1m/3m/5m/15m</code>。</strong> 不是用这些 bar 去预测下一根涨跌，而是用它们去做 band occupancy、fee density、funding path、margin stress 的最小实验。</li>
+<li><strong>和已有裸 LP digest 形成互补。</strong> <code>τ-reset</code> 更像积极吃 fee 的 raw alpha；这篇更像给这条 alpha 加上一层可交易台落地的 neutralization shell。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>market-neutral liquidity provision / fee-harvest / carry raw alpha</strong></li>
+<li>基础 alpha：<strong>价格短周期主要停留在集中流动性工作带内时，LP 能持续赚 swap fee；再通过 options + futures 把方向和 collateral 风险中和，把 PnL 主要保留在 fee 与 carry 上。</strong></li>
+<li>regime：<strong>更适合高成交、双边来回、非单边失控、funding 不极端转负的阶段。</strong></li>
+<li>filter / veto：<strong>单边加速行情、带外停留时间持续偏高、funding 持续转负、gas / execution 成本过高、options 流动性太差、margin 利用率过高时 veto。</strong></li>
+<li>risk / sizing / execution overlay：<strong>按 LP notional 先反推所需 option margin 与 future margin，再决定是否值得部署；不是“先配 LP 再说”。</strong></li>
+</ul>
+<h2>4. 3 个关键数据点</h2>
+<ol>
+<li><strong>论文示例里，LP 本体价值只有 <code>$48,612</code>，但完整 market-neutral 组合的初始资本占用是 <code>$211,556</code>。</strong> 也就是大约 <strong>4.35x LP notional</strong>。这直接说明：这条策略的第一性问题不是有没有 alpha，而是资本效率够不够。</li>
+<li><strong>作者用 42 天到期、4 个 strike（<code>59k / 63k / 66k / 69k</code>）就做出了有效近似 hedge。</strong> 这很关键：它告诉我们第一轮 desk 实验不必追“连续 strike 理论最优”，少量离散 strike 就能先跑 first verdict。</li>
+<li><strong>净卖期权一侧先收到 <code>0.586 BTC</code> 权利金；论文情景分析还给出：若 annualized funding = <code>10%</code>、annualized LP fee = <code>5%</code>，则对部署资本的年化收益约为 <code>9%</code>。</strong> 但作者同时也明确提示：若 funding 转负，组合收益可能直接转负。</li>
+</ol>
+<p>再补两条有用的现实约束：</p>
+<ul>
+<li>文中写明 <strong>Deribit 的最小合约规模让这套 hedge 大致只适合 <code>$25k+</code> 级别 LP</strong>；太小仓位会被最小合约粒度直接卡死。</li>
+<li>期权保证金本身以 BTC 计价，因此<strong>保证金还要再用 future / perp 做美元化对冲</strong>，这也是资金占用暴涨的主要来源。</li>
+</ul>
+<h2>5. 最值得 desk 先偷哪一段</h2>
+<p>最值得先拿来做最小实验的，不是全套连续复制理论，而是这条简化版完整壳：</p>
+<p>&gt; <strong>窄带 CLMM fee harvest × 少量离散 strikes 近似 hedge × short perp/future hedge margin collateral。</strong></p>
+<p>为什么这段最值钱？因为它把原本容易写成“DeFi 学术推导”的东西，翻译成了 desk 可执行语言：</p>
+<ul>
+<li><strong>entry：</strong> 选择 pool、fee tier、价带；</li>
+<li><strong>positioning：</strong> 部署 LP notional；</li>
+<li><strong>neutralization：</strong> 按近似 Greeks / payoff 结构上 options + future；</li>
+<li><strong>holding PnL：</strong> 盯 fee、funding、carry；</li>
+<li><strong>exit / reset：</strong> 带外停留过长、margin 压力过大、funding 翻负或临近到期时退出/重建。</li>
+</ul>
+<p>这已经不是“一个旁支 idea”，而是<strong>完整 raw alpha 候选</strong>。</p>
+<h2>6. 可复刻的最小实验</h2>
+<h3>6.1 数据源、公开性、更新频率</h3>
+<p>如果要做这条卡，数据必须明确写清：</p>
+<ul>
+<li><strong>Uniswap v3 pool 数据</strong>：WBTC/USDC 或 ETH/USDC 公开 swap events、pool state、tick、liquidity、fee tier。</li>
+<li>公开性：公开可得</li>
+<li>更新频率：事件级 / 区块级，可聚合到 <code>1m/3m/5m/15m</code></li>
+<li><strong>Deribit options / futures / perpetual 数据</strong>：公开 option chain、mark price、funding、future basis。</li>
+<li>公开性：公开可得</li>
+<li>更新频率：分钟级 / 实时 API</li>
+<li><strong>辅助成本数据</strong>：gas、链上 swap volume、带内停留率、perp funding。</li>
+<li>公开性：公开可得</li>
+<li>更新频率：分钟级 / 事件级</li>
+</ul>
+<h3>6.2 最小可复现实验口径</h3>
+<p>第一轮不要复刻论文全套连续积分近似，直接做 desk 版简化：</p>
+<ol>
+<li><strong>池子选择</strong>：先只做 <code>WBTC/USDC</code> 或 <code>ETH/USDC</code> 高流动性池，不铺全市场。</li>
+<li><strong>工作带定义</strong>：围绕当前 mid 设一个固定宽度 band（例如最近 <code>N</code> 分钟 realized vol 映射出的对称带）。</li>
+<li><strong>LP 部署</strong>：固定 dollar capital 部署 CLMM。</li>
+<li><strong>对冲近似</strong>：</li>
+</ol>
+<ul>
+<li>先不用满连续 strike；</li>
+<li>只用 <code>2~4</code> 个 strikes 近似 LP payoff；</li>
+<li>再用 short perp / future 对冲 margin collateral 的 base-coin 暴露。</li>
+</ul>
+<ol>
+<li><strong>退出 / 重建</strong>：</li>
+</ol>
+<ul>
+<li>价格连续带外停留超过阈值；</li>
+<li>funding 连续转负；</li>
+<li>margin utilization 超阈值；</li>
+<li>option maturity 接近到无法继续维持时，退出或重建。</li>
+</ul>
+<ol>
+<li><strong>比较基准</strong>：</li>
+</ol>
+<ul>
+<li>裸 LP（不 hedge）</li>
+<li>只 short perp 的粗糙 delta hedge</li>
+<li>options + future 完整近似 hedge</li>
+</ul>
+<ol>
+<li><strong>核心指标</strong>：</li>
+</ol>
+<ul>
+<li>gross fee / net fee</li>
+<li>funding / carry contribution</li>
+<li>capital efficiency（PnL / deployed capital）</li>
+<li>band occupancy</li>
+<li>margin stress / liquidation distance</li>
+<li>带外停留时间</li>
+<li>到期前重建成本</li>
+</ul>
+<h3>6.3 如何映射到 <code>1m / 3m / 5m / 15m</code></h3>
+<p>这条策略不是 bar-to-bar 方向预测，所以不能装成“15m 看涨因子”。更诚实的映射是：</p>
+<ul>
+<li><strong><code>1m / 3m</code>：</strong> 主时钟。看 band occupancy、fee density、funding drift、margin shock。</li>
+<li><strong><code>5m</code>：</strong> 做 first verdict 最稳。很多 execution noise 会被压掉一点，但 still short-cycle。</li>
+<li><strong><code>15m</code>：</strong> 更适合做 regime 面板：这个时段还适不适合开 neutral LP sleeve？</li>
+</ul>
+<p>也就是说，<code>15m</code> 在这里更像<strong>开关层</strong>，<code>1m/3m/5m</code> 才是<strong>真实赚钱层</strong>。</p>
+<h2>7. 这张卡最容易错在哪里</h2>
+<ul>
+<li><strong>错法 1：</strong> 把它当成 hedge overlay，而忽略它其实是一条完整的 fee-carry raw alpha。</li>
+<li><strong>错法 2：</strong> 只看 LP notional 收益，不看部署资本收益。资本效率差一截，策略评估就会完全失真。</li>
+<li><strong>错法 3：</strong> 只 hedge LP 本身，不 hedge options margin 的 base-currency 暴露。论文已经明确说这是大头。</li>
+<li><strong>错法 4：</strong> 忽略 option liquidity / minimum contract size，以为小资金也能精细复制。</li>
+<li><strong>错法 5：</strong> 把 funding 当恒正 carry。文中明确提醒：funding 转负时，这条策略会很难看。</li>
+<li><strong>错法 6：</strong> 用 <code>15m</code> K 线粗暴近似整套路径，却不记录带内停留和事件级成交。那样大概率只是在回测幻觉。</li>
+</ul>
+<h2>8. 为什么值得进研究池</h2>
+<p>它值得进池，不是因为它一定马上能成为主 book 最大仓位，而是因为它满足四个很少同时出现的条件：</p>
+<ol>
+<li><strong>base alpha 清楚</strong>：赚 fee density，不是假叙事。</li>
+<li><strong>完整策略闭环齐</strong>：entry / hedge / carry / exit / risk 都有。</li>
+<li><strong>和现有素材池互补</strong>：补的是中性 fee-carry，而不是再加一篇同质化 direction / pairs。</li>
+<li><strong>可快速 first verdict</strong>：只要抓一个池、一个期权链、一个 perp 数据流，就能先判断“资本效率是否足以值得继续”。</li>
+</ol>
+<p>对现在的 desk 来说，这张卡最大的意义是：</p>
+<p>&gt; <strong>它把“裸 LP 赚手续费”升级成了“可交易台落地的 delta-neutral short-cycle carry sleeve”。</strong></p>
+<h2>9. 下一步怎么测</h2>
+<ol>
+<li><strong>先选一个单池单标的试点</strong>：<code>WBTC/USDC</code> 或 <code>ETH/USDC</code>，不要多池并行。</li>
+<li><strong>先做简化 hedge，不做理论最优 hedge</strong>：2~4 strikes + 1 条 short perp/future，先判定方向中和后 fee-carry 是否还能站住。</li>
+<li><strong>先盯 capital efficiency，而不是 gross fee</strong>：第一优先指标改成 <code>net PnL / deployed capital</code>。</li>
+<li><strong>做 <code>1m/5m</code> 双时钟面板</strong>：<code>1m</code> 看带内停留与 funding path，<code>5m</code> 看策略级净值与 stress。</li>
+<li><strong>单独做 funding-turn-negative 压力测试</strong>：这条卡是否在 funding 变负时应自动降权或直接关停。</li>
+<li><strong>把它和昨日 <code>τ-reset</code> 裸 LP 卡做并排比较</strong>：同样的 pool / 带宽下，看“裸 fee-harvest”与“neutral fee-carry”到底谁更适合 desk。</li>
+</ol>
+<h2>10. 来源与链接</h2>
+<ol>
+<li><strong>Hürtgen, M. G., &amp; Schlütter, F. M. (2024). _Market Neutral Liquidity Provision in Concentrated Liquidity Pools_. Ledger, 9, 73–88.</strong></li>
+</ol>
+<ul>
+<li>Venue: *Ledger*</li>
+<li>DOI: &lt;<a href="https://doi.org/10.5195/ledger.2024.389&gt;">https://doi.org/10.5195/ledger.2024.389&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://ledger.pitt.edu/ojs/ledger/article/view/389&gt;">https://ledger.pitt.edu/ojs/ledger/article/view/389&gt;</a></li>
+<li>PDF URL: &lt;<a href="https://ledger.pitt.edu/ojs/ledger/article/download/389/281&gt;">https://ledger.pitt.edu/ojs/ledger/article/download/389/281&gt;</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Adams, H., Zinsmeister, N., Salem, M., Keefer, R., &amp; Robinson, D. (2021). _Uniswap v3 Core_. Whitepaper.</strong></li>
+</ol>
+<ul>
+<li>Venue: Uniswap Labs Whitepaper</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://uniswap.org/whitepaper-v3.pdf&gt;">https://uniswap.org/whitepaper-v3.pdf&gt;</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Deribit Knowledge Base. _Futures_ / _Options_ / margin documentation.</strong></li>
+</ol>
+<ul>
+<li>Venue: Deribit KB</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://www.deribit.com/kb/futures&gt;">https://www.deribit.com/kb/futures&gt;</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>The Block / DeFiLlama historical funding &amp; pool-yield references</strong>（论文经验部分引用的数据来源）</li>
+</ol>
+<ul>
+<li>Venue: Public market data dashboards</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://defillama.com/yields&gt;">https://defillama.com/yields&gt;</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+</body>
+</html>

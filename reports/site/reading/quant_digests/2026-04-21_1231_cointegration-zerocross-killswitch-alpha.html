@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 cointegration repo 只读成“又一个配对模板”：对 short-cycle crypto desk，更该先拆的是「spread z-score fade × zero-cross exit × kill-switch」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 cointegration repo 只读成“又一个配对模板”：对 short-cycle crypto desk，更该先拆的是「spread z-score fade × zero-cross exit × kill-switch」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-21 12:26 UTC</span>
+      <span class="pill">研究时间：2026-04-21 12:31 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit + Binance USDⓈ-M public-data portability probe</span>
+      <span class="pill">主题标签：pairs / stat-arb / relative-value / cointegration / mean-reversion / zero-cross / kill-switch / Binance USDⓈ-M / 5m / 15m / 1h</span>
+      <span class="pill">证据类型：工程经验 + repo rule shell + public-data first probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-21_1231_cointegration-zerocross-killswitch-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-21 12:31 UTC</li>
+<li>类型：GitHub / repo source audit + Binance USDⓈ-M public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：先找相对稳定的两腿价差关系；当 spread z-score 偏离过大时做回归（<code>z</code> 高就做空 spread，<code>z</code> 低就做多 spread），等 spread 回到中枢附近或过零后平仓</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：pairs / stat-arb / relative-value / cointegration / mean-reversion / zero-cross / kill-switch / Binance USDⓈ-M / 5m / 15m / 1h</li>
+<li>证据类型：工程经验 + repo rule shell + public-data first probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 2026 GitHub repo <strong>ssanin82 / strat-test-cointegration</strong>。它的价值不在“cointegration 这个词本身”，而在于把一条 <strong>可直接运行的 pair mean-reversion 壳</strong> 写得很直白：</p>
+<ul>
+<li>默认 <code>ETHUSDT / LINKUSDT</code></li>
+<li><code>1h</code>、<code>200</code> 根历史窗口</li>
+<li>Engle-Granger + OLS hedge ratio</li>
+<li>rolling <code>21</code> 窗口 z-score</li>
+<li><code>|z|</code> 过阈值就双腿同时用 market order 入场</li>
+<li><strong>zero-cross exit</strong>（z-score 反号就平）</li>
+<li>账户级 <code>KillSwitch</code>（回撤到阈值直接停机）</li>
+</ul>
+<p>对 desk 更有用的点是：这不是只给一个信号，而是把 <strong>entry / exit / sizing / risk-stop / state machine</strong> 都摊开了。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha 是清楚的</strong>：不是“cointegration 很高级”，而是 <strong>relative-value spread 偏离后的均值回复</strong>。</li>
+<li>repo 值得看的不是 Engle-Granger 教科书部分，而是它把 <strong>zero-cross exit + account-level kill-switch</strong> 当成完整策略骨架的一部分；这比只写 <code>z&gt;=2</code> / <code>z&lt;=-2</code> 的静态研究更接近能落地的 desk 组件。</li>
+<li>但 repo 默认参数里有一个很大的现实问题：README 写的 <code>SIGNAL_TRIGGER_THRESHOLD = 0.02</code> 对 z-score 来说几乎等于“轻微偏离也硬上”，对短周期 perp 太松，实盘里很容易把成本和噪音一起吃进去。</li>
+<li>我用 Binance USDⓈ-M 公开 <code>10</code> 个 liquid majors（<code>BTC/ETH/BNB/SOL/XRP/DOGE/ADA/LINK/AVAX/LTC</code>）做 <code>45d</code> portability probe，把思路迁到 <code>15m/5m</code> 后，若对全体 pair 统一做 <code>|z|&gt;=2</code> 入场、<code>zero-cross or timeout</code> 出场，<strong>gross 仍为正，但成本后整体转负</strong>：</li>
+<li><code>15m</code> 全池 <code>1986</code> 笔，gross <code>+2.70 bps/笔</code>，粗扣 <code>8 bps</code> 后 net <code>-5.30 bps/笔</code></li>
+<li><code>5m</code> 全池 <code>2373</code> 笔，gross <code>+4.10 bps/笔</code>，粗扣 <code>8 bps</code> 后 net <code>-3.90 bps/笔</code></li>
+<li>如果只看训练期 residual half-life 较短的 pair（我这里用 <code>15m &lt;= 48 bars</code>、<code>5m &lt;= 144 bars</code> 做轻量 proxy），结果并没有明显变好：</li>
+<li><code>15m</code> short-half-life 子集 <code>173</code> 笔，net <code>-4.58 bps/笔</code></li>
+<li><code>5m</code> short-half-life 子集 <code>252</code> 笔，net <code>-4.69 bps/笔</code></li>
+<li>更有意思的是，<strong>看起来最赚钱的 gross pocket 往往不是最像“真 cointegration”那批</strong>，而是一些 mid-cap 比值回归更强、但 half-life 很长的组合：</li>
+<li><code>15m</code> 上 <code>XRP/DOGE</code> gross 约 <code>+15.32 bps/笔</code>，<code>SOL/ADA</code> 约 <code>+13.49 bps/笔</code></li>
+<li><code>5m</code> 上 <code>XRP/DOGE</code> gross 约 <code>+16.37 bps/笔</code>，<code>SOL/DOGE</code> 约 <code>+14.82 bps/笔</code></li>
+<p>这说明：<strong>真正有 transfer 价值的，也许不是“严格 cointegration 筛出的 pairs alpha”，而是“ratio-zscore 型 cross-alt relative-value MR”这条更宽的 raw alpha 家族。</strong></p>
+</ul>
+<h2>3. 为什么这轮仍值得写</h2>
+<p>虽然我们最近已经连续补过几篇 pairs / stat-arb，但这篇还有独立价值，因为它补的不是“又一个 pair entry”，而是 <strong>完整策略里两个最容易被忽略的部件</strong>：</p>
+<ol>
+<li><strong>zero-cross exit</strong>：不是固定拿 <code>0.5σ</code> 就走，而是让 spread 真正回到中枢再平；</li>
+<li><strong>account-level kill-switch</strong>：pair alpha 常被误以为“天然低风险”，这个 repo 明确把账户回撤当全局停机条件。</li>
+</ol>
+<p>对当前 desk 来说，这两块都能直接服务后续 raw alpha 壳，不限于配对：</p>
+<ul>
+<li>zero-cross / center-reclaim 可以迁到 relative-value basket；</li>
+<li>kill-switch 可以迁到所有双腿或多腿策略的组合层。</li>
+</ul>
+<h2>4. 策略拆解</h2>
+<ul>
+<li>方向属性：pairs / stat-arb / relative-value / mean reversion</li>
+<li>基础 alpha：spread 偏离大时回归中枢</li>
+<li>regime / admission：repo 原版靠 Engle-Granger；我这轮 public quick probe 额外看了 residual half-life proxy，发现“更像 cointegrated”不等于“更能赚钱”</li>
+<li>filter / veto：若沿用 repo，最该先补的不是更多指标，而是 <strong>pair admission 更严 + threshold 更厚 + cost veto</strong></li>
+<li>risk / sizing / execution overlay：双腿等资本分配、账户级 drawdown kill-switch、zero-cross 平仓、timeout 兜底；实盘若继续迁移到 <code>5m/15m</code>，应把 market order 改成 maker-first 或至少更严格地估算四腿摩擦</li>
+</ul>
+<h2>5. 可复刻的最小实验</h2>
+<h3>实验目标</h3>
+<p>验证这条线在 short-cycle crypto 上到底更像：</p>
+<ul>
+<li>A. 严格 cointegration pairs alpha</li>
+<li>还是 B. 更宽的 cross-alt ratio / spread MR alpha</li>
+</ul>
+<h3>最小实验口径</h3>
+<ol>
+<li>universe 固定 liquid majors（先 8~12 个）</li>
+<li>discovery 用 <code>1h</code> 或 <code>15m</code> rolling train window 重估 beta / spread / half-life</li>
+<li>entry 对照：<code>|z|&gt;=2.0 / 2.5 / 3.0</code></li>
+<li>exit 对照：<code>zero-cross</code> vs <code>|z|&lt;=0.5</code> vs 固定 <code>8/16/24</code> bars timeout</li>
+<li>friction ladder：<code>8 / 12 / 16 bps</code> round-trip</li>
+<li>pair admission 对照：</li>
+</ol>
+<ul>
+<li>严格 cointegration / short half-life</li>
+<li>不做 cointegration，只做高相关 + 短 half-life 的 ratio MR</li>
+</ul>
+<ol>
+<li>统计：<code>trade_count / gross_bps / net_bps / timeout_rate / per-pair contribution / overlap risk</code></li>
+</ol>
+<h2>6. 这轮我保留的判断</h2>
+<p>这份 repo 不是本轮最强的 production 候选，但它很适合进研究池，因为它把 <strong>pair MR 的完整策略骨架</strong> 讲清楚了。当前 public probe 给我的更强结论不是“cointegration pairs 还能直接做”，而是：</p>
+<p>&gt; <strong>在 <code>5m/15m</code> 上，spread 偏离回归这条 raw alpha 还活着，但更像需要重新定义成更 desk 化的 relative-value MR；原版松阈值 + market order + zero-cross 直搬，多半会被成本吃掉。</strong></p>
+<h2>7. 下一步怎么测</h2>
+<ul>
+<li>先做一版 <strong>更厚阈值</strong> 对照：<code>|z|&gt;=2.5/3.0</code>，看看 trade count 掉多少、单笔 bps 能不能明显变厚。</li>
+<li>把 <strong>pair admission</strong> 拆成两路并行：<code>cointegration-first</code> vs <code>ratio-MR-first</code>，别默认前者一定更优。</li>
+<li>做 <strong>per-pair attribution</strong>：重点盯 <code>XRP/DOGE</code>、<code>SOL/DOGE</code>、<code>SOL/ADA</code> 这类 gross 明显更厚的 pocket，看它们是不是只是阶段性 beta 残差，而不是长期稳定 pair。</li>
+<li>若下一轮仍 gross 为正、cost 后接近打平，再补 <strong>maker-first / queue patience / single-leg fill failure</strong>，否则先别急着上 live shell。</li>
+</ul>
+<h2>8. 来源</h2>
+<ul>
+<li>ssanin82 (2026), <strong>strat-test-cointegration</strong>. GitHub repo. Repo URL: &lt;<a href="https://github.com/ssanin82/strat-test-cointegration&gt;">https://github.com/ssanin82/strat-test-cointegration&gt;</a></li>
+<li>Readable README URL: &lt;<a href="https://raw.githubusercontent.com/ssanin82/strat-test-cointegration/master/README.md&gt;">https://raw.githubusercontent.com/ssanin82/strat-test-cointegration/master/README.md&gt;</a></li>
+<li>Source audit依据：repo landing page + <code>README.md</code></li>
+<li>本地 artifacts：</li>
+<li><code>reports/artifacts/quant_digests/cointegration_zero_cross_summary_2026-04-21.csv</code></li>
+<li><code>reports/artifacts/quant_digests/cointegration_zero_cross_pairs_15m_2026-04-21.csv</code></li>
+<li><code>reports/artifacts/quant_digests/cointegration_zero_cross_pairs_5m_2026-04-21.csv</code></li>
+<li><code>reports/artifacts/quant_digests/cointegration_zero_cross_trades_15m_2026-04-21.csv</code></li>
+<li><code>reports/artifacts/quant_digests/cointegration_zero_cross_trades_5m_2026-04-21.csv</code></li>
+</ul>
+</body>
+</html>

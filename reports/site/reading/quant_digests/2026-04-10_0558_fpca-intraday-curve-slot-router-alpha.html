@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 FPCA 论文只读成“函数型时间序列统计”：对 short-cycle desk，更该先测「rolling intraday-curve PC × fixed-slot sign router」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 FPCA 论文只读成“函数型时间序列统计”：对 short-cycle desk，更该先测「rolling intraday-curve PC × fixed-slot sign router」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-10 05:09 UTC</span>
+      <span class="pill">研究时间：2026-04-10 05:58 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：raw-alpha / intraday / time-series / single-asset / BTC / FPCA / PCA / time-of-day / slot-router / 15m / 1h</span>
+      <span class="pill">证据类型：论文证据 + 本地 public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-10_0558_fpca-intraday-curve-slot-router-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-10 05:58 UTC</li>
+<li>类型：论文</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：最近一段时间的<strong>日内收益曲线形状</strong>可以压缩成少数几个主成分；这些 latent intraday-shape factor 的滚动预测，对下一天<strong>固定时段</strong>的 15m/1h 方向有可交易信息。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha / intraday / time-series / single-asset / BTC / FPCA / PCA / time-of-day / slot-router / 15m / 1h</li>
+<li>证据类型：论文证据 + 本地 public-data portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>Jasiak, Joann &amp; Zhong, Cheng（2025）arXiv working paper《Intraday Functional PCA Forecasting of Cryptocurrency Returns》。论文把 BTC 的日内 return curve 当成函数对象，而不是逐根 bar 独立看；先用 FPCA / KL dynamic factor 把“这一天的日内形状”压成少数主成分，再滚动预测下一天的曲线。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这篇东西最值得记住的，不是“PCA 能预测价格”，而是<strong>日内收益的形状本身有可重复的固定时段信息</strong>，更像 <code>slot router</code>，不一定适合直接做全天候逐 bar 方向书。</li>
+<li><strong>一句话证明方式</strong>：作者用 BTC 的 hourly / 15-minute return function 做 rolling FPCA 预测，再把预测曲线落回固定时点，与 OLS / Ridge / LASSO / ARMA / SVM / NN 做方向与误差比较。</li>
+<li>论文里最硬的一组结果来自 <strong>hourly one-step rolling forecast</strong>：<code>Ridge OLS</code> 的 sign 命中率约 <code>62.5%</code>，<code>OLS</code> 约 <code>59.0%</code>，明显高于 <code>ARMA</code> 约 <code>50.2%</code>、<code>LASSO</code> 约 <code>47.9%</code>、<code>NN</code> 约 <code>52.1%</code>。</li>
+<li>它更像在说：<strong>可预测的不是“整天每一根 bar 都有边”，而是某些固定 clock-time 的 return shape 更可预测</strong>。</li>
+<li>我用 Binance USDⓈ-M <code>BTCUSDT 15m</code> 近约 <code>219</code> 个完整 UTC 日做最小 portability probe：若直接把 rolling-FPCA 预测曲线翻成“下一天 96 个 15m 槽位全做 sign book”，结果很弱，all-slot shell 仅约 <code>49.4%</code> sign、gross 约 <code>-0.31 bps/bar</code>；说明<strong>不能把论文生搬成全天候 15m 连续翻仓策略</strong>。</li>
+<li>但若只看固定时段的描述性 pocket，局部确实出现和论文一致的“same-clock predictability”：例如 <code>01:00 UTC</code> 槽位在样本里约 <code>63.8%</code> sign、gross 约 <code>+3.92 bps</code>，<code>02:15 UTC</code> 约 <code>57.5%</code> sign、gross 约 <code>+2.64 bps</code>。这更支持把它读成<strong>时间槽位筛选器 / router</strong>，而不是整天都开的单币方向壳。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇最有价值的地方，是给 short-cycle desk 补了一类之前没系统拆过的 raw alpha： 不是 breakout、不是 pairs、也不是 funding，而是<strong>“日内曲线形状因子” → 固定时段方向预测</strong>。 它直接服务于 <code>15m</code>：</p>
+<ul>
+<li>可先只做 <code>BTC</code> 单币；</li>
+<li>可把输出喂给已有 momentum / reversal 壳，决定<strong>哪些 UTC 槽位值得开机</strong>；</li>
+<li>也可扩展成 <code>BTC lead curve -&gt; ETH/SOL fixed-slot follower</code> 的 cross-market 版本。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势 / 单资产日内方向预测</li>
+<li>基础 alpha：rolling FPCA 预测的 next-day fixed-slot return sign</li>
+<li>regime：可后接 realized vol / event-day / session pocket 分层</li>
+<li>filter / veto：只保留历史稳定槽位、只做 <code>|forecast|</code> 高分位、重大事件前后 veto</li>
+<li>risk / sizing / execution overlay：按预测幅度分层仓位；单槽位 time-stop=1 bar；必须单独过 taker/maker friction ladder</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：最近 <code>30~60</code> 个 UTC 日的 intraday return curve，经 FPCA 压缩后，能预测下一 UTC 日若干固定 15m 槽位方向。</li>
+<li>一个可计算定义：对 <code>BTCUSDT 15m</code>，每天形成 <code>96</code> 维 return curve；滚动窗口做 PCA，保留前 <code>2~5</code> 个 PC；对 PC score 做 AR(1) / ridge forecast；得到 next-day <code>96</code> 槽位预测收益。</li>
+<li>最小回测切口：<code>BTCUSDT</code> 永续，先做 <code>2025-09</code> 以来的 <code>15m</code>；比较三种书：<code>all-slot sign book</code>、<code>top-|forecast| quartile</code>、<code>固定 6~10 个训练期稳定槽位</code>。</li>
+<li>最该先看：<code>(1) 每个 UTC 槽位的 sign hit / gross bps</code>，<code>(2) 成本后 pnl 是否只集中在少数 slot</code>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文证明的是<strong>预测精度优势</strong>，不是成本后 production alpha 已成立。</li>
+<li>我这次 <code>15m</code> perp portability probe 已经说明：<strong>全时段硬上会失真</strong>。</li>
+<li>局部强槽位很可能漂移，必须做 rolling slot-stability 检验，不能拿 ex-post 最强时段直接上实盘。</li>
+<li>若要迁移到 <code>5m</code>，维度会从 <code>96</code> 槽位膨胀到 <code>288</code>，更容易过拟合；先别急着全市场横向扩展。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Jasiak, J., &amp; Zhong, C. (2025). *Intraday Functional PCA Forecasting of Cryptocurrency Returns*. arXiv working paper.</li>
+<li>DOI: <code>10.48550/arXiv.2505.20508</code></li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2505.20508">https://arxiv.org/abs/2505.20508</a></code></li>
+<li>HTML: <code><a href="https://arxiv.org/html/2505.20508">https://arxiv.org/html/2505.20508</a></code></li>
+<li>Local artifacts:</li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/fpca_intraday_curve_probe_summary_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/fpca_intraday_curve_probe_detail_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/fpca_intraday_curve_probe_slot_summary_2026-04-10.csv</code></li>
+</ul>
+</body>
+</html>

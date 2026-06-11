@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 MACD 背离交叉当“低位抄底神器”：对 short-cycle crypto desk，更该先拆的是「零轴下 MACD bullish cross / histogram divergence bounce」这条 raw alpha 壳是不是手续费陷阱</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 MACD 背离交叉当“低位抄底神器”：对 short-cycle crypto desk，更该先拆的是「零轴下 MACD bullish cross / histogram divergence bounce」这条 raw alpha 壳是不是手续费陷阱</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-22 09:06 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-22_0908_macd-divergence-crossover-feetrap.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：<code>raw alpha</code>（带 histogram-strength sizing / exit 组件）</li>
+<li>基础 alpha：<code>MACD 零轴下 bullish crossover 或价格新低但 histogram 抬高的 divergence bounce</code>，做多后用 bearish crossover / histogram fade / hard time-stop 出场</li>
+<li>是否可独立复现：<code>是</code></li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：<code>是</code></li>
+</ul>
+<h2>0) 先说结论（给 desk 的一句话）</h2>
+<p><strong>这条线目前不该直接进入实盘候选。</strong> <code>keitaj/hyperliquid-bot</code> 的 MACD 模块给了一个结构很完整、可快速复现的短周期 raw alpha 壳，但迁到 Binance USDⓈ-M <code>5m/15m</code> 后，简单 long-only bounce 版本在 6 个高流动性币上全为成本后负收益；它更适合作为“反弹入场组件 / 趋势策略减仓确认”，而不是独立主 alpha。</p>
+<h2>1) 这次为什么值得写（且不重复）</h2>
+<p>近期池子里已经覆盖了很多 <code>breakout</code>、<code>cross-sectional loser→winner fade</code>、<code>pairs / basis / funding</code>，但<strong>“单标的动量指标的低位反弹壳：MACD cross + divergence + 动态 sizing”</strong>还没有被单独拆过。这个 2026 高活跃 Hyperliquid 仓库的价值在于：</p>
+<ul>
+<li>raw alpha 清楚：<code>MACD bullish cross below zero</code> 或 <code>bullish divergence</code>；</li>
+<li>entry / exit 清楚：post-only buy，bearish crossover 或 histogram 衰退卖出；</li>
+<li>sizing 清楚：按 histogram strength 放大 / 缩小；</li>
+<li>风控壳完整：仓位上限、risk guardrails、per-trade stop、daily loss limit 等在 repo 层有参数入口。</li>
+</ul>
+<p>换句话说，这不是“泛指标介绍”，而是一个可以马上跑 <code>first verdict</code> 的完整策略骨架。</p>
+<h2>2) 来源与策略拆解（repo source audit）</h2>
+<p>本轮主来源：</p>
+<ul>
+<li>仓库：<code>keitaj/hyperliquid-bot</code>（GitHub，2026 仍活跃）</li>
+<li>README：声明支持 Hyperliquid / HIP-3，多策略包括 <code>simple_ma / rsi / bollinger_bands / macd / grid_trading / breakout / market_making</code></li>
+<li>源码：<code>strategies/macd_strategy.py</code></li>
+</ul>
+<p>源码里的 MACD 规则可还原为：</p>
+<ol>
+<li>计算 <code>EMA(12) - EMA(26)</code> 得到 <code>macd_line</code>，再用 <code>EMA(9)</code> 得到 <code>signal_line</code>；</li>
+<li>买入条件 A：上一根 <code>macd &lt;= signal</code>，当前 <code>macd &gt; signal</code>，且 <code>macd &lt; 0</code>；</li>
+<li>买入条件 B：最近窗口里价格创新低，但 <code>macd_histogram</code> 没有同步创新低，且 histogram 正在抬升；</li>
+<li>卖出条件：持多时出现 bearish crossover，或 histogram 转负且继续下降；</li>
+<li>仓位调节：<code>histogram_strength</code> 高则放大，低则缩小。</li>
+</ol>
+<p>&gt; 一句话核心结论：<strong>MACD cross/divergence 是 raw alpha 本体；histogram strength 是 sizing，bearish cross/hist fade 是 exit，不应把整件事误读成单纯 filter。</strong></p>
+<p>&gt; 一句话“它怎么证明”：<strong>我们把源码的核心 trade-on/trade-off 规则迁到 Binance 公共短周期 K 线，直接测 <code>5m/15m</code> long-only 成本后表现。</strong></p>
+<h2>3) 最小可复现实验（5m/15m portability probe）</h2>
+<h3>3.1 数据与口径</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M Futures 公共 klines（公开可得）</li>
+<li>周期：<code>15m</code> 近 <code>75d</code>；<code>5m</code> 近 <code>21d</code></li>
+<li>标的：<code>BTC/ETH/SOL/BNB/XRP/DOGE</code> 共 6 个高流动性合约</li>
+<li>信号：<code>t</code> 生成，<code>t+1 open</code> 入场 / 出场</li>
+<li>成本：单边 <code>4 bps fee + 2 bps slip</code>，往返约 <code>12 bps</code></li>
+<li>持仓限制：<code>15m</code> 最多 <code>16 bars</code>；<code>5m</code> 最多 <code>24 bars</code></li>
+<li>版本说明：这是 first verdict，不是参数优化；保留 repo 的核心思想，但用最小可复现口径替代真实 Hyperliquid 下单细节。</li>
+</ul>
+<h3>3.2 核心结果</h3>
+<p><code>15m</code>：</p>
+<ul>
+<li>6 个币合计 <code>1420</code> 笔，单币中位 <code>231</code> 笔；</li>
+<li>平均每笔净收益 <code>-11.14 bps</code>；</li>
+<li>中位净收益 <code>-26.73%</code>，正收益币种 <code>0/6</code>；</li>
+<li>中位胜率约 <code>30.27%</code>，中位 MDD <code>-28.06%</code>；</li>
+<li>入场中约 <code>60.2%</code> 来自 bullish cross，其余来自 divergence。</li>
+</ul>
+<p><code>5m</code>：</p>
+<ul>
+<li>6 个币合计 <code>1250</code> 笔，单币中位 <code>205.5</code> 笔；</li>
+<li>平均每笔净收益 <code>-10.05 bps</code>；</li>
+<li>中位净收益 <code>-18.85%</code>，正收益币种 <code>0/6</code>；</li>
+<li>中位胜率约 <code>24.87%</code>，中位 MDD <code>-20.01%</code>。</li>
+</ul>
+<h3>3.3 人话解释</h3>
+<p>这组结果很像典型“看图很舒服、扣成本很难活”的反弹策略：</p>
+<ul>
+<li><code>MACD 零轴下金叉</code>确实能频繁抓到底部尝试，但<strong>反弹幅度不稳定，很多交易刚够覆盖方向噪音，覆盖不了手续费 + 滑点</strong>；</li>
+<li><code>histogram divergence</code> 作为早期反弹信号太敏感，容易在下跌趋势中连续接刀；</li>
+<li>如果不加趋势 / regime / 流动性 gate，单独 long-only 做 <code>5m/15m</code> 反弹，结果更像“手续费转移器”。</li>
+</ul>
+<h2>4) 对当前素材池的意义（取舍）</h2>
+<p>保留，但要降级定位：</p>
+<ul>
+<li>不把 <code>MACD cross/divergence bounce</code> 当独立主 alpha 直接推进；</li>
+<li>可以把它放进两个更有价值的位置：</li>
+</ul>
+<ol>
+<li><strong>trend-pullback 的再入场确认</strong>：只在上级趋势向上、回调末端出现 bullish cross/divergence 时入场；</li>
+<li><strong>mean-reversion 策略的 exit / size-down 信号</strong>：histogram 继续恶化时减少接刀仓位。</li>
+</ol>
+<ul>
+<li>若后续要继续测，必须先加 <code>BTC regime + volatility gate + spread/liquidity gate</code>，否则大概率继续被成本吃掉。</li>
+</ul>
+<h2>5) 下一步怎么测（直接可执行）</h2>
+<ol>
+<li><strong>加上级趋势过滤</strong>：只允许 <code>15m/1h EMA fast &gt; slow</code> 且 BTC 不在下跌 regime 时，触发 <code>5m MACD bullish cross below zero</code>。</li>
+<li><strong>拆 cross 与 divergence</strong>：分别测 <code>bullish cross only</code>、<code>divergence only</code>、<code>cross+divergence 同时满足</code>，别把两个噪音水平不同的信号混在一起。</li>
+<li><strong>改成 router 而非单币连续交易</strong>：每根只选 histogram reversal 最强、且 spread/volume 过线的 top1/top2 币，降低无效交易数。</li>
+<li><strong>做成本阶梯</strong>：<code>2/4/6/8/12 bps round-trip</code>，确认它是“彻底没 edge”还是“只适合 maker-first / Hyperliquid 低费率环境”。</li>
+<li><strong>加 time-stop / ATR-stop A/B</strong>：当前 hard time-stop 只是兜底；需要对比 <code>1.5~2.0 ATR stop</code> 与 <code>opposite MACD cross exit</code> 的收益分布。</li>
+</ol>
+<h2>6) 关键来源（含 DOI / URL）</h2>
+<ol>
+<li><strong>keitaj (2026)</strong>. *hyperliquid-bot*. GitHub Repository.</li>
+</ol>
+<ul>
+<li>Authors: <code>keitaj</code></li>
+<li>Year: <code>2026</code>（仓库活跃更新）</li>
+<li>Title: <code>Hyperliquid Trading Bot</code></li>
+<li>Venue: <code>GitHub</code></li>
+<li>DOI: <code>N/A</code></li>
+<li>Readable URL: <code><a href="https://github.com/keitaj/hyperliquid-bot">https://github.com/keitaj/hyperliquid-bot</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/keitaj/hyperliquid-bot">https://github.com/keitaj/hyperliquid-bot</a></code></li>
+<li>Source file: <code>strategies/macd_strategy.py</code></li>
+</ul>
+<ol>
+<li><strong>Lo, A. W., Mamaysky, H., &amp; Wang, J. (2000)</strong>. *Foundations of Technical Analysis: Computational Algorithms, Statistical Inference, and Empirical Implementation*. NBER Working Paper / Journal of Finance version.</li>
+</ol>
+<ul>
+<li>DOI: <code>10.3386/w7613</code></li>
+<li>Readable URL: <code><a href="https://www.nber.org/papers/w7613">https://www.nber.org/papers/w7613</a></code></li>
+</ul>
+<ol>
+<li><strong>Svogun, D., &amp; Bazán-Palomino, W. (2022)</strong>. *Technical analysis in cryptocurrency markets: Do transaction costs and bubbles matter?* *Journal of International Financial Markets, Institutions and Money*.</li>
+</ol>
+<ul>
+<li>DOI: <code>10.1016/j.intfin.2022.101601</code></li>
+<li>Readable URL: <code><a href="https://www.sciencedirect.com/science/article/pii/S1042443122000130">https://www.sciencedirect.com/science/article/pii/S1042443122000130</a></code></li>
+</ul>
+<p>---</p>
+<h2>附：本轮实验文件</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/macd_divergence_probe_20260422/summary.txt</code></li>
+</ul>
+</body>
+</html>

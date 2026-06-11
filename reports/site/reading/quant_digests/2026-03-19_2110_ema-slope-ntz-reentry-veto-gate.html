@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 EMA slope 继续当 15m 原始入场键：`NTZ re-entry` 更像 breakout-short / Fib / EMA-PSAR 的 shared fail-fast veto</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 EMA slope 继续当 15m 原始入场键：`NTZ re-entry` 更像 breakout-short / Fib / EMA-PSAR 的 shared fail-fast veto</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-19 21:24 UTC</span>
+      <span class="pill">研究时间：2026-03-19 21:10 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/ema-slope/no-trade-zone/state-machine/fail-fast/veto/repo/crypto/5m/15m</span>
+      <span class="pill">证据类型：工程证据（仓库源码 + 仓库自带回测报告）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-19_2110_ema-slope-ntz-reentry-veto-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-19 21:10 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/ema-slope/no-trade-zone/state-machine/fail-fast/veto/repo/crypto/5m/15m</li>
+<li>证据类型：工程证据（仓库源码 + 仓库自带回测报告）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的主来源是 GitHub 仓库 <strong>asaflu / bitcoin-ema-analyzer (2026)</strong>。它的重点不是“再发明一个 EMA 交叉”，而是把 <code>EMA slope</code> 明确写成一个 <strong>三状态机</strong>：<code>BULL / BEAR / NTZ(no-trade zone)</code>，并且把“回到 NTZ”当成退出条件。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：对 5m/15m desk，更该偷的是“<code>NTZ 出入状态</code> 这层 veto 逻辑”，不是把这个仓库当 15m 直接开仓 alpha。</li>
+<li><strong>一句话证明方式</strong>：源码里 <code>ema_slope.py</code> 直接把信号写成“越过 ±阈值才开仓、回到阈值内就平仓”的状态机；仓库报告里的 timeframe 对照显示该框架在低周期（含 15m、5m）明显恶化。</li>
+<li>从 <code>backtest_report_20260209_082259.html</code> 的 timeframe 对照看：<code>15m total_return≈-14.63%</code>、<code>5m≈-28.17%</code>，而 <code>4h≈+41.37%</code>、<code>1d≈+11.15%</code>（同一报告口径）。这更像“高周期趋势状态特征”，不是低周期裸信号。</li>
+<li>仓库参数表的高分组合（如 <code>smooth_bars=3, ma_length=15, ntz=5</code>）对应 <code>total_return≈180.09%, win_rate≈35%, max_drawdown≈-24.46%</code>，说明它的边际收益主要来自“少量趋势段捕捉 + 低胜率大盈亏比”，并不天然等价于 15m continuation 可执行性。</li>
+<li>源码层面还有一个关键现实：<code>engine.py</code> 实际只完整支持 long 进出（<code>SELL</code> 被当作平多分支），所以它更像“方向状态实验框架”，不是可直接照搬的双向实盘引擎。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>它和三条收口线是直接相关的：</p>
+<ol>
+<li><strong>V3 breakout-short follow-up</strong>：突破后若 slope 快速回到 <code>NTZ</code>，可直接记为 follow-up 衰竭，提前 veto/减仓。</li>
+<li><strong>Fib retest_hold</strong>：回踩后不是“触位就算守住”，而是要求 slope 从 <code>NTZ→趋势侧</code> 的再出带确认。</li>
+<li><strong>EMA / PSAR raw alpha focus</strong>：把 EMA slope 从“入场主键”降级为“状态闸门”；PSAR 更适合继续做 HTF 方向锚，二者角色更清晰。</li>
+</ol>
+<h2>4. 可复刻的最小实验</h2>
+<h3>研究假设</h3>
+<p>在 15m crypto 上，<code>NTZ re-entry veto</code> 作为共享覆盖层，能降低假延续损耗（尤其 4~8 bars 内反抽反杀），即使不提高胜率，也应改善成本后回撤与尾部亏损。</p>
+<h3>一个可计算定义（接现有三条线）</h3>
+<ul>
+<li>先算：<code>ma = EMA(close, L)</code>；<code>raw = ma - ma.shift(s)</code>；<code>slope_norm = 100 * raw / (rolling_max(raw,n)-rolling_min(raw,n))</code>。</li>
+<li>定义状态：<code>slope_norm &gt; +θ =&gt; BULL</code>；<code>&lt; -θ =&gt; BEAR</code>；否则 <code>NTZ</code>。</li>
+<li>共享 veto 规则：</li>
+<li>多头 setup（Fib hold / EMA continuation）触发后，若 <code>N</code> 根内重回 <code>NTZ</code>，则立即失效；</li>
+<li>空头 setup（breakout-short follow-up）触发后，若 <code>N</code> 根内由 <code>BEAR</code> 回 <code>NTZ</code>，同样失效；</li>
+<li><code>N ∈ {2,4,6}</code>，<code>θ ∈ {8,10,12}</code> 做小网格。</li>
+</ul>
+<h3>最小回测切口</h3>
+<ul>
+<li>资产：BTC/ETH/SOL perp</li>
+<li>周期：15m（执行），可加 5m 做入场细化</li>
+<li>样本：最近 120~180 天</li>
+<li>成本：<code>6/10 bps per side</code></li>
+<li>对照：</li>
+<p>1) baseline（三条线原规则） 2) baseline + static slope gate 3) baseline + <strong>NTZ re-entry veto</strong>（本轮主测）</p>
+</ul>
+<h3>最先看 3 个指标</h3>
+<ol>
+<li><code>post_cost_return</code></li>
+<li><code>max_drawdown</code> 与 <code>left-tail(5% trade pnl)</code></li>
+<li><code>false_follow_through_4bars</code>（触发后 4 根内反向失效占比）</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是仓库工程证据，不是同行评审论文证据；结论应视为“高质量实现启发 + 待本地复核”。</li>
+<li>仓库报告的回测口径与我们当前 15m perp 成本口径不完全一致，不能直接拿收益数字做外推。</li>
+<li><code>slope</code> 归一化会受滚动窗口极值影响；不同波动 regime 下阈值可迁移性有限，需做 <code>θ</code> 稳定性检查。</li>
+<li>若 <code>NTZ</code> 设得过宽，会把 trade density 压到不可用；若过窄，又退化成“几乎一直交易”。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li>asaflu. (2026). *bitcoin-ema-analyzer*. GitHub repository.</li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/asaflu/bitcoin-ema-analyzer">https://github.com/asaflu/bitcoin-ema-analyzer</a></li>
+</ul>
+<ol>
+<li>asaflu. (2026). *EMA slope state machine implementation* (<code>indicators/ema_slope.py</code>).</li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/asaflu/bitcoin-ema-analyzer/main/indicators/ema_slope.py">https://raw.githubusercontent.com/asaflu/bitcoin-ema-analyzer/main/indicators/ema_slope.py</a></li>
+</ul>
+<ol>
+<li>asaflu. (2026). *Backtesting engine* (<code>backtesting/engine.py</code>).</li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/asaflu/bitcoin-ema-analyzer/main/backtesting/engine.py">https://raw.githubusercontent.com/asaflu/bitcoin-ema-analyzer/main/backtesting/engine.py</a></li>
+</ul>
+<ol>
+<li>asaflu. (2026). *Comprehensive backtest report* (<code>backtest_report_20260209_082259.html</code>).</li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/asaflu/bitcoin-ema-analyzer/main/backtest_report_20260209_082259.html">https://raw.githubusercontent.com/asaflu/bitcoin-ema-analyzer/main/backtest_report_20260209_082259.html</a></li>
+</ul>
+</body>
+</html>

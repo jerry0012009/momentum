@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 EMA/PSAR 都当 15m 同层入场键：`EMA(RSI)` 分层判势 + Downtrend 禁多，更像三条收口线共用 veto gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 EMA/PSAR 都当 15m 同层入场键：`EMA(RSI)` 分层判势 + Downtrend 禁多，更像三条收口线共用 veto gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-18 19:57 UTC</span>
+      <span class="pill">研究时间：2026-03-18 19:56 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/regime/filter/veto/crypto/15m</span>
+      <span class="pill">证据类型：论文证据（全文）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-18_1956_ema-rsi-regime-veto-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-18 19:56 UTC</li>
+<li>类型：论文</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/regime/filter/veto/crypto/15m</li>
+<li>证据类型：论文证据（全文）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了 <strong>Naganjaneyulu G, Prashanth G, Revanth M, A. V. Narasimhadhan (2023)</strong> 的论文 <strong>Multi Indicator based Hierarchical Strategies for Technical Analysis of Crypto market Paradigm</strong>。它不是再找“更神的 EMA 参数”，而是把指标做了角色分层：先判市场状态，再决定哪些信号可以交易。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>一句话核心结论：<strong>比继续调入场参数更值得先测的，是“先判势、再放行、再否决”的层级 gate。</strong></li>
+<li>论文里单指标结果是 EMA 最好（文中给到利润百分比 <strong>394.13%</strong>）；但分层后 <strong>MIHS(EMA7)=437.48%</strong>，再加“下跌阶段禁多”约束后 <strong>MIHCS(EMA7)=701.77%</strong>（样本：BTC 2018–2022）。</li>
+<li>最可复用的不是 headline 收益，而是那条规则骨架：<code>EMA(RSI)&gt;60</code> 视为 Uptrend、<code>&lt;40</code> 视为 Downtrend；在 Downtrend 把反向买入信号直接 veto。</li>
+<li>这和我们 desk 当前三条收口线更贴，因为它本质是 <strong>regime + veto</strong>，不是再造一个新 alpha：</li>
+<li><code>V3 breakout-short follow-up</code>：避免在反弹噪声里提前做多；</li>
+<li><code>Fibonacci retest_hold</code>：只在允许的 regime 里承认 hold；</li>
+<li><code>EMA / PSAR raw alpha focus</code>：把 PSAR 更明确地放到下行防守/退出角色。</li>
+<li>一句话证明方式：<strong>作者用 BTC 历史样本，把单指标与分层策略做回测对照，展示“加层级约束后，组合路径更稳”。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮值得做它，是因为它直接回答了我们正在收口的共同痛点： <strong>不是信号不够多，而是缺“什么时候不该让这些信号上桌”的统一判势闸门。</strong></p>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设</strong>：在 15m crypto 里，给现有三条收口线加 <code>EMA(RSI)</code> regime + downtrend long-veto，会优先降低假确认/反向亏损，并改善成本后表现。</p>
+<p><strong>一个可计算定义（最小版）</strong>：</p>
+<ul>
+<li><code>rsi14 = RSI(close,14)</code>，<code>ema_rsi7 = EMA(rsi14,7)</code>；</li>
+<li><code>regime_up: ema_rsi7 &gt; 60</code>；<code>regime_down: ema_rsi7 &lt; 40</code>；其余视为 <code>regime_chop</code>；</li>
+<li>gate：</li>
+<li>Long 类信号（Fib retest_hold、EMA continuation long）仅在 <code>regime_up</code> 放行；</li>
+<li><code>regime_down</code> 下忽略 PSAR/RSI 的逆势 BUY（veto）；</li>
+<li>breakout-short follow-up 在 <code>regime_down</code> 优先，<code>regime_chop</code> 降权或禁做。</li>
+</ul>
+<p><strong>最小回测切口</strong>：</p>
+<ul>
+<li>标的：BTCUSDT、ETHUSDT、SOLUSDT perpetual</li>
+<li>周期：15m</li>
+<li>样本：近 180d</li>
+<li>执行：next-bar open、no-overlap、成本 6/10/15 bps per side</li>
+</ul>
+<p><strong>先看 3 个指标</strong>：</p>
+<ol>
+<li><code>false-long rate</code>（尤其在 downtrend）</li>
+<li><code>post-cost return</code></li>
+<li><code>trade-count retention</code>（防止全靠砍交易数“变好看”）</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文样本是 BTC 2018–2022，且未直接对应 15m + 实盘成本口径；百分比不可直接平移到当前 desk。</li>
+<li>文中分层阈值（60/40、45/55）在 15m 上可能更敏感，必须做阈值邻域稳定性，不要单点参数崇拜。</li>
+<li>暂未见作者公开可直接复刻的官方仓库；首轮应按“规则复写 + 小样本诚实检验”推进。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Naganjaneyulu G, V. S. S. K. R., Prashanth G., Revanth M., &amp; Narasimhadhan, A. V. (2023).</strong> *Multi Indicator based Hierarchical Strategies for Technical Analysis of Crypto market Paradigm*. International Journal of Electrical and Computer Engineering Systems, 14(7), 765–780.</li>
+</ol>
+<ul>
+<li>DOI: <a href="https://doi.org/10.32985/ijeces.14.7.4">https://doi.org/10.32985/ijeces.14.7.4</a></li>
+<li>Readable URL: <a href="https://ijeces.ferit.hr/index.php/ijeces/article/view/2517">https://ijeces.ferit.hr/index.php/ijeces/article/view/2517</a></li>
+<li>PDF URL: <a href="https://ijeces.ferit.hr/index.php/ijeces/article/view/2517/322">https://ijeces.ferit.hr/index.php/ijeces/article/view/2517/322</a></li>
+<li>Repo URL: N/A（论文页未提供官方公开代码仓库）</li>
+</ul>
+<ol>
+<li>Crossref metadata（用于 DOI/期刊元数据核验）</li>
+</ol>
+<ul>
+<li>URL: <a href="https://api.crossref.org/works/10.32985/ijeces.14.7.4">https://api.crossref.org/works/10.32985/ijeces.14.7.4</a></li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<p>先做一个单改动 A/B：<strong>只在现有三条收口线上叠加 <code>regime + downtrend long-veto</code></strong>，不改原始 entry/exit。若它不能在保留主要交易数的前提下明显压低 <code>false-long rate</code>，就不继续占用收口预算。</p>
+</body>
+</html>

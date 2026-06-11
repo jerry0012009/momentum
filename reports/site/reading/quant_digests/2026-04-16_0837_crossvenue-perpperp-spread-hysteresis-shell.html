@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 cross-exchange 套利仓只读成“搬砖脚本”：对 short-cycle desk，更该先修的是「perp-perp spread convergence × entry/exit hysteresis」这条 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 cross-exchange 套利仓只读成“搬砖脚本”：对 short-cycle desk，更该先修的是「perp-perp spread convergence × entry/exit hysteresis」这条 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-16 08:40 UTC</span>
+      <span class="pill">研究时间：2026-04-16 08:37 UTC</span>
+      <span class="pill">类型：2025 GitHub repo source audit（`README.md` + `spread_strategy.py` + GitHub API metadata）+ Bybit/Binance public ticker live sanity probe（`SOLUSDT`, 0.5s 轮询，120 样本）</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/cross-venue/perp-perp/same-underlier/spread-convergence/hysteresis/execution-shell/bybit/binance/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 代码证据 + 公共行情快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-16_0837_crossvenue-perpperp-spread-hysteresis-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-16 08:37 UTC</li>
+<li>类型：2025 GitHub repo source audit（<code>README.md</code> + <code>spread_strategy.py</code> + GitHub API metadata）+ Bybit/Binance public ticker live sanity probe（<code>SOLUSDT</code>, 0.5s 轮询，120 样本）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一标的在两个 perp venue 的瞬时价差会向中枢回归；当 <code>Binance-Bybit</code> spread 偏离阈值后，做多便宜腿/做空昂贵腿，等价差收敛后双腿平仓</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（代码里已有完整壳，但参数需先修正）</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/cross-venue/perp-perp/same-underlier/spread-convergence/hysteresis/execution-shell/bybit/binance/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：repo 代码证据 + 公共行情快检</li>
+</ul>
+<h2>1) 先回答：这篇东西的 base alpha 是什么？</h2>
+<p>一句话：<strong>base alpha 不是“自动下单”本身，而是“同一标的跨 venue perp 报价偏离后的回归”。</strong></p>
+<p>在 <code>spread_strategy.py</code> 里写得很直白：</p>
+<ul>
+<li><code>spread_percent = ((binance_price - bybit_price) / bybit_price) * 100</code></li>
+<li><code>spread &gt; entry_th</code>：<code>LONG Bybit / SHORT Binance</code></li>
+<li><code>spread &lt; -entry_th</code>：<code>SHORT Bybit / LONG Binance</code></li>
+<li>价差回归后反向平双腿。</li>
+</ul>
+<p>这就是标准的 <strong>same-underlier cross-venue relative-value / stat-arb</strong> 主体，不是 filter/overlay。</p>
+<h2>2) 来源信息（repo-based）</h2>
+<ul>
+<li>Authors / Maintainer：Kristofer Meio-Renn（GitHub: <code>kmrlab</code>）</li>
+<li>Year：2025（<code>created_at=2025-08-27</code>）</li>
+<li>Title：*Cryptocurrency Arbitrage Strategies*（repo: <code>algo-arbitrage</code>）</li>
+<li>Venue：GitHub Repository</li>
+<li>DOI：N/A（仓库）</li>
+<li>Readable URL：&lt;<a href="https://github.com/kmrlab/algo-arbitrage&gt;">https://github.com/kmrlab/algo-arbitrage&gt;</a></li>
+<li>Repo URL：&lt;<a href="https://github.com/kmrlab/algo-arbitrage&gt;">https://github.com/kmrlab/algo-arbitrage&gt;</a></li>
+</ul>
+<h2>3) 为什么这条线值得进当前素材池</h2>
+<p>这份材料的价值不在“又一个跨所套利故事”，而在于它把完整策略骨架写全了：</p>
+<ol>
+<li><strong>entry/exit 是显式状态机</strong>（<code>in_position</code> + <code>position_type</code>）；</li>
+<li><strong>仓位单位统一到可下单精度</strong>（按美元换算数量，并向下取整到 <code>0.1</code>）；</li>
+<li><strong>双腿下单失败回滚逻辑</strong>有雏形（第二腿失败时尝试撤第一腿）；</li>
+<li><strong>可直接映射短周期验证</strong>（默认 <code>CHECK_INTERVAL=1s</code>，天然兼容 <code>1m/3m/5m/15m</code> 聚合评估）。</li>
+</ol>
+<h2>3.5) 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / 统计套利（非裸方向）</li>
+<li>基础 alpha：<code>same-underlier cross-venue perp spread mean reversion</code></li>
+<li>regime：默认未建模（可后续加波动/流动性 regime）</li>
+<li>filter / veto：</li>
+<li>仅当 <code>abs(spread) &gt;= MIN_SPREAD_PERCENT</code> 才开仓</li>
+<li>数量最小精度检查（<code>qty &gt;= 0.1</code>）</li>
+<li>API 请求超时/签名失败保护</li>
+<li>risk / sizing / execution overlay：</li>
+<li>单腿名义默认 <code>POSITION_SIZE_USD = 500</code></li>
+<li>双腿对冲开平（Bybit + Binance）</li>
+<li>1 秒轮询；日志与账户/持仓状态监控</li>
+</ul>
+<h2>4) 关键数据点（可直接指导“先修什么”）</h2>
+<h3>4.1 repo 参数本身</h3>
+<ul>
+<li>开仓阈值：<code>MIN_SPREAD_PERCENT = 0.02</code>（代码按百分比计算，即 <strong>2 bps</strong>）</li>
+<li>平仓条件：<code>abs(spread) &lt;= 0.1</code>（即 <strong>10 bps</strong>）</li>
+<li>轮询频率：<code>1s</code></li>
+</ul>
+<h3>4.2 public live 快检（本轮）</h3>
+<p>对 <code>SOLUSDT</code> 做 <code>0.5s × 120</code> 样本快检（Bybit/Binance 公共 ticker）：</p>
+<ul>
+<li><code>|spread|</code> 中位数约 <strong>1.17 bps</strong></li>
+<li><code>|spread| &gt;= 2 bps</code> 占比约 <strong>21.7%</strong></li>
+<li><code>|spread| &gt;= 5 bps</code> / <code>&gt;=10 bps</code> 占比均 <strong>0%</strong>（本样本）</li>
+</ul>
+<p>这直接暴露一个可交易性问题：<strong>当前 exit 阈值（10 bps）大于 entry 阈值（2 bps），hysteresis 方向反了</strong>。若按原逻辑直接跑，极易出现“进场后很快触发平仓判定”或策略行为异常，先别急着实盘。</p>
+<h2>5) 与 <code>1m/3m/5m/15m</code> 的关系</h2>
+<ul>
+<li><code>1m/3m</code>：最适合做 spread 事件密度、持仓时长、滑点冲击的 first verdict；</li>
+<li><code>5m/15m</code>：更适合做“阈值是否足够覆盖成本”的稳健性层（尤其 taker 场景）；</li>
+<li>结论：这条线是 <strong>秒级执行 + 分钟级评估</strong> 的典型 short-cycle 壳，和当前 desk 节奏兼容。</li>
+</ul>
+<h2>6) 可复刻最小实验（今天就能开）</h2>
+<ul>
+<li>研究假设：cross-venue perp spread 在短窗内存在可交易回归，但需要正确 hysteresis 与成本门槛。</li>
+<li>数据源（公开可得）：</li>
+<li>Bybit <code>v5/market/tickers</code></li>
+<li>Binance <code>fapi/v1/ticker/price</code>（最好再补 best bid/ask）</li>
+<li>资产：<code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li>频率：原始 1s，评估聚合到 <code>1m/3m/5m/15m</code></li>
+<li>最小规则（修正版建议）：</li>
+<li><code>entry_abs &gt;= 4~6 bps</code></li>
+<li><code>exit_abs &lt;= 1~2 bps</code></li>
+<li><code>max_hold = 3~10 min</code> 强平</li>
+<li>最先看两项指标：</li>
+</ul>
+<ol>
+<li>成本后单笔 EV（含双腿手续费+滑点）</li>
+<li><code>entry-&gt;exit</code> 收敛完成率与中位持有时长</li>
+</ol>
+<h2>7) 风险与保留意见</h2>
+<ol>
+<li>仅用 last price 会高估可成交性；必须切到 bid/ask 与深度口径。</li>
+<li>双腿执行存在腿风险（一腿成交一腿失败），回滚逻辑需要更严格。</li>
+<li>阈值在不同币种、不同时段差异很大，单一常数阈值容易过拟合。</li>
+<li>高波动时段 spread 可能“扩而不归”，需加超时止损与仓位上限。</li>
+</ol>
+<h2>8) 下一步怎么测（本轮后直接动作）</h2>
+<ol>
+<li><strong>先修 hysteresis</strong>：把阈值改成 <code>entry &gt; exit</code>（例如 <code>5 bps</code> 入、<code>1.5 bps</code> 出）。</li>
+<li><strong>做 friction ladder</strong>：<code>4 / 8 / 12 bps</code> 总成本三档，检查策略是否仍为正 EV。</li>
+<li><strong>做资产分层</strong>：先 <code>BTC/ETH/SOL</code>，再扩到高波动 alt，比较收敛率和腿风险。</li>
+<li><strong>加超时与失败回滚审计</strong>：<code>max_hold</code>、<code>one-leg timeout</code>、<code>forced flatten</code> 三个硬约束。</li>
+</ol>
+<p>---</p>
+<h2>参考</h2>
+<ol>
+<li>Kristofer Meio-Renn (<code>kmrlab</code>). *algo-arbitrage* (GitHub repo, 2025).</li>
+<p>&lt;<a href="https://github.com/kmrlab/algo-arbitrage&gt;">https://github.com/kmrlab/algo-arbitrage&gt;</a></p>
+<li>Repo source file: <code>spread_strategy.py</code></li>
+<p>&lt;<a href="https://raw.githubusercontent.com/kmrlab/algo-arbitrage/main/spread_strategy.py&gt;">https://raw.githubusercontent.com/kmrlab/algo-arbitrage/main/spread_strategy.py&gt;</a></p>
+<li>Repo source file: <code>README.md</code></li>
+<p>&lt;<a href="https://raw.githubusercontent.com/kmrlab/algo-arbitrage/main/README.md&gt;">https://raw.githubusercontent.com/kmrlab/algo-arbitrage/main/README.md&gt;</a></p>
+<li>GitHub API metadata</li>
+<p>&lt;<a href="https://api.github.com/repos/kmrlab/algo-arbitrage&gt;">https://api.github.com/repos/kmrlab/algo-arbitrage&gt;</a></p>
+</ol>
+</body>
+</html>

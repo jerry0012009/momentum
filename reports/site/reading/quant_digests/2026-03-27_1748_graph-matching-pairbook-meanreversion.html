@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 pairs 组合构建只当“去重”：这篇 2024 论文更值得先测的是「maximum-weight matching pair book + spread 均值回归」完整 raw alpha 骨架</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 pairs 组合构建只当“去重”：这篇 2024 论文更值得先测的是「maximum-weight matching pair book + spread 均值回归」完整 raw alpha 骨架</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-27 17:47 UTC</span>
+      <span class="pill">研究时间：2026-03-27 17:48 UTC</span>
+      <span class="pill">类型：2024 arXiv 全文 + Binance Futures 公共 `15m` 本地 transfer check</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/graph/matching/portfolio-construction/concentration/cost/binance/perpetual/15m/paper</span>
+      <span class="pill">证据类型：论文全文 + 本地公共数据最小迁移快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-27_1748_graph-matching-pairbook-meanreversion.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-27 17:48 UTC</li>
+<li>类型：2024 arXiv 全文 + Binance Futures 公共 <code>15m</code> 本地 transfer check</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>cointegration spread 的均值回归；matching 不是 alpha 本体，而是把同一套 pairs raw alpha 从“重仓少数公共腿”改造成“低重叠、低集中度”的 pair book 构造器。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/graph/matching/portfolio-construction/concentration/cost/binance/perpetual/15m/paper</li>
+<li>证据类型：论文全文 + 本地公共数据最小迁移快检</li>
+</ul>
+<p>&gt; 先回答 base alpha：<strong>这是 raw alpha，不是单纯 filter。</strong> 真正赚钱的底层仍是 <code>cointegration spread mean reversion</code>；这篇 paper 的新意在于：不要再把 pair book 做成一堆共享同一条腿的“伪分散”组合，而是用 <strong>maximum-weight matching</strong> 选出 <strong>不共享资产</strong> 的一组 pairs，把同一条 raw alpha 做得更像一个可控、可扩容、可上 desk 的组合。</p>
+<h2>1. 这次看了什么</h2>
+<p>这次主看：</p>
+<ol>
+<li><strong>Khizar Qureshi, Tauhid Zaman (2024)</strong>, *Pairs Trading Using a Novel Graphical Matching Approach*, arXiv / Applications (stat.AP), Statistical Finance (q-fin.ST).</li>
+</ol>
+<ul>
+<li>DOI: <code>10.48550/arXiv.2403.07998</code></li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2403.07998">https://arxiv.org/abs/2403.07998</a></code></li>
+<li>HTML: <code><a href="https://arxiv.org/html/2403.07998v1">https://arxiv.org/html/2403.07998v1</a></code></li>
+</ul>
+<ol>
+<li>论文文中提到的代码仓库：</li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/kai-trading-bot/pair/">https://github.com/kai-trading-bot/pair/</a></code></li>
+<li>备注：当前公开访问看起来已不可用/404，先把它当论文附带的 stale repo 线索，不作为主要证据。</li>
+</ul>
+<ol>
+<li>本地 transfer check：</li>
+</ol>
+<ul>
+<li>数据源：Binance Futures 公共 K 线 API（公开可得）</li>
+<li>标的：<code>BTC, ETH, SOL, BNB, XRP, DOGE, ADA, LINK, LTC, AVAX, TRX, DOT, BCH, ETC, APT, SUI</code> 对应 <code>USDT</code> perp</li>
+<li>频率：<code>15m</code></li>
+<li>形成窗 / 交易窗：<code>60d formation + 10d trade</code>，滚动 <code>5</code> 个窗口</li>
+<li>产物：<code>reports/artifacts/quant_digests/graph_matching_pairs_20260327/</code></li>
+</ul>
+<p>这篇 paper 的 headline 是：<strong>pairs 组合若直接按 cointegration 强度排序，很容易反复押在同一批公共腿上，导致表面上 pair 数很多，实际上组合方差、换手和单腿风险都偏高。</strong></p>
+<p>对我们 desk 来说，最值钱的不是“graph theory 很新”，而是：</p>
+<ul>
+<li>raw alpha 仍然清楚；</li>
+<li>entry/exit/sizing/risk/cost 都能拆出来；</li>
+<li>而且它补的正是我们最近 pairs / stat-arb 素材池里相对少写的一层：<strong>pair-book construction / capacity / concentration control</strong>。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这篇东西最该落地的不是“图匹配”这个名词，而是 <strong><code>cointegration spread mean reversion + no-overlap pair book</code></strong> 这条完整 skeleton。</li>
+<li><strong>一句话它怎么证明：</strong> 论文在 S&amp;P 500 2017-2023 样本里显示，matching 版 pair book 相比“直接拿 top cointegrated pairs”基线，<strong>gross Sharpe <code>1.23</code> vs <code>0.48</code>、net cumulative return 约 <code>+65%</code> vs <code>-26%</code>，且 turnover 更低、单股票集中度更低。</strong></li>
+</ul>
+<p>但 desk 化之后更重要的诚实读法是：</p>
+<ol>
+<li><strong>matching 修的是“组合构造错误”，不是凭空创造新的 spread alpha；</strong></li>
+<li>如果候选图里本来混入很多弱 pair，硬做“全覆盖不重叠”，可能会把一些很强但共享核心腿的 pair 拆掉；</li>
+<li>所以它更像一个 <strong>pairs raw alpha 的 portfolio-construction layer</strong>，而不是一个脱离 spread 自身质量的万能增强器。</li>
+</ol>
+<h2>3. 3 个关键数据点</h2>
+<ol>
+<li><strong>论文原始结果很硬。</strong> 在作者的 S&amp;P 500 日频回测里：</li>
+</ol>
+<ul>
+<li>matching 策略 gross Sharpe <strong><code>1.23</code></strong>，基线只有 <strong><code>0.48</code></strong>；</li>
+<li>net cumulative return 约 <strong><code>+64.7% / +66.3%</code></strong>，基线约 <strong><code>-26.2% / -13.4%</code></strong>；</li>
+<li>matching 组合 net max drawdown 约 <strong><code>-8.0%</code></strong>，显著小于市场 <strong><code>-19.5%</code></strong>。</li>
+</ul>
+<ol>
+<li><strong>我在 Binance <code>15m</code> 的滚动最小迁移快检里，matching 的“结构修正”是明显成立的。</strong> 最近 <code>5</code> 个滚动窗口中：</li>
+</ol>
+<ul>
+<li>平均组合集中度：<strong><code>1.0</code> vs <code>3.6</code></strong>（matching 永远每个资产只出现一次）；</li>
+<li>平均覆盖资产数：<strong><code>16.0</code> vs <code>9.4</code></strong>；</li>
+<li>平均 pair turnover changes：<strong><code>22.85</code> vs <code>28.00</code></strong>。</li>
+<p>也就是说，<strong>它确实把 pair book 从“公共腿堆叠”改成了“真分散”。</strong></p>
+</ul>
+<ol>
+<li><strong>但 short-cycle 迁移目前还没过 first verdict。</strong> 在同一批 <code>15m</code> 简化 z-score 测试下：</li>
+</ol>
+<ul>
+<li>matching gross cumret <strong><code>+3.4%</code></strong>，baseline <strong><code>+9.1%</code></strong>；</li>
+<li>考虑简化成本后，matching net cumret <strong><code>-6.3%</code></strong>，baseline <strong><code>-3.6%</code></strong>；</li>
+<li>matching median pair half-life 约 <strong><code>169</code> bars</strong>，baseline 约 <strong><code>129</code> bars</strong>。</li>
+<p>这说明：<strong>matching 把 book 结构修对了，但在我们这版 15m proxy 里，还没把“更慢的 spread + 更低重叠”转成净 alpha 优势。</strong></p>
+</ul>
+<h2>4. 为什么和当前短周期 desk 有关</h2>
+<h3>4.1 它服务的是哪类 raw alpha</h3>
+<ul>
+<li>分类：<strong>pairs / stat-arb / relative-value / mean-reversion raw alpha</strong></li>
+<li>不是：</li>
+<li>纯 filter</li>
+<li>纯 regime</li>
+<li>纯组合优化而没有交易规则</li>
+</ul>
+<h3>4.2 它补的是素材池哪块缺口</h3>
+<p>最近几篇 pairs / stat-arb digest 已经补了：</p>
+<ul>
+<li>spread 定义</li>
+<li>anti-persistence / threshold gate</li>
+<li>dynamic sizing</li>
+<li>PCA residual / factor residual</li>
+</ul>
+<p>但还缺一类很实际的问题： &gt; <strong>如果很多最强 pair 都共享同一条主腿，book 到底该怎么组？</strong></p>
+<p>这篇 paper 的价值就在这里：</p>
+<ul>
+<li>它不是在讲一个抽象风控故事；</li>
+<li>它是在讲 <strong>raw alpha 组合化以后为什么会变坏</strong>；</li>
+<li>以及如何用一个明确可复现的算法，把这件事做成工程组件。</li>
+</ul>
+<p>如果后面 desk 继续扩 pairs / stat-arb 素材池，这一层迟早都要补。</p>
+<h2>5. desk 化后的最小策略草图</h2>
+<h2>5.1 形成窗与 pair selection</h2>
+<p>先做最小可复现版本：</p>
+<ul>
+<li>频率：<code>15m</code></li>
+<li>宇宙：流动性最好的 <code>12~20</code> 个 <code>USDT</code> perpetual</li>
+<li>formation：滚动 <code>45~60d</code></li>
+<li>对每个 pair 跑：</li>
+<li><code>log(P_j) = μ + β log(P_i) + ε</code></li>
+<li>对残差 <code>ε</code> 做单 lag <code>ADF</code></li>
+<li>图构造：</li>
+<li>节点 = 资产</li>
+<li>边 = pair</li>
+<li>边权 = <code>-ADF t-stat</code>（越大表示越强均值回归候选）</li>
+<li>选边：</li>
+<li><strong>matching 版</strong>：maximum-weight matching</li>
+<li><strong>baseline 对照</strong>：按 <code>p-value</code> 直接取 top pairs</li>
+</ul>
+<h3>5.2 entry / exit</h3>
+<p>paper 给了两个触发器：</p>
+<ul>
+<li><code>z-score</code>：标准化残差超过阈值就开仓</li>
+<li><code>q-score</code>：用分位数而不是标准差做稳健归一化，并按离群程度整数分档加权</li>
+</ul>
+<p>对 short-cycle desk，建议先这样落地：</p>
+<ul>
+<li><strong>entry</strong>：<code>|z| &gt;= 1.0 ~ 1.5</code> 或 <code>|q| &gt;= 1</code> 开仓</li>
+<li><strong>direction</strong>：spread 高于均衡就 short spread，低于均衡就 long spread</li>
+<li><strong>exit</strong>：</li>
+<li><code>z</code> / <code>q</code> 回到 <code>0</code> 附近平仓；</li>
+<li>或设置 <code>max holding bars = 16 / 24 / 32</code>；</li>
+<li>或加 time-stop，避免慢速残差拖死资金占用</li>
+</ul>
+<h3>5.3 sizing</h3>
+<ul>
+<li>pair 内部按 <code>β</code> 做 dollar hedge；</li>
+<li>pair 之间先 equal-risk / inverse-vol；</li>
+<li>matching 版本天然可以把名义权重摊得更匀，因为不会反复压在同一条主腿；</li>
+<li>若改用 <code>q-score</code>，可以把极端离群 pair 的权重向上分档，但必须设单 pair cap。</li>
+</ul>
+<h3>5.4 risk / veto</h3>
+<p>必须加：</p>
+<ol>
+<li><strong>half-life 上限。</strong> 过慢的 pair 不适合 <code>5m/15m</code> desk。先卡 <code>half-life &lt;= 96~192 bars</code>。</li>
+<li><strong>波动/成交筛选。</strong> 低流动性 alt pair 很容易让 ADF 看起来“很美”。</li>
+<li><strong>事件 veto。</strong> 上线前要把币种大级别公告、上币/下币、极端 funding、异常 basis 单列剔除。</li>
+<li><strong>book concentration 监控。</strong> 即便用 matching，也要看 sector / beta exposure 是否实际上又被“同类资产”重合。</li>
+<li><strong>成本压力测试。</strong> 这条线天生怕换手，必须分开跑 maker / taker / mixed execution。</li>
+</ol>
+<h3>5.5 cost</h3>
+<p>本轮 quick check 先用的是<strong>很粗的简化 friction proxy</strong>，不能当最终成本结论。 正式版至少要跑：</p>
+<ul>
+<li>maker-dominant：<code>2 / 3 / 4 bps</code> round-trip</li>
+<li>mixed：<code>4 / 6 / 8 bps</code></li>
+<li>taker-heavy：<code>8 / 10 / 12 bps</code></li>
+</ul>
+<p>如果 matching 只是在 gross 上修风险、但净后仍输给 overlap baseline，就说明：</p>
+<ul>
+<li>要么 pair admission 太松；</li>
+<li>要么 holding 太短、没等到更慢的 spread 回归；</li>
+<li>要么 short-cycle desk 根本不该强求 full matching，而该做 <strong>partial matching / capped overlap</strong>。</li>
+</ul>
+<h2>6. 本地 transfer check 读法（要诚实）</h2>
+<p>我这次快检只想回答一个问题： &gt; <strong>把 paper 的 matching pair-book 思路搬到 crypto <code>15m</code>，会不会立刻变成更好的短周期净策略？</strong></p>
+<p>当前答案是：<strong>不会立刻。</strong></p>
+<p>我拿 Binance Futures 公共 <code>15m</code> 数据，用 <code>60d formation + 10d trade</code> 滚动 <code>5</code> 个窗口，做了一个极简版 z-score spread 回测。结果显示：</p>
+<ul>
+<li>matching 的确把集中度、覆盖度、turnover 结构修好了；</li>
+<li>但在这个版本里，<strong>baseline 选到的 pair 更强、更快，哪怕更重叠，短窗 gross 反而更高；</strong></li>
+<li>成本后两边都没活下来，只是 matching 更像“慢而干净”，baseline 更像“强但挤”。</li>
+</ul>
+<p>所以这篇的正确定位不是：</p>
+<ul>
+<li>“已经证明 15m 可直接上线”；</li>
+<p>而是：</p>
+<li><strong>证明了 pairs alpha 的 book construction 是一层真实存在、而且可复现的 engineering lever。</strong></li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<p>按优先级继续往下做：</p>
+<ol>
+<li><strong>先把 z-score 版本升级成 paper 更像的 <code>q-score + integer sizing</code>。</strong></li>
+<p>现在的 proxy 太粗，容易把慢 spread 与 outlier-sensitive std 归一化混在一起。</p>
+<li><strong>不要对全宇宙直接 full matching。</strong></li>
+<p>先用更强的 admission layer 缩图：</p>
+</ol>
+<ul>
+<li><code>ADF p-value</code></li>
+<li>half-life</li>
+<li>residual vol</li>
+<li>流动性 / funding / basis 稳定性</li>
+<p>然后再在候选图上做 matching。</p>
+</ul>
+<ol>
+<li><strong>做 partial-overlap / capped-degree 对照。</strong></li>
+<p>不是只能二选一：</p>
+</ol>
+<ul>
+<li>baseline = 任意重叠</li>
+<li>full matching = 完全不重叠</li>
+<p>中间还可以测：<code>max degree &lt;= 2</code> 或 <code>same leader leg capped at 2</code>。</p>
+</ul>
+<ol>
+<li><strong>把 holding period 拉开再看。</strong></li>
+<p>当前 matching 选出的 pair median half-life 更长，说明它可能不该硬塞进纯 <code>15m</code> 快周转；要补跑：</p>
+</ol>
+<ul>
+<li><code>15m</code> 入场 + <code>4h/8h/1d</code> 持有</li>
+<li><code>5m</code> 触发但 <code>1h+</code> 持有</li>
+</ul>
+<ol>
+<li><strong>做 sector / community-aware matching。</strong></li>
+<p>对 crypto 来说，“不共享资产”还不够，最好再加：</p>
+</ol>
+<ul>
+<li>L1/L2/meme/DeFi 分组</li>
+<li>funding state / beta bucket</li>
+<li>same-cluster 限额</li>
+<p>避免匹配器为了去重，硬把风格完全不对的 pair 拼进去。</p>
+</ul>
+<ol>
+<li><strong>正式执行版一定要比较三套 book：</strong></li>
+</ol>
+<ul>
+<li>top-<code>K</code> overlap baseline</li>
+<li>full matching</li>
+<li>capped-overlap hybrid</li>
+<p>然后统一看 <code>gross / net / turnover / concentration / exposure / borrow-capacity proxy</code>。</p>
+</ul>
+<p>&gt; <strong>最该先测的正式版本：</strong> <code>Binance perp 15m</code>, <code>60d formation</code>, <code>ADF + half-life admission</code>, 在候选图上比较 <code>full matching</code> 与 <code>max-degree&lt;=2 hybrid</code>，交易层用 <code>q-score</code> 而不是简化 z-score，holding 至少拆 <code>1h / 4h / 8h</code> 三档。若 hybrid 明显优于 full matching，就把这篇 paper 吸收成 <strong>pairs book governance module</strong>，而不是把“完全不重叠”当教条。</p>
+<h2>8. 文件与产物</h2>
+<ul>
+<li>研究笔记：<code>research/quant_digests/2026-03-27_1748_graph-matching-pairbook-meanreversion.md</code></li>
+<li>quick check 产物目录：<code>reports/artifacts/quant_digests/graph_matching_pairs_20260327/</code></li>
+<li>窗口结果：<code>reports/artifacts/quant_digests/graph_matching_pairs_20260327/window_metrics.csv</code></li>
+<li>汇总：<code>reports/artifacts/quant_digests/graph_matching_pairs_20260327/summary.json</code></li>
+<li>最新一期 matching pair 列表：<code>reports/artifacts/quant_digests/graph_matching_pairs_20260327/latest_matching_pairs.csv</code></li>
+<li>最新一期 baseline pair 列表：<code>reports/artifacts/quant_digests/graph_matching_pairs_20260327/latest_baseline_pairs.csv</code></li>
+</ul>
+<h2>Sources</h2>
+<ol>
+<li><strong>Qureshi, K., &amp; Zaman, T. (2024). _Pairs Trading Using a Novel Graphical Matching Approach_. arXiv.</strong></li>
+</ol>
+<ul>
+<li>Venue: arXiv / stat.AP / q-fin.ST</li>
+<li>DOI: <code>10.48550/arXiv.2403.07998</code></li>
+<li>DOI URL: <code><a href="https://doi.org/10.48550/arXiv.2403.07998">https://doi.org/10.48550/arXiv.2403.07998</a></code></li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2403.07998">https://arxiv.org/abs/2403.07998</a></code></li>
+<li>HTML URL: <code><a href="https://arxiv.org/html/2403.07998v1">https://arxiv.org/html/2403.07998v1</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Futures Public Klines API</strong>（本地最小迁移快检数据源）</li>
+</ol>
+<ul>
+<li>API docs: <code><a href="https://binance-docs.github.io/apidocs/futures/en/#kline-candlestick-data">https://binance-docs.github.io/apidocs/futures/en/#kline-candlestick-data</a></code></li>
+<li>示例：<code><a href="https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&amp;interval=15m&amp;limit=1500">https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&amp;interval=15m&amp;limit=1500</a></code></li>
+</ul>
+<ol>
+<li><strong>Paper-cited repo clue</strong></li>
+</ol>
+<ul>
+<li><code><a href="https://github.com/kai-trading-bot/pair/">https://github.com/kai-trading-bot/pair/</a></code>（当前公开访问疑似失效，待后续核实是否迁移/私有化）</li>
+</ul>
+</body>
+</html>

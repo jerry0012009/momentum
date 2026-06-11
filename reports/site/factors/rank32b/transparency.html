@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang='zh-CN'>
+<head>
+  <meta charset='utf-8' />
+  <meta name='viewport' content='width=device-width, initial-scale=1' />
+  <title>32b 实盘交易逻辑透明页</title>
+  <style>
+    :root{--bg:#0b1120;--panel:#111827;--panel2:#0f172a;--line:#24324a;--text:#e5e7eb;--muted:#94a3b8;--accent:#7dd3fc;--good:#34d399;--warn:#fbbf24;--bad:#f87171;}
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#0b1120,#0f172a 28%,#0b1120);color:var(--text);font:16px/1.7 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+    .wrap{max-width:1180px;margin:0 auto;padding:30px 20px 64px}
+    h1,h2,h3{margin:0 0 10px}
+    p{margin:0 0 12px;color:var(--muted)}
+    a{color:var(--accent);text-decoration:none;font-weight:700}
+    .hero,.card,.step,.callout,.table-card,.svg-card,.accordion{background:rgba(17,24,39,.96);border:1px solid var(--line);border-radius:18px;box-shadow:0 14px 36px rgba(0,0,0,.20)}
+    .hero{padding:24px 24px 18px;margin-bottom:18px}
+    .card,.table-card,.svg-card{padding:18px 18px 16px;margin-bottom:16px}
+    .nav{display:flex;flex-wrap:wrap;gap:10px 12px;margin-top:10px}
+    .badge{display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid #28456d;background:#13233f;color:#bfdbfe;font-size:12px;margin-right:8px;margin-bottom:8px}
+    .lead{color:#dbeafe;font-size:18px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:18px 0}
+    .metric{background:#0f172a;border:1px solid #1f2d45;border-radius:16px;padding:14px}
+    .metric .k{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#93c5fd}
+    .metric .v{font-size:22px;font-weight:800;margin-top:8px;word-break:break-word}
+    .metric .s{margin-top:8px;color:var(--muted);font-size:13px}
+    .section-title{margin:26px 0 12px}
+    .flow{display:grid;gap:12px;margin-top:12px}
+    .step{padding:16px 18px;position:relative}
+    .step h3{font-size:18px;margin-bottom:6px}
+    .step .meta{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 10px}
+    .chip{display:inline-block;padding:3px 8px;border-radius:999px;background:#10253b;border:1px solid #274768;color:#c7d2fe;font-size:12px}
+    .arrow{text-align:center;color:#7dd3fc;font-size:28px;line-height:1}
+    .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+    .callout{padding:16px 18px}
+    .good{border-color:#1f6c4d;background:rgba(7,61,42,.22)}
+    .warn{border-color:#7c5a14;background:rgba(92,58,6,.22)}
+    .bad{border-color:#7f1d1d;background:rgba(79,20,20,.22)}
+    .svg-wrap{width:100%;overflow:auto}
+    svg{width:100%;min-width:360px;height:auto;display:block}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #1f2937;vertical-align:top;font-size:14px}
+    th{background:#0f172a;color:#cbd5e1}
+    tr:last-child td{border-bottom:none}
+    code{background:#0f172a;border:1px solid #1f2937;border-radius:8px;padding:2px 6px;color:#dbeafe}
+    ul{margin:8px 0 0 18px;color:#cbd5e1}
+    li{margin:5px 0}
+    .muted-strong{color:#cbd5e1}
+    .small{font-size:13px;color:var(--muted)}
+    .accordion{margin-bottom:10px;overflow:hidden}
+    .accordion summary{cursor:pointer;list-style:none;padding:16px 18px;font-weight:700;color:#dbeafe}
+    .accordion summary::-webkit-details-marker{display:none}
+    .accordion-body{padding:0 18px 16px 18px;border-top:1px solid #1f2937}
+  </style>
+</head>
+<body>
+  <div class='wrap'>
+    <div class='hero'>
+      <div>
+        <span class='badge'>32b</span>
+        <span class='badge'>透明化</span>
+        <span class='badge'>流程图 + Source of Truth</span>
+        <span class='badge'>Run Replay</span>
+      </div>
+      <h1>32b 实盘交易逻辑透明页</h1>
+      <p class='lead'>这页不是回测页，也不是只看结果的 Dashboard。它专门把 <strong>信号 → 选币 → 新鲜度 → 风控 → 下单 → 挂 TP/SL → timeout → 状态文件</strong> 整条链路透明化，方便你以后更快定位 bug 和理解能力边界。</p>
+      <p>页面生成时间：2026-05-13 06:03:44 北京时间 / 2026-05-12 22:03:44 UTC</p>
+      <div class='nav'>
+        <a href='/momentum/factors/rank32b/report.html'>32b 主页面</a>
+        <a href='/momentum/factors/rank32b_canary/report.html'>实盘 Dashboard</a>
+        <a href='/momentum/canary-doc/'>实盘控制台</a>
+        <a href='/momentum/factors/scout_rank32b_slope_floor_continuation_15m/report.html'>主研究报告</a>
+      </div>
+    </div>
+
+    <div class='card'>
+      <h2>当前 live 配置快照</h2>
+      <p>先记住一句最重要的：<span class='muted-strong'>扫描最近 72h 信号，但只允许 &lt;= 3 分钟的信号真正进入交易队列</span>。这就是“陈旧信号”问题最核心的透明化结论。</p>
+      <div class='metrics'><div class='metric'><div class='k'>当前代码版本</div><div class='v'><span>ad9bcfaefa15</span></div><div class='s'>页面生成时 HEAD commit</div></div><div class='metric'><div class='k'>当前 config hash</div><div class='v'><span>a8039ab451a1f02b</span></div><div class='s'>phase6_status.json 记录</div></div><div class='metric'><div class='k'>最近完成 bar</div><div class='v'><span>2026-05-04 23:30:00 北京时间 / 2026-05-04 15:30:00 UTC</span></div><div class='s'>最近真的参与计算的 bar</div></div><div class='metric'><div class='k'>最近信号时间</div><div class='v'><span>-</span></div><div class='s'>最近一次生成信号，不等于最近计算时间</div></div><div class='metric'><div class='k'>窗口信号 / 新处理 / 风险拒绝</div><div class='v'><span>0 / 0 / 0</span></div><div class='s'>最近一轮 run 的统计</div></div><div class='metric'><div class='k'>外部仓位告警</div><div class='v'><span>1</span></div><div class='s'>非 canary 白名单仓位数</div></div></div>
+    </div>
+
+    <h2 class='section-title'>总览流程图（SVG）</h2>
+    <div class='svg-card'>
+      <p>先看这张图，知道 32b 实盘现在到底是怎么从一根 K 线走到一笔交易的。后面每一步都有展开说明。</p>
+      <div class='svg-wrap'><svg viewBox='0 0 380 1124' role='img' aria-label='32b live 流程图'><defs><linearGradient id='g1' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='#10253b'/><stop offset='100%' stop-color='#13233f'/></linearGradient><marker id='arrow' markerWidth='10' markerHeight='10' refX='6' refY='3' orient='auto'><path d='M0,0 L0,6 L7,3 z' fill='#7dd3fc'/></marker></defs><rect x='30' y='20' width='320' height='96' rx='18' fill='url(#g1)' stroke='#274768' stroke-width='1.4' /><text x='48' y='48' fill='#e5e7eb' font-size='16' font-weight='700'>① 定时器唤醒</text><text x='48' y='72' fill='#93c5fd' font-size='12'>systemd timer / 每 5 分钟 / 但逻辑 bar 仍按 15m</text><text x='48' y='94' fill='#94a3b8' font-size='12'>每轮先同步 pending/live，再看新的交易候选。</text><line x1='190.0' y1='120' x2='190.0' y2='150' stroke='#7dd3fc' stroke-width='2.2' marker-end='url(#arrow)' /><rect x='30' y='160' width='320' height='96' rx='18' fill='url(#g1)' stroke='#274768' stroke-width='1.4' /><text x='48' y='188' fill='#e5e7eb' font-size='16' font-weight='700'>② 扫描候选信号</text><text x='48' y='212' fill='#93c5fd' font-size='12'>variant=ema_cross_plus_slope_floor, recent_hours=72h</text><text x='48' y='234' fill='#94a3b8' font-size='12'>Signal adapter 从最近窗口里捞出候选信号，附带 ATR14、slope_strength。</text><line x1='190.0' y1='260' x2='190.0' y2='290' stroke='#7dd3fc' stroke-width='2.2' marker-end='url(#arrow)' /><rect x='30' y='300' width='320' height='96' rx='18' fill='url(#g1)' stroke='#274768' stroke-width='1.4' /><text x='48' y='328' fill='#e5e7eb' font-size='16' font-weight='700'>③ strongest-only 选币</text><text x='48' y='352' fill='#93c5fd' font-size='12'>selection=strongest_signal_only, metric=slope_strength</text><text x='48' y='374' fill='#94a3b8' font-size='12'>同一 timestamp 多币同时触发时，只保留 strongest 一个。</text><line x1='190.0' y1='400' x2='190.0' y2='430' stroke='#7dd3fc' stroke-width='2.2' marker-end='url(#arrow)' /><rect x='30' y='440' width='320' height='96' rx='18' fill='url(#g1)' stroke='#274768' stroke-width='1.4' /><text x='48' y='468' fill='#e5e7eb' font-size='16' font-weight='700'>④ 新鲜度过滤</text><text x='48' y='492' fill='#93c5fd' font-size='12'>扫描 72h，但 trade freshness &lt;= 3m</text><text x='48' y='514' fill='#94a3b8' font-size='12'>即使 adapter 扫到了旧信号，只要超龄，也会被 signal_too_old 拒绝。</text><line x1='190.0' y1='540' x2='190.0' y2='570' stroke='#7dd3fc' stroke-width='2.2' marker-end='url(#arrow)' /><rect x='30' y='580' width='320' height='96' rx='18' fill='url(#g1)' stroke='#274768' stroke-width='1.4' /><text x='48' y='608' fill='#e5e7eb' font-size='16' font-weight='700'>⑤ 风控放行 / 拒绝</text><text x='48' y='632' fill='#93c5fd' font-size='12'>trade_enabled=否, kill_switch=是, max_positions=1</text><text x='48' y='654' fill='#94a3b8' font-size='12'>检查 symbol、并发、live/pending、ATR、data_delay、API 健康等。</text><line x1='190.0' y1='680' x2='190.0' y2='710' stroke='#7dd3fc' stroke-width='2.2' marker-end='url(#arrow)' /><rect x='30' y='720' width='320' height='96' rx='18' fill='url(#g1)' stroke='#274768' stroke-width='1.4' /><text x='48' y='748' fill='#e5e7eb' font-size='16' font-weight='700'>⑥ 入场</text><text x='48' y='772' fill='#93c5fd' font-size='12'>当前 live entry=market, TTL=15m</text><text x='48' y='794' fill='#94a3b8' font-size='12'>当前 live 默认走 MARKET；如果未来改回 limit_gtx，则可能走 TTL 后 fallback。</text><line x1='190.0' y1='820' x2='190.0' y2='850' stroke='#7dd3fc' stroke-width='2.2' marker-end='url(#arrow)' /><rect x='30' y='860' width='320' height='96' rx='18' fill='url(#g1)' stroke='#274768' stroke-width='1.4' /><text x='48' y='888' fill='#e5e7eb' font-size='16' font-weight='700'>⑦ 挂退出计划</text><text x='48' y='912' fill='#93c5fd' font-size='12'>TP=1.00 ATR, SL=1.00 ATR, timeout=120m</text><text x='48' y='934' fill='#94a3b8' font-size='12'>入场后立即挂 STOP_MARKET 止损 + LIMIT 止盈，并设置 timeout。</text><line x1='190.0' y1='960' x2='190.0' y2='990' stroke='#7dd3fc' stroke-width='2.2' marker-end='url(#arrow)' /><rect x='30' y='1000' width='320' height='96' rx='18' fill='url(#g1)' stroke='#274768' stroke-width='1.4' /><text x='48' y='1028' fill='#e5e7eb' font-size='16' font-weight='700'>⑧ 写状态与回放</text><text x='48' y='1052' fill='#93c5fd' font-size='12'>status.json / state.json / recent_* / events.jsonl</text><text x='48' y='1074' fill='#94a3b8' font-size='12'>所有页面、巡检、邮件、排障都依赖这些文件。</text></svg></div>
+    </div>
+
+    <h2 class='section-title'>Alpha 基本原理（信号层）</h2>
+    <div class='svg-card'>
+      <p>如果你只想先搞懂 32b 的 alpha 到底在“看什么”，先看这张图。它回答的是 <strong>哪根 15m bar 会被认成 long/short 信号</strong>，还没进入 strongest-only、freshness、risk、下单这些执行层。</p>
+      <div class='svg-wrap'><svg viewBox='0 0 980 360' role='img' aria-label='32b alpha 信号逻辑示意图'>
+  <defs>
+    <linearGradient id='alphaG' x1='0' y1='0' x2='1' y2='1'>
+      <stop offset='0%' stop-color='#10253b'/>
+      <stop offset='100%' stop-color='#13233f'/>
+    </linearGradient>
+  </defs>
+
+  <rect x='18' y='18' width='944' height='324' rx='18' fill='#0f172a' stroke='#274768' stroke-width='1.4'/>
+  <text x='40' y='52' fill='#e5e7eb' font-size='18' font-weight='800'>Alpha：ema_cross_plus_slope_floor（信号触发）</text>
+  <text x='40' y='78' fill='#94a3b8' font-size='13'>结构（1h EMA） + 触发（15m close 穿越 fast EMA） + 动量（slope floor） ⇒ signal</text>
+
+  <!-- LONG column -->
+  <rect x='40' y='104' width='440' height='214' rx='16' fill='url(#alphaG)' stroke='#274768' stroke-width='1.2'/>
+  <text x='62' y='134' fill='#dbeafe' font-size='16' font-weight='800'>LONG signal</text>
+  <text x='62' y='160' fill='#cbd5e1' font-size='13'>1) long_structure = (ema_fast_1h &gt; ema_slow_1h)</text>
+  <text x='62' y='184' fill='#cbd5e1' font-size='13'>2) cross_only_long：prev_close ≤ prev_fast 且 close &gt; ema_fast_1h</text>
+  <text x='62' y='208' fill='#cbd5e1' font-size='13'>3) slope_floor_long：fast_slope &gt; 0.0004 且 slow_slope &gt; 0</text>
+  <text x='62' y='232' fill='#cbd5e1' font-size='13'>4) slope_floor_long_signal = cross_only_long ∧ slope_floor_long</text>
+  <text x='62' y='270' fill='#93c5fd' font-size='12'>注意：fast_slope/slow_slope = 1h EMA 的 pct_change</text>
+  <text x='62' y='292' fill='#93c5fd' font-size='12'>spread_mid = (ema_fast_1h + ema_slow_1h) / 2</text>
+
+  <!-- SHORT column -->
+  <rect x='522' y='104' width='440' height='214' rx='16' fill='url(#alphaG)' stroke='#274768' stroke-width='1.2'/>
+  <text x='544' y='134' fill='#dbeafe' font-size='16' font-weight='800'>SHORT signal</text>
+  <text x='544' y='160' fill='#cbd5e1' font-size='13'>1) short_structure = (ema_fast_1h &lt; ema_slow_1h)</text>
+  <text x='544' y='184' fill='#cbd5e1' font-size='13'>2) cross_only_short：prev_close ≥ prev_fast 且 close &lt; ema_fast_1h</text>
+  <text x='544' y='208' fill='#cbd5e1' font-size='13'>3) slope_floor_short：fast_slope &lt; -0.0004 且 slow_slope &lt; 0</text>
+  <text x='544' y='232' fill='#cbd5e1' font-size='13'>4) slope_floor_short_signal = cross_only_short ∧ slope_floor_short</text>
+  <text x='544' y='270' fill='#93c5fd' font-size='12'>slope_strength = |fast_slope| + |slow_slope|（用于 strongest-only 选币）</text>
+  <text x='544' y='292' fill='#93c5fd' font-size='12'>信号 timestamp 是 15m bar 的 close 时间（完成 bar）</text>
+</svg></div>
+    </div>
+
+    <div class='cols'>
+      <div class='callout good'>
+        <h3>一句话版本</h3>
+        <p>32b 不是裸追涨杀跌。它先用 <code>1h EMA fast/slow</code> 定结构方向，再要求 <code>15m close</code> 穿越 fast EMA，同时要求 <code>EMA slope</code> 够强，才把这根 bar 记成可交易信号。</p>
+      </div>
+      <div class='callout warn'>
+        <h3>边界要分清</h3>
+        <p>这张图只解释 <strong>alpha 信号如何触发</strong>。信号触发后，是否真的变成交易，还要继续经过 <code>same-bar strongest-only</code>、<code>signal_too_old</code>、风控、并发和下单链路。</p>
+      </div>
+    </div>
+
+    <div class='card'>
+      <h3>把图翻成人话</h3>
+      <ul>
+        <li><strong>结构层：</strong><code>ema_fast_1h &gt; ema_slow_1h</code> 只允许看多；<code>ema_fast_1h &lt; ema_slow_1h</code> 只允许看空。</li>
+        <li><strong>触发层：</strong>不是一直持有，而是等 <code>15m close</code> 从 fast EMA 一侧重新穿回另一侧，形成一次 close-confirmed cross。</li>
+        <li><strong>动量层：</strong>除了方向对，还要求 <code>fast_slope</code> 和 <code>slow_slope</code> 不只是同向，而且达到最小斜率门槛，避免把太弱的均线结构也当 continuation。</li>
+        <li><strong>排序层：</strong><code>slope_strength = |fast_slope| + |slow_slope|</code> 不是新信号条件，而是多个币同窗竞争时用来选“谁更强”。</li>
+      </ul>
+    </div>
+
+    <h2 class='section-title'>逐步拆解（适合排障时展开看）</h2>
+    <div>
+        <details class='accordion'>
+          <summary>① 定时器唤醒｜systemd timer / 每 5 分钟 / 但逻辑 bar 仍按 15m</summary>
+          <div class='accordion-body'>
+            <p><b>这一步在做什么：</b>每轮先同步 pending/live，再看新的交易候选。</p>
+            <p><b>为什么重要：</b>先同步状态，避免系统以为自己 flat，但交易所里其实还有仓或挂单。</p>
+            <p><b>排障先看：</b>phase6_last_run_summary.json 的 latest_evaluated_bar_time、managed_pending_entries、managed_live_positions。</p>
+            <p><b>源码位置：</b><code>ops/systemd/momentum-rank32b-canary-phase6.timer + run_rank32b_canary_phase6.py main()</code></p>
+          </div>
+        </details>
+        
+        <details class='accordion'>
+          <summary>② 扫描候选信号｜variant=ema_cross_plus_slope_floor, recent_hours=72h</summary>
+          <div class='accordion-body'>
+            <p><b>这一步在做什么：</b>Signal adapter 从最近窗口里捞出候选信号，附带 ATR14、slope_strength。</p>
+            <p><b>为什么重要：</b>这里负责“看到什么机会”，不是最终是否能交易。</p>
+            <p><b>排障先看：</b>phase6_status.json 的 recent_signal_count、phase6_events.jsonl 里的 SignalReceived。</p>
+            <p><b>源码位置：</b><code>src/momentum/execution/canary32b/signal_adapter.py:80</code></p>
+          </div>
+        </details>
+        
+        <details class='accordion'>
+          <summary>③ strongest-only 选币｜selection=strongest_signal_only, metric=slope_strength</summary>
+          <div class='accordion-body'>
+            <p><b>这一步在做什么：</b>同一 timestamp 多币同时触发时，只保留 strongest 一个。</p>
+            <p><b>为什么重要：</b>把策略从“多币全追”收敛成“同窗只打最强”。</p>
+            <p><b>排障先看：</b>phase6_last_run_summary.json 的 skipped_weaker_signals、recent_rejections 的 weaker_than_strongest_signal_in_same_bar。</p>
+            <p><b>源码位置：</b><code>run_rank32b_canary_phase6.py:201</code></p>
+          </div>
+        </details>
+        
+        <details class='accordion'>
+          <summary>④ 新鲜度过滤｜扫描 72h，但 trade freshness &lt;= 3m</summary>
+          <div class='accordion-body'>
+            <p><b>这一步在做什么：</b>即使 adapter 扫到了旧信号，只要超龄，也会被 signal_too_old 拒绝。</p>
+            <p><b>为什么重要：</b>这是修复陈旧信号 bug 的关键逻辑。</p>
+            <p><b>排障先看：</b>phase6_recent_rejections.json 是否出现 signal_too_old；payload 里看 signal_age_seconds。</p>
+            <p><b>源码位置：</b><code>run_rank32b_canary_phase6.py:1554-1602</code></p>
+          </div>
+        </details>
+        
+        <details class='accordion'>
+          <summary>⑤ 风控放行 / 拒绝｜trade_enabled=否, kill_switch=是, max_positions=1</summary>
+          <div class='accordion-body'>
+            <p><b>这一步在做什么：</b>检查 symbol、并发、live/pending、ATR、data_delay、API 健康等。</p>
+            <p><b>为什么重要：</b>它回答的是“这个信号能不能真的变成一笔交易”。</p>
+            <p><b>排障先看：</b>recent_rejections 的 reason；phase6_last_run_summary.json 的 risk_rejections。</p>
+            <p><b>源码位置：</b><code>src/momentum/risk/canary32b_guard.py:53</code></p>
+          </div>
+        </details>
+        
+        <details class='accordion'>
+          <summary>⑥ 入场｜当前 live entry=market, TTL=15m</summary>
+          <div class='accordion-body'>
+            <p><b>这一步在做什么：</b>当前 live 默认走 MARKET；如果未来改回 limit_gtx，则可能走 TTL 后 fallback。</p>
+            <p><b>为什么重要：</b>这里决定 admission/fill 确定性与成本结构。</p>
+            <p><b>排障先看：</b>phase6_recent_orders.json 的 order_role=entry；events 里的 ORDER_PLACED / PositionOpened。</p>
+            <p><b>源码位置：</b><code>run_rank32b_canary_phase6.py:1720+ / 1155+</code></p>
+          </div>
+        </details>
+        
+        <details class='accordion'>
+          <summary>⑦ 挂退出计划｜TP=1.00 ATR, SL=1.00 ATR, timeout=120m</summary>
+          <div class='accordion-body'>
+            <p><b>这一步在做什么：</b>入场后立即挂 STOP_MARKET 止损 + LIMIT 止盈，并设置 timeout。</p>
+            <p><b>为什么重要：</b>这是 live 风险闭环；任何 attach 失败都要被重点监控。</p>
+            <p><b>排障先看：</b>warnings.json、recent_orders、recent_closed_trades 的 exit_reason。</p>
+            <p><b>源码位置：</b><code>run_rank32b_canary_phase6.py:558</code></p>
+          </div>
+        </details>
+        
+        <details class='accordion'>
+          <summary>⑧ 写状态与回放｜status.json / state.json / recent_* / events.jsonl</summary>
+          <div class='accordion-body'>
+            <p><b>这一步在做什么：</b>所有页面、巡检、邮件、排障都依赖这些文件。</p>
+            <p><b>为什么重要：</b>如果状态文件不透明，后面就只能靠猜。</p>
+            <p><b>排障先看：</b>phase6_status.json、phase6_state.json、phase6_events.jsonl。</p>
+            <p><b>源码位置：</b><code>run_rank32b_canary_phase6.py run end checkpoint + dashboard builders</code></p>
+          </div>
+        </details>
+        </div>
+
+    <h2 class='section-title'>一张图看懂：从 K 线到成交的完整流程</h2>
+    <div class='flow'>
+      <div class='step'>
+        <h3>① 定时器唤醒 Phase6</h3>
+        <div class='meta'><span class='chip'>systemd timer</span><span class='chip'>OnUnitActiveSec=5min</span><span class='chip'>先同步再看新信号</span></div>
+        <p>Runner 大约每 5 分钟跑一次，但信号本身仍然是按 15m bar 来定义。每次 run 会先同步 pending/live/交易所状态，再看新的交易机会。</p>
+      </div>
+      <div class='arrow'>↓</div>
+      <div class='step'>
+        <h3>② 扫描候选信号</h3>
+        <div class='meta'><span class='chip'>variant=ema_cross_plus_slope_floor</span><span class='chip'>lookback=30d</span><span class='chip'>scan=72h</span></div>
+        <p>Signal adapter 会为 2 个币读取 bars、构建 frame、计算 ATR14，并在最近 72 小时窗口内找出满足 <code>ema_cross_plus_slope_floor</code> 的信号，同时产出 <code>slope_strength</code>、<code>atr14</code>、<code>signal_id</code> 等元数据。</p>
+      </div>
+      <div class='arrow'>↓</div>
+      <div class='step'>
+        <h3>③ 先做“同窗最强”筛选</h3>
+        <div class='meta'><span class='chip'>strongest_signal_only</span><span class='chip'>strongest_only_per_bar=是</span><span class='chip'>metric=slope_strength</span></div>
+        <p>若多个币在同一个 timestamp 同时出信号，系统只保留 <code>slope_strength</code> 最强的那个，其余信号会被记录成 <code>weaker_than_strongest_signal_in_same_bar</code>，而不是“静默消失”。</p>
+      </div>
+      <div class='arrow'>↓</div>
+      <div class='step'>
+        <h3>④ 再做“新鲜度”过滤</h3>
+        <div class='meta'><span class='chip'>freshness &lt;= 3m</span><span class='chip'>当前占扫描窗口的 0.07%</span></div>
+        <p>这里是陈旧信号 bug 的核心修复点：即便 adapter 扫描最近 72h，真正进入交易决策的信号也必须满足 <code>now - signal.timestamp &lt;= 3 分钟</code>。超龄信号会被记为 <code>signal_too_old</code>，并写入 rejections / warnings。</p>
+      </div>
+      <div class='arrow'>↓</div>
+      <div class='step'>
+        <h3>⑤ 风控判定：到底能不能交易</h3>
+        <div class='meta'><span class='chip'>trade_enabled=否</span><span class='chip'>kill_switch=是</span><span class='chip'>max_concurrent_positions=1</span></div>
+        <p>风控会依次检查：交易开关、kill switch、symbol 是否在 universe、同币是否已有 live/pending、总并发是否超限、是否达到日内交易数上限、API 健康、data delay、ATR 是否可用等。任何一条不过，都会给出明确 reject reason。</p>
+      </div>
+      <div class='arrow'>↓</div>
+      <div class='step'>
+        <h3>⑥ 选币与仓位</h3>
+        <div class='meta'><span class='chip'>Universe=2 symbols</span><span class='chip'>max_new_signals_per_run=1</span><span class='chip'>desired_notional=20U</span></div>
+        <p>当前是“六选一、单席位”模型：Universe 为 BTCUSDT, ETHUSDT，每轮最多只处理 1 个新信号，同时总并发仓位上限为 1。这意味着它更像“扩机会池”，而不是“6 个币一起上仓”。</p>
+      </div>
+      <div class='arrow'>↓</div>
+      <div class='step'>
+        <h3>⑦ 下单执行</h3>
+        <div class='meta'><span class='chip'>当前 live entry=market</span><span class='chip'>TTL=15m</span><span class='chip'>fallback_to_market=是</span></div>
+        <p><strong>当前 live 默认是市价单入场。</strong> 如果以后切回 <code>limit_gtx</code>，则会先挂限价单，等到 TTL 到期后，若配置允许，可自动 fallback 到 market。这里要特别注意：<code>phase6.entry</code> 才是当前 live 的主配置入口。</p>
+      </div>
+      <div class='arrow'>↓</div>
+      <div class='step'>
+        <h3>⑧ 入场后立即挂退出计划</h3>
+        <div class='meta'><span class='chip'>TP=1.00 ATR</span><span class='chip'>SL=1.00 ATR</span><span class='chip'>timeout=120m</span></div>
+        <p>一旦 entry 成交，系统会立即尝试挂：<code>STOP_MARKET</code> 止损 + <code>LIMIT</code> 止盈，并记录 timeout 时间。若既没 hit TP、也没 hit SL，到 120 分钟会走 <code>timeout_market</code> 市价平仓。</p>
+      </div>
+      <div class='arrow'>↓</div>
+      <div class='step'>
+        <h3>⑨ 写状态文件，供 Dashboard / 邮件 / 巡检读取</h3>
+        <div class='meta'><span class='chip'>status.json</span><span class='chip'>run_summary.json</span><span class='chip'>state.json</span><span class='chip'>events.jsonl</span></div>
+        <p>每轮 run 结束后，phase6 会写出状态、最近订单、最近仓位、最近平仓、最近拒绝、warnings、以及带 checkpoint 的 <code>phase6_state.json</code>。这就是你以后定位“策略到底在想什么”的透明化基础设施。</p>
+      </div>
+    </div>
+
+    <div class='cols' style='margin-top:18px'>
+      <div class='callout good'>
+        <h3>当前最重要的透明结论</h3>
+        <p>现在的逻辑已经把“历史扫描窗口”和“真实可交易新鲜度”拆开了：</p>
+        <ul>
+          <li>扫描窗口：<code>72h</code></li>
+          <li>交易新鲜度：<code>&lt;= 3m</code></li>
+          <li>超龄信号：显式记为 <code>signal_too_old</code></li>
+        </ul>
+      </div>
+      <div class='callout warn'>
+        <h3>当前最容易被误解的地方</h3>
+        <p><code>execution.entry</code> 这块配置还留着旧 phase/辅助语义，容易让人误以为 live 还在用 post-only maker-first 入口。<strong>当前真正 controlling live 入场行为的是 <code>phase6.entry</code></strong>。</p>
+      </div>
+    </div>
+
+    <h2 class='section-title'>最近一次 run 回放</h2>
+    <div class='table-card'>
+      <p>这不是历史大盘，而是 <strong>最近一轮 phase6</strong> 自己留下的事件时间线。以后你想知道“这轮到底做了什么”，先看这里，不用先翻日志。</p>
+      <p class='small'>本次 run：2026-05-04 23:37:03 北京时间 / 2026-05-04 15:37:03 UTC → 2026-05-04 23:37:05 北京时间 / 2026-05-04 15:37:05 UTC</p>
+      <p class='small'>最近一次 run 没有留下可展示的逐步事件，通常意味着这轮只是常规同步，没有新 signal / intention / order / rejection。</p>
+    </div>
+
+    <h2 class='section-title'>“信号是否延迟”到底怎么判定？</h2>
+    <div class='card'>
+      <p>你之前最痛的 bug 就卡在这里，所以这块我单独拆清楚：</p>
+      <ul>
+        <li><strong>第一层：</strong>adapter 只负责“把最近 72h 候选捞出来”</li>
+        <li><strong>第二层：</strong>phase6 再计算 <code>signal_age_seconds = now - signal.timestamp</code></li>
+        <li><strong>第三层：</strong>若 <code>signal_age_seconds &gt; 180</code>，则拒绝交易，并记录成 <code>signal_too_old</code></li>
+        <li><strong>第四层：</strong>即使信号足够新，也还要通过 same-bar 去重、同窗最强选择、风控、并发限制</li>
+      </ul>
+      <p class='small'>所以“最近 72h 扫描”本身不等于“最近 72h 都能下单”。真正能下单的是：最近 3 分钟内、未 seen、未 same-bar consumed、且风控放行的信号。</p>
+    </div>
+
+    <h2 class='section-title'>下单路径：当前 live 与可选路径</h2>
+    <div class='cols'>
+      <div class='card'>
+        <h3>当前 live 路径（默认）</h3>
+        <ul>
+          <li>入场：<code>MARKET</code></li>
+          <li>挂止损：<code>STOP_MARKET</code></li>
+          <li>挂止盈：<code>LIMIT</code></li>
+          <li>超时退出：<code>MARKET</code></li>
+          <li>优点：admission/fill 更确定，适合 canary 小仓位</li>
+          <li>代价：成本通常高于纯 maker-first</li>
+        </ul>
+      </div>
+      <div class='card'>
+        <h3>备用路径（若切回 maker-first）</h3>
+        <ul>
+          <li>入场：<code>limit_gtx</code></li>
+          <li>等待：最多 <code>15m</code></li>
+          <li>若没成交：视配置决定是否 fallback 到 <code>MARKET</code></li>
+          <li>适合：更想压手续费 / 滑点时</li>
+          <li>风险：挂单未成、TTL、fallback 链路更复杂</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2 class='section-title'>真实配置（Source of Truth）</h2>
+    <div class='table-card'>
+      <table><thead><tr><th>配置项</th><th>当前值</th></tr></thead><tbody><tr><td>运行模式</td><td>live_canary</td></tr><tr><td>Universe</td><td>BTCUSDT, ETHUSDT</td></tr><tr><td>Signal variant</td><td>ema_cross_plus_slope_floor</td></tr><tr><td>Signal lookback days</td><td>30</td></tr><tr><td>Signal scan window</td><td>72h</td></tr><tr><td>Trade freshness gate</td><td>&amp;lt;= 3m</td></tr><tr><td>Selection</td><td>strongest_signal_only / slope_strength</td></tr><tr><td>Max new signals per run</td><td>1</td></tr><tr><td>Max concurrent positions</td><td>1</td></tr><tr><td>Require ATR</td><td>是</td></tr><tr><td>Entry order type</td><td>market</td></tr><tr><td>Entry TTL</td><td>15m</td></tr><tr><td>Limit TTL fallback to market</td><td>是</td></tr><tr><td>Desired notional</td><td>20.00 USDT / symbol</td></tr><tr><td>Default leverage</td><td>1x</td></tr><tr><td>TP / SL / Timeout</td><td>1.00 ATR / 1.00 ATR / 120m</td></tr><tr><td>Safety pause cooldown</td><td>0m (当前关闭)</td></tr><tr><td>Data delay coarse limit</td><td>259200s ≈ 72.0h</td></tr></tbody></table>
+    </div>
+
+    <h2 class='section-title'>最容易出 bug / 误判的地方</h2>
+    <div class='table-card'>
+      <table><thead><tr><th>风险点</th><th>为什么容易出问题</th><th>你该先看什么</th></tr></thead><tbody><tr><td>历史信号 backlog</td><td>当前 adapter 仍扫描最近 72h；真正防 bug 的是 3m 新鲜度门。</td><td>优先看 phase6_recent_rejections.json 是否出现 signal_too_old</td></tr><tr><td>同窗多币竞争</td><td>同一 timestamp 只留最强 slope_strength；其余会被 weaker_than_strongest_signal_in_same_bar 拒掉。</td><td>不要把“没下 ETH”误判成“没看到 ETH 信号”</td></tr><tr><td>单席位限制</td><td>max_concurrent_positions=1；有 live/pending 后，后续新币信号会被 too_many_positions 拦截。</td><td>看 recent_rejections 和 phase6_state</td></tr><tr><td>entry 配置双轨</td><td>当前 live 真正使用的是 phase6.entry.order_type=market；execution.entry 更像旧 phase/辅助配置。</td><td>改配置时优先改 phase6.entry，避免改错块</td></tr><tr><td>外部账户干扰</td><td>交易所里存在非 whitelist 仓位时，Dashboard 可能提示 unexpected_exchange_positions。</td><td>它不会自动替你清仓，但会影响保证金和判断</td></tr><tr><td>安全暂停</td><td>当前已关闭；若未来打开，只会看当前 code_version 之后发生的 attach-failure。</td><td>旧版本失败不应继续封锁新版本测试</td></tr></tbody></table>
+    </div>
+
+    <h2 class='section-title'>排障时该看哪些文件</h2>
+    <div class='table-card'>
+      <table><thead><tr><th>文件</th><th>它回答什么问题</th></tr></thead><tbody><tr><td><code>phase6_status.json</code></td><td>当前 live 总状态：latest bar、trade_enabled、kill_switch、system_health</td></tr><tr><td><code>phase6_last_run_summary.json</code></td><td>最近一轮到底看到了几个信号、处理了几个、下了几笔单、有没有 safety pause</td></tr><tr><td><code>phase6_state.json</code></td><td>seen_signal_ids / consumed_signal_bars / pending_entries / live_positions / closed_trades 的真实 checkpoint</td></tr><tr><td><code>phase6_recent_rejections.json</code></td><td>为什么没交易：signal_too_old / same_bar / risk reject / safety pause</td></tr><tr><td><code>phase6_recent_orders.json</code></td><td>下单明细：entry / stop_loss / take_profit / timeout_close</td></tr><tr><td><code>phase6_recent_closed_trades.json</code></td><td>已平仓明细：exit_reason / pnl / fee / code_version / config_version</td></tr><tr><td><code>phase6_warnings.json</code></td><td>attach 失败、query 失败、外部仓位干扰等告警</td></tr><tr><td><code>phase6_events.jsonl</code></td><td>最细的逐步事件时间线，适合还原一次 run 的全过程</td></tr></tbody></table>
+    </div>
+
+    <h2 class='section-title'>源码地图：这页内容对应哪里</h2>
+    <div class='table-card'>
+      <table><thead><tr><th>逻辑块</th><th>源码位置</th><th>说明</th></tr></thead><tbody><tr><td>信号扫描</td><td><code>src/momentum/execution/canary32b/signal_adapter.py:80</code></td><td>load_recent_signals()：扫 recent_hours 内的候选信号，并生成 signal_id / atr14 / slope_strength</td></tr><tr><td>同窗最强选择</td><td><code>scripts/run_rank32b_canary_phase6.py:201</code></td><td>select_signals_for_execution()：同一 timestamp 只保留 slope_strength 最强的币</td></tr><tr><td>风险拦截</td><td><code>src/momentum/risk/canary32b_guard.py:53</code></td><td>evaluate_entry_risk()：trade_enabled / kill_switch / 并发 / ATR / data_delay / API 健康等</td></tr><tr><td>安全暂停 + 新鲜度</td><td><code>scripts/run_rank32b_canary_phase6.py:1524-1602</code></td><td>先检查 exit_attach failure 安全暂停，再做 signal_too_old 新鲜度过滤</td></tr><tr><td>挂单成交 / TTL fallback</td><td><code>scripts/run_rank32b_canary_phase6.py:1155</code></td><td>manage_pending_entries()：limit_gtx 若超时，可 fallback 市价进场</td></tr><tr><td>入场后挂退出计划</td><td><code>scripts/run_rank32b_canary_phase6.py:558</code></td><td>attach_exit_plan()：挂 STOP_MARKET 止损 + LIMIT 止盈 + timeout 时间</td></tr></tbody></table>
+    </div>
+
+    <div class='card'>
+      <h2>这页适合怎么用？</h2>
+      <ul>
+        <li>改策略前：先来这里确认自己改的是哪一层（信号 / 新鲜度 / 风控 / 选币 / 下单 / exit）</li>
+        <li>看 Dashboard 时：若发现“没下单”或“行为不符合直觉”，先对照这页再去看 rejections / warnings</li>
+        <li>发现 bug 时：把问题映射到具体步骤，再去对应 source file 和 artifact 文件查</li>
+      </ul>
+      <p class='small'>目标不是把页面做得花，而是把“策略现在到底怎么工作”说人话、说透明、说能排障。</p>
+    </div>
+  </div>
+</body>
+</html>

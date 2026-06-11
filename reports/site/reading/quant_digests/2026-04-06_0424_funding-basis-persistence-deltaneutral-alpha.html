@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 funding 继续只读成“谁最肥就空谁”：这份 2026 新 repo 更该先测的是「funding/basis dislocation persistence × delta-neutral carry」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 funding 继续只读成“谁最肥就空谁”：这份 2026 新 repo 更该先测的是「funding/basis dislocation persistence × delta-neutral carry」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-06 04:27 UTC</span>
+      <span class="pill">研究时间：2026-04-06 04:24 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`README.md`）+ dYdX funding 官方文档 + Binance Futures 公共 API 文档 + 2024 arXiv 理论地基</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/basis/delta-neutral/stat-arb/spot-perp/perp-perp/persistence-horizon/sign-flip/zscore/liquidity-gate/dydx/binance/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 研究骨架 + 官方机制文档 + 理论/实证论文 grounding</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-06_0424_funding-basis-persistence-deltaneutral-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-06 04:24 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>README.md</code>）+ dYdX funding 官方文档 + Binance Futures 公共 API 文档 + 2024 arXiv 理论地基</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>delta-neutral carry / stat-arb</strong>；当 perp 相对现货（或相对低 funding 对手腿）出现 <strong>正 funding + 正 basis 的可交易偏离</strong> 时，做 <code>long hedge leg / short rich-funding leg</code>，靠 <strong>funding 收益 + basis 回归</strong> 赚钱；反向侧则在可借券/可做空现货或跨 venue hedge 成立时对称执行</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/carry/funding/basis/delta-neutral/stat-arb/spot-perp/perp-perp/persistence-horizon/sign-flip/zscore/liquidity-gate/dydx/binance/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：repo 研究骨架 + 官方机制文档 + 理论/实证论文 grounding</li>
+</ul>
+<p>&gt; 先回答一句：<strong>这篇东西的 base alpha 是什么？</strong> &gt; &gt; <strong>base alpha = <code>rich funding leg</code> 相对 <code>hedge leg</code> 的可持续错价。</strong> &gt; 更直白地说：不是去赌方向，而是去赚 <strong>“perp 太贵/太热，短期内 funding 会继续付、basis 最终会回”</strong> 这件事本身。</p>
+<h2>1. 这次看了什么，为什么这轮值得写它</h2>
+<p>这轮主看 4 份材料：</p>
+<ol>
+<li><strong>Menger Wen / hanqihang / collaborators (2026). _Deep-Learning-Based Delta-Neutral Statistical Arbitrage on Perpetual Funding Rates_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</a></code></li>
+<li>Repo URL：<code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</a></code></li>
+<li>关键信息：虽然仓库目前更像 proposal / design doc，不是完整回测引擎，但它把 <strong>funding spread / basis deviation / rolling z-score / funding sign reversal / volatility / liquidity</strong> 这套因子壳一次性点全了，而且明确把问题定义成 <strong>“net of trading costs 之后，哪些 funding dislocation 值得做、该持有多久”</strong>。</li>
+</ul>
+<ol>
+<li><strong>dYdX Operations (官方文档). _Default funding rates on dYdX_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://help.dydx.trade/en/articles/166992-default-funding-rates-on-dydx">https://help.dydx.trade/en/articles/166992-default-funding-rates-on-dydx</a></code></li>
+<li>关键信息：dYdX 默认 <strong>每分钟采样 funding premium、每小时结算 funding</strong>；funding 本质上就是 perp 与 index 偏离的机制化转译，所以它天然适合被拆成 <strong>短周期 state variable</strong>。</li>
+</ul>
+<ol>
+<li><strong>Songrun He, Asaf Manela, Omri Ross, Victor von Wachter (2024 draft; first draft 2022). _Fundamentals of Perpetual Futures_. arXiv working paper.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.48550/arXiv.2212.06888</code></li>
+<li>Readable URL：<code><a href="https://arxiv.org/abs/2212.06888">https://arxiv.org/abs/2212.06888</a></code></li>
+<li>HTML / full text：<code><a href="https://arxiv.org/html/2212.06888v5">https://arxiv.org/html/2212.06888v5</a></code></li>
+<li>关键信息：作者给 perpetual futures 建了 <strong>random-maturity no-arbitrage benchmark</strong>，并报告：crypto perp 相对理论锚的 <strong>mean absolute deviation 约 60%~90% 年化</strong>；基于这个偏离做的简单 arbitrage strategy，在 BTC perpetual 上 <strong>Sharpe 约 1.8（高成本零售）到 3.5（低成本做市）</strong>。</li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures 公共 API 文档</strong></li>
+</ol>
+<ul>
+<li>Funding history：<code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History</a></code></li>
+<li>Mark price / index price：<code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Mark-Price">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Mark-Price</a></code></li>
+<li>Open interest：<code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest</a></code></li>
+<li>关键信息：这些都是 <strong>公开可得、无需 key 的基础字段</strong>，足够先做 <code>1m/5m -&gt; funding horizon</code> 的最小实验。</li>
+</ul>
+<p>这轮值得写它，原因很简单：</p>
+<ul>
+<li>当前 <code>LEARNING_TRACK / FACTOR_BACKLOG</code> 里，方向层、breakout 层、确认层已经很多；</li>
+<li>desk 现在更该继续补的是 <strong>raw alpha 素材池里另一个完全不同家族：carry / funding / basis / stat-arb</strong>；</li>
+<li>这份 2026 新 repo 虽然不成熟，但恰好给了一个很适合我们 desk 的读法：</li>
+<p><strong>别只按 funding 水平排序，而是把“会不会继续付、basis 会不会回、多久回、成本后还剩多少”一起建模。</strong></p>
+</ul>
+<p>所以这轮不是去抄 repo 的深度学习 headline，而是把它里面最适合我们 desk 的那根主梁抽出来：</p>
+<p>&gt; <strong>先落地一个 plain-vanilla、可复现、可成本化的 <code>funding + basis</code> delta-neutral raw alpha；ML 只作为第二阶段的 persistence ranker。</strong></p>
+<h2>2. 一句话核心结论 + 它是怎么证明的</h2>
+<h3>一句话核心结论</h3>
+<p><strong>别把 funding 只当“越高越值得空”。对 short-cycle desk，更值得先测的是：用 <code>funding level + basis deviation + sign-flip veto + hold-horizon governance</code> 搭一个 delta-neutral carry shell，只在“偏离足够大、预计还能撑过下一到几次 funding、且成本后仍有 edge”的时候进。</strong></p>
+<h3>一句话它怎么证明</h3>
+<ul>
+<li><strong>repo 侧</strong>：把真正该看的变量写得很清楚——<code>funding spread / basis / z-score / sign reversal / liquidity / volatility</code>；这说明作者自己也知道 <strong>高 funding 本身不等于好交易</strong>；</li>
+<li><strong>官方机制侧</strong>：dYdX 明确是 <strong>分钟级 premium 采样 + 小时级 funding 结算</strong>，Binance 也公开给出 <code>funding history / mark/index / OI</code>，所以这条线不是纸上谈兵，数据口径公开可拿；</li>
+<li><strong>论文侧</strong>：He et al. 说明 perp 偏离不是零星噪音，而是足够大、足够 persistent、足够能支持净 alpha 的结构性现象。</li>
+</ul>
+<h2>3. 这份 repo 真正值钱的，不是 deep learning，而是它把 raw alpha 壳讲对了</h2>
+<h3>3.1 repo 最值得抽出来的，不是模型名，而是问题定义</h3>
+<p>README 里最值钱的一句其实不是 “LSTM / Transformer”，而是这层意思：</p>
+<p>&gt; <strong>高 funding rate 不自动等于可做套利，因为关键取决于：偏离会不会收、要持有多久、扣完 fees / slippage / gas 之后还剩不剩。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>同样都是正 funding，</li>
+<li>有些是 <strong>快要反转</strong>，你刚进去就拿不到下一笔 funding；</li>
+<li>有些虽然 funding 高，但 <strong>basis 已经过头、流动性很差、滑点太大</strong>；</li>
+<li>有些 funding 没那么夸张，但 <strong>basis 与 premium 都在同向扩张且还没翻转</strong>，反而更值得做。</li>
+</ul>
+<p>这其实已经不是“单因子 carry”，而是一个 <strong>完整 raw alpha 主体</strong>。</p>
+<h3>3.2 repo 提到的 5 类变量，正好能翻译成 desk 版最小信号</h3>
+<p>README 里点到的变量包括：</p>
+<ul>
+<li>funding spread</li>
+<li>basis deviation</li>
+<li>rolling z-score</li>
+<li>funding sign reversal</li>
+<li>volatility / liquidity indicators</li>
+</ul>
+<p>把它翻译成 desk 语言，其实就是：</p>
+<ol>
+<li><strong>funding 本身有多肥</strong></li>
+</ol>
+<ul>
+<li><code>funding_t</code></li>
+<li><code>annualized_funding_t</code></li>
+</ul>
+<ol>
+<li><strong>perp 现在相对 spot / index 偏得有多离谱</strong></li>
+</ol>
+<ul>
+<li><code>basis_t = mark / index - 1</code></li>
+<li><code>premium_t = perp - index</code></li>
+</ul>
+<ol>
+<li><strong>这种偏离是平常波动，还是异常极值</strong></li>
+</ol>
+<ul>
+<li><code>z_funding</code></li>
+<li><code>z_basis</code></li>
+</ul>
+<ol>
+<li><strong>偏离还在延续，还是快翻车了</strong></li>
+</ol>
+<ul>
+<li><code>funding_sign_flip</code></li>
+<li><code>basis_slope</code></li>
+<li><code>premium_acceleration</code></li>
+</ul>
+<ol>
+<li><strong>值不值得为了这点 edge 去成交</strong></li>
+</ol>
+<ul>
+<li><code>spread / depth / OI / volume / slippage proxy</code></li>
+</ul>
+<p>这 5 层凑在一起，已经足够做一个 <strong>entry / exit / sizing / veto</strong> 都齐的策略骨架。</p>
+<h3>3.3 dYdX 文档给的节奏，非常适合 1m 状态更新 + 5m/15m 交易决策</h3>
+<p>官方文档里有几个点对 short-cycle desk 特别重要：</p>
+<ul>
+<li>dYdX 默认 <strong>每分钟</strong> 形成 funding sample；</li>
+<li><strong>每小时</strong> 结算 funding；</li>
+<li>funding 目的就是让 perp 回到 oracle / index 附近；</li>
+<li>funding 与 premium 是机制上直接相连的。</li>
+</ul>
+<p>这意味着对我们来说，最自然的实验节奏不是：</p>
+<ul>
+<li>非要在 funding 结算点才做一次决策；</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li><strong>用 <code>1m</code> 更新 state</strong>（premium / basis / slope / OI / liquidity）；</li>
+<li><strong>在 <code>5m / 15m</code> bar close 决定要不要进、要不要续持</strong>；</li>
+<li><strong>用下一次或下几次 funding tick 作为 payoff 事件</strong>。</li>
+</ul>
+<p>这正好适配当前 desk 的默认周期。</p>
+<h3>3.4 He et al. 给了最关键的理论底座：这不是“零风险 carry”，而是 random-maturity stat-arb</h3>
+<p>这篇 arXiv 最该被记住的不是复杂推导，而是两个 desk 结论：</p>
+<ol>
+<li><strong>perpetual futures 的偏离确实够大</strong></li>
+</ol>
+<ul>
+<li>文中写到不同 crypto 上相对理论锚的 <strong>mean absolute deviation 约 60%~90% 年化</strong>；</li>
+</ul>
+<ol>
+<li><strong>但它不是无脑送钱</strong></li>
+</ol>
+<ul>
+<li>因为你不知道市场什么时候回，</li>
+<li>交易有成本，</li>
+<li>持仓期间还要承受追加保证金、流动性冲击、继续偏离的风险。</li>
+</ul>
+<p>这和 repo 的直觉正好对上：</p>
+<p>&gt; <strong>正确问题不是 “今天 funding 高不高”，而是 “这笔 funding/basis 偏离值不值得拿、要拿多久、在我们这种成本下还有没有正 EV”。</strong></p>
+<h2>4. 适合当前 desk 的完整策略读法：先做 plain shell，再谈 ML persistence</h2>
+<p>我建议把这条线拆成两层：</p>
+<h3>4.1 第 1 层：plain-vanilla raw alpha shell（先做这个）</h3>
+<p>这是最小可复现、最适合先落地的一版。</p>
+<p>#### 交易对象 优先两种：</p>
+<p><strong>方案 A：单标的 spot-perp delta-neutral（最直观）</strong></p>
+<ul>
+<li><code>long spot / short perp</code>：当 perp 太贵、funding 为正；</li>
+<li><code>short spot / long perp</code>：当 perp 太便宜、funding 为负；</li>
+<li>但第二种往往受限于现货可借性 / 借币成本，所以最小实验可先只做 <strong>正 funding 一侧</strong>。</li>
+</ul>
+<p><strong>方案 B：同标的 perp-perp cross-venue carry（更对称）</strong></p>
+<ul>
+<li>同一个 underlier，找 <code>高 funding venue</code> 和 <code>低 funding venue</code>；</li>
+<li>做 <code>long cheap leg / short rich leg</code>；</li>
+<li>更接近真正的双向 stat-arb，也更适合把“sign flip / persistence”做成持仓治理。</li>
+</ul>
+<p>对当前 desk，我更推荐：</p>
+<ul>
+<li><strong>最小实验先做 A（spot-perp 正 funding 一侧）</strong>；</li>
+<li><strong>desk 版扩展再做 B（cross-venue richest-vs-cheapest）</strong>。</li>
+</ul>
+<p>#### 交易频率</p>
+<ul>
+<li>状态更新：<code>1m</code></li>
+<li>决策频率：<code>5m</code> 为主，<code>15m</code> 做更低 churn 版本</li>
+<li>payoff 观察窗：</li>
+<li>dYdX 类小时 funding：看未来 <code>1~3</code> 次 funding tick</li>
+<li>Binance 类 <code>8h</code> funding：看未来 <code>1</code> 次 funding tick + tick 前的 basis 回归</li>
+</ul>
+<p>#### 基础信号 对每个 symbol / leg，计算：</p>
+<ul>
+<li><code>basis_t = mark_t / index_t - 1</code></li>
+<li><code>z_basis_t = zscore(basis_t, L)</code></li>
+<li><code>funding_t = lastFundingRate or predicted funding</code></li>
+<li><code>z_funding_t = zscore(funding_t, Lf)</code></li>
+<li><code>sign_flip_t = 1{sign(funding_t) != sign(funding_{t-1})}</code></li>
+<li><code>liq_t = depth or spread or OI proxy</code></li>
+<li><code>rv_t = realized_vol</code></li>
+</ul>
+<p>然后构造一个 plain score：</p>
+<p><code>dislocation_score = w1 * z_funding + w2 * z_basis - w3 * sign_flip_risk - w4 * cost_proxy</code></p>
+<p>先别急着 ML，直接从 <strong>规则版</strong> 开始：</p>
+<ul>
+<li><code>z_funding &gt;= 1.5</code></li>
+<li><code>z_basis &gt;= 1.5</code></li>
+<li><code>funding &gt; 0</code></li>
+<li><code>sign_flip_risk = 0</code></li>
+<li><code>liq_t</code> 过门槛</li>
+<li><code>expected_next_tick_carry - fees - slippage &gt; 0</code></li>
+</ul>
+<p>满足时开 <code>long hedge leg / short rich leg</code>。</p>
+<h3>4.2 第 2 层：persistence / hold-time ranker（ML 可以放这里）</h3>
+<p>repo 真正适合被拿来做“旁支增强”的地方，是这个问题：</p>
+<p>&gt; <strong>同样都满足 entry，哪一些值得持有到下一次 funding，哪一些其实只该拿 basis 回归，不该硬等 funding？</strong></p>
+<p>这时再把 ML / LSTM / Transformer 放进来就合理了。</p>
+<p>预测对象不要做成“明天涨跌”，而是做成更贴近交易的问题：</p>
+<ul>
+<li>未来 <code>1</code> 个 funding tick 后的净收益是否 &gt; 0</li>
+<li>未来 <code>2~3</code> 个 funding tick 的累计净收益分位</li>
+<li>下一窗口 funding 是否 sign flip</li>
+<li>basis 是否会先回归到中位而 funding 还没兑现</li>
+</ul>
+<p>这比直接预测价格方向，更符合这条 alpha 的结构。</p>
+<h2>5. desk 版完整规则：entry / exit / sizing / risk / cost</h2>
+<p>下面给一版可以直接抄去做 first backtest 的规则壳。</p>
+<h3>5.1 Entry</h3>
+<p>以最小实验版 <code>long spot / short perp</code> 为例：</p>
+<p>开仓条件：</p>
+<ol>
+<li><code>funding_t &gt; 0</code></li>
+<li><code>z_funding_t &gt;= 1.5</code></li>
+<li><code>z_basis_t &gt;= 1.5</code></li>
+<li>过去 <code>k</code> 个 <code>1m</code> 状态里，<code>basis_slope &gt;= 0</code> 且未出现明显 <code>sign_flip</code></li>
+<li><code>spread / slippage / fee</code> 估算后，</li>
+<p><code>expected_edge = expected_funding_horizon + expected_basis_reversion - fees - slippage - borrow_cost &gt; 0</code></p>
+<li>流动性不过差：</li>
+</ol>
+<ul>
+<li>spread 不在过去 30 天 top decile</li>
+<li>OI 不在过去 30 天 bottom decile</li>
+</ul>
+<p>对称负 funding 侧，仅在 <strong>可借现货 / 可做反向 hedge / 或 cross-venue 对冲成立</strong> 时启用。</p>
+<h3>5.2 Exit</h3>
+<p>任何一个满足就平：</p>
+<ol>
+<li><code>z_basis</code> 回到 <code>0.5</code> 以内</li>
+<li><code>funding</code> 出现 sign flip</li>
+<li>已吃到目标 funding tick 数（例如 <code>1~3</code> 次）</li>
+<li><code>basis</code> 继续朝不利方向扩张超过 <code>entry_basis + 1.0 * rolling_std</code></li>
+<li>流动性恶化到 veto：spread / depth / OI 明显变差</li>
+<li>达到最大持有时长：</li>
+</ol>
+<ul>
+<li>小时 funding venue：<code>3h ~ 6h</code></li>
+<li><code>8h</code> funding venue：<code>8h ~ 16h</code></li>
+</ul>
+<h3>5.3 Sizing</h3>
+<p>先做最保守的 delta-neutral：</p>
+<ul>
+<li>两腿名义金额 1:1 对冲；</li>
+<li>单标的 notional = <code>min(vol_target_cap, OI_cap, depth_cap)</code>；</li>
+<li>建议 first pass：</li>
+<li>单标的资金占用不超过组合 NAV 的 <code>10%~15%</code></li>
+<li>单 venue 毛敞口不超过 <code>35%</code></li>
+<li>funding / basis 同家族总毛敞口不超过 <code>50%</code></li>
+</ul>
+<p>若要更 desk 化，可把仓位和 <code>expected_edge / expected_holding_hours / slippage</code> 绑定：</p>
+<p><code>size_i ∝ expected_edge_i / (vol_i * slippage_i)</code></p>
+<h3>5.4 风险</h3>
+<p>这条线最需要防的不是方向，而是下面几件事：</p>
+<ol>
+<li><strong>basis 继续扩张而不是回归</strong></li>
+<li><strong>funding 结算前 sign flip</strong></li>
+<li><strong>流动性变差，账面 edge 被滑点吃光</strong></li>
+<li><strong>跨 venue / 现货腿执行不同步</strong></li>
+<li><strong>借币、保证金、资金占用成本</strong></li>
+<li><strong>交易所 / 结算 / 对手方风险</strong></li>
+</ol>
+<p>所以别把它误读成“低波动无脑 carry”。它本质上仍是 <strong>持有期随机的 stat-arb</strong>。</p>
+<h3>5.5 成本</h3>
+<p>必须显式建模：</p>
+<ul>
+<li>两腿手续费</li>
+<li>吃单/挂单差异</li>
+<li>盘口滑点</li>
+<li>借币/融资成本</li>
+<li>跨 venue 提现/调仓 friction（如果有）</li>
+<li>funding 兑现时点与实际持仓时间错位</li>
+</ul>
+<p>如果不把这些写进去，回测会天然高估。</p>
+<h2>6. 它和当前 <code>1m / 3m / 5m / 15m</code> desk 的关系，到底在哪</h2>
+<p>这条 alpha 不是逐根 1m K 线方向预测，但它跟 short-cycle 完全不冲突：</p>
+<h3>6.1 <code>1m</code></h3>
+<ul>
+<li>用来更新 premium / basis / slope / sign-flip risk / micro-liquidity</li>
+<li>更像 state monitor</li>
+</ul>
+<h3>6.2 <code>3m / 5m</code></h3>
+<ul>
+<li>是最自然的决策层</li>
+<li>足够快，能在 funding tick 前做 admission / cancel / reduce</li>
+<li>又不至于被 1m 噪音打爆</li>
+</ul>
+<h3>6.3 <code>15m</code></h3>
+<ul>
+<li>更适合低 churn 版本</li>
+<li>用于更稳的 <code>basis z-score + vol/liquidity gate</code></li>
+<li>也适合做 benchmark，对照 <code>5m</code> 是否只是多付了手续费</li>
+</ul>
+<p>所以正确读法不是“funding 太低频，不适合短周期”，而是：</p>
+<p>&gt; <strong>funding 是 payoff event；premium / basis / sign-flip / liquidity 才是分钟级 state。</strong></p>
+<h2>7. 最小可复现实验：先别做全市场，先把这 4 个 baseline 跑出来</h2>
+<h3>数据源</h3>
+<p>优先公开可得：</p>
+<ol>
+<li><strong>Binance USDⓈ-M</strong></li>
+</ol>
+<ul>
+<li><code>GET /fapi/v1/fundingRate</code></li>
+<li><code>GET /fapi/v1/premiumIndex</code></li>
+<li><code>GET /fapi/v1/openInterest</code></li>
+</ul>
+<ol>
+<li><strong>dYdX 官方 funding 机制 / 历史数据接口（若后续补 SDK）</strong></li>
+<li>如要 cross-venue，再补 Bybit / OKX / Hyperliquid 的公开 funding / mark / OI</li>
+</ol>
+<h3>更新频率与实验口径</h3>
+<ul>
+<li>原始状态：尽量 <code>1m</code></li>
+<li>聚合决策：<code>5m / 15m</code></li>
+<li>先做 <code>BTC / ETH / SOL</code> 三个大币</li>
+<li>样本先取最近 <code>60~120</code> 天</li>
+</ul>
+<h3>先跑 4 个 baseline</h3>
+<p><strong>B0：level-only</strong></p>
+<ul>
+<li>只按 funding 排序；</li>
+<li>最肥的做 <code>long hedge leg / short rich leg</code>；</li>
+<li>持有到下一次 funding tick。</li>
+</ul>
+<p><strong>B1：funding + basis</strong></p>
+<ul>
+<li>要求 <code>z_funding</code> 和 <code>z_basis</code> 同时极值；</li>
+<li>其他不变。</li>
+</ul>
+<p><strong>B2：B1 + sign-flip veto</strong></p>
+<ul>
+<li>若 funding 或 premium 已出现翻转迹象，不开。</li>
+</ul>
+<p><strong>B3：B2 + liquidity / OI gate</strong></p>
+<ul>
+<li>过滤掉流动性差和 OI 过低样本。</li>
+</ul>
+<h3>主要评估指标</h3>
+<p>至少看：</p>
+<ul>
+<li>每笔净收益（扣双边 fees / slippage）</li>
+<li>胜率</li>
+<li>平均持有时长</li>
+<li>funding 部分 vs basis 回归部分各贡献多少</li>
+<li>最大不利偏移（MAE）</li>
+<li>资金占用回报</li>
+<li>正收益交易占比 / 正收益窗口占比</li>
+</ul>
+<p>如果 B0 明显不行而 B2/B3 改善很大，那就说明 repo 这条“persistence / flip / liquidity”读法是真有料，不只是包装。</p>
+<h2>8. 我对这条线的当前判断</h2>
+<h3>为什么它值得进研究池</h3>
+<ol>
+<li><strong>它是 raw alpha，不是纯 filter</strong></li>
+</ol>
+<ul>
+<li>不依赖 breakout、retest、trend 才能存在；</li>
+<li>自己就是一条可独立跑的 carry / stat-arb 策略。</li>
+</ul>
+<ol>
+<li><strong>它和当前 desk 已积累的方向性 alpha 相关性大概率不高</strong></li>
+</ol>
+<ul>
+<li>这对组合层面很值钱。</li>
+</ul>
+<ol>
+<li><strong>公开数据可拿，最小实验门槛低</strong></li>
+</ol>
+<ul>
+<li>不需要私有订单流，也不需要链上账户归因才能开始。</li>
+</ul>
+<ol>
+<li><strong>repo 的可取之处恰好不是 headline，而是可执行变量表</strong></li>
+</ol>
+<ul>
+<li>这非常适合 digest：不抄结论，直接拆组件。</li>
+</ul>
+<h3>当前最大保留意见</h3>
+<ol>
+<li>这个 repo 目前还是 <strong>proposal / skeleton</strong>，不是成熟回测框架；</li>
+<li>真正决定收益的，多半不是“模型多 fancy”，而是：</li>
+</ol>
+<ul>
+<li>execution</li>
+<li>hold horizon</li>
+<li>sign flip detection</li>
+<li>fee / slippage / borrow discipline</li>
+</ul>
+<ol>
+<li>若只做 Binance 8h funding，short-cycle 味道会弱一些；</li>
+</ol>
+<ul>
+<li>更适合配合 <code>1m state + 5m admission</code> 去做，</li>
+<li>而不是把自己误读成纯小时内 scalping。</li>
+</ul>
+<h2>9. 下一步怎么测（直接可执行）</h2>
+<p>这轮最推荐的 next step 不是继续搜更多论文，而是立刻做一个 <strong>honest first backtest</strong>：</p>
+<h3>Step 1</h3>
+<p>先做 <strong>单 venue、正 funding 一侧、spot-perp</strong>：</p>
+<ul>
+<li><code>BTC / ETH / SOL</code></li>
+<li><code>5m</code> 决策</li>
+<li>事件窗 = 下一次 funding tick</li>
+</ul>
+<h3>Step 2</h3>
+<p>跑四组对照：</p>
+<ul>
+<li><code>level-only</code></li>
+<li><code>level + basis</code></li>
+<li><code>level + basis + sign-flip veto</code></li>
+<li><code>level + basis + sign-flip veto + liq/OI gate</code></li>
+</ul>
+<h3>Step 3</h3>
+<p>把 PnL 拆成三部分：</p>
+<ul>
+<li>funding 收入</li>
+<li>basis 回归收益</li>
+<li>成本损耗</li>
+</ul>
+<h3>Step 4</h3>
+<p>若 <code>B2/B3</code> 相对 <code>B0/B1</code> 明显抬升：</p>
+<ul>
+<li>再做 <strong>cross-venue richest-vs-cheapest</strong> 版本；</li>
+<li>再考虑把 repo 里那层 ML persistence ranker 加进来。</li>
+</ul>
+<h3>Step 5</h3>
+<p>若发现 edge 主要来自 <strong>basis 回归而不是 funding 本身</strong>：</p>
+<ul>
+<li>那就把这条线重新归类成 <strong>basis MR raw alpha</strong>；</li>
+<li>funding 只保留为 entry admission / hold governance。</li>
+</ul>
+<p>这一步非常关键，因为它决定我们后面该把它放进 <code>carry</code> 家族，还是放进 <code>basis / relative-value</code> 家族。</p>
+<h2>10. 参考资料</h2>
+<ol>
+<li><strong>Menger Wen / hanqihang / collaborators. (2026). _Deep-Learning-Based Delta-Neutral Statistical Arbitrage on Perpetual Funding Rates_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</a></code></li>
+<li>Repo URL：<code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</a></code></li>
+</ul>
+<ol>
+<li><strong>dYdX Operations. _Default funding rates on dYdX_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://help.dydx.trade/en/articles/166992-default-funding-rates-on-dydx">https://help.dydx.trade/en/articles/166992-default-funding-rates-on-dydx</a></code></li>
+</ul>
+<ol>
+<li><strong>He, S., Manela, A., Ross, O., &amp; von Wachter, V. (2024 draft; first draft 2022). _Fundamentals of Perpetual Futures_. arXiv working paper.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.48550/arXiv.2212.06888</code></li>
+<li>Readable URL：<code><a href="https://arxiv.org/abs/2212.06888">https://arxiv.org/abs/2212.06888</a></code></li>
+<li>HTML / full text：<code><a href="https://arxiv.org/html/2212.06888v5">https://arxiv.org/html/2212.06888v5</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Open Platform. _Get Funding Rate History_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Open Platform. _Mark Price_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Mark-Price">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Mark-Price</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Open Platform. _Open Interest_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest</a></code></li>
+</ul>
+</body>
+</html>

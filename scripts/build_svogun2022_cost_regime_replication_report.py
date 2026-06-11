@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+OUT_DIR = ROOT / "reports" / "site" / "reading" / "svogun2022_cost_regime_replication"
+OUT_PATH = OUT_DIR / "report.html"
+
+
+def main() -> int:
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    html = f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Svogun 2022 · Cost/Regime Replication Report</title>
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f8fafc; color:#0f172a; margin:0; padding:24px; }}
+    .wrap {{ max-width: 1200px; margin: 0 auto; }}
+    .card {{ background:white; border:1px solid #e2e8f0; border-radius:14px; padding:18px 20px; margin-bottom:18px; }}
+    .muted {{ color:#475569; }}
+    .pill {{ display:inline-block; padding:2px 8px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:12px; margin-right:6px; }}
+    code {{ background:#f1f5f9; padding:1px 4px; border-radius:6px; }}
+    ul,ol {{ padding-left: 20px; }}
+    table {{ width:100%; border-collapse: collapse; font-size: 14px; }}
+    th,td {{ border-bottom:1px solid #e5e7eb; padding:8px 10px; text-align:left; vertical-align:top; }}
+    a {{ color:#2563eb; text-decoration:none; }}
+    a:hover {{ text-decoration:underline; }}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <p><a href="../../index.html">← 返回首页</a></p>
+
+  <div class="card">
+    <h1>Svogun 2022 · Cost/Regime Replication Report</h1>
+    <p class="muted">生成时间：{generated_at} ｜ 这是 `Svogun & Bazán-Palomino (2022)` 的第一版 clean-room replication report。目标不是完整复刻论文全部规则族，而是先把对当前主线最有价值的那一层落地：<b>breakout / trend 类规则在 crypto 上，扣成本后还剩多少，以及 regime 是否会改写结果。</b></p>
+    <p class="muted"><span class="pill">paper</span><span class="pill">2022</span><span class="pill">cost / regime constraint</span><span class="pill">clean-room replication</span></p>
+  </div>
+
+  <div class="card">
+    <h2>为什么这篇对当前主线重要</h2>
+    <ul>
+      <li>我们最近已经确认：`PyIndicators breakout` 整体偏弱，`PyTrendline breakout v1` 也暂时偏弱。</li>
+      <li>这意味着后续所有 breakout / trend 类研究，都不能再只看纸面方向与均值，而必须更早把 <b>交易成本</b> 与 <b>市场状态</b> 纳入判断。</li>
+      <li>这篇论文最值钱的不是“给你一个神奇规则”，而是给你一个现实约束：<b>gross alpha 和 net alpha 不是一回事；bubble / regime 会重排技术规则的优先级。</b></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>原始论文 claim（我们准备复现哪一层）</h2>
+    <p><b>原始 claim：</b>crypto 里的技术分析规则并不是一扣成本就全灭，但交易成本会显著改变结果，bubble periods 也会改变 excess return 的概率。</p>
+    <ul>
+      <li>我们<strong>不</strong>先复刻论文中的全部规则家族。</li>
+      <li>我们第一版只复刻对当前主线最关键的那一层：
+        <ul>
+          <li>breakout / trend 规则在 <code>gross</code> 与 <code>net</code> 下的存活性差异</li>
+          <li>这些差异是否会被 regime / bubble proxy 明显放大或改写</li>
+        </ul>
+      </li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>与我们当前项目的映射关系</h2>
+    <table>
+      <thead>
+        <tr><th>论文层问题</th><th>我们当前主线的对应问题</th><th>为什么现在就值得做</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>技术规则扣成本后还剩什么？</td><td>breakout / confirmation 在 net 层是否还活着？</td><td>防止继续把纸面 breakout 当成可交易 alpha</td></tr>
+        <tr><td>bubble periods matter?</td><td>trend / breakout 的有效性是否依赖 regime？</td><td>帮助解释为什么不同样本窗口结论会摇摆</td></tr>
+        <tr><td>哪些规则 survives?</td><td>哪些结构规则值得继续，哪些应 park？</td><td>直接服务 Mainline decision board</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>第一版 clean-room replication 设计</h2>
+    <h3>1) 数据</h3>
+    <ul>
+      <li>市场：crypto</li>
+      <li>优先资产：BTC / ETH / XRP / LTC（之后再扩到当前 8 币主宇宙）</li>
+      <li>周期：先用 <b>60m</b>，不先上 1-min，避免先被噪音和数据工程拖死</li>
+      <li>样本：<b>365d + 730d</b></li>
+    </ul>
+
+    <h3>2) 规则族（第一版只保留 2 组）</h3>
+    <ul>
+      <li><b>MA crossover baseline</b>：作为简单 trend baseline</li>
+      <li><b>Breakout baseline</b>：Donchian / rolling high-low / trendline breakout 三选一或并行</li>
+    </ul>
+
+    <h3>3) 每条规则都强制跑 3 档结果</h3>
+    <ul>
+      <li><code>gross</code></li>
+      <li><code>net_low_cost</code></li>
+      <li><code>net_high_cost</code></li>
+    </ul>
+
+    <h3>4) regime split（第一版用轻量 proxy）</h3>
+    <ul>
+      <li><code>trend_strength</code>：价格相对慢均线偏离</li>
+      <li><code>volatility_state</code>：realized volatility 扩张 / 收缩</li>
+      <li><code>bubble_proxy</code>：短中期加速上行 + 高波动联合条件</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>最小实验矩阵</h2>
+    <table>
+      <thead>
+        <tr><th>维度</th><th>最小设置</th><th>为什么够用</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>资产</td><td>BTC / ETH / XRP / LTC</td><td>先覆盖主流币，不一开始扩太广</td></tr>
+        <tr><td>频率</td><td>60m</td><td>先避免 1-min 的极端成本/微观结构噪音</td></tr>
+        <tr><td>规则</td><td>MA crossover + breakout baseline</td><td>一条 trend、一条 breakout，足够看成本重排</td></tr>
+        <tr><td>成本</td><td>gross / net_low / net_high</td><td>直接检验论文最重要的现实约束</td></tr>
+        <tr><td>状态</td><td>full sample + regime slices</td><td>直接检验 bubble/regime 改写效应</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>成功标准</h2>
+    <ul>
+      <li>不是要求和原论文一模一样的具体系数或 odds ratio。</li>
+      <li>第一版成功标准只有两条：
+        <ol>
+          <li><b>成本会显著重排 breakout / trend 规则优先级</b></li>
+          <li><b>regime 会显著改变这些规则的存活率或表现排序</b></li>
+        </ol>
+      </li>
+      <li>如果这两条在我们的 clean-room 复现里也成立，这篇论文就对当前主线有明确实用价值。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>当前不该过度承诺的地方</h2>
+    <ul>
+      <li>这不是论文的像素级复刻，只是 clean-room 第一版。</li>
+      <li>论文涉及 1-min 与更丰富规则族；我们第一版故意降维，先抓最关键洞见。</li>
+      <li>当前还没有实际本地回测结果，所以这页是 replication report，不是假装已经复现成功。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>对下一轮自动任务最有用的落地建议</h2>
+    <ol>
+      <li>先做一个最小规则存活性实验脚手架：
+        <ul>
+          <li>输入：crypto 60m OHLCV</li>
+          <li>规则：MA crossover + breakout baseline</li>
+          <li>输出：gross / net_low / net_high + regime slice summary</li>
+        </ul>
+      </li>
+      <li>默认把结果写成一张 survival board，而不是直接写最终策略结论。</li>
+      <li>如果结果显示成本/状态确实重排排序，再反过来约束我们内部的 breakout / confirmation 研究。</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>相关入口</h2>
+    <ul>
+      <li><a href="../svogun2022_cost_regime_experiment/report.html">Svogun 2022 · Cost/Regime Experiment v1</a></li>
+      <li><a href="../trendline_replication_briefs/report.html">Trendline Replication Briefs</a></li>
+      <li><a href="../trendline_alpha_scout/report.html">Trendline Alpha Scout</a></li>
+      <li><a href="../deep_dives/2026-03-11_svogun-bazanpalomino-crypto-ta-costs-bubbles-deep-dive.html">Svogun 2022 deep dive</a></li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>
+"""
+    OUT_PATH.write_text(html, encoding="utf-8")
+    print("[ok] svogun2022 cost/regime replication report generated")
+    print("[site]", OUT_PATH)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

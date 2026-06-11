@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个 KRW premium 平台只读成“韩国搬砖工具”：对 short-cycle crypto desk，更该先拆的是「cross-venue cheap-spot × rich-perp contango capture」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个 KRW premium 平台只读成“韩国搬砖工具”：对 short-cycle crypto desk，更该先拆的是「cross-venue cheap-spot × rich-perp contango capture」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-25 11:52 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit</span>
+      <span class="pill">主题标签：relative-value / stat-arb / carry / basis / cross-venue / spot-perp / delta-neutral / contango / funding / 1m / 3m / 5m / repo</span>
+      <span class="pill">证据类型：工程经验 / repo 规则壳</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-25_1152_crossvenue-contango-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-25 11:52 UTC</li>
+<li>类型：GitHub / repo source audit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当不同交易所之间出现“最便宜现货 + 最贵永续”组合，且 perp 相对 spot 的 contango 足够厚时，做 <strong>long cheap spot / short rich perp</strong>，赌跨 venue 升贴水回归或至少不继续恶化</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（但默认阈值仍需先过成本关）</li>
+<li>主题标签：relative-value / stat-arb / carry / basis / cross-venue / spot-perp / delta-neutral / contango / funding / 1m / 3m / 5m / repo</li>
+<li>证据类型：工程经验 / repo 规则壳</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 2026 GitHub repo <strong>sueun-dev / crypto-market-neutral-platform</strong>。表面上它更像“韩国上币溢价 + 海外对冲平台”，但对我们 desk 更值钱的读法不是跨境转币，而是先把里面那条 <strong>overseas-only cross-venue contango shell</strong> 单独拆出来：跨所找最便宜 spot、最贵 perp，满足阈值就做 delta-neutral 收敛。</p>
+<h2>2. 一句话核心结论</h2>
+<p>这份仓最值得留下来的不是“韩国溢价故事”，而是：<strong>它把 cross-venue spot-perp contango capture 写成了可执行的完整策略壳；但当前默认 <code>PRICE_DIFF_THRESHOLD = 0.15%</code> 很可能还没厚到能稳定覆盖四腿费用与滑点，所以 first verdict 的第一件事不是回测收益，而是先做 honest fee ladder。</strong></p>
+<h2>3. 它是怎么证明这点的</h2>
+<p>不是靠宏大叙事，而是直接把可交易规则写死在配置和流程里：<code>ENTRY_AMOUNT = 100</code>、<code>MAX_ENTRIES = 40</code>、<code>PRICE_DIFF_THRESHOLD = 0.0015</code>、<code>SLEEP_SEC = 3</code>、<code>FUTURES_LEVERAGE = 1</code>，并且显式写了 <strong>negative funding veto</strong>、现货/永续腿数量对齐、自动/手动模式、真实交易所费率表与退出流程。</p>
+<h2>4. 核心结论展开</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha 很清楚</strong>：不是赌方向，而是赌 <strong>跨 venue 的 spot-perp contango 会回归</strong>。</li>
+<li>repo 给的是完整壳，不只是 scanner：</li>
+<li>entry：找 <code>cheapest spot</code> + <code>richest perp</code>，价差超过阈值才进；</li>
+<li>sizing：默认每次 <code>100 USDT</code>、最多 <code>40</code> 次分批；</li>
+<li>risk：<code>1x</code> futures、delta-neutral 对齐、负 funding 尽量回避；</li>
+<li>monitoring：默认 <code>3s</code> 轮询；</li>
+<li>exit：spread 收敛后平仓，韩国腿只是可选增强，不是 base alpha 本体。</li>
+<li>但 repo 默认阈值和费率一对，马上暴露一个关键问题：</li>
+<li><code>0.15% = 15 bps</code> 的 admission，放在 cross-venue 四腿交易里并不宽；</li>
+<li>仅按 repo <code>config.py</code> 费率粗看，<strong>Bybit spot taker <code>10 bps</code> + Gate futures taker <code>5 bps</code></strong>，单次开仓就已接近 <code>15 bps</code>；</li>
+<li>若算 round-trip，粗略就到 <strong><code>31 ~ 50 bps+</code></strong>（还没含滑点、转账、库存等待），说明它更像 <strong>maker-first / event-driven / premium-enhanced</strong> 的 raw alpha 壳，而不是默认 taker 化就能跑的免费午餐。</li>
+</ul>
+<h2>5. 为什么和当前项目有关</h2>
+<p>它补的是我们 raw alpha 素材池里一条很实用的 <strong>cross-venue relative-value</strong> 支线，而且和已有“同所 basis fade / funding carry”不完全一样：</p>
+<ul>
+<li>同所 basis 更像一套 venue 内相对价值；</li>
+<li>这条是 <strong>跨 venue cheapest-spot / richest-perp 路由</strong>；</li>
+<li>若直接把韩国转币部分拿掉，它仍然是一个能映射到 <code>1m / 3m / 5m</code> 的完整最小实验。</li>
+</ul>
+<h2>5.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative-value / stat-arb / carry-adjacent</li>
+<li>基础 alpha：cross-venue spot-perp contango convergence</li>
+<li>regime：contango 为正、且 funding 不恶化到把 edge 吃掉</li>
+<li>filter / veto：negative funding veto、交易所可交易状态、费后 spread 不为正则不做</li>
+<li>risk / sizing / execution overlay：<code>1x</code> futures、分批建仓、现货/永续数量精确对齐、优先 maker / 低滑点 venue</li>
+</ul>
+<h2>6. 可复刻的最小实验</h2>
+<h3>数据源</h3>
+<ul>
+<li>Bybit / OKX / Gate.io 公开 spot ticker / book ticker</li>
+<li>Bybit / OKX / Gate.io 公开 perp ticker / mark / funding</li>
+<li>公开性：公开可得</li>
+<li>更新频率：秒级；最小实验可先聚合到 <code>1m</code>，再下钻到 <code>3s~10s</code></li>
+</ul>
+<h3>最小实验口径</h3>
+<ol>
+<li>先只做 <code>BTC / ETH / SOL</code>，每 <code>3s~10s</code> 抓一次三所 spot 与 perp 报价；</li>
+<li>对每个时点算：<code>best_perp_bid / best_spot_ask - 1 - explicit_fees</code>；</li>
+<li>admission 不用 repo 裸 <code>15 bps</code>，而是分三档：<code>15 / 30 / 45 bps</code>；</li>
+<li>exit 先用最朴素版本：净 spread 回到 <code>&lt;= 0</code>、或 <code>30/60m</code> time stop；</li>
+<li>先看两件事：<code>fee-after positive snapshot ratio</code> 与 <code>gross/net bps per trade</code>；</li>
+<li>若 majors 不够厚，再转去新币、事件币、韩国上币前后或 funding 异常时段。</li>
+</ol>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>repo 的最大亮点是工程完整，不是已经证明“默认参数可赚钱”。</li>
+<li>韩国 premium 变现涉及转账/上币/提现状态，这部分天然更像 <strong>附加增强层</strong>，不是我们 short-cycle 主实验的 base alpha。</li>
+<li>cross-venue 执行会遇到库存分散、到账延迟、maker 不成交、单腿 orphan risk、费率分层变化。</li>
+<li>所以这条线当前最诚实的定位是：<strong>值得进研究池，但先做 fee-aware admission check，再谈上线。</strong></li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<ul>
+<li>先把 repo 的 <code>0.15%</code> 改成 <strong>fee-after threshold</strong>，而不是毛价差阈值。</li>
+<li>做 <code>maker/taker</code> 四象限回测：<code>maker-maker / maker-taker / taker-maker / taker-taker</code>。</li>
+<li>把 <code>negative funding veto</code> 升级成明确 router：只有 <code>spread edge &gt; fees + expected funding drag</code> 才进。</li>
+<li>观察它更适合哪些场景：平时 majors、事件币、新上币、还是韩国 listing 前后。</li>
+</ul>
+<h2>9. 来源</h2>
+<ul>
+<li>GitHub user <code>sueun-dev</code> (2026), <strong>crypto-market-neutral-platform</strong>. Repo URL: &lt;<a href="https://github.com/sueun-dev/crypto-market-neutral-platform&gt;">https://github.com/sueun-dev/crypto-market-neutral-platform&gt;</a></li>
+<li>Readable README URL: &lt;<a href="https://github.com/sueun-dev/crypto-market-neutral-platform&gt;">https://github.com/sueun-dev/crypto-market-neutral-platform&gt;</a></li>
+<li>Source audit 文件：<code>README.md</code>, <code>src/overseas_exchange_hedge/config.py</code>, <code>src/overseas_exchange_hedge/overseas/price_analyzer.py</code>, <code>src/overseas_exchange_hedge/overseas/trade_executor.py</code></li>
+</ul>
+</body>
+</html>

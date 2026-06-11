@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2022 NAJEF 论文只读成“crypto 日内既有动量也有反转”：对 short-cycle desk，更该先测的是「UTC hour-pair signed lag map × continuation/fade 切换」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2022 NAJEF 论文只读成“crypto 日内既有动量也有反转”：对 short-cycle desk，更该先测的是「UTC hour-pair signed lag map × continuation/fade 切换」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 07:50 UTC</span>
+      <span class="pill">研究时间：2026-04-04 07:56 UTC</span>
+      <span class="pill">类型：2022 *The North American Journal of Economics and Finance* 论文摘要 / Introduction / Section snippets（ScienceDirect）+ Crossref / Semantic Scholar metadata + Binance 公共 `5m/15m` 数据可得性快检</span>
+      <span class="pill">主题标签：raw-alpha/intraday/time-of-day/hour-pair/signed-lag-map/continuation/reversal/single-asset/btc/eth/ltc/xrp/5m/15m/3m/1m/paper/public-data/cost/risk</span>
+      <span class="pill">证据类型：论文证据 + 元数据 + 公共行情可移植性快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_0756_signed-hourpair-lagmap-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 07:56 UTC</li>
+<li>类型：2022 *The North American Journal of Economics and Finance* 论文摘要 / Introduction / Section snippets（ScienceDirect）+ Crossref / Semantic Scholar metadata + Binance 公共 <code>5m/15m</code> 数据可得性快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一 UTC 日内，较早时段的收益会对较晚时段收益产生可学习的“带符号预测”——有些 hour-pair 是 continuation，有些是 reversal；真正可交易的不是“统一做动量”或“统一做反转”，而是 <code>source hour -&gt; target hour</code> 的 signed lag map。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/intraday/time-of-day/hour-pair/signed-lag-map/continuation/reversal/single-asset/btc/eth/ltc/xrp/5m/15m/3m/1m/paper/public-data/cost/risk</li>
+<li>证据类型：论文证据 + 元数据 + 公共行情可移植性快检</li>
+</ul>
+<h2>1. 先回答这轮最重要的一句：base alpha 是什么？</h2>
+<p>&gt; <strong>base alpha 不是“情绪/流动性/宏观过滤”，也不是“单纯说市场既可能动量也可能反转”。</strong> &gt; &gt; <strong>它是：同一 UTC 日内，某个较早 hour-slot 的收益，对某个较晚 hour-slot 的收益，存在稳定但带符号的预测关系；符号为正时做 continuation，符号为负时做 fade。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>不要把 BTC 日内信号写成一条全时段统一规则；</li>
+<li>更像是一个 <strong>24×24 的“时段对时段”有符号 lead/lag 图谱</strong>；</li>
+<li>有些口袋该顺着打，有些口袋该反着打；</li>
+<li><code>jump / liquidity / FOMC</code> 更适合作为这条 raw alpha 的 <strong>gate / veto</strong>，而不是 alpha 本体。</li>
+</ul>
+<p>这也是这轮值得写的原因：</p>
+<ol>
+<li><strong>它是 raw alpha，不是解释型综述；</strong></li>
+<li><strong>它不依赖难拿外部数据，公开 OHLCV 就能复现主干；</strong></li>
+<li><strong>它和最近 intake 里偏多的 pairs / carry / repo shell 不同，补的是更基础的单币 intraday alpha 家族。</strong></li>
+</ol>
+<h2>2. 这篇论文到底说了什么</h2>
+<p>主材料：</p>
+<ol>
+<li><strong>Zhuzhu Wen, Elie Bouri, Yahua Xu, Yang Zhao (2022)</strong>, *Intraday return predictability in the cryptocurrency markets: Momentum, reversal, or both*, <strong>The North American Journal of Economics and Finance</strong>, 62, 101733.</li>
+<p>DOI: <code>10.1016/j.najef.2022.101733</code> Readable URL: <code><a href="https://www.sciencedirect.com/science/article/abs/pii/S1062940822000833">https://www.sciencedirect.com/science/article/abs/pii/S1062940822000833</a></code></p>
+<li>SSRN working-paper metadata mirror：<code>10.2139/ssrn.4080253</code></li>
+</ol>
+<p>基于 Semantic Scholar 摘要 + ScienceDirect 页面可读内容，这篇文章的关键信息够我们做一个很清楚的 desk 化转译：</p>
+<h3>2.1 论文样本与频率</h3>
+<ul>
+<li><strong>资产</strong>：Bitcoin 为主，另做 ETH / LTC / XRP 稳健性检查</li>
+<li><strong>样本区间</strong>：<strong>2013-03-03 至 2020-05-31</strong></li>
+<li><strong>原始频率</strong>：<strong>5 分钟</strong></li>
+<li><strong>主分析频率</strong>：<strong>小时收益</strong>，并补做 <strong>half-hour</strong> 稳健性检查</li>
+</ul>
+<h3>2.2 论文的核心发现</h3>
+<ol>
+<li><strong>crypto 日内回报可预测，而且不是单一符号。</strong></li>
+</ol>
+<ul>
+<li>同一日内，较早小时收益对较晚小时收益，既可能是 <strong>正向延续</strong>，也可能是 <strong>反向回吐</strong>。</li>
+</ul>
+<ol>
+<li><strong>这种 predictability 会被 regime 明显影响。</strong></li>
+</ol>
+<ul>
+<li>论文明确写到：在 <strong>无大跳跃（no jump）</strong>、<strong>无 FOMC 发布</strong>、<strong>低流动性</strong> 子样本里，这种日内可预测性更强。</li>
+</ul>
+<ol>
+<li><strong>不只 BTC。</strong></li>
+</ol>
+<ul>
+<li>这种现象在 <strong>ETH / LTC / XRP</strong> 上也能看到。</li>
+</ul>
+<ol>
+<li><strong>经济价值不只是 t-stat。</strong></li>
+</ol>
+<ul>
+<li>论文写明：基于这些 intraday predictors 的 <strong>timing strategy</strong>，比 <code>always-long</code> / <code>buy-and-hold</code> 等基准更有经济价值。</li>
+</ul>
+<h3>2.3 论文给我们的理论解释</h3>
+<ul>
+<li><strong>正向 continuation</strong>：更接近 <strong>late-informed investors</strong> / 信息扩散慢</li>
+<li><strong>负向 reversal</strong>：更像 <strong>对非基本面信息的过度反应 + 过度自信</strong></li>
+</ul>
+<p>对 desk 来说，这一点很关键：</p>
+<p>&gt; <strong>同样都是“上一段涨了”，下一段到底该追还是该反手，不是看一条统一规则，而是要看它发生在什么 UTC 时段、对应哪个 target 时段、当下是否处在 jump / FOMC / 高流动性破坏区。</strong></p>
+<h2>3. 为什么这轮值得优先进入研究池</h2>
+<p>如果只把论文读成“crypto 日内既有动量也有反转”，那基本没有研究价值，因为这句话太宽。</p>
+<p>真正值得 intake 的，是下面这个 desk 读法：</p>
+<p>&gt; <strong>把论文改写成一条可以直接下手的完整 raw alpha：<code>UTC hour-pair signed lag map</code>。</strong></p>
+<p>也就是：</p>
+<ul>
+<li>source hour = 较早时段</li>
+<li>target hour = 较晚时段</li>
+<li>在滚动窗口里估计 <code>source -&gt; target</code> 的符号和强度</li>
+<li><strong>符号 &gt; 0</strong>：target hour 做 continuation</li>
+<li><strong>符号 &lt; 0</strong>：target hour 做 fade</li>
+<li><code>jump / FOMC / 高流动性</code>：默认当 veto / risk cut，不当 alpha 本体</li>
+</ul>
+<p>为什么这比继续补一个普通 filter 更值钱？</p>
+<ol>
+<li><strong>它本身就是 raw alpha。</strong></li>
+<li><strong>它天然能拆成完整策略四件套：entry / exit / sizing / risk / cost。</strong></li>
+<li><strong>它和 <code>1m/3m/5m/15m</code> 的关系非常直接。</strong></li>
+</ol>
+<ul>
+<li>论文虽主要在小时级别做图谱；</li>
+<li>但我们的执行完全可以压缩到 <code>15m</code>，甚至在 <code>5m</code> 做更细的进出场。</li>
+</ul>
+<h2>4. 我们该怎么 desk 化：别直接做 96×96，而是先做“1H 图谱 + 15m 执行壳”</h2>
+<p>如果粗暴把 <code>15m</code> 拆成 96 个 slot，再做 96×96 lag map，第一版很容易过拟合。</p>
+<p>更稳的读法是：</p>
+<h3>4.1 第一层：先学 <strong>1H signed lag map</strong></h3>
+<ul>
+<li>用 <code>5m</code> K 线聚合成 1H 收益；</li>
+<li>在每个滚动训练窗里，学习：</li>
+<li><code>r_hour[s] -&gt; r_hour[t]</code> 的符号；</li>
+<li>是否具备最基本的稳定性（sign stability / OOS hit ratio / t-stat）；</li>
+<li>最后得到一个 <strong>24×24 的有向带符号图谱</strong>。</li>
+</ul>
+<h3>4.2 第二层：再用 <strong>15m 做执行压缩</strong></h3>
+<ul>
+<li>真正下单不一定等整小时结束才做；</li>
+<li>可以在 target hour 的前 <code>15m</code> / 前 <code>30m</code> 进入，尾段退出；</li>
+<li>这样既保留论文的小时级结构，又让执行更贴近 short-cycle。</li>
+</ul>
+<h3>4.3 第三层：把论文里的 regime 发现当成 gate</h3>
+<ul>
+<li><code>jump veto</code></li>
+<li><code>FOMC veto</code></li>
+<li><code>too-liquid / too-fast tape veto</code></li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; <strong>alpha 主体是 signed lag map；regime 组件只负责决定“今天这个时段对时段口袋，还要不要开”。</strong></p>
+<h2>5. 策略拆解（按 entry / exit / sizing / risk / cost 写清）</h2>
+<h2>5.1 Universe</h2>
+<p>第一版不要铺太宽：</p>
+<ul>
+<li>主线：<code>BTCUSDT perp</code></li>
+<li>稳健性：<code>ETHUSDT / LTCUSDT / XRPUSDT</code></li>
+<li>如果 BTC 站得住，再扩到 top liquid majors</li>
+</ul>
+<h2>5.2 Signal（raw alpha 主体）</h2>
+<p>定义：</p>
+<ul>
+<li><code>r_s(d)</code> = 第 <code>d</code> 天 source hour <code>s</code> 的收益</li>
+<li><code>r_t(d)</code> = 同一天较晚 target hour <code>t</code> 的收益，<code>t &gt; s</code></li>
+</ul>
+<p>在滚动窗口内估计：</p>
+<ul>
+<li><code>beta_{s,t}</code> 的符号</li>
+<li><code>t-stat_{s,t}</code></li>
+<li>OOS hit ratio / OOS R² 是否至少不为负</li>
+</ul>
+<p>交易规则：</p>
+<ul>
+<li>若 <code>beta_{s,t} &gt; 0</code>，则 source hour 出现显著正收益时，target hour 顺着做；显著负收益时也顺着做空</li>
+<li>若 <code>beta_{s,t} &lt; 0</code>，则 source hour 出现显著正收益时，target hour 反着做空；source hour 显著负收益时，target hour 反着做多</li>
+</ul>
+<p>第一版不要把所有 pair 都交易，先做 pocket selection：</p>
+<ul>
+<li>只保留历史上 <strong>稳定过门槛</strong> 的 <code>s -&gt; t</code> pair</li>
+<li>每天最多只开 <code>1~3</code> 个 target pockets</li>
+</ul>
+<h2>5.3 Entry</h2>
+<p>第一版给三种最小实现：</p>
+<h3>方案 A：最像论文的“整小时版”</h3>
+<ul>
+<li>source hour 收完后才确认信号；</li>
+<li>到 target hour 开始时入场；</li>
+<li>最适合先做 replication sanity check。</li>
+</ul>
+<h3>方案 B：<code>15m</code> 压缩执行版</h3>
+<ul>
+<li>source hour 结束确认信号；</li>
+<li>在 target hour 的前 <code>15m</code> 入场；</li>
+<li>若 target pocket 通常集中在 hour 开头，抓前段；否则也可改成前 <code>30m</code> 分批。</li>
+</ul>
+<h3>方案 C：<code>5m</code> 提前埋伏版</h3>
+<ul>
+<li>仅对最稳定 pocket 使用；</li>
+<li>在 source hour 临近结束时，若 source return 已过阈值，可提前在 target 前 <code>5m</code> 小仓试探；</li>
+<li>但这只适合第二轮，不建议作为首测。</li>
+</ul>
+<h2>5.4 Exit</h2>
+<ul>
+<li>默认 <strong>time-stop</strong>：持有到 target pocket 结束</li>
+<li>备选：</li>
+<li><code>1h</code> pocket：持有 <code>1h</code></li>
+<li><code>15m</code> 压缩执行：持有 <code>15m~45m</code></li>
+<li>若盘中反向波动超过 <code>k * sigma_target</code>，提前止损</li>
+<li>第一轮不要加太多花哨 trailing，先保留最干净的 timing shell</li>
+</ul>
+<h2>5.5 Sizing</h2>
+<ul>
+<li>基础仓位：按 <code>target-hour realized vol</code> 做 inverse-vol sizing</li>
+<li>pair 权重：按历史 <code>|t-stat_{s,t}|</code> 或 OOS hit ratio 缩放</li>
+<li>组合层：</li>
+<li>单 pocket 上限 <code>20% gross</code></li>
+<li>单日总 gross 上限 <code>100%</code></li>
+<li>同向连续 pocket 不叠太满，避免把 hour-pair alpha 误放大成全天方向赌注</li>
+</ul>
+<h2>5.6 Risk / Veto</h2>
+<p>这部分要直接继承论文发现：</p>
+<ul>
+<li><strong>jump veto</strong>：若 source hour 内出现异常大波动 / wick / realized jump，默认减仓或不做</li>
+<li><strong>FOMC veto</strong>：FOMC 窗口前后几小时先关掉</li>
+<li><strong>high-liquidity / hyper-fast tape veto</strong>：论文发现低流动性更强，所以极高参与度区间别默认 edge 更大</li>
+<li><strong>slot crowding cap</strong>：某些 UTC 时段若长期只在单一周几/单一市场状态赚钱，要单独检查是否过拟合</li>
+</ul>
+<h2>5.7 Cost</h2>
+<ul>
+<li>先跑 <code>2 / 4 / 6 / 8 bps</code> round-trip ladder</li>
+<li>因为这条线持有期短、开平明确，<strong>cost cliff</strong> 会比日频策略更重要</li>
+<li>若 <code>15m</code> 执行版在 <code>6 bps</code> 后全灭，就不要急着下钻 <code>5m</code></li>
+</ul>
+<h2>6. 与 <code>1m / 3m / 5m / 15m</code> 的关系：别硬把论文伪装成逐根信号</h2>
+<p>这篇论文主干是 <strong>小时级 intraday pocket</strong>，所以对 short-cycle 的正确映射是：</p>
+<ul>
+<li><strong>1H</strong>：学结构</li>
+<li><strong>15m</strong>：做主执行壳</li>
+<li><strong>5m / 3m</strong>：只用于更细的入场和减滑点</li>
+<li><strong>1m</strong>：默认只当 execution layer，不建议直接拿来重新学整张 lag map</li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; <strong>这不是“每根 1m K 线都能独立产生 alpha”的材料。</strong> &gt; &gt; <strong>它更像是：先识别今天 UTC 日内哪些时间口袋更容易 continuation，哪些更容易 reversal，再用 15m/5m 去执行。</strong></p>
+<p>这点很重要，能避免把一个本来清楚的小时级 alpha，误做成一团高维噪音。</p>
+<h2>7. 最小可复现实验（第一周就能做）</h2>
+<h3>7.1 实验 1：BTC 小时图谱复刻</h3>
+<p>目的：先验证论文主干在当前交易所数据上是否还活着。</p>
+<ul>
+<li>数据：Binance spot / perp <code>5m</code> K 线聚合成 <code>1h</code></li>
+<li>训练：滚动 <code>90d / 180d</code></li>
+<li>输出：</li>
+</ul>
+<ol>
+<li><code>24×24</code> signed lag map</li>
+<li>正向 pocket 数量 vs 反向 pocket 数量</li>
+<li>每个 pocket 的 OOS hit ratio / post-cost bps</li>
+</ol>
+<p><strong>通过条件：</strong> 至少出现少数稳定 pocket，而不是全图随机翻转。</p>
+<h3>7.2 实验 2：1H 图谱 + 15m 执行</h3>
+<p>目的：确认 short-cycle 可交易性，而不是只剩论文味道。</p>
+<ul>
+<li>对实验 1 中最稳定的 <code>3~5</code> 个 pocket：</li>
+<li>在 target hour 前 <code>15m</code> 或开头 <code>15m</code> 入场</li>
+<li>持有到 target hour 结束</li>
+<li>对照：</li>
+</ul>
+<ol>
+<li>整小时开平</li>
+<li>15m 压缩执行</li>
+<li>不分 pocket、统一做 momentum 的愚蠢基线</li>
+</ol>
+<p><strong>通过条件：</strong> 15m 执行版至少不比整小时版差很多，且明显优于“全时段统一追涨杀跌”。</p>
+<h3>7.3 实验 3：gate 是否真有用</h3>
+<p>目的：把论文里的 regime 发现变成 desk 可落地 veto。</p>
+<p>对实验 2 的最佳版本，分四组：</p>
+<ol>
+<li>无 gate</li>
+<li><code>jump veto</code></li>
+<li><code>FOMC veto</code></li>
+<li><code>jump + FOMC + high-liquidity veto</code></li>
+</ol>
+<p><strong>通过条件：</strong> gate 至少能改善以下一项：</p>
+<ul>
+<li>post-cost Sharpe</li>
+<li>worst day</li>
+<li>hit ratio</li>
+<li>turnover / bps captured</li>
+</ul>
+<h3>7.4 实验 4：跨币稳健性</h3>
+<ul>
+<li>BTC 站住后，再复用同一 hour-pair 学法到 ETH / LTC / XRP</li>
+<li>不要求同一张图谱；反而要看：</li>
+<li>哪些币 continuation pockets 更多</li>
+<li>哪些币 reversal pockets 更多</li>
+</ul>
+<p>这能帮助后续做 <strong>asset-specific intraday map</strong>，而不是全市场统一参数。</p>
+<h2>8. 这轮最关键的“下一步怎么测”</h2>
+<ol>
+<li><strong>先做 BTC <code>1h</code> signed lag map 复刻。</strong></li>
+</ol>
+<ul>
+<li>不要一上来就 96×96；</li>
+<li>先把论文主干复现到当前交易所数据上。</li>
+</ul>
+<ol>
+<li><strong>再做 <code>15m</code> 压缩执行，不要直接把 5m 当 alpha 频率。</strong></li>
+</ol>
+<ul>
+<li><code>5m</code> 优先当 execution layer，不当 discovery layer。</li>
+</ul>
+<ol>
+<li><strong>一定要显式检验“正口袋”和“反口袋”是否都存在。</strong></li>
+</ol>
+<ul>
+<li>如果最后只剩单边 continuation，那说明你把论文最有价值的部分做丢了。</li>
+</ul>
+<ol>
+<li><strong>gate 要后加，别先拿 gate 掩盖 alpha。</strong></li>
+</ol>
+<ul>
+<li>先看 raw alpha 自己能不能活；</li>
+<li>再看 <code>jump / FOMC / liquidity</code> 能不能让它更干净。</li>
+</ul>
+<ol>
+<li><strong>重点看 cost cliff，不要只看 win rate。</strong></li>
+</ol>
+<ul>
+<li>这条线持有短、换手快，成本是第一杀手。</li>
+</ul>
+<h2>9. 风险与保留意见</h2>
+<ul>
+<li><strong>我们拿到的是摘要 + Introduction + section snippets，不是全文表格。</strong></li>
+<li>所以这轮更适合产出一个 <strong>desk 化 hypothesis note</strong>，而不是冒充已完成逐表复刻。</li>
+<li><strong>论文样本止于 2020-05。</strong></li>
+<li>crypto 微结构后来变了很多，所以必须做当下数据再验证。</li>
+<li><strong>小时 pocket 很容易受交易所 / UTC 定义影响。</strong></li>
+<li>不同 venue 的成交活动高峰不同，最好 spot / perp 都做一遍。</li>
+<li><strong>同类信号存在 data-mining 风险。</strong></li>
+<li>这就是为什么第一版必须先做 pocket selection + OOS sign stability，而不是把整张图都拿去交易。</li>
+</ul>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>Wen, Z., Bouri, E., Xu, Y., &amp; Zhao, Y. (2022). _Intraday return predictability in the cryptocurrency markets: Momentum, reversal, or both_. The North American Journal of Economics and Finance, 62, 101733.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1016/j.najef.2022.101733</code></li>
+<li>Readable URL: <code><a href="https://www.sciencedirect.com/science/article/abs/pii/S1062940822000833">https://www.sciencedirect.com/science/article/abs/pii/S1062940822000833</a></code></li>
+<li>DOI URL: <code><a href="https://doi.org/10.1016/j.najef.2022.101733">https://doi.org/10.1016/j.najef.2022.101733</a></code></li>
+</ul>
+<ol>
+<li><strong>Wen, Z., Bouri, E., Xu, Y., &amp; Zhao, Y. (2022). SSRN working-paper entry.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.2139/ssrn.4080253</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.2139/ssrn.4080253">https://doi.org/10.2139/ssrn.4080253</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Spot REST API Docs</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures REST API Docs</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<h2>11. 本轮结论（给后续 replication 排序）</h2>
+<ul>
+<li><strong>一句话结论：</strong> 这篇 2022 论文最值得 desk 拿走的，不是“crypto 日内也有动量/反转”这句空话，而是 <strong><code>UTC hour-pair signed lag map</code> 这条可直接做成完整策略的 raw alpha 主体</strong>。</li>
+<li><strong>主题归类：</strong> <code>raw alpha</code></li>
+<li><strong>优先级：</strong> 中高</li>
+<li><strong>最值得先做的版本：</strong> <code>BTC 1H pocket discovery -&gt; 15m 执行压缩 -&gt; jump/FOMC/liquidity veto</code></li>
+<li><strong>如果第一轮验证失败，最可能的问题：</strong> 不是时间口袋思路错，而是当前 venue / 当前年代下，旧 pocket 已迁移，需要重新学习新的 slot map。</li>
+</ul>
+<h2>12. 本地产物</h2>
+<ul>
+<li><code>research/quant_digests/2026-04-04_0756_signed-hourpair-lagmap-alpha.md</code></li>
+<li>页面 URL（发布后）：<code><a href="https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-04-04_0756_signed-hourpair-lagmap-alpha.html">https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-04-04_0756_signed-hourpair-lagmap-alpha.html</a></code></li>
+</ul>
+</body>
+</html>

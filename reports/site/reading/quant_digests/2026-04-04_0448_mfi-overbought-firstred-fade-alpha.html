@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Binance Futures MFI bot repo 只读成指标脚本：对 short-cycle desk，更该先测的是「6H overbought exhaustion × 15m delayed confirm × fast time-box」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Binance Futures MFI bot repo 只读成指标脚本：对 short-cycle desk，更该先测的是「6H overbought exhaustion × 15m delayed confirm × fast time-box」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 04:50 UTC</span>
+      <span class="pill">研究时间：`2024-01-01` 到 `2026-04-04`</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `mfi_live_trader_8083.py` + `htf_mfi_paper_trader.py` + `liq_zone_trader_8089.py` + `CHANGELOG.md`）+ Binance Futures 公共 `6h` 最小便携性快检</span>
+      <span class="pill">主题标签：raw-alpha / mean-reversion / single-asset / exhaustion-fade / mfi / volume-flow / first-red / delayed-confirm / cooldown / session-filter / binance-futures / top-liquid-universe / 15m / 5m / 3m / 1m / 6h-anchor / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：repo（策略脚本 + 参数演化日志）+ 公共行情最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_0448_mfi-overbought-firstred-fade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 04:48 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>mfi_live_trader_8083.py</code> + <code>htf_mfi_paper_trader.py</code> + <code>liq_zone_trader_8089.py</code> + <code>CHANGELOG.md</code>）+ Binance Futures 公共 <code>6h</code> 最小便携性快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>高位资金流/成交量驱动的过热推进，在连续 3 根 6H 顺势阳线后，常在“第一根转红”阶段出现短促均值回归</strong>；repo 真正能给我们 desk 直接复现的，不是 <code>MFI</code> 这个指标名词本身，而是「<strong>6H overbought exhaustion fade</strong>」这条 raw alpha，再叠 <code>15m delayed confirm / cooldown / HTF alignment</code> 这些过滤与执行层</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / mean-reversion / single-asset / exhaustion-fade / mfi / volume-flow / first-red / delayed-confirm / cooldown / session-filter / binance-futures / top-liquid-universe / 15m / 5m / 3m / 1m / 6h-anchor / repo / public-data / cost / risk</li>
+<li>证据类型：repo（策略脚本 + 参数演化日志）+ 公共行情最小快检</li>
+</ul>
+<p><strong>先回答 base alpha：这篇东西的 base alpha 是清楚的——不是“因为 MFI 很神”，而是“高位连续推进之后，第一根转弱 bar 往往先给出一段短促回吐”。所以它配当本轮主 digest。<code>MFI / 1D confluence / 24H cooldown / bull-bear regime switch</code> 都是围绕这条 raw alpha 服务的 filter、确认或仓控层。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看的是一个 2026 年的 GitHub repo：</p>
+<ol>
+<li><strong>Pavan Raheja (2026), _crypto-trading-bots_</strong></li>
+</ol>
+<ul>
+<li>Venue：GitHub repository</li>
+<li>Author：<code>pavanraheja</code>（GitHub owner）</li>
+<li>Repo URL：&lt;<a href="https://github.com/pavanraheja/crypto-trading-bots&gt;">https://github.com/pavanraheja/crypto-trading-bots&gt;</a></li>
+<li>README：&lt;<a href="https://github.com/pavanraheja/crypto-trading-bots/blob/main/README.md&gt;">https://github.com/pavanraheja/crypto-trading-bots/blob/main/README.md&gt;</a></li>
+<li>本轮重点读的文件：</li>
+<li><code>mfi_live_trader_8083.py</code></li>
+<li><code>htf_mfi_paper_trader.py</code></li>
+<li><code>liq_zone_trader_8089.py</code></li>
+<li><code>CHANGELOG.md</code></li>
+</ul>
+<ol>
+<li>这份 repo 不是单一脚本，而是一个围绕 <strong>MFI exhaustion / reversal</strong> 演化出来的小策略簇：</li>
+</ol>
+<ul>
+<li><code>8083</code>：<strong>6H overbought → 3 green → first red → SHORT</strong> 的 live trader；</li>
+<li><code>8085</code>：更偏 <strong>direction-filter + 1M MFI pullback entry</strong> 的高周期对齐版；</li>
+<li><code>8089</code>：把 <strong>BTC 6H MFI reversal</strong> 当主触发，再映射到 alt basket 的 zone follower。</li>
+</ul>
+<ol>
+<li>这轮真正值得 intake 的，不是“把所有脚本都抄下来”，而是把 repo 反翻译成 desk 可用的那条主线：</li>
+</ol>
+<ul>
+<li><strong>raw alpha</strong>：过热推进后的 first-red exhaustion fade；</li>
+<li><strong>execution / filter</strong>：15 分钟延迟确认、MFI decay guard、daily confluence、loser cooldown、session 限制；</li>
+<li><strong>扩展空间</strong>：可继续拆成 regime-specific universe、side-specific symbol selection、fast time-box exit。</li>
+</ul>
+<h2>2. 这条 raw alpha 的人话版：不是“指标神奇”，而是“高位连续推进后的第一脚松动”</h2>
+<p>如果只看 repo 名字，你很容易把它误读成：</p>
+<p>&gt; “又一个拿 MFI &gt; 80 / &lt; 20 乱触发的 retail bot。”</p>
+<p>但把代码顺下来后，真正的交易假设其实更具体：</p>
+<ol>
+<li>市场先出现 <strong>持续的高位推进</strong>；</li>
+<li>这个推进不是单根 spike，而是 <strong>至少 3 根 6H 连续顺势 bar</strong>；</li>
+<li>然后当前 6H bar 开始 <strong>由强转弱</strong>（第一根转红）；</li>
+<li>在转弱的早段而不是后半段进场，吃的是 <strong>短促回吐 / 均值回归</strong>，不是长持看大崩。</li>
+</ol>
+<p>所以它本质上更像：</p>
+<p>&gt; <strong>impulse exhaustion → early fade</strong></p>
+<p>这很适合当前 desk，因为它不是纯解释型主题，而是可以直接落成 <code>entry / expiry / stop / cooldown / session / symbol ranking</code> 的完整单币 raw alpha 壳。</p>
+<h2>3. 代码里最值钱的那条完整策略壳</h2>
+<h3>3.1 Universe 不是单币拍脑袋，而是全市场扫描</h3>
+<p><code>README.md</code> 和 <code>mfi_live_trader_8083.py</code> 给的 baseline 很清楚：</p>
+<ul>
+<li>Venue：<strong>Binance USDⓈ-M Futures</strong></li>
+<li>Universe：约 <strong>211 个</strong> Binance futures pairs</li>
+<li>流动性门槛：<code>MIN_VOLUME_USDT = 5_000_000</code></li>
+<li>扫描周期：每 <code>30</code> 分钟做一次 overbought / oversold scan</li>
+<li>最大并发：<code>MAX_CONCURRENT = 6</code></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>这不是“BTC 专用故事”，而是一个 <strong>全宇宙找过热币，再等 first-red</strong> 的横截面 single-asset mean-reversion 壳；</li>
+<li>但 repo 后面的演化也说明：<strong>广谱 universes 不等于广谱有效</strong>，后面还得做 symbol admission。</li>
+</ul>
+<h3>3.2 真正的 raw signal：6H overbought + 三连阳 + 第一根转红</h3>
+<p><code>mfi_live_trader_8083.py</code> 的核心信号定义非常明确：</p>
+<ul>
+<li><code>MFI_OB = 80</code></li>
+<li><code>MIN_GREENS = 3</code></li>
+<li>先在最近 3 根已完成 <code>6H</code> bar 里找 <code>MFI &gt; 80</code> 的 overbought；</li>
+<li>再要求最近 3 根已完成 <code>6H</code> bar 全部为 green；</li>
+<li>当前 live <code>6H</code> bar 转成 red 时 arm signal；</li>
+<li>等待 <code>ENTRY_CONFIRM_MIN = 15</code> 分钟后检查是否入场；</li>
+<li>超过 <code>ENTRY_EXPIRE_MIN = 180</code> 分钟则 signal 失效。</li>
+</ul>
+<p>这是这篇 digest 最该记住的一句：</p>
+<p>&gt; <strong>repo 不是在做“见 overbought 就空”，而是在做“连续推进后的第一根转弱 bar 的早段 fade”。</strong></p>
+<h3>3.3 不是立刻冲进去，而是做 delayed confirm</h3>
+<p>repo 很聪明的一点，是它没有在 first-red 一出现就硬开仓，而是加了一段 <strong>延迟确认窗口</strong>：</p>
+<ul>
+<li>armed 之后先等 <code>15</code> 分钟；</li>
+<li>但必须在 <code>3</code> 小时内完成入场，否则不追；</li>
+<li>live MFI 不能太低（<code>MFI_MIN_ENTRY = 75</code>），否则说明信号已经衰减过头；</li>
+<li>live MFI 也不能太高（<code>MFI_MAX_ENTRY = 85</code>），否则说明热度还没松；</li>
+<li>若从 signal 到 entry 的 MFI 衰减超过 <code>8</code> 点，则取消；</li>
+<li><code>recently_ob</code> 的边缘信号，要求 entry MFI 至少 <code>77</code>。</li>
+</ul>
+<p>这套 delayed confirm 其实非常 desk-friendly，因为它直接回答了 short-cycle 最痛的一个问题：</p>
+<p>&gt; <strong>不是“有没有反转”，而是“你会不会在最烂的位置才进去”。</strong></p>
+<h3>3.4 风控壳不是花哨，而是相当完整</h3>
+<p><code>8083</code> 里的 execution / risk shell 已经很完整：</p>
+<ul>
+<li><code>ATR_SL_MULT = 1.5</code>，并对 stop distance 加 <code>8%</code> 硬上限；</li>
+<li>初始 take profit 先按 <code>2:1 RR</code> 定义；</li>
+<li>中途 <code>50%</code> partial close at <code>1:1 RR</code>；</li>
+<li>剩余头寸用 ATR trailing 管理；</li>
+<li>亏损后同币 <code>24H cooldown</code>；</li>
+<li>session 有明确时间限制；</li>
+<li>并发头寸上限固定。</li>
+</ul>
+<p>所以它不是“只有 entry，没有完整交易壳”的半成品，而是一个可直接映射到我们 <code>1m / 3m / 5m / 15m</code> 研究栈里的完整 raw-alpha candidate。</p>
+<h2>4. repo 自己的演化日志，反而暴露了这条 alpha 真正在哪里</h2>
+<p><code>CHANGELOG.md</code> 很有价值，因为它不是只说“我觉得有效”，而是把策略迭代写成了数据驱动日志。几个最重要的数据点：</p>
+<ol>
+<li><strong>entry MFI 区间明显不对称</strong></li>
+<p>2026-04-01 的记录写得很直白：</p>
+</ol>
+<ul>
+<li><code>80–85</code> 区间胜率约 <strong>67%</strong>；</li>
+<li><code>85–90</code> 区间胜率约 <strong>22%</strong>；</li>
+<li><code>90–95</code> / <code>95–99+</code> 更差，接近 <strong>0–25%</strong>。</li>
+<p>这说明：<strong>太热的时候别急着 fade，edge 反而更差。</strong></p>
+</ul>
+<ol>
+<li><strong>24H loser cooldown 是从实战亏损里逼出来的</strong></li>
+<p>changelog 里提到同一币种无 cooldown 重复进场，曾把单币亏损从 <code>-1.08%</code> 扩成 <code>-9.16%</code>。 这类 raw alpha 最大的风险之一就是：<strong>第一脚没结束时，你会不断把“继续趋势”误判成“第二次反转”。</strong></p>
+</ol>
+<ol>
+<li><strong>SL 不是越紧越好</strong></li>
+<p><code>8085</code> 的 paired-signal A/B 里，<code>SL-1.5%</code> 比 <code>SL-1.0%</code> 更优：</p>
+</ol>
+<ul>
+<li><code>SL-1.5%</code>：净值 <code>+6.6%</code>，WR <code>80%</code>，PF <code>6.40</code></li>
+<li><code>SL-1.0%</code>：净值 <code>+4.0%</code>，WR <code>60%</code>，PF <code>2.20</code></li>
+<p>说明这类 fade 不是纯 knife-catch，而是经常先被 wick 再回落；<strong>stop 太紧，反而会被洗掉。</strong></p>
+</ul>
+<p>这三个点拼起来，给 desk 的启发非常明确：</p>
+<ul>
+<li>alpha 本体成立的位置，是 <strong>“刚开始松动，但没完全衰竭”</strong>；</li>
+<li>一旦太极端、太后手、太重复，edge 会迅速崩；</li>
+<li>所以真正可迁移的东西不是 MFI 数值，而是 <strong>delayed confirm + anti-chasing + anti-reentry</strong> 这套壳。</li>
+</ul>
+<h2>5. 我们自己做的最小便携性快检：这条 edge 更像“快回吐”，不像“长持空单”</h2>
+<p>为了避免只照单全收 repo 自报成绩，我额外用 <strong>Binance Futures 公共 6H K 线</strong> 做了一个最小快检（artifact 已落盘）：</p>
+<ul>
+<li>数据源：Binance USDⓈ-M Futures 公共 <code>klines</code></li>
+<li>标的：<code>BTC / ETH / SOL / XRP / DOGE / ADA / DOT / AVAX / BNB / LINK</code></li>
+<li>时间：<code>2024-01-01</code> 到 <code>2026-04-04</code></li>
+<li>代理信号：</li>
+<li>最近 3 根 <code>6H</code> 已完成 bar 连续 green；</li>
+<li>当前 bar red；</li>
+<li>前 3 根 bar 的 <code>MFI peak &gt; 80</code>；</li>
+<li>这是 <strong>closed-bar proxy</strong>，不是 repo 的原样 intrabar 15m 执行，所以只能当 portability sanity check，不当正式复刻结果。</li>
+</ul>
+<h3>5.1 全样本：6–12 小时有一点回吐，但 24 小时明显失真</h3>
+<p>在 <code>10</code> 个主流 perp 上共抓到 <code>233</code> 个 proxy signals：</p>
+<ul>
+<li>下一个 <code>6H</code> 平均收益：<code>-6.35 bps</code>（做空视角是正）</li>
+<li>下两个 <code>6H</code>（约 <code>12H</code>）平均收益：<code>-11.12 bps</code></li>
+<li>下四个 <code>6H</code>（约 <code>24H</code>）平均收益：<code>+120.45 bps</code></li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>这条 edge 更像“先回吐一小段”，不是“抱着空单等大波段”。</strong></p>
+<p>也就是说，如果你把它误做成 swing short，很可能把短促 alpha 持成趋势反向暴露。</p>
+<h3>5.2 edge 主要集中在少数币，不适合无脑全市场平权</h3>
+<p>在这组 proxy 里，最像样的名字其实集中在少数 alt：</p>
+<ul>
+<li><code>ADA</code>：<code>26</code> 个信号，后 <code>12H</code> 平均 <code>-140.00 bps</code>，负收益占比 <code>69.2%</code></li>
+<li><code>SOL</code>：<code>22</code> 个信号，后 <code>12H</code> 平均 <code>-105.47 bps</code>，负收益占比 <code>63.6%</code></li>
+<li><code>BTC</code>：<code>30</code> 个信号，后 <code>12H</code> 平均 <code>-21.48 bps</code></li>
+</ul>
+<p>但也有明显失败样本：</p>
+<ul>
+<li><code>ETH</code>：后 <code>12H</code> 平均 <code>+57.85 bps</code></li>
+<li><code>DOGE</code>：后 <code>24H</code> 平均 <code>+452.37 bps</code></li>
+</ul>
+<p>所以更合理的 desk 读法不是“这是全宇宙通杀 MFI 空头系统”，而是：</p>
+<p>&gt; <strong>这是一条需要 symbol ranking / universe admission 的 raw alpha。</strong></p>
+<h3>5.3 极端过热（90+）反而最不该硬 fade</h3>
+<p>我额外把 <code>MFI peak</code> 做了粗分桶：</p>
+<ul>
+<li><code>80–85</code>：<code>109</code> 个信号，后 <code>12H</code> 平均 <code>-2.88 bps</code></li>
+<li><code>85–90</code>：<code>67</code> 个信号，后 <code>12H</code> 平均 <code>-58.51 bps</code></li>
+<li><code>90+</code>：<code>53</code> 个信号，后 <code>12H</code> 平均 <code>+32.50 bps</code>，后 <code>24H</code> 平均 <code>+338.82 bps</code></li>
+</ul>
+<p>这和 repo changelog 的经验是同向的：</p>
+<ul>
+<li><strong>太热的时候不是更好空，而是更容易继续被顶着走。</strong></li>
+</ul>
+<p>只是要注意：</p>
+<ul>
+<li>repo 用的是 <strong>entry 时 live MFI</strong>；</li>
+<li>我这边做的是 <strong>closed-bar peak MFI proxy</strong>；</li>
+<li>所以不能拿数值一一对应，但大方向是一致的。</li>
+</ul>
+<h2>6. 这条策略最适合当前 desk 的地方：它直接补的是“single-asset exhaustion fade”素材池</h2>
+<p>这轮为什么值得写，而不是继续围着旧 breakout / retest 打转？因为它补的是当前很缺的一条独立 raw alpha：</p>
+<ul>
+<li>家族：<code>single-asset mean reversion / exhaustion fade</code></li>
+<li>不是 pairs、不是 maker、不是 prediction market cross-map</li>
+<li>而且天然能接入 <code>1m / 3m / 5m / 15m</code> execution 层</li>
+</ul>
+<p>更重要的是，它把策略拆成了很适合 desk 迭代的模块：</p>
+<ul>
+<li><strong>base alpha</strong>：6H first-red exhaustion fade</li>
+<li><strong>signal timing</strong>：15m delayed confirm</li>
+<li><strong>anti-chase</strong>：MFI decay guard / max-entry cap</li>
+<li><strong>risk</strong>：ATR stop / partial / trail</li>
+<li><strong>portfolio hygiene</strong>：24H loser cooldown / max concurrent</li>
+<li><strong>regime extension</strong>：side-specific universe（<code>8085</code> 的 <code>BULL_MODE / BEAR_MODE</code>）</li>
+</ul>
+<p>这意味着它不是“只能拿来做一篇说明文”的主题，而是能继续分解成多轮实证：</p>
+<ul>
+<li>哪些币有效？</li>
+<li>哪个 time-box 最好？</li>
+<li>cooldown 值不值？</li>
+<li>delayed confirm 究竟减少了多少坏 trade？</li>
+</ul>
+<h2>7. desk 版不该照抄 repo，而该这样翻译</h2>
+<h3>7.1 我会怎么落成 short-cycle 版 baseline</h3>
+<p>如果把它翻译成更贴近我们 desk 的首轮 baseline，我会建议：</p>
+<ul>
+<li><strong>Universe</strong>：先做 <code>8~12</code> 个最液态 perp，不要一上来全市场扫</li>
+<li><strong>Anchor timeframe</strong>：<code>6H</code></li>
+<li><strong>Execution timeframe</strong>：<code>15m</code>（必要时下钻 <code>5m</code>）</li>
+<li><strong>Signal</strong>：</li>
+<li>最近 3 根已完成 <code>6H</code> 为 green</li>
+<li>最近 3 根 <code>6H</code> 内出现 <code>MFI peak &gt; 80</code></li>
+<li>当前 <code>6H</code> bar 开始转红</li>
+<li><strong>Entry</strong>：</li>
+<li>信号出现后延迟 <code>15m</code></li>
+<li>只在前 <code>15~180m</code> 内允许进场</li>
+<li>若 <code>15m</code> 已出现明显 V 型收回或 intrabar MFI 衰减过头，则取消</li>
+<li><strong>Exit</strong>：</li>
+<li>baseline 先用 <code>1.25~1.75 × 6H ATR</code> stop</li>
+<li>先平 <code>50%</code> 在 <code>1R</code></li>
+<li>剩余部分二选一：<code>12H time-box</code> 或轻 trailing</li>
+<li><strong>Portfolio rules</strong>：</li>
+<li>loser cooldown</li>
+<li>same-coin no reentry</li>
+<li>max concurrent cap</li>
+</ul>
+<h3>7.2 当前最值得 desk 主动改的，不是 entry，而是 exit time-box</h3>
+<p>repo 原始 live 版本更偏 RR + trailing，但我这轮最小快检给了一个很清楚的提醒：</p>
+<p>&gt; <strong>如果 alpha 主要集中在 6–12 小时的快回吐，那 exit 设计比 entry 微调更重要。</strong></p>
+<p>所以对 desk，最值得优先测的不是再把 <code>MFI_MIN_ENTRY 75/76/77</code> 无限打磨，而是：</p>
+<ol>
+<li><code>6H flat</code></li>
+<li><code>12H flat</code></li>
+<li><code>1R partial + 12H hard stop</code></li>
+<li><code>repo-style trail</code></li>
+</ol>
+<p>谁最能保住短促回吐，谁才是这条 alpha 真正的 executable shell。</p>
+<h2>8. 下一步怎么测</h2>
+<h3>第一步：先做一版“近源码”的 15m 执行复刻</h3>
+<p>最小实验建议：</p>
+<ul>
+<li>标的：<code>BTC / SOL / ADA / DOT / SUI / BNB / LINK / AVAX</code></li>
+<li>数据：Binance Futures 公共 <code>15m + 6H</code></li>
+<li>核心：</li>
+<li><code>6H</code> 负责产生 overbought-first-red signal</li>
+<li><code>15m</code> 负责 delayed confirm 和实际入场</li>
+<li>先只测 SHORT 版，不要急着做 long symmetry</li>
+</ul>
+<p>目标：回答 <strong>repo 的 delayed confirm 壳，放到我们自己的数据栈里后还剩多少 edge</strong>。</p>
+<h3>第二步：专门做 exit shell A/B</h3>
+<p>固定 entry，不动 signal，只比较：</p>
+<ul>
+<li><code>12H flat</code></li>
+<li><code>1R partial + 12H flat</code></li>
+<li><code>repo trail</code></li>
+<li><code>24H hold</code></li>
+</ul>
+<p>如果 <code>24H hold</code> 明显最差，那就说明这条 alpha 的正确读法确实是 <strong>fast time-box mean reversion</strong>，而不是 swing fade。</p>
+<h3>第三步：做 symbol ranking，而不是默认平权</h3>
+<p>按近 <code>90d / 180d</code> 条件 edge 给币排序：</p>
+<ul>
+<li>signal count</li>
+<li>后 <code>6H / 12H</code> 平均回吐</li>
+<li>adverse excursion</li>
+<li>cooldown 后 reentry loss clustering</li>
+</ul>
+<p>若排名稳定，再决定是否：</p>
+<ul>
+<li>固定白名单；</li>
+<li>或改成 rolling top-N symbol admission。</li>
+</ul>
+<h2>9. 资料与数据源</h2>
+<h3>9.1 Repo / code sources</h3>
+<ol>
+<li><strong>Pavan Raheja (2026), _crypto-trading-bots_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL：&lt;<a href="https://github.com/pavanraheja/crypto-trading-bots&gt;">https://github.com/pavanraheja/crypto-trading-bots&gt;</a></li>
+</ul>
+<ol>
+<li><strong>README.md</strong></li>
+</ol>
+<ul>
+<li>Readable URL：&lt;<a href="https://github.com/pavanraheja/crypto-trading-bots/blob/main/README.md&gt;">https://github.com/pavanraheja/crypto-trading-bots/blob/main/README.md&gt;</a></li>
+</ul>
+<ol>
+<li><strong><code>mfi_live_trader_8083.py</code></strong></li>
+</ol>
+<ul>
+<li>Raw URL：&lt;<a href="https://raw.githubusercontent.com/pavanraheja/crypto-trading-bots/main/mfi_live_trader_8083.py&gt;">https://raw.githubusercontent.com/pavanraheja/crypto-trading-bots/main/mfi_live_trader_8083.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong><code>htf_mfi_paper_trader.py</code></strong></li>
+</ol>
+<ul>
+<li>Raw URL：&lt;<a href="https://raw.githubusercontent.com/pavanraheja/crypto-trading-bots/main/htf_mfi_paper_trader.py&gt;">https://raw.githubusercontent.com/pavanraheja/crypto-trading-bots/main/htf_mfi_paper_trader.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong><code>liq_zone_trader_8089.py</code></strong></li>
+</ol>
+<ul>
+<li>Raw URL：&lt;<a href="https://raw.githubusercontent.com/pavanraheja/crypto-trading-bots/main/liq_zone_trader_8089.py&gt;">https://raw.githubusercontent.com/pavanraheja/crypto-trading-bots/main/liq_zone_trader_8089.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong><code>CHANGELOG.md</code></strong></li>
+</ol>
+<ul>
+<li>Raw URL：&lt;<a href="https://raw.githubusercontent.com/pavanraheja/crypto-trading-bots/main/CHANGELOG.md&gt;">https://raw.githubusercontent.com/pavanraheja/crypto-trading-bots/main/CHANGELOG.md&gt;</a></li>
+</ul>
+<h3>9.2 公开数据口径</h3>
+<ul>
+<li>数据源：<strong>Binance USDⓈ-M Futures 公共 klines API</strong></li>
+<li>公开性：公开可得，无需私有 key 即可复核基础 K 线</li>
+<li>更新频率：按交易所 bar 频率实时滚动（本轮最小实验用 <code>6H</code>，下一步建议加 <code>15m</code> 执行层）</li>
+<li>本轮快检 artifact：</li>
+<li><code>reports/artifacts/quant_digests/mfi_overbought_exhaustion_20260404/symbol_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/mfi_overbought_exhaustion_20260404/mfi_peak_buckets.csv</code></li>
+<li><code>reports/artifacts/quant_digests/mfi_overbought_exhaustion_20260404/signal_sample.csv</code></li>
+</ul>
+<h2>10. 一句话结论</h2>
+<p>这份 repo 值得 intake 的地方，不是“又一个 MFI bot”，而是它把 <strong>6H overbought exhaustion fade</strong> 这条 single-asset raw alpha，包成了一个已经有 <strong>delayed confirm / anti-chase / cooldown / ATR risk shell</strong> 的完整候选；而我这轮最小快检进一步提示：<strong>这条 edge 更像 6–12 小时的快回吐，不像 24 小时以上的长持空单。</strong></p>
+</body>
+</html>

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2021 market-neutral repo 只读成“老式 pairs 教程”：对 short-cycle desk，更该先测的是「EMA-band ratio spread × corr/vol gate × 双腿对冲执行」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2021 market-neutral repo 只读成“老式 pairs 教程”：对 short-cycle desk，更该先测的是「EMA-band ratio spread × corr/vol gate × 双腿对冲执行」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-07 12:14 UTC</span>
+      <span class="pill">研究时间：2026-04-07 12:06 UTC</span>
+      <span class="pill">类型：GitHub repo source audit（`README.md` + `main_me.py` + `strategy2.py` + `strategy4.py` + `executor.py` + `broker.py`）</span>
+      <span class="pill">主题标签：raw-alpha / pairs / stat-arb / relative-value / mean-reversion / ratio-spread / corr-gate / volatility-gate / binance-futures / 15m / repo / execution / risk</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-07_1206_ratio-band-corrvol-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-07 12:06 UTC</li>
+<li>类型：GitHub repo source audit（<code>README.md</code> + <code>main_me.py</code> + <code>strategy2.py</code> + <code>strategy4.py</code> + <code>executor.py</code> + <code>broker.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一交易时钟下，两资产价格比值（<code>asset1/asset2</code>）偏离其 EMA 中枢后，存在回归；通过相关性与波动门槛过滤，再用多空对冲腿吃回归段。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / pairs / stat-arb / relative-value / mean-reversion / ratio-spread / corr-gate / volatility-gate / binance-futures / 15m / repo / execution / risk</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Dzenan Hamzic (2021)</strong> 的 GitHub 仓库 <strong><code>dzenanh/crypto-derivative-trading-engine</code></strong>。虽然仓库较早，但它不是“只给信号公式”的半成品，而是把可交易链条写全了：</p>
+<ul>
+<li><code>strategy2.py</code> / <code>strategy4.py</code>：信号定义（ratio spread + band + gate）</li>
+<li><code>executor.py</code>：按周期取 K 线、更新信号并路由到执行</li>
+<li><code>broker.py</code>：双腿开平仓、仓位切换、杠杆/数量处理、资金划转</li>
+</ul>
+<p>其中最适合当前 desk 直接 intake 的，不是泛化“market-neutral”口号，而是 <code>strategy2.py</code> 这条更具体的 raw alpha 壳。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 真正可复用的核心是“<strong>ratio spread 回归本体 + corr/vol 双门槛 + 双腿切换执行</strong>”，而不是单纯 Bollinger 带穿越。</li>
+<li><strong>一句话证明方式：</strong> 证据来自源码级闭环：<code>strategy2.py</code> 明确定义 entry/exit；<code>main_me.py</code> 给出默认资金参数；<code>executor.py</code> 固定取 <code>15m</code>、<code>7d</code>、<code>80 bars</code>；<code>broker.py</code> 明确双腿下单与翻仓路径。</li>
+<li><code>strategy2</code> 的参数是可直接抄到 first verdict 的：<code>std=1.1</code>、<code>ma_length=60</code>、<code>std_length=80</code>、<code>roll_correlation_len=30</code>、<code>corr_coef=0.8</code>、<code>volatility=0.001</code>。</li>
+<li>入场不是裸带宽：</li>
+<li>long spread：<code>spread &lt; lower_band</code> 且 <code>corr &gt; 0.8</code> 且 <code>volatility &gt; 0.001</code></li>
+<li>short spread：<code>spread &gt; upper_band</code> 且 <code>corr &gt; 0.8</code> 且 <code>volatility &gt; 0.001</code></li>
+<li>出场也清晰：都回到 <code>middle_band</code>（中轨）即平仓。</li>
+<li>默认标的是 <code>RSRUSDT / SXPUSDT</code>，周期是 <code>Client.KLINE_INTERVAL_15MINUTE</code>；<code>main_me.py</code> 默认 <code>moneyAmount=20</code>（每策略资金参数），<code>trade_mode=&quot;DRYRUN&quot;</code>。</li>
+<li>执行层不是“只打印信号”：<code>broker.py</code> 里双腿切换是显式的（<code>1 -&gt; 0 -&gt; -1</code> 或反向），并做 <code>moneyAmount/2</code> 分腿；下单前用 <code>mark price</code> 算数量并乘 <code>0.995</code> 留安全边际，默认 <code>leverage=1</code>、<code>CROSS</code>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和当前 <code>momentum</code> 主线高度相关，原因是它补的是 <strong>可直接复现的 pairs/stat-arb 原料</strong>，而不是再做解释型综述：</p>
+<ol>
+<li><strong>base alpha 清晰</strong>：ratio spread 回归（raw alpha），不是 filter 伪装。</li>
+<li><strong>短周期兼容</strong>：默认 <code>15m</code>，可自然压缩到 <code>5m/3m</code>。</li>
+<li><strong>可落地完整策略</strong>：entry / exit / sizing / execution / risk 都已有代码骨架。</li>
+<li><strong>适合做“快验证”</strong>：参数量有限，先跑 first verdict 再谈复杂配对筛选。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative value / pairs / mean reversion</li>
+<li>基础 alpha：<code>asset1/asset2</code> ratio spread 偏离中枢后回归</li>
+<li>regime：相关性仍有效且 spread 波动未塌陷的时段</li>
+<li>filter / veto：<code>corr &gt; 0.8</code> + <code>spread volatility &gt; 0.001</code>（strategy2）</li>
+<li>risk / sizing / execution overlay：双腿对冲、分腿资金（<code>moneyAmount/2</code>）、翻仓前先平、数量按标记价+精度取整、<code>0.995</code> 安全折减</li>
+</ul>
+<h2>4. 可复刻的最小实验（下一步怎么测）</h2>
+<p><strong>研究假设：</strong> <code>strategy2</code> 的 “ratio band + corr/vol gate” 在 crypto <code>15m</code> 上可形成成本前可见的 spread 回归 edge，并可部分迁移到 <code>5m</code>。</p>
+<p><strong>最小实验口径（公开数据可做）：</strong></p>
+<ul>
+<li>标的：先复现 repo 默认 <code>RSRUSDT/SXPUSDT</code>，再扩到 5~10 组高流动性候选 pair</li>
+<li>周期：<code>15m</code>（主）+ <code>5m</code>（迁移）</li>
+<li>信号：严格按源码参数（<code>1.1σ</code>、<code>60/80</code>、<code>corr 30</code>、<code>corr&gt;0.8</code>、<code>vol&gt;0.001</code>）</li>
+<li>执行：按 bar close 触发、下一根开盘成交（先做保守 fill）</li>
+<li>成本：先 8/12/20 bps 三档 friction ladder</li>
+</ul>
+<p><strong>先看 3 个指标：</strong></p>
+<ol>
+<li>post-cost spread return（成本后）</li>
+<li>trade count &amp; holding bars（机会是否够）</li>
+<li>leg imbalance / flip loss（翻仓损耗是否吞噬 edge）</li>
+</ol>
+<p>若 <code>15m</code> 成立、<code>5m</code> 退化明显，则下一步只把 <code>5m</code> 当触发层，把 <code>15m</code> 保留为 direction gate。</p>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>仓库年份较早（2021），参数可能贴合当期市场微结构，<strong>不能直接假设今天仍稳健</strong>。</li>
+<li>默认 pair（<code>RSR/SXP</code>）存在流动性/结构变化风险，必须做 rolling pair admission。</li>
+<li>源码里未见完整手续费/滑点建模细节（主要是执行数量安全折减），所以 first verdict 一定要先补 friction ladder。</li>
+<li>相关性门槛是静态阈值（<code>0.8</code>），容易在 regime 切换时过严/过松，后续可做分位阈值替代。</li>
+</ul>
+<p>&gt; <strong>最值得复用/复现的点：</strong> 不是某个“神阈值”，而是“raw alpha（ratio MR）+ gate（corr/vol）+ 双腿执行”的完整拆解方式。</p>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Hamzic, D. (2021). _crypto-derivative-trading-engine_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue：GitHub</li>
+<li>DOI：N/A</li>
+<li>Readable URL：<code><a href="https://github.com/dzenanh/crypto-derivative-trading-engine">https://github.com/dzenanh/crypto-derivative-trading-engine</a></code></li>
+<li>Repo URL：<code><a href="https://github.com/dzenanh/crypto-derivative-trading-engine">https://github.com/dzenanh/crypto-derivative-trading-engine</a></code></li>
+<li>最近提交（本地 clone）：<code>11299d3</code>（2021-06-01）</li>
+</ul>
+<ol>
+<li><strong>关键源码（raw）</strong></li>
+</ol>
+<ul>
+<li><code>strategy2.py</code>：<code><a href="https://raw.githubusercontent.com/dzenanh/crypto-derivative-trading-engine/main/diversifly/components/products/strategies/strategy2.py">https://raw.githubusercontent.com/dzenanh/crypto-derivative-trading-engine/main/diversifly/components/products/strategies/strategy2.py</a></code></li>
+<li><code>strategy4.py</code>：<code><a href="https://raw.githubusercontent.com/dzenanh/crypto-derivative-trading-engine/main/diversifly/components/products/strategies/strategy4.py">https://raw.githubusercontent.com/dzenanh/crypto-derivative-trading-engine/main/diversifly/components/products/strategies/strategy4.py</a></code></li>
+<li><code>main_me.py</code>：<code><a href="https://raw.githubusercontent.com/dzenanh/crypto-derivative-trading-engine/main/main_me.py">https://raw.githubusercontent.com/dzenanh/crypto-derivative-trading-engine/main/main_me.py</a></code></li>
+<li><code>executor.py</code>：<code><a href="https://raw.githubusercontent.com/dzenanh/crypto-derivative-trading-engine/main/diversifly/components/core/executor.py">https://raw.githubusercontent.com/dzenanh/crypto-derivative-trading-engine/main/diversifly/components/core/executor.py</a></code></li>
+<li><code>broker.py</code>：<code><a href="https://raw.githubusercontent.com/dzenanh/crypto-derivative-trading-engine/main/diversifly/components/core/broker.py">https://raw.githubusercontent.com/dzenanh/crypto-derivative-trading-engine/main/diversifly/components/core/broker.py</a></code></li>
+</ul>
+</body>
+</html>

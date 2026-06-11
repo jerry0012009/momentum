@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 funding-rate-arb 仓只读成“又一个慢速收租回测”：对 short-cycle crypto desk，更该先拆的是「8h positive funding carry × 15m child execution」这条 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 funding-rate-arb 仓只读成“又一个慢速收租回测”：对 short-cycle crypto desk，更该先拆的是「8h positive funding carry × 15m child execution」这条 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-19 22:30 UTC</span>
+      <span class="pill">研究时间：2026-04-19 22:40 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `src/backtest.py` + `src/basis_trade.py` + `results/backtest_default_metrics.csv` + `results/basis_vs_funding_summary.csv`）+ Binance USDⓈ-M recent funding-history portability probe（`BTC/ETH`）</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/basis/relative-value/stat-arb/delta-neutral/binance/8h/15m/5m/child-execution/repo/public-data/cost/risk/regime</span>
+      <span class="pill">证据类型：仓库源码规则 + 仓库结果表 + Binance 公共 funding 最小探针</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-19_2240_fundingcarry-regimeaware-childexec-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-19 22:40 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>src/backtest.py</code> + <code>src/basis_trade.py</code> + <code>results/backtest_default_metrics.csv</code> + <code>results/basis_vs_funding_summary.csv</code>）+ Binance USDⓈ-M recent funding-history portability probe（<code>BTC/ETH</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当 perp funding 显著为正时做 <code>long spot / short perp</code> 收 carry，直到 funding 回落到退出阈值；<code>15m/5m</code> 只负责更省成本地执行双腿，不负责发明 alpha 本体</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/carry/funding/basis/relative-value/stat-arb/delta-neutral/binance/8h/15m/5m/child-execution/repo/public-data/cost/risk/regime</li>
+<li>证据类型：仓库源码规则 + 仓库结果表 + Binance 公共 funding 最小探针</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这条线的 base alpha 很清楚，就是 delta-neutral funding carry，本体是 raw alpha，不是 filter。</strong></p>
+<p>主材料是 GitHub 仓库 <strong><code>zwmjj/funding-rate-arb</code></strong>。它不是“预测涨跌”的方向策略，而是一个很干净的 carry 壳：</p>
+<ul>
+<li><code>src/backtest.py</code>：规则写得非常直白——<strong>funding &gt; entry_bps<code> 入场，</code>funding &lt; exit_bps` 出场</strong>；</li>
+<li>PnL 拆成三块：<strong>funding income + basis drift + 双腿交易成本</strong>；</li>
+<li><code>src/basis_trade.py</code>：还顺手把 <strong>dated futures basis</strong> 拿来做对照，避免把 perp funding 当成唯一 carry 载体。</li>
+</ul>
+<p>对我们最有用的，不是“又看到 long spot / short perp”这句话，而是它把问题说得很明确： &gt; <strong>这条 alpha 的关键不是猜价格，而是先确认 funding 本身够不够厚、够不够持久，能不能覆盖双腿实现成本。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话结论：</strong> 这份 repo 最值得 intake 的，是它把 funding carry 明确写成一条 <strong>可独立复现的完整 raw alpha 策略</strong>；但对 short-cycle desk，<code>15m/5m</code> 更应该扮演 <strong>child execution / admission</strong>，而不是把 funding 硬伪装成逐根价格信号。</li>
+<li><strong>一句话证据：</strong> repo 自带结果表显示 <code>2020-2026</code> 的 BTC/ETH carry 在低回撤下仍有年化正收益，但我补的 recent Binance probe 说明 <strong>最近一段时间正 funding 已明显变薄甚至转负</strong>，所以这条线当前更像 <strong>regime-aware raw alpha</strong>，不是无脑常开策略。</li>
+</ul>
+<p>最关键的数据点：</p>
+<ol>
+<li>repo 默认参数 <code>entry = 1 bp / 8h</code>、<code>exit = 0.5 bp / 8h</code>、<code>taker = 4 bps / side / leg</code>；在这套口径下，结果表给出：<strong>BTC 年化约 <code>9.02%</code>、ETH 年化约 <code>11.24%</code>，最大回撤约 <code>-0.34% / -1.80%</code>，胜率约 <code>87.5% / 91.7%</code></strong>。</li>
+<li>repo 还给了 carry 分布：<strong>BTC 平均 funding 约 <code>1.13 bps / 8h</code>，ETH 约 <code>1.34 bps / 8h</code></strong>；对应 funding-implied annual carry 约 <strong><code>12.3% / 14.7%</code></strong>，明显高于它算出来的 <strong>BTC dated-futures mean annual basis <code>4.26%</code></strong>。这说明在它的样本里，<strong>perp funding carry 比 dated basis 更厚</strong>。</li>
+<li>但我用 Binance 公共 recent funding-history 做了轻量快检后，最近约 <code>87</code> 个 funding observations 里：<strong>BTC 平均 funding 约 <code>-0.095 bps / 8h</code>，ETH 约 <code>-0.166 bps / 8h</code></strong>，而且 <strong><code>&gt; 1 bp</code> 的正 funding 事件一个都没有</strong>。这意味着 repo 的默认入场阈值在当前 recent regime 下几乎不触发。</li>
+<li>即便把阈值降到 <code>0.25 bp</code>，recent 样本里 BTC/ETH 也更像“正负 funding 混杂、且最近偏负”的状态，而不是旧样本里那种稳定 contango carry。换句话说：<strong>raw alpha 还在，但 admission gate 必须先看 regime。</strong></li>
+</ol>
+<h2>3. 为什么和当前 desk 直接相关</h2>
+<p>这条线当前值得保留，不是因为它“慢”，而是因为它回答了一个很实际的问题：</p>
+<p>&gt; <strong>如果 alpha 本体不是价格趋势，而是 funding carry，那 <code>1m/3m/5m/15m</code> 应该干什么？</strong></p>
+<p>答案是：</p>
+<ul>
+<li>不负责重新定义 alpha；</li>
+<li>负责 <strong>在 funding 事件窗内更低成本地建双腿 / 平双腿</strong>；</li>
+<li>负责做 <strong>spread-cap admission、分批、再平衡、边界撤退</strong>；</li>
+<li>负责避免把一个 8h 慢变量，做成高频手续费机器。</li>
+</ul>
+<p>所以这条线和当前 short-cycle desk 的关系很直接： <strong>它不是 <code>15m</code> 主信号，但非常适合成为 <code>15m signal monitor + 5m child execution</code> 的完整 carry sleeve。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative-value / carry / delta-neutral / market-neutral</li>
+<li>基础 alpha：当 perp funding 显著为正时，做 <code>long spot / short perp</code> 收 funding；当 funding 回落到退出阈值以下时离场</li>
+<li>regime：更适合持续 contango、正 funding 占优、且 funding 不只是单次 spike 的阶段</li>
+<li>filter / veto：</li>
+<li>funding 没有持续性时不做；</li>
+<li>双腿价差 / 冲击成本过高不做；</li>
+<li>若 recent funding 均值已接近零或转负，应把该币种降级到观察名单</li>
+<li>risk / sizing / execution overlay：</li>
+<li>repo 口径下以双腿 taker 成本显式计费；</li>
+<li>可加 <code>max hold periods</code>，避免长期占用资金；</li>
+<li>short-cycle 版本应补 <code>15m spread cap</code>、<code>5m child slicing</code>、再平衡阈值和 inventory 管理</li>
+</ul>
+<h2>4. 本地最小快检（公开可得数据）</h2>
+<h3>4.1 数据源、公开性、更新频率、实验口径</h3>
+<ul>
+<li>数据源 A：GitHub 公开仓 <code>zwmjj/funding-rate-arb</code></li>
+<li>数据源 B：Binance USDⓈ-M 公开 <code>fundingRate</code> 与 <code>8h klines</code></li>
+<li>更新频率：funding 以 <code>8h</code> 为主时钟；child execution 可映射到 <code>15m / 5m</code></li>
+<li>本轮最小实验口径：</li>
+<li>标的：<code>BTCUSDT</code>、<code>ETHUSDT</code></li>
+<li>recent 样本：近 <code>87</code> 个 funding observations</li>
+<li>先看：平均 funding、正负 funding 占比、<code>&gt;0.25 / 0.5 / 1.0 bp</code> 事件是否还存在、以及对应 next <code>8h</code> 价格是否天然反转</li>
+</ul>
+<h3>4.2 这组快检怎么读</h3>
+<ul>
+<li><strong>当前不是 repo 样本里的强 contango 环境。</strong> recent 样本下 BTC/ETH 平均 funding 都已略为负值。</li>
+<li><strong>默认 <code>1 bp</code> 入场阈值当前过高。</strong> recent 样本里 BTC/ETH 的正 funding <code>&gt;1 bp</code> 事件都是 <code>0</code>。</li>
+<li><strong>所以现在更该测的是 regime-aware admission，而不是直接照抄默认参数。</strong> 例如：先按 recent <code>30d/60d</code> 平均 funding 是否为正开关策略，再决定是否启用 <code>0.25~0.5 bp</code> 的 lower threshold。</li>
+</ul>
+<h2>5. 为什么这次仍算 raw alpha，而不是 overlay</h2>
+<p>因为这里回答的是： &gt; <strong>到底建立什么仓位来直接赚钱？</strong></p>
+<p>答案非常明确：</p>
+<ul>
+<li>不是用 funding 去解释别的策略；</li>
+<li>不是拿 funding 做一个抽象情绪指标；</li>
+<li>而是<strong>直接建 <code>long spot / short perp</code> 的 carry 仓位去收 funding</strong>。</li>
+</ul>
+<p>这就是标准 raw alpha。只是它的主时钟是 <code>8h funding boundary</code>，而不是 <code>5m</code> 价格条。<code>15m/5m</code> 在这里服务的是 <strong>执行与成本控制</strong>，不是 alpha 本体。</p>
+<h2>6. 风险与保留意见</h2>
+<ol>
+<li><strong>这条线极度依赖 regime。</strong> repo 自己就写了 <code>2021</code> 很强、<code>2025+</code> 明显转弱；我补的 recent probe 进一步说明，当前不能默认正 funding 永远够厚。</li>
+<li><strong>repo 的价格腿处理偏简化。</strong> <code>backtest.py</code> 假设双腿价格基本对冲，重点放在 funding 与交易费；真实交易里还要补 spot/perp 借贷、库存、再平衡与冲击成本。</li>
+<li><strong>短周期最容易犯的错，是过度交易。</strong> funding 本身是慢变量；如果每个 <code>5m</code> 小波动都去重建双腿，edge 很容易被手续费和滑点吃掉。</li>
+</ol>
+<h2>7. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 regime gate：</strong> 用 recent <code>30d / 60d</code> 平均 funding、正 funding 占比、以及 <code>&gt;0.25bp</code> 事件密度决定该币种是否允许开 carry sleeve。</li>
+<li><strong>把 <code>8h funding state</code> 前向映射到 <code>15m</code> bars：</strong> 只在 carry state 为 <code>ON</code> 时允许 child execution，测试 <code>immediate taker</code> vs <code>15m TWAP / 5m slicing</code> 的实现差。</li>
+<li><strong>补双腿成本 ladder：</strong> maker/taker、spot/perp、单次建仓 vs 分批建仓，先回答“edge 到底够不够覆盖真实 frictions”。</li>
+<li><strong>加 persistence 条件：</strong> 不只看单次 funding print，而是看 <code>2~3</code> 个 funding periods 的连续性；如果只有一次 spike，宁可放弃。</li>
+<li><strong>做币种分层：</strong> BTC/ETH 作为低 beta carry 基线，后续再看 SOL 等高 beta 币是否存在更厚、但更不稳定的 pocket。</li>
+</ol>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>zwmjj. (2026). _funding-rate-arb_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://github.com/zwmjj/funding-rate-arb">https://github.com/zwmjj/funding-rate-arb</a></li>
+<li>Repo URL: <a href="https://github.com/zwmjj/funding-rate-arb">https://github.com/zwmjj/funding-rate-arb</a></li>
+</ul>
+<ol>
+<li><strong>Source audit files</strong></li>
+</ol>
+<ul>
+<li>README: <a href="https://github.com/zwmjj/funding-rate-arb/blob/main/README.md">https://github.com/zwmjj/funding-rate-arb/blob/main/README.md</a></li>
+<li>Backtest: <a href="https://github.com/zwmjj/funding-rate-arb/blob/main/src/backtest.py">https://github.com/zwmjj/funding-rate-arb/blob/main/src/backtest.py</a></li>
+<li>Basis comparison: <a href="https://github.com/zwmjj/funding-rate-arb/blob/main/src/basis_trade.py">https://github.com/zwmjj/funding-rate-arb/blob/main/src/basis_trade.py</a></li>
+<li>Default metrics: <a href="https://github.com/zwmjj/funding-rate-arb/blob/main/results/backtest_default_metrics.csv">https://github.com/zwmjj/funding-rate-arb/blob/main/results/backtest_default_metrics.csv</a></li>
+<li>Funding vs basis summary: <a href="https://github.com/zwmjj/funding-rate-arb/blob/main/results/basis_vs_funding_summary.csv">https://github.com/zwmjj/funding-rate-arb/blob/main/results/basis_vs_funding_summary.csv</a></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M public endpoints</strong></li>
+</ol>
+<ul>
+<li>Funding rate history: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History</a></li>
+<li>Klines: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></li>
+</ul>
+<h2>9. 本地产物</h2>
+<ul>
+<li>Probe summary：<code>reports/artifacts/quant_digests/2026-04-19_funding_carry_no_reversal_summary.csv</code></li>
+<li>Probe events：<code>reports/artifacts/quant_digests/2026-04-19_funding_carry_no_reversal_events.csv</code></li>
+</ul>
+</body>
+</html>

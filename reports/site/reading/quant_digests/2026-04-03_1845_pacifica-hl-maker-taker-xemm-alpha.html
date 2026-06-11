@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Pacifica × Hyperliquid XEMM repo 只读成“做市工程”：对 short-cycle desk，更该先测的是「maker 宽价差挂单 × taker 紧价差秒级对冲」这条完整 relative-value raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Pacifica × Hyperliquid XEMM repo 只读成“做市工程”：对 short-cycle desk，更该先测的是「maker 宽价差挂单 × taker 紧价差秒级对冲」这条完整 relative-value raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 18:53 UTC</span>
+      <span class="pill">研究时间：2026-04-03 18:45 UTC</span>
+      <span class="pill">类型：2025/2026 GitHub repo source audit（GitHub API metadata + `README.md` + `config.json` + `src/strategy/opportunity.rs` + `src/services/order_monitor.rs` + `src/services/hedge.rs` + `src/config.rs`）</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/cross-venue/xemm/maker-taker/liquidity-asymmetry/microstructure/hyperliquid/pacifica/orderbook/hedge/latency/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo README + source 规则级证据 + GitHub API metadata</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_1845_pacifica-hl-maker-taker-xemm-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-03 18:45 UTC</li>
+<li>类型：2025/2026 GitHub repo source audit（GitHub API metadata + <code>README.md</code> + <code>config.json</code> + <code>src/strategy/opportunity.rs</code> + <code>src/services/order_monitor.rs</code> + <code>src/services/hedge.rs</code> + <code>src/config.rs</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一标的在两家 venue 的微观流动性不对称</strong>——当 Pacifica 的盘口更宽、Hyperliquid 的盘口更紧时，在 Pacifica 挂 maker 单吃“宽 spread / 慢流动性”给出的价差，再在成交后立刻去 Hyperliquid 用 taker 对冲，赚的是 <strong>maker venue 价格滞后 + taker venue 价格发现更快</strong> 之间的短暂 gap。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/cross-venue/xemm/maker-taker/liquidity-asymmetry/microstructure/hyperliquid/pacifica/orderbook/hedge/latency/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：repo README + source 规则级证据 + GitHub API metadata</li>
+</ul>
+<h2>1. 先把 base alpha 说清楚</h2>
+<p>一句话：</p>
+<p>&gt; <strong>这不是“做市系统介绍”，也不是单纯执行优化；它的 alpha 本体就是：在流动性差的 venue 挂单、在流动性好的 venue 对冲，吃同标的跨 venue 的 maker-taker 微观价差。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>同样是 <code>SOL</code> / <code>ETH</code> / <code>BTC</code> 这类币，<strong>Pacifica 的盘口有时更宽、Hyperliquid 的盘口更紧</strong>；</li>
+<li>如果 Hyperliquid 现在能卖到 <code>bid_HL</code>，那我们就能反推：Pacifica 上最多该挂多低的买价，才会在考虑 maker fee、taker fee 之后仍然赚钱；</li>
+<li>反过来，如果 Hyperliquid 现在能买到 <code>ask_HL</code>，那我们就能反推：Pacifica 上至少该挂多高的卖价；</li>
+<li>一旦 Pacifica 的挂单被动成交，马上在 Hyperliquid 反向吃单锁住价差。</li>
+</ul>
+<p>也就是：</p>
+<p>&gt; <strong>alpha 不是“猜方向”，而是“同一标的在两个 venue 的流动性质量不同步”。</strong></p>
+<p>这条线为什么值得进当前素材池：</p>
+<ol>
+<li><strong>它是完整 raw alpha，不是 filter / gate / overlay。</strong></li>
+<li><strong>entry / hedge / cancel / sizing / cost 全都有。</strong></li>
+<li><strong>它补的是 desk 目前相对少的一类：maker-taker 微观结构 relative-value。</strong></li>
+<li><strong>虽然频率比 5m/15m 更快，但完全能作为 <code>1m / 3m</code> 高频补充 sleeve，也能反向服务更慢策略的 execution / venue-routing 研究。</strong></li>
+</ol>
+<h2>2. 这次看的主材料是什么</h2>
+<h3>2.1 主 repo</h3>
+<ul>
+<li><strong>Author / Repo owner</strong>：<code>djienne</code></li>
+<li><strong>Year</strong>：2025 创建，2026 持续更新</li>
+<li><strong>Title / Repo</strong>：*XEMM Rust - Cross-Exchange Market Making Bot on Pacifica (Maker) and Hyperliquid (Taker)*</li>
+<li><strong>Venue</strong>：GitHub repository</li>
+<li><strong>DOI</strong>：无</li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID&gt;">https://github.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID&gt;</a></li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID&gt;">https://github.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID&gt;</a></li>
+<li><strong>GitHub metadata</strong>：created <code>2025-11-11</code>；pushed <code>2026-01-05</code>；stars <code>12</code></li>
+</ul>
+<h3>2.2 repo 内附的二级材料</h3>
+<ul>
+<li><strong>Author</strong>：Hummingbot Foundation（repo 内附文档快照）</li>
+<li><strong>Year</strong>：文档年份未明；按仓库快照使用</li>
+<li><strong>Title</strong>：*Cross-Exchange Market Making (XEMM) - Hummingbot*</li>
+<li><strong>Venue</strong>：documentation snapshot bundled in repo</li>
+<li><strong>DOI</strong>：无</li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/blob/master/docs/Cross-Exchange%20Market%20Making%20(XEMM)%20-%20Hummingbot.html&gt;">https://github.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/blob/master/docs/Cross-Exchange%20Market%20Making%20(XEMM)%20-%20Hummingbot.html&gt;</a></li>
+<li><strong>Repo URL</strong>：同上主 repo</li>
+</ul>
+<h3>2.3 这次实际核对了哪些 source</h3>
+<ul>
+<li><code>README.md</code></li>
+<li><code>config.json</code></li>
+<li><code>src/strategy/opportunity.rs</code></li>
+<li><code>src/services/order_monitor.rs</code></li>
+<li><code>src/services/hedge.rs</code></li>
+<li><code>src/config.rs</code></li>
+</ul>
+<h2>3. 这份 repo 真正给了什么完整策略骨架</h2>
+<h3>3.1 Entry：价差是否足够厚</h3>
+<p>repo 最关键的一段，不在 UI，而在 <code>src/strategy/opportunity.rs</code>。</p>
+<p>它把机会写成两条非常明确的公式。</p>
+<p>#### 买 Pacifica、卖 Hyperliquid 如果 Pacifica 上挂买单，成交后去 Hyperliquid 卖出，那么可接受的 Pacifica 买价上限是：</p>
+<p><code>buy_limit_price = (HL_bid * (1 - taker_fee)) / (1 + maker_fee + target_profit)</code></p>
+<p>然后：</p>
+<ul>
+<li>向下按 Pacifica tick size 取整；</li>
+<li>用 <code>notional_usd / buy_limit_rounded</code> 算下单数量；</li>
+<li>再算实际 profit bps。</li>
+</ul>
+<p>#### 卖 Pacifica、买 Hyperliquid 如果 Pacifica 上挂卖单，成交后去 Hyperliquid 买回，那么可接受的 Pacifica 卖价下限是：</p>
+<p><code>sell_limit_price = (HL_ask * (1 + taker_fee)) / (1 - maker_fee - target_profit)</code></p>
+<p>然后：</p>
+<ul>
+<li>向上按 tick size 取整；</li>
+<li>算 size；</li>
+<li>再算实际 profit bps。</li>
+</ul>
+<p>这说明 alpha 本体已经非常清晰：</p>
+<p>&gt; <strong>只要 maker venue 给你的挂单价，和 taker venue 此刻可对冲价之间，还留得下“手续费 + 目标收益 + rounding 后残余利润”，就开仓。</strong></p>
+<h3>3.2 Cost：repo 没有回避成本，反而把成本放进信号定义里</h3>
+<p><code>config.json</code> 默认参数直接给了第一版 economics：</p>
+<ul>
+<li><code>pacifica_maker_fee_bps = 1.5</code></li>
+<li><code>hyperliquid_taker_fee_bps = 4.0</code></li>
+<li><code>profit_rate_bps = 15.0</code></li>
+<li><code>profit_cancel_threshold_bps = 3.0</code></li>
+<li><code>order_notional_usd = 20.0</code></li>
+<li><code>order_refresh_interval_secs = 60</code></li>
+<li><code>hyperliquid_slippage = 0.05</code></li>
+</ul>
+<p>这里最值钱的不是参数值本身，而是 repo 的态度：</p>
+<p>&gt; <strong>目标收益阈值不是后验 KPI，而是 entry 公式的一部分。</strong></p>
+<p>也就是说，repo 不是“先下单，再祈祷对冲后有利润”；而是：</p>
+<ul>
+<li>先把 maker fee、taker fee、目标 safety margin 一起算进去；</li>
+<li>只有净边际还为正，才挂单。</li>
+</ul>
+<p>对 short-cycle desk 很重要，因为很多“跨 venue spread”一进实盘就死在两件事上：</p>
+<ol>
+<li>只看 mid/mid，不看可成交 bid/ask；</li>
+<li>只看理论 spread，不把 fee/slippage/rounding 放进 admission。</li>
+</ol>
+<p>这份 repo 至少在规则层先把这两个坑补了。</p>
+<h3>3.3 Exit / cancel：不是挂上就不管</h3>
+<p><code>src/services/order_monitor.rs</code> 写得也很实在：</p>
+<ul>
+<li><strong>热路径监控</strong>每 <code>1ms</code> 跑一次；</li>
+<li>只要订单还挂着，就持续重算当前对冲利润；</li>
+<li>如果距离下单时的 <code>initial_profit_bps</code> 偏离超过 <code>profit_cancel_threshold_bps</code>（默认 <code>3bps</code>），就发起取消；</li>
+<li>如果订单年龄超过 <code>order_refresh_interval_secs</code>（默认 <code>60s</code>），也会取消重来。</li>
+</ul>
+<p>而 README 还给出整体 task 配置：</p>
+<ul>
+<li>main opportunity loop：<code>100ms</code></li>
+<li>profit monitoring：<code>25ms</code></li>
+<li>REST fill detection backup：<code>500ms</code></li>
+<li>orderbook fallback polling：<code>2s</code></li>
+</ul>
+<p>这条线的含义是：</p>
+<p>&gt; <strong>挂 maker 单不是被动等死，而是持续盯着“如果现在成交，再去另一边对冲，还赚不赚钱”。</strong></p>
+<p>所以这不是静态套利，更像一个：</p>
+<ul>
+<li><strong>挂单等待成交</strong> 的 maker alpha，</li>
+<li>外加一个 <strong>实时利润存活监控</strong> 的 veto 壳。</li>
+</ul>
+<h3>3.4 Hedge：成交后立刻反向锁仓</h3>
+<p><code>src/services/hedge.rs</code> 把 hedge 流程写得很完整：</p>
+<ol>
+<li>收到 fill event；</li>
+<li>背景任务先再次取消 Pacifica 其余挂单；</li>
+<li>在 Hyperliquid 发反向 market order；</li>
+<li>默认优先走 <strong>WebSocket hedge</strong>，失败再 fallback 到 REST；</li>
+<li>成交后再拉取 trade history 算真实利润。</li>
+</ol>
+<p>README 里强调的是：</p>
+<ul>
+<li>hedge event queue 用 <code>mpsc</code>，fill detection 不会被 hedge 阻塞；</li>
+<li>WebSocket-first hedging 为了最小化 latency；</li>
+<li>如果 WS 失败，自动 fallback REST。</li>
+</ul>
+<p>也就是说，repo 给的不是“发现 edge”，而是 <strong>发现 → 挂单 → fill detect → hedge → post-trade verify</strong> 的完整链路。</p>
+<h3>3.5 Fill detection：它不是只靠一种填单检测</h3>
+<p>README 明写了 <strong>5 层 fill detection</strong>：</p>
+<ol>
+<li>Pacifica <code>account_order_updates</code> WebSocket</li>
+<li>Pacifica <code>account_positions</code> WebSocket</li>
+<li>REST order polling（<code>500ms</code>）</li>
+<li>REST position monitor（<code>500ms</code>）</li>
+<li>监控任务里的 safety check</li>
+</ol>
+<p>这对研究意义很大。因为 maker-taker alpha 的实盘死亡点，很多时候不在“有没有 edge”，而在：</p>
+<ul>
+<li>fill 了你没及时发现；</li>
+<li>partial fill 检测延迟；</li>
+<li>cancel 与 fill race condition；</li>
+<li>hedge 重复触发或漏触发。</li>
+</ul>
+<p>repo 至少说明：</p>
+<p>&gt; <strong>作者知道这条 alpha 的最大脆弱点不是公式，而是 fill → hedge 这 100ms~500ms 链条。</strong></p>
+<h2>4. 为什么这东西和当前 desk 直接相关</h2>
+<p>先回答那句必须回答的话：</p>
+<p>&gt; <strong>它为什么比继续补一篇普通 filter 更值得？因为它本身就是可独立复现、可直接落地的完整 raw alpha。</strong></p>
+<p>而且它补的不是又一篇：</p>
+<ul>
+<li>breakout</li>
+<li>trend gate</li>
+<li>RSI/BB 过滤器</li>
+</ul>
+<p>它补的是：</p>
+<ul>
+<li><strong>relative-value / stat-arb</strong> 方向里的一个微观结构分支；</li>
+<li><strong>maker-taker cross-venue</strong> 这类此前库里数量还不算多的完整壳；</li>
+<li>同时还能反过来服务更慢速策略的 <strong>execution veto / venue selection</strong>。</li>
+</ul>
+<p>对当前 desk，我会把它归类成：</p>
+<ul>
+<li><strong>主题类型</strong>：raw alpha</li>
+<li><strong>风格归属</strong>：relative value / stat-arb / microstructure</li>
+<li><strong>更适合的运行层级</strong>：<code>1m / 3m</code> 高频 sleeve，或 <code>5m / 15m</code> 策略的 venue-routing/quote-quality 子模块</li>
+</ul>
+<p>换句话说：</p>
+<p>&gt; <strong>它不是主打 15m bar-close 的“方向 alpha”，而是主打 quote-event 的“成交质量 alpha”。</strong></p>
+<p>这仍然符合当前 intake 目标，因为用户已经明确允许：只要能快速复现、快速验证、能落到 entry/exit/sizing/risk/cost，就值得进池。</p>
+<h2>5. 这条 alpha 在我们这边该怎么读</h2>
+<h3>5.1 不要把它读成“传统搬砖”</h3>
+<p>真正 low-value 的搬砖，是：</p>
+<ul>
+<li>两边都 taker；</li>
+<li>纯拼更低延迟；</li>
+<li>机会稀少，而且常常抢不过专业队。</li>
+</ul>
+<p>repo README 反而明确说：</p>
+<ul>
+<li>选择 <strong>Pacifica maker / Hyperliquid taker</strong>；</li>
+<li>理由是 Hyperliquid spread 更紧、流动性更好；</li>
+<li>比传统 taker-to-taker arbitrage 更容易找到机会。</li>
+</ul>
+<p>也就是它打的不是“抢别人已经看见的显性价差”，而是：</p>
+<p>&gt; <strong>用自己的被动挂单去制造一个别人不一定拿得到的成交价，再去更深的 venue 对冲。</strong></p>
+<p>这是一条完全不同的经济学。</p>
+<h3>5.2 它更像哪类传统 desk 思路</h3>
+<p>如果翻译成更熟悉的 desk 语言，它更像：</p>
+<ul>
+<li>maker-first spread capture</li>
+<li>queue-aware cross-venue hedge</li>
+<li>liquidity asymmetry arbitrage</li>
+<li>venue-quality relative value</li>
+</ul>
+<p>也可以理解成：</p>
+<p>&gt; <strong>你不是在赌涨跌，而是在赌“差 venue 给你的成交价，会比好 venue 当前的可对冲价更慷慨”。</strong></p>
+<h3>5.3 它真正的脆弱点是什么</h3>
+<p>repo 写得越完整，脆弱点也越容易看见：</p>
+<ol>
+<li><strong>Pacifica 的挂单不一定成交</strong>：理论 edge 很厚，但没 fill 就没有 alpha。</li>
+<li><strong>fill quality 不确定</strong>：如果你只吃到 partial fill，成本结构会变。</li>
+<li><strong>hedge latency 是 PnL 核心变量</strong>：尤其在币价抖动快时，几十到几百毫秒都可能吃掉 3~10bps。</li>
+<li><strong>maker queue position 不可见时，paper/live 差异会很大</strong>。</li>
+<li><strong>Pacifica venue 风险</strong>：容量、深度、异常撮合、撤单确认速度，都可能限制放大。</li>
+</ol>
+<p>所以对这类策略要老实：</p>
+<p>&gt; <strong>它的难点不是“信号不够聪明”，而是 fill probability 与 hedge latency。</strong></p>
+<h2>6. 对 <code>1m / 3m / 5m / 15m</code> 的关系该怎么写</h2>
+<p>必须诚实写：</p>
+<h3>6.1 直接适配层</h3>
+<ul>
+<li><strong>最自然的是 sub-second / second 级</strong>，因为 repo 本身是 orderbook event 驱动。</li>
+<li>如果强行映射到 bar frequency，<strong><code>1m / 3m</code> 比 <code>5m / 15m</code> 更自然</strong>。</li>
+</ul>
+<h3>6.2 对 <code>5m / 15m</code> 的价值不是没有，但角色不同</h3>
+<p>它可以服务两类更慢策略：</p>
+<ol>
+<li><strong>execution/venue-routing overlay</strong>：当某币在 Pacifica 相对 Hyperliquid 的 quote edge occupancy 很高时，说明该时段 maker side 更友好；</li>
+<li><strong>shared microstructure gate</strong>：当跨 venue spread-close 很差、hedge latency proxy 恶化时，减少同币其它快策略的下单积极度。</li>
+</ol>
+<p>所以不要硬说“这就是 15m 主信号”。更准确的说法是：</p>
+<p>&gt; <strong>它本身是一条更快的 raw alpha；同时还能给 1m/3m/5m/15m 体系提供 execution-quality 侧信息。</strong></p>
+<h2>7. 最小可复现实验：先怎么测</h2>
+<p>这部分最关键。</p>
+<h3>实验 A：只测“理论 edge 是否常出现”</h3>
+<p><strong>目标</strong>：先不碰 fill probability，只看 public book 上这条 maker-taker edge 是否存在、多久存在、厚度多大。</p>
+<p>#### 数据源</p>
+<ul>
+<li><strong>Pacifica public orderbook WebSocket / REST top-of-book</strong>：公开可得，tick 级更新</li>
+<li><strong>Hyperliquid public L2 / top-of-book</strong>：公开可得，tick 级更新</li>
+<li>标的先做：<code>SOL</code>, <code>ETH</code>, <code>BTC</code></li>
+</ul>
+<p>#### 口径 每 <code>200ms ~ 1s</code> 采样一次，计算双边 edge：</p>
+<ul>
+<li>买 Pacifica / 卖 Hyperliquid：</li>
+<p><code>edge_buy_bps = ((HL_bid*(1-taker_fee) - PAC_ask*(1+maker_fee)) / (PAC_ask*(1+maker_fee))) * 10000</code></p>
+<li>卖 Pacifica / 买 Hyperliquid：</li>
+<p><code>edge_sell_bps = ((PAC_bid*(1-maker_fee) - HL_ask*(1+taker_fee)) / (HL_ask*(1+taker_fee))) * 10000</code></p>
+</ul>
+<p>#### 先看 4 个统计量</p>
+<ol>
+<li><code>edge &gt; 0</code> 的占比</li>
+<li><code>edge &gt; 15bps</code> 的占比</li>
+<li>连续存活时长分布（edge spell duration）</li>
+<li>各币种 / 各 UTC 时段的 edge occupancy</li>
+</ol>
+<p>#### 判定标准</p>
+<ul>
+<li>如果 <code>edge &gt; 15bps</code> 只是偶发单点尖刺，且持续时间通常 <code>&lt; 1s</code>，那这条线更偏“展示型”；</li>
+<li>如果能观察到稳定的 <code>2s~20s</code> 存活段，才值得继续测 fill 模型。</li>
+</ul>
+<h3>实验 B：做最保守的 maker fill 近似</h3>
+<p><strong>目标</strong>：回答“理论 edge 不等于可成交 edge”。</p>
+<p>#### 最简 fill 近似 对 Pacifica 挂单，只有满足以下任一条件才算 fill：</p>
+<ul>
+<li>后续 best ask/bid 触碰我们的挂单价并持续 <code>N</code> 个采样点；</li>
+<li>或后续 trade print 穿过挂单价；</li>
+<li>或盘口量被吃掉超过某阈值。</li>
+</ul>
+<p>然后在 fill 时刻：</p>
+<ul>
+<li>用 Hyperliquid 当时 best bid/ask，外加 <code>4bps taker fee + slippage haircut</code> 去模拟 hedge；</li>
+<li>输出净收益分布。</li>
+</ul>
+<p>#### 第一版参数</p>
+<ul>
+<li>target edge：<code>15bps</code></li>
+<li>cancel threshold：<code>3bps</code></li>
+<li>max order age：<code>60s</code></li>
+<li>slippage stress：<code>0 / 2 / 5 / 10bps</code></li>
+<li>sampling：<code>200ms</code> 与 <code>1s</code> 各一版</li>
+</ul>
+<h3>实验 C：给更慢策略做 shared overlay</h3>
+<p>如果实验 A/B 发现：</p>
+<ul>
+<li>某些时段跨 venue maker-taker edge 很常见；</li>
+<li>某些时段几乎没有；</li>
+</ul>
+<p>那第三步不是急着 live，而是先做一个低成本共享因子：</p>
+<ul>
+<li><code>xemm_edge_occupancy_1m</code></li>
+<li><code>xemm_edge_p95_bps_3m</code></li>
+<li><code>xemm_spread_survival_5m</code></li>
+</ul>
+<p>拿它去看：</p>
+<ul>
+<li>是否能筛掉 execution 特别差的 1m/3m momentum 交易；</li>
+<li>是否能帮助 same-underlier cross-venue spread-close alpha 只在“好做”的时段开仓。</li>
+</ul>
+<h2>8. 我会怎么给这条材料下研究结论</h2>
+<h3>8.1 结论</h3>
+<p>&gt; <strong>这份 repo 值得 intake 的，不是“Rust 工程很完整”，而是它把一条可独立落地的 maker-taker relative-value raw alpha 写到了规则级。</strong></p>
+<p>尤其值得拿走的不是 UI、部署脚本、AWS Tokyo 建议，而是这四件事：</p>
+<ol>
+<li><strong>entry 公式把 fee + target profit 写死进 admission；</strong></li>
+<li><strong>order monitor 明确盯利润存活，不是傻等 fill；</strong></li>
+<li><strong>hedge 流程是 fill-triggered，而不是周期轮询；</strong></li>
+<li><strong>fill detection 用多层冗余，承认 maker 策略真正难点在 fill/hedge 链条。</strong></li>
+</ol>
+<h3>8.2 在当前优先级里的位置</h3>
+<p>我会把它放进：</p>
+<ul>
+<li><strong>raw alpha 候选池：高优先级</strong></li>
+<li>但不是“立刻实盘”，而是“立刻做 public-data viability + fill approximation”。</li>
+</ul>
+<p>原因很简单：</p>
+<ul>
+<li>它是完整策略；</li>
+<li>base alpha 说得清；</li>
+<li>和当前 desk 的 raw alpha 扩充方向直接相关；</li>
+<li>但 live feasibility 对 venue/latency/queue 很敏感，必须先用最保守方法验证。</li>
+</ul>
+<h2>9. 下一步怎么测（可直接开工）</h2>
+<h3>9.1 今天就能做的最小实验</h3>
+<ol>
+<li>拉 Pacifica + Hyperliquid 同步 top-of-book 流；</li>
+<li>对 <code>SOL / ETH / BTC</code> 跑 24h edge occupancy；</li>
+<li>先不建 fill 模型，只画：</li>
+</ol>
+<ul>
+<li><code>edge &gt; 0bps</code></li>
+<li><code>edge &gt; 5bps</code></li>
+<li><code>edge &gt; 10bps</code></li>
+<li><code>edge &gt; 15bps</code></li>
+<p>的占比和持续时间；</p>
+</ul>
+<ol>
+<li>按 UTC 小时切 bucket，找最值得做的 session。</li>
+</ol>
+<h3>9.2 第二步</h3>
+<p>在实验 A 的最好币种上，加最保守 fill proxy：</p>
+<ul>
+<li>只允许“价格触碰并持续 / trade print 穿过 / queue 消耗”三类 fill；</li>
+<li>hedge 端强制加 <code>2~10bps</code> slippage stress；</li>
+<li>输出净 edge 分布、胜率、平均 holding time、取消率。</li>
+</ul>
+<h3>9.3 第三步</h3>
+<p>如果 B 仍然有正的净收益，再决定它走哪条分叉：</p>
+<ul>
+<li><strong>分叉 1</strong>：当独立 raw alpha，继续做 live paper trading；</li>
+<li><strong>分叉 2</strong>：降级成 shared execution-quality overlay，服务现有 <code>1m / 3m / 5m / 15m</code> 其它快策略。</li>
+</ul>
+<h2>10. 参考资料</h2>
+<ol>
+<li><strong>djienne. (2025/2026). _XEMM Rust - Cross-Exchange Market Making Bot on Pacifica (Maker) and Hyperliquid (Taker)_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID&gt;">https://github.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID&gt;">https://github.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Repo source files used in this digest</strong></li>
+</ol>
+<ul>
+<li>README: &lt;<a href="https://raw.githubusercontent.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/master/README.md&gt;">https://raw.githubusercontent.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/master/README.md&gt;</a></li>
+<li>Config: &lt;<a href="https://raw.githubusercontent.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/master/config.json&gt;">https://raw.githubusercontent.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/master/config.json&gt;</a></li>
+<li>Opportunity evaluator: &lt;<a href="https://raw.githubusercontent.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/master/src/strategy/opportunity.rs&gt;">https://raw.githubusercontent.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/master/src/strategy/opportunity.rs&gt;</a></li>
+<li>Order monitor: &lt;<a href="https://raw.githubusercontent.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/master/src/services/order_monitor.rs&gt;">https://raw.githubusercontent.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/master/src/services/order_monitor.rs&gt;</a></li>
+<li>Hedge service: &lt;<a href="https://raw.githubusercontent.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/master/src/services/hedge.rs&gt;">https://raw.githubusercontent.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/master/src/services/hedge.rs&gt;</a></li>
+<li>Config schema/defaults: &lt;<a href="https://raw.githubusercontent.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/master/src/config.rs&gt;">https://raw.githubusercontent.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/master/src/config.rs&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Hummingbot Foundation. _Cross-Exchange Market Making (XEMM)_ (documentation snapshot bundled in repo).</strong></li>
+</ol>
+<ul>
+<li>Venue: Documentation snapshot</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/blob/master/docs/Cross-Exchange%20Market%20Making%20(XEMM)%20-%20Hummingbot.html&gt;">https://github.com/djienne/XEMM_CROSS_EXCHANGE_MARKET_MAKING_PACIFICA_HYPERLIQUID/blob/master/docs/Cross-Exchange%20Market%20Making%20(XEMM)%20-%20Hummingbot.html&gt;</a></li>
+</ul>
+</body>
+</html>

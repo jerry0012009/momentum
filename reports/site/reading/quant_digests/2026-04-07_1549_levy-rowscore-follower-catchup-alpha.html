@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Hyperliquid lead-lag repo 只读成 network-science demo：对 short-cycle desk，更该先测的是「Lévy rowscore leader move × follower catch-up basket」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Hyperliquid lead-lag repo 只读成 network-science demo：对 short-cycle desk，更该先测的是「Lévy rowscore leader move × follower catch-up basket」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-07 16:02 UTC</span>
+      <span class="pill">研究时间：2026-04-07 15:49 UTC</span>
+      <span class="pill">类型：GitHub repo source audit（`README.md` + `main.py` + `portfolio.py` + `trading_signal.py` + `bot.py`）</span>
+      <span class="pill">主题标签：raw-alpha / cross-sectional / lead-lag / relative-value / follower-catch-up / network-ranking / Hyperliquid / 15m / 5m / 1h / repo / cost / risk</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-07_1549_levy-rowscore-follower-catchup-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-07 15:49 UTC</li>
+<li>类型：GitHub repo source audit（<code>README.md</code> + <code>main.py</code> + <code>portfolio.py</code> + <code>trading_signal.py</code> + <code>bot.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：先找出在最近窗口里“经常先动”的 leader 币，再用 leader 最新一根收益的方向，去做 follower 币的滞后跟随篮子；赚的是 <strong>leader 先动、follower 后补</strong> 这段短时 lead-lag 传导。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha / cross-sectional / lead-lag / relative-value / follower-catch-up / network-ranking / Hyperliquid / 15m / 5m / 1h / repo / cost / risk</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>mateofrqt / <code>Crypto-LeadLag-Strategy</code></strong>。它不是普通“相关性排序”脚本，而是先用 <strong>Lévy area signatures</strong> 估计币对之间的方向性先后关系，再把每个币在有向网络里的行均值分数当成 leader / follower 排名，最后把这套排名翻译成可交易的 long-short 篮子与 live bot。对我们 desk 来说，它最像一条 <strong>可快速最小复现的 cross-sectional lead-lag raw alpha</strong>，而不是单纯研究图论结构。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这条东西的 <strong>base alpha 很清楚</strong>：不是赌 breakout，也不是赌均值回复，而是赌 <strong>“先动币”对“后动币”的短时传导</strong>。leader 已经朝某个方向明显动了以后，followers 往往会补这一步。</li>
+<li>它最有用的工程化翻译是：先在滚动窗口上算 lead-lag matrix，再把 <strong>row-score 高的币当 leaders、低的币当 followers</strong>；下一根如果 leaders 平均收益为正，就做多 follower 篮子；为负，就做空 follower 篮子。</li>
+<li>仓位层不是一句“等权”带过。源码里 follower 权重直接按 <strong>对 leaders 的绝对 lead-lag 强度</strong> 来分配，bot 侧又加了 <code>risk_per_trade</code>、<code>target_volatility</code>、<code>max_leverage</code>、<code>rebalance_threshold</code>、<code>min_leader_move</code> 这些约束，说明作者想把它往真实组合壳推进。</li>
+<li>但当前 repo 还没到 production：<code>main.py</code> 示例回测只用了很短样本，默认还把 <code>use_risk_management=False</code>；更关键的是，<strong>回测里几乎没认真处理手续费、滑点、冲击成本</strong>，所以它现在更像“信号骨架已清楚、成本层还没补完”的 raw alpha 候选。</li>
+<li>对 short-cycle desk 真正值钱的地方不是照搬 Lévy / Hermitian 这些术语，而是学到一个可迁移模板：<strong>先做 leader ranking，再做 follower basket catch-up</strong>。这比单币追涨更接近可组合、可做多空双开的 alpha 组件。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>它直接补的是我们素材池里相对还不够多的一层：<strong>cross-sectional lead-lag raw alpha</strong>。最近我们已经积累了不少 pairs、carry、maker、single-asset continuation，但“谁先动、谁后补”这种 <strong>横截面传导</strong> 仍然值得持续补货，尤其适合 <code>5m / 15m</code> 甚至 <code>3m</code>。</p>
+<p>一句话核心结论：<strong>这份 repo 最值得拿来测的，不是复杂数学名词，而是“leader 先涨先跌后，follower 篮子会不会在下一两个 bar 补动作”这条可直接下单的横截面 alpha。</strong> 一句话证明方式：<strong>作者把 lead-lag 先后关系写成 rolling matrix、ranking、篮子回测和 live bot 参数，而不是只停留在相关性图或论文图表。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / 相对价值 / lead-lag continuation</li>
+<li>基础 alpha：leader 最新收益方向对 follower 下一根或下几根收益有预测力</li>
+<li>regime：流动性较好、币种间联动增强、市场有共同驱动但传导不同步的时段</li>
+<li>filter / veto：<code>min_leader_move</code>、leader/follower 分位筛选、cluster 内交易、rebalance threshold、风险预算开关</li>
+<li>risk / sizing / execution overlay：follower 篮子按 lead-lag 强度加权；组合 notional 受 <code>risk_per_trade</code>、<code>target_volatility</code>、<code>max_leverage</code>、<code>max_drawdown</code> 约束；实盘侧通过定时轮询和最小调仓阈值降低换手</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：在 liquid perp universe 中，若过去 <code>N</code> 根里 A/B/C 经常领先 D/E/F，且本根 leaders 的均值收益绝对值足够大，则 followers 在下一根仍会同向补动作。</li>
+<li>一个可计算定义：</li>
+</ul>
+<ol>
+<li>用 <code>30</code> 根滚动窗口在 <code>1h</code> 先复刻 repo 口径，算 lead-lag score matrix；</li>
+<li>每根按 row-score 排名前 <code>10%</code> 为 leaders、后 <code>10%</code> 为 followers；</li>
+<li>若 <code>leaders_ret_t &gt; +0.4%</code>，做多 follower basket；若 <code>&lt; -0.4%</code>，做空 follower basket；</li>
+<li>先持有 <code>1</code> 根，再测 <code>2</code> 根；权重先用等权，再测 <code>abs(score)</code> 加权。</li>
+</ol>
+<ul>
+<li>最小回测切口：</li>
+<li>资产：Hyperliquid 或 Binance perpetual 的 top <code>20~30</code> liquid names</li>
+<li>周期：先 <code>15m</code> 稳健复刻，再降到 <code>5m</code> 看 alpha 是否更强但更脆</li>
+<li>样本：至少 <code>90~180</code> 天，不要沿用 repo 那种极短样本</li>
+<li>最该先看哪 1~2 个指标：<strong>成本前后 next-bar / next-2-bar alpha 是否仍为正</strong>、<strong>调仓换手后净 edge 是否被费用吃掉</strong>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>当前 repo 最大问题不是信号，而是 <strong>证据强度不够</strong>：示例样本偏短，且成本处理明显不充分，容易把换手型 alpha 看得太漂亮。</li>
+<li>lead-lag 策略最怕两件事：一是 <strong>共同因子同时反转</strong>，二是 <strong>followers 其实已经同步、只是假象上看起来滞后</strong>。所以一定要补市场 beta / sector beta 去残差化对照。</li>
+<li>如果下到 <code>5m / 3m</code>，真正的敌人不是统计显著性，而是 <strong>交易成本、盘口深度、调仓摩擦</strong>；这条线很可能从 raw alpha 逐步变成“低频一点能活，高频太碎会死”的策略。</li>
+<li>另外，repo 里 live bot 有风险管理接口，但仓位、成交、费用、滑点的 production 闭环还不完整，所以目前更适合当 <strong>research shell</strong>，不适合直接当实盘成品。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>mateofrqt.</strong> <code>Crypto-LeadLag-Strategy</code>.</li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/mateofrqt/Crypto-LeadLag-Strategy">https://github.com/mateofrqt/Crypto-LeadLag-Strategy</a></code></li>
+<li>Repo metadata: GitHub repo，创建于 <code>2026-02-23</code>，最近一次可见更新约为 <code>2026-03-23</code></li>
+</ul>
+<ol>
+<li><strong>README / overview</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/mateofrqt/Crypto-LeadLag-Strategy/blob/main/README.md">https://github.com/mateofrqt/Crypto-LeadLag-Strategy/blob/main/README.md</a></code></li>
+</ul>
+<ol>
+<li><strong>Backtest entrypoint</strong> <code>main.py</code></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/mateofrqt/Crypto-LeadLag-Strategy/blob/main/main.py">https://github.com/mateofrqt/Crypto-LeadLag-Strategy/blob/main/main.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Portfolio construction / backtest logic</strong> <code>portfolio.py</code></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/mateofrqt/Crypto-LeadLag-Strategy/blob/main/portfolio.py">https://github.com/mateofrqt/Crypto-LeadLag-Strategy/blob/main/portfolio.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Lead-lag matrix construction</strong> <code>trading_signal.py</code></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/mateofrqt/Crypto-LeadLag-Strategy/blob/main/trading_signal.py">https://github.com/mateofrqt/Crypto-LeadLag-Strategy/blob/main/trading_signal.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Live execution shell</strong> <code>bot.py</code></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/mateofrqt/Crypto-LeadLag-Strategy/blob/main/bot.py">https://github.com/mateofrqt/Crypto-LeadLag-Strategy/blob/main/bot.py</a></code></li>
+</ul>
+</body>
+</html>

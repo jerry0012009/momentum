@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 15m volume confirmation 继续写成 rolling SMA：`same-clock intraday RVOL` 更像 breakout-short / Fib / EMA 的 honest volume gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 15m volume confirmation 继续写成 rolling SMA：`same-clock intraday RVOL` 更像 breakout-short / Fib / EMA 的 honest volume gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-20 08:52 UTC</span>
+      <span class="pill">研究时间：2026-03-20 08:51 UTC</span>
+      <span class="pill">类型：GitHub 仓库 + Binance 公共数据快检</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/volume/intraday-seasonality/same-clock/rvol/confirmation/filter/repo/crypto/5m/15m</span>
+      <span class="pill">证据类型：仓库代码 + 工程快检（公开 OHLCV）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-20_0851_same-clock-intraday-rvol-volume-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-20 08:51 UTC</li>
+<li>类型：GitHub 仓库 + Binance 公共数据快检</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/volume/intraday-seasonality/same-clock/rvol/confirmation/filter/repo/crypto/5m/15m</li>
+<li>证据类型：仓库代码 + 工程快检（公开 OHLCV）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看一个很新的 GitHub 仓库 <strong>ycchew/CQ_breakout_strategy</strong>（2026-03 创建）。真正值得偷的，不是 repo 里那些日线股票 breakout 参数，而是它在 <code>indicators/volume.py</code> 里单独写出来、但很多 desk 会忽略的一层：<strong><code>calculate_intraday_rvol</code> 会把当前 bar 的成交量，拿去和“历史同一时刻的 bar”比较，而不是拿最近 20 根滚动均量硬比。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 对 24/7 crypto 的 5m/15m，很多所谓“放量确认 / 缩量回踩”先该过的不是更神的阈值，而是<strong>同钟点归一化</strong>；不然你测到的经常只是 UTC 时段差，不是真 setup 质量。</li>
+<li><strong>一句话证明方式：</strong> repo 直接给了 <code>same-time-of-day</code> 的 RVOL 计算骨架；我又用 <strong>Binance Futures BTCUSDT 15m 公共 K 线</strong>做了一个最小快检，看 naive RVOL 和 same-clock RVOL 到底有多常打架。</li>
+<li>快检样本：<strong>6000 根 BTCUSDT 15m perp bar</strong>，时间覆盖 <strong>2026-01-16 21:00 UTC ~ 2026-03-20 08:45 UTC</strong>。</li>
+<li>关键数据点 1：不同 15m 时段的平均成交额差异很大。样本里最活跃 slot 是 <strong>14:30 UTC</strong>，平均 quote volume 约 <strong>4.51e8</strong>；最弱 slot 是 <strong>21:45 UTC</strong>，约 <strong>7.71e7</strong>；<strong>同是 15m bar，强弱时段均值差约 5.85 倍</strong>。</li>
+<li>关键数据点 2：在最近 <strong>20 天 / 1440 根 bar</strong> 上，若把 <code>naive_rvol &gt; 1.5</code> 当“放量”，会有 <strong>3.96%</strong> 的 bar 属于“naive 看着像 spike，但 same-clock 其实只是正常”；反过来有 <strong>2.57%</strong> 的 bar 是“same-clock 真 spike，但 naive 看不出来”。</li>
+<li>关键数据点 3：对 <code>dry-down</code> 更敏感：若把 <code>rvol &lt; 0.7</code> 当“缩量”，则有 <strong>10.83%</strong> 的 bar 是“naive 说缩量、same-clock 不认”，另有 <strong>20.07%</strong> 的 bar 是“same-clock 认缩量、naive 没认”。这对 <code>Fib retest_hold</code> 很关键，因为我们最近不少确认层正依赖“回踩时量能降下来”。</li>
+<li>补一条：两种 RVOL 当然不是完全无关，但相关系数也只有 <strong>0.765</strong>，说明它们不是简单换皮。</li>
+</ul>
+<h2>3. 为什么这轮值得先做</h2>
+<p>这轮不是偏题，反而是在给三条收口线补一个共同的“地基洞”：<strong>你现在很多 confirmation layer 都在用 volume，但 volume 本身若没先做时段归一化，后面的 gate 很容易是伪精细。</strong></p>
+<ul>
+<li><strong>V3 final-verdict / breakout-short follow-up</strong></li>
+<li>很多 follow-up / failure 判决都要看 break 后有没有“跟量”。</li>
+<li>如果 14:30 UTC 天生就比 21:45 UTC 活跃很多，<code>rolling mean</code> 会把“正常活跃时段”误判成 spike，也会把冷时段里的真正异常量漏掉。</li>
+<li>对 short 侧尤其危险：你可能以为自己在拦“假延续”，其实只是在惩罚冷门时段。</li>
+</ul>
+<ul>
+<li><strong>Fibonacci confirmation / retest_hold</strong></li>
+<li>这条线近期多次依赖“回踩缩量、反弹再放量”。</li>
+<li>但缩量如果不用 same-clock 口径，很容易把“亚洲慢时段的正常低量”误当成优质 hold，把“美盘高量时段里的真实 dry-down”漏掉。</li>
+</ul>
+<ul>
+<li><strong>EMA / PSAR raw alpha focus</strong></li>
+<li>raw alpha 现在最怕的是：本来 edge 就薄，还叠上一个不诚实的 volume filter。</li>
+<li>same-clock RVOL 的价值不在于让 raw alpha 突然变神，而在于<strong>先把 volume 这层从时段偏差里洗干净</strong>，再判断 EMA / PSAR 到底有没有被 volume 确认真正改善。</li>
+</ul>
+<h2>4. repo 里最值得偷的，不是“volume spike &gt; 2x”，而是这个实现口径</h2>
+<p>repo 的 <code>calculate_intraday_rvol</code> 大意是：</p>
+<ol>
+<li>先把每根 bar 映射到 <code>HH:MM</code> 时刻；</li>
+<li>对每个时刻单独维护历史均量；</li>
+<li>当前 bar 用 <code>当前量 / 历史同 slot 均量</code> 得到 <code>intraday_rvol</code>。</li>
+</ol>
+<p>把它翻回我们 desk 语言，就是：</p>
+<ul>
+<li><code>14:30</code> 只和历史 <code>14:30</code> 比；</li>
+<li><code>21:45</code> 只和历史 <code>21:45</code> 比；</li>
+<li>不再把整个日内流量曲线压扁成一条统一均线。</li>
+</ul>
+<p>这很适合当前阶段，因为它不是又加一个复杂外部数据源，也不是重做主信号；<strong>它只是把已有 volume gate 的计量口径修正得更诚实。</strong></p>
+<h2>5. 可复刻的最小实验（下一步怎么测）</h2>
+<h3>研究假设</h3>
+<p>把当前所有 <code>volume confirmation / dry-down</code> 从 <code>naive rolling RVOL</code> 改成 <code>same-clock RVOL</code> 后，能减少 false confirm，并保留更多真正有信息的慢时段 setup。</p>
+<h3>数据源（公开可得）</h3>
+<ul>
+<li>价格与成交量：<strong>Binance Futures /fapi/v1/klines</strong>（公开 API，15m 近实时更新）</li>
+<li>公开性：公开可得</li>
+<li>更新频率：每根 5m/15m bar 更新</li>
+<li>最小可复现实验口径：BTC/ETH/SOL perp，先看 15m，再补 5m</li>
+</ul>
+<h3>首版冻结定义</h3>
+<ol>
+<li>对每个 symbol、每个 <code>HH:MM</code> 维护过去 <code>N=20</code> 次同 slot 的均量：</li>
+</ol>
+<ul>
+<li><code>slot_avg_vol_t = mean(volume at same HH:MM over past N occurrences)</code></li>
+</ul>
+<ol>
+<li>定义：</li>
+</ol>
+<ul>
+<li><code>slot_rvol = volume / slot_avg_vol_t</code></li>
+<li><code>slot_dry = slot_rvol &lt; 0.7</code></li>
+<li><code>slot_spike = slot_rvol &gt; 1.5</code></li>
+</ul>
+<ol>
+<li>对照组：继续用现有 <code>rolling 20-bar RVOL</code></li>
+</ol>
+<h3>接到三条线怎么测</h3>
+<ul>
+<li><strong>breakout-short</strong>：把 post-break follow-up 的 <code>volume confirm</code> 从 naive RVOL 改成 <code>slot_spike</code>；比较 <code>4~8 bars</code> 内回抽失败率。</li>
+<li><strong>Fib retest_hold</strong>：回踩阶段用 <code>slot_dry</code>，重破阶段用 <code>slot_spike</code>；看 <code>hold confirmed</code> 后的 <code>N-bar continuation</code> 是否更干净。</li>
+<li><strong>EMA / PSAR raw alpha</strong>：只把 volume gate 换口径，不改 EMA / PSAR 本体；看是否能在不大砍 trade count 的前提下抬 <code>post-cost expectancy</code>。</li>
+</ul>
+<h3>先看哪 2 个指标</h3>
+<ul>
+<li><code>post-cost expectancy</code></li>
+<li><code>false-follow / false-hold rate</code>（入场后 <code>4~8</code> 根内回到 opposite edge 或失守确认线）</li>
+</ul>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>这轮证据主要来自 <strong>repo 实现 + 公共数据快检</strong>，不是已经证明 15m alpha 提升；真正结论必须来自 A/B 回测。</li>
+<li>repo 原始场景是股票 breakout，不是 crypto perp；我们偷的是 <strong>计量口径</strong>，不是整套策略。</li>
+<li>same-clock RVOL 也不是万能：若市场正处在宏观事件或突发行情里，同 slot 历史均量本身会滞后，因此后续最好再叠一个 <code>event / jump blackout</code>。</li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>ycchew. (2026). _Christian Qullamaggie Strategy_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/ycchew/CQ_breakout_strategy">https://github.com/ycchew/CQ_breakout_strategy</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/ycchew/CQ_breakout_strategy/blob/master/README.md">https://github.com/ycchew/CQ_breakout_strategy/blob/master/README.md</a></code></li>
+<li>Volume implementation: <code><a href="https://github.com/ycchew/CQ_breakout_strategy/blob/master/indicators/volume.py">https://github.com/ycchew/CQ_breakout_strategy/blob/master/indicators/volume.py</a></code></li>
+<li>Breakout strategy: <code><a href="https://github.com/ycchew/CQ_breakout_strategy/blob/master/strategies/breakout.py">https://github.com/ycchew/CQ_breakout_strategy/blob/master/strategies/breakout.py</a></code></li>
+<li>DOI: <code>N/A</code></li>
+<li>Authors: GitHub user <code>ycchew</code></li>
+</ul>
+<ol>
+<li><strong>Binance. _USDⓈ-M Futures Market Data REST API: Kline/Candlestick Data_.</strong></li>
+</ol>
+<ul>
+<li>Docs URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+<li>Data URL example: <code><a href="https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&amp;interval=15m&amp;limit=1500">https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&amp;interval=15m&amp;limit=1500</a></code></li>
+<li>公开性：公开 API</li>
+<li>更新频率：每根 K 线更新</li>
+<li>DOI: <code>N/A</code></li>
+</ul>
+<p>--- 快检文件：</p>
+<ul>
+<li><code>reports/artifacts/literature/same_clock_intraday_rvol_quickcheck_2026-03-20.json</code></li>
+<li><code>reports/artifacts/literature/same_clock_intraday_rvol_slot_stats_2026-03-20.csv</code></li>
+<li><code>reports/artifacts/literature/same_clock_intraday_rvol_examples_2026-03-20.csv</code></li>
+</ul>
+</body>
+</html>

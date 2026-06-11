@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 策略集只读成股票 API：对 short-cycle desk，更该先测的是「normalized cluster deviation × next-bar snapback」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 策略集只读成股票 API：对 short-cycle desk，更该先测的是「normalized cluster deviation × next-bar snapback」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-08 14:01 UTC</span>
+      <span class="pill">研究时间：2026-04-08 13:58 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `src/strategies/stocks/mean_reversion_cluster.py`）+ Binance Spot public `15m` portability probe</span>
+      <span class="pill">主题标签：mean-reversion / cross-sectional / relative-value / stat-arb / cluster / zscore / 15m / 5m / 3m / 1m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：工程经验 + 公共数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-08_1358_normalized-cluster-deviation-snapback-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-08 13:58 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>src/strategies/stocks/mean_reversion_cluster.py</code>）+ Binance Spot public <code>15m</code> portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同簇资产相对均值路径的归一化离差回归（cluster-relative mean reversion）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：mean-reversion / cross-sectional / relative-value / stat-arb / cluster / zscore / 15m / 5m / 3m / 1m / repo / public-data / cost / risk</li>
+<li>证据类型：工程经验 + 公共数据 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 <code>ThewindMom/151-trading-strategies</code> 里 <code>Strategy 3.9: Mean-Reversion (Cluster)</code>：源码默认把一组相关资产的价格矩阵求 <code>cluster_mean</code>，再对每个资产的 <code>asset - cluster_mean</code> 做 z-score，<code>entry_zscore=2.0</code> 反向开仓、<code>exit_zscore=0.5</code> 平仓。它表面上是股票 sector API，但对 crypto desk 真正有价值的不是“原样抄 price-level”，而是把它改写成<strong>归一化路径离差</strong>的短周期 raw alpha。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这份 repo 最值钱的不是“cluster 平均价”本身，而是“先把同簇资产放到同一条归一化路径上，再做离差 snapback”。</li>
+<li><strong>一句话证明方式</strong>：证据来自两层——先做源码审计确认规则极简、可独立复现；再用 Binance 公共 <code>15m</code> 数据对 <code>ETH/BNB/SOL/XRP/DOGE</code> 做最小 portability probe。</li>
+<li>repo 原版逻辑很简单：<code>lookback=60</code>，对每个资产的离差序列算均值/标准差，<code>z&gt;2</code> 做空、<code>z&lt;-2</code> 做多、<code>|z|&lt;0.5</code> 平仓。这个壳已经足够完整，缺的是 crypto 版归一化与成本层。</li>
+<li>直接拿<strong>原始价格</strong>做 cluster mean 在 crypto 横截面很危险，因为 <code>DOGE</code> 和 <code>ETH</code> 的价格单位天生不可比；更合理的是在滚动窗口里先转成累计 log-return 路径，再比较相对 cluster 的偏离。</li>
+<li>我用 Binance 最近 <code>1000</code> 根 <code>15m</code> 公共 bar 做了一个轻量 probe：若用 <code>24</code> 根窗口、每根都做“long 最低 z / short 最高 z”，下一根均值约 <strong>+0.611 bps/trade</strong>（<code>t≈0.965</code>, <code>n=974</code>）；窗口拉到 <code>48</code> 根时，下一根约 <strong>+0.698 bps/trade</strong>（<code>t≈1.037</code>, <code>n=950</code>）。</li>
+<li>但把持有期拉到 <code>4</code> 根后，<code>24</code> 根窗口变成 <strong>-0.277 bps/trade</strong>，<code>48</code> 根窗口变成 <strong>-0.425 bps/trade</strong>；说明这更像<strong>很快收口的 snapback</strong>，不是能慢慢抱的 swing MR。</li>
+<li>阈值也未显示“越极端越好”：<code>24</code> 根窗口下，要求 <code>|z|&gt;1</code> 只剩 <strong>77</strong> 笔，均值约 <strong>+0.326 bps/trade</strong>；对 desk 来说，先做<strong>宽进场 + 小仓位 + 快 time-stop</strong>，比追求稀疏大离差更像第一版。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线直接补的是 <strong>raw alpha 素材池</strong>，而且属于我们现在缺口更大的 <code>mean reversion / relative value / stat-arb</code> 家族，不是又一个 breakout/filter。相比只做双腿 pairs，它把对象从“单对”放宽到“相关簇里的离群点”，更适合 crypto 里经常一起跑、偶尔单腿失衡的板块（L1、exchange token、meme、AI、DeFi）。更重要的是，刚才的 probe 已经给出一个 desk 级判断：<strong>如果要做，优先做 1-bar/2-bar 的快收口，不要默认 1h 级抱仓。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / 相对价值 / 均值回复</li>
+<li>基础 alpha：资产相对同簇归一化路径的 z-score 离差回归</li>
+<li>regime：簇内相关性仍高、但单腿出现短时 idiosyncratic overshoot</li>
+<li>filter / veto：只做 top-liquid 成员；事件币/上新币/大额清算时 veto；簇内相关性掉到阈值下时停机</li>
+<li>risk / sizing / execution overlay：按 <code>|z|</code> 和簇内波动缩仓；单簇名义敞口封顶；双腿尽量 maker-ish 或至少同步成交；默认 <code>1~2</code> 根 time-stop</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：在相关 alt 簇里，单腿短时超涨/超跌，相对 cluster 均值会比 outright 趋势更快回归。</li>
+<li>可计算定义：对每个簇成员，在滚动 <code>24/48</code> 根里把 log-return 累加成归一化路径；<code>spread_i = path_i - mean(path_cluster)</code>；<code>z_i = (spread_i[-1] - mean(spread_i)) / std(spread_i)</code>；做 <code>long argmin(z)</code>、<code>short argmax(z)</code>，或仅在 <code>|z|&gt;0.5/1.0</code> 时入场。</li>
+<li>最小回测切口：Binance/OKX top-liquid perp；先手工定义 <code>3~5</code> 个主题簇（如 <code>ETH/BNB/SOL/AVAX/ADA</code>），基线跑 <code>15m</code>，再下钻到 <code>5m/3m</code>。</li>
+<li>最该先看：<strong>成本后 expectancy/trade</strong>、<strong>holding decay（1/2/4 bar）</strong>。如果 <code>1 bar</code> 最强、<code>4 bar</code> 明显转负，就应把它当快收口 alpha，而不是中周期配对。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>repo 原版直接对<strong>原始价格</strong>求 cluster mean，移植到 crypto 前必须先做归一化，否则很容易只是价格量纲幻觉。</li>
+<li>上面的 probe 还是<strong>pre-cost</strong>，也没加 funding、冲击、双腿不同步成交；0.6~0.7 bps/trade 这种量级，如果全 taker，很可能直接被吃光。</li>
+<li>cluster 定义本身也会过拟合：主题簇、滚动相关簇、成交量簇，三者表现可能差很多；真正该优化的是<strong>簇生成和成交方式</strong>，不是先暴力调 z-score。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>ThewindMom. (2026). *151 Trading Strategies API*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/ThewindMom/151-trading-strategies">https://github.com/ThewindMom/151-trading-strategies</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/ThewindMom/151-trading-strategies/blob/main/src/strategies/stocks/mean_reversion_cluster.py">https://github.com/ThewindMom/151-trading-strategies/blob/main/src/strategies/stocks/mean_reversion_cluster.py</a></code></li>
+<li>相关源码要点：<code>lookback=60</code>、<code>entry_zscore=2.0</code>、<code>exit_zscore=0.5</code>，对每个资产计算 <code>spread = asset - cluster_mean</code> 的当前 z-score，并给出反向信号。</li>
+</ul>
+</body>
+</html>

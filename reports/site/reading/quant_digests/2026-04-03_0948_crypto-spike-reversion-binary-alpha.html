@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 prediction-market OS 只读成大而全平台：对 short-cycle desk，更该先测的是「5m spike reversion × 30m shape gate × 8m time-box」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 prediction-market OS 只读成大而全平台：对 short-cycle desk，更该先测的是「5m spike reversion × 30m shape gate × 8m time-box」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 09:50 UTC</span>
+      <span class="pill">研究时间：2026-04-03 09:48 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（GitHub API metadata + `README.md` + `backend/services/strategies/crypto_spike_reversion.py` + `backend/services/strategies/reversion_helpers.py`）</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/single-asset/crypto/binary-market/spike-reversion/5m-impulse/30m-shape-gate/2h-cap/oracle-diff/kelly/time-box/1m/3m/5m/15m/repo/public-data/external-data/cost</span>
+      <span class="pill">证据类型：repo-based（README + 策略源码 + helper 规则 + GitHub metadata）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_0948_crypto-spike-reversion-binary-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-03 09:48 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（GitHub API metadata + <code>README.md</code> + <code>backend/services/strategies/crypto_spike_reversion.py</code> + <code>backend/services/strategies/reversion_helpers.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>short-horizon crypto price spike</code> 之后，短时二元市场概率会对冲击方向过度定价；做反向一侧，赌其在几分钟内回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/mean-reversion/single-asset/crypto/binary-market/spike-reversion/5m-impulse/30m-shape-gate/2h-cap/oracle-diff/kelly/time-box/1m/3m/5m/15m/repo/public-data/external-data/cost</li>
+<li>证据类型：repo-based（README + 策略源码 + helper 规则 + GitHub metadata）</li>
+</ul>
+<p><strong>先回答 base alpha：这篇东西的 base alpha 很清楚，不是“预测市场平台故事”，而是“5m 级别的急涨急跌会让短到期 crypto 二元市场在几分钟内出现可反做的过度定价”，而且源码把 entry / exit / sizing / hold window 都写出来了。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>这次重点看的是 2026 新仓库 <code>braedonsaunders/homerun</code> 里和 crypto 高频方向最相关的几部分：</p>
+<ul>
+<li><code>README.md</code></li>
+<li><code>backend/services/strategies/crypto_spike_reversion.py</code></li>
+<li><code>backend/services/strategies/reversion_helpers.py</code></li>
+<li>GitHub repo metadata</li>
+</ul>
+<p>先说结论：<strong>这轮更值得 intake 的不是 README 里那句“38 strategies, 39 data sources”，而是源码里这条已经被写成完整规则壳的 <code>Crypto Spike Reversion</code>。</strong></p>
+<p>GitHub metadata 也给了它“新且活跃”的基本信号：</p>
+<ul>
+<li>repo 创建时间：<strong>2026-02-03</strong></li>
+<li>最近 push：<strong>2026-04-03 02:32 UTC</strong></li>
+<li>stars：<strong>13</strong></li>
+<li>README 明确把 <code>Crypto HF</code>、<code>Flash Crash Reversion</code>、<code>VPIN Toxicity</code> 这些短周期方向列为内置策略家族</li>
+</ul>
+<h2>2. 核心结论（给 desk 的版本）</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这份 2026 新 repo 里，最适合我们 desk 快速最小实验的，不是平台层基础设施，而是这条已经落成规则的 <strong><code>5m spike fade</code> raw alpha</strong>。</li>
+<li><strong>base alpha 很纯</strong>：不是 filter，不是 regime，也不是单纯执行优化；它就是在赌 <strong>短时冲击过头后的小窗回归</strong>。</li>
+<li><strong>最值钱的地方</strong>：源码不是“讲思路”，而是直接给了完整壳：</li>
+<li>入场阈值</li>
+<li>方向定义</li>
+<li>形态过滤</li>
+<li>成本粗扣</li>
+<li>Kelly sizing</li>
+<li>止盈 / 止损 / 最大持有时间</li>
+<li><strong>和最近学习进展的关系</strong>：最近 digest 池里 pairs / basis / carry / cross-sectional 已经很密，这条线正好补一条 <strong>single-asset / within-market mean reversion raw alpha</strong>；而且也呼应 <code>FACTOR_BACKLOG.md</code> 里还只是 <code>SCOPED / PROTOTYPED</code> 的 <code>volume spike / volume recovery</code> 方向——这次不是把它当确认层，而是把它提升为一条能独立下单的 raw alpha skeleton。</li>
+</ul>
+<h2>3. 为什么这轮值得优先做</h2>
+<h3>3.1 它补的是 raw alpha，不是 overlay</h3>
+<p>这轮优先级应该先问：<strong>能不能直接写成完整策略？</strong></p>
+<p>这里答案是能，而且很直接：</p>
+<ol>
+<li>先识别 <code>5m</code> 急涨/急跌；</li>
+<li>再判断这次冲击是否主要是短时 impulse，而不是更长周期趋势延续；</li>
+<li>然后反向买二元市场的一侧；</li>
+<li>用短 <code>time-box</code> 把持仓锁在几分钟，而不是把它拖成宏观判断。</li>
+</ol>
+<h3>3.2 它比继续补一篇 generic filter 更值钱</h3>
+<p>因为这条线能直接扩充：</p>
+<ul>
+<li><code>mean reversion</code> 原型池</li>
+<li><code>single-asset</code> 原型池</li>
+<li><code>event / shock-driven</code> 原型池</li>
+<li><code>binary wrapped crypto</code> 这一类特殊执行容器的素材池</li>
+</ul>
+<p>而不是再写一层“这个条件也许可以 veto 那个 alpha”。</p>
+<h3>3.3 它和 <code>1m / 3m / 5m / 15m</code> 的关系并不弱</h3>
+<p>虽然源码主信号写成 <code>move_5m</code>，但它本质是：</p>
+<ul>
+<li><strong>5m 冲击定义 alpha</strong></li>
+<li><strong>1m / 3m 做更细执行与重采样</strong></li>
+<li><strong>15m 做更慢的迁移验证与稳健性对照</strong></li>
+</ul>
+<p>所以这不是“只能做 5m”——而是 <strong>5m 是母信号，1m/3m/15m 是实验层的不同投影</strong>。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：双向 mean reversion（急涨后偏向 <code>buy_no</code>，急跌后偏向 <code>buy_yes</code>）</li>
+<li>基础 alpha：<code>5m impulse overshoot → binary-probability reversion</code></li>
+<li>regime：优先在 30m 趋势没有完全接管、2h 级别未进入大级别单边时交易</li>
+<li>filter / veto：</li>
+<li><code>|move_5m|</code> 必须足够大</li>
+<li><code>5m</code> 冲击必须相对 <code>30m</code> 趋势占主导</li>
+<li><code>2h</code> 累积波动过大时不做</li>
+<li>流动性不够、入场价格过高时不做</li>
+<li>risk / sizing / execution overlay：</li>
+<li>Kelly fractional sizing</li>
+<li>liquidity cap</li>
+<li>明确 <code>take_profit / stop_loss / max_hold_minutes</code></li>
+<li>粗略 fee/slippage 扣减已内嵌在 edge 近似里</li>
+</ul>
+<h2>4. 源码里最值得抄的规则骨架</h2>
+<h2>4.1 方向不是拍脑袋，而是“反着 5m 冲击做”</h2>
+<p><code>crypto_spike_reversion.py</code> 的核心方向定义非常干净：</p>
+<ul>
+<li>若 <code>move_5m &gt; 0</code>，说明标的短时急涨，策略 <strong>买 <code>NO</code></strong></li>
+<li>若 <code>move_5m &lt; 0</code>，说明标的短时急跌，策略 <strong>买 <code>YES</code></strong></li>
+</ul>
+<p>翻成人话： <strong>这条 alpha 的第一原则就是反做冲击。</strong></p>
+<h2>4.2 入场阈值已经给了可直接复现的起点</h2>
+<p>默认参数里最重要的几条：</p>
+<ul>
+<li><code>min_abs_move_5m = 1.8%</code></li>
+<li><code>max_abs_move_2h = 14.0%</code></li>
+<li><code>min_edge_percent = 2.8</code></li>
+<li><code>min_confidence = 0.44</code></li>
+<li><code>min_liquidity_usd = 2000</code></li>
+<li><code>max_entry_price = 0.92</code></li>
+</ul>
+<p>这套口径翻译过来就是：</p>
+<ul>
+<li>没有至少 <strong>1.8% 的 5m 冲击</strong>，不做；</li>
+<li>如果 <strong>2h</strong> 已经是特别大的大级别走势，不做；</li>
+<li>盘口太差、不够便宜、不够有边际，不做。</li>
+</ul>
+<p>这很适合我们先跑一个 honest baseline，因为它不是模糊的“等明显 spike”，而是已经给出可编码阈值。</p>
+<h2>4.3 它不是无脑抄反转，而是加了一层 reversion shape gate</h2>
+<p><code>reversion_helpers.py</code> 里最关键的不是函数名字，而是这句关系：</p>
+<p>&gt; 只有当 <code>|move_5m| &gt;= 0.55 * |move_30m|</code> 时，才算短时 impulse 足够主导。</p>
+<p>再加上：</p>
+<ul>
+<li>如果 <code>|move_2h| &gt; 14%</code>，就拒绝；</li>
+<li>如果 <code>require_reversion_shape=True</code>，没有 shape 就不进场。</li>
+</ul>
+<p>翻成人话： <strong>它不是见 spike 就反手，而是要求“这次冲击更像局部尖刺，而不是更大趋势的一部分”。</strong></p>
+<p>这条规则特别重要，因为它决定了这更像：</p>
+<ul>
+<li><code>shock fade</code></li>
+<p>而不是：</p>
+<li>单纯左侧摸顶 / 摸底。</li>
+</ul>
+<h2>4.4 edge 计算虽然粗，但已经能当最小实验骨架</h2>
+<p>源码里的 edge 近似是：</p>
+<ul>
+<li>若有 oracle / <code>price_to_beat</code>：</li>
+<li><code>edge ≈ 0.6 * |move_5m| + oracle_diff_pct</code></li>
+<li>否则：</li>
+<li><code>edge ≈ 0.6 * |move_5m|</code></li>
+<li>再粗扣一个：</li>
+<li><code>net_edge_percent = edge - 0.25</code></li>
+</ul>
+<p>这不是 production 级成本模型，但对 intake 阶段有两个优点：</p>
+<ol>
+<li>它逼你把 <strong>冲击幅度</strong> 和 <strong>合约当前误价</strong> 放在同一个打分框架里；</li>
+<li>它默认就承认 <strong>成本不是 0</strong>，比很多 repo 只算 gross signal 更诚实。</li>
+</ol>
+<h2>4.5 exit 壳已经写全了</h2>
+<p>默认 exit：</p>
+<ul>
+<li><code>take_profit_pct = 8.0</code></li>
+<li><code>stop_loss_pct = 4.0</code></li>
+<li><code>max_hold_minutes = 8.0</code></li>
+</ul>
+<p>这意味着作者没有把它写成“回归到收盘 / 回归到结算前”那种长拖尾逻辑， 而是明确承认：</p>
+<p>&gt; <strong>这条 alpha 的生命很短，核心是快进快出，不是慢等均值。</strong></p>
+<p>这点对 short-cycle desk 很友好，因为它天然就是一条几分钟级别的 time-boxed raw alpha。</p>
+<h2>4.6 sizing 不是补丁，而是策略的一部分</h2>
+<p>默认 sizing：</p>
+<ul>
+<li><code>sizing_policy = kelly</code></li>
+<li><code>kelly_fractional_scale = 0.45</code></li>
+<li><code>liquidity_cap_fraction = 0.07</code></li>
+<li><code>max_markets_per_event = 24</code></li>
+</ul>
+<p>这说明作者默认就把这条线当成“会同时出现多标的候选，需要容量约束”的东西来写。</p>
+<p>对 desk 的启发是： <strong>如果我们后面把它迁移到更传统的 perp / spot bar 策略，也别只抄 entry/exit，仓位分配和流动性上限也应该一起抄。</strong></p>
+<h2>5. 给 <code>1m / 3m / 5m / 15m</code> 的最小实验</h2>
+<h2>5.1 这条线最适合先做什么实验</h2>
+<h3>先测对象</h3>
+<p>优先顺序建议是：</p>
+<ol>
+<li><strong>Prediction-market crypto 5m 二元市场</strong>（最贴近源码原意）</li>
+<li><strong>把同一逻辑迁移到常规 perp/spot 的 5m shock-fade proxy</strong>（验证 alpha 是否可脱离二元容器）</li>
+</ol>
+<h3>数据源</h3>
+<ul>
+<li><strong>Underlying 价格</strong>：Binance public API / WebSocket</li>
+<li><strong>二元市场价格</strong>：Polymarket / Kalshi 公共市场数据接口</li>
+<li><strong>公开性</strong>：公开可得</li>
+<li><strong>更新频率</strong>：秒级到分钟级，足够重采样到 <code>1m / 3m / 5m / 15m</code></li>
+<li><strong>最小可复现实验口径</strong>：</li>
+<li>用 Binance 算 <code>move_5m / move_30m / move_2h</code></li>
+<li>用二元市场 mid/ask 作为入场价格</li>
+<li>以 8 分钟 time-box 检验是否出现可交易回归</li>
+</ul>
+<h2>5.2 第一版最小规则（建议直接上手）</h2>
+<h3>版本 A：贴源码的 honest baseline</h3>
+<ol>
+<li>计算：</li>
+</ol>
+<ul>
+<li><code>move_5m</code></li>
+<li><code>move_30m</code></li>
+<li><code>move_2h</code></li>
+</ul>
+<ol>
+<li>仅当以下同时满足才进场：</li>
+</ol>
+<ul>
+<li><code>|move_5m| &gt;= 1.8%</code></li>
+<li><code>|move_5m| &gt;= 0.55 * |move_30m|</code></li>
+<li><code>|move_2h| &lt;= 14%</code></li>
+<li><code>liquidity &gt;= 2000</code></li>
+<li><code>entry_price &lt;= 0.92</code></li>
+</ul>
+<ol>
+<li>方向：</li>
+</ol>
+<ul>
+<li><code>move_5m &gt; 0</code> → 做反向</li>
+<li><code>move_5m &lt; 0</code> → 做反向</li>
+</ul>
+<ol>
+<li>成本前信号分数：</li>
+</ol>
+<ul>
+<li><code>edge = 0.6 * |move_5m| + oracle_diff_pct</code></li>
+</ul>
+<ol>
+<li>成本后粗过滤：</li>
+</ol>
+<ul>
+<li><code>net_edge &gt;= 2.8</code></li>
+</ul>
+<ol>
+<li>出场：</li>
+</ol>
+<ul>
+<li><code>+8%</code> take profit</li>
+<li><code>-4%</code> stop loss</li>
+<li><code>8m</code> time stop</li>
+</ul>
+<h3>版本 B：给常规 crypto desk 的可迁移 proxy</h3>
+<p>如果暂时不碰二元市场，先做一个传统交易所 proxy：</p>
+<ul>
+<li>用 <code>BTC/ETH/SOL</code> 的 perp 或 spot-perp 合约</li>
+<li>把 <code>selected_price</code> 换成方向仓的入场价</li>
+<li>仍保留：</li>
+<li><code>5m shock threshold</code></li>
+<li><code>30m shape gate</code></li>
+<li><code>2h regime cap</code></li>
+<li><code>8m / 15m time-box</code></li>
+<li>用 future return / basis compression / microprice 回归之一做 exit proxy</li>
+</ul>
+<p>这样能先回答： <strong>这个 alpha 是“只在预测市场容器里成立”，还是“底层冲击反转本身就有迁移性”。</strong></p>
+<h2>5.3 频率映射建议</h2>
+<ul>
+<li><strong>1m</strong>：做执行层重采样，观察更细入场点是否改善 fill 与回撤</li>
+<li><strong>3m</strong>：做更激进的短反转版本</li>
+<li><strong>5m</strong>：主实验频率，最贴源码</li>
+<li><strong>15m</strong>：做低频稳健性版，把 <code>move_15m / move_1h / move_4h</code> 当作对应 shape 层级</li>
+</ul>
+<h2>5.4 先看哪 3 个指标</h2>
+<p>第一轮别上来就看 Sharpe，先看：</p>
+<ol>
+<li><strong>平均入场后 8 分钟的回归幅度</strong></li>
+<li><strong>条件分组后胜率</strong>：按 <code>|move_5m|</code>、<code>move_30m</code>、<code>move_2h</code> 分层</li>
+<li><strong>after-cost expectancy</strong>：显式扣掉 taker fee + 半个 spread + 滑点</li>
+</ol>
+<h2>6. 这条线最容易犯的错</h2>
+<ul>
+<li><strong>把它误读成 generic bottom-fishing</strong>：不是所有急跌都该抄底；源码明确要求 <code>shape gate</code>。</li>
+<li><strong>把 30m / 2h 过滤删掉</strong>：一删就很容易把“局部尖刺”做成“逆大趋势硬顶硬抄”。</li>
+<li><strong>忽略 time stop</strong>：这条 alpha 的核心是几分钟内的回归，不是长持有解释故事。</li>
+<li><strong>把预测市场和传统 perp 完全等同</strong>：binary market 的 payoff 结构和 perp 不一样，迁移时必须重新标定 TP/SL。</li>
+<li><strong>只算 gross edge</strong>：源码虽然只粗扣 <code>0.25</code>，但至少承认成本存在；我们实测时必须做更诚实的成本拆解。</li>
+</ul>
+<h2>7. 我对 desk 的结论</h2>
+<p>如果今天只允许往池子里加 1 条新的 <strong>single-asset / shock-driven mean reversion</strong> 原型，我会收这条：</p>
+<p>&gt; <strong><code>5m spike reversion × 30m shape gate × 8m time-box</code></strong></p>
+<p>原因不是它有多花哨，而是：</p>
+<ul>
+<li>base alpha 清楚；</li>
+<li>源码完整；</li>
+<li>最小实验门槛低；</li>
+<li>与我们最近过密的 pairs / basis / carry intake 形成互补；</li>
+<li>还能顺手补上 <code>volume spike / recovery</code> 这个 backlog 方向的独立 raw alpha 化版本。</li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<ol>
+<li><strong>先用公开数据重建 30 天 BTC / ETH / SOL / XRP 的 <code>move_5m / 30m / 2h</code> + 二元市场报价面板。</strong></li>
+<li><strong>按源码阈值跑第一版 baseline</strong>：<code>1.8% shock + 0.55 shape gate + 8m hold</code>。</li>
+<li><strong>做三档成本</strong>：乐观 / 中性 / 悲观，别只看一套费率。</li>
+<li><strong>对照两种 exit</strong>：<code>8%/4%/8m</code> 固定壳 vs <code>time-box + oracle-gap compression</code>。</li>
+<li><strong>最后做传统 perp proxy</strong>：验证这条 alpha 是不是能从 prediction-market 容器外溢到更常规的 crypto execution stack。</li>
+</ol>
+<h2>9. 来源</h2>
+<h3>仓库</h3>
+<ul>
+<li><strong>Author / Owner</strong>：Braedon Saunders</li>
+<li><strong>Year</strong>：2026</li>
+<li><strong>Title</strong>：*Homerun*</li>
+<li><strong>Type / Venue</strong>：GitHub repo</li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/braedonsaunders/homerun&gt;">https://github.com/braedonsaunders/homerun&gt;</a></li>
+<li><strong>GitHub API metadata</strong>：&lt;<a href="https://api.github.com/repos/braedonsaunders/homerun&gt;">https://api.github.com/repos/braedonsaunders/homerun&gt;</a></li>
+<li><strong>README</strong>：&lt;<a href="https://raw.githubusercontent.com/braedonsaunders/homerun/main/README.md&gt;">https://raw.githubusercontent.com/braedonsaunders/homerun/main/README.md&gt;</a></li>
+<li><strong>Strategy source</strong>：&lt;<a href="https://raw.githubusercontent.com/braedonsaunders/homerun/main/backend/services/strategies/crypto_spike_reversion.py&gt;">https://raw.githubusercontent.com/braedonsaunders/homerun/main/backend/services/strategies/crypto_spike_reversion.py&gt;</a></li>
+<li><strong>Helper source</strong>：&lt;<a href="https://raw.githubusercontent.com/braedonsaunders/homerun/main/backend/services/strategies/reversion_helpers.py&gt;">https://raw.githubusercontent.com/braedonsaunders/homerun/main/backend/services/strategies/reversion_helpers.py&gt;</a></li>
+</ul>
+<h3>公共数据口径</h3>
+<ul>
+<li><strong>Underlying 价格</strong>：Binance Spot API / WebSocket docs：&lt;<a href="https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams&gt;">https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams&gt;</a></li>
+<li><strong>Prediction market 数据</strong>：Polymarket docs：&lt;<a href="https://docs.polymarket.com/&gt;；Kalshi">https://docs.polymarket.com/&gt;；Kalshi</a> docs：&lt;<a href="https://docs.kalshi.com/&gt;">https://docs.kalshi.com/&gt;</a></li>
+<li><strong>公开性</strong>：公开可得</li>
+<li><strong>更新频率</strong>：秒级 / 分钟级</li>
+<li><strong>最小可复现实验口径</strong>：<code>Binance move features + binary market quotes + 8-minute post-entry reversion test</code></li>
+</ul>
+</body>
+</html>

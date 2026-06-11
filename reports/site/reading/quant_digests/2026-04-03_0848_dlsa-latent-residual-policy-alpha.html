@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 DLSA 只读成美股机器学习大工程：对 crypto short-cycle desk，更该先测的是「conditional latent-factor residual portfolio × conv-transformer trading policy」这条 cross-sectional raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 DLSA 只读成美股机器学习大工程：对 crypto short-cycle desk，更该先测的是「conditional latent-factor residual portfolio × conv-transformer trading policy」这条 cross-sectional raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 08:47 UTC</span>
+      <span class="pill">研究时间：2026-04-03 08:48 UTC</span>
+      <span class="pill">类型：2021/2022 working paper（arXiv / SSRN）+ 官方 GitHub repo source audit（`README.md` + `configs/cnntransformer-full.yaml` + `preprocess.py` + `models/CNNTransformer.py` + `train_test.py` + `run_train_test.py`）</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/relative-value/stat-arb/latent-factor/residual-portfolio/convolutional-transformer/trading-policy/cost-aware/continuous-weights/binance-perp/hyperliquid/1m/3m/5m/15m/paper/repo/public-data</span>
+      <span class="pill">证据类型：论文摘要/项目摘要（主框架证据）+ 官方 repo 策略与训练代码（工程骨架证据）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_0848_dlsa-latent-residual-policy-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-03 08:48 UTC</li>
+<li>类型：2021/2022 working paper（arXiv / SSRN）+ 官方 GitHub repo source audit（<code>README.md</code> + <code>configs/cnntransformer-full.yaml</code> + <code>preprocess.py</code> + <code>models/CNNTransformer.py</code> + <code>train_test.py</code> + <code>run_train_test.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：先把市场共同因子剥掉，只交易<strong>条件潜在因子残差组合</strong>里的短周期错配；alpha 本体是 <strong>cross-sectional / relative-value / stat-arb 的 residual mispricing</strong>，不是 Transformer 本身。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/relative-value/stat-arb/latent-factor/residual-portfolio/convolutional-transformer/trading-policy/cost-aware/continuous-weights/binance-perp/hyperliquid/1m/3m/5m/15m/paper/repo/public-data</li>
+<li>证据类型：论文摘要/项目摘要（主框架证据）+ 官方 repo 策略与训练代码（工程骨架证据）</li>
+</ul>
+<p><strong>先回答 base alpha：这篇东西的 base alpha 是清楚的——不是“AI 会自己找机会”，而是“把公共因子剥掉以后，剩下的 residual portfolio 里仍有可交易的局部 trend / reversion 结构”；模型只是负责把这些 residual 信号映射成 after-cost 的连续权重。</strong></p>
+<h2>1) 这次看了什么</h2>
+<p>我这次主要看的是两类材料：</p>
+<h3>论文 / 项目摘要</h3>
+<ul>
+<li>Jorge Guijarro-Ordonez, Markus Pelger, Greg Zanotti. <strong>Deep Learning Statistical Arbitrage</strong>.</li>
+<li>arXiv 摘要页</li>
+<li>NBER-NSF 2021 workshop 项目摘要页</li>
+</ul>
+<h3>官方代码仓库</h3>
+<ul>
+<li><code>gregzanotti/dlsa-public</code></li>
+<li><code>README.md</code></li>
+<li><code>configs/cnntransformer-full.yaml</code></li>
+<li><code>preprocess.py</code></li>
+<li><code>models/CNNTransformer.py</code></li>
+<li><code>train_test.py</code></li>
+<li><code>run_train_test.py</code></li>
+</ul>
+<p>这套材料最值钱的地方，不是 headline 的“deep learning”，而是它把一条<strong>面板式 stat-arb raw alpha</strong>拆成了完整流水线：</p>
+<p>&gt; <strong>因子剥离 → residual panel → 时序特征提取 → 连续权重分配 → after-cost Sharpe 目标训练</strong></p>
+<h2>2) 一句话核心结论（给 desk 的版本）</h2>
+<ul>
+<li><strong>一句话结论</strong>：如果我们不想继续只在“单 pair / 单币 / 单一价差”里内卷，这篇 DLSA 更值得先拿来做的是一套<strong>panel-level raw alpha 生成器</strong>：先从整个 perp 宇宙里抽 residual portfolio，再让模型只在 residual 上学局部 continuation / mean-reversion 结构。</li>
+<li><strong>为什么它和当前 desk 有关</strong>：最近 intake 已经积累了不少 <code>pairs / basis / premium / loser-bounce / trend</code> 的单条 alpha 壳；这篇补的是更上游的一层——<strong>怎么把 20~50 个币的一整个横截面，压成一组可交易 residual alpha 组合</strong>。</li>
+<li><strong>它最适合我们的读法</strong>：不是照搬美股 daily 数据，而是把它读成：</li>
+<li><code>factor stripping</code> = 把市场 beta / sector / funding / basis / OI 这些共同驱动先剥掉；</li>
+<li><code>residual timing</code> = 只在剩余偏离里找短周期 edge；</li>
+<li><code>continuous allocation</code> = 不做二元开关，而做连续仓位分配。</li>
+</ul>
+<h2>3) 为什么这轮值得写</h2>
+<h3>3.1 它不是又一个“再补一条 pair”</h3>
+<p>最近 digest 已经有很多：</p>
+<ul>
+<li><code>dynamic coint spread</code></li>
+<li><code>same-underlier premium fade</code></li>
+<li><code>cross-venue basis</code></li>
+<li><code>top-N loser bounce</code></li>
+<li><code>realized-skewness cross-section fade</code></li>
+</ul>
+<p>这些都好用，但多数还是<strong>一条 alpha = 一套规则</strong>。DLSA 更值得进池的原因是：</p>
+<p><strong>它提供的是“alpha 工厂”而不是单一招式。</strong></p>
+<p>也就是：</p>
+<ul>
+<li>不是先定某个 pair，再做 z-score；</li>
+<li>而是先在整个宇宙里提 residual portfolio；</li>
+<li>再把 residual 序列交给统一模型做 long/short 分配。</li>
+</ul>
+<h3>3.2 它补的是 desk 当前相对缺的“panelized stat-arb”层</h3>
+<p>当前 short-cycle 研究池里，单币趋势 / 单 pair 回归 / same-underlier 偏离已经不少； 但<strong>横截面 residual 组合</strong>这一层仍然偏少。</p>
+<p>这篇正好补三块：</p>
+<ol>
+<li><strong>cross-sectional raw alpha</strong>：不是单标的，而是整池分配；</li>
+<li><strong>relative-value / stat-arb</strong>：先剥共同因子，再赌残差错配；</li>
+<li><strong>完整策略骨架</strong>：信号、仓位、成本、short hold cost 都写进训练目标。</li>
+</ol>
+<h3>3.3 为什么它比继续补一个普通 raw alpha 更值</h3>
+<p>因为它不是替代现有 raw alpha，而是能把现有 raw alpha 家族往上抽象成一个统一框架：</p>
+<ul>
+<li><code>pairs / stat-arb</code></li>
+<li><code>cross-sectional reversal</code></li>
+<li><code>market-neutral momentum</code></li>
+<li><code>basis / funding / OI residualization</code></li>
+</ul>
+<p>都可以往这套 residual-portfolio 逻辑里塞。</p>
+<h2>4) 来源信息</h2>
+<h3>论文</h3>
+<ul>
+<li><strong>Authors：</strong> Jorge Guijarro-Ordonez, Markus Pelger, Greg Zanotti</li>
+<li><strong>Year：</strong> 2021（arXiv v1）/ 2022（arXiv v2）</li>
+<li><strong>Title：</strong> *Deep Learning Statistical Arbitrage*</li>
+<li><strong>Venue：</strong> working paper / arXiv / SSRN</li>
+<li><strong>DOI：</strong> &lt;<a href="https://doi.org/10.48550/arXiv.2106.04028&gt;">https://doi.org/10.48550/arXiv.2106.04028&gt;</a></li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://arxiv.org/abs/2106.04028&gt;">https://arxiv.org/abs/2106.04028&gt;</a></li>
+<li><strong>SSRN URL：</strong> &lt;<a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3862004&gt;">https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3862004&gt;</a></li>
+<li><strong>Project summary URL：</strong> &lt;<a href="https://nber-nsf2021.rice.edu/deep-learning-statistical-arbitrage/&gt;">https://nber-nsf2021.rice.edu/deep-learning-statistical-arbitrage/&gt;</a></li>
+</ul>
+<h3>官方仓库</h3>
+<ul>
+<li><strong>Repo owner：</strong> <code>gregzanotti</code></li>
+<li><strong>Repo：</strong> <code>dlsa-public</code></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/gregzanotti/dlsa-public&gt;">https://github.com/gregzanotti/dlsa-public&gt;</a></li>
+<li><strong>GitHub API metadata：</strong> &lt;<a href="https://api.github.com/repos/gregzanotti/dlsa-public&gt;">https://api.github.com/repos/gregzanotti/dlsa-public&gt;</a></li>
+<li><strong>README：</strong> &lt;<a href="https://raw.githubusercontent.com/gregzanotti/dlsa-public/main/README.md&gt;">https://raw.githubusercontent.com/gregzanotti/dlsa-public/main/README.md&gt;</a></li>
+<li><strong>CNN config：</strong> &lt;<a href="https://raw.githubusercontent.com/gregzanotti/dlsa-public/main/configs/cnntransformer-full.yaml&gt;">https://raw.githubusercontent.com/gregzanotti/dlsa-public/main/configs/cnntransformer-full.yaml&gt;</a></li>
+<li><strong>Preprocess：</strong> &lt;<a href="https://raw.githubusercontent.com/gregzanotti/dlsa-public/main/preprocess.py&gt;">https://raw.githubusercontent.com/gregzanotti/dlsa-public/main/preprocess.py&gt;</a></li>
+<li><strong>Model：</strong> &lt;<a href="https://raw.githubusercontent.com/gregzanotti/dlsa-public/main/models/CNNTransformer.py&gt;">https://raw.githubusercontent.com/gregzanotti/dlsa-public/main/models/CNNTransformer.py&gt;</a></li>
+<li><strong>Train/Test：</strong> &lt;<a href="https://raw.githubusercontent.com/gregzanotti/dlsa-public/main/train_test.py&gt;">https://raw.githubusercontent.com/gregzanotti/dlsa-public/main/train_test.py&gt;</a></li>
+<li><strong>Runner：</strong> &lt;<a href="https://raw.githubusercontent.com/gregzanotti/dlsa-public/main/run_train_test.py&gt;">https://raw.githubusercontent.com/gregzanotti/dlsa-public/main/run_train_test.py&gt;</a></li>
+</ul>
+<h2>5) 这篇东西真正可迁移的策略骨架</h2>
+<h3>5.1 第一步不是找形态，而是先做 residual portfolio</h3>
+<p>论文摘要把框架写得很直白：</p>
+<ol>
+<li>先从<strong>conditional latent asset pricing factors</strong> 里构造 residual portfolios；</li>
+<li>再从这些 residual portfolios 的时间序列里提信号；</li>
+<li>最后形成满足约束的最优 trading policy。</li>
+</ol>
+<p>翻成人话： <strong>先把“大家一起涨跌”的那部分去掉，再去赌“本不该这么偏”的那部分。</strong></p>
+<p>这点很适合 crypto desk，因为我们的共同因子天然更多：</p>
+<ul>
+<li>市场总 beta（BTC / ETH 风险偏好）</li>
+<li>sector beta（L1 / meme / AI / DeFi）</li>
+<li>funding / basis crowding</li>
+<li>OI / volume shock</li>
+<li>venue-specific microstructure 噪音</li>
+</ul>
+<p>如果这些不先剥掉，很多看起来像 alpha 的东西，其实只是共振 beta。</p>
+<h3>5.2 第二步只看 residual 时间序列，不直接看原始价格</h3>
+<p>repo 的 <code>preprocess.py</code> 里，默认预处理是：</p>
+<ul>
+<li>对 residual returns 做 <code>cumsum</code> 窗口；</li>
+<li><code>lookback = 30</code>；</li>
+<li>只保留窗口内无缺失的序列；</li>
+<li>然后把这段 residual cumulative-return path 交给模型。</li>
+</ul>
+<p>这说明它学的不是“下一根 K 线涨跌”，而是：</p>
+<p>&gt; <strong>一段 residual path 长什么样，后面更像 continuation、mean reversion，还是该少做。</strong></p>
+<p>对短周期 desk，这个思路比“直接喂一堆 OHLCV 因子”更干净，因为：</p>
+<ul>
+<li>先 residualize，降低共振噪音；</li>
+<li>再在 residual 路径形状上做分类/回归/权重分配。</li>
+</ul>
+<h3>5.3 第三步不是二元开仓，而是连续权重分配</h3>
+<p><code>models/CNNTransformer.py</code> 的输出不是“买/卖/平”三分类，而是<strong>连续权重</strong>。 随后 <code>train_test.py</code> 会：</p>
+<ul>
+<li>把权重做 L1 归一化；</li>
+<li>直接乘到 residual return 上；</li>
+<li>再扣交易成本与 short hold cost；</li>
+<li>以 Sharpe / mean-var / sqrtMeanSharpe 作为目标函数训练。</li>
+</ul>
+<p>这很关键。因为它告诉我们：</p>
+<p><strong>这不是“发现信号后再手写 sizing”的框架，而是把 sizing 本身并入了 alpha 学习。</strong></p>
+<p>也就是说，base alpha 是 residual mispricing； 但最后落地成交易时，它已经内生变成：</p>
+<ul>
+<li>哪些 residual 该做；</li>
+<li>做多大；</li>
+<li>换仓多频；</li>
+<li>short exposure 要不要压低。</li>
+</ul>
+<h3>5.4 成本不是事后补丁，而是训练目标的一部分</h3>
+<p><code>train_test.py</code> 里直接把：</p>
+<ul>
+<li><code>trans_cost</code></li>
+<li><code>hold_cost</code></li>
+<li><code>turnover</code></li>
+<li><code>short_proportion</code></li>
+</ul>
+<p>放进回报计算和日志输出里。</p>
+<p>这对 crypto 非常重要，因为我们 desk 现在最怕的不是“没有信号”，而是： <strong>信号看起来都对，但一上真实费率、滑点、funding，就被吃没了。</strong></p>
+<p>DLSA 至少在框架上做对了两件事：</p>
+<ol>
+<li><strong>训练时就罚换手</strong>；</li>
+<li><strong>允许对 short 持仓加 hold cost</strong>。</li>
+</ol>
+<p>把它迁到 perp，很自然就能把 <code>hold_cost</code> 改写成：</p>
+<ul>
+<li>funding carry cost</li>
+<li>borrow / inventory cost</li>
+<li>venue-specific short-side friction</li>
+</ul>
+<h2>6) repo 里最值得记住的 6 个硬数据点</h2>
+<ol>
+<li><strong>官方 repo 星标：</strong> 当前 GitHub metadata 显示约 <strong>258 stars</strong>，不是随手扔的玩具脚本。</li>
+<li><strong>默认 signal lookback：</strong> <code>30</code>。</li>
+<li><strong>默认 rolling training window：</strong> <code>1000</code> 个交易日。</li>
+<li><strong>默认 retrain frequency：</strong> <code>125</code>。</li>
+<li><strong>默认 factor family：</strong> 同时跑 <code>IPCA / PCA / FamaFrench</code>，各自先测 <code>5 factors</code>。</li>
+<li><strong>默认目标：</strong> <code>objective = sharpe</code>，且支持显式 <code>trans_cost</code> / <code>hold_cost</code>。</li>
+</ol>
+<p>再补两条对 desk 更有用的：</p>
+<ul>
+<li>模型族不是只有一个：repo 同时提供 <code>RawFFN / FourierFFN / OUFFN / CNNTransformer</code>，说明它不是“非 Transformer 不可”。</li>
+<li><code>use_residual_weights = True</code> 时，仓位和换手是在<strong>底层资产空间</strong>里算，而不是只在抽象 residual 空间自嗨。</li>
+</ul>
+<h2>7) 给 crypto 1m / 3m / 5m / 15m 的最小可复现实验</h2>
+<h3>7.1 先做最小 honest 版，不要直接抄美股 daily</h3>
+<p>这篇原始样本是 daily U.S. equities，而且 repo 也明确说<strong>原始资产收益与特征数据因授权问题不能放出</strong>。</p>
+<p>所以对我们最现实的读法不是“1:1 复刻论文结果”，而是：</p>
+<p>&gt; <strong>复刻这套 raw alpha 生成框架到公开 crypto panel 数据上。</strong></p>
+<h3>7.2 数据源（公开可得）</h3>
+<p>先用公开 perpetual / spot 数据就够：</p>
+<ul>
+<li><strong>Binance / Bybit / Hyperliquid public API</strong></li>
+<li><code>OHLCV</code></li>
+<li><code>funding history</code></li>
+<li><code>open interest</code></li>
+<li><code>basis / mark-vs-index premium</code></li>
+<li><code>volume / trades / taker flow proxy</code></li>
+</ul>
+<p>更新频率：</p>
+<ul>
+<li>可下采样到 <code>1m / 3m / 5m / 15m</code></li>
+</ul>
+<h3>7.3 先定义 crypto 版共同因子</h3>
+<p>先别追求 fancy IPCA；先做一版简单但 honest 的：</p>
+<ul>
+<li>市场因子：BTC、ETH perp return</li>
+<li>sector 因子：按 <code>L1 / meme / AI / DeFi / CEX / infra</code> 分桶</li>
+<li>拥挤度因子：funding、OI change、basis</li>
+<li>微观流动性因子：volume shock、spread proxy</li>
+</ul>
+<p>然后对每个币的 bar return 做 rolling regression / PCA residualization，得到：</p>
+<ul>
+<li><code>residual_return_{i,t}</code></li>
+<li>或 <code>residual_portfolio_t</code></li>
+</ul>
+<h3>7.4 信号层怎么先做</h3>
+<p>先不要上完整论文重度训练，先做 3 层 ablation：</p>
+<p>#### A. 最简单 baseline</p>
+<ul>
+<li>residual z-score cross-section</li>
+<li>long bottom decile / short top decile</li>
+<li>持有 <code>1 / 3 / 6 / 12</code> bars</li>
+</ul>
+<p>#### B. path-based MLP / OU baseline</p>
+<ul>
+<li>输入：过去 <code>96 / 192 / 288</code> bars residual cumsum path</li>
+<li>输出：连续权重</li>
+<li>目标：after-cost Sharpe</li>
+</ul>
+<p>#### C. CNNTransformer（DLSA 主体）</p>
+<ul>
+<li>输入同上</li>
+<li>卷积抓局部 pattern</li>
+<li>Transformer 抓长一点的残差结构关系</li>
+<li>输出连续权重后做 L1 归一化</li>
+</ul>
+<h3>7.5 先测哪些周期</h3>
+<p>我的建议顺序：</p>
+<ol>
+<li><strong>15m</strong>：最先做，噪音更低，训练和成本也更诚实；</li>
+<li><strong>5m</strong>：确认模型是否真的比简单 residual z-score 有增益；</li>
+<li><strong>3m / 1m</strong>：只在 liquid majors 上开，因为 turnover 会陡增。</li>
+</ol>
+<h3>7.6 最小实验的具体卡片</h3>
+<ul>
+<li><strong>资产池：</strong> 20~40 个流动性足够的 perp</li>
+<li><strong>bar：</strong> <code>15m</code> 起步</li>
+<li><strong>residual lookback：</strong> <code>20d / 40d / 60d</code> rolling</li>
+<li><strong>signal lookback：</strong> <code>96 / 192 / 288</code> bars</li>
+<li><strong>训练目标：</strong> after-cost Sharpe</li>
+<li><strong>成本：</strong></li>
+<li>taker-only：<code>6 / 8 / 10 bps round-trip</code></li>
+<li>maker-taker hybrid：<code>3 / 5 / 7 bps</code></li>
+<li><code>hold_cost</code> 里加入 funding</li>
+<li><strong>约束：</strong></li>
+<li>gross leverage cap</li>
+<li>single-name weight cap</li>
+<li>turnover cap</li>
+<li>funding shock veto</li>
+</ul>
+<h2>8) 它服务于哪类 raw alpha</h2>
+<p>这篇不是只能服务一类策略。它至少能服务这几类：</p>
+<ol>
+<li><strong>cross-sectional residual reversal</strong></li>
+<li><strong>market-neutral residual momentum</strong></li>
+<li><strong>same-sector relative-value spread allocation</strong></li>
+<li><strong>basis / funding / OI 因子剥离后的纯价差信号</strong></li>
+</ol>
+<p>所以它最值钱的地方不是某个 headline signal，而是：</p>
+<p>&gt; <strong>把多条 stat-arb / relative-value alpha 放进同一个可训练、可扣成本、可做连续仓位的容器里。</strong></p>
+<h2>9) 风险与局限</h2>
+<ol>
+<li><strong>原论文原样本不能 1:1 精确复刻。</strong> repo 明说原始美股特征数据受授权限制。</li>
+<li><strong>daily equity → intraday crypto 有域迁移风险。</strong> 不能因为论文有效，就默认 5m perp 也有效。</li>
+<li><strong>latent factor / residualization 这层本身会过拟合。</strong> 如果 universe 太小、因子太多，残差会变成噪音放大器。</li>
+<li><strong>最怕 turnover 爆炸。</strong> 这种 panel 模型一旦输出太敏感，很容易“聪明地交手续费”。</li>
+<li><strong>别把 Transformer 当 alpha 本体。</strong> 真正的 alpha 还是 residual mispricing；模型只是更灵活的 mapping。</li>
+</ol>
+<h2>10) 我对 desk 的结论</h2>
+<p>如果今天要再加 1 篇真正能扩充 raw alpha 素材池的 intake，我愿意把这篇记成：</p>
+<p>&gt; <strong><code>latent-factor residual portfolio × cost-aware continuous allocation</code></strong></p>
+<p>它的价值不在“再多一个单点信号”，而在：</p>
+<ul>
+<li>把 raw alpha 从单条规则升级成 panel 引擎；</li>
+<li>直接兼容 <code>cross-sectional / relative-value / stat-arb</code>；</li>
+<li>天然能把成本、换手、short carry 纳入同一个训练目标；</li>
+<li>对 <code>1m/3m/5m/15m</code> 都能做最小实验，只是优先级不同。</li>
+</ul>
+<h2>11) 下一步怎么测</h2>
+<ol>
+<li><strong>先拉 20~40 个 liquid perp 的 <code>15m</code> 公共数据</strong>：OHLCV + funding + OI + basis。</li>
+<li><strong>先做一版简单 residualization</strong>：市场 beta + sector bucket + funding/OI 因子，得到 residual return panel。</li>
+<li><strong>跑 3 个模型层级</strong>：</li>
+</ol>
+<ul>
+<li>residual z-score top/bottom baseline</li>
+<li>OUFFN / RawFFN</li>
+<li>CNNTransformer</li>
+</ul>
+<ol>
+<li><strong>统一成本口径</strong>：至少测 <code>5 / 10 / 15 bps round-trip + funding hold cost</code>。</li>
+<li><strong>先看 4 个指标</strong>：</li>
+</ol>
+<ul>
+<li>after-cost Sharpe</li>
+<li>pnl / turnover</li>
+<li>single-name concentration</li>
+<li>funding / basis 冲击日的回撤</li>
+</ul>
+<ol>
+<li><strong>只有当 panel residual 模型稳定优于简单 baseline</strong>，才值得把它下沉到 <code>5m</code>，更不用急着上 <code>1m</code>。</li>
+</ol>
+<h2>12) 这轮最值得带走的一句话</h2>
+<p><strong>别再把 stat-arb 只理解成“挑一对、算 z-score、等回归”。DLSA 真正给 desk 的东西，是一条更通用的 raw alpha 路：先把共同因子剥掉，再在 residual panel 上做 after-cost 连续分配。</strong></p>
+</body>
+</html>

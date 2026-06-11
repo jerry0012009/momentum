@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>perp funding vs dated basis carry shell</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>perp funding vs dated basis carry shell</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-10 13:39 UTC</span>
+      <span class="pill">研究时间：2026-04-10 13:37 UTC</span>
+      <span class="pill">类型：GitHub repo + 本地复跑 / 快检</span>
+      <span class="pill">主题标签：carry / funding / basis / delta-neutral / execution / cost / BTC / ETH / 15m / 8h</span>
+      <span class="pill">证据类型：工程证据 + 本地复跑 + 公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-10_1337_perpfunding-vs-datedbasis-carry-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-10 13:37 UTC</li>
+<li>类型：GitHub repo + 本地复跑 / 快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>正 funding 持续时，做 long spot + short perp 的 delta-neutral carry；若要比替代腿，则比较 perp funding carry 与 dated futures basis carry</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：carry / funding / basis / delta-neutral / execution / cost / BTC / ETH / 15m / 8h</li>
+<li>证据类型：工程证据 + 本地复跑 + 公共数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 <code>zwmjj/funding-rate-arb</code>（2026 GitHub repo）。我重点审了 <code>src/backtest.py</code>、<code>src/basis_trade.py</code>、<code>results/backtest_default_metrics.csv</code>、<code>results/basis_vs_funding_summary.csv</code>，并在本地直接跑了 <code>python3 src/backtest.py</code>。它最值钱的地方不是“funding 很高时价格会跌”，而是把 <strong>carry 本体</strong> 写成了完整可执行壳：<code>8h funding &gt; entry</code> 开 <code>long spot + short perp</code>，<code>funding &lt; exit</code> 平仓，成本先按双腿 taker round-trip <code>16bps</code> 扣掉。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这份 repo 更适合我们 desk 当作一条独立的 <code>carry / funding / basis</code> raw alpha，而不是再把高 funding 硬读成短线反转信号。</li>
+<li><strong>一句话证明方式</strong>：作者直接用 Binance <code>spot / perp / funding / quarterly futures</code> 历史数据做规则回测，并把 entry/exit 阈值、费用、暴露比例和季度期货对照都写出来了。</li>
+<li>repo 默认参数 <code>entry=1bp / exit=0.5bp / taker=4bps per side</code> 下，<code>BTC</code> 约 <code>16</code> 笔、暴露 <code>31.7%</code>、年化 <code>9.0%</code>、最大回撤 <code>-0.34%</code>、平均持有 <code>25d</code>；<code>ETH</code> 约 <code>12</code> 笔、暴露 <code>36.9%</code>、年化 <code>11.2%</code>、最大回撤 <code>-1.8%</code>、平均持有 <code>39d</code>。</li>
+<li>repo 自带 EDA 里，<code>BTC/ETH</code> 的 <code>8h</code> funding 均值约 <code>1.13 / 1.34 bps</code>，折年化约 <code>12.3% / 14.7%</code>，偏度约 <code>3.32 / 3.37</code>，负 funding 仅约 <code>13.5% / 13.1%</code>；说明 carry 主要来自少数高 funding 时段，不是全天候均匀收租。</li>
+<li>repo 的对照摘要里，<code>BTC</code> dated quarterly basis 平均只约 <code>4.26%</code> 年化，明显低于 repo 样本里的 <code>BTC funding carry 12.32%</code>；所以对当前 desk，更该先把 <strong>perp funding carry</strong> 当主书，quarterly basis 当替代腿/切换对照，而不是反过来。</li>
+<li>我用 repo 自带原始 CSV 做了一个最小 sanity check：按 funding 分位分组后，<code>BTC</code> 的高 funding 组未来 <code>1/3/7</code> 个 <code>8h</code> spot 回报约 <code>+0.12% / +0.38% / +0.00%</code>，不是稳定负收益；<code>ETH</code> 的高 funding 组未来 <code>1/3/7</code> 个 <code>8h</code> 回报约 <code>+0.47% / +0.67% / +1.29%</code>。对我们最重要的含义是：<strong>不要默认给 carry 书叠一个“高 funding 必反转”的方向 overlay。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮虽然不是 <code>5m</code> 逐根方向信号，但它仍是当前优先级很高的 <strong>raw alpha</strong>，因为 <code>carry / funding / basis</code> 本来就是允许优先补齐的家族，而且这份 repo 给的是完整策略骨架，不是综述。对短周期 desk 的真正价值不在“把 8h 信号伪装成 5m alpha”，而在三点：</p>
+<ol>
+<li>给出一条可独立运行的低换手 raw book；</li>
+<li>让 <code>15m</code> 执行层去处理 funding 边界前后的开/平仓、滑点与替代腿选择；</li>
+<li>给现有 crowding / funding fade 线一个<strong>正向 carry 对照组</strong>，避免我们只研究“高 funding 该反着做”。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / carry / delta-neutral</li>
+<li>基础 alpha：<code>正 funding 持续 -&gt; short perp earns carry against long spot</code></li>
+<li>regime：<code>正 funding 占优、basis 未明显反向恶化、费用后仍有净 carry</code></li>
+<li>filter / veto：<code>funding &lt;= entry threshold</code>、<code>basis 过窄</code>、<code>预估成本吃掉 carry</code>、<code>季度合约相对更优时切腿</code></li>
+<li>risk / sizing / execution overlay：<code>1:1 notionals</code>、暴露上限、funding boundary 前后 <code>15m</code> 执行、roll/再入场节奏、双腿 taker/slippage 成本校验</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：<code>perp funding carry</code> 在 BTC/ETH 上是独立 raw alpha，但信号频率是 <code>8h</code>，<code>15m</code> 的角色应是 execution / switch layer，而不是伪装成逐 bar 方向预测。</li>
+<li>一个可计算定义：每个 <code>15m</code> bar 读取最近一次 funding 状态；若下一次可收 funding 的年化阈值折算后仍 <code>&gt; 1bp / 8h</code>，开 <code>long spot + short perp</code>；若掉到 <code>&lt; 0.5bp / 8h</code> 则平。再加一个 <code>basis_switch = quarterly_basis &gt; perp_expected_carry + fee_buffer</code> 的替代腿判断。</li>
+<li>最小回测切口：<code>BTC/ETH</code>，先用 Binance 公共 <code>spot / perp funding / quarterly futures</code>，样本先抓近 <code>12~24</code> 个月；信号按 <code>8h</code> 更新，但执行统一落到 funding 时间戳前后的 <code>15m</code> bar。</li>
+<li>最该先看：<code>成本后年化 carry</code>、<code>capital utilization / 暴露比例</code>；第二组再看 <code>max drawdown</code>、<code>threshold flatness</code>、<code>perp vs quarterly</code> 切换前后增益。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这不是 <code>1m/5m</code> 高频 alpha，若硬把它包装成逐 bar 信号，会失真。</li>
+<li>repo 的 basis 对照部分我本轮主要核对了源码与提交结果文件，没有在本机完整重跑 <code>ccxt</code> 拉取链路；因此 dated-futures 这块证据强度略低于 funding backtest 本体。</li>
+<li>carry 书最怕的是：资金费突然塌陷、双腿执行摩擦、借贷/划转成本、季度合约换月，以及“样本里 2021/2024 好、2025+ 变弱”的 regime 退化。</li>
+<li>所以它更像 <strong>独立低换手 carry sleeve</strong>，不该替代现有 <code>5m/15m</code> trend / MR 主书。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>zwmjj. (2026). *funding-rate-arb*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/zwmjj/funding-rate-arb">https://github.com/zwmjj/funding-rate-arb</a></code></li>
+<li>审计文件：<code>src/backtest.py</code>、<code>src/basis_trade.py</code>、<code>results/backtest_default_metrics.csv</code>、<code>results/basis_vs_funding_summary.csv</code></li>
+<li>数据口径：Binance <code>spot / perpetual funding / quarterly futures</code>，repo 通过 <code>ccxt</code> 拉取并保存到 <code>data/raw/</code></li>
+</ul>
+</body>
+</html>

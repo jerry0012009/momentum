@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 R-Breaker 只读成老派期货日内线：对 short-cycle crypto desk，更该先测的是「前一 session 高低收六线 × breakout/reversal 双模态」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 R-Breaker 只读成老派期货日内线：对 short-cycle crypto desk，更该先测的是「前一 session 高低收六线 × breakout/reversal 双模态」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-22 01:18 UTC</span>
+      <span class="pill">研究时间：2026-04-22 01:06 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `strategies/24_r_breaker.py`）+ Binance USDⓈ-M public-data portability probe（8 个 liquid majors，`5m/15m`，`90d`）</span>
+      <span class="pill">主题标签：raw-alpha / intraday / breakout / reversal / pseudo-session / r-breaker / single-asset / binance-perpetual / 5m / 15m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：源码规则 + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-22_0106_rbreaker-pseudosession-crypto-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-22 01:06 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>strategies/24_r_breaker.py</code>）+ Binance USDⓈ-M public-data portability probe（8 个 liquid majors，<code>5m/15m</code>，<code>90d</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：用前一交易 session 的高/低/收锚定 6 条日内价格线；极端突破时顺势跟、冲高/杀低失败时反手做回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / intraday / breakout / reversal / pseudo-session / r-breaker / single-asset / binance-perpetual / 5m / 15m / repo / public-data / cost / risk</li>
+<li>证据类型：源码规则 + public-data portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <code>ringoshinnytech/tqsdk-strategies</code> 这个 2026 仍在更新的中文策略仓，重点是 <code>strategies/24_r_breaker.py</code>。它给的不是“某个指标碰一下就下单”的半成品，而是一个相对完整的日内策略骨架：</p>
+<ol>
+<li>用上一 session 的 <strong>高 / 低 / 收</strong> 算出 6 条线；</li>
+<li>当价格直接冲破最外层线时，按 <strong>breakout</strong> 追；</li>
+<li>当价格先摸到“观察线”，随后又跌回/涨回“反转线”时，按 <strong>failed extreme → reversal</strong> 反手；</li>
+<li>session 结束前强制平仓，不过夜。</li>
+</ol>
+<p>它对 crypto desk 的价值，不是“这套 90 年代期货公式神奇有效”，而是：<strong>这是一条天然适合 <code>5m/15m</code> 的、可直接拆成完整策略的 raw alpha 母板</strong>。因为它把 breakout 和 mean reversion 两条腿，统一放到了同一个前序锚点上。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> R-Breaker 对 crypto 不该被读成“老派期货老古董”，它更像一个 <strong>session-anchored 双模态 alpha 壳</strong>：行情真展开时追，极端失败时反手。</li>
+<li><strong>一句话 first verdict：</strong> 用 Binance USDⓈ-M 8 个 liquid majors 做 <code>90d</code> 快检后，能看到这条线 <strong>有 pocket，但绝不是 broad-book 通杀</strong>；而且 <strong>24h pseudo-day 普遍比 8h funding session 更像样</strong>，后者明显容易过度交易。</li>
+<li>repo 默认是 5 分钟期货日内交易思路，非常接近我们 desk 的 child timeframe；迁到 crypto 时，真正要调的不是公式本身，而是 <strong>session 定义、交易腿拆分、趋势日止损</strong>。</li>
+<li>我做了两个 session 口径：</li>
+<li><strong>24h pseudo-day</strong>：按 UTC 日切；</li>
+<li><strong>8h pseudo-session</strong>：按 funding window 切。</li>
+<li>结果很清楚：<strong>8h 版交易笔数暴涨，但均值大多更差</strong>。例如 <code>5m</code> 全池里，24h 版共约 <code>200</code> 笔，8h 版约 <code>642</code> 笔；<code>15m</code> 里，24h 版约 <code>189</code> 笔，8h 版约 <code>580</code> 笔。换成人话：8 小时切法让它更忙，但不更赚钱。</li>
+<li>24h 版出现了少数值得继续追的 pocket：</li>
+<li><code>DOGEUSDT 5m</code>：约 <strong><code>+47.8 bps/笔</code></strong>，胜率 <strong><code>65.2%</code></strong>；</li>
+<li><code>ADAUSDT 5m</code>：约 <strong><code>+32.1 bps/笔</code></strong>；</li>
+<li><code>DOGEUSDT 15m</code>：约 <strong><code>+24.8 bps/笔</code></strong>，胜率 <strong><code>52.2%</code></strong>；</li>
+<li><code>BTCUSDT 5m</code> 也有 <strong><code>+6.7 bps/笔</code></strong>，但远没有 meme/alt pocket 厚。</li>
+<li>8h 版只有零散 pocket 还勉强站住，比如 <code>SOLUSDT 15m</code> 约 <strong><code>+7.2 bps/笔</code></strong>、<code>LINKUSDT 5m</code> 约 <strong><code>+11.4 bps/笔</code></strong>；但多数品种仍为负，说明它更像 <strong>把前一段噪音也当锚点</strong>，不是更懂市场结构。</li>
+<li>所以 first verdict 不是“R-Breaker 可直接全市场上线”，而是：<strong>这条线值得进入素材池，因为它给了一个很清楚的完整 raw alpha 骨架；但第一优先测试应该是 24h anchor + leg 拆分，不是 8h 全量硬跑。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和 desk 现在的关系很直接：我们最近已经补了不少 pure trend、pairs、basis、grid、microstructure 素材，但 <strong>“同一套 session 锚点里，趋势追随和失败反转如何并存”</strong> 这个位置，其实还缺一个足够朴素、足够完整、足够能快速复现的母板。</p>
+<p>R-Breaker 补的正是这个空缺。</p>
+<p>换成人话：</p>
+<ul>
+<li>如果价格真把昨天区间狠狠干穿，那你别老想着抄顶抄底，先承认它在走趋势；</li>
+<li>但如果价格只是先冲过头、随后又缩回来，那就别再追，反而该把它当成“失败突破后的回摆”。</li>
+</ul>
+<p>这对 <code>1m/3m/5m/15m</code> desk 很有用，因为它天然支持两件事：</p>
+<ol>
+<li><strong>同一框架里同时容纳 breakout 与 mean reversion</strong>；</li>
+<li><strong>很容易拆成 router</strong>：突破腿给 continuation，反转腿给 fade，不用混着写。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：单资产、日内双向、breakout + reversal 双模态</li>
+<li>基础 alpha：previous-session anchored price-level reaction</li>
+<li>regime：上一 session 的范围与当天是否真正扩张</li>
+<li>filter / veto：可加 ADX、前一 session range percentile、volume expansion、funding 窗口黑名单</li>
+<li>risk / sizing / execution overlay：固定 1x notional 起步；趋势腿可用 ATR/中线追踪；反转腿必须加 hard stop 与 time-stop</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 规则原型</h3>
+<p>先用上一 session 的 <code>H/L/C</code> 算 6 条线：</p>
+<ul>
+<li><code>Pivot = (H + L + C) / 3</code></li>
+<li><code>BBreak = H + 2 × (Pivot - L)</code></li>
+<li><code>SSetup = Pivot + (H - L)</code></li>
+<li><code>SEnter = 2 × Pivot - L</code></li>
+<li><code>BEnter = 2 × Pivot - H</code></li>
+<li><code>BSetup = Pivot - (H - L)</code></li>
+<li><code>SBreak = L - 2 × (H - Pivot)</code></li>
+</ul>
+<h3>4.2 最小交易壳</h3>
+<ul>
+<li><strong>Breakout long</strong>：收盘上穿 <code>BBreak</code></li>
+<li><strong>Breakout short</strong>：收盘下穿 <code>SBreak</code></li>
+<li><strong>Reversal short</strong>：当日先触及 <code>SSetup</code>，随后收盘跌回 <code>SEnter</code> 下方</li>
+<li><strong>Reversal long</strong>：当日先触及 <code>BSetup</code>，随后收盘反弹回 <code>BEnter</code> 上方</li>
+<li><strong>Flat rule</strong>：session 结束强平</li>
+</ul>
+<h3>4.3 我这次的 public-data probe 口径</h3>
+<ul>
+<li>标的：Binance USDⓈ-M <code>BTC/ETH/SOL/BNB/XRP/DOGE/ADA/LINK</code></li>
+<li>周期：<code>5m</code>、<code>15m</code></li>
+<li>样本：最近 <code>90d</code></li>
+<li>session：<code>24h</code> 与 <code>8h</code> 两版</li>
+<li>成本：粗扣单边 <code>4 bps</code>，翻仓按更高 round-trip 粗算</li>
+<li>结果文件：<code>reports/artifacts/quant_digests/rbreaker_pseudosession_probe_summary_2026-04-22.csv</code></li>
+</ul>
+<h2>5. 结果怎么读</h2>
+<h3>5.1 最重要的不是“均值正不正”，而是 session 定义</h3>
+<p>这套东西本质上依赖“上一段价格区间”是不是一个有信息量的锚点。Crypto 24/7 连续交易，没有天然开收盘，所以 <strong>session 切法本身就是策略参数</strong>。</p>
+<p>这次快检说明：</p>
+<ul>
+<li><strong>24h anchor</strong> 更像“市场真的记得昨天高低收”；</li>
+<li><strong>8h anchor</strong> 更像把 funding 节点硬塞成 session，噪音更大，交易更频。</li>
+</ul>
+<h3>5.2 这条线更像 alt/meme pocket，不像 broad market baseline</h3>
+<p>DOGE、ADA 在 24h 版里明显更厚，BTC 只有薄正，ETH/BNB/XRP/LINK 多数口径仍然不理想。说明这条线更可能依赖：</p>
+<ul>
+<li>明确的日内 crowding；</li>
+<li>更爱冲过头又拉回来的币种；</li>
+<li>对“昨天区间”仍有记忆的单币行为。</li>
+</ul>
+<p>也就是说，它不像 pairs/basis 那种结构性价差，更像 <strong>session memory 驱动的单币方向/反转混合壳</strong>。</p>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>repo 给的是完整骨架，但 <strong>没有真正 crypto-first 的止损/费用/滑点校准</strong>。</li>
+<li>如果把 breakout 腿和 reversal 腿混在一起看，很容易误判来源：某些币可能只是 reversal 腿赚钱，breakout 腿纯亏；反之亦然。</li>
+<li>8h 切法过度交易这一点很明显，说明 <strong>funding window 不是天然“更高信息量”的 session</strong>。</li>
+<li>24h 版虽然出现 pocket，但宽度仍不够说明“可直接 broad-book 上线”；更像下一轮要继续做 leg attribution 的候选。</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<ol>
+<li><strong>先拆腿，不要混测。</strong> 分开跑 breakout-only、reversal-only、combined，确认 edge 到底来自哪一边。</li>
+<li><strong>先保留 24h anchor，暂时别把 8h 当主线。</strong> 8h 可以留作对照，不要当默认生产口径。</li>
+<li><strong>加“前一 session range percentile”筛选。</strong> 只保留前一段不是极端大波动、也不是极端死寂的中等 range，看能否减少假突破。</li>
+<li><strong>给 reversal 腿补 hard stop。</strong> 最简单先测：<code>1.0~1.5 × previous-session range fraction</code> 或 <code>0.75~1.0 ATR</code>，否则趋势日里反转腿会被连打。</li>
+<li><strong>给 breakout 腿补“只做首次突破”版本。</strong> 避免同一天多次翻来覆去过度交易。</li>
+<li><strong>做 alt pocket router。</strong> 第一轮先聚焦 <code>DOGE/ADA/SOL</code>，不要一上来 broad basket 等权。</li>
+</ol>
+<h2>8. 结论</h2>
+<p>如果现在问一句：<strong>它为什么比继续补 raw alpha 更值得？</strong></p>
+<p>答案是：因为它本身就是 raw alpha，而且还是少数那种 <strong>一上来就带 entry / reversal / flat / sizing 基线</strong> 的完整母板。它不是又一个只能当 filter 的旁支件。</p>
+<p>但如果再问一句：<strong>它现在是不是 production-ready alpha？</strong></p>
+<p>答案也是明确的：<strong>还不是。</strong> 这轮最值得保留的，不是“R-Breaker 公式神奇有效”，而是 <strong>session-anchored 双模态框架</strong> 这件事本身，尤其是 <code>24h</code> 口径下的 breakout/reversal leg 拆分。</p>
+<h2>9. 相关产物</h2>
+<ul>
+<li>Probe summary：<code>reports/artifacts/quant_digests/rbreaker_pseudosession_probe_summary_2026-04-22.csv</code></li>
+</ul>
+<h2>10. 来源</h2>
+<ul>
+<li>ringoshinnytech. (2026). <strong>tqsdk-strategies</strong>. GitHub repo.</li>
+<p>Repo URL: <code><a href="https://github.com/ringoshinnytech/tqsdk-strategies">https://github.com/ringoshinnytech/tqsdk-strategies</a></code></p>
+<li>Source file: <code>strategies/24_r_breaker.py</code></li>
+<p>Readable URL: <code><a href="https://raw.githubusercontent.com/ringoshinnytech/tqsdk-strategies/main/strategies/24_r_breaker.py">https://raw.githubusercontent.com/ringoshinnytech/tqsdk-strategies/main/strategies/24_r_breaker.py</a></code></p>
+<li>Source file: <code>README.md</code></li>
+<p>Readable URL: <code><a href="https://raw.githubusercontent.com/ringoshinnytech/tqsdk-strategies/main/README.md">https://raw.githubusercontent.com/ringoshinnytech/tqsdk-strategies/main/README.md</a></code></p>
+<li>Practitioner origin often attributed to <strong>Richard Saidenberg</strong>, *Futures Magazine*, early R-Breaker write-up. DOI: N/A. Readable URL: N/A.</li>
+</ul>
+</body>
+</html>

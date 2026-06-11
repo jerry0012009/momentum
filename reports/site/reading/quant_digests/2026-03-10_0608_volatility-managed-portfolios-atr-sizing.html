@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Volatility Managed Portfolios：先管仓位，再谈 alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Volatility Managed Portfolios：先管仓位，再谈 alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-10 06:09 UTC</span>
+      <span class="pill">研究时间：2026-03-10 06:08 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：volatility / risk / position-sizing / trend</span>
+      <span class="pill">证据类型：论文证据 + 工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-10_0608_volatility-managed-portfolios-atr-sizing.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-10 06:08 UTC</li>
+<li>类型：论文</li>
+<li>主题标签：volatility / risk / position-sizing / trend</li>
+<li>证据类型：论文证据 + 工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的核心是 Moreira &amp; Muir 的论文 <strong>Volatility Managed Portfolios</strong>，再配一篇 Man Institute / Quantpedia 的实践型总结。它们讨论的不是“怎么发明新因子”，而是：<strong>同一个因子或策略，在高波动时少做、低波动时多做，风险收益比会不会更好。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>论文证据：对 market、value、momentum 等多类因子，按波动率动态缩放仓位后，Sharpe ratio 往往提升；原因是波动上升并没有被同等幅度的预期收益上升所补偿。</li>
+<li>实践结论：volatility targeting 往往会在高波动时自动降杠杆、低波动时放大敞口，因此常见效果不是“绝对收益一定更高”，而是<strong>左尾更薄、回撤更稳、波动更平滑</strong>。</li>
+<li>对趋势系统尤其重要：很多趋势/突破策略最难受的阶段，不是“信号完全错”，而是<strong>信号本来就脆弱时还用固定大仓位硬扛高波动</strong>。</li>
+<li>重要保留：现有强证据主要来自股票、信用、部分因子组合，并不是对 <strong>Crypto 15m</strong> 的直接证明；把这个思想迁移到短周期加密，仍然需要你自己回测验证。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>它和 <code>momentum</code> 当前主线非常相关，因为你现在已经有多个“方向层 + 触发层 + 确认层”的模板，但<strong>风险层</strong>还没有被单独系统化。这个主题更像：</p>
+<ul>
+<li>风控/执行层改进</li>
+<li>候选模块：<code>ATR position sizing</code></li>
+<li>方法论提醒：不要只盯着“信号对不对”，还要看“仓位是不是在最差的时候开得太大”</li>
+</ul>
+<p>换句话说，它不是给你一个新 alpha，而是帮你判断：<strong>现有 alpha 能不能活得更久。</strong></p>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：对同一个 15m 趋势模板，加入波动率缩放后，成本后收益未必显著提高，但 max drawdown 和收益曲线平滑度可能改善。</li>
+<li>一个可计算定义：</li>
+<li>基线：固定名义仓位 <code>position = 1.0</code></li>
+<li>波动率缩放版：<code>position_t = clip(target_vol / rv_t, min_pos, max_pos)</code></li>
+<li>如果你想先和现有工程兼容，可先用 ATR 近似：<code>position_t = clip(atr_ref / ATR_t, 0.5, 1.5)</code></li>
+<li>最小回测切口：</li>
+<li>模板：<code>ema_donchian_breakout</code></li>
+<li>资产：BTC, ETH, SOL</li>
+<li>周期：15m</li>
+<li>样本：近 180d，至少做一次 OOS split + rolling</li>
+<li>最该先看：</li>
+</ul>
+<ol>
+<li><code>max_drawdown</code></li>
+<li><code>post_cost_return</code></li>
+</ol>
+<ul>
+<li>辅助再看：<code>positive_window_ratio</code></li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>波动率缩放容易“卖飞”强趋势：如果波动突然变大但趋势继续延续，它会因为主动降仓而少赚。</li>
+<li>短周期里交易成本更敏感；若仓位缩放过于频繁，可能会被手续费和滑点吃掉改善。</li>
+<li>ATR 缩放与论文里的 realized volatility scaling 不是一回事；ATR 更适合做工程上的第一近似，不应说成“论文已证明 ATR sizing 有效”。</li>
+<li>如果策略本身没有 edge，vol targeting 只能改善曲线形态，<strong>不能把坏策略变成好策略</strong>。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Moreira, A., &amp; Muir, T. (2016/2017). *Volatility Managed Portfolios* (NBER Working Paper 22208): <a href="https://www.nber.org/papers/w22208">https://www.nber.org/papers/w22208</a></li>
+<li>Man Institute. *The Impact of Volatility Targeting*: <a href="https://www.man.com/insights/the-impact-of-volatility-targeting">https://www.man.com/insights/the-impact-of-volatility-targeting</a></li>
+<li>Quantpedia. *An Introduction to Volatility Targeting*: <a href="https://quantpedia.com/an-introduction-to-volatility-targeting/">https://quantpedia.com/an-introduction-to-volatility-targeting/</a></li>
+</ul>
+</body>
+</html>

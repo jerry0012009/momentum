@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2022 SSRN BTC 论文只读成“seasonality 小品文”：对 short-cycle desk，更该先拆的是「10-day local-extrema branch-split long router」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2022 SSRN BTC 论文只读成“seasonality 小品文”：对 short-cycle desk，更该先拆的是「10-day local-extrema branch-split long router」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-13 11:45 UTC</span>
+      <span class="pill">类型：2022 SSRN 论文摘要镜像/策略代码镜像复核（PapersWithBacktest + QuantBuffet）+ Binance USDⓈ-M `15m/5m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/major-only/trend-following/mean-reversion/local-extrema/10day-high/10day-low/branch-split/long-only/router/btc/eth/sol/binance-perpetual/15m/5m/paper/public-data/cost/risk</span>
+      <span class="pill">证据类型：论文摘要镜像 + 二次代码镜像 + 公共数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-13_1145_localextrema-branchsplit-long-router-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-13 11:45 UTC</li>
+<li>类型：2022 SSRN 论文摘要镜像/策略代码镜像复核（PapersWithBacktest + QuantBuffet）+ Binance USDⓈ-M <code>15m/5m</code> public-data portability probe</li>
+<li>主题标签：raw-alpha/single-asset/major-only/trend-following/mean-reversion/local-extrema/10day-high/10day-low/branch-split/long-only/router/btc/eth/sol/binance-perpetual/15m/5m/paper/public-data/cost/risk</li>
+<li>证据类型：论文摘要镜像 + 二次代码镜像 + 公共数据 portability probe</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>把“价格来到 rolling 10-day 局部极值”拆成两条独立 long 信号：触发 10-day 新高时做顺势 continuation，触发 10-day 新低时做 drawdown-bounce mean reversion；不要把高点分支和低点分支粗暴并成同一条规则。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是一篇 2022 BTC 论文及其可读镜像/代码镜像：原论文同时谈了 seasonality、trend-following、mean reversion，但对 short-cycle desk 真正更值钱的不是“NYSE 开收盘时段”那层，而是一句很容易被忽略的话——<strong>BTC 在局部高点更容易顺势，在局部低点更容易反弹。</strong> 我把它直接翻译成一个可复现 raw alpha 壳：<code>10-day local extrema -&gt; branch-split long router</code>，再用 Binance USDⓈ-M <code>BTC/ETH/SOL</code> 的 <code>15m/5m</code> 公共 K 线做最小 portability probe。</p>
+<h2>2. 先把一句话说清楚：这篇东西的 base alpha 是什么？</h2>
+<p>&gt; <strong>base alpha = “rolling 10-day 局部极值的分支化 long 路由”。</strong> 价格创近 10 天新高，不把它当 overbought 反手，而是先测 continuation long；价格刷近 10 天新低，不把它当单纯崩掉，而是先测 bounce long。</p>
+<p>翻成人话：</p>
+<ul>
+<li>这不是“见高就空、见低就多”的对称反转；</li>
+<li>也不是“突破就追 / 回撤就抄底”这种口号式总结；</li>
+<li>它真正要表达的是：<strong>同样都是局部极值，顶部和底部对应的后续动力学不一样。</strong></li>
+<li><code>local max</code> 更像趋势延续；</li>
+<li><code>local min</code> 更像回撤后的弹回；</li>
+<li>所以它天然不是一条单一规则，而是<strong>两个子 alpha</strong>。</li>
+</ul>
+<p>这也是为什么它应该被归类为 <code>raw alpha</code>，而不是 <code>filter / regime / overlay</code>：</p>
+<ul>
+<li>局部极值本身就是 entry 触发条件；</li>
+<li>后续 flat / hold-horizon 就能构成最小交易壳；</li>
+<li>不需要先依附别的主信号才能成立。</li>
+</ul>
+<h2>3. 这次看的来源</h2>
+<h3>主来源（paper）</h3>
+<ul>
+<li><strong>Authors：</strong> Matúš Padyšák, Radovan Vojtko</li>
+<li><strong>Year：</strong> 2022</li>
+<li><strong>Title：</strong> *Seasonality, Trend-following, and Mean reversion in Bitcoin*</li>
+<li><strong>Venue：</strong> SSRN Electronic Journal</li>
+<li><strong>DOI：</strong> &lt;<a href="https://doi.org/10.2139/ssrn.4081000&gt;">https://doi.org/10.2139/ssrn.4081000&gt;</a></li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4081000&gt;">https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4081000&gt;</a></li>
+<li><strong>Repo URL：</strong> N/A</li>
+</ul>
+<h3>可读摘要镜像</h3>
+<ul>
+<li><strong>PapersWithBacktest strategy page：</strong> &lt;<a href="https://paperswithbacktest.com/strategies/seasonality-trend-following-and-mean-reversion-in-bitcoin&gt;">https://paperswithbacktest.com/strategies/seasonality-trend-following-and-mean-reversion-in-bitcoin&gt;</a></li>
+<li><strong>QuantBuffet strategy page（含 Lean 代码镜像）：</strong> &lt;<a href="https://quantbuffet.com/en/2024/04/13/mean-reversion-and-trend-following-based-on-min-and-max-in-btc/&gt;">https://quantbuffet.com/en/2024/04/13/mean-reversion-and-trend-following-based-on-min-and-max-in-btc/&gt;</a></li>
+</ul>
+<p>这两个镜像都保留了同一条核心描述：</p>
+<ul>
+<li>BTC 在局部最大值附近更容易 trend；</li>
+<li>BTC 在局部最小值附近更容易 bounce back；</li>
+<li>QuantBuffet 还给了一个非常原始但可执行的 long-only 代码镜像：<strong>当日价格等于过去 10 天 max 或 min 时开多，持有一天。</strong></li>
+</ul>
+<h3>本轮本地 artifacts</h3>
+<ul>
+<li>Probe script：<code>reports/artifacts/quant_digests/2026-04-13_localextrema_probe.py</code></li>
+<li>Probe metrics：<code>reports/artifacts/quant_digests/2026-04-13_localextrema_probe_metrics.csv</code></li>
+</ul>
+<h2>4. 这条线为什么值得写进当前池子</h2>
+<p>它值得进池，不是因为“又一个 BTC 形态说法”，而是因为它补了当前研究池里一个挺缺的缝：</p>
+<ol>
+<li><strong>它是明确的 raw alpha，不是又一个 shared gate。</strong></li>
+</ol>
+<ul>
+<li>最近池子里已经有不少把结构、资金费率、波动或盘口当 gate / veto 的材料；</li>
+<li>这条线更朴素：<strong>极值本身就是方向触发。</strong></li>
+</ul>
+<ol>
+<li><strong>它把 trend 和 mean reversion 放进同一个母题里，但不是混着做。</strong></li>
+</ol>
+<ul>
+<li>很多研究会把两者写成“市场有时趋势、有时反转”；</li>
+<li>这篇东西真正有用的地方，是给了一个很具体的路由点：<strong>local max vs local min。</strong></li>
+</ul>
+<ol>
+<li><strong>它对 short-cycle desk 很友好。</strong></li>
+</ol>
+<ul>
+<li>不需要外部数据；</li>
+<li>不需要订单簿或链上；</li>
+<li>用公开 K 线就能做最小实验；</li>
+<li>而且能自然映射到 <code>15m / 5m</code>。</li>
+</ul>
+<ol>
+<li><strong>它不是近期 digest 的重复。</strong></li>
+</ol>
+<ul>
+<li>不是 pairs；</li>
+<li>不是 funding / basis；</li>
+<li>不是 LVN / profile；</li>
+<li>也不是前几天那篇 cross-sectional <code>MAX effect</code> 的“彩票型极端值高估值 fade”。</li>
+</ul>
+<h2>5. 最重要的读法修正：不要照抄“max 或 min 都做多”的合并规则</h2>
+<p>QuantBuffet 镜像里的最小代码壳是：</p>
+<ul>
+<li>计算过去 10 天 max / min；</li>
+<li>若当前价格等于 max 或 min，则开多；</li>
+<li>持有 1 天；</li>
+<li>其余时间空仓。</li>
+</ul>
+<p>这个壳有个优点：<strong>非常容易复现。</strong></p>
+<p>但如果直接把它读成： &gt; “哦，反正碰到 10-day max 或 10-day min 都做多就行。”</p>
+<p>那就会把论文里最有价值的信息抹平掉。对 desk 来说，正确的拆法应该是：</p>
+<ul>
+<li><strong>分支 A：<code>local max -&gt; continuation long</code></strong></li>
+<li><strong>分支 B：<code>local min -&gt; rebound long</code></strong></li>
+</ul>
+<p>然后分别回答：</p>
+<ul>
+<li>它们是不是该用同样的 holding horizon？</li>
+<li>它们是不是该跑在同一批币上？</li>
+<li>它们是不是能共享同样的 veto / cost budget？</li>
+</ul>
+<p>如果这些问题不分开测，最后常见结果就是：</p>
+<ul>
+<li>强分支把弱分支抹掉；</li>
+<li>合并回测看起来一般；</li>
+<li>然后你误以为“这条线没用”。</li>
+</ul>
+<h2>6. public-data portability probe：我怎么把它翻到 <code>15m / 5m</code></h2>
+<h3>6.1 probe 口径</h3>
+<ul>
+<li><strong>市场：</strong> Binance USDⓈ-M Perpetual</li>
+<li><strong>标的：</strong> <code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li><strong>频率：</strong> <code>15m</code>、<code>5m</code></li>
+<li><strong>历史：</strong> 最近约 <code>120</code> 天公开 K 线</li>
+<li><strong>lookback：</strong> <code>10</code> 天 rolling extreme</li>
+<li><strong>触发：</strong></li>
+<li><code>max_branch</code>：当前 close 创 rolling 10-day 新高</li>
+<li><code>min_branch</code>：当前 close 创 rolling 10-day 新低</li>
+<li><strong>执行近似：</strong> 下一根 bar <code>open</code> 入场</li>
+<li><strong>退出：</strong> 固定 horizon time-stop，<code>no-overlap</code></li>
+<li><code>15m</code>: 测 <code>24 / 36</code> bars</li>
+<li><code>5m</code>: 测 <code>36</code> bars</li>
+<li><strong>方向：</strong> long-only</li>
+<li><strong>成本：</strong> 当前结果只看 gross，不含 fee / slippage / funding</li>
+</ul>
+<h3>6.2 为什么这样翻</h3>
+<p>原论文/镜像是日频表达，short-cycle desk 不能机械照搬“一天持有”。 所以我保留它的核心母体：</p>
+<ul>
+<li><strong>10-day extreme 是信号源；</strong></li>
+<li><strong>max / min 是两条不同分支；</strong></li>
+<li><strong>其余全部简化成最容易落地的 next-open + fixed-horizon。</strong></li>
+</ul>
+<p>这个 probe 的目的不是宣布“策略已毕业”，而是先回答三个问题：</p>
+<ol>
+<li>这条线有没有 gross pocket？</li>
+<li><code>max_branch</code> 和 <code>min_branch</code> 是不是本来就该分开看？</li>
+<li>它更像 BTC-only，还是 majors 才能迁移？</li>
+</ol>
+<h2>7. 关键结果：真正有价值的不是“极值都做多”，而是<strong>branch split + major filter</strong></h2>
+<h2>7.1 BTC：<code>15m</code> 顶部 continuation 有料，底部 branch 反而拖后腿</h2>
+<h3><code>BTCUSDT 15m | 24 bars</code></h3>
+<ul>
+<li><code>max_branch</code>：<strong>20 笔</strong>，平均 <strong><code>+35.05 bps/trade</code></strong>，胜率 <strong><code>50.0%</code></strong></li>
+<li><code>min_branch</code>：<strong>22 笔</strong>，平均 <strong><code>-75.65 bps/trade</code></strong>，胜率 <strong><code>36.4%</code></strong></li>
+<li><code>combined</code>：<strong>42 笔</strong>，平均 <strong><code>-22.93 bps/trade</code></strong></li>
+</ul>
+<p>这组数非常关键：</p>
+<ul>
+<li>如果你把论文简化成“碰到极值都做多”，那在最近这段 <code>BTC 15m</code> 上是<strong>负的</strong>；</li>
+<li>但如果只保留 <code>local max -&gt; continuation</code> 这个分支，gross 是正的，而且不薄。</li>
+</ul>
+<h3><code>BTCUSDT 5m | 36 bars</code></h3>
+<ul>
+<li><code>max_branch</code>：<strong>26 笔</strong>，平均 <strong><code>+2.70 bps/trade</code></strong></li>
+<li><code>min_branch</code>：<strong>33 笔</strong>，平均 <strong><code>+11.56 bps/trade</code></strong>，胜率 <strong><code>57.6%</code></strong></li>
+<li><code>combined</code>：<strong>59 笔</strong>，平均 <strong><code>+7.66 bps/trade</code></strong></li>
+</ul>
+<p>这说明：</p>
+<ul>
+<li>BTC 到了更快的 <code>5m</code>，强分支反而切到 <code>local min -&gt; rebound</code>；</li>
+<li>同一个母题，在不同时间尺度上<strong>主导分支会换</strong>。</li>
+</ul>
+<h2>7.2 ETH：portability surprisingly strong，但依然是 branch-sensitive</h2>
+<h3><code>ETHUSDT 15m | 24 bars</code></h3>
+<ul>
+<li><code>max_branch</code>：<strong>18 笔</strong>，平均 <strong><code>+63.27 bps/trade</code></strong>，胜率 <strong><code>72.2%</code></strong></li>
+<li><code>min_branch</code>：<strong>24 笔</strong>，平均 <strong><code>-43.36 bps/trade</code></strong></li>
+<li><code>combined</code>：<strong>42 笔</strong>，平均 <strong><code>+2.34 bps/trade</code></strong></li>
+</ul>
+<h3><code>ETHUSDT 5m | 36 bars</code></h3>
+<ul>
+<li><code>max_branch</code>：<strong>22 笔</strong>，平均 <strong><code>+19.99 bps/trade</code></strong></li>
+<li><code>min_branch</code>：<strong>34 笔</strong>，平均 <strong><code>+55.83 bps/trade</code></strong>，胜率 <strong><code>64.7%</code></strong></li>
+<li><code>combined</code>：<strong>56 笔</strong>，平均 <strong><code>+41.75 bps/trade</code></strong></li>
+</ul>
+<p>ETH 给的启发是：</p>
+<ul>
+<li>这不是只能写进 BTC 角落的一次性 observations；</li>
+<li>至少在 recent sample 里，<strong>major coin 的局部极值路由是能迁移的</strong>；</li>
+<li>但它依然不能被粗暴地统一成“极值 long-only 万能规则”，因为 <code>15m</code> 的强分支是顶部 continuation，<code>5m</code> 的强分支更偏底部 bounce。</li>
+</ul>
+<h2>7.3 SOL：说明这条线不是“全市场普适”</h2>
+<h3><code>SOLUSDT 5m | 36 bars</code></h3>
+<ul>
+<li><code>max_branch</code>：<strong>26 笔</strong>，平均 <strong><code>-33.38 bps/trade</code></strong></li>
+<li><code>min_branch</code>：<strong>38 笔</strong>，平均 <strong><code>-29.29 bps/trade</code></strong></li>
+<li><code>combined</code>：<strong>64 笔</strong>，平均 <strong><code>-30.95 bps/trade</code></strong></li>
+</ul>
+<h3><code>SOLUSDT 15m | 24 bars</code></h3>
+<ul>
+<li><code>combined</code>：<strong>50 笔</strong>，平均 <strong><code>-16.75 bps/trade</code></strong></li>
+</ul>
+<p>SOL 的作用不是“再找个失败样本”，而是明确告诉我们： &gt; 这条线更像 <code>BTC / ETH</code> 这种 major behavior alpha，而不是适合随手扩展到高 beta alt 的通用模板。</p>
+<h2>8. 对当前 desk 的真正落点：把它当成两个子书，不要当成一个统一壳</h2>
+<p>我现在对这条线的最实用结论是：</p>
+<ol>
+<li><strong>不要直接部署 <code>max_or_min -&gt; long</code> 合并书。</strong></li>
+</ol>
+<ul>
+<li>合并后经常被弱分支拖掉；</li>
+<li>recent sample 里 <code>BTC 15m combined</code> 就是直接转负。</li>
+</ul>
+<ol>
+<li><strong>先拆成两条子书。</strong></li>
+</ol>
+<ul>
+<li><code>Book A</code>: <code>local max -&gt; continuation long</code></li>
+<li><code>Book B</code>: <code>local min -&gt; rebound long</code></li>
+</ul>
+<ol>
+<li><strong>优先从 majors 做，不要一开始就铺到 SOL / alt。</strong></li>
+</ol>
+<ul>
+<li>当前 portability 更像 major behavior；</li>
+<li>alt 上噪声、反身性和单边挤压更容易把这个结构打碎。</li>
+</ul>
+<ol>
+<li><strong>时间尺度要分别校准。</strong></li>
+</ol>
+<ul>
+<li><code>15m</code> 先优先看 <code>max_branch</code></li>
+<li><code>5m</code> 先优先看 <code>min_branch</code></li>
+</ul>
+<p>这就让它不再是“BTC 论文里的一个趣味观察”，而是能转成 desk 语言的一组明确模块：</p>
+<ul>
+<li>顺势 continuation 子书</li>
+<li>drawdown-bounce 子书</li>
+<li>major-only universe filter</li>
+<li>fixed-horizon / time-stop execution 壳</li>
+</ul>
+<h2>9. 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：single-asset / long-only / branch-split</li>
+<li>基础 alpha：<code>10-day local extrema</code></li>
+<li>分支 1：<code>local max -&gt; continuation</code></li>
+<li>分支 2：<code>local min -&gt; rebound</code></li>
+<li>regime：先限 <code>BTC / ETH</code> 这类 liquid majors</li>
+<li>执行：next-bar open 或更保守的 break/reclaim 确认</li>
+<li>退出：固定 horizon time-stop，优先不要把两分支共享同一个 horizon</li>
+<li>risk / sizing：固定风险预算；单笔 notional cap；<code>no-overlap</code></li>
+<li>cost：先压 <code>6 / 10 / 15 bps per side</code> 看剩余 edge</li>
+</ul>
+<h2>10. 下一步怎么测（必须项）</h2>
+<ol>
+<li><strong>先把两分支彻底拆开做独立 grid，而不是继续看 combined。</strong></li>
+</ol>
+<ul>
+<li><code>max_branch</code> 单独扫 <code>8 / 12 / 24 / 36</code> bars</li>
+<li><code>min_branch</code> 单独扫 <code>8 / 12 / 24 / 36</code> bars</li>
+<li>看每个 symbol / timeframe 各自最优 horizon</li>
+</ul>
+<ol>
+<li><strong>给 <code>local max</code> 和 <code>local min</code> 加不同的 regime veto。</strong></li>
+</ol>
+<ul>
+<li><code>max_branch</code>：加 trend-strength / ADX / slope filter</li>
+<li><code>min_branch</code>：加 oversold stretch / ATR shock / volume capitulation filter</li>
+<li>不要假设两分支共享同一套 veto</li>
+</ul>
+<ol>
+<li><strong>从 close-trigger 升级到更可成交的 intrabar 结构。</strong></li>
+</ol>
+<ul>
+<li>例如 <code>突破 10-day max 后的下一次 pullback reclaim</code> 再进</li>
+<li>或 <code>跌破 10-day min 后的第一根反包</code> 再进</li>
+<li>这能直接回答：当前 edge 是 close-based 偶然，还是更底层的行为结构</li>
+</ul>
+<ol>
+<li><strong>用 majors-only 做 first pass post-cost。</strong></li>
+</ol>
+<ul>
+<li>先只保留 <code>BTC / ETH</code></li>
+<li>成本压 <code>6 / 10 / 15 bps per side</code></li>
+<li>若 gross 很快被吃光，再考虑 maker-first / passive entry</li>
+</ul>
+<ol>
+<li><strong>别急着扩 universe，先测“分支共享是否错误”。</strong></li>
+</ol>
+<ul>
+<li>这轮最重要的发现不是哪个币最强；</li>
+<li>而是<strong>统一合并规则本身可能就是错的。</strong></li>
+</ul>
+<h2>11. 风险与保留意见</h2>
+<ul>
+<li>原论文主战场是 BTC，ETH/SOL 这里只是 portability probe，不应被误当成论文原结论；</li>
+<li>当前样本只覆盖最近约 120 天，可能包含较强的趋势/反弹 regime 偏差；</li>
+<li>结果只看 gross，不含手续费、滑点、资金费率；</li>
+<li><code>max_branch</code> 的正收益有时来自少数较大赢家，不能只看平均 bps；</li>
+<li><code>min_branch</code> 在 BTC/ETH/SOL 之间分化很大，说明它比 continuation 分支更 regime-sensitive。</li>
+</ul>
+<h2>12. 一句话结论</h2>
+<p>&gt; 这篇 2022 BTC 论文对 short-cycle desk 最值得接的，不是“某个时段 seasonality”，而是 <strong>10-day 局部极值的分支化 long 路由</strong>：<code>local max</code> 更像 continuation，<code>local min</code> 更像 rebound，但两者绝不能粗暴并成一条统一规则。最近的 Binance majors probe 里，<code>BTCUSDT 15m</code> 的 <code>max_branch</code> 有 <strong>20 笔 / +35.05 bps<code>gross</code></strong>，而同口径 <code>combined</code> 反而是 <strong>-22.93 bps/trade</strong>；<code>ETHUSDT 5m</code> 的 <code>min_branch</code> 则有 <strong>34 笔 / +55.83 bps<code>gross</code></strong>。所以这条线值得进 raw alpha 素材池，但进入复现排期前，必须先做 <strong>branch split + majors filter + post-cost</strong>。</p>
+<h2>13. 本轮产物</h2>
+<ul>
+<li>研究笔记：<code>research/quant_digests/2026-04-13_1145_localextrema-branchsplit-long-router-alpha.md</code></li>
+<li>Probe script：<code>reports/artifacts/quant_digests/2026-04-13_localextrema_probe.py</code></li>
+<li>Probe metrics：<code>reports/artifacts/quant_digests/2026-04-13_localextrema_probe_metrics.csv</code></li>
+</ul>
+<h2>14. 来源</h2>
+<ol>
+<li><strong>Padyšák, M., &amp; Vojtko, R. (2022). _Seasonality, Trend-following, and Mean reversion in Bitcoin_. SSRN Electronic Journal.</strong></li>
+</ol>
+<ul>
+<li>DOI：&lt;<a href="https://doi.org/10.2139/ssrn.4081000&gt;">https://doi.org/10.2139/ssrn.4081000&gt;</a></li>
+<li>Readable URL：&lt;<a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4081000&gt;">https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4081000&gt;</a></li>
+</ul>
+<ol>
+<li><strong>PapersWithBacktest mirror page</strong></li>
+</ol>
+<ul>
+<li>URL：&lt;<a href="https://paperswithbacktest.com/strategies/seasonality-trend-following-and-mean-reversion-in-bitcoin&gt;">https://paperswithbacktest.com/strategies/seasonality-trend-following-and-mean-reversion-in-bitcoin&gt;</a></li>
+</ul>
+<ol>
+<li><strong>QuantBuffet strategy page / Lean code mirror</strong></li>
+</ol>
+<ul>
+<li>URL：&lt;<a href="https://quantbuffet.com/en/2024/04/13/mean-reversion-and-trend-following-based-on-min-and-max-in-btc/&gt;">https://quantbuffet.com/en/2024/04/13/mean-reversion-and-trend-following-based-on-min-and-max-in-btc/&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures Public API</strong>（本轮 portability probe 实际使用）</li>
+</ol>
+<ul>
+<li>Kline / Candlestick Data：&lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 新 repo 只读成“费率排行榜”：对 short-cycle desk，更该先测的是「fee-coverage gated cross-venue funding carry」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 新 repo 只读成“费率排行榜”：对 short-cycle desk，更该先测的是「fee-coverage gated cross-venue funding carry」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-02 17:37 UTC</span>
+      <span class="pill">研究时间：2026-04-02 17:34 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`README.md` + `config.yaml` + `scripts/scan_all.py` + `scripts/auto_selector.py` + `scripts/fee_coverage_calculator.py` + `scripts/rolling_position.py` + `scripts/trailing_stop.py`）</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/cross-venue/perp-perp/relative-value/stat-arb/fee-coverage/cost-gate/rolling-position/trailing-stop/gate-bitget-aster-okx/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo-based source audit（工程证据为主，含 README 披露的实盘样例与源码规则）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-02_1734_feecoverage-gated-crossvenue-funding-carry-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-02 17:34 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>README.md</code> + <code>config.yaml</code> + <code>scripts/scan_all.py</code> + <code>scripts/auto_selector.py</code> + <code>scripts/fee_coverage_calculator.py</code> + <code>scripts/rolling_position.py</code> + <code>scripts/trailing_stop.py</code>）</li>
+<li>主题标签：raw-alpha/carry/funding/cross-venue/perp-perp/relative-value/stat-arb/fee-coverage/cost-gate/rolling-position/trailing-stop/gate-bitget-aster-okx/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：repo-based source audit（工程证据为主，含 README 披露的实盘样例与源码规则）</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一币种在不同 perpetual venue 的 funding rate 存在可交易价差；做 <code>long 最便宜 funding leg / short 最贵 funding leg</code> 的 delta-neutral 结构，赚 funding differential，本体是 carry / relative-value，不是风控壳。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<h3>一句话核心结论</h3>
+<p><strong>这轮最值得 intake 的，不是“又一个 funding scanner”，而是 repo 里那条很实在的完整 raw alpha：先找同币跨所 funding spread，再用明确的 <code>fee coverage</code> 门槛决定这笔 carry 到底值不值得做；而 rolling build、trailing stop、exchange reliability 这些都已经把它往完整策略推了一步。</strong></p>
+<h3>一句话它是怎么证明的</h3>
+<ul>
+<li><strong>工程侧</strong>：repo 直接把机会扫描、打分、手续费覆盖度、滚动建仓、移动止损、参数优化拆成独立脚本，不是只有一个“费率排行榜”。</li>
+<li><strong>硬数据侧</strong>：README 披露的样例里，<code>PIXEL/JTO/SUPER/0G</code> 四个机会合计 <strong>约 <code>57.5U</code> 敞口、<code>0.894U/天</code> 日收</strong>，并宣称 <strong><code>6</code> 个月+、<code>100+</code> 笔</strong> 实盘正收益；虽然这当然要打折看，但至少说明作者在尝试把 funding carry 当可执行策略，而不是纯理论。</li>
+<li><strong>最有价值的细节</strong>：源码里的 <code>fee_coverage_calculator.py</code> 逼着我们承认——<strong>不是看到 funding spread 就能收租，必须先过费用壳</strong>。这比很多泛 funding 摘要更适合 desk 直接复现。</li>
+</ul>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p>这次 <strong>base alpha 很清楚，而且是 raw alpha</strong>。</p>
+<p>不是 regime，不是 filter，也不是 risk overlay 假装成 alpha。</p>
+<p>alpha 本体就是：</p>
+<ol>
+<li><strong>同一 underlier 在不同 perp venue 的 funding 不同步；</strong></li>
+<li><strong>如果某个 venue 更“贵”（更高正 funding）而另一个更“便宜”（更低甚至负 funding），就可以做跨 venue delta-neutral carry；</strong></li>
+<li><strong>真正的收益来源是 funding differential，价格方向尽量被对冲掉。</strong></li>
+</ol>
+<p>所以它的正确归类是：</p>
+<ul>
+<li><code>raw alpha</code></li>
+<li>更具体地说是：<code>carry / funding / cross-venue / relative-value / stat-arb</code></li>
+</ul>
+<p><code>fee coverage</code>、<code>rolling build</code>、<code>trailing stop</code> 很重要，但它们都不是 alpha 本体；它们是这条 alpha 能不能活到实盘的执行壳。</p>
+<h2>3. 为什么这轮值得写，而不是继续堆一个泛 funding 摘要</h2>
+<p>虽然项目最近已经 intake 过不少 funding / basis / carry 方向，但这轮仍然值得写，原因很简单：</p>
+<ol>
+<li><strong>它仍然是 raw alpha，不是纯 overlay。</strong></li>
+<p>这点先过线了。它服务的是 raw alpha 素材池，而不是又写一个“可以给别的 alpha 当 gate”的低优先级组件。</p>
+<li><strong>它补的是“显式费用门槛”这一块。</strong></li>
+<p>最近 desk 的 funding 主题很多都强调 <code>richest vs cheapest</code>、<code>basis diff</code>、<code>async clock</code>，但这份 repo 最值得拿走的是：<strong>能不能开仓，不先看 headline APR，而先看成本覆盖。</strong></p>
+<li><strong>它更像完整策略骨架，而不是一句研究结论。</strong></li>
+<p>这里不是只给你一个排序器；它把 <code>entry / ranking / position management / stop / risk preference</code> 都做了模块化拆解。</p>
+<li><strong>它很适合映射到 <code>1m / 3m / 5m / 15m</code>。</strong></li>
+<p>funding 本体不是逐根 1m 主信号，但完全可以用：</p>
+</ol>
+<ul>
+<li><code>15m</code> 做 opportunity refresh</li>
+<li><code>5m</code> 做 admission / leg-check</li>
+<li><code>1m/3m</code> 做执行与对冲同步控制</li>
+</ul>
+<p>也就是说，这轮不是“又来一篇 funding”，而是<strong>把 funding carry 从思路池往可执行素材池又推进了一步</strong>。</p>
+<h2>4. 这次看了什么来源</h2>
+<h3>4.1 主工程来源</h3>
+<ul>
+<li><strong>Author / Repo owner</strong>：Siyebai</li>
+<li><strong>Year</strong>：2026</li>
+<li><strong>Title / Repo</strong>：*libai-funding-rate*</li>
+<li><strong>Venue</strong>：GitHub repository</li>
+<li><strong>DOI</strong>：N/A</li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/Siyebai/libai-funding-rate&gt;">https://github.com/Siyebai/libai-funding-rate&gt;</a></li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/Siyebai/libai-funding-rate&gt;">https://github.com/Siyebai/libai-funding-rate&gt;</a></li>
+</ul>
+<h3>4.2 本轮实际审阅的关键文件</h3>
+<ul>
+<li><code>README.md</code></li>
+<li><code>config.yaml</code></li>
+<li><code>scripts/scan_all.py</code></li>
+<li><code>scripts/auto_selector.py</code></li>
+<li><code>scripts/fee_coverage_calculator.py</code></li>
+<li><code>scripts/rolling_position.py</code></li>
+<li><code>scripts/trailing_stop.py</code></li>
+</ul>
+<h3>4.3 原始可读链接</h3>
+<ul>
+<li>README（raw）：&lt;<a href="https://raw.githubusercontent.com/Siyebai/libai-funding-rate/main/README.md&gt;">https://raw.githubusercontent.com/Siyebai/libai-funding-rate/main/README.md&gt;</a></li>
+<li>config（raw）：&lt;<a href="https://raw.githubusercontent.com/Siyebai/libai-funding-rate/main/config.yaml&gt;">https://raw.githubusercontent.com/Siyebai/libai-funding-rate/main/config.yaml&gt;</a></li>
+<li>scanner（raw）：&lt;<a href="https://raw.githubusercontent.com/Siyebai/libai-funding-rate/main/scripts/scan_all.py&gt;">https://raw.githubusercontent.com/Siyebai/libai-funding-rate/main/scripts/scan_all.py&gt;</a></li>
+<li>fee coverage（raw）：&lt;<a href="https://raw.githubusercontent.com/Siyebai/libai-funding-rate/main/scripts/fee_coverage_calculator.py&gt;">https://raw.githubusercontent.com/Siyebai/libai-funding-rate/main/scripts/fee_coverage_calculator.py&gt;</a></li>
+<li>rolling position（raw）：&lt;<a href="https://raw.githubusercontent.com/Siyebai/libai-funding-rate/main/scripts/rolling_position.py&gt;">https://raw.githubusercontent.com/Siyebai/libai-funding-rate/main/scripts/rolling_position.py&gt;</a></li>
+<li>trailing stop（raw）：&lt;<a href="https://raw.githubusercontent.com/Siyebai/libai-funding-rate/main/scripts/trailing_stop.py&gt;">https://raw.githubusercontent.com/Siyebai/libai-funding-rate/main/scripts/trailing_stop.py&gt;</a></li>
+</ul>
+<h2>5. 这份 repo 真正给了 desk 什么</h2>
+<h3>5.1 先别看 fancy 词，主线其实很朴素</h3>
+<p>repo 的策略主线就是：</p>
+<ul>
+<li>同时扫描 <code>Gate / Bitget / Aster / OKX</code></li>
+<li>找同币跨 venue funding spread</li>
+<li>再按 spread、流动性、稳定性、volume、交易所可靠性排序</li>
+<li>只有过了成本壳的机会才建议开仓</li>
+</ul>
+<p><code>config.py / config.yaml</code> 里给出的默认骨架很直接：</p>
+<ul>
+<li><code>SCAN_INTERVAL_SECONDS = 60</code></li>
+<li><code>MIN_PAIR_APR = 50</code></li>
+<li><code>MIN_VOLUME_USD = 50_000</code></li>
+<li><code>POSITION_SIZE_USD = 100</code></li>
+<li>交易所优先级：<code>Bitget 0.95 &gt; Gate 0.90 &gt; Aster 0.85</code></li>
+</ul>
+<p>翻成人话： <strong>它不是在找“理论上最大 spread”，而是在找“你真能下得动、且 venue 风险不离谱的 spread”。</strong></p>
+<h3>5.2 README 披露的样例收益，只能当工程线索，不能当学术事实</h3>
+<p>README 给出的实盘样例是：</p>
+<ul>
+<li><code>PIXEL ~20U → 0.182U/天</code></li>
+<li><code>JTO ~26.6U → 0.148U/天</code></li>
+<li><code>SUPER ~10.3U → 0.512U/天</code></li>
+<li><code>0G ~0.58U → 0.052U/天</code></li>
+<li>合计：<strong><code>~57.5U</code> 敞口、<code>~0.894U/天</code> 日收</strong></li>
+<li>并写了一个 <strong><code>~567%</code> 理论年化</strong></li>
+</ul>
+<p>这些数字当然不能直接信成 desk 结论，因为：</p>
+<ul>
+<li>样本极小；</li>
+<li>多是小票；</li>
+<li>没有标准化资金曲线；</li>
+<li>“理论年化” 很容易高估可持续性。</li>
+</ul>
+<p>但它至少提供了一个很重要的信息： <strong>作者在实际关注的是“小票 funding 高离散窗口”，不是 BTC/ETH 这种被挤平的成熟 carry。</strong></p>
+<h3>5.3 这轮最值钱的不是扫描器，而是 <code>fee coverage</code> 这层 honesty gate</h3>
+<p><code>fee_coverage_calculator.py</code> 用 taker fee 假设：</p>
+<ul>
+<li>Gate <code>0.05%</code></li>
+<li>Bitget <code>0.06%</code></li>
+<li>Aster <code>0.05%</code></li>
+<li>OKX <code>0.05%</code></li>
+</ul>
+<p>并默认：</p>
+<ul>
+<li>每天 <code>3</code> 次 funding 结算</li>
+<li>每天 <code>6</code> 次交易动作（对应若干 round-trip）</li>
+<li>规则：<strong>只有 coverage &gt; 50% 且净收益为正，才建议开仓</strong></li>
+</ul>
+<p>我按源码口径重算了几个最关键的阈值（以 <code>Gate + Bitget</code> 为例）：</p>
+<ol>
+<li><strong>rate diff = <code>0.10%</code> / settlement</strong></li>
+</ol>
+<ul>
+<li>日 funding 收入：<code>0.30%</code></li>
+<li>日手续费成本：<code>0.33%</code></li>
+<li><strong>净收益：<code>-0.03%/天</code></strong></li>
+<li>结论：<strong>不值得开仓</strong></li>
+</ul>
+<ol>
+<li><strong>rate diff = <code>0.20%</code> / settlement</strong></li>
+</ol>
+<ul>
+<li>日 funding 收入：<code>0.60%</code></li>
+<li>日手续费成本：<code>0.33%</code></li>
+<li><strong>净收益：<code>+0.27%/天</code></strong></li>
+<li>但 coverage 只有 <strong><code>45%</code></strong>，还没过 repo 自己的 <code>&gt;50%</code> 标准</li>
+</ul>
+<ol>
+<li>若按这段代码的假设，</li>
+</ol>
+<ul>
+<li><strong>break-even spread 大约是 <code>0.11%</code> / settlement</strong></li>
+<li><strong>要满足 “coverage &gt; 50%” ，spread 大约要到 <code>0.22%</code> / settlement</strong></li>
+</ul>
+<p>这三个数字非常重要。因为它们直接告诉 desk： <strong>这条 alpha 不是 always-on 收租，更像“高 spread、高手续费覆盖、高离散窗口”才值得碰的 pocket carry。</strong></p>
+<h3>5.4 这份 repo 其实已经把 alpha 与 overlay 分开了</h3>
+<p>repo 里的模块分工很清楚：</p>
+<ul>
+<li><code>scan_all.py</code>：找 raw alpha 候选</li>
+<li><code>auto_selector.py</code>：做 ranking / filter</li>
+<li><code>fee_coverage_calculator.py</code>：做成本 gate</li>
+<li><code>rolling_position.py</code>：做分批建仓与盈利后加仓</li>
+<li><code>trailing_stop.py</code>：做盈利保护</li>
+</ul>
+<p>也就是说，它非常适合按 desk 语言重述成：</p>
+<ul>
+<li><strong>alpha 本体</strong>：funding differential</li>
+<li><strong>filter / veto</strong>：coverage、liquidity、stability、exchange reliability</li>
+<li><strong>risk / sizing</strong>：rolling build + max position pct</li>
+<li><strong>exit / overlay</strong>：breakeven + trailing stop</li>
+</ul>
+<p>这就是为什么它不是“只会扫表”的玩具，而是可拆成完整策略骨架的来源。</p>
+<h2>6. 但这份 repo 也有两个必须先修的地方</h2>
+<h3>6.1 funding 方向口径疑似有反向风险</h3>
+<p><code>scan_all.py</code> 里是这样排机会的：</p>
+<ul>
+<li>取 funding <strong>最高</strong> 的 venue 叫 <code>max_long</code></li>
+<li>取 funding <strong>最低</strong> 的 venue 叫 <code>max_short</code></li>
+<li>然后输出 <code>long_exchange = max_long</code>、<code>short_exchange = max_short</code></li>
+</ul>
+<p>如果这些交易所 funding API 采用的是标准口径（<strong>正 funding = longs pay shorts</strong>），那么经济方向应该通常是：</p>
+<ul>
+<li><strong>short 最贵 funding leg</strong></li>
+<li><strong>long 最便宜 / 最负 funding leg</strong></li>
+</ul>
+<p>换句话说，源码里的 leg 命名和真实资金流方向之间，至少存在 <strong>sign-convention risk</strong>。</p>
+<p>这不意味着这条 alpha 失效，反而说明： <strong>alpha 本体是对的，但第一版复现必须自己统一 funding 符号与收付款方向，不能直接照抄 scanner 输出。</strong></p>
+<h3>6.2 不同脚本里的单位口径并不完全一致</h3>
+<p>源码里至少有三种容易混淆的写法：</p>
+<ul>
+<li><code>config.yaml</code>：<code>min_spread: 0.001</code> 并注释成 <code>0.1%</code></li>
+<li><code>auto_selector.py</code>：<code>min_spread: 0.10</code></li>
+<li><code>scan_all.py</code>：筛选条件写成 <code>spread &gt; 0.01</code></li>
+</ul>
+<p>这提示一个非常实际的问题： <strong>spread 在不同脚本里到底是 decimal、百分数，还是 bps，没有被统一到底。</strong></p>
+<p>所以第一轮最小实验里，必须先做一件很无聊但很关键的事：</p>
+<ul>
+<li>所有 funding diff 统一转成 <strong>bps per settlement</strong></li>
+<li>所有 fee 统一转成 <strong>bps per leg / round-trip</strong></li>
+<li>所有 APR 统一从这个标准单位推导出来</li>
+</ul>
+<p>否则回测会很容易“看起来很赚钱，其实只是单位没对齐”。</p>
+<h2>7. 对当前 <code>1m / 3m / 5m / 15m</code> desk 的正确读法</h2>
+<h3>7.1 这条 alpha 服务短周期，但不是逐根 1m 主信号</h3>
+<p>更诚实的拆法应该是：</p>
+<ul>
+<li><strong>raw alpha 层</strong>：同币跨 venue funding differential</li>
+<li><strong>event layer</strong>：围绕 funding settlement window 更新 opportunity</li>
+<li><strong><code>15m/5m</code> admission 层</strong>：检查 spread 是否仍在、盘口深度是否够、basis 是否没突然反向</li>
+<li><strong><code>1m/3m</code> execution 层</strong>：分腿同步、减冲击、避免 legging</li>
+</ul>
+<p>也就是说：</p>
+<ul>
+<li>它当然能服务 <code>1m / 3m / 5m / 15m</code></li>
+<li>但方式不是“每根 1m 给方向”</li>
+<li>而是“每个 funding pocket 给你一个 carry trade 候选，然后用更细频率把它执行得像样”</li>
+</ul>
+<h3>7.2 它和近期 raw alpha 素材池的关系</h3>
+<p>这条线和最近 desk 的 accumulation 是互补的：</p>
+<ul>
+<li>不是继续围绕 breakout/pullback 内循环；</li>
+<li>也不是只补一个 shared gate；</li>
+<li>它补的是 <strong>carry / relative-value</strong> 家族里更 executable 的一支。</li>
+</ul>
+<p>而且它的价值不在“Funding carry 这个词新不新”，而在： <strong>把 funding carry 的真正门槛——费用壳、venue 可靠性、滚动建仓——写得很直白。</strong></p>
+<h2>8. 策略拆解（按 desk 口径重述）</h2>
+<ul>
+<li><strong>方向属性</strong>：market-neutral / relative-value / stat-arb</li>
+<li><strong>基础 alpha</strong>：short highest-positive-funding venue, long lowest/negative-funding venue（先统一标准 funding sign）</li>
+<li><strong>filter / veto</strong>：min liquidity、exchange reliability、fee coverage、unit-consistent spread threshold、basis / mark-price 异常过滤</li>
+<li><strong>risk / sizing</strong>：先小仓试探，底仓分 <code>3</code> 批构建；盈利后才允许加仓；总仓上限 <code>50%</code></li>
+<li><strong>exit / overlay</strong>：coverage 消失、spread 收敛、hold timeout、breakeven + trailing stop</li>
+<li><strong>成本</strong>：不能只看 fee table；还要看 legging risk、滑点、提款/资金调拨约束、不同 venue 的执行可靠性</li>
+</ul>
+<h2>9. 最小可复现实验（下一步怎么测）</h2>
+<h3>9.1 研究假设</h3>
+<p><strong>H1：</strong> 同币跨 venue funding differential 在 alt-heavy、流动性尚可的币上，仍能形成可交易的 carry pocket。 <strong>H2：</strong> 真正决定这条 alpha 能不能活下来的，不是 raw spread 本身，而是 <code>fee coverage gate</code>。 <strong>H3：</strong> 在统一符号和单位后，很多 headline 高 APR 机会会被费用壳和执行壳大幅筛掉。</p>
+<h3>9.2 数据源、公开性、更新频率</h3>
+<ul>
+<li><strong>数据源</strong>：Gate / Bitget / Aster / OKX 的公开 funding / ticker / instrument 接口</li>
+<li><strong>公开性</strong>：公开可得</li>
+<li><strong>更新频率</strong>：行情可做到分钟级；funding 通常围绕 <code>8h</code> 结算更新；机会扫描可按 <code>1m~5m</code> refresh</li>
+<li><strong>最小可复现实验口径</strong>：</li>
+<li>标的：同币跨 venue perpetual</li>
+<li>频率：<code>15m</code> 做机会状态，<code>5m</code> 做 admission，<code>1m/3m</code> 做执行模拟</li>
+<li>单位：全部转成 <code>bps per settlement</code></li>
+</ul>
+<h3>9.3 first-pass 实验设计</h3>
+<p>先不要卷复杂优化，第一轮只跑三组：</p>
+<ol>
+<li><strong>A：raw spread only</strong></li>
+</ol>
+<ul>
+<li>每次 funding 前后更新 richest/cheapest venue pair</li>
+<li>long cheapest, short richest</li>
+<li>持有 <code>1</code> 次结算</li>
+</ul>
+<ol>
+<li><strong>B：raw spread + fee coverage gate</strong></li>
+</ol>
+<ul>
+<li>只有当 <code>net funding income - round-trip cost &gt; 0</code></li>
+<li>且 <code>coverage &gt; 0 / 30% / 50%</code> 三档门槛时才进</li>
+</ul>
+<ol>
+<li><strong>C：B + rolling build / profit protection</strong></li>
+</ol>
+<ul>
+<li>底仓三批建</li>
+<li>盈利后才加仓</li>
+<li>breakeven / trailing stop 保护退出</li>
+</ul>
+<p>统一比较：</p>
+<ul>
+<li>gross PnL</li>
+<li>after-cost PnL</li>
+<li>hit ratio</li>
+<li>average holding settlements</li>
+<li>leg divergence</li>
+<li>max adverse excursion</li>
+<li>被 gate 筛掉的机会比例</li>
+</ul>
+<h3>9.4 先测什么，不先测什么</h3>
+<p><strong>先测：</strong></p>
+<ul>
+<li>funding sign 是否统一正确</li>
+<li>spread 单位是否一致</li>
+<li>fee gate 之后还剩多少真实机会</li>
+<li>小票机会是否只是看起来 APR 高、实际深度不够</li>
+</ul>
+<p><strong>先不测：</strong></p>
+<ul>
+<li>复杂 Bayesian 参数优化</li>
+<li>太花的 AI ranking</li>
+<li>一上来跑几十个 venue 组合</li>
+<li>直接把 README 里的 theoretical APR 当目标函数</li>
+</ul>
+<h3>9.5 建议的第一刀参数</h3>
+<ul>
+<li>hold：<code>1 / 2</code> 个 funding settlements</li>
+<li>fee ladder：<code>10 / 20 / 35 bps round-trip</code></li>
+<li>coverage gate：<code>0 / 30% / 50%</code></li>
+<li>depth gate：单腿最小可成交名义 <code>5k / 10k / 25k USDT</code></li>
+<li>refresh：<code>15m</code> 状态刷新 + <code>5m</code> 下单检查</li>
+</ul>
+<h2>10. 风险与限制</h2>
+<ol>
+<li><strong>repo 的收益展示偏 showcase，不是标准化回测。</strong></li>
+<li><strong>小票 funding carry 很容易被执行细节吃掉。</strong> headline APR 再高，腿没法同步就没意义。</li>
+<li><strong>sign / unit consistency 是本轮最大工程风险。</strong> 不先修这两个，后面的“优化”都不可信。</li>
+<li><strong>跨 venue carry 有额外 operational risk。</strong> 包括 API 稳定性、资金调拨、单边爆仓、仓位不同步、提现延迟等。</li>
+<li><strong>这条 alpha 更像 pocket，不像 always-on。</strong> 从 fee coverage 的阈值就能看出来，它天然更依赖高离散窗口。</li>
+</ol>
+<h2>11. 一句话结论</h2>
+<p><strong>如果这轮只拿走一件事，我会拿走这句：跨 venue funding carry 当然还是 raw alpha，但真正值得 desk 先复现的，不是“谁 funding 高就冲谁”，而是“统一 funding 符号与单位后，只做那些 <code>spread 足够厚、费用壳真能覆盖、venue 也够可靠</code> 的 pocket carry”。</strong></p>
+</body>
+</html>

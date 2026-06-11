@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 copula pairs 只当分布学花活：这篇 2025《Financial Innovation》更该先复现的是「BTC reference spread-pair conditional mispricing」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 copula pairs 只当分布学花活：这篇 2025《Financial Innovation》更该先复现的是「BTC reference spread-pair conditional mispricing」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-10 21:02 UTC</span>
+      <span class="pill">研究时间：2026-04-10 21:00 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：raw-alpha / pairs / stat-arb / relative-value / mean-reversion / copula / cointegration / BTC-reference / conditional-mispricing / market-neutral / binance / perpetual / 5m / 15m / paper</span>
+      <span class="pill">证据类型：开放获取论文全文 + 表格原文 + Binance USDⓈ-M 公共数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-10_2100_btc-reference-copula-spread-pair-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-10 21:00 UTC</li>
+<li>类型：论文</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>relative-value / pairs mean reversion</code> —— 不是直接赌两条币价线回归，而是赌<strong>两条 BTC 对冲后的相对价值 spread</strong>在“联合分布条件失衡”后回到常态依赖结构</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / pairs / stat-arb / relative-value / mean-reversion / copula / cointegration / BTC-reference / conditional-mispricing / market-neutral / binance / perpetual / 5m / 15m / paper</li>
+<li>证据类型：开放获取论文全文 + 表格原文 + Binance USDⓈ-M 公共数据 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>我这次选的是 <strong>Masood Tadi, Jiří Witzany (2025), _Copula-based trading of cointegrated cryptocurrency Pairs_, Financial Innovation</strong>。</p>
+<p>这篇值得 intake，不是因为“copula 听起来高级”，而是因为它给的是一条<strong>相对完整、可直接交易的 crypto pairs 骨架</strong>：</p>
+<ul>
+<li>先用 <strong>BTCUSDT</strong> 当 reference asset；</li>
+<li>把每个 alt 改写成 <code>BTC - β_i * alt_i</code> 的<strong>参考资产 spread</strong>；</li>
+<li>在 formation window 里先做 <strong>cointegration + τ 排序</strong>选出本周最值得交易的两条 spread；</li>
+<li>再用 copula 条件概率判断谁相对贵、谁相对便宜；</li>
+<li>最后映射回真实下单腿：<strong>short β1·P1 / long β2·P2</strong> 或反过来。</li>
+</ul>
+<p>所以这不是“pairs 外面再糊一层统计术语”，而是把 <strong>选对、定价、entry/exit、手续费、周度换对</strong> 都写进去了。对当前 desk 来说，它补的是一条<strong>完整 stat-arb / relative-value raw alpha</strong>，而不是又一篇只能当 filter 的材料。</p>
+<h2>2. 先回答：这篇东西的 base alpha 是什么？</h2>
+<p>一句话： <strong>base alpha 就是“BTC 对冲后的 alt-relative-value 均值回归”。</strong></p>
+<p>更细一点：</p>
+<ol>
+<li>先把每个 alt 的大盘共性暴露，用 <code>BTC - β_i * alt_i</code> 剥掉；</li>
+<li>再看两条这类 spread 的<strong>联合依赖关系</strong>；</li>
+<li>当条件分布告诉你：<code>spread1</code> 明显偏低、<code>spread2</code> 明显偏高（或相反）时，做一组 market-neutral long/short；</li>
+<li>赌的是它们会往“平时的联合关系”收敛，而不是赌单边趋势。</li>
+</ol>
+<p>所以它本质上是：</p>
+<ul>
+<li><code>raw alpha</code>：是</li>
+<li>类型归属：<strong>pairs / stat-arb / relative-value / mean reversion</strong></li>
+<li>不是 filter，不是 overlay，也不是纯解释文。</li>
+</ul>
+<h2>3. 论文里最有价值的几件事</h2>
+<h3>3.1 它不是直接拿 coin1-vs-coin2 做传统 z-score</h3>
+<p>论文最值钱的设计，是先把每个 alt 都改写成：</p>
+<ul>
+<li><code>S_i = BTCUSDT - β_i * P_i</code></li>
+</ul>
+<p>然后交易的对象不是“币价对”，而是<strong>两条 BTC-reference spreads 的相对错位</strong>。 这比传统 <code>P1 - βP2</code> pairs 多了一层含义：</p>
+<ul>
+<li>先把两条 alt 都投影到“相对 BTC 的偏离”；</li>
+<li>再比较哪条 spread 在联合状态里更贵 / 更便宜；</li>
+<li>这样更像在抓 <strong>alt-vs-alt 的相对价值</strong>，而不是把 BTC 大盘摆动误当作单对 alpha。</li>
+</ul>
+<h3>3.2 论文给了明确交易规则，不是只有“可解释性”</h3>
+<p>原文 Table 3 / 4 给的规则很清楚：</p>
+<ul>
+<li>若 <code>h1|2 &lt; α1</code> 且 <code>h2|1 &gt; 1-α1</code>：</li>
+<li>开 <code>long S1 / short S2</code></li>
+<li>映射到真实腿就是：<strong>long β2·P2, short β1·P1</strong></li>
+<li>若 <code>h1|2 &gt; 1-α1</code> 且 <code>h2|1 &lt; α1</code>：</li>
+<li>开 <code>short S1 / long S2</code></li>
+<li>映射到真实腿就是：<strong>short β2·P2, long β1·P1</strong></li>
+<li>若两边都回到 <code>0.5</code> 附近：</li>
+<li>平仓</li>
+</ul>
+<p>这里 <code>h1|2</code>、<code>h2|1</code> 本质上就是 copula 条件概率，作者把它解释成<strong>相对误价概率</strong>。</p>
+<h3>3.3 它连 formation / trading schedule 都给了</h3>
+<p>论文不是“想到就做多空”那种散点想法，而是完整周度流程：</p>
+<ul>
+<li><strong>3 周 formation + 1 周 trading</strong></li>
+<li>总共 <strong>104 个滚动周期</strong></li>
+<li>样本：<strong>20 个 Binance USDT-M futures 合约</strong></li>
+<li>数据频率：<strong>hourly + 5-min</strong></li>
+<li>样本期：<strong>2021-01-22 ~ 2023-01-19</strong></li>
+<li>费用：明确按 Binance USDT-M <strong>maker 2bps / taker 4bps</strong> 讨论，并用 market order 成本记账</li>
+</ul>
+<p>这就意味着： 它不是只能写成“研究备忘录”，而是本来就可以被 desk 直接改装成策略原型。</p>
+<h2>4. 论文原始结果里，最值得记住的数据点</h2>
+<h3>4.1 5-min、EG test、<code>α1=0.20</code> 是文中最亮的主结果</h3>
+<p>原文 Table 6 给出的最佳 5-min 结果（reference-asset-based copula approach with EG test）：</p>
+<ul>
+<li><strong>Total net return：<code>205.9%</code></strong></li>
+<li><strong>Annualized net return：<code>75.2%</code></strong></li>
+<li><strong>Annualized Sharpe：<code>3.77</code></strong></li>
+<li><strong>Maximum drawdown：<code>-30.5%</code></strong></li>
+<li><strong>Transactions：<code>266</code></strong></li>
+</ul>
+<p>这说明它不是“理论上可行”；至少在作者的历史样本里，它是<strong>能活成一个完整策略</strong>的。</p>
+<h3>4.2 传统 baseline 在成本后明显更差</h3>
+<p>同篇 Table 7 很关键：</p>
+<ul>
+<li>传统 <strong>cointegration z-score</strong> 在 5-min / EG 下：</li>
+<li><strong>Total gross return：<code>121.4%</code></strong></li>
+<li>但 <strong>Transaction cost：<code>-681.2%</code></strong></li>
+<li>最终 <strong>Total net return：<code>-559.8%</code></strong></li>
+<li>传统 <strong>return-based copula</strong> 在 5-min / EG 下：</li>
+<li><strong>Total gross return：<code>249.6%</code></strong></li>
+<li>但 <strong>Transaction cost：<code>-1388.4%</code></strong></li>
+<li>最终 <strong>Total net return：<code>-1138.9%</code></strong></li>
+<li>相对稳一点的 <strong>level-based copula</strong> 在 5-min / EG 下：</li>
+<li><strong>Total net return：<code>17.9%</code></strong></li>
+<li><strong>Annualized Sharpe：<code>0.96</code></strong></li>
+</ul>
+<p>而作者自己的 reference-asset-based 版本在同样 5-min / EG 下能做到 <strong><code>205.9%</code> net / <code>3.77</code> Sharpe</strong>。</p>
+<p>翻成人话就是： <strong>这篇 paper 的 edge 不只是“copula 比 z-score 更 fancy”，而是它确实在“高频 crypto pairs 容易被手续费打死”这件事上，给出了一条成本后仍能活的结构。</strong></p>
+<h2>5. 为什么它和当前项目直接相关</h2>
+<p>当前 digest 池里已经有不少：</p>
+<ul>
+<li>直接价差 z-score pairs</li>
+<li>Hurst / anti-persistence pairs</li>
+<li>dynamic-factor / Kalman / beta-gap</li>
+<li>单资产均值回归</li>
+</ul>
+<p>这篇的新增价值在于：</p>
+<h3>5.1 它补的是一种<strong>不同的 pairs 建模视角</strong></h3>
+<p>不是：</p>
+<ul>
+<li>“先选两条长得像的线，再看 spread”</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li>“先把每个 alt 变成 BTC-reference spread，再对 spread-pair 做条件误价判断”</li>
+</ul>
+<p>也就是把 <code>alt-vs-alt</code> 的 relative value，先投影到 <code>vs BTC</code> 的坐标系里再交易。</p>
+<h3>5.2 它天然适合 short-cycle desk</h3>
+<p>原因很简单：</p>
+<ul>
+<li>论文原生就做 <strong>5-min / hourly</strong></li>
+<li>费用显式纳入</li>
+<li>周度 formation / trade 容易工程化</li>
+<li>是真正的 <strong>market-neutral two-leg alpha</strong>，不必依赖方向行情</li>
+</ul>
+<h3>5.3 它服务的是 raw alpha 素材池，不是只当附属 veto</h3>
+<p>这条线单独就能成立：</p>
+<ul>
+<li>有 formation</li>
+<li>有 pair selection</li>
+<li>有 entry/exit</li>
+<li>有 sizing 映射</li>
+<li>有 cost 假设</li>
+<li>有 benchmark 对照</li>
+</ul>
+<p>所以它不是“等某个 breakout 主信号出现后再帮你确认”的那类材料；它自己就是一个<strong>完整 relative-value sleeve</strong>。</p>
+<h2>5.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>双向 / market-neutral / 相对价值回归</strong></li>
+<li>基础 alpha：<strong>BTC-reference spread-pair conditional mispricing 会向常态联合依赖结构回归</strong></li>
+<li>regime：周度 formation 后，是否能找到足够稳定的 BTC-cointegrated 候选；以及 copula dependency 是否稳定</li>
+<li>filter / veto：</li>
+<li>formation 周里 cointegration 不成立则跳过</li>
+<li>τ 太弱 / dependency 太弱则不交易</li>
+<li>条件概率没进入极端带则不进场</li>
+<li>risk / sizing / execution overlay：</li>
+<li>仓位按 <code>β1 / β2</code> 映射到真实腿</li>
+<li>周末或换周强平</li>
+<li>成本至少按 taker <code>4bps</code>/side 测</li>
+<li>后续可加 maker 化、流动性上限、单周最大开仓数、事件禁做窗</li>
+</ul>
+<h2>6. 我做的 portability probe：先看这条思想能不能压到当前 Binance perp</h2>
+<h3>6.1 快检口径</h3>
+<p>我没有做 paper 的 full faithful replication，而是做了一个<strong>对 desk 更快可复现</strong>的 transfer probe：</p>
+<ul>
+<li>数据：Binance USDⓈ-M 公共 close 数据</li>
+<li>资产：<code>BTC + ETH/BNB/SOL/XRP/ADA/DOGE/LINK/LTC/BCH/ETC</code></li>
+<li>周期：<code>15m</code> 与 <code>5m</code></li>
+<li>formation / trading：沿用论文结构，<strong>21 天 formation + 7 天 trading</strong></li>
+<li>候选选择：</li>
+<li>对每个 alt 先构造 <code>BTC - β_i * alt_i</code></li>
+<li>对 formation window 做 ADF，保留 <code>p &lt; 0.10</code> 的 BTC-cointegrated spreads</li>
+<li>在保留集合里选 <strong>|Kendall τ| 最高</strong> 的 spread-pair 作为本周交易对象</li>
+<li>copula 简化：</li>
+<li>论文原版是多家族 copula + AIC 选模</li>
+<li>我的 portability probe 为了快，改成 <strong>经验边际分布 + Gaussian copula proxy</strong></li>
+<li>交易阈值：沿用文中最亮的那档，<code>α1 = 0.20</code>, <code>α2 = 0.10</code></li>
+<li>成本：按 <strong>taker <code>4bps</code>/side</strong> 记换手成本</li>
+<li>对照：同一周、同一对币，做一个<strong>传统直接价差 z-score baseline</strong>（entry <code>±2</code> / exit <code>±1</code>）</li>
+</ul>
+<h3>6.2 结果：15m 和 5m 都是正的，而且明显优于直接价差 baseline</h3>
+<p>#### <code>15m</code> portability probe（近 <code>84d</code>）</p>
+<ul>
+<li>active cycles：<strong><code>8 / 9</code></strong></li>
+<li>copula 版总 net return：<strong><code>+27.7%</code></strong></li>
+<li>成本拖累累计约：<strong><code>1.12%</code></strong></li>
+<li>关闭交易数：<strong><code>14</code> 笔</strong></li>
+<li>每笔平均 net return：约 <strong><code>+1.82%</code></strong></li>
+<li>同期直接价差 z-score baseline：<strong><code>+4.6%</code></strong></li>
+</ul>
+<p>#### <code>5m</code> portability probe（近 <code>49d</code>）</p>
+<ul>
+<li>active cycles：<strong><code>4 / 4</code></strong></li>
+<li>copula 版总 net return：<strong><code>+11.6%</code></strong></li>
+<li>成本拖累累计约：<strong><code>0.72%</code></strong></li>
+<li>关闭交易数：<strong><code>9</code> 笔</strong></li>
+<li>每笔平均 net return：约 <strong><code>+1.28%</code></strong></li>
+<li>同期直接价差 z-score baseline：<strong><code>+2.1%</code></strong></li>
+</ul>
+<h3>6.3 这版快检里，重复被选中的 pair 也有信息量</h3>
+<p>在这版简化迁移里，比较常出现的组合有：</p>
+<ul>
+<li><code>ETH-SOL</code></li>
+<li><code>ETC-LTC</code></li>
+<li><code>ADA-LINK</code></li>
+<li><code>DOGE-ETC</code></li>
+</ul>
+<p>这说明这条线不是“什么 pair 都行”；它更像是： <strong>在某些相对价值关系更稳定、同时又保留可交易波动的 pair 上，BTC-reference 表达法更容易跑出来。</strong></p>
+<h3>6.4 这条 portability probe 最重要的判断</h3>
+<p>它最值得保留的不是绝对收益数字本身，而是下面这句：</p>
+<p><strong>同一批 short-cycle perp，reference-spread + conditional-mispricing 这套表达，明显比“直接价差 z-score”更像一条能活下来的 pairs skeleton。</strong></p>
+<h2>7. 这篇 paper 真正适合 desk 先偷的，不是“copula 全家桶”，而是这 3 件事</h2>
+<h3>7.1 先偷“reference asset representation”</h3>
+<p>很多 crypto pairs 一上来就直接：</p>
+<ul>
+<li><code>P1 - βP2</code></li>
+</ul>
+<p>这篇更值得先偷的是：</p>
+<ul>
+<li><code>BTC - β1 P1</code></li>
+<li><code>BTC - β2 P2</code></li>
+<li>再比较这两条 spread 的相对失衡</li>
+</ul>
+<p>也就是先统一对 BTC 去大盘暴露，再做 alt-vs-alt 的相对价值判断。</p>
+<h3>7.2 再偷“周度重选对 + 周内交易”</h3>
+<p>这篇不是永远抱着一对不放。 它告诉你：</p>
+<ul>
+<li>pairs 更像<strong>周度 roster</strong>，不是长期婚姻；</li>
+<li>formation 和 trading 应拆开；</li>
+<li>找不到合格 pair 的周，可以空仓。</li>
+</ul>
+<p>这对 live trading 很重要，因为它天然内置了<strong>不交易也是决策</strong>。</p>
+<h3>7.3 最后才是“copula probability bands”</h3>
+<p>对 desk 来说，copula 家族本身不是第一优先级。 第一优先级其实是：</p>
+<ul>
+<li>你是否真的抓住了<strong>条件误价</strong>，而不是只看单条 spread 偏离；</li>
+<li>你是否能把这种误价表达成稳定、低换手、成本后还能活的 long/short 规则。</li>
+</ul>
+<p>所以工程实现顺序应该是：</p>
+<ol>
+<li>reference-spread universe</li>
+<li>周度 pair funnel</li>
+<li>条件误价带进出场</li>
+<li>最后再升级 copula 家族选模</li>
+</ol>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>我这次 portability probe <strong>不是论文 full replication</strong>：</li>
+<li>我用的是 <code>Gaussian copula proxy</code></li>
+<li>不是作者原文那套多家族 copula + AIC 最优选模</li>
+<li>论文里关于 Kendall’s τ 的具体 ranking 表述有一点文字歧义；</li>
+<li>我在 portability probe 里采用的是：<strong>在 BTC-cointegrated spread 候选里，选 |τ| 最高的 spread-pair</strong></li>
+<li>我只用了一小部分 liquid majors；</li>
+<li>论文原始样本是 <strong>20 个 Binance USDT-M 合约</strong>，且有 <code>EOS/TRX/XLM/ONT/IOTA/BAT</code> 等币</li>
+<li>当前 probe 只看 close-to-close，不含盘口 / 滑点 / funding / 强平链式冲击</li>
+<li>这条线本质仍是 pairs / stat-arb；</li>
+<li>一旦遇到单边结构性 re-pricing、共识切换或流动性断层，历史依赖结构可能会突然失效</li>
+</ul>
+<h2>9. 下一步怎么测</h2>
+<h3>9.1 先做 faithful replication</h3>
+<p>优先把论文原版关键部件补齐：</p>
+<ul>
+<li>20 币 universe 对齐 paper Table 1</li>
+<li>hourly + 5m 全样本重跑</li>
+<li>EG / KSS 都跑</li>
+<li><code>α1 = 0.10 / 0.15 / 0.20</code> 全扫</li>
+<li>明确复刻 Table 6 / 7 的核心数字区间</li>
+</ul>
+<h3>9.2 再做 desk 版减法</h3>
+<p>如果 full replication 成立，下一步不是立刻上最复杂 copula，而是做一个 desk-friendly 版本：</p>
+<ul>
+<li><code>15m</code> 主版，<code>5m</code> 只做确认 / finer execution</li>
+<li>保留 reference-spread 架构</li>
+<li>条件概率可先用：</li>
+<li>Gaussian copula</li>
+<li>或经验 copula / rank-based conditional bands</li>
+<li>强制加：</li>
+<li>单周最大交易次数</li>
+<li>事件前后禁做窗</li>
+<li>maker/taker 分层</li>
+<li>每周 pair stability veto</li>
+</ul>
+<h3>9.3 最该先看哪几个 admission 指标</h3>
+<ol>
+<li><strong>post-cost expectancy / trade</strong></li>
+<li><strong>周度 active-cycle 占比</strong>（经常找不到 pair，则 live 频率不够）</li>
+<li><strong>pair turnover 稳定性</strong>（是否总在少数 pair 上有效）</li>
+<li><strong>换手 / 成本占 gross 的比例</strong></li>
+<li><strong>大波动周的 drawdown clustering</strong></li>
+</ol>
+<h2>10. 来源</h2>
+<ul>
+<li>Masood Tadi, Jiří Witzany. (2025). *Copula-based trading of cointegrated cryptocurrency Pairs*. *Financial Innovation*.</li>
+<li>DOI: <code>10.1186/s40854-024-00702-7</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1186/s40854-024-00702-7">https://doi.org/10.1186/s40854-024-00702-7</a></code></li>
+<li>Full HTML: <code><a href="https://link.springer.com/article/10.1186/s40854-024-00702-7">https://link.springer.com/article/10.1186/s40854-024-00702-7</a></code></li>
+<li>Table 1 universe: <code><a href="https://link.springer.com/article/10.1186/s40854-024-00702-7/tables/1">https://link.springer.com/article/10.1186/s40854-024-00702-7/tables/1</a></code></li>
+<li>Table 6 results: <code><a href="https://link.springer.com/article/10.1186/s40854-024-00702-7/tables/6">https://link.springer.com/article/10.1186/s40854-024-00702-7/tables/6</a></code></li>
+<li>Table 7 baselines: <code><a href="https://link.springer.com/article/10.1186/s40854-024-00702-7/tables/7">https://link.springer.com/article/10.1186/s40854-024-00702-7/tables/7</a></code></li>
+<li>Repo URL: <strong>未见作者公开研究仓库</strong></li>
+</ul>
+<h2>11. 一句话带走</h2>
+<p><strong>这篇最值得 desk 先复现的，不是“copula 很高级”，而是：把 alt-pairs 先改写成 BTC-reference spreads，再用条件误价带做进出场，确实比直接价差 z-score 更像一条 short-cycle 可活的完整 stat-arb 骨架。</strong></p>
+</body>
+</html>

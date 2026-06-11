@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 PCA 只当老教材因子分解：对 crypto short-cycle desk，更该先测的是「eigenportfolio residual s-score fade」这条 cross-sectional raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 PCA 只当老教材因子分解：对 crypto short-cycle desk，更该先测的是「eigenportfolio residual s-score fade」这条 cross-sectional raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-02 11:24 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`README.txt` + `src/pca_engine.py` + `src/residual_model.py` + `src/ou_estimator.py` + `src/s_score.py` + `src/strategy.py` + `src/backtester.py` + `main.py`）+ 2010 *Quantitative Finance* 经典论文元数据 + Binance USDⓈ-M `15m` 本地最小 sanity check</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/relative-value/stat-arb/mean-reversion/pca/eigenportfolio/residual/ou/s-score/market-neutral/binance-perpetual/top-basket/15m/5m/3m/1m/repo/paper/public-data/cost</span>
+      <span class="pill">证据类型：repo-first（完整策略骨架）+ classic-paper grounding + public-data quick check</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-02_1124_pca-eigenportfolio-residual-statarb-alpha.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>先用 rolling PCA 剥掉市场共同因子，再对单币 residual 做 OU / s-score 均值回归交易</strong>；翻成人话，就是“不是盯某一对 coin 的 spread，而是先把全市场共振拿掉，再抓单币相对篮子偏离后的短周期回归”</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>时间：2026-04-02 11:24 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>README.txt</code> + <code>src/pca_engine.py</code> + <code>src/residual_model.py</code> + <code>src/ou_estimator.py</code> + <code>src/s_score.py</code> + <code>src/strategy.py</code> + <code>src/backtester.py</code> + <code>main.py</code>）+ 2010 *Quantitative Finance* 经典论文元数据 + Binance USDⓈ-M <code>15m</code> 本地最小 sanity check</li>
+<li>主题标签：raw-alpha/cross-sectional/relative-value/stat-arb/mean-reversion/pca/eigenportfolio/residual/ou/s-score/market-neutral/binance-perpetual/top-basket/15m/5m/3m/1m/repo/paper/public-data/cost</li>
+<li>证据类型：repo-first（完整策略骨架）+ classic-paper grounding + public-data quick check</li>
+</ul>
+<h2>1. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha 很清楚：cross-sectional residual mean reversion。</strong></p>
+<p>不是“PCA 可以解释市场结构”这种研究口号；真正能交易的是：</p>
+<p>&gt; <strong>先用前两条主成分把一篮子币的共同波动剥掉，再去抓某个币相对这两个公共因子的异常偏离；当偏离过大，就赌它往篮子均值方向回。</strong></p>
+<p>所以它是 <strong>raw alpha</strong>，而不是 filter / regime / overlay。</p>
+<p>---</p>
+<h2>2. 为什么这轮值得写它</h2>
+<p>最近 digest 池里已经有很多：</p>
+<ul>
+<li>单币 microstructure</li>
+<li>cointegration pairs</li>
+<li>funding / basis / carry</li>
+<li>cross-market lead-lag</li>
+</ul>
+<p>但 <strong>“全市场 residualized 之后再做 cross-sectional mean reversion”</strong> 这条线，反而没有被系统地写进素材池。</p>
+<p>这轮值得 intake 的原因有四个：</p>
+<ol>
+<li><strong>它是完整 raw alpha 壳子，不是解释性材料。</strong></li>
+</ol>
+<ul>
+<li>从 entry 到 exit 到 sizing 都能直接写出来；</li>
+</ul>
+<ol>
+<li><strong>它扩的是 raw alpha 素材池，不是继续给 breakout 找 confirmation。</strong></li>
+</ol>
+<ul>
+<li>而且服务的是 <code>cross-sectional / relative value / stat-arb</code> 主线；</li>
+</ul>
+<ol>
+<li><strong>它和现有 pairs 方向互补。</strong></li>
+</ol>
+<ul>
+<li>pairs 先选一对；</li>
+<li>这条是先看整个 universe，再找“谁偏离了公共因子”；</li>
+</ul>
+<ol>
+<li><strong>它对 <code>5m / 15m</code> 的 desk transfer 很自然。</strong></li>
+</ol>
+<ul>
+<li>PCA / residual / OU 这些东西在 1m 上也能做，但更像高噪状态下的 fast admission；</li>
+<li>真正容易先做出像样最小实验的，是 <code>5m / 15m</code>。</li>
+</ul>
+<p>如果问：“它为什么比继续补一篇 filter 更值？” 答案很简单： <strong>因为它本身就是一条可以独立下注的 alpha，而不是拿来给别的策略当门卫。</strong></p>
+<p>---</p>
+<h2>3. 这次看的主来源</h2>
+<h3>3.1 主来源：2026 新 repo（主）</h3>
+<ul>
+<li><strong>Owner / Year</strong>: sophie-lan, 2026（repo 最近更新 2026-03-04；首次提交 2025-12-01）</li>
+<li><strong>Title</strong>: <code>crypto-pca-statarb</code></li>
+<li><strong>Venue</strong>: GitHub repository</li>
+<li><strong>DOI</strong>: N/A</li>
+<li><strong>Readable URL / Repo URL</strong>: <a href="https://github.com/sophie-lan/crypto-pca-statarb">https://github.com/sophie-lan/crypto-pca-statarb</a></li>
+<li><strong>实际看的文件</strong>:</li>
+<li><code>README.txt</code></li>
+<li><code>src/pca_engine.py</code></li>
+<li><code>src/residual_model.py</code></li>
+<li><code>src/ou_estimator.py</code></li>
+<li><code>src/s_score.py</code></li>
+<li><code>src/strategy.py</code></li>
+<li><code>src/backtester.py</code></li>
+<li><code>main.py</code></li>
+</ul>
+<h3>3.2 理论地基：经典论文（辅）</h3>
+<ul>
+<li><strong>Authors / Year</strong>: Marco Avellaneda, Jeong-Hyun Lee, 2010</li>
+<li><strong>Title</strong>: *Statistical arbitrage in the US equities market*</li>
+<li><strong>Venue</strong>: *Quantitative Finance*</li>
+<li><strong>DOI</strong>: <code>10.1080/14697680903124632</code></li>
+<li><strong>Readable URL</strong>: <a href="https://doi.org/10.1080/14697680903124632">https://doi.org/10.1080/14697680903124632</a></li>
+<li><strong>Working-paper DOI</strong>: <code>10.2139/ssrn.1153505</code></li>
+<li><strong>Repo URL</strong>: N/A</li>
+</ul>
+<h3>3.3 最小实验数据源（公开可得）</h3>
+<ul>
+<li><strong>Venue</strong>: Binance USDⓈ-M Futures public klines API</li>
+<li><strong>Readable URL</strong>: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></li>
+<li><strong>公开性</strong>: 全公开、无需付费 key（市场数据）</li>
+<li><strong>可映射周期</strong>: <code>1m / 3m / 5m / 15m</code></li>
+</ul>
+<p>---</p>
+<h2>4. repo 里最值钱的，不是“PCA”两个字，而是完整的 residual mean-reversion pipeline</h2>
+<p>这份 repo 的价值，不在于它说了一个大家都知道的词：PCA。 真正值钱的是它把一条完整的 alpha 链条写实了：</p>
+<ol>
+<li><strong>rolling PCA 因子构建</strong></li>
+<li><strong>单币对前两因子的回归残差</strong></li>
+<li><strong>残差积分过程的 OU 参数估计</strong></li>
+<li><strong>s-score 打分</strong></li>
+<li><strong>阈值开平仓</strong></li>
+<li><strong>组合回测</strong></li>
+</ol>
+<p>翻成人话： <strong>不是先拍脑袋找一对 coin 的价差，而是先让全市场自己长出两个共同因子，再看哪几个币相对这个共振框架偏得最离谱。</strong></p>
+<p>这比“手工 pairs shortlist + z-score fade”更像一条可批量化、可扩 universe 的 stat-arb 主线。</p>
+<p>---</p>
+<h2>5. 代码级拆解：这条 raw alpha 到底怎么成型</h2>
+<h3>5.1 PCA 层：先把共振因子提出来</h3>
+<p><code>src/pca_engine.py</code> 里最关键的参数是：</p>
+<ul>
+<li><strong>window_size = 240</strong></li>
+<li><strong>min_valid_ratio = 0.8</strong></li>
+<li>每个时点取 <strong>当前 universe</strong> 的 token，回看过去窗口</li>
+<li>对 log returns 做标准化后，在 <strong>相关系数矩阵</strong> 上做 PCA</li>
+<li>只取 <strong>前两个主成分</strong></li>
+<li>再把 eigenvector 按波动率缩放，构成 <strong>eigenportfolio weights</strong></li>
+</ul>
+<p>repo 默认数据是：</p>
+<ul>
+<li><strong>hourly 价格</strong></li>
+<li><strong>top-40 token universe</strong></li>
+<li>测试区间：<code>2021-09-26</code> 到 <code>2022-09-25</code></li>
+</ul>
+<p>这意味着原 repo 的原始时间尺度是：</p>
+<ul>
+<li><code>240</code> 小时滚动窗，约 <strong>10 天</strong>；</li>
+<li>40 币 universe；</li>
+<li>每小时更新一轮 PCA / residual / signal。</li>
+</ul>
+<p>对 desk 的翻译就是： <strong>先做“全市场共同运动”的压缩，再做单币相对偏离，而不是直接拿原始价格硬做 mean reversion。</strong></p>
+<h3>5.2 Residual 层：不是看绝对收益，而是看“剥离因子后的 idiosyncratic move”</h3>
+<p><code>src/residual_model.py</code> 对每个 token 做：</p>
+<p><code>r_i = beta0 + beta1 * F1 + beta2 * F2 + eps_i</code></p>
+<p>也就是：</p>
+<ul>
+<li><code>F1 / F2</code> 是第一、第二 PCA factor return；</li>
+<li><code>eps_i</code> 才是单币相对公共因子的残差。</li>
+</ul>
+<p>实现细节：</p>
+<ul>
+<li>仍然用 <code>240</code> 窗口；</li>
+<li>最少样本 <code>30</code>；</li>
+<li>ridge 正则 <code>1e-5</code>；</li>
+<li>最终 residual 会再次去均值。</li>
+</ul>
+<p>这一步是整条 alpha 的灵魂： <strong>它交易的不是“币涨多了会跌”，而是“币相对市场共振涨太多/跌太多，可能会回”。</strong></p>
+<h3>5.3 OU / s-score 层：把 residual 变成“可交易偏离分数”</h3>
+<p><code>src/ou_estimator.py</code> 先把 residual 累积成 <code>X_t = cumsum(eps)</code>，再拟合：</p>
+<p><code>X_{t+1} = a + b * X_t + error</code></p>
+<p>若 <code>0 &lt; b &lt; 1</code>，再换成 OU 参数：</p>
+<ul>
+<li><code>kappa</code></li>
+<li><code>m</code></li>
+<li><code>sigma_eq</code></li>
+</ul>
+<p>然后 <code>src/s_score.py</code> 用：</p>
+<p><code>s = (X_t - m) / sigma_eq</code></p>
+<p>也就是说，<strong>s-score 不是普通 z-score，而是“相对 OU 平衡点的标准化偏离”。</strong></p>
+<p>这对 short-cycle desk 的意义是：</p>
+<ul>
+<li>你不只是看 spread 偏得多不多；</li>
+<li>还在看“它相对自身回归结构偏得有多远”。</li>
+</ul>
+<h3>5.4 Trading rule：repo 已经给出开平仓阈值</h3>
+<p><code>src/strategy.py</code> 默认参数：</p>
+<ul>
+<li><code>s_bo = 1.25</code>：开多阈值（<code>s &lt;= -1.25</code>）</li>
+<li><code>s_so = 1.25</code>：开空阈值（<code>s &gt;= +1.25</code>）</li>
+<li><code>s_bc = 0.75</code>：多头平仓阈值（<code>s &gt;= -0.75</code>）</li>
+<li><code>s_sc = 1.0</code>：空头平仓阈值（<code>s &lt;= +1.0</code>）</li>
+<li><code>trade_size = 1.0</code></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>偏得够离谱才开；</li>
+<li>回到没那么离谱就收；</li>
+<li>多空平仓阈值还有一点非对称。</li>
+</ul>
+<p>这已经是一条 <strong>完整 raw alpha 策略骨架</strong>，不是只给你一个因子图表。</p>
+<h3>5.5 回测器也暴露了最核心的现实问题：repo 默认没算成本</h3>
+<p><code>README.txt</code> 明写：</p>
+<ul>
+<li><strong>Transaction costs and slippage are not modelled</strong></li>
+<li>默认假设 <strong>perfect execution at hourly close prices</strong></li>
+</ul>
+<p>这件事非常重要。 因为这类 residual mean reversion 策略最容易出现的情况就是：</p>
+<p>&gt; <strong>gross 有 edge，net 被 turnover 吃掉。</strong></p>
+<p>所以这条线能不能进实盘，不取决于“PCA 很高级”，而取决于：</p>
+<ul>
+<li>交易频率能不能压下来；</li>
+<li>maker / passive fill 能不能吃到；</li>
+<li>组合是否能做 beta-neutral / factor-neutral；</li>
+<li>是否能只交易最极端的几只，而不是全篮子频繁翻。</li>
+</ul>
+<p>---</p>
+<h2>6. 这条 alpha 为什么是 raw alpha，而不是 filter</h2>
+<p>因为它的入场逻辑本身已经闭环了：</p>
+<ol>
+<li>提取公共因子；</li>
+<li>找单币 residual 偏离；</li>
+<li>用 OU / s-score 判断偏离是否够极端；</li>
+<li>直接开仓赌回归。</li>
+</ol>
+<p>它不是：</p>
+<ul>
+<li>“先有 breakout，再用它决定要不要追”；</li>
+<li>也不是“先有趋势策略，再拿它缩仓位”。</li>
+</ul>
+<p>它自己就是一条完整下注逻辑。</p>
+<p>所以分类上应该放在： <strong>raw alpha / cross-sectional / relative-value / stat-arb / mean reversion</strong></p>
+<p>而不是 filter / overlay。</p>
+<p>---</p>
+<h2>7. 对当前 desk，更值得拿走的不是 hourly 原样复刻，而是这三个 desk 化改写</h2>
+<p>repo 用的是 hourly；我们真正该拿走的是下面三个 desk 化方向：</p>
+<h3>7.1 <code>15m</code>：第一优先的移植层</h3>
+<p>这条线最自然的第一站其实是 <code>15m</code>：</p>
+<ul>
+<li>噪音比 <code>1m</code> 小；</li>
+<li>还保留足够短的 mean-reversion 半衰期；</li>
+<li>执行和成本更有机会活下来。</li>
+</ul>
+<h3>7.2 <code>5m</code>：如果想更快，要先做 sparse + cooldown</h3>
+<p><code>5m</code> 可以做，但别直接把 hourly repo 粗暴降采样：</p>
+<ul>
+<li>需要更稀疏的 admission；</li>
+<li>需要 cooldown；</li>
+<li>需要只交易绝对值最大的 <code>top-k |s|</code>；</li>
+<li>需要更强的 vol / spread / liquidity gate。</li>
+</ul>
+<h3>7.3 <code>1m / 3m</code>：更像 fast admission layer，而不是整篮子主壳</h3>
+<p>在 <code>1m / 3m</code> 上直接全篮子滚动翻仓，很容易死于：</p>
+<ul>
+<li>fees</li>
+<li>queue position</li>
+<li>micro-noise</li>
+<li>residual estimation instability</li>
+</ul>
+<p>所以更合理的是：</p>
+<ul>
+<li>用 <code>1m / 3m</code> 做 admission / refresh；</li>
+<li>真正持仓决策落到 <code>5m / 15m</code>；</li>
+<li>或只做最极端的 1~2 个名字。</li>
+</ul>
+<p>---</p>
+<h2>8. 我做的 Binance <code>15m</code> 最小 sanity check：raw alpha 有影子，但 turnover 明显是第一杀手</h2>
+<p>为了避免这轮变成纯 repo 摘抄，我补了一版 <strong>repo-inspired 的公开数据 existence check</strong>。</p>
+<h3>8.1 实验口径（简化版）</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M public klines</li>
+<li>周期：<code>15m</code></li>
+<li>标的：<code>BTC, ETH, BNB, SOL, XRP, DOGE, ADA, SUI</code></li>
+<li>长度：最近 <strong>1500 根 15m bars</strong>（约 <code>2026-03-17</code> 到 <code>2026-04-02</code>）</li>
+<li>做法：</li>
+</ul>
+<ol>
+<li>rolling <code>240</code> bars PCA（取前 2 因子）</li>
+<li>单币对因子回归取 residual</li>
+<li>residual 累积后拟合 OU</li>
+<li>用 repo 默认 <code>±1.25</code> s-score 开仓思路</li>
+<li>等权组合持有下一根 bar</li>
+</ol>
+<p>&gt; 注意：这不是严格复现 repo，也不是 production backtest；只是为了回答一句：<strong>这条壳子在公开 15m 数据上有没有“先活一下”的迹象。</strong></p>
+<h3>8.2 最关键的结果</h3>
+<p>我认为最有信息量的 5 个数字是：</p>
+<ol>
+<li><strong>样本可交易观测数：1258</strong></li>
+<li><strong>active ratio：82.7%</strong></li>
+<li><strong>成本前 cumulative return：+4.77%</strong></li>
+<li><strong>成本前年化 Sharpe：4.03</strong></li>
+<li><strong>若按每个 active bar 粗加 <code>5 bps</code> 成本，累计直接掉到 <code>-37.7%</code></strong></li>
+</ol>
+<p>另外，把“新开仓事件”单独拿出来看：</p>
+<ul>
+<li><strong>avg next-1-bar markout：+1.19 bps</strong></li>
+<li><strong>avg next-3-bar markout：-0.22 bps</strong></li>
+</ul>
+<h3>8.3 这组数字说明什么</h3>
+<p>说明两件事同时成立：</p>
+<p>#### A. raw alpha 不是假的 如果完全没东西，gross 不会先站起来。 所以“公共因子剥离后做 residual fade”这条路，<strong>有继续研究价值</strong>。</p>
+<p>#### B. 但当前壳子过于密，执行会先把你杀掉 active ratio <code>82.7%</code> 基本已经说明：</p>
+<ul>
+<li>它不是一个可以粗暴 taker 化的 alpha；</li>
+<li>必须做 turnover compression；</li>
+<li>必须做 sparse ranking；</li>
+<li>必须重新设计 entry / re-entry / hold / close；</li>
+<li>必须严肃做 cost ladder。</li>
+</ul>
+<p>所以它不是“明天可上线”，但它是： <strong>值得继续拆成更适合 desk 的 residual stat-arb 素材。</strong></p>
+<p>---</p>
+<h2>9. 对 short-cycle desk，真正该落地成哪版策略</h2>
+<p>我建议别照抄 repo 的“全 universe 全时点同强度翻仓”，而是改成下面这版。</p>
+<h3>9.1 Universe</h3>
+<p>先用最液体的 <code>8~20</code> 个永续：</p>
+<ul>
+<li><code>BTC, ETH, SOL, BNB, XRP, DOGE, ADA, SUI</code> 起步</li>
+<li>后面再扩到 top20 USDT perps</li>
+</ul>
+<h3>9.2 Sampling</h3>
+<ul>
+<li>主版本：<code>15m</code></li>
+<li>快版本：<code>5m</code></li>
+<li><code>1m / 3m</code> 只做 admission / refresh，不直接当主回测壳</li>
+</ul>
+<h3>9.3 Factor / residual</h3>
+<ul>
+<li>PCA 因子数先固定 <code>2</code></li>
+<li>比较两种窗长：</li>
+<li><strong>bar-count 继承</strong>：<code>240 bars</code></li>
+<li><strong>time-span 继承</strong>：如果从 hourly 的 240h 等价迁到 15m，则是 <code>960 bars</code></li>
+<li>单币 residual 仍然先用线性回归</li>
+</ul>
+<h3>9.4 Entry</h3>
+<p>不要全篮子同时上，先做：</p>
+<ul>
+<li>每个 bar 只选 <code>top-k</code> 的 <code>|s|</code>（例如 <code>k=2~4</code>）</li>
+<li>只在 <code>|s| &gt;= 1.5 / 1.75 / 2.0</code> 才入场</li>
+<li>若 coin 的 spread / vol / liquidity 不达标，则 veto</li>
+</ul>
+<h3>9.5 Exit</h3>
+<p>比 repo 更适合 desk 的版本：</p>
+<ul>
+<li><code>s</code> 回到 <code>|s| &lt; 0.5</code> 平仓</li>
+<li>或固定持有 <code>1 / 2 / 4</code> 根 <code>15m</code> bar</li>
+<li>或加 <code>cooldown</code>，避免刚平就反向重开</li>
+<li>默认不要 instant flip，先 flat 再等下一轮信号</li>
+</ul>
+<h3>9.6 Sizing</h3>
+<ul>
+<li>按 <code>|s|</code> 或 residual vol 做分级，不要固定 <code>1.0</code></li>
+<li>组合层面做 gross cap</li>
+<li>最好做 market / factor neutral，避免变成偷渡 beta</li>
+</ul>
+<h3>9.7 Cost</h3>
+<p>至少做三层：</p>
+<ul>
+<li>maker optimistic</li>
+<li>hybrid realistic</li>
+<li>taker pessimistic</li>
+</ul>
+<p>因为这条线最怕的不是预测不准，而是 <strong>预测太频繁</strong>。</p>
+<p>---</p>
+<h2>10. 它和现有 pairs / XS / stat-arb 素材池的关系</h2>
+<p>这条线的价值，在于它能补足一个很实用的中间层：</p>
+<ul>
+<li><strong>pairs</strong>：先选一对，再赌两者回归</li>
+<li><strong>cross-sectional mean reversion</strong>：先排序，再赌输家回归 /赢家回落</li>
+<li><strong>PCA residual stat-arb</strong>：先提取共同因子，再赌 idiosyncratic 偏离回归</li>
+</ul>
+<p>所以它既不是老式 pairs 的重复，也不是普通 loser-winner reversal 的重复。 它更像：</p>
+<p>&gt; <strong>用“全市场共同因子剥离”来提高 mean reversion 命中的纯度。</strong></p>
+<p>这很适合进入我们当前的 <code>cross-sectional / relative-value / stat-arb</code> 素材池。</p>
+<p>---</p>
+<h2>11. 失败模式与要避开的坑</h2>
+<h3>11.1 把 gross edge 当可交易 edge</h3>
+<p>这条线最容易犯的错就是：</p>
+<ul>
+<li>看到 gross 好看；</li>
+<li>忘了 turnover 可能直接毁掉 net。</li>
+</ul>
+<h3>11.2 把 hourly 参数原样砸进 <code>5m</code></h3>
+<p>从 <code>1h</code> 下放到 <code>5m / 15m</code>，不是简单改 interval。 窗长、阈值、cooldown、holding 都要重估。</p>
+<h3>11.3 不做 neutralization</h3>
+<p>如果不控制市场 beta，最后可能只是：</p>
+<ul>
+<li>牛市里多一堆“看起来低估”的币；</li>
+<li>熊市里空一堆“看起来高估”的币。</li>
+</ul>
+<h3>11.4 让 universe 太杂</h3>
+<p>低流动、小币、跳价大、盘口差的标的会把 residual 估计搞脏。 第一轮一定要先做高流动篮子。</p>
+<p>---</p>
+<h2>12. 一句话结论</h2>
+<p>如果只带走一句话，我会带走这句：</p>
+<p><strong>别把 PCA 只当“老教材因子分解”；对 crypto short-cycle desk，更值得快检的是「先剥掉全市场共振，再做单币 residual s-score fade」这条 cross-sectional raw alpha。</strong></p>
+<p>它的优点是：</p>
+<ul>
+<li>raw alpha 清楚；</li>
+<li>完整策略骨架现成；</li>
+<li>能直接扩充 stat-arb / relative-value 素材池。</li>
+</ul>
+<p>它的现实约束也同样清楚：</p>
+<ul>
+<li><strong>gross 可能有 edge，net 很可能先死于 turnover。</strong></li>
+</ul>
+<p>所以它该进研究池，但应该以 <strong>sparse / cost-aware / neutralized</strong> 的 desk 版本继续推进，而不是把 repo 原样当答案。</p>
+<p>---</p>
+<h2>13. 下一步怎么测（直接执行版）</h2>
+<ol>
+<li><strong>先做 <code>15m</code> 正式最小实验</strong>：top20 USDT perps，比较 <code>240 bars</code> vs <code>960 bars</code> 两种窗长继承方式。</li>
+<li><strong>把 entry 改成 sparse ranking</strong>：每根 bar 只交易 <code>top-2 / top-4 |s|</code>，并扫 <code>|s|</code> 阈值 <code>1.5 / 1.75 / 2.0</code>。</li>
+<li><strong>固定回答成本问题</strong>：maker / hybrid / taker 三档 cost ladder，别只看 gross。</li>
+<li><strong>做 neutralization ablation</strong>：</li>
+</ol>
+<ul>
+<li>不中性化</li>
+<li>dollar-neutral</li>
+<li>beta-neutral / factor-neutral</li>
+</ul>
+<ol>
+<li><strong>检查持有期真半衰期</strong>：比较 <code>next-1 / next-2 / next-4 bars</code>，确认它是不是只活一根 bar。</li>
+<li><strong>如果 15m 有戏，再下放到 5m</strong>；若 5m turnover 爆炸，就把 <code>1m / 3m</code> 限定成 admission / refresh 层，而不是主壳。</li>
+</ol>
+<p>---</p>
+<h2>14. 文件信息</h2>
+<ul>
+<li>文件路径：<code>research/quant_digests/2026-04-02_1124_pca-eigenportfolio-residual-statarb-alpha.md</code></li>
+<li>站点相对 URL：<code>/reading/quant_digests/2026-04-02_1124_pca-eigenportfolio-residual-statarb-alpha.html</code></li>
+</ul>
+</body>
+</html>

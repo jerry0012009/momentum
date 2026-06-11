@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Kraken bot 只读成多指标堆叠：对 short-cycle desk，更该先测的是「HTF EMA gate × 15m RSI pullback continuation」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Kraken bot 只读成多指标堆叠：对 short-cycle desk，更该先测的是「HTF EMA gate × 15m RSI pullback continuation」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-08 04:06 UTC</span>
+      <span class="pill">研究时间：2026-04-08 04:05 UTC</span>
+      <span class="pill">类型：GitHub / source audit</span>
+      <span class="pill">主题标签：trend / momentum / pullback / multi-timeframe / EMA / RSI / ATR / execution / risk</span>
+      <span class="pill">证据类型：工程经验 / 源码证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-08_0405_htf-ema-rsi-pullback-trend-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-08 04:05 UTC</li>
+<li>类型：GitHub / source audit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>顺势延续</strong>；更具体地说，是 <strong>高周期趋势已成立后，低周期做一次浅回踩 continuation</strong>。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：trend / momentum / pullback / multi-timeframe / EMA / RSI / ATR / execution / risk</li>
+<li>证据类型：工程经验 / 源码证据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看一个刚更新的 repo：<strong>Boschkoo (2026), _Kraken Trading Bot_</strong>。我没把它当“又一个 EMA+RSI 教学 bot”，而是直接按 desk 语言拆：<strong>base alpha 不是 MACD、也不是 Fear &amp; Greed，而是“1h/4h 已经向上时，15m 出现轻微回踩但短均线结构未坏，随后继续顺势”</strong>。源码里这条线已经被写成完整交易壳：<code>15m</code> 扫描、<code>1h+4h</code> 趋势门控、入场过滤、ATR 定仓、止损止盈、break-even、trailing、全局熔断，一条链是闭合的。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 真正值得 desk 抄的，不是“六个指标同时亮灯”，而是 <strong>HTF 趋势门控 + LTF 浅回踩 continuation</strong> 这条完整 raw alpha。</li>
+<li><strong>一句话它怎么证明：</strong> 不是论文统计，而是直接从 <code>README + KrakenBot.py + .env.example</code> 里看到可执行规则：哪些条件决定开仓、哪些条件只是 veto、仓位怎么按 ATR 缩放、出场怎么落地。</li>
+<li>代码里入场是明确的：<code>15m</code> 上要求 <code>EMA9 &gt; EMA21</code>、<code>40 &lt; RSI &lt; 65</code>、<code>MACD line &gt; signal</code>、价格仍在 <strong>Bollinger 中轨下方</strong>、<code>ATR &gt;= 5 EUR</code>，且 <code>1h</code> 与 <code>4h</code> 都满足 <strong>close &gt; EMA200</strong>。</li>
+<li>它不是纯信号脚本，而是完整策略：单笔风险默认 <code>3 EUR</code>、最大仓位 <code>50 EUR</code>、最多同时 <code>3</code> 个仓，止损 <code>2 ATR</code>、止盈 <code>3 ATR</code>、盈利 <code>+1%</code> 后提保本、随后 <code>0.5%</code> trailing，连续 <code>3</code> 亏或总回撤到 <code>-15%</code> 自动停机。</li>
+<li>对 short-cycle desk 最值钱的启发是：<strong>把“趋势本体”和“确认/过滤层”彻底拆开</strong>。这里的 raw alpha 是 continuation；<code>RSI/MACD/BB/Fear&amp;Greed</code> 更像把 entry 压到“没那么追高”的一侧。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和我们现在最匹配的，不是“指标新颖”，而是它<strong>直接补一个可落地的完整趋势壳</strong>：</p>
+<ul>
+<li>可以扩充 raw alpha 素材池：不是 breakout，也不是纯均线穿越，而是 <strong>trend pullback continuation</strong>；</li>
+<li>可以训练我们把组件分层：</li>
+<li><code>EMA200(1h/4h)</code> 是 regime / direction gate；</li>
+<li><code>EMA9/21</code> 是低周期趋势未坏；</li>
+<li><code>RSI 40~65 + price&lt;BB mid</code> 是“别买在最热那一下”的 pullback filter；</li>
+<li><code>ATR / break-even / trailing / global DD stop</code> 是 risk shell。</li>
+<li>对当前 desk 尤其有用，因为它默认就是 <code>15m</code> 主框架，也很容易下采样到 <code>5m</code> 或上卷成 <code>1m/3m</code> 高频触发版。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势</li>
+<li>基础 alpha：HTF 上涨趋势内的 LTF 浅回踩 continuation</li>
+<li>regime：<code>1h close &gt; EMA200</code> 且 <code>4h close &gt; EMA200</code></li>
+<li>filter / veto：<code>EMA9 &gt; EMA21</code>、<code>40 &lt; RSI &lt; 65</code>、<code>MACD&gt;signal</code>、<code>close &lt; BB mid</code>、<code>Fear&amp;Greed &gt;= 25</code>、<code>ATR</code> 不得过低、最多 <code>3</code> 个同时持仓</li>
+<li>risk / sizing / execution overlay：仓位 <code>min(3 EUR / (2*ATR), 50 EUR/price)</code>；止损 <code>2 ATR</code>、止盈 <code>3 ATR</code>、<code>+1%</code> 保本、<code>0.5%</code> trailing、连续亏损与总回撤熔断</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 在 crypto 短周期里，真正值钱的不是追突破，而是 <strong>高周期已顺风时，低周期的小回踩恢复</strong>。</p>
+<p><strong>最小定义：</strong></p>
+<ol>
+<li>标的：BTC/ETH/SOL/BNB 四个高流动 perp；</li>
+<li>周期：主实验 <code>15m</code>，附加一个更快版 <code>5m entry + 1h gate</code>；</li>
+<li>gate：<code>1h close &gt; EMA200</code>；</li>
+<li>entry：<code>15m EMA9 &gt; EMA21</code>，且 <code>RSI(14)</code> 落在 <code>40~65</code>，同时 <code>close &lt; BB mid</code>；</li>
+<li>可选确认：<code>MACD line &gt; signal</code>；</li>
+<li>出场：<code>SL=2 ATR</code>，<code>TP=3 ATR</code>，或先测一个更简单的 <code>time stop = 12 bars</code>；</li>
+<li>成本：先打 <code>8~10 bps</code> round-trip，再看是否还能活。</li>
+</ol>
+<p><strong>先看两件事：</strong></p>
+<ul>
+<li><code>post-cost expectancy / trade</code> 是否明显高于裸 <code>EMA9&gt;EMA21</code> continuation；</li>
+<li><code>win rate × payoff</code> 是否来自真的“回踩恢复”，而不是靠少量大单抬出来。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是 <strong>源码证据</strong>，不是论文证据；当前不能把 repo README 里的“能跑”自动等同于“有稳健 alpha”。</li>
+<li>它本质是 <strong>长偏 / long-only</strong> 壳；若要迁移到 perp desk，最好单独设计一个 bearish 镜像版本，而不是直接反号。</li>
+<li><code>ATR &gt;= 5 EUR</code> 这种绝对阈值不适合多资产迁移，落地时应改成 <strong>ATR/price 分位</strong> 或 <code>ATR%</code>。</li>
+<li>过滤条件很多，容易把交易次数压得过低；所以 first verdict 一定要做 <strong>逐层剥皮</strong>：<code>HTF gate only -&gt; +EMA9/21 -&gt; +RSI zone -&gt; +MACD -&gt; +BB mid</code>，别一上来就全套照抄。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Boschkoo. (2026). _Kraken Trading Bot_. GitHub repository.</strong></li>
+<p>Repo URL: <code><a href="https://github.com/Boschkoo/kraken-bot">https://github.com/Boschkoo/kraken-bot</a></code></p>
+<li><strong>核心源码：</strong> <code>KrakenBot.py</code></li>
+<p>Raw URL: <code><a href="https://raw.githubusercontent.com/Boschkoo/kraken-bot/main/KrakenBot.py">https://raw.githubusercontent.com/Boschkoo/kraken-bot/main/KrakenBot.py</a></code></p>
+<li><strong>配置样例：</strong> <code>.env.example</code></li>
+<p>Raw URL: <code><a href="https://raw.githubusercontent.com/Boschkoo/kraken-bot/main/.env.example">https://raw.githubusercontent.com/Boschkoo/kraken-bot/main/.env.example</a></code></p>
+</ol>
+</body>
+</html>

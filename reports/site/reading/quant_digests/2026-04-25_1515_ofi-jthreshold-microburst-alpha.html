@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 OFI 仓只读成“高频回测作业”：对 short-cycle crypto desk，更该先拆的是「1s order-flow imbalance 极值 × 3~5s microburst continuation」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 OFI 仓只读成“高频回测作业”：对 short-cycle crypto desk，更该先拆的是「1s order-flow imbalance 极值 × 3~5s microburst continuation」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-25 15:13 UTC</span>
+      <span class="pill">研究时间：2026-04-25 15:15 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `Order_Flow_Imbalance.ipynb`）+ Binance USDⓈ-M public-data sanity probe（`BTCUSDT` aggTrades，最近约 `19m`）</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/order-flow-imbalance/ofi/j-threshold/forward-return/microburst/continuation/btc/1s/3s/5s/1m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo source audit + public aggTrades sanity probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-25_1515_ofi-jthreshold-microburst-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-25 15:15 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>Order_Flow_Imbalance.ipynb</code>）+ Binance USDⓈ-M public-data sanity probe（<code>BTCUSDT</code> aggTrades，最近约 <code>19m</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当极短时间内主动买/卖盘明显失衡（OFI 极值）时，下一小段 <code>1~5s</code> 价格更容易朝同方向继续挪一小步；交易上对应 <code>OFI z-score</code> 极值触发的 very-short-horizon continuation。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（repo 给了完整骨架；但更偏 <code>1s</code> HFT，不应直接硬搬成 <code>5m/15m</code> 主信号）</li>
+<li>主题标签：raw-alpha/microstructure/order-flow-imbalance/ofi/j-threshold/forward-return/microburst/continuation/btc/1s/3s/5s/1m/repo/public-data/cost/risk</li>
+<li>证据类型：repo source audit + public aggTrades sanity probe</li>
+</ul>
+<h2>1) 先回答：这篇东西的 base alpha 是什么？</h2>
+<p>这轮不是在讲“延迟 / 滑点 / 风控很重要”这种常识，也不是把 OFI 当纯执行细节。</p>
+<p><strong>base alpha 就一句话：</strong> &gt; 如果最近 1 秒里主动买盘或卖盘突然明显压过对手盘，价格在随后几秒里往往还会沿同方向再漂一点；因此可以做一个极短持有的顺势 microburst。</p>
+<p>所以它是 <strong>raw alpha</strong>，而不是单纯 overlay。</p>
+<p>---</p>
+<h2>2) 这次看了什么</h2>
+<p>主来源是 GitHub 仓 <code>grantreed1/Crypto-Order-Flow-Imbalance</code>：</p>
+<ul>
+<li>README 把策略骨架写得很直白：</li>
+</ul>
+<ol>
+<li>先把多交易所原始成交量统一单位；</li>
+<li>对 OFI 做 winsorize（1%/99% 截尾）+ rolling z-score；</li>
+<li>用 chronological split（<code>40% train / 60% test</code>）做线性回归，学一个 <code>OFI -&gt; forward return</code> 的 beta；</li>
+<li>只在预测值超过动态 <code>J-threshold</code>（作者口径：约保留 top <code>5%</code> 机会）时出手。</li>
+</ol>
+<ul>
+<li>notebook 还能确认一些更细口径：</li>
+<li>样本覆盖 <strong>6 个交易所</strong>：<code>OKX / GATE_IO / COINBASE / DERIBIT / BITSTAMP / BINANCE</code>；</li>
+<li>原始时间戳是亚秒级成交；</li>
+<li>作者用的是 <strong>2025-05</strong> 的 BTC 交易数据，且 notebook 明写只先载入 <strong>1/6 subsample</strong> 做实验。</li>
+</ul>
+<p>这份仓最值钱的不是“OFI 有预测力”这句话本身，而是它把 <strong>极短 alpha + admission 阈值 + 风险现实约束</strong> 连成了完整壳。</p>
+<p>---</p>
+<h2>3) 一句话结论 + 一句话它怎么证明</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> OFI 极值的确更像一条可复现的 microstructure raw alpha，但真正决定能不能赚钱的不是方向准不准，而是你能否把持有窗、阈值、仓位和延迟/滑点一起控制住。</li>
+<li><strong>一句话证明方式：</strong> repo 用 train/test 分割后的线性回归和动态 <code>J-threshold</code> 验证“高 OFI 极值对应更高 forward return”，同时又在 README 里直接给出高回撤、容量上限和 adverse selection 的反证。</li>
+</ul>
+<p>---</p>
+<h2>4) 关键源码里最值得 desk 学的地方</h2>
+<ol>
+<li><strong>不要直接拿原始 signed flow 当信号。</strong></li>
+<p>作者先做单位归一化、再做极值截尾、再做 rolling z-score。翻成人话：先把不同 venue 的“成交量语言”统一，再把离谱大单噪音削平，再看“这一秒到底有多异常”。</p>
+</ol>
+<ol>
+<li><strong>不要每次都出手，要只打最肥的尾部。</strong></li>
+<p><code>J-threshold</code> 的意思不是“预测为正就买”，而是“只有强到进了最靠前那批机会才动手”。这对 short-cycle desk 很重要，因为弱 OFI 常常全被手续费和排队吃掉。</p>
+</ol>
+<ol>
+<li><strong>方向正确不等于策略成立。</strong></li>
+<p>repo README 明写：OKX 最优参数一度给出 <code>Net P&amp;L $575,712</code>，但同时 <code>Max Drawdown -$1.2M</code>；更糟的是，没有正式 stop / inventory discipline 时，甚至会出现约 <code>-$62.3M</code> 的灾难级回撤。 这正说明：<strong>raw alpha 有，不代表直接可上线。</strong></p>
+</ol>
+<p>---</p>
+<h2>5) 我的最小 public sanity probe（不是完整复现，只看信号有没有“活”）</h2>
+<h3>5.1 数据源与口径</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M <code>fapi/v1/aggTrades</code>（公开接口，无需私钥）</li>
+<li>标的：<code>BTCUSDT</code></li>
+<li>窗口：最近约 <code>5000</code> 笔 aggTrades，覆盖 <code>2026-04-25 14:53:08 ~ 15:11:52 UTC</code></li>
+<li>做法：</li>
+<li>以 1 秒聚合主动买/卖量，构造 signed flow；</li>
+<li>对 1 秒 OFI 做 <code>1%/99%</code> 截尾 + <code>60s rolling z-score</code>；</li>
+<li>看 <code>OFI z-score</code> 最强 <code>5%</code> 与最弱 <code>5%</code> 样本，之后 <code>1s / 3s / 5s</code> 的方向延续。</li>
+</ul>
+<h3>5.2 结果（关键数据点）</h3>
+<ul>
+<li>总计约 <code>992</code> 个秒级 bar，可用样本 <code>927</code> 个。</li>
+<li><strong>正向极值（top 5%）</strong>：<code>47</code> 次；后续 <code>3s</code> 平均约 <strong><code>+0.167 bps</code></strong>，命中率约 <strong><code>51.1%</code></strong>。</li>
+<li><strong>反向极值（bottom 5%<code>，按做空方向记）</strong>：</code>47<code> 次；后续 </code>3s<code> 平均约 <strong></code>+0.145 bps`</strong>。</li>
+<li><code>1s</code> 窗里仍有信号，但更噪；<code>3s</code> 比 <code>1s</code> 更像 repo 这类 OFI 信号该落脚的持有窗。</li>
+</ul>
+<h3>5.3 这组快检说明什么</h3>
+<p>它还远远不够证明“可交易”，但至少说明两件事：</p>
+<ol>
+<li><strong>信号本体没死。</strong> 极值 OFI 后，下一小段的方向漂移仍能测到。</li>
+<li><strong>边极薄。</strong> 几个 <code>0.1 bps</code> 级别的 markout，几乎注定不能用 taker 思路硬吃；它更像 maker skew / quote bias / veto admission 的原材料。</li>
+</ol>
+<h3>5.4 产物文件</h3>
+<ul>
+<li><code>reports/artifacts/quant_digests/20260425_1512_binance_btc_ofi_quickprobe_summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/20260425_1512_binance_btc_ofi_quickprobe_horizons.json</code></li>
+<li><code>reports/artifacts/quant_digests/20260425_1512_binance_btc_ofi_quickprobe_series.csv</code></li>
+</ul>
+<p>---</p>
+<h2>6) 为什么和当前 desk 有关</h2>
+<p>这条线和我们默认 <code>5m/15m</code> 不在同一层级，但仍然值得进研究池，因为它能服务两类东西：</p>
+<h3>A. 作为独立 raw alpha（更偏 <code>1s / 3s / 1m</code>）</h3>
+<p>如果后面能拿到更稳定的盘口/成交数据，它本身就是一条极短 continuation alpha。</p>
+<h3>B. 作为短周期执行 admission / veto</h3>
+<p>即使不单独做 HFT，它也很适合给已有 <code>1m/3m/5m</code> 信号加一层：</p>
+<ul>
+<li>breakout 时，若 OFI 不支持，就降级或不追；</li>
+<li>mean reversion 时，若 OFI 仍强顺势，就延后接刀；</li>
+<li>maker quote 时，按 OFI 偏向一侧 skew 报价。</li>
+</ul>
+<p>也就是说，这条线不是和主线竞争，而是可能成为 <strong>shared microstructure spine</strong>。</p>
+<p>---</p>
+<h2>7) 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>顺势 / microstructure continuation</strong></li>
+<li>基础 alpha：<strong>秒级主动买卖失衡会在随后几秒继续推着价格往同方向漂移。</strong></li>
+<li>regime：<strong>高流动、低延迟、盘口没被大单瞬间抽空的时段更适合。</strong></li>
+<li>filter / veto：<strong>只做 <code>OFI z-score</code> 尾部事件；弱信号不做；最好叠加 spread / top-of-book depth / queue-risk 过滤。</strong></li>
+<li>risk / sizing / execution overlay：<strong>严格 time-box（例如 <code>3s/5s</code>）、容量上限、inventory 上限、maker-first 或至少 maker-leaning；否则 edge 会被 slippage 和 adverse selection 吃光。</strong></li>
+</ul>
+<p>---</p>
+<h2>8) 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>先把 1 秒信号映射到 1 分钟，不要急着升 5 分钟。</strong></li>
+<p>做 <code>1m</code> bar 内的 <code>max |OFI_z|</code>、<code>sum signed flow</code>、<code>尾部事件计数</code>，测它们对下一 <code>1m/3m</code> 收益的解释力。</p>
+</ol>
+<ol>
+<li><strong>把它接到现有 raw alpha 上做 veto / admission，而不是先裸跑。</strong></li>
+<p>最值得先测的组合是：</p>
+</ol>
+<ul>
+<li><code>1m breakout</code> + OFI 同向确认；</li>
+<li><code>1m/3m mean reversion</code> + OFI 反向衰减确认。</li>
+</ul>
+<ol>
+<li><strong>一定要做 friction ladder。</strong></li>
+<p>这类信号至少要给 <code>0 / 0.5 / 1 / 2 bps</code> 四档 execution friction；若 <code>1 bps</code> 就全灭，就别把它误判成主 alpha。</p>
+</ol>
+<ol>
+<li><strong>补多 venue，而不是只看 Binance 单点。</strong></li>
+<p>repo 真正的亮点是碎片化流动性下的统一 OFI；下一轮如果要认真做，应优先比 <code>单 venue OFI</code> vs <code>跨 venue 聚合 OFI</code> 哪个更稳。</p>
+</ol>
+<p>---</p>
+<h2>9) 风险与保留意见</h2>
+<ul>
+<li>这轮 public probe 只是一段很短的 recent snapshot，绝不是正式回测；</li>
+<li>aggTrades 近似的是成交方向，不是完整 L2 OFI，和真正 order-book imbalance 仍有差距；</li>
+<li>repo 的亮点之一是跨 6 venue 聚合，而我这轮快检只拿了 Binance 单 venue；</li>
+<li>这条 edge 天生很薄，任何 taker 费率、排队失败或网络延迟都可能直接把它打成负。</li>
+</ul>
+<p>---</p>
+<h2>10) 来源</h2>
+<ol>
+<li><strong>Grant Reed. (2026). _Crypto-Order-Flow-Imbalance_. GitHub repository.</strong></li>
+<p>Venue: GitHub; DOI: N/A Readable URL: &lt;<a href="https://github.com/grantreed1/Crypto-Order-Flow-Imbalance&gt;">https://github.com/grantreed1/Crypto-Order-Flow-Imbalance&gt;</a> Repo URL: &lt;<a href="https://github.com/grantreed1/Crypto-Order-Flow-Imbalance&gt;">https://github.com/grantreed1/Crypto-Order-Flow-Imbalance&gt;</a></p>
+<li><strong>Grant Reed. (2026). _README.md_ / _Order_Flow_Imbalance.ipynb_.</strong></li>
+<p>Raw README: &lt;<a href="https://raw.githubusercontent.com/grantreed1/Crypto-Order-Flow-Imbalance/main/README.md&gt;">https://raw.githubusercontent.com/grantreed1/Crypto-Order-Flow-Imbalance/main/README.md&gt;</a> Raw notebook: &lt;<a href="https://raw.githubusercontent.com/grantreed1/Crypto-Order-Flow-Imbalance/main/Order_Flow_Imbalance.ipynb&gt;">https://raw.githubusercontent.com/grantreed1/Crypto-Order-Flow-Imbalance/main/Order_Flow_Imbalance.ipynb&gt;</a></p>
+<li><strong>Binance Developers. (2026). _USDⓈ-M Futures API – Compressed/Aggregate Trades List_.</strong></li>
+<p>URL: &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Compressed-Aggregate-Trades-List&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Compressed-Aggregate-Trades-List&gt;</a></p>
+</ol>
+</body>
+</html>

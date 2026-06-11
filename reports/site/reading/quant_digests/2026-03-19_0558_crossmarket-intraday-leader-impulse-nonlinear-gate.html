@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 cross-market intraday 动量当成单向放行：`leader impulse` 需要分层（low-z 跟随 / high-z 反转）</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 cross-market intraday 动量当成单向放行：`leader impulse` 需要分层（low-z 跟随 / high-z 反转）</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-19 06:02 UTC</span>
+      <span class="pill">研究时间：2026-03-19 05:58 UTC</span>
+      <span class="pill">类型：论文 + 快速工程复核</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/cross-market/intraday/leader-laggard/continuation/failure/regime/filter/paper/crypto/15m</span>
+      <span class="pill">证据类型：论文证据 + 本地最小复核</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-19_0558_crossmarket-intraday-leader-impulse-nonlinear-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-19 05:58 UTC</li>
+<li>类型：论文 + 快速工程复核</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/cross-market/intraday/leader-laggard/continuation/failure/regime/filter/paper/crypto/15m</li>
+<li>证据类型：论文证据 + 本地最小复核</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>Xu, Li, Singh, Li (2024)</strong> 的 *Cross-Market Intraday Time-Series Momentum*（working paper），并用 <strong>Li, Sakkas, Urquhart (2022)</strong> 的 intraday TSMOM 证据做地基；同时在本地 <code>BTC/ETH/SOL</code> 15m perp 历史上做了一个 180d 快检，专门看“leader impulse 强度分层”对下一根跟随的影响。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 对 15m 来说，cross-market leader 不是“越强越该追”——更像要做成一个<strong>非线性 follow-up gate</strong>：<code>low-z</code> 允许 continuation，<code>high-z</code> 倾向 veto/降权。</li>
+<li><strong>一句话说明它怎么证明：</strong> 论文给出“跨市场日内 lead-lag”框架，本地快检进一步显示同一方向里存在强度分层：弱到中等冲击有延续，极端冲击更容易失效。</li>
+<li>本地 180d 快检（ETH/SOL 作为 leader basket）里：</li>
+<li><code>low_z (&lt;0.5)</code> 事件 <code>n=6557</code>，BTC 下一根同向率 <strong>49.55%</strong>（基线 <strong>47.44%</strong>，+2.11pct）</li>
+<li><code>high_z (&gt;1.0)</code> 事件 <code>n=1787</code>，BTC 下一根同向率 <strong>44.77%</strong>（较基线 -2.67pct）</li>
+<li><code>high_z</code> 下行事件（更贴近 breakout-short）<code>n=925</code>，下一根同向率 <strong>45.51%</strong>（低于下行基线 <strong>47.29%</strong>）</li>
+<li>同期 pairwise lead-lag 仍有正边：</li>
+<li><code>SOL→BTC</code> lead-edge ≈ <strong>+0.0204</strong></li>
+<li><code>ETH→BTC</code> lead-edge ≈ <strong>+0.0095</strong></li>
+<p>说明“有 lead-lag”，但不能忽略强冲击下的失败段。</p>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li>对 <code>V3 final-verdict / breakout-short follow-up</code>：可直接把 <code>high_z leader impulse</code> 作为 continuation veto，减少“末端追击”。</li>
+<li>对 <code>Fibonacci confirmation / retest_hold</code>：在 retest_hold 成立后，只在 <code>low_z</code> 或中性区放行加仓，<code>high_z</code> 只保留轻仓确认，避免“过冲后回吐”。</li>
+<li>对 <code>EMA / PSAR raw alpha focus</code>：不改主触发，只加一层成本友好的 <code>size_mult</code>（例如 <code>1.0 / 0.6 / 0.2</code>），更符合“主信号 vs 风险覆盖层”分工。</li>
+<li>这比继续微调单一参数更值钱：它是三条收口线都能共用的 follow-up/failure 过滤层。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：<code>leader impulse</code> 分层后，三条线的 post-cost 指标会改善；尤其 <code>high_z</code> veto 能降低假延续。</li>
+<li>一个可计算定义（15m）：</li>
+<li><code>leader_ret = mean(ret_ETH, ret_SOL)</code></li>
+<li><code>leader_z = zscore_96(abs(leader_ret))</code></li>
+<li><code>leader_valid = sign(ret_ETH)==sign(ret_SOL) &amp; mean(|ret_ETH|,|ret_SOL|) &gt; 1.2*|ret_BTC|</code></li>
+<li>gate：<code>low_z = leader_z &lt; 0.5</code>，<code>high_z = leader_z &gt; 1.0</code></li>
+<li>最小回测切口：BTC/ETH/SOL perp，近 120~180d，15m 产信号（breakout-short / fib retest / ema-psar），含手续费与滑点。</li>
+<li>先看 3 个指标：<code>post_cost_return</code>、<code>false_follow_ratio</code>、<code>MAE&lt;1R 占比</code>。</li>
+<li>下一步怎么测（本轮明确动作）：</li>
+<p>1) 对三条线各跑 <code>baseline vs low_z_only vs high_z_veto</code> 三组； 2) 先只动 gate，不动入场和出场； 3) 若 <code>high_z_veto</code> 降低 <code>false_follow_ratio</code> 且不显著压缩 trade count，再进入 OOS。</p>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>Xu et al. 仍是 working paper；在不同市场结构下，lead-lag 强度可能漂移。</li>
+<li>本地快检是“轻量诊断”，不是正式 replication：未做完整成本敏感性、未做 purged walk-forward。</li>
+<li><code>z</code> 阈值（0.5/1.0）当前只是起步参数，不应直接生产化。</li>
+<li>若后续 OOS 显示 <code>high_z</code> 并非稳定劣化区，这条规则要降级为“候选过滤层”。</li>
+</ul>
+<h2>6. 来源</h2>
+<p>1) Xu, D., Li, B., Singh, T., &amp; Li, J. (2024). *Cross-Market Intraday Time-Series Momentum*. SSRN Working Paper.</p>
+<ul>
+<li>Venue: SSRN</li>
+<li>DOI: <a href="https://doi.org/10.2139/ssrn.4765613">https://doi.org/10.2139/ssrn.4765613</a>  （早期版本：10.2139/ssrn.4651331）</li>
+<li>Readable URL: <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4765613">https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4765613</a></li>
+<li>Repo URL: N/A（论文）</li>
+</ul>
+<p>2) Li, Z., Sakkas, A., &amp; Urquhart, A. (2022). *Intraday time series momentum: Global evidence and links to market characteristics*. Journal of Financial Markets, 57, 100619.</p>
+<ul>
+<li>Venue: Journal of Financial Markets</li>
+<li>DOI: <a href="https://doi.org/10.1016/j.finmar.2021.100619">https://doi.org/10.1016/j.finmar.2021.100619</a></li>
+<li>Readable URL: <a href="https://www.sciencedirect.com/science/article/pii/S1386418121000064">https://www.sciencedirect.com/science/article/pii/S1386418121000064</a></li>
+<li>Repo URL: N/A（论文）</li>
+</ul>
+<p>3) 本地快速复核（公开历史行情）</p>
+<ul>
+<li>数据：<code>BTCUSDT/ETHUSDT/SOLUSDT</code> 15m perp 缓存（公开交易所行情）</li>
+<li>口径：最近 180d；leader basket=<code>ETH+SOL</code>；<code>zscore_96(abs(leader_ret))</code></li>
+<li>结果文件：<code>reports/artifacts/literature/tmp_crossmarket_intraday_leadlag_nonlinear_quickcheck_180d.csv</code></li>
+<li>Repo URL: N/A（本地复核脚本化统计）</li>
+</ul>
+</body>
+</html>

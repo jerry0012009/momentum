@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2024 *Investment Analysts Journal* intraday pairs 论文只读成“又一篇 cointegration 比较”：对 short-cycle desk，更该先补的是「distance-first pair admission × spread z-score fade」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2024 *Investment Analysts Journal* intraday pairs 论文只读成“又一篇 cointegration 比较”：对 short-cycle desk，更该先补的是「distance-first pair admission × spread z-score fade」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-12 17:39 UTC</span>
+      <span class="pill">研究时间：2026-04-12 17:38 UTC</span>
+      <span class="pill">类型：quant_digest</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/distance-method/pair-selection/method-benchmark/cointegration/hurst/binance/1m/3m/5m/15m/paper/abstract-metadata/cost/risk</span>
+      <span class="pill">证据类型：2024 *Investment Analysts Journal* 论文摘要/元数据（OpenAlex + Crossref）+ 2020 *IEEE Access* intraday grounding（OpenAlex + Crossref）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-12_1738_distancefirst-intraday-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-12 17:38 UTC</li>
+<li>类型：quant_digest</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/distance-method/pair-selection/method-benchmark/cointegration/hurst/binance/1m/3m/5m/15m/paper/abstract-metadata/cost/risk</li>
+<li>证据类型：2024 *Investment Analysts Journal* 论文摘要/元数据（OpenAlex + Crossref）+ 2020 *IEEE Access* intraday grounding（OpenAlex + Crossref）</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：先用 <strong>distance method</strong> 在高流动性币对里挑出“走势最像”的 pair，再在交易窗里做 <strong>spread / relative-price deviation 的均值回归</strong>；也就是 <code>long cheap leg / short rich leg</code>，吃价差收敛，而不是押单币方向</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮不是再补一个花哨的 pairs admission 模块，而是回到一个更朴素、但对 desk 更重要的问题：</p>
+<p><strong>在 crypto intraday pairs 里，是否真的需要先上更复杂的统计筛选，还是简单的 <code>distance-first</code> 就已经是最该先测的 base alpha？</strong></p>
+<p>我最终选的是一篇目前索引里还没正面写过的论文：</p>
+<ul>
+<li><strong>Po-Chang Ko, Ping-Chen Lin, Hoang-Thu Do, Yuan-Heng Kuo, Linh My Mai, You-Fu Huang (2024)</strong></li>
+<li>*Pairs trading in cryptocurrency markets: A comparative study of statistical methods*</li>
+<li>*Investment Analysts Journal*</li>
+<li>DOI：<code>10.1080/10293523.2023.2268386</code></li>
+</ul>
+<p>它最值钱的地方，不是再说一遍“pairs 可能有效”，而是直接比较了 <strong>六种 pair selection 方法</strong> 在 Binance intraday crypto 里的表现：</p>
+<ul>
+<li>Cointegration</li>
+<li>Correlation</li>
+<li>Distance</li>
+<li>Fluctuation Behaviour</li>
+<li>Hurst Exponent</li>
+<li>Stochastic Differential Residual</li>
+</ul>
+<p>对 short-cycle desk 来说，这类材料的价值非常直接：<strong>它回答的是“先拿哪种最小 raw alpha 骨架做 baseline”</strong>，而不是“能不能再往 admission 上加一层复杂度”。</p>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p>先把这个问题说死：</p>
+<p>这篇东西的 <strong>base alpha</strong> 不是：</p>
+<ul>
+<li>cointegration 检验本身</li>
+<li>Hurst / fluctuation behaviour 这类筛选指标本身</li>
+<li>pair ranking 模块本身</li>
+</ul>
+<p>真正的 alpha 本体是：</p>
+<p>&gt; <strong>找出历史走势足够相似的两条币价路径；当它们在交易窗里出现异常偏离时，做 long cheap / short rich，等 spread 回归再平。</strong></p>
+<p>也就是最标准、最可落地的 <strong>pairs / relative-value mean reversion raw alpha</strong>。</p>
+<p>所以这轮主题应被归类为：</p>
+<ul>
+<li><code>raw alpha</code></li>
+<li>不是 <code>filter</code></li>
+<li>不是 <code>regime</code></li>
+<li>也不是 <code>overlay</code></li>
+</ul>
+<h2>3. 为什么这轮值得写，而不是继续找别的 headline alpha</h2>
+<h3>3.1 它补的是“pairs 家族里的最小可复现 baseline”</h3>
+<p>当前 digest 池里已经有很多：</p>
+<ul>
+<li>cointegration pairs</li>
+<li>stacked z-score pairs</li>
+<li>RL sizing shell</li>
+<li>IC-ranked basket</li>
+<li>pair admission / threshold governance</li>
+</ul>
+<p>但仍然缺一条很关键的底层判断：</p>
+<p>&gt; <strong>在 crypto 短周期里，pairs 的最小 baseline，到底该默认从 <code>cointegration-first</code> 还是 <code>distance-first</code> 开始？</strong></p>
+<p>这篇 2024 论文给的，就是这个层面的证据。</p>
+<h3>3.2 它和我们 desk 的时间尺度直接对齐</h3>
+<p>OpenAlex 摘要里写得非常清楚：论文用的是 <strong>Binance 30 个币的 intraday 数据</strong>，频率直接做到：</p>
+<ul>
+<li><code>1m</code></li>
+<li><code>5m</code></li>
+<li><code>60m</code></li>
+</ul>
+<p>这比很多只停在日线或 4h 的 pairs 文献更贴 short-cycle desk。</p>
+<h3>3.3 它天然适合做“5m 先验 + 15m 控制组”</h3>
+<p>对 desk 而言，pairs raw alpha 最怕两件事：</p>
+<ul>
+<li>过度依赖慢频 formation 逻辑，落不到 intraday execution</li>
+<li>一上短周期就被 turnover / taker cost 吃掉</li>
+</ul>
+<p>这篇材料刚好允许我们做一套最小而诚实的拆分：</p>
+<ul>
+<li><code>5m</code>：看 alpha 本体是否最强</li>
+<li><code>15m</code>：看 downsample 后能不能用更低 churn 保住净值</li>
+<li><code>1m/3m</code>：只在 execution 足够好时再往下压</li>
+</ul>
+<h2>4. 来源信息</h2>
+<h3>4.1 主论文</h3>
+<ul>
+<li><strong>Authors</strong>：Po-Chang Ko, Ping-Chen Lin, Hoang-Thu Do, Yuan-Heng Kuo, Linh My Mai, You-Fu Huang</li>
+<li><strong>Year</strong>：2024（Crossref print date <code>2024-04-02</code>）</li>
+<li><strong>Title</strong>：*Pairs trading in cryptocurrency markets: A comparative study of statistical methods*</li>
+<li><strong>Venue</strong>：*Investment Analysts Journal*</li>
+<li><strong>DOI</strong>：&lt;<a href="https://doi.org/10.1080/10293523.2023.2268386&gt;">https://doi.org/10.1080/10293523.2023.2268386&gt;</a></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://www.tandfonline.com/doi/full/10.1080/10293523.2023.2268386&gt;">https://www.tandfonline.com/doi/full/10.1080/10293523.2023.2268386&gt;</a></li>
+<li><strong>Repo URL</strong>：N/A</li>
+</ul>
+<h3>4.2 辅助 grounding 论文</h3>
+<ul>
+<li><strong>Authors</strong>：Miroslav Fil, Ladislav Kristoufek</li>
+<li><strong>Year</strong>：2020</li>
+<li><strong>Title</strong>：*Pairs Trading in Cryptocurrency Markets*</li>
+<li><strong>Venue</strong>：*IEEE Access*</li>
+<li><strong>DOI</strong>：&lt;<a href="https://doi.org/10.1109/ACCESS.2020.3024619&gt;">https://doi.org/10.1109/ACCESS.2020.3024619&gt;</a></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://doi.org/10.1109/ACCESS.2020.3024619&gt;">https://doi.org/10.1109/ACCESS.2020.3024619&gt;</a></li>
+<li><strong>Open-access PDF URL（OpenAlex 记录）</strong>：&lt;<a href="https://ieeexplore.ieee.org/ielx7/6287639/8948470/09200323.pdf&gt;">https://ieeexplore.ieee.org/ielx7/6287639/8948470/09200323.pdf&gt;</a></li>
+<li><strong>Repo URL</strong>：N/A</li>
+</ul>
+<h2>5. 两篇论文到底给了什么硬证据</h2>
+<h3>5.1 2024 IAJ：六种方法直接打擂台，distance 在 1m / 5m / 60m 都没掉队，反而最好</h3>
+<p>根据 OpenAlex 摘要，这篇 2024 论文：</p>
+<ul>
+<li>使用 <strong>2022-01-01 到 2022-03-31</strong> 的三个月 Binance intraday 数据</li>
+<li>样本为 <strong>30 个 cryptocurrencies</strong></li>
+<li>直接比较六种 statistical pair selection 方法</li>
+<li>用 <strong>11 个指标</strong> 评价交易结果（不只看收益，也看风险和交易特征）</li>
+</ul>
+<p>摘要里最关键的一句是：</p>
+<p>&gt; <strong>Distance performs well at all three frequencies of 1 minute, 5 minutes, and 60 minutes, with a total return of 208.12%, 236.31%, and 210.36%, respectively.</strong></p>
+<p>也就是说，这篇 paper 给出的主结论不是“cointegration 永远最强”，反而更接近：</p>
+<ul>
+<li><strong>最简单的 distance method，在 intraday crypto pairs 里已经很强</strong>；</li>
+<li>而且不仅 <code>5m</code>，连 <code>1m</code> 和 <code>60m</code> 也都表现不错；</li>
+<li>这说明对 crypto 这类高噪声市场，<strong>先验上不必默认“更复杂的统计方法一定更优”</strong>。</li>
+</ul>
+<h3>5.2 2020 IEEE Access：crypto 的 pairs edge 更像 intraday，而不是 daily</h3>
+<p>2020 那篇 open-access grounding paper 的 OpenAlex 摘要同样很关键。它研究的是：</p>
+<ul>
+<li><strong>26 个 liquid cryptocurrencies</strong></li>
+<li>Binance</li>
+<li>三个频率：<code>5m</code>、<code>1h</code>、<code>daily</code></li>
+<li>对比 distance 和 cointegration 方法</li>
+</ul>
+<p>它给出的几条信息，和 2024 那篇拼起来非常完整：</p>
+<ol>
+<li><strong>高频明显优于日频</strong></li>
+</ol>
+<ul>
+<li>摘要直接写到：最常见的 daily distance method 月收益只有 <strong><code>-0.07%</code></strong></li>
+<li>但同样框架到了 <code>5m</code>，月收益可以到 <strong><code>11.61%</code></strong></li>
+</ul>
+<ol>
+<li><strong>结果对参数、成本和 execution windows 很敏感</strong></li>
+</ol>
+<ul>
+<li>也就是说：alpha 不是“白给的”，而是高度依赖执行壳</li>
+</ul>
+<ol>
+<li><strong>daily 数据里看不到的均值回复，在 intraday 里更明显</strong></li>
+</ol>
+<ul>
+<li>这点对我们特别重要，因为 desk 的落点本来就不是日线</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; 如果你想在 crypto 做 pairs，先别把它写成一个慢频协整研究题。更合理的入口，是把它当成 <strong>intraday relative-value mean reversion</strong>。</p>
+<h2>6. desk 该怎么读这两篇，而不是照抄 headline</h2>
+<h3>6.1 这不是“distance 永远正确”，而是“distance 应该先当 baseline”</h3>
+<p>我不建议把 2024 那篇读成：</p>
+<ul>
+<li>cointegration 无用</li>
+<li>复杂方法没价值</li>
+<li>distance 一定 live 最强</li>
+</ul>
+<p>更合理的 desk 读法是：</p>
+<ul>
+<li><strong>distance-first</strong> 应该是第一条 baseline；</li>
+<li>只有当它在相同 universe / 相同 cost 假设下明显不够用时，才值得继续往更复杂 admission 推；</li>
+<li>否则很容易出现一种典型坏习惯：</li>
+<li>先上复杂 pair selection</li>
+<li>再把所有失败都归咎于 execution</li>
+<li>却没回答过“最简单的 raw alpha 到底有没有 edge”</li>
+</ul>
+<h3>6.2 这两篇合起来，支持“5m first, 15m control, 1m execution-only extension”</h3>
+<p>如果只看 short-cycle desk 的 transfer 优先级，我会这样排：</p>
+<ol>
+<li><strong><code>5m</code> first lane</strong></li>
+</ol>
+<ul>
+<li>两篇论文里最一致、最可信的交集就在这里</li>
+<li>既足够快，又没有 <code>1m</code> 那么容易被撮合微结构噪声吞掉</li>
+</ul>
+<ol>
+<li><strong><code>15m</code> control lane</strong></li>
+</ol>
+<ul>
+<li>论文没有直接给 <code>15m</code>，但它是 desk 很自然的“更低 churn 控制组”</li>
+<li>如果 <code>5m</code> gross 还行但 net 不行，<code>15m</code> 往往是第一个该试的降频版本</li>
+</ul>
+<ol>
+<li><strong><code>1m/3m</code> only after execution passes</strong></li>
+</ol>
+<ul>
+<li>2024 paper 虽然给了 <code>1m</code> 的好看回报，但这种结果最容易被真实执行折损</li>
+<li>所以 <code>1m</code> 不该是“第一落点”，而该是<strong>已确认 alpha 本体存在后，用更强执行去放大</strong></li>
+</ul>
+<h3>6.3 对 desk 来说，pair selection 和 execution shell 必须拆开看</h3>
+<p>这两篇 paper 一起给出的最实用提醒其实是：</p>
+<ul>
+<li><strong>pair selection</strong> 决定有没有“会回”的东西</li>
+<li><strong>execution shell</strong> 决定你能不能把“会回”变成真钱</li>
+</ul>
+<p>所以本轮 intake 最合理的写法，不是“distance 方法已经可上线”，而是：</p>
+<p>&gt; <strong>distance-first pairs raw alpha 值得先进入素材池；但 live 价值取决于 threshold、持有时长、成本假设、以及是不是 maker-first。</strong></p>
+<h2>7. 和当前 <code>1m / 3m / 5m / 15m</code> 的关系</h2>
+<h3>7.1 <code>5m</code>：最自然的第一实验层</h3>
+<p>如果现在就要做最小实验，我会让 <code>5m</code> 当第一落点，因为：</p>
+<ul>
+<li>2020 paper 明确支持 <code>5m &gt; daily</code></li>
+<li>2024 paper 在 <code>5m</code> 也给出很强结果</li>
+<li>相比 <code>1m</code>，<code>5m</code> 更适合先验证 alpha 本体，不会把全部问题都变成 execution 问题</li>
+</ul>
+<h3>7.2 <code>15m</code>：更像成本过滤后的控制组</h3>
+<p><code>15m</code> 的角色不是替代 <code>5m</code>，而是回答一个更现实的问题：</p>
+<p>&gt; 如果 <code>5m</code> 的 gross edge 真实存在，但净值过不了线，降到 <code>15m</code> 后能不能用更低 turnover 换回一部分可交易性？</p>
+<p>也就是：</p>
+<ul>
+<li><code>5m</code> 更像 alpha discovery</li>
+<li><code>15m</code> 更像 cost-control / transfer sanity check</li>
+</ul>
+<h3>7.3 <code>3m</code>：在 5m 有效后做过渡层</h3>
+<p>如果 <code>5m</code> 成立，而 <code>1m</code> 太脏，那么 <code>3m</code> 是很自然的中间层：</p>
+<ul>
+<li>比 <code>5m</code> 更快</li>
+<li>比 <code>1m</code> 更不容易完全被微结构噪声主导</li>
+<li>很适合拿来做同一套 pair book 的 execution refinement</li>
+</ul>
+<h3>7.4 <code>1m</code>：除非 maker / queue / staleness 已经有壳，否则不要先把 headline 当真钱</h3>
+<p>2024 paper 的 <code>1m</code> 结果非常吸引眼球，但 desk 化时一定要先问：</p>
+<ul>
+<li>是否有足够小的真实 spread？</li>
+<li>是否允许 maker-first？</li>
+<li>是否有 symbol staleness / depth / queue risk 控制？</li>
+<li>是否能接受 pair book 在极端时刻两腿不同步？</li>
+</ul>
+<p>在这些问题没回答前，<code>1m</code> 更像<strong>第二阶段 execution 放大器</strong>，不是第一阶段 baseline。</p>
+<h2>8. 这轮 intake 后，最小可复现实验应该怎么做</h2>
+<h3>8.1 最小实验定义</h3>
+<p>先别急着扫太多 fancy 方法，第一轮只做一个最小但诚实的 baseline：</p>
+<ul>
+<li><strong>市场</strong>：Binance USDⓈ-M perpetual</li>
+<li><strong>频率</strong>：<code>5m</code> 为主，<code>15m</code> 为对照</li>
+<li><strong>universe</strong>：主流 liquid majors / large alts（先 8~12 个）</li>
+<li><strong>formation window</strong>：<code>10d / 20d</code> 两档</li>
+<li><strong>pair selection</strong>：</li>
+<li>baseline A：distance</li>
+<li>control B：cointegration</li>
+<li><strong>trade rule</strong>：</li>
+<li>选 top <code>K=3~5</code> 个最接近 pair</li>
+<li>spread z-score <code>&gt;|1.5| / |2.0| / |2.5|</code> 入场</li>
+<li><code>|z|&lt;=0.25</code> 离场</li>
+<li><code>|z|&gt;=3.5</code> 止损</li>
+<li><code>24h / 48h</code> timeout 强平</li>
+<li><strong>成本层</strong>：pair round-trip <code>8 / 12 / 16 / 20 bps</code></li>
+</ul>
+<h3>8.2 先回答哪几个问题</h3>
+<p>第一轮不是要把 pairs 做到完美，而是先回答 4 个问题：</p>
+<ol>
+<li><strong>distance 是否确实比 cointegration 更适合 intraday perp baseline？</strong></li>
+<li><strong>5m 的 gross edge 降到 15m 后，net 有没有更稳？</strong></li>
+<li><strong>pair 数量变少（只做 top 3）能不能显著压 turnover？</strong></li>
+<li><strong>真正杀掉它的是选对问题，还是 execution / cost？</strong></li>
+</ol>
+<h3>8.3 结果判读标准</h3>
+<p>我会用下面这套标准，而不是只看 headline return：</p>
+<ul>
+<li>gross / net Sharpe</li>
+<li>pair-level half-life 分布</li>
+<li>平均持有时长</li>
+<li>每天换手</li>
+<li>单 pair PnL 集中度</li>
+<li>一腿先成交 / 两腿不同步时的最差回撤代理</li>
+</ul>
+<h2>9. 我对这条线的 desk 结论</h2>
+<h3>9.1 结论一句话</h3>
+<p>这轮值得 intake 的不是“pairs 很酷”，而是：</p>
+<p>&gt; <strong>在 crypto intraday pairs 里，simple distance-first 很可能比直觉里更该被当成 baseline；复杂 selection 方法应该是第二步，不是第一步。</strong></p>
+<h3>9.2 四字段结论重述</h3>
+<ul>
+<li><strong>主题类型</strong>：raw alpha</li>
+<li><strong>基础 alpha</strong>：distance-first pair selection 后的 spread mean reversion（long cheap / short rich）</li>
+<li><strong>是否可独立复现</strong>：是</li>
+<li><strong>是否可直接落地完整策略（entry/exit/sizing/risk/cost）</strong>：是</li>
+</ul>
+<h3>9.3 当前最诚实的状态判断</h3>
+<p>这条线当前适合被写成：</p>
+<ul>
+<li><strong>raw alpha baseline 候选</strong></li>
+<li><strong>可直接进入 pairs 素材池</strong></li>
+<li><strong>优先级高于继续堆更复杂 admission 模块</strong></li>
+</ul>
+<p>但还不该被写成：</p>
+<ul>
+<li>已完成 live transfer</li>
+<li>已证明 1m taker 可做</li>
+<li>已解决两腿执行不同步问题</li>
+</ul>
+<h2>10. 下一步怎么测</h2>
+<p>下一步就做一个很小、但能给出明确 yes/no 的实验：</p>
+<ol>
+<li>先在 Binance USDⓈ-M <code>5m</code> 跑 <strong>distance vs cointegration</strong> 的同 universe 对照；</li>
+<li>只做 top <code>3~5</code> 个 pair，避免把 turnover 人为做爆；</li>
+<li>成本至少扫 <code>12 / 16 / 20 bps pair round-trip</code>，不要偷乐观；</li>
+<li>如果 <code>5m</code> gross 有 edge 但 net 不行，立刻降到 <code>15m</code> 看是不是单纯 churn 问题；</li>
+<li>只有在 <code>5m/15m</code> 先过线后，才值得把执行压到 <code>3m/1m</code> 做 maker-first refinement。</li>
+</ol>
+<h2>11. 来源链接</h2>
+<ul>
+<li>2024 paper DOI：&lt;<a href="https://doi.org/10.1080/10293523.2023.2268386&gt;">https://doi.org/10.1080/10293523.2023.2268386&gt;</a></li>
+<li>2024 paper readable：&lt;<a href="https://www.tandfonline.com/doi/full/10.1080/10293523.2023.2268386&gt;">https://www.tandfonline.com/doi/full/10.1080/10293523.2023.2268386&gt;</a></li>
+<li>2024 paper OpenAlex：&lt;<a href="https://openalex.org/works?search=Pairs%20trading%20in%20cryptocurrency%20markets%3A%20A%20comparative%20study%20of%20statistical%20methods&gt;">https://openalex.org/works?search=Pairs%20trading%20in%20cryptocurrency%20markets%3A%20A%20comparative%20study%20of%20statistical%20methods&gt;</a></li>
+<li>2020 paper DOI：&lt;<a href="https://doi.org/10.1109/ACCESS.2020.3024619&gt;">https://doi.org/10.1109/ACCESS.2020.3024619&gt;</a></li>
+<li>2020 paper readable：&lt;<a href="https://doi.org/10.1109/ACCESS.2020.3024619&gt;">https://doi.org/10.1109/ACCESS.2020.3024619&gt;</a></li>
+<li>2020 paper OpenAlex：&lt;<a href="https://openalex.org/works?search=Pairs%20Trading%20in%20Cryptocurrency%20Markets&gt;">https://openalex.org/works?search=Pairs%20Trading%20in%20Cryptocurrency%20Markets&gt;</a></li>
+</ul>
+</body>
+</html>

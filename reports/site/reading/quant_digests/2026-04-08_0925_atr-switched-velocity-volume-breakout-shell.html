@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 crypto momentum repo 只读成“扫涨幅榜追强势”：对 short-cycle desk，更该先测的是「ATR-switched price-velocity × volume-expansion breakout shell」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 crypto momentum repo 只读成“扫涨幅榜追强势”：对 short-cycle desk，更该先测的是「ATR-switched price-velocity × volume-expansion breakout shell」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-08 09:37 UTC</span>
+      <span class="pill">研究时间：2026-04-08 09:25 UTC</span>
+      <span class="pill">类型：GitHub / source audit</span>
+      <span class="pill">主题标签：trend / momentum / breakout / price-velocity / volume-expansion / ATR / regime-switch / execution / risk</span>
+      <span class="pill">证据类型：工程经验 / 源码证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-08_0925_atr-switched-velocity-volume-breakout-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-08 09:25 UTC</li>
+<li>类型：GitHub / source audit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>顺势突破 / continuation</strong>；更具体地说，是 <strong>按市场 ATR 状态切换观察窗后，去抓短窗 price velocity 超阈值且成交量同步扩张的 breakout 延续</strong>。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：trend / momentum / breakout / price-velocity / volume-expansion / ATR / regime-switch / execution / risk</li>
+<li>证据类型：工程经验 / 源码证据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>yeshunyi, _crypto-momentum-strategy_</strong> 这份 GitHub repo。我没把它当“又一个追涨脚本”，而是直接按 desk 语言拆：<strong>base alpha 不是简单涨幅榜，而是“市场越热，观察窗越短；在对应短窗里，价格速度进入有效区间、成交量同步放大、且不是极端过热时，去吃 breakout 后的继续走强”</strong>。核心证据来自 <code>README.md</code>、<code>signal_generator.py</code>、<code>market_analyzer.py</code>、<code>momentum_strategy.py</code>、<code>risk_manager.py</code> 的 source audit，而不是只看 README 口号。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 真正值得 desk 抄的，不是“追涨排行榜”，而是 <strong>ATR 切换的短窗 velocity breakout + volume expansion + staged execution</strong> 这条完整 raw alpha 壳。</li>
+<li><strong>一句话它怎么证明：</strong> 源码把 entry/exit/risk 拆得很具体：<code>market_analyzer.py</code> 里先按市场 ATR 选 <code>15m/10m/5m</code> 观察窗与涨幅阈值；<code>signal_generator.py</code> 再要求 <code>momentum</code> 落在对应阈值带内、<code>volume_ratio &gt; 1.5</code>、<code>RSI &lt; 75</code>、且币种属于 top-3 热门板块；<code>momentum_strategy.py</code> 再做 <code>50%</code> 首单 + 突破前高后补 <code>50%</code>，并用分段止盈/止损收口。</li>
+<li>代码里最值钱的 3 个具体数：<strong>ATR&lt;2% 时用 <code>15m</code> 窗口抓 <code>6%~10%</code> 涨速；ATR 在 <code>2%~5%</code> 时改成 <code>10m / 4%~8%</code>；ATR&gt;5% 时再缩到 <code>5m / 3%~6%</code></strong>。这不是固定 lookback breakout，而是显式做 volatility-switched admission。</li>
+<li>entry 不是一把梭：首笔先上 <code>50%</code>，第二笔要等 <strong>再破前高</strong> 才补；profit target 取 <code>min(1.5 × ATR%, 10%)</code>，仓位初始止损写成 <code>-2%</code>，分三段在约 <code>0.8x / 1.0x / 1.2x</code> 目标位各卖 <code>30% / 30% / 40%</code>。</li>
+<li>这条线和普通 Donchian 的差别在于：<strong>它赌的不是“创 N 日新高”，而是“单位时间内的价格速度进入可交易区间后，短期资金还会继续推”</strong>；volume ratio 与 RSI 更像 veto，不是 alpha 本体。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线对当前 <code>1m / 3m / 5m / 15m</code> desk 有直接价值：</p>
+<ul>
+<li>它补的是 <strong>单资产 raw alpha</strong>，而不是又一个 filter-only 主题；</li>
+<li>它和我们最近 intake 的相对价值 / pairs / basis 材料互补，能把 raw alpha 池重新往 <strong>trend / breakout / continuation</strong> 拉回来；</li>
+<li>它比常见 breakout 更适合快实验，因为核心变量就 3 组：<strong>观察窗、velocity threshold、volume expansion gate</strong>；</li>
+<li>更重要的是，源码已经把它拆成了可以移植的组件：<code>base alpha</code>、<code>regime switch</code>、<code>second-stage add-on</code>、<code>risk shell</code>。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势 / breakout continuation</li>
+<li>基础 alpha：ATR 切换后的短窗 price-velocity breakout</li>
+<li>regime：按市场 ATR% 决定用 <code>15m/10m/5m</code> 哪个窗口，以及对应的 momentum band</li>
+<li>filter / veto：<code>volume_ratio &gt; 1.5</code>、<code>RSI &lt; 75</code>、热门板块 top-3、非强熊市、黑名单约束</li>
+<li>risk / sizing / execution overlay：首单 <code>50%</code> + 突破前高再补 <code>50%</code>；初始止损约 <code>-2%</code>；目标位 <code>min(1.5 × ATR%, 10%)</code>；分段止盈 <code>30/30/40</code>；并发仓位受风控器限制</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 短周期 crypto 的 breakout 不是固定 lookback 越短越好，而是 <strong>观察窗和阈值要跟市场波动一起切换</strong>；否则低波动期信号太慢，高波动期又全是噪音追涨。</p>
+<p><strong>最小定义：</strong></p>
+<ol>
+<li>标的：Binance/OKX top 20 liquid perp，先测 BTC/ETH/SOL/BNB 四个大币，再扩成截面；</li>
+<li>主周期：<code>5m</code> 与 <code>15m</code>；更快版可把输入从 <code>1m</code> 聚合到 event window；</li>
+<li>regime switch：用 BTC 或全市场中位数 <code>ATR%</code> 做状态；</li>
+<li>signal：</li>
+</ol>
+<ul>
+<li>若 <code>ATR% &lt; 2</code>：看近 <code>15m</code> 收益，入选区间 <code>6%~10%</code>；</li>
+<li>若 <code>2 ≤ ATR% ≤ 5</code>：看近 <code>10m</code> 收益，入选区间 <code>4%~8%</code>；</li>
+<li>若 <code>ATR% &gt; 5</code>：看近 <code>5m</code> 收益，入选区间 <code>3%~6%</code>；</li>
+<li>同时要求 <code>volume_ratio &gt; 1.5</code>、<code>RSI(14) &lt; 75</code>；</li>
+</ul>
+<ol>
+<li>执行：先 <code>50%</code> 在下一根开盘入，余下 <code>50%</code> 仅在再破 signal bar 前高时加仓；</li>
+<li>出场：先照 repo 壳用 <code>-2%</code> stop + <code>min(1.5×ATR%,10%)</code> target，外加分段止盈；</li>
+<li>成本：至少打 <code>8 / 12 / 20 bps</code> 三档 round-trip，别把 README 风格策略当成免成本。</li>
+</ol>
+<p><strong>先看两件事：</strong></p>
+<ul>
+<li><code>post-cost expectancy / trade</code> 是否明显优于裸 <code>fixed-window breakout</code>；</li>
+<li>假突破率是否因为 <strong>stage-2 只在再破前高才补仓</strong> 而显著下降。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是 <strong>repo 源码证据</strong>，不是论文证据；它更像可快速 intake 的工程原型，不是已经被长样本验证的硬结论。</li>
+<li>当前审到的核心文件里，README 讲得更丰满（比如更泛的题材轮动叙事），但真正落地的 hard rule 主要还是 <code>ATR / volume / RSI / top sector / staged execution</code>；<strong>不要把 README 里所有叙事都当成已接入数据流</strong>。</li>
+<li><code>6%~10% / 4%~8% / 3%~6%</code> 这种绝对涨速阈值对不同币种和不同交易所未必稳，落地时更建议先转成 <strong>ATR multiple / volatility multiple</strong>。</li>
+<li>repo 没有把 fee / slippage / queue position 写成正式成本模型，所以“是否可直接落地完整策略”我给 <strong>否</strong>；它更适合先做 raw alpha first verdict，再补 execution realism。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>yeshunyi. _crypto-momentum-strategy_. GitHub repository.</strong></li>
+<p>Repo URL: <code><a href="https://github.com/yeshunyi/crypto-momentum-strategy">https://github.com/yeshunyi/crypto-momentum-strategy</a></code></p>
+<li><strong>核心源码：</strong> <code>signal_generator.py</code> / <code>market_analyzer.py</code> / <code>momentum_strategy.py</code> / <code>risk_manager.py</code></li>
+<p>Raw URL base: <code><a href="https://raw.githubusercontent.com/yeshunyi/crypto-momentum-strategy/main/">https://raw.githubusercontent.com/yeshunyi/crypto-momentum-strategy/main/</a></code></p>
+<li><strong>说明文档：</strong> <code>README.md</code></li>
+<p>Raw URL: <code><a href="https://raw.githubusercontent.com/yeshunyi/crypto-momentum-strategy/main/README.md">https://raw.githubusercontent.com/yeshunyi/crypto-momentum-strategy/main/README.md</a></code></p>
+</ol>
+</body>
+</html>

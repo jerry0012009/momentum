@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 `RSI enter→exit→re-enter` 状态机当成 breakout-short 的 shared follow-up：它在 15m 更像 Fib / EMA long 的稀疏 admission，不适合 short 侧默认放行</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 `RSI enter→exit→re-enter` 状态机当成 breakout-short 的 shared follow-up：它在 15m 更像 Fib / EMA long 的稀疏 admission，不适合 short 侧默认放行</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-20 13:54 UTC</span>
+      <span class="pill">研究时间：2026-03-20 13:53 UTC</span>
+      <span class="pill">类型：GitHub 仓库 + 本地代理快检</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/rsi/state-machine/retest/admission/asymmetry/filter/repo/crypto/15m</span>
+      <span class="pill">证据类型：工程证据（仓库源码）+ 代理快检（公开行情缓存）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-20_1353_rsi-state-machine-admission-not-shared-short-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-20 13:53 UTC</li>
+<li>类型：GitHub 仓库 + 本地代理快检</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/rsi/state-machine/retest/admission/asymmetry/filter/repo/crypto/15m</li>
+<li>证据类型：工程证据（仓库源码）+ 代理快检（公开行情缓存）</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<p>这轮主看新仓库思路：<strong>MoDiggler75 / crypto-trading-bot</strong> 里的 <code>backtest_4hr_rsi_retest.py</code>，核心不是“RSI&gt;70/&lt;30 本身”，而是 <strong>RSI 状态机</strong>：</p>
+<ul>
+<li><code>neutral -&gt; in_oversold -&gt; exited_oversold -&gt; in_oversold</code> 才算一次 oversold retest；</li>
+<li><code>neutral -&gt; in_overbought -&gt; exited_overbought -&gt; in_overbought</code> 才算一次 overbought retest；</li>
+<li>再叠加价格在 zone 外侧，触发 long/short。</li>
+</ul>
+<p>这和我们三条收口线直接相关：它是一个典型的 <strong>旁支过滤层</strong>（不是 headline alpha），可快速映射到 <code>Fib retest_hold</code> / <code>EMA-PSAR continuation</code> / <code>breakout-short follow-up</code>。</p>
+<h2>2) 核心结论（先说人话）</h2>
+<ul>
+<li><strong>一句话结论</strong>：这套 RSI 状态机在 15m 上目前只看到 <strong>long 侧可用的稀疏 admission 价值</strong>，不适合当 breakout-short 的 shared gate。</li>
+<li><strong>为什么值得做而不是继续老题</strong>：它直接回答三条收口线里最卡的“确认/否决条件怎么写得更诚实”，且可在现有信号文件上 1 次快检落地，不需要新重型数据管线。</li>
+</ul>
+<h2>3) 本地最小代理快检（15m）</h2>
+<h3>3.1 数据与口径</h3>
+<ul>
+<li>资产：<code>BTC/ETH/SOL</code> perp</li>
+<li>频率：<code>15m</code></li>
+<li>基础信号：<code>rank76</code> 三条 baseline（<code>fib_retest_long</code> / <code>ema_psar_long</code> / <code>breakout_short</code>）</li>
+<li>价格缓存：本地 Binance 公共行情缓存（见产物路径）</li>
+<li>评估：从 <code>entry_idx</code> 起看未来 <code>4/8 bars</code> signed return（本轮主看 <code>8 bars</code>）</li>
+</ul>
+<h3>3.2 这轮映射的状态机 gate</h3>
+<p>为了避免 30/70 过稀疏，先用一个 desk 友好的最小映射（lookback=8 bars）：</p>
+<ul>
+<li>long setup（Fib/EMA）：<code>min(RSI14)&lt;=45</code> 且 <code>signal-bar RSI14&gt;=50</code></li>
+<li>short setup（breakout-short）：<code>max(RSI14)&gt;=55</code> 且 <code>signal-bar RSI14&lt;=50</code></li>
+</ul>
+<p>并同时测试更“严格”的双触发版本（近似 repo 风格的二次触碰），结果样本为 0（过稀疏）。</p>
+<h3>3.3 关键数据点</h3>
+<ol>
+<li><strong>Long 组合（Fib+EMA）</strong>：</li>
+</ol>
+<ul>
+<li>baseline：<code>n=137</code>，<code>win8=59.1%</code>，<code>mean8=+10.3 bps</code></li>
+<li>gated：<code>n=13</code>，<code>win8=69.2%</code>，<code>mean8=+72.9 bps</code></li>
+<li>解释：更像“少做但更干净”的 admission（覆盖率仅约 <code>9.5%</code>）。</li>
+</ul>
+<ol>
+<li><strong>Breakout-short</strong>：</li>
+</ol>
+<ul>
+<li>baseline：<code>n=61</code>，<code>win8=50.8%</code>，<code>mean8=+37.6 bps</code></li>
+<li>gated：<code>n=9</code>，<code>win8=22.2%</code>，<code>mean8=-51.8 bps</code></li>
+<li>解释：short 明显被伤害，不应当 shared。</li>
+</ul>
+<ol>
+<li><strong>严格状态机版本</strong>：<code>n=0</code>（long/short 都触发不了）</li>
+</ol>
+<ul>
+<li>解释：直接照搬严格 retest 在当前 15m 样本下过于稀疏。</li>
+</ul>
+<p>&gt; 额外成本感知（粗口径）：若按 round-trip 12 bps，long gated 仍保留显著正边际；short gated 进一步恶化。</p>
+<h2>4) 对三条收口线的直接意义</h2>
+<ul>
+<li><strong>V3 breakout-short follow-up</strong>：</li>
+<p>当前证据不支持把该 RSI 状态机作为 short 侧 follow-up gate，默认应 <code>not-shared</code>。</p>
+<li><strong>Fibonacci confirmation / retest_hold</strong>：</li>
+<p>可把它作为 long 侧“确认层”的候选稀疏 gate（先控交易频次，再看成本后稳定性）。</p>
+<li><strong>EMA / PSAR raw alpha focus</strong>：</li>
+<p>更像 admission/filter，不是 raw alpha 替代触发器；可与 EMA/PSAR 主触发做 AND/score 组合评估。</p>
+</ul>
+<h2>5) 下一步怎么测（可直接开工）</h2>
+<p>做一个三臂、两频率、含成本的最小 OOS：</p>
+<ol>
+<li>Baseline（不加 RSI 状态机）</li>
+<li>Relaxed 状态机 gate（本轮口径）</li>
+<li>Relaxed + 轻量趋势过滤（如 <code>EMA20&gt;EMA50</code> 仅用于 long）</li>
+</ol>
+<p>统一在 <code>5m execution / 15m signal</code> 与 <code>15m/15m</code> 双模式跑：</p>
+<ul>
+<li>样本：滚动 <code>120d train + 60d test</code></li>
+<li>成本：<code>6 / 10 / 15 bps per side</code></li>
+<li>指标优先级：<code>post_cost_return</code>、<code>trade_count</code>、<code>positive_asset_ratio</code>、<code>MAE/fail-fast</code></li>
+</ul>
+<p>若 short 侧连续两个窗口仍劣化，直接把它冻结为 <code>breakout-short veto branch</code>（不再默认尝试 shared gate）。</p>
+<h2>6) 风险与保留</h2>
+<ul>
+<li>证据主体是 repo 工程逻辑 + 本地代理快检，不是完整策略回测。</li>
+<li>当前 gated 样本偏小（尤其 Fib），需要滚动窗口验证稳定性。</li>
+<li>这轮结论是“角色判断”：更偏 <strong>long-side admission</strong>，不是“新主信号发现”。</li>
+</ul>
+<h2>7) 来源</h2>
+<ol>
+<li>MoDiggler75. (2026, accessed). *crypto-trading-bot*. GitHub repository.</li>
+</ol>
+<ul>
+<li>Authors: MoDiggler75</li>
+<li>Year: 2026 (repository active)</li>
+<li>Title: crypto-trading-bot</li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/MoDiggler75/crypto-trading-bot&gt;">https://github.com/MoDiggler75/crypto-trading-bot&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/MoDiggler75/crypto-trading-bot&gt;">https://github.com/MoDiggler75/crypto-trading-bot&gt;</a></li>
+</ul>
+<ol>
+<li>MoDiggler75. (2026, accessed). *backtest_4hr_rsi_retest.py*. GitHub code file.</li>
+</ol>
+<ul>
+<li>Authors: MoDiggler75</li>
+<li>Year: 2026</li>
+<li>Title: backtest_4hr_rsi_retest.py</li>
+<li>Venue: GitHub code file</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://raw.githubusercontent.com/MoDiggler75/crypto-trading-bot/master/backtest_4hr_rsi_retest.py&gt;">https://raw.githubusercontent.com/MoDiggler75/crypto-trading-bot/master/backtest_4hr_rsi_retest.py&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/MoDiggler75/crypto-trading-bot&gt;">https://github.com/MoDiggler75/crypto-trading-bot&gt;</a></li>
+</ul>
+<ol>
+<li>Binance. (2026). *USDⓈ-M Futures REST API — Kline/Candlestick Data*.</li>
+</ol>
+<ul>
+<li>Authors: Binance</li>
+<li>Year: 2026</li>
+<li>Title: Kline/Candlestick Data</li>
+<li>Venue: Binance Developers</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<h2>8) 本轮落地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/rsi_state_machine_setup_summary_2026-03-20.csv</code></li>
+<li><code>reports/artifacts/quant_digests/rsi_state_machine_asset_setup_summary_2026-03-20.csv</code></li>
+<li><code>reports/artifacts/quant_digests/rsi_state_machine_combo_summary_2026-03-20.csv</code></li>
+</ul>
+</body>
+</html>

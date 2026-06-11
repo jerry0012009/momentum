@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 stablecoin 配对只做对称阈值：这篇 2024 论文+配套代码更该先复现的是「ATA 非对称回归」生存线</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 stablecoin 配对只做对称阈值：这篇 2024 论文+配套代码更该先复现的是「ATA 非对称回归」生存线</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-24 13:22 UTC</span>
+      <span class="pill">研究时间：2026-03-24 13:18 UTC</span>
+      <span class="pill">类型：近 5 年论文（摘要可得）+ 作者公开仓库 + Binance 公共数据最小快检</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/relative-value/stat-arb/pairs/stablecoin/threshold/ata/sta/cost/1m/3m/5m/15m</span>
+      <span class="pill">证据类型：论文摘要+开源代码+本地最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-24_1318_stablecoin-ata-asymmetric-threshold-meanreversion.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-24 13:18 UTC</li>
+<li>类型：近 5 年论文（摘要可得）+ 作者公开仓库 + Binance 公共数据最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：锚定价（1.0）附近的配对均值回归（stablecoin relative-value / pairs）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/mean-reversion/relative-value/stat-arb/pairs/stablecoin/threshold/ata/sta/cost/1m/3m/5m/15m</li>
+<li>证据类型：论文摘要+开源代码+本地最小快检</li>
+</ul>
+<h2>1) 先回答：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = 稳定币价比偏离锚定价后的回归交易</strong>：当价比跌到 <code>1-α</code>（或涨到 <code>1+α</code>）时入场，回到目标价位时离场，赚“偏离→回归”的相对价值。</p>
+<h2>2) 这次看了什么</h2>
+<p>主材料是 <strong>Bağcı, Kaya Soylu, Kıran (2024)</strong> 的 stablecoin 算法交易论文（STA/ATA），以及作者给出的公开代码仓库 <code>bagcim/TradingAlgorithm</code>。代码里直接给了 <code>USDT/DAI</code> 的参数扫描逻辑、交易费假设和示例数据，属于可以马上复刻的工程骨架。</p>
+<h2>3) 核心结论（给 desk 的短答案）</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这条线可做短周期 raw alpha，但先别照抄论文参数；当前主流稳定币偏离幅度远小于论文示例，阈值和费率必须重标定。</li>
+<li><strong>一句话证明方式：</strong> 论文摘要给出 STA/ATA 的机制差异与适用场景；我再用 Binance 公共 5m 数据做 30 天最小快检，直接看“触发率+成本后存活”。</li>
+</ul>
+<p>关键数据点：</p>
+<ol>
+<li>仓库代码（<code>TradingAlgorithm.m</code>）对 <code>USDT/DAI</code> 样本扫描 <code>α=0.2%~2.0%</code>，并注明示例最优约 <code>α=0.35%</code>，默认单边交易费 <code>0.1%</code>。</li>
+<li>我的 30 天 Binance <code>5m</code> 快检：<code>USDCUSDT</code> 与 <code>USDTDAI</code> 的最大偏离仅约 <code>5~7 bps</code>，在 <code>α=0.35%</code> 下<strong>零触发</strong>。</li>
+<li>对波动更大的 <code>FDUSDUSDT / FDUSDUSDC</code>：<code>α=0.10%</code> 时有触发（分别约 4.05% / 8.25% bar 命中），但若按 <code>0.1%</code> 手续费，ATA 在该窗口分别约 <code>-0.25% / -0.24%</code>，说明成本是第一生死线。</li>
+</ol>
+<h2>4) 为什么和当前 1m/3m/5m/15m 有关</h2>
+<ul>
+<li>这是<strong>可独立运行</strong>的 pairs / stat-arb 原型，不依赖趋势判断。</li>
+<li>对 <code>5m/15m</code>：更适合做“低频触发+高胜率回归”模块；对 <code>1m/3m</code>：只在显著偏离或事件窗（脱锚/再锚）才有意义。</li>
+<li>它还能作为其它 raw alpha 的共享 veto：当稳定币价比异常扩大时，降低高杠杆方向性策略仓位。</li>
+</ul>
+<h2>4.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / 配对均值回归</li>
+<li>基础 alpha：<code>ratio = P(base/quote)</code> 偏离 1.0 后回归</li>
+<li>regime：仅在“偏离可覆盖 round-trip 成本 + 最小滑点预算”时开启</li>
+<li>filter / veto：订单簿深度不足、盘口点差过宽、重大脱锚新闻时禁用</li>
+<li>risk / sizing / execution overlay：小仓位分层进场；优先 maker；设置最大持仓时长与未回归止损</li>
+</ul>
+<h2>5) 可复刻的最小实验（下一步怎么测）</h2>
+<ul>
+<li><strong>研究假设</strong>：stablecoin 配对在短周期存在可交易回归，但可交易区间随费率和市场状态变化。</li>
+<li><strong>可计算定义</strong>：</li>
+<li>STA：<code>Pb=1-α, Ps=1+α</code></li>
+<li>ATA：<code>Pb=1-α, Ps=1.0</code>（先测低估回归，过估侧做镜像）</li>
+<li><strong>最小回测切口</strong>：Binance 现货 <code>USDCUSDT/FDUSDUSDT/FDUSDUSDC/USDTDAI</code>，<code>1m/3m/5m/15m</code>，滚动 30~90 天。</li>
+<li><strong>先看 2 个指标</strong>：</li>
+<p>1) <code>trigger_rate</code>（每千根触发次数）； 2) <code>net_bps_after_cost</code>（含手续费与最小滑点）。</p>
+</ul>
+<h2>6) 风险与保留意见</h2>
+<ul>
+<li>论文正文当前不可直接全文抓取，本文对论文部分按“摘要证据”处理，不做强外推。</li>
+<li>稳定币价比长期贴近 1，导致“要么不触发、要么触发后被费用吃掉”是高概率情形。</li>
+<li>真实执行里，成交排队、吃单冲击、资金费和交易规则变化都会削弱回归边际。</li>
+</ul>
+<h2>7) 本地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/stablecoin_sta_ata_probe_20260324/stablecoin_sta_ata_probe.py</code></li>
+<li><code>reports/artifacts/quant_digests/stablecoin_sta_ata_probe_20260324/summary.json</code></li>
+</ul>
+<h2>8) 来源</h2>
+<ol>
+<li><strong>Mahmut Bağcı, Pınar Kaya Soylu, Selçuk Kıran (2024). _The Symmetric and Asymmetric Algorithmic Trading Strategies for the Stablecoins_. Computational Economics, 64, 2663–2684.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1007/s10614-023-10532-x</code></li>
+<li>Readable URL: <a href="https://link.springer.com/article/10.1007/s10614-023-10532-x">https://link.springer.com/article/10.1007/s10614-023-10532-x</a></li>
+</ul>
+<ol>
+<li><strong>bagcim (GitHub). _TradingAlgorithm_.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/bagcim/TradingAlgorithm">https://github.com/bagcim/TradingAlgorithm</a></li>
+</ul>
+<ol>
+<li><strong>Binance Spot API Docs（公开）</strong></li>
+</ol>
+<ul>
+<li>URL: <a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 15m 冲击延续当“跨时段默认”：`abnormal-return event clock` 更像 breakout-short / Fib / EMA-PSAR 的 follow-up 与 timeout gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 15m 冲击延续当“跨时段默认”：`abnormal-return event clock` 更像 breakout-short / Fib / EMA-PSAR 的 follow-up 与 timeout gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-20 06:08 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/event-clock/abnormal-return/follow-up/failure/regime/filter/timeout/crypto/15m</span>
+      <span class="pill">证据类型：论文证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-20_0608_abnormal-return-event-clock-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-20 06:08 UTC</li>
+<li>类型：论文</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/event-clock/abnormal-return/follow-up/failure/regime/filter/timeout/crypto/15m</li>
+<li>证据类型：论文证据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 Caporale &amp; Plastun (2020) 对 BTC/ETH/LTC 的“单日异常涨跌后，小时级路径怎么走”的实证，重点不是它的 headline，而是可直接迁移到 15m 的旁支：<strong>同一时段延续更强，跨时段延续明显变脆，且存在方向不对称例外</strong>。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：对 5m/15m desk，更该先把“冲击后还能追多久”写成 <code>event-clock</code>，而不是默认信号可无脑 carry 到下个时段。</li>
+<li><strong>一句话证明方式</strong>：作者用 2015-2019 的 BTC/ETH/LTC 小时数据做 abnormal-return 事件分组 + CAR + 交易仿真，比较“事件当日”与“次日”的延续稳定性。</li>
+<li>数据口径：BTC/ETH/LTC vs USD，2015-01-01~2019-09-01；异常收益用动态阈值（BTC <code>k=2σ</code>，ETH/LTC <code>k=1.5σ</code>）。</li>
+<li>关键发现 1（最可复用）：事件当日延续很强；正异常日 Strategy 1 总收益分别约 BTC <code>143.11%</code>、LTC <code>311.39%</code>、ETH <code>507.63%</code>（样本期累计，胜率高）。</li>
+<li>关键发现 2（对 final-verdict 更关键）：次日延续显著变弱且不稳，部分情形转成反转（如 BTC 正异常、ETH 负异常出现 contrarian），说明“跨时段继续追”需要更严格否决层。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li><code>V3 final-verdict / breakout-short follow-up</code>：可直接加一层 <code>event-age gate</code>——冲击后优先做“同 session follow-up”，超过时段窗口默认降级为“需二次确认/不追”。</li>
+<li><code>Fibonacci confirmation / retest_hold</code>：冲击后首次回踩若发生在事件窗口内可高权重；跨窗口回踩默认降权，避免把“晚到的回踩”误判成高质量 retest。</li>
+<li><code>EMA / PSAR raw alpha focus</code>：把 <code>event-clock</code> 当 overlay，而非改 EMA/PSAR 本体，可更快验证“原始触发 + 时间衰减门控”是否优于裸信号。</li>
+</ul>
+<h2>4. 可复刻的最小实验（先做这个）</h2>
+<ol>
+<li>资产与周期：<code>BTC/ETH/SOL perp, 15m</code>（执行层可加 5m）；样本先 <code>180d</code>。</li>
+<li>事件定义：<code>abs(ret_15m) &gt; μ + k·σ</code>（rolling 96 bars），先测 <code>k∈{1.8,2.2}</code>；记录事件方向与 <code>event_age</code>（距事件发生的 bar 数）。</li>
+<li>三臂对照：</li>
+</ol>
+<ul>
+<li><code>baseline</code>：现有 breakout-short / fib / ema-psar 规则；</li>
+<li><code>same-window-only</code>：仅允许 <code>event_age&lt;=N</code>（如 8~12 bars）方向一致 follow-up；</li>
+<li><code>window+timeout</code>：<code>event_age&gt;N</code> 后必须额外满足二次确认（如 close-confirm reclaim / re-break）才可入场。</li>
+</ul>
+<ol>
+<li>先看两项：<code>成本后总收益</code>、<code>post-break false-follow rate</code>（特别是跨窗口交易的失败占比）。</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文样本到 2019，且是现货口径；对当前 perp 微观结构（资金费率、清算链）需做 OOS 再确认。</li>
+<li>论文交易仿真未完整纳入现实交易摩擦（作者也说明该限制）；迁移到 15m 时必须先过 friction ladder。</li>
+<li>“按 UTC 日切分”的时钟可能与 crypto 真实流动性时钟不完全一致；实作时建议并行测试 <code>UTC day</code> 与 <code>rolling event-age</code> 两种切法。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li>Caporale, G. M., &amp; Plastun, A. (2020). *Momentum effects in the cryptocurrency market after one-day abnormal returns*. Financial Markets and Portfolio Management, 34, 251–266.</li>
+</ol>
+<ul>
+<li>DOI: <a href="https://doi.org/10.1007/s11408-020-00357-1">https://doi.org/10.1007/s11408-020-00357-1</a></li>
+<li>Readable URL: <a href="https://link.springer.com/article/10.1007/s11408-020-00357-1">https://link.springer.com/article/10.1007/s11408-020-00357-1</a></li>
+<li>PDF URL: <a href="https://link.springer.com/content/pdf/10.1007/s11408-020-00357-1.pdf">https://link.springer.com/content/pdf/10.1007/s11408-020-00357-1.pdf</a></li>
+<li>Repo URL: N/A（论文未提供官方代码仓库）</li>
+</ul>
+</body>
+</html>

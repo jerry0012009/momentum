@@ -1,0 +1,2105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PyTrendline Research Report</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 1180px; margin: 40px auto; padding: 0 18px; line-height: 1.65; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .section-card { background: #f8fafc; border-color: #cbd5e1; }
+    .section-card h2 { margin-bottom: 6px; }
+    .pill-list { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
+    .pill { display:inline-block; padding:6px 10px; border-radius:999px; background:#eef2ff; color:#3730a3; font-size:13px; }
+    .table-wrap { width: 100%; overflow-x: auto; overflow-y: hidden; }
+    .tbl { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 100%; }
+    .tbl th, .tbl td { border-bottom: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; vertical-align: top; }
+    img { max-width: 100%; border: 1px solid #e5e7eb; border-radius: 10px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .grid2 { display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  </style>
+</head>
+<body>
+  <h1>PyTrendline Research Report</h1>
+  <p class="muted">样本：BTC-USD | 10d / 5m | 生成时间：2026-03-12 08:42 UTC</p>
+
+  <div class="card">
+    <h2>这次落地了什么</h2>
+    <p class="muted">这个区块回答：这页相较于普通“结果页”，额外补了哪些 explainability 信息。</p>
+    <ul>
+      <li>把 <b>MIT</b> 的 <code>pytrendline</code> 接进了 <code>momentum</code></li>
+      <li>不只给最终趋势线图，而是补了中间步骤图：窗口 / pivots / support / resistance / breakout-only</li>
+      <li>把字段语义、窗口语义、research-only 边界写进同一页，方便后续映射到 parallel channel</li>
+      <li>当前仍保留为研究功能，不直接当交易信号</li>
+    </ul>
+  </div>
+
+  <div class="card section-card">
+    <h2>四段式结构导航</h2>
+    <p class="muted">这页现在按四段式结构组织：先定义，再计算，再看结果，最后单独收束边界与下一步。这样可以减少“定义、结果、限制”来回穿插造成的阅读负担。</p>
+    <div class="pill-list">
+      <span class="pill">1. 定义层：对象、参数、来源、读法</span>
+      <span class="pill">2. 计算层：pivot → candidate → filter → grouping</span>
+      <span class="pill">3. 结果层：图、代表线、事件线、总览</span>
+      <span class="pill">4. 边界层：time semantics / research-only / next step</span>
+    </div>
+  </div>
+
+  <div class="card section-card">
+    <h2>第一层：定义层</h2>
+    <p class="muted">先统一读法、输入边界、参数选择与图上元素语义。这个层只回答“这页在看什么、怎么读、对象分别是什么”。</p>
+  </div>
+
+  <div class="card">
+    <h2>页面导读 / Reading guide</h2>
+    <p class="muted">这个区块回答：这页应该按什么顺序看，哪些部分是“定义表”，哪些部分是“结果图/结果表”。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>step</th>
+      <th>how_to_read</th>
+      <th>why_it_matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>先看“页面导读”与“步骤总览”</td>
+      <td>先建立这页的阅读顺序：数据从哪来、经过哪些中间层、最后展示什么。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>再看参数 / 窗口 / 来源边界</td>
+      <td>先确认这次到底扫了什么样本、为什么只看最近窗口、这页能回答什么不能回答什么。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>再看 K 线 + pivots</td>
+      <td>先看结构锚点，再理解后面的 trendline 不是凭空长出来的。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>然后看 support / resistance / breakout 图</td>
+      <td>把线和锚点、事件线分开看，避免一上来就被最终总览图淹没。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>最后看表格与边界</td>
+      <td>先用图形成直觉，再用字段解释、代表线表和边界卡片收束理解。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>步骤总览：从输入到结果</h2>
+    <p class="muted">这个区块回答：数据是怎样一步步从 bars 走到 pivots、再走到代表线和 breakout 标签的。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>stage</th>
+      <th>object</th>
+      <th>what_happens_here</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>bars</td>
+      <td>下载 period × interval 的 OHLCV，再裁成最近 `window_bars` 根。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>pivots</td>
+      <td>在窗口内识别 support / resistance pivots，作为结构锚点。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>candidate lines</td>
+      <td>从 pivots 组合中尝试构造候选趋势线。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>filtered lines</td>
+      <td>受 `min_points_required`、pivot 约束、breakout 约束等规则筛掉不合格线。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>duplicate groups</td>
+      <td>把非常接近的线分组，避免图上同类线过度堆叠。</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>best lines + breakout labels</td>
+      <td>保留更适合展示的代表线，并标出哪些线已经被识别成 breakout。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>参数</h2>
+      <p class="muted">这个区块回答：这次扫描到底看了什么数据、用了哪些关键参数。</p>
+      <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>parameter</th>
+      <th>value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ticker</td>
+      <td>BTC-USD</td>
+    </tr>
+    <tr>
+      <td>period</td>
+      <td>10d</td>
+    </tr>
+    <tr>
+      <td>interval</td>
+      <td>5m</td>
+    </tr>
+    <tr>
+      <td>window_bars</td>
+      <td>96</td>
+    </tr>
+    <tr>
+      <td>min_points_required</td>
+      <td>3</td>
+    </tr>
+    <tr>
+      <td>ignore_breakouts</td>
+      <td>False</td>
+    </tr>
+    <tr>
+      <td>all_pts_must_be_pivots</td>
+      <td>True</td>
+    </tr>
+  </tbody>
+</table></div>
+    </div>
+    <div class="card">
+      <h2>窗口 / 运行边界</h2>
+      <p class="muted">这个区块回答：为什么当前只看最近窗口，以及这样做的代价和边界是什么。</p>
+      <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>concept</th>
+      <th>operational_definition</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>period</td>
+      <td>从数据源下载多长历史，用于拿到候选样本池。</td>
+    </tr>
+    <tr>
+      <td>interval</td>
+      <td>单根 bar 的时间粒度；它决定 pivot 密度、斜率尺度与图上噪声水平。</td>
+    </tr>
+    <tr>
+      <td>window_bars</td>
+      <td>真正送进 pytrendline 扫描的最近窗口长度；当前报告只对最近窗口做研究，而不是对整段历史全量扫描。</td>
+    </tr>
+    <tr>
+      <td>为什么只看最近窗口</td>
+      <td>因为 pytrendline 是高复杂度穷举搜索；最近窗口更适合 inspection / explainability，而不是实时全量引擎。</td>
+    </tr>
+  </tbody>
+</table></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>来源与边界</h2>
+    <p class="muted">这个区块回答：为什么选 pytrendline、为什么不直接搬别的实现、以及这页当前的定位是什么。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>question</th>
+      <th>answer</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>为什么不直接搬 PyIndicators breakout navigator</td>
+      <td>因为该文件来源带 LuxAlgo / CC BY-NC-SA 4.0 / analytical use only 语义，代码来源边界不够干净。</td>
+    </tr>
+    <tr>
+      <td>为什么这次选 pytrendline</td>
+      <td>MIT，且原生就解决 pivot → support/resistance trendlines → breakout 研究这条链。</td>
+    </tr>
+    <tr>
+      <td>当前定位</td>
+      <td>研究功能，不是正式交易信号。</td>
+    </tr>
+    <tr>
+      <td>当前边界</td>
+      <td>只在最近一个窗口扫描，因为 pytrendline 是 O(N^3) 级别的穷举趋势线搜索。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>为什么当前参数这样设</h2>
+    <p class="muted">这个区块回答：`96 / 3 / pivot-only / breakout-on` 这些选择不是随意的，它们各自想在“解释力、复杂度、可读性”之间取什么平衡。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>parameter_choice</th>
+      <th>operational_meaning</th>
+      <th>why_this_is_current_default</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>window_bars = 96</td>
+      <td>在 5m 粒度下约等于最近 8 小时。</td>
+      <td>比 48 更不容易只看到局部噪声，比 144 更能控制 O(N^3) 穷举成本与页面可读性。</td>
+    </tr>
+    <tr>
+      <td>min_points_required = 3</td>
+      <td>要求一条线至少命中 3 个结构点。</td>
+      <td>比 2 点连线更严格；2 点几乎总能画线，但解释力偏弱，3 点更适合作为研究报告里的代表线基线。</td>
+    </tr>
+    <tr>
+      <td>all_pts_must_be_pivots = True</td>
+      <td>要求命中的点都来自已识别的 pivots。</td>
+      <td>牺牲部分灵活性，换来更清晰的结构语义；这样页面里的线更容易和锚点一一对照。</td>
+    </tr>
+    <tr>
+      <td>ignore_breakouts = False</td>
+      <td>保留 breakout 检测，而不是只保留静态结构线。</td>
+      <td>这样报告既能展示结构线，也能区分哪些线已经被标成事件线，方便后续研究 breakout 语义。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>图上元素字典</h2>
+    <p class="muted">这个区块回答：图里每个颜色、线型、标记各代表什么，方便和后面的图一一对照。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>chart_element</th>
+      <th>meaning</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>绿色 K 线实体</td>
+      <td>收盘价 >= 开盘价的上涨 bar。</td>
+    </tr>
+    <tr>
+      <td>红色 K 线实体</td>
+      <td>收盘价 < 开盘价的下跌 bar。</td>
+    </tr>
+    <tr>
+      <td>灰色上下影线</td>
+      <td>该 bar 的 high / low 范围。</td>
+    </tr>
+    <tr>
+      <td>青绿色倒三角</td>
+      <td>support pivots，表示支撑侧结构锚点。</td>
+    </tr>
+    <tr>
+      <td>橙色正三角</td>
+      <td>resistance pivots，表示阻力侧结构锚点。</td>
+    </tr>
+    <tr>
+      <td>三角标旁的小数字</td>
+      <td>对应该 pivot 的 bar index，让 Step 1 图能和 deep-dive / best lines 表里的 pivot index 直接对上。</td>
+    </tr>
+    <tr>
+      <td>蓝色实线</td>
+      <td>support best lines（未标成 breakout 的代表支撑线）。</td>
+    </tr>
+    <tr>
+      <td>紫色实线</td>
+      <td>resistance best lines（未标成 breakout 的代表阻力线）。</td>
+    </tr>
+    <tr>
+      <td>蓝/紫实心圆点</td>
+      <td>当前展示线命中的结构点（pointset pivots）；点内数字是对应的 pivot index，用来说明这条线到底是被哪些点支撑出来的。</td>
+    </tr>
+    <tr>
+      <td>绿色虚线</td>
+      <td>support breakout lines：已被 pytrendline 标为 breakout 的支撑线。</td>
+    </tr>
+    <tr>
+      <td>红色虚线</td>
+      <td>resistance breakout lines：已被 pytrendline 标为 breakout 的阻力线。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card section-card">
+    <h2>第二层：计算层</h2>
+    <p class="muted">这一层回答结构对象是怎样被算出来的：从 pivots、candidate pairs、过滤、duplicate grouping，一直到 breakout 标签与 lifecycle。</p>
+  </div>
+
+  <div class="card">
+    <h2>逐步骤操作性定义</h2>
+    <p class="muted">这个区块回答：每一步“具体在算什么”，避免把结果页误读成纯视觉画线。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>step</th>
+      <th>name</th>
+      <th>operational_definition</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>取 bars</td>
+      <td>先下载 `period × interval` 的 OHLCV，再只保留最近 `window_bars` 根。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>找 pivots</td>
+      <td>pytrendline 在窗口内给出 support pivots / resistance pivots；它们是原始 K 线高低点层面的结构锚点。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>枚举候选线</td>
+      <td>从 pivots 组合中尝试构造 support / resistance trendlines。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>筛选合法线</td>
+      <td>受 `min_points_required`、pivot 约束、breakout 约束等条件过滤。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>重复线分组</td>
+      <td>把非常相似的线放在一起，保留每组 best line 便于阅读。</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>标记 breakout</td>
+      <td>对最终线判断是否已发生 breakout；当前更偏研究标记，不直接等价于可交易信号。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>Pivot points 是怎么来的</h2>
+    <p class="muted">这个区块回答：support / resistance pivots 在源码里到底是怎么选出来的，以及这为什么会影响 bar-by-bar 可用性。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>rule</th>
+      <th>current_window_value_or_logic</th>
+      <th>why_it_matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>support pivots 看哪里</td>
+      <td>在原始 `Low` 序列上找局部低点。</td>
+      <td>不是平滑曲线上的点，而是窗口内原始 K 线低点。</td>
+    </tr>
+    <tr>
+      <td>resistance pivots 看哪里</td>
+      <td>在原始 `High` 序列上找局部高点。</td>
+      <td>同样直接使用原始 K 线高点。</td>
+    </tr>
+    <tr>
+      <td>grouping threshold</td>
+      <td>≈ 6.4727</td>
+      <td>若相邻若干根高/低点差异很小，会先被视作一组近似连续 pivots，再拿更远的前后点比较。</td>
+    </tr>
+    <tr>
+      <td>separation threshold</td>
+      <td>≈ 12.9455</td>
+      <td>候选 pivot 需要和前后比较点拉开足够距离，避免把太小的局部抖动也当成结构点。</td>
+    </tr>
+    <tr>
+      <td>局部极值条件</td>
+      <td>support 要比前后低；resistance 要比前后高。</td>
+      <td>源码里先检查局部高/低，再检查是否达到 separation 要求。</td>
+    </tr>
+    <tr>
+      <td>首尾 bar</td>
+      <td>窗口的 first / last index 总会被纳入 pivots。</td>
+      <td>这样趋势线搜索不会完全失去窗口边界上的锚点。</td>
+    </tr>
+    <tr>
+      <td>bar-by-bar 边界</td>
+      <td>pivot 判断会看右侧若干根 bar。</td>
+      <td>因此它更适合研究解释；若要实时使用，还需要额外审计“何时才算确认”这件事。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>候选趋势线是怎么从 pivots 组合出来的</h2>
+    <p class="muted">这个区块回答：是不是所有 pivot 组合都会尝试、它们经历了哪些过滤、以及为什么最后页面里只剩下一小部分线。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>question</th>
+      <th>current_answer</th>
+      <th>why_it_matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>起点/终点从哪来</td>
+      <td>在当前配置下，start/end 都必须来自 pivots。</td>
+      <td>因为 `all_pts_must_be_pivots=True`，所以非 pivot 的 i/j 组合会直接跳过。</td>
+    </tr>
+    <tr>
+      <td>support 候选对数量（理论上限）</td>
+      <td>253</td>
+      <td>这是当前窗口里 support pivots 两两配对的理论上限。</td>
+    </tr>
+    <tr>
+      <td>resistance 候选对数量（理论上限）</td>
+      <td>231</td>
+      <td>这是当前窗口里 resistance pivots 两两配对的理论上限。</td>
+    </tr>
+    <tr>
+      <td>每个候选对先做什么</td>
+      <td>先用两个点拟合一条直线（`m`, `b`）。</td>
+      <td>源码对每个 i<j 的 pivot pair 先做 `polyfit`。</td>
+    </tr>
+    <tr>
+      <td>第一层过滤</td>
+      <td>先过滤 slope 与 last-price 不合理的线。</td>
+      <td>避免生成方向/位置明显不合要求的候选线。</td>
+    </tr>
+    <tr>
+      <td>第二层过滤</td>
+      <td>再扫描从起点到窗口末尾的 bars，用 `max_allowable_error ≈ 3.8836` 统计有多少点贴近这条线。</td>
+      <td>只有足够多的点贴着线，这条线才算有结构支撑。</td>
+    </tr>
+    <tr>
+      <td>最小命中数</td>
+      <td>至少需要 `num_points >= 3`。</td>
+      <td>当前默认值是 3，因此只有 2 点撑起来的线不会进入最终结果。</td>
+    </tr>
+    <tr>
+      <td>breakout 检测</td>
+      <td>如果价格越过线并超过 `breakout_tolerance ≈ 5.1782`，就会标记 breakout。</td>
+      <td>这一步决定它只是结构线，还是已经被标成事件线。</td>
+    </tr>
+    <tr>
+      <td>去重前的重复来源</td>
+      <td>不同 pivot 对可能收敛到几乎同一条线。</td>
+      <td>所以后面还需要 duplicate grouping，而不是把所有近似重合线都展示出来。</td>
+    </tr>
+    <tr>
+      <td>当前窗口最终保留</td>
+      <td>support all=133，resistance all=95</td>
+      <td>这是通过最小命中数 / slope / last-price / breakout 规则后留下来的全部候选结果数。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>Candidate lines before filtering：原始 pivot-pair 候选线有多密</h2>
+    <p class="muted">这个区块回答：在任何 slope / last-price / num_points / duplicate grouping 过滤生效之前，单靠 pivot-pair 组合会产生多密的原始候选线。这里展示的是示意性抽样 / 截断视图，目的是让读者直观看到“候选线爆炸”而不是把它误读成最终线集合。</p>
+    <img src="../../artifacts/pytrendline_research/candidate_lines_before_filter.png" alt="candidate lines before filtering" />
+    <p class="muted">图下注释：每条浅色线段都只是某一对 pivots 直接定义出来的原始候选段，还没有经过 slope 合法性、last-price 合法性、最小命中点数与 duplicate grouping 压缩。它的作用是帮助理解：为什么页面最后只显示少数代表线，而不是把所有 pivot 两两相连后都堆出来。</p>
+  </div>
+
+  <div class="card">
+    <h2>为什么不能把所有 pivot 两两相连</h2>
+    <p class="muted">这个区块回答：为什么“把所有 pivot 都连起来”会失真，以及当前代码到底用了哪几层规则来压缩这些候选线。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>question</th>
+      <th>current_answer</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>为什么不能把所有 pivot 两两相连后都直接展示</td>
+      <td>因为 2 点连线天然太多，而且很多线只是偶然穿过两个点，并不具备足够结构支撑。</td>
+    </tr>
+    <tr>
+      <td>当前先过滤掉什么</td>
+      <td>先过滤 slope 不合法、最后价格位置明显不合理的候选线。</td>
+    </tr>
+    <tr>
+      <td>真正让一条线“像趋势线”的关键是什么</td>
+      <td>当前至少要求 `num_points >= 3`，也就是除了起终点外，还要有更多价格点贴近这条线。</td>
+    </tr>
+    <tr>
+      <td>为什么最后还要 duplicate grouping</td>
+      <td>因为不同 pivot 对可能生成几乎重合的线；若不分组，页面会被视觉上重复的线淹没。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>从 pivot 到 trendline：决策链总览</h2>
+    <p class="muted">这个区块回答：pivot collection / pair enumeration / candidate fitting / filtering / breakout tagging / duplicate grouping / best-from-group selection 这一整条链，在当前窗口里各自对应什么动作与什么数量级。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>step</th>
+      <th>stage</th>
+      <th>what_happens_now</th>
+      <th>current_window_evidence</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>pivot collection</td>
+      <td>先在当前 96 根 K 线窗口里找 support / resistance pivots。</td>
+      <td>support=23，resistance=22</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>pivot pair enumeration</td>
+      <td>只允许 pivot-pair 进入拟合；不是任意两根 bar 都能拿来画线。</td>
+      <td>support=253，resistance=231</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>candidate line fitting</td>
+      <td>对每个合法 pivot-pair 用两点拟合出一条直线（m / b）。</td>
+      <td>这是候选线生成层，还不是最终趋势线。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>validity filtering</td>
+      <td>先过滤 slope / last-price 不合理的线，再检查有多少点足够贴近该线。</td>
+      <td>通过基础过滤后：support=253，resistance=231</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>valid trendline</td>
+      <td>只有命中点数达到 `num_points >= 3` 的线，才进入有效结果池。</td>
+      <td>有效结果：support=133，resistance=95</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>breakout tagging</td>
+      <td>对有效线再判断当前窗口里是否已经出现 breakout。</td>
+      <td>breakout tagged：support=130，resistance=93</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>duplicate grouping</td>
+      <td>把几乎重合的线聚成 group，避免页面被视觉上重复的线淹没。</td>
+      <td>duplicate groups：support=125，resistance=90</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>best-from-group selection</td>
+      <td>每组最终只保留 score 最好的代表线优先展示。</td>
+      <td>best-from-group：support=125，resistance=90</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>什么情况下能被当做趋势线，什么情况下不能</h2>
+    <p class="muted">这个区块回答：一条线要满足哪些条件才会变成有效趋势线；又会因为什么原因被淘汰、被改标 breakout，或虽存在但不再单独展示。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>question</th>
+      <th>能成为趋势线的条件</th>
+      <th>不能成为或不再单独展示的原因</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>什么线能进入候选池</td>
+      <td>start / end 必须来自 pivots。</td>
+      <td>若起点或终点不是 pivot，在当前配置下会直接跳过。</td>
+    </tr>
+    <tr>
+      <td>什么线能变成有效趋势线</td>
+      <td>除了两端外，还要有足够多的点贴近它，当前至少 `num_points >= 3`。</td>
+      <td>只靠两点定义出来的线解释力太弱，不进入最终有效结果。</td>
+    </tr>
+    <tr>
+      <td>贴近这条线是什么意思</td>
+      <td>价格点到线的误差要小于 `max_allowable_error ≈ 3.8836`。</td>
+      <td>误差太大就不算命中，因此不会增加 num_points。</td>
+    </tr>
+    <tr>
+      <td>什么线会在第一层就被淘汰</td>
+      <td>slope 不合法，或这条线在窗口最后一根 bar 的价格位置明显不合理。</td>
+      <td>这些线连“基础几何位置”都不成立，所以不会继续参与后续评分。</td>
+    </tr>
+    <tr>
+      <td>breakout 会改变什么</td>
+      <td>若价格越线幅度超过 `breakout_tolerance ≈ 5.1782`，这条有效线会被标记为 breakout。</td>
+      <td>它不是被删除，而是从“静态结构线”变成“已发生事件的结构线”。</td>
+    </tr>
+    <tr>
+      <td>为什么有些线存在却不单独展示</td>
+      <td>因为 duplicate grouping 会把几乎重合的线放进同一组。</td>
+      <td>若它不是该组 score 最好的那条，就仍然存在于结果表里，但不会优先画在教学视图上。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>Filter waterfall：候选线是如何一层层被筛下来的</h2>
+    <p class="muted">这个区块回答：从 pivot 到最终展示线，中间到底经过了多少层过滤。它是理解“为什么页面最后只剩少数代表线”的核心计数视角。</p>
+    <img src="../../artifacts/pytrendline_research/filter_waterfall.png" alt="filter waterfall" />
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>stage</th>
+      <th>support_count</th>
+      <th>resistance_count</th>
+      <th>why_it_matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>pivots</td>
+      <td>23</td>
+      <td>22</td>
+      <td>进入候选池的结构锚点数量</td>
+    </tr>
+    <tr>
+      <td>pivot_pairs_considered</td>
+      <td>253</td>
+      <td>231</td>
+      <td>在当前配置下真正被拿来拟合直线的 pivot 对数量</td>
+    </tr>
+    <tr>
+      <td>pass_basic_filters</td>
+      <td>253</td>
+      <td>231</td>
+      <td>通过 slope / last-price 合法性过滤后的候选对数量</td>
+    </tr>
+    <tr>
+      <td>valid_results_pre_group</td>
+      <td>133</td>
+      <td>95</td>
+      <td>通过最小命中点数与 pointset 去重之后留下的全部有效结果</td>
+    </tr>
+    <tr>
+      <td>breakout_tagged</td>
+      <td>130</td>
+      <td>93</td>
+      <td>这些有效结果里被标成 breakout 的数量</td>
+    </tr>
+    <tr>
+      <td>duplicate_groups</td>
+      <td>125</td>
+      <td>90</td>
+      <td>duplicate grouping 之后形成的组数</td>
+    </tr>
+    <tr>
+      <td>best_from_group</td>
+      <td>125</td>
+      <td>90</td>
+      <td>页面最终优先展示的代表线数量</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>Accepted vs rejected examples：抽象规则对应到真实样例</h2>
+    <p class="muted">这个区块回答：上面的规则如果落到当前窗口里的真实线，分别长什么样。这里刻意同时给出：被保留的、被改标 breakout 的、虽然有效但被并组压掉的、以及根本没进有效结果池的样例。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>example_role</th>
+      <th>side</th>
+      <th>current_status</th>
+      <th>concrete_case</th>
+      <th>why_this_case_matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Accepted example</td>
+      <td>resistance</td>
+      <td>valid non-breakout representative</td>
+      <td>line_id=R-[24,34,35] | score=127.69 | num_points=3 | pointset=[24, 34, 35] | group=1056</td>
+      <td>它同时满足有效趋势线条件，而且还是 duplicate group 里的最高分代表线，所以会直接出现在当前教学视图里。</td>
+    </tr>
+    <tr>
+      <td>Accepted example</td>
+      <td>resistance</td>
+      <td>breakout-tagged representative</td>
+      <td>line_id=R-[41,59,60] | score=35305.89 | num_points=3 | pointset=[41, 59, 60] | breakout_index=67 | group=1074</td>
+      <td>它先是一条有效结构线，随后又被标成 breakout；因此它不会消失，而是会在 Step 4 里以事件线的身份出现。</td>
+    </tr>
+    <tr>
+      <td>Grouped-away example</td>
+      <td>resistance</td>
+      <td>valid but not shown as representative</td>
+      <td>line_id=R-[53,75,76] | score=610.39 | num_points=3 | pointset=[53, 75, 76] | breakout_index=59 | group=1078</td>
+      <td>它其实已经是有效趋势线，但因为与另一条线几乎重合，被 duplicate grouping 压进同组；同组代表线 id=R-[53,73,75,76] score=798.88，所以页面默认优先展示代表线。</td>
+    </tr>
+    <tr>
+      <td>Rejected candidate</td>
+      <td>support</td>
+      <td>rejected at min-points filter</td>
+      <td>pivot_pair=[0,5] | slope=-4205.36 | pointset=[0, 5] | num_points=2</td>
+      <td>这条线只命中了 2 个点，低于当前 `min_points_required=3`，所以它能被画出来，但还不够资格被当成有效趋势线。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>Line lifecycle：一条线从 candidate 到代表线会经历什么</h2>
+    <p class="muted">这个区块回答：一条线什么时候还只是 candidate，什么时候已经是有效结构线，什么时候被标成 breakout，什么时候只是留在结果里但不再默认展示，以及当前页面有没有“失效/过期线”的概念。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>lifecycle_state</th>
+      <th>current_window_evidence</th>
+      <th>what_it_means_now</th>
+      <th>how_it_shows_up_in_report</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>candidate pivot-pair</td>
+      <td>support=253，resistance=231</td>
+      <td>只要起点/终点是当前窗口里允许的 pivots，这条线就先进入候选拟合层。此时它只是“可尝试拟合的一条线”，还不是有效结构。</td>
+      <td>默认不直接展示；只在 filter waterfall 里体现总量。</td>
+    </tr>
+    <tr>
+      <td>rejected before result pool</td>
+      <td>support=120，resistance=136</td>
+      <td>若 slope / last-price 不合法，或 `num_points` 不够，或命中点集合和已有结果重复，就会在进入最终结果池前被淘汰。</td>
+      <td>默认不单独画图；当前只在 `accepted vs rejected examples` 里抽真实个案做解释。</td>
+    </tr>
+    <tr>
+      <td>valid non-breakout line</td>
+      <td>support=3，resistance=2</td>
+      <td>通过基础过滤与最小命中点数后，且当前窗口里还没有被标成 breakout 的有效结构线。</td>
+      <td>若它同时是 best-from-group，就会进入 Step 2 / Step 3 教学视图与代表线表。</td>
+    </tr>
+    <tr>
+      <td>breakout-tagged line</td>
+      <td>support=130，resistance=93</td>
+      <td>它先是一条有效结构线，随后在当前窗口里又被打上 breakout 标签；这改变的是“状态解释”，不是把它从结果池里删除。</td>
+      <td>会在 Step 4 与结果表里作为事件线继续保留。</td>
+    </tr>
+    <tr>
+      <td>grouped but not representative</td>
+      <td>support=8，resistance=5</td>
+      <td>这条线本身仍然有效，只是它与别的线几乎重合，duplicate grouping 后没有拿到组内最高分。</td>
+      <td>保留在 CSV / 原始结果里，但默认不优先画进教学图。</td>
+    </tr>
+    <tr>
+      <td>best-from-group representative</td>
+      <td>support=125，resistance=90</td>
+      <td>这是 duplicate group 里 score 最好的代表线，属于页面默认最该先看的那一小部分。</td>
+      <td>会优先出现在 Step 2 / Step 3 / Step 4 与 Best lines 表里。</td>
+    </tr>
+    <tr>
+      <td>expired / invalidated state?</td>
+      <td>当前页面：未单独建模</td>
+      <td>这页目前没有“线后来彻底失效、从结果里退休”的单独生命周期状态；当前实现一旦识别到 breakout，更接近把它保留成带事件标签的研究对象。</td>
+      <td>因此页面更像“窗口末端回头看的一张状态快照”，而不是 bar-by-bar 的存活/退场审计。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>State diagram：line lifecycle 状态流转图</h2>
+    <p class="muted">这个区块回答：上面的生命周期如果压缩成一张图，状态之间的流转顺序是什么；同时明确当前页面还没有单独建模 expired / retired state。</p>
+    <img src="../../artifacts/pytrendline_research/line_lifecycle_state_diagram.svg" alt="line lifecycle state diagram" />
+  </div>
+
+
+
+  <div class="card">
+    <h2>`num_points` 应该怎么读</h2>
+    <p class="muted">这个区块回答：`num_points` 不是交易次数，而是这条线被多少结构点支撑；它帮助判断这条线的解释力强弱。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>question</th>
+      <th>current_answer</th>
+      <th>why_it_matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>`num_points` 怎么读</td>
+      <td>它表示有多少个价格点足够贴近这条线。</td>
+      <td>不是交易次数，而是结构支撑强度的粗略代理。</td>
+    </tr>
+    <tr>
+      <td>为什么 2 点不够</td>
+      <td>2 点几乎总能定义一条直线。</td>
+      <td>如果只用 2 点，页面会充满解释力很弱的偶然连线。</td>
+    </tr>
+    <tr>
+      <td>为什么还需要 `score`</td>
+      <td>命中点数量相同的线，和价格贴合误差可能不同。</td>
+      <td>`score` 让我们在同类线中优先看更贴近、点数更多的线。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>`is_breakout` 应该怎么读</h2>
+    <p class="muted">这个区块回答：support breakout / resistance breakout 到底分别是什么意思，它更接近 close-based 还是 high/low-based，以及它在当前页面里更像什么类型的标签。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>question</th>
+      <th>current_answer</th>
+      <th>why_it_matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>support breakout 是什么</td>
+      <td>当 support 线在某个 bar 上方，且 `trend_price > Low + tolerance`。</td>
+      <td>当前更接近 low-based breach，而不是 close-based cross。</td>
+    </tr>
+    <tr>
+      <td>resistance breakout 是什么</td>
+      <td>当 resistance 线在某个 bar 下方，且 `trend_price < High - tolerance`。</td>
+      <td>当前更接近 high-based breach，而不是 close-based cross。</td>
+    </tr>
+    <tr>
+      <td>当前 tolerance</td>
+      <td>≈ 5.1782</td>
+      <td>源码用 `breakout_tolerance = avg_candle_range * 0.08`，避免太小的穿越也被标成 breakout。</td>
+    </tr>
+    <tr>
+      <td>事件发生时点</td>
+      <td>源码先记录 `breakout_index`，本地 bridge 会据此修正 `breakout_date` 到真实事件 bar。</td>
+      <td>这样报告里的 breakout 日期就不再误指向起始锚点日期。</td>
+    </tr>
+    <tr>
+      <td>实时可用性边界</td>
+      <td>它是基于当前窗口扫描结果打出来的研究标签。</td>
+      <td>可用于理解结构被突破了没有，但不能直接等同于已经审计过的实时交易信号。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Duplicate grouping：support 侧概览</h2>
+      <p class="muted">这个区块回答：support 侧为什么会出现很多近似线，以及当前窗口下它们被压缩成了多少个 group。</p>
+      <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>metric</th>
+      <th>value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>support_all_lines</td>
+      <td>133.0000</td>
+    </tr>
+    <tr>
+      <td>support_duplicate_groups</td>
+      <td>125.0000</td>
+    </tr>
+    <tr>
+      <td>support_best_from_group_lines</td>
+      <td>125.0000</td>
+    </tr>
+    <tr>
+      <td>support_avg_group_size</td>
+      <td>1.0600</td>
+    </tr>
+    <tr>
+      <td>support_max_group_size</td>
+      <td>2.0000</td>
+    </tr>
+    <tr>
+      <td>support_dup_threshold_last_price</td>
+      <td>12.9455</td>
+    </tr>
+    <tr>
+      <td>support_dup_threshold_slope</td>
+      <td>3.2364</td>
+    </tr>
+  </tbody>
+</table></div>
+    </div>
+    <div class="card">
+      <h2>Duplicate grouping：resistance 侧概览</h2>
+      <p class="muted">这个区块回答：resistance 侧为什么也会有大量相近线，以及 grouping 阈值当前大概落在什么数量级。</p>
+      <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>metric</th>
+      <th>value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>resistance_all_lines</td>
+      <td>95.0000</td>
+    </tr>
+    <tr>
+      <td>resistance_duplicate_groups</td>
+      <td>90.0000</td>
+    </tr>
+    <tr>
+      <td>resistance_best_from_group_lines</td>
+      <td>90.0000</td>
+    </tr>
+    <tr>
+      <td>resistance_avg_group_size</td>
+      <td>1.0600</td>
+    </tr>
+    <tr>
+      <td>resistance_max_group_size</td>
+      <td>2.0000</td>
+    </tr>
+    <tr>
+      <td>resistance_dup_threshold_last_price</td>
+      <td>12.9455</td>
+    </tr>
+    <tr>
+      <td>resistance_dup_threshold_slope</td>
+      <td>3.2364</td>
+    </tr>
+  </tbody>
+</table></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Support duplicate groups（样例）</h2>
+      <p class="muted">这个区块回答：support 侧 group 内通常有多少条近似线，哪一条会被选成 best-from-group。</p>
+      <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>group_id</th>
+      <th>side</th>
+      <th>group_size</th>
+      <th>best_line_id</th>
+      <th>best_score</th>
+      <th>contains_breakout</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>2051</td>
+      <td>support</td>
+      <td>2</td>
+      <td>S-[25,49,54,64,73]</td>
+      <td>5422.271111</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>2086</td>
+      <td>support</td>
+      <td>2</td>
+      <td>S-[49,61,70]</td>
+      <td>1219.355561</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>2054</td>
+      <td>support</td>
+      <td>2</td>
+      <td>S-[25,49,51,64,71,77]</td>
+      <td>573.731215</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>2052</td>
+      <td>support</td>
+      <td>2</td>
+      <td>S-[49,54,64,71,77]</td>
+      <td>251.230048</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>2084</td>
+      <td>support</td>
+      <td>2</td>
+      <td>S-[48,54,64,71,77]</td>
+      <td>204.417931</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>2078</td>
+      <td>support</td>
+      <td>2</td>
+      <td>S-[46,49,61,67,79]</td>
+      <td>82.014429</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>2079</td>
+      <td>support</td>
+      <td>2</td>
+      <td>S-[46,48,50,52,86]</td>
+      <td>34.422409</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>2082</td>
+      <td>support</td>
+      <td>2</td>
+      <td>S-[49,60,92,94]</td>
+      <td>15.038261</td>
+      <td>True</td>
+    </tr>
+  </tbody>
+</table></div>
+    </div>
+    <div class="card">
+      <h2>Resistance duplicate groups（样例）</h2>
+      <p class="muted">这个区块回答：resistance 侧 group 内的近似线如何聚类，以及 breakout / non-breakout 为什么不会混进同一组。</p>
+      <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>group_id</th>
+      <th>side</th>
+      <th>group_size</th>
+      <th>best_line_id</th>
+      <th>best_score</th>
+      <th>contains_breakout</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1038</td>
+      <td>resistance</td>
+      <td>2</td>
+      <td>R-[16,69,75]</td>
+      <td>3239.428949</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>1078</td>
+      <td>resistance</td>
+      <td>2</td>
+      <td>R-[53,73,75,76]</td>
+      <td>798.880263</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>1042</td>
+      <td>resistance</td>
+      <td>2</td>
+      <td>R-[20,21,35,67,76]</td>
+      <td>476.61005</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>1066</td>
+      <td>resistance</td>
+      <td>2</td>
+      <td>R-[28,46,73,75,76]</td>
+      <td>291.278369</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>1052</td>
+      <td>resistance</td>
+      <td>2</td>
+      <td>R-[35,67,76]</td>
+      <td>68.082019</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>1074</td>
+      <td>resistance</td>
+      <td>1</td>
+      <td>R-[41,59,60]</td>
+      <td>35305.885985</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>1036</td>
+      <td>resistance</td>
+      <td>1</td>
+      <td>R-[16,41,63]</td>
+      <td>35177.966123</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>1016</td>
+      <td>resistance</td>
+      <td>1</td>
+      <td>R-[5,12,83]</td>
+      <td>20911.947869</td>
+      <td>True</td>
+    </tr>
+  </tbody>
+</table></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Duplicate grouping before/after：压缩前后到底差了什么</h2>
+    <p class="muted">这个区块回答：duplicate grouping 不是抽象概念，而是把一批几乎重合的候选结果压缩成每组一条代表线。左侧子图展示 grouping 压缩前的重复线堆叠，右侧子图展示压缩后仅保留 best-from-group 的效果。</p>
+    <img src="../../artifacts/pytrendline_research/duplicate_grouping_before_after.png" alt="duplicate grouping before after" />
+    <p class="muted">图下注释：颜色表示被选中的 duplicate groups；before 面板里同组内会看到多条非常接近的线，after 面板里只保留每组得分最高的代表线。这样更容易理解：页面默认不是忽略其它线，而是有意识地做了“视觉去重”。</p>
+  </div>
+
+  <div class="card">
+    <h2>如何理解 duplicate grouping 与 score</h2>
+    <p class="muted">这个区块回答：为什么会有很多相似线、group 内 best line 是怎么选的、以及为什么页面默认只展示 best-from-group。</p>
+    <table class="tbl">
+      <thead><tr><th>问题</th><th>当前回答</th></tr></thead>
+      <tbody>
+        <tr><td>为什么会有大量相近线？</td><td>因为不同 pivot-pairs 可能拟合出 slope 与最后价格都非常接近的线；它们在视觉上几乎重合，但在源码里仍是不同候选结果。</td></tr>
+        <tr><td>group 是按什么聚的？</td><td>pytrendline 用二维条件聚类：同时比较 <code>price_at_last_date</code> 和 <code>slope</code> 的差异；两者都足够接近时才会归为同一组。</td></tr>
+        <tr><td>breakout 线会和普通线混组吗？</td><td>不会。源码要求 <code>is_breakout</code> 相同才允许进同一组，所以 breakout / non-breakout 会分开聚类。</td></tr>
+        <tr><td>best-from-group 怎么选？</td><td>每个 duplicate group 里最终按 <code>score</code> 选出代表线，并标成 <code>is_best_from_duplicate_group=True</code>。</td></tr>
+        <tr><td>为什么页面默认只展示 best-from-group？</td><td>否则图上会堆满视觉上几乎重合的线，读者很难判断真正值得先看的结构；保留代表线能显著提升可读性。</td></tr>
+        <tr><td>读图时该怎么理解 <code>rank_within_group</code>？</td><td>它表示同组内部按 score 排名的位置；数字越靠前，说明它越接近该组最值得展示的代表线。</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+
+
+  <div class="card section-card">
+    <h2>第三层：结果层</h2>
+    <p class="muted">这一层只看当前窗口里真正保留下来的图、代表线、事件线与汇总结果。先有了前面的定义和计算，再回来看这些结果就不会误读成“所有线都是实时交易信号”。</p>
+  </div>
+
+  <div class="card">
+    <h2>窗口内数量概览</h2>
+    <p class="muted">这个区块回答：当前窗口里总共识别出了多少 pivots、多少候选/代表线、多少 breakout 标签。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>metric</th>
+      <th>value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>bars_in_window</td>
+      <td>96</td>
+    </tr>
+    <tr>
+      <td>support_pivots</td>
+      <td>23</td>
+    </tr>
+    <tr>
+      <td>resistance_pivots</td>
+      <td>22</td>
+    </tr>
+    <tr>
+      <td>support_lines_all</td>
+      <td>133</td>
+    </tr>
+    <tr>
+      <td>resistance_lines_all</td>
+      <td>95</td>
+    </tr>
+    <tr>
+      <td>support_lines_best</td>
+      <td>125</td>
+    </tr>
+    <tr>
+      <td>resistance_lines_best</td>
+      <td>90</td>
+    </tr>
+    <tr>
+      <td>support_breakouts</td>
+      <td>130</td>
+    </tr>
+    <tr>
+      <td>resistance_breakouts</td>
+      <td>93</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>Step 1 · 先看结构锚点：原始 K 线 + pivots</h2>
+    <p class="muted">这个区块回答：趋势线依附的“结构点”到底在哪里。当前 pivots 来自原始 OHLC，而不是平滑后的曲线；每个三角标旁的小数字就是对应的 pivot index。</p>
+    <img src="../../artifacts/pytrendline_research/step1_close_and_pivots.png" alt="close and pivots" />
+    <p class="muted">图下注释：先只看 K 线与 pivot 标记，不急着看趋势线。图上的小数字就是 pivot index，这样 Step 1 现在已经可以直接和 deep-dive / best lines 表里的 `pointset_indeces` 对照；读法上，先确认支撑/阻力锚点分布，再进入后面的支撑线与阻力线图。</p>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Step 2 · 再看支撑线如何从锚点长出来</h2>
+      <p class="muted">这个区块回答：support line 在局部到底是怎么被“贴”到多个结构点上的。这里继续只保留 grouped 之后的代表线，但不再把 breakout 线排除在外；若某条线后来被突破，前半段仍会画出来，突破后的后半段再改成虚线。</p>
+      <img src="../../artifacts/pytrendline_research/step2_support_lines.png" alt="support lines" />
+      <p class="muted">图下注释：蓝色实线 = 当前窗口里这条代表 support 线在 breakout 前的结构段；绿色虚线 = 同一条线在 breakout 后的延伸段；若某条线尚未 breakout，则仍按普通代表线显示。白边高亮点 = 这条线实际命中的 pivots（数字是 pivot index）。所以 Step 2 现在回答的是“代表线是怎么长出来的”，而不是“当前还剩多少 non-breakout 线”。</p>
+    </div>
+    <div class="card">
+      <h2>Step 3 · 再看阻力线如何从锚点长出来</h2>
+      <p class="muted">这个区块回答：resistance line 在局部到底是怎么被“贴”到多个结构点上的。这里同样只保留 grouped 之后的代表线；若后来发生 breakout，就把突破后的后半段改为虚线而不是整条线直接隐藏。</p>
+      <img src="../../artifacts/pytrendline_research/step3_resistance_lines.png" alt="resistance lines" />
+      <p class="muted">图下注释：紫色实线 = breakout 前仍作为结构线的一段；红色虚线 = breakout 后的延伸段；白边高亮点 = 这条线命中的 pivots。这样你可以同时看到“线是怎么被定义出来的”和“它后来在哪里变成事件线”。</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Step 4 · 最后只看事件线：breakout-only</h2>
+    <p class="muted">这个区块回答：哪些线已经不只是“结构线”，而是被 pytrendline 标成了 breakout 事件线。这里改成 support / resistance 分面显示，减少不同侧事件线互相压在一起。</p>
+    <img src="../../artifacts/pytrendline_research/step4_breakout_only.png" alt="breakout only lines" />
+    <p class="muted">图下注释：每个子图只保留少量 breakout 样例线。实线部分表示用于定义结构的拟合线段，虚线部分表示向 breakout bar 的延伸；带描边的事件圈和 `S/R` 标记，就是实际触发 breakout 的那根 K 线。这样你看到的是“这条线如何变成事件”，而不是一整屏互相重叠的无限延长线。</p>
+  </div>
+
+  <div class="card">
+    <h2>最终总览图：把锚点、代表线与事件线叠在一起</h2>
+    <p class="muted">这个区块回答：如果把 pivots、代表线和 breakout 线放回同一张图，整体画面是什么样。</p>
+    <img src="../../artifacts/pytrendline_research/trendlines_overlay.png" alt="trendlines overlay" />
+    <p class="muted">图下注释：这张总览图现在与 Step 2 / Step 3 保持一致——同一条 breakout 线会拆成“break 前实线 + break 后虚线”，并额外圈出 breakout bar。为了减少视觉噪声，这里不再铺满当前窗口的全部 pivots，而只高亮当前代表线实际命中的那些 support / resistance pivots；如果你要看全量 pivot universe，请回到 Step 1。</p>
+  </div>
+
+  <div class="card">
+    <h2>Selected line deep-dive：挑 1 条 support / 1 条 resistance 逐项拆开</h2>
+    <p class="muted">这个区块回答：如果不只看抽象规则，而是直接挑两条真实代表线逐项拆开，它们到底命中了哪些 pivots、`m / b / num_points / score` 怎么读、为什么通过过滤、为什么是 best-from-group、以及 breakout 发生在哪根 bar。</p>
+    <div class="grid2">
+      <div>
+        <h3>Support selected line</h3>
+        <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>aspect</th>
+      <th>current_window_answer</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>为什么选这条</td>
+      <td>它不是全窗口绝对最高分线，而是“同组不止 1 条时”里最适合教学展开的代表线：既能讲结构点，也能具体解释 best-from-group 是怎么赢出来的。</td>
+    </tr>
+    <tr>
+      <td>line id / side</td>
+      <td>S-[25,49,54,64,73] / support</td>
+    </tr>
+    <tr>
+      <td>命中的 pivots</td>
+      <td>25@03-12 02:50, 49@03-12 04:50, 54@03-12 05:15, 64@03-12 06:05, 73@03-12 06:50</td>
+    </tr>
+    <tr>
+      <td>m / b</td>
+      <td>m=3.911784，b=69154.806966；也就是 `trend_price = m * bar_index + b`。</td>
+    </tr>
+    <tr>
+      <td>num_points</td>
+      <td>5（当前阈值是 >= 3）</td>
+    </tr>
+    <tr>
+      <td>为什么通过 slope filter</td>
+      <td>归一化 slope ≈ 253.1998，落在允许区间 [-179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368.0000, 179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368.0000] 内。</td>
+    </tr>
+    <tr>
+      <td>为什么通过 last-price filter</td>
+      <td>线在窗口最后一根 bar 上的价格 ≈ 69526.43，落在允许区间 [46581.63, 104756.29] 内。</td>
+    </tr>
+    <tr>
+      <td>为什么是 best-from-group</td>
+      <td>group=2051，共 2 条近似线；当前这条 `score=5422.27` 高于同组第二名 `S-[46,51,71,77]` 的 `score=49.57`，所以它是默认代表线。</td>
+    </tr>
+    <tr>
+      <td>breakout 事件 bar</td>
+      <td>breakout_index=46（03-12 04:35 UTC） | Open=69449.27, High=69449.27, Low=69326.49, Close=69369.39 | Low 是当前侧 breakout 判定更直接参考的价格列。</td>
+    </tr>
+  </tbody>
+</table></div>
+        <p class="muted">同组对照：下面列的是和这条 support 线处在同一个 duplicate group 的候选结果，方便直接看出它为什么成为代表线。</p>
+        <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>id</th>
+      <th>score</th>
+      <th>num_points</th>
+      <th>rank_within_group</th>
+      <th>is_breakout</th>
+      <th>pointset_indeces</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>S-[25,49,54,64,73]</td>
+      <td>5422.271111</td>
+      <td>5</td>
+      <td>1</td>
+      <td>True</td>
+      <td>25, 49, 54, 64, 73</td>
+    </tr>
+    <tr>
+      <td>S-[46,51,71,77]</td>
+      <td>49.567911</td>
+      <td>4</td>
+      <td>2</td>
+      <td>True</td>
+      <td>46, 51, 71, 77</td>
+    </tr>
+  </tbody>
+</table></div>
+      </div>
+      <div>
+        <h3>Resistance selected line</h3>
+        <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>aspect</th>
+      <th>current_window_answer</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>为什么选这条</td>
+      <td>它不是全窗口绝对最高分线，而是“同组不止 1 条时”里最适合教学展开的代表线：既能讲结构点，也能具体解释 best-from-group 是怎么赢出来的。</td>
+    </tr>
+    <tr>
+      <td>line id / side</td>
+      <td>R-[16,69,75] / resistance</td>
+    </tr>
+    <tr>
+      <td>命中的 pivots</td>
+      <td>16@03-12 02:05, 69@03-12 06:30, 75@03-12 07:00</td>
+    </tr>
+    <tr>
+      <td>m / b</td>
+      <td>m=-6.312647，b=69979.346108；也就是 `trend_price = m * bar_index + b`。</td>
+    </tr>
+    <tr>
+      <td>num_points</td>
+      <td>3（当前阈值是 >= 3）</td>
+    </tr>
+    <tr>
+      <td>为什么通过 slope filter</td>
+      <td>归一化 slope ≈ -408.6016，落在允许区间 [-179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368.0000, 179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368.0000] 内。</td>
+    </tr>
+    <tr>
+      <td>为什么通过 last-price filter</td>
+      <td>线在窗口最后一根 bar 上的价格 ≈ 69379.64，落在允许区间 [46581.63, 104756.29] 内。</td>
+    </tr>
+    <tr>
+      <td>为什么是 best-from-group</td>
+      <td>group=1038，共 2 条近似线；当前这条 `score=3239.43` 高于同组第二名 `R-[16,69,75,77]` 的 `score=125.74`，所以它是默认代表线。</td>
+    </tr>
+    <tr>
+      <td>breakout 事件 bar</td>
+      <td>breakout_index=76（03-12 07:05 UTC） | Open=69507.77, High=69507.77, Low=69461.32, Close=69461.32 | High 是当前侧 breakout 判定更直接参考的价格列。</td>
+    </tr>
+  </tbody>
+</table></div>
+        <p class="muted">同组对照：下面列的是和这条 resistance 线处在同一个 duplicate group 的候选结果，方便直接看出它为什么成为代表线。</p>
+        <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>id</th>
+      <th>score</th>
+      <th>num_points</th>
+      <th>rank_within_group</th>
+      <th>is_breakout</th>
+      <th>pointset_indeces</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>R-[16,69,75]</td>
+      <td>3239.428949</td>
+      <td>3</td>
+      <td>1</td>
+      <td>True</td>
+      <td>16, 69, 75</td>
+    </tr>
+    <tr>
+      <td>R-[16,69,75,77]</td>
+      <td>125.742941</td>
+      <td>4</td>
+      <td>2</td>
+      <td>True</td>
+      <td>16, 69, 75, 77</td>
+    </tr>
+  </tbody>
+</table></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Best support lines</h2>
+    <p class="muted">这个区块回答：当前最值得先读的代表支撑线有哪些，它们各自的 `m / b / score / num_points` 是什么，以及它们命中了哪些结构点。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>id</th>
+      <th>is_breakout</th>
+      <th>pointset_indeces</th>
+      <th>pointset_dates</th>
+      <th>breakout_index</th>
+      <th>breakout_date</th>
+      <th>num_points</th>
+      <th>m</th>
+      <th>b</th>
+      <th>score</th>
+      <th>starts_at_date</th>
+      <th>ends_at_date</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>S-[19,46,56]</td>
+      <td>True</td>
+      <td>19, 46, 56</td>
+      <td>03-12 02:20 | 03-12 04:35 | 03-12 05:25</td>
+      <td>21</td>
+      <td>2026-03-12T02:30:00</td>
+      <td>3</td>
+      <td>-8.466725</td>
+      <td>69715.961516</td>
+      <td>14706.65938</td>
+      <td>2026-03-12 02:20:00+00:00</td>
+      <td>2026-03-12 05:25:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[25,48,65,74]</td>
+      <td>True</td>
+      <td>25, 48, 65, 74</td>
+      <td>03-12 02:50 | 03-12 04:45 | 03-12 06:10 | 03-12 06:55</td>
+      <td>46</td>
+      <td>2026-03-12T04:35:00</td>
+      <td>4</td>
+      <td>4.27106</td>
+      <td>69145.825068</td>
+      <td>5829.01929</td>
+      <td>2026-03-12 02:50:00+00:00</td>
+      <td>2026-03-12 06:55:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[25,49,54,64,73]</td>
+      <td>True</td>
+      <td>25, 49, 54, 64, 73</td>
+      <td>03-12 02:50 | 03-12 04:50 | 03-12 05:15 | 03-12 06:05 | 03-12 06:50</td>
+      <td>46</td>
+      <td>2026-03-12T04:35:00</td>
+      <td>5</td>
+      <td>3.911784</td>
+      <td>69154.806966</td>
+      <td>5422.271111</td>
+      <td>2026-03-12 02:50:00+00:00</td>
+      <td>2026-03-12 06:50:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[23,38,53,59,61,65]</td>
+      <td>True</td>
+      <td>23, 38, 53, 59, 61, 65</td>
+      <td>03-12 02:40 | 03-12 03:55 | 03-12 05:10 | 03-12 05:40 | 03-12 05:50 | 03-12 06:10</td>
+      <td>25</td>
+      <td>2026-03-12T02:50:00</td>
+      <td>6</td>
+      <td>0.270765</td>
+      <td>69403.295847</td>
+      <td>5329.810075</td>
+      <td>2026-03-12 02:40:00+00:00</td>
+      <td>2026-03-12 06:10:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[46,51,64,73]</td>
+      <td>True</td>
+      <td>46, 51, 64, 73</td>
+      <td>03-12 04:35 | 03-12 05:00 | 03-12 06:05 | 03-12 06:50</td>
+      <td>55</td>
+      <td>2026-03-12T05:20:00</td>
+      <td>4</td>
+      <td>4.28125</td>
+      <td>69129.554687</td>
+      <td>5017.632378</td>
+      <td>2026-03-12 04:35:00+00:00</td>
+      <td>2026-03-12 06:50:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[23,38,53,59,65,71]</td>
+      <td>True</td>
+      <td>23, 38, 53, 59, 65, 71</td>
+      <td>03-12 02:40 | 03-12 03:55 | 03-12 05:10 | 03-12 05:40 | 03-12 06:10 | 03-12 06:40</td>
+      <td>25</td>
+      <td>2026-03-12T02:50:00</td>
+      <td>6</td>
+      <td>0.374837</td>
+      <td>69400.902181</td>
+      <td>4648.95911</td>
+      <td>2026-03-12 02:40:00+00:00</td>
+      <td>2026-03-12 06:40:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[46,92,94]</td>
+      <td>True</td>
+      <td>46, 92, 94</td>
+      <td>03-12 04:35 | 03-12 08:25 | 03-12 08:35</td>
+      <td>49</td>
+      <td>2026-03-12T04:50:00</td>
+      <td>3</td>
+      <td>10.185971</td>
+      <td>68857.9375</td>
+      <td>3388.615008</td>
+      <td>2026-03-12 04:35:00+00:00</td>
+      <td>2026-03-12 08:35:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[9,48,55]</td>
+      <td>True</td>
+      <td>9, 48, 55</td>
+      <td>03-12 01:30 | 03-12 04:45 | 03-12 05:20</td>
+      <td>19</td>
+      <td>2026-03-12T02:20:00</td>
+      <td>3</td>
+      <td>-12.162059</td>
+      <td>69934.614784</td>
+      <td>3325.186629</td>
+      <td>2026-03-12 01:30:00+00:00</td>
+      <td>2026-03-12 05:20:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[63,71,73,76]</td>
+      <td>True</td>
+      <td>63, 71, 73, 76</td>
+      <td>03-12 06:00 | 03-12 06:40 | 03-12 06:50 | 03-12 07:05</td>
+      <td>77</td>
+      <td>2026-03-12T07:10:00</td>
+      <td>4</td>
+      <td>6.433594</td>
+      <td>68970.730469</td>
+      <td>3216.271189</td>
+      <td>2026-03-12 06:00:00+00:00</td>
+      <td>2026-03-12 07:05:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[63,92,93,95]</td>
+      <td>True</td>
+      <td>63, 92, 93, 95</td>
+      <td>03-12 06:00 | 03-12 08:25 | 03-12 08:30 | 03-12 08:40</td>
+      <td>71</td>
+      <td>2026-03-12T06:40:00</td>
+      <td>4</td>
+      <td>14.448276</td>
+      <td>68465.805496</td>
+      <td>3033.445819</td>
+      <td>2026-03-12 06:00:00+00:00</td>
+      <td>2026-03-12 08:40:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[46,48,50,52]</td>
+      <td>True</td>
+      <td>46, 48, 50, 52</td>
+      <td>03-12 04:35 | 03-12 04:45 | 03-12 04:55 | 03-12 05:05</td>
+      <td>49</td>
+      <td>2026-03-12T04:50:00</td>
+      <td>4</td>
+      <td>12.171875</td>
+      <td>68766.585938</td>
+      <td>2766.13067</td>
+      <td>2026-03-12 04:35:00+00:00</td>
+      <td>2026-03-12 05:05:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[29,49,51]</td>
+      <td>True</td>
+      <td>29, 49, 51</td>
+      <td>03-12 03:10 | 03-12 04:50 | 03-12 05:00</td>
+      <td>36</td>
+      <td>2026-03-12T03:45:00</td>
+      <td>3</td>
+      <td>1.285547</td>
+      <td>69283.492578</td>
+      <td>2622.314288</td>
+      <td>2026-03-12 03:10:00+00:00</td>
+      <td>2026-03-12 05:00:00+00:00</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>Best resistance lines</h2>
+    <p class="muted">这个区块回答：当前最值得先读的代表阻力线有哪些，它们和支撑线的差别是什么，以及它们命中了哪些结构点。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>id</th>
+      <th>is_breakout</th>
+      <th>pointset_indeces</th>
+      <th>pointset_dates</th>
+      <th>breakout_index</th>
+      <th>breakout_date</th>
+      <th>num_points</th>
+      <th>m</th>
+      <th>b</th>
+      <th>score</th>
+      <th>starts_at_date</th>
+      <th>ends_at_date</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>R-[41,59,60]</td>
+      <td>True</td>
+      <td>41, 59, 60</td>
+      <td>03-12 04:10 | 03-12 05:40 | 03-12 05:45</td>
+      <td>67</td>
+      <td>2026-03-12T06:20:00</td>
+      <td>3</td>
+      <td>-6.679687</td>
+      <td>69926.757812</td>
+      <td>35305.885985</td>
+      <td>2026-03-12 04:10:00+00:00</td>
+      <td>2026-03-12 05:45:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[16,41,63]</td>
+      <td>True</td>
+      <td>16, 41, 63</td>
+      <td>03-12 02:05 | 03-12 04:10 | 03-12 06:00</td>
+      <td>59</td>
+      <td>2026-03-12T05:40:00</td>
+      <td>3</td>
+      <td>-9.018125</td>
+      <td>70022.63375</td>
+      <td>35177.966123</td>
+      <td>2026-03-12 02:05:00+00:00</td>
+      <td>2026-03-12 06:00:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[5,12,83]</td>
+      <td>True</td>
+      <td>5, 12, 83</td>
+      <td>03-12 01:10 | 03-12 01:45 | 03-12 07:40</td>
+      <td>81</td>
+      <td>2026-03-12T07:30:00</td>
+      <td>3</td>
+      <td>-3.926339</td>
+      <td>70035.787946</td>
+      <td>20911.947869</td>
+      <td>2026-03-12 01:10:00+00:00</td>
+      <td>2026-03-12 07:40:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[1,12,16,17,31]</td>
+      <td>True</td>
+      <td>1, 12, 16, 17, 31</td>
+      <td>03-12 00:50 | 03-12 01:45 | 03-12 02:05 | 03-12 02:10 | 03-12 03:20</td>
+      <td>32</td>
+      <td>2026-03-12T03:25:00</td>
+      <td>5</td>
+      <td>-27.509233</td>
+      <td>70318.78267</td>
+      <td>17609.864328</td>
+      <td>2026-03-12 00:50:00+00:00</td>
+      <td>2026-03-12 03:20:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[20,81,89]</td>
+      <td>True</td>
+      <td>20, 81, 89</td>
+      <td>03-12 02:25 | 03-12 07:30 | 03-12 08:10</td>
+      <td>84</td>
+      <td>2026-03-12T07:45:00</td>
+      <td>3</td>
+      <td>1.592853</td>
+      <td>69610.510118</td>
+      <td>15585.690465</td>
+      <td>2026-03-12 02:25:00+00:00</td>
+      <td>2026-03-12 08:10:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[16,35,39,46]</td>
+      <td>True</td>
+      <td>16, 35, 39, 46</td>
+      <td>03-12 02:05 | 03-12 03:40 | 03-12 04:00 | 03-12 04:35</td>
+      <td>40</td>
+      <td>2026-03-12T04:05:00</td>
+      <td>4</td>
+      <td>-14.282484</td>
+      <td>70106.863487</td>
+      <td>7078.11048</td>
+      <td>2026-03-12 02:05:00+00:00</td>
+      <td>2026-03-12 04:35:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[12,16,17,31]</td>
+      <td>True</td>
+      <td>12, 16, 17, 31</td>
+      <td>03-12 01:45 | 03-12 02:05 | 03-12 02:10 | 03-12 03:20</td>
+      <td>32</td>
+      <td>2026-03-12T03:25:00</td>
+      <td>4</td>
+      <td>-27.582031</td>
+      <td>70319.65625</td>
+      <td>5857.688478</td>
+      <td>2026-03-12 01:45:00+00:00</td>
+      <td>2026-03-12 03:20:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[16,21,25,27]</td>
+      <td>True</td>
+      <td>16, 21, 25, 27</td>
+      <td>03-12 02:05 | 03-12 02:30 | 03-12 02:50 | 03-12 03:00</td>
+      <td>17</td>
+      <td>2026-03-12T02:10:00</td>
+      <td>4</td>
+      <td>-48.29375</td>
+      <td>70651.04375</td>
+      <td>4603.659863</td>
+      <td>2026-03-12 02:05:00+00:00</td>
+      <td>2026-03-12 03:00:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[21,81,89]</td>
+      <td>True</td>
+      <td>21, 81, 89</td>
+      <td>03-12 02:30 | 03-12 07:30 | 03-12 08:10</td>
+      <td>84</td>
+      <td>2026-03-12T07:45:00</td>
+      <td>3</td>
+      <td>1.710937</td>
+      <td>69600.945312</td>
+      <td>4045.466105</td>
+      <td>2026-03-12 02:30:00+00:00</td>
+      <td>2026-03-12 08:10:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[69,85,88]</td>
+      <td>True</td>
+      <td>69, 85, 88</td>
+      <td>03-12 06:30 | 03-12 07:50 | 03-12 08:05</td>
+      <td>90</td>
+      <td>2026-03-12T08:15:00</td>
+      <td>3</td>
+      <td>19.008789</td>
+      <td>68232.166992</td>
+      <td>3988.341423</td>
+      <td>2026-03-12 06:30:00+00:00</td>
+      <td>2026-03-12 08:05:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[12,24,25]</td>
+      <td>True</td>
+      <td>12, 24, 25</td>
+      <td>03-12 01:45 | 03-12 02:45 | 03-12 02:50</td>
+      <td>16</td>
+      <td>2026-03-12T02:05:00</td>
+      <td>3</td>
+      <td>-41.959635</td>
+      <td>70492.1875</td>
+      <td>3877.185485</td>
+      <td>2026-03-12 01:45:00+00:00</td>
+      <td>2026-03-12 02:50:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[28,46,53,66,72,74]</td>
+      <td>True</td>
+      <td>28, 46, 53, 66, 72, 74</td>
+      <td>03-12 03:05 | 03-12 04:35 | 03-12 05:10 | 03-12 06:15 | 03-12 06:45 | 03-12 06:55</td>
+      <td>31</td>
+      <td>2026-03-12T03:20:00</td>
+      <td>6</td>
+      <td>1.74375</td>
+      <td>69365.714062</td>
+      <td>3447.057008</td>
+      <td>2026-03-12 03:05:00+00:00</td>
+      <td>2026-03-12 06:55:00+00:00</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+
+  <div class="card section-card">
+    <h2>第四层：边界层</h2>
+    <p class="muted">最后单独收束：哪些字段带事后视角、哪些结论现在能信、哪些不能直接跳到交易层，以及这页与后续 event foundation / channel 研究是什么关系。</p>
+  </div>
+
+  <div class="card">
+    <h2>时间语义 / 生命周期边界：现在看到的线，到底是“当时知道的”还是“回头看知道的”？</h2>
+    <p class="muted">这个区块回答：这页里的 bars、pivots、trendlines、breakout 标签、duplicate grouping 各自是在什么时点才算已知；也明确当前页面更接近窗口末端回看快照，而不是 bar-by-bar 在线状态机。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>object_or_field</th>
+      <th>when_it_can_be_treated_as_known</th>
+      <th>why_this_has_hindsight_or_delay</th>
+      <th>how_to_read_it_in_this_report</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>当前页面整体视角</td>
+      <td>窗口末端重新扫描后的回看快照</td>
+      <td>当前整页是对最近 96 根 bar 一次性重算后的结果汇总，而不是当时逐根 bar 在线更新的状态日志。</td>
+      <td>最适合做结构解释 / 方法对照，不应直接当成实时信号审计结果。</td>
+    </tr>
+    <tr>
+      <td>原始 OHLC bars</td>
+      <td>每根 bar 收盘后即可视为已知</td>
+      <td>历史 K 线本身没有未来函数；一旦 bar 收完，OHLC 就能被当作当时已知的数据。</td>
+      <td>所以图上的价格历史可以当基础事实，但后面的结构标签不一定能同一时点同步知道。</td>
+    </tr>
+    <tr>
+      <td>pivot 身份</td>
+      <td>需要右侧若干根 bar 之后才能确认</td>
+      <td>局部高/低点要和后面的 bars 比较，因此 pivot 的时间戳落在过去，但“它是 pivot”这件事带事后视角。</td>
+      <td>可把 pivot 当成研究锚点；若要实时使用，必须单独审计确认时点。</td>
+    </tr>
+    <tr>
+      <td>candidate / valid line</td>
+      <td>晚于 pivot 确认之后</td>
+      <td>候选线要先完成 pivot-pair 枚举，再经过基础过滤与 `num_points` 检查；当前窗口最终留下 support=133、resistance=95 条有效结果。</td>
+      <td>因此页面里的线更接近“窗口末端重新回头看得到的结构对象”，不是当时逐 bar 持有的线集合。</td>
+    </tr>
+    <tr>
+      <td>`num_points` / `pointset_indeces`</td>
+      <td>候选线扫描完后才稳定</td>
+      <td>这些字段依赖整条线在窗口内命中了哪些点；它们更像结构解释字段，而不是实时逐根累加日志。</td>
+      <td>适合解释“这条线为什么成立”，不应直接解读为交易时当场已知的完整证据。</td>
+    </tr>
+    <tr>
+      <td>`is_breakout` / `breakout_index` / `breakout_date`</td>
+      <td>事件 bar 出现后，且在窗口扫描时统一打标</td>
+      <td>当前窗口里被标成 breakout 的有效结果：support=130、resistance=93。事件 bar 可以定位到历史某一根，但标签本身是整窗扫描后给出的研究标记。</td>
+      <td>可用来解释“哪根 bar 触发了 breach”，但还不是经过 bar-by-bar 审计的正式实时触发器。</td>
+    </tr>
+    <tr>
+      <td>`duplicate_group_id` / `is_best_from_duplicate_group`</td>
+      <td>窗口末端的展示压缩层</td>
+      <td>这些字段是为了把近似重合线压缩成更可读的代表线；当前 duplicate groups：support=125、resistance=90。</td>
+      <td>它们更像报告页面的阅读辅助状态，而不是交易执行时序状态。</td>
+    </tr>
+    <tr>
+      <td>expired / retired state</td>
+      <td>当前未单独建模</td>
+      <td>当前页面会把 breakout 后的线保留为研究事件线，而不是继续追踪它何时完全失效、退场或被替换。</td>
+      <td>如果后面要做正式 signal engine，需要另建 bar-by-bar state machine 来定义进入、确认、失效与退场。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>字段解释</h2>
+    <p class="muted">这个区块回答：表里的字段具体是什么意思，避免把 `score`、`is_breakout` 等字段误读成交易结论。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>field</th>
+      <th>operational_definition</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>m</td>
+      <td>趋势线斜率；正值表示线向上倾斜，负值表示线向下倾斜。</td>
+    </tr>
+    <tr>
+      <td>b</td>
+      <td>截距；与 `m` 一起决定整条线在窗口内的价格位置。</td>
+    </tr>
+    <tr>
+      <td>num_points</td>
+      <td>这条线命中的结构点数量；通常越多，解释性越强。</td>
+    </tr>
+    <tr>
+      <td>score</td>
+      <td>pytrendline 对该线的排序分数；用于同类候选线比较，不应被误读为未来收益分数。</td>
+    </tr>
+    <tr>
+      <td>starts_at_date / ends_at_date</td>
+      <td>当前结果里该线覆盖的起止时间；用于说明线段在图上的定义区间。</td>
+    </tr>
+    <tr>
+      <td>is_best_from_duplicate_group</td>
+      <td>该线是否是相似线分组里的代表线。</td>
+    </tr>
+    <tr>
+      <td>is_breakout</td>
+      <td>该线在当前窗口里被标记为已发生 breakout；更像研究标签，不直接等于可实时交易信号。</td>
+    </tr>
+    <tr>
+      <td>pointset_indeces / pointset_dates</td>
+      <td>这条线命中的结构点索引与对应时间；用于把图上的白心圆点和表格里的锚点信息直接对上。</td>
+    </tr>
+    <tr>
+      <td>breakout_index / breakout_date</td>
+      <td>breakout 事件第一次被识别到的 bar 索引与日期；本地 bridge 会把日期对齐到真实 breakout bar。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>bar-by-bar 可用性 / research-only 边界</h2>
+    <p class="muted">这个区块回答：这页最适合支持什么判断，以及目前还不应该被过度解读成什么。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>question</th>
+      <th>answer</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>当前适合什么</td>
+      <td>报告阅读、结构 inspection、外部方法对照、后续 parallel channel 研究输入。</td>
+    </tr>
+    <tr>
+      <td>当前不适合什么</td>
+      <td>直接当正式 signal engine、全量长样本高频扫描、未经 bar-by-bar 审计就上实盘。</td>
+    </tr>
+    <tr>
+      <td>为什么不是正式信号</td>
+      <td>因为 pivot / line / breakout 的最终结果更偏研究对象；是否能 bar-by-bar 使用，还需额外做因果审计。</td>
+    </tr>
+    <tr>
+      <td>和 parallel channel 的关系</td>
+      <td>它已经覆盖了 pivot → line → breakout 这半条链，但还没解决“双边平行约束 + 通道宽度 + 多周期共振”完整问题。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>Baseline v1 status：这页当前处在什么阶段</h2>
+    <p class="muted">这个区块回答：`pytrendline_research` 现在是一个什么性质的产物——它已经完成了哪些 explainability 任务，又明确还没有承担哪些策略层职责。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>status_question</th>
+      <th>current_answer</th>
+      <th>why_it_matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>当前阶段</td>
+      <td>explainability baseline v1（可冻结的研究解释页）</td>
+      <td>当前目标是把结构识别、候选线生成、duplicate grouping、breakout 标签与时间语义讲清楚，而不是直接给出可交易结论。</td>
+    </tr>
+    <tr>
+      <td>它最适合做什么</td>
+      <td>结构解释 / 外部方法映射 / 后续 foundation report 的前置教材</td>
+      <td>后续 `trendline_event_foundation_report` 可以直接复用这里的 line lifecycle、candidate explosion、grouping 压缩与 breakout 语义。</td>
+    </tr>
+    <tr>
+      <td>它当前不是什么</td>
+      <td>正式交易信号 / bar-by-bar 审计引擎 / 最终收益证明</td>
+      <td>如果读者想知道 event 是否有 alpha / feature 价值，需要进入下一阶段的 event foundation，而不是直接从这页跳到策略结论。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>当前我应该相信什么 / 不该过度解读什么</h2>
+    <p class="muted">这个区块回答：看完前面所有定义、图和表之后，这页最适合支撑哪些判断，以及哪些结论还不能直接从这里跳到交易层。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>judgement</th>
+      <th>current_take</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>当前我应该相信什么</td>
+      <td>这页已经能可靠说明：pytrendline 怎样从 pivots 走到 candidate lines、怎样过滤、怎样 grouping、怎样把部分结构线标成 breakout 事件线。</td>
+    </tr>
+    <tr>
+      <td>当前不该过度解读什么</td>
+      <td>不要把 `is_breakout=True` 直接读成“可追的突破信号”，也不要把高 `score` 直接读成“更高收益线”；这页解释的是结构对象，不是经过事件验证后的交易规则。</td>
+    </tr>
+    <tr>
+      <td>当前最合理的使用方式</td>
+      <td>把它当成 trendline / support-resistance 结构语义的基线页：先确认定义清楚，再去审计 slope、confirmation、feature value。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>下一步建议：从 explainability baseline 到 event foundation</h2>
+    <p class="muted">这个区块回答：既然这页已经把结构定义讲清楚，后面最自然的推进顺序应该是什么；也明确不建议再回到“先追求策略净值”的旧路径。</p>
+    <div class="table-wrap"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>priority</th>
+      <th>next_step</th>
+      <th>why_now</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>进入 `trendline_event_foundation_report`</td>
+      <td>把当前页面里的结构线对象转成 event taxonomy、confirmation ladder、slope buckets 与 go/no-go 审计。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>先做事件研究，再做策略</td>
+      <td>优先比较 breakout vs rebound、raw vs confirmed、不同 slope bucket 的差异，而不是马上追求完整策略收益最大化。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>parallel channel 暂时保持候选分支</td>
+      <td>只有当 trendline event foundation 给出明确正面证据、且 channel 定义足够清晰时，再把它升回高优先级。</td>
+    </tr>
+  </tbody>
+</table></div>
+  </div>
+
+  <div class="card">
+    <h2>从 pytrendline 到 parallel channel 的映射</h2>
+    <p class="muted">这个区块回答：当前这页对后续 parallel channel 研究到底已经提供了哪些可复用定义，还缺哪一半没有解决。</p>
+    <table class="tbl">
+      <thead><tr><th>问题</th><th>当前回答</th></tr></thead>
+      <tbody>
+        <tr><td>它已经解决了什么？</td><td>已经把 <code>pivot → candidate lines → best lines → breakout labels</code> 这条链跑通了。</td></tr>
+        <tr><td>它还没解决什么？</td><td>还没有“双边平行约束 / 通道宽度定义 / mid-line 语义 / 多周期共振 / rebound 规则”的完整定义。</td></tr>
+        <tr><td>对后续最有价值的是什么？</td><td>给我们一个可解释的外部基线：先把 line 是怎么来的讲清楚，再决定哪些定义要迁移进平行通道研究。</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Artifacts</h2>
+    <p class="muted">这个区块回答：如果你要回到原始产物进一步核对，这一页背后有哪些 CSV / PNG / JSON 文件可供复查。</p>
+    <ul>
+      <li><a href="../../artifacts/pytrendline_research/candles_window.csv">candles_window.csv</a></li>
+      <li><a href="../../artifacts/pytrendline_research/support_trendlines.csv">support_trendlines.csv</a></li>
+      <li><a href="../../artifacts/pytrendline_research/resistance_trendlines.csv">resistance_trendlines.csv</a></li>
+      <li><a href="../../artifacts/pytrendline_research/summary.json">summary.json</a></li>
+      <li><a href="../../artifacts/pytrendline_research/filter_waterfall.png">filter_waterfall.png</a></li>
+      <li><a href="../../artifacts/pytrendline_research/candidate_lines_before_filter.png">candidate_lines_before_filter.png</a></li>
+      <li><a href="../../artifacts/pytrendline_research/duplicate_grouping_before_after.png">duplicate_grouping_before_after.png</a></li>
+      <li><a href="../../artifacts/pytrendline_research/line_lifecycle_state_diagram.svg">line_lifecycle_state_diagram.svg</a></li>
+      <li><a href="../../artifacts/pytrendline_research/step1_close_and_pivots.png">step1_close_and_pivots.png</a></li>
+      <li><a href="../../artifacts/pytrendline_research/step2_support_lines.png">step2_support_lines.png</a></li>
+      <li><a href="../../artifacts/pytrendline_research/step3_resistance_lines.png">step3_resistance_lines.png</a></li>
+      <li><a href="../../artifacts/pytrendline_research/step4_breakout_only.png">step4_breakout_only.png</a></li>
+      <li><a href="../../artifacts/pytrendline_research/trendlines_overlay.png">trendlines_overlay.png</a></li>
+    </ul>
+  </div>
+</body>
+</html>

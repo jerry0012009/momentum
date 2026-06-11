@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 YoloBotV2 只读成“大而全 perp bot”：对 short-cycle desk，更该先测的是「crowded-long fragility × liquidation-unwind continuation」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 YoloBotV2 只读成“大而全 perp bot”：对 short-cycle desk，更该先测的是「crowded-long fragility × liquidation-unwind continuation」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-13 19:17 UTC</span>
+      <span class="pill">研究时间：2026-04-13 19:13 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`backend/core/fragility.py` + `backend/core/cascade_engine.py` + `backend/core/factor_scoring.py`）+ Binance USDⓈ-M `15m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha/event-driven/positioning/fragility/liquidation/cascade/crowding/funding/open-interest/top-trader/continuation/exhaustion/bounce/btc/eth/sol/binance-perpetual/15m/5m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：源码规则 + 一个月公共数据 portability probe + desk-level strategy reframing</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-13_1913_crowdedlong-fragility-cascade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-13 19:13 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>backend/core/fragility.py</code> + <code>backend/core/cascade_engine.py</code> + <code>backend/core/factor_scoring.py</code>）+ Binance USDⓈ-M <code>15m</code> public-data portability probe</li>
+<li>主题标签：raw-alpha/event-driven/positioning/fragility/liquidation/cascade/crowding/funding/open-interest/top-trader/continuation/exhaustion/bounce/btc/eth/sol/binance-perpetual/15m/5m/repo/public-data/cost/risk</li>
+<li>证据类型：源码规则 + 一个月公共数据 portability probe + desk-level strategy reframing</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当市场处于“拥挤多头且脆弱”的状态时，第一次出现 <code>15m</code> 级别的价格下跌 + OI 同步下掉，往往不是普通回撤，而是 forced unwind 开始；其后续 <code>15m~60m</code> 更容易沿下行方向继续重定价。repo 里的 exhaustion / bounce 只是第二阶段，不是 alpha 本体。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 先把一句话说清楚：这篇东西的 base alpha 是什么？</h2>
+<p>&gt; <strong>base alpha = crowded-long fragility → liquidation-unwind continuation。</strong></p>
+<p>不是“funding 高了就空”。 也不是“OI 高了就危险”。 更不是把 <code>fragility</code> 当成一个抽象风险分数挂在看板上。</p>
+<p>这份 repo 真正适合 desk 拆出来的，是一条 <strong>事件驱动 raw alpha</strong>：</p>
+<ol>
+<li><strong>先识别哪一边拥挤而脆弱；</strong></li>
+<li><strong>再等第一脚 against-crowd move 把 forced unwind 真正打出来；</strong></li>
+<li><strong>Phase B 先做顺着清算方向的 continuation；</strong></li>
+<li><strong>Phase C / D 再考虑 exhaustion 和反打 bounce。</strong></li>
+</ol>
+<p>翻成人话：</p>
+<ul>
+<li>第一段赚的是 <strong>拥挤仓位被迫平掉时的顺势延续</strong>；</li>
+<li>第二段才是 <strong>瀑布末端的反抽</strong>；</li>
+<li>所以对 short-cycle desk，<strong>最值得先测的是 continuation leg</strong>，不是先去赌 knife-catch。</li>
+</ul>
+<h2>2. 这次看了什么</h2>
+<h3>主来源（repo）</h3>
+<ul>
+<li><strong>Author / Owner：</strong> GitHub owner <code>uponly-trades</code></li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> *YoloBotV2*</li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/uponly-trades/YoloBotV2&gt;">https://github.com/uponly-trades/YoloBotV2&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/uponly-trades/YoloBotV2&gt;">https://github.com/uponly-trades/YoloBotV2&gt;</a></li>
+<li><strong>Repo 描述：</strong> <code>Autonomous crypto perpetual futures trading bot with Nautilus-inspired strategy filters</code></li>
+<li><strong>本轮观测到的最新提交时间：</strong> <code>2026-04-14T01:30:22+07:00</code>（shallow clone 本地可见）</li>
+</ul>
+<h3>本轮直接审的关键文件</h3>
+<ul>
+<li><code>backend/core/fragility.py</code></li>
+<li><code>backend/core/cascade_engine.py</code></li>
+<li><code>backend/core/factor_scoring.py</code></li>
+</ul>
+<h3>本轮自建 probe 产物</h3>
+<ul>
+<li>脚本：<code>reports/artifacts/quant_digests/2026-04-13_yolobot_fragility_cascade_probe.py</code></li>
+<li>汇总：<code>reports/artifacts/quant_digests/yolobot_fragility_cascade_probe_summary_2026-04-13.json</code></li>
+<li>明细：<code>reports/artifacts/quant_digests/yolobot_fragility_cascade_probe_detail_2026-04-13.csv</code></li>
+</ul>
+<h2>3. 一句话核心结论 + 一句话证明方式</h2>
+<h3>一句话核心结论</h3>
+<p>&gt; <strong>这份 repo 表面看像“多策略 perp bot 拼装体”，但真正值得 desk 收下的，是 <code>fragility score → cascade state machine</code> 这条两阶段 event-driven raw alpha 壳；第一阶段先做 crowded-side unwind continuation，第二阶段再做 exhaustion bounce。</strong></p>
+<h3>一句话证明方式</h3>
+<p>&gt; <strong>证明不靠 README 口号，而靠源码结构本身：<code>fragility.py</code> 先把拥挤/脆弱方向状态化，<code>cascade_engine.py</code> 再把 Phase A/B/C/D/E 串成完整交易生命周期；我再用 Binance 公共 <code>funding + OI + top-trader ratio + 15m return</code> 做一个公开 proxy，得到 BTC/ETH 核心 lane 在近一个月 <code>12</code> 个事件里，事件后 <code>15m</code> 平均空头收益 <code>+5.96 bps</code>、事件后 <code>60m</code> 平均空头收益 <code>+14.29 bps</code>。</strong></p>
+<h2>4. 为什么这轮值得写，而不是继续补又一个 pairs / basis / OFI 题</h2>
+<p>因为它补的是当前池子里相对少的一类：</p>
+<ol>
+<li><strong>它不是纯 overlay。</strong></li>
+</ol>
+<ul>
+<li><code>fragility</code> 虽然长得像风险分数；</li>
+<li>但 repo 实际把它接成了 <strong>可独立交易的 event router</strong>；</li>
+<li>真正的交易对象是“拥挤方向被迫 unwind 的后续价格路径”。</li>
+</ul>
+<ol>
+<li><strong>它不是 funding alpha 的重复翻版。</strong></li>
+</ol>
+<ul>
+<li>funding 在这里只是 crowding 因子之一；</li>
+<li>alpha 本体不是吃 funding，而是吃 <strong>forced unwind 带来的短时 drift</strong>。</li>
+</ul>
+<ol>
+<li><strong>它对 <code>5m/15m</code> desk 很自然。</strong></li>
+</ol>
+<ul>
+<li>regime / factor 识别可以慢一点；</li>
+<li>但真正执行可以落到 <code>5m</code> 子腿；</li>
+<li>非常适合做 <strong>event admission on 15m, execution on 5m</strong> 的架构。</li>
+</ul>
+<h2>5. repo 真正提供了什么</h2>
+<h2>5.1 <code>fragility.py</code>：不是温度计，而是“哪边先爆”的 pre-entry gate</h2>
+<p><code>compute_fragility_score()</code> 把 7 类因子揉成一个 <code>0~100</code> 的脆弱度分数，并同时给出 <code>fragile_direction</code>：</p>
+<ol>
+<li><code>OI percentile</code>（最高给 <code>20</code> 分）</li>
+<li><code>Funding velocity / squeeze risk</code>（最高给 <code>15</code> 分）</li>
+<li><code>CVD divergence</code>（最高给 <code>15</code> 分）</li>
+<li><code>Bid depth decay</code>（最高给 <code>10</code> 分）</li>
+<li><code>Orderbook imbalance trend</code>（最高给 <code>10</code> 分）</li>
+<li><code>Whale pulse</code>（最高给 <code>5</code> 分）</li>
+<li><code>Volume climax</code>（最高给 <code>5</code> 分）</li>
+</ol>
+<p>分层阈值：</p>
+<ul>
+<li><code>&gt;= 90</code>：<code>EXTREME</code></li>
+<li><code>&gt;= 70</code>：<code>HIGH</code></li>
+<li><code>&gt;= 50</code>：<code>MODERATE</code></li>
+<li><code>&gt;= 30</code>：<code>ELEVATED</code></li>
+</ul>
+<p>关键不在“分数高低”，而在： &gt; <strong>repo 明确在问“现在更脆的是多头还是空头”。</strong></p>
+<p>这就已经不是 generic risk overlay 语言了，而是 <strong>交易方向 admission 语言</strong>。</p>
+<h2>5.2 <code>factor_scoring.py</code>：fragility 是刻意放在主方向投票之外的</h2>
+<p>这个文件很重要，因为它明确把系统拆成两层：</p>
+<ul>
+<li>主方向投票：<code>MOMENTUM / TREND / VOLUME / STRUCTURE / DERIVATIVES</code></li>
+<li>fragility-only 非投票指标：<code>liq cluster / bid depth decay / OB imbalance trend / volume climax ...</code></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>普通信号负责回答“应该偏多还是偏空”；</li>
+<li><code>fragility</code> 负责回答“哪边会先被爆、有没有必要 override 原方向”。</li>
+</ul>
+<p>对 desk 来说，这个拆法非常有价值，因为它允许你：</p>
+<ul>
+<li>不改已有 trend / MR / OFI 模型；</li>
+<li>单独新增一条 <strong>crowding unwind 事件腿</strong>。</li>
+</ul>
+<h2>5.3 <code>cascade_engine.py</code>：真正有价值的是 5-phase 生命周期，不是一个静态信号</h2>
+<p>repo 把 cascade 写成了一个状态机：</p>
+<ul>
+<li><strong>Phase A — PRE_CASCADE</strong>：<code>fragility &gt;= 90</code> 时启动</li>
+<li><strong>Phase B — CASCADE_ACTIVE</strong>：regime 切到 <code>R5_ANOMALY / R6_CRISIS</code></li>
+<li><strong>Phase C — EXHAUSTION</strong>：<code>7</code> 个 exhaustion signal 里满足 <code>4+</code></li>
+<li><strong>Phase D — BOUNCE</strong>：<code>Supertrend reclaim</code> 或 <code>VWAP reclaim</code></li>
+<li><strong>Phase E — NORMALIZING</strong>：<code>fragility &lt; 30</code> 且进入 <code>R4_REVERSAL</code>，或超时 <code>4h</code></li>
+</ul>
+<p>其中最有用的是 Phase B/C/D：</p>
+<h3>Phase B：顺着 forced unwind 做 continuation</h3>
+<p>repo 注释里直接写了：</p>
+<ul>
+<li><code>Cascade active (force-close fragile positions, trail shorts)</code></li>
+</ul>
+<p>如果脆弱的是多头，Phase B 的第一反应就是： &gt; <strong>顺着下跌方向继续做。</strong></p>
+<p>这就是本轮认为最该先测的 raw alpha leg。</p>
+<h3>Phase C：exhaustion 不是拍脑袋，而是 7 选 4</h3>
+<p>源码里写的 7 个 exhaustion signal 包括：</p>
+<ol>
+<li><code>CVD reversal</code></li>
+<li><code>Volume climax</code></li>
+<li><code>Bid depth recovering</code></li>
+<li><code>Funding stabilized</code></li>
+<li><code>15m RSI extreme</code></li>
+<li><code>Price stabilizing</code></li>
+<li><code>Minimum cascade duration &gt; 30 min</code></li>
+</ol>
+<p>这很像 desk 会接受的结构：</p>
+<ul>
+<li>不要求单指标神奇翻转；</li>
+<li>而是要求 <strong>多证据拼图</strong>。</li>
+</ul>
+<h3>Phase D：bounce 触发比“抄底”严格得多</h3>
+<p>repo 不是说一看到跌狠了就反手， 而是要求：</p>
+<ul>
+<li>先到 <code>EXHAUSTION</code></li>
+<li>再满足 <code>Supertrend reclaim OR VWAP reclaim</code></li>
+</ul>
+<p>也就是说： &gt; <strong>repo 里真正可以迁移的不是“逢暴跌抄底”，而是“先做瀑布延续，再等结构 reclaim 做 bounce”。</strong></p>
+<h2>6. 我做的 Binance public-data portability probe：先测 continuation leg，不先赌 bounce</h2>
+<h2>6.1 为什么只能做 proxy，而不是 1:1 复刻 repo</h2>
+<p>repo 的完整 <code>fragility</code> 需要：</p>
+<ul>
+<li>CVD divergence</li>
+<li>bid depth decay</li>
+<li>orderbook imbalance trend</li>
+<li>whale pulse</li>
+<li>volume climax</li>
+</ul>
+<p>这些并不都能用一组简单公共历史接口无损复原。</p>
+<p>所以本轮只做一个 <strong>公开、低门槛、最小可复现 proxy</strong>，专门近似 repo 的“多头脆弱并开始被打”这条支路：</p>
+<ul>
+<li><code>fundingRate &gt; 0</code>：多头付费，方向先验偏拥挤多头</li>
+<li><code>|funding|</code> 位于近期高分位（<code>fund_abs_pct &gt;= 0.6</code>）</li>
+<li><code>openInterestValue</code> 位于近期高分位（<code>oi_value_pct &gt;= 0.6</code>）</li>
+<li><code>topLongShortPositionRatio</code> 位于近期高分位（<code>tls_pct &gt;= 0.8</code>）</li>
+<li>当根 <code>15m</code> 收益 <code>&lt;= -0.20%</code></li>
+<li>当根 <code>15m</code> OI 变化 <code>&lt;= -0.25%</code></li>
+</ul>
+<p>翻成人话： &gt; <strong>先要求 crowding 明确存在，再要求“价格跌 + OI 掉”这脚 liquidation-style unwind 已经开始。</strong></p>
+<h2>6.2 数据与口径</h2>
+<ul>
+<li><strong>数据源：</strong> Binance USDⓈ-M public API</li>
+<li><code>/fapi/v1/klines</code></li>
+<li><code>/futures/data/openInterestHist</code></li>
+<li><code>/futures/data/topLongShortPositionRatio</code></li>
+<li><code>/fapi/v1/fundingRate</code></li>
+<li><strong>公开性：</strong> 完全公开，无需 key</li>
+<li><strong>更新频率：</strong> <code>15m</code> 可稳定更新；funding 为 <code>8h</code></li>
+<li><strong>样本区间：</strong> 约 <code>2026-03-13 19:15 UTC</code> 至 <code>2026-04-13 19:00 UTC</code></li>
+<li><strong>标的：</strong> <code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li><strong>最小实验：</strong> 事件出现后，直接测下一根 <code>15m</code> 和后四根 <code>15m</code>（约 <code>60m</code>）空头收益</li>
+</ul>
+<h2>6.3 先记最重要的 5 个数</h2>
+<h3>数 1：BTC 这条腿是最干净的</h3>
+<p><code>BTCUSDT</code>：</p>
+<ul>
+<li>事件数：<code>5</code></li>
+<li>事件后 <code>15m</code> 平均空头收益：<code>+10.76 bps</code></li>
+<li>事件后 <code>60m</code> 平均空头收益：<code>+21.13 bps</code></li>
+<li><code>15m / 60m</code> 胜率：都为 <code>80%</code></li>
+</ul>
+<p>这说明： &gt; <strong>至少在 BTC 上，“crowded long + down bar + OI flush” 更像 cascade 开始，而不是已经跌完。</strong></p>
+<h3>数 2：ETH 也偏正，但没 BTC 干净</h3>
+<p><code>ETHUSDT</code>：</p>
+<ul>
+<li>事件数：<code>7</code></li>
+<li>事件后 <code>15m</code> 平均空头收益：<code>+2.54 bps</code></li>
+<li>事件后 <code>60m</code> 平均空头收益：<code>+9.40 bps</code></li>
+<li>胜率：<code>57.1% / 57.1%</code></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>ETH 不是完全没用；</li>
+<li>但它更像 <strong>需要额外过滤</strong> 的第二优先级标的，不能和 BTC 同等看待。</li>
+</ul>
+<h3>数 3：BTC+ETH 核心 lane 合并后仍是正的</h3>
+<p>把 <code>BTC + ETH</code> 合并看：</p>
+<ul>
+<li>事件数：<code>12</code></li>
+<li>事件后 <code>15m</code> 平均空头收益：<code>+5.96 bps</code></li>
+<li>事件后 <code>60m</code> 平均空头收益：<code>+14.29 bps</code></li>
+</ul>
+<p>这很像一个 desk 可接受的第一版结论： &gt; <strong>先别把它当“全市场全币通用”；但在 BTC/ETH 主流 perp 上，已经值得继续做第二轮更细的分层实验。</strong></p>
+<h3>数 4：SOL 太 sparse，不能现在就宣布可迁移</h3>
+<p><code>SOLUSDT</code>：</p>
+<ul>
+<li>事件数：<code>2</code></li>
+<li><code>15m</code> 空头收益均值是负的（<code>-10.27 bps</code>）</li>
+<li><code>60m</code> 空头收益均值是正的（<code>+32.18 bps</code>）</li>
+</ul>
+<p>这个结果最合理的读法不是“SOL 也行”，而是： &gt; <strong>SOL 当前样本太少，暂时更像需要单独分 asset behavior 的第二阶段对象。</strong></p>
+<h3>数 5：这条线更像 <code>60m</code> 内 drift，而不是单根秒杀型信号</h3>
+<p>三资产合并：</p>
+<ul>
+<li>总事件数：<code>14</code></li>
+<li>事件后 <code>15m</code> 平均空头收益：<code>+3.64 bps</code></li>
+<li>事件后 <code>60m</code> 平均空头收益：<code>+16.85 bps</code></li>
+</ul>
+<p>这意味着：</p>
+<ul>
+<li>它不是那种只赌下一根的超高频点火；</li>
+<li>更像 <strong>事件触发后 <code>15m~60m</code> 的延续漂移</strong>；</li>
+<li>因此执行层更适合：</li>
+<li><code>15m</code> admission</li>
+<li><code>5m</code> child execution</li>
+<li><code>&lt;= 60m</code> 的 hard time stop</li>
+</ul>
+<h2>7. 这条线对 short-cycle desk 的正确读法</h2>
+<h2>7.1 它是 raw alpha，不是 regime/filter/overlay</h2>
+<p>因为它已经能独立回答：</p>
+<ul>
+<li>什么时候进？</li>
+<li>做多还是做空？</li>
+<li>持有多久？</li>
+<li>什么时候退出？</li>
+<li>如何定义无效？</li>
+</ul>
+<p>所以它不是“给别的 alpha 加一层 veto”那么简单。 它本身就是： &gt; <strong>event-driven liquidation-continuation raw alpha</strong>。</p>
+<h2>7.2 但它天然是“两段式”而不是“一把梭”</h2>
+<p>不要把 repo 读成一个单点信号。 更准确的 desk 拆法是：</p>
+<ol>
+<li><strong>Continuation leg（优先）</strong></li>
+</ol>
+<ul>
+<li>crowded side 开始 unwind</li>
+<li>先顺着做</li>
+</ul>
+<ol>
+<li><strong>Bounce leg（次优先）</strong></li>
+</ol>
+<ul>
+<li>只有在 exhaustion + reclaim 后再反打</li>
+</ul>
+<p>当前阶段，显然应先做第 1 条。</p>
+<h2>7.3 最像怎样的完整策略壳？</h2>
+<p>第一版 desk shell 我会这样写：</p>
+<h3>Admission（15m）</h3>
+<p>满足以下同时成立时，允许开空：</p>
+<ul>
+<li>正 funding 且处于相对高位</li>
+<li>OI 高分位</li>
+<li>top-trader position ratio 偏多高分位</li>
+<li>当前 <code>15m</code> 跌幅达到阈值</li>
+<li>当前 <code>15m</code> OI 同时明显下掉</li>
+</ul>
+<h3>Entry（5m child）</h3>
+<ul>
+<li>事件 <code>15m</code> 收盘后，不直接追最后一秒；</li>
+<li>在下一根 <code>5m</code>：</li>
+<li>若价格未明显反抽回事件 K 中位之上，则允许做空；</li>
+<li>若反抽过深，则降级或放弃。</li>
+</ul>
+<h3>Exit</h3>
+<p>优先级：</p>
+<ol>
+<li><code>60m</code> hard timer</li>
+<li>价格重新站回事件 VWAP / 事件 K 中位之上</li>
+<li>OI 停止继续下掉，且下一根出现明显反包</li>
+</ol>
+<h3>Sizing</h3>
+<ul>
+<li>第一版建议单笔风险 <code>25~35 bps NAV</code></li>
+<li><code>BTC/ETH</code> 最多同向 <code>2</code> 笔</li>
+<li>暂不把 <code>SOL</code> 放进第一批 live paper list</li>
+</ul>
+<h3>Cost</h3>
+<ul>
+<li>这条线不是极薄 edge；</li>
+<li>但 <code>15m</code> 端均值也没有豪华到可以无脑 taker 两边乱扫；</li>
+<li>第一轮回测至少要压：</li>
+<li>单边 <code>2 bps / 4 bps / 6 bps</code></li>
+<li>maker/taker 混合成交</li>
+</ul>
+<h2>8. 这条线现在最大的风险是什么</h2>
+<h3>风险 1：公共 proxy 只近似了 repo 的一半</h3>
+<p>当前 probe 没有复刻：</p>
+<ul>
+<li>CVD divergence</li>
+<li>bid-depth decay</li>
+<li>OB imbalance trend</li>
+<li>whale pulse</li>
+</ul>
+<p>所以当前结果更像： &gt; <strong>证明“这条原理值得测”，还不是证明“repo 全状态机已经可直接照抄上线”。</strong></p>
+<h3>风险 2：极端暴跌日容易把“已经跌完”混进来</h3>
+<p>明细里能看到某些 <code>2026-03-16</code> 的 BTC/ETH 事件， 事件后下一根并没有继续下，而是直接反抽。</p>
+<p>这说明需要再加一层：</p>
+<ul>
+<li><strong>不要在 vol_z 极端过高且已经进入 panic endgame 时再追。</strong></li>
+</ul>
+<p>换句话说：</p>
+<ul>
+<li><code>fragility → cascade</code> 有用；</li>
+<li>但 <strong>“已经开始 unwind”</strong> 和 <strong>“已经 unwind 到尾声”</strong> 之间，仍然要做 phase split。</li>
+</ul>
+<h3>风险 3：不同资产的 phase 长度并不一致</h3>
+<ul>
+<li>BTC 更干净</li>
+<li>ETH 勉强可做第二梯队</li>
+<li>SOL 太 sparse</li>
+</ul>
+<p>所以不要一开始就做“统一阈值全市场广播”。</p>
+<h2>9. 下一步怎么测（必须项）</h2>
+<h3>9.1 先把 Phase B continuation 和 Phase D bounce 分开做标签</h3>
+<p>下一轮不要再把所有事件揉在一起。 至少拆成两套 label：</p>
+<ol>
+<li><strong>Continuation label</strong></li>
+</ol>
+<ul>
+<li><code>t+1 / t+2 / t+4</code> 空头收益</li>
+</ul>
+<ol>
+<li><strong>Exhaustion/bounce label</strong></li>
+</ol>
+<ul>
+<li>事件后是否出现 <code>VWAP reclaim / 15m RSI extreme / OI 停跌</code></li>
+<li>再测反手多单收益</li>
+</ul>
+<h3>9.2 用更多公共因子逼近 repo 原版 <code>fragility</code></h3>
+<p>下一轮建议补进：</p>
+<ul>
+<li><code>takerlongshortRatio</code></li>
+<li><code>globalLongShortAccountRatio</code></li>
+<li><code>aggTrades</code> 近似 delta/CVD</li>
+<li>深度快照的 bid/ask imbalance</li>
+</ul>
+<p>目标不是炫技，而是把 repo 里 7 因子中的至少 5 个，用公共接口近似出来。</p>
+<h3>9.3 先只做 BTC/ETH，不急着推全市场</h3>
+<p>第一轮正式回测建议：</p>
+<ul>
+<li>资产：<code>BTCUSDT / ETHUSDT</code></li>
+<li>事件框架：<code>15m admission + 5m execution</code></li>
+<li>持有：<code>15m / 30m / 60m</code> 三档</li>
+<li>成本：<code>2/4/6 bps</code> 三档</li>
+<li>stop：<code>0.5 x 15m ATR</code> 与事件 K 高点二选一</li>
+</ul>
+<h3>9.4 加一个“尾声 veto”</h3>
+<p>最应该马上补的不是更多 fancy features， 而是一个简单 veto：</p>
+<p>&gt; <strong>若事件 bar 的 <code>vol_z</code> 已经极端高，且下一根出现 OI 不再继续下掉，则不追 continuation，改等 bounce。</strong></p>
+<p>这一步很可能直接决定这条线能不能从“研究有趣”变成“实盘可做”。</p>
+<h2>10. 最后的 desk 结论</h2>
+<p>如果只问一句“这轮该不该进素材池”，我的答案是：<strong>该，而且优先级不低。</strong></p>
+<p>但要把结论说准：</p>
+<p>&gt; <strong>应进入素材池的，不是“YoloBotV2 全家桶”，而是其中 <code>crowded-side fragility → unwind continuation → exhaustion reclaim</code> 这条事件状态机。当前最值得先做的 leg 是 BTC/ETH 上的 continuation short；bounce leg 留到第二轮。</strong></p>
+<p>一句话落地： &gt; <strong>先把它当成 <code>15m</code> 事件 admission、<code>5m</code> 子执行的 liquidation-continuation raw alpha 去测；不要一上来就把它写成万能风险面板，也不要急着先赌末端反转。</strong></p>
+</body>
+</html>

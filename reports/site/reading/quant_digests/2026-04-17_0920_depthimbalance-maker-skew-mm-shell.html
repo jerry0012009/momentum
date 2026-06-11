@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2025/2026 OBI 仓只读成“做市工程模板”：对 short-cycle desk，更该先保留的是「order book imbalance → 几秒级 mid-price 漂移」这条 base alpha，再把 maker quote skew 包成完整策略壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2025/2026 OBI 仓只读成“做市工程模板”：对 short-cycle desk，更该先保留的是「order book imbalance → 几秒级 mid-price 漂移」这条 base alpha，再把 maker quote skew 包成完整策略壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-17 09:22 UTC</span>
+      <span class="pill">研究时间：2026-04-17 09:20 UTC</span>
+      <span class="pill">类型：2025/2026 GitHub repo source audit（`README.md` + `backtest_standx_OBI.py` + `backtest_standx_OBI_optuna.py` + `docs/OBI_half_spread.md`）+ Binance USDⓈ-M 公共深度快照 live probe（BTCUSDT，180s，top20）</span>
+      <span class="pill">主题标签：raw-alpha / microstructure / order-book-imbalance / maker / market-making / quote-skew / fair-value / volatility-spread / position-skew / binance / standx / repo / public-data / 1m / 3m / 5m</span>
+      <span class="pill">证据类型：GitHub repo 实现 + 本地 live public-data sanity probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-17_0920_depthimbalance-maker-skew-mm-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-17 09:20 UTC</li>
+<li>类型：2025/2026 GitHub repo source audit（<code>README.md</code> + <code>backtest_standx_OBI.py</code> + <code>backtest_standx_OBI_optuna.py</code> + <code>docs/OBI_half_spread.md</code>）+ Binance USDⓈ-M 公共深度快照 live probe（BTCUSDT，180s，top20）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>盘口里近端 bid depth 明显大于 ask depth 时，未来几秒 mid-price 更容易往上漂；反之更容易往下漂。repo 里的 maker quote skew / position skew / dynamic half-spread，不是 alpha 本体，而是把这条 ultra-short microstructure alpha 包成可交易做市壳。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / microstructure / order-book-imbalance / maker / market-making / quote-skew / fair-value / volatility-spread / position-skew / binance / standx / repo / public-data / 1m / 3m / 5m</li>
+<li>证据类型：GitHub repo 实现 + 本地 live public-data sanity probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主材料是一个比较新的 GitHub 仓：</p>
+<ul>
+<li><strong>Author / Maintainer：</strong> djienne</li>
+<li><strong>Year：</strong> 2025 创建，2026 仍有更新</li>
+<li><strong>Title：</strong> *StandX Market Making Backtest BTC*</li>
+<li><strong>Venue：</strong> GitHub repo（内含数据采集、格式转换、hftbacktest 回测、Optuna 搜参）</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/djienne/StandX_Market_Making_Backtest_BTC&gt;">https://github.com/djienne/StandX_Market_Making_Backtest_BTC&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/djienne/StandX_Market_Making_Backtest_BTC&gt;">https://github.com/djienne/StandX_Market_Making_Backtest_BTC&gt;</a></li>
+</ul>
+<p>先把一句话讲清楚：</p>
+<p>&gt; <strong>这份东西最值钱的地方，不是“会做市”这四个字，而是它把一条很清楚的 base alpha 写成了代码：<code>OBI 极端值 -&gt; fair value 偏移 -&gt; 双边挂单向有利方向倾斜</code>。</strong></p>
+<p>也就是说，真正该 intake 的第一层不是 maker shell，而是：</p>
+<ul>
+<li><strong>盘口买盘更厚时，未来几秒更容易向上；</strong></li>
+<li><strong>盘口卖盘更厚时，未来几秒更容易向下。</strong></li>
+</ul>
+<h2>2. 核心结论</h2>
+<h3>2.1 一句话结论</h3>
+<p>&gt; <strong>这是一条可以独立成型的 microstructure raw alpha：OBI 先给 ultra-short 方向偏置，做市外壳只是把“预测几秒漂移”翻译成“该把 bid 往近处挪，还是把 ask 往远处摆”。</strong></p>
+<h3>2.2 一句话它是怎么证明的</h3>
+<p>&gt; <strong>repo 用逐笔/逐档簿记回放 + maker/taker 费用 + latency + position cap 去回测；我又用 Binance 公共 <code>top20 depth</code> 做了一个 180 秒 live sanity probe，确认 OBI 极端值和随后 3~20 秒的 mid 漂移方向确实有关。</strong></p>
+<h3>2.3 为什么我认为值得进素材池</h3>
+<ul>
+<li>它的 <strong>base alpha 讲得清楚</strong>，不是“黑箱 market making”；</li>
+<li>repo 已经把 <strong>entry / quote placement / sizing / fee / latency / inventory skew</strong> 都写进壳里；</li>
+<li>这条信号天然贴近 <code>1m/3m</code>，再往上也能服务 <code>5m</code> 的 execution veto，而不是又一篇日频换皮故事。</li>
+</ul>
+<h2>3. repo 里最值钱的 3 层结构</h2>
+<h3>3.1 第一层：base alpha = near-book imbalance 预测几秒级漂移</h3>
+<p><code>backtest_standx_OBI.py</code> 里核心信号很直白：</p>
+<ul>
+<li>在 <code>looking_depth</code> 范围内累计 bid / ask 深度；</li>
+<li>算 <code>imbalance = bid_qty - ask_qty</code>；</li>
+<li>再对 rolling window 做 z-score，得到 <code>alpha</code>；</li>
+<li>用 <code>fair_price = mid_price + c1 * alpha</code> 把公允价往强侧推。</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>盘口里如果买单墙更厚，系统就认为“真实公允价”应该略高于当前 mid；如果卖单墙更厚，就认为公允价应略低。</strong></p>
+<h3>3.2 第二层：半价差不是固定写死，而是“波动率决定挂多远”</h3>
+<p>repo 不是机械挂一格，而是把 half-spread 绑定到短窗波动率：</p>
+<ul>
+<li>默认 <code>step_ns=100ms</code></li>
+<li><code>window_steps=6000</code>，大约 <strong>10 分钟 warm-up</strong></li>
+<li><code>update_interval_steps=50</code></li>
+<li><code>half_spread_tick = volatility * vol_to_half_spread</code></li>
+</ul>
+<p>意思很简单：</p>
+<ul>
+<li>市场动得快，就挂宽一点，少被白白打掉；</li>
+<li>市场安静，就挂窄一点，提高成交率。</li>
+</ul>
+<h3>3.3 第三层：inventory skew 把 alpha 包成完整做市壳</h3>
+<p>repo 还把持仓塞回报价：</p>
+<ul>
+<li><code>normalized_position = position * mid / max_position_dollar</code></li>
+<li>bid / ask depth 会被 <code>skew</code> 按持仓方向调整；</li>
+<li>持仓太长就少买多卖，持仓太短就少卖多买。</li>
+</ul>
+<p>所以它不是“只会看方向”，而是：</p>
+<p>&gt; <strong>先用 OBI 决定哪边更值得主动贴近，再用 inventory skew 控制别把自己越做越歪。</strong></p>
+<h2>4. 我补的 public-data 快检</h2>
+<p>我额外跑了一个很轻的 live probe：</p>
+<ul>
+<li><strong>数据源：</strong> Binance USDⓈ-M 公共 <code>depth</code> API</li>
+<li><strong>标的：</strong> <code>BTCUSDT</code></li>
+<li><strong>口径：</strong> 连续 <code>180s</code>、每秒抓一次 <code>top20</code> 深度</li>
+<li><strong>指标：</strong> 用 top20 depth 算 OBI；看当前 OBI 分位极端值，对未来 <code>3/5/10/20s</code> mid return 的影响</li>
+<li><strong>artifact：</strong></li>
+<li><code>reports/artifacts/quant_digests/2026-04-17_depth_imbalance_maker_skew_probe.py</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-17_depth_imbalance_maker_skew_probe_summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-17_depth_imbalance_maker_skew_probe_samples.csv</code></li>
+</ul>
+<h3>4.1 关键数字</h3>
+<ul>
+<li><strong>5s horizon：</strong> 高 OBI 桶平均 <code>+0.589 bps</code>，低 OBI 桶平均 <code>-0.797 bps</code></li>
+<li><strong>10s horizon：</strong> 高 OBI 桶平均 <code>+0.972 bps</code>，低 OBI 桶平均 <code>-0.628 bps</code></li>
+<li><strong>20s horizon：</strong> 高 OBI 桶仍约 <code>+0.638 bps</code>，但方向命中已明显变脆</li>
+</ul>
+<p>我的读法不是“已经能上线”，而是：</p>
+<p>&gt; <strong>OBI 的方向性在几秒级是活的，但窗口一拉长就开始衰减，所以它更像 ultra-short base alpha / maker skew anchor，而不是裸 taker 追单信号。</strong></p>
+<h2>5. 对我们 desk 的正确读法</h2>
+<h3>5.1 这轮为什么归到 <code>raw alpha</code></h3>
+<p>因为它的 base alpha 可以直接说清楚：</p>
+<p>&gt; <strong>盘口不平衡会先于价格微漂移。</strong></p>
+<p>这不是纯 filter，也不是纯 execution。execution 壳只是把它包装成完整策略。</p>
+<h3>5.2 和当前 <code>1m / 3m / 5m / 15m</code> 的关系</h3>
+<ul>
+<li><strong>1m / 3m：</strong> 最自然，适合直接做 maker skew / quote placement / child-order veto</li>
+<li><strong>5m：</strong> 不适合拿 OBI 直接当 bar-close 主信号，但很适合做 entry refinement</li>
+<li><strong>15m：</strong> 更像 execution veto 或“只在 microstructure 顺风时才放行”的确认层</li>
+</ul>
+<h3>5.3 它服务于哪些 raw alpha</h3>
+<p>除了单独做 ultra-short maker shell，它还可以服务：</p>
+<ol>
+<li><strong>短窗 momentum continuation</strong>：只在盘口同向时追</li>
+<li><strong>shock fade / mean reversion</strong>：盘口没反向配合就别急着抄底摸顶</li>
+<li><strong>pairs / spread fade execution</strong>：只在被交易腿的盘口失衡不对着你时进场</li>
+</ol>
+<h2>6. 策略拆解（必填）</h2>
+<ul>
+<li><strong>方向属性：</strong> 单资产 / microstructure / ultra-short directional edge，执行形态偏 maker</li>
+<li><strong>基础 alpha：</strong> order book imbalance 极端值先于几秒级 mid-price 漂移</li>
+<li><strong>regime：</strong> 高噪声、深度虚胖、盘口频繁撤单时，alpha 易衰减</li>
+<li><strong>filter / veto：</strong> 最小半价差、最小有效深度、盘口刷新稳定性、事件前后禁做</li>
+<li><strong>risk / sizing / execution overlay：</strong> volatility-scaled half-spread、inventory skew、position cap、maker/taker fee、latency</li>
+</ul>
+<h2>7. 可复刻的最小实验</h2>
+<h3>7.1 数据源、公开性、更新频率</h3>
+<ul>
+<li><strong>数据源：</strong> Binance / Bybit 公共 depth WebSocket 或 REST 快照</li>
+<li><strong>公开性：</strong> 公开可得，无需私有成交回报</li>
+<li><strong>更新频率：</strong> 秒级甚至亚秒级</li>
+<li><strong>最小口径：</strong> 先做 <code>BTC/ETH/SOL</code>，top <code>10/20/50</code> depth 三档对照</li>
+</ul>
+<h3>7.2 下一步怎么测</h3>
+<p>先别急着上完整做市回放，先做 3 个最小实验：</p>
+<ol>
+<li><strong>signal-only</strong>：<code>OBI decile -&gt; next 1/3/5/10/20s mid return</code>，看方向性和衰减速度；</li>
+<li><strong>friction ladder</strong>：把信号翻成最简单双边/单边 quote skew，测 <code>maker only / maker+taker fallback / taker impossible</code> 三档；</li>
+<li><strong>cross-asset portability</strong>：同样口径跑 <code>BTC/ETH/SOL</code>，确认这是不是只在 BTC 活着。</li>
+</ol>
+<p>最该先看的两个指标：</p>
+<ul>
+<li><strong>高/低 OBI 分桶后的 future mid return 差值</strong></li>
+<li><strong>扣掉最小成交摩擦后的每笔期望值是否仍为正</strong></li>
+</ul>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>我这次的 live probe 只有 <strong>180 秒</strong>，只能算 sanity check，不算稳健回测；</li>
+<li>REST depth 会有采样误差，真实交易更该用 WebSocket L2 增量流；</li>
+<li>OBI 特别容易受 spoofing / cancel-replace / 交易所撮合细节影响；</li>
+<li>这类 edge 半衰期很短，<strong>更适合 maker 壳，不适合裸 taker chase</strong>。</li>
+</ul>
+<h2>9. 来源</h2>
+<ul>
+<li>djienne. (2025/2026). *StandX Market Making Backtest BTC*. GitHub.</li>
+<li>Readable URL: &lt;<a href="https://github.com/djienne/StandX_Market_Making_Backtest_BTC&gt;">https://github.com/djienne/StandX_Market_Making_Backtest_BTC&gt;</a></li>
+<li>Key files: &lt;<a href="https://raw.githubusercontent.com/djienne/StandX_Market_Making_Backtest_BTC/main/backtest_standx_OBI.py&gt;,">https://raw.githubusercontent.com/djienne/StandX_Market_Making_Backtest_BTC/main/backtest_standx_OBI.py&gt;,</a> &lt;<a href="https://raw.githubusercontent.com/djienne/StandX_Market_Making_Backtest_BTC/main/backtest_standx_OBI_optuna.py&gt;,">https://raw.githubusercontent.com/djienne/StandX_Market_Making_Backtest_BTC/main/backtest_standx_OBI_optuna.py&gt;,</a> &lt;<a href="https://raw.githubusercontent.com/djienne/StandX_Market_Making_Backtest_BTC/main/docs/OBI_half_spread.md&gt;">https://raw.githubusercontent.com/djienne/StandX_Market_Making_Backtest_BTC/main/docs/OBI_half_spread.md&gt;</a></li>
+<li>Binance USDⓈ-M Futures Public API.</li>
+<li>Depth endpoint doc: &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Order-Book&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Order-Book&gt;</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 same-venue funding carry 继续写成“正 funding 就能收租”：这份 OKX V5 仓库更该先测的是「premium-z admission × current+next funding &gt; close-cost」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 same-venue funding carry 继续写成“正 funding 就能收租”：这份 OKX V5 仓库更该先测的是「premium-z admission × current+next funding &gt; close-cost」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-30 23:59 UTC</span>
+      <span class="pill">研究时间：2026-03-30 23:44 UTC</span>
+      <span class="pill">类型：2021 GitHub 仓库（2026-03 metadata 更新，2024-01 最新 push）+ `README.md` / `src/open_position.py` / `src/close_position.py` / `src/monitor.py` / `src/trading_data.py` source audit + OKX 公开 funding/ticker/candles live sanity check</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/basis/spot-perp/same-venue/okx/premium-z/current-next-funding/close-cost-hurdle/vol-adjusted-selection/1m/3m/5m/15m/repo/public-data/cost</span>
+      <span class="pill">证据类型：**源码级仓库证据 + OKX 公开 API live sanity check**</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-30_2344_current-next-funding-closecost-carry-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-30 23:44 UTC</li>
+<li>类型：2021 GitHub 仓库（2026-03 metadata 更新，2024-01 最新 push）+ <code>README.md</code> / <code>src/open_position.py</code> / <code>src/close_position.py</code> / <code>src/monitor.py</code> / <code>src/trading_data.py</code> source audit + OKX 公开 funding/ticker/candles live sanity check</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同 venue 的 delta-neutral spot-perp carry</strong>——做多现货、做空永续，吃的是 <strong>perp 相对 spot 的持续溢价 + funding cashflow</strong>；只有当 perp 溢价已经足够 rich、且预期 funding 现金流覆盖 round-trip close cost 时，才值得把这条 carry 真正打开/继续持有。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/carry/funding/basis/spot-perp/same-venue/okx/premium-z/current-next-funding/close-cost-hurdle/vol-adjusted-selection/1m/3m/5m/15m/repo/public-data/cost</li>
+<li>证据类型：<strong>源码级仓库证据 + OKX 公开 API live sanity check</strong></li>
+</ul>
+<p>&gt; 先把 <strong>base alpha</strong> 说清楚： &gt; &gt; <strong>alpha 本体不是“funding 排名表”，也不是“basis 监控面板”。alpha 本体就是同 venue 的 spot-perp carry：long spot / short perp，赚 funding 和 rich premium 的回落。</strong> &gt; &gt; 这份 repo 真正值得 desk 搬的，不是“它会自动下单”这件事，而是它把这条 carry 写成了一个完整可执行策略： &gt; &gt; <strong>vol-adjusted candidate selection → premium-z admission → current+next funding vs close-cost 持仓治理 → 保证金/对冲比率监控。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是 GitHub 仓库：</p>
+<p>&gt; <strong>Aureliano90 (2021, metadata updated 2026-03), _Futures-Spot-Arbitrage-OKEx-V5_</strong> &gt; GitHub repo: <code><a href="https://github.com/Aureliano90/Futures-Spot-Arbitrage-OKEx-V5">https://github.com/Aureliano90/Futures-Spot-Arbitrage-OKEx-V5</a></code></p>
+<p>它不是论文，但它有一个对我们很有价值的优点：</p>
+<p>&gt; <strong>不是停在“rich funding 候选列表”，而是把 same-venue carry 的 entry / exit / size / leverage / monitoring / fee 都写进了源码。</strong></p>
+<p>当前 desk 已经有不少 funding / basis digest，但很多还停在：</p>
+<ul>
+<li><code>funding &gt; 0</code> 就当成 carry pocket；</li>
+<li><code>premium &gt; 0</code> 就当作可以开；</li>
+<li>或者只是做 cross-venue ranking / 可视化。</li>
+</ul>
+<p>这份 repo 更值钱的地方在于，它把单 venue carry 明确拆成了三层：</p>
+<ol>
+<li><strong>先选谁值得做</strong>：不是只看 funding，而是看 <code>funding / sqrt(ATR)</code>；</li>
+<li><strong>再决定什么时候开</strong>：不是一见到正溢价就上，而是等 <code>open premium &gt; recent avg + k·std</code>；</li>
+<li><strong>再决定什么时候该关</strong>：不是只盯 funding 当前值，而是拿 <code>current_rate + next_rate</code> 去对比 <code>close-cost hurdle</code>。</li>
+</ol>
+<p>这第三层最有价值。因为它直接回答了一个实盘问题：</p>
+<p>&gt; <strong>“就算 funding 还是正的，这个仓现在还值不值得继续扛？”</strong></p>
+<h2>2. repo 里真正值钱的不是“自动套利”，而是 3 个可移植部件</h2>
+<h3>2.1 部件一：不是看绝对 funding，而是看 <code>funding / sqrt(vol)</code></h3>
+<p><code>src/trading_data.py</code> 里，repo 会先把最近 funding 候选按 <code>profitability = funding_rate / sqrt(ATR)</code> 排序：</p>
+<ul>
+<li>代码位置：<code>src/trading_data.py:62-77</code></li>
+<li>关键逻辑：<code>funding_rate_list[n][&#x27;profitability&#x27;] = funding_rate / np.sqrt(atr)</code></li>
+</ul>
+<p>这件事的重要性在于：</p>
+<ul>
+<li>同样 3 bps funding，配到低波 coin 和高波 coin，不是同一种 carry；</li>
+<li>绝对 funding 看起来一样，但高波币更容易把你拖进保证金/对冲重平衡成本；</li>
+<li>所以 <strong>funding 要先过“按波动折现”</strong>，才配进候选池。</li>
+</ul>
+<p>对 desk 的直接翻译是：</p>
+<p>&gt; <strong>别再做“谁 funding 高就做谁”的朴素排名；先做 vol-adjusted carry ranking。</strong></p>
+<p>顺手说一句：repo 这里用的是原始 ATR，量纲不够漂亮；我们 desk 落地时更建议换成 <strong>NATR / realized vol / spread vol</strong>，但思想是对的。</p>
+<h3>2.2 部件二：entry 不是“正 premium”，而是 <code>premium z-score</code></h3>
+<p><code>src/open_position.py</code> 的开仓逻辑不是“合约比现货贵就开”，而是先取近期 premium 统计，再要求当前 open premium 过阈值：</p>
+<ul>
+<li>代码位置：<code>src/open_position.py:161-185</code></li>
+<li>关键逻辑：</li>
+<li><code>recent_open_stat(hours)</code></li>
+<li><code>price_diff = recent[&#x27;avg&#x27;] + 2 * recent[&#x27;std&#x27;]</code></li>
+<li>当前 <code>best_bid_swap &gt;= best_ask_spot * (1 + price_diff)</code> 才继续</li>
+</ul>
+<p>也就是说，它实际上在做：</p>
+<p>&gt; <strong>只有当 perp 相对现货已经“统计上偏 rich”时，才允许开 long spot / short perp carry。</strong></p>
+<p>这和“只要 funding 正就开仓”的差别非常大：</p>
+<ul>
+<li>后者是 <strong>always-on 收租幻想</strong>；</li>
+<li>前者是 <strong>只做 premium 已经拉开、且有回落/收敛空间的 pocket carry</strong>。</li>
+</ul>
+<p>这点和我们当前 desk 的优先级是对齐的：</p>
+<p>&gt; <strong>carry 不是低频票息产品；短周期 desk 要的是“有 pocket 才开”，不是“正 funding 就挂着”。</strong></p>
+<h3>2.3 部件三：最值钱的是 <code>current + next funding &gt; close-cost hurdle</code></h3>
+<p>真正让我觉得这份 repo 值得 intake 的，是 <code>src/monitor.py</code> 这段：</p>
+<ul>
+<li>代码位置：<code>src/monitor.py:144-157</code></li>
+<li>关键逻辑：</li>
+<li><code>open_pd = recent_open_stat()[&#x27;avg&#x27;] + recent_open_stat()[&#x27;std&#x27;]</code></li>
+<li><code>close_pd = recent_close_stat()[&#x27;avg&#x27;] - recent_close_stat()[&#x27;std&#x27;]</code></li>
+<li><code>cost = open_pd - close_pd + 2 * trade_fee</code></li>
+<li><strong>如果</strong> <code>current_rate + next_rate &lt; cost</code> <strong>就主动平仓</strong></li>
+</ul>
+<p>这句话非常关键：</p>
+<p>&gt; <strong>repo 并不认为“当前 funding 还是正的”就足够继续持有。它要求：当前 funding + 下一次 funding 的总收益，至少得覆盖你为了最终关掉这个 carry 需要吃下的 close-cost hurdle。</strong></p>
+<p>这比很多 funding 策略诚实得多。因为现实里：</p>
+<ul>
+<li>funding 是慢变量；</li>
+<li>premium/basis 的 round-trip、bid-ask、重平衡、手续费、保证金腾挪是快变量；</li>
+<li><strong>如果未来一个 funding 周期赚不到足够覆盖 close hurdle 的钱，你其实是在拿仓位风险换几个几乎不值钱的 bps。</strong></li>
+</ul>
+<h2>3. 对我们 desk 来说，这篇 intake 的正确定位</h2>
+<p>这里要避免误读：</p>
+<h3>3.1 它不是纯 filter digest</h3>
+<p>如果只把这篇 digest 归成 overlay / filter，会低估它。</p>
+<p>更准确的说法是：</p>
+<ul>
+<li><strong>raw alpha</strong>：same-venue delta-neutral funding/basis carry</li>
+<li><strong>repo 的新增价值</strong>：把这条 raw alpha 写成“会开、会管、会关”的完整骨架</li>
+<li><strong>其中最值得偷的部件</strong>：<code>current+next funding &gt; close-cost</code> 的 viability check</li>
+</ul>
+<p>所以这轮归类仍然应该是：<strong>raw alpha</strong>。</p>
+<h3>3.2 它为什么比再补一篇 generic funding 摘要更值得</h3>
+<p>因为当前项目里 funding / basis 相关 digest 已经不少，但大量问题都卡在：</p>
+<ul>
+<li>什么时候值得开？</li>
+<li>开了以后什么时候该关？</li>
+<li>正 funding 和真实可赚之间到底差几层？</li>
+</ul>
+<p>这份 repo 至少把这个答案写成了能执行的 if/else：</p>
+<p>&gt; <strong>开仓要 premium rich，持仓要 funding 覆盖 close-cost，不够就关。</strong></p>
+<p>这不是观点，是策略骨架。</p>
+<h2>4. 用 repo 语言翻成 desk 版本的完整策略</h2>
+<h3>4.1 Universe / selection</h3>
+<p>先做流动性和借贷/成交成本都更清楚的 same-venue majors：</p>
+<ul>
+<li><code>BTC-USDT / BTC-USDT-SWAP</code></li>
+<li><code>ETH-USDT / ETH-USDT-SWAP</code></li>
+<li><code>SOL-USDT / SOL-USDT-SWAP</code></li>
+<li>再视流动性扩到 <code>XRP / DOGE / TON / BNB</code></li>
+</ul>
+<p><strong>selection score</strong> 不看绝对 funding，而看：</p>
+<ul>
+<li><code>funding / sqrt(spread_vol)</code> 或 <code>funding / sqrt(NATR)</code></li>
+<li>再加一个最小日均成交额 / 最小盘口厚度门槛</li>
+</ul>
+<h3>4.2 Entry</h3>
+<p>只在以下都满足时开仓：</p>
+<ol>
+<li><code>funding &gt; 0</code>（或 current+next funding 为正）</li>
+<li><code>open premium z &gt; z_enter</code></li>
+<li><code>gross carry estimate &gt; close-cost hurdle</code></li>
+</ol>
+<p>换成人话：</p>
+<p>&gt; <strong>资金费正，只是必要条件；premium 已经 rich，且未来 funding 现金流覆盖得了未来关仓成本，才是充分条件。</strong></p>
+<h3>4.3 Exit</h3>
+<p>触发任一就平：</p>
+<ol>
+<li><code>current + next funding &lt; close-cost hurdle</code></li>
+<li><code>premium z &lt; z_exit</code></li>
+<li>持仓超过最大 funding 周期数</li>
+<li>保证金风险 / 对冲比例偏离过大</li>
+</ol>
+<h3>4.4 Sizing</h3>
+<ul>
+<li>按 <code>score = funding / sqrt(vol)</code> 排名分配权重；</li>
+<li>单币权重上限受盘口厚度限制；</li>
+<li>资金费越高但 premium 越不稳定，仓位越应该折减；</li>
+<li><code>1m/3m</code> 上只做执行切片，不要拿 funding 本身当逐 bar 主信号。</li>
+</ul>
+<h2>5. OKX 公共 live sanity check：很多“正 funding”其实根本不够覆盖 close hurdle</h2>
+<p>为了避免只做 repo 读后感，这次我直接用 <strong>OKX 公开 API</strong> 做了一个小快检。</p>
+<h3>5.1 快检口径</h3>
+<ul>
+<li>数据源：OKX public API</li>
+<li><code>market/ticker</code></li>
+<li><code>market/history-candles</code></li>
+<li><code>public/funding-rate</code></li>
+<li>币种：<code>BTC / ETH / SOL / DOGE / XRP</code></li>
+<li>频率：</li>
+<li>premium 统计：最近 4 小时 <code>1m</code> candles</li>
+<li>funding：当前 funding + 公共 endpoint 给出的 next funding</li>
+<li>fee proxy：<strong>每条腿 taker 5 bps</strong>，所以 repo 风格的 <code>2 * trade_fee</code> 近似为 <strong>10 bps</strong></li>
+<li>计算：</li>
+<li><code>open_trigger = premium_mean + premium_std</code></li>
+<li><code>close_trigger = premium_mean - premium_std</code></li>
+<li><code>close_cost_hurdle ≈ open_trigger - close_trigger + 2*fee</code></li>
+<li>比较 <code>current + next funding</code> vs <code>close_cost_hurdle</code></li>
+</ul>
+<h3>5.2 快检结果：当前主流币一个都不够</h3>
+<p>本地脚本输出见： <code>reports/artifacts/quant_digests/okx_current_next_funding_closecost_20260330/okx_major_snapshot.csv</code></p>
+<p>核心数字：</p>
+<ul>
+<li><strong>ETH</strong>：<code>current+next funding = +0.68 bps</code>，但 <code>close-cost hurdle ≈ 11.16 bps</code>，差了 <strong>10.47 bps</strong></li>
+<li><strong>BTC</strong>：<code>+0.19 bps</code> vs <code>11.42 bps</code>，差了 <strong>11.23 bps</strong></li>
+<li><strong>SOL</strong>：<code>-0.59 bps</code> vs <code>12.96 bps</code>，本身就是负 carry</li>
+</ul>
+<p>这三条已经足够说明问题：</p>
+<p>&gt; <strong>“funding 是正的”离“这笔 carry 值得开/继续拿”之间，差了整整一个数量级。</strong></p>
+<h3>5.3 不只是 funding 不够，当前 premium 也没 rich 到值得追</h3>
+<p>同一份 snapshot 里，live open premium z-score 也并不高：</p>
+<ul>
+<li>ETH：<code>z ≈ 0.02</code></li>
+<li>BTC：<code>z ≈ 0.34</code></li>
+<li>XRP：<code>z ≈ 0.42</code></li>
+</ul>
+<p>也就是说，当前快照下：</p>
+<ul>
+<li>既没有足够高的 premium rich pocket；</li>
+<li>也没有足够高的 funding cashflow 去覆盖 close-cost hurdle。</li>
+</ul>
+<p>这反而刚好验证了 repo 设计的必要性：</p>
+<p>&gt; <strong>如果没有 <code>premium-z admission + funding&gt;hurdle</code> 这两层门槛，策略就会把一堆“看起来 funding 为正、其实根本不值得做”的时点误识别成机会。</strong></p>
+<h2>6. 这条线和 1m / 3m / 5m / 15m 的关系</h2>
+<h3>6.1 funding / basis 天生不是逐根主信号</h3>
+<p>要诚实一点：</p>
+<ul>
+<li>funding 是结算制慢变量；</li>
+<li>basis/premium 虽然快一些，但不是每根 <code>1m</code> bar 都值得响应。</li>
+</ul>
+<p>所以这条线更适合的结构是：</p>
+<ul>
+<li><strong>15m / 5m</strong>：做 alpha clock 和 pocket 判定</li>
+<li><strong>3m / 1m</strong>：做 execution veto / queue quality / 切片</li>
+</ul>
+<p>不要把 funding 伪装成 <code>1m</code> 逐根 alpha 本体。</p>
+<h3>6.2 对短周期 desk 的正确落地方式</h3>
+<p>更合理的是：</p>
+<ul>
+<li><code>15m</code>：决定这轮 carry pocket 是否成立</li>
+<li><code>5m</code>：检查 premium rich 是否持续、盘口是否还能吃</li>
+<li><code>1m/3m</code>：决定分几笔进、是 maker 还是 taker、是否先等 spread 更好一点</li>
+</ul>
+<p>所以这条题不是和短周期 desk 无关，恰好相反：</p>
+<p>&gt; <strong>它很适合做短周期 desk 的“slow alpha + fast execution”组合。</strong></p>
+<h2>7. 下一步怎么测（必做）</h2>
+<h3>7.1 先做 desk 版最小实验</h3>
+<p><strong>目标</strong>：验证 <code>premium-z admission × current+next funding &gt; close-cost</code> 是否明显优于 <code>funding &gt; 0</code> 的朴素 carry。</p>
+<p><strong>Universe</strong></p>
+<ul>
+<li><code>BTC/ETH/SOL</code> same-venue OKX spot+swap</li>
+</ul>
+<p><strong>版本对比</strong></p>
+<ol>
+<li><strong>baseline</strong>：<code>funding &gt; 0</code> 就开，固定持有到下一结算</li>
+<li><strong>premium gate</strong>：<code>funding &gt; 0</code> 且 <code>premium z &gt; 1</code></li>
+<li><strong>fullstack</strong>：<code>premium z &gt; 1</code> 且 <code>current+next funding &gt; close-cost hurdle</code></li>
+<li><strong>fullstack + execution</strong>：版本 3 再叠 <code>1m</code> spread / depth veto</li>
+</ol>
+<p><strong>评价指标</strong></p>
+<ul>
+<li>每次 funding 周期净收益</li>
+<li>年化换手 / 平均持仓 funding 周期数</li>
+<li>关仓前后的 realized premium 收敛幅度</li>
+<li>maker-taker / taker-taker 成本敏感性</li>
+</ul>
+<h3>7.2 关键要扫的参数</h3>
+<ul>
+<li><code>z_enter = 0.5 / 1.0 / 1.5 / 2.0</code></li>
+<li><code>z_exit = 0 / 0.25 / 0.5</code></li>
+<li><code>vol score</code>：<code>funding/sqrt(NATR)</code> vs <code>funding/spread_vol</code></li>
+<li><code>close-cost hurdle</code>：</li>
+<li>只算手续费</li>
+<li>手续费 + bid/ask</li>
+<li>手续费 + bid/ask + rebalance slippage</li>
+</ul>
+<h3>7.3 最该优先回答的 4 个问题</h3>
+<ol>
+<li><strong><code>current+next funding &gt; close-cost</code> 这一层，能否明显减少“正 funding 但不值做”的伪机会？</strong></li>
+<li><strong>premium z 门槛是提高单笔质量，还是只是把交易数砍掉？</strong></li>
+<li><strong>这条线在 majors 上能不能活，还是只在高 funding alt pocket 偶发成立？</strong></li>
+<li><strong>真实可活的成本结构到底是 maker-taker 还是必须 maker-maker / rebate？</strong></li>
+</ol>
+<h2>8. 当前结论（一句话版）</h2>
+<p>&gt; <strong>这份 OKX V5 仓库对 desk 最值钱的，不是“spot-perp carry”这个老题材本身，而是把它写成了 <code>vol-adjusted selection → premium-z admission → current+next funding &gt; close-cost</code> 的完整生存线；从 OKX 当前主流币 live snapshot 看，绝大多数“正 funding”根本不够覆盖这道 hurdle。</strong></p>
+<h2>9. 文件与产物</h2>
+<ul>
+<li>研究笔记：<code>research/quant_digests/2026-03-30_2344_current-next-funding-closecost-carry-alpha.md</code></li>
+<li>快检脚本：<code>reports/artifacts/quant_digests/okx_current_next_funding_closecost_20260330/okx_current_next_funding_closecost_probe.py</code></li>
+<li>快检结果：</li>
+<li><code>reports/artifacts/quant_digests/okx_current_next_funding_closecost_20260330/okx_major_snapshot.csv</code></li>
+<li><code>reports/artifacts/quant_digests/okx_current_next_funding_closecost_20260330/okx_major_snapshot.json</code></li>
+<li><code>reports/artifacts/quant_digests/okx_current_next_funding_closecost_20260330/summary.md</code></li>
+<li>页面 URL（发布后）：</li>
+<li><code><a href="https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-03-30_2344_current-next-funding-closecost-carry-alpha.html">https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-03-30_2344_current-next-funding-closecost-carry-alpha.html</a></code></li>
+</ul>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>Aureliano90 (GitHub handle, repo created 2021; metadata updated 2026-03). _Futures-Spot-Arbitrage-OKEx-V5_.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/Aureliano90/Futures-Spot-Arbitrage-OKEx-V5">https://github.com/Aureliano90/Futures-Spot-Arbitrage-OKEx-V5</a></code></li>
+<li>README: <code><a href="https://raw.githubusercontent.com/Aureliano90/Futures-Spot-Arbitrage-OKEx-V5/main/README.md">https://raw.githubusercontent.com/Aureliano90/Futures-Spot-Arbitrage-OKEx-V5/main/README.md</a></code></li>
+<li>关键源码：</li>
+<li><code>src/open_position.py</code></li>
+<li><code>src/close_position.py</code></li>
+<li><code>src/monitor.py</code></li>
+<li><code>src/trading_data.py</code></li>
+</ul>
+<ol>
+<li><strong>OKX V5 API Docs</strong>（公开可得，最小可复现实验数据源）</li>
+</ol>
+<ul>
+<li>Docs URL: <code><a href="https://www.okx.com/docs-v5/en/">https://www.okx.com/docs-v5/en/</a></code></li>
+<li>Funding endpoint: <code><a href="https://www.okx.com/docs-v5/en/#public-data-rest-api-get-funding-rate">https://www.okx.com/docs-v5/en/#public-data-rest-api-get-funding-rate</a></code></li>
+<li>Market ticker endpoint: <code><a href="https://www.okx.com/docs-v5/en/#public-data-rest-api-get-ticker">https://www.okx.com/docs-v5/en/#public-data-rest-api-get-ticker</a></code></li>
+<li>Candles endpoint: <code><a href="https://www.okx.com/docs-v5/en/#market-data-rest-api-get-candlesticks-history">https://www.okx.com/docs-v5/en/#market-data-rest-api-get-candlesticks-history</a></code></li>
+<li>公开性：公开 API，无需私钥即可抓取</li>
+<li>更新频率：ticker/funding 接近实时，candles 按 bar 更新</li>
+<li>最小可复现实验口径：<code>BTC/ETH/SOL/DOGE/XRP</code> 的 OKX spot + USDT perpetual，最近 4 小时 <code>1m</code> premium 统计 + funding 快照，对比 <code>current+next funding</code> 与 <code>close-cost hurdle</code></li>
+</ul>
+</body>
+</html>

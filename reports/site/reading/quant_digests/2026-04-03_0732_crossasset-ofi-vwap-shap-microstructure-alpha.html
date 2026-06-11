@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Explainable Microstructure（2026 arXiv + 2026 repo）：把 1 秒盘口失衡做成可迁移的短周期 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Explainable Microstructure（2026 arXiv + 2026 repo）：把 1 秒盘口失衡做成可迁移的短周期 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 07:31 UTC</span>
+      <span class="pill">研究时间：2026-04-03 07:32 UTC</span>
+      <span class="pill">类型：论文 + GitHub</span>
+      <span class="pill">主题标签：microstructure / order-flow / OFI / VWAP / CatBoost / SHAP / taker-maker / 1m / 3m / 5m / 15m</span>
+      <span class="pill">证据类型：论文证据 + 工程实现证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_0732_crossasset-ofi-vwap-shap-microstructure-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-03 07:32 UTC</li>
+<li>类型：论文 + GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>order_flow_imbalance + VWAP 相对 mid 偏离</code> 预测未来短窗收益，并用阈值化方向信号交易</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：microstructure / order-flow / OFI / VWAP / CatBoost / SHAP / taker-maker / 1m / 3m / 5m / 15m</li>
+<li>证据类型：论文证据 + 工程实现证据</li>
+</ul>
+<p><strong>先回答 base alpha：这篇东西的 base alpha 不是“宏观故事”，而是“盘口失衡与成交压力对下一小段收益的可预测性”，可直接写成入场/出场规则。</strong></p>
+<h2>1) 这次看了什么</h2>
+<p>看了 2026 arXiv 论文《Explainable Patterns in Cryptocurrency Microstructure》及其对应开源工程仓库 <code>amazingchow/epcm</code>。论文用 Binance Futures <code>1s</code> 盘口+成交数据（2022-01-01 到 2025-10-12）做跨币种验证；仓库把同一套流程工程化成可跑 CLI。</p>
+<h2>2) 核心结论（给 desk 的版本）</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：同一套 1 秒微观结构特征（失衡/价差/VWAP 偏离）在不同市值币上都能形成可迁移的短周期方向 alpha，不是只在 BTC 偶然有效。</li>
+<li><strong>一句话证明方式</strong>：论文用统一 CatBoost + walk-forward + SHAP 做跨资产稳定性检验，再用保守 taker/maker 回测验证“统计显著性 != 不可交易”。</li>
+<li>跨资产 SHAP 排序与依赖形状相近，说明“特征机制”比“单币参数”更稳定。</li>
+<li>论文 stress test 显示：极端行情下 taker 与 maker 表现分化明显（maker 更容易被 adverse selection 吃掉），这对实盘执行层非常关键。</li>
+<li>仓库给了完整可复现管线：数据协议、特征、训练、解释、回测、风险报告，不是只有 PDF 观点。</li>
+</ul>
+<h2>3) 为什么和当前项目有关</h2>
+<p>这条线直接补的是 <strong>raw alpha 素材池（microstructure/directional）</strong>，且不是 breakout/retest 旧循环：</p>
+<ul>
+<li>可作为 <code>1m/3m</code> 主信号，也可降采样成 <code>5m/15m</code> 的入场 gate；</li>
+<li>还能天然拆出 execution 分层（taker 与 maker 分开评估），符合当前 desk 对“完整策略组件拆解”的需求。</li>
+</ul>
+<h2>3.5) 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：短周期方向型（可做多空双向）</li>
+<li>基础 alpha：<code>OFI + VWAP pressure (+ spread/depth state)</code> 对下一窗口收益方向的预测</li>
+<li>regime：高流动+非极端跳变时主做；极端波动时切到保护模式</li>
+<li>filter / veto：<code>spread</code> 过宽、深度骤降、盘口异常跳变时 veto</li>
+<li>risk / sizing / execution overlay：</li>
+<li>仓位：<code>size ∝ signal_strength / realized_vol</code></li>
+<li>执行：默认 taker（先保成交），maker 仅在低 adverse-selection 时启用</li>
+<li>成本：显式计入 taker fee + 滑点惩罚</li>
+</ul>
+<h2>4) 可复刻的最小实验（1m/3m/5m/15m）</h2>
+<p><strong>研究假设</strong>：<code>OFI/VWAP pressure</code> 在 1m 仍保留方向信息，且能迁移到 3m；5m/15m 用作低频执行壳时仍有净边。</p>
+<p><strong>最小可计算定义</strong>（先不用重型模型也能跑）：</p>
+<ol>
+<li>由 <code>1s</code> 数据构造：</li>
+</ol>
+<ul>
+<li><code>order_flow_imbalance = (buy_vol - sell_vol)/(buy_vol + sell_vol)</code></li>
+<li><code>vwap_pressure = ((buy_vwap*buy_vol)-(sell_vwap*sell_vol))/((buy_vol+sell_vol)*mid)</code></li>
+<li><code>relative_spread = (ask-bid)/mid</code></li>
+</ul>
+<ol>
+<li>聚合到 <code>1m</code>：取均值/分位数（如 OFI 均值、VWAP pressure 均值、spread P75）</li>
+<li>信号：<code>score = z(OFI_1m) + 0.7*z(VWAP_pressure_1m) - 0.5*z(spread_1m)</code></li>
+<li>交易：</li>
+</ol>
+<ul>
+<li><code>score &gt; q80</code> 做多，<code>score &lt; q20</code> 做空</li>
+<li>持有 1 bar（再测 2/3 bars），反向信号立即平仓</li>
+</ul>
+<p><strong>最小回测切口</strong>：</p>
+<ul>
+<li>资产：BTC/ETH/2 个中市值币（先 4 币）</li>
+<li>周期：<code>1m</code> 主测，<code>3m</code> 次测，<code>5m/15m</code> 做降采样验证</li>
+<li>样本：最近 6~12 个月（含至少 1 段剧烈波动）</li>
+</ul>
+<p><strong>先看 2 个指标</strong>：</p>
+<ul>
+<li>成本后 <code>net pnl / turnover</code>（先判断能否活）</li>
+<li>分资产一致性（不是只靠单币单段）</li>
+</ul>
+<h2>5) 风险与保留意见</h2>
+<ul>
+<li>这是高频逻辑向低频映射，信号会衰减，<code>1m</code> 往上需要重新定阈值与持有期。</li>
+<li>maker 回测在仓库里是保守近似，不是完整队列仿真；别把 maker 收益直接当实盘可实现值。</li>
+<li>极端事件中信号可能“太强反而拥挤”，需强制加 <code>spread/depth</code> 风险闸门。</li>
+</ul>
+<h2>6) 来源</h2>
+<h3>论文</h3>
+<ul>
+<li>Bieganowski, B., &amp; Ślepaczuk, R. (2026). *Explainable Patterns in Cryptocurrency Microstructure*. arXiv (q-fin.TR).</li>
+<li>DOI: <code>10.48550/arXiv.2602.00776</code></li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2602.00776">https://arxiv.org/abs/2602.00776</a></code></li>
+<li>Full HTML: <code><a href="https://arxiv.org/html/2602.00776v1">https://arxiv.org/html/2602.00776v1</a></code></li>
+</ul>
+<h3>仓库</h3>
+<ul>
+<li>amazingchow. (2026). *epcm* (paper-oriented replication/engineering repo).</li>
+<li>Repo URL: <code><a href="https://github.com/amazingchow/epcm">https://github.com/amazingchow/epcm</a></code></li>
+<li>README: <code><a href="https://raw.githubusercontent.com/amazingchow/epcm/master/README.md">https://raw.githubusercontent.com/amazingchow/epcm/master/README.md</a></code></li>
+<li>NOTE: <code><a href="https://raw.githubusercontent.com/amazingchow/epcm/master/NOTE.md">https://raw.githubusercontent.com/amazingchow/epcm/master/NOTE.md</a></code></li>
+<li>PROGRESS: <code><a href="https://raw.githubusercontent.com/amazingchow/epcm/master/PROGRESS.md">https://raw.githubusercontent.com/amazingchow/epcm/master/PROGRESS.md</a></code></li>
+</ul>
+</body>
+</html>

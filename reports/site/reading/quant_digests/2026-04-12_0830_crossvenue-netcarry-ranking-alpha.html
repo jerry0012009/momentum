@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 funding+basis monitor 只读成仪表盘：对 short-cycle desk，更该先测的是「cross-venue net carry differential × executable pair ranking」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 funding+basis monitor 只读成仪表盘：对 short-cycle desk，更该先测的是「cross-venue net carry differential × executable pair ranking」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-12 08:32 UTC</span>
+      <span class="pill">研究时间：2026-04-12 08:30 UTC</span>
+      <span class="pill">类型：GitHub repo + 公共 live API 快检</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/carry/funding/basis/cross-venue/perpetuals/net-carry/execution-capacity/slippage/fee/ranking/binance/hyperliquid/dydx/30s/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：源码审计 + 公共 live snapshot probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-12_0830_crossvenue-netcarry-ranking-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-12 08:30 UTC</li>
+<li>类型：GitHub repo + 公共 live API 快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一标的 perpetual 在不同 venue 上会同时出现 funding、mark/index basis、盘口深度与手续费结构的错配；真正可交易的不是“哪边 funding 高”，而是 <code>max(net carry) venue vs min(net carry) venue</code> 的对冲配对，也就是 <code>funding diff + basis diff - fees - slippage</code> 最大的那一对。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha/relative-value/carry/funding/basis/cross-venue/perpetuals/net-carry/execution-capacity/slippage/fee/ranking/binance/hyperliquid/dydx/30s/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：源码审计 + 公共 live snapshot probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是 <strong>Razrocks (2026), _Funding-Basis---Strategy-Monitor_</strong>。</p>
+<p>表面上它是个 <strong>Binance / Hyperliquid / dYdX 的 funding+basis carry dashboard</strong>，但对我们 desk 真正有价值的，不是看板，而是它把一条可复现的 cross-venue raw alpha 写得很清楚：</p>
+<p>&gt; <strong>不是单看某个 venue 的 funding 高不高，而是对同一标的，把每个 venue 的 <code>net carry</code> 算干净，再做 <code>最高净 carry venue</code> 对 <code>最低净 carry venue</code> 的相对价值配对。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>如果 A 所短 perp 更赚钱、B 所做反向 hedge 更便宜，</li>
+<li>而且两边盘口都吃得下、成本没把 edge 吃光，</li>
+<li>那真正该交易的是 <strong>venue pair</strong>，不是单腿 funding 观点。</li>
+</ul>
+<p>这和我们最近看的两类材料都不一样：</p>
+<ul>
+<li>它不是 <code>small-cap cross-venue quote gap</code> 那种 <strong>秒级 BBO 错位回归</strong>；</li>
+<li>也不是 <code>same-expiry futures basis differential</code> 那种 <strong>同期限期货跨所收敛</strong>；</li>
+<li>它更像 <strong>perp 层的 cross-venue carry relative value</strong>：funding、basis、手续费、slippage、容量一起进分子分母，最后只留下可执行 pair。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最值得 intake 的，不是 dashboard 外壳，而是它把「<strong>同标的跨 venue 的净 carry 差</strong>」写成了一条能独立复现的 raw alpha：先分别估每个 venue 的 <code>funding_apr + basis_apr - fee_cost - slip_cost</code>，再交易 <code>max-net-carry</code> 对 <code>min-net-carry</code> 的对冲 pair。</li>
+<li><strong>一句话证明方式：</strong> 结论来自源码公式、配置假设、订单簿容量模拟，以及我对 Binance / Hyperliquid / dYdX 公共 API 的当次 live 快检，不是 README 宣传词。</li>
+</ul>
+<p>源码里最关键的三步是明牌写出来的：</p>
+<ol>
+<li><strong>单 venue carry leg</strong></li>
+</ol>
+<ul>
+<li><code>funding_apr = funding_rate * (seconds_per_year / funding_interval_seconds)</code></li>
+<li><code>basis_apr = ((mark/index) - 1) * (seconds_per_year / basis_horizon_seconds)</code></li>
+<li><code>net_carry = funding_apr + basis_apr - fee_cost_apr - slippage_cost_apr - borrow_apr</code></li>
+</ul>
+<ol>
+<li><strong>方向不是主观判断，而是 funding sign 决定</strong></li>
+</ol>
+<ul>
+<li><code>funding_rate &gt; 0 -&gt; SHORT earns</code></li>
+<li><code>funding_rate &lt; 0 -&gt; LONG earns</code></li>
+</ul>
+<ol>
+<li><strong>跨 venue pair 不是两两枚举拍脑袋，而是直接选</strong></li>
+</ol>
+<ul>
+<li><code>earn = argmax(net_carry)</code></li>
+<li><code>hedge = argmin(net_carry)</code></li>
+<li><code>pair_expected = funding_diff + basis_diff - total_fees - total_slippage</code></li>
+</ul>
+<p>也就是说，这条 alpha 的 base 不是“预测涨跌”，而是：</p>
+<p>&gt; <strong>同一资产在不同 perp venue 上的 carry economics 本来就可能不同；只要这个差异在成本后仍显著，而且书上吃得下，就能形成一条 cross-venue raw alpha。</strong></p>
+<h2>3. 这轮最有用的几个硬信息</h2>
+<h3>3.1 repo 自带的可迁移结构</h3>
+<p><code>config.yaml</code> 直接把短周期 desk 最关心的几个现实问题写死了：</p>
+<ul>
+<li>polling：<code>30s</code></li>
+<li>orderbook polling：<code>5s</code></li>
+<li>depth：<code>20</code> 档</li>
+<li>默认 venue：Binance / Hyperliquid / dYdX</li>
+<li>默认 capacity tier：<code>5 / 10 / 25 bps</code></li>
+<li>默认 screening：</li>
+<li><code>min_net_carry_apr = 5%</code></li>
+<li><code>min_quality_score = 40</code></li>
+<li><code>min_capacity_10bps_usd = 5000</code></li>
+</ul>
+<p>这说明它不是“只算理论 funding”的 notebook，而是已经把 <strong>能不能成交</strong> 当成主约束。</p>
+<h3>3.2 repo 对“假机会”的处理是对的</h3>
+<p>这份仓库最值得学的不是收益数字，而是它知道哪些 edge 最容易是假的：</p>
+<ul>
+<li><code>Quality Score</code>：惩罚 funding volatility、basis volatility、极端 z-score、OI shock</li>
+<li><code>Trap Tags</code>：<code>Funding spike / OI shock / Carry unstable / Basis inversion / Crowded</code></li>
+<li><code>capacity_at_slippage()</code>：不是只看 top-of-book，而是看 <strong>在固定 slippage 容忍下真实能吃多少美元 notional</strong></li>
+</ul>
+<p>这很适合我们 desk，因为 cross-venue carry 最怕两类误判：</p>
+<ol>
+<li><strong>paper edge 很大，但薄书一打就没了</strong></li>
+<li><strong>funding/basis 看起来便宜，其实已经是拥挤或失稳状态</strong></li>
+</ol>
+<h3>3.3 我做的当次 live BTC 快检</h3>
+<p>我直接用三所公共 API 拉了当次 <code>BTC</code> perp 快照，并按 repo 公式手动重算了 <code>25k USD</code> 规模下的单 venue net carry 与 best pair。</p>
+<p>当次快检（2026-04-12 08:30 UTC 左右）有三个很重要的点：</p>
+<ul>
+<li><strong>1 天持有假设下，三所单腿净 carry 全是负的</strong>：</li>
+<li>Binance：约 <strong><code>-51.96% APR</code></strong></li>
+<li>Hyperliquid：约 <strong><code>-34.38% APR</code></strong></li>
+<li>dYdX：约 <strong><code>-42.05% APR</code></strong></li>
+<li>这不是说“不能做”，而是说 <strong>如果你把 round-trip fee/slippage 全摊到 1 天里，成本会极重</strong>。</li>
+</ul>
+<ul>
+<li><strong>30 天持有假设下，净 carry 排名明显改善</strong>：</li>
+<li>dYdX：约 <strong><code>-2.20% APR</code></strong></li>
+<li>Hyperliquid：约 <strong><code>-15.75% APR</code></strong></li>
+<li>Binance：约 <strong><code>-23.74% APR</code></strong></li>
+<li>重点不是绝对值漂亮，而是 <strong>hold horizon 决定 cost amortization，pair ranking 会变</strong>。</li>
+</ul>
+<ul>
+<li><strong>best pair 的 30 天口径 edge 变成正的</strong>：</li>
+<li><code>earn venue = dYdX</code></li>
+<li><code>hedge venue = Binance</code></li>
+<li><code>edge_apr ≈ +21.54%</code></li>
+<li><code>pair_expected_apr ≈ +19.59%</code></li>
+<li><code>pair_capacity ≈ 177,880 USD</code>（按 10bps 容量约束）</li>
+</ul>
+<p>这组数最关键的启发是：</p>
+<p>&gt; <strong>同一个 snapshot，在 1 天口径和 30 天口径下，edge 可以从“看起来不值得”变成“pair 级别可讨论”。所以这条 alpha 不是纯秒级/分钟级 book，也不是纯 8h funding book，而是一个“执行 horizon 很关键”的 carry RV。</strong></p>
+<h2>4. 为什么它和当前项目直接相关</h2>
+<p>这条线对 <code>momentum</code> 的价值很直接，因为我们当前明确想补的是：</p>
+<ul>
+<li>raw alpha 素材池</li>
+<li>relative value / stat-arb / carry / funding / basis 方向</li>
+<li>能快速做 <code>1m/3m/5m/15m</code> 最小实验的结构</li>
+</ul>
+<p>这份 repo 刚好补了一个我们还没系统化的空白：</p>
+<h3>4.1 它服务于 raw alpha，不是只当 overlay</h3>
+<p>虽然它有 quality score、trap tags 这类 filter 成分，但 <strong>base alpha 本体是清楚的</strong>：</p>
+<ul>
+<li><strong>交易对象：</strong> 同一资产的多 venue perp</li>
+<li><strong>交易逻辑：</strong> 做多最便宜的 carry side、做空最贵的 carry side</li>
+<li><strong>收益来源：</strong> funding/basis economics 的 venue-level 错配在一段持有期内兑现或收敛</li>
+</ul>
+<p>所以它不是纯 filter，不是纯 regime，不是只会说“别做”。</p>
+<h3>4.2 它天然适合短周期 desk 做最小实验</h3>
+<p>因为它的数据全是公开且高频可取：</p>
+<ul>
+<li>Binance：<code>premiumIndex / openInterest / depth</code></li>
+<li>Hyperliquid：<code>metaAndAssetCtxs / l2Book</code></li>
+<li>dYdX：<code>perpetualMarkets / orderbooks</code></li>
+</ul>
+<p>repo 默认就是：</p>
+<ul>
+<li><code>30s</code> 拉 funding/mark/index/OI</li>
+<li><code>5s</code> 拉 orderbook</li>
+</ul>
+<p>所以你完全可以把它压缩成：</p>
+<ul>
+<li><code>30s</code> 原始 event stream</li>
+<li>然后聚合到 <code>1m / 3m / 5m / 15m</code></li>
+<li>再看 edge persistence、容量稳定性、与 funding 窗口的关系</li>
+</ul>
+<h3>4.3 它和我们已经写过的主题互补，而不是重复</h3>
+<ul>
+<li>不是 <code>same-contract cross-venue quote gap</code>：那条线主要赚 <strong>BBO 价差瞬时收敛</strong>。</li>
+<li>不是 <code>same-expiry futures basis differential</code>：那条线主要赚 <strong>跨所期货曲线偏离</strong>。</li>
+<li>这条线赚的是 <strong>venue-level net carry ranking</strong>，而且把 <strong>funding + basis + fees + slippage + capacity</strong> 串成一个统一分数。</li>
+</ul>
+<h2>5. 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>cross-venue / relative-value / carry / stat-arb / market-neutral</strong></li>
+<li>基础 alpha：<strong>同一标的 perp 在不同 venue 的净 carry（funding+basis-成本）会出现持续性差异；做 <code>最高净 carry venue</code> 对 <code>最低净 carry venue</code> 的配对，是一条可独立成立的 raw alpha。</strong></li>
+<li>regime：</li>
+<li>更适合 funding 机制差异明显、basis 偏离不完全同步、流动性分层清楚的时段</li>
+<li>在拥挤或 funding spike 时要更谨慎，不能把极端值误当稳定 carry</li>
+<li>filter / veto：</li>
+<li><code>quality_score &gt;= 40</code></li>
+<li><code>capacity_10bps_usd &gt;= 5000</code></li>
+<li><code>trap_tags</code> 不能过多</li>
+<li><code>funding_only=False</code> 时 basis 才一起参与排序</li>
+<li>risk / sizing / execution overlay：</li>
+<li>仓位上限取 pair 两边 10bps 容量较小者</li>
+<li>horizon 必须单独扫描（<code>1d/3d/7d/30d</code> 至少四档）</li>
+<li>需要事件止损：edge collapse、trap tag 激增、数据 stale、下一 funding 预测翻向</li>
+</ul>
+<h2>6. 可复刻的最小实验</h2>
+<h3>6.1 数据源 / 公开性 / 更新频率</h3>
+<ul>
+<li><strong>Binance</strong>：<code>/fapi/v1/premiumIndex</code>、<code>/fapi/v1/openInterest</code>、<code>/fapi/v1/depth</code></li>
+<li><strong>Hyperliquid</strong>：<code>POST /info</code> 的 <code>metaAndAssetCtxs</code>、<code>l2Book</code></li>
+<li><strong>dYdX</strong>：<code>/v4/perpetualMarkets</code>、<code>/v4/orderbooks/perpetualMarket/{market}</code></li>
+<li><strong>公开性</strong>：公开，无需 key</li>
+<li><strong>更新频率</strong>：分钟内可多次刷新；repo 默认 <code>30s</code> + <code>5s</code> 级别</li>
+</ul>
+<h3>6.2 最小信号定义</h3>
+<p>对每个 symbol、每个 venue，在每个时间点计算：</p>
+<ol>
+<li><code>funding_apr</code></li>
+<li><code>basis_apr</code></li>
+<li><code>slippage_bps(size)</code></li>
+<li><code>net_carry_apr(size, hold_days)</code></li>
+</ol>
+<p>然后在同一时刻做：</p>
+<ul>
+<li><code>earn = argmax(net_carry_apr)</code></li>
+<li><code>hedge = argmin(net_carry_apr)</code></li>
+<li><code>edge_apr = earn.net_carry_apr - hedge.net_carry_apr</code></li>
+<li><code>pair_expected_apr = funding_diff + basis_diff - fees - slippage</code></li>
+</ul>
+<h3>6.3 最小可复现实验口径</h3>
+<ul>
+<li>标的：先从 <code>BTC / ETH / SOL</code> 开始</li>
+<li>频率：先存 <code>30s</code> 原始快照，再聚合到 <code>1m / 3m / 5m / 15m</code></li>
+<li>仓位：先看 <code>10k / 25k / 50k</code> 三档</li>
+<li>持有：至少扫 <code>1d / 3d / 7d / 30d</code></li>
+<li>admission：</li>
+<li><code>pair_expected_apr &gt; 0</code></li>
+<li><code>pair_capacity_usd &gt;= size</code></li>
+<li><code>quality_min &gt;= 40</code></li>
+<li><code>max(trap_tags_union) &lt;= 2</code></li>
+</ul>
+<h3>6.4 先做什么，不要做什么</h3>
+<ul>
+<li><strong>先做：</strong> event-study，统计 edge 出现后在未来 <code>30m / 1h / 4h / 8h / 1d</code> 是否持续、是否塌缩、是否跨 funding window 兑现。</li>
+<li><strong>不要先做：</strong> 直接把瞬时 leaderboard 当生产信号，因为没有历史 persistence 和成交路径，你只是在盯看板，不是在测 alpha。</li>
+</ul>
+<h2>7. first verdict</h2>
+<p>我的 first verdict 是：</p>
+<p>&gt; <strong>这是一个合格的 raw alpha intake，而且很适合当前 desk。</strong></p>
+<p>原因不是它已经是完整生产策略，而是：</p>
+<ul>
+<li>base alpha 说得清；</li>
+<li>公开数据随手能取；</li>
+<li>既能做 <code>30s/1m</code> 的高频 event-study，也能做 <code>5m/15m</code> 的低频聚合验证；</li>
+<li>跟我们现有的 quote-gap / basis / funding 线形成互补。</li>
+</ul>
+<p>但也要明确：</p>
+<ul>
+<li><strong>它不是“现在就能直接跑实盘”的完整策略</strong>，因为 repo 没有真正的 entry/exit/execution book；</li>
+<li><strong>它更像一个 pair-ranking alpha kernel</strong>，后面需要我们自己补：</li>
+<li>edge persistence</li>
+<li>horizon selection</li>
+<li>maker/taker 现实成交</li>
+<li>next-funding 前后 path dependency</li>
+</ul>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li><strong>dYdX 的 basis 被设为 0</strong>（oracle=mark），这让三所比较天然不对称；做研究时要明确这是 API 结构差异，不是经济现实完全没有 basis。</li>
+<li><strong>predicted funding ≠ realized funding</strong>，尤其 dYdX 用的是 next funding prediction；如果直接把它当已锁定 carry，结果会偏乐观。</li>
+<li><strong>basis annualization 对 horizon 非常敏感</strong>。repo 默认拿 <code>1 day</code> 年化 basis，这对短 hold 来说偏激进，对长 hold 又可能偏粗糙。</li>
+<li><strong>同一 snapshot 下，hold_days 改一下，pair ranking 就会变。</strong> 这既是优点也是坑：说明 alpha 真实存在，但也说明它极依赖持有框架，不能把 scanner 排名直接当万能答案。</li>
+<li><strong>最容易犯的错</strong>：把 <code>edge_apr &gt; 0</code> 误当成“马上值得打”。真正该关心的是：edge 持续多久、能否跨 funding 窗、两腿容量是否同步、执行后还能剩多少。</li>
+</ul>
+<h2>9. 下一步怎么测</h2>
+<ol>
+<li><strong>先把 30s 快照存下来，别急着做策略。</strong></li>
+</ol>
+<ul>
+<li>至少存 <code>BTC/ETH/SOL</code> 三个 symbol、三所快照、连续 <code>7~14d</code>。</li>
+</ul>
+<ol>
+<li><strong>做 edge persistence study。</strong></li>
+</ol>
+<ul>
+<li>看 <code>edge_apr &gt; 10% / 20% / 30%</code> 出现后，未来 <code>30m / 1h / 4h / 8h / 1d</code> 的衰减曲线。</li>
+</ul>
+<ol>
+<li><strong>把 hold_days 从配置常数改成研究维度。</strong></li>
+</ol>
+<ul>
+<li>这条线不是固定 30 天才有意义；要明确它更像 <code>intra-day carry RV</code>、<code>pre-funding hold</code> 还是 <code>multi-day pair carry</code>。</li>
+</ul>
+<ol>
+<li><strong>做 maker/taker 成本矩阵。</strong></li>
+</ol>
+<ul>
+<li>至少比较 <code>taker/taker</code>、<code>maker/taker</code>、<code>maker/maker proxy</code>，不然很多正 edge 会只是纸面现象。</li>
+</ul>
+<ol>
+<li><strong>单独加一个“funding-only vs funding+basis”对照。</strong></li>
+</ol>
+<ul>
+<li>验证真正贡献 edge 的到底是 funding 差、basis 差，还是两者叠加。</li>
+</ul>
+<ol>
+<li><strong>如果 persistence 很短，就把它并入现有 cross-venue fast-close book；如果 persistence 能跨 funding window，就升级成独立 carry RV 策略。</strong></li>
+</ol>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>Razrocks. (2026). _Funding-Basis---Strategy-Monitor_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/Razrocks/Funding-Basis---Strategy-Monitor">https://github.com/Razrocks/Funding-Basis---Strategy-Monitor</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/Razrocks/Funding-Basis---Strategy-Monitor">https://github.com/Razrocks/Funding-Basis---Strategy-Monitor</a></code></li>
+</ul>
+<ol>
+<li><strong>本轮实际审计文件</strong></li>
+</ol>
+<ul>
+<li>README: <code><a href="https://github.com/Razrocks/Funding-Basis---Strategy-Monitor/blob/main/README.md">https://github.com/Razrocks/Funding-Basis---Strategy-Monitor/blob/main/README.md</a></code></li>
+<li>Config: <code><a href="https://github.com/Razrocks/Funding-Basis---Strategy-Monitor/blob/main/config.yaml">https://github.com/Razrocks/Funding-Basis---Strategy-Monitor/blob/main/config.yaml</a></code></li>
+<li>Cross-venue core: <code><a href="https://github.com/Razrocks/Funding-Basis---Strategy-Monitor/blob/main/core/cross_venue.py">https://github.com/Razrocks/Funding-Basis---Strategy-Monitor/blob/main/core/cross_venue.py</a></code></li>
+<li>Metrics core: <code><a href="https://github.com/Razrocks/Funding-Basis---Strategy-Monitor/blob/main/core/metrics.py">https://github.com/Razrocks/Funding-Basis---Strategy-Monitor/blob/main/core/metrics.py</a></code></li>
+<li>Execution core: <code><a href="https://github.com/Razrocks/Funding-Basis---Strategy-Monitor/blob/main/core/execution.py">https://github.com/Razrocks/Funding-Basis---Strategy-Monitor/blob/main/core/execution.py</a></code></li>
+<li>Venue connectors: <code><a href="https://github.com/Razrocks/Funding-Basis---Strategy-Monitor/tree/main/connectors">https://github.com/Razrocks/Funding-Basis---Strategy-Monitor/tree/main/connectors</a></code></li>
+<li>Tests: <code><a href="https://github.com/Razrocks/Funding-Basis---Strategy-Monitor/tree/main/tests">https://github.com/Razrocks/Funding-Basis---Strategy-Monitor/tree/main/tests</a></code></li>
+</ul>
+<ol>
+<li><strong>本轮本地源码快照</strong></li>
+</ol>
+<ul>
+<li>local clone commit: <code>0668422a1f4539ca19fcf67caa57b38bc93dacaa</code></li>
+<li>commit time seen locally: <code>2026-02-22 19:32:05 -0500</code></li>
+</ul>
+<ol>
+<li><strong>本轮 live public probe 所用公开接口</strong></li>
+</ol>
+<ul>
+<li>Binance: <code><a href="https://fapi.binance.com/fapi/v1/premiumIndex">https://fapi.binance.com/fapi/v1/premiumIndex</a></code>, <code><a href="https://fapi.binance.com/fapi/v1/openInterest">https://fapi.binance.com/fapi/v1/openInterest</a></code>, <code><a href="https://fapi.binance.com/fapi/v1/depth">https://fapi.binance.com/fapi/v1/depth</a></code></li>
+<li>Hyperliquid: <code><a href="https://api.hyperliquid.xyz/info">https://api.hyperliquid.xyz/info</a></code></li>
+<li>dYdX: <code><a href="https://indexer.dydx.trade/v4/perpetualMarkets">https://indexer.dydx.trade/v4/perpetualMarkets</a></code>, <code><a href="https://indexer.dydx.trade/v4/orderbooks/perpetualMarket/BTC-USD">https://indexer.dydx.trade/v4/orderbooks/perpetualMarket/BTC-USD</a></code></li>
+</ul>
+<h2>11. 和当前短周期（1m/3m/5m/15m）的关系</h2>
+<p>如果只把它看成“30 天 carry 监控器”，会低估它；如果硬把它说成秒级 quote-gap，又会说过头。</p>
+<p>更准确的 desk 定位是：</p>
+<ul>
+<li><strong>底层采样频率</strong>：<code>30s/5s</code></li>
+<li><strong>研究聚合频率</strong>：<code>1m / 3m / 5m / 15m</code></li>
+<li><strong>收益兑现频率</strong>：可能从 <code>数十分钟</code> 到 <code>跨 funding 窗</code> 都有</li>
+</ul>
+<p>所以它很适合作为：</p>
+<ol>
+<li><code>1m/3m</code> 的 <strong>edge-appearance / persistence 事件研究</strong>；</li>
+<li><code>5m/15m</code> 的 <strong>carry RV 排名与持有窗测试</strong>；</li>
+<li>未来和现有 quote-gap / funding / basis 主题做 <strong>router</strong>：不同 edge persistence 走不同执行壳。</li>
+</ol>
+</body>
+</html>

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Rank 145 · interrupt reserve scorecard</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 40px auto; max-width: 960px; line-height: 1.65; color: #1f2937; padding: 0 20px; }
+    h1, h2 { color: #111827; }
+    .muted { color: #6b7280; }
+    .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px 20px; margin: 18px 0; }
+    .good { color: #065f46; font-weight: 700; }
+    .warn { color: #92400e; font-weight: 700; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th, td { border: 1px solid #e5e7eb; padding: 10px 12px; text-align: left; }
+    th { background: #f3f4f6; }
+    code { background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }
+    ul { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Rank 145 · equity drawdown throttle + recovery hysteresis overlay</h1>
+  <p class="muted">更新时间：2026-03-23 21:58 UTC · 用途：给 desk 一个 reader-facing 的 reserve 口径页，而不是继续重跑同一组 A/B。</p>
+
+  <div class="card">
+    <h2>一句话结论</h2>
+    <p><span class="warn">keep_P1 / interrupt reserve fallback / reserve only</span>。当前最便宜、最相关的本地 A/B 已经回答了 routing 问题：在 desk 可用的共享代理上，drawdown throttle 根本没有被触发，所以它暂时不值得回到默认 Scout 主位。</p>
+  </div>
+
+  <div class="card">
+    <h2>本轮为什么只做页面，不重跑实验</h2>
+    <ul>
+      <li>本轮没有真实 interrupt：paper autonomous runners 未见 <code>stale / error / refresh drift / ledger / open-position / red-watch</code>。</li>
+      <li>Rank 145 的冻结阈值 A/B 已经做完，现有 evidence 足够支持 routing 口径。</li>
+      <li>当前更有杠杆的动作，是把已有结论变成站点可见入口，避免后续 bot2 / bot3 又把它误认成默认 primary。</li>
+    </ul>
+  </div>
+
+  <h2>共享代理的关键事实</h2>
+  <table>
+    <tr><th>项目</th><th>值</th></tr>
+    <tr><td>shared proxy</td><td>Rank32b 15m 6bps BTC / ETH / SOL equal-weight merged trade stream</td></tr>
+    <tr><td>sample window</td><td>2025-11-17 01:45 UTC → 2026-03-15 20:30 UTC（118.78 天）</td></tr>
+    <tr><td>portfolio trades</td><td>227</td></tr>
+    <tr><td>baseline post-cost return</td><td class="good">+47.89%</td></tr>
+    <tr><td>baseline max drawdown</td><td class="good">1.85%</td></tr>
+    <tr><td>baseline calmar</td><td class="good">125.89</td></tr>
+  </table>
+
+  <h2>冻结阈值 A/B 结果</h2>
+  <p>已检查 <code>8% / 10% / 12%</code> drawdown 阈值 × <code>0.25 / 0.5</code> 缩仓 × <code>95% / 98%</code> recovery hysteresis 的全部组合。</p>
+  <table>
+    <tr><th>观察点</th><th>结果</th></tr>
+    <tr><td>time_in_reduced_mode_bars</td><td>全部组合均为 <strong>0</strong></td></tr>
+    <tr><td>time_in_reduced_mode_ratio</td><td>全部组合均为 <strong>0.0</strong></td></tr>
+    <tr><td>max_drawdown improve</td><td>全部组合均为 <strong>0%</strong></td></tr>
+    <tr><td>return damage</td><td>全部组合均为 <strong>0%</strong></td></tr>
+  </table>
+
+  <div class="card">
+    <h2>怎么翻成人话</h2>
+    <p>这个 overlay 的设想是：如果资金曲线先出现比较明显的回撤，就暂时减仓，等恢复到一定程度再恢复正常仓位。</p>
+    <p>但在当前共享代理上，整段样本里的实际回撤只有大约 <strong>1.85%</strong>，远低于 8% 起跳的阈值。也就是说，这个保险杠在本地最相关样本里一次都没碰到“该工作的时候”。</p>
+    <p>所以当前最诚实的说法不是“它没用”，而是：<strong>现在还没有证据证明它在 desk 当前策略栈里能提供真实的回撤压缩价值。</strong></p>
+  </div>
+
+  <h2>当前 scorecard</h2>
+  <table>
+    <tr><th>维度</th><th>分数</th><th>解释</th></tr>
+    <tr><td>usefulness</td><td>2/3</td><td>是合理的风险控制想法，但当前共享代理没触发。</td></tr>
+    <tr><td>time_stability</td><td>1/3</td><td>还没有跨不同时段的真实触发证据。</td></tr>
+    <tr><td>cross_asset_stability</td><td>1/3</td><td>只在本地 BTC/ETH/SOL 共享代理上做过。</td></tr>
+    <tr><td>cost_trade_stability</td><td>2/3</td><td>本轮不再烧预算，现有证据足够支持 reserve routing。</td></tr>
+    <tr><td>deployability</td><td>2/3</td><td>逻辑清楚，但没有被当前 desk 真实 drawdown 场景激活。</td></tr>
+  </table>
+
+  <h2>Desk routing</h2>
+  <ul>
+    <li><strong>现在的位置：</strong> interrupt reserve fallback</li>
+    <li><strong>不该做的事：</strong>把 Rank 145 写回默认 Scout 主位，再重复同一类 frozen-threshold 实验</li>
+    <li><strong>更合理的触发条件：</strong>未来若有真实 paper / tiny-live 资金曲线出现更深回撤，再回来看它是否能提供非零压缩</li>
+    <li><strong>触发矩阵：</strong><a href="rank145_interrupt_revisit_trigger_matrix.html">什么时候才该重新唤醒 Rank 145</a></li>
+    <li><strong>当前健康快照：</strong><a href="rank145_interrupt_reserve_watch_snapshot.html">为什么这一刻仍不该重开 Rank 145</a></li>
+    <li><strong>canonical packet：</strong><a href="rank145_interrupt_reserve_packet.html">把 reserve 口径一次看完</a></li>
+  </ul>
+
+  <h2>对应 artifacts</h2>
+  <ul>
+    <li><code>reports/artifacts/scout_rank145_equity_dd_throttle_overlay_15m/promotion_scorecard.csv</code></li>
+    <li><code>reports/artifacts/scout_rank145_equity_dd_throttle_overlay_15m/frozen_threshold_ab_summary.csv</code></li>
+    <li><code>reports/artifacts/scout_rank145_equity_dd_throttle_overlay_15m/frozen_threshold_ab_portfolio_summary.json</code></li>
+  </ul>
+</body>
+</html>

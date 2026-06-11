@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把高频 pairs 的阈值继续写死成一个数：这篇 2025 *Computational Economics* 更该先测的是「RF 预测阈值桶 × HF pair threshold-rebalance」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把高频 pairs 的阈值继续写死成一个数：这篇 2025 *Computational Economics* 更该先测的是「RF 预测阈值桶 × HF pair threshold-rebalance」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-06 07:57 UTC</span>
+      <span class="pill">研究时间：2026-04-06 07:54 UTC</span>
+      <span class="pill">类型：2025 *Computational Economics* 开放获取全文（Springer PDF）+ Crossref / OpenAlex 元数据</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/high-frequency/threshold-rebalance/optimal-threshold/random-forest/ml/binance/btc-quoted/1m/3m/5m/15m/paper/open-access/public-data/cost/risk</span>
+      <span class="pill">证据类型：开放获取论文全文 + 元数据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-06_0754_rf-threshold-bucket-hf-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-06 07:54 UTC</li>
+<li>类型：2025 *Computational Economics* 开放获取全文（Springer PDF）+ Crossref / OpenAlex 元数据</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：高相关 crypto pair 的相对价格偏离会向均衡权重回归；alpha 本体是 <strong>thresholded relative-value mean reversion</strong>，只是 entry / rebalance 宽度不再写死，而是按 pair 的 moments + VaR + corr 映射到不同阈值桶</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/high-frequency/threshold-rebalance/optimal-threshold/random-forest/ml/binance/btc-quoted/1m/3m/5m/15m/paper/open-access/public-data/cost/risk</li>
+<li>证据类型：开放获取论文全文 + 元数据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这篇东西的 base alpha 很清楚，就是 high-frequency crypto pairs 的 relative-value mean reversion。</strong></p>
+<p>但这篇更值得 intake 的点，不是“pairs 也能赚钱”，而是：<strong>别再默认所有 pairs 都该共用一个固定 entry 阈值。</strong> 作者直接把“最佳阈值落在哪个区间”当成一个可学习对象，用 pair 自身的均值、方差、偏度、峰度、VaR、相关性去预测阈值桶，然后再把这个阈值桶喂给高频 pairs 策略。</p>
+<p>这对当前 desk 有直接价值，因为我们最近已经补了不少 <strong>pair selection / spread construction / copula / Hurst / dynamic-coint</strong>，但<strong>“不同 pair 到底该配多宽的 trigger 才扛得住成本和噪音”</strong> 还没有单独冻结成一张策略骨架卡。这篇刚好补的是 raw alpha 的 entry 层，不是外围解释。</p>
+<h2>2. 论文里最该拿走的东西</h2>
+<h3>2.1 论文做了什么</h3>
+<ul>
+<li>作者：<strong>Mahmut Bağcı, Pınar Kaya Soylu</strong></li>
+<li>年份：<strong>2025</strong></li>
+<li>标题：<strong>The Optimal Threshold Selection for High-Frequency Pairs Trading via Supervised Machine Learning Algorithms</strong></li>
+<li>期刊：<strong>Computational Economics</strong></li>
+<li>市场与样本：<strong>Binance 上 50 个 crypto 资产的 BTC 报价市场</strong>，使用 <strong>2022–2023 两年逐分钟价格</strong>；作者还用 <strong>2024 年 1–2 月</strong> 做 out-of-sample test。</li>
+<li>策略内核：不是传统“先 z-score，后双边开平”的教科书写法，而是<strong>pair threshold rebalancing</strong>：</li>
+<li>初始两腿等权；</li>
+<li>当两腿总价值比超过 <code>1 + T</code> 时，卖出相对高估腿的一部分，同时买入相对低估腿，把组合重新拉回等权；</li>
+<li><code>T</code> 就是策略最关键的 entry / rebalance 阈值。</li>
+</ul>
+<p>翻成人话：<strong>这不是又一个 pair-selection 论文，而是在问“pair 选完以后，trigger 宽度该怎么配”</strong>。</p>
+<h3>2.2 论文里最硬的 6 个数据点</h3>
+<ol>
+<li><strong>阈值扫描范围：1% 到 30%，步长 1%。</strong> 不是拍脑袋用 <code>2σ</code>，而是把每个 pair 在每个月的“最佳阈值”先穷举出来。</li>
+<li><strong>显式计入 0.1% 交易费。</strong> 这点很关键，因为高频 pairs 最大的问题本来就不是 paper alpha，而是门槛太窄后会被手续费磨死。</li>
+<li><strong>输入特征非常克制：</strong> 只用 pair 的 mean / variance / skewness / kurtosis / VaR / correlation coefficient，没有上来就黑盒深度学习。</li>
+<li><strong>Random Forest 是全场最稳的分类器。</strong> 在训练/验证里，正相关 pair 的二分类平均准确率 <strong>87.51%</strong>，弱相关 <strong>83.99%</strong>，负相关 <strong>84.68%</strong>；三分类、四分类也都是 RF 最优。</li>
+<li><strong>Out-of-sample（2024-01/02）也没塌。</strong> 测试集里，RF 对正相关 pair 的二分类平均准确率 <strong>92.17%</strong>（best <strong>93.94%</strong>）；弱相关 <strong>77.15%</strong>；负相关 <strong>81.68%</strong>。</li>
+<li><strong>作者给了实盘感很强的 pair 例子。</strong> 例如 2024 年 2 月，<strong>STX–THETA</strong> 在实际最优阈值 <strong>24%</strong> 时，作者记录到 <strong>41.2%</strong> 的最高收益案例；另外像 <strong>MANA–THETA</strong>（30% 阈值）对应 <strong>25.9%</strong>，<strong>DOGE–STX</strong>（29% 阈值）对应 <strong>25.1%</strong>。</li>
+</ol>
+<h3>2.3 真正改变我们实验设计的结论</h3>
+<p>论文里最有用的不是“RF 准确率不错”这句废话，而是下面这三个结构性判断：</p>
+<ol>
+<li><strong>阈值分布明显随相关性分层。</strong></li>
+</ol>
+<ul>
+<li>正相关 pair 的最佳阈值大量落在 <strong>0–15%</strong>；</li>
+<li>弱相关更常落在 <strong>10–20%</strong>；</li>
+<li>负相关则更常落在 <strong>22.5–30%</strong>。</li>
+</ul>
+<ol>
+<li><strong>说明 pair trigger 不是 universal constant。</strong></li>
+<p>相关性越弱、关系越松，想吃到有意义的回归，就越需要更宽的偏离才值得出手。</p>
+</ol>
+<ol>
+<li><strong>高频 pairs 的“参数选择”本身就是 alpha 工程的一部分。</strong></li>
+<p>不是先有 alpha、再随便套一个 2σ；很多时候 <strong>threshold 选错，alpha 直接从正变负</strong>。</p>
+</ol>
+<h2>3. 为什么这轮值得排在前面</h2>
+<p>这篇虽然还是 pairs，但它和我们最近那些 “再找一个新 spread / 新 pair selector” 的材料不一样：</p>
+<ul>
+<li>它服务的是 <strong>raw alpha 本体</strong>，不是外围 filter；</li>
+<li>它碰的是 <strong>entry / execution 骨架</strong>，不是又加一个解释变量；</li>
+<li>它天然适合 desk 当前最关心的 <code>1m / 3m / 5m / 15m</code>，因为作者底层就是 minute 级数据；</li>
+<li>它可以直接拆成完整策略：</li>
+<li>什么 pair 能进池？</li>
+<li>用多宽阈值触发？</li>
+<li>什么时候 rebalance / 平仓？</li>
+<li>成本上限多高还能活？</li>
+</ul>
+<p>如果问“为什么这篇比继续补一个新 filter 更值得”，答案很直接：<strong>因为它还在 raw alpha 的主轴上，而且碰的是决定会不会交易的那一刀。</strong></p>
+<h2>4. 策略拆解（按 desk 可落地口径）</h2>
+<h3>4.1 论文原版 alpha</h3>
+<ul>
+<li><strong>主题类型：raw alpha</strong></li>
+<li><strong>基础 alpha：</strong> pair 两腿的相对偏离会回归均衡权重</li>
+<li><strong>执行形式：</strong> threshold rebalancing</li>
+<li><strong>方向属性：</strong> relative-value / mean reversion</li>
+<li><strong>原论文更接近：</strong> 两腿都持有、偏离后卖强买弱、把组合拉回等权</li>
+</ul>
+<p>这点要说清：<strong>论文原版不是最经典的 market-neutral long-short spread shell，而是“等权 pair 被价格拉歪以后做阈值再平衡”。</strong></p>
+<h3>4.2 desk 版的两个可落地方向</h3>
+<p>#### A. 论文 faithful 版（先复原作者）</p>
+<ul>
+<li>标的：先从高流动性的 <code>alt/BTC</code> 或可合成 <code>alt/BTC</code> 的现货序列开始</li>
+<li>初始：pair 内两腿等 BTC notional</li>
+<li>信号：</li>
+<li>计算组合权重差或两腿总价值比；</li>
+<li>用 rolling 特征喂给 RF，得到阈值桶 <code>T_bucket</code>；</li>
+<li>当价值比超过 <code>1 + T_bucket</code>，触发 rebalance</li>
+<li>退出：回到等权后视为一次回归完成；或按固定检查点统计累计利润</li>
+<li>sizing：pair 内等权，组合层限制同时激活 pair 数</li>
+<li>risk：pair 断相关、波动跳升、成交深度不足时停用</li>
+</ul>
+<p>#### B. perp-neutralized 版（更适合我们 desk）</p>
+<ul>
+<li>标的：Binance / Hyperliquid / Bybit 的高流动 perp pair</li>
+<li>信号：把论文的“价值比偏离”翻译成 <strong>residual / ratio gap 超阈值</strong></li>
+<li>交易：</li>
+<li>winner leg 做空，loser leg 做多；</li>
+<li>名义金额按 beta-neutral 或 volatility-neutral 对冲</li>
+<li>退出：</li>
+<li>gap 回到中性区；</li>
+<li>timeout；</li>
+<li>相关性断裂 / 残差继续扩张到 hard stop</li>
+<li>成本：手续费 + 滑点 + funding 全都记进去</li>
+</ul>
+<p>翻成人话：<strong>论文给的是“阈值怎么选”，不是强迫我们照抄现货-BTC rebalancing 壳。alpha 可以保留，外壳可以换成更适合 perp desk 的 long-short 版本。</strong></p>
+<h2>5. 这篇对 <code>1m / 3m / 5m / 15m</code> 的具体启发</h2>
+<h3>5.1 不要一上来共享一个固定 band</h3>
+<p>对 short-cycle desk，最直接的误区就是：</p>
+<ul>
+<li><code>5m</code> 用 <code>1.5σ</code></li>
+<li><code>15m</code> 也用 <code>1.5σ</code></li>
+<li>所有 pair 也用 <code>1.5σ</code></li>
+</ul>
+<p>这篇几乎可以视作对此的直接反例：<strong>pair 的最优 trigger 宽度和其统计特征是绑定的，不该被压成一个公共常数。</strong></p>
+<h3>5.2 可以先从“阈值桶”而不是“精确阈值”开始</h3>
+<p>这是很实用的工程化思想。论文没有强求精确预测 <code>17%</code> 还是 <code>18%</code>，而是先把阈值做成：</p>
+<ul>
+<li>二分类：<code>(0,15%]</code> / <code>(15%,30%]</code></li>
+<li>三分类：<code>(0,10%]</code> / <code>(10%,20%]</code> / <code>(20%,30%]</code></li>
+<li>四分类：<code>(0,7.5%]</code> / <code>(7.5%,15%]</code> / <code>(15%,22.5%]</code> / <code>(22.5%,30%]</code></li>
+</ul>
+<p>对我们也一样：<strong>先把 trigger 学成 bucket，往往比直接回归一个连续值更稳。</strong></p>
+<h3>5.3 它也能服务更常规的 z-score pairs</h3>
+<p>即便 desk 最后不用论文这种“价值比阈值再平衡”写法，这篇也仍然有用：</p>
+<ul>
+<li>你完全可以把 RF 预测出来的 bucket，映射成不同的 <code>entry z</code>、<code>stop z</code>、<code>max hold</code>；</li>
+<li>本质不变：<strong>pair-state → threshold regime</strong>。</li>
+</ul>
+<h2>6. 最小可复现实验（建议口径）</h2>
+<h3>实验 1：先做论文 faithful 复现</h3>
+<ul>
+<li>数据：Binance 现货逐分钟 <code>ALT/BTC</code> 或由 <code>ALT/USDT</code>、<code>BTC/USDT</code> 合成 <code>ALT/BTC</code></li>
+<li>宇宙：先从 <code>20~30</code> 个流动性最高的币开始，不必一上来 50 个全上</li>
+<li>formation：按月滚动计算</li>
+<li>mean / variance / skewness / kurtosis / VaR / corr</li>
+<li>标签：在 formation 月内穷举 <code>T = 1%...30%</code></li>
+<li>策略：下一月按 RF 预测阈值桶做 threshold rebalance</li>
+<li>频率：</li>
+<li>先跑 <code>15m</code> decision clock</li>
+<li>再看 <code>5m</code></li>
+<li>有活口再下沉 <code>3m / 1m</code></li>
+</ul>
+<h3>实验 2：再做 perp-neutralized 便携版</h3>
+<ul>
+<li>数据：Binance / Hyperliquid perp <code>1m</code> mid 或 mark</li>
+<li>spread：ratio gap / hedge residual / beta-adjusted residual 三选一</li>
+<li>threshold：</li>
+<li>baseline A：固定 <code>entry z</code></li>
+<li>baseline B：按 corr 桶手工分层</li>
+<li>candidate：RF 预测 threshold bucket</li>
+<li>目标：比较 <strong>固定阈值 vs corr 分层阈值 vs RF 阈值桶</strong> 三者 post-cost 表现</li>
+</ul>
+<h2>7. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>先做 paper-faithful 版，不要直接魔改。</strong> 先确认“阈值桶预测”本身有没有增益，再谈 perp-neutral 化。</li>
+<li><strong>先做 bucket，不要先做 continuous regression。</strong> 这篇已经说明分类比精确点预测更稳。</li>
+<li><strong>至少要有三组对照：</strong></li>
+</ol>
+<ul>
+<li>单一固定阈值；</li>
+<li>只按 corr 桶分层的手工阈值；</li>
+<li>RF 预测阈值桶。</li>
+</ul>
+<ol>
+<li><strong>把 <code>15m</code> 和 <code>5m</code> 分开训练/验证。</strong> 不要偷懒把一个模型横跨所有频率。</li>
+<li><strong>必须显式记成本。</strong> 论文用的是 <code>0.1%</code> fee；我们实盘最少也要扫 <code>8 / 12 / 16 / 20 bps</code> pair round-trip，再加 funding。</li>
+<li><strong>组合层必须管 overlap。</strong> 很多 pair 会共用同一条腿，否者看起来是多 pair，实际是一把币暴露。</li>
+<li><strong>看这几个核心指标：</strong> post-cost expectancy、turnover、median hold、timeout 占比、pair overlap、相关性失效后的 drawdown。</li>
+</ol>
+<h2>8. 我现在的判断</h2>
+<p>这篇最值得我们拿去测的，不是“ML 很强”，而是：</p>
+<p>&gt; <strong>高频 pairs 里，threshold selection 不是附属超参，而是 alpha 本体的一部分。</strong></p>
+<p>如果后续复现成立，它对 desk 的实际意义会很直接：</p>
+<ul>
+<li>不再拿一个公共 <code>entry z</code> 硬套所有 pair；</li>
+<li>先把 pair 分成几类，再给不同的 trigger 宽度；</li>
+<li>把“什么时候该宽、什么时候该窄”这件事从拍脑袋，升级成一个可训练的 admission / execution layer。</li>
+</ul>
+<h2>9. 风险与保留意见</h2>
+<ul>
+<li>论文原壳更像 <strong>threshold rebalance</strong>，不是最标准的 market-neutral long-short，对我们 desk 需要做一层壳体翻译。</li>
+<li>作者用的是 <strong>BTC 报价 pair</strong>；如果转到 USDT perp，协整结构、交易费、funding 都会变。</li>
+<li>RF 的优势目前来自这篇论文的样本设计；离样本后是否仍稳，要看我们自己的 2024–2026 OOS。</li>
+<li>这篇解决的是 <strong>threshold selection</strong>，不是 pair selection 全部问题，不能替代 cointegration / Hurst / copula 等 admission 层。</li>
+</ul>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>Bağcı, M., &amp; Kaya Soylu, P. (2025). _The Optimal Threshold Selection for High-Frequency Pairs Trading via Supervised Machine Learning Algorithms_. Computational Economics.</strong></li>
+</ol>
+<ul>
+<li>Venue: <code>Computational Economics</code></li>
+<li>DOI: <code>10.1007/s10614-025-10958-5</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1007/s10614-025-10958-5">https://doi.org/10.1007/s10614-025-10958-5</a></code></li>
+<li>PDF URL: <code><a href="https://link.springer.com/content/pdf/10.1007/s10614-025-10958-5.pdf">https://link.springer.com/content/pdf/10.1007/s10614-025-10958-5.pdf</a></code></li>
+<li>Repo URL: <strong>未见 paper-specific public repo</strong></li>
+</ul>
+<ol>
+<li><strong>Crossref metadata</strong></li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://api.crossref.org/works/10.1007/s10614-025-10958-5">https://api.crossref.org/works/10.1007/s10614-025-10958-5</a></code></li>
+</ul>
+<ol>
+<li><strong>OpenAlex metadata</strong></li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://api.openalex.org/works?filter=doi:https://doi.org/10.1007/s10614-025-10958-5">https://api.openalex.org/works?filter=doi:https://doi.org/10.1007/s10614-025-10958-5</a></code></li>
+</ul>
+</body>
+</html>

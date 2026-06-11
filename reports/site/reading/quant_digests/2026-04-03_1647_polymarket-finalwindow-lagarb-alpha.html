@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 v5 bot 读成“AI 下注工具”：它真正可独立复现的 base alpha，是「Binance 领涨/领跌 × Polymarket 最后 120 秒滞后定价」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 v5 bot 读成“AI 下注工具”：它真正可独立复现的 base alpha，是「Binance 领涨/领跌 × Polymarket 最后 120 秒滞后定价」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 16:48 UTC</span>
+      <span class="pill">研究时间：2026-04-03 16:47 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（GitHub API metadata + `README.md` + `config.py` + `signal_engine.py` + `risk.py` + `executor.py` + `bot.py` + `analyze.py`）+ Polymarket / Chainlink / Binance 公共接口路径校对</span>
+      <span class="pill">主题标签：raw-alpha/cross-market/relative-value/prediction-market/polymarket/binance/chainlink/5m/15m/hard-expiry/final-window/lag-arb/maker-mode/kelly/late-entry/external-data/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：GitHub README/source 规则级证据 + 公共数据接口可达性/字段路径校对</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_1647_polymarket-finalwindow-lagarb-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-03 16:47 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（GitHub API metadata + <code>README.md</code> + <code>config.py</code> + <code>signal_engine.py</code> + <code>risk.py</code> + <code>executor.py</code> + <code>bot.py</code> + <code>analyze.py</code>）+ Polymarket / Chainlink / Binance 公共接口路径校对</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>crypto-linked binary market 的 cross-venue lag arb</strong>——当 Binance 现货/指数侧的短秒级方向变化已出现，但 Polymarket 的 <code>BTC/ETH 5m/15m UP/DOWN</code> 合约赔率还没跟上时，在临近到期窗口买入被低估的一侧，吃的是 <strong>leader venue → hard-expiry binary venue</strong> 的短暂滞后修复。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-market/relative-value/prediction-market/polymarket/binance/chainlink/5m/15m/hard-expiry/final-window/lag-arb/maker-mode/kelly/late-entry/external-data/repo/public-data/cost/risk</li>
+<li>证据类型：GitHub README/source 规则级证据 + 公共数据接口可达性/字段路径校对</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先把 <strong>base alpha</strong> 说清楚：</p>
+<p>&gt; <strong>这不是 AI alpha，也不是 event scanner，也不是“让 LLM 决定要不要买”。真正的 alpha 本体，是 Binance/Chainlink 先动、Polymarket 二元赔率后动。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li><code>BTC/ETH 5m/15m UP/DOWN</code> 这类 binary 合约，越接近到期，价格越应该像“短时间内收涨概率”的实时映射；</li>
+<li>如果 Binance 这边已经在 10s/30s/60s 上给出明确方向，而 Polymarket 订单簿里的 YES/NO 价格还没把这个变化吃进去，那里就会出现可交易的 <strong>赔率滞后</strong>；</li>
+<li>于是策略在 <strong>最后 120 秒到 3 秒</strong> 的窗口里，买入被低估的一边，靠的是 <strong>leader venue 价格发现领先</strong>，不是靠宏大叙事，更不是靠 AI 猜新闻。</li>
+</ul>
+<p>这条线为什么值得进当前素材池？因为它满足几件很难同时满足的事：</p>
+<ol>
+<li><strong>raw alpha 很清楚</strong>：不是 gate，不是 overlay，本体就是 binary-price underreaction；</li>
+<li><strong>频率天然贴 5m/15m</strong>：不是硬把日频材料强行压成快周期；</li>
+<li><strong>策略组件完整</strong>：entry / exit / sizing / risk / cost 都给出来了；</li>
+<li><strong>和 desk 当前短周期方向直接相邻</strong>：虽然交易 venue 不是 perp，但底层驱动仍是 crypto 秒级价格发现。</li>
+</ol>
+<p>一句话结论先放前面：</p>
+<p>&gt; <strong>这份 repo 真正有价值的不是“AI 过滤器”，而是“临近到期的 binary 合约，能不能被 leader venue 的超短 momentum/OFI 抢跑”。如果要做最小实验，先把 AI 全关掉，只测 final-window lag arb。</strong></p>
+<h2>2. 核心结论</h2>
+<h3>2.1 这份 repo 的主线到底是什么</h3>
+<p>主仓库是：</p>
+<ul>
+<li><strong>Author / Year / Title / Venue</strong>：<code>andiyusanto</code> / 2026 / *Polymarket Latency Arbitrage Bot (v5)* / GitHub repo</li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/andiyusanto/opus-clude-polymarket-arbitrage-bot&gt;">https://github.com/andiyusanto/opus-clude-polymarket-arbitrage-bot&gt;</a></li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/andiyusanto/opus-clude-polymarket-arbitrage-bot&gt;">https://github.com/andiyusanto/opus-clude-polymarket-arbitrage-bot&gt;</a></li>
+<li><strong>DOI</strong>：无（repo-based intake）</li>
+</ul>
+<p>repo README 标得很明白：</p>
+<ul>
+<li>监控的是 <strong>BTC/ETH up/down prediction markets on Polymarket</strong>；</li>
+<li>参考的是 <strong>Binance WebSocket</strong>；</li>
+<li>v4 开始又叠了一层 <strong>Chainlink RTDS</strong> 作为 resolution-oracle 方向确认；</li>
+<li>v5 才新加了 AI filter 和 event scanner。</li>
+</ul>
+<p>所以别被 README 的“AI v5”抢走注意力。按对 desk 最有用的读法，repo 里真正该 intake 的东西是：</p>
+<p>&gt; <strong>用 leader venue 的短秒级价格变化去估一个临近到期 binary market 的 fair value，然后只在最后时间窗里、只在 edge 足够厚的时候出手。</strong></p>
+<h3>2.2 规则壳已经给到什么程度</h3>
+<p>从 <code>config.py</code>、<code>signal_engine.py</code>、<code>executor.py</code>、<code>risk.py</code> 可以直接拆出完整骨架：</p>
+<p>#### 数据与市场</p>
+<ul>
+<li><strong>Leader source</strong>：Binance WebSocket（<code>wss://data-stream.binance.com/stream</code>）</li>
+<li><strong>Secondary confirmation</strong>：Chainlink RTDS（repo 中 <code>chainlink_feed.py</code>）</li>
+<li><strong>Execution venue</strong>：Polymarket CLOB（<code><a href="https://clob.polymarket.com">https://clob.polymarket.com</a></code>）</li>
+<li><strong>发现市场</strong>：Polymarket Gamma API（<code><a href="https://gamma-api.polymarket.com/events">https://gamma-api.polymarket.com/events</a></code>）</li>
+<li><strong>标的</strong>：repo 主写 <code>BTC</code> / <code>ETH</code> 的 <code>5m/15m</code> UP/DOWN 合约</li>
+</ul>
+<p>#### Entry logic（核心） repo 的信号不是“看涨就买”，而是一个 <strong>fair-value vs current-binary-price</strong> 的差值交易：</p>
+<ol>
+<li>从 Binance tick history 里算 <code>10s / 30s / 60s</code> 三档 momentum；</li>
+<li>再加一个 <code>momentum acceleration</code>（最近 10s 比 30s 更强还是更弱）；</li>
+<li>加一个 <code>consecutive tick direction</code>，要求最近 15s 至少有连续同向 tick；</li>
+<li>再把这些拼成一个 <code>fair value ∈ [0.05, 0.95]</code>；</li>
+<li>如果 <code>fair &gt; Polymarket YES</code>，买 YES；否则买 NO；</li>
+<li>只有在 <code>edge_pct &gt;= min_edge_pct</code> 且 <code>lag_pct &gt;= lag_threshold_pct</code> 时才下单。</li>
+</ol>
+<p>repo 里默认参数：</p>
+<ul>
+<li><code>min_edge_pct = 1.2%</code></li>
+<li><code>lag_threshold_pct = 1.5%</code></li>
+<li><code>confidence_threshold = 40</code></li>
+<li><code>min_momentum_pct = 0.05</code></li>
+<li>至少 <code>2</code> 个同向连续 ticks</li>
+</ul>
+<p>这其实已经是一个完整 raw alpha：</p>
+<p>&gt; <strong>binary 合约价格没有及时反映 leader 价格变动时，买低估概率。</strong></p>
+<p>#### 时间窗（非常关键） repo 最值钱的不是“买不买”，而是 <strong>什么时候才值得买</strong>：</p>
+<ul>
+<li><code>min_time_remaining_sec = 120.0</code></li>
+<li><code>max_time_remaining_sec = 3.0</code></li>
+</ul>
+<p>也就是：</p>
+<ul>
+<li><strong>太早不做</strong>，因为 binary 价格还会被噪声、流动性和中间波动拖着走；</li>
+<li><strong>太晚也不做</strong>，避免最后 3 秒流动性/成交确认问题；</li>
+<li>真正打的是 <strong>临近到期、赔率开始向终局概率收敛</strong> 的最后窗口。</li>
+</ul>
+<p>这点对 short-cycle desk 很重要，因为它说明：</p>
+<p>&gt; <strong>alpha 不是“全时段都存在”，而是高度 time-conditioned。</strong></p>
+<p>#### 执行逻辑 repo 明确区分 maker 与 taker：</p>
+<ul>
+<li>默认 <code>use_maker_orders = True</code></li>
+<li><code>maker_tick_offset = 1</code></li>
+<li><code>maker_fill_timeout_sec = 8.0</code></li>
+<li>只有当 <code>edge_pct &gt;= 6.0%</code> 时才允许 taker fallback</li>
+</ul>
+<p>成本假设：</p>
+<ul>
+<li><code>taker_fee_pct = 1.80%</code></li>
+<li><code>maker_rebate_pct = 0.20%</code></li>
+<li><code>simulated_slippage_pct = 0.3%</code></li>
+<li><code>fee_buffer_pct = 0.3%</code></li>
+</ul>
+<p>所以这条 alpha 的经济学并不是“随便方向对了就行”，而是：</p>
+<p>&gt; <strong>如果你能以 maker 低成本挂进去，1.2% 的 edge 也许够；如果你要用 taker 冲进去，成本会把大部分薄 edge 直接吃掉。</strong></p>
+<p>#### 仓位与风控 repo 不是 fixed size，而是 Kelly 缩放：</p>
+<ul>
+<li><code>kelly_fraction = 0.34</code></li>
+<li><code>max_position_pct = 3.0</code></li>
+<li><code>kill_switch_drawdown = 15.0</code></li>
+<li>单资产总暴露上限：<code>20%</code></li>
+<li>最大并发持仓：<code>5</code></li>
+<li>到期前 <code>10</code> 秒自动平仓</li>
+</ul>
+<p>也就是说，它不是单纯的信号脚本，而是已经把：</p>
+<ul>
+<li>sizing</li>
+<li>exposure cap</li>
+<li>kill switch</li>
+<li>expiry close</li>
+<li>order cooldown</li>
+<p>都拆清楚了。</p>
+</ul>
+<h3>2.3 这份 repo 最值得 intake 的，不是 AI</h3>
+<p>v5 README 一眼看过去最显眼的是 AI filter，但从 source 看，AI 更像一个 <strong>可选 overlay</strong>，不是 alpha 本体。</p>
+<p>更关键的是，<code>signal_engine.py</code> 里 AI filter 那段调用顺序本身就值得警惕：</p>
+<ul>
+<li><code>validate_signal(...)</code> 调用里引用了 <code>side</code> 和 <code>edge_pct</code>；</li>
+<li>但这两个变量在代码里是 <strong>后面才定义</strong> 的。</li>
+</ul>
+<p>这意味着：</p>
+<ol>
+<li>repo 作者想表达的是“AI 只做 pre-trade validation”；</li>
+<li>但当前实现顺序看起来并不适合把 AI 当主研究主题；</li>
+<li><strong>第一轮复现应默认关闭 AI</strong>，先把纯 quant lag-arb 壳跑通。</li>
+</ol>
+<p>这正好也符合本轮 intake 原则：</p>
+<p>&gt; <strong>不要把 overlay 伪装成 raw alpha。</strong></p>
+<h2>3. 为什么和当前 desk 直接相关</h2>
+<p>先回答一句：</p>
+<p>&gt; <strong>为什么这东西比再补一篇普通 trend/pairs 更值得？</strong></p>
+<p>因为它补的是当前库里相对少的一类：</p>
+<ul>
+<li>不是传统 perp/spot 的单边趋势；</li>
+<li>不是又一条 z-score pair；</li>
+<li>而是 <strong>hard-expiry 二元概率市场</strong> 上，由 crypto leader venue 驱动的 <strong>relative-value / lag-repair</strong> alpha。</li>
+</ul>
+<p>它和当前 desk 的关系有三层：</p>
+<h3>3.1 它本身就是一条完整 raw alpha</h3>
+<p>而且是少数能把以下都写清楚的：</p>
+<ul>
+<li><strong>entry</strong>：fair value vs YES/NO edge</li>
+<li><strong>exit</strong>：到期前 10 秒 / 合约收敛</li>
+<li><strong>sizing</strong>：Kelly × position cap</li>
+<li><strong>risk</strong>：daily drawdown kill switch / concurrent cap / asset exposure cap</li>
+<li><strong>cost</strong>：maker/taker 分流 + slippage + fee buffer</li>
+</ul>
+<h3>3.2 它天然落在 <code>5m / 15m</code></h3>
+<p>很多低频材料要硬压成快周期会变味；这条不是。 它的市场本体就是：</p>
+<ul>
+<li><code>5m</code></li>
+<li><code>15m</code></li>
+</ul>
+<p>所以最小实验可以直接做，不需要先发明“如何把日频论文缩成 5m”。</p>
+<h3>3.3 它还能反向服务我们对 perp alpha 的理解</h3>
+<p>如果未来不直接做 Polymarket，这条材料仍有 desk 价值：</p>
+<ul>
+<li>binary 合约的滞后，本质上是 <strong>另一个 venue 对 crypto 短秒级冲击的慢反应</strong>；</li>
+<li>这和跨交易所 premium、跨 venue price discovery、event-contract mispricing，本质是一类问题。</li>
+</ul>
+<p>换句话说：</p>
+<p>&gt; <strong>先把它当 standalone 策略看；若不做 binary 执行，再把它降级成“外部确认/对照市场”。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>cross-market / relative-value / hard-expiry binary lag arb</strong></li>
+<li>基础 alpha：<strong>leader venue（Binance/Chainlink）价格发现领先于 Polymarket binary odds 的短暂滞后修复</strong></li>
+<li>原 repo 的完整策略组件：</li>
+<li><code>signal layer</code>：10s/30s/60s multi-TF momentum + acceleration + consecutive-tick consistency</li>
+<li><code>pricing layer</code>：fair value vs <code>YES/NO</code> market price</li>
+<li><code>admission layer</code>：final-window only（120s → 3s）、min edge、min lag、min confidence、min momentum</li>
+<li><code>execution layer</code>：maker-first，extreme edge 才 taker fallback</li>
+<li><code>exit layer</code>：接近到期自动平仓</li>
+<li><code>sizing layer</code>：Kelly fraction × max position cap</li>
+<li><code>risk layer</code>：daily DD kill switch / open-count cap / per-asset exposure cap</li>
+<li><code>cost layer</code>：1.8% taker fee、0.2% maker rebate、0.3% simulated slippage、fee buffer</li>
+</ul>
+<h2>4. 这条 alpha 在我们这边该怎么读</h2>
+<h3>4.1 不要把它读成“预测市场很神奇”</h3>
+<p>它不是在预测谁会赢，而是在交易：</p>
+<p>&gt; <strong>一个临近到期、结算规则清晰、概率解释明确的合约，是否还没有把 leader 价格发现 fully price in。</strong></p>
+<p>也就是说：</p>
+<ul>
+<li>本质不是新闻判断；</li>
+<li>不是观点投资；</li>
+<li>不是 AI 讲故事；</li>
+<li>是 <strong>价格映射收敛</strong>。</li>
+</ul>
+<h3>4.2 它更像哪类传统 desk 思路</h3>
+<p>如果翻成更熟悉的 desk 语言，它更接近：</p>
+<ul>
+<li>cross-venue lead-lag</li>
+<li>near-expiry event contract mispricing</li>
+<li>hard-close window arbitrage</li>
+<li>binaryized short-horizon relative value</li>
+</ul>
+<p>所以它不是游离主题，反而能和我们现有这些材料形成互证：</p>
+<ul>
+<li>Coinbase/Binance premium impulse</li>
+<li>Kalshi/Polymarket binary mispricing</li>
+<li>lead-lag / OFI / time-of-day execution window</li>
+</ul>
+<h3>4.3 这条线真正的脆弱点是什么</h3>
+<p>repo 给了完整 skeleton，但脆弱点也很清楚：</p>
+<ol>
+<li><strong>maker fill risk</strong>：挂单如果 8 秒内不成交，edge 可能已经没了；</li>
+<li><strong>binary 订单簿薄</strong>：1.2% edge 看着不小，但盘口深度可能不够；</li>
+<li><strong>late-window 竞争极强</strong>：越靠近 expiry，越容易被更低延迟对手吃掉；</li>
+<li><strong>paper/live 差异可能大</strong>：README 自己也要求先积累 200+ paper trades 再谈 live；</li>
+<li><strong>AI 过滤器不应当先信</strong>：当前实现先天更像 overlay，而且 source 顺序还有明显疑点。</li>
+</ol>
+<h2>5. 对 <code>1m / 3m / 5m / 15m</code> 的可迁移性</h2>
+<h3>5.1 直接可迁移</h3>
+<ul>
+<li><strong>5m</strong>：最直接，对应 repo 原生目标市场；</li>
+<li><strong>15m</strong>：也直接，对应 README 写的 recurring market；</li>
+<li><strong>1m / 3m</strong>：概念上可迁移，但前提是平台上存在足够深度、足够稳定的同类短合约，否则 alpha 还在、容量不在。</li>
+</ul>
+<h3>5.2 不能硬搬的部分</h3>
+<ul>
+<li><code>10s/30s/60s</code> momentum 这套 fair-value mapping，不一定能原封不动搬到 perp 上；</li>
+<li>因为 Polymarket 这里多了一个 <strong>hard expiry + binary payoff</strong> 的结构；</li>
+<li>在 perp/spot 上，价格不是概率，收敛机制也不同。</li>
+</ul>
+<p>所以要老实写：</p>
+<p>&gt; <strong>这是一条可以独立交易的 raw alpha，但它不是“直接复制到 perp 里就还是同一条 alpha”。</strong></p>
+<p>对 perp 更合理的读法是：</p>
+<ul>
+<li>先把它当 standalone binary strategy；</li>
+<li>再测试 Polymarket price / odds 是否能反向做成 crypto perp 的外部 gate。</li>
+</ul>
+<h2>6. 最小可复现实验（先做什么）</h2>
+<h3>实验 A：纯复制 repo 的最小 paper 版（优先级最高）</h3>
+<p>目标：先验证 <strong>不靠 AI</strong> 的 final-window lag arb 有没有正向 expectancy。</p>
+<p>#### 数据</p>
+<ul>
+<li>Binance WebSocket：BTC / ETH 秒级 mid / trade direction</li>
+<li>Polymarket Gamma API：活跃 <code>5m/15m</code> BTC/ETH recurring markets</li>
+<li>Polymarket CLOB：YES/NO best bid/ask + depth</li>
+<li>可选：Chainlink RTDS 作第二价格源确认</li>
+</ul>
+<p>#### 规则（先别发明新东西）</p>
+<ul>
+<li>只做 <code>5m</code> 和 <code>15m</code></li>
+<li>只在到期前 <code>120s → 3s</code> 窗口看信号</li>
+<li>先不用 AI filter</li>
+<li>先用 repo 默认阈值：</li>
+<li><code>min_edge_pct = 1.2</code></li>
+<li><code>lag_threshold_pct = 1.5</code></li>
+<li><code>confidence_threshold = 40</code></li>
+<li>先分开统计 maker 与 taker</li>
+<li>先把 <code>BTC_UP / ETH_UP / BTC_DOWN / ETH_DOWN</code> 全量记录，不要太早只留子集</li>
+</ul>
+<p>#### 指标</p>
+<ul>
+<li>交易数 / 日</li>
+<li>maker fill rate</li>
+<li>gross edge vs realized PnL</li>
+<li>按剩余时间 bucket（120-90 / 90-60 / 60-30 / 30-3）分层</li>
+<li>按 edge bucket（1.2-2 / 2-3 / 3-6 / 6+）分层</li>
+<li>5m vs 15m 分层</li>
+</ul>
+<h3>实验 B：把它转成我们 desk 的 transfer test</h3>
+<p>目标：判断 Polymarket lag 是否能反过来当 crypto 短周期外部确认。</p>
+<p>做法：</p>
+<ul>
+<li>当 Binance 出现 10s/30s 短冲击后，记录 Polymarket odds 在未来 <code>30s / 60s / 120s</code> 是否补涨/补跌；</li>
+<li>再看 <strong>Polymarket 没跟上</strong> 的时刻，Binance perp 自己后续 <code>1m/3m/5m</code> 是否还有余波；</li>
+<li>如果 leader move 已完全 price in，则这条材料只适合做 binary；</li>
+<li>如果 binary lag 同时对应 perp 上的二次延续，则可以升级成 external confirmation feed。</li>
+</ul>
+<h2>7. 这轮研究后，我会怎么排优先级</h2>
+<h3>值得马上做</h3>
+<ol>
+<li><strong>final-window lag arb paper logger</strong></li>
+<li><strong>maker fill-rate / depth / edge decay 统计</strong></li>
+<li><strong>5m vs 15m 分组</strong></li>
+<li><strong>禁用 AI 的纯规则版复现</strong></li>
+</ol>
+<h3>先别急着做</h3>
+<ol>
+<li>AI ensemble filter</li>
+<li>event scanner</li>
+<li>politics / sports 非 crypto 事件市场</li>
+<li>大量 live 参数优化</li>
+</ol>
+<p>原因很简单：</p>
+<p>&gt; <strong>当前最需要回答的，不是“AI 能不能再多加 3% 胜率”，而是“base alpha 在扣完真实执行以后，到底还有没有边”。</strong></p>
+<h2>8. 一页结论</h2>
+<p>如果只留一句：</p>
+<p>&gt; <strong>这份 2026 新 repo 真正该 intake 的不是 AI，而是一条完整、可直接 paper trade 的 <code>5m/15m</code> raw alpha：Binance 先动、Polymarket final-window 赔率后动，用 maker-first 的方式去吃 hard-expiry binary 的 lag-repair。</strong></p>
+<p>对当前 desk 的意义：</p>
+<ul>
+<li>它是 <strong>独立可交易</strong> 的完整策略，不只是 filter；</li>
+<li>频率天然就是 <code>5m/15m</code>；</li>
+<li>还能给我们补一类当前素材池里较少的 cross-market / hard-expiry relative-value 视角；</li>
+<li>但第一轮一定要 <strong>关掉 AI、先测 base alpha</strong>，否则很容易把 overlay 当成本体。</li>
+</ul>
+<h2>9. 来源与链接</h2>
+<h3>主来源（repo）</h3>
+<ol>
+<li><strong>andiyusanto (2026)</strong>, *Polymarket Latency Arbitrage Bot (v5)*, GitHub repository</li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://github.com/andiyusanto/opus-clude-polymarket-arbitrage-bot&gt;">https://github.com/andiyusanto/opus-clude-polymarket-arbitrage-bot&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/andiyusanto/opus-clude-polymarket-arbitrage-bot&gt;">https://github.com/andiyusanto/opus-clude-polymarket-arbitrage-bot&gt;</a></li>
+<li>关键文件：</li>
+<li>&lt;<a href="https://raw.githubusercontent.com/andiyusanto/opus-clude-polymarket-arbitrage-bot/main/README.md&gt;">https://raw.githubusercontent.com/andiyusanto/opus-clude-polymarket-arbitrage-bot/main/README.md&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/andiyusanto/opus-clude-polymarket-arbitrage-bot/main/config.py&gt;">https://raw.githubusercontent.com/andiyusanto/opus-clude-polymarket-arbitrage-bot/main/config.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/andiyusanto/opus-clude-polymarket-arbitrage-bot/main/signal_engine.py&gt;">https://raw.githubusercontent.com/andiyusanto/opus-clude-polymarket-arbitrage-bot/main/signal_engine.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/andiyusanto/opus-clude-polymarket-arbitrage-bot/main/risk.py&gt;">https://raw.githubusercontent.com/andiyusanto/opus-clude-polymarket-arbitrage-bot/main/risk.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/andiyusanto/opus-clude-polymarket-arbitrage-bot/main/executor.py&gt;">https://raw.githubusercontent.com/andiyusanto/opus-clude-polymarket-arbitrage-bot/main/executor.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/andiyusanto/opus-clude-polymarket-arbitrage-bot/main/analyze.py&gt;">https://raw.githubusercontent.com/andiyusanto/opus-clude-polymarket-arbitrage-bot/main/analyze.py&gt;</a></li>
+</ul>
+<h3>公共数据 / 接口路径</h3>
+<ol>
+<li><strong>Polymarket CLOB API</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://clob.polymarket.com&gt;">https://clob.polymarket.com&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Polymarket Gamma API</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://gamma-api.polymarket.com/events&gt;">https://gamma-api.polymarket.com/events&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Binance market data streams</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams&gt;">https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Chainlink Data Streams / RTDS（repo 对齐用）</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://docs.chain.link/data-streams&gt;">https://docs.chain.link/data-streams&gt;</a></li>
+</ul>
+</body>
+</html>

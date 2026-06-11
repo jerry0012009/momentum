@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个 funding-arb-bot 只读成“提醒机器人”：对 short-cycle crypto desk，更该先保留的是「跨所 funding spread carry × dip-tolerance 持仓门控」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个 funding-arb-bot 只读成“提醒机器人”：对 short-cycle crypto desk，更该先保留的是「跨所 funding spread carry × dip-tolerance 持仓门控」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-21 11:04 UTC</span>
+      <span class="pill">类型：GitHub repo source audit（`README.md` + `core/analyzer.py` + `core/executor.py` + `config.py` + `main.py`）</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/relative-value/stat-arb/delta-neutral/cross-exchange/apr-spread/dip-tolerance/child-execution/1m/5m/15m/repo/cost/risk</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-21_1104_crossvenue-funding-spread-diptolerance-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-21 11:04 UTC</li>
+<li>类型：GitHub repo source audit（<code>README.md</code> + <code>core/analyzer.py</code> + <code>core/executor.py</code> + <code>config.py</code> + <code>main.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一标的在不同永续交易所的 funding 年化差（尤其异号）可形成 delta-neutral carry；通过双边对冲赚 funding spread，而非赌方向</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/carry/funding/relative-value/stat-arb/delta-neutral/cross-exchange/apr-spread/dip-tolerance/child-execution/1m/5m/15m/repo/cost/risk</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<p>本次选题来自新仓 <code>kohtabeloff/funding-arb-bot</code>（2026，Python）。它不是回测 notebook，而是可运行的执行壳：扫描多交易所 funding、自动拼双腿、并带保护性平仓逻辑。对我们 desk 来说，价值不在“发 Telegram 提醒”，而在它把 <strong>carry alpha 的全链路</strong>写得很实：筛选→开仓→异常回滚→持仓巡检→保护性退出。</p>
+<h2>2) 一句话结论 + 证据</h2>
+<p><strong>一句话结论：</strong>这份仓库里最可迁移的不是 UI，而是“<code>net_apr</code> 明确定义 + 异号 funding 优先 + dip 容忍持有 + 负 carry 强平”的完整策略壳，可直接映射成 <code>1m/5m</code> 子执行层。 <strong>它怎么证明：</strong><code>core/analyzer.py</code> 直接给出配对净 APR 计算与准入门槛；<code>core/executor.py</code> 给出双腿并发开仓与单腿失败回滚；<code>config.py</code> 与 <code>main.py</code> 给出负 APR/价格/清算距离的保护性退出参数。</p>
+<h2>3) 对 desk 最有用的可复用点（不是泛读后感）</h2>
+<ul>
+<li><strong>Entry（准入）是硬门槛而非“感觉套利”</strong>：</li>
+<li><code>MIN_PAIR_APR = 50</code>（年化阈值）</li>
+<li><code>MIN_VOLUME_USD = 50_000</code></li>
+<li>对极端异常 funding 做过滤（如 <code>abs(apr) &gt; 2000</code> 直接跳过）</li>
+<li><strong>Net APR 计算写得很清楚</strong>：</li>
+<li>若两所 APR 异号：<code>net_apr = |apr_a| + |apr_b|</code>（最佳结构）</li>
+<li>若同号：<code>net_apr = ||apr_a|-|apr_b||</code>（只赚差值）</li>
+<li><strong>执行层不是纸面策略</strong>：双腿并发下单；若一腿失败，另一腿自动回滚，避免裸方向暴露。</li>
+<li><strong>退出层有明确保护参数</strong>：</li>
+<li><code>NEG_APR_HARD_CLOSE = -50</code>（净 carry 坏到阈值立即平）</li>
+<li><code>NEG_APR_WAIT_HOURS = 4</code>（软性负 carry 持续超时平）</li>
+<li>价格偏离与清算距离告警/强平阈值（<code>PRICE_AUTO_CLOSE_PCT=15</code> 等）</li>
+</ul>
+<h2>4) 为什么它和最近 digest 不重复</h2>
+<p>最近我们写过不少 funding/basis 主题，但多数聚焦单所 ranking、sign-flip 或 post-cost admission。这个仓的新增价值是：<strong>把跨所双腿执行一致性（并发 + 回滚）和负 carry 持仓时钟（dip-tolerance）明确工程化</strong>，对“从研究信号走到真实执行”更直接。</p>
+<h2>5) 下一步怎么测（最小可复现实验）</h2>
+<p>先不接私有 API，直接做公开数据版 first verdict：</p>
+<ol>
+<li><strong>Universe</strong>：先挑 8~15 个流动性好的共同上币（BTC/ETH/SOL/BNB/XRP 等）。</li>
+<li><strong>Funding 快照频率</strong>：每 1 分钟抓各所公开 funding/预测 funding（若仅 8h 发布则按最新值滚动），构建 <code>net_apr(t)</code>。</li>
+<li><strong>准入规则</strong>：<code>net_apr &gt;= 40/50/60</code> 三档；并行比较是否需要 <code>same-sign veto</code>（只做异号）。</li>
+<li><strong>持仓规则</strong>：</li>
+</ol>
+<ul>
+<li>基线：固定持有至下一 funding 结算</li>
+<li>增强：引入 <code>dip-tolerance</code>（负 net_apr 持续 &lt;4h 不平，&gt;4h 平）</li>
+</ul>
+<ol>
+<li><strong>成本口径</strong>：双边 taker/maker 费率 + 滑点 + 资金占用；输出 post-cost 净 carry。</li>
+<li><strong>评估指标</strong>：净年化、回撤、负 carry 暴露时长、强平触发次数、执行失败回滚率。</li>
+</ol>
+<p>&gt; 对 <code>1m/3m/5m/15m</code> 的关系：funding alpha 本体是低频结算收益，但完全可以在 <code>1m</code> 做扫描与风控，在 <code>5m/15m</code> 做仓位重平衡与 child execution。</p>
+<h2>6) 风险与保留意见</h2>
+<ul>
+<li>这条 alpha 本质是 carry，不是每根 K 的方向预测；收益高度依赖费率层级与执行质量。</li>
+<li>多交易所实盘会碰到 API 限频、下单拒绝、腿间滑点不对称，回滚逻辑必须真实压测。</li>
+<li><code>APR</code> 看起来很高不等于可实现，必须统一到 post-cost 与可成交规模。</li>
+</ul>
+<h2>7) 来源</h2>
+<ul>
+<li>Pavel Belov. (2026). *funding-arb-bot* (GitHub).</li>
+<li>Repo URL: <code><a href="https://github.com/kohtabeloff/funding-arb-bot">https://github.com/kohtabeloff/funding-arb-bot</a></code></li>
+<li>Read files: <code>README.md</code>, <code>core/analyzer.py</code>, <code>core/executor.py</code>, <code>config.py</code>, <code>main.py</code></li>
+<li>关键代码口径（仓内参数）：</li>
+<li><code>MIN_PAIR_APR=50</code>, <code>MIN_VOLUME_USD=50000</code></li>
+<li><code>NEG_APR_HARD_CLOSE=-50</code>, <code>NEG_APR_WAIT_HOURS=4</code>, <code>PRICE_AUTO_CLOSE_PCT=15</code></li>
+</ul>
+</body>
+</html>

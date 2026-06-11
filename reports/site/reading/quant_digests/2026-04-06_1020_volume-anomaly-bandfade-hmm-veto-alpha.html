@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2025/2026 HMM thesis repo 只读成“危机熔断器”：对 short-cycle desk，更该先测的是「2.5σ band stretch × broad volume anomaly fade」，再把 HMM 当 crash veto</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2025/2026 HMM thesis repo 只读成“危机熔断器”：对 short-cycle desk，更该先测的是「2.5σ band stretch × broad volume anomaly fade」，再把 HMM 当 crash veto</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-06 10:21 UTC</span>
+      <span class="pill">研究时间：2026-04-06 10:20 UTC</span>
+      <span class="pill">类型：2025/2026 GitHub thesis repo source audit（GitHub API metadata + `README.md` + `VEBB.txt` + `reactive_vebb.py` + `regime_detection.py` + `optimization_results.csv` + `multi_year_results.csv`）</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/single-asset/btc/bollinger-band/volume-anomaly/vebb/hmm/regime-veto/circuit-breaker/15m/5m/3m/1m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 源码 + 参数网格 + 年度结果；属于工程证据，且源内存在指标口径不一致，适合偷结构，不适合直接信 headline 收益</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-06_1020_volume-anomaly-bandfade-hmm-veto-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-06 10:20 UTC</li>
+<li>类型：2025/2026 GitHub thesis repo source audit（GitHub API metadata + <code>README.md</code> + <code>VEBB.txt</code> + <code>reactive_vebb.py</code> + <code>regime_detection.py</code> + <code>optimization_results.csv</code> + <code>multi_year_results.csv</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>单资产 BTC 在 <code>15m</code> 上出现足够深的带外偏离（更像 <code>20-bar, 2.5σ</code> 的 stretch）且同时伴随“广义放量”时，后续更容易回到中轨；HMM 不是 alpha 本体，只是危机状态下的禁开仓 / 强平 veto。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/mean-reversion/single-asset/btc/bollinger-band/volume-anomaly/vebb/hmm/regime-veto/circuit-breaker/15m/5m/3m/1m/repo/public-data/cost/risk</li>
+<li>证据类型：repo 源码 + 参数网格 + 年度结果；属于工程证据，且源内存在指标口径不一致，适合偷结构，不适合直接信 headline 收益</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是一个 <strong>2025-12 创建、2026-01 更新</strong> 的公开 GitHub thesis repo：<strong><code>AbeneilMagpantay/Adaptive-HMM</code></strong>。它表面上的 headline 是：</p>
+<p>&gt; 用 <strong>Gaussian HMM</strong> 给 BTC 的均值回归策略加一个危机 regime circuit breaker，尽量避免在 2025 这类高波动阶段被反复打脸。</p>
+<p>但如果按我们当前 desk 的 intake 优先级来读，这份材料真正值得先收进素材池的，不是 “HMM 很高级”，而是更朴素的这一句：</p>
+<p>&gt; <strong>base alpha = 带外 stretch 之后，不是立刻无脑抄底摸顶；而是只在“真的有异常参与度”的时候，去赌向中轨的回摆。</strong></p>
+<p>这让它和最近几轮已经补过的 breakout / carry / pairs / OBI continuation 不同： 它补的是一个<strong>单资产、可直接落地、偏反转侧</strong>的 raw alpha 壳，而且天然可以拆成 <code>raw alpha + regime veto</code> 两层。</p>
+<h2>2. 核心结论</h2>
+<p>一句话版：</p>
+<p>&gt; <strong>先把 HMM 放一边，这个 repo 最值钱的不是“预测 regime”，而是告诉我们：BTC 的 band-fade 是否成立，关键不在更精细的 <code>vol_z</code> 数值，而在“是否真的出现了宽口径的成交量异常”以及“是否避开危机状态”。</strong></p>
+<p>它怎么证明这点？</p>
+<ul>
+<li><code>optimization_results.csv</code> 给了 <strong>729 组</strong> 参数网格；</li>
+<li>最优一簇结果几乎都落在 <strong><code>bb_mult = 2.5</code>、<code>atr_sl = 1.5</code>、<code>atr_tp = 1.5</code></strong>；</li>
+<li><strong><code>vol_z = 1.5 / 2.0 / 2.5</code> 的平均值和最优值完全一样</strong>，<code>cooldown 10 / 20 / 50</code> 影响也很小；</li>
+<li>反而 <code>bb_mult</code> 从 <code>1.5 → 2.0 → 2.5</code> 时，平均收益明显改善（均值约 <code>-0.737% → -0.256% → -0.065%</code>）；</li>
+<li><code>multi_year_results.csv</code> 又显示它非常吃 regime：<code>2018 +16.66%</code>、<code>2021 +11.22%</code>、<code>2023 +4.73%</code>、<code>2025 +2.84%</code>，但 <code>2024 -12.89%</code>，说明<strong>这不是“永远有效的买跌卖涨”</strong>，而是必须配状态过滤。</li>
+</ul>
+<p>翻成人话：</p>
+<ol>
+<li><strong>别把 volume z-score 阈值神化</strong>——在这份实现里，它更像“有没有放量”的布尔确认，而不是一个需要精修到小数点后一位的核心参数；</li>
+<li><strong>真正的 raw alpha 是更深的 band stretch + 异常参与度后的回摆</strong>；</li>
+<li><strong>HMM 的正确定位是 veto，不是主信号。</strong></li>
+</ol>
+<h2>3. 为什么这轮值得现在补它？</h2>
+<p>结合最近 digest 进展，我们已经连续补了不少：</p>
+<ul>
+<li>breakout / squeeze / conditional drift</li>
+<li>carry / funding / basis</li>
+<li>pairs / RV / cross-sectional</li>
+<li>LOB / order-flow / maker</li>
+</ul>
+<p>但 <strong>“单资产 mean reversion 的完整策略壳”</strong> 相对还是少一点，尤其是这种：</p>
+<ul>
+<li>不是纯 oversold 教程；</li>
+<li>有明确定义的 <code>entry / exit / stop / cost / regime veto</code>；</li>
+<li>能直接映射到 <code>15m</code>，再下钻到 <code>5m / 3m</code> 做 child execution；</li>
+<li>而且还能服务别的反转类 alpha，作为 <strong>shared admission layer</strong>。</li>
+</ul>
+<p>所以它不是在重复老 Bollinger Band 话题，而是在补一个更 desk-friendly 的判断：</p>
+<p>&gt; <strong>如果 band-fade 要活下来，最先该测的不是 HMM 多厉害，而是 “stretch 要多深 + 放量口径怎么定义 + 哪些 regime 必须直接不做”。</strong></p>
+<h2>4. repo 里最该偷走的，不是 thesis 结论，而是这套拆法</h2>
+<h3>4.1 raw alpha 本体：<code>2.5σ</code> stretch 比 <code>1.5σ/2.0σ</code> 更像样</h3>
+<p>参数网格给的最直接信息就是：</p>
+<ul>
+<li><code>bb_mult = 2.5</code> 的均值和最优值都显著优于 <code>2.0</code> 和 <code>1.5</code>；</li>
+<li>这说明对 BTC 这种波动资产，<strong>浅 band touch 很容易只是趋势中的正常呼吸，不够形成可交易的 overextension。</strong></li>
+</ul>
+<p>对 short-cycle desk 来说，这比“再找一个新指标”更重要： <strong>很多反转 alpha 死，不是因为反转不存在，而是 entry 太浅。</strong></p>
+<h3>4.2 admission layer：volume 要宽口径，不要迷信单一 z-score</h3>
+<p>repo 有两套实现：</p>
+<ul>
+<li>Python 回测脚本偏简单：<code>band touch + vol_z &gt; 2</code>；</li>
+<li>Pine 版本已经进化成更宽的 volume family：<code>percentile / z-score / ratio / OBV</code> 的组合确认。</li>
+</ul>
+<p>再结合 729 组网格，最有价值的启发反而是：</p>
+<p>&gt; <strong>把“有没有异常参与度”做成宽口径 admission，可能比不断微调 <code>vol_z</code> 阈值更重要。</strong></p>
+<p>这很适合我们 desk： 可以把 volume confirmation 设计成 shared module，后面既能接在这个 band-fade 上，也能接到别的 breakout-fail / exhaustion-fade / overreaction-revert 上。</p>
+<h3>4.3 overlay：HMM 要被当成 crash veto，不要伪装成 alpha</h3>
+<p><code>reactive_vebb.py</code> 里 HMM 用的是：</p>
+<ul>
+<li><code>gk_vol</code>（Garman-Klass volatility）</li>
+<li><code>hurst</code></li>
+<li><code>log_ret</code></li>
+</ul>
+<p>训练 <code>3-state GaussianHMM</code>，然后：</p>
+<ul>
+<li>只在最低波动 state 开仓；</li>
+<li>若离开 safe regime 就强平；</li>
+<li>若 <code>gk_vol</code> 超过训练样本 99 分位，触发 circuit breaker。</li>
+</ul>
+<p>这层设计对我们有价值，但必须老实定位：</p>
+<ul>
+<li><strong>它服务于 raw alpha；</strong></li>
+<li><strong>它不是独立赚钱因子；</strong></li>
+<li><strong>它的 KPI 更该看 max drawdown、trade count collapse、crash-period loss containment，而不是单独年化。</strong></li>
+</ul>
+<h2>5. source audit：这份材料能用，但不能照抄业绩</h2>
+<p>这里必须记一笔：<strong>repo 内部绩效口径不完全一致。</strong></p>
+<p>例如：</p>
+<ul>
+<li>README 摘要写的是：volume filter 在 2024 calibration 里把 Profit Factor 从 <code>0.90 → 1.79</code>，但 2025 OOS 仍然 <code>-8.65%</code>；HMM 再把损失压到 <code>-1.30%</code>，并把回撤使用压低 <code>98.7%</code>。</li>
+<li>但 <code>multi_year_results.csv</code> 又显示 <code>2025 +2.84%</code>；</li>
+<li><code>metrics.json</code> 还是另一组接近持平的小结果。</li>
+</ul>
+<p>这通常意味着：</p>
+<ul>
+<li>不同脚本 / 不同样本窗口 / 不同 sizing 口径混在了一起；</li>
+<li>thesis narrative 和 repo 导出的最终表不完全同版。</li>
+</ul>
+<p>所以这轮 digest 的结论不是“这 repo 已经证明能赚钱”，而是：</p>
+<p>&gt; <strong>它已经足够证明我们该先复现一个 clean 的 <code>band stretch + broad volume anomaly + crisis veto</code> 壳。</strong></p>
+<h2>6. 对 <code>1m / 3m / 5m / 15m</code> 的最小实验怎么测</h2>
+<h3>6.1 先做一个干净版 raw alpha</h3>
+<p>第一轮别急着上 HMM，先测 raw alpha：</p>
+<ul>
+<li>标的：<code>BTCUSDT perp</code></li>
+<li>主周期：<code>15m</code></li>
+<li>入场：</li>
+<li>long：<code>close &lt;= lower_band(20, 2.5σ)</code> 且 <code>volume_percentile_100 &gt;= 70</code></li>
+<li>short：<code>close &gt;= upper_band(20, 2.5σ)</code> 且 <code>volume_percentile_100 &gt;= 70</code></li>
+<li>出场：</li>
+<li>第一优先：回到中轨；</li>
+<li>备用：<code>1.5 ATR</code> 止损 / <code>1.5 ATR</code> 止盈；</li>
+<li>time stop：<code>8~12 bars</code></li>
+<li>成本：双边 taker <code>4~5 bps</code> + 1 tick 滑点</li>
+</ul>
+<p>先回答三个问题：</p>
+<ol>
+<li>不加 HMM 时，这条 raw alpha 还有没有正的 pre-cost drift？</li>
+<li>这条 edge 是只在 long 端活，还是 long/short 对称？</li>
+<li><code>2.5σ</code> 是否真的比 <code>2.0σ</code> 更稳，而不是只减少 trade count？</li>
+</ol>
+<h3>6.2 再把 regime veto 接上去</h3>
+<p>第二轮再接 overlay：</p>
+<ul>
+<li>用 <code>15m</code> 数据训练 3-state HMM；</li>
+<li>特征先从最简单的 <code>GK vol + rolling Hurst + log return</code> 开始；</li>
+<li>只做两种动作：</li>
+<li><code>regime != safe</code>：禁新开仓</li>
+<li><code>GK vol &gt; train_p99</code>：强平 / size=0</li>
+</ul>
+<p>看三件事：</p>
+<ul>
+<li>trade count 是否被砍得太狠；</li>
+<li>2024/2025 这类坏 regime 的回撤有没有显著改善；</li>
+<li>改善来自真实 veto，还是单纯因为“不交易了”。</li>
+</ul>
+<h3>6.3 再下钻到 <code>5m / 3m / 1m</code></h3>
+<p>最实用的 child execution 版本是：</p>
+<ul>
+<li><code>15m</code> 负责生成 raw alpha 方向；</li>
+<li><code>5m / 3m</code> 负责挑更好的入场价；</li>
+<li><code>1m</code> 只做 execution veto（例如再破前低 / 前高就不接）。</li>
+</ul>
+<p>也就是说，这条线最自然的映射不是“直接在 1m 上重新训一套 BB”，而是：</p>
+<p>&gt; <strong><code>15m</code> 定 stretch，<code>5m/3m</code> 吃回摆。</strong></p>
+<h2>7. 一句话结论</h2>
+<p>如果只拿一句结论走，我会写成：</p>
+<p>&gt; <strong>这份 HMM thesis repo 最值得复现的，不是 HMM 本身，而是一个更朴素、也更可复刻的壳：<code>深 band stretch × 宽口径放量 admission → 向中轨回摆</code>；HMM 只负责在最坏 regime 里说“不做”。</strong></p>
+<h2>8. 来源与引用</h2>
+<ol>
+<li><strong>AbeneilMagpantay (repo owner) / 作者姓名在 README 中匿名化 (2025/2026), _Algorithmic Trading on Bitcoin with Market Microstructure Resilience Testing_</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub thesis repository / embedded thesis manuscript</li>
+<li>DOI: 无</li>
+<li>Readable URL: <a href="https://github.com/AbeneilMagpantay/Adaptive-HMM">https://github.com/AbeneilMagpantay/Adaptive-HMM</a></li>
+<li>Repo URL: <a href="https://github.com/AbeneilMagpantay/Adaptive-HMM">https://github.com/AbeneilMagpantay/Adaptive-HMM</a></li>
+<li>GitHub API metadata: <a href="https://api.github.com/repos/AbeneilMagpantay/Adaptive-HMM">https://api.github.com/repos/AbeneilMagpantay/Adaptive-HMM</a></li>
+</ul>
+<ol>
+<li><strong>Core source files audited</strong></li>
+</ol>
+<ul>
+<li>README: <a href="https://raw.githubusercontent.com/AbeneilMagpantay/Adaptive-HMM/main/README.md">https://raw.githubusercontent.com/AbeneilMagpantay/Adaptive-HMM/main/README.md</a></li>
+<li>Pine strategy: <a href="https://raw.githubusercontent.com/AbeneilMagpantay/Adaptive-HMM/main/VEBB.txt">https://raw.githubusercontent.com/AbeneilMagpantay/Adaptive-HMM/main/VEBB.txt</a></li>
+<li>Python backtester: <a href="https://raw.githubusercontent.com/AbeneilMagpantay/Adaptive-HMM/main/reactive_vebb.py">https://raw.githubusercontent.com/AbeneilMagpantay/Adaptive-HMM/main/reactive_vebb.py</a></li>
+<li>Regime detector: <a href="https://raw.githubusercontent.com/AbeneilMagpantay/Adaptive-HMM/main/regime_detection.py">https://raw.githubusercontent.com/AbeneilMagpantay/Adaptive-HMM/main/regime_detection.py</a></li>
+<li>Optimization grid: <a href="https://raw.githubusercontent.com/AbeneilMagpantay/Adaptive-HMM/main/optimization_results.csv">https://raw.githubusercontent.com/AbeneilMagpantay/Adaptive-HMM/main/optimization_results.csv</a></li>
+<li>Multi-year summary: <a href="https://raw.githubusercontent.com/AbeneilMagpantay/Adaptive-HMM/main/multi_year_results.csv">https://raw.githubusercontent.com/AbeneilMagpantay/Adaptive-HMM/main/multi_year_results.csv</a></li>
+</ul>
+</body>
+</html>

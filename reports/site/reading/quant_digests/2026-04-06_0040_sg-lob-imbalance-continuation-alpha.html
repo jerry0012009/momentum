@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 LOB 论文继续读成“要上 DeepLOB”：这篇 2025 arXiv 更该先测的是「Savitzky-smoothed depth imbalance × simple-model continuation」这条 microstructure raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 LOB 论文继续读成“要上 DeepLOB”：这篇 2025 arXiv 更该先测的是「Savitzky-smoothed depth imbalance × simple-model continuation」这条 microstructure raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-06 00:43 UTC</span>
+      <span class="pill">研究时间：2026-04-06 00:40 UTC</span>
+      <span class="pill">类型：2025 arXiv 全文 HTML + Bybit public historical LOB portal + Bybit orderbook API docs source audit</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/order-book/depth-imbalance/mid-price/continuation/denoising/savitzky-golay/kalman/logistic/xgboost/deeplob/bybit/btcusdt/1m/3m/5m/15m/paper/public-data/cost/risk</span>
+      <span class="pill">证据类型：arXiv 全文给出样本、特征、去噪流程、分类任务、深浅模型对比、准确率与 runtime 表；Bybit 历史盘口与 API 文档公开可拿</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-06_0040_sg-lob-imbalance-continuation-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-06 00:40 UTC</li>
+<li>类型：2025 arXiv 全文 HTML + Bybit public historical LOB portal + Bybit orderbook API docs source audit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>先把多档盘口不平衡、spread、weighted-mid 变化做 Savitzky–Golay 去噪，再用简单模型（Logistic / XGBoost）预测极短期 mid-price continuation；最后把 sub-second directional vote 聚合成 <code>1m / 3m</code> 可交易 conviction。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/microstructure/order-book/depth-imbalance/mid-price/continuation/denoising/savitzky-golay/kalman/logistic/xgboost/deeplob/bybit/btcusdt/1m/3m/5m/15m/paper/public-data/cost/risk</li>
+<li>证据类型：arXiv 全文给出样本、特征、去噪流程、分类任务、深浅模型对比、准确率与 runtime 表；Bybit 历史盘口与 API 文档公开可拿</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主看的是：</p>
+<p><strong>Wang, Haochuan (2025). _Exploring Microstructural Dynamics in Cryptocurrency Limit Order Books: Better Inputs Matter More Than Stacking Another Hidden Layer_. arXiv.</strong></p>
+<p>这篇最值钱的点，不是又来一遍“LOB 可以预测短期价格”，而是它把一个对当前 desk 很实用的结论讲得很明确：</p>
+<p>&gt; 真正值得先拿走的，不是继续堆更深网络，而是先把盘口噪声压掉，再用更简单、更快、更可解释的模型做方向票数。</p>
+<p>论文用 <strong>Bybit BTC/USDT 100ms 盘口快照</strong>，比较了 Logistic、XGBoost、CatBoost、CNN+LSTM、CNN+XGBoost、DeepLOB，在 <code>100ms / 500ms / 1000ms</code> 预测窗口下，测试 raw / Kalman / Savitzky–Golay 三种输入。对我们 desk 来说，最该 intake 的不是“哪路网络名字更大”，而是这条可以直接改写成交易壳的 <strong>denoised depth-imbalance continuation raw alpha</strong>。</p>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = <code>去噪后的多档盘口不平衡 + 微价格变化</code> 所隐含的短时 continuation。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>不是把 order book 只当 execution 辅助；</li>
+<li>也不是把这篇只读成“深度学习 benchmark”；</li>
+<li>而是把盘口里原本被 flicker / cancel / micro-noise 淹没的供需偏移，先做平滑，再直接拿来预测下一小段价格方向。</li>
+</ul>
+<p>所以它不是单纯 filter，也不是纯解释型材料；它本身就是一条 <strong>microstructure raw alpha</strong>，只不过天然更适合 <code>1m / 3m</code>，再往 <code>5m</code> 外推，而不是硬写成 <code>15m</code> 主信号。</p>
+<h2>3. 为什么这轮值得进研究池</h2>
+<p>先问一句：<strong>它为什么比继续补一个 shared gate 更值得？</strong></p>
+<p>因为这轮拿走的是一条可以独立复现、独立回测、独立定价成本的 <strong>完整快频 raw alpha 骨架</strong>：</p>
+<ol>
+<li><strong>数据公开可拿。</strong></li>
+<p>论文主数据来自 Bybit 历史盘口下载页；live 版也能接 Bybit orderbook API / websocket。</p>
+<li><strong>信号本体清楚。</strong></li>
+<p>不是黑盒 embedding，而是 <code>imbalance / spread / weighted mid / depth</code> 这类能解释的微结构量。</p>
+<li><strong>和现有 OBI/OFI intake 不重复。</strong></li>
+<p>我们之前已经 intake 过不少 “盘口不平衡本身”；这篇真正新增的是 <strong>SG/Kalman 去噪 + 深浅模型对照 + 深度层数 trade-off</strong>。</p>
+<li><strong>能直接落地 entry / exit / sizing / risk / cost。</strong></li>
+<p>只要把 sub-second score 聚合成 minute conviction，就能形成独立交易策略，而不只是 execution veto。</p>
+</ol>
+<h2>4. 论文里最值得拿走的证据</h2>
+<h2>4.1 真正有增量的不是更深网络，而是 Savitzky–Golay 去噪</h2>
+<p>论文最有用的一组结果，是 <strong>binary classification</strong> 下的 <code>500ms / 1000ms</code> horizon：</p>
+<ul>
+<li><strong>500ms, 40-level LOB, SG</strong>：</li>
+<li>XGBoost：<strong>0.7281</strong></li>
+<li>Logistic：<strong>0.7284</strong></li>
+<li>对照 <strong>raw</strong>：</li>
+<li>XGBoost：<strong>0.6542</strong></li>
+<li>Logistic：<strong>0.6517</strong></li>
+<li>对照 <strong>Kalman</strong>：</li>
+<li>XGBoost：<strong>0.6301</strong></li>
+<li>Logistic：<strong>0.4882</strong></li>
+</ul>
+<p>也就是说，单看这组，<strong>先去噪</strong> 比 <strong>换更复杂模型</strong> 重要得多；而且 SG 对 simple models 的帮助，明显强于 Kalman 在这篇里的默认调参结果。</p>
+<p>再看 <strong>1000ms, 40-level LOB, SG</strong>：</p>
+<ul>
+<li>XGBoost：<strong>0.7150</strong></li>
+<li>Logistic：<strong>0.7089</strong></li>
+<li>raw 对照分别只有 <strong>0.6509 / 0.6515</strong></li>
+</ul>
+<p>这说明：</p>
+<ul>
+<li>alpha 不是只存在于最极端的 100ms 噪声里；</li>
+<li>在更可交易的 <code>500ms~1s</code> 级别，去噪后的盘口 continuation 仍有信息。</li>
+</ul>
+<h2>4.2 ternary 结果同样支持“先把噪声处理好”</h2>
+<p>在 <strong>ternary classification</strong> 里，<code>500ms, 40-level LOB</code>：</p>
+<ul>
+<li>raw Logistic：<strong>0.4356</strong></li>
+<li>SG Logistic：<strong>0.5434</strong></li>
+</ul>
+<p><code>1000ms, 40-level LOB</code>：</p>
+<ul>
+<li>raw Logistic：<strong>0.4901</strong></li>
+<li>SG Logistic：<strong>0.5382</strong></li>
+</ul>
+<p>这类结果对 desk 的实际意义是：</p>
+<p>&gt; 当你把任务写成 up / flat / down，而不是强迫模型每次都二选一时，去噪后的盘口特征更适合做“有把握才开仓”的 conviction score，而不是每根都出手。</p>
+<p>这正好适合我们把它改成：</p>
+<ul>
+<li><code>1m</code> 上的开仓 admission / veto；</li>
+<li><code>3m</code> 上的短 holding raw alpha；</li>
+<li><code>5m</code> 上的 child execution direction bias。</li>
+</ul>
+<h2>4.3 深度层数很关键：40-level 信息明显强于浅层简化版</h2>
+<p>论文还给了一个很值钱的 portability 提醒：</p>
+<p>在 <strong>SG + XGBoost + T=1</strong> 的对照里：</p>
+<ul>
+<li><strong>40 levels</strong>：Accuracy <strong>0.7150</strong>，support <strong>5,442</strong></li>
+<li><strong>10 levels</strong>：Accuracy <strong>0.5837</strong>，support <strong>17,471</strong></li>
+<li><strong>5 levels</strong>：Accuracy <strong>0.5797</strong>，support <strong>18,336</strong></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>更深的盘口层数，确实有增量 alpha；</li>
+<li>但一旦要求 40-level 完整快照，可用样本会明显下降；</li>
+<li>所以实盘设计里必须同时跑：</li>
+<li><code>full-depth high-conviction 版本</code></li>
+<li><code>shallow-depth portable 版本</code></li>
+</ul>
+<p>这对 <code>1m / 3m</code> 很重要，因为真实数据流里，深度缺失、快照抽样不齐、不同 venue 的 L2 完整度都会影响信号稳定性。</p>
+<h2>4.4 简单模型也能做到“够快 + 够强”</h2>
+<p>论文的 sequence-length 对照说明：</p>
+<ul>
+<li><strong>XGBoost, T=1</strong>：Accuracy <strong>0.5732</strong>，训练约 <strong>1m36s</strong></li>
+<li><strong>XGBoost, T=10</strong>：Accuracy <strong>0.5949</strong>，训练约 <strong>7m04s</strong></li>
+<li><strong>Logistic, T=1</strong>：Accuracy <strong>0.5551</strong>，训练约 <strong>1m11s</strong></li>
+<li><strong>Logistic, T=10</strong>：Accuracy <strong>0.5716</strong>，训练约 <strong>9m13s</strong></li>
+</ul>
+<p>不是说这些 runtime 数字能直接外推到我们环境，而是说明了一件事：</p>
+<p>&gt; 对这类盘口 alpha，<code>轻模型 + 好输入</code> 很可能比 <code>重模型 + 原始噪声输入</code> 更适合做快速迭代和 walk-forward。</p>
+<p>这很符合当前 desk 的目标：<strong>先补可快速复现的 alpha 素材池</strong>，而不是先陷进大模型工程。</p>
+<h2>5. 对当前 short-cycle desk，最诚实的读法是什么？</h2>
+<p>最诚实的读法不是：</p>
+<ul>
+<li>“现在就把 100ms 预测直接搬成高频交易系统”；</li>
+<li>也不是“把 15m 主信号改成纯 LOB 驱动”。</li>
+</ul>
+<p>更合理的读法是：</p>
+<ul>
+<li><strong>主 raw alpha 周期放在 <code>1m / 3m</code></strong>；</li>
+<li>用 <code>100ms -&gt; 1s</code> 的盘口方向票数，聚合成 minute-level conviction；</li>
+<li><code>5m</code> 作为持有或切换频率；</li>
+<li><code>15m</code> 不作为这条线的主 alpha 周期，只保留为上层 regime / risk clamp。</li>
+</ul>
+<p>也就是说，这篇更适合服务：</p>
+<ul>
+<li><code>microstructure continuation</code></li>
+<li><code>fast mean-reversion / continuation router</code> 的方向层</li>
+<li><code>price-based alpha</code> 的 child execution bias</li>
+</ul>
+<p>但这轮 digest 里，我们把它优先保留为 <strong>可独立回测的 raw alpha</strong>，不是只写成 shared gate。</p>
+<h2>6. desk 版策略骨架</h2>
+<h2>6.1 数据与特征</h2>
+<ul>
+<li>交易对象：先从 <strong>BTCUSDT perp</strong> 起步，第二轮再扩到 <code>ETH / SOL</code> 等高流动性标的</li>
+<li>数据源：</li>
+<li>历史：Bybit historical LOB download</li>
+<li>live：Bybit orderbook API / websocket</li>
+<li>原始采样：<code>100ms</code> snapshots</li>
+<li>初版深度：并排做 <code>top5 / top10 / top20 / top40</code></li>
+</ul>
+<p>特征先不要贪多，先做这几类：</p>
+<ul>
+<li><code>I1 / I5 / I20 / I40</code>：不同层级的 bid-ask imbalance</li>
+<li><code>spread_bps</code></li>
+<li><code>weighted_mid_change</code></li>
+<li><code>depth_slope</code></li>
+<li><code>best-level queue change</code></li>
+<li><code>microprice deviation</code></li>
+</ul>
+<p>每个特征并排保留三版：</p>
+<ul>
+<li>raw</li>
+<li>Savitzky–Golay</li>
+<li>Kalman</li>
+</ul>
+<h2>6.2 信号定义</h2>
+<p>最小可交易版，不直接用论文里的 accuracy 做文章，而是把模型输出改成 <strong>minute conviction</strong>：</p>
+<ol>
+<li>每 <code>1s</code> 训练 / 推理一次下一段 <code>1s</code> 或 <code>3s</code> 的方向分数：<code>score_t = p(up) - p(down)</code></li>
+<li>聚合到 <code>1m</code>：</li>
+</ol>
+<ul>
+<li><code>conviction_1m = mean(score_t)</code></li>
+<li><code>persistence_1m = share(score_t &gt; θ)</code></li>
+<li><code>shock_1m = max(|score_t|)</code></li>
+</ul>
+<ol>
+<li>开仓规则：</li>
+</ol>
+<ul>
+<li><strong>LONG</strong>：<code>conviction_1m &gt; q80</code> 且 <code>persistence_1m &gt; 0.60</code> 且 spread 不在日内最差分位</li>
+<li><strong>SHORT</strong>：对称条件</li>
+</ul>
+<p>这条线本质上还是 raw alpha，因为它直接决定方向，而不是只给 veto。</p>
+<h2>6.3 entry / exit / sizing / risk / cost</h2>
+<h3>Entry</h3>
+<ul>
+<li>首版按 <code>1m close</code> 决策；</li>
+<li>如果盘口仍顺风、spread 较窄，则优先挂被动单；</li>
+<li>如果 alpha 半衰期太短，再退回 taker 版做保守验证。</li>
+</ul>
+<h3>Exit</h3>
+<ul>
+<li>固定 holding：先测 <code>1 / 2 / 3</code> 根 <code>1m bar</code></li>
+<li>或者 <code>conviction</code> 反号提前平仓</li>
+<li>或者 hit <code>microprice stop / adverse bps stop</code> 平仓</li>
+</ul>
+<h3>Sizing</h3>
+<ul>
+<li>按过去 <code>N</code> 分钟 realized micro-vol 反比缩放</li>
+<li>单次 notional 不超过组合资金 <code>10%</code></li>
+<li>spread / depth 差时自动降杠杆或不下单</li>
+</ul>
+<h3>Risk</h3>
+<ul>
+<li>单笔止损：<code>8~15 bps</code> 起步，按币种再调</li>
+<li>若盘口深度突然塌陷或 spread 扩到日内高分位，强制减仓</li>
+<li>连续 <code>k</code> 笔信号失效触发 session kill-switch</li>
+</ul>
+<h3>Cost</h3>
+<ul>
+<li>第一轮必须先按 <strong>taker fee + spread cost</strong> 算净值</li>
+<li>第二轮再测 maker fill assumption</li>
+<li>单独记录：</li>
+<li>quote-to-fill ratio</li>
+<li>gross-to-net decay</li>
+<li>average holding time</li>
+<li>queue miss rate</li>
+</ul>
+<h2>7. <code>1m / 3m / 5m / 15m</code> 怎么映射</h2>
+<h2>1m</h2>
+<p>这条线最自然的主战场。</p>
+<ul>
+<li>论文原始信息量本来就在亚秒级；</li>
+<li>折算到 <code>1m</code>，还能保留够多 microstructure edge；</li>
+<li>同时成本与成交假设还能被普通 desk 回测框架承受。</li>
+</ul>
+<h2>3m</h2>
+<p>适合做更稳一点的持有版本。</p>
+<ul>
+<li>保留 fast alpha</li>
+<li>降低过度换手</li>
+<li>更容易比较 after-cost 是否优于 1m</li>
+</ul>
+<h2>5m</h2>
+<p>更适合作为：</p>
+<ul>
+<li><code>1m/3m</code> 信号的 holding bucket</li>
+<li>或 price-based strategy 的 execution direction bias</li>
+</ul>
+<h2>15m</h2>
+<p>不建议把这条线直接硬写成 15m 主信号。</p>
+<p>更合理的用途是：</p>
+<ul>
+<li>作为上层 trend / volatility regime</li>
+<li>决定 fast alpha 是否放大或收缩仓位</li>
+</ul>
+<h2>8. 最小可复现实验</h2>
+<h2>实验 A：去噪是否真的带来可交易增量？</h2>
+<p>并排回测三条线：</p>
+<ol>
+<li>raw LOB features</li>
+<li>SG-smoothed LOB features</li>
+<li>Kalman-smoothed LOB features</li>
+</ol>
+<p>统一：</p>
+<ul>
+<li>标的：BTCUSDT perp</li>
+<li>数据：Bybit <code>100ms</code> 历史盘口</li>
+<li>模型：Logistic / XGBoost</li>
+<li>输出：<code>1s -&gt; 1m conviction</code></li>
+<li>持有：<code>1m / 3m</code></li>
+</ul>
+<p>看：</p>
+<ul>
+<li>after-cost pnl</li>
+<li>hit rate</li>
+<li>mean log return</li>
+<li>turnover</li>
+<li>gross-to-net decay</li>
+</ul>
+<p>如果 SG 明显优于 raw，而 Kalman 不稳定，那就说明论文里的核心增量可以迁移。</p>
+<h2>实验 B：深度层数 portability</h2>
+<p>并排：</p>
+<ul>
+<li>top5</li>
+<li>top10</li>
+<li>top20</li>
+<li>top40</li>
+</ul>
+<p>目的不是单纯找最高 accuracy，而是找：</p>
+<ul>
+<li>哪个深度在 <strong>可得性 / 稳定性 / 成本 / edge</strong> 上最平衡。</li>
+</ul>
+<p>如果 top40 只有 paper-level 好看、实盘缺失率太高，就退到 top10/top20 做 portable 版本。</p>
+<h2>实验 C：独立 raw alpha 还是 price alpha 的 child execution？</h2>
+<p>并排：</p>
+<ol>
+<li>纯盘口 conviction standalone</li>
+<li>价格 breakout/continuation alpha 单独跑</li>
+<li>价格 alpha + 盘口 conviction 同向才开仓</li>
+</ol>
+<p>这一步是为了回答：</p>
+<ul>
+<li>它能不能自己独立赚钱；</li>
+<li>如果独立性一般，它更适合做 execution booster 还是 admission filter。</li>
+</ul>
+<h2>9. 数据源、公开性与最小复现实验口径</h2>
+<p>这条主题的外部数据不是低频宏观，而是 <strong>公开可拿的高频盘口数据</strong>：</p>
+<ol>
+<li><strong>Bybit historical data portal</strong></li>
+</ol>
+<ul>
+<li>公开性：公开页面可下载</li>
+<li>频率：论文使用 <code>100ms</code> snapshots</li>
+<li>用途：主回测数据源</li>
+</ul>
+<ol>
+<li><strong>Bybit orderbook API / websocket</strong></li>
+</ol>
+<ul>
+<li>公开性：公开开发者文档</li>
+<li>频率：毫秒级/实时更新</li>
+<li>用途：live / replay portability</li>
+</ul>
+<p>最小复现实验口径：</p>
+<ul>
+<li>先只做 <code>BTCUSDT</code></li>
+<li>先只做 <code>1</code> 个交易日到 <code>5~10</code> 个交易日 rolling walk-forward</li>
+<li>先只做 <code>1s prediction -&gt; 1m holding</code></li>
+<li>先只算 taker cost</li>
+</ul>
+<p>这样可以最快回答：这条 edge 是真 alpha，还是只是一组 paper-level classification number。</p>
+<h2>10. 风险与保留意见</h2>
+<ul>
+<li>论文主样本核心展示很短，<strong>以单日 Bybit 盘口为主</strong>，不能把结果直接当成跨月份稳定规律。</li>
+<li>classification accuracy 不等于 after-cost pnl；方向判断对，不代表成交后还能赚钱。</li>
+<li>crypto 盘口里 spoof / cancel / exchange-specific microstructure 很重，跨 venue 可移植性必须实测。</li>
+<li><code>40-level</code> 深度信息虽强，但 live 数据完整度、带宽和存储成本也更高。</li>
+</ul>
+<h2>11. 来源</h2>
+<ol>
+<li><strong>Wang, H. (2025). _Exploring Microstructural Dynamics in Cryptocurrency Limit Order Books: Better Inputs Matter More Than Stacking Another Hidden Layer_. arXiv.</strong></li>
+</ol>
+<ul>
+<li>Authors：Haochuan Wang</li>
+<li>Year：2025</li>
+<li>Title：Exploring Microstructural Dynamics in Cryptocurrency Limit Order Books: Better Inputs Matter More Than Stacking Another Hidden Layer</li>
+<li>Venue：arXiv preprint</li>
+<li>DOI：&lt;<a href="https://doi.org/10.48550/arXiv.2506.05764&gt;">https://doi.org/10.48550/arXiv.2506.05764&gt;</a></li>
+<li>Readable URL：&lt;<a href="https://arxiv.org/abs/2506.05764&gt;">https://arxiv.org/abs/2506.05764&gt;</a></li>
+<li>HTML URL：&lt;<a href="https://arxiv.org/html/2506.05764&gt;">https://arxiv.org/html/2506.05764&gt;</a></li>
+<li>Repo URL：N/A</li>
+</ul>
+<ol>
+<li><strong>Bybit Historical Data Download（论文主数据源）</strong></li>
+</ol>
+<ul>
+<li>Readable URL：&lt;<a href="https://www.bybit.com/derivatives/en/history-data&gt;">https://www.bybit.com/derivatives/en/history-data&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Bybit API Documentation — Get Orderbook</strong></li>
+</ol>
+<ul>
+<li>Readable URL：&lt;<a href="https://bybit-exchange.github.io/docs/v5/market/orderbook&gt;">https://bybit-exchange.github.io/docs/v5/market/orderbook&gt;</a></li>
+</ul>
+<h2>12. 下一步怎么测（一句话）</h2>
+<p>先在 <code>BTCUSDT Bybit 100ms LOB -&gt; 1s score -&gt; 1m conviction</code> 这条链路上并排回测 <code>raw / SG / Kalman</code> 与 <code>top5 / top10 / top20 / top40</code>，若 SG 版在 after-cost、mean-log-return、gross-to-net decay 三项里都更优，再把它升级成 <code>1m/3m</code> 独立 microstructure raw alpha 壳。</p>
+</body>
+</html>

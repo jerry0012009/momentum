@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rolling POC / Value-Area Displacement：先别把 volume-profile 反转脚本直接当成可交易 alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Rolling POC / Value-Area Displacement：先别把 volume-profile 反转脚本直接当成可交易 alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 22:25 UTC</span>
+      <span class="pill">研究时间：2026-04-03 22:24 UTC</span>
+      <span class="pill">类型：repo / source audit + local reproducibility check</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/single-asset/volume-profile/poc/value-area/liquidity-zone/orderbook-proxy/ema200/next-open-fill/15m/5m/3m/1m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：2026 GitHub 新 repo source audit（GitHub API metadata + `README.md` + `backtest_poc.py` + `bot.py`）+ repo 附带 `BTCUSDT_15m_real.csv` 本地复核</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_2224_poc-valuearea-fill-sanity-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-03 22:24 UTC</li>
+<li>类型：repo / source audit + local reproducibility check</li>
+<li>主题标签：raw-alpha/mean-reversion/single-asset/volume-profile/poc/value-area/liquidity-zone/orderbook-proxy/ema200/next-open-fill/15m/5m/3m/1m/repo/public-data/cost/risk</li>
+<li>证据类型：2026 GitHub 新 repo source audit（GitHub API metadata + <code>README.md</code> + <code>backtest_poc.py</code> + <code>bot.py</code>）+ repo 附带 <code>BTCUSDT_15m_real.csv</code> 本地复核</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：价格偏离最近 50 根 bar 构造的 rolling volume-profile POC（成交量重心）后，向 POC / value area 回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是，但当前 repo 版本不宜直接上线</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是一个 2026-03-22 新 GitHub repo：<code>berkant1863-netizen/automated-trading-system</code>。它表面上像“Volume Profile + Point of Control 自动交易 bot”，但对我们 desk 真正有价值的不是“会不会画 POC”，而是这条 base alpha 能不能在 <code>15m</code> 上被干净拆成：<strong>rolling POC 锚点 + 偏离入场 + ATR 风控 + 成本生存线</strong>。</p>
+<p>一句话先下结论：<strong>base alpha 很清楚，确实是 raw alpha；但 repo 当前版本的优势几乎全部来自过于乐观的成交假设。把 fill model 改 honest 以后，策略会从“看起来像大坑/神迹”同时塌回“接近零边、极易被手续费吃掉”。</strong></p>
+<h2>2. 为什么这轮值得看它</h2>
+<p>当前研究池里，pairs / funding / cross-market 已经很密；但 <strong>volume-profile / value-area anchor</strong> 还比较少见。它的好处是：</p>
+<ul>
+<li>是完整单资产 raw alpha，不只是 filter；</li>
+<li>直接映射到 <code>15m</code>，也能往 <code>5m / 3m</code> 压；</li>
+<li>如果 standalone 不够强，也能退化成 shared feature：<code>distance_to_POC</code>、<code>POC_drift</code>、<code>value-area excursion</code>。</li>
+</ul>
+<p>所以这类题值得补进素材池，但前提是先把 <strong>alpha 本体</strong> 和 <strong>执行幻觉</strong> 分开。</p>
+<h2>3. 来源与材料</h2>
+<h3>3.1 仓库信息</h3>
+<ul>
+<li>Author / Repo：<code>berkant1863-netizen/automated-trading-system</code></li>
+<li>Year：2026</li>
+<li>Repo title：<code>automated-trading-system</code></li>
+<li>GitHub URL：&lt;<a href="https://github.com/berkant1863-netizen/automated-trading-system&gt;">https://github.com/berkant1863-netizen/automated-trading-system&gt;</a></li>
+<li>Created at：2026-03-22 21:24:57 UTC</li>
+<li>Repo description：<code>TC/USDT automated trading bot using Volume Profile and Point of Control strategy with backtesting</code></li>
+</ul>
+<h3>3.2 这份 repo 里最关键的文件</h3>
+<ul>
+<li><code>bot.py</code></li>
+<li><code>backtest_poc.py</code></li>
+<li><code>BTCUSDT_15m_real.csv</code></li>
+</ul>
+<h3>3.3 数据公开性</h3>
+<ul>
+<li>repo 自带公开 CSV：<code>BTCUSDT_15m_real.csv</code></li>
+<li>样本区间：<code>2024-06-01 00:00:00</code> → <code>2025-07-09 17:30:00</code></li>
+<li>bar 数：<code>38,759</code> 根 <code>15m</code> BTCUSDT bar</li>
+<li>可复现性：高；即便不信 repo 数据，也能很快换成 Binance public <code>15m/5m/3m</code> kline 重跑</li>
+</ul>
+<h2>4. 这条 base alpha 到底是什么</h2>
+<h3>4.1 策略骨架</h3>
+<p>repo 的逻辑很直接：</p>
+<ol>
+<li>用最近 <code>50</code> 根 bar 的 <code>high-low</code> 区间，把每根 bar 的 volume 均匀撒到价格桶里；</li>
+<li>找出 volume 最大的价格桶，作为 rolling <code>POC</code>；</li>
+<li>当当前价格低于 <code>POC - offset</code> 时，做多，赌价格回到 POC；</li>
+<li>当当前价格高于 <code>POC + offset</code> 时，做空，赌价格回到 POC；</li>
+<li>风控用 <code>ATR(21)</code>：</li>
+</ol>
+<ul>
+<li><code>SL = 1.5 x ATR</code></li>
+<li><code>TP = 3.0 x ATR</code></li>
+</ul>
+<ol>
+<li>仓位：<code>max($50, capital x 0.5%)</code></li>
+</ol>
+<h3>4.2 用 desk 语言翻成人话</h3>
+<p>这不是 breakout，也不是 order-book imbalance continuation。</p>
+<p>它本质上是：</p>
+<ul>
+<li><strong>一个“成交量重心锚点”均值回归策略</strong>；</li>
+<li>假设最近一段时间真正有成交密度的“公允区”在 POC 附近；</li>
+<li>价格一旦离这个公允区太远，就会回摆。</li>
+</ul>
+<p>所以它的 base alpha 很清楚：</p>
+<p>&gt; <strong>rolling POC displacement fade</strong></p>
+<p>也就是：</p>
+<p>&gt; <strong>对“偏离近期成交量重心”的价格做 fade。</strong></p>
+<p>这条线本身就是 raw alpha，不需要借别的 headline 才成立。</p>
+<h2>5. 我做的最小复核</h2>
+<h3>5.1 先复现 repo 自己的回测口径</h3>
+<p>我先按 <code>backtest_poc.py</code> 的原始逻辑复现了一遍。关键点是：</p>
+<ul>
+<li>信号在当前 bar 产生；</li>
+<li>但成交价直接按 <code>POC ± offset</code> 记；</li>
+<li>不要求下一根 bar 真触到这个价格，也不要求盘口里真的成交；</li>
+<li>这等于默认你总能在“比当前 mid 更好”的旧价位拿到单。</li>
+</ul>
+<p>复现结果：</p>
+<ul>
+<li>总交易数：<code>17,796</code></li>
+<li>胜率：<code>2.83%</code></li>
+<li>总 PnL：<code>-4,437.13 USD</code>（初始资金 <code>10,000 USD</code>）</li>
+<li>Profit Factor：<code>0.057</code></li>
+</ul>
+<p>这和 repo 注释里写的“<code>Win rate 2-4%</code>、<code>SL 96-97%</code>”基本一致。</p>
+<h3>5.2 一个很关键的诊断：fill model 比 signal 本身还重要</h3>
+<p>我做了一个故意的 stress test：</p>
+<ul>
+<li>保持同样的 stale-fill 假设；</li>
+<li>只是把信号方向反过来（不再 fade，而是 follow）。</li>
+</ul>
+<p>结果会直接从“血崩”变成“看起来像神迹”：</p>
+<ul>
+<li><code>follow_no_gate</code>：</li>
+<li>交易数：<code>8,186</code></li>
+<li>胜率：<code>88.32%</code></li>
+<li>总 PnL：<code>+4,572.94 USD</code></li>
+<li>Profit Factor：<code>15.87</code></li>
+</ul>
+<p>这不是在说“POC breakout continuation 真有这么强”，而是在说：</p>
+<p>&gt; <strong>同一份数据，只要你允许自己在过期的理想价成交，连信号方向都能被 fill 假设盖过去。</strong></p>
+<p>也就是说，这份 repo 当前最先需要验证的不是“信号精不精”，而是“成交是不是假的”。</p>
+<h3>5.3 换成更 honest 的入场：信号 bar 结束后，下一根 open 入场</h3>
+<p>我把入场改成更保守、更适合 desk 最小实验的规则：</p>
+<ul>
+<li>当前 bar 只负责出信号；</li>
+<li>真正成交发生在<strong>下一根 open</strong>；</li>
+<li>仍保留 ATR 止损止盈；</li>
+<li>先不加手续费，只看 gross。</li>
+</ul>
+<p>#### A. 仍然做 POC fade，并加最简单 EMA200 同向 gate</p>
+<ul>
+<li>交易数：<code>1,481</code></li>
+<li>胜率：<code>35.92%</code></li>
+<li>总 PnL：<code>+11.33 USD</code></li>
+<li>Profit Factor：<code>1.045</code></li>
+<li>单笔平均毛利：<code>0.00765 USD</code></li>
+<li>对应可承受 round-trip 成本阈值：约 <code>1.53 bps</code></li>
+</ul>
+<p>#### B. 改成 POC displacement follow，并加 EMA200 gate</p>
+<ul>
+<li>交易数：<code>2,472</code></li>
+<li>胜率：<code>35.40%</code></li>
+<li>总 PnL：<code>+27.70 USD</code></li>
+<li>Profit Factor：<code>1.067</code></li>
+<li>单笔平均毛利：<code>0.0112 USD</code></li>
+<li>对应可承受 round-trip 成本阈值：约 <code>2.24 bps</code></li>
+</ul>
+<h3>5.4 这些数字怎么读</h3>
+<p>关键不是“哪一边略微正”，而是：</p>
+<ul>
+<li>一旦把 fill model 改 honest，<strong>fade 和 follow 都只剩很薄的 gross edge</strong>；</li>
+<li>这层毛边大致只够承受 <code>1.5 ~ 2.2 bps</code> 的 round-trip 成本；</li>
+<li>对 crypto perp/spot 的真实 taker 成本来说，基本一加就死；</li>
+<li>即便 maker-first，也远没到可以放心上线的厚度。</li>
+</ul>
+<p>举例：</p>
+<ul>
+<li><code>fade + EMA200 + next-open</code> 在 <code>2 bps</code> round-trip 下就会转负；</li>
+<li><code>follow + EMA200 + next-open</code> 大约到 <code>3 bps</code> round-trip 也会转负。</li>
+</ul>
+<p>所以更准确的判断是：</p>
+<p>&gt; <strong>POC displacement 不是完全没信息，但 repo 当前版本的“可交易性”远弱于它展示出来的样子。</strong></p>
+<h2>6. 对 desk 的真正价值</h2>
+<h3>6.1 这条 alpha 还能不能留在池子里</h3>
+<p>可以留，但<strong>不能以“现成完整策略”心态直接抄</strong>。</p>
+<p>更合适的定位是：</p>
+<ul>
+<li>一级：<code>raw alpha 候选（待严格执行复核）</code></li>
+<li>二级：<code>shared feature / shared gate</code></li>
+</ul>
+<h3>6.2 更值得保留的不是整套脚本，而是 3 个可复用组件</h3>
+<ol>
+<li><strong>distance_to_POC</strong></li>
+</ol>
+<ul>
+<li>当前价格离 rolling POC 有多远；</li>
+<li>可做 mean reversion 入场强度，也可做 breakout stretch 指标。</li>
+</ul>
+<ol>
+<li><strong>POC_drift</strong></li>
+</ol>
+<ul>
+<li>最近若 POC 自己也在快速漂移，说明“公允区”在移动；</li>
+<li>这时硬做 fade，往往是在逆着新价值迁移开仓。</li>
+</ul>
+<ol>
+<li><strong>value-area excursion state</strong></li>
+</ol>
+<ul>
+<li>价格是刚离开 value area，还是已经离开很久；</li>
+<li>可给 breakout、trend、MR 三类壳共用。</li>
+</ul>
+<h3>6.3 我对这份材料的 desk 级判断</h3>
+<p>如果一定要给一句短判断：</p>
+<p>&gt; <strong>这不是“马上上线的 standalone raw alpha”，但它很适合被拆成一个 under-covered 的价量锚点特征族。</strong></p>
+<p>比起继续把它写成“POC 反转 bot”，更值得做的是：</p>
+<ul>
+<li>用它服务 <code>mean reversion</code> 的 admission；</li>
+<li>用它服务 <code>breakout/trend</code> 的 stretch / exhaustion 判别；</li>
+<li>用真实执行假设先把幻觉挤掉。</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<h3>7.1 最小实验 1：先把 fill model 做对</h3>
+<p>同一条信号，至少并排测 4 种成交口径：</p>
+<ol>
+<li><code>signal close -&gt; next bar open</code></li>
+<li><code>touch-confirmed limit</code></li>
+<li><code>maker-if-touched else skip</code></li>
+<li><code>stale POC fill</code>（只保留作对照，不作 production 结论）</li>
+</ol>
+<p>如果 alpha 只在第 4 种活着，那就不是 alpha，是回测假设。</p>
+<h3>7.2 最小实验 2：从 <code>15m</code> 压到 <code>5m / 3m</code></h3>
+<p>建议先测：</p>
+<ul>
+<li>标的：<code>BTCUSDT</code>, <code>ETHUSDT</code></li>
+<li>周期：<code>15m</code>, <code>5m</code>, <code>3m</code></li>
+<li>变体：</li>
+<li>fade</li>
+<li>follow</li>
+<li>fade + EMA200 gate</li>
+<li>follow + EMA200 gate</li>
+<li>fade/follow + <code>POC_drift</code> veto</li>
+<li>成本：<code>0 / 2 / 3 / 5 bps</code> round-trip</li>
+</ul>
+<p>判定标准很简单：</p>
+<ul>
+<li>若成本阈值始终 <code>&lt; 3 bps</code>，降级成 feature，不当 standalone 策略；</li>
+<li>只有在 <code>5m/15m</code> 至少一个桶里能稳定扛住 <code>&gt;= 5 bps</code>，才值得继续做 execution 细化。</li>
+</ul>
+<h3>7.3 最小实验 3：把“假的 order-book POC”换成“真的微观结构 POC”</h3>
+<p>repo 现在的 POC 其实不是 order book 算出来的，而是：</p>
+<ul>
+<li>把 kline 的 <code>high-low</code> 区间按 volume 均匀分桶；</li>
+<li>这是一个很粗的 <strong>成交量分布 proxy</strong>。</li>
+</ul>
+<p>下一步应该拆开测：</p>
+<ul>
+<li><code>kline-derived rolling volume profile</code></li>
+<li><code>1m 聚合成交量 profile</code></li>
+<li><code>真实 depth snapshot / book ticker</code> 构造的 book POC</li>
+</ul>
+<p>如果只有 proxy POC 有效、真 POC 没效，那就说明它更像 price-path artifact，而不是稳定微观结构信号。</p>
+<h2>8. 这篇东西最后怎么归档</h2>
+<h3>8.1 主题归类</h3>
+<ul>
+<li>主题类型：<code>raw alpha</code></li>
+<li>更细归类：<code>single-asset mean reversion / value-anchor displacement</code></li>
+</ul>
+<h3>8.2 是否进入当前优先复现队列</h3>
+<p>我的建议：</p>
+<ul>
+<li><strong>不进 standalone 高优先实盘复现队列</strong>；</li>
+<li><strong>进 feature / state-variable 候选池</strong>；</li>
+<li>如果后续做 <code>5m/3m</code> breakout 或 short-horizon MR，可以把它当共享输入层复用。</li>
+</ul>
+<h2>9. 来源链接</h2>
+<ul>
+<li>Repo：&lt;<a href="https://github.com/berkant1863-netizen/automated-trading-system&gt;">https://github.com/berkant1863-netizen/automated-trading-system&gt;</a></li>
+<li>README：&lt;<a href="https://raw.githubusercontent.com/berkant1863-netizen/automated-trading-system/main/README.md&gt;">https://raw.githubusercontent.com/berkant1863-netizen/automated-trading-system/main/README.md&gt;</a></li>
+<li>Backtest script：&lt;<a href="https://raw.githubusercontent.com/berkant1863-netizen/automated-trading-system/main/backtest_poc.py&gt;">https://raw.githubusercontent.com/berkant1863-netizen/automated-trading-system/main/backtest_poc.py&gt;</a></li>
+<li>Bot source：&lt;<a href="https://raw.githubusercontent.com/berkant1863-netizen/automated-trading-system/main/bot.py&gt;">https://raw.githubusercontent.com/berkant1863-netizen/automated-trading-system/main/bot.py&gt;</a></li>
+<li>Public dataset file：&lt;<a href="https://raw.githubusercontent.com/berkant1863-netizen/automated-trading-system/main/BTCUSDT_15m_real.csv&gt;">https://raw.githubusercontent.com/berkant1863-netizen/automated-trading-system/main/BTCUSDT_15m_real.csv&gt;</a></li>
+</ul>
+<h2>10. 最短版结论</h2>
+<p>这份 2026 volume-profile repo 的 <strong>base alpha 很清楚</strong>：就是 <code>rolling POC displacement fade</code>。但最小复核表明，当前脚本的表现高度依赖乐观 fill；把入场改成 next-open 后，fade/follow 都只剩 <code>1.5~2.2 bps</code> 量级的毛边，远没到可直接上线的厚度。</p>
+<p>所以这轮最值得保留的，不是整份 bot，而是：</p>
+<ul>
+<li><code>distance_to_POC</code></li>
+<li><code>POC_drift</code></li>
+<li><code>value-area excursion</code></li>
+</ul>
+<p>把它们当成后续 <code>mean reversion / breakout / trend</code> 共用特征，会比继续把这份 repo 当成独立 alpha 更划算。</p>
+</body>
+</html>

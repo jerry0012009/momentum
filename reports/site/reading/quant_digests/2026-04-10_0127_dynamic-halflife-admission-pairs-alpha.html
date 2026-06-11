@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2021 pairs 论文只读成“crypto 也能做协整”：对 short-cycle desk，更该先测的是「dynamic pair admission × half-life-bounded spread fade」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2021 pairs 论文只读成“crypto 也能做协整”：对 short-cycle desk，更该先测的是「dynamic pair admission × half-life-bounded spread fade」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-10 01:27 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：pairs / stat-arb / relative-value / mean-reversion / cointegration / half-life / admission / BTC / ETH / XRP / 15m / 5m</span>
+      <span class="pill">证据类型：论文证据（arXiv 全文）+ Binance USDⓈ-M 公共数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-10_0127_dynamic-halflife-admission-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-10 01:27 UTC</li>
+<li>类型：论文</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：动态筛出的 cointegrated spread 偏离后会向均值回归，且“哪一对值得做”本身就是 alpha admission 的一部分</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：pairs / stat-arb / relative-value / mean-reversion / cointegration / half-life / admission / BTC / ETH / XRP / 15m / 5m</li>
+<li>证据类型：论文证据（arXiv 全文）+ Binance USDⓈ-M 公共数据 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Vadim Poplavskyi, Oleksii Serhieiev, Danylo Ovsii, Vadym Zhukov (2021), _Evaluation of Dynamic Cointegration-Based Pairs Trading Strategy in the Cryptocurrency Market_, Studies in Economics and Finance</strong>。这篇最值钱的地方，不是再证明一遍“crypto 也能做 pairs”，而是把 raw alpha 明确写成：<strong>先动态挑 pair，再做 spread fade</strong>，而不是长期抱死 BTC/ETH。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这篇 paper 真正值得 desk 拿来抄的，不是“协整存在”，而是 <strong>dynamic admission 比固定 pair 更重要</strong>：先用 unit-root / cointegration + 最短 half-life 挑出当前最像会回归的一对，再做 z-score fade。</li>
+<li><strong>一句话证明方式：</strong> 作者用 BitMEX 一分钟数据做全年滚动回测，formation / trading 按周滚动，显式模拟 bid/ask、limit/market 成交与不同组合方式；结果不是一条 pair 的偶然胜利，而是 admission 机制在多个场景下都能保住高 Sharpe。</li>
+<li>论文里单 pair 场景的月均收益约 <strong><code>24.7%</code></strong>、Sharpe 约 <strong><code>7.94</code></strong>、最大回撤约 <strong><code>17.3%</code></strong>，正收益月份约 <strong><code>90%</code></strong>；扩展到 Johansen 多币 spread 后，月均收益约 <strong><code>13.9%</code></strong>、Sharpe 约 <strong><code>6.96</code></strong>，但最大回撤进一步降到约 <strong><code>5.6%</code></strong>、正收益月份约 <strong><code>95%</code></strong>。</li>
+<li>对我们 desk，更高价值的旁支不是“再换一个更花的 spread 指标”，而是这条拆法：<code>raw alpha = spread MR</code>，<code>admission = 当前哪对/哪篮子最值得做</code>，<code>risk = half-life / capital cap / execution realism</code>。</li>
+<li>我用 Binance USDⓈ-M 公共 <code>15m</code> 数据做了一个更贴近 short-cycle 的 portability probe：在 <code>BTC/ETH/SOL/XRP/ADA</code> 上，用 <strong>14d formation + 2d trading</strong>、每天重选一次 pair，若只保留 <code>ADF p &lt; 0.05</code> 且 half-life 在 <code>2~96</code> bar 的组合，再做 <code>z&gt;2</code> 反手、回到 <code>|z|&lt;0.5</code> 平仓，则近约 <strong>45 天</strong>里共 <strong>25 笔</strong>，gross 约 <strong><code>+341 bps</code></strong>，即便粗扣每笔 round-trip <strong><code>8 bps</code></strong> 也还有约 <strong><code>+141 bps</code></strong>；被选中的窗口主要集中在 <strong><code>ETH/XRP</code>（11 次）</strong> 与 <strong><code>SOL/XRP</code>（8 次）</strong>，而不是 BTC/ETH。</li>
+<li>同一套 shell 若机械固定做 <code>BTC/ETH</code>，同窗口下约 <strong>16 笔 / <code>-493 bps</code> gross</strong>，说明这条线最该先测的不是“BTC/ETH 参数再调细”，而是 <strong>dynamic admission 到底能不能把 pair 选对</strong>。</li>
+<li>我又做了一个更激进的 <code>5m</code> 缩短版快检：在 <code>ETH/SOL/XRP/ADA</code> 上用 <strong>7d formation + 1d trading</strong> 的同类 admission shell，近约 <strong>18 天</strong>里约 <strong>7 笔 / <code>+242 bps</code> gross</strong>；样本不大，但足够说明这篇思路不是只能活在慢频周尺度。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>最近 desk 连续补了单资产 intraday lag / momentum，这轮更该补一篇 <strong>relative-value / stat-arb raw alpha</strong> 来平衡素材池。它和当前项目的直接关系是：</p>
+<ul>
+<li>base alpha 很清楚：cointegrated spread fade；</li>
+<li>但真正决定能不能落地的，是 admission 层，而不是“固定 pair + 固定参数”；</li>
+<li>这正好能接到我们后续的 <code>5m / 15m</code> major-alt pairs、cross-sectional RV、甚至 basket stat-arb。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / market-neutral / mean reversion</li>
+<li>基础 alpha：动态筛出的 cointegrated spread 会向均值回归</li>
+<li>regime：只在 <code>cointegration / ADF</code> 通过且 half-life 足够短的窗口启用</li>
+<li>filter / veto：<code>p-value</code> 不过线、half-life 太长、z-score 未到阈值时不交易</li>
+<li>risk / sizing / execution overlay：formation/trading 分窗、half-life 约束、capital cap、bid/ask 成交假设、rough fee/funding 扣减</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 对 short-cycle crypto pairs，alpha 本体不是“任何两条相关曲线都会回归”，而是 <strong>被动态 admission 选中的短 half-life pair</strong> 更容易在未来 <code>1~2d</code> 的 <code>5m/15m</code> 上完成 spread reversion。</p>
+<p><strong>最小实验：</strong></p>
+<ol>
+<li>资产：Binance / Bybit top-liquid perps，先 <code>BTC/ETH/SOL/XRP/ADA/TRX</code>；</li>
+<li>周期：先 <code>15m</code>，再压到 <code>5m</code>；</li>
+<li>formation / trading：先测 <code>14d / 2d</code> 与 <code>7d / 1d</code>；</li>
+<li>admission：每天重选一次，保留 <code>ADF p &lt; 0.05</code>、half-life 落在可交易区间的 pair；</li>
+<li>交易：<code>z &gt; 2</code> 做空 spread，<code>z &lt; -2</code> 做多 spread，回到 <code>|z| &lt; 0.5</code> 平仓，窗口结束强平。</li>
+</ol>
+<p><strong>先看 2 个指标：</strong></p>
+<ul>
+<li>dynamic admission 相对固定 <code>BTC/ETH</code> 的 <code>post-cost bps/trade</code> 改善；</li>
+<li>被选中 pair 的集中度是否稳定（是否长期集中在少数 alt-major 组合）。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文主样本是 <strong>BitMEX 1m</strong>，我本地 probe 是 <strong>Binance perp 近窗口 15m/5m</strong>，两者不是同一市场结构；这里证明的是 portability，不是原文逐表复刻。</li>
+<li>当前快检还没把 funding、borrow、真实双腿冲击和下单量约束完整接入，所以只能当 first verdict，不能当 production 回测。</li>
+<li>dynamic admission 也有过拟合风险：如果 pair 每天频繁漂移，交易成本可能把“选对 pair”的 edge 吃掉。</li>
+<li><code>5m</code> 快检样本仍短，只说明有可继续追的苗头，不说明已经过稳健线。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Poplavskyi, V., Serhieiev, O., Ovsii, D., &amp; Zhukov, V. (2021). *Evaluation of Dynamic Cointegration-Based Pairs Trading Strategy in the Cryptocurrency Market*. *Studies in Economics and Finance*.</li>
+<li>DOI: <code>10.1108/SEF-12-2020-0497</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1108/SEF-12-2020-0497">https://doi.org/10.1108/SEF-12-2020-0497</a></code></li>
+<li>arXiv full text: <code><a href="https://arxiv.org/abs/2109.10662">https://arxiv.org/abs/2109.10662</a></code></li>
+<li>PDF used this round: <code><a href="https://arxiv.org/pdf/2109.10662.pdf">https://arxiv.org/pdf/2109.10662.pdf</a></code></li>
+</ul>
+<h2>7. 一句话带走</h2>
+<p><strong>别再把 pairs 写成“固定 BTC/ETH + 固定 z-score”的老模板；对 short-cycle crypto，真正该先测的是“今天该做哪一对”——dynamic admission 可能比 spread 公式本身更重要。</strong></p>
+</body>
+</html>

@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 liquidation map 只当风险看板：这份 2026 新仓库更该先测的是「Funding + OI 背离 + 鲸鱼清算簇共识」级联延续 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 liquidation map 只当风险看板：这份 2026 新仓库更该先测的是「Funding + OI 背离 + 鲸鱼清算簇共识」级联延续 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-24 06:32 UTC</span>
+      <span class="pill">研究时间：2026-03-24 06:31 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + 交易所公开 API 文档 + 代码规则拆解</span>
+      <span class="pill">主题标签：raw-alpha/liquidation/funding/open-interest/whale-clusters/cascade/continuation/event-driven/crypto/1m/3m/5m/15m</span>
+      <span class="pill">证据类型：仓库 README + 配置与信号/执行代码 + 官方 API 文档</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-24_0631_liquidation-consensus-cascade-continuation-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-24 06:31 UTC</li>
+<li>类型：2026 GitHub 新仓库 + 交易所公开 API 文档 + 代码规则拆解</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当 <code>funding</code> 极端、<code>OI</code> 在 <code>4h</code> 内快速堆积且价格未同步、并且价格靠近高密度清算簇时，未来 <code>5m~30m</code> 更容易出现同向强制平仓级联，适合做<strong>延续</strong>而非先验抄底</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/liquidation/funding/open-interest/whale-clusters/cascade/continuation/event-driven/crypto/1m/3m/5m/15m</li>
+<li>证据类型：仓库 README + 配置与信号/执行代码 + 官方 API 文档</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这是 raw alpha，不是 filter。</strong></p>
+<p>这轮选题来自 2026 新仓库 <code>wilsontiger2222/liquidation-hunter</code>。它最值得我们 desk 先拿来做最小实验的点，不是“liquidation map 能不能当风险提示”，而是：</p>
+<p><strong>把 crowding（funding）+ 脆弱持仓堆积（OI 背离）+ 清算密度（cluster proximity）合成一个可交易的级联延续信号。</strong></p>
+<p>它已经给了完整策略骨架：<code>entry / exit / sizing / risk / timeout / mode(alert/paper/live)</code> 全有，适合直接映射到 <code>1m/3m/5m/15m</code> 的快速复现流水线。</p>
+<h2>2. 核心结论（先给结论）</h2>
+<ul>
+<li><strong>一句话结论：</strong> 这条线应进入 raw-alpha 素材池，且优先作为“事件驱动延续策略”验证，不要先降级成仅做 veto/filter。</li>
+<li><strong>为什么：</strong> 该仓库信号层和执行层耦合完整，参数少、可解释性强、能快速做 first verdict。</li>
+</ul>
+<p>关键数据点（来自公开代码/配置，非我方独立业绩复核）：</p>
+<ol>
+<li>触发阈值：<code>funding_rate_threshold = 0.0005 (0.05%)</code>，<code>oi_delta_threshold = 5% (4h)</code>，<code>liquidation_proximity = 1.5%</code>，<code>min_confidence = 0.6</code>。</li>
+<li>信号权重：<code>funding 0.35 + oi_divergence 0.30 + liquidation 0.35</code>，三路共识后按加权方向出信号。</li>
+<li>风险与持仓：<code>position_size = 20%</code>、<code>max_positions = 3</code>、<code>TP=2%</code>、<code>SL=1%</code>、<code>timeout=30m</code>，轮询粒度 <code>30s</code>。</li>
+</ol>
+<h2>3. 为什么和当前项目直接相关</h2>
+<ul>
+<li>它直接补的是 <strong>raw alpha 候选</strong>（event-driven / continuation），不是纯解释层。</li>
+<li>与当前 desk 的短周期目标匹配：信号形成可在 <code>1m/3m/5m</code>，兑现窗口可放在 <code>5m~30m</code>。</li>
+<li>与最近积累形成互补：我们已有多条 trend / lead-lag / basis 线，这条补的是 <strong>crowding -&gt; forced flow</strong> 家族。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：event-driven liquidation continuation alpha</li>
+<li>基础 alpha：拥挤方向在脆弱结构下更易触发同向强平链式反应，价格短窗内延续概率上升</li>
+<li>触发层：</li>
+<li>Funding 极端（正 funding 偏向做空，负 funding 偏向做多）</li>
+<li>OI 在 <code>4h</code> 内显著上升但价格跟不上（脆弱背离）</li>
+<li>距离高密度清算簇不超过 <code>1.5%</code></li>
+<li>聚合层：三路信号加权投票，置信度过 <code>0.6</code> 才下单</li>
+<li>执行层：</li>
+<li>单笔资金：总资金 <code>20%</code></li>
+<li>并发上限：<code>3</code> 笔</li>
+<li>止盈止损：<code>+2% / -1%</code></li>
+<li>超时退出：<code>30m</code></li>
+<li>成本层：仓库未给严谨交易所分档成本模型，需在我方复现时补齐 maker/taker/冲击三档</li>
+</ul>
+<h2>4. <code>1m / 3m / 5m / 15m</code> 映射</h2>
+<ul>
+<li><code>1m</code>：用于事件监控与信号确认（建议最细观测层）。</li>
+<li><code>3m</code>：可做去噪确认，减少单根 wick 误触发。</li>
+<li><code>5m</code>：推荐主形成窗（与 crowding/背离逻辑最匹配）。</li>
+<li><code>15m</code>：推荐主兑现窗之一（<code>15m/30m</code> 两档比较）。</li>
+</ul>
+<p>对 desk 的实操定位： <strong><code>5m formation -&gt; 15m/30m monetization</code> 的级联延续策略。</strong></p>
+<h2>5. 数据源、公开性与最小可复现实验口径</h2>
+<h3>5.1 数据源与公开性</h3>
+<ol>
+<li>Hyperliquid Info API（公开）</li>
+</ol>
+<ul>
+<li><code>metaAndAssetCtxs</code>（funding / OI 等）</li>
+<li><code>clearinghouseState</code>（钱包持仓、杠杆、清算价）</li>
+<li><code>frontendOpenOrders</code>（可见触发单/条件单）</li>
+</ul>
+<ol>
+<li>Binance USDⓈ-M Futures 公共接口（公开）</li>
+</ol>
+<ul>
+<li>Open Interest</li>
+<li>Funding Rate History</li>
+</ul>
+<ol>
+<li>（可选）公开 liquidation heatmap 网站作交叉验证（CoinGlass/HyperDash 等）</li>
+</ol>
+<h3>5.2 更新频率</h3>
+<ul>
+<li>可按 <code>30s~1m</code> 拉取并重算；能直接映射 <code>1m/3m/5m/15m</code> 最小实验。</li>
+</ul>
+<h3>5.3 最小实验（第一版）</h3>
+<ul>
+<li>标的：<code>BTC, ETH</code>（先小集合）</li>
+<li>formation：<code>5m</code> 主窗（同时保留 <code>1m</code> 监控）</li>
+<li>信号：沿用仓库阈值先跑基线</li>
+<li>进场：signal bar close 后 next bar open</li>
+<li>出场：<code>TP/SL/timeout(30m)</code> 三重退出</li>
+<li>成本：先跑 <code>6/12/20 bps round-trip</code> 三档压力测试</li>
+</ul>
+<h2>6. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>A/B 测试 alpha 本体</strong>：</li>
+</ol>
+<ul>
+<li>A 组：只用 funding+OI</li>
+<li>B 组：funding+OI+liquidation cluster（完整）</li>
+<p>比较 <code>hit rate / avg post-cost return / MFE/MAE</code>，确认清算簇是否真增益。</p>
+</ul>
+<ol>
+<li><strong>延续 vs 反转 双出口</strong>：</li>
+<p>同一入场下测试“延续持有 15m/30m”与“逆向均值回归 5m/15m”，避免把结构性反转误当延续。</p>
+<li><strong>阈值网格</strong>：</li>
+<p><code>funding 0.03/0.05/0.08%</code>、<code>OI 3/5/8%</code>、<code>proximity 1.0/1.5/2.0%</code>，看边际稳健区而非单点最优。</p>
+<li><strong>可交易性压力测试</strong>：</li>
+<p>加入滑点随波动/成交量扩张规则；若收益只在低成本假设下成立，先留素材池，不升 shadow。</p>
+<li><strong>伦理与合规约束</strong>：</li>
+<p>README 提到的 “nudge trade” 不进入我方实验范围；仅做被动跟随，不做任何主动触发级联行为。</p>
+</ol>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>仓库很新（2026-02 创建，star/fork 仍低），社会验证不足。</li>
+<li>README 给出的胜率/盈亏比属于作者口径，需独立复核。</li>
+<li>钱包样本选择可能存在选择偏差（只跟踪“已知鲸鱼”）。</li>
+<li>交易成本与成交冲击是最大不确定项，尤其在真正的 cascade 时刻。</li>
+</ul>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>wilsontiger2222 (2026). _liquidation-hunter_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://github.com/wilsontiger2222/liquidation-hunter">https://github.com/wilsontiger2222/liquidation-hunter</a></li>
+<li>Repo URL: <a href="https://github.com/wilsontiger2222/liquidation-hunter">https://github.com/wilsontiger2222/liquidation-hunter</a></li>
+</ul>
+<ol>
+<li><strong>wilsontiger2222 (2026). _README.md / config.yaml / main.py / src/signals/*.py / src/execution/paper_executor.py_.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub (repository code)</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/wilsontiger2222/liquidation-hunter/master/README.md">https://raw.githubusercontent.com/wilsontiger2222/liquidation-hunter/master/README.md</a></li>
+<li>Repo URL: <a href="https://github.com/wilsontiger2222/liquidation-hunter">https://github.com/wilsontiger2222/liquidation-hunter</a></li>
+</ul>
+<ol>
+<li><strong>Hyperliquid Docs (2026 snapshot). _Info endpoint API_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Binance Developers. _USDⓈ-M Futures Market Data: Open Interest_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Binance Developers. _USDⓈ-M Futures Market Data: Get Funding Rate History_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Ruan, Q. (2025). _Perpetual Futures Contracts and Cryptocurrency Market Quality_. SSRN Electronic Journal.</strong></li>
+</ol>
+<ul>
+<li>Venue: SSRN (Working Paper)</li>
+<li>DOI: <a href="https://doi.org/10.2139/ssrn.5323703">https://doi.org/10.2139/ssrn.5323703</a></li>
+<li>Readable URL: <a href="https://www.ssrn.com/abstract=5323703">https://www.ssrn.com/abstract=5323703</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+</body>
+</html>

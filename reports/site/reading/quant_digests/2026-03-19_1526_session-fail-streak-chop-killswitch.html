@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把“连续确认失败”想成自动救命阀：`session fail-streak` 在 15m 更像 setup-specific 风险覆盖层，不是三线共享 kill-switch</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把“连续确认失败”想成自动救命阀：`session fail-streak` 在 15m 更像 setup-specific 风险覆盖层，不是三线共享 kill-switch</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-19 15:26 UTC</span>
+      <span class="pill">类型：GitHub + 本地代理快检</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/chop/failure-streak/session-overlay/risk-overlay/execution-veto/repo/crypto/15m</span>
+      <span class="pill">证据类型：repo 规则（工程证据）+ 公开行情代理快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-19_1526_session-fail-streak-chop-killswitch.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-19 15:26 UTC</li>
+<li>类型：GitHub + 本地代理快检</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/chop/failure-streak/session-overlay/risk-overlay/execution-veto/repo/crypto/15m</li>
+<li>证据类型：repo 规则（工程证据）+ 公开行情代理快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是 <strong>Powersup8 (2026) 的 <code>KeyLevelBreakout</code></strong>。我没有复刻它整套美股 level 框架，而是只抽一个更适合我们 desk 的旁支： <strong>当同一 session 内连续出现确认失败（<code>confFailStreak</code>）时，后续信号是否该降级/停手。</strong></p>
+<p>repo 原文里有两条很关键的提示：</p>
+<ul>
+<li><code>Chop Day Warning (3+ CONF fails)</code></li>
+<li>以及“afternoon signals are net negative”这类时段性退场提醒。</li>
+</ul>
+<p>把它翻成我们 5m/15m 语言，就是一句话： <strong>别只看单笔信号的形状；还要看“这段时窗里你是不是已经连续做错了”。</strong></p>
+<h2>2. 核心结论</h2>
+<ol>
+<li><strong>一句话核心结论</strong>：<code>session fail-streak</code> 作为“共享 kill-switch”在当前 15m 三线代理上几乎不触发，直接上主线价值很弱；它更像要做成 <strong>setup-specific / side-specific</strong> 的风险覆盖层。</li>
+<li><strong>一句话证明方式</strong>：我复用本地 <code>BTC/ETH/SOL 120d 15m</code> cache，沿用三条 archetype（<code>breakout_short / fib_retest_long / ema_psar_long</code>）信号骨架，统一 <code>next-bar open + hold 8 bars + no-overlap</code>，比较 baseline 与 fail-streak overlay。</li>
+<li>关键数据（<code>6bps/side</code>）：</li>
+</ol>
+<ul>
+<li><strong>8h session、按 repo 原味 <code>3+ fail</code></strong>：几乎不触发；<code>retention=100%</code>，<code>mean_total_return=-1.97%</code>（与 baseline 基本一致）。</li>
+<li><strong>放宽到 24h session + <code>2 fail veto</code></strong>：只拦到 <code>0.81%</code> 信号（<code>retention=99.19%</code>），整体 <code>mean_total_return</code> 反而 <code>-1.97% -&gt; -1.98%</code>，无共享增益。</li>
+<li>setup 分解（24h + fail2_veto）：<code>ema_psar_long -3.55% -&gt; -3.14%</code>（略好），但 <code>breakout_short -3.55% -&gt; -3.99%</code>（变差），<code>fib_retest_long</code> 基本不变（<code>+1.18%</code>）。</li>
+</ul>
+<ol>
+<li>这说明当前更诚实的读法不是“全 desk 一个 fail-streak 总闸门”，而是：</li>
+</ol>
+<ul>
+<li><strong>EMA/PSAR continuation</strong> 可能能吃到一点保护；</li>
+<li><strong>breakout-short follow-up</strong> 可能被误伤（该做反向或单独阈值）；</li>
+<li><strong>Fib retest_hold</strong> 对这类 session 计数不敏感。</li>
+</ul>
+<h2>3. 为什么和当前三条收口线直接相关</h2>
+<ul>
+<li><strong>V3 final-verdict / breakout-short follow-up</strong>：这条最需要“何时停手”，但共享 fail-streak 会把 short 侧优劣行情混在一起，导致该停不停、该做反而停。</li>
+<li><strong>Fibonacci confirmation / retest_hold</strong>：Fib 本身触发更稀、确认更结构化，直接套共享 fail-streak 没有明显增益。</li>
+<li><strong>EMA / PSAR raw alpha focus</strong>：EMA/PSAR 有一定“连错后降级”需求，但阈值需要按 setup 单独校准，而不是共享硬门。</li>
+</ul>
+<p>如果要回答“为什么这题值得做而不是换题”：因为它直接回答三条线共同的执行痛点——<strong>连错后怎么处理</strong>，且可以用公开数据快速复现。</p>
+<h2>4. 下一步怎么测（5m / 15m 最小实验）</h2>
+<h3>4.1 数据与公开性</h3>
+<ul>
+<li>数据源：Binance Futures 公共 K 线（本轮复用本地 cache）</li>
+<li>公开性：公开可得</li>
+<li>更新频率：5m / 15m</li>
+<li>本轮产物：</li>
+<li><code>reports/artifacts/quant_digests/session_fail_overlay_proxy/candidate_events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/session_fail_overlay_proxy/trade_log.csv</code></li>
+<li><code>reports/artifacts/quant_digests/session_fail_overlay_proxy/asset_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/session_fail_overlay_proxy/overall_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/session_fail_overlay_proxy/by_setup_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/session_fail_overlay_proxy/summary_snapshot.json</code></li>
+</ul>
+<h3>4.2 最小可复现实验口径（建议先做这个）</h3>
+<p>下一轮不要再测“共享 fail-streak”，改测 <strong>setup-specific fail budget</strong>：</p>
+<ol>
+<li>对每条线单独维护 <code>fail_count_{setup}</code>（只在该 setup 触发后更新）；</li>
+<li>三臂对照：</li>
+</ol>
+<ul>
+<li>A：baseline</li>
+<li>B：shared fail2 veto（当前失败基线）</li>
+<li>C：setup-specific fail2 veto / half-size（主测试）</li>
+</ul>
+<ol>
+<li>再做 long/short 分侧阈值（尤其 <code>breakout_short</code> 单独阈值）。</li>
+</ol>
+<p>先看 4 个指标：</p>
+<ul>
+<li><code>post_cost_expectancy</code></li>
+<li><code>trade_count_retention</code></li>
+<li><code>flip_to_fail_3bars_rate</code></li>
+<li><code>setup-wise contribution</code>（避免单 setup 改善掩盖整体退化）</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>源 repo 面向美股时段（含 premarket/afternoon 语义），直接迁移到 24/7 crypto 有结构偏差；</li>
+<li>本轮“确认失败”定义是代理口径（<code>3-bar flip-to-fail</code> + early pass），不是 repo 完整 retest 状态机；</li>
+<li>当前结果说明共享 fail-streak 不够强，不代表“连错管理”无效，只代表<strong>共享门</strong>这版不够好；</li>
+<li>若下一轮 setup-specific 仍无提升，应把它降级为可选执行保险丝，避免继续占主资源位。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Powersup8. (2026). _KeyLevelBreakout_.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/Powersup8/KeyLevelBreakout&gt;">https://github.com/Powersup8/KeyLevelBreakout&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/Powersup8/KeyLevelBreakout&gt;">https://github.com/Powersup8/KeyLevelBreakout&gt;</a></li>
+</ul>
+<ol>
+<li><strong>关键实现（Pine）</strong>：<code>i_chopWarn</code>、<code>confFailStreak</code>、<code>3+ CONF fails</code> 相关逻辑</li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://github.com/Powersup8/KeyLevelBreakout/blob/main/KeyLevelBreakout.pine&gt;">https://github.com/Powersup8/KeyLevelBreakout/blob/main/KeyLevelBreakout.pine&gt;</a></li>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/Powersup8/KeyLevelBreakout/main/KeyLevelBreakout.pine&gt;">https://raw.githubusercontent.com/Powersup8/KeyLevelBreakout/main/KeyLevelBreakout.pine&gt;</a></li>
+</ul>
+<ol>
+<li><strong>公开行情数据源</strong></li>
+</ol>
+<ul>
+<li>Binance Futures Klines API: &lt;<a href="https://fapi.binance.com/fapi/v1/klines&gt;">https://fapi.binance.com/fapi/v1/klines&gt;</a></li>
+</ul>
+</body>
+</html>

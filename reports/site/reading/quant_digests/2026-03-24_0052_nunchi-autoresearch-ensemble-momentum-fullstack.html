@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把“自动化炼策略”只当黑箱：这份 2026 新仓库更值得先复现的是「6 信号投票 + 快慢退出 + 统一仓位」完整 raw alpha 骨架</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把“自动化炼策略”只当黑箱：这份 2026 新仓库更值得先复现的是「6 信号投票 + 快慢退出 + 统一仓位」完整 raw alpha 骨架</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-24 00:51 UTC</span>
+      <span class="pill">研究时间：2026-03-24 00:52 UTC</span>
+      <span class="pill">类型：近 5 年新仓库 + 本地 split 复现实验（train/val/test）</span>
+      <span class="pill">主题标签：raw-alpha/trend/momentum/ensemble/voting/atr/rsi/exit/fullstack/repo/hyperliquid/crypto/1m/3m/5m/15m</span>
+      <span class="pill">证据类型：仓库源码 + 固定回测引擎 + 本地可复现实验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-24_0052_nunchi-autoresearch-ensemble-momentum-fullstack.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-24 00:52 UTC</li>
+<li>类型：近 5 年新仓库 + 本地 split 复现实验（train/val/test）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：trend / momentum continuation（多信号共识后做顺势延续）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/trend/momentum/ensemble/voting/atr/rsi/exit/fullstack/repo/hyperliquid/crypto/1m/3m/5m/15m</li>
+<li>证据类型：仓库源码 + 固定回测引擎 + 本地可复现实验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这篇东西的 base alpha 是“短中窗口动量共识后的趋势延续捕获”，不是 filter。</strong></p>
+<p>本轮选题来自高信号新仓库 <strong>Nunchi-trade/auto-researchtrading (2026)</strong>。它不是只给一个指标，而是给了完整策略骨架：</p>
+<ul>
+<li>entry：6 信号投票（动量、超短动量、EMA、RSI、MACD、BB 压缩）</li>
+<li>exit：ATR trailing stop + RSI 过热/过冷退出 + 反向投票翻仓</li>
+<li>sizing：统一仓位（去掉了大部分“花哨动态缩放”）</li>
+<li>risk/cost：回测引擎内置 fee/slippage/funding + 杠杆约束 + 时间预算</li>
+</ul>
+<p>这符合当前 desk 优先级：<strong>可独立复现且可直接落地为完整策略的 raw alpha 候选</strong>。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话结论：</strong> 这份仓库最值得偷的不是“AI 自动改代码”叙事，而是“把 trend/momentum 做成可拆件、可回滚、可审计的完整策略工厂”。</li>
+<li><strong>一句话证据：</strong> 我用仓库固定引擎、同一策略代码在 train/val/test 三段都重跑了一次，三段 score 都维持在高位（16~19 区间），且交易笔数足够，说明不只是单一窗口偶然。</li>
+</ul>
+<p>关键数据点（本地复现实验）：</p>
+<ol>
+<li><code>train score=16.01, sharpe=16.01, trades=3274, maxDD=0.21%</code></li>
+<li><code>val score=19.51, sharpe=19.51, trades=3666, maxDD=0.27%</code></li>
+<li><code>test score=18.86, sharpe=18.86, trades=3552, maxDD=0.20%</code></li>
+</ol>
+<p>补充观察：</p>
+<ul>
+<li>三段回测都打满了引擎 <code>120s</code> 时间预算，说明该框架本身是“固定算力预算下的策略筛选器”；迁移到我们 desk 时要同步考虑研究速度与计算成本。</li>
+</ul>
+<h2>3. 为什么和当前 desk 直接相关</h2>
+<p>这不是“再加一个确认层”，而是一个 <strong>raw alpha 全链路模板</strong>：</p>
+<ul>
+<li>方向层：trend/momentum（可直接映射到 5m/15m、也可下探 1m/3m）</li>
+<li>触发层：多信号投票降低单指标噪声</li>
+<li>出场层：快慢结合（RSI 快出 + ATR 慢跟）</li>
+<li>研究层：每次修改只动一个策略文件，天然适合做可追溯实验日志</li>
+</ul>
+<p>对我们素材池的价值是：它把“alpha 想法 → 可执行规则 → 可回测比较”这条链路压缩得很短，适合快速 intake 和 first verdict。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势延续（trend / momentum）</li>
+<li>基础 alpha：过去 6h/12h 动量与趋势结构同向时，未来延续概率提升</li>
+<li>regime：中等以上波动、且非极端反转段时更友好</li>
+<li>filter / veto：BB 压缩（方向中性）、投票门槛、冷却窗口</li>
+<li>risk / sizing / execution overlay：ATR trailing、RSI 过热退出、统一仓位、fee+slippage+funding 成本记账</li>
+</ul>
+<h2>4. 与 <code>1m/3m/5m/15m</code> 的关系（实话版）</h2>
+<ul>
+<li>该仓库原始实验频率是 <strong>1h</strong>，不能直接当成 5m/15m 已验证。</li>
+<li>但其规则结构是“可压缩周期”的：</li>
+<li><code>ret_6h/12h</code> 可改成 <code>ret_18bar/36bar@20m</code> 或 <code>ret_12bar/24bar@15m</code></li>
+<li>RSI/EMA/MACD/ATR 都是频率无关算子</li>
+<li>因此它是 <strong>可迁移的 raw alpha 骨架</strong>，不是“现成可上 5m 的结论”。</li>
+</ul>
+<h2>5. 最小可复现实验口径（本轮）</h2>
+<h3>5.1 数据源、公开性、更新频率</h3>
+<ul>
+<li>价格：CryptoCompare 小时 K 线（公开）</li>
+<li>funding：Hyperliquid <code>info</code> 接口（公开）</li>
+<li>频率：仓库默认 <code>1h</code>；后续迁移可用 Binance/Hyperliquid 的 <code>1m/3m/5m/15m</code> 公开 K 线</li>
+</ul>
+<h3>5.2 本轮实验口径</h3>
+<ul>
+<li>代码：<code>autotrader/mar10c/strategy.py</code></li>
+<li>引擎：仓库 <code>prepare.py</code> 固定回测引擎</li>
+<li>分段：<code>train / val / test</code></li>
+<li>标的：BTC/ETH/SOL</li>
+<li>成本：引擎内置 <code>maker 2bps / taker 5bps / slippage 1bps</code></li>
+</ul>
+<h2>6. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>周期压缩迁移测试（优先）</strong>：把同一骨架下采到 <code>15m</code>，再到 <code>5m</code>，最后 <code>3m/1m</code>，每档都输出 <code>post-cost expectancy / trade count / turnover</code>，找生存频率带。</li>
+<li><strong>信号删减对照</strong>：做 <code>6→4→2</code> 信号 ablation（保留同一出场），确认哪些信号是真 edge、哪些只是冗余。</li>
+<li><strong>执行诚实化</strong>：把固定滑点替换为 <code>spread + participation cap</code>，测 <code>signal edge -&gt; executable edge</code> 衰减。</li>
+<li><strong>统一口径复核</strong>：用我们当前 desk 的 <code>next-bar open</code> 和交易成本参数重跑，避免“仓库引擎口径优势”误导。</li>
+<li><strong>不过拟合闸门</strong>：要求 <code>val/test</code> 同时为正、且参数小扰动不过度崩塌，才进入 shadow 候选池。</li>
+</ol>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>该仓库叙事里有“超高 Sharpe/低回撤”结果，必须持续防过拟合与口径偏差。</li>
+<li>当前证据是“框架和骨架值得复现”，不是“参数可直接照搬到 5m/15m 实盘”。</li>
+<li>高频下（1m/3m）交易成本与冲击可能让表现显著衰减，必须先过 friction ladder。</li>
+</ul>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>Nunchi Trade. (2026). _auto-researchtrading_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://github.com/Nunchi-trade/auto-researchtrading">https://github.com/Nunchi-trade/auto-researchtrading</a></li>
+<li>Repo URL: <a href="https://github.com/Nunchi-trade/auto-researchtrading">https://github.com/Nunchi-trade/auto-researchtrading</a></li>
+</ul>
+<ol>
+<li><strong>Nunchi Trade. (2026). _STRATEGIES.md (strategy evolution log)_.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/Nunchi-trade/auto-researchtrading/main/STRATEGIES.md">https://raw.githubusercontent.com/Nunchi-trade/auto-researchtrading/main/STRATEGIES.md</a></li>
+<li>Repo URL: <a href="https://github.com/Nunchi-trade/auto-researchtrading/blob/main/STRATEGIES.md">https://github.com/Nunchi-trade/auto-researchtrading/blob/main/STRATEGIES.md</a></li>
+</ul>
+<ol>
+<li><strong>Nunchi Trade. (2026). _autotrader/mar10c/strategy.py_.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/Nunchi-trade/auto-researchtrading/autotrader/mar10c/strategy.py">https://raw.githubusercontent.com/Nunchi-trade/auto-researchtrading/autotrader/mar10c/strategy.py</a></li>
+<li>Repo URL: <a href="https://github.com/Nunchi-trade/auto-researchtrading">https://github.com/Nunchi-trade/auto-researchtrading</a></li>
+</ul>
+<ol>
+<li><strong>Hyperliquid Docs. _Info endpoint_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint</a></li>
+</ul>
+<ol>
+<li><strong>CryptoCompare API Docs. _Histohour endpoint_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://min-api.cryptocompare.com/documentation">https://min-api.cryptocompare.com/documentation</a></li>
+</ul>
+<h2>9. 本地复现产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/nunchi_autoresearch_20260324/split_metrics.json</code></li>
+<li><code>reports/artifacts/quant_digests/nunchi_autoresearch_20260324/meta.json</code></li>
+</ul>
+</body>
+</html>

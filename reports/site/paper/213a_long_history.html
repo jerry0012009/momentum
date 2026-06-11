@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>213a 长历史回测（冻结 spec）</title>
+  <style>
+    :root {
+      --bg:#f8fafc; --card:#ffffff; --fg:#0f172a; --muted:#64748b; --line:#e2e8f0;
+      --good:#166534; --good-bg:#dcfce7; --warn:#9a3412; --warn-bg:#ffedd5; --info:#1d4ed8; --info-bg:#dbeafe;
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    .wrap { max-width:1120px; margin:0 auto; padding:28px 18px 64px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:14px; }
+    h1,h2,h3 { margin:0 0 12px; line-height:1.35; }
+    h1 { font-size:28px; }
+    h2 { font-size:20px; margin-top:4px; }
+    p, li { margin:0 0 8px; }
+    ul { margin:0; padding-left:20px; }
+    code { background:#eff6ff; border-radius:6px; padding:2px 6px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; }
+    .muted { color:var(--muted); }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
+    .metric { border:1px solid var(--line); border-radius:12px; padding:12px 14px; background:#fff; }
+    .metric .k { color:var(--muted); font-size:13px; margin-bottom:4px; }
+    .metric .v { font-size:24px; font-weight:700; }
+    .note { border-left:4px solid var(--info); background:var(--info-bg); padding:12px 14px; border-radius:10px; white-space:pre-wrap; }
+    .warn { border-left-color:var(--warn); background:var(--warn-bg); }
+    .good { border-left-color:var(--good); background:var(--good-bg); }
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    th, td { border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+    th { background:#f8fafc; }
+    .mono { white-space:pre-wrap; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; background:#f8fafc; border:1px solid var(--line); border-radius:10px; padding:12px; }
+    a { color:#0f766e; text-decoration:none; } a:hover { text-decoration:underline; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Rank 213 long history review（frozen spec）</h1>
+      <p><strong>对象：</strong><code>Rank 213 / large-cap XS momentum × short-leg jump veto</code></p>
+      <p><strong>页面目标：</strong>严格冻结当前 spec，不改 universe / formation / hold / topN / bottomN / veto / cost，只回答长历史同口径验证。</p>
+      <p class="muted">同口径锚点：<code>reports/artifacts/optimization_loop/rank213_p2_admission_20260328/summary.json</code>；当前 frozen spec：<code>f64_h12_floor150_mult2p0</code> / <code>15m</code> / <code>64</code> / <code>12</code> / <code>top3-bottom3</code> / <code>max(1.5%, 2.0×median)</code> / <code>4bps×turnover_x</code></p>
+      <p><a href="/momentum/paper/213a_paper_runner.html">当前 runner 页面</a> · <a href="/momentum/paper/213a_spec.html">最小可复现 spec</a> · <a href="/momentum/paper/213a_performance.html">短样本 performance review</a> · <a href="/momentum/paper/213a_honesty_audit.html">honesty_audit</a> · <a href="/momentum/paper/213a_ffill_audit.html">ffill_impact_audit</a> · <a href="/momentum/paper/213a_readiness.html">readiness_note</a> · <a href="/momentum/paper/213a_asof_universe.html">asof_universe_long_history_review</a> · <a href="/momentum/paper/213a_regime.html">regime_review</a></p>
+    </div>
+
+    <div class="card">
+      <h2>1) 回测区间与数据可用性</h2>
+      <div class="grid">
+        <div class="metric"><div class="k">common start candidate（latest onboard）</div><div class="v" style="font-size:18px">2025-10-24T08:30:00Z</div></div>
+        <div class="metric"><div class="k">actual common start</div><div class="v" style="font-size:18px">2025-10-24T08:30:00Z</div></div>
+        <div class="metric"><div class="k">actual common end</div><div class="v" style="font-size:18px">2026-04-10T23:45:00Z</div></div>
+        <div class="metric"><div class="k">bars</div><div class="v">16190</div></div>
+        <div class="metric"><div class="k">calendar days</div><div class="v">168.64d</div></div>
+        <div class="metric"><div class="k">rebalances</div><div class="v">1343</div></div>
+      </div>
+      <div class="note warn">这页先回答最重要的 honesty 问题：在<strong>不改当前 30 币 universe</strong> 的前提下，公共共同历史被最新上市的成员截断；因此这次 long-history review 的上限由 universe 数据可用性决定，不是我自由挑窗口。</div>
+      <p><strong>限制共同历史的最新上市成员（前 5）</strong></p>
+      <table><thead><tr><th>symbol</th><th>onboard_date_utc</th><th>source</th></tr></thead><tbody><tr><td>ONUSDT</td><td>2025-10-24T08:30:00Z</td><td>cached_exchangeInfo_snapshot_2026-04-11</td></tr><tr><td>RIVERUSDT</td><td>2025-10-17T14:45:00Z</td><td>cached_exchangeInfo_snapshot_2026-04-11</td></tr><tr><td>QUSDT</td><td>2025-09-02T07:30:00Z</td><td>cached_exchangeInfo_snapshot_2026-04-11</td></tr><tr><td>CUSDT</td><td>2025-07-15T09:00:00Z</td><td>cached_exchangeInfo_snapshot_2026-04-11</td></tr><tr><td>HYPEUSDT</td><td>2025-05-30T10:30:00Z</td><td>cached_exchangeInfo_snapshot_2026-04-11</td></tr></tbody></table>
+    </div>
+
+    <div class="card">
+      <h2>2) plain baseline 与 veto 版：full available history</h2>
+      <div class="grid">
+        <div class="metric"><div class="k">plain net mean</div><div class="v">1.33 bps</div></div>
+        <div class="metric"><div class="k">plain net cumulative</div><div class="v">-22.11%</div></div>
+        <div class="metric"><div class="k">plain win rate</div><div class="v">49.74%</div></div>
+        <div class="metric"><div class="k">plain max drawdown</div><div class="v">-79.94%</div></div>
+        <div class="metric"><div class="k">plain avg turnover</div><div class="v">1.000x</div></div>
+      </div>
+      <div class="grid" style="margin-top:12px">
+        <div class="metric"><div class="k">veto net mean</div><div class="v">8.96 bps</div></div>
+        <div class="metric"><div class="k">veto net cumulative</div><div class="v">166.72%</div></div>
+        <div class="metric"><div class="k">veto win rate</div><div class="v">49.74%</div></div>
+        <div class="metric"><div class="k">veto max drawdown</div><div class="v">-36.82%</div></div>
+        <div class="metric"><div class="k">veto avg turnover</div><div class="v">1.282x</div></div>
+      </div>
+      <p class="muted">直接回答“长历史下有多强”：看的是这里这组 <strong>full available history</strong> 指标；如果 1Y/2Y/3Y 不可用，就不能把下面的 full-history 数字偷换成 1Y/2Y/3Y 结论。</p>
+    </div>
+
+    <div class="card">
+      <h2>3) 1Y / 2Y / 3Y 冻结窗口验证</h2>
+      <table><thead><tr><th>window</th><th>available</th><th>required_start_utc</th><th>available_start_utc</th><th>plain_net_mean_bps</th><th>plain_net_cum_pct</th><th>plain_win_rate</th><th>plain_max_dd_pct</th><th>plain_avg_turnover_x</th><th>veto_net_mean_bps</th><th>veto_net_cum_pct</th><th>veto_win_rate</th><th>veto_max_dd_pct</th><th>veto_avg_turnover_x</th><th>delta_net_mean_bps</th><th>delta_net_cum_pct</th><th>note</th></tr></thead><tbody><tr><td>1Y</td><td>no</td><td>2025-04-10T23:45:00Z</td><td>2025-10-24T08:30:00Z</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>common-history shorter than requested window under frozen universe</td></tr><tr><td>2Y</td><td>no</td><td>2024-04-10T23:45:00Z</td><td>2025-10-24T08:30:00Z</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>common-history shorter than requested window under frozen universe</td></tr><tr><td>3Y</td><td>no</td><td>2023-04-11T23:45:00Z</td><td>2025-10-24T08:30:00Z</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>common-history shorter than requested window under frozen universe</td></tr></tbody></table>
+      <div class="note">这一节严格回答：在当前 frozen universe/spec 下，<strong>1Y / 2Y / 3Y 到底能不能测</strong>。不可用就直接记 <code>no</code>，不为了凑长度改 universe 或重调参数。</div>
+    </div>
+
+    <div class="card">
+      <h2>4) baseline vs veto 的增量是否稳定</h2>
+      <div class="grid">
+        <div class="metric"><div class="k">Δ net mean（full history）</div><div class="v">7.64 bps</div></div>
+        <div class="metric"><div class="k">Δ net cumulative</div><div class="v">188.83%</div></div>
+        <div class="metric"><div class="k">Δ win rate</div><div class="v">0.00%</div></div>
+        <div class="metric"><div class="k">Δ avg turnover</div><div class="v">0.282x</div></div>
+        <div class="metric"><div class="k">MDD reduction</div><div class="v">43.12%</div></div>
+      </div>
+      <p><strong>half-split stability</strong></p>
+      <table><thead><tr><th>half</th><th>start_utc</th><th>end_utc</th><th>rebalances</th><th>plain_net_mean_bps</th><th>plain_net_cum_pct</th><th>veto_net_mean_bps</th><th>veto_net_cum_pct</th><th>delta_net_mean_bps</th><th>delta_net_cum_pct</th></tr></thead><tbody><tr><td>1</td><td>2025-10-25T00:30:00Z</td><td>2026-01-16T21:30:00Z</td><td>672</td><td>-2.98 bps</td><td>-27.81%</td><td>3.33 bps</td><td>14.25%</td><td>6.31 bps</td><td>42.06%</td></tr><tr><td>2</td><td>2026-01-17T00:30:00Z</td><td>2026-04-10T18:30:00Z</td><td>671</td><td>5.64 bps</td><td>7.90%</td><td>14.61 bps</td><td>133.45%</td><td>8.97 bps</td><td>125.55%</td></tr></tbody></table>
+      <div class="note">half-split 只用于回答“全可用历史内部前后半是否一致方向”，不是新调参入口。</div>
+    </div>
+
+    <div class="card">
+      <h2>5) 按月 / 按季度 / 按年表现</h2>
+      <p><strong>按月</strong></p>
+      <table><thead><tr><th>month</th><th>rebalances</th><th>plain_net_mean_bps</th><th>plain_net_cum_pct</th><th>plain_win_rate</th><th>plain_max_dd_pct</th><th>plain_avg_turnover_x</th><th>veto_net_mean_bps</th><th>veto_net_cum_pct</th><th>veto_win_rate</th><th>veto_max_dd_pct</th><th>veto_avg_turnover_x</th></tr></thead><tbody><tr><td>2025-10</td><td>56</td><td>5.58 bps</td><td>2.00%</td><td>55.36%</td><td>-15.37%</td><td>1.000x</td><td>3.26 bps</td><td>0.96%</td><td>51.79%</td><td>-14.16%</td><td>1.310x</td></tr><tr><td>2025-11</td><td>240</td><td>-4.07 bps</td><td>-14.68%</td><td>48.33%</td><td>-34.10%</td><td>1.000x</td><td>3.78 bps</td><td>4.68%</td><td>49.17%</td><td>-22.02%</td><td>1.212x</td></tr><tr><td>2025-12</td><td>248</td><td>6.72 bps</td><td>14.21%</td><td>48.39%</td><td>-25.44%</td><td>1.000x</td><td>9.02 bps</td><td>21.92%</td><td>46.37%</td><td>-20.85%</td><td>1.276x</td></tr><tr><td>2026-01</td><td>248</td><td>-10.76 bps</td><td>-28.08%</td><td>50.81%</td><td>-30.92%</td><td>1.000x</td><td>4.92 bps</td><td>9.86%</td><td>52.02%</td><td>-15.16%</td><td>1.272x</td></tr><tr><td>2026-02</td><td>224</td><td>-35.01 bps</td><td>-60.24%</td><td>48.21%</td><td>-64.36%</td><td>1.000x</td><td>-8.05 bps</td><td>-19.61%</td><td>47.32%</td><td>-26.12%</td><td>1.214x</td></tr><tr><td>2026-03</td><td>248</td><td>30.03 bps</td><td>94.61%</td><td>51.21%</td><td>-25.95%</td><td>1.000x</td><td>21.91 bps</td><td>63.01%</td><td>52.42%</td><td>-22.32%</td><td>1.352x</td></tr><tr><td>2026-04</td><td>79</td><td>48.68 bps</td><td>40.81%</td><td>50.63%</td><td>-18.27%</td><td>1.000x</td><td>48.89 bps</td><td>43.78%</td><td>51.90%</td><td>-7.62%</td><td>1.498x</td></tr></tbody></table>
+      <p style="margin-top:12px"><strong>按季度</strong></p>
+      <table><thead><tr><th>quarter</th><th>rebalances</th><th>plain_net_mean_bps</th><th>plain_net_cum_pct</th><th>plain_win_rate</th><th>plain_max_dd_pct</th><th>plain_avg_turnover_x</th><th>veto_net_mean_bps</th><th>veto_net_cum_pct</th><th>veto_win_rate</th><th>veto_max_dd_pct</th><th>veto_avg_turnover_x</th></tr></thead><tbody><tr><td>2025Q4</td><td>544</td><td>1.84 bps</td><td>-0.61%</td><td>49.08%</td><td>-36.33%</td><td>1.000x</td><td>6.12 bps</td><td>28.85%</td><td>48.16%</td><td>-22.02%</td><td>1.251x</td></tr><tr><td>2026Q1</td><td>720</td><td>-4.25 bps</td><td>-44.35%</td><td>50.14%</td><td>-74.66%</td><td>1.000x</td><td>6.74 bps</td><td>43.97%</td><td>50.69%</td><td>-36.82%</td><td>1.281x</td></tr><tr><td>2026Q2</td><td>79</td><td>48.68 bps</td><td>40.81%</td><td>50.63%</td><td>-18.27%</td><td>1.000x</td><td>48.89 bps</td><td>43.78%</td><td>51.90%</td><td>-7.62%</td><td>1.498x</td></tr></tbody></table>
+      <p style="margin-top:12px"><strong>按年</strong></p>
+      <table><thead><tr><th>year</th><th>rebalances</th><th>plain_net_mean_bps</th><th>plain_net_cum_pct</th><th>plain_win_rate</th><th>plain_max_dd_pct</th><th>plain_avg_turnover_x</th><th>veto_net_mean_bps</th><th>veto_net_cum_pct</th><th>veto_win_rate</th><th>veto_max_dd_pct</th><th>veto_avg_turnover_x</th></tr></thead><tbody><tr><td>2025</td><td>544</td><td>1.84 bps</td><td>-0.61%</td><td>49.08%</td><td>-36.33%</td><td>1.000x</td><td>6.12 bps</td><td>28.85%</td><td>48.16%</td><td>-22.02%</td><td>1.251x</td></tr><tr><td>2026</td><td>799</td><td>0.98 bps</td><td>-21.63%</td><td>50.19%</td><td>-74.66%</td><td>1.000x</td><td>10.90 bps</td><td>107.00%</td><td>50.81%</td><td>-36.82%</td><td>1.303x</td></tr></tbody></table>
+    </div>
+
+    <div class="card">
+      <h2>6) 不同年份里 veto 是改善 short leg 还是只是降频</h2>
+      <div class="mono">定义：按每次换仓 gross return 线性分解，long leg = 0.5 × mean(long future return)，short leg = 0.5 × mean(-future return of selected shorts)。这一页不讨论新想法，只看同一 frozen spec 下，不同年份里 veto 是否把 short leg contribution 往正方向推，以及它是否只是通过降低换手“看起来更好”。</div>
+      <ul>
+        <li>full-history long leg mean gross contribution：<strong>8.44 bps</strong></li>
+        <li>full-history plain short leg mean gross contribution：<strong>-3.11 bps</strong></li>
+        <li>full-history veto short leg mean gross contribution：<strong>5.66 bps</strong></li>
+      </ul>
+      <table><thead><tr><th>year</th><th>rebalances</th><th>plain_short_leg_mean_gross_bps</th><th>veto_short_leg_mean_gross_bps</th><th>delta_short_leg_bps</th><th>plain_avg_turnover_x</th><th>veto_avg_turnover_x</th><th>delta_turnover_x</th><th>pct_rebalances_with_any_veto</th></tr></thead><tbody><tr><td>2025</td><td>544</td><td>-3.30 bps</td><td>1.98 bps</td><td>5.28 bps</td><td>1.000x</td><td>1.251x</td><td>0.251x</td><td>55.88%</td></tr><tr><td>2026</td><td>799</td><td>-2.98 bps</td><td>8.16 bps</td><td>11.13 bps</td><td>1.000x</td><td>1.303x</td><td>0.303x</td><td>62.83%</td></tr></tbody></table>
+      <div class="note">如果某年 <code>delta_short_leg_bps &gt; 0</code> 但 <code>delta_turnover_x</code> 并没有显著下降，说明 veto 更像是在改善 short leg，而不只是靠“少动”拿表面分数。</div>
+    </div>
+
+    <div class="card">
+      <h2>7) veto 命中率与误杀率</h2>
+      <div class="mono">name-level 命中：被 veto 的 plain-short 候选，在该持有窗里如果原本做空它会亏钱（short PnL &lt; 0），记为 hit；
+name-level 误杀：被 veto 的 plain-short 候选，在该持有窗里如果原本做空它会赚钱（short PnL &gt; 0），记为 false kill；
+rebalance-level outperform / underperform：仅在发生过 veto 的换仓里，看 veto gross 是否高于 / 低于 plain gross。</div>
+      <ul>
+        <li>pct rebalances with any veto：<strong>60.01%</strong></li>
+        <li>avg veto count / rebalance：<strong>0.846</strong></li>
+        <li>rebalance count with any veto：<strong>806</strong></li>
+        <li>total vetoed names：<strong>1136</strong></li>
+        <li>name-level hit rate：<strong>47.36%</strong></li>
+        <li>name-level false-kill rate：<strong>52.02%</strong></li>
+        <li>name-level neutral rate：<strong>0.62%</strong></li>
+        <li>rebalance-level outperform rate | any veto：<strong>49.01%</strong></li>
+        <li>rebalance-level underperform rate | any veto：<strong>50.99%</strong></li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>8) 当前 keep/live 是否还能成立</h2>
+      <div class="note warn">在严格冻结当前 universe/spec 的前提下，公共共同历史仅能回到 2025-10-24T08:30:00Z，不足 1Y；因此本轮不能把 Rank213 宣称为已通过 1Y/2Y/3Y 长历史验证。当前 keep/live 只能继续依赖原 admission seed 证据；这次 long-history check 的作用是确认在最大可用共同历史上同口径表现如何，而不是升级为更长历史已证实。</div>
+      <p class="muted">这句 verdict 只基于这次 <strong>frozen-spec long-history validation</strong>：不新增研究、不改参数、不扩样本后重调。</p>
+    </div>
+  </div>
+</body>
+</html>

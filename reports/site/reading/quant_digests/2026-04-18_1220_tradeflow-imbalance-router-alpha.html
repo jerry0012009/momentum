@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trade-flow imbalance 不是“又一个盘口指标”：对 short-cycle crypto desk，更该先测的是「极端 taker buy dominance × cross-sectional router」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Trade-flow imbalance 不是“又一个盘口指标”：对 short-cycle crypto desk，更该先测的是「极端 taker buy dominance × cross-sectional router」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-18 12:13 UTC</span>
+      <span class="pill">研究时间：2026-04-18 12:20 UTC</span>
+      <span class="pill">类型：2026 论文元数据/版本线索 + Binance USDⓈ-M `5m/15m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha / order-flow / taker-imbalance / continuation / cross-sectional / router / binance / 5m / 15m</span>
+      <span class="pill">证据类型：论文线索 + 自建公开数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-18_1220_tradeflow-imbalance-router-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-18 12:20 UTC</li>
+<li>类型：2026 论文元数据/版本线索 + Binance USDⓈ-M <code>5m/15m</code> public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：主动买盘显著占优后，未来几个 bar 是否继续同向漂移；若同时出现多个候选，则只做当下 <strong>taker buy imbalance</strong> 最强的一档</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / order-flow / taker-imbalance / continuation / cross-sectional / router / binance / 5m / 15m</li>
+<li>证据类型：论文线索 + 自建公开数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主线来源是 Anastasopoulos, Gradojevic, Liu, Maynard, Tsiakas 的 2026 论文 <strong>Order flow and cryptocurrency returns</strong>（*Journal of Financial Markets*；DOI <code>10.1016/j.finmar.2026.101047</code>，前序 SSRN 版本 DOI <code>10.2139/ssrn.5020002</code>）。这轮没拿到稳定全文，所以没有假装“已完整复刻论文结论”；真正可落地的部分，是把 Binance 永续 K 线里公开可得的 <code>taker_buy_quote_volume / quote_volume</code> 直接翻成短周期 <strong>trade-flow imbalance</strong> 代理量并做 portability probe。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这条线在当前 Binance majors 上，不像“所有极端失衡都值得追”，更像 <strong>只追极端买盘主导</strong>，而且更适合作为 <code>15m</code> cross-sectional router。</li>
+<li><strong>一句话证明方式</strong>：不是靠口头直觉，而是直接用 Binance USDⓈ-M 公共 <code>5m/15m</code> K 线里的 taker-buy 成交额构造 <code>flow_imb = 2*taker_buy_quote/quote_volume - 1</code>，再看未来 <code>1/3/5/12</code> bar 的 signed drift。</li>
+<li>全样本把 <code>|flow_imb|</code> 做到滚动 <code>q90</code> 后，<strong>并不存在稳定的“见极端就追”</strong>：<code>15m</code> 全样本 next <code>3/5/12 bar</code> gross 仅约 <code>+0.27 / +0.09 / +1.19 bps</code>，明显不够直接当主信号。</li>
+<li>但把方向拆开后，<strong>buy-dominant 与 sell-dominant 很不对称</strong>：<code>5m</code> 的 <code>buy_dom_q90</code> 在 next <code>3/5/12 bar</code> gross 约 <code>+1.59 / +1.09 / +4.33 bps</code>，而 <code>sell_dom_q90</code> 同期约 <code>-1.97 / -2.01 / -2.69 bps</code>，说明“强卖盘继续砸”这层在当前样本里反而不稳。</li>
+<li>更像策略壳的是 <strong>cross-sectional router</strong>：每根 <code>15m</code> bar 只在 <code>q90 + vol_z&gt;0 + flow_imb&gt;0</code> 的候选里，买入 <code>flow_imb</code> 最强那一档；该路由在近约 <code>16d</code>、8 个 majors 上共 <code>161</code> 笔，next <code>5/12 bar</code> gross 约 <code>+9.03 / +13.83 bps</code>，粗扣 <code>8bps</code> 后 net 约 <code>+1.03 / +5.83 bps</code>。</li>
+<li>当前 symbol mix 不是只靠单一币硬撑：router 触发里 <code>BTC/ETH/BNB/ADA/DOGE/LINK/SOL/XRP</code> 都有贡献，其中计数约 <code>29/24/21/20/18/20/15/14</code>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线补的是我们最近素材池里相对缺的 <strong>trade-flow / aggressor-flow raw alpha</strong>，它和此前做过的 <code>order-book imbalance</code> 不同：前者看的是“谁在主动打成交”，后者看的是“挂单簿哪边更厚”。对当前 desk，更值钱的不是再堆一个盘口解释，而是把它变成：</p>
+<ul>
+<li>一个能独立运行的 <strong>短持有 continuation raw alpha</strong>；</li>
+<li>一个能挂在 <code>1m/3m/5m</code> 执行层之上的 <strong>15m router / admission layer</strong>；</li>
+<li>一个能和现有 momentum / breakout 壳做交叉验证的 <strong>flow confirmation</strong> 组件。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 + 事件驱动顺势</li>
+<li>基础 alpha：极端 <strong>taker buy dominance</strong> 后的短窗 continuation</li>
+<li>regime：默认先不加宏观 regime；当前更像“高主动买盘 + 有成交量配合”时才开机</li>
+<li>filter / veto：<code>|flow_imb| &gt;= rolling q90</code>、<code>flow_imb &gt; 0</code>、<code>vol_z &gt; 0</code></li>
+<li>risk / sizing / execution overlay：每根 bar 最多只选 1 个标的；固定持有 <code>5</code> 或 <code>12</code> 个 <code>15m</code> bar；单笔固定风险，先按 taker <code>8bps</code> 粗成本验尸，再决定是否改 maker/child slicing</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：公开 taker-buy 成交额足够做代理流向；当 <code>15m</code> 出现极端正向失衡时，majors 里最强那一档还会继续漂一小段。</li>
+<li>可计算定义：<code>flow_imb = 2 * taker_buy_quote_volume / quote_volume - 1</code>。</li>
+<li>最小回测切口：Binance USDⓈ-M <code>BTC/ETH/SOL/BNB/XRP/DOGE/ADA/LINK</code>，主实验用 <code>15m</code>；事件为 <code>flow_imb &gt; 0</code> 且 <code>|flow_imb| &gt;= rolling q90</code> 且 <code>vol_z &gt; 0</code>；每个时间戳只保留 <code>flow_imb</code> 最大的 1 个标的。</li>
+<li>entry / exit / sizing / cost：bar close 生成信号，下一 bar 开盘进；持有 <code>5</code> 与 <code>12</code> bar 两档；等权单票；先粗扣 round-trip <code>8bps</code>。</li>
+<li>最先看两项：<code>post-cost mean bps/trade</code> 与 <code>positive-window ratio</code>；其次看是否被单一币或单一日期垄断。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这轮<strong>没拿到稳定全文</strong>，所以不把 paper headline 当作已复刻事实；当前最硬证据仍是自建 public-data probe。</li>
+<li>Binance K 线里的 taker-buy 只是公开代理，不等于完整逐笔 order flow；若后面能拿到逐笔 aggressor 数据，结果可能变化。</li>
+<li><code>5m</code> 裸追不够厚，说明这条线目前更像 <code>15m context -&gt; 5m/1m child execution</code>，而不是无脑分钟级追单。</li>
+<li>当前 buy/sell 明显不对称，后续不要默认把“极端卖盘”也按镜像策略处理。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Alexia Anastasopoulos, Nikola Gradojevic, Fred Liu, Alex Maynard, Ilias Tsiakas. (2026). *Order flow and cryptocurrency returns*. *Journal of Financial Markets*.</li>
+<li>DOI: <code>10.1016/j.finmar.2026.101047</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.finmar.2026.101047">https://doi.org/10.1016/j.finmar.2026.101047</a></code></li>
+<li>Preprint DOI: <code>10.2139/ssrn.5020002</code></li>
+<li>Preprint URL: <code><a href="https://doi.org/10.2139/ssrn.5020002">https://doi.org/10.2139/ssrn.5020002</a></code></li>
+<li>本地 portability probe：<code>reports/artifacts/quant_digests/2026-04-18_tradeflow_imbalance_probe.py</code></li>
+<li>本地产物：</li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_tradeflow_imbalance_events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_tradeflow_imbalance_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_tradeflow_imbalance_signed_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_tradeflow_imbalance_router_summary.csv</code></li>
+</ul>
+</body>
+</html>

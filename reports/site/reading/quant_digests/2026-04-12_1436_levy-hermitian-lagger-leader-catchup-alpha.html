@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个 Lévy/Hermitian lead-lag repo 只读成“followers 跟随 leaders”：对 short-cycle desk，更该先测的是「leader impulse × lagger-vs-leader spread catch-up」这条 relative-value raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个 Lévy/Hermitian lead-lag repo 只读成“followers 跟随 leaders”：对 short-cycle desk，更该先测的是「leader impulse × lagger-vs-leader spread catch-up」这条 relative-value raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-12 14:37 UTC</span>
+      <span class="pill">研究时间：2026-04-12 14:36 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `levy.py` + `hermitian.py` + `trading_signal.py` + `portfolio.py` + `main.py`）+ Binance USDⓈ-M `15m/5m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/relative-value/lead-lag/levy-area/hermitian-clustering/leader-lagger/catch-up/spread/hyperliquid/binance-perpetual/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：GitHub repo 工程实现 + Binance 公共数据 first-verdict probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-12_1436_levy-hermitian-lagger-leader-catchup-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-12 14:36 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>levy.py</code> + <code>hermitian.py</code> + <code>trading_signal.py</code> + <code>portfolio.py</code> + <code>main.py</code>）+ Binance USDⓈ-M <code>15m/5m</code> public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>Lévy lead-lag 分数高的一组资产更像“先动腿”，分数低的一组更像“后反应腿”；当 leaders 先走出一段，laggers 与 leaders 之间的相对价格会在接下来几根 bar 里部分回补。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha/cross-sectional/relative-value/lead-lag/levy-area/hermitian-clustering/leader-lagger/catch-up/spread/hyperliquid/binance-perpetual/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：GitHub repo 工程实现 + Binance 公共数据 first-verdict probe</li>
+</ul>
+<h2>1. 先把一句话说清楚：这篇东西的 base alpha 是什么？</h2>
+<p>&gt; <strong>base alpha = leaders 先动、laggers 后动，所以真正值得 desk 先测的不是“followers 同向追随”，而是 <code>leader impulse -&gt; lagger-vs-leader spread close</code>。</strong></p>
+<p>这一步必须先讲清。因为 repo README 的表述容易让人以为它在做“leaders 涨了就直接追 followers”。但按源码往下拆，真正更适合我们 desk 的 raw alpha 分支其实是：</p>
+<ul>
+<li>先用 <code>levy.py</code> 对 rolling return path 算 pairwise lead-lag 分数；</li>
+<li>用 <code>hermitian.py</code> / <code>trading_signal.py</code> 把资产分成更像 leaders 和 laggers 的两侧；</li>
+<li>然后不要直接做单腿追随，而是把它改写成 <strong>long laggers / short leaders</strong>（leaders 上涨时），或反向做空 laggers / 做多 leaders（leaders 下跌时）的相对价值书。</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; 不是赌“落后腿会无脑追涨杀跌”，而是赌“先动腿和后动腿之间会出现一个短时错位，这个错位会回补”。</p>
+<h2>2. 这次看了什么</h2>
+<p>主来源是 <strong>Mateo Fourquet (2026), _Crypto Lead-Lag Strategy_</strong> 这个 GitHub repo：</p>
+<ul>
+<li>Repo URL：&lt;<a href="https://github.com/mateofrqt/Crypto-LeadLag-Strategy&gt;">https://github.com/mateofrqt/Crypto-LeadLag-Strategy&gt;</a></li>
+<li>无 DOI / 非正式论文，但有清楚的数学和代码骨架。</li>
+</ul>
+<p>这轮重点看的不是 README 口号，而是 5 个真正决定可复现性的文件：</p>
+<ul>
+<li><code>levy.py</code>：先把价格面板转成标准化收益，再算 pairwise Lévy area；</li>
+<li><code>hermitian.py</code>：把反对称 lead-lag 矩阵嵌到 Hermitian 结构里做谱聚类；</li>
+<li><code>trading_signal.py</code>：repo 实际 live 信号逻辑；</li>
+<li><code>portfolio.py</code>：组合/风险壳；</li>
+<li><code>main.py</code>：默认回测流程和窗口参数。</li>
+</ul>
+<p>源码里最重要的 3 个可迁移点是：</p>
+<ol>
+<li><strong>rolling_window = 30</strong>；</li>
+<li><strong>selection_percentile = 0.15</strong>，也就是 leader / lagger 两端各取约前后 15%；</li>
+<li>repo 默认 live 逻辑其实是：先看 leaders 最新一根平均回报的方向，再决定 followers 的交易方向。</li>
+</ol>
+<h2>3. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> repo headline 的“followers directional catch-up”在 Binance <code>15m</code> 上不够好，但把它改写成 <strong>lagger-vs-leader spread catch-up</strong> 之后，至少能从负 edge 拉成小幅正的 raw alpha 候选。</li>
+<li><strong>一句话证明方式：</strong> 我先按 repo 的 rolling Lévy score / top-bottom selection 逻辑，在 Binance USDⓈ-M <code>BTC/ETH/SOL/XRP/DOGE/BNB/ADA/LINK</code> 上做 <code>15m</code> 与 <code>5m</code> portability probe，再对比“followers 同向追随”与“long laggers / short leaders”的两种读法。</li>
+<li><strong><code>15m</code> 直接照 repo 的 followers 同向追随书</strong>：<code>4283</code> 个事件里，未来 <code>1/2/4</code> 根平均约 <strong><code>-0.54 / -0.91 / -0.48 bps</code></strong>，gross 累计约 <strong><code>-22.3% / -35.0% / -25.3%</code></strong>，说明这条直译版不过线。</li>
+<li><strong>改成 <code>15m</code> 的 lagger-vs-leader 相对价值书</strong> 后，同样 <code>4283</code> 个事件里，未来 <code>1/2/4</code> 根平均约 <strong><code>+0.26 / +0.43 / +0.44 bps</code></strong>，gross 累计约 <strong><code>+11.35% / +19.10% / +18.21%</code></strong>；方向终于转正，但还远没厚到能轻松吃掉 taker 成本。</li>
+<li><strong>更自然的 <code>5m</code> 口径</strong> 下，若再要求 leaders 当根绝对波动至少 <strong><code>30 bps</code></strong>，则 <code>170</code> 个事件里：</li>
+<li>未来 <code>15m</code>（3 bars）lagger-vs-leader spread 平均约 <strong><code>+2.06 bps</code></strong>，胜率 <strong><code>57.6%</code></strong>；</li>
+<li>未来 <code>30m</code>（6 bars）平均约 <strong><code>+2.90 bps</code></strong>，胜率 <strong><code>53.5%</code></strong>。</li>
+<li>但即便这样，按双腿 round-trip <strong><code>4 / 8 bps</code></strong> 粗扣，仍然<strong>没有稳定越过 taker friction</strong>。所以这轮最诚实的结论不是“找到可直接上线书”，而是：</li>
+<li><strong>raw alpha 本体有一点东西；</strong></li>
+<li><strong>但现阶段更像 maker-first / execution-sensitive / threshold-gated 的 relative-value 候选。</strong></li>
+</ul>
+<h2>4. 为什么和当前项目有关</h2>
+<p>这轮值得 intake，不是因为它已经过线，而是因为它给 raw alpha 池补了一个我们最近还不够系统化的方向：</p>
+<ul>
+<li>不是 breakout / trend / funding / basis；</li>
+<li>而是 <strong>cross-sectional lead-lag / relative-value catch-up</strong>；</li>
+<li>且结构很适合拆成：</li>
+<li><code>base alpha</code>：leader-lagger spread close</li>
+<li><code>filter</code>：只有 leader impulse 足够大才开</li>
+<li><code>execution</code>：更偏 maker / spread-close / inventory-aware，而不是无脑 taker</li>
+</ul>
+<p>这很符合当前 desk 想补的： <strong>raw alpha 素材池要持续扩到 cross-sectional / relative-value / stat-arb，而不是只围着单资产形态打转。</strong></p>
+<h2>4.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / 相对价值 / lead-lag catch-up</li>
+<li>基础 alpha：leaders 先走出冲击后，laggers 与 leaders 的相对价差在后续几根 bar 内部分回补</li>
+<li>regime：更像高联动、短时错位但未完全同步的 market state</li>
+<li>filter / veto：<code>|leader move|</code> 至少达到一档阈值（这轮 <code>5m</code> probe 里 <code>30 bps</code> 比无阈值更像样）</li>
+<li>risk / sizing / execution overlay：两端各取 <code>15%</code> 资产；按 <code>|levy_score|</code> 归一权重；future <code>15m/30m</code> time-stop；成本必须单独做 <code>4/8/12 bps</code> friction ladder；优先测试 maker-first / spread-close 执行，而不是默认双腿 taker</li>
+</ul>
+<h2>5. 可复刻的最小实验</h2>
+<h3>研究假设</h3>
+<p>当 rolling Lévy score 把一组币识别成 leaders、另一组识别成 laggers 时，如果 leaders 本根已经先走出明显冲击，laggers 与 leaders 的 spread 在接下来 <code>15m~30m</code> 有回补倾向。</p>
+<h3>一个可计算定义</h3>
+<ol>
+<li>用 <code>30</code> 根 rolling window 的标准化收益，算每对资产的离散 Lévy area：</li>
+<p><code>0.5 * Σ(x_t * y_{t+1} - y_t * x_{t+1})</code></p>
+<li>对每个资产取 row-mean score；</li>
+<li>取 top <code>15%</code> 作为 leaders，bottom <code>15%</code> 作为 laggers；</li>
+<li>若 leaders 当根均值回报 <code>&gt; +30 bps</code>：做多 laggers、做空 leaders；若 <code>&lt; -30 bps</code>：反向；</li>
+<li>持有 <code>3</code> 或 <code>6</code> 根 <code>5m</code> bar 后平仓。</li>
+</ol>
+<h3>最小回测切口</h3>
+<ul>
+<li>资产：<code>BTC/ETH/SOL/XRP/DOGE/BNB/ADA/LINK</code></li>
+<li>数据：Binance USDⓈ-M 公共 <code>5m</code> / <code>15m</code> klines</li>
+<li>先看：</li>
+</ul>
+<ol>
+<li><code>gross mean bps / trade</code></li>
+<li><code>4/8/12 bps</code> 成本后是否还活着</li>
+</ol>
+<p>本地 artifacts：</p>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/hyperliquid_levy_leadlag_15m_probe_summary_2026-04-12.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/hyperliquid_levy_laggervsleader_15m_probe_summary_2026-04-12.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/hyperliquid_levy_laggervsleader_15m_threshold_summary_2026-04-12.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/hyperliquid_levy_laggervsleader_5m_threshold_summary_2026-04-12.csv</code></li>
+</ul>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>这不是正式同行评审论文，而是个人 GitHub repo；优点是代码清楚，缺点是外部实证约束弱。</li>
+<li>repo 的默认 live 方向其实更偏 <strong>directional follower book</strong>；这轮真正更有 desk 味的，是我额外拆出来的 <strong>relative-value branch</strong>，所以它属于“沿 source 派生的 desk 读法”，不是原仓库 headline。</li>
+<li>这轮 public probe 用的是 Binance perp，不是 Hyperliquid 原生数据；因此它回答的是 <strong>portability</strong>，不是“repo 原市场已完整复现”。</li>
+<li>现在最大问题不是有没有正号，而是 <strong>gross 太薄</strong>。所以它暂时不能被包装成完整 taker 策略，更像：</li>
+</ul>
+<ol>
+<li>maker-first 候选；</li>
+<li>或现有 RV / stat-arb 书的 admission layer。</li>
+</ol>
+<h2>7. 一句话带走</h2>
+<p><strong>这个 repo 真正值得 desk 留下来的，不是“leaders 动了就追 laggers”，而是“leaders 先动后，lagger-vs-leader spread 有短时回补倾向”——但当前 public probe 还只够把它列进 raw alpha 池，不够直接过成本线。</strong></p>
+<h2>8. 下一步怎么测</h2>
+<ol>
+<li><strong>把执行从 taker 改成 maker-first</strong>：只在 spread 继续拉开时挂回补方向，被动成交，检验 <code>0~2 bps</code> 成本世界是否能站住。</li>
+<li><strong>加第二层 gate</strong>：除了 <code>|leader move| &gt;= 30 bps</code>，再要求 <code>leader_score - lagger_score</code> 足够大，避免弱排序噪音。</li>
+<li><strong>缩窄 universe</strong>：优先测试 <code>ETH/SOL/XRP/DOGE/ADA/LINK</code> 这类高 beta alt，不让 <code>BTC/BNB</code> 这种更像 market anchor 的腿稀释错位。</li>
+<li><strong>做事件簇去重</strong>：连续多根触发只保留第一次，避免同一段冲击被过度重复记账。</li>
+<li><strong>补 Hyperliquid 原生验证</strong>：若原市场 <code>5m</code> / <code>1m</code> 下 edge 更厚，再决定它是独立书还是 shared lead-lag gate。</li>
+</ol>
+<h2>9. 来源</h2>
+<h3>主来源（repo）</h3>
+<ul>
+<li>Mateo Fourquet. (2026). *Crypto Lead-Lag Strategy*. GitHub.</li>
+<li>DOI：无</li>
+<li>Readable URL / Repo URL：&lt;<a href="https://github.com/mateofrqt/Crypto-LeadLag-Strategy&gt;">https://github.com/mateofrqt/Crypto-LeadLag-Strategy&gt;</a></li>
+<li>README：&lt;<a href="https://raw.githubusercontent.com/mateofrqt/Crypto-LeadLag-Strategy/main/README.md&gt;">https://raw.githubusercontent.com/mateofrqt/Crypto-LeadLag-Strategy/main/README.md&gt;</a></li>
+</ul>
+<h3>本轮重点审计文件</h3>
+<ul>
+<li><code>levy.py</code></li>
+<li><code>hermitian.py</code></li>
+<li><code>trading_signal.py</code></li>
+<li><code>portfolio.py</code></li>
+<li><code>main.py</code></li>
+</ul>
+<h3>repo 在 README 中提到的相关方法线索</h3>
+<ul>
+<li>Lévy-area / rough-path lead-lag detection</li>
+<li>Hermitian matrix clustering</li>
+<li>ARahimiQuant/lead-lag-portfolios（repo 在 README 中提到的启发来源）</li>
+</ul>
+</body>
+</html>

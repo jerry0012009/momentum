@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2025 Deribit TWAP repo 只当 near-expiry scanner：更该先测的是「settlement-TWAP anchor gap」事件型 options raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2025 Deribit TWAP repo 只当 near-expiry scanner：更该先测的是「settlement-TWAP anchor gap」事件型 options raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-30 14:24 UTC</span>
+      <span class="pill">研究时间：2026-03-30 14:26 UTC</span>
+      <span class="pill">类型：2025 GitHub 仓库 + Deribit 官方公共 API 管线核验</span>
+      <span class="pill">主题标签：raw-alpha/options/event-driven/expiry-window/twap-settlement/deribit/same-venue/relative-value/near-expiry/btc/1m/3m/5m/15m/repo/public-data/cost</span>
+      <span class="pill">证据类型：仓库证据（源码/参数/实时采集逻辑）+ Deribit 公共 API 可验证性</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-30_1426_deribit-expiry-twap-anchor-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-30 14:26 UTC</li>
+<li>类型：2025 GitHub 仓库 + Deribit 官方公共 API 管线核验</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>BTC 日度到期期权在最后 <code>30m</code> 会向“最终按 settlement TWAP 决定的价值”收敛；若 live option price 相对 rolling-TWAP fair value 出现足够大的偏离，可做同所、同合约、事件窗内的 expiry-window mean reversion / relative-value 交易。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/options/event-driven/expiry-window/twap-settlement/deribit/same-venue/relative-value/near-expiry/btc/1m/3m/5m/15m/repo/public-data/cost</li>
+<li>证据类型：仓库证据（源码/参数/实时采集逻辑）+ Deribit 公共 API 可验证性</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这不是 filter，也不是“options expiry 附近会更热闹”的解释层；本体就是 near-expiry option premium 相对 settlement-TWAP anchor 的可交易偏离。</strong></p>
+<p>主材料是 <strong>cbyhre (2025) 的 GitHub 仓库 <code>Deribit-TWAP-Arbitrage</code></strong>。它最值得 desk intake 的点，不是“又一个 options scanner”，而是把一个很具体、很短窗口、很适合 <code>1m/3m/5m</code> 事件研究的 alpha 讲清了：</p>
+<ol>
+<li>Deribit 到期期权的最终结算不是盯单点 spot，而是盯 <strong>到期前 30 分钟的 BTC index TWAP</strong>；</li>
+<li>repo 每 <strong>5 秒</strong> 抓一次 BTC index，并维护 <strong>30 分钟 rolling average</strong>；</li>
+<li>再把这个 rolling TWAP 当作临时 settlement anchor，去和 live option <code>mark_price</code> / <code>mark_iv</code> 算出来的“our price”对比；</li>
+<li>如果二者偏得足够大，就不是 generic noise，而是一个可以直接写成 <code>entry / exit / sizing / cost</code> 的事件型 raw alpha 候选。</li>
+</ol>
+<p>这条线比继续补一个 shared gate 更值得写，因为它天然就是<strong>独立可下单的完整策略骨架</strong>，而且它补的是当前池子里相对少的 <strong>options expiry microstructure / event-driven relative-value</strong>，不再只是 perp trend / funding / lead-lag 内循环。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最该先复现的，不是“监控快到期期权”，而是更窄也更可执行的 <strong>settlement-TWAP anchor gap</strong>：在最后 <code>30m</code> 内，用 rolling TWAP 近似最终结算锚，交易 option premium 向该锚值回归的 drift。</li>
+<li><strong>一句话怎么证明：</strong> 源码没有停在概念层，而是把数据抓取频率、rolling window、定价函数、到期时间计算都写成了可运行脚本；我再用 Deribit 公共 API 做了可得性核验，确认 <strong>事件窗 universe、最终交割标签、日度到期链条</strong> 都能公开拿到。</li>
+</ul>
+<p>对当前 desk 最有用的 3 个数据点：</p>
+<ol>
+<li><strong>repo 参数非常短窗</strong>：<code>UPDATE_INTERVAL = 5s</code>、<code>ROLLING_WINDOW_MINUTES = 30</code>，明确就是为 expiry-window alpha 设计，不是慢频框架。</li>
+<li><strong>当前 live universe 足够密</strong>：我用 <code>public/get_instruments</code> 查到写作时最近一档 BTC option expiry 是 <strong>2026-03-31 08:00 UTC</strong>，仍有 <strong>54</strong> 个未到期合约；这说明日度事件窗是可以持续滚动采集的。</li>
+<li><strong>最终标签公开可回填</strong>：<code>public/get_last_settlements_by_currency</code> 显示上一个 BTC 日度到期（<code>2026-03-30 08:00 UTC</code>）的最终 settlement index 为 <strong>67,356.39</strong>；其中 <code>BTC-30MAR26-67000-C</code> 的最终 <code>mark_price = 0.005291 BTC</code>（约 <strong>$356.39</strong>），<code>BTC-30MAR26-67500-P</code> 的最终 <code>mark_price = 0.002132 BTC</code>（约 <strong>$143.61</strong>）。换句话说，<strong>事件结束后的真实 payout 标签是公开、可程序化回填的</strong>。</li>
+</ol>
+<p>翻成人话：<strong>这条 alpha 不是猜“明天 BTC 涨跌”，而是赌“快到点了，option price 会往最终结算锚靠”。</strong> 这比继续造一个模糊 filter 更像能快速做 first verdict 的 raw alpha。</p>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li>它是 <strong>可独立复现的 raw alpha</strong>，不是 overlay。</li>
+<li>它补的是当前素材池里较少的 <strong>options / expiry microstructure / same-venue event-driven RV</strong>，和已经很多的 perp trend / cross-sectional / funding 族群正交。</li>
+<li>它天然映射到 <code>1m / 3m / 5m / 15m</code>：不是说主信号来自 K 线形态，而是 <strong>最后 30 分钟本身就是一个分钟级事件窗</strong>；你完全可以用 <code>5s~60s</code> quote snapshot 生成信号，再按 <code>1m/3m/5m</code> 聚合和评估半衰期。</li>
+<li>相比 3/29 那篇 cross-venue synthetic forward parity，这次更像<strong>单 venue、单合约、结算机制驱动</strong>的 raw alpha，逻辑更简单，first verdict 更快。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：same-venue / near-expiry / event-driven / relative-value / mean reversion</li>
+<li>基础 alpha：live option premium 与“最终按 30m settlement TWAP 决定的 fair value”之间存在短暂偏离，并在到期逼近时收敛</li>
+<li>regime：只在 <strong>到期前最后 <code>30m</code></strong> 开机；优先 <strong>近 ATM（如 <code>|K/S-1| &lt;= 5%~10%</code>）</strong>、有连续报价、买卖盘未真空的日度 / 次日度到期合约</li>
+<li>filter / veto：</li>
+<li>只做剩余到期时间 <code>&lt;= 30m</code> 的合约</li>
+<li><code>abs(edge)</code> 必须超过 <strong>手续费 + 滑点 + latency buffer + inventory buffer</strong></li>
+<li>深虚值且长期零成交/零盘口的腿默认只记观察，不开仓</li>
+<li>最后 <code>1~2m</code> 若盘口明显恶化，宁可不做</li>
+<li>entry / exit：</li>
+<li>定义 <code>edge_t = model_price_twap - market_price</code></li>
+<li><code>edge_t &gt; hurdle</code>：做多被低估的 option</li>
+<li><code>edge_t &lt; -hurdle</code> 且可安全做空时：做空被高估的 option；若裸 short 风险不接受，则降级成<strong>只做 long-underpriced 版本</strong></li>
+<li>当 <code>|edge_t|</code> 回落到开仓时的 <code>30%~50%</code>、或持有到最后 <code>1~2m</code>、或 rolling-TWAP 方向反转时离场</li>
+<li>sizing / risk / cost：</li>
+<li>仓位按 <strong>premium-at-risk</strong> 而不是按名义 Delta 一把梭；单腿 premium 风险和总 gamma/vega 暴露要封顶</li>
+<li>若做 short 版本，必须设 <strong>单合约保证金上限 / 单 expiry 总风险上限 / 宕机 kill-switch</strong></li>
+<li>成本先按 taker 费 + 半个 spread + <code>5s~15s</code> 延迟缓冲估计；若成本一加就塌，这条线就只留在研究池</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设：</strong> Deribit BTC 日度到期期权在最后 <code>30m</code> 内，会围绕 rolling settlement-TWAP fair value 出现可重复的分钟级收敛；只要偏离超过全成本和执行缓冲，就能留下 post-cost edge。</li>
+<li><strong>可计算定义：</strong></li>
+</ul>
+<ol>
+<li>用 <code>public/get_instruments</code> 找最近到期、剩余时间 <code>&lt;= 30m</code> 的 BTC options；</li>
+<li>每 <code>5s~30s</code> 抓 <code>public/get_index_price</code> 与 option quote（repo 用 <code>public/get_book_summary_by_currency</code>）；</li>
+<li>维护过去 <code>30m</code> 的 BTC index rolling average，得到 <code>twap_now</code>；</li>
+<li>用当前 <code>mark_iv</code> + <code>twap_now</code> + 剩余到期时间估一个 <code>model_price_twap</code>；</li>
+<li>计算 <code>edge_t = model_price_twap - market_price</code>，只在 <code>|edge_t| &gt; hurdle</code> 时交易；</li>
+<li>事件结束后用 <code>public/get_last_settlements_by_currency</code> 回填最终 settlement label。</li>
+</ol>
+<ul>
+<li><strong>最小回测切口：</strong> 先只做 BTC、最近 <code>20~60</code> 个日度到期事件、近 ATM 合约、采样频率 <code>5s/15s/30s</code> 三档。</li>
+<li><strong>最该先看 2 个指标：</strong></li>
+</ul>
+<ol>
+<li><code>edge half-life</code>：信号出现后几分钟内回归；</li>
+<li><code>post-cost hit rate</code>：扣掉 fees + spread + latency 后还能否为正。</li>
+</ol>
+<h2>5. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>先补“盘口可执行性”而不是继续看 mark。</strong> repo 当前更像 fair-value monitor；真正 first verdict 要把 <code>mark_price</code> 升级成 <code>best bid/ask</code> 或 conservative mid。</li>
+<li><strong>只盯最后 30 分钟的近 ATM 小宇宙。</strong> 别把整条链都扫进来；深虚值更像报价噪音，不像可执行 alpha。</li>
+<li><strong>做 long-only 与 long/short 双版本。</strong> 如果 short 版本的保证金和尾部风险太差，就保留 long-underpriced 版本先看是否仍有 edge。</li>
+<li><strong>把 edge 同时写成 BTC、美元和 premium-return 三种口径。</strong> 不同 strike 的 option 绝对价差不可直接横比。</li>
+<li><strong>先做 20~60 个到期事件的 friction ladder。</strong> 乐观版（mid / maker）能看见只是第一步；真正决定是否晋级的是现实版（taker + spread + latency）还能不能活。</li>
+</ol>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>当前强证据主要来自 <strong>repo 源码 + Deribit 公开机制 + API 可得性</strong>，不是作者给出的长样本成交级回测。</li>
+<li>repo 用的是 <strong>rolling average + 当前 IV</strong> 的 fair-value 近似，不是完整的最终 settlement path 预报；它更像实时代理，不是 oracle。</li>
+<li>这条线越靠近到期，越吃 <strong>盘口深度、更新延迟、成交优先级</strong>；慢脚会把理论 edge 吃完。</li>
+<li>若某些 option 长时间没交易，<code>mark</code> 可能滞后；因此 <strong>quote-based / trade-based 版本</strong> 才是能不能进入实盘候选池的分水岭。</li>
+<li>若最终发现 edge 只在极少数 expiry / 极少数 strike 才出现，这条线也可能更适合作为 <strong>event-clock execution sleeve</strong>，而不是全天候主策略。</li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>cbyhre. (2025). _Deribit-TWAP-Arbitrage_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: <code>N/A</code></li>
+<li>Readable URL: <code><a href="https://github.com/cbyhre/Deribit-TWAP-Arbitrage">https://github.com/cbyhre/Deribit-TWAP-Arbitrage</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/cbyhre/Deribit-TWAP-Arbitrage">https://github.com/cbyhre/Deribit-TWAP-Arbitrage</a></code></li>
+</ul>
+<ol>
+<li><strong><code>Option_Scraper.py</code>（repo 内 rolling-TWAP / option pricing / 到期时间计算主逻辑）</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://raw.githubusercontent.com/cbyhre/Deribit-TWAP-Arbitrage/main/Option_Scraper.py">https://raw.githubusercontent.com/cbyhre/Deribit-TWAP-Arbitrage/main/Option_Scraper.py</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/cbyhre/Deribit-TWAP-Arbitrage/blob/main/Option_Scraper.py">https://github.com/cbyhre/Deribit-TWAP-Arbitrage/blob/main/Option_Scraper.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Deribit API Docs / public endpoints</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://docs.deribit.com/">https://docs.deribit.com/</a></code></li>
+<li>API base used: <code><a href="https://www.deribit.com/api/v2/public/get_instruments">https://www.deribit.com/api/v2/public/get_instruments</a></code>, <code><a href="https://www.deribit.com/api/v2/public/get_index_price">https://www.deribit.com/api/v2/public/get_index_price</a></code>, <code><a href="https://www.deribit.com/api/v2/public/get_book_summary_by_currency">https://www.deribit.com/api/v2/public/get_book_summary_by_currency</a></code>, <code><a href="https://www.deribit.com/api/v2/public/get_last_settlements_by_currency">https://www.deribit.com/api/v2/public/get_last_settlements_by_currency</a></code></li>
+</ul>
+<ol>
+<li><strong>Deribit settlement records（公开可得）</strong></li>
+</ol>
+<ul>
+<li>用途：回填日度到期期权最终 settlement index / final mark_price，给事件级 backfill 提供公开标签</li>
+</ul>
+</body>
+</html>

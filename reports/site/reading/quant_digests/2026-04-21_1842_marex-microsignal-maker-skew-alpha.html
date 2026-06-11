@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 market-making sandbox 只读成“做市回放工具”：对 short-cycle crypto desk，更该先拆的是「micro_signal fair-value shift × maker-first quote skew」这条 microstructure raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 market-making sandbox 只读成“做市回放工具”：对 short-cycle crypto desk，更该先拆的是「micro_signal fair-value shift × maker-first quote skew」这条 microstructure raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-21 18:44 UTC</span>
+      <span class="pill">研究时间：2026-04-21 18:42 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit + Binance USDⓈ-M live public-depth probe</span>
+      <span class="pill">主题标签：microstructure / microprice / imbalance / OFI / trade-flow / maker-first / market-making / quote-skew / Binance / 1m / 3m / 5m</span>
+      <span class="pill">证据类型：repo 工程骨架 + live public-depth first probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-21_1842_marex-microsignal-maker-skew-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-21 18:42 UTC</li>
+<li>类型：GitHub / repo source audit + Binance USDⓈ-M live public-depth probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：盘口里的 <strong>微价格偏移（microprice edge）+ 深度不平衡（imbalance）+ OFI / aggressor flow</strong> 会先于 mid price 漂移；交易上不是追涨杀跌，而是把这个短漂移翻成 <strong>fair-value shift</strong>，再用 maker-first skew 去吃下一小段方向优势和 spread capture</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：microstructure / microprice / imbalance / OFI / trade-flow / maker-first / market-making / quote-skew / Binance / 1m / 3m / 5m</li>
+<li>证据类型：repo 工程骨架 + live public-depth first probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主来源是一个 2026 新仓：<strong>FlorentinBrn (2026), <code>crypto-market-making-marex</code></strong>。它表面上是“Coinbase BTC 做市研究沙盒”，但真正值得 short-cycle desk intake 的，不是 UI、回放或 stress test，而是它把一个可交易的微观结构 alpha 写得很明白：</p>
+<ol>
+<li>先从盘口里抽一个 <strong>combined micro signal</strong>；</li>
+<li>再把这个信号直接映射成 <strong>fair price / reservation price shift</strong>；</li>
+<li>最后用 <strong>inventory skew + dynamic spread + reduce-only risk</strong> 把它落成完整 maker 策略。</li>
+</ol>
+<p>也就是说，这不是“有个做市系统，顺手带点指标”；而是反过来：<strong>先有 microstructure alpha，再把它包成做市壳。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong>这份仓最值钱的不是“会做市”，而是把 base alpha 明确写成了：<code>microprice edge + depth imbalance + OFI/trade-flow</code> 能预测未来几秒到几十秒的 mid drift，然后用 maker quote skew 去兑现，而不是用 taker 硬追。</li>
+<li><strong>一句话证明方式：</strong>作者不是靠口头叙事，而是把信号直接写进 fair-price / reservation-price 更新公式，并补了 historical replay、walk-forward、stress、latency、inventory/risk 模块，说明它是可复现策略骨架，不只是指标展示。</li>
+<li>README 和源码里把核心逻辑写得很直白：</li>
+<li>analytics 层给出 <code>microprice_edge_bps</code>、<code>imbalance_l3</code>、<code>ofi_ewma</code>、<code>trade_flow_signed</code>、<code>vpin</code>、<code>fast_vol_bps</code></li>
+<li>组合信号默认近似：<code>micro_signal_bps = 1.0*microprice_edge_bps + 2.0*imbalance_l3 + 0.05*ofi_ewma + 1.5*trade_flow</code></li>
+<li>strategy 层把它翻成 <code>fair_price = mid * (1 + signal_shift_bps/10000)</code>，再叠 <code>inventory_shift_bps</code> 形成 <code>reservation_price</code></li>
+<li>同时用 <code>inside spread / volatility / VPIN / imbalance</code> 动态拉宽半边 spread，并在风险吃紧时进入 <code>reduce-only</code></li>
+<li>我这轮做了一个超轻量 Binance USDⓈ-M live public-depth probe（<code>BTC/ETH/SOL</code>, 90 秒, top20 depth, 约 1Hz）：</li>
+<li>用 repo 的简化可迁移版本 <code>micro_signal_bps ≈ microprice_edge_bps + 2*imbalance_l3</code> 做 first check</li>
+<li><code>BTC</code> 在 <code>|signal| &gt;= 1bp</code> 时，signed next <code>5s / 15s / 30s</code> 平均约 <code>+0.22 / +0.21 / +1.29 bps</code>，其中 <code>30s</code> 命中率约 <code>83.3%</code></li>
+<li><code>ETH</code> 在 <code>signal &lt;= -1bp</code> 这侧更显著，signed next <code>15s / 30s</code> 约 <code>+0.89 / +2.73 bps</code>，命中率约 <code>76.0% / 77.8%</code></li>
+<li>全样本 <code>signal vs next 15s</code> 相关系数约：<code>BTC 0.263</code>、<code>ETH 0.175</code>、<code>SOL 0.162</code></li>
+<li><strong>第一性结论：</strong>这条线更像 <strong>1m/3m child-execution alpha</strong>，不是拿去直接替代 <code>15m</code> 父级方向信号；但它很适合做 <code>5m/15m</code> 父信号下的 maker-first 执行增益层。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮的价值很直接：我们最近 intake 了不少 <code>15m</code> raw alpha，但真正容易被成本吃掉的地方，往往不在“有没有方向感”，而在<strong>最后怎么进、怎么挂、怎么不被毒流量咬死</strong>。</p>
+<p>这份仓给的是一个很实用的拆法：</p>
+<ul>
+<li><strong>alpha 本体</strong>：盘口短时失衡会先于 mid 漂移</li>
+<li><strong>执行表达</strong>：别 taker 追，先把 fair value 往预测方向偏一点，再用 maker skew 去收 spread + drift</li>
+<li><strong>风控表达</strong>：inventory 过重时自动缩一边 / reduce-only；毒性和快波动升高时自动拉宽</li>
+</ul>
+<p>所以它不是脱离 desk 的 HFT 学术玩具，而是正好补我们当前素材池里相对缺的一层：<strong>microstructure raw alpha → maker-first execution shell</strong>。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：微观结构 / 超短漂移 / maker-first relative edge</li>
+<li>基础 alpha：<code>microprice edge + depth imbalance + OFI/trade-flow</code> 预示未来几秒到几十秒的同向 mid drift</li>
+<li>regime：高毒性（VPIN）、高快波动、极窄/极宽 inside spread</li>
+<li>filter / veto：当 <code>vpin</code> 过高、波动过高、风险状态触发 <code>can_continue=false</code> 时不继续挂；当库存吃紧时切 <code>reduce-only</code></li>
+<li>risk / sizing / execution overlay：<code>inventory skew</code>、dynamic half-spread、touch join、aggressive join、queue-share fill sim、max exposure / max loss / health score</li>
+</ul>
+<h2>4. base alpha 到底是什么</h2>
+<p>先按要求明确回答一句：</p>
+<p>&gt; <strong>这篇东西的 base alpha 是什么？</strong> &gt; &gt; <strong>答：是盘口失衡导致的短时 mid-price drift。</strong> &gt; &gt; 更具体地说，是 <code>microprice edge + imbalance + OFI + aggressor flow</code> 这些微观结构变量先动，几秒到几十秒后的 mid 往往顺着它们偏移的方向走。</p>
+<p>所以它不是纯 overlay，不是纯风控，也不是“有信号再决定怎么挂单”的次级模块；<strong>它本身就是 raw alpha，只是表达形式更接近 maker quote skew。</strong></p>
+<h2>5. 这条壳为什么值得保留</h2>
+<h3>5.1 它把 alpha 和执行连接得很近</h3>
+<p>很多仓把 alpha 和 execution 分两本书写：一个说“方向会涨”，一个说“怎么下单”。这份仓更实在：<strong>信号直接进入 fair price</strong>，因此策略不是“先判断方向、再随便挂”，而是“方向预测直接影响报价中心”。</p>
+<h3>5.2 它天然适合短周期 desk，而不是只能服务纯做市</h3>
+<p>你完全可以不照搬整套双边做市，只抽其中一层：</p>
+<ul>
+<li>当 <code>micro_signal_bps</code> 与父级 <code>5m/15m</code> 信号同向时，更积极 join 对应一侧</li>
+<li>当 <code>micro_signal_bps</code> 反向时，降低挂单侵略性，甚至 veto taker 追单</li>
+<li>当 <code>micro_signal_bps</code> 很强但父级没信号时，可作为独立 <code>1m/3m</code> scalping sleeve</li>
+</ul>
+<h3>5.3 first probe 虽然很小，但方向是对的</h3>
+<p>这轮 live probe 只有 90 秒，当然远远不够下 production verdict；但至少回答了一个关键问题：<strong>把 repo 里的 micro_signal 简化搬到 Binance perp top-book 上，不是完全失灵。</strong> 这就够让它进入研究池，而不是停在“看起来像国外做市课设”。</p>
+<h2>6. 可复刻的最小实验</h2>
+<h3>本轮 live probe 口径</h3>
+<ul>
+<li>市场：Binance USDⓈ-M perpetual</li>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li>数据：<code>fapi/v1/depth</code>，top20 深度，约 <code>1Hz</code> 连续 90 秒</li>
+<li>可迁移信号：<code>micro_signal_bps = clip(microprice_edge_bps + 2 * imbalance_l3, ±6)</code></li>
+<li>评估：next <code>5s / 15s / 30s</code> signed mid return</li>
+</ul>
+<h3>本轮产物</h3>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-21_marex_micro_signal_probe.py</code></li>
+<li><code>reports/artifacts/quant_digests/marex_micro_signal_live_rows_2026-04-21.csv</code></li>
+<li><code>reports/artifacts/quant_digests/marex_micro_signal_live_summary_2026-04-21.csv</code></li>
+</ul>
+<h2>7. first verdict：这些数字怎么读</h2>
+<h3>7.1 不是拿来做 15m 主信号</h3>
+<p>这条线的天然频率是秒级到分钟级。你要是硬把它伪装成 <code>15m</code> 方向因子，反而会把它读错。</p>
+<h3>7.2 但它很适合给 <code>1m/3m</code> 执行层提供 admission / skew</h3>
+<p>当前更合理的读法是：</p>
+<ul>
+<li><code>15m</code> 决定“该不该做这个币、做多还是做空”</li>
+<li><code>1m/3m</code> 的 <code>micro_signal_bps</code> 决定“现在是 join、pass、还是小 size 试探”</li>
+</ul>
+<h3>7.3 负向信号一侧在 ETH 上更干净</h3>
+<p>这轮 probe 里 <code>ETH signal &lt;= -1bp</code> 后续 <code>15s/30s</code> 的 signed drift 明显更厚，说明 <strong>卖压驱动的短时失衡</strong> 可能比买压更能迁移成有效 pocket。这个很值得后续专门拆 long/short 非对称。</p>
+<h2>8. 下一步怎么测</h2>
+<ol>
+<li><strong>先把数据频率提上来。</strong></li>
+<p>别再用 <code>1Hz REST</code> 当正式证据。下一轮至少抓 Binance websocket <code>depth + aggTrade</code> 连续 <code>2~6h</code>，这样才能把 repo 里的 <code>ofi_ewma + trade_flow + vpin</code> 全量迁过来。</p>
+</ol>
+<ol>
+<li><strong>做 <code>parent signal × child micro-signal</code> 二层实验。</strong></li>
+<p>选一个已入池的 <code>5m/15m</code> raw alpha（例如 trend / breakout / MR 任意一个），比较：</p>
+</ol>
+<ul>
+<li>裸 next-open / taker entry</li>
+<li>maker join + micro-signal 同向时入场</li>
+<li>micro-signal 反向时 veto / 降 size</li>
+<p>先看成本后 improvement，不先看 gross。</p>
+</ul>
+<ol>
+<li><strong>做 maker-first friction ladder。</strong></li>
+<p>这条壳最怕研究时默认“都能吃满 spread”。下一轮至少测：</p>
+</ol>
+<ul>
+<li>fill ratio</li>
+<li>queue drag</li>
+<li>maker rebate / fee</li>
+<li>adverse selection after fill</li>
+</ul>
+<ol>
+<li><strong>拆 long/short 非对称。</strong></li>
+<p>当前小样本已经提示 ETH/SOL 在负向失衡上更像样；下一轮应分资产、分方向、分 inside-spread bucket 看 pocket。</p>
+</ol>
+<h2>9. 风险与保留意见</h2>
+<ul>
+<li>这轮 live probe 样本非常小，只能当 <strong>first verdict</strong>，不能当稳定性结论。</li>
+<li>我只迁了 repo 组合信号里最容易公开复刻的两项：<code>microprice_edge + imbalance_l3</code>；真正完整版还应补 <code>OFI / trade-flow / VPIN / fast vol</code>。</li>
+<li>repo 主场是 Coinbase BTC-USD，desk 目标是 Binance perp；这个 transfer 需要更长时段验证。</li>
+<li>即使 alpha 成立，也不代表净边成立；<strong>microstructure alpha 最后死不死，很多时候死在 fill realism，而不是方向本身。</strong></li>
+</ul>
+<h2>10. 来源</h2>
+<ul>
+<li>FlorentinBrn. (2026). *crypto-market-making-marex*. GitHub.</li>
+<li>Repo URL：&lt;<a href="https://github.com/FlorentinBrn/crypto-market-making-marex&gt;">https://github.com/FlorentinBrn/crypto-market-making-marex&gt;</a></li>
+<li>Readable URL：&lt;<a href="https://github.com/FlorentinBrn/crypto-market-making-marex/blob/main/README.md&gt;">https://github.com/FlorentinBrn/crypto-market-making-marex/blob/main/README.md&gt;</a></li>
+<li>关键代码：</li>
+<li><code>crypto_mm/data/analytics.py</code></li>
+<li><code>crypto_mm/core/strategy.py</code></li>
+<li>GitHub metadata：仓库创建于 <code>2026-04-20</code>，最近更新 <code>2026-04-21</code></li>
+</ul>
+<h2>11. 一句话收尾</h2>
+<p><strong>这份仓最值得抄的不是“做市框架”，而是：把盘口短漂移 alpha 直接翻成 fair-price shift，再用 maker skew 去兑现，而不是继续用 taker 把 edge 全交给手续费和 adverse selection。</strong></p>
+</body>
+</html>

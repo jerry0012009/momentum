@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2025 *Optimization and Engineering* / 配套 repo 只当 pair-searcher：对 desk 更该先测的是「moving-band basket stat-arb × 线性 inventory shell」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2025 *Optimization and Engineering* / 配套 repo 只当 pair-searcher：对 desk 更该先测的是「moving-band basket stat-arb × 线性 inventory shell」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-31 12:34 UTC</span>
+      <span class="pill">类型：quant_digest</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/multi-asset/basket/mean-reversion/moving-band/convex-concave/linear-policy/markowitz-shell/crypto-transfer/1m/3m/5m/15m/paper/repo/public-data/cost</span>
+      <span class="pill">证据类型：2025 *Optimization and Engineering* 全文 HTML + Stanford paper page + `cvxstatarb` repo source audit + 2025 *Journal of Asset Management* follow-up page</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-31_1234_moving-band-basket-statarb-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-31 12:34 UTC</li>
+<li>类型：quant_digest</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/multi-asset/basket/mean-reversion/moving-band/convex-concave/linear-policy/markowitz-shell/crypto-transfer/1m/3m/5m/15m/paper/repo/public-data/cost</li>
+<li>证据类型：2025 *Optimization and Engineering* 全文 HTML + Stanford paper page + <code>cvxstatarb</code> repo source audit + 2025 *Journal of Asset Management* follow-up page</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：多资产组合价格相对 rolling midpoint 的偏离回归（moving-band basket mean reversion / stat-arb）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>不是再找“哪两条线最像”的老式 pairs，而是把 <strong>多资产 basket 本身</strong> 当成可优化搜索对象：在“组合价格要留在带内”的约束下，直接找 <strong>波动大、但会回带</strong> 的组合，然后用一个极简单的线性仓位壳子 <code>q_t = μ_t - p_t</code> 去交易。</p>
+<h2>2. 为什么这次值得进研究池</h2>
+<p>这轮 bot7 的优先级里，<code>raw alpha / 可直接落地完整策略</code> 高于纯解释型材料。这个主题满足两点：</p>
+<ol>
+<li><strong>base alpha 很清楚</strong>：不是 filter，不是 regime，不是“先有 pair 再想办法调阈值”；它的 alpha 本体就是 <strong>basket price 对 moving midpoint 的均值回复</strong>。</li>
+<li><strong>它补的是我们当前素材池里还不够厚的一块</strong>：很多现有短周期 pairs 还停留在 <code>2-leg spread z-score</code>。这篇东西给的是更上游的能力——<strong>自动搜索 3~10 leg 的 mean-reverting basket</strong>，天然能扩成 crypto 的 sector basket / quote cluster / beta-neutral sleeve。</li>
+</ol>
+<h2>3. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = 多资产组合价格 <code>p_t = s^T P_t</code> 围绕 rolling midpoint <code>μ_t</code> 的均值回复。</strong></p>
+<p>更直白点：</p>
+<ul>
+<li>先不是问“BTC/ETH 有没有偏离”；</li>
+<li>而是问“有没有一组权重 <code>s</code>，能让组合价格既不乱飞出带，又有足够来回摆动可以赚”；</li>
+<li>找到以后，交易逻辑很朴素：</li>
+<li><code>p_t &lt; μ_t</code> → 做多这个 basket</li>
+<li><code>p_t &gt; μ_t</code> → 做空这个 basket</li>
+<li>仓位强度直接随 <code>μ_t - p_t</code> 线性变化。</li>
+</ul>
+<p>所以它是 <strong>raw alpha</strong>，而不是 overlay。</p>
+<h2>4. 核心来源</h2>
+<h3>4.1 主论文</h3>
+<ul>
+<li><strong>Authors</strong>：Kasper Johansson, Thomas Schmelzer, Stephen Boyd</li>
+<li><strong>Year</strong>：2025（Stanford page 标注正式刊发），repo BibTeX 记作 2024</li>
+<li><strong>Title</strong>：*Finding Moving-Band Statistical Arbitrages via Convex-Concave Optimization*</li>
+<li><strong>Venue</strong>：*Optimization and Engineering*, 26, 1203–1224</li>
+<li><strong>DOI</strong>：10.1007/s11081-024-09933-0</li>
+<li><strong>Readable URL</strong>：<a href="https://web.stanford.edu/~boyd/papers/cvx_ccv_stat_arb.html">https://web.stanford.edu/~boyd/papers/cvx_ccv_stat_arb.html</a></li>
+<li><strong>arXiv URL</strong>：<a href="https://arxiv.org/abs/2402.08108">https://arxiv.org/abs/2402.08108</a></li>
+</ul>
+<h3>4.2 配套仓库</h3>
+<ul>
+<li><strong>Repo</strong>：<code>cvxgrp/cvxstatarb</code></li>
+<li><strong>Repo URL</strong>：<a href="https://github.com/cvxgrp/cvxstatarb">https://github.com/cvxgrp/cvxstatarb</a></li>
+<li>直接可见：<code>experiments/backtest.py</code>, <code>cvx/stat_arb/ccp.py</code>, <code>tests/test_stat_arb.py</code></li>
+</ul>
+<h3>4.3 后续管理层论文（不是本篇主 alpha，但很适合接在后面）</h3>
+<ul>
+<li><strong>Authors</strong>：Kasper Johansson, Thomas Schmelzer, Stephen Boyd</li>
+<li><strong>Year</strong>：2025</li>
+<li><strong>Title</strong>：*A Markowitz Approach to Managing a Dynamic Basket of Moving-Band Statistical Arbitrages*</li>
+<li><strong>Venue</strong>：*Journal of Asset Management*, 26(4):377–385</li>
+<li><strong>DOI</strong>：10.48550/arXiv.2412.02660</li>
+<li><strong>Readable URL</strong>：<a href="https://web.stanford.edu/~boyd/papers/portfolio_of_SAs.html">https://web.stanford.edu/~boyd/papers/portfolio_of_SAs.html</a></li>
+</ul>
+<h2>5. 证据里最值得拿走的硬点</h2>
+<h3>5.1 这不是“理论想法”，作者给了完整搜索 + 交易 + 成本口径</h3>
+<p>主论文数值实验用的是：</p>
+<ul>
+<li><strong>数据</strong>：CRSP US 股票日频，2010-01-04 到 2023-12-30，<strong>15,405</strong> 个资产，合计 <strong>3,282</strong> 个交易日；</li>
+<li><strong>搜索节奏</strong>：从 2011-12-23 起，<strong>每 21 个交易日</strong> 重跑一次；</li>
+<li><strong>每次搜索范围</strong>：当时点市值前 <strong>200</strong> 个资产；</li>
+<li><strong>初始化</strong>：每次 <strong>10</strong> 个随机初始组合；</li>
+<li><strong>moving-band 参数</strong>：repo/notebook 对应 <code>P_max=100</code>, <code>spread_max=1</code>, <code>midpoint_memory=21</code>, <code>T_max=125</code>；</li>
+<li><strong>交易成本</strong>：模拟里把买卖价差成本算进去了（买按 ask、卖按 bid），另加 <strong>0.5% 年化 shorting cost</strong>。</li>
+</ul>
+<p>这点对我们很重要：它不是那种“只给组合发现方法，不给交易壳”的论文，反而是 <strong>alpha 搜索 + 线性 position rule + 成本核算</strong> 一条龙都给了。</p>
+<h3>5.2 交易壳其实非常简单：<code>q_t = μ_t - p_t</code></h3>
+<p>在 <code>cvx/stat_arb/ccp.py</code> 里，交易头寸就是：</p>
+<ul>
+<li><strong>线性仓位</strong>：<code>q_t = μ_t - p_t</code></li>
+<li><strong>exit</strong>：到 <code>T_max</code> 后开始退出，<strong>再用 21 个 period 线性降到 0</strong></li>
+<li><strong>positions</strong>：各腿仓位 = <code>q_t × basket weight</code></li>
+<li><strong>profit</strong>：上一期持仓 × 本期组合价格变化</li>
+</ul>
+<p>这意味着它很容易移植到 desk：</p>
+<ul>
+<li>你完全不需要先上复杂 RL；</li>
+<li>先把 <strong>组合发现器</strong> 和 <strong>最朴素的 inventory shell</strong> 跑起来，就已经是完整 raw alpha。</li>
+</ul>
+<h3>5.3 moving-band 比 fixed-band 更像我们想要的真实交易对象</h3>
+<p>论文主结论不是“所有 mean reversion 都有效”，而是：<strong>把 band midpoint 做成 rolling/moving，比固定中枢更实用。</strong></p>
+<p>文中报告：</p>
+<ul>
+<li><strong>fixed-band</strong>：找到 <strong>545</strong> 个 unique stat-arbs，资产数 <strong>3~9</strong>，中位数 <strong>6</strong>；</li>
+<li>平均年化收益 <strong>10%</strong></li>
+<li>平均年化风险 <strong>32%</strong></li>
+<li>平均年化 Sharpe <strong>0.81</strong></li>
+<li>平均最大回撤 <strong>15%</strong></li>
+<li><strong>moving-band</strong>：找到 <strong>712</strong> 个 unique stat-arbs，资产数 <strong>1~10</strong>，中位数 <strong>5</strong>；</li>
+<li><strong>70%</strong> 的 stat-arbs 盈利</li>
+<li>平均年化收益 <strong>15%</strong></li>
+<li>平均年化风险 <strong>20%</strong></li>
+<li>平均年化 Sharpe <strong>0.84</strong></li>
+<li>平均最大回撤 <strong>12%</strong></li>
+<li>活跃 stat-arb 的中位数约 <strong>40</strong> 个</li>
+<li>提前“爆掉”（NAV 跌破初始 50%）的只占 <strong>0.4%</strong></li>
+</ul>
+<p>对 desk 的翻译：</p>
+<ul>
+<li>与其在一条固定 spread 上死调 z-score，</li>
+<li>不如先承认 <strong>中枢会漂移</strong>，然后让策略围绕“漂移中的公平值”去做回归。</li>
+</ul>
+<h3>5.4 这篇东西最适合我们 desk 的，不是“美国股票日频表现有多好”，而是它的搜索框架</h3>
+<p>真正可迁移的不是原论文 market，而是这几个结构：</p>
+<ol>
+<li><strong>优化目标</strong>：直接找“高摆动 + 不脱带”的 basket；</li>
+<li><strong>多资产</strong>：不把 stat-arb 限制死在 2 legs；</li>
+<li><strong>moving midpoint</strong>：默认公平值可漂移；</li>
+<li><strong>线性持仓</strong>：不用先拍 entry/exit 二值阈值；</li>
+<li><strong>组合管理可外接</strong>：后续可直接接 2025 *Journal of Asset Management* 那篇的 basket allocation 层。</li>
+</ol>
+<h2>6. 对 crypto 1m / 3m / 5m / 15m 的正确读法</h2>
+<h3>6.1 不要机械照抄“21 天 / 日频”</h3>
+<p>原文是 <strong>US equities 日频</strong>。我们不能直接把 21 天等比例平移成 21 根 15m。正确做法是保留结构，不保留字面窗口：</p>
+<ul>
+<li>原文 <code>midpoint_memory=21</code> 的本质不是“神奇的 21”，而是 <strong>用一个足够慢的 rolling fair value 托住短中期回归</strong>；</li>
+<li>原文 <code>T_max=125</code> 的本质不是“必须持有 125 个 period”，而是 <strong>给 basket 回归充足时间，但不能无限拖</strong>；</li>
+<li>原文每 21 天重搜一次，本质是 <strong>search cadence 要慢于交易 cadence</strong>，别边交易边每根 bar 重拟合。</li>
+</ul>
+<h3>6.2 对 crypto 最自然的迁移场景</h3>
+<p>我认为最值得先测的不是全市场乱搜，而是这三类受控宇宙：</p>
+<ol>
+<li><strong>同 beta / 同叙事 basket</strong></li>
+</ol>
+<ul>
+<li>BTC / ETH / SOL / BNB majors</li>
+<li>L2 basket</li>
+<li>DeFi beta basket</li>
+<li>meme beta basket</li>
+</ul>
+<ol>
+<li><strong>同标的多报价 / 多 venue basket</strong></li>
+</ol>
+<ul>
+<li>同 underlier 的多合约 / 多 stablecoin quote</li>
+<li>比 2-leg pair 更适合扩成 3~4 leg 冲突路由</li>
+</ul>
+<ol>
+<li><strong>leader + followers basket</strong></li>
+</ol>
+<ul>
+<li>一个 leader leg 配多个 follower leg</li>
+<li>比单一 pair 更接近“行业内 relative-value 偏离再回归”</li>
+</ul>
+<h3>6.3 对短周期 desk 的最小参数迁移建议</h3>
+<p>下面不是论文原值，而是 <strong>为 1m/3m/5m/15m 复现准备的 first pass</strong>：</p>
+<ul>
+<li><strong>15m 版</strong></li>
+<li>train：最近 <strong>20~30 天</strong></li>
+<li>重新搜索 basket：每 <strong>1 天</strong> 或每 <strong>96 bars</strong></li>
+<li>midpoint memory：<strong>64~128 bars</strong></li>
+<li>持有上限 <code>T_max</code>：<strong>24~48 bars</strong></li>
+<li>exit fade：<strong>4~8 bars</strong></li>
+</ul>
+<ul>
+<li><strong>5m 版</strong></li>
+<li>train：最近 <strong>14~21 天</strong></li>
+<li>重新搜索 basket：每 <strong>4~8 小时</strong></li>
+<li>midpoint memory：<strong>72~144 bars</strong></li>
+<li>持有上限 <code>T_max</code>：<strong>24~72 bars</strong></li>
+<li>exit fade：<strong>6~12 bars</strong></li>
+</ul>
+<ul>
+<li><strong>1m / 3m 版</strong></li>
+<li>只建议先在 <strong>10~20 个最液体标的</strong> 上做，避免把搜索器变成噪音拟合器</li>
+<li>先用 maker/taker 两套成本假设分别跑，不要一上来混合成交幻想</li>
+</ul>
+<h2>7. 对我们 desk 最重要的拆解：它到底能落成什么完整策略？</h2>
+<h3>7.1 Entry</h3>
+<p>先找到一个 basket：</p>
+<ul>
+<li>权重 <code>s</code></li>
+<li>组合价格 <code>p_t = s^T P_t</code></li>
+<li>rolling midpoint <code>μ_t</code></li>
+</ul>
+<p>然后做：</p>
+<ul>
+<li><code>score_t = (μ_t - p_t) / band_scale</code></li>
+<li><code>score_t &gt; 0</code> → long basket</li>
+<li><code>score_t &lt; 0</code> → short basket</li>
+</ul>
+<p>first pass 可以直接照作者的 <strong>线性仓位</strong>，也可以加个最小门槛：</p>
+<ul>
+<li>只有 <code>|score_t| &gt; 0.5</code> 才开仓</li>
+<li><code>|score_t|</code> 越大，仓位越大</li>
+</ul>
+<h3>7.2 Exit</h3>
+<p>优先按三层：</p>
+<ol>
+<li><strong>回到中枢附近</strong>：<code>|score_t| &lt; 0.1</code></li>
+<li><strong>时间止损</strong>：超过 <code>T_max</code></li>
+<li><strong>退出拖尾</strong>：仿 repo，用 <code>N_exit</code> 根线性降到 0</li>
+</ol>
+<h3>7.3 Sizing</h3>
+<p>可直接复制论文精神：</p>
+<ul>
+<li>基础仓位跟 <code>μ_t - p_t</code> 线性；</li>
+<li>组合层再加 gross leverage cap；</li>
+<li>对 crypto 建议再补两个约束：</li>
+<li>单腿 notional cap</li>
+<li>单一 narrative / highly correlated bucket cap</li>
+</ul>
+<h3>7.4 Risk</h3>
+<p>至少要加：</p>
+<ul>
+<li>basket half-life 漂移监控</li>
+<li>legs concentration cap</li>
+<li>funding / fee / borrow proxy</li>
+<li>波动突升时的 inventory compression</li>
+<li>re-fit 后新旧 basket overlap 过低时，别硬切满仓</li>
+</ul>
+<h3>7.5 Cost</h3>
+<p>crypto 里最容易把它从 paper alpha 打成假象的就是成本：</p>
+<ul>
+<li>taker fee</li>
+<li>spread widening</li>
+<li>funding</li>
+<li>强相关腿同时冲击的 market impact</li>
+<li>高频换篮子的 turnover</li>
+</ul>
+<p>所以 first pass 一定要至少跑：</p>
+<ul>
+<li><strong>maker-only 假设</strong>（过于乐观，但看 alpha 上限）</li>
+<li><strong>taker-only 假设</strong>（保守）</li>
+<li><strong>mixed 假设</strong>（更接近真实）</li>
+</ul>
+<h2>8. 它相对当前常见 pair-zscore 框架，真正新增了什么</h2>
+<h3>8.1 新增的不只是“多几条腿”</h3>
+<p>核心升级是：</p>
+<ul>
+<li><strong>pair-zscore</strong>：先有 pair，再围绕 pair 调阈值</li>
+<li><strong>moving-band basket</strong>：先定义“想要什么样的组合价格”，再反推 basket 权重</li>
+</ul>
+<p>这是 research pipeline 的上游升级。</p>
+<h3>8.2 为什么这比继续补一个普通 pair 更值得</h3>
+<p>因为它能同时服务三类后续方向：</p>
+<ol>
+<li><strong>raw alpha 扩容</strong>：pair → basket</li>
+<li><strong>shared shell 复用</strong>：同一个 linear inventory / time-exit / cost framework 可以复用到不同 basket</li>
+<li><strong>组合层管理</strong>：可自然衔接 <code>portfolio_of_SAs</code> 的 basket allocation</li>
+</ol>
+<h2>9. 局限与风险</h2>
+<ol>
+<li><strong>原证据不是 crypto、不是分钟级</strong>：这是最大的 transfer risk。</li>
+<li><strong>搜索器很容易过拟合</strong>：如果你每小时重拟合全宇宙，最后学到的可能只是噪音。</li>
+<li><strong>crypto 的相关结构会 regime shift 更快</strong>：篮子寿命可能远短于股票日频。</li>
+<li><strong>perp 还有 funding / clamp / ADL / contract-spec 差异</strong>：这些是论文没有替你解决的。</li>
+<li><strong>多腿组合的执行复杂度会陡增</strong>：尤其在 1m/3m 上，错一腿就不是纯 stat-arb 了。</li>
+</ol>
+<h2>10. 最小可复现实验（建议直接做）</h2>
+<h3>实验 A：15m majors / sector basket moving-band MR</h3>
+<ul>
+<li><strong>标的池</strong>：BTC, ETH, SOL, BNB, XRP, DOGE, ADA, LINK, LTC, BCH, AVAX, DOT</li>
+<li><strong>频率</strong>：15m</li>
+<li><strong>训练窗</strong>：过去 30 天</li>
+<li><strong>重搜频率</strong>：每天 1 次</li>
+<li><strong>basket 大小</strong>：3~5 legs</li>
+<li><strong>midpoint memory</strong>：96 bars</li>
+<li><strong>entry</strong>：<code>|score| &gt; 0.75</code></li>
+<li><strong>exit</strong>：<code>score</code> 回到 0.15 内，或 <code>T_max = 32 bars</code>，再 <code>N_exit = 6 bars</code> 线性降仓</li>
+<li><strong>对照组</strong>：</li>
+<li>同池内 rolling z-score 最优 pair</li>
+<li>同池 PCA residual MR</li>
+<li><strong>看什么</strong>：after-cost Sharpe、hit ratio、平均持有时长、换篮率、单腿贡献集中度</li>
+</ul>
+<h3>实验 B：5m 同叙事 basket 快速版</h3>
+<ul>
+<li><strong>标的池</strong>：只取一个叙事（例如 L2 或 meme）里最液体 6~10 个 perp</li>
+<li><strong>频率</strong>：5m</li>
+<li><strong>训练窗</strong>：过去 14 天</li>
+<li><strong>重搜频率</strong>：每 6 小时</li>
+<li><strong>midpoint memory</strong>：72 bars</li>
+<li><strong>T_max</strong>：48 bars</li>
+<li><strong>成本假设</strong>：maker / taker / mixed 三套都跑</li>
+<li><strong>目的</strong>：判断这类 moving-band 结构在更快节奏下是否还保留边际</li>
+</ul>
+<h3>实验 C：同标的多报价 basket</h3>
+<ul>
+<li><strong>对象</strong>：同一 underlier 的多合约/多 quote（如果数据结构允许）</li>
+<li><strong>目的</strong>：验证 moving-band basket 是否比 2-leg spread 更能处理冲突报价与闲置资本问题</li>
+</ul>
+<h2>11. 我建议的“下一步怎么测”</h2>
+<ol>
+<li><strong>先不要全市场乱搜</strong>：先从 majors 或单叙事小宇宙开始。</li>
+<li><strong>先做 15m，再压到 5m</strong>：先验证 alpha 结构，再测 execution 极限。</li>
+<li><strong>先固定 linear policy</strong>：别一上来再叠 RL / dynamic threshold，避免 attribution 混乱。</li>
+<li><strong>每次只换一个维度</strong>：</li>
+</ol>
+<ul>
+<li>pair → basket</li>
+<li>fixed midpoint → moving midpoint</li>
+<li>threshold entry → linear entry</li>
+</ul>
+<ol>
+<li><strong>必须留基线</strong>：至少和 <code>best pair z-score</code>、<code>PCA residual MR</code> 对打。</li>
+<li><strong>一开始就记 turnover 与换篮率</strong>：这类策略最容易 paper 上赢、实盘输在 turnover。</li>
+</ol>
+<h2>12. 一句话结论</h2>
+<p>这篇东西最值得 desk 拿去测的，不是“又一个 pairs 论文”，而是：<strong>把短周期 stat-arb 的研究对象从单 pair 升级成可搜索的 moving-band basket，再用最朴素的线性 inventory shell 先跑出 after-cost 结果。</strong></p>
+<h2>13. 来源链接</h2>
+<ul>
+<li>主论文 Stanford 页面：<a href="https://web.stanford.edu/~boyd/papers/cvx_ccv_stat_arb.html">https://web.stanford.edu/~boyd/papers/cvx_ccv_stat_arb.html</a></li>
+<li>主论文 arXiv：<a href="https://arxiv.org/abs/2402.08108">https://arxiv.org/abs/2402.08108</a></li>
+<li>配套仓库：<a href="https://github.com/cvxgrp/cvxstatarb">https://github.com/cvxgrp/cvxstatarb</a></li>
+<li>组合层 follow-up 页面：<a href="https://web.stanford.edu/~boyd/papers/portfolio_of_SAs.html">https://web.stanford.edu/~boyd/papers/portfolio_of_SAs.html</a></li>
+</ul>
+</body>
+</html>

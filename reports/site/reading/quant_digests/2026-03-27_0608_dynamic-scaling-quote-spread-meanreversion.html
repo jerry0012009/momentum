@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别先训 RL：这篇 2024 论文更适合先复现的是「同币多报价价差回归 + 按 |z| 分层加仓」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别先训 RL：这篇 2024 论文更适合先复现的是「同币多报价价差回归 + 按 |z| 分层加仓」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-27 06:11 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-27_0608_dynamic-scaling-quote-spread-meanreversion.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一底层币种在不同报价货币/稳定币交易对之间会出现短暂价差偏离，偏离扩大后通常向均值回归；更大的偏离可配更大的仓位。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 为什么这次值得进池</h2>
+<p>这篇材料的 headline 是 <strong>RL pair trading</strong>，但对我们 desk 更值钱的不是“上来就训 A2C/PPO”，而是它清楚给了一个更可落地的旁支：</p>
+<p>&gt; <strong>base alpha 仍然是同币多报价的短周期 spread mean reversion；真正值得先复现的是“仓位随偏离强度动态缩放”，而不是先上完整 RL 栈。</strong></p>
+<p>这很适合当前 <code>1m/3m/5m/15m</code> 的研发顺序：</p>
+<ol>
+<li>先确认同币多报价 spread 在短周期上是否真的回归；</li>
+<li>再确认 <strong>|z| 越大，后续回归幅度是否也越大</strong>；</li>
+<li>若成立，就先用<strong>确定性分层 sizing</strong>吃掉大部分 paper edge，没必要第一步就做 RL 训练、奖励塑形和高算力调参。</li>
+</ol>
+<h2>2. 论文里真正值得抄的那一段</h2>
+<h3>2.1 核心材料</h3>
+<ul>
+<li><strong>Authors / Year</strong>: Hongshen Yang, Avinash Malik / 2024</li>
+<li><strong>Title</strong>: *Reinforcement Learning Pair Trading: A Dynamic Scaling Approach*</li>
+<li><strong>Venue</strong>: *Journal of Risk and Financial Management* 17(12):555</li>
+<li><strong>DOI</strong>: <code>10.3390/jrfm17120555</code></li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://arxiv.org/abs/2407.16103&gt;">https://arxiv.org/abs/2407.16103&gt;</a></li>
+<li><strong>Journal URL</strong>: &lt;<a href="https://doi.org/10.3390/jrfm17120555&gt;">https://doi.org/10.3390/jrfm17120555&gt;</a></li>
+<li><strong>Repo URL</strong>: 未见作者公开 repo（文中说明原始数据来自 Binance）</li>
+</ul>
+<h3>2.2 论文做了什么</h3>
+<p>论文在 Binance 的 <strong>BTCGBP / BTCEUR</strong> 上做 <code>1m</code> 高频 pairs。流程并不花哨：</p>
+<ul>
+<li>pair formation：相关性 + Engle-Granger cointegration</li>
+<li>spread：rolling regression + z-score</li>
+<li>训练期网格搜索出的固定参数：</li>
+<li><code>open threshold = 1.8</code></li>
+<li><code>close threshold = 0.4</code></li>
+<li><code>window size = 900 intervals</code></li>
+<li>再比较：</li>
+<li>传统固定阈值 pairs（Gatev）</li>
+<li>RL1：RL 决定 timing</li>
+<li>RL2：RL 决定 timing + quantity（动态缩放仓位）</li>
+</ul>
+<h3>2.3 最重要的结果不是“RL 神奇”，而是“动态缩放有价值”</h3>
+<p>在论文的 <code>0.02%</code> 交易费假设下，测试期（2023-12）结果：</p>
+<ul>
+<li>Gatev 固定规则：<strong>8.33%</strong> cumulative return</li>
+<li>RL1（A2C）：<strong>9.94%</strong></li>
+<li>RL2（A2C，timing + quantity）：<strong>31.53%</strong></li>
+</ul>
+<p>同时，RL2 的总 action count 是 <strong>229</strong>，低于 Gatev 的 <strong>490</strong>，说明论文里更像是：</p>
+<ul>
+<li>不是靠更频繁交易赚钱；</li>
+<li>而是靠<strong>把更强的偏离打得更重</strong>，把弱机会打得更轻。</li>
+</ul>
+<p>这就是我们该拿走的 desk 分支： <strong>把“spread 偏离强度 → 仓位大小”做成明确 sizing ladder。</strong></p>
+<h2>3. desk 化翻译：先别复现 RL，先复现这个更小的版本</h2>
+<p>把论文翻成我们能最快上线实验的版本：</p>
+<h3>3.1 最小策略骨架</h3>
+<p>以同币多报价为例（例如 <code>BTCUSDT/BTCUSDC</code>、<code>BTCUSDT/BTCFDUSD</code>、<code>ETHUSDT/ETHFDUSD</code>）：</p>
+<ul>
+<li><strong>entry</strong>：<code>|z| &gt; z_open</code></li>
+<li>若 spread 过高：short 贵的一边，long 便宜的一边</li>
+<li>若 spread 过低：反向做</li>
+<li><strong>exit</strong>：<code>|z| &lt; z_close</code> 或持有满 <code>N</code> 根</li>
+<li><strong>sizing</strong>：不要一刀切；按 <code>|z|</code> 分层</li>
+<li><code>2.0 ~ 2.5σ</code>：<code>1.0x</code></li>
+<li><code>2.5 ~ 3.0σ</code>：<code>1.5x</code></li>
+<li><code>&gt; 3.0σ</code>：<code>2.0x</code></li>
+<li><strong>risk</strong>：</li>
+<li>单对最大名义仓位 cap</li>
+<li>若稳定币自身偏离（USDC/FDUSD 脱锚）超阈值，直接停</li>
+<li>若盘口深度不足或手续费档位不够低，停</li>
+<li><strong>cost</strong>：这是这类 alpha 的生死线；若是 taker 四腿硬吃，很多 edge 会被磨平</li>
+</ul>
+<h2>4. 我们自己的最小快检（Binance Spot 公共 5m 数据，近 45 天）</h2>
+<h3>4.1 数据口径</h3>
+<ul>
+<li><strong>数据源</strong>：Binance Spot public <code>api/v3/klines</code></li>
+<li><strong>公开性</strong>：公开可得，无需 key</li>
+<li><strong>频率</strong>：<code>5m</code></li>
+<li><strong>样本</strong>：近 <code>45d</code></li>
+<li><strong>pair</strong>：</li>
+<li><code>BTCUSDT / BTCUSDC</code></li>
+<li><code>BTCUSDT / BTCFDUSD</code></li>
+<li><code>ETHUSDT / ETHUSDC</code></li>
+<li><code>ETHUSDT / ETHFDUSD</code></li>
+<li><strong>实验口径</strong>：</li>
+<li>rolling <code>288</code> 根（约 1 天）计算 z-score</li>
+<li>当 <code>|z| &gt; 2</code> 触发事件</li>
+<li>看未来 <code>12</code> 根（约 1 小时）spread 是否回归</li>
+</ul>
+<h3>4.2 结果：偏离越大，1 小时回归幅度通常越大</h3>
+<p>#### BTCUSDT / BTCUSDC</p>
+<ul>
+<li><code>|z| ∈ [2, 2.5)</code>：平均 1h 回归 <strong>0.91 bp</strong>，胜率 <strong>84.0%</strong></li>
+<li><code>|z| ∈ [2.5, 3)</code>：平均 1h 回归 <strong>1.10 bp</strong>，胜率 <strong>84.9%</strong></li>
+<li><code>|z| ≥ 3</code>：平均 1h 回归 <strong>1.74 bp</strong>，胜率 <strong>96.5%</strong></li>
+</ul>
+<p>#### ETHUSDT / ETHFDUSD</p>
+<ul>
+<li><code>|z| ∈ [2, 2.5)</code>：平均 1h 回归 <strong>1.26 bp</strong>，胜率 <strong>71.7%</strong></li>
+<li><code>|z| ∈ [2.5, 3)</code>：平均 1h 回归 <strong>1.64 bp</strong>，胜率 <strong>77.9%</strong></li>
+<li><code>|z| ≥ 3</code>：平均 1h 回归 <strong>2.20 bp</strong>，胜率 <strong>80.2%</strong></li>
+</ul>
+<h3>4.3 结果：简单分层 sizing，相比固定 1x 有明显提升</h3>
+<p>用最粗糙的确定性 size ladder：</p>
+<ul>
+<li><code>[2, 2.5)</code> → <code>1.0x</code></li>
+<li><code>[2.5, 3)</code> → <code>1.5x</code></li>
+<li><code>[3, +∞)</code> → <code>2.0x</code></li>
+</ul>
+<p>在同样的事件集上，按“未来 1 小时 spread 收敛 bp × 仓位权重”算，较固定 <code>1x</code> 的 gross convergence-unit 提升：</p>
+<ul>
+<li><code>BTCUSDT/BTCUSDC</code>：<strong>+31.2%</strong></li>
+<li><code>BTCUSDT/BTCFDUSD</code>：<strong>+37.7%</strong></li>
+<li><code>ETHUSDT/ETHUSDC</code>：<strong>+31.9%</strong></li>
+<li><code>ETHUSDT/ETHFDUSD</code>：<strong>+35.5%</strong></li>
+</ul>
+<p>这不是正式回测，但已经足够说明： <strong>论文里最值得先搬的，很可能不是 RL 本身，而是“强偏离打更大、弱偏离打更小”的 sizing 逻辑。</strong></p>
+<p>相关 artifact：</p>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/rl2_dynamic_sizing_quote_spread_probe_20260327_0608/sizing_comparison.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/rl2_dynamic_sizing_quote_spread_probe_20260327_0608/bucket_convergence.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/rl2_dynamic_sizing_quote_spread_probe_20260327_0608/summary.json</code></li>
+</ul>
+<h2>5. 这东西怎么直接落成完整策略</h2>
+<h3>entry</h3>
+<ul>
+<li>universe：同币多报价 / 多稳定币报价对</li>
+<li>先做 liquidity gate：只保留最深的 2~4 个报价腿</li>
+<li><code>spread = log(p_a / p_b)</code></li>
+<li>rolling mean/std 生成 z-score</li>
+<li><code>|z| &gt; 2</code> 入场</li>
+</ul>
+<h3>exit</h3>
+<ul>
+<li><code>|z| &lt; 0.5</code> 平仓</li>
+<li>或 <code>max_hold = 12~24 bars</code></li>
+<li>或当 z-score 继续恶化并触发 stop band</li>
+</ul>
+<h3>sizing</h3>
+<ul>
+<li>先别 RL，先 deterministic ladder</li>
+<li>之后再试：</li>
+<li>连续仓位函数（如 <code>size ∝ min(|z|-2, cap)</code>）</li>
+<li>RL / contextual bandit / ordinal classifier</li>
+</ul>
+<h3>risk</h3>
+<ul>
+<li>quote leg 单边风控：防稳定币脱锚和单腿流动性塌陷</li>
+<li>pair cap + cluster cap：防多组 pair 实际都在押同一个 quote shock</li>
+<li>event veto：大新闻、交易所维护、稳定币异常链上事件暂停</li>
+</ul>
+<h3>cost</h3>
+<ul>
+<li>这类 alpha 的核心不是方向，而是 <strong>净点差 - 手续费 - 冲击成本</strong></li>
+<li>若你的真实执行接近 taker/taker，两边各进各出，paper edge 很容易被吃光</li>
+<li>因此默认优先：</li>
+<li>maker 优先</li>
+<li>零费/低费档位</li>
+<li>盘口挂单成交率先评估</li>
+</ul>
+<h2>6. 我会怎么排“下一步怎么测”</h2>
+<h3>P0：先做 deterministic 版本，不碰 RL</h3>
+<ol>
+<li>用 <code>1m / 3m / 5m</code> 分别跑同币多报价 pairs</li>
+<li>固定 <code>z_open ∈ {2.0, 2.25, 2.5}</code>，<code>z_close ∈ {0.25, 0.5, 0.75}</code></li>
+<li>对比两种 sizing：</li>
+</ol>
+<ul>
+<li>fixed <code>1x</code></li>
+<li>ladder <code>1x/1.5x/2x</code></li>
+</ul>
+<ol>
+<li>输出：净收益、每事件净 bp、胜率、平均持有时间、手续费敏感性</li>
+</ol>
+<h3>P1：验证“仓位随偏离增大”到底是不是稳的</h3>
+<p>把样本按：</p>
+<ul>
+<li>白天/夜间</li>
+<li>高波动/低波动</li>
+<li>稳定币 pair（USDT/USDC/FDUSD） vs 法币 quote pair</li>
+<li>BTC vs ETH</li>
+<p>做分层，确认“<code>|z|</code> 越大 → 回归越强”是否跨 regime 稳定。</p>
+</ul>
+<h3>P2：再决定是否值得上 ML / RL</h3>
+<p>只有在下面三条都成立时，才值得往 RL 走：</p>
+<ul>
+<li>固定 threshold raw alpha 已经为正</li>
+<li>size ladder 对 fixed 版有稳定增益</li>
+<li>增益不是纯样本内现象，而是 walk-forward 也保得住</li>
+</ul>
+<p>否则，RL 大概率只是把一个本来就薄的 alpha 包装得更复杂。</p>
+<h2>7. 一句话结论</h2>
+<p>这篇 2024 新论文对我们最值钱的不是“用 RL 预测交易动作”，而是更朴素的那句：</p>
+<p>&gt; <strong>同币多报价 spread 回归这件事，仓位不该一刀切；越极端的偏离，越值得给更大的 size。</strong></p>
+<p>对短周期 desk 来说，这已经足够成为一个可独立复现、可直接落地的完整策略版本，而且第一步完全不需要先上 RL。</p>
+</body>
+</html>

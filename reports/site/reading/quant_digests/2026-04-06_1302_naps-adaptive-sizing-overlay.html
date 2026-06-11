@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 NAPS 读成又一个通用 ML 包装：对 short-cycle desk，更值得先测的是「raw-alpha score × uncertainty × risk-state adaptive sizing」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 NAPS 读成又一个通用 ML 包装：对 short-cycle desk，更值得先测的是「raw-alpha score × uncertainty × risk-state adaptive sizing」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-06 13:00 UTC</span>
+      <span class="pill">研究时间：2026-04-06 13:02 UTC</span>
+      <span class="pill">类型：2026 Zenodo 预印本元数据 + 2026 GitHub repo source audit（`README.md` + `configs/default.yaml` + `naps/training/objective.py` + `naps/data/features.py` + `naps/baselines/risk_parity.py`）</span>
+      <span class="pill">主题标签：overlay / position-sizing / risk-management / uncertainty / transformer / cross-attention / drawdown-penalty / turnover-penalty / risk-parity / kelly / crypto / 1m / 3m / 5m / 15m / repo / paper / public-code</span>
+      <span class="pill">证据类型：repo-based + paper-metadata-based</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-06_1302_naps-adaptive-sizing-overlay.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：overlay</li>
+<li>基础 alpha：<strong>无独立 raw alpha；这是把已有 raw alpha 的方向/强度信号，和不确定性、组合风险状态一起映射成动态仓位的 sizing overlay，服务 trend / breakout / mean reversion / cross-sectional / stat-arb 等现有 alpha</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>时间：2026-04-06 13:02 UTC</li>
+<li>类型：2026 Zenodo 预印本元数据 + 2026 GitHub repo source audit（<code>README.md</code> + <code>configs/default.yaml</code> + <code>naps/training/objective.py</code> + <code>naps/data/features.py</code> + <code>naps/baselines/risk_parity.py</code>）</li>
+<li>主题标签：overlay / position-sizing / risk-management / uncertainty / transformer / cross-attention / drawdown-penalty / turnover-penalty / risk-parity / kelly / crypto / 1m / 3m / 5m / 15m / repo / paper / public-code</li>
+<li>证据类型：repo-based + paper-metadata-based</li>
+</ul>
+<h2>1. 为什么这轮不是继续补 raw alpha，而是补一个 sizing overlay？</h2>
+<p>先说结论：<strong>这轮不是因为找不到 raw alpha，而是因为新 intake 里更干净、且不和近几天 digest 重复的 raw alpha 候选很少；反过来，这个 2026 新 repo 给的是一个能直接服务整池 raw alpha 的“仓位层组件”</strong>。</p>
+<p>这件事对当前 desk 有现实价值：</p>
+<ul>
+<li>raw alpha 池已经连续补了很多：<code>trend / breakout / XS / relative value / funding / options / microstructure</code></li>
+<li>但“<strong>同一条 alpha 在什么状态下该上 0.25x / 0.5x / 1.0x，什么时候该直接缩到 0</strong>”这层，还是更多靠人工规则和简单 inverse-vol</li>
+<li>如果这层能做成统一可学习模块，它对素材池的复用率，反而高于再补一条边际相近的新 entry rule</li>
+</ul>
+<p>所以这篇 note 的定位必须老实：</p>
+<p>&gt; <strong>它不是新 raw alpha，而是一个可以挂在现有 raw alpha 上的 adaptive sizing overlay。</strong></p>
+<h2>2. 先回答任务里那句关键话：base alpha 是什么？</h2>
+<p>这篇东西的 <strong>base alpha 说不成独立 raw alpha</strong>。</p>
+<p>更准确地说：</p>
+<p>&gt; <strong>它假设你已经有一个方向/强度信号，然后学习“这次该下多大”。</strong></p>
+<p>所以它不能冒充 <code>raw alpha</code>；更诚实的定位是：</p>
+<ul>
+<li><code>overlay</code></li>
+<li><code>position sizing / risk management layer</code></li>
+<li><code>shared component</code></li>
+</ul>
+<p>但它依然值得进研究池，因为它满足另外一档高优先级条件：</p>
+<p>&gt; <strong>它能同时服务至少 2 类以上 raw alpha，并且能直接落地到已有 1m/3m/5m/15m 策略骨架里。</strong></p>
+<h2>3. 这次看了什么</h2>
+<h3>3.1 论文 / 预印本元数据</h3>
+<ul>
+<li><strong>Authors</strong>: 仓库与 README 未明确作者全名；Zenodo 条目标题为 *NAPS: Neural Adaptive Position Sizing for Risk-Aware Algorithmic Trading*</li>
+<li><strong>Year</strong>: 2026</li>
+<li><strong>Title</strong>: *NAPS: Neural Adaptive Position Sizing for Risk-Aware Algorithmic Trading*</li>
+<li><strong>Venue</strong>: Zenodo 预印本；<code>README.md</code> 自述为“NeurIPS 2026”，当前未单独核验正式会议收录页</li>
+<li><strong>DOI</strong>: &lt;<a href="https://doi.org/10.5281/zenodo.19425642&gt;">https://doi.org/10.5281/zenodo.19425642&gt;</a></li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://doi.org/10.5281/zenodo.19425642&gt;">https://doi.org/10.5281/zenodo.19425642&gt;</a></li>
+</ul>
+<h3>3.2 代码仓库</h3>
+<ul>
+<li><strong>Repo URL</strong>: &lt;<a href="https://github.com/Thanh-Van-2001/NAPS-Neural-Adaptive-Position-Sizing&gt;">https://github.com/Thanh-Van-2001/NAPS-Neural-Adaptive-Position-Sizing&gt;</a></li>
+<li><strong>Repo created_at</strong>: 2026-04-03</li>
+<li><strong>Repo pushed_at</strong>: 2026-04-03</li>
+</ul>
+<h3>3.3 这份 repo 真正在做什么</h3>
+<p>不是去学“涨跌方向”，而是学：</p>
+<p>``<code>text 已有信号 + 信号不确定性 + 风险状态 + 市场上下文 -&gt; bet fraction f_t in [0, f_max] </code>``</p>
+<p>仓位不是二选一，而是连续值；默认 crypto <code>f_max = 0.25</code>。</p>
+<h2>4. 源码里最值得 desk 抄走的 5 个部件</h2>
+<h2>4.1 输出不是方向，而是有上限的 bet fraction</h2>
+<p><code>README.md</code> 与 <code>configs/default.yaml</code> 一致写明：</p>
+<ul>
+<li>output: <code>f_t in [0, f_max]</code></li>
+<li>crypto <code>f_max = 0.25</code></li>
+<li>equities <code>f_max = 0.40</code></li>
+<li>forex <code>f_max = 0.30</code></li>
+</ul>
+<p>这点很关键，因为它天然适合挂在我们现有 raw alpha 后面：</p>
+<ul>
+<li>alpha 决定方向与是否触发</li>
+<li>NAPS 风格模块决定 <code>0 ~ 25%</code> 的下注强度</li>
+</ul>
+<p>对 short-cycle desk 来说，这比直接让模型输出 long/short 更实用，也更容易审计。</p>
+<h2>4.2 输入不是只看价格，还显式吃三类信息</h2>
+<p>根据 <code>README.md</code> 与 <code>naps/data/features.py</code>，输入被拆成三组：</p>
+<h3>A. 市场特征（20 维）</h3>
+<ul>
+<li>5 个原始 OHLCV</li>
+<li>15 个技术特征：<code>SMA20 / SMA50 / EMA12 / EMA26 / MACD / Bollinger width / ATR14 / OBV / Stoch / Williams %R / CCI20 / ADX14 / RSI14</code></li>
+</ul>
+<h3>B. regime features（3 维）</h3>
+<ul>
+<li><code>20-day realized volatility</code></li>
+<li><code>60-day rolling correlation with market index</code></li>
+<li><code>20-day trend strength</code></li>
+</ul>
+<h3>C. portfolio state（5 维）</h3>
+<ul>
+<li>current drawdown</li>
+<li>cumulative P&amp;L</li>
+<li>days since peak</li>
+<li>current aggregate exposure</li>
+<li>recent trade-outcome serial correlation</li>
+</ul>
+<p>翻成人话就是：</p>
+<p>&gt; <strong>它不是只看“市场像不像要涨”，而是同时看“这信号稳不稳、你最近顺不顺、当前组合有没有已经太满”。</strong></p>
+<p>这非常适合我们现在的多 alpha 素材池。</p>
+<h2>4.3 它把“不确定性”单独留了一个通道，而不是塞进 feature soup</h2>
+<p><code>README.md</code> 明写：</p>
+<ul>
+<li>signal 输入是 <code>(direction + magnitude)</code></li>
+<li>uncertainty 输入来自 <code>MC-dropout</code></li>
+<li>再和 risk state 通过 <code>cross-attention</code> 融合</li>
+</ul>
+<p>这件事对 desk 的现实意义比论文味更重：</p>
+<p>&gt; <strong>同样是 +1 的方向信号，“确定的 +1”和“很虚的 +1”不该下同样仓位。</strong></p>
+<p>这是很多现有策略骨架里缺失的一层。</p>
+<p>如果不想上完整神经网络，最小也可以先抄一个弱版本：</p>
+<p>``<code>text size = raw_score_strength × confidence_discount × risk_budget_multiplier </code>``</p>
+<p>其中 <code>confidence_discount</code> 可以先用：</p>
+<ul>
+<li>信号 ensemble 分歧</li>
+<li>rolling hit-rate</li>
+<li>bootstrap CI 宽度</li>
+<li>regime mismatch 惩罚</li>
+</ul>
+<h2>4.4 训练目标不是只拼 Sharpe，而是把 drawdown 和 turnover 一起写进 loss</h2>
+<p><code>naps/training/objective.py</code> 给出的组合 loss 是：</p>
+<p>``<code>text L = -Sharpe + lambda1 * drawdown_penalty + lambda2 * turnover_penalty </code>``</p>
+<p>默认参数：</p>
+<ul>
+<li><code>tau = 0.15</code>：最大回撤阈值 15%</li>
+<li><code>lambda1 = 5.0</code>：回撤惩罚</li>
+<li><code>lambda2 = 1.0</code>：换手惩罚</li>
+<li><code>cost_bps = 10</code>：单边 10 bps</li>
+<li><code>W = 252</code></li>
+</ul>
+<p>这比“先预测，再在回测里顺手调仓位”更像真正可部署的方法，因为它直接把现实里最痛的两件事写进目标：</p>
+<ul>
+<li>回撤别太深</li>
+<li>仓位别抖得太厉害</li>
+</ul>
+<p>对于 1m/3m/5m/15m desk，我反而觉得 <strong>turnover penalty</strong> 比它的 transformer 壳还值钱。</p>
+<h2>4.5 repo 给出的 crypto 结果，提升主要来自“更稳的 sizing”，不是更神的 signal</h2>
+<p><code>README.md</code> 的 Table 2 摘要写的是：</p>
+<ul>
+<li><strong>Crypto Sharpe</strong>：<code>Risk Parity 0.74 -&gt; NAPS 0.91</code></li>
+<li><strong>Avg. MDD</strong>：<code>16.8% -&gt; 11.6%</code></li>
+<li>相对 best classical baseline：<strong>Sharpe +23%</strong>、<strong>Max Drawdown -31%</strong></li>
+</ul>
+<p>这里最重要的不是绝对值，而是改善方向：</p>
+<p>&gt; <strong>它不是靠更准的方向预测赢，而是靠更好的仓位分配把同样的信号榨得更稳。</strong></p>
+<p>这正符合它作为 overlay 的定位。</p>
+<h2>5. 这东西和 <code>1m / 3m / 5m / 15m</code> 的关系是什么？</h2>
+<h3>5.1 可以直接服务哪些 raw alpha</h3>
+<p>至少可以接这几类：</p>
+<ol>
+<li><strong>trend / breakout / continuation</strong></li>
+</ol>
+<ul>
+<li>strong trend + low uncertainty + low portfolio DD -&gt; 放大 size</li>
+<li>same signal but choppy/high-vol/high-DD -&gt; 缩小 size</li>
+</ul>
+<ol>
+<li><strong>mean reversion / stat-arb / pairs</strong></li>
+</ol>
+<ul>
+<li>spread 触发一样，但在 high-vol / high-correlation-break regime 下，size 应显著下降</li>
+</ul>
+<ol>
+<li><strong>cross-sectional alpha</strong></li>
+</ol>
+<ul>
+<li>横截面 rank 不变，但把“强 rank + 低 crowding proxy + 低组合 DD”的腿放大</li>
+</ul>
+<ol>
+<li><strong>carry / funding / basis</strong></li>
+</ol>
+<ul>
+<li>carry 口袋没变，但在组合连续回撤或相关性上升时自动 gross-down</li>
+</ul>
+<h3>5.2 不能直接照搬 repo 的地方</h3>
+<p>repo 默认是日频结构：</p>
+<ul>
+<li><code>lookback = 60 trading days</code></li>
+<li><code>initial_train = 252</code></li>
+<li><code>test_size = 63</code></li>
+<li>regime features 也按 day 级构造</li>
+</ul>
+<p>所以对 short-cycle desk 不能机械复制；必须做 <strong>bar-level rescaling</strong>。</p>
+<h2>6. 我建议的最小实验，不是“先训个大模型”，而是三层递进</h2>
+<h2>实验 A：先做无模型版 NAPS-lite（最快）</h2>
+<p>目标：先验证“<strong>不确定性 + 风险状态 + 换手惩罚</strong>”是不是比 fixed fraction / inverse-vol 更有增量。</p>
+<h3>做法</h3>
+<p>在已有任一 raw alpha 上，把原始方向信号转成：</p>
+<ul>
+<li><code>sign_t</code>：方向</li>
+<li><code>score_t</code>：强度（比如 z-score / rank strength / edge estimate）</li>
+</ul>
+<p>再定义：</p>
+<p>``<code>text base_size_t = clip(k * |score_t|, 0, f_max) conf_discount_t = 1 / (1 + uncertainty_t) risk_discount_t = g(drawdown_t, exposure_t, recent_serial_corr_t) final_size_t = base_size_t * conf_discount_t * risk_discount_t </code>``</p>
+<p>先不用神经网络，先和以下基线比较：</p>
+<ul>
+<li>fixed fraction</li>
+<li>half Kelly</li>
+<li>inverse-vol / risk parity</li>
+<li>simple DD throttle</li>
+</ul>
+<h3>适合先接的 raw alpha</h3>
+<p>优先接 2 条已经比较像实盘骨架的：</p>
+<ul>
+<li><code>2026-04-06_0940_quality-weighted-squeeze-release-alpha.md</code></li>
+<li><code>2026-04-06_0558_btc-lead-liquidity-lag-alt-alpha.md</code></li>
+</ul>
+<p>一个偏 trend，一个偏 lead-lag，正好看 overlay 是否可跨 alpha 复用。</p>
+<h2>实验 B：把 uncertainty 单独做出来（中等成本）</h2>
+<p>如果实验 A 有增量，再补“signal uncertainty”这层。</p>
+<p>对 short-cycle 最实用的 4 个 uncertainty proxy：</p>
+<ol>
+<li><strong>ensemble disagreement</strong>：同一 alpha 的多参数版本是否同向</li>
+<li><strong>bootstrap CI width</strong>：滚动窗口里 edge 估计区间有多宽</li>
+<li><strong>regime mismatch</strong>：当前状态离训练 pocket 有多远</li>
+<li><strong>microstructure stress</strong>：spread / impact / slippage proxy 是否突然恶化</li>
+</ol>
+<p>这一步通常比直接上 cross-attention 更值。</p>
+<h2>实验 C：最后再上 learnable sizing head（完整 NAPS）</h2>
+<p>只有在 A/B 已经证明确有增量时，再上完整模型。</p>
+<h3>15m 起步参数建议</h3>
+<p>不要抄日频的 252 天，直接改成：</p>
+<ul>
+<li><code>market lookback</code>: <code>60 bars</code></li>
+<li><code>regime vol</code>: <code>96 bars</code>（约 1 天）</li>
+<li><code>market corr</code>: <code>288 bars</code>（约 3 天）</li>
+<li><code>trend strength</code>: <code>96 bars</code></li>
+<li><code>walk-forward train</code>: <code>30 ~ 45 days</code></li>
+<li><code>test</code>: <code>5 ~ 7 days</code></li>
+<li><code>f_max</code>: <code>0.20 ~ 0.25</code></li>
+</ul>
+<h3>成本口径建议</h3>
+<p>repo 用的是：</p>
+<ul>
+<li>one-way <code>10 bps</code></li>
+</ul>
+<p>对我们 desk，建议改成分层：</p>
+<ul>
+<li>majors taker: <code>3 ~ 5 bps</code></li>
+<li>alts taker: <code>6 ~ 12 bps</code></li>
+<li>maker rebate / partial fill：单独跑一版</li>
+</ul>
+<p>否则会把 sizing 层的价值和过粗的成本假设混在一起。</p>
+<h2>7. 这篇东西最值得抄走的，不是“神经网络”，而是三个原则</h2>
+<h3>原则 1：仓位问题要和信号问题分开</h3>
+<p>很多策略把“是否触发”和“下多大”绑死在一起。</p>
+<p>NAPS 的价值在于强行把两件事拆开：</p>
+<ul>
+<li>raw alpha 负责找方向/edge</li>
+<li>overlay 负责决定赌注</li>
+</ul>
+<h3>原则 2：不确定性必须显式入模</h3>
+<p>如果一个策略只有 score，没有 uncertainty，它的 size 往往会在最不该放大的时候放大。</p>
+<h3>原则 3：换手惩罚应当前置到优化目标</h3>
+<p>这对短周期特别重要。</p>
+<p>很多短周期 alpha 不是方向没用，而是：</p>
+<p>&gt; <strong>仓位曲线太抖，收益没死在 signal，先死在 turnover。</strong></p>
+<h2>8. 我对这份材料的判断</h2>
+<h3>值得进研究池的点</h3>
+<ul>
+<li><strong>新</strong>：2026 新 repo + 2026 新预印本元数据</li>
+<li><strong>通用</strong>：能服务多类 raw alpha，不绑某个形态</li>
+<li><strong>可最小复现</strong>：先做 NAPS-lite，不需要一上来训练大模型</li>
+<li><strong>与 desk 当前阶段相关</strong>：我们已经有一堆 raw alpha 候选，确实需要更统一的 sizing 层</li>
+</ul>
+<h3>不要高估的点</h3>
+<ul>
+<li><code>README.md</code> 里“NeurIPS 2026”目前只算 repo 自述</li>
+<li>公开可见的结果摘要还不够细，暂时不能把表格直接当结论</li>
+<li>默认结构偏日频，迁移到 <code>1m / 3m / 5m / 15m</code> 时必须重做窗口和成本口径</li>
+</ul>
+<h2>9. 一句话结论</h2>
+<p>如果今天只能抄走一件事，我不会先抄它的 transformer， 我会先抄这条：</p>
+<p>&gt; <strong>把已有 raw alpha 的方向/强度信号，和“不确定性 + 组合风险状态 + 换手惩罚”分开建模，做成统一 adaptive sizing overlay。</strong></p>
+<p>这比继续补一条边际相近的新 entry rule，更可能直接提升当前素材池的实盘可用性。</p>
+<h2>10. 下一步怎么测</h2>
+<h3>最小实验（建议本周内可做）</h3>
+<ol>
+<li>选两条现有 raw alpha：一条 trend、一条 MR/lead-lag</li>
+<li>对每条 alpha 生成：<code>sign / score / uncertainty proxy</code></li>
+<li>实现 4 个 sizing baseline：</li>
+</ol>
+<ul>
+<li>fixed fraction</li>
+<li>inverse-vol</li>
+<li>DD throttle</li>
+<li><strong>NAPS-lite</strong>（score × uncertainty × risk-state）</li>
+</ul>
+<ol>
+<li>在 <code>15m</code> 先跑；确认有增量后再下钻 <code>5m</code></li>
+<li>指标只看 6 个：</li>
+</ol>
+<ul>
+<li>net Sharpe</li>
+<li>max DD</li>
+<li>turnover</li>
+<li>return / turnover</li>
+<li>tail loss per trade</li>
+<li>alpha 间 capital efficiency</li>
+</ul>
+<h3>是否值得继续到完整 learnable NAPS 的判据</h3>
+<p>只有当 NAPS-lite 同时满足以下两条，再继续：</p>
+<ul>
+<li>相比 inverse-vol，<strong>Sharpe 不降且 max DD 明显下降</strong></li>
+<li>相比 fixed fraction，<strong>turnover / drawdown 至少改善一项且收益不显著变差</strong></li>
+</ul>
+<p>否则就别急着上深度模型，先把 overlay 维持在规则层。</p>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 15m continuation 的失效继续写成“感觉走坏了”：EMA fast 失守 + VWAP flip + `0.75 ATR`，更像三条线共用的 fail-fast overlay</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 15m continuation 的失效继续写成“感觉走坏了”：EMA fast 失守 + VWAP flip + `0.75 ATR`，更像三条线共用的 fail-fast overlay</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-18 14:03 UTC</span>
+      <span class="pill">研究时间：2026-03-18 14:02 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/continuation/failure/exit/fail-fast/vwap/atr/repo/crypto/15m</span>
+      <span class="pill">证据类型：工程经验 / 待验证</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-18_1402_continuation-fail-fast-overlay.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-18 14:02 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/continuation/failure/exit/fail-fast/vwap/atr/repo/crypto/15m</li>
+<li>证据类型：工程经验 / 待验证</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <code>bptrades/0dte-momentum-continuation-pro</code>（2026）这个 Pine Script 仓库。它主打的是 intraday continuation 的<strong>确认工具</strong>，但对我们 desk 真正值钱的，不是它那套 A+/B 打分，而是它把“这笔 continuation 什么时候算走坏”写成了三个非常短、可冻结的条件：<code>close &lt; EMA fast</code>、<code>VWAP flip</code>、以及 <code>entry ± 0.75 ATR</code> 的 premium protection。翻成人话：<strong>别等主观感觉不对劲，先把 continuation 的 fail-fast 规则写死。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：当前三条收口线更缺的，未必又是一个新入场过滤器，而是一个共享的“认错更快”失效层。</li>
+<li><strong>一句话证明方式</strong>：repo 直接把 continuation 持仓状态写进代码：一旦多头 <code>close &lt; emaFast</code>、或 <code>close &lt; vwap</code>、或 <code>close &lt; entryPrice - atr*0.75</code>，就退出；空头完全镜像。不是讲故事，是明确的状态机。</li>
+<li>对 desk 最值得复用的点，是把这三件事拆成不同角色：<code>EMA fast</code> 像微观结构破坏，<code>VWAP flip</code> 像盘中接受度反转，<code>0.75 ATR</code> 像最后一道硬保护。</li>
+<li>这比继续给 <code>breakout-short / Fib / EMA-PSAR</code> 各补一个新 gate 更值得先看，因为最近几轮我们已经很努力在解决“要不要进”，但<strong>“进了以后什么时候该承认 continuation 没走出来”</strong> 还没有 shared 语言。</li>
+<li>repo 还顺手给了一个诚实提醒：它自己就说这是 <strong>confirmation/context tool, not signal generator</strong>。这和我们现在最需要的角色定位其实很对路。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li>对 <code>V3 final-verdict / breakout-short follow-up</code>：跌破后最怕的是下去两根又被迅速拉回。<code>emaFast reclaim + VWAP flip</code> 很适合作为 <strong>post-break failure close</strong>，比“拿到固定 8 bar 再说”更诚实。</li>
+<li>对 <code>Fibonacci confirmation / retest_hold</code>：Fib 负责回答“回到哪”，但 fail-fast 层负责回答“守没守住”。如果回踩做多后价格重新丢失 <code>EMA fast</code>，或重新跌回 VWAP 下方，<code>hold</code> 就不该再靠嘴硬。</li>
+<li>对 <code>EMA / PSAR raw alpha focus</code>：这条线最直接。既然最近越来越像在把 PSAR 降级成结构锚，那真正该补的就是<strong>entry 之后的微观失效定义</strong>，而不是再把 PSAR硬塞回逐根出场。</li>
+<li>如果要回答“为什么它比继续帮三条线收口更值得”，答案很简单：这不是开新坑，而是在给三条线补同一块缺口——<strong>shared failure protocol</strong>。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：给现有 <code>breakout_short</code>、<code>fib_retest_hold</code>、<code>ema_slope_continuation</code> 统一叠加一个三选一的 <code>fail_fast_overlay</code>，能降低 <code>4~8 bars</code> 内的假 follow-through 损耗，并改善成本后收益分布。</li>
+<li><strong>最小定义</strong>：</li>
+</ul>
+<ol>
+<li><code>ema_fail</code>: 多头 <code>close &lt; EMA9</code>；空头 <code>close &gt; EMA9</code>；</li>
+<li><code>vwap_fail</code>: 多头 <code>close &lt; session_VWAP</code>；空头镜像；</li>
+<li><code>atr_fail</code>: 多头 <code>close &lt; entry - 0.75*ATR14</code>；空头镜像；</li>
+<li>先测三臂：<code>base exit</code>、<code>base + any(ema_fail, atr_fail)</code>、<code>base + any(ema_fail, vwap_fail, atr_fail)</code>。</li>
+</ol>
+<ul>
+<li><strong>最小回测切口</strong>：<code>BTC / ETH / SOL</code> perpetual，最近 <code>180d</code>，<code>15m</code>，统一 <code>next-bar open</code>、<code>no-overlap</code>、成本 <code>6 / 10 / 15 bps per side</code>。</li>
+<li><strong>最先看的 4 个指标</strong>：<code>post-cost expectancy</code>、<code>median loser size</code>、<code>false-follow-through rate</code>（入场后 <code>4/8</code> 根内反向穿回 setup 失效线）、<code>trade_count retention</code>。</li>
+<li><strong>下一步怎么测</strong>：第一轮不要问哪个 stop 最赚钱，先只问一个更值钱的问题——<strong>增量主要来自更快认错，还是只是把原本会回来的单子也提前砍掉？</strong> 所以必须额外看 <code>winner truncation rate</code>（本来最终盈利、但被 fail-fast 提前砍掉的比例）。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是一个很新的小 repo，且应用场景更偏美股/0DTE intraday，不是 crypto 原生证据；当前最多算规则骨架，不是 validated alpha。</li>
+<li><code>VWAP</code> 在 24/7 crypto 里天然依赖 session 切法；如果 session 定义乱，<code>VWAP flip</code> 可能只是把时段噪音包装成风控。</li>
+<li><code>0.75 ATR</code> 很像“漂亮默认值”，但也最容易被误用成万能止损；不同币种、不同 regime 下可能需要 <code>0.5 / 0.75 / 1.0 ATR</code> 三档对照。</li>
+<li>fail-fast overlay 的典型代价是 <strong>减少大亏，也减少后来又走出来的单子</strong>；所以它更像收益分布塑形工具，而不是凭空创造 alpha。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>bptrades. (2026). *0dte-momentum-continuation-pro*.</li>
+<li>Venue / DOI：无（GitHub repo）</li>
+<li>Repo URL: &lt;<a href="https://github.com/bptrades/0dte-momentum-continuation-pro&gt;">https://github.com/bptrades/0dte-momentum-continuation-pro&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://github.com/bptrades/0dte-momentum-continuation-pro/blob/main/README.md&gt;">https://github.com/bptrades/0dte-momentum-continuation-pro/blob/main/README.md&gt;</a></li>
+<li>Raw strategy URL: &lt;<a href="https://raw.githubusercontent.com/bptrades/0dte-momentum-continuation-pro/main/MomentumContinuationProAlgo.pine&gt;">https://raw.githubusercontent.com/bptrades/0dte-momentum-continuation-pro/main/MomentumContinuationProAlgo.pine&gt;</a></li>
+<li>Raw README URL: &lt;<a href="https://raw.githubusercontent.com/bptrades/0dte-momentum-continuation-pro/main/README.md&gt;">https://raw.githubusercontent.com/bptrades/0dte-momentum-continuation-pro/main/README.md&gt;</a></li>
+<li>Repo API: &lt;<a href="https://api.github.com/repos/bptrades/0dte-momentum-continuation-pro&gt;">https://api.github.com/repos/bptrades/0dte-momentum-continuation-pro&gt;</a></li>
+<li>Repo metadata snapshot: created <code>2026-02-06</code>, updated <code>2026-02-06</code>, <code>1</code> star at fetch time.</li>
+</ul>
+</body>
+</html>

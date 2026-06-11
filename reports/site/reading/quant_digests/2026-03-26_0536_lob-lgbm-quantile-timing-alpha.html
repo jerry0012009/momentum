@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 1 秒级方向分类仓库只读成“更高准确率”：这份 2026 新 repo 更该先测的是「LOB 概率边 × 滚动分位阈值」1m/3m 事件驱动 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 1 秒级方向分类仓库只读成“更高准确率”：这份 2026 新 repo 更该先测的是「LOB 概率边 × 滚动分位阈值」1m/3m 事件驱动 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-26 05:34 UTC</span>
+      <span class="pill">研究时间：2026-03-26 05:36 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + 经典 limit-order-book literature + Binance Futures 公共 `1m` 最小快检</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/lob/lightgbm/probability-edge/rolling-quantile/event-driven/time-series/btc/eth/binance/perpetual/1m/3m/5m/15m/repo/paper/execution</span>
+      <span class="pill">证据类型：仓库证据 + 经典论文地基 + 本地快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-26_0536_lob-lgbm-quantile-timing-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-26 05:36 UTC</li>
+<li>类型：2026 GitHub 新仓库 + 经典 limit-order-book literature + Binance Futures 公共 <code>1m</code> 最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>1s</code> 级盘口状态、成交流与失衡特征，可以形成未来几分钟方向概率边；再用 <code>signal = EWM((p_up - p_down) * (1 - p_mild))</code> 与滚动分位阈值把它转成可执行的 long-timing 策略</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/microstructure/lob/lightgbm/probability-edge/rolling-quantile/event-driven/time-series/btc/eth/binance/perpetual/1m/3m/5m/15m/repo/paper/execution</li>
+<li>证据类型：仓库证据 + 经典论文地基 + 本地快检</li>
+</ul>
+<p>&gt; 先回答 base alpha：<strong>这不是 filter，也不是纯 execution 小技巧。base alpha 就是“当前 LOB / trade-flow 微观结构状态 → 接下来几分钟方向边”的单资产 directional raw alpha；repo 真正值钱的是它把这条边完整翻译成了 cost-aware 策略骨架。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>主线材料不是论文，而是一份很新的 GitHub 仓库：</p>
+<ul>
+<li><strong>kailiu0712 (2026), _-5-min-level-Directional-Prediction-for-Crypto-HFT_</strong></li>
+</ul>
+<p>它的 headline 看起来像“用 1 秒级特征做 BTC 方向分类”，但对我们 desk 更有价值的其实不是分类本身，而是它已经把整条链条补齐了：</p>
+<ol>
+<li>原始事件流 / order book 重建</li>
+<li><code>1s</code> 特征工程</li>
+<li>成本感知标签（mild / positive / negative）</li>
+<li>purged walk-forward 训练</li>
+<li>概率输出转 signal score</li>
+<li>滚动分位数阈值进出场</li>
+<li>明确收费的 long-only 回测</li>
+</ol>
+<p>所以它不是“又一个 microstructure explainability notebook”，而是<strong>一个可直接移植到 desk 的超短周期 directional alpha skeleton</strong>。</p>
+<h2>2. 我最关心的不是 headline，而是这 4 个可落地部件</h2>
+<h3>2.1 成本感知标签先把小波动踢掉</h3>
+<p>仓库没有直接把所有未来收益都硬分成涨跌，而是先定义一段 <code>mild</code> 中性区：</p>
+<p><code>max(MILD_RETURN_THRESHOLD, fee_rate * threshold_multiplier)</code></p>
+<p>这一步很值钱，因为它等于先承认： <strong>小于手续费门槛的预测，就算方向猜对，也不该被当成可交易 alpha。</strong></p>
+<h3>2.2 概率边不是直接拿来追价，而是先压成 signal score</h3>
+<p>仓库的核心不是 <code>argmax(class)</code>，而是：</p>
+<p><code>signal = EWM((prob_positive - prob_negative) * (1 - prob_mild))</code></p>
+<p>也就是：</p>
+<ul>
+<li>用 <code>p_up - p_down</code> 表示方向边强弱</li>
+<li>用 <code>1 - p_mild</code> 给“远离噪声区”的样本更高权重</li>
+<li>再做时间平滑，避免每秒翻多翻空</li>
+</ul>
+<p>这比“模型分类结果 &gt; 0.5 就开仓”成熟得多。</p>
+<h3>2.3 进出场阈值不是固定常数，而是 lagged rolling quantile</h3>
+<p>进场与平仓条件不是一个手填阈值，而是：</p>
+<ul>
+<li><code>buy</code>: 当前 <code>signal_score</code> 高于过去滚动窗口的 <code>0.9</code> 分位</li>
+<li><code>close</code>: 当前 <code>signal_score</code> 低于过去滚动窗口的 <code>0.1</code> 分位</li>
+</ul>
+<p>这非常适合 crypto，因为微观结构分布本来就会随流动性、时段、波动状态漂移。</p>
+<h3>2.4 训练验证至少把最容易犯的 leakage 避开了</h3>
+<p>仓库不是乱序交叉验证，而是：</p>
+<ul>
+<li><code>TimeSeriesSplit(n_splits=5)</code></li>
+<li>train/test 之间加 purge gap</li>
+<li>fit/validation 之间也加 purge gap</li>
+</ul>
+<p>对这种分钟内 / 秒级标签重叠很严重的问题，这是最起码的诚实做法。</p>
+<h2>3. 关键数值先看 repo 自带结果：原样照搬并不算惊艳，但骨架很有价值</h2>
+<p>仓库自带 <code>overall_metrics_*.csv</code>，给了多组 horizon 的 out-of-sample 汇总。最值得记的不是“准确率”，而是<strong>净收益、毛收益和持有时长怎么变</strong>。</p>
+<h3>3.1 repo 原始结果（Gemini BTC，long-only，fee=10 bps）</h3>
+<ul>
+<li><strong>3m horizon</strong>：<code>cum_strategy_ret = -3.10%</code>，<code>cum_gross_strategy_ret = +0.25%</code>，<code>max_drawdown = -4.12%</code></li>
+<li><strong>10m horizon</strong>：<code>cum_strategy_ret = -3.61%</code>，<code>cum_gross_strategy_ret = -1.07%</code></li>
+<li><strong>15m horizon</strong>：<code>cum_strategy_ret = -0.22%</code>，<code>cum_gross_strategy_ret = +1.79%</code>，<code>max_drawdown = -2.17%</code></li>
+<li><strong>30m horizon</strong>：<code>cum_strategy_ret = +0.18%</code>，<code>cum_gross_strategy_ret = +2.00%</code>，<code>max_drawdown = -2.13%</code></li>
+</ul>
+<h3>3.2 这组结果真正说明什么</h3>
+<p>不是“3m 没边，所以 repo 无用”，而是：</p>
+<ol>
+<li><strong>方向信息是有的</strong>：15m/30m 的 gross return 为正，说明模型没完全瞎猜。</li>
+<li><strong>执行/成本吞噬很重</strong>：3m/10m 从 gross 到 net 明显被手续费吃掉，说明短 horizon 版本必须靠更好的触发稀疏化、maker/taker 切换或更低 fee 才能活。</li>
+<li><strong>repo 其实更像一套 timing stack，而不是现成印钞参数</strong>：最值钱的是“概率边 → 平滑 → 自适应阈值 → 风控”的链条。</li>
+</ol>
+<p>换句话说：<strong>它是完整策略候选，但不是“拿来就能在 BTC 上直接抄作业”的完整策略。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：单资产 / 时间序列 / 微观结构 directional alpha</li>
+<li>基础 alpha：</li>
+<li>top-of-book：<code>best_bid / best_ask / mid / spread / microprice</code></li>
+<li>深度与失衡：<code>imbalance_1 / imbalance_5 / depth ratio / slope / entropy / HHI</code></li>
+<li>成交与事件流：<code>signed trade flow / place-cancel-fill counts / passive flow / net order flow</code></li>
+<li>目标：预测未来 <code>PREDICTION_HORIZON</code> 的中间价方向（当前配置为 <code>180s</code>）</li>
+<li>entry：当 <code>signal_score &gt; lagged rolling q90</code> 时，下一时刻按 <code>best_ask</code> 做多</li>
+<li>exit：当 <code>signal_score &lt; lagged rolling q10</code> 时，下一时刻按 <code>best_bid</code> 平仓</li>
+<li>sizing：repo 里是全仓 / 固定 notional 风格；desk 版应先改成 <code>score-strength bucket × spread-state × volatility-state</code> 分层仓位</li>
+<li>risk：</li>
+<li><code>min_hold_seconds</code></li>
+<li><code>max_position_notional</code></li>
+<li>spread widening / quote vacuum 直接 kill-switch</li>
+<li>极端波动时禁止继续追高频 re-entry</li>
+<li>cost：</li>
+<li>entry/exit 双边 fee 显式计入</li>
+<li>原始结果已经证明：不把 fee 放进去，结论会明显失真</li>
+</ul>
+<h2>4. 为什么这条线和当前 desk 直接相关</h2>
+<p>它和我们昨天那篇 <code>3s</code> microstructure taker alpha 不完全重复，差别在于：</p>
+<ol>
+<li><strong>昨天那篇更像“有没有这条边”</strong>；</li>
+<li><strong>今天这份 repo 更像“怎么把这条边治理成策略”</strong>。</li>
+</ol>
+<p>因此它的价值不在于再证明一次 <code>OFI / imbalance</code> 有信息，而在于提供了 3 个我们可以直接拿走的组件：</p>
+<ul>
+<li>成本感知标签</li>
+<li>概率边平滑</li>
+<li>滚动分位阈值治理</li>
+</ul>
+<p>这 3 个组件不止能服务单币 BTC，也能服务：</p>
+<ul>
+<li><code>1m / 3m</code> 单资产 event-driven long timing</li>
+<li>5m 主策略的 execution timing / entry veto</li>
+<li>cross-asset micro alpha 的统一 signal governance</li>
+</ul>
+<h2>5. 本地最小快检：把 repo 思路压到 Binance 公开 <code>1m</code> futures K 线后，还剩下多少影子</h2>
+<p>我没复刻 repo 的完整 1 秒 order book，而是做了一个更便宜的代理快检：</p>
+<p><strong>数据源</strong>：Binance USDⓈ-M Futures 公共 <code>1m</code> K 线（<code>BTCUSDT / ETHUSDT</code>，最近 10 天）</p>
+<p><strong>代理特征</strong>：</p>
+<ul>
+<li><code>taker_imbalance = 2 * taker_buy_base / volume - 1</code></li>
+<li><code>trade_count_z</code></li>
+<li><code>ret1_z</code></li>
+<li>再对宽波动 bar 做一个简单 confidence penalty，形成 <code>score_conf</code></li>
+</ul>
+<h3>5.1 结果怎么读</h3>
+<p>这不是 repo 的正式 replication，只是看： <strong>如果只能先拿公开便宜数据，repo 的微结构方向边能不能在 <code>1m/3m/5m/15m</code> 上留下痕迹？</strong></p>
+<h3>5.2 快检数字</h3>
+<p><strong>ETH 比 BTC 更像能留下可见影子的标的。</strong></p>
+<ul>
+<li><code>ETHUSDT</code>：<code>score_conf</code> 顶部 10% 事件，未来</li>
+<li><code>1m</code> 平均收益约 <strong>+0.59 bps</strong></li>
+<li><code>5m</code> 平均收益约 <strong>+0.83 bps</strong></li>
+<li><code>15m</code> 顶/底 decile spread 约 <strong>2.00 bps</strong></li>
+<li><code>ETHUSDT</code>：若要求信号连续两根 <code>1m</code> bar 同向极端（2-bar persistence），未来</li>
+<li><code>1m</code> 平均约 <strong>+1.21 bps</strong></li>
+<li><code>3m</code> 平均约 <strong>+0.72 bps</strong></li>
+<li><code>BTCUSDT</code>：两根持续强信号后，未来</li>
+<li><code>3m</code> 平均约 <strong>+0.48 bps</strong></li>
+<li><code>5m</code> 平均约 <strong>+0.59 bps</strong></li>
+</ul>
+<h3>5.3 这组快检最重要的含义</h3>
+<ul>
+<li><strong>有影子，但不厚。</strong> 分钟级代理还能看见方向倾向，尤其 ETH 比 BTC 更明显。</li>
+<li><strong>一压粗就衰减。</strong> 这说明 repo 的 edge 更适合 <code>1m/3m</code> 事件触发或 execution timing，而不是直接改写成一个 bar-close <code>15m</code> 主信号。</li>
+<li><strong>连续性门槛有用。</strong> 2-bar persistence 比单点极值更像能留下可交易的方向边。</li>
+</ul>
+<h2>6. 对 desk 的最合适读法</h2>
+<p>如果强行把这份 repo 读成“BTC 3m long-only 现成策略”，我觉得不值得。</p>
+<p>但如果把它读成下面这三件事之一，就很值得：</p>
+<h3>6.1 <code>1m / 3m</code> 事件驱动 long timing raw alpha</h3>
+<p>当微结构压力连续两个分钟代理或若干秒级片段同向极端时，触发一笔独立 micro-trade。</p>
+<h3>6.2 5m 主策略的 entry timing layer</h3>
+<p>5m 主策略已经想做多时，不是立刻吃，而是等：</p>
+<ul>
+<li><code>signal_score</code> 回到上分位并持续</li>
+<li>spread / range 没恶化</li>
+<li>taker imbalance 没反转</li>
+</ul>
+<h3>6.3 微结构模型的统一治理模板</h3>
+<p>以后不管底层是 LASSO、LightGBM、LOB Transformer 还是简单 OFI，都可以统一套：</p>
+<ul>
+<li>成本感知标签</li>
+<li><code>probability edge</code></li>
+<li>rolling quantile trigger</li>
+<li>fee/slippage stress</li>
+</ul>
+<h2>7. 下一步怎么测（最应该先做的 4 组实验）</h2>
+<h3>7.1 用真 <code>1s</code> 公共数据复刻，不要再停在 <code>1m</code> 代理</h3>
+<p><strong>数据源</strong>：Binance Data Vision <code>bookTicker</code> / <code>aggTrades</code> / depth snapshots（公开可得）</p>
+<p><strong>标的</strong>：<code>BTCUSDT / ETHUSDT / SOLUSDT</code></p>
+<p><strong>窗口</strong>：最近 <code>14~30</code> 天</p>
+<h3>7.2 先测 3 组 horizon，而不是一口气扫大网格</h3>
+<ul>
+<li><code>30s</code></li>
+<li><code>90s</code></li>
+<li><code>180s</code></li>
+</ul>
+<p>因为 repo 结果已经暗示：太短容易被费用吃掉，太长又会把 micro edge 稀释掉。</p>
+<h3>7.3 先测这 3 个治理变量</h3>
+<ol>
+<li><strong>persistence gate</strong>：信号连续 <code>N</code> 秒同向才开仓</li>
+<li><strong>threshold mode</strong>：固定阈值 vs rolling quantile</li>
+<li><strong>execution mode</strong>：taker-only vs maker-disabled-in-stress vs hybrid</li>
+</ol>
+<h3>7.4 最关键的评估指标</h3>
+<ul>
+<li><code>IC(score, future_ret_h)</code></li>
+<li><code>gross edge per event (bps)</code></li>
+<li><code>net edge per event</code>（至少做 <code>fee / fee+0.5tick / fee+1tick</code> 三档）</li>
+<li><code>events/day</code></li>
+<li><code>holding-time distribution</code></li>
+<li><code>spread-conditioned pnl</code></li>
+</ul>
+<h2>8. 我现在的判断</h2>
+<p><strong>这是一条值得继续 intake 的 raw alpha 线，但当前最合理的定位不是“直接上 BTC 3m long-only”，而是：</strong></p>
+<ul>
+<li>对 <code>1m / 3m</code>：事件驱动 long timing alpha 候选</li>
+<li>对 <code>5m / 15m</code>：更像 execution timing / admission 组件</li>
+<li>对策略工程：是一套很像样的 <code>micro-alpha governance template</code></li>
+</ul>
+<p>所以它进入研究池的理由不是“repo 绩效惊艳”，而是： <strong>它把一个本来容易写成黑箱分类器的 raw alpha，拆成了可治理、可 stress、可迁移的完整骨架。</strong></p>
+<h2>9. 风险与保留意见</h2>
+<ul>
+<li>repo 只做 <strong>BTC / long-only / Gemini</strong>，迁移到 Binance perp 和 alt 时，不应默认稳定。</li>
+<li><code>1m</code> 代理快检保留的信息很有限，不能替代真 <code>1s</code> LOB replication。</li>
+<li>微结构信号最怕 latency / queue / spread widening；gross 有边，不代表 net 能活。</li>
+<li>如果后续 replication 发现 edge 只在极少数 stress pocket 存在，那它更应被降级为 execution component，而不是 always-on alpha。</li>
+</ul>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>kailiu0712. (2026). _-5-min-level-Directional-Prediction-for-Crypto-HFT_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT">https://github.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT</a></code></li>
+<li>README Raw: <code><a href="https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/README.md">https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/README.md</a></code></li>
+<li>Config Raw: <code><a href="https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/config.py">https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/config.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Cont, R., Kukanov, A., &amp; Stoikov, S. (2014). _The Price Impact of Order Book Events_. Journal of Financial Econometrics.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1093/jjfinec/nbt003</code></li>
+<li>Readable URL: <code><a href="https://academic.oup.com/jfec/article/12/1/47/816163">https://academic.oup.com/jfec/article/12/1/47/816163</a></code></li>
+</ul>
+<ol>
+<li><strong>Kolm, P. N., Turiel, J., &amp; Westray, N. (2023). _Deep order flow imbalance: Extracting alpha at multiple horizons from the limit order book_. Mathematical Finance.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1111/mafi.12413</code></li>
+<li>Readable URL: <code><a href="https://onlinelibrary.wiley.com/doi/10.1111/mafi.12413">https://onlinelibrary.wiley.com/doi/10.1111/mafi.12413</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures API / public klines</strong></li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://fapi.binance.com/fapi/v1/klines">https://fapi.binance.com/fapi/v1/klines</a></code></li>
+<li>数据公开性：公开可得</li>
+<li>更新频率：分钟级（正式 replication 应升级到秒级事件流）</li>
+</ul>
+<h2>11. 本地快检产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/microstructure_lgbm_repo_probe_20260326/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/microstructure_lgbm_repo_probe_20260326/persistence_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/microstructure_lgbm_repo_probe_20260326/btcusdt_1m_10d.csv</code></li>
+<li><code>reports/artifacts/quant_digests/microstructure_lgbm_repo_probe_20260326/ethusdt_1m_10d.csv</code></li>
+</ul>
+</body>
+</html>

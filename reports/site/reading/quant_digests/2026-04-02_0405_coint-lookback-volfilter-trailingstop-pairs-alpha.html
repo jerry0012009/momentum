@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2025 JFM + 开源 repo 只读成“又一个 pairs 教程”：对 short-cycle desk，更该先测的是「cointegration spread z-score × optimized lookback × volatility veto × adaptive trailing stop」这条完整 pairs raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2025 JFM + 开源 repo 只读成“又一个 pairs 教程”：对 short-cycle desk，更该先测的是「cointegration spread z-score × optimized lookback × volatility veto × adaptive trailing stop」这条完整 pairs raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-02 04:08 UTC</span>
+      <span class="pill">研究时间：2026-04-02 04:05 UTC</span>
+      <span class="pill">类型：2025 *Journal of Futures Markets* 论文摘要 metadata + 2025 GitHub repo source audit（`README.md` + `pairs_trading_strategy.R` + GitHub API metadata）</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/zscore/lookback-optimization/volatility-filter/trailing-stop/min-holding/market-neutral/crypto/15m/5m/3m/1m/paper/repo/public-data/cost</span>
+      <span class="pill">证据类型：2025 GitHub repo source audit（主证据）+ Crossref/Wiley 论文 metadata 与 abstract（辅助证据，非全文）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-02_0405_coint-lookback-volfilter-trailingstop-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-02 04:05 UTC</li>
+<li>类型：2025 *Journal of Futures Markets* 论文摘要 metadata + 2025 GitHub repo source audit（<code>README.md</code> + <code>pairs_trading_strategy.R</code> + GitHub API metadata）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当两条高度相关、可协整的 crypto 价格序列暂时偏离各自的长期均衡关系时，偏离过大的 spread 往往有回归压力；alpha 本体是 <strong>cointegration spread mean reversion</strong>，不是 trailing stop，也不是 volatility filter。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/zscore/lookback-optimization/volatility-filter/trailing-stop/min-holding/market-neutral/crypto/15m/5m/3m/1m/paper/repo/public-data/cost</li>
+<li>证据类型：2025 GitHub repo source audit（主证据）+ Crossref/Wiley 论文 metadata 与 abstract（辅助证据，非全文）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<h3>一句话核心结论</h3>
+<p><strong>这轮更值得 intake 的，不是“再看一个 BTC/ETH pairs notebook”，而是一条已经把 <code>entry / hedge ratio / risk / exit / cost</code> 都写进开源代码的完整 raw alpha：用协整 spread 的 z-score 做均值回归入场，再叠 lookback 优化、波动 veto、最短持有期与动态 trailing stop。</strong></p>
+<h3>一句话它是怎么证明的</h3>
+<p><strong>主证据不是论文 headline，而是 repo 把策略骨架完整写在 <code>pairs_trading_strategy.R</code> 里；论文 abstract 只负责提供样本背景与作者正式发表的研究定位。</strong></p>
+<h2>2. base alpha 是什么</h2>
+<p>这次的 <strong>base alpha 很清楚</strong>：</p>
+<ol>
+<li>先在两条价格序列之间估一个长期关系：<code>y1 = μ + γ*y2 + ε</code>；</li>
+<li>用 <code>spread = y1 - γ*y2</code> 表示“这对资产当前偏离长期关系有多远”；</li>
+<li>再把 spread 做成 rolling z-score；</li>
+<li>当 <code>z &lt;= -threshold</code> 时做多 spread（多低估腿、空高估腿），当 <code>z &gt;= +threshold</code> 时做空 spread；</li>
+<li>等偏离回归、结构失效，或风险层触发时退出。</li>
+</ol>
+<p>翻成人话：<strong>它不是赌某个币自己会涨或会跌，而是赌“一对本来应该走得比较像的资产，短时间被拉开太远后，会向中间收敛”。</strong></p>
+<p>所以这篇东西的定位非常明确：</p>
+<ul>
+<li>方向属性：<strong>相对价值 / 市场中性</strong></li>
+<li>基础 alpha：<strong>协整 spread 的均值回归</strong></li>
+<li>regime / filter：<strong>spread 自身波动是否过高</strong></li>
+<li>risk / execution overlay：<strong>最短持有期 + 动态 trailing stop + 交易成本</strong></li>
+</ul>
+<h2>3. 为什么这轮值得写</h2>
+<ul>
+<li>当前项目自己的学习地图和 backlog 还偏向 <strong>trend / breakout / pullback / ATR / volume</strong> 这条主线；但 bot7 当前明确要求持续补齐 <strong>mean reversion / relative value / stat-arb / pairs</strong> 的 raw alpha 素材池，这篇正好补的是这块空白。</li>
+<li>最近 intake 里虽然也有 pairs 主题，但很多更像“某个 threshold / 某个 gate / 某个外部 filter”的拼装；这篇不同的地方在于：<strong>它已经是一张完整策略卡，而不是只给一个 entry 想法。</strong></li>
+<li>公开材料足够复现：</li>
+<li>有正式论文 DOI；</li>
+<li>有开源 repo；</li>
+<li>有公开数据 DOI（Mendeley Data）；</li>
+<li>代码里把 hedge ratio、lookback、risk、成本都写明了。</li>
+</ul>
+<p>如果按当前 desk 的优先级来排，这篇的价值在于：<strong>它不是在给已有 alpha 加一个附属过滤器，而是在给 raw alpha 池补一条可直接落地的 market-neutral 均值回归骨架。</strong></p>
+<h2>4. 来源信息</h2>
+<h3>论文来源</h3>
+<ul>
+<li><strong>Author：</strong> Rafael Baptista Palazzi</li>
+<li><strong>Year：</strong> 2025</li>
+<li><strong>Title：</strong> *Trading Games: Beating Passive Strategies in the Bullish Crypto Market*</li>
+<li><strong>Venue：</strong> *Journal of Futures Markets*</li>
+<li><strong>DOI：</strong> &lt;<a href="https://doi.org/10.1002/fut.70018&gt;">https://doi.org/10.1002/fut.70018&gt;</a></li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://onlinelibrary.wiley.com/doi/10.1002/fut.70018&gt;">https://onlinelibrary.wiley.com/doi/10.1002/fut.70018&gt;</a></li>
+<li><strong>目前拿到的证据层级：</strong> Crossref metadata + abstract；Wiley 正文页被 Cloudflare challenge 挡住，<strong>本轮不是全文阅读</strong>。</li>
+</ul>
+<h3>工程来源</h3>
+<ul>
+<li><strong>Repo owner：</strong> <code>rafaelpalazzi</code></li>
+<li><strong>Year：</strong> 2025（repo created <code>2025-12-20T01:59:21Z</code>）</li>
+<li><strong>Title：</strong> <code>trading-games-crypto</code></li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/rafaelpalazzi/trading-games-crypto&gt;">https://github.com/rafaelpalazzi/trading-games-crypto&gt;</a></li>
+<li><strong>Core file：</strong> &lt;<a href="https://raw.githubusercontent.com/rafaelpalazzi/trading-games-crypto/main/pairs_trading_strategy.R&gt;">https://raw.githubusercontent.com/rafaelpalazzi/trading-games-crypto/main/pairs_trading_strategy.R&gt;</a></li>
+<li><strong>GitHub metadata：</strong> stars <code>3</code>，default branch <code>main</code>，latest update <code>2026-02-14T11:07:46Z</code></li>
+</ul>
+<h3>数据来源</h3>
+<ul>
+<li><strong>Dataset：</strong> *Trading Games: Beating Passive Strategies in the Bullish Crypto Market* [Dataset]</li>
+<li><strong>Venue：</strong> Mendeley Data</li>
+<li><strong>DOI：</strong> &lt;<a href="https://doi.org/10.17632/2kky7c6xkn.1&gt;">https://doi.org/10.17632/2kky7c6xkn.1&gt;</a></li>
+</ul>
+<h2>5. repo 具体是怎么把这条 alpha 写出来的</h2>
+<h3>5.1 Hedge ratio 与 market-neutral sizing 都是显式的</h3>
+<p>代码先在训练集上用 OLS 估： <code>Y1 ~ Y2</code></p>
+<p>然后得到：</p>
+<ul>
+<li><code>μ</code>：截距</li>
+<li><code>γ</code>：hedge ratio</li>
+</ul>
+<p>接着把组合权重写成： <code>w_ref = (1, -γ) / (1 + |γ|)</code></p>
+<p>这一步很重要，因为它不是“等权多一个、空一个”，而是先把两腿缩成一个<strong>归一化 spread 组合</strong>。对 desk 来说，这直接回答了一个关键问题：<strong>这篇不是只会喊 entry，它连配对仓位怎么摆都给了。</strong></p>
+<h3>5.2 Entry 不是拍脑袋，而是 z-score 均值回归</h3>
+<p>repo 的信号层非常朴素：</p>
+<ul>
+<li><code>Z_score &lt;= -threshold_long</code> → <code>signal = 1</code></li>
+<li><code>Z_score &gt;= +threshold_short</code> → <code>signal = -1</code></li>
+<li>否则 <code>signal = 0</code></li>
+</ul>
+<p>默认 <code>threshold_value = 0.7</code>。</p>
+<p>也就是说，这个系统的核心不是“预测谁更强”，而是： <strong>spread 偏得太离谱了，就押它往回收。</strong></p>
+<h3>5.3 它不是固定 lookback，而是先在训练集上找最合适的 spread 记忆长度</h3>
+<p>代码会在训练集里扫描：</p>
+<ul>
+<li><code>lookback_periods = 5, 10, 15, ... , 360</code></li>
+</ul>
+<p>然后对每个 lookback：</p>
+<ul>
+<li>计算 spread rolling mean / rolling std；</li>
+<li>生成 z-score；</li>
+<li>生成交易收益；</li>
+<li>用 <code>SharpeRatio.annualized</code> 选出最优 lookback。</li>
+</ul>
+<p>这点对我们很有价值，因为它不是把“20 日 / 60 日”当教条，而是在明确问： <strong>这对 spread 的均值回归速度，到底更像短记忆还是长记忆？</strong></p>
+<h2>6. risk / filter / exit 层里最值得 desk 偷走的东西</h2>
+<h3>6.1 波动 veto：不是所有 spread 偏离都值得接</h3>
+<p>repo 先算：</p>
+<ul>
+<li><code>spread_return = diff(spread)</code></li>
+<li><code>spread_vol = rolling_sd(spread_return, vol_lookback)</code></li>
+</ul>
+<p>默认参数：</p>
+<ul>
+<li><code>vol_lookback = 30</code></li>
+<li><code>vol_threshold = 1.5</code></li>
+</ul>
+<p>然后只在： <code>spread_vol &lt;= 1.5 × average_spread_vol</code> 时允许信号生效。</p>
+<p>翻成人话：<strong>如果这对 spread 已经进入异常躁动区，就先别硬接飞刀。</strong></p>
+<p>这不是 alpha 本体，但它是一个很适合短周期 desk 的 regime/filter： <strong>均值回归最怕你接到“相关性结构正在断裂”的那种偏离。</strong></p>
+<h3>6.2 最短持有期：避免刚进就来回反手</h3>
+<p>默认：</p>
+<ul>
+<li><code>min_holding_period = 5</code></li>
+</ul>
+<p>对日频研究它代表 5 天； 对我们更重要的翻法是：<strong>这是一个“冷静期 / 最短持仓 bars”约束。</strong></p>
+<p>在 <code>15m</code> 上不该机械照抄成 5 天，而更应该翻成：</p>
+<ul>
+<li><code>2 / 4 / 8 / 12 bars</code> 的最短持仓约束，</li>
+<p>看看它到底是在降噪、减少来回磨损，还是只是在拖慢出场。</p>
+</ul>
+<h3>6.3 Dynamic trailing stop：不是只等回归到均值</h3>
+<p>repo 的 stop 不是固定值，而是： <code>dynamic_stop = trailing_stop_factor × max(current_vol / avg_vol, 1)</code></p>
+<p>默认：</p>
+<ul>
+<li><code>trailing_stop_factor = 0.025</code></li>
+</ul>
+<p>也就是说，<strong>波动越大，stop 会相应放宽。</strong></p>
+<p>这点很像“波动自适应止损”而不是死板百分比止损。对 short-cycle desk 来说，可迁移之处不是 <code>2.5%</code> 这个数字本身，而是这条思路： <strong>mean reversion 也可以做 vol-aware 的风险带，而不是只靠 zero-cross 机械平仓。</strong></p>
+<h2>7. 6 个最值得记住的硬数据点</h2>
+<ol>
+<li><strong>论文样本背景（abstract）：</strong> 10 个主要 crypto，时间覆盖 <code>2019-01</code> 到 <code>2024-05</code>。</li>
+<li><strong>train / test 切法（repo）：</strong> <code>split_ratio = 0.75</code>，即 <code>75%</code> 训练、<code>25%</code> OOS。</li>
+<li><strong>entry 阈值（repo 默认）：</strong> <code>z-score ±0.7</code>。</li>
+<li><strong>波动过滤（repo 默认）：</strong> <code>30</code> 期 rolling spread vol，阈值 <code>1.5 × average vol</code>。</li>
+<li><strong>最短持有期（repo 默认）：</strong> <code>5</code>。</li>
+<li><strong>交易成本（repo 默认）：</strong> <code>transaction_cost = 0.002</code>；从代码实现看，更接近<strong>每次进/出各扣一次</strong>的简化成本口径。</li>
+</ol>
+<p>补一句非常重要的保留： <strong>README 里写了年化 Sharpe ≈ 2.0、年化收益 ≈ 71%，但在本轮没读到全文前，这些只能当“作者自述 + repo 摘要”，不能当作我们已经独立确认的结论。</strong></p>
+<h2>8. 和当前 1m / 3m / 5m / 15m 的关系</h2>
+<h3>8.1 这条 alpha 最适合先落在 <code>15m</code></h3>
+<p>原因很简单：</p>
+<ul>
+<li>pairs / spread 均值回归比单币追涨更怕噪音；</li>
+<li><code>1m / 3m</code> 上 hedge ratio 漂移、盘口跳点、手续费吞噬会更严重；</li>
+<li><code>15m</code> 更适合先回答“after-cost 到底有没有 edge”。</li>
+</ul>
+<p>所以第一步最合理的是：</p>
+<ul>
+<li><strong><code>15m</code> 做 alpha existence test</strong></li>
+<li><strong><code>5m</code> 做 execution refinement</strong></li>
+<li><strong><code>1m / 3m</code> 只在 15m 已经成立后，再拿来做更细的入场/减仓/回补</strong></li>
+</ul>
+<h3>8.2 适合 desk 的对象不是“固定一对币”，而是 rolling shortlist</h3>
+<p>repo 用的是两资产框架，但 desk 版不该一上来就锁死 <code>BTC/ETH</code>。 更合理的翻法是：</p>
+<ol>
+<li>先在 top-liquidity majors 里滚动挑候选对；</li>
+<li>用协整 / 残差稳定性筛 shortlist；</li>
+<li>再把这套 <code>z-score + vol veto + stop</code> 壳子套上去。</li>
+</ol>
+<h3>8.3 这篇最值钱的地方，是它把 pairs 从“研究想法”推进到“完整策略卡”</h3>
+<p>很多配对策略材料只讲：</p>
+<ul>
+<li>怎么选 pair；</li>
+<li>怎么算 spread；</li>
+<li>怎么画个 z-score。</li>
+</ul>
+<p>但这篇 repo 已经把下面四层都补上了：</p>
+<ul>
+<li><code>entry</code>：spread 偏离</li>
+<li><code>sizing</code>：hedge ratio 归一化两腿</li>
+<li><code>risk/filter</code>：波动 veto + 最短持有期</li>
+<li><code>exit</code>：动态 trailing stop + 成本</li>
+</ul>
+<p>这正符合当前 desk 对“可直接落地完整策略”的偏好。</p>
+<h2>9. 最小可复现实验</h2>
+<h3>实验 A：15m pairs existence test（最优先）</h3>
+<ul>
+<li><strong>资产池：</strong> Binance USDⓈ-M 或最液态 spot/perp 的 top <code>8~12</code> majors</li>
+<li><strong>bar：</strong> <code>15m</code></li>
+<li><strong>pair shortlist：</strong> 每周滚动一次；只保留过去 <code>20 / 40 / 60</code> 天里残差最稳定的 <code>3~5</code> 对</li>
+<li><strong>spread 定义：</strong> rolling OLS hedge ratio + log-price spread</li>
+<li><strong>entry：</strong> <code>z &gt;= {1.5, 2.0, 2.5}</code> 做空 spread，<code>z &lt;= {-1.5, -2.0, -2.5}</code> 做多 spread</li>
+<li><strong>exit：</strong></li>
+<li><code>z</code> 回到 <code>0 / ±0.25</code></li>
+<li>或 spread trailing stop hit</li>
+<li><strong>filter：</strong> spread realized vol 不高于其过去 <code>N</code> bar 均值的 <code>1.25 / 1.5</code> 倍</li>
+<li><strong>cost：</strong> round-trip <code>10 / 20 / 30 / 40 bps</code></li>
+</ul>
+<p>先回答一个最朴素的问题： <strong>在 15m、after-cost、market-neutral 框架下，协整 spread 均值回归到底能不能活。</strong></p>
+<h3>实验 B：5m execution refinement</h3>
+<p>若实验 A 活着，再做：</p>
+<ul>
+<li><code>15m</code> 信号触发后，比较：</li>
+</ul>
+<ol>
+<li>下一根 <code>5m</code> 立刻下；</li>
+<li>等半个 spread 回补再下；</li>
+<li>用 <code>5m</code> microprice / mid reversion 做更温和入场。</li>
+</ol>
+<h3>实验 C：ablation（必须做）</h3>
+<p>按下面顺序拆：</p>
+<ol>
+<li><code>z-score only</code></li>
+<li><code>z-score + rolling pair selection</code></li>
+<li><code>z-score + pair selection + vol veto</code></li>
+<li><code>z-score + pair selection + vol veto + trailing stop</code></li>
+</ol>
+<p>这样才能知道 edge 到底来自：</p>
+<ul>
+<li>spread 回归本身，</li>
+<p>还是</p>
+<li>filter / exit 在替它擦屁股。</li>
+</ul>
+<h2>10. 下一步怎么测</h2>
+<ol>
+<li><strong>不要直接照抄 repo 的 <code>0.7</code> 阈值。</strong> 这个阈值在更高频短周期里很可能太窄，先从 <code>1.5~2.5</code> 做第一轮更合理。</li>
+<li><strong>把“日频参数”翻译成“bar 参数”，而不是字面照搬。</strong> <code>min_holding_period=5</code>、<code>vol_lookback=30</code> 到 intraday 里都需要重映射。</li>
+<li><strong>先做 rolling hedge ratio，不要只做一次 train/test 固定估计。</strong> crypto 的配对关系更容易漂移，静态 <code>γ</code> 太乐观。</li>
+<li><strong>成本一定打厚。</strong> pairs 看着 market-neutral，但换手、资金费率、滑点都会咬收益；first pass 就该看 <code>10~40bps</code>。</li>
+<li><strong>把 pair selection 与 trading shell 分开评估。</strong> 否则你最后不知道，赚的是“选对 pair”，还是“这套 z-score shell 本身就有 edge”。</li>
+<li><strong>移植前先做一次代码审计。</strong> repo 的持仓状态机是简化版，真实 intraday port 前应重新检查信号清零、状态切换、翻仓成本和 stop 触发逻辑。</li>
+</ol>
+<h2>11. 风险与保留意见</h2>
+<ul>
+<li><strong>论文非全文。</strong> 本轮主证据来自 repo 源码；论文只拿到 metadata + abstract，所以学术结论不能说太满。</li>
+<li><strong>pairs 在 crypto 上最怕结构断裂。</strong> 一旦协整关系失效，均值回归会迅速变成接飞刀。</li>
+<li><strong>高频下成本比方向策略更容易被低估。</strong> 双腿交易、funding、跳点、借币/换仓摩擦都会放大侵蚀。</li>
+<li><strong>lookback 优化容易过拟合。</strong> 训练集里最优，不代表滚动 OOS 里仍然稳。</li>
+<li><strong>这条线适合做 raw alpha 候选，但不适合现在就当“已验证可实盘策略”。</strong> 它应该先进入 clean replication / admission check。</li>
+</ul>
+<h2>12. 对当前项目的直接意义</h2>
+<p>如果只用一句话概括这轮 intake 的价值，那就是： <strong>它让我们把“pairs/relative-value”从零散想法，推进成一张可直接写成 <code>entry / exit / sizing / risk / cost</code> 的完整 raw alpha 策略卡。</strong></p>
+<p>而且它和当前学习主线并不冲突：</p>
+<ul>
+<li>主线项目自己在补 trend / breakout / ATR / volume；</li>
+<li>这篇则补的是另一条 raw alpha 家族：<strong>market-neutral mean reversion</strong>；</li>
+<li>两条线未来完全可以共存，甚至作为 desk 层面互补：</li>
+<li>趋势腿负责吃 directional move；</li>
+<li>pairs 腿负责吃相对价值回归。</li>
+</ul>
+<h2>13. 来源链接</h2>
+<h3>主来源</h3>
+<ul>
+<li>Paper DOI：&lt;<a href="https://doi.org/10.1002/fut.70018&gt;">https://doi.org/10.1002/fut.70018&gt;</a></li>
+<li>Wiley article page：&lt;<a href="https://onlinelibrary.wiley.com/doi/10.1002/fut.70018&gt;">https://onlinelibrary.wiley.com/doi/10.1002/fut.70018&gt;</a></li>
+<li>Crossref metadata：&lt;<a href="https://api.crossref.org/works/10.1002/fut.70018&gt;">https://api.crossref.org/works/10.1002/fut.70018&gt;</a></li>
+<li>Repo：&lt;<a href="https://github.com/rafaelpalazzi/trading-games-crypto&gt;">https://github.com/rafaelpalazzi/trading-games-crypto&gt;</a></li>
+<li>Core code：&lt;<a href="https://raw.githubusercontent.com/rafaelpalazzi/trading-games-crypto/main/pairs_trading_strategy.R&gt;">https://raw.githubusercontent.com/rafaelpalazzi/trading-games-crypto/main/pairs_trading_strategy.R&gt;</a></li>
+<li>GitHub API metadata：&lt;<a href="https://api.github.com/repos/rafaelpalazzi/trading-games-crypto&gt;">https://api.github.com/repos/rafaelpalazzi/trading-games-crypto&gt;</a></li>
+</ul>
+<h3>数据来源</h3>
+<ul>
+<li>Mendeley Data DOI：&lt;<a href="https://doi.org/10.17632/2kky7c6xkn.1&gt;">https://doi.org/10.17632/2kky7c6xkn.1&gt;</a></li>
+</ul>
+</body>
+</html>

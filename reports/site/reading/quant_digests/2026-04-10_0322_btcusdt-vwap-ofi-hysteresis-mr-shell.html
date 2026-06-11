@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 BTC perp repo 只读成 2 天 tick 实验：对 short-cycle desk，更该先测的是「VWAP 偏离 × OFI 纠偏 × 5m hysteresis mean-reversion shell」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 BTC perp repo 只读成 2 天 tick 实验：对 short-cycle desk，更该先测的是「VWAP 偏离 × OFI 纠偏 × 5m hysteresis mean-reversion shell」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-10 03:24 UTC</span>
+      <span class="pill">研究时间：2026-04-10 03:22 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `src/signals.py` + `src/backtest.py` + `src/data.py`）+ Binance USDⓈ-M `BTCUSDT 1m` 近约 `60d` portability probe</span>
+      <span class="pill">主题标签：mean-reversion / microstructure / VWAP / OFI / RSI / BTC / perp / 1m / 3m / 5m</span>
+      <span class="pill">证据类型：工程经验 + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-10_0322_btcusdt-vwap-ofi-hysteresis-mr-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-10 03:22 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>src/signals.py</code> + <code>src/backtest.py</code> + <code>src/data.py</code>）+ Binance USDⓈ-M <code>BTCUSDT 1m</code> 近约 <code>60d</code> portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>BTCUSDT perp</code> 在分钟级 <code>VWAP / rolling z-score / RSI / 快慢均线</code> 过度偏离后，未来 <code>5~15m</code> 更容易回归；<code>OFI / trade intensity</code> 更像确认与否决层，而不是 alpha 本体</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：mean-reversion / microstructure / VWAP / OFI / RSI / BTC / perp / 1m / 3m / 5m</li>
+<li>证据类型：工程经验 + public-data portability probe</li>
+</ul>
+<p>先回答 base alpha：<strong>这不是 filter，而是单资产、超短周期、可直接下单的 raw alpha——本体就是“分钟级过冲后的均值回归”。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>看的是 <code>mengrenman/btcusdt-perp-signals</code>。repo 很克制：只做 <code>BTCUSDT</code> 永续，目标持有期就是 <code>5~15m</code>。源码里把 8 个分钟级信号拼成一个完整壳：<code>z-score MR</code>、<code>Bollinger MR</code>、<code>VWAP MR</code>、<code>OFI</code>、<code>trade intensity</code>、<code>RSI MR</code>、<code>MA cross</code>、<code>volume momentum</code>；默认权重里 <code>VWAP</code> 占 <code>20%</code>，<code>z-score / OFI</code> 各 <code>15%</code>，其余各 <code>10%</code>，再做 <code>EMA(5)</code> 平滑，并用 <code>entry=0.15 / exit=0.05</code> 的 hysteresis 生成仓位。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最值得 intake 的，不是“1m maker scalp 很酷”，而是 <strong>一套可复现的 BTC perp 超短周期均值回归完整策略壳</strong>；而且对我们 desk，更可迁移的版本其实是<strong>放慢到 <code>5m</code> 重平衡</strong>。</li>
+<li><strong>一句话证明方式：</strong> repo 自己先用两天、约 <code>2.3M</code> 笔原始成交做 tick→1m 研究；我再用 Binance 公共 <code>1m</code> perp kline（含 <code>trade_count</code> 与 <code>taker_buy_volume</code>）做近约 <code>60d / 86,400</code> 根 portability probe，看 IC、分桶和成本后壳是否还活着。</li>
+<li>repo README 给的原始结论并不空：最佳单因子 <code>5m</code> IC 大约在 <code>0.10~0.12</code>，加权 composite 胜过单因子，粗略 break-even transaction cost 约 <code>0.75 bps</code> round-trip，且 <code>1~3m</code> 重平衡优于更慢频率。</li>
+<li>但把它搬到更长窗口的公共数据后，<strong>alpha 还在，强度下降</strong>：我这边 <code>5m</code> rank-IC 前几名是 <code>RSI MR 0.0585</code>、<code>MA cross 0.0572</code>、<code>VWAP MR 0.0554</code>，composite 约 <code>0.0488</code>；说明能 transfer，但没到“随便 taker 都能吃”的程度。</li>
+<li>真正更像 desk branch 的，是 <strong>VWAP 偏离这条母线</strong>：按 <code>VWAP MR</code> 十分位分桶，最差桶未来 <code>5m</code> 约 <code>-0.43 bps</code>、最好桶约 <code>+0.77 bps</code>；未来 <code>15m</code> 约从 <code>-0.37 bps</code> 拉到 <code>+1.00 bps</code>，方向很干净。</li>
+<li>更关键的是<strong>节奏选择</strong>：public-data probe 里，composite 若每 <code>1m</code> 改仓，gross 约 <code>+22.1%</code>，但 break-even 只有 <code>0.39 bps</code> round-trip，<code>0.5 bps</code> 成本后已经转负；<code>3m</code> 版只在 <code>0.5 bps</code> 下勉强剩 <code>+1.5%</code>。<strong>反而 <code>5m</code> hysteresis shell 最像可交易版本</strong>：gross 约 <code>+51.8%</code>，break-even 约 <code>1.09 bps</code> round-trip，<code>0.5 bps</code> 成本后约 <code>+27.9%</code>，<code>1.0 bps</code> 之后仍约 <code>+4.1%</code>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮最值钱的点，不是又多了一个“BTC 均值回归”标题，而是给当前素材池补了一块<strong>真正面向 <code>1m/3m/5m</code> 的完整 microstructure raw alpha 壳</strong>：</p>
+<ul>
+<li>它补的是我们最近 trend / pairs / funding 之外的 <strong>单资产高强度反转 alpha</strong>；</li>
+<li>它天然适合做更快频的实验，不必硬塞进 <code>15m</code> 趋势框架；</li>
+<li>它还顺手回答了一个很实盘的问题：<strong>不是越快越好，慢一点反而更能穿过成本。</strong></li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：逆势 / 单资产 mean reversion</li>
+<li>基础 alpha：分钟级价格相对 <code>VWAP / rolling mean / RSI / short MA</code> 的过度偏离，未来 <code>5~15m</code> 回归</li>
+<li>regime：高噪音但未进入单边失控趋势的分钟级环境更友好</li>
+<li>filter / veto：<code>OFI</code>、<code>trade intensity</code>、最小成交活跃度、成本门槛</li>
+<li>risk / sizing / execution overlay：<code>EMA(5)</code> 平滑、<code>0.15/0.05</code> hysteresis、<code>3~5m</code> 重平衡、maker-first 或仅在预估 round-trip &lt; <code>1bp</code> 时放宽 taker</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：BTC perp 的分钟级过冲在下一段 <code>5~15m</code> 会回归，但只有当<strong>重平衡频率放慢</strong>且<strong>交易成本受控</strong>时，alpha 才能留下来。</li>
+<li>一个可计算定义：直接照 repo 生成 <code>composite</code>；若 <code>signal &gt; 0.15</code> 做多、<code>signal &lt; -0.15</code> 做空，<code>|signal| &lt; 0.05</code> 平仓；先比较 <code>1m / 3m / 5m</code> 三种改仓节奏。</li>
+<li>最小回测切口：<code>BTCUSDT</code> Binance USDⓈ-M <code>1m</code>，先跑近 <code>60~90d</code>，成本阶梯至少测 <code>0.5 / 1.0 / 2.0 bps</code> round-trip。</li>
+<li>最该先看：<code>break-even round-trip bps</code> 与 <code>cost-after return</code>；其次看 <code>VWAP MR</code> / <code>composite</code> 的 decile spread 是否还单调。</li>
+<li>本轮产出的 portability artifacts：</li>
+<li><code>reports/artifacts/literature/btcusdt_perp_signal_ic_2026-04-10.csv</code></li>
+<li><code>reports/artifacts/literature/btcusdt_perp_signal_shell_probe_2026-04-10.csv</code></li>
+<li><code>reports/artifacts/literature/btcusdt_perp_signal_buckets_2026-04-10.csv</code></li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是 <strong>单币 alpha</strong>，不是可立即扩容的多资产组合。</li>
+<li>我的 portability probe 用的是公共 <code>1m</code> kline 代理，不是完整 L2 / queue / tick-by-tick 成交簿；真实实盘很可能比这里更吃执行。</li>
+<li>repo 原始样本只有约两天，容易高估信号强度；我补的 <code>60d</code> 只能说明“没马上死”，还不算严格 OOS。</li>
+<li>单边大趋势、新闻冲击、流动性真空时，均值回归会被连续踩踏；因此它更像 <strong>fast alpha sleeve</strong>，不是全天候主引擎。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Mengren Man. (2026). *BTCUSDT Perpetual Futures: Short-Horizon Signal Research*. GitHub repository.</li>
+<li>Repo URL: <code><a href="https://github.com/mengrenman/btcusdt-perp-signals">https://github.com/mengrenman/btcusdt-perp-signals</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/mengrenman/btcusdt-perp-signals">https://github.com/mengrenman/btcusdt-perp-signals</a></code></li>
+<li>Key files:</li>
+<li><code><a href="https://github.com/mengrenman/btcusdt-perp-signals/blob/main/README.md">https://github.com/mengrenman/btcusdt-perp-signals/blob/main/README.md</a></code></li>
+<li><code><a href="https://github.com/mengrenman/btcusdt-perp-signals/blob/main/src/signals.py">https://github.com/mengrenman/btcusdt-perp-signals/blob/main/src/signals.py</a></code></li>
+<li><code><a href="https://github.com/mengrenman/btcusdt-perp-signals/blob/main/src/backtest.py">https://github.com/mengrenman/btcusdt-perp-signals/blob/main/src/backtest.py</a></code></li>
+<li><code><a href="https://github.com/mengrenman/btcusdt-perp-signals/blob/main/src/data.py">https://github.com/mengrenman/btcusdt-perp-signals/blob/main/src/data.py</a></code></li>
+<li><code><a href="https://github.com/mengrenman/btcusdt-perp-signals/blob/main/notebooks/03_signal_research.ipynb">https://github.com/mengrenman/btcusdt-perp-signals/blob/main/notebooks/03_signal_research.ipynb</a></code></li>
+</ul>
+</body>
+</html>

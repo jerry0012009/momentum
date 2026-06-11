@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang='zh-CN'>
+<head>
+<meta charset='utf-8' />
+<meta name='viewport' content='width=device-width, initial-scale=1' />
+<title>213a 长历史回测含 Funding</title>
+<style>
+:root{--bg:#f8fafc;--card:#fff;--fg:#0f172a;--muted:#64748b;--line:#e2e8f0;--warn:#9a3412;--warnbg:#ffedd5;--info:#1d4ed8;--infobg:#dbeafe}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.wrap{max-width:1120px;margin:0 auto;padding:28px 18px 64px} .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:14px}
+h1,h2{margin:0 0 12px} .muted{color:var(--muted)} .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.metric{border:1px solid var(--line);border-radius:12px;padding:12px 14px} .metric .k{color:var(--muted);font-size:13px} .metric .v{font-size:24px;font-weight:700}
+.note{border-left:4px solid var(--info);background:var(--infobg);padding:12px 14px;border-radius:10px;white-space:pre-wrap} .warn{border-left-color:var(--warn);background:var(--warnbg)}
+table{width:100%;border-collapse:collapse;margin-top:8px} th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top} th{background:#f8fafc}
+code{background:#eff6ff;border-radius:6px;padding:2px 6px;font-size:13px}
+</style>
+</head>
+<body><div class='wrap'>
+<div class='card'>
+<h1>Rank213 long-history review with funding（frozen spec）</h1>
+<p><strong>目标：</strong>在完全冻结当前 spec 下，把历史资金费率与结算时间点计入回测。</p>
+<p class='muted'>spec 锚点：<code>f64_h12_floor150_mult2p0</code> / 30币 universe / 15m / 64 / 12 / top3-bottom3 / max(1.5%,2.0×median) / 4bps×turnover_x。</p>
+<p><a href='/momentum/paper/213a_long_history.html'>不含 funding 的长历史页</a> · <a href='/momentum/paper/213a_performance.html'>短样本页</a> · <a href='/momentum/paper/213a_honesty_audit.html'>honesty_audit</a> · <a href='/momentum/paper/213a_ffill_audit.html'>ffill_impact_audit</a> · <a href='/momentum/paper/213a_readiness.html'>readiness_note</a> · <a href='/momentum/paper/213a_asof_universe.html'>asof_universe_long_history_review</a> · <a href='/momentum/paper/213a_regime.html'>regime_review</a></p>
+</div>
+
+<div class='card'>
+<h2>1) 回测区间与数据可用性（含本地优先策略）</h2>
+<div class='grid'>
+<div class='metric'><div class='k'>common start</div><div class='v' style='font-size:18px'>2025-10-24T08:30:00Z</div></div>
+<div class='metric'><div class='k'>common end</div><div class='v' style='font-size:18px'>2026-04-10T23:45:00Z</div></div>
+<div class='metric'><div class='k'>bars</div><div class='v'>16190</div></div>
+<div class='metric'><div class='k'>calendar days</div><div class='v'>168.64d</div></div>
+<div class='metric'><div class='k'>rebalances</div><div class='v'>1343</div></div>
+</div>
+<div class='note'>价格数据：local cache 优先，缺失部分再从 data.binance.vision 月/日 zip 补齐；
+funding 数据：local cache 优先，月包补齐后再对当前月用 API 增量拉取；API 遇 418/429 按指数退避重试（最多 8 次）。</div>
+</div>
+
+<div class='card'>
+<h2>2) plain baseline vs veto（资金费率已计入）</h2>
+<div class='grid'>
+<div class='metric'><div class='k'>plain net mean</div><div class='v'>1.90 bps</div></div>
+<div class='metric'><div class='k'>plain net cumulative</div><div class='v'>-15.97%</div></div>
+<div class='metric'><div class='k'>plain win rate</div><div class='v'>49.96%</div></div>
+<div class='metric'><div class='k'>plain max drawdown</div><div class='v'>-78.73%</div></div>
+<div class='metric'><div class='k'>plain funding mean</div><div class='v'>0.57 bps</div></div>
+</div>
+<div class='grid' style='margin-top:12px'>
+<div class='metric'><div class='k'>veto net mean</div><div class='v'>10.49 bps</div></div>
+<div class='metric'><div class='k'>veto net cumulative</div><div class='v'>227.23%</div></div>
+<div class='metric'><div class='k'>veto win rate</div><div class='v'>49.89%</div></div>
+<div class='metric'><div class='k'>veto max drawdown</div><div class='v'>-37.16%</div></div>
+<div class='metric'><div class='k'>veto funding mean</div><div class='v'>1.53 bps</div></div>
+</div>
+</div>
+
+<div class='card'>
+<h2>3) 1Y / 2Y / 3Y 冻结窗口验证（资金费率已计入）</h2>
+<table><thead><tr><th>window</th><th>available</th><th>required_start_utc</th><th>available_start_utc</th><th>plain_net_mean_bps</th><th>plain_net_cum_pct</th><th>plain_win_rate</th><th>plain_max_dd_pct</th><th>plain_avg_turnover_x</th><th>veto_net_mean_bps</th><th>veto_net_cum_pct</th><th>veto_win_rate</th><th>veto_max_dd_pct</th><th>veto_avg_turnover_x</th><th>delta_net_mean_bps</th><th>delta_net_cum_pct</th><th>note</th></tr></thead><tbody><tr><td>1Y</td><td>no</td><td>2025-04-10T23:45:00Z</td><td>2025-10-24T08:30:00Z</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>common-history shorter than requested window under frozen universe</td></tr><tr><td>2Y</td><td>no</td><td>2024-04-10T23:45:00Z</td><td>2025-10-24T08:30:00Z</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>common-history shorter than requested window under frozen universe</td></tr><tr><td>3Y</td><td>no</td><td>2023-04-11T23:45:00Z</td><td>2025-10-24T08:30:00Z</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>common-history shorter than requested window under frozen universe</td></tr></tbody></table>
+<div class='note warn'>窗口不可用就直接标 no，不改 universe，不调参数，不做“扩样本后重调”。</div>
+</div>
+
+<div class='card'>
+<h2>4) baseline vs veto 的增量是否稳定</h2>
+<div class='grid'>
+<div class='metric'><div class='k'>Δ net mean</div><div class='v'>8.60 bps</div></div>
+<div class='metric'><div class='k'>Δ net cumulative</div><div class='v'>243.21%</div></div>
+<div class='metric'><div class='k'>Δ funding mean</div><div class='v'>0.96 bps</div></div>
+<div class='metric'><div class='k'>Δ avg turnover</div><div class='v'>0.282x</div></div>
+<div class='metric'><div class='k'>MDD reduction</div><div class='v'>41.57%</div></div>
+</div>
+<p><strong>half-split stability</strong></p>
+<table><thead><tr><th>half</th><th>start_utc</th><th>end_utc</th><th>rebalances</th><th>plain_net_mean_bps</th><th>plain_net_cum_pct</th><th>veto_net_mean_bps</th><th>veto_net_cum_pct</th><th>delta_net_mean_bps</th><th>delta_net_cum_pct</th></tr></thead><tbody><tr><td>1</td><td>2025-10-25T00:30:00Z</td><td>2026-01-16T21:30:00Z</td><td>672</td><td>-1.99 bps</td><td>-22.87%</td><td>5.30 bps</td><td>30.41%</td><td>7.29 bps</td><td>53.28%</td></tr><tr><td>2</td><td>2026-01-17T00:30:00Z</td><td>2026-04-10T18:30:00Z</td><td>671</td><td>5.79 bps</td><td>8.94%</td><td>15.69 bps</td><td>150.92%</td><td>9.90 bps</td><td>141.98%</td></tr></tbody></table>
+</div>
+
+<div class='card'>
+<h2>5) 按月 / 按季度 / 按年表现（资金费率已计入）</h2>
+<p><strong>按月</strong></p><table><thead><tr><th>month</th><th>rebalances</th><th>plain_net_mean_bps</th><th>plain_net_cum_pct</th><th>plain_win_rate</th><th>plain_max_dd_pct</th><th>plain_avg_turnover_x</th><th>plain_funding_mean_bps</th><th>veto_net_mean_bps</th><th>veto_net_cum_pct</th><th>veto_win_rate</th><th>veto_max_dd_pct</th><th>veto_avg_turnover_x</th><th>veto_funding_mean_bps</th></tr></thead><tbody><tr><td>2025-10</td><td>56</td><td>5.84 bps</td><td>2.16%</td><td>55.36%</td><td>-15.25%</td><td>1.000x</td><td>0.27 bps</td><td>3.38 bps</td><td>1.03%</td><td>51.79%</td><td>-14.10%</td><td>1.310x</td><td>0.12 bps</td></tr><tr><td>2025-11</td><td>240</td><td>-3.40 bps</td><td>-13.29%</td><td>48.33%</td><td>-34.05%</td><td>1.000x</td><td>0.68 bps</td><td>4.43 bps</td><td>6.32%</td><td>49.17%</td><td>-21.94%</td><td>1.212x</td><td>0.65 bps</td></tr><tr><td>2025-12</td><td>248</td><td>7.08 bps</td><td>15.18%</td><td>49.19%</td><td>-25.71%</td><td>1.000x</td><td>0.36 bps</td><td>11.26 bps</td><td>28.82%</td><td>47.18%</td><td>-19.87%</td><td>1.276x</td><td>2.24 bps</td></tr><tr><td>2026-01</td><td>248</td><td>-8.52 bps</td><td>-23.94%</td><td>51.21%</td><td>-29.00%</td><td>1.000x</td><td>2.24 bps</td><td>8.85 bps</td><td>21.14%</td><td>51.61%</td><td>-15.00%</td><td>1.272x</td><td>3.93 bps</td></tr><tr><td>2026-02</td><td>224</td><td>-35.76 bps</td><td>-60.91%</td><td>47.77%</td><td>-64.96%</td><td>1.000x</td><td>-0.75 bps</td><td>-8.36 bps</td><td>-20.16%</td><td>47.32%</td><td>-26.64%</td><td>1.214x</td><td>-0.31 bps</td></tr><tr><td>2026-03</td><td>248</td><td>30.23 bps</td><td>95.47%</td><td>51.21%</td><td>-26.01%</td><td>1.000x</td><td>0.19 bps</td><td>23.11 bps</td><td>67.87%</td><td>52.42%</td><td>-22.34%</td><td>1.352x</td><td>1.20 bps</td></tr><tr><td>2026-04</td><td>79</td><td>49.45 bps</td><td>41.70%</td><td>51.90%</td><td>-18.17%</td><td>1.000x</td><td>0.77 bps</td><td>50.55 bps</td><td>45.66%</td><td>53.16%</td><td>-7.38%</td><td>1.498x</td><td>1.67 bps</td></tr></tbody></table>
+<p><strong>按季度</strong></p><table><thead><tr><th>quarter</th><th>rebalances</th><th>plain_net_mean_bps</th><th>plain_net_cum_pct</th><th>plain_win_rate</th><th>plain_max_dd_pct</th><th>plain_avg_turnover_x</th><th>plain_funding_mean_bps</th><th>veto_net_mean_bps</th><th>veto_net_cum_pct</th><th>veto_win_rate</th><th>veto_max_dd_pct</th><th>veto_avg_turnover_x</th><th>veto_funding_mean_bps</th></tr></thead><tbody><tr><td>2025Q4</td><td>544</td><td>2.33 bps</td><td>2.03%</td><td>49.45%</td><td>-36.49%</td><td>1.000x</td><td>0.49 bps</td><td>7.44 bps</td><td>38.37%</td><td>48.53%</td><td>-21.94%</td><td>1.251x</td><td>1.32 bps</td></tr><tr><td>2026Q1</td><td>720</td><td>-3.65 bps</td><td>-41.88%</td><td>50.14%</td><td>-74.36%</td><td>1.000x</td><td>0.60 bps</td><td>8.41 bps</td><td>62.35%</td><td>50.56%</td><td>-37.16%</td><td>1.281x</td><td>1.67 bps</td></tr><tr><td>2026Q2</td><td>79</td><td>49.45 bps</td><td>41.70%</td><td>51.90%</td><td>-18.17%</td><td>1.000x</td><td>0.77 bps</td><td>50.55 bps</td><td>45.66%</td><td>53.16%</td><td>-7.38%</td><td>1.498x</td><td>1.67 bps</td></tr></tbody></table>
+<p><strong>按年</strong></p><table><thead><tr><th>year</th><th>rebalances</th><th>plain_net_mean_bps</th><th>plain_net_cum_pct</th><th>plain_win_rate</th><th>plain_max_dd_pct</th><th>plain_avg_turnover_x</th><th>plain_funding_mean_bps</th><th>veto_net_mean_bps</th><th>veto_net_cum_pct</th><th>veto_win_rate</th><th>veto_max_dd_pct</th><th>veto_avg_turnover_x</th><th>veto_funding_mean_bps</th></tr></thead><tbody><tr><td>2025</td><td>544</td><td>2.33 bps</td><td>2.03%</td><td>49.45%</td><td>-36.49%</td><td>1.000x</td><td>0.49 bps</td><td>7.44 bps</td><td>38.37%</td><td>48.53%</td><td>-21.94%</td><td>1.251x</td><td>1.32 bps</td></tr><tr><td>2026</td><td>799</td><td>1.60 bps</td><td>-17.64%</td><td>50.31%</td><td>-74.36%</td><td>1.000x</td><td>0.62 bps</td><td>12.57 bps</td><td>136.49%</td><td>50.81%</td><td>-37.16%</td><td>1.303x</td><td>1.67 bps</td></tr></tbody></table>
+</div>
+
+<div class='card'>
+<h2>6) 不同年份里 veto 是改善 short leg，还是只是降频</h2>
+<table><thead><tr><th>year</th><th>rebalances</th><th>plain_short_price_mean_bps</th><th>veto_short_price_mean_bps</th><th>delta_short_price_bps</th><th>plain_short_funding_mean_bps</th><th>veto_short_funding_mean_bps</th><th>delta_short_funding_bps</th><th>plain_avg_turnover_x</th><th>veto_avg_turnover_x</th><th>delta_turnover_x</th></tr></thead><tbody><tr><td>2025</td><td>544</td><td>-3.30 bps</td><td>1.98 bps</td><td>5.28 bps</td><td>-0.99 bps</td><td>-0.16 bps</td><td>0.83 bps</td><td>1.000x</td><td>1.251x</td><td>0.251x</td></tr><tr><td>2026</td><td>799</td><td>-2.98 bps</td><td>8.16 bps</td><td>11.13 bps</td><td>-1.54 bps</td><td>-0.49 bps</td><td>1.05 bps</td><td>1.000x</td><td>1.303x</td><td>0.303x</td></tr></tbody></table>
+<div class='note'>同时展示 short leg 的价格贡献与 funding 贡献；如果 delta_short_price 为正且并非靠显著降频（delta_turnover 不为负），则更接近真实 short-leg 改善。</div>
+</div>
+
+<div class='card'>
+<h2>7) veto 命中率 / 误杀率（定义同旧页）</h2>
+<ul>
+<li>pct rebalances with any veto：<strong>60.01%</strong></li>
+<li>avg veto count / rebalance：<strong>0.846</strong></li>
+<li>total vetoed names：<strong>1136</strong></li>
+<li>name-level hit rate：<strong>47.36%</strong></li>
+<li>name-level false-kill rate：<strong>52.02%</strong></li>
+</ul>
+</div>
+
+<div class='card'>
+<h2>8) 最终 verdict</h2>
+<div class='note warn'>在冻结当前 universe/spec 下，公共共同历史只到 2025-10-24T08:30:00Z，仍不足 1Y。因此本轮（含 funding 结算计提）不能宣称已通过 1Y/2Y/3Y。可确认的是：在最大可用共同历史上，veto 在 funding-adjusted 口径下仍明显优于 plain。</div>
+</div>
+
+</div></body></html>

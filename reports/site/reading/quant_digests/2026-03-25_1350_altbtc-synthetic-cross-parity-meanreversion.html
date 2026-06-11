@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 ETHBTC 论文只读成 ETH：对 short-cycle desk，更该先测的是「ALTBTC 挂牌价 vs 合成价」parity mean reversion</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 ETHBTC 论文只读成 ETH：对 short-cycle desk，更该先测的是「ALTBTC 挂牌价 vs 合成价」parity mean reversion</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 13:51 UTC</span>
+      <span class="pill">研究时间：2026-03-25 13:50 UTC</span>
+      <span class="pill">类型：2022 arXiv 论文（全文本地抽取）+ Binance Spot 公共 `5m/15m` K 线 desk 化分叉快检 + 三角套利工程 repo</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/triangular-parity/altbtc/synthetic-cross/mean-reversion/binance/spot/5m/15m/1m/3m/paper/repo/execution/cost</span>
+      <span class="pill">证据类型：论文全文证据 + 工程 repo 参考 + 本地公共数据最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_1350_altbtc-synthetic-cross-parity-meanreversion.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 13:50 UTC</li>
+<li>类型：2022 arXiv 论文（全文本地抽取）+ Binance Spot 公共 <code>5m/15m</code> K 线 desk 化分叉快检 + 三角套利工程 repo</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同交易所挂牌 <code>ALTBTC</code> 与合成 <code>ALTUSDT / BTCUSDT</code> 的 log parity spread 偏离后回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/triangular-parity/altbtc/synthetic-cross/mean-reversion/binance/spot/5m/15m/1m/3m/paper/repo/execution/cost</li>
+<li>证据类型：论文全文证据 + 工程 repo 参考 + 本地公共数据最小快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这篇东西的 base alpha 很清楚，就是“挂牌交叉汇率 vs 合成汇率”的相对价值均值回归。</strong></p>
+<p>Mallik 这篇 paper 原文研究的是： <code>s_t = ln(ETHBTC_t) - ln(ETHUSDT_t / BTCUSDT_t)</code>。 如果市场完全无摩擦、价格完全同步，这个值理论上应接近 <code>0</code>；只要它偏离，再回去，就是可交易的 raw alpha。</p>
+<p>对我们 desk 更值钱的读法不是继续盯着 <code>ETHBTC</code> 本身，而是把这套定义扩成<strong>一整条 ALTBTC universe 的 synthetic-cross parity mean reversion</strong>。这比继续围着 breakout / retest 内循环更符合当前任务：它本身就是一条可独立复现、可直接落地的 relative-value / stat-arb 原始 alpha 线。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这篇 paper 真正值得偷的不是 “ETHBTC 是 OU” 这句学术表述，而是 <strong>“同交易所交叉报价相对合成报价会反复失衡，而且会很快回归”</strong> 这条 raw alpha 骨架。</li>
+<li><strong>一句话证明方式：</strong> 作者用 <strong>2017-09-01 到 2021-08-31 的 Binance <code>1m</code> 数据（样本超 200 万）</strong>，先做分布与 Dickey-Fuller 检验，再用 <strong>Ornstein-Uhlenbeck + MLE</strong> 去拟合这个 spread。</li>
+<li>原文三个最硬的数据点：</li>
+<li>全样本 percentiles 显示该 spread 并不恒为 0，整体 <strong>IQR ≈ 3.16 bps</strong>；</li>
+<li>年度 IQR 从 <strong>Year1 ≈ 14.83 bps</strong> 下降到 <strong>Year4 ≈ 1.47 bps</strong>，说明大币主对随时间被套利压薄；</li>
+<li>OU 参数估计为 <strong><code>α≈0.8457</code>、<code>μ≈-2.424e-05</code>、<code>σ≈0.001703</code></strong>，其中长期均值 <code>μ</code> 为负且与 0 在 <code>1e-05</code> 精度上可区分。</li>
+<li>这也给了 desk 一个很直接的分叉判断：<strong>ETHBTC 这种最成熟主对，edge 可能还在，但已经薄到很容易被费率和滑点吃掉；更值得扫的是“同一逻辑下、但偏离更厚的 ALTBTC 交叉”。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目直接相关</h2>
+<ul>
+<li>这是标准 <strong>raw alpha</strong>，不是 filter / overlay 伪装成本体。</li>
+<li>它直接补的是我们当前更缺的 <strong>relative-value / stat-arb / pairs</strong> 素材，而不是继续堆 trend/breakout confirmation。</li>
+<li>这条线天然适配短周期：</li>
+<li><code>1m/3m</code>：监控偏离、做 maker-first 执行；</li>
+<li><code>5m/15m</code>：做 z-score admission、timeout、成本分层；</li>
+<li><code>1h</code>：只负责更新 symbol 白名单与容量预算。</li>
+<li>更关键的是，它本身就包含完整策略组件：<strong>entry、exit、sizing、risk、cost</strong> 都能明确写出来，不需要先借别的 alpha 本体。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative-value / stat-arb / market-neutral mean reversion</li>
+<li>基础 alpha：<code>s_t = ln(ALTBTC_t) - ln(ALTUSDT_t / BTCUSDT_t)</code> 偏离后回归</li>
+<li>regime：只做仍存在稳定偏离、且回归半衰期短于 holding budget 的 <code>ALTBTC</code> 交叉</li>
+<li>filter / veto：symbol 预选（IQR / 极值幅度 / z&gt;2 事件频率 / bid-ask / 深度 / fee tier）；避开异常公告、极端缺深度、零费活动切换窗口</li>
+<li>risk / sizing / execution overlay：三腿按 BTC notional 中性配平；优先 maker / post-only；限制单 symbol gross、单时刻并发腿数、以及净 BTC 暴露残差</li>
+</ul>
+<h2>4. 本地最小快检（Binance Spot 公共数据，desk 化分叉，不是论文精确复现）</h2>
+<p>我按 paper 的定义，把 <code>ETHBTC</code> 扩成 <code>ETH/SOL/XRP/DOGE/BNB/ADA/LTC</code> 这组 <code>ALTBTC</code> 挂牌交叉，对照其 <code>ALTUSDT/BTCUSDT</code> 合成价，做了最近 <code>1200</code> 根 <code>5m/15m</code> bar 的轻量快检。</p>
+<h3>4.1 ETHBTC：原论文主角，今天依然会回，但已经很薄</h3>
+<ul>
+<li><code>ETHBTC 5m</code>：spread <strong>IQR ≈ 3.21 bps</strong>，<code>|z|&gt;=2</code> 事件的平均入场偏离 <strong>≈ 4.67 bps</strong>，后续 <code>1 bar</code> 平均回归 <strong>≈ 4.25 bps</strong>，胜率 <strong>96%</strong>。</li>
+<li><code>ETHBTC 15m</code>：spread <strong>IQR ≈ 3.14 bps</strong>，<code>|z|&gt;=2</code> 事件平均入场偏离 <strong>≈ 4.71 bps</strong>，后续 <code>1 bar</code> 平均回归 <strong>≈ 4.64 bps</strong>，胜率 <strong>100%</strong>。</li>
+</ul>
+<p>翻成人话：<strong>major cross 的价差确实会回，但厚度大概就是几 bps，天然要先过成本生死线。</strong></p>
+<h3>4.2 更值得 desk 继续追的是“同逻辑下的厚尾交叉”</h3>
+<ul>
+<li><code>DOGEBTC 5m</code>：IQR <strong>≈ 55.6 bps</strong>；<code>|z|&gt;=2</code> 事件平均偏离 <strong>≈ 73.2 bps</strong>；后续 <code>3 bar</code> 平均回归 <strong>≈ 56.6 bps</strong>。</li>
+<li><code>ADABTC 5m</code>：IQR <strong>≈ 19.1 bps</strong>；平均偏离 <strong>≈ 28.9 bps</strong>；后续 <code>3 bar</code> 平均回归 <strong>≈ 29.6 bps</strong>。</li>
+<li><code>LTCBTC 5m</code>：IQR <strong>≈ 9.5 bps</strong>；平均偏离 <strong>≈ 16.8 bps</strong>；后续 <code>3 bar</code> 平均回归 <strong>≈ 18.0 bps</strong>。</li>
+<li><code>DOGEBTC 15m</code> 仍然很厚：平均偏离 <strong>≈ 70.4 bps</strong>，后续 <code>1 bar</code> 平均回归 <strong>≈ 57.4 bps</strong>。</li>
+</ul>
+<p>这组结果对当前 desk 最有价值的一句其实是：<strong>paper 的 base alpha 是对的，但最值得测的未必是 paper headline 里的 ETHBTC，而是更厚、更慢、更容易留下净边的 ALTBTC 交叉。</strong></p>
+<h2>5. 最小可复现实验（面向 1m / 3m / 5m / 15m）</h2>
+<ul>
+<li><strong>研究假设</strong>：Binance spot 中部分 <code>ALTBTC</code> 挂牌交叉，会相对合成 <code>ALTUSDT/BTCUSDT</code> 出现可重复的短期偏离，并在 <code>1~3</code> 根 bar 内回归。</li>
+<li><strong>信号定义</strong>：</li>
+<li><code>s_t = ln(ALTBTC_t) - ln(ALTUSDT_t / BTCUSDT_t)</code></li>
+<li>在 <code>5m</code> 用 rolling <code>288</code> bars、在 <code>15m</code> 用 rolling <code>96</code> bars 计算 <code>z-score</code></li>
+<li><strong>最小策略骨架</strong>：</li>
+<li><code>z &gt; 2</code>：做空 spread（short <code>ALTBTC</code>，long synthetic）</li>
+<li><code>z &lt; -2</code>：做多 spread（long <code>ALTBTC</code>，short synthetic）</li>
+<li>exit：<code>z</code> 回到 <code>0</code> 附近 / <code>max_hold = 1~3 bars</code> / <code>spread</code> 继续恶化到 <code>entry + 0.5σ</code></li>
+<li><strong>样本切口</strong>：先跑 <code>ETH/SOL/XRP/DOGE/ADA/LTC/BNB</code> 七个 spot 交叉，窗口 <code>60~90d</code>，主频先看 <code>5m/15m</code>，再下钻 <code>1m/3m</code></li>
+<li><strong>先看 2 个指标</strong>：</li>
+</ul>
+<ol>
+<li><code>post-cost expectancy</code>（按 3-leg round-trip <code>6/12/20/40 bps</code> 四档）</li>
+<li><code>timeout 前回归占比</code>（是否真的是快回归，而不是慢飘）</li>
+</ol>
+<h2>6. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>先做 symbol selection，不要一上来全市场扫。</strong> 先按 <code>entry_abs_bps / post-cost survival / half-life</code> 给 <code>ALTBTC</code> universe 排序。</li>
+<li><strong>把 bar close proxy 升级成 quote / book 口径。</strong> 下一轮至少用 best bid/ask 中间价，避免把“收盘同步误差”误当真钱。</li>
+<li><strong>成本必须按三腿真实计。</strong> 这条线最容易自欺的地方，就是只看 spread 回归、不看 6 次成交与残余 BTC 暴露。</li>
+<li><strong>对 major 和 tail 分开测。</strong> <code>ETHBTC/SOLBTC</code> 更像低幅高频；<code>DOGEBTC/ADABTC/LTCBTC</code> 更像高幅低频，两个 bucket 不要混在一起调同一组参数。</li>
+<li><strong>补执行 veto。</strong> 若合成腿某一腿深度不足、盘口跨档过大、或预计净 edge 小于成本 <code>1.5x</code>，直接不做。</li>
+<li><strong>若 spot 三腿成本仍太高，再测试“signal-only proxy trade”。</strong> 例如用 parity spread 只驱动 <code>ALTBTC</code> 单腿或 <code>ALTBTC vs BTC beta-hedge</code>，看能否保留方向性回归而减少交易腿数。</li>
+</ol>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>原论文是 <strong>close-based statistical fit</strong>，不是可直接成交的 execution paper；它证明了偏离与回归存在，不等于证明了净收益自动存在。</li>
+<li><code>ETHBTC</code> 这类成熟主对已经被压得很薄，<strong>普通 taker 费率下大概率不值得碰</strong>。</li>
+<li><code>DOGEBTC/ADABTC</code> 这类厚尾交叉，可能部分来自 <strong>tick size / depth 缺口 / 盘口不连续</strong>，下一轮必须用 order-book 口径核实。</li>
+<li>这条 alpha 强依赖交易所微观结构和费率制度；若零费活动、撮合规则、maker rebate 发生变化，历史结果很容易塌。</li>
+<li>跨腿异步成交会留下净 BTC 或净 ALT 残差，实盘上它不是“纯数学 spread”，而是一个带执行失败风险的组合单。</li>
+</ul>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>Mallik, S. (2022). _Pricing cryptocurrencies: Modelling the ETHBTC spot-quotient variation as a diffusion process_. arXiv / q-fin.PR.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.48550/arXiv.2111.11609</code></li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2111.11609">https://arxiv.org/abs/2111.11609</a></code></li>
+<li>Repo URL: <strong>未见 paper-specific public repo</strong></li>
+</ul>
+<ol>
+<li><strong>Binance Developers. _Spot API Docs – Market Data Endpoints / Kline Candlestick Data_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints</a></code></li>
+</ul>
+<ol>
+<li><strong>Drakkar-Software. _Triangular-Arbitrage_.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/Drakkar-Software/Triangular-Arbitrage">https://github.com/Drakkar-Software/Triangular-Arbitrage</a></code></li>
+<li>作用：不是 paper 官方代码，但可作为后续 real-time cycle detection / execution orchestration 的工程参考。</li>
+</ul>
+<h2>9. 本地复现产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/synthetic_cross_parity_altbtc_20260325_1350/summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/synthetic_cross_parity_altbtc_20260325_1350/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/synthetic_cross_parity_altbtc_20260325_1350/altbtc_cross_parity_5m_detail.csv</code></li>
+<li><code>reports/artifacts/quant_digests/synthetic_cross_parity_altbtc_20260325_1350/altbtc_cross_parity_15m_detail.csv</code></li>
+</ul>
+</body>
+</html>

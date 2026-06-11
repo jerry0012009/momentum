@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 retest_hold 写成“回到 Fib 就算数”：session VWAP reclaim + above-VWAP breadth，更像 15m 的防守确认层</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 retest_hold 写成“回到 Fib 就算数”：session VWAP reclaim + above-VWAP breadth，更像 15m 的防守确认层</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-18 07:35 UTC</span>
+      <span class="pill">研究时间：2026-03-18 07:34 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：fibonacci/retest-hold/confirmation/vwap/ema/psar/breakout-short/repo/crypto/15m</span>
+      <span class="pill">证据类型：工程经验 / 待验证</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-18_0734_vwap-reclaim-trend-defense-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-18 07:34 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：fibonacci/retest-hold/confirmation/vwap/ema/psar/breakout-short/repo/crypto/15m</li>
+<li>证据类型：工程经验 / 待验证</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 GitHub 仓库 <code>JinHwaChiu/vwap-trend-defense</code>（2026）。它本来是给 ES/MES 做的 <strong>session VWAP pullback + reclaim</strong> 模板：先要求最近一段时间大多数 bar 站在 VWAP 上方，再等价格回踩 VWAP，最后只在重新收回 VWAP 的阳线触发。对我们现在的 desk 来说，最值钱的不是它的美股早盘背景，而是它把 <strong>“回踩到位”</strong> 和 <strong>“真的站稳”</strong> 拆成了两层：<code>位置触碰</code> 不够，必须再过 <code>session VWAP reclaim + side-breadth</code> 这一关。这正好能补 <code>Fibonacci confirmation / retest_hold</code>，也能顺手服务 <code>EMA / PSAR</code> 的角色判断。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：对 15m 来说，很多假回踩不是“位置错了”，而是<strong>回到位以后并没有重新夺回当日均价重心</strong>；所以比裸 Fib / 裸 EMA 更值得先测的，是 <code>retest location + session VWAP reclaim + 最近几根 bar 站位占比</code> 这套防守确认层。</li>
+<li><strong>一句话证明方式</strong>：这个 repo 不是讲抽象大道理，而是把条件直接写进代码：<code>trend filter = 最近 N 根里 &gt;50% 收盘在 VWAP 上方</code>，<code>setup = 当前或前一根 low 触到 VWAP 容忍带</code>，<code>trigger = 绿色 K 线收回 VWAP</code>，再配 <code>swing low</code> 止损和 <code>R-multiple</code> 目标；注释里给出的优化结果显示，作者在 5m 上用 <code>lookback=6 / swing=3 / tol=0.2% / 2.5R</code>，得到 <code>55% win rate</code>、<code>PF=1.9</code> 的局部样本表现，而代码也已经预留了 <code>15m</code> 参数组（<code>lookback=4, swing=2, tol=0.2%, 2.5R</code>）。</li>
+<li>最值得复用的不是它的收益数字，而是这套<strong>层级分工</strong>：<code>VWAP</code> 负责给出当日动态重心，<code>above-VWAP breadth</code> 负责回答趋势是否仍站在强侧，<code>touch + reclaim</code> 负责回答这次回踩是否被接住，<code>swing low + R target</code> 负责把失效线写清楚。</li>
+<li>这一轮优先认领它也说得通：它不是偏题新玩具，而是能同时帮助三条收口线里的两条——<code>Fib / retest_hold</code> 和 <code>EMA / PSAR raw alpha focus</code>；甚至对 <code>breakout-short follow-up</code> 也能派生出一个更诚实的镜像版本：<strong>跌破后先等反抽到 VWAP 下沿附近，再看能不能重新压回 VWAP 下方</strong>，而不是跌破就追。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li>对 <code>Fibonacci confirmation / retest_hold</code>：Fib 线位更像“价位许可”，VWAP reclaim 才更像“回踩后有没有重新守住场内平均成本”。也就是说，<code>0.618</code> 可以继续负责“回到关键区”，但 <code>session VWAP reclaim</code> 更适合负责“这次 hold 是真 hold 还是只是路过”。</li>
+<li>对 <code>EMA / PSAR raw alpha focus</code>：它给了一个比“再多加一根均线”更干净的确认思路——让 EMA / PSAR 继续做方向或结构锚，把 <strong>VWAP 重新站回/跌回</strong> 当成 micro confirmation，减少把均线系统写成自我循环确认的风险。</li>
+<li>对 <code>V3 breakout-short follow-up</code>：repo 本身只有 long 侧，不能直接把多头结论镜像成 short 结论；但它提醒我们，short 侧 continuation 更该先测的是 <strong>underground retest + failed reclaim</strong>，而不是“新低出现就默认继续空”。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：在 <code>BTC / ETH / SOL</code> perpetual 的 <code>15m</code> 上，给现有 <code>Fib retest_hold</code> 或 <code>EMA/PSAR continuation</code> setup 叠加 <code>session VWAP reclaim + side-breadth gate</code>，会比裸位置触发更能降低假回踩和成本后打脸率。</li>
+<li><strong>最小定义</strong>：</li>
+</ul>
+<ol>
+<li>先保留原 setup（如 <code>Fib reclaim</code>、<code>EMA 回踩后继续</code>、<code>breakout 后 retest</code>）；</li>
+<li>定义 <code>session_vwap</code> 为 <strong>UTC 日内重置 VWAP</strong>；</li>
+<li>long 侧加 <code>vwap_reclaim = close &gt; session_vwap and (low &lt;= session_vwap * 1.002 or prev_low &lt;= prev_vwap * 1.002)</code>；</li>
+<li>再加 <code>breadth_gate = 最近 4 或 6 根里 &gt;50% close 在 session_vwap 上方</code>；short 侧做对称镜像。</li>
+</ol>
+<ul>
+<li><strong>最小回测切口</strong>：最近 <code>180~365</code> 天，<code>15m</code>，<code>next-bar open</code>，<code>no-overlap</code>，成本至少看 <code>6 / 10 / 15 bps per side</code>；先做三臂：<code>base</code>、<code>+ vwap_reclaim</code>、<code>+ vwap_reclaim + breadth_gate</code>。</li>
+<li><strong>最先看的 4 个指标</strong>：<code>post-cost return</code>、<code>false-retest rate</code>（入场后 4 根内反向穿回 VWAP 或反向超过 <code>0.75 ATR</code>）、<code>trade_count</code>、<code>positive_asset_ratio</code>。</li>
+<li><strong>下一步怎么测</strong>：先别把它和一堆 volume / funding 条件一起堆满；第一轮只回答一个最值钱的问题——<strong>对当前 <code>retest_hold</code>，救命的是“收回 VWAP”本身，还是“最近几根大多数已经站在 VWAP 同侧”这条 breadth gate？</strong> 如果前者就能明显降 <code>false-retest rate</code>，它值得进三条收口线的共享确认层；如果必须叠满很多条件才勉强改善，就说明它更像局部美化，不是当前 desk 的高优先级骨架。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是 <strong>新仓库工程证据</strong>，不是论文或成熟生产证据；repo 目前 <code>0 stars / 0 forks</code>，社会证明很弱。</li>
+<li>源策略是 <strong>ES/MES 美股早盘 long-only</strong>，而 crypto 是 <code>24/7</code>；因此最容易过拟合的地方不是 VWAP 本身，而是 <strong>session 定义</strong>。在 crypto 上不能机械照搬 <code>9:30-12:00 ET</code>。</li>
+<li>repo 给出的收益数字没有完整 friction ladder、rolling OOS、cross-asset 验证；所以我们最多应该继承它的 <strong>规则骨架</strong>，不应继承它的收益自信。</li>
+<li>对 <code>breakout-short</code>，必须单独做 short mirror 实验。多头的“回踩后收回 VWAP”并不自动推出空头的“反抽后跌回 VWAP”同样成立。</li>
+<li>如果已有 <code>EMA / PSAR</code> 本身就已经暗含类似“均价重夺回”信息，那 VWAP reclaim 可能只是重复确认，需要用 ablation 明确它是否真有独立增量。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>JinHwaChiu. (2026). *vwap-trend-defense*.</li>
+<li>Venue / DOI：无</li>
+<li>Repo URL: &lt;<a href="https://github.com/JinHwaChiu/vwap-trend-defense&gt;">https://github.com/JinHwaChiu/vwap-trend-defense&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://github.com/JinHwaChiu/vwap-trend-defense/tree/main/strategies&gt;">https://github.com/JinHwaChiu/vwap-trend-defense/tree/main/strategies&gt;</a></li>
+<li>Raw strategy URL: &lt;<a href="https://raw.githubusercontent.com/JinHwaChiu/vwap-trend-defense/main/strategies/vwap_trend_defense.py&gt;">https://raw.githubusercontent.com/JinHwaChiu/vwap-trend-defense/main/strategies/vwap_trend_defense.py&gt;</a></li>
+<li>Supporting raw URL: &lt;<a href="https://raw.githubusercontent.com/JinHwaChiu/vwap-trend-defense/main/strategies/vwap_reversion.py&gt;">https://raw.githubusercontent.com/JinHwaChiu/vwap-trend-defense/main/strategies/vwap_reversion.py&gt;</a></li>
+<li>Repo API: &lt;<a href="https://api.github.com/repos/JinHwaChiu/vwap-trend-defense&gt;">https://api.github.com/repos/JinHwaChiu/vwap-trend-defense&gt;</a></li>
+<li>Repo metadata snapshot: created <code>2026-01-24</code>, updated <code>2026-01-24</code>, <code>0</code> stars, <code>0</code> forks.</li>
+</ul>
+</body>
+</html>

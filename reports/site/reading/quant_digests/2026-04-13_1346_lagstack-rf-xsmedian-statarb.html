@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2019 crypto stat-arb 论文直接翻译成今天的 liquid-major perp alpha：对 short-cycle desk，更该先测的是「lag-stack RF × 120m 横截面中位数超额」这条 raw alpha——但当前 majors 版本明显不过成本线</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2019 crypto stat-arb 论文直接翻译成今天的 liquid-major perp alpha：对 short-cycle desk，更该先测的是「lag-stack RF × 120m 横截面中位数超额」这条 raw alpha——但当前 majors 版本明显不过成本线</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-13 13:50 UTC</span>
+      <span class="pill">研究时间：2026-04-13 13:46 UTC</span>
+      <span class="pill">类型：2019 *Journal of Risk and Financial Management* 论文摘要/元数据（OpenAlex + Crossref）+ GitHub repo source audit（`README.md` + `crypto_forest_example.py` + `feature_generator.py` + `crypto_dataprovider.py` + `kpi_backtest.py`）+ Binance USDⓈ-M `5m/15m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha / cross-sectional / relative-value / stat-arb / machine-learning / random-forest / lagged-returns / median-relative-target / 120m / market-neutral / binance-perpetual / 5m / 15m / paper / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：论文摘要 + 开源代码 + 公共数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-13_1346_lagstack-rf-xsmedian-statarb.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-13 13:46 UTC</li>
+<li>类型：2019 *Journal of Risk and Financial Management* 论文摘要/元数据（OpenAlex + Crossref）+ GitHub repo source audit（<code>README.md</code> + <code>crypto_forest_example.py</code> + <code>feature_generator.py</code> + <code>crypto_dataprovider.py</code> + <code>kpi_backtest.py</code>）+ Binance USDⓈ-M <code>5m/15m</code> public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>用多尺度滞后收益去预测“哪几个币会在未来 120 分钟跑赢当下横截面中位数”，然后做 long top-k / short flop-k 的 market-neutral spread</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha / cross-sectional / relative-value / stat-arb / machine-learning / random-forest / lagged-returns / median-relative-target / 120m / market-neutral / binance-perpetual / 5m / 15m / paper / repo / public-data / cost / risk</li>
+<li>证据类型：论文摘要 + 开源代码 + 公共数据 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>Thomas Fischer, Christopher Krauß, Alexander Deinert (2019), _Statistical Arbitrage in Cryptocurrency Markets_</strong>，以及作者配套公开的 GitHub 代码仓库。它不是那种“讲一个因子名词就结束”的文章，而是一个很明确的 <strong>横截面 market-neutral 预测壳</strong>：</p>
+<ol>
+<li>用分钟级多尺度滞后收益做特征；</li>
+<li>预测某个币在未来 <code>120min</code> 是否会跑赢当期横截面中位数；</li>
+<li>做 <strong>long top-k / short flop-k</strong>；</li>
+<li>持有 <code>120min</code> 后反手平仓。</li>
+</ol>
+<p>这对我们 desk 有价值，因为它补的是 <strong>cross-sectional / relative-value / stat-arb</strong> 方向，而不是再绕回单币 breakout / retest 内循环。</p>
+<p>不过，这篇东西最容易被误读成：</p>
+<ul>
+<li>“2018 年 paper 有 alpha，今天 perp 上照抄就行”；或</li>
+<li>“ML 比传统规则强，所以直接把 RF 模型搬上去。”</li>
+</ul>
+<p>我这轮更关心的是：<strong>它的 base alpha 到底是不是今天还能落到 <code>5m/15m</code> desk 上的 raw alpha？</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这篇 paper 的 base alpha 很清楚，确实是一条可独立复现的 <strong>横截面 relative-value raw alpha</strong>；但把它压到今天的 Binance liquid majors perpetual 上，<strong>gross 只剩很薄一层，净后基本被成本吃穿</strong>，所以现阶段更像“研究母体 + 宽 universe / 低成本执行候选”，还不适合直接当 taker 主策略上线。</li>
+<li><strong>论文原始信号长什么样：</strong> OpenAlex 摘要写得很直白——作者在 <code>40</code> 个加密货币的 minute-binned 数据上，用 <strong>lagged returns</strong> 训练 random forest，预测未来 <code>120min</code> 是否跑赢横截面中位数；然后 <strong>买 top-3、做空 flop-3，持有 120 分钟</strong>。摘要里给出的 out-of-sample 结果是：<strong>2018-06-18 到 2018-09-17，超过 100,000 笔交易，扣掉 <code>15bps per half-turn</code> 后，仍有 <code>7.1bps/day</code></strong>。</li>
+<li><strong>代码层面的可复刻骨架也很清楚：</strong></li>
+<li><code>crypto_forest_example.py</code> 里把 <code>FORECAST_HORIZON = 120</code>（分钟）；</li>
+<li><code>feature_generator.py</code> 用的特征是 <strong>过去 <code>1~20</code> 分钟收益</strong>，再加上 <strong><code>120, 240, ..., 1440</code> 分钟收益</strong>；</li>
+<li><code>helper.py</code> 里的目标定义不是“绝对涨跌”，而是 <strong>是否高于当期横截面中位数</strong>；</li>
+<li><code>kpi_backtest.py</code> 还额外加了 <strong>staleness / volume filter</strong>。</li>
+<li><strong>但 repo 和摘要不是完全一模一样：</strong> 摘要说的是 <code>top-3 / flop-3</code>，而 repo 回测函数里默认 <code>K=5</code>。这说明它更像一个研究框架，而不是单一固定参数的“标准答案”。</li>
+<li><strong>我做的 Binance USDⓈ-M <code>5m</code> portability probe（近 <code>28d</code>，<code>10</code> 个 liquid majors，RF，<code>120min</code> 目标，<code>top2/flop2</code>）结果是：</strong></li>
+<li>测试样本 <code>2664</code> 个组合时点，<code>9371</code> 笔单腿交易；</li>
+<li><strong>gross 平均仅 <code>+0.90bps / 120m</code></strong>；</li>
+<li>若按每条腿 <strong>round-trip <code>8bps</code></strong> 粗扣，<strong>net 变成 <code>-6.50bps / 120m</code></strong>；</li>
+<li>净胜率只有 <strong><code>33.4%</code></strong>；</li>
+<li>单腿净均值约 <strong><code>-7.40bps</code></strong>。</li>
+<li><strong><code>15m</code> portability probe（近 <code>60d</code>，同样 <code>10</code> 个 majors，仍看未来 <code>120min</code>）更差：</strong></li>
+<li><code>1901</code> 个组合时点，<code>6971</code> 笔单腿；</li>
+<li><strong>gross <code>-0.81bps / 120m</code></strong>；</li>
+<li><strong>net <code>-8.43bps / 120m</code></strong>；</li>
+<li>即便只保留预测分差较大的时点（<code>pred_spread &gt;= 0.12</code>），gross 也只是 <strong><code>+3.47bps</code></strong>，net 仍约 <strong><code>-4.53bps</code></strong>。</li>
+<li><strong>特征重要性倒是有启发：</strong> 两版 probe 里都不是最短 lag 独大，而是 <strong><code>ret_24 / ret_36 / ret_48</code></strong>（也就是更偏中段的历史收益窗）经常排在最前面。这更像在说：这条线的可交易部分不是“下一根 bar 随手追”，而是 <strong>多尺度 lag 结构里提炼出来的横截面强弱差</strong>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>虽然这轮 portability 结论偏负面，但它对当前项目依然有直接价值：</p>
+<h3>3.1 它补的是我们明确想补的方向</h3>
+<p>这不是又一条单币 trend / breakout 线，而是很标准的：</p>
+<ul>
+<li><strong>cross-sectional</strong></li>
+<li><strong>relative-value</strong></li>
+<li><strong>stat-arb / market-neutral</strong></li>
+</ul>
+<p>这正好符合这轮 bot7 想主动补的方向。</p>
+<h3>3.2 它把“alpha 本体”和“执行壳”拆得很清楚</h3>
+<p>这篇 paper/repo 最有价值的地方，不是“random forest”四个字，而是它把 alpha 主体定义得很干净：</p>
+<p>&gt; <strong>alpha 本体 = 未来 <code>120min</code> 的横截面相对强弱可由过去多尺度 lag return 预测。</strong></p>
+<p>至于：</p>
+<ul>
+<li>做 <code>top3</code> 还是 <code>top5</code></li>
+<li>要不要加 staleness filter</li>
+<li>成本假设多大</li>
+<li>做 spot 还是 perp</li>
+<li>做 majors 还是更宽 alt universe</li>
+</ul>
+<p>这些都是 <strong>壳层 / 执行层</strong>，不是 alpha 定义本身。</p>
+<h3>3.3 它给了一个很重要的负面筛选结论</h3>
+<p>当前 liquid-major perp 上，这条线的问题不是“完全没有方向感”，而是：</p>
+<ul>
+<li><strong>gross 有一点点；</strong></li>
+<li><strong>但远远不够覆盖 taker 成本。</strong></li>
+</ul>
+<p>这意味着它更可能属于：</p>
+<ol>
+<li><strong>更宽 universe 才有用</strong>；</li>
+<li><strong>maker-first / rebate / internal-cross / queue 优势</strong> 才有用；</li>
+<li>或者要被降级为 <strong>shared rank feature / filter</strong>，而不是单独上线的主策略。</li>
+</ol>
+<p>这类“不能直接上，但知道为什么不能上”的结论，对素材池同样有价值——至少能避免我们再把时间花在“liquid majors 上照搬论文壳”这条低胜率路线。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<code>cross-sectional / relative-value / market-neutral</code></li>
+<li>基础 alpha：<code>过去多尺度 lag return 能预测未来 120 分钟谁会相对横截面中位数更强/更弱</code></li>
+<li>raw alpha 本体：<code>long top-k predicted outperformers / short flop-k predicted underperformers</code></li>
+<li>regime：更可能要求 <strong>更宽币池、足够横截面离散度、较低有效费率</strong>，而不是只在 <code>BTC/ETH/SOL</code> 这种超拥挤 majors 上做 taker</li>
+<li>filter / veto：</li>
+<li><code>prediction spread</code> 不够大时不做；</li>
+<li><code>staleness / volume</code> 不够时不做；</li>
+<li>若有效 round-trip 成本 &gt; 预期 gross edge，直接 veto</li>
+<li>risk / sizing / execution overlay：</li>
+<li>先做 dollar-neutral 或 beta-neutral；</li>
+<li>单时点最多做 <code>top2~3 / flop2~3</code>；</li>
+<li>先用 maker-first 或低费账户做；</li>
+<li>若只能 taker，必须先证明 gross edge 至少明显高于 <code>6~8bps / leg</code></li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 论文最小复刻口径</h3>
+<ul>
+<li><strong>目标定义：</strong> 对每个时点、每个币，预测未来 <code>120min</code> 回报是否高于横截面中位数；</li>
+<li><strong>特征：</strong> 过去 <code>1~20</code> 分钟收益 + <code>120~1440</code> 分钟多尺度 lag return；</li>
+<li><strong>组合：</strong> long top-k / short flop-k；</li>
+<li><strong>持有：</strong> <code>120min</code>；</li>
+<li><strong>评估：</strong> gross / net return、胜率、换手、不同成本桶。</li>
+</ul>
+<h3>4.2 我这轮已经做的最小 portability probe</h3>
+<ul>
+<li><strong>数据源：</strong> Binance USDⓈ-M public klines</li>
+<li><strong>公开性：</strong> 完全公开可取</li>
+<li><strong>更新频率：</strong> <code>5m / 15m</code></li>
+<li><strong>口径：</strong></li>
+<li>universe：<code>BTC/ETH/SOL/BNB/XRP/ADA/DOGE/LINK/AVAX/LTC</code></li>
+<li>target horizon：<code>120min</code></li>
+<li>train/test：时间切分 <code>2/3 : 1/3</code></li>
+<li>模型：<code>RandomForestClassifier</code></li>
+<li>组合：<code>top2 / flop2</code></li>
+<li>成本：粗扣 <strong><code>8bps round-trip / leg</code></strong></li>
+</ul>
+<h3>4.3 下一步最该怎么测</h3>
+<p>这篇东西<strong>值得继续测</strong>，但不是继续在 10 个 majors 上死磕。最优先是下面 3 步：</p>
+<ol>
+<li><strong>把 universe 扩到 <code>30~50</code> 个 liquid alts</strong></li>
+</ol>
+<ul>
+<li>这篇 paper 的核心不是“预测 BTC 下一根涨跌”，而是 <strong>横截面分化</strong>。</li>
+<li>若横截面太窄，alpha 会天然变薄。</li>
+</ul>
+<ol>
+<li><strong>显式做成本分桶：<code>2 / 4 / 8 / 12bps</code></strong></li>
+</ol>
+<ul>
+<li>这条线最大的敌人就是换手；</li>
+<li>不做费率分桶，等于不知道它到底是“没有 alpha”，还是“有 alpha 但只属于低费账户 / maker book”。</li>
+</ul>
+<ol>
+<li><strong>把它降维成 desk 更易落地的 shared rank feature</strong></li>
+</ol>
+<ul>
+<li>不一定要整套 RF 直接上线；</li>
+<li>也可以先把它变成：</li>
+<li><code>xs router</code>：决定做 continuation 还是 reversal；</li>
+<li><code>pair admission</code>：只在 rank gap 最大的 pair/basket 上做 spread；</li>
+<li><code>position veto</code>：当模型分差太小，直接不做。</li>
+</ul>
+<h3>4.4 这轮最该先看的 2 个指标</h3>
+<ol>
+<li><strong><code>post-cost mean bps / rebalance</code></strong>（分费率桶看）</li>
+<li><strong><code>prediction-spread bucket</code> 下的边际改善</strong>（判断它到底是“需要强分歧过滤”，还是根本没有 edge）</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文摘要给出的结果样本集中在 <strong>2018</strong>，属于 crypto 市场更“野”的早期阶段；直接外推到 2026 年 liquid major perp，很容易高估可移植性。</li>
+<li>我这轮 probe 只测了 <code>10</code> 个 liquid majors，<strong>非常可能低估</strong> 这类横截面策略在更宽 alt universe 上的可用性。</li>
+<li>当前 probe 的成本假设是偏 desk 现实的 taker 粗口径；若你有更低的费率、maker 优势、内部撮合或更弱流动性的币池，结论可能变化很大。</li>
+<li>repo 示例与摘要参数并不完全一致（<code>top3/flop3</code> vs <code>K=5</code>），说明“论文 headline 数字”并不是唯一需要复刻的对象；真正要复刻的是 <strong>方法骨架 + 成本边界</strong>。</li>
+</ul>
+<h2>6. 本地 artifacts</h2>
+<ul>
+<li><code>reports/artifacts/literature/crypto_stat_arb_rf_portability_probe_2026-04-13_summary.json</code></li>
+<li><code>reports/artifacts/literature/crypto_stat_arb_rf_portability_probe_2026-04-13_portfolio.csv</code></li>
+<li><code>reports/artifacts/literature/crypto_stat_arb_rf_portability_probe_2026-04-13_trades.csv</code></li>
+<li><code>reports/artifacts/literature/crypto_stat_arb_rf_portability_probe_15m_2026-04-13_summary.json</code></li>
+<li><code>reports/artifacts/literature/crypto_stat_arb_rf_portability_probe_15m_2026-04-13_portfolio.csv</code></li>
+<li><code>reports/artifacts/literature/crypto_stat_arb_rf_portability_probe_15m_2026-04-13_trades.csv</code></li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>Fischer, T., Krauß, C., &amp; Deinert, A. (2019). _Statistical Arbitrage in Cryptocurrency Markets_. Journal of Risk and Financial Management, 12(1), 31.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.3390/jrfm12010031</code></li>
+<li>DOI URL: <code><a href="https://doi.org/10.3390/jrfm12010031">https://doi.org/10.3390/jrfm12010031</a></code></li>
+<li>Readable URL: <code><a href="https://www.mdpi.com/1911-8074/12/1/31">https://www.mdpi.com/1911-8074/12/1/31</a></code></li>
+<li>Open-access PDF URL: <code><a href="https://www.mdpi.com/1911-8074/12/1/31/pdf?version=1550193651">https://www.mdpi.com/1911-8074/12/1/31/pdf?version=1550193651</a></code></li>
+</ul>
+<ol>
+<li><strong>OpenAlex metadata / abstract reconstruction</strong></li>
+</ol>
+<ul>
+<li><code><a href="https://api.openalex.org/works/https://doi.org/10.3390/jrfm12010031">https://api.openalex.org/works/https://doi.org/10.3390/jrfm12010031</a></code></li>
+</ul>
+<ol>
+<li><strong>Crossref metadata</strong></li>
+</ol>
+<ul>
+<li><code><a href="https://api.crossref.org/works/10.3390/jrfm12010031">https://api.crossref.org/works/10.3390/jrfm12010031</a></code></li>
+</ul>
+<ol>
+<li><strong>配套代码仓库</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/Exceluser/Statistical-arbitrage-in-cryptocurrency-markets">https://github.com/Exceluser/Statistical-arbitrage-in-cryptocurrency-markets</a></code></li>
+<li>README: <code><a href="https://raw.githubusercontent.com/Exceluser/Statistical-arbitrage-in-cryptocurrency-markets/master/README.md">https://raw.githubusercontent.com/Exceluser/Statistical-arbitrage-in-cryptocurrency-markets/master/README.md</a></code></li>
+<li>Core files:</li>
+<li><code>crypto_forest_example.py</code></li>
+<li><code>feature_generator.py</code></li>
+<li><code>crypto_dataprovider.py</code></li>
+<li><code>helper.py</code></li>
+<li><code>kpi_backtest.py</code></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M public market data</strong></li>
+</ol>
+<ul>
+<li>Klines: <code><a href="https://fapi.binance.com/fapi/v1/klines">https://fapi.binance.com/fapi/v1/klines</a></code></li>
+</ul>
+</body>
+</html>

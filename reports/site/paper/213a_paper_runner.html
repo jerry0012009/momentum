@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>213a Paper Runner（frozen30 原始回测）</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; margin: 0; background: #f8fafc; color: #0f172a; line-height: 1.6; }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 56px; }
+    .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 18px 20px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(15,23,42,0.04); }
+    .hero { background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .metric { border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; background: #fbfdff; }
+    .metric .k { color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .metric .v { font-size: 22px; font-weight: 700; margin-top: 6px; }
+    .note { background: #eff6ff; border-left: 4px solid #2563eb; padding: 12px 14px; border-radius: 10px; }
+    .warn { background: #fff7ed; border-left: 4px solid #ea580c; padding: 12px 14px; border-radius: 10px; }
+    .good { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 12px 14px; border-radius: 10px; }
+    code { background: #eef2ff; padding: 2px 5px; border-radius: 6px; }
+    pre { background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 12px; overflow: auto; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { border-bottom: 1px solid #e2e8f0; padding: 10px 8px; text-align: left; vertical-align: top; }
+    th { color: #475569; background: #f8fafc; }
+    ul { margin-top: 8px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .pill { display: inline-block; padding: 4px 9px; border-radius: 999px; background: #e2e8f0; font-size: 12px; margin-right: 6px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class='card hero'>
+      <h1>Rank 213 / large-cap XS momentum × short-leg jump veto</h1>
+      <p><strong>接线状态：</strong>connected_runner_live</p>
+      <div class="grid">
+        <div class="metric"><div class="k">runner</div><div class="v"><code>scripts/run_rank213_largecap_xs_jump_veto_paper_runner.py</code></div></div>
+        <div class="metric"><div class="k">runner mode</div><div class="v"><code>frozen_admission_timeseries_seed</code></div></div>
+        <div class="metric"><div class="k">frozen variant</div><div class="v"><code>f64_h12_floor150_mult2p0</code></div></div>
+        <div class="metric"><div class="k">最近更新时间</div><div class="v"><code>2026-05-06T04:32:21Z</code></div></div>
+        <div class="metric"><div class="k">闭合 basket 数</div><div class="v">369</div></div>
+        <div class="metric"><div class="k">平均净收益 / 每笔 3h basket</div><div class="v">22.03 bps</div></div>
+        <div class="metric"><div class="k">累计净收益 / 链式复利</div><div class="v">113.4669%</div></div>
+        <div class="metric"><div class="k">scheduler</div><div class="v"><code>momentum-rank213-paper-refresh.service</code><br/><code>momentum-rank213-paper-refresh.timer</code></div></div>
+      </div>
+      <p class="note"><b>这页现在锁定的是当前 live 真正在跑的 frozen runtime 定义：</b>它读的是 admission 已冻结的 timeseries seed，用来把 P3 接线显式化；<b>它不是 raw-bar live recomputation</b>。因此本页的“硬定义”以 frozen seed runtime 为准，不拿 rolling research 口径来偷换。</p>
+      <p class="warn"><b>先看证据地图：</b><a href="/momentum/paper/rank213_evidence_map.html">Rank213 Evidence Map</a> 已把 current runtime、monthly-volume causal history、as-of 修正、live audit、退役证据分层。后续讨论历史有效性时，默认先从这张地图进入。</p>
+    </div>
+
+    <div class='card'>
+      <h2>这两个数字到底怎么算？</h2>
+      <div class="good"><b>一句话：</b>这页里的每一笔，不是单个币、也不是任意时点滚动交易；而是 <b>1 个固定持有 3 小时的 market-neutral basket</b>。当前 frozen live 版每 <b>3 小时</b> 才开一笔新 basket，并持有到 <b>3 小时后</b> 时间退出；这 3 小时里，<b>不做二次换仓、不做持仓内重排</b>。</div>
+      <table>
+        <thead>
+          <tr><th>字段</th><th>当前页面的实际含义</th><th>当前值</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>平均净收益</code></td>
+            <td>对每笔 closed basket 先算 <code>net_bps = gross_bps - 4.0 × turnover_x</code>，再对全部 closed baskets 做<strong>算术平均</strong>。所以它表示的是：<b>平均每笔 3h basket 赚多少 bps</b>。</td>
+            <td><code>22.03 bps / 笔</code></td>
+          </tr>
+          <tr>
+            <td><code>累计净收益</code></td>
+            <td>不是把每笔 bps 直接相加，而是把每笔净收益先转成 <code>net_ret = net_bps / 10000</code>，然后按 <code>∏(1 + net_ret) - 1</code> 做<strong>链式复利</strong>。所以它表示的是：<b>按这批 closed baskets 顺序连续滚下去后的累计净值变化</b>。</td>
+            <td><code>113.4669%</code></td>
+          </tr>
+          <tr>
+            <td><code>闭合 basket 数</code></td>
+            <td>当前累计纳入统计的 closed baskets 数量；每一笔都对应 1 次 <b>3h 非重叠持有</b>。</td>
+            <td><code>369</code> 笔</td>
+          </tr>
+          <tr>
+            <td><code>持有时间</code></td>
+            <td>固定 <code>HOLD_BARS = 12</code> 根 <code>15m</code> bar，即 <b>3 小时</b>；持有窗内不再二次开新 basket。</td>
+            <td><code>3h</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>把它翻成人话：当前页面上的 <b>22.03 bps</b>，意思不是“每天平均赚这么多”，也不是“每小时平均赚这么多”，而是：<b>这 369 笔 3 小时 basket 的单笔净收益均值约为 +22.03 bps</b>。</li>
+        <li><b>113.4669%</b> 也不是年化；它表示的是：按这批 closed baskets 的先后顺序，把每笔净收益链式滚动以后，累计净值大约变成 <b>2.1347x</b>。</li>
+      </ul>
+    </div>
+
+    <div class='card'>
+      <h2>为什么每笔只有 22.03 bps，却还能滚到 113.4669%？</h2>
+      <div class="good"><b>核心不是“单笔很大”，而是“单笔期望为正 × 频率很高 × 连续复利”</b>。这页是 <b>369</b> 笔、约 <b>8.00</b> 笔/天、每笔持有 <b>3h</b> 的非重叠 basket，不是一天只做 1 笔。</div>
+      <table>
+        <thead>
+          <tr><th>拆解项</th><th>当前值</th><th>它说明什么</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>每笔平均净收益</td><td><code>22.03 bps = 0.2203%</code></td><td>单笔看起来不大，但因为频次高，可以被复利放大。</td></tr>
+          <tr><td>总笔数</td><td><code>369</code> 笔</td><td>46.12 天里大约做了 <code>369</code> 次 3h basket。</td></tr>
+          <tr><td>如果“每笔都刚好等于均值”</td><td><code>125.2563%</code></td><td>这只是一个均值复利的直觉参考，不是实际路径。</td></tr>
+          <tr><td>实际 realized cumulative</td><td><code>113.4669%</code></td><td>真实路径比“均值机械复利”略低，说明中间有波动拖累（volatility drag）。</td></tr>
+          <tr><td>单笔收益中位数</td><td><code>6.93 bps</code></td><td>说明平均值会被一部分大赢单往上拉；典型一笔并没有均值那么高。</td></tr>
+          <tr><td>单笔离散度</td><td><code>std = 172.03 bps</code></td><td>分布很宽，不能把均值误读成“每笔都稳定赚 22bps”。</td></tr>
+          <tr><td>最好 / 最差一笔</td><td><code>880.14</code> / <code>-523.28 bps</code></td><td>尾部分布很重；大赢单对最终复利贡献不小。</td></tr>
+          <tr><td>非正收益占比</td><td><code>46.07%</code></td><td>接近一半的单子并不赚钱，所以这个结果绝不是“几乎单单都赢”。</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>如果只看 <b>22.03 bps/笔</b>，会觉得“很小”；但别忘了这是 <b>369</b> 次非重叠复利，而不是 1 次。</li>
+        <li>这批样本里，“按均值机械复利”大约会到 <b>125.2563%</b>；实际是 <b>113.4669%</b>，两者差距就是路径波动带来的 drag。</li>
+        <li>所以更准确的人话是：<b>不是每笔都很赚，而是小正期望在高频重复下被复利累起来了。</b></li>
+      </ul>
+    </div>
+
+    <div class='card'>
+      <h2>样本窗口到底是哪一段？</h2>
+      <table>
+        <thead>
+          <tr><th>窗口</th><th>含义</th><th>当前值</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>sample_start_utc</code></td><td>原始 frozen panel 的起点；它包含 formation warm-up，不等于第一笔交易时间。</td><td><code>2026-02-09T10:15:00Z</code></td></tr>
+          <tr><td><code>sample_end_utc</code></td><td>原始 frozen panel 的终点。</td><td><code>2026-03-28T07:00:00Z</code></td></tr>
+          <tr><td><code>first_trade_entry_ts</code></td><td>第一笔真正纳入统计的 basket 开仓时点。</td><td><code>2026-02-10T02:15:00Z</code></td></tr>
+          <tr><td><code>last_trade_exit_ts</code></td><td>最后一笔真正纳入统计的 basket 平仓时点。</td><td><code>2026-03-28T05:15:00Z</code></td></tr>
+          <tr><td><code>raw_panel_days</code></td><td>底层 frozen panel 覆盖天数。</td><td><code>46.86</code> 天</td></tr>
+          <tr><td><code>trade_window_days</code></td><td>真正有 basket 统计的交易窗口天数。</td><td><code>46.12</code> 天</td></tr>
+          <tr><td><code>trades_per_day</code></td><td>平均每天多少笔 closed baskets；当前 frozen 版应该接近每 3h 一笔，也就是约 8 笔/天。</td><td><code>8.00</code> 笔/天</td></tr>
+        </tbody>
+      </table>
+      <p class="warn"><b>注意：</b><code>sample_start_utc</code> 是原始面板起点，不是第一笔交易起点。因为策略先要看 <code>64 × 15m = 16h</code> 的 formation window，所以第一笔 basket 会比 panel 起点晚一个 formation 窗。</p>
+    </div>
+
+    <div class='card'>
+      <h2>持仓 3 小时期间，能不能再交易？</h2>
+      <ul>
+        <li><b>当前这页对应的 frozen live 版：</b>不可以。它是 <b>每 3h 非重叠一次</b> 的 basket。</li>
+        <li>具体说：在 <code>t</code> 开仓以后，固定持有到 <code>t + 3h</code>；这段时间里，<b>不因为新的 15m bar 到来而重排持仓</b>。</li>
+        <li>所以这页上的收益统计，应该理解成：<b>369 次“开一笔 3h basket → 持有 → 时间退出”</b> 的结果。</li>
+        <li>如果以后要展示“每 15m rolling 重算、持仓互相重叠”的研究口径，那必须放到 formal/as-of 页面，不能和这页混写。</li>
+      </ul>
+    </div>
+
+    <div class='card'>
+      <h2>先把口径钉死：这页采用哪一版定义？</h2>
+      <div class="warn"><b>结论：</b>本页采用 <b>当前 live frozen spec</b> 作为唯一 runtime 定义：<code>15m</code> bar，<code>formation=64</code>，<code>hold=12</code>，<b>每 3h 非重叠换仓一次</b>。formal/as-of 页面虽然使用同一套核心公式，但 cadence 是 <b>每 15m rolling</b>，不能在这页伪装成“当前 live runtime 也是 rolling 15m”。</div>
+      
+      <table>
+        <thead>
+          <tr><th>页面 / 运行面</th><th>核心公式</th><th>cadence</th><th>这里能不能说成当前 live runtime</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>213a_paper_runner.html</code></td>
+            <td>同一套 baseline + short-leg jump veto</td>
+            <td><b>每 3h 非重叠一次</b>（UTC <code>02:15 / 05:15 / ...</code>）</td>
+            <td><b>可以</b>；这是当前 frozen seed live/paper lane</td>
+          </tr>
+          <tr>
+            <td><code>rank213_largecap_xs_jump_veto_shadow_runner</code></td>
+            <td>同一套 baseline + short-leg jump veto + formal frozen gate</td>
+            <td><b>每 15m raw-bar 审计刷新</b>；当前实现口径是 <code>recompute_recent</code></td>
+            <td><b>不可以</b>；这是 shadow / audit lane，用来暴露最新决策与 gate 状态，不是当前 live execution lane</td>
+          </tr>
+          <tr>
+            <td><code>formal_strategy_review</code> / <code>asof_universe_long_history_review</code></td>
+            <td>同一套 baseline + short-leg jump veto</td>
+            <td><b>每 15m rolling 重算一次</b></td>
+            <td><b>不可以</b>；这是 research / formal evidence 口径，不是当前 live runtime cadence</td>
+          </tr>
+        </tbody>
+      </table>
+    
+    </div>
+
+    
+    <div class='card'>
+      <h2>标的选择 / Universe 更新：这页现在把口径拆开讲清楚</h2>
+      <div class="warn"><b>关键统一：</b>讨论长周期时，不能把“固定某一时刻的 Top30”直接当成“历史滚动 Top30”。当前 rank213 相关文件里，至少有 4 种证据面；其中只有 <code>monthly_volume_universe_rebuild</code> 接近“按时间滚动重选 Top30”。</div>
+      <table>
+        <thead>
+          <tr><th>页面 / 证据面</th><th>名单会不会更新</th><th>它到底怎么选池</th><th>样本覆盖</th><th>结果摘要</th><th>你该怎么理解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+              <td><code>当前 live/paper runner</code></td>
+              <td><b>不会</b></td>
+              <td>固定读取 admission 冻结的 <code>30</code> 币名单；refresh 只更新新 signal / ledger，不按月或按季度重选 Top30。</td>
+              <td><code>2026-02-09T10:15:00Z</code> → <code>2026-03-28T07:00:00Z</code></td>
+              <td><code>113.4669%</code>（<code>369</code> 笔）</td>
+              <td>这才是当前真正跑着的口径；但它不是历史滚动 Top30 证据。</td>
+            </tr><tr>
+                  <td><code>frozen current-universe historical recompute</code></td>
+                  <td><b>不会</b></td>
+                  <td>还是同一份 frozen 30 币名单；只是把当前名单往历史上硬回放。</td>
+                  <td><code>2025-10-24T08:30:00Z</code> → <code>2026-04-10T23:45:00Z</code></td>
+                  <td>MAX <code>166.7185%</code>；120D <code>121.8618%</code></td>
+                  <td>能回答“当前 frozen 名单最近共同历史怎样”，不能回答“历史上是否该滚动换池”。</td>
+                </tr><tr>
+                  <td><code>asof_universe_long_history_review</code></td>
+                  <td><b>不按 Top30 重选</b></td>
+                  <td>仍是 frozen 30 币种子名单；只是名字会在各自 <b>onboard 之后</b> 才参与排名，所以是“按上线时间可见”，不是“按历史市值滚动换池”。</td>
+                  <td><code>2020-02-01T00:00:00Z</code> → <code>2026-04-10T18:00:00Z</code>；平均可交易 universe <code>18.45</code></td>
+                  <td>全周期 veto <code>-89.9796%</code></td>
+                  <td>它解决的是“后上市名字不能穿越历史提前参赛”；但仍不是你说的“每月/每段时间滚动 Top30”。</td>
+                </tr><tr>
+                  <td><code>formal_strategy_review</code></td>
+                  <td><b>不按 Top30 重选</b></td>
+                  <td>名单逻辑继承 <code>asof_universe</code>：仍是 frozen 30 币 + onboard 可见性；区别只是再叠加 frozen regime gate。</td>
+                  <td><code>2020-02-01T00:00:00Z</code> → <code>2026-04-10T18:00:00Z</code>；gate ON rate <code>5.04%</code></td>
+                  <td>baseline+veto+gate 全周期 <code>100.7246%</code></td>
+                  <td>这是当前最强的 formal 证据面，但它也不是历史滚动市值 Top30 回测。</td>
+                </tr><tr>
+                  <td><code>monthly_volume_universe_rebuild</code></td>
+                  <td><b>会（月度重建）</b></td>
+                  <td>按月用 volume-proxy 重建 as-of universe；这是当前文件里最接近“历史滚动 Top30”的证据面。</td>
+                  <td><code>2020-02-01T00:00:00Z</code> → <code>2026-04-10T18:00:00Z</code>；与 frozen30 平均重叠 <code>12.37</code>/30</td>
+                  <td>baseline+veto+gate 全周期 <code>-37.1264%</code></td>
+                  <td><b>如果你要问“历史上不固定某一时刻 Top30，滚动换池以后还行不行？”</b>，当前最应该看的就是这一行。</td>
+                </tr>
+        </tbody>
+      </table>
+      <ul>
+        <li><b>直接回答：</b>当前这条正在跑的 <b>live/paper runner 没有按月更新 Top30</b>；它跑的是 frozen admission 30 币名单。</li>
+        <li><b>第二个关键点：</b><code>asof_universe_long_history_review</code> 也<b>不是</b>“每月滚动 Top30”；它只是解决“币在历史上还没上市时不能提前参赛”的问题。</li>
+        <li><b>如果你要看真正更接近“历史滚动换池”的证据</b>，当前应该优先看 <code>monthly_volume_universe_rebuild</code>。</li>
+        <li><b>selection 风险披露：</b>universe audit 认为 frozen30 在 selection 维度存在 survivorship bias 风险（status=<code>yes</code>）；同时 original selection uses only then-visible info 的检查结果是 <code>partial_no</code>。</li>
+      </ul>
+    </div>
+
+    
+    <div class='card'>
+      <h2>最终裁决卡：这几条证据到底该怎么用</h2>
+      <div class="good"><b>先给最终版人话：</b>如果你问“<b>现在实际跑的</b>是什么”，答案看 <code>当前 live/paper runner</code>；如果你问“<b>历史上滚动换池以后</b>还站不站得住”，当前优先看 <code>monthly_volume_universe_rebuild</code>；如果你问“<b>同一 frozen 名单</b> 最近共同历史怎样”，看 <code>frozen current-universe historical recompute</code>；如果你问“<b>后上市币不要穿越参赛</b> 后会怎样”，看 <code>asof_universe_long_history_review</code>。</div>
+      <table>
+        <thead>
+          <tr><th>你真正想回答的问题</th><th>默认应看哪条证据</th><th>一句话裁决</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>当前 live/paper 到底是不是会定期更新 Top30？</td>
+            <td><code>当前 live/paper runner</code></td>
+            <td><b>不会。</b> 当前运行口径是 frozen admission 30-symbol universe，不做 monthly/quarterly rebuild。</td>
+          </tr>
+          <tr>
+            <td>同一份 frozen30 名单，最近共同历史表现怎样？</td>
+            <td><code>frozen current-universe historical recompute</code></td>
+            <td><b>近期共同历史是强的</b>，但它只是在回答“当前名单往回推”这一题，不是在回答历史滚动换池。</td>
+          </tr>
+          <tr>
+            <td>把未上市币穿越问题修掉以后，这策略还怎样？</td>
+            <td><code>asof_universe_long_history_review</code></td>
+            <td><b>as-of 修正后，全周期 veto 是负的</b>（<code>-89.9796%</code>）；所以不能再把 as-of 读成“已经证明长期稳定赚钱”。</td>
+          </tr>
+          <tr>
+            <td>如果真的按时间滚动换池，而不是固定某一刻 Top30，会怎样？</td>
+            <td><code>monthly_volume_universe_rebuild</code></td>
+            <td><b>不支持强结论</b>：当前最接近滚动换池的 full-period <code>baseline+veto+gate</code> 为 <code>-37.1264%</code>，远弱于 formal 页那条 <code>100.7246%</code>。</td>
+          </tr>
+        </tbody>
+      </table>
+      <ul>
+        <li><b>默认优先级建议：</b>讨论“运行事实”时先看 <code>live/paper runner</code>；讨论“最新 15m 审计态 / gate 是否开门”时看 <code>shadow_runner</code>；讨论“历史严谨性”时先看 <code>monthly_volume_universe_rebuild</code>；<code>asof</code> 只负责解决上市时点可见性，不负责证明滚动换池有效。</li>
+        <li><b>因此这页现在的统一口径应该是：</b>Rank213 当前可以被描述为“<b>一个正在运行的 frozen30 paper/live lane</b>，外加一个 15m raw-bar 的 shadow/audit lane”；但<b>不能</b>直接被描述为“历史滚动 Top30 已被长周期验证通过的策略”。</li>
+        <li><b>如果以后要做更正式的历史口径升级</b>，下一步不是再重复 frozen30/asof，而是继续把 <code>monthly_volume_universe_rebuild</code> 做得更接近真实历史 market cap / liquidity rebuild，同时再把 shadow runner 从当前的 <b>incremental tail refresh</b> 继续收成更纯的 append/drop rolling ledger。</li>
+      </ul>
+    </div>
+
+    
+    <div class='card'>
+      <h2>如果按“月度重构 universe”口径看，过去 5~6 年曲线长什么样？</h2>
+      <div class="good"><b>先直接回答你的问题：</b>按当前 <code>monthly_volume_universe_rebuild</code> 的 <code>baseline+veto+gate</code> 口径，样本从 <code>2020-02-01T00:00:00Z</code> 到 <code>2026-04-10T18:00:00Z</code>，约 <b>6.19</b> 年 / <b>75</b> 个自然月，full-period 累计净收益是 <b>-37.1264%</b>。严格说，这不是“整整 6 年固定历史市值真值回测”，而是 <b>volume-proxy 月度重建</b> 下的最好现有近似证据面。</div>
+      <div class="note"><b>手续费口径也可以钉死：</b>这里不是 <code>5/10000</code> 单边。当前代码/产物的净收益口径等价于 <code>net = gross - 4.0bps × turnover_x</code>。也就是说：当 <code>turnover_x = 1.0</code> 时，按的是 <b>4.0 bps round-trip</b>，等价于大约 <b>2.0 bps / 10000 每边</b>；不是 <b>5 bps/10000</b>。如果某笔因为 veto refill 导致 <code>turnover_x &gt; 1</code>，成本会按这个 turnover 比例继续放大。</div>
+      <div class="warn"><b>这条曲线非常不“顺滑上行”：</b>按月末口径看，<b>3</b> 个盈利月、<b>8</b> 个亏损月、<b>64</b> 个持平月。也就是说，这 5~6 年不是“每个月都赚”，而是 <b>绝大多数月份 gate 根本没开、月收益为 0</b>，收益主要集中在少数开启月份里。注意：full-period 里的月内路径最大回撤仍有 <code>-48.6289%</code>，所以月末曲线会比真实 3h-basket 路径更平。</div>
+      
+      <svg viewBox='0 0 1040 360' width='100%' height='360' role='img' aria-label='monthly rebuild equity curve and monthly returns'>
+        <rect x='1' y='1' width='1038' height='358' rx='16' fill='#ffffff' stroke='#dbe4f0'/>
+        <text x='56' y='18' fill='#0f172a' font-size='13' font-weight='600'>月度重构口径：month-end equity curve（上） + calendar-month return bars（下）</text>
+        <line x1='56' y1='170.0' x2='1016' y2='170.0' stroke='#e2e8f0' stroke-dasharray='3 4'/><text x='8' y='174.0' fill='#64748b' font-size='11'>-43.2%</text><line x1='56' y1='134.5' x2='1016' y2='134.5' stroke='#e2e8f0' stroke-dasharray='3 4'/><text x='8' y='138.5' fill='#64748b' font-size='11'>-29.2%</text><line x1='56' y1='99.0' x2='1016' y2='99.0' stroke='#e2e8f0' stroke-dasharray='3 4'/><text x='8' y='103.0' fill='#64748b' font-size='11'>-15.2%</text><line x1='56' y1='63.5' x2='1016' y2='63.5' stroke='#e2e8f0' stroke-dasharray='3 4'/><text x='8' y='67.5' fill='#64748b' font-size='11'>-1.3%</text><line x1='56' y1='28.0' x2='1016' y2='28.0' stroke='#e2e8f0' stroke-dasharray='3 4'/><text x='8' y='32.0' fill='#64748b' font-size='11'>12.7%</text>
+        <line x1='56' y1='170.0' x2='1016' y2='170.0' stroke='#cbd5e1'/>
+        <line x1='56' y1='270.0' x2='1016' y2='270.0' stroke='#cbd5e1'/>
+        <text x='8' y='274.0' fill='#64748b' font-size='11'>0%</text>
+        <polyline fill='none' stroke='#2563eb' stroke-width='3' points='56.0,60.3 69.0,60.3 81.9,60.3 94.9,60.3 107.9,60.3 120.9,60.3 133.8,60.3 146.8,60.3 159.8,60.3 172.8,60.3 185.7,60.3 198.7,60.3 211.7,60.3 224.6,60.3 237.6,60.3 250.6,60.3 263.6,60.3 276.5,60.3 289.5,60.3 302.5,60.3 315.5,60.3 328.4,60.3 341.4,60.3 354.4,60.3 367.4,60.3 380.3,60.3 393.3,60.3 406.3,60.3 419.2,60.3 432.2,60.3 445.2,60.3 458.2,60.3 471.1,60.3 484.1,60.3 497.1,60.3 510.1,60.3 523.0,60.3 536.0,60.3 549.0,60.3 561.9,60.3 574.9,60.3 587.9,60.3 600.9,60.3 613.8,60.3 626.8,60.3 639.8,38.5 652.8,38.5 665.7,38.5 678.7,38.5 691.7,42.3 704.6,37.8 717.6,37.8 730.6,37.8 743.6,37.8 756.5,37.8 769.5,37.8 782.5,37.8 795.5,37.8 808.4,37.8 821.4,37.8 834.4,37.8 847.4,37.8 860.3,75.9 873.3,96.6 886.3,96.6 899.2,96.6 912.2,96.6 925.2,116.3 938.2,134.9 951.1,134.9 964.1,141.2 977.1,159.2 990.1,159.2 1003.0,160.2 1016.0,154.6'/>
+        <circle cx='1016.0' cy='154.6' r='4' fill='#2563eb'/>
+        <text x='1010.0' y='144.6' text-anchor='end' fill='#1d4ed8' font-size='11'>-37.13%</text>
+        <line x1='51.4' y1='270.0' x2='60.6' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='64.4' y1='270.0' x2='73.6' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='77.3' y1='270.0' x2='86.6' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='90.3' y1='270.0' x2='99.5' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='103.3' y1='270.0' x2='112.5' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='116.3' y1='270.0' x2='125.5' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='129.2' y1='270.0' x2='138.4' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='142.2' y1='270.0' x2='151.4' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='155.2' y1='270.0' x2='164.4' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='168.1' y1='270.0' x2='177.4' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='181.1' y1='270.0' x2='190.3' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='194.1' y1='270.0' x2='203.3' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='207.1' y1='270.0' x2='216.3' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='220.0' y1='270.0' x2='229.3' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='233.0' y1='270.0' x2='242.2' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='246.0' y1='270.0' x2='255.2' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='259.0' y1='270.0' x2='268.2' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='271.9' y1='270.0' x2='281.1' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='284.9' y1='270.0' x2='294.1' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='297.9' y1='270.0' x2='307.1' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='310.9' y1='270.0' x2='320.1' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='323.8' y1='270.0' x2='333.0' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='336.8' y1='270.0' x2='346.0' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='349.8' y1='270.0' x2='359.0' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='362.7' y1='270.0' x2='372.0' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='375.7' y1='270.0' x2='384.9' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='388.7' y1='270.0' x2='397.9' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='401.7' y1='270.0' x2='410.9' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='414.6' y1='270.0' x2='423.9' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='427.6' y1='270.0' x2='436.8' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='440.6' y1='270.0' x2='449.8' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='453.6' y1='270.0' x2='462.8' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='466.5' y1='270.0' x2='475.7' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='479.5' y1='270.0' x2='488.7' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='492.5' y1='270.0' x2='501.7' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='505.4' y1='270.0' x2='514.7' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='518.4' y1='270.0' x2='527.6' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='531.4' y1='270.0' x2='540.6' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='544.4' y1='270.0' x2='553.6' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='557.3' y1='270.0' x2='566.6' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='570.3' y1='270.0' x2='579.5' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='583.3' y1='270.0' x2='592.5' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='596.3' y1='270.0' x2='605.5' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='609.2' y1='270.0' x2='618.4' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='622.2' y1='270.0' x2='631.4' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><rect x='635.2' y='241.4' width='9.2' height='28.6' rx='1.5' fill='#16a34a' opacity='0.92'/><line x1='648.1' y1='270.0' x2='657.4' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='661.1' y1='270.0' x2='670.3' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='674.1' y1='270.0' x2='683.3' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><rect x='687.1' y='270.0' width='9.2' height='4.6' rx='1.5' fill='#dc2626' opacity='0.92'/><rect x='700.0' y='264.5' width='9.2' height='5.5' rx='1.5' fill='#16a34a' opacity='0.92'/><line x1='713.0' y1='270.0' x2='722.2' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='726.0' y1='270.0' x2='735.2' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='739.0' y1='270.0' x2='748.2' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='751.9' y1='270.0' x2='761.1' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='764.9' y1='270.0' x2='774.1' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='777.9' y1='270.0' x2='787.1' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='790.9' y1='270.0' x2='800.1' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='803.8' y1='270.0' x2='813.0' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='816.8' y1='270.0' x2='826.0' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='829.8' y1='270.0' x2='839.0' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='842.7' y1='270.0' x2='852.0' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><rect x='855.7' y='270.0' width='9.2' height='46.0' rx='1.5' fill='#dc2626' opacity='0.92'/><rect x='868.7' y='270.0' width='9.2' height='29.0' rx='1.5' fill='#dc2626' opacity='0.92'/><line x1='881.7' y1='270.0' x2='890.9' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='894.6' y1='270.0' x2='903.9' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><line x1='907.6' y1='270.0' x2='916.8' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><rect x='920.6' y='270.0' width='9.2' height='30.2' rx='1.5' fill='#dc2626' opacity='0.92'/><rect x='933.6' y='270.0' width='9.2' height='31.3' rx='1.5' fill='#dc2626' opacity='0.92'/><line x1='946.5' y1='270.0' x2='955.7' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><rect x='959.5' y='270.0' width='9.2' height='11.7' rx='1.5' fill='#dc2626' opacity='0.92'/><rect x='972.5' y='270.0' width='9.2' height='34.7' rx='1.5' fill='#dc2626' opacity='0.92'/><line x1='985.4' y1='270.0' x2='994.7' y2='270.0' stroke='#cbd5e1' stroke-width='2'/><rect x='998.4' y='270.0' width='9.2' height='2.3' rx='1.5' fill='#dc2626' opacity='0.92'/><rect x='1011.4' y='257.9' width='9.2' height='12.1' rx='1.5' fill='#16a34a' opacity='0.92'/>
+        <line x1='56.0' y1='320.0' x2='56.0' y2='326.0' stroke='#94a3b8'/><text x='56.0' y='340.0' text-anchor='middle' fill='#64748b' font-size='11'>2020-02</text><line x1='198.7' y1='320.0' x2='198.7' y2='326.0' stroke='#94a3b8'/><text x='198.7' y='340.0' text-anchor='middle' fill='#64748b' font-size='11'>2021-01</text><line x1='354.4' y1='320.0' x2='354.4' y2='326.0' stroke='#94a3b8'/><text x='354.4' y='340.0' text-anchor='middle' fill='#64748b' font-size='11'>2022-01</text><line x1='510.1' y1='320.0' x2='510.1' y2='326.0' stroke='#94a3b8'/><text x='510.1' y='340.0' text-anchor='middle' fill='#64748b' font-size='11'>2023-01</text><line x1='665.7' y1='320.0' x2='665.7' y2='326.0' stroke='#94a3b8'/><text x='665.7' y='340.0' text-anchor='middle' fill='#64748b' font-size='11'>2024-01</text><line x1='821.4' y1='320.0' x2='821.4' y2='326.0' stroke='#94a3b8'/><text x='821.4' y='340.0' text-anchor='middle' fill='#64748b' font-size='11'>2025-01</text><line x1='977.1' y1='320.0' x2='977.1' y2='326.0' stroke='#94a3b8'/><text x='977.1' y='340.0' text-anchor='middle' fill='#64748b' font-size='11'>2026-01</text><line x1='1016.0' y1='320.0' x2='1016.0' y2='326.0' stroke='#94a3b8'/><text x='1016.0' y='340.0' text-anchor='middle' fill='#64748b' font-size='11'>2026-04</text>
+        <rect x='830' y='24' width='12' height='12' rx='2' fill='#2563eb'/><text x='848' y='34' fill='#475569' font-size='11'>累计净收益（month-end chain）</text>
+        <rect x='830' y='42' width='12' height='12' rx='2' fill='#16a34a'/><text x='848' y='52' fill='#475569' font-size='11'>月度盈利</text>
+        <rect x='830' y='60' width='12' height='12' rx='2' fill='#dc2626'/><text x='848' y='70' fill='#475569' font-size='11'>月度亏损</text>
+        <line x1='830' y1='82' x2='842' y2='82' stroke='#cbd5e1' stroke-width='2'/><text x='848' y='86' fill='#475569' font-size='11'>月度持平 / gate off</text>
+      </svg>
+
+      <table>
+        <thead>
+          <tr><th>月度重构口径的关键问题</th><th>当前答案</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>过去 5~6 年 total return 到底是多少？</td><td><b>不是 11.7%。</b> 当前 full-period <code>baseline+veto+gate</code> 为 <code>-37.1264%</code>。</td></tr>
+          <tr><td>是不是每个月都盈利？</td><td><b>不是。</b> 当前月末口径下是 <code>3</code> 个盈利月、<code>8</code> 个亏损月、<code>64</code> 个持平月。</td></tr>
+          <tr><td>最好 / 最差月分别是哪一个？</td><td>最好月是 <code>2023-11</code>，月度链式收益 <code>8.5761%</code>；最差月是 <code>2025-04</code>，收益 <code>-13.7769%</code>。</td></tr>
+          <tr><td>为什么月度曲线看起来这么平？</td><td>因为这条线的 <code>gate_on_rate</code> 只有 <code>3.5440%</code>；绝大部分 3h rebalance 都被 gate 关掉了，所以月末大多是 0 变化。</td></tr>
+        </tbody>
+      </table>
+      <h3>按年拆开看（月度重构 × baseline+veto+gate）</h3>
+      <table>
+        <thead>
+          <tr><th>年份</th><th>全年累计收益</th><th>盈利月数</th><th>亏损月数</th><th>持平月数</th><th>gate-on baskets</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>2020</code></td><td><code>0.0000%</code></td><td><code>0</code></td><td><code>0</code></td><td><code>11</code></td><td><code>0</code></td></tr><tr><td><code>2021</code></td><td><code>0.0000%</code></td><td><code>0</code></td><td><code>0</code></td><td><code>12</code></td><td><code>0</code></td></tr><tr><td><code>2022</code></td><td><code>0.0000%</code></td><td><code>0</code></td><td><code>0</code></td><td><code>12</code></td><td><code>0</code></td></tr><tr><td><code>2023</code></td><td><code>8.5761%</code></td><td><code>1</code></td><td><code>0</code></td><td><code>11</code></td><td><code>67</code></td></tr><tr><td><code>2024</code></td><td><code>0.2665%</code></td><td><code>1</code></td><td><code>1</code></td><td><code>10</code></td><td><code>7</code></td></tr><tr><td><code>2025</code></td><td><code>-37.3832%</code></td><td><code>0</code></td><td><code>5</code></td><td><code>7</code></td><td><code>469</code></td></tr><tr><td><code>2026</code></td><td><code>-7.7667%</code></td><td><code>1</code></td><td><code>2</code></td><td><code>1</code></td><td><code>98</code></td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li><b>最重要的人话：</b>这不是一条“每个月都在稳定赚钱”的线，而更像一条 <b>长期大部分时间不动、少数月份跳一下</b> 的机会型曲线。</li>
+        <li><b>所以任何单一正收益口径</b> 都不能被读成“这条策略 6 年里月月赚钱、慢慢上涨”。更准确的读法是：<b>在月度重构 + gate 之后，旧 15m 母体证据明显偏弱，收益高度集中且回撤很深。</b></li>
+        <li><b>这条证据面的限制也别忘：</b>本页按月初以前的上一完整自然月 Binance UM perpetual 1d quote_volume 求和，作为 causal liquidity / 热门度 proxy 来重建每月 top30 universe。它不再依赖 CoinGecko market-cap proxy，也避免了 1000*/1000000* 合约 multiplier 对市值近似的扭曲；但它仍是 volume-proxy 近似，而不是原始研究当时保存下来的官方选池快照。</li>
+      </ul>
+    </div>
+
+
+    <div class='card'>
+      <h2>策略逻辑解释卡片：它到底怎么选币？</h2>
+      <p>下面这张卡片只讲 <b>当前 frozen live spec</b>。不说“高/低”，直接说计算过程：</p>
+      <ol>
+        <li>固定 universe：当前 frozen 版直接读取 admission summary 里的固定 <code>30</code> 币名单；refresh 时<b>不按月/按季度重选 Top30</b>。所以这页讲的是“当前运行口径”，不是“历史滚动 Top30”口径。</li>
+        <li>bar 粒度：用 <code>15m</code> K 线。</li>
+        <li>formation window：往前看 <code>64</code> 根 <code>15m</code> bar，也就是 <code>16h</code>。</li>
+        <li>baseline score：对每个币取 formation window 的<strong>首尾 close</strong>，按 <code>cumret = close[-1] / close[0] - 1</code> 算过去 16h 累计收益。</li>
+        <li>横截面排序：把 universe 里所有币按 <code>cumret</code> 从低到高排序；<b>top-3 做多</b>，<b>bottom-3 先作为 plain short 候选</b>。</li>
+        <li>short-leg jump veto：只检查 plain short 候选。对每个 short 候选，在同一个 formation window 里算它的 <code>max 15m up-bar</code>；再算同一时点全市场的 <code>median(max-up-bar)</code>。阈值固定为 <code>max(1.5%, 2.0 × median(max-up-bar))</code>。</li>
+        <li>如果某个 plain short 候选的 <code>max-up-bar</code> 超过该阈值，就 <b>veto</b>；然后从后续 loser rank 里往下补，直到 short leg 补满 <code>3</code> 个名字。</li>
+        <li>最终执行：<b>long = plain_longs</b>，<b>short = veto_shorts</b>；持有 <code>12</code> 根 <code>15m</code> bar，也就是 <code>3h</code> 后时间退出。</li>
+      </ol>
+      <p class="note"><b>成本口径也锁死：</b><code>net_bps = gross_bps - 4.0 × turnover_x</code>。这页上的 live/paper 指标都是按这个 frozen 成本口径记，不额外夹带别的 fee 假设。</p>
+    </div>
+
+    <div class='card'>
+      <h2>假数据示例：plain short 怎样被 veto，short 名额怎样 refill？</h2>
+      <p>下面用一组假数据，把代码里的实际流程一步一步画出来。注意这里只是为了解释机制，不是当前真实持仓。</p>
+      
+      <svg viewBox="0 0 860 240" width="100%" height="240" role="img" aria-label="rank213 example ranking and veto flow">
+        <rect x="18" y="20" width="824" height="194" rx="14" fill="#fff" stroke="#dbe4f0"/>
+        <line x1="130" y1="50" x2="130" y2="190" stroke="#cbd5e1" stroke-dasharray="4 4"/>
+        <text x="26" y="40" fill="#475569" font-size="12">formation = 64 × 15m = 16h；按首尾 close 算 cumret</text>
+        <text x="26" y="58" fill="#475569" font-size="12">阈值 = max(1.5%, 2.0 × 全市场 median(max-up-bar)) = max(1.5%, 2.0 × 1.6%) = 3.2%</text>
+        <line x1="130" y1="120" x2="810" y2="120" stroke="#94a3b8" stroke-dasharray="4 4"/>
+
+        <rect x="150" y="86" width="126" height="22" rx="8" fill="#16a34a"/>
+        <text x="158" y="101" fill="#fff" font-size="12">ALPHA +12.4%</text>
+        <rect x="150" y="112" width="103" height="22" rx="8" fill="#16a34a"/>
+        <text x="158" y="127" fill="#fff" font-size="12">BETA +9.1%</text>
+        <rect x="150" y="138" width="79" height="22" rx="8" fill="#16a34a"/>
+        <text x="158" y="153" fill="#fff" font-size="12">GAMMA +5.6%</text>
+        <text x="286" y="101" fill="#166534" font-size="12">top-3 → long</text>
+        <text x="263" y="127" fill="#166534" font-size="12">top-3 → long</text>
+        <text x="239" y="153" fill="#166534" font-size="12">top-3 → long</text>
+
+        <rect x="500" y="134" width="67" height="22" rx="8" fill="#dc2626"/>
+        <text x="508" y="149" fill="#fff" font-size="12">DELTA -4.2%</text>
+        <text x="574" y="149" fill="#7f1d1d" font-size="12">refill 候选</text>
+
+        <rect x="500" y="160" width="97" height="22" rx="8" fill="#dc2626"/>
+        <text x="508" y="175" fill="#fff" font-size="12">EPSILON -7.8%</text>
+        <text x="603" y="175" fill="#7f1d1d" font-size="12">bottom-3；1.4% ≤ 3.2% → 保留</text>
+
+        <rect x="500" y="186" width="113" height="22" rx="8" fill="#dc2626"/>
+        <text x="508" y="201" fill="#fff" font-size="12">OMEGA -11.2%</text>
+        <text x="620" y="201" fill="#7f1d1d" font-size="12">bottom-3；1.1% ≤ 3.2% → 保留</text>
+
+        <rect x="500" y="108" width="88" height="22" rx="8" fill="#f59e0b"/>
+        <text x="508" y="123" fill="#111827" font-size="12">PHI -9.5%</text>
+        <text x="596" y="123" fill="#92400e" font-size="12">bottom-3；3.9% &gt; 3.2% → veto</text>
+
+        <path d="M 593 118 C 650 96, 680 96, 735 118" fill="none" stroke="#f59e0b" stroke-width="2.4" marker-end="url(#arrow)"/>
+        <path d="M 567 144 C 645 144, 685 144, 760 144" fill="none" stroke="#dc2626" stroke-width="2.4" marker-end="url(#arrowRed)"/>
+
+        <rect x="700" y="70" width="120" height="30" rx="10" fill="#0f172a"/>
+        <text x="712" y="89" fill="#fff" font-size="12">最终执行篮子</text>
+        <text x="712" y="106" fill="#cbd5e1" font-size="11">long = ALPHA,BETA,GAMMA</text>
+        <text x="712" y="122" fill="#cbd5e1" font-size="11">short = OMEGA,EPSILON,DELTA</text>
+
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <polygon points="0 0, 6 3, 0 6" fill="#f59e0b"/>
+          </marker>
+          <marker id="arrowRed" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <polygon points="0 0, 6 3, 0 6" fill="#dc2626"/>
+          </marker>
+        </defs>
+      </svg>
+    
+      <table>
+        <thead>
+          <tr><th>symbol</th><th>过去 16h cumret</th><th>formation 窗内 max 15m up-bar</th><th>在这一步的角色</th><th>为什么</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>ALPHA</code></td><td>+12.4%</td><td>1.0%</td><td>long</td><td>过去 16h 最强，进 top-3 long</td></tr><tr><td><code>BETA</code></td><td>+9.1%</td><td>1.4%</td><td>long</td><td>过去 16h 第二强，进 top-3 long</td></tr><tr><td><code>GAMMA</code></td><td>+5.6%</td><td>1.8%</td><td>long</td><td>过去 16h 第三强，进 top-3 long</td></tr><tr><td><code>DELTA</code></td><td>-4.2%</td><td>1.3%</td><td>refill short</td><td>原本不是 bottom-3，但因为 veto refill 被补进 short</td></tr><tr><td><code>EPSILON</code></td><td>-7.8%</td><td>1.4%</td><td>plain short</td><td>bottom-3 loser，且 max-up-bar 未超阈值</td></tr><tr><td><code>PHI</code></td><td>-9.5%</td><td>3.9%</td><td>vetoed</td><td>bottom-3 loser，但 16h 内出现异常 15m 上冲，被 veto</td></tr><tr><td><code>OMEGA</code></td><td>-11.2%</td><td>1.1%</td><td>plain short</td><td>最弱 loser，进入 short</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>先看 <b>cumret 排名</b>：<code>ALPHA/BETA/GAMMA</code> 是 top-3，所以进 <b>long</b>。</li>
+        <li>plain short 候选会先落在最弱的三个：<code>OMEGA / PHI / EPSILON</code>。</li>
+        <li>然后只对这三个 short 候选做 jump veto。假设当前全市场 <code>median(max-up-bar)=1.6%</code>，那阈值就是 <code>max(1.5%, 2.0×1.6%) = 3.2%</code>。</li>
+        <li><code>PHI</code> 的 <code>max-up-bar=3.9%</code>，超过 <code>3.2%</code>，所以被 veto；<code>OMEGA</code> 和 <code>EPSILON</code> 保留。</li>
+        <li>short leg 少了一个名额，就从后续 loser rank 往下补，补到 <code>DELTA</code>；因为它的 <code>max-up-bar=1.3%</code> 没超阈值，所以最终 short 变成 <code>OMEGA / EPSILON / DELTA</code>。</li>
+        <li><b>最终执行篮子</b>：<code>long = ALPHA,BETA,GAMMA</code>；<code>short = OMEGA,EPSILON,DELTA</code>。</li>
+      </ul>
+    </div>
+
+    
+    <div class='card'>
+      <h2>更长周期：我们现在到底有什么数据？</h2>
+      <div class="warn"><b>先把边界说清楚：</b>在<b>当前 frozen current-universe</b> 的同口径检查里，公共共同历史最多只到 <code>168.64</code> 天（<code>2025-10-24T08:30:00Z</code> → <code>2026-04-10T23:45:00Z</code>）。所以 <b>120D 可以算</b>；但 <b>180D / 360D 不能在同一 frozen current-universe 口径下硬算</b>。</div>
+      <table>
+        <thead>
+          <tr><th>窗口</th><th>是否可用</th><th>覆盖区间</th><th>rebalances</th><th>mean net bps</th><th>cum return</th><th>备注</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>MAX AVAILABLE</code></td>
+            <td><b>yes</b></td>
+            <td><code>2025-10-24T08:30:00Z</code> → <code>2026-04-10T23:45:00Z</code></td>
+            <td><code>1343</code></td>
+            <td><code>8.96</code></td>
+            <td><code>166.7185%</code></td>
+            <td>这是当前 frozen current-universe 同 spec 的最大可用共同历史</td>
+          </tr>
+          <tr><td><code>120D</code></td><td><b>yes</b></td><td><code>2025-12-11T21:30:00Z</code> → <code>2026-04-10T21:30:00Z</code></td><td><code>960</code></td><td><code>9.96</code></td><td><code>121.8618%</code></td><td>同口径 frozen current-universe historical recompute</td></tr><tr><td><code>180D</code></td><td><b>no</b></td><td>—</td><td>—</td><td>—</td><td>—</td><td>common-history shorter than requested window under frozen universe（可用共同历史约 <code>167.88</code> 天）</td></tr><tr><td><code>360D</code></td><td><b>no</b></td><td>—</td><td>—</td><td>—</td><td>—</td><td>common-history shorter than requested window under frozen universe（可用共同历史约 <code>167.88</code> 天）</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li><b>120D 现在有数据：</b>当前同口径 historical recompute 给到 <b>121.8618%</b>，对应 <b>9.96 bps/笔</b>、<b>960</b> 笔。</li>
+        <li><b>180D / 360D 现在不要乱说：</b>不是结果不好所以不报，而是<b>同一 frozen current-universe 的共同历史根本不够长</b>。</li>
+        <li>如果要看更长（1Y/2Y/3Y/5Y/6Y），目前只能去看独立的 <code>asof_universe_long_history_review</code> / <code>formal_strategy_review</code> / <code>monthly_volume_universe_rebuild</code> 这类<strong>不同证据面</strong>，不能直接冒充为这页 frozen current-universe 已验证通过。</li>
+      </ul>
+    </div>
+
+
+    <div class='card'>
+      <h2>把公式和代码一一对上</h2>
+      <table>
+        <thead>
+          <tr><th>概念</th><th>这页的硬定义</th><th>对应代码实现</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>formation 窗</td><td>过去 <code>64</code> 根 <code>15m</code> bar（<code>16h</code>）</td><td><code>close_window = panel[eligible].iloc[i - FORMATION_BARS:i + 1]</code></td></tr>
+          <tr><td>baseline score</td><td><code>cumret = close[-1] / close[0] - 1</code></td><td><code>cumret = close_window.iloc[-1] / close_window.iloc[0] - 1.0</code></td></tr>
+          <tr><td>做多名单</td><td>按 <code>cumret</code> 排名的 <code>top-3</code></td><td><code>longs = rank.index[-TOP_N:].tolist()[::-1]</code></td></tr>
+          <tr><td>plain short 候选</td><td>按 <code>cumret</code> 排名的 <code>bottom-3</code></td><td><code>plain_shorts = rank.index[:BOTTOM_N].tolist()</code></td></tr>
+          <tr><td>jump veto 统计量</td><td>formation 窗内 <code>max 15m up-bar</code></td><td><code>short_info = [(sym, float(hist[sym].max())) ...]</code></td></tr>
+          <tr><td>veto 阈值</td><td><code>max(1.5%, 2.0 × median(max-up-bar))</code></td><td><code>veto_threshold = max(VETO_FLOOR, VETO_MULT * universe_med)</code></td></tr>
+          <tr><td>refill</td><td>被 veto 后，从后续 loser rank 继续往下补</td><td><code>refill = [sym for sym in rank.index if sym not in longs and sym not in plain_shorts]</code></td></tr>
+          <tr><td>最终执行 short</td><td><code>veto_shorts</code></td><td><code>shorts = veto_shorts</code> / frozen seed 对应 <code>variant_timeseries.csv.veto_shorts</code></td></tr>
+          <tr><td>退出</td><td>持有 <code>12</code> 根 <code>15m</code> bar = <code>3h</code></td><td><code>exit_ts = timestamp + 12 × 15m</code></td></tr>
+          <tr><td>成本</td><td><code>4.0 bps × turnover_x</code></td><td><code>net_bps = gross_bps - 4.0 × turnover_x</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    
+  <div class='card'>
+    <h2>regime 快照（来自 regime_review）</h2>
+    <ul>
+      <li>live-like: <code>2025/2026 positive regime</code></li>
+      <li>gate: <code>ON</code>（<code>3/3</code>，阈值 <code>3</code>）</li>
+      <li>distance: good=<code>2.7483</code>，bad=<code>5.7957</code></li>
+      <li>window: <code>2026-03-11T18:00:00Z</code> → <code>2026-04-10T18:00:00Z</code></li>
+    </ul>
+  </div>
+
+    
+    <div class='card'>
+      <h2>gate 到底是不是同一套？什么时候会开？</h2>
+      <div class="good"><b>先给结论：</b>当前网页、formal 5~6 年回测、monthly rebuild、以及最新 shadow decision 用的，都是同一套 frozen <code>regime_gate_v1</code>；并且现在统一成 <b>causal / live-aligned</b> 口径：最近 <code>30</code> 天滚动窗口，按 3 条规则投票；只要 <code>votes &gt;= ceil(valid_rules × 0.67)</code> 就 <b>ON</b>，否则 <b>OFF</b>。OFF 时不是反手，而是 <code>flat</code>。</div>
+      <table>
+        <thead>
+          <tr><th>gate 变量</th><th>阈值</th><th>它在看什么</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>veto_active_rate</code></td><td><code>≥ 0.3401</code></td><td>最近30天里，有 short-leg jump veto 触发的 rebalance 占比；越高说明 loser 端更常出现‘先猛冲再转弱’的异常挤兑/离散环境。</td></tr><tr><td><code>xs_dispersion_bps</code></td><td><code>≥ 379.5133</code></td><td>最近30天横截面离散度（universe dispersion）；越高说明强弱分化更明显，cross-sectional long-short 更有施展空间。</td></tr><tr><td><code>ls_divergence_bps</code></td><td><code>≥ 5.0783</code></td><td>最近30天 long leg 与 veto-short leg 的平均表现差；越高说明多空两边确实在拉开，而不是只有单边噪声。</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li><b>规则不是“永远写死必须 3/3”。</b> 正式定义是 <code>ceil(valid_rules × 0.67)</code>。在成熟样本里通常是三条都有效，因此当前这版多数时候等价于 <b>3/3 才 ON</b>；若冷启动或数据覆盖缺口导致有效规则减少，则按当时 <code>valid_rules</code> 自动重算门槛。</li>
+        <li><b>所以你问“是三者都达到，还是达到其中几个？”</b>——严格答案是：<b>看当时有效规则数</b>。而在当前成熟运行链路里，重点是三条规则已经能按 causal 口径完整评估。</li>
+      </ul>
+      <h3>当前这两层“ON”要分开看</h3>
+      <table>
+        <thead>
+          <tr><th>观察面</th><th>窗口 / bar</th><th>当前状态</th><th>你该怎么读</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>formal current gate snapshot</code></td>
+            <td><code>2026-03-11T18:00:00Z</code> → <code>2026-04-10T18:00:00Z</code></td>
+            <td><b>ON</b>（<code>3</code>/<code>3</code>，阈值 <code>3</code>）</td>
+            <td>这是和长期 formal 回测同定义的一层，并且明确按 causal/live-aligned 方式计算。</td>
+          </tr>
+          <tr>
+            <td><code>latest raw-bar shadow decision</code></td>
+            <td><code>2026-05-06T04:15:00Z</code></td>
+            <td><b>OFF</b>（<code>2</code>/<code>3</code>，阈值 <code>3</code>）</td>
+            <td>这是最新实时 decision bar；现在 preview 行也会带上过去 30 天已实现样本，不再因为“当前这笔未走完”而丢第三条规则。</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>formal 当前窗口，三条规则具体过没过？</h3>
+      <table>
+        <thead>
+          <tr><th>变量</th><th>当前值</th><th>阈值</th><th>是否通过</th><th>是否有效</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>veto_active_rate</code></td><td><code>0.8174</code></td><td><code>0.3401</code></td><td><b>pass</b></td><td>yes</td></tr><tr><td><code>xs_dispersion_bps</code></td><td><code>811.5763</code></td><td><code>379.5133</code></td><td><b>pass</b></td><td>yes</td></tr><tr><td><code>ls_divergence_bps</code></td><td><code>20.4627</code></td><td><code>5.0783</code></td><td><b>pass</b></td><td>yes</td></tr>
+        </tbody>
+      </table>
+      <div class="note"><b>人话版：</b>当前不只是“运气好，刚好碰到 gate 开着”。从 formal 当前窗口看，三条指标都明显高过阈值：更像是<b>横截面分化、veto 活跃度、多空分化</b>同时处于强区间，所以 gate 打开。</div>
+      
+      <div class="good"><b>这次把 shadow / formal / monthly rebuild 的 gate 口径统一成 causal 版了。</b><br/>
+        计算模式：<code>causal_live_aligned</code><br/>
+        规则口径：veto/xs features use decision-time-observable data; ls_divergence only uses rows whose exit_ts was already realized by that decision time.</div>
+      
+      <div class="note"><b>再把 shadow 运行态说人话：</b>当前 raw-bar shadow 审计 lane 的 <code>source_mode</code> 是 <code>recompute_recent</code>（frame=<code>recompute_recent</code>）；当前 tail 关注窗 <code>14</code> 天。这表示它现在会<strong>优先沿用已有 recent ledger，只重刷尾部 overlap + 最新 live row</strong>，而不是每次都把整段最近窗口从零重算。<br/>
+        但也要诚实：这还<strong>不是</strong>最极致的“单 bar append/drop、全程 O(1) ledger 更新”；更准确的叫法是 <b>incremental tail refresh</b>。当前页面把它当作 <b>shadow / audit lane</b>，不是 live execution lane。</div>
+
+
+      <ul>
+        <li><b>回答你最核心那句：</b>“此时此刻的 gate 和过去 5 年回测里的 gate 是不是一样？”——<b>现在定义和实现都对齐</b>：shadow / formal / monthly rebuild 按同一套 causal frozen gate。</li>
+        <li><b>再翻成人话：</b>不是“随便碰巧 market 好一点就放行”。它要求最近 30 天里 <b>强弱分化够大、veto 异动够活跃、且多空分化够明显</b>；否则就 flat。</li>
+      </ul>
+    </div>
+
+
+    <div class='card'>
+      <h2>相关审计页</h2>
+      <p>
+        <a href="/momentum/paper/rank213_evidence_map.html">evidence_map（推荐先看）</a>
+        ·
+        <a href="/momentum/paper/213a_honesty_audit.html">honesty_audit（seed causality）</a>
+        · <a href="/momentum/paper/213a_ffill_audit.html">ffill_impact_audit</a>
+        · <a href="/momentum/paper/213a_readiness.html">readiness_note</a>
+        · <a href="/momentum/paper/213a_long_history_funding.html">funding-adjusted long-history</a>
+        · <a href="/momentum/paper/213a_asof_universe.html">asof_universe_long_history_review</a>
+        · <a href="/momentum/paper/213a_regime.html">regime_review</a>
+        · <a href="/momentum/paper/213a_formal_review.html">formal_strategy_review</a>
+        · <a href="/momentum/paper/213a_fee_sensitivity.html">fee_sensitivity_review</a>
+        · <a href="/momentum/paper/213a_volume_universe.html">monthly_volume_universe_rebuild</a>
+        · <a href="/momentum/paper/213a_volume_pct_gate_full.html">monthly_volume_percentile_gate_review</a>
+        · <a href="/momentum/paper/213a_universe_audit.html">universe_selection_audit</a>
+        · <a href="/momentum/paper/213a_family_board.html">family_operating_board</a>
+      </p>
+    </div>
+
+    <div class='card'>
+      <h2>最新一笔信号快照</h2>
+      <pre>{
+  "entry_ts": "2026-03-28T02:15:00Z",
+  "exit_ts": "2026-03-28T05:15:00Z",
+  "gross_bps": 886.804320820116,
+  "net_bps": 880.1376541534494,
+  "turnover_x": 1.6666666666666663,
+  "veto_count": 2,
+  "longs": [
+    "ONUSDT",
+    "SIRENUSDT",
+    "PIPPINUSDT"
+  ],
+  "shorts": [
+    "STGUSDT",
+    "KNCUSDT",
+    "WLDUSDT"
+  ]
+}</pre>
+    </div>
+  </div>
+</body>
+</html>

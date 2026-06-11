@@ -1,0 +1,103 @@
+# 别把 Fib confirmation 继续写成“每层都摸过才算成熟”：`ordered Fib touch chain` 在 15m 更像 long-side quality score，不是三线 shared hard gate
+- 时间：2026-03-22 22:28 UTC
+- 类型：GitHub 仓库 + Binance 公共数据最小快检
+- 主题标签：fibonacci/retest-hold/ordered-touch-chain/zigzag/fib-ladder/maturity/long-bias/filter/repo/crypto/15m/breakout-short/ema/psar
+- 证据类型：仓库实现 + 本地最小复核
+
+## 1) 这次看了什么
+这轮主看的是一个较新的仓库 **beydah / ByBit-Scanner-Bot (2025)** 里一个值得单拎出来的旁支想法：
+> **不要把 Fib 回踩确认写成“回到 0.5/0.618 就算”，而是先检查这段 `X→B` 冲击腿，是否按顺序走过 `0.786 → 0.618 → 0.5 → 0.382` 这条 level ladder。**
+
+我没有照抄仓库整套 ZigZag/Fib 扫描器，而是只偷它最像 desk 可复现过滤层的部分：**pre-break ordered touch chain**。然后用 `BTC/ETH/SOL` 的 Binance Spot 公共 `15m` 数据，做了一个 very small proxy check，看它到底更像：
+- `Fib retest_hold` 的质量分层；还是
+- 三条收口线都能共用的 hard gate。
+
+## 2) 核心结论（先说人话）
+- **一句话结论：** `ordered Fib touch chain` 更像 **long-side maturity / path-quality score**，不适合直接升成 `breakout-short / Fib / EMA-PSAR` 三线共用的 hard gate。  
+- **一句话证据：** 在本地最小快检里，严格 chain 虽然让 long 侧 failure 明显下降，但也把 `timeout / 不决断` 明显抬高；short 侧反而把 continuation 吃掉了，说明它更像 **偏长侧、偏慢、偏成熟行情** 的过滤层。
+
+### 关键数据点（本地最小快检）
+样本口径：`BTCUSDT / ETHUSDT / SOLUSDT`，Binance Spot 公共 `15m`；breakout proxy = `20-bar 前高/前低突破 + breakout bar body% / CLV 过滤`；随后观察首次回到 Fib `0.382~0.618` 区间的 retest 事件，并比较 **有无 ordered chain** 的后续表现。
+
+1. **pooled 结果：strict chain 没有让事件更“干净地继续”，反而更慢、更容易 timeout**
+   - `chain=False`：`n=53`，`continue 49.1% / fail 26.4% / timeout 24.5%`
+   - `chain=True`：`n=434`，`continue 33.6% / fail 16.6% / timeout 49.8%`
+
+2. **它对 long 有帮助，但帮助方式更像“少一点坏单，多一点慢单”**
+   - `long, chain=False`：`continue 31.8% / fail 45.5% / timeout 22.7%`
+   - `long, chain=True`：`continue 29.4% / fail 18.7% / timeout 51.9%`
+
+3. **它不适合镜像给 breakout-short follow-up**
+   - `short, chain=False`：`continue 61.3% / fail 12.9% / timeout 25.8%`
+   - `short, chain=True`：`continue 37.7% / fail 14.5% / timeout 47.7%`
+
+4. **strict chain 对应的是“更成熟、更拖长的冲击腿”**
+   - `median bars X→B`：`chain=False = 4`，`chain=True = 16`
+
+> 读法：这不是“顺序摸过更多 Fib 层 → continuation 一定更强”，而更像“这段冲击腿走得更完整、更成熟，所以后面回踩时更不容易立刻死，但也更不容易马上再冲出去”。
+
+## 3) 为什么这题比继续泛找更值得
+因为它直接服务当前三条收口线里最需要讲清楚的两件事：
+- **Fib confirmation / retest_hold**：这是最直接的。现在我们知道，`ordered chain` 可以当 **long-side quality score / maturity flag**，但不该直接当 hard admit gate；
+- **V3 breakout-short follow-up**：这轮也顺手帮 short 侧做了反证——别把 long 的“成熟 pullback 语言”硬镜像到 short；
+- **EMA / PSAR raw alpha focus**：它给了一个更诚实的角色定位：若未来要接入，只能当 **path-quality overlay**，而不是 shared trigger。
+
+所以这题不是离开主线，而是在帮 `Fib / breakout-short / EMA-PSAR` 这三条线减少一条“看起来很合理、但很可能被误用”的过滤器。
+
+## 4) 最小可复现实验口径（建议下一步真测）
+下一步不要把 `ordered chain` 二元化，而是直接做 **graded score**：
+
+1. 在 `Fib retest_hold` 里给 pre-break 冲击腿打分：
+   - `fib_ladder_hits` = 在 `X→B` 期间被依次命中的 rung 数（`0~4`）
+   - `impulse_bars` = `X→B` 用了多少根 15m bar
+   - `ladder_density = hits / bars`
+
+2. 先只在 **long-side Fib retest** 上做 A/B/C：
+   - `A = 无 ladder`
+   - `B = hard ladder_ok`
+   - `C = graded ladder score`（分三档，而不是一刀切）
+
+3. 统一比较 4 个指标：
+   - `reclaim_B_before_fail`
+   - `timeout_share`
+   - `post-cost expectancy`
+   - `trade_count_retention`
+
+如果 `C` 能做到：
+- 比 `A` 少明显的 fail；
+- 又不像 `B` 那样把 timeout 拉得太高；
+那它才值得升成 **Fib retest 的 quality layer**。否则就停留在“可解释旁支”，不要升 shared gate。
+
+## 5) 风险与保留意见
+- 这轮是 **proxy event test**，不是正式 walk-forward 回测；
+- 选的 breakout / retest 定义，是为了快检 repo 里的 branch idea，不是 production 规则；
+- 仓库本身更像 scanner / signal tool，不是经过严谨 OOS 审计的研究库；
+- 代码里模式标签还有可疑之处（例如 long pattern 标签与 zigzag 低点标签命名并不完全一致），所以这轮真正值得偷的只是 **ordered-touch-chain 这个旁支想法**，不是原样复刻整套逻辑。
+
+## 6) 来源
+1. **beydah (2025). _ByBit-Scanner-Bot_. GitHub Repository.**
+   - Authors / Org: beydah
+   - Year: 2025（created_at 2025-09-24；updated_at 2026-02-20）
+   - Title: ByBit-Scanner-Bot
+   - Venue: GitHub
+   - DOI: N/A
+   - Readable URL: <https://github.com/beydah/ByBit-Scanner-Bot>
+   - Repo URL: <https://github.com/beydah/ByBit-Scanner-Bot>
+   - 关键文件：`backend/trade/signal_logic.py`
+   - 最值得复用的点：不是整套 ZigZag/Fib 扫描，而是 `must_touch / must_not_touch` 的 **ordered Fib ladder validation skeleton**。
+
+2. **Binance Open Platform (2026). _Spot REST API – Kline/Candlestick Data_.**
+   - Authors / Org: Binance
+   - Year: 2026
+   - Title: Kline/Candlestick data
+   - Venue: Binance Developers Docs
+   - DOI: N/A
+   - Readable URL: <https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data>
+   - Repo URL: N/A
+
+## 7) 产出文件（本轮）
+- `reports/artifacts/quant_digests/fib_ladder_maturity_gate_20260322/events.csv`
+- `reports/artifacts/quant_digests/fib_ladder_maturity_gate_20260322/summary_by_ladder.csv`
+- `reports/artifacts/quant_digests/fib_ladder_maturity_gate_20260322/side_summary.csv`
+- `reports/artifacts/quant_digests/fib_ladder_maturity_gate_20260322/symbol_summary.csv`
+- `reports/artifacts/quant_digests/fib_ladder_maturity_gate_20260322/metadata.json`

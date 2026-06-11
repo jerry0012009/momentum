@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 liquidity paper 只读成“波动率建模补丁”：对 short-cycle crypto desk，更该先拆的是「liquidity-volatility × illiquidity-level cross-sectional long-short」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 liquidity paper 只读成“波动率建模补丁”：对 short-cycle crypto desk，更该先拆的是「liquidity-volatility × illiquidity-level cross-sectional long-short」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-19 23:51 UTC</span>
+      <span class="pill">研究时间：2026-04-19 23:50 UTC</span>
+      <span class="pill">类型：2024 SSRN / 2023-2024 arXiv 论文元数据与摘要 audit + 本地 Binance USDⓈ-M `15m` portability probe（top25 30d quote-volume universe）</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/relative-value/liquidity/illiquidity/liquidity-volatility/market-friction/top25-universe/15m/1h/binance-perpetual/paper/public-data/cost/risk</span>
+      <span class="pill">证据类型：论文定义启发 + 本地公开数据 portability probe + friction/capacity check</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-19_2350_liquidityvol-illiqlevel-xs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-19 23:50 UTC</li>
+<li>类型：2024 SSRN / 2023-2024 arXiv 论文元数据与摘要 audit + 本地 Binance USDⓈ-M <code>15m</code> portability probe（top25 30d quote-volume universe）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>在同一批 liquid-perp 里，做多“最近更容易出现流动性波动 / 冲击成本抬升”的币，做空“流动性更顺滑”的币；持有约 <code>1h</code>，用横截面相对表现赚钱，而不是赌全市场方向</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/relative-value/liquidity/illiquidity/liquidity-volatility/market-friction/top25-universe/15m/1h/binance-perpetual/paper/public-data/cost/risk</li>
+<li>证据类型：论文定义启发 + 本地公开数据 portability probe + friction/capacity check</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这次不是 filter，也不是单纯风险指标；它可以直接写成一条横截面 raw alpha。</strong></p>
+<p>外部材料主线是：</p>
+<ul>
+<li><strong>Qi Deng, Zhong-guo Zhou (2024 SSRN / 2023-2024 arXiv)</strong>，*Liquidity Premium, Liquidity-Adjusted Return and Volatility, and Extreme Liquidity*。</li>
+<li>论文原意更偏“如何把流动性冲击写进 return / volatility 建模与组合框架”。</li>
+</ul>
+<p>但对我们 desk，更值钱的旁支读法不是把它继续当 portfolio theory，而是抽出一句更可交易的话： &gt; <strong>如果某些币最近的“流动性波动”和“流动性差”同时抬升，它们之后一小段时间往往会继续相对跑赢，而不是立刻均值回归。</strong></p>
+<p>我这轮没有把 paper 硬翻成 ARMA-GARCH 策略，而是保留最适合 <code>15m/1h</code> 最小实验的版本：</p>
+<ul>
+<li>固定 universe：<code>top25_30d_quotevol</code></li>
+<li>每个 <code>15m</code> bar 计算 <code>score = z(liquidity_volatility_proxy) + z(illiquidity_level_proxy)</code></li>
+<li>做多 score 最高一组，做空 score 最低一组</li>
+<li>持有 <code>1h</code>（4 根 <code>15m</code> bar），<code>lag1</code> 执行</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话结论：</strong> 这篇东西最值得 intake 的，不是“流动性会影响风险”这种大白话，而是它能被 desk 改写成一条很干净的 <strong>cross-sectional raw alpha</strong>：<strong>long 近期更“难成交、且这种难成交本身在波动”的币，short 更顺滑的币。</strong></li>
+<li><strong>一句话证据：</strong> 本地 Binance USDⓈ-M <code>15m</code> probe 显示，在 <code>top25_30d_quotevol</code> universe 里，这个 long-short 组合 next <code>1h</code> gross 约 <code>+12.44bps</code>，按 <code>10bps</code> round-trip friction 粗扣后仍约 <code>+2.44bps</code>，且 <code>t≈4.42</code>、<code>n=1400</code>。</li>
+</ul>
+<p>最关键的数据点：</p>
+<ol>
+<li><strong><code>24h</code> 口径</strong>：<code>n=1400</code>，<code>mean_ls_bps ≈ +12.44bps / 1h</code>，<code>t ≈ 4.42</code>，命中率约 <code>54.4%</code>。</li>
+<li><strong>不是靠 short 单边爆赚，而是 high-score 那篮子明显更强。</strong> 同一口径下，<code>mean_hi_bps ≈ +13.86bps</code>，<code>mean_lo_bps ≈ +1.43bps</code>，说明这条线当前更像“做强者 vs 做更弱者”的 relative-value 结构，而不是裸空低分组。</li>
+<li><strong>recent pocket 还在加速。</strong> <code>3d / 7d</code> 窗口下，gross alpha 分别约 <code>+28.88bps / +34.76bps</code>；说明这不是只在旧样本里存在的死文献想法，最近一段时间反而更厚。</li>
+<li><strong>成本后还有薄 edge，但已经接近执行战。</strong> <code>lag1 + 10bps</code> 后，<code>24h</code> 口径净值约 <code>+2.44bps / 1h</code>；若把 round-trip friction 提到 <code>14bps</code>，则翻成约 <code>-1.56bps / 1h</code>。所以这条线不是“无脑 taker”，而是要认真控实现成本。</li>
+<li><strong>容量不算纸上谈兵。</strong> 在 <code>&lt;=0.25% bar ADV participation</code> 的 guardrail 下，估算每个 <code>15m</code> bar 可承载 notional 约 <strong><code>$35.2k</code></strong>，净 alpha 仍约 <code>+2.44bps / 1h</code>。</li>
+</ol>
+<h2>3. 为什么和当前项目直接相关</h2>
+<p>这条线和 desk 现在的关系很直接，因为它补的是最近 digest 里相对稀缺的一类：</p>
+<ul>
+<li>不是单币 breakout / retest；</li>
+<li>不是 funding / carry；</li>
+<li>也不是只做 filter；</li>
+<li>而是<strong>能独立成策略的 cross-sectional / relative-value raw alpha</strong>。</li>
+</ul>
+<p>更重要的是，它回答了一个很实盘的问题： &gt; <strong>哪些“看起来还是大币、够 liquid 的币”，其实在最近一个很短窗口里已经出现了更高的冲击成本与更脆的流动性结构？</strong></p>
+<p>如果这个状态本身会在后面 <code>1h</code> 继续被市场追价，那它就不是纯风险指标，而是 alpha admission 本体。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / relative-value / long-short</li>
+<li>基础 alpha：做多近期 <code>liquidity-volatility + illiquidity-level</code> 更高的币，做空更低的币，赚 next <code>1h</code> 的相对收益差</li>
+<li>regime：更适合交易活跃、轮动明显、同一 universe 内 liquidity condition 分化加剧的时段</li>
+<li>filter / veto：</li>
+<li>universe 必须先限制在 <code>top25_30d_quotevol</code> 这类足够 liquid 的池子；</li>
+<li>若 friction 上升到 <code>14bps</code> 左右，这条线就接近被吃光；</li>
+<li>若 market-wide liquidity shock 导致全体一起失真，横截面区分度会下降</li>
+<li>risk / sizing / execution overlay：</li>
+<li><code>lag1</code> 执行，避免同 bar 幻觉；</li>
+<li>participation 先压到 <code>&lt;=0.25% bar ADV</code>；</li>
+<li>可做 beta / sector neutrality；</li>
+<li>可进一步用 <code>top-k</code> router 代替全量 equal-weight，减换手、提净值</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 数据源、公开性、更新频率、实验口径</h3>
+<ul>
+<li>外部来源：论文定义（公开 arXiv / SSRN 元数据可得）</li>
+<li>实验数据：Binance USDⓈ-M 公开 <code>15m</code> K 线与成交额</li>
+<li>公开性：公开可得，无需私钥</li>
+<li>更新频率：<code>15m</code></li>
+<li>本轮最小实验口径：</li>
+<li>universe：过去 <code>30d</code> quote volume 排名前 <code>25</code></li>
+<li>feature：<code>score = z(liquidity_volatility_proxy) + z(illiquidity_level_proxy)</code></li>
+<li>portfolio：long top bucket / short bottom bucket</li>
+<li>执行：<code>lag1</code></li>
+<li>持有：<code>1h</code></li>
+<li>先看两项：<strong>cost 后 net bps</strong>、<strong>capacity / ADV guardrail 后是否还活着</strong></li>
+</ul>
+<h3>4.2 本地 first verdict</h3>
+<ul>
+<li><code>24h</code> lane：gross 约 <code>+12.44bps / 1h</code>，<code>10bps</code> friction 后 net 约 <code>+2.44bps / 1h</code></li>
+<li><code>3d / 7d</code> lane：gross 约 <code>+28.88 / +34.76bps / 1h</code></li>
+<li><code>majors12</code> lane 几乎没 edge（<code>24h</code> 仅约 <code>+0.09bps / 1h</code>），说明这条线不是“BTC/ETH/SOL 几个大币上通杀”，而是要保留更宽但仍 liquid 的横截面 universe</li>
+</ul>
+<p>这点很关键： &gt; <strong>base alpha 不是“全市场 illiquidity premium”，而是“在足够大的 liquid universe 里，谁最近更像 liquidity-stress continuation 的受益者”。</strong></p>
+<h2>5. 风险与保留意见</h2>
+<ol>
+<li><strong>它对 universe 很敏感。</strong> 放到 <code>majors12</code> 几乎就没 edge，说明这条线靠的是横截面分化，不是几个龙头币本身。</li>
+<li><strong>成本很关键。</strong> <code>10bps</code> 还能活，<code>14bps</code> 基本就死；这意味着它更适合做成低摩擦、受控 participation 的组合，不适合粗暴 taker。</li>
+<li><strong>paper 本体更偏建模而不是直接教你交易。</strong> 我这轮是明确做了 desk reframing：保留可迁移定义，放弃大而全的 ARMA-GARCH 外壳。</li>
+<li><strong>当前 short 端并不特别强。</strong> 低分组平均也还是正收益，所以更像“强者更强”的 cross-sectional continuation，不一定适合高杠杆空头表达。</li>
+</ol>
+<h2>6. 下一步怎么测</h2>
+<ol>
+<li><strong>先把全量 long-short 改成 <code>top-k router</code>。</strong> 每个 <code>15m</code> 只做 score 最高的 <code>top3~top5</code>，再决定 short 端是否保留，优先看 turnover 和 net 改善。</li>
+<li><strong>补 neutrality 检查。</strong> 做 market-beta neutral、sector / beta bucket neutral，确认不是只是“押中了更小市值山寨整体更弹”。</li>
+<li><strong>加 friction ladder。</strong> <code>6 / 8 / 10 / 12 / 14bps</code> 全扫一遍，明确这条线的死亡线在哪。</li>
+<li><strong>测 <code>15m mother signal + 5m child execution</code>。</strong> base alpha 主时钟是 <code>15m -&gt; 1h</code>，但真实实现可以用 <code>5m</code> 做更省成本的入场和换手。</li>
+<li><strong>做 regime gate。</strong> 当 market-wide realized vol 过高、全市场一起 liquidity shock 时，测试这条横截面信号是否退化，必要时加 <code>no-trade</code> gate。</li>
+</ol>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>Deng, Q., &amp; Zhou, Z.-g. (2024). _Liquidity Premium, Liquidity-Adjusted Return and Volatility, and Extreme Liquidity_. SSRN Electronic Journal / arXiv working paper.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.2139/ssrn.4694674</code></li>
+<li>arXiv DOI: <code>10.48550/arXiv.2306.15807</code></li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2306.15807">https://arxiv.org/abs/2306.15807</a></code></li>
+<li>SSRN URL: <code><a href="https://www.ssrn.com/abstract=4694674">https://www.ssrn.com/abstract=4694674</a></code></li>
+</ul>
+<ol>
+<li><strong>arXiv API metadata</strong></li>
+</ol>
+<ul>
+<li><code><a href="https://export.arxiv.org/api/query?id_list=2306.15807">https://export.arxiv.org/api/query?id_list=2306.15807</a></code></li>
+</ul>
+<ol>
+<li><strong>本地 portability / friction / capacity artifacts</strong></li>
+</ol>
+<ul>
+<li><code>reports/artifacts/literature/liquidity_volatility_illiqlevel_probe_summary_2026-04-11.csv</code></li>
+<li><code>reports/artifacts/literature/liquidity_volatility_illiqlevel_probe_series_2026-04-11.csv</code></li>
+<li><code>reports/artifacts/optimization_loop/rank382_filladjusted_capacity_check_2026-04-11.csv</code></li>
+<li><code>reports/artifacts/optimization_loop/rank382_p2_exit_honesty_delay_friction_consistency_2026-04-11.csv</code></li>
+</ul>
+<h2>8. 本地产物</h2>
+<ul>
+<li>Digest：<code>research/quant_digests/2026-04-19_2350_liquidityvol-illiqlevel-xs-alpha.md</code></li>
+<li>Runner snapshot：<code>reports/artifacts/paper_rank382_liquidityvol_illiqlevel/rank382_current_snapshot.csv</code></li>
+<li>Frozen spec：<code>reports/artifacts/paper_rank382_liquidityvol_illiqlevel/rank382_frozen_launch_spec.json</code></li>
+</ul>
+</body>
+</html>

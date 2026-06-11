@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 LiquidityHawk 只读成“情绪看板”：对 short-cycle crypto desk，更该先拆的是「overbought Williams %R × long-crowding liquidation fade」这条 15m raw alpha 候选</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 LiquidityHawk 只读成“情绪看板”：对 short-cycle crypto desk，更该先拆的是「overbought Williams %R × long-crowding liquidation fade」这条 15m raw alpha 候选</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-22 13:48 UTC</span>
+      <span class="pill">研究时间：2026-04-22 13:50 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `src/data/exchange_tracker.py`）+ Binance USDⓈ-M public-data portability probe（`BTC/ETH/SOL/XRP`，`15m`，近约 `31d`）</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/mean-reversion/crowding/long-short-ratio/top-trader-ratio/williams-r/liquidation-fade/short-only/asymmetric/binance-perpetual/15m/5m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 规则骨架 + public-data first probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-22_1350_longcrowding-williamsr-liqfade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-22 13:50 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>src/data/exchange_tracker.py</code>）+ Binance USDⓈ-M public-data portability probe（<code>BTC/ETH/SOL/XRP</code>，<code>15m</code>，近约 <code>31d</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当价格已经处在 <strong>短窗 overbought</strong>（<code>Williams %R &gt; -20</code>）且 Binance top-trader <strong>long crowding</strong> 已经明显偏高时，后续更容易出现一段 <strong>long liquidation / squeeze-back-down</strong>；交易表达上就是做一个 <code>crowded-upmove -&gt; fade back to mid-state</code> 的短线反转</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/single-asset/mean-reversion/crowding/long-short-ratio/top-trader-ratio/williams-r/liquidation-fade/short-only/asymmetric/binance-perpetual/15m/5m/repo/public-data/cost/risk</li>
+<li>证据类型：repo 规则骨架 + public-data first probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主来源是一个 2026 新仓：</p>
+<ul>
+<li><strong>Author / Repo</strong>：Iktiarshovo (2026), <code>liquidity-hawk</code></li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/Iktiarshovo/liquidity-hawk&gt;">https://github.com/Iktiarshovo/liquidity-hawk&gt;</a></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/Iktiarshovo/liquidity-hawk/blob/main/README.md&gt;">https://github.com/Iktiarshovo/liquidity-hawk/blob/main/README.md&gt;</a></li>
+<li><strong>关键文件</strong>：</li>
+<li><code>README.md</code></li>
+<li><code>src/data/exchange_tracker.py</code></li>
+<li><strong>可读结论</strong>：repo 把核心想法写得非常直白：</li>
+<li><code>Williams %R &lt; -80 + Shorts &gt; 60% -&gt; LONG</code></li>
+<li><code>Williams %R &gt; -20 + Longs &gt; 60% -&gt; SHORT</code></li>
+<li>极端 funding 作为 fade 方向的附加确认</li>
+</ul>
+<p>但对当前 desk，更值得保留的不是它“对称地做多做空”的表面写法，而是其中更像样的旁支：</p>
+<p>&gt; <strong>过热上涨 + 多头拥挤 -&gt; 做 long-liquidation fade。</strong></p>
+<p>也就是：<strong>不是把 long/short crowding 当情绪看板，而是把它和 overbought 价格状态拼起来，做一个可独立回测的 short-cycle crowding reversal raw alpha。</strong></p>
+<h2>2. base alpha 到底是什么</h2>
+<p>先按要求只回答一句：</p>
+<p>&gt; <strong>这篇东西的 base alpha 是什么？</strong> &gt; &gt; <strong>答：是“价格已经涨到短窗极热，同时仓位已经明显挤向多头”时，后面更容易出现一段拥挤多头的反向出清。</strong></p>
+<p>所以它不是纯 filter，也不是纯 overlay。</p>
+<p>它的 alpha 本体很明确：</p>
+<ul>
+<li><code>Williams %R</code> 负责描述 <strong>价格位置是否已经挤到局部高位</strong>；</li>
+<li><code>top-trader long share</code> 负责描述 <strong>仓位是否已经明显挤到同一边</strong>；</li>
+<li>两者共振时，赌的是 <strong>短线回吐 / long liquidation</strong>，不是继续顺势追。</li>
+</ul>
+<h2>3. 为什么这条分支比 repo 原版“对称规则”更值得保留</h2>
+<p>repo README 给的是对称表述：</p>
+<ul>
+<li><code>oversold + short crowding -&gt; long</code></li>
+<li><code>overbought + long crowding -&gt; short</code></li>
+</ul>
+<p>但我这轮 public-data probe 的 first verdict 很明确：</p>
+<ul>
+<li><strong>对称规则整体并不漂亮</strong>；</li>
+<li>真正有 pocket 的，是<strong>short 这一边</strong>，而且主要集中在 <strong>ETH 15m</strong>；</li>
+<li>也就是说，这更像一条 <strong>asymmetric crowding-reversal alpha</strong>，不是“任何币、任何方向、60% 一刀切都能用”的通用公式。</li>
+</ul>
+<p>这正好符合 desk 当前该做的事：</p>
+<p><strong>不是照抄 repo 的 headline，而是把其中更可移植、更能落成完整策略的旁支拆出来。</strong></p>
+<h2>4. 最小可复现实验：这轮我是怎么测的</h2>
+<h3>4.1 数据源与公开性</h3>
+<ul>
+<li>交易所：Binance USDⓈ-M Futures</li>
+<li>公开接口：</li>
+<li><code>fapi/v1/klines</code></li>
+<li><code>futures/data/topLongShortAccountRatio</code></li>
+<li>公开性：<strong>完全公开可取，无需 API key</strong></li>
+<li>频率：<code>15m</code></li>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT / XRPUSDT</code></li>
+<li>样本：近约 <code>2976</code> 根 <code>15m</code> bar（约 <code>31d</code>）</li>
+</ul>
+<h3>4.2 指标与规则</h3>
+<ul>
+<li><code>Williams %R</code>：<code>14</code> 根 lookback</li>
+<li>crowding 指标：Binance <code>topLongShortAccountRatio</code> 里的 <code>longAccount / shortAccount</code></li>
+<li>先测 repo README 的原版口径：</li>
+<li>long：<code>Williams %R &lt; -80</code> 且 <code>short_share &gt; 60%</code></li>
+<li>short：<code>Williams %R &gt; -20</code> 且 <code>long_share &gt; 60%</code></li>
+<li>入场：信号 bar 后 <strong>下一根 open</strong></li>
+<li>出场：</li>
+<li>long：<code>Williams %R</code> 回到 <code>&gt;-50</code></li>
+<li>short：<code>Williams %R</code> 回到 <code>&lt;-50</code></li>
+<li>否则 <code>8</code> 根 <code>15m</code> time stop</li>
+<li>成本：round-trip <code>6 bps</code></li>
+</ul>
+<h3>4.3 本轮产物</h3>
+<ul>
+<li><code>reports/artifacts/quant_digests/liquidity_hawk_probe_20260422/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/liquidity_hawk_probe_20260422/threshold_sweep_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/liquidity_hawk_probe_20260422/BTCUSDT_trades.csv</code></li>
+<li><code>reports/artifacts/quant_digests/liquidity_hawk_probe_20260422/ETHUSDT_trades.csv</code></li>
+<li><code>reports/artifacts/quant_digests/liquidity_hawk_probe_20260422/SOLUSDT_trades.csv</code></li>
+<li><code>reports/artifacts/quant_digests/liquidity_hawk_probe_20260422/XRPUSDT_trades.csv</code></li>
+</ul>
+<h2>5. first verdict：原版对称规则没过，但 ETH 的 short-only pocket 过了</h2>
+<h3>5.1 先看 repo 原版 <code>60%</code> 对称口径（含 <code>6 bps</code> 成本）</h3>
+<p><code>summary.csv</code> 的 first probe 结果：</p>
+<ul>
+<li><code>BTCUSDT</code>：<code>63</code> 笔，胜率 <code>58.7%</code>，平均 <strong>净</strong> <code>-6.48 bps/笔</code></li>
+<li><code>ETHUSDT</code>：<code>65</code> 笔，胜率 <code>61.5%</code>，平均 <strong>净</strong> <code>-1.28 bps/笔</code></li>
+<li><code>SOLUSDT</code>：<code>128</code> 笔，胜率 <code>64.8%</code>，平均 <strong>净</strong> <code>-2.72 bps/笔</code></li>
+<li><code>XRPUSDT</code>：<code>124</code> 笔，胜率 <code>62.9%</code>，平均 <strong>净</strong> <code>-3.77 bps/笔</code></li>
+</ul>
+<p>人话：</p>
+<ul>
+<li>规则有方向感，<strong>median trade</strong> 常常是正的；</li>
+<li>但按 taker-ish <code>6 bps</code> 成本，原版对称规则整体<strong>没真正过线</strong>；</li>
+<li>所以不能把 repo 原文直接当 production-ready 策略照抄。</li>
+</ul>
+<h3>5.2 但 ETH 的 crowded-long short fade 出现了很清楚的 pocket</h3>
+<p>我继续在 <code>threshold_sweep_summary.csv</code> 里只扫 <strong>crowding 阈值</strong>，发现 <strong>ETH short side</strong> 很明显：</p>
+<p>#### ETH，<code>long_share &gt; 62%</code>，<code>Williams %R &gt; -20</code>，<code>15m</code></p>
+<ul>
+<li>交易数：<code>58</code></li>
+<li>胜率：<code>63.8%</code></li>
+<li>平均净收益：<code>+5.66 bps/笔</code></li>
+<li>中位数净收益：<code>+28.60 bps/笔</code></li>
+<li>总净收益：<code>+328.2 bps</code></li>
+<li>成本口径：round-trip <code>6 bps</code></li>
+</ul>
+<p>#### ETH，<code>long_share &gt; 70%</code>，<code>Williams %R &gt; -20</code>，<code>15m</code></p>
+<ul>
+<li>交易数：<code>21</code></li>
+<li>胜率：<code>71.4%</code></li>
+<li>平均净收益：<code>+10.52 bps/笔</code></li>
+<li>中位数净收益：<code>+28.60 bps/笔</code></li>
+<li>总净收益：<code>+220.9 bps</code></li>
+<li>同样已含 <code>6 bps</code> 成本</li>
+</ul>
+<p>这组数说明：</p>
+<p>&gt; <strong>真正可保留的，不是“任何 60% crowding 都做反转”，而是“ETH 这类高流动 alt，在 15m overbought 且多头拥挤明显超过 62% 时，做 short-side liquidation fade”</strong>。</p>
+<h2>6. 这条 alpha 应该怎么理解</h2>
+<h3>6.1 它不是“仓位越偏多越继续涨”</h3>
+<p>有些 crowding 因子更像 continuation。但这条不是。</p>
+<p>这里的结构是：</p>
+<ul>
+<li>先要求价格已经挤到 <code>Williams %R &gt; -20</code> 的局部过热区；</li>
+<li>再要求 top-trader long share 明显偏高；</li>
+<li>于是做的不是 trend follow，而是 <strong>挤在一边后的脆弱性回吐</strong>。</li>
+</ul>
+<h3>6.2 它也不是纯 sentiment 因子</h3>
+<p>单独看 L/S ratio，太容易变成“面板信息”；单独看 Williams %R，也容易变成普通超买超卖指标。</p>
+<p>值钱的部分在于两者联动：</p>
+<ul>
+<li><code>Williams %R</code> 给出 <strong>价格 stretch</strong>；</li>
+<li><code>top-trader long share</code> 给出 <strong>仓位拥挤</strong>；</li>
+<li>合起来，才更像一个可交易的 <strong>liquidation-prone state</strong>。</li>
+</ul>
+<h3>6.3 它更像 15m parent alpha，不像 5m 裸主信号</h3>
+<p>我额外做了一个很小的 <code>ETHUSDT 5m</code> 快检：</p>
+<ul>
+<li>规则：<code>long_share &gt; 62%</code> + <code>Williams %R &gt; -20</code></li>
+<li>exit：回到 <code>&lt;-50</code> 或 <code>12</code> 根 <code>5m</code></li>
+<li>成本：<code>6 bps</code></li>
+<li>结果：<code>16</code> 笔，胜率 <code>43.8%</code>，平均净收益约 <code>-14.9 bps/笔</code></li>
+</ul>
+<p>这说明它更合理的部署方式是：</p>
+<ul>
+<li><strong>15m</strong>：做 parent signal / admission</li>
+<li><strong>5m</strong>：做 child execution、分批确认、减少追空时点风险</li>
+</ul>
+<p>而不是把 5m 裸信号直接当主策略。</p>
+<h2>7. desk 可直接落地的策略壳</h2>
+<h3>7.1 一个当前最像样的壳</h3>
+<p>以 <code>ETHUSDT 15m</code> 为例：</p>
+<ul>
+<li><strong>Universe</strong>：先只做 <code>ETHUSDT</code></li>
+<li><strong>Entry</strong>：</li>
+<li><code>Williams %R(14) &gt; -20</code></li>
+<li><code>top-trader long share &gt; 62%</code></li>
+<li>下一根 <code>15m</code> open 做空</li>
+<li><strong>Exit</strong>：</li>
+<li><code>Williams %R &lt; -50</code> 即平</li>
+<li>或 <code>8</code> 根 <code>15m</code> time stop</li>
+<li><strong>Sizing</strong>：</li>
+<li>固定风险分配起步</li>
+<li>之后可叠 <code>ATR</code> 或 intraday vol target</li>
+<li><strong>Risk</strong>：</li>
+<li>单笔 hard stop（例如 <code>1.2~1.5 ATR</code>）</li>
+<li>funding 结算前窗口减半仓</li>
+<li>避开重大宏观 / ETF / CPI 时间窗</li>
+<li><strong>Cost</strong>：</li>
+<li>如果是 taker-heavy 执行，edge 变薄很快</li>
+<li>更适合 <code>15m signal -&gt; 5m maker-first child execution</code></li>
+</ul>
+<h3>7.2 为什么我仍然把“是否可直接落地完整策略”写成“是”</h3>
+<p>因为这条线已经具备完整壳所需的基本元素：</p>
+<ul>
+<li>明确 entry</li>
+<li>明确 exit</li>
+<li>明确成本口径</li>
+<li>明确时间止损</li>
+<li>可补固定 risk / ATR sizing</li>
+</ul>
+<p>不是那种只有解释、没有交易壳的主题。</p>
+<h2>8. 风险与保留意见</h2>
+<h3>8.1 对称性是错觉</h3>
+<p>repo 写法看起来对称，但 public-data probe 表明：</p>
+<ul>
+<li><strong>long side 基本没亮点</strong>；</li>
+<li>主要 pocket 在 <strong>short side</strong>；</li>
+<li>而且还集中在 <strong>ETH</strong>，并非所有 major 都同样成立。</li>
+</ul>
+<h3>8.2 这条线对成本很敏感</h3>
+<p>原版 <code>60%</code> 阈值在 <code>6 bps</code> 下大多不过线；说明它不是“随便下都赚”的粗边。</p>
+<h3>8.3 crowding 数据本身带交易所口径偏差</h3>
+<p>这里用的是 Binance <code>topLongShortAccountRatio</code>，本质上是交易所给出的 top-trader crowding proxy，不等于全市场持仓真相。跨所迁移要谨慎。</p>
+<h2>9. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 short-only、asset-specific，而不是继续对称回测。</strong></li>
+<p>下一轮应直接固定：<code>ETH 15m short-only</code>，不再把 long side 混进去稀释。</p>
+</ol>
+<ol>
+<li><strong>把 crowding threshold 做 walk-forward。</strong></li>
+<p>当前 pocket 在 <code>62%~70%</code> 之间最像样，但不能静态定死。应该做 rolling re-fit，看阈值是否随市场状态漂移。</p>
+</ol>
+<ol>
+<li><strong>叠 funding / OI / taker imbalance 做二层 admission。</strong></li>
+<p>这条线天然适合叠：</p>
+</ol>
+<ul>
+<li>positive funding</li>
+<li>OI 扩张</li>
+<li>taker buy dominance 放缓 / 反转</li>
+<p>看是否能在不明显减少样本的前提下抬高平均净 bps。</p>
+</ul>
+<ol>
+<li><strong>把执行切成 15m signal + 5m child。</strong></li>
+<p>既然 5m 裸信号不行，下一轮就不要强迫它当主 alpha，而是让它做：</p>
+</ol>
+<ul>
+<li>开仓分批</li>
+<li>盘口 veto</li>
+<li>maker-first fill</li>
+<li>funding 边界前后回避</li>
+</ul>
+<ol>
+<li><strong>加入真实止损与事件过滤。</strong></li>
+<p>当前只做了 <code>WR mid re-cross + time stop</code>，还没加：</p>
+</ol>
+<ul>
+<li>ATR stop</li>
+<li>breakout continuation veto</li>
+<li>high-impact event blackout</li>
+</ul>
+<h2>10. 来源</h2>
+<h3>Repo</h3>
+<ul>
+<li>Iktiarshovo. (2026). *liquidity-hawk*. GitHub.</li>
+<li>Repo URL：&lt;<a href="https://github.com/Iktiarshovo/liquidity-hawk&gt;">https://github.com/Iktiarshovo/liquidity-hawk&gt;</a></li>
+<li>Readable URL：&lt;<a href="https://github.com/Iktiarshovo/liquidity-hawk/blob/main/README.md&gt;">https://github.com/Iktiarshovo/liquidity-hawk/blob/main/README.md&gt;</a></li>
+<li>Raw files：</li>
+<li>&lt;<a href="https://raw.githubusercontent.com/Iktiarshovo/liquidity-hawk/main/README.md&gt;">https://raw.githubusercontent.com/Iktiarshovo/liquidity-hawk/main/README.md&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/Iktiarshovo/liquidity-hawk/main/src/data/exchange_tracker.py&gt;">https://raw.githubusercontent.com/Iktiarshovo/liquidity-hawk/main/src/data/exchange_tracker.py&gt;</a></li>
+</ul>
+<h3>Public data endpoints used in the probe</h3>
+<ul>
+<li>Binance USDⓈ-M klines：&lt;<a href="https://fapi.binance.com/fapi/v1/klines&gt;">https://fapi.binance.com/fapi/v1/klines&gt;</a></li>
+<li>Binance top trader long/short account ratio：&lt;<a href="https://fapi.binance.com/futures/data/topLongShortAccountRatio&gt;">https://fapi.binance.com/futures/data/topLongShortAccountRatio&gt;</a></li>
+</ul>
+<h2>11. 一句话收尾</h2>
+<p><strong>这份仓真正值得 desk 留下的，不是“L/S ratio 看板”，而是：当 <code>15m</code> 价格已经过热、且 top-trader 多头拥挤明显偏高时，去做那段更脆弱的 long-liquidation fade；至少在 ETH 上，这条 short-only 分支已经给出了第一轮可交易口袋。</strong></p>
+</body>
+</html>

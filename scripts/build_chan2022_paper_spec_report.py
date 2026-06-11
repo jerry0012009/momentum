@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+OUT_DIR = ROOT / "reports" / "site" / "reading" / "chan2022_paper_spec"
+OUT_PATH = OUT_DIR / "report.html"
+
+
+def main() -> int:
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    html = f"""<!doctype html>
+<html lang=\"zh-CN\">
+<head>
+  <meta charset=\"utf-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <title>Chan 2022 · Paper-Faithful Replication Spec</title>
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 1160px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111827; background: #f8fafc; }}
+    h1,h2,h3 {{ line-height: 1.25; }}
+    .muted {{ color:#6b7280; }}
+    .card {{ border:1px solid #e5e7eb; border-radius:14px; background:white; padding:18px 20px; margin:16px 0; }}
+    .pill {{ display:inline-block; padding:2px 8px; border-radius:999px; background:#eef2ff; color:#3730a3; font-size:12px; margin-right:6px; }}
+    .good {{ color:#166534; font-weight:600; }}
+    .warn {{ color:#92400e; font-weight:600; }}
+    .bad {{ color:#991b1b; font-weight:600; }}
+    code {{ background:#f3f4f6; padding:1px 5px; border-radius:6px; }}
+    ul,ol {{ padding-left: 20px; }}
+    table {{ width:100%; border-collapse:collapse; margin-top:12px; font-size:14px; }}
+    th,td {{ border-bottom:1px solid #e5e7eb; padding:8px 10px; text-align:left; vertical-align:top; }}
+    a {{ color:#2563eb; text-decoration:none; }}
+    a:hover {{ text-decoration:underline; }}
+  </style>
+</head>
+<body>
+  <p><a href="../../index.html">← 返回首页</a></p>
+  <h1>Chan 2022 · Paper-Faithful Replication Spec</h1>
+  <p class="muted">生成时间：{generated_at} ｜ 这页的目标不是再做一版 clean-room 实验，而是专门回答：<b>Chan et al. (2022) 这篇论文目前到底能不能做 faithful replication？缺什么？值不值得立刻开工？</b></p>
+
+  <div class="card">
+    <h2>一句话结论</h2>
+    <p><span class="bad">这条线现在收口，不继续推进 faithful replication。</span> 原因很简单：我们目前只有摘要级证据和外部元数据，没有足够完整的方法细节，也没有找到可信的作者官方代码仓库；因此它保留为 <b>feature / literature reference</b>，不再作为 active replication task。</p>
+  </div>
+
+  <div class="card">
+    <h2>论文对象</h2>
+    <ul>
+      <li><b>标题：</b>Support Resistance Levels towards Profitability in Intelligent Algorithmic Trading Models</li>
+      <li><b>作者：</b>Jireh Yi-Le Chan, Seuk Wai Phoong, Wai Khuen Cheng, Yen-Lin Chen</li>
+      <li><b>年份 / 期刊：</b>2022 / Mathematics</li>
+      <li><b>DOI：</b><a href="https://doi.org/10.3390/math10203888">10.3390/math10203888</a></li>
+      <li><b>公开 claim（来自 Crossref / Semantic Scholar 摘要）：</b>在 8 个货币对上，把 Support/Resistance input features 加入同构 machine learning model 后，聚合盈利表现提升 65%，且盈利分布差异统计显著。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>我们已经能“规范提取”出来的内容</h2>
+    <table>
+      <thead>
+        <tr><th>项目</th><th>当前可确认程度</th><th>提取结果</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>研究目标</td>
+          <td class="good">高</td>
+          <td>论文目标 3-fold：自动识别 meaningful S/R levels；把 S/R 工程化成模型输入特征；证明这些特征对盈利有显著增量贡献。</td>
+        </tr>
+        <tr>
+          <td>研究对象</td>
+          <td class="good">高</td>
+          <td>intelligent algorithmic trading models + 8 个货币对；定位明显是“特征增强”，不是单一裸 breakout 规则。</td>
+        </tr>
+        <tr>
+          <td>对照框架</td>
+          <td class="good">中高</td>
+          <td>至少存在两组“同构模型”：一个不含 SR input features，一个包含 SR input features。</td>
+        </tr>
+        <tr>
+          <td>核心结论</td>
+          <td class="good">高</td>
+          <td>加入 SR 特征后 aggregate profitability +65%，且两组盈利分布显著不同。</td>
+        </tr>
+        <tr>
+          <td>SR 大致角色</td>
+          <td class="good">高</td>
+          <td>SR 是 input features，不只是主观线位，也不等于直接下单规则。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>当前还缺哪些“精确复刻”所必需的信息？</h2>
+    <table>
+      <thead>
+        <tr><th>缺失项</th><th>为什么重要</th><th>当前状态</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>SR 的精确识别算法 / 公式</td>
+          <td>决定什么叫 support / resistance，本体不同就不是同一实验</td>
+          <td class="bad">摘要没有给出；当前拿不到足够方法细节</td>
+        </tr>
+        <tr>
+          <td>Baseline 模型的精确规格</td>
+          <td>如果不知道 baseline 是哪类 ML / 哪些特征，就没法做 identical model</td>
+          <td class="bad">摘要只说 identical machine learning model，未公开细节</td>
+        </tr>
+        <tr>
+          <td>带 SR 的完整特征表</td>
+          <td>不知道具体加了哪些 SR 特征，就无法 faithful replication</td>
+          <td class="bad">只知道“Support Resistance input features”，具体字段未知</td>
+        </tr>
+        <tr>
+          <td>训练/测试切分与调参方式</td>
+          <td>决定论文性能是否可比较</td>
+          <td class="bad">摘要未披露</td>
+        </tr>
+        <tr>
+          <td>策略/执行逻辑</td>
+          <td>盈利提升 65% 具体怎么实现，取决于持仓与评估方式</td>
+          <td class="bad">摘要未披露</td>
+        </tr>
+        <tr>
+          <td>交易成本 / 风险控制</td>
+          <td>决定 paper alpha 是否可落地</td>
+          <td class="bad">摘要未见完整说明</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>我们有没有找到作者公开代码仓库？</h2>
+    <p><span class="warn">截至当前，没有找到可信的官方代码仓库。</span></p>
+    <ul>
+      <li>已做 GitHub 检索：
+        <ul>
+          <li>按论文标题精确检索</li>
+          <li>按作者姓名 + support resistance 检索</li>
+          <li>按机构 / 关键词组合检索</li>
+        </ul>
+      </li>
+      <li>结果：<b>没有找到与该论文明显对应的官方 repo</b>。</li>
+      <li>进一步查了作者公开 ORCID / researcher profile，可见 CV / 学术主页线索，但当前没有明确指向这篇论文实现的 GitHub 仓库。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>这意味着什么？</h2>
+    <ol>
+      <li><b>不能把我们当前 clean-room 实验叫做 exact replication</b>。</li>
+      <li><b>可以把它叫做 hypothesis-aligned replication</b>：即围绕同一个核心假设（SR 特征是否有增量价值）做近似复现。</li>
+      <li>如果要做真正的 faithful replication，接下来必须先补齐方法细节，而不是直接继续跑策略。</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>现在值不值得继续？</h2>
+    <p><span class="warn">不值得继续作为 active replication task。</span></p>
+    <ul>
+      <li>保留它的摘要级 claim 与 clean-room 第一版结果，作为“SR 特征可能有信息”的参考；</li>
+      <li>不再继续投入时间追 faithful replication 细节；</li>
+      <li>如果未来偶然拿到全文方法细节 / supplementary / 官方代码，再重新打开也不迟。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>是否可以立即开始“复刻论文”？</h2>
+    <table>
+      <thead>
+        <tr><th>问题</th><th>判断</th><th>原因</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>能否立即做 1:1 完全复刻？</td>
+          <td class="bad">否</td>
+          <td>缺 exact SR definition、baseline spec、feature list、训练/回测细节、官方代码。</td>
+        </tr>
+        <tr>
+          <td>是否还值得继续做 paper-faithful spec extraction？</td>
+          <td class="warn">暂不继续</td>
+          <td>当前已经足够支持“收口结束”；继续边际收益不高。</td>
+        </tr>
+        <tr>
+          <td>是否还值得继续做 clean-room hypothesis-aligned replication？</td>
+          <td class="warn">默认停止</td>
+          <td>当前 clean-room 第一版可保留为参考，但不再继续把它当 active 论文复现任务。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>收口决定</h2>
+    <ol>
+      <li>这篇论文留作 <b>literature / feature reference</b>。</li>
+      <li>不再继续把它作为 faithful replication 或 active clean-room replication 主任务。</li>
+      <li>当前页面和 <a href="../chan2022_sr_feature_replication/report.html">Chan 2022 · S/R Feature Replication Report</a> 只保留为记录：说明我们已经读过、试过、并决定先收口。</li>
+    </ol>
+  </div>
+</body>
+</html>
+"""
+    OUT_PATH.write_text(html, encoding="utf-8")
+    print("[ok] chan2022 paper spec report generated")
+    print("[site]", OUT_PATH)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

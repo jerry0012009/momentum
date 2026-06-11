@@ -1,0 +1,4398 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EMA / PSAR Raw Alpha Focus Report</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f8fafc; color:#0f172a; margin:0; padding:24px; }
+    .wrap { max-width: 1260px; margin: 0 auto; }
+    .card { background:white; border:1px solid #e2e8f0; border-radius:14px; padding:18px 20px; margin-bottom:18px; }
+    .muted { color:#475569; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:12px; margin-right:6px; }
+    .q { font-weight:700; color:#0f172a; margin-top:2px; }
+    .a { color:#1e293b; margin-top:8px; }
+    .data-table { width:100%; border-collapse: collapse; font-size: 14px; }
+    .data-table th,.data-table td { border-bottom:1px solid #e5e7eb; padding:8px 10px; text-align:left; vertical-align:top; }
+    img { max-width:100%; border:1px solid #e2e8f0; border-radius:10px; }
+    code { background:#f1f5f9; padding:1px 4px; border-radius:6px; }
+    ul,ol { padding-left:20px; }
+    a { color:#2563eb; text-decoration:none; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <p><a href="../../index.html">← 返回首页</a></p>
+
+  <div class="card">
+    <h1>EMA / PSAR Raw Alpha Focus Report</h1>
+    <p class="muted">生成时间：2026-06-11 07:00 UTC</p>
+    <p>
+      <span class="pill">raw alpha focus</span>
+      <span class="pill">EMA</span>
+      <span class="pill">PSAR</span>
+      <span class="pill">Q&A</span>
+    </p>
+    <p class="muted">这页不再讨论 regime gate / MIHS / MIHCS，而是把视角收回到论文里的两个原始策略候选：<b>EMA</b> 和 <b>PSAR</b>。目标是回答：如果先不做趋势筛选，它们谁更值得继续追，为什么，收益从哪里来，代价又是什么。</p>
+  </div>
+
+  <div class="card">
+    <h2>先给结论</h2>
+    <ul>
+      <li><b>EMA 更像主 raw alpha baseline</b>：跨市场/跨频率更稳，胜场更多，适合继续当主干研究对象。</li>
+      <li><b>PSAR 更像快反应 / loss-protection 候选</b>：也值得研究，但更适合作为第二原始策略，或后续与 EMA 组合。</li>
+      <li>如果只在这篇论文的原始策略里选两个继续投资源，当前推荐顺序是：<b>EMA → PSAR</b>。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>收口定位：这条线现在该怎么读？</h2>
+    <ul>
+      <li><b>当前核心结论：</b><code>EMA</code> 应先被当成当前项目的 <b>raw alpha baseline candidate</b>；<code>PSAR</code> 则更像 <b>fast reaction / loss-protection candidate</b>。</li>
+      <li><b>当前最强证据：</b>EMA 和 PSAR 的正收益覆盖率都很高（都约 <code>92.59%</code>），但 EMA 在 asset×freq 组合里拿第一的次数更多（<code>14</code> vs <code>8</code>），同时交易频率明显更低（median trades 约 <code>53</code> vs <code>113</code>），说明它更适合作为主 baseline；PSAR 的价值更像“更快反应”，而不是“更稳主干”。</li>
+      <li><b>当前不支持什么结论：</b>这页还不支持把 <code>PSAR</code> 直接升成与 EMA 同等级的主 alpha，也不支持把 EMA / PSAR 任一条线直接包装成可实盘生产策略。</li>
+      <li><b>当前更像什么角色：</b>EMA = <b>main alpha / raw baseline</b>；PSAR = <b>secondary alpha / protective layer</b>。</li>
+      <li><b>下一步最值得做什么：</b>先补 EMA 的成本 / rolling / OOS honesty；再单独做 PSAR 的角色审计与交易频率敏感性，最后只做一版最小 <code>EMA + PSAR</code> 组合研究。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>先把交易逻辑讲清楚：这页到底在回测什么？</h2>
+    <p class="a">这页做的是 <b>raw alpha focus</b>，意思是：先不加趋势状态门控、也不加额外过滤器，只看策略本身最基础的信号能不能工作。还有一个很重要的前提：<b>这页的回测是 long-only</b>，也就是只有 <code>BUY=开多</code>、<code>SELL=平多</code>，没有做空。</p>
+    <ul>
+      <li><b>前置条件：</b>没有额外 regime filter，没有外部确认器，没有附加结构条件。</li>
+      <li><b>执行方式：</b>每根 bar 算一次信号；空仓时看到 <code>BUY</code> 才开仓；持仓时看到 <code>SELL</code> 才平仓。</li>
+      <li><b>如果空仓时出现 SELL：</b>什么都不做，因为这页不是做空系统。</li>
+      <li><b>如果持仓时再次出现 BUY：</b>也什么都不做，因为已经在仓里了。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>EMA：普通人也能看懂的基础交易逻辑</h2>
+    <p class="a">你可以把 EMA 策略理解成：<b>看两条“平滑过的价格线”谁在上面</b>。短线更快的 EMA9 在上面，说明最近价格更强，就给 <code>BUY</code>；短线 EMA9 在下面，说明最近价格转弱，就给 <code>SELL</code>。</p>
+    <ul>
+      <li><b>使用的信号：</b><code>EMA9</code> 和 <code>EMA20</code></li>
+      <li><b>开仓条件：</b><code>EMA9 &gt; EMA20</code>，且当前还没有持仓 → 开多</li>
+      <li><b>平仓条件：</b><code>EMA9 &lt; EMA20</code>，且当前已经持仓 → 平多</li>
+      <li><b>有没有过滤器：</b>这页里 <b>没有</b>。只看这两条 EMA 的相对位置。</li>
+      <li><b>普通话解释：</b>短期趋势明显强于中期趋势时进场；短期趋势掉到中期趋势下面时离场。</li>
+      <li><b>优点：</b>规则简单，方向感强，容易跨市场迁移。</li>
+      <li><b>缺点：</b>会慢半拍，震荡时容易来回打脸。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>PSAR：普通人也能看懂的基础交易逻辑</h2>
+    <p class="a">你可以把 PSAR 策略理解成：<b>先看一个“跟踪点”是不是已经翻到价格下面，再看价格有没有真的往上冲出去</b>。只有两件事都发生了，它才给 <code>BUY</code>；反过来，如果跟踪点跑到价格上面，而且价格又往下跌破前一根低点，就给 <code>SELL</code>。</p>
+    <ul>
+      <li><b>使用的信号：</b><code>PSAR(0.02 ~ 0.2)</code> + 当前 bar 对前一根高/低点的突破</li>
+      <li><b>开仓条件：</b><code>PSAR ≤ 收盘价</code>，并且 <code>当根最高价 &gt; 前一根最高价</code>，且当前空仓 → 开多</li>
+      <li><b>平仓条件：</b><code>PSAR &gt; 收盘价</code>，并且 <code>当根最低价 &lt; 前一根最低价</code>，且当前持仓 → 平多</li>
+      <li><b>有没有过滤器：</b>这页里 <b>没有</b>。只看 PSAR 和价格/前高前低的关系。</li>
+      <li><b>普通话解释：</b>它不是看到“好像转强”就买，而是要同时看到“方向翻上来”+“价格真的冲过前高”；卖出也是同理，要同时看到“方向翻弱”+“价格真的跌破前低”。</li>
+      <li><b>优点：</b>反应快，对转折更敏感。</li>
+      <li><b>缺点：</b>更容易频繁交易，信号更碎。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>EMA 和 PSAR 的差别，最简版怎么记？</h2>
+    <ul>
+      <li><b>EMA：</b>更像“慢一点，但更稳一点”的趋势跟随。</li>
+      <li><b>PSAR：</b>更像“快一点，但更容易抖”的转折跟随。</li>
+      <li><b>EMA 更适合什么时候：</b>你更想先抓住大方向，不急着抢最早那一下。</li>
+      <li><b>PSAR 更适合什么时候：</b>你更想快一点发现转向，愿意接受更高交易频率。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Q1. 为什么只把 EMA 和 PSAR 拿出来继续看？</h2>
+    <p class="a">因为在这次跨市场 × 多频率的 unfiltered 回测里，它们是四个原始策略里最像“可继续研究的 raw alpha”那两个：收益中位数更高、正收益覆盖率更高、并且在 asset×freq 组合里拿第一的次数明显更多。</p>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>strategy</th>
+      <th>combos</th>
+      <th>mean_profit_pct</th>
+      <th>median_profit_pct</th>
+      <th>positive_ratio</th>
+      <th>median_trades</th>
+      <th>winner_count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>EMA</td>
+      <td>27</td>
+      <td>4488.29%</td>
+      <td>142.83%</td>
+      <td>92.59%</td>
+      <td>53.00</td>
+      <td>14</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>27</td>
+      <td>1519.79%</td>
+      <td>116.42%</td>
+      <td>92.59%</td>
+      <td>113.00</td>
+      <td>8</td>
+    </tr>
+    <tr>
+      <td>BB</td>
+      <td>27</td>
+      <td>55.29%</td>
+      <td>12.11%</td>
+      <td>70.37%</td>
+      <td>25.00</td>
+      <td>4</td>
+    </tr>
+    <tr>
+      <td>RSI</td>
+      <td>27</td>
+      <td>45.93%</td>
+      <td>7.92%</td>
+      <td>59.26%</td>
+      <td>27.00</td>
+      <td>1</td>
+    </tr>
+  </tbody>
+</table>
+    <p><img src="../../../artifacts/ema_psar_raw_alpha/01_base_strategy_median_bar.png" alt="base strategy median" /></p>
+  </div>
+
+  <div class="card">
+    <h2>Q2. EMA 的策略逻辑到底是什么？为什么它值得当主 baseline？</h2>
+    <p class="a">论文里的 EMA 原始策略很简单：<code>EMA9 &gt; EMA20 → BUY</code>，<code>EMA9 &lt; EMA20 → SELL</code>。它的优点不是“神奇”，而是足够朴素：本质上是在追随中期趋势，而不是赌均值回归或局部震荡。对你现在“先找靠谱 alpha”的目标来说，这种结构更像一个可扩展母体。</p>
+    <ul>
+      <li>优点：跨市场可迁移性好，解释成本低，后续容易叠加结构过滤或风险控制。</li>
+      <li>缺点：会滞后，强震荡环境容易被来回打脸。</li>
+      <li>更适合扮演的角色：<b>raw trend alpha baseline</b>。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Q3. PSAR 的策略逻辑到底是什么？为什么它排第二？</h2>
+    <p class="a">论文里的 PSAR 策略本质是在用一个更快、更敏感的 stop-and-reverse 机制判断价格是否转向。它会更早反应，所以更像快速趋势 / 保护性策略，而不像 EMA 那样是稳定的趋势骨架。</p>
+    <ul>
+      <li>优点：反应快，对下跌/反转更敏感。</li>
+      <li>缺点：交易次数通常更多，容易把趋势做得更碎。</li>
+      <li>更适合扮演的角色：<b>fast reaction alpha / loss-protection layer</b>。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Q4. 从数据上看，EMA 和 PSAR 谁更强？</h2>
+    <p class="a">整体上 EMA 更像第一选择，PSAR 是很强的第二选择。EMA 在 27 个 asset×freq 组合里拿了更多第一；PSAR 也很强，但更像“快而碎”的第二策略。</p>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>strategy</th>
+      <th>combos</th>
+      <th>mean_profit_pct</th>
+      <th>median_profit_pct</th>
+      <th>positive_ratio</th>
+      <th>mean_trades</th>
+      <th>median_trades</th>
+      <th>mean_cagr_pct</th>
+      <th>median_max_dd_pct</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>EMA</td>
+      <td>27</td>
+      <td>4488.29%</td>
+      <td>142.83%</td>
+      <td>92.59%</td>
+      <td>86.85</td>
+      <td>53.00</td>
+      <td>27.39%</td>
+      <td>-34.54%</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>27</td>
+      <td>1519.79%</td>
+      <td>116.42%</td>
+      <td>92.59%</td>
+      <td>163.89</td>
+      <td>113.00</td>
+      <td>22.01%</td>
+      <td>-35.88%</td>
+    </tr>
+  </tbody>
+</table>
+    <p><img src="../../../artifacts/ema_psar_raw_alpha/02_ema_psar_head_to_head_scatter.png" alt="ema vs psar scatter" /></p>
+    <p><img src="../../../artifacts/ema_psar_raw_alpha/05_profit_vs_trades.png" alt="profit vs trades" /></p>
+    <ul>
+      <li>如果一个点落在散点图对角线上方，表示那组样本里 <b>EMA 比 PSAR 更赚</b>。</li>
+      <li>Profit vs trades 图则帮助你看清一个很关键的现实：<b>PSAR 往往不是不赚钱，而是更依赖更高交易频率去换收益。</b></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Q5. 它们分别在什么市场 / 频率更强？</h2>
+    <p class="a">EMA 和 PSAR 都不是只在一个市场有效，但风格不同：EMA 更像普适趋势骨架；PSAR 在某些更需要快速反应的场景里会更占优。</p>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>strategy</th>
+      <th>asset_class</th>
+      <th>freq</th>
+      <th>combos</th>
+      <th>mean_profit_pct</th>
+      <th>median_profit_pct</th>
+      <th>positive_ratio</th>
+      <th>median_trades</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>EMA</td>
+      <td>A股</td>
+      <td>周频(1wk)</td>
+      <td>3</td>
+      <td>97.62%</td>
+      <td>38.70%</td>
+      <td>100.00%</td>
+      <td>13.00</td>
+    </tr>
+    <tr>
+      <td>EMA</td>
+      <td>A股</td>
+      <td>小时频(60m)</td>
+      <td>3</td>
+      <td>42.92%</td>
+      <td>31.75%</td>
+      <td>100.00%</td>
+      <td>84.00</td>
+    </tr>
+    <tr>
+      <td>EMA</td>
+      <td>A股</td>
+      <td>日频(1d)</td>
+      <td>3</td>
+      <td>143.30%</td>
+      <td>133.13%</td>
+      <td>100.00%</td>
+      <td>56.00</td>
+    </tr>
+    <tr>
+      <td>EMA</td>
+      <td>Crypto</td>
+      <td>周频(1wk)</td>
+      <td>3</td>
+      <td>8481.52%</td>
+      <td>12030.52%</td>
+      <td>100.00%</td>
+      <td>9.00</td>
+    </tr>
+    <tr>
+      <td>EMA</td>
+      <td>Crypto</td>
+      <td>小时频(60m)</td>
+      <td>3</td>
+      <td>3.56%</td>
+      <td>-3.94%</td>
+      <td>33.33%</td>
+      <td>404.00</td>
+    </tr>
+    <tr>
+      <td>EMA</td>
+      <td>Crypto</td>
+      <td>日频(1d)</td>
+      <td>3</td>
+      <td>31039.27%</td>
+      <td>30070.63%</td>
+      <td>100.00%</td>
+      <td>56.00</td>
+    </tr>
+    <tr>
+      <td>EMA</td>
+      <td>美股</td>
+      <td>周频(1wk)</td>
+      <td>3</td>
+      <td>247.50%</td>
+      <td>291.67%</td>
+      <td>100.00%</td>
+      <td>7.00</td>
+    </tr>
+    <tr>
+      <td>EMA</td>
+      <td>美股</td>
+      <td>小时频(60m)</td>
+      <td>3</td>
+      <td>29.05%</td>
+      <td>28.88%</td>
+      <td>100.00%</td>
+      <td>111.00</td>
+    </tr>
+    <tr>
+      <td>EMA</td>
+      <td>美股</td>
+      <td>日频(1d)</td>
+      <td>3</td>
+      <td>309.88%</td>
+      <td>187.77%</td>
+      <td>100.00%</td>
+      <td>47.00</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>A股</td>
+      <td>周频(1wk)</td>
+      <td>3</td>
+      <td>88.08%</td>
+      <td>63.95%</td>
+      <td>100.00%</td>
+      <td>21.00</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>A股</td>
+      <td>小时频(60m)</td>
+      <td>3</td>
+      <td>34.52%</td>
+      <td>28.90%</td>
+      <td>100.00%</td>
+      <td>169.00</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>A股</td>
+      <td>日频(1d)</td>
+      <td>3</td>
+      <td>113.13%</td>
+      <td>22.27%</td>
+      <td>100.00%</td>
+      <td>105.00</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>Crypto</td>
+      <td>周频(1wk)</td>
+      <td>3</td>
+      <td>7217.58%</td>
+      <td>9324.92%</td>
+      <td>100.00%</td>
+      <td>14.00</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>Crypto</td>
+      <td>小时频(60m)</td>
+      <td>3</td>
+      <td>2.93%</td>
+      <td>-1.31%</td>
+      <td>33.33%</td>
+      <td>708.00</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>Crypto</td>
+      <td>日频(1d)</td>
+      <td>3</td>
+      <td>5634.11%</td>
+      <td>2492.92%</td>
+      <td>100.00%</td>
+      <td>116.00</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>美股</td>
+      <td>周频(1wk)</td>
+      <td>3</td>
+      <td>337.70%</td>
+      <td>201.92%</td>
+      <td>100.00%</td>
+      <td>23.00</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>美股</td>
+      <td>小时频(60m)</td>
+      <td>3</td>
+      <td>31.18%</td>
+      <td>32.22%</td>
+      <td>100.00%</td>
+      <td>209.00</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>美股</td>
+      <td>日频(1d)</td>
+      <td>3</td>
+      <td>218.88%</td>
+      <td>131.34%</td>
+      <td>100.00%</td>
+      <td>121.00</td>
+    </tr>
+  </tbody>
+</table>
+    <p><img src="../../../artifacts/ema_psar_raw_alpha/04_ema_psar_class_freq_heatmaps.png" alt="class freq heatmaps" /></p>
+    <p><img src="../../../artifacts/ema_psar_raw_alpha/03_ema_psar_delta_heatmap.png" alt="delta heatmap" /></p>
+    <ul>
+      <li>绿色表示 <b>EMA 比 PSAR 更强</b>；红色表示 <b>PSAR 更强</b>。</li>
+      <li>你可以把这张图直接当成“后续研究资源怎么分配”的地图。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Q6. 在论文窗口（BTC 日频 2018-2022）里，它们的效果是什么样？</h2>
+    <p class="a">如果只看论文原始样本窗口，EMA 的 clean-room 复现值与论文很接近；PSAR 则与论文差异较大，说明 PSAR 分支对实现细节更敏感。这进一步支持一个判断：<b>EMA 更适合先作为主 baseline 推进；PSAR 则值得继续做忠实复核和组合研究。</b></p>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>strategy</th>
+      <th>profit_pct</th>
+      <th>np_pct</th>
+      <th>nt</th>
+      <th>cagr_pct</th>
+      <th>max_dd_pct</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>EMA</td>
+      <td>398.08%</td>
+      <td>27.78%</td>
+      <td>36</td>
+      <td>37.87%</td>
+      <td>-59.34%</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>-14.31%</td>
+      <td>37.50%</td>
+      <td>72</td>
+      <td>-3.04%</td>
+      <td>-74.17%</td>
+    </tr>
+  </tbody>
+</table>
+    <p><img src="../../../artifacts/ema_psar_raw_alpha/06_btc_ema_psar_equity.png" alt="btc equity" /></p>
+  </div>
+
+  <div class="card">
+    <h2>Q7. 哪些样本里 EMA 明显更值得追？哪些样本里 PSAR 更像赢家？</h2>
+    <h3>EMA 明显更强的组合</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset_label</th>
+      <th>asset_class</th>
+      <th>freq</th>
+      <th>ema_profit_pct</th>
+      <th>psar_profit_pct</th>
+      <th>ema_minus_psar_pp</th>
+      <th>ema_trades</th>
+      <th>psar_trades</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>SOL-USD</td>
+      <td>Crypto</td>
+      <td>日频(1d)</td>
+      <td>55511.56%</td>
+      <td>13592.30%</td>
+      <td>41919.26%</td>
+      <td>43</td>
+      <td>86</td>
+    </tr>
+    <tr>
+      <td>BTC-USD</td>
+      <td>Crypto</td>
+      <td>日频(1d)</td>
+      <td>30070.63%</td>
+      <td>2492.92%</td>
+      <td>27577.71%</td>
+      <td>72</td>
+      <td>140</td>
+    </tr>
+    <tr>
+      <td>ETH-USD</td>
+      <td>Crypto</td>
+      <td>日频(1d)</td>
+      <td>7535.63%</td>
+      <td>817.12%</td>
+      <td>6718.51%</td>
+      <td>56</td>
+      <td>116</td>
+    </tr>
+    <tr>
+      <td>BTC-USD</td>
+      <td>Crypto</td>
+      <td>周频(1wk)</td>
+      <td>12030.52%</td>
+      <td>9324.92%</td>
+      <td>2705.60%</td>
+      <td>9</td>
+      <td>22</td>
+    </tr>
+    <tr>
+      <td>SOL-USD</td>
+      <td>Crypto</td>
+      <td>周频(1wk)</td>
+      <td>12977.50%</td>
+      <td>10611.25%</td>
+      <td>2366.25%</td>
+      <td>6</td>
+      <td>12</td>
+    </tr>
+    <tr>
+      <td>AAPL</td>
+      <td>美股</td>
+      <td>日频(1d)</td>
+      <td>596.09%</td>
+      <td>406.77%</td>
+      <td>189.32%</td>
+      <td>47</td>
+      <td>113</td>
+    </tr>
+  </tbody>
+</table>
+    <h3>PSAR 明显更强的组合</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset_label</th>
+      <th>asset_class</th>
+      <th>freq</th>
+      <th>ema_profit_pct</th>
+      <th>psar_profit_pct</th>
+      <th>ema_minus_psar_pp</th>
+      <th>ema_trades</th>
+      <th>psar_trades</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ETH-USD</td>
+      <td>Crypto</td>
+      <td>周频(1wk)</td>
+      <td>436.54%</td>
+      <td>1716.56%</td>
+      <td>-1280.02%</td>
+      <td>9</td>
+      <td>14</td>
+    </tr>
+    <tr>
+      <td>AAPL</td>
+      <td>美股</td>
+      <td>周频(1wk)</td>
+      <td>291.67%</td>
+      <td>694.77%</td>
+      <td>-403.09%</td>
+      <td>10</td>
+      <td>20</td>
+    </tr>
+    <tr>
+      <td>ETH-USD</td>
+      <td>Crypto</td>
+      <td>小时频(60m)</td>
+      <td>-3.94%</td>
+      <td>31.41%</td>
+      <td>-35.35%</td>
+      <td>408</td>
+      <td>693</td>
+    </tr>
+    <tr>
+      <td>159915.SZ</td>
+      <td>A股</td>
+      <td>周频(1wk)</td>
+      <td>38.70%</td>
+      <td>63.95%</td>
+      <td>-25.24%</td>
+      <td>14</td>
+      <td>21</td>
+    </tr>
+    <tr>
+      <td>600519.SS</td>
+      <td>A股</td>
+      <td>日频(1d)</td>
+      <td>274.58%</td>
+      <td>294.92%</td>
+      <td>-20.35%</td>
+      <td>53</td>
+      <td>98</td>
+    </tr>
+    <tr>
+      <td>600519.SS</td>
+      <td>A股</td>
+      <td>小时频(60m)</td>
+      <td>13.44%</td>
+      <td>28.90%</td>
+      <td>-15.46%</td>
+      <td>82</td>
+      <td>138</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q8. 这对你后面的研究决策意味着什么？</h2>
+    <ol>
+      <li><b>EMA 先升格为主 raw alpha baseline</b>：后续你要评估新结构、过滤器、确认层时，都应该先问一句：它有没有稳定优于 EMA baseline？</li>
+      <li><b>PSAR 作为第二重点保留</b>：但更适合往“快反应趋势 / 保护性退出 / 与 EMA 组合”方向推进，而不是直接压成主干。</li>
+      <li><b>如果要做因子库 intake</b>：EMA 更像 alpha candidate；PSAR 更像 alpha/filter hybrid candidate。</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>Q9. 成本一扣之后，这两条线还站得住吗？</h2>
+    <p class="a">当前 first-pass 成本页的读法很清楚：<b>日/周频都还够厚，真正脆的是 60m，而且 PSAR 比 EMA 更脆。</b> 这不会推翻“EMA 比 PSAR 更像主 baseline”的结论，反而让这个排序更稳了。</p>
+    <ul>
+      <li><b>整体层面：</b>EMA / PSAR 的 gross 正收益覆盖率都约 <code>92.59%</code>，但 EMA 的 positive-only median breakeven round-trip cost 约 <code>383.2bps</code>，高于 PSAR 的约 <code>300.9bps</code>，说明 EMA 的成本缓冲更厚。</li>
+      <li><b>60m 层面：</b>EMA 正 gross 组合的 median breakeven cost 约 <code>27.5bps</code>，扣 <code>20bps</code> 后仍约有 <code>4/9</code> 组合存活；PSAR 对应约 <code>15.4bps</code>，扣 <code>20bps</code> 后只剩约 <code>2/9</code>，到 <code>50bps</code> 时已 <code>0/9</code>。</li>
+      <li><b>策略含义：</b>EMA 现在更像可以继续往 net / OOS / rolling 补完整性的主 baseline；PSAR 则更像适合拿来做快反应 / protective layer，而不是单独扛主 alpha 期待。</li>
+    </ul>
+    <h3>策略级成本空间摘要</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>strategy</th>
+      <th>combos</th>
+      <th>positive_gross_share</th>
+      <th>median_profit_pct</th>
+      <th>median_trades</th>
+      <th>positive_only_median_breakeven_cost_bps</th>
+      <th>survive_10bps_share</th>
+      <th>survive_20bps_share</th>
+      <th>survive_50bps_share</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>EMA</td>
+      <td>27</td>
+      <td>92.59%</td>
+      <td>142.83%</td>
+      <td>53.00</td>
+      <td>383.2bps</td>
+      <td>88.89%</td>
+      <td>81.48%</td>
+      <td>66.67%</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>27</td>
+      <td>92.59%</td>
+      <td>116.42%</td>
+      <td>113.00</td>
+      <td>300.9bps</td>
+      <td>88.89%</td>
+      <td>74.07%</td>
+      <td>59.26%</td>
+    </tr>
+  </tbody>
+</table>
+    <h3>按频率看成本敏感性</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>strategy</th>
+      <th>interval</th>
+      <th>combos</th>
+      <th>positive_gross_share</th>
+      <th>median_profit_pct</th>
+      <th>median_trades</th>
+      <th>positive_only_median_breakeven_cost_bps</th>
+      <th>survive_10bps_share</th>
+      <th>survive_20bps_share</th>
+      <th>survive_50bps_share</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>EMA</td>
+      <td>日频(1d)</td>
+      <td>9</td>
+      <td>100.00%</td>
+      <td>274.58%</td>
+      <td>53.00</td>
+      <td>518.1bps</td>
+      <td>100.00%</td>
+      <td>100.00%</td>
+      <td>88.89%</td>
+    </tr>
+    <tr>
+      <td>EMA</td>
+      <td>周频(1wk)</td>
+      <td>9</td>
+      <td>100.00%</td>
+      <td>291.67%</td>
+      <td>9.00</td>
+      <td>2916.7bps</td>
+      <td>100.00%</td>
+      <td>100.00%</td>
+      <td>100.00%</td>
+    </tr>
+    <tr>
+      <td>EMA</td>
+      <td>小时频(60m)</td>
+      <td>9</td>
+      <td>77.78%</td>
+      <td>21.48%</td>
+      <td>111.00</td>
+      <td>27.5bps</td>
+      <td>66.67%</td>
+      <td>44.44%</td>
+      <td>11.11%</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>日频(1d)</td>
+      <td>9</td>
+      <td>100.00%</td>
+      <td>294.92%</td>
+      <td>113.00</td>
+      <td>300.9bps</td>
+      <td>100.00%</td>
+      <td>100.00%</td>
+      <td>77.78%</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>周频(1wk)</td>
+      <td>9</td>
+      <td>100.00%</td>
+      <td>201.92%</td>
+      <td>21.00</td>
+      <td>877.9bps</td>
+      <td>100.00%</td>
+      <td>100.00%</td>
+      <td>100.00%</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>小时频(60m)</td>
+      <td>9</td>
+      <td>77.78%</td>
+      <td>28.90%</td>
+      <td>209.00</td>
+      <td>15.4bps</td>
+      <td>66.67%</td>
+      <td>22.22%</td>
+      <td>0.00%</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q10. 如果今天就要排研发优先级，EMA 和 PSAR 应该怎么投资源？</h2>
+    <ul>
+      <li><b>第一优先级：</b>继续投给 <code>EMA</code>，而且目标要收得很窄——不是再讲一遍它为什么好，而是补 <b>rolling / OOS honesty</b>，确认它不是只在长牛样本里好看。</li>
+      <li><b>第二优先级：</b>不要单独把 <code>PSAR</code> 扩成第二条主 alpha 线，而是优先做最小 <code>EMA + PSAR</code> 组合验证，回答它当快退出 / protective layer 时，是否比单跑 EMA 更诚实。</li>
+      <li><b>当前不建议做的事：</b>不建议现在就把 PSAR 当独立主策略继续包装；也不建议在 rolling / OOS 还没补之前，直接把 EMA 升格成 production baseline。</li>
+      <li><b>更像 go / no-go gate 的读法：</b>如果 EMA 在下一轮 rolling / OOS 里还能保住大部分日/周频优势，它就有资格正式成为项目的 raw alpha baseline；如果这一步明显塌掉，那么这条线就该回退成“有启发的 research branch”，而不是主入口。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Q11. 如果下一步真把 EMA 当主 baseline，rolling / OOS 应该怎么做才诚实？</h2>
+    <p class="a">当前最小诚实协议应该是：<b>固定 EMA9/EMA20，不再二次调参；把每个 asset×freq 组合切成 rolling / walk-forward 窗口；同时报告 gross 与低成本净值近似；再看它是否还能稳定活下来。</b> 这一步的目标不是再证明一次 EMA 在全样本里“看起来不错”，而是回答：它是不是一个值得后续所有结构层都拿来对比的 baseline。</p>
+    <ul>
+      <li><b>参数纪律：</b>固定现有 EMA 规则，不因为某个市场或频率表现差就临时改窗口长度。</li>
+      <li><b>窗口纪律：</b>按 <code>asset × freq</code> 做 rolling / walk-forward 检查，优先关心“正收益窗口占比”与“坏窗口会不会连续扎堆”，而不是只看整段累计收益。</li>
+      <li><b>成本纪律：</b>至少同时报告 <code>gross</code> 与一个现实一点的低成本口径（当前 first-pass 可先看 <code>20bps</code> 近似），避免只在无成本世界里成立。</li>
+      <li><b>比较纪律：</b>不是只问 EMA 赚不赚钱，还要问它在 rolling / OOS 下是否仍比 <code>PSAR</code> 更像稳定主干，以及后续结构过滤层能否稳定优于这个 baseline。</li>
+      <li><b>如果只先做一个最小切片：</b>优先先做 <code>EMA 60m</code> 的 <code>gross vs 20bps</code> rolling / walk-forward。原因不是它最漂亮，而是它现在最脆、最容易先把 baseline 幻觉打掉：first-pass 成本里，<code>EMA 60m</code> 的 positive-only median breakeven cost 约 <code>27.5bps</code>，扣 <code>20bps</code> 后只剩约 <code>4/9</code> 组合存活，所以它最适合先当 falsification slice。</li>
+      <li><b>当前最像样的通过标准：</b>EMA 不需要在每个窗口都赢，但至少不该只靠少数大牛段抬起来；若 rolling 后大多数窗口仍为正、且 60m 没被轻微成本全面吞掉，它才更配叫 <code>raw alpha baseline candidate</code>。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Q12. 如果要做最小 `EMA + PSAR` 组合，怎样才算诚实？</h2>
+    <p class="a">当前最小诚实版本不该把它做成“两个 alpha 拼盘”，而应先把问题收窄成：<b>`EMA` 负责主方向 / 主持仓逻辑，`PSAR` 只负责更快退出或保护性反应；然后拿它和单跑 EMA 在同一资产、同一频率、同一成本假设下正面对比。</b></p>
+    <ul>
+      <li><b>角色纪律：</b><code>EMA</code> 决定主方向与默认持有；<code>PSAR</code> 不单独抢主 alpha 位，只用来回答“更快退出会不会让 EMA 更诚实”。</li>
+      <li><b>比较纪律：</b>组合版必须和 <code>单跑 EMA</code> 用同一组资产、同一频率、同一资金口径比，不能一边换 universe、一边换执行规则。</li>
+      <li><b>成本纪律：</b>至少同时报告 <code>gross</code> 与 <code>20bps</code> 近似，因为 <code>PSAR</code> 的价值如果只存在于无成本世界，就不配叫 protective layer。</li>
+      <li><b>默认第一刀：</b>优先先做 <code>EMA 60m + PSAR exit overlay</code> 对比 <code>单跑 EMA 60m</code>。理由不是它最稳，而是这里同时满足两点：<code>EMA 60m</code> 本来就最脆（扣 <code>20bps</code> 后只剩约 <code>4/9</code> 组合存活），而 <code>PSAR 60m</code> 又正是交易更快、最可能提供“更早止损 / 退出”价值、但也最容易被成本吞掉的地方。</li>
+      <li><b>当前更像样的通过标准：</b>不是只看组合后 gross 收益有没有更高，而是看它是否在 <code>20bps</code> 下改善了坏窗口扎堆、回撤/误伤、或窗口存活率；如果只是换来更多交易次数，却没有更好的 cost-adjusted honesty，那它就不算组合增益。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Q13. 真做一版 EMA 60m rolling falsification slice 后，现有缓存样本在说什么？</h2>
+    <p class="a">这轮不再只写协议，而是先用手头现成缓存交一个真实结果切片：复用 <code>pytrendline_event_validation_v3_crypto_180d/cache</code> 里的 <code>BTC / ETH / SOL</code> 60m 数据，固定 <code>EMA9/EMA20</code>，做 <code>45d rolling window + 15d step</code>，同时报告 <code>gross</code> 与 <code>20bps</code> 近似。它不是完整 cross-market 结论，但已经足够先回答：<b>EMA 60m 这块最脆口袋，到底像 pass / yellow / fail 哪一档。</b></p>
+    <ul>
+      <li><b>整体结果：</b>这批 cached crypto slice 一共 <code>30</code> 个窗口，gross 为正的只约 <code>13.33%</code>，扣 <code>20bps</code> 后只剩约 <code>6.67%</code> 为正；而且 <code>0/3</code> 个资产达到“多数窗口 net 为正”，当前门槛读法明显更接近 <b><code>fail</code></b>。</li>
+      <li><b>按资产看：</b><code>BTC / ETH / SOL</code> 的 median window net20 分别约 <code>-16.24%</code>、<code>-11.45%</code>、<code>-19.71%</code>；三者都不是“轻成本还能多数窗口站住”的样子。</li>
+      <li><b>更致命的点：</b>net20 的负窗口不是零星出现，而是会连续扎堆——当前 longest negative streak 分别大约是 <code>9</code>、<code>10</code>、<code>9</code> 个窗口，说明它不是靠一两个坏点，而是 recent slice 本身就很脆。</li>
+      <li><b>当前最诚实的读法：</b>这不等于“EMA 全部作废”，因为它只是 <b>crypto-only / cached 180d / 60m</b> 的 first falsification slice；但它已经足够说明：<code>EMA 60m</code> 当前不能再被当成支持 baseline 的证据，反而更像需要被 <code>EMA + PSAR exit overlay</code> 去尝试救的最弱口袋。</li>
+    </ul>
+    <h3>按资产汇总</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset</th>
+      <th>windows</th>
+      <th>gross_positive_window_share</th>
+      <th>net20_positive_window_share</th>
+      <th>gross_median_profit_pct</th>
+      <th>net20_median_profit_pct</th>
+      <th>worst_net20_window_pct</th>
+      <th>longest_net20_negative_streak</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>BTC</td>
+      <td>10</td>
+      <td>10.00%</td>
+      <td>10.00%</td>
+      <td>-11.92%</td>
+      <td>-16.24%</td>
+      <td>-26.24%</td>
+      <td>9</td>
+    </tr>
+    <tr>
+      <td>SOL</td>
+      <td>10</td>
+      <td>10.00%</td>
+      <td>10.00%</td>
+      <td>-15.15%</td>
+      <td>-19.71%</td>
+      <td>-37.04%</td>
+      <td>9</td>
+    </tr>
+    <tr>
+      <td>ETH</td>
+      <td>10</td>
+      <td>20.00%</td>
+      <td>0.00%</td>
+      <td>-6.92%</td>
+      <td>-11.45%</td>
+      <td>-32.15%</td>
+      <td>10</td>
+    </tr>
+  </tbody>
+</table>
+    <h3>最差窗口（按 net20）</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset</th>
+      <th>window_start</th>
+      <th>window_end</th>
+      <th>bars</th>
+      <th>trades</th>
+      <th>gross_profit_pct</th>
+      <th>net20_profit_pct</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>SOL</td>
+      <td>2025-11-15</td>
+      <td>2025-12-30</td>
+      <td>1060</td>
+      <td>31</td>
+      <td>-32.95%</td>
+      <td>-37.04%</td>
+    </tr>
+    <tr>
+      <td>SOL</td>
+      <td>2025-10-16</td>
+      <td>2025-11-30</td>
+      <td>1049</td>
+      <td>31</td>
+      <td>-28.77%</td>
+      <td>-33.11%</td>
+    </tr>
+    <tr>
+      <td>ETH</td>
+      <td>2025-11-15</td>
+      <td>2025-12-30</td>
+      <td>1060</td>
+      <td>32</td>
+      <td>-27.62%</td>
+      <td>-32.15%</td>
+    </tr>
+    <tr>
+      <td>SOL</td>
+      <td>2025-10-31</td>
+      <td>2025-12-15</td>
+      <td>1060</td>
+      <td>28</td>
+      <td>-23.14%</td>
+      <td>-27.37%</td>
+    </tr>
+    <tr>
+      <td>BTC</td>
+      <td>2025-11-15</td>
+      <td>2025-12-30</td>
+      <td>1060</td>
+      <td>27</td>
+      <td>-22.11%</td>
+      <td>-26.24%</td>
+    </tr>
+    <tr>
+      <td>ETH</td>
+      <td>2025-10-31</td>
+      <td>2025-12-15</td>
+      <td>1060</td>
+      <td>28</td>
+      <td>-21.75%</td>
+      <td>-26.06%</td>
+    </tr>
+    <tr>
+      <td>ETH</td>
+      <td>2025-10-16</td>
+      <td>2025-11-30</td>
+      <td>1049</td>
+      <td>24</td>
+      <td>-20.20%</td>
+      <td>-23.98%</td>
+    </tr>
+    <tr>
+      <td>SOL</td>
+      <td>2025-12-15</td>
+      <td>2026-01-29</td>
+      <td>1080</td>
+      <td>25</td>
+      <td>-19.48%</td>
+      <td>-23.45%</td>
+    </tr>
+    <tr>
+      <td>SOL</td>
+      <td>2025-10-01</td>
+      <td>2025-11-15</td>
+      <td>1069</td>
+      <td>29</td>
+      <td>-17.53%</td>
+      <td>-22.22%</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q14. 真把 `EMA 60m + PSAR exit overlay` 落成结果切片后，它有救到这块最弱口袋吗？</h2>
+    <p class="a">这轮继续按同一批 <code>BTC / ETH / SOL</code> 60m cache、同样的 <code>45d window + 15d step</code>，把 <code>PSAR</code> 真正放进组合里，但只让它做一件事：<b>当 <code>EMA</code> 还没翻空时，若 <code>PSAR sell</code> 先出现，就提前退出。</b> 也就是：<code>EMA</code> 负责方向与默认持有，<code>PSAR</code> 只负责更快退出，不抢主 alpha 位。</p>
+    <ul>
+      <li><b>整体结果：</b>这批窗口里，<code>PSAR exit overlay</code> 只在 <code>4/30</code> 个窗口里把 net20 做得比单跑 <code>EMA</code> 更好（约 <code>13.33%</code>）；而 <code>EMA</code> 自己至少还有约 <code>6.67%</code> 的窗口在 <code>20bps</code> 下为正，但 overlay 后直接变成约 <code>0.00%</code>。</li>
+      <li><b>成本后的中位数变化：</b>整体 median window net20 delta 大约是 <code>-6.26pp</code>，而且 median trade delta 约 <code>+46</code> 笔，说明它更像是用大幅增交易次数换来了更差的 cost-adjusted 结果。</li>
+      <li><b>按资产看：</b><code>BTC / ETH / SOL</code> 的 median net20 delta 大约分别是 <code>-7.27%</code>、<code>-5.85%</code>、<code>-5.31%</code>；当前 <code>0/3</code> 个资产出现“median delta 为正”，已经更接近“明显拖后腿”，而不是 rescue。</li>
+      <li><b>当前最诚实的读法：</b>在这块最脆的 crypto 60m 口袋里，<code>PSAR</code> 现在还没有证明自己是能把 <code>EMA</code> 从 fail 边缘救回来的 protective layer；相反，它更像先把交易次数抬高了，但没有给出足够的 net 改善。</li>
+    </ul>
+    <h3>按资产汇总</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset</th>
+      <th>windows</th>
+      <th>overlay_better_net20_share</th>
+      <th>ema_net20_median_profit_pct</th>
+      <th>overlay_net20_median_profit_pct</th>
+      <th>median_net20_delta_pp</th>
+      <th>worst_net20_delta_pp</th>
+      <th>median_trade_delta</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>BTC</td>
+      <td>10</td>
+      <td>10.00%</td>
+      <td>-16.24%</td>
+      <td>-21.52%</td>
+      <td>-7.27%</td>
+      <td>-11.90%</td>
+      <td>48</td>
+    </tr>
+    <tr>
+      <td>SOL</td>
+      <td>10</td>
+      <td>10.00%</td>
+      <td>-19.71%</td>
+      <td>-26.12%</td>
+      <td>-5.31%</td>
+      <td>-9.15%</td>
+      <td>46</td>
+    </tr>
+    <tr>
+      <td>ETH</td>
+      <td>10</td>
+      <td>20.00%</td>
+      <td>-11.45%</td>
+      <td>-16.94%</td>
+      <td>-5.85%</td>
+      <td>-11.14%</td>
+      <td>42</td>
+    </tr>
+  </tbody>
+</table>
+    <h3>最差窗口（按 overlay net20 delta）</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset</th>
+      <th>window_start</th>
+      <th>window_end</th>
+      <th>bars</th>
+      <th>ema_trades</th>
+      <th>overlay_trades</th>
+      <th>trade_delta</th>
+      <th>ema_net20_profit_pct</th>
+      <th>overlay_net20_profit_pct</th>
+      <th>net20_delta_pp</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>BTC</td>
+      <td>2026-01-29</td>
+      <td>2026-03-15</td>
+      <td>1057</td>
+      <td>23</td>
+      <td>72</td>
+      <td>49</td>
+      <td>-10.01%</td>
+      <td>-21.92%</td>
+      <td>-11.90%</td>
+    </tr>
+    <tr>
+      <td>ETH</td>
+      <td>2025-09-16</td>
+      <td>2025-10-31</td>
+      <td>1066</td>
+      <td>22</td>
+      <td>74</td>
+      <td>52</td>
+      <td>-1.71%</td>
+      <td>-12.85%</td>
+      <td>-11.14%</td>
+    </tr>
+    <tr>
+      <td>BTC</td>
+      <td>2025-10-01</td>
+      <td>2025-11-15</td>
+      <td>1069</td>
+      <td>22</td>
+      <td>86</td>
+      <td>64</td>
+      <td>-5.61%</td>
+      <td>-16.61%</td>
+      <td>-11.00%</td>
+    </tr>
+    <tr>
+      <td>BTC</td>
+      <td>2025-09-16</td>
+      <td>2025-10-31</td>
+      <td>1069</td>
+      <td>23</td>
+      <td>79</td>
+      <td>56</td>
+      <td>1.87%</td>
+      <td>-7.84%</td>
+      <td>-9.71%</td>
+    </tr>
+    <tr>
+      <td>SOL</td>
+      <td>2025-12-30</td>
+      <td>2026-02-13</td>
+      <td>1080</td>
+      <td>18</td>
+      <td>66</td>
+      <td>48</td>
+      <td>-11.25%</td>
+      <td>-20.40%</td>
+      <td>-9.15%</td>
+    </tr>
+    <tr>
+      <td>ETH</td>
+      <td>2025-10-01</td>
+      <td>2025-11-15</td>
+      <td>1069</td>
+      <td>19</td>
+      <td>67</td>
+      <td>48</td>
+      <td>-10.41%</td>
+      <td>-19.41%</td>
+      <td>-9.00%</td>
+    </tr>
+    <tr>
+      <td>SOL</td>
+      <td>2026-01-29</td>
+      <td>2026-03-15</td>
+      <td>1060</td>
+      <td>18</td>
+      <td>64</td>
+      <td>46</td>
+      <td>0.87%</td>
+      <td>-8.00%</td>
+      <td>-8.86%</td>
+    </tr>
+    <tr>
+      <td>ETH</td>
+      <td>2025-10-16</td>
+      <td>2025-11-30</td>
+      <td>1049</td>
+      <td>24</td>
+      <td>70</td>
+      <td>46</td>
+      <td>-23.98%</td>
+      <td>-32.47%</td>
+      <td>-8.49%</td>
+    </tr>
+    <tr>
+      <td>SOL</td>
+      <td>2025-11-30</td>
+      <td>2026-01-14</td>
+      <td>1080</td>
+      <td>26</td>
+      <td>72</td>
+      <td>46</td>
+      <td>-17.21%</td>
+      <td>-25.28%</td>
+      <td>-8.07%</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q15. `PSAR exit overlay` 这次为什么更像是在放大交易次数，而不是在修复 EMA？</h2>
+    <p class="a">如果只看页面上一句“median trade delta 约 <code>+46</code> 笔、median net20 delta 约 <code>-6.26pp</code>”，还不够直观。更有用的读法是：<b>这批窗口里，overlay 越是明显抬高交易次数，净结果通常越差。</b></p>
+    <ul>
+      <li><b>整体相关性：</b><code>trade_delta</code> 与 <code>net20_delta</code> 的相关系数约 <code>-0.68</code>，已经是明显负相关；换句话说，额外交易越多，cost-adjusted 改善通常越不容易出现。</li>
+      <li><b>高换手窗口几乎没救到：</b>当 overlay 比单跑 EMA 多出至少 <code>50</code> 笔交易时，这类窗口约占 <code>16.67%</code>，但 <code>0%</code> 窗口出现 net20 改善，中位 net20 delta 约 <code>-9.71%</code>。</li>
+      <li><b>少加一点交易时，偶尔还能勉强改善：</b>如果额外交易还控制在 <code>&lt;45</code> 笔，这类窗口里约有 <code>30.77%</code> 能把 net20 做得更好，但中位 delta 仍约 <code>-1.13%</code>，说明它顶多是“少伤一点”，还不是稳定 rescue。</li>
+      <li><b>当前最诚实的解释：</b><code>PSAR</code> 在这批 60m crypto cache 上，更多像是把 EMA 原本就不稳的区间切得更碎、更频繁出入；如果这些更快退出没有换来足够多的坏窗口修复，那成本就会先把它吃掉。</li>
+    </ul>
+    <h3>按 trade delta bucket 看 overlay 结果</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>trade_delta_bucket</th>
+      <th>windows</th>
+      <th>overlay_better_net20_share</th>
+      <th>median_net20_delta_pp</th>
+      <th>median_trade_delta</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><45</td>
+      <td>13</td>
+      <td>30.77%</td>
+      <td>-1.13%</td>
+      <td>40</td>
+    </tr>
+    <tr>
+      <td>45-49</td>
+      <td>12</td>
+      <td>0.00%</td>
+      <td>-8.05%</td>
+      <td>46</td>
+    </tr>
+    <tr>
+      <td>>=50</td>
+      <td>5</td>
+      <td>0.00%</td>
+      <td>-9.71%</td>
+      <td>55</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q16. 如果明确把 60m 剔掉，EMA / PSAR 的 baseline family 还剩什么？</h2>
+    <p class="a">既然 <code>EMA 60m crypto</code> 已经被 rolling falsification slice 打进 fail 口袋，一个更有用的问题就变成：<b>若暂时不再纠缠 60m，日/周频这批更厚的组合里，`EMA / PSAR` 各自还剩下什么 baseline family survivors？</b> 这轮直接用现成 <code>ema_psar_cost_budget_by_combo.csv</code> 做一刀很窄的 survivors slice：只把 <code>1d + 1wk</code> 汇成一个 <code>non60m</code> 桶，与 <code>60m</code> 正面对照。</p>
+    <ul>
+      <li><b>EMA 的 non60m family 还很厚：</b><code>1d + 1wk</code> 共 <code>18</code> 个组合里，gross 正收益覆盖率仍是 <code>100.00%</code>；positive-only median breakeven cost 约 <code>2066.8bps</code>，扣 <code>20bps</code> 后仍是 <code>100.00%</code> 存活。</li>
+      <li><b>和 60m 的对比是断层级的：</b><code>EMA 60m</code> 的 positive-only median breakeven cost 只有约 <code>27.5bps</code>，<code>20bps</code> 后只剩约 <code>44.44%</code>；这说明“EMA 这条线还值不值得继续”与“EMA 60m 值不值得继续”已经不是同一个问题。</li>
+      <li><b>PSAR 的 non60m 也活着，但更像副线对照：</b><code>PSAR</code> 的 non60m 组合同样是 <code>18/18</code> gross 为正、<code>20bps</code> 也 <code>18/18</code> 存活，但 positive-only median breakeven cost 大约只有 <code>585.0bps</code>，仍明显低于 EMA 的约 <code>2066.8bps</code>。</li>
+      <li><b>当前更诚实的读法：</b>如果后面还要继续追 `raw alpha baseline family`，默认应该把注意力移到 <code>EMA 1d / 1wk</code> 这批厚口袋，而不是继续围着 <code>EMA 60m crypto</code> 打转；<code>PSAR</code> 则更适合作为 non60m 的次级对照 / protective layer 候选，而不是靠 60m overlay 去救场。</li>
+    </ul>
+    <h3>Baseline family survivors（non60m vs 60m）</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>strategy</th>
+      <th>baseline_bucket</th>
+      <th>combos</th>
+      <th>positive_gross_share</th>
+      <th>median_profit_pct</th>
+      <th>median_trades</th>
+      <th>positive_only_median_breakeven_cost_bps</th>
+      <th>survive_20bps_share</th>
+      <th>survive_50bps_share</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>EMA</td>
+      <td>non60m (1d+1wk)</td>
+      <td>18</td>
+      <td>100.00%</td>
+      <td>283.13%</td>
+      <td>28.50</td>
+      <td>2066.8bps</td>
+      <td>100.00%</td>
+      <td>94.44%</td>
+    </tr>
+    <tr>
+      <td>EMA</td>
+      <td>60m only</td>
+      <td>9</td>
+      <td>77.78%</td>
+      <td>21.48%</td>
+      <td>111.00</td>
+      <td>27.5bps</td>
+      <td>44.44%</td>
+      <td>11.11%</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>non60m (1d+1wk)</td>
+      <td>18</td>
+      <td>100.00%</td>
+      <td>248.42%</td>
+      <td>55.50</td>
+      <td>585.0bps</td>
+      <td>100.00%</td>
+      <td>88.89%</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>60m only</td>
+      <td>9</td>
+      <td>77.78%</td>
+      <td>28.90%</td>
+      <td>209.00</td>
+      <td>15.4bps</td>
+      <td>22.22%</td>
+      <td>0.00%</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q17. 如果不想在 18 个 non60m 组合上平均用力，EMA family-level honesty 应该先看哪几个口袋？</h2>
+    <p class="a">既然当前更值得继续的是 <code>EMA 1d / 1wk</code> 这批 non60m family，一个更实用的问题就变成：<b>后面的 rolling / OOS 应该先看哪几个口袋，最能决定这条 family 还值不值得继续？</b> 当前最诚实的做法不是先去看最厚的 crypto 周频，而是先看 <b>non60m 里最薄、但还没正式倒下的 survivor frontier</b>。</p>
+    <ul>
+      <li><b>最薄的边界口袋已经很清楚：</b>当前排序最前的是 <code>沪深300ETF</code> <code>1d</code>（breakeven 约 <code>39.7bps</code>，<code>50bps</code> 近似下已约 <code>-5.79%</code>），它其实已经接近“non60m family 里最先该被 falsify 的薄边”。</li>
+      <li><b>接下来最值得优先复核的 frontier：</b><code>沪深300ETF</code> <code>1wk</code>（约 <code>184.0bps</code>）、<code>创业板ETF</code> <code>1d</code>（约 <code>237.7bps</code>）、<code>创业板ETF</code> <code>1wk</code>（约 <code>276.5bps</code>）、以及 <code>SPY</code> <code>1d</code>（约 <code>339.0bps</code>）。它们都还活着，但离“厚到不用优先怀疑”还很远。</li>
+      <li><b>为什么不是先看最厚的 crypto 周频：</b><code>BTC / SOL 1wk</code> 这类口袋的 breakeven 已经厚到 <code>10k+ bps</code> 甚至更高，它们更像 family 还活着的 backstop，而不是当前最能决定“这条 family 需不需要继续收窄”的前线。</li>
+      <li><b>当前最有用的 next step framing：</b>如果后面只做一刀 non60m 的 rolling / OOS honesty，默认应先从这批薄边 survivor frontier 开始；如果连它们都过不了，`EMA baseline family` 就该继续收窄，而不是再拿最厚的口袋给自己壮胆。</li>
+    </ul>
+    <h3>EMA non60m survivor frontier（按 breakeven 从薄到厚排序）</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>priority_rank</th>
+      <th>asset</th>
+      <th>asset_class</th>
+      <th>interval</th>
+      <th>trades</th>
+      <th>breakeven_roundtrip_cost_bps</th>
+      <th>approx_net_profit_pct_20bps</th>
+      <th>approx_net_profit_pct_50bps</th>
+      <th>max_dd_pct</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>沪深300ETF</td>
+      <td>A股</td>
+      <td>1d</td>
+      <td>56</td>
+      <td>39.7bps</td>
+      <td>11.01%</td>
+      <td>-5.79%</td>
+      <td>-28.79%</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>沪深300ETF</td>
+      <td>A股</td>
+      <td>1wk</td>
+      <td>13</td>
+      <td>184.0bps</td>
+      <td>21.31%</td>
+      <td>17.41%</td>
+      <td>-38.81%</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>创业板ETF</td>
+      <td>A股</td>
+      <td>1d</td>
+      <td>56</td>
+      <td>237.7bps</td>
+      <td>121.93%</td>
+      <td>105.13%</td>
+      <td>-34.54%</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>创业板ETF</td>
+      <td>A股</td>
+      <td>1wk</td>
+      <td>14</td>
+      <td>276.5bps</td>
+      <td>35.90%</td>
+      <td>31.70%</td>
+      <td>-41.43%</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>SPY</td>
+      <td>美股</td>
+      <td>1d</td>
+      <td>43</td>
+      <td>339.0bps</td>
+      <td>137.18%</td>
+      <td>124.28%</td>
+      <td>-15.46%</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>QQQ</td>
+      <td>美股</td>
+      <td>1d</td>
+      <td>49</td>
+      <td>383.2bps</td>
+      <td>177.97%</td>
+      <td>163.27%</td>
+      <td>-27.49%</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>贵州茅台</td>
+      <td>A股</td>
+      <td>1d</td>
+      <td>53</td>
+      <td>518.1bps</td>
+      <td>263.98%</td>
+      <td>248.08%</td>
+      <td>-41.65%</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>AAPL</td>
+      <td>美股</td>
+      <td>1d</td>
+      <td>47</td>
+      <td>1268.3bps</td>
+      <td>586.69%</td>
+      <td>572.59%</td>
+      <td>-25.41%</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q18. 如果把这批 non60m 薄边 pocket 和 PSAR 正面对照，EMA 的 baseline family 还站得住吗？</h2>
+    <p class="a">光知道 frontier 排序还不够，下一步更关键的是：<b>这些最薄的 non60m pocket 里，EMA 还是不是默认更像 baseline 的那条线？</b> 这轮直接把 frontier 前 6 名拿去和同口径 <code>PSAR</code> 做 head-to-head，对读法会更诚实。</p>
+    <ul>
+      <li><b>EMA 明显更像 baseline 的口袋：</b><code>创业板ETF 1d</code>、<code>SPY 1d</code>、<code>QQQ 1d</code> 这三格里，EMA 不只是 gross 更高，连 breakeven cost buffer 也明显更厚——例如 <code>SPY 1d</code> 约比 PSAR 多出 <code>241.1bps</code> 的缓冲，<code>QQQ 1d</code> 约多出 <code>276.4bps</code>。</li>
+      <li><b>真正更值得先做 rolling / OOS honesty 的，是 A股 frontier：</b><code>沪深300ETF 1wk</code> 与 <code>创业板ETF 1wk</code> 这两格里，PSAR 当前反而略占优；<code>沪深300ETF 1d</code> 则更像双方都偏薄、但 EMA 因交易更少而稍厚一点的 mixed pocket。</li>
+      <li><b>项目级含义：</b>这说明 `EMA non60m family` 不是“所有 pocket 都同样支持 EMA baseline”。更诚实的读法是：<b>美股 1d pocket 仍在支持 EMA，但 A股 frontier 才是当前真正该先拿去验真伪的 family 前线。</b></li>
+      <li><b>因此下一棒怎么收：</b>如果只做一刀 non60m 的更正式 honesty，默认不该平均撒在 18 个口袋上，而该优先去做 `沪深300ETF / 创业板ETF` 这批 frontier 的 rolling / OOS；因为它们最可能决定 `EMA baseline family` 是继续保留，还是要进一步收窄。</li>
+    </ul>
+    <h3>EMA non60m survivor frontier：与 PSAR 的同口径 head-to-head</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>priority_rank</th>
+      <th>asset</th>
+      <th>asset_class</th>
+      <th>interval</th>
+      <th>ema_trades</th>
+      <th>ema_breakeven_roundtrip_cost_bps</th>
+      <th>psar_trades</th>
+      <th>psar_breakeven_roundtrip_cost_bps</th>
+      <th>ema_minus_psar_profit_pp</th>
+      <th>ema_minus_psar_breakeven_bps</th>
+      <th>reading</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>沪深300ETF</td>
+      <td>A股</td>
+      <td>1d</td>
+      <td>56</td>
+      <td>39.7bps</td>
+      <td>107</td>
+      <td>20.8bps</td>
+      <td>-0.06%</td>
+      <td>18.8bps</td>
+      <td>mixed：EMA 少交易 / PSAR 边际更像样</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>沪深300ETF</td>
+      <td>A股</td>
+      <td>1wk</td>
+      <td>13</td>
+      <td>184.0bps</td>
+      <td>19</td>
+      <td>191.7bps</td>
+      <td>-12.51%</td>
+      <td>-7.7bps</td>
+      <td>PSAR 在这口袋更强</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>创业板ETF</td>
+      <td>A股</td>
+      <td>1d</td>
+      <td>56</td>
+      <td>237.7bps</td>
+      <td>105</td>
+      <td>21.1bps</td>
+      <td>110.93%</td>
+      <td>216.6bps</td>
+      <td>EMA 更像主 baseline</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>创业板ETF</td>
+      <td>A股</td>
+      <td>1wk</td>
+      <td>14</td>
+      <td>276.5bps</td>
+      <td>21</td>
+      <td>304.5bps</td>
+      <td>-25.24%</td>
+      <td>-28.0bps</td>
+      <td>PSAR 在这口袋更强</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>SPY</td>
+      <td>美股</td>
+      <td>1d</td>
+      <td>43</td>
+      <td>339.0bps</td>
+      <td>121</td>
+      <td>98.0bps</td>
+      <td>27.24%</td>
+      <td>241.1bps</td>
+      <td>EMA 更像主 baseline</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>QQQ</td>
+      <td>美股</td>
+      <td>1d</td>
+      <td>49</td>
+      <td>383.2bps</td>
+      <td>123</td>
+      <td>106.8bps</td>
+      <td>56.43%</td>
+      <td>276.4bps</td>
+      <td>EMA 更像主 baseline</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q19. 真把 A股 frontier 推到第一刀 rolling / OOS honesty 后，EMA baseline family 还剩什么？</h2>
+    <p class="a">这轮不再只停在 `frontier queue` 或 `EMA vs PSAR` 静态 head-to-head，而是把最该先验真伪的 A股 frontier 直接推进到一版真实 rolling 切片：复用 `10y` 的 `沪深300ETF / 创业板ETF` 日周频数据，固定 `EMA9/EMA20`，做 `730d window + 180d step`，并用同口径 `PSAR` 做并排对照。它不是整条 non60m family 的最终判决，但已经足够回答：<b>A股 frontier 到底是在帮 EMA 守住 baseline family，还是在逼这条线继续收窄。</b></p>
+    <ul>
+      <li><b>整体结果是 mixed，不是全线塌掉：</b>当前一共 <code>68</code> 个窗口，`EMA` 的 net20 正窗口占比约 <code>50.00%</code>，`PSAR` 约 <code>55.88%</code>；两边都只有 <code>2/4</code> 与 <code>2/4</code> 个 pocket 达到“多数窗口 net 为正”，当前更像 <b><code>mixed</code></b>，而不是“一边倒支持 EMA”或“一刀否掉 whole family”。</li>
+      <li><b>EMA 仍守得住的口袋：</b><code>沪深300ETF 1d</code> 的 median window net20 约 <code>0.13%</code>，高于同口径 `PSAR` 的约 <code>-1.12%</code>；<code>创业板ETF 1d</code> 虽然还没达到多数正窗口，但 median net20 也约 <code>-0.75%</code>，明显好于 `PSAR` 的约 <code>-16.19%</code>。</li>
+      <li><b>真正该被继续收窄审查的，是 A股 weekly frontier：</b><code>创业板ETF 1wk</code> 这格里 `EMA` 的 median window net20 约 <code>-11.64%</code>，而 `PSAR` 约 <code>13.10%</code>；<code>沪深300ETF 1wk</code> 则更像 mixed——`EMA` 的 median net20 约 <code>9.21%</code>，但 `PSAR` 的正窗口占比更高（约 <code>76.47%</code>）。</li>
+      <li><b>项目级含义：</b>`EMA baseline family` 还没有被 A股 frontier 直接打死，但它也不能再靠“non60m overall 18/18 存活”这种大桶口径自证。当前更诚实的读法是：<b>A股日频还在勉强帮 EMA 守门，真正最该先继续收窄的，是 A股 weekly frontier，尤其 `创业板ETF 1wk`。</b></li>
+    </ul>
+    <h3>A股 frontier rolling / OOS honesty（EMA vs PSAR, net20）</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset</th>
+      <th>interval</th>
+      <th>windows</th>
+      <th>ema_net20_positive_window_share</th>
+      <th>psar_net20_positive_window_share</th>
+      <th>ema_net20_median_profit_pct</th>
+      <th>psar_net20_median_profit_pct</th>
+      <th>ema_vs_psar_median_net20_delta_pp</th>
+      <th>ema_better_window_share</th>
+      <th>reading</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>沪深300ETF</td>
+      <td>1d</td>
+      <td>17</td>
+      <td>52.94%</td>
+      <td>41.18%</td>
+      <td>0.13%</td>
+      <td>-1.12%</td>
+      <td>2.70%</td>
+      <td>58.82%</td>
+      <td>EMA 仍更像 baseline</td>
+    </tr>
+    <tr>
+      <td>创业板ETF</td>
+      <td>1d</td>
+      <td>17</td>
+      <td>47.06%</td>
+      <td>41.18%</td>
+      <td>-0.75%</td>
+      <td>-16.19%</td>
+      <td>16.17%</td>
+      <td>82.35%</td>
+      <td>EMA 仍更像 baseline</td>
+    </tr>
+    <tr>
+      <td>沪深300ETF</td>
+      <td>1wk</td>
+      <td>17</td>
+      <td>58.82%</td>
+      <td>76.47%</td>
+      <td>9.21%</td>
+      <td>3.70%</td>
+      <td>0.30%</td>
+      <td>52.94%</td>
+      <td>mixed：要继续收窄到 pocket 级</td>
+    </tr>
+    <tr>
+      <td>创业板ETF</td>
+      <td>1wk</td>
+      <td>17</td>
+      <td>41.18%</td>
+      <td>64.71%</td>
+      <td>-11.64%</td>
+      <td>13.10%</td>
+      <td>-10.96%</td>
+      <td>47.06%</td>
+      <td>PSAR 在这口袋更稳</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q20. 如果把 A股 weekly frontier 再推进到更严格 holdout honesty，EMA 还该不该继续把它算进 baseline family？</h2>
+    <p class="a">这轮不再停在 overlap rolling，而是把最该先出结论的 <code>A股 weekly frontier</code> 单独推进到一版更严格的 holdout slice：固定 <code>EMA9/EMA20</code> 与 <code>PSAR</code> 规则，用 <code>730d lookback + 365d forward holdout</code>、按年滚动，直接看“下一年”是否还站得住。因为参数本来就是固定的，这一刀的意义不是训练，而是避免再让同一段样本一边提供背景、一边给自己打分。</p>
+    <ul>
+      <li><b>整体读法更偏向 PSAR-lean：</b>当前两格 weekly pocket 一共 <code>14</code> 个 holdout，`EMA` 的 net20 正 holdout 占比只约 <code>42.86%</code>，而 `PSAR` 约 <code>85.71%</code>；`EMA` 只在约 <code>35.71%</code> 的 holdout 里优于 `PSAR`，当前整体更像 <b><code>PSAR-lean</code></b>，而不是 EMA 还能把 weekly frontier 一并守住。</li>
+      <li><b>创业板ETF 1wk：</b>在更严格 holdout 下已经很难继续替 `EMA baseline family` 辩护——`EMA` 的正 holdout 占比只约 <code>42.86%</code>，median net20 约 <code>0.00%</code>；而 `PSAR` 对应约 <code>100.00%</code> 与 <code>4.03%</code>。这格当前更像应从 `EMA baseline family pocket` 里剔出去，至少降级成 `PSAR/mixed pocket`。</li>
+      <li><b>沪深300ETF 1wk：</b>也不再只是“mixed 但 EMA 勉强还行”。更严格 holdout 下，`EMA` 的正 holdout 占比约 <code>42.86%</code>，median net20 约 <code>-5.17%</code>；而 `PSAR` 对应约 <code>71.43%</code> 与 <code>1.01%</code>。它现在更像 `mixed but PSAR-lean`，不再适合继续算作 EMA 的稳定支撑口袋。</li>
+      <li><b>项目级含义：</b>这刀不会推翻 `EMA` 在日频 survivor 上的资格，但它已经足够把 <b>A股 weekly frontier 从 `EMA baseline family` 里继续收窄出去</b>。如果还要继续讲 EMA family，更诚实的口径应该变成：`A股 daily` 仍可保留观察，`A股 weekly` 目前更像 `PSAR/mixed branch`，而不是 EMA 的支持证据。</li>
+    </ul>
+    <h3>A股 weekly frontier strict holdout（EMA vs PSAR, net20）</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset</th>
+      <th>holdouts</th>
+      <th>ema_net20_positive_holdout_share</th>
+      <th>psar_net20_positive_holdout_share</th>
+      <th>ema_net20_median_profit_pct</th>
+      <th>psar_net20_median_profit_pct</th>
+      <th>ema_vs_psar_median_net20_delta_pp</th>
+      <th>ema_better_holdout_share</th>
+      <th>reading</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>沪深300ETF</td>
+      <td>7</td>
+      <td>42.86%</td>
+      <td>71.43%</td>
+      <td>-5.17%</td>
+      <td>1.01%</td>
+      <td>-1.20%</td>
+      <td>28.57%</td>
+      <td>PSAR 更稳，EMA 应继续收窄</td>
+    </tr>
+    <tr>
+      <td>创业板ETF</td>
+      <td>7</td>
+      <td>42.86%</td>
+      <td>100.00%</td>
+      <td>0.00%</td>
+      <td>4.03%</td>
+      <td>-4.03%</td>
+      <td>42.86%</td>
+      <td>PSAR 更稳，EMA 应继续收窄</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q21. 如果把 A股 daily 也推进到 strict holdout，EMA baseline family 还剩什么？</h2>
+    <p class="a">weekly frontier 已经被更严格 holdout 收窄成 `PSAR/mixed branch`，所以这轮继续把 `A股 daily` 用同样更严格的口径走一遍：固定 <code>EMA9/EMA20</code> 与 <code>PSAR</code>，用 <code>730d lookback + 365d forward holdout</code>、按年滚动，只看下一年。它的意义很直接——不是再证明 EMA 在某些历史片段里“总体还行”，而是回答：<b>如果把 A股 weekly 拿掉后，daily pockets 还能不能继续替 `EMA baseline family` 守门。</b></p>
+    <ul>
+      <li><b>整体读法更偏向 EMA-lean：</b>当前两格 daily pocket 一共 <code>16</code> 个 holdout，`EMA` 的 net20 正 holdout 占比约 <code>62.50%</code>，高于 `PSAR` 的约 <code>43.75%</code>；`EMA` 也在约 <code>62.50%</code> 的 holdout 里跑赢 `PSAR`，当前整体更像 <b><code>EMA-lean</code></b>。</li>
+      <li><b>创业板ETF 1d：</b>现在仍是 `EMA daily pocket` 里最像样的一格——`EMA` 的正 holdout 占比约 <code>75.00%</code>，median net20 约 <code>12.05%</code>；对应 `PSAR` 约 <code>50.00%</code> 与 <code>5.13%</code>。这格当前仍能继续替 EMA family 辩护。</li>
+      <li><b>沪深300ETF 1d：</b>不算强，但比 weekly 诚实得多——`EMA` 的正 holdout 占比约 <code>50.00%</code>，median net20 约 <code>-2.60%</code>；虽然仍偏 mixed，但同格 `PSAR` 约 <code>-4.49%</code>，并没有形成像 weekly 那样的明显反超。</li>
+      <li><b>项目级含义：</b>这刀之后，`EMA baseline family` 的更诚实说法已经能收成一句话：<b>`A股 weekly` 该移出 family，但 `A股 daily` 还可暂时保留，尤其 `创业板ETF 1d` 仍是能替 EMA 守门的 pocket。</b> 也就是说，这条线现在不是“EMA family 全灭”，而是已经被压缩成更窄、但还没被完全打死的 daily survivors。</li>
+    </ul>
+    <h3>A股 daily strict holdout（EMA vs PSAR, net20）</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset</th>
+      <th>holdouts</th>
+      <th>ema_net20_positive_holdout_share</th>
+      <th>psar_net20_positive_holdout_share</th>
+      <th>ema_net20_median_profit_pct</th>
+      <th>psar_net20_median_profit_pct</th>
+      <th>ema_vs_psar_median_net20_delta_pp</th>
+      <th>ema_better_holdout_share</th>
+      <th>reading</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>沪深300ETF</td>
+      <td>8</td>
+      <td>50.00%</td>
+      <td>37.50%</td>
+      <td>-2.60%</td>
+      <td>-4.49%</td>
+      <td>0.81%</td>
+      <td>50.00%</td>
+      <td>mixed：仍需更广 holdout 才能定性</td>
+    </tr>
+    <tr>
+      <td>创业板ETF</td>
+      <td>8</td>
+      <td>75.00%</td>
+      <td>50.00%</td>
+      <td>12.05%</td>
+      <td>5.13%</td>
+      <td>8.88%</td>
+      <td>75.00%</td>
+      <td>EMA 仍可保留</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q22. 把前面的结果压成一张 final survivor map 后，EMA baseline family 现在到底还剩什么？</h2>
+    <p class="a">到这一步，`EMA / PSAR` 线最值钱的已经不是再补一个 protocol，而是把前面几刀真实结果收成一张更严格、可执行的 family 边界图：<b>哪些 pocket 还应继续保留在 `EMA baseline family`，哪些只能降级成 mixed / watch，哪些已经该明确移出。</b> 这里把 `60m crypto rolling fail`、`A股 daily/weekly strict holdout`、以及其余 non60m 厚口袋的长样本 cost/backstop 一起压进同一张 survivor map。</p>
+    <ul>
+      <li><b>明确移出的口袋已经固定：</b><code>net20 正窗口 6.67%；多数窗口为正资产 0/3</code>；`沪深300ETF 1wk` 与 `创业板ETF 1wk` 当前也都应移出 `EMA family`，对应分别是 <code>EMA 正 holdout 42.86% / median net20 -5.17%；PSAR 71.43% / 1.01%</code> 与 <code>EMA 正 holdout 42.86% / median net20 0.00%；PSAR 100.00% / 4.03%</code>。</li>
+      <li><b>当前最像样的 strict-holdout survivor 仍集中在 daily：</b><code>EMA 正 holdout 75.00% / median net20 12.05%；PSAR 50.00% / 5.13%</code>；`沪深300ETF 1d` 也还没像 weekly 那样倒向 PSAR，但更诚实的读法已是 <b>mixed / watch</b>，对应 <code>EMA 正 holdout 50.00% / median net20 -2.60%；PSAR 37.50% / -4.49%</code>。</li>
+      <li><b>family 也不只剩 A股 daily 一口气：</b>`贵州茅台 1d+1wk`、`美股 1d+1wk`、`Crypto 1d+1wk` 这些非前线厚口袋当前仍可暂时保留，分别对应 <code>2/2 组合 gross 为正；median breakeven 1305.6bps</code>、<code>6/6 组合 gross 为正；median breakeven 1654.4bps</code>、<code>6/6 组合 gross 为正；median breakeven 85430.7bps</code>。更诚实的说法不是“EMA family 只剩 daily”，而是：<b>前线 survivors 已收窄到 daily / mixed pockets，但更远端的 non60m backstops 还在。</b></li>
+      <li><b>因此这条线现在的 final boundary 已经可以写死：</b><b>`60m crypto` = fail pocket；`A股 weekly frontier` = remove / PSAR-lean；`沪深300ETF 1d` = mixed / watch；`创业板ETF 1d` + 其余更厚的 nonfrontier non60m pockets = keep。</b> 如果以后还继续 EMA 线，默认只该去挑战这些 remaining keep/watch pockets，而不是再把已移出的 weekly / 60m 口袋拿回来当 hopeful 证据。</li>
+    </ul>
+    <h3>EMA baseline family final survivor map</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>pocket_scope</th>
+      <th>evidence_tier</th>
+      <th>current_label</th>
+      <th>family_bucket</th>
+      <th>key_numbers</th>
+      <th>project_read</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Crypto 60m（BTC/ETH/SOL rolling）</td>
+      <td>rolling falsification</td>
+      <td>fail pocket</td>
+      <td>移出 EMA family</td>
+      <td>net20 正窗口 6.67%；多数窗口为正资产 0/3</td>
+      <td>这块已经不该再被拿来当 EMA baseline 的支持证据。</td>
+    </tr>
+    <tr>
+      <td>创业板ETF 1d</td>
+      <td>strict holdout</td>
+      <td>keep: daily survivor</td>
+      <td>保留在 EMA family</td>
+      <td>EMA 正 holdout 75.00% / median net20 12.05%；PSAR 50.00% / 5.13%</td>
+      <td>这是 strict holdout 下仍能替 EMA 守门的 daily pocket。</td>
+    </tr>
+    <tr>
+      <td>沪深300ETF 1d</td>
+      <td>strict holdout</td>
+      <td>mixed / watch</td>
+      <td>保留但降级为 mixed</td>
+      <td>EMA 正 holdout 50.00% / median net20 -2.60%；PSAR 37.50% / -4.49%</td>
+      <td>这格比 weekly 诚实，但还不够厚，不该再被当成 family 的硬支撑。</td>
+    </tr>
+    <tr>
+      <td>沪深300ETF 1wk</td>
+      <td>strict holdout</td>
+      <td>remove / PSAR-lean</td>
+      <td>移出 EMA family</td>
+      <td>EMA 正 holdout 42.86% / median net20 -5.17%；PSAR 71.43% / 1.01%</td>
+      <td>这格已经更像 PSAR / mixed branch，不该再继续算作 EMA baseline family 的支持 pocket。</td>
+    </tr>
+    <tr>
+      <td>创业板ETF 1wk</td>
+      <td>strict holdout</td>
+      <td>remove / PSAR-lean</td>
+      <td>移出 EMA family</td>
+      <td>EMA 正 holdout 42.86% / median net20 0.00%；PSAR 100.00% / 4.03%</td>
+      <td>这格已经更像 PSAR / mixed branch，不该再继续算作 EMA baseline family 的支持 pocket。</td>
+    </tr>
+    <tr>
+      <td>贵州茅台 1d+1wk</td>
+      <td>长样本 gross / cost backstop</td>
+      <td>暂保留 / 非前线 backstop</td>
+      <td>保留在 EMA family（次级 backstop）</td>
+      <td>2/2 组合 gross 为正；median breakeven 1305.6bps</td>
+      <td>这两格目前不在最薄 frontier 上，说明 A股并不只剩 frontier 两格在替 EMA 撑着。</td>
+    </tr>
+    <tr>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>长样本 gross / cost backstop</td>
+      <td>保留 / 厚 backstop survivor</td>
+      <td>保留在 EMA family（厚 backstop）</td>
+      <td>6/6 组合 gross 为正；median breakeven 1654.4bps</td>
+      <td>这批更像 family 仍然厚实的 backstop，而不是下一刀最该先 falsify 的前线。</td>
+    </tr>
+    <tr>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>长样本 gross / cost backstop</td>
+      <td>保留 / 厚 backstop survivor</td>
+      <td>保留在 EMA family（厚 backstop）</td>
+      <td>6/6 组合 gross 为正；median breakeven 85430.7bps</td>
+      <td>当前更像 EMA family 的远端 backstop，说明这条线并没有被 recent 60m fail 一刀全灭。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q23. 如果把 final survivor map 再压成 `paper-trading candidate spec`，今天该怎么部署 EMA baseline？</h2>
+    <p class="a">只把 family 边界讲清楚还不够；如果当前目标是判断谁最接近 `paper trading / 伪实盘`，那还需要把 survivor map 再往前压一步，明确回答：<b>哪些 pocket 现在就能进入 EMA baseline 的 paper 范围，哪些只能 shadow 观察，哪些必须直接排除。</b> 这里的原则不是“谁看起来都还能活”，而是优先让 strict-holdout survivor 先上场，让厚 backstop 做 secondary batch，让 mixed pocket 只影子跟踪，让已失败口袋彻底退出。</p>
+    <ul>
+      <li><b>primary pilot：</b><code>创业板ETF 1d</code> 当前可直接进入 `EMA baseline paper pilot`，对应 <code>EMA 正 holdout 75.00% / median net20 12.05%；PSAR 50.00% / 5.13%</code>；这格是目前最像样的 strict-holdout daily survivor，适合作为 A股侧的主试点。</li>
+      <li><b>secondary paper batch：</b><code>美股 1d+1wk</code>、<code>Crypto 1d+1wk</code>、<code>贵州茅台 1d+1wk</code> 当前都可进入 secondary baseline paper 批次，分别对应 <code>6/6 组合 gross 为正；median breakeven 1654.4bps</code>、<code>6/6 组合 gross 为正；median breakeven 85430.7bps</code>、<code>2/2 组合 gross 为正；median breakeven 1305.6bps</code>。更诚实的读法不是“它们已经和 strict holdout pocket 一样硬”，而是：这些是当前 family 里仍然足够厚、可以先拿来做跨市场 baseline shadow/paper 的 backstops。</li>
+      <li><b>shadow only：</b><code>沪深300ETF 1d</code> 当前更适合只做 shadow watch，不并入正式 paper batch，原因是 <code>EMA 正 holdout 50.00% / median net20 -2.60%；PSAR 37.50% / -4.49%</code>；它比 weekly 诚实，但还不够厚，继续观察比直接 admission 更稳妥。</li>
+      <li><b>hard exclude：</b><code>Crypto 60m</code>、<code>沪深300ETF 1wk</code>、<code>创业板ETF 1wk</code> 当前都应直接排除在 EMA baseline paper scope 外，分别对应 <code>net20 正窗口 6.67%；多数窗口为正资产 0/3</code>、<code>EMA 正 holdout 42.86% / median net20 -5.17%；PSAR 71.43% / 1.01%</code>、<code>EMA 正 holdout 42.86% / median net20 0.00%；PSAR 100.00% / 4.03%</code>。这几格不是“先挂着看看”的问题，而是当前项目口径下已经不该再继续被当成 EMA baseline 的部署对象。</li>
+      <li><b>PSAR 在这版 spec 里的位置：</b>仍然不是主 baseline pocket。更诚实的做法是：把 `PSAR` 继续留在 shadow comparator / protective hypothesis 位上，不和 EMA baseline batch 混成同一 admission 口径。</li>
+    </ul>
+    <h3>EMA paper-trading candidate spec</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>admission_rank</th>
+      <th>admission_bucket</th>
+      <th>deployment_scope</th>
+      <th>default_mode</th>
+      <th>evidence_anchor</th>
+      <th>why_now</th>
+      <th>operating_note</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>paper_now_primary</td>
+      <td>创业板ETF 1d</td>
+      <td>直接进入 EMA baseline paper pilot</td>
+      <td>EMA 正 holdout 75.00% / median net20 12.05%；PSAR 50.00% / 5.13%</td>
+      <td>这是当前 strict holdout 下最干净、最像样的 daily survivor，适合作为 A股侧的主试点口袋。</td>
+      <td>单独建一条 paper 曲线；先不要和 mixed pocket 合并成 A股 bundle。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>paper_now_secondary</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>进入 secondary baseline paper batch</td>
+      <td>6/6 组合 gross 为正；median breakeven 1654.4bps</td>
+      <td>这批 nonfrontier backstop 仍然厚，适合提供跨市场 baseline 对照。</td>
+      <td>1d 与 1wk 分开记账，先当 family backstop 批次，不和 A股试点混成一条总曲线。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>paper_now_secondary</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>进入 secondary baseline paper batch</td>
+      <td>6/6 组合 gross 为正；median breakeven 85430.7bps</td>
+      <td>recent 60m fail 并没有把更高频率以外的 crypto baseline 全部打掉，这批仍是远端厚 backstop。</td>
+      <td>只做 1d/1wk；明确排除 60m 变体，避免让 fail pocket 混回 baseline。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>paper_now_secondary</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>进入 A股非前线 secondary batch</td>
+      <td>2/2 组合 gross 为正；median breakeven 1305.6bps</td>
+      <td>A股并不只剩 frontier 两格在撑 EMA，这两格可作为非前线 A股 backstop 观察对象。</td>
+      <td>继续和 frontier 分开看；若后续要收窄 A股范围，优先保留这类非前线 backstop。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>shadow_only</td>
+      <td>沪深300ETF 1d</td>
+      <td>只做 shadow watch，不进入正式 paper batch</td>
+      <td>EMA 正 holdout 50.00% / median net20 -2.60%；PSAR 37.50% / -4.49%</td>
+      <td>它比 weekly 诚实，但当前仍是 mixed / watch pocket，不够厚，尚不足以并入 baseline 正式范围。</td>
+      <td>保留信号与净值观察，但默认不和 primary/secondary baseline 汇总。</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>exclude</td>
+      <td>沪深300ETF 1wk</td>
+      <td>移出 EMA paper scope</td>
+      <td>EMA 正 holdout 42.86% / median net20 -5.17%；PSAR 71.43% / 1.01%</td>
+      <td>strict holdout 下已更像 PSAR-lean / mixed branch，不该继续算 EMA baseline family 支撑。</td>
+      <td>若要继续看，只能放在 PSAR/mixed 支线，不进入 EMA baseline paper。</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>exclude</td>
+      <td>创业板ETF 1wk</td>
+      <td>移出 EMA paper scope</td>
+      <td>EMA 正 holdout 42.86% / median net20 0.00%；PSAR 100.00% / 4.03%</td>
+      <td>strict holdout 下也已更像 PSAR-lean，而不是 EMA baseline 的支持口袋。</td>
+      <td>不进入 EMA paper；若后续 reopen，也只能当 weekly mixed/PSAR 支线重验。</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>exclude</td>
+      <td>Crypto 60m（BTC/ETH/SOL rolling）</td>
+      <td>移出 EMA paper scope</td>
+      <td>net20 正窗口 6.67%；多数窗口为正资产 0/3</td>
+      <td>rolling falsification 已把它打进 fail pocket，当前不应再拿去做 baseline paper。</td>
+      <td>明确排除 60m crypto，避免以 overlay 或个别窗口反弹重新包装 fail pocket。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q24. 如果今天真要开一版 EMA baseline paper，运行纪律应该怎么写？</h2>
+    <p class="a">`paper-trading candidate spec` 只回答“谁进 scope”；要避免后面又把 mixed/watch 和 fail pocket 混回 baseline，还需要把 <b>怎么分账、什么条件下继续、什么条件下必须降级或停掉</b> 写死。这一步没有新增回测，而是把现有 survivor/admission 证据压成一版更可执行的 operating spec。</p>
+    <ul>
+      <li><b>primary pilot 必须单独记账：</b><code>创业板ETF 1d</code> 当前的运行纪律已明确成 <code>单独记一条 A股 pilot 曲线；不与 secondary batch、mixed pocket、weekly/exclude 口袋合并。</code>；它继续留在 primary 的条件也写死为 <code>只要它还能独立代表 strict-holdout survivor，就继续让它承担 EMA baseline 的 primary pilot。</code>。</li>
+      <li><b>secondary batch 只当 backstop，不许稀释 primary 结果：</b><code>美股 1d+1wk</code>、<code>Crypto 1d+1wk</code>、<code>贵州茅台 1d+1wk</code> 当前都应按 market × freq 分开记账，核心纪律分别是 <code>1d 与 1wk 分开记账；只作为跨市场 backstop，对外汇总时不得和 primary pilot 合成一条“EMA family 总曲线”。</code>、<code>只运行 1d / 1wk；明确禁止把 60m 重新混回 baseline paper 范围。</code>、<code>和 frontier A股分开记账；只当非前线 backstop，不和 primary pilot 混成一个 A股 bundle。</code>。如果后续 stricter honesty 把其中某格打回 mixed/watch，就应直接从 secondary 移出，而不是继续和 primary 合讲“EMA family 仍然很稳”。</li>
+      <li><b>shadow 与 exclude 的纪律也要写死：</b><code>沪深300ETF 1d</code> 当前只能按 <code>只保留独立 shadow 观察，不并入任何正式 paper batch。</code> 运行；而 <code>Crypto 60m</code>、<code>沪深300ETF 1wk</code>、<code>创业板ETF 1wk</code> 则保持 hard exclude——对应 stop 纪律分别是 <code>只有新的、独立证据包明确推翻 rolling fail，才允许 reopen；在那之前，不得靠 PSAR overlay、局部窗口反弹或 family 汇总重新包装。</code>、<code>除非有新的、更强证据包明确 overturn 当前 holdout 结论，否则保持 exclude，不做“先挂着看看”。</code>、<code>除非未来有全新证据能推翻当前 weekly holdout 读法，否则保持 exclude，不因 A股 daily 表现较好就顺带重开。</code>。</li>
+      <li><b>项目级含义：</b>这版 operating spec 的价值不是多一个 protocol 名词，而是把 EMA 线当前最接近部署的问题压成一句可执行的话：<b>primary / secondary / shadow / exclude 必须分开记账、分开讲，不允许再靠 family 汇总把 mixed 或 fail pocket 混回 baseline paper 叙事。</b></li>
+    </ul>
+    <h3>EMA baseline paper-trading operating spec</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>monitor_rank</th>
+      <th>deployment_scope</th>
+      <th>paper_track</th>
+      <th>recording_rule</th>
+      <th>continue_rule</th>
+      <th>promotion_or_demotion_rule</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>创业板ETF 1d</td>
+      <td>primary paper pilot</td>
+      <td>单独记一条 A股 pilot 曲线；不与 secondary batch、mixed pocket、weekly/exclude 口袋合并。</td>
+      <td>只要它还能独立代表 strict-holdout survivor，就继续让它承担 EMA baseline 的 primary pilot。</td>
+      <td>若后续更严格复核开始滑向 mixed/watch 或明显转成 PSAR-lean，就从 primary 降到 shadow，而不是继续拿 secondary/backstop 来稀释主试点结果。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>secondary backstop batch</td>
+      <td>1d 与 1wk 分开记账；只作为跨市场 backstop，对外汇总时不得和 primary pilot 合成一条“EMA family 总曲线”。</td>
+      <td>继续当厚 backstop，用来回答 EMA baseline 是否不只在 A股 daily 成立。</td>
+      <td>若后续更严格 honesty 把其中任一 pocket 打回 mixed/watch 或 fail，就把该 pocket 直接移出 secondary，而不是继续靠同批别的口袋遮盖。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>secondary backstop batch</td>
+      <td>只运行 1d / 1wk；明确禁止把 60m 重新混回 baseline paper 范围。</td>
+      <td>继续作为 crypto 侧的高频外 backstop，证明 recent 60m fail 不等于更高周期也一起失效。</td>
+      <td>若后续复核发现 secondary 结果主要靠单一资产/单一周期支撑，就收窄到更具体 pocket；60m fail pocket 则保持排除，不因 overlay 或局部窗口反弹 reopen。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>secondary A股 nonfrontier batch</td>
+      <td>和 frontier A股分开记账；只当非前线 backstop，不和 primary pilot 混成一个 A股 bundle。</td>
+      <td>继续承担“A股并不只剩 frontier 两格在撑 EMA”这一层 backstop 证明。</td>
+      <td>若后续 stricter recheck 也转弱，就直接从 A股 secondary 移出；不要再借它去替 mixed 的沪深300ETF 1d 站台。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>沪深300ETF 1d</td>
+      <td>shadow watch only</td>
+      <td>只保留独立 shadow 观察，不并入任何正式 paper batch。</td>
+      <td>继续当 mixed pocket 观察项，回答它会不会在下一轮更严格 recheck 中转强。</td>
+      <td>若继续原地踏步或更像 weekly 那样转向 PSAR/mixed，就直接移出；若真的转强，再单独申请从 shadow 升级，而不是自动并回 baseline batch。</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>沪深300ETF 1wk</td>
+      <td>hard exclude</td>
+      <td>默认停用，不进入 EMA baseline paper。</td>
+      <td>当前只保留为历史反证：这格更像 PSAR-lean / mixed branch。</td>
+      <td>除非有新的、更强证据包明确 overturn 当前 holdout 结论，否则保持 exclude，不做“先挂着看看”。</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>创业板ETF 1wk</td>
+      <td>hard exclude</td>
+      <td>默认停用，不进入 EMA baseline paper。</td>
+      <td>当前同样只保留为历史反证，而不是 EMA family 的 live pocket。</td>
+      <td>除非未来有全新证据能推翻当前 weekly holdout 读法，否则保持 exclude，不因 A股 daily 表现较好就顺带重开。</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>Crypto 60m（BTC/ETH/SOL rolling）</td>
+      <td>hard exclude</td>
+      <td>默认停用，不进入任何 EMA baseline paper / shadow 汇总。</td>
+      <td>它当前的角色是 fail-pocket 反证，用来提醒别把高频幻觉混回 baseline。</td>
+      <td>只有新的、独立证据包明确推翻 rolling fail，才允许 reopen；在那之前，不得靠 PSAR overlay、局部窗口反弹或 family 汇总重新包装。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q25. 如果只在 A股 daily 里给 EMA 一个 primary 和一个 shadow，沪深300ETF 1d 现在够不够升格？</h2>
+    <p class="a">`candidate spec / operating spec` 已经把 <code>创业板ETF 1d</code> 定成 primary、把 <code>沪深300ETF 1d</code> 定成 shadow，但真正更接近 deployment 的问题还差最后一句：<b>这个 shadow pocket 现在到底是“快能升格”，还是“先别急着放进正式 paper batch”。</b> 这轮不新增回测，只把现有 strict-holdout 窗口压成一张很小的 promotion scorecard，用 5 个最小门槛来判断 A股 daily 两格口袋：<b>1) overall 正 holdout 占比 ≥ 62.5%；2) overall 跑赢 PSAR 占比 ≥ 62.5%；3) recent 3 个 holdout 至少 2/3 为正；4) 最新 holdout 为正；5) 最新 holdout 仍跑赢 PSAR。</b></p>
+    <ul>
+      <li><b>创业板ETF 1d：</b>当前约命中 <code>5/5</code> 个 gate，overall 正 holdout 约 <code>75.00%</code>、overall 跑赢 PSAR 约 <code>75.00%</code>，latest holdout net20 约 <code>39.63%</code>。它当前最诚实的位置仍是 <b><code>keep_primary</code></b>。</li>
+      <li><b>沪深300ETF 1d：</b>当前只约命中 <code>3/5</code> 个 gate——recent 3 个 holdout 里约有 <code>66.67%</code> 为正，latest holdout net20 约 <code>13.96%</code>，也重新跑赢 PSAR 约 <code>7.59%</code>；但 overall 正 holdout 仍只有约 <code>50.00%</code>，overall 跑赢 PSAR 也只有约 <code>50.00%</code>。这说明它更像 <b>recently improving，但还不够从 shadow 升格</b>。</li>
+      <li><b>最重要的 deployment 含义：</b>如果 EMA 线下一刀只追一个 A股 daily pocket，默认不该再问“创业板ETF 与沪深300ETF 要不要一起升”；更诚实的做法是：<b>继续让 <code>创业板ETF 1d</code> 单独承担 primary，<code>沪深300ETF 1d</code> 只保留 `shadow promotion candidate` 身份。</b></li>
+      <li><b>因此下一步最像样的 challenge：</b>不是重新讨论 whole family，而是继续盯 <code>沪深300ETF 1d</code> 能不能在下一轮更严格 holdout / forward slice 里把 <code>overall 50% / overall 50% beats-PSAR</code> 这两项补厚；如果补不厚，就该继续停在 shadow，而不是靠 recent 两个窗口好转就偷渡升格。</li>
+    </ul>
+    <h3>A股 daily shadow-promotion scorecard</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset</th>
+      <th>current_role</th>
+      <th>holdouts</th>
+      <th>overall_ema_positive_holdout_share</th>
+      <th>overall_ema_beats_psar_share</th>
+      <th>recent3_ema_positive_holdout_share</th>
+      <th>recent3_ema_median_net20_profit_pct</th>
+      <th>latest_holdout_net20_profit_pct</th>
+      <th>latest_holdout_ema_minus_psar_net20_pp</th>
+      <th>gate_hits</th>
+      <th>promotion_verdict</th>
+      <th>promotion_reading</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>沪深300ETF</td>
+      <td>shadow watch</td>
+      <td>8</td>
+      <td>50.00%</td>
+      <td>50.00%</td>
+      <td>66.67%</td>
+      <td>0.26%</td>
+      <td>13.96%</td>
+      <td>7.59%</td>
+      <td>3/5</td>
+      <td>stay_shadow_not_promote</td>
+      <td>recent 有改善，但 overall 还不够厚，先继续 shadow。</td>
+    </tr>
+    <tr>
+      <td>创业板ETF</td>
+      <td>primary pilot</td>
+      <td>8</td>
+      <td>75.00%</td>
+      <td>75.00%</td>
+      <td>66.67%</td>
+      <td>16.22%</td>
+      <td>39.63%</td>
+      <td>9.35%</td>
+      <td>5/5</td>
+      <td>keep_primary</td>
+      <td>仍可继续当 primary：overall 与当前 holdout 都够厚。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q26. 如果明天就开始盯 EMA baseline paper，最小 monitoring board 应该长什么样？</h2>
+    <p class="a">`candidate spec` 解决了“谁进 scope”，`operating spec` 解决了“怎么分账、怎么继续/降级”，`shadow-promotion scorecard` 解决了“沪深300ETF 1d 够不够升格”。但如果真的要开始伪实盘，还差最后一个 deployment-facing 压缩动作：<b>把这三张表并成一张最小 monitoring board，明确每个 pocket 今天属于 active / shadow / stoplist 中哪一档，平时该盯什么，不达标时该怎么处理。</b></p>
+    <ul>
+      <li><b>primary 现在只有一格：</b><code>创业板ETF 1d</code> 当前的 board 读法是 <code>active_primary</code>；它的 monitor focus 已压成 <code>单独盯 primary pilot 是否仍保住 strict-holdout survivor 身份；不许和 secondary/backstop 混成 family 总曲线。</code>。</li>
+      <li><b>secondary 仍是 backstop，不是稀释 primary 的缓冲垫：</b><code>美股 1d+1wk</code>、<code>Crypto 1d+1wk</code>、<code>贵州茅台 1d+1wk</code> 都统一压成 <code>active_secondary_backstop</code> / <code>active_secondary_backstop</code> / <code>active_secondary_backstop</code>；它们真正该盯的是 <code>按 market × freq 分开记账；任何单 pocket 转弱就单独移出，不许靠同批别的口袋遮盖。</code>。</li>
+      <li><b>shadow 现在只剩一个最该追的 pocket：</b><code>沪深300ETF 1d</code> 当前 board 读法已压成 <code>当前 promotion gate 约 3/5；overall 正 holdout 约 50.00%、overall 跑赢 PSAR 约 50.00%，所以更诚实的位置仍是 shadow。</code>；这也把下一刀该追的问题固定成：先补厚 overall，而不是再被 latest 单窗好转带偏。</li>
+      <li><b>exclude 要明确当成 stoplist：</b><code>Crypto 60m</code>、<code>沪深300ETF 1wk</code>、<code>创业板ETF 1wk</code> 现在都统一压成 <code>exclude_stoplist</code>。更诚实的做法不是“继续挂着看看”，而是按 board 里的 <code>escalate_or_stop_if</code> 字段把 reopen 门槛写死。</li>
+      <li><b>项目级含义：</b>这张 board 的价值不是再造一个 protocol 名词，而是把 EMA 线离 paper 最近的那部分真正压成一句执行话：<b>谁今天该 active、谁只 shadow、谁就是 stoplist，以及这些判断平时要盯哪几列。</b></li>
+    </ul>
+    <h3>EMA baseline paper-trading monitoring board</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>review_rank</th>
+      <th>deployment_scope</th>
+      <th>paper_status</th>
+      <th>evidence_anchor</th>
+      <th>monitor_focus</th>
+      <th>keep_running_if</th>
+      <th>escalate_or_stop_if</th>
+      <th>current_read</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>创业板ETF 1d</td>
+      <td>active_primary</td>
+      <td>EMA 正 holdout 75.00% / median net20 12.05%；PSAR 50.00% / 5.13%</td>
+      <td>单独盯 primary pilot 是否仍保住 strict-holdout survivor 身份；不许和 secondary/backstop 混成 family 总曲线。</td>
+      <td>只要它还能独立代表 strict-holdout survivor，就继续让它承担 EMA baseline 的 primary pilot。</td>
+      <td>若后续更严格复核开始滑向 mixed/watch 或明显转成 PSAR-lean，就从 primary 降到 shadow，而不是继续拿 secondary/backstop 来稀释主试点结果。</td>
+      <td>当前唯一 primary paper pilot；核心任务不是扩 family，而是先守住这格 daily survivor 的 deployment 身份。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>active_secondary_backstop</td>
+      <td>6/6 组合 gross 为正；median breakeven 1654.4bps</td>
+      <td>按 market × freq 分开记账；任何单 pocket 转弱就单独移出，不许靠同批别的口袋遮盖。</td>
+      <td>继续当厚 backstop，用来回答 EMA baseline 是否不只在 A股 daily 成立。</td>
+      <td>若后续更严格 honesty 把其中任一 pocket 打回 mixed/watch 或 fail，就把该 pocket 直接移出 secondary，而不是继续靠同批别的口袋遮盖。</td>
+      <td>当前只当 secondary backstop；存在意义是证明 EMA baseline 不只剩一格 A股 daily，而不是拿来稀释 primary。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>active_secondary_backstop</td>
+      <td>6/6 组合 gross 为正；median breakeven 85430.7bps</td>
+      <td>按 market × freq 分开记账；任何单 pocket 转弱就单独移出，不许靠同批别的口袋遮盖。</td>
+      <td>继续作为 crypto 侧的高频外 backstop，证明 recent 60m fail 不等于更高周期也一起失效。</td>
+      <td>若后续复核发现 secondary 结果主要靠单一资产/单一周期支撑，就收窄到更具体 pocket；60m fail pocket 则保持排除，不因 overlay 或局部窗口反弹 reopen。</td>
+      <td>当前只当 secondary backstop；存在意义是证明 EMA baseline 不只剩一格 A股 daily，而不是拿来稀释 primary。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>active_secondary_backstop</td>
+      <td>2/2 组合 gross 为正；median breakeven 1305.6bps</td>
+      <td>按 market × freq 分开记账；任何单 pocket 转弱就单独移出，不许靠同批别的口袋遮盖。</td>
+      <td>继续承担“A股并不只剩 frontier 两格在撑 EMA”这一层 backstop 证明。</td>
+      <td>若后续 stricter recheck 也转弱，就直接从 A股 secondary 移出；不要再借它去替 mixed 的沪深300ETF 1d 站台。</td>
+      <td>当前只当 secondary backstop；存在意义是证明 EMA baseline 不只剩一格 A股 daily，而不是拿来稀释 primary。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>沪深300ETF 1d</td>
+      <td>shadow_watch</td>
+      <td>EMA 正 holdout 50.00% / median net20 -2.60%；PSAR 37.50% / -4.49%</td>
+      <td>优先盯 overall 正 holdout 占比与 overall 跑赢 PSAR 占比能否同时补到 ≥62.5%；recent 单窗变好还不够。</td>
+      <td>只保留独立 shadow 观察，不并入任何正式 paper batch。</td>
+      <td>若 shadow promotion gate 升到 4/5 以上且 overall 两项同时过线，再单独申请升格；若继续原地踏步或转弱，则维持 shadow/移出。</td>
+      <td>当前 promotion gate 约 3/5；overall 正 holdout 约 50.00%、overall 跑赢 PSAR 约 50.00%，所以更诚实的位置仍是 shadow。</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>沪深300ETF 1wk</td>
+      <td>exclude_stoplist</td>
+      <td>EMA 正 holdout 42.86% / median net20 -5.17%；PSAR 71.43% / 1.01%</td>
+      <td>默认不做日常 paper admission 跟踪；只在出现新的 overturn evidence 时才 reopen。</td>
+      <td>默认停用，不进入 EMA baseline paper。</td>
+      <td>除非有新的、更强证据包明确 overturn 当前 holdout 结论，否则保持 exclude，不做“先挂着看看”。</td>
+      <td>当前属于 hard exclude / fail-mixed stoplist；不应再靠 family 汇总、overlay 或局部窗口反弹重新混回 baseline paper。</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>创业板ETF 1wk</td>
+      <td>exclude_stoplist</td>
+      <td>EMA 正 holdout 42.86% / median net20 0.00%；PSAR 100.00% / 4.03%</td>
+      <td>默认不做日常 paper admission 跟踪；只在出现新的 overturn evidence 时才 reopen。</td>
+      <td>默认停用，不进入 EMA baseline paper。</td>
+      <td>除非未来有全新证据能推翻当前 weekly holdout 读法，否则保持 exclude，不因 A股 daily 表现较好就顺带重开。</td>
+      <td>当前属于 hard exclude / fail-mixed stoplist；不应再靠 family 汇总、overlay 或局部窗口反弹重新混回 baseline paper。</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>Crypto 60m（BTC/ETH/SOL rolling）</td>
+      <td>exclude_stoplist</td>
+      <td>net20 正窗口 6.67%；多数窗口为正资产 0/3</td>
+      <td>默认不做日常 paper admission 跟踪；只在出现新的 overturn evidence 时才 reopen。</td>
+      <td>默认停用，不进入任何 EMA baseline paper / shadow 汇总。</td>
+      <td>只有新的、独立证据包明确推翻 rolling fail，才允许 reopen；在那之前，不得靠 PSAR overlay、局部窗口反弹或 family 汇总重新包装。</td>
+      <td>当前属于 hard exclude / fail-mixed stoplist；不应再靠 family 汇总、overlay 或局部窗口反弹重新混回 baseline paper。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q27. 如果真的只追 `沪深300ETF 1d` 的 shadow-promotion honesty，最近两段真实 forward holdout 在说什么？</h2>
+    <p class="a">前面的 `shadow-promotion scorecard` 还是偏 board 式压缩；如果要补一刀更像样的 <b>真实前瞻 / honesty</b> 证据，更该问：<b>把视角只收在最近两段已经发生的 strict forward holdout（约最近两年）里，`沪深300ETF 1d` 这个 shadow pocket 到底有没有表现得像“该升格”的对象。</b> 这里不新增下载，也不改参数，只复用现成 A 股 daily strict holdout，把最近 <code>2</code> 段 forward holdout 压成一张小审计表。</p>
+    <ul>
+      <li><b>创业板ETF 1d：</b>最近两段 forward holdout（<code>2024-03-12</code> → <code>2026-03-12</code>）下，EMA 累计 net20 约 <code>62.27%</code>，仍高于 PSAR 的约 <code>58.85%</code>，两段都为正，当前 recent-forward verdict 仍是 <b><code>keep_primary_recent_forward_ok</code></b>。</li>
+      <li><b>沪深300ETF 1d：</b>最近两段 forward holdout（<code>2024-03-12</code> → <code>2026-03-12</code>）下，EMA 累计 net20 约 <code>14.26%</code>，确实已经转正；但 PSAR 同期约 <code>18.71%</code>，EMA 两年累计反而仍约落后 <code>4.45%</code>，而且最近两段里只有 <code>50.00%</code> 跑赢 PSAR，最弱那段也只有约 <code>0.26%</code>。</li>
+      <li><b>最重要的 admission 读法：</b><code>沪深300ETF 1d</code> 现在可以写成 <b>recent-forward 已转正</b>，但还不能写成 <b>promotion honesty 已过线</b>。因为它并不是“最近两段都正，所以就该升格”——同一段真实 forward 里，它仍没有持续跑赢 PSAR，也还缺一段更厚、更不贴边的正 holdout 来证明这不是短暂回暖。</li>
+      <li><b>因此这轮后的更诚实 verdict：</b><b>`沪深300ETF 1d = positive_but_not_promotable`</b>。这比之前单看 `3/5 gate` 更硬：现在不是泛泛地说“overall 还不够厚”，而是可以明确说——<b>连最近这两段真实 forward holdout 都还没把 promotion honesty 补够，所以它仍应停在 shadow watch。</b></li>
+    </ul>
+    <h3>A股 daily recent-forward honesty audit（latest 2 holdouts）</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset</th>
+      <th>current_role</th>
+      <th>tail_holdouts</th>
+      <th>forward_start</th>
+      <th>forward_end</th>
+      <th>ema_tail_cum_net20_profit_pct</th>
+      <th>psar_tail_cum_net20_profit_pct</th>
+      <th>tail_ema_minus_psar_cum_pp</th>
+      <th>tail_ema_positive_holdout_share</th>
+      <th>tail_ema_beats_psar_share</th>
+      <th>tail_worst_ema_holdout_pct</th>
+      <th>forward_honesty_verdict</th>
+      <th>forward_honesty_reading</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>沪深300ETF</td>
+      <td>shadow watch</td>
+      <td>2</td>
+      <td>2024-03-12</td>
+      <td>2026-03-12</td>
+      <td>14.26%</td>
+      <td>18.71%</td>
+      <td>-4.45%</td>
+      <td>100.00%</td>
+      <td>50.00%</td>
+      <td>0.26%</td>
+      <td>positive_but_not_promotable</td>
+      <td>recent forward tail 虽为正，但仍没形成足够升格诚实度，继续留在 shadow。</td>
+    </tr>
+    <tr>
+      <td>创业板ETF</td>
+      <td>primary pilot</td>
+      <td>2</td>
+      <td>2024-03-12</td>
+      <td>2026-03-12</td>
+      <td>62.27%</td>
+      <td>58.85%</td>
+      <td>3.42%</td>
+      <td>100.00%</td>
+      <td>50.00%</td>
+      <td>16.22%</td>
+      <td>keep_primary_recent_forward_ok</td>
+      <td>最近 forward tail 仍连续为正，primary 口径继续成立。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q28. 如果今天真要把 EMA baseline 从 board 接成一版可执行 runbook，最小 shadow/paper 操作规则该怎么写？</h2>
+    <p class="a">`candidate spec / operating spec / monitoring board` 还只是“该怎么看”的研究页；如果下一步真要进入 `paper trading / shadow run`，还需要把它们接成一版能日常执行的最小 runbook，明确回答：<b>数据从哪里来、什么时候刷新、账怎么记、什么时候升降级、什么时候立即暂停或回滚。</b> 这一刀不再新增回测，而是把现有 deployment-facing verdict 压成一张更接近真实运行的操作表。</p>
+    <ul>
+      <li><b>primary pilot 已经能写成单独 runbook：</b><code>创业板ETF 1d</code> 当前不再只是“closest to paper”的抽象判断，而是已经能压成 <code>active_primary</code>：数据源、日更节奏、单独记账规则、以及何时从 primary 降回 shadow 都已写清；最近两段真实 forward holdout 也仍支持 <code>keep_primary_recent_forward_ok</code>。</li>
+      <li><b>secondary backstop 现在也终于有了“降回 shadow”的硬规则：</b><code>美股 1d+1wk</code>、<code>Crypto 1d+1wk</code>、<code>贵州茅台 1d+1wk</code> 不再只是挂在 monitoring board 上的 active 标签，而是都明确写成：<b>按 market × freq 分账，每周 review；只要任一单 pocket 连续转红或被更严格 honesty 打回 mixed/watch，就从 <code>active_secondary_backstop</code> 降回 shadow，不能继续拿同批别的 pocket 稀释。</b></li>
+      <li><b>shadow pocket 的升格门槛也更硬了：</b><code>沪深300ETF 1d</code> 当前 runbook 继续写死为 <code>shadow_watch</code>。它要想升格，不只是 gate 从 <code>3/5</code> 补到更高，还必须同时满足 <b>overall 正 holdout 占比 ≥ 62.5%、overall 跑赢 PSAR 占比 ≥ 62.5%、且 recent-forward 不再落后 PSAR</b>；否则就继续停在 <code>positive_but_not_promotable</code>。</li>
+      <li><b>exclude stoplist 也终于被写成操作规则，而不是口头结论：</b><code>沪深300ETF 1wk</code>、<code>创业板ETF 1wk</code>、<code>Crypto 60m</code> 现在统一进入 stoplist runbook——默认不做常规刷新，不进入日常 paper/shadow admission；只有新的、独立证据包真正 overturn 当前 holdout / rolling verdict，才允许 reopen。</li>
+      <li><b>项目级含义：</b>EMA 这条线现在终于不只是“离 paper 最近”，而是已经补齐到一句更可执行的话：<b>先按这版 runbook 启动 `0` 真资金的 shadow / paper 账本，再用项目级 `promotion gate v1` 约束后面的 small-live 资格；在这之前，不要再扩近义 board 页面。</b></li>
+    </ul>
+    <h3>EMA baseline paper-trading runbook</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>runbook_rank</th>
+      <th>deployment_scope</th>
+      <th>runbook_status</th>
+      <th>data_source</th>
+      <th>refresh_frequency</th>
+      <th>ledger_rule</th>
+      <th>review_rule</th>
+      <th>promote_or_demote_rule</th>
+      <th>kill_switch_or_rollback</th>
+      <th>current_runbook_read</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>创业板ETF 1d</td>
+      <td>active_primary</td>
+      <td>优先走 Eastmoney A 股日线 live K线（`159915.SZ -> 0.159915`）；若接口暂时不可用，则回退到 `reports/artifacts/ema_psar_raw_alpha/refresh_bootstrap_cache/eastmoney_159915_sz_1d.csv` 缓存，避免 primary ledger 断流。</td>
+      <td>每个 A 股日线收盘后刷新 1 次；每周固定做 1 次 monitoring review。</td>
+      <td>单独记一条 A股 pilot 曲线；不与 secondary batch、mixed pocket、weekly/exclude 口袋合并。</td>
+      <td>primary pilot 单独记账、单独看路径；周 review 重点看 monitoring board 是否仍是 active_primary，月度再复核 recent-forward 是否仍保持 `keep_primary_recent_forward_ok`；PSAR 快退出若继续观察，也只允许按 `ema_chinext_daily_psar_shadow_protocol.csv` 做 sidecar shadow review，不改默认 EMA 持有规则。</td>
+      <td>继续保留 primary 的前提，是 recent-forward 仍为正且 monitoring board 不连续转红；若两次 review 连续转 red 或更像 mixed/watch，则从 primary 降回 shadow。</td>
+      <td>数据断流、规则无法更新、或 review 无法按时落账时，立即暂停 primary，退回 shadow-only；在真实 paper 开始前，真钱始终保持 0。</td>
+      <td>当前唯一 primary paper pilot；核心任务不是扩 family，而是先守住这格 daily survivor 的 deployment 身份。；PSAR overlay 当前读法：`candidate_protective_overlay`——多数 strict holdout 都改善，PSAR 可继续当 primary 的 shadow protective 候选，但还不该直接改写默认 EMA 持有规则。；若继续推进，也只按 `创业板ETF 1d` 的 narrow shadow protective protocol 做 sidecar 观察，不提前改默认规则。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>active_secondary_backstop</td>
+      <td>复用 `regime_switch_indicator_stack_replication` 的美股 bars 与 `cross_market_results / ema_psar_cost_budget_by_combo` 证据；1d 与 1wk 分账维护。</td>
+      <td>1d 在每个美股收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary backstop review。</td>
+      <td>1d 与 1wk 分开记账；只作为跨市场 backstop，对外汇总时不得和 primary pilot 合成一条“EMA family 总曲线”。</td>
+      <td>按 market × freq 双账本更新，不允许把 1d / 1wk 混成一条总曲线；周 review 只看这组 backstop 自己是否继续成立。</td>
+      <td>若任一单 pocket 连续两次 weekly review 转 red，或后续更严格 honesty 把它打回 mixed/watch，就把该 pocket 从 active_secondary_backstop 降回 shadow，而不是继续和同批别的 pocket 合讲。</td>
+      <td>任一单 pocket 出现数据断流、执行口径缺失、或无法按 market × freq 继续独立记账时，该 pocket 立即退回 shadow；不得拿同批别的口袋遮盖。</td>
+      <td>当前只当 secondary backstop；存在意义是证明 EMA baseline 不只剩一格 A股 daily，而不是拿来稀释 primary。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>active_secondary_backstop</td>
+      <td>复用 `regime_switch_indicator_stack_replication` 的 crypto 1d/1wk bars 与 cost-budget 证据；明确排除 60m fail pocket。</td>
+      <td>1d 按 UTC 日线收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary review。</td>
+      <td>只运行 1d / 1wk；明确禁止把 60m 重新混回 baseline paper 范围。</td>
+      <td>1d 与 1wk 分账；review 时单独检查 1d / 1wk 是否仍能当 crypto backstop，严禁把 60m overlay 或 fail pocket 混回 baseline。</td>
+      <td>若 backstop 结果开始主要依赖单一资产 / 单一周期，或任一 pocket 被更严格 honesty 打回 mixed/watch，就把该 pocket 降回 shadow；60m 仍保持 exclude。</td>
+      <td>一旦出现数据更新失败、1d/1wk 无法分账、或 60m fail pocket 被误混回报表，就立即停止该组 active_secondary_backstop，回到 shadow-only。</td>
+      <td>当前只当 secondary backstop；存在意义是证明 EMA baseline 不只剩一格 A股 daily，而不是拿来稀释 primary。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>active_secondary_backstop</td>
+      <td>复用上游 replication bars 与 cost-budget 证据；按 A 股 1d / 1wk 双账本维护，不与 frontier A 股 pilot 合并。</td>
+      <td>1d 每个 A 股收盘后刷新；1wk 周线收盘后刷新；每周做 1 次 secondary A 股 backstop review。</td>
+      <td>和 frontier A股分开记账；只当非前线 backstop，不和 primary pilot 混成一个 A股 bundle。</td>
+      <td>这组的任务是证明 A 股并不只剩 frontier 两格在撑 EMA；因此 review 时必须与创业板ETF primary、沪深300ETF shadow 分开看。</td>
+      <td>若更严格复核后转弱，直接从 active_secondary_backstop 降回 shadow；不能再借这组结果去替 mixed 的沪深300ETF 1d 站台。</td>
+      <td>若双账本无法独立维护、数据断流、或 review 发现它只剩个别口袋在硬撑，则立刻退回 shadow，不再作为 active secondary 汇报。</td>
+      <td>当前只当 secondary backstop；存在意义是证明 EMA baseline 不只剩一格 A股 daily，而不是拿来稀释 primary。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>沪深300ETF 1d</td>
+      <td>shadow_watch</td>
+      <td>优先走 Eastmoney A 股日线 live K线（`510300.SS -> 1.510300`）；若接口暂时不可用，则回退到 `reports/artifacts/ema_psar_raw_alpha/refresh_bootstrap_cache/eastmoney_510300_ss_1d.csv` 缓存，保持 shadow 账本连续。</td>
+      <td>每个 A 股日线收盘后刷新 1 次；每周固定做 1 次 shadow-promotion review。</td>
+      <td>只保留独立 shadow 观察，不并入任何正式 paper batch。</td>
+      <td>继续独立记 shadow 曲线；review 时先看 overall 正 holdout 占比与 overall 跑赢 PSAR 占比能否同时补到 ≥62.5%，再看 recent-forward 是否仍停在 `positive_but_not_promotable`；PSAR overlay 不能拿来替代 promotion gate。</td>
+      <td>只有当 shadow promotion gate 升到 4/5 以上、overall 两项同时过线，且 recent-forward 不再落后 PSAR，才允许单独申请升格；否则继续 stay shadow。</td>
+      <td>若 recent-forward 再翻负、继续落后 PSAR、或 shadow 账本无法独立维护，就维持 / 降出 shadow，不得靠 recent 单窗好转偷渡升格。</td>
+      <td>当前 promotion gate 约 3/5；overall 正 holdout 约 50.00%、overall 跑赢 PSAR 约 50.00%，所以更诚实的位置仍是 shadow。；recent-forward 当前仍是 `positive_but_not_promotable`；PSAR overlay 当前读法：`not_a_promotion_patch`——overlay 还不能当 shadow promotion 的补丁；默认继续单跑 EMA shadow 记账，把 PSAR 留在 benchmark 位。</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>沪深300ETF 1wk</td>
+      <td>exclude_stoplist</td>
+      <td>当前只保留历史反证：weekly frontier 与 crypto 60m 维持 stoplist，不进入日常 paper 数据流。</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>默认停用，不进入 EMA baseline paper。</td>
+      <td>默认不进日常 runbook review，只在独立新证据包真正挑战当前 fail/mixed verdict 时复核。</td>
+      <td>保持 exclude_stoplist；除非新的、独立证据包明确推翻现有 holdout / rolling 结论，否则不进入 paper/shadow admission。</td>
+      <td>这里没有‘继续跑一跑看看’；默认就是停用。若被误混回 baseline 汇报，应立即回滚到 stoplist。</td>
+      <td>当前属于 hard exclude / fail-mixed stoplist；不应再靠 family 汇总、overlay 或局部窗口反弹重新混回 baseline paper。</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>创业板ETF 1wk</td>
+      <td>exclude_stoplist</td>
+      <td>当前只保留历史反证：weekly frontier 与 crypto 60m 维持 stoplist，不进入日常 paper 数据流。</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>默认停用，不进入 EMA baseline paper。</td>
+      <td>默认不进日常 runbook review，只在独立新证据包真正挑战当前 fail/mixed verdict 时复核。</td>
+      <td>保持 exclude_stoplist；除非新的、独立证据包明确推翻现有 holdout / rolling 结论，否则不进入 paper/shadow admission。</td>
+      <td>这里没有‘继续跑一跑看看’；默认就是停用。若被误混回 baseline 汇报，应立即回滚到 stoplist。</td>
+      <td>当前属于 hard exclude / fail-mixed stoplist；不应再靠 family 汇总、overlay 或局部窗口反弹重新混回 baseline paper。</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>Crypto 60m（BTC/ETH/SOL rolling）</td>
+      <td>exclude_stoplist</td>
+      <td>当前只保留历史反证：weekly frontier 与 crypto 60m 维持 stoplist，不进入日常 paper 数据流。</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>默认停用，不进入任何 EMA baseline paper / shadow 汇总。</td>
+      <td>默认不进日常 runbook review，只在独立新证据包真正挑战当前 fail/mixed verdict 时复核。</td>
+      <td>保持 exclude_stoplist；除非新的、独立证据包明确推翻现有 holdout / rolling 结论，否则不进入 paper/shadow admission。</td>
+      <td>这里没有‘继续跑一跑看看’；默认就是停用。若被误混回 baseline 汇报，应立即回滚到 stoplist。</td>
+      <td>当前属于 hard exclude / fail-mixed stoplist；不应再靠 family 汇总、overlay 或局部窗口反弹重新混回 baseline paper。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q29. 如果明天就要启动 `0` 真资金的 shadow / paper 账本，day-0 checklist 与记账模板最小该长什么样？</h2>
+    <p class="a">Q28 解决的是 runbook 层：谁能进、多久复核、什么时候升降级。真正启动前还差最后一小步：把这些规则压成 <b>day-0 kickoff checklist</b> 与 <b>ledger template</b>，确保第一天就不会把 pocket 混账、漏记 monitoring status、或把 kill switch 留在口头层。</p>
+    <ul>
+      <li><b>先冻结 scope roster，再开账：</b>primary / secondary / shadow / stoplist 四类口袋必须先分清，不能边跑边补边界。</li>
+      <li><b>账本必须按 market × freq 分开：</b>尤其 `美股/crypto/贵州茅台 1d+1wk` 这批 secondary backstop，不能再混成一条“secondary 总曲线”稀释坏 pocket。</li>
+      <li><b>review 不只记结果，还要记动作：</b><code>monitor_status</code> 与 <code>review_action</code> 是 day-0 就必须落表的字段，不然 promote / demote / rollback 之后都不可审计。</li>
+      <li><b>data health 要进账本：</b>如果数据断流或字段缺失，正确动作不是“先继续观察”，而是直接记成暂停 / rollback。</li>
+      <li><b>项目级含义：</b>到这一步，EMA 线离真正启动 paper/shadow 已经不差“再补一张 board”，而只差按同一张 checklist 与模板开始前瞻记账。</li>
+    </ul>
+    <h3>EMA paper/shadow day-0 kickoff checklist</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>step_rank</th>
+      <th>check_item</th>
+      <th>when_to_do</th>
+      <th>pass_if</th>
+      <th>why_it_exists</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>冻结 day-0 scope roster</td>
+      <td>启动前一次性</td>
+      <td>primary 只含 `创业板ETF 1d`；secondary 只含 `美股 1d+1wk（SPY/QQQ/AAPL） / Crypto 1d+1wk（BTC/ETH/SOL） / 贵州茅台 1d+1wk`；shadow 只含 `沪深300ETF 1d`；stoplist 继续排除 `沪深300ETF 1wk / 创业板ETF 1wk / Crypto 60m（BTC/ETH/SOL rolling）`。</td>
+      <td>先把 keep / shadow / exclude 的边界写死，避免 mixed 或 fail pocket 被偷渡进 paper 账本。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>按 scope 建 4 类独立账本</td>
+      <td>启动当天</td>
+      <td>至少同时有 `primary_paper`、`secondary_backstop`、`shadow_watch`、`stoplist/reopen-only` 四类 ledger，不允许把 market × freq 混成一条总曲线。</td>
+      <td>runbook 已要求分 market × freq 记账；这一步把‘怎么记’落实成 day-0 的执行边界。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>把 refresh cadence 写进日历</td>
+      <td>启动当天</td>
+      <td>A 股 / 美股 / crypto 的 1d、1wk 刷新时点都已落到固定日历；weekly review 也有固定检查点。</td>
+      <td>没有固定刷新时点，forward ledger 很容易事后补记，破坏 honesty。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>强制记录 monitoring status + review action</td>
+      <td>每次 weekly review</td>
+      <td>每次 review 都必须同时填 `monitor_status`（green/yellow/red）与 `review_action`（keep/demote/stop/reopen）；缺一视为 review 无效。</td>
+      <td>这一步把 monitoring board 真接到 promote / demote / rollback，而不是只留静态标签。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>先用数据健康检查代替‘继续观察’借口</td>
+      <td>每次 refresh</td>
+      <td>若 `data_health` 不是 `ok`，或账本字段缺失，就直接记成暂停 / rollback，不允许先口头继续跑。</td>
+      <td>让 kill switch 从概念变成 day-0 就能执行的硬动作。</td>
+    </tr>
+  </tbody>
+</table>
+    <h3>EMA paper/shadow ledger template</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>field_order</th>
+      <th>field_name</th>
+      <th>fill_for</th>
+      <th>update_cadence</th>
+      <th>example_or_rule</th>
+      <th>why_it_matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>asof_date_utc</td>
+      <td>所有 active / shadow 账本</td>
+      <td>每次 refresh</td>
+      <td>例如 `2026-03-15`；统一按当次 bar close / review 截止时点记。</td>
+      <td>固定前瞻记账时点，避免事后补账或回头改口径。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>deployment_scope</td>
+      <td>所有账本</td>
+      <td>初始化 + 每次 refresh</td>
+      <td>只允许来自当前 runbook：`创业板ETF 1d` / `美股 1d+1wk（SPY/QQQ/AAPL） / Crypto 1d+1wk（BTC/ETH/SOL） / 贵州茅台 1d+1wk` / `沪深300ETF 1d` / `沪深300ETF 1wk / 创业板ETF 1wk / Crypto 60m（BTC/ETH/SOL rolling）`。</td>
+      <td>把 pocket 边界写死，防止把 keep / shadow / exclude 混成同一条曲线。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>ledger_book</td>
+      <td>所有账本</td>
+      <td>初始化 + 每次 refresh</td>
+      <td>`primary_paper` / `secondary_backstop` / `shadow_watch` / `stoplist_reopen_only` 四选一。</td>
+      <td>明确这笔记录属于哪类 admission 状态，后续 promote/demote 才可审计。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>market_freq_book</td>
+      <td>所有 active / shadow 账本</td>
+      <td>每次 refresh</td>
+      <td>例如 `A股-1d`、`美股-1wk`、`Crypto-1d`；不允许把 1d / 1wk 混成一行。</td>
+      <td>runbook 已要求 market × freq 分账；这列是防止稀释 pocket honesty 的硬钉子。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>signal_state</td>
+      <td>所有 active / shadow 账本</td>
+      <td>每次 refresh</td>
+      <td>`flat` / `long` / `hold`；若 stoplist 则写 `excluded`。</td>
+      <td>先把信号状态和研究 verdict 对齐，避免只记结果不记当时该不该持有。</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>position_state</td>
+      <td>所有 active / shadow 账本</td>
+      <td>每次 refresh</td>
+      <td>记录当前是否持仓、仓位方向、是否刚开 / 刚平。</td>
+      <td>paper / shadow 的最小记账单位不是观点，而是可追溯的持仓状态。</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>gross_pnl_pct</td>
+      <td>所有 active / shadow 账本</td>
+      <td>每次 refresh</td>
+      <td>记录当前持仓或已平仓周期的 gross 路径。</td>
+      <td>先保留原始路径，方便和历史研究基线对照。</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>net_pnl_pct_20bps</td>
+      <td>所有 active / shadow 账本</td>
+      <td>每次 refresh</td>
+      <td>沿用当前研究默认 `20bps` 近似；若未来升级净值引擎，再保持字段名但更新口径说明。</td>
+      <td>确保 daily/weekly ledger 与当前报告里的 net 口径可直接对上。</td>
+    </tr>
+    <tr>
+      <td>9</td>
+      <td>benchmark_psar_net20_pct</td>
+      <td>primary / shadow / mixed pocket review</td>
+      <td>每次 weekly review</td>
+      <td>尤其用于 `沪深300ETF 1d`：不能只看 EMA 自己转正，还要看是否仍落后 PSAR。</td>
+      <td>让 shadow promotion / demotion 继续锚定当前项目的 head-to-head honesty。</td>
+    </tr>
+    <tr>
+      <td>10</td>
+      <td>monitor_status</td>
+      <td>所有 active / shadow 账本</td>
+      <td>每次 weekly review</td>
+      <td>`green` / `yellow` / `red`；必须与 monitoring board 的当前状态一致。</td>
+      <td>这是把 monitoring board 接进真实运行的核心字段。</td>
+    </tr>
+    <tr>
+      <td>11</td>
+      <td>review_action</td>
+      <td>所有账本</td>
+      <td>每次 weekly review</td>
+      <td>`keep` / `demote_to_shadow` / `stop` / `reopen_for_review`。</td>
+      <td>没有 action 字段，就无法审计 promote / demote / rollback 是否真的执行。</td>
+    </tr>
+    <tr>
+      <td>12</td>
+      <td>data_health</td>
+      <td>所有账本</td>
+      <td>每次 refresh</td>
+      <td>`ok` / `missing` / `stale`；若不是 `ok`，直接触发暂停或 rollback。</td>
+      <td>把 kill switch 从‘提醒’变成可以日常打钩的执行条件。</td>
+    </tr>
+    <tr>
+      <td>13</td>
+      <td>note</td>
+      <td>所有账本</td>
+      <td>按需</td>
+      <td>只记录当次最关键原因：例如‘secondary pocket 连续两周 red -> 降回 shadow’。</td>
+      <td>保留最小审计注释，方便后续回看为什么升降级。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q30. 如果今天就真开账，day-0 launch seed rows 应该先建哪几条？</h2>
+    <p class="a">Q29 说明了“字段长什么样”；但真正启动时，最容易出错的不是字段设计，而是 <b>第一天到底该先建哪几条 ledger row</b>。因此这里把 runbook 再压成一张可直接照抄的 <b>day-0 launch seed</b>：先把需要存在的账本行建好，再开始前瞻刷新，避免把 `1d / 1wk`、`primary / secondary / shadow / stoplist` 混成一锅。</p>
+    <ul>
+      <li><b>primary 只有 1 条 seed：</b><code>创业板ETF 1d</code> 对应 <code>A股-1d / primary_paper</code>，它是当前唯一允许直接以 primary 口径开账的 EMA pocket。</li>
+      <li><b>secondary 不是 3 条，而是 6 条：</b><code>美股 / Crypto / 贵州茅台</code> 这 3 组都必须拆成 <code>1d</code> 与 <code>1wk</code> 两条 seed row，防止把坏 pocket 混进“secondary 总曲线”。</li>
+      <li><b>shadow 与 stoplist 也必须占位：</b><code>沪深300ETF 1d</code> 虽未 admission，但要有独立 <code>shadow_watch</code> seed；`沪深300ETF 1wk / 创业板ETF 1wk / Crypto 60m` 也要各有 1 条 <code>stoplist_reopen_only</code> 审计位，避免后续被误混回 baseline。</li>
+      <li><b>总行数是固定的 launch roster：</b>当前 day-0 应先建 <b>11</b> 条 seed rows（primary `1` + secondary `6` + shadow `1` + stoplist `3`），然后才开始第一轮真实 refresh。</li>
+      <li><b>项目级含义：</b>EMA 线现在不只知道“该怎么跑”，还知道“第一天具体要先建哪几行账本”；这比再补一层近义 board 更接近真正的 paper/shadow 启动。</li>
+    </ul>
+    <h3>EMA paper/shadow day-0 launch seed rows</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>seed_rank</th>
+      <th>deployment_scope</th>
+      <th>ledger_book</th>
+      <th>market_freq_book</th>
+      <th>refresh_cadence</th>
+      <th>signal_state</th>
+      <th>position_state</th>
+      <th>monitor_status</th>
+      <th>review_action</th>
+      <th>data_health</th>
+      <th>seed_rule</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>创业板ETF 1d</td>
+      <td>primary_paper</td>
+      <td>A股-1d</td>
+      <td>每个 A 股日线收盘后刷新 1 次；每周固定做 1 次 monitoring review。</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>pending_day0_review</td>
+      <td>kickoff_freeze</td>
+      <td>pending_first_refresh</td>
+      <td>先建 seed row，再按 market × freq 开始前瞻记账；未首刷前不允许补历史。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>secondary_backstop</td>
+      <td>美股-1d</td>
+      <td>1d 在每个美股收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary backstop review。</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>pending_day0_review</td>
+      <td>kickoff_freeze</td>
+      <td>pending_first_refresh</td>
+      <td>先建 seed row，再按 market × freq 开始前瞻记账；未首刷前不允许补历史。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>secondary_backstop</td>
+      <td>美股-1wk</td>
+      <td>1d 在每个美股收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary backstop review。</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>pending_day0_review</td>
+      <td>kickoff_freeze</td>
+      <td>pending_first_refresh</td>
+      <td>先建 seed row，再按 market × freq 开始前瞻记账；未首刷前不允许补历史。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>secondary_backstop</td>
+      <td>Crypto-1d</td>
+      <td>1d 按 UTC 日线收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary review。</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>pending_day0_review</td>
+      <td>kickoff_freeze</td>
+      <td>pending_first_refresh</td>
+      <td>先建 seed row，再按 market × freq 开始前瞻记账；未首刷前不允许补历史。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>secondary_backstop</td>
+      <td>Crypto-1wk</td>
+      <td>1d 按 UTC 日线收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary review。</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>pending_day0_review</td>
+      <td>kickoff_freeze</td>
+      <td>pending_first_refresh</td>
+      <td>先建 seed row，再按 market × freq 开始前瞻记账；未首刷前不允许补历史。</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>secondary_backstop</td>
+      <td>A股-1d</td>
+      <td>1d 每个 A 股收盘后刷新；1wk 周线收盘后刷新；每周做 1 次 secondary A 股 backstop review。</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>pending_day0_review</td>
+      <td>kickoff_freeze</td>
+      <td>pending_first_refresh</td>
+      <td>先建 seed row，再按 market × freq 开始前瞻记账；未首刷前不允许补历史。</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>secondary_backstop</td>
+      <td>A股-1wk</td>
+      <td>1d 每个 A 股收盘后刷新；1wk 周线收盘后刷新；每周做 1 次 secondary A 股 backstop review。</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>pending_day0_review</td>
+      <td>kickoff_freeze</td>
+      <td>pending_first_refresh</td>
+      <td>先建 seed row，再按 market × freq 开始前瞻记账；未首刷前不允许补历史。</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>沪深300ETF 1d</td>
+      <td>shadow_watch</td>
+      <td>A股-1d</td>
+      <td>每个 A 股日线收盘后刷新 1 次；每周固定做 1 次 shadow-promotion review。</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>pending_day0_review</td>
+      <td>kickoff_freeze</td>
+      <td>pending_first_refresh</td>
+      <td>先建 seed row，再按 market × freq 开始前瞻记账；未首刷前不允许补历史。</td>
+    </tr>
+    <tr>
+      <td>9</td>
+      <td>沪深300ETF 1wk</td>
+      <td>stoplist_reopen_only</td>
+      <td>A股-1wk</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>excluded</td>
+      <td>excluded</td>
+      <td>stopped</td>
+      <td>keep_excluded</td>
+      <td>n/a_stoplist</td>
+      <td>stoplist 默认不启动，只保留 reopen-only 审计位。</td>
+    </tr>
+    <tr>
+      <td>10</td>
+      <td>创业板ETF 1wk</td>
+      <td>stoplist_reopen_only</td>
+      <td>A股-1wk</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>excluded</td>
+      <td>excluded</td>
+      <td>stopped</td>
+      <td>keep_excluded</td>
+      <td>n/a_stoplist</td>
+      <td>stoplist 默认不启动，只保留 reopen-only 审计位。</td>
+    </tr>
+    <tr>
+      <td>11</td>
+      <td>Crypto 60m（BTC/ETH/SOL rolling）</td>
+      <td>stoplist_reopen_only</td>
+      <td>Crypto-60m</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>excluded</td>
+      <td>excluded</td>
+      <td>stopped</td>
+      <td>keep_excluded</td>
+      <td>n/a_stoplist</td>
+      <td>stoplist 默认不启动，只保留 reopen-only 审计位。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q31. 如果 day-0 后第一轮 weekly review 真要执行，最小 red/yellow/green scorecard 应该怎么填？</h2>
+    <p class="a">Q30 解决的是“第一天先建哪几行账”；但真正让 paper / shadow 像在运行的，不是 seed rows 本身，而是 <b>首个 weekly review 到底按什么标准判 green / yellow / red、以及判完之后具体该 keep / demote / stop 什么</b>。这轮不新增回测，而是把 runbook、monitoring board、day-0 账本再压成一张更执行型的首周 review scorecard，避免 `paper-ready` 还停留在概念层。</p>
+    <ul>
+      <li><b>primary 首周不是“先跑着看”：</b><code>创业板ETF 1d</code> 的 red 不是轻飘飘提醒，而是要直接 <code>demote_to_shadow</code>；yellow 也必须触发一次额外补充 review。</li>
+      <li><b>secondary 首周最怕的仍是混账：</b><code>美股 / Crypto / 贵州茅台 1d+1wk</code> 这 6 条 row 必须逐个 <code>market × freq</code> 记账；red 是降对应 pocket，不是继续拿整批别的口袋遮盖。</li>
+      <li><b>沪深300ETF 1d 首周也不该被 recent-positive 幻觉抬走：</b>它即便首周顺利，也默认仍是 <code>keep_shadow</code>，因为 promotion gate 不是靠一周顺眼就能过。</li>
+      <li><b>stoplist 也有首周动作：</b>weekly frontier 与 crypto 60m 只要被误混回 active/shadow 汇报，就应立即 <code>rollback_to_stoplist_now</code>。</li>
+      <li><b>项目级含义：</b>EMA 线现在不只知道怎么开账，也知道开账后一周内该怎样诚实地判继续、降级或回滚；这比再补一层近义 board 更接近真实 paper 运营。</li>
+    </ul>
+    <h3>EMA paper/shadow first weekly review scorecard</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>review_rank</th>
+      <th>deployment_scope</th>
+      <th>first_review_clock</th>
+      <th>must_fill_fields</th>
+      <th>green_if</th>
+      <th>yellow_if</th>
+      <th>red_if</th>
+      <th>default_action</th>
+      <th>why_it_matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>创业板ETF 1d</td>
+      <td>每个 A 股日线收盘后刷新 1 次；每周固定做 1 次 monitoring review。</td>
+      <td>`data_health / monitor_status / review_action / net_pnl_pct_20bps`；primary/shadow 另加 `benchmark_psar_net20_pct`，secondary 必须逐个 `market_freq_book` 分账。</td>
+      <td>`data_health = ok`，primary 账本仍独立，且 review 读法没有从 `active_primary` 滑回 mixed/watch。</td>
+      <td>首周出现 1 次 refresh 缺失、或路径明显变薄但还没推翻 current read；允许继续跑，但必须加做一次补充 review。</td>
+      <td>账本无法独立维护、连续 red、或 review 已更像 `mixed/watch` / `shadow`。</td>
+      <td>green = keep_primary；yellow = keep + extra review；red = demote_to_shadow。</td>
+      <td>primary pilot 的目标不是‘先跑起来再说’，而是第一周就证明自己还能独立代表 EMA baseline。 当前读法：当前唯一 primary paper pilot；核心任务不是扩 family，而是先守住这格 daily survivor 的 deployment 身份。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>1d 在每个美股收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary backstop review。</td>
+      <td>`data_health / monitor_status / review_action / net_pnl_pct_20bps`；primary/shadow 另加 `benchmark_psar_net20_pct`，secondary 必须逐个 `market_freq_book` 分账。</td>
+      <td>`market × freq` 分账完整，单 pocket 的 `data_health` 都是 `ok`，且没有 pocket 在首周就被打回 mixed/watch。</td>
+      <td>个别 pocket 首周缺 1 次 refresh、或 edge 变薄但还没被更严格 honesty 明确打回 mixed/watch。</td>
+      <td>任一 pocket 连续 red、无法继续独立分账、或已经明显落入 mixed/watch / fail。</td>
+      <td>green = keep_secondary；yellow = keep_that_pocket_with_watch；red = demote_that_pocket_to_shadow（不是整批一起遮盖）。</td>
+      <td>secondary 的作用只是 backstop；第一周最怕的不是亏一点，而是又把坏 pocket 混进‘secondary 总曲线’。 当前读法：当前只当 secondary backstop；存在意义是证明 EMA baseline 不只剩一格 A股 daily，而不是拿来稀释 primary。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>1d 按 UTC 日线收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary review。</td>
+      <td>`data_health / monitor_status / review_action / net_pnl_pct_20bps`；primary/shadow 另加 `benchmark_psar_net20_pct`，secondary 必须逐个 `market_freq_book` 分账。</td>
+      <td>`market × freq` 分账完整，单 pocket 的 `data_health` 都是 `ok`，且没有 pocket 在首周就被打回 mixed/watch。</td>
+      <td>个别 pocket 首周缺 1 次 refresh、或 edge 变薄但还没被更严格 honesty 明确打回 mixed/watch。</td>
+      <td>任一 pocket 连续 red、无法继续独立分账、或已经明显落入 mixed/watch / fail。</td>
+      <td>green = keep_secondary；yellow = keep_that_pocket_with_watch；red = demote_that_pocket_to_shadow（不是整批一起遮盖）。</td>
+      <td>secondary 的作用只是 backstop；第一周最怕的不是亏一点，而是又把坏 pocket 混进‘secondary 总曲线’。 当前读法：当前只当 secondary backstop；存在意义是证明 EMA baseline 不只剩一格 A股 daily，而不是拿来稀释 primary。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>1d 每个 A 股收盘后刷新；1wk 周线收盘后刷新；每周做 1 次 secondary A 股 backstop review。</td>
+      <td>`data_health / monitor_status / review_action / net_pnl_pct_20bps`；primary/shadow 另加 `benchmark_psar_net20_pct`，secondary 必须逐个 `market_freq_book` 分账。</td>
+      <td>`market × freq` 分账完整，单 pocket 的 `data_health` 都是 `ok`，且没有 pocket 在首周就被打回 mixed/watch。</td>
+      <td>个别 pocket 首周缺 1 次 refresh、或 edge 变薄但还没被更严格 honesty 明确打回 mixed/watch。</td>
+      <td>任一 pocket 连续 red、无法继续独立分账、或已经明显落入 mixed/watch / fail。</td>
+      <td>green = keep_secondary；yellow = keep_that_pocket_with_watch；red = demote_that_pocket_to_shadow（不是整批一起遮盖）。</td>
+      <td>secondary 的作用只是 backstop；第一周最怕的不是亏一点，而是又把坏 pocket 混进‘secondary 总曲线’。 当前读法：当前只当 secondary backstop；存在意义是证明 EMA baseline 不只剩一格 A股 daily，而不是拿来稀释 primary。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>沪深300ETF 1d</td>
+      <td>每个 A 股日线收盘后刷新 1 次；每周固定做 1 次 shadow-promotion review。</td>
+      <td>`data_health / monitor_status / review_action / net_pnl_pct_20bps`；primary/shadow 另加 `benchmark_psar_net20_pct`，secondary 必须逐个 `market_freq_book` 分账。</td>
+      <td>`data_health = ok`，shadow 账本独立，且 review 仍能诚实写成 `positive_but_not_promotable / stay shadow`。</td>
+      <td>recent-forward 方向没塌，但 overall gate 仍未同时补到 promotion 阈值；继续 stay shadow。</td>
+      <td>recent-forward 再翻负、继续落后 PSAR，或 shadow 账本都无法独立维护。</td>
+      <td>green = keep_shadow；yellow = keep_shadow；red = keep_or_drop_shadow（默认不准偷渡升格）。</td>
+      <td>沪深300ETF 1d 当前最容易被‘最近转正了’误读成快能晋升；这张表就是把这个错觉拦在第一周。 当前读法：当前 promotion gate 约 3/5；overall 正 holdout 约 50.00%、overall 跑赢 PSAR 约 50.00%，所以更诚实的位置仍是 shadow。</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>沪深300ETF 1wk</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>`data_health / monitor_status / review_action / net_pnl_pct_20bps`；primary/shadow 另加 `benchmark_psar_net20_pct`，secondary 必须逐个 `market_freq_book` 分账。</td>
+      <td>stoplist 继续保持排除、没有被误混回 active / shadow 账本。</td>
+      <td>出现新的独立证据包想 challenge 旧 verdict，但本周还没到 reopen 标准；继续 keep excluded。</td>
+      <td>fail/mixed pocket 被误混回 baseline 汇报，或 stoplist 账位缺失导致 reopen 审计断档。</td>
+      <td>green = keep_excluded；yellow = hold_for_reopen_review；red = rollback_to_stoplist_now。</td>
+      <td>weekly frontier 与 crypto 60m 当前最重要的职责就是当反证；第一周也不能把这道边界放松。 当前读法：当前属于 hard exclude / fail-mixed stoplist；不应再靠 family 汇总、overlay 或局部窗口反弹重新混回 baseline paper。</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>创业板ETF 1wk</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>`data_health / monitor_status / review_action / net_pnl_pct_20bps`；primary/shadow 另加 `benchmark_psar_net20_pct`，secondary 必须逐个 `market_freq_book` 分账。</td>
+      <td>stoplist 继续保持排除、没有被误混回 active / shadow 账本。</td>
+      <td>出现新的独立证据包想 challenge 旧 verdict，但本周还没到 reopen 标准；继续 keep excluded。</td>
+      <td>fail/mixed pocket 被误混回 baseline 汇报，或 stoplist 账位缺失导致 reopen 审计断档。</td>
+      <td>green = keep_excluded；yellow = hold_for_reopen_review；red = rollback_to_stoplist_now。</td>
+      <td>weekly frontier 与 crypto 60m 当前最重要的职责就是当反证；第一周也不能把这道边界放松。 当前读法：当前属于 hard exclude / fail-mixed stoplist；不应再靠 family 汇总、overlay 或局部窗口反弹重新混回 baseline paper。</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>Crypto 60m（BTC/ETH/SOL rolling）</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>`data_health / monitor_status / review_action / net_pnl_pct_20bps`；primary/shadow 另加 `benchmark_psar_net20_pct`，secondary 必须逐个 `market_freq_book` 分账。</td>
+      <td>stoplist 继续保持排除、没有被误混回 active / shadow 账本。</td>
+      <td>出现新的独立证据包想 challenge 旧 verdict，但本周还没到 reopen 标准；继续 keep excluded。</td>
+      <td>fail/mixed pocket 被误混回 baseline 汇报，或 stoplist 账位缺失导致 reopen 审计断档。</td>
+      <td>green = keep_excluded；yellow = hold_for_reopen_review；red = rollback_to_stoplist_now。</td>
+      <td>weekly frontier 与 crypto 60m 当前最重要的职责就是当反证；第一周也不能把这道边界放松。 当前读法：当前属于 hard exclude / fail-mixed stoplist；不应再靠 family 汇总、overlay 或局部窗口反弹重新混回 baseline paper。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q32. 如果不再补近义 board，`active_secondary_backstop` 下一轮该先复核谁？</h2>
+    <p class="a">到 Q31 为止，EMA 线的 paper/shadow 启动链条已经补齐（candidate / operating / monitoring / runbook / day-0 / week-1）。如果还要在这条线上补一刀 deployment-facing 的诚实推进，更合理的动作不是再写一层近义规范，而是把 <code>active_secondary_backstop</code> 压成一张可执行复核队列：<b>哪几格该先做 stricter honesty，哪几格暂时可放后。</b> 这轮不新增下载，直接复用现成 <code>ema_non60m_honesty_queue.csv</code> + operating spec 的降级规则。</p>
+    <ul>
+      <li><b>当前 first target 已固定：</b>若下一轮只能先查一格，默认先查 <code>SPY 1d</code>（global honesty rank 最靠前、buffer 最薄）。</li>
+      <li><b>队列已分成 3 档：</b><code>front / mid / back</code> 当前分别约为 <code>2</code> / <code>4</code> / <code>8</code> 个 pocket。这样就不会再把 secondary batch 当一整坨“都挺稳”的口头结论。</li>
+      <li><b>动作规则不再含糊：</b>每一格都绑定了对应 secondary group 的 <code>if_fail_then_action</code>，核心是同一条硬纪律：<b>任一 pocket 被更严格 honesty 打回 mixed/watch，就从 <code>active_secondary_backstop</code> 降回 shadow，不允许继续靠同组别的口袋遮盖。</b></li>
+      <li><b>deployment 含义：</b>这张表不是“新 protocol 页面”，而是把 runbook 的 secondary 部分变成可排班执行的 recheck 队列。Jerry 现在可以直接判断：该不该继续给 secondary 批次配资源、先查哪里、查坏了怎么降级。</li>
+    </ul>
+    <h3>EMA active secondary backstop recheck queue</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>recheck_rank</th>
+      <th>global_honesty_rank</th>
+      <th>secondary_group</th>
+      <th>pocket_scope</th>
+      <th>asset_class</th>
+      <th>profit_pct</th>
+      <th>trades</th>
+      <th>breakeven_roundtrip_cost_bps</th>
+      <th>approx_net_profit_pct_20bps</th>
+      <th>recheck_bucket</th>
+      <th>why_recheck_now</th>
+      <th>if_fail_then_action</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>5</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>SPY 1d</td>
+      <td>美股</td>
+      <td>145.78%</td>
+      <td>43</td>
+      <td>339.0bps</td>
+      <td>137.18%</td>
+      <td>front-of-queue</td>
+      <td>这是当前 active_secondary_backstop 里最薄的一层，若要先做 stricter honesty，默认应先查这格；而且它还是日频口袋，更接近日常 paper 运行节奏。</td>
+      <td>若后续更严格 honesty 把其中任一 pocket 打回 mixed/watch 或 fail，就把该 pocket 直接移出 secondary，而不是继续靠同批别的口袋遮盖。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>6</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>QQQ 1d</td>
+      <td>美股</td>
+      <td>187.77%</td>
+      <td>49</td>
+      <td>383.2bps</td>
+      <td>177.97%</td>
+      <td>front-of-queue</td>
+      <td>这是当前 active_secondary_backstop 里最薄的一层，若要先做 stricter honesty，默认应先查这格；而且它还是日频口袋，更接近日常 paper 运行节奏。</td>
+      <td>若后续更严格 honesty 把其中任一 pocket 打回 mixed/watch 或 fail，就把该 pocket 直接移出 secondary，而不是继续靠同批别的口袋遮盖。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>7</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>贵州茅台 1d</td>
+      <td>A股</td>
+      <td>274.58%</td>
+      <td>53</td>
+      <td>518.1bps</td>
+      <td>263.98%</td>
+      <td>mid-queue</td>
+      <td>这格仍明显为正，但 buffer 已不算特别厚；适合在 front queue 之后做第二批复核；而且它还是日频口袋，更接近日常 paper 运行节奏。</td>
+      <td>若后续 stricter recheck 也转弱，就直接从 A股 secondary 移出；不要再借它去替 mixed 的沪深300ETF 1d 站台。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>8</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>AAPL 1d</td>
+      <td>美股</td>
+      <td>596.09%</td>
+      <td>47</td>
+      <td>1268.3bps</td>
+      <td>586.69%</td>
+      <td>mid-queue</td>
+      <td>这格仍明显为正，但 buffer 已不算特别厚；适合在 front queue 之后做第二批复核；而且它还是日频口袋，更接近日常 paper 运行节奏。</td>
+      <td>若后续更严格 honesty 把其中任一 pocket 打回 mixed/watch 或 fail，就把该 pocket 直接移出 secondary，而不是继续靠同批别的口袋遮盖。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>9</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>SPY 1wk</td>
+      <td>美股</td>
+      <td>142.83%</td>
+      <td>7</td>
+      <td>2040.4bps</td>
+      <td>141.43%</td>
+      <td>mid-queue</td>
+      <td>这格仍明显为正，但 buffer 已不算特别厚；适合在 front queue 之后做第二批复核。</td>
+      <td>若后续更严格 honesty 把其中任一 pocket 打回 mixed/watch 或 fail，就把该 pocket 直接移出 secondary，而不是继续靠同批别的口袋遮盖。</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>10</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>贵州茅台 1wk</td>
+      <td>A股</td>
+      <td>230.25%</td>
+      <td>11</td>
+      <td>2093.2bps</td>
+      <td>228.05%</td>
+      <td>mid-queue</td>
+      <td>这格仍明显为正，但 buffer 已不算特别厚；适合在 front queue 之后做第二批复核。</td>
+      <td>若后续 stricter recheck 也转弱，就直接从 A股 secondary 移出；不要再借它去替 mixed 的沪深300ETF 1d 站台。</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>11</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>AAPL 1wk</td>
+      <td>美股</td>
+      <td>291.67%</td>
+      <td>10</td>
+      <td>2916.7bps</td>
+      <td>289.67%</td>
+      <td>back-of-queue</td>
+      <td>这格当前更像远端厚 backstop，除非前排口袋先出问题，否则不抢第一轮复核资源。</td>
+      <td>若后续更严格 honesty 把其中任一 pocket 打回 mixed/watch 或 fail，就把该 pocket 直接移出 secondary，而不是继续靠同批别的口袋遮盖。</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>12</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>QQQ 1wk</td>
+      <td>美股</td>
+      <td>307.99%</td>
+      <td>7</td>
+      <td>4399.9bps</td>
+      <td>306.59%</td>
+      <td>back-of-queue</td>
+      <td>这格当前更像远端厚 backstop，除非前排口袋先出问题，否则不抢第一轮复核资源。</td>
+      <td>若后续更严格 honesty 把其中任一 pocket 打回 mixed/watch 或 fail，就把该 pocket 直接移出 secondary，而不是继续靠同批别的口袋遮盖。</td>
+    </tr>
+    <tr>
+      <td>9</td>
+      <td>13</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>ETH 1wk</td>
+      <td>Crypto</td>
+      <td>436.54%</td>
+      <td>9</td>
+      <td>4850.4bps</td>
+      <td>434.74%</td>
+      <td>back-of-queue</td>
+      <td>这格当前更像远端厚 backstop，除非前排口袋先出问题，否则不抢第一轮复核资源。</td>
+      <td>若后续复核发现 secondary 结果主要靠单一资产/单一周期支撑，就收窄到更具体 pocket；60m fail pocket 则保持排除，不因 overlay 或局部窗口反弹 reopen。</td>
+    </tr>
+    <tr>
+      <td>10</td>
+      <td>14</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>ETH 1d</td>
+      <td>Crypto</td>
+      <td>7535.63%</td>
+      <td>56</td>
+      <td>13456.5bps</td>
+      <td>7524.43%</td>
+      <td>back-of-queue</td>
+      <td>这格当前更像远端厚 backstop，除非前排口袋先出问题，否则不抢第一轮复核资源。</td>
+      <td>若后续复核发现 secondary 结果主要靠单一资产/单一周期支撑，就收窄到更具体 pocket；60m fail pocket 则保持排除，不因 overlay 或局部窗口反弹 reopen。</td>
+    </tr>
+    <tr>
+      <td>11</td>
+      <td>15</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>BTC 1d</td>
+      <td>Crypto</td>
+      <td>30070.63%</td>
+      <td>72</td>
+      <td>41764.8bps</td>
+      <td>30056.23%</td>
+      <td>back-of-queue</td>
+      <td>这格当前更像远端厚 backstop，除非前排口袋先出问题，否则不抢第一轮复核资源。</td>
+      <td>若后续复核发现 secondary 结果主要靠单一资产/单一周期支撑，就收窄到更具体 pocket；60m fail pocket 则保持排除，不因 overlay 或局部窗口反弹 reopen。</td>
+    </tr>
+    <tr>
+      <td>12</td>
+      <td>16</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>SOL 1d</td>
+      <td>Crypto</td>
+      <td>55511.56%</td>
+      <td>43</td>
+      <td>129096.6bps</td>
+      <td>55502.96%</td>
+      <td>back-of-queue</td>
+      <td>这格当前更像远端厚 backstop，除非前排口袋先出问题，否则不抢第一轮复核资源。</td>
+      <td>若后续复核发现 secondary 结果主要靠单一资产/单一周期支撑，就收窄到更具体 pocket；60m fail pocket 则保持排除，不因 overlay 或局部窗口反弹 reopen。</td>
+    </tr>
+    <tr>
+      <td>13</td>
+      <td>17</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>BTC 1wk</td>
+      <td>Crypto</td>
+      <td>12030.52%</td>
+      <td>9</td>
+      <td>133672.5bps</td>
+      <td>12028.72%</td>
+      <td>back-of-queue</td>
+      <td>这格当前更像远端厚 backstop，除非前排口袋先出问题，否则不抢第一轮复核资源。</td>
+      <td>若后续复核发现 secondary 结果主要靠单一资产/单一周期支撑，就收窄到更具体 pocket；60m fail pocket 则保持排除，不因 overlay 或局部窗口反弹 reopen。</td>
+    </tr>
+    <tr>
+      <td>14</td>
+      <td>18</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>SOL 1wk</td>
+      <td>Crypto</td>
+      <td>12977.50%</td>
+      <td>6</td>
+      <td>216291.7bps</td>
+      <td>12976.30%</td>
+      <td>back-of-queue</td>
+      <td>这格当前更像远端厚 backstop，除非前排口袋先出问题，否则不抢第一轮复核资源。</td>
+      <td>若后续复核发现 secondary 结果主要靠单一资产/单一周期支撑，就收窄到更具体 pocket；60m fail pocket 则保持排除，不因 overlay 或局部窗口反弹 reopen。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q33. 如果今天就真的把 `0` 真资金 shadow / paper 账本开出来，首份 day-0 ledger snapshot 应该长什么样？</h2>
+    <p class="a">Q32 解决的是“secondary 下一步先查谁”；但当前 TODO 里真正还差的不是再补一层 board，而是 <b>把现有 `11` 条 day-0 seed rows 真落成首份前瞻账本快照</b>。所以这里直接把 primary / secondary / shadow / stoplist 的 launch roster 写成一张真实 snapshot：同一时刻冻结 scope，给每条 row 明确的 <code>monitor_status / review_action / data_health</code>，作为后续真实 refresh 的第 `0` 笔记录。</p>
+    <ul>
+      <li><b>这不是历史回填：</b>snapshot 只记录 day-0 当下该存在的 roster 与状态，不补任何事后 PnL；因此 active/shadow 仍统一停在 <code>flat / waiting first signal</code>。</li>
+      <li><b>primary / secondary / shadow / stoplist 的 day-0 动作已分开：</b><code>创业板ETF 1d</code> 直接标成 <code>start_primary_paper</code>；secondary 会按 recheck 队列厚薄落成不同 kickoff 状态；<code>沪深300ETF 1d</code> 明确只记成 <code>stay_shadow_until_promotion_gate</code>；stoplist 则继续 <code>keep_excluded</code>。</li>
+      <li><b>monitor_status 不再空着等以后想：</b>front-queue secondary 在 day-0 就先落成 <code>kickoff_yellow_front_queue</code>，等于提前承认“它能开账，但首轮就该优先复核”；这比事后再口头解释更诚实。</li>
+      <li><b>data health 也真的落表：</b>active / shadow 账位当前统一先记成 <code>ok_scope_frozen</code>，stoplist 记成 <code>n_a_stoplist</code>；后续只要刷新断档，就能沿同一张账本继续写，不用再造新模板。</li>
+      <li><b>项目级含义：</b>EMA 线现在已经从“paper-ready 文档”真正跨到“首笔 `0` 真资金 ledger 记录已落表”；下一步默认该继续做真实 forward refresh / week-1 review，而不是继续补近义 spec 页。</li>
+    </ul>
+    <h3>EMA paper/shadow day-0 ledger snapshot</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>snapshot_rank</th>
+      <th>snapshot_clock_utc</th>
+      <th>deployment_scope</th>
+      <th>paper_status</th>
+      <th>ledger_book</th>
+      <th>market_freq_book</th>
+      <th>signal_state</th>
+      <th>position_state</th>
+      <th>monitor_status</th>
+      <th>review_action</th>
+      <th>data_health</th>
+      <th>first_review_clock</th>
+      <th>day0_note</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>创业板ETF 1d</td>
+      <td>active_primary</td>
+      <td>primary_paper</td>
+      <td>A股-1d</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>kickoff_green</td>
+      <td>start_primary_paper</td>
+      <td>ok_scope_frozen</td>
+      <td>每个 A 股日线收盘后刷新 1 次；每周固定做 1 次 monitoring review。</td>
+      <td>唯一 primary pilot；day-0 先冻结 roster 并落首笔快照，等待首刷后进入真实 weekly review。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>active_secondary_backstop</td>
+      <td>secondary_backstop</td>
+      <td>美股-1d</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>kickoff_yellow_front_queue</td>
+      <td>start_secondary_then_recheck_front</td>
+      <td>ok_scope_frozen</td>
+      <td>1d 在每个美股收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary backstop review。</td>
+      <td>secondary 已开账，但这格属于 front queue；首轮资源应优先补 stricter honesty，若转弱就直接降回 shadow。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>active_secondary_backstop</td>
+      <td>secondary_backstop</td>
+      <td>美股-1wk</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>kickoff_yellow_mid_queue</td>
+      <td>start_secondary_then_recheck_mid</td>
+      <td>ok_scope_frozen</td>
+      <td>1d 在每个美股收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary backstop review。</td>
+      <td>secondary 已开账；当前 buffer 尚可，但仍应在 front queue 之后尽快复核。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>active_secondary_backstop</td>
+      <td>secondary_backstop</td>
+      <td>Crypto-1d</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>kickoff_green_backstop</td>
+      <td>start_secondary_backstop</td>
+      <td>ok_scope_frozen</td>
+      <td>1d 按 UTC 日线收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary review。</td>
+      <td>这格属于更厚的 backstop pocket；day-0 先独立开账，后续只在 front / mid queue 稳住后再做更严格复核。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>active_secondary_backstop</td>
+      <td>secondary_backstop</td>
+      <td>Crypto-1wk</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>kickoff_green_backstop</td>
+      <td>start_secondary_backstop</td>
+      <td>ok_scope_frozen</td>
+      <td>1d 按 UTC 日线收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary review。</td>
+      <td>这格属于更厚的 backstop pocket；day-0 先独立开账，后续只在 front / mid queue 稳住后再做更严格复核。</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>active_secondary_backstop</td>
+      <td>secondary_backstop</td>
+      <td>A股-1d</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>kickoff_yellow_mid_queue</td>
+      <td>start_secondary_then_recheck_mid</td>
+      <td>ok_scope_frozen</td>
+      <td>1d 每个 A 股收盘后刷新；1wk 周线收盘后刷新；每周做 1 次 secondary A 股 backstop review。</td>
+      <td>secondary 已开账；当前 buffer 尚可，但仍应在 front queue 之后尽快复核。</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>active_secondary_backstop</td>
+      <td>secondary_backstop</td>
+      <td>A股-1wk</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>kickoff_yellow_mid_queue</td>
+      <td>start_secondary_then_recheck_mid</td>
+      <td>ok_scope_frozen</td>
+      <td>1d 每个 A 股收盘后刷新；1wk 周线收盘后刷新；每周做 1 次 secondary A 股 backstop review。</td>
+      <td>secondary 已开账；当前 buffer 尚可，但仍应在 front queue 之后尽快复核。</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>沪深300ETF 1d</td>
+      <td>shadow_watch</td>
+      <td>shadow_watch</td>
+      <td>A股-1d</td>
+      <td>flat</td>
+      <td>flat_waiting_first_signal</td>
+      <td>kickoff_yellow_shadow</td>
+      <td>stay_shadow_until_promotion_gate</td>
+      <td>ok_scope_frozen</td>
+      <td>每个 A 股日线收盘后刷新 1 次；每周固定做 1 次 shadow-promotion review。</td>
+      <td>这格只记 shadow，不申请 day-0 升格；只有 promotion gate 补齐后才允许单独申请进入 active。</td>
+    </tr>
+    <tr>
+      <td>9</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>沪深300ETF 1wk</td>
+      <td>exclude_stoplist</td>
+      <td>stoplist_reopen_only</td>
+      <td>A股-1wk</td>
+      <td>excluded</td>
+      <td>excluded</td>
+      <td>stopped</td>
+      <td>keep_excluded</td>
+      <td>n_a_stoplist</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>stoplist / reopen-only 审计位：day-0 只保留占位快照，不启动前瞻刷新，也不允许误混回 baseline。</td>
+    </tr>
+    <tr>
+      <td>10</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>创业板ETF 1wk</td>
+      <td>exclude_stoplist</td>
+      <td>stoplist_reopen_only</td>
+      <td>A股-1wk</td>
+      <td>excluded</td>
+      <td>excluded</td>
+      <td>stopped</td>
+      <td>keep_excluded</td>
+      <td>n_a_stoplist</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>stoplist / reopen-only 审计位：day-0 只保留占位快照，不启动前瞻刷新，也不允许误混回 baseline。</td>
+    </tr>
+    <tr>
+      <td>11</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>Crypto 60m（BTC/ETH/SOL rolling）</td>
+      <td>exclude_stoplist</td>
+      <td>stoplist_reopen_only</td>
+      <td>Crypto-60m</td>
+      <td>excluded</td>
+      <td>excluded</td>
+      <td>stopped</td>
+      <td>keep_excluded</td>
+      <td>n_a_stoplist</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>stoplist / reopen-only 审计位：day-0 只保留占位快照，不启动前瞻刷新，也不允许误混回 baseline。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q34. 如果现在就要沿同一张账本继续跑，`day-0 snapshot` 之后的 first-refresh queue 该怎么排？</h2>
+    <p class="a">Q33 把首份账本快照真正落表后，剩下最容易继续卡在口头层的就是：<b>第一轮 refresh / week-1 到底先做哪几步、谁先、谁后、谁只是审计位。</b> 这轮不再新增 board，而是把 <code>day-0 snapshot + first-week scorecard + secondary recheck queue</code> 直接压成一张可执行的 first-refresh queue，让后续 paper/shadow 不会又停在“理论上下一步该 refresh”的抽象句子里。</p>
+    <ul>
+      <li><b>第一优先级已写死：</b>默认先做 <code>创业板ETF 1d / A股-1d</code> 的首刷；这不是因为它最热闹，而是因为它是唯一 primary pilot，最该先证明账本能沿同一张 ledger 继续跑。</li>
+      <li><b>第二优先级不再含糊：</b><code>美股 1d+1wk（SPY/QQQ/AAPL） / 美股-1d</code> 与 <code>沪深300ETF 1d / A股-1d</code> 被提前钉在前排，等于明确承认：front-queue secondary 虽然可以开账，但第一轮就该优先补 stricter honesty，而不是先被“secondary 总体还行”掩过去。</li>
+      <li><b>shadow / stoplist 也被放回正确位置：</b><code>沪深300ETF 1d</code> 现在只配进 `refresh-only shadow lane`，而 stoplist 统一落到 `audit-only`；这样就不会把“有账位”误读成“都要同强度推进”。</li>
+      <li><b>deployment 含义：</b>Jerry 现在不只知道 scope 已冻结，还知道下一轮真实 refresh 时，哪些行是必须先写的，哪些行出问题要直接 demote / rollback，哪些行只需要保持审计位。</li>
+    </ul>
+    <h3>EMA paper/shadow first-refresh queue</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>queue_rank</th>
+      <th>queue_bucket</th>
+      <th>deployment_scope</th>
+      <th>market_freq_book</th>
+      <th>first_refresh_trigger</th>
+      <th>immediate_action</th>
+      <th>week1_focus</th>
+      <th>if_ok_then</th>
+      <th>if_fail_then</th>
+      <th>why_now</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>11</td>
+      <td>p0_primary_first_refresh</td>
+      <td>创业板ETF 1d</td>
+      <td>A股-1d</td>
+      <td>每个 A 股日线收盘后刷新 1 次；每周固定做 1 次 monitoring review。</td>
+      <td>首个 A 股日线收盘后先补首刷，把 `signal_state / position_state / data_health` 沿同一张账本写下去。</td>
+      <td>守住 strict-holdout survivor 身份；primary 账本继续单独看，不和 secondary 合并。</td>
+      <td>继续 keep_primary，并进入首个 weekly review。</td>
+      <td>若首刷后连续转 red / 更像 mixed-watch，就 demote_to_shadow。</td>
+      <td>唯一 primary pilot；day-0 先冻结 roster 并落首笔快照，等待首刷后进入真实 weekly review。</td>
+    </tr>
+    <tr>
+      <td>22</td>
+      <td>p1_secondary_front_queue</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>美股-1d</td>
+      <td>1d 在每个美股收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary backstop review。</td>
+      <td>首个收盘后先补首刷，并把这格排进第一轮 stricter honesty front queue。</td>
+      <td>先查最薄 buffer 的 active secondary pocket，避免整批结果遮盖弱 pocket。</td>
+      <td>账本首刷正常则继续 keep_secondary_backstop。</td>
+      <td>若后续更严格 honesty 把其中任一 pocket 打回 mixed/watch 或 fail，就把该 pocket 直接移出 secondary，而不是继续靠同批别的口袋遮盖。</td>
+      <td>secondary 已开账，但这格属于 front queue；首轮资源应优先补 stricter honesty，若转弱就直接降回 shadow。</td>
+    </tr>
+    <tr>
+      <td>38</td>
+      <td>p1_shadow_refresh_only</td>
+      <td>沪深300ETF 1d</td>
+      <td>A股-1d</td>
+      <td>每个 A 股日线收盘后刷新 1 次；每周固定做 1 次 shadow-promotion review。</td>
+      <td>只更新 shadow 账本，不申请升格；首刷重点是继续把 `stay_shadow` 写实。</td>
+      <td>promotion gate 还没过线；recent-forward 转正也不等于能进入 active。</td>
+      <td>继续 keep_shadow_until_promotion_gate。</td>
+      <td>若 recent-forward 再翻负或账本维护失真，就 keep_or_drop_shadow，但不准偷渡升格。</td>
+      <td>这格只记 shadow，不申请 day-0 升格；只有 promotion gate 补齐后才允许单独申请进入 active。</td>
+    </tr>
+    <tr>
+      <td>46</td>
+      <td>p2_secondary_mid_queue</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>A股-1d</td>
+      <td>1d 每个 A 股收盘后刷新；1wk 周线收盘后刷新；每周做 1 次 secondary A 股 backstop review。</td>
+      <td>先完成首刷；front queue 稳住后，再把这格排进第二轮 stricter honesty。</td>
+      <td>继续按 market × freq 分账，别让 mid queue 提前抢走 front queue 资源。</td>
+      <td>账本首刷正常则继续 keep_secondary_backstop。</td>
+      <td>若后续 stricter recheck 也转弱，就直接从 A股 secondary 移出；不要再借它去替 mixed 的沪深300ETF 1d 站台。</td>
+      <td>secondary 已开账；当前 buffer 尚可，但仍应在 front queue 之后尽快复核。</td>
+    </tr>
+    <tr>
+      <td>54</td>
+      <td>p3_secondary_backstop_watch</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>Crypto-1d</td>
+      <td>1d 按 UTC 日线收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary review。</td>
+      <td>先独立开账并完成首刷；暂不抢第一轮 stricter honesty 资源。</td>
+      <td>先确认厚 backstop 账本能稳定独立维护，再考虑更严格复核。</td>
+      <td>账本首刷正常则继续 keep_secondary_backstop。</td>
+      <td>若后续复核发现 secondary 结果主要靠单一资产/单一周期支撑，就收窄到更具体 pocket；60m fail pocket 则保持排除，不因 overlay 或局部窗口反弹 reopen。</td>
+      <td>这格属于更厚的 backstop pocket；day-0 先独立开账，后续只在 front / mid queue 稳住后再做更严格复核。</td>
+    </tr>
+    <tr>
+      <td>73</td>
+      <td>p2_secondary_mid_queue</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>美股-1wk</td>
+      <td>1d 在每个美股收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary backstop review。</td>
+      <td>先完成首刷；front queue 稳住后，再把这格排进第二轮 stricter honesty。</td>
+      <td>继续按 market × freq 分账，别让 mid queue 提前抢走 front queue 资源。</td>
+      <td>账本首刷正常则继续 keep_secondary_backstop。</td>
+      <td>若后续更严格 honesty 把其中任一 pocket 打回 mixed/watch 或 fail，就把该 pocket 直接移出 secondary，而不是继续靠同批别的口袋遮盖。</td>
+      <td>secondary 已开账；当前 buffer 尚可，但仍应在 front queue 之后尽快复核。</td>
+    </tr>
+    <tr>
+      <td>77</td>
+      <td>p2_secondary_mid_queue</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>A股-1wk</td>
+      <td>1d 每个 A 股收盘后刷新；1wk 周线收盘后刷新；每周做 1 次 secondary A 股 backstop review。</td>
+      <td>先完成首刷；front queue 稳住后，再把这格排进第二轮 stricter honesty。</td>
+      <td>继续按 market × freq 分账，别让 mid queue 提前抢走 front queue 资源。</td>
+      <td>账本首刷正常则继续 keep_secondary_backstop。</td>
+      <td>若后续 stricter recheck 也转弱，就直接从 A股 secondary 移出；不要再借它去替 mixed 的沪深300ETF 1d 站台。</td>
+      <td>secondary 已开账；当前 buffer 尚可，但仍应在 front queue 之后尽快复核。</td>
+    </tr>
+    <tr>
+      <td>85</td>
+      <td>p3_secondary_backstop_watch</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>Crypto-1wk</td>
+      <td>1d 按 UTC 日线收盘后刷新；1wk 在周线收盘后刷新；每周做 1 次 secondary review。</td>
+      <td>先独立开账并完成首刷；暂不抢第一轮 stricter honesty 资源。</td>
+      <td>先确认厚 backstop 账本能稳定独立维护，再考虑更严格复核。</td>
+      <td>账本首刷正常则继续 keep_secondary_backstop。</td>
+      <td>若后续复核发现 secondary 结果主要靠单一资产/单一周期支撑，就收窄到更具体 pocket；60m fail pocket 则保持排除，不因 overlay 或局部窗口反弹 reopen。</td>
+      <td>这格属于更厚的 backstop pocket；day-0 先独立开账，后续只在 front / mid queue 稳住后再做更严格复核。</td>
+    </tr>
+    <tr>
+      <td>99</td>
+      <td>stoplist_audit_only</td>
+      <td>沪深300ETF 1wk</td>
+      <td>A股-1wk</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>不做常规 refresh；继续保留 reopen-only 审计位。</td>
+      <td>weekly frontier 与 crypto 60m 当前最重要的职责就是当反证；第一周也不能把这道边界放松。 当前读法：当前属于 hard exclude / fail-mixed stoplist；不应再靠 family 汇总、overlay 或局部窗口反弹重新混回 baseline paper。</td>
+      <td>继续 keep_excluded。</td>
+      <td>若被误混回 baseline，立即 rollback_to_stoplist_now。</td>
+      <td>stoplist / reopen-only 审计位：day-0 只保留占位快照，不启动前瞻刷新，也不允许误混回 baseline。</td>
+    </tr>
+    <tr>
+      <td>100</td>
+      <td>stoplist_audit_only</td>
+      <td>创业板ETF 1wk</td>
+      <td>A股-1wk</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>不做常规 refresh；继续保留 reopen-only 审计位。</td>
+      <td>weekly frontier 与 crypto 60m 当前最重要的职责就是当反证；第一周也不能把这道边界放松。 当前读法：当前属于 hard exclude / fail-mixed stoplist；不应再靠 family 汇总、overlay 或局部窗口反弹重新混回 baseline paper。</td>
+      <td>继续 keep_excluded。</td>
+      <td>若被误混回 baseline，立即 rollback_to_stoplist_now。</td>
+      <td>stoplist / reopen-only 审计位：day-0 只保留占位快照，不启动前瞻刷新，也不允许误混回 baseline。</td>
+    </tr>
+    <tr>
+      <td>101</td>
+      <td>stoplist_audit_only</td>
+      <td>Crypto 60m（BTC/ETH/SOL rolling）</td>
+      <td>Crypto-60m</td>
+      <td>不做常规刷新；只有出现新的 overturn evidence 时才重开。</td>
+      <td>不做常规 refresh；继续保留 reopen-only 审计位。</td>
+      <td>weekly frontier 与 crypto 60m 当前最重要的职责就是当反证；第一周也不能把这道边界放松。 当前读法：当前属于 hard exclude / fail-mixed stoplist；不应再靠 family 汇总、overlay 或局部窗口反弹重新混回 baseline paper。</td>
+      <td>继续 keep_excluded。</td>
+      <td>若被误混回 baseline，立即 rollback_to_stoplist_now。</td>
+      <td>stoplist / reopen-only 审计位：day-0 只保留占位快照，不启动前瞻刷新，也不允许误混回 baseline。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q35. 如果现在就沿同一张账本把 top-3 lanes 落成首份真实 refresh delta，第一笔会写出什么？</h2>
+    <p class="a">Q34 已经把 first-refresh queue 排好，但如果还停在“下一步该怎么 refresh”，这条线就仍然卡在 protocol 层。更 deployment-facing 的做法，是直接把队首 3 条 lane 用 <b>最新已完成 bar</b> 写成首份真实 refresh delta：不假装已经等到了下一周，只把 day-0 当时故意留空的 <code>signal_state / position_state / review_action</code> 换成当前真实状态，让账本从抽象 roster 变成真正可续写的 ledger。</p>
+    <ul>
+      <li><b>primary 已经从“等待首刷”变成真实在跑：</b>primary 日频账位已进入真实续写状态：当前 EMA BUY 1/1 | SELL 0/1 | HOLD 0/1，long_open_since_2026-04-10；后续应继续沿同一张 primary 账本做 market-close refresh，并等待首个 weekly review。</li>
+      <li><b>front-queue secondary 的首刷也不再靠 family 叙事遮盖：</b>front-queue secondary 已写实：当前 EMA BUY 0/3 | SELL 3/3 | HOLD 0/3，flat_3/3；它可以继续保留在 active secondary，但仍应优先接受 stricter front recheck，不能再靠 family 总体叙事遮盖。</li>
+      <li><b>shadow lane 也被写实成“不升格就是不升格”：</b>shadow lane 已写实成独立账位：当前 EMA BUY 0/1 | SELL 1/1 | HOLD 0/1，flat；recent-forward 改善仍不等于 promotion，继续只做 shadow 记账。</li>
+      <li><b>deployment 含义：</b>Jerry 现在不只知道 queue 怎么排，还知道这 3 条最关键 lane 在同一张账本上的第一笔真实状态到底长什么样——哪个已经开出 long，哪个仍该 flat / stay shadow，哪个需要继续按 front-queue honesty 盯。</li>
+    </ul>
+    <h3>EMA paper/shadow top-3 first-refresh delta</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>refresh_rank</th>
+      <th>refresh_clock_utc</th>
+      <th>deployment_scope</th>
+      <th>market_freq_book</th>
+      <th>tracked_members</th>
+      <th>latest_completed_bar_utc</th>
+      <th>data_source</th>
+      <th>signal_state_before</th>
+      <th>signal_state_after</th>
+      <th>position_state_before</th>
+      <th>position_state_after</th>
+      <th>benchmark_psar_state</th>
+      <th>open_unrealized_pct</th>
+      <th>monitor_status_before</th>
+      <th>monitor_status_after</th>
+      <th>review_action_before</th>
+      <th>review_action_after</th>
+      <th>data_health_after</th>
+      <th>delta_note</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>11</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>创业板ETF 1d</td>
+      <td>A股-1d</td>
+      <td>创业板ETF</td>
+      <td>2026-06-10 00:00 UTC</td>
+      <td>eastmoney_cache_fallback</td>
+      <td>flat</td>
+      <td>EMA BUY 1/1 | SELL 0/1 | HOLD 0/1</td>
+      <td>flat_waiting_first_signal</td>
+      <td>long_open_since_2026-04-10</td>
+      <td>PSAR BUY 0/1 | SELL 1/1 | HOLD 0/1 | flat</td>
+      <td>12.598196</td>
+      <td>kickoff_green</td>
+      <td>refresh_green_primary_live</td>
+      <td>start_primary_paper</td>
+      <td>keep_primary_start_weekly_review</td>
+      <td>ok_refresh_with_cache_fallback</td>
+      <td>primary 日频账位已进入真实续写状态：当前 EMA BUY 1/1 | SELL 0/1 | HOLD 0/1，long_open_since_2026-04-10；后续应继续沿同一张 primary 账本做 market-close refresh，并等待首个 weekly review。</td>
+    </tr>
+    <tr>
+      <td>22</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>美股-1d</td>
+      <td>SPY / QQQ / AAPL</td>
+      <td>2026-03-27 00:00 UTC</td>
+      <td>stooq_cache_fallback</td>
+      <td>flat</td>
+      <td>EMA BUY 0/3 | SELL 3/3 | HOLD 0/3</td>
+      <td>flat_waiting_first_signal</td>
+      <td>flat_3/3</td>
+      <td>PSAR BUY 0/3 | SELL 2/3 | HOLD 1/3 | mixed_open_1/3</td>
+      <td>0.000000</td>
+      <td>kickoff_yellow_front_queue</td>
+      <td>refresh_yellow_front_queue_live</td>
+      <td>start_secondary_then_recheck_front</td>
+      <td>keep_secondary_then_stricter_front_recheck</td>
+      <td>ok_refresh_with_cache_fallback</td>
+      <td>front-queue secondary 已写实：当前 EMA BUY 0/3 | SELL 3/3 | HOLD 0/3，flat_3/3；它可以继续保留在 active secondary，但仍应优先接受 stricter front recheck，不能再靠 family 总体叙事遮盖。</td>
+    </tr>
+    <tr>
+      <td>38</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>沪深300ETF 1d</td>
+      <td>A股-1d</td>
+      <td>沪深300ETF</td>
+      <td>2026-06-09 00:00 UTC</td>
+      <td>eastmoney_cache_fallback</td>
+      <td>flat</td>
+      <td>EMA BUY 0/1 | SELL 1/1 | HOLD 0/1</td>
+      <td>flat_waiting_first_signal</td>
+      <td>flat</td>
+      <td>PSAR BUY 0/1 | SELL 0/1 | HOLD 1/1 | flat</td>
+      <td>0.000000</td>
+      <td>kickoff_yellow_shadow</td>
+      <td>refresh_green_shadow_live</td>
+      <td>stay_shadow_until_promotion_gate</td>
+      <td>keep_shadow_until_promotion_gate</td>
+      <td>ok_refresh_with_cache_fallback</td>
+      <td>shadow lane 已写实成独立账位：当前 EMA BUY 0/1 | SELL 1/1 | HOLD 0/1，flat；recent-forward 改善仍不等于 promotion，继续只做 shadow 记账。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q35b. 如果把 top-3 首刷扩到全部 active `1d` lanes，今天这张 daily refresh snapshot 会告诉我们什么？</h2>
+    <p class="a">Q35 只覆盖 queue top-3，足够证明“账本开始动了”；但如果要更接近日常 paper/shadow 运行，下一步要看的不是再补一层 board，而是 <b>同一天里全部 active `1d` lanes 的真实 refresh 状态</b>。这张 snapshot 直接回答：今天哪些 lane 真的有 live bar、哪些还在缓存 fallback、哪些已经开出 long、哪些仍 flat。</p>
+    <ul>
+      <li><b>primary lane：</b>primary 日频账位已进入真实续写状态：当前 EMA BUY 1/1 | SELL 0/1 | HOLD 0/1，long_open_since_2026-04-10；后续应继续沿同一张 primary 账本做 market-close refresh，并等待首个 weekly review。</li>
+      <li><b>secondary 日频总览：</b>美股日频=EMA BUY 0/3 | SELL 3/3 | HOLD 0/3 / flat_3/3；茅台日频=EMA BUY 0/1 | SELL 1/1 | HOLD 0/1 / flat；crypto 日频=EMA BUY 0/3 | SELL 3/3 | HOLD 0/3 / flat_3/3</li>
+      <li><b>shadow lane：</b>shadow lane 已写实成独立账位：当前 EMA BUY 0/1 | SELL 1/1 | HOLD 0/1，flat；recent-forward 改善仍不等于 promotion，继续只做 shadow 记账。</li>
+      <li><b>数据健康：</b>当前 `1d` active lanes 约 <code>2</code> 条 live refresh、<code>3</code> 条 cache fallback、<code>0</code> 条数据断流（需先修源）。</li>
+      <li><b>仓位状态：</b>当前约 <code>1</code> 条在 `long_open/mixed_open`，<code>4</code> 条仍是 flat。</li>
+      <li><b>deployment 含义：</b>Jerry 现在能直接看见“这条线今天到底在不在跑”，而不需要再从 top-3 局部状态外推全盘。</li>
+    </ul>
+    <h3>EMA paper/shadow daily refresh snapshot（all active 1d lanes）</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>refresh_rank</th>
+      <th>refresh_clock_utc</th>
+      <th>deployment_scope</th>
+      <th>paper_status</th>
+      <th>market_freq_book</th>
+      <th>tracked_members</th>
+      <th>latest_completed_bar_utc</th>
+      <th>data_source</th>
+      <th>signal_state</th>
+      <th>position_state</th>
+      <th>benchmark_psar_state</th>
+      <th>open_unrealized_pct</th>
+      <th>monitor_status</th>
+      <th>review_action</th>
+      <th>data_health</th>
+      <th>refresh_note</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>创业板ETF 1d</td>
+      <td>active_primary</td>
+      <td>A股-1d</td>
+      <td>创业板ETF</td>
+      <td>2026-06-10 00:00 UTC</td>
+      <td>eastmoney_cache_fallback</td>
+      <td>EMA BUY 1/1 | SELL 0/1 | HOLD 0/1</td>
+      <td>long_open_since_2026-04-10</td>
+      <td>PSAR BUY 0/1 | SELL 1/1 | HOLD 0/1 | flat</td>
+      <td>12.598196</td>
+      <td>refresh_green_primary_live</td>
+      <td>keep_primary_start_weekly_review</td>
+      <td>ok_refresh_with_cache_fallback</td>
+      <td>primary 日频账位已进入真实续写状态：当前 EMA BUY 1/1 | SELL 0/1 | HOLD 0/1，long_open_since_2026-04-10；后续应继续沿同一张 primary 账本做 market-close refresh，并等待首个 weekly review。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>active_secondary_backstop</td>
+      <td>美股-1d</td>
+      <td>SPY / QQQ / AAPL</td>
+      <td>2026-03-27 00:00 UTC</td>
+      <td>stooq_cache_fallback</td>
+      <td>EMA BUY 0/3 | SELL 3/3 | HOLD 0/3</td>
+      <td>flat_3/3</td>
+      <td>PSAR BUY 0/3 | SELL 2/3 | HOLD 1/3 | mixed_open_1/3</td>
+      <td>0.000000</td>
+      <td>refresh_yellow_front_queue_live</td>
+      <td>keep_secondary_then_stricter_front_recheck</td>
+      <td>ok_refresh_with_cache_fallback</td>
+      <td>front-queue secondary 已写实：当前 EMA BUY 0/3 | SELL 3/3 | HOLD 0/3，flat_3/3；它可以继续保留在 active secondary，但仍应优先接受 stricter front recheck，不能再靠 family 总体叙事遮盖。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>active_secondary_backstop</td>
+      <td>Crypto-1d</td>
+      <td>BTC / ETH / SOL</td>
+      <td>2026-06-10 00:00 UTC</td>
+      <td>binance_live</td>
+      <td>EMA BUY 0/3 | SELL 3/3 | HOLD 0/3</td>
+      <td>flat_3/3</td>
+      <td>PSAR BUY 0/3 | SELL 3/3 | HOLD 0/3 | flat_3/3</td>
+      <td>0.000000</td>
+      <td>refresh_green_backstop_live</td>
+      <td>keep_secondary_backstop</td>
+      <td>ok_live_refresh</td>
+      <td>backstop secondary 已有真实 market-close 状态：当前 EMA BUY 0/3 | SELL 3/3 | HOLD 0/3，flat_3/3；只要账本能稳定续写，就继续保留 backstop 身份，不抢 front-queue 资源。</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>active_secondary_backstop</td>
+      <td>A股-1d</td>
+      <td>贵州茅台</td>
+      <td>2026-03-27 00:00 UTC</td>
+      <td>stooq_cache_fallback</td>
+      <td>EMA BUY 0/1 | SELL 1/1 | HOLD 0/1</td>
+      <td>flat</td>
+      <td>PSAR BUY 0/1 | SELL 1/1 | HOLD 0/1 | flat</td>
+      <td>0.000000</td>
+      <td>refresh_yellow_mid_queue_live</td>
+      <td>keep_secondary_then_recheck_mid</td>
+      <td>ok_refresh_with_cache_fallback</td>
+      <td>mid-queue secondary 已落首份真实日频状态：当前 EMA BUY 0/1 | SELL 1/1 | HOLD 0/1，flat；这格可以继续独立记账，但资源顺序仍应排在 front queue 之后。</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>沪深300ETF 1d</td>
+      <td>shadow_watch</td>
+      <td>A股-1d</td>
+      <td>沪深300ETF</td>
+      <td>2026-06-11 00:00 UTC</td>
+      <td>eastmoney_live</td>
+      <td>EMA BUY 0/1 | SELL 1/1 | HOLD 0/1</td>
+      <td>flat</td>
+      <td>PSAR BUY 0/1 | SELL 1/1 | HOLD 0/1 | flat</td>
+      <td>0.000000</td>
+      <td>refresh_green_shadow_live</td>
+      <td>keep_shadow_until_promotion_gate</td>
+      <td>ok_live_refresh</td>
+      <td>shadow lane 已写实成独立账位：当前 EMA BUY 0/1 | SELL 1/1 | HOLD 0/1，flat；recent-forward 改善仍不等于 promotion，继续只做 shadow 记账。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q35c. 如果把 active `1d` lanes 的 live/fallback 依赖也压成一张运行审计表，EMA 离更稳的 paper/shadow 还差什么？</h2>
+    <p class="a">Q35b 已经告诉我们“今天在不在跑”，但 deployment 上真正更接近下一刀的问题是：<b>哪些 lane 只是 live，哪些 lane 仍然靠 fallback 勉强续写，资源顺序该先修哪里。</b> 这张 audit 不再新增 alpha 结论，而是把当前 all active `1d` lanes 的 source 依赖压成一张可执行表，避免继续在 runbook 近义层打转。</p>
+    <ul>
+      <li><b>primary blocker 已经收敛：</b>EMA 现在已经能继续 paper/shadow 续写，但唯一 primary pilot 仍靠 cache fallback；当前最像 deployment blocker 的已经是 source-risk，而不是新的 alpha wording。</li>
+      <li><b>shadow fallback 继续留在正确位置：</b>shadow lane 已 live；继续 shadow 观察即可，不需要额外 source 动作。</li>
+      <li><b>live secondary 现在更该盯 honesty，不是 source：</b>Crypto 1d+1wk（BTC/ETH/SOL）=p5_backstop_keep_live</li>
+      <li><b>项目级读法：</b>当前 active `1d` lanes 里仍有 3/5 条依赖 cache fallback（创业板ETF 1d, 美股 1d+1wk（SPY/QQQ/AAPL）, 贵州茅台 1d+1wk）；其中唯一 primary lane 仍在 fallback，所以 EMA 更像 `可续跑但仍有 primary source-risk`，而不是已经完全 paper-ready。</li>
+      <li><b>deployment 含义：</b>EMA 当前更像已经进入 `can-run / can-ledger`，但还没到“source-risk 也清零”的更稳 paper-ready；下一刀若继续 EMA，默认更该先压 A股日频 fallback 依赖，而不是继续补近义 runbook 页面。</li>
+    </ul>
+    <h3>EMA paper/shadow refresh dependency audit</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>dependency_rank</th>
+      <th>deployment_scope</th>
+      <th>paper_status</th>
+      <th>market_freq_book</th>
+      <th>data_source</th>
+      <th>latest_completed_bar_utc</th>
+      <th>data_health</th>
+      <th>dependency_status</th>
+      <th>ops_priority</th>
+      <th>deployment_read</th>
+      <th>next_action</th>
+      <th>why_it_matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>10</td>
+      <td>创业板ETF 1d</td>
+      <td>active_primary</td>
+      <td>A股-1d</td>
+      <td>eastmoney_cache_fallback</td>
+      <td>2026-06-10 00:00 UTC</td>
+      <td>ok_refresh_with_cache_fallback</td>
+      <td>cache_fallback</td>
+      <td>p1_primary_live_source_upgrade</td>
+      <td>EMA 现在已经能继续 paper/shadow 续写，但唯一 primary pilot 仍靠 cache fallback；当前最像 deployment blocker 的已经是 source-risk，而不是新的 alpha wording。</td>
+      <td>优先把唯一 primary `创业板ETF 1d` 从 cache fallback 升成可重复的 live source；在那之前每次 refresh 都必须复核 cache freshness。</td>
+      <td>`closest to paper` 若长期停在 fallback，会让 primary ledger 的运行诚实度变差。</td>
+    </tr>
+    <tr>
+      <td>30</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>active_secondary_backstop</td>
+      <td>美股-1d</td>
+      <td>stooq_cache_fallback</td>
+      <td>2026-03-27 00:00 UTC</td>
+      <td>ok_refresh_with_cache_fallback</td>
+      <td>cache_fallback</td>
+      <td>p3_nonprimary_fallback_watch</td>
+      <td>这格可继续跑，但 source 仍有 fallback 依赖；如果后续还要继续扩 active lanes，先把 fallback SLA 说清更诚实。</td>
+      <td>继续运行，但把 refresh freshness 与 fallback 可用性写进日常 review；必要时再升级 live source。</td>
+      <td>非 primary 的 fallback 不会立刻否掉 lane，但会增加运营摩擦。</td>
+    </tr>
+    <tr>
+      <td>30</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>active_secondary_backstop</td>
+      <td>A股-1d</td>
+      <td>stooq_cache_fallback</td>
+      <td>2026-03-27 00:00 UTC</td>
+      <td>ok_refresh_with_cache_fallback</td>
+      <td>cache_fallback</td>
+      <td>p3_nonprimary_fallback_watch</td>
+      <td>这格可继续跑，但 source 仍有 fallback 依赖；如果后续还要继续扩 active lanes，先把 fallback SLA 说清更诚实。</td>
+      <td>继续运行，但把 refresh freshness 与 fallback 可用性写进日常 review；必要时再升级 live source。</td>
+      <td>非 primary 的 fallback 不会立刻否掉 lane，但会增加运营摩擦。</td>
+    </tr>
+    <tr>
+      <td>42</td>
+      <td>沪深300ETF 1d</td>
+      <td>shadow_watch</td>
+      <td>A股-1d</td>
+      <td>eastmoney_live</td>
+      <td>2026-06-11 00:00 UTC</td>
+      <td>ok_live_refresh</td>
+      <td>live</td>
+      <td>p4_shadow_keep_live</td>
+      <td>shadow lane 已 live；继续 shadow 观察即可，不需要额外 source 动作。</td>
+      <td>继续 shadow refresh；只有 promotion gate 真补齐时，才讨论升格。</td>
+      <td>live shadow 的意义是继续诚实观察，而不是提前 promotion。</td>
+    </tr>
+    <tr>
+      <td>50</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>active_secondary_backstop</td>
+      <td>Crypto-1d</td>
+      <td>binance_live</td>
+      <td>2026-06-10 00:00 UTC</td>
+      <td>ok_live_refresh</td>
+      <td>live</td>
+      <td>p5_backstop_keep_live</td>
+      <td>这格 live + backstop 状态已经足够支撑日常续写；现在不必为了它再开新的运营支线。</td>
+      <td>继续保留 live refresh；只在 front / mid queue 稳住后，再考虑是否需要更严格 recheck。</td>
+      <td>backstop 的价值在于稳定续写，而不是抢前排资源。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q35d. 如果今天还没有新的已收盘日线，这张 live ledger 现在是在按时等下一次 close，还是已经 stale 掉了？</h2>
+    <p class="a">Q35c 把 source-risk 先压掉以后，下一步最容易被误读的，是“现在没有新 refresh 结果”到底表示系统停了，还是只是周末 / 非收盘时段还没到下一根 completed bar。这张 on-clock audit 不去假装生成不存在的新 forward 结果，而是把 <b>下一次 close 在什么时候、首个 week-1 review 什么时候才真的到时、现在该等什么</b> 写成一张运行审计表。</p>
+    <ul>
+      <li><b>primary on-clock 读法：</b>当前没有新的已收盘 bar 可继续写；primary ledger 现在是在按计划等待下一次 A股日线收盘，不是 stale 掉。</li>
+      <li><b>secondary / shadow 当前在等什么：</b>front-queue 美股=2026-06-11 20:00 UTC 前等待真 close；mid-queue 茅台=2026-06-12 07:00 UTC 前保持 on-clock；crypto backstop=2026-06-12 00:00 UTC 前继续等待 UTC close；shadow 沪深300ETF=2026-06-12 07:00 UTC 前继续记 shadow</li>
+      <li><b>week-1 review 节奏：</b>当前首个 week-1 review 还没到时；最早约在 2026-06-18 07:00 UTC，在那之前更诚实的动作是等下一次真实 completed bar，而不是伪造不存在的新 review。</li>
+      <li><b>项目级读法：</b>当前 active `1d` lanes 约 5/5 条都处在 `on-clock waiting next close`；同时 week-1 review 约 5/5 条仍未到时。也就是说，EMA 现在更像是在按计划等待下一次真实市场 close，而不是账本停在半路。</li>
+      <li><b>deployment 含义：</b>这一步的价值不是伪造一笔不存在的新 forward refresh，而是把“什么时候该刷、什么时候只是正常等待”写死，避免周末/非收盘时段把没新 bar 误判成 ledger 停转。</li>
+    </ul>
+    <h3>EMA paper/shadow refresh clock audit</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>clock_rank</th>
+      <th>deployment_scope</th>
+      <th>paper_status</th>
+      <th>market_freq_book</th>
+      <th>refresh_clock_utc</th>
+      <th>latest_completed_bar_utc</th>
+      <th>data_source</th>
+      <th>clock_status</th>
+      <th>next_expected_close_utc</th>
+      <th>time_to_next_close</th>
+      <th>week1_review_due_utc</th>
+      <th>time_to_week1_review</th>
+      <th>week1_status</th>
+      <th>current_clock_read</th>
+      <th>next_gate</th>
+      <th>why_it_matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>创业板ETF 1d</td>
+      <td>active_primary</td>
+      <td>A股-1d</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>2026-06-10 00:00 UTC</td>
+      <td>eastmoney_cache_fallback</td>
+      <td>on_clock_waiting_next_close</td>
+      <td>2026-06-12 07:00 UTC</td>
+      <td>约 24.0 小时</td>
+      <td>2026-06-18 07:00 UTC</td>
+      <td>约 7.0 天</td>
+      <td>week1_not_due</td>
+      <td>当前没有新的已收盘 bar 可继续写；primary ledger 现在是在按计划等待下一次 A股日线收盘，不是 stale 掉。</td>
+      <td>先等 2026-06-12 07:00 UTC 左右的A股日线收盘（距今 约 24.0 小时）再续写同一张 ledger。 week-1 review 最早约在 2026-06-18 07:00 UTC（距今 约 7.0 天）。</td>
+      <td>primary 现在更需要真实下一笔 forward refresh，而不是被周末/非收盘时段的空窗误读成停转。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>active_secondary_backstop</td>
+      <td>美股-1d</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>2026-03-27 00:00 UTC</td>
+      <td>stooq_cache_fallback</td>
+      <td>on_clock_waiting_next_close</td>
+      <td>2026-06-11 20:00 UTC</td>
+      <td>约 13.0 小时</td>
+      <td>2026-06-18 07:00 UTC</td>
+      <td>约 7.0 天</td>
+      <td>week1_not_due</td>
+      <td>front-queue secondary 现在不是卡在 source，而是在按时等待下一次 美股日线收盘；那之后才该继续判 keep / stricter recheck / demote。</td>
+      <td>先等 2026-06-11 20:00 UTC 左右的美股日线收盘（距今 约 13.0 小时）再续写同一张 ledger。 week-1 review 最早约在 2026-06-18 07:00 UTC（距今 约 7.0 天）。</td>
+      <td>它把“现在没新 refresh”与“账本真的停了”区分开，避免在周末/非收盘时段误判 ledger 断续。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>active_secondary_backstop</td>
+      <td>Crypto-1d</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>2026-06-10 00:00 UTC</td>
+      <td>binance_live</td>
+      <td>on_clock_waiting_next_close</td>
+      <td>2026-06-12 00:00 UTC</td>
+      <td>约 17.0 小时</td>
+      <td>2026-06-18 07:00 UTC</td>
+      <td>约 7.0 天</td>
+      <td>week1_not_due</td>
+      <td>backstop secondary 当前也在按计划等待下一次 UTC 日线收盘；今天没有新 bar 不等于它停转。</td>
+      <td>先等 2026-06-12 00:00 UTC 左右的UTC 日线收盘（距今 约 17.0 小时）再续写同一张 ledger。 week-1 review 最早约在 2026-06-18 07:00 UTC（距今 约 7.0 天）。</td>
+      <td>它把“现在没新 refresh”与“账本真的停了”区分开，避免在周末/非收盘时段误判 ledger 断续。</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>active_secondary_backstop</td>
+      <td>A股-1d</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>2026-03-27 00:00 UTC</td>
+      <td>stooq_cache_fallback</td>
+      <td>on_clock_waiting_next_close</td>
+      <td>2026-06-12 07:00 UTC</td>
+      <td>约 24.0 小时</td>
+      <td>2026-06-18 07:00 UTC</td>
+      <td>约 7.0 天</td>
+      <td>week1_not_due</td>
+      <td>mid-queue secondary 当前同样 on-clock；先等下一次 A股日线收盘，再决定是否需要更严格 recheck。</td>
+      <td>先等 2026-06-12 07:00 UTC 左右的A股日线收盘（距今 约 24.0 小时）再续写同一张 ledger。 week-1 review 最早约在 2026-06-18 07:00 UTC（距今 约 7.0 天）。</td>
+      <td>它把“现在没新 refresh”与“账本真的停了”区分开，避免在周末/非收盘时段误判 ledger 断续。</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>沪深300ETF 1d</td>
+      <td>shadow_watch</td>
+      <td>A股-1d</td>
+      <td>2026-06-11 07:00 UTC</td>
+      <td>2026-06-11 00:00 UTC</td>
+      <td>eastmoney_live</td>
+      <td>on_clock_waiting_next_close</td>
+      <td>2026-06-12 07:00 UTC</td>
+      <td>约 24.0 小时</td>
+      <td>2026-06-18 07:00 UTC</td>
+      <td>约 7.0 天</td>
+      <td>week1_not_due</td>
+      <td>shadow lane 当前也是按计划等待下一次 A股日线收盘；在 promotion gate 真过线前，正确动作仍是继续记 shadow。</td>
+      <td>先等 2026-06-12 07:00 UTC 左右的A股日线收盘（距今 约 24.0 小时）再续写同一张 ledger。 week-1 review 最早约在 2026-06-18 07:00 UTC（距今 约 7.0 天）。</td>
+      <td>shadow lane 的职责是继续诚实观察；当前最重要的是别把‘暂时没新 bar’误读成可以偷渡 promotion。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q35e. 如果把 PSAR 快退出直接焊进当前 A股 daily 的 paper/shadow runbook，它真会让 admission 更诚实吗？</h2>
+    <p class="a">Q35d 说明当前没新 completed bar 只是正常等时钟，不代表这轮没别的 deployment-facing 动作可做。更像样的一刀是直接回答：<b>既然 `创业板ETF 1d` 已经是 primary、`沪深300ETF 1d` 还在 shadow，那 PSAR 快退出要不要现在就写进 A股 daily 的默认运行规则。</b> 这里不新增下载，只复用同一批 A股 daily strict holdout，把 <code>单跑 EMA</code> 与 <code>EMA + PSAR exit overlay</code> 放到同一口径下比较。</p>
+    <ul>
+      <li><b>创业板ETF 1d / primary pilot：</b>在 <code>8</code> 个 strict holdout 里，overlay 约只有 <code>75.00%</code> 能把 net20 做得更好；median net20 delta 约 <code>2.00%</code>，median trade delta 约 <code>13</code> 笔。当前更诚实的 runbook 读法是 <b><code>candidate_protective_overlay</code></b>——多数 strict holdout 都改善，PSAR 可继续当 primary 的 shadow protective 候选，但还不该直接改写默认 EMA 持有规则。</li>
+      <li><b>沪深300ETF 1d / shadow watch：</b>在 <code>8</code> 个 strict holdout 里，overlay 约有 <code>25.00%</code> 把 net20 做得更好；median net20 delta 约 <code>-1.51%</code>，median trade delta 约 <code>15</code> 笔。也就是说，哪怕 recent-forward 已转正，PSAR overlay 目前也不能当成 shadow promotion 的补丁。</li>
+      <li><b>项目级结果：</b>这批 A股 daily holdout 合起来，overlay 约只有 <code>50.00%</code> 能改善 net20，整体 median net20 delta 约 <code>-0.38%</code>，median trade delta 约 <code>14</code> 笔；当前 overall verdict 是 <b><code>mixed_shadow_only_not_default</code></b>。</li>
+      <li><b>deployment 含义：</b>primary pilot 虽有改善，但跨 A股 daily 合并后仍偏 mixed；PSAR 目前只配 shadow protective 观察位，不应焊进默认 runbook。 换句话说，A股 daily 当前更合理的规则仍是 <b>EMA 负责方向与默认持有、PSAR 继续留在 benchmark / shadow 观察位</b>，而不是急着把快退出焊进 primary 或 shadow 的 admission runbook。</li>
+    </ul>
+    <h3>A股 daily PSAR exit overlay audit（strict holdouts）</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset</th>
+      <th>current_role</th>
+      <th>holdouts</th>
+      <th>overlay_better_holdout_share</th>
+      <th>ema_net20_median_profit_pct</th>
+      <th>overlay_net20_median_profit_pct</th>
+      <th>median_net20_delta_pp</th>
+      <th>best_net20_delta_pp</th>
+      <th>worst_net20_delta_pp</th>
+      <th>median_trade_delta</th>
+      <th>overlay_verdict</th>
+      <th>deployment_reading</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>沪深300ETF</td>
+      <td>shadow watch</td>
+      <td>8</td>
+      <td>25.00%</td>
+      <td>-2.60%</td>
+      <td>-5.70%</td>
+      <td>-1.51%</td>
+      <td>4.78%</td>
+      <td>-8.38%</td>
+      <td>15</td>
+      <td>not_a_promotion_patch</td>
+      <td>overlay 还不能当 shadow promotion 的补丁；默认继续单跑 EMA shadow 记账，把 PSAR 留在 benchmark 位。</td>
+    </tr>
+    <tr>
+      <td>创业板ETF</td>
+      <td>primary pilot</td>
+      <td>8</td>
+      <td>75.00%</td>
+      <td>12.05%</td>
+      <td>9.09%</td>
+      <td>2.00%</td>
+      <td>11.76%</td>
+      <td>-33.46%</td>
+      <td>13</td>
+      <td>candidate_protective_overlay</td>
+      <td>多数 strict holdout 都改善，PSAR 可继续当 primary 的 shadow protective 候选，但还不该直接改写默认 EMA 持有规则。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q35f. 如果把当前 `EMA + PSAR` 结果收成一张 deployment matrix，哪些 pocket 还能继续，哪些应该直接封存？</h2>
+    <p class="a">到 Q35e 为止，这条线已经分别回答了两个最关键 pocket：<code>Crypto 60m</code> 这块最弱口袋能不能靠 overlay 救回来，以及 <code>A股 daily</code> 这块最接近 paper 的口袋该不该把 overlay 焊进 runbook。更接近 deployment 的下一步，不是再堆近义板块，而是把这些答案压成一张矩阵：<b>哪些 pocket 允许继续 shadow 观察，哪些 pocket 必须继续拒绝默认接线。</b></p>
+    <ul>
+      <li><b>先给项目级结论：</b>这版最小组合研究现在已经足够回答 first-pass 问题——<b>`EMA + PSAR` 并没有在项目级上变成“比单跑 EMA 更诚实的默认组合”</b>。当前更诚实的 deployment 写法是：<code>EMA</code> 继续负责方向与默认持有；<code>PSAR</code> 只在极少数 pocket 保留 `shadow protective watch` 身份。</li>
+      <li><b>必须继续封存的 pocket：</b><code>Crypto 60m</code> 目前只有 <code>4/30</code> 个窗口改善，median net20 delta 约 <code>-6.26%</code>，median trade delta 约 <code>46</code> 笔；所以它只能继续算 <b>reject rescue overlay</b>，不能拿来 reopen `60m fail pocket`。</li>
+      <li><b>唯一还能继续观察的 pocket：</b><code>创业板ETF 1d</code> 当前约 <code>75.00%</code> strict holdout 改善，median net20 delta 约 <code>2.00%</code>；因此它可以继续保留成 <b>primary lane 的 shadow protective 候选</b>，但默认 EMA 持有规则仍不应直接改写。</li>
+      <li><b>不能被偷渡成补丁的 pocket：</b><code>沪深300ETF 1d</code> 当前只有约 <code>25.00%</code> holdout 改善，median net20 delta 约 <code>-1.51%</code>；所以它继续只配 `shadow watch`，PSAR 不能当 promotion patch。</li>
+      <li><b>项目级默认规则：</b>A股 daily overall 当前约只有 <code>50.00%</code> holdout 改善，median net20 delta 约 <code>-0.38%</code>；更诚实的项目级 call 仍是：<b>默认单跑 EMA，PSAR 不升格成 family-wide default overlay。</b></li>
+    </ul>
+    <h3>EMA + PSAR overlay deployment matrix</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>scope</th>
+      <th>current_role</th>
+      <th>samples</th>
+      <th>overlay_better_share</th>
+      <th>median_net20_delta_pp</th>
+      <th>median_trade_delta</th>
+      <th>deployment_verdict</th>
+      <th>current_read</th>
+      <th>what_to_do_now</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Crypto 60m（BTC/ETH/SOL）</td>
+      <td>fail pocket / hard exclude</td>
+      <td>30 rolling windows</td>
+      <td>13.33%</td>
+      <td>-6.26%</td>
+      <td>46</td>
+      <td>reject_rescue_overlay</td>
+      <td>PSAR 快退出显著加交易但整体更差；不得把它当成 60m fail pocket 的补救层。</td>
+      <td>继续把 60m 留在 exclude / fail stoplist，不因 overlay reopen。</td>
+    </tr>
+    <tr>
+      <td>A股 daily｜创业板ETF 1d</td>
+      <td>primary pilot</td>
+      <td>8 strict holdouts</td>
+      <td>75.00%</td>
+      <td>2.00%</td>
+      <td>13</td>
+      <td>candidate_protective_overlay</td>
+      <td>多数 strict holdout 都改善，PSAR 可继续当 primary 的 shadow protective 候选，但还不该直接改写默认 EMA 持有规则。</td>
+      <td>继续只把 PSAR 留在 primary lane 的 shadow protective 观察位；默认 EMA 持有规则不改。</td>
+    </tr>
+    <tr>
+      <td>A股 daily｜沪深300ETF 1d</td>
+      <td>shadow watch</td>
+      <td>8 strict holdouts</td>
+      <td>25.00%</td>
+      <td>-1.51%</td>
+      <td>15</td>
+      <td>not_a_promotion_patch</td>
+      <td>overlay 还不能当 shadow promotion 的补丁；默认继续单跑 EMA shadow 记账，把 PSAR 留在 benchmark 位。</td>
+      <td>继续单跑 EMA shadow 记账；PSAR 不得充当 promotion patch。</td>
+    </tr>
+    <tr>
+      <td>A股 daily overall</td>
+      <td>paper/shadow aggregate check</td>
+      <td>16 strict holdouts</td>
+      <td>50.00%</td>
+      <td>-0.38%</td>
+      <td>14</td>
+      <td>mixed_shadow_only_not_default</td>
+      <td>primary pilot 虽有改善，但跨 A股 daily 合并后仍偏 mixed；PSAR 目前只配 shadow protective 观察位，不应焊进默认 runbook。</td>
+      <td>项目级默认仍是 EMA 负责方向；PSAR 只配 pocket-specific shadow watch，不是 default family overlay。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q35g. 如果只保留 `创业板ETF 1d` 这一格，PSAR overlay 的 narrow shadow protective protocol 该怎么写？</h2>
+    <p class="a">Q35f 已经把 `EMA + PSAR` 的项目级结论写死：默认仍是单跑 <code>EMA</code>，<code>PSAR</code> 不升格成 family-wide default overlay。既然如此，更接近 deployment 的下一刀就不该再补近义 wording，而是把唯一还能继续观察的 pocket——<code>创业板ETF 1d</code>——压成一张<b>窄口径 shadow protective protocol</b>：下一次真实 market close 到来时，到底该怎么记、怎么 review、什么情况下继续 shadow-only、什么情况下直接 rollback。</p>
+    <ul>
+      <li><b>先钉死边界：</b><code>创业板ETF 1d</code> 当前虽有约 <code>75.00%</code> strict holdout 改善、median net20 delta 约 <code>2.00%</code>，但 <code>A股 daily overall</code> 仍只有约 <code>50.00%</code> 改善、median delta 约 <code>-0.38%</code>。所以这格最多只配 <b>primary lane 的 sidecar shadow protective watch</b>，不能偷渡成整个 family 的默认 protective layer。</li>
+      <li><b>真实运行规则：</b>overlay sidecar 必须和 primary 主账本共用同一次 A 股收盘 refresh，只记录相对 <code>EMA-only</code> 的 comparator 字段（例如 <code>relative_net_delta_pp / trade_delta / review_note</code>），<b>不改变默认 EMA 持有规则</b>，也不允许在没有新 completed bar 时补伪 forward。</li>
+      <li><b>继续 or rollback 的读法：</b>在 live shadow 里，默认先按 weekly relative review 看 <code>cumulative relative delta / added trade churn / drawdown delta / execution mismatch</code>。只要没出现连续两次 relative red，就继续 shadow-only 观察；一旦连续转 red 或出现执行口径不一致，就直接退回 benchmark-only。</li>
+      <li><b>唯一允许升格的路径：</b>只有当 live shadow 也复现 overlay-specific gate（改善占比 <code>&gt;= 60%</code> 且 median relative delta <code>&gt; 0</code>），并同时通过项目级 <code>paper_live_promotion_gate_v1</code> 的最短观察期与 drawdown / execution guardrail，才配讨论非常有限的 default-overlay trial；在那之前，默认仍是 <b>EMA-only primary + PSAR sidecar shadow</b>。</li>
+    </ul>
+    <h3>创业板ETF 1d PSAR shadow protective protocol</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>protocol_rank</th>
+      <th>protocol_step</th>
+      <th>scope_or_cadence</th>
+      <th>concrete_rule</th>
+      <th>go_if</th>
+      <th>else_action</th>
+      <th>why_it_exists</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>scope freeze</td>
+      <td>只限 `创业板ETF 1d`；默认 EMA-only primary ledger 不改；每个 A 股日线收盘后才允许更新 sidecar。</td>
+      <td>PSAR overlay 只作为 primary lane 的 sidecar shadow protective 观察位；不得外推到 `沪深300ETF 1d`、`A股 daily family` 或 `Crypto 60m`，也不得提前改写默认持有规则。</td>
+      <td>当前历史证据仍保持 primary pocket 候选：strict holdout 改善占比约 75.00%，median net20 delta 约 2.00pp。</td>
+      <td>若尝试把 overlay 提前焊进默认 runbook 或推广到其他 pocket，立即回滚成 benchmark-only 注记。</td>
+      <td>先把唯一可观察 pocket 与不可偷渡范围写死，避免 primary 局部改善被误读成 family-wide default overlay。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>market-close sidecar refresh</td>
+      <td>与主账本共用 Eastmoney A 股日线 live source；每个 completed daily close 更新 1 次。</td>
+      <td>每次只补 sidecar comparator：`ema_signal / psar_state / overlay_exit_flag / relative_net_delta_pp / trade_delta / review_note`；没有 completed bar 就保持 `waiting next close`，不补伪 forward。</td>
+      <td>主账本与 sidecar 能在同一收盘时点同步更新，且 default EMA position 完全不受 shadow overlay 影响。</td>
+      <td>任一数据断流、时点不一致或需要事后补记时，sidecar 暂停；primary 继续按 EMA-only runbook 记账。</td>
+      <td>把‘只做 shadow protective 观察’落实到真实 refresh 动作，避免一边等真收盘、一边又在说明页里偷跑未来结果。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>weekly shadow review</td>
+      <td>与 `创业板ETF 1d` primary weekly review 同步；只做 relative review，不改默认 admission。</td>
+      <td>每周只看 sidecar 相对 EMA-only 的 `cumulative relative delta / added trade churn / drawdown delta / execution mismatch`；在没有连续两次 relative red 之前，overlay 继续只留 shadow protective watch。</td>
+      <td>relative review 仍未连续两次 red，且 extra churn 没明显恶化到把当前约 +13 笔的历史增交易读法打成反向证据。</td>
+      <td>若连续两次 relative red、或出现 execution mismatch，就降回 benchmark-only，不再单列 shadow watch。</td>
+      <td>当前 primary pocket 只是候选，不是默认层；真正该做的是先在 live ledger 里验证它会不会因为额外 churn 把纸面改善吃掉。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>promotion / default-overlay gate</td>
+      <td>只有在 live shadow 已积累到项目级最短观察期后，才允许申请有限 default-overlay trial。</td>
+      <td>先同时满足 overlay-specific gate（live review 的改善占比 ≥ 60% 且 median relative delta > 0）与项目级 `paper_live_promotion_gate_v1`（默认 `30d + >=20` closed cycles、drawdown 不突破 `max(1.25x, +3pp)` guardrail、无 execution mismatch），才允许讨论把 overlay 从 sidecar 提升成 primary 的有限试跑规则。</td>
+      <td>当前还不满足 promotion：A股 daily overall 目前仅约 50.00% holdout 改善、median delta 约 -0.38pp，因此更诚实的位置仍是 shadow-only。</td>
+      <td>继续 shadow-only；不要把 `创业板ETF 1d` 单格改善偷渡成整个 A股 daily 的默认 protective layer。</td>
+      <td>把 ‘候选 protective overlay’ 与 ‘可以接进默认 runbook’ 明确分层，真正缩短 time-to-paper，而不是靠模糊 wording 提前升格。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q35h. 下一次真实收盘一到，EMA 这张账本要按什么顺序落 refresh，避免“知道该做什么但执行时漂移”？</h2>
+    <p class="a">Q35d 说明了现在是 on-clock waiting next close，Q35g 也把 `创业板ETF 1d` 的 overlay 观察位规则写死了。真正离 deployment 更近的一步，是把“下一次真实收盘一到就该怎么做”再压成一张 <b>next-close action queue</b>，避免执行时回到口头层，或把 `primary / secondary / shadow` 的动作混在一起。</p>
+    <ul>
+      <li><b>当前状态：</b>当前 next-close queue 已按时序排好；首位是 美股 1d+1wk（SPY/QQQ/AAPL），预计在 2026-06-11 20:00 UTC 左右进入可执行 refresh 窗口。</li>
+      <li><b>队列含义：</b>这张 queue 不是新 admission 结论，而是把已有 runbook 变成“到点就能执行”的动作顺序：谁先记账、谁只做 shadow refresh、谁在 blocked 时先修数据再续写。</li>
+      <li><b>与未完成主线的关系：</b>它不能替代真实 forward refresh / week-1 review，但能显著降低下一次 close 到来时的执行漂移，让 line-299 那条未完成任务更容易一次性落成。</li>
+    </ul>
+    <h3>EMA paper/shadow next-close action queue</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>queue_rank</th>
+      <th>deployment_scope</th>
+      <th>paper_status</th>
+      <th>next_expected_close_utc</th>
+      <th>time_to_next_close</th>
+      <th>action_when_due</th>
+      <th>if_not_due</th>
+      <th>if_blocked</th>
+      <th>why_this_step</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>active_secondary_backstop</td>
+      <td>2026-06-11 20:00 UTC</td>
+      <td>约 13.0 小时</td>
+      <td>按同一收盘时点更新 secondary lane，并按 queue 判 keep / stricter recheck / demote。</td>
+      <td>保持 waiting_next_close；不补伪 forward，不新增近义 runbook wording。</td>
+      <td>若执行时发现时点错位/数据缺口，立即记为 blocked 并回到 runbook 的 rollback 路径。</td>
+      <td>secondary 不能再整批口头维持，必须逐 lane 用真实 refresh 决策升降级。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>active_secondary_backstop</td>
+      <td>2026-06-12 00:00 UTC</td>
+      <td>约 17.0 小时</td>
+      <td>按同一收盘时点更新 secondary lane，并按 queue 判 keep / stricter recheck / demote。</td>
+      <td>保持 waiting_next_close；不补伪 forward，不新增近义 runbook wording。</td>
+      <td>若执行时发现时点错位/数据缺口，立即记为 blocked 并回到 runbook 的 rollback 路径。</td>
+      <td>secondary 不能再整批口头维持，必须逐 lane 用真实 refresh 决策升降级。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>创业板ETF 1d</td>
+      <td>active_primary</td>
+      <td>2026-06-12 07:00 UTC</td>
+      <td>约 24.0 小时</td>
+      <td>新 completed bar 到达后，先更新 primary ledger（signal/position/return），再判 monitor_status 是否仍可 keep_primary。</td>
+      <td>保持 waiting_next_close；不补伪 forward，不新增近义 runbook wording。</td>
+      <td>若执行时发现时点错位/数据缺口，立即记为 blocked 并回到 runbook 的 rollback 路径。</td>
+      <td>primary 是 closest-to-paper 的核心位；下一笔真实 refresh 直接影响 paper admission 可信度。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>active_secondary_backstop</td>
+      <td>2026-06-12 07:00 UTC</td>
+      <td>约 24.0 小时</td>
+      <td>按同一收盘时点更新 secondary lane，并按 queue 判 keep / stricter recheck / demote。</td>
+      <td>保持 waiting_next_close；不补伪 forward，不新增近义 runbook wording。</td>
+      <td>若执行时发现时点错位/数据缺口，立即记为 blocked 并回到 runbook 的 rollback 路径。</td>
+      <td>secondary 不能再整批口头维持，必须逐 lane 用真实 refresh 决策升降级。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>沪深300ETF 1d</td>
+      <td>shadow_watch</td>
+      <td>2026-06-12 07:00 UTC</td>
+      <td>约 24.0 小时</td>
+      <td>更新 shadow ledger 并复核 promotion gate；默认继续 stay shadow，不偷渡升格。</td>
+      <td>保持 waiting_next_close；不补伪 forward，不新增近义 runbook wording。</td>
+      <td>若执行时发现时点错位/数据缺口，立即记为 blocked 并回到 runbook 的 rollback 路径。</td>
+      <td>shadow 的价值是诚实观察，不是用局部好转提前改写 admission 结论。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q35i. 如果不想在下一次 close 之后还把这张账本误当成 `waiting`，该用什么 due-now / overdue 守门快照？</h2>
+    <p class="a">Q35h 已经把“到点后按什么顺序做”排好了，但实际运行里还差一个很容易漏掉的 deployment 问题：<b>什么时候应该继续等，什么时候其实已经该刷、甚至已经迟到。</b> 这张 guardrail snapshot 不新增任何 alpha 结论；它只负责把 <code>waiting_not_due / due_soon / due_now_refresh_window / overdue_refresh_check</code> 明确区分开，避免下一根真实 close 过后还继续把账本写成“只是正常等待”。</p>
+    <ul>
+      <li><b>当前状态：</b>当前所有 active lane 仍处在 `waiting_not_due`，说明现在更像正常等 close，而不是漏掉 refresh。</li>
+      <li><b>它和 Q35h 的分工：</b>Q35h 回答“到点后先做什么”；Q35i 回答“现在到底还是正常 waiting，还是已经该停止写近义说明、转去做 refresh / blocked 检查”。</li>
+      <li><b>为什么这刀有用：</b>它把“正常等 close”与“close 已过还没续写”分开；前者不该伪造 forward，后者也不该继续伪装成 on-clock waiting。</li>
+      <li><b>deployment 含义：</b>这不是新 board，也不是新 alpha；它只是给下一轮真实收盘后的执行留一个硬守门：一旦进入 <code>due_now</code> 或 <code>overdue</code>，默认先写 ledger / 查 blocked，不再补近义 narrative。</li>
+    </ul>
+    <h3>EMA paper/shadow due guardrail snapshot</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>guardrail_rank</th>
+      <th>deployment_scope</th>
+      <th>paper_status</th>
+      <th>latest_completed_bar_utc</th>
+      <th>next_expected_close_utc</th>
+      <th>relative_due_gap</th>
+      <th>due_bucket</th>
+      <th>week1_status</th>
+      <th>guardrail_action</th>
+      <th>if_missed</th>
+      <th>why_it_matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>active_secondary_backstop</td>
+      <td>2026-03-27 00:00 UTC</td>
+      <td>2026-06-11 20:00 UTC</td>
+      <td>约 13.0 小时 后到点</td>
+      <td>waiting_not_due</td>
+      <td>week1_not_due</td>
+      <td>继续 waiting_next_close；保持 queue 就绪，但不补伪 refresh。</td>
+      <td>若后续 close 已过仍没新 ledger，再从 waiting 切到 due-now / overdue 检查。</td>
+      <td>这说明当前是真的还没到 refresh 时点，不该硬做不存在的新 bar。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>active_secondary_backstop</td>
+      <td>2026-06-10 00:00 UTC</td>
+      <td>2026-06-12 00:00 UTC</td>
+      <td>约 17.0 小时 后到点</td>
+      <td>waiting_not_due</td>
+      <td>week1_not_due</td>
+      <td>继续 waiting_next_close；保持 queue 就绪，但不补伪 refresh。</td>
+      <td>若后续 close 已过仍没新 ledger，再从 waiting 切到 due-now / overdue 检查。</td>
+      <td>这说明当前是真的还没到 refresh 时点，不该硬做不存在的新 bar。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>创业板ETF 1d</td>
+      <td>active_primary</td>
+      <td>2026-06-10 00:00 UTC</td>
+      <td>2026-06-12 07:00 UTC</td>
+      <td>约 24.0 小时 后到点</td>
+      <td>waiting_not_due</td>
+      <td>week1_not_due</td>
+      <td>继续 waiting_next_close；保持 queue 就绪，但不补伪 refresh。</td>
+      <td>若后续 close 已过仍没新 ledger，再从 waiting 切到 due-now / overdue 检查。</td>
+      <td>这说明当前是真的还没到 refresh 时点，不该硬做不存在的新 bar。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>active_secondary_backstop</td>
+      <td>2026-03-27 00:00 UTC</td>
+      <td>2026-06-12 07:00 UTC</td>
+      <td>约 24.0 小时 后到点</td>
+      <td>waiting_not_due</td>
+      <td>week1_not_due</td>
+      <td>继续 waiting_next_close；保持 queue 就绪，但不补伪 refresh。</td>
+      <td>若后续 close 已过仍没新 ledger，再从 waiting 切到 due-now / overdue 检查。</td>
+      <td>这说明当前是真的还没到 refresh 时点，不该硬做不存在的新 bar。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>沪深300ETF 1d</td>
+      <td>shadow_watch</td>
+      <td>2026-06-11 00:00 UTC</td>
+      <td>2026-06-12 07:00 UTC</td>
+      <td>约 24.0 小时 后到点</td>
+      <td>waiting_not_due</td>
+      <td>week1_not_due</td>
+      <td>继续 waiting_next_close；保持 queue 就绪，但不补伪 refresh。</td>
+      <td>若后续 close 已过仍没新 ledger，再从 waiting 切到 due-now / overdue 检查。</td>
+      <td>这说明当前是真的还没到 refresh 时点，不该硬做不存在的新 bar。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q35j. 如果不想只看覆盖式 snapshot，还想确认这张 EMA 账本真的是 append-only 在续写，该看什么 history audit？</h2>
+    <p class="a">Q35i 解决的是“什么时候该刷”；但对最接近 paper 的这条线来说，还差一个更像记账层的问题：<b>我们现在看到的只是最新覆盖式 snapshot，还是已经在同一张账本上把 completed-bar 历史一笔一笔累计下来。</b> 这张 history audit 不新增任何 alpha 结论；它只是把 <code>ema_paper_trading_refresh_history.csv</code> 压成一张更可读的 append-only 审计表，让 Jerry 可以直接看出：每条 lane 目前是只有 seed 级 1 条记录，还是已经进入真正连续续写。</p>
+    <ul>
+      <li><b>当前状态：</b>当前 append-only history 已有 5/5 条 lane 进入 2+ 条 completed-bar 连续记录；它已经不只是覆盖式 snapshot，而是可审计的续写账本。</li>
+      <li><b>seed vs 连续续写：</b>当前所有已入 history 的 lane 都已超过单条 seed 记录，可以直接检查连续 refresh / missed refresh。</li>
+      <li><b>最近一条 ledger 记录：</b>最近一条 history 记录来自 Crypto 1d+1wk（BTC/ETH/SOL） / Crypto-1d，latest completed bar = 2026-06-10 00:00 UTC, recorded at = 2026-06-11 00:00 UTC。</li>
+      <li><b>deployment 含义：</b>这一步把‘当前 snapshot 长什么样’与‘同一张 ledger 有没有连续续写’分开；下一次真实 close 到来后，默认应先看 history rows 是否从 1 条 seed 增长到 2+ 条连续记录，而不是只盯最新覆盖式 snapshot。</li>
+    </ul>
+    <h3>EMA paper/shadow refresh history audit</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>history_rank</th>
+      <th>deployment_scope</th>
+      <th>paper_status</th>
+      <th>market_freq_book</th>
+      <th>rows_recorded</th>
+      <th>distinct_completed_bars</th>
+      <th>latest_completed_bar_utc</th>
+      <th>latest_history_recorded_at_utc</th>
+      <th>latest_data_source</th>
+      <th>history_status</th>
+      <th>continuity_read</th>
+      <th>next_needed_to_advance</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>创业板ETF 1d</td>
+      <td>active_primary</td>
+      <td>A股-1d</td>
+      <td>46</td>
+      <td>46</td>
+      <td>2026-06-10 00:00 UTC</td>
+      <td>2026-06-10 07:00 UTC</td>
+      <td>eastmoney_live</td>
+      <td>append_only_continuing</td>
+      <td>这格已经不只是一张覆盖式 snapshot，而是在同一张 append-only ledger 上累计 completed-bar 历史；可继续用它看 refresh / review 是否真的连续。</td>
+      <td>继续沿同一张 ledger 续写，并关注是否出现 missed refresh / duplicate key。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>美股 1d+1wk（SPY/QQQ/AAPL）</td>
+      <td>active_secondary_backstop</td>
+      <td>美股-1d</td>
+      <td>11</td>
+      <td>11</td>
+      <td>2026-03-27 00:00 UTC</td>
+      <td>2026-03-27 20:00 UTC</td>
+      <td>stooq_live</td>
+      <td>append_only_continuing</td>
+      <td>这格已经不只是一张覆盖式 snapshot，而是在同一张 append-only ledger 上累计 completed-bar 历史；可继续用它看 refresh / review 是否真的连续。</td>
+      <td>继续沿同一张 ledger 续写，并关注是否出现 missed refresh / duplicate key。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Crypto 1d+1wk（BTC/ETH/SOL）</td>
+      <td>active_secondary_backstop</td>
+      <td>Crypto-1d</td>
+      <td>89</td>
+      <td>89</td>
+      <td>2026-06-10 00:00 UTC</td>
+      <td>2026-06-11 00:00 UTC</td>
+      <td>binance_live</td>
+      <td>append_only_continuing</td>
+      <td>这格已经不只是一张覆盖式 snapshot，而是在同一张 append-only ledger 上累计 completed-bar 历史；可继续用它看 refresh / review 是否真的连续。</td>
+      <td>继续沿同一张 ledger 续写，并关注是否出现 missed refresh / duplicate key。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>贵州茅台 1d+1wk</td>
+      <td>active_secondary_backstop</td>
+      <td>A股-1d</td>
+      <td>11</td>
+      <td>11</td>
+      <td>2026-03-27 00:00 UTC</td>
+      <td>2026-03-27 20:00 UTC</td>
+      <td>stooq_live</td>
+      <td>append_only_continuing</td>
+      <td>这格已经不只是一张覆盖式 snapshot，而是在同一张 append-only ledger 上累计 completed-bar 历史；可继续用它看 refresh / review 是否真的连续。</td>
+      <td>继续沿同一张 ledger 续写，并关注是否出现 missed refresh / duplicate key。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>沪深300ETF 1d</td>
+      <td>shadow_watch</td>
+      <td>A股-1d</td>
+      <td>39</td>
+      <td>39</td>
+      <td>2026-06-09 00:00 UTC</td>
+      <td>2026-06-09 07:00 UTC</td>
+      <td>eastmoney_cache_fallback</td>
+      <td>append_only_continuing</td>
+      <td>这格已经不只是一张覆盖式 snapshot，而是在同一张 append-only ledger 上累计 completed-bar 历史；可继续用它看 refresh / review 是否真的连续。</td>
+      <td>继续沿同一张 ledger 续写，并关注是否出现 missed refresh / duplicate key。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Q36. 这页的边界是什么？</h2>
+    <ul>
+      <li>当前还是论文规则的 first-pass clean-room 扩展，不是最终生产策略。</li>
+      <li>成本部分目前是 <b>基于 gross 汇总结果的线性近似</b>，适合先看“空间厚不厚”，还不能替代逐笔净值回放。</li>
+      <li>day-0 ledger snapshot、first-refresh queue、top-3 first-refresh delta、以及 refresh clock audit 只代表首笔 paper/shadow 记账动作已经从空白 roster 进入真实状态、并且当前在按时等下一次真实 close，<b>不代表已经拿到了更长的新 forward alpha 证据</b>；真正改变 verdict 仍要靠后续 market-close refresh / weekly review。</li>
+      <li>当前新增的 overlay deployment matrix、`创业板ETF 1d` narrow shadow protocol、next-close action queue、due-guardrail snapshot、以及 refresh-history audit，只代表 `EMA + PSAR` 最小组合研究的 first-pass deployment 结论：它已经足够回答“哪些 pocket 还能继续 shadow、哪些必须拒绝默认接线、唯一剩下的 pocket 该怎么按 sidecar 运行、下一次 close 到来时按什么顺序执行 refresh、close 过后何时不该再把账本误写成 waiting、以及 append-only ledger 目前到底只是 seed 还是已经连续续写”，但并没有证明 PSAR 在所有 non60m pocket 上都没用，更不等于完成了全量参数化组合研究。</li>
+      <li>下一轮真正决定是否入库，还需要：<b>rolling / OOS honesty、正式 net backtest、参数稳定性、与现有 breakout/retest 线的组合价值</b>。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>相关产物</h2>
+    <ul>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/base_strategy_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_psar_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_psar_by_class_freq.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_psar_head_to_head.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/btc_paper_window_ema_psar.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema60m_crypto_rolling_window_metrics.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema60m_crypto_rolling_asset_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema60m_crypto_rolling_overall_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema60m_psar_exit_overlay_window_metrics.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema60m_psar_exit_overlay_asset_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema60m_psar_exit_overlay_overall_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema60m_psar_exit_overlay_trade_delta_buckets.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_psar_baseline_family_survivors.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_baseline_family_final_survivor_map.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_candidate_spec.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_operating_spec.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_monitoring_board.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_runbook.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_kickoff_checklist.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_ledger_template.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_day0_seed_rows.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_first_week_review_scorecard.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_day0_snapshot.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_first_refresh_queue.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_first_refresh_delta.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_daily_refresh_snapshot.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_refresh_dependency_audit.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_refresh_clock_audit.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_next_close_action_queue.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_due_guardrail_snapshot.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_refresh_history.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_paper_trading_refresh_history_audit.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_secondary_backstop_recheck_queue.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_non60m_honesty_queue.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_non60m_frontier_vs_psar.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_non60m_ashare_frontier_rolling_window_metrics.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_non60m_ashare_frontier_rolling_pocket_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_non60m_ashare_frontier_rolling_overall_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_non60m_ashare_daily_holdout_window_metrics.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_non60m_ashare_daily_holdout_pocket_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_ashare_daily_shadow_promotion_scorecard.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_ashare_daily_recent_forward_audit.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_ashare_daily_psar_overlay_holdout_window_metrics.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_ashare_daily_psar_overlay_pocket_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_ashare_daily_psar_overlay_overall_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_psar_overlay_deployment_matrix.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_chinext_daily_psar_shadow_protocol.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_non60m_ashare_daily_holdout_overall_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_ashare_daily_shadow_promotion_scorecard.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_non60m_ashare_weekly_holdout_window_metrics.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_non60m_ashare_weekly_holdout_pocket_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_raw_alpha/ema_non60m_ashare_weekly_holdout_overall_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_cost_budget_v1/ema_psar_cost_budget_strategy_summary.csv</code></li>
+      <li><code>reports/artifacts/ema_psar_cost_budget_v1/ema_psar_cost_budget_summary.csv</code></li>
+    </ul>
+    <p class="muted">上游依赖：<a href="../../reading/regime_switch_indicator_stack_replication/report.html">Regime Switch Indicator Stack Replication</a></p>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Deribit×OKX 期权仓只读成“跨所搬砖”：对 short-cycle crypto desk，更该先拆的是「同标的同到期同 strike 的 quote gap capture」这条 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Deribit×OKX 期权仓只读成“跨所搬砖”：对 short-cycle crypto desk，更该先拆的是「同标的同到期同 strike 的 quote gap capture」这条 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-22 03:57 UTC</span>
+      <span class="pill">研究时间：2026-04-22 03:53 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：relative value / options / cross-venue / quote-gap / maker-first / hedge / cost / risk</span>
+      <span class="pill">证据类型：工程经验 + 公开数据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-22_0353_deribit-okx-option-quote-gap-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-22 03:53 UTC</li>
+<li>类型：GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一 BTC 期权合约在 Deribit 与 OKX 之间的 bid/ask 错价回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：relative value / options / cross-venue / quote-gap / maker-first / hedge / cost / risk</li>
+<li>证据类型：工程经验 + 公开数据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>读了 <code>Hudie/crypto_algo_trading</code> 里的 <code>strategy/catch_gap.py</code>，再用 Deribit 与 OKX 公共期权 ticker 做了一个 BTC 期权同合约跨所快检。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这份代码不是只会“报价提醒”，而是完整写了：开仓阈值、双腿对冲、post-only、撤单、余额检查、单笔上限。</li>
+<li>1 分钟左右的 live snapshot 里，492 个可匹配合约对中，约 6~12 个出现正向 quote gap；但 &gt;0.25% 的极少，&gt;0.5% 也只有少数，&gt;1.0% 几乎没有。</li>
+<li>所以它更像“能跑的跨所期权价差壳”，不是常态厚边机器；真正值钱的是它把 entry / hedge / cancel / size 讲清楚了。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>它能直接补 <code>momentum</code> 的 <code>relative value / options / cross-venue</code> 素材池，也提醒我们：短周期 desk 里，quote gap 有时比方向更重要，但必须先过手续费与对冲深度。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值</li>
+<li>基础 alpha：同一期权合约跨 venue 的 bid/ask 错价</li>
+<li>regime：只做可成交、合约重叠、剩余期限还够的合约</li>
+<li>filter / veto：价差阈值、腿深度、余额/风险上限、gap 消失即撤单</li>
+<li>risk / sizing / execution overlay：双腿先后对冲、post-only、单笔上限、余额约束、取消全部订单</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>假设：Deribit 与 OKX 的同标的同到期同 strike 期权会偶发可交易错价。</li>
+<li>定义：<code>gap = best_bid_rich_venue - best_ask_cheap_venue</code>，只保留 <code>gap &gt; 0</code> 的合约对。</li>
+<li>最小切口：BTC 期权，Deribit vs OKX，当前全链路公共 ticker 快照；先看 1 分钟内 12 次轮询的正 gap 命中率，再测 5m/15m 的持续性。</li>
+<li>先看指标：<code>positive gap</code> 数量、<code>gap &gt; 0.5bp/1bp</code> 命中数、以及扣两腿费用后的净边。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这类机会很薄，常态下可能只够做 maker-first，不够做纯 taker。</li>
+<li>期权腿深度、隐波、希腊值与撮合延迟会迅速吃掉表面 edge。</li>
+<li>现在的 live 快检只证明“有错价、且壳完整”，还没证明长期净利润。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Hudie. <code>crypto_algo_trading</code>.</li>
+<li>Repo URL: &lt;<a href="https://github.com/Hudie/crypto_algo_trading&gt;">https://github.com/Hudie/crypto_algo_trading&gt;</a></li>
+<li>Audited files: <code>strategy/catch_gap.py</code>, <code>strategy/deribit_cross_future.py</code>, <code>strategy/deribit_cross_remote_future.py</code>, <code>strategy/deribit_perpetual_n_future_arb.py</code></li>
+<li>Public data: Deribit / OKX option tickers</li>
+<li>Probe artifact: <code>reports/artifacts/quant_digests/2026-04-22_deribit_okx_option_gap_probe_summary.csv</code></li>
+</ul>
+</body>
+</html>

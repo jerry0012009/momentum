@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 intraday crypto repo 只读成 close-reversal 笔记：对 short-cycle desk，更该先测的是「US ETF close-window BTC-vs-ETH relative-strength continuation」这条 cross-market raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 intraday crypto repo 只读成 close-reversal 笔记：对 short-cycle desk，更该先测的是「US ETF close-window BTC-vs-ETH relative-strength continuation」这条 cross-market raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-01 17:22 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-01_1720_us-etf-closewindow-btceth-relstrength-alpha.md</code></p>
+  </div>
+  <ul>
+<li>研究时间：2026-04-01 17:20 UTC</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：美股上市 crypto ETF 在收盘前 / 收盘后 30 分钟形成的 <strong>BTC complex vs ETH complex 相对强弱</strong>，会在后续 <code>30m~60m</code> 延续；可直接映射成 <code>BTC perp vs ETH perp</code> 的 relative-value continuation。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>类型标签：raw-alpha/cross-market/relative-value/us-etf/btc-vs-eth/close-window/after-hours/momentum/yfinance/crypto-etf/ibti-fbtc-etha-feth/5m/15m/3m/1m/repo/public-data/cost</li>
+</ul>
+<p>---</p>
+<h2>1. 这次看了什么</h2>
+<p>这次主材料仍来自 <strong>BNeillDickey (2026)</strong> 的 GitHub notebook：</p>
+<ul>
+<li><strong>Author / Year / Title / Venue</strong>: BNeillDickey, 2026, *intraday-crypto-reversal-project*, GitHub research notebook</li>
+<li><strong>Readable URL</strong>: <a href="https://github.com/BNeillDickey/intraday-crypto-reversal-project">https://github.com/BNeillDickey/intraday-crypto-reversal-project</a></li>
+<li><strong>Repo URL</strong>: <a href="https://github.com/BNeillDickey/intraday-crypto-reversal-project">https://github.com/BNeillDickey/intraday-crypto-reversal-project</a></li>
+<li><strong>核心文件</strong>: <code>Intraday_Crypto_Reversal_Project.ipynb</code></li>
+</ul>
+<p>但这轮不再重复前面已经 intake 过的 <strong>spot crypto US-session reversal</strong>，而是专门拎出 notebook 里另一条更适合 desk 的旁支：</p>
+<p>&gt; <strong>US-listed crypto ETF 的 close-window / after-hours momentum。</strong></p>
+<p>更准确地说，不要把它理解成“ETF 自己还能不能赚”。对我们更有价值的读法是：</p>
+<ul>
+<li><code>IBIT / FBTC</code> 基本就是 <strong>BTC beta 壳</strong>；</li>
+<li><code>ETHA / FETH</code> 基本就是 <strong>ETH beta 壳</strong>；</li>
+<li>所以 notebook 的横截面 momentum，在这 4 个 ETF 上很大程度等价于：</li>
+<p><strong>BTC complex 是否正在持续跑赢 ETH complex，或反过来。</strong></p>
+</ul>
+<p>这就能直接转译成 crypto desk 更熟悉的 trade：</p>
+<ul>
+<li><strong>long BTC perp / short ETH perp</strong></li>
+<li>或 <strong>long ETH perp / short BTC perp</strong></li>
+</ul>
+<p>在一个很窄、很明确的 U.S. close / after-hours 时间 pocket 内，做短周期 relative-value continuation。</p>
+<p>---</p>
+<h2>2. Base alpha 到底是什么</h2>
+<p>一句话先答：</p>
+<p>&gt; <strong>base alpha 是 U.S.-listed crypto ETF 的 close-window / after-hours 相对强弱延续，不是 filter，不是解释变量。</strong></p>
+<p>具体定义成 desk 可执行语言，就是：</p>
+<ol>
+<li>在纽约时间 <code>15:30–16:00</code> 或 <code>16:30–17:00</code>，观察 BTC ETF basket（<code>IBIT</code>,<code>FBTC</code>）与 ETH ETF basket（<code>ETHA</code>,<code>FETH</code>）谁更强；</li>
+<li>如果 BTC complex 明显更强，则下一段做 <strong>BTC &gt; ETH</strong>；</li>
+<li>如果 ETH complex 明显更强，则下一段做 <strong>ETH &gt; BTC</strong>；</li>
+<li>持有 <code>30m~60m</code>，不拖成隔夜宏观叙事。</li>
+</ol>
+<p>翻成人话：</p>
+<p><strong>不是赌“ETF 会带动 crypto”这种大而空的故事，而是赌一个很短的、可量化的资金接力：收盘前 / 收盘后先赢的那一边，下一段还会继续赢。</strong></p>
+<p>---</p>
+<h2>3. 为什么它比继续补一个泛 filter 更值得</h2>
+<p>因为这次不是在补共享 gate，而是在补一条<strong>能独立成策略卡</strong>的 cross-market raw alpha：</p>
+<ul>
+<li>有明确 <strong>entry</strong>（固定时间窗口后的 winner/loser）；</li>
+<li>有明确 <strong>exit</strong>（下一段 <code>30m</code> 或 <code>60m</code>）；</li>
+<li>有明确 <strong>sizing</strong>（BTC-vs-ETH dollar-neutral 或 beta-neutral）；</li>
+<li>有明确 <strong>risk shell</strong>（只做固定 pocket，不做全天）；</li>
+<li>有明确 <strong>cost shell</strong>（ETF 侧已有 7bps/side 假设，crypto 侧可重建 maker/taker ladder）。</li>
+</ul>
+<p>而且它对当前 desk 的意义不是“再多一个美股相关 story”，而是：</p>
+<ul>
+<li>给 <code>BTC-vs-ETH</code> 这条最容易落地的 RV 书补一个 <strong>U.S. close pocket</strong>；</li>
+<li>给 <code>1m / 3m / 5m / 15m</code> 的 execution pipeline 补一个 <strong>外部公开、低接入门槛、分钟级可取</strong> 的 trigger；</li>
+<li>给已有的 <strong>QQQ/NVDA lead-lag</strong> 之外，再补一个<strong>更贴近 crypto underlier 本身</strong>的美股侧 price-discovery 信号。</li>
+</ul>
+<p>---</p>
+<h2>4. Notebook 里最重要的硬数据</h2>
+<h3>4.1 数据面板</h3>
+<p>Notebook 直接拉了美股上市 crypto ETF：</p>
+<ul>
+<li><code>IBIT</code></li>
+<li><code>FBTC</code></li>
+<li><code>ETHA</code></li>
+<li><code>FETH</code></li>
+</ul>
+<p>主面板范围：</p>
+<ul>
+<li><strong>日内 60m 面板</strong>：<code>2024-02-26 → 2026-02-25</code></li>
+<li>面板大小：<code>8311 x 4</code></li>
+</ul>
+<p>补充验证：</p>
+<ul>
+<li><strong>5m pre/post market 面板</strong>：约最近 <code>60d</code></li>
+<li>面板大小：<code>10385 x 4</code></li>
+<li>范围：<code>2025-11-28 → 2026-02-25</code></li>
+</ul>
+<p>数据源是公开可得的 <code>yfinance</code> / Yahoo Finance prepost bars，门槛极低。</p>
+<h3>4.2 主策略窗口：收盘前 30m → 收盘后 60m</h3>
+<p>Notebook 的 primary ETF window 是：</p>
+<ul>
+<li><strong>signal</strong>：<code>15:30–16:00</code>（纽约时间）</li>
+<li><strong>hold</strong>：<code>16:00–17:00</code></li>
+</ul>
+<p>结果：</p>
+<ul>
+<li><strong>ETF close-window reversal</strong>: <code>SR = -7.01</code>（500 days）</li>
+<li><strong>ETF close-window momentum</strong>: <code>SR = 3.29</code>（500 days）</li>
+</ul>
+<p>这很关键：</p>
+<p>&gt; <strong>在 ETF 这条支线上，close-window 有效读法不是 reversal，而是 momentum。</strong></p>
+<p>也就是说，别把前面 spot crypto 的 close-window fade 机械平移过来； 同一个 U.S. session，<strong>ETF 这边表现出来的是“强者继续强、弱者继续弱”</strong>。</p>
+<h3>4.3 分 BTC / ETH complex 看，效果没塌</h3>
+<p>更关键的是，分资产壳之后信号没有消失：</p>
+<ul>
+<li><strong>BTC ETFs post-launch momentum SR = 3.72</strong>（500 days）</li>
+<li><strong>ETH ETFs post-launch momentum SR = 4.17</strong>（398 days）</li>
+</ul>
+<p>这说明它不是靠某一只 ETF 的 idiosyncratic 噪声堆出来， 而更像是 <strong>同一 underlier complex 的系统性延续</strong>。</p>
+<h3>4.4 全窗口 sweep：最强 pocket 在 after-hours</h3>
+<p>Notebook 对三个 session zone 一共扫了 <strong>612</strong> 组窗口 / mode 组合。</p>
+<p>Top pocket：</p>
+<ul>
+<li><strong>after_hours / ALL / 16:30–17:00 signal / 17:00–17:30 hold / momentum / SR = 8.62 / 494 days</strong></li>
+</ul>
+<p>其他高分 pocket：</p>
+<ul>
+<li><code>17:30–18:00 -&gt; 18:00–18:30</code>, momentum, <code>SR = 7.97</code></li>
+<li><code>15:30–16:00 -&gt; 16:00–17:00</code>, momentum, <code>SR = 3.29</code></li>
+<li><code>11:00–11:30 -&gt; 11:30–12:00</code>, momentum, <code>SR = 2.91</code></li>
+</ul>
+<p>但 notebook 也非常诚实：</p>
+<p>&gt; <strong>Best after-hours SR 8.62 ← TC may be understated in AH</strong></p>
+<p>所以正确读法不是“8.62 直接上实盘”，而是：</p>
+<ul>
+<li>after-hours pocket 很可能真有 alpha；</li>
+<li>但 ETF 真实 AH spreads 可能让 paper SR 被高估；</li>
+<li>对 crypto desk 来说，真正该做的是把这条信号<strong>转到流动性更连续的 BTC/ETH perp</strong> 上复核。</li>
+</ul>
+<h3>4.5 5m 验证：最强 after-hours pocket 没有完全塌掉</h3>
+<p>Notebook 又用约最近 60 天的 <code>5m</code> pre/post market 数据，对最强 pocket 做了更细粒度验证：</p>
+<ul>
+<li><strong>AH best (60m top)</strong> <code>16:30–17:00 -&gt; 17:00–17:30</code></li>
+<li>momentum <code>SR = +2.37</code></li>
+<li>reversal <code>SR = -6.87</code></li>
+<li><code>n = 56 days</code></li>
+<li><strong>Anchor close-momentum</strong> <code>15:30–16:00 -&gt; 16:00–17:00</code></li>
+<li>momentum <code>SR = +1.60</code></li>
+<li>reversal <code>SR = -7.95</code></li>
+<li><code>n = 58 days</code></li>
+<li><strong>AH alt</strong> <code>16:00–16:30 -&gt; 16:30–17:00</code></li>
+<li>momentum <code>SR = -0.60</code></li>
+<li>reversal <code>SR = -7.88</code></li>
+<li><code>n = 58 days</code></li>
+</ul>
+<p>这组结果最重要的不是绝对数值，而是：</p>
+<ol>
+<li><strong>最强 pocket 在 5m 上仍然为正，并且仍是 momentum 读法；</strong></li>
+<li>不是所有 after-hours pocket 都有效，说明它不是“只要美股收盘就乱冲”这么粗；</li>
+<li>alpha 很可能集中在<strong>更窄、更靠后的 after-hours 接力窗口</strong>。</li>
+</ol>
+<p>---</p>
+<h2>5. 这条 alpha 怎么转成 crypto desk 的最小可交易版本</h2>
+<h3>5.1 最 deskable 的转译：BTC-vs-ETH perp relative-value</h3>
+<p>不要直接照搬 ETF 横截面四资产权重。</p>
+<p>更适合我们 desk 的转译是：</p>
+<ul>
+<li>定义 BTC ETF basket return：<code>r_BTCETF = mean(r_IBIT, r_FBTC)</code></li>
+<li>定义 ETH ETF basket return：<code>r_ETHETF = mean(r_ETHA, r_FETH)</code></li>
+<li>定义相对强弱：<code>spread_sig = r_BTCETF - r_ETHETF</code></li>
+</ul>
+<p>交易规则：</p>
+<ul>
+<li>若 <code>spread_sig &gt; q</code>：做 <code>long BTC perp / short ETH perp</code></li>
+<li>若 <code>spread_sig &lt; -q</code>：做 <code>long ETH perp / short BTC perp</code></li>
+<li>若 <code>|spread_sig| &lt;= q</code>：不做</li>
+</ul>
+<p>这里的 <code>q</code> 不要先拍死，先用历史分位数：</p>
+<ul>
+<li><code>60%</code></li>
+<li><code>70%</code></li>
+<li><code>80%</code></li>
+<li><code>90%</code></li>
+</ul>
+<h3>5.2 时间 pocket 先只测两档</h3>
+<p>第一阶段别扫太多：</p>
+<p><strong>Pocket A（anchor）</strong></p>
+<ul>
+<li>signal: <code>15:30–16:00 ET</code></li>
+<li>hold: <code>16:00–17:00 ET</code></li>
+</ul>
+<p><strong>Pocket B（best AH）</strong></p>
+<ul>
+<li>signal: <code>16:30–17:00 ET</code></li>
+<li>hold: <code>17:00–17:30 ET</code></li>
+</ul>
+<p>再映射到 crypto bar：</p>
+<ul>
+<li><code>5m</code>：最自然</li>
+<li><code>15m</code>：能先测 alpha existence</li>
+<li><code>3m / 1m</code>：只做 execution refinement，不要一开始就上</li>
+</ul>
+<h3>5.3 sizing / risk / cost 壳</h3>
+<p>建议第一版直接用最朴素的 relative-value 壳：</p>
+<ul>
+<li><strong>notional-neutral</strong>：<code>|BTC leg| = |ETH leg|</code></li>
+<li>或 <strong>vol-neutral</strong>：按过去 <code>N=48</code> 根 <code>5m</code> realized vol 做反比缩放</li>
+<li>每次只持有一段，不做滚动加仓</li>
+<li>不跨过第二个时段，不讲 overnight 故事</li>
+</ul>
+<p>成本先做三档：</p>
+<ul>
+<li>maker-ish: <code>2 + 2 bps</code></li>
+<li>hybrid: <code>4 + 4 bps</code></li>
+<li>taker-ish: <code>6 + 6 bps</code></li>
+</ul>
+<p>如果在 <code>4+4bps</code> 以上已死，就不要往后讲大故事。</p>
+<p>---</p>
+<h2>6. 它和已有主线材料的区别</h2>
+<p>这条卡和我们已经做过的几类东西不同：</p>
+<ol>
+<li><strong>不同于 US-session spot reversal</strong>：</li>
+</ol>
+<ul>
+<li>那条是 spot crypto 自己在 U.S. session pocket 的横截面反转；</li>
+<li>这条是 ETF 侧 <strong>relative-strength continuation</strong>。</li>
+</ul>
+<ol>
+<li><strong>不同于 QQQ/NVDA lead-lag</strong>：</li>
+</ol>
+<ul>
+<li>那条是 broad tech / semis 对 crypto 的跨资产带动；</li>
+<li>这条更近一步，直接是 <strong>crypto underlier 自己的股票化壳</strong> 在带节奏。</li>
+</ul>
+<ol>
+<li><strong>不同于纯 filter</strong>：</li>
+</ol>
+<ul>
+<li>这里不是“只有满足条件才做别的 alpha”；</li>
+<li>它本身就能单独跑成 <code>BTC-vs-ETH</code> 的短周期 RV 策略。</li>
+</ul>
+<p>---</p>
+<h2>7. 目前最该担心的坑</h2>
+<h3>7.1 ETF after-hours 成本低估</h3>
+<p>这个 notebook 自己已经明说了：</p>
+<ul>
+<li><code>SR = 8.62</code> 的 AH pocket，<strong>TC 可能被低估</strong>。</li>
+</ul>
+<p>所以这条卡最危险的误读是：</p>
+<p>&gt; “ETF 回测这么好，直接按 ETF after-hours 去做。”</p>
+<p>正确做法是：</p>
+<ul>
+<li>把 ETF 视为 <strong>信号源</strong>；</li>
+<li>把 perp 视为 <strong>执行层</strong>；</li>
+<li>重新做 crypto 侧成本壳。</li>
+</ul>
+<h3>7.2 实际上只有两个 underlier</h3>
+<p>四个 ETF 名字看起来像横截面， 但本质只有两类 underlier：BTC 和 ETH。</p>
+<p>所以不要把它误读成“大 universe cross-sectional strategy”； 它更像：</p>
+<ul>
+<li><strong>BTC vs ETH 的二元 relative-strength state machine</strong>。</li>
+</ul>
+<h3>7.3 时间映射必须用纽约时区，不要偷懒写死 UTC</h3>
+<p>这条卡天然和 U.S. cash / after-hours 绑定。 如果直接写死 UTC，而不处理 DST，后面很容易把 pocket 对错。</p>
+<p>---</p>
+<h2>8. 最小实验设计（直接给 bot / 研究脚本用）</h2>
+<h3>8.1 数据</h3>
+<p><strong>公开可得</strong>：</p>
+<ul>
+<li>ETF：Yahoo Finance / yfinance <code>5m</code>，<code>prepost=True</code></li>
+<li>Crypto：Binance / Bybit / OKX perpetual <code>1m</code> 或 <code>5m</code></li>
+</ul>
+<h3>8.2 信号</h3>
+<p>对每个纽约交易日：</p>
+<ol>
+<li>聚合 ETF bars 得到：</li>
+</ol>
+<ul>
+<li><code>r_BTCETF(sig_window)</code></li>
+<li><code>r_ETHETF(sig_window)</code></li>
+</ul>
+<ol>
+<li>计算：</li>
+</ol>
+<ul>
+<li><code>spread_sig = r_BTCETF - r_ETHETF</code></li>
+</ul>
+<ol>
+<li>admission：</li>
+</ol>
+<ul>
+<li>只有 <code>|spread_sig|</code> 超过 rolling <code>70%~90%</code> 分位才开仓</li>
+</ul>
+<h3>8.3 交易</h3>
+<ul>
+<li>若 <code>spread_sig &gt; q</code>：<code>long BTC perp / short ETH perp</code></li>
+<li>若 <code>spread_sig &lt; -q</code>：<code>long ETH perp / short BTC perp</code></li>
+<li><code>entry</code>: signal window 结束后的下一根 <code>5m</code></li>
+<li><code>exit</code>: 固定 <code>30m</code> 或 <code>60m</code></li>
+<li><code>stop</code>: 第一版先不要加 discretionary stop，先看 fixed-hold raw alpha 是否存在</li>
+</ul>
+<h3>8.4 输出指标</h3>
+<p>至少看：</p>
+<ul>
+<li>annualized Sharpe</li>
+<li>avg pnl per trade / per day</li>
+<li>hit rate</li>
+<li>max drawdown</li>
+<li>turnover</li>
+<li>cost sensitivity</li>
+<li>按 pocket 分桶的 monotonicity</li>
+</ul>
+<p>---</p>
+<h2>9. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 transfer test，不要先做 full production backtest。</strong></li>
+</ol>
+<ul>
+<li>用 ETF <code>15:30–16:00</code> 和 <code>16:30–17:00</code> 两个 signal pocket，</li>
+<li>去打 <code>BTC perp vs ETH perp</code> 在后续 <code>30m/60m</code> 的收益差。</li>
+</ul>
+<ol>
+<li><strong>先测 admission threshold，而不是先卷复杂 sizing。</strong></li>
+</ol>
+<ul>
+<li><code>|spread_sig|</code> 分位从 <code>60/70/80/90</code> 四档扫；</li>
+<li>看 edge 是否只在尾部 pocket 才存在。</li>
+</ul>
+<ol>
+<li><strong>优先看 5m，再下钻 1m/3m。</strong></li>
+</ol>
+<ul>
+<li><code>5m</code> 用来验证 alpha existence；</li>
+<li><code>1m/3m</code> 只用来微调入场位置和 cost。</li>
+</ul>
+<ol>
+<li><strong>做一个“ETF signal only / crypto execution only”的诚实版本。</strong></li>
+</ol>
+<ul>
+<li>ETF 负责生成方向；</li>
+<li>crypto perp 负责成交；</li>
+<li>别把 ETF 与 perp return 混在一起回测，避免把信号层和执行层搅糊。</li>
+</ul>
+<p>---</p>
+<h2>10. 一句话结论</h2>
+<p><strong>这份 notebook 里更值得 desk intake 的，不是前面已经讲过的 spot close-window reversal，而是另一条可独立成卡的 cross-market raw alpha：用 U.S.-listed crypto ETF 在 close / after-hours 的 BTC-vs-ETH 相对强弱，去驱动后续 <code>30m~60m</code> 的 BTC-vs-ETH perp continuation。</strong></p>
+</body>
+</html>

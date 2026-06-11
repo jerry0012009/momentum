@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang='zh-CN'>
+<head>
+  <meta charset='utf-8' />
+  <meta name='viewport' content='width=device-width, initial-scale=1' />
+  <title>Rank 32b · rollout plan</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 1180px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111827; background: #f8fafc; }
+    .card { border:1px solid #e5e7eb; border-radius:14px; background:white; padding:18px 20px; margin:16px 0; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#eef2ff; color:#3730a3; font-size:12px; margin-right:6px; }
+    .muted { color:#6b7280; }
+    table { width:100%; border-collapse:collapse; margin-top:12px; font-size:14px; }
+    th,td { border-bottom:1px solid #e5e7eb; padding:8px 10px; text-align:left; vertical-align:top; }
+    a { color:#2563eb; text-decoration:none; }
+    code { background:#f3f4f6; padding:1px 5px; border-radius:6px; }
+  </style>
+</head>
+<body>
+  <p><a href='./report.html'>← 返回 Rank 32b 主报告</a></p>
+  <h1>Rank 32b · rollout plan</h1>
+  <p class='muted'>生成时间：2026-03-25T05:58:04Z ｜ 这页不是“觉得应该怎么上”，而是把 live-parity 回测结果翻译成可执行的上线顺序。</p>
+
+  <div class='card'>
+    <h2>hard read</h2>
+    <p><span class='pill'>先上 Tier 1 的 12 币</span><span class='pill'>18 币第二阶段</span><span class='pill'>并发 2 放到第三阶段</span></p>
+    <p><b>最合理的推进顺序是：先从 12 币、单并发开始；确认真实执行稳定后，再扩到 18 币；最后才考虑把 <code>max_concurrent</code> 从 1 升到 2。</b></p>
+    <p class='muted'>原因不是保守主义，而是回测显示：12 币阶段已经能把真实入选交易数从 568 提到 1881；18 币阶段再提到 2659；并发从 1 升到 2 还能再提到 3211。也就是说，三步走每一步都有可观增益，没必要一口气把所有风险同时打开。</p>
+  </div>
+
+  <div class='card'>
+    <h2>scenario compare（同一口径）</h2>
+    <p class='muted'>口径统一：market/taker 入场 + TP 1.25 ATR + SL 1.00 ATR + timeout 8x15m + strongest-signal-only。</p>
+    <table><thead><tr><th>scenario</th><th>label</th><th>selected_trades</th><th>vs_core3_trade_delta</th><th>win_rate</th><th>vs_core3_win_delta</th><th>avg_net_ret</th><th>vs_core3_avg_net_ret_delta</th><th>target_hit_rate</th><th>stop_hit_rate</th><th>timeout_rate</th><th>rejected_by_max_concurrent</th></tr></thead><tbody><tr><td>core3_mc1</td><td>当前基线：3 币，mc=1</td><td>568</td><td>+0.0%</td><td>75.0%</td><td>+0.0pp</td><td>0.3%</td><td>+0.000pp</td><td>72.9%</td><td>20.8%</td><td>6.3%</td><td>14</td></tr><tr><td>tier1_12_mc1</td><td>建议 Phase 1：12 币，mc=1</td><td>1881</td><td>+231.2%</td><td>70.5%</td><td>-4.5pp</td><td>0.3%</td><td>+0.003pp</td><td>67.0%</td><td>24.2%</td><td>8.8%</td><td>312</td></tr><tr><td>short18_mc1</td><td>建议 Phase 2：18 币，mc=1</td><td>2659</td><td>+368.1%</td><td>70.6%</td><td>-4.4pp</td><td>0.3%</td><td>+0.035pp</td><td>66.4%</td><td>23.8%</td><td>9.8%</td><td>620</td></tr><tr><td>short18_mc2</td><td>观察后升级：18 币，mc=2</td><td>3211</td><td>+465.3%</td><td>70.2%</td><td>-4.8pp</td><td>0.3%</td><td>+0.031pp</td><td>66.1%</td><td>24.1%</td><td>9.8%</td><td>68</td></tr></tbody></table>
+  </div>
+
+  <div class='card'>
+    <h2>recommended phases</h2>
+    <table><thead><tr><th>phase</th><th>universe</th><th>max_concurrent</th><th>why</th><th>gate_to_next_phase</th></tr></thead><tbody><tr><td>Phase 1</td><td>BTC ETH SOL LTC NEAR UNI XRP DOGE ADA AVAX LINK DOT</td><td>1</td><td>交易数相对 core3 提升明显（1881 vs 568），而单笔平均净收益没有变差；比直接 18 币更容易控制真实微结构风险。</td><td>连续 2~4 周 paper / 小实盘：执行链路稳定、SL/TP 归因正常、胜率/avg_net_ret 不显著劣化。</td></tr><tr><td>Phase 2</td><td>在 Phase 1 稳定后加入 BNB BCH ZEC AAVE SUI WLD → 18 币</td><td>1</td><td>18 币在当前实盘口径下 selected trades 提升到 2659，win rate 仅比 core3 低 4.4pp，avg_net_ret 反而略高。</td><td>连续 2~4 周观察 shortlist18：确认新增币种的真实滑点、触发频率、并发占用都符合预期。</td></tr><tr><td>Phase 3</td><td>18 币保持 strongest-signal-only，视情况把 max_concurrent 从 1 升到 2</td><td>2</td><td>mc=2 可把 selected trades 从 2659 提到 3211，同时 avg_net_ret 仅轻微回落，说明增量主要是被并发限制压掉的好机会。</td><td>仅在 Phase 2 已稳定、且 rejected_by_max_concurrent 仍明显偏高时才升级。</td></tr></tbody></table>
+  </div>
+
+  <div class='card'>
+    <h2>怎么读这份 rollout</h2>
+    <ul>
+      <li><b>为什么不是直接 18 币全上？</b> 因为虽然 18 币回测已经过关，但 ZEC/AAVE/SUI/WLD 这批币的真实微结构风险还没像主流币那样充分验证。</li>
+      <li><b>为什么 Phase 1 就值得做？</b> 因为 12 币阶段已经把真实入选交易数提升到 core3 的 3.3 倍，同时 avg_net_ret 没有变差。</li>
+      <li><b>为什么并发 2 放后面？</b> 因为 mc=2 的提升主要来自释放并发限制，而不是修复策略本身；这更像“加杠杆到执行层”，应该在前两阶段稳定后再开。</li>
+    </ul>
+  </div>
+
+  <div class='card'>
+    <h2>配套页面</h2>
+    <ul>
+      <li><a href='./universe_evidence_brief.html'>证据讲解页</a></li>
+      <li><a href='./universe_admission.html'>准入分层表</a></li>
+      <li><a href='./live_parity_compare_1y.html'>core3 vs shortlist18 实盘口径对照</a></li>
+      <li><a href='./live_parity_tier1_12_1y.html'>Tier 1 的 12 币实盘口径结果</a></li>
+      <li><a href='./live_parity_shortlist18_mc2_1y.html'>18 币 + mc=2 实盘口径结果</a></li>
+    </ul>
+  </div>
+</body>
+</html>

@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang='zh-CN'>
+<head>
+  <meta charset='utf-8' />
+  <title>Chan 2022 · S/R Feature Replication Report</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f8fafc; color:#0f172a; margin:0; padding:24px; }
+    .wrap { max-width: 1320px; margin: 0 auto; }
+    .card { background:white; border:1px solid #e2e8f0; border-radius:14px; padding:18px 20px; margin-bottom:18px; box-shadow:0 1px 2px rgba(0,0,0,0.04); }
+    .muted { color:#475569; }
+    .tbl { width:100%; border-collapse: collapse; font-size: 14px; }
+    .tbl th,.tbl td { border-bottom:1px solid #e5e7eb; padding:8px 10px; text-align:left; vertical-align:top; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:12px; margin-right:6px; }
+    img { max-width:100%; border:1px solid #e2e8f0; border-radius:12px; background:white; }
+    code { background:#f1f5f9; padding:1px 4px; border-radius:6px; }
+    a { color:#2563eb; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+  </style>
+</head>
+<body>
+<div class='wrap'>
+  <div class='card'>
+    <h1>Chan 2022 · S/R Feature Replication Report</h1>
+    <p class='muted'>这是第一版 clean-room replication。目标不是复刻原论文全部智能模型，而是先回答：<b>把 Support / Resistance 结构特征加进一个干净的 price-only baseline 后，是否能带来稳定增量价值？</b></p>
+    <p class='muted'><span class='pill'>baseline</span> 纯价格/波动/成交量特征 <span class='pill'>enhanced</span> baseline + clean-room S/R 特征 <span class='pill'>data</span> 8 crypto / 60m / 365d + 730d</p>
+  </div>
+
+  <div class='card'>
+    <h2>为什么这个 baseline 合理？</h2>
+    <ul>
+      <li>它<strong>故意不用</strong>旧的 pyindicator 事件信号，避免把“旧主线太弱”这个问题又带回实验里。</li>
+      <li>它只用普适的 price-only 特征做对照，因此更适合回答 Chan 2022 的原问题：<b>S/R 特征到底有没有增量信息</b>。</li>
+      <li>增强版只额外加入 clean-room S/R 特征：<code>dist_to_support</code>、<code>dist_to_resistance</code>、<code>range_pos</code>、<code>is_above_resistance</code>、<code>is_near_support/resistance</code>。</li>
+    </ul>
+  </div>
+
+  <div class='card'>
+    <h2>Replication design</h2>
+    <ol>
+      <li>对每个 symbol 按时间切分 70% train / 30% test。</li>
+      <li>用 ridge regression 预测未来 12 根 K 线收益 <code>fwd_ret_12</code>。</li>
+      <li>在测试集上比较：
+        <ul>
+          <li><code>test_ic</code>：预测分数与未来收益的相关性</li>
+          <li><code>top_bottom_spread</code>：高分桶与低分桶的未来收益差</li>
+          <li>最小 rank-based backtest：每 12 根 K 线重排一次，只做得分最高的 2 个币</li>
+        </ul>
+      </li>
+    </ol>
+  </div>
+
+  <div class='card'>
+    <h2>Headline conclusion</h2>
+    <ul><li><b>60m_365d</b>：enhanced 相比 baseline，<code>IC</code> 提升 0.0404，<code>top-bottom spread</code> 提升 -0.0009；但最小 top-2 组合回测的 <code>portfolio_total_return</code> 反而下降 0.1068。</li><li><b>60m_730d</b>：enhanced 相比 baseline，<code>IC</code> 提升 0.0189，<code>top-bottom spread</code> 提升 0.0000；但最小 top-2 组合回测的 <code>portfolio_total_return</code> 反而下降 -0.0714。</li></ul>
+    <p class='muted'>这说明第一版 clean-room 复现更像是在支持 Chan 2022 的“<b>S/R 特征有增量信息</b>”这一层，而不是马上支持“<b>当前这个最小组合构造已经能稳定赚到更多钱</b>”。</p>
+  </div>
+
+  <div class='card'>
+    <h2>Sample meta</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>sample_key</th>
+      <th>interval</th>
+      <th>period</th>
+      <th>rows</th>
+      <th>feature_rows</th>
+      <th>symbols</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>60m_365d</td>
+      <td>60m</td>
+      <td>365d</td>
+      <td>69804</td>
+      <td>69137</td>
+      <td>8</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>60m</td>
+      <td>730d</td>
+      <td>139876</td>
+      <td>139079</td>
+      <td>8</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class='card'>
+    <h2>Summary</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>sample_key</th>
+      <th>variant</th>
+      <th>train_rows</th>
+      <th>test_rows</th>
+      <th>test_ic</th>
+      <th>directional_accuracy</th>
+      <th>top_bucket_mean</th>
+      <th>bottom_bucket_mean</th>
+      <th>top_bottom_spread</th>
+      <th>portfolio_total_return</th>
+      <th>avg_period_return</th>
+      <th>positive_period_ratio</th>
+      <th>periods</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>60m_365d</td>
+      <td>baseline_price_only</td>
+      <td>48318</td>
+      <td>20819</td>
+      <td>-0.014138</td>
+      <td>0.517988</td>
+      <td>-0.000257</td>
+      <td>0.000042</td>
+      <td>-0.000300</td>
+      <td>-0.251691</td>
+      <td>-0.001068</td>
+      <td>0.490826</td>
+      <td>218</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>enhanced_plus_sr</td>
+      <td>48318</td>
+      <td>20819</td>
+      <td>0.026248</td>
+      <td>0.483741</td>
+      <td>-0.002666</td>
+      <td>-0.001475</td>
+      <td>-0.001191</td>
+      <td>-0.144878</td>
+      <td>-0.000420</td>
+      <td>0.486239</td>
+      <td>218</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>baseline_price_only</td>
+      <td>97263</td>
+      <td>41816</td>
+      <td>0.046410</td>
+      <td>0.492108</td>
+      <td>-0.000741</td>
+      <td>-0.001950</td>
+      <td>0.001210</td>
+      <td>-0.563203</td>
+      <td>-0.001482</td>
+      <td>0.487414</td>
+      <td>437</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>enhanced_plus_sr</td>
+      <td>97263</td>
+      <td>41816</td>
+      <td>0.065294</td>
+      <td>0.480749</td>
+      <td>-0.000529</td>
+      <td>-0.001776</td>
+      <td>0.001246</td>
+      <td>-0.634582</td>
+      <td>-0.001922</td>
+      <td>0.482838</td>
+      <td>437</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class='card'>
+    <h2>Enhanced vs baseline delta</h2>
+    <p class='muted'>正值表示 enhanced（加入 S/R 特征）优于纯 price-only baseline。</p>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>sample_key</th>
+      <th>test_ic__baseline_price_only</th>
+      <th>test_ic__enhanced_plus_sr</th>
+      <th>top_bottom_spread__baseline_price_only</th>
+      <th>top_bottom_spread__enhanced_plus_sr</th>
+      <th>portfolio_total_return__baseline_price_only</th>
+      <th>portfolio_total_return__enhanced_plus_sr</th>
+      <th>positive_period_ratio__baseline_price_only</th>
+      <th>positive_period_ratio__enhanced_plus_sr</th>
+      <th>ic_delta_enh_minus_base</th>
+      <th>spread_delta_enh_minus_base</th>
+      <th>portfolio_delta_enh_minus_base</th>
+      <th>positive_ratio_delta_enh_minus_base</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>60m_365d</td>
+      <td>-0.014138</td>
+      <td>0.026248</td>
+      <td>-0.00030</td>
+      <td>-0.001191</td>
+      <td>-0.251691</td>
+      <td>-0.144878</td>
+      <td>0.490826</td>
+      <td>0.486239</td>
+      <td>0.040386</td>
+      <td>-0.000891</td>
+      <td>0.106812</td>
+      <td>-0.004587</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>0.046410</td>
+      <td>0.065294</td>
+      <td>0.00121</td>
+      <td>0.001246</td>
+      <td>-0.563203</td>
+      <td>-0.634582</td>
+      <td>0.487414</td>
+      <td>0.482838</td>
+      <td>0.018884</td>
+      <td>0.000037</td>
+      <td>-0.071379</td>
+      <td>-0.004577</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class='card'>
+    <h2>Metric bars</h2>
+    <img src='../../artifacts/chan2022_sr_feature_replication/metric_bars.png' alt='metric bars' />
+  </div>
+
+  <div class='card'>
+    <h2>Enhanced model · top coefficients (60m / 730d)</h2>
+    <img src='../../artifacts/chan2022_sr_feature_replication/enhanced_top_coefs.png' alt='top coefficients' />
+  </div>
+
+  <div class='card'>
+    <h2>Symbol summary</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>symbol</th>
+      <th>ic</th>
+      <th>mean_fwd_ret</th>
+      <th>top20_mean</th>
+      <th>sample_key</th>
+      <th>variant</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ADA-USD</td>
+      <td>0.006706</td>
+      <td>-0.000979</td>
+      <td>-0.000666</td>
+      <td>60m_365d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>AVAX-USD</td>
+      <td>-0.010519</td>
+      <td>-0.000633</td>
+      <td>-0.001069</td>
+      <td>60m_365d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>BNB-USD</td>
+      <td>-0.028904</td>
+      <td>-0.001215</td>
+      <td>-0.001311</td>
+      <td>60m_365d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>BTC-USD</td>
+      <td>-0.050319</td>
+      <td>-0.000311</td>
+      <td>0.000235</td>
+      <td>60m_365d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>DOGE-USD</td>
+      <td>0.035663</td>
+      <td>-0.000217</td>
+      <td>0.000202</td>
+      <td>60m_365d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>ETH-USD</td>
+      <td>0.003785</td>
+      <td>-0.000882</td>
+      <td>0.001057</td>
+      <td>60m_365d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>SOL-USD</td>
+      <td>-0.041827</td>
+      <td>-0.000950</td>
+      <td>0.000839</td>
+      <td>60m_365d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>XRP-USD</td>
+      <td>-0.054086</td>
+      <td>-0.000998</td>
+      <td>0.000266</td>
+      <td>60m_365d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>ADA-USD</td>
+      <td>0.040772</td>
+      <td>-0.000979</td>
+      <td>-0.003268</td>
+      <td>60m_365d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>AVAX-USD</td>
+      <td>0.063193</td>
+      <td>-0.000633</td>
+      <td>0.001035</td>
+      <td>60m_365d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>BNB-USD</td>
+      <td>-0.019053</td>
+      <td>-0.001215</td>
+      <td>-0.005117</td>
+      <td>60m_365d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>BTC-USD</td>
+      <td>-0.013898</td>
+      <td>-0.000311</td>
+      <td>-0.001836</td>
+      <td>60m_365d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>DOGE-USD</td>
+      <td>0.017378</td>
+      <td>-0.000217</td>
+      <td>-0.002639</td>
+      <td>60m_365d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>ETH-USD</td>
+      <td>-0.031927</td>
+      <td>-0.000882</td>
+      <td>-0.005672</td>
+      <td>60m_365d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>SOL-USD</td>
+      <td>0.015881</td>
+      <td>-0.000950</td>
+      <td>-0.000990</td>
+      <td>60m_365d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>XRP-USD</td>
+      <td>0.108903</td>
+      <td>-0.000998</td>
+      <td>-0.002390</td>
+      <td>60m_365d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>ADA-USD</td>
+      <td>0.058261</td>
+      <td>-0.002227</td>
+      <td>-0.000460</td>
+      <td>60m_730d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>AVAX-USD</td>
+      <td>0.048825</td>
+      <td>-0.002172</td>
+      <td>-0.000818</td>
+      <td>60m_730d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>BNB-USD</td>
+      <td>0.039817</td>
+      <td>-0.001100</td>
+      <td>-0.000742</td>
+      <td>60m_730d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>BTC-USD</td>
+      <td>0.050219</td>
+      <td>-0.000832</td>
+      <td>0.000166</td>
+      <td>60m_730d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>DOGE-USD</td>
+      <td>0.034005</td>
+      <td>-0.001539</td>
+      <td>-0.000240</td>
+      <td>60m_730d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>ETH-USD</td>
+      <td>0.026656</td>
+      <td>-0.001275</td>
+      <td>-0.000124</td>
+      <td>60m_730d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>SOL-USD</td>
+      <td>0.026016</td>
+      <td>-0.001657</td>
+      <td>-0.000900</td>
+      <td>60m_730d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>XRP-USD</td>
+      <td>0.100338</td>
+      <td>-0.001356</td>
+      <td>-0.001221</td>
+      <td>60m_730d</td>
+      <td>baseline_price_only</td>
+    </tr>
+    <tr>
+      <td>ADA-USD</td>
+      <td>0.096286</td>
+      <td>-0.002227</td>
+      <td>0.001287</td>
+      <td>60m_730d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>AVAX-USD</td>
+      <td>0.076302</td>
+      <td>-0.002172</td>
+      <td>-0.000217</td>
+      <td>60m_730d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>BNB-USD</td>
+      <td>0.053019</td>
+      <td>-0.001100</td>
+      <td>-0.000827</td>
+      <td>60m_730d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>BTC-USD</td>
+      <td>0.042764</td>
+      <td>-0.000832</td>
+      <td>-0.001292</td>
+      <td>60m_730d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>DOGE-USD</td>
+      <td>0.050587</td>
+      <td>-0.001539</td>
+      <td>-0.000960</td>
+      <td>60m_730d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>ETH-USD</td>
+      <td>0.014904</td>
+      <td>-0.001275</td>
+      <td>-0.001470</td>
+      <td>60m_730d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>SOL-USD</td>
+      <td>0.035511</td>
+      <td>-0.001657</td>
+      <td>-0.001269</td>
+      <td>60m_730d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+    <tr>
+      <td>XRP-USD</td>
+      <td>0.125262</td>
+      <td>-0.001356</td>
+      <td>0.001476</td>
+      <td>60m_730d</td>
+      <td>enhanced_plus_sr</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class='card'>
+    <h2>How to read the result</h2>
+    <ul>
+      <li>如果 enhanced 在两个样本里都让 <code>test_ic</code>、<code>top_bottom_spread</code>、<code>portfolio_total_return</code> 变好，说明 S/R 特征确实有增量价值。</li>
+      <li>如果 enhanced 只让某一个指标好看，但别的指标变差，就说明第一版特征设计还不够稳。</li>
+      <li>这页只是第一版 clean-room replication，不等于已经完全复刻原文全部智能模型。</li>
+    </ul>
+  </div>
+
+  <div class='card'>
+    <h2>Artifacts</h2>
+    <ul>
+      <li><a href='../../artifacts/chan2022_sr_feature_replication/sample_meta.csv'>sample_meta.csv</a></li>
+      <li><a href='../../artifacts/chan2022_sr_feature_replication/summary.csv'>summary.csv</a></li>
+      <li><a href='../../artifacts/chan2022_sr_feature_replication/delta_vs_baseline.csv'>delta_vs_baseline.csv</a></li>
+      <li><a href='../../artifacts/chan2022_sr_feature_replication/symbol_summary.csv'>symbol_summary.csv</a></li>
+      <li><a href='../../artifacts/chan2022_sr_feature_replication/period_backtest.csv'>period_backtest.csv</a></li>
+      <li><a href='../../artifacts/chan2022_sr_feature_replication/enhanced_coefficients_60m_730d.csv'>enhanced_coefficients_60m_730d.csv</a></li>
+      <li><a href='../../artifacts/chan2022_sr_feature_replication/summary.json'>summary.json</a></li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Deribit gamma wall × positive/negative gamma：给 breakout / fade 都能用的 shared router</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Deribit gamma wall × positive/negative gamma：给 breakout / fade 都能用的 shared router</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-05 20:52 UTC</span>
+      <span class="pill">研究时间：2026-04-05 20:55 UTC</span>
+      <span class="pill">类型：regime</span>
+      <span class="pill">主题标签：regime/filter/shared-gate/options/gamma-exposure/gamma-flip/put-wall/call-wall/router/breakout/mean-reversion/deribit/btc/5m/15m/3m/1m/repo/public-api/cost/risk</span>
+      <span class="pill">证据类型：2026 GitHub 新 repo source audit（GitHub API metadata + `README.md` + `docs/GEX.md` + `src/analytics/backtest.py` + `src/analytics/signal_model.py` + `docs/ANALYTICS.md`）+ Deribit 公共 API 文档可得性确认；辅以 2025 SSRN 标题/DOI 作主题锚点</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-05_2055_deribit-gammawall-regime-router.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-05 20:55 UTC</li>
+<li>类型：regime</li>
+<li>主题标签：regime/filter/shared-gate/options/gamma-exposure/gamma-flip/put-wall/call-wall/router/breakout/mean-reversion/deribit/btc/5m/15m/3m/1m/repo/public-api/cost/risk</li>
+<li>证据类型：2026 GitHub 新 repo source audit（GitHub API metadata + <code>README.md</code> + <code>docs/GEX.md</code> + <code>src/analytics/backtest.py</code> + <code>src/analytics/signal_model.py</code> + <code>docs/ANALYTICS.md</code>）+ Deribit 公共 API 文档可得性确认；辅以 2025 SSRN 标题/DOI 作主题锚点</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮不再硬找又一条“像 raw alpha 的 headline 结论”，而是补一个<strong>能同时服务至少两类 alpha 的 options-derived shared router</strong>：用 Deribit 公共期权链算出来的 <strong>total GEX / gamma flip / put wall / call wall</strong>，把 BTC 短周期交易路由成两套不同打法——<strong>negative gamma 走 breakout continuation，positive gamma 走 near-wall fade / mean reversion</strong>。</p>
+<h2>2. 先回答：这篇东西的 base alpha 是什么？</h2>
+<ul>
+<li>主题类型：regime</li>
+<li>基础 alpha：<strong>negative gamma 下的 wall-break continuation</strong>，以及 <strong>positive gamma 下的 wall-reject fade / mean reversion</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<p>这里要说清楚：它<strong>不是一个裸方向 raw alpha</strong>，而是一个更像“短周期路由器”的 shared gate。 但它不像泛泛的宏观/情绪过滤层那样飘：它来自<strong>可实时拉取的 BTC 期权链公开数据</strong>，能直接落到 <code>5m / 15m</code>，并可把 <code>1m / 3m</code> 当 child execution。</p>
+<h2>3. 为什么这轮值得补它，而不是继续补另一条 raw alpha</h2>
+<p>因为当前 desk 已经在堆很多 raw alpha 候选，但<strong>options-derived 的共享路由层仍偏薄</strong>。这条线的价值不在“再发明一条主信号”，而在：</p>
+<ul>
+<li>它能同时服务 <strong>breakout / momentum</strong> 与 <strong>mean reversion / fade</strong> 两类 alpha；</li>
+<li>数据公开、抓取门槛低，不需要私有 feed；</li>
+<li>它天然贴近 BTC 这类被 Deribit 期权链深度影响的资产；</li>
+<li>它给的是<strong>交易环境分类</strong>，而不是只在一个固定 pattern 上打补丁。</li>
+</ul>
+<p>如果这层路由有效，后续很多已有 alpha 都能直接受益：</p>
+<ul>
+<li>breakout 只在 <code>negative gamma</code> 做；</li>
+<li>fade 只在 <code>positive gamma</code> 且接近 wall 时做；</li>
+<li>sizing 按 <code>|GEX| percentile</code> 放缩；</li>
+<li>在 <code>gamma flip</code> 附近直接降杠杆或禁做。</li>
+</ul>
+<h2>4. 核心资料里到底有什么</h2>
+<p>这次的主材料不是传统论文，而是一个 2026 新仓库：</p>
+<ol>
+<li><strong>strebba (2026), <code>btc-institutional-flow</code> / <code>ibit-gamma-tracker</code></strong></li>
+</ol>
+<ul>
+<li>Repo URL：&lt;<a href="https://github.com/strebba/btc-institutional-flow&gt;">https://github.com/strebba/btc-institutional-flow&gt;</a></li>
+<li>重点模块：</li>
+<li><code>docs/GEX.md</code></li>
+<li><code>src/gex/*</code></li>
+<li><code>src/analytics/backtest.py</code></li>
+<li><code>src/analytics/signal_model.py</code></li>
+<li><code>docs/ANALYTICS.md</code></li>
+</ul>
+<ol>
+<li><strong>Pawel Lachowicz (2025), _Do Gamma Walls Actually Move Bitcoin Prices at Deribit?_</strong></li>
+</ol>
+<ul>
+<li>Venue：SSRN working paper</li>
+<li>DOI：&lt;<a href="https://doi.org/10.2139/ssrn.5782822&gt;">https://doi.org/10.2139/ssrn.5782822&gt;</a></li>
+<li>Readable URL：&lt;<a href="https://doi.org/10.2139/ssrn.5782822&gt;">https://doi.org/10.2139/ssrn.5782822&gt;</a></li>
+<li>这篇这次没有拿到可稳定抓取的摘要/全文，所以<strong>不把它当结论证据</strong>，只把它当“这个主题正在形成研究对象”的旁证锚点。</li>
+</ul>
+<h2>5. 这份 repo 提供了哪些可直接拿来做实验的硬信息</h2>
+<p>从 <code>docs/GEX.md</code> 和源码里，至少有 6 个对 desk 有用的硬点：</p>
+<ol>
+<li><strong>数据源完全公开</strong></li>
+</ol>
+<ul>
+<li>Deribit Public API，无需鉴权。</li>
+<li>关键接口：</li>
+<li><code>get_instruments?currency=BTC&amp;kind=option&amp;expired=false</code></li>
+<li><code>ticker?instrument_name=...</code></li>
+<li><code>get_index_price?index_name=btc_usd</code></li>
+<li>仓库文档明确写了公开 API 的速率级别约 <code>~15 req/s</code>。</li>
+</ul>
+<ol>
+<li><strong>GEX 的定义写得很实</strong></li>
+</ol>
+<ul>
+<li>单个期权：<code>GEX = sign × gamma × OI × contract_size × spot² × 0.01</code></li>
+<li>call 视作正向 gamma 暴露、put 视作负向 gamma 暴露，再聚合成净 GEX。</li>
+<li>这意味着我们不需要“黑箱 AI 推断 gamma wall”，直接按公开链数据重建即可。</li>
+</ul>
+<ol>
+<li><strong>repo 已把关键 level 定义好了</strong></li>
+</ol>
+<ul>
+<li><code>Gamma Flip</code>：累计 GEX 变号的 strike。</li>
+<li><code>Put Wall</code>：最负 GEX strike，文档解释成更偏“机械支撑”。</li>
+<li><code>Call Wall</code>：最正 GEX strike，更偏“机械阻力”。</li>
+<li><code>Max Pain</code>：可做辅助 level，但对短周期优先级低于 wall/flip。</li>
+</ul>
+<ol>
+<li><strong>文档给了 live snapshot 量级</strong></li>
+</ol>
+<ul>
+<li>一次实盘快照示例：</li>
+<li>GEX 总量：<code>+$41.5M</code></li>
+<li>regime：<code>POSITIVE_GAMMA</code></li>
+<li>Gamma Flip：<code>$75,000</code></li>
+<li>Put Wall：<code>$60,000</code></li>
+<li>Call Wall：<code>$75,000</code></li>
+<li>活跃 BTC 期权：<code>948</code> 个</li>
+<li>总 OI：<code>432,483</code> 合约</li>
+<li>这些量级至少说明：这不是“几张冷门期权拼出来的噪音 level”。</li>
+</ul>
+<ol>
+<li><strong>repo 已有可操作 alert 定义</strong></li>
+</ol>
+<ul>
+<li><code>GAMMA FLIP</code>：GEX 符号切换。</li>
+<li><code>NEAR PUT_WALL</code> / <code>NEAR CALL_WALL</code>：spot 距 wall 在 2% 内。</li>
+<li><code>GEX ESTREMO NEGATIVO / POSITIVO</code>：历史分位极端值。</li>
+</ul>
+<ol>
+<li><strong>repo 自己也承认了局限</strong></li>
+</ol>
+<ul>
+<li>全量抓取 ~948 个 BTC 期权，文档说需要约 <strong>2 分钟</strong>。</li>
+<li>历史 GEX 需要自己持续存快照。</li>
+<li>event study 当前还没有足够 barrier 命中样本。</li>
+</ul>
+<p>这几个局限反而对我们有帮助：它提醒我们<strong>不要把它当 1m 逐根重算信号</strong>，而应当把它当 <code>5m / 15m</code> 的慢变量状态层。</p>
+<h2>6. 对 short-cycle desk 更值钱的“旁支读法”</h2>
+<p>repo 主线更像“GEX + ETF flows 的 BTC 日频多因子解释框架”。 但对我们 desk，<strong>更值得偷的不是它的日频主线，而是 options wall + gamma sign 这个 intraday router</strong>。</p>
+<h3>6.1 Negative gamma：更适合做 breakout continuation</h3>
+<p>直觉很简单：</p>
+<ul>
+<li>在 <code>GEX &lt; 0</code> 时，dealer hedge 更可能<strong>顺着价格波动方向追</strong>；</li>
+<li>所以 wall 被穿时，更该防的是“加速”，不是“立刻回归”。</li>
+</ul>
+<p>更适合的壳：</p>
+<ul>
+<li>价格接近 <code>call wall</code> 后向上有效突破，顺势追多；</li>
+<li>价格接近 <code>put wall</code> 后向下有效跌破，顺势追空；</li>
+<li><code>gamma flip</code> 附近若刚从正转负，可把它视作 breakout 策略的放行条件。</li>
+</ul>
+<h3>6.2 Positive gamma：更适合做 near-wall fade / mean reversion</h3>
+<ul>
+<li>在 <code>GEX &gt; 0</code> 时，dealer hedge 更可能<strong>对着波动反向做</strong>；</li>
+<li>所以价格靠近 wall 时，更容易出现钉住、停滞、反抽。</li>
+</ul>
+<p>更适合的壳：</p>
+<ul>
+<li>接近 <code>call wall</code> 做冲高回落 fade；</li>
+<li>接近 <code>put wall</code> 做插针反弹 fade；</li>
+<li>若 spot 卡在 <code>gamma flip</code> 与某一侧 wall 之间，优先缩短持有期，走短回转。</li>
+</ul>
+<p>这就是它最像 shared gate 的地方： <strong>同一组公开数据，不是生成一个统一方向，而是先决定“今天该追还是该反”。</strong></p>
+<h2>7. 可直接落地的最小策略壳</h2>
+<p>下面给一个 desk 能直接测的、不是只会讲概念的版本。</p>
+<h3>7.1 Strategy A：negative-gamma wall-break continuation</h3>
+<p>适用：<code>5m</code> 主级别，<code>1m/3m</code> 做执行。</p>
+<p><strong>Entry</strong></p>
+<ul>
+<li>每 5 分钟更新一次期权状态层：<code>total_net_gex</code>、<code>gamma_flip</code>、<code>put_wall</code>、<code>call_wall</code>。</li>
+<li>只在 <code>total_net_gex &lt; 0</code> 且 <code>|total_net_gex|</code> 位于过去 20 个快照前 40% 极端区时启用。</li>
+<li>若价格进入 wall 附近带（建议 <code>0.20% ~ 0.40%</code>），随后：</li>
+<li>向上穿 <code>call_wall</code>，且 5m 收盘站上 wall；做多。</li>
+<li>向下破 <code>put_wall</code>，且 5m 收盘跌破 wall；做空。</li>
+<li>执行确认：用 <code>1m</code> child bar 做二次确认，避免单根影线误触发。</li>
+</ul>
+<p><strong>Exit</strong></p>
+<ul>
+<li>第一目标：到下一个 options level（另一侧 wall / gamma flip）的一半到三分之二路径。</li>
+<li>第二目标：<code>1.2R ~ 1.8R</code> 固定止盈。</li>
+<li>时间止盈：<code>3~6</code> 根 5m bar 未扩展则减仓/平仓。</li>
+<li>若下一个 5m bar 回收到 wall 带内，则直接撤退。</li>
+</ul>
+<p><strong>Sizing</strong></p>
+<ul>
+<li>基础风险单位按常规 BTC perp 策略风险单位；</li>
+<li>再乘 <code>min(1.5, |GEX_z|)</code> 的 regime 系数；</li>
+<li>若 spot 距 <code>gamma_flip</code> 太近（如 <code>&lt;0.25%</code>），仓位减半。</li>
+</ul>
+<p><strong>Risk / Cost</strong></p>
+<ul>
+<li>突破腿允许 taker，但要求预期路径至少覆盖 <strong>2~3 倍单边成本</strong>；</li>
+<li>若 wall 带附近盘口明显变薄，只做最 liquid venue；</li>
+<li>expiry 前后 1~2 小时单独分层，不和普通时段混测。</li>
+</ul>
+<h3>7.2 Strategy B：positive-gamma wall-fade mean reversion</h3>
+<p>适用：<code>15m</code> 识别状态，<code>3m/5m</code> 进场。</p>
+<p><strong>Entry</strong></p>
+<ul>
+<li>只在 <code>total_net_gex &gt; 0</code> 且处于自身历史 60% 以上分位时启用。</li>
+<li>spot 进入 <code>call_wall</code> / <code>put_wall</code> 附近带后，等待 <code>3m</code> 或 <code>5m</code> 出现拒绝：</li>
+<li>触 wall 但收不住，回到带内；</li>
+<li>第二根 bar 未能继续创新高/新低。</li>
+<li>在 <code>call_wall</code> 失败时做空，在 <code>put_wall</code> 失败时做多。</li>
+</ul>
+<p><strong>Exit</strong></p>
+<ul>
+<li>第一目标：回到 intraday VWAP / session mid；</li>
+<li>第二目标：回到 <code>gamma_flip</code>；</li>
+<li>时间止盈：<code>2~4</code> 根 5m bar 仍无回归则走人。</li>
+</ul>
+<p><strong>Sizing</strong></p>
+<ul>
+<li>fade 模式优先 maker；</li>
+<li>仓位与 wall 距离成反比，但在 <code>gamma_flip</code> 附近不加仓；</li>
+<li>若 total GEX 只是轻微为正，不做满仓 fade。</li>
+</ul>
+<p><strong>Risk / Cost</strong></p>
+<ul>
+<li>止损放在 wall 外 <code>0.35 ~ 0.60 ATR(5m)</code>；</li>
+<li>若 breakout 成交量 / 冲击明显超平时，禁止逆着 negative-gamma 环境硬 fade。</li>
+</ul>
+<h2>8. 最小可复现实验怎么做</h2>
+<h3>实验 1：先只测“路由价值”，不测复杂多因子</h3>
+<p>目标：回答一个最核心问题—— <strong>同样的 wall touch 事件，在 <code>GEX&gt;0</code> 和 <code>GEX&lt;0</code> 下，后续 3 / 6 / 12 根 5m bar 的路径是否显著不同？</strong></p>
+<p>实现：</p>
+<ol>
+<li>每 5 分钟拉一次 Deribit BTC 全链并存快照。</li>
+<li>生成事件：spot 首次进入 <code>put_wall/call_wall ±0.30%</code> 区域。</li>
+<li>按 <code>GEX sign</code> 分组。</li>
+<li>统计：</li>
+</ol>
+<ul>
+<li>之后 15m / 30m / 60m 的方向收益；</li>
+<li>最大顺行 / 逆行 excursion；</li>
+<li>wall 穿透率与回带率。</li>
+</ul>
+<p>如果这一步没有明显分层，后面的 router 就没必要继续加花活。</p>
+<h3>实验 2：把 router 套到已有 breakout alpha 上</h3>
+<p>目标：验证它能否提高已有 raw alpha 的质量。</p>
+<p>做法：</p>
+<ul>
+<li>选一个你们现成的 breakout 壳；</li>
+<li>对照组：原规则直接跑；</li>
+<li>实验组：只在 <code>negative gamma</code> 时放行，且要求突破方向与最近 wall 关系一致。</li>
+</ul>
+<p>看四个指标：</p>
+<ul>
+<li>trade count</li>
+<li>win rate</li>
+<li>avg MFE / MAE</li>
+<li>net after-cost Sharpe</li>
+</ul>
+<h3>实验 3：把 router 套到已有 fade / mean-reversion alpha 上</h3>
+<ul>
+<li>只在 <code>positive gamma</code> 做；</li>
+<li>spot 必须接近 <code>call/put wall</code>；</li>
+<li>其余进场规则不变。</li>
+</ul>
+<p>看结果是否出现：</p>
+<ul>
+<li>次数下降，但单笔质量上升；</li>
+<li>被趋势腿拖死的次数减少；</li>
+<li>手续费占比下降。</li>
+</ul>
+<h2>9. 数据口径与现实限制</h2>
+<h3>9.1 数据源</h3>
+<ul>
+<li>Deribit BTC options：公开、可直接抓。</li>
+<li>BTC spot/index：Deribit index 或执行 venue 自己的现货/指数。</li>
+<li>若执行在 Binance / Bybit perp，需要统一成同一个 BTC 指数坐标，避免 wall level 和执行价格体系错位。</li>
+</ul>
+<h3>9.2 更新频率</h3>
+<ul>
+<li>期权全链重算不适合每分钟暴力刷。</li>
+<li>更现实的口径：</li>
+<li><code>5m</code> 刷新一次全链；</li>
+<li><code>1m/3m</code> 只拿上一轮算好的 wall / flip 做 child execution。</li>
+</ul>
+<h3>9.3 不能误读的地方</h3>
+<ul>
+<li><code>IBIT flow → BTC</code> 这条是 repo 的日频主线，不要硬伪装成逐根 intraday alpha。</li>
+<li><code>wall</code> 不是 magic number；它更像<strong>状态依赖 level</strong>。</li>
+<li>expiry、节假日、集中换仓时，wall 的解释力可能剧烈漂移。</li>
+</ul>
+<h2>10. 我对这条主题的判断</h2>
+<p>如果把它当“又一个方向指标”，我不喜欢；太容易变成故事。 但如果把它当成：</p>
+<ul>
+<li><strong>breakout / fade 的 shared router</strong>，</li>
+<li><strong>基于公开期权链的 level-state layer</strong>，</li>
+<li><strong>BTC 专属、可嫁接到现有 alpha 池的 execution gate</strong>，</li>
+<p>那它很值得进研究池。</p>
+</ul>
+<p>它最适合的定位不是“单独拎出来裸跑一年”，而是： <strong>先做 wall-touch 分层实验，再拿来给现有 raw alpha 做 regime split。</strong></p>
+<h2>11. 下一步怎么测</h2>
+<p>只做一件最小但关键的事：</p>
+<ol>
+<li>连续抓 <strong>7~14 天</strong> Deribit BTC options 全链快照（建议每 <code>5m</code> 一次）。</li>
+<li>生成 <code>total_net_gex / gamma_flip / put_wall / call_wall / distance_to_wall</code>。</li>
+<li>在 BTC <code>5m</code> 上定义 wall-touch 事件。</li>
+<li>分 <code>GEX&gt;0</code> 与 <code>GEX&lt;0</code> 两组，比较后续 <code>3/6/12</code> 根 bar 的：</li>
+</ol>
+<ul>
+<li>continuation hit rate</li>
+<li>fade hit rate</li>
+<li>MFE / MAE</li>
+<li>after-cost expectancy</li>
+</ul>
+<ol>
+<li>如果分层成立，再把它分别接到：</li>
+</ol>
+<ul>
+<li>一个现有 breakout alpha</li>
+<li>一个现有 mean-reversion alpha</li>
+<p>做 router A/B test。</p>
+</ul>
+<p>这一步如果跑不出显著分层，就直接把主题降级；别继续往上堆复杂因子。</p>
+<h2>12. 来源</h2>
+<ol>
+<li><strong>strebba (2026)</strong>, <code>btc-institutional-flow</code> / <code>ibit-gamma-tracker</code></li>
+</ol>
+<ul>
+<li>Repo URL：&lt;<a href="https://github.com/strebba/btc-institutional-flow&gt;">https://github.com/strebba/btc-institutional-flow&gt;</a></li>
+<li>直接阅读材料：<code>README.md</code>, <code>docs/GEX.md</code>, <code>src/analytics/backtest.py</code>, <code>src/analytics/signal_model.py</code>, <code>docs/ANALYTICS.md</code></li>
+</ul>
+<ol>
+<li><strong>Pawel Lachowicz (2025)</strong>, _Do Gamma Walls Actually Move Bitcoin Prices at Deribit?_</li>
+</ol>
+<ul>
+<li>Venue：SSRN working paper</li>
+<li>DOI：&lt;<a href="https://doi.org/10.2139/ssrn.5782822&gt;">https://doi.org/10.2139/ssrn.5782822&gt;</a></li>
+<li>Readable URL：&lt;<a href="https://doi.org/10.2139/ssrn.5782822&gt;">https://doi.org/10.2139/ssrn.5782822&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Deribit Public API</strong></li>
+</ol>
+<ul>
+<li>Docs / reference root：&lt;<a href="https://docs.deribit.com/&gt;">https://docs.deribit.com/&gt;</a></li>
+<li>Public endpoints used in repo：<code>get_instruments</code>, <code>ticker</code>, <code>get_index_price</code></li>
+</ul>
+</body>
+</html>

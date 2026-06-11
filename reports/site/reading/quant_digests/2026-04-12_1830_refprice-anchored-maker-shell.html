@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>外部参考价锚定 × 分层 spread-capture maker shell（OctoBot Market Making, 2026）</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>外部参考价锚定 × 分层 spread-capture maker shell（OctoBot Market Making, 2026）</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-12 18:32 UTC</span>
+      <span class="pill">研究时间：2026-04-12 18:30 UTC</span>
+      <span class="pill">类型：GitHub repo / strategy docs source audit</span>
+      <span class="pill">主题标签：raw-alpha / maker / market-making / reference-exchange / fair-value / spread-capture / liquidity-provision / inventory / cross-venue / order-book / 1m / 3m / 5m / 15m</span>
+      <span class="pill">证据类型：repo source audit + strategy docs</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-12_1830_refprice-anchored-maker-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-12 18:30 UTC</li>
+<li>类型：GitHub repo / strategy docs source audit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>用更液体 venue 的 reference price 当 fair value，在本地 venue 围绕它维持多层 bid/ask 去吃 spread + 回摆；当 reference price 漂移、挂单缺失或成交后立即重构挂单簿，尽量少把逆向选择白送给搬砖者</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / maker / market-making / reference-exchange / fair-value / spread-capture / liquidity-provision / inventory / cross-venue / order-book / 1m / 3m / 5m / 15m</li>
+<li>证据类型：repo source audit + strategy docs</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是 <code>Drakkar-Software/OctoBot-Market-Making</code>，但真正有研究价值的不是它的营销 README，而是它在 <code>Drakkar-Software/OctoBot</code> 主仓里那套可读源码：<code>packages/tentacles/Trading/Mode/market_making_trading_mode/*</code>。这题之所以值得进池，不是因为它“又是一个做市框架”，而是因为它把 <strong>base alpha 讲清楚了</strong>：</p>
+<p>&gt; <strong>不是</strong> 预测 5m/15m 方向，<strong>而是</strong> 用更液体外部市场给本地盘口一个 fair-value 锚，然后靠多层被动挂单去吃 local oscillation / spread capture；reference price 一旦漂移到让现有 bid/ask 失真，就撤改单重建，减少被跨所搬砖者摘走的逆向选择。</p>
+<p>换句话说，这不是 <code>mm-live</code> 那种 <strong>OFI -&gt; next-few-second drift</strong> 的预测型 maker alpha；它更像 <strong>reference-exchange anchored liquidity provision</strong>：把“公允价锚定 + 分层深度分布 + 成交后自动补回 + 过期单撤换”做成一套完整壳。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这题我认为可以诚实归进 <strong>raw alpha</strong>，因为它的 alpha 本体不是 inventory 管理，也不是风险覆盖层，而是：<strong>本地价格会围绕更液体 venue 的 fair value 回摆，maker 只要持续把报价带贴着 reference price 重建，就能重复吃 spread / micro-reversion</strong>。</li>
+<li>这套 repo 给出的不是空壳，而是比较完整的可落地逻辑：</li>
+<li>默认配置就是 <code>3</code> 档 bid + <code>3</code> 档 ask，<code>min_spread=2</code>、<code>max_spread=10</code>、<code>reference_exchange=&quot;local&quot;</code>；</li>
+<li>文档明确写了：当 reference price 改变、订单被成交/取消、或订单簿已不再符合配置时，会自动调整；若需要整本替换，会 <strong>one by one cancel</strong>，尽量避免出现空簿；</li>
+<li>资金使用上，策略会使用可用资金，但上限不是无限开，而是 <strong>最多覆盖目标交易对日成交量的 <code>2%</code>，且只覆盖 order-book 前 <code>3%</code> 深度内所需库存</strong>。</li>
+<li>从源码看，触发条件非常直接：</li>
+<li><code>on_new_reference_price()</code> 会检查：是否缺少任一侧挂单；或者 <strong>最高买单已经高于 reference price</strong>；或者 <strong>最低卖单已经低于 reference price</strong>。只要出现这些失配，就触发 <code>_ensure_market_making_orders()</code> 重建挂单。</li>
+<li><code>_mark_price_callback()</code> 订阅参考交易所价格更新；<code>order_filled_callback()</code> 在订单成交后也会立刻触发一次补单/重建。</li>
+<li>对我们 desk 真正有价值的旁支想法，不是照搬它默认的 <code>%</code> 级宽价差，而是 <strong>把它的结构迁到更短、更窄、更 desk 化的 bp 级 maker 壳</strong>：</li>
+<li>reference venue：Binance / Bybit / Hyperliquid 这类更液体市场；</li>
+<li>local venue：流动性更薄、但 maker fee / rebate 或 spread 更肥的 venue / 合约；</li>
+<li>quote policy：3x3 或 5x5 分层挂单，但 spread 改成更现实的 <code>8~80 bps</code> 区间，而不是 README/默认配置里的 <code>%</code> 级粗尺度。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这题不是当前阶段最优先的 <code>pairs / stat-arb / carry</code> 新论文，但它仍然值得本轮作为新 digest，原因很简单：</p>
+<ul>
+<li><strong>不重复</strong>：我在现有 digest 里没检到 <code>OctoBot</code> / <code>reference exchange</code> / 这套 <code>market_making_trading_mode</code>；</li>
+<li><strong>base alpha 清楚</strong>：不是“做市框架”这种空话，而是 <strong>外部 fair value 锚定下的被动 spread capture</strong>；</li>
+<li><strong>能直接落地完整策略</strong>：entry / refresh / sizing / order count / depth budget / stale replacement / fill callback 都已有明确壳；</li>
+<li><strong>和当前素材池互补</strong>：</li>
+<li>我们已经有 <code>OBI/OFI</code> 一类 <strong>预测型 maker alpha</strong>；</li>
+<li>这题补的是 <strong>锚定型 maker alpha</strong>：不先赌几秒 drift，而是先保证自己别偏离更液体市场的公允价太远。</li>
+</ul>
+<p>所以它更像给 maker 方向补一条和 <code>OBI × skew</code>、<code>OFI × fair value shift</code> 并列的第二主线：<strong>external fair-value anchoring</strong>。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：中性偏 liquidity provision / spread capture，不是 bar-close directional trend model</li>
+<li>基础 alpha：<code>local venue quotes revert around liquid-venue fair value -&gt; passive ladder around reference price captures spread and local mean reversion</code></li>
+<li>regime：适合价差能覆盖手续费、且 local venue 明显比 reference venue 更薄、更慢、更容易回摆的市场</li>
+<li>filter / veto：</li>
+<li>reference feed 失效 / 过时；</li>
+<li>local spread 窄到覆盖不了 fee；</li>
+<li>本地盘口跳空、缺档或取消率异常；</li>
+<li>inventory 接近上限时只补单不扩仓，或只挂减仓侧</li>
+<li>risk / sizing / execution overlay：</li>
+<li><code>bids_count / asks_count</code></li>
+<li><code>min_spread / max_spread</code></li>
+<li>预算上限：<code>min(组合预算, 覆盖日成交量 2% 且只看前 3% 深度所需库存)</code></li>
+<li>order refresh on <code>reference update / filled order / missing orders / stale book</code></li>
+<li>full replacement 时逐笔撤单，避免一瞬间空簿</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设</strong>：在更薄的本地市场上，只要参考更液体 venue 的 fair value 重建多层报价带，哪怕不显式预测未来几秒方向，也能比“只用本地 mid 静态挂网格”拿到更好的 fill-adjusted net edge。</p>
+<p><strong>最小定义</strong>：</p>
+<ol>
+<li>选一组同币对、双 venue：</li>
+</ol>
+<ul>
+<li>reference：Binance / Bybit / Hyperliquid 之一；</li>
+<li>local：Gate / MEXC / Bitmart / 某个薄一些的 perp 或 spot venue。</li>
+</ul>
+<ol>
+<li>每 <code>250ms~1s</code> 更新一次 external reference mid（或 mark price）。</li>
+<li>在 local venue 维护 <code>3x3</code> 或 <code>5x5</code> ladder：</li>
+</ol>
+<ul>
+<li>内层 spread：<code>8~20 bps</code>（液体 perp）或 <code>20~40 bps</code>（薄 alt）；</li>
+<li>外层 spread：<code>30~80 bps</code> 或更宽；</li>
+<li>价格分布用 inside-out 均匀层或轻度递增层。</li>
+</ul>
+<ol>
+<li>触发刷新：</li>
+</ol>
+<ul>
+<li>缺少某侧挂单；</li>
+<li>best bid 已高于 reference；</li>
+<li>best ask 已低于 reference；</li>
+<li>或 reference 漂移超过首层半价差的一定比例。</li>
+</ul>
+<ol>
+<li>预算：</li>
+</ol>
+<ul>
+<li>先做缩尺版：每侧固定 notional；</li>
+<li>再做 repo 风格版：不超过当日目标市场成交量 <code>2%</code>、且库存只覆盖前 <code>3%</code> 深度。</li>
+</ul>
+<p><strong>最该先看</strong>：</p>
+<ul>
+<li><code>fill-adjusted net bps</code></li>
+<li>成交后 <code>1s / 5s / 30s</code> markout</li>
+<li><code>inventory half-life</code></li>
+<li><code>cancel/replace per minute</code></li>
+<li><code>empty-book seconds</code></li>
+</ul>
+<p><strong>和当前短周期框架怎么接</strong>：</p>
+<ul>
+<li><code>1m / 3m</code>：这是主评估周期，最能看出 maker alpha 是否真实存在；</li>
+<li><code>5m / 15m</code>：不要把它硬翻成 15m 裸方向信号，而应把这两个周期主要用于 <strong>regime gating</strong>（波动、价差、流动性、inventory unwind 节奏）。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这题的 edge 强依赖 <strong>本地 venue 比 reference venue 更慢 / 更薄</strong>。如果两边都同样高效，alpha 很容易退化成“只是挂单管理更整齐”。</li>
+<li>repo 默认 <code>min_spread=2</code>、<code>max_spread=10</code> 看起来更像 <code>%</code> 级展示配置；对我们 desk 的主战场，这个默认值太粗，必须缩到更现实的 bps 尺度。</li>
+<li>这类策略最怕 <strong>queue position / hidden liquidity / cancel latency / maker rebate 变化</strong>。如果没有 fill simulator，只看 mid-price 回摆，纸面 edge 会被高估。</li>
+<li>它虽然能归进 raw alpha，但和 <code>OFI -&gt; drift</code> 不一样：这里的 alpha 更像 <strong>reference-price anchored passive edge</strong>。如果用户只接受“显式预测未来方向”的 raw alpha，会更愿意把它叫作 <code>complete maker shell</code>。</li>
+</ul>
+<h2>6. 下一步怎么测</h2>
+<ol>
+<li>先做 <code>reference=Binance, local=Gate/Bitmart/MEXC</code> 的双 venue 回放器；</li>
+<li>只测 <code>BTC / ETH / SOL + 2~3 个薄一点的 alt perp</code>，别一开始铺太宽；</li>
+<li>做三组对照：</li>
+</ol>
+<ul>
+<li>A：local-mid anchored static ladder</li>
+<li>B：external-reference anchored ladder（本题）</li>
+<li>C：external-reference + inventory skew / OBI veto</li>
+</ul>
+<ol>
+<li>先别追求复杂 shape，先看 B 是否已经明显优于 A；若没有，就别往上叠更复杂 alpha。</li>
+</ol>
+<h2>7. 来源</h2>
+<ul>
+<li>Drakkar-Software. (2026). *OctoBot*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/Drakkar-Software/OctoBot">https://github.com/Drakkar-Software/OctoBot</a></code></li>
+<li>GitHub metadata：<code>updated_at = 2026-04-12T18:17:26Z</code></li>
+<li>关键文件：</li>
+<li><code>packages/tentacles/Trading/Mode/market_making_trading_mode/config/MarketMakingTradingMode.json</code></li>
+<li><code>packages/tentacles/Trading/Mode/market_making_trading_mode/reference_price.py</code></li>
+<li><code>packages/tentacles/Trading/Mode/market_making_trading_mode/order_book_distribution.py</code></li>
+<li><code>packages/tentacles/Trading/Mode/market_making_trading_mode/market_making_trading.py</code></li>
+<li><code>packages/tentacles/Trading/Mode/market_making_trading_mode/resources/MarketMakingTradingMode.md</code></li>
+<li>Drakkar-Software. (2026). *OctoBot-Market-Making*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/Drakkar-Software/OctoBot-Market-Making">https://github.com/Drakkar-Software/OctoBot-Market-Making</a></code></li>
+<li>GitHub metadata：<code>updated_at = 2026-04-09T10:28:58Z</code></li>
+<li>关键源码/文档要点（本次 audit 用到）：</li>
+<li>默认配置：<code>asks_count=3</code>、<code>bids_count=3</code>、<code>min_spread=2</code>、<code>max_spread=10</code>、<code>reference_exchange=&quot;local&quot;</code></li>
+<li>文档行为：reference price 变化、订单成交/取消、订单簿过期时自动更新；full replacement 会逐笔撤单；预算上限为目标市场日成交量 <code>2%</code> 且只覆盖前 <code>3%</code> 深度</li>
+<li>触发逻辑：<code>buy max &gt; reference_price</code> 或 <code>sell min &lt; reference_price</code> 或订单缺失时，触发重建；订单成交后也会立刻补单</li>
+</ul>
+</body>
+</html>

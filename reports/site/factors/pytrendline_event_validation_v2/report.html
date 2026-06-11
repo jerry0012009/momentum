@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PyTrendline Event Validation v2</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background: #f8fafc; color: #0f172a; }
+    .wrap { max-width: 1220px; margin: 0 auto; padding: 28px 18px 48px; }
+    .card { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px 22px; margin-bottom: 18px; }
+    .muted { color: #64748b; }
+    .warn { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; border-radius: 10px; padding: 10px 12px; }
+    .pill { display: inline-block; margin-right: 8px; margin-top: 8px; padding: 5px 10px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; }
+    .tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
+    .tbl th, .tbl td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; vertical-align: top; }
+    .tbl th { background: #f8fafc; }
+    .qa-item { margin-bottom: 14px; }
+    .qa-q { font-weight: 700; margin-bottom: 4px; }
+    .qa-a { color: #334155; line-height: 1.7; }
+    .chart-notes { margin-top: 12px; color: #334155; }
+    .chart-notes ul { margin: 0; padding-left: 20px; }
+    ul { line-height: 1.7; }
+    code { background: #f1f5f9; padding: 1px 4px; border-radius: 4px; }
+    img.chart { width: 100%; max-width: 980px; border: 1px solid #e2e8f0; border-radius: 12px; background: white; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p><a href="../../index.html">← 返回站点首页</a></p>
+    <div class="card">
+      <h1>PyTrendline Event Validation v2</h1>
+      <p class="muted">这页升级为“数据化 Q&A + 可信度分层”版本：不仅回答现象，还明确回答这些结论到底有多稳、哪里可能被样本结构误导。</p>
+      <div>
+        <span class="pill">Generated: 2026-05-12 22:03 UTC</span>
+        <span class="pill">symbols: 6</span>
+        <span class="pill">interval: 60m</span>
+        <span class="pill">period: 365d</span>
+        <span class="pill">window_bars: 96</span>
+        <span class="pill">step_bars: 24</span>
+        <span class="pill">events: 45696</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>先把术语翻成人话</h2>
+      
+      <ul>
+        <li><b>line：</b>pytrendline 自动识别出来的一条趋势线，不是人工主观手画的线。</li>
+        <li><b>support line：</b>下方支撑线。可以粗略理解成“价格掉到这附近时，历史上更容易偏强”。</li>
+        <li><b>resistance line：</b>上方压制线。可以粗略理解成“价格碰到这附近时，历史上更容易偏弱”。</li>
+        <li><b>event：</b>价格和这条 line 发生一次我们关心的事件，比如触碰（touch）或突破（breakout）。</li>
+        <li><b>h=6：</b>往后看 6 根 K 线。这里是 60m 数据，所以 h=6 就是往后看 6 小时。</li>
+        <li><b>mean return：</b>这些历史事件发生后，未来 h 根 K 线收益的平均值。</li>
+        <li><b>up ratio：</b>这些历史事件里，未来 h 根 K 线后价格上涨的比例。比如 65.38% 就是“100 次里大约 65 次上涨”。</li>
+        <li><b>collapsed：</b>把同一个币、同一个时间点上重复/重叠的 line 先合并，避免同一时刻被重复计数。</li>
+        <li><b>lag&lt;=1h：</b>只保留更接近“当下可看到”的事件，用来粗略测试实时交易可用性。</li>
+      </ul>
+    
+    </div>
+
+    <div class="card">
+      <h2>先看一个例子：Q2 那句话到底在说什么？</h2>
+      
+      <div class='chart-notes'>
+        <ul>
+          <li><b>原句：</b>support mean=0.40%、up=65.38%</li>
+          <li><b>翻译成人话：</b>在 22288 次 support 事件里，往后看 6 小时，大约每 100 次里有 65 次上涨；平均涨跌幅是 0.40%。</li>
+          <li><b>再翻译短一点：</b>“遇到 support 这类事件时，历史上后面 6 小时更容易涨。”</li>
+        </ul>
+      </div>
+    
+    </div>
+
+    <div class="card">
+      <h2>Q&amp;A · 数据化讲解</h2>
+      <div class='qa-item'><div class='qa-q'>Q1. 这次 v2 到底在做什么？</div><div class='qa-a'>它不是在证明“这个策略已经能赚钱”，而是在做一件更基础的事：把样本放大以后，看看 pytrendline 里哪些现象还存在，哪些只是小样本错觉。</div></div><div class='qa-item'><div class='qa-q'>Q2. 例如 support 的 65.38% 到底是什么意思？</div><div class='qa-a'>人话翻译：在全部 22288 个 support 事件里，如果事件发生后往后看 6 根 K 线（这里 1 根=1 小时，所以就是 6 小时），有 65.38% 的样本价格是上涨的。同一批样本的平均 6 小时收益是 0.40%。这就是“support 更偏正向”的意思。</div></div><div class='qa-item'><div class='qa-q'>Q3. 那 line、support、resistance 分别是什么？</div><div class='qa-a'>line 就是 pytrendline 在一个滚动窗口里自动找出来的一条趋势线。support line 可以粗略理解成“下方支撑线”，resistance line 可以粗略理解成“上方压制线”。这页报告是在看：当价格和这些线发生特定事件后，未来表现有没有统计差异。</div></div><div class='qa-item'><div class='qa-q'>Q4. 当前最清楚的结论是什么？</div><div class='qa-a'>是 side 这个维度。support 事件 6 小时后更常上涨（up=65.38%，mean=0.40%）；resistance 事件 6 小时后更常偏弱（up=35.77%，mean=-0.39%）。它不是 100% 正确，但方向上很清楚。</div></div><div class='qa-item'><div class='qa-q'>Q5. 去重后（同 symbol+timestamp 合并）结论还在吗？</div><div class='qa-a'>还在。support 去重后仍是 0.36%，resistance 去重后仍是 -0.37%。这说明它不是单纯因为同一时刻画出了很多条相似线，才把结果“堆”出来的。</div></div><div class='qa-item'><div class='qa-q'>Q6. 那为什么你又说它还不能直接当交易信号？</div><div class='qa-a'>因为可观测性有问题：当我们只看更接近实时可用的样本（lag&lt;=1h）时，side gap 会从 78.74bp 掉到 10.66bp，只剩原来的 13.5%。也就是说，现象是有的，但真正拿来实时交易时，强度会缩水很多。</div></div><div class='qa-item'><div class='qa-q'>Q7. slope 和 quality 怎么理解？</div><div class='qa-a'>slope 可以理解成“线的斜率方向和陡峭程度”；它在描述性统计里有明显梯度。quality 可以理解成“这条线本身质量高不高”；但它目前的效应很小，所以暂时看不出强预测力。</div></div><div class='qa-item'><div class='qa-q'>Q8. 这些结论现在该怎么用？</div><div class='qa-a'>更合适的用法是：先把 side / slope 当作 feature 或 filter 候选，继续做更严格验证；不合适的用法是：直接把这页里的某个 bucket 当成可实盘交易规则。</div></div>
+    </div>
+
+    <div class="card">
+      <h2>结论可靠度分层（你问的“到底有多靠谱”）</h2>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>topic</th>
+      <th>descriptive_reliability</th>
+      <th>trading_reliability</th>
+      <th>evidence</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>line_side（support vs resistance）</td>
+      <td>高</td>
+      <td>中低</td>
+      <td>h6 raw gap=78.74bp，collapsed gap=73.52bp（保留 93.4%），lag&lt;=1h gap=10.66bp（保留 13.5%）。</td>
+    </tr>
+    <tr>
+      <td>slope_direction（mid/steep）</td>
+      <td>高</td>
+      <td>中低</td>
+      <td>|mean| raw=31.01bp，collapsed=30.38bp，lag&lt;=1h=5.39bp；lag&lt;=1h 方向强度仅保留约 17.4%。</td>
+    </tr>
+    <tr>
+      <td>line_quality（high/mid/low）</td>
+      <td>低</td>
+      <td>低</td>
+      <td>h6 raw bucket spread=2.67bp，collapsed spread=0.61bp，lag&lt;=1h spread=14.70bp。</td>
+    </tr>
+    <tr>
+      <td>method risk（event observability）</td>
+      <td>中</td>
+      <td>低</td>
+      <td>event lag median=13.0h，p95=23.0h；lag==0 仅 6.0%，lag&lt;=1h 仅 9.3%。</td>
+    </tr>
+  </tbody>
+</table>
+      <p class="warn"><b>重要方法注记：</b>事件时间与窗口终点存在系统性 lag（median=13.0h，p95=23.0h，lag==0 仅 6.0%）。
+      因此当前更适合解释“结构现象”，不适合直接宣称“可实时交易 alpha”。</p>
+    </div>
+
+    <div class="card">
+      <h2>Key findings</h2>
+      <div class='qa-item'><div class='qa-q'>overall / breakout</div><div class='qa-a'>n=35845，6-bar 平均收益 0.01%，上涨占比 50.53%，置信度 high。<br/><strong>解读：</strong>整体效应偏弱，更像事件上下文监控，不像可独立交易 alpha。</div></div><div class='qa-item'><div class='qa-q'>overall / touch</div><div class='qa-a'>n=9851，6-bar 平均收益 -0.03%，上涨占比 49.07%，置信度 high。<br/><strong>解读：</strong>整体效应偏弱，更像事件上下文监控，不像可独立交易 alpha。</div></div><div class='qa-item'><div class='qa-q'>line side</div><div class='qa-a'>side 是样本最充足、方向也最清楚的维度。当前较强一侧：resistance，n=23408，mean=-0.39%，up=35.77%。<br/><strong>解读：</strong>side 值得继续做 feature/filter，但不建议直接当交易规则。</div></div><div class='qa-item'><div class='qa-q'>slope bucket</div><div class='qa-a'>slope 在 raw 统计中呈现明显方向梯度：up_mid (n=10215, mean=0.17%)；down_mid (n=10047, mean=-0.17%)；up_steep (n=6868, mean=0.46%)；down_steep (n=6449, mean=-0.44%)。<br/><strong>解读：</strong>但在更严格可观测子样本中会明显衰减，当前只能算候选上下文特征。</div></div><div class='qa-item'><div class='qa-q'>line quality</div><div class='qa-a'>quality 三档在 h=6 的均值差异仅 2.67bp，量级较小。<br/><strong>解读：</strong>quality 暂不支持强预测结论，优先作为噪音过滤假设继续观察。</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Chart 1 · Overall by family (h=6)</h2>
+      <img class="chart" src="overall_h6_mean.png" alt="overall h6 mean return chart" />
+      <div class='chart-notes'><ul><li><b>怎么看：</b>先看均值是否明显远离 0，以及上涨占比是否明显偏离 50%。如果两者都贴近中性，说明 family 单变量解释力弱。</li><li><b>图上结果：</b>breakout：mean=0.01%、up=50.53%；touch：mean=-0.03%、up=49.07%。两类都非常接近中性。</li><li><b>这意味着什么：</b>breakout / touch 本身不够强，后续更应该看它和 side、slope 的联合结构，而不是单独拿 family 做信号。</li><li><b>别过度解读：</b>这里不能据此说 touch 一定差、breakout 一定好；能得出的更稳结论只是：family 单变量不够有力。</li></ul></div>
+    </div>
+
+    <div class="card">
+      <h2>Chart 2 · Side summary (h=6)</h2>
+      <img class="chart" src="side_h6_dual.png" alt="side dual chart" />
+      <div class='chart-notes'><ul><li><b>怎么看：</b>左边看 mean return 的正负和大小，右边看 up ratio 是否显著偏离 50%。如果两边同时同向，就说明这个维度更值得重视。</li><li><b>图上结果：</b>support：mean=0.40%、up=65.38%；resistance：mean=-0.39%、up=35.77%。两边几乎镜像。</li><li><b>这意味着什么：</b>line side 是当前最清晰、最稳定的结构维度：support 更偏正向，resistance 更偏负向。</li><li><b>别过度解读：</b>这更像“结构上下文”而不是现成交易规则；后面还要过可观测性、成本和切分验证。</li></ul></div>
+    </div>
+
+    <div class="card">
+      <h2>Chart 3 · Quality summary (h=6)</h2>
+      <img class="chart" src="quality_h6_dual.png" alt="quality dual chart" />
+      <div class='chart-notes'><ul><li><b>怎么看：</b>如果 quality 真有信息量，high / mid / low 三档应该拉开明显间距，而且上涨占比也应同步分层。</li><li><b>图上结果：</b>high=0.01% / 50.67%，mid=-0.01% / 50.11%，low=-0.01% / 49.92%；raw spread 只有 2.67bp。</li><li><b>这意味着什么：</b>quality 目前更像弱过滤假设，而不是强预测特征。</li><li><b>别过度解读：</b>不要因为 high 略高于 low 就直接认为“高质量线可交易”；当前差距太小。</li></ul></div>
+    </div>
+
+    <div class="card">
+      <h2>Chart 4 · Slope buckets (top by sample size, h=6)</h2>
+      <img class="chart" src="slope_h6_top8_dual.png" alt="slope bucket chart" />
+      <div class='chart-notes'><ul><li><b>怎么看：</b>重点看方向和斜率强弱是否形成梯度：up_steep / up_mid 是否更偏正，down_steep / down_mid 是否更偏负。</li><li><b>图上结果：</b>up_steep=0.46%、up=63.48%；down_steep=-0.44%、up=38.49%；up_mid=0.17%；down_mid=-0.17%。方向梯度很明显。</li><li><b>这意味着什么：</b>slope_direction 在描述性上是有东西的，尤其 steep 档最醒目。</li><li><b>别过度解读：</b>它在更严格 lag&lt;=1h 子样本里会明显衰减，所以现在更适合当候选特征，不适合直接当交易结论。</li></ul></div>
+    </div>
+
+    <div class="card">
+      <h2>Chart 5 · Side effect across horizons</h2>
+      <img class="chart" src="side_horizon_trend.png" alt="side horizon trend chart" />
+      <div class='chart-notes'><ul><li><b>怎么看：</b>看两条线在不同 horizon 上是否持续分离；如果多个 horizon 都保持同方向，说明不是只在单个持有期偶然成立。</li><li><b>图上结果：</b>support 曲线：h1=0.12% / h3=0.27% / h6=0.40% / h12=0.51% / h24=0.55%；resistance 曲线：h1=-0.13% / h3=-0.27% / h6=-0.39% / h12=-0.51% / h24=-0.60%。两条线从 h1 到 h24 始终分开。</li><li><b>这意味着什么：</b>side 的方向性不是只在 1 个 horizon 上出现，而是具有一定持续性。</li><li><b>别过度解读：</b>持续存在不等于可交易；因为这些事件很多并不是在当下就能观测到。</li></ul></div>
+    </div>
+
+    <div class="card">
+      <h2>Chart 6 · Side robustness (raw vs collapsed vs lag<=1h)</h2>
+      <img class="chart" src="side_robustness_h6.png" alt="side robustness chart" />
+      <div class='chart-notes'><ul><li><b>怎么看：</b>三组柱子分别回答三个问题：raw 会不会被重复线条夸大？collapsed 去重后还在不在？lag&lt;=1h 下实时可用强度还剩多少？</li><li><b>图上结果：</b>raw gap=78.74bp，collapsed gap=73.52bp，lag&lt;=1h gap=10.66bp；实时可用强度只保留约 13.5%。</li><li><b>这意味着什么：</b>side 不是重复统计造成的假象，但它的“交易强度”会在更严格可观测条件下明显缩水。</li><li><b>别过度解读：</b>不能只看 raw 柱子就宣布信号成立；真正要拿去做交易，必须看最右边那个 lag&lt;=1h 版本。</li></ul></div>
+    </div>
+
+    <div class="card">
+      <h2>Chart 7 · Event lag distribution</h2>
+      <img class="chart" src="event_lag_hist.png" alt="event lag histogram" />
+      <div class='chart-notes'><ul><li><b>怎么看：</b>这张图不是看收益，而是看“事件在多晚之后才被窗口看到”。分布越靠右，实时交易解释越危险。</li><li><b>图上结果：</b>median lag=13.0h，p95=23.0h，lag==0 仅 6.0%，lag&lt;=1h 仅 9.3%。</li><li><b>这意味着什么：</b>这是当前整页报告最重要的方法风险：很多事件更像“事后在窗口里被确认”，而不是“当下可立即使用”。</li><li><b>别过度解读：</b>这不是说结果没用，而是说它更适合做结构解释 / feature 候选，不该直接包装成实盘 alpha。</li></ul></div>
+    </div>
+
+    <div class="card">
+      <h2>Chart 8 · Symbol × side heatmap (collapsed h=6)</h2>
+      <img class="chart" src="side_symbol_heatmap_h6.png" alt="symbol side heatmap" />
+      <div class='chart-notes'><ul><li><b>怎么看：</b>逐行看每个币种，support 列应尽量为正、resistance 列应尽量为负；如果跨资产方向一致，说明不是单一资产偶然。</li><li><b>图上结果：</b>collapsed 后，support 在 6 个资产上为正、0 个为负；resistance 在 6 个资产上为负、0 个为正。这里是 6/6 一致。</li><li><b>这意味着什么：</b>side 维度不仅在整体样本里成立，在 6 个资产上也呈现出相同方向，这是它最像“真结构”的地方。</li><li><b>别过度解读：</b>样本仍然只有 6 个主流 crypto，不能直接外推出别的市场或更小币种。</li></ul></div>
+    </div>
+
+    <div class="card">
+      <h2>Chart 9 · Quality robustness (h=6)</h2>
+      <img class="chart" src="quality_robustness_h6.png" alt="quality robustness chart" />
+      <div class='chart-notes'><ul><li><b>怎么看：</b>和 side robustness 一样：先看 raw，再看 collapsed，最后看 lag&lt;=1h。真正稳的 quality 分层，三组柱子都应该方向一致且间距可观。</li><li><b>图上结果：</b>quality raw spread=2.67bp，collapsed spread=0.61bp，lag&lt;=1h spread=14.70bp；整体差距都不大，而且不够稳定。</li><li><b>这意味着什么：</b>quality 目前不具备“拿来就能用”的解释力，更像待证伪的辅助过滤器。</li><li><b>别过度解读：</b>不要因为 lag&lt;=1h 某一档偶尔更高就强行下结论；这个维度目前最需要的是更多验证，而不是更强叙事。</li></ul></div>
+    </div>
+
+    <div class="card">
+      <h2>后续研究建议（下一阶段）</h2>
+      <ul>
+        <li><b>R1. 先做 v3 严格可观测版：</b>只保留 event 在决策时刻可见的样本（或显式建模发布延迟），并对重叠事件做 purged/embargo 处理。</li>
+        <li><b>R2. 从 event 统计切到 factor 验证：</b>把 side/slope 转成横截面特征，跑 IC/rank-IC/bucket spread，而不是只看 event 后均值。</li>
+        <li><b>R3. 交易可实现性验证：</b>加入交易成本、滑点、换手约束，评估真实可部署收益质量。</li>
+        <li><b>R4. 结构分解：</b>单独做 family×side×slope 交互项，确认哪些组合在严格可观测样本里还能保留方向性。</li>
+        <li><b>R5. 稳健性协议：</b>固定训练/验证切分，做 walk-forward + 跨资产留一验证，避免“样本内解释好看”。</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Symbol coverage</h2>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>symbol</th>
+      <th>rows</th>
+      <th>start</th>
+      <th>end</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>BTC-USD</td>
+      <td>8710</td>
+      <td>2025-03-14 00:00</td>
+      <td>2026-03-13 04:00</td>
+    </tr>
+    <tr>
+      <td>ETH-USD</td>
+      <td>8708</td>
+      <td>2025-03-14 00:00</td>
+      <td>2026-03-13 05:00</td>
+    </tr>
+    <tr>
+      <td>SOL-USD</td>
+      <td>8711</td>
+      <td>2025-03-14 00:00</td>
+      <td>2026-03-13 06:00</td>
+    </tr>
+    <tr>
+      <td>BNB-USD</td>
+      <td>8712</td>
+      <td>2025-03-14 00:00</td>
+      <td>2026-03-13 06:00</td>
+    </tr>
+    <tr>
+      <td>XRP-USD</td>
+      <td>8713</td>
+      <td>2025-03-14 00:00</td>
+      <td>2026-03-13 07:00</td>
+    </tr>
+    <tr>
+      <td>ADA-USD</td>
+      <td>8710</td>
+      <td>2025-03-14 00:00</td>
+      <td>2026-03-13 07:00</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+
+    <div class="card">
+      <h2>Overall by family / horizon</h2>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>horizon</th>
+      <th>event_family</th>
+      <th>events</th>
+      <th>mean_ret</th>
+      <th>median_ret</th>
+      <th>up_ratio</th>
+      <th>confidence_tier</th>
+      <th>direction_label</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>breakout</td>
+      <td>35845</td>
+      <td>0.000009</td>
+      <td>0.000041</td>
+      <td>0.505008</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>touch</td>
+      <td>9851</td>
+      <td>-0.000268</td>
+      <td>-0.000091</td>
+      <td>0.489798</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>breakout</td>
+      <td>35845</td>
+      <td>0.000020</td>
+      <td>0.000190</td>
+      <td>0.509834</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>touch</td>
+      <td>9851</td>
+      <td>-0.000432</td>
+      <td>-0.000058</td>
+      <td>0.497107</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>breakout</td>
+      <td>35845</td>
+      <td>0.000053</td>
+      <td>0.000120</td>
+      <td>0.505287</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>touch</td>
+      <td>9851</td>
+      <td>-0.000347</td>
+      <td>-0.000234</td>
+      <td>0.490712</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+    <tr>
+      <td>12</td>
+      <td>breakout</td>
+      <td>35845</td>
+      <td>-0.000130</td>
+      <td>0.000032</td>
+      <td>0.500600</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+    <tr>
+      <td>12</td>
+      <td>touch</td>
+      <td>9851</td>
+      <td>-0.000052</td>
+      <td>0.000092</td>
+      <td>0.502081</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+    <tr>
+      <td>24</td>
+      <td>breakout</td>
+      <td>35845</td>
+      <td>-0.000362</td>
+      <td>-0.000052</td>
+      <td>0.497950</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+    <tr>
+      <td>24</td>
+      <td>touch</td>
+      <td>9851</td>
+      <td>-0.000546</td>
+      <td>-0.000547</td>
+      <td>0.487869</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+
+    <div class="card">
+      <h2>Side summary (h=6)</h2>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>line_side</th>
+      <th>events</th>
+      <th>mean_ret</th>
+      <th>median_ret</th>
+      <th>up_ratio</th>
+      <th>confidence_tier</th>
+      <th>direction_label</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>resistance</td>
+      <td>23408</td>
+      <td>-0.003874</td>
+      <td>-0.002857</td>
+      <td>0.357741</td>
+      <td>high</td>
+      <td>more_likely_down</td>
+    </tr>
+    <tr>
+      <td>support</td>
+      <td>22288</td>
+      <td>0.004000</td>
+      <td>0.003436</td>
+      <td>0.653805</td>
+      <td>high</td>
+      <td>more_likely_up</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+
+    <div class="card">
+      <h2>Slope summary (h=6)</h2>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>slope_bucket</th>
+      <th>events</th>
+      <th>mean_ret</th>
+      <th>median_ret</th>
+      <th>up_ratio</th>
+      <th>confidence_tier</th>
+      <th>direction_label</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>up_mid</td>
+      <td>10215</td>
+      <td>0.001657</td>
+      <td>0.001269</td>
+      <td>0.558492</td>
+      <td>high</td>
+      <td>more_likely_up</td>
+    </tr>
+    <tr>
+      <td>down_mid</td>
+      <td>10047</td>
+      <td>-0.001704</td>
+      <td>-0.001139</td>
+      <td>0.443117</td>
+      <td>high</td>
+      <td>more_likely_down</td>
+    </tr>
+    <tr>
+      <td>up_steep</td>
+      <td>6868</td>
+      <td>0.004626</td>
+      <td>0.003329</td>
+      <td>0.634828</td>
+      <td>high</td>
+      <td>more_likely_up</td>
+    </tr>
+    <tr>
+      <td>down_steep</td>
+      <td>6449</td>
+      <td>-0.004419</td>
+      <td>-0.003110</td>
+      <td>0.384866</td>
+      <td>high</td>
+      <td>more_likely_down</td>
+    </tr>
+    <tr>
+      <td>up_flat</td>
+      <td>6086</td>
+      <td>0.000584</td>
+      <td>0.000734</td>
+      <td>0.527276</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+    <tr>
+      <td>down_flat</td>
+      <td>6031</td>
+      <td>-0.001351</td>
+      <td>-0.000876</td>
+      <td>0.453988</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+
+    <div class="card">
+      <h2>Quality summary (h=6)</h2>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>line_quality_bucket</th>
+      <th>events</th>
+      <th>mean_ret</th>
+      <th>median_ret</th>
+      <th>up_ratio</th>
+      <th>confidence_tier</th>
+      <th>direction_label</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>high</td>
+      <td>11872</td>
+      <td>0.000127</td>
+      <td>0.000154</td>
+      <td>0.506654</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+    <tr>
+      <td>low</td>
+      <td>10154</td>
+      <td>-0.000140</td>
+      <td>-0.000064</td>
+      <td>0.499212</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+    <tr>
+      <td>mid</td>
+      <td>23670</td>
+      <td>-0.000068</td>
+      <td>0.000025</td>
+      <td>0.501141</td>
+      <td>high</td>
+      <td>mixed</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+
+    <div class="card">
+      <h2>Robustness tables</h2>
+      <h3>Side robustness (h=6)</h3>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>line_side</th>
+      <th>raw_events</th>
+      <th>raw_mean_ret</th>
+      <th>raw_up_ratio</th>
+      <th>collapsed_events</th>
+      <th>collapsed_mean_ret</th>
+      <th>collapsed_up_ratio</th>
+      <th>lag1_events</th>
+      <th>lag1_mean_ret</th>
+      <th>lag1_up_ratio</th>
+      <th>collapse_abs_retention</th>
+      <th>lag1_abs_retention</th>
+      <th>lag1_sign_match</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>resistance</td>
+      <td>23408</td>
+      <td>-0.003874</td>
+      <td>0.357741</td>
+      <td>10389</td>
+      <td>-0.003743</td>
+      <td>0.384349</td>
+      <td>2245</td>
+      <td>-0.000402</td>
+      <td>0.484187</td>
+      <td>0.966197</td>
+      <td>0.103665</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>support</td>
+      <td>22288</td>
+      <td>0.004000</td>
+      <td>0.653805</td>
+      <td>10145</td>
+      <td>0.003609</td>
+      <td>0.621883</td>
+      <td>2003</td>
+      <td>0.000664</td>
+      <td>0.554169</td>
+      <td>0.902158</td>
+      <td>0.166063</td>
+      <td>True</td>
+    </tr>
+  </tbody>
+</table>
+      <h3>Quality robustness (h=6)</h3>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>line_quality_bucket</th>
+      <th>raw_events</th>
+      <th>raw_mean_ret</th>
+      <th>raw_up_ratio</th>
+      <th>collapsed_events</th>
+      <th>collapsed_mean_ret</th>
+      <th>collapsed_up_ratio</th>
+      <th>lag1_events</th>
+      <th>lag1_mean_ret</th>
+      <th>lag1_up_ratio</th>
+      <th>collapse_abs_retention</th>
+      <th>lag1_abs_retention</th>
+      <th>lag1_sign_match</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>high</td>
+      <td>11872</td>
+      <td>0.000127</td>
+      <td>0.506654</td>
+      <td>8109</td>
+      <td>-0.000020</td>
+      <td>0.500678</td>
+      <td>983</td>
+      <td>0.000493</td>
+      <td>0.528993</td>
+      <td>0.159893</td>
+      <td>3.877655</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>low</td>
+      <td>10154</td>
+      <td>-0.000140</td>
+      <td>0.499212</td>
+      <td>7191</td>
+      <td>-0.000059</td>
+      <td>0.501043</td>
+      <td>1055</td>
+      <td>-0.000977</td>
+      <td>0.482464</td>
+      <td>0.423370</td>
+      <td>6.999951</td>
+      <td>True</td>
+    </tr>
+    <tr>
+      <td>mid</td>
+      <td>23670</td>
+      <td>-0.000068</td>
+      <td>0.501141</td>
+      <td>12774</td>
+      <td>0.000002</td>
+      <td>0.504462</td>
+      <td>2210</td>
+      <td>0.000441</td>
+      <td>0.528507</td>
+      <td>0.023167</td>
+      <td>6.487272</td>
+      <td>False</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+
+    <div class="card">
+      <h2>Artifacts</h2>
+      <ul>
+        <li><a href='../../artifacts/pytrendline_event_validation_v2/event_sample.csv'>event_sample.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v2/symbol_meta.csv'>symbol_meta.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v2/overall_by_family_horizon.csv'>overall_by_family_horizon.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v2/side_summary_h6.csv'>side_summary_h6.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v2/slope_summary_h6.csv'>slope_summary_h6.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v2/quality_summary_h6.csv'>quality_summary_h6.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v2/side_horizon_summary.csv'>side_horizon_summary.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v2/side_robustness_h6.csv'>side_robustness_h6.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v2/slope_robustness_h6.csv'>slope_robustness_h6.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v2/quality_robustness_h6.csv'>quality_robustness_h6.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v2/reliability_matrix.csv'>reliability_matrix.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v2/lag_summary.csv'>lag_summary.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v2/summary.json'>summary.json</a></li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

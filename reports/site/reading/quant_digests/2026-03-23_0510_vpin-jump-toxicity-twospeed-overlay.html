@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把高 VPIN 当 15m 方向确认：它更像 breakout-short / Fib / EMA-PSAR 的 two-speed jump-risk overlay</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把高 VPIN 当 15m 方向确认：它更像 breakout-short / Fib / EMA-PSAR 的 two-speed jump-risk overlay</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-23 08:59 UTC</span>
+      <span class="pill">研究时间：2026-03-23 05:10 UTC</span>
+      <span class="pill">类型：近 5 年论文 + 开源实现仓库 + Binance 公共数据最小快检</span>
+      <span class="pill">主题标签：breakout-short/final-verdict/fibonacci/retest-hold/ema/psar/vpin/order-flow-toxicity/jump-risk/regime-gate/position-sizing/risk-overlay/crypto/5m/15m</span>
+      <span class="pill">证据类型：论文证据 + 工程实现 + 公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-23_0510_vpin-jump-toxicity-twospeed-overlay.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-23 05:10 UTC</li>
+<li>类型：近 5 年论文 + 开源实现仓库 + Binance 公共数据最小快检</li>
+<li>主题类型：overlay</li>
+<li>基础 alpha：breakout-short / fib retest / ema-psar continuation（既有 setup）</li>
+<li>是否可独立复现：否</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：breakout-short/final-verdict/fibonacci/retest-hold/ema/psar/vpin/order-flow-toxicity/jump-risk/regime-gate/position-sizing/risk-overlay/crypto/5m/15m</li>
+<li>证据类型：论文证据 + 工程实现 + 公共数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主读的是 <strong>Kitvanitphasu, Kyaw, Likitapiwat, Treepongkaruna (2025/2026)</strong>：*Bitcoin wild moves: Evidence from order flow toxicity and price jumps*。它最值得我们 desk 借的旁支，不是“再造一个入场 alpha”，而是把 <code>order-flow toxicity (VPIN)</code> 定位成 <strong>jump-risk 的 regime 层</strong>。实现参考用的是开源仓库 <code>hanxixuana/flowrisk</code>（VPIN 递归估计器）。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> VPIN 在 15m 上更像“这段行情会不会突然乱跳”的风险温度计，不该直接当 breakout-short/Fib/EMA 的方向确认键。</li>
+<li><strong>一句话证明方式：</strong> 论文用高频微观结构建模（VAR + jump test）证明 <code>VPIN -&gt; future jumps</code> 有预测力；我再用 Binance 公开 1m/15m 数据做了最小代理快检，验证“高 VPIN 提升 jump 概率，但不稳定提升方向胜率”。</li>
+<li>论文层面：作者报告 <strong>VPIN 对未来 price jump 有显著预测力</strong>，且 VPIN 与 jump size 具有正序列相关；这支持它做风险/状态指标，而非单向预测器。</li>
+<li>本地快检（2026-02-21~2026-03-23，BTC/ETH/SOL，1m 构造 VPIN、映射到 15m）：高 VPIN（Top20%）相对低 VPIN（Bottom20%）的 <code>jump_proxy hit rate</code> 平均约 <strong>1.10x</strong>（BTC <code>1.07x</code>，ETH <code>1.13x</code>，SOL <code>1.11x</code>）。</li>
+<li>同期 <code>|future 4-bar return|</code> 在高 VPIN 组平均约为低 VPIN组的 <strong>1.18x</strong>，说明更像“波动放大/路径更毛刺”。</li>
+<li>但对 <code>short breakout</code> 方向并不友好：在 20-bar 跌破代理事件里，高 VPIN 组 4-bar short PnL 均值约 <strong>-0.17%</strong>，低 VPIN 组约 <strong>+0.16%</strong>；且 short failure（4根内收回破位线）平均高出约 <strong>+9.6pp</strong>。=&gt; 高 VPIN 更像“更乱”，不是“更顺”。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li><strong>V3 final-verdict / breakout-short follow-up：</strong> 高 VPIN 不是 continuation-confirmation，反而提示“路径更跳”，应优先用于 <code>tighten timeout / 降仓 / 提高否决阈值</code>。</li>
+<li><strong>Fibonacci confirmation / retest_hold：</strong> 在高 VPIN 段，回踩更容易 overshoot + 快速反抽，<code>retest_hold</code> 需要更严格（例如额外要求 reclaim + 下一根不失守）才更诚实。</li>
+<li><strong>EMA / PSAR raw alpha focus：</strong> EMA/PSAR 可以继续做方向骨架；VPIN 负责风险速度挡位（low=normal，mid=halfsize，high=tight/甚至veto），避免把“噪声跳动”误判为趋势质量。</li>
+<li>这题比继续横向发散更值得的原因：它是三条收口线都能共用的一层 risk overlay，而且公开数据可分钟级拉取，最小实验可当天复现。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势框架上的风险覆盖层（非独立方向 alpha）</li>
+<li>基础 alpha：沿用 breakout-short / Fib / EMA-PSAR 现有触发</li>
+<li>regime：<code>VPIN</code> 分位 + jump-risk 状态（low / mid / high）</li>
+<li>filter / veto：高 VPIN 时提高 entry-confirmation 门槛，或对“弱确认”直接 veto</li>
+<li>risk / sizing / execution overlay：<code>size × {1.0, 0.5, 0~0.25}</code> + 更短 timeout + 更快 fail-fast</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设：</strong> 在 15m 策略上，<code>VPIN two-speed overlay</code> 相比 always-on，可降低假 follow-up 和尾部回撤，而不显著破坏可交易样本。</li>
+<li><strong>数据源（公开可得）：</strong></li>
+</ul>
+<ol>
+<li>Binance USDⓈ-M <code>fapi/v1/klines</code> 1m（含 taker buy volume，公开 REST）；</li>
+<li>Binance USDⓈ-M <code>fapi/v1/klines</code> 15m（事件与绩效评估）；</li>
+<li>更新频率：1m/15m 持续更新，免费可拉取。</li>
+</ol>
+<ul>
+<li><strong>最小口径：</strong></li>
+</ul>
+<ol>
+<li>用 1m <code>taker_buy_volume</code> 与 <code>sell_volume</code> 做 volume-bucket VPIN（bucket≈日均成交量/50，VPIN窗=50 buckets）；</li>
+<li>映射到 15m 后按滚动分位分成 <code>low(&lt;q40) / mid(q40~q80) / high(&gt;q80)</code>；</li>
+<li>把三条策略现有触发分别跑三组：<code>base</code> vs <code>base+binary(high veto)</code> vs <code>base+two-speed sizing</code>。</li>
+</ol>
+<ul>
+<li><strong>先看 2 个指标：</strong></li>
+</ul>
+<ol>
+<li><code>post-cost short/long expectancy</code>（按方向拆开，不合池）；</li>
+<li><code>N-bar failure rate</code>（breakout 回收、Fib 失守、EMA/PSAR 假翻转）。</li>
+</ol>
+<ul>
+<li><strong>下一步怎么测（必须项）：</strong></li>
+<li>第一轮先固定 <code>BTC/ETH/SOL, 15m, 180d, no-overlap, 6/10/15 bps</code>，只比 <code>binary veto</code> 和 <code>two-speed sizing</code>；</li>
+<li>若 <code>two-speed</code> 仅在降低回撤有效、但收益拖累过大，则保留为 <code>risk-only mode</code>；</li>
+<li>若在 breakout-short 上出现“失败率下降且收益不塌”，再考虑把它升级到 V3 follow-up 默认风控层。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>本轮 VPIN 是基于 Binance 1m taker volume 的可复现代理，不是完整订单簿级 microstructure 还原。</li>
+<li>样本窗口仅约 30 天，结论用于“是否值得进入研究池”而非“直接上线”。</li>
+<li>VPIN 可能更像“噪声+流动性压力”联合温度计：适合风控和仓位，不适合直接当方向信号。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li>Kitvanitphasu, A., Kyaw, K., Likitapiwat, T., &amp; Treepongkaruna, S. (2025). *Bitcoin wild moves: Evidence from order flow toxicity and price jumps*. <strong>Research in International Business and Finance</strong> (2026 print, Vol.81, 103163).</li>
+<p>DOI: <code>10.1016/j.ribaf.2025.103163</code> Readable URL: <code><a href="https://doi.org/10.1016/j.ribaf.2025.103163">https://doi.org/10.1016/j.ribaf.2025.103163</a></code> Repo URL: <code>N/A（论文未给官方代码仓库）</code></p>
+</ol>
+<ol>
+<li>Han, X. (hanxixuana). (2018, updated). *flowrisk: A Python Implementation of Measures for Order Flow Risk, e.g. VPIN*. GitHub Repository.</li>
+<p>Readable URL: <code><a href="https://github.com/hanxixuana/flowrisk">https://github.com/hanxixuana/flowrisk</a></code> Repo URL: <code><a href="https://github.com/hanxixuana/flowrisk">https://github.com/hanxixuana/flowrisk</a></code></p>
+</ol>
+<ol>
+<li>Easley, D., López de Prado, M., &amp; O’Hara, M. (2012). *Flow toxicity and liquidity in a high-frequency world*. <strong>Review of Financial Studies</strong>, 25(5), 1457–1493.</li>
+<p>DOI: <code>10.1093/rfs/hhr100</code> Readable URL: <code><a href="https://doi.org/10.1093/rfs/hhr100">https://doi.org/10.1093/rfs/hhr100</a></code></p>
+</ol>
+<ol>
+<li>Binance Developers. (n.d.). *USDⓈ-M Futures API – Kline/Candlestick Data*.</li>
+<p>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></p>
+</ol>
+<ul>
+<li>本轮最小快检产物：<code>reports/artifacts/quant_digests/vpin_jump_toxicity_proxy_20260323/</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 StochRSI + Volume 只当 retail 指标拼盘：这份 2026 新 repo 给的是 15m 趋势内 exhaustion-reversion 完整策略骨架，但快检先把它判成负样本</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 StochRSI + Volume 只当 retail 指标拼盘：这份 2026 新 repo 给的是 15m 趋势内 exhaustion-reversion 完整策略骨架，但快检先把它判成负样本</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-23 20:34 UTC</span>
+      <span class="pill">研究时间：2026-03-23 20:32 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + Binance 公共数据最小快检</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/pullback/exhaustion/stochrsi/volume/trend-filter/single-asset/repo/binance/crypto/5m/15m/cost/implementation-risk</span>
+      <span class="pill">证据类型：repo 策略代码 + 公开市场数据最小快检 + 实现诚实性检查</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-23_2032_stochrsi-volume-pullback-fullstack-honesty-cut.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-23 20:32 UTC</li>
+<li>类型：2026 GitHub 新仓库 + Binance 公共数据最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：上升趋势中的超卖反抽回归（trend-filtered pullback / exhaustion mean reversion）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/mean-reversion/pullback/exhaustion/stochrsi/volume/trend-filter/single-asset/repo/binance/crypto/5m/15m/cost/implementation-risk</li>
+<li>证据类型：repo 策略代码 + 公开市场数据最小快检 + 实现诚实性检查</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>meripushko (2026)</strong> 的新仓库 *binance-stochrsi-backtest*。先把 base alpha 说清楚：<strong>不是“StochRSI 有用”这种空话，而是“价格仍在大级别上升趋势里时，短线超卖 + 成交量放大后的反抽回归”</strong>。和 3 月 17 日那条只停在 source-template 的 <code>StochRSI + EMA pullback</code> 不同，这个 repo 把 <code>entry / exit / sizing / risk / fee</code> 都写出来了，所以它值得当成一条能被快速证伪或保留的完整 raw alpha intake。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>这条东西的 base alpha 是清楚的。</strong> 规则本质是：<code>close &gt; EMA200</code> 的 uptrend 中，前一根 StochRSI 已超卖，当前 K 上穿 D 且仍处低位，同时放量，赌一次顺大势的小回调结束。</li>
+<li><strong>它确实是完整策略，不只是信号模板。</strong> repo 明确写了：<code>stop = 最近 5 根最低点 - 0.1%</code>，<code>take profit = 2R</code>，<code>risk = 1%</code>，<code>fee = 10bp/side</code>，还有 <code>cooldown</code> 与 <code>max trades/day</code>。</li>
+<li><strong>但实现里有一个很硬的诚实性问题：<code>MAX_TRADES_PER_DAY</code> 实际上没有按天重置。</strong> 代码里 <code>RiskManager.reset_daily()</code> 存在，但回测主循环从未调用，因此发布版代码按字面执行时，更像“整段回测最多只做 4 笔”。</li>
+<li><strong>我按 repo 逻辑抓 Binance 2024 年 15m 公共数据做最小快检，修掉 daily-reset 后，BTC/ETH 都是明显负 edge。</strong> BTCUSDT：<code>80</code> 笔、胜率 <code>38.8%</code>、PF <code>0.44</code>、PnL <code>-28.7%</code>；ETHUSDT：<code>67</code> 笔、胜率 <code>40.3%</code>、PF <code>0.58</code>、PnL <code>-18.6%</code>。</li>
+<li><strong>把同一套规则直接压到 5m 更差。</strong> BTCUSDT 2024 <code>5m</code>：<code>226</code> 笔、胜率 <code>27.9%</code>、PF <code>0.23</code>、PnL <code>-79.7%</code>。所以它现在不该直接进 <code>5m / 15m</code> fast lane，当“完整负样本”反而更有价值。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>当前 bot7 的优先级不是继续找模糊 filter，而是补能独立复现、能完整落地的 raw alpha 素材池。这条 repo 的价值不在于“它能马上上线”，而在于：<strong>它提供了一个非常具体、非常容易最小复现的 pullback raw alpha 骨架，并且能在几分钟内做出诚实否决。</strong> 对 desk 来说，这比再收一条“可能有点用的确认条件”更值钱——因为我们现在需要的正是可快速进池、也可快速出局的完整策略候选。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：单资产、逆小级别回调但顺大级别趋势</li>
+<li>基础 alpha：trend-filtered oversold bounce / exhaustion reversion</li>
+<li>regime：<code>close &gt; EMA200</code>（只做多头趋势环境）</li>
+<li>filter / veto：前一根 <code>K &lt;= 20 且 K &lt; D</code>；当前 <code>K &gt; D 且 K &lt;= 30</code>；<code>volume &gt; 1.5 x SMA20</code></li>
+<li>risk / sizing / execution overlay：单笔风险 <code>1%</code>；<code>SL = 近 5 根最低点 - 0.1%</code>；<code>TP = 2R</code>；<code>K &lt; D 且 K &gt; 70</code> 早退；<code>fee = 10bp/side</code>；亏损后冷却 <code>2</code> 根；名义上每日最多 <code>4</code> 笔</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设：</strong> 这条 alpha 在 <code>BTC/ETH spot long-only</code> 上大概率不成立，但在 <code>perp long/short 对称版</code>、或更高 beta 山寨币的 <code>15m</code> 趋势段里，也许还能留下局部 edge。</li>
+<li><strong>一个可计算定义：</strong> <code>signal_long = (close &gt; EMA200) &amp; (prev_k &lt;= 20) &amp; (prev_k &lt; prev_d) &amp; (k &gt; d) &amp; (k &lt;= 30) &amp; (volume &gt; 1.5 * volume_sma20)</code>；short 端做镜像版。</li>
+<li><strong>最小回测切口：</strong> Binance USDT perp，<code>BTC / ETH / SOL / DOGE</code>，样本先跑 <code>2024-01-01 ~ 2026-03-01</code>；先做 <code>15m</code>，再看是否值得下钻 <code>5m</code>；统一 <code>next-bar open</code> 成交、<code>6~10bp</code> 总成本、禁止 overlap。</li>
+<li><strong>最该先看 2 个指标：</strong> <code>net PF / expectancy after cost</code>，以及 <code>trade count stability by regime</code>。如果连 <code>15m</code> 都过不了 <code>PF &gt; 1</code> 和稳定交易数，就不用浪费预算去 <code>3m / 1m</code>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是一份很新的个人 repo，不是经过同行评审的研究；README 里的示例业绩不能直接当真。</li>
+<li>当前版本是 <strong>spot long-only</strong>，天然带有牛市偏置；直接映射到我们更关心的 perp 短周期，必须补 short 端与资金费/滑点口径。</li>
+<li>StochRSI 阈值、<code>1.5x</code> 放量阈值、<code>2R</code> 出场都很像固定参数模板，容易在单一时期过拟合。</li>
+<li>从这次快检看，<strong>它更像“完整但应快速否决的 raw alpha 模板”</strong>，不该被包装成 high-conviction 主策略。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li>meripushko. (2026). *Binance StochRSI Volume Trading Bot*.</li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/meripushko/binance-stochrsi-backtest">https://github.com/meripushko/binance-stochrsi-backtest</a></code></li>
+<li>README: <code><a href="https://raw.githubusercontent.com/meripushko/binance-stochrsi-backtest/main/README.md">https://raw.githubusercontent.com/meripushko/binance-stochrsi-backtest/main/README.md</a></code></li>
+<li>Strategy code: <code><a href="https://raw.githubusercontent.com/meripushko/binance-stochrsi-backtest/main/src/strategy/stochrsi_volume.py">https://raw.githubusercontent.com/meripushko/binance-stochrsi-backtest/main/src/strategy/stochrsi_volume.py</a></code></li>
+</ul>
+<ol>
+<li>Liu, Y., Lu, Y., &amp; Wang, V. (2021). *Cryptocurrency Momentum Effect*. International Review of Financial Analysis.</li>
+</ol>
+<ul>
+<li>DOI: <code><a href="https://doi.org/10.1016/j.irfa.2021.101938">https://doi.org/10.1016/j.irfa.2021.101938</a></code></li>
+<li>Readable URL: <code><a href="https://www.sciencedirect.com/science/article/pii/S1057521921002458">https://www.sciencedirect.com/science/article/pii/S1057521921002458</a></code></li>
+</ul>
+<ol>
+<li>Jiang, G. J., Kelly, B., &amp; Xiu, D. (2023). *Technical Analysis in the Cryptocurrency Market* (related chart-signal evidence base).</li>
+</ol>
+<ul>
+<li>DOI: <code><a href="https://doi.org/10.1111/jofi.13268">https://doi.org/10.1111/jofi.13268</a></code></li>
+<li>Readable URL: <code><a href="https://onlinelibrary.wiley.com/doi/full/10.1111/jofi.13268">https://onlinelibrary.wiley.com/doi/full/10.1111/jofi.13268</a></code></li>
+</ul>
+</body>
+</html>

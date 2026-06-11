@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个 Bybit 均值回复 bot 只读成“多币对冲框架”：对 short-cycle crypto desk，更该先拆的是「24h 横截面 loser→winner fade × inverse-vol dollar-neutral sizing」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个 Bybit 均值回复 bot 只读成“多币对冲框架”：对 short-cycle crypto desk，更该先拆的是「24h 横截面 loser→winner fade × inverse-vol dollar-neutral sizing」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-22 06:25 UTC</span>
+      <span class="pill">研究时间：2026-04-22 06:22 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：cross-sectional / relative-value / mean-reversion / loser-winner / inverse-vol / dollar-neutral / regime-gate / maker-first / cost / risk</span>
+      <span class="pill">证据类型：工程经验 + 公开数据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-22_0622_xs24h-loserwinner-voltarget-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-22 06:22 UTC</li>
+<li>类型：GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：过去 24 小时相对最弱的币，在接下来 4 小时更容易反弹；过去 24 小时相对最强的币，更容易回吐</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：cross-sectional / relative-value / mean-reversion / loser-winner / inverse-vol / dollar-neutral / regime-gate / maker-first / cost / risk</li>
+<li>证据类型：工程经验 + 公开数据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮读的是 <code>StaithValanthis/mean-reversion</code>。它不是那种只会说“均值回复有效”的教学仓，而是已经把完整交易壳写出来了：</p>
+<ul>
+<li><code>README.md</code>：给出主策略、交易所、数据下载、回测、live/paper 入口</li>
+<li><code>docs/STRATEGY.md</code>：明确 base alpha 是 <strong>24h 横截面 short-term reversal</strong></li>
+<li><code>config/config.yaml</code>：给出默认参数：<code>24h</code> lookback、<code>4h</code> rebalance、<code>top/bottom 20%</code>、<code>BTC ADX+EMA slope</code> regime gate、<code>post_only</code></li>
+<li><code>src/portfolio/weights.py</code>：给出 inverse-vol + dollar-neutral sizing</li>
+<li><code>src/exchange/fees.py</code> + <code>src/execution/slippage.py</code>：把 maker/taker fee 与滑点单独建模</li>
+</ul>
+<p>所以它最值得 intake 的点，不是“Bybit 上可以跑”，而是它把 <strong>entry / hold / sizing / risk / cost</strong> 五件事一次性补齐了。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最值钱的，不是“均值回复 bot”这层壳，而是一个很干净的完整 raw alpha：<code>24h loser-long / winner-short</code>，再用 inverse-vol 和 dollar-neutral 把它变成可交易组合。</li>
+<li><strong>一句话证明方式：</strong> 作者在文档里把信号、regime gate、仓位、fee/slippage、kill-switch 都写死了；我再把它压到 Binance USDⓈ-M <code>15m</code> 的 <code>24h signal + 4h hold</code> 口径做 portability probe，看这条边在我们 desk 习惯的时间框架里还剩多少。</li>
+<li>Repo 默认 strongest claim 是：在 Bybit USDT perp 上做 <code>24h</code> 排名，<code>long bottom 20% / short top 20%</code>，强趋势时再把敞口缩到 <code>25%</code>，用 inverse-vol 做等风险配重。</li>
+<li>我额外做的 Binance USDⓈ-M <code>15m</code> probe（近 <code>120d</code>，<code>12</code> 币池，<code>24h=96 bars</code> lookback，<code>4h=16 bars</code> hold）显示：<strong>全 12 币篮子</strong>平均每次 rebalance 的 gross 约 <strong><code>+9.35 bps</code></strong>，但若按 repo 的 maker-first 粗成本口径（<code>0.2bps maker + 2bps slippage</code> 单边；组合 round-trip 约 <code>8.8bps</code>）去扣，<code>net total return</code> 只剩约 <strong><code>+0.97%</code></strong>，几乎只是勉强活着。</li>
+<li>更有意思的是，<strong>liquid majors 8 币子集</strong>（<code>BTC/ETH/SOL/BNB/XRP/ADA/DOGE/AVAX</code>）反而更厚：平均每次 rebalance 的 gross 约 <strong><code>+13.76 bps</code></strong>，gross cumulative 约 <strong><code>+156.1%</code></strong>；粗扣 <code>8.8bps</code> round-trip 后，<code>net total return</code> 仍约 <strong><code>+36.8%</code></strong>、<code>net Sharpe ≈ 2.18</code>。</li>
+<li>但如果换成更保守的 taker-like round-trip <code>20bps</code>，同一个 majors8 pocket 会直接掉到 <strong><code>-38.5%</code></strong>；这说明它不是“随便怎么打都有边”的策略，而是一个明显依赖 <strong>maker-first / 低冲击执行</strong> 的 relative-value 壳。</li>
+<li>first verdict：<strong>这条线值得进复现池，而且更像 liquid-major <code>15m</code> relative-value sleeve；不该被读成 broad alt basket 全天候反转机。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和当前 desk 很贴，因为它正好满足现在最缺的几件事：</p>
+<ol>
+<li><strong>base alpha 讲得清楚</strong>：就是 <code>24h</code> 横截面 loser→winner fade，不是抽象“均值回复可能存在”。</li>
+<li><strong>完整策略壳现成</strong>：entry、exit、sizing、risk、cost 都有默认实现，不需要我们自己先脑补半套系统。</li>
+<li><strong>能映射到 <code>15m / 5m / 1m</code></strong>：虽然 repo 默认用 <code>1h</code> 数据，但本质只是 <code>24h</code> ranking + <code>4h</code> holding，这个节奏完全可以直接压到 <code>15m</code> 做 parent signal，再把 <code>5m/1m</code> 留给 child execution。</li>
+</ol>
+<p>更重要的是，它不是继续在 breakout / pullback 那条线上内循环，而是补了一条更正宗的 <strong>cross-sectional / relative-value raw alpha</strong>，刚好符合当前 intake 应该扩充素材池的方向。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / 相对价值 / 逆势</li>
+<li>基础 alpha：<code>24h</code> 横截面 loser→winner reversal</li>
+<li>regime：BTC 进入强趋势时，均值回复腿容易被 trend 压过去，因此应缩仓或 veto</li>
+<li>filter / veto：只做高流动性 perp universe；点差异常、极端波动、数据不足、强趋势环境时降权或停做</li>
+<li>risk / sizing / execution overlay：inverse-vol 配重、dollar-neutral、单币上限、gross cap、maker-first、daily loss cap、drawdown cap、circuit breaker</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>假设：</strong> 过去 <code>24h</code> 相对最差的 liquid majors，在接下来 <code>4h</code> 更容易相对反弹；最强者更容易回吐。</li>
+<li><strong>定义：</strong> 每 <code>4h</code> 做一次排名；<code>long bottom 20% / short top 20%</code>；先用 equal-weight 验证方向，再切 repo-faithful 的 inverse-vol + dollar-neutral sizing。</li>
+<li><strong>最小回测切口：</strong> Binance USDⓈ-M <code>15m</code>，<code>BTC/ETH/SOL/BNB/XRP/ADA/DOGE/AVAX</code>，最近 <code>90~180d</code>；<code>lookback=96 bars</code>，<code>hold=16 bars</code>。</li>
+<li><strong>最该先看：</strong> <code>avg gross bps / rebalance</code>、<code>friction ladder 8.8 / 12 / 20 bps</code>、换仓后极值 tail、以及 BTC 强趋势期是否真该 scale down 到 <code>25%</code>。</li>
+<li><strong>和短周期的关系：</strong> 这条线本质上是 <code>15m</code> parent selector；真正决定能不能活下来的，大概率是 <code>5m/1m</code> 的 maker queue、分批撤单和持仓延续处理，而不是再把 rank window 抠小数点。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>我这轮 probe 先用了 <strong>repo-faithful 的 alpha 定义 + 简化版持有篮子成本</strong>，还没有把“上一轮持仓和下一轮持仓部分重叠时的真实 turnover 减免”细算进去；所以目前成本口径偏保守。</li>
+<li>反过来说，我也还没把 <strong>funding、maker 排队失败、事件期冲击放大</strong> 精细建模进去；所以不能把 <code>+36.8% net</code> 当成已确认可实盘的收益承诺。</li>
+<li>这条线对 <strong>universe 选择</strong> 很敏感：全 12 币只剩勉强正，majors8 才明显变厚，midcap6 反而在 maker-like 成本后接近打平；所以“更多币=更多 alpha”在这里并不成立。</li>
+<li>它本质是高频率相对价值换仓，天然怕 <strong>taker 化、流动性抽干、强单边趋势</strong>。如果 child execution 做不好，gross edge 会非常快被磨平。</li>
+</ul>
+<h2>6. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 repo-faithful rerun：</strong> 把 BTC <code>ADX(14) + EMA(50) slope</code> regime gate 真正补进 Binance <code>15m</code> 回测，验证 <code>scale_factor=0.25</code> 是否真能改善 majors8 的 tail。</li>
+<li><strong>再做真实 turnover 版净值：</strong> 不按“每次全平全开”粗扣，而是按相邻 rebalance 的持仓变化量扣成本，确认前面 <code>8.8bps</code> 是否过于保守。</li>
+<li><strong>最后做 child execution admission：</strong> 在 <code>5m/1m</code> 上对同一批 rebalance 事件做 maker-first fill 模拟，重点看 <code>queue failure / timeout / partial fill</code> 会吃掉多少 edge；如果吃不掉，再考虑进更正式的 clean replication。</li>
+</ol>
+<h2>7. 来源</h2>
+<ul>
+<li>StaithValanthis. <code>mean-reversion</code>（GitHub repo，2025/2026 活跃仓）</li>
+<li>Repo URL: &lt;<a href="https://github.com/StaithValanthis/mean-reversion&gt;">https://github.com/StaithValanthis/mean-reversion&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://github.com/StaithValanthis/mean-reversion&gt;">https://github.com/StaithValanthis/mean-reversion&gt;</a></li>
+<li>Audited files:</li>
+<li><code>README.md</code></li>
+<li><code>docs/STRATEGY.md</code></li>
+<li><code>config/config.yaml</code></li>
+<li><code>src/portfolio/weights.py</code></li>
+<li><code>src/exchange/fees.py</code></li>
+<li><code>src/execution/slippage.py</code></li>
+<li>Public data portability probe: Binance USDⓈ-M perpetual <code>15m</code> klines (<code>BTC/ETH/SOL/BNB/XRP/ADA/DOGE/AVAX/LINK/LTC/DOT/NEAR</code>)</li>
+<li>Probe artifacts:</li>
+<li><code>reports/artifacts/quant_digests/2026-04-22_staith_xs_reversal_probe.py</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-22_staith_xs_reversal_probe_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-22_staith_xs_reversal_probe_trades.csv</code></li>
+</ul>
+</body>
+</html>

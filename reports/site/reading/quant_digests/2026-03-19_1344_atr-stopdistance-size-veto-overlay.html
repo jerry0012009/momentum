@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 ATR 只当止损距离：`stopDistancePct` 更像 breakout-short / Fib / EMA-PSAR 的 shared size-veto 层</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 ATR 只当止损距离：`stopDistancePct` 更像 breakout-short / Fib / EMA-PSAR 的 shared size-veto 层</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-19 13:48 UTC</span>
+      <span class="pill">研究时间：2026-03-19 13:44 UTC</span>
+      <span class="pill">类型：GitHub + 本地代理快检</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/atr/position-sizing/risk-overlay/filter/repo/crypto/15m</span>
+      <span class="pill">证据类型：repo 代码规则（工程证据）+ 公开行情代理快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-19_1344_atr-stopdistance-size-veto-overlay.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-19 13:44 UTC</li>
+<li>类型：GitHub + 本地代理快检</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/atr/position-sizing/risk-overlay/filter/repo/crypto/15m</li>
+<li>证据类型：repo 代码规则（工程证据）+ 公开行情代理快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是 <strong>Fesenko2v (2026) 的 <code>TradingView-strategy-EMA200-Donchian-breakout-ATR-risk</code></strong>。我没有把它当“新 alpha”，而是抽出更适合当前 desk 的旁支： <strong>把 <code>stopDistance = ATR*K</code> 变成 <code>stopDistancePct = (ATR*K)/close</code>，用于仓位缩放或高波动 veto。</strong></p>
+<h2>2. 核心结论</h2>
+<ol>
+<li><strong>一句话核心结论</strong>：对 15m 来说，<code>ATR stopDistancePct</code> 更像风险层（size-down / veto），不是进场层；它能减少“高波动同仓位硬做 continuation”的磨损。</li>
+<li><strong>一句话证明方式</strong>：repo 给了可复现的风险计算骨架（<code>riskCapital/stopDistance</code>）；我用 Binance Futures 公开 15m（BTC/ETH/SOL，120 天）做 Donchian breakout 事件代理，比较固定名义 vs <code>size_mult=clip(median(stopPct)/stopPct,0.5,1.5)</code>。</li>
+<li>代理结果（2211 个事件，round-trip 成本 8bps）：</li>
+</ol>
+<ul>
+<li>固定名义 <code>net8_mean</code>：<strong>-0.49 bps/笔</strong></li>
+<li>size-down 后 <code>sized_net8_mean</code>：<strong>+1.22 bps/笔</strong></li>
+</ul>
+<ol>
+<li>分桶后更直观：</li>
+</ol>
+<ul>
+<li><strong>high ATR 桶</strong>：<code>net8_mean = -6.14 bps</code>（最差）</li>
+<li><strong>mid ATR 桶</strong>：<code>+2.61 bps</code></li>
+<li><strong>low ATR 桶</strong>：<code>+2.05 bps</code></li>
+</ul>
+<ol>
+<li>这说明高 ATR 事件不是“仓位该放大”的区间，先做 size-down 或 veto 更诚实。</li>
+</ol>
+<h2>3. 为什么和当前三条收口线直接相关</h2>
+<ul>
+<li><strong>V3 final-verdict / breakout-short follow-up</strong>：当下破后 <code>stopDistancePct</code> 落在高分位，优先降仓或禁做 follow-up，避免假延续阶段放大亏损。</li>
+<li><strong>Fibonacci confirmation / retest_hold</strong>：Fib 位置确认可继续用，但若回踩确认发生在高 ATR 桶，不应同仓位执行；更像 <code>admission + sizing</code> 联动。</li>
+<li><strong>EMA / PSAR raw alpha focus</strong>：EMA/PSAR 负责方向，<code>stopDistancePct</code> 负责“做多少/是否做”，正好补齐当前风险层缺口（<code>FACTOR_BACKLOG</code> 的 ATR sizing 待补项）。</li>
+</ul>
+<h2>4. 下一步怎么测（5m / 15m 最小实验）</h2>
+<h3>4.1 数据与公开性</h3>
+<ul>
+<li>数据源：Binance Futures 公共 K 线（<code>/fapi/v1/klines</code>）</li>
+<li>公开性：公开可得</li>
+<li>更新频率：5m / 15m</li>
+<li>本轮产物：</li>
+<li><code>reports/artifacts/quant_digests/2026-03-19_atr_stopdistance_size_gate_proxy_events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-03-19_atr_stopdistance_size_gate_proxy_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-03-19_atr_stopdistance_size_gate_proxy_summary.json</code></li>
+</ul>
+<h3>4.2 最小可复现实验口径（建议）</h3>
+<p>把三条 archetype（breakout-short / fib-retest / ema-psar）统一接一层：</p>
+<ol>
+<li>每个候选事件算 <code>stopDistancePct_t=(ATR14*K)/close</code>（先 <code>K=2</code>）；</li>
+<li>做三臂对照：</li>
+</ol>
+<ul>
+<li>A：固定名义仓位</li>
+<li>B：<code>size_mult=clip(median/stopPct,0.5,1.5)</code></li>
+<li>C：B + <code>high ATR</code> 桶直接 veto</li>
+</ul>
+<ol>
+<li>执行统一：<code>next-bar open</code>，<code>hold 8 bars</code>，成本 <code>6/10/15 bps per side</code>。</li>
+</ol>
+<p>首轮只看 4 项：<code>post_cost_expectancy</code>、<code>max_drawdown</code>、<code>trade_count_retention</code>、<code>high-ATR bucket contribution</code>。</p>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是事件级代理，不是完整策略回测；</li>
+<li>当前快检基于 Donchian breakout 骨架，迁移到 Fib/EMA-PSAR 需单独复核；</li>
+<li><code>size-down</code> 可能在强趋势高波动段“少赚”，不能只看回撤改善；</li>
+<li>若 OOS 下只改善曲线、不改善成本后期望，应降级为“风险保守模式”而非默认层。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Fesenko2v. (2026). _TradingView-strategy-EMA200-Donchian-breakout-ATR-risk_.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/Fesenko2v/TradingView-strategy-EMA200-Donchian-breakout-ATR-risk&gt;">https://github.com/Fesenko2v/TradingView-strategy-EMA200-Donchian-breakout-ATR-risk&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/Fesenko2v/TradingView-strategy-EMA200-Donchian-breakout-ATR-risk&gt;">https://github.com/Fesenko2v/TradingView-strategy-EMA200-Donchian-breakout-ATR-risk&gt;</a></li>
+</ul>
+<ol>
+<li><strong>关键实现：<code>src/strategy.pine</code>（<code>riskCapital/stopDistance</code> 与固定风险仓位）</strong></li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://github.com/Fesenko2v/TradingView-strategy-EMA200-Donchian-breakout-ATR-risk/blob/main/src/strategy.pine&gt;">https://github.com/Fesenko2v/TradingView-strategy-EMA200-Donchian-breakout-ATR-risk/blob/main/src/strategy.pine&gt;</a></li>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/Fesenko2v/TradingView-strategy-EMA200-Donchian-breakout-ATR-risk/main/src/strategy.pine&gt;">https://raw.githubusercontent.com/Fesenko2v/TradingView-strategy-EMA200-Donchian-breakout-ATR-risk/main/src/strategy.pine&gt;</a></li>
+</ul>
+<ol>
+<li><strong>公开行情数据源</strong></li>
+</ol>
+<ul>
+<li>Binance Futures Klines API: &lt;<a href="https://fapi.binance.com/fapi/v1/klines&gt;">https://fapi.binance.com/fapi/v1/klines&gt;</a></li>
+</ul>
+</body>
+</html>

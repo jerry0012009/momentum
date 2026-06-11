@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 OFI repo 只读成 HFT 课堂作业：对 short-cycle desk，更该先测的是「standardized trade-flow imbalance × J-threshold entry」，但必须把 inventory/exit 从 alpha 里拆开</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 OFI repo 只读成 HFT 课堂作业：对 short-cycle desk，更该先测的是「standardized trade-flow imbalance × J-threshold entry」，但必须把 inventory/exit 从 alpha 里拆开</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-10 21:34 UTC</span>
+      <span class="pill">研究时间：2026-04-10 21:35 UTC</span>
+      <span class="pill">类型：2026 GitHub repo（`README.md` + `Order_Flow_Imbalance.ipynb`）+ Binance Futures 公共 `aggTrades / 1m klines` portability probe</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/order-flow/OFI/trade-flow/j-threshold/inventory-cap/latency/adverse-selection/btc/perpetual/1s/1m/3m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo notebook 明确结论 + Binance 公共实时/近实时数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-10_2135_standardized-tradeflow-ofi-jthreshold-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-10 21:35 UTC</li>
+<li>类型：2026 GitHub repo（<code>README.md</code> + <code>Order_Flow_Imbalance.ipynb</code>）+ Binance Futures 公共 <code>aggTrades / 1m klines</code> portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>极端化、标准化后的 aggressive trade-flow imbalance（OFI / signed trade flow）在接下来超短窗口内仍能预测同向价格漂移；真正该交易的是“强信号 entry”，不是无止境累积 inventory。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha/microstructure/order-flow/OFI/trade-flow/j-threshold/inventory-cap/latency/adverse-selection/btc/perpetual/1s/1m/3m/repo/public-data/cost/risk</li>
+<li>证据类型：repo notebook 明确结论 + Binance 公共实时/近实时数据 portability probe</li>
+</ul>
+<p>&gt; 先回答一句：<strong>这篇东西的 base alpha 是什么？</strong> &gt; &gt; <strong>base alpha = “标准化 aggressive flow 极值会在接下来极短时间里继续推动价格沿同方向漂移”。</strong> &gt; &gt; 也就是：不是 VWAP 回归，不是 pairs，不是 filter；它本体就是一条 <strong>microstructure directional raw alpha</strong>。</p>
+<h2>1. 这次看了什么</h2>
+<p>这次我选的是 GitHub 新仓库：</p>
+<ul>
+<li><strong>Grant Reed (2026)</strong></li>
+<li><strong>_Testing Order Flow Imbalance in Bitcoin Markets_</strong></li>
+<li><strong>Venue</strong>：GitHub research notebook / repo</li>
+<li><strong>DOI</strong>：无</li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/grantreed1/Crypto-Order-Flow-Imbalance&gt;">https://github.com/grantreed1/Crypto-Order-Flow-Imbalance&gt;</a></li>
+<li><strong>Notebook URL</strong>：&lt;<a href="https://github.com/grantreed1/Crypto-Order-Flow-Imbalance/blob/main/Order_Flow_Imbalance.ipynb&gt;">https://github.com/grantreed1/Crypto-Order-Flow-Imbalance/blob/main/Order_Flow_Imbalance.ipynb&gt;</a></li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/grantreed1/Crypto-Order-Flow-Imbalance&gt;">https://github.com/grantreed1/Crypto-Order-Flow-Imbalance&gt;</a></li>
+</ul>
+<p>它的核心不是“又一个 OFI 能预测收益”的老话，而是把一个很容易写歪的 HFT 主题拆成两层：</p>
+<ol>
+<li><strong>entry alpha 是真的</strong>：标准化后的 signed trade flow 对超短 forward return 有预测力；</li>
+<li><strong>但如果把 entry alpha 直接升级成持续加仓 book，风险会吞掉你</strong>：repo 里最大问题不是 entry 无效，而是<strong>没有正式 exit logic</strong>，最后让 inventory risk 把 alpha 变成 drawdown 机器。</li>
+</ol>
+<p>这正好适合当前 desk：</p>
+<ul>
+<li>我们需要补的是 <strong>可独立复现的 raw alpha</strong>；</li>
+<li>但同时也要区分 <strong>alpha 本体</strong> 和 <strong>execution / risk shell</strong>；</li>
+<li>这份 repo 给的不是完整 production strategy，却给了一条很清楚的 <strong>entry alpha 原型</strong>。</li>
+</ul>
+<h2>2. 这份 repo 里，最值得拿走的不是“OFI 有用”，而是 3 个具体设计</h2>
+<h3>2.1 信号不是原始 signed flow，而是“先去极值、再标准化”的 trade flow</h3>
+<p>repo 的预处理很明确：</p>
+<ul>
+<li>先统一数量口径（连 Deribit inverse contract 都做了单位归一）；</li>
+<li>再计算 <code>signed_qty</code>；</li>
+<li>再做过去 <code>τ</code> 窗口的 rolling signed flow；</li>
+<li>再做 <strong>1%/99% winsorization</strong>；</li>
+<li>最后用 rolling mean/std 做 <strong>z-score standardization</strong>。</li>
+</ul>
+<p>翻成人话： <strong>它不是在赌“某一笔大单”本身，而是在赌“当前这段 aggressive flow 相对最近分布有多极端”。</strong></p>
+<p>这比直接拿净主动买量做阈值更像一个可迁移的 desk 信号，因为它自动适配了不同时段的成交活跃度。</p>
+<h3>2.2 repo 的交易壳不是每根都做，而是只做 <code>|β × flow_z| &gt; J</code></h3>
+<p>它先用 train set 拟合：</p>
+<p><code>predicted_return = β × trade_flow_z</code></p>
+<p>然后只在预测回报绝对值超过动态阈值 <code>J</code> 时出手。<code>J</code> 不是拍脑袋固定值，而是由目标参与率（例如 top 5%、10%、20%）反推出来。</p>
+<p>这点很重要，因为 OFI 这类东西最大的问题通常不是“完全没 edge”，而是：</p>
+<p>&gt; <strong>如果你每根都做，噪音和成本会把 edge 吃光；只有把它压缩成极值 entry，才有交易意义。</strong></p>
+<h3>2.3 repo 最宝贵的 lesson 不是盈利截图，而是“entry alpha ≠ inventory policy”</h3>
+<p>repo 在 accounting 里显式加了 <code>max_inventory_limit</code>，因为作者自己也发现：</p>
+<ul>
+<li>没有库存上限时，策略会在错误方向上不断累计仓位；</li>
+<li>即便 signal 在 entry 端有效，也会因为没有 time-stop / flatten 机制而变成大回撤。</li>
+</ul>
+<p>这对我们特别重要： <strong>这条线应该先被当作“entry alpha generator”，而不是直接当连续做市/持续持仓引擎。</strong></p>
+<h2>3. repo 原文最值得记住的几个数字</h2>
+<h3>3.1 作者自己给的最强参数，不是最短窗，而是 <code>5s</code> lookback</h3>
+<p>repo notebook 的敏感性分析结论是：</p>
+<ul>
+<li><strong>10ms–100ms</strong> lookback 一直亏；</li>
+<li><strong><code>5s</code> lookback 最好</strong>；</li>
+<li>也就是说，这条 alpha 不是越快越好，而是需要一点点 flow 累积，才能把噪音压下去。</li>
+</ul>
+<p>这很适合 desk 的现实世界： 你不一定要去卷纳秒；很多时候 <strong>“足够快但不盲目超快”</strong> 的窗口更能迁移。</p>
+<h3>3.2 动态阈值不是越极端越好；repo 结论反而偏中等参与率</h3>
+<p>作者对 <code>J-threshold</code> 的 sweep 结论是：</p>
+<ul>
+<li><strong>10%–20% participation</strong> 最有效；</li>
+<li>对应阈值大约在 <strong><code>0.35 ~ 0.55 bps</code></strong>。</li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>top 1% 可能太稀、太容易受异常样本影响；</li>
+<li>每根都做又太吵；</li>
+<li><strong>抓“够极端、但仍有足够样本数”的那层信号</strong>，更像 production 思路。</li>
+</ul>
+<h3>3.3 repo 里的 alpha 很亮，但 risk profile 明显不合格</h3>
+<p>作者给出的完整回测里，最亮眼的是 OKX：</p>
+<ul>
+<li><strong>Net P&amp;L：<code>$575,712</code></strong></li>
+<li><strong>Maximum Drawdown：<code>-$1.2M</code></strong></li>
+</ul>
+<p>更狠的是，作者还给了无库存上限的对照：</p>
+<ul>
+<li><strong>uncapped drawdown：<code>-$62.3M</code></strong></li>
+</ul>
+<p>这几乎就是在明说：</p>
+<p>&gt; <strong>edge 主要在 entry，坑主要在 exit / inventory。</strong></p>
+<h3>3.4 repo 不是“全市场无脑可搬”，它自己就承认 venue heterogeneity</h3>
+<p>repo 结论里还提到：</p>
+<ul>
+<li>高流动 venue（尤其 <strong>OKX / Binance</strong>）上，β 更稳定；</li>
+<li>Binance 的 beta variation 约 <strong>3%</strong>，高流动 venue 大致在 <strong>3%–12%</strong> 区间；</li>
+<li>数据稀疏的 venue（如 Deribit/Bitstamp）就明显不稳定。</li>
+</ul>
+<p>所以这条线本来就更像： <strong>先在最深的 BTC 主战场做，再想办法横向扩。</strong></p>
+<h2>4. 为什么它和当前项目直接相关</h2>
+<h3>4.1 它补的是 microstructure raw alpha，不是又一篇 overlay</h3>
+<p>当前 digest 池里已经有：</p>
+<ul>
+<li>OFI × quote-join flow-control shell</li>
+<li>VWAP 偏离 × OFI 纠偏 mean reversion</li>
+<li>adverse selection share / signed-flow continuation</li>
+</ul>
+<p>这篇的新增价值在于：</p>
+<ul>
+<li>它把 <strong>trade-flow z-score → predicted return → J-threshold</strong> 这条链写得很清楚；</li>
+<li>它不是做均值回归，而是 <strong>directional continuation on aggressive flow</strong>；</li>
+<li>它还顺手把一个经常被混淆的问题说透：</li>
+<li><strong>entry alpha 有效</strong>，</li>
+<li><strong>不代表 inventory policy 合格</strong>。</li>
+</ul>
+<h3>4.2 它天然更适合 <code>1s / 1m / 3m</code>，不适合硬装成 <code>15m</code> 主信号</h3>
+<p>这也是它对我们最有用的地方：</p>
+<ul>
+<li>如果你想补 <code>5m/15m</code> 的主信号，这条线不该被包装成万能大周期策略；</li>
+<li>但如果你想补 <strong>超短执行型 alpha 素材池</strong>，它非常合格；</li>
+<li>尤其适合作为：</li>
+<li>maker skew / quote-join veto 的方向输入；</li>
+<li>1m router 的 fast lane；</li>
+<li>事件型 breakout 后的 micro continuation trigger。</li>
+</ul>
+<p>也就是说，它不是要替代所有 5m/15m 主题，而是补我们仍然缺的一块： <strong>极短 horizon 的 microstructure entry alpha。</strong></p>
+<h2>5. 我做的 public-data portability probe：先问“这条 OFI 还能不能在 Binance 公共流里站住”</h2>
+<h3>5.1 Probe A：尽量贴近 repo 原味的 native probe（<code>aggTrades</code>）</h3>
+<p>数据源：</p>
+<ul>
+<li>Binance Futures 公共 <code>aggTrades</code></li>
+<li>标的：<code>BTCUSDT</code></li>
+<li>样本：最近约 <strong>20,005</strong> 笔聚合成交</li>
+<li>时间窗：<strong>2026-04-10 20:58:21 ~ 21:32:59 UTC</strong></li>
+</ul>
+<p>实现口径：</p>
+<ul>
+<li>用 <code>m</code> 字段把成交方向改写成 aggressive buy/sell 的 <code>signed_qty</code>；</li>
+<li>过去 <strong><code>5s</code></strong> rolling signed flow；</li>
+<li>做 <strong>1%/99%</strong> winsorize + rolling z-score；</li>
+<li>用前 <strong>40%</strong> 拟合 <code>β</code>，后 <strong>60%</strong> 测试；</li>
+<li>只做 top participation 的 <code>|β × flow_z|</code> 极值信号。</li>
+</ul>
+<p>结果（本地文件：<code>/root/clawd/jerry/momentum/reports/artifacts/literature/ofi_jthreshold_binance_probe_summary_2026-04-10.csv</code>）：</p>
+<ul>
+<li><strong>top 5%</strong> 信号：</li>
+<li>信号数：<code>601</code></li>
+<li>平均 signed PnL：<strong><code>+0.549 bps / signal</code></strong></li>
+<li>胜率：<strong><code>62.4%</code></strong></li>
+<li><strong>top 10%</strong> 信号：</li>
+<li>信号数：<code>1,202</code></li>
+<li>平均 signed PnL：<strong><code>+0.434 bps / signal</code></strong></li>
+<li>胜率：<strong><code>62.9%</code></strong></li>
+<li><strong>top 20%</strong> 信号：</li>
+<li>信号数：<code>2,404</code></li>
+<li>平均 signed PnL：<strong><code>+0.436 bps / signal</code></strong></li>
+<li>胜率：<strong><code>63.2%</code></strong></li>
+</ul>
+<p>这说明两件事：</p>
+<ol>
+<li>repo 那条“标准化 flow 极值有方向性”的说法，在最近公共流里<strong>没有死</strong>；</li>
+<li>但 edge 的量级仍是 <strong>sub-1bp</strong>，所以这更像 <strong>maker / queue-sensitive alpha</strong>，不是随便 taker 往上冲就能赚钱。</li>
+</ol>
+<h3>5.2 Probe B：把它压到 desk 更常用的 <code>1m / 5m</code> 频率看会怎样</h3>
+<p>我又做了一个更 desk-friendly 的 transfer：</p>
+<ul>
+<li>数据源：Binance Futures 公共 <code>1m klines</code></li>
+<li>用 <code>taker_buy_base_volume</code> 构造 bar-level signed flow proxy：</li>
+<li><code>signed_flow = 2 * taker_buy_base - total_volume</code></li>
+<li>先看 <code>1m -&gt; next 1m</code></li>
+<li>再看 <code>5m -&gt; next 5m</code></li>
+</ul>
+<p>结果：</p>
+<p>#### <code>1m</code> transfer（近 <code>1500</code> 根）</p>
+<ul>
+<li><strong>top 10%</strong> 信号：</li>
+<li>信号数：<code>90</code></li>
+<li>平均 gross signed return：<strong><code>+0.674 bps / trade</code></strong></li>
+<li>胜率：<strong><code>61.1%</code></strong></li>
+<li><strong>top 5%</strong>：<code>+0.493 bps</code></li>
+<li><strong>top 20%</strong>：<code>+0.479 bps</code></li>
+</ul>
+<p>#### <code>5m</code> transfer（由同一批 1m 聚合）</p>
+<ul>
+<li><strong>top 10%</strong> 信号：<strong><code>-6.65 bps / trade</code></strong></li>
+<li><strong>top 5%</strong>：<strong><code>-3.19 bps / trade</code></strong></li>
+<li><strong>top 20%</strong>：<strong><code>-3.40 bps / trade</code></strong></li>
+</ul>
+<h3>5.3 这个 probe 最重要的结论</h3>
+<p>一句话：</p>
+<p>&gt; <strong>这条 alpha 在 native 超短频仍像 directional edge，但一旦压到 <code>5m</code>，至少在这个公共 proxy 上已经不再像同一条东西。</strong></p>
+<p>所以对当前 desk，最诚实的定位应该是：</p>
+<ul>
+<li><code>1s / trade-time / 1m</code>：可以继续测</li>
+<li><code>5m / 15m</code>：不要硬装主 lane</li>
+</ul>
+<h2>6. 这条东西最适合怎么 desk 化</h2>
+<h3>6.1 不要直接复制 repo 的 inventory accumulation</h3>
+<p>最容易犯的错是把它写成：</p>
+<ul>
+<li>有正向 predicted return → 持续加同向仓位</li>
+</ul>
+<p>这正是 repo 自己用大回撤演示过的坑。</p>
+<p>更合理的第一版应该是：</p>
+<ul>
+<li><strong>entry-only alpha</strong></li>
+<li>固定短持有</li>
+<li>快速 flatten</li>
+<li>强 inventory cap</li>
+</ul>
+<h3>6.2 一个更适合我们的最小策略壳</h3>
+<p>我会把第一版写成：</p>
+<ul>
+<li>universe：<code>BTCUSDT perp</code> 起步</li>
+<li>signal：<code>flow_z</code> 进入 top <code>5%~15%</code> 极值区</li>
+<li>entry：仅在 <code>predicted_return</code> 与 spread/fee/queue 条件同时满足时入场</li>
+<li>hold：<code>1s ~ 3m</code> 的 time-stop，而不是等反向信号无限持有</li>
+<li>exit：</li>
+<li>固定时钟平仓</li>
+<li>或 microprice / spread 恶化就撤</li>
+<li>sizing：</li>
+<li>单次 clip 小</li>
+<li>总 inventory hard cap</li>
+<li>连续同向信号只允许小幅加码</li>
+<li>cost：</li>
+<li>taker 视角单独记</li>
+<li>maker / passive fill 单独记</li>
+<li>延迟与未成交率一定要显式建模</li>
+</ul>
+<h3>6.3 它服务于哪个更大的 raw alpha 组件？</h3>
+<p>如果把它放进更大的 stack，它最适合服务于：</p>
+<ul>
+<li><strong>microstructure directional continuation</strong> 主 alpha；</li>
+<li>或者服务于更上层的 breakout / impulse 策略，充当 <strong>fast admission / execution router</strong>；</li>
+<li>但不适合作为中慢频 <code>5m/15m</code> 单独主信号长期裸跑。</li>
+</ul>
+<h2>7. 风险与保留意见</h2>
+<h3>7.1 repo 数据不公开，公共 probe 只是 portability，不是 faithful replication</h3>
+<p>repo 本身用的是六家交易所的高频 trade data，且用了 Databento 本地 parquet；我这里只是验证：</p>
+<p>&gt; <strong>这个“标准化 OFI × J-threshold”思想，能不能在公开数据上做出最小近似。</strong></p>
+<p>答案是能，但不是 full replication。</p>
+<h3>7.2 公共 transfer 明确提醒：这条 edge 不是天然可压到 5m</h3>
+<p>这次最有价值的负结果其实是：</p>
+<ul>
+<li><code>1m</code> 还有一点 gross edge；</li>
+<li><code>5m</code> 已经不像。</li>
+</ul>
+<p>这反而帮我们省时间： <strong>别把本来属于超短执行层的信号，硬塞进 5m/15m raw alpha 池。</strong></p>
+<h3>7.3 如果用 taker 视角，它很可能被成本吃掉</h3>
+<p>native / 1m probe 的 gross edge都不到 1bp 级别。 所以 production 前必须回答：</p>
+<ul>
+<li>你是否真能拿到被动成交？</li>
+<li>延迟后还有多少剩余 edge？</li>
+<li>成交概率和 adverse selection 如何权衡？</li>
+</ul>
+<p>否则这条线很容易变成“统计上显著，交易上不赚钱”。</p>
+<h2>8. 下一步怎么测</h2>
+<h3>8.1 先做 faithful replication 的最小版</h3>
+<p>优先补齐 repo 的核心口径：</p>
+<ul>
+<li>BTCUSDT 一条线先跑全</li>
+<li>5s flow / 1s horizon 对齐</li>
+<li><code>target_participation = 5% / 10% / 20%</code></li>
+<li>accounting 同时跑：</li>
+<li>fixed holding flat model</li>
+<li>repo 风格 inventory model</li>
+<li>对比看：entry alpha 和 inventory risk 各自贡献多少</li>
+</ul>
+<h3>8.2 再做 production admission</h3>
+<p>如果 faithful replication 站得住，下一步最该看：</p>
+<ol>
+<li><strong>maker fill-adjusted expectancy</strong></li>
+<li><strong>latency shock 下 beta 是否崩</strong></li>
+<li><strong>spread 扩张时 edge 是否反而更差</strong></li>
+<li><strong>连续同向信号的边际信息增量</strong></li>
+<li><strong>从 BTC 扩到 ETH/SOL 后，是否仍只有深流动主场才成立</strong></li>
+</ol>
+<h3>8.3 最值得做的 A/B</h3>
+<ul>
+<li><code>5s</code> vs <code>10s</code> flow window</li>
+<li><code>1s</code> vs <code>3s</code> vs <code>10s</code> hold</li>
+<li>passive-only vs mixed maker/taker</li>
+<li>pure BTC vs BTC+ETH 两标的</li>
+<li>裸 OFI vs OFI + spread veto vs OFI + queue imbalance veto</li>
+</ul>
+<h2>9. 一句话结论</h2>
+<p><strong>这份 2026 OFI repo 真正值得 desk 先复现的，不是“高频很赚钱”这句空话，而是：标准化 aggressive flow 的极值本身就是一条可独立复现的超短 directional raw alpha；但它应该被当成 entry alpha generator，而不是不设 time-stop 的连续 inventory engine。</strong></p>
+<h2>10. 来源</h2>
+<ul>
+<li>Grant Reed. (2026). *Testing Order Flow Imbalance in Bitcoin Markets*.</li>
+<li>Venue: GitHub research repo / notebook</li>
+<li>DOI: 无</li>
+<li>Readable URL: &lt;<a href="https://github.com/grantreed1/Crypto-Order-Flow-Imbalance&gt;">https://github.com/grantreed1/Crypto-Order-Flow-Imbalance&gt;</a></li>
+<li>Notebook URL: &lt;<a href="https://github.com/grantreed1/Crypto-Order-Flow-Imbalance/blob/main/Order_Flow_Imbalance.ipynb&gt;">https://github.com/grantreed1/Crypto-Order-Flow-Imbalance/blob/main/Order_Flow_Imbalance.ipynb&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/grantreed1/Crypto-Order-Flow-Imbalance&gt;">https://github.com/grantreed1/Crypto-Order-Flow-Imbalance&gt;</a></li>
+<li>本地 probe 结果：</li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/ofi_jthreshold_binance_probe_summary_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/ofi_jthreshold_native_probe_signals_2026-04-10.csv</code></li>
+</ul>
+</body>
+</html>

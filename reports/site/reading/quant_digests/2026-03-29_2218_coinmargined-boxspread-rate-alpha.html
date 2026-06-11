@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 coin-margined options repo 直接当现成套利机：这份 2026 新仓库更该先测的是「same-expiry box spread implied-rate 偏离」raw alpha，但必须先修单位口径</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 coin-margined options repo 直接当现成套利机：这份 2026 新仓库更该先测的是「same-expiry box spread implied-rate 偏离」raw alpha，但必须先修单位口径</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-29 22:17 UTC</span>
+      <span class="pill">研究时间：2026-03-29 22:18 UTC</span>
+      <span class="pill">类型：GitHub / source audit / Deribit 公共链 live snapshot</span>
+      <span class="pill">主题标签：raw-alpha/options/relative-value/stat-arb/box-spread/implied-rate/coin-margined/deribit/okx/1m/3m/5m/15m/repo/public-data/cost</span>
+      <span class="pill">证据类型：工程经验 + 公共市场数据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-29_2218_coinmargined-boxspread-rate-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-29 22:18 UTC</li>
+<li>类型：GitHub / source audit / Deribit 公共链 live snapshot</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同到期、同标的、不同执行价的 <strong>box spread 融资错价</strong>（long cheap box / short rich box）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否（当前 repo 的 box 模块还需先修 coin-margined 单位归一）</li>
+<li>主题标签：raw-alpha/options/relative-value/stat-arb/box-spread/implied-rate/coin-margined/deribit/okx/1m/3m/5m/15m/repo/public-data/cost</li>
+<li>证据类型：工程经验 + 公共市场数据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>signorloops（2026）</strong> 的 GitHub 仓库 <strong>Crypto Options Research Platform</strong>，重点拆了 <code>strategies/arbitrage/option_box.py</code>，再用 <strong>Deribit 公共 BTC options chain</strong> 做了一次轻量 live sanity check。它真正值得 desk intake 的，不是“又一个 options 平台”，而是：<strong>same-expiry box spread 可以直接当一条 options relative-value raw alpha 来扫，分钟级就能做最小实验。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话结论</strong>：base alpha 很清楚——扫 <strong>box implied rate</strong> 偏离，便宜就做多 box、太贵就做空 box；它本质上是期权版的短周期融资/相对价值套利。</li>
+<li>repo 的好处是把骨架写得很完整：默认 <code>min_annualized_return=2%</code>、<code>transaction_cost_per_leg=0.001</code>、四腿总费用按 <code>0.004</code> 处理，还带 strike 扫描、流动性分数和 annualized return 排序，足够直接改成 desk 最小实验。</li>
+<li><strong>但当前实现不能直接上</strong>：repo 在 coin-margined 语境里把 <code>payoff = K_high - K_low</code> 和 BTC 计价 premium 直接相减，存在<strong>单位混用</strong>。对 Deribit/OKX 这类币本位期权，premium 要先映射到统一的 USD / 结算单位口径，再谈 box profit。</li>
+<li>live 数据说明这个修正很重要：按 repo 原公式，<code>10APR26 76000-85000</code> 这组 box 会被误读成接近 <strong>+$9,000</strong> 的“利润”；但把 premium 先乘当前标的价近似转成 USD 后，同一类机会只剩小得多的价差口袋。</li>
+<li>更进一步，<strong>mid 上有 pocket，不代表能成交</strong>：我用 Deribit 公共链粗扫后，<code>31MAR26 62000-64500</code> 这组 box 在 mid 近似下、扣 <code>0.004 BTC</code> 粗费后，仍像有 <strong>约 +$702</strong>；但换成四腿可执行 bid/ask 后，近 ATM 样本里最好的 box 也大约只有 <strong>-$334</strong>，说明真正该先测的是 <strong>executable box rate</strong>，不是 mark/mid 幻觉。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条不是解释型材料，而是<strong>可直接扩充 raw alpha 素材池</strong>的新分支：</p>
+<ul>
+<li>它补的是当前池子里相对少的 <strong>options relative-value / stat-arb</strong>，不是第 N 次重复 perp pairs；</li>
+<li>它天然有完整策略骨架：entry、exit、carry-to-expiry、四腿成本、流动性过滤、保证金占用都能清楚写出来；</li>
+<li>它和 desk 当前短周期节奏兼容：不是等日频结算，而是每 <code>1m/3m/5m/15m</code> 扫一次期权链，抓 <strong>implied financing pocket</strong>；</li>
+<li>它还能反过来训练我们对 <strong>单位口径 / 可执行价 / bid-ask honesty</strong> 的纪律，这一点对 funding、basis、pairs 都通用。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / stat-arb</li>
+<li>基础 alpha：same-expiry box spread 相对理论贴现值或隐含融资利率的偏离</li>
+<li>regime：只做近月、近 ATM、链上四腿都有可成交深度的时段</li>
+<li>filter / veto：四腿任一腿无 bid/ask、OI/size 过低、box APR 未覆盖四腿费用与保证金占用时 veto</li>
+<li>risk / sizing / execution overlay：按 box 宽度与保证金占用限仓；优先 maker / 被动腿；若 box rate 回归阈值内可提前平，否则持有到 expiry 兑现</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：在 coin-margined BTC options 上，统一到同一结算单位后，仍会周期性出现可执行的 rich/cheap box pocket；mid 看似有边的机会，经过四腿 bid/ask 和费用后会大幅收缩。</li>
+<li><strong>数据源</strong>：Deribit <code>public/get_book_summary_by_currency</code>（公开可得，分钟级可抓）；第二步再补 OKX public options。</li>
+<li><strong>实验口径</strong>：每分钟重建同 expiry strike pair 的 long/short box；premium 统一转 USD（或直接用精确 inverse payoff 口径）；分别算 <code>mid APR</code> 与 <code>executable APR</code>。</li>
+<li><strong>entry/exit</strong>：<code>executable_APR &gt; funding/cash hurdle + fees + margin haircut</code> 才进；回落到关闭阈值则平，否则持有到到期。</li>
+<li><strong>sizing/risk/cost</strong>：单 box 占用不超过组合风险预算；四腿都按真实 bid/ask；再做 maker/taker 两套 friction ladder。</li>
+<li><strong>先看什么</strong>：不是先看 Sharpe，而是先看 3 个最小指标——可执行正 edge 次数、edge 在费后保留比例、到期兑现 vs 提前回归的贡献拆分。</li>
+</ul>
+<h2>5. 风险与边界</h2>
+<ul>
+<li>这条 alpha <strong>不是 bar-based directional signal</strong>，而是 options chain 的 minute scanner；它能映射到 <code>1m/3m/5m/15m</code>，但本体是事件/报价驱动。</li>
+<li>当前 live check 只做了 Deribit BTC 的粗扫，且用“premium × 当前标的价”近似 USD；正式版应改成<strong>精确 inverse 合约 payoff/结算口径</strong>。</li>
+<li>四腿执行风险很高；如果没有组合下单或至少两腿先后成交保护，纸面 edge 很容易被腿风险吃掉。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>signorloops (2026), _Crypto Options Research Platform_</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/signorloops/crypto-options-research-platform">https://github.com/signorloops/crypto-options-research-platform</a></li>
+<li>Readable URL: <a href="https://github.com/signorloops/crypto-options-research-platform">https://github.com/signorloops/crypto-options-research-platform</a></li>
+<li>关键源码：</li>
+<li><a href="https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/strategies/arbitrage/option_box.py">https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/strategies/arbitrage/option_box.py</a></li>
+<li><a href="https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/README.md">https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/README.md</a></li>
+<li><a href="https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/docs/theory.md">https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/docs/theory.md</a></li>
+</ul>
+<ol>
+<li><strong>Deribit API Docs</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://docs.deribit.com/">https://docs.deribit.com/</a></li>
+<li>本轮使用：<code>public/get_book_summary_by_currency?currency=BTC&amp;kind=option</code></li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<p>第一步别急着回测全年，先做一个 <strong>单日 minute-level box scanner</strong>：</p>
+<ol>
+<li>只抓 Deribit BTC 近 2~3 个近月 expiry；</li>
+<li>只扫近 ATM、宽度 <code>500~5000 USD</code> 的 strike pair；</li>
+<li>同时输出 <code>repo_raw_profit</code>、<code>USD-normalized mid profit</code>、<code>USD-normalized executable profit</code> 三列；</li>
+<li>先证明“单位修正前后差多少、mid 到 executable 又掉多少”；</li>
+<li>只有当 executable 口径下仍稳定出现 pocket，再进入 maker/taker、保证金和持有到期 vs 提前回归的正式回测。</li>
+</ol>
+</body>
+</html>

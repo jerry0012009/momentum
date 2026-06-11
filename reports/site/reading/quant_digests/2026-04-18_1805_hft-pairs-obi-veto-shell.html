@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HFT pairs shell：1h 选对 + 1m spread fade + OBI veto，base alpha 仍是配对均值回归</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>HFT pairs shell：1h 选对 + 1m spread fade + OBI veto，base alpha 仍是配对均值回归</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-18 18:03 UTC</span>
+      <span class="pill">研究时间：2026-04-18 18:05 UTC</span>
+      <span class="pill">类型：GitHub repo source audit + Binance public-data portability probe</span>
+      <span class="pill">主题标签：pairs / stat-arb / relative-value / cointegration / zscore / OBI / Binance Futures / HFT shell / 1m / 5m / 15m / execution / cost</span>
+      <span class="pill">证据类型：GitHub 工程实现 + repo 自带参数文件 + Binance public-data quick probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-18_1805_hft-pairs-obi-veto-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-18 18:05 UTC</li>
+<li>类型：GitHub repo source audit + Binance public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：先用较慢频的 cointegration / half-life 筛出可回归配对，再在 <code>1m</code> 上做 <code>spread z-score</code> 极值回归；盘口 <code>OBI</code> 只负责放行/否决更微观的入场时点</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：pairs / stat-arb / relative-value / cointegration / zscore / OBI / Binance Futures / HFT shell / 1m / 5m / 15m / execution / cost</li>
+<li>证据类型：GitHub 工程实现 + repo 自带参数文件 + Binance public-data quick probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 <code>SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model</code>。它不是泛泛的“配对交易 notebook”，而是一个<strong>研究到执行分层很清楚</strong>的壳：</p>
+<ol>
+<li><code>data_loader.py</code>：抓 Binance USDⓈ-M <code>1m</code> 数据，按 <code>quoteVolume</code> 先筛 top-50 流动性合约；</li>
+<li><code>analyzer.py</code>：先在 <code>1h</code> 级别做相关性、Engle-Granger、ADF、half-life 筛 pair；</li>
+<li><code>optimizer.py</code>：在 spread 上扫 <code>window / entry_z / exit_z / stop_z</code>；</li>
+<li><code>main.cpp</code>：把结果推到一个低延迟执行器里，用 <code>bookTicker</code> / depth 信息加 <code>OBI</code> 做更细的放行。</li>
+</ol>
+<p>这套结构对我们最有价值的，不是“C++ 很快”本身，而是：<strong>它把 pair admission、spread alpha、本地微观结构 gate、执行线程壳分开了。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>base alpha 很清楚</strong>：<code>cointegrated pair spread extreme -&gt; mean reversion</code>。不是 trend，不是 breakout，也不是纯 execution trick。</li>
+<li>这个 repo 真正适合 short-cycle desk 借的，不是“东京机房 4–7ms”这层包装，而是：</li>
+<li><code>1h</code> 做 pair admission，减少乱配对；</li>
+<li><code>1m</code> 做 z-score 入场；</li>
+<li><code>OBI</code> 只作为更快一级的 veto / timing layer。</li>
+<li>代码里执行逻辑非常直白：<code>Z_ENTRY=2.0</code>、<code>Z_EXIT=0.5</code>、<code>BET_SIZE=1000</code>，并且要求两腿盘口失衡不要和 spread 方向打架：</li>
+<li><code>z &gt; 2</code> 时做 <code>leg1 short / leg2 long</code>；</li>
+<li><code>z &lt; -2</code> 时做 <code>leg1 long / leg2 short</code>；</li>
+<li>只有 spread 回到 <code>|z| &lt; 0.5</code> 才平。</li>
+<li>我用 Binance 公共 <code>1m</code> 最近 <code>1500</code> 根 bar 做了一个最小 portability probe：</li>
+<li><code>ENAUSDT/LINKUSDT</code>：<code>|z|&gt;2</code> 触发后，平均 <code>|z|</code> 从 <code>2.23 -&gt; 1.14 (30m) -&gt; 0.99 (60m)</code>，<code>94.6%</code> 的事件在 <code>60m</code> 内收敛，<code>58.9%</code> 在 <code>60m</code> 内回到 <code>|z|&lt;1</code>；</li>
+<li><code>LINKUSDT/SOLUSDT</code>：平均 <code>|z|</code> 从 <code>2.29 -&gt; 1.03 (30m) -&gt; 1.19 (60m)</code>，<code>96.5%</code> 事件在 <code>60m</code> 内收敛，但只有 <code>45.6%</code> 回到 <code>|z|&lt;1</code>。</li>
+<li>这说明：<strong>repo 的主线不是假 alpha</strong>；但它更像“spread 先明显回收、再看能不能完全归中”的壳，而不是保证短时间 fully close 的无脑收敛机。</li>
+</ul>
+<h2>3. 一句话结论</h2>
+<p>这份 repo 最值得保留的不是“低延迟 C++ 外壳”，而是 <strong><code>1h pair admission -&gt; 1m spread-zscore fade -&gt; OBI veto execution</code> 这条可独立复现、可继续压缩到短周期的 raw alpha 结构。</strong></p>
+<h2>4. 它是怎么证明这件事的</h2>
+<p>它不是靠论文口头说服，而是靠<strong>工程分层 + 参数文件 + 直接执行逻辑</strong>来证明：</p>
+<ul>
+<li><code>analyzer.py</code> 明确先做 cointegration / ADF / half-life 过滤；</li>
+<li><code>optimizer.py</code> 明确只优化 spread 交易参数；</li>
+<li><code>main.cpp</code> 明确把 <code>OBI</code> 放在 entry gating，而不是把 OBI 当成 alpha 本体。</li>
+</ul>
+<p>换句话说，repo 自己已经在结构上回答了一个关键问题：<strong>base alpha 是 pair spread 回归，不是盘口失衡。盘口只是 timing layer。</strong></p>
+<h2>5. 为什么和当前项目有关</h2>
+<p>当前 digest 池里虽然已经有很多 pairs / stat-arb 主题，但这份 repo 仍有一个没那么重复的价值：</p>
+<ul>
+<li>它不是只给“研究卡片”，而是给了<strong>research-to-execution</strong> 的壳；</li>
+<li>它不是把微观结构硬当主 alpha，而是老老实实把 OBI 降级为 admission / veto；</li>
+<li>它很适合服务我们现在的 desk 目标：</li>
+<li>raw alpha 素材池继续补 <code>pairs / stat-arb</code></li>
+<li>同时顺手拆出一个可复用组件：<strong>配对 alpha 的微观结构入场 gate</strong></li>
+</ul>
+<p>这比继续做纯 regime/filter 主题更值钱，因为它直接服务于“怎么把 pairs 从 paper signal 往实盘壳推进”。</p>
+<h2>6. 策略拆解</h2>
+<ul>
+<li>方向属性：market-neutral / relative-value / stat-arb</li>
+<li>基础 alpha：cointegrated spread 在极端偏离后向均值回归</li>
+<li>pair admission：<code>top liquid universe -&gt; corr filter -&gt; Engle-Granger -&gt; ADF -&gt; half-life</code></li>
+<li>entry：<code>|z| &gt; 2</code></li>
+<li>exit：spread 回到 <code>|z| &lt; 0.5</code></li>
+<li>stop / safety：<code>MAX_SAFE_Z = 25</code>；优化器里另有 <code>stop_z</code></li>
+<li>sizing：名义单腿 <code>BET_SIZE=1000</code>，第二腿按 <code>hedge_ratio</code> 配</li>
+<li>microstructure filter：<code>OBI</code> 只决定现在这一下要不要进，不改 base alpha</li>
+<li>execution shell：生产者-消费者队列、持久 HTTP session、精度规则、reduceOnly close</li>
+</ul>
+<h2>7. 这份 repo 最值得借的 3 个点</h2>
+<h3>7.1 先在慢一点的频率做 pair admission</h3>
+<p><code>analyzer.py</code> 不是直接拿 <code>1m</code> 噪音去跑全市场配对，而是先 resample 到 <code>1h</code>，再做：</p>
+<ul>
+<li>correlation &gt; <code>0.85</code></li>
+<li>ADF <code>p &lt; 0.05</code></li>
+<li>half-life &lt; <code>240</code> 分钟</li>
+</ul>
+<p>这很符合 desk 现实：<strong>pair selection 可以慢，entry timing 才需要快。</strong></p>
+<h3>7.2 OBI 是 timing veto，不是 alpha 本体</h3>
+<p><code>main.cpp</code> 里 spread 还是用： <code>log(p1) - hedge_ratio * log(p2)</code></p>
+<p>真正进场条件则是：</p>
+<ul>
+<li>spread 已经足够极端；</li>
+<li>两腿盘口失衡方向别明显反着来。</li>
+</ul>
+<p>这很重要，因为很多 repo 会把“看见 OBI”误写成“alpha 来自 OBI”；这份 repo 至少在结构上没犯这个错。</p>
+<h3>7.3 研究层和执行层真的分开了</h3>
+<p>这对后续复现很关键：</p>
+<ul>
+<li>研究时你可以只跑 <code>pair admission + spread signal</code>；</li>
+<li>执行时再决定是否加 <code>bookTicker/OBI/microprice</code>。</li>
+</ul>
+<p>也就是说，它天然支持分阶段验证，而不是一上来就把 low-latency、网络、线程、盘口特征全部绑死。</p>
+<h2>8. 但它现在还不能直接照抄上线</h2>
+<p>这里有两个明显问题，反而也是这篇 digest 最值得记下来的地方：</p>
+<h3>8.1 优化器和执行器的 spread 口径不一致</h3>
+<ul>
+<li><code>optimizer.py</code> 用的是：<code>spread = leg1 - hedge_ratio * leg2</code></li>
+<li><code>main.cpp</code> 用的是：<code>spread = log(p1) - hedge_ratio * log(p2)</code></li>
+</ul>
+<p>这不是小问题。它意味着：<strong>离线最优参数和线上触发空间可能根本不是同一个 spread。</strong></p>
+<h3>8.2 <code>main.cpp</code> 读取 <code>mean/std_dev</code>，但 <code>strategies.json</code> 默认并不带这两个字段</h3>
+<p>repo 里专门又写了个 <code>fix_strategies.py</code> 去补 <code>mean/std_dev</code>。这说明当前仓库更像“工程壳 + 研究草稿”，还不是可以闭眼上线的 production artifact。</p>
+<p>所以这篇东西更适合作为：</p>
+<ul>
+<li>raw alpha 壳：保留</li>
+<li>生产实现：继续审计</li>
+<li>直接上线：暂缓</li>
+</ul>
+<h2>9. 可复刻的最小实验</h2>
+<h3>9.1 当前最小实验</h3>
+<p>先不碰低延迟和盘口，只做最小 spread 回归验证：</p>
+<ol>
+<li>Universe：Binance USDⓈ-M top <code>20~50</code> 流动性合约；</li>
+<li>Pair admission：按 repo 的 <code>corr + EG/ADF + half-life</code>；</li>
+<li>Signal：</li>
+</ol>
+<ul>
+<li><code>spread = log(p1) - beta * log(p2)</code></li>
+<li><code>z = (spread - rolling_mean) / rolling_std</code></li>
+<li><code>entry: |z| &gt; 2</code></li>
+<li><code>exit: |z| &lt; 0.5</code></li>
+</ul>
+<ol>
+<li>Frequency：</li>
+</ol>
+<ul>
+<li>pair admission 用 <code>1h</code></li>
+<li>execution 先测 <code>1m</code>，再下放 <code>5m/3m</code></li>
+</ul>
+<ol>
+<li>先不加盘口，先看 gross 收敛、持有时长、事件密度。</li>
+</ol>
+<h3>9.2 当前 quick probe 结果</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M 公共 <code>1m</code> klines</li>
+<li>样本：最近 <code>1500</code> 根 <code>1m</code> bar</li>
+<li>代表 pair：</li>
+<li><code>ENAUSDT/LINKUSDT</code></li>
+<li><code>LINKUSDT/SOLUSDT</code></li>
+<li>结果：说明 spread 极值之后的“回收 tendency”是存在的，但完全回中比例不算夸张，下一步必须加入成本与持有时长约束。</li>
+</ul>
+<h2>10. 与当前短周期 <code>1m/3m/5m/15m</code> 的关系</h2>
+<ul>
+<li><strong>最自然落点：<code>1m</code> entry / exit</strong>。这是 repo 的原始设计频率。</li>
+<li><strong>更稳一点的 desk 迁移版：<code>5m</code> 做 spread 观测，<code>1m</code> 只做 child execution</strong>。</li>
+<li><strong><code>15m</code> 不该直接照抄</strong>：pairs reversion 放到 <code>15m</code> 容易变成更慢、更少、更受 regime 影响的版本，和这份 repo 的 HFT 壳不完全同类。</li>
+</ul>
+<p>所以它对我们最有价值的映射不是“把整套系统搬到 15m”，而是： <strong>把 pair selection 慢一点保留，把 spread alpha 放在 <code>1m/3m/5m</code> 里重验。</strong></p>
+<h2>11. 风险与保留意见</h2>
+<p>最大风险不是“回测太漂亮”，而是<strong>数学与执行口径不一致</strong>：</p>
+<ul>
+<li>offline 用 raw spread</li>
+<li>online 用 log spread</li>
+<li>OBI 还是 top-of-book 粗版本</li>
+<li>成本与 funding 处理也远没到完整 production 级</li>
+</ul>
+<p>另外，repo 给出的 pair 里不少是中小币对，流动性与冲击成本可能比纯 majors 更差。也就是说，这套壳更像：</p>
+<ul>
+<li>能证明结构</li>
+<li>能指导复现</li>
+<li>但还没证明“扣完真实 frictions 之后能稳活”</li>
+</ul>
+<h2>12. 下一步怎么测</h2>
+<ol>
+<li><strong>先统一 spread 定义</strong>：raw spread / log spread 二选一，不要离线线上两套口径；</li>
+<li><strong>做 friction ladder</strong>：0 / <code>4bps</code> / <code>8bps</code> / <code>12bps</code> / maker-taker split；</li>
+<li><strong>把 pair admission 跟 entry 分层回测</strong>：</li>
+</ol>
+<ul>
+<li>A 版：只有 spread z-score</li>
+<li>B 版：spread + OBI veto</li>
+<li>C 版：spread + OBI + cooldown / max-hold</li>
+</ul>
+<ol>
+<li><strong>先做 majors-relative pocket</strong>：例如 <code>LINK/SOL</code>、<code>ETH/BTC proxy</code> 这种更接近可交易 pair；</li>
+<li><strong>记录持有时长分布</strong>：如果大多数 edge 要 <code>&gt;60m</code> 才回收，那就和 repo 宣称的 HFT 壳不匹配；</li>
+<li><strong>如果 <code>1m</code> 过于吃成本</strong>，就把它降级成：<code>5m signal, 1m execution filter</code>，而不是硬做秒级策略。</li>
+</ol>
+<h2>13. 来源</h2>
+<ul>
+<li>Author: Samarth Chaudhary</li>
+<li>Year: 2026</li>
+<li>Title: <code>Crypto_Stat-Arb_HFT_Model</code></li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Repo URL: <a href="https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model">https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model</a></li>
+<li>Readable URLs:</li>
+<li><a href="https://raw.githubusercontent.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/main/README.md">https://raw.githubusercontent.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/main/README.md</a></li>
+<li><a href="https://raw.githubusercontent.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/main/analyzer.py">https://raw.githubusercontent.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/main/analyzer.py</a></li>
+<li><a href="https://raw.githubusercontent.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/main/optimizer.py">https://raw.githubusercontent.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/main/optimizer.py</a></li>
+<li><a href="https://raw.githubusercontent.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/main/main.cpp">https://raw.githubusercontent.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/main/main.cpp</a></li>
+<li><a href="https://raw.githubusercontent.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/main/fix_strategies.py">https://raw.githubusercontent.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/main/fix_strategies.py</a></li>
+<li><a href="https://raw.githubusercontent.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/main/strategies.json">https://raw.githubusercontent.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/main/strategies.json</a></li>
+<li>本地 artifacts：</li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_pairs_hft_shell_summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_pairs_hft_shell_events.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 `liquidation-hunter` 只读成“顺着瀑布追”：对 short-cycle crypto desk，更该先测的是「liquidation shock × OI unwind → 30m exhaustion fade」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 `liquidation-hunter` 只读成“顺着瀑布追”：对 short-cycle crypto desk，更该先测的是「liquidation shock × OI unwind → 30m exhaustion fade」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-18 22:38 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `main.py` + `config.yaml`）+ Binance USDⓈ-M `5m` public-data portability probe（8 majors，近 `14d`）</span>
+      <span class="pill">主题标签：raw-alpha / single-asset / event-driven / liquidation / open-interest / forced-deleveraging / exhaustion / mean-reversion / fade / binance-perpetual / 5m / 15m / 30m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：仓库规则框架 + 公共 API 最小移植快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-18_2238_liqshock-oiunwind-exhaustionfade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-18 22:38 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>main.py</code> + <code>config.yaml</code>）+ Binance USDⓈ-M <code>5m</code> public-data portability probe（8 majors，近 <code>14d</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当 <code>5m</code> 出现“价格单边急冲 + OI 同步明显回落 + 成交额放大”这类强制去杠杆/挤仓代理事件后，继续追同方向未必划算；更像值得在接下来 <code>15m~30m</code> 做反向 exhaustion fade</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（先做单资产事件驱动版，再扩到 cross-sectional router）</li>
+<li>主题标签：raw-alpha / single-asset / event-driven / liquidation / open-interest / forced-deleveraging / exhaustion / mean-reversion / fade / binance-perpetual / 5m / 15m / 30m / repo / public-data / cost / risk</li>
+<li>证据类型：仓库规则框架 + 公共 API 最小移植快检</li>
+</ul>
+<p>先回答 base alpha：<strong>能答清。</strong> 这次不是把 repo 原样照抄成“追 liquidation cascade continuation”，而是把它拆开后，挑出<strong>更适合我们 desk 的旁支</strong>：</p>
+<p>&gt; <strong>极端去杠杆事件本身是 raw alpha 触发器，但在 Binance <code>5m</code> 公共数据口径下，它更像 <code>30m</code> 内的 exhaustion fade，而不是继续追单边。</strong></p>
+<p>这符合你这轮给的灵活口径：</p>
+<ul>
+<li>不要求必须复刻仓库 headline；</li>
+<li>只要 repo / paper 里的某个分支更适合 <code>1m/3m/5m/15m</code> 最小实验，就值得单独拎出来；</li>
+<li>而且这次它依然是 <strong>raw alpha</strong>，不是硬包装成 filter。</li>
+</ul>
+<p>---</p>
+<h2>1. 这次看了什么</h2>
+<p>主来源是一个 2026 新仓库：</p>
+<ul>
+<li><strong>Authors / Maintainer：</strong> <code>wilsontiger2222</code></li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> <code>liquidation-hunter</code></li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> 无</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/wilsontiger2222/liquidation-hunter&gt;">https://github.com/wilsontiger2222/liquidation-hunter&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/wilsontiger2222/liquidation-hunter&gt;">https://github.com/wilsontiger2222/liquidation-hunter&gt;</a></li>
+<li><strong>实际审计文件：</strong></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/wilsontiger2222/liquidation-hunter/master/README.md&gt;">https://raw.githubusercontent.com/wilsontiger2222/liquidation-hunter/master/README.md&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/wilsontiger2222/liquidation-hunter/master/main.py&gt;">https://raw.githubusercontent.com/wilsontiger2222/liquidation-hunter/master/main.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/wilsontiger2222/liquidation-hunter/master/config.yaml&gt;">https://raw.githubusercontent.com/wilsontiger2222/liquidation-hunter/master/config.yaml&gt;</a></li>
+</ul>
+<h3>1.1 仓库原始主张</h3>
+<p>repo 的原始想法很直白：</p>
+<ul>
+<li>funding 很偏；</li>
+<li>OI 在涨、价格却没顺着走；</li>
+<li>价格靠近 liquidation cluster；</li>
+<li>那就顺着预期 cascade 方向去追。</li>
+</ul>
+<p>它在 <code>README.md</code> 里给的是典型 continuation 叙事：</p>
+<ul>
+<li><code>funding_rate &gt; threshold</code></li>
+<li><code>open_interest_delta &gt; X% in last 4h</code></li>
+<li><code>price approaching liquidation cluster within 1.5%</code></li>
+<li>然后开仓，<code>TP</code> 打在 liquidation cluster center，<code>SL</code> 紧一些，<code>timeout</code> 用分钟数控制。</li>
+</ul>
+<p><code>main.py</code> 也说明它不是纯概念 README，而是已经搭了一个可运行骨架：</p>
+<ul>
+<li>funding signal</li>
+<li>OI divergence signal</li>
+<li>liquidation cluster signal</li>
+<li>signal aggregator</li>
+<li>paper / live / alert executor</li>
+</ul>
+<p>但我不打算把它原样照抄进 desk，原因很简单： <strong>repo 里真正最值钱的不是“追瀑布”四个字，而是它提醒你：强制去杠杆本身是一个可以切成不同交易相位的事件源。</strong></p>
+<p>---</p>
+<h2>2. 为什么这轮仍把它定成 raw alpha，而不是 overlay</h2>
+<p>因为这次研究对象不是“用 liquidation 数据给别的策略做 veto”。 这次真正拿出来测试的 alpha 本体是：</p>
+<p>&gt; <strong>当市场刚刚被迫去杠杆、短窗价格走得太急，且 OI 明显同步收缩时，下一段 <code>15m~30m</code> 更容易走 exhaustion fade。</strong></p>
+<p>这里的方向信号本身来自事件，不是来自别的母策略，所以它属于 raw alpha。</p>
+<p>更具体地说：</p>
+<ul>
+<li><code>trigger</code>：极端 <code>5m</code> shock + OI unwind + volume expansion</li>
+<li><code>entry</code>：反向接 event</li>
+<li><code>exit</code>：固定持有 <code>15m/30m/60m</code>，或加 price reversion / VWAP 回归条件</li>
+<li><code>risk</code>：shock 延续过深即止损，事件过旧即失效</li>
+</ul>
+<p>这已经是一套完整交易语言，不只是风险附属层。</p>
+<p>---</p>
+<h2>3. 用人话讲，这个 alpha 在抓什么</h2>
+<p>如果一个 <code>5m</code> bar 同时出现三件事：</p>
+<ol>
+<li><strong>价格冲得很急</strong>：说明短时情绪和订单流都极端；</li>
+<li><strong>OI 明显下掉</strong>：说明不是“新仓追进去”，而是有人被迫减仓/爆仓/挤出去；</li>
+<li><strong>成交额放大</strong>：说明这根 bar 不是冷清时段的假动作，而是真有大量成交换手；</li>
+</ol>
+<p>那这更像什么？</p>
+<p>更像：</p>
+<ul>
+<li>一段去杠杆释放已经发生；</li>
+<li>最容易赚钱的那一段单边，可能已经被吃掉；</li>
+<li>后面更值得做的，不一定是追，而是等一小段后<strong>反手接回摆</strong>。</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>不是“看见爆仓就继续追”，而是“看见爆仓 + OI 掉得厉害，就开始怀疑：这波是不是已经把最好赚的那截走完了”。</strong></p>
+<p>这跟单纯看大阴线/大阳线不一样。 多了 <code>OI unwind</code> 这层，意思从“价格大动”变成“价格大动，而且伴随仓位被挤掉”。 后者更接近 <strong>forced deleveraging exhaustion</strong>，而不是正常趋势延续。</p>
+<p>---</p>
+<h2>4. 最小实验怎么做的</h2>
+<p>为了先回答“这东西在我们 desk 的 <code>5m/15m</code> 口径上像不像样”，我没去追完整 liquidation heatmap，而是先用<strong>Binance 公共可得</strong>的数据做一个最小代理实验。</p>
+<h3>4.1 数据源</h3>
+<p>全部公开可得，无需私有 key：</p>
+<ul>
+<li><code>fapi/v1/klines</code>：Binance USDⓈ-M <code>5m</code> K 线</li>
+<li><code>futures/data/openInterestHist</code>：Binance USDⓈ-M <code>5m</code> OI 历史</li>
+</ul>
+<h3>4.2 更新频率</h3>
+<ul>
+<li>K 线：<code>5m</code></li>
+<li>OI hist：<code>5m</code></li>
+</ul>
+<h3>4.3 标的</h3>
+<p>8 个液态主流 perp：</p>
+<ul>
+<li><code>BTCUSDT</code></li>
+<li><code>ETHUSDT</code></li>
+<li><code>SOLUSDT</code></li>
+<li><code>BNBUSDT</code></li>
+<li><code>XRPUSDT</code></li>
+<li><code>DOGEUSDT</code></li>
+<li><code>ADAUSDT</code></li>
+<li><code>LINKUSDT</code></li>
+</ul>
+<h3>4.4 样本区间</h3>
+<ul>
+<li>近 <code>14d</code></li>
+<li>bar 频率：<code>5m</code></li>
+</ul>
+<h3>4.5 事件定义（当前最小口径）</h3>
+<p>对每个 symbol 的每根 <code>5m</code> bar：</p>
+<ul>
+<li><code>abs(ret_5m)</code> 进入自己过去 288 根（约 1 天）的 <strong>90% 分位以上</strong>；</li>
+<li><code>oi_value_chg</code> 落在过去 288 根的 <strong>20% 分位以下</strong>（也就是 OI value 明显掉）；</li>
+<li><code>quote_volume_zscore &gt; 0</code>（成交额至少高于近期均值）。</li>
+</ul>
+<p>满足三条，就把它记成一根 <strong>liquidation-like forced-unwind event</strong>。</p>
+<p>我故意先不用“真 liquidation feed”，因为：</p>
+<ul>
+<li>这轮目标是先做 desk 可快速复现的最小实验；</li>
+<li>Binance 公开 OI + K 线已经足够回答 first verdict；</li>
+<li>若 first verdict 成立，再接更细的 liquidation heatmap / force-order feed 也不迟。</li>
+</ul>
+<h3>4.6 产物路径</h3>
+<p>这轮实验文件已经落在：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-18_liq_oi_unwind_events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_liq_oi_unwind_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_liq_oi_unwind_portfolio.json</code></li>
+</ul>
+<p>---</p>
+<h2>5. 关键结果：追同方向不太行，30m 反手更像样</h2>
+<p>先看组合层：</p>
+<h3>5.1 全样本（8 majors，42 个事件）</h3>
+<p><code>portfolio.json</code> 里的聚合结果：</p>
+<ul>
+<li>事件数：<code>42</code></li>
+<li>平均当根 shock：<code>-16.72 bps</code></li>
+<li>平均 OI value 变化：<code>-36.18 bps</code></li>
+<li>平均 volume z-score：<code>2.05</code></li>
+<li><strong>顺着事件方向持有 15m：<code>+0.99 bps</code></strong></li>
+<li><strong>顺着事件方向持有 30m：<code>-13.99 bps</code></strong></li>
+<li><strong>顺着事件方向持有 60m：<code>-2.04 bps</code></strong></li>
+<li>顺势 30m 胜率：<code>26.2%</code></li>
+</ul>
+<p>这串数的直译很清楚：</p>
+<p>&gt; <strong>事件后立刻再追 15m，几乎没 edge；追 30m 明显偏负。反过来看，就是做 30m exhaustion fade 的 gross first verdict 反而更像样。</strong></p>
+<p>如果把 <code>signed_30m_bps = -13.99</code> 翻译成反向交易：</p>
+<ul>
+<li><strong>fade 30m 的均值约 <code>+13.99 bps</code> gross</strong>；</li>
+<li><strong>fade 30m 胜率约 <code>73.8%</code></strong>。</li>
+</ul>
+<p>这已经足够支撑“值得进入研究池继续做 cost-aware 细化”。</p>
+<h3>5.2 上冲事件 vs 下砸事件</h3>
+<p>把事件拆成上涨挤空和下跌砍多：</p>
+<p>#### 上冲事件（12 个）</p>
+<ul>
+<li>平均当根 shock：<code>+33.19 bps</code></li>
+<li>平均 OI value 变化：<code>-23.76 bps</code></li>
+<li>顺势 30m：<code>-14.74 bps</code></li>
+<li>换成 fade：<strong><code>+14.74 bps</code></strong></li>
+<li>fade 30m 胜率：<code>75%</code></li>
+</ul>
+<p>#### 下砸事件（30 个）</p>
+<ul>
+<li>平均当根 shock：<code>-36.68 bps</code></li>
+<li>平均 OI value 变化：<code>-41.16 bps</code></li>
+<li>顺势 30m：<code>-13.70 bps</code></li>
+<li>换成 fade：<strong><code>+13.70 bps</code></strong></li>
+<li>fade 30m 胜率：<code>73.3%</code></li>
+</ul>
+<p>也就是说：</p>
+<ul>
+<li>不管是往上挤还是往下踩；</li>
+<li>只要像 forced-unwind event；</li>
+<li><strong>30m 维度都更像反手，不像追单边。</strong></li>
+</ul>
+<p>这点对 desk 很有用，因为它把复杂故事压成一句很能执行的话：</p>
+<p>&gt; <strong>遇到 OI 掉得快的极端 bar，先别兴奋追方向，先把它当成“去杠杆释放已发生”的 exhaustion 候选。</strong></p>
+<h3>5.3 单币层不完全一致，但负向追单边是主基调</h3>
+<p><code>summary.csv</code> 里最有代表性的例子：</p>
+<ul>
+<li><code>XRPUSDT all</code>：顺势 30m <code>-31.66 bps</code></li>
+<li><code>ADAUSDT all</code>：顺势 30m <code>-31.31 bps</code></li>
+<li><code>ETHUSDT all</code>：顺势 30m <code>-16.08 bps</code></li>
+<li><code>SOLUSDT all</code>：顺势 30m <code>-13.23 bps</code></li>
+<li><code>BTCUSDT all</code>：顺势 30m <code>-19.54 bps</code></li>
+</ul>
+<p>也有例外：</p>
+<ul>
+<li><code>BNBUSDT down</code>：顺势 30m <code>+10.96 bps</code></li>
+<li><code>LINKUSDT up</code>：顺势 30m <code>+41.07 bps</code></li>
+</ul>
+<p>这说明它更像什么？</p>
+<p>更像：</p>
+<ul>
+<li><strong>适合先做 cross-sectional router / symbol veto</strong>；</li>
+<li>不宜一上来就假设“所有币、所有 shock 都反手”；</li>
+<li>但作为组合层 first verdict，已经很清楚：<strong>“继续追”不是默认最优。</strong></li>
+</ul>
+<p>---</p>
+<h2>6. 它和当前 <code>1m / 3m / 5m / 15m</code> desk 的关系</h2>
+<h3>6.1 最自然的主战场是 <code>5m -&gt; 15m/30m</code></h3>
+<p>这次 public-data 版最顺手的映射是：</p>
+<ul>
+<li>用 <code>5m</code> bar 定义事件；</li>
+<li>在接下来 <code>15m</code> / <code>30m</code> 做 fade；</li>
+<li><code>60m</code> 只作为延长持有的参考，不是首选。</li>
+</ul>
+<p>所以它跟当前短周期关系最直接的是：</p>
+<ul>
+<li><code>5m</code>：事件探测层</li>
+<li><code>15m</code>：第一阶段均值回摆窗口</li>
+<li><code>30m</code>：当前看起来最像样的 gross pocket</li>
+</ul>
+<h3>6.2 <code>1m / 3m</code> 可以怎么接</h3>
+<p>如果后面补到更细数据：</p>
+<ul>
+<li><code>1m</code> liquidation prints</li>
+<li>更细 OI snapshot</li>
+<li>order-book refill / spread re-tighten</li>
+</ul>
+<p>那可以把当前 <code>5m</code> 事件拆成两阶段：</p>
+<ol>
+<li><code>1m/3m</code> 观察冲击是否已进入衰竭区；</li>
+<li><code>5m</code> 再正式下 fade。</li>
+</ol>
+<p>也就是说，这篇笔记不是只能服务 <code>5m/15m</code>，它也能向更快频率扩展，只是当前 first probe 先用 <code>5m</code> 做最小可复现实验。</p>
+<p>---</p>
+<h2>7. 为什么它比继续补一个纯 filter 更值得</h2>
+<p>因为这轮我们优先级里，raw alpha 要高于 shared filter / overlay。 而这个主题满足三点：</p>
+<ol>
+<li><strong>base alpha 清楚</strong>：forced-unwind exhaustion fade；</li>
+<li><strong>公开数据能复现</strong>：Binance <code>5m</code> K 线 + OI hist 就能先测；</li>
+<li><strong>可以直接落地完整策略</strong>：entry / exit / sizing / risk / cost 都能写清楚。</li>
+</ol>
+<p>换句话说，它不是“某条 alpha 的辅助阀门”，而是<strong>事件驱动型均值回归 raw alpha</strong>，而且跟 liquidation / crowding / leverage 这类 crypto 原生结构直接相关，值得进素材池。</p>
+<p>---</p>
+<h2>8. 可以直接落地的最小策略草案</h2>
+<p>下面这版我觉得已经够 desk 化：</p>
+<h3>8.1 事件触发</h3>
+<p>在 <code>5m</code> 上，对候选 universe（先从 8 majors 开始）：</p>
+<ul>
+<li><code>abs(ret_5m) &gt;= rolling q90</code></li>
+<li><code>oi_value_chg &lt;= rolling q20</code></li>
+<li><code>quote_volume_z &gt;= 0</code></li>
+</ul>
+<h3>8.2 方向</h3>
+<ul>
+<li>如果事件 bar 是大涨：做空 fade</li>
+<li>如果事件 bar 是大跌：做多 fade</li>
+</ul>
+<h3>8.3 入场</h3>
+<p>先测 3 个版本：</p>
+<ul>
+<li><strong>A. close-entry</strong>：事件 bar 收盘反手进</li>
+<li><strong>B. 1-bar delay</strong>：等下一根 <code>5m</code> 再进</li>
+<li><strong>C. micro-confirm</strong>：只有下一根没继续扩张、或已经出现 wick / volume deceleration 才进</li>
+</ul>
+<h3>8.4 出场</h3>
+<p>先做最简单的固定持有：</p>
+<ul>
+<li><code>15m</code></li>
+<li><code>30m</code></li>
+<li><code>60m</code></li>
+</ul>
+<p>目前 first verdict 最优先看 <code>30m</code>。</p>
+<p>后面再测更实盘化的版本：</p>
+<ul>
+<li>到达事件 bar 中点/VWAP 回归即止盈</li>
+<li>若继续沿事件方向扩张 <code>0.6~0.8 x event_range</code> 则止损</li>
+<li>若 <code>30m</code> 内未回摆则强平</li>
+</ul>
+<h3>8.5 仓位</h3>
+<ul>
+<li>baseline：等权单笔风险</li>
+<li>进阶：按 <code>event_abs_ret × oi_drop_strength</code> 做 scale</li>
+<li>更保守：只做 top-liquidity symbols，或按 cost bucket 递减</li>
+</ul>
+<h3>8.6 成本</h3>
+<p>这轮 first probe 还没正式扣交易费和冲击成本，所以现在只能说：</p>
+<ul>
+<li><strong>gross first verdict 值得继续做</strong>；</li>
+<li>真正能不能上线，要看 <code>taker+taker</code> 还是 <code>maker+taker</code> 之后剩多少。</li>
+</ul>
+<p>对 8 个 majors 来说：</p>
+<ul>
+<li>若能做成 <code>maker in + taker out</code>，30m pocket 还有希望；</li>
+<li>若只能双边 taker，部分币可能被吃掉。</li>
+</ul>
+<p>---</p>
+<h2>9. 当前这条 alpha 的最大风险</h2>
+<h3>9.1 它可能混进“真趋势起点”</h3>
+<p>不是每次 OI 掉都代表行情结束。 有些时候是：</p>
+<ul>
+<li>旧仓被清掉；</li>
+<li>新趋势才刚开始；</li>
+<li>后面继续单边。</li>
+</ul>
+<p>这也是为什么 <code>BNB</code>、<code>LINK</code> 里还能看到 continuation pocket。</p>
+<h3>9.2 5m OI hist 太粗</h3>
+<p>我们现在用的是 <code>5m</code> OI 历史，不是逐笔 liquidation。 所以它本质是<strong>forced-unwind proxy</strong>，不是精确清算流。 这没问题，但一定要在文档里说清楚，不要装成“真 liquidation 地图策略”。</p>
+<h3>9.3 跨 symbol 异质性明显</h3>
+<p>从 <code>summary.csv</code> 看，币种差异不小。 因此更像：</p>
+<ul>
+<li>先做 <code>BTC/ETH/SOL/XRP/ADA</code> 重点观察；</li>
+<li>再把 <code>BNB/LINK</code> 这类 continuation 例外拿出来单独建 bucket。</li>
+</ul>
+<p>---</p>
+<h2>10. 下一步怎么测</h2>
+<p>这里必须具体，不然这篇 digest 就只是一段观点。</p>
+<h3>10.1 先做 cost-aware 正式回测</h3>
+<p>目标：确认 30m fade 是否在 majors 上扣费后还站得住。</p>
+<p>最小实验：</p>
+<ul>
+<li>universe：先 <code>BTC/ETH/SOL/XRP/ADA</code></li>
+<li>bar：<code>5m</code></li>
+<li>entry：事件 bar close 反手</li>
+<li>exit：<code>30m</code> 固定持有</li>
+<li>cost：</li>
+<li>taker+taker</li>
+<li>maker+taker</li>
+<li>再加 1~2 档额外滑点 stress</li>
+</ul>
+<p>输出：</p>
+<ul>
+<li>gross / net mean bps</li>
+<li>win rate</li>
+<li>turnover</li>
+<li>按 symbol / side / UTC 时段分组</li>
+</ul>
+<h3>10.2 把 event 强度离散化</h3>
+<p>目标：回答“是不是越像 forced liquidation，fade 越稳”。</p>
+<p>把事件按三维强度分 bucket：</p>
+<ul>
+<li><code>abs(ret_5m)</code> 分位</li>
+<li><code>oi_drop</code> 分位</li>
+<li><code>volume_z</code> 分位</li>
+</ul>
+<p>看：</p>
+<ul>
+<li>最极端 decile 是否明显更好；</li>
+<li>是否存在“太弱没 edge、太强也别追”的甜区。</li>
+</ul>
+<h3>10.3 测 1-bar delay 是否优于当根反手</h3>
+<p>目标：减少接飞刀。</p>
+<p>要比较：</p>
+<ul>
+<li>事件收盘立即反手</li>
+<li>延后 1 根 <code>5m</code></li>
+<li>只在下一根未创新扩张时反手</li>
+</ul>
+<p>如果 delay 版只少赚一点均值，却能显著压回撤，那就更接近 production。</p>
+<h3>10.4 接更细的 liquidation / order-book 数据</h3>
+<p>目标：把“代理事件”升级成更像 crypto 原生结构的版本。</p>
+<p>后续可补：</p>
+<ul>
+<li>交易所 liquidation prints / force-order feed（若可得）</li>
+<li>order-book spread / refill / depth collapse</li>
+<li>funding snapshot</li>
+</ul>
+<p>届时把当前 alpha 拆成：</p>
+<ul>
+<li><strong>raw alpha</strong>：forced-unwind exhaustion fade</li>
+<li><strong>filter</strong>：book refill / spread normalization / funding crowding</li>
+</ul>
+<p>这样会比一上来追求“大而全”更稳。</p>
+<p>---</p>
+<h2>11. 结论</h2>
+<p>这轮最重要的结论不是“liquidation 很重要”这种空话，而是：</p>
+<p>&gt; <strong>从 2026 新仓库 <code>liquidation-hunter</code> 往 desk 口径重读后，更值得先测的不是 cascade continuation，而是 <code>5m</code> 强冲击 + OI unwind 后的 <code>30m</code> exhaustion fade。</strong></p>
+<p>当前 public-data first verdict：</p>
+<ul>
+<li>8 个 majors、近 14 天、42 个事件；</li>
+<li>顺势追 <code>30m</code> 平均 <strong><code>-13.99 bps</code></strong>，胜率 <strong><code>26.2%</code></strong>；</li>
+<li>反过来做 fade，大致是 <strong><code>+13.99 bps gross</code></strong>，胜率 <strong><code>73.8%</code></strong>。</li>
+</ul>
+<p>所以这轮结论很明确：</p>
+<ul>
+<li><strong>主题类型：raw alpha</strong></li>
+<li><strong>base alpha：forced-unwind exhaustion fade</strong></li>
+<li><strong>能独立复现：能</strong></li>
+<li><strong>能直接落完整策略：能</strong></li>
+</ul>
+<p>它已经够资格进入后续复现与实盘候选池，但下一步必须尽快补：</p>
+<ul>
+<li>net cost</li>
+<li>symbol bucket</li>
+<li>entry delay</li>
+<li>更细 liquidation / microstructure confirmation</li>
+</ul>
+<p>在这几项没补完前，它是个<strong>值得继续推进的 raw alpha 候选</strong>，但还不该直接当成通杀全币种的 production 默认模板。</p>
+</body>
+</html>

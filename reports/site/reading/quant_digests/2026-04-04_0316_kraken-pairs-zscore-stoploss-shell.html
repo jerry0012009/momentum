@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2025/2026 pairs 仓库只当脚手架：对 short-cycle desk，更该先测的是「cointegrated spread z-score × stop-loss/time-exit」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2025/2026 pairs 仓库只当脚手架：对 short-cycle desk，更该先测的是「cointegrated spread z-score × stop-loss/time-exit」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 03:16 UTC</span>
+      <span class="pill">类型：2025/2026 GitHub repo source audit（README + `backtester.py` + `cointegration_test.py` + `optimize_params.py` + `portfolio_backtest.py`）+ Binance USDⓈ-M 公共 `3m/5m/15m` 最小可移植性快检</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/zscore/stop-loss/parameter-grid/portfolio-shell/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：仓库工程证据 + 公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_0316_kraken-pairs-zscore-stoploss-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 03:16 UTC</li>
+<li>类型：2025/2026 GitHub repo source audit（README + <code>backtester.py</code> + <code>cointegration_test.py</code> + <code>optimize_params.py</code> + <code>portfolio_backtest.py</code>）+ Binance USDⓈ-M 公共 <code>3m/5m/15m</code> 最小可移植性快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>cointegrated pair 的 spread z-score 均值回归</strong>（<code>|z|</code> 过阈值开仓，回归到中线附近平仓，极端偏离触发止损）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/zscore/stop-loss/parameter-grid/portfolio-shell/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：仓库工程证据 + 公共数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答这轮最关键的一句：</p>
+<p>&gt; <strong>这篇东西的 base alpha 是什么？</strong> &gt; &gt; <strong>答：就是 pairs/stat-arb 的 spread 均值回归 raw alpha。</strong></p>
+<p>本次主材料是 GitHub 仓库 <strong><code>seans-alt/crypto-pairs-arbitrage</code></strong>（创建于 2025-09，2026-02 仍有更新）。它不是只给“研究想法”，而是把完整壳子写出来了：</p>
+<ul>
+<li>pair 选择：Engle-Granger cointegration + hedge ratio</li>
+<li>入场：<code>z_entry</code>（默认 2.0）</li>
+<li>出场：<code>z_exit</code>（默认 0.5）</li>
+<li>风险：<code>z_stop</code>（默认 3.0）</li>
+<li>成本：换仓时扣交易成本</li>
+<li>参数层：<code>z_entry × z_exit</code> 网格扫描</li>
+<li>组合层：多 pair 等权组合回测</li>
+</ul>
+<p>一句话核心结论：</p>
+<p>&gt; <strong>这份 repo 最值得 intake 的不是“有没有新奇因子”，而是它把 pairs raw alpha 的 <code>entry/exit/stop/cost/portfolio</code> 五件事放进同一条可复现实验链。</strong></p>
+<p>一句话证明方式：</p>
+<p>&gt; <strong>我对源码逐文件拆解，并用 Binance 公共 <code>3m/5m/15m</code> 做同口径 z-score 壳子快检，验证这条壳子在 15m 更容易留净边，3m/5m 更容易被成本吃掉。</strong></p>
+<h2>2. 核心结论（给 desk 可执行的信息）</h2>
+<ol>
+<li><strong>这是完整策略壳，不是“只有信号没有出场”的半成品。</strong></li>
+</ol>
+<ul>
+<li><code>backtester.py</code> 明确写了入场阈值、回归出场、极值止损、交易成本扣减。</li>
+</ul>
+<ol>
+<li><strong>它天然适合我们当前优先方向：pairs / stat-arb raw alpha 素材池。</strong></li>
+</ol>
+<ul>
+<li>不是 shared filter，不需要依赖外部低频数据才能成文。</li>
+</ul>
+<ol>
+<li><strong>短周期可移植性有明显时间粒度分层（同壳子、同参数）</strong>：</li>
+</ol>
+<ul>
+<li><code>SOLUSDT-XRPUSDT</code>：<code>15m</code> net4 约 <strong>+0.240 bps/bar</strong>，但 <code>5m</code> 约 <strong>-0.105 bps/bar</strong>、<code>3m</code> 约 <strong>-0.030 bps/bar</strong>。</li>
+<li><code>BTCUSDT-XRPUSDT</code>：<code>15m</code> net4 约 <strong>+0.199 bps/bar</strong>，<code>5m</code> 仅 <strong>+0.017 bps/bar</strong>，<code>3m</code> 转负。</li>
+</ul>
+<ol>
+<li><strong>结论不是“3m/5m 不能做 pairs”，而是：同一套阈值壳在更快周期对成本和滑点更敏感。</strong></li>
+</ol>
+<ul>
+<li>3m/5m 要活，必须额外加 execution/cost 约束，而不是直接把 15m 参数平移下去。</li>
+</ul>
+<h2>3. 为什么和当前项目直接相关</h2>
+<p>我们最近 intake 已经覆盖了不少 raw alpha 分支（carry、microstructure、prediction-market、maker、pairs）。当前更缺的是：</p>
+<ul>
+<li><strong>可直接复刻的 pairs“标准壳”</strong>（而不是每次都从零写）；</li>
+<li>能快速回答“这条 pair 线到底是 alpha 本体问题，还是参数/成本问题”的实验模板。</li>
+</ul>
+<p>这个 repo 刚好补了这层：</p>
+<ul>
+<li>是 raw alpha 本体；</li>
+<li>可直接拆成组件（pair admission / signal / risk / cost / portfolio）；</li>
+<li>非常适合放进 <code>1m/3m/5m/15m</code> 的统一 first-verdict 流程。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：pairs / stat-arb / relative-value / mean reversion</li>
+<li>基础 alpha：cointegrated spread 回归</li>
+<li>regime：默认无硬 regime；可后续接 volatility/crowding gate</li>
+<li>filter / veto：<code>z_entry</code> 触发 + <code>z_stop</code> 否决极端失配</li>
+<li>risk / sizing / execution overlay：</li>
+<li>单 pair 头寸按 <code>1/(1+|beta|)</code> 做名义归一；</li>
+<li>换仓扣成本；</li>
+<li>组合可先等权，再扩展到 risk parity。</li>
+</ul>
+<h2>4. 最小可复现实验（这轮已给到可跑口径）</h2>
+<h3>4.1 已完成的最小快检口径</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M <code>fapi/v1/klines</code>（公开）</li>
+<li>标的池：<code>BTC ETH SOL BNB XRP ADA DOGE LINK</code></li>
+<li>主周期：<code>15m</code>，每币 <code>1500</code> bars（约 15.6 天）</li>
+<li>信号：</li>
+<li><code>spread = log(P1) - beta*log(P2)</code></li>
+<li>rolling <code>zscore(window=96)</code></li>
+<li><code>|z|&gt;2</code> 入场，回归到 <code>|z|&lt;0.5</code> 出场，<code>|z|&gt;3</code> 止损</li>
+<li>成本：按换仓事件扣 <code>4 bps</code> round-trip proxy（用于快筛，不是最终成交模型）</li>
+</ul>
+<h3>4.2 本轮 3 个关键数据点</h3>
+<ol>
+<li><code>15m</code> 扫描里，净值靠前 pair：</li>
+</ol>
+<ul>
+<li><code>SOL-XRP</code>：net4 <strong>+0.240 bps/bar</strong>，Sharpe4 <strong>7.62</strong>，trades <strong>62</strong></li>
+<li><code>BTC-XRP</code>：net4 <strong>+0.199 bps/bar</strong>，Sharpe4 <strong>8.51</strong>，trades <strong>44</strong></li>
+</ul>
+<ol>
+<li>同 pair 粒度降到 <code>3m/5m</code> 后明显恶化：</li>
+</ol>
+<ul>
+<li><code>SOL-XRP</code>：<code>15m +0.240</code> → <code>5m -0.105</code> → <code>3m -0.030</code>（bps/bar）</li>
+</ul>
+<ol>
+<li>结论指向：</li>
+</ol>
+<ul>
+<li><strong>15m 更像“先能活的壳”</strong>；</li>
+<li><code>3m/5m</code> 需要加 execution gate（盘口深度、入场分位、时段 veto）后再谈扩展。</li>
+</ul>
+<h2>5. 下一步怎么测（直接可执行）</h2>
+<ol>
+<li><strong>Pair admission</strong>：先按 <code>phi/half-life/rolling corr</code> 过滤，再进 z-score 壳，避免“看起来相关、实则慢漂移”的假 pair。</li>
+<li><strong>成本梯度</strong>：固定同一信号，跑 <code>2/4/8/12 bps</code> 阶梯，画出每对 pair 的 cost cliff。</li>
+<li><strong>周期迁移</strong>：</li>
+</ol>
+<ul>
+<li>主线先保 <code>15m</code>；</li>
+<li><code>5m</code> 只做 top-decile entry（<code>|z|</code> 更高分位）+ maker 优先；</li>
+<li><code>3m</code> 默认先不开放全量交易。</li>
+</ul>
+<ol>
+<li><strong>风险约束</strong>：加 <code>max-hold bars</code>、<code>daily trade cap</code>、<code>pair-level drawdown stop</code>，避免“均值回归策略被趋势行情长时间拖死”。</li>
+</ol>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>该 repo 目前 star 很低、README 较薄，工程上更像“可用原型”而非生产级框架。</li>
+<li>本轮快检是 public kline proxy，不含真实盘口冲击与排队成交，不能当实盘收益承诺。</li>
+<li>z-score pairs 在结构性趋势阶段会出现“回不来”的长拖尾，<code>z_stop</code> 只是第一层防线，不够替代 regime 控制。</li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>Sean Alt (2025/2026). _crypto-pairs-arbitrage_ (GitHub Repository).</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/seans-alt/crypto-pairs-arbitrage">https://github.com/seans-alt/crypto-pairs-arbitrage</a></code></li>
+<li>Created: <code>2025-09-23</code></li>
+<li>Last push: <code>2026-02-18</code></li>
+<li>License: MIT</li>
+</ul>
+<ol>
+<li><strong>Engle, R. F., &amp; Granger, C. W. J. (1987). _Co-integration and Error Correction: Representation, Estimation, and Testing_. Econometrica.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.2307/1913236</code></li>
+<li>Readable URL: <code><a href="https://www.jstor.org/stable/1913236">https://www.jstor.org/stable/1913236</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures API — Kline/Candlestick Data</strong></li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<h2>8. 本地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/pairs_repo_20260404/pair_scan_15m.csv</code></li>
+<li><code>reports/artifacts/quant_digests/pairs_repo_20260404/focus_pair_interval_portability.csv</code></li>
+<li><code>research/quant_digests/2026-04-04_0316_kraken-pairs-zscore-stoploss-shell.md</code></li>
+</ul>
+</body>
+</html>

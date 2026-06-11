@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Binance 稳定币对 bot 只读成“零费率网格工具”：对 short-cycle desk，更该先保留的是「stablecoin micro-depeg fade × 1 tick take-profit」这条 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Binance 稳定币对 bot 只读成“零费率网格工具”：对 short-cycle desk，更该先保留的是「stablecoin micro-depeg fade × 1 tick take-profit」这条 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-17 21:52 UTC</span>
+      <span class="pill">研究时间：2026-04-17 21:56 UTC</span>
+      <span class="pill">类型：2025/2026 GitHub repo source audit（`README.md` + `__main__.py` + `grid_gen.py` + `market_stats.py` + `order_manager.py` + GitHub API metadata）+ Binance Spot `FDUSDUSDC 1m` public-data portability probe（近 45d）</span>
+      <span class="pill">主题标签：raw-alpha / single-asset / relative-value / stablecoin / micro-depeg / mean-reversion / maker / grid / one-tick-tp / fdusd / usdc / binance-spot / 1m / 3m / 5m / 15m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：repo 源码 + Binance 公共行情最小迁移快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-17_2156_stablecoin-microdepeg-grid-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-17 21:56 UTC</li>
+<li>类型：2025/2026 GitHub repo source audit（<code>README.md</code> + <code>__main__.py</code> + <code>grid_gen.py</code> + <code>market_stats.py</code> + <code>order_manager.py</code> + GitHub API metadata）+ Binance Spot <code>FDUSDUSDC 1m</code> public-data portability probe（近 45d）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当稳定币对（这里是 <code>FDUSD/USDC</code>）短时滑到近 1 小时区间低位、出现轻微 micro-depeg 时，后面几分钟常有<strong>回到中枢 / 弹回 1 tick</strong> 的均值回复；交易上对应 <strong>低位挂买 → 只吃第一跳反弹 → 很快走人</strong>。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（repo 已给 grid、挂单、止盈、仓位随资金缩放、阈值 gate、fee guard；真实队列位置 / 吃单风险 / 容量还需二次审计）</li>
+<li>主题标签：raw-alpha / single-asset / relative-value / stablecoin / micro-depeg / mean-reversion / maker / grid / one-tick-tp / fdusd / usdc / binance-spot / 1m / 3m / 5m / 15m / repo / public-data / cost / risk</li>
+<li>证据类型：repo 源码 + Binance 公共行情最小迁移快检</li>
+</ul>
+<h2>1. 为什么这轮选它</h2>
+<p>这轮优先级不是再补一个解释型 filter，而是补一条 <strong>base alpha 能一句话说清楚</strong>、而且能直接落成完整策略壳的 raw alpha。</p>
+<p>我最后选的是 GitHub 仓库 <strong>wangshaofu / mm_bot</strong>：</p>
+<ul>
+<li>创建时间：2025-04-15</li>
+<li>最近更新时间：2026-02-19</li>
+<li>stars：0</li>
+<li>但不是空 README，它至少给了：grid 生成、市场振幅读取、阈值 gate、订单管理、fee guard、以及完整轮询主循环。</li>
+</ul>
+<p>先把它翻成人话：</p>
+<p>&gt; <strong>这不是“稳定币对可以做网格”的空话；它真正下注的是：当 <code>FDUSD/USDC</code> 这类稳定币对短时掉到局部低位时，后面几分钟经常会先弹回 1 个 tick 左右。</strong></p>
+<p>所以它的本体不是 trend，也不是 funding carry，更不是跨 venue 套利；它就是一条很具体的 <strong>stablecoin micro-depeg mean reversion raw alpha</strong>。</p>
+<h2>2. repo 里真正有价值的部分是什么</h2>
+<h3>2.1 base alpha 很清楚：买局部低位，只收第一跳</h3>
+<p><code>grid_gen.py</code> 和 <code>__main__.py</code> 串起来后，repo 的真实逻辑并不复杂：</p>
+<ol>
+<li>用最近 <code>1h</code> 的 <code>15m</code> K 振幅估算当前可交易区间；</li>
+<li>在 <code>best_bid</code> 下方生成一串买单价格；</li>
+<li>价格分配不是均匀的，而是 <strong>U-shaped</strong>：两端挂得更密，中间也保留最小权重；</li>
+<li><code>order_manager.py</code> 只保留<strong>最靠上的两个可用 grid level</strong>；</li>
+<li>买单成交后，立刻把卖单挂在 <code>buy_price + step</code>，默认就是 <strong>+1 tick</strong>；</li>
+<li>同时用 <code>last_minute_price + 0.0002</code> 做 max-buy-threshold，避免价格已经抬高时继续追着挂。</li>
+</ol>
+<p>这说明 repo 真正在做的事其实是：</p>
+<p>&gt; <strong>抓“稳定币对短时偏离 → 很快回一格”这件事，而不是长期持有或大波段判断。</strong></p>
+<h3>2.2 它是完整策略壳，不只是信号</h3>
+<p>这份仓库最值得保留的，不是 <code>U-shaped</code> 这个词，而是它把完整壳给齐了：</p>
+<ul>
+<li>entry：在局部低位下方挂 maker buy</li>
+<li>exit：成交后固定 <code>+1 tick</code> 卖出</li>
+<li>sizing：总 grid 数随可用资金调整</li>
+<li>admission：价格超过阈值就不再挂</li>
+<li>risk：发现 maker/taker fee 非 0 直接停机</li>
+<li>execution：持续重排订单，只保留最上面的两层</li>
+</ul>
+<p>这比很多“只有一个因子公式”的 repo 更适合 desk intake，因为它已经自然回答了：</p>
+<ul>
+<li>怎么进</li>
+<li>怎么出</li>
+<li>什么时候不做</li>
+<li>为什么必须低摩擦</li>
+</ul>
+<h3>2.3 它本质上是 maker-ish，不适合被误读成 taker alpha</h3>
+<p>repo 里最关键的安全护栏之一，是 <code>check_trading_fees()</code>：</p>
+<ul>
+<li>maker fee 或 taker fee 只要不是 <code>0</code></li>
+<li>bot 就直接报警并退出</li>
+</ul>
+<p>这其实已经把作者的真实判断写死了：</p>
+<p>&gt; <strong>这条 edge 本来就薄，必须尽量站在 maker 一侧吃回弹；一旦改成正常 fee / taker 口径，很可能马上死。</strong></p>
+<p>所以正确读法不是“又一个稳定币小网格”，而是：</p>
+<p>&gt; <strong>一个对摩擦极端敏感的微观均值回复 raw alpha 壳。</strong></p>
+<h2>3. public portability probe：这条 alpha 在公开数据里还像不像活的</h2>
+<p>为了不把源码故事直接当结论，我补了一个很小但够用的 public-data probe。</p>
+<h3>3.1 快检口径</h3>
+<ul>
+<li>数据源：Binance Spot 公共 <code>FDUSDUSDC 1m klines</code></li>
+<li>样本：近 <code>45d</code>，共 <code>64,800</code> 根 <code>1m</code> bars</li>
+<li>价格背景：均价约 <code>0.99963</code>，区间约 <code>0.9986 ~ 1.0025</code></li>
+<li>1 小时振幅的 <code>p95</code> 约 <code>0.0005</code>（约 <code>5</code> ticks）</li>
+</ul>
+<p>我没有假装能从 K 线完整复盘真实挂单队列，而是只验证一句最核心的话：</p>
+<p>&gt; <strong>当价格滑到近 1 小时区间低位后，后面 15 分钟里，是否经常能先反弹 <code>+1 tick</code>？</strong></p>
+<h3>3.2 对应的最小 signal 定义</h3>
+<p>选了一个尽量贴近 repo 精神、但能用公共 K 线复现的定义：</p>
+<ul>
+<li>看前 <code>60m</code> 的 rolling high / low</li>
+<li>当前 close 必须满足：</li>
+<li><code>close &lt;= previous_60m_low + 0.0002</code></li>
+<li><code>close_location &lt;= 0.2</code>（也就是落在最近 1 小时区间底部 20%）</li>
+<li><code>close &lt;= prev_close</code>（仍在往下滑）</li>
+<li>开仓后：</li>
+<li>只要未来 <code>15m</code> 内任一 bar 的 high 先打到 <code>entry + 0.0001</code>，就按 <code>+1 tick</code> 走</li>
+<li>否则第 <code>15m</code> close 超时离场</li>
+<li>信号按 <strong>非重叠</strong> 统计</li>
+</ul>
+<h3>3.3 结果：gross 是活的，但只适合极低摩擦</h3>
+<p>这条最小版规则在近 <code>45d</code> 上给出：</p>
+<ul>
+<li>交易数：<code>1,293</code></li>
+<li><code>+1 tick</code> 命中率：<code>93.0%</code></li>
+<li>平均 gross：<code>+0.886 bps / 笔</code></li>
+<li>中位数 gross：<code>+1.001 bps / 笔</code></li>
+<li>平均持有：<code>3.83 分钟</code></li>
+<li><code>p90</code> 持有：<code>11 分钟</code></li>
+<li>累计 gross：约 <code>+11.45%</code></li>
+</ul>
+<p>这组数最值钱的地方不是“赚了多少”，而是形状非常像 repo 假设：</p>
+<ul>
+<li>大部分单子不是吃大波段；</li>
+<li>而是 <strong>很快回 1 tick 就走</strong>；</li>
+<li>拿久了，优势并不会线性放大。</li>
+</ul>
+<h3>3.4 成本敏感度：1 bps 附近就是生死线</h3>
+<p>我又补了一个简单 friction ladder：</p>
+<ul>
+<li><code>0 bps</code> round-trip：平均 net 约 <code>+0.886 bps / 笔</code></li>
+<li><code>0.5 bps</code> round-trip：平均 net 约 <code>+0.386 bps / 笔</code></li>
+<li><code>1.0 bps</code> round-trip：平均 net 约 <code>-0.114 bps / 笔</code></li>
+<li><code>2.0 bps</code> round-trip：平均 net 约 <code>-1.114 bps / 笔</code></li>
+</ul>
+<p>一句话结论非常直接：</p>
+<p>&gt; <strong>这条 edge 不是“费后也很厚”的 alpha，而是典型的低摩擦微观口袋；round-trip 一过 <code>1 bps</code>，大概率就不值钱了。</strong></p>
+<p>这也反过来解释了 repo 为什么把 <strong>零费率 guard</strong> 写成硬约束，而不是可选项。</p>
+<h2>4. 这条线和当前 desk 有什么直接关系</h2>
+<h3>4.1 它补的是一个此前 intake 里不算多的 raw alpha 家族</h3>
+<p>最近素材池里：</p>
+<ul>
+<li>pairs / stat-arb / funding / options / prediction-market / microstructure 已经很密；</li>
+<li>但 <strong>稳定币对微脱锚均值回复</strong> 这种“极短、极薄、极 execution-sensitive”的 raw alpha 壳并不多。</li>
+</ul>
+<p>它跟一般 breakout / momentum 完全不是一回事，也不是把某个 filter 硬包装成 alpha。</p>
+<h3>4.2 它非常适合做 execution realism 教材</h3>
+<p>这条线的价值，不只是“也许能赚点 tick”，更在于它几乎是 execution realism 的标准教材：</p>
+<ul>
+<li>你有没有 maker 权限 / 低费率？</li>
+<li>你挂在 top two levels，真的能成交多少？</li>
+<li>一旦回补不足 1 tick，会不会全被时间成本和撤单噪声吃掉？</li>
+<li>容量上去后，你会不会自己把 edge 踩平？</li>
+</ul>
+<p>也就是说，它天然逼着 desk 把 <strong>alpha / fee / queue / capacity</strong> 四件事拆开看清楚。</p>
+<h3>4.3 它还能反过来服务其他更复杂的 maker-ish 思路</h3>
+<p>后面如果再测：</p>
+<ul>
+<li>microprice 偏移做市</li>
+<li>stablecoin quote imbalance</li>
+<li>跨 stablecoin 相对价值</li>
+<li>event-driven maker fade</li>
+</ul>
+<p>都很适合先拿这条线做 baseline：</p>
+<p>&gt; <strong>如果连最简单的 stablecoin micro-depeg fade 都跑不通，复杂版本多半只是换了个更贵的故事。</strong></p>
+<h2>5. 策略拆解</h2>
+<ul>
+<li>方向属性：单资产 / 相对价值 / 逆势均值回复</li>
+<li>基础 alpha：<code>FDUSDUSDC</code> 短时落到近 1h 区间低位后，未来几分钟高概率先反弹 <code>+1 tick</code></li>
+<li>regime：稳定币对仍处于窄幅、连续撮合、未发生结构性脱锚的正常微观环境</li>
+<li>filter / veto：<code>last_minute_price + 0.0002</code> max-buy-threshold；只挂 top-two valid grid levels；fee 非 0 直接停机</li>
+<li>risk / sizing / execution overlay：U-shaped grid 分配、资金约束下动态 grid 数、maker-only 倾向、成交后固定 <code>+1 tick</code> exit</li>
+</ul>
+<h2>6. 下一步怎么测</h2>
+<p>这条线下一步不该直接上“大回测美化”，而该先补 3 个最小但决定性的 realism test：</p>
+<ol>
+<li><strong>order-book replay / top-of-book fill test</strong></li>
+<p>用 Binance <code>depth</code> 或 <code>aggTrades</code> 级数据，测 top-two grid level 的真实成交概率，而不是只看 K 线 high 有没有摸到。</p>
+</ol>
+<ol>
+<li><strong>queue-sensitive friction ladder</strong></li>
+<p>不只测 <code>0 / 0.5 / 1.0 / 2.0 bps</code>，还要把“挂单没排到、被动成交比例下降、撤单重挂损耗”一起建进去。</p>
+</ol>
+<ol>
+<li><strong>多 stablecoin 对横向对照</strong></li>
+<p>复制到 <code>USDC/USDT</code>、<code>FDUSD/USDT</code>、<code>USDC/FDUSD</code> 的可交易 venue / session 上，判断它是不是只在 <code>FDUSDUSDC</code> 这个局部环境成立。</p>
+</ol>
+<p>如果这三步里：</p>
+<ul>
+<li>queue realism 后仍接近 <code>0.5 bps</code> 以上净边，</li>
+<li>且不同稳定币对还能复现，</li>
+<p>那它就值得升级成 desk 的 <strong>maker micro-alpha 素材</strong>；否则更适合保留为 execution / capacity 研究样本。</p>
+</ul>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li><strong>最大风险不是方向错，而是成交假设太乐观。</strong> K 线能打到 <code>+1 tick</code>，不等于你的挂单真能排到。</li>
+<li><strong>这条线极度依赖低摩擦。</strong> 公开 K 线 probe 已经显示：<code>1 bps</code> round-trip 左右就接近净负。</li>
+<li><strong>稳定币对有制度性风险。</strong> 真遇到信用事件或结构性脱锚，这类“均值回复”假设会突然失效。</li>
+<li><strong>样本属于 2026 近 45 天局部环境。</strong> 还需要更长历史和更细粒度订单簿验证，不能直接当长期稳定印钞机。</li>
+</ul>
+<h2>8. 来源</h2>
+<ul>
+<li>wangshaofu. (2025/2026). *mm_bot*. GitHub repository.</li>
+<p>Repo URL: <code><a href="https://github.com/wangshaofu/mm_bot">https://github.com/wangshaofu/mm_bot</a></code></p>
+<li>Binance Spot public market data.</li>
+<p>Klines endpoint: <code><a href="https://api.binance.com/api/v3/klines?symbol=FDUSDUSDC&amp;interval=1m">https://api.binance.com/api/v3/klines?symbol=FDUSDUSDC&amp;interval=1m</a></code></p>
+</ul>
+<h2>9. 这轮产物</h2>
+<ul>
+<li>研究笔记：<code>research/quant_digests/2026-04-17_2156_stablecoin-microdepeg-grid-shell.md</code></li>
+<li>Probe summary：<code>reports/artifacts/quant_digests/2026-04-17_fdusdusdc_microdepeg_probe_summary.json</code></li>
+<li>Probe trades：<code>reports/artifacts/quant_digests/2026-04-17_fdusdusdc_microdepeg_probe_trades.csv</code></li>
+<li>Cost ladder：<code>reports/artifacts/quant_digests/2026-04-17_fdusdusdc_microdepeg_probe_costs.csv</code></li>
+</ul>
+</body>
+</html>

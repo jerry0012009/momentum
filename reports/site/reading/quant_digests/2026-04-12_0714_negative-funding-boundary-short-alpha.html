@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>负 funding 结算边界短打：most-negative funding coin 的 1m/3m continuation short</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>负 funding 结算边界短打：most-negative funding coin 的 1m/3m continuation short</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-12 07:15 UTC</span>
+      <span class="pill">研究时间：2026-04-12 07:14 UTC</span>
+      <span class="pill">类型：GitHub repo / 公共数据快检</span>
+      <span class="pill">主题标签：funding / carry / event-driven / positioning / crowding / short-horizon / 1m / 3m / 5m / 15m</span>
+      <span class="pill">证据类型：工程实现 + 公共数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-12_0714_negative-funding-boundary-short-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-12 07:14 UTC</li>
+<li>类型：GitHub repo / 公共数据快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>8h funding 结算边界 × most-negative funding coin 的超短续跌</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：funding / carry / event-driven / positioning / crowding / short-horizon / 1m / 3m / 5m / 15m</li>
+<li>证据类型：工程实现 + 公共数据 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 GitHub 仓库 <strong>wangshaofu (2026), _Binance Futures Latency Analyser_</strong>。它表面上是在测 Binance USDⓈ-M funding 结算点附近的 WebSocket 延迟，但源码里真正值得 desk 拿出来单独验证的，不是“延迟本身”，而是它默认盯住 <strong>当下 funding 最负的合约</strong>，并把结算边界当成一个可交易事件点。对我们更有价值的 desk 化读法是：<strong>把“most-negative funding at settlement”当成 crowding 信号，先问结算后 1m/3m/5m/15m 是继续跌，还是会反打。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 在 Binance 公开数据里，<code>most-negative funding coin</code> 在 funding 结算后的超短窗口更像<strong>续跌 short</strong>，不是立刻均值回归，尤其当前 15 分钟本来就在走弱时更明显。</li>
+<li><strong>一句话证明方式：</strong> 我把 repo 的“盯最负 funding + 盯结算边界”思路，映射到 Binance <code>fundingRate + 1m klines</code> 做事件研究，直接看结算后收益，而不是只看延迟曲线。</li>
+<li>用 <code>BTC/ETH/SOL/XRP/DOGE/BNB/ADA/SUI/1000PEPE/LTC/LINK/TRX/AVAX/WIF/AAVE</code> 这 15 个 liquid-ish USDⓈ-M 合约，取 <code>2025-10-01 ~ 2026-04-12</code>，每个 funding 时间戳只选 <strong>funding 最负</strong> 的那一个；若该 funding <code>&lt;= -4 bps / 8h</code>，共有 <strong>33</strong> 个事件。</li>
+<li>事件上，若在<strong>结算分钟收盘</strong>做空并退出：<code>+1m</code> 平均约 <strong>+6.76 bps</strong>、胜率 <strong>69.7%</strong>；<code>+3m</code> 平均约 <strong>+6.12 bps</strong>、胜率 <strong>66.7%</strong>；拉到 <code>+5m/+15m</code> 均值明显变差，说明更像<strong>边界后 1~3 分钟的短打</strong>，不是拿很久。</li>
+<li>再加一个非常朴素的 filter：<strong>结算前 15m 已经下跌</strong>（<code>pre15_ret &lt; 0</code>）。样本缩到 <strong>17</strong> 个事件后，<code>+3m</code> 做空平均约 <strong>+11.21 bps</strong>、中位数 <strong>+10.90 bps</strong>、胜率 <strong>64.7%</strong>；按 <strong>8 bps round-trip</strong> 粗扣，仍约 <strong>+3.21 bps/笔</strong>。</li>
+<li>但它不是“全市场普适 alpha”。这 33 个事件几乎都集中在 <strong>WIF / TRX / 1000PEPE / AVAX / SOL</strong>，更像<strong>高 beta / 拥挤 alt crowding pocket</strong>，不是 BTC/ETH 级别主流币通用规律。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和我们最近持续补的 <code>funding / basis / positioning</code> raw alpha 是一条很自然的延伸，但它更短、更 event-driven，也更直接贴 <code>1m / 3m / 5m</code>。重点不是把 funding 当成低频 carry，而是把 <strong>funding 结算边界</strong> 当成一个会把拥挤仓位“挤出来”的瞬时事件。对 short-cycle desk 来说，这比“高 funding 就一直拿”更像能快速做 first verdict 的素材。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：逆势中的事件驱动续跌 / crowding unwind</li>
+<li>基础 alpha：<code>结算时 funding 最负的合约，在结算后 1~3m 更容易继续向下</code></li>
+<li>regime：高拥挤、高 beta alt、funding 绝对值偏大时更明显</li>
+<li>filter / veto：<code>min funding &lt;= -4bps/8h</code>；<code>pre15_ret &lt; 0</code>；只做流动性足够的 alt perp；BTC/ETH 默认不纳入主书</li>
+<li>risk / sizing / execution overlay：事件单笔小仓；只拿 <code>1~3m</code>；若结算后第一分钟没继续走弱就撤；优先 maker / rebate / 低费通道，否则 edge 很容易被 taker 成本吃掉</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：在同一 funding 时间戳里，<strong>最负 funding = 最拥挤空头仓位</strong>，结算后短时间内仍可能因仓位与流动性挤压继续下行。</li>
+<li>可计算定义：</li>
+</ul>
+<ol>
+<li>每个 8h funding 边界，取候选池里 funding rate 最低的合约；</li>
+<li>要求 <code>funding &lt;= -0.0004</code>；</li>
+<li>若 <code>pre15_ret &lt; 0</code>，在<strong>结算分钟收盘</strong>做空；</li>
+<li>固定在 <code>+1m / +3m / +5m</code> 退出，先比 gross，再跑 <code>4/6/8/10 bps</code> friction ladder。</li>
+</ol>
+<ul>
+<li>最小回测切口：先只测 <code>WIF / TRX / 1000PEPE / AVAX / SOL</code>，周期先上 <code>1m</code>，再聚合到 <code>3m/5m</code>；不要一上来扩全市场。</li>
+<li>最该先看：<code>+3m</code> 的 post-cost mean bps、胜率，以及事件是否被少数极端日驱动。</li>
+<li>本轮产物：</li>
+<li><code>reports/artifacts/literature/negative_funding_boundary_probe_2026-04-12_summary.csv</code></li>
+<li><code>reports/artifacts/literature/negative_funding_boundary_probe_2026-04-12_detail.csv</code></li>
+<li><code>reports/artifacts/literature/negative_funding_boundary_probe_2026-04-12_costladder.csv</code></li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这条线<strong>高度依赖执行</strong>。repo 本身就在强调结算边界的延迟与可成交价，所以用 <code>1m close</code> 只能算粗 proxy，不能替代真实 book-ticker / aggTrade 级回放。</li>
+<li>样本不大，而且明显集中在 meme / high-beta alt；如果直接扩到 majors，edge 很可能消失。</li>
+<li><code>+5m/+15m</code> 的均值明显变差，说明这不是“越拿越赚”的 carry/趋势，而更像<strong>结算后的几分钟微结构冲击</strong>。</li>
+<li>如果只能 taker 双边 8~10 bps，很多变体会被吃掉；所以这条线天然需要 fee tier、maker、或更细粒度入场优化。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>wangshaofu. (2026). *Binance Futures Latency Analyser / LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps">https://github.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps</a></code></li>
+<li>Readable files:</li>
+<li><code>README.md</code></li>
+<li><code>streams.py</code></li>
+<li><code>analyze_latency.py</code></li>
+<li><code>short_order.py</code></li>
+<li>Binance USDⓈ-M Futures public endpoints:</li>
+<li>Funding Rate History: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History</a></code></li>
+<li>Kline/Candlestick Data: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+</body>
+</html>

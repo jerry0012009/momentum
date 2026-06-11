@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 VWAP 只锚在 session：对 15m 来说，event-anchored VWAP 更像 breakout-short / Fib / EMA 的 shared hold-reclaim spine</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 VWAP 只锚在 session：对 15m 来说，event-anchored VWAP 更像 breakout-short / Fib / EMA 的 shared hold-reclaim spine</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-18 15:00 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/anchored-vwap/event-anchor/hold-reclaim/repo/crypto/15m</span>
+      <span class="pill">证据类型：工程经验 / 待验证</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-18_1500_event-anchored-vwap-hold-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-18 15:00 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/anchored-vwap/event-anchor/hold-reclaim/repo/crypto/15m</li>
+<li>证据类型：工程经验 / 待验证</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是两个 Anchored VWAP 开源实现：<code>s-kust/anchored_vwaps</code>（2024）和 <code>ShabbirHasan1/Anchored_Volume_Weighted_Average_Price</code>（2025）。前者把 <strong>anchor date 列表 + 从锚点开始累积的 VWAP 曲线</strong> 写成了清楚的 Python 骨架，后者进一步把 <code>年初 / 最近低点 / 最近高点</code> 三条 anchored VWAP，外加 <code>0.5 ATR</code> 距离条件，直接写成了 Bullish / Bearish / Long / Short 规则。对我们 desk 真正值钱的，不是照搬它们的股票语境，而是把 VWAP 从“按天切 session 的公平价”改成“围绕某个事件重新计算的持仓成本线”。翻成人话：<strong>对 24/7 的 15m crypto，更该问的是“突破/回踩/摆点之后，谁的平均成本线被守住了”，而不是死守 session 边界。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：如果当前三条收口线都在反复纠结“回踩到底算不算守住”，那比继续把 session VWAP 当唯一公平价更值得先测的，是 <strong>event-anchored VWAP hold / reclaim</strong>。</li>
+<li><strong>一句话证明方式</strong>：两个 repo 都把规则写成了可复用代码——核心是从指定 anchor 时刻开始，计算 <code>A_VWAP = cumsum(Typical*Volume) / cumsum(Volume)</code>；第二个 repo 甚至直接用 <code>last_close</code> 相对 <code>年初 / 最近低点 / 最近高点</code> 三条 anchored VWAP 的位置，再加 <code>0.5 ATR</code> 距离，生成趋势与 Long/Short 条件。</li>
+<li>最值得复用的不是它们的股票 ticker 列表，而是 <strong>“锚点是事件，不是时钟”</strong> 这句话。session VWAP 更像全天平均成本；event-anchored VWAP 更像某一段新仓位从哪里开始堆出来。</li>
+<li>这正好补三条线的共同缺口：<code>breakout-short follow-up</code> 要知道跌破后反抽有没有重新站回那段抛压成本线；<code>Fib retest_hold</code> 要知道回踩后是不是还守在“这段趋势资金的均价”上；<code>EMA / PSAR</code> 则需要一个不完全自指的成交量加权支撑线。</li>
+<li>如果要回答“为什么它比继续帮三条线收口更值得”，答案很简单：<strong>因为 24/7 crypto 里 session 切法天然任意，而 event anchor 更贴我们真正关心的交易对象——那一段 breakout / retest / continuation 仓位。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li>对 <code>V3 final-verdict / breakout-short follow-up</code>：short 侧最怕的是跌破后一拉就收回。比只看 session VWAP 更细的写法，是把 AVWAP 锚在 <strong>breakdown 确认 bar</strong> 或最近确认 swing high；若后续反抽重新站回该 AVWAP 上方，short continuation 就更像失效，而不是“还可以再等等”。</li>
+<li>对 <code>Fibonacci confirmation / retest_hold</code>：Fib 负责回答“回到哪一段价位”，event-anchored VWAP 负责回答“回到这里以后，趋势资金的平均成本线还在不在脚下”。也就是：<strong>Fib 给位置，AVWAP 给持仓成本结构。</strong></li>
+<li>对 <code>EMA / PSAR raw alpha focus</code>：EMA / PSAR 继续做方向或结构锚，但 AVWAP 能补一个 volume-weighted 的 hold/reclaim spine，避免整套 continuation 只围着均线自转。</li>
+<li>和今天早些时候的 session VWAP digest 不同，这里不是按日内时钟切，而是按 <strong>事件</strong> 切。对 crypto 来说，这个差异不小：session VWAP 解决“今天的平均成本”，event AVWAP 更像解决“这次 breakout / retest 以来的新库存成本”。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：把 <code>event_anchored_vwap</code> 接到现有 <code>breakout_short</code>、<code>fib_retest_hold</code>、<code>ema_slope_continuation</code> 上，比 <code>session VWAP</code> 更能识别真假 hold / reclaim，并减少 <code>4~8 bars</code> 内的假延续磨损。</li>
+<li><strong>公开数据源</strong>：Binance perpetual <code>15m</code> OHLCV（公开 REST / dump 即可），不需要额外低频外部数据。</li>
+<li><strong>最小定义</strong>：</li>
+</ul>
+<ol>
+<li>anchor 候选先只测 3 类：<code>breakout/breakdown confirm bar</code>、<code>最近确认 swing low/high</code>、<code>Fib leg 起点 bar</code>；</li>
+<li><code>A_VWAP_t(anchor) = cumsum(((O+H+L+C)/4)*V) / cumsum(V)</code>，只从 anchor bar 起累计；</li>
+<li>long 侧 gate：<code>close &gt; A_VWAP_anchor</code>，或最近 <code>3</code> 根里至少 <code>2</code> 根收在其上；short 镜像；</li>
+<li>可加一层 repo 启发的距离条件：<code>abs(close - A_VWAP_anchor) &lt; 0.5 * ATR14</code>，把它当“回踩够近”的 retest 条件，而不是主 alpha。</li>
+</ol>
+<ul>
+<li><strong>最小回测切口</strong>：<code>BTC / ETH / SOL</code> perpetual，最近 <code>180d</code>，<code>15m</code>，统一 <code>next-bar open</code>、<code>no-overlap</code>、成本先看 <code>6 / 10 / 15 bps per side</code>；对照 <code>base</code>、<code>base + session_vwap_gate</code>、<code>base + event_avwap_gate</code>、<code>base + event_avwap_gate + 0.5ATR proximity</code>。</li>
+<li><strong>最先看的 4 个指标</strong>：<code>post-cost expectancy</code>、<code>false-hold / false-follow-through rate</code>、<code>trade_count retention</code>、<code>winner truncation rate</code>。</li>
+<li><strong>下一步怎么测</strong>：第一轮不要扫太多 anchor 组合，先只回答一个更值钱的问题——<strong>真正有增量的，是“event anchor 比 session anchor 更贴交易对象”，还是只是又多加了一条会砍样本的线？</strong> 只要 <code>event_avwap</code> 在 trade retention 还过得去的前提下，能稳定降低假守住率，它就值得进入 shared confirmation 候选池。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这轮主证据是 repo 代码，不是论文 OOS；它证明的是“规则很好冻结”，不是“edge 已被严格验证”。</li>
+<li>anchor 选得太自由，最容易把 event AVWAP 变成事后美化器；所以第一轮必须把 anchor 类别冻结，不能一根图上随意挑“看起来对的起点”。</li>
+<li><code>0.5 ATR</code> 很适合做 proximity 条件，但也很容易过拟合成漂亮阈值；应该只当一档基线，与 <code>0.25 / 0.75 ATR</code> 做小范围敏感性比较。</li>
+<li>event AVWAP 和 EMA / VWAP / LVN-POC 可能有信息重叠；后续必须做 ablation，确认它是不是独立增量，而不是换了个更高级的名字重复确认。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>s-kust. (2024). *anchored_vwaps: Python code to add anchored VWAPs to OHLC data and draw charts*.</li>
+<li>Venue / DOI：无（GitHub repo）</li>
+<li>Repo URL: &lt;<a href="https://github.com/s-kust/anchored_vwaps&gt;">https://github.com/s-kust/anchored_vwaps&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://github.com/s-kust/anchored_vwaps/blob/main/README.md&gt;">https://github.com/s-kust/anchored_vwaps/blob/main/README.md&gt;</a></li>
+<li>Raw README URL: &lt;<a href="https://raw.githubusercontent.com/s-kust/anchored_vwaps/main/README.md&gt;">https://raw.githubusercontent.com/s-kust/anchored_vwaps/main/README.md&gt;</a></li>
+<li>Key code URL: &lt;<a href="https://raw.githubusercontent.com/s-kust/anchored_vwaps/main/vwaps_plot_build_save.py&gt;">https://raw.githubusercontent.com/s-kust/anchored_vwaps/main/vwaps_plot_build_save.py&gt;</a></li>
+<li>Repo metadata snapshot: created <code>2024-09-10</code>, pushed <code>2024-12-15</code>, <code>10</code> stars at fetch time.</li>
+<li>Shabbir Hasan. (2025). *Anchored_Volume_Weighted_Average_Price*.</li>
+<li>Venue / DOI：无（GitHub repo）</li>
+<li>Repo URL: &lt;<a href="https://github.com/ShabbirHasan1/Anchored_Volume_Weighted_Average_Price&gt;">https://github.com/ShabbirHasan1/Anchored_Volume_Weighted_Average_Price&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://github.com/ShabbirHasan1/Anchored_Volume_Weighted_Average_Price/blob/main/README.md&gt;">https://github.com/ShabbirHasan1/Anchored_Volume_Weighted_Average_Price/blob/main/README.md&gt;</a></li>
+<li>Key script URL: &lt;<a href="https://raw.githubusercontent.com/ShabbirHasan1/Anchored_Volume_Weighted_Average_Price/main/6.Anchored_Volume_Weighted_Average_Price.py&gt;">https://raw.githubusercontent.com/ShabbirHasan1/Anchored_Volume_Weighted_Average_Price/main/6.Anchored_Volume_Weighted_Average_Price.py&gt;</a></li>
+<li>Repo metadata snapshot: created <code>2025-10-20</code>, pushed <code>2025-10-04</code>, <code>0</code> stars at fetch time.</li>
+<li>概念背景（仅作母体，不作为本轮主证据）：Brian Shannon. *Maximum Trading Gains with Anchored VWAP*.</li>
+</ul>
+</body>
+</html>

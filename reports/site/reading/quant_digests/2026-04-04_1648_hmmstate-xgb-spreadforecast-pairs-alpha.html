@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2025 stat-arb repo 只读成“cointegration 筛对脚本”：对 short-cycle desk，更该先测的是「HMM 状态 × spread 方向预测 × MVO 配对篮子」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2025 stat-arb repo 只读成“cointegration 筛对脚本”：对 short-cycle desk，更该先测的是「HMM 状态 × spread 方向预测 × MVO 配对篮子」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 16:38 UTC</span>
+      <span class="pill">研究时间：2026-04-04 16:48 UTC</span>
+      <span class="pill">类型：2025 GitHub repo source audit（`strategy.py` + `main.py` + `market_data_gateway.py` + `OMS.py` + `portfolio_tracker.py`）+ Binance USDⓈ-M 公共 `5m/15m` 最小可移植性快检</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/spread-forecast/hmm/xgboost/cointegration/adf/mvo/market-neutral/binance-perpetual/5m/15m/3m/1m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：开源代码仓 + 公共行情最小实验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_1648_hmmstate-xgb-spreadforecast-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 16:48 UTC</li>
+<li>类型：2025 GitHub repo source audit（<code>strategy.py</code> + <code>main.py</code> + <code>market_data_gateway.py</code> + <code>OMS.py</code> + <code>portfolio_tracker.py</code>）+ Binance USDⓈ-M 公共 <code>5m/15m</code> 最小可移植性快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>对 cointegrated pair 来说，spread 的下一步方向在短窗里并非纯随机；可用 <code>HMM state + lagged spread technical features</code> 做一阶方向预测，再把 pair 级信号汇总成 market-neutral 组合，吃的是相对价差的可预测变动，而非单边币价方向。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/spread-forecast/hmm/xgboost/cointegration/adf/mvo/market-neutral/binance-perpetual/5m/15m/3m/1m/repo/public-data/cost/risk</li>
+<li>证据类型：开源代码仓 + 公共行情最小实验</li>
+</ul>
+<h2>1) 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha 不是“cointegration 本身”，而是“cointegrated spread 的短窗方向可预测性”。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>传统 pairs 常见是 <code>spread 偏离大了就赌回归</code>；</li>
+<li>这份 repo 的旁支更像：<code>先判 spread 下一步向上还是向下，再决定 long 哪条腿 / short 哪条腿</code>；</li>
+<li>再叠 <code>MVO</code> 把多条 pair 信号合成组合层仓位。</li>
+</ul>
+<p>这条线对我们当前 desk 的价值在于：它不是纯 filter，也不是 overlay，而是<strong>可独立跑成完整策略</strong>的 relative-value raw alpha（entry/exit/sizing/risk/cost 都能落地）。</p>
+<p>---</p>
+<h2>2) 本轮主材料与为什么不重复</h2>
+<h3>2.1 主材料（repo）</h3>
+<ul>
+<li><strong>Author / Year / Title / Venue</strong>：<code>timshao8</code> / 2025 / *Market-Microstructure-* / GitHub</li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/timshao8/Market-Microstructure-&gt;">https://github.com/timshao8/Market-Microstructure-&gt;</a></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/timshao8/Market-Microstructure-&gt;">https://github.com/timshao8/Market-Microstructure-&gt;</a></li>
+<li><strong>仓库元数据</strong>：创建 <code>2025-07-02</code>，最后 push <code>2025-07-03</code></li>
+</ul>
+<h3>2.2 本轮聚焦的关键源码</h3>
+<ul>
+<li><code>strategy.py</code>：cointegration + ADF pair admission，<code>GaussianHMM + XGBRegressor</code> 做 spread 方向信号，<code>mvo()</code> 做组合权重</li>
+<li><code>main.py</code>：策略驱动与下单流程（含明显执行缺陷）</li>
+<li><code>market_data_gateway.py</code>：当前写死 <code>1d</code> 永续 K 线</li>
+<li><code>OMS.py</code> / <code>portfolio_tracker.py</code>：权重转订单与持仓管理</li>
+</ul>
+<h3>2.3 为什么和最近 digest 不重复</h3>
+<p>最近我们有不少 <code>pairs z-score fade</code> / <code>cointegration shell</code>。这篇最值得 intake 的分歧点是：</p>
+<ol>
+<li><strong>signal 层不是单纯 z-score 阈值，而是 spread 方向预测（HMM state + feature stack）</strong>；</li>
+<li><strong>组合层显式做了 MVO</strong>，不是每个 pair 等权；</li>
+<li>代码里能直接抽出“从 pair alpha 到 portfolio alpha”的接口。</li>
+</ol>
+<p>---</p>
+<h2>3) 代码级拆解：真正可抄的与必须修的</h2>
+<h2>3.1 可抄的主链路</h2>
+<p><code>strategy.py</code> 的链路是完整的：</p>
+<ol>
+<li><code>get_pairs()</code>：</li>
+</ol>
+<ul>
+<li>对全组合做 <code>coint(series1, series2)</code>；</li>
+<li><code>p &lt; 0.05</code> 才进候选；</li>
+<li>再做 OLS beta + residual ADF（<code>p &lt; 0.05</code>）二次过滤。</li>
+</ul>
+<ol>
+<li><code>generate_signal(spread)</code>：</li>
+</ol>
+<ul>
+<li>先拟合 <code>GaussianHMM</code> 得 state；</li>
+<li>构造 lag / MA / EMA / RSI / MACD 等 feature；</li>
+<li>用 <code>XGBRegressor</code> 预测下一步 spread；</li>
+<li><code>sign(predicted - last_actual)</code> 输出方向。</li>
+</ul>
+<ol>
+<li><code>mvo()</code>：</li>
+</ol>
+<ul>
+<li>对各 pair spread return 估均值与协方差；</li>
+<li><code>inv(Sigma) @ mu</code> 得 raw weights；</li>
+<li>以 L1 归一化得到组合权重。</li>
+</ul>
+<p>这三步拼起来就是一条完整 raw-alpha 壳，不是“只会筛对”的半成品。</p>
+<h2>3.2 必须修的硬伤（不修不能实盘）</h2>
+<h3>A) 数据频率写死 1d</h3>
+<p><code>market_data_gateway.py</code> 取的是 <code>interval=&quot;1d&quot;</code>。对 short-cycle desk（1m/3m/5m/15m）必须改频率与窗口。</p>
+<h3>B) 下单后立刻平仓</h3>
+<p><code>main.py</code> 在 <code>weights_to_order(...)</code> 后直接 <code>close_positions(...)</code>，等于“刚开就平”。 这在研究/实盘里会把 alpha 全部变成手续费。</p>
+<h3>C) 工程完整性不足</h3>
+<ul>
+<li><code>main.py</code> 里 <code>from Risk import RiskManager</code>，但仓库里没有对应文件；</li>
+<li>有硬编码 API key 示例；</li>
+<li>缺少 README 与可复现实验说明。</li>
+</ul>
+<p>结论： &gt; <strong>这不是可直接运行的 production repo，但它提供了有价值的“signal + portfolio” alpha 母板。</strong></p>
+<p>---</p>
+<h2>4) 最小可移植性快检（Binance 公共 5m/15m）</h2>
+<p>我先不复刻 HMM/XGB 全链路（依赖与工程不完整），先测最核心可迁移假设：</p>
+<p>&gt; <strong>同样 pair admission 思路下，短窗 spread 在极端偏离后是否存在可交易的回摆/修复口袋。</strong></p>
+<h3>4.1 数据与口径</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M public klines（公开、免 key）</li>
+<li>标的（repo 原始 10 币中可用者）：<code>BTC/ETH/BNB/XRP/SOL/ADA/DOGE/LTC/AVAX</code></li>
+<li><code>MATICUSDT</code> 现货口径检查显示已失活（见 4.2）</li>
+<li>样本：最近 <code>1000 bars</code></li>
+<li><code>5m</code>：<code>2026-04-01 05:24:59 UTC ~ 2026-04-04 16:39:59 UTC</code></li>
+<li><code>15m</code>：<code>2026-03-25 06:59:59 UTC ~ 2026-04-04 16:44:59 UTC</code></li>
+<li>pair 统计：每对 OLS beta 构 spread，rolling z-score；当 <code>|z| &gt;= 1.5</code> 记为极端事件；</li>
+<p>统计未来窗口内“向均值方向移动”的 hit-rate</p>
+<li>5m 用 <code>12 bars</code>（约 1h）</li>
+<li>15m 用 <code>4 bars</code>（约 1h）</li>
+</ul>
+<h3>4.2 关键数据点（本轮）</h3>
+<ol>
+<li><strong>MATIC 失活证据</strong>：<code>MATICUSDT</code> 最近 5 根 <code>15m</code> bar 最后时间停在 <code>2024-09-11 09:44:59 UTC</code>，且成交量均为 <code>0</code>。这说明 repo 原 universe 直接照抄会污染当下样本。</li>
+<li><strong>5m 口径（36 对）</strong>：极端事件的 pair 中位回摆 hit-rate 约 <strong>53.7%</strong>；最强 pair <code>SOL-AVAX</code> hit-rate 约 <strong>79.8%</strong>。</li>
+<li><strong>15m 口径（36 对）</strong>：中位 hit-rate 约 <strong>51.9%</strong>；最强 pair <code>XRP-DOGE</code> hit-rate 约 <strong>64.2%</strong>。</li>
+</ol>
+<p>解释：</p>
+<ul>
+<li>这不是“闭眼可印钞”的证据；</li>
+<li>但它支持了一个现实结论：<strong>pair spread edge 明显是分层/分组的，不是全市场均匀存在</strong>。</li>
+<li>这恰好支持 repo 的设计方向：要做 pair admission + 动态信号 + 组合层加权，而不是全对等权硬上。</li>
+</ul>
+<h3>4.3 产物路径</h3>
+<ul>
+<li><code>reports/artifacts/quant_digests/hmm_xgb_pairs_shell_transfer_20260404/summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/hmm_xgb_pairs_shell_transfer_20260404/pair_reversion_probe_5m.csv</code></li>
+<li><code>reports/artifacts/quant_digests/hmm_xgb_pairs_shell_transfer_20260404/pair_reversion_probe_15m.csv</code></li>
+</ul>
+<p>---</p>
+<h2>5) 给 desk 的可落地版本（entry/exit/sizing/risk/cost）</h2>
+<p>下面给一版直接可做最小实验的策略壳（先 ML-lite，再上 HMM/XGB）：</p>
+<h3>5.1 Universe / Admission</h3>
+<ol>
+<li>动态 universe：排除 stale/零成交合约（例如本轮 MATIC）。</li>
+<li>每日（或每 6h）重跑 pair admission：</li>
+</ol>
+<ul>
+<li><code>coint p &lt; 0.05</code></li>
+<li>residual <code>ADF p &lt; 0.05</code></li>
+<li>最近 N 天最小成交额门槛。</li>
+</ul>
+<h3>5.2 Signal（先 ML-lite，再升级）</h3>
+<ul>
+<li><strong>ML-lite baseline</strong>：</li>
+<li>spread zscore、Δspread、rolling vol、短中长斜率、跨币相关性漂移；</li>
+<li>逻辑回归 / 线性模型预测未来 <code>k</code> bar spread 方向。</li>
+<li><strong>升级版</strong>（对齐 repo）</li>
+<li>加 HMM state 特征；</li>
+<li>替换为 XGBoost（或 lightgbm）。</li>
+</ul>
+<h3>5.3 Entry / Exit</h3>
+<ul>
+<li>Entry：<code>|score| &gt; threshold</code> 且 pair 在可交易白名单；</li>
+<li>方向：预测 spread 上行 =&gt; long spread（long A short βB）；反之 short spread；</li>
+<li>Exit：</li>
+<p>1) 预测翻向； 2) spread 回到中性带； 3) time stop（例如 8~16 bars）； 4) 硬止损（pair 级 max adverse）。</p>
+</ul>
+<h3>5.4 Sizing</h3>
+<ul>
+<li>pair 层按 <code>confidence / realized vol</code> 缩放；</li>
+<li>组合层用 <code>inv(Sigma)@mu</code> 或 risk-parity 近似；</li>
+<li>单 pair 与单腿 notional 设 cap，防极端集中。</li>
+</ul>
+<h3>5.5 Risk / Cost</h3>
+<ul>
+<li>成本最少两档：</li>
+<li>maker-taker 混合（乐观）</li>
+<li>全 taker（保守）</li>
+<li>必做约束：</li>
+<li>每日 turnover cap</li>
+<li>单腿冲击成本估计</li>
+<li>相关性聚集上限</li>
+<li>交易时段黑名单（超低流动）。</li>
+</ul>
+<p>---</p>
+<h2>6) 为什么这条线现在值得进素材池</h2>
+<ol>
+<li><strong>是 raw alpha，不是 filter 伪装</strong>：可以独立开平仓并产生成交序列。</li>
+<li><strong>能服务我们现有 pairs 家族</strong>：把“纯 z-score 触发”升级为“状态感知 + 方向预测 + 组合汇总”。</li>
+<li><strong>短周期友好</strong>：公开数据可得、5m/15m 可快速出第一轮实证，不需要私有订单流起步。</li>
+</ol>
+<p>---</p>
+<h2>7) 下一步怎么测（必须执行）</h2>
+<p>按优先级给三步，先快后慢：</p>
+<h3>Step 1（今天可做）</h3>
+<p>把当前 pairs baseline 拆成 A/B：</p>
+<ul>
+<li>A: <code>z-score fade</code></li>
+<li>B: <code>spread-direction score</code>（先 logistic）</li>
+<p>统一成本与执行，比较：净收益、换手、持仓时长、尾部回撤。</p>
+</ul>
+<h3>Step 2（1~2 天）</h3>
+<p>在 B 上加 <code>regime gate</code>：</p>
+<ul>
+<li>用 HMM state（2-state 足够）只做“是否交易/降仓”，不直接决定方向；</li>
+<li>看是否改善成本后 Sharpe 与回撤。</li>
+</ul>
+<h3>Step 3（2~4 天）</h3>
+<p>再上 repo 同构升级：</p>
+<ul>
+<li>用 XGBoost 替换线性方向模型；</li>
+<li>组合层从等权切到 MVO/risk-parity；</li>
+<li>跑 walk-forward（至少月度滚动）。</li>
+</ul>
+<p>成功门槛建议：</p>
+<ul>
+<li>成本后胜率或 hit-rate 不要求极高，但<strong>净 Sharpe、回撤、容量</strong>至少一项明显优于 z-score baseline；</li>
+<li>若只在极少数 pair 有效，则转为“pair routing alpha”，不要硬做全市场普适版。</li>
+</ul>
+<p>---</p>
+<h2>8) References / Sources</h2>
+<ol>
+<li><strong>timshao8. (2025). _Market-Microstructure-_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/timshao8/Market-Microstructure-&gt;">https://github.com/timshao8/Market-Microstructure-&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/timshao8/Market-Microstructure-&gt;">https://github.com/timshao8/Market-Microstructure-&gt;</a></li>
+<li>Source URLs:</li>
+<li>&lt;<a href="https://raw.githubusercontent.com/timshao8/Market-Microstructure-/main/strategy.py&gt;">https://raw.githubusercontent.com/timshao8/Market-Microstructure-/main/strategy.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/timshao8/Market-Microstructure-/main/main.py&gt;">https://raw.githubusercontent.com/timshao8/Market-Microstructure-/main/main.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/timshao8/Market-Microstructure-/main/market_data_gateway.py&gt;">https://raw.githubusercontent.com/timshao8/Market-Microstructure-/main/market_data_gateway.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/timshao8/Market-Microstructure-/main/OMS.py&gt;">https://raw.githubusercontent.com/timshao8/Market-Microstructure-/main/OMS.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Engle, R. F., &amp; Granger, C. W. J. (1987). _Co-integration and Error Correction: Representation, Estimation, and Testing_. Econometrica.</strong></li>
+</ol>
+<ul>
+<li>Venue: Econometrica, 55(2), 251–276</li>
+<li>DOI: &lt;<a href="https://doi.org/10.2307/1913236&gt;">https://doi.org/10.2307/1913236&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://www.jstor.org/stable/1913236&gt;">https://www.jstor.org/stable/1913236&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Rabiner, L. R. (1989). _A Tutorial on Hidden Markov Models and Selected Applications in Speech Recognition_. Proceedings of the IEEE.</strong></li>
+</ol>
+<ul>
+<li>Venue: Proceedings of the IEEE, 77(2), 257–286</li>
+<li>DOI: &lt;<a href="https://doi.org/10.1109/5.18626&gt;">https://doi.org/10.1109/5.18626&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://ieeexplore.ieee.org/document/18626&gt;">https://ieeexplore.ieee.org/document/18626&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Chen, T., &amp; Guestrin, C. (2016). _XGBoost: A Scalable Tree Boosting System_. KDD.</strong></li>
+</ol>
+<ul>
+<li>Venue: Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining</li>
+<li>DOI: &lt;<a href="https://doi.org/10.1145/2939672.2939785&gt;">https://doi.org/10.1145/2939672.2939785&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://dl.acm.org/doi/10.1145/2939672.2939785&gt;">https://dl.acm.org/doi/10.1145/2939672.2939785&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Avellaneda, M., &amp; Lee, J.-H. (2010). _Statistical Arbitrage in the U.S. Equities Market_. Quantitative Finance.</strong></li>
+</ol>
+<ul>
+<li>Venue: Quantitative Finance, 10(7), 761–782</li>
+<li>DOI: &lt;<a href="https://doi.org/10.1080/14697680903124632&gt;">https://doi.org/10.1080/14697680903124632&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://doi.org/10.1080/14697680903124632&gt;">https://doi.org/10.1080/14697680903124632&gt;</a></li>
+</ul>
+<p>---</p>
+<h2>9) 一句话收口</h2>
+<p><strong>这份 2025 repo 真正值得 intake 的，不是“又一个 cointegration 框架”，而是它把 pairs raw alpha 往前推进了一步：从 <code>spread 偏离触发</code> 升级到 <code>状态感知的 spread 方向预测 + 组合层权重分配</code>；下一步该做的是先用 5m/15m 的 ML-lite 版验证净后优势，再决定是否上完整 HMM/XGB。</strong></p>
+</body>
+</html>

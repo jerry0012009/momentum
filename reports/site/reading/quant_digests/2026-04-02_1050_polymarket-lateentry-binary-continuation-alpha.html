@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>不是把 Polymarket 当情绪滤镜，而是直接做 time-to-expiry raw alpha：late-entry binary continuation</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>不是把 Polymarket 当情绪滤镜，而是直接做 time-to-expiry raw alpha：late-entry binary continuation</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-02 10:52 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-02_1050_polymarket-lateentry-binary-continuation-alpha.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>hard-expiry 15m binary market</code> 在临近到期时的“共识侧继续占优”惯性</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p>这轮真正值得 intake 的 <strong>base alpha</strong> 很简单：<strong>在 15 分钟硬到期二元市场里，离结算越近、且盘口已经明显偏向某一侧时，市场“赢家侧”往往继续占优；如果这时价格还没涨到极端贵位，就可以直接做一条 late-entry continuation 策略。</strong></p>
+<p>这不是拿 Polymarket 给别的 BTC perp 策略做 filter；它本身就是一条 <strong>可独立回测、可独立下单、可独立风控</strong> 的 raw alpha。后面当然也能再反过来给主 desk 做 cross-market sidecar，但第一性应该先把它当 <strong>独立 alpha</strong> 看。</p>
+<p>---</p>
+<h2>为什么这轮值得写它</h2>
+<p>最近 digest 池里已经有不少：pairs、basis/funding、盘口 continuation、盘口反转、ETF/Polymarket cross-market lead-lag。<strong>但“硬到期二元市场自身的 time-to-expiry alpha” 还没有单独拆干净。</strong></p>
+<p>这条题材这轮值得做，原因有 4 个：</p>
+<ol>
+<li><strong>raw alpha 清楚</strong>：不是宏观解释，不是情绪综述，就是“临近到期、领先侧继续赢”的直接交易规则；</li>
+<li><strong>完整壳子现成</strong>：这份 2026 新 repo 已经把 entry window、价格门槛、sizing、flip-stop、stop-loss、execution 都写出来了；</li>
+<li><strong>公开数据就能先做最小实验</strong>：Gamma API 能取 market metadata / outcome，CLOB websocket 能取盘口；</li>
+<li><strong>和 2026-04-02 01:17 那篇 Polymarket × Binance lagged mispricing 不重复</strong>：那篇核心是跨市场 lead-lag；这篇核心是 <strong>Polymarket 自身</strong> 的 time-to-expiry continuation。</li>
+</ol>
+<p>---</p>
+<h2>主要来源</h2>
+<h3>1) 主来源：2026 新仓库</h3>
+<ul>
+<li><strong>Owner / Year</strong>: Mephisto-Grumpy, 2026</li>
+<li><strong>Title</strong>: <code>4coinsbot</code></li>
+<li><strong>Type</strong>: GitHub repo</li>
+<li><strong>Readable URL</strong>: <a href="https://github.com/Mephisto-Grumpy/4coinsbot">https://github.com/Mephisto-Grumpy/4coinsbot</a></li>
+<li><strong>Repo URL</strong>: <a href="https://github.com/Mephisto-Grumpy/4coinsbot">https://github.com/Mephisto-Grumpy/4coinsbot</a></li>
+<li><strong>Created / Updated</strong>: 2026-03-27 / 2026-03-31</li>
+<li><strong>关键文件</strong>:</li>
+<li><code>README.md</code></li>
+<li><code>src/strategy.py</code></li>
+<li><code>src/data_feed.py</code></li>
+<li><code>src/trader.py</code></li>
+<li><code>config/config.example.json</code></li>
+</ul>
+<h3>2) 公共市场数据 / 结算来源</h3>
+<ul>
+<li><strong>Provider / Year</strong>: Polymarket, 2026 live market API</li>
+<li><strong>Title</strong>: <code>btc-updown-15m-*</code> recurring 15m crypto markets</li>
+<li><strong>Type</strong>: public market metadata / outcome API</li>
+<li><strong>Readable URL</strong>: <a href="https://gamma-api.polymarket.com/events?slug=btc-updown-15m-1775126700">https://gamma-api.polymarket.com/events?slug=btc-updown-15m-1775126700</a></li>
+<li><strong>说明</strong>:</li>
+<li>当前 live BTC 15m market 显示：</li>
+<li><code>bestBid = 0.43</code></li>
+<li><code>bestAsk = 0.44</code></li>
+<li><code>liquidityClob ≈ 24410.53</code></li>
+<li>整个 series <code>volume24hr ≈ 8.65m</code></li>
+<li><code>orderPriceMinTickSize = 0.01</code></li>
+<li><code>orderMinSize = 5</code></li>
+<li>当前 market title: <code>Bitcoin Up or Down - April 2, 6:45AM-7:00AM ET</code></li>
+</ul>
+<h3>3) 结算锚点</h3>
+<ul>
+<li><strong>Provider</strong>: Chainlink BTC/USD data stream</li>
+<li><strong>Readable URL</strong>: <a href="https://data.chain.link/streams/btc-usd">https://data.chain.link/streams/btc-usd</a></li>
+<li><strong>用途</strong>: repo 与 live market metadata 都明确写了 15m BTC binary 的 resolution source，用来做事后 outcome 对齐。</li>
+</ul>
+<p>&gt; 这轮最值钱的不是“预测市场很热闹”，而是：<strong>它给了一个天然 hard-expiry、天然 bounded payoff、天然 15m event-clock 的可执行 alpha 载体。</strong></p>
+<p>---</p>
+<h2>这份 repo 真正给出的，不是机器人外壳，而是一条完整策略壳</h2>
+<h3>1) entry window 直接锁在最后 240 秒</h3>
+<p><code>src/strategy.py</code> 里最重要的一条不是“买 favorite”，而是：</p>
+<ul>
+<li><code>entry_window_sec = 240</code></li>
+<li>也就是 <strong>只在最后 4 分钟</strong> 允许入场；</li>
+<li>当前系列本身是 <code>15m</code> recurring market，所以本质上就是在一个 <strong>固定 900 秒生命周期</strong> 的硬到期产品里，只做后段 continuation。</li>
+</ul>
+<p>翻成人话：<strong>这不是全天随机扫信号，而是只在“离结算足够近、信息差已经高度压缩”的时段下注。</strong></p>
+<h3>2) 方向不是拍脑袋，而是直接跟当前 favorite</h3>
+<p>repo 定义：</p>
+<ul>
+<li><code>favorite = &#x27;UP&#x27; if up_ask &gt; down_ask else &#x27;DOWN&#x27;</code></li>
+<li><code>confidence = abs(up_ask - down_ask)</code></li>
+<li>当 <code>confidence &gt;= 0.30</code> 才允许入场</li>
+</ul>
+<p>也就是说，它不是在赌“赔率更便宜的一边均值回归”，而是明确押 <strong>当前更贵的一边继续赢</strong>。</p>
+<p>这就是这条 alpha 的本体：<strong>binary momentum / continuation into expiry</strong>。</p>
+<h3>3) 不是无脑追高，还留了 price cap</h3>
+<p>repo 同时要求：</p>
+<ul>
+<li><code>price_max = 0.92</code></li>
+</ul>
+<p>意思很直白：<strong>favorite 虽然可以追，但不能追到离 1 美元 payout 太近。</strong></p>
+<p>这个 price cap 很关键，因为 binary 市场最容易犯的错，就是把 95c 以上的“看起来快赢了”误当成高胜率低风险，结果吃到 tail flip。</p>
+<h3>4) 还加了一层交易可执行性约束</h3>
+<p>repo 里还有两个很实用的 gate：</p>
+<ul>
+<li><code>entry_frequency_sec = 7</code></li>
+<li><code>max_spread = 1.05</code>（用 <code>up_ask + down_ask</code> 控制二元盘口总宽度 / 摩擦）</li>
+</ul>
+<p>这意味着它已经天然在做两件事：</p>
+<ol>
+<li>避免高频重复打单；</li>
+<li>避免在盘口太烂、两边 ask 合起来明显偏贵时追价。</li>
+</ol>
+<p>对于短周期 desk，这类“别在太差的盘口里做对的方向”本身就很值钱。</p>
+<p>---</p>
+<h2>最关键的参数，不是故事，而是这些数字</h2>
+<p>repo 已经把最小可复现参数给得很具体：</p>
+<ol>
+<li><strong>入场窗口</strong>：最后 <code>240s</code></li>
+<li><strong>最小方向差</strong>：<code>|up_ask - down_ask| &gt;= 0.30</code></li>
+<li><strong>最高追价</strong>：<code>favorite_price &lt;= 0.92</code></li>
+<li><strong>时间分层仓位</strong>：</li>
+</ol>
+<ul>
+<li><code>&gt;180s</code>: <code>8</code> contracts</li>
+<li><code>120~180s</code>: <code>10</code> contracts</li>
+<li><code>&lt;120s</code>: <code>12</code> contracts</li>
+</ul>
+<ol>
+<li><strong>单 market 最大投入</strong>：<code>300 USD</code></li>
+<li><strong>单笔最大订单</strong>：<code>150 USD</code></li>
+<li><strong>flip-stop 阈值</strong>：<code>0.48</code></li>
+<li><strong>固定止损</strong>：BTC / ETH / SOL <code>-12 USD</code>，XRP <code>-11 USD</code></li>
+</ol>
+<p>这些参数的价值在于：<strong>它已经不是“我觉得 Polymarket 可以做做看”，而是一套能直接进 backtest / paper trading 的完整壳。</strong></p>
+<p>---</p>
+<h2>为什么我把它归类成 raw alpha，而不是 filter / overlay</h2>
+<p>因为这里的入场逻辑本身就是闭环的：</p>
+<ul>
+<li>市场对象固定：<code>BTC / ETH / SOL / XRP</code> 的 recurring <code>15m</code> hard-expiry binary</li>
+<li>时钟固定：只做最后 <code>240s</code></li>
+<li>方向固定：跟随当前 favorite</li>
+<li>价格条件固定：只在 <code>confidence</code> 足够大、但 <code>favorite_price</code> 还没贵到离谱时入场</li>
+<li>出场固定：结算 / flip-stop / stop-loss</li>
+<li>sizing 固定：按剩余时间分层</li>
+</ul>
+<p>这就已经是一条<strong>可独立复现、可独立交易、可独立做资金管理</strong>的策略。</p>
+<p>它当然也能服务主 desk：例如把 Polymarket 的临近结算 favorite 侧，当成 BTC/ETH perp 在最后 <code>1m/3m</code> 的外部确认层。但那是 <strong>secondary use-case</strong>，不是 primary classification。</p>
+<p>---</p>
+<h2>和当前 short-cycle desk 的关系</h2>
+<h3>1) 最自然的是 <code>15m</code></h3>
+<p>这条 alpha 的原生周期就是 <code>15m</code>，因为产品本身就是 recurring <code>15m</code> market。</p>
+<h3>2) <code>1m / 3m / 5m</code> 不是拿来改主信号，而是拿来做 execution / 子窗口切片</h3>
+<p>对当前 desk，更合理的映射方式是：</p>
+<ul>
+<li><strong>15m</strong>：定义主 alpha（是否进场）</li>
+<li><strong>5m</strong>：把最后 240s 切成 <code>240~180 / 180~120 / 120~0</code> 三段</li>
+<li><strong>3m / 1m</strong>：做更细的 timing、观测 favorite 是否稳定、是否发生 favorite flip</li>
+</ul>
+<p>换句话说，这条策略不是“把 15m 信号下采样成 1m”；而是 <strong>15m alpha + 1m/3m execution refinement</strong>。</p>
+<h3>3) 它补的是 desk 里还不够多的一类原始素材</h3>
+<p>最近我们的 raw alpha 素材池里，已经很多：</p>
+<ul>
+<li>perp / spot / basis / funding</li>
+<li>order-book continuation / reversal</li>
+<li>pairs / relative value</li>
+<li>ETF / Polymarket cross-market lead-lag</li>
+</ul>
+<p>但 <strong>hard-expiry binary continuation</strong> 这种“时间离结算越近越有信息”的 alpha 壳，依然不多。它和 perpetual 那些无限期产品是不同的物种，值得单独占一个坑位。</p>
+<p>---</p>
+<h2>最小可复现实验应该怎么做</h2>
+<h2>数据源</h2>
+<ul>
+<li><code>Gamma API</code>：市场列表、slug、resolution、outcome、liquidity、best bid/ask、min tick、min size</li>
+<li><code>CLOB websocket</code>：盘口更新（repo 用的是 <code>wss://ws-subscriptions-clob.polymarket.com/ws/market</code>）</li>
+<li><code>Chainlink stream</code>：结算参考说明（用于核对规则）</li>
+</ul>
+<h2>公开性</h2>
+<ul>
+<li>市场数据读取是公开可得；</li>
+<li>真正下单才需要 Polymarket API credentials；</li>
+<li>所以 <strong>最小研究实验不需要先有交易权限</strong>。</li>
+</ul>
+<h2>更新频率</h2>
+<ul>
+<li>recurring market：每 <code>15m</code> 一个新市场</li>
+<li>websocket：近实时盘口更新</li>
+<li>metadata / outcome：可轮询获取</li>
+</ul>
+<h2>最小实验口径</h2>
+<p>我建议不要一上来卷复杂模型，先做 3 步：</p>
+<h3>实验 1：纯 repo 参数复刻</h3>
+<p>按 repo 原参数直接回放：</p>
+<ul>
+<li>市场：BTC / ETH / SOL / XRP</li>
+<li>只做最后 <code>240s</code></li>
+<li><code>confidence &gt;= 0.30</code></li>
+<li><code>favorite_price &lt;= 0.92</code></li>
+<li>分层 size：<code>8 / 10 / 12</code></li>
+<li>exit：到期结算 or <code>flip_stop &lt;= 0.48</code> or fixed stop-loss</li>
+</ul>
+<p>先看：</p>
+<ul>
+<li>hit rate</li>
+<li>平均单笔 ROI</li>
+<li>最大回撤</li>
+<li>按 coin 分桶结果</li>
+<li>按 <code>favorite_price</code> 分桶结果</li>
+</ul>
+<h3>实验 2：把“favorite 是否稳定”加进去</h3>
+<p>repo 当前只看此刻 favorite，不看它是不是刚翻过来。</p>
+<p>下一步要测：</p>
+<ul>
+<li>入场前 <code>30 / 60 / 90</code> 秒里，favorite 是否保持同侧</li>
+<li><code>favorite flip count</code> 是否越低越好</li>
+<li>连续同向报价时间越长，是否胜率更高</li>
+</ul>
+<p>如果成立，这会让策略从“追当前最贵一边”升级成“追 <strong>稳定共识</strong> 最贵一边”。</p>
+<h3>实验 3：把它反向移植成主 desk 的 external sidecar</h3>
+<p>这一步别和主实验混：</p>
+<ul>
+<li>先独立验证 Polymarket raw alpha 是否成立；</li>
+<li>再看最后 <code>180s / 120s / 60s</code> 的 favorite-side 是否对 Binance / Coinbase / Hyperliquid 的 BTC/ETH <code>1m</code> 收盘方向有附加信息。</li>
+</ul>
+<p>也就是：<strong>先把它当 alpha，本体成立后再当 signal donor。</strong></p>
+<p>---</p>
+<h2>我最建议先测的 4 个假设</h2>
+<h3>假设 1：<code>120~0s</code> 不一定比 <code>240~120s</code> 更好</h3>
+<p>repo 用更靠近结算的区间给更大 size（<code>8 -&gt; 10 -&gt; 12</code>）。</p>
+<p>这在直觉上没毛病，但真实回测里可能出现两种情况：</p>
+<ul>
+<li>越靠近结算，信息越准，胜率更高；</li>
+<li>但越靠近结算，盘口越贵、翻车更痛，risk-adjusted 反而不一定更优。</li>
+</ul>
+<p>所以先别默认后 120 秒一定最好。</p>
+<h3>假设 2：<code>favorite_price 0.75~0.88</code> 可能是最好区间</h3>
+<p>太低的 favorite，说明市场还没形成共识； 太高的 favorite，说明赔率已经太差。</p>
+<p>真正可能最甜的，也许不是 repo 的整段 <code>&lt;=0.92</code>，而是一个中间甜蜜区。</p>
+<h3>假设 3：SOL / XRP 可能比 BTC / ETH 更需要更严格 liquidity gate</h3>
+<p>repo 里已经默认把 XRP 关掉了，说明作者自己也知道流动性差异很大。</p>
+<p>所以别只做 overall 回测，一定要按 coin 分层：</p>
+<ul>
+<li>胜率</li>
+<li>spread</li>
+<li>可成交量</li>
+<li>stop-loss 触发率</li>
+</ul>
+<h3>假设 4：favorite flip-stop 会比固定止损更关键</h3>
+<p>在 binary 市场里，最大的风险未必是慢慢亏，而是“原本的 favorite 瞬间失宠”。</p>
+<p>所以 <code>flip-stop</code> 很可能比固定 <code>-12 USD</code> 更重要。这个要优先测谁先触发、谁更贡献回撤控制。</p>
+<p>---</p>
+<h2>风险与失败模式</h2>
+<ol>
+<li><strong>最后几分钟追价最容易吃赔率劣化</strong></li>
+</ol>
+<ul>
+<li>方向对了，也可能因为买得太贵而没有赔率；</li>
+</ul>
+<ol>
+<li><strong>favorite 突然翻转</strong></li>
+</ol>
+<ul>
+<li>这正是 binary 市场最恶的 tail risk；</li>
+</ul>
+<ol>
+<li><strong>盘口深度看起来够，真实吃单不一定够</strong></li>
+</ol>
+<ul>
+<li>live market metadata 有 <code>min size / tick / best bid-ask</code>，但真实成交量和抢单速度仍要单独测；</li>
+</ul>
+<ol>
+<li><strong>跨币种流动性差异很大</strong></li>
+</ol>
+<ul>
+<li>BTC/ETH 可能能做，SOL/XRP 可能更像噪音多、盘口薄；</li>
+</ul>
+<ol>
+<li><strong>别把这个 alpha 误读成“能预测现货价格”</strong></li>
+</ol>
+<ul>
+<li>它先是 Polymarket 自身的 binary continuation，能否迁移到 perp 是第二层问题。</li>
+</ul>
+<p>---</p>
+<h2>结论</h2>
+<p>如果只用一句话总结：</p>
+<p><strong>这份 2026 新 repo 最值得 desk intake 的，不是“又一个 Polymarket bot”，而是把 <code>hard-expiry 15m binary momentum</code> 写成了完整可复现策略壳：最后 240 秒、跟随 favorite、要求 30c 以上方向差、但不追超过 92c 的贵票，再配分层 sizing、flip-stop 和固定止损。</strong></p>
+<p>它满足这轮优先级里最重要的几条：</p>
+<ul>
+<li><strong>raw alpha 清楚</strong></li>
+<li><strong>可独立复现</strong></li>
+<li><strong>可直接落完整策略</strong></li>
+<li><strong>公开数据可拿</strong></li>
+<li><strong>和现有 Polymarket cross-market digest 不重复</strong></li>
+</ul>
+<p>所以这轮我会把它归到：<strong>值得进 short-cycle 素材池的完整 raw alpha 候选</strong>。</p>
+<p>---</p>
+<h2>下一步怎么测</h2>
+<p>直接按下面顺序，不要跳：</p>
+<ol>
+<li><strong>抓 14~30 天 BTC / ETH / SOL / XRP 15m recurring market 数据</strong></li>
+</ol>
+<ul>
+<li>market slug</li>
+<li><code>up_ask / down_ask / bestBid / bestAsk</code></li>
+<li><code>seconds_till_end</code></li>
+<li>盘口更新频率</li>
+<li>最终 outcome</li>
+</ul>
+<ol>
+<li><strong>1:1 复刻 repo 参数</strong>，先做 honest baseline；</li>
+<li><strong>做 3 个最重要的参数扫</strong>：</li>
+</ol>
+<ul>
+<li><code>entry_window</code>: <code>240 / 180 / 120 / 60</code></li>
+<li><code>min_confidence</code>: <code>0.20 / 0.25 / 0.30 / 0.35</code></li>
+<li><code>price_max</code>: <code>0.80 / 0.85 / 0.88 / 0.92</code></li>
+</ul>
+<ol>
+<li><strong>单独评估 favorite stability</strong>：过去 <code>30~90s</code> 是否频繁 flip；</li>
+<li><strong>最后才做 transfer</strong>：看它能否给 Binance / Hyperliquid 的 <code>1m/3m</code> 收盘方向提供附加信息。</li>
+</ol>
+<p>如果第一轮 baseline 都跑不出像样赔率，再讨论它是不是只能退化成 cross-market filter；但在 baseline 之前，不要先把它降级成 filter。</p>
+</body>
+</html>

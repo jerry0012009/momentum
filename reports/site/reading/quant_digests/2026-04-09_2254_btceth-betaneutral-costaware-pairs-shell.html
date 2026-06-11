@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 BTC/ETH pairs repo 只读成 cointegration 课堂作业：对 crypto short-cycle desk，更该先测的是「spread fade × beta-neutral sizing / funding-aware cost shell」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 BTC/ETH pairs repo 只读成 cointegration 课堂作业：对 crypto short-cycle desk，更该先测的是「spread fade × beta-neutral sizing / funding-aware cost shell」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-09 23:19 UTC</span>
+      <span class="pill">研究时间：2026-04-09 22:54 UTC</span>
+      <span class="pill">类型：GitHub / source audit</span>
+      <span class="pill">主题标签：pairs / stat-arb / relative value / mean reversion / beta-neutral / funding / cost / BTC / ETH</span>
+      <span class="pill">证据类型：工程经验 + repo source audit</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-09_2254_btceth-betaneutral-costaware-pairs-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-09 22:54 UTC</li>
+<li>类型：GitHub / source audit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：BTC/ETH 协整 spread 偏离后的均值回归（cointegrated spread fade）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：pairs / stat-arb / relative value / mean reversion / beta-neutral / funding / cost / BTC / ETH</li>
+<li>证据类型：工程经验 + repo source audit</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <code>Bauch0430/crypto-pairs-trading-btc-eth</code>。我重点读了 <code>README.md</code>、<code>src/02_statistical_tests.py</code>、<code>src/03_strategy_engine.py</code>、<code>src/04_backtester.py</code>、<code>src/04b_backtester_beta.py</code>。这不是“再讲一遍 pairs 原理”的仓库，而是一份很适合 desk 拿来做 <strong>成本诚实化 + sizing 对照</strong> 的完整 BTC/ETH spread shell。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最值钱的不是“BTC/ETH 可以做 pairs”，而是它把一个老 raw alpha 明确拆成了 <strong>signal 本体 vs sizing/cost/funding 壳</strong>，并直接展示：<strong>signal 不变，仓位方式一换，净 PnL 可以从 <code>-791.6 USD</code> 翻到 <code>+67.0 USD</code></strong>。</li>
+<li><strong>一句话证明方式：</strong> README 给了同一套 entry/exit 信号下的对照：dollar-neutral 版本净 PnL 约 <code>-791.6 USD</code>，beta-neutral 版本约 <code>+67.0 USD</code>；源码还能对上 <code>β</code> 滚动估计、fee/slippage/funding 计入方式和状态机规则。</li>
+<li>信号层很干净：<code>02_statistical_tests.py</code> 用 <code>1h</code> 数据生成 <code>rolling_beta</code>、spread、<code>adf_pvalue</code>、<code>median_half_life</code>；<code>03_strategy_engine.py</code> 只在 <code>|z| &gt; 2.0</code> 且 <code>adf_pvalue &lt; 0.05</code> 时开仓，<code>|z| &lt; 0.5</code> 止盈，<code>|z| &gt; 3.5</code> 止损，并在 <strong>持仓时间 &gt; <code>3 × median_half_life</code></strong> 时强制 time-stop。</li>
+<li>最该抄的旁支不是“再加一个更花的均值回归指标”，而是 <strong>beta-neutral sizing</strong>：beta-neutral backtester 固定 BTC 目标名义敞口 <code>10,000 USD</code>，ETH 腿按滚动 <code>β</code> 调整，不再硬做双腿各 <code>5,000 USD</code>。这非常适合 BTC/ETH、BTC/SOL 这类高相关但 β 不稳定的 crypto pair。</li>
+<li>成本模型也比常见 GitHub 作业诚实：<code>04b_backtester_beta.py</code> 里每腿 fee <code>0.06%</code>、slippage <code>0.02%</code>，而且 funding 直接并入净收益；README 汇总显示 beta-neutral 版本手续费仍有约 <code>-96.48 USD</code>，funding 约 <code>~-27 USD</code>，说明这条线不是“成本忽略后才成立”的幻觉。</li>
+<li>但它也明确提醒：<strong>raw alpha 还在，钱没赚到往往是壳层问题。</strong> 对 short-cycle desk，这比再看一篇“pairs 有效”的泛论文更有用，因为它直接告诉你下一轮该先测 <code>hedge ratio / notional mapping / friction</code>，不是先继续炼 signal。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>当前 desk 已经有不少 pairs / relative-value intake，但很多还停在“spread 有没有回归”这一步。这份 repo 的价值是把一个可独立复现的 raw alpha 再往前推半步：</p>
+<ul>
+<li>base alpha 仍是协整 spread fade；</li>
+<li>但更适合我们 desk 的高价值旁支，是 <strong>beta-neutral sizing + funding-aware post-cost accounting</strong>；</li>
+<li>这正好能服务于后续 <code>5m / 15m</code> 的 BTC/ETH、BTC/SOL、ETH/SOL spread 壳，而不是只在 1h 样本里做漂亮图。</li>
+</ul>
+<p>所以这轮不是为了“再补一篇 pairs 入门”，而是为了补一个 <strong>能直接提升 pairs admission / sizing / cost honesty</strong> 的可复现组件。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / market-neutral / mean reversion</li>
+<li>基础 alpha：BTC/ETH 协整 spread 偏离后回归均值</li>
+<li>regime：<code>adf_pvalue &lt; 0.05</code> 且 spread 仍有可交易 z-score 偏离</li>
+<li>filter / veto：<code>|z| &gt; 2.0</code> 才开，<code>|z| &lt; 0.5</code> 退出，<code>|z| &gt; 3.5</code> 强制止损，持仓超过 <code>3 × median_half_life</code> 强制平仓</li>
+<li>risk / sizing / execution overlay：rolling <code>β</code> hedge ratio、beta-neutral notional mapping、每腿 <code>0.06%</code> fee + <code>0.02%</code> slippage、funding 并入净收益</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 在 crypto pairs 上，short-cycle 成败经常不是由 spread signal 本身决定，而是由 <strong>dollar-neutral vs beta-neutral sizing</strong> 与成本记账方式决定。</p>
+<p><strong>最小实验：</strong></p>
+<ol>
+<li>先只做 <code>BTC/ETH</code>，用 Binance 或 Bybit 公共 <code>15m</code> 数据替代 repo 的 <code>1h</code>；</li>
+<li>保留 repo 的骨架：rolling <code>β</code>、ADF、spread z-score、<code>entry=2.0 / tp=0.5 / sl=3.5</code>、time-stop=<code>3×median_half_life</code>；</li>
+<li>做两版完全同信号 A/B：</li>
+</ol>
+<ul>
+<li>A：双腿固定等美元名义；</li>
+<li>B：BTC 固定目标名义，ETH 腿按 rolling <code>β</code> 调整；</li>
+</ul>
+<ol>
+<li>手续费先按双腿 round-trip <code>16 bps</code> 起步，再单独记 funding。</li>
+</ol>
+<p><strong>先看两项指标：</strong></p>
+<ul>
+<li>post-cost <code>bps/trade</code>；</li>
+<li>same-signal 条件下，beta-neutral 相对 dollar-neutral 的净收益差与最大回撤差。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这份 repo 的主回测频率是 <code>1h</code>，不是直接为 <code>5m / 15m</code> 设计；它更像 <strong>结构和记账壳</strong>，不是现成可下场的 ultra-short strategy。</li>
+<li>BTC/ETH 本身是最“容易成立”的大对；若迁移到更快周期或更差流动性 pair，<code>β</code> 漂移、手续费、funding、借贷与最小下单量都会更伤。</li>
+<li>repo 的成功点偏“诚实的壳层对照”，不是证明 <code>ENTRY_Z=2.0</code> 这组参数在所有 venue/周期都稳。</li>
+<li>如果 desk 后续把它压到 <code>5m</code>，最先该检查的不是 Sharpe，而是 <code>trade density × friction</code> 是否已经把 alpha 吃光。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Bauch0430. (2026). *crypto-pairs-trading-btc-eth*. GitHub repository.</li>
+<li>Repo URL: <code><a href="https://github.com/Bauch0430/crypto-pairs-trading-btc-eth">https://github.com/Bauch0430/crypto-pairs-trading-btc-eth</a></code></li>
+<li>Repo 内核心实现：</li>
+<li><code>src/02_statistical_tests.py</code></li>
+<li><code>src/03_strategy_engine.py</code></li>
+<li><code>src/04_backtester.py</code></li>
+<li><code>src/04b_backtester_beta.py</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 LP 论文只读成 IL 对冲：对 short-cycle desk，更该先测的是「tight-range LP fee carry × perp short hedge × band-recenter shell」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 LP 论文只读成 IL 对冲：对 short-cycle desk，更该先测的是「tight-range LP fee carry × perp short hedge × band-recenter shell」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-11 17:50 UTC</span>
+      <span class="pill">类型：2024 *Ledger* 论文页 + 开源 repo 交叉 + Uniswap / Binance 公共数据快检</span>
+      <span class="pill">主题标签：raw-alpha / carry / relative-value / liquidity-provision / concentrated-liquidity / impermanent-loss / delta-neutral / perp-hedge / rebalance / uniswap-v3 / binance / eth / usdc / 5m / 15m / repo / paper / cost / risk</span>
+      <span class="pill">证据类型：论文摘要页与参考链路 + 开源实现骨架 + 公共数据 feasibility probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-11_1750_tightrange-lp-feecarry-perphedge-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-11 17:50 UTC</li>
+<li>类型：2024 *Ledger* 论文页 + 开源 repo 交叉 + Uniswap / Binance 公共数据快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>在高成交的稳定币交易对上做 tight-range concentrated liquidity，赚 swap fee；同时在 CEX 做对应数量的 perp short 把方向风险压平，价格出带后再做 band recenter / hedge refresh。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（<strong>paper 偏原理，repo 已给出工程壳；真正难点在 gas / hedge turnover / 执行摩擦，不在“有没有信号”</strong>）</li>
+<li>主题标签：raw-alpha / carry / relative-value / liquidity-provision / concentrated-liquidity / impermanent-loss / delta-neutral / perp-hedge / rebalance / uniswap-v3 / binance / eth / usdc / 5m / 15m / repo / paper / cost / risk</li>
+<li>证据类型：论文摘要页与参考链路 + 开源实现骨架 + 公共数据 feasibility probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主材料是：</p>
+<ul>
+<li><strong>Basile Maire; Marcus Wunsch (2024)</strong></li>
+<li><strong>Title:</strong> *Market Neutral Liquidity Provision*</li>
+<li><strong>Venue:</strong> *Ledger*, Vol. 9</li>
+<li><strong>DOI:</strong> <code>10.5195/ledger.2024.389</code></li>
+<li><strong>Readable URL:</strong> &lt;<a href="https://ledger.pitt.edu/ojs/ledger/article/view/389&gt;">https://ledger.pitt.edu/ojs/ledger/article/view/389&gt;</a></li>
+<li><strong>DOI URL:</strong> &lt;<a href="https://doi.org/10.5195/ledger.2024.389&gt;">https://doi.org/10.5195/ledger.2024.389&gt;</a></li>
+<li><strong>Repo / implementation references actually used this round:</strong></li>
+<li>DeFiNER: &lt;<a href="https://github.com/jiaxiang-cheng/Hedging-Impermanent-Loss-in-Uniswap-V3&gt;">https://github.com/jiaxiang-cheng/Hedging-Impermanent-Loss-in-Uniswap-V3&gt;</a></li>
+<li>hedged-lp-bot: &lt;<a href="https://github.com/dkrizhanovskyi/hedged-lp-bot&gt;">https://github.com/dkrizhanovskyi/hedged-lp-bot&gt;</a></li>
+<li>uniswap-delta-neutral-hedge-hft: &lt;<a href="https://github.com/adradr/uniswap-delta-neutral-hedge-hft&gt;">https://github.com/adradr/uniswap-delta-neutral-hedge-hft&gt;</a></li>
+</ul>
+<p>这篇 paper 表面上在讲的是：</p>
+<p>&gt; <strong>如何把 Uniswap 集中流动性仓位，用 futures / options hedge 成 market-neutral。</strong></p>
+<p>但对当前 short-cycle desk，更值钱的翻译不是“IL 数学很复杂”，而是：</p>
+<p>&gt; <strong>这其实是一条完整的 carry / liquidity-provision raw alpha 壳：核心收入来自 LP fee，方向风险靠 perp short 对冲，<code>5m / 15m</code> 的角色不是预测涨跌，而是决定什么时候 recenter、什么时候 refresh hedge、什么时候干脆别做。</strong></p>
+<p>一句话核心结论：</p>
+<p>&gt; <strong>这篇东西最该带回来的，不是“IL 可以被优雅对冲”，而是「tight-range LP fee carry × CEX perp hedge」这条可独立复现的完整 raw alpha；当前 first verdict 不是 edge 不存在，而是 tight band 下 hedge / gas 周转太快，band 设计与摩擦控制决定生死。</strong></p>
+<p>一句话证明方式：</p>
+<p>&gt; <strong>我先读 paper article page 把 base alpha 与 hedge 结构钉死，再用 WETH/USDC 0.05% Uniswap 池的公开流动性 / 成交量快照，加上 Binance <code>ETHUSDT 5m + fundingRate</code>，检查 fee 池子够不够厚、hedge refresh 会不会太频繁、short hedge 当前是补贴还是拖累。</strong></p>
+<h2>2. 先回答最重要的一句：base alpha 到底是什么</h2>
+<p>这轮 base alpha 是清楚的，不该降级成 filter：</p>
+<p>&gt; <strong>delta-neutral liquidity-provision fee carry</strong>。</p>
+<p>翻成人话：</p>
+<ul>
+<li>你不是赌 ETH 一定涨或一定跌；</li>
+<li>你是在一个高成交、高流动性的稳定币池里提供流动性，吃别人交易付的 fee；</li>
+<li>同时你在 Binance 之类的 CEX 上做 token leg 的 short hedge，把方向风险尽量压平；</li>
+<li>若价格离开带宽，就平旧带、重开新带、同步刷新 hedge。</li>
+</ul>
+<p>所以它本质上更像：</p>
+<ul>
+<li><code>carry / fee harvest</code></li>
+<li><code>relative-value / market-neutral</code></li>
+<li><code>execution-heavy raw alpha</code></li>
+</ul>
+<p>而不是：</p>
+<ul>
+<li>纯 filter</li>
+<li>纯 regime</li>
+<li>纯“风险管理附件”</li>
+</ul>
+<p>如果一定要给它找 desk 里的同类，它更接近：</p>
+<p>&gt; <strong>“basis/funding/carry” 家族在 DEX 上的流动性提供版本。</strong></p>
+<h2>3. 原论文里，真正能拿走的不是学术词，而是一条完整策略骨架</h2>
+<p>paper 摘要页直接点了两件最关键的事：</p>
+<ol>
+<li><strong>目标不是再讨论 IL 指标，而是构造 market-neutral LP strategy；</strong></li>
+<li><strong>hedge 组合可以由 futures + options 构成，而且 futures contango 往往还能额外贡献 carry。</strong></li>
+</ol>
+<p>对当前 desk，最实用的读法不是直接上最复杂的 delta-gamma hedge，而是分两层：</p>
+<h3>3.1 第一落点：先做最朴素的 perp-short delta hedge</h3>
+<ul>
+<li>DEX 端：Uniswap v3 <code>WETH/USDC</code> tight-range LP</li>
+<li>CEX 端：Binance <code>ETHUSDT</code> perp short</li>
+<li>目标：先把<strong>方向 beta</strong>压掉，保留 fee income</li>
+</ul>
+<h3>3.2 第二落点：再补 gamma / convexity 修正</h3>
+<ul>
+<li>若 tight range 太窄、仓位 gamma 太大，单靠 delta hedge 会很快失真；</li>
+<li>这时再考虑更复杂的期权 / power-perp / dynamic hedge。</li>
+</ul>
+<p>这也是为什么这轮值得 intake：</p>
+<p>&gt; <strong>它不是“纯理论 paper 很漂亮”，而是能被拆成一个先简后难的完整实验序列。</strong></p>
+<h2>4. 本地 quick probe：池子够不够厚，hedge 会不会太忙</h2>
+<p>本轮 artifacts：</p>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/uniswapv3_hedged_lp_probe_summary_2026-04-11.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/uniswapv3_hedged_lp_probe_band_resets_2026-04-11.csv</code></li>
+</ul>
+<h3>4.1 数据口径</h3>
+<ul>
+<li><strong>DEX 池子：</strong> Uniswap v3 <code>WETH / USDC 0.05%</code></li>
+<li>pool address: <code>0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640</code></li>
+<li>source: GeckoTerminal public API</li>
+<li><strong>CEX hedge：</strong> Binance <code>ETHUSDT</code> perp</li>
+<li><code>5m</code> K 线：最近 <code>1500</code> 根</li>
+<li>funding：最近 <code>200</code> 个 <code>8h</code> 结算点</li>
+</ul>
+<h3>4.2 这轮最值得记住的 4 个数</h3>
+<ol>
+<li><strong>WETH/USDC 0.05% 池当前 reserve 约 <code>100.3M USD</code>，24h volume 约 <code>28.5M USD</code>。</strong></li>
+<li><strong>按当前池子快照算的“naive full-TVL fee / day”只有约 <code>1.42 bps/day</code>。</strong></li>
+</ol>
+<ul>
+<li>翻成人话：底池很深、成交也不低，但如果你只是普通全范围 LP，fee 厚度其实没夸张到能无视成本。</li>
+</ul>
+<ol>
+<li><strong>用 Binance <code>ETHUSDT 5m</code> 做静态 band reset 快检：</strong></li>
+</ol>
+<ul>
+<li><code>±1%</code> 带宽：约 <strong><code>4.85</code> 次 / 天</strong> reset，median hold 约 <strong><code>3h</code></strong>；</li>
+<li><code>±2%</code> 带宽：约 <strong><code>1.97</code> 次 / 天</strong> reset，median hold 约 <strong><code>12.0h</code></strong>。</li>
+</ul>
+<ol>
+<li><strong>Binance <code>ETHUSDT</code> 最近 <code>200</code> 个 funding 点均值约 <code>-0.164 bps / 8h</code>，正 funding 占比约 <code>43%</code>。</strong></li>
+</ol>
+<ul>
+<li>对 short hedge 来说，这表示<strong>最近样本里平均是“收 funding”，不是付 funding</strong>。</li>
+</ul>
+<h3>4.3 结果怎么翻成人话</h3>
+<p>这组数最有价值的地方，不是告诉你“马上能赚多少”，而是把这条策略的矛盾点钉死：</p>
+<ul>
+<li><strong>池子是够深的；</strong></li>
+<li><strong>short hedge 最近甚至还能拿一点 funding 补贴；</strong></li>
+<li><strong>但 tight band 一旦太窄，recenter / hedge refresh 会变得非常忙。</strong></li>
+</ul>
+<p>所以这条策略不是“没有 alpha”，而是：</p>
+<p>&gt; <strong>alpha 在 fee carry 这一侧；死法在 gas、band 太窄、以及 CEX hedge turnover 太高。</strong></p>
+<h2>5. 为什么这轮值得做它，而不是继续补普通方向型 alpha</h2>
+<p>因为它补的是当前素材池里相对稀缺、但对实盘很有价值的一类：</p>
+<ol>
+<li><strong>它是 raw alpha，不是解释性 overlay。</strong></li>
+<p>收益来源清楚：LP fee + 可能的 funding / contango 补贴。</p>
+<li><strong>它能扩充我们对“carry”家族的理解。</strong></li>
+<p>以前更偏 <code>basis / funding / spot-perp</code>；这轮补的是 <strong>DEX fee carry + CEX hedge</strong>。</p>
+<li><strong>它天然带完整策略壳。</strong></li>
+</ol>
+<ul>
+<li>entry：何时 mint</li>
+<li>exit：何时 burn / recenter</li>
+<li>sizing：投多少 TVL、对多少 notional hedge</li>
+<li>risk：band width、inventory drift、gas budget</li>
+<li>cost：DEX gas + CEX fee + funding</li>
+</ul>
+<ol>
+<li><strong>它和 <code>5m / 15m</code> 有明确映射。</strong></li>
+<p>不是拿低频宏观变量硬装成短周期信号，而是把 <code>5m/15m</code> 当作：</p>
+</ol>
+<ul>
+<li>band breach 检查频率</li>
+<li>hedge refresh 频率</li>
+<li>liquidity / funding admission 刷新频率</li>
+</ul>
+<h2>6. 对当前 desk，最合理的策略拆解是什么</h2>
+<h2>6.1 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：market-neutral / carry / liquidity-provision / relative-value</li>
+<li>基础 alpha：<code>tight-range LP fee carry with perp short hedge</code></li>
+<li>regime：</li>
+<li>高成交、低 gas 干扰、池子深、funding 不逆风时更适合；</li>
+<li>大趋势单边 / 高频穿带环境更差。</li>
+<li>filter / veto：</li>
+<li><code>24h volume / reserve</code> 不够厚时不做；</li>
+<li>funding 大幅转正且你是 short hedge 付费时降权；</li>
+<li>预估 reset frequency 太高时直接 veto。</li>
+<li>risk / sizing / execution overlay：</li>
+<li>band width（<code>1% / 1.5% / 2%</code>）</li>
+<li>hedge threshold / refresh cadence</li>
+<li>gas cap / max resets per day</li>
+<li>单池 TVL cap / inventory drift cap</li>
+</ul>
+<h3>6.2 对 short-cycle desk 的正确落点</h3>
+<p>最合理的落点不是“把它硬说成 5m directional alpha”，而是：</p>
+<p>&gt; <strong>把它当作一个用 <code>5m / 15m</code> 驱动的 fee-carry engine。</strong></p>
+<p>也就是：</p>
+<ul>
+<li><code>5m</code>：适合更敏感的 band breach / hedge drift 监控；</li>
+<li><code>15m</code>：适合更稳的 recenter 决策；</li>
+<li>真正的收益结算周期往往是 <strong>多小时到多天</strong>，不是“一根 K 线就见分晓”。</li>
+</ul>
+<h2>7. first verdict（当前）</h2>
+<p>这轮 first verdict 可以很明确：</p>
+<p>&gt; <strong>这条 raw alpha 值得进池，但默认不能用“超窄带 + 高频重平衡”的想象去做。</strong></p>
+<p>更具体地说：</p>
+<ul>
+<li><strong>有 alpha：</strong> fee carry + 可能的 short-funding 补贴 本身是成立的；</li>
+<li><strong>有工程壳：</strong> paper 给原理，repo 给执行骨架；</li>
+<li><strong>有现实约束：</strong> 当前样本显示 <code>±1%</code> 带宽下 reset 约 <code>4.85/day</code>，这对 gas 和对冲成本太敏感；</li>
+<li><strong>更像 first lane 的形态：</strong></li>
+<li>先从 <code>±2%</code> 左右的更宽带做起；</li>
+<li>先用 perp-only delta hedge；</li>
+<li>gamma hedge / options 以后再补。</li>
+</ul>
+<p>对 desk 来说，最值钱的结论不是“paper 证明了 hedge 可行”，而是：</p>
+<p>&gt; <strong>如果你想把它搬到实盘，第一件事不是优化预测器，而是先把 <code>fee density vs reset frequency vs hedge cost</code> 三角关系测清楚。</strong></p>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li><strong>paper 的完整 hedge 组合并不便宜。</strong> 摘要页已经点出：需要显著资本占用，不能把它想成零成本套壳。</li>
+<li><strong>本轮只做了 quick probe，不是完整 backtest。</strong> 当前数值更像 feasibility check，不是 net PnL 结论。</li>
+<li><strong>GeckoTerminal 的 24h volume / reserve 只是单时点快照。</strong> 真正实盘要看多日滚动分布，而不是只看一帧。</li>
+<li><strong>gas / MEV / 滑点可能比 CEX fee 更致命。</strong> 这条路在链上最容易被低估的不是信号，而是交易摩擦。</li>
+<li><strong>perp short 只是先把 delta 压掉，不代表 gamma / convexity 问题自动消失。</strong> tight band 越窄，这个问题越严重。</li>
+</ul>
+<h2>9. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 band 宽度阶梯，而不是先追最窄带。</strong></li>
+</ol>
+<ul>
+<li>直接测 <code>±1% / ±1.5% / ±2% / ±3%</code> 四档：</li>
+<li>指标只看 5 个：<code>fee_bps/day</code>、<code>reset/day</code>、<code>hedge_turnover</code>、<code>funding_pnl</code>、<code>net_after_gas</code>。</li>
+</ul>
+<ol>
+<li><strong>先做 perp-only delta hedge 的最小版。</strong></li>
+</ol>
+<ul>
+<li>先别一上来就加 options / squeeth；</li>
+<li>先证明“简单版能不能站住”。</li>
+</ul>
+<ol>
+<li><strong>用 <code>5m</code> 监控、<code>15m</code> 决策。</strong></li>
+</ol>
+<ul>
+<li><code>5m</code> 看是否穿带、delta 是否漂太远；</li>
+<li><code>15m</code> 再决定是否真的 burn / remint，避免过度反应。</li>
+</ul>
+<ol>
+<li><strong>把 funding 从“附带收益”单独拆账。</strong></li>
+</ol>
+<ul>
+<li>fee income、perp hedge PnL、funding PnL、gas separately account；</li>
+<li>否则最后不知道真正赚钱的是哪一腿。</li>
+</ul>
+<ol>
+<li><strong>先只做 <code>WETH/USDC 0.05%</code> 与 <code>ETHUSDT</code>。</strong></li>
+</ol>
+<ul>
+<li>不要一开始就扩多池、多链、多 venue。</li>
+</ul>
+<ol>
+<li><strong>明确录取线。</strong></li>
+</ol>
+<ul>
+<li>若 <code>±2%</code> 仍然 reset 过快、net after gas 不稳定，就先别把它升成主策略，只保留为 carry / execution research lane。</li>
+</ul>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>Maire, B., &amp; Wunsch, M. (2024). _Market Neutral Liquidity Provision_. Ledger, 9.</strong></li>
+</ol>
+<ul>
+<li>DOI: &lt;<a href="https://doi.org/10.5195/ledger.2024.389&gt;">https://doi.org/10.5195/ledger.2024.389&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://ledger.pitt.edu/ojs/ledger/article/view/389&gt;">https://ledger.pitt.edu/ojs/ledger/article/view/389&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Paper page references explicitly cited on article page</strong></li>
+</ol>
+<ul>
+<li>Uniswap v3 whitepaper: &lt;<a href="https://uniswap.org/whitepaper-v3.pdf&gt;">https://uniswap.org/whitepaper-v3.pdf&gt;</a></li>
+<li>BIS <code>Crypto Carry</code>: &lt;<a href="https://www.bis.org/publ/work1087.pdf&gt;">https://www.bis.org/publ/work1087.pdf&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Implementation references used this round</strong></li>
+</ol>
+<ul>
+<li>DeFiNER: &lt;<a href="https://github.com/jiaxiang-cheng/Hedging-Impermanent-Loss-in-Uniswap-V3&gt;">https://github.com/jiaxiang-cheng/Hedging-Impermanent-Loss-in-Uniswap-V3&gt;</a></li>
+<li>hedged-lp-bot: &lt;<a href="https://github.com/dkrizhanovskyi/hedged-lp-bot&gt;">https://github.com/dkrizhanovskyi/hedged-lp-bot&gt;</a></li>
+<li>uniswap-delta-neutral-hedge-hft: &lt;<a href="https://github.com/adradr/uniswap-delta-neutral-hedge-hft&gt;">https://github.com/adradr/uniswap-delta-neutral-hedge-hft&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Public data actually used in this round</strong></li>
+</ol>
+<ul>
+<li>GeckoTerminal pool snapshot API (<code>WETH/USDC 0.05%</code>)</li>
+<li>Binance Futures public <code>fapi/v1/klines</code></li>
+<li>Binance Futures public <code>fapi/v1/fundingRate</code></li>
+</ul>
+<h2>11. 数据源 / 公开性 / 更新频率 / 最小复现实验口径</h2>
+<ul>
+<li><strong>数据源：</strong></li>
+<li>Uniswap pool snapshot / OHLC / tx stats（可用 GeckoTerminal / Dune / subgraph）</li>
+<li>Binance <code>ETHUSDT</code> perp K 线与 funding</li>
+<li><strong>公开性：</strong> 公开可得，无需付费数据即可做 first verdict</li>
+<li><strong>更新频率：</strong></li>
+<li>DEX 池统计可做分钟级 / 小时级刷新</li>
+<li>Binance 可直接做 <code>5m / 15m</code></li>
+<li><strong>最小可复现实验口径：</strong></li>
+<li>pool：<code>WETH/USDC 0.05%</code></li>
+<li>hedge：<code>ETHUSDT</code> perp short</li>
+<li>bands：<code>±1% / ±1.5% / ±2% / ±3%</code></li>
+<li>monitor cadence：<code>5m</code></li>
+<li>decision cadence：<code>15m</code></li>
+<li>cost ladder：至少 <code>gas low/base/high</code> + <code>CEX fee maker/taker</code> + <code>funding</code></li>
+<li>verdict：先回答它是“可升级的 fee-carry alpha”还是“只在极低摩擦下才成立的研究型壳”</li>
+</ul>
+</body>
+</html>

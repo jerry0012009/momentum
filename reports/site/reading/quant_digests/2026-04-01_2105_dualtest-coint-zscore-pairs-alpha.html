@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 新 repo 只读成“daily pairs 修 bug”：对 short-cycle desk，更该先测的是「ADF+Johansen 双检验 × rolling beta spread z-score fade」这条 pairs raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 新 repo 只读成“daily pairs 修 bug”：对 short-cycle desk，更该先测的是「ADF+Johansen 双检验 × rolling beta spread z-score fade」这条 pairs raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-01 21:12 UTC</span>
+      <span class="pill">研究时间：2026-04-01 21:05 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `stat_arbitrage_improved.py` + GitHub API metadata）</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/adf/johansen/dual-test/rolling-beta/spread-zscore/walk-forward/binance/bybit/okx/1h/15m/5m/3m/1m/repo/public-data/cost</span>
+      <span class="pill">证据类型：repo-based source audit + 方法锚点</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-01_2105_dualtest-coint-zscore-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-01 21:05 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>stat_arbitrage_improved.py</code> + GitHub API metadata）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：cointegrated pair spread mean reversion；先用 <code>ADF + Johansen</code> 双检验筛 pair，再对 rolling beta / alpha 定义的 spread 做 <code>z-score fade</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/adf/johansen/dual-test/rolling-beta/spread-zscore/walk-forward/binance/bybit/okx/1h/15m/5m/3m/1m/repo/public-data/cost</li>
+<li>证据类型：repo-based source audit + 方法锚点</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是 <strong>julia136 (2026)</strong> 的 GitHub 仓库 <strong>Statistical-Arbitrage-in-Crypto-Currencies</strong>。repo 表面上是一个 daily crypto pairs 回测修正版，但真正值得 desk intake 的，不是“日频配对作业”本身，而是它把一条可独立拆走的 raw alpha 骨架写得相当清楚：</p>
+<ul>
+<li><strong>12 个月 in-sample</strong> 做 pair selection；</li>
+<li><strong>每 6 个月</strong> 重选一次 pair；</li>
+<li>交易层用 <strong>90 天 rolling OLS</strong> 估计 <code>beta / alpha</code>；</li>
+<li><strong><code>|z| &gt; 1</code> 入场、<code>|z| &lt;= exit_threshold</code> 出场、<code>|z| &gt; 3</code> 止损</strong>；</li>
+<li>成本默认按 <strong>10 bps one-way</strong> 扣减，并把 turnover 明确写进净收益。</li>
+</ul>
+<p>repo 最有价值的地方不是“spread 会回归”这句老话，而是它明确想解决 <strong>false-positive cointegration</strong>：pair 不是只看 ADF，而是先过 <strong>Engle-Granger ADF</strong>，再过 <strong>Johansen trace</strong>，尽量把“看起来像配对、其实只是同涨同跌”的假关系先挡在交易前面。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha 很清楚</strong>：就是 <strong>cointegrated spread mean reversion</strong>，不是纯 filter，也不是泛风险壳。</li>
+<li>对当前 desk 来说，最该偷走的不是日频参数，而是 <strong>“双检验 pair admission”</strong> 这一层：先筛掉假 cointegration，再让 z-score fade 真正进入 OOS。</li>
+<li>repo 里有 3 个值得保留的工程动作：</li>
+</ul>
+<ol>
+<li><strong>walk-forward 重选 pair</strong>，而不是一劳永逸固定组合；</li>
+<li><strong>rolling hedge ratio</strong>，而不是永远拿静态 beta；</li>
+<li><strong>把 stop-loss 和 turnover cost 写进策略壳</strong>，而不是只看毛收益。</li>
+</ol>
+<ul>
+<li>但它也有两个必须先审计再复用的点：</li>
+</ul>
+<ol>
+<li>代码里如果双检验后一个 pair 都没留下，会 <strong>静默回退到 ADF-only</strong>；这对 desk 来说不能当成默认安全行为。</li>
+<li>repo 注释声称已经修好 spread direction consistency，但 <code>adf_for_pair()</code> 里的残差定义与 <code>gen_signals()</code> 里的 spread 公式仍存在 <strong>口径不一致风险</strong>；这一层不能盲抄，必须自己重写并 unit-test。</li>
+</ol>
+<p>一句话说：<strong>这轮真正值得进入素材池的，不是“又一个 pairs repo”，而是“用双检验减少假 pair，再把 spread MR 留给短周期执行层”这条更稳的 raw alpha 读法。</strong></p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>最近 intake 已经有不少 pairs / stat-arb / relative-value 主题，但更偏向：</p>
+<ul>
+<li>half-life gate</li>
+<li>wide-band entry</li>
+<li>parameter plateau</li>
+<li>cluster residualization</li>
+</ul>
+<p>这轮补的是另一个同样关键、但更基础的缺口：<strong>pair 是怎么被批准进入交易池的。</strong></p>
+<p>它和当前学习进展的关系很直接：</p>
+<ul>
+<li><code>momentum</code> 项目原生学习地图还偏 trend / breakout / ATR / volume；</li>
+<li>而 bot7 当前任务要求持续补齐 <strong>可独立复现的 raw alpha 素材池</strong>；</li>
+<li>这篇 repo-based intake 虽然不是最新论文，但它给的是 <strong>pairs 家族更可复用的 admission shell</strong>，正好能服务后续多条 pairs raw alpha 的 clean replication。</li>
+</ul>
+<p>翻成人话：<strong>不是再找一条新花样，而是把“哪些 pair 根本不该交易”先讲清楚。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：pairs / stat-arb / relative value / market-neutral</li>
+<li>基础 alpha：长期共动 pair 的短时偏离会回归均值；交易对象是 hedge 后 spread，而不是单腿方向</li>
+<li>regime：只在流动性足够、pair 关系仍稳定的币对上启用；优先 liquid majors / upper-mid perp universe</li>
+<li>filter / veto：<code>ADF + Johansen</code> 双检验、rolling beta 重新估计、cointegration break 失效即下线、禁止“无 pair 时自动退回 ADF-only”</li>
+<li>risk / sizing / execution overlay：beta-neutral / gross-normalized sizing、<code>|z| &gt; 3</code> stop、max-hold、双腿成本门槛、maker/taker leg routing</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：<strong>短周期 pairs raw alpha 是否会主要死在“pair 选错”，而不是死在 z-score 本体。</strong></li>
+<li>数据：Binance / Bybit / OKX 公开 perpetual klines；先用 <code>1h</code> 做 pair discovery，再在 <code>15m</code> 执行，必要时用 <code>5m</code> 细化下单。</li>
+<li>universe：先取 <code>15 ~ 25</code> 个最液态 USDT perp，排除稳定币、包装资产和明显叙事错位币。</li>
+<li>pair selection：</li>
+</ul>
+<ol>
+<li>rolling <code>45 ~ 90</code> 天 <code>1h</code> 窗口；</li>
+<li>只保留 <strong>ADF p-value &lt; 0.05 且 Johansen trace &gt; 5% critical value</strong> 的 pair；</li>
+<li><strong>不允许 silent fallback 到 ADF-only</strong>；</li>
+<li>先按行业/叙事 bucket（L1、L2、DeFi、meme）分层做，别第一刀就全市场乱扫。</li>
+</ol>
+<ul>
+<li>信号：</li>
+</ul>
+<ol>
+<li><code>15m</code> 上用 rolling <code>96 / 144 / 192</code> bar 估 beta；</li>
+<li>统一自己重写 spread 定义，确保回归方向与残差方向一致；</li>
+<li><code>|z| &gt;= 2.0 / 2.5</code> 入场，<code>|z| &lt;= 0.5</code> 出场，<code>|z| &gt;= 3.0 / 3.5</code> 止损。</li>
+</ol>
+<ul>
+<li>sizing / risk：pair 内 beta-neutral，跨 pair 做 gross cap；单 pair 加 <code>max_hold = 16 / 24 / 32</code> 根 <code>15m</code>。</li>
+<li>成本：先做 <strong>pair round-trip <code>12 / 20 / 32 bps</code> friction ladder</strong>，不要只看单腿 fee。</li>
+<li>验证：</li>
+</ul>
+<ol>
+<li><code>ADF-only</code> vs <code>ADF+Johansen</code> OOS 对照；</li>
+<li>正收益 pair 占比；</li>
+<li>turnover、平均持有时长、止损触发率；</li>
+<li><code>15m</code> 触发后换到 <code>5m</code> 执行，净收益是否还能保住。</li>
+</ol>
+<h2>5. 先测什么，不先测什么</h2>
+<p>先测 <strong>“双检验 shortlist 是否比 ADF-only 更稳”</strong>，而不是先卷最优 z-score 阈值。因为如果 pair admission 本身是脏的，后面所有 entry / exit 调参都只是在脏地基上抹墙。</p>
+<p>也不要一上来照抄 repo 的 daily 节奏：</p>
+<ul>
+<li>不要先用 <code>6</code> 个月重平衡；</li>
+<li>不要先扫几百个币；</li>
+<li>不要先把 <code>1m</code> 当 pair discovery 主频。</li>
+</ul>
+<p>更合理的第一刀是：<strong>慢一点选 pair，快一点执行 trade。</strong></p>
+<h2>6. 风险与误区</h2>
+<ul>
+<li><strong>频率迁移风险</strong>：repo 本体是 daily，直接映射到 <code>1m/3m/5m/15m</code> 不能默认成立，必须重新估窗口和成本。</li>
+<li><strong>双检验样本长度问题</strong>：Johansen 在很短样本上并不神；它应该是 gate，不是神谕。</li>
+<li><strong>公式口径风险</strong>：spread / residual 定义若不统一，回测结果会被 quietly 污染。</li>
+<li><strong>交易实现风险</strong>：pairs 策略的真实 friction 不只是 fee，还包括双腿 legging risk、funding、盘口深度与同步成交。</li>
+<li><strong>过度自信风险</strong>：如果一个窗口里一个 pair 都没有，不代表“市场错了”；很多时候只代表 <strong>这段时间根本没有干净 pair</strong>。</li>
+</ul>
+<h2>7. 来源与复现线索</h2>
+<h3>主来源（repo）</h3>
+<ul>
+<li>Julia136 (GitHub, 2026), *Statistical-Arbitrage-in-Crypto-Currencies*, GitHub repository, DOI: N/A, Readable URL: &lt;<a href="https://github.com/julia136/Statistical-Arbitrage-in-Crypto-Currencies&gt;,">https://github.com/julia136/Statistical-Arbitrage-in-Crypto-Currencies&gt;,</a> Repo URL: &lt;<a href="https://github.com/julia136/Statistical-Arbitrage-in-Crypto-Currencies&gt;">https://github.com/julia136/Statistical-Arbitrage-in-Crypto-Currencies&gt;</a></li>
+<li>README（raw）：&lt;<a href="https://raw.githubusercontent.com/julia136/Statistical-Arbitrage-in-Crypto-Currencies/main/README.md&gt;">https://raw.githubusercontent.com/julia136/Statistical-Arbitrage-in-Crypto-Currencies/main/README.md&gt;</a></li>
+<li>Strategy code（raw）：&lt;<a href="https://raw.githubusercontent.com/julia136/Statistical-Arbitrage-in-Crypto-Currencies/main/stat_arbitrage_improved.py&gt;">https://raw.githubusercontent.com/julia136/Statistical-Arbitrage-in-Crypto-Currencies/main/stat_arbitrage_improved.py&gt;</a></li>
+<li>GitHub API metadata：&lt;<a href="https://api.github.com/repos/julia136/Statistical-Arbitrage-in-Crypto-Currencies&gt;">https://api.github.com/repos/julia136/Statistical-Arbitrage-in-Crypto-Currencies&gt;</a></li>
+</ul>
+<h3>方法锚点（经典地基，非本轮主来源）</h3>
+<ul>
+<li>Engle, Robert F.; Granger, Clive W. J. (1987), *Co-integration and Error Correction: Representation, Estimation, and Testing*, *Econometrica*, DOI: &lt;<a href="https://doi.org/10.2307/1913236&gt;,">https://doi.org/10.2307/1913236&gt;,</a> Readable URL: &lt;<a href="https://www.jstor.org/stable/1913236&gt;">https://www.jstor.org/stable/1913236&gt;</a></li>
+<li>Johansen, Søren (1991), *Estimation and Hypothesis Testing of Cointegration Vectors in Gaussian Vector Autoregressive Models*, *Econometrica*, DOI: &lt;<a href="https://doi.org/10.2307/2938278&gt;,">https://doi.org/10.2307/2938278&gt;,</a> Readable URL: &lt;<a href="https://www.jstor.org/stable/2938278&gt;">https://www.jstor.org/stable/2938278&gt;</a></li>
+</ul>
+<h2>8. 一句话带走</h2>
+<p>如果把这份材料变成 desk 可测策略，我会把它定义成：<strong>“用 ADF+Johansen 双检验先守住 pair admission，再把 spread z-score fade 下放到 15m/5m 执行层”的 pairs raw alpha 壳，而不是一份可以直接照抄的 daily 回测作业。</strong></p>
+</body>
+</html>

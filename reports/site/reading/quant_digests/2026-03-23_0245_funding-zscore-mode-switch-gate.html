@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 funding 极端固定写成“只反转”或“只延续”：同一 z-score 在 15m 上应先做 mode switch（trend=momentum，range=mean-reversion）</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 funding 极端固定写成“只反转”或“只延续”：同一 z-score 在 15m 上应先做 mode switch（trend=momentum，range=mean-reversion）</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-23 02:46 UTC</span>
+      <span class="pill">研究时间：2026-03-23 02:45 UTC</span>
+      <span class="pill">类型：GitHub 仓库 + 官方 API 文档</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/funding-rate/zscore/mode-switch/regime-gate/filter/position-sizing/open-interest/crypto/5m/15m</span>
+      <span class="pill">证据类型：仓库 README + 源码（signals/backtest/config）+ Bybit 官方文档</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-23_0245_funding-zscore-mode-switch-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-23 02:45 UTC</li>
+<li>类型：GitHub 仓库 + 官方 API 文档</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/funding-rate/zscore/mode-switch/regime-gate/filter/position-sizing/open-interest/crypto/5m/15m</li>
+<li>证据类型：仓库 README + 源码（signals/backtest/config）+ Bybit 官方文档</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<p>这轮优先做三条收口线可直接用的外部数据旁支，不再重复“funding 只当单向反指针”。</p>
+<p>我看的是一个 2026 的新仓库：<strong>farrellh1 / crypto-funding-rate-strategy</strong>。它最值钱的点不是“又一个 funding 阈值”，而是把同一套 funding z-score 明确拆成两种互斥解释：</p>
+<ul>
+<li><code>mean_reversion</code>（极端 funding → 反向）</li>
+<li><code>momentum</code>（极端 funding → 同向延续）</li>
+</ul>
+<p>也就是：<strong>同一个 funding 极端，在不同 regime 下方向含义可能相反</strong>。</p>
+<h2>2) 核心结论（先说人话）</h2>
+<ul>
+<li><strong>一句话结论：</strong> 对我们 5m/15m desk，funding 不该是固定方向信号，而应先做 <code>mode switch</code>：</li>
+<li><code>trend</code> 环境按 <strong>momentum</strong> 解释；</li>
+<li><code>range/chop</code> 环境按 <strong>mean-reversion</strong> 解释。</li>
+<li><strong>对应三条收口线的意义：</strong> 这不是替代主触发，而是给 <code>breakout-short / Fib retest / EMA-PSAR</code> 的 shared veto 与仓位层提供“方向语义翻译器”。</li>
+</ul>
+<h3>关键数据点（来自仓库实现）</h3>
+<ol>
+<li>默认参数：<code>lookback_periods=168</code>（按 8h funding 计约 <strong>56 天</strong>）、<code>threshold=2.5</code>。</li>
+<li>同一 z-score 的两种模式（源码 <code>signals/zscore.py</code>）：</li>
+</ol>
+<ul>
+<li><code>mean_reversion</code>: <code>z&gt;=thr -&gt; SHORT</code>, <code>z&lt;=-thr -&gt; LONG</code></li>
+<li><code>momentum</code>: <code>z&gt;=thr -&gt; LONG</code>, <code>z&lt;=-thr -&gt; SHORT</code></li>
+</ul>
+<ol>
+<li>过滤层（<code>signals/filters.py</code> + <code>config.yaml</code>）：</li>
+</ol>
+<ul>
+<li><code>volume_filter.min_zscore=0.5</code></li>
+<li><code>oi_filter.max_zscore=2.0</code></li>
+</ul>
+<ol>
+<li>成本口径（<code>config.yaml</code>）：</li>
+</ol>
+<ul>
+<li>taker <code>0.055%</code>，maker <code>0.02%</code>（Bybit Non-VIP），可并入 slippage。</li>
+</ul>
+<p>&gt; 这比“funding 高就永远做空、低就永远做多”更接近实盘，因为它承认了 funding 解释的 <strong>regime 依赖性</strong>。</p>
+<h2>3) 为什么它比继续死磕单线参数更值得</h2>
+<p>它<strong>直接服务三条收口线</strong>，不是旁逸斜出：</p>
+<ul>
+<li><code>V3 breakout-short follow-up</code>：能先判断“当前 funding 极端到底在提示延续还是挤仓反转”，避免把高拥挤误读成必然 continuation；</li>
+<li><code>Fibonacci retest_hold</code>：在 trend 模式里更敢持有顺势回踩，在 range 模式里对“过热回踩”更保守；</li>
+<li><code>EMA / PSAR raw alpha focus</code>：把低频 crowding 信息定位为 <strong>filter / sizing overlay</strong>，而不是伪装成逐根 15m 主信号。</li>
+</ul>
+<h2>3.5) 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>regime-conditional</strong>（同一特征可反向解释）</li>
+<li>基础 alpha：沿用当前 desk 主触发（breakout/fib/ema-psar 任一）</li>
+<li>regime：<code>trend</code> vs <code>range</code>（建议先用 1h EMA slope + ADX）</li>
+<li>filter / veto：funding z-score 方向解释 + volume/OI zscore 约束</li>
+<li>risk / sizing overlay：在“解释与主触发同向”时放大仓位，反向时降杠杆或 veto</li>
+</ul>
+<h2>4) 外部数据口径（公开性 / 频率 / 可复现）</h2>
+<h3>数据源与公开性</h3>
+<ul>
+<li><strong>Funding Rate</strong>：Bybit V5 <code>GET /v5/market/funding/history</code>（公开可得，REST）</li>
+<li><strong>Open Interest</strong>：Bybit V5 <code>GET /v5/market/open-interest</code>（公开可得，REST）</li>
+<li><strong>Kline/Volume</strong>：Bybit V5 <code>GET /v5/market/kline</code>（公开可得，REST）</li>
+</ul>
+<h3>更新频率与映射方式</h3>
+<ul>
+<li>funding 天然是低频（常见 8h 结算节奏），<strong>不应当作逐根 15m 主触发</strong>；</li>
+<li>在 15m 上的正确角色：<code>regime gate / filter / position sizing</code>；</li>
+<li>具体映射：每次 funding 更新后重算 <code>z_funding</code>，在下一个 funding 时点前对 15m 信号使用“冻结值”。</li>
+</ul>
+<h2>5) 最小可复现实验（直接可开工）</h2>
+<h3>研究假设</h3>
+<p><code>H1</code>: funding 极端的方向语义取决于 regime；若不做 mode switch，会显著增加错向交易。</p>
+<h3>最小实验定义（15m 执行）</h3>
+<ul>
+<li>标的：<code>BTCUSDT / ETHUSDT</code></li>
+<li>执行框架：15m（主触发沿用当前线）</li>
+<li>外部层更新：8h（funding/OI），15m（volume）</li>
+<li>特征：</li>
+<li><code>z_funding(lookback=168, thr=2.5)</code></li>
+<li><code>z_volume(lookback=168, min=0.5)</code>（可先简化成 15m volume z）</li>
+<li><code>z_oi(lookback=168, max=2.0)</code></li>
+<li>mode switch：</li>
+<li><code>trend regime</code>：funding 用 momentum 解释</li>
+<li><code>range regime</code>：funding 用 mean-reversion 解释</li>
+</ul>
+<h3>对照组</h3>
+<ul>
+<li><code>A</code>：现有 baseline（无 funding 模式切换）</li>
+<li><code>B</code>：baseline + funding 固定反转解释</li>
+<li><code>C</code>：baseline + funding 固定延续解释</li>
+<li><code>D</code>：baseline + funding mode switch（推荐）</li>
+</ul>
+<h3>下一步先看哪两个指标</h3>
+<ol>
+<li><code>post-cost expectancy</code>（先按 taker 0.055% 双边近似）</li>
+<li><code>false-follow-up rate</code>（breakout/retest 后 N 根内反向触发止损比例）</li>
+</ol>
+<p>&gt; 若 <code>D</code> 在不显著增交易频次的前提下改善 expectancy 或降低 false-follow-up rate，就说明 funding 更适合作为“模式翻译器”，而不是单向神谕。</p>
+<h2>6) 风险与保留意见</h2>
+<ul>
+<li>该 repo 为新项目（公开社区验证有限），结果稳定性需独立复核；</li>
+<li>README 的“Results”部分尚未给出完整最终绩效表，当前更像研究框架而非已验证 alpha；</li>
+<li>8h funding 映射到 15m 容易产生“信号稀疏 + 持续覆盖过长”问题，需配合失效计时器；</li>
+<li>mode switch 若直接由同一价格特征定义，存在同源信息重复计入风险。</li>
+</ul>
+<h2>7) 来源</h2>
+<ol>
+<li><strong>farrellh1. (2026). _crypto-funding-rate-strategy_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Authors / Org: farrellh1</li>
+<li>Year: 2026（repo <code>created_at = 2026-01-25</code>）</li>
+<li>Title: Crypto Funding Rate Strategy</li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/farrellh1/crypto-funding-rate-strategy&gt;">https://github.com/farrellh1/crypto-funding-rate-strategy&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/farrellh1/crypto-funding-rate-strategy&gt;">https://github.com/farrellh1/crypto-funding-rate-strategy&gt;</a></li>
+</ul>
+<ol>
+<li><strong>farrellh1. (2026). _signals/zscore.py, signals/filters.py, config.yaml_.</strong></li>
+</ol>
+<ul>
+<li>Authors / Org: farrellh1</li>
+<li>Year: 2026</li>
+<li>Title: Z-score signal modes + volume/OI zscore filters + cost config</li>
+<li>Venue: GitHub source files</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/farrellh1/crypto-funding-rate-strategy/tree/main/signals&gt;">https://github.com/farrellh1/crypto-funding-rate-strategy/tree/main/signals&gt;</a></li>
+<li>Repo URL:</li>
+<li>&lt;<a href="https://raw.githubusercontent.com/farrellh1/crypto-funding-rate-strategy/main/signals/zscore.py&gt;">https://raw.githubusercontent.com/farrellh1/crypto-funding-rate-strategy/main/signals/zscore.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/farrellh1/crypto-funding-rate-strategy/main/signals/filters.py&gt;">https://raw.githubusercontent.com/farrellh1/crypto-funding-rate-strategy/main/signals/filters.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/farrellh1/crypto-funding-rate-strategy/main/config.yaml&gt;">https://raw.githubusercontent.com/farrellh1/crypto-funding-rate-strategy/main/config.yaml&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Bybit API Documentation. (2026 access). _V5 Market Endpoints_.</strong></li>
+</ol>
+<ul>
+<li>Authors / Org: Bybit</li>
+<li>Year: 2026 (accessed)</li>
+<li>Title: Get Funding Rate History / Get Open Interest / Get Kline</li>
+<li>Venue: Official API Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL:</li>
+<li>&lt;<a href="https://bybit-exchange.github.io/docs/v5/market/history-fund-rate&gt;">https://bybit-exchange.github.io/docs/v5/market/history-fund-rate&gt;</a></li>
+<li>&lt;<a href="https://bybit-exchange.github.io/docs/v5/market/open-interest&gt;">https://bybit-exchange.github.io/docs/v5/market/open-interest&gt;</a></li>
+<li>&lt;<a href="https://bybit-exchange.github.io/docs/v5/market/kline&gt;">https://bybit-exchange.github.io/docs/v5/market/kline&gt;</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<h2>8) 产出文件（本轮）</h2>
+<ul>
+<li><code>research/quant_digests/2026-03-23_0245_funding-zscore-mode-switch-gate.md</code></li>
+</ul>
+</body>
+</html>

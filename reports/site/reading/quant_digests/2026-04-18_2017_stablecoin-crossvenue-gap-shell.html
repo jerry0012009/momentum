@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 stablecoin cross-exchange arbitrage repo 只读成“转账图论作业”：对 short-cycle desk，更该先保留的是「inventory-funded stablecoin cross-venue gap」这条 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 stablecoin cross-exchange arbitrage repo 只读成“转账图论作业”：对 short-cycle desk，更该先保留的是「inventory-funded stablecoin cross-venue gap」这条 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-18 20:18 UTC</span>
+      <span class="pill">研究时间：2026-04-18 20:17 UTC</span>
+      <span class="pill">类型：GitHub / live public-quote probe</span>
+      <span class="pill">主题标签：raw-alpha / relative-value / stat-arb / stablecoin / cross-venue / inventory-funded / quote-gap / convergence / maker-first / 1m / 3m / 5m</span>
+      <span class="pill">证据类型：repo source audit + 公开实时报价快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-18_2017_stablecoin-crossvenue-gap-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-18 20:17 UTC</li>
+<li>类型：GitHub / live public-quote probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一稳定币对在不同交易所的买一卖一短暂失配；预布库存后，卖高买低，等价于做 cross-venue quote-gap convergence</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / relative-value / stat-arb / stablecoin / cross-venue / inventory-funded / quote-gap / convergence / maker-first / 1m / 3m / 5m</li>
+<li>证据类型：repo source audit + 公开实时报价快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 GitHub 仓 <code>kevinl03/Stablecoin-CrossExchange-Arbitrage</code>。repo 表面上在讲“多交易所稳定币转账图 + A* / Bellman-Ford 路径搜索”，但对我们 desk 更值钱的旁支不是慢吞吞的链上转账全路径，而是它先把问题写清楚了：<strong>稳定币套利不是方向判断，而是同类现金替代物在不同 venue 上的短暂价格错位</strong>。如果把“先转币”改成“先预布库存”，base alpha 会更贴近 short-cycle desk：<code>同一 stablecoin pair 在 A 所更贵、在 B 所更便宜 -&gt; 先卖 rich venue、买 cheap venue，等 gap 回归或内部库存再平衡。</code></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这条线的 <strong>base alpha 很清楚</strong>：不是猜 BTC 涨跌，而是赌 <strong>同一稳定币对的跨所报价会向更一致的 law-of-one-price 区间回归</strong>。</li>
+<li>repo 给的策略壳其实挺完整：节点是 <code>(exchange, coin)</code>，边上显式放了 trading fee、withdraw fee、slippage、transfer time、chain risk，连“30 分钟 time budget”都写进了问题定义。也就是说，<code>entry / exit / risk / cost</code> 不是事后补丁，而是一开始就在壳里。</li>
+<li>但若照 repo 原样理解成“看见 gap 就现转现搬”，对我们默认 <code>1m/3m/5m</code> desk 还是太慢。更适合先拆出来的，是 <strong>inventory-funded same-pair cross-venue gap</strong> 这条更短、更干净的 raw alpha 分支。</li>
+<li>我做了一个 4 所公开 bookTicker 快检（Binance / MEXC / OKX / KuCoin，<code>USDCUSDT/FDUSDUSDT/FDUSDUSDC/TUSDUSDT</code>，8 次采样）：<code>USDC/FDUSD</code> 这几组几乎没有正向跨所 gap，但 <code>TUSDUSDT</code> 出现了 <strong>16 次正 gap</strong>，median 约 <strong>3.50bps</strong>，p90 / max 约 <strong>4.00bps</strong>，主要是 <strong>MEXC 卖、KuCoin 买</strong> 这组。说明 stablecoin cross-venue pocket 不是完全没有，但很挑标的。</li>
+<li>这也直接给出 first verdict：<strong>raw alpha 在，但更像 maker/VIP/inventory pocket</strong>。如果两边都按普通 taker，<code>3~4bps</code> gross 很容易被手续费吃掉；只有在更低费率、maker rebate、或已有双边库存时，才像能进下一轮。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线补的是我们当前持续在补的 <strong>relative-value / stat-arb raw alpha 素材池</strong>，而且和今天已经写过的 options / OBI / funding 不同：</p>
+<ul>
+<li>它不依赖方向判断；</li>
+<li>不需要复杂论文私有数据；</li>
+<li>公开 quote 就能先做最小实验；</li>
+<li>可以天然落到 <code>1m</code> 甚至更快的事件驱动 execution。</li>
+</ul>
+<p>更重要的是，repo 的高价值点不在“图搜索算法有多炫”，而在它把 <strong>成本、时间、链风险、流动性</strong> 全部提前写进了壳。对 short-cycle desk 来说，这比又抄一个只看 spread、不看执行的套利 demo 值钱。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / stat-arb</li>
+<li>基础 alpha：stablecoin same-pair cross-venue quote-gap convergence</li>
+<li>regime：稳定币本身偏离锚定、局部流动性不均、单 venue order book 变薄时更容易出现</li>
+<li>filter / veto：只做高流动性对；gap 必须大于双边 fee + 预估 slippage + inventory buffer；禁止在链拥堵 / 提现暂停 / 订单簿过薄时入场</li>
+<li>risk / sizing / execution overlay：预布库存优先；每腿独立 notional 上限；maker-first 或 VIP fee tier；超时未收敛则 inventory rebalance；按 venue / stablecoin 设置 hard cap</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：同一稳定币对在不同 CEX 的 top-of-book 偶尔会出现 <code>bid_A &gt; ask_B</code> 的短暂失配；若已有双边库存，短时间内可兑现为 quote-gap 收敛收益。</li>
+<li>可计算定义：每秒或每 <code>5s</code> 抓多所 <code>bookTicker</code>，对同一 pair 计算 <code>cross_gap_bps = (bid_rich - ask_cheap) / mid * 10000</code>；只有 <code>cross_gap_bps &gt; fee_A + fee_B + slippage_buffer + inventory_buffer</code> 才算候选。</li>
+<li>最小回测切口：先不做转账，只做 <strong>inventory-funded</strong> 版本；标的先从 <code>TUSDUSDT / USDCUSDT / FDUSDUSDT</code> 开始；母频率 <code>1s~5s</code> 采样，聚合成 <code>1m</code> 事件统计，先看 gap 持续时间和净正机会占比。</li>
+<li>最该先看：<code>正净边机会占比</code>、<code>gap 持续秒数 / 分钟数</code>；其次才是跨 venue 再平衡频率和资本占用。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>repo 的完整图搜索壳是有价值的，但<strong>链上转账版天然更慢</strong>，不该硬包装成 <code>1m/3m</code> 主信号。</li>
+<li>当前公开快检里，绝大多数主流 stablecoin 对并不厚，只有 <code>TUSDUSDT</code> 显示出可见 pocket；这意味着机会可能是 <strong>标的特异性</strong>，不是普适到所有 stables。</li>
+<li>看到 <code>positive gap</code> 不等于能成交：真实可做边还要扣双边 fee、冲击、排队、库存再平衡成本。</li>
+<li>如果没有低费率 / maker / 预布库存，这条线很容易从“结构上成立”退化成“经济上不成立”。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>kevinl03. (2026). *Stablecoin-CrossExchange-Arbitrage*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/kevinl03/Stablecoin-CrossExchange-Arbitrage">https://github.com/kevinl03/Stablecoin-CrossExchange-Arbitrage</a></code></li>
+<li>Read files: <code>README.md</code>, <code>docs/PROBLEM_FORMULATION.md</code>, <code>docs/ALL_FEES_BREAKDOWN.md</code>, <code>scripts/bellman_ford_arbitrage.py</code>, <code>scripts/weighted_astar.py</code></li>
+<li>Binance Spot API docs.</li>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#symbol-order-book-ticker">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#symbol-order-book-ticker</a></code></li>
+<li>OKX REST API docs.</li>
+<li>Readable URL: <code><a href="https://www.okx.com/docs-v5/en/#rest-api-market-data-get-tickers">https://www.okx.com/docs-v5/en/#rest-api-market-data-get-tickers</a></code></li>
+<li>KuCoin REST API docs.</li>
+<li>Readable URL: <code><a href="https://www.kucoin.com/docs-new/rest/spot-trading/market-data/get-all-tickers">https://www.kucoin.com/docs-new/rest/spot-trading/market-data/get-all-tickers</a></code></li>
+<li>MEXC Spot API docs.</li>
+<li>Readable URL: <code><a href="https://mexcdevelop.github.io/apidocs/spot_v3_en/#symbol-order-book-ticker">https://mexcdevelop.github.io/apidocs/spot_v3_en/#symbol-order-book-ticker</a></code></li>
+<li>本地快检 artifact：</li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_stablecoin_crossvenue_gap_probe_summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_stablecoin_crossvenue_gap_probe_rows.csv</code></li>
+</ul>
+</body>
+</html>

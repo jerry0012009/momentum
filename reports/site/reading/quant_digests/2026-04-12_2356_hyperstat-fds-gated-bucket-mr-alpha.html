@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Hyperliquid stat-arb repo 直接当完整交易系统：对 short-cycle desk，更该先测的是「bucket dispersion MR × funding-divergence admission」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Hyperliquid stat-arb repo 直接当完整交易系统：对 short-cycle desk，更该先测的是「bucket dispersion MR × funding-divergence admission」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-12 23:43 UTC</span>
+      <span class="pill">研究时间：2026-04-12 23:56 UTC</span>
+      <span class="pill">类型：quant_digest</span>
+      <span class="pill">主题标签：raw-alpha/stat-arb/cross-sectional/relative-value/mean-reversion/bucket-dispersion/funding/funding-divergence/gate/hyperliquid/5m/1h/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：2026 GitHub repo source audit（`README.md` + `configs/default.yaml` + `configs/strategy_stat_arb.yaml` + `src/hyperstat/strategy/stat_arb.py` + `src/hyperstat/strategy/funding_divergence_signal.py` + `src/hyperstat/strategy/regime.py` + `src/hyperstat/strategy/allocator.py` + `src/hyperstat/backtest/engine.py` + `src/hyperstat/backtest/costs.py`）+ repo bundled public-data probe（`data/candles/*/5m.parquet` + `data/funding/*/8h.parquet`）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-12_2356_hyperstat-fds-gated-bucket-mr-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-12 23:56 UTC</li>
+<li>类型：quant_digest</li>
+<li>主题标签：raw-alpha/stat-arb/cross-sectional/relative-value/mean-reversion/bucket-dispersion/funding/funding-divergence/gate/hyperliquid/5m/1h/repo/public-data/cost/risk</li>
+<li>证据类型：2026 GitHub repo source audit（<code>README.md</code> + <code>configs/default.yaml</code> + <code>configs/strategy_stat_arb.yaml</code> + <code>src/hyperstat/strategy/stat_arb.py</code> + <code>src/hyperstat/strategy/funding_divergence_signal.py</code> + <code>src/hyperstat/strategy/regime.py</code> + <code>src/hyperstat/strategy/allocator.py</code> + <code>src/hyperstat/backtest/engine.py</code> + <code>src/hyperstat/backtest/costs.py</code>）+ repo bundled public-data probe（<code>data/candles/*/5m.parquet</code> + <code>data/funding/*/8h.parquet</code>）</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同 bucket alt 在过去 <code>1h</code> 出现显著相对偏离后，做 <code>short rich / long cheap</code>，赌的是 <strong>bucket 内 dispersion 压缩与相对收益回归</strong>；funding divergence 只负责 admission / confidence gate，不是 alpha 本体</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<h3>主材料（repo）</h3>
+<ul>
+<li><strong>Jbdelrio (2026)</strong></li>
+<li><strong>Title</strong>：*hyperstat-arb-bot*</li>
+<li><strong>Venue</strong>：GitHub repository</li>
+<li><strong>DOI</strong>：N/A</li>
+<li><strong>Readable URL / Repo URL</strong>：&lt;<a href="https://github.com/Jbdelrio/hyperstat-arb-bot&gt;">https://github.com/Jbdelrio/hyperstat-arb-bot&gt;</a></li>
+<li><strong>Repo metadata</strong>：<code>created_at=2026-02-20</code>，<code>pushed_at=2026-02-25</code></li>
+</ul>
+<p>这轮最值得 intake 的，不是把 repo 整体照抄成“又一个完整 stat-arb 系统”，而是先把它拆开成两层：</p>
+<ol>
+<li><strong>alpha 本体</strong>：<code>5m</code> 频率下、看过去 <code>12 bars = 1h</code> 的 bucket 内 cross-sectional mean reversion；</li>
+<li><strong>过滤层</strong>：funding-divergence signal（FDS）只在资金费率和价格错位时给 alpha 放行或加权。</li>
+</ol>
+<p>也就是说，这轮真正值得 desk 先测的不是： &gt; “repo 里整套配置能不能直接搬上线？”</p>
+<p>而是： &gt; <strong>“bucket dispersion MR 这条 raw alpha 单独站不站得住？以及 funding divergence 能不能把一堆垃圾反转信号筛掉？”</strong></p>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p>很清楚：</p>
+<p>&gt; <strong>base alpha = bucket 内过去 1 小时相对强弱偏离过大后的 cross-sectional mean reversion。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>若同一 bucket 里某个 alt 明显跑赢同组其他币，它不是自动等于“更强趋势”；</li>
+<li>在短周期上，它常常只是短时拥挤、错位或局部情绪失衡；</li>
+<li>所以更合理的交易动作是 <code>short rich / long cheap</code>，赌偏离回归，而不是追强追弱。</li>
+</ul>
+<p>funding 在这里不是主信号，只是：</p>
+<ul>
+<li>判断这次偏离是不是“拥挤得更像会回”；</li>
+<li>或者说，<strong>funding divergence 是 confidence gate，不是 alpha 本体。</strong></li>
+</ul>
+<p>所以本轮主题归类应是：</p>
+<ul>
+<li><code>raw alpha</code></li>
+<li>服务于 <code>stat-arb / relative-value / cross-sectional mean reversion</code></li>
+<li>不是纯 filter / regime / overlay 摘要</li>
+</ul>
+<h2>3. repo 到底怎么写这条 alpha</h2>
+<h3>3.1 <code>stat_arb.py</code>：核心信号其实很朴素</h3>
+<p>repo 的 <code>StatArbStrategy</code> 并不神秘，本体就是：</p>
+<ul>
+<li><code>timeframe = 5m</code></li>
+<li><code>horizon_bars = 12</code> → 看过去 <code>1h</code> 收益</li>
+<li>在 bucket 内对每个币的 <code>1h</code> log return 做 <strong>median + MAD</strong> 标准化</li>
+<li>当 <code>|z| &gt;= 1.5</code> 开始激活，<code>|z| &lt;= 0.5</code> 才允许退出</li>
+<li><code>min_hold_minutes = 30</code></li>
+<li><code>max_hold_minutes = 1440</code></li>
+</ul>
+<p>也就是： &gt; <strong>过去 1h 明显相对偏离的币，按 contrarian 方向做 fade。</strong></p>
+<p>这是标准的 raw alpha 骨架，而且是可直接复现的，不靠私有数据，不靠模型黑箱。</p>
+<h3>3.2 <code>allocator.py</code> / <code>regime.py</code>：真正复杂的是“怎么别把它做烂”</h3>
+<p>repo 真正费力写的不是 alpha 本体，而是：</p>
+<ul>
+<li>波动缩放</li>
+<li>beta / dollar neutral</li>
+<li>gross target</li>
+<li>风险关停</li>
+<li>funding overlay / FDS gate</li>
+</ul>
+<p>这恰恰说明一个现实：</p>
+<p>&gt; <strong>这条 alpha 的难点不在“有没有想法”，而在“怎样把换手和拥挤过滤掉”。</strong></p>
+<h3>3.3 <code>funding_divergence_signal.py</code>：repo 里最值钱的旁支</h3>
+<p>FDS 不是简单看 funding 高低，而是揉了三件事：</p>
+<ul>
+<li>funding 的 cross-sectional carry 水平</li>
+<li>funding 变化和价格方向是否错位</li>
+<li>funding velocity 是否加速到过热区</li>
+</ul>
+<p>repo 把它设计成：</p>
+<ul>
+<li>不反转原有 MR 方向；</li>
+<li>只做 <code>confidence gate</code>，决定这次是否值得放大或放行。</li>
+</ul>
+<p>这很符合 desk 用法，因为它回答的是： &gt; <strong>哪些 MR 偏离更像 crowding 失衡，哪些只是趋势里你去逆着接飞刀。</strong></p>
+<h2>4. 最小 public-data probe：先看“原始 alpha”，再看“FDS 是否有用”</h2>
+<p>这次我没有停在源码阅读，而是直接用 repo 自带公开数据做最小实验：</p>
+<h3>4.1 数据口径</h3>
+<ul>
+<li><strong>数据源</strong>：repo bundled parquet（可公开获取 / 可直接复现实验）</li>
+<li><code>data/candles/{symbol}/5m.parquet</code></li>
+<li><code>data/funding/{symbol}/8h.parquet</code></li>
+<li><strong>标的</strong>：<code>ETH / SOL / AVAX / ARB / OP</code>（bucket 侧）+ <code>BTC</code>（base factor）</li>
+<li><strong>价格样本区间</strong>：<code>2026-02-03 12:50 UTC</code> → <code>2026-02-20 22:05 UTC</code></li>
+<li><strong>funding 可对齐区间</strong>：<code>2026-02-16 11:00 UTC</code> → <code>2026-02-20 22:05 UTC</code></li>
+<li><strong>最小实验频率</strong>：<code>5m</code></li>
+<li><strong>alpha horizon</strong>：过去 <code>12 bars = 1h</code> 偏离；向前看 <code>12 bars = 1h</code> 的相对回归</li>
+</ul>
+<p>为什么这口径是合格的：</p>
+<ul>
+<li>数据公开可得；</li>
+<li>频率直接是 <code>5m</code>，不用硬降采样；</li>
+<li>可以很快映射到后续 <code>1m/3m/15m</code> 变体测试。</li>
+</ul>
+<h2>5. 结果一：repo 默认整套 stat-arb 在自带数据上，先被成本吃掉</h2>
+<p>我先按 repo 默认参数跑了一轮最小回测（<code>BTC + ETH/SOL/AVAX/ARB/OP</code>，bucket MR + neutralization + funding overlay/FDS + repo 默认成本）：</p>
+<h3>5.1 默认成本配置</h3>
+<ul>
+<li>taker fee：<code>6 bps</code></li>
+<li>maker fee：<code>2 bps</code></li>
+<li>base slippage：<code>8 bps</code></li>
+<li>RV1h slippage 放大：<code>10 bps / 1pct RV1h</code></li>
+</ul>
+<h3>5.2 回测摘要</h3>
+<ul>
+<li>样本 bars：<code>5,013</code></li>
+<li><code>total_return = -45.70%</code></li>
+<li><code>pnl_gross = +0.92</code></li>
+<li><code>fees = 172.84</code></li>
+<li><code>slippage = 513.57</code></li>
+<li><code>pnl_net = -685.49</code></li>
+<li>初始权益：<code>1500</code></li>
+</ul>
+<p>这组数的核心意思很简单：</p>
+<p>&gt; <strong>raw idea 不是完全没回归味道，但默认做法的 gross 基本打平，净值则被换手成本狠狠干穿。</strong></p>
+<p>所以这题不能老实巴交写成“可直接落地完整策略”，那样是在骗自己。</p>
+<h2>6. 结果二：bucket dispersion 本身会压缩，但“怎么分配腿”才是胜负手</h2>
+<p>我把 alpha 本体拆出来，不走整套 backtest engine，而是直接看 bucket 内结构是否在未来 <code>1h</code> 有压缩：</p>
+<h3>6.1 bucket spread 压缩证据</h3>
+<p>定义：</p>
+<ul>
+<li>当前 <code>1h</code> 回报横截面的 <code>80% quantile - 20% quantile</code> 作为 bucket spread；</li>
+<li>看未来 <code>1h</code> 这个 spread 是扩还是缩。</li>
+</ul>
+<p>结果：</p>
+<ul>
+<li>当 spread 处在样本 <strong>前 20% 扩张区</strong> 时：</li>
+<li>未来 <code>1h</code> 平均变动：<strong><code>-36.17 bps</code></strong></li>
+<li>spread 收缩命中率：<strong><code>82.3%</code></strong></li>
+<li>事件数：<code>999</code></li>
+<li>当前 spread 与未来 <code>1h</code> spread 变化的相关：<strong><code>-0.58</code></strong></li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>bucket dispersion 会压缩，这件事是真的。</strong></p>
+<p>但问题也正出在这里：</p>
+<ul>
+<li>spread 会压缩，不代表你随便按每个单币的 z-score 去分配仓位就能挣钱；</li>
+<li>alpha 的结构对了，执行和腿分配也可能把它做废。</li>
+</ul>
+<h2>7. 结果三：vanilla 单做 MR 事件不行，但 FDS 过滤后的 pocket 变得像样</h2>
+<p>接着我只看真正会触发交易的事件：</p>
+<ul>
+<li><code>|z| &gt;= 1.5</code></li>
+<li>用 contrarian 方向看未来 <code>1h</code> 的相对收益</li>
+</ul>
+<h3>7.1 不加 FDS，原始 MR 事件是负的</h3>
+<p>在 funding 可对齐的样本里：</p>
+<ul>
+<li>active MR basket events：<code>957</code></li>
+<li>平均未来 <code>1h</code> gross：<strong><code>-3.68 bps</code></strong></li>
+<li>hit rate：<strong><code>45.0%</code></strong></li>
+</ul>
+<p>也就是说： &gt; <strong>vanilla bucket MR 在这个 pocket 里并不够好。</strong></p>
+<h3>7.2 一旦用 FDS 做 admission，质量明显改善</h3>
+<p>我把 repo 的 FDS 思路做成最小 batch gate，对 active MR 事件按 gate score 做筛选：</p>
+<p>#### 当加权 FDS 分数 <code>&gt; 0</code></p>
+<ul>
+<li>事件数：<code>189</code></li>
+<li>平均未来 <code>1h</code> gross：<strong><code>+15.65 bps</code></strong></li>
+<li>中位数：<strong><code>+13.44 bps</code></strong></li>
+<li>hit rate：<strong><code>56.6%</code></strong></li>
+</ul>
+<p>#### 当加权 FDS 分数 <code>&gt; 0.25</code></p>
+<ul>
+<li>事件数：<code>50</code></li>
+<li>平均未来 <code>1h</code> gross：<strong><code>+24.12 bps</code></strong></li>
+<li>中位数：<strong><code>+19.82 bps</code></strong></li>
+<li>hit rate：<strong><code>60.0%</code></strong></li>
+</ul>
+<p>从单腿事件角度再看也类似：</p>
+<ul>
+<li>所有 active legs：平均 edge <strong><code>-5.57 bps</code></strong>，hit <strong><code>40.4%</code></strong></li>
+<li><code>gate &gt; 0</code> 的 active legs：平均 edge <strong><code>+33.91 bps</code></strong>，hit <strong><code>52.4%</code></strong></li>
+<li><code>gate &gt; 0.25</code> 的 active legs：平均 edge <strong><code>+37.57 bps</code></strong>，hit <strong><code>53.6%</code></strong></li>
+</ul>
+<p>这组数最关键：</p>
+<p>&gt; <strong>不是“funding 自己就是 alpha”，而是“funding divergence 能把原本质量很差的 MR pocket 筛成勉强像样的 pocket”。</strong></p>
+<h2>8. 这题该怎么落在我们研究池里</h2>
+<h3>8.1 正确标签</h3>
+<p>我会把这题标成：</p>
+<ul>
+<li><strong>主题类型</strong>：<code>raw alpha</code></li>
+<li><strong>基础 alpha</strong>：<code>bucket dispersion mean reversion</code></li>
+<li><strong>辅助层</strong>：<code>funding-divergence admission filter</code></li>
+</ul>
+<p>不是：</p>
+<ul>
+<li>“funding alpha”</li>
+<li>也不是“纯 overlay”</li>
+</ul>
+<h3>8.2 它对 desk 真正的价值</h3>
+<p>这题最值钱的不是“repo 已经写好了回测引擎”，而是它给了一个更适合 desk 的拆法：</p>
+<ol>
+<li><strong>先承认 bucket MR 本体很脆</strong>；</li>
+<li><strong>再用 crowding / funding 错位去筛 pocket</strong>；</li>
+<li><strong>最后只做最值得做的几次，不要整本书一直滚。</strong></li>
+</ol>
+<p>这比直接抄 full-book stat-arb，更接近真钱研究。</p>
+<h2>9. 与 <code>1m / 3m / 5m / 15m</code> 的关系</h2>
+<h3><code>5m</code></h3>
+<p>这是本题当前最自然的第一落点：</p>
+<ul>
+<li>repo 原始口径就是 <code>5m</code></li>
+<li><code>1h = 12 bars</code> 很直观</li>
+<li>bundled 数据可以立即复现</li>
+</ul>
+<h3><code>3m / 1m</code></h3>
+<p>可以做，但不是马上压过去：</p>
+<ul>
+<li>先把 <code>1h</code> 时钟长度保持不变，映射成 <code>20 bars / 60 bars</code></li>
+<li>重点看 gate 后事件是否仍能留下足够 edge 覆盖更高换手</li>
+</ul>
+<h3><code>15m</code></h3>
+<p>更像控制组或低频版：</p>
+<ul>
+<li>若映射成 <code>4 bars ≈ 1h</code> 会太粗</li>
+<li>更合理的是保持时间长度、把 lookback / hold 重新标时钟而非死守 bars</li>
+</ul>
+<h2>10. 下一步怎么测</h2>
+<p>这里必须很具体，不然这篇 digest 只有阅读价值，没有研发价值。</p>
+<h3>10.1 第一优先：别再做 whole-book，改做 sparse book</h3>
+<p>直接测这三版：</p>
+<ol>
+<li><strong>top1 rich / top1 cheap only</strong></li>
+<li><strong>top2 / bottom2 only</strong></li>
+<li><strong>只保留 <code>FDS &gt; 0.1 / 0.25</code> 的 event</strong></li>
+</ol>
+<p>目标：</p>
+<ul>
+<li>看 gross 是否稳定高于 <code>15~25 bps / 1h event</code></li>
+<li>看事件频率是否足够支持一周内有样本积累</li>
+</ul>
+<h3>10.2 第二优先：把持有逻辑从“迟钝 hysteresis”改成“clock exit + compression exit”</h3>
+<p>当前 repo 是：</p>
+<ul>
+<li><code>z_in = 1.5</code></li>
+<li><code>z_out = 0.5</code></li>
+<li><code>min_hold = 30m</code></li>
+</ul>
+<p>下一步该测：</p>
+<ul>
+<li>固定 <code>30m / 60m</code> clock exit</li>
+<li>或 <code>spread shrink x%</code> 就先走</li>
+<li>避免因为“等 z_out”把已到手的 dispersion compression 吐回去</li>
+</ul>
+<h3>10.3 第三优先：把成本分成 maker / taker 两张账</h3>
+<p>当前 repo 默认成本对 short-cycle 太狠，下一步必须拆开：</p>
+<ul>
+<li>taker-only</li>
+<li>maker-entry / taker-exit</li>
+<li>maker-first with timeout</li>
+</ul>
+<p>因为这题现在最像的是： &gt; <strong>gross edge 只在精选 pocket 上存在，能不能活下来主要看是否能把执行从“持续滚动 taker”改成“低频 + 更偏 maker”。</strong></p>
+<h3>10.4 第四优先：跨 venue 可移植性</h3>
+<p>若后续想从 repo bundled 数据走向更通用研究，先复现到：</p>
+<ul>
+<li>Binance USDⓈ-M <code>5m klines</code></li>
+<li>Binance / Hyperliquid funding 公共接口</li>
+<li>先用 majors + liquid alts 小篮子</li>
+</ul>
+<h2>11. 一句话结论</h2>
+<p>这题最后我会给一个很明确的结论：</p>
+<p>&gt; <strong><code>hyperstat-arb-bot</code> 里真正该 intake 的，不是“默认 full-book stat-arb”，而是“bucket dispersion MR 这条 raw alpha + funding-divergence admission 这层过滤”。</strong></p>
+<p>更直接一点：</p>
+<ul>
+<li><strong>base alpha 是真的，但 standalone 版本不够好；</strong></li>
+<li><strong>FDS 不是 alpha 本体，却显著提高了 pocket 质量；</strong></li>
+<li><strong>所以这轮更适合进研究池的形态，是“MR alpha skeleton + funding gate”，而不是把整套 repo 宣布为 ready-to-trade。</strong></li>
+</ul>
+<h2>12. 文件与来源</h2>
+<ul>
+<li>本文路径：<code>research/quant_digests/2026-04-12_2356_hyperstat-fds-gated-bucket-mr-alpha.md</code></li>
+<li>主要来源：&lt;<a href="https://github.com/Jbdelrio/hyperstat-arb-bot&gt;">https://github.com/Jbdelrio/hyperstat-arb-bot&gt;</a></li>
+<li>关键源码：</li>
+<li><code>src/hyperstat/strategy/stat_arb.py</code></li>
+<li><code>src/hyperstat/strategy/funding_divergence_signal.py</code></li>
+<li><code>src/hyperstat/strategy/regime.py</code></li>
+<li><code>src/hyperstat/strategy/allocator.py</code></li>
+<li><code>src/hyperstat/backtest/engine.py</code></li>
+<li><code>src/hyperstat/backtest/costs.py</code></li>
+<li>关键配置：</li>
+<li><code>configs/default.yaml</code></li>
+<li><code>configs/strategy_stat_arb.yaml</code></li>
+</ul>
+</body>
+</html>

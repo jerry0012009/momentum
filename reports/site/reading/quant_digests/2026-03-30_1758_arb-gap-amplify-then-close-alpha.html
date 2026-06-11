@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把跨所价差只做成静态 spread fade：这篇 2024 *Digital Finance* 更该先测的是「arb gap 先放大、后收敛」的短周期 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把跨所价差只做成静态 spread fade：这篇 2024 *Digital Finance* 更该先测的是「arb gap 先放大、后收敛」的短周期 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-30 17:57 UTC</span>
+      <span class="pill">研究时间：2026-03-30 17:58 UTC</span>
+      <span class="pill">类型：2024 *Digital Finance* 开放获取全文 HTML + Springer table-level 抽取</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/same-underlier/cross-exchange/arbitrage-gap/state-machine/continuation-then-closure/order-flow/market-impact/usdt-vs-usd/btc/eth/1m/3m/5m/15m/paper/public-data/prospective-collection/cost</span>
+      <span class="pill">证据类型：开放获取论文全文证据 + 表格级结果抽取 + desk 化策略迁移</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-30_1758_arb-gap-amplify-then-close-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-30 17:58 UTC</li>
+<li>类型：2024 *Digital Finance* 开放获取全文 HTML + Springer table-level 抽取</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一标的的跨所/跨报价 arbitrage gap 在刚出现时不会立刻回归，反而常被同向订单流再推一段；随后市场才进入 closure 阶段，而且 USDT 市场比 USD 市场收敛更快。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/same-underlier/cross-exchange/arbitrage-gap/state-machine/continuation-then-closure/order-flow/market-impact/usdt-vs-usd/btc/eth/1m/3m/5m/15m/paper/public-data/prospective-collection/cost</li>
+<li>证据类型：开放获取论文全文证据 + 表格级结果抽取 + desk 化策略迁移</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主看这篇：</p>
+<ol>
+<li><strong>Barucci, Emilio; Giuffra Moncayo, Giancarlo; Marazzina, Daniele (2024). _Market impact and efficiency in cryptoassets markets_. Digital Finance.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.1007/s42521-023-00095-9</code></li>
+<li>Readable URL：<code><a href="https://link.springer.com/article/10.1007/s42521-023-00095-9">https://link.springer.com/article/10.1007/s42521-023-00095-9</a></code></li>
+<li>DOI URL：<code><a href="https://doi.org/10.1007/s42521-023-00095-9">https://doi.org/10.1007/s42521-023-00095-9</a></code></li>
+</ul>
+<p>先把 <strong>base alpha</strong> 说清楚：</p>
+<p>&gt; <strong>这次不是在讲 execution overlay，也不是再讲“static arb 很难做”。真正的 raw alpha 是：跨所/跨报价价差在 shock 当下会先沿着 gap 方向继续放大，随后才进入 closure；而这个 phase transition 的时钟，在 USDT 市场和 USD 市场并不一样。</strong></p>
+<p>这点和我们最近几篇 <code>same-underlier multiquote mean reversion</code> digest 不一样。之前那批更像：</p>
+<ul>
+<li>价差偏了 → 回归；</li>
+<li>重点在 spread 定义、pair 选择、multivariate 路由。</li>
+</ul>
+<p>这篇真正新增的是：</p>
+<ul>
+<li><strong>别假设 gap 一出现就该 fade；</strong></li>
+<li>短周期里更像一个 <strong>两阶段状态机</strong>：</li>
+</ul>
+<ol>
+<li><code>gap birth / amplification</code></li>
+<li><code>delayed closure</code></li>
+</ol>
+<ul>
+<li>而且 <strong>USDT 与 USD 的关闭速度不同</strong>，这直接决定你该把持有窗放在哪个时间桶上。</li>
+</ul>
+<p>所以这轮更值得 intake 的，不是“再多一个 arbitrage paper”，而是： <strong>same-underlier relative-value 家族里，一条可直接服务 <code>1m/3m/5m/15m</code> 的 event-path raw alpha。</strong></p>
+<h2>2. 核心结论</h2>
+<p>先给结论，不绕：</p>
+<ul>
+<li><strong>主题类型：raw alpha</strong></li>
+<li><strong>基础 alpha：arb gap 的短时继续放大 + 随后按 quote 市场异步收敛</strong></li>
+<li><strong>是否可独立复现：是</strong>（前瞻采集更容易；历史全量同步回放用商业数据更省事）</li>
+<li><strong>是否可直接落地完整策略：是</strong></li>
+</ul>
+<p>论文最值钱的不是“crypto 市场存在 inefficiency”这种大而化之结论，而是它给了三条非常 desk 化的证据：</p>
+<ol>
+<li><strong>gap 不是立刻被交易 activity 消掉。</strong></li>
+<p>论文 Table 8 显示：<code>|OF|</code> 和成交量上升时，arb spread 反而更大，不是更小。</p>
+</ol>
+<ol>
+<li><strong>signed OF 在超短周期先推着 gap 继续走。</strong></li>
+<p>Table 9 显示，<code>OrderFlow_t</code> 对 arbitrage spread 的系数在 <code>1m</code> 为正：</p>
+</ol>
+<ul>
+<li><code>BTC-USD</code>: <strong>+0.0662</strong></li>
+<li><code>ETH-USD</code>: <strong>+0.0662</strong></li>
+<li><code>BTC-USDT</code>: <strong>+0.0273</strong></li>
+<li><code>ETH-USDT</code>: <strong>+0.0046</strong></li>
+</ul>
+<ol>
+<li><strong>然后 gap 才开始收敛，而且 USDT 收敛更快。</strong></li>
+<p>到 <code>5m</code>：</p>
+</ol>
+<ul>
+<li><code>BTC-USDT</code>: <strong>-0.0069</strong></li>
+<li><code>ETH-USDT</code>: <strong>-0.0116</strong></li>
+<li><code>BTC-USD</code>: <strong>+0.0028</strong>（还没完全翻负）</li>
+<li><code>ETH-USD</code>: <strong>-0.0141</strong></li>
+</ul>
+<p>翻成人话就是： <strong>同样是价差 shock，USDT 侧更像“1m 先顺着冲一下，5m 就该开始想 closure”；USD 侧则更拖，至少 BTC-USD 在 5m 还没完全进入稳定 closure。</strong></p>
+<h2>3. 为什么和当前项目直接相关</h2>
+<p>这轮不是在补综述，也不是在补纯解释型 microstructure 常识。它和当前 desk 直接相关，原因有三：</p>
+<ol>
+<li><strong>它本身就是 raw alpha。</strong></li>
+<p>做的是 same-underlier / cross-exchange / cross-quote 的相对价值，而不是给已有 alpha 再加一层修饰。</p>
+</ol>
+<ol>
+<li><strong>它补的是“路径形状”，不是又一个静态 spread 水平。</strong></li>
+<p>我们现在 pairs / relative-value 素材池里，很多逻辑默认 <code>偏离 -&gt; 回归</code>。这篇提醒的是： <strong>短周期最值钱的可能不是 spread level，而是 spread 的相位切换。</strong></p>
+</ol>
+<ol>
+<li><strong>它对 <code>1m / 3m / 5m / 15m</code> 的映射非常自然。</strong></li>
+</ol>
+<ul>
+<li><code>1m</code>：shock detection / continuation leg</li>
+<li><code>3m</code>：继续持有 or 部分止盈</li>
+<li><code>5m</code>：USDT 侧 closure/fade 主窗口</li>
+<li><code>15m</code>：USD 侧更慢的 closure 检查窗</li>
+</ul>
+<p>如果要回答一句“它为什么比继续补一个普通 raw alpha 更值得”： <strong>因为它不是替代现有 same-underlier alpha，而是在告诉我们这些 alpha 的正确时间结构：不是立即 fade，而是先 continuation 再 closure。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>same-underlier / relative-value / stat-arb / event-driven / state-machine</strong></li>
+<li>基础 alpha：<strong>当同一标的在多市场出现 arb gap 时，signed order flow 会先把 gap 沿原方向推大；随后 gap 才回落，且 USDT 侧比 USD 侧快</strong></li>
+<li>regime：</li>
+<li>更适合 <strong>活跃成交、gap 真实由流量推动</strong> 的时段；</li>
+<li>在低流动、价格冻结、或大额单边撤单主导的时段要降权。</li>
+<li>filter / veto：</li>
+<li>只有当 gap 超过费用门槛后才入池；</li>
+<li>需要同步看到 <strong>gap shock + OF sign</strong>，否则不当 continuation；</li>
+<li>若 gap 只来自单边坏点或 stale quote，直接 veto；</li>
+<li>极端 news / venue outage / API lag 时禁做。</li>
+<li>risk / sizing / execution overlay：</li>
+<li>按 <code>gap / expected_cost</code> 或 <code>gap z-score / realized vol</code> 缩放仓位；</li>
+<li>continuation leg 与 closure leg 分开记账；</li>
+<li>需要显式核算 taker/maker、借贷/short 约束、跨 venue transfer 与库存占用。</li>
+</ul>
+<h2>4. 论文里真正可直接复现的机制</h2>
+<h3>4.1 数据与样本</h3>
+<p>论文用的是 <strong>Kaiko tick-by-tick</strong> 交易数据，样本期：</p>
+<ul>
+<li><strong>2019-04-01 ~ 2020-10-31</strong></li>
+<li><strong>21 家交易所</strong></li>
+<li>六个市场：<code>BTC-USDT / ETH-USDT / ETH-BTC / BTC-USD / ETH-USD / USDT-USD</code></li>
+<li>价格先采到 <strong>1s</strong>，再构造 <strong>1m return</strong> 和 <strong>1m order flow</strong></li>
+</ul>
+<p>这个口径的一个重要启发是： <strong>研究单位不是日线“有没有价差”，而是秒级同步交易后，分钟尺度的 gap path。</strong></p>
+<h3>4.2 论文怎么定义 arbitrage opportunity</h3>
+<p>作者沿用 Makarov &amp; Schoar 路线，把 arbitrage 定义成：</p>
+<ul>
+<li>同一市场/同一标的在不同交易所之间，</li>
+<li>能够在同一秒买一边、卖另一边，</li>
+<li>并拿到正的无库存风险利润。</li>
+</ul>
+<p>利润定义不是只看 spread，而是：</p>
+<ul>
+<li><code>arbitrage spread × bid/ask 可成交最小量</code></li>
+</ul>
+<p>也就是： <strong>这篇不是抽象价差论文，而是明确把“能不能成交”写进了机会定义。</strong></p>
+<h3>4.3 最值钱的地方：不是静态 spread，而是 spread 的路径</h3>
+<p>论文在第 6 节不是只问“有没有 arb opportunity”，而是继续问：</p>
+<p>&gt; 当 arbitrage spread 已经出现后，订单流和成交量到底是在帮你把它关掉，还是先把它推得更大？</p>
+<p>作者做了两组关键回归：</p>
+<ol>
+<li><code>arb_spread_t ~ arb_spread_{t-1} + |OF_t|</code></li>
+<li><code>arb_spread_t ~ arb_spread_{t-1} + OF_t</code></li>
+</ol>
+<p>结果很关键：</p>
+<ul>
+<li><strong>绝对不平衡 <code>|OF|</code> 越大，spread 往往越大，不是越小</strong>；</li>
+<li><strong>signed OF 在 1m 上往往先放大 spread，随后才转为 closure。</strong></li>
+</ul>
+<p>这就给了 desk 一个直接可交易的解释： <strong>gap birth 时别急着做教科书 fade，先判断自己是不是正处在“市场还没开始修 gap”的那几分钟里。</strong></p>
+<h2>5. 关键实证结果</h2>
+<h3>5.1 频率与大小：USDT 机会更频繁，但 spread 更小</h3>
+<p>Table 6 的几组数字很适合直接拿来当 desk 判断基准：</p>
+<ul>
+<li><strong>BTC-USDT</strong></li>
+<li><code>opp_perc</code>: <strong>20.84%</strong></li>
+<li>平均 spread: <strong>4.73</strong></li>
+<li>net profits（扣 0.10% taker fee 后）: <strong>0</strong></li>
+</ul>
+<ul>
+<li><strong>ETH-USDT</strong></li>
+<li><code>opp_perc</code>: <strong>13.14%</strong></li>
+<li>平均 spread: <strong>4.64</strong></li>
+<li>net profits: <strong>0</strong></li>
+</ul>
+<ul>
+<li><strong>BTC-USD</strong></li>
+<li><code>opp_perc</code>: <strong>2.04%</strong></li>
+<li>平均 spread: <strong>26.05</strong></li>
+<li>net profits: <strong>665,464.04</strong></li>
+</ul>
+<ul>
+<li><strong>ETH-USD</strong></li>
+<li><code>opp_perc</code>: <strong>0.47%</strong></li>
+<li>平均 spread: <strong>41.75</strong></li>
+<li>net profits: <strong>293,533.80</strong></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li><strong>USDT 市场更常有机会，但 spread 更薄，静态 taker-arb 很容易被费用吃掉；</strong></li>
+<li><strong>USD 市场机会更少，但单次 spread 更大。</strong></li>
+</ul>
+<p>这也正好解释了为什么这篇更值得转成 <strong>timing alpha</strong>，而不是照抄成“看见 gap 就无脑跨所搬砖”。</p>
+<h3>5.2 1m 先 continuation，5m/10m 再 closure</h3>
+<p>Table 9 是整篇最值钱的表之一。</p>
+<p>#### BTC-USD</p>
+<ul>
+<li><code>1m OF_t</code>: <strong>+0.0662</strong></li>
+<li><code>5m OF_t</code>: <strong>+0.0028</strong></li>
+<li><code>10m OF_t</code>: <strong>-0.0037</strong></li>
+</ul>
+<p>#### BTC-USDT</p>
+<ul>
+<li><code>1m OF_t</code>: <strong>+0.0273</strong></li>
+<li><code>5m OF_t</code>: <strong>-0.0069</strong></li>
+<li><code>10m OF_t</code>: <strong>-0.0083</strong></li>
+</ul>
+<p>#### ETH-USDT</p>
+<ul>
+<li><code>1m OF_t</code>: <strong>+0.0046</strong></li>
+<li><code>5m OF_t</code>: <strong>-0.0116</strong></li>
+<li><code>10m OF_t</code>: <strong>-0.0118</strong></li>
+</ul>
+<p>#### ETH-USD</p>
+<ul>
+<li><code>1m OF_t</code>: <strong>+0.0662</strong></li>
+<li><code>5m OF_t</code>: <strong>-0.0141</strong></li>
+<li><code>10m OF_t</code>: <strong>-0.0158</strong></li>
+</ul>
+<p>最重要的不是系数绝对值多大，而是<strong>符号翻转的时间位置</strong>：</p>
+<ul>
+<li><code>USDT</code>：更早从 continuation 切到 closure；</li>
+<li><code>BTC-USD</code>：到 <code>5m</code> 还没完全翻负，closure 更慢。</li>
+</ul>
+<p>这基本就等于在告诉我们： <strong>同一个 gap alpha，<code>hold time</code> 不能所有市场写死一样。</strong></p>
+<h3>5.3 market activity 不是在帮你立刻修价差</h3>
+<p>论文 Table 8 还给了一个很反直觉但很有用的结果：</p>
+<ul>
+<li>不管是 <code>|OF|</code> 还是成交量，变大时都不是让 arb spread 缩小；</li>
+<li>在 crypto 里，它们更像是在 <strong>先把 spread 撑开</strong>。</li>
+</ul>
+<p>这对短周期 desk 很重要，因为它直接否掉了一个常见直觉： &gt; “看见成交活跃 + gap 出现，就应该马上赌回归。”</p>
+<p>论文的答案更接近： &gt; <strong>先别急，活跃很可能是在帮 gap 完成最后一段放大。</strong></p>
+<h2>6. desk 化后的完整策略骨架</h2>
+<h3>6.1 先定义信号，不要急着定义价差</h3>
+<p>第一版不要从“z-score 多大”开始，而要从 <strong>event</strong> 开始：</p>
+<ol>
+<li>对同一标的的多 venue / 多 quote 维护实时 mid 或可成交价格；</li>
+<li>定义 <code>arb_gap_t = rich_venue_px - cheap_venue_px - fees - transfer_buffer</code>；</li>
+<li>只有当 <code>arb_gap_t &gt; hurdle</code> 时，才认为进入 <code>gap-open</code> 状态；</li>
+<li>同时记录当分钟 <code>OF_t</code> 或买卖成交笔方向代理。</li>
+</ol>
+<h3>6.2 状态机而不是单一 fade 规则</h3>
+<p>更像下面这个 skeleton：</p>
+<ul>
+<li><strong>State A: gap-open / continuation probe</strong></li>
+<li>条件：<code>arb_gap_t &gt; hurdle</code> 且 <code>OF_t</code> 与当前 gap 方向一致</li>
+<li>动作：顺着 gap 方向做小仓 continuation</li>
+<li>目标窗口：<code>1m~3m</code></li>
+</ul>
+<ul>
+<li><strong>State B: closure handoff</strong></li>
+<li>条件：gap 未继续放大，或 OF sign 开始衰减 / 反转</li>
+<li>动作：平 continuation；必要时切到 fade/closure</li>
+<li>目标窗口：</li>
+<li><code>USDT</code>：优先看 <code>3m~5m</code></li>
+<li><code>USD</code>：优先看 <code>5m~15m</code></li>
+</ul>
+<ul>
+<li><strong>State C: stale / broken quote veto</strong></li>
+<li>条件：gap 只出现在单 venue、盘口深度极浅、或报价长时间不动</li>
+<li>动作：不交易</li>
+</ul>
+<h3>6.3 为什么这比“静态搬砖”更像当前 desk 该测的东西</h3>
+<p>因为 paper 自己已经告诉你：</p>
+<ul>
+<li>USDT 静态 taker-arb 净利润会被 10bps 费用吃掉；</li>
+<li>真正值得转移的不是 static carry，而是 <strong>gap path timing</strong>。</li>
+</ul>
+<p>换句话说： <strong>raw alpha 不在“最终一定会收敛”这件事本身，而在“它什么时候还在放大、什么时候才进入 closure”这个时间错配。</strong></p>
+<h2>7. 对当前短周期（1m / 3m / 5m / 15m）的映射</h2>
+<h3>7.1 1m</h3>
+<p>最适合做：</p>
+<ul>
+<li>gap shock detection</li>
+<li>OF sign 确认</li>
+<li>continuation leg</li>
+</ul>
+<h3>7.2 3m / 5m</h3>
+<p>最适合做：</p>
+<ul>
+<li>continuation → closure handoff</li>
+<li>USDT 侧的主要退出/反手窗口</li>
+</ul>
+<h3>7.3 15m</h3>
+<p>最适合做：</p>
+<ul>
+<li>USD 侧更慢的 closure 检查</li>
+<li>把“还没修完的 gap”与“已经死掉的机会”区分开</li>
+</ul>
+<h3>7.4 最自然的 desk 映射</h3>
+<p>如果用当前更容易拿到的市场去测，最先该上的不是现货跨所提款搬砖，而是：</p>
+<ul>
+<li><strong>同标的多 venue perpetual / spot-perp proxy</strong></li>
+<li>或 <strong>同 venue 多 quote 的准跨市场 proxy</strong></li>
+</ul>
+<p>因为这两类都更容易：</p>
+<ul>
+<li>做空</li>
+<li>控费</li>
+<li>回测与实盘连接</li>
+</ul>
+<h2>8. 最小可复现实验（现在就能做）</h2>
+<h3>8.1 数据源、公开性、更新频率</h3>
+<p>第一版不需要商业数据，也不必等 Kaiko：</p>
+<ul>
+<li><code>Binance / OKX / Bybit</code> 公开 websocket 或 REST 行情</li>
+<li>维护同一标的（如 <code>BTCUSDT</code>, <code>BTC-USDT-SWAP</code>, <code>BTCUSDT perp</code>）的可成交 mid / spread</li>
+<li>频率：<code>1s</code> 或 <code>250ms~1s</code> 汇总到 <code>1m</code></li>
+</ul>
+<p>如果历史回放不足，可以先做：</p>
+<ul>
+<li><strong>前瞻采集</strong>（最诚实）</li>
+<li>或抓近期公共成交/盘口增量做短样本 quick probe</li>
+</ul>
+<h3>8.2 最小实验口径</h3>
+<p>我会建议第一轮先别做 full transfer，而是做一个极简 state-machine MVP：</p>
+<ol>
+<li><strong>Universe</strong>：<code>BTC</code> 与 <code>ETH</code> 的 2~3 个高流动 venue / quote 通道。</li>
+<li><strong>Gap 定义</strong>：</li>
+</ol>
+<ul>
+<li><code>gap_t = rich_bid - cheap_ask - round_trip_cost</code></li>
+<li><code>gap_t &gt; 0</code> 才算 event。</li>
+</ul>
+<ol>
+<li><strong>OF 代理</strong>：</li>
+</ol>
+<ul>
+<li>用 taker buy/sell volume 或 tick rule signed trades 估计 <code>OF_t</code>。</li>
+</ul>
+<ol>
+<li><strong>Entry</strong>：</li>
+</ol>
+<ul>
+<li><code>gap_t</code> 刚突破 <code>hurdle</code></li>
+<li>且 <code>OF_t</code> 与 gap widening 方向一致。</li>
+</ul>
+<ol>
+<li><strong>Exit A（continuation）</strong>：</li>
+</ol>
+<ul>
+<li><code>1~3</code> 根 <code>1m</code> bar 后止盈/时间退出。</li>
+</ul>
+<ol>
+<li><strong>Exit B（closure）</strong>：</li>
+</ol>
+<ul>
+<li>USDT 侧先测 <code>3m~5m fade</code></li>
+<li>USD 侧再测 <code>5m~10m</code> 或 <code>15m fade</code></li>
+</ul>
+<ol>
+<li><strong>Cost</strong>：</li>
+</ol>
+<ul>
+<li>至少测 <code>4 / 8 / 12 bps</code> 三档；</li>
+<li>若是跨 venue spot，额外加入库存占用与转移缓冲；</li>
+<li>若是 perp-perp / spot-perp，加入 funding 与 basis 偏移。</li>
+</ul>
+<h2>9. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>先做 continuation-only 与 immediate-fade 的正面对照。</strong></li>
+</ol>
+<ul>
+<li>同一批 event、同一成本口径；</li>
+<li>比较“gap 出现就反向 fade” vs “先持 1m continuation 再退出”。</li>
+</ul>
+<ol>
+<li><strong>按市场类型拆 hold-time。</strong></li>
+</ol>
+<ul>
+<li><code>USDT</code>：主测 <code>1m -&gt; 5m</code>；</li>
+<li><code>USD</code> 或更慢市场：主测 <code>1m -&gt; 10m/15m</code>；</li>
+<li>不要一把尺子量所有 venue。</li>
+</ul>
+<ol>
+<li><strong>把 OF sign 纳入 event 标签。</strong></li>
+</ol>
+<ul>
+<li>没有 signed OF 的 gap，只能算 spread 偏离；</li>
+<li>有 signed OF 的 gap，才是这篇 paper 真正提示的 alpha 事件。</li>
+</ul>
+<ol>
+<li><strong>先在可做空、低费用场景复刻。</strong></li>
+</ol>
+<ul>
+<li>现货跨所 taker-arb 在 paper 样本里 USDT 侧被费率吃掉；</li>
+<li>所以 desk 第一版更该放在 perp/perp 或 maker-dominant 场景，不要照搬 spot taker 搬砖。</li>
+</ul>
+<ol>
+<li><strong>记录 phase transition 的稳定性。</strong></li>
+</ol>
+<ul>
+<li>如果 <code>1m continuation -&gt; 5m closure</code> 的符号翻转很稳定，说明这是结构；</li>
+<li>如果翻转时点乱跳，说明你拿到的更多是 venue-specific 噪音。</li>
+</ul>
+<h2>10. 风险与保留意见</h2>
+<ul>
+<li>论文样本在 <strong>2019-2020</strong>，今天的 fees、venue structure、stablecoin 生态已经变了；</li>
+<li>paper 用 Kaiko 同步 tick 数据，历史回放质量高于普通公共 REST；</li>
+<li><strong>USDT 静态 arb 在 paper 里扣 10bps taker fee 后不赚钱</strong>，所以别误读成“这是无脑搬砖策略”；</li>
+<li>这条线最该迁移的是 <strong>timing alpha</strong>，不是最终 static arb PnL；</li>
+<li>若拿不到稳定 signed trades / OF 代理，信号会明显降级。</li>
+</ul>
+<h2>11. 来源</h2>
+<ol>
+<li><strong>Barucci, E., Giuffra Moncayo, G., &amp; Marazzina, D. (2024). _Market impact and efficiency in cryptoassets markets_. Digital Finance.</strong></li>
+</ol>
+<ul>
+<li>Authors: Emilio Barucci; Giancarlo Giuffra Moncayo; Daniele Marazzina</li>
+<li>Year: 2024</li>
+<li>Venue: *Digital Finance*</li>
+<li>DOI: <code>10.1007/s42521-023-00095-9</code></li>
+<li>Readable URL: <code><a href="https://link.springer.com/article/10.1007/s42521-023-00095-9">https://link.springer.com/article/10.1007/s42521-023-00095-9</a></code></li>
+<li>DOI URL: <code><a href="https://doi.org/10.1007/s42521-023-00095-9">https://doi.org/10.1007/s42521-023-00095-9</a></code></li>
+<li>Repo URL: <code>N/A</code></li>
+</ul>
+<ol>
+<li><strong>Makarov, I., &amp; Schoar, A. (2020). _Trading and arbitrage in cryptocurrency markets_. Journal of Financial Economics.</strong></li>
+</ol>
+<ul>
+<li>作为论文 arbitrage 定义与比较基准</li>
+<li>DOI: <code>10.1016/j.jfineco.2019.07.001</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.jfineco.2019.07.001">https://doi.org/10.1016/j.jfineco.2019.07.001</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance / OKX / Bybit 官方公开行情 API 文档</strong></li>
+</ol>
+<ul>
+<li>用于前瞻采集 same-underlier 多 venue / 多 quote 的最小实验</li>
+</ul>
+<h2>12. 本地相关产物</h2>
+<ul>
+<li>Digest：<code>research/quant_digests/2026-03-30_1758_arb-gap-amplify-then-close-alpha.md</code></li>
+<li>页面 URL（发布后）：<code><a href="https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-03-30_1758_arb-gap-amplify-then-close-alpha.html">https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-03-30_1758_arb-gap-amplify-then-close-alpha.html</a></code></li>
+</ul>
+</body>
+</html>

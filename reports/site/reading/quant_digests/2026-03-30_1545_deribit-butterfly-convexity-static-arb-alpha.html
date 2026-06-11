@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Deribit options scanner 只当可视化页面：对 desk 更该先测的是「same-expiry butterfly / convexity violation」事件型 raw alpha，但当前 live snapshot 极干净</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Deribit options scanner 只当可视化页面：对 desk 更该先测的是「same-expiry butterfly / convexity violation」事件型 raw alpha，但当前 live snapshot 极干净</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-30 15:45 UTC</span>
+      <span class="pill">类型：GitHub / 论文地基 / 公共 API 快检</span>
+      <span class="pill">主题标签：raw-alpha/options/relative-value/stat-arb/butterfly/convexity/static-arbitrage/same-expiry/deribit/btc/1m/3m/5m/15m/repo/public-data/cost</span>
+      <span class="pill">证据类型：工程经验 + 论文地基 + 公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-30_1545_deribit-butterfly-convexity-static-arb-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-30 15:45 UTC</li>
+<li>类型：GitHub / 论文地基 / 公共 API 快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同到期 BTC options 链上，若中间 strike 的 bid 明显高于两翼 ask 线性插值，或整条链存在可收取正初始现金流且到期非负 payoff 的静态无套利违例，则做 same-expiry 凸性修复</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/options/relative-value/stat-arb/butterfly/convexity/static-arbitrage/same-expiry/deribit/btc/1m/3m/5m/15m/repo/public-data/cost</li>
+<li>证据类型：工程经验 + 论文地基 + 公共数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了 Jasper Chan 2026 的 <code>BTC-Options-Arbitrage-Detector</code> 仓库：它把 Deribit BTC 期权同到期链转成一个 LP，最大化初始权利金收入，同时要求 <code>S=0</code>、全部 strike 节点、以及右端斜率下 payoff 都非负。本质是在扫 box / butterfly / convexity 一类 static-arb。对我们更值得先拿出来单测的，不是 UI，而是<strong>同到期 butterfly / convexity 违例是否能在 1m~15m 维持到足够成交</strong>。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha</strong> 很清楚：<strong>same-expiry 凸性违例回补</strong>，不是 filter，也不是解释层。</li>
+<li>仓库默认参数已经很 desk-friendly：<code>minVolume=10</code>、<code>maxSpreadPct=20</code>、1 分钟刷新、可加 fee toggle（30 bps × 0.001? 代码里实际是 <code>0.0003</code>）。</li>
+<li>我用 Deribit BTC 公共 <code>get_book_summary_by_currency</code> 做了 live sanity check：全链 <strong>759</strong> 个合约里，满足 <code>vol&gt;=10 &amp; spread&lt;=20%</code> 的有 <strong>245</strong> 个、覆盖 <strong>12</strong> 个 expiry；按 repo 的 LP 口径，<strong>0 fee 下也没有扫到正初始现金流 static-arb</strong>。</li>
+<li>我再把筛选放宽到近乎“不过滤脏链”的级别（最多 <strong>760</strong> 个合约，<code>spread&lt;=100%</code>），LP 结果仍是 <strong>0 个</strong> 可执行同到期 static-arb。说明当前 Deribit BTC 链在静态无套利上相当干净。</li>
+<li>所以它更像<strong>低频稀有事件扫描器</strong>，不是 always-on 收租策略；若要进 desk，必须把它做成“有 edge 才触发”的事件队列，而不是常驻占资。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这和 <code>momentum</code> 主线的关系，不是因为它会稳定产出高频单边收益，而是因为它能补一块目前较少的 <strong>options relative-value / stat-arb raw alpha 素材</strong>：规则清楚、公共数据可拿、成本口径能快速加进去，而且一旦真出现违例，entry/exit/risk 都比主观 discretionary 更容易写死。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / stat-arb / 事件驱动</li>
+<li>基础 alpha：same-expiry butterfly / convexity static-arb</li>
+<li>regime：仅在同到期链完整、盘口未坏死、临近到期但仍可成交时启用</li>
+<li>filter / veto：最小成交量、最大价差、最少连续两帧仍存在、edge 必须超过 fee+slippage+hysteresis</li>
+<li>risk / sizing / execution overlay：限制 3~4 腿组合；按最差腿深度定 size；若任一腿 spread 扩张、盘口消失或 edge 回落到阈值下方则立刻撤退</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：同到期 butterfly / convexity 违例在 BTC options 上虽少见，但一旦出现，短时间内会向无套利曲面回归。</li>
+<li>数据源：Deribit 公共 REST <code>public/get_book_summary_by_currency?currency=BTC&amp;kind=option</code>；公开可得；分钟级拉取即可，必要时补 <code>get_order_book</code> 做腿级深度。</li>
+<li>最小口径：每分钟抓一帧，按 expiry 分组；先跑 repo 同款 LP，再补一个更轻的“三点 butterfly 可执行不等式”扫描；观察事件频率、持续时长、edge 衰减。</li>
+<li>交易规则：<code>entry</code>= LP 正利润或三点 butterfly 正 credit 且连续 2 帧存在；<code>exit</code>= edge 回到 0 附近、任一腿失去流动性、或距到期不足 30 分钟；<code>sizing</code>= 不超过最弱腿可成交量的 25%~33%；<code>cost</code>= 手续费 + 半个 spread / 一个 spread / 1.5 个 spread 三档。</li>
+<li>first verdict：先看最近 7~14 天分钟快照里，事件数是否足够、平均存活时间是否 &gt; 2 帧、成本后是否仍有正 edge；若长期为 0，就把它降级为“尾部机会报警器”，而不是主策略。</li>
+</ul>
+<h2>5. 风险与误读</h2>
+<ul>
+<li>最大风险不是模型错，而是<strong>Quote 看起来有洞，真实成交根本吃不到</strong>。</li>
+<li>Deribit 盘口很可能已经足够有效，导致 raw alpha 频率过低。</li>
+<li>inverse / coin-margined 期权的 premium、手续费、腿间同步成交与保证金占用都要统一口径，否则会把假 edge 当真钱。</li>
+</ul>
+<h2>6. 来源与可复用点</h2>
+<ol>
+<li><strong>Jasper Chan (2026), _BTC Options Arbitrage Detector_, GitHub repo</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/JasperChan-24/BTC-Options-Arbitrage-Detector">https://github.com/JasperChan-24/BTC-Options-Arbitrage-Detector</a></li>
+<li>Readable URL: <a href="https://github.com/JasperChan-24/BTC-Options-Arbitrage-Detector/blob/main/README.md">https://github.com/JasperChan-24/BTC-Options-Arbitrage-Detector/blob/main/README.md</a></li>
+<li>可复用点：<code>src/services/arbitrageService.ts</code> 的 LP 约束写法、<code>deribitService.ts</code> 的公开链抓取、默认流动性过滤参数。</li>
+</ul>
+<ol>
+<li><strong>Paul Cousot (2005), _A note on sufficient conditions for no arbitrage_, Finance Research Letters</strong></li>
+</ol>
+<ul>
+<li>DOI: <a href="https://doi.org/10.1016/j.frl.2005.04.005">https://doi.org/10.1016/j.frl.2005.04.005</a></li>
+<li>Readable URL: <a href="https://doi.org/10.1016/j.frl.2005.04.005">https://doi.org/10.1016/j.frl.2005.04.005</a></li>
+<li>可复用点：用 shape restriction（单调 / 凸性）理解 butterfly arbitrage 的充分条件。</li>
+</ul>
+<ol>
+<li><strong>Jim Gatheral, Antoine Jacquier (2014), _Arbitrage-free SVI volatility surfaces_, Quantitative Finance</strong></li>
+</ol>
+<ul>
+<li>DOI: <a href="https://doi.org/10.1080/14697688.2013.819986">https://doi.org/10.1080/14697688.2013.819986</a></li>
+<li>Readable URL: <a href="https://doi.org/10.1080/14697688.2013.819986">https://doi.org/10.1080/14697688.2013.819986</a></li>
+<li>可复用点：提醒我们 static-arb 最终要落到整条曲面的一致性，而不只是单个 strike 对。</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<p>先别做大而全回测，直接做一个 <strong>Deribit BTC options static-arb event logger</strong>：连续抓 7~14 天分钟快照，记录每次 LP edge、持续时长、最弱腿深度、费用后三档净 edge；若事件稀少但偶发净边明显，再进入 paper trading；若长期全 0，就把这条线收编成 options 风险雷达，不再占 bot7 主 intake。</p>
+</body>
+</html>

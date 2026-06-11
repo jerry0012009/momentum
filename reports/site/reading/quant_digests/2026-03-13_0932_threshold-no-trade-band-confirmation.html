@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>短周期 BTC 里，先别强迫每次边界触碰都下单：threshold / no-trade band 更像 breakout 的确认层</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>短周期 BTC 里，先别强迫每次边界触碰都下单：threshold / no-trade band 更像 breakout 的确认层</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-13 09:33 UTC</span>
+      <span class="pill">研究时间：2026-03-13 09:32 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：breakout / confirmation / threshold / intraday / crypto</span>
+      <span class="pill">证据类型：论文证据（可访问全文页）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-13_0932_threshold-no-trade-band-confirmation.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-13 09:32 UTC</li>
+<li>类型：论文</li>
+<li>主题标签：breakout / confirmation / threshold / intraday / crypto</li>
+<li>证据类型：论文证据（可访问全文页）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>De Angelis, De Marchis, Marino, Martire, Oliva (2021), _Betting on bitcoin: a profitable trading between directional and shielding strategies_</strong>。它不是一篇“经典 breakout 论文”，但对当前 5m/15m 主线有个很实用的提醒：<strong>短周期里，真正重要的不一定是再找一个更花哨的指标，而是先回答——价格碰到边界时，为什么要立刻交易？有没有一个明确的 no-trade band / threshold，让系统先学会不乱出手？</strong></p>
+<p>论文用的是 2019 年 BTC 的 <strong>1 分钟数据</strong>，先用 LSTM 预测未来 60/90/120 分钟路径，再构造一个和价格路径相对独立的 <strong>Kim-style boundary</strong>，在边界上方/下方才做多或做空；若价格落在边界附近，则允许 <strong>no-trade</strong>，并额外讨论了 <strong>wait-and-see</strong>（等待更优时点）的做法。作者把它和 MA、MACD、Stochastic Oscillator 做了对比。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 在短周期 BTC 里，<strong>有意设计的 threshold / no-trade band</strong>，即便会牺牲一部分极端收益，也可能显著改善系统的损失控制；换句话说，<strong>先解决“什么时候不该立刻交易”</strong>，往往比继续叠加指标更值钱。</li>
+<li><strong>一句话证明方式：</strong> 作者把“预测路径”与“交易触发边界”拆开，使用独立边界来决定 long / short / no-trade，然后把该方案与 MA、MACD、随机振荡器在 Sharpe、Sortino、最大回撤（MDD）、Win Ratio 上做对比。</li>
+<li>对 <strong>MA</strong> 的对比里，作者明确写到：MA 往往能给出更高的 Sharpe，因为阈值会紧贴预测路径；但他们的 boundary-based 方案<strong>始终给出更低的最大回撤</strong>，体现出“safeguarding role（保护作用）”。</li>
+<li>对 <strong>MACD / Stochastic</strong> 的对比里，作者的原话是：<strong>在 60 分钟预测窗口上，他们的方案在 risk 和 return 两侧都更占优</strong>；到了 90/120 分钟，所有策略表现都变差，但他们的方案仍然更能压低损失。</li>
+<li>这对当前项目最有价值的地方在于：<strong>边界附近允许 no-trade</strong>，本质上就是把“碰线就做”改写成“突破 + 需要脱离边界一定距离 / 或者等待更优时点”——这和你现在关心的 <strong>1~3 根 K 线确认、阳线确认、回踩确认</strong> 是同一类设计问题。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇论文虽然不是 Donchian / trendline breakout 的标准母体，但和当前研究主线的连接其实很直接：</p>
+<ol>
+<li><strong>它在讨论“边界触发”而不是纯预测。</strong></li>
+<p>当前你最缺的，已经不是“再来一个趋势因子”，而是 <strong>breakout 触发后到底要不要立刻进</strong>。这篇论文等于从另一个角度说：<strong>请先定义一个不交易区间（no-trade zone）</strong>。</p>
+</ol>
+<ol>
+<li><strong>它把“方向判断”和“执行确认”拆开。</strong></li>
+<p>论文先预测方向/路径，再用边界决定是否实际交易。映射到 15m 上，就是：</p>
+</ol>
+<ul>
+<li>方向层：EMA 结构 / MA slope / higher-TF bias</li>
+<li>触发层：Donchian / range high-low / trendline break</li>
+<li>确认层：<code>close &gt; edge + τ</code>、<code>2-of-3 closes outside</code>、<code>retest_hold</code></li>
+</ul>
+<ol>
+<li><strong>它提供了一个很适合 clean-room replication 的思想：边界不要贴着价格。</strong></li>
+<p>很多裸 breakout 弱，不一定是方向错，而是<strong>边界离价格太近</strong>，噪声一碰就触发。</p>
+</ol>
+<h2>4. 可复刻的最小实验</h2>
+<h3>研究假设</h3>
+<p>在 Crypto 15m 上，<strong>给 breakout 增加 no-trade band（阈值带）</strong>，会比“刚碰到边界就交易”的裸 breakout 更稳；若再叠加 1~3 根确认或回踩确认，可能进一步降低假突破。</p>
+<h3>一个最小、因果上可执行的定义</h3>
+<ul>
+<li>资产：BTC / ETH / SOL perpetual</li>
+<li>周期：15m</li>
+<li>方向层：先固定一个最简单版本，例如 <code>EMA_fast &gt; EMA_slow</code> 只做多，反之只做空</li>
+<li>事件边界（二选一先做一个）：</li>
+<li><code>Donchian(20)</code> 上下沿</li>
+<li>或者 session opening range / rolling box 的上下沿</li>
+<li>触发对照组：</li>
+</ul>
+<ol>
+<li><strong>裸 breakout</strong>：<code>close &gt; edge</code></li>
+<li><strong>threshold breakout</strong>：<code>close &gt; edge + τ</code>，其中 <code>τ ∈ {0.05 ATR, 0.1 ATR, 0.2 ATR}</code></li>
+<li><strong>confirm_2of3</strong>：触发后 3 根里至少 2 根收在 <code>edge + τ</code> 外</li>
+<li><strong>retest_hold</strong>：突破后回踩 <code>edge</code> 或 <code>edge + τ/2</code>，但不重新跌回区间内</li>
+</ol>
+<ul>
+<li>出场先保持朴素：</li>
+<li><code>1 ATR</code> 初始止损</li>
+<li><code>2 ATR</code> 目标止盈</li>
+<li>或 <code>8 bar time stop</code></li>
+</ul>
+<h3>最该先看的指标</h3>
+<ol>
+<li><code>post_cost_return</code></li>
+<li><code>max_drawdown</code></li>
+<li><code>false_break_ratio</code></li>
+<li><code>outside_bar_persistence</code>（突破后还能在边界外站住几根）</li>
+</ol>
+<h2>5. 我对这篇论文的实际判断</h2>
+<h3>值得吸收的</h3>
+<ul>
+<li><strong>“边界触发 ≠ 碰到就做”</strong> 这个思想非常适合拿来重写当前 breakout 体系。</li>
+<li>它把 <strong>no-trade</strong> 明确写进策略，而不是把所有时间都当成必须表态的交易时刻。</li>
+<li>它强调 <strong>更低 MDD</strong> 的价值；这很适合用来约束当前很多“信号看起来行、回撤却很难看”的裸 breakout 原型。</li>
+</ul>
+<h3>不该照抄的</h3>
+<ul>
+<li>论文依赖 <strong>LSTM 路径预测 + CfD 框架</strong>，这对当前基础 alpha 主线来说有点重，也不该现在就搬进主系统。</li>
+<li>它<strong>未纳入交易成本 / CfD financing cost</strong>，这一点论文自己也等于默认简化掉了；搬到 Crypto 时必须补成本后验证。</li>
+<li>它不是专门研究 trendline / support-resistance / channel breakout 的论文，所以这里更适合作为<strong>确认层与 no-trade band 的结构启发</strong>，而不是“breakout 已被本文直接证明”。</li>
+</ul>
+<h2>6. 下一步怎么测（建议直接排进实验）</h2>
+<p>先不要上 LSTM，也不要碰复杂衍生品。直接做一个最小 clean-room 对照：</p>
+<ul>
+<li>baseline：<code>EMA direction + Donchian breakout</code></li>
+<li>ablation A：只加 <code>τ-band</code></li>
+<li>ablation B：只加 <code>2-of-3 closes outside</code></li>
+<li>ablation C：<code>τ-band + retest_hold</code></li>
+</ul>
+<p>如果结果显示：</p>
+<ul>
+<li>胜率略升但收益变少 → 看是否是机会被过滤太多</li>
+<li>收益差不多但 MDD 明显下降 → 这就是有价值的 confirmation layer</li>
+<li><code>false_break_ratio</code> 明显下降 → 说明 no-trade band 在当前资产/周期确实有用</li>
+</ul>
+<h2>7. 来源</h2>
+<ul>
+<li>De Angelis, P., De Marchis, R., Marino, M., Martire, A. L., &amp; Oliva, I. (2021). *Betting on bitcoin: a profitable trading between directional and shielding strategies*. Decisions in Economics and Finance, 44, 883–903.</li>
+<li>DOI: <a href="https://doi.org/10.1007/s10203-021-00324-z">https://doi.org/10.1007/s10203-021-00324-z</a></li>
+<li>Readable URL: <a href="https://link.springer.com/article/10.1007/s10203-021-00324-z">https://link.springer.com/article/10.1007/s10203-021-00324-z</a></li>
+</ul>
+</body>
+</html>

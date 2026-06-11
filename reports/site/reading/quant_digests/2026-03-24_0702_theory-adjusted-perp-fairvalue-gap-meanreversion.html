@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 perp 偏离只看 `mark-oracle`：这篇近 5 年论文更该先测的是「theory-adjusted fair-value gap (ρ)」短周期均值回归 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 perp 偏离只看 `mark-oracle`：这篇近 5 年论文更该先测的是「theory-adjusted fair-value gap (ρ)」短周期均值回归 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-24 07:03 UTC</span>
+      <span class="pill">研究时间：2026-03-24 07:02 UTC</span>
+      <span class="pill">类型：近 5 年论文（arXiv v6, 2024）+ 交易所公开数据 + DeFi 公开利率</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/relative-value/stat-arb/perpetual/fair-value/funding-rate/random-maturity-arbitrage/binance/aave/1m/3m/5m/15m/paper</span>
+      <span class="pill">证据类型：论文证据（主）+ 工程可复现（交易所公开 API）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-24_0702_theory-adjusted-perp-fairvalue-gap-meanreversion.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-24 07:02 UTC</li>
+<li>类型：近 5 年论文（arXiv v6, 2024）+ 交易所公开数据 + DeFi 公开利率</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当永续价格相对理论公允价 <code>F* = λS</code>（<code>λ=κ/(κ-(r-r&#x27;))</code>）出现极端偏离时，偏离 <code>ρ</code> 会向 0 回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（支持双边；spot short 不可用时可退化为单边 long-spot-only）</li>
+<li>主题标签：raw-alpha/mean-reversion/relative-value/stat-arb/perpetual/fair-value/funding-rate/random-maturity-arbitrage/binance/aave/1m/3m/5m/15m/paper</li>
+<li>证据类型：论文证据（主）+ 工程可复现（交易所公开 API）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这篇东西的 base alpha 不是 filter，而是“永续价格偏离理论公允价后的均值回归”本体。</strong></p>
+<p>这次不再把 perp 偏离只读成 <code>mark-oracle</code> 单指标，而是用 He et al. (2024 v6) 的 no-arbitrage 框架，把信号统一成 <code>ρ</code>：</p>
+<ul>
+<li><code>ρ &gt; 0</code>：永续相对现货“偏贵”</li>
+<li><code>ρ &lt; 0</code>：永续相对现货“偏便宜”</li>
+<li><code>|ρ|</code> 大到超过成本边界时，做回归交易（回到 0）</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话结论：</strong> <code>theory-adjusted fair-value gap (ρ)</code> 可以作为可独立复现、可完整落地的短周期 raw alpha 骨架，而不是只做解释变量。</li>
+<li><strong>一句话怎么证明：</strong> 论文给出闭式 no-arbitrage 价格与成本边界（Proposition 1/2），并在 Binance 小时级样本上用阈值交易验证了成本后仍有显著 Sharpe。</li>
+</ul>
+<p>关键数据点（论文口径）：</p>
+<ol>
+<li>样本：Binance <code>1h</code>，5 个币（BTC/ETH/BNB/DOGE/ADA），最早从 <code>2020-01-08</code> 到 <code>2024-03-11</code>。</li>
+<li>偏离幅度：<code>|ρ|</code> 均值约 <code>0.57~0.88</code>（年化百分比点），且跨币种共振明显（例如 <code>corr(ρ_BTC,ρ_ETH)≈0.89</code>）。</li>
+<li>高成本层下，数据驱动随机到期套利策略仍有正 Sharpe：<code>BTC 2.00</code>、<code>ETH 2.59</code>、<code>BNB 4.79</code>（Table 11）；同时论文报告 <code>|ρ|</code> 约每年收敛 <code>11%</code>，全样本累计约 <code>44%</code>，说明 edge 在衰减但未消失。</li>
+</ol>
+<h2>3. 为什么和当前 desk 直接相关</h2>
+<ul>
+<li>这是 <strong>raw alpha</strong>（mean reversion / relative value / stat-arb），直接扩充素材池。</li>
+<li>能直接映射 <code>1m/3m/5m/15m</code>：交易所公开 API 可拿现货、永续、资金费率；Aave 可拿稳定币借贷利率。</li>
+<li>组件拆解天然完整：</li>
+<li>entry：<code>|ρ|</code> 越过成本边界+统计阈值</li>
+<li>exit：<code>ρ</code> 回归到 0 或超时</li>
+<li>sizing：按 <code>|ρ|</code> 强度分级</li>
+<li>risk：偏离继续扩张止损、时钟黑窗、MDD kill-switch</li>
+<li>cost：显式手续费+滑点+资金费率</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / 统计套利 / 均值回归（双边）</li>
+<li>基础 alpha：<code>ρ_t = κ(f_t-s_t) - (r_t-r&#x27;_t)</code> 的极端值回归到 0</li>
+<li>regime：高拥挤（过去收益高）时 <code>ρ</code> 更易偏正；趋势加速段需更保守阈值</li>
+<li>filter / veto：</li>
+<li>资金费率结算时刻（Binance: <code>00:00/08:00/16:00 UTC</code>）前后 1~2 根 bar 可设黑窗</li>
+<li>极端清算/深度塌陷时暂停</li>
+<li>risk / sizing / execution overlay：</li>
+<li><code>size ∝ max(0, |ρ|-ρ_open)</code>，并设单笔/单币上限</li>
+<li><code>max_hold</code>（如 3~8 bars）防“应回不回”</li>
+<li>双边版本 + long-spot-only 退化版本并行评估</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 数据源、公开性、更新频率</h3>
+<ul>
+<li>Binance USDⓈ-M/Spot（公开）：</li>
+<li>perp/spot klines（<code>1m/3m/5m/15m</code>）</li>
+<li>funding rate / premium index</li>
+<li>Aave（公开）：稳定币借贷利率（可小时级快照并向前填充到 5m/15m）</li>
+<li>公开性：均公开可得</li>
+<li>更新频率：可映射到 <code>1m/3m/5m/15m</code></li>
+</ul>
+<h3>4.2 最小回测口径（先 5m，再 15m）</h3>
+<ul>
+<li>资产：<code>BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT</code></li>
+<li>定义：</li>
+<li><code>f=ln(F_perp)</code>, <code>s=ln(S_spot)</code></li>
+<li><code>κ=3*365</code>（8h 结算对应年化强度）</li>
+<li><code>r&#x27;≈0</code>（论文口径）</li>
+<li><code>ρ_t ≈ κ(f-s) - r_t</code></li>
+<li>入场：<code>|zscore(ρ)| &gt;= 2.0</code> 且 <code>|ρ|</code> 超过成本边界 <code>ρ_u/ρ_l</code></li>
+<li>出场：<code>ρ</code> 首次穿越 0 或 <code>max_hold=6 bars</code></li>
+<li>成本：先跑 <code>6/10/14 bps</code> 三档 round-trip</li>
+<li>先看指标：<code>Net Sharpe</code> + <code>持仓时长分布(OtC)</code></li>
+</ul>
+<h2>5. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>先做论文同口径 sanity check（1h）</strong>：确认 <code>ρ</code> 分布、相关性、边界触发频率大体一致。</li>
+<li><strong>再压到 15m/5m</strong>：比较 <code>z_in/z_out/max_hold</code> 网格，找“成本后仍正”的稳定平台，不追单点最优。</li>
+<li><strong>双边 vs 单边</strong>：分别评估 unrestricted 与 long-spot-only（现实 spot short 约束）。</li>
+<li><strong>结算时钟敏感性测试</strong>：对 <code>00/08/16 UTC</code> 前后黑窗做 ablation，看是否显著改善尾部亏损。</li>
+<li><strong>实盘门槛</strong>：要求 OOS <code>Net Sharpe &gt; 0.8</code>、<code>MDD &lt; 12%</code>、且在 <code>成本+50%</code> 压测下不翻负。</li>
+</ol>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>论文主样本是 <code>1h</code>，直接下钻到 <code>1m/3m</code> 可能被噪声与冲击成本吞噬。</li>
+<li><code>ρ</code> 需要借贷利率输入，Aave/交易所利率口径不一致会带来估计偏差。</li>
+<li>极端单边行情中，偏离可长期不回归，必须用超时与止损治理。</li>
+<li>该类 edge 已出现“随时间收敛”迹象，需持续滚动监控而非一次定参数。</li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>He, S., Manela, A., Ross, O., &amp; von Wachter, V. (2024). _Fundamentals of Perpetual Futures_ (v6). arXiv Working Paper.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.48550/arXiv.2212.06888</code></li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2212.06888">https://arxiv.org/abs/2212.06888</a></code></li>
+<li>Repo URL: <code>N/A</code></li>
+</ul>
+<ol>
+<li><strong>Binance Developers. (2026). _USDⓈ-M Futures API Docs (Kline / Premium Index / Funding Rate)_. Official Documentation.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>N/A</code></li>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+<li>Repo URL: <code>N/A</code></li>
+</ul>
+<ol>
+<li><strong>Aave. (2026). _Aave V3 Interest Rate / Reserve Data (for borrow-supply proxy)_. Official Documentation.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>N/A</code></li>
+<li>Readable URL: <code><a href="https://docs.aave.com/developers/">https://docs.aave.com/developers/</a></code></li>
+<li>Repo URL: <code>N/A</code></li>
+</ul>
+</body>
+</html>

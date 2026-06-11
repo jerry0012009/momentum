@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把《Designing funding rates for perpetual futures》只读成定价理论：对 short-cycle desk，更该先拆的是「funding-design residual × premium fade admission」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把《Designing funding rates for perpetual futures》只读成定价理论：对 short-cycle desk，更该先拆的是「funding-design residual × premium fade admission」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-16 16:17 UTC</span>
+      <span class="pill">研究时间：2026-04-16 16:15 UTC</span>
+      <span class="pill">类型：论文（arXiv 全文）+ Binance public-data portability probe（`15m`）</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/mean-reversion/funding/basis/perpetual/premium/funding-residual/admission/1m/3m/5m/15m/paper/public-data/cost/risk</span>
+      <span class="pill">证据类型：论文证据 + public-data probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-16_1615_fundingdesign-residual-premiumfade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-16 16:15 UTC</li>
+<li>类型：论文（arXiv 全文）+ Binance public-data portability probe（<code>15m</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>perp-spot premium</code>（基差）回归；<code>funding-design residual</code> 只负责做 admission / veto</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/mean-reversion/funding/basis/perpetual/premium/funding-residual/admission/1m/3m/5m/15m/paper/public-data/cost/risk</li>
+<li>证据类型：论文证据 + public-data probe</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<ul>
+<li><strong>Authors</strong>：Jaehyun Kim, Hyungbin Park</li>
+<li><strong>Year</strong>：2025（arXiv v1）</li>
+<li><strong>Title</strong>：*Designing funding rates for perpetual futures in cryptocurrency markets*</li>
+<li><strong>Venue</strong>：arXiv（q-fin.MF）</li>
+<li><strong>DOI</strong>：<code>10.48550/arXiv.2506.08573</code></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://arxiv.org/abs/2506.08573&gt;">https://arxiv.org/abs/2506.08573&gt;</a></li>
+<li><strong>HTML Full Text</strong>：&lt;<a href="https://arxiv.org/html/2506.08573v1&gt;">https://arxiv.org/html/2506.08573v1&gt;</a></li>
+<li><strong>Repo URL</strong>：N/A（论文）</li>
+</ul>
+<p>这篇论文最值钱的不是“BSDE 数学细节本身”，而是给了一个可工程化的框架： <strong>funding 应该是围绕目标价偏差（target - perp）去设计的反馈项</strong>，并且交易所实务上常见的是“过去 8 小时平均”的 path-dependent funding。</p>
+<h2>2) base alpha 先说清（必须先回答）</h2>
+<p>这篇东西在我们 desk 的 <strong>base alpha</strong> 是：</p>
+<p>&gt; <strong><code>perp-spot premium</code> 的短周期回归（short rich perp / long cheap spot，或反向）</strong>。</p>
+<p>论文里的 funding 设计思想（尤其是 <code>funding vs premium</code> 的偏差）更像 <strong>admission / veto 层</strong>，不是替代 base alpha 的新本体。</p>
+<h2>3) 关键结论（这轮最值钱）</h2>
+<ol>
+<li>论文给出的核心结构可以翻成交易语言：当 funding 与 premium 的“应有反馈关系”偏离时，说明 anchoring 机制在短期内可能失真，<strong>这恰好可作为基差回归策略的开关条件</strong>。</li>
+<li>我们用 Binance <code>15m</code> 公共数据（BTC/ETH/SOL，90 天）做的最小 probe 里，<code>residual</code> 极值区间确实能分层：</li>
+</ol>
+<ul>
+<li><code>|res_z|&gt;=2 且 residual 与 premium 反号</code> 桶：2 小时 gross 均值约 <strong>+1.18 bps</strong>，胜率 <strong>60.0%</strong>（<code>n=375</code>）</li>
+<li><code>|res_z|&gt;=2 且 residual 与 premium 同号</code> 桶：2 小时 gross 均值约 <strong>+0.22 bps</strong>，胜率 <strong>53.5%</strong>（<code>n=1017</code>）</li>
+</ul>
+<ol>
+<li>但这条 edge 目前仍是“薄 edge”：按 round-trip <code>14 bps</code> taker 粗口径，仍明显不过线，说明它更像<strong>可复用 admission 组件</strong>，不是可直接 taker 上线的成品策略。</li>
+</ol>
+<p>一句话核心结论： &gt; <strong>funding 设计残差能帮助“挑交易”，但单独拿来做短周期 taker alpha 仍太薄。</strong></p>
+<p>一句话证明方式： &gt; 先用论文给的 funding-feedback 思路定义 <code>residual = funding - κ·premium</code>，再在 Binance <code>15m</code> 公共数据上做分桶事件检验，看不同残差桶对后续 2 小时基差回归收益的分层效果。</p>
+<h2>3.5) 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / 统计套利（perp vs spot）</li>
+<li>基础 alpha：<code>premium</code> 回归</li>
+<li>regime：高波动或公告窗降权（可后续并入）</li>
+<li>filter / veto：<code>funding-design residual</code> 分桶（优先交易 <code>residual</code> 与 <code>premium</code> 反号、且 <code>|res_z|</code> 较高）</li>
+<li>risk / sizing / execution overlay：ATR 或波动目标缩放 + 单笔时长上限 + taker/maker 成本门槛</li>
+</ul>
+<h2>4) 可复刻的最小实验（可直接抄）</h2>
+<ul>
+<li><strong>数据源（公开可得）</strong>：</li>
+<li>Binance <code>premiumIndexKlines</code>（<code>15m</code>）</li>
+<li>Binance <code>fundingRate</code>（8h）</li>
+<li><strong>更新频率映射</strong>：</li>
+<li>premium：<code>1m/3m/5m/15m</code> 都可</li>
+<li>funding：8h 离散更新（前向填充）</li>
+<li><strong>样本</strong>：BTCUSDT / ETHUSDT / SOLUSDT，近 90 天</li>
+<li><strong>定义</strong>：</li>
+</ul>
+<ol>
+<li><code>premium_bps</code> = premium index × 10,000</li>
+<li><code>κ</code> = rolling OLS(funding ~ premium)</li>
+<li><code>residual</code> = funding_bps_8h - κ·premium_bps</li>
+<li>事件窗收益：未来 8 bars（2h）</li>
+</ol>
+<ul>
+<li><strong>优先看 2 个指标</strong>：</li>
+<li>bucket-level gross mean（bps）</li>
+<li>bucket-level win rate</li>
+</ul>
+<h2>5) 下一步怎么测（1m/3m/5m/15m）</h2>
+<ol>
+<li><strong>5m（主战）</strong>：把固定 <code>|res_z|</code> 改成分位阈值（如 top/bottom decile），并叠加 <code>premium_z</code> 双阈值，只做“高失真 + 高偏离”交集。</li>
+<li><strong>1m/3m（快检）</strong>：围绕 funding 结算前后窗口（如 <code>[-30,+30]</code> 分钟）测试 residual 的时变效应，验证是否有更高单笔 edge。</li>
+<li><strong>15m（稳健）</strong>：在 current gate 上加入 maker-first 假设，专门评估 <code>implementation shortfall</code>，看能否把薄 edge 从 <code>gross</code> 搬到 <code>net</code>。</li>
+<li><strong>统一 admission 口径</strong>：输出 <code>trade_count / gross_bps / net_bps / win_rate / holding_time</code>，先过成本生存线再谈复杂建模。</li>
+</ol>
+<h2>6) 风险与保留意见</h2>
+<ul>
+<li>当前 probe 是 first verdict，不含完整盘口冲击模型；不能当 production 结论。</li>
+<li>funding 是离散结算变量，硬当逐 bar 主信号易过拟合；更适合和 premium 本体一起做 gate。</li>
+<li><code>κ</code> 的稳定性依赖样本与币种，跨资产迁移前必须先做 rolling 稳健性检查。</li>
+</ul>
+<h2>7) 本轮产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/funding_design_residual_probe_2026-04-16_summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/funding_design_residual_probe_2026-04-16_trades.csv</code></li>
+<li><code>reports/artifacts/quant_digests/funding_design_residual_probe_2026-04-16_gatecheck.json</code></li>
+</ul>
+<h2>8) 来源</h2>
+<ol>
+<li>Kim, J., &amp; Park, H. (2025). *Designing funding rates for perpetual futures in cryptocurrency markets*. arXiv (q-fin.MF).</li>
+<p>DOI: &lt;<a href="https://doi.org/10.48550/arXiv.2506.08573&gt;">https://doi.org/10.48550/arXiv.2506.08573&gt;</a> Readable URL: &lt;<a href="https://arxiv.org/abs/2506.08573&gt;">https://arxiv.org/abs/2506.08573&gt;</a></p>
+<li>Binance USDⓈ-M Premium Index Klines API（public）: &lt;<a href="https://fapi.binance.com/fapi/v1/premiumIndexKlines&gt;">https://fapi.binance.com/fapi/v1/premiumIndexKlines&gt;</a></li>
+<li>Binance USDⓈ-M Funding Rate API（public）: &lt;<a href="https://fapi.binance.com/fapi/v1/fundingRate&gt;">https://fapi.binance.com/fapi/v1/fundingRate&gt;</a></li>
+</ol>
+</body>
+</html>

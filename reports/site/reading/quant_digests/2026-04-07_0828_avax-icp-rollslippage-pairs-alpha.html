@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 新 repo 只读成 cointegration 教程：对 short-cycle desk，更该先测的是「AVAX/ICP spread MR × cost-aware scaling × Roll-slippage sanity」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 新 repo 只读成 cointegration 教程：对 short-cycle desk，更该先测的是「AVAX/ICP spread MR × cost-aware scaling × Roll-slippage sanity」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-07 08:28 UTC</span>
+      <span class="pill">类型：GitHub 仓库 + repo 内回测产物 / 源码审计</span>
+      <span class="pill">主题标签：pairs / stat-arb / relative-value / mean-reversion / cointegration / cost-aware / roll-slippage / alt-pair / binance-spot / 15m / 5m</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-07_0828_avax-icp-rollslippage-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-07 08:28 UTC</li>
+<li>类型：GitHub 仓库 + repo 内回测产物 / 源码审计</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>15m</code> 上 <code>AVAXUSDT/ICPUSDT</code> 的 cointegration spread mean reversion</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：pairs / stat-arb / relative-value / mean-reversion / cointegration / cost-aware / roll-slippage / alt-pair / binance-spot / 15m / 5m</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 2026 新仓库 <code>Rah9742/Crypto-Stat-Arb</code>，重点读了 <code>README.md</code>、<code>config/default.yaml</code>、<code>src/crypto_trader/signals/pairs.py</code>、<code>data/processed/pairs/selection/pair_selection_2024-01-01_2026-03-23_15m.csv</code>、<code>data/processed/costs/strategy_comparison.csv</code> 与 <code>roll_slippage_summary.csv</code>。一句话说，这不是“找个 cointegrated pair 然后机械做 z-score”的学生作业，而是一个把 <strong>pair admission → signal shell → cost ladder</strong> 串起来的可复现 15m pairs 原型。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha</strong> 很清楚：<strong>稳定 cointegrated 的 alt-pair spread 偏离均值后会回归</strong>，不是 filter，不是 overlay。</li>
+<li>repo 先做滚动 pair ranking，再做交易。<code>AVAXUSDT/ICPUSDT</code> 在 <code>2024-01-01 ~ 2026-03-23</code> 的 <code>15m</code> pair selection 里排 <strong>第 2</strong>，说明作者不是先拍脑袋挑 pair，再回测。</li>
+<li>执行壳是完整的：滚动 OLS hedge ratio、<code>|z|</code> 入场、均值回归出场、<code>stop z-score</code>、<code>max holding</code>、<code>gross cap</code>、<code>cost-aware scale</code> 全都有，能直接翻成 desk 可跑策略。</li>
+<li>更值钱的是它把“成本后还剩多少”摆到台面上：pair 线在测试段 <code>2025-11-10 ~ 2026-03-23</code>，<strong>gross return 38.17% → net return 25.74%</strong>，共 <strong>23 笔</strong>，平均持有 <strong>47.39 bars</strong>，<code>net_sharpe = 1.18</code>。这说明 alpha 不是只活在 frictionless 幻觉里，但也提醒你：一旦把滑点认真加进去，收益会被明显削掉。</li>
+<li>一句话核心结论：<strong>值得抄的不是“AVAX/ICP 这个名字”，而是“先滚动筛 pair，再用成本感知的 spread MR 壳去吃回归”。</strong></li>
+<li>一句话证明方式：<strong>repo 直接给了滚动 pair 评分表、交易配置、回测对账表和 Roll slippage 估计，不是只放一张漂亮净值图。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和我们 desk 现在要补的 raw alpha 素材池是直接相关的：它不是 breakout/filter，也不是解释型综述，而是一条能单独成立的 <strong>relative-value / pairs raw alpha</strong>。更重要的是，它天然适配 <code>5m/15m</code> 研究节奏：先做 pair admission，再做 spread trade shell，最后补 cost/risk。对我们来说，可复用的不是“spot 上 AVAX/ICP 一定好”，而是三层结构：</p>
+<ol>
+<li><strong>pair admission</strong>：用 rolling cointegration 显著性、稳定性、half-life 先筛；</li>
+<li><strong>signal shell</strong>：spread <code>z-score</code> 偏离后回归；</li>
+<li><strong>cost sanity</strong>：交易前先过 slippage / turnover / hold-time 这层门。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / stat-arb / 均值回复</li>
+<li>基础 alpha：稳定 cointegrated alt-pair 的 residual spread 在大偏离后回归均值</li>
+<li>regime：只在 rolling formation 窗口内仍显著 cointegrated、half-life 不失控的 pair 上交易</li>
+<li>filter / veto：rolling significance、hedge-ratio stability、<code>exit_zscore</code>、<code>stop_zscore</code>、<code>max_holding_period</code></li>
+<li>risk / sizing / execution overlay：<code>gross_exposure_cap</code>、<code>gross_allocation_fraction</code>、<code>cost_aware_min_scale</code>、asset-level Roll slippage、transaction cost bps</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：<code>15m</code> 上的 liquid alt-pair 不是“所有 pair 都能做”，而是<strong>先筛出稳定 pair，再做 spread MR</strong> 才有希望在成本后活下来。</li>
+<li>一个可计算定义：</li>
+<li>formation：<code>126d ~ 182d</code></li>
+<li>signal：rolling OLS spread z-score</li>
+<li>entry：<code>|z| &gt;= 1.75 ~ 2.25</code></li>
+<li>exit：<code>|z| &lt;= 0.25 ~ 0.75</code></li>
+<li>stop：<code>|z| &gt;= 3.5 ~ 4.5</code></li>
+<li>time stop：<code>32 ~ 48h</code></li>
+<li>最小回测切口：先只跑 <code>AVAX/ICP</code>，再扩到 top-3 shortlisted pairs；频率先做 <code>15m</code>，再下钻 <code>5m</code> 看 half-life 是否仍成立；市场先用 Binance spot 或 perp mid-price proxy。</li>
+<li>最该先看 2 个指标：</li>
+</ul>
+<ol>
+<li><strong>成本后 Sharpe / positive-window ratio</strong></li>
+<li><strong>turnover 与平均持有时长是否匹配 half-life</strong></li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这条线在 repo 里主要落在 <strong>Binance spot</strong>；如果迁到 perp，要额外吃 funding、冲击成本、强平尾部，不要直接照搬收益。</li>
+<li>Roll slippage 比“完全不加滑点”诚实，但仍可能低估真实 taker 成本，尤其在单边冲击和小币种拥挤时。</li>
+<li><code>AVAX/ICP</code> 这类 alt pair 的协整关系容易被叙事、上币、单币事件打断，所以 pair admission 必须滚动更新，不能静态白名单。</li>
+<li>这类策略常见死法不是“均值不回归”，而是<strong>回归前先继续扩散 + 成本把边磨平</strong>；所以 stop/time-stop 不能省。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Rah9742. (2026). *Crypto-Stat-Arb*. GitHub.</li>
+<li>Readable URL: <code><a href="https://github.com/Rah9742/Crypto-Stat-Arb">https://github.com/Rah9742/Crypto-Stat-Arb</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/Rah9742/Crypto-Stat-Arb">https://github.com/Rah9742/Crypto-Stat-Arb</a></code></li>
+<li>关键源码/产物：</li>
+<li><code><a href="https://github.com/Rah9742/Crypto-Stat-Arb/blob/main/config/default.yaml">https://github.com/Rah9742/Crypto-Stat-Arb/blob/main/config/default.yaml</a></code></li>
+<li><code><a href="https://github.com/Rah9742/Crypto-Stat-Arb/blob/main/src/crypto_trader/signals/pairs.py">https://github.com/Rah9742/Crypto-Stat-Arb/blob/main/src/crypto_trader/signals/pairs.py</a></code></li>
+<li><code><a href="https://github.com/Rah9742/Crypto-Stat-Arb/blob/main/data/processed/pairs/selection/pair_selection_2024-01-01_2026-03-23_15m.csv">https://github.com/Rah9742/Crypto-Stat-Arb/blob/main/data/processed/pairs/selection/pair_selection_2024-01-01_2026-03-23_15m.csv</a></code></li>
+<li><code><a href="https://github.com/Rah9742/Crypto-Stat-Arb/blob/main/data/processed/costs/strategy_comparison.csv">https://github.com/Rah9742/Crypto-Stat-Arb/blob/main/data/processed/costs/strategy_comparison.csv</a></code></li>
+<li><code><a href="https://github.com/Rah9742/Crypto-Stat-Arb/blob/main/data/processed/costs/roll_slippage_summary.csv">https://github.com/Rah9742/Crypto-Stat-Arb/blob/main/data/processed/costs/roll_slippage_summary.csv</a></code></li>
+</ul>
+</body>
+</html>

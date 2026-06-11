@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份涨速策略只读成“行情扫描器”：对 short-cycle crypto desk，更该先拆的是「价格涨速 + 成交量放大」这条 short-term strength continuation raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份涨速策略只读成“行情扫描器”：对 short-cycle crypto desk，更该先拆的是「价格涨速 + 成交量放大」这条 short-term strength continuation raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-20 19:00 UTC</span>
+      <span class="pill">研究时间：2026-04-20 18:56 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：trend / momentum / volume / volatility / regime / execution / risk</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-20_1856_speed-volume-momentum-shell-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-20 18:56 UTC</li>
+<li>类型：GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：短窗价格加速后，强势币种更容易继续跑</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：trend / momentum / volume / volatility / regime / execution / risk</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了 <code>yeshunyi/crypto-momentum-strategy</code>：一个 2025 维护痕迹仍然很新的加密货币涨速策略仓，核心是按涨速、成交量、RSI、ATR 和市场波动状态，去挑短期强势币并做分段入场。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这套东西的 base alpha 很清楚，就是“短窗涨得快、量也跟上”的币，下一小段往往还会继续强。</li>
+<li>仓库不只是信号器，代码层已经把 <code>signal -&gt; risk -&gt; order -&gt; performance</code> 串起来，算是一个完整策略壳。</li>
+<li>但我做的 5m portability probe 显示：<strong>强度最高的一档并不最好</strong>，<code>strongest_only</code> 在 <code>3/6/12</code> bars 上分别约 <code>-7.21 / -7.03 / -11.89 bps</code>，反而是 <code>mid-vol</code> 桶更像样。</li>
+<li><code>mid-vol</code> 只占 <code>23</code> 个事件，但 <code>3/6/12</code> bars 平均约 <code>+63.83 / +130.55 / +160.69 bps gross</code>；这更像“有 pocket，但很窄”，不是可无脑放大的普适趋势机。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>它和 <code>momentum</code> 主线直接对口：这是一个标准的 <strong>trend/momentum raw alpha</strong>，而且把 volume confirmation、ATR regime、RSI veto、分段入场、止盈止损都摆在同一壳里，适合拿来拆成可复用组件。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势 / 横截面长仓</li>
+<li>基础 alpha：短窗涨速 + 成交量扩张</li>
+<li>regime：BTC ATR 桶（高/中/低波动）</li>
+<li>filter / veto：RSI&lt;75、黑名单、板块/热门币筛选</li>
+<li>risk / sizing / execution overlay：分段入场、ATR 目标、止损/移动止损、单笔/总风险控制</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：涨速信号本身是对的，但要先过“中波动”门，太猛的那一档可能已经追高。</li>
+<li>可计算定义：<code>mom_pct &gt;= threshold_pct</code> 且 <code>vol_ratio &gt;= 1.5</code> 且 <code>RSI14 &lt; 75</code>，threshold 随 BTC ATR 桶变化（<code>low/mid/high = 1.5/2.0/3.0%</code>）。</li>
+<li>最小切口：Binance USDⓈ-M 5m，10 个 liquid majors，2026-01~03。</li>
+<li>先看 2 个指标：<code>avg bps</code> 和 <code>win rate</code>，再看 strongest-only 是否比 mid-vol 桶更差。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这不是“已经证明能赚钱”的结论；它更像一个 <strong>pocket 识别器</strong>。</li>
+<li>目前 <code>mid-vol</code> 样本很少，容易被少数大波段拉高均值。</li>
+<li>repo 里提到的 sector ranking / social data 在代码和文档之间未必完全一致，别把它们当成已验证 alpha 本体。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>yeshunyi. (2025). *crypto-momentum-strategy*. GitHub.</li>
+<li>Repo URL: &lt;<a href="https://github.com/yeshunyi/crypto-momentum-strategy&gt;">https://github.com/yeshunyi/crypto-momentum-strategy&gt;</a></li>
+<li>Readme / code audit: <code>README.md</code>, <code>momentum_strategy.py</code>, <code>signal_generator.py</code>, <code>market_analyzer.py</code>, <code>risk_manager.py</code>, <code>config.yaml</code></li>
+</ul>
+</body>
+</html>

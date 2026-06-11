@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2024 *Financial Innovation* 论文只读成“高频再平衡配置建议”：对 short-cycle desk，更该先测的是「cointegrated basket equal-weight drift × threshold rebalance」这条完整 relative-value raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2024 *Financial Innovation* 论文只读成“高频再平衡配置建议”：对 short-cycle desk，更该先测的是「cointegrated basket equal-weight drift × threshold rebalance」这条完整 relative-value raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 01:38 UTC</span>
+      <span class="pill">研究时间：2026-04-03 01:36 UTC</span>
+      <span class="pill">类型：raw alpha</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/basket-rebalancing/multi-asset/cointegration/equal-weight/threshold-rebalance/high-frequency/portfolio-size/regime-split/binance/btc-quoted/1m/3m/5m/15m/paper/public-data/cost</span>
+      <span class="pill">证据类型：2024 Springer 开放获取全文（article + tables）/ OpenAlex + Crossref metadata</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_0136_coint-basket-hfra-rebalance-alpha.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：多资产 cointegrated basket 内部的<strong>相对强弱偏离均值回归</strong>；当篮子里某些腿的当前市值权重显著跑离等权目标时，卖出超配腿、买入低配腿，把组合重新拉回目标权重</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>时间：2026-04-03 01:36 UTC</li>
+<li>类型：raw alpha</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/basket-rebalancing/multi-asset/cointegration/equal-weight/threshold-rebalance/high-frequency/portfolio-size/regime-split/binance/btc-quoted/1m/3m/5m/15m/paper/public-data/cost</li>
+<li>证据类型：2024 Springer 开放获取全文（article + tables）/ OpenAlex + Crossref metadata</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮选它，不是因为我们缺“又一个 pairs 阈值故事”，而是因为它把 <strong>pairs rebalancing</strong> 往前推进了一步：</p>
+<ul>
+<li>不再只做 <code>2-leg pair</code></li>
+<li>而是做 <strong>3-leg / 5-leg cointegrated basket</strong></li>
+<li>直接比较 <strong>不同 trend / volatility regime</strong> 下，篮子大小与高频再平衡收益之间的关系</li>
+<li>还给了一个很硬的 production 启发：<strong>1 分钟再平衡壳本身就能独立活成 raw alpha，不必先等 fancy spread model 才开工</strong></li>
+</ul>
+<p>对我们 desk 来说，这比再补一个“某个形态在某个窗口下更好”更值钱，因为它补的是一块还没系统写进池子的能力：</p>
+<p>&gt; <strong>从 pair mean reversion 升级到 basket relative-value rebalancing。</strong></p>
+<h2>2. 为什么这轮值得做它</h2>
+<p>先回答任务里最重要的那句：<strong>这篇东西的 base alpha 是什么？</strong></p>
+<p>答：<strong>篮子内部相对涨跌失衡后的权重回归。</strong></p>
+<p>更直白一点：</p>
+<ol>
+<li>先拿一组共同走势足够稳定的币，组成一个 <code>3~5</code> 腿篮子；</li>
+<li>初始时各腿等权；</li>
+<li>运行中，某些腿涨得更快、某些腿掉得更多，组合权重开始偏离；</li>
+<li>当偏离超过阈值 <code>T</code>，就卖出“超配”的腿、买入“低配”的腿；</li>
+<li>吃的是 <strong>relative-value / stat-arb / mean reversion</strong>，不是方向判断。</li>
+</ol>
+<p>所以它不是 filter，不是 overlay，也不是纯 portfolio management。<strong>alpha 本体就在“偏离后回补”这一步。</strong></p>
+<p>这轮优先它，还有 3 个现实原因：</p>
+<ul>
+<li><strong>它是完整策略，不是半句话。</strong> entry / rebalance / threshold / fee / portfolio size 都给了。</li>
+<li><strong>它能直接扩充 raw alpha 素材池。</strong> 我们最近已经补了很多 <code>pair shell</code>，这篇补的是 <strong>multi-asset basket shell</strong>。</li>
+<li><strong>它天然适合 <code>1m / 3m / 5m / 15m</code> 最小实验。</strong> 只要公开 K 线就能先复现，不依赖私有订单流或付费因子。</li>
+</ul>
+<h2>3. 论文信息</h2>
+<ul>
+<li><strong>Authors</strong>: Mahmut Bağcı, Pınar Kaya Soylu</li>
+<li><strong>Year</strong>: 2024</li>
+<li><strong>Title</strong>: *Optimal portfolio selection with volatility information for a high frequency rebalancing algorithm*</li>
+<li><strong>Venue</strong>: *Financial Innovation*</li>
+<li><strong>DOI</strong>: <code>10.1186/s40854-023-00590-3</code></li>
+<li><strong>Readable URL</strong>: <a href="https://link.springer.com/article/10.1186/s40854-023-00590-3">https://link.springer.com/article/10.1186/s40854-023-00590-3</a></li>
+<li><strong>DOI URL</strong>: <a href="https://doi.org/10.1186/s40854-023-00590-3">https://doi.org/10.1186/s40854-023-00590-3</a></li>
+<li><strong>Repo URL</strong>: 无独立公开 repo；正文说明附录含 <code>Rebalancing_Algorithm.m</code> 伪代码 / Matlab 脚本</li>
+</ul>
+<h2>4. 论文到底做了什么</h2>
+<h3>4.1 数据与样本</h3>
+<ul>
+<li>交易所：<strong>Binance</strong></li>
+<li>标的：<strong>40 个 BTC 计价 crypto-assets</strong>（如 <code>AAVE/BTC</code>, <code>ADA/BTC</code>, <code>ETH/BTC</code> 等）</li>
+<li>频率：<strong>1 分钟 close price</strong></li>
+<li>样本：<strong>2021 年逐月</strong>数据，用于六类趋势 / 波动 regime 对照</li>
+<li>长样本验证：<strong>2021-01-01 ~ 2023-04-30（28 个月）</strong></li>
+<li>手续费假设：<strong>0.1% taker fee</strong></li>
+<li>阈值扫描：<strong>1% ~ 20%</strong>，步长 <strong>1%</strong></li>
+</ul>
+<p>作者把样本分成 6 类：</p>
+<ul>
+<li>up-trend with high volatility</li>
+<li>up-trend with low volatility</li>
+<li>down-trend with high volatility</li>
+<li>down-trend with low volatility</li>
+<li>no-trend with high volatility</li>
+<li>no-trend with low volatility</li>
+</ul>
+<p>并且先做 Johansen cointegration test，再把 HFRA（high-frequency rebalancing algorithm）应用到 <code>2</code>、<code>3</code>、<code>5</code> 腿组合上。</p>
+<h3>4.2 HFRA 的策略壳是什么</h3>
+<p>它的壳很朴素，但正因为朴素，才适合 desk 先复现：</p>
+<ul>
+<li>起始时篮子内各腿<strong>等权</strong>；</li>
+<li>记每条腿当前总价值为 <code>TV_i = price_i × quantity_i</code>；</li>
+<li>若任意两腿之间的<strong>价值偏离比例</strong>高于阈值 <code>T</code>，则：</li>
+<li>卖出当前更贵 / 更超配的腿；</li>
+<li>买入当前更便宜 / 更低配的腿；</li>
+<li>使相关腿重新回到<strong>平均价值</strong>；</li>
+<li>成本按 <code>0.1% taker</code> 扣除。</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>不是预测谁会涨，而是承认“同一个篮子内部会短暂失衡”，然后持续把它拉回等权。</strong></p>
+<p>这个思路对 short-cycle desk 很重要，因为它比“先定义一条复杂 spread，再设 z-score”更通用：</p>
+<ul>
+<li>pair 能做</li>
+<li>3 腿能做</li>
+<li>5 腿也能做</li>
+<li>后面再叠加 beta-neutral、sector-neutral、microstructure veto 都很自然</li>
+</ul>
+<h2>5. 最重要的 desk 启发：这不是 pairs 的重复，而是把 raw alpha 壳扩成 basket</h2>
+<p>如果只看标题，很容易把这篇当成“高频再平衡算法 + 组合配置建议”。</p>
+<p>但对我们真正有价值的，不是“portfolio size 多大更优”这个结论本身，而是它明示了下面这条 alpha 链条：</p>
+<ol>
+<li><strong>先找到 cointegrated basket</strong>，不必局限于双腿；</li>
+<li><strong>以等权为锚</strong>，而不是以某条单独 spread 为锚；</li>
+<li><strong>把权重漂移</strong>当作错价代理；</li>
+<li><strong>用 threshold rebalance</strong> 吃掉内部强弱回归；</li>
+<li>再根据 volatility / trend 决定该不该放大篮子、降低门槛、或收缩风险。</li>
+</ol>
+<p>这比普通 pairs 更适合当前 desk 的一个点在于：</p>
+<ul>
+<li>pairs 往往卡在“到底该配哪两条腿”</li>
+<li>basket shell 则允许你先把<strong>同主题 / 同 beta / 同风格</strong>的 <code>3~5</code> 个币先装进一个容器，再做内部均值回归</li>
+</ul>
+<p>换句话说，<strong>这篇补的不是一个更 fancy 的 signal，而是一个更宽的 raw-alpha 容器。</strong></p>
+<h2>6. 关键证据</h2>
+<h3>6.1 高波动上行期：篮子越大，HFRA 越赚钱</h3>
+<p>论文在 <code>up-trend + high volatility</code> 组上的结果非常激进，但方向很清楚：</p>
+<ul>
+<li><code>2</code> 腿组合平均利润：<strong>151.5%</strong></li>
+<li><code>3</code> 腿组合平均利润：<strong>156.06%</strong></li>
+<li><code>5</code> 腿组合利润：<strong>160.46%</strong></li>
+</ul>
+<p>也就是说，在作者定义的高波动上行环境里，<strong>从 pairs 扩到 basket，不是稀释 alpha，反而是放大 HF rebalance shell 的收益承载力。</strong></p>
+<h3>6.2 低波动上行期：仍赚钱，但“加腿数”的边际收益变小</h3>
+<p><code>up-trend + low volatility</code>：</p>
+<ul>
+<li><code>2</code> 腿平均利润：<strong>18.23%</strong></li>
+<li><code>3</code> 腿平均利润：<strong>18.51%</strong></li>
+<li><code>5</code> 腿利润：<strong>18.70%</strong></li>
+</ul>
+<p>这组数字的意义不是“18% 一定能复现”，而是：</p>
+<p>&gt; <strong>低波动时，basket shell 还能活，但“扩大篮子”不再带来很强的额外收益。</strong></p>
+<p>所以如果我们要把这条线迁到 <code>5m / 15m</code>，就不该默认“篮子越大越好”，而应该把 <strong>realized vol / dispersion</strong> 先当 gate。</p>
+<h3>6.3 高波动下跌期：还是会亏，但更多腿能减少亏损</h3>
+<p><code>down-trend + high volatility</code>：</p>
+<ul>
+<li><code>2</code> 腿平均亏损：<strong>-25.20%</strong></li>
+<li><code>3</code> 腿平均亏损：<strong>-24.07%</strong></li>
+<li><code>5</code> 腿亏损：<strong>-23.04%</strong></li>
+</ul>
+<p>这说明一个很实用的事实：</p>
+<ul>
+<li><strong>basket shell 不是自动免疫方向风险</strong>；</li>
+<li>但在坏 regime 里，<strong>加腿数能削弱亏损斜率</strong>。</li>
+</ul>
+<p>这对实盘映射很关键：</p>
+<ul>
+<li>上行高波下可以放开 gross；</li>
+<li>下行高波下不要简单关机，而是优先 <strong>收缩单篮子仓位 / 提高触发阈值 / 增加 beta hedge</strong>。</li>
+</ul>
+<h3>6.4 无趋势环境：靠高频回补吃小 edge，但不能期待大肉</h3>
+<p><code>no trend + high volatility</code>：</p>
+<ul>
+<li><code>2</code> 腿平均：<strong>-0.63%</strong></li>
+<li><code>3</code> 腿平均：<strong>0.43%</strong></li>
+<li><code>5</code> 腿：<strong>1.70%</strong></li>
+</ul>
+<p><code>no trend + low volatility</code>：</p>
+<ul>
+<li><code>2</code> 腿平均：<strong>1.67%</strong></li>
+<li><code>3</code> 腿平均：<strong>1.80%</strong></li>
+<li><code>5</code> 腿：<strong>1.88%</strong></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>没有明确趋势时，这条壳还能磨出一点点边；</li>
+<li>但它更像<strong>小而稳定的内在回补 edge</strong>，不该拿它当爆发型 alpha。</li>
+</ul>
+<h3>6.5 长样本对照：1m HFRA 明显胜过普通 TR / PR</h3>
+<p>作者把五个大市值 BTC 计价资产（<code>ADA/BTC</code>, <code>BNB/BTC</code>, <code>DOGE/BTC</code>, <code>ETH/BTC</code>, <code>XRP/BTC</code>）组成 5 腿组合，做了 <strong>28 个月</strong>长样本对照：</p>
+<ul>
+<li><strong>HFRA</strong>：<strong>1435.01%</strong></li>
+<li><strong>TR</strong>：<strong>935.04%</strong></li>
+<li><strong>PR</strong>：低于 HFRA，且不同日/周/月/季/年重平衡频率之间没有稳定优势</li>
+</ul>
+<p>同时作者还给出两个很有 desk 味道的结果：</p>
+<ul>
+<li><strong>1 分钟数据 &gt; 2 分钟数据 &gt; 5 分钟数据</strong></li>
+<li>Fisher–Pitman permutation test 支持 <strong>HFRA 显著优于 TR / PR</strong></li>
+</ul>
+<p>这组证据很重要，因为它说明：</p>
+<p>&gt; <strong>不是“再平衡”这件事天然赚钱，而是“足够高频地捕捉篮子内错位”才是 edge 来源。</strong></p>
+<h2>7. 这篇 paper 对 desk 最值得拿走的，不是原文回报率，而是 4 个可拆组件</h2>
+<h3>7.1 组件 A：把 pair shell 升级成 basket shell</h3>
+<p>我们最近库里已经有很多：</p>
+<ul>
+<li>pair spread z-score</li>
+<li>OU fade</li>
+<li>copula mispricing</li>
+<li>microprice / OBI veto pairs</li>
+</ul>
+<p>这篇真正该补进来的是：</p>
+<p>&gt; <strong>multi-asset equal-weight drift rebalance</strong></p>
+<p>也就是：</p>
+<ul>
+<li>不再只问“这两条腿是否回归”</li>
+<li>改成问“这个篮子内部谁暂时跑太快 / 太慢了”</li>
+</ul>
+<p>这能直接服务：</p>
+<ul>
+<li>sector basket（L1、公链、meme、AI、DeFi）</li>
+<li>beta 相近资产簇</li>
+<li>由聚类 / PCA / coint shortlist 生成的 3~5 腿容器</li>
+</ul>
+<h3>7.2 组件 B：trend / vol 不是信号本体，但能当很强的 regime gate</h3>
+<p>这篇的 headline 不是 gate，但结果已经非常明确地暗示：</p>
+<ul>
+<li><strong>高波动上行</strong>：最适合放大 HFRA</li>
+<li><strong>低波动</strong>：edge 还在，但别指望放大腿数就线性增益</li>
+<li><strong>高波动下行</strong>：需要收缩风险，不能把 rebalancing 当防空仓 shield</li>
+</ul>
+<p>所以落地时最自然的做法是：</p>
+<ul>
+<li>raw alpha 还是 <code>equal-weight drift rebalance</code></li>
+<li>regime gate 用：</li>
+<li>basket realized vol 分位数</li>
+<li>basket drift sign / BTC beta sign</li>
+<li>dispersion / cross-sectional range</li>
+</ul>
+<h3>7.3 组件 C：腿数本身是风险收益旋钮</h3>
+<p>论文在多个 regime 下都给出同一个方向：</p>
+<ul>
+<li>高频且高波时，<strong>更多腿</strong>通常更有利；</li>
+<li>低波时，更多腿只是轻微改善；</li>
+<li>坏 regime 里，更多腿更像<strong>减亏器</strong>而不是提收益器。</li>
+</ul>
+<p>所以 desk 第一版不该只 sweep <code>threshold</code>，还该 sweep：</p>
+<ul>
+<li><code>2</code> / <code>3</code> / <code>5</code> 腿</li>
+<li>同 sector vs 跨 sector</li>
+<li>equal-weight vs beta-neutral</li>
+</ul>
+<h3>7.4 组件 D：continuous rebalance 是一个独立可测的 exit 设计</h3>
+<p>很多 stat-arb 回测默认都写成：</p>
+<ul>
+<li>开仓一次</li>
+<li>等均值回归</li>
+<li>平仓一次</li>
+</ul>
+<p>但这篇的壳更接近：</p>
+<ul>
+<li><strong>持续监控</strong></li>
+<li><strong>偏离就回补</strong></li>
+<li><strong>不必等待 flat-to-flat round trip</strong></li>
+</ul>
+<p>这对 <code>1m / 3m</code> 很有启发：</p>
+<ul>
+<li>某些 basket alpha 的 edge，可能不是单次完整 round-trip；</li>
+<li>而是靠多次小回补，把内部失衡不断 harvest 掉。</li>
+</ul>
+<h2>8. 映射到 <code>1m / 3m / 5m / 15m</code> 的最小可复现实验</h2>
+<h3>8.1 可独立复现的 raw alpha 版本</h3>
+<p><strong>Universe</strong></p>
+<ul>
+<li>Binance / Bybit / OKX 上成交最活跃的 <code>20~30</code> 个 perp</li>
+<li>第一版优先按主题分篮子：L1、meme、DeFi、beta-high alt、payment coins</li>
+</ul>
+<p><strong>Basket 构造</strong></p>
+<ul>
+<li>每天或每 4h 做一次 shortlist：</li>
+<li>过去 <code>3~7</code> 天相关性高</li>
+<li>过去 <code>3~7</code> 天 Johansen / Engle-Granger 至少不过分差</li>
+<li>波动 / 成交额接近</li>
+<li>从 shortlist 中取 <code>3</code> 腿或 <code>5</code> 腿组成候选篮子</li>
+</ul>
+<p><strong>锚点</strong></p>
+<ul>
+<li>目标权重先用最朴素的 <strong>equal weight</strong></li>
+<li>后续再对照：beta-neutral / vol-target weight</li>
+</ul>
+<p><strong>信号 / 触发</strong></p>
+<ul>
+<li>每条腿当前权重：<code>w_i = notional_i / basket_nav</code></li>
+<li>目标权重：<code>w* = 1 / N</code></li>
+<li>偏离度：<code>d_i = w_i - w*</code></li>
+<li>若 <code>max(|d_i|)</code> 超过阈值 <code>T</code>：</li>
+<li>short 超配腿</li>
+<li>long 低配腿</li>
+<li>把偏离拉回到 <code>w*</code> 或部分回补到 <code>w* ± ε</code></li>
+</ul>
+<p><strong>退出</strong></p>
+<ul>
+<li>版本 A：完全照 paper，continuous rebalance，不强制 flat</li>
+<li>版本 B：偏离回落至 <code>T/3</code> 时 flatten</li>
+<li>版本 C：到 funding 时钟 / UTC session 边界统一 flatten</li>
+</ul>
+<p><strong>成本</strong></p>
+<ul>
+<li>maker：单边 <code>2~4 bps</code></li>
+<li>taker：单边 <code>5~8 bps</code></li>
+<li>paper 参考：<strong>10 bps taker</strong></li>
+</ul>
+<p><strong>仓位 / 风险</strong></p>
+<ul>
+<li>单篮子 gross 先固定</li>
+<li>单腿 notional cap 与成交额 / open interest 挂钩</li>
+<li>若篮子对 BTC 残余 beta 过大，则：</li>
+<li>缩杠杆</li>
+<li>或加一条 BTC hedge</li>
+</ul>
+<h3>8.2 真正值得 desk 先测的参数矩阵</h3>
+<p>先别一上来就卷复杂优化，第一版只扫 4 维：</p>
+<ol>
+<li><strong>频率</strong>：<code>1m / 3m / 5m / 15m</code></li>
+<li><strong>篮子大小</strong>：<code>2 / 3 / 5</code> 腿</li>
+<li><strong>阈值</strong>：<code>1% ~ 12%</code>（perp 先从更紧区间起步，再扩到 <code>20%</code>）</li>
+<li><strong>regime gate</strong>：</li>
+</ol>
+<ul>
+<li><code>realized vol &gt; median</code> vs <code>&lt;= median</code></li>
+<li><code>basket drift &gt; 0</code> vs <code>&lt;= 0</code></li>
+</ul>
+<p>这样能很快回答 3 个核心问题：</p>
+<ul>
+<li>basket shell 是否真的比 pair shell 更稳？</li>
+<li>高频优势在 perp 上是否还能保留到 <code>3m / 5m</code>？</li>
+<li>高波上行这个 gate 是否真的能放大净值斜率？</li>
+</ul>
+<h2>9. 下一步怎么测</h2>
+<h3>实验 1：pair shell vs 3-leg / 5-leg shell 正面对照</h3>
+<ul>
+<li>同一 universe</li>
+<li>同一成本口径</li>
+<li>同一阈值集合</li>
+<li>比较 <code>2 / 3 / 5</code> 腿的：</li>
+<li>net pnl</li>
+<li>turnover</li>
+<li>per-trade edge</li>
+<li>drawdown</li>
+</ul>
+<p>如果 3-leg / 5-leg 明显优于 2-leg，说明这篇最值钱的不是“再平衡”而是<strong>篮子化</strong>。</p>
+<h3>实验 2：continuous rebalance vs flat-to-flat</h3>
+<ul>
+<li>A：偏离超阈值就回补到等权，持续持有</li>
+<li>B：偏离超阈值开仓，回到 <code>T/3</code> 才平仓</li>
+</ul>
+<p>这一步能回答：</p>
+<p>&gt; 我们的 alpha 更像“持续收割内部错位”，还是“少数几次完整 round-trip”？</p>
+<h3>实验 3：高波动上行 gate 是否真有用</h3>
+<p>把所有样本按：</p>
+<ul>
+<li>basket realized vol 分位数</li>
+<li>basket drift sign</li>
+</ul>
+<p>切成四象限，观察：</p>
+<ul>
+<li>高 vol + 上行</li>
+<li>高 vol + 下行</li>
+<li>低 vol + 上行</li>
+<li>低 vol + 下行</li>
+</ul>
+<p>若 paper 的方向在 perp 上也成立，就可以把 <code>high vol + uptrend</code> 变成明确的放量 gate。</p>
+<h3>实验 4：equal-weight vs beta-neutral</h3>
+<p>paper 用的是 equal-weight。对实盘 perp，我们必须补一组：</p>
+<ul>
+<li>equal-weight</li>
+<li>rolling beta-neutral</li>
+<li>vol-target equal-risk</li>
+</ul>
+<p>若 equal-weight 已经足够强，说明 raw alpha 很干净；若 beta-neutral 明显改善，说明 paper 的 published gross 有相当一部分其实夹着共同方向暴露。</p>
+<h3>实验 5：sector basket 优先级</h3>
+<p>按主题分 4 组先跑：</p>
+<ul>
+<li>L1 basket</li>
+<li>meme basket</li>
+<li>DeFi basket</li>
+<li>beta-high alt basket</li>
+</ul>
+<p>这一步很关键，因为 basket shell 最怕“装进去的是风格完全不同的东西”，导致所谓回补只是噪音。</p>
+<h2>10. 风险与可移植性提醒</h2>
+<h3>10.1 论文是 BTC 计价现货，不是我们常做的 USDT perp</h3>
+<p>这意味着：</p>
+<ul>
+<li>原文里的相对强弱，本质上是<strong>相对于 BTC 的表现差</strong>；</li>
+<li>直接迁到 USDT perp 后，公共美元 beta 会更重；</li>
+<li>如果不做 beta 控制，容易把“篮子内相对错位”错读成“整体 alt beta 起伏”。</li>
+</ul>
+<h3>10.2 论文里超高收益不能直接当 production 预期</h3>
+<p>像 <code>1435.01%</code> 这类长样本数字，只能当：</p>
+<ul>
+<li>证明 HF basket rebalance 这条路<strong>不只是概念</strong>；</li>
+<li>不能当我们在 perp 上能直接复刻的预期回报。</li>
+</ul>
+<h3>10.3 “没有通用最优阈值”本身就是结论</h3>
+<p>论文最后还明确说了：</p>
+<ul>
+<li><strong>不存在可事先固定的通用最佳 threshold</strong>；</li>
+<li>最优阈值和波动之间也没有简单稳定映射。</li>
+</ul>
+<p>所以落地时不要想偷懒地全市场统一一个 <code>T</code>。</p>
+<p>更合理的做法是：</p>
+<ul>
+<li>每个 basket 独立 sweep</li>
+<li>每个 regime 分开看</li>
+<li>每个频率独立估计</li>
+</ul>
+<h2>11. 一句话结论</h2>
+<p>如果最近几篇 digest 已经把 <code>pair shell</code> 补得差不多了，那这篇 2024 *Financial Innovation* 最值得 intake 的，不是“高频再平衡也能赚钱”这句废话，而是：</p>
+<p>&gt; <strong>把 cointegrated pair 扩成 <code>3~5</code> 腿 basket，用 equal-weight drift 当错价代理，再用 threshold rebalance 连续 harvest 内部强弱回归。</strong></p>
+<p>这是一条<strong>可独立复现、可直接落地、且非常适合 <code>1m / 3m / 5m / 15m</code> 的完整 raw alpha 壳</strong>。</p>
+<h2>12. 参考来源</h2>
+<ol>
+<li><strong>Bağcı, M., &amp; Kaya Soylu, P. (2024).</strong> *Optimal portfolio selection with volatility information for a high frequency rebalancing algorithm*. <strong>Financial Innovation</strong>. DOI: <code>10.1186/s40854-023-00590-3</code></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://link.springer.com/article/10.1186/s40854-023-00590-3">https://link.springer.com/article/10.1186/s40854-023-00590-3</a></li>
+</ul>
+<ol>
+<li><strong>OpenAlex metadata</strong> for DOI <code>10.1186/s40854-023-00590-3</code>（作者、年份、摘要、venue）</li>
+<li><strong>Crossref metadata</strong> for DOI <code>10.1186/s40854-023-00590-3</code></li>
+</ol>
+<h2>13. 落地文件与页面</h2>
+<ul>
+<li>Digest：<code>research/quant_digests/2026-04-03_0136_coint-basket-hfra-rebalance-alpha.md</code></li>
+<li>页面 URL（发布后）：<code><a href="https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-04-03_0136_coint-basket-hfra-rebalance-alpha.html">https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-04-03_0136_coint-basket-hfra-rebalance-alpha.html</a></code></li>
+</ul>
+</body>
+</html>

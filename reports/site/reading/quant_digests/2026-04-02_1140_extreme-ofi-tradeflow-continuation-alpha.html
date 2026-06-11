@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 OFI 只放进 HFT 教科书：对 crypto short-cycle desk，更该先测的是「extreme trade-flow z-score × next-5m continuation」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 OFI 只放进 HFT 教科书：对 crypto short-cycle desk，更该先测的是「extreme trade-flow z-score × next-5m continuation」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-02 11:55 UTC</span>
+      <span class="pill">研究时间：2026-04-02 11:40 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`README.md` + `Order_Flow_Imbalance.ipynb`）+ 2014 *Journal of Financial Econometrics* 微观结构经典论文 grounding + Binance USDⓈ-M `1m` public taker-flow proxy 最小快检</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/ofi/order-flow-imbalance/trade-flow/continuation/single-asset/binance/okx/btc/eth/sol/1m/3m/5m/15m/repo/paper/public-data/cost/execution</span>
+      <span class="pill">证据类型：repo-first（raw alpha 明确）+ classic-paper grounding + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-02_1140_extreme-ofi-tradeflow-continuation-alpha.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一标的的极端订单流不平衡（trade-flow / OFI proxy）会在极短时间内继续推着价格走一小段</strong>；翻成人话，就是“如果这一分钟里主动买盘/卖盘明显失衡，接下来几分钟价格往往还会顺着冲一下”</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>时间：2026-04-02 11:40 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>README.md</code> + <code>Order_Flow_Imbalance.ipynb</code>）+ 2014 *Journal of Financial Econometrics* 微观结构经典论文 grounding + Binance USDⓈ-M <code>1m</code> public taker-flow proxy 最小快检</li>
+<li>主题标签：raw-alpha/microstructure/ofi/order-flow-imbalance/trade-flow/continuation/single-asset/binance/okx/btc/eth/sol/1m/3m/5m/15m/repo/paper/public-data/cost/execution</li>
+<li>证据类型：repo-first（raw alpha 明确）+ classic-paper grounding + public-data portability probe</li>
+</ul>
+<h2>1. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha 很清楚：极端订单流失衡 → 极短期价格延续。</strong></p>
+<p>不是“盘口很热闹”这种解释性结论；真正能交易的是：</p>
+<p>&gt; <strong>把一段很短时间里的 signed trade flow 做标准化，只有在失衡足够极端时才顺着做，赌接下来 <code>1s ~ 5m</code> 还有 residual continuation。</strong></p>
+<p>所以这轮它属于 <strong>raw alpha</strong>，不是 filter / regime / overlay。</p>
+<p>---</p>
+<h2>2. 为什么这轮值得写它</h2>
+<p>最近 digest 池里已经有：</p>
+<ul>
+<li>cross-asset lead-lag OFI</li>
+<li>maker / inventory skew</li>
+<li>pairs / residual mean reversion</li>
+<li>binary market / funding / basis</li>
+</ul>
+<p>但 <strong>“同一标的自身 trade-flow 失衡 → 后续几分钟 continuation”</strong> 这条最朴素、最底层的 microstructure raw alpha，反而没有单独写成一篇 repo-first digest。</p>
+<p>这轮值得 intake 的原因有四个：</p>
+<ol>
+<li><strong>raw alpha 本体很清楚。</strong></li>
+</ol>
+<ul>
+<li>不是拿 OFI 去给别的策略当 confirmation；</li>
+<li>它自己就能独立下单。</li>
+</ul>
+<ol>
+<li><strong>能直接服务 <code>1m / 3m / 5m</code> 高强度实验。</strong></li>
+</ol>
+<ul>
+<li>这比很多慢频论文更容易当周做完最小实验。</li>
+</ul>
+<ol>
+<li><strong>repo 里已经把“信号 → threshold → accounting → inventory cap”串起来了。</strong></li>
+</ol>
+<ul>
+<li>虽然原版还不够上桌，但不是只给一张相关性图。</li>
+</ul>
+<ol>
+<li><strong>它能给现有 desk 一个很实用的底层组件。</strong></li>
+</ol>
+<ul>
+<li>可单独做 alpha；</li>
+<li>也可给 breakout / lead-lag / execution veto 提供 microstructure admission layer。</li>
+</ul>
+<p>如果问：<strong>它为什么比继续补一个 filter 更值得？</strong> 答案是： <strong>因为它本身就是一条可下注的 raw alpha，不是门卫。</strong></p>
+<p>---</p>
+<h2>3. 这次看的主来源</h2>
+<h3>3.1 主来源：2026 新 repo（主）</h3>
+<ul>
+<li><strong>Author / Year</strong>: Grant Reed, 2026</li>
+<li><strong>Title</strong>: *Testing Order Flow Imbalance in Bitcoin Markets*</li>
+<li><strong>Venue</strong>: GitHub repository / notebook research project</li>
+<li><strong>DOI</strong>: N/A</li>
+<li><strong>Readable URL</strong>: <a href="https://github.com/grantreed1/Crypto-Order-Flow-Imbalance">https://github.com/grantreed1/Crypto-Order-Flow-Imbalance</a></li>
+<li><strong>Repo URL</strong>: <a href="https://github.com/grantreed1/Crypto-Order-Flow-Imbalance">https://github.com/grantreed1/Crypto-Order-Flow-Imbalance</a></li>
+<li><strong>实际看的文件</strong>:</li>
+<li><code>README.md</code></li>
+<li><code>Order_Flow_Imbalance.ipynb</code></li>
+</ul>
+<h3>3.2 理论地基：经典微观结构论文（辅）</h3>
+<ul>
+<li><strong>Authors / Year</strong>: Rama Cont, Arseniy Kukanov, Sasha Stoikov, 2014</li>
+<li><strong>Title</strong>: *The Price Impact of Order Book Events*</li>
+<li><strong>Venue</strong>: *Journal of Financial Econometrics*</li>
+<li><strong>DOI</strong>: <code>10.1093/jjfinec/nbt003</code></li>
+<li><strong>Readable URL</strong>: <a href="https://doi.org/10.1093/jjfinec/nbt003">https://doi.org/10.1093/jjfinec/nbt003</a></li>
+<li><strong>Repo URL</strong>: N/A</li>
+</ul>
+<h3>3.3 最小 portability probe 数据源（公开可得）</h3>
+<ul>
+<li><strong>Venue</strong>: Binance USDⓈ-M Futures public kline API</li>
+<li><strong>Readable URL</strong>: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></li>
+<li><strong>公开性</strong>: 全公开</li>
+<li><strong>更新频率</strong>: <code>1m</code></li>
+<li><strong>可映射周期</strong>: <code>1m / 3m / 5m / 15m</code></li>
+</ul>
+<p>---</p>
+<h2>4. repo 里最值钱的，不是“OFI”这个词，而是它把 raw alpha 壳子跑通了</h2>
+<p>这份 repo 的价值，不在“又一个 microstructure 名词”，而在它把一条基础但真实的 raw alpha 链条写出来了：</p>
+<ol>
+<li><strong>把 trade side 变成 signed quantity</strong></li>
+<li><strong>按极短窗口累积 trade flow</strong></li>
+<li><strong>winsorize 掉极端大单噪音</strong></li>
+<li><strong>rolling z-score 标准化</strong></li>
+<li><strong>回归到 forward return 上估 beta</strong></li>
+<li><strong>只在预测收益超过动态阈值 <code>j</code> 时交易</strong></li>
+<li><strong>做 inventory-capped accounting</strong></li>
+</ol>
+<p>翻成人话： <strong>它不是“看到买盘多就机械追”；而是先把极短期买卖失衡转成 standardized signal，只在最极端一小撮时刻顺着打。</strong></p>
+<p>这就让它和“泛泛而谈订单簿压力”的材料不一样——它已经有了一个最小可交易外壳。</p>
+<p>---</p>
+<h2>5. 代码级拆解：这条 alpha 在 repo 里怎么成型</h2>
+<h3>5.1 数据层：六个 venue，2025-05，超过 2100 万条 trade</h3>
+<p>notebook 用的是 <strong>2025-05 的 BTC-USDT trade 数据</strong>，跨：</p>
+<ul>
+<li><code>OKX</code></li>
+<li><code>GATE_IO</code></li>
+<li><code>COINBASE</code></li>
+<li><code>DERIBIT</code></li>
+<li><code>BITSTAMP</code></li>
+<li><code>BINANCE</code></li>
+</ul>
+<p>关键数：</p>
+<ul>
+<li>总 trade 条数：<strong>21,295,823</strong></li>
+<li>OKX 量占比：<strong>64.90%</strong></li>
+<li>GATE_IO 量占比：<strong>29.09%</strong></li>
+<li>Binance 样本只有 <strong>1 天</strong>，但仍有数百万笔顺序交易</li>
+</ul>
+<p>Deribit 还专门做了合约单位归一：</p>
+<ul>
+<li>inverse futures 按 <code>$10 / contract</code> 折算成 BTC 数量</li>
+</ul>
+<p>这一步很重要： <strong>作者不是在抽象讨论 OFI，而是在处理真实 venue 数据口径差异。</strong></p>
+<h3>5.2 特征层：trade-flow 而不是整本 order book 事件流</h3>
+<p>预处理函数 <code>preprocess_data()</code> 的核心是：</p>
+<ul>
+<li><code>signed_qty = +qty / -qty</code></li>
+<li>在 <code>tau_str</code> 窗口上滚动求和，得到 <code>trade_flow_raw</code></li>
+<li>对 raw flow 做 <strong>1% / 99% winsorization</strong></li>
+<li>再用 <strong>100 个 rolling window</strong> 算 z-score</li>
+</ul>
+<p>repo 默认起点：</p>
+<ul>
+<li><code>tau = 100ms</code></li>
+</ul>
+<p>但后面 sweep 说明：</p>
+<ul>
+<li><strong>太短的 tau 很容易被噪音打爆</strong></li>
+<li>真正像样的是把 flow 聚合到更宽的几秒级窗口</li>
+</ul>
+<p>也就是说，这条线真正可用的不是“tick 级有神奇预测力”，而是： <strong>持续几秒的同向 aggressor flow 才更像可交易压力。</strong></p>
+<h3>5.3 目标层：直接回归 forward return</h3>
+<p><code>generate_signals()</code> 做的不是分类器，而是最朴素的一条线：</p>
+<ul>
+<li>先算 future price</li>
+<li>目标是 <code>forward_return</code></li>
+<li>训练 / 测试按时间顺序 <strong>40% / 60%</strong> 切分</li>
+<li>用 <strong>LinearRegression</strong> 拟合 <code>trade_flow -&gt; forward_return</code></li>
+<li>得到 beta 后，在 OOS test set 上预测 <code>predicted_return</code></li>
+<li>只在 <code>|predicted_return| &gt; j_threshold</code> 时交易</li>
+</ul>
+<p>动态阈值 <code>j_threshold</code> 的设计很关键：</p>
+<ul>
+<li>它不是固定 bps 门槛；</li>
+<li>而是按 predicted return 的绝对值分位数，控制 target participation。</li>
+</ul>
+<p>翻成人话： <strong>不是每个 OFI 都追，只追最极端那一层。</strong></p>
+<h3>5.4 accounting 层：repo 已经承认 inventory 才是真问题</h3>
+<p><code>calculate_accounting()</code> 的核心假设：</p>
+<ul>
+<li>每次按 <code>sign(predicted_return)</code> 决定买卖</li>
+<li>默认 transaction cost：<strong>0.5 bps / transaction</strong>（<code>0.00005</code>）</li>
+<li>有 <code>max_inventory_limit = 10</code></li>
+</ul>
+<p>这个 accounting engine 暴露出一件很真实的事：</p>
+<p>&gt; <strong>entry alpha 不是主要问题；真正的问题是没有 exit logic 时，inventory 会把你拖死。</strong></p>
+<p>也就是说，这份 repo 的研究价值不是“已经可上线”，而是它把最该解决的失败点明牌写出来了。</p>
+<p>---</p>
+<h2>6. notebook 里最有信息量的结果</h2>
+<h3>6.1 participation sweep：极端太稀、太宽又滥，适中的参与率更好</h3>
+<p>在 OKX 上，作者先用：</p>
+<ul>
+<li><code>tau = 100ms</code></li>
+<li><code>T = 1s</code></li>
+</ul>
+<p>得到：</p>
+<p>| target participation | threshold j | Net P&amp;L | |---|---:|---:| | 0.5% | 0.0148% | <strong>-$134,138</strong> | | 1% | 0.0122% | <strong>-$518,880</strong> | | 5% | 0.0074% | <strong>-$43,734</strong> | | 10% | 0.0055% | <strong>+$393,253</strong> | | 20% | 0.0034% | <strong>+$471,709</strong> |</p>
+<p>这组结果说明：</p>
+<ul>
+<li>极端中的极端并不一定最好；</li>
+<li>太窄会把样本量压没；</li>
+<li>适度放宽到 <strong>10%~20% participation</strong>，反而更稳定。</li>
+</ul>
+<h3>6.2 tau sweep：几百毫秒太噪，几秒级 flow 才像东西</h3>
+<p>在 OKX 上扫 <code>tau</code>：</p>
+<p>| tau | Net P&amp;L | Trades | |---|---:|---:| | 10ms | <strong>-$168,338</strong> | 26,331 | | 50ms | <strong>-$192,390</strong> | 26,462 | | 100ms | <strong>-$43,734</strong> | 26,597 | | 500ms | <strong>+$125,136</strong> | 25,763 | | 1s | <strong>+$57,690</strong> | 25,782 | | 5s | <strong>+$382,660</strong> | 22,657 | | 10s | <strong>+$254,259</strong> | 21,781 |</p>
+<p>这基本把 desk translation 说透了： <strong>真正值得试的不是超短 <code>10~100ms</code> 噪音 OFI，而是 <code>500ms ~ 5s</code> 这种“持续性 aggressor pressure”。</strong></p>
+<h3>6.3 horizon sweep：1 秒还有 edge，5 秒以后衰减很快</h3>
+<p>在最优 <code>tau = 5s</code> 下，扫预测 horizon：</p>
+<p>| horizon | Net P&amp;L | Avg P&amp;L / Trade | |---|---:|---:| | 1s | <strong>+$382,660</strong> | <strong>+$16.89</strong> | | 5s | <strong>-$284,294</strong> | <strong>-$15.89</strong> | | 10s | <strong>-$300,427</strong> | <strong>-$16.04</strong> | | 30s | <strong>-$156,212</strong> | <strong>-$17.02</strong> | | 60s | <strong>-$239,863</strong> | <strong>-$18.74</strong> |</p>
+<p>核心结论非常直接： <strong>原版信号的预测力几乎只活在最前面的极短一小段。</strong></p>
+<p>这就是为什么它适合被 desk 改写成：</p>
+<ul>
+<li><code>1m</code> 上形成 signal；</li>
+<li><code>3m / 5m</code> 上做 sparse hold；</li>
+<li>而不是拿去做 15m 大级别主趋势壳。</li>
+</ul>
+<h3>6.4 cross-venue：只有 OKX 真正赚钱，Binance 勉强为正，其余全亏</h3>
+<p>在“golden config”下（<code>tau=5s</code>, <code>T=1s</code>, participation <code>15%</code>）：</p>
+<p>| Exchange | Beta | Trades | Participation | Net P&amp;L | |---|---:|---:|---:|---:| | OKX | 0.000023 | 75,513 | 12.59% | <strong>+$575,712</strong> | | GATE_IO | 0.000032 | 84,462 | 14.08% | <strong>-$89,412</strong> | | COINBASE | 0.000034 | 40,177 | 14.75% | <strong>-$150,631</strong> | | DERIBIT | 0.000011 | 3,803 | 10.23% | <strong>-$5,629</strong> | | BITSTAMP | 0.000057 | 614 | 14.91% | <strong>-$401,670</strong> | | BINANCE | 0.000021 | 79,043 | 13.17% | <strong>+$7,119</strong> |</p>
+<p>这说明： <strong>这条 alpha 明显有 venue-specific microstructure 依赖。</strong></p>
+<p>如果硬把 OKX 参数无脑平移到所有 venue，基本就是 overfit 自杀。</p>
+<h3>6.5 beta stability：高流动 venue 稳，稀疏 venue 飘</h3>
+<p>notebook 的 beta stability 分析显示：</p>
+<ul>
+<li>Binance variation：<strong>3.0%</strong></li>
+<li>OKX variation：<strong>8.6%</strong></li>
+<li>GATE_IO variation：<strong>9.4%</strong></li>
+<li>Coinbase variation：<strong>12.1%</strong></li>
+<li>Deribit variation：<strong>63.4%</strong></li>
+<li>Bitstamp variation：<strong>95.9%</strong></li>
+</ul>
+<p>所以这条线不是完全 statistical fluke； 但它要求：</p>
+<ul>
+<li><strong>高流动</strong></li>
+<li><strong>连续成交</strong></li>
+<li><strong>稳定 trade-flow 结构</strong></li>
+</ul>
+<p>低流动场景下，beta 会直接漂掉。</p>
+<p>---</p>
+<h2>7. 最大的问题不在 alpha，而在 exit / inventory / scaling</h2>
+<p>repo 自己已经把最危险的点写得很清楚。</p>
+<h3>7.1 capped 版本也不算舒服</h3>
+<p>OKX capped 版本：</p>
+<ul>
+<li>Gross P&amp;L：<strong>+$585,392</strong></li>
+<li>Net P&amp;L：<strong>+$575,712</strong></li>
+<li>Fees：<strong>$9,680</strong></li>
+<li>Max Drawdown：<strong>-$1,245,464</strong></li>
+</ul>
+<p>也就是说： <strong>赚了 57.6 万，但最大回撤 124.5 万。</strong></p>
+<p>这不是 production-ready，只能算“entry alpha 有东西，但持仓管理很烂”。</p>
+<h3>7.2 去掉库存上限会直接炸穿</h3>
+<p>OKX capped vs uncapped：</p>
+<p>| Metric | Capped | Uncapped | |---|---:|---:| | Executed trades | 75,513 | 90,000 | | Final inventory | 8.75 BTC | <strong>643.06 BTC</strong> | | Net P&amp;L | +575,712 | +785,718 | | Max Drawdown | <strong>-1.25M</strong> | <strong>-62.39M</strong> | | Fees | 9,679.71 | 13,777.01 |</p>
+<p>这组数字的意义很简单： <strong>别被更高的 net P&amp;L 骗了；uncapped 版本本质上是拿方向性爆仓风险换出来的。</strong></p>
+<p>所以对 desk 而言，这篇材料最重要的 take-away 不是“OFI 好厉害”，而是：</p>
+<p>&gt; <strong>OFI entry 可以进研究池，但必须立刻和 inventory cap、timeout exit、re-entry cooldown 一起测。</strong></p>
+<p>---</p>
+<h2>8. 我补的 Binance public 最小快检：这条线搬到 <code>1m / 3m / 5m</code> 后，只有“极端那一层”还有点像样</h2>
+<p>为了避免这轮变成纯 notebook 摘抄，我补了一版 <strong>公开可得的 desk-portability probe</strong>。</p>
+<h3>8.1 实验口径（简化，不是严格复现）</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M public <code>1m</code> klines</li>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li>样本：各自最近 <strong>1500 根 <code>1m</code> bar</strong></li>
+<li>OFI proxy：</li>
+<li><code>imbalance_ratio = (2 * taker_buy_base_volume - total_volume) / total_volume</code></li>
+<li>标准化：</li>
+<li>rolling <strong>30-bar z-score</strong></li>
+<li>交易规则：</li>
+<li><code>z &gt; threshold</code> 做多</li>
+<li><code>z &lt; -threshold</code> 做空</li>
+<li>否则空仓</li>
+<li>评估：看 <code>next 1m / 3m / 5m / 15m</code> signed return</li>
+</ul>
+<p>&gt; 这不是 trade-level OFI replication；它更像“公开 1m 数据能不能先看到影子”的 portability probe。</p>
+<h3>8.2 最有信息量的结果</h3>
+<p>把三个标的合在一起看：</p>
+<p>#### threshold = 1.5</p>
+<ul>
+<li>active ratio：<strong>12.9%</strong></li>
+<li>next-1m gross：<strong>-0.14 bps</strong></li>
+<li>next-3m gross：<strong>+0.23 bps</strong></li>
+<li>next-5m gross：<strong>+1.74 bps</strong></li>
+<li>next-15m gross：<strong>-0.90 bps</strong></li>
+</ul>
+<p>#### threshold = 2.0</p>
+<ul>
+<li>active ratio：<strong>2.9%</strong></li>
+<li>next-1m gross：<strong>+0.99 bps</strong></li>
+<li>next-3m gross：<strong>+0.84 bps</strong></li>
+<li>next-5m gross：<strong>+3.99 bps</strong></li>
+<li>next-15m gross：<strong>+2.74 bps</strong></li>
+</ul>
+<p>按单币看，在 <code>threshold = 1.5</code> 下：</p>
+<ul>
+<li>ETH next-5m：<strong>+2.47 bps</strong></li>
+<li>SOL next-5m：<strong>+2.96 bps</strong></li>
+<li>BTC next-5m：<strong>-0.17 bps</strong></li>
+</ul>
+<h3>8.3 这组数字说明什么</h3>
+<p>说明三件事：</p>
+<ol>
+<li><strong>raw alpha 在公开粗粒度数据上不是完全消失。</strong></li>
+</ol>
+<ul>
+<li>极端 taker-flow 之后，<code>3m ~ 5m</code> 仍能看到一点 continuation 影子。</li>
+</ul>
+<ol>
+<li><strong>只有最极端一层才值得继续测。</strong></li>
+</ol>
+<ul>
+<li><code>threshold = 2.0</code> 时虽然样本变少，但 gross 才开始接近可讨论区间。</li>
+</ul>
+<ol>
+<li><strong>它非常吃 execution。</strong></li>
+</ol>
+<ul>
+<li>如果按粗略 <strong>4 bps round-trip taker</strong> 去想，<code>threshold = 2.0</code> 的 next-5m <strong>+3.99 bps gross</strong> 基本只是贴着 breakeven。</li>
+</ul>
+<p>所以，这条线更像：</p>
+<ul>
+<li>maker / passive / hybrid 执行有戏；</li>
+<li>粗暴 taker 很容易被成本吃平。</li>
+</ul>
+<p>---</p>
+<h2>9. 对当前 desk，更合理的读法是什么</h2>
+<p>这篇材料最容易被误读成：</p>
+<ul>
+<li>“哦，OFI 能预测价格，那就直接追。”</li>
+</ul>
+<p>更合理的 desk 读法其实是：</p>
+<h3>9.1 它是 raw alpha，不是 filter</h3>
+<p>因为入场逻辑本身已经闭环：</p>
+<ul>
+<li>观测 trade-flow 失衡</li>
+<li>标准化</li>
+<li>只有极端事件触发</li>
+<li>直接下注后续 continuation</li>
+</ul>
+<h3>9.2 但 repo 原版不是完整策略</h3>
+<p>为什么顶部字段我写“<strong>不可直接落地完整策略</strong>”？ 因为它至少缺三件 production 必需品：</p>
+<ol>
+<li><strong>明确 exit</strong></li>
+<li><strong>re-entry / cooldown</strong></li>
+<li><strong>更真实的交易成本与滑点</strong></li>
+</ol>
+<p>所以它当前更像： <strong>清楚、可复现、值得继续 desk 化的 raw alpha 壳子。</strong></p>
+<h3>9.3 对 <code>1m / 3m / 5m / 15m</code> 的映射</h3>
+<ul>
+<li><strong>1m</strong>：适合做 signal formation / admission</li>
+<li><strong>3m / 5m</strong>：最值得先测 hold horizon</li>
+<li><strong>15m</strong>：更像 filter 或 upper-layer aggregation，不像原生主壳</li>
+</ul>
+<p>也就是说： <strong>别把它当 15m 主信号；把它当 1m 生成、3~5m 兑现的 microstructure impulse，更合理。</strong></p>
+<p>---</p>
+<h2>10. 如果把它改成 desk 版，应该怎么补全 entry / exit / sizing / risk / cost</h2>
+<h3>10.1 Entry</h3>
+<p>第一版建议：</p>
+<ul>
+<li>universe：<code>BTC / ETH / SOL / BNB</code> 起步</li>
+<li>用真实 trade data 时：</li>
+<li><code>tau = 1s / 3s / 5s</code></li>
+<li>用公开 1m bar proxy 时：</li>
+<li><code>zscore window = 30 / 60</code></li>
+<li>只在 <code>|z| &gt;= 2.0</code> 时入场</li>
+<li>信号方向跟随 OFI 方向</li>
+</ul>
+<h3>10.2 Exit</h3>
+<p>别用 repo 的“没反向就一直扛”。 第一版应该直接测：</p>
+<ul>
+<li>fixed holding：<code>1 / 3 / 5 bars</code></li>
+<li>timeout exit：最多持有 <code>5m</code></li>
+<li>signal decay exit：<code>|z| &lt; 0.5</code> 提前平</li>
+<li>默认 <strong>不 instant flip</strong>，先 flat 再等下一次 admission</li>
+</ul>
+<h3>10.3 Sizing</h3>
+<ul>
+<li>单次风险仓位按近端 realized vol 缩放</li>
+<li>单币 gross cap</li>
+<li>组合 gross cap</li>
+<li>连续同向触发不要线性加码，最多做一层 pyramiding 或完全禁加码</li>
+</ul>
+<h3>10.4 Risk</h3>
+<ul>
+<li>inventory cap 必做</li>
+<li>连续亏损 / 连续高波动时做 kill-switch</li>
+<li>当 bar spread proxy / trade count 太差时 veto</li>
+<li>对 BTC / ETH 和小币分开参数，不要共用一套阈值</li>
+</ul>
+<h3>10.5 Cost</h3>
+<p>至少做三档：</p>
+<ol>
+<li><strong>maker optimistic</strong></li>
+<li><strong>hybrid realistic</strong></li>
+<li><strong>taker pessimistic</strong></li>
+</ol>
+<p>这条 alpha 的生死线基本不在信号，而在成本。</p>
+<p>---</p>
+<h2>11. 它和现有素材池的关系</h2>
+<p>这条线最有价值的地方，在于它能补现有池子的一个底层层级：</p>
+<ul>
+<li><code>cross-asset lead-lag OFI</code>：看 leader 的 flow 去打 follower</li>
+<li><code>order-book delta vote</code>：看多源 microstructure 共振</li>
+<li><code>this digest</code>：<strong>直接看单标的自身 extreme trade-flow continuation</strong></li>
+</ul>
+<p>所以它不是前两篇的重复，而更像更底层的 building block：</p>
+<p>&gt; <strong>先确认“自身流动性冲击有没有短延续”，再决定是否叠加跨资产 lead-lag、盘口结构或执行层 veto。</strong></p>
+<p>这对 desk 很重要，因为它能回答一句基础问题： <strong>我们看到的 microstructure alpha，到底是“本币自身冲击”还是“跨币传播”的次级反应？</strong></p>
+<p>---</p>
+<h2>12. 一句话结论</h2>
+<p>如果只带走一句话，我会带走这句：</p>
+<p><strong>别把 OFI 只放进 HFT 教科书；对 crypto short-cycle desk，更该先测的是「极端 trade-flow z-score 触发后的 3~5 分钟 continuation」这条最朴素的 microstructure raw alpha。</strong></p>
+<p>它的优点是：</p>
+<ul>
+<li>base alpha 清楚；</li>
+<li>独立可复现；</li>
+<li>和 <code>1m / 3m / 5m</code> desk 直接相连。</li>
+</ul>
+<p>它的现实约束也同样清楚：</p>
+<ul>
+<li><strong>repo 原版 exit 太差；</strong></li>
+<li><strong>inventory 风险巨大；</strong></li>
+<li><strong>execution / cost 很可能比 signal 本身更关键。</strong></li>
+</ul>
+<p>所以它该进研究池，但应以： <strong>extreme-only + timeout exit + strict inventory cap + realistic cost ladder</strong> 继续推进，而不是把 notebook 原样当答案。</p>
+<p>---</p>
+<h2>13. 下一步怎么测（直接执行版）</h2>
+<ol>
+<li><strong>先做真实 trade-level <code>1s / 3s / 5s</code> OFI 复现</strong>：只跑 <code>BTC / ETH / SOL</code>，不要一上来全市场。</li>
+<li><strong>把 exit 明确化</strong>：扫 <code>hold 1 / 3 / 5m</code>、<code>|z|</code> 回落平仓、<code>timeout exit</code> 三套。</li>
+<li><strong>把 threshold 做 sparse 化</strong>：优先测 <code>|z| &gt;= 2.0 / 2.5</code>，不要让 active ratio 超过 <code>3%~8%</code>。</li>
+<li><strong>把成本从第一天就写进实验</strong>：maker / hybrid / taker 三档；如果 taker 全死，别硬说能做。</li>
+<li><strong>分币种测 portability</strong>：BTC、ETH、SOL 分开回测，别假设同一阈值通吃。</li>
+<li><strong>把它接到现有 lead-lag 研究上</strong>：先测 own-flow alpha，再测“只有 own-flow 和 cross-asset flow 同向时才放行”的组合版本。</li>
+</ol>
+<p>---</p>
+<h2>14. 文件信息</h2>
+<ul>
+<li>文件路径：<code>research/quant_digests/2026-04-02_1140_extreme-ofi-tradeflow-continuation-alpha.md</code></li>
+<li>站点相对 URL：<code>/reading/quant_digests/2026-04-02_1140_extreme-ofi-tradeflow-continuation-alpha.html</code></li>
+</ul>
+</body>
+</html>

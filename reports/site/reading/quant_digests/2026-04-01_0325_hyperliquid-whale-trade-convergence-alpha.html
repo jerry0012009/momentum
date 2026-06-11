@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hyperliquid whale-trade convergence continuation alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Hyperliquid whale-trade convergence continuation alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-01 03:25 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-01_0325_hyperliquid-whale-trade-convergence-alpha.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：公开交易流里，<strong>同方向的大额 aggressor 交易 / 可追踪钱包群聚</strong> 往往不是噪音，而是短时信息冲击；若 5 分钟内出现多名“高分钱包”在同一资产同向出手，后续 <code>1m/3m/5m</code> 更值得先押 continuation，而不是先做 fade。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<p>&gt; 一句话先定性：这不是“看见 whale 就跟单”的段子版 copy trading；更像是把 <strong>公开钱包地址 + 大单门槛 + 5 分钟同向收敛 + 组合风险壳</strong> 拼成一条可直接上最小实验的短周期 raw alpha。</p>
+<h2>1. 为什么这轮值得写</h2>
+<p>这轮我优先选它，不是因为又来了一个“多策略 bot”，而是因为这份 <strong>2026 新仓库</strong> 里真正最适合 desk 的，不是 funding sniper，也不是 liquidation rider，而是 <strong>Whale Tracker</strong> 这条可以独立拆出来跑的 raw alpha：</p>
+<ol>
+<li><strong>base alpha 说得清</strong>：大额 aggressor trade / 高分钱包同向聚集 → 短时 continuation。</li>
+<li><strong>公开可拿数据</strong>：Hyperliquid 公共 WebSocket <code>trades</code> 流直接给 <code>coin / side / px / sz / time / users</code>，其中 <code>users</code> 就是买卖双方地址。</li>
+<li><strong>策略壳完整</strong>：repo 里不仅有 entry，还有 confidence、sizing、TP/SL、相关性桶限额、反向信号平仓。</li>
+<li><strong>时间尺度天然贴近 desk</strong>：事件级触发 + <code>300s</code> 收敛窗，本来就是 <code>1m/3m/5m</code> 语境，不需要硬把日频论文掰成分钟线。</li>
+</ol>
+<p>所以，这轮它比继续补一个纯 filter / 纯 veto 更值钱。</p>
+<p>---</p>
+<h2>2. 本次主源与证据类型</h2>
+<h3>主源 A：2026 GitHub 仓库（核心）</h3>
+<ul>
+<li><strong>Authors / Maintainer</strong>: CShear</li>
+<li><strong>Year</strong>: 2026</li>
+<li><strong>Title</strong>: *ref-perp-bot*</li>
+<li><strong>Venue / DOI</strong>: GitHub repo / N.A.</li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://github.com/CShear/ref-perp-bot&gt;">https://github.com/CShear/ref-perp-bot&gt;</a></li>
+<li><strong>Repo URL</strong>: &lt;<a href="https://github.com/CShear/ref-perp-bot&gt;">https://github.com/CShear/ref-perp-bot&gt;</a></li>
+<li><strong>本次重点审阅文件</strong>:</li>
+<li><code>README.md</code></li>
+<li><code>hlbot/strategies/whale_tracker.py</code></li>
+<li><code>hlbot/strategies/combiner.py</code></li>
+<li><code>hlbot/execution/executor.py</code></li>
+<li><code>hlbot/config.py</code></li>
+<li><code>.env.example</code></li>
+</ul>
+<h3>主源 B：Hyperliquid 官方 WebSocket 文档（数据公开性）</h3>
+<ul>
+<li><strong>Author</strong>: Hyperliquid Docs</li>
+<li><strong>Year</strong>: 2026 访问版本</li>
+<li><strong>Title</strong>: *Websocket*</li>
+<li><strong>Venue / DOI</strong>: Hyperliquid Docs / N.A.</li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket&gt;">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket&gt;</a></li>
+<li><strong>用途</strong>: 确认 <code>wss://api.hyperliquid.xyz/ws</code> 可公开订阅 <code>trades</code>，适合作最小实验数据入口。</li>
+</ul>
+<h3>辅助地基（微观结构为什么有可能成立）</h3>
+<ol>
+<li><strong>Easley, López de Prado, O’Hara (2012)</strong>, *Flow toxicity and liquidity in a high-frequency world*, *Review of Financial Studies*, DOI: <code>10.1093/rfs/hhs053</code>.</li>
+<li><strong>Wen, Perez, Livan, Caccioli (2023/2024 working-paper line)</strong>, *Cross-Market Intraday Time-Series Momentum*, SSRN readable URL: &lt;<a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4080253&gt;.">https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4080253&gt;.</a></li>
+</ol>
+<p>&gt; 这里地基不是说“whale wallet = 必赚”，而是说：<strong>短时订单流本来就会携带信息，而且跨账户/跨参与者的同向聚集，通常比单笔 isolated print 更有意义。</strong></p>
+<p>---</p>
+<h2>3. Repo 里真正可拿来做 alpha 的部分</h2>
+<h2>3.1 原始触发：不是所有 trade，都算 whale activity</h2>
+<p><code>hlbot/strategies/whale_tracker.py</code> 里的核心阈值非常直接：</p>
+<ul>
+<li><code>WHALE_TRADE_MIN_USD = 50_000</code></li>
+<li><code>SIGNAL_SCORE_THRESHOLD = 0.6</code></li>
+<li><code>CONVERGENCE_WINDOW = 300</code> 秒</li>
+<li><code>CONVERGENCE_BOOST = 0.15</code></li>
+</ul>
+<p>也就是说，单笔交易要先过 <strong>$50k notional</strong>，而且发起方地址必须已经在 tracked whales 里，且该地址得分 <code>&gt;= 0.6</code>，才会生成原始信号。</p>
+<p>这个设计有两个好处：</p>
+<ol>
+<li>先过滤掉大量“小地址大惊小怪”。</li>
+<li>把策略重心从“绝对大单”改成“<strong>历史上更值得信的人打出来的大单</strong>”。</li>
+</ol>
+<p>这比单纯看 <code>sz</code> 或单次 liquidation event 更像一个可持续 raw alpha admission layer。</p>
+<h2>3.2 真正值钱的是“同向收敛”，不是孤立巨单</h2>
+<p>repo 不是机械地“见大单就追”，而是额外统计：</p>
+<ul>
+<li>同一资产 <code>coin</code></li>
+<li>同一方向 <code>side</code></li>
+<li>过去 <code>300s</code></li>
+<li>出现了多少个<strong>不同钱包</strong></li>
+</ul>
+<p>若 <code>convergence &gt; 1</code>，就给 signal confidence 再加 <code>+0.15</code>，上限到 <code>0.95</code>。</p>
+<p>这一步非常像我们 desk 更关心的东西：</p>
+<p>&gt; <strong>不是单个账户一脚踹出去，而是多个独立账户 / 多次可归因大单，在很短时间内把同一方向确认出来。</strong></p>
+<p>这比很多“单点 whale alert”更接近可以复现的短周期 alpha。</p>
+<h2>3.3 钱包分数不是拍脑袋，是可滚动更新的</h2>
+<p>repo 的 wallet score 机制虽然简陋，但足够形成最小可用版本：</p>
+<ul>
+<li>新钱包发现门槛：<code>累计成交额 &gt; $500k</code> 且 <code>trade_count &gt; 5</code></li>
+<li>初始保守分：<code>min(volume / 5_000_000, 0.7)</code></li>
+<li>已跟踪钱包分数会缓慢衰减：<code>score *= 0.98</code></li>
+<li>最近 24h 有活跃 whale activity，再给 <code>+0.02 * count</code>，最多 <code>+0.1</code></li>
+</ul>
+<p>这意味着 repo 默认承认一个现实：</p>
+<p>&gt; <strong>whale 不是静态白名单，而是动态 ranking。</strong></p>
+<p>对 desk 来说，这很重要，因为真正该测的不是“神秘地址列表”，而是 <strong>地址分层 + 活跃度再加权</strong> 这套 admission stack。</p>
+<p>---</p>
+<h2>4. 这条策略怎么落成完整交易规则</h2>
+<p>下面把 repo 里分散的逻辑合并成我们真正能跑的完整策略。</p>
+<h2>4.1 Entry</h2>
+<h3>Long entry</h3>
+<p>满足以下条件时开多：</p>
+<ol>
+<li>公共 trade stream 中出现 <code>size_usd &gt;= 50k</code> 的买向 aggressor trade；</li>
+<li>买方地址在 tracked whales 中；</li>
+<li>该钱包 <code>score &gt;= 0.6</code>；</li>
+<li>过去 300 秒内，同资产同方向 distinct whale 数量越多越好；若 <code>&gt;1</code>，confidence 再加 <code>0.15</code>；</li>
+<li>资产不违反组合相关性桶约束。</li>
+</ol>
+<h3>Short entry</h3>
+<p>同理，卖向 whale trade 触发开空。</p>
+<h2>4.2 Confidence</h2>
+<p>repo 里的原式：</p>
+<p>``<code>text size_factor = min(size_usd / 100k, 1.5) confidence = min(whale_score * (0.5 + 0.3 * size_factor), 0.9) if convergence &gt; 1: confidence += 0.15  (cap at 0.95) </code>``</p>
+<p>翻成人话：</p>
+<ul>
+<li>钱包越靠谱，分越高；</li>
+<li>单笔 notional 越大，分越高；</li>
+<li>多名 whale 同向收敛，再抬一档；</li>
+<li>不是线性加仓，而是先映射成 confidence。</li>
+</ul>
+<h2>4.3 Sizing</h2>
+<p>repo 不是固定满仓，而是 Kelly-ish：</p>
+<ul>
+<li><code>bankroll = 1000</code></li>
+<li><code>max_position_pct = 0.05</code></li>
+<li><code>min_order_notional = 10</code></li>
+<li><code>size = min(max_size * confidence^2, avg_suggested, max_size)</code></li>
+<li>且组合里同一 correlation group 的总暴露不能超过 <strong>15% bankroll</strong>。</li>
+</ul>
+<p>这对我们很有借鉴意义：</p>
+<p>&gt; 这种“confidence²” sizing，天然抑制中低质量事件冲动开仓，更适合 event-driven raw alpha。</p>
+<h2>4.4 Exit / risk</h2>
+<p>repo 已经给了完整壳：</p>
+<ul>
+<li>默认杠杆：<code>3x</code></li>
+<li><code>stop_loss_pct = 3%</code></li>
+<li><code>take_profit_pct = 6%</code></li>
+<li>若出现 <strong>反向高置信原始信号</strong>（<code>confidence &gt; 0.6</code>），可提前平仓</li>
+<li>若 unrealized loss 超过 <strong>8% 当前 notional</strong>，触发保护性退出</li>
+<li>同资产已有仓位则不重复开</li>
+</ul>
+<p>注意： 这套 TP/SL 更像通用 shell，<strong>alpha 本体其实在 entry admission</strong>。对 <code>1m/3m/5m</code> 实盘化时，TP/SL 大概率要缩窄，不然 holding period 会被拉太长。</p>
+<p>---</p>
+<h2>5. 为什么它对 <code>1m / 3m / 5m / 15m</code> 真有关系</h2>
+<h2>5.1 这条 alpha 天生属于分钟级 event-driven continuation</h2>
+<p>它不是日频钱包追踪，也不是慢 carry。</p>
+<p>它的原始输入是：</p>
+<ul>
+<li>实时 trade prints</li>
+<li>地址级参与者信息</li>
+<li>300 秒内的收敛计数</li>
+</ul>
+<p>所以它天然适合：</p>
+<ul>
+<li><code>1m</code>: 事件触发后的第一根 / 前三根 bar continuation</li>
+<li><code>3m</code>: 降低噪音、保留冲击扩散</li>
+<li><code>5m</code>: 最像 repo 默认设计语言</li>
+<li><code>15m</code>: 更适合当持仓管理框架，不适合做首触发主频</li>
+</ul>
+<h2>5.2 它服务的不是“形态学 breakout”，而是信息流 alpha</h2>
+<p>这也是这轮值得收进素材池的地方。</p>
+<p>base alpha 不是：</p>
+<ul>
+<li>retest</li>
+<li>breakout 形态</li>
+<li>RSI 超买超卖</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li><strong>公开钱包身份 + 大额 aggressor flow + 多账户同向收敛</strong></li>
+</ul>
+<p>这能补充 desk 当前 raw alpha 池，不会只是旧 breakout 家族内循环。</p>
+<p>---</p>
+<h2>6. 快速 sanity check：公开 live tape 上，这个阈值是不是死的？</h2>
+<p>我做了一个极小的公开 live probe：</p>
+<ul>
+<li>数据源：Hyperliquid 公共 <code>trades</code> WebSocket</li>
+<li>资产：<code>BTC / ETH / SOL</code></li>
+<li>观察时长：约 <code>20.48s</code></li>
+<li>口径：完全按 repo 的 <code>&gt;= $50k</code> whale 门槛去数</li>
+<li>结果文件：</li>
+<li><code>reports/artifacts/quant_digests/whale_tracker_liveprobe_20260401_0323/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/whale_tracker_liveprobe_20260401_0323/meta.json</code></li>
+</ul>
+<h3>结果摘要</h3>
+<ul>
+<li>BTC：<code>74</code> 笔 trade，最大单笔约 <code>$44.1k</code>，<strong>0</strong> 笔过 whale 门槛</li>
+<li>ETH：<code>58</code> 笔 trade，最大单笔约 <code>$22.5k</code>，<strong>0</strong> 笔过门槛</li>
+<li>SOL：<code>36</code> 笔 trade，最大单笔约 <code>$166.4k</code>，<strong>1</strong> 笔过门槛，且为 <strong>buy</strong></li>
+<li>合计：<code>168</code> 笔 trade 里，只有 <code>1</code> 笔过 <code>$50k</code>，占比约 <strong>0.6%</strong></li>
+</ul>
+<h3>这说明什么</h3>
+<p>这不是 alpha 验证，只是 cadence sanity check。</p>
+<p>结论很清楚：</p>
+<ol>
+<li><strong>$50k 门槛是稀疏触发，不是高频信号</strong>；</li>
+<li>稀疏是好事——更像 event-driven 高 conviction，而不是随时都能开仓的噪音策略；</li>
+<li>若扩到 <code>DOGE/WIF/PEPE</code> 这类低价高活跃币，门槛可能要改成 <strong>按 ADV / top-book depth / coin-specific percentile</strong>，否则容易“只在 majors 上活着”。</li>
+</ol>
+<p>---</p>
+<h2>7. 真正值得 desk 复现的版本</h2>
+<p>repo 原版更像一个 live skeleton。对我们来说，更该复现的是下面这个 desk 版：</p>
+<h2>7.1 Desk 版最小可复现实验（推荐）</h2>
+<h3>Universe</h3>
+<ul>
+<li>先从 Hyperliquid 最活跃的 <code>BTC / ETH / SOL / HYPE / DOGE / PEPE / WIF</code> 开始</li>
+<li>只保留最近 30d 成交额、trade count 足够的币</li>
+</ul>
+<h3>Event definition</h3>
+<p>对每个 coin 的每笔 trade，计算：</p>
+<ul>
+<li><code>trade_notional_usd</code></li>
+<li>aggressor side</li>
+<li>buyer/seller wallet</li>
+<li>同地址最近 7d / 30d PnL proxy（如果能从链上或公开成交回推）</li>
+<li>同方向 distinct whales in last 300s</li>
+<li>同方向 whale notional sum in last 300s</li>
+</ul>
+<h3>Alpha trigger（第一版）</h3>
+<p>开多条件：</p>
+<ol>
+<li><code>trade_notional_usd &gt;= coin_specific_threshold</code></li>
+<li><code>wallet_score &gt;= q80</code></li>
+<li><code>same_side_distinct_whales_300s &gt;= 2</code></li>
+<li><code>same_side_whale_notional_300s &gt;= q90</code></li>
+<li>事件后第一分钟 mid 没有立刻反向吞没</li>
+</ol>
+<p>开空同理。</p>
+<h3>Exit</h3>
+<ul>
+<li><code>TP = +0.6% ~ +1.2%</code> 分层测试</li>
+<li><code>SL = -0.3% ~ -0.6%</code> 分层测试</li>
+<li><code>max_holding = 5 / 15 / 30 min</code></li>
+<li>若出现反向 whale convergence，立即平</li>
+</ul>
+<h3>Cost</h3>
+<ul>
+<li>taker-only 与 maker-entry / taker-exit 两套都测</li>
+<li>单边至少假设 <code>3~6 bps</code>，不要拿理想费率自我催眠</li>
+</ul>
+<h2>7.2 更 desk-friendly 的两条改写</h2>
+<h3>改写 A：把绝对 <code>$50k</code> 改成 coin-specific 百分位</h3>
+<p>直接测：</p>
+<ul>
+<li><code>trade_notional &gt;= rolling q99</code> 或 <code>q99.5</code></li>
+</ul>
+<p>好处：</p>
+<ul>
+<li>避免 BTC/ETH 与小币用同一绝对门槛，导致小币永远没信号。</li>
+</ul>
+<h3>改写 B：把“单 wallet 触发”升级成“群聚冲击分数”</h3>
+<p>例如：</p>
+<p>```text whale_shock_score = z(trade_notional_sum_300s_same_side) + z(distinct_wallet_count_300s_same_side) + z(repeat_wallet_intensity)</p>
+<ul>
+<li>z(opposite_side_rebuttal_60s)</li>
+<p>```</p>
+</ul>
+<p>这比简单 <code>convergence&gt;1</code> 更适合做 cross-asset ranking。</p>
+<p>---</p>
+<h2>8. 它最可能怎么失效</h2>
+<p>要提前诚实。</p>
+<h2>8.1 地址不等于“聪明钱”</h2>
+<p>有些地址只是内部转移、做市对敲、清算相关流，不是信息交易。 所以钱包分数必须滚动更新，不能迷信固定白名单。</p>
+<h2>8.2 大单打印可能是冲击末端，不是起点</h2>
+<p>尤其在 memecoin 上，大单常常是最后一脚而不是开始。 所以最好加：</p>
+<ul>
+<li>event 后 <code>10s/30s/60s</code> 未被完全反向吞没</li>
+<li>或价差 / slippage / top-book depletion 约束</li>
+</ul>
+<h2>8.3 组合相关性会让“多币同向开仓”看起来很爽，实际上全是同一笔 beta</h2>
+<p>repo 用 correlation bucket cap 处理这件事，这是对的。 如果 desk 复现时只看单笔 alpha 而不做组内限额，最后很容易把同一轮市场 beta 当成多次独立胜利。</p>
+<h2>8.4 费率与冲击成本是第一杀手</h2>
+<p>这种事件驱动 continuation，最怕：</p>
+<ul>
+<li>你看到时已经晚了</li>
+<li>taker 再 taker 后 edge 被吃光</li>
+</ul>
+<p>所以必须区分：</p>
+<ul>
+<li><strong>信号有无方向性</strong></li>
+<li><strong>扣完冲击和手续费后还能不能活</strong></li>
+</ul>
+<p>前者成立，不代表后者成立。</p>
+<p>---</p>
+<h2>9. 和当前素材池的关系</h2>
+<p>这篇最有价值的地方，是它补的是 <strong>“公开身份流 + 大单群聚 continuation”</strong> 这条 raw alpha 分支，而不是继续围绕：</p>
+<ul>
+<li>breakout 形态</li>
+<li>RSI/BB 均值回复</li>
+<li>传统 pairs z-score</li>
+<li>单纯 funding / basis carry</li>
+</ul>
+<p>它与我们已有材料的关系更像：</p>
+<ul>
+<li>可与 <code>liquidation cascade</code> 方向验证互补</li>
+<li>可与 <code>order-flow / imbalance</code> 做共振评分</li>
+<li>可与 <code>funding crowding</code> 做持仓时长调节</li>
+</ul>
+<p>但本体依然是 raw alpha，不是 filter 假装 alpha。</p>
+<p>---</p>
+<h2>10. 结论</h2>
+<p>如果把这份 2026 repo 整体阅读，很容易把注意力放在“多策略 bot”。 但对短周期 desk，真正该先拿走的，是里面 <strong>Whale Tracker</strong> 这一支：</p>
+<p>&gt; <strong>公开钱包地址 + 大额 aggressor trade + 5 分钟同向收敛 → 事件驱动 continuation alpha。</strong></p>
+<p>它的优点是：</p>
+<ul>
+<li>数据公开可拿；</li>
+<li>base alpha 讲得清；</li>
+<li>与 <code>1m/3m/5m</code> 天然匹配；</li>
+<li>repo 已给出最小完整策略壳；</li>
+<li>可以很快拆成更适合 desk 的 coin-specific / shock-score 版本。</li>
+</ul>
+<p>我的判断： <strong>值得进入复现池，而且优先级不低。</strong> 但第一轮别急着做“盲目 whale 跟单”，而是先把它改写成 <strong>coin-normalized whale shock continuation</strong>，并严格核算 taker cost 与事件后吞没率。</p>
+<p>---</p>
+<h2>11. 下一步怎么测（直接执行版）</h2>
+<h3>Step 1：先做数据层</h3>
+<p>抓 Hyperliquid 公共 trade stream，持续记录至少 7 天：</p>
+<ul>
+<li><code>coin, side, px, sz, time, buyer, seller</code></li>
+<li>生成每币种的 <code>trade_notional</code> 分位数</li>
+<li>生成地址活跃度 / 胜率 / 持续性 proxy</li>
+</ul>
+<h3>Step 2：先测最小 raw alpha，不加太多花活</h3>
+<p>只测：</p>
+<ul>
+<li><code>same_side_distinct_whales_300s &gt;= 2</code></li>
+<li><code>trade_notional &gt;= q99</code></li>
+<li>按事件后 <code>1m / 3m / 5m / 15m</code> forward return 分 bucket 看 continuation</li>
+</ul>
+<h3>Step 3：再加成本与执行</h3>
+<p>分三套：</p>
+<ol>
+<li>signal close-to-mid（理想）</li>
+<li>taker-on-close</li>
+<li>maker-entry / taker-exit</li>
+</ol>
+<h3>Step 4：最后才加 wallet score</h3>
+<p>先验证“群聚是否有 edge”，再验证“高分钱包是否进一步抬升 edge”。 不要一上来就做复杂 wallet 评分，把问题搅在一起。</p>
+<p>---</p>
+<h2>12. 本文关键信息卡</h2>
+<ul>
+<li><strong>主题类型</strong>：raw alpha</li>
+<li><strong>基础 alpha</strong>：whale aggressor flow convergence continuation</li>
+<li><strong>最适合频率</strong>：<code>1m / 3m / 5m</code></li>
+<li><strong>公开数据源</strong>：Hyperliquid public WebSocket <code>trades</code></li>
+<li><strong>最小实验</strong>：<code>&gt;=q99</code> 大单 + <code>300s</code> 同向 distinct-wallet 收敛，对比后续 <code>1/3/5/15m</code> continuation</li>
+<li><strong>本地文件</strong>：<code>research/quant_digests/2026-04-01_0325_hyperliquid-whale-trade-convergence-alpha.md</code></li>
+<li><strong>live probe artifact</strong>：<code>reports/artifacts/quant_digests/whale_tracker_liveprobe_20260401_0323/summary.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 funding / OI 写成“单币单点阈值”：cross-symbol crowding breadth 更像 15m 三条收口线共用的 size/veto overlay</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 funding / OI 写成“单币单点阈值”：cross-symbol crowding breadth 更像 15m 三条收口线共用的 size/veto overlay</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-21 03:02 UTC</span>
+      <span class="pill">类型：官方 API 文档 + 官方 SDK 仓库 + 公共数据快检</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/funding/open-interest/crowding/breadth/regime/filter/position-sizing/repo/docs/binance/crypto/5m/15m</span>
+      <span class="pill">证据类型：工程可复核 + 公开数据快检（待最小回测）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-21_0302_funding-oi-crowding-breadth-overlay.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-21 03:02 UTC</li>
+<li>类型：官方 API 文档 + 官方 SDK 仓库 + 公共数据快检</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/funding/open-interest/crowding/breadth/regime/filter/position-sizing/repo/docs/binance/crypto/5m/15m</li>
+<li>证据类型：工程可复核 + 公开数据快检（待最小回测）</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<p>本轮不再把 funding 或 OI 当“单币方向键”，而是用 Binance 公共接口做一个<strong>横截面 crowding breadth</strong>：</p>
+<ul>
+<li>用 <code>fundingRate</code> 提供多空拥挤方向（符号）</li>
+<li>用 <code>openInterestHist</code> 提供是否继续加仓（增量）</li>
+<li>在 top-liquid 合约上做 breadth，而不是盯 BTC 一根线</li>
+</ul>
+<h2>2) 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：对 15m desk，<code>funding × OI</code> 更适合做 <strong>cross-symbol crowding breadth overlay</strong>（仓位/否决层），不适合当逐根主信号。</li>
+<li><strong>一句话证明方式</strong>：同一时点快检显示，拥挤并非“全市场同向”，而是局部扩散；因此单币阈值容易误判，breadth 更适合作为三条收口线共享风控层。</li>
+</ul>
+<h3>本轮 3 个关键数据点（公开接口快检）</h3>
+<p>快检文件：<code>reports/artifacts/quant_digest_live/binance_funding_oi_breadth_20260321_030133.json</code></p>
+<ol>
+<li>top30 交易额合约里可用样本 <code>24</code> 个；</li>
+<li><code>long crowding breadth = 20.83%</code>，<code>short crowding breadth = 16.67%</code>；</li>
+<li><code>OI 上升广度 = 41.67%</code>，且 <code>median OIΔ(5m) = -0.0231%</code>（说明全体并非一致加杠杆）。</li>
+</ol>
+<h2>3) 为什么和三条收口线直接相关</h2>
+<p>这条线值得做，因为它是三条线的<strong>共享风险层</strong>，能直接帮助收口：</p>
+<ul>
+<li><code>V3 breakout-short follow-up</code>：当 short crowding breadth 高时，避免“拥挤方向末端追击”；</li>
+<li><code>Fib confirmation / retest_hold</code>：当 long crowding breadth 高时，提高 long-side 回踩确认门槛；</li>
+<li><code>EMA / PSAR raw alpha</code>：先保留 raw trigger，不加新花哨触发，优先做仓位折扣与 veto。</li>
+</ul>
+<h2>4) 可复刻的最小实验（5m/15m）</h2>
+<h3>数据源（公开性 / 更新频率）</h3>
+<ul>
+<li>Binance USDⓈ-M 24h ticker：公开，无需 key，近实时；</li>
+<li>Funding rate history：公开，无需 key，funding 结算节奏（通常 8h）更新；</li>
+<li>Open interest statistics：公开，无需 key，可取 <code>5m</code> 频率。</li>
+</ul>
+<h3>v0 指标定义</h3>
+<p>在每个 15m bar close：</p>
+<ol>
+<li>选 <code>quoteVolume</code> 前 30 的 USDT perpetual；</li>
+<li>对每个 symbol 取：</li>
+</ol>
+<ul>
+<li><code>f_i = latest fundingRate</code></li>
+<li><code>d_i = OIΔ_15m</code>（由 5m OI 聚合）</li>
+</ul>
+<ol>
+<li>定义：</li>
+</ol>
+<ul>
+<li><code>LongCrowdBreadth_t = mean( f_i &gt; 0 and d_i &gt; 0 )</code></li>
+<li><code>ShortCrowdBreadth_t = mean( f_i &lt; 0 and d_i &gt; 0 )</code></li>
+</ul>
+<ol>
+<li>对 breadth 做 rolling percentile（如 30d）并映射 risk bucket。</li>
+</ol>
+<h3>接入三条线（先测最小口径）</h3>
+<ul>
+<li>baseline：现有 breakout-short / fib_retest_hold / ema_psar；</li>
+<li>overlay：</li>
+<li>若 <code>ShortCrowdBreadth &gt;= p80</code>：short 侧仓位 ×0.6，且 breakout-short 需额外 1 根 confirm；</li>
+<li>若 <code>LongCrowdBreadth &gt;= p80</code>：long 侧仓位 ×0.6，Fib/EMA long 需额外 reclaim 确认；</li>
+<li>其余不变。</li>
+</ul>
+<h3>首轮只看 4 个指标</h3>
+<ol>
+<li><code>post_cost_expectancy</code></li>
+<li><code>failure_rate</code></li>
+<li><code>trade_count_retention</code></li>
+<li><code>max_drawdown</code></li>
+</ol>
+<h2>5) 风险与保留意见</h2>
+<ul>
+<li>Funding 更新慢于 15m，天然更像 regime/filter/sizing，不是逐根触发器；</li>
+<li>OI 受交易所口径与合约轮动影响，需先做活跃度过滤；</li>
+<li>小币种的极端 funding/OI 波动可能污染 breadth，需设最小流动性门槛。</li>
+</ul>
+<h2>6) 来源</h2>
+<ol>
+<li>Binance. (2025-2026). <strong>Binance Python Connectors</strong>. GitHub Repository.</li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: <code>N/A</code></li>
+<li>Readable URL: <code><a href="https://github.com/binance/binance-connector-python">https://github.com/binance/binance-connector-python</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/binance/binance-connector-python">https://github.com/binance/binance-connector-python</a></code></li>
+</ul>
+<ol>
+<li>Binance Developers. (2025-2026). <strong>USDⓈ-M Futures Market Data REST API</strong>. Official Documentation.</li>
+</ol>
+<ul>
+<li>Venue: Binance Open Platform</li>
+<li>DOI: <code>N/A</code></li>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/24hr-Ticker-Price-Change-Statistics">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/24hr-Ticker-Price-Change-Statistics</a></code></li>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History</a></code></li>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest-Statistics">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest-Statistics</a></code></li>
+</ul>
+<p>--- 一句话收口：</p>
+<p><strong>先把 funding/OI 从“单币方向键”升级为“横截面 crowding breadth overlay”，比继续给 15m 主信号堆阈值更能直接帮三条收口线降噪与控回撤。</strong></p>
+</body>
+</html>

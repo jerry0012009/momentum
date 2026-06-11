@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Wen et al. (2022) 只读成“BTC 日内可预测性论文”：对 short-cycle crypto desk，更该先拆的是「extreme recent return × strongest-only continuation router」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Wen et al. (2022) 只读成“BTC 日内可预测性论文”：对 short-cycle crypto desk，更该先拆的是「extreme recent return × strongest-only continuation router」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-19 00:16 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-19_0016_intraday-extreme-return-router-alpha.md</code></p>
+  </div>
+  <ul>
+<li><strong>主题类型：</strong> raw alpha</li>
+<li><strong>基础 alpha：</strong> 同一币种在刚出现足够强的短窗单边波动后，后续 <code>1h~2h</code> 往往不是立刻均值回复；更适合 desk 的读法是：<strong>只做当下全市场最强的那一个方向冲击</strong>，而不是把所有币的日内 predictability 一股脑都交易。</li>
+<li><strong>是否可独立复现：</strong> 是</li>
+<li><strong>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：</strong> 是</li>
+</ul>
+<h2>先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha 不是“BTC 某几个小时能预测当天后面某几个小时”这句学术 headline 本身，而是：<code>intraday own-past return continuation</code>。</strong></p>
+<p>更适合我们 desk 的翻译是：</p>
+<p>&gt; <strong>过去 <code>2h</code> 刚走出很强的单边冲击、而且这是全市场当下最极端的一档时，接下来 <code>2h</code> 仍可能继续顺着原方向漂。</strong></p>
+<p>所以这轮我没有把 paper 硬抄成“日内小时矩阵预测”，而是抽出一个更容易搬到 <code>15m</code>、更像完整策略壳的旁支：</p>
+<p>&gt; <strong><code>recent 2h return z-score</code> 排名 + <code>volume positive</code> 确认 + <code>strongest-only router</code> + 固定 <code>2h</code> time-box exit</strong></p>
+<p>---</p>
+<h2>这篇论文讲了什么，为什么值得 intake</h2>
+<p><strong>来源</strong></p>
+<ul>
+<li><strong>Authors：</strong> Zhuzhu Wen, Elie Bouri, Yahua Xu, Yang Zhao</li>
+<li><strong>Year：</strong> 2022</li>
+<li><strong>Title：</strong> *Intraday return predictability in the cryptocurrency markets: Momentum, reversal, or both*</li>
+<li><strong>Venue：</strong> *The North American Journal of Economics and Finance*</li>
+<li><strong>DOI：</strong> &lt;<a href="https://doi.org/10.1016/j.najef.2022.101733&gt;">https://doi.org/10.1016/j.najef.2022.101733&gt;</a></li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://www.sciencedirect.com/science/article/abs/pii/S1062940822000833&gt;">https://www.sciencedirect.com/science/article/abs/pii/S1062940822000833&gt;</a></li>
+<li><strong>Mirror / text extraction used this round：</strong> &lt;<a href="https://r.jina.ai/http://www.sciencedirect.com/science/article/abs/pii/S1062940822000833&gt;">https://r.jina.ai/http://www.sciencedirect.com/science/article/abs/pii/S1062940822000833&gt;</a></li>
+<li><strong>Repo URL：</strong> 本轮未拿到作者官方仓库</li>
+</ul>
+<p><strong>我为什么选它</strong></p>
+<ol>
+<li>它是近 5 年正式期刊论文，不是只靠社区经验；</li>
+<li>主题直接是 <strong>crypto intraday predictability</strong>，和 <code>1m/3m/5m/15m</code> 研发有天然关系；</li>
+<li>更重要的是，它明确说 <strong>crypto 的日内预测关系不只有正向 momentum，也有负向 reversal</strong>，这非常适合我们 desk 做“别交易所有信号，只路由 strongest pocket”的二次拆解。</li>
+</ol>
+<p>---</p>
+<h2>论文里最重要的几个硬点</h2>
+<p>基于本轮拿到的正文前言/section snippet，可确认的硬信息有：</p>
+<ol>
+<li><strong>作者用的是 BTC <code>5m</code> 高频数据，再聚成 hourly return 做同日内各小时之间的预测矩阵。</strong></li>
+<p>这不是日频或周频慢研究，而是真正往 intraday 靠。</p>
+</ol>
+<ol>
+<li><strong>结论不是单一“只有 momentum”。</strong></li>
+<p>论文明确写到：在 crypto 里，日内 predictor 的符号<strong>既可能是正，也可能是负</strong>；这和传统标准化市场里“多半正向延续”的读法不完全一样。</p>
+</ol>
+<ol>
+<li><strong>predictability 在某些环境里更强：</strong></li>
+</ol>
+<ul>
+<li><strong>no jump</strong></li>
+<li><strong>no FOMC announcement</strong></li>
+<li><strong>low liquidity</strong></li>
+</ul>
+<ol>
+<li><strong>作者不只做 in-sample，还做 OOS 检验与 timing strategy。</strong></li>
+<p>论文不是只报回归显著性，而是明确讨论了经济价值。</p>
+</ol>
+<ol>
+<li><strong>robustness 还扩到 ETH / LTC / XRP 与不同交易平台。</strong></li>
+<p>所以它不是只在 BTC 单点样本里讲故事。</p>
+</ol>
+<p>一句话核心结论：</p>
+<p>&gt; <strong>crypto 的 intraday predictability 确实存在，但它不是“永远追涨”或“永远反转”这么粗；真正值钱的是先找出哪一类短窗冲击还会继续走。</strong></p>
+<p>一句话证明方式：</p>
+<p>&gt; <strong>作者用 BTC 高频数据，把同一天内各小时收益做 IS/OOS 预测矩阵和 timing strategy，并在 jump / liquidity / FOMC / 其他币上做分样本和稳健性检查。</strong></p>
+<p>---</p>
+<h2>对我们 desk 最有价值的翻译</h2>
+<p>如果照论文 headline 直译，你很容易写出一个不太 desk-friendly 的东西：</p>
+<ul>
+<li>“第 <code>i</code> 小时收益预测第 <code>j</code> 小时收益”</li>
+<li>同一天内一堆 hour-slot 矩阵</li>
+<li>很学术，但不够像可直接复现的 <code>15m</code> 策略</li>
+</ul>
+<p>更适合当前 desk 的读法其实是：</p>
+<h3>1. 不要交易“所有 intraday predictability”</h3>
+<p>论文已经提醒：有些地方是 continuation，有些地方是 reversal。那就说明： <strong>值钱的不是 always-on 全开，而是 router。</strong></p>
+<h3>2. 对 liquid-major perp，router 比 plain 单币更重要</h3>
+<p>我这轮用 Binance USDⓈ-M <code>15m</code>、10 个 liquid majors（<code>BTC/ETH/SOL/BNB/XRP/DOGE/ADA/LINK/AVAX/LTC</code>）做了一个 portability probe：</p>
+<ul>
+<li>先算每个币过去 <code>8</code> 根 <code>15m</code>（约 <code>2h</code>）收益；</li>
+<li>再滚动标准化成 <code>z-score</code>；</li>
+<li>每个时点只挑 <strong><code>abs(z)</code> 最大</strong> 的那一档；</li>
+<li>若 <code>|z|&gt;=1.5</code> 且 <code>volume_z&gt;0</code>，就顺着过去 <code>2h</code> 方向做 <code>2h</code> continuation；</li>
+<li>固定持有 <code>8</code> 根 <code>15m</code> 后退出。</li>
+</ul>
+<p>这个 strongest-only 读法，比“每个币都做 continuation”更像桌面可用信号。</p>
+<p>---</p>
+<h2>本轮 portability probe：最值得记的 3 个数</h2>
+<h3>Probe 口径</h3>
+<ul>
+<li><strong>市场：</strong> Binance USDⓈ-M perpetual</li>
+<li><strong>周期：</strong> <code>15m</code></li>
+<li><strong>样本：</strong> 10 个 liquid majors，近约 <code>60d</code></li>
+<li><strong>artifact：</strong></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_intraday_predictability_ts_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_intraday_router_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_intraday_router_events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_intraday_router_meta.json</code></li>
+</ul>
+<h3>结果 1：plain 最近 <code>2h -&gt; 后续 2h</code> continuation 只是轻微正，不够直接 taker</h3>
+<p>在全样本里，<code>L=8 bar</code>、<code>H=8 bar</code> 的 <strong>top1 abs-z strongest-only</strong> 组合，平均只有 <strong><code>+0.81 bps</code> gross</strong>，不够厚。</p>
+<h3>结果 2：但加上 <code>|z|&gt;=1.5 + volume_z&gt;0</code> 后，edge 明显抬起来</h3>
+<p>同样是 strongest-only、顺着过去 <code>2h</code> 方向做 <code>2h</code> continuation：</p>
+<ul>
+<li><strong><code>n = 1376</code></strong></li>
+<li><strong>mean ≈ <code>+8.43 bps gross / trade</code></strong></li>
+<li><strong>win rate ≈ <code>48.8%</code></strong></li>
+</ul>
+<p>胜率不高，但均值由少数大单边拉开，说明它更像 <strong>convex continuation pocket</strong>，不是稳定小赚型信号。</p>
+<h3>结果 3：若把它当 cross-sectional long-short fade，当前 liquid majors 反而不够厚</h3>
+<p>同样近 <code>60d</code>、每个 <code>15m</code> 时点做过去 <code>2h</code> loser-vs-winner：</p>
+<ul>
+<li><code>top1 loser - top1 winner</code> next <code>2h</code> 约 <strong><code>+4.63 bps gross</code></strong>；</li>
+<li><code>q20 basket</code> 约 <strong><code>+3.80 bps gross</code></strong>；</li>
+<li>以常见 long-short taker 粗算 <code>16bps</code> round trip，当前明显不够厚。</li>
+</ul>
+<p>所以这轮更值得保留的是：</p>
+<p>&gt; <strong>单腿 strongest-only continuation router，而不是把论文硬翻成 market-neutral loser-winner fade。</strong></p>
+<p>---</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li><strong>方向属性：</strong> 顺势 / router</li>
+<li><strong>基础 alpha：</strong> <code>extreme recent return continuation</code></li>
+<li><strong>regime：</strong> 论文提示 <code>no jump / no FOMC / low liquidity</code> 更强；本轮 public-data 代理版尚未显式加这三层 gate</li>
+<li><strong>filter / veto：</strong> <code>|lag_return_z| &gt;= 1.5</code>，且 <code>volume_z &gt; 0</code></li>
+<li><strong>risk / sizing / execution overlay：</strong> strongest-only；固定 <code>2h</code> time-box exit；先按单腿 taker 粗扣 <code>8bps</code> 做生死线判断</li>
+</ul>
+<p>---</p>
+<h2>它为什么比继续补某个 filter 更值得</h2>
+<p>因为这轮能先回答一个非常实用的问题：</p>
+<p>&gt; <strong>“当下 market 里最极端的 2h 冲击，到底该追还是该反手？”</strong></p>
+<p>结果不是泛泛的“都可以”，而是更清楚的：</p>
+<ul>
+<li><strong>全市场 strongest-only + 强度门槛 + volume 确认</strong> 时，追随比反手更像可研究 pocket；</li>
+<li>若没有这些 router 条件，plain continuation 很薄；</li>
+<li>若改成横截面 loser-winner fade，当前 liquid-major perp 口径也不够厚。</li>
+</ul>
+<p>这比单纯再补一个 overlay 更直接扩充 raw alpha 素材池。</p>
+<p>---</p>
+<h2>最小可复刻实验</h2>
+<h3>最小策略壳</h3>
+<p>在 <code>15m</code> universe 上，每根 bar 做：</p>
+<ol>
+<li>对每个币计算过去 <code>8</code> 根 <code>15m</code> 收益 <code>ret_8</code>；</li>
+<li>对每个币计算 rolling <code>96</code> 根的 <code>z(ret_8)</code>；</li>
+<li>只选 <code>abs(z)</code> 最大的 1 个币；</li>
+<li>若 <code>|z|&gt;=1.5</code> 且 <code>volume_z&gt;0</code>：</li>
+</ol>
+<ul>
+<li><code>ret_8 &gt; 0</code> 就做多；</li>
+<li><code>ret_8 &lt; 0</code> 就做空；</li>
+</ul>
+<ol>
+<li>持有固定 <code>8</code> 根 <code>15m</code>（约 <code>2h</code>）后退出；</li>
+<li>不叠仓，下一笔必须等前一笔结束。</li>
+</ol>
+<h3>先看哪两个指标</h3>
+<ol>
+<li><strong>gross / net bps per trade</strong>（先粗扣 <code>8bps</code>）</li>
+<li><strong>MFE/MAE 或 tail contribution</strong>：确认收益是否被少数极端大单支撑</li>
+</ol>
+<h3>紧接着该测什么</h3>
+<ol>
+<li><strong>加入 jump veto</strong>：若当前 bar 已是超大单根冲击，是否反而更差？</li>
+<li><strong>加入 event veto</strong>：避开 FOMC / CPI / funding settlement 边界，看看 paper 里的环境差异能否迁移到 perp。</li>
+<li><strong>改成 <code>5m child execution</code></strong>：保持 <code>15m</code> 母信号，但把入场细化成 <code>5m</code> pullback / micro pullback，以争取把 <code>gross 8.43bps</code> 留到 <code>net</code>。</li>
+</ol>
+<p>---</p>
+<h2>风险与保留意见</h2>
+<ol>
+<li><strong>这不是论文原始策略的严格复刻。</strong></li>
+<p>原文是同日内小时收益矩阵；我这轮是把它翻成 desk 更可用的 <code>15m strongest-only router</code>。</p>
+</ol>
+<ol>
+<li><strong>当前 edge 很靠大尾部，median 仍偏负。</strong></li>
+<p><code>top1_absz_ge_1p5_volpos</code> 的 <code>p50</code> 约 <strong><code>-2.02bps</code></strong>，说明它不是“多数单子小赚”的 smooth alpha。</p>
+</ol>
+<ol>
+<li><strong>成本边缘不厚。</strong></li>
+<p>单腿 taker 若粗扣 <code>8bps</code>，当前只剩大约 <strong><code>+0.43bps</code></strong>；要么靠更细执行，要么靠更强 gate。</p>
+</ol>
+<ol>
+<li><strong>样本只做了 liquid-major perp portability。</strong></li>
+<p>论文谈的是 BTC hourly predictability 与其他币 robustness，不等于 2026 Binance perp 的所有币都还能直接照抄。</p>
+</ol>
+<ol>
+<li><strong>可能和已有 shock/continuation 家族重叠。</strong></li>
+<p>下一步必须和 <code>price burst</code>、<code>trade-flow imbalance</code>、<code>queue pressure</code>、<code>retail-chasing</code> 那几条做 horse race，确认它是不是独立 pocket。</p>
+</ol>
+<p>---</p>
+<h2>我对这条线的当前判断</h2>
+<p>这轮我把它定为：</p>
+<p>&gt; <strong>可独立复现、且能直接落成完整策略壳的 raw alpha 候选。</strong></p>
+<p>但不是因为论文 headline 本身就能直接上线，而是因为它被翻译成：</p>
+<ul>
+<li><code>15m</code> 母级别强度识别</li>
+<li>strongest-only router</li>
+<li><code>2h</code> 固定退出</li>
+<li>可继续叠 <code>5m</code> child execution</li>
+</ul>
+<p>这让它更像一个<strong>可马上进入 first-verdict / cost / execution honesty check</strong> 的短周期素材，而不只是“学术上很有意思”。</p>
+<p>---</p>
+<h2>来源</h2>
+<ul>
+<li>Wen, Z., Bouri, E., Xu, Y., &amp; Zhao, Y. (2022). *Intraday return predictability in the cryptocurrency markets: Momentum, reversal, or both*. *The North American Journal of Economics and Finance*, 62, 101733.</li>
+<li>DOI: &lt;<a href="https://doi.org/10.1016/j.najef.2022.101733&gt;">https://doi.org/10.1016/j.najef.2022.101733&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://www.sciencedirect.com/science/article/abs/pii/S1062940822000833&gt;">https://www.sciencedirect.com/science/article/abs/pii/S1062940822000833&gt;</a></li>
+<li>Text mirror used this round: &lt;<a href="https://r.jina.ai/http://www.sciencedirect.com/science/article/abs/pii/S1062940822000833&gt;">https://r.jina.ai/http://www.sciencedirect.com/science/article/abs/pii/S1062940822000833&gt;</a></li>
+</ul>
+</body>
+</html>

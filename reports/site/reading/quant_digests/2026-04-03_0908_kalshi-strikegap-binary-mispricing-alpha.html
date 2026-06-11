@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Kalshi 新 repo 只读成预测市场工具链：对 short-cycle desk，更该先测的是「spot-trend × strike-gap × binary-mid mispricing」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Kalshi 新 repo 只读成预测市场工具链：对 short-cycle desk，更该先测的是「spot-trend × strike-gap × binary-mid mispricing」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 09:12 UTC</span>
+      <span class="pill">研究时间：2026-04-03 09:08 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（GitHub API metadata + `README.md` + `backtester.py` + `train.py` + `data/sample_features.csv`）+ Kalshi / Coinbase 公共数据路径</span>
+      <span class="pill">主题标签：raw-alpha/cross-market/relative-value/prediction-market/kalshi/coinbase/15m/binary-probability/spot-trend/price-vs-strike/orderbook/kelly/fixed-expiry/1m/3m/5m/15m/repo/public-data/external-data/cost</span>
+      <span class="pill">证据类型：repo source + sample dataset + official public data docs（repo-based）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_0908_kalshi-strikegap-binary-mispricing-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-03 09:08 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（GitHub API metadata + <code>README.md</code> + <code>backtester.py</code> + <code>train.py</code> + <code>data/sample_features.csv</code>）+ Kalshi / Coinbase 公共数据路径</li>
+<li>主题标签：raw-alpha/cross-market/relative-value/prediction-market/kalshi/coinbase/15m/binary-probability/spot-trend/price-vs-strike/orderbook/kelly/fixed-expiry/1m/3m/5m/15m/repo/public-data/external-data/cost</li>
+<li>证据类型：repo source + sample dataset + official public data docs（repo-based）</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>Coinbase 现货趋势 + 当前价相对 15m 开盘参考价（strike/floor）的位置 + Kalshi 盘口状态，能更快估出本期 YES 的公平概率；当这个公平概率与 Kalshi 当前二元合约中价出现足够大偏离时，就交易该偏离的回补。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是一个 <strong>2026-02-28 创建</strong> 的小型新仓库：<code>kapelame/kalshi-crypto-bot</code>（GitHub 目前约 <strong>3 stars</strong>，但代码很短、可读、可直接拆策略）。</p>
+<p>repo headline 写的是 <strong>Kalshi 15-minute crypto prediction market trading framework</strong>。表面上它更像一个“数据采集 + 回测 + paper trader + dashboard”的壳子，而且 README 还明确说 live trader 里的 <code>your_strategy()</code> 是空的。</p>
+<p>但真正值得 desk intake 的，不是“框架已经能下单”，而是：</p>
+<ol>
+<li>它把 <strong>crypto 15m hard-expiry binary market</strong> 的一整套工程壳子都搭好了；</li>
+<li><code>backtester.py</code> 里其实已经写出一条 <strong>可独立复现的 raw alpha 骨架</strong>，不是纯空壳；</li>
+<li>这条骨架的本体不是宏观赔率解释，也不是慢频 gate，而是 <strong><code>fair probability - quoted probability</code></strong> 的可交易偏离。</li>
+</ol>
+<p>翻成人话： <strong>别把它看成“Kalshi 工具箱”。对我们更重要的是：它已经把一条 15m 二元合约 mispricing 策略，拆成了 signal / entry / sizing / fee / risk 的完整骨架。</strong></p>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p>这轮的 base alpha 很清楚：</p>
+<p>&gt; <strong>外部现货价格路径与当前合约参考价（floor strike）共同决定“这 15 分钟最终涨/跌”的公平概率；而 Kalshi 的当前合约中价并不会每一秒都完全跟上这条公平概率，所以会留下一个可交易的二元错价。</strong></p>
+<p>因此它不是：</p>
+<ul>
+<li>filter；</li>
+<li>regime gate；</li>
+<li>纯 execution overlay；</li>
+<li>也不是“prediction market 解释文”。</li>
+</ul>
+<p>它是一条可以单独站住的 <strong>cross-market / binary-probability / fixed-expiry raw alpha</strong>。</p>
+<h2>3. 为什么这轮值得写，而不是继续补第 N 条 shape/filter</h2>
+<p>结合当前文档与最近 digest 节奏，这轮有三点价值：</p>
+<ol>
+<li><strong>它仍然是 raw alpha，不是又一层 gate。</strong> 当前 bot7 明显更该继续补可独立下单的 alpha，而不是再堆一个共享过滤器。</li>
+<li><strong>它扩了素材池的资产形态。</strong> 最近池子里已经有很多 perp/perp、spot/perp、pairs、cross-sectional、microstructure；这轮补的是 <strong>公开 prediction-marketized crypto alpha</strong>，但仍然保持短周期、可回测、可定义成本。</li>
+<li><strong>它比 04-03 02:28 那篇 Kalshi 宏观 gate 更贴近 desk 主线。</strong> 那篇更适合作 volatility regime gate；这轮则是能直接写成完整交易规则的主信号。</li>
+</ol>
+<p>如果要再说得更直白一点： <strong>现在更值得补的是“能直接下注的 15m raw alpha”，而不是继续给现有策略找第 N 个 veto。</strong></p>
+<h2>4. 最值得记住的硬数据</h2>
+<h3>4.1 市场结构与数据频率</h3>
+<p>README 把交易对象说得很清楚：</p>
+<ul>
+<li>标的是 <strong>BTC / ETH / SOL / XRP</strong> 四个 <code>15m</code> crypto contracts；</li>
+<li>每个 contract 问的是：<strong>“未来 15 分钟价格会上涨吗？”</strong></li>
+<li>结算规则是：<strong>收盘 60 秒均价 &gt;= 开盘 60 秒均价，则 YES 结算</strong>；</li>
+<li>价格用分表示，<code>yes_bid=24</code> 就是大约 <code>24%</code> implied probability。</li>
+</ul>
+<p>数据采集器默认：</p>
+<ul>
+<li><strong>每 <code>2s</code></strong> 轮询 Kalshi 市场 + Coinbase 真实价格；</li>
+<li>样例文件 <code>data/sample_features.csv</code> 我直接拉下来核过，实际有 <strong><code>2,470</code> 行、<code>67</code> 列</strong>；</li>
+<li>包含 4 个资产的 <code>mid / spread / floor_strike / time_to_expiry / real_price / price_vs_strike_pct / ob_imbalance / mom_5s/15s/30s</code> 等字段。</li>
+</ul>
+<h3>4.2 repo 已经给出明确 risk shell，不是“以后再想”</h3>
+<p><code>backtester.py</code> 的默认风控参数很具体：</p>
+<ul>
+<li>初始 bankroll：<strong><code>$100</code></strong></li>
+<li>单笔最大：<strong><code>5%</code> bankroll</strong></li>
+<li>总敞口上限：<strong><code>15%</code> bankroll</strong></li>
+<li>同方向最多：<strong><code>2</code> 个资产</strong></li>
+<li>日亏损熔断：<strong><code>-15%</code></strong></li>
+<li>最小 edge：<strong><code>4%</code></strong></li>
+<li>只交易中价在 <strong><code>0.25~0.75</code></strong> 的合约</li>
+<li>只在距离结算 <strong><code>180~700s</code></strong> 的窗口入场</li>
+<li>最大可接受 spread：<strong><code>4c</code></strong></li>
+<li>Kelly fraction：<strong><code>15%</code></strong></li>
+</ul>
+<p>这很关键，因为它说明： <strong>这不是“先拍方向、风控以后再补”的想法单；它已经是一条完整策略壳。</strong></p>
+<h3>4.3 fee model 与 sample spread 也足够具体</h3>
+<p>repo 使用 Kalshi 官方风格的 fee 近似：</p>
+<ul>
+<li>taker：<code>ceil(0.07 * contracts * P * (1-P) * 100) / 100</code></li>
+<li>maker：<code>ceil(0.0175 * contracts * P * (1-P) * 100) / 100</code></li>
+</ul>
+<p>这意味着在 <code>P=0.5</code> 附近，单合约手续费最高：</p>
+<ul>
+<li>taker 大约 <strong><code>$0.02/contract</code></strong></li>
+<li>maker 大约 <strong><code>$0.01/contract</code></strong></li>
+</ul>
+<p>我顺手看了 sample 数据里的 spread：</p>
+<ul>
+<li>BTC <code>spread</code> 均值约 <strong><code>1.59c</code></strong>，90 分位约 <strong><code>3c</code></strong></li>
+<li>ETH 均值约 <strong><code>1.83c</code></strong>，90 分位约 <strong><code>3c</code></strong></li>
+<li>SOL 均值约 <strong><code>2.07c</code></strong>，90 分位约 <strong><code>3c</code></strong></li>
+<li>XRP 均值约 <strong><code>2.33c</code></strong>，90 分位约 <strong><code>4c</code></strong></li>
+</ul>
+<p>所以 repo 的 <code>max_spread = 4c</code> 并不是随便拍出来的，它大致对应了 sample 里“还能交易、但已经接近宽价尾部”的边界。</p>
+<h2>5. repo 真正值得拿走的，不是框架，而是概率错价 skeleton</h2>
+<h3>5.1 规则策略已经写出来了</h3>
+<p><code>backtester.py</code> 里的 <code>rule_strategy()</code> 实际就是这条 alpha 的第一版：</p>
+<ul>
+<li>信号 1：过去 <strong>15m</strong> 现货趋势</li>
+<li>信号 2：过去 <strong>30m</strong> 现货趋势</li>
+<li>信号 3：当前 <code>price_vs_strike_pct</code></li>
+<li>信号 4：最近几个结算周期的 YES/NO 偏向</li>
+<li>信号 5：盘口 <code>ob_imbalance</code></li>
+</ul>
+<p>作者给的组合权重甚至都写死了：</p>
+<ul>
+<li><code>trend_15m * 5</code></li>
+<li><code>trend_30m * 3</code></li>
+<li><code>price_vs_strike_pct * time_factor * 2</code></li>
+<li><code>settlement_bias</code></li>
+<li><code>ob_imbalance * 0.01</code></li>
+</ul>
+<p>然后把综合信号通过 <code>tanh</code> 映射成一个 <code>estimated_p</code>，再直接和市场中价 <code>mid</code> 比：</p>
+<ul>
+<li><code>estimated_p &gt; mid</code> → 买 YES</li>
+<li><code>estimated_p &lt; mid</code> → 买 NO</li>
+<li>edge 不够厚就不交易</li>
+</ul>
+<p>这就是一条完整的 <strong><code>fair probability - market mid</code></strong> raw alpha。</p>
+<h3>5.2 ML 版本只是同一 alpha 的升级壳，不是另一条本体</h3>
+<p><code>train.py</code> / <code>backtester.py</code> 里的 ML 版本，本质上没有改 base alpha，只是把公平概率估计器从规则版换成：</p>
+<ul>
+<li><strong>XGBoost</strong>（若可用）</li>
+<li>或 sklearn <strong>GradientBoosting</strong> fallback</li>
+</ul>
+<p>训练字段大约 <strong>14 个核心特征</strong>，包括：</p>
+<ul>
+<li><code>mid</code></li>
+<li><code>spread</code></li>
+<li><code>time_to_expiry</code></li>
+<li><code>time_to_expiry_pct</code></li>
+<li><code>ob_imbalance</code></li>
+<li><code>price_vs_strike_pct</code></li>
+<li><code>volume</code></li>
+<li><code>oi</code></li>
+<li><code>mom_5s / 15s / 30s</code></li>
+<li><code>btc_mid_ctx</code></li>
+<li><code>btc_lead</code></li>
+<li><code>mid_decisiveness</code></li>
+</ul>
+<p>而且作者评估口径也比较老实：</p>
+<ul>
+<li><code>accuracy</code></li>
+<li><code>Brier score</code></li>
+<li><code>calibration</code></li>
+<li><code>edge analysis</code></li>
+</ul>
+<p>这对我们有个很重要的启发： <strong>第一轮根本不需要上复杂模型；只要先验证 <code>estimated_p - mid</code> 是否在 edge decile 上单调变好，就足以判断这条 alpha 本体值不值得继续。</strong></p>
+<h3>5.3 它和上一轮 Polymarket raw alpha 不是同一件事</h3>
+<p>虽然都属于 prediction market / binary 交易，但这轮跟 04-02 那篇 Polymarket digest 不完全一样：</p>
+<ul>
+<li>Polymarket 那条更偏 <strong>Binance 快腿冲击 → 慢腿 quoted probability 补动</strong>；</li>
+<li>Kalshi 这条更像 <strong>开盘参考价锚定的 15m hard-expiry event contract</strong>；</li>
+<li>它强调的是：<strong>“离当前 strike 还有多远 + 现在剩多少时间 + 盘口怎么报价”</strong>，而不只是跨市场快慢腿。</li>
+</ul>
+<p>所以这轮更适合作为一个单独的 raw alpha intake，而不是重复写 prediction-market lead-lag。</p>
+<h2>6. 3.5 策略拆解（必填）</h2>
+<ul>
+<li><strong>方向属性：</strong> cross-market / binary-probability / fixed-expiry / relative-value</li>
+<li><strong>基础 alpha：</strong> 外部现货趋势与 strike-gap 对 15m YES 概率的估计，比当前 Kalshi mid 更快或更准</li>
+<li><strong>regime：</strong> 中价不太偏（<code>25%~75%</code>）、时间还够（<code>180~700s</code>）、spread 不太宽时更值得开机</li>
+<li><strong>filter / veto：</strong> 宽 spread veto、临近结算 veto、已有持仓 veto、同方向过多 veto、熔断 veto</li>
+<li><strong>risk / sizing / execution overlay：</strong> Kelly fraction、单笔 5%、总敞口 15%、maker/taker fee、同向资产数限制</li>
+</ul>
+<h2>7. 和当前 <code>1m / 3m / 5m / 15m</code> 的关系</h2>
+<h3>7.1 它天然是 <code>15m</code> 主信号</h3>
+<p>这条线的交易载体本身就是 <strong>15m binary contract</strong>，所以：</p>
+<ul>
+<li><code>15m</code> 是主持有期 / 结算时钟 / alpha 本体；</li>
+<li><code>5m</code> 适合拿来重写 rule signal（例如 <code>ret_5m</code>, <code>ret_15m</code>, <code>ret_30m</code>）；</li>
+<li><code>3m / 1m</code> 更适合做 execution timing、edge persistence、二次确认。</li>
+</ul>
+<h3>7.2 对 perp/spot desk 也有迁移价值</h3>
+<p>即使最后不下 Kalshi，这条材料也有 desk 价值，因为它等价于在问：</p>
+<p>&gt; <strong>“当一个 hard-expiry 概率市场吸收 crypto 现货信息不够快时，能不能把这份滞后反过来当外部 price discovery 载体？”</strong></p>
+<p>这层读法后面可迁移到：</p>
+<ul>
+<li>Polymarket / Kalshi / 其他 event contracts</li>
+<li>ETF intraday binary framing</li>
+<li>funding event / listing event / macro event 赔率市场</li>
+<li>甚至把 binary fair-probability 当作 perp 短线方向的外部 filter 或 confidence scaler</li>
+</ul>
+<p>但这轮要坚持一个边界： <strong>本篇主 digest 讨论的是 raw alpha 本体，不是把它降级成 filter。</strong></p>
+<h2>8. 数据源、公开性、更新频率、最小可复现实验口径</h2>
+<h3>8.1 数据源</h3>
+<ul>
+<li><strong>Kalshi market/orderbook data</strong>：公开可拉，无需 auth 即可做行情采集</li>
+<li><strong>Kalshi trading/account API</strong>：下单才需要 key</li>
+<li><strong>Coinbase spot price</strong>：公开可拿，repo 已接线</li>
+<li><strong>sample dataset</strong>：repo 自带 <code>sample_features.csv</code></li>
+</ul>
+<h3>8.2 公开性</h3>
+<ul>
+<li>行情层：<strong>公开可得</strong></li>
+<li>下单层：需要账户与 API key</li>
+<li>对我们当前研究最重要的行情 / 样本 /回测层，并不依赖私有 feed</li>
+</ul>
+<h3>8.3 更新频率</h3>
+<ul>
+<li>repo collector 默认 <strong>每 <code>2s</code></strong> 采集一次</li>
+<li>contract 本身 <strong>每 <code>15m</code></strong> 一个新周期</li>
+<li><code>time_to_expiry</code> 是秒级倒计时，因此非常适合做短周期硬时钟实验</li>
+</ul>
+<h3>8.4 最小可复现实验口径</h3>
+<p>第一轮可以先不碰 live trading，只做一个 honest baseline：</p>
+<ol>
+<li>资产：<code>BTC / ETH / SOL / XRP</code></li>
+<li>样本：repo sample + 自己再抓 <code>2~7</code> 天新数据</li>
+<li>特征：</li>
+</ol>
+<ul>
+<li><code>ret_1m / 3m / 5m / 15m</code></li>
+<li><code>price_vs_strike_pct</code></li>
+<li><code>ob_imbalance</code></li>
+<li><code>spread</code></li>
+<li><code>time_to_expiry</code></li>
+</ul>
+<ol>
+<li>标签：本期 YES/NO 结算结果</li>
+<li>规则：</li>
+</ol>
+<ul>
+<li>先估 <code>p_fair</code></li>
+<li>再看 <code>edge = p_fair - mid</code></li>
+<li>扣 spread + fee 后看 decile monotonicity</li>
+</ul>
+<ol>
+<li>执行：必须 one-sample lag，不能 same-tick 幻觉成交</li>
+</ol>
+<h2>9. 下一步怎么测</h2>
+<h3>最小实验 1：先把 repo 的 5s/15s/30s 特征改写成 desk 常用 <code>1m / 3m / 5m</code></h3>
+<p>不要直接照搬 5 秒级 mom。 第一步更适合做：</p>
+<ul>
+<li><code>ret_1m</code></li>
+<li><code>ret_3m</code></li>
+<li><code>ret_5m</code></li>
+<li><code>ret_15m</code></li>
+<li><code>price_vs_strike_pct</code></li>
+<li><code>spread</code></li>
+<li><code>time_to_expiry</code></li>
+</ul>
+<p>看 edge decile 是否仍然单调。</p>
+<h3>最小实验 2：把 <code>price_vs_strike_pct</code> 和外部趋势拆开做 ablation</h3>
+<p>至少分 4 组：</p>
+<ol>
+<li>只用 <code>price_vs_strike_pct</code></li>
+<li>只用现货趋势</li>
+<li><code>price_vs_strike_pct + 现货趋势</code></li>
+<li>再加 <code>ob_imbalance</code></li>
+</ol>
+<p>要回答的核心问题是： <strong>真正的 alpha 是“离 strike 多远”本身，还是“外部价格趋势告诉你它会不会继续越过 strike”？</strong></p>
+<h3>最小实验 3：先做 <code>time_to_expiry bucket</code></h3>
+<p>把样本切成：</p>
+<ul>
+<li><code>&gt; 10m</code></li>
+<li><code>5~10m</code></li>
+<li><code>&lt; 5m</code></li>
+</ul>
+<p>大概率 edge 不会均匀分布在整段生命周期里。 如果只有某个 bucket 存活，就别假装它是全时段 alpha。</p>
+<h3>最小实验 4：先用 maker-ish / taker-ish 两套成本一起压</h3>
+<p>这类 binary 市场很容易死在成本上，所以必须一开始就给：</p>
+<ul>
+<li>maker-ish</li>
+<li>taker-ish</li>
+<li>宽 spread veto / 无 veto</li>
+</ul>
+<p>三组同时看。</p>
+<h3>最小实验 5：确认这条线能不能服务现有 crypto desk</h3>
+<p>如果 Kalshi 盘口容量太薄，就再做一版映射实验：</p>
+<ul>
+<li>把 <code>Kalshi fair-probability error</code> 当作外部信号；</li>
+<li>检查它对 Binance perp 下一根 <code>1m / 3m / 5m</code> return 有没有信息增量。</li>
+</ul>
+<p>这样就算 Kalshi 自身容量一般，它也可能变成一个 <strong>外部 alpha sensor</strong>。</p>
+<h2>10. 风险与保留意见</h2>
+<ol>
+<li><strong>repo 规模很小。</strong> 只有几个 stars，不能因为它是新仓库就自动抬成高置信 production 候选。</li>
+<li><strong>live trader 主策略其实留空。</strong> 所以这轮真正能 intake 的，是 backtester 里那条 rule/ML probability alpha，而不是 README 里承诺的完整 live 策略。</li>
+<li><strong>binary 市场容量与滑点可能很伤。</strong> 即使 sample spread 不离谱，真实成交深度仍可能限制容量。</li>
+<li><strong>硬结算结构会放大 late-entry 风险。</strong> 临近结算的错误成交，不像 perp 那样还能慢慢磨回来。</li>
+<li><strong>样本还不够长。</strong> repo sample 只有 <code>2470</code> 行，明显不够给 production verdict；它更像一个“今天就能开工”的 starter kit。</li>
+</ol>
+<p>所以我对它的定位是： <strong>高可复现度的 raw alpha skeleton，适合先做 first verdict；是否能进实盘池，要靠更长样本与 cost ladder 决定。</strong></p>
+<h2>11. 来源</h2>
+<h3>11.1 主来源（repo）</h3>
+<ul>
+<li><strong>Author / Maintainer</strong>：<code>kapelame</code></li>
+<li><strong>Year</strong>：2026</li>
+<li><strong>Title</strong>：*Kalshi Trading Framework* / <code>kalshi-crypto-bot</code></li>
+<li><strong>Venue</strong>：GitHub repository</li>
+<li><strong>DOI</strong>：N/A</li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/kapelame/kalshi-crypto-bot&gt;">https://github.com/kapelame/kalshi-crypto-bot&gt;</a></li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/kapelame/kalshi-crypto-bot&gt;">https://github.com/kapelame/kalshi-crypto-bot&gt;</a></li>
+<li><strong>GitHub API metadata</strong>：&lt;<a href="https://api.github.com/repos/kapelame/kalshi-crypto-bot&gt;">https://api.github.com/repos/kapelame/kalshi-crypto-bot&gt;</a></li>
+</ul>
+<h3>11.2 公共数据 / 文档</h3>
+<ul>
+<li><strong>Kalshi API Reference</strong>：&lt;<a href="https://trading-api.readme.io/reference/getting-started&gt;">https://trading-api.readme.io/reference/getting-started&gt;</a></li>
+<li><strong>Kalshi exchange</strong>：&lt;<a href="https://kalshi.com&gt;">https://kalshi.com&gt;</a></li>
+<li><strong>Coinbase Exchange API docs</strong>：&lt;<a href="https://docs.cdp.coinbase.com/exchange/reference/exchangerestapi_getproductcandles&gt;">https://docs.cdp.coinbase.com/exchange/reference/exchangerestapi_getproductcandles&gt;</a></li>
+</ul>
+<h3>11.3 直接审阅文件</h3>
+<ul>
+<li><code>README.md</code>：&lt;<a href="https://raw.githubusercontent.com/kapelame/kalshi-crypto-bot/main/README.md&gt;">https://raw.githubusercontent.com/kapelame/kalshi-crypto-bot/main/README.md&gt;</a></li>
+<li><code>backtester.py</code>：&lt;<a href="https://raw.githubusercontent.com/kapelame/kalshi-crypto-bot/main/backtester.py&gt;">https://raw.githubusercontent.com/kapelame/kalshi-crypto-bot/main/backtester.py&gt;</a></li>
+<li><code>train.py</code>：&lt;<a href="https://raw.githubusercontent.com/kapelame/kalshi-crypto-bot/main/train.py&gt;">https://raw.githubusercontent.com/kapelame/kalshi-crypto-bot/main/train.py&gt;</a></li>
+<li><code>data/sample_features.csv</code>：&lt;<a href="https://raw.githubusercontent.com/kapelame/kalshi-crypto-bot/main/data/sample_features.csv&gt;">https://raw.githubusercontent.com/kapelame/kalshi-crypto-bot/main/data/sample_features.csv&gt;</a></li>
+</ul>
+<h2>12. 一句话结论</h2>
+<p><strong>这份 2026 Kalshi repo 最值钱的不是“预测市场基础设施”，而是它已经把一条可快速复现的 15m raw alpha 摆在桌上：<code>外部 spot trend + strike gap -&gt; fair YES probability</code>，再去交易 <code>fair probability - market mid</code> 的回补。先做 cost-first 的 first verdict，很值得。</strong></p>
+</body>
+</html>

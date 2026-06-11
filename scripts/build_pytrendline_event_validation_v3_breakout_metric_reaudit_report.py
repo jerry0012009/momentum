@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from html import escape
+from pathlib import Path
+
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC_ART = ROOT / "reports" / "artifacts" / "pytrendline_event_validation_v3_breakout_side_audit"
+ART = ROOT / "reports" / "artifacts" / "pytrendline_event_validation_v3_breakout_metric_reaudit"
+SITE = ROOT / "reports" / "site" / "factors" / "pytrendline_event_validation_v3_breakout_metric_reaudit"
+
+BREAKOUT_TYPES = [
+    "support_breakout_raw",
+    "support_breakout_confirm_1",
+    "support_breakout_confirm_2",
+    "resistance_breakout_raw",
+    "resistance_breakout_confirm_1",
+    "resistance_breakout_confirm_2",
+]
+
+PAIR_FAMILIES = ["breakout_raw", "breakout_confirm_1", "breakout_confirm_2"]
+
+
+def ensure_dir(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def render_table(df: pd.DataFrame, limit: int | None = None) -> str:
+    if df.empty:
+        return "<p><em>empty</em></p>"
+    shown = df.copy()
+    if limit is not None:
+        shown = shown.head(limit)
+    for col in shown.columns:
+        if pd.api.types.is_datetime64_any_dtype(shown[col]):
+            shown[col] = shown[col].dt.strftime("%Y-%m-%d %H:%M")
+        elif pd.api.types.is_float_dtype(shown[col]):
+            shown[col] = shown[col].map(lambda x: round(float(x), 6) if pd.notna(x) else "")
+    return shown.to_html(index=False, classes="tbl", border=0)
+
+
+def load_csv(name: str) -> pd.DataFrame:
+    return pd.read_csv(SRC_ART / name)
+
+
+def build_metric_table(sample: str, geom: pd.DataFrame) -> pd.DataFrame:
+    rows: list[dict] = []
+    subset = geom[geom["event_type"].isin(BREAKOUT_TYPES)].copy()
+    for _, row in subset.iterrows():
+        event_type = str(row["event_type"])
+        is_support = event_type.startswith("support")
+        legacy_share = float(row["support_above_price_share"] if is_support else row["resistance_below_price_share"])
+        strict_share = float(row["support_above_high_share"] if is_support else row["resistance_below_low_share"])
+        n = int(row["rows"])
+        rows.append(
+            {
+                "sample": sample,
+                "event_type": event_type,
+                "rows": n,
+                "legacy_close_based_share": legacy_share,
+                "strict_wrong_side_share": strict_share,
+                "strict_wrong_side_rows": int(round(strict_share * n)),
+                "interpretation": (
+                    "legacy metric mostly restates that a support breakout closes below the line"
+                    if is_support
+                    else "legacy metric mostly restates that a resistance breakout closes above the line"
+                ),
+            }
+        )
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        out = out.sort_values(["sample", "event_type"]).reset_index(drop=True)
+    return out
+
+
+def build_pair_focus(sample: str, pair_summary: pd.DataFrame, pair_geom: pd.DataFrame) -> pd.DataFrame:
+    rows: list[dict] = []
+    ps = pair_summary[pair_summary["family"].isin(PAIR_FAMILIES)].copy()
+    pg = pair_geom[pair_geom["family"].isin(PAIR_FAMILIES)].copy()
+    merged = ps.merge(pg, on="family", how="left")
+    for _, row in merged.iterrows():
+        rows.append(
+            {
+                "sample": sample,
+                "family": str(row["family"]),
+                "support_rows": int(row["support_rows"]),
+                "resistance_rows": int(row["resistance_rows"]),
+                "exact_match_rows": int(row["exact_match_rows"]),
+                "paired_rows": int(row["paired_rows"]) if pd.notna(row["paired_rows"]) else 0,
+                "crossed_lines_share": float(row["crossed_lines_share"]) if pd.notna(row["crossed_lines_share"]) else None,
+                "both_inverted_share": float(row["both_inverted_share"]) if pd.notna(row["both_inverted_share"]) else None,
+                "close_between_lines_share": float(row["close_between_lines_share"]) if pd.notna(row["close_between_lines_share"]) else None,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def build_summary(metric_table: pd.DataFrame, pair_focus: pd.DataFrame) -> dict:
+    def metric(sample: str, event_type: str, col: str) -> float | None:
+        row = metric_table[(metric_table["sample"] == sample) & (metric_table["event_type"] == event_type)]
+        if row.empty:
+            return None
+        return float(row.iloc[0][col])
+
+    def pair_metric(sample: str, family: str, col: str) -> float | int | None:
+        row = pair_focus[(pair_focus["sample"] == sample) & (pair_focus["family"] == family)]
+        if row.empty:
+            return None
+        val = row.iloc[0][col]
+        if pd.isna(val):
+            return None
+        if pd.api.types.is_integer(val):
+            return int(val)
+        if pd.api.types.is_float(val):
+            return float(val)
+        return val
+
+    return {
+        "generated_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "finding": "the earlier 100% breakout-side inversion reading was overstated because close-based metrics mostly restate the breakout definition; the real blocker is a smaller but still material set of strict geometry failures, plus one exact mirrored paired row that is fully crossed/inverted in the purged sample",
+        "found": [
+            "legacy close-based shares are 100% for all breakout event types, but this is expected under a close-based breakout definition and should not be read as universal geometry inversion",
+            "strict wrong-side shares (support above event high / resistance below event low) are much smaller but non-zero, so there is still a real geometry problem to fix",
+            "the purged exact-match paired breakout row remains fully crossed and double-inverted",
+        ],
+        "not_found": [
+            "no evidence that every breakout row in the current artifacts is geometrically invalid",
+            "no evidence yet that support vs resistance breakout can be interpreted as two cleanly separate alpha signals",
+            "no post-fix rerun yet, so this page does not close the sampler-fix task",
+        ],
+        "reliability": {
+            "legacy-metric reinterpretation": "high",
+            "strict-geometry-failure diagnosis": "high",
+            "post-fix expected outcome": "medium",
+        },
+        "key_metrics": {
+            "purged_support_breakout_raw_strict_wrong_side_share": metric("purged", "support_breakout_raw", "strict_wrong_side_share"),
+            "purged_resistance_breakout_raw_strict_wrong_side_share": metric("purged", "resistance_breakout_raw", "strict_wrong_side_share"),
+            "purged_support_breakout_confirm_2_strict_wrong_side_share": metric("purged", "support_breakout_confirm_2", "strict_wrong_side_share"),
+            "purged_resistance_breakout_confirm_2_strict_wrong_side_share": metric("purged", "resistance_breakout_confirm_2", "strict_wrong_side_share"),
+            "purged_breakout_raw_exact_match_rows": pair_metric("purged", "breakout_raw", "exact_match_rows"),
+            "purged_breakout_raw_crossed_lines_share": pair_metric("purged", "breakout_raw", "crossed_lines_share"),
+            "purged_breakout_raw_both_inverted_share": pair_metric("purged", "breakout_raw", "both_inverted_share"),
+        },
+    }
+
+
+def build_report(metric_table: pd.DataFrame, pair_focus: pd.DataFrame) -> None:
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    purged = metric_table[metric_table["sample"] == "purged"].copy()
+    raw = metric_table[metric_table["sample"] == "raw"].copy()
+    purged_pair = pair_focus[(pair_focus["sample"] == "purged") & (pair_focus["family"] == "breakout_raw")].iloc[0]
+    purged_support_raw = purged[purged["event_type"] == "support_breakout_raw"].iloc[0]
+    purged_res_raw = purged[purged["event_type"] == "resistance_breakout_raw"].iloc[0]
+
+    html = f"""<!doctype html>
+<html lang=\"zh-CN\">
+<head>
+  <meta charset=\"utf-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <title>PyTrendline v3 breakout metric re-audit</title>
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background: #f8fafc; color: #0f172a; }}
+    .wrap {{ max-width: 1180px; margin: 0 auto; padding: 28px 18px 48px; }}
+    .card {{ background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px 22px; margin-bottom: 18px; }}
+    .muted {{ color: #64748b; }}
+    .warn {{ background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; border-radius: 10px; padding: 10px 12px; }}
+    .ok {{ background: #ecfeff; border: 1px solid #a5f3fc; color: #155e75; border-radius: 10px; padding: 10px 12px; }}
+    .tbl {{ border-collapse: collapse; width: 100%; font-size: 13px; }}
+    .tbl th, .tbl td {{ border: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; vertical-align: top; }}
+    .tbl th {{ background: #f8fafc; }}
+    ul {{ line-height: 1.7; }}
+    code {{ background: #f1f5f9; padding: 1px 4px; border-radius: 6px; }}
+  </style>
+</head>
+<body>
+  <div class=\"wrap\">
+    <p><a href=\"../pytrendline_event_validation_v3/report.html\">← 返回 v3 主报告</a> ｜ <a href=\"../pytrendline_event_validation_v3_breakout_side_audit/report.html\">上一版 side audit</a></p>
+
+    <div class=\"card\">
+      <h1>PyTrendline v3 breakout metric re-audit</h1>
+      <p class=\"muted\">Generated: {escape(generated_at)}</p>
+      <p>这页只做一件事：复核上一版 breakout side audit 里最容易误读的指标，避免把“breakout 本来就该穿线”误当成“所有 breakout 都几何失真”。</p>
+      <div class=\"warn\"><b>结论先说：</b>上一版最醒目的 <code>100%</code> close-based 指标，主要是在重复 breakout 定义本身，不足以证明“全部 breakout 行都坏了”。真正值得修的 blocker 是：<b>严格几何异常仍然存在，但规模远小于 100%</b>；另外 purged 样本里还保留了 <b>{int(purged_pair['exact_match_rows'])}</b> 条完全镜像、且 <code>crossed_lines_share = {purged_pair['crossed_lines_share']:.1%}</code> 的 paired breakout row。</div>
+    </div>
+
+    <div class=\"card\">
+      <h2>Plain-language summary</h2>
+      <ul>
+        <li><b>发现了什么：</b>对 close-based breakout 来说，<code>support line &gt; event close</code> / <code>resistance line &lt; event close</code> 本来就很容易成立，因为这恰好是“收盘价穿过线”的定义。所以上一版把这个 <code>100%</code> 当成“通用 inversion”是过头了。</li>
+        <li><b>真正更有信息量的检查：</b>看线是不是已经跑到了整根事件 bar 的另一边，也就是 support 是否高于 <code>event high</code>、resistance 是否低于 <code>event low</code>。这才更像“这条线在事件发生前就已经几何失真”。</li>
+        <li><b>当前 purged 样本的严格异常占比：</b><code>support_breakout_raw</code> 是 <b>{purged_support_raw['strict_wrong_side_share']:.1%}</b>，<code>resistance_breakout_raw</code> 是 <b>{purged_res_raw['strict_wrong_side_share']:.1%}</b>。也就是说，问题仍然真实存在，但并不是“100% 全坏”。</li>
+      </ul>
+      <div class=\"ok\"><b>这轮没有声称的事：</b>还没有重跑修复后的最小样本，所以这页不是 fix closure。它完成的是 <b>把 fix 目标重新描述准确</b>：下一步应该瞄准“严格几何异常 + exact mirrored pairs”，而不是假设所有 breakout 记录都该被判死刑。</div>
+    </div>
+
+    <div class=\"card\">
+      <h2>What was found / not found / reliability</h2>
+      <ul>
+        <li><b>Found:</b> 所有 breakout 类型的 <code>legacy_close_based_share = 100%</code>，但这主要反映的是 close-based breakout 定义，不是一个好的“坏样本占比”指标。</li>
+        <li><b>Found:</b> 更严格的 <code>strict_wrong_side_share</code>（support 高于整根 bar 的高点 / resistance 低于整根 bar 的低点）在 purged 样本里大约落在 <b>18%~24%</b>，说明还有真实的 side / geometry 污染需要处理。</li>
+        <li><b>Found:</b> exact mirrored pair 在 purged 样本里虽然只剩 <b>{int(purged_pair['exact_match_rows'])}</b> 条，但这条 paired row 是彻底坏的：<code>crossed_lines_share = {purged_pair['crossed_lines_share']:.1%}</code>、<code>both_inverted_share = {purged_pair['both_inverted_share']:.1%}</code>、<code>close_between_lines_share = {purged_pair['close_between_lines_share']:.1%}</code>。</li>
+        <li><b>Not found:</b> 没有证据支持“当前所有 breakout 行都几何失真”。</li>
+        <li><b>Not found:</b> 也还没有证据支持“support breakout / resistance breakout 已经足够干净，可以被当成两条独立 alpha”。</li>
+        <li><b>Reliability:</b> 对“旧指标被过度解读”的判断是 <b>high</b>；对“仍有一小块真实坏样本要修”的判断也是 <b>high</b>；对修完后 alpha 结论会怎么变，当前仍是 <b>medium</b>。</li>
+      </ul>
+    </div>
+
+    <div class=\"card\">
+      <h2>Corrected metric table</h2>
+      <p class=\"muted\"><code>legacy_close_based_share</code> = 上一版最容易误读的指标；<code>strict_wrong_side_share</code> = 更接近“线在事件 bar 前就已经跑到错误一侧”的强检查。</p>
+      <h3>Purged sample</h3>
+      {render_table(purged)}
+      <h3>Raw sample</h3>
+      {render_table(raw)}
+    </div>
+
+    <div class=\"card\">
+      <h2>Pair-level reminder</h2>
+      <p class=\"muted\">虽然“全部 breakout 都坏了”这个说法不成立，但 paired mirrored rows 依然值得优先修，因为那是明确无争议的坏样本。</p>
+      {render_table(pair_focus)}
+    </div>
+
+    <div class=\"card\">
+      <h2>Recommended next step</h2>
+      <ul>
+        <li><b>R1.</b> sampler fix 的目标应收窄到：先处理 <code>exact mirrored pairs</code> 与 <code>strict wrong-side rows</code>，不要把全部 breakout 样本一刀切判无效。</li>
+        <li><b>R2.</b> 修完后先重跑最小样本（BTC+ETH / 20~45d），再看 strict wrong-side share 和 paired exact-match rows 是否明显下降。</li>
+        <li><b>R3.</b> 在 fix + rerun 完成前，继续把 breakout family 当作 family-level 候选，不把 support / resistance breakout 解读成独立 alpha。</li>
+      </ul>
+    </div>
+
+    <div class=\"card\">
+      <h2>Artifacts</h2>
+      <ul>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_breakout_metric_reaudit/metric_reaudit_summary.csv'>metric_reaudit_summary.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_breakout_metric_reaudit/pair_focus_summary.csv'>pair_focus_summary.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_breakout_metric_reaudit/summary.json'>summary.json</a></li>
+        <li><a href='../pytrendline_event_validation_v3_breakout_side_audit/report.html'>previous breakout side audit</a></li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+    ensure_dir(SITE)
+    (SITE / "report.html").write_text(html, encoding="utf-8")
+
+
+def main() -> None:
+    ensure_dir(ART)
+    ensure_dir(SITE)
+
+    raw_geom = load_csv("raw_geometry_audit.csv")
+    purged_geom = load_csv("purged_geometry_audit.csv")
+    raw_pair_summary = load_csv("raw_pair_summary.csv")
+    purged_pair_summary = load_csv("purged_pair_summary.csv")
+    raw_pair_geom = load_csv("raw_pair_geometry_audit.csv")
+    purged_pair_geom = load_csv("purged_pair_geometry_audit.csv")
+
+    metric_table = pd.concat(
+        [
+            build_metric_table("raw", raw_geom),
+            build_metric_table("purged", purged_geom),
+        ],
+        ignore_index=True,
+    )
+    pair_focus = pd.concat(
+        [
+            build_pair_focus("raw", raw_pair_summary, raw_pair_geom),
+            build_pair_focus("purged", purged_pair_summary, purged_pair_geom),
+        ],
+        ignore_index=True,
+    )
+
+    metric_table.to_csv(ART / "metric_reaudit_summary.csv", index=False)
+    pair_focus.to_csv(ART / "pair_focus_summary.csv", index=False)
+    summary = build_summary(metric_table, pair_focus)
+    (ART / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    build_report(metric_table, pair_focus)
+    print(f"wrote {SITE / 'report.html'}")
+
+
+if __name__ == "__main__":
+    main()

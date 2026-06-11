@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 pairs 只做成 bar-close z-score：这份 2026 新仓库更该先测的是「cointegration spread + OBI veto + 成本生存线」完整骨架</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 pairs 只做成 bar-close z-score：这份 2026 新仓库更该先测的是「cointegration spread + OBI veto + 成本生存线」完整骨架</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-24 09:15 UTC</span>
+      <span class="pill">研究时间：2026-03-24 09:14 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + Binance 公共数据最小快检 + 近 5 年论文地基</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/obi/microstructure/execution/cost/1m/3m/5m/15m/repo</span>
+      <span class="pill">证据类型：工程证据 + 本地最小快检（可复现）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-24_0914_pairs-obi-veto-cost-survival.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-24 09:14 UTC</li>
+<li>类型：2026 GitHub 新仓库 + Binance 公共数据最小快检 + 近 5 年论文地基</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：cointegration spread 偏离后的均值回归（pairs / stat-arb / relative value）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/obi/microstructure/execution/cost/1m/3m/5m/15m/repo</li>
+<li>证据类型：工程证据 + 本地最小快检（可复现）</li>
+</ul>
+<h2>1) 先回答：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = pair spread 的短周期均值回归</strong>，不是 OBI 本身。 OBI 在这份材料里更像 <strong>entry veto / execution gate</strong>（避免在盘口不配合时硬开仓）。</p>
+<h2>2) 这次看了什么</h2>
+<p>这次主看仓库：<strong>Samarth Chaudhary (2026), <code>Crypto_Stat-Arb_HFT_Model</code></strong>。 它把一条可落地的策略链路拆得很完整：</p>
+<ul>
+<li>Python 研究层：<code>data_loader.py</code>（1m 数据）、<code>analyzer.py</code>（相关+协整筛对）、<code>optimizer.py</code>（参数搜索）</li>
+<li>C++ 执行层：<code>main.cpp</code>（实时 z-score + OBI 条件 + 下单队列）</li>
+</ul>
+<p>我额外做了一个 <strong>1m 最小快检</strong>（Binance USDⓈ-M 公共数据，1500 根）来验证：</p>
+<ul>
+<li>这条 raw alpha 在“回归命中率”上是否存在；</li>
+<li>但在成本后是否还能活。</li>
+</ul>
+<h2>3) 核心结论（给 desk 的短答案）</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这条线值得进池，但它的关键不是“会不会回归”，而是“成本前看起来不错、成本后大概率死亡”，所以必须把 <code>OBI/执行/费用</code> 当主约束，不是装饰层。</li>
+<li><strong>一句话证明方式：</strong> 仓库代码给出完整规则（entry/exit/filter/execution），我用同口径 1m 公共数据做最小复核，看 hit-rate、持有时长和成本生存线。</li>
+</ul>
+<p>关键数据点（repo + 本地快检）：</p>
+<ol>
+<li><strong>repo 固化策略池为 22 对 pairs</strong>（<code>strategies.json</code>），且当前导出参数几乎统一：<code>window=60</code>、<code>entry_z=2.0</code>、<code>exit_z=0.0</code>、<code>stop_z=4.0</code>。</li>
+<li>我的 1m 快检里，这 22 对共触发 <strong>532 笔</strong>，<code>z=2/0/4</code> 规则下 <strong>TP 命中率约 85.8%</strong>，<strong>中位持有约 27 分钟</strong>（看起来“会回归”）。</li>
+<li>但按双腿归一化后，<strong>毛收益仅 +0.78 bps/笔</strong>；一旦加入现实费用梯度（哪怕 <strong>8 bps/笔</strong>），净值变成 <strong>-7.22 bps/笔</strong>，成本生存线直接失守。</li>
+</ol>
+<h2>4) 为什么和当前短周期（1m/3m/5m/15m）直接相关</h2>
+<ul>
+<li>这是独立 raw alpha（pairs mean reversion），能补当前素材池，不是再给单边趋势线加附件。</li>
+<li>它天然适配我们更快周期：</li>
+<li><code>1m/3m</code>：适合事件密集与执行约束评估；</li>
+<li><code>5m/15m</code>：适合降低噪音与交易频率，先过成本门。</li>
+<li>repo 已经把策略结构写成完整组件，可直接拆成：</li>
+<li>entry：<code>|z| &gt; entry_z</code></li>
+<li>exit：回归到 <code>exit_z</code> 或触发 <code>stop_z</code></li>
+<li>sizing：按 <code>hedge_ratio</code> 做双腿配比</li>
+<li>risk/filter：<code>MAX_SAFE_Z</code>、OBI 条件</li>
+<li>cost/execution：固定费率假设 + C++ 低延迟执行框架</li>
+</ul>
+<h2>4.5) 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative-value / stat-arb（市场中性）</li>
+<li>基础 alpha：协整 spread 偏离后的回归</li>
+<li>regime：pair 关系稳定、噪音可控、点差可交易时更有效</li>
+<li>filter / veto：盘口 OBI 不配合则拒绝开仓；极端 z 值跳过</li>
+<li>risk / sizing / execution overlay：双腿对冲配比、stop_z、最小名义金额检查、下单队列解耦</li>
+</ul>
+<h2>5) 最小可复现实验（可直接开测）</h2>
+<h3>数据口径（公开可得）</h3>
+<ul>
+<li>数据源 1：Binance USDⓈ-M <code>fapi/v1/klines</code></li>
+<li>公开性：公开接口</li>
+<li>更新频率：1m</li>
+<li>数据源 2：Binance USDⓈ-M <code>fapi/v1/depth</code></li>
+<li>公开性：公开接口</li>
+<li>更新频率：可秒级轮询（repo 示例为 1s）</li>
+</ul>
+<h3>最小实验设计</h3>
+<ol>
+<li>用 repo 的 22 对 pairs，先在 <code>1m</code> 复刻 <code>z=2/0/4</code>；</li>
+<li>输出三条线：</li>
+</ol>
+<ul>
+<li>hit-rate（TP 先于 SL）</li>
+<li>bps/笔（毛）</li>
+<li>bps/笔（净，费用梯度 8/12/16/20 bps）</li>
+</ul>
+<ol>
+<li>把通过 1m 成本门的 pair 再迁移到 <code>3m/5m/15m</code>，比较“频率下降是否换来净边际提升”。</li>
+</ol>
+<h2>6) 风险与保留意见</h2>
+<ul>
+<li>当前 repo 的“高性能执行”亮点主要是工程层（延迟、吞吐），不是已公开的实盘绩效证明。</li>
+<li><code>analyzer.py</code> 注释有口径不一致（<code>MAX_HALF_LIFE = 240</code> 注释写“4小时”，但代码在 <code>1h</code> 重采样后再换算，实际语义接近 240 小时上限），复刻前应先统一单位。</li>
+<li>快检已经提示：<strong>高 hit-rate ≠ 可交易 alpha</strong>。若不把成本、滑点、吃单比例、成交延迟写进 admission gate，会出现“看起来对，交易上亏”的假阳性。</li>
+</ul>
+<h2>7) 下一步怎么测（具体动作）</h2>
+<ol>
+<li><strong>先做 pair admission</strong>：在 22 对里按 <code>gross bps/笔</code> 与 <code>net bps/笔</code> 分层，保留 top 20% 做二轮。</li>
+<li><strong>加 OBI veto A/B</strong>：同一对 pair 比较“不开 OBI veto vs 开 OBI veto”，只看净 bps 与回撤。</li>
+<li><strong>时间尺度迁移</strong>：对存活 pair 跑 <code>1m→3m→5m→15m</code>，定位成本最优频段。</li>
+<li><strong>执行约束显式化</strong>：加入 taker 比例、最大 participation、挂撤单失败率，重算净边际。</li>
+</ol>
+<h2>8) 本地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/hft_pairs_obi_probe_20260324/pair_probe_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/hft_pairs_obi_probe_20260324/pair_probe_pnl_bps.csv</code></li>
+<li><code>reports/artifacts/quant_digests/hft_pairs_obi_probe_20260324/meta.json</code></li>
+</ul>
+<h2>9) 来源</h2>
+<ol>
+<li><strong>Samarth Chaudhary. (2026). _Crypto_Stat-Arb_HFT_Model_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model">https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model</a></li>
+<li>Readable URL: <a href="https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/README.md">https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/README.md</a></li>
+</ul>
+<ol>
+<li><strong>Palazzi, R. B. (2025). _Trading Games: Beating Passive Strategies in the Bullish Crypto Market_. Journal of Futures Markets.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1002/fut.70018</code></li>
+<li>Readable URL: <a href="https://doi.org/10.1002/fut.70018">https://doi.org/10.1002/fut.70018</a></li>
+</ul>
+<ol>
+<li><strong>Engle, R. F., &amp; Granger, C. W. J. (1987). _Co-integration and Error Correction: Representation, Estimation, and Testing_. Econometrica.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.2307/1913236</code></li>
+<li>Readable URL: <a href="https://www.jstor.org/stable/1913236">https://www.jstor.org/stable/1913236</a></li>
+</ul>
+</body>
+</html>

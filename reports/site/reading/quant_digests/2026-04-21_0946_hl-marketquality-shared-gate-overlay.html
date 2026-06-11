@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Hyperliquid repo 只读成“又一组策略回测”：对 short-cycle crypto desk，更该先补的是「Roll spread + Amihud + premium-tail」这层 shared market-quality gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Hyperliquid repo 只读成“又一组策略回测”：对 short-cycle crypto desk，更该先补的是「Roll spread + Amihud + premium-tail」这层 shared market-quality gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-21 09:45 UTC</span>
+      <span class="pill">研究时间：2026-04-21 09:46 UTC</span>
+      <span class="pill">类型：GitHub / microstructure toolkit</span>
+      <span class="pill">主题标签：overlay/filter/microstructure/market-quality/roll-spread/amihud/kyle-lambda/premium/basis/hyperliquid/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：工程经验 + repo 源码 + 公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-21_0946_hl-marketquality-shared-gate-overlay.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-21 09:46 UTC</li>
+<li>类型：GitHub / microstructure toolkit</li>
+<li>主题类型：overlay</li>
+<li>基础 alpha：<strong>无独立 base alpha；它服务于 <code>mark-vs-oracle dislocation fade</code>、<code>funding/basis carry admission</code>、<code>breakout child execution</code> 这三类 raw alpha 的开仓否决 / size-down / universe 过滤。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：overlay/filter/microstructure/market-quality/roll-spread/amihud/kyle-lambda/premium/basis/hyperliquid/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：工程经验 + repo 源码 + 公共数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 2026 GitHub 仓库 <strong>andreaambrosio / hype-backtesting</strong>，但不再重复它已经被我们多次 intake 的 <code>basis reversion / funding carry / weekend reopen</code> 主策略分支，而是单独抽出它的 <strong><code>src/research/microstructure.py</code> market-quality toolkit</strong>。这轮更值得拿回 desk 的，不是“又发现一条新 alpha”，而是：<strong>给现有 raw alpha 补一层便宜、可公开复现、可直接映射到 <code>1m/3m/5m/15m</code> 的 market-quality gate。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 对 Hyperliquid 这类 perp venue，很多短周期 alpha 不是先死在方向，而是先死在 <strong>spread / impact / premium tail / depth</strong> 突然恶化；所以先补 market-quality gate，比继续硬抠同一批 basis/funding 参数更值。</li>
+<li>repo 明确把 microstructure toolkit 单列出来，包含 <strong>Roll spread、Amihud illiquidity、Kyle’s lambda、basis decomposition、depth profile、funding carry attribution</strong>，这说明作者自己也把“先量化可交易性”当成独立组件，不只当附属注释。</li>
+<li>我做的 Hyperliquid 公共数据快检里，按 <code>day_ntl_vlm &gt;= 1,000,000</code> 过滤后，<strong>liquid 子集共有 <code>54</code> 个名字，绝对 premium 中位数约 <code>5.14 bps</code>，P95 约 <code>19.05 bps</code></strong>；这说明对 liquid names，premium tail 不是不存在，但明显有层级差异，完全可以先做 <strong>universe 过滤 + percentile veto</strong>。</li>
+<li>同一个 repo README 还给出 live sample：<strong>BTC premium 中位数约 <code>-3.22 bps</code>、ETH <code>-3.78 bps</code>、SOL <code>-8.43 bps</code>、TURBO <code>-9.64 bps</code></strong>。这不是让我们直接做 slow carry，而是提醒：<strong>不同币的“正常 premium / liquidity 状态”底噪不同，阈值不能一把尺子量全场。</strong></li>
+<li>所以这篇更适合作为 <strong>shared gate / sizing overlay</strong>：</li>
+</ul>
+<ol>
+<li>给 <code>premium-dislocation fade</code> 做“只在 spread/impact 没爆炸时才接”；</li>
+<li>给 <code>funding/basis carry</code> 做“只在 premium 尾部没有失控时才收租”；</li>
+<li>给 <code>breakout / continuation</code> 做“薄书 + 高 impact 时降仓，不把噪音冲击误读成趋势”。</li>
+</ol>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮没继续补 raw alpha，不是因为 raw alpha 不重要，而是因为这份 repo 里最像 raw alpha 的几条（basis / funding / weekend）在 digest 池里已经被反复 intake；再写一次边际信息很低。相反，<strong>把它尚未入库的 market-quality 组件拆出来</strong>，能直接服务多条已在池中的 raw alpha：</p>
+<ul>
+<li><code>mark-vs-oracle premium fade</code></li>
+<li><code>funding / basis carry</code></li>
+<li><code>single-name breakout / continuation</code></li>
+<li><code>Hyperliquid cross-sectional overextension fade</code></li>
+</ul>
+<p>换句话说，它不是 alpha 本体，但它能提高现有 alpha 的 admission 质量，减少“方向对了但交易环境太差”的假阳性。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：无；属于共享风控 / 准入层</li>
+<li>基础 alpha：无独立 base alpha</li>
+<li>regime：<code>liquidity-good / liquidity-fragile / premium-tail-stressed</code></li>
+<li>filter / veto：<code>roll_spread_z</code>、<code>amihud_z</code>、<code>abs(premium)_pctile</code>、可选 <code>kyle_lambda_z</code></li>
+<li>risk / sizing / execution overlay：高脆弱度时 <code>skip / size-down / maker-first / wider hurdle</code></li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 现有 short-cycle alpha 在“market-quality 差”的 bar 上，post-cost PnL 明显更差；因此加 gate 后，trade count 会下降，但 net expectancy / drawdown / tail loss 会改善。</p>
+<p><strong>最小实验口径：</strong></p>
+<ol>
+<li>先选 2 条已在池里的 raw alpha：</li>
+</ol>
+<ul>
+<li><code>premium-dislocation fade</code></li>
+<li><code>15m breakout / continuation</code> 或 <code>funding carry child execution</code></li>
+</ul>
+<ol>
+<li>数据源：Hyperliquid 公共 API（repo README 与 <code>config/settings.yaml</code> 明示 <code><a href="https://api.hyperliquid.xyz">https://api.hyperliquid.xyz</a></code>，无需 key）；更新频率可到分钟级 / 更高频；最小实验先落 <code>1m</code> 或 <code>5m</code> 聚合。</li>
+<li>每根 bar 计算：</li>
+</ol>
+<ul>
+<li><code>amihud = abs(ret_1m) / dollar_volume_1m</code></li>
+<li><code>premium_bps = (mark - oracle) / oracle * 10_000</code></li>
+<li><code>premium_tail = rolling_pctile(abs(premium_bps), 3d~7d)</code></li>
+<li>若能拿到逐笔或更细数据，再补 <code>roll_spread</code> / <code>kyle_lambda</code></li>
+</ul>
+<ol>
+<li>做三组对照：</li>
+</ol>
+<ul>
+<li>baseline（无 gate）</li>
+<li>veto：<code>premium_tail &gt; 0.95</code> 或 <code>amihud_z &gt; 2</code> 禁止开仓</li>
+<li>size-down：上述条件触发时仓位砍半</li>
+</ul>
+<ol>
+<li>必看结果：<code>post-cost return</code>、<code>max drawdown</code>、<code>trade count</code>、<code>avg trade pnl</code>、<code>worst 5 trades</code>。</li>
+</ol>
+<h2>5. 来源与可复用点</h2>
+<h3>主来源</h3>
+<ul>
+<li><strong>Author / Year / Title / Venue：</strong> Andrea Ambrosio (2026), *hype-backtesting*, GitHub repository</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/andreaambrosio/hype-backtesting&gt;">https://github.com/andreaambrosio/hype-backtesting&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/andreaambrosio/hype-backtesting&gt;">https://github.com/andreaambrosio/hype-backtesting&gt;</a></li>
+<li><strong>关键源码：</strong></li>
+<li><code>README.md</code></li>
+<li><code>src/research/microstructure.py</code></li>
+<li><code>research/run_hip3_analysis.py</code></li>
+<li><code>config/settings.yaml</code></li>
+</ul>
+<h3>理论地基（repo 自带引用）</h3>
+<ul>
+<li>Roll, R. (1984). *A Simple Implicit Measure of the Effective Bid-Ask Spread*.</li>
+<li>Kyle, A. S. (1985). *Continuous Auctions and Insider Trading*.</li>
+<li>O&#x27;Hara, M. (1995). *Market Microstructure Theory*.</li>
+<li>Hasbrouck, J. (2007). *Empirical Market Microstructure*.</li>
+<li>Amihud, Y. (2002). *Illiquidity and Stock Returns*.</li>
+</ul>
+<h2>6. 这轮该记住什么</h2>
+<p>&gt; <strong>别再把 liquidity / spread / premium tail 只当 execution 备注。</strong> &gt; 对 short-cycle crypto desk，它更像一层共享 admission gate：不是帮你“发明方向”，而是帮你少在最不该出手的时候出手。</p>
+<h2>7. 附：本轮 public-data 快检产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-21_hl_marketquality_snapshot.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-21_hl_marketquality_liquid_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-21_hl_marketquality_probe.md</code></li>
+</ul>
+</body>
+</html>

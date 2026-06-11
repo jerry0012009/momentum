@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Hummingbot 的 `spot_perpetual_arbitrage` 只读成 carry 教程：对 short-cycle desk，更该先测的是「spot-perp executable basis × open/close hysteresis shell」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Hummingbot 的 `spot_perpetual_arbitrage` 只读成 carry 教程：对 short-cycle desk，更该先测的是「spot-perp executable basis × open/close hysteresis shell」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-08 00:17 UTC</span>
+      <span class="pill">研究时间：2026-04-08 00:12 UTC</span>
+      <span class="pill">类型：GitHub mature strategy source audit（repo metadata + `spot_perpetual_arbitrage.py` + `arb_proposal.py` + `spot_perpetual_arbitrage_config_map.py` + `start.py`）</span>
+      <span class="pill">主题标签：raw-alpha / relative-value / carry / basis / spot-perp / delta-neutral / open-close-hysteresis / binance / hummingbot / 1m / 3m / 5m / 15m</span>
+      <span class="pill">证据类型：工程证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-08_0012_spot-perp-openclose-basis-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-08 00:12 UTC</li>
+<li>类型：GitHub mature strategy source audit（repo metadata + <code>spot_perpetual_arbitrage.py</code> + <code>arb_proposal.py</code> + <code>spot_perpetual_arbitrage_config_map.py</code> + <code>start.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一标的 spot 与 perpetual 的<strong>可成交 basis</strong>一旦偏离到足以覆盖双边费用、滑点与持仓 frictions，后续往往会向平衡收敛；因此可用 delta-neutral 双腿做「开仓吃偏离、平仓吃回归」</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / relative-value / carry / basis / spot-perp / delta-neutral / open-close-hysteresis / binance / hummingbot / 1m / 3m / 5m / 15m</li>
+<li>证据类型：工程证据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>Hummingbot Foundation</strong> 的成熟策略模块 <strong><code>spot_perpetual_arbitrage</code></strong>。它真正有价值的，不是“funding 高就去收 carry”这种泛化说法，而是把一条<strong>可直接下单的 spot-perp 相对价值策略壳</strong>写得很完整：</p>
+<ul>
+<li>先同时计算两种方向的可成交 spread；</li>
+<li>再按开仓阈值决定是否做 <code>spot buy + perp sell</code>，或 <code>spot sell + perp buy</code>；</li>
+<li>开完后不立刻反手，而是等到<strong>另一侧 close spread</strong> 达到平仓阈值才退出。</li>
+</ul>
+<p>也就是说，这东西的 base alpha 很清楚：<strong>交易的不是 funding 排行榜，而是 same-underlier、可成交、可净额化的 basis 偏离与回归。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这条线最值得 intake 的地方，是它把 <strong>raw alpha + entry/exit + sizing/risk + cost</strong> 一次性放进同一个壳里。对当前 desk，它比“只会说 basis 可能回归”的论文摘要更接近可直接复现的完整策略。</li>
+<li><code>arb_proposal.py</code> 里的收益定义很朴素，也很诚实：</li>
+<li>若做 <code>spot buy / perp sell</code>，看的是 <strong><code>(perp_sell - spot_buy) / spot_buy</code></strong>；</li>
+<li>若做 <code>spot sell / perp buy</code>，看的是 <strong><code>(spot_sell - perp_buy) / spot_sell</code></strong>。</li>
+<p>这不是 mid-price 幻觉，而是<strong>可成交报价差</strong>。</p>
+<li>源码默认参数本身就给了 3 个很有用的工程提示：<strong>开仓阈值默认 <code>1%</code>、平仓阈值默认 <code>-0.1%</code>、双腿 slippage buffer 默认都为 <code>0.05%</code></strong>，另有 <strong><code>120s</code> reopen delay</strong> 与 <strong><code>5x</code> perpetual leverage</strong>。一句话：它默认不是“见价差就追”，而是明确采用 <strong>open/close hysteresis</strong>。</li>
+<li><code>spot_perpetual_arbitrage.py</code> 里把状态机写成 <strong><code>Closed -&gt; Opening -&gt; Opened -&gt; Closing</code></strong>，并要求 perpetual 端使用 <strong><code>ONEWAY</code></strong> 模式。这一点对实盘很关键：它不是单次 basis snapshot，而是把<strong>持仓生命周期</strong>显式建模了。</li>
+<li>一句话核心结论：<strong>别把 spot-perp 只读成慢速 carry；更适合 short-cycle desk 的读法，是“可成交 basis 偏离 × 双阈值开平仓壳”这条完整 raw alpha。</strong></li>
+<li>一句话它怎么证明：<strong>不是靠论文回测，而是直接把 spread 公式、双向 proposal、开平仓阈值、slippage、budget check、position mode 和冷却时间都写进策略源码。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇东西对 <code>momentum</code> 当前最有价值的地方，是它补了一个我们很需要、但之前 mostly 只在论文/小 repo 里零散见过的组件：</p>
+<ol>
+<li><strong>它是完整策略，不只是 alpha 口号。</strong></li>
+<p>之前我们已经收了不少 <code>basis / funding / carry</code> 主题，但很多更像“哪边更贵”的线索；这次拿到的是一个<strong>把 entry / exit / slippage / leverage / reopen delay 都定义出来的执行壳</strong>。</p>
+</ol>
+<ol>
+<li><strong>它天然适合 <code>1m / 3m / 5m / 15m</code> 的最小实验。</strong></li>
+<p>这条线不依赖日频财报、低频宏观或复杂链上数据；只要有同标的 spot + perp 报价，就能开始做最小实验。</p>
+</ol>
+<ol>
+<li><strong>它能服务于当前 desk 的已有 basis/funding 素材池。</strong></li>
+<p>你完全可以把这个壳理解成：</p>
+</ol>
+<ul>
+<li>raw alpha 本体 = executable basis dislocation</li>
+<li>regime/filter = funding、深度、波动、结算时点、延迟风险</li>
+<li>risk overlay = leverage / time-stop / max-open-duration / fill veto</li>
+<p>这比继续泛泛讨论“carry 有没有用”更值钱。</p>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative value / delta-neutral / carry-basis hybrid</li>
+<li>基础 alpha：same-underlier 的 executable spot-perp basis 偏离后向平衡回归</li>
+<li>regime：高流动主力币、spot 与 perp 深度都足够、可稳定双腿成交的时段</li>
+<li>filter / veto：</li>
+<li>net spread 扣完双腿 fee/slippage 后仍为正</li>
+<li>funding 结算前后若延迟/冲击过大则 veto</li>
+<li>深度不足、盘口跳动过快、网络异常、position mode 不匹配则 veto</li>
+<li>risk / sizing / execution overlay：固定 <code>order_amount</code> 起步；perp 端单向仓位；双腿同步执行；开仓后只有在 close spread 达标或达到 time-stop 时才退出；必要时加 <code>max-open-duration</code> 与 funding-window veto</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：在 <code>1m / 5m</code> 的可成交 quote 口径下，BTC/ETH 等 liquid majors 的 spot-perp basis 偏离，经过双腿成本后，仍存在可交易的<strong>开仓-平仓 hysteresis</strong>。</li>
+<li><strong>可计算定义</strong>：</li>
+</ul>
+<ol>
+<li>对每个时间点计算两条 executable spread：</li>
+</ol>
+<ul>
+<li><code>open_short_carry = (perp_bid - spot_ask) / spot_ask</code></li>
+<li><code>open_long_carry = (spot_bid - perp_ask) / spot_bid</code></li>
+</ul>
+<ol>
+<li>若当前无仓，且任一 spread &gt; <code>entry_threshold_net</code>，则开对应 delta-neutral 双腿。</li>
+<li>若已有仓，则用反向 close spread 判断是否平仓；也就是别只盯开仓 spread，要看<strong>能否在另一边把仓位平掉</strong>。</li>
+<li>成本至少包含：spot fee、perp fee、双边滑点、持有期间 funding（若跨 funding 时间点）。</li>
+</ol>
+<ul>
+<li><strong>最小回测切口</strong>：</li>
+<li>标的：先做 <code>BTCUSDT / ETHUSDT</code> 的 Binance spot + perp</li>
+<li>周期：先 <code>1m</code> quote snapshot，再做 <code>5m</code> bar 内 executable proxy</li>
+<li>阈值：不要机械照搬源码默认 <code>1%</code>；对 majors 应先扫 <code>10 / 20 / 30 / 50 bps</code> entry，close 先扫 <code>-5 / 0 / +5 bps</code></li>
+<li>持有：直到 close spread 触发，或 <code>30 / 60 / 120</code> 分钟 time-stop</li>
+<li><strong>最该先看</strong>：</li>
+</ul>
+<ol>
+<li><code>after-cost net spread capture / trade</code></li>
+<li><code>trade count × median open duration</code></li>
+<li>是否主要被 funding 窗口或极端盘口事件驱动</li>
+</ol>
+<ul>
+<li><strong>第一版 A/B</strong>：</li>
+<li>A：纯 threshold shell</li>
+<li>B：threshold + depth / funding-window veto</li>
+<p>如果 B 的净收益更稳、但 trade count 没被砍废，说明这条线可以进入复现池。</p>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这份 repo 证明的是<strong>工程可落地性</strong>，不是“今天在 Binance majors 上一定还有 1% 肉”。默认阈值更像保守模板，不是你该直接照抄的 production 参数。</li>
+<li>若双腿都按 taker 执行，很多 basis edge 会被费用直接吃掉；所以 quote source、费率层级和是否能做 maker-first，决定了这条线还能不能活。</li>
+<li>same-underlier 并不代表一定会快回归；极端单边行情、资金费率结算前后、现货/合约流动性失衡时，basis 可能持续扩张而不是马上收敛。</li>
+<li>只用 bar close 做回测很容易高估 fill quality；如果拿不到逐笔/盘口，第一轮至少要做 conservative executable proxy，而不是用 mid-price 自嗨。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Hummingbot Foundation</strong>（2019–2026 活跃维护）. <strong><code>hummingbot/hummingbot</code></strong>. GitHub repository.</li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: 无</li>
+<li>Repo URL: <code><a href="https://github.com/hummingbot/hummingbot">https://github.com/hummingbot/hummingbot</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/hummingbot/hummingbot">https://github.com/hummingbot/hummingbot</a></code></li>
+</ul>
+<ol>
+<li><strong>Strategy logic:</strong> <code>hummingbot/strategy/spot_perpetual_arbitrage/spot_perpetual_arbitrage.py</code></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/hummingbot/hummingbot/blob/master/hummingbot/strategy/spot_perpetual_arbitrage/spot_perpetual_arbitrage.py">https://github.com/hummingbot/hummingbot/blob/master/hummingbot/strategy/spot_perpetual_arbitrage/spot_perpetual_arbitrage.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Profit formula helper:</strong> <code>hummingbot/strategy/spot_perpetual_arbitrage/arb_proposal.py</code></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/hummingbot/hummingbot/blob/master/hummingbot/strategy/spot_perpetual_arbitrage/arb_proposal.py">https://github.com/hummingbot/hummingbot/blob/master/hummingbot/strategy/spot_perpetual_arbitrage/arb_proposal.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Config defaults:</strong> <code>hummingbot/strategy/spot_perpetual_arbitrage/spot_perpetual_arbitrage_config_map.py</code></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/hummingbot/hummingbot/blob/master/hummingbot/strategy/spot_perpetual_arbitrage/spot_perpetual_arbitrage_config_map.py">https://github.com/hummingbot/hummingbot/blob/master/hummingbot/strategy/spot_perpetual_arbitrage/spot_perpetual_arbitrage_config_map.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Strategy wiring:</strong> <code>hummingbot/strategy/spot_perpetual_arbitrage/start.py</code></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/hummingbot/hummingbot/blob/master/hummingbot/strategy/spot_perpetual_arbitrage/start.py">https://github.com/hummingbot/hummingbot/blob/master/hummingbot/strategy/spot_perpetual_arbitrage/start.py</a></code></li>
+</ul>
+</body>
+</html>

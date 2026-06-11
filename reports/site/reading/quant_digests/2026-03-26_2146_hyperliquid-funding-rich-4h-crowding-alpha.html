@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Hyperliquid funding screener 只读成 `long cheap / short rich` carry：这份 2026 新 repo 更该先测的是「richest-funding 4h crowding continuation」，且必须先扣 funding cashflow</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Hyperliquid funding screener 只读成 `long cheap / short rich` carry：这份 2026 新 repo 更该先测的是「richest-funding 4h crowding continuation」，且必须先扣 funding cashflow</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-26 21:47 UTC</span>
+      <span class="pill">研究时间：2026-03-26 21:46 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + Hyperliquid 公共 funding/ohlcv 数据 + 本地最小快检</span>
+      <span class="pill">主题标签：raw-alpha/funding/carry/crowding/continuation/cross-sectional/relative-value/hyperliquid/public-data/hourly/4h/15m/5m/repo/external-data/cost</span>
+      <span class="pill">证据类型：repo source audit + 本地公共数据最小实验（含 funding cashflow）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-26_2146_hyperliquid-funding-rich-4h-crowding-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-26 21:46 UTC</li>
+<li>类型：2026 GitHub 新仓库 + Hyperliquid 公共 funding/ohlcv 数据 + 本地最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：每小时刷新 funding 横截面；做多 funding 最贵的 top-5、做空 funding 最便宜的 bottom-5，持有 <code>4h</code>（先计 price PnL，再诚实扣未来 funding cashflow 与交易成本）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/funding/carry/crowding/continuation/cross-sectional/relative-value/hyperliquid/public-data/hourly/4h/15m/5m/repo/external-data/cost</li>
+<li>证据类型：repo source audit + 本地公共数据最小实验（含 funding cashflow）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这次真正值得 intake 的不是经典 <code>long cheap funding / short rich funding</code> carry，而是一个更贴近短周期 desk 的旁支——<code>richest funding continuation</code>。</strong></p>
+<p>主材料是 <strong><code>exo-trading/crypto-carry-screener</code>（GitHub, 2026）</strong>。这个 repo 表面上是在做 Hyperliquid funding 看板，但把源码拆开看，真正有价值的地方不是网页，而是它已经把三件事搭好了：</p>
+<ul>
+<li><strong>公开可拿的数据管道</strong>：逐币 <code>fundingRate</code>、逐小时 <code>ohlcv</code>；</li>
+<li><strong>现成的 signal primitive</strong>：<code>current / 1d / 3d / 5d</code> funding 排名；</li>
+<li><strong>最基础的 liquidity context</strong>：小时成交额可滚成 <code>ADV</code> 过滤。</li>
+</ul>
+<p>也就是说，这不是一篇“解释资金费率是什么意思”的综述，而是一个<strong>可直接落地成完整横截面 raw alpha 最小实验</strong>的 fresh repo source。</p>
+<p>但本轮最关键的 desk 化结论有两层：</p>
+<ol>
+<li><strong>最近 30 天 Hyperliquid 公共样本里，price alpha 最强的不是 contrarian carry，而是 <code>long richest funding / short cheapest funding</code> 的 4 小时 continuation。</strong></li>
+<li><strong>如果不把未来持仓期间的 funding cashflow 扣进去，这条线会被严重高估。</strong> 扣完以后，<code>4h</code> 仍有剩余边，但 <code>1h</code> 基本死掉。</li>
+</ol>
+<p>所以，这条线现在最诚实的读法不是“又一个 funding carry 看板”，而是：<strong>一个每小时刷新、在 <code>15m</code> 层执行的 funding-crowding raw alpha 候选。</strong></p>
+<h2>2. 核心结论</h2>
+<h3>2.1 repo 里真正有用的 3 个点</h3>
+<p>从 <code>market_data_collector.py</code> 与 <code>generate_website.py</code> 看，这个 repo 目前做的是：</p>
+<ol>
+<li>抓取 Hyperliquid 多币种 hourly <code>fundingRate</code>；</li>
+<li>计算 <code>current / 1d / 3d / 5d</code> annualized funding 排名；</li>
+<li>用小时 <code>volume_usd</code> 计算 <code>ADV</code>，把数据写成网站可读的 watchlist。</li>
+</ol>
+<p>翻成人话：</p>
+<ul>
+<li>repo <strong>已经给了信号和币池过滤的原料</strong>；</li>
+<li>但它<strong>没有替你定义交易方向、持有期、仓位、成本与 funding 入账</strong>；</li>
+<li>所以 bot7 真正该做的不是复述网页，而是把它补成一套<strong>可交易的最小完整策略</strong>。</li>
+</ul>
+<h3>2.2 本轮最重要的 sign 结论</h3>
+<p>本地快检里，同一套公开数据如果直接做最朴素的双边组合：</p>
+<ul>
+<li><strong>反向经典 carry</strong>：<code>long cheapest / short richest</code> → 最近样本里是负的；</li>
+<li><strong>crowding continuation</strong>：<code>long richest / short cheapest</code> → 最近样本里是正的，而且 <code>4h</code> 比 <code>1h</code> 诚实得多。</li>
+</ul>
+<p>这点很关键。它说明在当前 Hyperliquid 这段样本里，funding 更像<strong>拥挤延续强度</strong>，而不是立刻反身修正的 rich-vs-cheap pullback。</p>
+<h3>2.3 desk 化一句话结论</h3>
+<p><strong>对当前 <code>1m/3m/5m/15m</code> desk，更值得先测的不是“funding 便宜腿回归”，而是：每小时冻结一次横截面，做 <code>long top-5 funding / short bottom-5 funding</code>，在后续 <code>4 x 15m</code> 上分批执行与持有。</strong></p>
+<h2>3. 为什么和当前 desk 直接相关</h2>
+<ul>
+<li>这是<strong>独立 raw alpha 家族</strong>，不是再给别的 breakout / retest / momentum 策略找一个附属 veto。</li>
+<li>它天然就是完整策略骨架：</li>
+<li><strong>entry</strong>：按 funding 横截面排名开仓；</li>
+<li><strong>exit</strong>：固定持有 <code>4h</code> / 到时重排；</li>
+<li><strong>sizing</strong>：等权或 inverse-vol；</li>
+<li><strong>risk</strong>：ADV、单币权重上限、sector cap、单小时 funding shock cap；</li>
+<li><strong>cost</strong>：手续费、滑点、以及<strong>未来 funding cashflow 必须显式入账</strong>。</li>
+<li>它和最近已有的 <code>basis / funding dispersion / funding boundary</code> 线索不同：</li>
+<li>那几条更偏 <strong>cheap-vs-rich carry</strong>；</li>
+<li>这条在当前新样本里给出的 sign，反而更像 <strong>funding-signed continuation</strong>。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：cross-sectional / funding / crowding / relative-value / market-neutral</li>
+<li>基础 alpha：同一时点上，当前 funding 更高的永续合约，在后续 <code>4h</code> 的价格相对表现强于 funding 更低的合约</li>
+<li>主题类型：raw alpha</li>
+<li>regime：更适合 funding 横截面分布明显拉开、且流动性分层没有塌掉的时候</li>
+<li>filter / veto：新上市币、极低 ADV、极端单币 funding（避免 cashflow 吃掉全部 price alpha）、重大事件窗前后</li>
+<li>risk / sizing / execution overlay：先做 <code>top-5 vs bottom-5</code> 的 dollar-neutral / inverse-vol；执行建议放到 <code>15m</code> 或 <code>5m</code> 切片，不要假装 funding 是逐分钟主信号</li>
+</ul>
+<h2>4. 本地最小快检（Hyperliquid 公共数据）</h2>
+<h3>4.1 数据与口径</h3>
+<ul>
+<li>数据源：<code>exo-trading/crypto-carry-screener</code> repo 公开暴露的两份原始 CSV</li>
+<li><code>funding_data_all_coins.csv</code></li>
+<li><code>ohlcv_data_main.csv</code></li>
+<li>原始数据底层：Hyperliquid 公共市场数据</li>
+<li>公开性：公开可得，无需私钥</li>
+<li>更新频率：<code>1h</code></li>
+<li>本地样本：<code>2026-02-24 21:00 UTC ~ 2026-03-26 19:00 UTC</code></li>
+<li>币池过滤：</li>
+<li><code>3d ADV &gt;= $1m</code></li>
+<li>价格 <code>&gt; 0.0005</code></li>
+<li>剔除稳定币/稳定锚代理</li>
+<li>组合定义：每小时排序，<code>top-5 vs bottom-5</code></li>
+<li>配权：<code>24h</code> realized vol inverse-vol</li>
+<li>持有：<code>1h / 4h</code></li>
+<li>成本：先粗估 <strong>8 bps round-trip</strong></li>
+<li><strong>关键诚实项</strong>：不只算价格收益，也把未来持仓期间的 funding cashflow 入账</li>
+</ul>
+<h3>4.2 先看 price-only，会得到什么错觉</h3>
+<p>如果<strong>只看价格 PnL，不扣 funding cashflow</strong>：</p>
+<ul>
+<li>最强组合是 <strong><code>current funding</code> + <code>4h hold</code> + <code>long richest / short cheapest</code></strong></li>
+<li>平均 <strong>price alpha = +19.39 bps / 4h</strong></li>
+<li>gross annualized Sharpe 约 <strong>8.10</strong></li>
+<li>gross win rate 约 <strong>56.3%</strong></li>
+</ul>
+<p>但这个读法不诚实，因为：</p>
+<ul>
+<li>做多高 funding 腿通常要<strong>付 funding</strong>；</li>
+<li>做空低/负 funding 腿很多时候也要<strong>付 funding</strong>；</li>
+<li>不把这层现金流扣进去，等于把 signal 最核心的成本漏掉了。</li>
+</ul>
+<h3>4.3 扣完 funding cashflow 后，真正还能剩什么</h3>
+<p>把未来 <code>4h</code> funding 现金流加回后，再扣 <code>8 bps</code> round-trip：</p>
+<p><strong>A. 最优可用读法：<code>current funding</code> + <code>4h hold</code> + <code>long richest / short cheapest</code></strong></p>
+<ul>
+<li>平均 <strong>price PnL = +19.39 bps / 4h</strong></li>
+<li>平均 <strong>funding cashflow = -5.23 bps / 4h</strong></li>
+<li>平均 <strong>gross(after funding) = +14.16 bps / 4h</strong></li>
+<li>平均 <strong>net(after funding + trading cost) = +6.16 bps / 4h</strong></li>
+<li>annualized net Sharpe 约 <strong>2.58</strong></li>
+<li>胜率约 <strong>55.2%</strong></li>
+<li>样本条数：<code>716</code> 个 hourly rebalance points</li>
+<li>平均可交易 universe：约 <strong>58.9</strong> 个币</li>
+</ul>
+<p><strong>B. 更慢的平滑 funding（<code>3d/5d avg</code>）没有更好</strong></p>
+<ul>
+<li><code>3d avg funding + 4h hold</code>：扣完 funding 与交易成本后只剩 <strong>+1.89 bps / 4h</strong></li>
+<li><code>5d avg funding + 4h hold</code>：扣完后变成 <strong>-3.81 bps / 4h</strong></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li><strong>最值钱的不是“慢 carry”，而是“当前 funding 极值”本身。</strong></li>
+<li>这更像短期 crowding 强度，而不是中期 carry harvest。</li>
+</ul>
+<p><strong>C. <code>1h</code> 版本不活</strong></p>
+<ul>
+<li><code>current funding + 1h hold + long richest / short cheapest</code></li>
+<li>平均 <strong>price PnL = +4.46 bps / 1h</strong></li>
+<li>平均 <strong>funding cashflow = -1.46 bps / 1h</strong></li>
+<li>平均 <strong>gross(after funding) = +2.99 bps / 1h</strong></li>
+<li>扣 <code>8 bps</code> 交易成本后 <strong>net = -5.01 bps / 1h</strong></li>
+</ul>
+<p>所以它不是 1 小时里随便打都能活的 micro alpha，<strong>更诚实的 pocket 在 <code>4h</code>，而不是 <code>1h</code>。</strong></p>
+<h3>4.4 和经典 cheap-vs-rich carry 的对照</h3>
+<p>同样一套样本，若按更传统的读法去做 <strong><code>long cheapest / short richest</code></strong>：</p>
+<ul>
+<li><code>current funding + 4h hold</code>：<strong>net = -22.16 bps / 4h</strong></li>
+<li><code>current funding + 1h hold</code>：<strong>net = -10.99 bps / 1h</strong></li>
+</ul>
+<p>这说明至少在这段最新 Hyperliquid 样本里：</p>
+<ul>
+<li><strong>sign 没有站在 classical carry 那边；</strong></li>
+<li>当前更值得留在研究池里的，是 <strong>rich-funding continuation</strong>，不是 cheap-leg mean reversion。</li>
+</ul>
+<h3>4.5 简单稳定性检查（按周）</h3>
+<p>最优配置（<code>current funding / 4h / rich-minus-cheap</code>）按周拆开：</p>
+<ul>
+<li><code>2026-02-23/03-01</code>：<strong>+12.15 bps / 4h net</strong></li>
+<li><code>2026-03-02/03-08</code>：<strong>-1.33 bps / 4h net</strong></li>
+<li><code>2026-03-09/03-15</code>：<strong>+7.17 bps / 4h net</strong></li>
+<li><code>2026-03-16/03-22</code>：<strong>+11.60 bps / 4h net</strong></li>
+<li><code>2026-03-23/03-29</code>（未完周）：<strong>-0.15 bps / 4h net</strong></li>
+</ul>
+<p>所以这不是“周周碾压”的稳态机器，但也不是只靠单一一周撑起来。<strong>它更像一个可继续压测的 pocket，而不是立即下 final verdict 的 always-on carry。</strong></p>
+<h2>5. 这条线现在最诚实的读法</h2>
+<h3>5.1 它是什么</h3>
+<p>它是一个<strong>每小时刷新、以 funding 横截面极值为触发的 4 小时 crowding continuation raw alpha</strong>。</p>
+<h3>5.2 它不是什么</h3>
+<ul>
+<li>不是经典的 <code>long cheap / short rich</code> carry harvest；</li>
+<li>不是逐根 <code>1m/3m/5m</code> 的 bar-by-bar 主信号；</li>
+<li>不是只看价格 markout 就能下结论的“伪高 Sharpe funding 题材”。</li>
+</ul>
+<h3>5.3 对 <code>1m/3m/5m/15m</code> 的正确映射</h3>
+<p>更合理的 desk 读法是：</p>
+<ul>
+<li><strong>signal layer</strong>：每小时更新一次 funding 横截面；</li>
+<li><strong>execution layer</strong>：在后续 <code>4 x 15m</code> 或 <code>12 x 5m</code> 上分批完成建仓与减仓；</li>
+<li><strong>monitoring layer</strong>：在更细粒度上看冲击、盘口厚度与 funding 结算现金流。</li>
+</ul>
+<p>也就是说，它能服务短周期 desk，但<strong>方式是“低频信号 + 高频执行”，不是硬把 hourly funding 伪装成 1m alpha 本体。</strong></p>
+<h2>6. 下一步怎么测（可直接执行）</h2>
+<ol>
+<li><strong>把 <code>1h signal / 15m execution</code> 真正跑出来。</strong></li>
+</ol>
+<ul>
+<li>信号冻结在整点；</li>
+<li>执行拆到后续 <code>4 x 15m</code>；</li>
+<li>比较 <code>immediate open</code>、<code>15m TWAP</code>、<code>5m TWAP</code> 三种冲击口径。</li>
+</ul>
+<ol>
+<li><strong>把 funding cashflow 纳入统一回测账本。</strong></li>
+</ol>
+<ul>
+<li>当前这轮只是最小快检；</li>
+<li>下一轮必须把手续费、滑点、未来 funding cashflow 放进同一 <code>net PnL</code> 路径，不能分开看。</li>
+</ul>
+<ol>
+<li><strong>做 <code>current funding</code> vs <code>1d/3d</code> 的 frozen-sign 对照。</strong></li>
+</ol>
+<ul>
+<li>当前看起来 <code>current</code> 最强；</li>
+<li>下一轮要验证这是不是样本偶然，还是说明短期 crowding 才是 alpha 本体。</li>
+</ul>
+<ol>
+<li><strong>做 beta / sector / listing-age 约束。</strong></li>
+</ol>
+<ul>
+<li>看 edge 是不是只是长一篮子高 beta 热门币；</li>
+<li>同时剔除新币与极端单名币权重，看 sign 会不会塌。</li>
+</ul>
+<ol>
+<li><strong>做 regime 切片。</strong></li>
+</ol>
+<ul>
+<li>先按 funding dispersion 高低分桶；</li>
+<li>再按 BTC 单边趋势 / 横盘状态分桶；</li>
+<li>回答这条线到底是 <code>trend-on crowd continuation</code>，还是更普适的横截面强弱排序。</li>
+</ul>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>这轮主材料是 <strong>fresh repo + public data</strong>，不是学术论文；因此更像 <code>source intake + first verdict</code>，不是 final paper-grade replication。</li>
+<li>当前样本只有最近约一个月，<strong>sign 稳定性仍需更长窗口</strong>验证。</li>
+<li>当前还是小时级 public CSV，不含真正的盘口冲击、手续费档位与 maker/taker 细分；因此 <code>8 bps round-trip</code> 只是第一层粗估。</li>
+<li>funding 相关题材最容易犯的错误，就是只看 price markout 不看 funding 现金流；本轮已经纠正这点，但后续仍需把<strong>结算时间点、持仓跨小时路径</strong>建模得更细。</li>
+</ul>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>exo-trading (2026), _crypto-carry-screener_</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/exo-trading/crypto-carry-screener">https://github.com/exo-trading/crypto-carry-screener</a></li>
+</ul>
+<ol>
+<li><strong>Repo source: <code>market_data_collector.py</code></strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/exo-trading/crypto-carry-screener/main/market_data_collector.py">https://raw.githubusercontent.com/exo-trading/crypto-carry-screener/main/market_data_collector.py</a></li>
+</ul>
+<ol>
+<li><strong>Repo source: <code>generate_website.py</code></strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/exo-trading/crypto-carry-screener/main/generate_website.py">https://raw.githubusercontent.com/exo-trading/crypto-carry-screener/main/generate_website.py</a></li>
+</ul>
+<ol>
+<li><strong>Hyperliquid Developer Docs</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api</a></li>
+</ul>
+<h2>9. 本地复现产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/hyperliquid_funding_xs_carry_20260326_2140/summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/hyperliquid_funding_xs_carry_20260326_2140/signal_grid.csv</code></li>
+<li><code>reports/artifacts/quant_digests/hyperliquid_funding_xs_carry_20260326_2140/signal_grid_with_funding.csv</code></li>
+<li><code>reports/artifacts/quant_digests/hyperliquid_funding_xs_carry_20260326_2140/best_timeseries.csv</code></li>
+<li><code>reports/artifacts/quant_digests/hyperliquid_funding_xs_carry_20260326_2140/best_with_funding_timeseries.csv</code></li>
+<li><code>reports/artifacts/quant_digests/hyperliquid_funding_xs_carry_20260326_2140/best_weekly_summary.csv</code></li>
+</ul>
+</body>
+</html>

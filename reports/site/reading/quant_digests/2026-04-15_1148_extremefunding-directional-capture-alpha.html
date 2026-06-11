@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Hyperliquid funding bot 只读成“收租脚本”：对 short-cycle desk，更该先拆的是「extreme funding directional capture × next-settlement timebox」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Hyperliquid funding bot 只读成“收租脚本”：对 short-cycle desk，更该先拆的是「extreme funding directional capture × next-settlement timebox」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-15 11:45 UTC</span>
+      <span class="pill">研究时间：2026-04-15 11:48 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：funding / carry / crowding / directional / Hyperliquid / 1m / 5m / 15m / hourly settlement</span>
+      <span class="pill">证据类型：工程经验 + live public-data read</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-15_1148_extremefunding-directional-capture-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-15 11:48 UTC</li>
+<li>类型：GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当 perp 预测 funding 进入极端区间时，拥挤的一侧更容易在下一次 funding 结算窗里被反向持仓者同时赚到 <strong>funding transfer + 局部价格回摆</strong>；实现上即 <code>positive funding -&gt; short perp</code>，<code>negative funding -&gt; long perp</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：funding / carry / crowding / directional / Hyperliquid / 1m / 5m / 15m / hourly settlement</li>
+<li>证据类型：工程经验 + live public-data read</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 2026 GitHub 仓库 <code>atlasdetitan/hyperliquid-trading-bots</code> 里的 <code>strategies/funding_arb/bot.py</code> 与配套 README。它不是 delta-neutral 套利，而是把 <strong>极端 funding 当成拥挤信号</strong>，直接在 Hyperliquid 上做单腿方向 carry。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha 很清楚</strong>：<code>|hourly funding|</code> 够极端时，反向站位，至少扛到下一次整点 funding 结算。</li>
+<li>repo 最值得学的不是“看 funding 排名”，而是把 <strong>开仓-持有-退出时钟</strong> 写得很明确：默认阈值 <code>0.01%/hr</code>，开仓后最少持有到下一个 top-of-hour funding settlement；若 funding 归零、翻向或超过 <code>max_hold_hours</code> 再退出。</li>
+<li>我补了一次 Hyperliquid live scan（artifact: <code>reports/artifacts/quant_digests/2026-04-15_hyperliquid_directional_funding_scan.json</code>）：当前约 <code>190</code> 个活跃合约里，<code>|funding| &gt;= 0.01%/hr</code> 的只有 <code>13</code> 个，<code>&gt;=0.02%/hr</code> 的 <code>7</code> 个，<code>&gt;=0.05%/hr</code> 的只剩 <code>2</code> 个；全市场 <code>|funding|</code> 中位数只有约 <code>0.00125%/hr</code>，说明这条规则本质上是 <strong>极端拥挤 pocket 扫描器</strong>，不是全天候连续信号。</li>
+<li>当前最极端的几个名字是 <code>BIO -0.1924%/hr</code>、<code>YZY -0.1297%/hr</code>、<code>MAVIA +0.0458%/hr</code>，一眼就能看出：<strong>触发大多集中在小币/高波动尾部</strong>，所以价格风险很可能远大于 funding 本身。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线直接补的是我们当前更缺的 <strong>carry / funding / crowding raw alpha</strong> 素材，而且比“delta-neutral funding 套壳”更像一个可快速做最小实验的方向：</p>
+<ul>
+<li>触发变量公开可得（funding）</li>
+<li>时钟明确（整点结算）</li>
+<li>可直接映射到 <code>1m/5m/15m</code> 执行层</li>
+<li>能自然衍生出 <code>basis veto / microcap veto / liquidity gate / delta-hedged 对照组</code></li>
+</ul>
+<p>换句话说，它不是“又一个 funding 面板”，而是一条可单独验证的 <strong>event-driven carry / crowding alpha</strong>。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：逆拥挤 / carry / 单资产方向</li>
+<li>基础 alpha：extreme funding directional capture</li>
+<li>regime：只在 <code>|funding|</code> 超阈值的极端拥挤状态下开机</li>
+<li>filter / veto：repo 里只有阈值与 <code>max_positions</code>；对 desk 更该补 <code>liquidity / basis / spread / market-cap</code> veto</li>
+<li>risk / sizing / execution overlay：隔离保证金、整点 funding 结算最短持有、<code>max_hold_hours</code> 上限；但 sizing 还是<strong>跨币统一 asset units</strong>，这点很不 production</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：Hyperliquid/同类 perp 上，极端正 funding 更容易在接下来一个 funding 窗里兑现为 <code>short</code> 收益，极端负 funding 则更容易兑现为 <code>long</code> 收益。</li>
+<li>可计算定义：每 <code>5m</code> 记录一次 predicted funding；若 <code>funding &gt;= +1bp/hr</code>，下一根 <code>1m/5m</code> 做空；若 <code>funding &lt;= -1bp/hr</code>，下一根做多。</li>
+<li>最小回测切口：Hyperliquid 或 Binance 可替代 funding 数据；资产先只做 liquid-midcap 与 microcap 分层；持有窗比较 <code>到下一次 funding settlement</code>、<code>settlement+15m</code>、固定 <code>60m</code>。</li>
+<li>最该先看：<code>post-cost avg bps/trade</code>、<code>按市值/点差分层后的 hit rate</code>。第二优先才是 headline Sharpe。</li>
+<li>必做对照：<code>裸方向</code> vs <code>加 basis veto</code> vs <code>delta-hedged</code>。如果 edge 主要来自 price snapback 而不是 funding，本体就更像 crowding fade，而不是 carry。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<p>最大保留意见有四个：</p>
+<ol>
+<li>repo 没有显式 fee hurdle / post-cost 录取线；</li>
+<li><code>--size</code> 用的是统一 asset units，不是 USD notional，跨币风险严重失真；</li>
+<li>触发大多落在小币，容易被点差、冲击成本和单边行情吃穿；</li>
+<li>bot 重启后不继承已开仓位的“bot-managed state”，不适合作为无状态生产壳直接照搬。</li>
+</ol>
+<p>所以我会把它定性为：<strong>raw alpha 清楚、可独立复现，但还不是可直接上线的完整策略</strong>。真正值得复用的是它的 <code>event clock</code>：<code>funding extreme -&gt; next-settlement minimum hold -&gt; normalize/flip exit</code>。</p>
+<h2>6. 来源</h2>
+<ul>
+<li>atlasdetitan. (2026). *Hyperliquid Trading Bots*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/atlasdetitan/hyperliquid-trading-bots">https://github.com/atlasdetitan/hyperliquid-trading-bots</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/atlasdetitan/hyperliquid-trading-bots/blob/master/strategies/funding_arb/README.md">https://github.com/atlasdetitan/hyperliquid-trading-bots/blob/master/strategies/funding_arb/README.md</a></code></li>
+<li>Strategy URL: <code><a href="https://github.com/atlasdetitan/hyperliquid-trading-bots/blob/master/strategies/funding_arb/bot.py">https://github.com/atlasdetitan/hyperliquid-trading-bots/blob/master/strategies/funding_arb/bot.py</a></code></li>
+<li>Live public-data artifact: <code>reports/artifacts/quant_digests/2026-04-15_hyperliquid_directional_funding_scan.json</code></li>
+</ul>
+</body>
+</html>

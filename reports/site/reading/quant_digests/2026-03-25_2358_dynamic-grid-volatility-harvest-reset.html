@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>先别把 dynamic grid 当印钞机：这篇 2025 论文更值得 intake 的是「动态重置的波动收租」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>先别把 dynamic grid 当印钞机：这篇 2025 论文更值得 intake 的是「动态重置的波动收租」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-26 00:08 UTC</span>
+      <span class="pill">研究时间：2026-03-25 23:58 UTC</span>
+      <span class="pill">类型：2025 arXiv 论文（全文 PDF 可读）+ 官方 GitHub repo + Binance Spot 公共 `5m/15m` 最小快检</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/single-asset/grid/volatility-harvest/dynamic-reset/spot/btc/eth/5m/15m/1m/repo/paper/binance/execution/cost</span>
+      <span class="pill">证据类型：论文证据 + repo 代码审计 + 公共数据最小代理回测</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_2358_dynamic-grid-volatility-harvest-reset.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 23:58 UTC</li>
+<li>类型：2025 arXiv 论文（全文 PDF 可读）+ 官方 GitHub repo + Binance Spot 公共 <code>5m/15m</code> 最小快检</li>
+<li>主题标签：raw-alpha/mean-reversion/single-asset/grid/volatility-harvest/dynamic-reset/spot/btc/eth/5m/15m/1m/repo/paper/binance/execution/cost</li>
+<li>证据类型：论文证据 + repo 代码审计 + 公共数据最小代理回测</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：单币种价格会反复穿越围绕“当前中心价”设置的窄带；用动态重置把中心价跟着市场移动，保留来回收租的均值回归/波动收割，而不是让静态 grid 一次走死</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Kai-Yuan Chen / Kai-Hsin Chen / Jyh-Shing Roger Jang (2025)</strong> 的论文 *Dynamic Grid Trading Strategy: From Zero Expectation to Market Outperformance*，以及作者给出的 GitHub 仓库 <code>colachenkc/Dynamic-Grid-Trading</code>。</p>
+<p>先把最重要那句话说清楚：<strong>base alpha 不是“网格形状”，而是“围绕当前中心价的反复往返穿越”这条单资产短周期均值回归 / volatility-harvest。</strong> dynamic reset 只是把中心点不断搬到新价格上，避免传统 finite grid 一旦出框就失效。</p>
+<p>这件事为什么值得进池子？因为它补的是一条<strong>单资产、非横截面、非 pairs、可完整写成 entry/exit/sizing/risk/cost 的 mean-reversion 全栈骨架</strong>。对 desk 来说，它不是最像 <code>1m</code> 高频 taker alpha 的那类东西，但很适合做 <code>15m</code> 的完整策略原型，再往 <code>5m</code> 压测成本与过度换手。</p>
+<h2>2. 核心结论</h2>
+<ol>
+<li><strong>论文先把传统 grid 的幻觉戳破了。</strong> 在作者的简化假设下，有限边界的传统 grid 期望值约为 0；考虑费用后，静态 grid 更容易被拖成负期望。也就是说，真正值得研究的不是“继续加更多格子”，而是<strong>出框以后怎么办</strong>。</li>
+<li><strong>作者给出的改法是 dynamic reset。</strong> 价格突破上/下边界后，不停机，而是以当前价格重开一套新 grid，让策略继续围绕新中心价收波动，而不是抱着旧锚点等死。</li>
+<li><strong>论文自己的 1m 回测非常强。</strong> 文中报告 BTC/ETH 在 <code>2021-01 ~ 2024-07</code> 的 minute-level 回测里，DGT 的 IRR 大致能到 <strong>60%~70%</strong>；BTC 的 IRR 高于 buy-and-hold 且 MDD 更低，ETH 虽然 IRR 不一定明显高于买入持有，但在文中叙述里，<strong>最大回撤被压到约 50%，而买入持有级别约在 80% 附近。</strong></li>
+<li><strong>但 repo 里最值得我们学的，不是“神奇收益曲线”，而是完整策略零件。</strong> 它把 <code>grid step / half-grid count / reset rule / fee</code> 都写成可复刻参数；同时也暴露出一个重要审计点：<strong>论文口径说 geometric grid，但 repo 代码更接近围绕中心价的 arithmetic percentage bands。</strong> 这提醒我们后面做 clean replication 时必须先锁定“到底复现哪一个版本”。</li>
+<li><strong>我用 Binance Spot 公共 <code>5m/15m</code> 做的 repo-style 代理快检显示：15m 比 5m 更像它该待的地方。</strong> 在 <code>2025-01-01 ~ 2026-03-25</code> 这段偏难样本里：</li>
+</ol>
+<ul>
+<li>BTC <code>15m</code> 最优代理组合约为 <code>grid_size=1.5%, half_grids=3</code>，总收益 <strong>-23.6%</strong>，略好于 buy-and-hold 的 <strong>-24.7%</strong>，但 MDD 只有 <strong>-34.8%</strong>，显著好于 buy-and-hold 的 <strong>-52.2%</strong>；</li>
+<li>ETH <code>15m</code> 最优代理组合约为 <code>grid_size=1.0%, half_grids=5</code>，总收益 <strong>-34.9%</strong>，略好于 buy-and-hold 的 <strong>-35.5%</strong>，MDD <strong>-45.7%</strong>，也明显好于 buy-and-hold 的 <strong>-64.2%</strong>；</li>
+<li><code>5m</code> 版本整体更容易被换手和重置次数拖累，说明<strong>压到更快周期后，edge 更像被过度交易吃掉</strong>。</li>
+</ul>
+<p>一句话结论：<strong>这篇东西最值得记住的，不是“grid 很赚钱”，而是“单资产波动收租要活下来，关键在 recenter/reset，而不是静态挂格本身”。</strong></p>
+<p>一句话证明方式：<strong>作者用数学推导先否掉静态 finite grid 的零期望，再用 BTC/ETH 的 1m 回测证明 dynamic reset 版本的收益/回撤更优；我这边再用 Binance <code>5m/15m</code> 做了一个 repo-style stress proxy，发现它更像 <code>15m</code> 完整策略骨架，而不是 <code>5m</code> 高频 alpha。</strong></p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和当前 desk 直接相关，因为它补的是一条<strong>single-asset mean-reversion full stack</strong>：</p>
+<ul>
+<li>不依赖 pairs 选对；</li>
+<li>不依赖外部低频数据；</li>
+<li>可以直接写成完整策略；</li>
+<li>天生带有 <code>entry / exit / sizing / reset / fee guard</code>。</li>
+</ul>
+<p>更实际地说，它给我们的不是“再加一个 filter”，而是一条可独立建模的 raw alpha 原型：<strong>震荡里收波动，趋势里靠 reset 续命。</strong> 这很适合拿来和我们现在手里的 breakout / momentum / pairs 形成互补，而不是继续只补 shared gate。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：逆势 / 波动收租 / 单资产</li>
+<li>基础 alpha：中心价附近的反复穿越与均值回归</li>
+<li>regime：高 realized vol、非单边爆发、最好是宽幅震荡而不是持续趋势推进</li>
+<li>filter / veto：ADX/趋势斜率过高时停机；大单边 breakout 日 veto；费用/点差过高 veto</li>
+<li>risk / sizing / execution overlay：<code>grid_size</code>、<code>half_grids</code>、reset 触发、inventory 上限、maker fee guard、只在 <code>15m</code> 主跑、<code>5m</code> 只做 stress 版</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设</strong>：dynamic reset grid 的可迁移 alpha，不在 <code>1m</code>“挂很多小单”，而在 <code>15m</code> 上把单资产震荡 harvesting 做成一个费用可承受的完整策略。</p>
+<p><strong>最小回测切口</strong>：</p>
+<ul>
+<li>标的：<code>BTCUSDT</code>, <code>ETHUSDT</code> Spot 或 perp mid</li>
+<li>周期：先 <code>15m</code>，再 <code>5m</code> 压测</li>
+<li>参数：<code>grid_size ∈ {1.0%, 1.5%, 2.0%}</code>，<code>half_grids ∈ {3,5}</code></li>
+<li>出框：触边立刻 reset 到新中心价</li>
+<li>指标：净收益、MDD、日均 trade count、单位波动捕获效率、费用敏感性（<code>0/4/8/12 bps</code>）</li>
+</ul>
+<p><strong>最该先看的 2 个指标</strong>：</p>
+<ol>
+<li><code>net return - buyhold</code> 是否在 <code>15m</code> 变正；</li>
+<li>在加入真实费用后，trade count 是否把策略拖回负期望。</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ol>
+<li><strong>论文样本偏有利期。</strong> 2021~2024 对 crypto 多头资产天然友好，必须警惕把“beta 上行 + 波动收租”误当纯 alpha。</li>
+<li><strong>repo 与论文口径并不完全一致。</strong> 网格定义与路径处理需要 clean replication 时重新锁死。</li>
+<li><strong><code>5m</code> 可能太快。</strong> 我这边的代理快检已经看到 5m 比 15m 更像过度换手版本。</li>
+<li><strong>它非常怕单边趋势。</strong> 所以若后续要上 desk，默认必须配 trend veto / regime gate，而不是裸跑。</li>
+</ol>
+<h2>6. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 faithful replication 版</strong>：按论文公式与 repo 代码分别各复现一版，别把二者混成一个口径。</li>
+<li><strong>给 <code>15m</code> 加单边趋势 veto</strong>：例如 ADX、rolling drift、或 4h directional efficiency，判断能否把 2025~2026 stress sample 的净收益拉正。</li>
+<li><strong>补 fee ladder</strong>：把 round-trip 成本从 <code>0 → 12 bps</code> 逐档扫一遍，看 <code>5m</code> 是否直接死、<code>15m</code> 是否还有生存带。</li>
+<li><strong>拆 PnL 来源</strong>：把收益分成“震荡段贡献”和“趋势段拖累”，确认它到底是 raw alpha 还是只是 beta smoother。</li>
+</ol>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>Kai-Yuan Chen, Kai-Hsin Chen, Jyh-Shing Roger Jang. (2025). _Dynamic Grid Trading Strategy: From Zero Expectation to Market Outperformance_. arXiv.</strong></li>
+</ol>
+<ul>
+<li>arXiv: <code>2506.11921</code></li>
+<li>Readable URL: <a href="https://arxiv.org/abs/2506.11921">https://arxiv.org/abs/2506.11921</a></li>
+<li>PDF URL: <a href="https://arxiv.org/pdf/2506.11921">https://arxiv.org/pdf/2506.11921</a></li>
+</ul>
+<ol>
+<li><strong>colachenkc / Dynamic-Grid-Trading (GitHub repo)</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/colachenkc/Dynamic-Grid-Trading">https://github.com/colachenkc/Dynamic-Grid-Trading</a></li>
+<li>Readable URL: <a href="https://github.com/colachenkc/Dynamic-Grid-Trading">https://github.com/colachenkc/Dynamic-Grid-Trading</a></li>
+</ul>
+<ol>
+<li><strong>Binance Spot API / Binance Vision public klines</strong></li>
+</ol>
+<ul>
+<li>Docs: <a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data</a></li>
+<li>Data bucket: <a href="https://data.binance.vision/">https://data.binance.vision/</a></li>
+</ul>
+<ol>
+<li><strong>本地最小实验 artifact</strong></li>
+</ol>
+<ul>
+<li><code>reports/artifacts/quant_digests/dynamic_grid_dgt_20260325_2355/proxy_backtest_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/dynamic_grid_dgt_20260325_2355/best_configs.json</code></li>
+<li><code>reports/artifacts/quant_digests/dynamic_grid_dgt_20260325_2355/BTCUSDT_15m_best_equity_curve.csv</code></li>
+<li><code>reports/artifacts/quant_digests/dynamic_grid_dgt_20260325_2355/ETHUSDT_15m_best_equity_curve.csv</code></li>
+<li><code>reports/artifacts/quant_digests/dynamic_grid_dgt_20260325_2355/replication_window_2021_2024_15m.json</code></li>
+</ul>
+</body>
+</html>

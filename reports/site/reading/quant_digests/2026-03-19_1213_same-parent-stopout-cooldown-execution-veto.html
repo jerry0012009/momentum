@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 stop 后重试写成“同根再给一次机会”：`same-parent SL cooldown` 更像 breakout-short / Fib / EMA-PSAR 的 execution veto 层</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 stop 后重试写成“同根再给一次机会”：`same-parent SL cooldown` 更像 breakout-short / Fib / EMA-PSAR 的 execution veto 层</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-19 12:13 UTC</span>
+      <span class="pill">类型：GitHub + 本地代理快检</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/stopout/cooldown/reentry/execution/risk-overlay/repo/crypto/5m/15m</span>
+      <span class="pill">证据类型：repo 代码规则（工程证据）+ 公开行情代理快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-19_1213_same-parent-stopout-cooldown-execution-veto.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-19 12:13 UTC</li>
+<li>类型：GitHub + 本地代理快检</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/stopout/cooldown/reentry/execution/risk-overlay/repo/crypto/5m/15m</li>
+<li>证据类型：repo 代码规则（工程证据）+ 公开行情代理快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是 <strong>DNA Fund (2026) 的 <code>dna-trading-bot</code></strong>。我没复刻它整套多策略框架，而是只抽一条更适合当前 desk 的旁支： <strong>“同一根（同一父级时间桶）刚被止损，不要立刻再进”</strong>。</p>
+<p>仓库里是显式实现：</p>
+<ul>
+<li><code>register_sl_cooldown()</code> 记录止损发生 candle；</li>
+<li>后续信号检测时若还是同一 candle，直接 <code>skip re-entry</code>。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ol>
+<li><strong>一句话核心结论</strong>：<code>same-parent SL cooldown</code> 是一个值得保留的“诚实执行闸门”，但在 15m 主线里更像<strong>低频保险丝</strong>，不是会单独抬收益的大 alpha。</li>
+<li><strong>一句话证明方式</strong>：repo 里有明确状态逻辑（止损后同 candle 禁止再进），我用 Binance 公开 5m K 线做了 15m 父桶代理快检，结果显示“同父桶 stop→重试”事件本身占比很低。</li>
+<li>本地代理快检（BTC/ETH/SOL，120 天，5m 执行+15m 趋势过滤，6bps/side）里：</li>
+</ol>
+<ul>
+<li>BTC：<code>3 / 506</code> 次 stopout 出现同父桶重试；</li>
+<li>ETH：<code>4 / 464</code>；</li>
+<li>SOL：<code>1 / 463</code>；</li>
+<p>合计 <strong>8 / 1433 ≈ 0.56% stopout</strong>。说明这条 gate 在当前口径下“方向正确但触发稀少”。</p>
+</ul>
+<ol>
+<li>成本后总收益（代理口径）对比：</li>
+</ol>
+<ul>
+<li>BTC：<code>-86.14% -&gt; -84.40%</code>（+1.74pct）</li>
+<li>ETH：<code>-80.10% -&gt; -80.32%</code>（-0.22pct）</li>
+<li>SOL：<code>-76.62% -&gt; -72.15%</code>（+4.47pct）</li>
+<p>改善不稳定，且主要不是靠大量拦截交易实现。</p>
+</ul>
+<h2>3. 为什么和当前三条收口线直接相关</h2>
+<ul>
+<li><strong>V3 final-verdict / breakout-short follow-up</strong>：这条最适合放在“破位后路径判决”的最后一层，避免刚被打脸就同根再追。</li>
+<li><strong>Fibonacci confirmation / retest_hold</strong>：当 retest 失败触发 stop，先禁止同父桶内立即反复尝试，可减少噪声回补。</li>
+<li><strong>EMA / PSAR raw alpha focus</strong>：EMA/PSAR 继续负责方向；这层只做 execution veto，角色是“防抖”，不是替代入场逻辑。</li>
+</ul>
+<h2>4. 下一步怎么测（5m / 15m 最小实验）</h2>
+<h3>4.1 数据与公开性</h3>
+<ul>
+<li>数据源：Binance Futures 公共 K 线（<code>/fapi/v1/klines</code>）</li>
+<li>公开性：公开可得</li>
+<li>更新频率：5m / 15m</li>
+<li>当前快检产物：</li>
+<li><code>reports/artifacts/quant_digests/2026-03-19_same_parent_sl_cooldown_proxy.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-03-19_same_parent_sl_cooldown_proxy.json</code></li>
+</ul>
+<h3>4.2 最小可复现实验口径（建议）</h3>
+<p>在三条 archetype（breakout-short / fib_retest / ema_psar）上统一做 4 臂：</p>
+<ol>
+<li><code>baseline</code>（无 cooldown）</li>
+<li><code>same-parent cooldown</code>（本轮规则）</li>
+<li><code>next-parent cooldown</code>（stop 后至少等下一个 15m 父桶）</li>
+<li><code>conditional cooldown</code>（仅当 stop 前后出现 wick rejection/高噪声条件时启用）</li>
+</ol>
+<p>统一执行：<code>next-bar open + no-overlap + 6/10/15 bps per side</code>。 先看 3 项：<code>post_cost_expectancy</code>、<code>2~4 bar whipsaw rate</code>、<code>trade_count_retention</code>。</p>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>本轮快检是代理实验，不是对 <code>dna-trading-bot</code> 全策略复刻；</li>
+<li>在当前 5m-&gt;15m 口径下，同父桶 stop→重试事件太少，导致统计不够“有力”；</li>
+<li>若下一轮 <code>next-parent cooldown</code> 也不显著改善，应把这条线降级为“可选执行保险丝”，避免继续占主资源。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>DNA Fund. (2026). _dna-trading-bot_.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/dnafund/dna-trading-bot&gt;">https://github.com/dnafund/dna-trading-bot&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/dnafund/dna-trading-bot&gt;">https://github.com/dnafund/dna-trading-bot&gt;</a></li>
+</ul>
+<ol>
+<li><strong>关键实现：<code>src/trading/strategy/signal_detector.py</code>（SL cooldown 注册与同 candle re-entry 跳过）</strong></li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://github.com/dnafund/dna-trading-bot/blob/master/src/trading/strategy/signal_detector.py&gt;">https://github.com/dnafund/dna-trading-bot/blob/master/src/trading/strategy/signal_detector.py&gt;</a></li>
+<li>参考片段：<code>register_sl_cooldown</code> 与 <code>SL cooldown active ... skipping re-entry</code></li>
+</ul>
+<ol>
+<li><strong>关键实现：<code>src/trading/bot.py</code>（止损后注册 cooldown）</strong></li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://github.com/dnafund/dna-trading-bot/blob/master/src/trading/bot.py&gt;">https://github.com/dnafund/dna-trading-bot/blob/master/src/trading/bot.py&gt;</a></li>
+<li>参考片段：<code>Register SL cooldown for positions that were just stopped out</code></li>
+</ul>
+<ol>
+<li><strong>公开行情数据源</strong></li>
+</ol>
+<ul>
+<li>Binance Futures Klines API: &lt;<a href="https://fapi.binance.com/fapi/v1/klines&gt;">https://fapi.binance.com/fapi/v1/klines&gt;</a></li>
+</ul>
+</body>
+</html>

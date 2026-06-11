@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Slippage-at-Risk：把 perp 盘口“快要变薄”提前翻译成 size cap / execution veto</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Slippage-at-Risk：把 perp 盘口“快要变薄”提前翻译成 size cap / execution veto</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-05 23:57 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-05_2358_sar-perp-liquidity-veto-overlay.md</code></p>
+  </div>
+  <p>基础 alpha：无独立方向性 alpha；它服务于任意已有 raw alpha，把“薄书 + 流动性集中 + 预期冲击成本上升”转成进场 veto、仓位缩放与执行成本上限 是否可独立复现：是 是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（作为共享 overlay 直接挂到已有 1m/3m/5m/15m perp 策略上）</p>
+<h1>Slippage-at-Risk：把 perp 盘口“快要变薄”提前翻译成 size cap / execution veto</h1>
+<h2>1. 这次看了什么</h2>
+<p>如果只看标题，这篇 2026 arXiv 很像“交易所风险管理论文”。但对我们更有用的读法不是保险基金怎么定，而是：<strong>把当前盘口深度、OI、流动性集中度，压缩成一个可实时更新的 execution / sizing overlay</strong>，挂到已有的 breakout、mean reversion、basis、funding、order-flow alpha 上。</p>
+<p>更直白地说，这篇东西不是教你“何时做多/做空”，而是教你在 <strong>alpha 方向没变</strong> 时，先问一句：<strong>这笔单在当前盘口结构下，值得做、做多大、会不会因为流动性坍塌把本来有 edge 的单子做成负 EV？</strong></p>
+<p>如果非要回答一句“为什么这轮选 overlay 而不是继续补 raw alpha”：今晚扫到的几条新 raw-alpha 候选里，要么已被 digest 覆盖，要么只能拿到 abstract / metadata，难以支撑高质量新 intake；而这篇 2026 新文全文可得、参数和实施路径都很清楚，且能直接服务我们已经积累的一整池短周期 raw alpha，部署价值足够高。</p>
+<h2>2. 来源与我认为最值得提炼的那一层</h2>
+<h3>论文</h3>
+<ul>
+<li><strong>Author / Year / Title / Venue</strong>：Otar Sepper (2026), *Slippage-at-Risk (SaR): A Forward-Looking Liquidity Risk Framework for Perpetual Futures Exchanges*, arXiv</li>
+<li><strong>DOI</strong>：10.48550/arXiv.2603.09164</li>
+<li><strong>Readable URL</strong>：<a href="https://arxiv.org/abs/2603.09164">https://arxiv.org/abs/2603.09164</a></li>
+<li><strong>HTML / full text</strong>：<a href="https://arxiv.org/html/2603.09164">https://arxiv.org/html/2603.09164</a></li>
+<li><strong>Repo URL</strong>：未见作者仓库</li>
+</ul>
+<h3>这篇东西的 base alpha 是什么？</h3>
+<p>不是新的方向性 alpha。它是一个 <strong>shared execution / risk overlay</strong>：</p>
+<ul>
+<li>raw alpha 负责回答：现在该 long / short / spread 哪边？</li>
+<li>SaR overlay 负责回答：<strong>这笔单在当前流动性状态下还能不能做，做多大，预期滑点够不够把 edge 吃掉？</strong></li>
+</ul>
+<p>所以别把它伪装成“新主信号”。它的正确定位就是：<strong>overlay</strong>。</p>
+<h2>3. 论文里最能直接搬到 desk 的核心机制</h2>
+<p>论文定义了三层量：</p>
+<ol>
+<li><strong>单币种、单时点的执行滑点函数</strong></li>
+</ol>
+<ul>
+<li>给定一个要强平/交易的名义规模 <code>Q_i</code></li>
+<li>沿盘口逐档吃单，得到该规模下的平均冲击成本 <code>S_i(Q_i)</code></li>
+</ul>
+<ol>
+<li><strong>横截面 SaR / ESaR / TSaR</strong></li>
+</ol>
+<ul>
+<li><code>SaR(alpha)</code>：全市场 token 的滑点分布分位数</li>
+<li><code>ESaR(alpha)</code>：尾部 token 的平均滑点</li>
+<li><code>TSaR(alpha)</code>：尾部 token 的总美元滑点暴露</li>
+</ul>
+<ol>
+<li><strong>集中度修正（paper 里是重点）</strong></li>
+</ol>
+<ul>
+<li>同样深度的盘口，如果流动性由极少数做市商撑着，真实脆弱性远大于“看上去有深度”</li>
+<li>作者用 <code>HHI / N_eff / CR1</code> 给滑点加 haircut，把“薄书 + 集中”翻成更高的 adjusted slippage</li>
+</ul>
+<p>对短周期 desk 来说，最有价值的不是 paper 里的保险基金 sizing，而是下面这个转译：</p>
+<p>&gt; <strong>同一笔 alpha 信号，在流动性分布健康时可以正常做；在 book 变薄、且深度高度集中时，应该减仓、延后、拆单，甚至直接 veto。</strong></p>
+<h2>4. 论文里能直接拿来当阈值直觉的几个数字</h2>
+<p>作者用 Hyperliquid 2025-10-09 ~ 2025-11-03 的数据做实证：</p>
+<ul>
+<li><strong>184 个 perp 合约</strong></li>
+<li><strong>5 分钟 order-book snapshots</strong>（深度到 2500 bps）</li>
+<li><strong>15 分钟 OI snapshots</strong></li>
+<li>含账户级归因，因此可以做真正的集中度修正</li>
+</ul>
+<p>我觉得最有用的几组数字是：</p>
+<h3>4.1 常态下的“全场流动性体温计”</h3>
+<p>在 <code>beta = 10% stress notional</code> 下，作者给出的样本期汇总值：</p>
+<ul>
+<li><code>SaR(0.95) = 2.84%</code></li>
+<li><code>SaR_adj(0.95) = 3.47%</code></li>
+<li><code>ESaR_adj(0.95) = 8.92%</code></li>
+<li><code>TSaR_adj(0.95) = $127.4M</code></li>
+<li>尾部只有 <strong>9 个 token</strong>，但对应了 <strong>$196M / 2.3% OI</strong></li>
+</ul>
+<p>翻成人话：<strong>看起来只是少数几个尾部标的在出事，但它们已经足够把全场执行风险拉高。</strong></p>
+<h3>4.2 它不是事后统计，而是真的“提前变坏”</h3>
+<p>论文最重要的不是定义，而是 lead-lag：</p>
+<ul>
+<li><code>TSaR</code> 对 <strong>12 小时后 deficit</strong> 的相关性约 <strong>0.61</strong></li>
+<li>对 <strong>24 小时后 deficit</strong> 的相关性仍有 <strong>0.42</strong></li>
+<li>Granger causality：<code>F = 8.47, p &lt;&lt; 0.001</code></li>
+</ul>
+<p>这说明它不是“市场炸了以后你才知道危险”，而是<strong>盘口先变脆，坏结果后发生</strong>。</p>
+<h3>4.3 案例里，风控信号比崩盘先到</h3>
+<p>以 2025-10-10 Hyperliquid cascade 为例：</p>
+<ul>
+<li>事件前 36 小时，100bps 深度 <strong>$1.12B → $284M（-75%）</strong></li>
+<li>事件前 24 小时，<code>SaR_adj(0.95)</code> <strong>2.41% → 3.12%（+30%）</strong></li>
+<li><code>TSaR</code> <strong>$89M → $156M</strong>，到级联时一度冲到 <strong>$847M</strong></li>
+<li>预估滑点 vs 实际滑点回归 <code>R² = 0.78</code></li>
+</ul>
+<p>对 desk 的启发很直接：<strong>如果我们的 alpha 本来就是 20~80 bps 级别的短周期 edge，那种 盘口预期冲击成本向 1%+ 迁移 的环境，本来就该少做。</strong></p>
+<h2>5. 怎么把它改写成适合 1m / 3m / 5m / 15m 的 desk 版本</h2>
+<p>论文原始版本更像“交易所级别全市场风险仪表盘”。对我们来说，建议拆成两层：</p>
+<h3>5.1 交易级 overlay：单标的 execution veto / size cap</h3>
+<p>对每个可交易 symbol <code>i</code>，每 1 分钟或 5 分钟更新：</p>
+<ol>
+<li><strong>定义压力成交规模</strong></li>
+</ol>
+<ul>
+<li><code>Q_i = min(beta * OI_i, cap_notional_i)</code></li>
+<li>desk 起步可先用：</li>
+<li>BTC / ETH：<code>beta = 1%~2%</code></li>
+<li>中腰部 alt：<code>beta = 2%~5%</code></li>
+<li>不必上来就照 paper 的 10%，否则对短周期交易太保守</li>
+</ul>
+<ol>
+<li><strong>从 L2 book 计算 raw slippage</strong></li>
+</ol>
+<ul>
+<li>沿 bid / ask 档位 walk the book</li>
+<li>算出吃掉 <code>Q_i</code> 之后的 VWAP 偏离中间价百分比</li>
+</ul>
+<ol>
+<li><strong>算 concentration proxy</strong></li>
+</ol>
+<ul>
+<li>在 fully on-chain venue（如 Hyperliquid）可尽量接近 paper 思路</li>
+<li>若拿不到 maker 级归因，就退而求其次，用 <code>top-k depth share</code>、<code>前 1/3/5 档深度占比</code>、<code>盘口撤单率</code> 做 pseudo-concentration proxy</li>
+</ul>
+<ol>
+<li><strong>得到 adjusted slippage</strong></li>
+</ol>
+<ul>
+<li><code>adj_slip_i = raw_slip_i * (1 + haircut_i)</code></li>
+</ul>
+<ol>
+<li><strong>做 veto / size / cost</strong></li>
+</ol>
+<ul>
+<li>若 <code>adj_slip_i &gt; expected_alpha_i * 0.5~0.7</code>：直接 veto</li>
+<li>若 <code>adj_slip_i</code> 进入过去 30 天自身分位数 top decile：仓位减半</li>
+<li>若 <code>adj_slip_i</code> 处于低位：允许恢复正常 size</li>
+</ul>
+<h3>5.2 场馆级 overlay：全局 gross exposure scaler</h3>
+<p>除了单标的，还可以对 watchlist 横截面做一个 venue-level <code>SaR_95</code>：</p>
+<ul>
+<li><code>SaR_95_t = quantile_95( adj_slip_i,t over tradable universe )</code></li>
+<li><code>TSaR_t = sum( adj_slip_i,t * Q_i ) over tail tokens</code></li>
+</ul>
+<p>然后把它直接作为组合总杠杆 / 总 gross 的缩放器：</p>
+<ul>
+<li><code>gross_scale = clip(theta / SaR_95_t, 0.3, 1.0)</code></li>
+<li>或者更离散一点：</li>
+<li><code>SaR_95</code> 在过去 60 天 &lt; 70 分位：满仓</li>
+<li>70~90 分位：<code>gross x 0.7</code></li>
+<li>&gt;90 分位：<code>gross x 0.4</code> + 只保留最高 conviction 信号</li>
+</ul>
+<p>这特别适合我们已有的：</p>
+<ul>
+<li>breakout / momentum</li>
+<li>mean reversion</li>
+<li>basis / funding pocket</li>
+<li>order-flow imbalance</li>
+<li>perp-perp relative value</li>
+</ul>
+<p>因为这些 alpha 最大的共同敌人之一，不是“方向判断错了”，而是<strong>执行环境突然恶化</strong>。</p>
+<h2>6. 最小可复现实验（公开数据、能快做）</h2>
+<h3>6.1 数据源</h3>
+<p><strong>公开性：公开可得</strong></p>
+<ol>
+<li><strong>Hyperliquid public order book / candles / asset context</strong></li>
+</ol>
+<ul>
+<li>文档：</li>
+<li><a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions</a></li>
+<li><a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint</a></li>
+<li>可直接拿：</li>
+<li><code>l2Book</code></li>
+<li><code>candle</code>（支持 <code>1m / 3m / 5m / 15m</code>）</li>
+<li><code>activeAssetCtx</code>（含 <code>openInterest</code>）</li>
+</ul>
+<ol>
+<li><strong>已有策略自己的 signal 输出</strong></li>
+</ol>
+<ul>
+<li>breakout / MR / basis / flow 任一已有信号都行</li>
+</ul>
+<h3>6.2 更新频率</h3>
+<ul>
+<li><code>l2Book</code>：实时 websocket</li>
+<li><code>activeAssetCtx</code>：可轮询 / 订阅</li>
+<li><code>candle</code>：1m/3m/5m/15m 原生支持</li>
+</ul>
+<p>所以这个 overlay 天然能映射到我们当前主工作周期。</p>
+<h3>6.3 最小实验口径</h3>
+<p>先别全市场，直接做一个 <strong>SaR-lite overlay A/B test</strong>：</p>
+<p>#### Universe</p>
+<ul>
+<li>BTC, ETH, SOL, HYPE, PEPE, DOGE, ARB, AVAX</li>
+<li>覆盖：高流动性主流 + 中等流动性 alpha 常见币</li>
+</ul>
+<p>#### Timeframe</p>
+<ul>
+<li>overlay 每 <strong>1m</strong> 更新一次</li>
+<li>signal 在 <strong>5m / 15m</strong> 上跑；若有高频策略再加 <code>1m / 3m</code></li>
+</ul>
+<p>#### 交易逻辑 先选 2 个已有 raw alpha：</p>
+<ol>
+<li>一个 trend / breakout</li>
+<li>一个 mean reversion 或 spread / basis pocket</li>
+</ol>
+<p>然后只比较：</p>
+<ul>
+<li><strong>Baseline</strong>：原策略照常交易</li>
+<li><strong>Overlay-1</strong>：加单标的 <code>adj_slip_i</code> veto</li>
+<li><strong>Overlay-2</strong>：加全局 <code>SaR_95</code> gross scaler</li>
+<li><strong>Overlay-3</strong>：两者都加</li>
+</ul>
+<p>#### 成本口径 每笔 round-trip 成本改写为：</p>
+<ul>
+<li><code>fee + 2 * adj_slip_i</code></li>
+</ul>
+<p>别再只用静态手续费；这正是 paper 真正想纠正的地方。</p>
+<p>#### 最重要的输出指标 不是只看 Sharpe，要看：</p>
+<ul>
+<li>net PnL</li>
+<li>trade hit-rate</li>
+<li>average edge after cost</li>
+<li>MAE / MFE</li>
+<li>tail loss / worst 5 trades</li>
+<li>skipped-trade ratio</li>
+<li>gross-to-net conversion</li>
+<li>在高 SaR 分位环境中的表现衰减幅度</li>
+</ul>
+<h2>7. 我会怎么先测（具体，不空）</h2>
+<h3>实验 1：先验证它是不是“有用的 veto”</h3>
+<ul>
+<li>取最近 30 天 Hyperliquid 1m L2 + OI</li>
+<li>对每个 5m 信号时点，记录：</li>
+<li>该币 <code>adj_slip_i</code></li>
+<li>全场 <code>SaR_95</code></li>
+<li>信号后 5m / 15m forward return</li>
+<li>先不做策略，只做条件分桶：</li>
+<li>低 SaR / 中 SaR / 高 SaR</li>
+<li>看同一个 raw alpha 在不同 SaR 桶里的净 edge 是否明显塌陷</li>
+</ul>
+<p><strong>如果 edge 只在低 SaR 桶显著存在，这个 overlay 就成立了。</strong></p>
+<h3>实验 2：把它变成 size function，而不是 binary veto</h3>
+<p>对每个信号，把仓位函数写成：</p>
+<ul>
+<li><code>size = base_size * f(adj_slip_i, SaR_95_t)</code></li>
+<li>一个最简单的 <code>f</code>：</li>
+<li>低于 50 分位：1.0x</li>
+<li>50~80 分位：0.75x</li>
+<li>80~90 分位：0.5x</li>
+<li>&gt;90 分位：0~0.25x</li>
+</ul>
+<p>然后看：</p>
+<ul>
+<li>回撤是否更小</li>
+<li>高波动时段净值曲线是否更平</li>
+<li>alpha 是否从“赚的时候靠天、亏的时候一脚踩穿”变成可部署形态</li>
+</ul>
+<h3>实验 3：做 venue-stress router</h3>
+<p>如果我们手上同时有多 venue 或多 execution path：</p>
+<ul>
+<li>先不问哪边信号更强</li>
+<li>先问 <strong>哪边的 SaR 更低</strong></li>
+<li>把订单路由到更便宜、更新鲜的 liquidity path</li>
+</ul>
+<p>这一步最适合之后接到 perp-perp basis、cross-venue spread、DEX/CEX same-asset lead-lag 里。</p>
+<h2>8. 这篇东西的局限，别误用</h2>
+<ol>
+<li><strong>它不是方向信号</strong></li>
+</ol>
+<ul>
+<li>不会告诉你 BTC 该涨还是跌</li>
+<li>只会告诉你：现在这笔单做下去，冲击成本和流动性脆弱度是否在吃掉 edge</li>
+</ul>
+<ol>
+<li><strong>paper 的账户级集中度，在 CEX 上不一定拿得到</strong></li>
+</ol>
+<ul>
+<li>所以真正落地时，很多时候是 <code>SaR-lite</code>，不是论文原版</li>
+<li>但即便只用公开 L2 depth + OI，已经够做一版实用 execution veto</li>
+</ul>
+<ol>
+<li><strong>paper 偏交易所风险管理，不是为 trader 写的</strong></li>
+</ol>
+<ul>
+<li>所以不要照抄保险基金 sizing 那段</li>
+<li>对 desk 最值钱的是：<code>raw_slip -&gt; adjusted_slip -&gt; veto/size/cost</code></li>
+</ul>
+<h2>9. 一句话结论</h2>
+<p>这篇 2026 SaR 论文最适合我们的读法，不是“又一个宏大风控框架”，而是：</p>
+<p>&gt; <strong>把盘口深度、OI、流动性集中度，压成一个可以每 1m / 5m 刷新的 shared overlay，专门给现有 short-cycle raw alpha 做进场 veto、仓位缩放和成本上限。</strong></p>
+<p>它不替代 raw alpha，但很可能能让我们手上已经有的 alpha，少死很多本来不该死的单。</p>
+<h2>10. 下一步怎么测</h2>
+<p>按优先级我建议直接做下面 3 步：</p>
+<ol>
+<li><strong>先做 Hyperliquid SaR-lite 采集器</strong></li>
+</ol>
+<ul>
+<li>拉 <code>l2Book + activeAssetCtx + candle</code></li>
+<li>每 1 分钟落一版 <code>raw_slip / adj_slip / SaR_95 / TSaR</code></li>
+</ul>
+<ol>
+<li><strong>先挂到两个已有策略上</strong></li>
+</ol>
+<ul>
+<li>一个 breakout / momentum</li>
+<li>一个 mean reversion / relative-value</li>
+<li>先看 overlay 是否显著改善 net-of-cost 和 tail risk</li>
+</ul>
+<ol>
+<li><strong>最后再谈更复杂的 concentration proxy</strong></li>
+</ol>
+<ul>
+<li>先用 top-k depth concentration 代理就够</li>
+<li>等确认 veto 有价值，再补 maker concentration / cancel dynamics / spoof filter</li>
+</ul>
+<p>---</p>
+<h2>来源链接</h2>
+<ul>
+<li>Paper abstract / metadata: <a href="https://arxiv.org/abs/2603.09164">https://arxiv.org/abs/2603.09164</a></li>
+<li>Paper HTML: <a href="https://arxiv.org/html/2603.09164">https://arxiv.org/html/2603.09164</a></li>
+<li>DOI: <a href="https://doi.org/10.48550/arXiv.2603.09164">https://doi.org/10.48550/arXiv.2603.09164</a></li>
+<li>Hyperliquid docs / websocket subscriptions: <a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions</a></li>
+<li>Hyperliquid docs / info endpoint: <a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint</a></li>
+</ul>
+</body>
+</html>

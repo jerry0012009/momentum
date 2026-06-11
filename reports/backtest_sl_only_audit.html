@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SL-Only 策略完整审计 — 代码 × 流程 × 计算</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; line-height: 1.8; padding: 20px; max-width: 1200px; margin: 0 auto; }
+h1 { color: #58a6ff; margin: 20px 0 10px; font-size: 1.8em; }
+h2 { color: #79c0ff; margin: 30px 0 10px; font-size: 1.3em; border-bottom: 1px solid #21262d; padding-bottom: 5px; }
+h3 { color: #d2a8ff; margin: 20px 0 8px; font-size: 1.1em; }
+h4 { color: #ffa657; margin: 15px 0 6px; font-size: 1em; }
+.box { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin: 12px 0; }
+.key { background: #1a1f2e; border-left: 4px solid #58a6ff; padding: 12px 16px; margin: 12px 0; border-radius: 0 8px 8px 0; }
+.warn { background: #2d1b1b; border-left: 4px solid #f85149; padding: 12px 16px; margin: 12px 0; border-radius: 0 8px 8px 0; }
+.good { background: #1b2d1b; border-left: 4px solid #3fb950; padding: 12px 16px; margin: 12px 0; border-radius: 0 8px 8px 0; }
+.info { background: #1a2332; border-left: 4px solid #58a6ff; padding: 12px 16px; margin: 12px 0; border-radius: 0 8px 8px 0; }
+pre { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 12px 16px; overflow-x: auto; font-size: 0.85em; line-height: 1.5; margin: 8px 0; }
+code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.9em; }
+.inline { background: #21262d; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.9em; }
+th { background: #161b22; color: #8b949e; padding: 8px 12px; text-align: left; border-bottom: 2px solid #30363d; }
+td { padding: 6px 12px; border-bottom: 1px solid #21262d; }
+tr:hover { background: #161b22; }
+.pos { color: #3fb950; font-weight: 600; }
+.neg { color: #f85149; font-weight: 600; }
+.meta { color: #8b949e; font-size: 0.85em; }
+ul, ol { padding-left: 24px; }
+li { margin: 4px 0; }
+.flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 16px 0; }
+.step { background: #161b22; border: 2px solid #30363d; border-radius: 8px; padding: 12px 16px; min-width: 120px; text-align: center; }
+.step .num { color: #58a6ff; font-size: 0.8em; font-weight: 700; }
+.step .label { color: #c9d1d9; font-weight: 600; font-size: 0.95em; }
+.step .desc { color: #8b949e; font-size: 0.8em; }
+.decision { background: #1a2332; border: 2px solid #58a6ff; border-radius: 8px; padding: 12px 16px; text-align: center; }
+.exit-bad { background: #2d1b1b; border: 2px solid #f85149; border-radius: 8px; padding: 12px 16px; text-align: center; }
+.exit-good { background: #1b2d1b; border: 2px solid #3fb950; border-radius: 8px; padding: 12px 16px; text-align: center; }
+.arrow { color: #30363d; font-size: 1.5em; }
+.highlight { background: rgba(88,166,255,0.08); padding: 2px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<h1>🔍 SL-Only 策略完整审计</h1>
+<p class="meta">每一步计算都对应到具体代码行 | 数据流 + 公式 + 参数来源</p>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>〇、全局视图：数据流</h2>
+<!-- ════════════════════════════════════════════════════════════════ -->
+
+<div class="flow">
+  <div class="step"><div class="num">①</div><div class="label">原始数据</div><div class="desc">Binance 1h K线<br>535 个 symbol</div></div>
+  <div class="arrow">→</div>
+  <div class="step"><div class="num">②</div><div class="label">V4 信号检测</div><div class="desc">vol>3x + ret>1%</div></div>
+  <div class="arrow">→</div>
+  <div class="step"><div class="num">③</div><div class="label">事件叠加</div><div class="desc">rank≤20 & ret24≥30%</div></div>
+  <div class="arrow">→</div>
+  <div class="step"><div class="num">④</div><div class="label">匹配</div><div class="desc">事件后1-48h内的<br>第一个 V4 信号</div></div>
+  <div class="arrow">→</div>
+  <div class="step"><div class="num">⑤</div><div class="label">模拟交易</div><div class="desc">SL-only 逐K线</div></div>
+  <div class="arrow">→</div>
+  <div class="step"><div class="num">⑥</div><div class="label">加 Funding</div><div class="desc">持仓期 funding<br>累加</div></div>
+  <div class="arrow">→</div>
+  <div class="step"><div class="num">⑦</div><div class="label">统计</div><div class="desc">Mean/PF/WR/DD</div></div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>一、原始数据加载</h2>
+<!-- ════════════════════════════════════════════════════════════════ -->
+
+<div class="box">
+<h4>代码位置</h4>
+<p><code>backtest_sl_only_funding.py</code> → <code>load_data()</code> (第 37-68 行)</p>
+</div>
+
+<div class="box">
+<h4>做了什么</h4>
+<ol>
+<li>读取 <code>all_trades_tpsl.csv</code> — 这是 <code>explore_v1_6a_second_squeeze_tpsl.py</code> 生成的交易列表</li>
+<li>过滤掉 <code>trail_3pct_ret</code> 为空的行（<code>dropna</code>）</li>
+<li>对每个 symbol，从 <code>data/binance_vision_1h_v1_6/klines/{SYMBOL}/{SYMBOL}-1h-YYYY-MM.zip</code> 加载 1h K线</li>
+<li>每根 K线有：<code>open_time</code>（Unix ms）、<code>high</code>、<code>low</code>、<code>close</code></li>
+</ol>
+</div>
+
+<div class="key">
+<strong>关键点：</strong>我们不下载任何新数据。所有 K线都已经缓存在本地 zip 文件中。一个 symbol 可能有多个 zip（按月分），全部 concat 后按 open_time 排序。
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>二、V4 信号检测（入场条件）</h2>
+<!-- ════════════════════════════════════════════════════════════════ -->
+
+<div class="box">
+<h4>代码位置</h4>
+<p><code>validate_v1_6a_on_full_data.py</code> → <code>detect_signals_full_history()</code> (第 92-133 行)</p>
+<p><code>backtest_v1_6a.py</code> → <code>detect_signals()</code> (第 72-115 行)</p>
+</div>
+
+<div class="box">
+<h4>V4 信号定义（两个条件同时满足）</h4>
+<table>
+<tr><th>条件</th><th>含义</th><th>参数</th><th>代码</th></tr>
+<tr>
+<td><strong>成交量放大</strong></td>
+<td>当前 K线的 quote_volume 是过去 20 根均值的 3 倍以上</td>
+<td><code>vol_ratio ≥ 3.0</code></td>
+<td><code>vr = vols[i] / tv[i]</code><br><code>tv = rolling(20).mean()</code></td>
+</tr>
+<tr>
+<td><strong>价格上涨</strong></td>
+<td>当前 K线的 1h 收益率 ≥ 1%</td>
+<td><code>ret_1h ≥ 0.01</code></td>
+<td><code>rets[i] = (close[i] - close[i-1]) / close[i-1]</code></td>
+</tr>
+</table>
+</div>
+
+<div class="info">
+<h4>冷却机制</h4>
+<p>同一个 symbol 触发 V4 信号后，<strong>至少 4 根 K线（4小时）内不会再触发</strong>。</p>
+<p>代码：<code>if i - prev_bar < 4: continue</code></p>
+</div>
+
+<div class="box">
+<h4>入场价格</h4>
+<p>V4 信号触发的那根 K线的 <strong>收盘价</strong> = 入场价。</p>
+<p>代码：<code>'entry_price': closes[i]</code></p>
+<p><strong>注意：</strong>这意味着我们假设在信号 K线收盘时成交，下一根 K线开盘后开始持仓。这是<strong>保守</strong>的假设（实际可能有滑点）。</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>三、事件叠加（Event Overlay）</h2>
+<!-- ════════════════════════════════════════════════════════════════ -->
+
+<div class="box">
+<h4>代码位置</h4>
+<p><code>explore_v1_6a_realtime_event_overlay.py</code> → <code>RULES</code> (第 46-53 行) + <code>dedup_events()</code> (第 124-139 行)</p>
+</div>
+
+<div class="box">
+<h4>事件定义（momentum ignition）</h4>
+<p>在任意一个 1h K线完成时，检查以下条件：</p>
+<table>
+<tr><th>条件</th><th>含义</th><th>默认参数</th></tr>
+<tr><td><strong>24h 收益率排名</strong></td><td>该 symbol 的 24h close-to-close 收益率在所有 symbol 中排名 ≤ 20</td><td><code>rank_max = 20</code></td></tr>
+<tr><td><strong>24h 收益率阈值</strong></td><td>24h 收益率 ≥ 30%</td><td><code>ret24_min = 0.30</code></td></tr>
+<tr><td><strong>24h 成交额</strong></td><td>过去 24h 累计 quote_volume ≥ 500 万美元</td><td><code>vol24_min = 5,000,000</code></td></tr>
+<tr><td><strong>冷却期</strong></td><td>同一 symbol 两次事件间隔 ≥ 24 小时</td><td><code>EVENT_COOLDOWN_HOURS = 24</code></td></tr>
+<tr><td><strong>截面数量</strong></td><td>当时至少有 100 个 symbol 有数据</td><td><code>MIN_CROSS_SECTION_SYMBOLS = 100</code></td></tr>
+</table>
+</div>
+
+<div class="key">
+<strong>核心逻辑：</strong>某个币 24 小时内涨了 30%+，成交量够大，排名够高 → 这就是 "momentum ignition"（动量点火）事件。我们认为这代表市场对该币的关注度突然飙升。
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>四、事件 + V4 信号匹配</h2>
+<!-- ════════════════════════════════════════════════════════════════ -->
+
+<div class="box">
+<h4>代码位置</h4>
+<p><code>explore_v1_6a_second_squeeze_tpsl.py</code> → <code>main()</code> (第 197-322 行)</p>
+</div>
+
+<div class="box">
+<h4>匹配规则</h4>
+<ol>
+<li>对每个 symbol，找到它的所有 momentum ignition 事件</li>
+<li>对每个事件，在事件发生后 <strong>1~48 小时</strong>的时间窗口内，找第一个 V4 信号</li>
+<li>取该 V4 信号的 <code>entry_price</code> 作为本笔交易的入场价</li>
+</ol>
+<p>代码：</p>
+<pre><code>mask = (sym_trades['ts'] > ev_ts) &amp; (sym_trades['ts'] &lt;= ev_ts + pd.Timedelta(hours=48))
+post_trades = sym_trades.loc[mask]
+first_trade = post_trades.iloc[0]  # 取第一个
+entry_price = float(first_trade['entry_price'])</code></pre>
+</div>
+
+<div class="warn">
+<strong>为什么需要两层过滤？</strong>
+<ul>
+<li><strong>事件</strong>（momentum ignition）= "这个币正在被市场关注"（宏观信号）</li>
+<li><strong>V4 信号</strong>（vol>3x + ret>1%）= "这个币当前 K线有异常放量上涨"（微观信号）</li>
+<li>两者叠加 = "市场关注 + 当下放量" → 更可能是真正的 momentum，而不是噪音</li>
+</ul>
+</div>
+
+<div class="info">
+<h4>同小时 V4 审计：12:02 是否应直接交易 11:00-12:00 完成K线？</h4>
+<p><strong>结论：不应放宽。</strong>保持当前 <code>事件后 1~48h</code> 窗口，历史 SL-only 回测为 1,951 笔、均值 <span class="pos">+1.77%</span>、中位数 -8.07%、胜率 16.8%、PF 1.27、收益求和 +34.50。</p>
+<p>若允许同小时 V4，即窗口变为 <code>事件后 0~48h</code>，交易数增加到 2,703 笔，但均值降到 <span class="pos">+0.88%</span>、胜率降到 15.3%、PF 降到 1.13、收益求和降到 +23.74。</p>
+<p>主因是新增的 752 笔同小时交易质量很差：均值 <span class="neg">-6.06%</span>、中位数 -8.07%、胜率 7.2%、PF 0.18、收益求和 -45.58。也就是说，12:02 直接追刚完成的事件K线，历史上不是增厚盈利，而是把事件爆发当小时的追高噪音纳入。</p>
+<p>完整实验页：<a href="factors/phase2a_same_hour_sl_only_audit/report.html">Phase2a 同小时V4 SL-only 回测审计</a>；可复跑脚本：<code>scripts/backtest_phase2a_same_hour_sl_only_audit.py</code>。</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>五、SL-Only 交易模拟（核心）</h2>
+<!-- ════════════════════════════════════════════════════════════════ -->
+
+<div class="box">
+<h4>代码位置</h4>
+<p><code>backtest_sl_only_funding.py</code> → <code>sim_sl_only()</code> (第 108-114 行)</p>
+</div>
+
+<pre><code>def sim_sl_only(c, idx, px, sl_pct, timeout, fee):
+    """Return (raw_return, exit_bar_idx)."""
+    end = min(idx + timeout, len(c['close']))  # 超时退出的那根 K线索引
+    sl_px = px * (1 - sl_pct)                   # 止损价 = 入场价 × (1 - 8%)
+    for i in range(idx, end):                    # 从入场 K线开始逐根检查
+        if c['low'][i] &lt;= sl_px:                # 如果这根 K线的最低价 ≤ 止损价
+            return -sl_pct, i                    # → 止损退出，亏 8%
+    ret = (c['close'][end-1] - px) / px          # 超时了都没止损 → 按最后收盘价结算
+    return ret, end - 1</code></pre>
+
+<div class="box">
+<h4>逐行解释</h4>
+<table>
+<tr><th>步骤</th><th>代码</th><th>含义</th></tr>
+<tr><td>1. 计算超时位置</td><td><code>end = min(idx + timeout, len(c['close']))</code></td><td>最多持有 96 根 K线（96 小时 = 4 天）。如果数据不够长，就到数据末尾。</td></tr>
+<tr><td>2. 计算止损价</td><td><code>sl_px = px * (1 - 0.08)</code></td><td>入场价 × 92%。比如入场价 100，止损价 = 92。</td></tr>
+<tr><td>3. 逐 K线检查</td><td><code>for i in range(idx, end)</code></td><td>从入场那根 K线开始，一根一根往后看。</td></tr>
+<tr><td>4. 止损触发</td><td><code>if c['low'][i] &lt;= sl_px</code></td><td>如果这根 K线的<strong>最低价</strong>碰到了止损价 → 立即退出。</td></tr>
+<tr><td>5. 止损返回</td><td><code>return -sl_pct, i</code></td><td>返回 -8%（固定亏损）和退出位置。</td></tr>
+<tr><td>6. 超时退出</td><td><code>(c['close'][end-1] - px) / px</code></td><td>96 小时内都没止损 → 按最后 K线的收盘价计算收益（可能赚也可能亏）。</td></tr>
+</table>
+</div>
+
+<div class="good">
+<h4>为什么用 K线最低价而不是收盘价检查止损？</h4>
+<p>因为止损是"价格碰到了就触发"，不是"收盘时还在才触发"。用 <code>low</code> 比用 <code>close</code> 更真实——如果盘中最低价触及了止损线，交易所在那一刻就会执行止损，不会等到收盘。</p>
+<p><strong>这是保守假设</strong>（会多触发一些止损），确保回测不会高估收益。</p>
+</div>
+
+<div class="info">
+<h4>止损 vs 超时退出的区别</h4>
+<table>
+<tr><th>退出方式</th><th>条件</th><th>收益计算</th><th>典型结果</th></tr>
+<tr><td><strong>止损</strong></td><td>96h 内 low ≤ 入场价 × 92%</td><td>固定 -8%</td><td>亏 8%（每笔都一样）</td></tr>
+<tr><td><strong>超时</strong></td><td>96h 内价格从未跌破 8%</td><td>(最后收盘价 - 入场价) / 入场价</td><td>可能是 +50%，也可能是 -5%</td></tr>
+</table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>六、手续费计算</h2>
+<!-- ════════════════════════════════════════════════════════════════ -->
+
+<div class="box">
+<h4>代码位置</h4>
+<p><code>backtest_sl_only_funding.py</code> → <code>stats_with_funding()</code> (第 117-137 行)</p>
+</div>
+
+<pre><code>fee = 4.0 / 10000.0  # = 0.0004 = 4bps per side
+nets = (1 + raw_return) × (1 - fee)² - 1</code></pre>
+
+<div class="box">
+<h4>公式解释</h4>
+<ul>
+<li><code>raw_return</code> = sim_sl_only 返回的价格收益（如 -0.08 或 +0.50）</li>
+<li><code>(1 - fee)²</code> = 开仓扣一次手续费，平仓扣一次手续费</li>
+<li><code>(1 + raw_return) × (1 - fee)² - 1</code> = 扣完手续费后的净收益</li>
+</ul>
+<p><strong>数值：</strong>fee = 0.0004，(1-0.0004)² = 0.9992。每笔交易的手续费摩擦 ≈ 0.08%。</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>七、资金费率（Funding Rate）</h2>
+<!-- ════════════════════════════════════════════════════════════════ -->
+
+<div class="box">
+<h4>代码位置</h4>
+<p><code>backtest_sl_only_funding.py</code> → <code>load_funding_cache()</code> (第 28-55 行) + <code>calc_funding_pnl()</code> (第 58-72 行)</p>
+</div>
+
+<div class="box">
+<h4>Funding 机制</h4>
+<p>Binance 永续合约每 <strong>8 小时</strong>结算一次资金费率：</p>
+<ul>
+<li>费率 <strong>为正</strong> → 多头付钱给空头（做多成本）</li>
+<li>费率 <strong>为负</strong> → 空头付钱给多头（做多收益）</li>
+</ul>
+</div>
+
+<pre><code>def calc_funding_pnl(symbol, entry_ts, exit_ts, fc):
+    """LONG: funding > 0 → longs PAY (PnL -= rate)
+              funding &lt; 0 → longs RECEIVE (PnL += |rate|)"""
+    fd = fc[symbol]
+    events = fd[(fd['timestamp'] >= entry_ts) &amp; (fd['timestamp'] &lt;= exit_ts)]
+    total = events['funding_rate'].sum()
+    return -float(total), len(events)  # 注意负号！</code></pre>
+
+<div class="key">
+<strong>为什么要取负号？</strong>
+<p>funding_rate 的定义是"多头付给空头的比率"。所以：</p>
+<ul>
+<li>funding_rate = +0.01%（正）→ 多头要付 0.01% → 我们的 PnL 是 -0.01%</li>
+<li>funding_rate = -0.01%（负）→ 空头要付 0.01% → 我们收到 0.01% → PnL 是 +0.01%</li>
+</ul>
+<p>所以 PnL = -sum(funding_rate)</p>
+</div>
+
+<div class="box">
+<h4>Funding 数据来源</h4>
+<p>从 <code>data/binance_funding_rate/{SYMBOL}/</code> 目录加载 zip 文件，每个 zip 包含 CSV，有两列：</p>
+<ul>
+<li><code>calc_time</code> — 结算时间（Unix 毫秒）</li>
+<li><code>last_funding_rate</code> — 该次结算的费率</li>
+</ul>
+</div>
+
+<div class="box">
+<h4>Funding 何时累加？</h4>
+<p>从 <strong>入场时间</strong>到 <strong>退出时间</strong>之间所有 funding 结算事件的费率求和。</p>
+<p>如果持仓 96 小时，理论上会有 12 次 funding 结算（96/8 = 12）。</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>八、统计指标计算</h2>
+<!-- ════════════════════════════════════════════════════════════════ -->
+
+<div class="box">
+<h4>代码位置</h4>
+<p><code>backtest_sl_only_funding.py</code> → <code>stats_with_funding()</code> (第 117-149 行)</p>
+</div>
+
+<table>
+<tr><th>指标</th><th>公式</th><th>含义</th></tr>
+<tr><td><strong>Mean</strong></td><td><code>mean(nets)</code></td><td>平均每笔交易净收益率</td></tr>
+<tr><td><strong>Median</strong></td><td><code>median(nets)</code></td><td>中位数收益（大多数人的真实体验）</td></tr>
+<tr><td><strong>WR</strong></td><td><code>mean(nets > 0)</code></td><td>胜率 = 赚钱的交易占比</td></tr>
+<tr><td><strong>PF</strong></td><td><code>sum(wins) / sum(|losses|)</code></td><td>盈亏比 = 总盈利 / 总亏损。>1 = 赚钱</td></tr>
+<tr><td><strong>Total</strong></td><td><code>sum(nets)</code></td><td>累计总收益（所有交易的收益之和）</td></tr>
+</table>
+
+<div class="box">
+<h4>含 Funding 的指标</h4>
+<p><code>nets_adj = nets + funding_pnls</code></p>
+<p>对调整后的 <code>nets_adj</code> 重新计算 Mean/Median/WR/PF/Total。</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>九、牛熊过滤器</h2>
+<!-- ════════════════════════════════════════════════════════════════ -->
+
+<div class="box">
+<h4>代码位置</h4>
+<p><code>backtest_sl_only_funding.py</code> → <code>main()</code> Part 5 (过滤器循环)</p>
+</div>
+
+<div class="box">
+<h4>逻辑</h4>
+<ol>
+<li>加载 BTCUSDT 的 1h K线</li>
+<li>对每笔交易，取信号时间点的 BTC 收盘价</li>
+<li>计算 BTC 过去 7 天（168 小时）的收益率：<code>btc_ret_7d = (btc[now] - btc[now-168h]) / btc[now-168h]</code></li>
+<li>只保留 <code>btc_ret_7d > +5%</code> 的交易</li>
+</ol>
+</div>
+
+<div class="key">
+<strong>为什么需要？</strong>
+<p>SL-only 是纯做多策略。熊市（BTC 跌）时做多大概率止损。过滤掉熊市交易可以大幅减少亏损，同时保留牛市的高收益交易。</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>十、完整公式汇总</h2>
+<!-- ════════════════════════════════════════════════════════════════ -->
+
+<div class="box">
+<h4>单笔交易收益</h4>
+<pre><code>raw_return = sim_sl_only(...)        # -0.08 (止损) 或 (close_end - entry) / entry (超时)
+fee = 0.0004                         # 4bps per side
+net = (1 + raw_return) × (1 - fee)² - 1    # 扣手续费后
+funding_pnl = -sum(funding_rates)    # 持仓期间的 funding 累计
+final = net + funding_pnl            # 最终收益</code></pre>
+</div>
+
+<div class="box">
+<h4>具体数值示例</h4>
+<table>
+<tr><th>场景</th><th>raw_return</th><th>net (扣费后)</th><th>funding</th><th>final</th></tr>
+<tr>
+<td>止损退出（典型）</td>
+<td>-8.00%</td>
+<td>-8.07%</td>
+<td>+0.50%</td>
+<td><span class="neg">-7.57%</span></td>
+</tr>
+<tr>
+<td>超时退出（赚大钱）</td>
+<td>+50.00%</td>
+<td>+49.82%</td>
+<td>+1.50%</td>
+<td><span class="pos">+51.32%</span></td>
+</tr>
+<tr>
+<td>超时退出（小亏）</td>
+<td>-5.00%</td>
+<td>-5.08%</td>
+<td>+0.80%</td>
+<td><span class="neg">-4.28%</span></td>
+</tr>
+</table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>十一、潜在问题清单</h2>
+<!-- ════════════════════════════════════════════════════════════════ -->
+
+<div class="warn">
+<h4>⚠️ 已知简化/假设</h4>
+<ol>
+<li><strong>入场价 = 信号 K线收盘价</strong>：实际可能有滑点，尤其放量 K线。报告中已测试 0~150bps 滑点敏感度。</li>
+<li><strong>止损价 = 入场价 × 92%</strong>：固定百分比止损，不考虑波动率。高波动币更容易触发。</li>
+<li><strong>用 K线 low 检查止损</strong>：保守假设（盘中最低价如果碰了止损线就触发），可能多触发一些止损。</li>
+<li><strong>Funding rate = 最后一个值</strong>：Binance 每 8h 结算一次，我们用 <code>last_funding_rate</code> 列。实际结算时刻可能有微小偏差。</li>
+<li><strong>没有考虑仓位大小</strong>：回测假设每笔交易投入固定金额（等权），没有考虑 Kelly 仓位优化。</li>
+<li><strong>事件叠加有 look-ahead 吗？</strong> 没有。momentum ignition 事件在 K线完成时检测（<code>completed bar</code>），V4 信号在事件之后才触发。</li>
+<li><strong>trailing stop 用 HWM 有未来函数吗？</strong> 没有。HWM（历史最高价）是入场后逐 K线更新的，只用到当前时刻的信息。</li>
+</ol>
+</div>
+
+<div class="good">
+<h4>✅ 没有问题的地方</h4>
+<ul>
+<li>数据只用已完成的 K线（不会偷看当根 K线的收盘价来决定是否入场）</li>
+<li>事件检测用 <code>hours_from_event</code>，信号必须在事件<strong>之后</strong></li>
+<li>冷却机制防止同一 symbol 重复触发</li>
+<li>SL-only 策略不设止盈，避免了"止盈价碰了又回来"的回测陷阱</li>
+</ul>
+</div>
+
+<p class="meta" style="margin-top: 30px;">Generated: 2026-05-14 | 数据源: Binance 1h K线 (535 symbols) + Funding Rate (536 symbols) | 时间跨度: 2022-01 ~ 2026-05</p>
+
+</body>
+</html>

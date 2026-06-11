@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个 2026 funding-arb 仓只读成“跨所 funding 看板”：对 short-cycle crypto desk，更该先拆的是「opposite-sign funding spread × order-book slippage veto × 8h max-hold」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个 2026 funding-arb 仓只读成“跨所 funding 看板”：对 short-cycle crypto desk，更该先拆的是「opposite-sign funding spread × order-book slippage veto × 8h max-hold」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-25 10:37 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：raw-alpha / carry / funding / cross-venue / delta-neutral / slippage-veto / orderbook / max-hold / Binance / Bybit / OKX / 8h / 15m / 5m</span>
+      <span class="pill">证据类型：repo 源码审计 + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-25_1037_oppositesign-funding-slippageveto-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-25 10:37 UTC</li>
+<li>类型：GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：cross-exchange opposite-sign funding carry（在负 funding 交易所做多、在正 funding 交易所做空，赚 funding spread）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / carry / funding / cross-venue / delta-neutral / slippage-veto / orderbook / max-hold / Binance / Bybit / OKX / 8h / 15m / 5m</li>
+<li>证据类型：repo 源码审计 + public-data portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 2026 GitHub 仓库 <strong><code>johann-clouie/crypto-trading-bot</code></strong>。README 表面上把它包装成一个“12 交易所 funding arbitrage bot”，但真正值得 desk intake 的，不是“支持 12 所”这层 UI 叙事，而是它把一条 <strong>可以直接写成完整策略壳</strong> 的 raw alpha 摊得很直白：</p>
+<ul>
+<li><code>funding_rate_scanner.py</code>：找 <strong>一边 funding 为负、另一边 funding 为正</strong> 的同标的跨所机会</li>
+<li><code>entry_strategy.py</code>：先过 <strong>order-book 深度 / slippage</strong> 检查，再决定能不能进</li>
+<li><code>fee_calculator.py</code>：先扣 fees，再判断是不是值得做</li>
+<li><code>exit_strategy.py</code>：给出 <strong>profit target + 8h max duration</strong> 的退出框架</li>
+<li><code>strategy_validator.py</code>：把上面几层串成 pre-trade veto</li>
+</ul>
+<p>所以这份材料不是纯看板，更像一个 <strong>cross-venue funding carry 的最小可落地框架</strong>。</p>
+<h2>2. base alpha 先说清楚</h2>
+<p>这篇东西的 <strong>base alpha 很清楚</strong>：</p>
+<p><strong>同一标的在不同交易所的 funding rate 若出现 opposite sign（例如 A 所为负、B 所为正），就能做 <code>long negative-funding venue + short positive-funding venue</code> 的 delta-neutral carry，收益主要来自 funding spread。</strong></p>
+<p>这首先是 <strong>raw alpha</strong>，不是 filter，也不是 overlay。</p>
+<p>repo 里最有 desk 价值的旁支，不是“再多接几家交易所”，而是：</p>
+<p><strong>不要把 funding spread 本身当成充分条件；必须再叠一层 order-book slippage veto 和 fee-aware admission。</strong></p>
+<h2>3. 核心结论</h2>
+<ul>
+<li>这份 repo 最值钱的地方，不是“12 交易所覆盖面”，而是它把一条 <strong>opposite-sign funding carry</strong> 明确写成了完整策略壳。</li>
+<li><code>funding_rate_scanner.py</code> 的核心 admission 很朴素：只有当 <strong>long leg funding &lt; 0 且 short leg funding &gt; 0</strong> 时，才认为存在可收的 spread；并且先做一个简化的 fee 扣减后才留下候选。</li>
+<li><code>entry_strategy.py</code> 的高价值点是：<strong>先查盘口深度和 slippage，再决定能不能进</strong>，而不是看到正 carry 就直接下单。这比很多 funding note 更像真正能上 desk 的版本。</li>
+<li><code>exit_strategy.py</code> 则把这条线从“静态 funding 观察”推进到“可落地策略”：<strong>到达 profit target、或持仓超过 8h 就平</strong>。</li>
+<li>但我做的 public-data portability probe 给了一个很明确的现实提醒：<strong>公开大所上的 opposite-sign spread 现在并不厚</strong>。即便 opposite-sign 并不罕见，gross carry 大多也只有 <code>~0.7–1.0 bps / funding period</code>，远低于可交易成本门槛。</li>
+</ul>
+<h2>4. 为什么和当前 desk 直接相关</h2>
+<p>虽然 funding carry 不是逐根 <code>5m</code> 主信号，但它仍然符合 bot7 当前更高优先级：</p>
+<ul>
+<li>base alpha 清楚：cross-venue opposite-sign funding spread</li>
+<li>entry 清楚：只有 opposite sign + 过 fee/slippage veto 才进</li>
+<li>exit 清楚：profit target / funding 收敛 / 8h max-hold</li>
+<li>sizing 清楚：repo 默认固定 notional，可继续外接 risk budget</li>
+<li>risk 清楚：order-book depth、slippage、funding 收敛、basis / quote drift</li>
+<li>cost 清楚：四腿开平仓 fees 是第一约束</li>
+</ul>
+<p>对 short-cycle desk 来说，<code>15m / 5m</code> 在这里承担的是：</p>
+<ul>
+<li>child execution timing</li>
+<li>slippage / depth 监控</li>
+<li>add / reduce cadence</li>
+<li>unwind timing</li>
+</ul>
+<p>而不是把 8h funding 本身硬装成逐根短周期主信号。</p>
+<h2>5. 源码里真正值得复用的部分</h2>
+<h3>5.1 opposite-sign admission 比“谁 funding 更高”更干净</h3>
+<p><code>funding_rate_scanner.py</code> 不是简单做 funding ranking，而是明确要求：</p>
+<ul>
+<li>long leg funding <code>&lt; 0</code></li>
+<li>short leg funding <code>&gt; 0</code></li>
+</ul>
+<p>然后 gross spread 近似写成： <code>abs(long_rate) + short_rate</code></p>
+<p>这件事的好处是：</p>
+<ul>
+<li>base alpha 定义非常清楚</li>
+<li>避免把“正 funding vs 更正 funding”的弱 edge 和真正 opposite-sign pocket 混在一起</li>
+<li>更方便后续做 public-data first verdict</li>
+</ul>
+<h3>5.2 slippage veto 是这份 repo 最像 desk 组件的地方</h3>
+<p><code>entry_strategy.py</code> 会：</p>
+<ul>
+<li>拉两边 order book</li>
+<li>用目标 size 沿盘口吃深度，估算平均成交价</li>
+<li>再和 mid 做比较</li>
+<li>若任一边 slippage 超过 <code>0.1%</code>，直接 veto</li>
+</ul>
+<p>这比“看到正 APR 就冲”强很多。对 funding carry 这类边很薄的策略来说，<strong>slippage veto 不是锦上添花，而是 admission 本体的一部分</strong>。</p>
+<h3>5.3 8h max-hold 让它更像 funding pocket，而不是常开仓位</h3>
+<p><code>exit_strategy.py</code> 给的核心规则很简单：</p>
+<ul>
+<li>profit target 到了就走</li>
+<li>否则最多持有 <code>8h</code></li>
+</ul>
+<p>这个设定很有用，因为它隐含了一个更 desk 化的读法：</p>
+<p><strong>这条线不应该被当成 always-on 收租机，而更像“只在 funding dislocation 足够厚时短时持有”的 pocket strategy。</strong></p>
+<h2>6. public-data portability probe：Binance / Bybit / OKX 最近 51 个 funding 点</h2>
+<p>我用三家公开 API：</p>
+<ul>
+<li>Binance USDⓈ-M funding history</li>
+<li>Bybit linear perpetual funding history</li>
+<li>OKX swap funding history</li>
+</ul>
+<p>对 <code>BTCUSDT / ETHUSDT / SOLUSDT</code> 做了最近 <code>51</code> 个对齐 funding period 的快检；每个时点都在三所里找 <strong>best opposite-sign pair</strong>，然后计算：</p>
+<ul>
+<li>gross spread</li>
+<li>repo 风格简化净值：<code>gross - 4bps</code></li>
+<li>maker 四腿粗扣净值（按 repo/常见费率近似）</li>
+<li>taker 四腿粗扣净值</li>
+</ul>
+<p>产物：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-25_crossvenue_funding_oppositesign_probe_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-25_crossvenue_funding_oppositesign_probe_detail.csv</code></li>
+</ul>
+<h3>6.1 关键结果</h3>
+<ul>
+<li><code>BTC</code>：<code>51</code> 个对齐 funding 点里，出现 opposite-sign 的有 <code>22</code> 个，占比约 <code>43.1%</code></li>
+<li>gross 平均仅约 <code>0.71 bps / 8h</code></li>
+<li>粗扣 <code>4 bps</code> 后平均约 <code>-3.29 bps / 8h</code></li>
+<li>粗扣 maker 四腿后平均约 <code>-6.38 bps / 8h</code></li>
+<li><code>ETH</code>：<code>51</code> 个里有 <code>26</code> 个 opposite-sign，占比约 <code>51.0%</code></li>
+<li>gross 平均约 <code>0.96 bps / 8h</code></li>
+<li>粗扣 <code>4 bps</code> 后平均约 <code>-3.04 bps / 8h</code></li>
+<li>maker 四腿后平均约 <code>-5.50 bps / 8h</code></li>
+<li><code>SOL</code>：<code>51</code> 个里有 <code>12</code> 个 opposite-sign，占比约 <code>23.5%</code></li>
+<li>gross 平均约 <code>1.00 bps / 8h</code></li>
+<li>粗扣 <code>4 bps</code> 后平均约 <code>-3.00 bps / 8h</code></li>
+<li>maker 四腿后平均约 <code>-5.16 bps / 8h</code></li>
+</ul>
+<h3>6.2 这组数怎么读</h3>
+<p>一句话：</p>
+<p><strong>opposite-sign 不是没有，但公开大所 majors 上现在通常只够当 signal candidate，不够直接下场。</strong></p>
+<p>也就是说，这份 repo 最值得保留的不是“这条 alpha 已经能在 BTC/ETH/SOL 上直接赚钱”，而是它给了一套很清楚的 <strong>admission / veto / hold framework</strong>：</p>
+<ul>
+<li>只有 opposite-sign pocket 才入围</li>
+<li>必须过 fee-aware 检查</li>
+<li>必须过盘口 slippage veto</li>
+<li>不能当 always-on carry，要有 time-box</li>
+</ul>
+<h2>7. 最小可复现实验</h2>
+<h3>最小实验 A：三所 opposite-sign carry 生存性</h3>
+<ul>
+<li>标的：<code>BTC / ETH / SOL</code></li>
+<li>交易所：<code>Binance / Bybit / OKX</code></li>
+<li>parent frequency：funding period（8h）</li>
+<li>child execution：<code>15m</code>，必要时细到 <code>5m</code></li>
+<li>规则：</li>
+</ul>
+<ol>
+<li>每个 funding 时点找 best opposite-sign pair</li>
+<li>要求 gross spread &gt; fee hurdle</li>
+<li>再要求两边盘口 size 下的 expected slippage &lt; threshold</li>
+<li>持有到下一 funding 或提前 profit-take / convergence-exit</li>
+</ol>
+<h3>最小实验 B：只保留极端 pocket</h3>
+<p>因为目前 gross 太薄，更值得先测的是：</p>
+<ul>
+<li>只做 <code>gross spread &gt;= 5 bps / 8h</code></li>
+<li>或只做该 spread 的 rolling <code>p95</code> 以上事件</li>
+<li>再看这些极端 pocket 是否主要集中在 <code>mid-cap / event regime / 单一交易所异常</code>，而不是 BTC/ETH 常态期</li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<ol>
+<li><strong>先不要扩 12 所。</strong> 先固定 <code>Binance / Bybit / OKX</code> 三所，把 opposite-sign pocket 的历史分布跑干净。</li>
+<li>把 admission 从“只要 opposite sign”升级成三层：</li>
+</ol>
+<ul>
+<li><code>gross spread &gt; fee hurdle</code></li>
+<li><code>gross spread &gt; rolling p90 / p95</code></li>
+<li><code>order-book slippage &lt; threshold</code></li>
+</ul>
+<ol>
+<li>按币种分层：<code>BTC/ETH</code> 先当 base reality check；如果一直不够厚，再把注意力转去 <code>SOL / XRP / DOGE / PEPE</code> 这类 funding 更容易失衡的币。</li>
+<li>把 exit 分成两版对照：</li>
+</ol>
+<ul>
+<li>持有一个 funding period</li>
+<li><code>15m/5m</code> child-level convergence exit</li>
+</ul>
+<ol>
+<li>若 majors 持续不过线，这条线就不该被当成主 raw alpha，而应转成：</li>
+</ol>
+<ul>
+<li><strong>event-driven carry pocket scanner</strong></li>
+<li>或 <strong>跨所风险看板 / deployment whitelist</strong></li>
+</ul>
+<h2>9. 风险与保留意见</h2>
+<ul>
+<li>这份 repo 的代码结构是清楚的，但目前仍偏 MVP：不少成本假设写得比较粗，和真实多所执行还有距离。</li>
+<li>scanner 里先减 <code>4 bps</code> 的简化处理，<strong>对真实四腿开平仓来说偏乐观</strong>；我自己的 quick probe 说明，现实里更像要面对 <code>~5–7 bps</code> maker、甚至更差的成本层。</li>
+<li>它把 funding carry 写成了完整壳，这点很有价值；但 <strong>不是所有完整壳都能直接赚钱</strong>。这次 portability probe 更像在帮我们决定：这条线该继续做 deployment pocket，还是该降级成 event-only scanner。</li>
+<li>当前公开大所 majors 的 opposite-sign spread 更像“偶发 dislocation”，不是稳定厚边。</li>
+</ul>
+<h2>10. 一句话总结</h2>
+<p><strong>这份 2026 repo 最值得 desk intake 的，不是“支持 12 交易所”，而是它把 opposite-sign funding carry 明确写成了一个“先过 fee，再过 slippage，再限定 8h 持有”的完整 raw alpha 壳；但最近三所 majors 的公开数据告诉我们：常态 edge 太薄，下一步必须只盯极端 pocket。</strong></p>
+<h2>11. 来源（尽量结构化）</h2>
+<ul>
+<li>Source A（主来源，仓库）</li>
+<li>Authors：<code>johann-clouie</code>（GitHub handle；README 未写实名）</li>
+<li>Year：2026</li>
+<li>Title：*Crypto Funding Rate Arbitrage Bot*</li>
+<li>Venue：GitHub repository</li>
+<li>DOI：N/A</li>
+<li>Readable URL：<a href="https://github.com/johann-clouie/crypto-trading-bot">https://github.com/johann-clouie/crypto-trading-bot</a></li>
+<li>Repo URL：<a href="https://github.com/johann-clouie/crypto-trading-bot">https://github.com/johann-clouie/crypto-trading-bot</a></li>
+<li>Source B（README）</li>
+<li>Readable URL：<a href="https://raw.githubusercontent.com/johann-clouie/crypto-trading-bot/main/README.md">https://raw.githubusercontent.com/johann-clouie/crypto-trading-bot/main/README.md</a></li>
+<li>Source C（核心 admission / shell 文件）</li>
+<li><code>funding_rate_scanner.py</code>：<a href="https://raw.githubusercontent.com/johann-clouie/crypto-trading-bot/main/backend/core/funding_rate_scanner.py">https://raw.githubusercontent.com/johann-clouie/crypto-trading-bot/main/backend/core/funding_rate_scanner.py</a></li>
+<li><code>entry_strategy.py</code>：<a href="https://raw.githubusercontent.com/johann-clouie/crypto-trading-bot/main/backend/core/entry_strategy.py">https://raw.githubusercontent.com/johann-clouie/crypto-trading-bot/main/backend/core/entry_strategy.py</a></li>
+<li><code>exit_strategy.py</code>：<a href="https://raw.githubusercontent.com/johann-clouie/crypto-trading-bot/main/backend/core/exit_strategy.py">https://raw.githubusercontent.com/johann-clouie/crypto-trading-bot/main/backend/core/exit_strategy.py</a></li>
+<li><code>fee_calculator.py</code>：<a href="https://raw.githubusercontent.com/johann-clouie/crypto-trading-bot/main/backend/core/fee_calculator.py">https://raw.githubusercontent.com/johann-clouie/crypto-trading-bot/main/backend/core/fee_calculator.py</a></li>
+<li><code>strategy_validator.py</code>：<a href="https://raw.githubusercontent.com/johann-clouie/crypto-trading-bot/main/backend/core/strategy_validator.py">https://raw.githubusercontent.com/johann-clouie/crypto-trading-bot/main/backend/core/strategy_validator.py</a></li>
+<li>Source D（本轮 public-data portability probe）</li>
+<li>Binance funding history：<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History</a></li>
+<li>Bybit funding history：<a href="https://bybit-exchange.github.io/docs/v5/market/history-fund-rate">https://bybit-exchange.github.io/docs/v5/market/history-fund-rate</a></li>
+<li>OKX funding history：<a href="https://www.okx.com/docs-v5/en/#public-data-rest-api-get-funding-rate-history">https://www.okx.com/docs-v5/en/#public-data-rest-api-get-funding-rate-history</a></li>
+<li>本地产物：</li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-25_crossvenue_funding_oppositesign_probe_summary.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-25_crossvenue_funding_oppositesign_probe_detail.csv</code></li>
+</ul>
+</body>
+</html>

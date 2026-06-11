@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>PyTrendline V3 · Sampler Fix R3 Implementation Note</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 32px auto; max-width: 1100px; line-height: 1.6; color: #1f2937; padding: 0 16px; }
+    h1, h2, h3 { color: #111827; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; background: #fff; }
+    .ok { background: #ecfdf5; border-left: 4px solid #10b981; padding: 12px 14px; }
+    .warn { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 14px; }
+    .muted { color: #6b7280; }
+    code { background: #f3f4f6; padding: 1px 4px; border-radius: 4px; }
+    pre { background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 10px; overflow-x: auto; font-size: 13px; }
+    .tbl { border-collapse: collapse; width: 100%; font-size: 14px; }
+    .tbl th, .tbl td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; vertical-align: top; }
+    .tbl th { background: #f9fafb; }
+    ul { margin-top: 0.3em; }
+  </style>
+</head>
+<body>
+  <h1>PyTrendline V3 · Sampler Fix R3 Implementation Note</h1>
+  <p><a href="../pytrendline_event_validation_v3/report.html">← 返回 v3 主报告</a> ｜ <a href="../pytrendline_event_validation_v3_sampler_fix_r2_impl/report.html">上一页：sampler fix R2</a></p>
+
+  <div class="card warn">
+    <b>这页完成了什么？</b>
+    只完成 TODO 里的 <code>A4-b3</code>：把 <b>exact mirrored breakout pair</b> 的显式去重 / 丢弃规则落进 v3 sampler 源码，并补上对应的 audit 导出位。
+    这页不是最小重跑 closure，所以不会假装回答“修完后 breakout alpha 还剩多少”。
+  </div>
+
+  <div class="card ok">
+    <b>一句话结论：</b>
+    v3 采样器源码里现在已经有了显式的 R3 镜像对处理：<b>同一 symbol + breakout family + event/confirm/action timestamps 的 support / resistance 若同时存活，就只保留更高 <code>line_score</code> 的一边，并把被丢弃的那边写进审计输出</b>。
+  </div>
+
+  <h2>1. 这轮发现了什么？</h2>
+  <div class="card">
+    <ul>
+      <li><b>Found:</b> 源码里已存在专门的 mirrored-breakout resolver 函数，并且不是只写了函数没调用；raw / purged 两条样本流都接上了。</li>
+      <li><b>Found:</b> fresh rerun 时，源码会额外导出 <code>mirrored_breakout_pair_resolution_*.(csv)</code>，所以后续不会“静悄悄去重”而没有证据链。</li>
+      <li><b>Found:</b> 对当前保存下来的 legacy artifacts 做 in-memory preview，resolver 会在 <code>breakout_raw / breakout_confirm_1 / breakout_confirm_2</code> 三个 family 各丢 <b>1</b> 条 mirrored row：raw 预览共丢 <b>24</b> 条，purged 预览共丢 <b>3</b> 条。</li>
+      <li><b>Found:</b> 这份 preview 下，三个 breakout family 的 <code>paired_groups_after_preview</code> 都会降到 <b>0</b>，说明 R3 规则确实瞄准了当前已知 blocker，而不是无关去重。</li>
+    </ul>
+  </div>
+
+  <h2>2. 这轮没有发现什么？</h2>
+  <div class="card">
+    <ul>
+      <li><b>Not found:</b> 这轮没有做 BTC+ETH / 20~45d fresh rerun，所以这页不是 <code>A4-c</code>。</li>
+      <li><b>Not found:</b> 这轮没有宣称当前公开的 v3 主报告已经自动变干净；因为主报告 artifacts 还没按新代码重导一次。</li>
+      <li><b>Not found:</b> 这轮没有证明 breakout short 还能不能留在 shortlist；那要等 fresh rerun 后的 honesty audit。</li>
+    </ul>
+  </div>
+
+  <h2>3. 实现检查表</h2>
+  <div class="card"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>check_id</th>
+      <th>status</th>
+      <th>line</th>
+      <th>what_it_checks</th>
+      <th>reliability</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>R3-helper-present</td>
+      <td>present</td>
+      <td>211</td>
+      <td>main v3 sampler source defines an explicit mirrored-breakout resolver</td>
+      <td>high for source-code presence</td>
+    </tr>
+    <tr>
+      <td>R3-raw-call-present</td>
+      <td>present</td>
+      <td>1047</td>
+      <td>raw event sample is passed through the mirrored-breakout resolver before downstream artifacts are written</td>
+      <td>high for source-code presence</td>
+    </tr>
+    <tr>
+      <td>R3-purged-call-present</td>
+      <td>present</td>
+      <td>1051</td>
+      <td>purged event sample is also checked again, so audit artifacts can prove whether mirrored pairs remain</td>
+      <td>high for source-code presence</td>
+    </tr>
+    <tr>
+      <td>R3-audit-export-present</td>
+      <td>present</td>
+      <td>1068</td>
+      <td>fresh v3 reruns will export mirrored-pair audit CSVs instead of silently deduping</td>
+      <td>high for source-code presence</td>
+    </tr>
+  </tbody>
+</table></div>
+
+  <h2>4. 当前 artifacts 上的预览结果（raw）</h2>
+  <div class="card"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>event_family</th>
+      <th>rows_before</th>
+      <th>paired_groups_before</th>
+      <th>rows_after_preview</th>
+      <th>paired_groups_after_preview</th>
+      <th>dropped_rows_preview</th>
+      <th>score_tie_groups_preview</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>breakout_raw</td>
+      <td>1921</td>
+      <td>15</td>
+      <td>1906</td>
+      <td>0</td>
+      <td>15</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>breakout_confirm_1</td>
+      <td>1497</td>
+      <td>6</td>
+      <td>1491</td>
+      <td>0</td>
+      <td>6</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>breakout_confirm_2</td>
+      <td>1329</td>
+      <td>3</td>
+      <td>1326</td>
+      <td>0</td>
+      <td>3</td>
+      <td>0</td>
+    </tr>
+  </tbody>
+</table></div>
+
+  <h2>5. 当前 artifacts 上的预览结果（purged）</h2>
+  <div class="card"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>event_family</th>
+      <th>rows_before</th>
+      <th>paired_groups_before</th>
+      <th>rows_after_preview</th>
+      <th>paired_groups_after_preview</th>
+      <th>dropped_rows_preview</th>
+      <th>score_tie_groups_preview</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>breakout_raw</td>
+      <td>98</td>
+      <td>1</td>
+      <td>97</td>
+      <td>0</td>
+      <td>1</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>breakout_confirm_1</td>
+      <td>97</td>
+      <td>1</td>
+      <td>96</td>
+      <td>0</td>
+      <td>1</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>breakout_confirm_2</td>
+      <td>96</td>
+      <td>1</td>
+      <td>95</td>
+      <td>0</td>
+      <td>1</td>
+      <td>0</td>
+    </tr>
+  </tbody>
+</table></div>
+
+  <h2>6. 预览里实际会被丢掉哪些行？（purged 示例）</h2>
+  <div class="card"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>symbol</th>
+      <th>event_type</th>
+      <th>event_side</th>
+      <th>confirm_level</th>
+      <th>snapshot_asof_index</th>
+      <th>snapshot_asof_timestamp</th>
+      <th>event_index</th>
+      <th>event_timestamp</th>
+      <th>confirm_index</th>
+      <th>confirm_timestamp</th>
+      <th>action_index</th>
+      <th>action_timestamp</th>
+      <th>snapshot_age_bars</th>
+      <th>engine_line_id</th>
+      <th>line_score</th>
+      <th>line_slope</th>
+      <th>line_value_event</th>
+      <th>line_value_confirm</th>
+      <th>event_open</th>
+      <th>event_high</th>
+      <th>event_low</th>
+      <th>event_close</th>
+      <th>confirm_close</th>
+      <th>action_open</th>
+      <th>tolerance</th>
+      <th>fwd_ret_h6</th>
+      <th>fwd_ret_h24</th>
+      <th>fwd_ret_h48</th>
+      <th>fwd_ret_h72</th>
+      <th>event_family</th>
+      <th>preview_drop_reason</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ETH-USD</td>
+      <td>support_breakout_raw</td>
+      <td>support</td>
+      <td>0</td>
+      <td>71</td>
+      <td>2026-01-30 23:00</td>
+      <td>72</td>
+      <td>2026-01-31 00:00</td>
+      <td>72</td>
+      <td>2026-01-31 00:00</td>
+      <td>73</td>
+      <td>2026-01-31 01:00</td>
+      <td>1</td>
+      <td>S-[66,68,69]</td>
+      <td>979.721463</td>
+      <td>318.684085</td>
+      <td>2711.808105</td>
+      <td>2711.808105</td>
+      <td>2702.515869</td>
+      <td>2709.52417</td>
+      <td>2699.653564</td>
+      <td>2702.658203</td>
+      <td>2702.658203</td>
+      <td>2702.623535</td>
+      <td>2.109667</td>
+      <td>-0.010196</td>
+      <td>-0.096460</td>
+      <td>-0.151719</td>
+      <td>-0.129891</td>
+      <td>breakout_raw</td>
+      <td>exact_mirrored_breakout_pair_lower_score</td>
+    </tr>
+    <tr>
+      <td>ETH-USD</td>
+      <td>support_breakout_confirm_1</td>
+      <td>support</td>
+      <td>1</td>
+      <td>71</td>
+      <td>2026-01-30 23:00</td>
+      <td>72</td>
+      <td>2026-01-31 00:00</td>
+      <td>73</td>
+      <td>2026-01-31 01:00</td>
+      <td>74</td>
+      <td>2026-01-31 02:00</td>
+      <td>1</td>
+      <td>S-[66,68,69]</td>
+      <td>979.721463</td>
+      <td>318.684085</td>
+      <td>2711.808105</td>
+      <td>2723.892822</td>
+      <td>2702.515869</td>
+      <td>2709.52417</td>
+      <td>2699.653564</td>
+      <td>2702.658203</td>
+      <td>2695.086670</td>
+      <td>2695.183105</td>
+      <td>2.109667</td>
+      <td>-0.020532</td>
+      <td>-0.090364</td>
+      <td>-0.161389</td>
+      <td>-0.147482</td>
+      <td>breakout_confirm_1</td>
+      <td>exact_mirrored_breakout_pair_lower_score</td>
+    </tr>
+    <tr>
+      <td>ETH-USD</td>
+      <td>support_breakout_confirm_2</td>
+      <td>support</td>
+      <td>2</td>
+      <td>71</td>
+      <td>2026-01-30 23:00</td>
+      <td>72</td>
+      <td>2026-01-31 00:00</td>
+      <td>74</td>
+      <td>2026-01-31 02:00</td>
+      <td>75</td>
+      <td>2026-01-31 03:00</td>
+      <td>1</td>
+      <td>S-[66,68,69]</td>
+      <td>979.721463</td>
+      <td>318.684085</td>
+      <td>2711.808105</td>
+      <td>2735.977539</td>
+      <td>2702.515869</td>
+      <td>2709.52417</td>
+      <td>2699.653564</td>
+      <td>2702.658203</td>
+      <td>2698.547607</td>
+      <td>2698.518066</td>
+      <td>2.109667</td>
+      <td>-0.019228</td>
+      <td>-0.094901</td>
+      <td>-0.170748</td>
+      <td>-0.132380</td>
+      <td>breakout_confirm_2</td>
+      <td>exact_mirrored_breakout_pair_lower_score</td>
+    </tr>
+  </tbody>
+</table></div>
+
+  <h2>7. 代码证据：resolver 本体</h2>
+  <div class="card">
+    <pre>0193: 
+0194: 
+0195: def purge_events(df: pd.DataFrame, purge_gap: int) -&gt; pd.DataFrame:
+0196:     if df.empty:
+0197:         return df.copy()
+0198:     keep_indices: list[int] = []
+0199:     for (symbol, event_type), g in df.sort_values([&quot;symbol&quot;, &quot;event_type&quot;, &quot;action_index&quot;]).groupby([&quot;symbol&quot;, &quot;event_type&quot;], sort=False):
+0200:         _ = (symbol, event_type)
+0201:         last_kept = -10**9
+0202:         for idx, row in g.iterrows():
+0203:             ai = int(row[&quot;action_index&quot;])
+0204:             if ai &gt; last_kept + purge_gap:
+0205:                 keep_indices.append(int(idx))
+0206:                 last_kept = ai
+0207:     out = df.loc[sorted(set(keep_indices))].copy().reset_index(drop=True)
+0208:     return out
+0209: 
+0210: 
+0211: def resolve_exact_mirrored_breakout_pairs(df: pd.DataFrame) -&gt; tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+0212:     if df.empty:
+0213:         summary_cols = [
+0214:             &quot;event_family&quot;,
+0215:             &quot;paired_groups&quot;,
+0216:             &quot;rows_in_paired_groups&quot;,
+0217:             &quot;dropped_rows&quot;,
+0218:             &quot;survivor_rows&quot;,
+0219:             &quot;score_tie_groups&quot;,
+0220:         ]
+0221:         detail_cols = [
+0222:             *MIRRORED_BREAKOUT_GROUP_COLS,
+0223:             &quot;group_rows&quot;,
+0224:             &quot;support_rows&quot;,
+0225:             &quot;resistance_rows&quot;,
+0226:             &quot;winner_event_type&quot;,
+0227:             &quot;winner_engine_line_id&quot;,
+0228:             &quot;winner_line_score&quot;,
+0229:             &quot;winner_side&quot;,</pre>
+  </div>
+
+  <h2>8. 代码证据：apply + audit export</h2>
+  <div class="card">
+    <h3>Apply</h3>
+    <pre>1037:             if not ev.empty:
+1038:                 events_frames.append(ev)
+1039: 
+1040:         events_raw = pd.concat(events_frames, ignore_index=True) if events_frames else pd.DataFrame()
+1041:         if events_raw.empty:
+1042:             raise SystemExit(&quot;No events produced for v3&quot;)
+1043: 
+1044:         events_raw[&quot;event_type&quot;] = pd.Categorical(events_raw[&quot;event_type&quot;], categories=EVENT_ORDER, ordered=True)
+1045:         events_raw = add_event_family(events_raw)
+1046:         events_raw = events_raw.sort_values([&quot;symbol&quot;, &quot;event_timestamp&quot;, &quot;event_type&quot;]).reset_index(drop=True)
+1047:         events_raw, mirrored_pair_raw_summary, mirrored_pair_raw_details, mirrored_pair_raw_dropped = resolve_exact_mirrored_breakout_pairs(events_raw)
+1048: 
+1049:         events_purged = purge_events(events_raw, purge_gap=int(args.purge_gap))
+1050:         events_purged = add_event_family(events_purged)
+1051:         events_purged, mirrored_pair_purged_summary, mirrored_pair_purged_details, mirrored_pair_purged_dropped = resolve_exact_mirrored_breakout_pairs(events_purged)
+1052: 
+1053:         summary_raw = summarize(events_raw, horizons)
+1054:         summary_purged = summarize(events_purged, horizons)
+1055: 
+1056:         symbol_summary_h24_raw = summarize(events_raw, [24], key_col=&quot;symbol&quot;)
+1057:         symbol_summary_h24_purged = summarize(events_purged, [24], key_col=&quot;symbol&quot;)</pre>
+    <h3>Audit export</h3>
+    <pre>1060: 
+1061:         events_raw.to_csv(ART / &quot;event_sample_raw.csv&quot;, index=False)
+1062:         events_purged.to_csv(ART / &quot;event_sample_purged.csv&quot;, index=False)
+1063:         summary_raw.to_csv(ART / &quot;summary_raw.csv&quot;, index=False)
+1064:         summary_purged.to_csv(ART / &quot;summary_purged.csv&quot;, index=False)
+1065:         symbol_summary_h24_raw.to_csv(ART / &quot;symbol_summary_h24_raw.csv&quot;, index=False)
+1066:         symbol_summary_h24_purged.to_csv(ART / &quot;symbol_summary_h24_purged.csv&quot;, index=False)
+1067:         symbol_meta_df.to_csv(ART / &quot;symbol_meta.csv&quot;, index=False)
+1068:         mirrored_pair_raw_summary.to_csv(ART / &quot;mirrored_breakout_pair_resolution_raw_summary.csv&quot;, index=False)
+1069:         mirrored_pair_raw_details.to_csv(ART / &quot;mirrored_breakout_pair_resolution_raw_details.csv&quot;, index=False)
+1070:         mirrored_pair_raw_dropped.to_csv(ART / &quot;mirrored_breakout_pair_resolution_raw_dropped_rows.csv&quot;, index=False)
+1071:         mirrored_pair_purged_summary.to_csv(ART / &quot;mirrored_breakout_pair_resolution_purged_summary.csv&quot;, index=False)
+1072:         mirrored_pair_purged_details.to_csv(ART / &quot;mirrored_breakout_pair_resolution_purged_details.csv&quot;, index=False)
+1073:         mirrored_pair_purged_dropped.to_csv(ART / &quot;mirrored_breakout_pair_resolution_purged_dropped_rows.csv&quot;, index=False)
+1074: 
+1075:     baseline_summary = build_baseline_summary(symbols, args.period, args.interval, horizons)
+1076:     family_excess_summary = build_excess_summary(events_purged, baseline_summary, horizons, key_col=&quot;event_family&quot;)</pre>
+  </div>
+
+  <h2>9. 这页该怎么读？</h2>
+  <div class="card">
+    <ul>
+      <li><b>Plain language：</b>以前 sampler 可能把同一根事件 bar 上、时间戳完全重合的 support breakout 和 resistance breakout 同时记账。现在至少有一条明确规则：两边都活着时，不再双记，而是留分数更高的一边，并把另一边记进审计表。</li>
+      <li><b>What this supports：</b>后续 A4-c 重跑时，可以直接检查 mirrored-pair summary 是否降到 0，而不是再靠人工对表。</li>
+      <li><b>What this does NOT support：</b>还不支持说 side-level breakout alpha 已经可信；在 fresh rerun 前，最稳的口径仍然是 family-level 结论优先。</li>
+    </ul>
+  </div>
+
+  <h2>10. 可靠性</h2>
+  <div class="card">
+    <ul>
+      <li><b>高：</b>“代码里有没有 resolver / 有没有审计导出”——这是直接扫源码。</li>
+      <li><b>高：</b>“resolver 在当前保存下来的样本上会丢哪些 mirrored rows”——这是直接在现有 CSV 上做 preview。</li>
+      <li><b>低 / 未测：</b>“fresh rerun 后 alpha 还剩多少、strict wrong-side share 会不会一起下降”——这必须等 A4-c。</li>
+    </ul>
+  </div>
+
+  <h2>11. 下一步</h2>
+  <div class="card">
+    <ol>
+      <li>做 <code>A4-c</code>：用 R2+R3 后的 sampler 重跑 BTC+ETH / 20~45d 最小样本。</li>
+      <li>重导 breakout side audit / metric re-audit，重点比对 <code>exact_match_rows</code> 与 strict geometry 指标是否明显下降。</li>
+    </ol>
+  </div>
+
+  <h2>Artifacts</h2>
+  <div class="card">
+    <ul>
+      <li><a href="../../artifacts/pytrendline_event_validation_v3_sampler_fix_r3_impl/implementation_checks.csv">implementation_checks.csv</a></li>
+      <li><a href="../../artifacts/pytrendline_event_validation_v3_sampler_fix_r3_impl/raw_preview_summary.csv">raw_preview_summary.csv</a></li>
+      <li><a href="../../artifacts/pytrendline_event_validation_v3_sampler_fix_r3_impl/purged_preview_summary.csv">purged_preview_summary.csv</a></li>
+      <li><a href="../../artifacts/pytrendline_event_validation_v3_sampler_fix_r3_impl/purged_preview_dropped_rows.csv">purged_preview_dropped_rows.csv</a></li>
+      <li><a href="../../artifacts/pytrendline_event_validation_v3_sampler_fix_r3_impl/resolver_snippet.txt">resolver_snippet.txt</a></li>
+      <li><a href="../../artifacts/pytrendline_event_validation_v3_sampler_fix_r3_impl/apply_snippet.txt">apply_snippet.txt</a></li>
+      <li><a href="../../artifacts/pytrendline_event_validation_v3_sampler_fix_r3_impl/export_snippet.txt">export_snippet.txt</a></li>
+      <li><a href="../../artifacts/pytrendline_event_validation_v3_sampler_fix_r3_impl/summary.json">summary.json</a></li>
+    </ul>
+  </div>
+</body>
+</html>

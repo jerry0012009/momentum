@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别先迷信深度学习：这份 2026 repo 里更适合 desk 先测的是「perp rich spread fade × positive funding admission」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别先迷信深度学习：这份 2026 repo 里更适合 desk 先测的是「perp rich spread fade × positive funding admission」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-11 05:15 UTC</span>
+      <span class="pill">研究时间：2026-04-11 05:13 UTC</span>
+      <span class="pill">类型：GitHub repo + 公共数据快检</span>
+      <span class="pill">主题标签：carry / funding / basis / delta-neutral / spread-mean-reversion / short-perp-long-spot / binance / btc / 5m / 15m / repo / cost / risk</span>
+      <span class="pill">证据类型：仓库源码与内置报告 + 公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-11_0513_postcost-combined-funding-spread-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-11 05:13 UTC</li>
+<li>类型：GitHub repo + 公共数据快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当 perp 相对 spot 明显偏贵时，做 <code>short perp + long spot</code> 等待价差回归；若同时 funding 为正，则在等待均值回归时还多了一层 carry 补贴</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（<strong>repo 原型壳完整</strong>，但<strong>当前 OOS 证据不足以直接上生产</strong>）</li>
+<li>主题标签：carry / funding / basis / delta-neutral / spread-mean-reversion / short-perp-long-spot / binance / btc / 5m / 15m / repo / cost / risk</li>
+<li>证据类型：仓库源码与内置报告 + 公共数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主线材料是 <strong>MengerWen (2026), _Deep Learning-Based Delta-Neutral Statistical Arbitrage on Perpetual Funding Rates_</strong> 这个 GitHub 仓库。</p>
+<p>它的 headline 是“深度学习 + delta-neutral funding arbitrage”，但对我们当前 desk 来说，真正值得先 intake 的不是 LSTM 本身，而是 repo 里那条<strong>更朴素、也更可快速复现</strong>的 raw alpha：</p>
+<p>&gt; <strong><code>combined_funding_spread</code>：perp 相对 spot 偏贵（spread z-score 高）时做 <code>short perp + long spot</code>；如果 funding 还是正的，就把它当更强 admission。</strong></p>
+<p>翻成人话：<strong>你不是在赌方向，而是在赌“perp 的高溢价会回一点”，同时如果资金费率还是正的，你在等待期间还有机会拿到 carry。</strong></p>
+<p>这比“再训一个更复杂模型”更适合当前阶段，因为：</p>
+<ul>
+<li>base alpha 说得清；</li>
+<li>entry / exit / cost / sizing 壳在 repo 里都已经写出来了；</li>
+<li>我们可以直接把它映射到 <code>5m / 15m</code> 做最小 portability probe，而不必先复刻完整 ML 训练流水线。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最值得 desk 先拆的，不是深度学习预测器，而是 <strong><code>perp rich spread fade + positive funding admission</code></strong> 这条 delta-neutral raw alpha 壳；它在逻辑上成立、在公共数据上也能看到短周期 spread convergence，但<strong>短周期 gross edge 目前明显小于 taker/taker 成本，必须把 execution 重新设计成 maker-assisted 或 funding-window-aware 才有希望活下来</strong>。</li>
+<li><strong>一句话证明方式：</strong> 我先读 repo 里已经提交的 baseline / backtest / robustness 文档与报告，再用 Binance 公共 <code>spot klines + futures klines + fundingRate</code> 对 BTC 做 <code>5m/15m</code> portability probe，发现 <strong>spread rich 之后的确有稳定回归</strong>，而 <strong>positive funding 会小幅增强这条回归</strong>；但 repo 自带的 base-cost OOS 结果说明，<strong>如果你按“小时级、低频触发、直接吃 taker 成本”的方式做，edge 还不够厚</strong>。</li>
+<li>repo 自带的几组关键数：</li>
+<li>数据覆盖：<code>2021-01-01</code> 到 <code>2026-04-07</code>，共 <code>46,152</code> 根小时 bar，<code>3,092</code> 次 funding event。</li>
+<li>数据统计：平均 funding event 约 <strong><code>+1.04 bps</code></strong>，绝对 spread 的 <code>95%</code> 分位约 <strong><code>10.04 bps</code></strong>。</li>
+<li>OOS robustness（<code>BTCUSDT 1h</code>，base cost=<code>5 bps taker + 3 bps slippage + $2 gas</code>）：</li>
+<li><code>combined_funding_spread</code>：<strong>7 笔交易，累计回报 <code>-0.2328%</code>，净 PnL <code>-232.8 USD / 100k</code></strong>。</li>
+<li><code>logistic_regression</code>：<strong>3 笔交易，累计回报 <code>-0.1050%</code></strong>。</li>
+<li><code>lstm</code>：<strong>0 笔交易</strong>，说明不是“深度学习自动更强”，而更像阈值/标签太苛导致没有交易。</li>
+<li>Binance 公共 BTC portability probe（近 <code>60d</code>）：</li>
+<li><strong><code>15m</code></strong>：若 <code>spread_z_96 &gt; 1.5</code>，未来 <code>4h</code> 平均 spread convergence 约 <strong><code>+1.43 bps</code></strong>；若再要求 <code>funding &gt; 0</code>，升到 <strong><code>+1.55 bps</code></strong>，命中率约 <strong><code>94.9%</code></strong>。</li>
+<li><strong><code>5m</code></strong>：若 <code>spread_z_96 &gt; 1.5 且 funding &gt; 0</code>，未来 <code>1h</code> 平均 convergence 约 <strong><code>+1.20 bps</code></strong>，未来 <code>2h</code> 约 <strong><code>+1.25 bps</code></strong>。</li>
+<li>真正该学到的是：<strong>这条 raw alpha 有，但不是“直接 taker/taker 就能收钱”的那种厚边。</strong> 对短周期 desk，它更像：</li>
+</ul>
+<ol>
+<li>一个<strong>可独立复现的 spread-fade alpha 核</strong>；</li>
+<li>一个<strong>给已有 basis/carry 壳做 entry timing 的 admission</strong>；</li>
+<li>一个<strong>适合 funding window 前后做 execution 优化</strong>的 slow-to-fast bridge。</li>
+</ol>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线跟当前 desk 的关系很直接，因为它补的是一类我们明确想持续积累的 raw alpha：<strong>carry / funding / basis / relative-value / delta-neutral</strong>。</p>
+<p>而且它不是纯概念评论，而是已经给出了完整的策略骨架：</p>
+<ul>
+<li>信号层：funding / spread / regime</li>
+<li>交易层：<code>short perp + long spot</code></li>
+<li>回测层：cost / hold window / signal off / max hold</li>
+<li>稳健性层：cost sensitivity / holding sensitivity / feature ablation</li>
+</ul>
+<p>对当前 <code>1m/3m/5m/15m</code> 研发，最重要的启发不是“照抄 1h BTC 课程项目”，而是把它<strong>拆成更适合短周期的两层</strong>：</p>
+<ul>
+<li><strong>base alpha</strong>：perp-rich spread fade</li>
+<li><strong>secondary admission / carry booster</strong>：positive funding</li>
+</ul>
+<p>这就比“只把 funding 当情绪温度计”更实，也比“先训练模型再说”更接近 first verdict。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：market-neutral / relative-value / carry-enhanced mean reversion</li>
+<li>基础 alpha：<code>perp rich spread fade</code>（perp 相对 spot 偏贵时，短 perp、长 spot，等价差回归）</li>
+<li>regime：</li>
+<li>优先高流动性大币（先从 <code>BTC</code> 起）</li>
+<li>funding 为正时更顺手，因为 short perp 一侧有 carry</li>
+<li>更像围绕 funding anchor / basis anchor 的慢变量，不是裸方向信号</li>
+<li>filter / admission：</li>
+<li><code>spread_zscore_72h &gt;= 1.5</code> 或短周期可替代为 <code>spread_z_96 &gt;= 1.5</code></li>
+<li><code>funding_rate_bps &gt;= 1.0</code> / <code>funding &gt; 0</code></li>
+<li>可加 <code>positive_funding_regime == 1</code></li>
+<li>entry / exit / sizing / risk / cost（repo 壳）：</li>
+<li>entry：信号出现在 <code>t</code>，默认 <code>t+1</code> 开仓</li>
+<li>exit：<code>signal_off</code> / <code>holding_window</code> / <code>maximum_holding</code></li>
+<li>sizing：fixed notional per leg（默认 <code>10,000 USD</code>）</li>
+<li>risk：单策略单持仓、持有窗、可选止盈止损</li>
+<li>cost：显式扣 taker fee / slippage / gas / friction</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 repo 原始定义（我们真正该先复刻的部分）</h3>
+<p>repo 里最值得先照搬的，不是 DL，而是 rule baseline：</p>
+<ul>
+<li><code>funding_threshold_2bps</code></li>
+<li><code>spread_zscore_1p5</code></li>
+<li><code>combined_funding_spread</code></li>
+</ul>
+<p>其中第三条最像完整 raw alpha：</p>
+<ul>
+<li><code>funding_rate_bps &gt;= 1.0</code></li>
+<li><code>spread_zscore_72h &gt;= 1.5</code></li>
+<li><code>positive_funding_regime == 1</code></li>
+<li>方向固定：<code>short_perp_long_spot</code></li>
+</ul>
+<h3>4.2 我这轮做的短周期 portability probe</h3>
+<ul>
+<li><strong>数据源：</strong> Binance 公共 API</li>
+<li>Spot: <code>/api/v3/klines</code></li>
+<li>Perp: <code>/fapi/v1/klines</code></li>
+<li>Funding: <code>/fapi/v1/fundingRate</code></li>
+<li><strong>标的：</strong> <code>BTCUSDT</code></li>
+<li><strong>窗口：</strong> 近 <code>60d</code></li>
+<li><strong>bar：</strong> <code>5m</code> 与 <code>15m</code></li>
+<li><strong>定义：</strong></li>
+<li><code>spread_bps = (perp_close - spot_close) / spot_close * 1e4</code></li>
+<li><code>spread_z_96 = (spread_bps - rolling_mean_96) / rolling_std_96</code></li>
+<li>信号：<code>spread_z_96 &gt; 1.5</code></li>
+<li>admission：<code>funding &gt; 0</code></li>
+<li>评价：未来 <code>30m/1h/2h/4h</code> 的 spread convergence（<code>-Δspread_bps</code>，越大越好）</li>
+</ul>
+<h3>4.3 first verdict（当前）</h3>
+<ul>
+<li><strong>raw alpha 本体是成立的：</strong> 不管 <code>5m</code> 还是 <code>15m</code>，只要 perp 明显偏贵，后面大概率会有一点回归。</li>
+<li><strong>positive funding 不是 alpha 本体，而是 booster / admission：</strong> 它能把 <code>15m</code> 的 <code>4h</code> mean convergence 从 <strong><code>+1.43 bps</code></strong> 提到 <strong><code>+1.55 bps</code></strong>。</li>
+<li><strong>但短周期 standalone 还不够厚：</strong> <code>1.2~1.6 bps</code> 的 gross convergence，离 CEX 上双腿 taker round-trip 成本还差得很远。</li>
+<li><strong>所以更合理的 desk 读法是：</strong></li>
+</ul>
+<ol>
+<li>把它先当 <strong>maker-assisted / low-cost shell</strong>；</li>
+<li>或者把它放进 <strong>8h funding-window carry 策略</strong> 里做 timing，而不是硬包装成纯 <code>5m/15m</code> standalone 机器。</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li><strong>repo 自带结果当前并不赚钱。</strong> 这是好事，不是坏事：它提醒我们别把“有完整工程壳”误判成“已验证 alpha”。</li>
+<li><strong>LSTM 零交易本身就是结论。</strong> 对这种 post-cost 稀疏标签问题，复杂模型很可能先把自己交易掉没了，不一定比简单规则更可用。</li>
+<li><strong>短周期 portability probe 只证明“有回归”，不证明“扣成本后可交易”。</strong> 这两件事必须分开。</li>
+<li><strong>当前 probe 只做了 BTC。</strong> 若要升级为 desk candidate，下一步至少要看 <code>ETH/SOL</code>，以及 spot-perp 执行深度、maker fill 与 funding 结算窗附近的表现。</li>
+<li><strong>双腿策略的最大坑不是信号，而是成本和执行。</strong> 如果不重做 execution，你会在看起来“命中率很高”的 1bp 级 edge 上被手续费慢慢吃死。</li>
+</ul>
+<h2>6. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 friction ladder，而不是先调模型。</strong></li>
+</ol>
+<ul>
+<li>直接把短周期 probe 扩成 <code>2 / 4 / 6 / 8 / 10 bps</code> round-trip 成本阶梯，先回答：这条 alpha 在什么成本档位才活得下来。</li>
+</ul>
+<ol>
+<li><strong>把 <code>positive funding</code> 从“并列条件”改成分层 admission。</strong></li>
+</ol>
+<ul>
+<li>先比较：<code>spread_z only</code>、<code>spread_z + funding&gt;0</code>、<code>spread_z + funding percentile</code> 三档。</li>
+</ul>
+<ol>
+<li><strong>把 entry timing 拉到 funding window 附近。</strong></li>
+</ol>
+<ul>
+<li>例如只测 funding 前后 <code>±60m / ±120m</code> 的 spread fade，看 carry 与 convergence 能否叠加得更厚。</li>
+</ul>
+<ol>
+<li><strong>补 execution 现实。</strong></li>
+</ol>
+<ul>
+<li>至少做三档：<code>taker/taker</code>、<code>maker/taker</code>、<code>maker/maker proxy</code>；否则短周期测试意义有限。</li>
+</ul>
+<ol>
+<li><strong>扩资产，但先只扩到 majors。</strong></li>
+</ol>
+<ul>
+<li>下一轮优先 <code>ETHUSDT / SOLUSDT</code>，不要一开始就铺满长尾。</li>
+</ul>
+<ol>
+<li><strong>如果要保留 ML，只让它做排序，不让它定义 base alpha。</strong></li>
+</ol>
+<ul>
+<li>这类主题里，ML 更适合做 <code>rank / veto / sizing</code>，而不是替代 <code>perp rich spread fade</code> 本体。</li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>MengerWen (2026), _Deep Learning-Based Delta-Neutral Statistical Arbitrage on Perpetual Funding Rates_</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub repository / course-project prototype</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</a></code></li>
+</ul>
+<ol>
+<li><strong>Repo docs / reports actually used in this round</strong></li>
+</ol>
+<ul>
+<li>README: <code><a href="https://raw.githubusercontent.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/main/README.md">https://raw.githubusercontent.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/main/README.md</a></code></li>
+<li>Baselines doc: <code><a href="https://raw.githubusercontent.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/main/docs/baselines.md">https://raw.githubusercontent.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/main/docs/baselines.md</a></code></li>
+<li>Backtest doc: <code><a href="https://raw.githubusercontent.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/main/docs/backtest.md">https://raw.githubusercontent.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/main/docs/backtest.md</a></code></li>
+<li>Robustness report: <code><a href="https://raw.githubusercontent.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/main/reports/robustness/binance/btcusdt/1h/report.md">https://raw.githubusercontent.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/main/reports/robustness/binance/btcusdt/1h/report.md</a></code></li>
+<li>Robustness summary JSON: <code><a href="https://raw.githubusercontent.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/main/reports/robustness/binance/btcusdt/1h/summary.json">https://raw.githubusercontent.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/main/reports/robustness/binance/btcusdt/1h/summary.json</a></code></li>
+<li>Data-quality summary JSON: <code><a href="https://raw.githubusercontent.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/main/reports/data_quality/binance/btcusdt/1h/summary.json">https://raw.githubusercontent.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/main/reports/data_quality/binance/btcusdt/1h/summary.json</a></code></li>
+</ul>
+<ol>
+<li><strong>本地 portability artifacts</strong></li>
+</ol>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/binance_btc_spread_funding_portability_probe_summary_2026-04-11.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/binance_btc_spread_funding_portability_probe_detail_2026-04-11.csv</code></li>
+</ul>
+<h2>8. 数据源 / 公开性 / 更新频率 / 最小复现实验口径</h2>
+<ul>
+<li><strong>repo 主数据口径：</strong> Binance <code>BTCUSDT</code> hourly spot + perpetual + funding history</li>
+<li><strong>本轮 portability 数据源：</strong> Binance 公共 <code>spot/perp klines + fundingRate</code></li>
+<li><strong>公开性：</strong> 公开，无需 API key</li>
+<li><strong>更新频率：</strong></li>
+<li>K 线可到 <code>5m / 15m</code></li>
+<li>funding 每 <code>8h</code> 结算，但可作为慢变量 forward-fill 到更短 bar</li>
+<li><strong>最小可复现实验口径：</strong></li>
+<li>asset：<code>BTCUSDT</code></li>
+<li>bars：<code>5m / 15m</code></li>
+<li>signal：<code>spread_z_96 &gt; 1.5</code></li>
+<li>booster：<code>funding &gt; 0</code></li>
+<li>evaluation：future spread convergence at <code>30m / 1h / 2h / 4h</code></li>
+<li>cost：先做 <code>2~10 bps</code> friction ladder</li>
+<li>verdict：先判断它是 standalone 还是更适合做 funding-window timing / maker-assisted shell</li>
+</ul>
+</body>
+</html>

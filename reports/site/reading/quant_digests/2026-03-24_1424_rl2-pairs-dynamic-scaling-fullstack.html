@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 RL2 当黑箱神谕：这篇 2024 论文更适合先复现「cointegration spread raw alpha + dynamic sizing」完整策略骨架</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 RL2 当黑箱神谕：这篇 2024 论文更适合先复现「cointegration spread raw alpha + dynamic sizing」完整策略骨架</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-24 14:20 UTC</span>
+      <span class="pill">研究时间：2026-03-24 14:24 UTC</span>
+      <span class="pill">类型：论文 + GitHub 复现仓库 + 本地最小快检</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/dynamic-sizing/cost/1m/3m/5m/15m</span>
+      <span class="pill">证据类型：论文证据 + 工程复现仓库 + 本地最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-24_1424_rl2-pairs-dynamic-scaling-fullstack.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-24 14:24 UTC</li>
+<li>类型：论文 + GitHub 复现仓库 + 本地最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：cointegration spread 均值回归（pairs stat-arb）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/dynamic-sizing/cost/1m/3m/5m/15m</li>
+<li>证据类型：论文证据 + 工程复现仓库 + 本地最小快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>一句话先答：这篇东西的 <strong>base alpha</strong> 是“协整价差偏离后的均值回归”（不是 RL 本身）。本次选的是 Yang &amp; Malik (2024) 的 RL pairs 论文，核心价值在于把一条可独立复现的 pairs raw alpha，直接扩成 <code>entry/exit/sizing/risk/cost</code> 的完整策略骨架；并用复现仓库和本地 1m/3m/5m/15m 快检看它在我们 desk 语境下是否可落地。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>论文主线不是“神经网络预测涨跌”，而是传统 pairs（价差阈值开平）+ RL 决策层；因此可先把 raw alpha 单独落地，再决定要不要上 RL2 动态仓位。</li>
+<li>在论文样本中，传统方法年化约 8.33%，RL1（只管时机）约 9.94%，RL2（时机+仓位）约 31.53%。</li>
+<li>论文给了成本敏感性：0.01% 费率下累计收益约 Gatev 9.43%、RL1 9.88%、RL2 33.99%；到 0.05% 时 RL2 优势明显收敛（约 7.40%）。</li>
+<li>配对不是拍脑袋：先做相关+协整筛选，文中最优对为 BTCEUR-BTCGBP（1m 下相关约 0.8758、协整统计约 0.5667）。</li>
+<li>本地最小快检（<code>reports/artifacts/quant_digests/rl2_dynamic_scaling_probe_20260324/summary_by_tf.csv</code>）显示：静态仓位在净 bps/笔上更高（如 5m 约 49.96 bps/笔 vs 动态约 17.77），说明“动态仓位”更像风险预算层，不该伪装成 raw alpha 本体。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>当前 desk 正在补“可独立复现、可直接落地”的 raw alpha 池，这篇正好是 <code>pairs / stat-arb / mean reversion</code> 路线的完整模板：</p>
+<ul>
+<li>raw alpha 明确（spread 回归）；</li>
+<li>开平与阈值治理明确（OT/CT/lookback）；</li>
+<li>sizing 层可插拔（先静态，再 RL2/规则化动态）；</li>
+<li>成本层有明确 fee ladder，可直接映射到 Binance/Bybit 的短周期实盘约束。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / 市场中性 / 均值回归</li>
+<li>基础 alpha：协整配对的 spread z-score 回归</li>
+<li>regime：仅在配对相关+协整稳定窗口内启用；失稳时停机</li>
+<li>filter / veto：最小流动性、最小价差优势（edge &gt; 成本）、极端跳变 veto</li>
+<li>risk / sizing / execution overlay：静态 1x 仓位为基线；动态仓位（RL2 或规则版）按机会质量调节；统一加入手续费/滑点/最大持仓时长/止损</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：</li>
+<p>1) <code>5m/15m</code> 的 pairs spread 回归在全成本后仍有正净值； 2) 动态仓位应主要提升“收益/回撤比”，不必然提升“每笔净 bps”。</p>
+<li>一个可计算定义：</li>
+<li><code>z_t = (eps_t - mean(eps_{t-L:t})) / std(eps_{t-L:t})</code>，<code>eps_t</code> 来自滚动 OLS 残差；</li>
+<li>入场：<code>z_t &gt; OT</code> 做空 spread，<code>z_t &lt; -OT</code> 做多 spread；</li>
+<li>出场：<code>|z_t| &lt; CT</code> 或触发 time-stop / hard-stop。</li>
+<li>最小回测切口（资产 / 周期 / 样本）：</li>
+<li>资产：先 BTCUSDT-ETHUSDT（数据易得），再扩到更同质 quote 对；</li>
+<li>周期：<code>1m/3m/5m/15m</code>；</li>
+<li>样本：滚动训练+前向验证（例如按月 walk-forward）。</li>
+<li>最该先看 1~2 个指标：</li>
+<li>指标 1：成本后 <code>net bps/trade</code>（含手续费+滑点）</li>
+<li>指标 2：<code>Calmar</code> 或 <code>return / maxDD</code>（验证动态仓位是否真在“用风险换效率”）</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文窗口较短（2023Q4），样本外稳定性需要二次验证。</li>
+<li>RL2 结果对奖励函数和动作空间定义敏感，易出现“回测好看、上线退化”。</li>
+<li>交易摩擦一抬高，优势会显著衰减；必须先过费率阶梯测试。</li>
+<li>复现仓库含替代交易对（BTCUSDT/ETHUSDT）实现，不能直接等同论文原始市场。</li>
+</ul>
+<h2>6. 来源</h2>
+<p>1) Yang, H., &amp; Malik, A. (2024). *Reinforcement Learning Pair Trading: A Dynamic Scaling Approach*. Journal of Risk and Financial Management, 17(12), 555.</p>
+<ul>
+<li>DOI: <code>10.3390/jrfm17120555</code></li>
+<li>DOI URL: <code><a href="https://doi.org/10.3390/jrfm17120555">https://doi.org/10.3390/jrfm17120555</a></code></li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2407.16103">https://arxiv.org/abs/2407.16103</a></code></li>
+<li>Full-text URL: <code><a href="https://arxiv.org/html/2407.16103v2">https://arxiv.org/html/2407.16103v2</a></code></li>
+</ul>
+<p>2) FHLiang221 (GitHub, 2025). *RL-Pairs-Trading-Replication*.</p>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/FHLiang221/RL-Pairs-Trading-Replication">https://github.com/FHLiang221/RL-Pairs-Trading-Replication</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/FHLiang221/RL-Pairs-Trading-Replication">https://github.com/FHLiang221/RL-Pairs-Trading-Replication</a></code></li>
+</ul>
+<p>3) 本地最小快检（2026-03-24）</p>
+<ul>
+<li>Artifact: <code>reports/artifacts/quant_digests/rl2_dynamic_scaling_probe_20260324/summary_by_tf.csv</code></li>
+</ul>
+</body>
+</html>

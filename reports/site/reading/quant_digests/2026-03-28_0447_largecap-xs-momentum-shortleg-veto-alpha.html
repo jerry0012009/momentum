@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2025 动量论文只读成 generic risk-management：对 desk 更该先测的是「large-cap XS momentum × short-leg jump veto」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2025 动量论文只读成 generic risk-management：对 desk 更该先测的是「large-cap XS momentum × short-leg jump veto」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-28 04:50 UTC</span>
+      <span class="pill">研究时间：2026-03-28 04:47 UTC</span>
+      <span class="pill">类型：2025 *Financial Markets and Portfolio Management* 开放获取论文全文 + Binance USDⓈ-M Perpetual 公共 `15m` 最小 transfer proxy</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/momentum/large-cap/wml/jump-veto/short-leg/outlier-control/risk-managed/volatility-scaling/market-neutral/binance/perpetual/15m/5m/1m/3m/paper/external-data/cost</span>
+      <span class="pill">证据类型：论文全文证据 + Binance Futures 公共 `15m` 最小 transfer proxy</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-28_0447_largecap-xs-momentum-shortleg-veto-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-28 04:47 UTC</li>
+<li>类型：2025 *Financial Markets and Portfolio Management* 开放获取论文全文 + Binance USDⓈ-M Perpetual 公共 <code>15m</code> 最小 transfer proxy</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>横截面动量</strong>——过去一段时间更强的币，下一段时间继续更强；更弱的币继续更弱。这里的 <code>jump veto / vol scaling</code> 只是把这条 alpha 做完整的风控与仓位层。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/momentum/large-cap/wml/jump-veto/short-leg/outlier-control/risk-managed/volatility-scaling/market-neutral/binance/perpetual/15m/5m/1m/3m/paper/external-data/cost</li>
+<li>证据类型：论文全文证据 + Binance Futures 公共 <code>15m</code> 最小 transfer proxy</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是 <strong>Klaus Grobys, James W. Kolari, Davide Sandretto, Syed Jawad H. Shahzad, Janne Äijö (2025), _Cryptocurrency momentum has (not) its moments_</strong>，发表在 <strong>Financial Markets and Portfolio Management</strong>。</p>
+<p>先直接回答这篇东西的 <strong>base alpha</strong>：</p>
+<p>&gt; <strong>不是 volatility scaling，也不是“先 trim 一下尾部”这种统计修补。真正的 base alpha 是 large-cap crypto 的横截面 momentum：long 近期赢家、short 近期输家。</strong></p>
+<p>这篇 paper 真正值得我们 desk 借的，不是再抄一遍“inverse-vol 可能改善 Sharpe”，而是它把一个很 crypto-specific 的失败模式讲得很清楚：</p>
+<p>&gt; <strong>plain XS momentum 在 crypto 里不是均匀地慢慢失效，而是很容易被短腿里某一只币的极端上冲直接打穿。</strong></p>
+<p>所以对当前 desk，更值得优先复现的不是 <code>generic inverse-vol scaling</code>，而是：</p>
+<ul>
+<li><strong>先保留 base alpha：XS momentum</strong></li>
+<li><strong>再优先测试 <code>short-leg jump veto / 单币贡献上限 / outlier replacement</code></strong></li>
+<li>最后再决定要不要叠 <code>strategy-level inverse-vol</code></li>
+</ul>
+<p>也就是说，这篇东西虽然表面在讲 risk-managed momentum，但对短周期 desk 更值钱的旁支其实是：</p>
+<p>&gt; <strong>“crypto momentum 的 first failure mode 是 short-leg jump concentration。”</strong></p>
+<h2>2. 核心结论</h2>
+<h3>2.1 一句话核心结论</h3>
+<p><strong>这篇 paper 最值得 desk 记住的不是“动量可能有效”，而是：large-cap crypto XS momentum 的 alpha 本体并不完全坏，但它的盈亏分布极端依赖短腿是否踩中单币 squeeze；因此第一优先级应是先控制 short-leg jump concentration，再谈 generic vol targeting。</strong></p>
+<h3>2.2 论文是怎么做的</h3>
+<p>作者的主口径非常清楚：</p>
+<ul>
+<li>每年按年末市值选 <strong>top 30</strong> 加密货币</li>
+<li>用过去 <strong>30 个交易日</strong> 收益做 formation</li>
+<li><strong>跳过最近 1 个交易日</strong></li>
+<li>每周调仓一次，<strong>long top quintile / short bottom quintile</strong></li>
+<li>组合是 <strong>equal-weight zero-cost WML</strong></li>
+<li>样本期：<strong>2016-01 到 2023-12，共 416 个周度观测</strong></li>
+</ul>
+<h3>2.3 论文里最该记住的数字</h3>
+<p>先看 plain alpha 本体：</p>
+<ul>
+<li><strong>全样本 plain momentum：<code>0.90%/周</code></strong>，统计上不显著</li>
+<li><strong>2016-01 ~ 2020-07 子样本：<code>1.74%/周</code>，t≈<code>1.85</code></strong></li>
+<li><strong>2020-08 ~ 2023-12 子样本：<code>-0.19%/周</code></strong></li>
+</ul>
+<p>这说明两件事：</p>
+<ol>
+<li><strong>alpha 不是稳定的 always-on 印钞机</strong>；</li>
+<li>但它也不是简单“完全不存在”，而是<strong>分布非常不均匀</strong>。</li>
+</ol>
+<p>再看最关键的 crash 证据：</p>
+<ul>
+<li>论文直接写到：<strong>2020-12 momentum 组合单周崩到 <code>-255.23%</code></strong></li>
+<li>这次崩盘<strong>不是整体市场反转主导</strong>，而是<strong>short leg 里单一加密货币的极端跳涨</strong></li>
+<li><strong>去掉这一单个极端观测后，全样本均值从 <code>0.90%/周</code> 提到 <code>1.51%/周</code>，t≈<code>2.63</code></strong></li>
+<li>论文还给出一个很扎眼的数字：<strong>一个 outlier 就占了整体复利收益的 <code>37%</code></strong></li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>这条 alpha 不是“平均情况下有点抖”，而是“绝大多数时间没那么夸张，但偶尔一脚被短腿单币踢穿”。</strong></p>
+<p>这就是它比 generic overlay 更值钱的地方：它告诉我们<strong>该先盯哪一层风险源</strong>。</p>
+<h3>2.4 vol scaling 当然有帮助，但不是第一句该抄的话</h3>
+<p>论文也做了 risk-managed momentum：</p>
+<ul>
+<li>用 <strong>4/8/12 周 rolling realized vol</strong> 去缩放 WML 仓位</li>
+<li><strong>8 周窗口</strong>的 risk-managed 版本做到 <strong><code>1.86%/周</code>，t≈<code>2.09</code></strong></li>
+<li><strong>4 周窗口</strong>更高，约 <strong><code>2.40%/周</code></strong>，但统计稳定性更弱</li>
+<li>plain 组合的 kurtosis 约 <strong><code>121.81</code></strong>，risk-managed 后仍高，但降到 <strong><code>68~106</code></strong> 区间</li>
+</ul>
+<p>所以结论不是 “vol scaling 没用”，而是：</p>
+<p>&gt; <strong>它有用，但 paper 最关键的新信息不是“可以缩波动”，而是“你到底在防什么”——防的是 short-leg single-name jump。</strong></p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇东西值得进当前 digest，不是因为我们又缺一篇动量母论文，而是因为它给最近这条主线补上了一个<strong>之前几篇没讲透的实施层问题</strong>：</p>
+<ul>
+<li>前几篇 momentum 相关材料，更多在讲：</li>
+<li><code>inverse-vol</code> 会不会改善 Sharpe</li>
+<li><code>sentiment</code> 能不能当 gate</li>
+<li><code>TSMOM vs CSMOM</code> 哪个更稳</li>
+<li>这篇则进一步回答：</li>
+<li><strong>如果你真的要在 desk 上保留 XS momentum，这条 alpha 最容易死在哪？</strong></li>
+</ul>
+<p>它给出的答案很明确：</p>
+<p>&gt; <strong>先别急着把整个 WML 做成统一 target-vol 机器；先确认短腿是不是被少数“彩票币式上冲”主导风险。</strong></p>
+<p>这跟当前短周期研发直接相关，因为 <code>1m / 3m / 5m / 15m</code> 上很多 cross-sectional 策略也有同样问题：</p>
+<ul>
+<li>alpha 本体可能还在</li>
+<li>但 PnL 被少数极端单名资产的 tail move 扭曲</li>
+<li>这时候最先该测的，往往不是更复杂的 signal，而是<strong>更诚实的组合层防爆规则</strong></li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>cross-sectional / market-neutral</strong></li>
+<li>基础 alpha：<strong>过去一段时间更强的币，下一段时间继续更强；更弱的币继续更弱</strong></li>
+<li>论文主口径：</li>
+<li>formation：<strong>过去 30 个交易日收益</strong></li>
+<li>skip：<strong>最近 1 个交易日</strong></li>
+<li>holding：<strong>未来 1 周</strong></li>
+<li>组合：<strong>long winners / short losers（quintile WML）</strong></li>
+<li>sizing：<strong>equal-weight</strong></li>
+<li>risk：<strong>后续可叠 realized-vol scaling</strong></li>
+<li>对 desk 的短周期翻译：</li>
+<li><code>raw alpha</code>：短窗横截面赢家-输家排序</li>
+<li><code>portfolio layer</code>：market-neutral long-short</li>
+<li><code>first risk layer</code>：<strong>short-leg outlier veto / 单币贡献上限</strong></li>
+<li><code>second risk layer</code>：strategy-level inverse-vol / target-vol</li>
+<li><code>cost layer</code>：必须和 turnover 一起算，不能只看 gross</li>
+</ul>
+<h2>4. 这篇最值得先复用的点</h2>
+<p>如果只从这篇 paper 里偷一件东西，我不会先偷 <code>target_vol / realized_vol</code>，而会先偷这个：</p>
+<p>&gt; <strong><code>large-cap XS momentum</code> 本体 + <code>short-leg jump veto</code>。</strong></p>
+<p>原因很简单：</p>
+<ol>
+<li>这是 paper 真正指出的 crash source；</li>
+<li>它比 full-blown vol scaling 更便宜、更容易做最小实验；</li>
+<li>它更容易告诉我们：<strong>alpha 本体到底是坏了，还是只是被少数极端 short squeeze 扭曲了。</strong></li>
+</ol>
+<p>所以 desk 化顺序应该是：</p>
+<ol>
+<li><strong>先复现 plain XS momentum</strong></li>
+<li><strong>再接 short-leg jump veto / max single-name cap</strong></li>
+<li><strong>最后才接 strategy-level inverse-vol</strong></li>
+</ol>
+<h2>5. Binance Futures 公共 <code>15m</code> transfer proxy</h2>
+<p>我做了一个很轻的 <code>15m</code> proxy，不是复现论文周频结果，而是测试：</p>
+<p>&gt; <strong>paper 里最关键的“short-leg 单币跳变风险”搬到短周期 liquid majors 后，有没有一点工程价值。</strong></p>
+<h3>5.1 口径</h3>
+<ul>
+<li>数据：<strong>Binance USDⓈ-M Futures 公共 <code>15m</code> K 线</strong></li>
+<li>样本：<strong>2026-02-09 08:00 UTC ~ 2026-03-28 04:45 UTC</strong>，共 <strong>4500 根 <code>15m</code> bar / 550 次非重叠换仓</strong></li>
+<li>Universe：<strong>12 个主流 USDT perpetual</strong></li>
+<li><code>BTC ETH SOL XRP BNB DOGE ADA LINK LTC AVAX SUI DOT</code></li>
+<li>base signal：</li>
+<li>formation = <strong>过去 <code>96</code> 根 <code>15m</code></strong>（约 <code>24h</code>）收益做横截面排名</li>
+<li>holding = <strong>未来 <code>8</code> 根 <code>15m</code></strong>（约 <code>2h</code>）</li>
+<li>组合 = <strong>long top 3 / short bottom 3</strong>，等权 market-neutral</li>
+<li>额外测试层：<code>short-leg jump veto</code></li>
+<li>如果某个 loser 候选在过去 <code>24h</code> 内的<strong>最大单根 <code>15m</code> 上涨 bar</strong> 超过 <code>max(1.5%, 2×全市场近期 max-up-bar 中位数)</code></li>
+<li>就<strong>不 short 它</strong>，改 short 下一个 loser rank</li>
+</ul>
+<h3>5.2 结果</h3>
+<p>#### plain XS momentum</p>
+<ul>
+<li>gross mean：<strong><code>-5.64 bps / rebalance</code></strong></li>
+<li>gross hit-rate：<strong><code>44.2%</code></strong></li>
+<li>gross cumulative：<strong><code>-27.24%</code></strong></li>
+<li>平均 turnover：<strong><code>0.514x / rebalance</code></strong></li>
+</ul>
+<p>#### 加上 short-leg jump veto</p>
+<ul>
+<li>gross mean：<strong><code>-5.41 bps / rebalance</code></strong></li>
+<li>gross hit-rate：<strong><code>44.4%</code></strong></li>
+<li>gross cumulative：<strong><code>-26.31%</code></strong></li>
+<li>平均 turnover：<strong><code>0.512x / rebalance</code></strong></li>
+</ul>
+<p>#### 成本后（按 membership-turnover 粗略近似）</p>
+<ul>
+<li><strong>plain @ 4bps</strong>：net mean ≈ <strong><code>-7.70 bps</code></strong>，累计约 <strong><code>-35.02%</code></strong></li>
+<li><strong>veto @ 4bps</strong>：net mean ≈ <strong><code>-7.46 bps</code></strong>，累计约 <strong><code>-34.16%</code></strong></li>
+</ul>
+<p>#### veto 实际触发有多频繁</p>
+<ul>
+<li>平均每次换仓被 veto 的 short 名单数：<strong><code>0.015</code></strong></li>
+<li><strong>只有 <code>1.27%</code></strong> 的换仓真的触发过 veto</li>
+</ul>
+<h3>5.3 这组快检怎么解读</h3>
+<p>这组 proxy 传达的信息很明确：</p>
+<ol>
+<li><strong>plain short-cycle large-cap XS momentum 在这段样本里本来就不活。</strong></li>
+<li><strong>paper 那种“短腿单币大跳变”在当前这组 liquid majors + 24h/2h 口径里，并不是主要矛盾。</strong></li>
+<li>所以单独加一个 <code>short-leg jump veto</code>，<strong>只能小幅减亏，救不活 alpha 本体。</strong></li>
+</ol>
+<p>换句话说：</p>
+<p>&gt; <strong>这篇 2025 paper 的 crash-mechanism 在周频 top-30 broader universe 里很重要，但直接压到 <code>15m</code> 的 liquid-major perp 口袋后，并不会自动变成主导矛盾。</strong></p>
+<p>这反而是有用结论：说明下一轮不该继续在 <strong>“大盘 majors 的 15m WML + 轻量 veto”</strong> 上磨，而应去更接近论文风险源的位置找 pocket。</p>
+<h2>6. 风险与保留意见</h2>
+<ol>
+<li><strong>论文是周频 top-30 市值样本，不是 <code>15m</code> major-perp recipe。</strong></li>
+<p>所以不能把 paper 的显著性直接宣传成短周期已验证。</p>
+<li><strong>当前 proxy universe 太“蓝筹化”。</strong></li>
+<p>论文里那种单币短腿 tail risk，更可能出现在更广、更躁、更像 lottery 的币组里，而不是只有 12 个主流 perp。</p>
+<li><strong>当前 veto 规则是 desk 化启发，不是论文原文规则。</strong></li>
+<p>它回答的是“paper 识别出的 failure mode 能否移植”，不是“是否精确复现原论文”。</p>
+<li><strong>样本期只有近 7 周左右。</strong></li>
+<p>对 crash 机制来说，这其实很短；缺少真正疯狂的 alt squeeze 阶段，可能低估这一层风险的重要性。</p>
+</ol>
+<h2>7. 下一步怎么测</h2>
+<h3>7.1 先把 universe 放宽，而不是继续在 majors 上抠小数点</h3>
+<ul>
+<li>从 <strong>12 个大币</strong> 扩到 <strong>25~40 个可交易 perp</strong></li>
+<li>分层比较：<code>top-liquidity majors</code> vs <code>mid-cap liquid alts</code></li>
+<li>目标是确认：<strong>short-leg jump concentration 到底出现在哪一层</strong></li>
+</ul>
+<h3>7.2 把“短腿防爆”拆成三种规则并排跑</h3>
+<p>不要只测一个 veto。至少并排比较：</p>
+<ol>
+<li><strong>short-leg jump veto</strong>（直接剔除）</li>
+<li><strong>single-name weight cap</strong>（如 loser leg 单币不超过 leg notional 的 <code>25~33%</code>）</li>
+<li><strong>strategy-level inverse-vol</strong>（对整个 WML 缩放）</li>
+</ol>
+<p>要回答的不是“哪个听起来更合理”，而是： &gt; <strong>哪个在成本后最能改善 left tail，而不是只让 gross 更平滑。</strong></p>
+<h3>7.3 直接记录 short-leg 集中度诊断项</h3>
+<p>下一轮回测别只看总收益，要额外存：</p>
+<ul>
+<li><code>top short contributor share</code></li>
+<li><code>largest single-name loss per rebalance</code></li>
+<li><code>short-leg max intrabar up-move</code></li>
+<li><code>leg concentration before/after veto</code></li>
+</ul>
+<p>如果这些诊断项不极端，那就说明这篇 paper 的关键 failure mode <strong>不在当前 pocket</strong>。</p>
+<h3>7.4 再决定要不要做更慢一点的 short-cycle 口径</h3>
+<p>优先测：</p>
+<ul>
+<li>formation：<code>24h / 48h / 72h</code></li>
+<li>holding：<code>2h / 4h / 8h</code></li>
+<li>rebalance：非重叠 + 成本梯度 <code>2/4/6/8 bps</code></li>
+</ul>
+<p>因为如果 crash source 真来自更慢的拥挤累积，<code>8h/24h</code> 这种太快的持有期本来就不一定能看到。</p>
+<h3>7.5 只有当 plain alpha 先活，再上第二层 risk-managed</h3>
+<p>当前更诚实的顺序仍然是：</p>
+<ol>
+<li>找到 plain WML 尚存 edge 的 pocket；</li>
+<li>再看 <code>jump veto</code> 是否改善左尾；</li>
+<li>最后才看 <code>inverse-vol</code> 是否值得叠。</li>
+</ol>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>Grobys, K., Kolari, J. W., Sandretto, D., Shahzad, S. J. H., &amp; Äijö, J. (2025). _Cryptocurrency momentum has (not) its moments_. Financial Markets and Portfolio Management, 39, 443–476.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.1007/s11408-025-00474-9</code></li>
+<li>Readable URL：<code><a href="https://link.springer.com/article/10.1007/s11408-025-00474-9">https://link.springer.com/article/10.1007/s11408-025-00474-9</a></code></li>
+<li>DOI URL：<code><a href="https://doi.org/10.1007/s11408-025-00474-9">https://doi.org/10.1007/s11408-025-00474-9</a></code></li>
+<li>Open-access full text：Springer article page / PDF</li>
+<li>Repo URL：未见官方 repo</li>
+</ul>
+<ol>
+<li><strong>方法母体</strong>：Barroso, P., &amp; Santa-Clara, P. (2015). _Momentum has its moments_. Journal of Financial Economics.</li>
+</ol>
+<h2>9. 本地产物</h2>
+<ul>
+<li>Digest：<code>research/quant_digests/2026-03-28_0447_largecap-xs-momentum-shortleg-veto-alpha.md</code></li>
+<li>Proxy artifact：<code>reports/artifacts/quant_digests/largecap_xs_momentum_shortleg_veto_20260328/</code></li>
+<li>关键文件：</li>
+<li><code>summary.json</code></li>
+<li><code>timeseries.csv</code></li>
+</ul>
+</body>
+</html>

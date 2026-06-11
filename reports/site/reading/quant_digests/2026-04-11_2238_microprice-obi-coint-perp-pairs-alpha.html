@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 HFT repo 只读成 C++ 低延迟引擎：对 short-cycle desk，更该先测的是「cointegrated perp spread fade × microprice/OBI confirm」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 HFT repo 只读成 C++ 低延迟引擎：对 short-cycle desk，更该先测的是「cointegrated perp spread fade × microprice/OBI confirm」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-11 22:36 UTC</span>
+      <span class="pill">研究时间：2026-04-11 22:38 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `analyzer.py` + `optimizer.py` + `fix_strategies.py` + `strategies.json` + `main.cpp`）+ Binance USDⓈ-M 公共 `1m` portability probe</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/microprice/order-book-imbalance/obi/binance-perpetual/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：源码审计 + 公共 1m portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-11_2238_microprice-obi-coint-perp-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-11 22:38 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>analyzer.py</code> + <code>optimizer.py</code> + <code>fix_strategies.py</code> + <code>strategies.json</code> + <code>main.cpp</code>）+ Binance USDⓈ-M 公共 <code>1m</code> portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一交易所内、相关性高且协整的 perp 对，其 log spread 偏离 rolling 均值到极端 z-score 后，短周期内更容易向均值回归；microprice 与顶级盘口 OBI 不是 alpha 本体，而是用来确认“这次回归不是坏报价/单腿继续挤压”的执行确认层。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/microprice/order-book-imbalance/obi/binance-perpetual/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：源码审计 + 公共 1m portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <code>SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model</code>。表面上它最显眼的是：</p>
+<ul>
+<li>C++20 执行层</li>
+<li><code>!bookTicker</code> 实时流</li>
+<li>AWS Tokyo colocated 的低延迟叙事</li>
+<li><code>~42us</code> 内部决策、<code>4~7ms</code> 网络 RTT 这类工程指标</li>
+</ul>
+<p>但对我们 desk 真正更值钱的，不是“又一个低延迟引擎”，而是它把一条 <strong>crypto perp pairs raw alpha</strong> 写成了比较完整的研究到执行链：</p>
+<ol>
+<li><code>data_loader.py</code>：抓 Binance USDⓈ-M top-50 liquid assets 的 <code>1m</code> K 线；</li>
+<li><code>analyzer.py</code>：先做相关性筛选，再做 OLS hedge ratio + ADF，找协整 pair；</li>
+<li><code>optimizer.py</code>：对 rolling window / entry z / exit z / stop z 做网格；</li>
+<li><code>main.cpp</code>：用实时 microprice 和顶级盘口量差，决定是否执行 spread fade。</li>
+</ol>
+<p>所以这次真正可迁移的主题，不是“C++ 快”，而是：</p>
+<p>&gt; <strong>cointegrated perp spread mean reversion 这条 raw alpha，能不能在 <code>1m/3m/5m/15m</code> 上，加上一层 honest 的 microprice/OBI confirmation 后，变成更可执行的短周期相对价值壳。</strong></p>
+<h2>2. 核心结论</h2>
+<h3>2.1 一句话结论</h3>
+<p>这份 repo 最值得 desk 拿走的，不是 HFT 外壳，而是：</p>
+<p>&gt; <strong>用协整筛出来的 perp 对做 spread fade，把 top-of-book microprice 与 OBI 当作 entry confirmation / veto。</strong></p>
+<p>这仍然是 <strong>raw alpha</strong>，不是 filter 伪装成 alpha：</p>
+<ul>
+<li>alpha 本体是 <strong>spread mean reversion</strong>；</li>
+<li>microprice / OBI 只是告诉你这次回归是否更像“能下手”的回归。</li>
+</ul>
+<h3>2.2 为什么这不是又一篇普通 pairs 教材</h3>
+<p>我们最近已经补了不少 pairs / stat-arb 线，但这份 repo 多了一层 <strong>short-cycle 可执行性</strong>：</p>
+<ul>
+<li>不是只在 bar close 上看 z-score；</li>
+<li>而是把 <code>!bookTicker</code> 里的 <strong>microprice</strong> 和 <strong>盘口失衡</strong> 接到 runtime；</li>
+<li>让 raw alpha 从“回测能看见”往“实盘能不能少踩几次单腿继续挤压”推进一步。</li>
+</ul>
+<p>这点对 <code>1m/3m/5m</code> 尤其重要，因为很多 pair spread 在 candle close 上像会回归，但一到真实盘口就会发现：</p>
+<ul>
+<li>一腿在被持续扫单；</li>
+<li>另一腿只是慢半拍；</li>
+<li>你看到的 spread 扩张，其实是单边压力还没结束。</li>
+</ul>
+<p>这时，top-of-book imbalance 才真的开始有意义。</p>
+<h2>3. 源码里最该拿走的 3 个零件</h2>
+<h3>3.1 pair formation：它不是盲配，而是先做相关性 + 协整 + half-life 约束</h3>
+<p><code>analyzer.py</code> 的主流程是：</p>
+<ul>
+<li>top-50 liquid USDT-M assets</li>
+<li>先在 <code>1h</code> 重采样数据上做相关性筛选（<code>MIN_CORRELATION = 0.85</code>）</li>
+<li>对候选 pair 做 OLS hedge ratio</li>
+<li>对 spread 做 ADF（<code>p &lt; 0.05</code>）</li>
+<li>再加 half-life 过滤</li>
+</ul>
+<p>对 short-cycle desk 来说，最可迁移的不是“协整”三个字，而是它把 pair formation 明确成：</p>
+<p>&gt; <strong>先让 pair 至少像一个会回来的东西，再谈入场和执行。</strong></p>
+<h3>3.2 runtime 信号：spread 用 microprice，confirmation 用 OBI</h3>
+<p><code>main.cpp</code> 里不是直接拿 last trade price，而是读取 <code>!bookTicker</code>：</p>
+<ul>
+<li><code>p1 / p2</code> 实际用的是 top-of-book microprice proxy</li>
+<li>同时读取 bid/ask volume</li>
+<li><code>obi = (bid_vol - ask_vol) / (bid_vol + ask_vol)</code></li>
+</ul>
+<p>runtime 核心就是：</p>
+<ul>
+<li>spread 极端（<code>|z| &gt; 2</code>）才考虑动手；</li>
+<li>两腿盘口失衡别明显反着你；</li>
+<li>回到 exit band 再平。</li>
+</ul>
+<p>这比“只要 z-score 到了就进”诚实得多。对 short-cycle 而言，这个 confirmation 层比再多加一个技术指标更有用，因为它直接碰到 <strong>执行时刻的订单簿现实</strong>。</p>
+<h3>3.3 执行外壳：它天然适合 market-neutral / relative-value sleeve</h3>
+<p>repo 的执行是双腿同步下单、固定 notional、实时风控暂停。这意味着它天然服务于：</p>
+<ul>
+<li>pairs / stat-arb sleeve</li>
+<li>relative-value intraday book</li>
+<li>可与现有 directional alpha 解耦的 market-neutral 子仓</li>
+</ul>
+<p>这正好补我们当前素材池里一块缺口：</p>
+<p>&gt; <strong>pairs alpha 不缺，缺的是更接近真实盘口的短周期执行确认层。</strong></p>
+<h2>4. 但源码里也有 3 个不能忽略的硬伤</h2>
+<p>这份 repo 不能直接照抄上线，至少有 3 个地方必须先拆开看。</p>
+<h3>4.1 half-life 注释和实际单位对不上</h3>
+<p><code>analyzer.py</code> 先把数据 <code>resample(&#x27;1h&#x27;)</code>，然后算 half-life，并设：</p>
+<ul>
+<li><code>MAX_HALF_LIFE = 240  # Max 4 hours to revert</code></li>
+</ul>
+<p>但这里 half-life 是在 <strong>小时频率</strong> 上算的；<code>240</code> 更像 <strong>240 小时</strong>，不是 4 小时。它后面只是把结果乘 <code>60</code> 打印成分钟。</p>
+<p>也就是说：</p>
+<ul>
+<li>注释写的是“4 小时内回归”；</li>
+<li>实际筛选更接近“10 天内回归都能进”。</li>
+</ul>
+<p>这会把 pair universe 放得比 README 读起来宽很多。</p>
+<h3>4.2 optimizer 和 runtime 实际没真正接上</h3>
+<p><code>optimizer.py</code> 会产出：</p>
+<ul>
+<li><code>window_minutes</code></li>
+<li><code>entry_z</code></li>
+<li><code>exit_z</code></li>
+<li><code>stop_z</code></li>
+</ul>
+<p>但 <code>main.cpp</code> 真正运行时是硬编码：</p>
+<ul>
+<li><code>Z_ENTRY = 2.0</code></li>
+<li><code>Z_EXIT = 0.5</code></li>
+<li><code>BET_SIZE = 1000.0</code></li>
+</ul>
+<p>并且 runtime 读取 <code>strategies.json</code> 时实际依赖的是：</p>
+<ul>
+<li><code>leg1</code></li>
+<li><code>leg2</code></li>
+<li><code>hedge_ratio</code></li>
+<li><code>mean</code></li>
+<li><code>std_dev</code></li>
+</ul>
+<p>这也是为什么 repo 额外放了一个 <code>fix_strategies.py</code>：它重新补 <code>mean/std_dev</code>。换句话说：</p>
+<p>&gt; <strong>research layer 的参数优化，目前并没有被 honest 地带进 live runtime。</strong></p>
+<p>所以我们应该把它当成：</p>
+<ul>
+<li>一套有用的 research skeleton；</li>
+<li>不是一套已经 fully wired 的完整策略。</li>
+</ul>
+<h3>4.3 OBI 阈值现在更像“宽松 veto”，还不像“强确认”</h3>
+<p>当前 <code>main.cpp</code> 里的 OBI 阈值：</p>
+<ul>
+<li><code>OBI_LONG_THRESHOLD = -0.2</code></li>
+<li><code>OBI_SHORT_THRESHOLD = 0.2</code></li>
+</ul>
+<p>但实际入场条件更像：</p>
+<ul>
+<li>对 spread 过高要做空 leg1 / 做多 leg2 时，只要求 <code>obi1 &lt; 0.2</code> 且 <code>obi2 &gt; -0.2</code></li>
+<li>对 spread 过低时反向入场，也只是镜像条件</li>
+</ul>
+<p>这其实很宽：</p>
+<ul>
+<li>它能排掉极端反向盘口；</li>
+<li>但还称不上“只有当 OBI 真支持回归才动手”。</li>
+</ul>
+<p>对我们 desk 来说，更 honest 的写法应该是：</p>
+<ul>
+<li>要么做 <strong>sign-aligned</strong> 硬确认；</li>
+<li>要么把 OBI 做成分层 score，而不是几乎处处放行的门槛。</li>
+</ul>
+<h2>5. 为什么这轮值得写，而不是继续补别的 funding / basis 题</h2>
+<p>因为它直接服务于当前阶段更该补的那一类：</p>
+<ul>
+<li><strong>raw alpha 素材池里的 pairs / stat-arb / relative-value</strong>；</li>
+<li>而且是能往 <code>1m/3m/5m</code> execution reality 再走一步的那种。</li>
+</ul>
+<p>如果继续补 funding / basis，我们当然也能找到题；但那条线最近已经比较密。相反，这个 repo 给的是另一块更缺的东西：</p>
+<p>&gt; <strong>pair spread fade 不只是 formation / z-score / hedge ratio，真正会卡住 short-cycle 的，是“入场那一刻订单簿是否站在你这边”。</strong></p>
+<p>这就是它比继续补一个 generic pairs 教材更值得的地方。</p>
+<h2>5.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>pairs / stat-arb / relative-value / market-neutral-ish / short-horizon mean reversion</strong></li>
+<li>基础 alpha：<strong>协整 perp 对的 spread 极端偏离后向均值回归</strong></li>
+<li>regime：更适合横盘到弱趋势、pair relationship 尚未结构性断裂、两腿都仍有正常盘口深度的时段</li>
+<li>filter / veto：</li>
+<li>先做 pair formation（相关性 + ADF + half-life）</li>
+<li><code>|z|</code> 未达阈值不做</li>
+<li>OBI / microprice 若明显反着回归腿，不做</li>
+<li>一腿盘口陈旧 / 薄书 / 单腿交易失败，不做</li>
+<li>risk / sizing / execution overlay：</li>
+<li>双腿 notional 配平</li>
+<li>spread stop + time stop + pair-breakdown veto</li>
+<li>maker/taker 组合分开做成本预算</li>
+<li>单 pair 同时只允许一笔 active spread</li>
+</ul>
+<h2>6. 本地 portability probe：这条线在 Binance 公共 <code>1m</code> 上有 first verdict 吗？</h2>
+<p>我用 Binance USDⓈ-M 公共 <code>1m</code> K 线，对 repo <code>strategies.json</code> 里几组 pair 做了一个最小快检。</p>
+<h3>6.1 口径</h3>
+<ul>
+<li>数据：Binance USDⓈ-M public klines</li>
+<li>窗口：最近 <code>14</code> 天 <code>1m</code></li>
+<li>spread 定义：<code>log(P1) - hedge_ratio * log(P2)</code></li>
+<li><code>z-score</code>：rolling <code>60m</code></li>
+<li>事件：<code>|z| &gt;= 2</code></li>
+<li>指标：未来 <code>5m / 15m / 60m</code> 的 <code>signed spread-close bps</code></li>
+<li>正值 = 朝均值回归</li>
+<li>注意：<strong>这里只是 close-proxy</strong>，没有历史 top-of-book OBI，因此它只能验证“price-level 上有没有 first-pass mean reversion”，不能直接当 executable PnL</li>
+</ul>
+<h3>6.2 结果先看一句话</h3>
+<ul>
+<li><strong>AXSUSDT/FILUSDT</strong> 的 close-proxy 边最大，但 <code>AXSUSDT</code> 当前 24h quote volume 只有约 <code>7.48M</code>，更像“统计上好看、执行上要小心”的候选。</li>
+<li><strong>ADAUSDT/HYPEUSDT</strong> 更像当前更值得优先推进的 live candidate：两腿 24h quote volume 约 <code>165M / 220M</code>，流动性体感比 <code>AXS/FIL</code> 健康得多。</li>
+</ul>
+<h3>6.3 ADAUSDT/HYPEUSDT 的 first-pass 数字</h3>
+<p>本地 artifact：<code>reports/artifacts/literature/statarb_hft_repo_portability_summary_2026-04-11.csv</code></p>
+<p>对 <code>ADAUSDT/HYPEUSDT</code>：</p>
+<ul>
+<li>hedge ratio：<code>0.01967848</code></li>
+<li>样本行数：<code>20160</code></li>
+<li><code>|z| &gt;= 2</code> 事件数：<code>2476</code></li>
+<li>事件占比：<code>12.28%</code></li>
+<li>当前 24h quote volume：</li>
+<li><code>ADAUSDT ≈ 165.45M</code></li>
+<li><code>HYPEUSDT ≈ 219.88M</code></li>
+</ul>
+<p>未来 signed spread-close：</p>
+<ul>
+<li><code>5m</code>: <strong>+2.67 bps</strong>，胜率 <strong>59.6%</strong></li>
+<li><code>15m</code>: <strong>+5.95 bps</strong>，胜率 <strong>60.6%</strong></li>
+<li><code>60m</code>: <strong>+5.48 bps</strong>，胜率 <strong>59.1%</strong></li>
+</ul>
+<p>这组数字说明两件事：</p>
+<ol>
+<li><strong>spread fade 本体没有死</strong>——至少在公共 <code>1m</code> close-proxy 上，极端 z-score 后未来 <code>15m</code> 的回归倾向仍然存在；</li>
+<li>但它的 edge 也没有大到可以无视成本——若双腿都 taker，很多时候未必够厚；这反而正好解释了 repo 为什么要往 microprice / OBI / 低延迟执行去补壳。</li>
+</ol>
+<h3>6.4 为什么我不把 AXSUSDT/FILUSDT 直接写成主 pair</h3>
+<p><code>AXSUSDT/FILUSDT</code> 在同一份 summary 里，<code>15m</code> mean spread-close 约 <strong>+10.48 bps</strong>，明显更亮眼；但：</p>
+<ul>
+<li><code>AXSUSDT</code> 当前 24h quote volume 约 <strong>7.48M</strong>；</li>
+<li>比 <code>ADA/HYPE</code> 薄不少；</li>
+<li>真正进 executable BBO 回测后，滑点与 fill-risk 更可能把优势吃掉。</li>
+</ul>
+<p>所以更合理的读法不是“最大 close-proxy edge 就是最佳 live candidate”，而是：</p>
+<p>&gt; <strong>先用 close-proxy 找可能有回归生命迹象的 pair，再按流动性把它们分成“先上 BBO 回放”和“先放观察名单”。</strong></p>
+<h2>7. 可复刻的最小实验</h2>
+<h3>7.1 数据源 / 公开性 / 更新频率</h3>
+<ul>
+<li>Binance USDⓈ-M klines：公开 REST，可拿 <code>1m</code></li>
+<li>Binance <code>!bookTicker</code>：公开 websocket，可拿准实时 top-of-book</li>
+<li>不需要专有数据就能做第一轮 replication</li>
+</ul>
+<h3>7.2 最小研究假设</h3>
+<p>&gt; 当 Binance perp pair 的 rolling spread z-score 达到 <code>|z| &gt;= 2</code>，且订单簿 microprice / OBI 不反着均值回归方向时，未来 <code>5m~15m</code> 的 spread-close 更可能为正；若再加 maker/taker 成本后仍为正，这条 raw alpha 才算真正过第一关。</p>
+<h3>7.3 最小回测切口</h3>
+<p>第一轮别贪多，直接做：</p>
+<ul>
+<li>universe：先从 repo summary 里流动性更健康的 <code>ADA/HYPE</code>, <code>DOGE/HYPE</code>, <code>LINK/SOL</code> 开始</li>
+<li>formation：滚动 <code>14d</code> 或 <code>30d</code> 重估 hedge ratio + cointegration</li>
+<li>signal：<code>60m</code> rolling z-score，先试 <code>1.5 / 2.0 / 2.5</code></li>
+<li>confirm：</li>
+<li>short leg <code>OBI &lt;= -0.15</code></li>
+<li>long leg <code>OBI &gt;= +0.15</code></li>
+<li>或至少做三档 score 分层</li>
+<li>exit：<code>|z| &lt;= 0.5</code>、<code>15m/30m time stop</code>、<code>spread stop</code></li>
+<li>成本：至少做 <code>maker/maker</code>、<code>maker/taker</code>、<code>taker/taker</code> 三档</li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<p>下一步我不会先扩 universe，而是先做 4 件最值钱的事：</p>
+<ol>
+<li><strong>把 close-proxy 升级成 live BBO event log</strong></li>
+</ol>
+<ul>
+<li>连 Binance <code>!bookTicker</code></li>
+<li>记录 spread、microprice、bid/ask size、OBI、触发时刻</li>
+<li>先做 paper fill，不急着真钱撮合</li>
+</ul>
+<ol>
+<li><strong>把 formation 和 runtime honest 接线</strong></li>
+</ol>
+<ul>
+<li>不再让 optimizer 和 live engine 脱节</li>
+<li>把 <code>window / entry_z / exit_z / stop_z</code> 真正写入 runtime</li>
+<li>同时修 half-life 单位混乱问题</li>
+</ul>
+<ol>
+<li><strong>把 OBI 从宽松 veto 改成真正 confirmation</strong></li>
+</ol>
+<ul>
+<li>不是“别太反着就行”</li>
+<li>而是要求两腿盘口压力对回归方向有明确支持，或至少做 score ranking</li>
+</ul>
+<ol>
+<li><strong>先用流动性把 pair 分层</strong></li>
+</ol>
+<ul>
+<li><code>AXS/FIL</code> 这种 close-proxy 更亮但偏薄的，先放观察名单</li>
+<li><code>ADA/HYPE</code> 这种 edge 没那么夸张但更厚的，优先做 executable-BBO 回放</li>
+</ul>
+<p>如果 <code>ADA/HYPE</code> 这类 pair 在 <code>maker/taker</code> 成本下，<code>15m</code> 仍能保留正的净 spread-close，那这条线就值得进入 clean replication 队列；如果只在 close-proxy 下好看，一上 BBO 就塌，那它更适合降级成 <strong>pairs sleeve 的 entry confirmation / veto layer</strong>，而不是独立交易壳。</p>
+<h2>9. 风险与保留意见</h2>
+<ul>
+<li>这份 repo 的核心价值是 <strong>research skeleton + execution idea</strong>，不是已经 fully productionized 的策略。</li>
+<li>当前 public probe 没有历史 OBI，只验证了 price-level 上的 mean reversion 倾向；<strong>不能把这些数字直接解释成实盘净值</strong>。</li>
+<li>pairs alpha 最大的风险不是“z-score 不回”，而是 <strong>pair relationship 坏掉、单腿流动性塌陷、或一腿继续被挤压</strong>。</li>
+<li>如果 microprice / OBI confirmation 做不好，这条线很容易从“均值回归”退化成“接刀子”。</li>
+<li>这条线最值得的地方，不是保证赚钱，而是它把 <strong>pair formation -&gt; spread signal -&gt; order-book confirmation -&gt; 双腿执行</strong> 这条链路写得足够清楚，值得我们拿来做 honest replication。</li>
+</ul>
+<h2>10. 来源</h2>
+<h3>主来源（repo）</h3>
+<ul>
+<li>Samarth Chaudhary. (2026). *Crypto Stat-Arb HFT Engine*. GitHub repository.</li>
+<li>Venue / DOI：GitHub repository / 无 DOI</li>
+<li>Repo URL：<code><a href="https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model">https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model</a></code></li>
+<li>README：<code><a href="https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/README.md">https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/README.md</a></code></li>
+<li>Pair discovery：<code><a href="https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/analyzer.py">https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/analyzer.py</a></code></li>
+<li>Historical loader：<code><a href="https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/data_loader.py">https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/data_loader.py</a></code></li>
+<li>Parameter optimizer：<code><a href="https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/optimizer.py">https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/optimizer.py</a></code></li>
+<li>Strategy repair script：<code><a href="https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/fix_strategies.py">https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/fix_strategies.py</a></code></li>
+<li>Runtime engine：<code><a href="https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/main.cpp">https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/main.cpp</a></code></li>
+<li>Strategy config sample：<code><a href="https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/strategies.json">https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/strategies.json</a></code></li>
+</ul>
+<h3>本地 portability artifacts</h3>
+<ul>
+<li>Summary：<code>/root/clawd/jerry/momentum/reports/artifacts/literature/statarb_hft_repo_portability_summary_2026-04-11.csv</code></li>
+<li>ADA/HYPE detail：<code>/root/clawd/jerry/momentum/reports/artifacts/literature/statarb_hft_repo_portability_detail_adausdt_hypeusdt_2026-04-11.csv</code></li>
+</ul>
+<h3>本地 probe 说明</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M public <code>1m</code> klines + <code>24hr ticker</code></li>
+<li>作用：验证 repo 给出的 pair shell 在公开可得数据上，是否至少存在 first-pass spread-close 倾向</li>
+<li>不包含：历史 top-of-book OBI、真实成交回放、maker/taker fill model</li>
+</ul>
+</body>
+</html>

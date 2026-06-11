@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 order-book imbalance 仓库只读成“高频转低频”概念：对 short-cycle desk，更该先测的是「5m 下跌 + 买压失衡 → 1h 反弹」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 order-book imbalance 仓库只读成“高频转低频”概念：对 short-cycle desk，更该先测的是「5m 下跌 + 买压失衡 → 1h 反弹」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 17:53 UTC</span>
+      <span class="pill">研究时间：2026-04-04 17:48 UTC</span>
+      <span class="pill">类型：2025 GitHub repo source audit（`README.md` + `006_Orderbook Imbalance Pattern based Cryptocurrencies Screening Trading Strategy.py`）+ repo 内附参考研报 + Binance Spot 公共 `5m` 最小快检</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/microstructure/order-book-imbalance/pressure-ratio/absorption/downbar-reversal/single-asset/cross-asset/binance-spot/5m/15m/1m/3m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 规则证据 + 公共 API proxy 快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_1748_orderbook-pressure-downbar-reversal-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 17:48 UTC</li>
+<li>类型：2025 GitHub repo source audit（<code>README.md</code> + <code>006_Orderbook Imbalance Pattern based Cryptocurrencies Screening Trading Strategy.py</code>）+ repo 内附参考研报 + Binance Spot 公共 <code>5m</code> 最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>短周期下跌 bar 出现“买压失衡（absorption）”后，后续 <code>30~60m</code> 出现均值回归反弹。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/mean-reversion/microstructure/order-book-imbalance/pressure-ratio/absorption/downbar-reversal/single-asset/cross-asset/binance-spot/5m/15m/1m/3m/repo/public-data/cost/risk</li>
+<li>证据类型：repo 规则证据 + 公共 API proxy 快检</li>
+</ul>
+<h2>1) 先回答一句：base alpha 是什么？</h2>
+<p><strong>base alpha = 下跌过程中若订单簿买压（或其可观测 proxy）异常偏强，卖压可能被吸收，价格在后续 <code>6~12</code> 根 <code>5m</code> 出现反弹。</strong></p>
+<p>这不是 filter/overlay；这是可直接交易的 <strong>mean-reversion raw alpha</strong>。</p>
+<p>---</p>
+<h2>2) 为什么这轮选它（且不算重复）</h2>
+<p>最近 digest 池里虽然已有很多 OBI/flow 主题，但多数是：</p>
+<ul>
+<li>directional continuation（顺势）</li>
+<li>maker alpha</li>
+<li>或信号 admission（高置信阈值）</li>
+</ul>
+<p>这次选题是另一条独立线：<strong>“下跌 + 买压失衡”的反转型 alpha</strong>，并且可以写成完整策略（entry/exit/sizing/risk/cost），可直接补 raw alpha 素材池。</p>
+<p>---</p>
+<h2>3) 这份 repo 真正可迁移的部分</h2>
+<p>来源仓库：</p>
+<ul>
+<li><code>davelamtrader/Strategy-Backtest-Orderbook-Imbalance-Pattern-based-Cryptocurrencies-Screening-Trading-Strategy</code>（2025）</li>
+</ul>
+<p>代码核心思路（可读到的骨架）：</p>
+<ol>
+<li>从高频订单簿/成交聚合出买卖压力；</li>
+<li>计算 <code>pressure_ratio = log(P_buy) - log(P_sell)</code>；</li>
+<li>当 <code>pressure_ratio</code> 超过滚动阈值（如 <code>mean + 1.96*std</code>）且价格下跌时触发；</li>
+<li>用固定持有期（原脚本示例 <code>exit_after=10</code>）管理退出；</li>
+<li>显式加入交易费、止损。</li>
+</ol>
+<p>&gt; 对我们 desk 的关键迁移： &gt; - 不是照搬其日频实现，而是把同一逻辑压缩到 <code>5m/15m</code>； &gt; - 用公开可得的 taker-flow proxy 先做最小实验，再决定是否上 L2 深度历史做正式版。</p>
+<p>---</p>
+<h2>4) 最小可复现实验（public data）</h2>
+<h3>4.1 数据源与公开性</h3>
+<ul>
+<li>数据源：Binance Spot Kline API（公开、免 key）</li>
+<li><code><a href="https://api.binance.com/api/v3/klines">https://api.binance.com/api/v3/klines</a></code></li>
+<li>字段：<code>quote_volume</code>, <code>taker_buy_quote_volume</code>（可做买压 proxy）</li>
+<li>更新频率：按 bar 更新（本实验使用 <code>5m</code>）</li>
+</ul>
+<h3>4.2 实验口径（本地已跑）</h3>
+<ul>
+<li>标的：<code>BTC, ETH, SOL, BNB, XRP, DOGE, ADA, LINK</code></li>
+<li>样本：每币约 <code>6000</code> 根 <code>5m</code> bar（约 21 天）</li>
+<li>入场条件（proxy 版）：</li>
+<li>当前 <code>5m</code> 收益 <code>ret1 &lt;= -0.2%</code></li>
+<li><code>buy_share_z &gt;= 1.0</code></li>
+<li>其中 <code>buy_share = taker_buy_quote / quote_volume</code></li>
+<li><code>buy_share_z</code> 基于滚动 <code>48</code> 根（约 4 小时）</li>
+<li>出场：固定 <code>h=3/6/12</code> 根 <code>5m</code>（即 <code>15m/30m/60m</code>）</li>
+</ul>
+<h3>4.3 关键结果（pooled）</h3>
+<p>来自： <code>reports/artifacts/quant_digests/orderbook_pressure_buyshare_proxy_20260404/pooled_horizon_summary.csv</code></p>
+<ul>
+<li><code>h=12</code>（60m）：<code>n=101</code>, 平均收益 <code>+16.82 bps</code>, 胜率 <code>52.48%</code></li>
+<li><code>h=6</code>（30m）：<code>n=101</code>, 平均收益 <code>+7.65 bps</code>, 胜率 <code>53.47%</code></li>
+<li>与仅看“下跌不加买压”相比（<code>h=12</code>）：</li>
+<li>down-only 平均收益 <code>+1.74 bps</code></li>
+<li>加上 buy-pressure 条件后 <code>+16.82 bps</code></li>
+</ul>
+<p>成本敏感性（round-trip）：</p>
+<ul>
+<li>若按 <code>8 bps</code>，<code>h=12</code> 仍约 <code>+8.82 bps</code>（proxy 层面可过线）</li>
+<li><code>h=6</code> 接近盈亏平衡（<code>-0.35 bps</code>）</li>
+<li><code>h=3</code> 仍不够（<code>-6.01 bps</code>）</li>
+</ul>
+<p>&gt; 解释：这条线更像 <strong>“慢半拍吸收反弹”</strong>，不适合极短持有；更偏 <code>30~60m</code> 的反转兑现。</p>
+<p>---</p>
+<h2>5) 如何落成完整策略（entry/exit/sizing/risk/cost）</h2>
+<h3>Entry</h3>
+<p>在 <code>5m</code> 触发：</p>
+<ol>
+<li>价格冲击：<code>ret1 &lt;= -x</code>（建议从 <code>0.2%~0.4%</code> 网格）</li>
+<li>买压失衡：<code>buy_share_z &gt;= z*</code>（建议 <code>0.8~1.5</code> 网格）</li>
+<li>流动性门槛：<code>quote_volume</code> 不低于滚动分位（避免冷门噪声）</li>
+</ol>
+<h3>Exit</h3>
+<ul>
+<li>主方案：固定时间退出（<code>6</code> 或 <code>12</code> 根 <code>5m</code>）</li>
+<li>辅助方案：若反向压力出现（<code>buy_share_z</code> 回落 + 价格冲高回落）可提前减仓</li>
+</ul>
+<h3>Sizing</h3>
+<ul>
+<li>基础仓位 <code>w0</code></li>
+<li>按信号强度放大：<code>w = w0 * clip((buy_share_z - z*)/k, 0, w_max)</code></li>
+<li>单币和总组合双上限</li>
+</ul>
+<h3>Risk</h3>
+<ul>
+<li>连续亏损 <code>N</code> 次触发 cooldown</li>
+<li>极端波动（单根异常长上下影）禁入</li>
+<li>新闻/事件窗口（大数据发布或交易所异常）禁入</li>
+</ul>
+<h3>Cost</h3>
+<ul>
+<li>明确 maker/taker 两套成本壳（不要只看单一低费假设）</li>
+<li>至少做 <code>4/8/12 bps</code> 三档净值敏感性</li>
+</ul>
+<p>---</p>
+<h2>6) 与 <code>1m/3m/5m/15m</code> 的关系</h2>
+<ul>
+<li><strong><code>5m</code></strong>：主信号层（当前最稳妥）</li>
+<li><strong><code>15m</code></strong>：可做执行与风控聚合层（减少噪声）</li>
+<li><strong><code>1m/3m</code></strong>：适合做“触发确认层”（例如入场后 <code>1m</code> 微结构不再恶化才开单）</li>
+</ul>
+<p>这条线本体不依赖低频外部宏观变量，天然贴近 short-cycle desk。</p>
+<p>---</p>
+<h2>7) 下一步怎么测（直接可排）</h2>
+<ol>
+<li><strong>L2 正式版替换 proxy</strong>：</li>
+</ol>
+<ul>
+<li>用真实 depth snapshot 重算 pressure ratio（替代 <code>buy_share_z</code>）</li>
+<li>对比 proxy 与真实 L2 的信号一致性</li>
+</ul>
+<ol>
+<li><strong>参数稳定性</strong>：</li>
+</ol>
+<ul>
+<li>网格：<code>ret_th × z_th × hold_bars</code></li>
+<li>用 walk-forward 看参数漂移，而不是单窗最优</li>
+</ul>
+<ol>
+<li><strong>执行版本对照</strong>：</li>
+</ol>
+<ul>
+<li>taker-only vs maker-entry/taker-exit</li>
+<li>检查净收益是否仍成立</li>
+</ul>
+<ol>
+<li><strong>横截面分组</strong>：</li>
+</ol>
+<ul>
+<li>按流动性分层（BTC/ETH vs 次主流）</li>
+<li>验证是否存在“只在 mid-liquidity 有效”的资产池</li>
+</ul>
+<p>---</p>
+<h2>8) 本轮结论（短版）</h2>
+<p>这份 repo 最值得 desk 拿走的，不是“高频转低频”的叙事，而是一条可复现的短周期 raw alpha：</p>
+<p><strong><code>5m</code> 下跌冲击后，若买压 proxy 明显抬升，<code>30~60m</code> 反弹概率/幅度同步改善。</strong></p>
+<p>在本地 public-data 最小实验里，<code>h=12</code> 已出现成本后可讨论的正期望信号，值得进入下一轮 L2 正式复现。</p>
+<p>---</p>
+<h2>9) 来源（论文/仓库/文档）</h2>
+<ol>
+<li><strong>davelamtrader (2025). _Strategy-Backtest-Orderbook-Imbalance-Pattern-based-Cryptocurrencies-Screening-Trading-Strategy_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://github.com/davelamtrader/Strategy-Backtest-Orderbook-Imbalance-Pattern-based-Cryptocurrencies-Screening-Trading-Strategy">https://github.com/davelamtrader/Strategy-Backtest-Orderbook-Imbalance-Pattern-based-Cryptocurrencies-Screening-Trading-Strategy</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/davelamtrader/Strategy-Backtest-Orderbook-Imbalance-Pattern-based-Cryptocurrencies-Screening-Trading-Strategy">https://github.com/davelamtrader/Strategy-Backtest-Orderbook-Imbalance-Pattern-based-Cryptocurrencies-Screening-Trading-Strategy</a></code></li>
+</ul>
+<ol>
+<li><strong>Repo source file used in this digest</strong></li>
+</ol>
+<ul>
+<li><code>006_Orderbook Imbalance Pattern based Cryptocurrencies Screening Trading Strategy.py</code></li>
+<li>Raw URL: <code><a href="https://raw.githubusercontent.com/davelamtrader/Strategy-Backtest-Orderbook-Imbalance-Pattern-based-Cryptocurrencies-Screening-Trading-Strategy/main/006_Orderbook%20Imbalance%20Pattern%20based%20Cryptocurrencies%20Screening%20Trading%20Strategy.py">https://raw.githubusercontent.com/davelamtrader/Strategy-Backtest-Orderbook-Imbalance-Pattern-based-Cryptocurrencies-Screening-Trading-Strategy/main/006_Orderbook%20Imbalance%20Pattern%20based%20Cryptocurrencies%20Screening%20Trading%20Strategy.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Tardis.dev API / channels (for order book &amp; trades replay, as referenced by repo)</strong></li>
+</ol>
+<ul>
+<li>Venue: Official docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://docs.tardis.dev/">https://docs.tardis.dev/</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Spot API Docs (public kline data used in minimum experiment)</strong></li>
+</ol>
+<ul>
+<li>Venue: Official API docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data</a></code></li>
+</ul>
+<ol>
+<li><strong>参考研报（repo 内附 PDF）</strong></li>
+</ol>
+<ul>
+<li>天风证券（2017）《利用高频数据拓展盘口数据：买卖压力失衡》</li>
+<li>Venue: 券商研究报告</li>
+<li>DOI: N/A</li>
+<li>Readable URL（repo file）: <code><a href="https://github.com/davelamtrader/Strategy-Backtest-Orderbook-Imbalance-Pattern-based-Cryptocurrencies-Screening-Trading-Strategy/blob/main/20170801-%E5%A4%A9%E9%A3%8E%E8%AF%81%E5%88%B8-%E5%88%A9%E7%94%A8%E9%AB%98%E9%A2%91%E6%95%B0%E6%8D%AE%E6%8B%93%E5%B1%95%E7%9B%98%E5%8F%A3%E6%95%B0%E6%8D%AE%EF%BC%9A%E4%B9%B0%E5%8D%96%E5%8E%8B%E5%8A%9B%E5%A4%B1%E8%A1%A1.pdf">https://github.com/davelamtrader/Strategy-Backtest-Orderbook-Imbalance-Pattern-based-Cryptocurrencies-Screening-Trading-Strategy/blob/main/20170801-%E5%A4%A9%E9%A3%8E%E8%AF%81%E5%88%B8-%E5%88%A9%E7%94%A8%E9%AB%98%E9%A2%91%E6%95%B0%E6%8D%AE%E6%8B%93%E5%B1%95%E7%9B%98%E5%8F%A3%E6%95%B0%E6%8D%AE%EF%BC%9A%E4%B9%B0%E5%8D%96%E5%8E%8B%E5%8A%9B%E5%A4%B1%E8%A1%A1.pdf</a></code></li>
+</ul>
+<p>---</p>
+<h3>附：本轮实验产物</h3>
+<ul>
+<li><code>reports/artifacts/quant_digests/orderbook_pressure_buyshare_proxy_20260404/per_symbol_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/orderbook_pressure_buyshare_proxy_20260404/pooled_horizon_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/orderbook_pressure_buyshare_proxy_20260404/avg_ret12_pivot.csv</code></li>
+<li><code>reports/artifacts/quant_digests/orderbook_pressure_buyshare_proxy_20260404/meta.json</code></li>
+</ul>
+</body>
+</html>

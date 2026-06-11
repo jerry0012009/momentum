@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2025 Bybit C++ 做市 repo 只读成示例工程：对 short-cycle desk，更该先测的是「min-spread floor × laddered quotes × inventory skew × drift-cancel」这条完整 maker raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2025 Bybit C++ 做市 repo 只读成示例工程：对 short-cycle desk，更该先测的是「min-spread floor × laddered quotes × inventory skew × drift-cancel」这条完整 maker raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 10:15 UTC</span>
+      <span class="pill">研究时间：2026-04-04 10:16 UTC</span>
+      <span class="pill">类型：2025 GitHub repo source audit（`README.md` + `src/strategy.cpp` + `src/main.cpp` + `src/trading_helper.cpp` + `.env.example`）+ Bybit V5 公开接口复现实验口径映射</span>
+      <span class="pill">主题标签：raw-alpha/liquidity-provision/market-making/maker/bybit/perpetual/laddered-quotes/inventory-skew/drift-cancel/funding-aware-pnl/execution/microstructure/repo/public-data/1m/3m/5m/15m/cost/risk</span>
+      <span class="pill">证据类型：repo 源码证据 + 交易所公开数据复现实验口径</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_1016_bybit-laddered-inventory-skew-maker-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 10:16 UTC</li>
+<li>类型：2025 GitHub repo source audit（<code>README.md</code> + <code>src/strategy.cpp</code> + <code>src/main.cpp</code> + <code>src/trading_helper.cpp</code> + <code>.env.example</code>）+ Bybit V5 公开接口复现实验口径映射</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>不是猜方向，而是持续在盘口两侧挂被动单，赚取 bid-ask spread / maker edge；当库存偏向一边时，用 inventory skew、TP、stop、gross cap 和 drift-cancel 把“赚点差”这件事变成可控的完整策略。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/liquidity-provision/market-making/maker/bybit/perpetual/laddered-quotes/inventory-skew/drift-cancel/funding-aware-pnl/execution/microstructure/repo/public-data/1m/3m/5m/15m/cost/risk</li>
+<li>证据类型：repo 源码证据 + 交易所公开数据复现实验口径</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮我刻意<strong>不继续补 pairs / carry / OFI / 单币反转</strong>，而是补一条素材池里同样必须长期保留的家族：</p>
+<p>&gt; <strong>maker / liquidity provision raw alpha。</strong></p>
+<p>原因很简单：</p>
+<ul>
+<li>最近 intake 里，pairs、cross-sectional、carry、single-asset mean reversion 都已经有不少新卡；</li>
+<li>但如果没有一批<strong>可独立复现的做市 raw alpha 壳</strong>，整个短周期素材池其实还是偏“主动吃单方向交易”；</li>
+<li>而这份 repo 的价值恰好不在“新奇”，而在于它把 <strong>entry / refresh / inventory / TP / SL / PnL / funding / gross exposure guard</strong> 都写出来了。</li>
+</ul>
+<p>所以这轮选它，不是因为它“最 fancy”，而是因为它非常符合当前优先级：</p>
+<p>&gt; <strong>它是一条能独立复现、也能直接落成完整策略壳的 raw alpha。</strong></p>
+<h2>2. 先回答最重要的一句：base alpha 是什么？</h2>
+<p>一句话版：</p>
+<p>&gt; <strong>base alpha 就是：在有足够可赚点差时，用被动双边挂单赚 spread；如果库存偏了，就缩一侧、放另一侧，同时用 TP / stop / gross cap 控住 adverse selection 和库存爆炸。</strong></p>
+<p>换成人话：</p>
+<ol>
+<li>先看最优买一卖一和实时 spread；</li>
+<li>如果当前 spread 够宽，就围着 mid 两侧分层挂单；</li>
+<li>被成交后，不赌大方向，而是继续靠另一侧报价和 TP 把库存慢慢卸掉；</li>
+<li>如果 mid 漂得太快、库存太偏、总敞口太大，就收缩甚至暂停报价。</li>
+</ol>
+<p>所以这条主题非常清楚：</p>
+<ul>
+<li><strong>不是</strong> filter</li>
+<li><strong>不是</strong> regime gate</li>
+<li><strong>不是</strong>纯 execution 优化</li>
+<li><strong>而是</strong>一条完整的 maker raw alpha</li>
+</ul>
+<h2>3. repo 真正给了哪些完整策略部件</h2>
+<h3>3.1 Entry / Quote engine：它不是“挂一笔试试”，而是完整的双边分层做市</h3>
+<p><code>src/strategy.cpp</code> 里，核心报价逻辑是：</p>
+<ul>
+<li>用 Bybit linear perp orderbook 的 best bid / ask 算 <code>mid</code></li>
+<li>当前 live spread 若太窄，就用最小 floor 顶住：</li>
+<li><code>target_spread_bps = max(min_spread_bps, live_spread_bps * spread_factor)</code></li>
+<li>默认参数里：</li>
+<li><code>BYBIT_MIN_SPREAD_BPS = 0.2</code></li>
+<li><code>BYBIT_SPREAD_FACTOR = 1.0</code></li>
+<li><code>BYBIT_LADDER_LEVELS = 3</code></li>
+</ul>
+<p>也就是说，第一层想法不是“预测涨跌”，而是：</p>
+<p>&gt; <strong>盘口只要还能留出一点 edge，就按层数在两侧排队吃 spread。</strong></p>
+<p>而且 repo 不是单层挂单，而是默认每侧 <code>3</code> 层 ladder。这个点很重要，因为它直接决定：</p>
+<ul>
+<li>不是只赌最优一档成交；</li>
+<li>而是在 mid 周围构建一个简化版流动性曲线；</li>
+<li>对短周期 desk，这已经是完整策略壳，不只是一个 snippet。</li>
+</ul>
+<h3>3.2 Inventory skew：repo 给的不是“均匀双边挂”，而是库存感知报价</h3>
+<p>这份材料最值钱的一点之一，是它没有把做市写成“永远等量双边挂”。</p>
+<p>源码里：</p>
+<ul>
+<li><code>net_qty = long_size - short_size</code></li>
+<li>若 <code>|net_qty| &gt; max_net_qty</code>：</li>
+<li>太长 → 直接停 bid</li>
+<li>太短 → 直接停 ask</li>
+<li>若还没超上限：</li>
+<li>只缩偏仓那一侧的报价量</li>
+<li>而且最小仍保留到约 <code>20%</code></li>
+</ul>
+<p>默认配置里：</p>
+<ul>
+<li><code>BYBIT_MAX_NET_QTY = 100</code></li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>它的 alpha 不是“始终双边收租”，而是“尽量双边收租，但不为收租把自己堆成单边风险仓”。</strong></p>
+<p>这让它从一个示例 bot，变成了<strong>可 desk 化的 maker alpha 壳</strong>。</p>
+<h3>3.3 Exit：TP、stop、gross cap 都给了，已经不是半成品</h3>
+<p>这份 repo 的退场层也写得很完整：</p>
+<ul>
+<li>若净多头存在，就在 mid 上方挂 TP sell</li>
+<li>若净空头存在，就在 mid 下方挂 TP buy</li>
+<li>默认：<code>BYBIT_TP_SPREAD_BPS = 0.5</code></li>
+<li>默认 stop：<code>BYBIT_STOP_LOSS_BPS = -1</code>（即默认关闭）</li>
+<li>还有限制总敞口的 <code>BYBIT_GROSS_NOTIONAL_CAP</code></li>
+</ul>
+<p>这几个部件拼起来以后，结构非常清楚：</p>
+<ul>
+<li><strong>entry</strong>：按实时 spread 做双边 ladder quote</li>
+<li><strong>exit</strong>：库存存在时用 TP 卸仓</li>
+<li><strong>risk</strong>：库存上限 + gross notional 上限 + optional stop</li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; <strong>它已经不是“有信号、没策略”；而是完整到可以直接拿来改成回测器输入的策略定义。</strong></p>
+<h3>3.4 Refresh / Cancel：它还把 stale quote 问题显式写进去了</h3>
+<p><code>src/main.cpp</code> 里还有一个对 short-cycle 很关键的细节：</p>
+<ul>
+<li>主循环约每 <code>1s</code> 执行一次</li>
+<li>若 mid 相比上一轮移动超过 <code>2</code> 个 tick</li>
+<li>就 <code>cancel_all</code> 后重新报价</li>
+</ul>
+<p>源码里的口径是：</p>
+<ul>
+<li><code>drift_threshold_ticks = 2.0</code></li>
+<li><code>sleep_for(1 second)</code></li>
+</ul>
+<p>这很重要，因为 maker alpha 最怕的不是“没挂上”，而是：</p>
+<p>&gt; <strong>挂着旧价，结果被新信息反向成交。</strong></p>
+<p>repo 至少把这个问题正面写出来了，而不是假装“被动成交=天然有 edge”。</p>
+<h3>3.5 Cost / PnL：它没有忽略 funding 和 fees</h3>
+<p>README 和 <code>src/main.cpp</code> / <code>src/trading_helper.cpp</code> 还给了另外一个很像样的地方：</p>
+<ul>
+<li>private websockets 监听 execution / position</li>
+<li>跟踪 realized / unrealized PnL</li>
+<li>单独累计 fee</li>
+<li>还把 funding 也算进净值</li>
+</ul>
+<p>这意味着它的“收益”定义不是拍脑袋，而是更接近真实 desk 视角：</p>
+<p>&gt; <strong>净 capture = realized spread - fee ± funding ± inventory mark-to-market。</strong></p>
+<p>这对 perpetual maker 策略尤其关键。</p>
+<h2>4. 这条主题为什么值得进当前研究池</h2>
+<p>最近学习进展里，我们已经连续补了很多：</p>
+<ul>
+<li>pairs / cointegration / OU</li>
+<li>carry / funding / basis</li>
+<li>cross-sectional high-momentum</li>
+<li>single-asset mean reversion</li>
+<li>OFI / VWAP pressure / microstructure directional alpha</li>
+</ul>
+<p>这些都重要，但它们大多偏：</p>
+<ul>
+<li>主动吃单</li>
+<li>赌方向</li>
+<li>或者赌 spread reversion</li>
+</ul>
+<p>而这份 repo 补的是另一条独立家族：</p>
+<p>&gt; <strong>不靠方向预测先赚第一层 alpha，而是靠流动性供给本身赚钱。</strong></p>
+<p>所以它的价值不只是“又一份 repo”，而是：</p>
+<ul>
+<li>给当前素材池补了 <strong>maker / liquidity provision</strong> 这条支线；</li>
+<li>和已有的 trend / MR / pairs / carry 家族<strong>相关性可能更低</strong>；</li>
+<li>即使最终独立收益不够厚，也能沉淀成执行与库存管理层的通用组件。</li>
+</ul>
+<h2>5. 这份 repo 最值钱、也最该警惕的地方</h2>
+<h3>5.1 值钱的地方：它真的是完整策略壳，不只是片段</h3>
+<p>我会把它归入“高可复现度 repo”的原因，是它已经给了：</p>
+<ul>
+<li>标的：Bybit linear perpetuals</li>
+<li>数据：public orderbook + private execution/position</li>
+<li>报价：spread floor + ladder</li>
+<li>风险：inventory skew + max net + gross cap</li>
+<li>退出：TP + optional stop</li>
+<li>记账：fee / funding aware PnL</li>
+</ul>
+<p>也就是说，如果现在要做最小复现，不需要先脑补半套规则。</p>
+<h3>5.2 最该警惕的地方：默认参数薄得吓人，极容易被 adverse selection 吃掉</h3>
+<p>repo 默认配置里最醒目的数字其实不是“稳”，而是“薄”：</p>
+<ul>
+<li>最小 spread floor：<code>0.2 bps</code></li>
+<li>TP：<code>0.5 bps</code></li>
+<li>刷新节奏：<code>1s</code></li>
+<li>drift cancel：<code>2 ticks</code></li>
+</ul>
+<p>换句话说：</p>
+<p>&gt; <strong>这更像“尽量把 very thin maker edge 收干净”的工程模板，而不是已经证明 robust 的 production alpha。</strong></p>
+<p>如果你把它直接理解成“0.2bps spread floor 就能长期赚钱”，那基本是在骗自己。真正的敌人是：</p>
+<ul>
+<li>queue position</li>
+<li>refresh latency</li>
+<li>stale quote 被选中成交</li>
+<li>fee tier / rebate 差异</li>
+<li>行情快时 inventory 来不及卸</li>
+</ul>
+<p>所以这条材料的正确读法不是“参数可直接抄”，而是：</p>
+<p>&gt; <strong>结构可以先抄，edge 厚度必须重测。</strong></p>
+<h3>5.3 一个小但很说明问题的细节：README 和 <code>.env.example</code> 口径不完全一致</h3>
+<p>README 里提到：</p>
+<ul>
+<li>默认 symbol 可用 <code>SUIUSDT</code> 做低 notional 测试</li>
+</ul>
+<p>但 <code>.env.example</code> 末尾又直接给了：</p>
+<ul>
+<li><code>BYBIT_SYMBOL=BTCUSDT</code></li>
+<li><code>BYBIT_BUDGET_USD=50</code></li>
+</ul>
+<p>这类小不一致恰好说明：</p>
+<p>&gt; <strong>它是一个很好的策略工程样板，但不是一份已经被严肃验证过的研究结论。</strong></p>
+<p>这也意味着我们更该把它当作“完整策略壳候选”，而不是现成 production truth。</p>
+<h2>6. 它和 <code>1m / 3m / 5m / 15m</code> 的关系怎么理解</h2>
+<h3>6.1 这条 alpha 的原生时间尺度其实比 <code>1m</code> 更快</h3>
+<p>严格说，这条策略并不是 K 线形态 alpha：</p>
+<ul>
+<li>主循环约 <code>1s</code></li>
+<li>依赖 orderbook best bid / ask</li>
+<li>依赖 tick size、lot size</li>
+<li>依赖 quote refresh</li>
+</ul>
+<p>所以它的<strong>原生战场</strong>更接近：</p>
+<ul>
+<li>sub-minute</li>
+<li><code>1m</code></li>
+<li><code>3m</code></li>
+</ul>
+<p>而不是纯 <code>15m</code> candle alpha。</p>
+<h3>6.2 但它依然能服务 <code>5m / 15m</code> desk</h3>
+<p>对当前 desk，更合理的映射方式不是“强行把信号 bar 化”，而是：</p>
+<ul>
+<li><strong><code>1m / 3m</code></strong>：做 execution / fill / inventory / net capture 主评估层</li>
+<li><strong><code>5m</code></strong>：做 spread percentile、mid drift、inventory utilization 的聚合层</li>
+<li><strong><code>15m</code></strong>：做 regime / funding / event risk / volatility state 的开关层</li>
+</ul>
+<p>也就是说，这条 alpha 可以这样 desk 化：</p>
+<p>&gt; <strong>执行在 <code>1m/3m</code>，风险与是否开 maker 在 <code>5m/15m</code>。</strong></p>
+<p>这和我们当前短周期研发目标并不冲突，反而能补齐“更快、更偏执行”的 alpha 家族。</p>
+<h2>7. 最小可复现实验应该怎么定义</h2>
+<p>如果要最快验证，我不会先碰 live，而是先做一个<strong>公开数据 fill-proxy 版最小实验</strong>。</p>
+<h3>7.1 数据源</h3>
+<p>全部公开可得：</p>
+<ul>
+<li>Bybit V5 public orderbook websocket（BBO / L50 都可以）</li>
+<li>Bybit public trades</li>
+<li>Bybit instruments info（tick / lot / min qty）</li>
+<li>funding history / current funding（公开可得）</li>
+</ul>
+<p>更新频率：</p>
+<ul>
+<li>orderbook / trades：秒级甚至更快</li>
+<li>funding：低频，但可并到持仓收益里</li>
+</ul>
+<h3>7.2 最小实验口径</h3>
+<p>第一版不用追求完美撮合，只要先回答：</p>
+<p>&gt; <strong>这条 maker edge 有没有“扣掉现实摩擦后仍可能存活”的可能性？</strong></p>
+<p>第一版口径可以是：</p>
+<ol>
+<li>每 <code>1s</code> 取一次 BBO / mid；</li>
+<li>按 repo 逻辑生成 bid / ask ladder；</li>
+<li>用“触价 / trade-through / queue haircut”三档 fill proxy 做成交；</li>
+<li>记账时显式扣：</li>
+</ol>
+<ul>
+<li>maker fee / rebate</li>
+<li>stale-quote adverse selection buffer</li>
+<li>funding</li>
+</ul>
+<ol>
+<li>最后把 PnL 聚合到 <code>1m / 3m / 5m / 15m</code> 看稳定性。</li>
+</ol>
+<h3>7.3 第一版最该看的不是收益曲线，而是四个诊断量</h3>
+<p>第一版我最想先看这四个量：</p>
+<ul>
+<li>每分钟 passive fill ratio</li>
+<li>每笔 realized capture（扣 fee 前后）</li>
+<li>inventory half-life</li>
+<li>drift hit 后的 adverse selection 损失</li>
+</ul>
+<p>因为 maker alpha 的核心不是“预测对几次”，而是：</p>
+<p>&gt; <strong>被动成交以后，净 capture 还剩多少。</strong></p>
+<h2>8. 我对这条材料的结论</h2>
+<h3>8.1 值得 intake 吗？</h3>
+<p><strong>值得。</strong></p>
+<p>因为它满足：</p>
+<ul>
+<li>raw alpha</li>
+<li>可独立复现</li>
+<li>能直接落地成完整策略</li>
+<li>公开数据可做最小实验</li>
+<li>能补当前素材池里相对缺的 maker / liquidity provision 家族</li>
+</ul>
+<h3>8.2 现在就能当 production 吗？</h3>
+<p><strong>不能。</strong></p>
+<p>原因也非常明确：</p>
+<ol>
+<li>默认 edge 太薄；</li>
+<li>repo 更像工程模板，不像严肃验证结论；</li>
+<li>真实胜负手在 queue / latency / adverse selection，不在 README；</li>
+<li>还没看到 walk-forward、fee-tier 分层、不同 symbol 的稳健性证据。</li>
+</ol>
+<h3>8.3 最准确的 desk 化定位</h3>
+<p>我会把它定位成：</p>
+<p>&gt; <strong>中高优先级的 maker raw alpha 壳：先验证净 capture、生存成本线和库存周转，再决定它是独立 sleeve，还是作为 execution / liquidity overlay 服务别的 raw alpha。</strong></p>
+<h2>9. 下一步怎么测</h2>
+<h3>实验 A：先跑一版公开数据 fill-proxy 回测</h3>
+<p>最小网格：</p>
+<ul>
+<li>标的：<code>BTCUSDT / ETHUSDT / SUIUSDT</code></li>
+<li>频率：<code>1s</code> quote，聚合看 <code>1m / 3m / 5m</code></li>
+<li>spread floor：<code>0.2 / 0.5 / 1.0 / 2.0 bps</code></li>
+<li>ladder：<code>1 / 2 / 3</code> 层</li>
+</ul>
+<p>目的：</p>
+<p>&gt; 看“结构成立”还是“默认参数太薄”。</p>
+<h3>实验 B：单独做成本 / adverse selection 生存线</h3>
+<p>至少并排测：</p>
+<ul>
+<li>maker fee / rebate：<code>-1 / 0 / +1 bps</code> 每边</li>
+<li>stale-quote penalty：<code>0 / 0.5 / 1 tick</code></li>
+<li>drift cancel 阈值：<code>1 / 2 / 5 ticks</code></li>
+</ul>
+<p>通过条件不是收益最大，而是：</p>
+<p>&gt; <strong>有没有一块参数区间在保守摩擦下仍为正。</strong></p>
+<h3>实验 C：做 symbol 分层，不要只看 BTC</h3>
+<p>这份 repo 的结构天然适合做 symbol stratification：</p>
+<ul>
+<li><code>BTCUSDT</code>：点差窄，但深度更稳</li>
+<li><code>ETHUSDT</code>：可能是折中样本</li>
+<li><code>SUIUSDT</code>：notional 小，但更容易受跳价和库存冲击影响</li>
+</ul>
+<p>如果最后发现：</p>
+<ul>
+<li>BTC 太挤</li>
+<li>SUI 太跳</li>
+<li>ETH 最平衡</li>
+</ul>
+<p>那就别再把它写成“通用 Bybit 做市 alpha”，而要直接收缩成<strong>symbol-specific sleeve</strong>。</p>
+<h3>实验 D：如果独立 edge 不够厚，就把它降级成共享 execution / overlay 组件</h3>
+<p>如果最终发现：</p>
+<ul>
+<li>独立跑净 capture 不够厚；</li>
+<li>但 spread 宽、mid drift 低、inventory 周转快时表现明显更好；</li>
+</ul>
+<p>那它依然有价值，只是身份要降级为：</p>
+<ul>
+<li>maker-on / maker-off gate</li>
+<li>被动卸仓层</li>
+<li>低冲击 execution overlay</li>
+</ul>
+<p>也就是：</p>
+<p>&gt; <strong>别硬保 raw alpha 身份；能服务其他 raw alpha 也完全值得留下。</strong></p>
+<h2>10. 参考资料</h2>
+<ol>
+<li><strong>Sebastian Boehler. (2025). _bybit_market_maker_cpp_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/SebastianBoehler/bybit_market_maker_cpp&gt;">https://github.com/SebastianBoehler/bybit_market_maker_cpp&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/SebastianBoehler/bybit_market_maker_cpp&gt;">https://github.com/SebastianBoehler/bybit_market_maker_cpp&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Repo source files used in this digest</strong></li>
+</ol>
+<ul>
+<li>README: &lt;<a href="https://raw.githubusercontent.com/SebastianBoehler/bybit_market_maker_cpp/main/README.md&gt;">https://raw.githubusercontent.com/SebastianBoehler/bybit_market_maker_cpp/main/README.md&gt;</a></li>
+<li>strategy.cpp: &lt;<a href="https://raw.githubusercontent.com/SebastianBoehler/bybit_market_maker_cpp/main/src/strategy.cpp&gt;">https://raw.githubusercontent.com/SebastianBoehler/bybit_market_maker_cpp/main/src/strategy.cpp&gt;</a></li>
+<li>main.cpp: &lt;<a href="https://raw.githubusercontent.com/SebastianBoehler/bybit_market_maker_cpp/main/src/main.cpp&gt;">https://raw.githubusercontent.com/SebastianBoehler/bybit_market_maker_cpp/main/src/main.cpp&gt;</a></li>
+<li>trading_helper.cpp: &lt;<a href="https://raw.githubusercontent.com/SebastianBoehler/bybit_market_maker_cpp/main/src/trading_helper.cpp&gt;">https://raw.githubusercontent.com/SebastianBoehler/bybit_market_maker_cpp/main/src/trading_helper.cpp&gt;</a></li>
+<li>.env.example: &lt;<a href="https://raw.githubusercontent.com/SebastianBoehler/bybit_market_maker_cpp/main/.env.example&gt;">https://raw.githubusercontent.com/SebastianBoehler/bybit_market_maker_cpp/main/.env.example&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Bybit API documentation (V5)</strong></li>
+</ol>
+<ul>
+<li>Venue: Bybit Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://bybit-exchange.github.io/docs/v5/intro&gt;">https://bybit-exchange.github.io/docs/v5/intro&gt;</a></li>
+<li>Public market data / orderbook docs: &lt;<a href="https://bybit-exchange.github.io/docs/v5/market/orderbook&gt;">https://bybit-exchange.github.io/docs/v5/market/orderbook&gt;</a></li>
+<li>WebSocket docs: &lt;<a href="https://bybit-exchange.github.io/docs/v5/ws/connect&gt;">https://bybit-exchange.github.io/docs/v5/ws/connect&gt;</a></li>
+</ul>
+</body>
+</html>

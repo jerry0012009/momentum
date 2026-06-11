@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Polymarket×Deribit 仓只读成“概率计算器”：对 short-cycle desk，更该先拆的是「Deribit 终值概率 vs Polymarket 日度二元价格偏离」这条 relative-value raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Polymarket×Deribit 仓只读成“概率计算器”：对 short-cycle desk，更该先拆的是「Deribit 终值概率 vs Polymarket 日度二元价格偏离」这条 relative-value raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-17 21:23 UTC</span>
+      <span class="pill">研究时间：2026-04-17 21:14 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `docs/mathematical_theory.md` + `scripts/backtest.py` + `data_collector/collector.py` + `scripts/market_utils.py` + bundled CSV sample/backtest rerun）</span>
+      <span class="pill">主题标签：raw-alpha / prediction-market / options / relative-value / stat-arb / cross-venue / digital-probability / polymarket / deribit / btc / 1m / 5m / 15m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：repo 源码 + repo bundled data rerun + public API 可得性审计</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-17_2114_deribit-polymarket-terminalprob-rv-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-17 21:14 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>docs/mathematical_theory.md</code> + <code>scripts/backtest.py</code> + <code>data_collector/collector.py</code> + <code>scripts/market_utils.py</code> + bundled CSV sample/backtest rerun）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一个 BTC 日度终值事件</strong> 在两个公开市场里会被定出不一致的风险中性概率：Deribit 期权面可抽出 <code>Q(BTC 到期高于某价)</code>，Polymarket 的 <code>UP/DOWN</code> token 直接给出二元事件价格；当两者偏离超过交易成本与滑点，而且 Polymarket 盘口能成交，就做 <code>long cheap probability / short rich probability</code> 的跨 venue relative-value / stat-arb。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / prediction-market / options / relative-value / stat-arb / cross-venue / digital-probability / polymarket / deribit / btc / 1m / 5m / 15m / repo / public-data / cost / risk</li>
+<li>证据类型：repo 源码 + repo bundled data rerun + public API 可得性审计</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<ul>
+<li><strong>Author / Maintainer</strong>：<code>djienne</code>（GitHub）</li>
+<li><strong>Year</strong>：2026</li>
+<li><strong>Title</strong>：<code>POLYMARKET_UP_DOWN_DERIBIT_STRATEGY</code></li>
+<li><strong>Venue / Type</strong>：GitHub repo</li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY&gt;">https://github.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY&gt;</a></li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY&gt;">https://github.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY&gt;</a></li>
+<li><strong>Repo metadata</strong>：创建于 <code>2026-02-11</code>，最近更新 <code>2026-04-17</code>，当前 <code>18</code> stars</li>
+</ul>
+<p>先把 <strong>base alpha</strong> 说清楚：</p>
+<p>&gt; <strong>不是“Deribit 能不能预测 BTC 方向”本身，而是“Deribit 期权面抽出来的风险中性终值概率”和“Polymarket 同一终值事件的二元市场价格”之间，是否会出现可交易的跨 venue 概率错价。</strong></p>
+<p>这就是一条标准的 <code>relative-value / stat-arb / raw alpha</code>：</p>
+<ul>
+<li>交易对象不是裸 BTC 方向；</li>
+<li>交易对象也不是单边 options carry；</li>
+<li>交易对象是 <strong>同一事件概率在两个市场里的价差</strong>。</li>
+</ul>
+<p>对当前 desk 来说，这个主题值钱的地方在于：</p>
+<ol>
+<li>它补的是最近 digest 相对少见的 <strong>prediction-market × options</strong> 交叉资产层；</li>
+<li>它不是纯解释型 overlay，而是能明确写出 <code>entry / exit / cost / latency / sizing</code> 的完整壳；</li>
+<li>它虽然事件到期是“日度”，但 <strong>信号刷新与订单簿刷新</strong> 明确能映射到 <code>1m / 5m / 15m</code> 的短周期研究节奏。</li>
+</ol>
+<h2>2. repo 里真正可继承的 alpha 是什么</h2>
+<h3>2.1 用人话翻译整个机制</h3>
+<p>repo 做的事情并不神秘，可以压缩成三步：</p>
+<ol>
+<li>去 Deribit 抓 BTC 期权链，拟合波动率曲面；</li>
+<li>从曲面里抽出 <strong>BTC 到某个未来时点高于 / 低于某个参考价</strong> 的风险中性概率；</li>
+<li>去 Polymarket 找当天对应的 BTC <code>UP / DOWN</code> 市场，比较市场价格和模型概率，若有足够 edge 就交易。</li>
+</ol>
+<p>所以它的交易本体不是“看涨/看跌 BTC”，而是：</p>
+<p>&gt; <strong>比较 Deribit 的数字期权隐含概率，与 Polymarket 的 YES/NO token 价格有没有错位。</strong></p>
+<p>这本质上和我们之前做过的：</p>
+<ul>
+<li>funding spread,</li>
+<li>basis dislocation,</li>
+<li>same-underlier spread fade,</li>
+<li>lead-lag catch-up</li>
+</ul>
+<p>属于同一大类：<strong>同一底层经济对象，在两个定价层之间是否脱节。</strong></p>
+<h3>2.2 为什么它算 raw alpha，不是 filter</h3>
+<p>因为这里的信号本体就是：</p>
+<ul>
+<li><code>model_prob_up</code> vs <code>poly_prob_up</code></li>
+<li><code>model_prob_down</code> vs <code>poly_prob_down</code></li>
+<li>进一步压缩成 <code>edge_up = model / market</code>、<code>edge_down = model / market</code></li>
+</ul>
+<p>只要边际收益大于：</p>
+<ul>
+<li>Polymarket 买卖价差</li>
+<li>手续费 / 摩擦</li>
+<li>延迟造成的 stale quote 风险</li>
+</ul>
+<p>这就是可以单独交易的一条 alpha，不依附于别的方向信号。</p>
+<h2>3. 代码里最关键的可落地结构</h2>
+<h3>3.1 repo 明确把“概率错价”写成可回放的数据流</h3>
+<p><code>data_collector/collector.py</code> 里，作者没有停留在 notebook 级 demo，而是把 live 数据流拆成三条：</p>
+<ul>
+<li><strong>Probabilities</strong>：每 <code>5</code> 分钟跑一次模型，产出 <code>model_prob_up/down</code>、<code>poly_prob_up/down</code>、<code>edge_up/down</code></li>
+<li><strong>Orderbook</strong>：每 <code>1</code> 分钟抓一次 Polymarket CLOB 最优 bid/ask</li>
+<li><strong>Deribit options</strong>：每 <code>5</code> 分钟抓一次完整 BTC options chain</li>
+</ul>
+<p>这三条流刚好对应 desk 最关心的三件事：</p>
+<ol>
+<li>你到底有没有 alpha；</li>
+<li>你能不能成交；</li>
+<li>你的 alpha 来源有没有被 options surface 本身推翻。</li>
+</ol>
+<h3>3.2 repo 已经给出了完整的 entry 语言</h3>
+<p><code>scripts/backtest.py</code> 的核心不是简单比较概率差，而是直接围绕“能否下单”写：</p>
+<ul>
+<li>从 <code>probabilities.csv</code> 读取 <code>model_prob</code> / <code>poly_prob</code> / <code>edge</code></li>
+<li>从 <code>orderbook.csv</code> 读取当时真实可成交的 bid/ask</li>
+<li>进场优先用 orderbook ask，而不是用理论概率代替成交价</li>
+<li>支持：</li>
+<li><code>take profit</code></li>
+<li><code>trailing stop</code></li>
+<li><code>stop loss</code></li>
+<li><code>latency_minutes</code></li>
+<li><code>friction</code></li>
+<li><code>min_time_remaining_hours</code></li>
+<li><code>position sizing</code></li>
+</ul>
+<p>这点很关键：</p>
+<p>&gt; 很多 repo 只证明“模型概率”和“市场概率”有差；这份 repo 则往前走了一步，开始问“如果真按盘口成交，这个差还能剩多少”。</p>
+<h3>3.3 它把 base alpha 写得非常“desk 化”</h3>
+<p>repo 不是拿绝对价差，而是用比率：</p>
+<ul>
+<li><code>edge_up = model_prob_up / poly_prob_up</code></li>
+<li><code>edge_down = model_prob_down / poly_prob_down</code></li>
+</ul>
+<p>这样做的好处是：</p>
+<ul>
+<li><code>0.10</code> 对 <code>0.15</code> 和 <code>0.60</code> 对 <code>0.65</code> 的经济意义不同；</li>
+<li>用比率更容易表达“市场低估了多少概率”；</li>
+<li>更适合后面做连续型 threshold / ranking / sizing。</li>
+</ul>
+<h2>4. 对 short-cycle desk 最有价值的不是“模型多高级”，而是“跨市场错价”</h2>
+<p>repo README 和数学文档里最显眼的是：</p>
+<ul>
+<li>SSVI</li>
+<li>Breeden-Litzenberger</li>
+<li>Monte Carlo</li>
+<li>Heston fallback</li>
+</ul>
+<p>这些当然重要，但对我们 desk 真正值钱的不是“曲面拟合本身”，而是：</p>
+<p>&gt; <strong>Deribit 期权面已经把 BTC 某个日终事件怎么定价写出来了；Polymarket 则把同一事件重新报价了一遍。</strong></p>
+<p>只要这两边的语言能对齐，这就是一条很像数字期权 / 预测市场之间的 stat-arb 线。</p>
+<p>换句话说，repo headline 看起来像“概率计算器”，但对我们更重要的读法是：</p>
+<ul>
+<li><strong>Deribit = 更连续、更成熟的概率曲线</strong></li>
+<li><strong>Polymarket = 更离散、更容易短暂失真的事件盘口</strong></li>
+</ul>
+<p>当两者不同步，就有原材料可拆。</p>
+<h2>5. 本轮最小证据：repo bundled 数据足以证明它不是空故事</h2>
+<p>我没有把它当成“README 讲得好听”就收录，而是把 repo 拉到本地，直接重跑它自带的数据样本。</p>
+<h3>5.1 bundled 数据覆盖了真实的短周期采集节奏</h3>
+<p>repo 自带：</p>
+<ul>
+<li><code>data_collector/results/probabilities.csv</code></li>
+<li><code>data_collector/results/orderbook.csv</code></li>
+</ul>
+<p>从样本里读到：</p>
+<ul>
+<li><code>probabilities.csv</code> 共 <strong>456</strong> 条记录</li>
+<li>覆盖 <strong>7</strong> 个不同日度 barrier/market</li>
+<li>时间范围约为 <strong>2026-03-03 ~ 2026-03-08</strong></li>
+<li><code>orderbook.csv</code> 共 <strong>932</strong> 条 orderbook 快照</li>
+<li>Polymarket top-book spread 中位数约 <strong>$0.01</strong>，<code>p90</code> 约 **$0.02`</li>
+</ul>
+<p>人话： &gt; 它不是只抓了一两次 snapshot 来讲故事，而是真的按分钟级、五分钟级连续采样过一段时间。</p>
+<h3>5.2 按 README 给的参数重跑 backtest，结果说明“是 alpha 壳，不是现成印钞机”</h3>
+<p>我直接用 repo README 里的示例参数重跑：</p>
+<ul>
+<li><code>alpha-up = 2.40</code></li>
+<li><code>alpha-down = 1.80</code></li>
+<li><code>floor-up = floor-down = 0.35</code></li>
+<li><code>tp = 0.40</code></li>
+<li><code>trail-activation = 0.20</code></li>
+<li><code>trail-distance = 0.15</code></li>
+<li>默认 <code>latency = 2 min</code></li>
+<li>默认 <code>friction = 1.5% per side</code></li>
+</ul>
+<p>回放结果：</p>
+<ul>
+<li>总交易数：<strong>5</strong></li>
+<li>胜率：<strong>80%</strong></li>
+<li><code>TP</code> 命中：<strong>2</strong></li>
+<li><code>trailing stop</code>：<strong>1</strong></li>
+<li>到期赢：<strong>1</strong></li>
+<li>到期亏：<strong>1</strong></li>
+<li>最终资本：<strong>$98.83</strong>（从 <code>$100</code> 起）</li>
+<li>总收益：<strong>-1.2%</strong></li>
+</ul>
+<p>这组数字怎么解读最合理？</p>
+<p>不是说“这条线没用”，而是说：</p>
+<ol>
+<li>repo 的 <strong>base alpha 真存在</strong>，因为确实会触发、确实能在盘口上成交、也确实出现盈利单；</li>
+<li>但当前 bundled 样本还不足以证明参数已经 production-ready；</li>
+<li>它更像一条 <strong>明确可复现、但阈值和风险壳仍需重新调参</strong> 的完整策略母板。</li>
+</ol>
+<h3>5.3 当前样本显示：这条 repo 更偏 <code>DOWN</code> 侧 pocket，而不是上下对称</h3>
+<p>我顺手扫了 bundled <code>edge</code> 分布：</p>
+<ul>
+<li>在 README 这套门槛下，<code>UP</code> 侧基本 <strong>没有有效信号行</strong></li>
+<li><code>DOWN</code> 侧能触发的信号行大约 <strong>4</strong> 次</li>
+<li>所有实际交易也全部发生在 <code>DOWN</code> token 这一侧</li>
+</ul>
+<p>这很像什么？</p>
+<p>&gt; <strong>Polymarket 的 BTC 日度二元市场，在 repo 当前样本里，更常见的是“下跌概率被低估”而不是“上涨概率被低估”。</strong></p>
+<p>这不一定是长期真理，但它给 desk 一个很重要的 first verdict：</p>
+<ul>
+<li>别先假设这条 alpha 多空对称；</li>
+<li>第一轮 follow-up 应该先把它当 <strong>downside event-probability mispricing</strong> 来测。</li>
+</ul>
+<h2>6. 它和 <code>1m / 5m / 15m</code> 的关系怎么理解</h2>
+<p>很多人一看到“到期事件概率”就会误以为这是低频题。</p>
+<p>其实不对。更准确的理解是：</p>
+<ul>
+<li><strong>事件结算频率</strong>：日度</li>
+<li><strong>信号刷新频率</strong>：<code>1m</code> orderbook + <code>5m</code> model refresh</li>
+<li><strong>执行与风控频率</strong>：完全可以放在 <code>1m / 5m / 15m</code></li>
+</ul>
+<p>所以对 short-cycle desk：</p>
+<ul>
+<li><code>1m</code>：抓 Polymarket 盘口是否 stale、是否有 micro-jump、是否已经被吃掉</li>
+<li><code>5m</code>：重算 Deribit-implied probability，形成主信号</li>
+<li><code>15m</code>：做 time-stop / regime hold / risk review</li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; 这不是“逐 bar 预测 BTC return”的 alpha，而是“逐分钟检查同一事件概率有没有被错价”的 alpha。</p>
+<p>这仍然完全服务于短周期量化研发。</p>
+<h2>7. 为什么这条线比再补一个普通 filter 更值得</h2>
+<p>因为它直接服务于当前 desk 的原材料池扩容：</p>
+<ol>
+<li><strong>raw alpha 属性明确</strong>：不是附属 filter，而是可单独开仓的概率错价；</li>
+<li><strong>公开数据可拿</strong>：Deribit public API + Polymarket public API/CLOB；</li>
+<li><strong>结构上可迁移</strong>：今天是 BTC daily <code>UP/DOWN</code>，后面也可扩到别的事件市场；</li>
+<li><strong>天然带 execution 研究价值</strong>：这种题目不会停留在“算一个指标”，而会逼你正视 latency、book depth、quote decay。</li>
+</ol>
+<p>对于 desk 来说，这类主题比再加一个“解释为什么趋势更强/更弱”的 filter 更像真正的新素材。</p>
+<h2>8. 这条线今天就能怎么写成完整策略</h2>
+<h3>8.1 Entry</h3>
+<p>最小版本可以直接这样写：</p>
+<ol>
+<li>每 <code>5m</code> 重算一次 <code>model_prob_up/down</code></li>
+<li>每 <code>1m</code> 刷一次 Polymarket bid/ask</li>
+<li>对 <code>UP</code> 和 <code>DOWN</code> 分别算：</li>
+</ol>
+<ul>
+<li><code>edge_ratio = model_prob / market_ask_prob</code></li>
+<li><code>edge_bps = model_prob - market_ask_prob - friction_buffer</code></li>
+</ul>
+<ol>
+<li>只有当以下同时满足时进场：</li>
+</ol>
+<ul>
+<li><code>edge_ratio &gt;= threshold</code></li>
+<li><code>edge_bps &gt;= min_abs_gap</code></li>
+<li><code>time_remaining_hours &gt;= 2</code></li>
+<li>orderbook spread &lt;= 上限</li>
+<li>best ask size &gt;= 最小成交量</li>
+<li>模型最近一次拟合质量达标（如 SSVI/Heston 标志正常）</li>
+</ul>
+<h3>8.2 Exit</h3>
+<p>至少三种 exit 必须一起存在：</p>
+<ol>
+<li><strong>Edge close</strong>：<code>model_prob - market_mid</code> 回落到近 <code>0</code></li>
+<li><strong>Time stop</strong>：离结算越近，若 edge 不再扩张就强制平</li>
+<li><strong>Book deterioration</strong>：盘口 spread 扩大或挂单深度掉太多，提前撤退</li>
+</ol>
+<p>repo 已经给了：</p>
+<ul>
+<li>fixed TP</li>
+<li>trailing stop</li>
+<li>stop loss</li>
+<li>expiry settlement</li>
+</ul>
+<p>我们真正要补的是：</p>
+<ul>
+<li><strong>event-time decay aware exit</strong></li>
+<li><strong>stale-quote 失效退出</strong></li>
+<li><strong>模型质量异常退出</strong></li>
+</ul>
+<h3>8.3 Sizing</h3>
+<p>别直接按“账户百分比”无脑下，先做两层：</p>
+<ul>
+<li><strong>per-trade notionals</strong>：单笔不超过当时 top-book 可吃量的一定比例</li>
+<li><strong>per-day event cap</strong>：同一市场同一天不做过多翻手，避免被 prediction market 的薄 book 把 edge 吃没</li>
+</ul>
+<h3>8.4 Cost</h3>
+<p>这类 alpha 的核心不是手续费，而是：</p>
+<ul>
+<li>买到的 ask 是否 stale</li>
+<li>平仓能否回到 bid</li>
+<li>中间 book 是否迅速收敛</li>
+</ul>
+<p>所以成本模型至少要拆成：</p>
+<ol>
+<li>显式手续费；</li>
+<li>bid/ask spread；</li>
+<li>1~2 分钟 latency slippage；</li>
+<li>一边成交、另一边没成交的 quote drift 风险。</li>
+</ol>
+<h2>9. 风险与保留意见</h2>
+<h3>9.1 repo 的“概率模型强”不等于真实世界一定有 alpha</h3>
+<p>Deribit 抽出来的是 <strong>风险中性概率</strong>，不是物理世界概率； Polymarket token 里还会混入：</p>
+<ul>
+<li>平台摩擦</li>
+<li>用户结构偏差</li>
+<li>event microstructure 噪声</li>
+</ul>
+<p>所以这条线真正赚的不是“预测未来”，而是：</p>
+<p>&gt; <strong>两个市场对同一事件的风险中性定价暂时不同步。</strong></p>
+<h3>9.2 bundled 样本不够大</h3>
+<p>当前 only：</p>
+<ul>
+<li>7 个 market</li>
+<li>5 笔交易</li>
+</ul>
+<p>足够证明“能交易、能回放、不是空壳”，但远远不够给 production verdict。</p>
+<h3>9.3 它本质上是跨 venue 盘口策略</h3>
+<p>这意味着两个主要死法：</p>
+<ol>
+<li>你看到 edge 时，Polymarket 盘口已经变了；</li>
+<li>你只能在 Polymarket 这一端成交，但 Deribit 概率那边并没有真正给出足够稳定的偏离。</li>
+</ol>
+<p>所以 follow-up 的重点不该再是“换个更 fancy 的 vol 模型”，而是 <strong>验证 edge 的可成交寿命</strong>。</p>
+<h2>10. 下一步怎么测（这一段最重要）</h2>
+<h3>A. 先做 <code>1m book-age / edge half-life</code> 研究</h3>
+<p>直接把 repo 的 collector 再扩一列：</p>
+<ul>
+<li><code>edge_at_t</code></li>
+<li><code>edge_at_t+1m</code></li>
+<li><code>edge_at_t+2m</code></li>
+<li><code>fillable_size</code></li>
+</ul>
+<p>先回答一个很现实的问题：</p>
+<p>&gt; <strong>有 edge 的时候，它能活几分钟？</strong></p>
+<p>如果 <code>1m</code> 内就基本消失，这条线就更像 automation / low-latency pocket；如果能活到 <code>5m</code>，就很适合 desk 当前节奏。</p>
+<h3>B. 先聚焦 <code>DOWN</code> 侧，不要多空对称浪费样本</h3>
+<p>当前 bundled evidence 已经提示：</p>
+<ul>
+<li><code>DOWN</code> 侧比 <code>UP</code> 侧更像有效 pocket</li>
+</ul>
+<p>所以下一轮不要平均分配注意力，优先测：</p>
+<ul>
+<li><code>DOWN market only</code></li>
+<li><code>UP/DOWN asymmetric threshold</code></li>
+<li><code>edge_down</code> 的 rank / threshold / persistence</li>
+</ul>
+<h3>C. 做“模型 edge × 盘口质量”双阈值，而不是只看概率差</h3>
+<p>最小实验矩阵：</p>
+<ol>
+<li><code>edge_ratio</code> 阈值：<code>1.05 / 1.10 / 1.15 / 1.20</code></li>
+<li><code>spread</code> 上限：<code>1c / 2c / 3c</code></li>
+<li><code>latency</code>：<code>0 / 1 / 2 / 5 min</code></li>
+<li><code>time-to-expiry</code>：<code>&gt;2h / &gt;4h / &gt;8h</code></li>
+<li>输出：<code>trade_count / fillability / gross / net / half-life</code></li>
+</ol>
+<h3>D. 明确 desk 版最小实盘壳</h3>
+<p>建议先做：</p>
+<ul>
+<li><code>5m</code> 模型刷新</li>
+<li><code>1m</code> 盘口轮询</li>
+<li><code>15m</code> 风控 review</li>
+<li>只做 BTC daily <code>DOWN</code></li>
+<li>只在 <code>edge_ratio &gt;= 1.1</code> 且 <code>spread &lt;= 2c</code> 时下单</li>
+<li><code>2h</code> time-stop + <code>edge_close</code> 联合退出</li>
+</ul>
+<p>如果这套最小壳都站不住，再谈更复杂的 surface 细节没有意义。</p>
+<h2>11. 和当前研究池的关系</h2>
+<p>这条线最像是对以下方向的补充，而不是替代：</p>
+<ul>
+<li>funding / basis relative-value</li>
+<li>pairs / stat-arb</li>
+<li>prediction-market stale quote</li>
+<li>options-implied event pricing</li>
+</ul>
+<p>一句话总结：</p>
+<p>&gt; <strong>它把“同一经济事件的跨市场错价”从 funding/basis 空间，扩展到了 Deribit digital-probability vs Polymarket binary-price 空间。</strong></p>
+<p>这就是它进入研究池的理由。</p>
+<h2>12. 来源</h2>
+<ol>
+<li>GitHub repo：<code>djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY</code></li>
+<p>&lt;<a href="https://github.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY&gt;">https://github.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY&gt;</a></p>
+<li>README 直链：</li>
+<p>&lt;<a href="https://raw.githubusercontent.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY/main/README.md&gt;">https://raw.githubusercontent.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY/main/README.md&gt;</a></p>
+<li>Mathematical theory：</li>
+<p>&lt;<a href="https://raw.githubusercontent.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY/main/docs/mathematical_theory.md&gt;">https://raw.githubusercontent.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY/main/docs/mathematical_theory.md&gt;</a></p>
+<li>Backtest script：</li>
+<p>&lt;<a href="https://raw.githubusercontent.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY/main/scripts/backtest.py&gt;">https://raw.githubusercontent.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY/main/scripts/backtest.py&gt;</a></p>
+<li>Collector script：</li>
+<p>&lt;<a href="https://raw.githubusercontent.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY/main/data_collector/collector.py&gt;">https://raw.githubusercontent.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY/main/data_collector/collector.py&gt;</a></p>
+<li>Market utils：</li>
+<p>&lt;<a href="https://raw.githubusercontent.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY/main/scripts/market_utils.py&gt;">https://raw.githubusercontent.com/djienne/POLYMARKET_UP_DOWN_DERIBIT_STRATEGY/main/scripts/market_utils.py&gt;</a></p>
+<li>Repo bundled data（路径说明）：</li>
+</ol>
+<ul>
+<li><code>data_collector/results/probabilities.csv</code></li>
+<li><code>data_collector/results/orderbook.csv</code></li>
+</ul>
+</body>
+</html>

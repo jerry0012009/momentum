@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 `last-day return` 当全市场同向信号：这篇 2021 论文更值得先测的是「流动性分层的 24h loser-basket reversal」短周期 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 `last-day return` 当全市场同向信号：这篇 2021 论文更值得先测的是「流动性分层的 24h loser-basket reversal」短周期 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 06:29 UTC</span>
+      <span class="pill">研究时间：2026-03-25 06:31 UTC</span>
+      <span class="pill">类型：近 5 年论文 + Binance Futures 公共 15m K 线最小快检</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/mean-reversion/liquidity-split/last-day-return/loser-basket/short-term-reversal/momentum/binance/perpetual/15m/1h/4h/paper</span>
+      <span class="pill">证据类型：论文证据 + 本地公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_0631_liquidity-split-tail-reversal-24h-loser-basket.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 06:31 UTC</li>
+<li>类型：近 5 年论文 + Binance Futures 公共 15m K 线最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：过去 24h 的横截面收益在较低流动性、但仍可交易的币篮子里更像过度反应；因此对 tail bucket 做 <code>long losers / short winners</code>，而不是把同一信号统一当成全市场 momentum</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/mean-reversion/liquidity-split/last-day-return/loser-basket/short-term-reversal/momentum/binance/perpetual/15m/1h/4h/paper</li>
+<li>证据类型：论文证据 + 本地公共数据快检</li>
+</ul>
+<p>&gt; 先回答 base alpha：<strong>不是 shared filter，也不是纯解释。base alpha 就是“按流动性分层后的横截面收益延续/反转错配”——对 desk 来说，当前最值得先拿来做短周期实验的是 tail bucket 的 <code>24h loser-basket reversal</code>。</strong></p>
+<h2>1) 这次看了什么</h2>
+<p>主线材料是：</p>
+<ul>
+<li><strong>Adam Zaremba, Mehmet Huseyin Bilgin, Huaigang Long, Aleksander Mercik, Jan J. Szczygielski (2021), _Up or down? Short-term reversal, momentum, and liquidity effects in cryptocurrency markets_</strong></li>
+</ul>
+<p>我这轮不把它读成“日频文献综述”，而是把它翻成对我们 desk 更有用的一句：</p>
+<p><strong>同一个过去 24h 收益信号，在不同流动性层上的方向不必一样。</strong></p>
+<p>论文主结论里最值钱的分叉是：</p>
+<ul>
+<li>大量币的低前一日收益，后面更容易反弹（reversal）</li>
+<li>但少数最大、最可交易的币，反而更偏 momentum</li>
+</ul>
+<p>对当前 desk，我认为更该先 intake 的不是“把两条腿都硬上”，而是：</p>
+<p><strong>先把更容易映射到 Binance perp、且更像独立 raw alpha 的那一腿——<code>tail loser reversal</code>——单独拉出来做 fast-cycle 版最小实验。</strong></p>
+<h2>2) 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 不要把 <code>last-day return</code> 当统一方向信号；对短周期 desk，更值得先复现的是<strong>流动性分层后的 tail reversal raw alpha</strong>，而不是默认大币 momentum 也会同步成立。</li>
+<li><strong>一句话证明方式：</strong> 2021 论文在 <strong>3600+</strong> 个币上发现“输家反转、超大流动性币更偏动量”的分层现象；我再用 Binance 永续 <strong>15m</strong> 公共数据做快检，发现成熟次级流动性币篮子的 <code>24h loser-basket reversal</code> 在 <code>1h/4h</code> 持有上仍有正的净信号，而大币 momentum 腿在最近样本里反而持续为负。</li>
+</ul>
+<p>3 个关键数据点：</p>
+<ol>
+<li><strong>论文原始发现</strong>：基于 <strong>3600+</strong> 个加密货币的日频横截面，<strong>低 last-day return 组合显著跑赢高 last-day return 组合</strong>；作者把它解释为<strong>广泛存在的 illiquidity / overreaction</strong>，并明确指出<strong>少数最大、最可交易的币更接近 momentum 而非 reversal</strong>。</li>
+<li><strong>本地快检（Binance USDⓈ-M，近 90 天，15m bars，rolling 24h rank）</strong>：在 <code>ADA/LINK/AVAX/TRX/LTC/BCH</code> 这组成熟 tail bucket 上，做 <code>long bottom-third / short top-third</code> reversal，<strong>1h 持有</strong>口径的平均净收益约 <strong>+0.942 bps / rebalance</strong>，净 Sharpe 约 <strong>1.758</strong>。</li>
+<li>同一快检里，大币 <code>BTC/ETH/SOL/XRP/DOGE/BNB</code> 的 momentum 腿在 <code>15m / 1h / 4h</code> 三个持有窗都为负：例如 <strong>1h 持有</strong>时平均净收益约 <strong>-2.055 bps / rebalance</strong>，说明<strong>至少在当前 fast-cycle 映射口径里，不能把“高流动性币 momentum”当默认成立。</strong></li>
+</ol>
+<h2>3) 为什么和当前 desk 直接相关</h2>
+<ul>
+<li>这是 <strong>raw alpha</strong>，不是 filter。</li>
+<li>它补的是我们当前研究池里更应该继续扩充的一块：<strong>cross-sectional / relative-value / short-term reversal</strong>，而不是再往 breakout 单线里内循环。</li>
+<li>它很适合映射到 <code>15m</code> 生成信号，再落到 <code>5m / 3m / 1m</code> 执行：</li>
+<li>信号慢变量：过去 24h 相对表现</li>
+<li>执行快变量：盘口、spread、funding、成交冲击</li>
+<li>更重要的是，这条线天然自带<strong>对照组</strong>：</li>
+<li>tail reversal</li>
+<li>majors momentum</li>
+<p>这能让我们很快知道“信号本身有用”，还是“只是在错误 bucket 上做了错误方向”。</p>
+</ul>
+<h2>3.5) 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：cross-sectional / mean-reversion（主腿）</li>
+<li>基础 alpha：过去 24h 的相对输家，在较低流动性但仍可交易的币篮子中更容易发生短期反弹</li>
+<li>entry：</li>
+<li>每个 15m bar 计算 bucket 内过去 <code>24h</code> 收益排名</li>
+<li>在 tail bucket 内：<code>long bottom-third losers</code>，<code>short top-third winners</code></li>
+<li>exit：</li>
+<li>先从 <code>1h</code> 与 <code>4h</code> 两档持有窗开始</li>
+<li>或当 z-score / 相对收益回到中性带时提前平仓</li>
+<li>sizing：</li>
+<li>先等权 long-short</li>
+<li>第二步再改成 <code>inverse-vol</code> 或 <code>ADV-cap</code> 限制仓位</li>
+<li>risk / veto：</li>
+<li>单币 notional 上限</li>
+<li>funding 极端同向时降权</li>
+<li>spread / 成交额 / open-interest 异常时 veto</li>
+<li>只做成熟可交易尾部，不碰新上币和极端事件币</li>
+<li>cost：</li>
+<li>必须显式加入手续费 + spread</li>
+<li>本次快检用的是<strong>5 bps one-way per unit turnover</strong> 的简化成本口径</li>
+</ul>
+<h2>4) 这条线最该怎么读：不是“论文 headline 照抄”，而是“挑最适合 desk 的那一腿”</h2>
+<p>如果机械照抄论文 headline，很容易写成：</p>
+<ul>
+<li>“输家反转 + 大币动量，同时做”</li>
+</ul>
+<p>但对当前 desk，更诚实的做法应该是：</p>
+<ol>
+<li><strong>先把 tail reversal 当主策略候选</strong></li>
+<li><strong>把 majors momentum 当强制对照腿</strong></li>
+<li>如果对照腿在当前市场不工作，就不要为了尊重论文而硬保留</li>
+</ol>
+<p>换句话说： <strong>这轮最值钱的不是‘论文说了 reversal 和 momentum 都存在’，而是‘我们可以很快验证到底哪一腿还能活着进素材池’。</strong></p>
+<h2>5) 可复刻的最小实验（5m/15m 起步）</h2>
+<p><strong>数据源与公开性</strong>：</p>
+<ul>
+<li>数据源：Binance USDⓈ-M Futures Klines</li>
+<li>公开性：公开可得，无需 API key</li>
+<li>更新频率：<code>1m / 3m / 5m / 15m</code> 均可</li>
+</ul>
+<p><strong>最小实验口径</strong>：</p>
+<ul>
+<li>buckets：</li>
+<li>majors：<code>BTC/ETH/SOL/XRP/DOGE/BNB</code></li>
+<li>tail：<code>ADA/LINK/AVAX/TRX/LTC/BCH</code></li>
+<li>signal：过去 <code>24h</code> 横截面收益排序</li>
+<li>rebalance：每 <code>15m</code></li>
+<li>holding：先测 <code>1h / 4h</code></li>
+<li>cost：<code>fee + spread</code>，先用 <code>5 bps one-way</code> 粗口径，再做 maker/taker 拆分</li>
+</ul>
+<p><strong>最先看 5 个指标</strong>：</p>
+<ol>
+<li><code>avg net bps / rebalance</code></li>
+<li><code>net Sharpe</code></li>
+<li><code>turnover</code></li>
+<li><code>bucket stability</code>（换 bucket 后还成不成立）</li>
+<li><code>cost break-even</code>（几 bps 之上 edge 才死）</li>
+</ol>
+<h2>6) 下一步怎么测（直接可执行）</h2>
+<ol>
+<li><strong>先做更诚实的 bucket 构造</strong>：不要只按当下成交额拍脑袋分组；改成 <code>rolling ADV + listing age + spread</code> 三维筛选，避免新上币和事件币污染 tail bucket。</li>
+<li><strong>把 24h 信号切成多尺度</strong>：并行测 <code>6h / 12h / 24h / 48h</code> 排名，看这条 edge 到底更像“隔夜反转”还是“更长窗口的拥挤回吐”。</li>
+<li><strong>做执行下钻</strong>：信号仍在 <code>15m</code> 生成，但执行改到 <code>5m / 3m / 1m</code>，比较 <code>close-entry</code> 与 <code>VWAP-slice</code> 两种入场方式，确认 edge 是不是被开仓冲击吃掉。</li>
+<li><strong>加 funding / OI overlay</strong>：如果 loser 同时伴随 crowding unwind（负 funding 修复 / OI 回落），看是否能把 tail reversal 的质量再提高一档。</li>
+<li><strong>做完全对照矩阵</strong>：</li>
+</ol>
+<ul>
+<li>tail reversal</li>
+<li>tail momentum</li>
+<li>majors reversal</li>
+<li>majors momentum</li>
+<p>不要只回测“自己喜欢的那条腿”。</p>
+</ul>
+<h2>7) 风险与保留意见</h2>
+<ul>
+<li>论文是<strong>日频横截面</strong>，我这里做的是<strong>短周期 desk 映射</strong>，两者不是同一层级，不应假装是“全文复现”。</li>
+<li>本地快检只是最小 sanity check，不是最终生产回测。</li>
+<li>这次 <code>1h / 4h</code> forward-return 口径存在<strong>重叠持有窗</strong>，所以这里更应看 <strong>avg bps / Sharpe</strong>，不应把累计收益当最终实盘曲线。</li>
+<li>tail bucket 的定义对结果很敏感；如果混入新币、事件币或超低流动性币，结论会被严重污染。</li>
+</ul>
+<h2>8) 来源</h2>
+<ol>
+<li><strong>Zaremba, A., Bilgin, M. H., Long, H., Mercik, A., &amp; Szczygielski, J. J. (2021). _Up or down? Short-term reversal, momentum, and liquidity effects in cryptocurrency markets_. International Review of Financial Analysis, 78, 101908.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1016/j.irfa.2021.101908</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.irfa.2021.101908">https://doi.org/10.1016/j.irfa.2021.101908</a></code></li>
+</ul>
+<ol>
+<li><strong>Wen, Z., Bouri, E., Xu, Y., &amp; Zhao, Y. (2022). _Intraday return predictability in the cryptocurrency markets: Momentum, reversal, or both_. The North American Journal of Economics and Finance, 62, 101733.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1016/j.najef.2022.101733</code></li>
+<li>SSRN DOI: <code>10.2139/ssrn.4080253</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.najef.2022.101733">https://doi.org/10.1016/j.najef.2022.101733</a></code></li>
+<li>说明：本轮主要把它当 companion reference，用来确认“动量 / 反转并存”这个研究方向，而非直接抽取详细估计值。</li>
+</ul>
+<ol>
+<li><strong>Binance Developers. USDⓈ-M Futures Kline/Candlestick Data.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<h2>9) 本地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/liquidity_split_tail_reversal_20260325/summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/liquidity_split_tail_reversal_20260325/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/liquidity_split_tail_reversal_20260325/notes.txt</code></li>
+</ul>
+</body>
+</html>

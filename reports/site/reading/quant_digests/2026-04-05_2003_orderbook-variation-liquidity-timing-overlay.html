@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 tight spread 直接当成低风险成交：对 short-cycle desk，更该先补「order-book variation × bid-depth」这层 liquidity-timing overlay</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 tight spread 直接当成低风险成交：对 short-cycle desk，更该先补「order-book variation × bid-depth」这层 liquidity-timing overlay</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-05 20:05 UTC</span>
+      <span class="pill">研究时间：2026-04-05 20:03 UTC</span>
+      <span class="pill">类型：2025 *Journal of Risk and Financial Management* 开放获取全文（MDPI PDF）+ Crossref / OpenAlex 元数据 + 公开 L2 API 可得性确认</span>
+      <span class="pill">主题标签：overlay/execution/liquidity/order-book/variation/spread/imbalance/bid-depth/liquidity-timing/shared-overlay/pairs/carry/cross-venue/microstructure/binance/okx/1m/3m/5m/15m/paper/open-access/public-data/cost/risk</span>
+      <span class="pill">证据类型：论文全文 + 元数据 + 公开 API 可得性确认</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-05_2003_orderbook-variation-liquidity-timing-overlay.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-05 20:03 UTC</li>
+<li>类型：2025 *Journal of Risk and Financial Management* 开放获取全文（MDPI PDF）+ Crossref / OpenAlex 元数据 + 公开 L2 API 可得性确认</li>
+<li>主题类型：overlay</li>
+<li>基础 alpha：pairs / carry / cross-venue gap / OFI directional 等所有依赖低冲击成交的短周期 alpha</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：overlay/execution/liquidity/order-book/variation/spread/imbalance/bid-depth/liquidity-timing/shared-overlay/pairs/carry/cross-venue/microstructure/binance/okx/1m/3m/5m/15m/paper/open-access/public-data/cost/risk</li>
+<li>证据类型：论文全文 + 元数据 + 公开 API 可得性确认</li>
+</ul>
+<p>&gt; 先回答一句：<strong>这篇东西的 base alpha 是什么？</strong> &gt; &gt; <strong>base alpha 不是单独一条新 raw alpha；它服务的是所有需要穿过 order book 的短周期 alpha。</strong> &gt; 所以这轮应把它归类成 <strong>execution / risk overlay</strong>，而不是硬伪装成一条新的主信号。</p>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看的是：</p>
+<ol>
+<li><strong>Angerer, M., Gramlich, M., &amp; Hanke, M. (2025). _Order Book Liquidity on Crypto Exchanges_. Journal of Risk and Financial Management, 18(3), 124.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.3390/jrfm18030124</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.3390/jrfm18030124">https://doi.org/10.3390/jrfm18030124</a></code></li>
+<li>PDF：<code><a href="https://www.mdpi.com/1911-8074/18/3/124/pdf?version=1740661051">https://www.mdpi.com/1911-8074/18/3/124/pdf?version=1740661051</a></code></li>
+<li>Repo URL：无</li>
+</ul>
+<ol>
+<li>Crossref / OpenAlex 元数据</li>
+<li>公开 L2 数据可得性确认：</li>
+</ol>
+<ul>
+<li>Binance Spot：<code><a href="https://api.binance.com/api/v3/depth?symbol=BTCUSDT&amp;limit=20">https://api.binance.com/api/v3/depth?symbol=BTCUSDT&amp;limit=20</a></code></li>
+<li>OKX Books：<code><a href="https://www.okx.com/api/v5/market/books?instId=BTC-USDT&amp;sz=20">https://www.okx.com/api/v5/market/books?instId=BTC-USDT&amp;sz=20</a></code></li>
+<li>Binance Futures REST 这边当前 IP 已触发限频提示，更适合用 websocket 连续采样，而不是高频 REST 轮询</li>
+</ul>
+<p>这轮虽然不是继续补 raw alpha，但我仍然觉得值得写，原因很直接：</p>
+<ul>
+<li>过去几天 raw alpha intake 已经很密，尤其是 pairs / carry / order-book / microstructure 族；</li>
+<li>这些东西最后能不能从 gross edge 变成 net edge，往往不是死在 signal，而是死在 <strong>什么时候进、什么时候别进、当时 book 薄不薄</strong>；</li>
+<li>这篇 paper 给的最值钱部分，不是“哪个交易所更好”，而是它定义了一个很适合移植到 <code>1m / 3m / 5m / 15m</code> 的 <strong>order-book variation</strong> 概念：</li>
+<p><strong>同样是 tight spread，book 的“会不会突然被打穿”是另一件事。</strong></p>
+</ul>
+<h2>2. 一句话核心结论 + 它怎么证明</h2>
+<h3>一句话核心结论</h3>
+<p><strong>对 short-cycle desk，quoted spread 不能单独当执行条件；更该把 <code>variation（book 跳层风险） + bid-side depth / imbalance</code> 一起纳入 entry veto / sizing / maker quote policy。</strong></p>
+<h3>一句话它怎么证明</h3>
+<p>作者用 2019 年四家 CEX 的全簿或 top-20 order book 数据，构造了一个新的 <strong>order book variation</strong> 指标：</p>
+<ul>
+<li>每隔 <code>5min</code> 取一次快照；</li>
+<li>看当前 mid-price 相对上一个快照，在 bid / ask 两侧分别最接近落到第几档；</li>
+<li>取两侧里更坏的那个 level rank，作为本次 jump 的“跳层数”；</li>
+<li>再在日内聚合成 <strong>平均 variation</strong> 和 <strong>最大 variation</strong>。</li>
+</ul>
+<p>翻成人话就是：</p>
+<p>&gt; <strong>不是只看当下 spread 窄不窄，而是看“这本书下一下会不会突然跳很多档”。</strong></p>
+<h2>3. 论文里最值钱的 5 个点</h2>
+<h3>3.1 数据口径足够硬，不是几只币的小样本故事</h3>
+<p>论文数据来自 <strong>Binance / Kraken / Huobi / OKEx</strong> 四家交易所，样本期是 <strong>2019-01-01 到 2019-09-30（273 天）</strong>。</p>
+<p>作者最终保留：</p>
+<ul>
+<li><strong>1086 个 trading pairs</strong></li>
+<li><strong>254,728 个 pair-day observations</strong></li>
+<li>每天最多 <strong>288 个 <code>5min</code> snapshots</strong></li>
+<li>每次看 <strong>双边最多 20 档 order book</strong></li>
+</ul>
+<p>这比“抓一个月 BTCUSDT top-of-book 然后开始讲 microstructure”要扎实得多。</p>
+<h3>3.2 最值得 desk 拿走的不是 spread，而是 <code>variation risk</code></h3>
+<p>论文最有用的结果之一，是把 liquidity 重新拆成两层：</p>
+<ol>
+<li><strong>quoted / VWAP spread</strong>：你现在看得到的静态成本</li>
+<li><strong>order-book variation</strong>：你下单那一刻，book 会不会突然跳层、把你打到更差价位</li>
+</ol>
+<p>这对 short-cycle 特别关键，因为很多策略在回测里默认：</p>
+<ul>
+<li>“当下 spread 很窄 = 可放心成交”</li>
+</ul>
+<p>但 paper 的意思其实更接近：</p>
+<ul>
+<li><strong>spread 只是其中一维</strong>；</li>
+<li>真正影响成交后 PnL 的，还包括 <strong>book 稳不稳定、bid side 有没有托住、你是不是正好踩在 liquidity 被 timing 的那一刻。</strong></li>
+</ul>
+<h3>3.3 variation 的横截面差异很大，说明“什么时候下”确实重要</h3>
+<p>按 base type 分组，作者报告的 variation 很不一样：</p>
+<ul>
+<li><strong>OKEx cryptocurrency</strong>：</li>
+<li>mean variation = <strong>1.48</strong></li>
+<li>max variation = <strong>8.04</strong></li>
+<li><strong>Huobi stablecoin</strong>：</li>
+<li>mean variation = <strong>6.86</strong></li>
+<li>max variation = <strong>39.4</strong></li>
+</ul>
+<p>这不是一点点噪声差异，而是非常大的 execution regime 差异。</p>
+<p>翻成人话：</p>
+<p>&gt; <strong>有些 book 平时只跳 1~2 档，有些 book 日内最差时能跳接近 40 档。</strong> &gt; &gt; 如果你的策略要 taker 进出、要 stop、要 hedge，这种差异足够把“同一信号”做成两条完全不同的净值曲线。</p>
+<h3>3.4 最反直觉但最有用的点：tight spread 不一定等于低冲击风险</h3>
+<p>论文发现，variation 和 spread / imbalance 的关系并不简单到“越紧越安全”：</p>
+<ul>
+<li>variation 与 spread 显著负相关；</li>
+<li>variation 与绝对 imbalance（ANOBI）也显著负相关；</li>
+<li>fixed-effects 回归里，<strong>L5 VWAP spread 每增加 1%，variation 大约下降 <code>0.53% ~ 0.41%</code></strong>；</li>
+<li><strong>L10 ANOBI 每增加 1%，variation 的变化大约在 <code>-0.08% ~ +0.02%</code> 区间</strong>，方向更弱，但 interaction term 显著。</li>
+</ul>
+<p>这背后的 desk 化解释不是“spread 越宽越好”，而是：</p>
+<p>&gt; <strong>真实交易会 timing。</strong> &gt; &gt; 当 liquidity 看起来足够好、足够值得打的时候，反而更容易出现 market order 去吃 book，导致你看到的是 tight spread，但同时也更可能遇到 book 快速变化。</p>
+<p>所以对 taker 策略来说，<strong>“spread 变窄就冲”是危险的</strong>。更稳的做法是：</p>
+<ul>
+<li>既看 spread；</li>
+<li>也看 predicted variation / recent max variation；</li>
+<li>再看 bid-side depth / imbalance 是否在支撑你想做的方向。</li>
+</ul>
+<h3>3.5 bid side 比 ask side 更重要，尤其对下跌和止损很关键</h3>
+<p>论文里一个很适合 desk 落地的结论是：</p>
+<ul>
+<li><strong>更高的 bid-side depth 更能降低 variation risk</strong>；</li>
+<li>当 order book 更偏向 negative imbalance / bid-side 不够厚时，variation 风险更容易上升；</li>
+<li>作者甚至明确写到：投资者更愿意支付更高 spread 去卖出，而不是去买入新仓。</li>
+</ul>
+<p>这件事对我们有两个直接含义：</p>
+<ol>
+<li><strong>做多 alpha 的 stop / exit 风险，不能只盯 ask。更该盯 bid 有没有突然塌。</strong></li>
+<li><strong>所有依赖被动止盈、主动止损、动态对冲的策略，都该把 bid-side thinning 当成更高优先级警报。</strong></li>
+</ol>
+<h2>4. 这轮最值得移植的，不是交易所比较，而是一个共享 overlay</h2>
+<p>如果只从“哪家交易所更有流动性”来读，这篇东西其实会很快失效，因为论文样本是 2019。</p>
+<p>但如果把它读成一个 <strong>shared liquidity-timing overlay</strong>，价值就大很多。</p>
+<p>它最适合服务至少 4 类已有 raw alpha：</p>
+<ol>
+<li><strong>pairs / stat-arb / cross-venue gap mean reversion</strong></li>
+<li><strong>funding / basis / carry</strong>（需要 roll、换腿、临近 funding 边界再平衡）</li>
+<li><strong>order-book / OFI directional</strong>（spread 紧但未必 safe）</li>
+<li><strong>maker / market-making</strong>（何时缩 size、何时 widen quote、何时干脆撤）</li>
+</ol>
+<p>所以这轮不是继续堆一条新 raw alpha，而是给已经很多的 raw alpha 池补一层更可复用的执行框架。</p>
+<h2>4.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：shared execution / liquidity-timing overlay</li>
+<li>服务对象：pairs、carry、cross-venue、maker、microstructure directional</li>
+<li>overlay 本体：<code>spread + variation + bid-side depth/imbalance -&gt; entry veto / size scalar / execution mode</code></li>
+<li>trade-on：</li>
+<li>最近一段 <code>variation</code> 不高；</li>
+<li>bid-side depth 没有明显塌陷；</li>
+<li>当前策略预期 edge 能覆盖显性成本 + 预估冲击成本；</li>
+<li>veto：</li>
+<li>recent / predicted max variation 进入高分位；</li>
+<li>bid-side depth 快速变薄；</li>
+<li>ANOBI / NOBI 提示 book 结构对当前方向不友好；</li>
+<li>需要 taker 进出，但 execution mode 仍假设“tight spread = safe”；</li>
+<li>sizing / risk：</li>
+<li>variation 分位越高，size 越小；</li>
+<li>bid-side depth 越差，long alpha exit 相关仓位越应主动降；</li>
+<li>maker 策略在 variation 高位时 widening / reduce quote count / pull quote</li>
+</ul>
+<h2>5. 跟 <code>1m / 3m / 5m / 15m</code> 怎么接</h2>
+<p>这篇 paper 本身是 <code>5min</code> order-book snapshots，但对我们不是问题，反而正适合往下或往上聚合。</p>
+<h3>对 <code>1m / 3m / 5m / 15m</code> 的 desk 化映射</h3>
+<ul>
+<li><strong><code>1m</code></strong>：把 websocket L2 snapshots（如 <code>250ms/500ms/1s</code>）聚合成 bar 内 <code>avg variation / max variation</code></li>
+<li><strong><code>3m</code></strong>：更适合 pairs / basis / OFI alpha 的 execution veto</li>
+<li><strong><code>5m</code></strong>：与论文最接近，优先做第一版 replication</li>
+<li><strong><code>15m</code></strong>：更像上层 admission / sizing gate，而不是逐笔 execution gate</li>
+</ul>
+<h3>公开数据是否拿得到</h3>
+<p>能拿到，而且足够快做最小实验：</p>
+<ul>
+<li>Binance Spot <code>depth</code> REST / websocket：公开可得</li>
+<li>OKX Books REST / websocket：公开可得</li>
+<li>Binance Futures 这边 REST 容易碰限频，更建议直接上 websocket</li>
+</ul>
+<p>也就是说，这条 overlay <strong>不是必须买私有 L2 数据</strong> 才能先做第一轮实验。</p>
+<h2>6. 给 desk 的最小实验版本</h2>
+<p>第一版别做复杂模型，先做一个 rule-based liquidity-timing governor：</p>
+<ol>
+<li>连续收 <code>top20</code> book snapshots</li>
+<li>对每个 <code>1m / 3m / 5m / 15m</code> bar 计算：</li>
+</ol>
+<ul>
+<li><code>L1 relative spread</code></li>
+<li><code>L5 VWAP relative spread</code></li>
+<li><code>L10 ANOBI</code></li>
+<li><code>avg variation</code></li>
+<li><code>max variation</code></li>
+</ul>
+<ol>
+<li>在现有 raw alpha 外再套一层规则：</li>
+</ol>
+<ul>
+<li><strong>taker alpha</strong>：<code>max variation</code> 过高则不进；bid-side 深度不足则 size-down</li>
+<li><strong>maker alpha</strong>：variation 高位时 widen quotes / reduce inventory skew / 降撤单频率</li>
+<li><strong>pairs/carry</strong>：需要双腿同时成交时，只在两腿都通过 liquidity veto 时才允许入场</li>
+</ul>
+<ol>
+<li>对比 baseline 与 overlay：</li>
+</ol>
+<ul>
+<li>fill quality</li>
+<li>slippage</li>
+<li>adverse selection</li>
+<li>stop-out 后的二次滑点</li>
+<li>net pnl / turnover-adjusted sharpe</li>
+</ul>
+<h2>7. 下一步怎么测（最重要）</h2>
+<h3>7.1 先测哪几条现有策略</h3>
+<p>优先把这层 overlay 接到 3 类现有策略上做 A/B：</p>
+<ol>
+<li><code>2026-04-05_1606_twotier-funding-rate-crossvenue-arb-alpha.md</code></li>
+<li><code>2026-04-05_1919_winneronly-losershort-veto-xs-alpha.md</code>（执行层，只测入场质量，不改主信号）</li>
+<li><code>2026-04-04_1016_bybit-laddered-inventory-skew-maker-alpha.md</code></li>
+</ol>
+<h3>7.2 最小实验口径</h3>
+<ul>
+<li><strong>数据源</strong>：Binance Spot / OKX Books 公共 L2；如果做合约则优先 websocket</li>
+<li><strong>标的</strong>：先做 <code>BTCUSDT / ETHUSDT / SOLUSDT</code>，再扩到 pairs / dual-leg</li>
+<li><strong>采样</strong>：<code>1s</code> snapshots，聚合到 <code>1m / 3m / 5m / 15m</code></li>
+<li><strong>特征</strong>：</li>
+<li><code>L1 spread</code></li>
+<li><code>L5 VWAP spread</code></li>
+<li><code>L10 ANOBI</code></li>
+<li><code>avg variation</code></li>
+<li><code>max variation</code></li>
+<li>bid-side depth slope</li>
+<li><strong>标签 / 目标</strong>：</li>
+<li>下一个 bar 的 realized slippage</li>
+<li>stop 执行后的 extra impact</li>
+<li>maker fill 后 <code>30s / 60s / 180s</code> adverse selection</li>
+<li><strong>比较项</strong>：</li>
+<li>gross pnl</li>
+<li>net pnl</li>
+<li>slippage per trade</li>
+<li>turnover</li>
+<li>stop-out loss amplification</li>
+<li>quote-to-fill ratio（maker）</li>
+</ul>
+<h3>7.3 先看什么结果</h3>
+<p>第一轮先别追求“收益大增”，只看 3 件事：</p>
+<ol>
+<li><strong>有没有明显降低最差 5% 交易的滑点尾部；</strong></li>
+<li><strong>在不显著减少交易数的前提下，net pnl 有没有改善；</strong></li>
+<li><strong>bid-side thinning 能不能比 spread 自己更早预警坏成交。</strong></li>
+</ol>
+<h2>8. 先别自嗨的地方</h2>
+<ol>
+<li><strong>论文样本是 2019。</strong> 不能把“哪家交易所更好”直接照搬到 2026。</li>
+<li><strong>作者的 book variation 是跨日聚合后研究，不是现成可部署信号。</strong> 我们要做的是把它 desk 化成实时 overlay。</li>
+<li><strong>spread 和 variation 的负相关，不能被误读成“spread 越宽越该下单”。</strong> 它说明的是 liquidity timing / endogenous trading，不是鼓励去吃宽价差。</li>
+<li><strong>如果只拿 REST 低频抓书，可能抓不到真正的 micro-burst。</strong> 想认真做 <code>1m</code>，最好还是 websocket。</li>
+</ol>
+<h2>9. 这轮最值得记住的 desk 化结论</h2>
+<p>如果只记一句：</p>
+<p>&gt; <strong>tight spread 不是低风险成交的同义词。对 short-cycle alpha，更该把“book 会不会突然跳层”与“bid side 有没有托住”一起纳入执行决策。</strong></p>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>Angerer, Martin; Gramlich, Marius; Hanke, Michael (2025). _Order Book Liquidity on Crypto Exchanges_. Journal of Risk and Financial Management, 18(3), 124.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.3390/jrfm18030124</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.3390/jrfm18030124">https://doi.org/10.3390/jrfm18030124</a></code></li>
+<li>PDF：<code><a href="https://www.mdpi.com/1911-8074/18/3/124/pdf?version=1740661051">https://www.mdpi.com/1911-8074/18/3/124/pdf?version=1740661051</a></code></li>
+<li>Repo URL：无</li>
+</ul>
+<ol>
+<li><strong>Crossref metadata</strong></li>
+</ol>
+<ul>
+<li><code><a href="https://api.crossref.org/works/10.3390/jrfm18030124">https://api.crossref.org/works/10.3390/jrfm18030124</a></code></li>
+</ul>
+<ol>
+<li><strong>OpenAlex metadata</strong></li>
+</ol>
+<ul>
+<li><code><a href="https://api.openalex.org/works?search=Order%20Book%20Liquidity%20on%20Crypto%20Exchanges">https://api.openalex.org/works?search=Order%20Book%20Liquidity%20on%20Crypto%20Exchanges</a></code></li>
+</ul>
+<ol>
+<li><strong>公开 order-book API 可得性确认（2026-04-05 UTC）</strong></li>
+</ol>
+<ul>
+<li>Binance Spot depth：<code><a href="https://api.binance.com/api/v3/depth?symbol=BTCUSDT&amp;limit=20">https://api.binance.com/api/v3/depth?symbol=BTCUSDT&amp;limit=20</a></code></li>
+<li>OKX Books：<code><a href="https://www.okx.com/api/v5/market/books?instId=BTC-USDT&amp;sz=20">https://www.okx.com/api/v5/market/books?instId=BTC-USDT&amp;sz=20</a></code></li>
+<li>备注：Binance Futures 高频 REST 在当前 IP 上出现限频封禁提示，live 采集应优先 websocket</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个 2026 Coinbase AI Trader 仓只读成“多 agent 大拼盘”：对 short-cycle crypto desk，更该先拆的是「range-regime oversold confluence bounce × 15m hard timeout」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个 2026 Coinbase AI Trader 仓只读成“多 agent 大拼盘”：对 short-cycle crypto desk，更该先拆的是「range-regime oversold confluence bounce × 15m hard timeout」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-19 23:04 UTC</span>
+      <span class="pill">研究时间：2026-04-19 23:12 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `backend/agents/scalp_agent.py` + `backend/tests/test_scalp_agent.py` + `backend/tests/test_signal_improvements.py`）+ Binance USDⓈ-M `1m/5m` portability probe（`BTC/ETH/SOL`，公开 K 线）</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/mean-reversion/oversold/confluence/range-regime/adx/vwap/bollinger/stochrsi/mfi/obv/time-stop/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：仓库源码规则 + 单元测试 + Binance 公共数据最小可复现实验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-19_2312_scalp-confluence-timeboxed-bounce-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-19 23:12 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>backend/agents/scalp_agent.py</code> + <code>backend/tests/test_scalp_agent.py</code> + <code>backend/tests/test_signal_improvements.py</code>）+ Binance USDⓈ-M <code>1m/5m</code> portability probe（<code>BTC/ETH/SOL</code>，公开 K 线）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>在低 ADX 的 range regime 里，抓“多指标同时超卖”的短时反弹；不是单看 RSI，而是 <code>RSI7 + Bollinger 下轨/中轨 + VWAP 偏离 + StochRSI + OBV slope + MFI7</code> 的 confluence long，靠 <code>+30bp TP / -25bp SL / 15m time stop / ATR trail</code> 快速出清</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/single-asset/mean-reversion/oversold/confluence/range-regime/adx/vwap/bollinger/stochrsi/mfi/obv/time-stop/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：仓库源码规则 + 单元测试 + Binance 公共数据最小可复现实验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这次主题非常明确，是一条可独立复现的单资产短周期均值回归 raw alpha，不是 filter。</strong></p>
+<p>主材料是 GitHub 仓库 <strong><code>gl4500/coinbase-ai-trader</code></strong>。这个 repo 表面上是个“多 agent AI Trader”，但真正值得 desk intake 的不是它的 CNN-LSTM 外壳，而是源码里单独拎出来的 <strong><code>ScalpAgent</code></strong>：</p>
+<ul>
+<li>它不是“AI 自由发挥”，而是<strong>写死规则的 fast-cycle confluence strategy</strong>；</li>
+<li>进场逻辑很清楚：<code>score &gt;= 5</code> 才开仓；</li>
+<li>regime 也写清楚了：<strong><code>ADX(10) &lt; 20</code> 才允许 mean reversion，<code>ADX(10) &gt; 25</code> 才切到 momentum 解释</strong>；</li>
+<li>出场也不是含糊其辞：<strong><code>+0.30% TP / -0.25% SL / 15m hard time exit / 1.5x ATR(7) trailing stop</code></strong>；</li>
+<li>资金与容量也给了：<strong>单仓最多 <code>20%</code> 资金，最多 <code>2</code> 个并发仓位</strong>。</li>
+</ul>
+<p>对我们 desk 真正重要的点在于： &gt; <strong>它把“超卖反弹”从一句概念，写成了可直接落地的 entry / exit / sizing / cost 壳。</strong></p>
+<h2>2. 源码里到底是什么策略</h2>
+<h3>2.1 entry：不是单一 RSI，而是 oversold confluence score</h3>
+<p><code>backend/agents/scalp_agent.py</code> 里把进场写成了一个满分 <code>10</code> 分的打分器，核心规则如下：</p>
+<ul>
+<li><code>RSI(7) &lt; 25</code>：<code>+2</code>；<code>RSI(7) &lt; 35</code>：<code>+1</code></li>
+<li>价格触及 <code>Bollinger lower band</code>：<code>+2</code>；跌破 <code>BB mid</code>：<code>+1</code></li>
+<li>价格显著低于 <code>VWAP</code>：<code>+2</code>；轻微低于 <code>VWAP</code>：<code>+1</code></li>
+<li><code>StochRSI &lt; 20</code>：<code>+1</code></li>
+<li><code>OBV slope &gt; 0.15</code>：<code>+1</code></li>
+<li><code>MFI(7) &lt; 25</code>：<code>+1</code></li>
+</ul>
+<p>repo 原文是 <code>score &gt;= 5</code> 可以触发，但在 <code>ADX &lt; 20</code> 的 ranging regime 下，源码实际上把门槛再抬高了 1 分：</p>
+<ul>
+<li><strong>range regime：<code>min_score = 6</code></strong></li>
+<li>trending regime：<code>min_score = 5</code></li>
+</ul>
+<p>这很关键，因为它不是“看到超卖就抄底”，而是要求<strong>至少两三条超卖/承接证据同时出现</strong>。</p>
+<h3>2.2 regime：这条 alpha 只该在横盘里做，不该在趋势里硬抄</h3>
+<p>这份代码最像成熟策略壳的一点，不是指标多，而是它承认：</p>
+<ul>
+<li><strong><code>ADX &lt; 20</code>：市场偏 range，可以做 mean reversion；</strong></li>
+<li><strong><code>ADX &gt; 25</code>：市场偏 trend，不该拿同一套 oversold bounce 逻辑去逆势硬接。</strong></li>
+</ul>
+<p>也就是说，它把 <strong>regime gate</strong> 明确写进了 alpha 本体，而不是回测完以后再补解释。</p>
+<h3>2.3 exit：15 分钟硬超时，比“等 opposite band”更 desk-friendly</h3>
+<p>这条线真正让我觉得值得单独 intake 的，不只是 confluence entry，而是它的<strong>时间止损很硬</strong>：</p>
+<ul>
+<li>take-profit：<code>+30bp</code></li>
+<li>hard stop：<code>-25bp</code></li>
+<li>trailing stop：<code>1.5 x ATR(7)</code></li>
+<li><strong>time exit：15 分钟</strong></li>
+</ul>
+<p>这比很多“等回到中轨 / 对侧轨 / 均线”类脚本更适合 short-cycle desk，因为它明确表达的是： &gt; <strong>如果 bounce 没在很短时间内兑现，那就把仓位当作错误，别恋战。</strong></p>
+<h2>3. 为什么它和今天已写过的几篇“反弹 / 回归”还不一样</h2>
+<p>今天其实已经写过多条 mean-reversion 线，但这篇仍然值得留下，原因不是“又一个超卖”，而是：</p>
+<ol>
+<li><strong>它是完整策略壳，不是单一信号碎片。</strong></li>
+</ol>
+<ul>
+<li>今天有些主题更偏 router、candidate selector、或者“哪种超跌更值得做”；</li>
+<li>这篇直接给你完整的 <code>entry / exit / sizing / cooldown / monitoring</code>。</li>
+</ul>
+<ol>
+<li><strong>它把“时间”当第一等公民。</strong></li>
+</ol>
+<ul>
+<li>不是只看价格回没回，而是先问：<strong>这波 bounce 要不要在 15 分钟内兑现？</strong></li>
+<li>这个思路非常适合 <code>1m / 3m / 5m</code> 的实盘组件化。</li>
+</ul>
+<ol>
+<li><strong>它天然适合作为“maker-first or child-execution”壳来二次开发。</strong></li>
+</ol>
+<ul>
+<li>因为 TP 只有 <code>30bp</code>，所以成本敏感度极高；</li>
+<li>这反而逼着我们认真做 <code>entry placement / partial fill / re-entry cooldown / execution veto</code>，而不是把 alpha 和 execution 混在一起。</li>
+</ul>
+<h2>4. 本地最小快检：搬到 Binance 公共数据后，edge 还剩多少？</h2>
+<h3>4.1 数据源、公开性、更新频率、实验口径</h3>
+<ul>
+<li>数据源 A：GitHub 公开仓 <code>gl4500/coinbase-ai-trader</code></li>
+<li>数据源 B：Binance USDⓈ-M 公共 K 线接口 <code>fapi/v1/klines</code></li>
+<li>公开性：公开可得，无需私钥</li>
+<li>更新频率：<code>1m / 5m</code></li>
+<li>本轮最小实验口径：</li>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li>周期：<code>1m / 5m</code></li>
+<li>规则：按 repo 的 ScalpAgent mean-reversion 分支做 portable approximation</li>
+<li>regime：仅保留 <code>ADX(10) &lt; 20</code></li>
+<li>exit：<code>+30bp TP / -25bp SL / 15m time exit / 1.5x ATR(7) trail</code></li>
+<li>成本：先按 <strong><code>4bp/side</code>，round-trip <code>8bp</code></strong> 的保守口径扣费</li>
+</ul>
+<p>说明：因为 Binance 公共 K 线拿不到 repo 里 live WS price、Coinbase 真实成交结构、以及完全一致的 VWAP/OBV 内部实现，我这里做的是<strong>可复核的近似版 portability probe</strong>，不是宣称与 repo 回测逐点一致。</p>
+<h3>4.2 最关键数据点</h3>
+<p>我把 summary 落到了：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-19_scalpagent_confluence_probe_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_scalpagent_confluence_probe_events.csv</code></li>
+</ul>
+<p>其中最值得记住的是这几组数：</p>
+<ol>
+<li><strong>1m 版信号并不稀缺，但扣掉 8bp round-trip 后整体仍偏负。</strong></li>
+</ol>
+<ul>
+<li><code>BTCUSDT 1m</code>：<code>22</code> 笔，净胜率约 <code>22.7%</code>，平均单笔净收益约 <code>-13.1bp</code></li>
+<li><code>ETHUSDT 1m</code>：<code>35</code> 笔，净胜率约 <code>22.9%</code>，平均单笔净收益约 <code>-10.8bp</code></li>
+<li><code>SOLUSDT 1m</code>：<code>43</code> 笔，净胜率约 <code>41.9%</code>，平均单笔净收益约 <code>-5.9bp</code></li>
+</ul>
+<ol>
+<li><strong>5m 版也没把问题根治，最好的一组只是接近打平。</strong></li>
+</ol>
+<ul>
+<li><code>BTCUSDT 5m</code>：<code>19</code> 笔，净胜率约 <code>47.4%</code>，平均单笔净收益约 <code>-3.1bp</code></li>
+<li><code>ETHUSDT 5m</code>：<code>25</code> 笔，平均单笔净收益约 <code>-15.0bp</code></li>
+<li><code>SOLUSDT 5m</code>：<code>21</code> 笔，平均单笔净收益约 <code>-8.0bp</code></li>
+</ul>
+<ol>
+<li><strong>绝大多数出场并不是 TP，而是 TIME。</strong></li>
+</ol>
+<ul>
+<li><code>BTCUSDT 1m</code>：<code>TIME exit</code> 占比约 <code>77.3%</code></li>
+<li><code>ETHUSDT 1m</code>：约 <code>71.4%</code></li>
+<li><code>BTCUSDT 5m</code>：约 <code>73.7%</code></li>
+</ul>
+<p>这说明一个很直白的问题： &gt; <strong>repo 的 alpha intuition 没错，但在 Binance 公共数据 + 保守摩擦口径下，bounce 经常“会反一点”，却不够快、不够深，来不及在 15 分钟内给出足够覆盖成本的利润。</strong></p>
+<h2>5. 该怎么理解这组结果</h2>
+<h3>5.1 这不是“策略没用”，而是“execution/cost 压力非常真实”</h3>
+<p>如果一个策略的目标 TP 只有 <code>30bp</code>，那它天然就怕三件事：</p>
+<ol>
+<li>入场追得太高；</li>
+<li>点差/手续费吃掉太多；</li>
+<li>反弹不够快，最后被 <code>TIME exit</code> 平掉。</li>
+</ol>
+<p>而这三件事，刚好都是 short-cycle desk 最擅长继续拆的地方。所以这次 digest 的价值，不是“宣布它已能直接上线”，而是：</p>
+<ul>
+<li><strong>repo 已经给出了完整 shell；</strong></li>
+<li><strong>portable probe 也已经告诉我们壳子最先死在哪——主要死在成本与兑现速度。</strong></li>
+</ul>
+<h3>5.2 这条 alpha 更像“需要 execution 帮忙”的 raw alpha</h3>
+<p>因此这条线最合理的定位不是：</p>
+<ul>
+<li>“再加更多指标，直到看起来更神”；</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li><strong>保留 raw alpha 本体：range-regime oversold confluence bounce</strong>；</li>
+<li>把工程力放在：</li>
+<li>maker-first / passive entry</li>
+<li><code>1m</code> 触发后 <code>3m/5m</code> child execution</li>
+<li>更严格的 liquidity veto</li>
+<li>只做最强 <code>score 7+</code> 或更深 VWAP 偏离的 subset</li>
+<li>symbol-specific whitelist</li>
+</ul>
+<h2>6. 这条线为什么仍然算 raw alpha，而不是 filter / overlay</h2>
+<p>因为这里回答的是： &gt; <strong>到底开哪种仓，靠什么直接赚钱？</strong></p>
+<p>答案很清楚：</p>
+<ul>
+<li>开的是<strong>单资产 long-side bounce 仓位</strong>；</li>
+<li>赚钱来源是<strong>极短期 oversold 回归</strong>；</li>
+<li>ADX、VWAP、StochRSI、MFI 这些不是独立 overlay，而是在定义这条 bounce alpha 本体的 admission 条件。</li>
+</ul>
+<p>所以它不是“给别的策略打分”的 filter，而是<strong>自己就能独立开仓、独立平仓、独立计费</strong>的一条 raw alpha。</p>
+<h2>7. 风险与保留意见</h2>
+<ol>
+<li><strong>repo 的交易成本假设偏 Coinbase 友好。</strong></li>
+<p>源码注释里写的是 maker <code>0.006%/side</code>，round-trip <code>0.012%</code>；但如果你拿更保守的 Binance 短周期口径去测，edge 会被显著压缩。</p>
+</ol>
+<ol>
+<li><strong>15m hard timeout 很可能既是优点，也是当前主要损失源。</strong></li>
+<p>它控制了拖泥带水，但也让大量“慢一点但方向对”的反弹来不及兑现。</p>
+</ol>
+<ol>
+<li><strong>这条线不是全市场通杀。</strong></li>
+<p>从这次最小 probe 看，<code>SOL</code> 明显比 <code>BTC/ETH</code> 更接近可挽救；说明它可能更适合高 beta、局部 overshoot 更深的币，而不是最成熟的大币永远一把尺子通吃。</p>
+</ol>
+<ol>
+<li><strong>它很容易和今天其他均值回归 digest 看起来“像一家人”。</strong></li>
+<p>但真正不同之处在于：这条线给了一个非常明确的<strong>timeboxed shell</strong>，而不是“跌多了会弹”这种泛泛说法。</p>
+</ol>
+<h2>8. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 stronger admission 子集，而不是立刻全量实盘。</strong></li>
+</ol>
+<ul>
+<li>只保留 <code>score &gt;= 7</code></li>
+<li>或要求 <code>close &lt;= BB lower</code> 且 <code>vwap_dist &lt;= -25bp</code></li>
+<li>或只做 <code>SOL + 1~2</code> 个高 beta symbol</li>
+</ul>
+<ol>
+<li><strong>把 execution 单独拆出来测。</strong></li>
+</ol>
+<ul>
+<li>比较 <code>signal-close taker</code>、<code>next-bar passive bid</code>、<code>2~3 slice child execution</code></li>
+<li>问题不是“会不会反”，而是“能不能低成本拿到这段反弹”</li>
+</ul>
+<ol>
+<li><strong>测试 15m vs 20m/30m timeout。</strong></li>
+</ol>
+<ul>
+<li>如果 TIME exit 占比长期 <code>&gt; 70%</code>，那就该认真测：</li>
+<li>是 alpha 太弱，还是 timeout 太紧</li>
+</ul>
+<ol>
+<li><strong>加入简单流动性 veto。</strong></li>
+</ol>
+<ul>
+<li>例如只在最近 <code>N</code> 根 bar 的 realized spread / ATR / volume 达标时做</li>
+<li>避免把“薄流动性中的假超卖”也一起抄进去</li>
+</ul>
+<ol>
+<li><strong>把它升级成 router，而不是全市场平均开火。</strong></li>
+</ol>
+<ul>
+<li>每个 bar 只选当下 oversold score 最高的 <code>top1 / top2</code></li>
+<li>这通常比“所有满足阈值都买”更接近 desk 真实容量分配</li>
+</ul>
+<h2>9. 来源</h2>
+<ol>
+<li><strong>gl4500. (2026). _coinbase-ai-trader_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://github.com/gl4500/coinbase-ai-trader">https://github.com/gl4500/coinbase-ai-trader</a></li>
+<li>Repo URL: <a href="https://github.com/gl4500/coinbase-ai-trader">https://github.com/gl4500/coinbase-ai-trader</a></li>
+<li>Created: <code>2026-04-12</code></li>
+<li>Recently pushed: <code>2026-04-19 22:53:52 UTC</code></li>
+</ul>
+<ol>
+<li><strong>Source audit files</strong></li>
+</ol>
+<ul>
+<li>README: <a href="https://github.com/gl4500/coinbase-ai-trader/blob/main/README.md">https://github.com/gl4500/coinbase-ai-trader/blob/main/README.md</a></li>
+<li>Scalp agent: <a href="https://github.com/gl4500/coinbase-ai-trader/blob/main/backend/agents/scalp_agent.py">https://github.com/gl4500/coinbase-ai-trader/blob/main/backend/agents/scalp_agent.py</a></li>
+<li>Scalp tests: <a href="https://github.com/gl4500/coinbase-ai-trader/blob/main/backend/tests/test_scalp_agent.py">https://github.com/gl4500/coinbase-ai-trader/blob/main/backend/tests/test_scalp_agent.py</a></li>
+<li>ADX-related tests: <a href="https://github.com/gl4500/coinbase-ai-trader/blob/main/backend/tests/test_signal_improvements.py">https://github.com/gl4500/coinbase-ai-trader/blob/main/backend/tests/test_signal_improvements.py</a></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M public market data</strong></li>
+</ol>
+<ul>
+<li>Klines: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></li>
+</ul>
+<h2>10. 本地产物</h2>
+<ul>
+<li>Probe summary：<code>reports/artifacts/quant_digests/2026-04-19_scalpagent_confluence_probe_summary.csv</code></li>
+<li>Probe events：<code>reports/artifacts/quant_digests/2026-04-19_scalpagent_confluence_probe_events.csv</code></li>
+</ul>
+</body>
+</html>

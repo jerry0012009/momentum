@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 HFT 仓只读成“低延迟工程”：对 short-cycle desk，更该先拆的是「半衰期约束配对价差 z-score 回归」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 HFT 仓只读成“低延迟工程”：对 short-cycle desk，更该先拆的是「半衰期约束配对价差 z-score 回归」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-17 16:00 UTC</span>
+      <span class="pill">研究时间：2026-04-17 15:56 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：raw-alpha / pairs / stat-arb / mean-reversion / zscore / half-life / execution / cost / 1m / 5m / 15m</span>
+      <span class="pill">证据类型：工程实现 + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-17_1556_hftpairs-zscore-halflife-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-17 15:56 UTC</li>
+<li>类型：GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>cointegration/pairs spread 在短窗 z-score 极值后向均值回归</strong>（<code>z&gt;|entry|</code> 入场，<code>z→0</code> 离场）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / pairs / stat-arb / mean-reversion / zscore / half-life / execution / cost / 1m / 5m / 15m</li>
+<li>证据类型：工程实现 + public-data portability probe</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<p>先答一句 <strong>base alpha 是什么</strong>：这份仓的 alpha 本体不是“C++ 低延迟”，而是 <strong>配对价差偏离后回归</strong>。</p>
+<p>本轮主看 2026 新仓 <code>SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model</code>（Python 研究层 + C++ 执行层），重点读了：</p>
+<ul>
+<li><code>README.md</code></li>
+<li><code>analyzer.py</code>（相关性/协整/半衰期筛选）</li>
+<li><code>optimizer.py</code>（<code>window / entry_z / exit_z / stop_z</code> 网格）</li>
+<li><code>fix_strategies.py</code></li>
+<li><code>strategies.json</code></li>
+</ul>
+<h2>2) 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这仓里最该保留的是「<code>half-life bounded pairs</code> + <code>z-score spread fade</code>」这条 raw alpha；低延迟执行是放大器，不是 alpha 本体。</li>
+<li><strong>一句话证明方式：</strong> 仓内用协整+半衰期做候选筛选、再用参数网格做 spread 回归回测；我又用 Binance USDⓈ-M 公共 <code>5m</code> 数据做了可迁移快检。</li>
+<li>仓内信号壳很清楚：</li>
+<li>入场：<code>z &gt; entry_z</code> 做空 spread；<code>z &lt; -entry_z</code> 做多 spread；</li>
+<li>离场：<code>z</code> 回到 <code>exit_z</code> 附近；</li>
+<li>风控：<code>stop_z</code>；</li>
+<li>参数：<code>window/entry/exit/stop</code> 可网格化。</li>
+<li>但仓里也有一个实盘风险点：<code>optimizer.py</code> 在“找不到正收益参数”时仍会写默认参数进 <code>strategies.json</code>，所以 <strong>必须额外加 admission gate</strong>（否则容易把“可运行”误当“可交易”）。</li>
+<li>我补的 portability probe（120 天，3 组配对）显示：</li>
+<li>总计 <code>4,646</code> 笔，<strong>单笔 gross 平均约 <code>+4.24 bps</code></strong>；</li>
+<li>扣 pair roundtrip <code>8/12/20 bps</code> 后，aggregate net 分别约 <code>-1.74 / -3.60 / -7.32</code>（spread-return 口径）；</li>
+<li>说明这条边当前更像 <strong>需要更强执行/过滤的 raw alpha 壳</strong>，不能直接当纯 taker baseline 上线。</li>
+</ul>
+<h2>3) 为什么和当前项目有关</h2>
+<p>这题和当前 desk 的短周期主线直接相关：</p>
+<ul>
+<li>属于 <code>raw alpha</code>（pairs/stat-arb/relative value），不是纯解释型材料；</li>
+<li>能直接落到完整策略组件：entry/exit/sizing/risk/cost；</li>
+<li>与现有 1m/3m/5m 研发节奏兼容：先在 <code>5m</code> 验证可迁移，再压到 <code>1m/3m</code> 做执行生存测试。</li>
+</ul>
+<h2>3.5) 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / 统计套利（market-neutral）</li>
+<li>基础 alpha：<code>spread z-score extreme -&gt; mean reversion</code></li>
+<li>regime：仅保留“协整稳定 + 半衰期不过长”的 pair（<code>half_life &lt;= threshold</code>）</li>
+<li>filter / veto：</li>
+<li><code>std_spread</code> 过低不做；</li>
+<li><code>entry_z</code> 分层（只做更极端尾部）；</li>
+<li><code>no profitable params -&gt; reject</code>（不接受默认兜底参数直接上线）</li>
+<li>risk / sizing / execution overlay：</li>
+<li>波动归一（<code>size ~ target_risk / spread_vol</code>）</li>
+<li><code>stop_z</code> + <code>max_hold</code></li>
+<li>成本阶梯（<code>8/12/20 bps</code>）</li>
+<li>先做 maker-first / passive leg，避免纯 taker 把 edge 吃光</li>
+</ul>
+<h2>4) 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> repo 的 z-score spread MR 在 Binance perp 的 <code>5m</code> 仍有 gross edge，但成本后需要更强 admission/execution 才能存活。</p>
+<p><strong>可计算定义（本轮已跑）：</strong></p>
+<ul>
+<li>spread：<code>log(P1) - hedge_ratio * log(P2)</code></li>
+<li><code>window=12</code>（对应 60 分钟）</li>
+<li><code>entry_z=2.0, exit_z=0.0, stop_z=4.0, max_hold=24 bars</code></li>
+</ul>
+<p><strong>最小回测切口（public data）：</strong></p>
+<ul>
+<li>市场：Binance USDⓈ-M perpetual</li>
+<li>周期：<code>5m</code></li>
+<li>样本：最近 <code>120d</code></li>
+<li>配对：<code>LINK/SOL</code>, <code>ENA/XRP</code>, <code>AXS/FIL</code>（采用 repo <code>strategies.json</code> 的 hedge ratio）</li>
+</ul>
+<p><strong>先看 2 个指标：</strong></p>
+<ol>
+<li><code>gross_avg_per_trade</code> 是否显著高于费用门槛；</li>
+<li><code>net_after_cost</code> 在 <code>8/12/20 bps</code> 阶梯下是否仍为正。</li>
+</ol>
+<p><strong>本轮结果（关键数据点）：</strong></p>
+<ul>
+<li>Aggregate：<code>4,646</code> 笔，<code>gross_avg_per_trade ≈ +4.24 bps</code></li>
+<li>Cost ladder：<code>8bps -&gt; -3.76bps/trade</code>，<code>12bps -&gt; -7.76bps/trade</code>，<code>20bps -&gt; -15.76bps/trade</code></li>
+<li>Pair gross 单笔：<code>LINK/SOL +2.98bps</code>，<code>ENA/XRP +3.72bps</code>，<code>AXS/FIL +6.04bps</code></li>
+</ul>
+<h2>5) 风险与保留意见</h2>
+<ul>
+<li>这轮是 transfer check，不是 walk-forward 生产级结论。</li>
+<li>repo 的 pair 发现与实盘执行存在“研究-生产”断层：如果 admission gate 不硬化，默认参数会引入伪可行 pair。</li>
+<li>对短周期而言，交易成本与成交路径决定生死：同样信号，taker-only 常常负；maker 优先和流动性窗口过滤很关键。</li>
+</ul>
+<h2>6) 来源</h2>
+<ol>
+<li><strong>Samarth Chaudhary（GitHub, 2026）. _Crypto_Stat-Arb_HFT_Model_.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model">https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/README.md">https://github.com/SamarthChaudhary-22/Crypto_Stat-Arb_HFT_Model/blob/main/README.md</a></code></li>
+<li>关键代码：</li>
+<li><code>analyzer.py</code>（协整 + 半衰期筛选）</li>
+<li><code>optimizer.py</code>（z-score 参数网格 + 默认兜底逻辑）</li>
+<li><code>strategies.json</code>（候选 pair 与 hedge ratio）</li>
+</ul>
+<ol>
+<li><strong>Engle, R. F., &amp; Granger, C. W. J. (1987). _Co-integration and Error Correction: Representation, Estimation, and Testing_. Econometrica.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.2307/1913236</code></li>
+<li>Readable URL: <code><a href="https://www.jstor.org/stable/1913236">https://www.jstor.org/stable/1913236</a></code></li>
+</ul>
+<p>---</p>
+<h3>本轮产物</h3>
+<ul>
+<li>Probe 脚本：<code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-17_hft_pairs_zscore_probe.py</code></li>
+<li>Summary JSON：<code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-17_hft_pairs_zscore_probe.json</code></li>
+<li>Pair 统计：<code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-17_hft_pairs_zscore_probe_pair_stats.csv</code></li>
+<li>逐笔明细：<code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-17_hft_pairs_zscore_probe_trades.csv</code></li>
+<li>抓取状态：<code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-17_hft_pairs_zscore_probe_fetch_status.csv</code></li>
+</ul>
+</body>
+</html>

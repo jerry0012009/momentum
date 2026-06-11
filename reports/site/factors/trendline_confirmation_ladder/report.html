@@ -1,0 +1,2482 @@
+<!doctype html>
+<html lang='zh-CN'>
+<head>
+  <meta charset='utf-8' />
+  <title>Trendline Confirmation Ladder Report</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f8fafc; color:#0f172a; margin:0; padding:24px; }
+    .wrap { max-width: 1320px; margin: 0 auto; }
+    .card { background:white; border:1px solid #e2e8f0; border-radius:14px; padding:18px 20px; margin-bottom:18px; box-shadow:0 1px 2px rgba(0,0,0,0.04); }
+    .muted { color:#475569; }
+    .tbl { width:100%; border-collapse: collapse; font-size: 14px; }
+    .tbl th,.tbl td { border-bottom:1px solid #e5e7eb; padding:8px 10px; text-align:left; vertical-align:top; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:12px; margin-right:6px; }
+    .qa-item { margin-bottom:14px; }
+    .qa-q { font-weight:700; margin-bottom:6px; }
+    .qa-a { line-height:1.7; color:#334155; }
+    code { background:#f1f5f9; padding:1px 4px; border-radius:6px; }
+    a { color:#2563eb; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+  </style>
+</head>
+<body>
+<div class='wrap'>
+  <div class='card'>
+    <h1>Trendline Confirmation Ladder Report</h1>
+    <p class='muted'>这是 PyIndicators track 的第 8 份回测报告。目标不是继续加大参数搜索，而是单独回答：<b>多一层 confirmation，是否真的能提升质量，并且值得付出样本数收缩的代价？</b></p>
+    <p class='muted'><span class='pill'>scope</span> 8 个 crypto（BTC / ETH / SOL / BNB / XRP / DOGE / ADA / AVAX）<span class='pill'>samples</span> 60m / 365d + 60m / 730d</p>
+    <p class='muted'><span class='pill'>important</span> 这页先做的是 <b>operational confirmation ladder</b>，即基于当前已实现的 close-persistence / inside-hold 口径做比较；还不是完整的 <code>raw_breach → close_confirm → confirm1 → confirm3 → retest_hold</code> 全事件宇宙。</p>
+  </div>
+
+  <div class='card'>
+    <h2>示意图：为什么要做 confirmation ladder？</h2>
+    
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-label="confirmation ladder diagram">
+  <rect width="1200" height="320" fill="#ffffff" />
+  <text x="30" y="42" font-size="28" font-family="system-ui, sans-serif" fill="#0f172a">Confirmation Ladder · conceptual view</text>
+  <text x="30" y="72" font-size="16" font-family="system-ui, sans-serif" fill="#475569">不是每次碰线/越线都算同一个强度；我们要比较“多一层确认，值不值得”。</text>
+  <g font-family="system-ui, sans-serif">
+    <rect x="40" y="120" rx="16" ry="16" width="180" height="110" fill="#eff6ff" stroke="#93c5fd" />
+    <text x="60" y="155" font-size="22" fill="#1d4ed8">raw / provisional</text>
+    <text x="60" y="183" font-size="14" fill="#334155">刚碰线 / 刚越线</text>
+    <text x="60" y="204" font-size="14" fill="#334155">样本最多，噪音也最多</text>
+
+    <rect x="280" y="120" rx="16" ry="16" width="180" height="110" fill="#ecfeff" stroke="#67e8f9" />
+    <text x="300" y="155" font-size="22" fill="#0f766e">confirm1</text>
+    <text x="300" y="183" font-size="14" fill="#334155">再给一层 close / hold</text>
+    <text x="300" y="204" font-size="14" fill="#334155">样本少一些，质量应更高</text>
+
+    <rect x="520" y="120" rx="16" ry="16" width="180" height="110" fill="#fef3c7" stroke="#fcd34d" />
+    <text x="540" y="155" font-size="22" fill="#92400e">confirm3</text>
+    <text x="540" y="183" font-size="14" fill="#334155">持续性更强</text>
+    <text x="540" y="204" font-size="14" fill="#334155">但会进一步损失样本</text>
+
+    <rect x="760" y="120" rx="16" ry="16" width="180" height="110" fill="#f5f3ff" stroke="#c4b5fd" />
+    <text x="780" y="155" font-size="22" fill="#6d28d9">retest_hold</text>
+    <text x="780" y="183" font-size="14" fill="#334155">回踩后仍守住</text>
+    <text x="780" y="204" font-size="14" fill="#334155">理论上更像真切换</text>
+
+    <rect x="1000" y="120" rx="16" ry="16" width="160" height="110" fill="#f0fdf4" stroke="#86efac" />
+    <text x="1020" y="155" font-size="22" fill="#166534">go / no-go</text>
+    <text x="1020" y="183" font-size="14" fill="#334155">看收益质量是否提升</text>
+    <text x="1020" y="204" font-size="14" fill="#334155">是否值得推进</text>
+
+    <path d="M220 175 L280 175" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)" />
+    <path d="M460 175 L520 175" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)" />
+    <path d="M700 175 L760 175" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)" />
+    <path d="M940 175 L1000 175" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)" />
+  </g>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#64748b" />
+    </marker>
+  </defs>
+</svg>
+
+  </div>
+
+  <div class='card'>
+    <h2>Q&amp;A · 这份报告想得到什么结论？</h2>
+    <div class='qa-item'><div class='qa-q'>Q1. 这份报告想回答什么？</div><div class='qa-a'>它不想继续泛泛地问“这条策略整体行不行”，而是更具体地问：多一层 confirmation，是否能显著提升质量，并且值得付出样本收缩的代价。</div></div><div class='qa-item'><div class='qa-q'>Q2. 为什么要单独做第 8 份报告？</div><div class='qa-a'>因为前面的 slope audit 已经告诉我们：该研究线不能再整体推进，只能在保留下来的 subset 上继续做“质量提纯”。confirmation ladder 正是提纯这一步。</div></div><div class='qa-item'><div class='qa-q'>Q3. 这份报告里最该看的是什么？</div><div class='qa-a'>先看 breakout ladder 总表：更强确认有没有把 breakout 真正救起来；再看 retained rebound subsets：`flat` / `down_high` 在更强确认下是变好，还是只是样本塌缩。</div></div><div class='qa-item'><div class='qa-q'>Q4. 我们最想得到什么研究结论？</div><div class='qa-a'>最理想的结论是：在 retained rebound subsets 内，存在一档确认强度，让 positive_asset_ratio 和 mean_total_return 都上升，而 trade retention 没有塌得太狠。这样它才值得继续推进成下一轮默认口径。</div></div><div class='qa-item'><div class='qa-q'>Q5. 如果结果不支持更强确认呢？</div><div class='qa-a'>那也同样有价值：说明这条线的提升空间有限，或者 confirmation 带来的滞后抵消了质量改善。到那一步，我们就更有底气把这条线当 feature 或直接收束。</div></div>
+  </div>
+
+  <div class='card'>
+    <h2>当前 headline</h2>
+    <ul><li>2Y breakout 侧最像样的一档是 <b>breakout hold = 3</b>，但也只有 positive_asset_ratio=50.00%、mean_total_return=-2.57%，说明更强确认并没有真正把 breakout 救起来。</li><li>2Y retained rebound 子集（flat + down_high）里，当前最值得继续看的梯级是 <b>rebound inside = 0</b>：positive_asset_ratio=75.00%、mean_total_return=5.57%、trade_retention=100.00%。</li></ul>
+  </div>
+
+  <div class='card'>
+    <h2>Sample meta</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>sample_key</th>
+      <th>interval</th>
+      <th>period</th>
+      <th>label</th>
+      <th>note</th>
+      <th>symbols</th>
+      <th>rows</th>
+      <th>segment_count</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>60m_365d</td>
+      <td>60m</td>
+      <td>365d</td>
+      <td>60m / 365d</td>
+      <td>1 年样本复核</td>
+      <td>8</td>
+      <td>69764</td>
+      <td>5013</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>60m</td>
+      <td>730d</td>
+      <td>60m / 730d</td>
+      <td>2 年样本复核</td>
+      <td>8</td>
+      <td>139836</td>
+      <td>10044</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class='card'>
+    <h2>Breakout ladder · long timeframe / breakout_long</h2>
+    <p class='muted'>如果更强的 breakout 确认真的有价值，它应该在更长样本里提升 <code>positive_asset_ratio</code> / <code>mean_total_return</code>，且 trade retention 不能塌得太厉害。</p>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>sample_key</th>
+      <th>display_label</th>
+      <th>breakout_confirm_bars_cfg</th>
+      <th>assets</th>
+      <th>total_trades</th>
+      <th>positive_assets</th>
+      <th>mean_total_return</th>
+      <th>median_total_return</th>
+      <th>min_total_return</th>
+      <th>max_total_return</th>
+      <th>mean_avg_trade_ret</th>
+      <th>mean_win_rate</th>
+      <th>positive_asset_ratio</th>
+      <th>trade_retention_vs_first</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>60m_365d</td>
+      <td>breakout hold = 1</td>
+      <td>1</td>
+      <td>8</td>
+      <td>50</td>
+      <td>1</td>
+      <td>-0.031559</td>
+      <td>-0.033111</td>
+      <td>-0.064481</td>
+      <td>0.000524</td>
+      <td>-0.005531</td>
+      <td>0.174959</td>
+      <td>0.125</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>breakout hold = 2</td>
+      <td>2</td>
+      <td>8</td>
+      <td>50</td>
+      <td>1</td>
+      <td>-0.031559</td>
+      <td>-0.033111</td>
+      <td>-0.064481</td>
+      <td>0.000524</td>
+      <td>-0.005531</td>
+      <td>0.174959</td>
+      <td>0.125</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>breakout hold = 3</td>
+      <td>3</td>
+      <td>8</td>
+      <td>42</td>
+      <td>1</td>
+      <td>-0.034655</td>
+      <td>-0.044438</td>
+      <td>-0.061227</td>
+      <td>0.024343</td>
+      <td>-0.004268</td>
+      <td>0.273877</td>
+      <td>0.125</td>
+      <td>0.840000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>breakout hold = 4</td>
+      <td>4</td>
+      <td>6</td>
+      <td>23</td>
+      <td>0</td>
+      <td>-0.023546</td>
+      <td>-0.021193</td>
+      <td>-0.049590</td>
+      <td>-0.003677</td>
+      <td>-0.008960</td>
+      <td>0.211111</td>
+      <td>0.000</td>
+      <td>0.460000</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>breakout hold = 1</td>
+      <td>1</td>
+      <td>8</td>
+      <td>112</td>
+      <td>3</td>
+      <td>-0.056011</td>
+      <td>-0.050040</td>
+      <td>-0.157004</td>
+      <td>0.035622</td>
+      <td>-0.004285</td>
+      <td>0.261458</td>
+      <td>0.375</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>breakout hold = 2</td>
+      <td>2</td>
+      <td>8</td>
+      <td>112</td>
+      <td>3</td>
+      <td>-0.056011</td>
+      <td>-0.050040</td>
+      <td>-0.157004</td>
+      <td>0.035622</td>
+      <td>-0.004285</td>
+      <td>0.261458</td>
+      <td>0.375</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>breakout hold = 3</td>
+      <td>3</td>
+      <td>8</td>
+      <td>85</td>
+      <td>4</td>
+      <td>-0.025683</td>
+      <td>-0.002220</td>
+      <td>-0.106059</td>
+      <td>0.025209</td>
+      <td>-0.002165</td>
+      <td>0.301639</td>
+      <td>0.500</td>
+      <td>0.758929</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>breakout hold = 4</td>
+      <td>4</td>
+      <td>8</td>
+      <td>59</td>
+      <td>3</td>
+      <td>-0.019049</td>
+      <td>-0.015412</td>
+      <td>-0.110829</td>
+      <td>0.079062</td>
+      <td>-0.002989</td>
+      <td>0.281101</td>
+      <td>0.375</td>
+      <td>0.526786</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class='card'>
+    <h2>Rebound ladder · long timeframe / rebound_long</h2>
+    <p class='muted'>这是整体 rebound 分支的 ladder 比较；它回答“更强 inside-hold 确认有没有整体改善质量”。</p>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>sample_key</th>
+      <th>display_label</th>
+      <th>rebound_confirm_bars_cfg</th>
+      <th>assets</th>
+      <th>total_trades</th>
+      <th>positive_assets</th>
+      <th>mean_total_return</th>
+      <th>median_total_return</th>
+      <th>min_total_return</th>
+      <th>max_total_return</th>
+      <th>mean_avg_trade_ret</th>
+      <th>mean_win_rate</th>
+      <th>positive_asset_ratio</th>
+      <th>trade_retention_vs_first</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>8</td>
+      <td>148</td>
+      <td>4</td>
+      <td>0.034576</td>
+      <td>0.012006</td>
+      <td>-0.085715</td>
+      <td>0.191720</td>
+      <td>0.002459</td>
+      <td>0.315240</td>
+      <td>0.500</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>8</td>
+      <td>148</td>
+      <td>4</td>
+      <td>0.034576</td>
+      <td>0.012006</td>
+      <td>-0.085715</td>
+      <td>0.191720</td>
+      <td>0.002459</td>
+      <td>0.315240</td>
+      <td>0.500</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>8</td>
+      <td>132</td>
+      <td>3</td>
+      <td>0.026642</td>
+      <td>-0.006950</td>
+      <td>-0.048940</td>
+      <td>0.159013</td>
+      <td>0.002287</td>
+      <td>0.298048</td>
+      <td>0.375</td>
+      <td>0.891892</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>8</td>
+      <td>119</td>
+      <td>5</td>
+      <td>0.032567</td>
+      <td>0.014056</td>
+      <td>-0.054517</td>
+      <td>0.127516</td>
+      <td>0.002749</td>
+      <td>0.309237</td>
+      <td>0.625</td>
+      <td>0.804054</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>8</td>
+      <td>277</td>
+      <td>3</td>
+      <td>0.002181</td>
+      <td>-0.079358</td>
+      <td>-0.108324</td>
+      <td>0.173473</td>
+      <td>0.000509</td>
+      <td>0.335442</td>
+      <td>0.375</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>8</td>
+      <td>277</td>
+      <td>3</td>
+      <td>0.002181</td>
+      <td>-0.079358</td>
+      <td>-0.108324</td>
+      <td>0.173473</td>
+      <td>0.000509</td>
+      <td>0.335442</td>
+      <td>0.375</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>8</td>
+      <td>245</td>
+      <td>3</td>
+      <td>0.005254</td>
+      <td>-0.065766</td>
+      <td>-0.141348</td>
+      <td>0.273546</td>
+      <td>0.000732</td>
+      <td>0.318792</td>
+      <td>0.375</td>
+      <td>0.884477</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>8</td>
+      <td>223</td>
+      <td>3</td>
+      <td>0.002344</td>
+      <td>-0.050673</td>
+      <td>-0.078215</td>
+      <td>0.207852</td>
+      <td>0.000556</td>
+      <td>0.321142</td>
+      <td>0.375</td>
+      <td>0.805054</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class='card'>
+    <h2>Rebound ladder · retained subsets only</h2>
+    <p class='muted'>这里才是当前最值得看的主表：只看上一轮 slope audit 保留下来的 <code>flat</code> / <code>down_high</code> 及它们的并集 <code>retained_union</code>。</p>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>sample_key</th>
+      <th>display_label</th>
+      <th>rebound_confirm_bars_cfg</th>
+      <th>subset_group</th>
+      <th>assets</th>
+      <th>total_trades</th>
+      <th>positive_assets</th>
+      <th>mean_total_return</th>
+      <th>median_total_return</th>
+      <th>min_total_return</th>
+      <th>max_total_return</th>
+      <th>mean_avg_trade_ret</th>
+      <th>mean_win_rate</th>
+      <th>positive_asset_ratio</th>
+      <th>trade_retention_vs_first</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>8</td>
+      <td>50</td>
+      <td>5</td>
+      <td>0.013135</td>
+      <td>0.004288</td>
+      <td>-0.078090</td>
+      <td>0.155030</td>
+      <td>0.000983</td>
+      <td>0.293403</td>
+      <td>0.625000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>8</td>
+      <td>30</td>
+      <td>6</td>
+      <td>0.033527</td>
+      <td>0.008531</td>
+      <td>-0.016245</td>
+      <td>0.209321</td>
+      <td>0.015843</td>
+      <td>0.354167</td>
+      <td>0.750000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>8</td>
+      <td>80</td>
+      <td>6</td>
+      <td>0.044694</td>
+      <td>0.015683</td>
+      <td>-0.053633</td>
+      <td>0.136267</td>
+      <td>0.005477</td>
+      <td>0.324148</td>
+      <td>0.750000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>down_high</td>
+      <td>8</td>
+      <td>50</td>
+      <td>5</td>
+      <td>0.013135</td>
+      <td>0.004288</td>
+      <td>-0.078090</td>
+      <td>0.155030</td>
+      <td>0.000983</td>
+      <td>0.293403</td>
+      <td>0.625000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>flat</td>
+      <td>8</td>
+      <td>30</td>
+      <td>6</td>
+      <td>0.033527</td>
+      <td>0.008531</td>
+      <td>-0.016245</td>
+      <td>0.209321</td>
+      <td>0.015843</td>
+      <td>0.354167</td>
+      <td>0.750000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>retained_union</td>
+      <td>8</td>
+      <td>80</td>
+      <td>6</td>
+      <td>0.044694</td>
+      <td>0.015683</td>
+      <td>-0.053633</td>
+      <td>0.136267</td>
+      <td>0.005477</td>
+      <td>0.324148</td>
+      <td>0.750000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>down_high</td>
+      <td>8</td>
+      <td>45</td>
+      <td>3</td>
+      <td>0.006572</td>
+      <td>-0.009232</td>
+      <td>-0.093177</td>
+      <td>0.109473</td>
+      <td>-0.000434</td>
+      <td>0.219494</td>
+      <td>0.375000</td>
+      <td>0.900000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>flat</td>
+      <td>8</td>
+      <td>27</td>
+      <td>5</td>
+      <td>0.030668</td>
+      <td>0.003537</td>
+      <td>-0.018462</td>
+      <td>0.206256</td>
+      <td>0.013108</td>
+      <td>0.313492</td>
+      <td>0.625000</td>
+      <td>0.900000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>retained_union</td>
+      <td>8</td>
+      <td>72</td>
+      <td>4</td>
+      <td>0.035406</td>
+      <td>0.007100</td>
+      <td>-0.062194</td>
+      <td>0.181042</td>
+      <td>0.004852</td>
+      <td>0.315846</td>
+      <td>0.500000</td>
+      <td>0.900000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>down_high</td>
+      <td>7</td>
+      <td>41</td>
+      <td>4</td>
+      <td>0.027872</td>
+      <td>0.018352</td>
+      <td>-0.071861</td>
+      <td>0.123259</td>
+      <td>0.006094</td>
+      <td>0.403231</td>
+      <td>0.571429</td>
+      <td>0.820000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>flat</td>
+      <td>8</td>
+      <td>24</td>
+      <td>3</td>
+      <td>0.023428</td>
+      <td>-0.012137</td>
+      <td>-0.020289</td>
+      <td>0.202460</td>
+      <td>0.011098</td>
+      <td>0.264583</td>
+      <td>0.375000</td>
+      <td>0.800000</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>retained_union</td>
+      <td>8</td>
+      <td>65</td>
+      <td>4</td>
+      <td>0.046476</td>
+      <td>0.041532</td>
+      <td>-0.069910</td>
+      <td>0.147607</td>
+      <td>0.006688</td>
+      <td>0.345757</td>
+      <td>0.500000</td>
+      <td>0.812500</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>8</td>
+      <td>94</td>
+      <td>5</td>
+      <td>0.012683</td>
+      <td>0.007456</td>
+      <td>-0.112438</td>
+      <td>0.183275</td>
+      <td>0.000457</td>
+      <td>0.336423</td>
+      <td>0.625000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>8</td>
+      <td>56</td>
+      <td>7</td>
+      <td>0.046136</td>
+      <td>0.039118</td>
+      <td>-0.055029</td>
+      <td>0.192166</td>
+      <td>0.011870</td>
+      <td>0.404493</td>
+      <td>0.875000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>8</td>
+      <td>150</td>
+      <td>6</td>
+      <td>0.055711</td>
+      <td>0.059546</td>
+      <td>-0.040429</td>
+      <td>0.249528</td>
+      <td>0.003500</td>
+      <td>0.347014</td>
+      <td>0.750000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>down_high</td>
+      <td>8</td>
+      <td>94</td>
+      <td>5</td>
+      <td>0.012683</td>
+      <td>0.007456</td>
+      <td>-0.112438</td>
+      <td>0.183275</td>
+      <td>0.000457</td>
+      <td>0.336423</td>
+      <td>0.625000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>flat</td>
+      <td>8</td>
+      <td>56</td>
+      <td>7</td>
+      <td>0.046136</td>
+      <td>0.039118</td>
+      <td>-0.055029</td>
+      <td>0.192166</td>
+      <td>0.011870</td>
+      <td>0.404493</td>
+      <td>0.875000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>retained_union</td>
+      <td>8</td>
+      <td>150</td>
+      <td>6</td>
+      <td>0.055711</td>
+      <td>0.059546</td>
+      <td>-0.040429</td>
+      <td>0.249528</td>
+      <td>0.003500</td>
+      <td>0.347014</td>
+      <td>0.750000</td>
+      <td>1.000000</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>down_high</td>
+      <td>8</td>
+      <td>83</td>
+      <td>5</td>
+      <td>0.020489</td>
+      <td>0.016932</td>
+      <td>-0.124800</td>
+      <td>0.241736</td>
+      <td>0.001419</td>
+      <td>0.311790</td>
+      <td>0.625000</td>
+      <td>0.882979</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>flat</td>
+      <td>8</td>
+      <td>49</td>
+      <td>4</td>
+      <td>0.029228</td>
+      <td>-0.000929</td>
+      <td>-0.054435</td>
+      <td>0.181795</td>
+      <td>0.008438</td>
+      <td>0.338988</td>
+      <td>0.500000</td>
+      <td>0.875000</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>retained_union</td>
+      <td>8</td>
+      <td>132</td>
+      <td>5</td>
+      <td>0.047490</td>
+      <td>0.017323</td>
+      <td>-0.064150</td>
+      <td>0.333702</td>
+      <td>0.003628</td>
+      <td>0.318427</td>
+      <td>0.625000</td>
+      <td>0.880000</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>down_high</td>
+      <td>8</td>
+      <td>76</td>
+      <td>5</td>
+      <td>0.018595</td>
+      <td>0.011856</td>
+      <td>-0.124050</td>
+      <td>0.230180</td>
+      <td>0.004261</td>
+      <td>0.409783</td>
+      <td>0.625000</td>
+      <td>0.808511</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>flat</td>
+      <td>8</td>
+      <td>45</td>
+      <td>3</td>
+      <td>0.019352</td>
+      <td>-0.008417</td>
+      <td>-0.111493</td>
+      <td>0.182808</td>
+      <td>0.006217</td>
+      <td>0.304924</td>
+      <td>0.375000</td>
+      <td>0.803571</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>retained_union</td>
+      <td>8</td>
+      <td>121</td>
+      <td>3</td>
+      <td>0.034291</td>
+      <td>-0.004712</td>
+      <td>-0.066060</td>
+      <td>0.304551</td>
+      <td>0.002910</td>
+      <td>0.326839</td>
+      <td>0.375000</td>
+      <td>0.806667</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class='card'>
+    <h2>Retained subset · symbol drill-down</h2>
+    <p class='muted'>如果某档 ladder 只是被 1~2 个币撑起来，这里会看得更清楚。</p>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>sample_key</th>
+      <th>display_label</th>
+      <th>rebound_confirm_bars_cfg</th>
+      <th>subset_group</th>
+      <th>symbol</th>
+      <th>trades</th>
+      <th>win_rate</th>
+      <th>avg_ret</th>
+      <th>median_ret</th>
+      <th>total_return</th>
+      <th>positive_symbol</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>ADA-USD</td>
+      <td>8</td>
+      <td>0.250000</td>
+      <td>-0.007678</td>
+      <td>-0.009964</td>
+      <td>-0.060059</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>AVAX-USD</td>
+      <td>8</td>
+      <td>0.375000</td>
+      <td>0.001026</td>
+      <td>-0.000336</td>
+      <td>0.007520</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>BNB-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>0.000544</td>
+      <td>0.000544</td>
+      <td>0.001057</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>BTC-USD</td>
+      <td>1</td>
+      <td>0.000000</td>
+      <td>-0.015322</td>
+      <td>-0.015322</td>
+      <td>-0.015322</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>DOGE-USD</td>
+      <td>8</td>
+      <td>0.375000</td>
+      <td>0.010207</td>
+      <td>-0.012496</td>
+      <td>0.070057</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>ETH-USD</td>
+      <td>8</td>
+      <td>0.125000</td>
+      <td>-0.009967</td>
+      <td>-0.006623</td>
+      <td>-0.078090</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>SOL-USD</td>
+      <td>9</td>
+      <td>0.222222</td>
+      <td>0.003445</td>
+      <td>-0.014848</td>
+      <td>0.024884</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>XRP-USD</td>
+      <td>6</td>
+      <td>0.500000</td>
+      <td>0.025611</td>
+      <td>0.003234</td>
+      <td>0.155030</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>ADA-USD</td>
+      <td>3</td>
+      <td>0.666667</td>
+      <td>0.002369</td>
+      <td>0.000236</td>
+      <td>0.006836</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>AVAX-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>0.006395</td>
+      <td>0.006395</td>
+      <td>0.012173</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>BNB-USD</td>
+      <td>9</td>
+      <td>0.444444</td>
+      <td>0.000332</td>
+      <td>-0.000733</td>
+      <td>0.002893</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>BTC-USD</td>
+      <td>9</td>
+      <td>0.222222</td>
+      <td>0.001283</td>
+      <td>-0.004639</td>
+      <td>0.010225</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>DOGE-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>0.029965</td>
+      <td>0.029965</td>
+      <td>0.055991</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>ETH-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>0.107537</td>
+      <td>0.107537</td>
+      <td>0.209321</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>SOL-USD</td>
+      <td>1</td>
+      <td>0.000000</td>
+      <td>-0.012980</td>
+      <td>-0.012980</td>
+      <td>-0.012980</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>XRP-USD</td>
+      <td>2</td>
+      <td>0.000000</td>
+      <td>-0.008154</td>
+      <td>-0.008154</td>
+      <td>-0.016245</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>ADA-USD</td>
+      <td>11</td>
+      <td>0.363636</td>
+      <td>-0.004938</td>
+      <td>-0.008943</td>
+      <td>-0.053633</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>AVAX-USD</td>
+      <td>10</td>
+      <td>0.400000</td>
+      <td>0.002100</td>
+      <td>-0.000336</td>
+      <td>0.019785</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>BNB-USD</td>
+      <td>11</td>
+      <td>0.454545</td>
+      <td>0.000370</td>
+      <td>-0.000733</td>
+      <td>0.003953</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>BTC-USD</td>
+      <td>10</td>
+      <td>0.200000</td>
+      <td>-0.000378</td>
+      <td>-0.005845</td>
+      <td>-0.005253</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>DOGE-USD</td>
+      <td>10</td>
+      <td>0.400000</td>
+      <td>0.014158</td>
+      <td>-0.012496</td>
+      <td>0.129971</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>ETH-USD</td>
+      <td>10</td>
+      <td>0.200000</td>
+      <td>0.013534</td>
+      <td>-0.006623</td>
+      <td>0.114885</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>SOL-USD</td>
+      <td>10</td>
+      <td>0.200000</td>
+      <td>0.001802</td>
+      <td>-0.013914</td>
+      <td>0.011581</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>XRP-USD</td>
+      <td>8</td>
+      <td>0.375000</td>
+      <td>0.017170</td>
+      <td>-0.004132</td>
+      <td>0.136267</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>down_high</td>
+      <td>ADA-USD</td>
+      <td>8</td>
+      <td>0.250000</td>
+      <td>-0.007678</td>
+      <td>-0.009964</td>
+      <td>-0.060059</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>down_high</td>
+      <td>AVAX-USD</td>
+      <td>8</td>
+      <td>0.375000</td>
+      <td>0.001026</td>
+      <td>-0.000336</td>
+      <td>0.007520</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>down_high</td>
+      <td>BNB-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>0.000544</td>
+      <td>0.000544</td>
+      <td>0.001057</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>down_high</td>
+      <td>BTC-USD</td>
+      <td>1</td>
+      <td>0.000000</td>
+      <td>-0.015322</td>
+      <td>-0.015322</td>
+      <td>-0.015322</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>down_high</td>
+      <td>DOGE-USD</td>
+      <td>8</td>
+      <td>0.375000</td>
+      <td>0.010207</td>
+      <td>-0.012496</td>
+      <td>0.070057</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>down_high</td>
+      <td>ETH-USD</td>
+      <td>8</td>
+      <td>0.125000</td>
+      <td>-0.009967</td>
+      <td>-0.006623</td>
+      <td>-0.078090</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>down_high</td>
+      <td>SOL-USD</td>
+      <td>9</td>
+      <td>0.222222</td>
+      <td>0.003445</td>
+      <td>-0.014848</td>
+      <td>0.024884</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>down_high</td>
+      <td>XRP-USD</td>
+      <td>6</td>
+      <td>0.500000</td>
+      <td>0.025611</td>
+      <td>0.003234</td>
+      <td>0.155030</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>flat</td>
+      <td>ADA-USD</td>
+      <td>3</td>
+      <td>0.666667</td>
+      <td>0.002369</td>
+      <td>0.000236</td>
+      <td>0.006836</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>flat</td>
+      <td>AVAX-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>0.006395</td>
+      <td>0.006395</td>
+      <td>0.012173</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>flat</td>
+      <td>BNB-USD</td>
+      <td>9</td>
+      <td>0.444444</td>
+      <td>0.000332</td>
+      <td>-0.000733</td>
+      <td>0.002893</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>flat</td>
+      <td>BTC-USD</td>
+      <td>9</td>
+      <td>0.222222</td>
+      <td>0.001283</td>
+      <td>-0.004639</td>
+      <td>0.010225</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>flat</td>
+      <td>DOGE-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>0.029965</td>
+      <td>0.029965</td>
+      <td>0.055991</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>flat</td>
+      <td>ETH-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>0.107537</td>
+      <td>0.107537</td>
+      <td>0.209321</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>flat</td>
+      <td>SOL-USD</td>
+      <td>1</td>
+      <td>0.000000</td>
+      <td>-0.012980</td>
+      <td>-0.012980</td>
+      <td>-0.012980</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>flat</td>
+      <td>XRP-USD</td>
+      <td>2</td>
+      <td>0.000000</td>
+      <td>-0.008154</td>
+      <td>-0.008154</td>
+      <td>-0.016245</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>retained_union</td>
+      <td>ADA-USD</td>
+      <td>11</td>
+      <td>0.363636</td>
+      <td>-0.004938</td>
+      <td>-0.008943</td>
+      <td>-0.053633</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>retained_union</td>
+      <td>AVAX-USD</td>
+      <td>10</td>
+      <td>0.400000</td>
+      <td>0.002100</td>
+      <td>-0.000336</td>
+      <td>0.019785</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>retained_union</td>
+      <td>BNB-USD</td>
+      <td>11</td>
+      <td>0.454545</td>
+      <td>0.000370</td>
+      <td>-0.000733</td>
+      <td>0.003953</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>retained_union</td>
+      <td>BTC-USD</td>
+      <td>10</td>
+      <td>0.200000</td>
+      <td>-0.000378</td>
+      <td>-0.005845</td>
+      <td>-0.005253</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>retained_union</td>
+      <td>DOGE-USD</td>
+      <td>10</td>
+      <td>0.400000</td>
+      <td>0.014158</td>
+      <td>-0.012496</td>
+      <td>0.129971</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>retained_union</td>
+      <td>ETH-USD</td>
+      <td>10</td>
+      <td>0.200000</td>
+      <td>0.013534</td>
+      <td>-0.006623</td>
+      <td>0.114885</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>retained_union</td>
+      <td>SOL-USD</td>
+      <td>10</td>
+      <td>0.200000</td>
+      <td>0.001802</td>
+      <td>-0.013914</td>
+      <td>0.011581</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>retained_union</td>
+      <td>XRP-USD</td>
+      <td>8</td>
+      <td>0.375000</td>
+      <td>0.017170</td>
+      <td>-0.004132</td>
+      <td>0.136267</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>down_high</td>
+      <td>ADA-USD</td>
+      <td>7</td>
+      <td>0.285714</td>
+      <td>-0.009893</td>
+      <td>-0.016374</td>
+      <td>-0.067526</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>down_high</td>
+      <td>AVAX-USD</td>
+      <td>7</td>
+      <td>0.428571</td>
+      <td>-0.001005</td>
+      <td>-0.004499</td>
+      <td>-0.007520</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>down_high</td>
+      <td>BNB-USD</td>
+      <td>2</td>
+      <td>0.000000</td>
+      <td>-0.005474</td>
+      <td>-0.005474</td>
+      <td>-0.010943</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>down_high</td>
+      <td>BTC-USD</td>
+      <td>1</td>
+      <td>0.000000</td>
+      <td>-0.017723</td>
+      <td>-0.017723</td>
+      <td>-0.017723</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>down_high</td>
+      <td>DOGE-USD</td>
+      <td>6</td>
+      <td>0.333333</td>
+      <td>0.017964</td>
+      <td>-0.013241</td>
+      <td>0.099603</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>down_high</td>
+      <td>ETH-USD</td>
+      <td>8</td>
+      <td>0.125000</td>
+      <td>-0.012036</td>
+      <td>-0.007807</td>
+      <td>-0.093177</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>down_high</td>
+      <td>SOL-USD</td>
+      <td>8</td>
+      <td>0.250000</td>
+      <td>0.005836</td>
+      <td>-0.013453</td>
+      <td>0.040390</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>down_high</td>
+      <td>XRP-USD</td>
+      <td>6</td>
+      <td>0.333333</td>
+      <td>0.018860</td>
+      <td>-0.010106</td>
+      <td>0.109473</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>flat</td>
+      <td>ADA-USD</td>
+      <td>3</td>
+      <td>0.666667</td>
+      <td>0.001971</td>
+      <td>0.002292</td>
+      <td>0.005718</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>flat</td>
+      <td>AVAX-USD</td>
+      <td>1</td>
+      <td>0.000000</td>
+      <td>-0.018462</td>
+      <td>-0.018462</td>
+      <td>-0.018462</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>flat</td>
+      <td>BNB-USD</td>
+      <td>9</td>
+      <td>0.555556</td>
+      <td>0.000168</td>
+      <td>0.000038</td>
+      <td>0.001356</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>flat</td>
+      <td>BTC-USD</td>
+      <td>7</td>
+      <td>0.285714</td>
+      <td>0.001453</td>
+      <td>-0.005669</td>
+      <td>0.008862</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>flat</td>
+      <td>DOGE-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>0.038881</td>
+      <td>0.038881</td>
+      <td>0.074063</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>flat</td>
+      <td>ETH-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>0.105360</td>
+      <td>0.105360</td>
+      <td>0.206256</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>flat</td>
+      <td>SOL-USD</td>
+      <td>1</td>
+      <td>0.000000</td>
+      <td>-0.016507</td>
+      <td>-0.016507</td>
+      <td>-0.016507</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>flat</td>
+      <td>XRP-USD</td>
+      <td>2</td>
+      <td>0.000000</td>
+      <td>-0.008002</td>
+      <td>-0.008002</td>
+      <td>-0.015941</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>retained_union</td>
+      <td>ADA-USD</td>
+      <td>10</td>
+      <td>0.400000</td>
+      <td>-0.006334</td>
+      <td>-0.011344</td>
+      <td>-0.062194</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>retained_union</td>
+      <td>AVAX-USD</td>
+      <td>8</td>
+      <td>0.375000</td>
+      <td>-0.003187</td>
+      <td>-0.007671</td>
+      <td>-0.025843</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>retained_union</td>
+      <td>BNB-USD</td>
+      <td>11</td>
+      <td>0.454545</td>
+      <td>-0.000858</td>
+      <td>-0.000369</td>
+      <td>-0.009602</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>retained_union</td>
+      <td>BTC-USD</td>
+      <td>8</td>
+      <td>0.250000</td>
+      <td>-0.000944</td>
+      <td>-0.008965</td>
+      <td>-0.009017</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>retained_union</td>
+      <td>DOGE-USD</td>
+      <td>8</td>
+      <td>0.375000</td>
+      <td>0.023193</td>
+      <td>-0.013241</td>
+      <td>0.181042</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>retained_union</td>
+      <td>ETH-USD</td>
+      <td>10</td>
+      <td>0.200000</td>
+      <td>0.011443</td>
+      <td>-0.007807</td>
+      <td>0.093860</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>retained_union</td>
+      <td>SOL-USD</td>
+      <td>9</td>
+      <td>0.222222</td>
+      <td>0.003354</td>
+      <td>-0.016507</td>
+      <td>0.023216</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 2</td>
+      <td>2</td>
+      <td>retained_union</td>
+      <td>XRP-USD</td>
+      <td>8</td>
+      <td>0.250000</td>
+      <td>0.012145</td>
+      <td>-0.008924</td>
+      <td>0.091786</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>down_high</td>
+      <td>ADA-USD</td>
+      <td>8</td>
+      <td>0.375000</td>
+      <td>-0.009229</td>
+      <td>-0.014020</td>
+      <td>-0.071861</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>down_high</td>
+      <td>AVAX-USD</td>
+      <td>7</td>
+      <td>0.571429</td>
+      <td>0.002648</td>
+      <td>0.002827</td>
+      <td>0.018352</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>down_high</td>
+      <td>BNB-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>-0.000080</td>
+      <td>-0.000080</td>
+      <td>-0.000201</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>down_high</td>
+      <td>DOGE-USD</td>
+      <td>6</td>
+      <td>0.333333</td>
+      <td>0.015394</td>
+      <td>-0.017126</td>
+      <td>0.082184</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>down_high</td>
+      <td>ETH-USD</td>
+      <td>7</td>
+      <td>0.142857</td>
+      <td>-0.008166</td>
+      <td>-0.009447</td>
+      <td>-0.056033</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>down_high</td>
+      <td>SOL-USD</td>
+      <td>6</td>
+      <td>0.500000</td>
+      <td>0.016946</td>
+      <td>-0.002099</td>
+      <td>0.099401</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>down_high</td>
+      <td>XRP-USD</td>
+      <td>5</td>
+      <td>0.400000</td>
+      <td>0.025142</td>
+      <td>-0.011890</td>
+      <td>0.123259</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>flat</td>
+      <td>ADA-USD</td>
+      <td>3</td>
+      <td>0.666667</td>
+      <td>0.000750</td>
+      <td>0.007372</td>
+      <td>0.002102</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>flat</td>
+      <td>AVAX-USD</td>
+      <td>1</td>
+      <td>0.000000</td>
+      <td>-0.019620</td>
+      <td>-0.019620</td>
+      <td>-0.019620</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>flat</td>
+      <td>BNB-USD</td>
+      <td>8</td>
+      <td>0.250000</td>
+      <td>-0.001354</td>
+      <td>-0.001376</td>
+      <td>-0.010894</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>flat</td>
+      <td>BTC-USD</td>
+      <td>5</td>
+      <td>0.200000</td>
+      <td>-0.002527</td>
+      <td>-0.012134</td>
+      <td>-0.013413</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>flat</td>
+      <td>DOGE-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>0.032375</td>
+      <td>0.032375</td>
+      <td>0.060455</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>flat</td>
+      <td>ETH-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>0.102732</td>
+      <td>0.102732</td>
+      <td>0.202460</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>flat</td>
+      <td>SOL-USD</td>
+      <td>1</td>
+      <td>0.000000</td>
+      <td>-0.013379</td>
+      <td>-0.013379</td>
+      <td>-0.013379</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>flat</td>
+      <td>XRP-USD</td>
+      <td>2</td>
+      <td>0.000000</td>
+      <td>-0.010196</td>
+      <td>-0.010196</td>
+      <td>-0.020289</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>retained_union</td>
+      <td>ADA-USD</td>
+      <td>11</td>
+      <td>0.454545</td>
+      <td>-0.006508</td>
+      <td>-0.011955</td>
+      <td>-0.069910</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>retained_union</td>
+      <td>AVAX-USD</td>
+      <td>8</td>
+      <td>0.500000</td>
+      <td>-0.000135</td>
+      <td>-0.000679</td>
+      <td>-0.001628</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>retained_union</td>
+      <td>BNB-USD</td>
+      <td>10</td>
+      <td>0.300000</td>
+      <td>-0.001099</td>
+      <td>-0.001376</td>
+      <td>-0.011093</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>retained_union</td>
+      <td>BTC-USD</td>
+      <td>5</td>
+      <td>0.200000</td>
+      <td>-0.002527</td>
+      <td>-0.012134</td>
+      <td>-0.013413</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>retained_union</td>
+      <td>DOGE-USD</td>
+      <td>8</td>
+      <td>0.375000</td>
+      <td>0.019639</td>
+      <td>-0.017126</td>
+      <td>0.147607</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>retained_union</td>
+      <td>ETH-USD</td>
+      <td>9</td>
+      <td>0.222222</td>
+      <td>0.016478</td>
+      <td>-0.009447</td>
+      <td>0.135083</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>retained_union</td>
+      <td>SOL-USD</td>
+      <td>7</td>
+      <td>0.428571</td>
+      <td>0.012614</td>
+      <td>-0.011591</td>
+      <td>0.084692</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rebound inside = 3</td>
+      <td>3</td>
+      <td>retained_union</td>
+      <td>XRP-USD</td>
+      <td>7</td>
+      <td>0.285714</td>
+      <td>0.015045</td>
+      <td>-0.010583</td>
+      <td>0.100469</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>ADA-USD</td>
+      <td>12</td>
+      <td>0.250000</td>
+      <td>-0.008477</td>
+      <td>-0.009964</td>
+      <td>-0.097770</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>AVAX-USD</td>
+      <td>17</td>
+      <td>0.411765</td>
+      <td>0.002149</td>
+      <td>-0.000613</td>
+      <td>0.033644</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>BNB-USD</td>
+      <td>6</td>
+      <td>0.166667</td>
+      <td>-0.009176</td>
+      <td>-0.009519</td>
+      <td>-0.054025</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>BTC-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>0.001079</td>
+      <td>0.001079</td>
+      <td>0.001890</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>DOGE-USD</td>
+      <td>15</td>
+      <td>0.400000</td>
+      <td>0.012972</td>
+      <td>-0.011712</td>
+      <td>0.183275</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>ETH-USD</td>
+      <td>14</td>
+      <td>0.214286</td>
+      <td>-0.008383</td>
+      <td>-0.006623</td>
+      <td>-0.112438</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>SOL-USD</td>
+      <td>17</td>
+      <td>0.294118</td>
+      <td>0.001182</td>
+      <td>-0.009244</td>
+      <td>0.013023</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>down_high</td>
+      <td>XRP-USD</td>
+      <td>11</td>
+      <td>0.454545</td>
+      <td>0.012308</td>
+      <td>-0.001752</td>
+      <td>0.133865</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>ADA-USD</td>
+      <td>7</td>
+      <td>0.428571</td>
+      <td>0.009362</td>
+      <td>-0.007116</td>
+      <td>0.063555</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>AVAX-USD</td>
+      <td>3</td>
+      <td>0.666667</td>
+      <td>0.008961</td>
+      <td>0.014092</td>
+      <td>0.026437</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>BNB-USD</td>
+      <td>13</td>
+      <td>0.461538</td>
+      <td>0.002169</td>
+      <td>-0.000733</td>
+      <td>0.027768</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>BTC-USD</td>
+      <td>16</td>
+      <td>0.312500</td>
+      <td>0.000605</td>
+      <td>-0.005025</td>
+      <td>0.007730</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>DOGE-USD</td>
+      <td>2</td>
+      <td>0.500000</td>
+      <td>0.029965</td>
+      <td>0.029965</td>
+      <td>0.055991</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>ETH-USD</td>
+      <td>5</td>
+      <td>0.200000</td>
+      <td>0.040164</td>
+      <td>-0.004575</td>
+      <td>0.192166</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>SOL-USD</td>
+      <td>4</td>
+      <td>0.500000</td>
+      <td>0.012994</td>
+      <td>-0.003600</td>
+      <td>0.050468</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>flat</td>
+      <td>XRP-USD</td>
+      <td>6</td>
+      <td>0.166667</td>
+      <td>-0.009263</td>
+      <td>-0.007445</td>
+      <td>-0.055029</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>ADA-USD</td>
+      <td>19</td>
+      <td>0.315789</td>
+      <td>-0.001905</td>
+      <td>-0.008943</td>
+      <td>-0.040429</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>AVAX-USD</td>
+      <td>20</td>
+      <td>0.450000</td>
+      <td>0.003170</td>
+      <td>-0.000336</td>
+      <td>0.060970</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>BNB-USD</td>
+      <td>19</td>
+      <td>0.368421</td>
+      <td>-0.001413</td>
+      <td>-0.002569</td>
+      <td>-0.027757</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>BTC-USD</td>
+      <td>18</td>
+      <td>0.333333</td>
+      <td>0.000658</td>
+      <td>-0.005025</td>
+      <td>0.009634</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>DOGE-USD</td>
+      <td>17</td>
+      <td>0.411765</td>
+      <td>0.014972</td>
+      <td>-0.011712</td>
+      <td>0.249528</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>ETH-USD</td>
+      <td>19</td>
+      <td>0.210526</td>
+      <td>0.004392</td>
+      <td>-0.005305</td>
+      <td>0.058121</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>SOL-USD</td>
+      <td>21</td>
+      <td>0.333333</td>
+      <td>0.003432</td>
+      <td>-0.009244</td>
+      <td>0.064148</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 0</td>
+      <td>0</td>
+      <td>retained_union</td>
+      <td>XRP-USD</td>
+      <td>17</td>
+      <td>0.352941</td>
+      <td>0.004694</td>
+      <td>-0.006512</td>
+      <td>0.071470</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rebound inside = 1</td>
+      <td>1</td>
+      <td>down_high</td>
+      <td>ADA-USD</td>
+      <td>12</td>
+      <td>0.250000</td>
+      <td>-0.008477</td>
+      <td>-0.009964</td>
+      <td>-0.097770</td>
+      <td>0</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class='card'>
+    <h2>How to use this page</h2>
+    <ol>
+      <li>先看 breakout ladder：确认更强后，breakout 是否真的变得像样？</li>
+      <li>再看 rebound overall：确认更强是否只是“样本变少”，还是质量真提升？</li>
+      <li>最后只看 retained subsets：这一步才决定下一轮默认 confirmation 口径该放在哪一档。</li>
+    </ol>
+    <p class='muted'>如果 retained subsets 内存在一档确认强度，让收益质量改善而 trade retention 仍可接受，这条线就值得继续推进；否则更可能停留在 feature / park。</p>
+  </div>
+
+  <div class='card'>
+    <h2>Artifacts</h2>
+    <ul>
+      <li><a href='../../artifacts/trendline_confirmation_ladder/sample_meta.csv'>sample_meta.csv</a></li>
+      <li><a href='../../artifacts/trendline_confirmation_ladder/breakout_ladder_summary.csv'>breakout_ladder_summary.csv</a></li>
+      <li><a href='../../artifacts/trendline_confirmation_ladder/rebound_ladder_summary.csv'>rebound_ladder_summary.csv</a></li>
+      <li><a href='../../artifacts/trendline_confirmation_ladder/rebound_retained_subset_summary.csv'>rebound_retained_subset_summary.csv</a></li>
+      <li><a href='../../artifacts/trendline_confirmation_ladder/rebound_retained_subset_symbol_summary.csv'>rebound_retained_subset_symbol_summary.csv</a></li>
+      <li><a href='../../artifacts/trendline_confirmation_ladder/trade_detail.csv'>trade_detail.csv</a></li>
+      <li><a href='../../artifacts/trendline_confirmation_ladder/summary.json'>summary.json</a></li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 multi-strategy bot 只读成“双策略大杂烩”：对 short-cycle crypto desk，更该先拆的是「BB 触带 × RSI 极值确认 × 2%/4% bracket exit」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 multi-strategy bot 只读成“双策略大杂烩”：对 short-cycle crypto desk，更该先拆的是「BB 触带 × RSI 极值确认 × 2%/4% bracket exit」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-21 13:18 UTC</span>
+      <span class="pill">研究时间：2026-04-21 13:48 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit + Binance USDⓈ-M public-data portability probe</span>
+      <span class="pill">主题标签：mean-reversion / bollinger-band / RSI / bracket-exit / stop-loss / take-profit / Binance USDⓈ-M / 15m / 5m</span>
+      <span class="pill">证据类型：工程经验 + repo rule shell + public-data first probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-21_1348_bbrsi-bracket-meanreversion-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-21 13:48 UTC</li>
+<li>类型：GitHub / repo source audit + Binance USDⓈ-M public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当价格显著偏离自身短期均值、同时 RSI 已进入极端区间时，下一段更容易先向均值回吐；交易上就是 <code>close &lt;= lower Bollinger Band &amp; RSI&lt;25 -&gt; long</code>，<code>close &gt;= upper Bollinger Band &amp; RSI&gt;75 -&gt; short</code>，随后用固定 <code>2%</code> 止损、<code>4%</code> 止盈和反向信号平仓</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：mean-reversion / bollinger-band / RSI / bracket-exit / stop-loss / take-profit / Binance USDⓈ-M / 15m / 5m</li>
+<li>证据类型：工程经验 + repo rule shell + public-data first probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 2026 GitHub repo <strong>PatrickSebastine / mean-reversion-trading-bot</strong>。repo 表面上同时写了 mean reversion 和 momentum 两条线，但对我们更有价值的其实是它把一条 <strong>最朴素、最容易快复现的 BB+RSI 均值回复完整策略壳</strong> 写全了：<code>15m</code>、<code>20</code> 期 Bollinger、<code>RSI14</code>、<code>RSI&lt;25 / &gt;75</code> 入场、<code>2%</code> 硬止损、<code>4%</code> 硬止盈、反向信号平仓、外加账户级 daily loss circuit breaker。对 short-cycle desk 来说，这比“又一个指标组合”更重要，因为它已经把 <code>entry / exit / risk / sizing / kill-switch</code> 摊成了可直接复做的 baseline。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha 很清楚</strong>：不是“布林带会反弹”这种空话，而是 <strong>短窗过度偏离后的价格回吐</strong>。RSI 在这里不是第二条 alpha，而是用来过滤“只是正常下跌/上涨”与“已经进入极端拉伸”的确认层。</li>
+<li>repo 真正值得拿的不是指标本身，而是 <strong>完整 shell</strong>：<code>BB+RSI</code> 给入场，<code>2%/4%</code> bracket 直接定义盈亏比，反向信号给兜底退出，账户日亏损阈值当组合层熔断。</li>
+<li>我用 repo 自带的 <code>8</code> 个币（<code>BTC/ETH/SOL/XRP/DOGE/ADA/AVAX/LINK</code>）做 Binance USDⓈ-M public-data portability probe 后，结论不是“全池普适可做”，而是 <strong>存在很强的 symbol pocket 分化</strong>：</li>
+<li><code>15m</code> 全池共 <code>209</code> 笔，gross 约 <code>-12.22 bps/笔</code>，粗扣 <code>8 bps</code> round-trip 后约 <code>-20.22 bps/笔</code></li>
+<li>但 <code>15m</code> 上 <code>SOL</code> 与 <code>DOGE</code> 明显更厚：<code>SOL</code> 约 <code>+51.48 bps/笔</code>、<code>DOGE</code> 约 <code>+59.56 bps/笔</code> gross；<code>BTC</code> 也还有 <code>+13.14 bps/笔</code></li>
+<li><code>5m</code> 直接平移后更差：全池 <code>209</code> 笔 gross 约 <code>-18.60 bps/笔</code>；不过 <code>BTC</code> 仍有 <code>+9.26 bps/笔</code>、<code>XRP</code> 约 <code>+22.92 bps/笔</code> 的 pocket</li>
+<li>更值得注意的是，这条线 <strong>并不主要靠大量 TP 命中赚钱</strong>。例如 <code>5m BTC</code> 的 TP 命中率只有 <code>4%</code>，但 reversal exit 占了 <code>56%</code>；说明对 short-cycle desk 来说，真正该继续优化的可能不是再把 TP 放远，而是 <strong>更细的出场与 child execution</strong>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮值得写，因为它补的是 <strong>“最简单、最完整、可立刻做 first verdict 的单资产 MR baseline”</strong>。我们最近虽然已经写过不少 MR / pairs / basis 方向，但这篇的价值在于：</p>
+<ol>
+<li>它不是相对价值多腿，而是最容易在 <code>5m/15m</code> 直接拉起的一腿策略；</li>
+<li>它把 <code>base alpha / confirmation / bracket exit / circuit breaker</code> 边界写得很干净；</li>
+<li>它天然适合作为后续 <code>maker-first</code>、<code>time-stop</code>、<code>volatility veto</code>、<code>symbol router</code> 的母壳。</li>
+</ol>
+<h2>4. 策略拆解</h2>
+<ul>
+<li>方向属性：单资产 / 逆势 / mean reversion</li>
+<li>基础 alpha：价格短窗过度偏离后向均值回吐</li>
+<li>regime：更像震荡或尖刺后回补环境，不适合趋势单边扩散时硬抄底摸顶</li>
+<li>filter / veto：RSI 极值确认；后续最该补的是 <code>trend veto / vol regime veto / symbol-specific admission</code></li>
+<li>risk / sizing / execution overlay：<code>2%</code> SL、<code>4%</code> TP、反向信号退出、账户级日亏损熔断、仓位按信号强度缩放</li>
+</ul>
+<h2>5. 可复刻的最小实验</h2>
+<h3>实验目标</h3>
+<p>验证这条线到底是：</p>
+<ul>
+<li>A. 可以做成 <strong>selective symbol router</strong> 的 raw alpha，还是</li>
+<li>B. 只是“看起来完整、但必须强依赖更细过滤”的 baseline 壳。</li>
+</ul>
+<h3>最小实验口径</h3>
+<ol>
+<li>universe 固定 <code>BTC/ETH/SOL/XRP/DOGE/ADA/AVAX/LINK</code></li>
+<li>周期先跑 repo 原版 <code>15m</code>，再测 <code>5m</code> child transfer</li>
+<li>entry：<code>BB20(2.0)</code> + <code>RSI14 &lt; 25 / &gt; 75</code></li>
+<li>exit：<code>2%</code> SL、<code>4%</code> TP、反向信号平仓；再加一版 <code>8/16/24 bars timeout</code></li>
+<li>friction ladder：<code>4 / 8 / 12 bps</code> round-trip</li>
+<li>分层看 <code>symbol contribution / TP rate / reversal rate / mean hold bars / trend-regime breakdown</code></li>
+</ol>
+<h2>6. 这轮我保留的判断</h2>
+<p>这份 repo 不该被读成“又一个双策略 demo”，因为它其实给了一个非常清楚的 <strong>均值回复完整策略壳</strong>。但 public probe 也很直白：</p>
+<p>&gt; <strong>BB+RSI 这条 raw alpha 不是全池稳定印钞机，更像“少数 symbol pocket 仍有边、全池硬铺会被成本和趋势环境一起打穿”的 selective MR baseline。</strong></p>
+<p>换句话说，值得继续搬的不是“全币通用 BB+RSI”，而是 <strong>BB+RSI 作为一腿 MR 母壳，再往上叠 symbol router / trend veto / timeout / maker-first execution</strong>。</p>
+<h2>7. 下一步怎么测</h2>
+<ul>
+<li>先做 <strong>symbol router</strong>：只留 <code>BTC/SOL/DOGE/XRP</code> 这类当前 gross 更厚的币，看 trade count 掉多少、净值有没有明显改善。</li>
+<li>做 <strong>趋势否决</strong>：例如 <code>EMA200</code> 同向单边趋势内禁止逆势开仓，检验是否能砍掉 <code>ETH/ADA/XRP 15m</code> 这类明显被 stop 打穿的样本。</li>
+<li>做 <strong>timeout exit</strong>：现在不少盈利靠 reversal exit 而不是 TP，下一轮应对照 <code>8/16/24 bars</code> 超时平仓，看看能否减少长持仓拖累。</li>
+<li>若 cost 后开始接近平衡，再补 <strong>maker-first / passive re-entry / spread filter</strong>；若仍显著为负，就把它降级为“只服务 selective overshoot router 的 baseline”，不要急着实盘化。</li>
+</ul>
+<h2>8. 来源</h2>
+<ul>
+<li>PatrickSebastine (2026), <strong>mean-reversion-trading-bot</strong>. GitHub repo. Repo URL: &lt;<a href="https://github.com/PatrickSebastine/mean-reversion-trading-bot&gt;">https://github.com/PatrickSebastine/mean-reversion-trading-bot&gt;</a></li>
+<li>Readable README URL: &lt;<a href="https://github.com/PatrickSebastine/mean-reversion-trading-bot/blob/master/README.md&gt;">https://github.com/PatrickSebastine/mean-reversion-trading-bot/blob/master/README.md&gt;</a></li>
+<li>Source audit依据：<code>README.md</code>、<code>config.yaml</code>、<code>trading_engine.py</code>、<code>overnight_trader.py</code></li>
+<li>本地 artifact：</li>
+<li><code>reports/artifacts/quant_digests/2026-04-21_patrick_meanreversion_probe_summary.csv</code></li>
+</ul>
+</body>
+</html>

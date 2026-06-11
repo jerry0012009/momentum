@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>support_breakout_raw @ h24 v0 回测</title>
+  <style>
+    :root {
+      --bg: #f5f1e8;
+      --paper: #fffdf8;
+      --ink: #18212b;
+      --muted: #5c6773;
+      --line: #d7cfc0;
+      --teal: #0f766e;
+      --amber: #b45309;
+      --rose: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Iowan Old Style","Palatino Linotype","Noto Serif SC",serif;
+      background:
+        radial-gradient(circle at top left, rgba(15,118,110,0.08), transparent 24%),
+        radial-gradient(circle at top right, rgba(180,83,9,0.09), transparent 22%),
+        linear-gradient(180deg, #f7f3ea 0%, #efe8dc 100%);
+      color: var(--ink);
+      line-height: 1.68;
+    }
+    main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 28px 18px 56px;
+    }
+    .hero {
+      background: rgba(255,253,248,0.86);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(215,207,192,0.9);
+      border-radius: 22px;
+      padding: 26px 24px 18px;
+      box-shadow: 0 16px 36px rgba(24,33,43,0.08);
+    }
+    .hero h1 { margin: 0 0 8px; font-size: 2rem; line-height: 1.2; }
+    .muted { color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin: 18px 0 10px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px 16px;
+      box-shadow: 0 10px 24px rgba(24,33,43,0.05);
+    }
+    .card .k { font-size: 0.88rem; color: var(--muted); }
+    .card .v { font-size: 1.45rem; font-weight: 700; margin-top: 6px; }
+    section {
+      margin-top: 18px;
+      background: rgba(255,253,248,0.88);
+      border: 1px solid rgba(215,207,192,0.95);
+      border-radius: 22px;
+      padding: 18px 20px;
+      box-shadow: 0 10px 28px rgba(24,33,43,0.05);
+    }
+    h2 { margin: 0 0 10px; font-size: 1.18rem; }
+    ul { margin: 0; padding-left: 20px; }
+    li + li { margin-top: 6px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 0.95rem;
+      background: #fff;
+    }
+    th, td {
+      border: 1px solid #e5dfd2;
+      padding: 8px 9px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f4ede1; }
+    code {
+      background: #f0ebe2;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-family: ui-monospace,SFMono-Regular,Menlo,monospace;
+      font-size: 0.92em;
+    }
+    .note {
+      border-left: 4px solid var(--amber);
+      padding-left: 12px;
+      color: var(--muted);
+    }
+    img {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      margin-top: 10px;
+      background: #fff;
+    }
+    .good { color: var(--teal); }
+    .bad { color: var(--rose); }
+    @media (max-width: 720px) {
+      main { padding: 18px 12px 40px; }
+      .hero h1 { font-size: 1.65rem; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <p class="muted">Fast small-loop deliverable / 因子实验 v0</p>
+      <h1>support_breakout_raw @ h24 v0 回测页</h1>
+      <p>这页只回答一个小问题：把 <code>support_breakout_raw</code> 当成一个最简单、每资产不重叠的 <strong>24 小时 continuation short</strong> 策略，结果到底长什么样。</p>
+      <div class="grid">
+        <div class="card"><div class="k">成交笔数</div><div class="v">48</div></div>
+        <div class="card"><div class="k">平均单笔收益</div><div class="v">1.44%</div></div>
+        <div class="card"><div class="k">胜率</div><div class="v">64.58%</div></div>
+        <div class="card"><div class="k">累计收益</div><div class="v">92.45%</div></div>
+        <div class="card"><div class="k">最大回撤</div><div class="v">-19.11%</div></div>
+      </div>
+      <p class="note">这页是 <a href="../pytrendline_event_validation_v3_final_verdict/report.html">v3 final verdict</a> 的后继原型页：前者回答“v3 最终留下了什么”，这页回答“把留下来的 <code>support_breakout_raw @ h24</code> 压成最小策略原型后，结果到底长什么样”。口径故意做得很朴素：事件触发后直接在 <code>action_open</code> 做空，固定持有 <code>24</code> 根 60m bar，不加成本模型，不做跨资产资金分配，只做同资产不重叠约束。</p>
+    </section>
+    <section>
+      <h2>策略定义</h2>
+      <ul>
+        <li>样本来源：复用 <code>reports/artifacts/pytrendline_event_validation_v3/event_sample_purged.csv</code> 中的 <code>support_breakout_raw</code> 事件。</li>
+        <li>入场：事件对应的 <code>action_timestamp</code> / <code>action_open</code> 直接做空。</li>
+        <li>出场：固定持有 <code>h24</code>，即 <code>24</code> 根 60m bar 后按收盘价平仓。</li>
+        <li>去重：同一资产若上一笔仍在持有，则跳过后续事件，保证单资产不重叠。</li>
+        <li>收益定义：以精确短仓收益 <code>entry_open / exit_close - 1</code> 计算，而不是简单取负号近似。</li>
+      </ul>
+    </section>
+    <section>
+      <h2>结论</h2>
+      <ul>
+        <li class="good">这批样本下，最简单的 breakout v0 并不差：48 笔、4 个资产全覆盖、平均单笔约 1.44%。</li>
+        <li class="good">它更像 <code>h24</code> continuation short，而不是需要复杂过滤器才能勉强成立的东西。</li>
+        <li class="bad">但这仍只是事件样本上的“策略化读法”，不是正式投资组合回测：没有做手续费、资金占用、跨资产并发资金分摊，也没有扩大样本窗。</li>
+      </ul>
+    </section>
+    <section>
+      <h2>收口定位：这条线现在该怎么用？</h2>
+      <ul>
+        <li class="good"><b>保留：</b>把 <code>support_breakout_raw @ h24</code> 先作为一个 <b>条件性 alpha / v0 原型</b> 保留。</li>
+        <li><b>适合的市场条件：</b>从这页的简单标签看，它在 <code>flat</code> 环境最顺手，在 <code>down</code> 环境也还能工作，但在 <code>up</code> 环境几乎没有边际。</li>
+        <li><b>当前最值得优先验证的环境约束：</b>若要加 first-pass gate，现阶段更像样的是 <code>avoid_fluctuating</code>，而不是把它机械地限死在 <code>only_downtrend</code>；因为前者在 OOS 里还能保留大部分样本，同时比 <code>trade_all</code> 更干净。</li>
+        <li><b>最诚实的产品定位：</b>它不是“全市场通吃”的成熟策略，而是一个更像 <b>条件性 alpha / strategy-facing breakout-short 原型</b>。</li>
+        <li><b>研究线动作：</b>这条 v0 不再继续发散找新花样，而是转入后续更正式的成本、rolling OOS、non-overlap / capital allocation、环境约束验证。</li>
+      </ul>
+      <p class="note">配套对照页：<a href="../support_breakout_v0_fib_ab/report.html">Breakout v0 vs Breakout + Fibonacci Retest-Hold</a>。那一页的结论用于回答“要不要把 Fibonacci 过滤层继续留在主线上”。</p>
+    </section>
+    <section>
+      <h2>如果继续做 follow-up，允许做什么，不允许做什么？</h2>
+      <ul>
+        <li><b>允许做的：</b>更接近策略层的 honesty 检查——例如 <code>cost / slippage sensitivity</code>、<code>rolling / OOS</code>、<code>non-overlap / capital allocation</code>、以及更窄的环境约束验证（当前优先看 <code>avoid_fluctuating</code>）。</li>
+        <li><b>也允许做的：</b>把 <code>support_breakout_confirm_1</code> 作为紧邻确认变体，一起放进同样的成本 / 执行 / 环境约束框架里比较，但不要把它扩成第二条大而全独立研发主线。</li>
+        <li><b>不允许再做的：</b>把这条线重新扩回 <code>v3</code> 式的大全参数搜索、泛跨市场大工程、或重新开一轮“谁才是 breakout 家族第一名”的排序游戏。</li>
+        <li><b>为什么要收这么窄：</b>因为当前真正缺的不是再找新变体，而是回答这个 v0 原型在更真实的交易约束下还能不能站住。</li>
+      </ul>
+      <p class="note">一句话版：这条线现在进入的是 <b>更接近策略层的 honesty / execution follow-up</b>，不是重新回到研究发散模式。</p>
+    </section>
+    <section>
+      <h2>成本 first-pass：扣掉 10 / 20 / 50bps 后，这条线还剩多少？</h2>
+      <ul>
+        <li><b>整体读法：</b>这条 breakout v0 并不是“轻微成本一扣就没了”。在 <code>20bps</code> 近似下，平均单笔仍约 <code>1.24%</code>，累计仍约 <code>75.03%</code>。</li>
+        <li><b>但也不是已经稳到能直接上 production：</b><code>test split</code> 在 <code>20bps</code> 下累计约 <code>-3.08%</code>；<code>up</code> 环境在同样口径下累计约 <code>-2.98%</code>，说明真正要警惕的不是 overall gross 太脆，而是后段稳定性与环境依赖。</li>
+        <li><b>当前最诚实的结论：</b>这条线值得继续补 <code>rolling / OOS / environment gate</code>，因为 first-pass 成本并没有直接把它抹平；但也正因为 <code>test / up regime</code> 已经偏弱，所以更不该跳过 honesty 检查、直接把它包装成成熟 short 策略。</li>
+      </ul>
+      <table><thead><tr><th>cost_bps</th><th>trades</th><th>mean_net_return</th><th>median_net_return</th><th>win_ratio</th><th>cumulative_net_return</th></tr></thead><tbody><tr><td>0</td><td>48</td><td>1.44%</td><td>1.52%</td><td>64.58%</td><td>92.45%</td></tr><tr><td>10</td><td>48</td><td>1.34%</td><td>1.42%</td><td>64.58%</td><td>83.54%</td></tr><tr><td>20</td><td>48</td><td>1.24%</td><td>1.32%</td><td>62.50%</td><td>75.03%</td></tr><tr><td>50</td><td>48</td><td>0.94%</td><td>1.02%</td><td>62.50%</td><td>51.76%</td></tr></tbody></table>
+      <h3>20bps 下按 split 看</h3>
+      <table><thead><tr><th>split</th><th>trades</th><th>mean_net_return</th><th>median_net_return</th><th>win_ratio</th><th>cumulative_net_return</th></tr></thead><tbody><tr><td>test</td><td>10</td><td>-0.29%</td><td>0.83%</td><td>60.00%</td><td>-3.08%</td></tr><tr><td>train</td><td>28</td><td>1.45%</td><td>0.74%</td><td>57.14%</td><td>45.64%</td></tr><tr><td>validate</td><td>10</td><td>2.21%</td><td>2.72%</td><td>80.00%</td><td>24.01%</td></tr></tbody></table>
+      <h3>20bps 下按 regime 看</h3>
+      <table><thead><tr><th>regime</th><th>trades</th><th>mean_net_return</th><th>median_net_return</th><th>win_ratio</th><th>cumulative_net_return</th></tr></thead><tbody><tr><td>down</td><td>6</td><td>0.80%</td><td>0.87%</td><td>50.00%</td><td>4.72%</td></tr><tr><td>flat</td><td>26</td><td>2.21%</td><td>1.97%</td><td>69.23%</td><td>72.27%</td></tr><tr><td>up</td><td>16</td><td>-0.16%</td><td>0.57%</td><td>56.25%</td><td>-2.98%</td></tr></tbody></table>
+      <p class="note">一句话版：<code>20bps</code> 还没有把这条 v0 直接吞掉，但它也明确提醒了你——下一步该优先补的是 <b>split / regime honesty</b>，不是继续扩新变体。</p>
+    </section>
+    <section>
+      <h2>如果下一步真做 split / regime honesty，应该怎么做才诚实？</h2>
+      <ul>
+        <li><b>先固定当前 v0 定义：</b>继续使用 <code>support_breakout_raw @ h24</code>、<code>action_open</code> 做空、固定持有 <code>24</code> 根 bar 的口径，不要因为某个 split / regime 表现差就临时改持有期或入场规则。</li>
+        <li><b>至少同时看 gross 与 20bps：</b>因为 first-pass 已证明 overall 并不是被轻微成本直接抹平，下一步更该关心的是 <code>test</code> 与 <code>up regime</code> 在现实一点的成本口径下是否仍持续偏弱。</li>
+        <li><b>split honesty 的核心问题：</b>不是 train / validate 漂不漂亮，而是 <code>test</code> 是否还持续接近或低于零；如果主要收益只靠前段样本抬起来，这条线就更该停留在条件性原型，而不是升格成主策略。</li>
+        <li><b>regime honesty 的核心问题：</b>不是强行要求每个 regime 都赚钱，而是要诚实回答：它是不是主要只在 <code>flat</code> 环境成立、在 <code>up</code> 环境就明显失效。若答案是是，就应该明确把它标成 <b>conditional alpha</b>，而不是假装它是通用 short。</li>
+        <li><b>当前最像样的通过标准：</b>这条线不需要每个 bucket 都赢，但至少不该只靠 <code>train + flat</code> 两块把 overall 结果抬起来；如果 <code>test</code> 在 <code>20bps</code> 下长期转负、且 <code>up regime</code> 没有任何可解释的约束办法，那就更像该停在 v0 原型页，而不是继续往 production short 包装。</li>
+      </ul>
+      <p class="note">一句话版：下一步不是再找新 breakout 变体，而是要先回答——这条 v0 在 <code>test</code> 与 <code>up regime</code> 的弱点，究竟是可接受的条件性 alpha 特征，还是已经足够说明它不配继续升格。</p>
+    </section>
+    <section>
+      <h2>如果只先试一个最小环境 gate，为什么当前优先看 avoid_fluctuating？</h2>
+      <ul>
+        <li><b>先把口径说清：</b>下面这张表来自更早的 <code>v3 regime policy slice</code> 证据包，是 <b>event-level OOS gate 对照</b>，不是这页 v0 策略收益本身；它的作用只是回答“哪个环境 gate 更适合先拿来做最小 follow-up”。</li>
+        <li><b>当前最有用的一点：</b><code>avoid_fluctuating</code> 在 OOS 里保留了约 <code>84.21%</code> 的事件（约 <code>16/19</code>），明显高于 <code>only_downtrend</code> 的约 <code>36.84%</code>（约 <code>7/19</code>）。</li>
+        <li><b>而且没有因为少做一点就明显变钝：</b><code>avoid_fluctuating</code> 的 OOS 均值约 <code>-1.43%</code>、平均超额约 <code>-1.88%</code>，与 <code>trade_all</code> 的约 <code>-1.04%</code> / <code>-1.55%</code> 属于同一量级。</li>
+        <li><b>所以当前更诚实的策略层读法是：</b>如果只拿一个最小环境 gate 继续做 breakout v0 follow-up，先试 <code>avoid_fluctuating</code>；<code>only_downtrend</code> 不是永远不看，而是现在更像过早把样本砍得太窄。</li>
+      </ul>
+      <table><thead><tr><th>policy</th><th>oos_events</th><th>oos_retention_vs_all</th><th>oos_mean_ret_h24</th><th>oos_avg_excess_ret_h24</th><th>oos_neg_symbols_excess</th><th>oos_pos_symbols_excess</th></tr></thead><tbody><tr><td>only_uptrend</td><td>9</td><td>47.37%</td><td>-1.53%</td><td>-2.24%</td><td>4</td><td>0</td></tr><tr><td>avoid_fluctuating</td><td>16</td><td>84.21%</td><td>-1.43%</td><td>-1.88%</td><td>4</td><td>0</td></tr><tr><td>only_downtrend</td><td>7</td><td>36.84%</td><td>-1.29%</td><td>-1.73%</td><td>4</td><td>0</td></tr><tr><td>trade_all</td><td>19</td><td>100.00%</td><td>-1.04%</td><td>-1.55%</td><td>4</td><td>0</td></tr></tbody></table>
+      <p class="note">一句话版：<code>avoid_fluctuating</code> 当前最大的优势不是“神奇提效”，而是 <b>用约 84% 的 OOS 保留率保住了接近 trade_all 的方向性</b>；相比之下，<code>only_downtrend</code> 现在更像把样本过早砍窄。</p>
+    </section>
+    <section>
+      <h2>真把 avoid_fluctuating 放进同一套 hourly portfolio path / sizing honesty 后，它比换 confirm_1 更像样吗？</h2>
+      <ul>
+        <li><b>先说结论：</b>有一点，而且方向是对的。把 <code>avoid_fluctuating</code> 真放进和 raw 完全同一套 <code>20bps hourly mark-to-market</code> 口径后，它比单纯换成 <code>confirm_1</code> 更直接改善了弱口袋，但还没有把 breakout 线洗成“无条件可做”。</li>
+        <li><b>整体层面：</b><code>raw</code> 的 hourly path 累计约 <code>14.04%</code>、max drawdown 约 <code>-12.03%</code>；<code>avoid_fluctuating</code> 对应约 <code>15.46%</code> / <code>-9.97%</code>，说明它至少在统一资金曲线下没有把这条线做钝，反而略有改善。</li>
+        <li><b>最有用的改进：</b><code>up</code> 弱口袋从 raw 的约 <code>-1.99%</code>，改善到 <code>avoid_fluctuating</code> 的约 <code>0.95%</code>；同时平均活跃仓位也从约 <code>2.70</code> 降到约 <code>2.51</code>。</li>
+        <li><b>但没被彻底修好：</b><code>test</code> 在同口径下仍约 <code>-2.67%</code>，只是比 raw 的约 <code>-2.92%</code> 略好一点；这说明它更像一个 <b>有帮助但不万能</b> 的最小环境 gate，而不是把整条线直接变成熟 short 的开关。</li>
+      </ul>
+      <table><thead><tr><th>strategy</th><th>trades</th><th>trade_retention_vs_raw</th><th>per_asset_cost20_cumulative_return</th><th>hourly_path_cost20_cumulative_return</th><th>hourly_path_max_drawdown</th><th>test_hourly_path_cost20_cumulative_return</th><th>up_hourly_path_cost20_cumulative_return</th><th>flat_hourly_path_cost20_cumulative_return</th><th>mean_active_positions</th></tr></thead><tbody><tr><td>raw_v0</td><td>48</td><td>100.00%</td><td>75.03%</td><td>14.04%</td><td>-12.03%</td><td>-2.92%</td><td>-1.99%</td><td>12.72%</td><td>2.70</td></tr><tr><td>avoid_fluctuating</td><td>40</td><td>83.33%</td><td>83.35%</td><td>15.46%</td><td>-9.97%</td><td>-2.67%</td><td>0.95%</td><td>16.79%</td><td>2.51</td></tr></tbody></table>
+      <p class="note">一句话版：如果只在“换 <code>confirm_1</code>”和“加 <code>avoid_fluctuating</code> gate”之间二选一，当前证据更支持后者。因为它至少能在不明显伤 overall path 的前提下，稍微改善 <code>up</code> 弱口袋和回撤；只是 <code>test</code> 仍没被真正修好。</p>
+      <h3>把 gate 后的 hourly path 再拆开看：它到底还卡在哪？</h3>
+      <ul>
+        <li><b>先说结论：</b><code>avoid_fluctuating</code> 最明显修的是 <code>up</code>，但没有把后段稳定性完全修好；当前更像“帮你把最刺眼的弱口袋磨钝一点”，不是“把 breakout 线洗成通用 short”。</li>
+        <li><b>split 维度：</b><code>train</code> 与 <code>validate</code> 在同一套 <code>20bps hourly path</code> 下仍为正（约 <code>8.16%</code> / <code>5.52%</code>），但 <code>test</code> 仍约 <code>-2.67%</code>，说明 gate 只把后段伤口缝小了一点，还没缝好。</li>
+        <li><b>regime 维度：</b><code>up</code> 已从 raw 的负值翻到约 <code>0.95%</code>，但 <code>down</code> 仍约 <code>-1.52%</code>；真正最像样的仍是 <code>flat</code>，累计约 <code>16.79%</code>。</li>
+        <li><b>这对下一步意味着什么：</b>如果还继续补组合层 honesty，更值得问的已经不是“要不要换成 <code>confirm_1</code>”，而是：<b>能不能在保住 <code>avoid_fluctuating</code> 这点改进的同时，继续压低 <code>test/down</code> 的尾部风险。</b></li>
+      </ul>
+      <h4>avoid_fluctuating：按 split 看 hourly portfolio path（20bps）</h4>
+      <table><thead><tr><th>split</th><th>cost_bps</th><th>active_hours</th><th>mean_active_positions</th><th>max_active_positions</th><th>mean_hourly_return</th><th>cumulative_net_return</th><th>max_drawdown</th></tr></thead><tbody><tr><td>test</td><td>20</td><td>81</td><td>2.78</td><td>4</td><td>-0.03%</td><td>-2.67%</td><td>-8.04%</td></tr><tr><td>train</td><td>20</td><td>242</td><td>2.38</td><td>4</td><td>0.04%</td><td>8.16%</td><td>-9.97%</td></tr><tr><td>validate</td><td>20</td><td>100</td><td>2.00</td><td>3</td><td>0.06%</td><td>5.52%</td><td>-7.26%</td></tr></tbody></table>
+      <h4>avoid_fluctuating：按 regime 看 hourly portfolio path（20bps）</h4>
+      <table><thead><tr><th>regime</th><th>cost_bps</th><th>active_hours</th><th>mean_active_positions</th><th>max_active_positions</th><th>mean_hourly_return</th><th>cumulative_net_return</th><th>max_drawdown</th></tr></thead><tbody><tr><td>down</td><td>20</td><td>100</td><td>1.50</td><td>3</td><td>-0.01%</td><td>-1.52%</td><td>-4.09%</td></tr><tr><td>flat</td><td>20</td><td>256</td><td>2.15</td><td>4</td><td>0.06%</td><td>16.79%</td><td>-7.63%</td></tr><tr><td>up</td><td>20</td><td>105</td><td>2.86</td><td>4</td><td>0.01%</td><td>0.95%</td><td>-11.18%</td></tr></tbody></table>
+    </section>
+    <section>
+      <h2>cross-asset overlap first-pass：这条线一旦跨资产一起跑，会不会被并发仓位放大成另一回事？</h2>
+      <ul>
+        <li><b>先说结论：</b>会，至少不能再假装这只是“每次一笔、顺手可做”的小原型。当前 <code>48</code> 笔交易里，有约 <code>50.00%</code> 的入场发生在已经有别的仓位开着的时候，约 <code>25.00%</code> 的入场发生在当时已有至少两笔仓位的时候。</li>
+        <li><b>最大并发仓位：</b>这条 v0 的 first-pass cross-asset 并发最高到 <code>4</code> 笔；而且活跃持仓时间里，约 <code>34.80%</code> 的小时数都处在 <code>4</code> 笔同时持有。</li>
+        <li><b>这意味着什么：</b>当前页的收益更像“每个资产各自独立记账”的 prototype 读法，还不是“有统一资金约束的组合级结果”。如果后续要继续往策略层推进，就必须补 <code>non-overlap / capital allocation</code>，否则会高估这条线的可执行性。</li>
+        <li><b>当前最诚实的 next step：</b>先做一个最小组合约束对照——至少比较 <code>per-asset independent</code> 与 <code>1-slot global / equal-weight concurrent</code> 两种口径，看看收益是不是主要靠高并发堆出来的。</li>
+      </ul>
+      <table><thead><tr><th>trades</th><th>assets</th><th>max_concurrent_positions</th><th>mean_concurrent_at_entry</th><th>share_entries_ge2</th><th>share_entries_ge3</th><th>share_active_hours_ge2</th><th>share_active_hours_ge3</th><th>share_active_hours_ge4</th></tr></thead><tbody><tr><td>48</td><td>4</td><td>4</td><td>1.83</td><td>50.00%</td><td>25.00%</td><td>74.71%</td><td>57.77%</td><td>34.80%</td></tr></tbody></table>
+      <h3>活跃持仓时间按并发仓位拆分</h3>
+      <table><thead><tr><th>concurrent_positions</th><th>hours</th><th>share_active_hours</th></tr></thead><tbody><tr><td>1</td><td>109.00</td><td>25.29%</td></tr><tr><td>2</td><td>73.00</td><td>16.94%</td></tr><tr><td>3</td><td>99.00</td><td>22.97%</td></tr><tr><td>4</td><td>150.00</td><td>34.80%</td></tr></tbody></table>
+      <p class="note">一句话版：这条 breakout v0 不只是“会不会赚钱”的问题，还包括 <b>仓位会不会扎堆</b>。当前 first-pass 已经说明：如果忽略 cross-asset 并发与资金分摊，就会把它读得比真实执行更轻松。</p>
+    </section>
+    <section>
+      <h2>capital allocation first-pass：1-slot global / equal-weight concurrent 会把这条线压窄多少？</h2>
+      <ul>
+        <li><b>先说结论：</b>这条 breakout v0 不是“一加组合约束就归零”，但也不能继续按 <code>per-asset independent</code> 的漂亮累计收益去理解。更保守一点的组合层口径，会把它明显压窄。</li>
+        <li><b>20bps 下的两种 first-pass：</b><code>1-slot global</code> 只保留约 <code>14/48</code> 笔交易（约 <code>29.17%</code>），累计约 <code>13.83%</code>；而 <code>equal-weight concurrent(entry)</code> 虽保留全部 <code>48</code> 笔，但因为入场时经常要把资金均分给并发仓位，平均有效仓位权重只约 <code>42.36%</code>，<code>20bps</code> 下累计约 <code>19.40%</code>。</li>
+        <li><b>和当前页面主口径相比：</b><code>per-asset independent + 20bps</code> 的累计约 <code>75.03%</code>；这说明当前高累计收益并不是“完全虚高”，但确实明显受益于跨资产并发展开后的读法。</li>
+        <li><b>这轮最有用的判断：</b><code>equal-weight concurrent(entry)</code> 比 <code>1-slot global</code> 更接近“允许同时持有，但资金要分摊”的现实；它给出的 first-pass 结果大约落在两端之间，因此这条线仍可保留为 <b>组合层值得继续做 honesty check 的 conditional alpha</b>，但已经不适合再按独立记账结果去想象实盘空间。</li>
+      </ul>
+      <table><thead><tr><th>mode</th><th>cost_bps</th><th>trades</th><th>trade_keep_ratio_vs_independent</th><th>skipped_due_to_overlap</th><th>mean_effective_weight</th><th>mean_net_return</th><th>median_net_return</th><th>win_ratio</th><th>cumulative_net_return</th></tr></thead><tbody><tr><td>per_asset_independent</td><td>0</td><td>48</td><td>100.00%</td><td>0</td><td>100.00%</td><td>1.44%</td><td>1.52%</td><td>64.58%</td><td>92.45%</td></tr><tr><td>per_asset_independent</td><td>20</td><td>48</td><td>100.00%</td><td>0</td><td>100.00%</td><td>1.24%</td><td>1.32%</td><td>62.50%</td><td>75.03%</td></tr><tr><td>equal_weight_concurrent_entry</td><td>0</td><td>48</td><td>100.00%</td><td>0</td><td>42.36%</td><td>0.46%</td><td>0.42%</td><td>64.58%</td><td>24.34%</td></tr><tr><td>equal_weight_concurrent_entry</td><td>20</td><td>48</td><td>100.00%</td><td>0</td><td>42.36%</td><td>0.38%</td><td>0.37%</td><td>62.50%</td><td>19.40%</td></tr><tr><td>1_slot_global</td><td>0</td><td>14</td><td>29.17%</td><td>34</td><td>100.00%</td><td>1.17%</td><td>1.16%</td><td>64.29%</td><td>17.03%</td></tr><tr><td>1_slot_global</td><td>20</td><td>14</td><td>29.17%</td><td>34</td><td>100.00%</td><td>0.97%</td><td>0.96%</td><td>64.29%</td><td>13.83%</td></tr></tbody></table>
+      <h3>1-slot global 保留下来的交易（first-pass）</h3>
+      <table><thead><tr><th>symbol</th><th>entry_timestamp</th><th>exit_timestamp</th><th>split</th><th>regime</th><th>trade_return</th></tr></thead><tbody><tr><td>BNB-USD</td><td>2026-01-31 01:00</td><td>2026-02-01 01:00</td><td>train</td><td>flat</td><td>9.16%</td></tr><tr><td>BNB-USD</td><td>2026-02-03 02:00</td><td>2026-02-04 02:00</td><td>train</td><td>flat</td><td>2.62%</td></tr><tr><td>BNB-USD</td><td>2026-02-07 01:00</td><td>2026-02-08 01:00</td><td>train</td><td>up</td><td>0.66%</td></tr><tr><td>BTC-USD</td><td>2026-02-10 03:00</td><td>2026-02-11 03:00</td><td>train</td><td>flat</td><td>2.77%</td></tr><tr><td>BNB-USD</td><td>2026-02-13 05:00</td><td>2026-02-14 05:00</td><td>train</td><td>flat</td><td>-1.71%</td></tr><tr><td>BNB-USD</td><td>2026-02-16 06:00</td><td>2026-02-17 06:00</td><td>train</td><td>down</td><td>-2.02%</td></tr><tr><td>BNB-USD</td><td>2026-02-19 09:00</td><td>2026-02-20 09:00</td><td>train</td><td>down</td><td>-1.11%</td></tr><tr><td>BTC-USD</td><td>2026-02-20 14:00</td><td>2026-02-21 14:00</td><td>train</td><td>flat</td><td>-2.44%</td></tr><tr><td>BNB-USD</td><td>2026-02-22 13:00</td><td>2026-02-23 13:00</td><td>validate</td><td>flat</td><td>1.73%</td></tr><tr><td>BTC-USD</td><td>2026-02-23 15:00</td><td>2026-02-24 15:00</td><td>validate</td><td>down</td><td>2.98%</td></tr><tr><td>BNB-USD</td><td>2026-02-26 02:00</td><td>2026-02-27 02:00</td><td>validate</td><td>up</td><td>-0.31%</td></tr><tr><td>BNB-USD</td><td>2026-03-01 06:00</td><td>2026-03-02 06:00</td><td>validate</td><td>up</td><td>1.75%</td></tr><tr><td>BNB-USD</td><td>2026-03-04 22:00</td><td>2026-03-05 22:00</td><td>test</td><td>up</td><td>1.65%</td></tr><tr><td>BNB-USD</td><td>2026-03-08 01:00</td><td>2026-03-09 01:00</td><td>test</td><td>flat</td><td>0.62%</td></tr></tbody></table>
+      <h3>equal-weight concurrent(entry) 明细（first-pass）</h3>
+      <table><thead><tr><th>symbol</th><th>entry_timestamp</th><th>exit_timestamp</th><th>split</th><th>regime</th><th>entry_concurrent_positions</th><th>effective_weight</th><th>trade_return</th></tr></thead><tbody><tr><td>BNB-USD</td><td>2026-01-31 01:00</td><td>2026-02-01 01:00</td><td>train</td><td>flat</td><td>3</td><td>33.33%</td><td>9.16%</td></tr><tr><td>BTC-USD</td><td>2026-01-31 01:00</td><td>2026-02-01 01:00</td><td>train</td><td>flat</td><td>3</td><td>33.33%</td><td>7.04%</td></tr><tr><td>ETH-USD</td><td>2026-01-31 01:00</td><td>2026-02-01 01:00</td><td>train</td><td>flat</td><td>3</td><td>33.33%</td><td>10.68%</td></tr><tr><td>SOL-USD</td><td>2026-01-31 08:00</td><td>2026-02-01 08:00</td><td>train</td><td>flat</td><td>4</td><td>25.00%</td><td>11.11%</td></tr><tr><td>BNB-USD</td><td>2026-02-03 02:00</td><td>2026-02-04 02:00</td><td>train</td><td>flat</td><td>2</td><td>50.00%</td><td>2.62%</td></tr><tr><td>ETH-USD</td><td>2026-02-03 02:00</td><td>2026-02-04 02:00</td><td>train</td><td>up</td><td>2</td><td>50.00%</td><td>4.56%</td></tr><tr><td>BTC-USD</td><td>2026-02-03 03:00</td><td>2026-02-04 03:00</td><td>train</td><td>up</td><td>3</td><td>33.33%</td><td>1.52%</td></tr><tr><td>SOL-USD</td><td>2026-02-03 09:00</td><td>2026-02-04 09:00</td><td>train</td><td>flat</td><td>4</td><td>25.00%</td><td>7.28%</td></tr><tr><td>BNB-USD</td><td>2026-02-07 01:00</td><td>2026-02-08 01:00</td><td>train</td><td>up</td><td>4</td><td>25.00%</td><td>0.66%</td></tr><tr><td>BTC-USD</td><td>2026-02-07 01:00</td><td>2026-02-08 01:00</td><td>train</td><td>up</td><td>4</td><td>25.00%</td><td>0.87%</td></tr><tr><td>ETH-USD</td><td>2026-02-07 01:00</td><td>2026-02-08 01:00</td><td>train</td><td>up</td><td>4</td><td>25.00%</td><td>-2.48%</td></tr><tr><td>SOL-USD</td><td>2026-02-07 01:00</td><td>2026-02-08 01:00</td><td>train</td><td>up</td><td>4</td><td>25.00%</td><td>-1.39%</td></tr><tr><td>BTC-USD</td><td>2026-02-10 03:00</td><td>2026-02-11 03:00</td><td>train</td><td>flat</td><td>3</td><td>33.33%</td><td>2.77%</td></tr><tr><td>ETH-USD</td><td>2026-02-10 03:00</td><td>2026-02-11 03:00</td><td>train</td><td>flat</td><td>3</td><td>33.33%</td><td>4.89%</td></tr><tr><td>SOL-USD</td><td>2026-02-10 03:00</td><td>2026-02-11 03:00</td><td>train</td><td>flat</td><td>3</td><td>33.33%</td><td>3.88%</td></tr><tr><td>BNB-USD</td><td>2026-02-10 04:00</td><td>2026-02-11 04:00</td><td>train</td><td>flat</td><td>4</td><td>25.00%</td><td>3.64%</td></tr><tr><td>BNB-USD</td><td>2026-02-13 05:00</td><td>2026-02-14 05:00</td><td>train</td><td>flat</td><td>1</td><td>100.00%</td><td>-1.71%</td></tr><tr><td>ETH-USD</td><td>2026-02-13 06:00</td><td>2026-02-14 06:00</td><td>train</td><td>flat</td><td>2</td><td>50.00%</td><td>-5.83%</td></tr><tr><td>BTC-USD</td><td>2026-02-14 02:00</td><td>2026-02-15 02:00</td><td>train</td><td>up</td><td>3</td><td>33.33%</td><td>-0.84%</td></tr><tr><td>SOL-USD</td><td>2026-02-14 03:00</td><td>2026-02-15 03:00</td><td>train</td><td>up</td><td>4</td><td>25.00%</td><td>-4.20%</td></tr><tr><td>BNB-USD</td><td>2026-02-16 06:00</td><td>2026-02-17 06:00</td><td>train</td><td>down</td><td>1</td><td>100.00%</td><td>-2.02%</td></tr><tr><td>ETH-USD</td><td>2026-02-17 02:00</td><td>2026-02-18 02:00</td><td>train</td><td>flat</td><td>2</td><td>50.00%</td><td>0.20%</td></tr><tr><td>BTC-USD</td><td>2026-02-17 04:00</td><td>2026-02-18 04:00</td><td>train</td><td>flat</td><td>4</td><td>25.00%</td><td>1.00%</td></tr><tr><td>SOL-USD</td><td>2026-02-17 04:00</td><td>2026-02-18 04:00</td><td>train</td><td>flat</td><td>4</td><td>25.00%</td><td>1.52%</td></tr><tr><td>BNB-USD</td><td>2026-02-19 09:00</td><td>2026-02-20 09:00</td><td>train</td><td>down</td><td>1</td><td>100.00%</td><td>-1.11%</td></tr><tr><td>ETH-USD</td><td>2026-02-20 03:00</td><td>2026-02-21 03:00</td><td>train</td><td>flat</td><td>2</td><td>50.00%</td><td>-0.46%</td></tr><tr><td>BTC-USD</td><td>2026-02-20 14:00</td><td>2026-02-21 14:00</td><td>train</td><td>flat</td><td>3</td><td>33.33%</td><td>-2.44%</td></tr><tr><td>SOL-USD</td><td>2026-02-20 14:00</td><td>2026-02-21 14:00</td><td>train</td><td>flat</td><td>3</td><td>33.33%</td><td>-4.85%</td></tr><tr><td>BNB-USD</td><td>2026-02-22 13:00</td><td>2026-02-23 13:00</td><td>validate</td><td>flat</td><td>1</td><td>100.00%</td><td>1.73%</td></tr><tr><td>BTC-USD</td><td>2026-02-23 15:00</td><td>2026-02-24 15:00</td><td>validate</td><td>down</td><td>3</td><td>33.33%</td><td>2.98%</td></tr><tr><td>ETH-USD</td><td>2026-02-23 15:00</td><td>2026-02-24 15:00</td><td>validate</td><td>down</td><td>3</td><td>33.33%</td><td>3.18%</td></tr><tr><td>SOL-USD</td><td>2026-02-23 15:00</td><td>2026-02-24 15:00</td><td>validate</td><td>down</td><td>3</td><td>33.33%</td><td>3.81%</td></tr><tr><td>BNB-USD</td><td>2026-02-26 02:00</td><td>2026-02-27 02:00</td><td>validate</td><td>up</td><td>1</td><td>100.00%</td><td>-0.31%</td></tr><tr><td>BTC-USD</td><td>2026-02-26 16:00</td><td>2026-02-27 16:00</td><td>validate</td><td>flat</td><td>4</td><td>25.00%</td><td>2.87%</td></tr><tr><td>ETH-USD</td><td>2026-02-26 16:00</td><td>2026-02-27 16:00</td><td>validate</td><td>flat</td><td>4</td><td>25.00%</td><td>5.49%</td></tr><tr><td>SOL-USD</td><td>2026-02-26 16:00</td><td>2026-02-27 16:00</td><td>validate</td><td>flat</td><td>4</td><td>25.00%</td><td>6.04%</td></tr><tr><td>BNB-USD</td><td>2026-03-01 06:00</td><td>2026-03-02 06:00</td><td>validate</td><td>up</td><td>1</td><td>100.00%</td><td>1.75%</td></tr><tr><td>BTC-USD</td><td>2026-03-01 17:00</td><td>2026-03-02 17:00</td><td>test</td><td>flat</td><td>4</td><td>25.00%</td><td>-4.27%</td></tr><tr><td>ETH-USD</td><td>2026-03-01 17:00</td><td>2026-03-02 17:00</td><td>validate</td><td>up</td><td>4</td><td>25.00%</td><td>-3.44%</td></tr><tr><td>SOL-USD</td><td>2026-03-01 17:00</td><td>2026-03-02 17:00</td><td>test</td><td>up</td><td>4</td><td>25.00%</td><td>-3.76%</td></tr><tr><td>BNB-USD</td><td>2026-03-04 22:00</td><td>2026-03-05 22:00</td><td>test</td><td>up</td><td>1</td><td>100.00%</td><td>1.65%</td></tr><tr><td>BTC-USD</td><td>2026-03-04 23:00</td><td>2026-03-05 23:00</td><td>test</td><td>up</td><td>2</td><td>50.00%</td><td>2.71%</td></tr><tr><td>ETH-USD</td><td>2026-03-05 02:00</td><td>2026-03-06 02:00</td><td>test</td><td>up</td><td>4</td><td>25.00%</td><td>1.58%</td></tr><tr><td>SOL-USD</td><td>2026-03-05 02:00</td><td>2026-03-06 02:00</td><td>test</td><td>up</td><td>4</td><td>25.00%</td><td>1.76%</td></tr><tr><td>BNB-USD</td><td>2026-03-08 01:00</td><td>2026-03-09 01:00</td><td>test</td><td>flat</td><td>2</td><td>50.00%</td><td>0.62%</td></tr><tr><td>BTC-USD</td><td>2026-03-08 01:00</td><td>2026-03-09 01:00</td><td>test</td><td>flat</td><td>2</td><td>50.00%</td><td>1.45%</td></tr><tr><td>ETH-USD</td><td>2026-03-08 03:00</td><td>2026-03-09 03:00</td><td>test</td><td>flat</td><td>4</td><td>25.00%</td><td>-1.77%</td></tr><tr><td>SOL-USD</td><td>2026-03-08 03:00</td><td>2026-03-09 03:00</td><td>test</td><td>down</td><td>4</td><td>25.00%</td><td>-0.84%</td></tr></tbody></table>
+      <p class="note">这里的 <code>1-slot global</code> 是最朴素的 greedy first-pass；而 <code>equal-weight concurrent(entry)</code> 也是一个有意收窄的近似：只按 <b>入场时</b> 的并发仓位数给每笔交易分配权重，还不是逐小时重平衡的正式组合回测。但它已经足够回答一个关键问题——这条 v0 若允许并发、但资金必须分摊，大概会被压到什么量级。</p>
+    </section>
+    <section>
+      <h2>更正式一点的组合级资金曲线 first-pass：把 equal-weight 从 entry-only 推到 hourly path 后，还剩多少？</h2>
+      <ul>
+        <li><b>先说结论：</b>把 `equal-weight concurrent(entry)` 再往前推半步，变成按每个活跃小时做 mark-to-market 的组合级资金曲线后，这条 breakout v0 的 <code>20bps</code> 累计约落在 <code>14.04%</code>，低于 entry-only 近似的约 <code>19.40%</code>，但仍高于最保守 <code>1-slot global</code> 的约 <code>13.83%</code>。</li>
+        <li><b>这说明什么：</b>entry-only 的 <code>equal-weight</code> 还不是完全失真，但确实偏乐观；一旦把并发仓位真正放进统一资金曲线里，结果会再被压窄一截。</li>
+        <li><b>当前这版 hourly path 的口径：</b>仍然很克制——只对当前已选中的 v0 交易做 hourly mark-to-market，按每个活跃小时的并发仓位等权持有，并把 <code>20bps</code> round-trip cost 拆成 entry / exit 各一半；它还不是最终 portfolio engine，但已经比 entry-only 更接近真实组合路径。</li>
+        <li><b>关键量级：</b>这版 path 一共覆盖约 <code>444</code> 个活跃小时，平均活跃仓位约 <code>2.70</code>，最大并发约 <code>4</code>，对应 max drawdown 约 <code>-12.03%</code>。</li>
+      </ul>
+      <table><thead><tr><th>mode</th><th>cost_bps</th><th>active_hours</th><th>mean_active_positions</th><th>max_active_positions</th><th>mean_hourly_return</th><th>cumulative_net_return</th><th>max_drawdown</th></tr></thead><tbody><tr><td>equal_weight_concurrent_hourly</td><td>20</td><td>444</td><td>2.70</td><td>4</td><td>0.03%</td><td>14.04%</td><td>-12.03%</td></tr></tbody></table>
+      <p class="note">一句话版：把 breakout v0 放进更正式一点的统一资金曲线后，`20bps` 下大约从 entry-only 的 <code>19.40%</code> 再压到约 <code>14.04%</code>。所以这条线仍没被组合约束直接抹掉，但也更不该再拿独立记账或 entry-only 近似去想象实盘空间。</p>
+    </section>
+    <section>
+      <h2>把 split / regime honesty 也推进到 hourly portfolio path 后，弱点还在吗？</h2>
+      <ul>
+        <li><b>先说结论：</b>还在，而且读法更清楚了。把 breakout v0 放进统一资金曲线后，<code>test</code> 仍是负的，`20bps` hourly path 累计约 <code>-2.92%</code>；而 <code>up</code> 环境也仍偏弱，累计约 <code>-1.99%</code>，max drawdown 约 <code>-13.76%</code>。</li>
+        <li><b>哪块还站得住：</b><code>flat</code> 环境在同样口径下仍最像样，hourly path 累计约 <code>12.72%</code>；<code>validate</code> 也仍为正，累计约 <code>6.50%</code>。</li>
+        <li><b>这意味着什么：</b>把资金曲线做得更正式之后，breakout v0 依然更像 <b>conditional alpha</b>，而不是可以直接升格成通用 short。它的核心特征没有消失：更依赖 <code>flat</code>、更怕 <code>up</code>，后段 <code>test</code> 也还不够稳。</li>
+      </ul>
+      <h3>按 split 看 hourly portfolio path（20bps）</h3>
+      <table><thead><tr><th>split</th><th>cost_bps</th><th>active_hours</th><th>mean_active_positions</th><th>max_active_positions</th><th>mean_hourly_return</th><th>cumulative_net_return</th><th>max_drawdown</th></tr></thead><tbody><tr><td>test</td><td>20</td><td>81</td><td>3.09</td><td>4</td><td>-0.03%</td><td>-2.92%</td><td>-7.27%</td></tr><tr><td>train</td><td>20</td><td>263</td><td>2.66</td><td>4</td><td>0.02%</td><td>5.87%</td><td>-12.03%</td></tr><tr><td>validate</td><td>20</td><td>125</td><td>2.00</td><td>4</td><td>0.05%</td><td>6.50%</td><td>-6.91%</td></tr></tbody></table>
+      <h3>按 regime 看 hourly portfolio path（20bps）</h3>
+      <table><thead><tr><th>regime</th><th>cost_bps</th><th>active_hours</th><th>mean_active_positions</th><th>max_active_positions</th><th>mean_hourly_return</th><th>cumulative_net_return</th><th>max_drawdown</th></tr></thead><tbody><tr><td>down</td><td>20</td><td>100</td><td>1.50</td><td>3</td><td>-0.01%</td><td>-1.52%</td><td>-4.09%</td></tr><tr><td>flat</td><td>20</td><td>281</td><td>2.31</td><td>4</td><td>0.05%</td><td>12.72%</td><td>-6.87%</td></tr><tr><td>up</td><td>20</td><td>167</td><td>2.40</td><td>4</td><td>-0.01%</td><td>-1.99%</td><td>-13.76%</td></tr></tbody></table>
+      <p class="note">一句话版：`hourly path` 并没有推翻前面的 split / regime 读法，只是把它从“单笔统计偏弱”进一步落实成“统一资金曲线下依旧偏弱”。所以这条线目前更适合继续做环境 gate / sizing honesty，而不是升格成不分环境的通用 short。</p>
+    </section>
+    <section>
+      <h2>把 hourly path 按活跃仓位数拆开后，真正拖累这条线的是“最拥挤时刻”吗？</h2>
+      <ul>
+        <li><b>先说结论：</b>目前看并不是。把 <code>raw / confirm_1 / avoid_fluctuating</code> 的 <code>20bps hourly path</code> 都按 <code>active_positions</code> 拆开后，最差的通常不是 <code>4</code> 仓同时持有，而更像是 <code>2</code> 仓并发这类“半拥挤、但没形成明显顺风”的小时段。</li>
+        <li><b>raw 最明显的拖累桶：</b><code>2</code> 仓小时只占约 <code>16.67%</code>，但 mean hourly return 约 <code>-0.15%</code>，负小时占比约 <code>63.51%</code>；相反 <code>4</code> 仓小时的 mean hourly return 仍约 <code>0.10%</code>。</li>
+        <li><b>confirm_1 / avoid_fluctuating 也给出同方向提示：</b><code>confirm_1</code> 的 <code>2</code> 仓小时 mean return 也仍为负（约 <code>-0.02%</code>），而 <code>avoid_fluctuating</code> 虽改善了 overall path，但 <code>2</code> 仓小时仍偏弱（约 <code>-0.09%</code>）。</li>
+        <li><b>这对 sizing honesty 的含义：</b>当前更不支持“只要简单 cap 掉最拥挤的 <code>4</code> 仓时刻，问题就解决了”。更诚实的 next step 应该是：去看这些 <code>2</code> 仓弱小时到底更集中在哪类 <code>split / regime / symbol mix</code>，而不是先把所有高并发都当罪魁祸首。</li>
+      </ul>
+      <table><thead><tr><th>strategy</th><th>active_positions</th><th>hours</th><th>hour_share</th><th>mean_hourly_return</th><th>median_hourly_return</th><th>negative_hour_share</th><th>conditional_cumulative_return</th></tr></thead><tbody><tr><td>raw_v0</td><td>1</td><td>109</td><td>24.55%</td><td>0.05%</td><td>0.02%</td><td>47.71%</td><td>5.44%</td></tr><tr><td>raw_v0</td><td>2</td><td>74</td><td>16.67%</td><td>-0.15%</td><td>-0.08%</td><td>63.51%</td><td>-10.93%</td></tr><tr><td>raw_v0</td><td>3</td><td>101</td><td>22.75%</td><td>0.04%</td><td>0.06%</td><td>46.53%</td><td>3.62%</td></tr><tr><td>raw_v0</td><td>4</td><td>160</td><td>36.04%</td><td>0.10%</td><td>0.08%</td><td>48.75%</td><td>17.17%</td></tr><tr><td>confirm_1</td><td>1</td><td>84</td><td>19.27%</td><td>0.01%</td><td>-0.03%</td><td>52.38%</td><td>0.28%</td></tr><tr><td>confirm_1</td><td>2</td><td>133</td><td>30.50%</td><td>-0.02%</td><td>-0.02%</td><td>51.13%</td><td>-2.89%</td></tr><tr><td>confirm_1</td><td>3</td><td>51</td><td>11.70%</td><td>0.04%</td><td>0.04%</td><td>47.06%</td><td>1.86%</td></tr><tr><td>confirm_1</td><td>4</td><td>168</td><td>38.53%</td><td>0.07%</td><td>0.06%</td><td>49.40%</td><td>12.44%</td></tr><tr><td>avoid_fluctuating</td><td>1</td><td>96</td><td>24.12%</td><td>0.03%</td><td>-0.02%</td><td>53.12%</td><td>2.65%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>110</td><td>27.64%</td><td>-0.09%</td><td>-0.04%</td><td>54.55%</td><td>-9.51%</td></tr><tr><td>avoid_fluctuating</td><td>3</td><td>84</td><td>21.11%</td><td>0.11%</td><td>0.09%</td><td>44.05%</td><td>9.26%</td></tr><tr><td>avoid_fluctuating</td><td>4</td><td>108</td><td>27.14%</td><td>0.12%</td><td>0.09%</td><td>47.22%</td><td>13.77%</td></tr></tbody></table>
+      <p class="note">表里的 <code>conditional_cumulative_return</code> 是“只把该活跃仓位桶对应的小时单独串起来复合”的条件性读法，不等于真实整条组合路径的收益贡献；它的作用只是帮助看清：当前最弱的小时桶究竟长什么样。</p>
+      <h3>如果继续追 2 仓弱小时，它们更像卡在什么 symbol mix？</h3>
+      <ul>
+        <li><b>raw 的 2 仓弱小时并不是均匀撒开的：</b>按 symbol pair 拆开后，占比最大的就是 <code>BTC-USD + SOL-USD</code>，约占 raw 这类小时的 <code>45.95%</code>，mean hourly return 约 <code>-0.18%</code>；而最差的 pair 是 <code>ETH-USD + SOL-USD</code>，mean hourly return 约 <code>-0.31%</code>。</li>
+        <li><b>avoid_fluctuating 的改善也更像“换了坏 pair 结构”，不是把所有 2 仓小时都修好：</b>gate 后占比最大的 pair 变成 <code>ETH-USD + SOL-USD</code>，mean hourly return 约 <code>-0.16%</code>；同时最正向的 2 仓 pair 是 <code>BNB-USD + BTC-USD</code>，mean hourly return 约 <code>0.16%</code>。</li>
+        <li><b>这对 sizing / gate follow-up 的含义：</b>当前更像是某些特定 pair mix（尤其带 <code>SOL</code> 的组合）在拖累 2 仓小时，而不是“所有 2 仓都天然差”。所以下一步比起盲目 cap 掉所有 2 仓或 4 仓，更该继续看这些 pair 到底集中在哪些 <code>split / regime</code> 里，再决定是否做更有针对性的 sizing / gate。</li>
+      </ul>
+      <table><thead><tr><th>strategy</th><th>active_positions</th><th>symbol_pair</th><th>hours</th><th>hour_share_within_bucket</th><th>mean_hourly_return</th><th>negative_hour_share</th><th>conditional_cumulative_return</th></tr></thead><tbody><tr><td>raw_v0</td><td>2</td><td>ETH-USD + SOL-USD</td><td>5</td><td>6.76%</td><td>-0.31%</td><td>80.00%</td><td>-1.53%</td></tr><tr><td>raw_v0</td><td>2</td><td>BTC-USD + SOL-USD</td><td>34</td><td>45.95%</td><td>-0.18%</td><td>67.65%</td><td>-6.00%</td></tr><tr><td>raw_v0</td><td>2</td><td>BNB-USD + ETH-USD</td><td>30</td><td>40.54%</td><td>-0.15%</td><td>56.67%</td><td>-4.50%</td></tr><tr><td>raw_v0</td><td>2</td><td>BNB-USD + BTC-USD</td><td>5</td><td>6.76%</td><td>0.16%</td><td>60.00%</td><td>0.77%</td></tr><tr><td>confirm_1</td><td>2</td><td>BNB-USD + ETH-USD</td><td>29</td><td>21.80%</td><td>-0.17%</td><td>51.72%</td><td>-4.74%</td></tr><tr><td>confirm_1</td><td>2</td><td>BTC-USD + SOL-USD</td><td>29</td><td>21.80%</td><td>-0.08%</td><td>62.07%</td><td>-2.43%</td></tr><tr><td>confirm_1</td><td>2</td><td>ETH-USD + SOL-USD</td><td>3</td><td>2.26%</td><td>-0.01%</td><td>66.67%</td><td>-0.04%</td></tr><tr><td>confirm_1</td><td>2</td><td>BTC-USD + ETH-USD</td><td>49</td><td>36.84%</td><td>-0.01%</td><td>51.02%</td><td>-0.51%</td></tr><tr><td>confirm_1</td><td>2</td><td>BNB-USD + BTC-USD</td><td>3</td><td>2.26%</td><td>0.16%</td><td>66.67%</td><td>0.47%</td></tr><tr><td>confirm_1</td><td>2</td><td>BNB-USD + SOL-USD</td><td>20</td><td>15.04%</td><td>0.23%</td><td>30.00%</td><td>4.56%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>BTC-USD + SOL-USD</td><td>3</td><td>2.73%</td><td>-0.63%</td><td>100.00%</td><td>-1.88%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>ETH-USD + SOL-USD</td><td>44</td><td>40.00%</td><td>-0.16%</td><td>56.82%</td><td>-7.17%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>BNB-USD + ETH-USD</td><td>34</td><td>30.91%</td><td>-0.12%</td><td>50.00%</td><td>-3.91%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>BNB-USD + SOL-USD</td><td>24</td><td>21.82%</td><td>0.11%</td><td>50.00%</td><td>2.60%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>BNB-USD + BTC-USD</td><td>5</td><td>4.55%</td><td>0.16%</td><td>60.00%</td><td>0.77%</td></tr></tbody></table>
+      <p class="note">这张表只看 <code>active_positions = 2</code> 的小时。它不是在说“某个币对组合本身可交易”，而是在告诉你：<b>当前 2 仓弱小时的拖累更像来自哪些并发 symbol mix</b>，从而帮助后面的 sizing / gate 设计少走弯路。</p>
+      <h3>再把这些弱 pair 拆到 split / regime，它们更像后段问题还是环境问题？</h3>
+      <ul>
+        <li><b>raw 的最大覆盖拖累并不主要长在 test：</b>目前覆盖最大的弱 context 是 <code>BNB-USD + ETH-USD</code> 落在 <code>train</code> × <code>flat</code>，约 <code>20</code> 小时、mean hourly return 约 <code>-0.25%</code>。这说明 2 仓拖累并不只是“最后一段突然坏掉”，而是有一部分本来就长在训练阶段的特定环境里。</li>
+        <li><b>真正像后段尾部的，是更窄的 ETH+SOL test pocket：</b>当前 raw 里最差的 test-context 是 <code>ETH-USD + SOL-USD</code> 落在 <code>test</code> × <code>down + flat</code>，虽然只有约 <code>2</code> 小时，但 mean hourly return 约 <code>-0.69%</code>，更像真正需要盯住的后段尾部口袋。</li>
+        <li><b>avoid_fluctuating 修掉了一部分 broad drag，但残余问题更集中：</b>gate 后最大的残余弱 context 变成 <code>ETH-USD + SOL-USD</code> 落在 <code>test + validate</code> × <code>up</code>，约 <code>25</code> 小时、mean hourly return 约 <code>-0.15%</code>；这说明 gate 更像先把 <code>BTC+SOL</code> 这类 broad drag 压掉了，但 `ETH+SOL` 的 test / validate + up 残余还在。</li>
+      </ul>
+      <table><thead><tr><th>strategy</th><th>active_positions</th><th>symbol_pair</th><th>split_mix</th><th>regime_mix</th><th>hours</th><th>hour_share_within_pair</th><th>mean_hourly_return</th><th>negative_hour_share</th><th>conditional_cumulative_return</th></tr></thead><tbody><tr><td>raw_v0</td><td>2</td><td>BNB-USD + ETH-USD</td><td>train</td><td>flat</td><td>20</td><td>66.67%</td><td>-0.25%</td><td>55.00%</td><td>-4.90%</td></tr><tr><td>raw_v0</td><td>2</td><td>BTC-USD + SOL-USD</td><td>train</td><td>up</td><td>20</td><td>58.82%</td><td>-0.12%</td><td>50.00%</td><td>-2.37%</td></tr><tr><td>raw_v0</td><td>2</td><td>BTC-USD + SOL-USD</td><td>train</td><td>flat</td><td>13</td><td>38.24%</td><td>-0.20%</td><td>92.31%</td><td>-2.56%</td></tr><tr><td>raw_v0</td><td>2</td><td>BNB-USD + ETH-USD</td><td>train</td><td>down + flat</td><td>9</td><td>30.00%</td><td>-0.13%</td><td>66.67%</td><td>-1.14%</td></tr><tr><td>raw_v0</td><td>2</td><td>ETH-USD + SOL-USD</td><td>test</td><td>up</td><td>3</td><td>60.00%</td><td>-0.05%</td><td>66.67%</td><td>-0.16%</td></tr><tr><td>raw_v0</td><td>2</td><td>BNB-USD + BTC-USD</td><td>test</td><td>up</td><td>3</td><td>60.00%</td><td>0.15%</td><td>66.67%</td><td>0.44%</td></tr><tr><td>raw_v0</td><td>2</td><td>ETH-USD + SOL-USD</td><td>test</td><td>down + flat</td><td>2</td><td>40.00%</td><td>-0.69%</td><td>100.00%</td><td>-1.37%</td></tr><tr><td>raw_v0</td><td>2</td><td>BNB-USD + BTC-USD</td><td>test</td><td>flat</td><td>2</td><td>40.00%</td><td>0.17%</td><td>50.00%</td><td>0.33%</td></tr><tr><td>raw_v0</td><td>2</td><td>BTC-USD + SOL-USD</td><td>train</td><td>flat + up</td><td>1</td><td>2.94%</td><td>-1.19%</td><td>100.00%</td><td>-1.19%</td></tr><tr><td>raw_v0</td><td>2</td><td>BNB-USD + ETH-USD</td><td>train</td><td>flat + up</td><td>1</td><td>3.33%</td><td>1.57%</td><td>0.00%</td><td>1.57%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>ETH-USD + SOL-USD</td><td>test + validate</td><td>up</td><td>25</td><td>56.82%</td><td>-0.15%</td><td>52.00%</td><td>-3.79%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>BNB-USD + ETH-USD</td><td>train</td><td>flat</td><td>24</td><td>70.59%</td><td>-0.18%</td><td>45.83%</td><td>-4.30%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>BNB-USD + SOL-USD</td><td>train</td><td>flat</td><td>24</td><td>100.00%</td><td>0.11%</td><td>50.00%</td><td>2.60%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>ETH-USD + SOL-USD</td><td>train</td><td>flat</td><td>14</td><td>31.82%</td><td>-0.14%</td><td>57.14%</td><td>-2.02%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>BNB-USD + ETH-USD</td><td>train</td><td>down + flat</td><td>9</td><td>26.47%</td><td>-0.13%</td><td>66.67%</td><td>-1.14%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>ETH-USD + SOL-USD</td><td>test</td><td>up</td><td>3</td><td>6.82%</td><td>-0.05%</td><td>66.67%</td><td>-0.16%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>BNB-USD + BTC-USD</td><td>test</td><td>up</td><td>3</td><td>60.00%</td><td>0.15%</td><td>66.67%</td><td>0.44%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>ETH-USD + SOL-USD</td><td>test</td><td>down + flat</td><td>2</td><td>4.55%</td><td>-0.69%</td><td>100.00%</td><td>-1.37%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>BTC-USD + SOL-USD</td><td>train</td><td>flat</td><td>2</td><td>66.67%</td><td>-0.35%</td><td>100.00%</td><td>-0.70%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>BNB-USD + BTC-USD</td><td>test</td><td>flat</td><td>2</td><td>40.00%</td><td>0.17%</td><td>50.00%</td><td>0.33%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>BTC-USD + SOL-USD</td><td>train</td><td>flat + up</td><td>1</td><td>33.33%</td><td>-1.19%</td><td>100.00%</td><td>-1.19%</td></tr><tr><td>avoid_fluctuating</td><td>2</td><td>BNB-USD + ETH-USD</td><td>train</td><td>flat + up</td><td>1</td><td>2.94%</td><td>1.57%</td><td>0.00%</td><td>1.57%</td></tr></tbody></table>
+      <p class="note">这张表还是只看 <code>active_positions = 2</code> 的小时，但进一步把每个 weak pair 拆到了 <code>split_mix × regime_mix</code>。一句话版：当前 2 仓弱点既不是纯粹的“后段全线崩”，也不是单纯的“所有 up 都差”，而是已经收窄成几个更具体的 residual pockets——这正是下一刀最小条件化 sizing 应该瞄准的对象。</p>
+      <h3>如果把动作收得更窄：只对 ETH+SOL 的 `test+validate × up` 残余口袋做半仓，会发生什么？</h3>
+      <ul>
+        <li><b>先说结论：</b>有改善，而且比“整块 ETH+SOL 都动手”更克制。不是把所有 <code>2</code> 仓都砍掉，也不是对全部 <code>ETH+SOL</code> 两仓小时做半仓，而只对 <code>avoid_fluctuating</code> 后仍出现的 <code>ETH-USD + SOL-USD @ validate/test × up</code> 做 <code>0.5x</code> 半仓；受影响约 <code>28</code>/<code>398</code> 个活跃小时（约 <code>7.04%</code>）。</li>
+        <li><b>整体路径：</b>gate-only 的 hourly path 在 <code>20bps</code> 下累计约 <code>15.46%</code>、max drawdown 约 <code>-9.97%</code>；只在这块更窄的 residual context 上半仓后，对应约提升到 <code>17.86%</code>，而 max drawdown 基本维持在约 <code>-9.97%</code>。</li>
+        <li><b>被压的 pocket 本身：</b>这组 <code>validate/test × up</code> 小时原本条件累计约 <code>-3.94%</code>；做成 <code>0.5x</code> 后约收窄到 <code>-1.95%</code>。也就是说，当前更像“只把最明确的 residual up 口袋磨钝一点”，而不是再次重写整条 breakout 路径。</li>
+        <li><b>这意味着什么：</b>当前证据开始支持“<b>更窄的 context-conditioned sizing</b> 值得继续看”，但它仍只是比 pair-conditioned 再收一层的 first-pass 小切片，不是正式 sizing engine；下一步若继续，应该优先问这类改进是否能在更严格 holdout / walk-forward 下复现。</li>
+      </ul>
+      <table><thead><tr><th>strategy</th><th>active_hours</th><th>mean_active_positions</th><th>max_active_positions</th><th>mean_hourly_return</th><th>cumulative_net_return</th><th>max_drawdown</th><th>affected_hours</th><th>affected_hour_share</th><th>target_pair_conditional_return</th></tr></thead><tbody><tr><td>raw_v0</td><td>444</td><td>2.70</td><td>4</td><td>0.03%</td><td>14.04%</td><td>-12.03%</td><td>-</td><td>-</td><td>-</td></tr><tr><td>avoid_fluctuating</td><td>398</td><td>2.51</td><td>4</td><td>0.04%</td><td>15.46%</td><td>-9.97%</td><td>28</td><td>7.04%</td><td>-3.94%</td></tr><tr><td>avoid_fluctuating_eth_sol_test_validate_up_halfsize</td><td>398</td><td>2.51</td><td>4</td><td>0.04%</td><td>17.86%</td><td>-9.97%</td><td>28</td><td>7.04%</td><td>-1.95%</td></tr></tbody></table>
+      <h4>被半仓处理的 ETH+SOL `validate/test × up` 小时，主要长在哪些 context？</h4>
+      <table><thead><tr><th>strategy</th><th>active_positions</th><th>symbol_pair</th><th>split_mix</th><th>regime_mix</th><th>hours</th><th>hour_share_within_pair</th><th>mean_hourly_return</th><th>negative_hour_share</th><th>conditional_cumulative_return</th></tr></thead><tbody><tr><td>avoid_fluctuating</td><td>2</td><td>ETH-USD + SOL-USD</td><td>test</td><td>up</td><td>3</td><td>6.82%</td><td>-0.05%</td><td>66.67%</td><td>-0.16%</td></tr></tbody></table>
+      <p class="note">一句话版：在 <code>avoid_fluctuating</code> 已经落地的前提下，只再对 <code>ETH+SOL @ validate/test × up</code> 这块更窄的 residual context 做半仓，确实能把 hourly path 约从 <code>15.46%</code> 再抬到约 <code>17.86%</code>；但这仍只是较晚段 promising slice，本身还不够成为默认候选。</p>
+      <h4>如果把这刀更窄 sizing 放到更严格的 holdout 眼光下看，改善主要来自 validate，还是 pure test？</h4>
+      <ul>
+        <li><b>先说结论：</b>当前改善主要还是长在 <code>test + validate</code> overlap pocket，而不是已经在 pure <code>test</code> 里拿到很扎实的独立证据。</li>
+        <li><b>影响小时分布：</b>这刀一共只动了 <code>28</code> 个小时，其中约 <code>25</code> 个属于 <code>test + validate</code> overlap，pure <code>test</code> 只有约 <code>3</code> 个。</li>
+        <li><b><code>test + validate</code> overlap：</b>条件累计约从 <code>-3.79%</code> 收窄到 <code>-1.87%</code>，改善约 <code>1.92pp</code>。</li>
+        <li><b>pure <code>test</code>：</b>条件累计只从约 <code>-0.16%</code> 收窄到 <code>-0.08%</code>，改善约 <code>0.08pp</code>；方向是对的，但样本还很薄。</li>
+        <li><b>这意味着什么：</b>这刀更像“late-segment promising but not yet pure-test proven”。所以它已经值得保留为下一个 sizing 候选，但还不该直接升成 breakout 主原型的默认仓位规则。</li>
+      </ul>
+      <table><thead><tr><th>split_mix</th><th>hours</th><th>hour_share_within_target</th><th>conditional_cumulative_before</th><th>conditional_cumulative_after</th><th>delta_pp</th><th>mean_hourly_return_before</th><th>mean_hourly_return_after</th></tr></thead><tbody><tr><td>test + validate</td><td>25</td><td>89.29%</td><td>-3.79%</td><td>-1.87%</td><td>1.92</td><td>-0.15%</td><td>-0.07%</td></tr><tr><td>test</td><td>3</td><td>10.71%</td><td>-0.16%</td><td>-0.08%</td><td>0.08</td><td>-0.05%</td><td>-0.03%</td></tr></tbody></table>
+      <p class="note">一句话版：这刀更窄的 context-conditioned sizing 在更晚段确实有改善，但当前证据主要还是来自 <code>test + validate</code> overlap；pure <code>test</code> 只有很薄的一小段。所以它现在最像的下一步，不是直接升格，而是进更严格的 walk-forward / holdout honesty。</p>
+      <h4>如果把它继续收窄到“只动 pure <code>test × up</code>”呢？</h4>
+      <ul>
+        <li><b>结果很克制，也说明证据确实还薄：</b>只对 <code>ETH+SOL @ test × up</code> 做半仓时，受影响约 <code>3</code>/<code>398</code> 个活跃小时（约 <code>0.75%</code>）。</li>
+        <li><b>overall 路径：</b>gate-only 的 <code>20bps hourly path</code> 约从 <code>15.46%</code> 只轻微抬到 <code>15.56%</code>，增量约 <code>0.09pp</code>；max drawdown 基本不变（仍约 <code>-9.97%</code>）。</li>
+        <li><b>pure <code>test</code> pocket 本身：</b>条件累计只从约 <code>-0.16%</code> 收窄到 <code>-0.08%</code>，改善约 <code>0.08pp</code>；方向没错，但量级非常小。</li>
+        <li><b>这意味着什么：</b>当前更窄的 context-conditioned branch 不能说无效，但它在更严格 <code>pure-test</code> 眼光下只剩一个很薄的 residual fix。它更像应该 <b>park 成诊断型分支</b>，而不是继续和 pair-conditioned 候选并列消耗主资源。</li>
+      </ul>
+      <h3>如果 breakout 线现在只能保留一个 sizing 候选，默认该留 pair-conditioned 还是更窄的 context-conditioned？</h3>
+      <ul>
+        <li><b>默认先留 pair-conditioned。</b> 原因不是它更“粗暴”，而是当前在同一套更严格口径下，它交出的整体改善更大、pure <code>test</code> 证据也没有比更窄 context 更薄。</li>
+        <li><b>overall 路径：</b><code>ETH+SOL pair halfsize</code> 可把 gate-only 的 hourly path 约从 <code>15.46%</code> 提到约 <code>19.90%</code>，同时 max drawdown 约收窄到 <code>-9.04%</code>；更窄的 <code>test+validate × up</code> context halfsize 则约到 <code>17.86%</code>，但回撤基本没再改善。</li>
+        <li><b>holdout 眼光：</b>pair-conditioned 的 pure <code>test</code> 约有 <code>5</code> 小时、条件累计改善约 <code>0.76pp</code>；更窄的 <code>test+validate × up</code> context 只有约 <code>3</code> 小时、改善约 <code>0.08pp</code>；继续收窄到 pure <code>test × up</code> 后，也只剩约 <code>3</code> 个小时、overall 仅多约 <code>0.09pp</code>。这说明更窄 context 目前仍只是薄证据分支，而不是默认候选。</li>
+        <li><b>更窄 context 仍有价值：</b>它影响面更小（约 <code>7.04%</code> vs pair 的约 <code>11.06%</code>），所以它更像后续 walk-forward 里值得继续观察的二级分支，而不是现在就该抢默认位。</li>
+      </ul>
+      <table><thead><tr><th>candidate</th><th>affected_hours</th><th>affected_hour_share</th><th>overall_cumulative_net_return</th><th>overall_delta_vs_gate_pp</th><th>max_drawdown</th><th>target_conditional_return</th><th>pure_test_hours</th><th>pure_test_delta_pp</th><th>test_validate_overlap_hours</th><th>test_validate_overlap_delta_pp</th><th>reading</th></tr></thead><tbody><tr><td>ETH+SOL pair halfsize</td><td>44</td><td>11.06%</td><td>19.90%</td><td>4.44</td><td>-9.04%</td><td>-3.61%</td><td>5</td><td>0.76</td><td>25</td><td>1.92</td><td>default_candidate</td></tr><tr><td>ETH+SOL test+validate×up context halfsize</td><td>28</td><td>7.04%</td><td>17.86%</td><td>2.40</td><td>-9.97%</td><td>-1.95%</td><td>3</td><td>0.08</td><td>25</td><td>1.92</td><td>narrower_but_thinner</td></tr><tr><td>ETH+SOL pure-test×up context halfsize</td><td>3</td><td>0.75%</td><td>15.56%</td><td>0.09</td><td>-9.97%</td><td>-0.08%</td><td>3</td><td>0.08</td><td>-</td><td>-</td><td>pure_test_only_too_thin</td></tr></tbody></table>
+      <p class="note">一句话版：在当前同一套更严格口径下，<code>ETH+SOL pair-conditioned halfsize</code> 仍应保留为 breakout 线的默认 sizing candidate；更窄的 context halfsize 分支在 pure-test 眼光下证据仍太薄，更适合先 park 成诊断型分支。</p>
+      <h3>把默认候选再推进到更严格一点的 rolling / walk-forward honesty，会发现它是“全样本通吃”还是“只在后段发力”？</h3>
+      <ul>
+        <li><b>先说结论：</b>不是“全样本每一段都更好”，但也不只是随机 lucky patch。把 gate-only 与 <code>ETH+SOL pair-conditioned halfsize</code> 放进同一套 <code>10-day window / 5-day step</code> 的 rolling active-hour 对照后，前半段三格窗口基本没有触发 policy，因此结果与 gate-only 几乎重合；真正有动作的后半段 <code>3</code> 个窗口里，pair-conditioned 都是 <b>收益更高、回撤更浅</b>。</li>
+        <li><b>前半段为什么没有差异：</b>这不是“策略失灵”，而是那几格窗口里压根没有命中需要半仓的 `ETH+SOL` 两仓小时。所以更严格口径下最诚实的读法不是“6/6 全胜”，而是：<b>它的改善集中出现在 policy 真正触发的后半段</b>。</li>
+        <li><b>后半段有动作的窗口：</b>从约 <code>2026-02-15</code> 开始到约 <code>2026-03-07</code>，每一格都比 gate-only 更好：累计提升大约在 <code>0.53pp ~ 2.13pp</code>，回撤改善大约在 <code>0.50pp ~ 3.12pp</code>。</li>
+        <li><b>这意味着什么：</b>当前默认候选已经比“只在单张 overall 表里好看”更进一步——它至少经得住一个更严格的 rolling honesty slice；但它也还没强到能说成“所有时间段都稳定占优”。更诚实的结论是：<b>late-segment active windows 连续有效，足够继续保留默认位；同时仍应承认它是一个后段驱动、需继续观察迁移性的 sizing 候选。</b></li>
+      </ul>
+      <table><thead><tr><th>window_start</th><th>window_end</th><th>active_hours</th><th>affected_hours</th><th>affected_hour_share</th><th>gate_cumulative_net_return</th><th>conditioned_cumulative_net_return</th><th>delta_vs_gate_pp</th><th>gate_max_drawdown</th><th>conditioned_max_drawdown</th><th>drawdown_improve_pp</th><th>reading</th></tr></thead><tbody><tr><td>2026-01-31</td><td>2026-02-10</td><td>89</td><td>0</td><td>0.00%</td><td>13.76%</td><td>13.76%</td><td>0.00</td><td>-4.81%</td><td>-4.81%</td><td>0.00</td><td>inactive_window</td></tr><tr><td>2026-02-05</td><td>2026-02-15</td><td>77</td><td>0</td><td>0.00%</td><td>-0.09%</td><td>-0.09%</td><td>0.00</td><td>-5.01%</td><td>-5.01%</td><td>0.00</td><td>inactive_window</td></tr><tr><td>2026-02-10</td><td>2026-02-20</td><td>114</td><td>0</td><td>0.00%</td><td>-1.27%</td><td>-1.27%</td><td>0.00</td><td>-7.32%</td><td>-7.32%</td><td>0.00</td><td>inactive_window</td></tr><tr><td>2026-02-15</td><td>2026-02-25</td><td>151</td><td>14</td><td>9.27%</td><td>-1.16%</td><td>-0.14%</td><td>1.02</td><td>-6.18%</td><td>-5.21%</td><td>0.97</td><td>improved_when_active</td></tr><tr><td>2026-02-20</td><td>2026-03-02</td><td>121</td><td>21</td><td>17.36%</td><td>6.59%</td><td>7.11%</td><td>0.53</td><td>-4.43%</td><td>-3.94%</td><td>0.50</td><td>improved_when_active</td></tr><tr><td>2026-02-25</td><td>2026-03-07</td><td>79</td><td>28</td><td>35.44%</td><td>2.85%</td><td>4.99%</td><td>2.13</td><td>-7.65%</td><td>-4.52%</td><td>3.12</td><td>improved_when_active</td></tr></tbody></table>
+      <p class="note">这里的 rolling / walk-forward 仍是很克制的 first-pass：不是重新训练参数，而是在固定规则下按时间顺序做 <code>10-day / 5-day</code> 叠窗复核。它回答的是“改善是不是只靠一张总表幻觉”，不是正式 production walk-forward。</p>
+      <h3>如果把 overlapping walk-forward 再压成更诚实的 non-overlap forward blocks，会发现它有多稳？</h3>
+      <ul>
+        <li><b>先说结论：</b>比前面的叠窗读法更克制，也更诚实。从第一次触发默认 <code>ETH+SOL pair halfsize</code> 的时点起，把后续 active period 压成 <code>4</code> 个不重叠的 <code>5-day</code> forward blocks 后，并不是 <code>4/4</code> 全都更好，而是约 <code>3/4</code> 个 block 改善、<code>1</code> 个 block 略差。</li>
+        <li><b>最好的 block：</b>约 <code>2026-03-02</code> 到 <code>2026-03-07</code>，相对 gate-only 的累计改善约 <code>2.55pp</code>，回撤也约改善 <code>2.67pp</code>。</li>
+        <li><b>最需要诚实承认的 block：</b>约 <code>2026-02-25</code> 到 <code>2026-03-02</code> 这格并没有继续变好，累计反而约比 gate-only 差 <code>0.56pp</code>，而且回撤也没有额外改善。</li>
+        <li><b>这意味着什么：</b>默认 sizing candidate 现在已经不只是“后半段碰巧一张总表更好”，因为 non-overlap blocks 里大多数仍是正向；但它也还不能写成“只要触发就稳定占优”。更诚实的 admission 读法应改成：<b>late-segment 证据从 hopeful 提高到 usable，但仍未强到可以跳过 one_more_gate。</b></li>
+      </ul>
+      <table><thead><tr><th>block_start</th><th>block_end</th><th>active_hours</th><th>affected_hours</th><th>affected_hour_share</th><th>gate_cumulative_net_return</th><th>conditioned_cumulative_net_return</th><th>delta_vs_gate_pp</th><th>gate_max_drawdown</th><th>conditioned_max_drawdown</th><th>drawdown_improve_pp</th><th>conditional_cumulative_before</th><th>conditional_cumulative_after</th><th>conditional_delta_pp</th><th>reading</th></tr></thead><tbody><tr><td>2026-02-20</td><td>2026-02-25</td><td>89</td><td>14</td><td>15.73%</td><td>0.81%</td><td>1.85%</td><td>1.04</td><td>-4.43%</td><td>-3.94%</td><td>0.50</td><td>-0.02023072462630482</td><td>-0.010121637639912695</td><td>1.0109086986392124</td><td>better_return_and_dd</td></tr><tr><td>2026-02-25</td><td>2026-03-02</td><td>32</td><td>7</td><td>21.88%</td><td>5.73%</td><td>5.17%</td><td>-0.56</td><td>-2.82%</td><td>-2.82%</td><td>0.00</td><td>0.010916032837382517</td><td>0.005520860581186726</td><td>-0.539517225619579</td><td>worse_than_gate</td></tr><tr><td>2026-03-02</td><td>2026-03-07</td><td>47</td><td>21</td><td>44.68%</td><td>-2.72%</td><td>-0.17%</td><td>2.55</td><td>-6.74%</td><td>-4.06%</td><td>2.67</td><td>-0.04979347168551318</td><td>-0.02487402635593905</td><td>2.491944532957413</td><td>better_return_and_dd</td></tr><tr><td>2026-03-07</td><td>2026-03-12</td><td>27</td><td>2</td><td>7.41%</td><td>-0.86%</td><td>-0.17%</td><td>0.69</td><td>-1.95%</td><td>-1.74%</td><td>0.21</td><td>-0.01370126427483509</td><td>-0.006862433506251042</td><td>0.6838830768584048</td><td>better_return_and_dd</td></tr></tbody></table>
+      <p class="note">这张表和上面的 rolling 叠窗互补：前者回答“触发时方向是不是大体对的”，这张 non-overlap 表则回答“如果真按时间往前走，改善有没有一路单调延续”。当前答案是：<b>大体对，但不是单调稳定。</b></p>
+      <h3>如果把 non-overlap forward block 再放长到 <code>10-day</code> 呢？</h3>
+      <ul>
+        <li><b>先说结论：</b>更长一点的 forward 眼光下，方向反而更整齐了，但样本也更少。从首个 sizing 触发时点开始，压成 <code>10-day</code> non-overlap blocks 后，当前有动作的约 <code>2</code>/<code>2</code> 个 block 都仍优于 gate-only。</li>
+        <li><b>最弱的那格也还是正向：</b>约 <code>2026-02-20</code> 到 <code>2026-03-02</code> 这格，相对 gate-only 的累计改善仍约 <code>0.53pp</code>，回撤也约改善 <code>0.50pp</code>。</li>
+        <li><b>最强 block：</b>约 <code>2026-03-02</code> 到 <code>2026-03-12</code>，累计改善约 <code>3.22pp</code>，回撤改善约 <code>2.67pp</code>。</li>
+        <li><b>这意味着什么：</b><code>5-day</code> block 告诉我们它不是单调稳定，<code>10-day</code> block 则说明把观察窗口稍微放长后，改善方向目前仍没有翻负。更诚实的 admission 读法因此应收紧成：<b>一般性的 late-segment transferability 担忧已经减弱，但 pure-test / down-tail 仍没被真正清掉。</b></li>
+      </ul>
+      <table><thead><tr><th>block_start</th><th>block_end</th><th>active_hours</th><th>affected_hours</th><th>affected_hour_share</th><th>gate_cumulative_net_return</th><th>conditioned_cumulative_net_return</th><th>delta_vs_gate_pp</th><th>gate_max_drawdown</th><th>conditioned_max_drawdown</th><th>drawdown_improve_pp</th><th>conditional_cumulative_before</th><th>conditional_cumulative_after</th><th>conditional_delta_pp</th><th>reading</th></tr></thead><tbody><tr><td>2026-02-20</td><td>2026-03-02</td><td>121</td><td>21</td><td>17.36%</td><td>6.59%</td><td>7.11%</td><td>0.53</td><td>-4.43%</td><td>-3.94%</td><td>0.50</td><td>-0.00953553104326732</td><td>-0.004656657208989112</td><td>0.4878873834278208</td><td>better_return_and_dd</td></tr><tr><td>2026-03-02</td><td>2026-03-12</td><td>74</td><td>23</td><td>31.08%</td><td>-3.56%</td><td>-0.35%</td><td>3.22</td><td>-6.74%</td><td>-4.06%</td><td>2.67</td><td>-0.06281250244562353</td><td>-0.031565763510289724</td><td>3.1246738935333807</td><td>better_return_and_dd</td></tr></tbody></table>
+      <p class="note">一句话版：<code>5-day</code> non-overlap blocks 说明这刀不是“每小段都单调更好”；但把窗口放长到 <code>10-day</code> 后，当前有动作的 <code>2/2</code> 个 block 仍都优于 gate-only。也就是说，它现在更像“长一点仍大体站得住，但短一点仍会起伏”的 sizing candidate。</p>
+      <h3>如果按 shadow review checkpoint 累积看：从首个触发日开始，5/10/15/20 天会不会中途翻负？</h3>
+      <ul>
+        <li><b>先说结论：</b>当前还没有翻负。把默认 <code>ETH+SOL pair halfsize</code> 从首个触发日开始，按更接近 shadow review 的累计 checkpoint 看，当前有动作的 <code>4/4</code> 个 <code>5/10/15/20-day</code> checkpoints 都仍优于 gate-only。</li>
+        <li><b>最早的 checkpoint 也没有先甜后翻：</b><code>10</code> 天 review 时，相对 gate-only 的累计改善仍约 <code>0.53pp</code>，回撤约改善 <code>0.50pp</code>。</li>
+        <li><b>更长一点的 cumulative read：</b>到 <code>20</code> 天时，默认候选相对 gate-only 的累计改善约 <code>3.95pp</code>，回撤改善约 <code>3.12pp</code>；最强 checkpoint 约出现在 <code>20</code> 天，累计改善约 <code>3.95pp</code>。</li>
+        <li><b>这意味着什么：</b>虽然 non-overlap <code>5-day</code> blocks 里仍出现过一格回吐，但如果按更 deployment-facing 的累计 shadow review 看，默认 sizing candidate 目前还没有出现“越往后看反而翻回 gate-only 下方”的现象。更诚实的读法因此是：<b>一般性 transferability 焦虑继续下降，但 blocker 仍主要卡在 pure-test / down-tail hard gap，而不是累计路径已经重新翻负。</b></li>
+      </ul>
+      <table><thead><tr><th>review_days</th><th>checkpoint_start</th><th>checkpoint_end</th><th>active_hours</th><th>affected_hours</th><th>affected_hour_share</th><th>gate_cumulative_net_return</th><th>conditioned_cumulative_net_return</th><th>delta_vs_gate_pp</th><th>gate_max_drawdown</th><th>conditioned_max_drawdown</th><th>drawdown_improve_pp</th><th>reading</th></tr></thead><tbody><tr><td>5</td><td>2026-02-20</td><td>2026-02-25</td><td>89</td><td>14</td><td>15.73%</td><td>0.81%</td><td>1.85%</td><td>1.04</td><td>-4.43%</td><td>-3.94%</td><td>0.50</td><td>checkpoint_still_positive</td></tr><tr><td>10</td><td>2026-02-20</td><td>2026-03-02</td><td>121</td><td>21</td><td>17.36%</td><td>6.59%</td><td>7.11%</td><td>0.53</td><td>-4.43%</td><td>-3.94%</td><td>0.50</td><td>checkpoint_still_positive</td></tr><tr><td>15</td><td>2026-02-20</td><td>2026-03-07</td><td>168</td><td>42</td><td>25.00%</td><td>3.69%</td><td>6.93%</td><td>3.24</td><td>-7.65%</td><td>-4.52%</td><td>3.12</td><td>checkpoint_still_positive</td></tr><tr><td>20</td><td>2026-02-20</td><td>2026-03-12</td><td>195</td><td>44</td><td>22.56%</td><td>2.79%</td><td>6.74%</td><td>3.95</td><td>-7.65%</td><td>-4.52%</td><td>3.12</td><td>checkpoint_still_positive</td></tr></tbody></table>
+      <p class="note">一句话版：block 口径告诉我们它不是单调直线；但 cumulative shadow review checkpoints 目前是 <code>4/4</code> 持续为正，所以默认 <code>pair halfsize</code> 当前更像“还没过 gate，但 cumulative review 没翻负”的 shadow-admission 候选。</p>
+      <h3>如果把视角再收紧成 strict pure-test tail：从首个 <code>test</code> 触发一直看到样本末尾，会发生什么？</h3>
+      <ul>
+        <li><b>先说结论：</b>方向暂时还是正的，但样本只剩一小段尾巴。从首个 pure <code>test</code> sizing 触发（约 <code>2026-03-06 00:00</code>）到当前样本末尾（约 <code>2026-03-09 03:00</code>），一共也只有约 <code>30</code> 个活跃小时，其中约 <code>5</code> 个小时真的触发默认 <code>ETH+SOL pair halfsize</code>。</li>
+        <li><b>这段 strict tail 的结果：</b>gate-only 的整段 tail 累计约 <code>-1.02%</code>，而默认 halfsize 约 <code>-0.25%</code>，相对改善约 <code>0.77pp</code>；回撤也约改善 <code>0.21pp</code>。</li>
+        <li><b>为什么这比“只看 5 个被动到的 test 小时”更硬一点：</b>因为它不是只盯条件 pocket 本身，而是把从首个 pure-test 触发到样本末尾的整段 portfolio tail 一起算进去。当前它没有翻负，说明 default sizing candidate 在 strict pure-test 眼光下还没被直接打穿。</li>
+        <li><b>但为什么仍不能直接放行：</b>这整段 tail 本身也只有约 <code>30</code> 小时，而且受影响小时仍主要是 <code>up</code>（约 <code>3</code>）加少量 <code>down+flat</code>（约 <code>2</code>），pure <code>down</code> 仍是 <code>0</code>。所以更诚实的读法应是：<b>strict pure-test tail 方向暂时为正，但证据仍太薄，不足以单独清掉 <code>one_more_gate</code>。</b></li>
+      </ul>
+      <table><thead><tr><th>slice_label</th><th>slice_start</th><th>slice_end</th><th>active_hours</th><th>affected_hours</th><th>affected_hour_share</th><th>gate_cumulative_net_return</th><th>conditioned_cumulative_net_return</th><th>delta_vs_gate_pp</th><th>gate_max_drawdown</th><th>conditioned_max_drawdown</th><th>drawdown_improve_pp</th><th>conditional_cumulative_before</th><th>conditional_cumulative_after</th><th>conditional_delta_pp</th><th>up_hours</th><th>flat_hours</th><th>down_flat_hours</th><th>down_hours</th><th>reading</th></tr></thead><tbody><tr><td>test_tail_from_first_trigger</td><td>2026-03-06 00:00</td><td>2026-03-09 03:00</td><td>30</td><td>5</td><td>16.67%</td><td>-1.02%</td><td>-0.25%</td><td>0.77</td><td>-1.95%</td><td>-1.74%</td><td>0.21</td><td>-1.53%</td><td>-0.77%</td><td>0.76</td><td>3</td><td>0</td><td>2</td><td>0</td><td>positive_but_single_tail</td></tr></tbody></table>
+      <p class="note">一句话版：如果只看从首个 pure <code>test</code> 触发开始的严格尾段，这刀 default sizing 目前仍是正向的（约 <code>0.77pp</code>），但那也只是 <code>30</code> 小时的一小段 tail，不足以单独洗掉 admission blocker。</p>
+      <h3>如果把 strict pure-test tail 再切成“晚段 mixed-tail pocket 进来前”的 <code>60/72h</code> checkpoints，会看到什么？</h3>
+      <ul>
+        <li><b>先说结论：</b>更克制地看，这段 tail 前半段其实只称得上“没翻负”，还称不上已经很厚。当前有动作的 <code>60/72</code> checkpoints 约有 <code>2/2</code> 个仍优于 gate-only，但最强也只有约 <code>0.08pp</code>，回撤改善约 <code>0.00pp</code>。</li>
+        <li><b>这比整段 tail 读法更诚实的地方：</b>如果先不把最后那段 <code>down + flat</code> mixed tail 算进去，到约 <code>72</code> 小时为止，default sizing 相对 gate-only 的累计改善其实还只有约 <code>0.08pp</code>；而整段 strict tail 最终约 <code>0.77pp</code> 的改善里，约 <code>0.69pp</code> 是等到最后那两个 mixed-tail 小时才补上来的。</li>
+        <li><b>所以怎么读：</b>这说明默认 <code>pair halfsize</code> 当前还不能写成“pure-test tail 自己已经厚实通过”。更准确的说法是：<b>前半段 pure-test tail 暂时没翻负，但 edge 仍很薄；后半段 mixed tail 虽补出增量，却也只够支撑 shadow-only gate。</b> 因此 breakout 的 blocker 仍是 <b>pure-test / down-tail honesty</b>，不是 wording 问题。</li>
+      </ul>
+      <table><thead><tr><th>review_hours</th><th>checkpoint_start</th><th>checkpoint_end</th><th>active_hours</th><th>affected_hours</th><th>affected_hour_share</th><th>gate_cumulative_net_return</th><th>conditioned_cumulative_net_return</th><th>delta_vs_gate_pp</th><th>gate_max_drawdown</th><th>conditioned_max_drawdown</th><th>drawdown_improve_pp</th><th>reading</th></tr></thead><tbody><tr><td>60</td><td>2026-03-06 00:00</td><td>2026-03-08 12:00</td><td>14</td><td>3</td><td>21.43%</td><td>-0.53%</td><td>-0.45%</td><td>0.08</td><td>-1.74%</td><td>-1.74%</td><td>0.00</td><td>checkpoint_still_positive</td></tr><tr><td>72</td><td>2026-03-06 00:00</td><td>2026-03-09 00:00</td><td>26</td><td>3</td><td>11.54%</td><td>0.95%</td><td>1.03%</td><td>0.08</td><td>-1.74%</td><td>-1.74%</td><td>0.00</td><td>checkpoint_still_positive</td></tr></tbody></table>
+      <p class="note">一句话版：strict pure-test tail 的总 delta 看起来约 <code>0.77pp</code>，但若先不把最后那两小时 mixed-tail pocket 算进去，前面 <code>60/72</code> checkpoints 其实都只有约 <code>0.08pp</code>。换句话说，default pair candidate 在更早的 pure-test tail 里还只是“没翻负”，不是“已经很厚”。</p>
+      <h3>如果再强迫 strict pure-test tail 只按 non-overlap <code>6h</code> active blocks 讲话：它到底有几段真能独立站住？</h3>
+      <ul>
+        <li><b>先说结论：</b>目前几乎还站不成“多段可复用”的 pure-test honesty。把 strict pure-test tail 从首个 <code>test</code> 触发点起继续压成 non-overlap <code>6h</code> active blocks 后，当前真正满足最小 active block 门槛（至少 <code>4</code> 个活跃小时）的只有约 <code>1</code>/<code>5</code> 段，而且这唯一有动作的一段正好就是最后那格 <code>test × down+flat</code> mixed-tail pocket。</li>
+        <li><b>这比 <code>60/72h</code> checkpoint 更苛刻的地方：</b>它不允许 sparse 小时靠前后静默区间一起凑累计结果。当前前面那 <code>3</code> 个 <code>test × up</code> 小时甚至连一个满足门槛的 <code>6h</code> active block 都凑不出来；真正能单独成块的，只有约 <code>2026-03-09 00:00</code> 到 <code>2026-03-09 06:00</code> 这段，delta 约 <code>0.68pp</code>，条件 pocket 自己约改善 <code>0.68pp</code>。</li>
+        <li><b>所以 deployment-facing 该怎么读：</b>default pair candidate 当前还不能写成“strict pure-test tail 已经拆成多段都成立”。更诚实的版本是：<b>pure-test 前半段仍薄到连稳定 active block 都难以独立成形，最后那格 mixed-tail pocket 才是当前唯一能单独站住的 active block。</b> 这进一步说明 breakout 的 blocker 仍是 <b>pure-test / down-tail honesty</b>，不是页面措辞问题。</li>
+      </ul>
+      <table><thead><tr><th>block_id</th><th>block_start</th><th>block_end</th><th>active_hours</th><th>affected_hours</th><th>affected_hour_share</th><th>gate_cumulative_net_return</th><th>conditioned_cumulative_net_return</th><th>delta_vs_gate_pp</th><th>gate_max_drawdown</th><th>conditioned_max_drawdown</th><th>drawdown_improve_pp</th><th>conditional_cumulative_before</th><th>conditional_cumulative_after</th><th>conditional_delta_pp</th><th>reading</th></tr></thead><tbody><tr><td>1</td><td>2026-03-08 00:00</td><td>2026-03-08 06:00</td><td>5</td><td>0</td><td>0.00%</td><td>-0.01%</td><td>-0.01%</td><td>0.00</td><td>-0.63%</td><td>-0.63%</td><td>0.00</td><td>-</td><td>-</td><td>-</td><td>inactive_block</td></tr><tr><td>2</td><td>2026-03-08 06:00</td><td>2026-03-08 12:00</td><td>6</td><td>0</td><td>0.00%</td><td>-0.36%</td><td>-0.36%</td><td>0.00</td><td>-1.10%</td><td>-1.10%</td><td>0.00</td><td>-</td><td>-</td><td>-</td><td>inactive_block</td></tr><tr><td>3</td><td>2026-03-08 12:00</td><td>2026-03-08 18:00</td><td>6</td><td>0</td><td>0.00%</td><td>1.12%</td><td>1.12%</td><td>0.00</td><td>-0.10%</td><td>-0.10%</td><td>0.00</td><td>-</td><td>-</td><td>-</td><td>inactive_block</td></tr><tr><td>4</td><td>2026-03-08 18:00</td><td>2026-03-09 00:00</td><td>6</td><td>0</td><td>0.00%</td><td>0.36%</td><td>0.36%</td><td>0.00</td><td>-1.04%</td><td>-1.04%</td><td>0.00</td><td>-</td><td>-</td><td>-</td><td>inactive_block</td></tr><tr><td>5</td><td>2026-03-09 00:00</td><td>2026-03-09 06:00</td><td>4</td><td>2</td><td>50.00%</td><td>-1.95%</td><td>-1.27%</td><td>0.68</td><td>-1.37%</td><td>-0.69%</td><td>0.68</td><td>-1.37%</td><td>-0.69%</td><td>0.68</td><td>positive_block</td></tr></tbody></table>
+      <p class="note">一句话版：strict pure-test tail 再压成 non-overlap <code>6h</code> active blocks 后，当前其实只剩 <code>1</code> 段有动作，而且就是最后那格 <code>test × down+flat</code> mixed-tail pocket。也就是说，default pair candidate 还没有给出“多段独立可复用”的 pure-test honesty。</p>
+      <h3>把这 44 个受影响小时按真实时间段拆开：default pair candidate 到底是靠哪几段在撑？</h3>
+      <ul>
+        <li><b>先说结论：</b>并不是一整段连续的 pure-test honesty。当前默认 <code>ETH+SOL pair halfsize</code> 的约 <code>44</code> 个受影响小时，按时间顺序实际只会塌缩成约 <code>4</code> 段连续 episode。</li>
+        <li><b>最大的一段：</b>约 <code>2026-03-01 17:00</code> 到 <code>2026-03-02 17:00</code>，主要还是 <code>test + validate × up</code> 这段，条件累计改善约 <code>1.92pp</code>。</li>
+        <li><b>对 admission 最关键的纯 test 读法：</b>真正的 pure <code>test</code> 其实只拆成两小段：前面那段 <code>test × up</code> 只有约 <code>3</code> 小时、条件累计改善约 <code>0.08pp</code>；最后那段 <code>test × down + flat</code> 只有约 <code>2</code> 小时，却贡献了约 <code>0.68pp</code>。</li>
+        <li><b>这意味着什么：</b>更诚实的说法不是“default pair candidate 已经有一整段厚实 pure-test 证据”，而是：<b>它大头仍来自 overlap / earlier episodes，真正 pure-test 的前半段只给出 very thin 的约 <code>0.08pp</code>，最后再由那两小时 mixed-tail pocket 补上更多增量。</b> 所以 blocker 仍是 <b>pure-test / down-tail honesty</b>，不是页面措辞问题。</li>
+      </ul>
+      <table><thead><tr><th>episode_id</th><th>start_time</th><th>end_time</th><th>hours</th><th>hour_share_within_target</th><th>symbol_pair</th><th>split_mix</th><th>regime_mix</th><th>conditional_cumulative_before</th><th>conditional_cumulative_after</th><th>delta_pp</th><th>mean_hourly_return_before</th><th>mean_hourly_return_after</th><th>reading</th></tr></thead><tbody><tr><td>1</td><td>2026-02-20 14:00</td><td>2026-02-21 03:00</td><td>14</td><td>31.82%</td><td>ETH-USD + SOL-USD</td><td>train</td><td>flat</td><td>-2.02%</td><td>-1.01%</td><td>1.01</td><td>-0.14%</td><td>-0.07%</td><td>train_residual</td></tr><tr><td>2</td><td>2026-03-01 17:00</td><td>2026-03-02 17:00</td><td>25</td><td>56.82%</td><td>ETH-USD + SOL-USD</td><td>test + validate</td><td>up</td><td>-3.79%</td><td>-1.87%</td><td>1.92</td><td>-0.15%</td><td>-0.07%</td><td>overlap_carry</td></tr><tr><td>3</td><td>2026-03-06 00:00</td><td>2026-03-06 02:00</td><td>3</td><td>6.82%</td><td>ETH-USD + SOL-USD</td><td>test</td><td>up</td><td>-0.16%</td><td>-0.08%</td><td>0.08</td><td>-0.05%</td><td>-0.03%</td><td>thin_pre_mixed_tail</td></tr><tr><td>4</td><td>2026-03-09 02:00</td><td>2026-03-09 03:00</td><td>2</td><td>4.55%</td><td>ETH-USD + SOL-USD</td><td>test</td><td>down + flat</td><td>-1.37%</td><td>-0.69%</td><td>0.68</td><td>-0.69%</td><td>-0.34%</td><td>late_mixed_tail_patch</td></tr></tbody></table>
+      <p class="note">一句话版：把默认 pair candidate 的受影响小时按真实时间顺序拆开后，会发现它不是“整段 pure-test 都很厚”，而是 `train flat`、`test+validate up`、`test up`、`test down+flat` 这几段拼出来的；其中纯 test 前半段只有约 <code>0.08pp</code>，最后两小时 mixed-tail 才再补上约 <code>0.68pp</code>。</p>
+      <h3>这刀默认 sizing 实际修到的是 <code>up/flat</code>，还是已经碰到 <code>down</code> 尾部？</h3>
+      <ul>
+        <li><b>先说结论：</b>目前主要修到的是 <code>up/flat</code>，还谈不上已经把 <code>down</code> 尾部洗干净。当前默认 <code>ETH+SOL pair halfsize</code> 一共只动到约 <code>44</code> 个小时，其中 <code>up</code> 约 <code>28</code> 个、<code>flat</code> 约 <code>14</code> 个、<code>down + flat</code> 约 <code>2</code> 个，而 pure <code>down</code> 当前是 <code>0</code> 个。</li>
+        <li><b>改善量级：</b><code>up</code> 这块条件累计约从 <code>-3.94%</code> 收窄到 <code>-1.95%</code>，改善约 <code>1.99pp</code>；<code>flat</code> 约从 <code>-2.02%</code> 收窄到 <code>-1.01%</code>，改善约 <code>1.01pp</code>。</li>
+        <li><b>为什么这很关键：</b>这说明 pair-conditioned candidate 目前更像在修“后段里最明显的 <code>ETH+SOL</code> 反身性口袋”，而不是已经覆盖到 breakout 线 admission 最担心的 <code>down</code> regime tail。换句话说，当前 <code>one_more_gate</code> 的 blocker 之一不是抽象担忧，而是这刀默认 sizing <b>几乎还没真正碰到 pure <code>down</code> pocket</b>。</li>
+      </ul>
+      <h4>默认 pair-conditioned sizing：被动到的小时按 regime 看</h4>
+      <table><thead><tr><th>regime_mix</th><th>hours</th><th>hour_share_within_target</th><th>conditional_cumulative_before</th><th>conditional_cumulative_after</th><th>delta_pp</th><th>mean_hourly_return_before</th><th>mean_hourly_return_after</th></tr></thead><tbody><tr><td>up</td><td>28</td><td>63.64%</td><td>-3.94%</td><td>-1.95%</td><td>1.99</td><td>-0.14%</td><td>-0.07%</td></tr><tr><td>flat</td><td>14</td><td>31.82%</td><td>-2.02%</td><td>-1.01%</td><td>1.01</td><td>-0.14%</td><td>-0.07%</td></tr><tr><td>down + flat</td><td>2</td><td>4.55%</td><td>-1.37%</td><td>-0.69%</td><td>0.68</td><td>-0.69%</td><td>-0.34%</td></tr></tbody></table>
+      <h4>默认 pair-conditioned sizing：被动到的小时按 split × regime 看</h4>
+      <table><thead><tr><th>split_mix</th><th>regime_mix</th><th>hours</th><th>hour_share_within_target</th><th>conditional_cumulative_before</th><th>conditional_cumulative_after</th><th>delta_pp</th><th>mean_hourly_return_before</th><th>mean_hourly_return_after</th></tr></thead><tbody><tr><td>test + validate</td><td>up</td><td>25</td><td>56.82%</td><td>-3.79%</td><td>-1.87%</td><td>1.92</td><td>-0.15%</td><td>-0.07%</td></tr><tr><td>train</td><td>flat</td><td>14</td><td>31.82%</td><td>-2.02%</td><td>-1.01%</td><td>1.01</td><td>-0.14%</td><td>-0.07%</td></tr><tr><td>test</td><td>up</td><td>3</td><td>6.82%</td><td>-0.16%</td><td>-0.08%</td><td>0.08</td><td>-0.05%</td><td>-0.03%</td></tr><tr><td>test</td><td>down + flat</td><td>2</td><td>4.55%</td><td>-1.37%</td><td>-0.69%</td><td>0.68</td><td>-0.69%</td><td>-0.34%</td></tr></tbody></table>
+      <p class="note">一句话版：默认 <code>ETH+SOL pair-conditioned halfsize</code> 这刀现在主要修到的是 <code>up</code> 和一部分 <code>flat</code> 小时；它对真正的 <code>down</code> 尾部几乎还没给出证据。所以 breakout 线当前最诚实的位置仍是 <b>shadow-admission queue / one_more_gate</b>，而不是“默认 policy 已可直接 shadow 跑”。</p>
+      <h3>把它翻成 deployment hard-gate：当前 `down-tail coverage` 到底过线了吗？</h3>
+      <ul>
+        <li><b>先说结论：</b>还没过。默认 <code>ETH+SOL pair halfsize</code> 在 gate-only 的 <code>down</code> 小时里当前覆盖率约 <code>0.00%</code>（约 <code>0/100</code>）。</li>
+        <li><b>为什么这算 hard gap：</b>同一口径下 gate-only 的 <code>down</code> 段累计本身约 <code>-1.52%</code>，说明这是一个真实的尾部风险口袋；但当前默认 sizing 在 pure <code>down</code> 上没有任何触发点，因此还谈不上“已经对 down-tail 给出可验证的 admission 证据”。</li>
+        <li><b>可执行读法：</b>在把这条线升格到 `shadow paper now` 之前，至少要先补出一刀能真正命中 <code>down</code> 小时的 sizing / protection honesty（哪怕只是 very small slice），否则 `one_more_gate` 不应被解除。</li>
+      </ul>
+      <table><thead><tr><th>regime</th><th>gate_active_hours</th><th>gate_mean_hourly_return</th><th>gate_cumulative_net_return</th><th>policy_affected_hours</th><th>policy_coverage_share</th><th>policy_conditional_delta_pp</th><th>reading</th></tr></thead><tbody><tr><td>down</td><td>100</td><td>-0.01%</td><td>-1.52%</td><td>0</td><td>0.00%</td><td>-</td><td>hard_gap_no_down_coverage</td></tr><tr><td>flat</td><td>256</td><td>0.06%</td><td>16.79%</td><td>14</td><td>5.47%</td><td>1.01</td><td>targeted_and_improving</td></tr><tr><td>up</td><td>105</td><td>0.01%</td><td>0.95%</td><td>28</td><td>26.67%</td><td>1.99</td><td>targeted_and_improving</td></tr></tbody></table>
+      <p class="note">一句话版：当前默认 sizing 在 <code>down</code> 的覆盖是 <code>0/100</code>。这不是文案问题，而是硬证据缺口；所以 `breakout` 还不能跳过 <code>one_more_gate</code>。</p>
+      <h3>如果替它找更宽松的解释：它会不会其实在 pure <code>down</code> 到来前就提前减仓了？</h3>
+      <ul>
+        <li><b>先说结论：</b>当前样本里看不出这种“提前踩刹车”。把默认 <code>ETH+SOL pair halfsize</code> 的 active hours 里、所有“未来 <code>6/12/24h</code> 内会进入 pure <code>down</code>”的非-<code>down</code> bridge 小时单独拎出来看，命中数仍是 <code>0/5</code>、<code>0/11</code>、<code>0/23</code>。</li>
+        <li><b>最关键的一段：</b>离 pure <code>down</code> 最近的那段 bridge，其实就是一段 <code>validate</code> × <code>flat</code> 的前置滑落；它在未来 <code>12h</code> 内会接上 pure <code>down</code>，自身累计却已经约 <code>-3.92%</code>，而 default pair 对这整段仍是 <code>0/11</code> 命中。</li>
+        <li><b>deployment-facing 该怎么读：</b>这等于把一个潜在的借口也关掉了——当前缺口不只是“pure <code>down</code> 本身没碰到”，而是连样本里最接近 pure <code>down</code> 的前置 bridge 小时也几乎没被默认 pair candidate 识别。所以它暂时还不能被解释成“虽然没碰到 down，但至少有 anticipatory protection”。</li>
+      </ul>
+      <table><thead><tr><th>预看窗口(h)</th><th>bridge开始</th><th>bridge结束</th><th>bridge小时</th><th>命中小时</th><th>bridge覆盖率</th><th>距首个pure-down最短(h)</th><th>距首个pure-down最长(h)</th><th>split</th><th>regime</th><th>gate累计</th><th>default pair累计</th><th>相对gate delta(pp)</th><th>一句话读法</th></tr></thead><tbody><tr><td>6</td><td>2026-02-23 09:00</td><td>2026-02-23 13:00</td><td>5</td><td>0</td><td>0.00%</td><td>2</td><td>6</td><td>validate</td><td>flat</td><td>-2.05%</td><td>-2.05%</td><td>0.00</td><td>no_anticipatory_bridge_coverage</td></tr><tr><td>12</td><td>2026-02-23 03:00</td><td>2026-02-23 13:00</td><td>11</td><td>0</td><td>0.00%</td><td>2</td><td>12</td><td>validate</td><td>flat</td><td>-3.92%</td><td>-3.92%</td><td>0.00</td><td>no_anticipatory_bridge_coverage</td></tr><tr><td>24</td><td>2026-02-22 15:00</td><td>2026-02-23 13:00</td><td>23</td><td>0</td><td>0.00%</td><td>2</td><td>24</td><td>validate</td><td>flat</td><td>1.12%</td><td>1.12%</td><td>0.00</td><td>no_anticipatory_bridge_coverage</td></tr></tbody></table>
+      <p class="note">一句话版：默认 pair candidate 现在不只是 <code>down-tail coverage = 0/100</code>；连未来 <code>6/12/24h</code> 会滑进 pure <code>down</code> 的 bridge 小时也还是 <code>0/x</code> 命中。也就是说，当前还不能把它解释成“提前减仓式”的 down-tail protection。</p>
+      <h3>如果把 blocker 直接压成 <code>down-risk zone</code>（pure <code>down</code> + 会在未来滑进 pure <code>down</code> 的 bridge），mixed-tail 会不会更像诚实保护？</h3>
+      <ul>
+        <li><b>先说结论：</b>把 blocker 压成统一的 <code>down-risk zone</code> 之后，结果没有变松，反而只是把“有多远才勉强碰到”写得更清楚了：默认 pair candidate 在未来 <code>12/24/48h</code> 的 risk-zone 里仍是 <b>0 coverage</b>（分别约 <code>0/74</code>、<code>0/86</code>、<code>0/109</code>）；直到放宽到 <code>72/96h</code> 才出现约 <code>13/164</code>、<code>14/177</code> 的命中，但这些也仍全部只是 bridge，而不是 pure <code>down</code>。</li>
+        <li><b>mixed-tail 也只是更晚地擦到 bridge：</b>同一个 <code>down-risk zone</code> 用 <code>down+flat mixed-tail overlay</code> 再看，未来 <code>12/24/48h</code> 也仍是 <code>0/x</code>；到 <code>72/96h</code> 才各自约命中 <code>5/164</code>、<code>12/177</code>；其中 bridge 命中约 <code>5/101</code>、<code>12/114</code>，pure <code>down</code> 命中仍是 <code>0/63</code>。</li>
+        <li><b>deployment-facing 该怎么读：</b>这等于把 mixed-tail 的边界又收紧了一格——它不是 near-down protective gate，只是“要把窗口放宽到三四天，才开始擦到一点 bridge”的 shadow 观察项。因为不管看 pure <code>down</code> 本体，还是把 bridge 一并并进来，它当前都没有真正打到这条 hard blocker。</li>
+      </ul>
+      <table><thead><tr><th>policy</th><th>对照基线</th><th>预看窗口(h)</th><th>pure-down小时</th><th>bridge小时</th><th>risk-zone小时</th><th>risk-zone命中小时</th><th>命中的pure-down小时</th><th>命中的bridge小时</th><th>risk-zone覆盖率</th><th>pure-down覆盖率</th><th>bridge覆盖率</th><th>对照累计</th><th>policy累计</th><th>相对对照delta(pp)</th><th>一句话读法</th></tr></thead><tbody><tr><td>default pair halfsize</td><td>gate-only</td><td>6</td><td>63</td><td>5</td><td>68</td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>-1.31%</td><td>-1.31%</td><td>0.00</td><td>no_downrisk_coverage</td></tr><tr><td>default pair halfsize</td><td>gate-only</td><td>12</td><td>63</td><td>11</td><td>74</td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>-3.20%</td><td>-3.20%</td><td>0.00</td><td>no_downrisk_coverage</td></tr><tr><td>default pair halfsize</td><td>gate-only</td><td>24</td><td>63</td><td>23</td><td>86</td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>1.87%</td><td>1.87%</td><td>0.00</td><td>no_downrisk_coverage</td></tr><tr><td>default pair halfsize</td><td>gate-only</td><td>48</td><td>63</td><td>46</td><td>109</td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>2.06%</td><td>2.06%</td><td>0.00</td><td>no_downrisk_coverage</td></tr><tr><td>default pair halfsize</td><td>gate-only</td><td>72</td><td>63</td><td>101</td><td>164</td><td>13</td><td>0</td><td>13</td><td>7.93%</td><td>0.00%</td><td>12.87%</td><td>-5.54%</td><td>-4.95%</td><td>0.59</td><td>bridge_only_no_pure_down</td></tr><tr><td>default pair halfsize</td><td>gate-only</td><td>96</td><td>63</td><td>114</td><td>177</td><td>14</td><td>0</td><td>14</td><td>7.91%</td><td>0.00%</td><td>12.28%</td><td>-4.77%</td><td>-3.79%</td><td>0.98</td><td>bridge_only_no_pure_down</td></tr><tr><td>down+flat mixed-tail overlay</td><td>default pair halfsize</td><td>6</td><td>63</td><td>5</td><td>68</td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>-1.31%</td><td>-1.31%</td><td>0.00</td><td>no_downrisk_coverage</td></tr><tr><td>down+flat mixed-tail overlay</td><td>default pair halfsize</td><td>12</td><td>63</td><td>11</td><td>74</td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>-3.20%</td><td>-3.20%</td><td>0.00</td><td>no_downrisk_coverage</td></tr><tr><td>down+flat mixed-tail overlay</td><td>default pair halfsize</td><td>24</td><td>63</td><td>23</td><td>86</td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>1.87%</td><td>1.87%</td><td>0.00</td><td>no_downrisk_coverage</td></tr><tr><td>down+flat mixed-tail overlay</td><td>default pair halfsize</td><td>48</td><td>63</td><td>46</td><td>109</td><td>0</td><td>0</td><td>0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td><td>2.06%</td><td>2.06%</td><td>0.00</td><td>no_downrisk_coverage</td></tr><tr><td>down+flat mixed-tail overlay</td><td>default pair halfsize</td><td>72</td><td>63</td><td>101</td><td>164</td><td>5</td><td>0</td><td>5</td><td>3.05%</td><td>0.00%</td><td>4.95%</td><td>-4.95%</td><td>-4.93%</td><td>0.02</td><td>bridge_only_no_pure_down</td></tr><tr><td>down+flat mixed-tail overlay</td><td>default pair halfsize</td><td>96</td><td>63</td><td>114</td><td>177</td><td>12</td><td>0</td><td>12</td><td>6.78%</td><td>0.00%</td><td>10.53%</td><td>-3.79%</td><td>-3.25%</td><td>0.54</td><td>bridge_only_no_pure_down</td></tr></tbody></table>
+      <p class="note">一句话版：把 blocker 放宽到未来 <code>96h</code> 之后，default / mixed 终于会擦到一点 bridge，但 pure <code>down</code> 覆盖仍是 <code>0/63</code>。所以 mixed-tail 现在最多只能算“远距离 bridge shadow gate”，还不能被解释成真正碰到 near-down blocker 的 conditional policy。</p>
+      <h3>反过来从 policy 自己的受影响小时看：它离下一段 pure <code>down</code> 到底有多远？</h3>
+      <ul>
+        <li><b>先说结论：</b>当前两条 policy 的受影响小时，离真正下一段 pure <code>down</code> 仍明显偏远。默认 <code>pair halfsize</code> 在未来 <code>24/48h</code> 内仍是 <code>0/44</code>、<code>0/44</code>；直到放宽到 <code>72/96h</code> 才变成 <code>13/44</code>、<code>14/44</code>。</li>
+        <li><b>mixed-tail 也没有更贴近 blocker：</b>它在未来 <code>24/48h</code> 内同样还是 <code>0/37</code>、<code>0/37</code>；即便放到 <code>72/96h</code>，也只到 <code>5/37</code>、<code>12/37</code>。</li>
+        <li><b>最关键的结构读法：</b>这些少量“未来终会接上 pure <code>down</code>”的命中，本质上也还是更早的 <code>train</code> × <code>flat</code>（default）与 <code>train</code> × <code>down + flat</code>（mixed）小时；最近 lead 也仍约是 <code>60</code>h 与 <code>51</code>h，而不是 near-down 的即时保护。</li>
+        <li><b>deployment-facing 该怎么读：</b>这说明当前 blocker 不只是“risk-zone 里没 coverage”，而是 <b>policy 自己的 active hours 结构上就离 pure <code>down</code> 太远</b>；而且现有能勉强算 future-down-adjacent 的小时也都不是新的 <code>test</code> 证据。所以 mixed-tail 现在还不能被写成“更诚实地贴近 down-risk 的 conditional gate”。</li>
+      </ul>
+      <table><thead><tr><th>policy</th><th>对照基线</th><th>未来窗口(h)</th><th>policy受影响小时</th><th>未来会接上pure-down的小时</th><th>命中占比</th><th>其中test小时</th><th>其中train/overlap小时</th><th>最近lead(h)</th><th>中位lead(h)</th><th>最远lead(h)</th><th>split</th><th>regime</th><th>一句话读法</th></tr></thead><tbody><tr><td>default pair halfsize</td><td>gate-only</td><td>24</td><td>44</td><td>0</td><td>0.00%</td><td>0</td><td>0</td><td>-</td><td>-</td><td>-</td><td></td><td></td><td>no_future_pure_down_within_window</td></tr><tr><td>default pair halfsize</td><td>gate-only</td><td>48</td><td>44</td><td>0</td><td>0.00%</td><td>0</td><td>0</td><td>-</td><td>-</td><td>-</td><td></td><td></td><td>no_future_pure_down_within_window</td></tr><tr><td>default pair halfsize</td><td>gate-only</td><td>72</td><td>44</td><td>13</td><td>29.55%</td><td>0</td><td>13</td><td>60</td><td>66</td><td>72</td><td>train</td><td>flat</td><td>future_pure_down_only_train_overlap</td></tr><tr><td>default pair halfsize</td><td>gate-only</td><td>96</td><td>44</td><td>14</td><td>31.82%</td><td>0</td><td>14</td><td>60</td><td>66</td><td>73</td><td>train</td><td>flat</td><td>future_pure_down_only_train_overlap</td></tr><tr><td>down+flat mixed-tail overlay</td><td>default pair halfsize</td><td>24</td><td>37</td><td>0</td><td>0.00%</td><td>0</td><td>0</td><td>-</td><td>-</td><td>-</td><td></td><td></td><td>no_future_pure_down_within_window</td></tr><tr><td>down+flat mixed-tail overlay</td><td>default pair halfsize</td><td>48</td><td>37</td><td>0</td><td>0.00%</td><td>0</td><td>0</td><td>-</td><td>-</td><td>-</td><td></td><td></td><td>no_future_pure_down_within_window</td></tr><tr><td>down+flat mixed-tail overlay</td><td>default pair halfsize</td><td>72</td><td>37</td><td>5</td><td>13.51%</td><td>0</td><td>5</td><td>51</td><td>53</td><td>55</td><td>train</td><td>down + flat</td><td>future_pure_down_only_train_overlap</td></tr><tr><td>down+flat mixed-tail overlay</td><td>default pair halfsize</td><td>96</td><td>37</td><td>12</td><td>32.43%</td><td>0</td><td>12</td><td>51</td><td>78</td><td>84</td><td>train</td><td>down + flat</td><td>future_pure_down_only_train_overlap</td></tr></tbody></table>
+      <p class="note">一句话版：就算反过来只看 policy 自己打到的小时，当前 default / mixed 也都不是在 near-down 口袋附近出手——<code>24/48h</code> 内仍是 <code>0/x</code>，真正能接上未来 pure <code>down</code> 的少量小时也还停留在更早的 train / overlap 残留里。于是 mixed-tail 还不能被包装成更诚实的 near-down conditional policy。</p>
+      <h3>如果保留当前 pair candidate，再叠一刀最小 <code>down + flat</code> mixed-tail protection，会不会更像下一道 gate？</h3>
+      <ul>
+        <li><b>先说结论：</b>值得保留成 <b>one_more_gate candidate</b>，但还不够直接放行。做法很克制：不是推翻当前默认 <code>ETH+SOL pair halfsize</code>，而是只在它已经跑出来的 active hours 里，再对 <code>regime_mix = down + flat</code> 的小时额外做一次 <code>0.5x</code> protective halfsize。</li>
+        <li><b>为什么盯这块而不是 pure <code>down</code>：</b>因为当前 strict pure-test tail 里，真正 forward-visible 的“偏下行”口袋本来就是一段 <code>down + flat</code> mixed tail；pure <code>down</code> 在这段 tail 里仍是 <code>0</code> 小时。</li>
+        <li><b>overall first-pass：</b>若在默认 pair candidate 上叠这刀 mixed-tail protection，统一 hourly path 累计可约从 <code>19.90%</code> 抬到约 <code>20.88%</code>，max drawdown 也约从 <code>-9.04%</code> 收窄到约 <code>-8.53%</code>。</li>
+        <li><b>别把 hard gap 误读成“pure <code>down</code> 一律砍半”：</b>若在同一个默认 pair candidate 上，机械地对所有 pure <code>down</code> active hours 也额外做一次 <code>0.5x</code>，虽然 max drawdown 会进一步约收窄到 <code>-7.96%</code>，但 overall hourly path 反而会从约 <code>19.90%</code> 回落到约 <code>19.48%</code>；而且这刀虽然打到了约 <code>63</code> 个 pure <code>down</code> 小时，却仍没有碰到当前 strict pure-test tail（那段 tail 里的 pure <code>down</code> 仍是 <code>0</code>）。这说明 blunt pure-down overlay 现在更像过度保护，不是更好的 next gate。</li>
+        <li><b>pure-test honesty：</b>当前这刀实际打到的 strict pure-test tail 就是一段约 <code>25</code> 小时的 mixed tail（其中受影响约 <code>25</code> 小时）；该尾段累计约从 <code>-0.50%</code> 收窄到 <code>-0.25%</code>，delta 约 <code>0.26pp</code>，回撤也约改善 <code>0.87pp</code>。</li>
+        <li><b>为什么仍不能当 admission clearance：</b>因为这仍只是一个 very small protective overlay，而且证据仍主要从单段 <code>test</code> mixed tail 起家；它没有把 pure <code>down</code> coverage 缺口直接填平。即便再补上 rolling walk-forward shadow observation，当前也只能说明“不是单格 lucky pocket”，还不够把它升格成正式 clearance。</li>
+      </ul>
+      <table><thead><tr><th>mode</th><th>cost_bps</th><th>active_hours</th><th>mean_active_positions</th><th>max_active_positions</th><th>mean_hourly_return</th><th>cumulative_net_return</th><th>max_drawdown</th></tr></thead><tbody><tr><td>avoid_fluctuating_eth_sol_pair_halfsize_downflat_overlay</td><td>20</td><td>398</td><td>2.512562814070352</td><td>4</td><td>0.05%</td><td>20.88%</td><td>-8.53%</td></tr></tbody></table>
+      <h4>这刀 mixed-tail overlay 打到哪些 split？</h4>
+      <table><thead><tr><th>split_mix</th><th>hours</th><th>hour_share_within_target</th><th>conditional_cumulative_before</th><th>conditional_cumulative_after</th><th>delta_pp</th><th>mean_hourly_return_before</th><th>mean_hourly_return_after</th></tr></thead><tbody><tr><td>test</td><td>25</td><td>67.57%</td><td>-0.50%</td><td>-0.25%</td><td>0.26</td><td>-0.02%</td><td>-0.01%</td></tr><tr><td>train</td><td>12</td><td>32.43%</td><td>-1.10%</td><td>-0.55%</td><td>0.55</td><td>-0.09%</td><td>-0.05%</td></tr></tbody></table>
+      <h4>strict pure-test mixed-tail snapshot</h4>
+      <table><thead><tr><th>slice_label</th><th>slice_start</th><th>slice_end</th><th>active_hours</th><th>affected_hours</th><th>affected_hour_share</th><th>gate_cumulative_net_return</th><th>conditioned_cumulative_net_return</th><th>delta_vs_gate_pp</th><th>gate_max_drawdown</th><th>conditioned_max_drawdown</th><th>drawdown_improve_pp</th><th>conditional_cumulative_before</th><th>conditional_cumulative_after</th><th>conditional_delta_pp</th><th>up_hours</th><th>flat_hours</th><th>down_flat_hours</th><th>down_hours</th><th>reading</th></tr></thead><tbody><tr><td>test_tail_from_first_trigger</td><td>2026-03-08 03:00</td><td>2026-03-09 03:00</td><td>25</td><td>25</td><td>100.00%</td><td>-0.50%</td><td>-0.25%</td><td>0.26</td><td>-1.74%</td><td>-0.87%</td><td>0.87</td><td>-0.50%</td><td>-0.25%</td><td>0.26</td><td>0</td><td>0</td><td>25</td><td>0</td><td>positive_but_single_tail</td></tr></tbody></table>
+      <h4>如果只盯这段 strict pure-test mixed tail 的 <code>6/12/18/24h</code> 累计 checkpoints，它会不会很快失真？</h4>
+      <ul>
+        <li><b>先说结论：</b>目前还没有在这段尾巴里翻负，但 edge 衰减得很快。当前有动作的 <code>4/4</code> 个 <code>6/12/18/24h</code> checkpoints 仍优于默认 <code>pair halfsize</code> 基线。</li>
+        <li><b>最强的一格：</b>约在 <code>6</code> 小时时，相对基线累计改善约 <code>0.41pp</code>，回撤改善约 <code>0.55pp</code>。</li>
+        <li><b>最需要诚实承认的一格：</b>到 <code>24</code> 小时时，相对基线累计改善已只剩约 <code>0.08pp</code>；也就是说，它虽然没立刻翻负，但到了更接近完整尾段的 checkpoint，edge 已经很薄。</li>
+        <li><b>怎么读这层证据：</b>这说明 mixed-tail overlay 不是“只靠最后一个终点数字碰巧为正”的假 patch；但它在 strict pure-test tail 里的优势也没有稳定扩张，反而更像前几小时较明显、随后快速压扁的 protective edge。所以它仍更适合写成 <b>shadow-only mixed gate</b>，而不是 promotion-ready conditional policy。</li>
+      </ul>
+      <table><thead><tr><th>review_hours</th><th>checkpoint_start</th><th>checkpoint_end</th><th>active_hours</th><th>affected_hours</th><th>affected_hour_share</th><th>gate_cumulative_net_return</th><th>conditioned_cumulative_net_return</th><th>delta_vs_gate_pp</th><th>gate_max_drawdown</th><th>conditioned_max_drawdown</th><th>drawdown_improve_pp</th><th>reading</th></tr></thead><tbody><tr><td>6</td><td>2026-03-08 03:00</td><td>2026-03-08 09:00</td><td>6</td><td>6</td><td>100.00%</td><td>-0.81%</td><td>-0.41%</td><td>0.41</td><td>-1.10%</td><td>-0.55%</td><td>0.55</td><td>checkpoint_still_positive</td></tr><tr><td>12</td><td>2026-03-08 03:00</td><td>2026-03-08 15:00</td><td>12</td><td>12</td><td>100.00%</td><td>-0.23%</td><td>-0.11%</td><td>0.12</td><td>-1.74%</td><td>-0.87%</td><td>0.87</td><td>checkpoint_still_positive</td></tr><tr><td>18</td><td>2026-03-08 03:00</td><td>2026-03-08 21:00</td><td>18</td><td>18</td><td>100.00%</td><td>-0.44%</td><td>-0.22%</td><td>0.22</td><td>-1.74%</td><td>-0.87%</td><td>0.87</td><td>checkpoint_still_positive</td></tr><tr><td>24</td><td>2026-03-08 03:00</td><td>2026-03-09 03:00</td><td>24</td><td>24</td><td>100.00%</td><td>-0.15%</td><td>-0.07%</td><td>0.08</td><td>-1.74%</td><td>-0.87%</td><td>0.87</td><td>checkpoint_still_positive</td></tr></tbody></table>
+      <p class="note">一句话版：strict pure-test mixed tail 的 <code>6/12/18/24h</code> checkpoints 当前虽然约 <code>4/4</code> 仍为正，但 edge 已从最强的约 <code>0.41pp</code> 收窄到最薄约 <code>0.08pp</code>。这更像“方向没塌，但很薄”，还不足以把 mixed-tail 从 shadow-only 提升成 clearance patch。</p>
+      <h4>如果把这段 strict pure-test mixed tail 压成更前瞻的 non-overlap <code>6h</code> blocks，结论还会一致吗？</h4>
+      <ul>
+        <li><b>先说结论：</b>不会一致为正。当前有效的 <code>6h</code> active blocks 约有 <code>2/4</code> 个相对默认 <code>pair halfsize</code> 仍为正，另约 <code>2</code> 个已转负。</li>
+        <li><b>最好的 block：</b>第 <code>1</code> 格（约 <code>2026-03-08 03:00</code> 到 <code>2026-03-08 09:00</code>）相对基线累计约改善 <code>0.41pp</code>，回撤约改善 <code>0.55pp</code>。</li>
+        <li><b>最弱的 block：</b>第 <code>2</code> 格（约 <code>2026-03-08 09:00</code> 到 <code>2026-03-08 15:00</code>）相对基线累计约 <code>-0.29pp</code>，说明它在更前瞻口径下会出现阶段性回吐。</li>
+        <li><b>这层证据的 deployment 读法：</b>mixed-tail 不是“纯 lucky 一格”，但也还不是“每段都稳定更优”的 conditional policy；更诚实的位置仍是 <b>shadow-only mixed gate</b>。</li>
+      </ul>
+      <table><thead><tr><th>block_id</th><th>block_start</th><th>block_end</th><th>active_hours</th><th>affected_hours</th><th>affected_hour_share</th><th>gate_cumulative_net_return</th><th>conditioned_cumulative_net_return</th><th>delta_vs_gate_pp</th><th>gate_max_drawdown</th><th>conditioned_max_drawdown</th><th>drawdown_improve_pp</th><th>conditional_cumulative_before</th><th>conditional_cumulative_after</th><th>conditional_delta_pp</th><th>reading</th></tr></thead><tbody><tr><td>1</td><td>2026-03-08 03:00</td><td>2026-03-08 09:00</td><td>6</td><td>6</td><td>100.00%</td><td>-0.81%</td><td>-0.41%</td><td>0.41</td><td>-1.10%</td><td>-0.55%</td><td>0.55</td><td>-0.81%</td><td>-0.41%</td><td>0.41</td><td>positive_block</td></tr><tr><td>2</td><td>2026-03-08 09:00</td><td>2026-03-08 15:00</td><td>6</td><td>6</td><td>100.00%</td><td>0.59%</td><td>0.29%</td><td>-0.29</td><td>-0.43%</td><td>-0.22%</td><td>0.22</td><td>0.59%</td><td>0.29%</td><td>-0.29</td><td>negative_block</td></tr><tr><td>3</td><td>2026-03-08 15:00</td><td>2026-03-08 21:00</td><td>6</td><td>6</td><td>100.00%</td><td>-0.21%</td><td>-0.10%</td><td>0.11</td><td>-1.06%</td><td>-0.53%</td><td>0.53</td><td>-0.21%</td><td>-0.10%</td><td>0.11</td><td>positive_block</td></tr><tr><td>4</td><td>2026-03-08 21:00</td><td>2026-03-09 03:00</td><td>6</td><td>6</td><td>100.00%</td><td>0.29%</td><td>0.15%</td><td>-0.14</td><td>-0.92%</td><td>-0.46%</td><td>0.46</td><td>0.29%</td><td>0.15%</td><td>-0.14</td><td>negative_block</td></tr></tbody></table>
+      <p class="note">一句话版：把 strict pure-test mixed tail 再压成 non-overlap <code>6h</code> blocks 后，结果约是 <code>2/4</code> 正、<code>2</code> 负。它说明 mixed-tail 方向没死，但仍不够稳，不能改写到 clearance verdict。</p>
+      <h4>如果先按 <code>10-day window / 5-day step</code> 的 rolling walk-forward shadow observation 看，这刀会不会只是一格 lucky pocket？</h4>
+      <ul>
+        <li><b>先说结论：</b>至少目前看，不像只有一格 lucky pocket。当前真正触发 mixed-tail overlay 的 rolling active windows 约有 <code>3/3</code> 个仍优于默认 <code>pair halfsize</code> 基线，而且从约 <code>2026-02-10</code> 到 <code>2026-03-02</code> 的 active 段没有出现累计收益转负的窗口。</li>
+        <li><b>最好的 rolling 窗口：</b>约 <code>2026-02-20</code> 到 <code>2026-03-02</code>，相对基线累计约改善 <code>0.57pp</code>，回撤约改善 <code>0.00pp</code>。</li>
+        <li><b>但为什么仍不能当 clearance：</b>因为这层 rolling 口径本身仍是 overlap windows，最弱 active 窗口虽然累计还约改善 <code>0.03pp</code>，但回撤改善并不稳定（最弱窗口约 <code>0.13pp</code>），而且更克制的 non-overlap forward blocks 依然会给出 split verdict。</li>
+      </ul>
+      <table><thead><tr><th>window_start</th><th>window_end</th><th>active_hours</th><th>affected_hours</th><th>affected_hour_share</th><th>gate_cumulative_net_return</th><th>conditioned_cumulative_net_return</th><th>delta_vs_gate_pp</th><th>gate_max_drawdown</th><th>conditioned_max_drawdown</th><th>drawdown_improve_pp</th><th>reading</th></tr></thead><tbody><tr><td>2026-01-31</td><td>2026-02-10</td><td>89</td><td>0</td><td>0.00%</td><td>13.76%</td><td>13.76%</td><td>0.00</td><td>-4.81%</td><td>-4.81%</td><td>0.00</td><td>inactive_window</td></tr><tr><td>2026-02-05</td><td>2026-02-15</td><td>77</td><td>0</td><td>0.00%</td><td>-0.09%</td><td>-0.09%</td><td>0.00</td><td>-5.01%</td><td>-5.01%</td><td>0.00</td><td>inactive_window</td></tr><tr><td>2026-02-10</td><td>2026-02-20</td><td>114</td><td>5</td><td>4.39%</td><td>-1.27%</td><td>-1.24%</td><td>0.03</td><td>-7.32%</td><td>-7.19%</td><td>0.13</td><td>improved_when_active</td></tr><tr><td>2026-02-15</td><td>2026-02-25</td><td>151</td><td>12</td><td>7.95%</td><td>-0.14%</td><td>0.42%</td><td>0.56</td><td>-5.21%</td><td>-4.68%</td><td>0.53</td><td>improved_when_active</td></tr><tr><td>2026-02-20</td><td>2026-03-02</td><td>121</td><td>7</td><td>5.79%</td><td>7.11%</td><td>7.69%</td><td>0.57</td><td>-3.94%</td><td>-3.94%</td><td>0.00</td><td>return_up_but_dd_not_better</td></tr><tr><td>2026-02-25</td><td>2026-03-07</td><td>79</td><td>0</td><td>0.00%</td><td>4.99%</td><td>4.99%</td><td>0.00</td><td>-4.52%</td><td>-4.52%</td><td>0.00</td><td>inactive_window</td></tr></tbody></table>
+      <h4>如果把这刀 mixed-tail overlay 再压成更前瞻的 non-overlap forward blocks，它还站得住吗？</h4>
+      <ul>
+        <li><b>先说结论：</b>比单段 tail 更诚实，但也还没强到能直接放行。把 <code>ETH+SOL pair halfsize</code> 当基线、把 mixed-tail overlay 当“下一刀 protective gate”后，当前有动作的 <code>5-day</code> forward blocks 约有 <code>1/2</code> 个仍优于基线；更长的 <code>10-day</code> blocks 则约有 <code>1/2</code> 个为正。</li>
+        <li><b>最好的 <code>5-day</code> block：</b>约 <code>2026-02-17</code> 到 <code>2026-02-22</code>，相对基线累计改善约 <code>0.55pp</code>，回撤也约改善 <code>0.51pp</code>；而且这格里真正被它打到的 mixed-tail target pocket 自己也约改善 <code>0.55pp</code>。</li>
+        <li><b>最需要诚实承认的 <code>5-day</code> block：</b>约 <code>2026-03-04</code> 到 <code>2026-03-09</code>，相对基线累计约 <code>-0.39pp</code>，而且 target pocket 自己的条件累计也约从 <code>0.77%</code> 回落到 <code>0.39%</code>（约 <code>-0.38pp</code>）。这说明它现在不是“整体 path 被非目标小时稀释”这么简单，而是真正出现了 <b>conditional pocket 自己也会翻弱</b> 的 block。</li>
+        <li><b>所以怎么读这张表：</b>有动作的 <code>5-day</code> active blocks 不只是 overall 路径上 `1/2` 正、`1/2` 负；就连 target mixed-tail pocket 自己也约是 <code>1/2</code> 正、<code>1/2</code> 负。换句话说，这刀现在还不能被包装成“target pocket 本身已稳定受益”的 conditional policy。</li>
+        <li><b>更长一点看：</b><code>10-day</code> 口径下，最弱 active block 约 <code>2026-02-27</code> 到 <code>2026-03-09</code>，相对基线累计约 <code>-0.40pp</code>，对应 target pocket 自己的条件累计也约 <code>-0.38pp</code>；最好的一格约改善 <code>0.57pp</code>。这说明把窗口放长后，它也没有自动变成稳定单调的 gate，而仍是 <b>mixed-but-not-dead</b> 的 protective candidate。</li>
+      </ul>
+      <table><thead><tr><th>block_start</th><th>block_end</th><th>active_hours</th><th>affected_hours</th><th>affected_hour_share</th><th>gate_cumulative_net_return</th><th>conditioned_cumulative_net_return</th><th>delta_vs_gate_pp</th><th>gate_max_drawdown</th><th>conditioned_max_drawdown</th><th>drawdown_improve_pp</th><th>conditional_cumulative_before</th><th>conditional_cumulative_after</th><th>conditional_delta_pp</th><th>reading</th></tr></thead><tbody><tr><td>2026-02-17</td><td>2026-02-22</td><td>83</td><td>12</td><td>14.46%</td><td>-2.25%</td><td>-1.71%</td><td>0.55</td><td>-5.02%</td><td>-4.51%</td><td>0.51</td><td>-1.10%</td><td>-0.55%</td><td>0.55</td><td>better_return_and_dd</td></tr><tr><td>2026-02-22</td><td>2026-02-27</td><td>58</td><td>0</td><td>0.00%</td><td>4.88%</td><td>4.88%</td><td>0.00</td><td>-3.94%</td><td>-3.94%</td><td>0.00</td><td>-</td><td>-</td><td>-</td><td>inactive_block</td></tr><tr><td>2026-02-27</td><td>2026-03-04</td><td>42</td><td>0</td><td>0.00%</td><td>2.45%</td><td>2.45%</td><td>0.00</td><td>-3.87%</td><td>-3.87%</td><td>0.00</td><td>-</td><td>-</td><td>-</td><td>inactive_block</td></tr><tr><td>2026-03-04</td><td>2026-03-09</td><td>52</td><td>21</td><td>40.38%</td><td>3.43%</td><td>3.03%</td><td>-0.39</td><td>-2.41%</td><td>-2.41%</td><td>0.00</td><td>0.77%</td><td>0.39%</td><td>-0.38</td><td>worse_than_gate</td></tr></tbody></table>
+      <h4>mixed-tail overlay 的 <code>10-day</code> forward blocks</h4>
+      <table><thead><tr><th>block_start</th><th>block_end</th><th>active_hours</th><th>affected_hours</th><th>affected_hour_share</th><th>gate_cumulative_net_return</th><th>conditioned_cumulative_net_return</th><th>delta_vs_gate_pp</th><th>gate_max_drawdown</th><th>conditioned_max_drawdown</th><th>drawdown_improve_pp</th><th>conditional_cumulative_before</th><th>conditional_cumulative_after</th><th>conditional_delta_pp</th><th>reading</th></tr></thead><tbody><tr><td>2026-02-17</td><td>2026-02-27</td><td>141</td><td>12</td><td>8.51%</td><td>2.52%</td><td>3.09%</td><td>0.57</td><td>-5.02%</td><td>-4.51%</td><td>0.51</td><td>-1.10%</td><td>-0.55%</td><td>0.55</td><td>better_return_and_dd</td></tr><tr><td>2026-02-27</td><td>2026-03-09</td><td>94</td><td>21</td><td>22.34%</td><td>5.96%</td><td>5.56%</td><td>-0.40</td><td>-4.52%</td><td>-4.52%</td><td>0.00</td><td>0.77%</td><td>0.39%</td><td>-0.38</td><td>worse_than_gate</td></tr></tbody></table>
+      <p class="note">一句话版：<code>pair halfsize + down+flat mixed-tail protection</code> 这刀已经不只是单格 pocket——active rolling walk-forward 窗口当前约 <code>3/3</code> 个仍为正；但一压成更克制的 non-overlap forward blocks，<code>5-day</code> 与 <code>10-day</code> 仍都是 <code>1/2</code> 正、<code>1/2</code> 负。更关键的是，这个 split verdict 不是被非目标小时稀释出来的假象：target mixed-tail pocket 自己在 active <code>5-day</code> blocks 里也约是 <code>1/2</code> 正。更诚实的位置因此仍不是“快过 gate 了”，而是 <b>still shadow-only / promising but mixed gate candidate</b>。</p>
+      <h4>如果把 mixed-tail overlay 也翻成 cumulative shadow review checkpoints，它会不会比 non-overlap blocks 更稳？</h4>
+      <ul>
+        <li><b>先说结论：</b>会更稳一些，但还没稳到能改写 verdict。把 mixed-tail overlay 从首个触发日开始，按 <code>5/10/15/20-day</code> cumulative review checkpoint 看，当前有动作的 <code>4/4</code> 个 checkpoint 仍优于默认 <code>pair halfsize</code> 基线。</li>
+        <li><b>最需要诚实承认的 checkpoint：</b><code>20</code> 天 review 时，相对基线累计仍只有约 <code>0.19pp</code>，回撤改善约 <code>0.49pp</code>；这说明它就算没翻负，也还只是 very-thin edge。</li>
+        <li><b>更长一点的 cumulative read：</b>到 <code>20</code> 天时，相对默认基线的累计改善约 <code>0.19pp</code>，最强 checkpoint 约出现在 <code>15</code> 天，累计改善约 <code>0.59pp</code>。</li>
+        <li><b>所以怎么读：</b>这层 cumulative review 说明 mixed-tail overlay 不是“前瞻一看就塌”的假 gate；但一旦切回更克制的 non-overlap forward blocks 与 target-pocket conditional honesty，它仍会给出 split verdict。更诚实的写法因此仍是：<b>shadow honesty better than first glance, but not enough to replace default pair candidate</b>。</li>
+      </ul>
+      <table><thead><tr><th>review_days</th><th>checkpoint_start</th><th>checkpoint_end</th><th>active_hours</th><th>affected_hours</th><th>affected_hour_share</th><th>gate_cumulative_net_return</th><th>conditioned_cumulative_net_return</th><th>delta_vs_gate_pp</th><th>gate_max_drawdown</th><th>conditioned_max_drawdown</th><th>drawdown_improve_pp</th><th>reading</th></tr></thead><tbody><tr><td>5</td><td>2026-02-17</td><td>2026-02-22</td><td>83</td><td>12</td><td>14.46%</td><td>-2.25%</td><td>-1.71%</td><td>0.55</td><td>-5.02%</td><td>-4.51%</td><td>0.51</td><td>checkpoint_still_positive</td></tr><tr><td>10</td><td>2026-02-17</td><td>2026-02-27</td><td>141</td><td>12</td><td>8.51%</td><td>2.52%</td><td>3.09%</td><td>0.57</td><td>-5.02%</td><td>-4.51%</td><td>0.51</td><td>checkpoint_still_positive</td></tr><tr><td>15</td><td>2026-02-17</td><td>2026-03-04</td><td>183</td><td>12</td><td>6.56%</td><td>5.03%</td><td>5.62%</td><td>0.59</td><td>-5.02%</td><td>-4.51%</td><td>0.51</td><td>checkpoint_still_positive</td></tr><tr><td>20</td><td>2026-02-17</td><td>2026-03-09</td><td>235</td><td>33</td><td>14.04%</td><td>8.63%</td><td>8.82%</td><td>0.19</td><td>-5.02%</td><td>-4.52%</td><td>0.49</td><td>checkpoint_still_positive</td></tr></tbody></table>
+      <p class="note">一句话版：mixed-tail overlay 的 cumulative checkpoints 如果只看累计路径，当前约是 <code>4/4</code> 仍为正；但因为 non-overlap blocks 与 target-pocket honesty 还是 split，所以它依然只能停在 <b>shadow-only gate</b>，不能改写 breakout 的 <code>one_more_gate</code>。</p>
+      <h4>把这 37 个 mixed-tail 受影响小时按真实时间段拆开：这刀到底是 test 证据，还是主要靠 train carry？</h4>
+      <ul>
+        <li><b>先说结论：</b>更像后者。当前 <code>pair + down+flat mixed-tail overlay</code> 的约 <code>37</code> 个受影响小时，按真实时间顺序只会塌缩成约 <code>3</code> 段连续 episode；其中前两段都还是 <code>train × down + flat</code>，真正的 pure <code>test</code> 只有最后一段。</li>
+        <li><b>最大的 episode：</b>约 <code>2026-02-20 03:00</code> 到 <code>2026-02-20 09:00</code>，持续约 <code>7</code> 小时，条件累计改善约 <code>0.53pp</code>；但这段本身其实还是 <code>train × down + flat</code>，并不是新鲜的 forward-only test 口袋。</li>
+        <li><b>对 admission 最关键的 test 读法：</b>真正 pure <code>test × down + flat</code> 的 mixed-tail episode 只有约 <code>25</code> 小时（约 <code>2026-03-08 03:00</code> 到 <code>2026-03-09 03:00</code>），条件累计改善约 <code>0.26pp</code>。这说明 test 方向并没有死，但它依然只是单段小口袋，而不是多段重复出现的厚证据。</li>
+        <li><b>更硬一点的来源拆解：</b>把这三段 episode 的条件累计改善加总后，当前 mixed-tail overlay 的总 conditional delta 约 <code>0.81pp</code>；其中 <code>train</code> 两段合计约 <code>0.55pp</code>（约占 <code>68.22%</code>），pure <code>test</code> 那一段约 <code>0.26pp</code>（约占 <code>31.78%</code>）。所以它现在更像“train carry + 单段 test mixed-tail pocket 仍为正”，还不能诚实地写成“已有多段 forward test honesty 的 conditional gate”。</li>
+      </ul>
+      <table><thead><tr><th>episode_id</th><th>start_time</th><th>end_time</th><th>hours</th><th>hour_share_within_target</th><th>symbol_pair</th><th>split_mix</th><th>regime_mix</th><th>conditional_cumulative_before</th><th>conditional_cumulative_after</th><th>delta_pp</th><th>mean_hourly_return_before</th><th>mean_hourly_return_after</th><th>reading</th></tr></thead><tbody><tr><td>1</td><td>2026-02-17 02:00</td><td>2026-02-17 06:00</td><td>5</td><td>13.51%</td><td>ALL_ACTIVE</td><td>train</td><td>down + flat</td><td>-0.05%</td><td>-0.02%</td><td>0.03</td><td>-0.01%</td><td>-0.00%</td><td>train_residual</td></tr><tr><td>2</td><td>2026-02-20 03:00</td><td>2026-02-20 09:00</td><td>7</td><td>18.92%</td><td>ALL_ACTIVE</td><td>train</td><td>down + flat</td><td>-1.06%</td><td>-0.53%</td><td>0.53</td><td>-0.15%</td><td>-0.08%</td><td>train_residual</td></tr><tr><td>3</td><td>2026-03-08 03:00</td><td>2026-03-09 03:00</td><td>25</td><td>67.57%</td><td>ALL_ACTIVE</td><td>test</td><td>down + flat</td><td>-0.50%</td><td>-0.25%</td><td>0.26</td><td>-0.02%</td><td>-0.01%</td><td>late_mixed_tail_patch</td></tr></tbody></table>
+      <p class="note">一句话版：mixed-tail overlay 当前的约 <code>0.81pp</code> 条件改善里，大约 <code>68.22%</code> 仍来自两段 <code>train × down+flat</code>，真正 pure <code>test</code> mixed-tail 只贡献约 <code>0.26pp</code>。这让它更像“有方向但仍偏训练段 carry 的 shadow-only gate”，而不是已经能晋级的 admission patch。</p>
+    </section>
+    <section>
+      <h2>如果只看当前这段历史样本：breakout 还值得继续切更多 retrospective 近义片吗？</h2>
+      <ul>
+        <li><b>先说结论：</b>当前这段样本里，<b>不值得继续靠 retrospective 微切片来争 admission</b>。更诚实的读法是：default pair 仍该保留为 breakout 主候选，但当前历史样本本身已经把能回答的东西基本榨干了；下一份有效推进，必须来自新的 shadow / holdout 真正命中 pure-test / down-tail，而不是继续在同一段历史里补更多近义层。</li>
+        <li><b>default pair 为什么算“样本已榨干”：</b>就 deployment blocker 最相关的近距离口径看，它在 <code>48h down-risk zone</code> 里仍是 <code>0/109</code>，反过来只看 policy 自己打到的小时，未来 <code>48h</code> 内会接上 pure <code>down</code> 的也仍是 <code>0/44</code>；而 strict pure-test tail 再压成 <code>6h</code> blocks 后，真正有动作且为正的也只剩 <code>1/5</code>，而且就是最后那格 mixed-tail pocket。这说明当前样本里已经没有更多 near-down admission 证据可挖，只剩 very-thin tail survival。</li>
+        <li><b>mixed-tail 为什么也不能靠再切一刀就升格：</b>同样在最相关的近距离口径里，它在 <code>48h down-risk zone</code> 仍是 <code>0/109</code>、未来 <code>48h</code> 内也仍是 <code>0/37</code>；strict-tail <code>6h</code> blocks 继续停在 <code>2/4</code> 正、<code>2/4</code> 负。也就是说，当前样本最多还能证明 mixed-tail <b>没死</b>，但不能把它诚实升级成 admission clearance。</li>
+        <li><b>所以接下来该怎么推进：</b>breakout 这条线今天仍可继续保留，但默认动作应切换成 <b>current-sample admission freeze</b>：不再为同一段历史样本追加更多 board / wording / retrospective micro-slices；只有等新的 forward shadow / holdout 真正打到 pure-test/down-tail，并且同一段读法仍不翻负，才算下一次有效解锁。</li>
+      </ul>
+      <table><thead><tr><th>lane</th><th>current_status</th><th>pure_down_coverage</th><th>downrisk_48h_coverage</th><th>future_pure_down_48h_hits</th><th>strict_tail_block_reading</th><th>current_sample_reading</th><th>next_valid_progress</th></tr></thead><tbody>
+        <tr><td>default pair halfsize</td><td>one_more_gate / keep default candidate</td><td>0/100</td><td>0/109</td><td>0/44</td><td>1/5 active-positive; early blocks all inactive until the final mixed-tail pocket</td><td>current history slice no longer contains near-down admission evidence to mine</td><td>wait for fresh shadow/holdout hours that finally hit pure-test/down-tail without turning negative</td></tr>
+        <tr><td>down+flat mixed-tail overlay</td><td>shadow-only mixed gate</td><td>0/63</td><td>0/109</td><td>0/37</td><td>2/4 positive; 2/4 negative</td><td>current sample can keep it alive as shadow evidence, but cannot promote it</td><td>only revisit if new forward/shadow blocks stop splitting and the target pocket stays positive</td></tr>
+        <tr><td>breakout line (today)</td><td>current-sample admission freeze / keep one_more_gate</td><td>0/63</td><td>0/109</td><td>0/44 (default) / 0/37 (mixed)</td><td>default only 1/5 active-positive; mixed still 2/4 split</td><td>same-sample retrospective slicing is basically exhausted for admission</td><td>next useful evidence must come from fresh forward shadow/holdout, not more re-slicing of the same history</td></tr>
+      </tbody></table>
+      <p class="note">一句话版：breakout 不是今天就该 park，但这段历史样本已经不值得继续靠 retrospective 近义片去争放行。当前最诚实的位置是 <b>keep default pair + freeze same-sample admission slicing + 等新的 forward / shadow down-tail 证据</b>。</p>
+    </section>
+    <section>
+      <h2>如果把 breakout 当前 scope 压成一句 deployment verdict：它到底更像什么？</h2>
+      <ul>
+        <li><b>先说结论：</b>当前这条 breakout 线更诚实的定位，应压成 <b><code>up-flat biased conditional alpha</code></b>，而不是通用 breakout-short，更不是 near-down protective policy。也就是说：它仍值得保留成 shadow-admission candidate，但 scope 必须明确收窄。</li>
+        <li><b>为什么是这个读法：</b>default <code>ETH+SOL pair halfsize</code> 确实把 gate-only hourly path 从约 <code>15.46%</code> 抬到约 <code>19.90%</code>，说明这条线不是已经失效；但当前命中的纯 regime 小时仍主要集中在 <code>up=28</code>、<code>flat=14</code>，pure <code>down=0</code>。换句话说，它现在更像“在 up/flat 条件口袋里还能继续站得住的 conditional alpha”，而不是已经碰到 down-tail blocker 的 protection policy。</li>
+        <li><b>为什么不能把它包装得更大：</b>default pair 在 pure <code>down</code> 上仍是 <code>0/100</code>；在最相关的 <code>48h down-risk zone</code> 里也仍是 <code>0/109</code>；反过来只看 policy 自己命中的小时，未来 <code>48h</code> 会接上 pure <code>down</code> 的也仍是 <code>0/44</code>。这等于直接说明：当前证据还没有资格把它写成 near-down protective gate。</li>
+        <li><b>所以 scope 边界该怎么写：</b>今天只该老老实实写成 <code>BNB/BTC/ETH/SOL × 60m × support_breakout_raw @ h24 × avoid_fluctuating × ETH+SOL pair halfsize</code> 这条窄 candidate。若继续往外泛化成“更广 breakout short 模板”，那就是超出证据。</li>
+        <li><b>下一次什么才算有效推进：</b>不是再给同一段历史样本补更多 micro-slice / wording，而是等新的 forward shadow / holdout 真正命中 <code>pure-test/down-tail</code>，并且同一段读法仍不翻负。当前 strict pure-test <code>6h</code> blocks 里，default pair 仍只到 <code>1/5</code> active-positive，这就是 same-sample freeze 还不能解除的原因。</li>
+      </ul>
+      <table><thead><tr><th>问题</th><th>当前答案</th><th>关键证据</th><th>这意味着什么</th></tr></thead><tbody><tr><td>当前最诚实的 scope 是什么</td><td>up-flat biased conditional alpha / shadow-admission candidate</td><td>default pair 仍把 gate-only hourly path 从约 <code>15.46%</code> 抬到约 <code>19.90%</code>；当前纯 regime 命中小时主要仍是 <code>up=28 / flat=14 / pure down=0</code></td><td>breakout 线还值得保留，但应该被理解为条件性 alpha，而不是通用 short 模板</td></tr><tr><td>当前最不该误读成什么</td><td>不是 near-down protective policy</td><td>pure <code>down</code> 覆盖仍是 <code>0/100</code>；<code>48h down-risk zone</code> 仍是 <code>0/109</code>；future pure-down <code>48h</code> 仍是 <code>0/44</code></td><td>当前 blocker 是硬证据缺口，不是措辞问题</td></tr><tr><td>当前边界该怎么写</td><td><code>BNB/BTC/ETH/SOL × 60m × support_breakout_raw @ h24 × avoid_fluctuating × ETH+SOL pair halfsize</code></td><td>这是当前唯一保留下来的 default lane；mixed-tail 仍只配 shadow-only，blunt pure-down 仍是 reject sanity check</td><td>这是窄 scope 的 shadow-admission candidate，不可外推成更广 breakout-short policy</td></tr><tr><td>下一次什么才算有效推进</td><td>等待 fresh forward shadow/holdout 真正命中 pure-test/down-tail 且同段读法仍不翻负</td><td>same-sample retrospective slicing 已基本榨干；strict pure-test <code>6h</code> blocks 当前 default 仍只到 <code>1/5</code> active-positive</td><td>继续补近义 board / wording 不会改写 verdict；下一刀必须来自 fresh honesty evidence</td></tr></tbody></table>
+      <p class="note">一句话版：当前 breakout 最诚实的 project-level 写法，不是“快要成为通用 protective short”，而是 <b>一条 up-flat biased conditional alpha / one_more_gate candidate</b>；只有等新的 forward / shadow 证据真正碰到 pure-test/down-tail，这个 scope 才有资格再往前走。</p>
+      <p class="note">artifact：<code>reports/artifacts/support_breakout_v0_h24/avoid_fluctuating_scope_verdict_20bps.csv</code></p>
+    </section>
+    <section>
+      <h2>如果把当前 breakout conditional policy 压成一张 admission queue，会得出什么排位？</h2>
+      <ul>
+        <li><b>先说结论：</b>今天最值得保留的还是 <code>gate-only -> default pair halfsize</code> 这条主链；<code>down+flat mixed-tail overlay</code> 只能排在它后面，作为 <b>shadow-only</b> 的下一道 gate；而 <code>blunt pure-down overlay</code> 则更像已经做过的反向 sanity check，不是待晋级候选。</li>
+        <li><b>为什么这张 queue 有用：</b>它把“要不要继续往 strategy / paper admission 推”翻成了几条具体 policy 的对照，而不是继续在抽象 blocker 上打转。现在可以更明确地说：默认主候选已经够资格继续占着 breakout 的默认位，但 mixed-tail 这刀还只配 shadow 观察；pure-down 机械补丁则已经可以从主候选队列里移开。</li>
+        <li><b>更硬一点的 deployment 读法：</b>如果 Jerry 现在只想知道“breakout 线还能不能继续往前推”，答案是 <b>能，但只能沿 default pair candidate 继续推</b>；mixed-tail overlay 只值得保留成 one-more-gate 的附加观察项，而不是把 admission verdict 从 <code>one_more_gate</code> 改写成 <code>shadow paper now</code>。</li>
+      </ul>
+      <table><thead><tr><th>policy</th><th>对照基线</th><th>受影响小时</th><th>overall累计</th><th>相对对照delta(pp)</th><th>最大回撤</th><th>strict tail总小时</th><th>strict tail命中小时</th><th>strict tail delta(pp)</th><th>down-tail总小时</th><th>down-tail命中小时</th><th>down-tail覆盖率</th><th>5d正向块</th><th>5d活跃块</th><th>10d正向块</th><th>10d活跃块</th><th>当前verdict</th><th>一句话读法</th></tr></thead><tbody><tr><td>gate-only baseline</td><td>raw_v0</td><td>-</td><td>15.46%</td><td>-</td><td>-9.97%</td><td>-</td><td>-</td><td>-</td><td>100</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>baseline only</td><td>先保留成 sizing 前基线；还没回答 admission honesty。</td></tr><tr><td>default pair halfsize</td><td>gate-only baseline</td><td>44</td><td>19.90%</td><td>4.44</td><td>-9.04%</td><td>30</td><td>5</td><td>0.77</td><td>100</td><td>0</td><td>0.00%</td><td>3</td><td>4</td><td>2</td><td>2</td><td>keep / default candidate</td><td>默认主候选仍值得保留，但正式 verdict 仍是 one_more_gate。</td></tr><tr><td>pair + down+flat mixed-tail overlay</td><td>default pair halfsize</td><td>37</td><td>20.88%</td><td>0.98</td><td>-8.53%</td><td>25</td><td>25</td><td>0.26</td><td>100</td><td>0</td><td>0.00%</td><td>1</td><td>2</td><td>1</td><td>2</td><td>shadow-only mixed gate</td><td>方向没死，但更诚实的位置只能写成 shadow-only mixed gate candidate。</td></tr><tr><td>pair + blunt pure-down overlay</td><td>default pair halfsize</td><td>63</td><td>19.48%</td><td>-0.42</td><td>-7.96%</td><td>30</td><td>0</td><td>0.00</td><td>100</td><td>63</td><td>63.00%</td><td>-</td><td>-</td><td>-</td><td>-</td><td>reject blunt patch</td><td>能补 pure-down 覆盖，但 current strict pure-test tail 仍 untouched，且 overall path 回落。</td></tr></tbody></table>
+      <p class="note">读这张表的方法很简单：<b>overall path</b> 看有没有把主路径继续抬起来；<b>strict tail</b> 看它有没有在更硬的尾段里给出诚实增量；<b>down-tail coverage</b> 看 hard gap 到底有没有真的被触碰；<b>forward 5d/10d</b> 则看这刀是不是一进更前瞻口径就散架。当前结果对应的最诚实排位就是：<b>default pair halfsize = keep；mixed-tail overlay = shadow-only；blunt pure-down = reject。</b></p>
+    </section>
+    <section>
+      <h2>如果只看 deployment blocker：这条 breakout 线的 <code>one_more_gate</code> 到底卡在哪？</h2>
+      <ul>
+        <li><b>这节的目标：</b>不再继续堆近义解释，而是把已经做过的 evidence 压成一张 blocker checklist，让 Jerry 一眼看到“哪些已经过 first-pass、哪些还不能放行”。</li>
+        <li><b>最重要的读法：</b>default pair candidate 已经足够说明 breakout 不是纯幻觉；但真正把它卡在 <code>one_more_gate</code> 的，已经收敛成 <b>pure-test tail 仍薄 + down-tail coverage 仍是 0/100</b> 这两件事。</li>
+        <li><b>mixed-tail 与 blunt pure-down 怎么看：</b><code>mixed-tail overlay</code> 继续保留成 <b>shadow-only</b> 附加 gate；<code>blunt pure-down</code> 则可正式视为做过的 reject sanity check，不再误读成现成补丁。</li>
+      </ul>
+      <table><thead><tr><th>gate</th><th>当前状态</th><th>关键证据</th><th>deployment 读法</th></tr></thead><tbody><tr><td>组合层 hourly path 是否已不是主 blocker</td><td>已过 first-pass</td><td>default pair 相对 gate-only 累计 +4.44pp；maxDD 改善 0.93pp</td><td>breakout 不再只是 per-asset 幻觉，可以继续沿 default pair 主候选看 admission。</td></tr><tr><td>更长 forward honesty 是否已从 lucky patch 提高到 usable</td><td>usable 但未放行</td><td>5d=3/4；10d=2/2</td><td>一般性 late-segment 焦虑在下降，但这还不是 admission clearance。</td></tr><tr><td>pure-test tail 自身是否已经够厚</td><td>仍偏薄</td><td>strict tail=0.77pp on 5/30h；pre-mixed 72h=0.08pp on 3h</td><td>前半段 pure-test 仍更像“没翻负”，还不足以单独解除 one_more_gate。</td></tr><tr><td>down-tail coverage hard gap 是否已补上</td><td>硬缺口未补</td><td>0/100 = 0.00%</td><td>这是 breakout 当前最硬的 blocker；不是 wording 问题。</td></tr><tr><td>mixed-tail overlay 能否直接改写 verdict</td><td>shadow-only</td><td>strict tail=0.26pp；5d=1/2；10d=1/2</td><td>它可以继续当附加 gate 观察项，但还不能替代 default pair 主候选。</td></tr><tr><td>blunt pure-down patch 能否当现成补丁</td><td>reject</td><td>coverage=63/100；overall delta=-0.42pp</td><td>说明 blocker 虽然像 down-tail，却不能靠 pure-down 一刀切机械解除。</td></tr><tr><td>最终 deployment verdict</td><td>one_more_gate</td><td>keep default pair / mixed-tail 仅 shadow-only / blunt pure-down reject</td><td>还能继续推 breakout，但默认只该沿 default pair 主候选推进。</td></tr></tbody></table>
+      <p class="note">一句话版：现在最需要补的已不再是“有没有统一资金曲线”，而是更具体的 admission blocker——<b>default pair 的 pure-test tail 还太薄，且 pure down coverage 仍是 0/100</b>。所以 breakout 还能继续推，但只能沿 default pair 主候选继续推。</p>
+    </section>
+    <section>
+      <h2>如果不想再反复解释：这条 breakout 线的 <code>one_more_gate</code> 具体怎样才算过关？</h2>
+      <ul>
+        <li><b>这节只做一件事：</b>把当前 evidence 直接翻成执行型 protocol：默认主线怎么继续、mixed-tail 什么时候仍只能 shadow-only、以及 blunt pure-down 为什么继续只该留在 reject。</li>
+        <li><b>最重要的读法：</b>现在并不是“breakout 不能继续”，而是 <b>只能沿 default pair 主候选继续</b>；除非后续 forward / shadow 证据终于真正碰到 pure <code>down</code>，否则这条线就不该从 <code>one_more_gate</code> 升成 <code>shadow paper now</code>。</li>
+        <li><b>为什么这张表有用：</b>它直接回答 Jerry 接下来该怎么看——哪些结果算有效推进，哪些结果只是在继续补 wording，哪些分支已经可以明确当 reject sanity check 处理。</li>
+      </ul>
+      <table><thead><tr><th>lane</th><th>当前位置</th><th>什么情况下才算能往下一步走</th><th>什么情况下继续卡住</th><th>什么情况下该 park / reject</th></tr></thead><tbody><tr><td>default pair halfsize（主候选）</td><td>keep default candidate / one_more_gate</td><td>后续更前瞻的 shadow/holdout 终于命中 pure down 小时（当前仅 0/100），且同一段 pure-test / down-tail 读法仍不翻负。</td><td>strict pure-test 仍只像现在这样约 0.77pp on 5/30h，同时 pure down coverage 继续停在 0/100。</td><td>若后续新增的 pure-test / down-tail slice 自身翻负，而 mixed-tail 也守不住，就该考虑 park，而不是继续补近义 wording。</td></tr><tr><td>down+flat mixed-tail overlay（紧邻子点）</td><td>shadow-only mixed gate</td><td>target mixed-tail pocket 自身不再给 split verdict：至少 forward blocks 不再停在当前 5d=1/2、10d=1/2，且 strict-tail 6h blocks 也不再只是 2/4 为正。</td><td>只要它仍主要靠单段 mixed tail / train carry，或 non-overlap blocks 继续正负对半开，就继续只配 shadow-only。</td><td>若更长一点的 forward / conditional pocket 也持续转弱，就不该再把它当 admission clearance 候选。</td></tr><tr><td>blunt pure-down overlay（反向 sanity check）</td><td>reject blunt patch</td><td>默认不重开；除非未来出现更细的 down-tail protection，既能补 coverage，又不拖累 default pair 的 overall path。</td><td>只要结果还像当前这样 coverage=63/100，但 overall delta=-0.42pp 为负，它就不是 admission 补丁。</td><td>继续留作 reject sanity check，不再抢主资源。</td></tr><tr><td>整条 breakout 线</td><td>continue, but only via default pair main lane</td><td>下一次若能把主候选推进到更接近 shadow / paper admission，就该优先交真正命中 pure-test/down-tail 的前瞻证据，而不是再新增 board 近义层。</td><td>如果新增工作仍主要只是 mixed-tail wording、近义 checklist，或不触及 pure-test / down-tail honesty，正式 verdict 继续维持 one_more_gate。</td><td>若主候选后续连 pure-test / down-tail 也守不住，就该明确转 park，而不是无限续命。</td></tr></tbody></table>
+      <p class="note">一句话版：继续是可以继续的，但过关条件现在已经很明确——<b>default pair 必须终于交出 pure-test / down-tail 的前瞻证据</b>；mixed-tail 在 non-overlap / target-pocket honesty 没摆脱 split verdict 前，都继续只配 <b>shadow-only</b>。</p>
+    </section>
+    <section>
+      <h2>admission verdict：这条 breakout 线今天够不够进 shadow paper？</h2>
+      <ul>
+        <li><b>先给结论：</b>还不够。当前更硬一点的 verdict 应该明确写成 <b><code>one_more_gate</code></b>，而不是 <code>shadow paper now</code>。</li>
+        <li><b>为什么不是直接否掉：</b>这条线已经不再只是 per-asset 幻觉。现在至少已经补齐了 <code>20bps</code> 下的统一资金曲线、<code>avoid_fluctuating</code> gate、默认 <code>ETH+SOL pair-conditioned halfsize</code> sizing 候选，以及一刀更严格的 rolling honesty；对应 hourly path 已从 raw 的约 <code>14.04%</code>，推进到 gate-only 的约 <code>15.46%</code>，再到默认 sizing candidate 的约 <code>19.90%</code>；max drawdown 也约从 <code>-12.03%</code> 收窄到约 <code>-9.04%</code>。所以它已经比“只是个策略想法”更接近 shadow paper。</li>
+        <li><b>但为什么还不能放行：</b>当前最缺的已经不是组合层资金曲线，而是 <b>默认 sizing candidate 的 pure-test / admission honesty</b>。它在更严格口径下的 late-segment 证据其实已经比前几轮更硬：<code>5-day</code> non-overlap blocks 是 <code>3/4</code> 改善、<code>1/4</code> 小回吐，而把窗口放长到 <code>10-day</code> 后，当前有动作的 <code>2/2</code> 个 block 都仍优于 gate-only；更严格地只看从首个 pure <code>test</code> 触发到样本末尾的 tail，这段也仍约改善 <code>0.77pp</code>。但问题是：pure <code>test</code> 真正被它修到的目标 pocket 仍只有约 <code>5</code> 个小时，对应条件累计改善也只有约 <code>0.76pp</code>，strict tail 本身也只有约 <code>30</code> 个小时。更关键的是，若把 hard gap 粗暴地改成“所有 pure <code>down</code> active hours 一律再砍半”，overall path 反而会从约 <code>19.90%</code> 回落到约 <code>19.48%</code>；这说明 blocker 虽然长得像 down-tail，却不能靠 blunt down-only overlay 机械解除。</li>
+        <li><b>主缺口排位：</b><b>#1 = pure-test / down-tail honesty</b>；<b>#2 = 更长窗口下继续确认 transferability</b>（当前 <code>10-day</code> non-overlap 已是 <code>2/2</code> 改善，说明一般性 late-segment 焦虑在下降）；<b>#3 才不是 portfolio honesty</b>，因为统一 hourly path / 1-slot / equal-weight 这层现在已经有 first-pass 证据，不再是最主要的未知数。</li>
+        <li><b>因此今天最诚实的 deployment scope：</b>只适合继续当 <b>breakout-short 的 shadow-admission candidate</b> 来观察，不适合现在就写成可直接开跑的默认 shadow paper policy。当前 pocket 也应明确写死在已有证据范围：<code>BNB-USD, BTC-USD, ETH-USD, SOL-USD</code>、<code>60m</code>、<code>support_breakout_raw @ h24</code>、先过 <code>avoid_fluctuating</code>，再在残余 <code>ETH+SOL</code> 两仓小时做 <code>0.5x</code>。</li>
+      </ul>
+      <table>
+        <thead>
+          <tr><th>admission 问题</th><th>当前答案</th><th>这意味着什么</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>市场 / 频率 / policy scope 是否明确？</td>
+            <td>是。当前只对应 <code>BNB-USD, BTC-USD, ETH-USD, SOL-USD</code>、<code>60m</code>、<code>support_breakout_raw @ h24</code>、<code>avoid_fluctuating + ETH+SOL pair halfsize</code>。</td>
+            <td>这是一个很窄的 shadow-admission candidate，不是通用 breakout short 模板。</td>
+          </tr>
+          <tr>
+            <td>组合 / 资金曲线 honesty 是否还是主 blocker？</td>
+            <td>不是主 blocker。已有 raw / gate-only / pair-conditioned 的 <code>20bps hourly path</code>，以及 <code>1-slot</code> / <code>equal-weight</code> 对照。</td>
+            <td>可以停止再问“是不是只靠 per-asset 幻觉”，把主精力转向 sizing 迁移性。</td>
+          </tr>
+          <tr>
+            <td>默认 sizing candidate 是否已足够稳定？</td>
+            <td>还不够。active rolling windows 里是 <code>3</code>/<code>6</code> 个窗口真正触发且都改善；更诚实的 non-overlap 口径下，<code>5-day</code> blocks 是 <code>3/4</code> 改善，而 <code>10-day</code> blocks 当前有动作的 <code>2/2</code> 仍都为正；进一步只看 strict pure <code>test</code> tail，也仍约改善 <code>0.77pp</code>。但这段 tail 自己也只有约 <code>30</code> 个小时，而且 `down-tail coverage` 当前仍约 <code>0/100</code>（约 <code>0.00%</code>）。</td>
+            <td>说明它已经值得保留，但还不够升成“现在就去 shadow paper”的默认规则；一般性 late-segment 焦虑已减弱，剩下更像是 <code>pure-test / down-tail</code> 这类更具体的 blocker。</td>
+          </tr>
+          <tr>
+            <td>最终 verdict</td>
+            <td><b><code>one_more_gate</code></b>（closest breakout candidate, but not shadow-paper-ready）</td>
+            <td>下一刀默认先盯 <b>pair candidate 上的 mixed down-tail protective gate</b> 是否能在更前瞻的 shadow / walk-forward 里守住；更长 forward windows 仍要继续看，但不必先回到泛化新变体。</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">一句话版：当前 breakout 线已经足够进入 <b>shadow-admission queue</b>，但还不够直接放行为默认 shadow paper policy；现在更诚实的说法已不是“它会不会只是后半段 lucky patch”，而是“它在更长窗口与 strict pure-test tail 里都暂时没翻负，但 <code>pure-test / down-tail</code> 证据仍太薄，还没过关”。</p>
+    </section>
+    <section>
+      <h2>如果把 confirm_1 也放进同一套成本 / 执行框架，谁更像该继续保留的原型？</h2>
+      <ul>
+        <li><b>先说结论：</b>当前 first-pass 下，<code>support_breakout_confirm_1 @ h24</code> 还没有表现出比 <code>raw</code> 更诚实的执行层优势；它更像该保留的紧邻确认变体，而不是能取代 raw 的主原型。</li>
+        <li><b>20bps、每资产独立记账：</b><code>raw</code> 累计约 <code>75.03%</code>，高于 <code>confirm_1</code> 的约 <code>59.38%</code>。</li>
+        <li><b>允许并发但入场均分资金：</b><code>raw</code> 的 <code>equal-weight concurrent(entry)</code> 累计约 <code>19.40%</code>，仍高于 <code>confirm_1</code> 的约 <code>12.04%</code>。</li>
+        <li><b>再往前推到更正式的 hourly mark-to-market path：</b><code>raw</code> 的统一资金曲线 <code>20bps</code> 累计约 <code>14.04%</code>、max drawdown 约 <code>-12.03%</code>；<code>confirm_1</code> 对应约 <code>11.54%</code> / <code>-13.60%</code>，说明一旦把两者都放进更正式一点的统一资金曲线里，`confirm_1` 也没有反超 raw。</li>
+        <li><b>最保守的 1-slot global：</b><code>raw</code> 在 <code>20bps</code> 下累计约 <code>13.83%</code>，而 <code>confirm_1</code> 约 <code>5.06%</code>；同时 <code>confirm_1</code> 的 <code>test + 20bps</code> 也更弱（约 <code>-5.56%</code>）。</li>
+      </ul>
+      <table><thead><tr><th>strategy</th><th>trades</th><th>gross_cumulative_return</th><th>cost20_cumulative_return</th><th>test_cost20_cumulative_return</th><th>up_cost20_cumulative_return</th><th>equal_weight_cost20_cumulative_return</th><th>equal_weight_mean_effective_weight</th><th>hourly_path_cost20_cumulative_return</th><th>hourly_path_max_drawdown</th><th>slot1_cost20_cumulative_return</th><th>slot1_trade_keep_ratio</th></tr></thead><tbody><tr><td>raw_v0</td><td>48</td><td>92.45%</td><td>75.03%</td><td>-3.08%</td><td>-2.98%</td><td>19.40%</td><td>42.36%</td><td>14.04%</td><td>-12.03%</td><td>13.83%</td><td>29.17%</td></tr><tr><td>confirm_1</td><td>47</td><td>74.91%</td><td>59.38%</td><td>-5.56%</td><td>16.86%</td><td>12.04%</td><td>42.55%</td><td>11.54%</td><td>-13.60%</td><td>5.06%</td><td>27.66%</td></tr></tbody></table>
+      <p class="note">一句话版：<code>confirm_1</code> 现在仍值得作为 <b>co-primary confirmation variant</b> 保留，但在同一套成本 / capital-allocation first-pass 下，它还没有证明自己比 <code>raw</code> 更像该继续押注的 breakout-short 主原型。</p>
+    </section>
+    <section>
+      <h2>plain-language：raw / confirm_1 / feature-watch 到底怎么区分？</h2>
+      <ul>
+        <li><b><code>support_breakout_raw @ h24</code>：</b>当前最应该读成 <b>可交易原型 / 条件性 alpha</b>。原因不是它已经成熟，而是它已经能被压成一个最小、可解释、可继续补 honesty 的 v0 页面。</li>
+        <li><b><code>support_breakout_confirm_1 @ h24</code>：</b>当前更像 <b>co-primary confirmation variant</b>，不是 feature/watchlist。它代表“同方向、但更保守一点”的 breakout-short 候选，后续若继续做执行/成本/环境约束验证，应该和 raw 一起被当成主保留对象，而不是被降成纯观察项。</li>
+        <li><b>什么才叫 feature/watchlist？</b> 像 <code>support_rebound_confirm_1</code> 那样：保留一些信息价值，但目前不该直接往主 alpha / 原型页继续压。也就是说，当前 <code>raw / confirm_1</code> 不属于这一类。</li>
+        <li><b>如果今天只能保留一个 strategy-facing 原型页：</b>先保留 <code>raw</code>，因为它更直接、入场不延迟，也已经能给出最小策略化读法。</li>
+        <li><b>如果要保留一个紧邻确认变体做 next-step honesty check：</b>保留 <code>confirm_1</code>，但先不要把它扩成第二条大而全独立策略线。</li>
+      </ul>
+      <p class="note">一句话版：<code>raw</code> = 现在就值得当 v0 原型继续验证；<code>confirm_1</code> = 仍是主保留候选，但更像保守确认变体；<code>feature/watchlist</code> = 当前不该套在这两个对象上的标签。</p>
+    </section>
+    <section>
+      <h2>总体指标</h2>
+      <table><thead><tr><th>strategy</th><th>trades</th><th>assets</th><th>mean_return</th><th>median_return</th><th>win_ratio</th><th>cumulative_return</th><th>max_drawdown</th><th>avg_entry_delay_bars</th></tr></thead><tbody><tr><td>v0_breakout</td><td>48</td><td>4</td><td>1.44%</td><td>1.52%</td><td>64.58%</td><td>92.45%</td><td>-19.11%</td><td>0.00</td></tr></tbody></table>
+    </section>
+    <section>
+      <h2>按资产拆分</h2>
+      <table><thead><tr><th>strategy</th><th>symbol</th><th>trades</th><th>mean_return</th><th>median_return</th><th>win_ratio</th><th>cumulative_return</th><th>max_drawdown</th><th>avg_entry_delay_bars</th></tr></thead><tbody><tr><td>v0_breakout</td><td>BNB-USD</td><td>12</td><td>1.39%</td><td>1.16%</td><td>66.67%</td><td>17.47%</td><td>-4.76%</td><td>0.00</td></tr><tr><td>v0_breakout</td><td>BTC-USD</td><td>12</td><td>1.31%</td><td>1.49%</td><td>75.00%</td><td>16.31%</td><td>-4.27%</td><td>0.00</td></tr><tr><td>v0_breakout</td><td>ETH-USD</td><td>12</td><td>1.38%</td><td>0.89%</td><td>58.33%</td><td>16.59%</td><td>-6.08%</td><td>0.00</td></tr><tr><td>v0_breakout</td><td>SOL-USD</td><td>12</td><td>1.70%</td><td>1.64%</td><td>58.33%</td><td>20.81%</td><td>-7.46%</td><td>0.00</td></tr></tbody></table>
+    </section>
+    <section>
+      <h2>按时间切分拆分</h2>
+      <p class="muted">切分方式是按事件时间顺序做 60/20/20 的 train / validate / test，仅用于看方向是否在后段崩掉，不代表正式 walk-forward。</p>
+      <table><thead><tr><th>strategy</th><th>split</th><th>trades</th><th>mean_return</th><th>median_return</th><th>win_ratio</th><th>cumulative_return</th><th>max_drawdown</th><th>avg_entry_delay_bars</th></tr></thead><tbody><tr><td>v0_breakout</td><td>test</td><td>10</td><td>-0.09%</td><td>1.03%</td><td>60.00%</td><td>-1.12%</td><td>-3.76%</td><td>0.00</td></tr><tr><td>v0_breakout</td><td>train</td><td>28</td><td>1.65%</td><td>0.94%</td><td>60.71%</td><td>53.91%</td><td>-19.11%</td><td>0.00</td></tr><tr><td>v0_breakout</td><td>validate</td><td>10</td><td>2.41%</td><td>2.92%</td><td>80.00%</td><td>26.46%</td><td>-3.44%</td><td>0.00</td></tr></tbody></table>
+    </section>
+    <section>
+      <h2>按简单行情标签拆分</h2>
+      <p class="muted">这里的行情标签不是复杂 regime 模型，只是按入场前 24 根 60m bar 的价格变化粗分为 <code>up / flat / down</code>，目的是快速回答“这条策略在哪种环境更顺手”。</p>
+      <p class="note">最好的是 flat 行情（平均单笔 2.41%），最弱的是 up 行情（平均单笔 0.04%）。</p>
+      <table><thead><tr><th>strategy</th><th>regime</th><th>trades</th><th>mean_return</th><th>median_return</th><th>win_ratio</th><th>cumulative_return</th><th>max_drawdown</th><th>avg_entry_delay_bars</th></tr></thead><tbody><tr><td>v0_breakout</td><td>down</td><td>6</td><td>1.00%</td><td>1.07%</td><td>50.00%</td><td>5.98%</td><td>-1.11%</td><td>0.00</td></tr><tr><td>v0_breakout</td><td>flat</td><td>26</td><td>2.41%</td><td>2.17%</td><td>73.08%</td><td>81.27%</td><td>-12.12%</td><td>0.00</td></tr><tr><td>v0_breakout</td><td>up</td><td>16</td><td>0.04%</td><td>0.77%</td><td>56.25%</td><td>0.18%</td><td>-13.89%</td><td>0.00</td></tr></tbody></table>
+    </section>
+    </main>
+</body>
+</html>

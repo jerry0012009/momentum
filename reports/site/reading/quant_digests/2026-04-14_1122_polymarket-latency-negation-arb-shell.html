@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2026 PolySwarm 只读成“LLM 群聊预测系统”：对 short-cycle desk，更该先拆的是「CEX-implied probability × stale Polymarket quote」和「negation-pair parity gap」这两条 prediction-market raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2026 PolySwarm 只读成“LLM 群聊预测系统”：对 short-cycle desk，更该先拆的是「CEX-implied probability × stale Polymarket quote」和「negation-pair parity gap」这两条 prediction-market raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-14 11:24 UTC</span>
+      <span class="pill">研究时间：2026-04-14 11:22 UTC</span>
+      <span class="pill">类型：2026 arXiv working paper 全文抽取（本地 PDF）+ 公开 API/执行壳拆解</span>
+      <span class="pill">主题标签：raw-alpha/prediction-market/event-driven/relative-value/stat-arb/latency-arbitrage/stale-price/negation-pair/parity-gap/polymarket/binance/cex-dex/probability/kelly/1m/3m/5m/paper/fulltext/public-api/cost/risk</span>
+      <span class="pill">证据类型：全文公式 + 系统架构参数 + 可直接转成最小实验的公开数据接口</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-14_1122_polymarket-latency-negation-arb-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-14 11:22 UTC</li>
+<li>类型：2026 arXiv working paper 全文抽取（本地 PDF）+ 公开 API/执行壳拆解</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong><code>CEX-implied probability</code> 与 <code>Polymarket</code> 陈旧报价之间的价差回归 / 延迟修复；以及同平台 <code>P(E)+P(¬E)≠1</code> 的 negation-pair parity gap 收敛。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/prediction-market/event-driven/relative-value/stat-arb/latency-arbitrage/stale-price/negation-pair/parity-gap/polymarket/binance/cex-dex/probability/kelly/1m/3m/5m/paper/fulltext/public-api/cost/risk</li>
+<li>证据类型：全文公式 + 系统架构参数 + 可直接转成最小实验的公开数据接口</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主来源：</p>
+<ul>
+<li><strong>Authors：</strong> Rajat M. Barot, Arjun S. Borkhatariya</li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> *PolySwarm: A Multi-Agent Large Language Model Framework for Prediction Market Trading and Latency Arbitrage*</li>
+<li><strong>Venue：</strong> arXiv working paper / preprint</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://arxiv.org/abs/2604.03888&gt;">https://arxiv.org/abs/2604.03888&gt;</a></li>
+<li><strong>PDF URL：</strong> &lt;<a href="https://arxiv.org/pdf/2604.03888&gt;">https://arxiv.org/pdf/2604.03888&gt;</a></li>
+<li><strong>Repo URL：</strong> N/A（文中未给公开代码仓库）</li>
+</ul>
+<p>这篇 paper 表面最显眼的是“50 个 LLM persona 做 prediction-market trading”。但如果按我们当前 desk 的 intake 优先级来读，<strong>更值得单独拎出来的不是 LLM 群体预测本身，而是 paper 里已经写得很清楚、而且能用公开接口快速复现的两条短周期 raw alpha 壳：</strong></p>
+<ol>
+<li><strong>CEX → Polymarket latency arb</strong>：</li>
+<p>用 CEX 实时价格和波动率，把某个价格里程碑合约翻译成 <code>implied probability</code>，去抓 Polymarket 上还没来得及更新的陈旧报价。</p>
+<li><strong>same-platform negation-pair parity arb</strong>：</li>
+<p>同一事件正反两个市场如果出现 <code>P(E)+P(¬E)≠1</code>，就是直接的概率平价偏离。</p>
+</ol>
+<p>对我们来说，这比“让 LLM 猜概率”更像真正可快速 admission 的 alpha，因为它更接近：</p>
+<ul>
+<li><strong>event-driven / latency</strong></li>
+<li><strong>relative-value / stat-arb</strong></li>
+<li><strong>公开 API 可拿到</strong></li>
+<li><strong>能映射到 <code>1m/3m/5m</code> 甚至更快的事件窗口</strong></li>
+</ul>
+<h2>2. 先回答最重要的问题：base alpha 是什么？</h2>
+<p>这篇东西的 <strong>base alpha</strong> 不是“AI 比人聪明”。</p>
+<p>更适合我们 desk 的 base alpha 是：</p>
+<p>&gt; <strong>当 Polymarket 对某个事件 / 价格里程碑的 implied probability 更新慢于外部信息或内部逻辑约束时，错误概率会向更合理的概率回归；可交易的就是这个回归过程本身。</strong></p>
+<p>拆成两条：</p>
+<h3>2.1 latency arb leg</h3>
+<ul>
+<li>对 <code>BTC/ETH</code> 价格里程碑类市场，paper 直接给了：</li>
+<p>\[ p_{cex} = \Phi\left(\frac{\ln(S/K)}{\sigma\sqrt{T}}\right) \] 其中：</p>
+<li><code>S</code> = 当前 CEX spot price</li>
+<li><code>K</code> = Polymarket 合约 strike</li>
+<li><code>σ</code> = 小时波动率</li>
+<li><code>T</code> = 距到期时间（小时）</li>
+<li>若 <code>p_cex</code> 和 <code>p_poly</code> 差很多，说明 Polymarket 报价还没 fully absorb 外部价格信息。</li>
+<li><strong>可交易 edge = <code>|p_cex - p_poly|</code></strong>。</li>
+</ul>
+<h3>2.2 negation-pair parity leg</h3>
+<ul>
+<li>若同平台两个互为否定的市场满足不了：</li>
+<p>\[ P(E) + P(¬E) = 1 \] 就不是“观点不同”这么简单，而是<strong>概率加总约束被破坏</strong>。</p>
+<li>这条更像 prediction-market 版的 put-call parity / cross-leg consistency arb。</li>
+<li>它甚至不依赖 headline news，只依赖平台内部 quote consistency。</li>
+</ul>
+<p>所以这轮 digest 里，<strong>我把它明确定位成 raw alpha，不是 filter / overlay</strong>。</p>
+<h2>3. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这篇 paper 真正适合我们 desk intake 的，不是 LLM 群体预测，而是它已经写清楚的 <strong><code>CEX-implied probability × stale Polymarket quote</code> latency arb</strong> 和 <strong><code>negation-pair parity gap</code></strong> 两条短周期 raw alpha 壳。</li>
+<li><strong>一句话原因：</strong> 它们的 alpha 本体都很清楚：一个赚“外部信息先到、平台价格后到”的时间差，一个赚“平台内部概率约束没对齐”的结构差。</li>
+<li><strong>一句话落地性：</strong> 这两条都能只靠<strong>公开 Polymarket API + 公开 Binance WebSocket</strong>做最小实验，不需要先解决“LLM 预测是否真的有 alpha”这个更难的问题。</li>
+</ul>
+<p>paper 里给出的、对最小实验最有帮助的实操参数包括：</p>
+<ul>
+<li><strong>扫描频率：</strong> <code>5s scan loop</code></li>
+<li><strong>外部价格流：</strong> <code>Binance WebSocket</code>，文中写的是 <code>~100ms ticks</code></li>
+<li><strong>组合概率：</strong> <code>p_combined = 0.7 * p_swarm + 0.3 * p_mkt</code></li>
+<li><strong>latency-arb 过滤：</strong> <code>edge &gt;= 4%</code>、<code>poly stale &gt; 8s</code>、<code>TTE ∈ [0.5h, 720h]</code>、<code>cooldown 30s</code></li>
+<li><strong>风险控制：</strong> <code>quarter-Kelly</code>、<code>max position cap = $10</code>、<code>daily loss limit</code></li>
+<li><strong>链上延迟背景：</strong> <code>Polygon PoS</code> 大约 <code>2s / block</code></li>
+<li><strong>uncertainty veto：</strong> 若 swarm 分歧太大（文中示例是 <code>std &gt; 30%</code>），不做</li>
+</ul>
+<p>这些参数不一定要原样照抄，但它们已经足够构成一个 <strong>complete shell</strong>：</p>
+<ul>
+<li>alpha</li>
+<li>entry</li>
+<li>sizing</li>
+<li>risk cap</li>
+<li>execution cadence</li>
+</ul>
+<h2>4. 为什么这轮值得进研究池</h2>
+<p>这轮有价值，不是因为它“新潮用了 LLM”，而是因为它补的是我们当前素材池里还不算拥挤的一条 lane：</p>
+<h3>4.1 它不是又一篇 trend / TSMOM 变体</h3>
+<p>最近 intake 里 raw alpha 很多已经在：</p>
+<ul>
+<li>trend / continuation</li>
+<li>mean reversion</li>
+<li>pairs / stat-arb</li>
+<li>funding / basis</li>
+<li>microstructure OFI</li>
+</ul>
+<p>而这篇更像：</p>
+<ul>
+<li><strong>prediction-market microstructure / latency</strong></li>
+<li><strong>event-driven probability arb</strong></li>
+<li><strong>平台内部 consistency arb</strong></li>
+</ul>
+<h3>4.2 它和已有 prediction-market digest 也不重复</h3>
+<p>它不是：</p>
+<ul>
+<li><code>semantic-equivalent cross-platform parity gap</code> 那种跨平台语义对齐 arb；</li>
+<li>也不是 <code>favorite-side VWAP stretch × momentum</code> 那种单市场微观动量。</li>
+</ul>
+<p>它更接近：</p>
+<ol>
+<li><strong>同一市场对外部信息吸收太慢</strong>；</li>
+<li><strong>同一平台内部概率约束自己没对齐</strong>。</li>
+</ol>
+<p>这两个都是更“硬”的价差，不是纯主观看法 alpha。</p>
+<h3>4.3 它天然适合更快时间框架</h3>
+<p>这条壳不是为 <code>15m</code> 设计的。它更适合：</p>
+<ul>
+<li><code>event tick / 5s / 15s / 30s / 1m</code></li>
+<li>或至少 <code>1m/3m/5m</code></li>
+</ul>
+<p>换句话说，它虽然不是默认 desk 的 <code>5m/15m</code> K 线 alpha，但它是明确的 <strong>更快高强度 alpha lane</strong>，符合用户允许范围。</p>
+<h2>5. 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>prediction-market / event-driven / relative-value / stat-arb</strong></li>
+<li>基础 alpha：<strong><code>p_cex</code> 或内部逻辑约束先变，<code>p_poly</code> 后修复；交易的是概率错误的收敛。</strong></li>
+<li>regime：<strong>高流动性、价格里程碑合约、较短但非极短到期、可观测外部锚（如 BTC/ETH spot）</strong></li>
+<li>filter / veto：<strong>staleness、edge threshold、cooldown、low-liquidity veto、uncertainty veto</strong></li>
+<li>risk / sizing / execution overlay：<strong>quarter-Kelly / fixed notional cap / daily loss cap / Polygon block-latency awareness / maker-first 或限价执行</strong></li>
+</ul>
+<h2>6. 对 desk 最值得拿走的不是“50 agents”，而是这两条规则化壳</h2>
+<h3>6.1 壳 A：价格里程碑合约 latency arb</h3>
+<p><strong>适用对象：</strong></p>
+<ul>
+<li><code>Will BTC be above X at time Y?</code></li>
+<li><code>Will ETH touch X this week?</code></li>
+<li>任何能从 CEX spot + vol 近似转成 probability 的 milestone / barrier-ish market</li>
+</ul>
+<p><strong>最小规则：</strong></p>
+<ol>
+<li>实时拉 Binance <code>bookTicker</code> 或 mid；</li>
+<li>用 rolling realized vol 算 <code>σ</code>；</li>
+<li>计算 <code>p_cex</code>；</li>
+<li>抓 Polymarket 当前 <code>p_poly</code>；</li>
+<li>若 <code>|p_cex-p_poly|</code> 超过阈值且 Polymarket 报价 stale，就做向 <code>p_cex</code> 靠拢的那一边；</li>
+<li>当 edge 收敛、时间衰减不再有利、或 quote 更新完成时退出。</li>
+</ol>
+<p><strong>它的好处：</strong></p>
+<ul>
+<li>base alpha 很清楚；</li>
+<li>不需要先相信 LLM；</li>
+<li>外部锚是公开 CEX 行情，不难拿；</li>
+<li>本质是一个短周期 relative-value 收敛壳。</li>
+</ul>
+<h3>6.2 壳 B：negation-pair parity arb</h3>
+<p><strong>适用对象：</strong></p>
+<ul>
+<li><code>E</code> 和 <code>¬E</code> 同时挂牌的 yes/no 市场；</li>
+<li>或多个 mutually exclusive outcomes 组成完备分区的市场。</li>
+</ul>
+<p><strong>最小规则：</strong></p>
+<ol>
+<li>枚举同类事件对；</li>
+<li>做 title / resolution rule 的严格匹配；</li>
+<li>计算 <code>P(E)+P(¬E)-1</code>；</li>
+<li>超阈值时买低估那边 / 避开高估那边；</li>
+<li>收敛后平仓，或者若分辨率很高也可持有到 resolution。</li>
+</ol>
+<p><strong>它的好处：</strong></p>
+<ul>
+<li>edge 不依赖预测未来，而依赖内部一致性；</li>
+<li>更像“结构性错价”，而不是观点交易；</li>
+<li>很适合作为另一条纯规则化 alpha，不吃 LLM 推理质量。</li>
+</ul>
+<h2>7. 最小可复现实验（能直接开做）</h2>
+<h3>7.1 数据源</h3>
+<ul>
+<li><strong>Polymarket</strong>：公开 <code>Gamma / CLOB API</code></li>
+<li><strong>Binance</strong>：公开 WebSocket <code>bookTicker</code> / kline / recent volatility 所需数据</li>
+<li><strong>可选新闻流</strong>：公开 RSS / X / headlines（若要做更完整 news-to-market latency 版）</li>
+</ul>
+<h3>7.2 更新频率</h3>
+<ul>
+<li><code>Binance bookTicker</code>：亚秒级（paper 写 <code>~100ms ticks</code>）</li>
+<li><code>Polymarket market scan</code>：先按 <code>5s</code> 轮询</li>
+<li><code>1m/3m/5m</code> 聚合：只用于研究报表，不是 alpha 原生频率</li>
+</ul>
+<h3>7.3 最小实验口径</h3>
+<p><strong>Lane 1：BTC/ETH price milestone contracts</strong></p>
+<ul>
+<li>universe：近 <code>30d</code> 内有成交的 <code>BTC/ETH</code> price markets</li>
+<li>每 <code>5s</code> 采样一次</li>
+<li>计算：</li>
+<li><code>p_cex = Φ(ln(S/K)/(σ√T))</code></li>
+<li><code>edge = p_cex - p_poly</code></li>
+<li>入场：<code>|edge| &gt;= 4%</code> 且 <code>stale &gt; 8s</code></li>
+<li>方向：<code>edge &gt; 0</code> 做 Yes，<code>edge &lt; 0</code> 做 No</li>
+<li>出场：</li>
+<li><code>|edge| &lt; 1.5%</code>；</li>
+<li>或持仓超过固定上限（如 <code>30m/2h</code>）</li>
+<li>或接近 resolution 前强制平</li>
+<li>成本：</li>
+<li>CLOB 交易费</li>
+<li>Polygon gas</li>
+<li>半个 spread / slippage</li>
+</ul>
+<p><strong>Lane 2：negation-pair parity</strong></p>
+<ul>
+<li>universe：互斥 / 否定型事件对</li>
+<li>每 <code>5s</code> 计算 <code>sum_prob = P(E)+P(¬E)</code></li>
+<li>入场：<code>|sum_prob-1| &gt;= fee_buffer + slippage_buffer + safety_margin</code></li>
+<li>出场：<code>|sum_prob-1|</code> 回到阈值内或事件临近 resolution</li>
+</ul>
+<h2>8. 这条壳和 <code>1m / 3m / 5m / 15m</code> 的关系</h2>
+<ul>
+<li><strong>最自然的时间尺度：</strong> <code>5s / 15s / 30s / 1m</code></li>
+<li><strong>研究汇总尺度：</strong> <code>1m / 3m / 5m</code></li>
+<li><strong>不推荐直接压成：</strong> 传统 <code>15m</code> bar-only alpha</li>
+</ul>
+<p>原因很简单： 这类 edge 来自<strong>信息吸收延迟</strong>和<strong>市场内部一致性破坏</strong>，不是来自每根 <code>15m</code> K 线自身的形态统计。硬压成 <code>15m</code>，反而会把最有价值的短时错价磨平。</p>
+<p>所以它更适合被 desk 放进：</p>
+<ul>
+<li><strong>faster event-driven lane</strong></li>
+<li><strong>prediction-market / external-data lane</strong></li>
+<li><strong>relative-value / stat-arb lane</strong></li>
+</ul>
+<h2>9. 风险与不该自欺的地方</h2>
+<h3>9.1 这篇 paper 更像系统设计文，不是完整 OOS PnL 论文</h3>
+<p>paper 明确给了：</p>
+<ul>
+<li>系统架构</li>
+<li>公式</li>
+<li>扫描与执行参数</li>
+<li>评价指标（Brier / log-loss / calibration）</li>
+</ul>
+<p>但它<strong>不是那种已经给出严谨 out-of-sample 交易 PnL 表格的论文</strong>。所以这轮最诚实的读法应该是：</p>
+<p>&gt; <strong>这是一条完整且可复现的 raw alpha 壳，不是已经被 paper 自己严格证明过的 production alpha。</strong></p>
+<h3>9.2 prediction-market 的真成本不能只看 quoted probability</h3>
+<p>一定要显式记：</p>
+<ul>
+<li>spread</li>
+<li>queue priority</li>
+<li>fill probability</li>
+<li>gas / settlement friction</li>
+<li>event resolution 风险</li>
+<li>大额下的 market impact</li>
+</ul>
+<h3>9.3 LLM 这层先别当 admission 必需品</h3>
+<p>如果先把“50-agent swarm 是否真有稳定预测力”绑进 admission，就会把最容易测的 raw alpha 变成一个很慢的 AI 项目。</p>
+<p>对当前 desk，正确顺序应是：</p>
+<ol>
+<li><strong>先测纯规则 latency / parity alpha</strong>；</li>
+<li>只有纯规则部分站住后，才把 LLM classification 当增强层看待。</li>
+</ol>
+<h2>10. 下一步怎么测</h2>
+<ol>
+<li><strong>先做不含 LLM 的纯规则版</strong>：只跑 <code>BTC/ETH</code> 价格里程碑市场的 <code>p_cex - p_poly</code> latency edge，验证是否有净收敛空间。</li>
+<li><strong>并行做 negation-pair scanner</strong>：找 <code>P(E)+P(¬E)</code> 偏离是否在真实费用后仍可收敛。</li>
+<li><strong>把研究频率定在事件级，不要先压成 15m</strong>：保存 <code>5s</code> 原始快照，再导出 <code>1m/3m/5m</code> 汇总。</li>
+<li><strong>先做 fixed-notional，再谈 Kelly</strong>：早期 admission 先用固定仓位；确认收敛分布后再上 quarter-Kelly。</li>
+<li><strong>最后才加 LLM / news classifier</strong>：如果纯规则版已成立，再加 headline parsing 去扩大可交易 universe，而不是本末倒置。</li>
+</ol>
+<h2>11. first verdict</h2>
+<p>这篇东西<strong>值得进研究池，而且是新 lane</strong>，但正确 intake 方式不是“复刻 50 个 LLM persona”，而是：</p>
+<p>&gt; <strong>先把它拆成一条 prediction-market 短周期 raw alpha 壳：<code>CEX-implied probability × stale quote</code> + <code>negation-pair parity gap</code>。</strong></p>
+<p>它满足我们当前优先级的原因是：</p>
+<ul>
+<li><strong>base alpha 清楚</strong>；</li>
+<li><strong>公开数据可拿</strong>；</li>
+<li><strong>entry/exit/sizing/risk/cost 都能定义</strong>；</li>
+<li><strong>更适合 <code>1m/3m/5m</code> 的高强度事件窗口</strong>；</li>
+<li><strong>和现有 trend / TSMOM / funding / basis intake 不同，能补一个 prediction-market / event-driven / relative-value 新素材位。</strong></li>
+</ul>
+<p>如果要一句话下结论：</p>
+<p>&gt; <strong>别先把 PolySwarm 当“AI 预测市场论文”；对 short-cycle desk，更值得先复现的是它藏在系统设计里的两条硬错价 alpha。</strong></p>
+</body>
+</html>

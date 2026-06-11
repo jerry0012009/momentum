@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>L2 imbalance × aggressive trade delta × EMA vote：一个可快速前向复现的 1m/3m microstructure continuation 候选</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>L2 imbalance × aggressive trade delta × EMA vote：一个可快速前向复现的 1m/3m microstructure continuation 候选</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-02 05:49 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-02_0550_orderbook-delta-vote-microstructure-alpha.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>order book imbalance × aggressor trade delta × short EMA trend</code> 同向共振后的短周期延续</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否（源码已给 entry / flip / sizing 骨架，但缺真实止损与费用回测）</li>
+</ul>
+<h2>先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p>不是“盘口大就涨”这么粗。<strong>真正的 base alpha</strong> 是：当 <code>L2 挂单压力</code>、<code>最近一段 aggressor 主动成交方向</code>、<code>短 EMA 趋势方向</code> 三者同向时，短周期价格更容易继续沿该方向走 1~几根 bar；<code>volume_ratio</code> 在这份 repo 里更像加分项，不是 alpha 本体。</p>
+<h2>为什么这轮值得写它</h2>
+<p>这轮前两篇 digest 都不是 raw alpha，按当前 intake 规则应优先补 raw alpha。虽然 desk 最近已经连续 intake 过 OBI / OFI 家族，但这份 2026 新 repo 仍然有一个值得单独入池的增量点：<strong>它不是只看 order-book imbalance，而是把“挂单压力”和“主动成交 delta”拆成两条独立腿，再用一个 3-of-4 vote state machine 直接落成可 paper/live 跑的单币方向壳子。</strong></p>
+<p>这让它比“纯 OBI 方向 admission”更接近可复现的完整原型，也比很多只讲 microstructure 解释、不讲执行骨架的材料更适合 desk 现在的 fast alpha intake。</p>
+<p>---</p>
+<h2>主要来源</h2>
+<h3>1) 直接策略来源（主）</h3>
+<ul>
+<li><strong>Owner / Year</strong>: vortex-systems-tech, 2026</li>
+<li><strong>Title</strong>: <code>Crypto-Strategy-Order-Book-Delta-Volume</code></li>
+<li><strong>Type</strong>: GitHub repo（MIT）</li>
+<li><strong>Created / Updated</strong>: 2026-03-27 / 2026-03-27</li>
+<li><strong>Readable URL</strong>: <a href="https://github.com/vortex-systems-tech/Crypto-Strategy-Order-Book-Delta-Volume">https://github.com/vortex-systems-tech/Crypto-Strategy-Order-Book-Delta-Volume</a></li>
+<li><strong>Repo URL</strong>: <a href="https://github.com/vortex-systems-tech/Crypto-Strategy-Order-Book-Delta-Volume">https://github.com/vortex-systems-tech/Crypto-Strategy-Order-Book-Delta-Volume</a></li>
+<li><strong>Key files</strong>:</li>
+<li><code>README.md</code></li>
+<li><code>binance_orderbook_delta_strategy.py</code></li>
+</ul>
+<h3>2) 机制地基（辅）</h3>
+<ul>
+<li><strong>Authors / Year</strong>: Rama Cont, Arseniy Kukanov, Sasha Stoikov, 2014</li>
+<li><strong>Title</strong>: *The Price Impact of Order Book Events*</li>
+<li><strong>Venue</strong>: *Journal of Financial Econometrics*</li>
+<li><strong>DOI</strong>: <code>10.1093/jjfinec/nbt003</code></li>
+<li><strong>Readable URL</strong>: <a href="https://doi.org/10.1093/jjfinec/nbt003">https://doi.org/10.1093/jjfinec/nbt003</a></li>
+</ul>
+<p>&gt; 这篇经典文献不是 crypto 专用，但足够说明：order-book 事件流本身就能解释短期价格冲击。当前 repo 的可取之处，是把这个逻辑压缩成了 Binance Futures 可直接跑的低门槛实现。</p>
+<h3>3) 数据接口口径（复现实验用）</h3>
+<ul>
+<li>Binance USDⓈ-M Futures public depth / aggTrades / klines</li>
+<li>Readable URL: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api</a></li>
+</ul>
+<p>---</p>
+<h2>我从源码里拆出来的真实策略，不是 README 口号版</h2>
+<p>这份 repo 的核心不是 ML，也不是复杂优化，而是一个非常朴素的投票壳：</p>
+<h3>输入特征</h3>
+<ol>
+<li><strong>Order-book imbalance</strong></li>
+</ol>
+<ul>
+<li>取 <code>top 20</code> depth</li>
+<li>计算：</li>
+<li><code>imbalance = (bid_notional - ask_notional) / (bid_notional + ask_notional)</code></li>
+<li>阈值：<code>|imbalance| &gt;= 0.12</code></li>
+</ul>
+<ol>
+<li><strong>Aggressor trade delta</strong></li>
+</ol>
+<ul>
+<li>取最近 <code>500</code> 笔 <code>futures_aggregate_trades</code></li>
+<li>用 <code>m</code> 字段区分主动买 / 主动卖</li>
+<li>计算：</li>
+<li><code>delta = (buy_volume - sell_volume) / (buy_volume + sell_volume)</code></li>
+<li>阈值：<code>|delta| &gt;= 0.15</code></li>
+</ul>
+<ol>
+<li><strong>短趋势方向</strong></li>
+</ol>
+<ul>
+<li><code>EMA(50)</code></li>
+<li><code>close &gt; EMA</code> 记多头票；<code>close &lt; EMA</code> 记空头票</li>
+</ul>
+<ol>
+<li><strong>量能加分项</strong></li>
+</ol>
+<ul>
+<li><code>volume_ratio = last_volume / rolling_mean(volume, 20)</code></li>
+<li>只有当 <code>volume_ratio &gt;= 1.2</code> 时，才给当前 <code>delta</code> 同向一票</li>
+<li>这意味着它<strong>不是硬 volume gate</strong>，只是第四票</li>
+</ul>
+<h3>入场规则</h3>
+<ul>
+<li><code>long_score &gt;= 3</code> 且 <code>long_score &gt; short_score</code> → <code>BUY</code></li>
+<li><code>short_score &gt;= 3</code> 且 <code>short_score &gt; long_score</code> → <code>SELL</code></li>
+</ul>
+<h3>仓位与风险骨架</h3>
+<ul>
+<li>风险预算：<code>balance × 1%</code></li>
+<li>估算 stop distance：<code>max(1.5 × ATR(14), 0.3% × price)</code></li>
+<li>名义杠杆：<code>5x</code></li>
+<li><code>qty = (risk_usdt × leverage) / stop_distance</code></li>
+</ul>
+<h3>出场 / 翻仓</h3>
+<ul>
+<li>没有显式止损单</li>
+<li>当前实现主要靠<strong>反向信号触发 flip</strong></li>
+<li>也就是说：</li>
+<li>空仓 → 按当前票数进场</li>
+<li>持多仓且出现强空头票 → 平多并翻空</li>
+<li>持空仓且出现强多头票 → 平空并翻多</li>
+</ul>
+<h3>最关键的诚实结论</h3>
+<p>这份 repo 已经是<strong>可以跑的原型</strong>，但还不是 desk 可直接上实盘的最终版，因为：</p>
+<ol>
+<li><code>ATR</code> 只参与 sizing，没有被落实为真实 stop / time stop</li>
+<li>没有费用 / 滑点回测</li>
+<li>使用 REST polling，不是事件驱动撮合级实现</li>
+</ol>
+<p>所以它是很好的 <strong>raw alpha intake + 最小前向实验骨架</strong>，但还不该被误读成“现成成熟策略”。</p>
+<p>---</p>
+<h2>对 short-cycle desk 最有价值的，不是整份脚本，而是这个“二腿确认”</h2>
+<p>如果只看 order-book imbalance，很容易掉进两个坑：</p>
+<ul>
+<li>挂单是会撤的，容易被假深度骗</li>
+<li>单看 OBI，经常分不清“真推动”还是“被动挂单挤压”</li>
+</ul>
+<p>这份 repo 的真正增量在于：<strong>再加一条 aggressor delta 腿。</strong></p>
+<p>可以把它翻成人话：</p>
+<ul>
+<li><code>imbalance</code> 像“墙往哪边堆”</li>
+<li><code>trade delta</code> 像“真正冲过去的人往哪边打”</li>
+<li><code>EMA</code> 像“最近这段路原本朝哪边走”</li>
+</ul>
+<p>三者同向，才值得下注 continuation。</p>
+<p>这比“只看盘口”更像真实推进；也比“只看成交 delta”更少被单根 burst 噪音误导。</p>
+<p>---</p>
+<h2>公开数据最小快检（我直接对 Binance Futures 公共接口做了 90 秒 live sampling）</h2>
+<p>采样方式：</p>
+<ul>
+<li>交易对：<code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li>频率：每 <code>10s</code> 取一次 snapshot</li>
+<li>总样本：每个币 <code>9</code> 个 snapshot</li>
+<li>使用的就是 repo 同口径：<code>depth(20)</code>、最近 <code>500</code> 笔 <code>aggTrades</code>、<code>1m klines</code></li>
+</ul>
+<h3>结果摘要</h3>
+<ul>
+<li><strong>BTCUSDT</strong>：<code>0 / 9</code> 次触发方向信号</li>
+<li><strong>ETHUSDT</strong>：<code>1 / 9</code> 次触发 <code>SELL</code></li>
+<li><strong>SOLUSDT</strong>：<code>6 / 9</code> 次触发 <code>BUY</code></li>
+</ul>
+<h3>中位数特征强度</h3>
+<ul>
+<li><strong>BTCUSDT</strong>：</li>
+<li><code>median |imbalance| = 0.422</code></li>
+<li><code>median |delta| = 0.552</code></li>
+<li><code>median volume_ratio = 0.878</code></li>
+<li><strong>ETHUSDT</strong>：</li>
+<li><code>median |imbalance| = 0.767</code></li>
+<li><code>median |delta| = 0.728</code></li>
+<li><code>median volume_ratio = 0.159</code></li>
+<li><strong>SOLUSDT</strong>：</li>
+<li><code>median |imbalance| = 0.125</code></li>
+<li><code>median |delta| = 0.256</code></li>
+<li><code>median volume_ratio = 0.403</code></li>
+</ul>
+<h3>这组快检说明什么</h3>
+<ol>
+<li><strong>信号不是全市场乱闪。</strong> 在 27 个 symbol-snapshots 里，真正形成方向 admission 的只有 <code>7</code> 个。</li>
+<li><strong>volume_ratio 在当前实现里确实只是加分，不是主门槛。</strong> 因为 BTC / ETH / SOL 的 volume_ratio 中位数都低于 <code>1.2</code>，但 SOL 仍然出现了 <code>6/9</code> 次 <code>BUY</code>，说明主要靠的是 <code>imbalance + delta + EMA</code> 三腿共振。</li>
+<li><strong>这个壳子更像 alt/单边推进状态捕捉器，不像 BTC 全天候方向机。</strong> 这很符合 short-cycle desk 的直觉：BTC 更容易被噪音和对敲抵消，SOL 这类 beta 币更常出现“一边挂单 + 一边主动打单 + 顺趋势”的短窗共振。</li>
+</ol>
+<p>&gt; 重要：这只是 live sanity check，不是收益回测。它证明的是“信号会真实触发，且不是完全乱闪”；还没证明净收益为正。</p>
+<p>---</p>
+<h2>它更适合我们 desk 的落地版本</h2>
+<h3>A. 主版本：1m / 3m 单币 continuation raw alpha</h3>
+<p>这是我认为最值得先测的版本。</p>
+<p><strong>建议 desk 版规则：</strong></p>
+<ul>
+<li>交易 universe：<code>BTC / ETH / SOL / BNB / DOGE</code> 这类高流动 perp</li>
+<li>bar：<code>1m</code> 原生；再聚合成 <code>3m</code></li>
+<li>信号：</li>
+<li><code>imbalance(top20)</code> 取 bar close 前最后一笔 snapshot</li>
+<li><code>delta</code> 用该 bar 内全部 aggTrades 归总</li>
+<li><code>EMA(50)</code> 方向</li>
+<li>入场：</li>
+<li>多头：<code>imbalance &gt;= q80</code>、<code>delta &gt;= q80</code>、<code>close &gt; EMA</code></li>
+<li>空头：对称</li>
+<li>出场：</li>
+<li><code>opposite vote</code></li>
+<li>或 <code>2 × ATR(14)</code> stop</li>
+<li>或 <code>N=3~6</code> bars timeout</li>
+<li>成本：</li>
+<li>先按 taker round-trip <code>10 bps</code> 起算</li>
+<li>stress test 到 <code>15~20 bps</code></li>
+</ul>
+<h3>B. 次版本：给 5m / 15m breakout / momentum 当 admission gate</h3>
+<p>如果 raw alpha 单跑不够稳定，这个二腿确认也很适合作为 shared gate：</p>
+<ul>
+<li>只有当 lower-TF <code>imbalance + delta</code> 与 5m/15m 主方向一致时，才允许追价</li>
+<li>反之，主信号成立但 microstructure 不确认，则 veto 或降杠杆</li>
+</ul>
+<p>但这篇 digest 的主结论仍然是：<strong>它先值得作为独立 raw alpha 测，而不是先降级成 filter。</strong></p>
+<p>---</p>
+<h2>为什么它没有被我归到“可直接完整落地策略”最高档</h2>
+<p>因为目前还差三件关键东西：</p>
+<ol>
+<li><strong>真实风险闭环还没写完</strong></li>
+</ol>
+<ul>
+<li>sizing 用了 stop distance</li>
+<li>但执行层没有挂真实 stop / trailing stop / timeout stop</li>
+</ul>
+<ol>
+<li><strong>成本太重要，而源码没回测</strong></li>
+</ol>
+<ul>
+<li>这是一个可能会频繁 flip 的 taker 型策略</li>
+<li>如果 round-trip 成本 + 滑点吃掉 10~20bps，很容易把 1m alpha 磨平</li>
+</ul>
+<ol>
+<li><strong>历史 order-book 数据获取不是“点一下就有”</strong></li>
+</ol>
+<ul>
+<li><code>klines</code>、<code>aggTrades</code> 历史好拿</li>
+<li>真正的 <code>depth imbalance</code> 历史需要自己录，或者用外部档案服务</li>
+</ul>
+<p>所以它是：</p>
+<ul>
+<li><strong>raw alpha 候选：是</strong></li>
+<li><strong>可独立复现：是</strong>（因为输入都是公开接口，只是需要自己开始录 depth）</li>
+<li><strong>立刻无脑上实盘：否</strong></li>
+</ul>
+<p>---</p>
+<h2>最小可复现实验口径</h2>
+<h3>数据源</h3>
+<ul>
+<li>Binance USDⓈ-M Futures public API / WebSocket</li>
+</ul>
+<h3>公开性</h3>
+<ul>
+<li>公开可得，无需付费、无需私钥即可取 market data</li>
+</ul>
+<h3>更新频率</h3>
+<ul>
+<li><code>depth</code>：近实时</li>
+<li><code>aggTrades</code>：近实时</li>
+<li><code>klines</code>：<code>1m</code> 可直接拿；<code>3m/5m/15m</code> 可聚合</li>
+</ul>
+<h3>最小实验</h3>
+<p><strong>最诚实、最快的实验不是先做长历史回测，而是：</strong></p>
+<ol>
+<li>立刻开一个 <code>depth + aggTrades + klines</code> recorder</li>
+<li>连续录 <code>3~7</code> 天 BTC/ETH/SOL/BNB/DOGE</li>
+<li>用 recorder 生成 bar-close snapshot 特征</li>
+<li>跑：</li>
+</ol>
+<ul>
+<li><code>1m</code> 直接版本</li>
+<li><code>3m</code> 聚合版本</li>
+<li><code>1m signal → 3m hold</code> 混合版本</li>
+</ul>
+<ol>
+<li>统一按 taker <code>10/15/20 bps</code> 三档做 stress</li>
+</ol>
+<p>如果想更快做“今天就能开始”的前向实验：</p>
+<ul>
+<li>不等历史，先 paper-run <code>48h</code></li>
+<li>记录每次触发后的 <code>+1 / +3 / +5</code> bar markout</li>
+<li>看 <code>SOL/BNB/DOGE</code> 是否明显优于 <code>BTC</code></li>
+</ul>
+<p>---</p>
+<h2>我建议 desk 先测的 4 个假设</h2>
+<h3>假设 1：<code>delta</code> 比 <code>volume_ratio</code> 更重要</h3>
+<p>repo 里 volume 只是第四票。我怀疑真正有信息量的是：</p>
+<ul>
+<li><code>OBI + delta + EMA</code></li>
+<p>而不是：</p>
+<li><code>OBI + delta + volume</code></li>
+</ul>
+<p><strong>先测：</strong> 去掉 volume 票，比较 hit rate / markout / turnover。</p>
+<h3>假设 2：alts 比 BTC 更适合这条 alpha</h3>
+<p>本次 90 秒 live sampling 已经给出一个很直观的线索：</p>
+<ul>
+<li>BTC 触发稀少</li>
+<li>SOL 明显更容易形成共振 admission</li>
+</ul>
+<p><strong>先测：</strong> <code>BTC, ETH, SOL, BNB, DOGE</code> 分币比较 forward markout。</p>
+<h3>假设 3：<code>3m</code> 可能优于 <code>1m</code></h3>
+<p>1m 容易被撮合噪音和 taker 费用磨掉；3m 可能让 <code>delta</code> 与 <code>imbalance</code> 更稳定。</p>
+<p><strong>先测：</strong></p>
+<ul>
+<li><code>1m enter / 1m exit</code></li>
+<li><code>1m enter / 3m hold</code></li>
+<li><code>3m aggregated signal</code></li>
+</ul>
+<h3>假设 4：它更像 continuation admission，不像全天候 alpha</h3>
+<p>也就是说，真正该测的不是“全时段都开”，而是：</p>
+<ul>
+<li>只在 realized vol 上升段</li>
+<li>只在 funding 中性或顺向拥挤不极端时</li>
+<li>只在 session overlap（欧美交接）内启用</li>
+</ul>
+<p>---</p>
+<h2>风险与失败模式</h2>
+<ol>
+<li><strong>假挂单 / 撤单噪音</strong></li>
+</ol>
+<ul>
+<li>imbalance 很容易被 spoofing 污染</li>
+<li>所以必须保留 delta 这条腿，不要退化成纯 OBI</li>
+</ul>
+<ol>
+<li><strong>REST polling 低频错位</strong></li>
+</ol>
+<ul>
+<li>repo 现在每 <code>10s</code> 拉一次</li>
+<li>真正研究时应改成 WebSocket 事件聚合到 bar close</li>
+</ul>
+<ol>
+<li><strong>过度 flip</strong></li>
+</ol>
+<ul>
+<li>opposite signal flip 很容易带来高 turnover</li>
+<li>所以必须补 <code>min hold</code> / <code>cooldown</code> / <code>timeout</code></li>
+</ul>
+<ol>
+<li><strong>大币种拥挤、alpha 被费用吃掉</strong></li>
+</ol>
+<ul>
+<li>BTC 可能最早看上去“最干净”，但其实最难赚</li>
+<li>反而 beta alt 可能更有短窗惯性</li>
+</ul>
+<p>---</p>
+<h2>一句话结论</h2>
+<p>这份 2026 新 repo 最值得 intake 的，不是“订单簿 + 成交量”这种泛泛概念，而是一个<strong>能用公开 Binance Futures 数据快速前向复现的 microstructure continuation 原型</strong>：</p>
+<p>&gt; <strong><code>L2 imbalance × aggressive trade delta × EMA trend</code> 三腿同向时做短周期延续；volume 只当加分，不当本体。</strong></p>
+<p>对当前 desk，我认为它应被放进 <strong>raw alpha 素材池</strong>，优先做 <code>1m/3m</code> 前向录数与 markout 实验，而不是先降级成 filter。</p>
+<p>---</p>
+<h2>下一步怎么测（直接执行版）</h2>
+<h3>最小实验 v1（本周就能做）</h3>
+<ol>
+<li>录 Binance Futures <code>depth20 + aggTrades + 1m klines</code></li>
+<li>universe 先做：<code>BTC / ETH / SOL / BNB / DOGE</code></li>
+<li>每个 bar 生成：</li>
+</ol>
+<ul>
+<li><code>imbalance_t</code></li>
+<li><code>delta_t</code></li>
+<li><code>ema_dir_t</code></li>
+<li><code>volume_ratio_t</code></li>
+</ul>
+<ol>
+<li>跑 3 个版本：</li>
+</ol>
+<ul>
+<li><strong>V1</strong>: <code>OBI + delta + EMA</code> 三票制</li>
+<li><strong>V2</strong>: <code>OBI + delta + EMA + volume bonus</code> 四票制（repo 原味）</li>
+<li><strong>V3</strong>: <code>OBI + delta</code> 做 admission，<code>EMA</code> 只做 veto</li>
+</ul>
+<ol>
+<li>统一 exits：</li>
+</ol>
+<ul>
+<li>opposite vote</li>
+<li><code>2 × ATR</code> hard stop</li>
+<li><code>3 / 6</code> bars timeout</li>
+</ul>
+<ol>
+<li>成本三档：<code>10 / 15 / 20 bps</code> round-trip</li>
+<li>先看：</li>
+</ol>
+<ul>
+<li><code>+1 / +3 / +5</code> bar markout</li>
+<li>turnover</li>
+<li>signal density</li>
+<li>per-symbol PnL concentration</li>
+</ul>
+<h3>我最想先看的判断标准</h3>
+<ul>
+<li>如果 <strong>SOL/BNB/DOGE 在 3m 上明显优于 BTC/ETH</strong>，这条就值得继续</li>
+<li>如果 <strong>去掉 volume 票后结果更稳</strong>，说明 alpha 本体真的是 <code>pressure agreement</code>，不是放量 breakout</li>
+<li>如果 <strong>一上 15bps 就全灭</strong>，那它更适合当 lower-TF confirmation，而不是独立主策略</li>
+</ul>
+<p>---</p>
+<h2>文件信息</h2>
+<ul>
+<li>文件路径：<code>research/quant_digests/2026-04-02_0550_orderbook-delta-vote-microstructure-alpha.md</code></li>
+<li>站点相对 URL：<code>/reading/quant_digests/2026-04-02_0550_orderbook-delta-vote-microstructure-alpha.html</code></li>
+</ul>
+</body>
+</html>

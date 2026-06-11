@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 risk-monitor repo 只读成“做市运维面板”：对 short-cycle desk，更该先接的是「OFI × liquidation-cost veto」这层 shared maker overlay，但默认黑天鹅阈值需要重标定</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 risk-monitor repo 只读成“做市运维面板”：对 short-cycle desk，更该先接的是「OFI × liquidation-cost veto」这层 shared maker overlay，但默认黑天鹅阈值需要重标定</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-12 20:26 UTC</span>
+      <span class="pill">研究时间：2026-04-12 20:28 UTC</span>
+      <span class="pill">类型：GitHub repo + live public-data quick check</span>
+      <span class="pill">主题标签：overlay / maker / market-making / OFI / liquidation-cost / L-VaR / inventory-risk / indifference-price / execution-veto / binance / btcusdt / 1s / 1m / 3m / 5m / repo / live-public-data</span>
+      <span class="pill">证据类型：repo source audit + live public-data quick check</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-12_2028_ofi-liqcost-maker-veto-overlay.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-12 20:28 UTC</li>
+<li>类型：GitHub repo + live public-data quick check</li>
+<li>主题类型：overlay</li>
+<li>基础 alpha：<code>不是独立方向 alpha；它服务于现有 maker raw alpha（reference-price anchored spread capture / OFI×fair-value skew / OBI quote-skew）的 execution veto 与 inventory-risk overlay</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：overlay / maker / market-making / OFI / liquidation-cost / L-VaR / inventory-risk / indifference-price / execution-veto / binance / btcusdt / 1s / 1m / 3m / 5m / repo / live-public-data</li>
+<li>证据类型：repo source audit + live public-data quick check</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主源不是再补一条新 raw alpha，而是补一层<strong>可直接挂到现有 maker alpha 上的共享 veto</strong>：</p>
+<ol>
+<li><strong>jianingwang124 (2026), _Real-time Market Making Risk Monitor_</strong>，GitHub repo。它把做市风险拆成 4 个很实用的实时量：<code>OFI(top10)</code>、<code>inventory delta</code>、<code>Avellaneda-Stoikov indifference price</code>、<code>1-minute liquidation cost</code>，再往上叠 <code>L-VaR</code> 与 <code>black swan scenario</code>，最后把 breach 映射成 <code>throttle / reduce inventory / kill-switch</code>。</li>
+<li>我额外用 <strong>Binance USDⓈ-M BTCUSDT public depth(50)</strong> 做了一个 <strong>180 秒、1Hz</strong> 的 live quick check，目的不是证明它“已经能上生产”，而是先回答：<strong>这层 veto 对我们当前 <code>1s/1m/3m/5m</code> maker 线到底有没有 desk 价值，默认阈值是不是像样。</strong></li>
+</ol>
+<p>一句话核心结论：<strong>这份 repo 最该被 intake 的不是 dashboard，而是“把 OFI + 清仓成本 + inventory reservation drift 变成 quote-on / quote-off 开关”的那层 maker overlay；但它给的默认 tail-risk 标尺对 BTCUSDT 深盘口明显过松，黑天鹅成本函数还需要重写。</strong></p>
+<p>它怎么证明这件事：<strong>repo 里已经把指标、阈值与风险动作写成完整工程骨架；我再用 Binance live depth 做最小快检，验证这些阈值在真实盘口下是否会真正触发。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha 不是方向信号</strong>，而是服务于现有 maker raw alpha 的<strong>执行否决层</strong>：当 order-flow、库存与流动性同时恶化时，先减 quote、再缩 inventory，而不是继续把 alpha 本体硬顶上去。</li>
+<li>对当前 desk，最值得抄的不是整套 Streamlit/UI，而是 repo 已经明写出来的这条控制链：<code>OFI / indifference price / liquidation cost -&gt; risk flags -&gt; throttle / kill-switch</code>。</li>
+<li>这层 overlay 直接服务至少 2 条当前主线：</li>
+<li><code>2026-04-12_1830_refprice-anchored-maker-shell.md</code></li>
+<li><code>2026-04-12_1352_mm-live-ofi-fairvalue-maker-alpha.md</code></li>
+<li>也能顺手接到更早的 <code>2026-04-11_0945_binance-obi-quote-skew-maker-shell.md</code></li>
+<li>live quick check 显示：<strong>思路对，默认阈值不对。</strong> BTCUSDT 深盘口下，repo 默认 <code>max_liquidation_cost_usdt = 75000</code> 基本不可能触发；如果直接照抄，等于“写了风控，但平时根本不工作”。</li>
+<li>black-swan stress 的现写法也不够像真正 tail loss：它把 book 与 mark 一起 gap down，导致小仓位时 <code>stress_liquidation_cost</code> 甚至可能比 base cost 还低；这更像“深度萎缩实验”，不像完整的尾部清仓损失模型。</li>
+</ul>
+<h2>3. 关键数据点（这轮最值得记住的 4 个数）</h2>
+<ol>
+<li><strong>180 个快照 / 179 个 OFI transition</strong>：Binance USDⓈ-M <code>BTCUSDT</code>，<code>depth=50</code>，1Hz，持续 180 秒。</li>
+<li><strong>盘口极深、spread 极窄</strong>：样本期 median spread 只有 <strong>0.0141 bps</strong>。</li>
+<li><strong>1 分钟清仓成本（按 repo 的 top-book depth 模型）很小</strong>：median <code>liq_cost</code> 对 <strong>0.25 / 0.5 / 1.5 BTC</strong> 分别约 <strong>8.88 / 17.77 / 53.30 USDT</strong>。这和 repo 默认上限 <strong>75,000 USDT</strong> 相差太远。</li>
+<li><strong>repo 默认 <code>max_abs_ofi = 50</code> 并非永不触发，但也很少触发</strong>：本轮只在 <strong>2 / 179</strong> 次 transition 上越线；说明 OFI 阈值还算像“红灯”，但 liquidation-cost 阈值明显不像。</li>
+</ol>
+<p>补一条更关键的实现审计结论：按 repo 当前 <code>black_swan_scenario()</code> 写法，本轮 <strong>0.25 BTC</strong> 的 stressed liquidation cost 中位数约 <strong>8.17 USDT</strong>，反而<strong>低于</strong> base cost <strong>8.88 USDT</strong>。这不是市场在帮你省钱，而是 stress 函数把 mark 和执行价格一起下移，吃掉了本该体现的尾部损失。</p>
+<h2>4. 为什么这轮值得做它，而不是再补一条 raw alpha</h2>
+<p>先诚实回答那句内部问题：<strong>它为什么比继续补 raw alpha 更值得？</strong></p>
+<p>因为今天 raw alpha 池已经连续补了 pairs / carry / maker / relative-value 多条新线，当前更缺的不是“再来一个信号故事”，而是<strong>把现有 maker 原型接上一层统一的 quote veto / inventory throttle</strong>。如果没有这一层：</p>
+<ul>
+<li><code>reference-price</code> maker shell 会在流动性抽走时继续机械挂单；</li>
+<li><code>OFI × fair-value</code> maker alpha 会把强流偏与库存风险混在一起；</li>
+<li>研发上会一直讨论“alpha 对不对”，但缺少一个统一回答“什么时候根本不该继续报单”的组件。</li>
+</ul>
+<p>所以它虽然不是 raw alpha，但它不是泛风险闲聊，而是<strong>直接服务当前 raw alpha 素材池里最活跃的 maker 分支</strong>。</p>
+<h2>4.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：不是方向 alpha；属于 maker execution veto / inventory-risk overlay</li>
+<li>基础 alpha：<code>reference-price anchored spread capture</code>、<code>OFI × fair-value shift maker skew</code>、<code>OBI quote-skew</code></li>
+<li>regime：高流动 / 低流动；order-flow 平稳 / 冲击；库存中性 / 库存偏斜</li>
+<li>filter / veto：<code>abs(OFI)</code> 过阈、<code>liq_cost(position)</code> 过阈、<code>|indifference_price - mid|</code> 过阈时，降档或停 quote</li>
+<li>risk / sizing / execution overlay：quote width 放宽、size cut、inventory unwind、kill-switch</li>
+</ul>
+<h2>5. 可复刻的最小实验</h2>
+<h3>研究假设</h3>
+<p>对任何一个 <code>1s/5s/1m</code> maker alpha，<strong>当 <code>abs(OFI)</code>、<code>liquidation_cost(position)</code>、<code>reservation drift</code> 同时变坏时，继续维持原 quoting aggressiveness 会显著放大 adverse selection；加 veto 后，净 markout / inventory drift 会改善，哪怕 quote-on ratio 略降。</strong></p>
+<h3>最小实验口径</h3>
+<p>直接拿现有两条 maker 原型做 replay：</p>
+<ol>
+<li><code>refprice-anchored-maker-shell</code></li>
+<li><code>mm-live-ofi-fairvalue-maker-alpha</code></li>
+</ol>
+<p>对每条策略，在同一份 <code>depth/trade</code> 回放里比较两版：</p>
+<ul>
+<li><strong>baseline</strong>：只按 alpha 报单</li>
+<li><strong>overlay 版</strong>：额外加三道门</li>
+<li><code>abs(OFI_top10) &gt; q90</code></li>
+<li><code>liq_cost(position) &gt; q90(position_bucket)</code></li>
+<li><code>|indifference_price - mid| &gt; k * spread</code></li>
+</ul>
+<p>观察 4 组指标：</p>
+<ul>
+<li>未来 <code>5s / 30s / 60s</code> adverse markout</li>
+<li>inventory drift / forced unwind 次数</li>
+<li>quote-on ratio</li>
+<li>fill-adjusted pnl after fees</li>
+</ul>
+<h3>阈值怎么定</h3>
+<p>第一版<strong>不要</strong>照抄 repo 默认 hard limits，而是用本品种经验分位数：</p>
+<ul>
+<li>OFI：rolling <code>q90 / q95</code></li>
+<li>清仓成本：按 inventory bucket（如 <code>0.1 / 0.25 / 0.5 / 1.0 BTC</code>）分别定 <code>q90</code></li>
+<li>reservation drift：按 <code>spread</code> 或 <code>ATR(1m)</code> 标准化后再设阈值</li>
+</ul>
+<h2>6. 这份 repo 最值得复用的 3 个模块</h2>
+<h3>A. <code>metrics.py</code></h3>
+<p>最值钱的是它把 <strong>OFI / inventory delta / indifference price / liquidation cost</strong> 全部压成了可实时算的函数，而不是抽象风控口号。</p>
+<h3>B. <code>engine.py</code></h3>
+<p>它已经把 <code>metric -&gt; risk_flags -&gt; action semantics</code> 这条链子写出来了。对我们 desk，这比 UI 更值钱，因为它能直接接策略网关。</p>
+<h3>C. <code>stress_test.py</code></h3>
+<p>思路值得保留：<code>L-VaR + liquidity shock</code> 应该成为 maker 风控层的一部分；但当前实现必须重标定，不能直接当生产真值。</p>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>这不是独立 raw alpha，不能把它伪装成“又发现了一条做市 edge”。它只回答<strong>什么时候不该继续挂原来的单</strong>。</li>
+<li>我这轮 live probe 只做了 <strong>BTCUSDT / 180 秒 / public depth</strong>，证据强度属于 <strong>快检</strong>，不是完整回测。</li>
+<li>repo 的 <code>liquidation_cost_1m</code> 只看当前 order book 深度，不含真实 queue position、partial fill path、latency、self-impact、撤单失败；它更像实时风控 proxy，不是真实成交成本全息模型。</li>
+<li>当前 <code>black_swan_scenario()</code> 对小仓位会低估尾部损失，第一版接生产前必须改。</li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<ol>
+<li>先把这层 overlay 接到两条现有 maker alpha 的 replay，不要再单独空谈风控。</li>
+<li>把 repo 默认 hard limits 全部改成 <strong>symbol-specific percentile limits</strong>。</li>
+<li>重写 black-swan stress：不要让 mark 与执行 book 同比例平移后互相抵消，应单独保留 inventory mark-to-market 损失，再叠加流动性塌陷成本。</li>
+<li>若 overlay 版能明显降低 adverse selection、inventory drift 和 forced unwind，再决定是否进 live shadow。</li>
+</ol>
+<h2>9. 数据源与最小可复现实验口径</h2>
+<ul>
+<li><strong>Repo source</strong>：GitHub 公开仓库，源码可读，可直接复用函数定义与风险链条。</li>
+<li><strong>市场数据</strong>：Binance public <code>fapi/v1/depth?symbol=BTCUSDT&amp;limit=50</code></li>
+<li><strong>公开性</strong>：公开，无需私钥</li>
+<li><strong>更新频率</strong>：本轮 quick check 以 <strong>1Hz REST polling</strong> 采样；正式最小复现建议切到 WebSocket <code>depth@100ms + aggTrade</code></li>
+<li><strong>本轮实验文件</strong>：</li>
+<li><code>/root/clawd/jerry/momentum/tmp/live_mm_risk_probe_20260412_2018.json</code></li>
+<li><code>/root/clawd/jerry/momentum/tmp/live_mm_risk_probe_20260412_2018_summary.json</code></li>
+</ul>
+<h2>10. 来源</h2>
+<ul>
+<li>Jianing Wang. (2026). *Real-time Market Making Risk Monitor*. GitHub repository.</li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://github.com/jianingwang124/Real-time-Market-Making-Risk-Monitor">https://github.com/jianingwang124/Real-time-Market-Making-Risk-Monitor</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/jianingwang124/Real-time-Market-Making-Risk-Monitor">https://github.com/jianingwang124/Real-time-Market-Making-Risk-Monitor</a></code></li>
+<li>关键文件：<code>README.md</code>、<code>src/risk_monitor/metrics.py</code>、<code>src/risk_monitor/stress_test.py</code>、<code>src/risk_monitor/config.py</code>、<code>src/risk_monitor/engine.py</code></li>
+<li>Binance USDⓈ-M Futures public depth API.</li>
+<li>Endpoint: <code><a href="https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&amp;limit=50">https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&amp;limit=50</a></code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>周末漂移不是都该追：更值得先复现的是 `Weekend→Reopen` 的均值回归 raw alpha（而非周末动量）</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>周末漂移不是都该追：更值得先复现的是 `Weekend→Reopen` 的均值回归 raw alpha（而非周末动量）</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-23 23:51 UTC</span>
+      <span class="pill">研究时间：2026-03-23 23:50 UTC</span>
+      <span class="pill">类型：2026 新仓库策略源码 + Binance 公共数据最小快检</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/weekend-reopen/event-driven/perpetual/crypto/5m/15m/1m/3m/cost</span>
+      <span class="pill">证据类型：仓库策略规则 + 本地公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-23_2350_weekend-reopen-meanreversion-vs-momentum.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-23 23:50 UTC</li>
+<li>类型：2026 新仓库策略源码 + Binance 公共数据最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：周末低流动性下的偏离（相对周五参考价）在流动性恢复前后更可能回归，而非继续单边延续</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（已具备 entry/exit/stop/cost 基本骨架）</li>
+<li>主题标签：raw-alpha/mean-reversion/weekend-reopen/event-driven/perpetual/crypto/5m/15m/1m/3m/cost</li>
+<li>证据类型：仓库策略规则 + 本地公共数据快检</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<p>先回答 base alpha：<strong>不是 breakout，也不是常规趋势跟随，而是“周末薄流动性漂移在 reopen 附近回归”</strong>。 本次主看 <code>hype-backtesting</code>（2026）里的 <code>WeekendReopen</code> 策略实现（含均值回归/动量双模式、止损与重开盘平仓逻辑），并在 Binance USDT 永续 15m 数据上做了成本口径最小快检。</p>
+<h2>2) 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 在当前口径下，<code>Weekend→Reopen</code> 更像<strong>事件驱动的均值回归 alpha</strong>，把它当“周末动量追价”会明显变差。</li>
+<li><strong>一句话证明方式：</strong> 同一套时间窗、同一套参数与成本假设下，均值回归模式在 ETH/SOL 为正、动量模式三币全负，差异稳定且方向一致。</li>
+</ul>
+<p>3 个关键数据点（本地 15m 快检，近 365 天，round-trip 成本 8 bps）：</p>
+<ol>
+<li><strong>均值回归模式</strong>：BTC <code>-2.32%</code>、ETH <code>+10.96%</code>、SOL <code>+9.21%</code>，三币乘积口径约 <code>+18.37%</code>。</li>
+<li><strong>动量模式</strong>：BTC <code>-53.06%</code>、ETH <code>-44.84%</code>、SOL <code>-71.97%</code>（显著劣于均值回归）。</li>
+<li>交易频次差异明显：均值回归约 <code>115/146/157</code> 笔（BTC/ETH/SOL），动量约 <code>295/370/427</code> 笔，动量端的过度换手与成本侵蚀更重。</li>
+</ol>
+<h2>3) 为什么和当前 desk 直接相关</h2>
+<ul>
+<li>这是可独立复现的 raw alpha（event-driven mean reversion），不是解释型综述。</li>
+<li>可直接映射到 <code>5m/15m</code>（并可下钻 <code>1m/3m</code>）做实盘前 first-verdict。</li>
+<li>与现有 momentum/breakout 主线形成机理互补：在“周末薄流动性时段”提供逆向 alpha 备选。</li>
+</ul>
+<h2>3.5) 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：event-driven / mean-reversion（可切换 momentum 对照）</li>
+<li>基础 alpha：周末漂移对周五参考价的回归倾向</li>
+<li>entry：周末状态且 <code>|drift| &gt;= threshold</code>（默认 0.5%）触发；回归模式下反向开仓</li>
+<li>exit：reopen 强制平仓；或 pre-reopen 已回归参考价提前止盈；或 stop-loss 出场</li>
+<li>sizing：固定仓位（示例 10% equity，可扩展为波动率归一）</li>
+<li>risk / veto：单周末单次入场、2% 止损、重开盘前收敛检查</li>
+<li>cost：显式 round-trip 成本（本次快检 8 bps）</li>
+</ul>
+<h2>4) 可复刻最小实验（5m/15m 起步）</h2>
+<ul>
+<li>数据源：Binance USDⓈ-M Futures Klines（公开 REST）</li>
+<li>公开性：公开可得，无需 API key</li>
+<li>更新频率：支持 <code>1m/3m/5m/15m</code></li>
+<li>最小口径：</li>
+<li>资产：<code>BTCUSDT/ETHUSDT/SOLUSDT</code></li>
+<li>样本：近 365 天 15m bars</li>
+<li>规则：<code>drift_threshold=0.5%</code>，<code>stop=2%</code>，mode 对照（mean_reversion vs momentum）</li>
+<li>首看指标：<code>cum_return / win_rate / trades / profit_factor</code>（含成本）</li>
+</ul>
+<h2>5) 下一步怎么测（直接可执行）</h2>
+<ol>
+<li><strong>先做阈值分层</strong>：<code>drift_threshold</code> 改为分位数（如按过去 8 周周末漂移分位），避免固定 0.5% 在不同波动期失真。</li>
+<li><strong>加 microstructure veto</strong>：仅在 <code>spread</code> 与 <code>成交量</code> 达标时允许开仓，压缩“薄流动性假回归”。</li>
+<li><strong>做 1m/3m 执行版</strong>：信号仍在 15m 生成，执行下钻到 1m/3m，测试 maker/taker 混合成本。</li>
+<li><strong>加入 funding/basis overlay</strong>：若周末漂移与 funding/basis 极端同向，分离“可回归偏离”与“信息性重定价”。</li>
+</ol>
+<h2>6) 风险与保留意见</h2>
+<ul>
+<li>本次为最小实验：止损按收盘价代理，未用盘口/成交簿级成交模型。</li>
+<li>周末定义采用 repo 给出的交易时段逻辑，仍需按目标交易所实际流动性时钟微调。</li>
+<li>结论更像“候选可行性筛查”，不是最终生产参数。</li>
+</ul>
+<h2>7) 来源</h2>
+<ol>
+<li><strong>Andrea Ambrosio (2026). _hype-backtesting_ (GitHub).</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/andreaambrosio/hype-backtesting">https://github.com/andreaambrosio/hype-backtesting</a></li>
+<li>Strategy code: <code>src/strategies/weekend_reopen.py</code></li>
+</ul>
+<ol>
+<li><strong>Binance Developers (Docs). USDⓈ-M Futures Kline/Candlestick Data.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></li>
+</ul>
+<ol>
+<li><strong>Blockworks Research (2026). _HIP-3 Silver Microstructure: Hyperliquid vs. CME_</strong>（仓库 README 引用）</li>
+</ol>
+<ul>
+<li>说明：本次未直接抓到全文，仅作背景线索，不作为单独强证据。</li>
+</ul>
+<h2>8) 本地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/weekend_reopen_probe_20260323/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/weekend_reopen_probe_20260323/trades.csv</code></li>
+<li><code>reports/artifacts/quant_digests/weekend_reopen_probe_20260323/notes.txt</code></li>
+</ul>
+</body>
+</html>

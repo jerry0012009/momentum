@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Hurst / ADX / RV 一股脑塞进 15m 进场：更值得先测的是 4-state regime matrix，给三条线做 shared allow/deny gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Hurst / ADX / RV 一股脑塞进 15m 进场：更值得先测的是 4-state regime matrix，给三条线做 shared allow/deny gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-18 17:08 UTC</span>
+      <span class="pill">研究时间：2026-03-18 17:07 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/regime/hurst/adx/realized-volatility/filter/repo/crypto/15m</span>
+      <span class="pill">证据类型：仓库脚本 + 公开 OHLCV / 可快速复现实验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-18_1707_regime-matrix-shared-state-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-18 17:07 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/regime/hurst/adx/realized-volatility/filter/repo/crypto/15m</li>
+<li>证据类型：仓库脚本 + 公开 OHLCV / 可快速复现实验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 GitHub 仓库 <code>damianpitt/capital41-indicators</code>（2026）里的 <code>Capital41 Regime Matrix v2</code>。整套 repo 面向 <code>30m / 4h</code>，而且带不少配套脚本，不适合整套照抄；但其中这一支很适合现在 desk：<strong>别再给 <code>breakout-short</code>、<code>Fib retest_hold</code>、<code>EMA / PSAR</code> 各自补一堆零散过滤器，先把“当前到底更像趋势、扩张、压缩，还是均值回归”冻结成一个共享 state gate。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这份 repo 最值得偷的不是它的 adaptive EMA 或 ATR 止损宽度，而是一个更朴素、也更适合我们当前三条收口线的想法：<strong>先用 4-state regime matrix 决定 setup 能不能开火，再讨论具体 entry 长什么样。</strong></li>
+<li><strong>一句话证明方式</strong>：源码把状态机写得很清楚：<code>Trend = Hurst &gt;= 0.58 &amp; ADX &gt;= 22 &amp; ADX slope &gt; 0</code>，<code>Expansion = RV slope &gt; threshold &amp; ADX slope &gt; 0 &amp; 非 Trend</code>，<code>Compression = RV slope &lt; -threshold &amp; ADX &lt;= 16</code>，其余归到 <code>Mean Reversion</code>；再把状态映射到 EMA / ATR 宽度与 <code>pressure 0~100</code>。这说明它本质上不是单指标判断，而是<strong>把路径持久性、趋势强度、波动变化三件事拼成一个可编程状态标签</strong>。</li>
+<li>这题现在值得做，因为它正好对上 <code>FACTOR_BACKLOG</code> 里已经被列为 <code>P0</code> 的 <code>Volatility regime filter</code>：我们已经知道“三条线都怕在错的市场状态里硬做”，但还缺一个比单独 <code>session</code>、<code>OI</code>、<code>VWAP</code> 更系统的状态框架。</li>
+<li>对 desk 最有价值的读法，不是“让 adaptive EMA 直接替换现有 EMA / PSAR”，而是把它降级成 <strong>shared allow/deny layer</strong>：<code>Trend / Expansion</code> 更像 continuation 允许态，<code>Compression</code> 更像 breakout 准备态，<code>Mean Reversion</code> 更像该减仓或禁入的坏环境。</li>
+<li>如果要回答“它为什么比继续给三条线各补一个小滤镜更值得”，答案也很简单：<strong>因为三条线现在缺的不是第 N 个局部 trigger，而是一层能统一解释什么时候该做、什么时候别做的共同状态语言。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li>对 <code>V3 final-verdict / breakout-short follow-up</code>：最该测的不是在每次破位后再加一个花哨图形，而是 <strong>只有在 <code>Trend / Expansion</code> 状态里才允许 follow-up short<code>；若落在 </code>Mean Reversion<code>，就把它当高风险假跌破区。</strong> </code>Compression -&gt; Expansion` 转换则可以单独当 breakout 启动态样本。</li>
+<li>对 <code>Fibonacci confirmation / retest_hold</code>：Fib 负责回答“回到哪一段”，regime matrix 负责回答“这段回踩所在的市场环境，像趋势延续还是像来回甩”。也就是：<strong>Fib 给位置，state gate 给环境许可。</strong></li>
+<li>对 <code>EMA / PSAR raw alpha focus</code>：它现在最缺的不是更多均线，而是一个能回答“这类顺势信号在哪些 bar 结构里天然更容易被来回打脸”的 shared veto。<code>Mean Reversion</code> 与低 pressure 状态正好可以扮这个角色。</li>
+<li>更关键的是，这条线只需要公开 OHLCV，就能先做最小实验；它比再引入一条更贵的外部数据更适合当前快验证节奏。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：对现有 <code>breakout_short</code>、<code>fib_retest_hold</code>、<code>ema_psar_raw</code> 来说，用一个上层 <code>30m</code> regime label 去 gate <code>15m</code> setup，比继续堆单点确认条件，更可能稳定降低 <code>false-break / false-hold / chop-loss</code>。</li>
+<li><strong>公开数据源</strong>：Binance perpetual <code>15m</code> 与聚合成 <code>30m</code> 的 OHLCV 即可；不需要订单簿、资金费率、OI 或额外低频宏观数据。</li>
+<li><strong>最小可计算定义</strong>：</li>
+</ul>
+<ol>
+<li>先在 <code>30m</code> 计算简化版 regime：<code>hurst_100</code>、<code>ADX14</code>、<code>ADX slope(5)</code>、<code>rv20 = stdev(logret, 20)</code>、<code>rv slope(5)</code>；</li>
+<li>用 repo 默认阈值先冻结四态：<code>Trend / Expansion / Compression / MR</code>；</li>
+<li>再把 <code>30m</code> 状态 forward-fill 到子级 <code>15m</code> bar；</li>
+<li>第一轮先<strong>不要</strong>接它的 adaptive EMA / stop 宽度，只测 state gate 本身；</li>
+<li>可选再补一个方向压力分数：<code>pressure &gt; 60</code> 只给 long continuation，<code>pressure &lt; 40</code> 只给 short continuation。</li>
+</ol>
+<ul>
+<li><strong>第一轮 bucket</strong>：</li>
+</ul>
+<ol>
+<li><code>base</code>：现有 setup 原样；</li>
+<li><code>no-MR gate</code>：只删除 <code>Mean Reversion</code> 状态样本；</li>
+<li><code>trend-expansion only</code>：只保留 <code>Trend / Expansion</code>；</li>
+<li><code>compression-breakout arm</code>：只看 <code>Compression -&gt; Expansion</code> 切换后 <code>1~3</code> 根内的 breakout/follow-up。</li>
+</ol>
+<ul>
+<li><strong>最先看的 4 个指标</strong>：<code>post-cost expectancy</code>、<code>trade count retention</code>、<code>false-break / false-hold rate</code>、<code>4/8 bar forward return dispersion</code>。</li>
+<li><strong>下一步怎么测</strong>：先别在 <code>15m</code> 直接重算一堆高噪声 Hurst，也别碰 repo 里的自适应参数。第一轮就固定 <code>BTC / ETH / SOL</code> perpetual、最近 <code>180d</code>、<code>15m</code> 入场、<code>30m</code> 状态门控、<code>next-bar open</code>、<code>no-overlap</code>，只回答一个问题：<strong>删掉 <code>MR</code> 或只保留 <code>Trend / Expansion</code>，能不能在不把样本砍废的前提下，稳定改善三条线的 continuation 质量？</strong> 如果连这一步都没有增量，就没必要继续把 Hurst / ADX / RV 包装成更复杂的 meta model。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这份 repo 的主定位是 <code>30m / 4h</code>，不是为 <code>15m</code> crypto 精调过的现成模板；直接把原阈值原封不动搬到 <code>15m</code>，很容易把 regime classifier 变成噪声放大器。</li>
+<li>里面的 Hurst 近似写法很轻量，适合做快实验，不代表就是最稳的长期定义；如果第一轮有增量，下一步再考虑更稳的 persistence proxy，而不是反过来一开始就优化 Hurst。</li>
+<li><code>Compression</code> 与我们今天早些时候已经写过的 <code>squeeze -&gt; release</code> 有信息重叠，所以后续必须做 ablation：确认 regime matrix 真的带来额外解释力，而不是换个更高级名字重复讲压缩。</li>
+<li>不要太早使用它的 adaptive EMA 与 stop 宽度；那会把“状态判别对不对”和“参数改了所以看起来变好”混在一起，第一轮结论会不诚实。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Damian Pitt / CAPITAL41. (2026). *capital41-indicators* — <code>Capital41 Regime Matrix v2</code>. GitHub repository.</li>
+<li>Venue / DOI：GitHub / N/A</li>
+<li>Repo URL: &lt;<a href="https://github.com/damianpitt/capital41-indicators&gt;">https://github.com/damianpitt/capital41-indicators&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://github.com/damianpitt/capital41-indicators&gt;">https://github.com/damianpitt/capital41-indicators&gt;</a></li>
+<li>README: &lt;<a href="https://raw.githubusercontent.com/damianpitt/capital41-indicators/main/README.md&gt;">https://raw.githubusercontent.com/damianpitt/capital41-indicators/main/README.md&gt;</a></li>
+<li>Regime Matrix source: &lt;<a href="https://raw.githubusercontent.com/damianpitt/capital41-indicators/main/Capital41_RegimeMatrix/Capital41_Regime_Matrix_v2.pine&gt;">https://raw.githubusercontent.com/damianpitt/capital41-indicators/main/Capital41_RegimeMatrix/Capital41_Regime_Matrix_v2.pine&gt;</a></li>
+<li>Repo metadata snapshot: created <code>2026-01-16</code>, <code>2</code> stars, <code>0</code> forks at fetch time.</li>
+<li>Binance USDⓈ-M Futures. *Kline/Candlestick Data*.</li>
+<li>Readable URL: &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;</a></li>
+<li>用途：构造 <code>15m</code> 主图与 <code>30m</code> 上层 regime label 的最小实验数据源。</li>
+</ul>
+</body>
+</html>

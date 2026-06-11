@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>cross-exchange funding extreme × band-stretch fade shell</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>cross-exchange funding extreme × band-stretch fade shell</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-10 02:06 UTC</span>
+      <span class="pill">研究时间：2026-04-10 02:05 UTC</span>
+      <span class="pill">类型：GitHub repo source audit + Binance USDⓈ-M `5m/15m` portability probe</span>
+      <span class="pill">主题标签：raw-alpha / mean-reversion / funding / carry / positioning / perp / crowding / Bollinger / RSI / 5m / 15m / repo</span>
+      <span class="pill">证据类型：工程经验 + 公开数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-10_0205_funding-extreme-bandfade-meanreversion-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-10 02:05 UTC</li>
+<li>类型：GitHub repo source audit + Binance USDⓈ-M <code>5m/15m</code> portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>extreme funding crowding × price stretch snapback</code>（极端 funding 代表拥挤持仓，若同时出现价格带外伸展，更容易短线回归）</li>
+<li>是否可独立复现：是（可先用 Binance 单 venue funding 代理复现，再决定是否接 AiCoin 跨所加权 funding）</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / mean-reversion / funding / carry / positioning / perp / crowding / Bollinger / RSI / 5m / 15m / repo</li>
+<li>证据类型：工程经验 + 公开数据 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>enuno (2026) 的 GitHub 仓库 <code>hyperliquid-trading-firm</code></strong> 里 <code>skills/AIcoin-CoinOS/aicoin-freqtrade/strategies/FundingRateStrategy.py</code>。它不是把 funding 当“慢频 carry 收益”去拿，而是把 <strong>极端 funding</strong> 读成 <strong>拥挤持仓过热/过冷的 crowding proxy</strong>：当 funding 已经极端、价格又同时冲出 <code>BB(20,2)</code>、<code>RSI(14)</code> 也到极值，就去做一笔 <strong>反身性 fade</strong>。</p>
+<p>源码给的是完整壳：<code>1h</code> 级别、可做多可做空、<code>BB20/2 + RSI14 + funding_threshold=0.013</code>（即约 <code>1.3bps</code> 的 funding 极值门槛），<code>price &lt; lower band &amp; RSI&lt;35 &amp; funding&lt;-thr</code> 做多，反向条件做空；出场是回到 <code>bb_mid</code> 或 <code>RSI</code> 回到中性，另带 <code>minimal_roi</code> 与 <code>-12% stoploss</code>。高价值点不是它那张偏 swing 的 hyperopt ROI 表，而是：<strong>把 funding 从“收 carry”改读成“做 crowding fade 的 regime-aware raw alpha”</strong>。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最值钱的不是 funding carry，而是 <strong><code>funding 极端 + 价格带外伸展</code> 比裸 <code>BB+RSI</code> 反转更像能活下来的 <code>5m</code> crowding-fade raw alpha</strong>。</li>
+<li><strong>一句话证明方式：</strong> 我先审源码拿到可执行规则，再用 Binance 公共 funding + perp K 线做 <code>BB+RSI</code> 基线 vs <code>+ funding extreme gate</code> 的同壳对照。</li>
+<li>repo 原始设定本质是：<strong>funding 负责回答“这波 stretch 有没有 crowding 背书”，BB/RSI 负责回答“价格是不是已经冲得够远可以 fade”</strong>。这比把 funding 单独当方向信号要靠谱得多。</li>
+<li>本地 <code>15m</code> 六个 liquid majors（<code>BTC/ETH/SOL/XRP/ADA/DOGE</code>，近约 <code>120d</code>）里，裸 <code>BB+RSI</code> 壳约 <code>1756</code> 笔、gross 约 <code>-8969bps</code>；加 funding extreme gate 后只剩 <code>155</code> 笔、gross 转成约 <code>+579bps</code>，但粗扣每笔 <code>8bps</code> round-trip 后仍约 <code>-661bps</code>。<strong>结论：15m 上 gate 能去噪，但还不够让这条线稳过成本。</strong></li>
+<li>本地 <code>5m</code>（近约 <code>90d</code>）更像 fast lane：裸 <code>BB+RSI</code> 壳约 <code>4072</code> 笔、gross 约 <code>+6619bps</code>，但扣 <code>8bps</code>/笔后约 <code>-25957bps</code>；加 funding gate 后只剩 <code>285</code> 笔、gross 约 <code>+4606bps</code>，扣成本后约 <strong><code>+2326bps</code></strong>，平均约 <strong><code>+16.2bps/笔 gross</code></strong>。<strong>结论：对我们 desk，更像先上 <code>5m</code>，不要先上 <code>15m</code>。</strong></li>
+<li><code>5m</code> 正贡献主要集中在 <strong>ETH / ADA / DOGE</strong>：粗扣 <code>8bps</code> 后约分别剩 <code>+1353 / +1076 / +720bps</code>；<code>BTC / XRP</code> 仍偏弱，说明这条线更像 <strong>alt-perp crowding fade</strong>，不是全市场统一模板。</li>
+<li>公开 Binance 单 venue funding 的正 funding 上沿通常只到约 <code>0.7~1.0bps</code>，比 repo 默认 <code>1.3bps</code> 更温和；也就是说 <strong>AiCoin 跨所加权 funding 可能比单所 funding 更极端、更有信号密度</strong>。当前 portability probe 是保守口径，不是满配复刻。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线对 <code>momentum</code> 当前阶段有直接价值，因为它补的是 <strong>raw alpha 素材池里的“crowding-conditioned mean reversion”</strong>，而不是又一个泛 filter：</p>
+<ul>
+<li>它和我们前几轮的 funding carry / basis 线形成互补：<strong>同样看 funding，一条是“收 carry”，另一条是“拥挤过头就 fade”</strong>。</li>
+<li>它很适合 desk 的 <code>1m/3m/5m/15m</code> 节奏：funding 是慢锚，<code>BB/RSI/stretch</code> 是快触发。</li>
+<li>它天然能拆成两个组件：<code>base alpha = stretch fade</code>，<code>funding = crowding admission gate</code>；这比直接抄一整套黑盒更利于后续复现与组合。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：逆势 / crowding fade</li>
+<li>基础 alpha：<code>极端 funding 下的价格过冲更容易短线回归</code></li>
+<li>regime：perp 持仓明显拥挤、funding 达到符号极端时</li>
+<li>filter / veto：<code>BB(20,2)</code> 带外 + <code>RSI(14)</code> 极值；后续可再加“只做 alt、排除 BTC/XRP”或“只做 funding 绝对值前 decile”</li>
+<li>risk / sizing / execution overlay：next-bar open 入场；回到 <code>bb_mid</code> 或 <code>RSI≈50</code> 出场；先按 <code>8bps</code> round-trip 成本验活；若要实盘再加 funding 结算时点、持仓上限、单币 kill-switch</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设：</strong> <code>BB+RSI</code> 裸反转太容易被趋势碾；若只在 funding 极端时做，会把“普通回调”筛掉，留下“拥挤过冲后的 snapback”。</li>
+<li><strong>一个可计算定义：</strong></li>
+<li><code>stretch_long = close &lt; BB20_lower and RSI14 &lt; 35</code></li>
+<li><code>stretch_short = close &gt; BB20_upper and RSI14 &gt; 65</code></li>
+<li><code>funding_extreme_long = funding &lt;= rolling_q05</code>，<code>funding_extreme_short = funding &gt;= rolling_q95</code></li>
+<li>入场：<code>stretch ∩ funding_extreme</code> 后下一根开盘</li>
+<li>出场：回到 <code>SMA20 / bb_mid</code> 或 <code>RSI</code> 回到 <code>50</code>，否则 <code>12</code> 根 bar time-stop</li>
+<li><strong>最小回测切口：</strong> Binance USDⓈ-M <code>BTC/ETH/SOL/XRP/ADA/DOGE</code>，先跑 <code>5m</code> 近 <code>90d</code>，再跑 <code>15m</code> 近 <code>120d</code>；先用单 venue funding，后续再替换成跨所加权 funding。</li>
+<li><strong>最该先看 2 个指标：</strong></li>
+</ul>
+<ol>
+<li><code>post-cost bps/trade</code>（别只看 gross）</li>
+<li><code>trade_count retention</code>（gate 把多少噪音交易砍掉）</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>repo 真正依赖的是 <strong>AiCoin 跨所 funding</strong>；当前 portability 只用 Binance 单 venue funding，属于保守代理。</li>
+<li>funding 本身是慢变量，所以这条线更像 <strong>gate + trigger</strong> 的组合，不是逐 bar 独立主信号；别把它伪装成高频纯 price alpha。</li>
+<li>repo 的 <code>minimal_roi</code> 很 swing，<strong>不建议原样搬到 short-cycle desk</strong>；当前更该复用的是 entry logic 与 mean-revert exit 逻辑。</li>
+<li><code>BTC / XRP</code> 转移效果偏弱，说明这条线不该无脑全市场铺开，最好先做 <strong>alt-heavy universe</strong> 或按 symbol 分层阈值。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>enuno. (2026). _hyperliquid-trading-firm_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/enuno/hyperliquid-trading-firm">https://github.com/enuno/hyperliquid-trading-firm</a></code></li>
+<li>Strategy file: <code><a href="https://raw.githubusercontent.com/enuno/hyperliquid-trading-firm/main/skills/AIcoin-CoinOS/aicoin-freqtrade/strategies/FundingRateStrategy.py">https://raw.githubusercontent.com/enuno/hyperliquid-trading-firm/main/skills/AIcoin-CoinOS/aicoin-freqtrade/strategies/FundingRateStrategy.py</a></code></li>
+<li>AiCoin integration README: <code><a href="https://raw.githubusercontent.com/enuno/hyperliquid-trading-firm/main/skills/AIcoin-CoinOS/README.md">https://raw.githubusercontent.com/enuno/hyperliquid-trading-firm/main/skills/AIcoin-CoinOS/README.md</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M public data / APIs</strong></li>
+</ol>
+<ul>
+<li>Funding history: <code><a href="https://fapi.binance.com/fapi/v1/fundingRate">https://fapi.binance.com/fapi/v1/fundingRate</a></code></li>
+<li>Perpetual klines: <code><a href="https://fapi.binance.com/fapi/v1/klines">https://fapi.binance.com/fapi/v1/klines</a></code></li>
+</ul>
+<ol>
+<li><strong>本地 portability artifact</strong></li>
+</ol>
+<ul>
+<li><code>reports/artifacts/literature/funding_meanreversion_gate_portability_2026-04-10.csv</code></li>
+</ul>
+</body>
+</html>

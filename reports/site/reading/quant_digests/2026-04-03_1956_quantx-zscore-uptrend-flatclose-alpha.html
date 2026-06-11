@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 intraday mean-reversion repo 只读成美股回测秀：对 crypto short-cycle desk，更该先测的是「short-horizon z-score oversold × 5d trend-allow × one-trade-per-day flat-close shell」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 intraday mean-reversion repo 只读成美股回测秀：对 crypto short-cycle desk，更该先测的是「short-horizon z-score oversold × 5d trend-allow × one-trade-per-day flat-close shell」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 20:01 UTC</span>
+      <span class="pill">研究时间：2026-04-03 19:56 UTC</span>
+      <span class="pill">类型：2025 GitHub repo source audit（GitHub API metadata + `README.md` + `src/strategy.py` + `src/backtest.py` + `docs/Report_Notes.txt`）+ Binance Futures 公共 `1m/3m/5m/15m` 最小便携性快检</span>
+      <span class="pill">主题标签：raw-alpha / mean-reversion / single-asset / zscore / short-horizon / daily-trend-gate / flat-close / intraday / no-overnight / vol-normalized-sizing / 1m / 3m / 5m / 15m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：repo（完整策略壳）+ README 已给回测指标 + 本地 public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_1956_quantx-zscore-uptrend-flatclose-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-03 19:56 UTC</li>
+<li>类型：2025 GitHub repo source audit（GitHub API metadata + <code>README.md</code> + <code>src/strategy.py</code> + <code>src/backtest.py</code> + <code>docs/Report_Notes.txt</code>）+ Binance Futures 公共 <code>1m/3m/5m/15m</code> 最小便携性快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>短周期价格偏离短均值后会向均值回归，但只在更高一层短趋势仍向上的时候做“顺大势的回撤买入”</strong>；repo 真正值得 desk 先抄的不是“z-score 很神”，而是 <code>intraday z-score oversold + 5-day trend allow + flat-close + vol/ATR sizing</code> 这条完整单资产壳</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / mean-reversion / single-asset / zscore / short-horizon / daily-trend-gate / flat-close / intraday / no-overnight / vol-normalized-sizing / 1m / 3m / 5m / 15m / repo / public-data / cost / risk</li>
+<li>证据类型：repo（完整策略壳）+ README 已给回测指标 + 本地 public-data portability probe</li>
+</ul>
+<p><strong>先回答 base alpha：这篇东西的 base alpha 很清楚，不是“机器学习、报表、可视化框架”这些外围，而是一个非常具体的单资产 raw alpha——<code>短周期 oversold 回撤，在更高层日内/日间趋势仍向上的前提下，做 intraday mean reversion</code>。</strong></p>
+<h2>1）为什么这条线现在值得 intake</h2>
+<p>这轮值得写它，不是因为它在美股上回测数字好看，而是因为它刚好补了我们当前 research queue 里的一个缺口：</p>
+<ul>
+<li>它是<strong>raw alpha 本体</strong>，不是纯 filter / regime / overlay；</li>
+<li>它是<strong>单资产均值回归</strong>，能补我们最近 pairs / carry / cross-market / maker 类素材之外的另一条主线；</li>
+<li>它的结构<strong>非常可解释</strong>，没有一上来就把研究重心带去黑盒 ML；</li>
+<li>它把 <code>entry / exit / sizing / stop / cost / no-overnight</code> 一次写齐，适合快速做 first verdict。</li>
+</ul>
+<p>结合当前 <code>LEARNING_TRACK</code> / <code>FACTOR_BACKLOG</code>：我们还处在<strong>继续积累可独立复现的基础 alpha</strong>阶段，而这条线正好是“解释性强、可快速搬到 crypto 的完整 mean-reversion 壳”。</p>
+<h2>2）这次看了什么</h2>
+<h3>2.1 主来源</h3>
+<ol>
+<li><strong>Alqama Ansari (2025), *Quant Strategy Backtester*, GitHub repository</strong></li>
+</ol>
+<ul>
+<li>Venue：GitHub</li>
+<li>DOI：N/A</li>
+<li>Readable URL：&lt;<a href="https://github.com/Alqama-svg/Quant_Strategy_Backtester&gt;">https://github.com/Alqama-svg/Quant_Strategy_Backtester&gt;</a></li>
+<li>Repo URL：&lt;<a href="https://github.com/Alqama-svg/Quant_Strategy_Backtester&gt;">https://github.com/Alqama-svg/Quant_Strategy_Backtester&gt;</a></li>
+<li>GitHub API metadata：仓库创建于 <code>2025-10-16</code>，最近 push <code>2026-01-16</code></li>
+</ul>
+<ol>
+<li>这次重点看的文件：</li>
+</ol>
+<ul>
+<li><code>README.md</code></li>
+<li><code>src/strategy.py</code></li>
+<li><code>src/backtest.py</code></li>
+<li><code>docs/Report_Notes.txt</code></li>
+</ul>
+<h3>2.2 repo 自带的关键数字</h3>
+<p>README 里直接给出一组完整的回测摘要（<code>QuantX V4.9 Full-Year 2024 Backtest</code>）：</p>
+<ul>
+<li>Universe：<code>32</code> 个大盘股 ticker</li>
+<li>Initial Capital：<code>$1,000,000</code></li>
+<li>Final Capital：<code>$1,401,058</code></li>
+<li>Total Return：<code>+40.11%</code></li>
+<li>Annualized Return：<code>26.30%</code></li>
+<li>Max Drawdown：<code>-1.91%</code></li>
+<li>Sharpe Ratio：<code>2.36</code></li>
+<li>Trades Executed：<code>3,308</code></li>
+<li>Win Rate：<code>66.63%</code></li>
+</ul>
+<p><code>docs/Report_Notes.txt</code> 还补了两个对我们很重要的点：</p>
+<ul>
+<li><strong>全是 intraday trade，没有隔夜暴露</strong>；</li>
+<li>数据口径是<strong>intraday OHLCV</strong>，并且研究对象本质上是<strong>price vs short-term moving average 的 standardized z-score deviation</strong>。</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; 这不是“看到跌就抄底”，而是一个<strong>有上层方向允许、下层偏离触发、并且日内强平归零</strong>的短周期回归壳。</p>
+<h2>3）repo 里真正能直接搬走的策略骨架</h2>
+<p>从 <code>src/strategy.py</code> 和 <code>src/backtest.py</code> 看，这条线最值钱的是它把完整交易母板写得非常具体：</p>
+<h3>3.1 信号层</h3>
+<ul>
+<li><code>DAILY_TREND_WINDOW = 5</code></li>
+<li><code>INTRADAY_LOOKBACK = 15</code></li>
+<li><code>Z_THRESHOLD = 0.65</code></li>
+<li><code>VOLUME_MIN_FACTOR = 0.35</code></li>
+<li><code>CONFIRM_BARS = 0</code></li>
+</ul>
+<p>在 <code>backtest.py</code> 里，入场不是裸做反转，而是同时满足：</p>
+<ul>
+<li>短周期 <code>z-score &lt;= -0.65</code></li>
+<li>成交量条件通过</li>
+<li>当日 close 仍在 <code>5-day trend</code> 之上</li>
+<li>同一资产<strong>当天只进一次</strong>（<code>entered_today</code>）</li>
+</ul>
+<p>这说明它真正的 base alpha 不是“无脑均值回复”，而是：</p>
+<p>&gt; <strong>上层仍偏强时，做短周期 oversold 回撤修复。</strong></p>
+<p>这和纯粹的逆势抄底差别很大，也更适合 crypto 的短周期实盘：</p>
+<ul>
+<li>它把均值回复限制在“顺大势的小回撤”里；</li>
+<li>它避免在明显下跌日里把每次下跌都错当成可回归噪音。</li>
+</ul>
+<h3>3.2 风控与仓位层</h3>
+<p>repo 直接给了能落地的参数：</p>
+<ul>
+<li><code>RISK_PER_TRADE = 0.035</code></li>
+<li><code>MAX_POSITION_FRACTION = 0.05</code></li>
+<li><code>MAX_GROSS_EXPOSURE = 2.2</code></li>
+<li><code>STOP_LOSS_PCT = 0.022</code></li>
+<li><code>TAKE_PROFIT_PCT = 0.10</code></li>
+<li><code>TRANSACTION_COST_PCT = 0.0002</code></li>
+<li><code>SLIPPAGE_PCT = 0.0005</code></li>
+</ul>
+<p><code>backtest.py</code> 里的 sizing 也不是瞎分配，而是：</p>
+<ul>
+<li>先算 <code>risk_budget = total_value * RISK_PER_TRADE</code></li>
+<li>再用 <code>max(ATR, exec_price * volatility, floor)</code> 估单股 dollar risk</li>
+<li>再受 <code>MAX_POSITION_FRACTION</code> 和 gross exposure 上限约束</li>
+</ul>
+<p>这点很关键，因为它不是“只有信号没有壳”的研究仓库，而是把：</p>
+<ul>
+<li>entry</li>
+<li>stop</li>
+<li>take profit</li>
+<li>position sizing</li>
+<li>capacity / exposure control</li>
+<li>cost proxy</li>
+</ul>
+<p>一次写齐了。</p>
+<h3>3.3 出场层</h3>
+<p>这份 repo 很适合我们 desk 的一点，是它明确坚持：</p>
+<ul>
+<li>日内 stop / take-profit 先走；</li>
+<li><strong>收盘前全部平掉，不留 overnight</strong>。</li>
+</ul>
+<p>对 crypto 来说，24/7 没有美股那种固定收盘，但这个思想非常有价值：</p>
+<p>&gt; 你可以把它翻译成“<strong>pseudo-session flat-close</strong>”，比如 UTC <code>00:00</code>、北京时间 <code>08:00</code>、或美股 regular session close 对应时刻，把它当成强制降风险和结算点。</p>
+<h2>4）为什么这不是“又一个 BB/RSI 抄底脚本”</h2>
+<p>这份 repo 最值得 intake 的地方，不是指标名，而是它把单资产 mean reversion 写成了一个<strong>非常诚实的完整策略壳</strong>：</p>
+<ul>
+<li><strong>raw alpha 本体</strong>：短均值偏离后修复</li>
+<li><strong>方向允许层</strong>：只在上层趋势没坏时做回撤买入</li>
+<li><strong>risk shell</strong>：ATR / 波动率参与 sizing</li>
+<li><strong>time boundary</strong>：强制日内 flat-close</li>
+<li><strong>capacity shell</strong>：position fraction / gross exposure</li>
+<li><strong>cost shell</strong>：显式写了 cost + slippage</li>
+</ul>
+<p>所以它不是一个“指标堆砌”的 filter，而是一条<strong>能直接进入复现实验队列</strong>的 raw alpha 母板。</p>
+<h2>5）Binance 公共数据最小便携性快检：这条壳迁到 crypto 居然挺顺</h2>
+<p>先强调口径：下面<strong>不是</strong> repo 的原始复现，也不是 production PnL，只是做一个最小便携性检查，看这条壳搬到 crypto <code>1m/3m/5m/15m</code> 后，是否还能形成像样的 short-cycle alpha。</p>
+<h3>5.1 快检口径</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M Futures 公共 klines</li>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li>区间：<code>2026-03-01</code> 到 <code>2026-04-03 19:5x UTC</code></li>
+<li>proxy 假设：</li>
+<li><code>5-day</code> 日线趋势允许</li>
+<li><code>15-bar</code> intraday z-score</li>
+<li><code>1 trade / symbol / day</code> 上限</li>
+<li><code>-2.2%</code> 止损、<code>+10%</code> 止盈</li>
+<li>pseudo-EOD 平仓：按 <code>UTC</code> 日切</li>
+<li>成本：<code>7bps / side</code>（沿 repo 的 <code>cost + slippage</code>）</li>
+<li>结果文件：</li>
+<li><code>reports/artifacts/quant_digests/2026-04-03_quantx_mean_reversion_portability_probe.csv</code></li>
+</ul>
+<h3>5.2 <code>5m</code> proxy 结果（更接近当前 desk 默认频段）</h3>
+<ul>
+<li><strong>BTCUSDT 5m</strong>：<code>15</code> 笔，胜率 <code>66.7%</code>，累计收益 proxy <code>+11.3%</code>，最大回撤约 <code>-2.38%</code></li>
+<li><strong>ETHUSDT 5m</strong>：<code>16</code> 笔，胜率 <code>81.3%</code>，累计收益 proxy <code>+28.2%</code>，最大回撤约 <code>-1.49%</code></li>
+<li><strong>SOLUSDT 5m</strong>：<code>14</code> 笔，胜率 <code>57.1%</code>，累计收益 proxy <code>+8.4%</code>，最大回撤约 <code>-4.25%</code></li>
+</ul>
+<h3>5.3 <code>15m</code> proxy 结果（仍然能活）</h3>
+<ul>
+<li><strong>BTCUSDT 15m</strong>：<code>15</code> 笔，胜率 <code>66.7%</code>，累计收益 proxy <code>+13.6%</code>，最大回撤约 <code>-2.47%</code></li>
+<li><strong>ETHUSDT 15m</strong>：<code>16</code> 笔，胜率 <code>75.0%</code>，累计收益 proxy <code>+21.4%</code>，最大回撤约 <code>-1.49%</code></li>
+<li><strong>SOLUSDT 15m</strong>：<code>14</code> 笔，胜率 <code>64.3%</code>，累计收益 proxy <code>+10.9%</code>，最大回撤约 <code>-3.97%</code></li>
+</ul>
+<h3>5.4 <code>1m / 3m</code> sidecar 结果（说明它也能下压到更高强度 alpha）</h3>
+<ul>
+<li><strong>ETHUSDT 1m</strong>：<code>16</code> 笔，胜率 <code>87.5%</code>，累计收益 proxy <code>+30.9%</code></li>
+<li><strong>ETHUSDT 3m</strong>：<code>16</code> 笔，胜率 <code>87.5%</code>，累计收益 proxy <code>+32.2%</code></li>
+<li><strong>BTC / SOL</strong> 在 <code>1m / 3m</code> 也维持正累计收益</li>
+</ul>
+<p>这组快检最重要的结论不是“收益数值本身”，而是：</p>
+<p>&gt; <strong>这条 repo-based shell 不仅能搬到 crypto，而且在 <code>5m / 15m</code> 上也不是一搬就死。</strong></p>
+<h2>6）对当前 short-cycle desk 的正确翻译</h2>
+<h3>6.1 这条 alpha 的正确命名</h3>
+<p>如果要把它写进素材池，我会这样命名：</p>
+<p><strong><code>short-horizon z-score oversold × 5d trend-allow × flat-close</code></strong></p>
+<p>这比笼统写“均值回归”更准确，因为它强调了三件核心事：</p>
+<ol>
+<li><strong>不是纯反转</strong>，而是顺大势下的短回撤修复；</li>
+<li><strong>不是无限持有等均值</strong>，而是日内壳；</li>
+<li><strong>不是只有 entry</strong>，而是完整执行与风险框架。</li>
+</ol>
+<h3>6.2 它服务于哪类 desk 组件</h3>
+<p>这条线可以直接扩成：</p>
+<ul>
+<li>单资产 long-only dip-buy shell</li>
+<li>单资产 long/short 对称回归 shell</li>
+<li>多币 one-trade-per-day rotation shell</li>
+<li>作为更复杂 MR / breakout 组合里的一条独立 sleeve</li>
+</ul>
+<h3>6.3 对 crypto 的一个关键改写</h3>
+<p>repo 当前更像 equities long-only 逻辑。放到 crypto perp，我会优先补一条<strong>对称 short sleeve</strong>：</p>
+<ul>
+<li>若 <code>z &gt;= +z_th</code> 且 <code>day_close &lt; 5-day trend</code>，允许做空回归</li>
+<li>若市场整体 regime 明显 risk-on，则 short sleeve 降仓或停机</li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; repo 的 long-only 版本已经足够做 first verdict；但真要变成 perp desk 的 production 候选，下一步必须加<strong>下行趋势中的 overbought fade</strong>。</p>
+<h2>7）这条线的优点与最大风险</h2>
+<h3>优点</h3>
+<ul>
+<li><strong>可解释性强</strong>：比很多 ML / 多特征堆叠策略更适合当前学习阶段</li>
+<li><strong>完整度高</strong>：entry/exit/sizing/risk/cost 都写了</li>
+<li><strong>频段友好</strong>：<code>5m / 15m</code> 都能快速做实验，<code>1m / 3m</code> 也可向下压</li>
+<li><strong>迁移成本低</strong>：只需要公共 OHLCV 就能做第一轮 verdict</li>
+</ul>
+<h3>最大风险</h3>
+<ul>
+<li><strong>pseudo-session 选择会强烈影响结果</strong>：crypto 没有自然收盘，flat-close 的切点本身就是参数</li>
+<li><strong>趋势允许层可能太宽</strong>：<code>5-day trend</code> 在 crypto 可能过慢，需比较 <code>1d/3d/5d</code> 或 <code>288-bar EMA</code> 等替代</li>
+<li><strong>单日只进一次</strong>会压低 turnover；对更高强度 desk，未必是最优</li>
+<li><strong>当前快检没有盘口成交、maker/taker 分层和 funding</strong>，所以只够 admission，不够 production</li>
+</ul>
+<h2>8）下一步怎么测（最重要）</h2>
+<h3>A. 先做 exact-ish replication（优先级最高）</h3>
+<p>在 <code>momentum</code> 里做一个最小复刻版：</p>
+<ul>
+<li>标的：<code>BTC / ETH / SOL</code></li>
+<li>频段：<code>5m</code> 为主，<code>15m</code> 为稳健对照，<code>3m</code> 为高强度附加组</li>
+<li>信号：</li>
+<li><code>zscore(close, 15)</code> 或 <code>zscore(vwap, 15)</code></li>
+<li>上层方向：<code>close &gt; trend_filter</code></li>
+<li>出场：<code>stop / tp / pseudo-session flat-close</code></li>
+<li>cost ladder：<code>7 / 10 / 15 bps per side</code></li>
+</ul>
+<h3>B. 把“flat-close 时间点”当成一级参数</h3>
+<p>至少测这三种：</p>
+<ul>
+<li><code>UTC 00:00</code></li>
+<li><code>UTC 08:00</code>（更贴近北京时间日切）</li>
+<li><code>UTC 21:00~22:00</code>（贴近美股 regular session 尾部）</li>
+</ul>
+<p>因为这条策略不是简单信号，而是<strong>信号 + 强制结算边界</strong>。</p>
+<h3>C. 增加 short sleeve</h3>
+<p>做对称版本：</p>
+<ul>
+<li>long：<code>z &lt;= -z_th</code> 且 <code>trend_up</code></li>
+<li>short：<code>z &gt;= +z_th</code> 且 <code>trend_down</code></li>
+</ul>
+<p>这一步非常重要，因为我们 desk 不是只能做 equities long-only。</p>
+<h3>D. 和现有单资产 MR baseline 做 A/B</h3>
+<p>最适合的对照不是继续和 pairs/carry 比，而是直接和现有单资产 MR 母板比：</p>
+<ul>
+<li><code>BB/zscore + RSI confirm + trend veto</code></li>
+<li>本文这条 <code>zscore oversold + trend allow + flat-close</code></li>
+</ul>
+<p>要回答的问题是：</p>
+<ul>
+<li>哪条更简洁？</li>
+<li>哪条 trade count 更稳？</li>
+<li>哪条对 cost / pseudo-session 更敏感？</li>
+</ul>
+<h2>9）结论</h2>
+<p>如果只用一句话总结：</p>
+<p>&gt; <strong>这份 repo 最值得 desk intake 的，不是“美股回测成绩单”，而是一条非常清楚、能快速迁移到 crypto 的单资产 raw alpha 壳：<code>短周期 z-score oversold</code> 只在 <code>5-day trend</code> 仍向上时触发，并用 <code>flat-close + vol/ATR sizing</code> 把它收束成完整日内策略。</strong></p>
+<p>它的研究价值在于：</p>
+<ul>
+<li>不是纯 filter；</li>
+<li>不是纯解释；</li>
+<li>不是只能停留在论文摘要层；</li>
+<li>而是<strong>今天就能用公共数据做最小实验</strong>，并且从这轮 <code>5m / 15m</code> 快检看，值得进入下一轮正式 admission check。</li>
+</ul>
+<h2>Sources</h2>
+<ol>
+<li><strong>Alqama Ansari (2025), _Quant Strategy Backtester_, GitHub repository</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/Alqama-svg/Quant_Strategy_Backtester&gt;">https://github.com/Alqama-svg/Quant_Strategy_Backtester&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/Alqama-svg/Quant_Strategy_Backtester&gt;">https://github.com/Alqama-svg/Quant_Strategy_Backtester&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Repository README / backtest summary</strong></li>
+</ol>
+<ul>
+<li>Source URL: &lt;<a href="https://raw.githubusercontent.com/Alqama-svg/Quant_Strategy_Backtester/main/README.md&gt;">https://raw.githubusercontent.com/Alqama-svg/Quant_Strategy_Backtester/main/README.md&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Strategy parameters</strong></li>
+</ol>
+<ul>
+<li>Source URL: &lt;<a href="https://raw.githubusercontent.com/Alqama-svg/Quant_Strategy_Backtester/main/src/strategy.py&gt;">https://raw.githubusercontent.com/Alqama-svg/Quant_Strategy_Backtester/main/src/strategy.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Sequential backtest logic / entry-exit-scaling shell</strong></li>
+</ol>
+<ul>
+<li>Source URL: &lt;<a href="https://raw.githubusercontent.com/Alqama-svg/Quant_Strategy_Backtester/main/src/backtest.py&gt;">https://raw.githubusercontent.com/Alqama-svg/Quant_Strategy_Backtester/main/src/backtest.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Report notes / data and interpretation notes</strong></li>
+</ol>
+<ul>
+<li>Source URL: &lt;<a href="https://raw.githubusercontent.com/Alqama-svg/Quant_Strategy_Backtester/main/docs/Report_Notes.txt&gt;">https://raw.githubusercontent.com/Alqama-svg/Quant_Strategy_Backtester/main/docs/Report_Notes.txt&gt;</a></li>
+</ul>
+<ol>
+<li><strong>This run’s local portability artifact</strong></li>
+</ol>
+<ul>
+<li>File: <code>reports/artifacts/quant_digests/2026-04-03_quantx_mean_reversion_portability_probe.csv</code></li>
+</ul>
+</body>
+</html>

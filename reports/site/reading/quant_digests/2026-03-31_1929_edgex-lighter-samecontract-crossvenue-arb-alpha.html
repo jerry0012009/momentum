@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 cross-exchange repo 只当“搬砖脚本”：对 desk 更该先测的是「same-contract perp quote gap × maker-one-leg / taker-one-leg」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 cross-exchange repo 只当“搬砖脚本”：对 desk 更该先测的是「same-contract perp quote gap × maker-one-leg / taker-one-leg」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-31 19:31 UTC</span>
+      <span class="pill">研究时间：2026-03-31 19:29 UTC</span>
+      <span class="pill">类型：raw alpha</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/cross-venue/same-underlier/same-contract/perp-perp/quote-gap/maker-taker/edgex/lighter/1m/3m/5m/repo/public-data/execution/cost/risk</span>
+      <span class="pill">证据类型：2026 GitHub 新仓库 source audit（`strategy/edgex_arb.py` + `strategy/order_manager.py` + `strategy/position_tracker.py` + `strategy/data_logger.py` + `exchanges/edgex.py` + `exchanges/lighter.py`）+ Lighter 公共 `orderBooks` endpoint live sanity check</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-31_1929_edgex-lighter-samecontract-crossvenue-arb-alpha.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一标的、同一类永续合约在不同 venue 的最优买卖盘会短时失衡；当 <strong>Lighter bid 明显高于 EdgeX maker-buy 成本</strong>，或 <strong>EdgeX ask 明显高于 Lighter maker-buy 成本</strong> 时，后续更可能向跨 venue 收敛方向回落</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是，但对成交细节和单腿风险非常敏感</li>
+<li>时间：2026-03-31 19:29 UTC</li>
+<li>类型：raw alpha</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/cross-venue/same-underlier/same-contract/perp-perp/quote-gap/maker-taker/edgex/lighter/1m/3m/5m/repo/public-data/execution/cost/risk</li>
+<li>证据类型：2026 GitHub 新仓库 source audit（<code>strategy/edgex_arb.py</code> + <code>strategy/order_manager.py</code> + <code>strategy/position_tracker.py</code> + <code>strategy/data_logger.py</code> + <code>exchanges/edgex.py</code> + <code>exchanges/lighter.py</code>）+ Lighter 公共 <code>orderBooks</code> endpoint live sanity check</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主材料不是论文，而是一份 <strong>2026 新 repo：<code>wavyjay1/cross-exchange-arbitrage</code></strong>。</p>
+<p>它表面上是一个“EdgeX 与 Lighter 之间做 cross-exchange arbitrage 的机器人”，但如果按我们当前 desk 的优先级来读，真正值得单独拎出来进素材池的，不是“跨所机器人”这几个字，而是它给了一条相当完整、而且非常适合短周期 desk 做最小实验的 raw alpha 壳：</p>
+<p><strong>同一标的、同一类 perp，在两个 venue 的 BBO 短时错位；在一个 venue 争取 maker 进场，在另一边用 taker 对冲，赚的是跨 venue quote gap 的回收。</strong></p>
+<p>翻成人话： 这不是长周期 funding 套利，也不是 pair formation，不是“预测涨跌”，而是更原子的相对价值口袋：</p>
+<ul>
+<li>资产相同；</li>
+<li>合约类型相同；</li>
+<li>风险中性方向很清楚；</li>
+<li>边来自 <strong>venue A 与 venue B 的盘口不同步</strong>。</li>
+</ul>
+<p>这类题材和我们最近写的 spot-perp / funding / stablecoin / options relative value 不一样的地方在于：</p>
+<p><strong>这里的 base alpha 更短、更薄、更执行驱动。</strong></p>
+<h2>2. 为什么它值得进当前研究池</h2>
+<p>最近几轮 digest 已经补了很多：</p>
+<ul>
+<li>spot-perp basis / premium reversion；</li>
+<li>funding carry；</li>
+<li>stablecoin parity；</li>
+<li>pairs / basket stat-arb；</li>
+<li>options parity / box / butterfly。</li>
+</ul>
+<p>但当前池子里还缺一条非常“台面下”、却很像真实交易 desk 的原始 alpha：</p>
+<p><strong>same-contract、cross-venue、盘口级价差回收。</strong></p>
+<p>这份 repo 值得补，有 4 个原因：</p>
+<ol>
+<li><strong>base alpha 很清楚</strong>：不是 filter，不是 overlay，就是同一合约跨 venue BBO 错位；</li>
+<li><strong>是完整策略壳</strong>：有 entry、hedge、timeout、position cap、日志；</li>
+<li><strong>天然更接近 <code>1m / 3m</code></strong>：不是等 K 线走形态，而是等盘口 pocket；</li>
+<li><strong>非常适合做最小 falsification</strong>：只要能持续录两边 BBO，就能先回答“机会有没有厚到足以盖过 taker + legging”。</li>
+</ol>
+<h2>3. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = 同一资产、同一类永续合约在两个 venue 的最优买卖盘会短暂失衡；当这个 gap 大到足以覆盖 one-leg maker + one-leg taker 的真实成交壳时，随后更可能向跨 venue 收敛方向回落。</strong></p>
+<p>所以它本质上是：</p>
+<ul>
+<li><code>relative-value</code></li>
+<li><code>stat-arb</code></li>
+<li><code>same-underlier, same-contract, cross-venue</code></li>
+<li>但交易对象不是 spot-vs-perp，也不是 two-coin pair，而是 <strong>perp-vs-perp 的盘口错价</strong>。</li>
+</ul>
+<h2>4. 核心来源</h2>
+<h3>4.1 主仓库</h3>
+<ul>
+<li><strong>Author / Owner</strong>：wavyjay1</li>
+<li><strong>Year</strong>：2026（repo 最近一次更新为 2026-03-31）</li>
+<li><strong>Title</strong>：*cross-exchange-arbitrage*</li>
+<li><strong>Venue</strong>：GitHub repository</li>
+<li><strong>DOI</strong>：无</li>
+<li><strong>Readable URL</strong>：<a href="https://github.com/wavyjay1/cross-exchange-arbitrage">https://github.com/wavyjay1/cross-exchange-arbitrage</a></li>
+<li><strong>Repo URL</strong>：<a href="https://github.com/wavyjay1/cross-exchange-arbitrage">https://github.com/wavyjay1/cross-exchange-arbitrage</a></li>
+</ul>
+<h3>4.2 这次实际重点看的文件</h3>
+<ul>
+<li><code>strategy/edgex_arb.py</code></li>
+<li><code>strategy/order_manager.py</code></li>
+<li><code>strategy/position_tracker.py</code></li>
+<li><code>strategy/data_logger.py</code></li>
+<li><code>exchanges/edgex.py</code></li>
+<li><code>exchanges/lighter.py</code></li>
+</ul>
+<h3>4.3 公开数据 / 公开接口线索</h3>
+<ul>
+<li><strong>Lighter public REST</strong>：<code><a href="https://mainnet.zklighter.elliot.ai/api/v1/orderBooks">https://mainnet.zklighter.elliot.ai/api/v1/orderBooks</a></code></li>
+<li><strong>edgeX public quote websocket（repo 配置）</strong>：<code>wss://quote.edgex.exchange</code></li>
+<li><strong>edgeX public trading site</strong>：<code><a href="https://pro.edgex.exchange">https://pro.edgex.exchange</a></code></li>
+<li>数据公开性：至少 Lighter order book 为公开 REST，edgeX quote feed 在 repo 中按公开 ws 地址接入</li>
+<li>更新频率：秒级 / 子秒级，天然更适合 <code>1m / 3m</code></li>
+</ul>
+<h2>5. repo 里最该拿走的硬点</h2>
+<h3>5.1 它交易的不是“抽象价差”，而是非常具体的 maker/taker 壳</h3>
+<p><code>EdgexArb</code> 的主逻辑非常明确：</p>
+<ul>
+<li><strong>maker leg 在 EdgeX</strong>：先挂 post-only 限价单；</li>
+<li><strong>hedge leg 在 Lighter</strong>：maker leg fill 后，用更激进的价格去吃掉对手盘；</li>
+<li>默认参数：</li>
+<li><code>long_ex_threshold = 10</code></li>
+<li><code>short_ex_threshold = 10</code></li>
+<li><code>fill_timeout = 5s</code></li>
+<li><code>max_position</code> 受外部配置约束。</li>
+</ul>
+<p>也就是说，这不是“看两个 mid price 的差值”，而是明确写成：</p>
+<ol>
+<li>先在一边争取 maker；</li>
+<li>一旦成交，另一边马上 taker 对冲；</li>
+<li>赌的是 <strong>gap 回收 + maker 节省的那一点壳</strong>。</li>
+</ol>
+<p>这点很重要，因为很多跨所 alpha 写到最后都会偷换成 mid-mid backtest，但这份 repo 至少把真实成交层放进来了。</p>
+<h3>5.2 信号方向清楚，但原始实现仍然偏乐观：触发口径和可成交口径并不完全一致</h3>
+<p><code>trading_loop()</code> 里真正的两条触发条件是：</p>
+<ul>
+<li>若 <code>lighter_bid - ex_best_bid &gt; long_ex_threshold</code>：</li>
+<li>视为可做 <code>long EdgeX / short Lighter</code></li>
+<li>若 <code>ex_best_ask - lighter_ask &gt; short_ex_threshold</code>：</li>
+<li>视为可做 <code>short EdgeX / long Lighter</code></li>
+</ul>
+<p>但注意一个很 desk 的细节：</p>
+<ul>
+<li>真正执行 <code>buy on EdgeX</code> 时，订单价格是 <code>best_ask - tick_size</code>；</li>
+<li>真正执行 <code>sell on EdgeX</code> 时，订单价格是 <code>best_bid + tick_size</code>；</li>
+<li>也就是说，<strong>信号判断用的是 BBO gap，执行却是 inside-spread 的 maker 价格</strong>。</li>
+</ul>
+<p>这对 repo 使用者是个提醒：</p>
+<p><strong>原始信号并不是严格的“可成交净价差”。</strong></p>
+<p>如果直接照抄，会把边看得偏厚。对 desk 来说，更正确的改法应该是直接把信号改写成：</p>
+<ul>
+<li><code>long_gap_exec = lighter_bid * (1 - fee_lighter_taker) - edgex_buy_price_exec</code></li>
+<li><code>short_gap_exec = edgex_sell_price_exec - lighter_ask * (1 + fee_lighter_taker)</code></li>
+</ul>
+<p>而不是继续用裸 <code>bid-bid</code> / <code>ask-ask</code> 去判。</p>
+<h3>5.3 fill 逻辑暴露了这条 alpha 的真实难点：不是方向，而是第二条腿能不能安全补上</h3>
+<p><code>order_manager.py</code> 里最值得抄的，不是某个 fancy signal，而是 <strong>交易状态机本身</strong>：</p>
+<ul>
+<li>EdgeX maker leg 最多等 <strong>5 秒</strong>；</li>
+<li>若还没成交就撤；</li>
+<li>一旦 EdgeX fill，马上触发 Lighter 对冲；</li>
+<li>Lighter buy 用 <code>best_ask * 1.002</code>；</li>
+<li>Lighter sell 用 <code>best_bid * 0.998</code>；</li>
+<li>Lighter 最多等 <strong>30 秒</strong>；</li>
+<li>整笔交易最多等 <strong>180 秒</strong> 完成。</li>
+</ul>
+<p>翻成人话：</p>
+<p>repo 非常坦白地承认了一件事：</p>
+<p>&gt; 这条 alpha 不是“看见 gap 就一定能无风险锁住”，真正决定它值不值得做的，是 <strong>maker 先成交后，第二腿是不是还能用可接受成本补上。</strong></p>
+<p>因此，这条题材对 desk 的核心不是预测，而是：</p>
+<ul>
+<li>legging risk；</li>
+<li>quote stale；</li>
+<li>盘口深度；</li>
+<li>hedge urgency；</li>
+<li>orphan leg 风险。</li>
+</ul>
+<h3>5.4 它已经给了一个简单但够用的风险壳</h3>
+<p><code>position_tracker.py</code> 和 <code>edgex_arb.py</code> 里有几条很重要的守门：</p>
+<ul>
+<li>开仓前会同步查询两边当前仓位；</li>
+<li>若 <code>abs(net_position) &gt; 2 * order_quantity</code>，直接 <code>sys.exit(1)</code>；</li>
+<li><code>max_position</code> 控制单方向累计敞口；</li>
+<li>BBO 数据与成交数据全部落 CSV。</li>
+</ul>
+<p>这说明这份 repo 的正确读法不是“套利脚本”，而是：</p>
+<p><strong>一个已经把单腿失控当真问题处理的 execution shell。</strong></p>
+<h3>5.5 公开接口快检：Lighter 的订单簿与费率字段是公开可取的，而且当前返回 maker/taker 均为 0</h3>
+<p>我对 <code><a href="https://mainnet.zklighter.elliot.ai/api/v1/orderBooks">https://mainnet.zklighter.elliot.ai/api/v1/orderBooks</a></code> 做了 live sanity check：</p>
+<ul>
+<li>接口返回 <code>200</code>；</li>
+<li>当前可直接拿到大量 perp 市场配置；</li>
+<li>返回字段中包含：</li>
+<li><code>symbol</code></li>
+<li><code>market_id</code></li>
+<li><code>min_base_amount</code></li>
+<li><code>supported_size_decimals</code></li>
+<li><code>supported_price_decimals</code></li>
+<li><code>maker_fee</code></li>
+<li><code>taker_fee</code></li>
+<li>快检样本里多个市场显示：</li>
+<li><code>maker_fee = 0.0000</code></li>
+<li><code>taker_fee = 0.0000</code></li>
+</ul>
+<p>这点对 desk 很重要：</p>
+<p>如果一边 venue 的 taker 壳真的接近 0，那么这类 alpha 的 admission hurdle 会明显下降； 但如果另一边 maker rebate / taker fee 没有同步纳入，回测还是会高估。</p>
+<h2>6. 这条思路怎么 desk 化</h2>
+<h3>6.1 正确的时间尺度：主看 <code>1m / 3m</code>，<code>5m</code> 只做统计，不拿来当主触发</h3>
+<p>这条线本质上是盘口 pocket，不是 bar-pattern。</p>
+<p>所以最自然的读法是：</p>
+<ul>
+<li><strong>信号采样层</strong>：250ms ~ 5s</li>
+<li><strong>研究统计层</strong>：<code>1m / 3m</code></li>
+<li><strong><code>5m</code></strong>：只用于汇总 pocket 频率 / 持续时长 / venue health</li>
+<li><strong><code>15m</code></strong>：不适合做主触发，最多用来做 regime veto</li>
+</ul>
+<h3>6.2 它更像“执行型 stat-arb”，不是“方向型信号”</h3>
+<p>这类 alpha 的研发顺序，不应该是：</p>
+<ol>
+<li>先搞复杂模型；</li>
+<li>再看能不能成交。</li>
+</ol>
+<p>而应该反过来：</p>
+<ol>
+<li>先定义 <strong>可成交净价差</strong>；</li>
+<li>再看 pocket 有没有足够频率；</li>
+<li>再看延迟 / 滑点 / orphan leg 后还能不能活；</li>
+<li>最后才考虑做更好的 routing / threshold adaptation。</li>
+</ol>
+<h2>7. 这份 repo 最重要的 desk 化结论</h2>
+<h3>7.1 这是一条完整 raw alpha，不是 filter</h3>
+<p>这点要说清楚：</p>
+<ul>
+<li>它不是用来确认 breakout；</li>
+<li>不是用来做 regime；</li>
+<li>不是 position overlay；</li>
+</ul>
+<p>它自己就是 alpha 本体：</p>
+<p><strong>same-contract cross-venue quote gap reversion</strong>。</p>
+<h3>7.2 但 repo 的默认阈值不能直接照抄</h3>
+<p>默认 <code>threshold = 10</code> 是绝对价格单位，不是 bps。</p>
+<p>这会带来两个问题：</p>
+<ol>
+<li><strong>不同币种不可比</strong>：10 美元对 BTC 和对小币完全不是一回事；</li>
+<li><strong>不同波动环境不可比</strong>：同一币在高波和低波时，10 美元也不是同一层级。</li>
+</ol>
+<p>所以对 desk 来说，第一步不是回测全 universe，而是把 admission 改写成：</p>
+<ul>
+<li>bps / ticks / spread-vol 标准化阈值；</li>
+<li>再叠加 fee-adjusted executable gap。</li>
+</ul>
+<h3>7.3 repo 真正值钱的是“单腿风控状态机”，不是那两个 10-unit threshold</h3>
+<p>这份材料最该留下来的，不是：</p>
+<ul>
+<li><code>10</code> 这个数字；</li>
+<li>或“EdgeX/Lighter 这对 venue 一定长期有边”；</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li>maker 先手；</li>
+<li>hedge 立即跟；</li>
+<li>timeout 明确；</li>
+<li>orphan leg 直接当事故处理；</li>
+<li>用日志回放交易过程。</li>
+</ul>
+<p>也就是说，<strong>对 desk 最值钱的不是参数，而是这条 alpha 的 execution grammar。</strong></p>
+<h2>8. 下一步怎么测</h2>
+<h3>实验 1：先录可成交净价差，而不是录裸 BBO</h3>
+<p>对每个时点都记录：</p>
+<ul>
+<li><code>edgex_best_bid / ask</code></li>
+<li><code>lighter_best_bid / ask</code></li>
+<li><code>tick_size</code></li>
+<li>venue fee / rebate</li>
+</ul>
+<p>然后定义：</p>
+<ul>
+<li><code>edgex_buy_exec = edgex_best_ask - tick</code></li>
+<li><code>edgex_sell_exec = edgex_best_bid + tick</code></li>
+<li><code>long_gap_exec = lighter_bid - edgex_buy_exec - fee_stack</code></li>
+<li><code>short_gap_exec = edgex_sell_exec - lighter_ask - fee_stack</code></li>
+</ul>
+<p>先看：</p>
+<ul>
+<li>after-fee positive gap 出现频率；</li>
+<li>gap 的 <code>p95 / p99</code>；</li>
+<li>pocket 持续时长分布。</li>
+</ul>
+<h3>实验 2：做事件窗，不急着先做“回测收益曲线”</h3>
+<p>对所有 <code>gap_exec &gt;= θ</code> 的时刻做 event study：</p>
+<ul>
+<li>1s / 5s / 15s / 30s / 60s 之后是否收敛；</li>
+<li>收敛 hit-rate；</li>
+<li>最大不利扩张；</li>
+<li>time-to-close。</li>
+</ul>
+<p>这一步最能回答：</p>
+<p><strong>它到底是真回归，还是只是经常一闪而过，根本来不及补第二腿。</strong></p>
+<h3>实验 3：把 legging risk 直接写进模拟</h3>
+<p>至少做 3 档延迟：</p>
+<ul>
+<li><code>100ms</code></li>
+<li><code>500ms</code></li>
+<li><code>1s</code></li>
+</ul>
+<p>并模拟：</p>
+<ul>
+<li>maker 未成交撤单；</li>
+<li>maker 部分成交；</li>
+<li>hedge taker price-through；</li>
+<li>Lighter 30s 未成单 fallback。</li>
+</ul>
+<p>如果一加延迟边就消失，这条线就只适合更低延迟的基础设施，不适合当前 desk。</p>
+<h3>实验 4：把阈值从绝对值改成标准化口径</h3>
+<p>第一版先测：</p>
+<ul>
+<li><code>gap_bps &gt;= {2, 4, 6, 8}</code></li>
+<li><code>gap_ticks &gt;= {2, 4, 6}</code></li>
+<li><code>gap / short-horizon spread-vol &gt;= {1.0, 1.5, 2.0}</code></li>
+</ul>
+<p>目标不是找 best cell，而是看：</p>
+<p><strong>是否存在一整片在成本后仍然活着的参数 pocket。</strong></p>
+<h2>9. 结论</h2>
+<p>这份 repo 值得进研究池，但要用对读法。</p>
+<p>它真正该留下来的不是：</p>
+<ul>
+<li>“跨所机器人”这个泛标题；</li>
+<li>默认 <code>10</code> 单位阈值；</li>
+<li>或“看见 gap 就等于无风险套利”。</li>
+</ul>
+<p>而是这条对短周期 desk 非常直接的 raw alpha：</p>
+<p><strong>same-contract perp 在两个 venue 的盘口会短时失衡；如果你能在一边拿到 maker、另一边迅速 taker 对冲，就有机会赚到 quote gap 的回收。</strong></p>
+<p>当前最关键的 desk 结论是：</p>
+<ol>
+<li><strong>这条 alpha 本体成立，而且不是 filter；</strong></li>
+<li><strong>repo 已经把它写成完整的 entry / hedge / timeout / risk shell；</strong></li>
+<li><strong>真正该先测的不是“10 这个阈值对不对”，而是 after-fee executable gap 在真实延迟下有没有厚度；</strong></li>
+<li><strong>这条线最自然服务于 <code>1m / 3m</code> 高强度 alpha intake，而不是 <code>15m</code> bar-pattern。</strong></li>
+</ol>
+<p>如果只给一个最小动作：</p>
+<p><strong>先录两边 BBO 7 天，做 <code>after-fee executable gap</code> 的事件窗和延迟敏感性。</strong></p>
+<p>这一步最省时间，也最能决定这条 same-contract cross-venue alpha 值不值得进下一轮复现。</p>
+<h2>10. Sources</h2>
+<ol>
+<li><strong>wavyjay1, 2026, _cross-exchange-arbitrage_</strong>, GitHub repository, Venue: GitHub, DOI: N/A</li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/wavyjay1/cross-exchange-arbitrage">https://github.com/wavyjay1/cross-exchange-arbitrage</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/wavyjay1/cross-exchange-arbitrage">https://github.com/wavyjay1/cross-exchange-arbitrage</a></code></li>
+</ul>
+<ol>
+<li><strong>Lighter public orderBooks endpoint</strong>, public REST market metadata / order book listing</li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://mainnet.zklighter.elliot.ai/api/v1/orderBooks">https://mainnet.zklighter.elliot.ai/api/v1/orderBooks</a></code></li>
+</ul>
+<ol>
+<li><strong>edgeX public trading / quote endpoints as referenced in repo config</strong></li>
+</ol>
+<ul>
+<li>Trading site: <code><a href="https://pro.edgex.exchange">https://pro.edgex.exchange</a></code></li>
+<li>Quote websocket: <code>wss://quote.edgex.exchange</code></li>
+</ul>
+<h2>11. 这篇 digest 产出物</h2>
+<ul>
+<li>Markdown：<code>research/quant_digests/2026-03-31_1929_edgex-lighter-samecontract-crossvenue-arb-alpha.md</code></li>
+<li>页面 URL（发布后）：<code><a href="https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-03-31_1929_edgex-lighter-samecontract-crossvenue-arb-alpha.html">https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-03-31_1929_edgex-lighter-samecontract-crossvenue-arb-alpha.html</a></code></li>
+</ul>
+</body>
+</html>

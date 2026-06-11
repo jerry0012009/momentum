@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 intraday crypto 只写成“动量或反转二选一”：这篇 2022 论文更该先测的是「UTC 时钟分桶的 mode switch」raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 intraday crypto 只写成“动量或反转二选一”：这篇 2022 论文更该先测的是「UTC 时钟分桶的 mode switch」raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 11:41 UTC</span>
+      <span class="pill">研究时间：2026-03-25 11:44 UTC</span>
+      <span class="pill">类型：2022 NAJEF 论文 + Binance Futures 公共 `1h/15m` 最小快检</span>
+      <span class="pill">主题标签：raw-alpha/trend/momentum/mean-reversion/intraday/clock-conditioned/mode-switch/time-of-day/own-past-return/binance/perpetual/btc/eth/sol/1h/15m/paper</span>
+      <span class="pill">证据类型：论文证据 + 本地公共数据最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_1144_clock-conditioned-intraday-momentum-reversal.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 11:44 UTC</li>
+<li>类型：2022 NAJEF 论文 + Binance Futures 公共 <code>1h/15m</code> 最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：UTC 时钟分桶下的 own-past intraday return continuation / reversal（同一个短周期收益信号，在不同时钟口袋里可能分别表现为顺势或逆势）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/trend/momentum/mean-reversion/intraday/clock-conditioned/mode-switch/time-of-day/own-past-return/binance/perpetual/btc/eth/sol/1h/15m/paper</li>
+<li>证据类型：论文证据 + 本地公共数据最小快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答一句：<strong>这篇东西的 base alpha 是什么？</strong></p>
+<p>不是“FOMC filter”也不是“low-liquidity gate”，而是：<strong>同一套 own-past intraday return，在某些 UTC 时钟口袋里偏 continuation，在另一些时钟口袋里偏 reversal。</strong></p>
+<p>主来源是 <strong>Wen, Bouri, Xu, Zhao (2022), _Intraday return predictability in the cryptocurrency markets: Momentum, reversal, or both_</strong>。它最适合我们 desk 的读法，不是继续争“crypto 日内到底是动量还是反转”，而是直接接受：<strong>两种都存在，但要先按 clock bucket 拆开。</strong> 这比把信号写成全天候单向追涨/抄底，更像能快速落地的 raw alpha 骨架。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 对 crypto 短周期来说，更值得先测的不是“intraday 动量是否存在”这种大问句，而是 <strong>同一 own-past return 信号在不同 UTC 时钟口袋里要不要切换成 momentum / reversal 两种模式</strong>。</li>
+<li><strong>一句话它怎么证明：</strong> 论文用 BTC <code>5m</code> 高频数据聚成 hourly return，做同日内 earlier-return → later-return 的 IS/OOS 预测，并进一步按 jump、流动性、FOMC、疫情阶段做分样本比较。</li>
+<li>论文里最值钱的几条：</li>
+</ul>
+<ol>
+<li>crypto 的 intraday predictor <strong>不只会给正号</strong>，也会给负号；也就是它不像很多传统市场文献那样，默认读成“早段涨 → 末段继续涨”。</li>
+<li>作者明确写到：predictability pattern 在 <strong>no-jump / no-FOMC / low-liquidity</strong> 子样本里会变，说明这不是一个全天同口径的 bar-bar 信号。</li>
+<li>他们还做了 market-timing economic value 检验，并在 ETH / LTC / XRP 与不同交易平台上做 robustness，说明这条线不是只停在相关系数层面。</li>
+</ol>
+<ul>
+<li>我补的 Binance Futures 本地快检（<code>BTC/ETH/SOL</code>，最近约 <code>365</code> 天，<code>1h</code> 信号、下一小时收益）更支持 desk 化读法：</li>
+<li>如果把 <code>sign(ret_t)</code> 当成下一小时方向信号，<strong>全时段 pooled 只有 <code>+0.84 bps/h</code> gross</strong>，说明“全天候无脑做”并不厚；</li>
+<li>但只保留 <strong>top-5 continuation 时钟</strong>（<code>02/05/15/16/18 UTC</code>），pooled gross 提升到 <strong><code>+5.76 bps/h</code></strong>；</li>
+<li>只保留 <strong>top-5 reversal 时钟</strong>（<code>04/12/13/20/22 UTC</code>），把同样信号改成反着做，pooled gross 也有 <strong><code>+4.31 bps/h</code></strong>；</li>
+<li>最强单口袋例子：<code>SOL 15 UTC</code> continuation 约 <strong><code>+15.85 bps/h</code></strong>，<code>BTC 13 UTC</code> reversal 约 <strong><code>+8.32 bps/h</code></strong>。</li>
+<li>但也要诚实：论文提到的 <strong>low-liquidity / no-jump 更强</strong>，在我这版 Binance perp proxy 上并没有明显被放大；所以当前 transfer 最稳的，不是它的 microstructure 解释，而是 <strong>“clock-conditioned mode switch” 这层 raw alpha 结构</strong>。</li>
+</ul>
+<h2>3. 为什么和当前项目直接相关</h2>
+<ul>
+<li>这不是又一篇只讲 filter / overlay 的材料；它给的是 <strong>可独立运行的 raw alpha</strong>。</li>
+<li>它同时把两类家族都补了：</li>
+<li>continuation（顺势）</li>
+<li>mean reversion（逆势）</li>
+<p>只是两者不是全天并存，而是按 <strong>UTC 时钟口袋</strong> 分配。</p>
+<li>这很适合当前 desk 的 intake 逻辑：</li>
+<li>不围着 breakout / retest 内循环；</li>
+<li>直接补一个 <strong>可完整落地的短周期 alpha skeleton</strong>；</li>
+<li>而且可以自然拆成 <code>raw alpha + shared gate + execution</code>，方便后续 admission check。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：单资产、时钟分桶、可顺势也可逆势</li>
+<li>基础 alpha：<code>signal_t = sign(ret_1h,t)</code>，但是否跟随该符号，取决于 <code>hour_of_day</code></li>
+<li>regime：先用 <code>UTC 时钟口袋</code> 作为 primary regime；后续再叠加 <code>jump / FOMC / liquidity</code> 作为 secondary regime</li>
+<li>filter / veto：</li>
+<li>只在预先选定的高胜任时钟开机；</li>
+<li>funding 结算前后 / 宏观事件窗先做 blackout；</li>
+<li>当过去 <code>N</code> 个样本窗口该时钟 edge 明显塌掉时暂停</li>
+<li>risk / sizing / execution overlay：</li>
+<li>每个时钟口袋单独 sizing；</li>
+<li><code>1 / realized_vol</code> inverse-vol 缩放；</li>
+<li>信号层保留 <code>1h</code>，执行层下沉到 <code>15m</code> 分片或 maker-first</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>数据源：Binance USDⓈ-M Futures <code>1h</code> K 线（公开可得）</li>
+<li>universe：先做 <code>BTC/ETH/SOL</code>，后续可加 <code>BNB/XRP/ADA</code></li>
+<li>信号定义：</li>
+<li><code>ret_t = close_t / close_{t-1} - 1</code></li>
+<li><code>s_t = sign(ret_t)</code></li>
+<li>对每个 <code>UTC hour = h</code> 单独统计 <code>s_t * ret_{t+1}</code> 的均值</li>
+<li>若该值显著为正，则 <code>h</code> 归为 momentum bucket；显著为负，则 <code>h</code> 归为 reversal bucket</li>
+<li>最小回测口径：</li>
+</ul>
+<ol>
+<li>训练段先给每个 <code>UTC hour</code> 打标签（momentum / reversal / neutral）</li>
+<li>测试段只在非 neutral bucket 开仓</li>
+<li>持有 <code>1h</code>，但执行用 <code>4 × 15m</code> 切片模拟</li>
+</ol>
+<ul>
+<li>最先看两个指标：</li>
+<li><code>gross bps per trade/hour</code></li>
+<li><code>cost-after bps</code>（至少先跑 <code>4 / 8 / 12 bps</code> round-trip）</li>
+</ul>
+<h2>5. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 walk-forward 时钟标注</strong>：不能用全样本先知地挑好时钟；应改成 rolling <code>60~90</code> 天训练、后 <code>14~30</code> 天测试。</li>
+<li><strong>把 <code>hour_of_day</code> 下沉到 <code>15m</code> 执行</strong>：信号仍由 <code>1h</code> 方向给出，但进场分四笔，比较 <code>next-hour market</code> vs <code>15m TWAP / maker-first</code>。</li>
+<li><strong>补 secondary regime</strong>：在 clock bucket 之上，再叠 <code>no-jump / funding window blackout / event blackout / low liquidity</code>，看是不是能把 <code>gross</code> 进一步变厚。</li>
+<li><strong>做 cross-symbol pooling 与按币独立两版</strong>：确认这条线到底是“市场共同 clock effect”，还是主要来自 <code>SOL/ETH</code> 这类弹性更大的币。</li>
+<li><strong>补 neutral bucket 不交易机制</strong>：这条线很可能不是“24 小时都要有观点”，而是稀疏开火才对。</li>
+</ol>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>论文原文主要是 <strong>BTC <code>5m→1h</code>、同日内 earlier/later hourly pair</strong>；我这里做的是对 perp desk 更直接的 <strong>transfer simplification</strong>。</li>
+<li>本地快检还没做 purged walk-forward，只是 admission 级 first verdict。</li>
+<li>当前结果是 <strong>gross</strong>，没有把 spread、impact、maker/taker 差异完全打进去。</li>
+<li><code>low-liquidity / no-jump</code> 这条论文里的机制，在 Binance perp proxy 上暂时没有明显增强，所以别把原文机制直接照搬成 desk 结论。</li>
+<li>这条线非常容易过拟合到“某几个小时刚好最近一年很灵”，所以 walk-forward 和 clock-stability 是硬门，不是附加项。</li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>Wen, Z., Bouri, E., Xu, Y., &amp; Zhao, Y. (2022). _Intraday return predictability in the cryptocurrency markets: Momentum, reversal, or both_. The North American Journal of Economics and Finance, 62, 101733.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1016/j.najef.2022.101733</code></li>
+<li>Readable URL: <code><a href="https://www.sciencedirect.com/science/article/pii/S1062940822000833">https://www.sciencedirect.com/science/article/pii/S1062940822000833</a></code></li>
+<li>DOI URL: <code><a href="https://doi.org/10.1016/j.najef.2022.101733">https://doi.org/10.1016/j.najef.2022.101733</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Developers. _USDⓈ-M Futures API – Kline/Candlestick Data_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<h2>8. 本地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/clock_intraday_predictability_20260325_1140/summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/clock_intraday_predictability_20260325_1140/hourly_pooled.csv</code></li>
+<li><code>reports/artifacts/quant_digests/clock_intraday_predictability_20260325_1140/symbol_hour_best_direction.csv</code></li>
+<li><code>reports/artifacts/quant_digests/clock_intraday_predictability_20260325_1140/panel.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Classical carry + dynamic leverage shell：把 funding carry 从“APR 看板”推进到可下场的完整策略壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Classical carry + dynamic leverage shell：把 funding carry 从“APR 看板”推进到可下场的完整策略壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-24 01:42 UTC</span>
+      <span class="pill">研究时间：2026-04-24 01:40 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：raw-alpha / carry / funding / basis / delta-neutral / leverage / staking-extension / Binance / CoinGlass / 8h / 15m / 5m</span>
+      <span class="pill">证据类型：工程经验 + repo 回测结论</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-24_0140_classical-carry-dynleverage-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-24 01:40 UTC</li>
+<li>类型：GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：positive funding carry（long spot / short perp 的 delta-neutral 收租）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / carry / funding / basis / delta-neutral / leverage / staking-extension / Binance / CoinGlass / 8h / 15m / 5m</li>
+<li>证据类型：工程经验 + repo 回测结论</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了一个 2025 EPFL 项目仓 <code>matthias-wyss/crypto-carry-trade-strategies</code>。它不是只做 funding 可视化，而是把 <strong>classical carry、staking-enhanced carry、Pendle PT-stETH carry、drawdown / leverage 分析、跨市场阶段对照</strong> 放在同一套研究里。</p>
+<h2>2. base alpha 先说清楚</h2>
+<p>这篇东西的 <strong>base alpha 很清楚</strong>：</p>
+<p><strong>当 perp 资金费率长期为正时，做 <code>long spot + short perp</code> 的 delta-neutral carry，主要收益来自 funding；若在 ETH 上再叠 staking APR，则是同一 raw alpha 的收益增强版。</strong></p>
+<p>所以它首先是 <strong>raw alpha</strong>，不是 filter，也不是纯 overlay。</p>
+<h2>3. 核心结论</h2>
+<ul>
+<li>这份仓最值得 desk 拿走的，不是 Pendle 叙事，而是最朴素那层：<strong>BTC / ETH 正 funding carry 本身就是可独立站住的完整策略壳</strong>。</li>
+<li>README 给的关键结论很直接：<strong>BTC 和 ETH funding 在样本里超过 85% 时间为正</strong>，说明它不是只在个别时点才出现的偶发 pocket。</li>
+<li>他们还给了一个很实用的旁支：<strong>ETH staking-enhanced carry 平均比纯 funding carry 多约 3.9% 收益增强</strong>。这对我们不是主线，但说明 raw alpha 上面确实能叠第二收益腿。</li>
+<li>更重要的是，作者明确指出：<strong>dynamic leverage adjustment 能在保留竞争力收益的同时降低回撤</strong>。对 desk 来说，这比单纯再找一个更花的 carry 变体更有价值，因为它直接补齐了 entry / sizing / risk 这一整层。</li>
+</ul>
+<h2>4. 为什么和当前 desk 直接相关</h2>
+<p>当前 bot7 优先补的是 <strong>可独立复现、可直接落地的 raw alpha</strong>。这份材料符合得比表面上更好：</p>
+<ul>
+<li>raw alpha 清楚：正 funding carry</li>
+<li>entry 清楚：只在 funding 为正且足够厚时开 <code>long spot / short perp</code></li>
+<li>exit 清楚：funding pocket 消失、basis 反向、风险约束触发时平仓</li>
+<li>sizing 清楚：可做固定杠杆，也可做动态 leverage 调整</li>
+<li>risk 清楚： liquidation risk、funding volatility、basis 偏移</li>
+<li>cost 清楚：手续费、借币/保证金占用、调仓摩擦</li>
+</ul>
+<p>它虽然不是逐根 5m 信号，但仍然是 <strong>可直接进入实盘素材池的 raw alpha</strong>；<code>5m / 15m</code> 在这里承担的是 <strong>child execution / hedge timing / add-reduce cadence</strong>，不是把低频 carry 硬装成高频主信号。</p>
+<h2>5. 对我们真正有价值的可迁移部分</h2>
+<h3>5.1 先只拿 classical carry，不急着碰 staking / Pendle</h3>
+<p>对当前 desk，最干净的第一步不是复刻整套 DeFi 扩展，而是先保留：</p>
+<ul>
+<li>标的：BTC / ETH，必要时扩到 liquid majors</li>
+<li>方向：<code>long spot + short perp</code></li>
+<li>admission：仅当 annualized funding 明显为正，且连续性足够好时入场</li>
+<li>veto：basis / premium 过大、盘口太薄、借贷/保证金成本不划算时不开</li>
+</ul>
+<h3>5.2 dynamic leverage adjustment 比“更高 APR”更值得先测</h3>
+<p>这份 repo 最容易被忽略、但更适合现在 desk 的旁支，是：</p>
+<ul>
+<li>不把 carry 看成“有正 funding 就满杠杆收租”</li>
+<li>而是把杠杆当作 <strong>风险预算旋钮</strong>：当 funding pocket 变薄、basis 扩大、波动抬升时降杠杆</li>
+<li>这比继续找第 N 个 carry 变体更像真实可部署组件</li>
+</ul>
+<p>换句话说：<strong>base alpha 还是 funding carry，但更值得今天就拆出来做最小实验的，是 carry × dynamic leverage 这条完整策略壳。</strong></p>
+<h2>6. 可复刻的最小实验</h2>
+<h3>最小实验 A：classical carry 主壳</h3>
+<ul>
+<li>假设：<strong>Binance BTC/ETH 的正 funding pocket 在扣掉手续费后仍能留下正 carry。</strong></li>
+<li>数据：</li>
+<li>Binance USDⓈ-M <code>fundingRate</code></li>
+<li>Binance spot / perp klines</li>
+<li>可选加 <code>premiumIndex</code> 做 basis 过滤</li>
+<li>频率映射：</li>
+<li>主信号：8h funding</li>
+<li>执行与风控：<code>15m</code> 为默认，必要时细到 <code>5m</code></li>
+<li>最小规则：</li>
+</ul>
+<ol>
+<li><code>annualized_funding &gt; th1</code> 且最近 <code>N</code> 个 funding 点为正</li>
+<li>开 <code>long spot + short perp</code></li>
+<li>若 <code>annualized_funding &lt; th2</code>、basis 反向扩张或达到时间止盈/止损则退出</li>
+</ol>
+<h3>最小实验 B：dynamic leverage overlay</h3>
+<ul>
+<li>目标：验证 <strong>动态杠杆是否真能降回撤而不明显毁掉净收益</strong></li>
+<li>做两个版本：</li>
+<li><code>v1</code>: 固定 1x notional hedge</li>
+<li><code>v2</code>: leverage 随 <code>funding_strength / basis_vol / realized_vol</code> 分档</li>
+<li>先看三个指标：</li>
+<li>成本后年化 carry</li>
+<li>最大回撤</li>
+<li>单位保证金收益（return on margin）</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<ol>
+<li><strong>先只做 BTC / ETH classical carry</strong>，不要一上来混 staking / Pendle。</li>
+<li>用 Binance 公共 funding + kline，做 <code>2024-01-01 ~ now</code> 的 8h parent / 15m child-exec 回放。</li>
+<li>先比较三档 admission：</li>
+</ol>
+<ul>
+<li>只要 funding &gt; 0</li>
+<li>funding 年化 &gt; <code>5%</code></li>
+<li>funding 年化 &gt; <code>10%</code> 且过去 <code>3</code> 个 funding 点持续为正</li>
+</ul>
+<ol>
+<li>再比较两档 leverage：固定 notional vs 动态 leverage。</li>
+<li>若 BTC/ETH 过线，再扩到 <code>SOL / XRP / DOGE / ADA</code> 这类 funding 更活跃但波动更大的币，观察 <strong>高 funding 是否只是高风险补偿</strong>。</li>
+</ol>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>这份仓的强项是策略壳完整，不是严格学术检验；因此证据强度更接近 <strong>高质量工程研究</strong>，不是正式论文。</li>
+<li>README 里提到的 <code>&gt;85% 正 funding</code>、<code>staking +3.9%</code>、<code>动态杠杆降回撤</code> 都是很好的 intake 信号，但仍需要我们自己按 Binance 真实成本口径重算。</li>
+<li>staking / Pendle 分支更像 <strong>收益增强或产品化扩展</strong>；若当前目的是补 raw alpha 素材池，应先把 classical carry 这层单独跑通。</li>
+<li>这类策略最大的假象是“APR 很稳”；真正会咬人的地方其实是 <strong>basis 扩张、爆仓路径、交易对冲摩擦和保证金占用</strong>。</li>
+</ul>
+<h2>9. 一句话总结</h2>
+<p><strong>这份 repo 最值钱的不是“还能拿 staking 利息”，而是它把最朴素的 funding carry 明确写成了一个可落地的完整策略壳，并提示我们下一步该优先测试 <code>carry × dynamic leverage</code>。</strong></p>
+<h2>10. 来源（尽量结构化）</h2>
+<ul>
+<li>Source A（主来源，仓库）</li>
+<li>Authors：Matthias Wyss, Loris Tran, Massimo Berardi, Vincent Ventura, Alexandre Huou</li>
+<li>Year：2025</li>
+<li>Title：Crypto Carry Trade Project</li>
+<li>Venue：EPFL FIN-413 course project / GitHub repository</li>
+<li>DOI：N/A</li>
+<li>Readable URL：<a href="https://github.com/matthias-wyss/crypto-carry-trade-strategies">https://github.com/matthias-wyss/crypto-carry-trade-strategies</a></li>
+<li>Repo URL：<a href="https://github.com/matthias-wyss/crypto-carry-trade-strategies">https://github.com/matthias-wyss/crypto-carry-trade-strategies</a></li>
+<li>Source B（仓库说明）</li>
+<li>Key repo claims used：BTC/ETH funding positive over 85% of time；staking-enhanced carry average outperformance about 3.9%；dynamic leverage adjustment reduces drawdowns while maintaining competitive returns</li>
+<li>Readable URL：<a href="https://raw.githubusercontent.com/matthias-wyss/crypto-carry-trade-strategies/main/README.md">https://raw.githubusercontent.com/matthias-wyss/crypto-carry-trade-strategies/main/README.md</a></li>
+<li>Source C（可独立复现实验的数据源）</li>
+<li>Provider：Binance USDⓈ-M public API</li>
+<li>Data：<code>fundingRate</code>, <code>premiumIndex</code>, spot/perp klines</li>
+<li>Public availability：公开可得</li>
+<li>Update frequency：funding 8h；价格可到 <code>1m</code></li>
+<li>Readable URL：<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History</a></li>
+</ul>
+</body>
+</html>

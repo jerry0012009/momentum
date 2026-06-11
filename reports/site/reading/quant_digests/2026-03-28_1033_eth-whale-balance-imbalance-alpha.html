@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 ETH whales 只当链上慢变量：这篇 Philadelphia Fed working paper 更该先测的是「大钱包净增持 − 小钱包净减持 → ETH 后续漂移」事件型 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 ETH whales 只当链上慢变量：这篇 Philadelphia Fed working paper 更该先测的是「大钱包净增持 − 小钱包净减持 → ETH 后续漂移」事件型 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-28 10:48 UTC</span>
+      <span class="pill">研究时间：2026-03-28 10:33 UTC</span>
+      <span class="pill">类型：raw alpha</span>
+      <span class="pill">主题标签：raw-alpha/on-chain/eth/whales/holder-balance/flow-imbalance/event-driven/external-data/relative-positioning/minute-sampling/1m/3m/5m/15m/paper/public-data/cost</span>
+      <span class="pill">证据类型：2024/2025 Philadelphia Fed working paper 全文 PDF + 本地全文抽取 + Coin Metrics 指标口径审阅</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-28_1033_eth-whale-balance-imbalance-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-28 10:33 UTC</li>
+<li>类型：raw alpha</li>
+<li>主题标签：raw-alpha/on-chain/eth/whales/holder-balance/flow-imbalance/event-driven/external-data/relative-positioning/minute-sampling/1m/3m/5m/15m/paper/public-data/cost</li>
+<li>证据类型：2024/2025 Philadelphia Fed working paper 全文 PDF + 本地全文抽取 + Coin Metrics 指标口径审阅</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当大钱包 ETH 持仓净增加、同时小钱包净减持时，后续 ETH 收益更偏向顺着 whales 的方向漂移；反向则偏空</li>
+<li>是否可独立复现：是（链上原始数据公开；便利版 cohort 聚合常需 vendor / 自建）</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（但更适合做稀疏事件型部署，而不是每根 bar 常开）</li>
+</ul>
+<h2>1. 这次看了什么，为什么它比再补一篇泛 gate 更值得</h2>
+<p>这次主看的是 <strong>Alan Chernoff, Julapa Jagtiani</strong> 的 Philadelphia Fed working paper：</p>
+<p>&gt; <strong>Beneath the Crypto Currents: The Hidden Effect of Crypto “Whales”</strong></p>
+<p>先把结论翻成人话：</p>
+<p>&gt; <strong>ETH 大户在涨之前往往先加仓，小户在涨之前反而更容易减仓。</strong></p>
+<p>这不是那种“链上情绪看板很有趣”的描述性材料，而是有明确方向、明确对手盘、明确可交易对象的信号：</p>
+<ul>
+<li><strong>base alpha 很清楚</strong>：<code>large-holder accumulation minus small-holder distribution</code></li>
+<li><strong>交易标的是单一且直接的</strong>：ETH 现货 / ETH perp</li>
+<li><strong>并不依赖某个固定图形</strong>：不是 breakout / retest / trend filter 的附庸</li>
+<li><strong>天然可以作为完整策略</strong>：entry、exit、sizing、risk、cost 都能拆</li>
+</ul>
+<p>所以相比再补一篇纯 filter / regime，这篇更像<strong>外部数据驱动的事件型 raw alpha 候选</strong>。</p>
+<h2>2. 论文里真正有交易价值的 headline</h2>
+<p>论文样本是 <strong>2018-01-01 到 2023-12-31</strong> 的 <strong>2191 个日度观测</strong>，研究对象是 ETH，不是全市场散点故事。作者用 Coin Metrics 的钱包分层数据，把 ETH 持有人分成四档：</p>
+<ol>
+<li><strong>&gt;$1M ETH 持仓</strong></li>
+<li><strong>$100K ~ $1M</strong></li>
+<li><strong>$10K ~ $100K</strong></li>
+<li><strong>$10 ~ $10K</strong></li>
+</ol>
+<p>核心回归是看：<strong>第 t 天不同钱包层级的持仓变化，能否预测第 t+1 天 ETH 收益。</strong></p>
+<p>Table 3 的主结果非常直接：</p>
+<ul>
+<li><code>PctDelta_Top1M = 0.6263</code>，<code>p = 0.001176</code></li>
+<li><code>PctDelta_100K = 0.2862</code>，<code>p = 0.000130</code></li>
+<li><code>PctDelta_10K = -0.4847</code>，<code>p = 1.24e-14</code></li>
+<li><code>PctDelta_LT10K = -1.8223</code>，<code>p &lt; 2e-16</code></li>
+<li><code>Adjusted R² = 0.9024</code></li>
+</ul>
+<p>作者自己的 plain-English 总结也很硬：</p>
+<p>&gt; <strong>large ETH holders tend to increase their ETH holdings prior to a price increase, while small ETH holders tend to reduce their ETH holdings prior to a price increase.</strong></p>
+<p>更直白地说：</p>
+<ul>
+<li><strong>大户增持 → 次日更容易涨</strong></li>
+<li><strong>小户增持 → 次日反而更容易跌</strong></li>
+<li>这不是“大家一起 bullish”的情绪共振，而是<strong>不同钱包层级站在相反方向</strong></li>
+</ul>
+<p>这点对 desk 很重要，因为它意味着信号不只是“净流入 &gt; 0 就看多”，而是：</p>
+<p>&gt; <strong>看的是大户与小户之间的持仓分歧。</strong></p>
+<h2>3. 为什么我把它归成 raw alpha，而不是只当 filter</h2>
+<p>这里必须先回答用户要求的那句：<strong>这篇东西的 base alpha 是什么？</strong></p>
+<p>答案不是“whale activity 很重要”，而是：</p>
+<p>&gt; <strong>当大钱包相对更积极吸收 ETH、小钱包相对更积极让出 ETH 时，后续 ETH 价格更容易沿 whales 有利的方向漂移。</strong></p>
+<p>也就是说，真正的信号不是单边的 <code>whale_buying</code>，而是更接近：</p>
+<ul>
+<li><code>whale accumulation</code></li>
+<li>对上</li>
+<li><code>retail distribution</code></li>
+</ul>
+<p>形成的 <strong>holder-imbalance spread</strong>。</p>
+<p>这已经足够构成一个可独立交易的 alpha：</p>
+<ul>
+<li><strong>long leg</strong>：ETH</li>
+<li><strong>short leg / flat leg</strong>：空仓或做反向 ETH perp</li>
+<li><strong>signal</strong>：链上 holder imbalance</li>
+<li><strong>exit</strong>：时间衰减 / signal 回落 / adverse move</li>
+</ul>
+<p>它当然也能进一步当：</p>
+<ul>
+<li>trend alpha 的确认层</li>
+<li>breakout 的 veto / size-up</li>
+<li>carry / basis 策略的 regime gate</li>
+</ul>
+<p>但如果只把它当 gate，会低估它本身作为<strong>外部数据 raw alpha</strong>的价值。</p>
+<h2>4. 对 desk 最有用的，不是日频结论本身，而是它暴露的“谁在拿货”结构</h2>
+<p>论文最有价值的地方，不是“预测下一天 ETH 涨跌”这一个日频 headline，而是它把一个很可迁移的市场结构钉死了：</p>
+<h3>4.1 结构不是“链上总净流入”，而是<strong>分层持仓的方向差</strong></h3>
+<p>这意味着 desk 化时不一定要机械照抄论文的四档美元阈值；更合理的做法是保留结构、放松实现：</p>
+<ul>
+<li>大钱包 cohort：top holders / smart-money-like cohort / 非交易所巨鲸 cohort</li>
+<li>小钱包 cohort：零售长尾 / 小额地址簇</li>
+<li>关键不是分得多漂亮，而是<strong>大户与小户的净方向是否背离</strong></li>
+</ul>
+<h3>4.2 这条 alpha 天然是<strong>稀疏事件型</strong>，不是每根 bar 常开</h3>
+<p>它更像：</p>
+<ul>
+<li>有明显链上吸筹 / 派发事件时开仓</li>
+<li>没有 imbalance 时空仓</li>
+</ul>
+<p>所以它和很多短周期 raw alpha 不冲突，反而互补：</p>
+<ul>
+<li>它不需要每分钟都发信号</li>
+<li>但发信号时，理论上是更有“知情资金痕迹”的那种 alpha</li>
+</ul>
+<h3>4.3 它比纯 sentiment / fear-greed 更接近“可交易”</h3>
+<p>因为这里不是 survey，也不是新闻文本，而是<strong>链上真实持仓变化</strong>。哪怕便利聚合口径不免费，底层数据本身仍是公开账本数据，不是黑箱情绪分数。</p>
+<h2>5. 论文还告诉我们一件事：波动更多像是零售驱动，不是 whales 驱动</h2>
+<p>Table 4 的波动回归也很值得记一下：</p>
+<ul>
+<li><code>StdDev_Top1M = -2.13e-08</code>，显著为负</li>
+<li><code>StdDev_100K = 5.61e-08</code>，显著为正</li>
+<li><code>StdDev_10K = 2.16e-08</code>，显著为正</li>
+<li><code>StdDev_LT10K = 5.07e-08</code>，显著为正</li>
+</ul>
+<p>论文原话大意是：</p>
+<p>&gt; <strong>ETH return volatility 更像是由小投资者驱动，而不是由 whales 驱动。</strong></p>
+<p>这对策略设计的含义很直接：</p>
+<ul>
+<li><strong>大户持仓变化</strong>更像方向线索</li>
+<li><strong>小户剧烈动</strong>更像噪音 / 波动来源</li>
+</ul>
+<p>所以我们不该把 <code>retail frenzy</code> 误读成“趋势确认”，更像应该把它读成：</p>
+<ul>
+<li>若只有小钱包在加速，未必是好 long</li>
+<li>若大钱包吸筹、小钱包在让出筹码，才更接近这篇 paper 的正向结构</li>
+</ul>
+<h2>6. desk 化后的最小完整策略骨架</h2>
+<h2>6.1 Base alpha</h2>
+<p>定义一个最简 holder-imbalance：</p>
+<ul>
+<li><code>L_t = z(ΔHoldings_large)</code></li>
+<li><code>S_t = z(ΔHoldings_small)</code></li>
+<li><code>Imbalance_t = L_t - S_t</code></li>
+</ul>
+<p>其中：</p>
+<ul>
+<li><code>ΔHoldings_large</code>：大钱包 cohort 在过去 <code>N</code> 分钟的净持仓变化</li>
+<li><code>ΔHoldings_small</code>：小钱包 cohort 在过去 <code>N</code> 分钟的净持仓变化</li>
+</ul>
+<p>直觉上：</p>
+<ul>
+<li><code>Imbalance_t &gt;&gt; 0</code>：whales 在吸筹，零售在让筹码 → 偏多</li>
+<li><code>Imbalance_t &lt;&lt; 0</code>：whales 在派发，零售在接货 → 偏空</li>
+</ul>
+<h2>6.2 Entry</h2>
+<p>对当前短周期 desk，我会先做<strong>事件触发式</strong>，而不是 continuous always-on：</p>
+<ul>
+<li><strong>long entry</strong>：</li>
+<li><code>Imbalance_t</code> 进入历史滚动 <code>95%</code> 或 <code>97.5%</code> 分位</li>
+<li>且 ETH 价格未在过去 <code>5~15m</code> 已经单边拉满</li>
+<li>可选：perp funding 未极端拥挤到明显反向</li>
+<li><strong>short entry</strong>：</li>
+<li><code>Imbalance_t</code> 进入历史滚动 <code>2.5%</code> 或 <code>5%</code> 分位</li>
+<li>即 whales 在减、小钱包在接</li>
+</ul>
+<p>这一步故意不把它写成“bar close &gt; MA 就上”，因为这条线的本质是<strong>持仓结构事件</strong>。</p>
+<h2>6.3 Exit</h2>
+<p>初版别贪复杂，直接做三层：</p>
+<ol>
+<li><strong>时间退出</strong>：<code>30m / 60m / 120m / 240m</code> 多档持有观察</li>
+<li><strong>signal decay</strong>：<code>Imbalance_t</code> 回到中性带就平</li>
+<li><strong>price-based stop</strong>：按 <code>1.0~1.5 x intraday ATR</code> 或固定 bps 止损</li>
+</ol>
+<p>如果结果显示 edge 很快衰减，就把它当 <code>1m/3m/5m</code> 事件漂移； 如果结果在 <code>1~4h</code> 仍有残留，再延长持有。</p>
+<h2>6.4 Sizing</h2>
+<p>这条线适合<strong>signal-strength sizing</strong>，不适合梭哈：</p>
+<ul>
+<li><code>size ∝ clip(|Imbalance_z|, 0, cap)</code></li>
+<li>再除以短窗 realized vol</li>
+<li>单事件 notional cap 固定</li>
+</ul>
+<p>因为它更像稀疏 alpha，不是高频密集刷单，没必要把 turnover 做高。</p>
+<h2>6.5 Risk / Cost</h2>
+<p>它的优点是：</p>
+<ul>
+<li><strong>单腿 ETH 交易</strong>，比跨所 / 多腿 stat-arb 简单得多</li>
+<li>不需要靠极薄 gross edge 抵成本</li>
+</ul>
+<p>但也有三个真实风险：</p>
+<ol>
+<li><strong>数据延迟风险</strong>：你拿到的是不是足够快的 cohort 更新？</li>
+<li><strong>标签污染风险</strong>：交易所地址、合约地址、桥接地址有没有混进大钱包？</li>
+<li><strong>价格已先走风险</strong>：链上持仓变化被你观察到时，价格可能已经消化一部分</li>
+</ol>
+<p>所以这条线的核心不是手续费，而是<strong>数据工程诚实度</strong>。</p>
+<h2>7. 它和 <code>1m / 3m / 5m / 15m</code> 的关系：能做，但别假装它是每根 bar 的主信号</h2>
+<p>这里要刻意诚实一点：</p>
+<ul>
+<li><strong>论文证据本身是日频</strong></li>
+<li>不是直接给你 <code>next 5m ETH return</code> 的回归</li>
+</ul>
+<p>但它依然和当前 desk 有直接关系，因为：</p>
+<ol>
+<li><strong>底层数据不是日频生成的</strong>：链上账本是 block-level 公开变化</li>
+<li><strong>可把论文结构迁移成分钟采样</strong>：不是复刻“日频标签”，而是复刻“大户 vs 小户分歧”</li>
+<li><strong>最合理的部署方式本来就是稀疏事件型</strong>：当 whale imbalance 爆出来时，在 <code>1m/3m/5m/15m</code> 上观察漂移窗口</li>
+</ol>
+<p>所以我会这样定位：</p>
+<ul>
+<li><strong><code>1m / 3m</code></strong>：最适合测事件爆发后的即时 follow-through</li>
+<li><strong><code>5m / 15m</code></strong>：最适合测 drift 能否延续到更可交易的 holding window</li>
+<li><strong>不是</strong>：逐 bar 常开主因子</li>
+<li><strong>而是</strong>：事件型 raw alpha / execution trigger</li>
+</ul>
+<h2>8. 数据源、公开性、更新频率、最小可复现实验口径</h2>
+<h3>8.1 原论文数据源</h3>
+<ul>
+<li><strong>Coin Metrics</strong></li>
+<li>论文使用的是 Coin Metrics 的 ETH 钱包分层持仓数据</li>
+<li>便利性高，但常见企业级聚合口径并不总是免费</li>
+</ul>
+<h3>8.2 对我们更现实的公开替代口径</h3>
+<p>底层链上数据本身是公开的，因此最小实验可以拆成两层：</p>
+<p>#### A. 公开原始数据层</p>
+<ul>
+<li>Ethereum 链上地址余额 / 转账 / 区块</li>
+<li>公开性：<strong>公开可得</strong></li>
+<li>更新频率：<strong>每个区块（约 12 秒级）</strong></li>
+</ul>
+<p>#### B. cohort 构造层</p>
+<p>需要自己做：</p>
+<ul>
+<li>大钱包地址集合（尽量剔除交易所 / bridge / 合约金库）</li>
+<li>小钱包地址集合</li>
+<li>每分钟或每 5 分钟重算 cohort 余额变化</li>
+</ul>
+<p>最小可复现实验不要求一上来完美重建 Coin Metrics 的四档美元桶；可以先做一个更 desk-friendly 的代理：</p>
+<ul>
+<li><strong>large cohort</strong>：按 ETH 持仓或 USD 估值排前 <code>x%</code> 的非交易所地址</li>
+<li><strong>small cohort</strong>：按持仓排后部、且活跃度足够的零售地址簇</li>
+</ul>
+<h3>8.3 最小实验口径</h3>
+<p>先别追求全市场高精度标签，第一轮只做：</p>
+<ol>
+<li><strong>标的</strong>：ETHUSDT perp（或 ETH 现货）</li>
+<li><strong>频率</strong>：<code>1m</code></li>
+<li><strong>signal window</strong>：过去 <code>15m / 30m / 60m</code></li>
+<li><strong>signal</strong>：</li>
+</ol>
+<ul>
+<li><code>Δlarge_balance</code></li>
+<li><code>Δsmall_balance</code></li>
+<li><code>imbalance = z(Δlarge) - z(Δsmall)</code></li>
+</ul>
+<ol>
+<li><strong>entry</strong>：<code>imbalance</code> 超分位阈值</li>
+<li><strong>holding</strong>：<code>15m / 30m / 60m / 240m</code></li>
+<li><strong>cost</strong>：按单腿 ETH perp taker / maker-taker 两档</li>
+</ol>
+<p>这个实验已经足够回答第一层 admission question：</p>
+<p>&gt; <strong>分钟化后的 whale-vs-retail imbalance，到底有没有可持续到短周期 bar 的 drift？</strong></p>
+<h2>9. 下一步怎么测（这次最重要）</h2>
+<p>先不要做花哨建模，先做 <strong>structure-preserving minimal experiment</strong>：</p>
+<ol>
+<li><strong>先做 cohort 代理，不追求完美标签</strong></li>
+</ol>
+<ul>
+<li>只要能稳定分出 <code>large</code> 与 <code>small</code>，就先跑</li>
+<li>第一轮重点是检验结构，不是竞赛谁的地址标签最全</li>
+</ul>
+<ol>
+<li><strong>分钟化 signal</strong></li>
+</ol>
+<ul>
+<li>对每个 <code>1m</code> 时间点，计算过去 <code>15m / 30m / 60m</code> 的 <code>Δlarge</code>、<code>Δsmall</code></li>
+<li>构造 <code>imbalance z-score</code></li>
+</ul>
+<ol>
+<li><strong>做四个 holding horizon</strong></li>
+</ol>
+<ul>
+<li><code>15m</code></li>
+<li><code>30m</code></li>
+<li><code>60m</code></li>
+<li><code>240m</code></li>
+</ul>
+<ol>
+<li><strong>只问三个问题</strong></li>
+</ol>
+<ul>
+<li><code>imbalance &gt; q95</code> 时，ETH 后续收益是否显著更高？</li>
+<li><code>imbalance &lt; q05</code> 时，ETH 后续收益是否显著更低？</li>
+<li>边际主要出现在 <code>1m/3m/5m</code> 还是更像 <code>1h/4h</code>？</li>
+</ul>
+<ol>
+<li><strong>再做一次最关键的对照</strong></li>
+</ol>
+<ul>
+<li>只看 <code>Δlarge</code></li>
+<li>只看 <code>Δsmall</code></li>
+<li>看 <code>Δlarge - Δsmall</code></li>
+</ul>
+<p>如果第三个显著强于前两个，就说明这条线真正的 alpha 本体确实是：</p>
+<p>&gt; <strong>holder imbalance spread</strong>，而不是单边净流入。</p>
+<h2>10. 诚实约束 / 风险提示</h2>
+<ul>
+<li><strong>原论文不是 intraday 论文</strong>：它证明的是日频 lead-lag，不是直接证明 <code>next 5m</code></li>
+<li><strong>美元桶会随 ETH 价格变化而漂移</strong>：实盘更适合改成持仓分位 / ETH 数量阈值 / 滚动 USD 阈值</li>
+<li><strong>地址标签是关键误差源</strong>：若把交易所热钱包当 whale，信号会严重变形</li>
+<li><strong>这条 alpha 更像稀疏事件，不像全天候 bar-bar 因子</strong></li>
+<li><strong>别把它硬伪装成 every-bar master signal</strong>：更诚实的读法是 <code>event-driven raw alpha</code></li>
+</ul>
+<h2>11. 结论</h2>
+<p>这篇 paper 值得进当前素材池，不是因为“whales 很神秘”，而是因为它给了一个<strong>可以直接交易化的结构性方向信号</strong>：</p>
+<p>&gt; <strong>当大钱包吸筹、小钱包让筹码时，ETH 后续价格更可能朝对 whales 有利的方向漂移。</strong></p>
+<p>它不是现成的 <code>5m bar-close</code> 因子，但非常适合当前 desk 做一轮<strong>分钟采样的事件型 raw alpha admission check</strong>。</p>
+<p>一句话总结：</p>
+<p>&gt; <strong>先别把 whale 数据只当链上故事；更该先测的是“大户拿货 − 小户出货”这个 holder-imbalance spread，能不能在 <code>1m/3m/5m/15m</code> 上留下可交易的 ETH drift。</strong></p>
+<h2>12. 来源</h2>
+<ol>
+<li><strong>Alan Chernoff, Julapa Jagtiani (2025 draft; Philadelphia Fed Working Paper series WP 24-14, published Aug 2024, revised Dec 2025). _Beneath the Crypto Currents: The Hidden Effect of Crypto “Whales”_.</strong></li>
+<p>Venue: Federal Reserve Bank of Philadelphia Working Paper DOI: <code><a href="https://doi.org/10.21799/frbp.wp.2024.14">https://doi.org/10.21799/frbp.wp.2024.14</a></code> Readable URL: <code><a href="https://www.philadelphiafed.org/the-economy/banking-and-financial-markets/beneath-the-crypto-currents-the-hidden-effect-of-crypto-whales">https://www.philadelphiafed.org/the-economy/banking-and-financial-markets/beneath-the-crypto-currents-the-hidden-effect-of-crypto-whales</a></code> PDF URL: <code><a href="https://www.philadelphiafed.org/-/media/frbp/assets/working-papers/2024/wp24-14.pdf">https://www.philadelphiafed.org/-/media/frbp/assets/working-papers/2024/wp24-14.pdf</a></code></p>
+</ol>
+<ol>
+<li><strong>Coin Metrics. Network / market data provider referenced by the paper.</strong></li>
+<p>Readable URL: <code><a href="https://coinmetrics.io/">https://coinmetrics.io/</a></code></p>
+</ol>
+</body>
+</html>

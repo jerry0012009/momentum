@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 cross-venue funding carry 继续写成“扫最肥 funding 就上”：这份 2026 repo 更该先抄的是「best-venue funding z-score + hysteresis / min-hold」两腿 cash-and-carry 完整策略</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 cross-venue funding carry 继续写成“扫最肥 funding 就上”：这份 2026 repo 更该先抄的是「best-venue funding z-score + hysteresis / min-hold」两腿 cash-and-carry 完整策略</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-02 20:52 UTC</span>
+      <span class="pill">研究时间：2026-04-02 20:43 UTC</span>
+      <span class="pill">类型：2026 GitHub 仓库（README + strategy / notebook / 风控部分细读）+ carry 论文链路</span>
+      <span class="pill">主题标签：raw-alpha / carry / funding / basis / relative-value / stat-arb / spot-perp / cross-venue / hysteresis / min-hold / hyperliquid / binance / 5m / 15m / 1m / 3m / repo / paper / public-data / cost</span>
+      <span class="pill">证据类型：开源策略仓库 + notebook 回测结果 + 学术 carry 链路</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-02_2043_bestvenue-funding-zscore-hysteresis-carry.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-02 20:43 UTC</li>
+<li>类型：2026 GitHub 仓库（README + strategy / notebook / 风控部分细读）+ carry 论文链路</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：在多个 venue 中挑出当下最肥、且相对自身历史显著偏离的 funding/basis 机会；做空高正 funding 的 perp、做多现货，或在极端负 funding 时反向做多 perp、做空/替代现货，对冲方向后赚 funding 与 basis 回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / carry / funding / basis / relative-value / stat-arb / spot-perp / cross-venue / hysteresis / min-hold / hyperliquid / binance / 5m / 15m / 1m / 3m / repo / paper / public-data / cost</li>
+<li>证据类型：开源策略仓库 + notebook 回测结果 + 学术 carry 链路</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主材料不是再找一篇“funding 会不会预测价格”的解释型 paper，而是直接 intake 一个<strong>可独立复现、可完整落地的 carry/funding raw alpha 策略仓库</strong>：</p>
+<ul>
+<li><strong>PietroC21 (2026), _Crypto-PerpetualFutures_</strong>, GitHub repo</li>
+<li>核心实现文件：<code>strategy.py</code>、<code>strategy_cross.py</code></li>
+<li>关键 notebook：<code>notebook.ipynb</code>、<code>notebook_cross.ipynb</code>、<code>FINAL_Notebook.ipynb</code></li>
+</ul>
+<p>它最值得 desk 抄的地方，不是“funding 高就去收息”这句废话，而是把 raw alpha 真正拆成了完整策略骨架：</p>
+<ol>
+<li><strong>venue 选择</strong>：不是固定 Binance，而是每个时点按币种去找 <code>best funding rate</code></li>
+<li><strong>信号</strong>：不是看 funding 绝对值，而是看 <strong>相对自身历史的 z-score 偏离</strong></li>
+<li><strong>退出</strong>：不是一碰回落就平，而是用 <strong>zero-cross + min-hold</strong> 控 turnover</li>
+<li><strong>风险</strong>：OI gate、VIX gate、SPY drawdown gate</li>
+<li><strong>成本</strong>：把 perp + spot 双腿 taker fee 明确写进 PnL</li>
+</ol>
+<p>对我们 desk 来说，这个题是合格的 <strong>raw alpha</strong>，不是 filter/overlay 伪装货。</p>
+<h2>2. 这条东西的 base alpha 到底是什么</h2>
+<p>一句话先说清：</p>
+<p>&gt; <strong>base alpha = cross-venue、delta-neutral 的 funding/basis carry。</strong></p>
+<p>更具体一点：</p>
+<ul>
+<li>当某个币在某个 venue 的 perp funding <strong>显著高于它自己的常态</strong>时，说明这个 perp 被追得过热；</li>
+<li>此时做 <strong>short perp + long spot</strong>，拿 funding，并等 perp/spot 关系向常态回归；</li>
+<li>当 funding <strong>显著为负</strong>时，反向做 <strong>long perp + short/替代现货</strong>；</li>
+<li>但不是见到 funding 高就上，而是要先过：</li>
+<li><code>z_entry</code> 阈值</li>
+<li>OI 流动性 gate</li>
+<li>宏观风险 gate</li>
+<li><code>min_hold + z_exit</code>，避免来回被手续费打死。</li>
+</ul>
+<p>所以它不是单纯“票息策略”，而是： <strong>carry 机会选择 + 偏离标准化 + 持有治理 + 成本约束</strong> 的完整 raw alpha。</p>
+<h2>3. repo 里最值得 desk 抄的，不是 carry 本身，而是这个“可活下来”的策略写法</h2>
+<h3>3.1 交易骨架</h3>
+<p><code>strategy_cross.py</code> 的核心逻辑可以直接翻成人话：</p>
+<ol>
+<li>对每个币，把各 venue funding 统一到可比口径（repo 里做了 1h/8h 归一）</li>
+<li>每个时点取 <code>best_fr = max(|fr|)</code>，保留方向</li>
+<li>对 <code>best_fr</code> 做滚动 z-score（默认 lookback <code>270</code> 个 8h 周期，约 90 天）</li>
+<li>只有当 <code>|z| &gt; 2.0</code> 才开仓</li>
+<li>方向约束：</li>
+</ol>
+<ul>
+<li><code>best_fr &gt; 0</code> → short perp / long spot</li>
+<li><code>best_fr &lt; 0</code> → long perp / short/替代现货</li>
+</ul>
+<ol>
+<li>平仓不是“z 回到 1.9 就走”，而是：</li>
+</ol>
+<ul>
+<li><strong>z 回到 0 附近</strong></li>
+<li>且<strong>至少持有 3 个 8h 周期（24h）</strong></li>
+</ul>
+<ol>
+<li>权重默认可做 fixed-weight 或 equal-invested</li>
+<li>成本里明确扣：<strong>perp taker fee + spot taker fee</strong></li>
+</ol>
+<p>这比“跨 venue 扫 funding 排名”更值钱，因为它已经把 <strong>entry / exit / sizing / risk / cost</strong> 全都落地了。</p>
+<h3>3.2 对 desk 最有价值的 branch idea</h3>
+<p>我觉得这份 repo 最值得收进素材池的旁支，不是“多 venue 有更多 carry”，而是：</p>
+<p>&gt; <strong>carry alpha 要先做“偏离标准化 + 退出去抖 + 最低持有期”，否则 gross edge 很容易死在双腿成本里。</strong></p>
+<p>也就是说，真正该复现的不是“highest funding scanner”，而是：</p>
+<ul>
+<li><code>best venue selection</code></li>
+<li><code>best_fr z-score</code></li>
+<li><code>hysteresis / min_hold</code></li>
+<li><code>explicit two-leg cost</code></li>
+</ul>
+<p>这套骨架以后也能迁移到：</p>
+<ul>
+<li>单 venue spot-perp carry</li>
+<li>perp-perp funding divergence</li>
+<li>futures calendar spread</li>
+<li>basis mispricing 的 event pocket 执行</li>
+</ul>
+<h2>4. repo 给了什么硬证据</h2>
+<p>我挑几个最有信息量、而且和策略是否能活下来直接相关的数字。</p>
+<h3>4.1 不同 venue 的 funding 肥度确实差很多</h3>
+<p><code>notebook_cross.ipynb</code> 里给的 BTC 示例（8h 口径）显示：</p>
+<ul>
+<li><strong>Binance 平均 funding：<code>0.73 bps / 8h</code></strong></li>
+<li><strong>GateIO：<code>4.00 bps / 8h</code></strong></li>
+<li><strong>Hyperliquid：<code>1.30 bps / 8h</code></strong></li>
+</ul>
+<p>更关键的是，repo 统计到：</p>
+<ul>
+<li><strong>7 币 2023+ 的 Binance 平均 8h funding 约 <code>0.59 bps</code></strong></li>
+<li><strong>best-exchange 平均 8h funding 约 <code>6.68 bps</code></strong></li>
+<li>相当于 <strong><code>+1041.6%</code> uplift</strong>，也就是多出 <strong><code>6.10 bps / 8h</code></strong> 的可收息空间</li>
+</ul>
+<p>这说明： <strong>venue routing 不是小修小补，而是 carry alpha 的主收益来源之一。</strong></p>
+<h3>4.2 这不是“看起来赚钱、扣完费归零”的 paper fantasy</h3>
+<p>同一个 notebook 的 baseline cross-exchange 结果：</p>
+<ul>
+<li><strong>Gross CAGR：<code>17.6%</code></strong></li>
+<li><strong>Net CAGR：<code>13.9%</code></strong></li>
+<li><strong>Ann. Vol：<code>1.85%</code></strong></li>
+<li><strong>Sharpe：<code>2.56</code></strong></li>
+<li><strong>Sortino：<code>14.08</code></strong></li>
+<li><strong>Max Drawdown：<code>3.62%</code></strong></li>
+<li><strong>Profit Factor：<code>6.62</code></strong></li>
+</ul>
+<p>而且 repo 还给了一个特别有用的生存线指标：</p>
+<ul>
+<li>双腿总费率设定：<strong>perp <code>4.5bps</code> + spot <code>10bps</code> = <code>14.5bps</code></strong></li>
+<li>平均每周期 turnover：<strong><code>0.0203</code></strong></li>
+<li><strong>Break-even total fee：<code>67.5bps</code></strong></li>
+</ul>
+<p>这组数字的意义很直接： <strong>按 repo 的持仓治理和换手控制，这条策略不是“只差 0.1bp 就死”的 fragile edge。</strong></p>
+<h3>4.3 单 venue carry 不一定活，但 cross-venue + 持有治理能明显改善</h3>
+<p>repo 的单 venue / cross-venue 对比也很有启发：</p>
+<ul>
+<li>单 venue 版本在扣费后，表现明显弱得多</li>
+<li>cross-venue 版本的改进，核心不只是多了 venue，而是多了：</li>
+<li>更肥的 funding 源</li>
+<li>更好的偏离标准化</li>
+<li>更低的无效换手</li>
+</ul>
+<p>我的理解： <strong>这份 repo 实际上是在证明“carry 不是没有 alpha，真正决定死活的是你怎么把 alpha 从 gross 变成 net”。</strong></p>
+<h3>4.4 风险分布并没有崩成“卖保险曲线”</h3>
+<p>Section 4 notebook 里给的日频风险统计：</p>
+<ul>
+<li><strong>95% VaR：约 <code>-0.72% / 日</code></strong></li>
+<li><strong>95% CVaR：约 <code>-0.75% / 日</code></strong></li>
+</ul>
+<p>这个结果当然不能直接照单全收，但至少说明 repo 不是靠极少数超级大胜日硬撑一条脆弱权益曲线；它更像一条低波动、靠 carry 累积的 market-neutral 收益流。</p>
+<h2>5. 和我们 <code>1m / 3m / 5m / 15m</code> desk 的关系：它是 raw alpha，但不是“逐根快节奏主信号”</h2>
+<p>这点要说清，不然容易把东西读歪。</p>
+<h3>5.1 它为什么仍然值得进 short-cycle 素材池</h3>
+<p>因为它满足 3 个关键条件：</p>
+<ol>
+<li><strong>base alpha 非常清楚</strong>：carry / funding / basis</li>
+<li><strong>可以独立成完整策略</strong>：不是只给 filter</li>
+<li><strong>执行层能直接映射到 5m/15m，甚至 1m/3m</strong></li>
+</ol>
+<p>但它的自然时钟不是每根 1m bar，而是：</p>
+<ul>
+<li>funding 更新时钟（1h / 8h）</li>
+<li>basis 偏离累计时钟</li>
+<li>交易执行时钟（5m / 15m 更合适）</li>
+</ul>
+<p>所以我会把它定位成： &gt; <strong>慢信号、快执行的 raw alpha sleeve</strong></p>
+<p>而不是硬伪装成“每根 3m 都能发信号的 scalp 模型”。</p>
+<h3>5.2 对短周期 desk 的正确用法</h3>
+<ul>
+<li><strong>15m</strong>：最适合做主执行频率</li>
+<li><strong>5m</strong>：适合做入场拆单 / 微观结构择时</li>
+<li><strong>1m/3m</strong>：更适合 execution veto，而不是主信号重算</li>
+</ul>
+<p>换句话说：</p>
+<ul>
+<li>signal generation 可以是 <code>1h / funding-event aware</code></li>
+<li>execution &amp; inventory control 可以放在 <code>5m / 15m</code></li>
+<li>这完全符合我们 desk 的“慢 alpha + 快执行”框架</li>
+</ul>
+<h2>6. 公开数据、更新频率、最小复现实验口径</h2>
+<p>这条题主要依赖公开交易所数据，公开性没问题。</p>
+<h3>6.1 数据源</h3>
+<p>repo 使用的主数据层包括：</p>
+<ul>
+<li>各交易所 <strong>perp funding rate</strong>（公开）</li>
+<li>各交易所 <strong>spot / perp 价格</strong>（公开）</li>
+<li><strong>open interest</strong>（大多公开可拿）</li>
+<li>宏观 gate 用的 <strong>VIX / SPY / RFR</strong>（公开）</li>
+</ul>
+<h3>6.2 更新频率</h3>
+<ul>
+<li><strong>Funding</strong>：交易所通常按 <strong>1h 或 8h</strong> 更新/结算</li>
+<li><strong>Spot / perp 价格</strong>：可拿到 <strong>1m 甚至 tick 级</strong></li>
+<li><strong>OI</strong>：不同 venue 粒度不同，通常 <code>5m~1h</code></li>
+</ul>
+<h3>6.3 最小可复现实验口径</h3>
+<p>如果我们现在要 desk 化，最小实验完全可以这样做：</p>
+<ol>
+<li>选 <code>BTC / ETH / SOL / BNB / XRP / DOGE / AVAX</code></li>
+<li>venue 先做 <code>Binance / Bybit / OKX / Hyperliquid</code> 四家</li>
+<li>每小时或每个 funding 结算时点更新 <code>best_fr</code></li>
+<li>用过去 <code>30~90</code> 天做滚动 z-score</li>
+<li>在 <strong>下一个 5m 或 15m bar</strong> 执行</li>
+<li>持有到：</li>
+</ol>
+<ul>
+<li>z-score 回到 0 附近</li>
+<li>或达到最小持有期</li>
+<li>或触发 basis / inventory / venue 风险止损</li>
+</ul>
+<ol>
+<li>成本必须至少拆成：</li>
+</ol>
+<ul>
+<li>perp taker / maker</li>
+<li>spot taker / maker</li>
+<li>资金占用与借币/现货成本</li>
+<li>滑点</li>
+<li>missed fill / partial fill</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<p>我建议别先做“大而全 6 venue 生产版”，而是按下面顺序测。</p>
+<h3>Step 1：先测 carry 本体能不能在我们口径下存活</h3>
+<p>目标：验证 <code>best_fr z-score</code> 是否比“原始 funding 排名”更稳。</p>
+<p>A. 三个 baseline 同时跑：</p>
+<ul>
+<li><code>raw best_fr level</code></li>
+<li><code>best_fr z-score</code></li>
+<li><code>best_fr z-score + min_hold</code></li>
+</ul>
+<p>B. 频率：</p>
+<ul>
+<li>signal 更新：<code>1h</code></li>
+<li>execution：<code>5m / 15m</code></li>
+</ul>
+<p>C. 输出重点：</p>
+<ul>
+<li>gross / net CAGR</li>
+<li>turnover</li>
+<li>break-even fee</li>
+<li>按币、按 venue 的 PnL 分解</li>
+</ul>
+<h3>Step 2：再测“Hyperliquid/高频 funding venue 的边际价值”</h3>
+<p>要回答的不是“HL 好不好”，而是：</p>
+<ul>
+<li>有没有哪类币几乎总是 HL 提供最肥 funding？</li>
+<li>这些机会在真实成交上有没有容量/滑点问题？</li>
+<li>若只保留 <code>top liquidity venues</code>，alpha 会掉多少？</li>
+</ul>
+<h3>Step 3：把 min-hold 改写成 desk 版本</h3>
+<p>repo 的 <code>3 × 8h = 24h</code> 最小持有期对我们太慢，desk 版建议直接扫：</p>
+<ul>
+<li><code>1 funding window</code></li>
+<li><code>2 funding windows</code></li>
+<li><code>4 funding windows</code></li>
+<li><code>fixed 6h / 12h / 24h</code></li>
+</ul>
+<p>我们真正要找的是： <strong>哪种持有治理，能在不显著伤害 carry 收入的前提下，把换手和腿数砍到最低。</strong></p>
+<h3>Step 4：最后才加 gate / overlay</h3>
+<p>优先顺序：</p>
+<ol>
+<li><strong>stale mark / stale OI veto</strong></li>
+<li><strong>exchange concentration cap</strong></li>
+<li><strong>basis drift stop</strong></li>
+<li><strong>market stress throttle</strong></li>
+</ol>
+<p>不要一上来就把一堆宏观 gate 混进去，不然你根本分不清是 raw alpha 有效，还是 gate 在救它。</p>
+<h2>8. 我当前的判断</h2>
+<p>这条东西我会给一个偏积极的结论：</p>
+<p>&gt; <strong>值得进入研究池，而且优先级不低。</strong></p>
+<p>原因不是它“讲 funding 很合理”，而是它符合我们当前最想补的那类题：</p>
+<ul>
+<li><strong>raw alpha 清楚</strong></li>
+<li><strong>完整策略闭环清楚</strong></li>
+<li><strong>公开数据可拿</strong></li>
+<li><strong>可以直接做最小实验</strong></li>
+<li><strong>还能自然拆成 execution / risk / venue routing 的后续组件研究</strong></li>
+</ul>
+<p>同时它也提醒了一个很重要的 desk 现实：</p>
+<p>&gt; carry/funding 类 alpha 的关键不只是找到“最肥的一腿”，而是把 <strong>持有治理、换手治理、venue 治理</strong> 做对；否则看上去是 alpha，实际上只是给手续费打工。</p>
+<h2>9. 来源与复现入口</h2>
+<h3>主 repo</h3>
+<ul>
+<li><strong>PietroC21 (2026)</strong>, *Crypto-PerpetualFutures*.</li>
+<li>Repo URL: <code><a href="https://github.com/PietroC21/Crypto-PerpetualFutures">https://github.com/PietroC21/Crypto-PerpetualFutures</a></code></li>
+<li>README: <code><a href="https://github.com/PietroC21/Crypto-PerpetualFutures/blob/main/README.md">https://github.com/PietroC21/Crypto-PerpetualFutures/blob/main/README.md</a></code></li>
+<li>Core strategy files:</li>
+<li><code><a href="https://github.com/PietroC21/Crypto-PerpetualFutures/blob/main/strategy.py">https://github.com/PietroC21/Crypto-PerpetualFutures/blob/main/strategy.py</a></code></li>
+<li><code><a href="https://github.com/PietroC21/Crypto-PerpetualFutures/blob/main/strategy_cross.py">https://github.com/PietroC21/Crypto-PerpetualFutures/blob/main/strategy_cross.py</a></code></li>
+<li>Key notebooks:</li>
+<li><code><a href="https://github.com/PietroC21/Crypto-PerpetualFutures/blob/main/notebook_cross.ipynb">https://github.com/PietroC21/Crypto-PerpetualFutures/blob/main/notebook_cross.ipynb</a></code></li>
+<li><code><a href="https://github.com/PietroC21/Crypto-PerpetualFutures/blob/main/FINAL_Notebook.ipynb">https://github.com/PietroC21/Crypto-PerpetualFutures/blob/main/FINAL_Notebook.ipynb</a></code></li>
+</ul>
+<h3>学术链路（carry 的资产定价地基）</h3>
+<ul>
+<li><strong>Lin William Cong, Zhiheng He, Ke Tang (2022)</strong>, *Staking, Token Pricing, and Crypto Carry*.</li>
+<li>Venue: working paper</li>
+<li>Readable URL: <code><a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4067751">https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4067751</a></code></li>
+<li>PDF（repo 镜像）: <code><a href="https://raw.githubusercontent.com/PietroC21/Crypto-PerpetualFutures/main/Cong-Staking-and-Crypto-Carry.pdf">https://raw.githubusercontent.com/PietroC21/Crypto-PerpetualFutures/main/Cong-Staking-and-Crypto-Carry.pdf</a></code></li>
+<li>关键信息：paper 里给出 <strong>long-short carry Sharpe ≈ <code>1.6</code></strong>，说明 crypto carry 作为 risk premium/relative-value 方向本身有坚实地基，但真正 desk 化仍要靠执行与成本治理。</li>
+</ul>
+<h3>这篇 digest 的一句话结论</h3>
+<p><strong>这次该 intake 的不是“funding 很高所以去收息”，而是「best-venue carry + z-score 标准化 + hysteresis/min-hold」这套可直接落地、可直接做 5m/15m 执行实验的完整 raw alpha 骨架。</strong></p>
+</body>
+</html>

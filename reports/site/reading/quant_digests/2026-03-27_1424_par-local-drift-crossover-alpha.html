@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2023 AIMS intraday 论文只当奇怪的曲线拟合：它更像「单币局部漂移线突破后顺势持有到反向翻仓」raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2023 AIMS intraday 论文只当奇怪的曲线拟合：它更像「单币局部漂移线突破后顺势持有到反向翻仓」raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-27 14:39 UTC</span>
+      <span class="pill">研究时间：2026-03-27 14:24 UTC</span>
+      <span class="pill">类型：2023 AIMS Mathematics 开放获取全文 PDF</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/trend/intraday/polynomial-autoregression/local-drift/signal-line-crossover/reverse-on-opposite/buffered-entry/1m/3m/5m/15m/paper/no-cost-model</span>
+      <span class="pill">证据类型：论文全文证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-27_1424_par-local-drift-crossover-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-27 14:24 UTC</li>
+<li>类型：2023 AIMS Mathematics 开放获取全文 PDF</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：价格一旦显著偏离本地非线性预测线，短周期局部趋势会继续延伸；直到价格重新穿回并给出反向信号才翻仓</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha/single-asset/trend/intraday/polynomial-autoregression/local-drift/signal-line-crossover/reverse-on-opposite/buffered-entry/1m/3m/5m/15m/paper/no-cost-model</li>
+<li>证据类型：论文全文证据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Gil Cohen (2023), _Intraday trading of cryptocurrencies using polynomial auto regression_</strong>, 发表在 <strong>AIMS Mathematics</strong>。</p>
+<p>先直接回答这篇东西的 <strong>base alpha</strong>：</p>
+<p>&gt; <strong>不是“高位突破某条固定前高/前低”，而是“价格相对一条局部非线性漂移线的有缓冲突破/跌破”，随后顺着这段局部 drift 继续持有，直到出现反向穿越才翻仓。</strong></p>
+<p>所以它首先是 <strong>raw alpha</strong>，不是 confirmation filter，也不是纯 risk overlay。更具体地说，它是一条 <strong>单币 directional / local-trend-follow</strong> 线：</p>
+<ul>
+<li>信号本体 = 价格相对预测线的位置；</li>
+<li>交易逻辑 = 上穿做多、下穿做空；</li>
+<li>持仓逻辑 = 一直持有到反向信号；</li>
+<li>不是在已有 breakout 上再套一个 gate，而是本身就能独立成策略。</li>
+</ul>
+<p>这点对当前 desk 有价值，因为我们最近 intake 里横截面、pairs、carry、lead-lag 比较多，这篇补的是 <strong>same-asset 单币方向性 raw alpha</strong>，而且不是传统 Donchian/high-low breakout 的重复体。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>样本口径：</strong> 论文用 <strong>2021-12-01 到 2022-11-30 的 1 分钟数据</strong>，覆盖 <strong>Bitcoin / Ethereum / BNB / Cardano</strong> 四个主流币。</li>
+<li><strong>训练/测试切分：</strong> 前 <strong>6 个月训练</strong>（<code>2021-12 ~ 2022-05</code>），后 <strong>6 个月实际交易/报告结果</strong>（<code>2022-06 ~ 2022-11</code>）。</li>
+<li><strong>模型骨架：</strong> 作者不是做固定均线，而是用一个 <strong>带两段滞后输入的三次 polynomial autoregression (PAR)</strong> 拟合局部价格轨迹，再画出一条实时更新的 prediction line。</li>
+<li><strong>信号定义：</strong></li>
+<li>价格 <strong>向上穿过预测线并超过缓冲带</strong> → <code>long</code></li>
+<li>价格 <strong>向下跌破预测线并超过缓冲带</strong> → <code>short</code></li>
+<li><strong>持有直到反向信号出现</strong>，也就是一个典型的 <code>reverse-on-opposite</code> 结构。</li>
+<li><strong>缓冲带不是拍脑袋：</strong> 论文对 entry buffer <code>δ</code> 做了优化，最终 <strong>四个币的最优 <code>δ</code> 都是 <code>1.5%</code></strong>。</li>
+<li><strong>最佳窗口并不一样：</strong></li>
+<li>BTC：最佳是 <strong>67 分钟</strong> 配置</li>
+<li>ETH：最佳是 <strong>61 分钟</strong></li>
+<li>BNB：最佳是 <strong>62 分钟</strong></li>
+<li>ADA：最佳是 <strong>47 分钟</strong></li>
+<p>这说明它不是“一套窗口全币通吃”，而更像每个币各自存在一个 <strong>局部 drift half-life / signal memory</strong>。</p>
+<li><strong>关键结果：</strong></li>
+<li><strong>BTC：</strong> <code>+15.58%</code>，PF <code>2.30</code>，PP <code>71.67%</code>，对比同期 B&amp;H <strong><code>-44.8%</code></strong></li>
+<li><strong>ETH：</strong> <code>+16.98%</code>，PF <code>2.04</code>，PP <code>66.67%</code>，对比 B&amp;H <strong><code>-33.6%</code></strong></li>
+<li><strong>BNB：</strong> <code>+9.33%</code>，PF <code>1.75</code>，PP <code>67.6%</code>，对比 B&amp;H <strong><code>+0.28%</code></strong></li>
+<li><strong>ADA：</strong> <code>+4.26%</code>，PF <code>1.38</code>，PP <code>66.7%</code>，对比 B&amp;H <strong><code>-41.8%</code></strong></li>
+<li><strong>多空不对称也很明显：</strong></li>
+<li>BTC 的 edge 更偏 <strong>short side</strong>：short PF <code>3.44</code>，long PF <code>2.73</code></li>
+<li>ETH 更偏 <strong>long side</strong>：long NP <code>10.478%</code>，short NP <code>6.5%</code></li>
+<li>BNB 明显更偏 <strong>short side</strong>：short NP <code>7.94%</code> / PF <code>3.05</code>，long NP <code>1.386%</code> / PF <code>1.16</code></li>
+<li>ADA 相反更偏 <strong>long side</strong>：long NP <code>2.326%</code>，short NP <code>1.933%</code></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇值得进池，不是因为它证明了“曲线拟合也能赚钱”，而是因为它给出了一条很清晰的 <strong>可最小复现单币 alpha 骨架</strong>：</p>
+<ol>
+<li><strong>raw alpha 很清楚</strong>：</li>
+<p>价格相对局部预测线的方向偏离，不是别的 alpha 的附属 gate。</p>
+<li><strong>和当前积累互补</strong>：</li>
+</ol>
+<ul>
+<li>不是横截面打分；</li>
+<li>不是 pairs spread；</li>
+<li>不是 basis/funding carry；</li>
+<li>也不是简单 breakout/retest。</li>
+<p>它补的是 <strong>单币局部 drift-follow</strong> 母策略。</p>
+</ul>
+<ol>
+<li><strong>可很快做最小实验</strong>：</li>
+<p>论文本身就是分钟级；对我们 desk 来说，完全可以直接从 <code>1m / 3m</code> 开始，然后再压到 <code>5m / 15m</code> 的 bar-based 近似。</p>
+<li><strong>还能服务后续组件拆解</strong>：</li>
+<p>就算最终原始信号不够强，也能拆出：</p>
+</ol>
+<ul>
+<li><code>prediction-line distance</code> 作为 feature</li>
+<li><code>directional asymmetry by asset</code> 作为 regime filter</li>
+<li><code>reverse-on-opposite</code> 作为 exit logic 候选</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：单币 directional / 局部趋势跟随 / 双向可做</li>
+<li>基础 alpha：价格相对局部非线性漂移线的突破/跌破会延续，而不是立刻回归</li>
+<li>entry：价格上破 prediction line + buffer 做多；下破 prediction line - buffer 做空</li>
+<li>exit：持有到反向信号；本质上是 <code>flip-on-opposite</code></li>
+<li>sizing：论文没有做复杂仓位；最小复现先单币等权/固定 notional，再加 inverse-vol 或 ATR target</li>
+<li>risk：限制单币最大杠杆、设置波动熔断、news/liquidation spike veto、夜间流动性稀薄时段单独评估</li>
+<li>cost：<strong>论文几乎没把手续费/滑点/资金费建模清楚</strong>，这正是它还不能直接上线的主要缺口</li>
+<li>更适合的 regime：有持续 order-flow 偏向、局部 drift 明显、而不是高噪音来回抽插的时段</li>
+<li>主要 veto：极端公告针、低流动性 alt、爆仓连锁导致的单根异常 wick、资金费结算前后微结构扭曲时段</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 论文真正可迁移到 desk 的，不是“非得用作者这套精确 PAR 参数”，而是：</p>
+<p>&gt; <strong>用 rolling local curve / local drift line 做 signal anchor，再用 buffer 过滤噪音、用 opposite crossover 做 exit，这条 directional raw alpha 在分钟级 crypto 上可能成立。</strong></p>
+<h3>最小实验 A：先按论文精神做 1m / 3m 原型</h3>
+<ol>
+<li><strong>Universe：</strong> Binance USDT perpetual 先取 <code>BTC/ETH/BNB/SOL/ADA</code>，优先流动性最足、撮合最稳定的合约。</li>
+<li><strong>Bar：</strong> 先做 <code>1m</code>，再做 <code>3m</code>；这是因为原论文本来就是 minute 级。</li>
+<li><strong>信号线：</strong></li>
+</ol>
+<ul>
+<li>方案 A：直接复刻 paper spirit，做 rolling polynomial regression / polynomial autoregression</li>
+<li>方案 B：做一个更稳更轻的 proxy：rolling 3 次多项式拟合收盘轨迹，取下一步/当前估计线</li>
+</ul>
+<ol>
+<li><strong>窗口：</strong> 先扫 <code>40/50/60/70/80</code> 分钟；再折算到 bar-count：</li>
+</ol>
+<ul>
+<li><code>1m</code>：40~80 bars</li>
+<li><code>3m</code>：14~27 bars</li>
+</ul>
+<ol>
+<li><strong>entry：</strong></li>
+</ol>
+<ul>
+<li><code>close &gt; pred_line * (1 + δ)</code> → long</li>
+<li><code>close &lt; pred_line * (1 - δ)</code> → short</li>
+<li><code>δ</code> 先不要照抄 <code>1.5%</code>；分钟 perp 上太粗，先扫 <code>10/20/30/40/60 bps</code>，再加 <code>k * ATR</code> 版本</li>
+</ul>
+<ol>
+<li><strong>exit：</strong> opposite signal；并额外加一个 <code>max_hold</code>（如 <code>60/90/120</code> 分钟）做稳健性对照。</li>
+<li><strong>成本：</strong> 至少跑三档 round-trip friction：<code>4 / 8 / 12 bps</code>；若是 taker-heavy 原型，再加一档更苛刻的 <code>16 bps</code>。</li>
+<li><strong>比较基线：</strong></li>
+</ol>
+<ul>
+<li>plain EMA crossover</li>
+<li>Donchian breakout</li>
+<li>纯过去 <code>N</code> bar return sign continuation</li>
+<p>关键是看它到底提供了新 alpha，还是只是换皮 trend-follow。</p>
+</ul>
+<h3>最小实验 B：压缩成 5m / 15m desk 版本</h3>
+<p>如果 <code>1m/3m</code> 原型有形，再做 <code>5m/15m</code>：</p>
+<ul>
+<li><code>5m</code> 先扫 <code>8/12/16</code> bars（对应约 <code>40/60/80</code> 分钟）</li>
+<li><code>15m</code> 先扫 <code>3/4/5/6</code> bars（对应约 <code>45/60/75/90</code> 分钟）</li>
+<li>buffer 不再用固定百分比，优先试 <code>0.5 * ATR</code> / <code>0.75 * ATR</code> / <code>1.0 * ATR</code></li>
+</ul>
+<p>这样更符合 perp 短周期实盘，而不是死抄论文的 <code>1.5%</code>。</p>
+<h2>5. 我对这条线的当前判断</h2>
+<p>我的判断是：<strong>值得进研究池，而且优先级不低，但要明确它现在仍是“可复现 raw alpha 候选”，不是可直接上线版本。</strong></p>
+<p>原因：</p>
+<ul>
+<li><strong>优点</strong></li>
+<li>base alpha 清楚；</li>
+<li>分钟级原生；</li>
+<li>entry/exit 很完整；</li>
+<li>多空双边可做；</li>
+<li>和我们最近的 XS / pairs 素材互补。</li>
+<li><strong>缺点</strong></li>
+<li>论文几乎没严肃处理成本；</li>
+<li>只测了 4 个币；</li>
+<li>参数优化痕迹较重；</li>
+<li>没清楚回答它到底优于 simpler trend baselines 多少。</li>
+</ul>
+<p>所以它最适合当前 desk 的姿势不是“直接相信 paper PnL”，而是：</p>
+<p>&gt; <strong>把它当成“局部 drift-follow 母策略原型”，先做最小对照实验，确认它是否真的优于简单均线/动量穿越。</strong></p>
+<h2>6. 下一步最该怎么测</h2>
+<p>如果只给一个最优先动作，我会做这个：</p>
+<p>&gt; <strong>在 Binance BTC/ETH <code>1m</code> 上做 <code>rolling polynomial line + buffered crossover + opposite flip</code>，并与 <code>EMA crossover</code> 和 <code>Donchian breakout</code> 做同窗长、同成本对照。</strong></p>
+<p>这是最便宜也最关键的一步，因为它能回答唯一真正重要的问题：</p>
+<p><strong>这篇 paper 提供的是新 alpha，还是只是更复杂的趋势线外观。</strong></p>
+<p>建议最先盯三个输出：</p>
+<ol>
+<li>成本后 PF 是否仍 &gt; <code>1.1~1.2</code></li>
+<li>edge 是否主要集中在 long 或 short 一边</li>
+<li><code>1m</code> 成立后，压到 <code>5m</code> 是否反而更稳</li>
+</ol>
+<p>如果这三条里有两条成立，它就值得继续做 desk 化；否则就把它降级成 feature source / exit candidate。</p>
+<h2>7. 来源与可复用材料</h2>
+<ol>
+<li><strong>Cohen, G. (2023). _Intraday trading of cryptocurrencies using polynomial auto regression_. AIMS Mathematics, 8(4), 9782–9794.</strong></li>
+<p>DOI：&lt;<a href="https://doi.org/10.3934/math.2023493&gt;">https://doi.org/10.3934/math.2023493&gt;</a> Readable URL：&lt;<a href="https://www.aimspress.com/article/doi/10.3934/math.2023493&gt;">https://www.aimspress.com/article/doi/10.3934/math.2023493&gt;</a> PDF URL：&lt;<a href="https://www.aimspress.com/aimspress-data/math/2023/4/PDF/math-08-04-493.pdf&gt;">https://www.aimspress.com/aimspress-data/math/2023/4/PDF/math-08-04-493.pdf&gt;</a></p>
+<li><strong>Repo URL：</strong> 暂未见作者官方复现仓库；更适合按论文规则直接轻量重写。</li>
+<li><strong>可直接复用的实现要点：</strong></li>
+</ol>
+<ul>
+<li>rolling local curve / prediction line</li>
+<li>buffer-based entry</li>
+<li>reverse-on-opposite exit</li>
+<li>asset-specific long/short asymmetry 统计</li>
+</ul>
+</body>
+</html>

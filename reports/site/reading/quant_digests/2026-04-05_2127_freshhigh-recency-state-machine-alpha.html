@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Hyperliquid trend repo 只读成“20 日新高 breakout”：对 short-cycle desk，更该先测的是「fresh-high recency state machine」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Hyperliquid trend repo 只读成“20 日新高 breakout”：对 short-cycle desk，更该先测的是「fresh-high recency state machine」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-05 21:25 UTC</span>
+      <span class="pill">研究时间：2026-04-05 21:27 UTC</span>
+      <span class="pill">类型：2026 arXiv 全文 HTML source audit + 2024 GitHub repo source audit（`README.md` + `main.py` + `config.json`）+ Hyperliquid 公共 API 文档可得性确认</span>
+      <span class="pill">主题标签：raw-alpha/trend/momentum/breakout/fresh-high/recency-state-machine/stale-high/long-short/universe-ranking/top-volume/hyperliquid/binance-perpetual/15m/5m/3m/1m/repo/paper/public-api/cost/risk</span>
+      <span class="pill">证据类型：论文 + 仓库源码双证据（可读全文 HTML + 代码规则）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-05_2127_freshhigh-recency-state-machine-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-05 21:27 UTC</li>
+<li>类型：2026 arXiv 全文 HTML source audit + 2024 GitHub repo source audit（<code>README.md</code> + <code>main.py</code> + <code>config.json</code>）+ Hyperliquid 公共 API 文档可得性确认</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>最近 N-bar 刚创新高的币更容易继续走强；若新高长时间不再被刷新，则“高点变陈旧”本身可转成 stale-high short / flat 的反向状态机</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/trend/momentum/breakout/fresh-high/recency-state-machine/stale-high/long-short/universe-ranking/top-volume/hyperliquid/binance-perpetual/15m/5m/3m/1m/repo/paper/public-api/cost/risk</li>
+<li>证据类型：论文 + 仓库源码双证据（可读全文 HTML + 代码规则）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看两样东西：</p>
+<ol>
+<li><strong>Yijia Chen (2026), _Be Water: An Evolutionary Proof for Trend-Following_</strong></li>
+</ol>
+<ul>
+<li>arXiv 全文 HTML 可读；</li>
+<li>核心不是给一个现成交易系统，而是给出一个对 short-cycle desk 很有用的结论框架：<strong>在高噪声、高杠杆、胖尾环境里，trend-following 的生存性强于 buy-the-dip 式 mean reversion</strong>。</li>
+</ul>
+<ol>
+<li><strong>kalipsot (2024), <code>Hyperliquid-Basic-Trend</code></strong></li>
+</ol>
+<ul>
+<li>repo 很小，但规则写得足够清楚；</li>
+<li>真正值得拿走的不是“20-day high”这层表面描述，而是代码里已经写成状态机的 <strong>fresh-high recency shell</strong>：</li>
+<li>fresh high → 开多 / 持多</li>
+<li>新高变旧 → 平多</li>
+<li>旧高陈化到特定年龄 → 开空</li>
+<li>继续陈化 → 持空</li>
+<li>再过期 → 平空</li>
+</ul>
+<p>这比再补一篇“trend 有效 / 无效”的泛结论更值钱，因为它直接落到了：<strong>entry / exit / short activation / universe / sizing / execution</strong>。</p>
+<h2>2. 先回答：这篇东西的 base alpha 是什么？</h2>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>fresh-high continuation + stale-high decay</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<p>这里要说清楚：</p>
+<p>它不是“经典 Donchian breakout 再讲一遍”。</p>
+<p>真正的 base alpha 是：</p>
+<ol>
+<li><strong>某币刚创出过去 N-bar 新高时，后续更容易继续延续；</strong></li>
+<li><strong>一旦这个新高长期没有再被刷新，趋势壳会从 continuation 逻辑切到 decay / exhaustion 逻辑；</strong></li>
+<li><strong>这个“离上次新高过去了多久”本身，就是比单次突破更适合做短周期状态管理的变量。</strong></li>
+</ol>
+<p>翻成人话： &gt; 不是“碰到新高就一直信趋势”，而是“新高也会老；新高的新鲜度在下降时，趋势 alpha 会衰减，甚至翻成反向”。</p>
+<h2>3. 为什么这轮值得进研究池</h2>
+<p>这轮我刻意没有再补 overlay / regime，原因很直接：</p>
+<ul>
+<li>最近两篇 digest 已经是 <strong>order-book liquidity timing overlay</strong> 和 <strong>gamma wall regime router</strong>；</li>
+<li>按当前规则，这轮应该优先回到 <strong>raw alpha / 可完整落地策略</strong>；</li>
+<li>而这条 fresh-high recency 壳，确实比继续写一个“shared filter”更接近可交易原型。</li>
+</ul>
+<p>它对当前 desk 的直接价值有三点：</p>
+<ol>
+<li><strong>它是完整骨架，不只是单个因子。</strong></li>
+<p>entry、exit、short activation、universe、杠杆、下单方式，repo 都给了原型。</p>
+</ol>
+<ol>
+<li><strong>它不是死板 breakout，而是“breakout 的时间衰减版”。</strong></li>
+<p>对 <code>5m / 15m</code> desk，这比“破了就追、回来了就跑”的裸 breakout 更有研究价值。</p>
+</ol>
+<ol>
+<li><strong>它天然适合做 bar-ratio downscale。</strong></li>
+<p>repo 用的是日级；我们完全可以保留“新高年龄比例”而不是照搬“20 天 / 15 天 / 5 天”这些绝对数字。</p>
+</ol>
+<h2>4. 源码里真正写了什么</h2>
+<h3>4.1 repo 默认参数其实已经是一个完整策略原型</h3>
+<p>从 <code>config.json</code> 看，repo 默认：</p>
+<ul>
+<li><code>leverage = 5</code></li>
+<li><code>numberOfCoins = 25</code></li>
+<li><code>sizeUSD = 150</code></li>
+<li><code>maxOpenPositions = 10</code></li>
+</ul>
+<p>从 <code>main.py</code> 看：</p>
+<ul>
+<li>universe = <strong>按 24h notional volume 排序的前 N 个 Hyperliquid 币</strong>；</li>
+<li>每天 rebalance 一次；</li>
+<li>下单用 <strong>IOC limit</strong>，价格直接在 mid 基础上加/减 <strong>1% slippage buffer</strong>；</li>
+<li>开仓和平仓都按固定美元名义下单。</li>
+</ul>
+<p>这意味着它不是“研究笔记级伪代码”，而是已经接近一个能跑的 live prototype。</p>
+<h3>4.2 README 和代码有出入，但代码更有价值</h3>
+<p>README 的说法是：</p>
+<ul>
+<li>若今天创 20 日新高 → 开多；</li>
+<li>若 5 天未创新高 → 平多；</li>
+<li>若 15 天未创新高 → 开空；</li>
+<li>若 20 天未创新高 → 平空。</li>
+</ul>
+<p>但 <code>main.py</code> 里的真实实现更细，而且也更像我们想要的状态机：</p>
+<p><code>checkAthDay()</code> 会把“过去 20 日最高收盘离今天有多远”分桶：</p>
+<ul>
+<li><code>0</code>：今天就是新高</li>
+<li><code>1</code>：新高出现在最近 <code>1~3</code> 天内</li>
+<li><code>2</code>：新高出现在 <code>4~13</code> 天前</li>
+<li><code>3</code>：新高出现在 <code>14</code> 天前</li>
+<li><code>4</code>：新高出现在 <code>15~18</code> 天前</li>
+<li><code>5</code>：新高出现在 <code>19+</code> 天前</li>
+</ul>
+<p>然后 <code>rebalance()</code> 真正规则是：</p>
+<p><strong>Long 侧</strong></p>
+<ul>
+<li><code>athDays == 0</code>：可开多 / 持多</li>
+<li><code>athDays == 1</code>：继续持多</li>
+<li><code>athDays &gt;= 2</code>：平多</li>
+</ul>
+<p><strong>Short 侧</strong></p>
+<ul>
+<li><code>athDays == 3</code>：开空</li>
+<li><code>athDays == 4</code>：继续持空</li>
+<li>其他情况：平空</li>
+</ul>
+<p>这就非常关键了：</p>
+<p>&gt; repo 真正实现的，不是“固定 20 日突破系统”，而是一个 <strong>基于最近新高年龄的多空状态机</strong>。</p>
+<p>对 desk 来说，这比 README headline 更重要。</p>
+<h2>5. 对 short-cycle desk 最值得偷的，不是 breakout，而是“新高年龄”</h2>
+<h3>5.1 为什么这不是又一个普通 breakout</h3>
+<p>普通 breakout 更像：</p>
+<ul>
+<li>价格过了上轨 → 开多；</li>
+<li>回到区间 → 平；</li>
+<li>可能配一个 ATR stop。</li>
+</ul>
+<p>而这个 repo 的有趣点在于：</p>
+<ul>
+<li><strong>entry 只在 fresh-high 触发</strong>；</li>
+<li><strong>持仓不由价格相对某条线决定，而由“离上次新高过去多久”决定</strong>；</li>
+<li><strong>short 不是单纯做反转，而是做“趋势迟迟不再续命”的 stale-high state。</strong></li>
+</ul>
+<p>所以更贴切的理解不是 breakout，而是： <strong>high-age / recency-state alpha</strong>。</p>
+<h3>5.2 paper 给了什么支撑</h3>
+<p><code>Be Water</code> 这篇 2026 arXiv 虽然不是实盘回测论文，但它给了一个很像“为什么 trend 壳值得优先测”的背景结论：</p>
+<ul>
+<li>作者在 <strong>5 年、5 分钟频率、100 个资产、10,000 个 agent</strong> 的模拟环境里比较不同 archetype；</li>
+<li>结果是 <strong>Trend-Following archetype</strong> 生存下来，而 <strong>Mean-Reversion / buy-the-dip</strong> 更脆弱；</li>
+<li>论文还把 stop / leverage / ATR 风险边界写得很明确。</li>
+</ul>
+<p>我不会把这篇当成“直接可下单证据”，但它给了一个对 desk 有用的优先级判断： <strong>在高噪声、高杠杆环境里，先补 trend shell 是合理的；而这个 repo 恰好提供了一个更可执行的 trend shell。</strong></p>
+<h2>6. desk 版完整策略拆解</h2>
+<h3>6.1 策略定义</h3>
+<p><strong>基础 alpha：</strong> recent-high continuation；新高年龄老化后切到 stale-high decay <strong>交易对象：</strong> 流动性最好的 perp universe <strong>主战场：</strong> <code>15m</code>，<code>5m</code> 做更快版本，<code>3m/1m</code> 只做 child execution</p>
+<h3>6.2 策略变量</h3>
+<p>定义：</p>
+<ul>
+<li><code>L_high</code>：看过去多少根 bar 的最高收盘</li>
+<li><code>age_high_t</code>：距离最近一次 <code>close == rolling_max(close, L_high)</code> 已过去多少根 bar</li>
+<li><code>tau_keep_long</code>：fresh-high 还能继续算 continuation 的最大年龄</li>
+<li><code>tau_open_short</code>：从 trend decay 切到 stale-high short 的触发年龄</li>
+<li><code>tau_close_short</code>：short 再继续拿就太旧的年龄上限</li>
+</ul>
+<p>把 repo 规则抽象成比例就是：</p>
+<ul>
+<li><code>tau_keep_long ≈ 0.20 * L_high</code></li>
+<li><code>tau_open_short ≈ 0.70 * L_high</code></li>
+<li><code>tau_close_short ≈ 0.95 * L_high</code></li>
+</ul>
+<p>这个“比例读法”比照搬 20 天更适合我们的 <code>1m/3m/5m/15m</code>。</p>
+<h3>6.3 入场 / 出场</h3>
+<p><strong>Long entry</strong></p>
+<ul>
+<li><code>age_high_t == 0</code></li>
+<li>universe 在 top liquidity bucket 内</li>
+<li>spread / slippage 不超阈值</li>
+<li>若 BTC 本身处于极端单边反向冲击，可加 veto</li>
+</ul>
+<p><strong>Long hold</strong></p>
+<ul>
+<li><code>age_high_t &lt;= tau_keep_long</code></li>
+</ul>
+<p><strong>Long exit</strong></p>
+<ul>
+<li><code>age_high_t &gt; tau_keep_long</code></li>
+<li>或 hit <code>ATR stop</code></li>
+<li>或出现极端 adverse move / microstructure veto</li>
+</ul>
+<p><strong>Short entry</strong></p>
+<ul>
+<li><code>age_high_t == tau_open_short</code> 附近</li>
+<li>且价格已跌回短期均线 / VWAP 下方，避免在仍强势时硬逆势</li>
+</ul>
+<p><strong>Short hold</strong></p>
+<ul>
+<li><code>tau_open_short &lt; age_high_t &lt;= tau_close_short</code></li>
+</ul>
+<p><strong>Short exit</strong></p>
+<ul>
+<li><code>age_high_t &gt; tau_close_short</code></li>
+<li>或价格重新刷新 <code>L_high</code> 新高</li>
+<li>或触发 hard stop</li>
+</ul>
+<h3>6.4 sizing / risk / cost</h3>
+<p><strong>sizing</strong></p>
+<ul>
+<li>初版建议 <code>equal-risk</code>，单币风险预算相同；</li>
+<li>同时持仓数上限先测 <code>6 / 8 / 10</code>；</li>
+<li>单币 notional cap 不超过组合资金 <code>10%~12%</code>。</li>
+</ul>
+<p><strong>risk</strong></p>
+<ul>
+<li><code>ATR(20)</code> 或 <code>rolling sigma</code> 做 stop；</li>
+<li>若 <code>age_high</code> 结构仍多头但 realized vol 突然翻倍，仓位减半；</li>
+<li>short leg 默认更小，先用 <code>0.5x~0.75x</code> long 名义。</li>
+</ul>
+<p><strong>cost</strong></p>
+<ul>
+<li>先按 taker 成本测；</li>
+<li><code>1m/3m</code> 只做执行，不要把主 alpha 下沉到噪声层；</li>
+<li>若 fresh-high 发生在 spread 快速放大时，宁可 miss，不要硬追。</li>
+</ul>
+<h2>7. 1m / 3m / 5m / 15m 的映射建议</h2>
+<h3>15m（主版本）</h3>
+<p>建议先测：</p>
+<ul>
+<li><code>L_high = 96 / 192 / 288</code></li>
+<li><code>tau_keep_long = round(0.20 * L_high)</code></li>
+<li><code>tau_open_short = round(0.70 * L_high)</code></li>
+<li><code>tau_close_short = round(0.95 * L_high)</code></li>
+</ul>
+<p>例子：</p>
+<ul>
+<li><code>L_high = 96</code> 时：</li>
+<li><code>tau_keep_long = 19</code></li>
+<li><code>tau_open_short = 67</code></li>
+<li><code>tau_close_short = 91</code></li>
+</ul>
+<p>这相当于：</p>
+<ul>
+<li>新高后还给它约 <code>4.75h</code> 的 continuation 容忍；</li>
+<li>若快 <code>17h</code> 都没再创新高，就考虑 stale-high short；</li>
+<li>快满 <code>1d</code> 还没新高，则 short 也应收掉。</li>
+</ul>
+<h3>5m（快版本）</h3>
+<p>保持相同物理时间：</p>
+<ul>
+<li><code>L_high = 288 / 576 / 864</code></li>
+<li>其余阈值按同样比例算</li>
+</ul>
+<p>但 5m 版必须额外加：</p>
+<ul>
+<li>spread veto</li>
+<li>盘口深度 veto</li>
+<li>BTC 同步方向 veto</li>
+</ul>
+<h3>3m / 1m</h3>
+<p>不建议直接把主 alpha 做成 3m / 1m。 更好的用法是：</p>
+<ul>
+<li><code>15m/5m</code> 先定方向；</li>
+<li><code>3m/1m</code> 只负责更便宜的进场：</li>
+<li>fresh-high 后的小回踩买入；</li>
+<li>stale-high short 前的 weak bounce 卖出。</li>
+</ul>
+<h2>8. 最小可复现实验</h2>
+<h3>实验 A：fresh-high recency shell vs 裸 breakout</h3>
+<p><strong>目的：</strong> 验证“新高年龄状态机”是否优于简单 breakout 持有。</p>
+<ul>
+<li>universe：Binance USDⓈ-M / Hyperliquid perp <code>top 15</code> 流动性币</li>
+<li>bar：<code>15m</code></li>
+<li>baseline：</li>
+</ul>
+<ol>
+<li><code>close &gt; rolling_high(L_high)</code> 就开多，固定持有 <code>H</code></li>
+<li>fresh-high recency state machine</li>
+</ol>
+<ul>
+<li>指标：</li>
+<li>after-cost return</li>
+<li>Sharpe</li>
+<li>turnover</li>
+<li>MDD</li>
+<li>trade expectancy</li>
+<li>long leg / short leg 分开归因</li>
+</ul>
+<h3>实验 B：short leg 要不要保留</h3>
+<p><strong>目的：</strong> 验证 stale-high short 是 alpha 还是噪声。</p>
+<p>并排比较：</p>
+<ol>
+<li><code>long-only fresh-high</code></li>
+<li><code>long + stale-high short</code></li>
+<li><code>long + stale-high short (smaller size)</code></li>
+</ol>
+<p>重点看：</p>
+<ul>
+<li>short leg 是否贡献净收益；</li>
+<li>short leg 是否只是在放大回撤；</li>
+<li>short leg 在高 funding / squeeze 环境下是否显著恶化。</li>
+</ul>
+<h3>实验 C：5m child execution 能否省成本</h3>
+<p><strong>目的：</strong> 验证执行层是否值得。</p>
+<ul>
+<li>主信号在 <code>15m</code></li>
+<li>执行对比：</li>
+</ul>
+<ol>
+<li>15m 收盘直接 taker</li>
+<li>5m 等一次回踩 / micro pullback 再进</li>
+</ol>
+<ul>
+<li>看 slippage、fill rate、净收益、漏单成本。</li>
+</ul>
+<h2>9. 风险与保留意见</h2>
+<ol>
+<li><strong><code>Be Water</code> 是模拟论文，不是实盘证据。</strong></li>
+<p>它更适合作为“先补 trend shell 而不是继续补 buy-the-dip”的研究优先级依据。</p>
+</ol>
+<ol>
+<li><strong>repo 体量小、未经过严谨学术验证。</strong></li>
+<p>但也正因为简单，才适合拿来做最小实验。</p>
+</ol>
+<ol>
+<li><strong>README 与源码不一致。</strong></li>
+<p>这次必须以代码为准，不能只抄 README headline。</p>
+</ol>
+<ol>
+<li><strong>short leg 可能并不稳定。</strong></li>
+<p>stale-high short 听起来合理，但 crypto squeeze 风险很高；它必须单独审判，不能默认保留。</p>
+</ol>
+<ol>
+<li><strong>绝对时间尺度不能照搬。</strong></li>
+<p>20 天对 short-cycle desk 太慢；应保留比例结构，而不是搬原始日级参数。</p>
+</ol>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>Chen, Yijia. (2026). _Be Water: An Evolutionary Proof for Trend-Following_. arXiv.</strong></li>
+</ol>
+<ul>
+<li>Author: Yijia Chen</li>
+<li>Year: 2026</li>
+<li>Title: Be Water: An Evolutionary Proof for Trend-Following</li>
+<li>Venue: arXiv</li>
+<li>DOI: &lt;<a href="https://doi.org/10.48550/arXiv.2603.29593&gt;">https://doi.org/10.48550/arXiv.2603.29593&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://arxiv.org/abs/2603.29593&gt;">https://arxiv.org/abs/2603.29593&gt;</a></li>
+<li>HTML URL: &lt;<a href="https://arxiv.org/html/2603.29593&gt;">https://arxiv.org/html/2603.29593&gt;</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>kalipsot. (2024). _Hyperliquid-Basic-Trend_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Author / Repo owner: kalipsot</li>
+<li>Year: 2024</li>
+<li>Title: Hyperliquid-Basic-Trend</li>
+<li>Venue: GitHub Repository</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/kalipsot/Hyperliquid-Basic-Trend&gt;">https://github.com/kalipsot/Hyperliquid-Basic-Trend&gt;</a></li>
+<li>README URL: &lt;<a href="https://raw.githubusercontent.com/kalipsot/Hyperliquid-Basic-Trend/master/README.md&gt;">https://raw.githubusercontent.com/kalipsot/Hyperliquid-Basic-Trend/master/README.md&gt;</a></li>
+<li>Code URL: &lt;<a href="https://raw.githubusercontent.com/kalipsot/Hyperliquid-Basic-Trend/main/main.py&gt;">https://raw.githubusercontent.com/kalipsot/Hyperliquid-Basic-Trend/main/main.py&gt;</a></li>
+<li>Config URL: &lt;<a href="https://raw.githubusercontent.com/kalipsot/Hyperliquid-Basic-Trend/main/config.json&gt;">https://raw.githubusercontent.com/kalipsot/Hyperliquid-Basic-Trend/main/config.json&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Hyperliquid Docs. Info endpoint / public market data docs.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint&gt;">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures market data docs（用于 desk 侧最小复现实验的数据替代）</strong></li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api&gt;</a></li>
+</ul>
+<h2>11. 下一步怎么测（一句话）</h2>
+<p>先在 <code>15m top-15</code> 流动性 perp 池上，把 <code>fresh-high recency state machine</code> 与 <code>裸 breakout</code>、<code>long-only fresh-high</code>、<code>long+stale-high short</code> 四条线并排回测；如果结果显示 <strong>“新高年龄”比单次突破更能稳定决定持有/翻空节奏</strong>，就把它升级成 desk 的标准 trend raw alpha 骨架。</p>
+</body>
+</html>

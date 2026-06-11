@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lo 形态识别的第三方复现仓库：把 kernel regression → extrema → pattern rules 拆成可读代码</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Lo 形态识别的第三方复现仓库：把 kernel regression → extrema → pattern rules 拆成可读代码</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-11 01:28 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：trend / breakout / pullback / structure / alpha / implementation</span>
+      <span class="pill">证据类型：论文证据 + 第三方工程实现</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-11_0128_lo-pattern-recognition-replication-repo.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-11 01:28 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：trend / breakout / pullback / structure / alpha / implementation</li>
+<li>证据类型：论文证据 + 第三方工程实现</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次不是新论文，而是看一个直接对你更有帮助的第三方复现仓库：<code>SITONGRUC/FOUNDATIONS_OF_TECHNICAL_ANALYSIS</code>。它不是 Lo, Mamaysky, Wang (2000) 的官方代码，但它把论文里的核心流程拆成了几本 notebook：<code>Kernel regression.ipynb</code>、<code>Find Min&amp;Max.ipynb</code>、<code>pattern count.ipynb</code>，很适合拿来理解“形态识别到底怎么落到代码里”。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这套复现把 Lo 论文的方法非常直白地拆成三步：<strong>先平滑，再找 extrema，再做规则匹配</strong>。这和论文本身是一致的，也和你现在在 <code>momentum</code> 里做的 endpoint smoothing + confirmed extrema 思路是同一路。</li>
+<li><code>Kernel regression.ipynb</code> 里直接用 <code>statsmodels.nonparametric.kernel_regression.KernelReg</code> 做高斯核回归，带宽用 <code>bw=&#x27;cv_ls&#x27;</code>；然后在每个滚动窗口内生成平滑序列。</li>
+<li><code>Find Min&amp;Max.ipynb</code> 里用 <code>scipy.signal.argrelextrema</code> 先在平滑序列上找局部高低点，再把 extrema 映射回原始序列附近的点位；<code>pattern count.ipynb</code> 再用 if/else 阈值去匹配 HS / IHS / broadening / triangle 等形态。</li>
+<li>但它也暴露了一个很重要的问题：<strong>能“看懂论文”不等于能直接拿去做 15m 实盘信号</strong>。这个复现当前更像教学代码——窗口短、路径硬编码、本地 CSV 驱动、而且看起来主要在 <code>ret</code> 序列上做，不是为因果、无重绘、在线检测设计的。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这份仓库最适合当前 <code>momentum</code> 主线，因为你现在缺的不是“再多一个玄学图形名词”，而是把结构识别拆成工程步骤。它给你的价值主要有三点：</p>
+<ul>
+<li>证明 <code>kernel smoothing -&gt; extrema -&gt; pattern rule</code> 这条链很容易先做成最小可运行原型；</li>
+<li>让你能把论文语言翻译成代码骨架，尤其适合对照现有 <code>confirmed extrema</code> 设计；</li>
+<li>反过来也提醒你：当前项目应坚持 <strong>price-level / causal / delayed-confirmation</strong>，不要把教学代码里的非因果细节原样照搬进 15m crypto。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：如果 Lo 风格形态识别对 15m crypto 真的有帮助，那么把“结构条件”显式化后，应当能比裸 breakout 更稳定地筛掉一部分假突破。</li>
+<li>一个可计算定义：先只做 3 个模式，不贪多：<code>double_top/bottom</code>、<code>head-and-shoulders</code>、<code>pullback_recovery_like</code>。流程固定为：</li>
+</ul>
+<ol>
+<li>对 15m 收盘价做 <strong>causal smoothing</strong>；</li>
+<li>用 <strong>confirmed extrema</strong> 生成局部高低点；</li>
+<li>用 extrema 序列匹配规则，而不是直接在 K 线上硬写 if。</li>
+</ol>
+<ul>
+<li>最小回测切口：BTC、ETH、SOL；15m；近 180d；对比 <code>Donchian breakout</code> 基线 vs <code>Donchian breakout + 结构过滤</code>。</li>
+<li>最该先看：<code>post_cost_return</code>、<code>false_break_ratio</code>。如果结构过滤没能降低假突破占比，就先别继续堆图形库。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这不是作者官方仓库，只能算<strong>第三方复现参考</strong>，不能当成论文原版实现。</li>
+<li>复现代码明显更偏研究/教学，不是 production-ready；直接照搬到 15m crypto 很容易引入 look-ahead、窗口依赖和过拟合。</li>
+<li>这份仓库最该学的是“分层流程”，不是具体 notebook 里的每一个实现细节。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Lo, A. W., Mamaysky, H., &amp; Wang, J. (2000). *Foundations of Technical Analysis: Computational Algorithms, Statistical Inference, and Empirical Implementation*. NBER Working Paper 7613.</li>
+<li>DOI: &lt;<a href="https://doi.org/10.3386/w7613&gt;">https://doi.org/10.3386/w7613&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://www.nber.org/papers/w7613&gt;">https://www.nber.org/papers/w7613&gt;</a></li>
+<li>第三方复现仓库：SITONGRUC. *FOUNDATIONS_OF_TECHNICAL_ANALYSIS*.</li>
+<li>Repo URL: &lt;<a href="https://github.com/SITONGRUC/FOUNDATIONS_OF_TECHNICAL_ANALYSIS&gt;">https://github.com/SITONGRUC/FOUNDATIONS_OF_TECHNICAL_ANALYSIS&gt;</a></li>
+<li>README / file list 可见：<code>Kernel regression.ipynb</code>、<code>Find Min&amp;Max .ipynb</code>、<code>pattern count.ipynb</code></li>
+</ul>
+</body>
+</html>

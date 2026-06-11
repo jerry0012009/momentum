@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把第二次 sweep 当成第一根 wick 的复读：`same-level consecutive sweep count` 更像 breakout-short / Fib / EMA-PSAR 的 level-memory gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把第二次 sweep 当成第一根 wick 的复读：`same-level consecutive sweep count` 更像 breakout-short / Fib / EMA-PSAR 的 level-memory gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-19 13:12 UTC</span>
+      <span class="pill">研究时间：2026-03-19 13:11 UTC</span>
+      <span class="pill">类型：GitHub + 本地代理快检</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/liquidity-sweep/consecutive-sweep/same-level/level-memory/continuation/failure/filter/repo/crypto/15m</span>
+      <span class="pill">证据类型：repo 代码规则（工程证据）+ 公开行情代理快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-19_1311_same-level-sweep-count-level-memory-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-19 13:11 UTC</li>
+<li>类型：GitHub + 本地代理快检</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/liquidity-sweep/consecutive-sweep/same-level/level-memory/continuation/failure/filter/repo/crypto/15m</li>
+<li>证据类型：repo 代码规则（工程证据）+ 公开行情代理快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是 <strong>Capital41 / damianpitt (2026) 的 <code>capital41-indicators</code></strong>，重点不是整套指标库，而是其中 <code>Capital41 Liquidity Sweep Simple</code> 里那条很适合当前 desk 的旁支： <strong>不要只看“有没有一根 sweep”，还要记这个 level 在最近几根里是不是已经被 sweep 过一次。</strong></p>
+<p>仓库里的实现是显式写出来的：</p>
+<ul>
+<li>先找 <code>lookback=20</code> 的前高/前低；</li>
+<li>只有 <code>break level -&gt; close back inside range</code> 且 <code>volume &gt;= 1.2x volume SMA</code> 才算有效 sweep；</li>
+<li>若新 sweep 与上一次 sweep 处在“近似同一价位”（脚本默认 <code>0.5%</code> 容差）且间隔不超过 <code>10</code> 根 bar，就把它记成 <code>consecutive sweep</code>；</li>
+<li><code>consec &gt;= 2</code> 时单独标成 <code>high-prob</code>。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ol>
+<li><strong>一句话核心结论</strong>：对 15m 来说，<code>same-level consecutive sweep count</code> 更像在量化“这个价位到底是被防守，还是还在随机扫流动性”，它适合做 <strong>level-memory gate</strong>，不是单独抬收益的主 alpha。</li>
+<li><strong>一句话证明方式</strong>：repo 把“同价位二次 sweep”写成了明确状态机；我再用 Binance Futures 公开 15m K 线（BTC/ETH/SOL，各 1500 bars）做代理快检，看 <code>单次 sweep</code> 和 <code>连续同价位 sweep</code> 的 4-bar 后路径有没有差异。</li>
+<li>聚合结果（bull side，对 Fib retest / EMA hold 更直接）：</li>
+</ol>
+<ul>
+<li><code>hold4</code>：<strong>18.9% -&gt; 27.3%</strong>（<code>single n=74</code> -&gt; <code>consec2+ n=22</code>）</li>
+<li><code>win4</code>：<strong>44.6% -&gt; 63.6%</strong></li>
+<li>但 <code>mean_ret4</code> 仍接近 0，说明它更像 <strong>防守质量标签</strong>，不是裸 long 加速器。</li>
+</ul>
+<ol>
+<li>聚合结果（bear side，对 breakout-short follow-up 更直接）：</li>
+</ol>
+<ul>
+<li><code>hold4</code>：<strong>28.2% -&gt; 32.1%</strong>（<code>single n=103</code> -&gt; <code>consec2+ n=53</code>）</li>
+<li><code>win4</code>：<strong>41.7% -&gt; 58.5%</strong></li>
+<li><code>mean 4-bar short proxy return</code>：<strong>-0.18% -&gt; +0.07%</strong></li>
+</ul>
+<ol>
+<li>更直白地说：<strong>单根 wick/body 已经回答“这一根像不像拒绝”；连续同价位 sweep 在回答“这个 level 过去几根有没有记忆”。</strong> 这正好是当前三条收口线还缺的那一层。</li>
+</ol>
+<h2>3. 为什么和当前三条收口线直接相关</h2>
+<ul>
+<li><strong>V3 final-verdict / breakout-short follow-up</strong>：若下破后不久，支撑附近出现 <code>bullish same-level sweep &gt;= 2</code>，那更像“下面有人连续接”，不该把 short continuation 当默认延伸；反过来，顶部 <code>bearish same-level sweep &gt;= 2</code> 才更像可继续 follow-up 的 pressure memory。</li>
+<li><strong>Fibonacci confirmation / retest_hold</strong>：Fib 回踩最怕“第一次碰位看着像守住，第二次又被轻松扫穿”。<code>same-level bull sweep count</code> 刚好在量化“0.5 / 0.618 附近到底是真防守，还是反复流动性清扫”。</li>
+<li><strong>EMA / PSAR raw alpha focus</strong>：EMA/PSAR 继续负责方向；这层只负责告诉我们：<strong>当前这个回踩/翻面附近的价位，有没有被市场连续 defend/reject。</strong></li>
+</ul>
+<h2>4. 下一步怎么测（5m / 15m 最小实验）</h2>
+<h3>4.1 数据与公开性</h3>
+<ul>
+<li>数据源：Binance Futures 公共 K 线（<code>/fapi/v1/klines</code>）</li>
+<li>公开性：公开可得</li>
+<li>更新频率：5m / 15m</li>
+<li>本轮代理快检产物：</li>
+<li><code>reports/artifacts/quant_digests/2026-03-19_same_level_sweep_count_proxy_events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-03-19_same_level_sweep_count_proxy_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-03-19_same_level_sweep_count_proxy_summary.json</code></li>
+</ul>
+<h3>4.2 最小可复现实验口径（建议）</h3>
+<p>把三条 archetype 都接一层同样的 <code>level-memory gate</code>：</p>
+<ol>
+<li>先按现有逻辑生成基础触发（<code>breakout_short</code> / <code>fib_retest_long</code> / <code>ema_psar_long</code>）；</li>
+<li>在信号 bar 及前 <code>10</code> 根 15m 内，统计与候选 level 对齐的 <code>same-level sweep count</code>：</li>
+</ol>
+<ul>
+<li>bull gate：<code>low &lt; priorLow &amp;&amp; close &gt;= priorLow &amp;&amp; vol_ratio &gt;= 1.2</code></li>
+<li>bear gate：<code>high &gt; priorHigh &amp;&amp; close &lt;= priorHigh &amp;&amp; vol_ratio &gt;= 1.2</code></li>
+<li>level 对齐：<code>abs(level_now - level_prev) &lt;= 0.5% * close</code></li>
+</ul>
+<ol>
+<li>先做 4 臂：</li>
+</ol>
+<ul>
+<li>A：baseline</li>
+<li>B：只看 <code>single sweep</code></li>
+<li>C：<code>consec2+</code>（本轮主张）</li>
+<li>D：<code>consec2+</code> 再叠加已有 <code>body-vs-wick</code> 或 <code>small-body retest</code> 规则</li>
+</ul>
+<ol>
+<li>统一执行：<code>next-bar open + no-overlap + hold 8 bars + 6/10/15 bps per side</code>。</li>
+</ol>
+<p>先看 4 项：<code>post_cost_expectancy</code>、<code>hold4 / false_break_ratio</code>、<code>trade_count_retention</code>、<code>time-pocket stability</code>。</p>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>原 repo 的默认语境是 <strong>30m / 4h + BTC / 美股</strong>，不是现成的 crypto 15m 成品模板；</li>
+<li>本轮快检是事件级代理，不是完整策略回测；</li>
+<li><code>consec2+</code> 样本比 <code>single</code> 少，说明它更像“严 admission / veto”，不是高频触发器；</li>
+<li>bull 侧虽然 <code>hold4/win4</code> 变好，但均值收益没同步抬升，意味着它更像 <strong>守位质量过滤器</strong>，不能被误读成单独 alpha；</li>
+<li>若后续只在单一 archetype 生效，就应把它降级为 <strong>专属 gate</strong>，不要硬写成三线共用真理。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>damianpitt / Capital41. (2026). _capital41-indicators_.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/damianpitt/capital41-indicators&gt;">https://github.com/damianpitt/capital41-indicators&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/damianpitt/capital41-indicators&gt;">https://github.com/damianpitt/capital41-indicators&gt;</a></li>
+</ul>
+<ol>
+<li><strong>关键实现：<code>Capital41_Liquidity_Sweep/Capital41_Liquidity_Sweep_Simple.pine</code></strong></li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://github.com/damianpitt/capital41-indicators/blob/main/Capital41_Liquidity_Sweep/Capital41_Liquidity_Sweep_Simple.pine&gt;">https://github.com/damianpitt/capital41-indicators/blob/main/Capital41_Liquidity_Sweep/Capital41_Liquidity_Sweep_Simple.pine&gt;</a></li>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/damianpitt/capital41-indicators/main/Capital41_Liquidity_Sweep/Capital41_Liquidity_Sweep_Simple.pine&gt;">https://raw.githubusercontent.com/damianpitt/capital41-indicators/main/Capital41_Liquidity_Sweep/Capital41_Liquidity_Sweep_Simple.pine&gt;</a></li>
+<li>关键规则：<code>close back inside range + volume ratio filter + consecutive same-level sweep tracking</code></li>
+</ul>
+<ol>
+<li><strong>说明文档：<code>README.md</code></strong></li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://github.com/damianpitt/capital41-indicators/blob/main/README.md&gt;">https://github.com/damianpitt/capital41-indicators/blob/main/README.md&gt;</a></li>
+</ul>
+<ol>
+<li><strong>公开行情数据源</strong></li>
+</ol>
+<ul>
+<li>Binance Futures Klines API: &lt;<a href="https://fapi.binance.com/fapi/v1/klines&gt;">https://fapi.binance.com/fapi/v1/klines&gt;</a></li>
+</ul>
+</body>
+</html>

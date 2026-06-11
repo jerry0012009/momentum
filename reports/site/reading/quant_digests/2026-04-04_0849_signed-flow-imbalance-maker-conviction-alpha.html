@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 OBI repo 只读成“order book 机器学习”：对 short-cycle desk，更该先测的是「1m signed trade imbalance × 5m forward return × maker-only conviction gate」这条 raw alpha——但 15bps 阈值大概率过高</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 OBI repo 只读成“order book 机器学习”：对 short-cycle desk，更该先测的是「1m signed trade imbalance × 5m forward return × maker-only conviction gate」这条 raw alpha——但 15bps 阈值大概率过高</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 08:50 UTC</span>
+      <span class="pill">研究时间：**2024-12-01 ~ 2024-12-03 UTC**</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `src/data_integration.py` + `src/feature_engineering.py` + `src/model_training.py` + `src/backtester.py`）+ Binance 公共 aggTrades 最小便携性快检（2024-12-01 ~ 2024-12-03 BTCUSDT）</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/order-flow/signed-trade-imbalance/aggressor-flow/5m-forward-return/maker-only/conviction-threshold/xgboost/binance-spot/btc/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 源码证据 + 公共数据最小便携性快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_0849_signed-flow-imbalance-maker-conviction-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 08:49 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>src/data_integration.py</code> + <code>src/feature_engineering.py</code> + <code>src/model_training.py</code> + <code>src/backtester.py</code>）+ Binance 公共 aggTrades 最小便携性快检（2024-12-01 ~ 2024-12-03 BTCUSDT）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>分钟级主动买卖盘失衡（更准确说是 signed trade imbalance，而不是严格 L2 order-book imbalance）会对未来 <code>5m</code> 收益产生短周期预测力；只在预测净边际显著大于成本时开仓。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/microstructure/order-flow/signed-trade-imbalance/aggressor-flow/5m-forward-return/maker-only/conviction-threshold/xgboost/binance-spot/btc/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：repo 源码证据 + 公共数据最小便携性快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮我没有继续补 pairs / carry / breakout，而是刻意补一条 <strong>更底层的 microstructure raw alpha</strong>：</p>
+<p>&gt; <strong>分钟级 signed flow / 主动买卖方向失衡，能不能直接变成 <code>1m -&gt; 5m</code> 的短周期可交易 alpha？</strong></p>
+<p>主材料是一个 2026 的公开 GitHub repo，但我先说结论：</p>
+<p>&gt; <strong>这份仓库值得 intake 的地方，不是 README 里那句“order book imbalance 很强”；而是它把一条可独立复现的 <code>1m signed-trade-imbalance -&gt; 5m forward return</code> 策略壳写得很清楚。</strong></p>
+<p>同时，也必须先把一个容易误读的点挑出来：</p>
+<ul>
+<li>README 把它描述成 <strong>Order Book Imbalance (OBI)</strong>；</li>
+<li>但源码实际抓的是 <strong>Binance public aggTrades</strong>；</li>
+<li>真正做出来的核心特征，是 <strong>基于 aggressor side 的 signed trade imbalance / buy-sell volume imbalance</strong>；</li>
+<li>这和严格意义上用 L2 bid/ask 深度算出来的 OBI，不是一回事。</li>
+</ul>
+<p>所以这轮最值得写的，不是“OBI 机器学习 repo”，而是：</p>
+<p>&gt; <strong>别把 repo 的 headline 当结论；真正可复现的 base alpha，是 <code>signed trade imbalance</code>，不是 L2 depth imbalance。</strong></p>
+<h2>2. 先回答最重要的一句：base alpha 是什么？</h2>
+<p>一句话版：</p>
+<p>&gt; <strong>base alpha 就是：当过去 1 分钟里主动买盘明显压过主动卖盘时，接下来约 5 分钟收益更偏正；反之亦然。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>如果最近这一分钟，成交更像是“追着买”的盘在主导；</li>
+<li>而不是被动等着成交；</li>
+<li>那接下来几分钟价格更容易延续同方向；</li>
+<li>但这个 edge 很薄，必须靠 <strong>阈值、成本过滤和执行方式</strong> 才能活下来。</li>
+</ul>
+<p>这也是为什么这轮仍然值得放进研究池：</p>
+<ol>
+<li><strong>它是 raw alpha，不是 filter / regime / overlay。</strong></li>
+<li><strong>它和当前 desk 的 <code>1m / 3m / 5m</code> 很贴近。</strong></li>
+<li><strong>它补的是目前 digest 池里相对少的“成交流 / microstructure 原始 alpha”方向。</strong></li>
+<li><strong>它天然可以进一步分叉：</strong></li>
+</ol>
+<ul>
+<li>直接当独立 alpha；</li>
+<li>或者降级成别的 alpha 的 execution / adverse-selection gate。</li>
+</ul>
+<h2>3. 主 repo 到底是什么</h2>
+<h3>3.1 主材料</h3>
+<ul>
+<li><strong>Author / Repo owner</strong>：<code>tsuithomas</code></li>
+<li><strong>Year</strong>：2026</li>
+<li><strong>Title / Repo</strong>：*Cryptocurrency Statistical Arbitrage &amp; Microstructure Alpha Research*</li>
+<li><strong>Venue</strong>：GitHub repository</li>
+<li><strong>DOI</strong>：无</li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/tsuithomas/crypto_research_order_book_imbalance&gt;">https://github.com/tsuithomas/crypto_research_order_book_imbalance&gt;</a></li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/tsuithomas/crypto_research_order_book_imbalance&gt;">https://github.com/tsuithomas/crypto_research_order_book_imbalance&gt;</a></li>
+<li><strong>GitHub metadata</strong>：created <code>2026-03-03</code>；pushed <code>2026-03-03</code></li>
+</ul>
+<h3>3.2 这次核对的源码</h3>
+<ul>
+<li><code>README.md</code></li>
+<li><code>src/data_integration.py</code></li>
+<li><code>src/feature_engineering.py</code></li>
+<li><code>src/model_training.py</code></li>
+<li><code>src/backtester.py</code></li>
+</ul>
+<h3>3.3 数据源</h3>
+<p>repo 用的是：</p>
+<ul>
+<li><strong>Binance public aggTrades daily archive</strong></li>
+<li>URL 模式：&lt;<a href="https://data.binance.vision/data/spot/daily/aggTrades/BTCUSDT/&gt;">https://data.binance.vision/data/spot/daily/aggTrades/BTCUSDT/&gt;</a></li>
+<li>公开可得：<strong>是</strong></li>
+<li>更新频率：<strong>日归档</strong>；若要 live，可再切 Binance WebSocket aggTrade 流</li>
+<li>最小可复现实验口径：<strong>BTCUSDT 1 分钟 buy/sell 主动成交量失衡 -&gt; 未来 5 分钟收益</strong></li>
+</ul>
+<h2>4. repo 真正复现出来的，不是 L2 OBI，而是 signed trade imbalance</h2>
+<h3>4.1 数据抓取层已经决定了它不是真 L2 OBI</h3>
+<p><code>src/data_integration.py</code> 明确抓的是：</p>
+<ul>
+<li>Binance public <strong>aggTrades</strong></li>
+<li>字段里有 <code>price / quantity / timestamp / is_buyer_maker</code></li>
+<li><strong>没有任何 bid/ask depth ladder</strong></li>
+</ul>
+<p>这意味着：</p>
+<ul>
+<li>它拿不到盘口各档挂单深度；</li>
+<li>因此不能做严格意义的 book-depth OBI；</li>
+<li>只能根据 <code>is_buyer_maker</code> 去拆主动买 / 主动卖量。</li>
+</ul>
+<p>也就是：</p>
+<p>&gt; <strong>源码里的核心特征，其实更像 signed trade imbalance / aggressor-flow imbalance，而不是 order-book depth imbalance。</strong></p>
+<h3>4.2 核心特征怎么构造</h3>
+<p><code>src/feature_engineering.py</code> 做了 4 件事：</p>
+<ol>
+<li>读入每日 aggTrades</li>
+<li>聚合到 <code>1min</code></li>
+<li>计算：</li>
+</ol>
+<ul>
+<li><code>buy_vol</code></li>
+<li><code>sell_vol</code></li>
+<li><code>obi = (buy_vol - sell_vol) / volume</code></li>
+</ul>
+<ol>
+<li>预测目标：</li>
+</ol>
+<ul>
+<li><code>target_fwd_return = log(close[t+5] / close[t])</code></li>
+</ul>
+<p>也就是非常干净的一条线：</p>
+<ul>
+<li><strong>信号频率：1 分钟</strong></li>
+<li><strong>预测窗口：5 分钟</strong></li>
+<li><strong>核心特征：最近 1 分钟 signed flow imbalance</strong></li>
+</ul>
+<h3>4.3 模型层并不复杂</h3>
+<p><code>src/model_training.py</code> 用的是：</p>
+<ul>
+<li><code>obi</code></li>
+<li><code>volume</code></li>
+<li><code>buy_vol</code></li>
+<li><code>sell_vol</code></li>
+<li><code>volatility_20</code></li>
+</ul>
+<p>再喂给一个：</p>
+<ul>
+<li><code>XGBRegressor</code></li>
+<li><code>80/20</code> 时间顺序切分</li>
+</ul>
+<p>这点对我们很重要：</p>
+<p>&gt; <strong>repo 的可复现核心，不依赖神秘大模型，也不是几十个外部因子；就是一个非常朴素的 minute microstructure alpha 壳。</strong></p>
+<h2>5. 为什么这条线对当前 desk 有价值</h2>
+<p>先回答一句必须回答的话：</p>
+<p>&gt; <strong>它为什么比继续补一个 filter 更值得？因为它本身就是可独立复现、可直接落地的 raw alpha。</strong></p>
+<p>而且它补的是当前素材池里相对稀缺的方向：</p>
+<ul>
+<li>不是又一篇 pairs z-score；</li>
+<li>不是又一篇 funding / basis；</li>
+<li>不是又一篇 breakout / EMA shell；</li>
+<li>而是 <strong>成交流主导的短周期 alpha</strong>。</li>
+</ul>
+<p>这条线尤其适合：</p>
+<ul>
+<li><code>1m / 3m / 5m</code> 原生 alpha sleeve；</li>
+<li><code>15m</code> 体系里的 microstructure veto / execution gate；</li>
+<li>以及未来和 microprice / L2 OBI / queue imbalance 做增量对照。</li>
+</ul>
+<h2>6. repo 给了哪些“完整策略”要素</h2>
+<h3>6.1 Entry</h3>
+<p><code>src/backtester.py</code> 的 admission 很明确：</p>
+<ul>
+<li>只有当 <code>predicted_return &gt; +0.0015</code> 时做多</li>
+<li>只有当 <code>predicted_return &lt; -0.0015</code> 时做空</li>
+</ul>
+<p>即：</p>
+<ul>
+<li><strong>预测未来 5 分钟净收益 &gt; 15bps 才开多</strong></li>
+<li><strong>预测未来 5 分钟净收益 &lt; -15bps 才开空</strong></li>
+</ul>
+<p>这说明 repo 不只是说“有一点预测力”；而是明确把它写成：</p>
+<p>&gt; <strong>必须过一个成本之后仍然足够厚的 conviction gate，才允许入场。</strong></p>
+<h3>6.2 Exit</h3>
+<p>源码里最简单：</p>
+<ul>
+<li>信号按 <code>5m</code> 前瞻收益做</li>
+<li>收益按下一根开始持有</li>
+<li>若无强反向信号，允许短暂 <code>ffill(limit=1)</code>，减少 whipsaw</li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>这是一条 <strong>超短 holding period</strong> 策略；</li>
+<li>默认 exit 就是 <strong>预测窗口结束 / 信号衰减</strong>；</li>
+<li>不是隔夜，不是长持。</li>
+</ul>
+<h3>6.3 Sizing</h3>
+<p>repo 没有复杂 sizing，但这不妨碍它可落地：</p>
+<ul>
+<li>第一版完全可以等权 / 定额 notional</li>
+<li>第二版再改成：</li>
+<li><code>predicted_return / realized_vol</code> 缩放</li>
+<li>或 <code>minute volume percentile</code> 限仓</li>
+</ul>
+<h3>6.4 Risk</h3>
+<p>repo 隐含的几层 risk 很清楚：</p>
+<ul>
+<li>通过 <code>15bps</code> admission 减少噪音交易</li>
+<li>通过 <code>1bps maker fee assumption</code> 保留成本空间</li>
+<li>通过 <code>limit=1</code> 防止 1 分钟级来回反手</li>
+</ul>
+<p>但真正风险在于：</p>
+<ol>
+<li><strong>信号很薄</strong></li>
+<li><strong>taker 成本一抬，edge 可能直接没了</strong></li>
+<li><strong>maker 能否成交，是实盘生死线</strong></li>
+<li><strong>把 signed trades 误认成 L2 OBI，会高估信息含量</strong></li>
+</ol>
+<h3>6.5 Cost</h3>
+<p>repo 在 <code>backtester.py</code> 里默认：</p>
+<ul>
+<li><code>threshold = 0.0015</code>（15 bps）</li>
+<li><code>fee = 0.0001</code>（1 bp，maker 假设）</li>
+</ul>
+<p>这里最值钱的不是数字，而是 repo 明确承认：</p>
+<p>&gt; <strong>这条信号如果要活，必须依赖低成本执行；用 taker 乱打，大概率直接死。</strong></p>
+<h2>7. repo 自己给出的几个关键数据点</h2>
+<p>根据 README：</p>
+<ol>
+<li><strong>OBI / microstructure 相关特征约占 ~45% feature importance</strong></li>
+<li>在其回测设定里，<strong>maker-only + 15bps threshold</strong> 后，策略净收益约 <strong>+3.21%</strong></li>
+<li>同期 buy-and-hold 市场回报约 <strong>-12.76%</strong></li>
+</ol>
+<p>但这些数字只能算：</p>
+<ul>
+<li><strong>repo claim / repo-internal result</strong></li>
+<li>还不能直接当 desk 结论</li>
+</ul>
+<p>原因很简单：</p>
+<ul>
+<li>README 把 signed trade imbalance 叫成了 OBI；</li>
+<li>没有真正 L2 深度对照；</li>
+<li>样本、模型、阈值、执行假设都可能让结果很脆弱。</li>
+</ul>
+<p>所以这轮我额外做了一个最小便携性 sanity check。</p>
+<h2>8. 最小便携性快检：public BTCUSDT aggTrades 上，这条线到底有多厚？</h2>
+<p>我额外跑了一个极简复核：</p>
+<ul>
+<li>数据：<strong>Binance public BTCUSDT spot aggTrades</strong></li>
+<li>时间：<strong>2024-12-01 ~ 2024-12-03 UTC</strong></li>
+<li>频率：<code>1m</code></li>
+<li>目标：未来 <code>5m</code> log return</li>
+<li>工件路径：</li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/obi_btc_20241201_20241203/summary.json</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/obi_btc_20241201_20241203/rf_summary.json</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/obi_btc_20241201_20241203/rf_backtest_summary.json</code></li>
+</ul>
+<h3>8.1 线性 sanity check：单靠这条信号，15bps admission 基本太高</h3>
+<p>线性模型结果：</p>
+<ul>
+<li><code>corr(obi, fwd_5m) = 0.0736</code></li>
+<li><code>coef_obi = 0.000149</code></li>
+<li>预测收益 <code>q99 = 1.08 bps</code></li>
+<li>预测收益 <code>q99.9 = 1.61 bps</code></li>
+<li>按 repo 的 <code>15bps threshold</code>：<strong>0 笔交易</strong></li>
+</ul>
+<p>这说明什么？</p>
+<p>&gt; <strong>如果只把它当一条“线性的单因子 signed-flow alpha”，repo 里的 15bps conviction gate 大概率过高。</strong></p>
+<p>也就是说：</p>
+<ul>
+<li>这条线不是完全没信息；</li>
+<li>但它离“直接稳定吐出 15bps 级别预测”还差得很远。</li>
+</ul>
+<h3>8.2 浅层非线性 sanity check：能做出交易，但稳定性很可疑</h3>
+<p>我又做了一个浅层 Random Forest 快检，结果是：</p>
+<ul>
+<li><code>q99(predicted_return) = 32.24 bps</code></li>
+<li><code>q99.9(predicted_return) = 36.98 bps</code></li>
+<li>用 repo 的 <code>15bps threshold</code>，测试窗里有 <strong>9 笔交易</strong></li>
+<li>这 3 天小样本里策略收益约 <strong>+4.05%</strong>，市场约 <strong>+3.13%</strong></li>
+</ul>
+<p>但更关键的是：</p>
+<ul>
+<li><code>OOS R² = -0.0468</code></li>
+<li>feature importance：</li>
+<li><code>volatility_20 = 54.0%</code></li>
+<li><code>buy_vol = 14.7%</code></li>
+<li><code>sell_vol = 11.5%</code></li>
+<li><code>volume = 11.0%</code></li>
+<li><code>obi = 8.7%</code></li>
+</ul>
+<p>这说明：</p>
+<p>&gt; <strong>一旦换成小样本 portability probe，这条策略虽然“能回测出几笔赚钱交易”，但主导特征已经不是 OBI，而是 volatility。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>你可以把它回测得像在赚钱；</li>
+<li>但别太快得出“OBI 是核心 alpha”的结论；</li>
+<li>很可能真正起作用的是 <strong>非线性交互 + 波动状态 + maker 执行假设</strong>。</li>
+</ul>
+<h2>9. 这条 alpha 该怎么 desk 化，才不容易被骗</h2>
+<h3>9.1 正确读法</h3>
+<p>正确读法是：</p>
+<p>&gt; <strong>它不是“单靠一分钟 signed imbalance 就稳定印钞”；而是“minute flow imbalance + nonlinear interaction + cost-aware admission” 的一条 raw alpha 候选。</strong></p>
+<h3>9.2 错误读法</h3>
+<p>不要这样读：</p>
+<ul>
+<li>“README 说 OBI 很强，所以直接上 L2 alpha”</li>
+<li>“15bps 阈值已经被证明有效”</li>
+<li>“只要上 XGBoost 就能自动吐 alpha”</li>
+</ul>
+<p>这些都不严谨。</p>
+<h3>9.3 更适合我们 desk 的拆法</h3>
+<p>对当前 desk，我会把它拆成三层：</p>
+<ol>
+<li><strong>raw alpha 主体</strong>：<code>1m signed trade imbalance -&gt; 5m forward return</code></li>
+<li><strong>conviction gate</strong>：只有预测净边际大于成本才开仓</li>
+<li><strong>execution assumption</strong>：优先 maker / 被动成交，否则 alpha 可能直接消失</li>
+</ol>
+<h2>10. 和 <code>1m / 3m / 5m / 15m</code> 的关系</h2>
+<h3>10.1 最自然的层级</h3>
+<ul>
+<li><strong>1m</strong>：原生信号频率</li>
+<li><strong>5m</strong>：原生预测 / 持有窗口</li>
+</ul>
+<h3>10.2 <code>3m</code> 的用法</h3>
+<ul>
+<li>可把 <code>1m</code> signed flow 做 <code>3m</code> 平滑</li>
+<li>或要求 <code>1m</code> 与 <code>3m</code> 方向一致才开仓</li>
+<li>这比直接上 15bps 绝对阈值，可能更稳</li>
+</ul>
+<h3>10.3 <code>15m</code> 的用法</h3>
+<p>这条线到 <code>15m</code> 时，不太适合再 pretending 它是同一条逐根 alpha。 更合理的是：</p>
+<ul>
+<li>把最近 <code>3 x 5m</code> 的 signed flow 聚成一个 <strong>microstructure state</strong>；</li>
+<li>用来做：</li>
+<li>breakout 的 adverse-selection veto</li>
+<li>mean reversion 的 entry confirm</li>
+<li>maker strategy 的 toxicity gate</li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; <strong>在 <code>15m</code> 上，它更像“共享 microstructure gate”，而不是原汁原味的 alpha 本体。</strong></p>
+<h2>11. 我对这条材料的研究结论</h2>
+<h3>11.1 值得 intake 吗？</h3>
+<p><strong>值得。</strong></p>
+<p>因为它满足：</p>
+<ul>
+<li>raw alpha</li>
+<li>可独立复现</li>
+<li>可直接写成完整策略壳</li>
+<li>数据公开可得</li>
+<li>和 <code>1m/3m/5m</code> 直接相关</li>
+</ul>
+<h3>11.2 但该放在什么优先级？</h3>
+<p>我会放在：</p>
+<ul>
+<li><strong>raw alpha 候选池：中高优先级</strong></li>
+<li>但不是“立刻相信 README 结论”的高优先级</li>
+<li>而是“立刻做严谨分层复核”的高优先级</li>
+</ul>
+<h3>11.3 这轮最重要的 take-away</h3>
+<p>&gt; <strong>这份 repo 真正可复现的 alpha，不是“神奇 OBI”，而是“signed trade imbalance + nonlinear conviction gate + maker-only economics”。</strong></p>
+<p>如果后续验证失败，最可能死掉的位置不是：</p>
+<ul>
+<li>信号完全没方向；</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li><strong>阈值设太高，根本没交易；</strong></li>
+<li><strong>换成 taker 后，全部被成本吃光；</strong></li>
+<li><strong>真正起作用的不是 OBI，而是波动状态。</strong></li>
+</ul>
+<h2>12. 下一步怎么测</h2>
+<p>这部分最关键，直接给可开工版本。</p>
+<h3>12.1 实验 A：先把“假 OBI”和“真 OBI”分开</h3>
+<p>目的：别再让 repo headline 混淆 alpha 本体。</p>
+<ul>
+<li>数据：Binance / Hyperliquid L2 book + aggTrades</li>
+<li>同时构造：</li>
+</ul>
+<ol>
+<li>signed trade imbalance</li>
+<li>L2 depth imbalance</li>
+<li>microprice / queue proxy</li>
+</ol>
+<ul>
+<li>看谁对 <code>fwd_1m / 3m / 5m</code> 真有增量预测力</li>
+</ul>
+<p><strong>通过条件：</strong> L2 OBI 至少要相对 signed trades 提供可见增量；否则这条线本质上就该改名成 flow alpha，而不是 book alpha。</p>
+<h3>12.2 实验 B：系统扫 horizon 与 threshold</h3>
+<p>目的：判断 repo 的 <code>5m + 15bps</code> 是不是拍脑袋。</p>
+<p>网格：</p>
+<ul>
+<li>horizon：<code>1m / 3m / 5m / 10m</code></li>
+<li>threshold：<code>2 / 4 / 6 / 8 / 10 / 15 bps</code></li>
+<li>cost：</li>
+<li>maker <code>1 / 2 bps</code></li>
+<li>taker <code>4 / 6 / 8 bps</code></li>
+</ul>
+<p><strong>通过条件：</strong> 至少找到一块 post-cost 仍为正、而且 trade count 不是接近零的区域。</p>
+<h3>12.3 实验 C：做 walk-forward，不要只看单段 lucky sample</h3>
+<ul>
+<li>训练 / 测试：<code>30d/7d</code>、<code>60d/14d</code>、<code>90d/14d</code></li>
+<li>资产：<code>BTC / ETH / SOL</code></li>
+<li>比较：</li>
+</ul>
+<ol>
+<li>线性模型</li>
+<li>浅树模型</li>
+<li>XGBoost</li>
+</ol>
+<p><strong>通过条件：</strong> 如果只有复杂模型赚钱，而线性完全没有信号，要进一步检查是不是过拟合到 volatility regime。</p>
+<h3>12.4 实验 D：若独立 alpha 不够稳，直接降级成 shared gate</h3>
+<p>如果实验 B/C 结果显示：</p>
+<ul>
+<li>单独跑不稳；</li>
+<li>但在高 toxicity / 高 imbalance 时，别的策略明显更容易被反噬；</li>
+</ul>
+<p>那就别硬把它当独立 alpha，直接降级成：</p>
+<ul>
+<li>breakout 的 veto</li>
+<li>mean reversion 的 confirm</li>
+<li>maker strategy 的 toxicity gate</li>
+</ul>
+<p>这仍然有很高研究价值。</p>
+<h2>13. 参考资料</h2>
+<ol>
+<li><strong>tsuithomas. (2026). _Cryptocurrency Statistical Arbitrage &amp; Microstructure Alpha Research_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/tsuithomas/crypto_research_order_book_imbalance&gt;">https://github.com/tsuithomas/crypto_research_order_book_imbalance&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/tsuithomas/crypto_research_order_book_imbalance&gt;">https://github.com/tsuithomas/crypto_research_order_book_imbalance&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Repo source files used in this digest</strong></li>
+</ol>
+<ul>
+<li>README: &lt;<a href="https://raw.githubusercontent.com/tsuithomas/crypto_research_order_book_imbalance/main/README.md&gt;">https://raw.githubusercontent.com/tsuithomas/crypto_research_order_book_imbalance/main/README.md&gt;</a></li>
+<li>Data integration: &lt;<a href="https://raw.githubusercontent.com/tsuithomas/crypto_research_order_book_imbalance/main/src/data_integration.py&gt;">https://raw.githubusercontent.com/tsuithomas/crypto_research_order_book_imbalance/main/src/data_integration.py&gt;</a></li>
+<li>Feature engineering: &lt;<a href="https://raw.githubusercontent.com/tsuithomas/crypto_research_order_book_imbalance/main/src/feature_engineering.py&gt;">https://raw.githubusercontent.com/tsuithomas/crypto_research_order_book_imbalance/main/src/feature_engineering.py&gt;</a></li>
+<li>Model training: &lt;<a href="https://raw.githubusercontent.com/tsuithomas/crypto_research_order_book_imbalance/main/src/model_training.py&gt;">https://raw.githubusercontent.com/tsuithomas/crypto_research_order_book_imbalance/main/src/model_training.py&gt;</a></li>
+<li>Backtester: &lt;<a href="https://raw.githubusercontent.com/tsuithomas/crypto_research_order_book_imbalance/main/src/backtester.py&gt;">https://raw.githubusercontent.com/tsuithomas/crypto_research_order_book_imbalance/main/src/backtester.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Binance Public Data Archive — aggTrades</strong></li>
+</ol>
+<ul>
+<li>Venue: Binance public data</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://data.binance.vision/?prefix=data/spot/daily/aggTrades/&gt;">https://data.binance.vision/?prefix=data/spot/daily/aggTrades/&gt;</a></li>
+<li>BTCUSDT path used for portability probe: &lt;<a href="https://data.binance.vision/data/spot/daily/aggTrades/BTCUSDT/&gt;">https://data.binance.vision/data/spot/daily/aggTrades/BTCUSDT/&gt;</a></li>
+</ul>
+</body>
+</html>

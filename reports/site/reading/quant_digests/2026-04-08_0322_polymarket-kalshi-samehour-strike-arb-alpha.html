@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 跨预测市场 repo 只读成 dashboard：对 short-cycle desk，更该先测的是「same-hour strike mismatch × binary lock-in arb」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 跨预测市场 repo 只读成 dashboard：对 short-cycle desk，更该先测的是「same-hour strike mismatch × binary lock-in arb」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-08 03:40 UTC</span>
+      <span class="pill">研究时间：2026-04-08 03:22 UTC</span>
+      <span class="pill">类型：GitHub 新 repo + 内置 thesis + backend source audit</span>
+      <span class="pill">主题标签：raw-alpha / relative-value / stat-arb / prediction-market / polymarket / kalshi / binary / same-expiry / strike-mismatch / 1m / 3m / 5m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-08_0322_polymarket-kalshi-samehour-strike-arb-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-08 03:22 UTC</li>
+<li>类型：GitHub 新 repo + 内置 thesis + backend source audit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一小时到期的 BTC 二元事件，在 Polymarket 与 Kalshi 上会因<strong>strike 设定与合约表达不同</strong>出现可锁定的组合错价；当 <code>Poly leg + Kalshi leg + fee_buffer &lt; 1</code> 时，可做跨 venue binary arb。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（更适合先做 <code>1m / 3m</code> 事件驱动版）</li>
+<li>主题标签：raw-alpha / relative-value / stat-arb / prediction-market / polymarket / kalshi / binary / same-expiry / strike-mismatch / 1m / 3m / 5m / repo / public-data / cost / risk</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <code>CarlosIbCu/polymarket-kalshi-btc-arbitrage-bot</code>，重点不是它的可视化，而是 repo 自带的 <code>thesis.md</code> 和 <code>backend/arbitrage_bot.py</code> 把一个可独立复现的 raw alpha 讲得很清楚：<strong>同一小时到期的 BTC 价格事件，如果 Polymarket 的 strike 和 Kalshi 的 strike 没完全对齐，就能用跨市场双腿把终局 payout 锁成至少 1 美元，但买入成本有时低于 1 美元。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这条 edge 的 base alpha 很直接：不是情绪、不是预测，而是<strong>same-expiry binary contract mispricing</strong>。repo 明写两种组合：当 <code>Poly Strike &gt; Kalshi Strike</code> 时检查 <code>Poly Down + Kalshi Yes</code>；反过来则检查 <code>Poly Up + Kalshi No</code>。</li>
+<li>README 写得很明确：系统<strong>每秒抓一次</strong>两边实时价格，并把“<code>Total Cost &lt; $1.00</code>”当成 arbitrage 判定门槛。翻成人话：这不是长篇理论，而是已经落成了实时扫描器。</li>
+<li><code>thesis.md</code> 给出的 payout 逻辑也够硬：由于两边 strike 不同，最终价格只要落在“低于低 strike / 位于两 strike 之间 / 高于高 strike”这三种状态之一，组合里至少有一条腿会兑付 <code>$1</code>；如果建仓成本低于 <code>$1</code>，理论上就锁进了毛利。</li>
+<li><code>arbitrage_bot.py</code> 进一步把它写成可执行逻辑：按 strike 关系选方向、读取双方 best price、计算 <code>total_cost</code> 与 <code>profit = 1 - total_cost</code>，再输出最佳机会。也就是说，这不是“研究灵感”，而是已经接近完整策略壳。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和当前 desk 的关系，在于它补的是<strong>极短持有、明确定价上限、公开数据可拿</strong>的 relative-value raw alpha：</p>
+<ul>
+<li>数据公开：Polymarket CLOB + Kalshi API；</li>
+<li>逻辑简单：不是预测 BTC 涨跌，而是找两个 venue 对<strong>同一到期事件</strong>的错误拼接；</li>
+<li>适合短周期：天然更像 <code>1m / 3m</code> 事件流策略，<code>5m</code> 还能做机会聚合，<code>15m</code> 更适合拿来做监控/容量统计而不是主信号。</li>
+</ul>
+<p>如果我们想持续扩充“可直接落地、不是只靠回归系数讲故事”的 raw alpha 素材池，这类<strong>硬到期、硬 payout、硬价差</strong>的题材是值得保留的。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / stat-arb</li>
+<li>基础 alpha：same-expiry BTC binary markets 的 strike mismatch 造成组合成本低于最小到期兑付</li>
+<li>regime：接近整点到期、两边同时活跃、order book 尚可成交的窗口</li>
+<li>filter / veto：只保留相同 expiry、相同底层定义、strike 可清楚映射的市场；若任一边深度太薄、暂停交易、报价陈旧、或 fee 后边际不足，则 veto</li>
+<li>risk / sizing / execution overlay：仓位按双腿最小可成交深度定；优先只做 <code>expected_locked_edge &gt; fees + slippage + cancel risk</code> 的组合；若两腿未能同步成交、或 expiry mapping 不一致，立即降仓/撤单</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：在 Polymarket 与 Kalshi 的 BTC 1-hour markets 上，same-expiry strike mismatch 会持续产生 <code>combo_cost &lt; 1</code> 的短时窗口，且在扣掉两边费用后仍保留正的锁定收益。</li>
+<li><strong>可计算定义</strong>：</li>
+<li>对每个相同 expiry 的市场对，抓 <code>poly_up / poly_down / kalshi_yes / kalshi_no</code></li>
+<li>若 <code>poly_strike &gt; kalshi_strike</code>，算 <code>combo_cost = poly_down_ask + kalshi_yes_ask + fee_buffer</code></li>
+<li>若 <code>poly_strike &lt; kalshi_strike</code>，算 <code>combo_cost = poly_up_ask + kalshi_no_ask + fee_buffer</code></li>
+<li>入场：<code>combo_cost &lt; 1 - edge_min</code></li>
+<li>出场：持有到 expiry，或在二级市场提前收敛时平掉</li>
+<li><strong>最小回测切口</strong>：先做最近 <code>30~60</code> 天的 BTC hourly markets，按秒级/事件级快照回放，再聚合成 <code>1m / 3m / 5m</code> 机会统计；<code>15m</code> 只看容量与机会密度。</li>
+<li><strong>最该先看 2 个指标</strong>：<code>post-fee locked edge per trade</code>、<code>orphan-leg ratio</code>。前者决定值不值得做，后者决定这是不是“纸上无风险”。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>repo 把它写成“risk-free”，但实盘里最真实的风险是<strong>双腿不同步成交</strong>、queue 被抢、撤单失败、或其中一边临近结算时流动性突然消失。</li>
+<li>Kalshi/Polymarket 的规则文本、到期时间、strike 表述要严格对齐；只要 mapping 有一个细节搞错，就不是套利而是裸方向。</li>
+<li>这条线天然偏事件化，不是全天连续流策略；更适合做素材池里的<strong>高确定性小容量 sleeve</strong>。</li>
+<li>真正上线前，必须补 fee schedule、资金占用、API 限速、最小下单单位与 market halt 风险，不然 <code>$1 - total_cost</code> 很容易只是毛边际。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li>CarlosIbCu. (2026). <strong>Polymarket-Kalshi BTC Arbitrage Bot</strong>.</li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/CarlosIbCu/polymarket-kalshi-btc-arbitrage-bot">https://github.com/CarlosIbCu/polymarket-kalshi-btc-arbitrage-bot</a></code></li>
+</ul>
+<ol>
+<li>CarlosIbCu. (2026). <strong>The Arbitrage Thesis</strong>.</li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/CarlosIbCu/polymarket-kalshi-btc-arbitrage-bot/blob/main/thesis.md">https://github.com/CarlosIbCu/polymarket-kalshi-btc-arbitrage-bot/blob/main/thesis.md</a></code></li>
+</ul>
+<ol>
+<li>关键源码：</li>
+</ol>
+<ul>
+<li><code>backend/arbitrage_bot.py</code></li>
+<li><code>backend/fetch_current_polymarket.py</code></li>
+<li><code>backend/fetch_current_kalshi.py</code></li>
+</ul>
+</body>
+</html>

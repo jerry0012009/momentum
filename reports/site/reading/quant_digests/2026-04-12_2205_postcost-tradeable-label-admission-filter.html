@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别再用 gross spread/funding 直接开仓：这份 2026 repo 更值得 desk 复用的是「post-cost tradeable label」这层 admission filter</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别再用 gross spread/funding 直接开仓：这份 2026 repo 更值得 desk 复用的是「post-cost tradeable label」这层 admission filter</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-12 22:06 UTC</span>
+      <span class="pill">研究时间：2026-04-12 22:05 UTC</span>
+      <span class="pill">类型：GitHub repo + 公共数据快检</span>
+      <span class="pill">主题标签：filter / admission / post-cost-label / funding / basis / delta-neutral / relative-value / spread-mean-reversion / binance / btc / 15m / 5m / repo / cost / risk</span>
+      <span class="pill">证据类型：仓库源码与内置报告 + 公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-12_2205_postcost-tradeable-label-admission-filter.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-12 22:05 UTC</li>
+<li>类型：GitHub repo + 公共数据快检</li>
+<li>主题类型：filter</li>
+<li>基础 alpha：<strong>服务的 base alpha 是 <code>perp rich spread fade + funding carry</code> 这类 delta-neutral relative-value 交易：当 perp 相对 spot 偏贵时做 <code>short perp + long spot</code>，等待价差回归，并让 funding 作为 carry 补贴；这篇笔记讨论的不是 alpha 本体，而是“这笔 trade 扣完成本后到底值不值得做”的 admission 层</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：filter / admission / post-cost-label / funding / basis / delta-neutral / relative-value / spread-mean-reversion / binance / btc / 15m / 5m / repo / cost / risk</li>
+<li>证据类型：仓库源码与内置报告 + 公共数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主线材料仍来自 <strong>MengerWen (2026), _Deep Learning-Based Delta-Neutral Statistical Arbitrage on Perpetual Funding Rates_</strong> 这个 GitHub 仓库，但这次不重复讲它上次那条 raw alpha 壳，而是单独拎出 repo 里<strong>对当前 desk 更通用、也更值得复用</strong>的一层：<code>post-cost tradeable label</code>。</p>
+<p>翻成人话，它回答的不是“这笔 trade gross 有没有正收益”，而是：</p>
+<p>&gt; <strong>如果我在 <code>t</code> 看到一组 funding / spread / vol / liquidity 特征，并在下一根才进场，这笔 delta-neutral 交易在未来 <code>H</code> 小时里，扣完手续费、滑点、gas 之后，净收益有没有超过可交易门槛？</strong></p>
+<p>这比直接拿 <code>spread_z &gt; 1.5</code>、<code>funding &gt; 0</code> 就开仓更适合我们现在的短周期素材池，因为 desk 里很多 relative-value / pairs / funding / basis 线索，最大的问题都不是“有没有一点回归”，而是<strong>那点 gross edge 根本不够填摩擦成本的坑</strong>。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最值得 desk 先复用的，不是深度学习模型，而是 <strong>“先把 future net return after cost 做成标签，再用它决定 trade on / trade off”</strong> 这层 admission filter；对短周期 funding / basis / pairs 素材池，这往往比继续调模型更值钱。</li>
+<li><strong>一句话证明方式：</strong> 我先读 repo 的 <code>labels.md</code>、<code>labels/default.yaml</code>、<code>labels/generator.py</code>、<code>signals.md</code> 与 robustness summary，再用 Binance 公共 <code>spot/perp 15m klines + fundingRate</code> 做最近 <code>90d</code> 的最小快检，验证“gross 上看着有一点 edge”的 spread/funding 条件，在 repo 默认成本口径下几乎全部会被 after-cost 标签否掉。</li>
+<li>repo 这层 label 的默认定义非常明确：</li>
+<li>方向默认是 <code>short_perp_long_spot</code></li>
+<li><code>t</code> 时刻看到特征，<strong>下一根 bar 才进场</strong>，避免同 bar 泄漏</li>
+<li>默认看 <code>8h / 24h</code> 两个 horizon</li>
+<li><code>tradeable</code> 阈值是 <strong>未来净收益 <code>&gt; 5 bps</code></strong></li>
+<li>默认成本模型约等于 <strong><code>34 bps</code></strong>：<code>4 × (5 bps taker + 3 bps slippage) + $2 gas / 10k notional ≈ 34 bps</code></li>
+<li>repo 自带 OOS robustness 给的最有用数据点，不是 DL 比规则更强，而是 <strong>阈值越严，少做烂交易越重要</strong>：</li>
+<li><code>combined_funding_spread</code> 在 base 测试里 <strong>7 笔交易，累计回报 <code>-0.2328%</code></strong>；</li>
+<li>同一策略把 <code>min_signal_score</code> 提到 <code>1.0</code> 后，最佳阈值情景的累计回报收敛到 <strong><code>-0.0664%</code></strong>；</li>
+<li><code>lstm</code> 测试期 <strong>0 笔交易</strong>，反而说明“after-cost 标签 + 高门槛”会天然把可交易样本压得很稀疏。</li>
+<li>我做的 Binance <code>BTCUSDT</code> 近 <code>90d</code>、<code>15m</code> 快检也支持这一点：</li>
+<li>若只看 base alpha 方向（<code>spread_z_1d &gt; 1</code> 且 <code>funding &gt; 0</code>），未来 <code>8h</code> 的<strong>平均 gross</strong> 只有 <strong><code>+1.80 bps</code></strong>；</li>
+<li>全样本平均 gross 更只有 <strong><code>+0.48 bps</code></strong>；</li>
+<li>但一旦套进 repo 默认 <strong><code>34 bps</code></strong> 成本口径，样本内 <strong><code>0 / 872</code></strong> 个 bar 能达到 <code>tradeable &gt; 5 bps</code>；</li>
+<li>即使看我定义的简单 top-score decile，也还是 <strong><code>0% tradeable</code></strong>。</li>
+<p>这正是这层 label 存在的意义：<strong>别把“有一点回归”误判成“可以交易”。</strong></p>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇东西和当前 <code>momentum</code> desk 的关系很直接，因为我们最近 intake 的很多 raw alpha，本质上都属于“gross edge 很薄、成本/执行决定生死”的家族：</p>
+<ul>
+<li>funding / basis / spot-perp / perp-perp relative value</li>
+<li>pairs / spread fade / residual fade</li>
+<li>maker-first OFI / quote skew / fair-value gap</li>
+</ul>
+<p>这些方向常见的误判是：</p>
+<ol>
+<li>先看见均值回归；</li>
+<li>再把它当 alpha 成立；</li>
+<li>最后才发现净收益根本不够。</li>
+</ol>
+<p>而 <code>post-cost tradeable label</code> 正好把这个顺序倒过来：</p>
+<ul>
+<li>先把 future net return after cost 显式写出来；</li>
+<li>再问这笔 trade 有没有资格进入候选集；</li>
+<li>最后才谈模型、排序、仓位和执行。</li>
+</ul>
+<p>对当前 desk，它更像一层<strong>shared admission filter</strong>，可同时服务：</p>
+<ul>
+<li><code>perp-quarter residual gap</code></li>
+<li><code>cross-venue basis differential</code></li>
+<li><code>stacked z-score pairs</code></li>
+<li><code>PCA / OU residual fade</code></li>
+<p>而不是只服务一个单独仓库。</p>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：不是独立方向 alpha；属于 relative-value / carry 类 raw alpha 的 admission filter</li>
+<li>基础 alpha：<code>perp rich spread fade + funding carry</code>（更广义上是 cost-fragile 的 spread / basis / pairs raw alpha）</li>
+<li>regime：</li>
+<li>spread 已明显偏离</li>
+<li>funding 符号与交易方向一致</li>
+<li>更高流动性、较低冲击成本时才更可能被放行</li>
+<li>filter / veto：</li>
+<li>只在 <code>future_net_return_bps_H &gt; min_expected_edge_bps</code> 时允许交易</li>
+<li><code>H</code> 可取 <code>1h / 4h / 8h / 24h</code></li>
+<li><code>min_expected_edge_bps</code> 不是固定神数，应跟成本档位联动</li>
+<li>risk / sizing / execution overlay：</li>
+<li>用 label 先做 <code>go / no-go</code></li>
+<li>再把预测净边际映射到 <code>size-up / size-down</code></li>
+<li>maker / taker 场景分别建标签，避免把执行假设写死</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 研究假设</h3>
+<p>对 <code>5m / 15m</code> 的 funding / basis / pairs 类 raw alpha，<strong>“future gross return &gt; 0” 几乎没有研究价值，真正该先看的，是 <code>future net return after cost</code> 有没有超过最小可交易边际。</strong></p>
+<h3>4.2 最小实验口径</h3>
+<ul>
+<li><strong>资产：</strong> <code>BTCUSDT</code> 起步，再扩 <code>ETHUSDT / SOLUSDT</code></li>
+<li><strong>bar：</strong> <code>15m</code> 为主，必要时补 <code>5m</code></li>
+<li><strong>方向：</strong> 先只测 <code>short_perp_long_spot</code></li>
+<li><strong>特征：</strong> <code>spread_bps</code>、<code>spread_z</code>、<code>funding sign / bps</code>、简单波动与流动性分桶</li>
+<li><strong>标签：</strong></li>
+<li><code>1h / 4h / 8h</code> forward gross bps</li>
+<li><code>1h / 4h / 8h</code> forward net bps</li>
+<li><code>tradeable = net_bps &gt; {0, 3, 5, 8}</code></li>
+<li><strong>成本阶梯：</strong> 至少做 <code>6 / 12 / 20 / 34 bps</code></li>
+<li><strong>最先看的 2 个指标：</strong></li>
+</ul>
+<ol>
+<li><code>tradeable_rate</code></li>
+<li><code>mean_net_bps conditional on raw-alpha admission</code></li>
+</ol>
+<h3>4.3 当前 first verdict</h3>
+<ul>
+<li>这层 filter <strong>值得立刻进入研究流程</strong>；</li>
+<li>不是因为它能凭空造出 alpha，而是因为它能快速筛掉一大批“gross 有点意思、net 完全不行”的假候选；</li>
+<li>对短周期 relative-value desk，优先级其实很高，因为它直接节省后续 clean replication 的时间。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这不是独立 raw alpha，不能拿它冒充 alpha 本体。</li>
+<li>当前 repo 主要基于 <code>1h BTCUSDT</code>；搬到 <code>5m / 15m</code> 时，funding accrual 的时间对齐要更谨慎。</li>
+<li>我这轮快检只做了 <code>BTCUSDT</code>，结论更像“为什么要先做 after-cost admission”，还不是跨资产定论。</li>
+<li>如果成本模型设得过高，这层 label 可能把几乎所有样本都过滤光；但这往往不是 label 错，而是<strong>策略本身没有厚到能承受现实执行</strong>。</li>
+<li>真正上 production 前，maker/taker、排队成交、funding 结算窗附近执行都要分开建模，不能只用一个统一成本常数糊过去。</li>
+</ul>
+<h2>6. 下一步怎么测</h2>
+<ol>
+<li><strong>先把现有 3 条 raw alpha 接上这层 label，而不是继续找第 4 条想法。</strong></li>
+<p>优先接：<code>deribit perp-quarter residual gap</code>、<code>cross-venue net carry differential</code>、<code>PCA residual fade</code>。</p>
+<li><strong>把标签做成 friction ladder。</strong></li>
+<p>同一套 forward return，同步输出 <code>6 / 12 / 20 / 34 bps</code> 四档，别只看单一成本世界。</p>
+<li><strong>把 maker/taker 分开。</strong></li>
+<p><code>taker/taker</code> 标签适合做 hard veto；<code>maker/taker</code> 标签适合做更现实的 desk admission。</p>
+<li><strong>扩到 ETH / SOL。</strong></li>
+<p>如果 majors 都过不了 after-cost 标签，长尾更没必要急着扩。</p>
+<li><strong>如果之后要保留 ML，只让它学“净边际排序”，别替代 base alpha。</strong></li>
+<p>这类主题里，模型更适合做 <code>rank / veto / sizing</code>，不适合先定义方向本体。</p>
+</ol>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>MengerWen. (2026). _Deep Learning-Based Delta-Neutral Statistical Arbitrage on Perpetual Funding Rates_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</a></code></li>
+</ul>
+<ol>
+<li><strong>本轮重点读取的 repo 文档 / 源码</strong></li>
+</ol>
+<ul>
+<li><code>docs/labels.md</code></li>
+<li><code>configs/labels/default.yaml</code></li>
+<li><code>src/funding_arb/labels/generator.py</code></li>
+<li><code>docs/signals.md</code></li>
+<li><code>reports/robustness/binance/btcusdt/1h/report.md</code></li>
+<li><code>reports/robustness/binance/btcusdt/1h/summary.json</code></li>
+</ul>
+<ol>
+<li><strong>本轮公开数据快检</strong></li>
+</ol>
+<ul>
+<li>Binance spot klines: <code><a href="https://api.binance.com/api/v3/klines">https://api.binance.com/api/v3/klines</a></code></li>
+<li>Binance perpetual klines: <code><a href="https://fapi.binance.com/fapi/v1/klines">https://fapi.binance.com/fapi/v1/klines</a></code></li>
+<li>Binance funding history: <code><a href="https://fapi.binance.com/fapi/v1/fundingRate">https://fapi.binance.com/fapi/v1/fundingRate</a></code></li>
+</ul>
+<h2>8. 数据源 / 公开性 / 更新频率 / 最小复现实验口径</h2>
+<ul>
+<li><strong>数据源：</strong> Binance 公共 <code>spot/perp klines + fundingRate</code></li>
+<li><strong>公开性：</strong> 公开，无需 API key</li>
+<li><strong>更新频率：</strong></li>
+<li>K 线：可直接取 <code>5m / 15m</code></li>
+<li>funding：<code>8h</code> 结算，短周期实验可按已知 funding 历史或窗口 proxy 对齐</li>
+<li><strong>最小复现实验口径：</strong></li>
+<li>asset：<code>BTCUSDT</code></li>
+<li>bar：<code>15m</code></li>
+<li>raw-alpha 条件：<code>spread_z_1d &gt; 1 且 funding &gt; 0</code></li>
+<li>label：future <code>8h</code> net return after cost</li>
+<li>verdict：先看 <code>tradeable_rate</code> 是否大于 0，再谈模型或更复杂 admission</li>
+</ul>
+</body>
+</html>

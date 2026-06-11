@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 perp-perp funding diff 只读成“低频收租”：对 short-cycle crypto desk，更该先拆的是「跨所同标的 funding spread z-score fade × child execution」这条 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 perp-perp funding diff 只读成“低频收租”：对 short-cycle crypto desk，更该先拆的是「跨所同标的 funding spread z-score fade × child execution」这条 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-22 09:56 UTC</span>
+      <span class="pill">研究时间：2026-04-22 09:58 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `strategies/perp_perp.py` + `config/main.yaml` + `backtest/execution_sim.py`）+ Binance / Bybit 公开 funding history portability probe（`BTC/ETH`，最近 `200` 个 8h funding 点）</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/relative-value/stat-arb/perp-perp/cross-venue/zscore/convergence/binance/bybit/1m/5m/15m/repo/public-data/cost/risk</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-22_0958_perp-perp-funding-diff-zfade-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-22 09:58 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>strategies/perp_perp.py</code> + <code>config/main.yaml</code> + <code>backtest/execution_sim.py</code>）+ Binance / Bybit 公开 funding history portability probe（<code>BTC/ETH</code>，最近 <code>200</code> 个 8h funding 点）</li>
+<li>主题类型：<code>raw alpha</code></li>
+<li>基础 alpha：<code>同一永续合约在两个交易所的 funding rate 差值出现统计极端时，做空高 funding venue、做多低 funding venue，赚下一段 funding differential，并等待差值回归</code></li>
+<li>是否可独立复现：<code>是</code></li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：<code>是</code></li>
+<li>主题标签：raw-alpha/carry/funding/relative-value/stat-arb/perp-perp/cross-venue/zscore/convergence/binance/bybit/1m/5m/15m/repo/public-data/cost/risk</li>
+</ul>
+<h2>0) 先说结论（给 desk 的一句话）</h2>
+<p><strong>这条线值得进素材池，但不要照搬 repo 默认阈值直接上 BTC/ETH。</strong> <code>gencersarp/cryptoarb</code> 给了一条很干净的 perp-perp funding differential 完整壳：entry、exit、sizing、max-hold、cost simulator 都齐；但最近 <code>Binance vs Bybit</code> 的 <code>BTC/ETH</code> 公开 funding 差太窄，repo 默认 <code>2 bps/8h</code> 门槛在近 <code>200</code> 个结算点里没有触发。更合理的 desk 用法是：把它当 <strong>1m/5m 扫描 + 5m/15m child execution 的稀疏 relative-value alpha</strong>，先扩到多 venue / 多 asset，再决定是否值得接实盘执行。</p>
+<h2>1) 这次为什么值得写（且不重复）</h2>
+<p>最近已有多篇 <code>basis / funding / pairs</code> digest，但这篇不是再写 spot-perp basis，也不是泛泛的“跨所 funding APR 榜单”。它的新增点在于：</p>
+<ul>
+<li><strong>alpha 本体更窄</strong>：只做 <code>same asset, perp vs perp, venue A funding - venue B funding</code>；不需要 spot leg，也不赌币价方向；</li>
+<li><strong>entry 不是单纯 APR 排名</strong>：要求 funding spread 同时过绝对阈值与 rolling z-score 极端；</li>
+<li><strong>exit 清楚</strong>：spread z-score 回到中性区间就平，不强行持有到很久；</li>
+<li><strong>工程壳完整</strong>：repo 同时写了 walk-forward、1-bar delay、maker/taker fee、vol×ADV slippage、partial fill、downtime、forced close、cost stress。</li>
+</ul>
+<p>一句话：<strong>这是 relative-value raw alpha，不是 filter；低频 funding 是收益来源，短周期 bars 负责扫描、入场、补腿、退出和风控。</strong></p>
+<h2>2) 来源与策略拆解（repo source audit）</h2>
+<p>主来源：</p>
+<ul>
+<li>Authors / Owner：<code>gencersarp</code></li>
+<li>Year：<code>2026</code>（created <code>2026-03-29</code>，pushed <code>2026-04-06</code>）</li>
+<li>Title：*cryptoarb: Production-grade crypto market-neutral arbitrage research &amp; backtesting framework*</li>
+<li>Venue：GitHub repository</li>
+<li>DOI：<code>N/A</code></li>
+<li>Readable URL / Repo URL：<code><a href="https://github.com/gencersarp/cryptoarb">https://github.com/gencersarp/cryptoarb</a></code></li>
+<li>关键源码：<code>strategies/perp_perp.py</code>, <code>config/main.yaml</code>, <code>backtest/execution_sim.py</code></li>
+</ul>
+<p><code>strategies/perp_perp.py</code> 的核心规则可以还原为：</p>
+<ol>
+<li>对同一资产取两个 venue 的 funding：<code>fr_hi</code>, <code>fr_lo</code>；</li>
+<li>计算 <code>spread = fr_hi - fr_lo</code>；</li>
+<li>用过去 <code>30</code> 个 funding bars 计算 spread z-score；</li>
+<li>入场条件：</li>
+</ol>
+<ul>
+<li><code>abs(spread) &gt;= min_funding_spread</code>，repo 默认 <code>0.0002</code>，即 <code>2 bps/8h</code>；</li>
+<li><code>abs(z) &gt;= entry_z</code>，repo 默认 <code>2.0</code>；</li>
+</ul>
+<ol>
+<li>方向：</li>
+</ol>
+<ul>
+<li><code>spread &gt; 0</code>：venue A funding 更高，short venue A perp，long venue B perp；</li>
+<li><code>spread &lt; 0</code>：反过来；</li>
+</ul>
+<ol>
+<li>出场：<code>abs(z) &lt; exit_z</code>，repo 默认 <code>0.5</code>；</li>
+<li>组合约束：<code>max_hold_bars = 6</code>、<code>position_size_pct = 0.30</code>、<code>max_open_positions = 2</code>。</li>
+</ol>
+<p>这里要注意一个源码层细节：<code>perp_perp.py</code> 里的 <code>Signal</code> 只显式发了 <code>v_hi</code> 那条腿，另一条低 funding venue 的 hedge leg 需要由 backtest / execution 层补齐；我们复现时应把它明确写成双腿组合，避免把一条腿误测成方向交易。</p>
+<h2>3) 最小公开数据 portability probe</h2>
+<h3>3.1 数据与口径</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M Futures public funding history + Bybit v5 public funding history</li>
+<li>标的：<code>BTCUSDT</code>, <code>ETHUSDT</code></li>
+<li>频率：8h funding settlement；对 short-cycle desk，信号每 8h 变，但可用 <code>1m/5m/15m</code> 做 child execution 和补腿监控</li>
+<li>样本：每个标的最近 <code>200</code> 个 matched 8h 点，约 <code>2026-02-15 00:00 UTC</code> 到 <code>2026-04-22 08:00 UTC</code></li>
+<li>指标：<code>spread = binance_funding - bybit_funding</code>，rolling <code>30</code> 点 z-score</li>
+<li>成本：本轮只是 feasibility probe，未扣真实双腿成交成本；因此只能判断“有没有足够厚的 funding 差”，不能直接判断净收益</li>
+</ul>
+<h3>3.2 关键观察</h3>
+<p><code>BTCUSDT</code>：</p>
+<ul>
+<li>matched funding points：<code>200</code></li>
+<li>平均绝对 funding spread：<code>0.377 bps/8h</code></li>
+<li>p95 绝对 spread：<code>0.897 bps/8h</code></li>
+<li>最大绝对 spread：<code>1.473 bps/8h</code></li>
+<li>repo 默认门槛 <code>2 bps/8h + |z|&gt;=2</code>：<code>0</code> 次触发</li>
+</ul>
+<p><code>ETHUSDT</code>：</p>
+<ul>
+<li>matched funding points：<code>200</code></li>
+<li>平均绝对 funding spread：<code>0.388 bps/8h</code></li>
+<li>p95 绝对 spread：<code>0.978 bps/8h</code></li>
+<li>最大绝对 spread：<code>1.570 bps/8h</code></li>
+<li>repo 默认门槛 <code>2 bps/8h + |z|&gt;=2</code>：<code>0</code> 次触发</li>
+</ul>
+<p>把绝对门槛降到更现实的 <code>0.5/1.0/1.5 bps</code> 后，信号会出现但非常稀疏：</p>
+<p>| symbol | min spread | z gate | entries | next-1 funding spread 收敛率 | next-3 收敛率 | |---|---:|---:|---:|---:|---:| | BTCUSDT | <code>0.5 bps</code> | <code>|z|&gt;=2</code> | <code>7</code> | <code>85.7%</code> | <code>100%</code> | | BTCUSDT | <code>1.0 bps</code> | <code>|z|&gt;=2</code> | <code>4</code> | <code>100%</code> | <code>100%</code> | | ETHUSDT | <code>0.5 bps</code> | <code>|z|&gt;=2</code> | <code>11</code> | <code>90.9%</code> | <code>100%</code> | | ETHUSDT | <code>1.0 bps</code> | <code>|z|&gt;=2</code> | <code>6</code> | <code>100%</code> | <code>100%</code> | | ETHUSDT | <code>1.5 bps</code> | <code>|z|&gt;=2</code> | <code>1</code> | <code>100%</code> | <code>100%</code> |</p>
+<p>人话解释：<strong>spread 的确有回归性，但最近 BTC/ETH 两大 venue 太有效，raw edge 厚度很薄；如果双腿都吃 taker，绝大多数信号不够扣费。</strong></p>
+<h2>4) 对 <code>1m / 3m / 5m / 15m</code> 的关系</h2>
+<p>这条 alpha 的收益结算不是逐根 K 线，而是 funding settlement；但短周期并不无关：</p>
+<ul>
+<li><code>1m/3m</code>：用于 funding 快照轮询、盘口价差、腿间偏离、partial fill / orphan leg 监控；</li>
+<li><code>5m</code>：用于 child execution，把双腿拆成 maker-first / post-only 尝试，若价差恶化则撤单；</li>
+<li><code>15m</code>：用于持仓巡检、z-score exit、max-hold、venue exposure rebalancing；</li>
+<li><code>8h</code>：用于 funding PnL attribution，不应把 funding alpha 伪装成每根 K 的方向预测。</li>
+</ul>
+<h2>5) 怎么落成完整策略壳</h2>
+<p>最小可落地版本：</p>
+<ul>
+<li><strong>Universe</strong>：先做 <code>BTC/ETH/SOL/BNB/XRP/DOGE/LINK/AVAX</code>，venue 至少 <code>Binance / Bybit / OKX / Hyperliquid</code>；</li>
+<li><strong>Entry</strong>：对每个 <code>(asset, venue_i, venue_j)</code> 计算 funding spread；要求 <code>|z_30|&gt;=2</code> 且 <code>expected_next_funding_edge_bps &gt; round_trip_cost_bps + safety_margin</code>；</li>
+<li><strong>Direction</strong>：short 高 funding perp，long 低 funding perp，双腿 delta-neutral；</li>
+<li><strong>Sizing</strong>：<code>notional = min(capital*0.10~0.30, venue_cap, depth_cap)</code>；用 <code>edge_after_cost / volatility</code> 做缩放，不要用 APR 幻觉放大；</li>
+<li><strong>Exit</strong>：<code>|z|&lt;0.5</code>、下一期 expected edge 转负、腿间 mark divergence 超阈值、或 max hold <code>1~3</code> 个 funding intervals；</li>
+<li><strong>Risk</strong>：orphan-leg kill switch、venue exposure cap、margin buffer、funding timestamp mismatch、borrow / transfer / API outage 处理；</li>
+<li><strong>Cost</strong>：双腿 maker/taker fee + slippage + funding timestamp miss + collateral fragmentation；若不能 maker-first，默认把信号降级。</li>
+</ul>
+<h2>6) 取舍：它值得进池，但当前应如何排优先级</h2>
+<ul>
+<li>值得进：因为 base alpha 清楚、可复现、直接 market-neutral，和趋势/反转类信号相关性低；</li>
+<li>不该高估：BTC/ETH 的 Binance-Bybit recent spread 不够厚，repo 默认 <code>2 bps/8h</code> 门槛近期根本不触发；</li>
+<li>真正要测的是 <strong>多 venue / 多 asset / maker-first</strong>，不是只在两大所 BTC/ETH 上硬卷；</li>
+<li>如果后续扩 universe 后仍然没有 <code>post-cost &gt; 0</code> 的事件密度，就把它降级成 <code>funding-regime gate</code>：当某币 funding cross-venue 极度不一致时，提醒别让其他方向 alpha 裸追拥挤腿。</li>
+</ul>
+<h2>7) 下一步怎么测（直接可执行）</h2>
+<ol>
+<li><strong>扩 universe / venue sweep</strong>：用公开 funding history 拉 <code>Binance / Bybit / OKX / Hyperliquid</code>，覆盖至少 <code>20</code> 个永续，共同 timestamp 对齐到 8h。</li>
+<li><strong>事件阈值 sweep</strong>：测试 <code>min_abs_spread = 0.5/1.0/1.5/2.0 bps</code> × <code>z = 1.5/2.0/2.5</code>；不要先固定 repo 默认值。</li>
+<li><strong>加入真实成本</strong>：双腿 maker / taker 三种情景：<code>maker-maker</code>、<code>maker-taker</code>、<code>taker-taker</code>；只有 maker-first 版本为正才值得继续。</li>
+<li><strong>用短周期 child execution 回放</strong>：entry signal 在 8h bar 产生后，用 <code>1m/5m</code> orderbook / kline 近似成交，记录 leg-in slippage 与 orphan-leg 暴露时长。</li>
+<li><strong>归因</strong>：把 PnL 拆成 funding income、mark-to-market drift、fee/slippage、missed funding；若收益主要来自价格方向而非 funding diff，则不能算这条 alpha 过关。</li>
+</ol>
+<h2>8) 关键来源</h2>
+<ol>
+<li><strong>gencersarp (2026)</strong>. *cryptoarb: Production-grade crypto market-neutral arbitrage research &amp; backtesting framework*. GitHub Repository.</li>
+</ol>
+<ul>
+<li>Venue：GitHub</li>
+<li>DOI：<code>N/A</code></li>
+<li>Repo URL：<code><a href="https://github.com/gencersarp/cryptoarb">https://github.com/gencersarp/cryptoarb</a></code></li>
+<li>Source files：<code>strategies/perp_perp.py</code>, <code>config/main.yaml</code>, <code>backtest/execution_sim.py</code></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures API</strong>. Funding Rate History.</li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://binance-docs.github.io/apidocs/futures/en/#get-funding-rate-history">https://binance-docs.github.io/apidocs/futures/en/#get-funding-rate-history</a></code></li>
+</ul>
+<ol>
+<li><strong>Bybit v5 API</strong>. Get Funding Rate History.</li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://bybit-exchange.github.io/docs/v5/market/history-fund-rate">https://bybit-exchange.github.io/docs/v5/market/history-fund-rate</a></code></li>
+</ul>
+<p>---</p>
+<h2>附：本轮实验文件</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/perp_perp_funding_diff_probe_20260422/summary.txt</code></li>
+<li><code>reports/artifacts/quant_digests/perp_perp_funding_diff_probe_20260422/threshold_sweep.csv</code></li>
+<li><code>reports/artifacts/quant_digests/perp_perp_funding_diff_probe_20260422/BTCUSDT_binance_bybit_funding_diff.csv</code></li>
+<li><code>reports/artifacts/quant_digests/perp_perp_funding_diff_probe_20260422/ETHUSDT_binance_bybit_funding_diff.csv</code></li>
+</ul>
+</body>
+</html>

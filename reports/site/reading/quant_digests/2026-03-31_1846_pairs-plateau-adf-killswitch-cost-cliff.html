@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 crypto pairs 继续卷成“单点最优参数”：这份 2026 Bybit `5m` 新 repo 更该先偷的是「plateau-first 选参 + in-trade ADF kill-switch」，ETH/LINK proxy 快检显示 10 bps 还能活、20 bps 基本即死</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 crypto pairs 继续卷成“单点最优参数”：这份 2026 Bybit `5m` 新 repo 更该先偷的是「plateau-first 选参 + in-trade ADF kill-switch」，ETH/LINK proxy 快检显示 10 bps 还能活、20 bps 基本即死</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-31 18:44 UTC</span>
+      <span class="pill">研究时间：2026-03-31 18:46 UTC</span>
+      <span class="pill">类型：raw alpha</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/parameter-plateau/adf-killswitch/cost-cliff/eth/link/binance/bybit/5m/15m/repo/public-data</span>
+      <span class="pill">证据类型：2026 GitHub 新仓库 source audit（`README.md` + `src/shortlist_pairs.py` + `src/backtest.py`）+ Binance USDⓈ-M Perpetual 公共 `5m` 本地 proxy quick check</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-31_1846_pairs-plateau-adf-killswitch-cost-cliff.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：beta-hedged cointegration spread mean reversion（pairs / stat-arb / relative value）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是，但对成本极敏感</li>
+<li>时间：2026-03-31 18:46 UTC</li>
+<li>类型：raw alpha</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/parameter-plateau/adf-killswitch/cost-cliff/eth/link/binance/bybit/5m/15m/repo/public-data</li>
+<li>证据类型：2026 GitHub 新仓库 source audit（<code>README.md</code> + <code>src/shortlist_pairs.py</code> + <code>src/backtest.py</code>）+ Binance USDⓈ-M Perpetual 公共 <code>5m</code> 本地 proxy quick check</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主材料不是一篇论文，而是一份 <strong>2026 新 repo：<code>velychkoanton-stack/cointegration-pairs</code></strong>。它表面上是在做 Bybit <code>5m</code> pairs 扫描 / 回测，但真正对 desk 有价值的，不是“又一个 cointegration z-score 回归”，而是两件更实用的事：</p>
+<ol>
+<li><strong>不要拿单点最优参数做选对</strong>，而是看参数面上有没有 <strong>plateau（相邻参数都活）</strong>；</li>
+<li><strong>不要假设配对关系会一直活着</strong>，而是把 <strong>in-trade ADF 复检 + half-life 超时强平</strong> 写进退出逻辑。</li>
+</ol>
+<p>repo 自己给出的骨架很完整：有 pair shortlist、rolling window、开仓阈值倍数、TP/SL、交易成本、以及持仓中的 cointegration 失效检查。对我们的意义是：</p>
+<ul>
+<li><strong>base alpha 仍然是 raw alpha</strong>：spread 偏离后回归；</li>
+<li>但真正决定能不能进素材池的，已经不是“这个 pair 某个参数点回测收益最高”，而是：</li>
+<li>参数是不是有 <strong>稳态 pocket</strong>；</li>
+<li>成本上去以后还剩不剩边；</li>
+<li>配对关系失效时有没有 <strong>honest kill-switch</strong>。</li>
+</ul>
+<h2>2. 先回答：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = 同一风险簇里，两条高相关 / 近 cointegrated 价格序列的 beta-hedged spread 偏离后，向均值回归。</strong></p>
+<p>也就是标准的 <code>pairs / stat-arb / relative value / mean reversion</code>，不是 filter，也不是 overlay。</p>
+<p>repo 的可取之处不在于发明了新 alpha，而在于把这个 raw alpha 从“拍脑袋 z-score backtest”往 <strong>可落地策略骨架</strong> 推近了一步：</p>
+<ul>
+<li>有 <strong>pair selection funnel</strong>；</li>
+<li>有 <strong>参数面而不是单点 winner</strong>；</li>
+<li>有 <strong>in-trade cointegration 失效退出</strong>；</li>
+<li>有 <strong>成本显式入模</strong>。</li>
+</ul>
+<h2>3. repo 里真正值得 desk 记住的东西</h2>
+<h3>3.1 Pair shortlist 不是只看 p-value</h3>
+<p><code>src/shortlist_pairs.py</code> 里，repo 对候选对做的是一组联合过滤，而不是只看 Engle-Granger / ADF：</p>
+<ul>
+<li><code>ADF_MAX = -2.9</code></li>
+<li><code>P_VALUE_MAX = 0.05</code></li>
+<li><code>HURST_MAX = 0.45</code></li>
+<li><code>HALFLIFE_BARS ∈ [10, 300]</code></li>
+<li><code>SKEW ∈ [0, 1]</code></li>
+<li><code>KURT ∈ [0, 5]</code></li>
+</ul>
+<p>这点很对。对短周期 desk 来说，<strong>stationary 不是充分条件</strong>：</p>
+<ul>
+<li>Hurst / half-life 决定你是不是在等一个太慢的均值回复；</li>
+<li>skew / kurt 决定你拿到的是不是“平时像 MR、出事像单边趋势”的假 spread。</li>
+</ul>
+<h3>3.2 真正有价值的是 plateau-first，不是 best-cell-first</h3>
+<p>README 的“Best pair shortlist”部分，不是直接拿单组最优参数，而是保留：</p>
+<ul>
+<li><code>good_cases &gt;= 100</code></li>
+<li><code>plateau_n &gt;= 5</code></li>
+<li><code>plateau_share &gt;= 0.10</code></li>
+</ul>
+<p>这是这份 repo 最值得 desk 偷的部分。</p>
+<p>因为 pairs 最大的问题，往往不是“完全没边”，而是：</p>
+<ul>
+<li>最优点看起来很美；</li>
+<li>但参数一动就死；</li>
+<li>live 一上 maker/taker、滑点、funding，就直接掉到 0 以下。</li>
+</ul>
+<p><strong>plateau-share</strong> 比“best Sharpe / best balance”更诚实，因为它在回答：</p>
+<p>&gt; 这个 alpha 是真的存在，还是只是某个参数点碰巧拟合了样本路径？</p>
+<h3>3.3 持仓中的 ADF 复检比“等 z-score 回零”更诚实</h3>
+<p><code>src/backtest.py</code> 里的退出逻辑不是只有 TP / SL / mean reversion，还加了：</p>
+<ul>
+<li><code>ADF_CHECK_EVERY_BARS = 12</code></li>
+<li><code>ADF_PERSIST_K = 3</code></li>
+<li><code>bars_in_trade &gt;= rolling_window</code> 且连续复检失败时，触发 <code>HL_COINTEGRATION_LOST</code> 退出</li>
+</ul>
+<p>这比很多 pairs repo 诚实得多。很多 pairs 回测默认：</p>
+<ul>
+<li>开仓时关系成立；</li>
+<li>之后就假设关系一直成立；</li>
+<li>直到 spread 回归才退出。</li>
+</ul>
+<p>现实里更常见的是：</p>
+<ul>
+<li>你等的不是均值回复，</li>
+<li>而是 <strong>结构断裂后的错误锚定</strong>。</li>
+</ul>
+<p>所以这份 repo 对 desk 的真正启发是：</p>
+<p><strong>pair alpha 可以继续做，但必须把“pair 已经不再是 pair”这件事写进状态机。</strong></p>
+<h2>4. 本地最小 proxy 快检：用 Binance USDⓈ-M <code>5m</code> ETH/LINK 验证“plateau + cost cliff”</h2>
+<p>为了不直接照抄 repo 的 Bybit 结果，我做了一个更小、更快的 public-data proxy：</p>
+<ul>
+<li>数据源：Binance USDⓈ-M Perpetual <code>5m</code> klines（公开 REST）</li>
+<li>标的：<code>ETHUSDT</code> 与 <code>LINKUSDT</code></li>
+<li>样本：最近 <code>9000</code> 根 <code>5m</code> bars（约 31 天）</li>
+<li>切法：前 <code>4500</code> 根训练 / 后 <code>4500</code> 根测试</li>
+<li>beta：训练段 log-price 静态回归 proxy，估得 <code>β ≈ 1.149</code></li>
+<li>训练段 spread AR(1) proxy：<code>phi ≈ 0.9914</code></li>
+<li>对应 half-life：约 <code>80.3</code> 根 <code>5m</code> bar，约 <code>6.7h</code></li>
+</ul>
+<h3>4.1 策略骨架（proxy）</h3>
+<p>我这里用的是最小可复现版本，而不是完全复刻 repo：</p>
+<ul>
+<li>spread = <code>log(P_ETH) - β * log(P_LINK)</code></li>
+<li><code>roll ∈ {72, 96, 120, 144}</code></li>
+<li><code>entry z ∈ {1.5, 1.75, 2.0, 2.25, 2.5}</code></li>
+<li><code>stop z ∈ {3.0, 3.5, 4.0, 4.5, 5.0}</code></li>
+<li>exit：z-score 回到 0，或 stop hit</li>
+<li>成本：对整笔 spread package 做简化 round-trip proxy cost（不是逐腿真实成交回放）</li>
+</ul>
+<h3>4.2 结果：先看 plateau，再看成本崖</h3>
+<p>#### 无成本（纯 gross）</p>
+<ul>
+<li><strong>100 / 100</strong> 组参数都为正</li>
+<li>最佳参数：<code>roll=72, entry=1.75, stop=5.0</code></li>
+<li>测试段 <code>final_eq ≈ 1.1281</code>，即约 <strong>+12.81%</strong></li>
+<li>trades：<code>83</code></li>
+<li>max drawdown：约 <strong>-2.19%</strong></li>
+</ul>
+<p>这说明一个事实：</p>
+<p><strong>这个 pair 的 raw alpha 在测试段不是只有单个 best cell 活，而是整块参数面都活。</strong></p>
+<p>#### 10 bps spread-package round-trip 成本 proxy（每次开/平各 5 bps）</p>
+<ul>
+<li><strong>67 / 100</strong> 组参数仍为正</li>
+<li>最佳参数仍在 <code>roll=72, entry≈1.75, stop≈4.0~5.0</code> 一带</li>
+<li>最佳 <code>final_eq ≈ 1.0388</code>，即约 <strong>+3.88%</strong></li>
+<li>正收益参数的中位数约 <strong>+1.63%</strong></li>
+</ul>
+<p>也就是说，<strong>plateau 在低成本下没有立刻蒸发</strong>，而是从“整块都活”缩成“仍有一整片 pocket 活着”。</p>
+<p>#### 20 bps spread-package round-trip 成本 proxy（每次开/平各 10 bps）</p>
+<ul>
+<li><strong>0 / 100</strong> 组参数为正</li>
+<li>最好的一格也只有 <code>final_eq ≈ 0.9883</code></li>
+</ul>
+<p>这就非常关键了：</p>
+<p>&gt; <strong>pairs raw alpha 不是没有，但它的“可交易性”基本被成本壳一刀切开。</strong></p>
+<p>这也是为什么这份 repo 里 <strong>plateau-first + transaction cost</strong> 组合非常值钱：</p>
+<ul>
+<li>没 plateau，就容易拿到一个回测偶然点；</li>
+<li>不看 cost，就会把 gross alpha 误当 live alpha。</li>
+</ul>
+<h3>4.3 这组 quick check 对 desk 的真实含义</h3>
+<p>这不是在证明 “ETH/LINK 一定值得实盘”，而是在证明三件更重要的事：</p>
+<ol>
+<li><strong>cointegration MR 在 <code>5m</code> 上仍可能有 raw alpha</strong>；</li>
+<li><strong>alpha 是否存在，和 alpha 是否能穿过成本壳，是两回事</strong>；</li>
+<li><strong>参数面稳定性</strong> 比单点最好看更重要。</li>
+</ol>
+<h2>5. 这条思路怎么 desk 化</h2>
+<h3>5.1 最自然的时间尺度：<code>5m</code> 主做，<code>15m</code> 做慢门控</h3>
+<p>从这次 proxy half-life（约 <code>6.7h</code>）看，最自然的读法是：</p>
+<ul>
+<li><strong>信号生成层</strong>：<code>5m</code></li>
+<li><strong>状态 / 结构层</strong>：<code>15m</code></li>
+</ul>
+<p>也就是：</p>
+<ul>
+<li><code>5m</code> 负责抓 spread 偏离的 entry；</li>
+<li><code>15m</code> 负责决定这对关系当前是否值得开仓，避免在结构断裂期机械抄底 / 摸顶。</li>
+</ul>
+<h3>5.2 更像“配对状态机”，不是“单一 z-score 一招鲜”</h3>
+<p>如果要把这条策略变成完整 desk 组件，我会按下面的顺序写：</p>
+<ol>
+<li><strong>Universe / clustering</strong></li>
+</ol>
+<ul>
+<li>只在同 risk cluster 里做：L1、beta、高相关、相同叙事币种优先</li>
+<li>每日 / 每周重做 shortlist</li>
+</ul>
+<ol>
+<li><strong>Relationship filter</strong></li>
+</ol>
+<ul>
+<li>ADF / p-value / Hurst / half-life / skew / kurt 联合过滤</li>
+<li>必须加 <strong>plateau-share</strong>，不要只看 best row</li>
+</ul>
+<ol>
+<li><strong>Entry</strong></li>
+</ol>
+<ul>
+<li><code>5m</code> spread z-score 偏离</li>
+<li>建议先从 <code>entry 1.75~2.25σ</code> 开始，而不是太激进的 <code>1.0~1.25σ</code></li>
+</ul>
+<ol>
+<li><strong>Exit</strong></li>
+</ol>
+<ul>
+<li>mean reversion exit</li>
+<li>z-stop / PnL-stop</li>
+<li><strong>half-life timeout + in-trade ADF fail kill-switch</strong></li>
+</ul>
+<ol>
+<li><strong>Sizing</strong></li>
+</ol>
+<ul>
+<li>beta-neutral notional</li>
+<li>再叠加 spread-vol target</li>
+<li>单 pair 风险预算上限，避免某一个关系断裂拖死整本 book</li>
+</ul>
+<ol>
+<li><strong>Cost / execution</strong></li>
+</ol>
+<ul>
+<li>如果做不到低于约 <code>10 bps</code> 的 spread-package round-trip proxy，edge 很可能直接蒸发</li>
+<li>所以更现实的方向是：</li>
+<li>至少一腿 maker</li>
+<li>只做高流动 pair</li>
+<li>做 participation cap</li>
+<li>做 funding / fee tier / rebate 分层</li>
+</ul>
+<h2>6. 这次材料的结论</h2>
+<h3>最终判断</h3>
+<p><strong>值得进入研究池。</strong></p>
+<p>但进入研究池的不是“又一个 plain cointegration pairs alpha”，而是这条更 desk 化的表达：</p>
+<p>&gt; <strong>raw alpha = beta-hedged spread mean reversion；真正该带走的可交易化组件 = plateau-first parameter selection + in-trade ADF kill-switch + 成本生存线审计。</strong></p>
+<h3>不是主打什么</h3>
+<p>它<strong>不是</strong>：</p>
+<ul>
+<li>一个可以忽略成本的稳赚 pair；</li>
+<li>一个适合只看 best backtest row 的研究方向；</li>
+<li>一个天然适配所有 pair / 所有 venue 的通用模板。</li>
+</ul>
+<h3>真正该带走什么</h3>
+<p>它<strong>是</strong>：</p>
+<ul>
+<li>一个仍可独立复现的 raw alpha；</li>
+<li>一个对 <code>5m/15m</code> desk 仍有现实意义的 pairs 壳；</li>
+<li>一个非常适合做 <strong>“alpha 是否真活着，还是只活在 best cell 里”</strong> 的验证框架。</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<h3>最小实验（优先）</h3>
+<ol>
+<li><strong>做 30~60 对 Binance / Bybit perp 候选池</strong></li>
+</ol>
+<ul>
+<li>同 risk-cluster 内配对</li>
+<li>只保留流动性足够的永续合约</li>
+</ul>
+<ol>
+<li><strong>滚动做 plateau-scan，而不是一次性 best-fit</strong></li>
+</ol>
+<ul>
+<li>每天 / 每周重估 shortlist</li>
+<li>输出：<code>good_cases / plateau_n / plateau_share</code></li>
+</ul>
+<ol>
+<li><strong>把成本拆细</strong></li>
+</ol>
+<ul>
+<li>taker/taker</li>
+<li>maker/taker</li>
+<li>maker/maker（保守成交率假设）</li>
+<li>funding + fee tier + participation slippage</li>
+</ul>
+<ol>
+<li><strong>单独验证 ADF kill-switch 是否真的减尾部</strong></li>
+</ol>
+<ul>
+<li>对照组：只有 z-exit / TP / SL</li>
+<li>实验组：加 <code>half-life timeout + ADF fail</code></li>
+<li>看 tail loss / max DD / trade duration 分布</li>
+</ul>
+<h3>如果只给我一周研发时间</h3>
+<p>我会先做这个：</p>
+<ul>
+<li>universe：<code>ETH/BNB/LINK/SOL/AVAX/ARB/OP/AAVE</code></li>
+<li>频率：<code>5m</code></li>
+<li>pair shortlist：相关 + ADF + Hurst + half-life + plateau-share</li>
+<li>回测：滚动 30d train / 10d test</li>
+<li>成本：至少做 <code>10 / 15 / 20 bps</code> 三档 spread-package proxy</li>
+<li>目标：</li>
+<li>找到 <strong>成本后仍有 plateau</strong> 的 pair</li>
+<li>不是找 <strong>gross 最好看</strong> 的 pair</li>
+</ul>
+<h2>8. Sources</h2>
+<ol>
+<li><strong>Anton Velychko, 2026, _cointegration-pairs_</strong>, GitHub repository, Venue: GitHub, DOI: N/A</li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/velychkoanton-stack/cointegration-pairs">https://github.com/velychkoanton-stack/cointegration-pairs</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/velychkoanton-stack/cointegration-pairs">https://github.com/velychkoanton-stack/cointegration-pairs</a></code></li>
+</ul>
+<ol>
+<li><strong>Robert F. Engle, Clive W. J. Granger, 1987, _Co-integration and Error Correction: Representation, Estimation, and Testing_</strong>, *Econometrica*, DOI: <code>10.2307/1913236</code></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://doi.org/10.2307/1913236">https://doi.org/10.2307/1913236</a></code></li>
+</ul>
+<h2>9. 这篇 digest 产出物</h2>
+<ul>
+<li>Markdown：<code>research/quant_digests/2026-03-31_1846_pairs-plateau-adf-killswitch-cost-cliff.md</code></li>
+<li>页面 URL（发布后）：<code><a href="https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-03-31_1846_pairs-plateau-adf-killswitch-cost-cliff.html">https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-03-31_1846_pairs-plateau-adf-killswitch-cost-cliff.html</a></code></li>
+</ul>
+</body>
+</html>

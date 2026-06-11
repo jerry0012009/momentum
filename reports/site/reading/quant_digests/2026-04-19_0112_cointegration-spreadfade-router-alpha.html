@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 stat-arb repo 只读成“日频 market-neutral 框架”：对 short-cycle crypto desk，更该先拆的是「cointegration-first pair admission × strongest residual z-score spread fade」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 stat-arb repo 只读成“日频 market-neutral 框架”：对 short-cycle crypto desk，更该先拆的是「cointegration-first pair admission × strongest residual z-score spread fade」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-19 01:12 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-19_0112_cointegration-spreadfade-router-alpha.md</code></p>
+  </div>
+  <ul>
+<li><strong>主题类型：</strong> raw alpha</li>
+<li><strong>基础 alpha：</strong> 两个高相关、关系相对稳定的币种，若价差（更准确说是 <code>log(A) - beta*log(B)</code> 残差）短时间偏得过远，后面几个 <code>15m</code> bar 往往会向均值回归；交易上对应 <strong>多便宜腿、空偏贵腿</strong> 的 spread fade。</li>
+<li><strong>是否可独立复现：</strong> 是</li>
+<li><strong>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：</strong> 是</li>
+</ul>
+<h2>先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha 很清楚：<code>cointegration / residual spread mean reversion</code>。</strong></p>
+<p>不是“market neutral 很好听”，也不是“相关性高就能做 pairs”，而是：</p>
+<p>&gt; <strong>先筛出关系相对稳的 pair，再在残差 z-score 极端时做回归。</strong></p>
+<p>所以这轮我没有把 repo 只当成“又一个 stat-arb 大框架”，而是直接把最像 desk 可交易原型的那一层拎出来：</p>
+<p>&gt; <strong><code>pair admission</code> 用相关性 + 残差稳定性，<code>entry</code> 用 residual z-score extreme，<code>exit</code> 先看 <code>1h~3h</code> 的 fixed-hold / time-box fade。</strong></p>
+<p>---</p>
+<h2>这次看了什么，为什么值得 intake</h2>
+<p><strong>来源</strong></p>
+<ul>
+<li><strong>作者：</strong> Atharva Joshi</li>
+<li><strong>年份：</strong> 2026（GitHub 活跃仓）</li>
+<li><strong>标题：</strong> <code>crypto-stat-arb</code></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/atharvajoshi01/crypto-stat-arb&gt;">https://github.com/atharvajoshi01/crypto-stat-arb&gt;</a></li>
+<li><strong>关键文件：</strong></li>
+<li><code>README.md</code></li>
+<li><code>cryptoarb/pairs.py</code></li>
+<li><code>cryptoarb/signals.py</code></li>
+<li><code>cryptoarb/backtest.py</code></li>
+<li><code>results/backtest_results.json</code></li>
+</ul>
+<p><strong>我为什么选它</strong></p>
+<ol>
+<li>它不是“pairs trading 概念文”，而是把 <strong>pair discovery / hedge ratio / z-score entry-exit / cost / WFO</strong> 都写出来了；</li>
+<li>它自己很诚实：repo 公布的日频真实样本 OOS 表现是负的，但 <strong>BTC 相关性接近 0</strong>，说明骨架不是假 market-neutral；</li>
+<li>对我们 desk 来说，真正值钱的不是把整套日频外壳照抄，而是把里面最硬的那层翻成 <strong><code>15m</code> residual fade router</strong>。</li>
+</ol>
+<p>一句话核心结论：</p>
+<p>&gt; <strong>这份 repo 的价值不在“日频 WFO 成绩单”，而在它把 pairs/stat-arb 最该先保留的 raw alpha 骨架写得很干净：先做 pair admission，再做 residual extreme fade。</strong></p>
+<p>一句话证明方式：</p>
+<p>&gt; <strong>作者用 Engle-Granger pair discovery、rolling hedge ratio、残差 z-score 进出场、显式成本和 walk-forward backtest 来支撑这条线。</strong></p>
+<p>---</p>
+<h2>repo 里最值得记的几个硬点</h2>
+<ol>
+<li><strong>pair discovery 不是只看相关性。</strong></li>
+<p><code>pairs.py</code> 先相关性预筛，再做 Engle-Granger residual test，并要求 half-life 落在区间内；这比“看到两条线长得像就上”靠谱得多。</p>
+</ol>
+<ol>
+<li><strong>signal 层很朴素，但足够可交易。</strong></li>
+<p><code>signals.py</code> 的核心是：</p>
+</ol>
+<ul>
+<li><code>z &gt; entry_z</code>：做空 spread</li>
+<li><code>z &lt; -entry_z</code>：做多 spread</li>
+<li><code>|z| &lt; exit_z</code>：平仓</li>
+<li><code>|z| &gt; stop_z</code>：止损</li>
+<p>这就是完整的 raw alpha 壳，不是只有 admission 没有 exits。</p>
+</ul>
+<ol>
+<li><strong>repo 自己的日频真实样本并不漂亮。</strong></li>
+<p><code>results/backtest_results.json</code> 里，作者公开给出的 OOS 结果约是：</p>
+</ol>
+<ul>
+<li>raw annual return <code>-18.77%</code></li>
+<li>risk-managed annual return <code>-15.72%</code></li>
+<li>BTC correlation <code>0.0257</code></li>
+<p>这很重要：<strong>说明“market-neutral 结构成立”不等于“当前版本就能赚钱”。</strong></p>
+</ul>
+<ol>
+<li><strong>但这恰好更适合我们 desk 的读法。</strong></li>
+<p>既然日频大而全版本不厚，就不要迷恋长样本组合壳；更该回到短周期去测： <strong>极端 residual 偏离后，未来 <code>1h~3h</code> 有没有 pocket mean reversion。</strong></p>
+</ol>
+<p>---</p>
+<h2>本轮 portability probe：更像 <code>15m</code> raw alpha，而不是 <code>5m</code> 硬压执行</h2>
+<h3>Probe 口径</h3>
+<ul>
+<li><strong>市场：</strong> Binance USDⓈ-M perpetual</li>
+<li><strong>周期：</strong> <code>15m</code> 主实验，<code>5m</code> 只做 child-execution sanity check</li>
+<li><strong>样本：</strong> <code>BTC/ETH/SOL/BNB/XRP/DOGE/ADA/LINK/AVAX/LTC</code></li>
+<li><strong>时间：</strong> <code>15m</code> 近约 <code>60d</code>，<code>5m</code> 近约 <code>21d</code></li>
+<li><strong>本地简化说明：</strong> repo 原版 pair admission 用 Engle-Granger + ADF；本轮 portability probe 先用 <strong>高相关 + residual finite half-life</strong> 做 lightweight proxy，再看 residual z-score extreme 的后续 spread 回归。</li>
+<li><strong>artifact：</strong></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_cointegration_pairs_probe_pairs.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_cointegration_pairs_probe_events_15m.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_cointegration_pairs_probe_router_15m.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_cointegration_pairs_probe_events_5mchild.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_cointegration_pairs_probe_router_5mchild.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_cointegration_pairs_probe_summary.json</code></li>
+</ul>
+<h3>结果 1：当前最像 pocket 的 pair，不在 BTC/ETH，而在 mid-cap 组合</h3>
+<p>本轮 proxy 里筛出来的 3 组代表性 pair 是：</p>
+<ul>
+<li><code>LINKUSDT / LTCUSDT</code>：corr≈<code>0.924</code>，half-life≈<code>76</code> bars</li>
+<li><code>SOLUSDT / LTCUSDT</code>：corr≈<code>0.904</code>，half-life≈<code>82</code> bars</li>
+<li><code>LINKUSDT / AVAXUSDT</code>：corr≈<code>0.937</code>，half-life≈<code>86</code> bars</li>
+</ul>
+<p>这和很多短周期 stat-arb 的经验一致：<strong>majors 最干净，但也最容易被卷平；mid-cap 某些结构 pocket 反而更厚。</strong></p>
+<h3>结果 2：<code>15m</code> residual extreme fade 当前是正的，而且越拉长到 <code>2h~3h</code> 越像样</h3>
+<p>对这些入选 pair，用 residual <code>|z|&gt;=2</code> 作为事件，方向按“偏离就反手回归”处理：</p>
+<ul>
+<li>全事件样本 <code>n=2083</code></li>
+<li>next <code>4/8/12</code> bars（约 <code>1h/2h/3h</code>）mean gross ≈ <code>+7.39 / +15.59 / +23.08 bps</code></li>
+<li>胜率约 <code>56.8% / 60.9% / 62.3%</code></li>
+</ul>
+<p>若同一时点多个 pair 同时触发，只做 <strong><code>abs(z)</code> 最大</strong> 的 strongest-only router：</p>
+<ul>
+<li><code>n=1528</code></li>
+<li>next <code>4/8/12</code> bars mean gross ≈ <code>+8.13 / +15.97 / +23.69 bps</code></li>
+<li>胜率约 <code>57.7% / 61.7% / 63.4%</code></li>
+</ul>
+<p>也就是说，这条线当前更像：</p>
+<p>&gt; <strong><code>15m</code> pair-admission + strongest residual dislocation router + <code>2h~3h</code> time-box fade</strong></p>
+<p>而不是高频秒杀策略。</p>
+<h3>结果 3：硬把它压成 <code>5m</code> child execution，当前反而转负</h3>
+<p>把同样的 <code>15m</code> 事件拿去看 <code>5m</code> 子窗口：</p>
+<ul>
+<li>strongest-only next <code>3/6/12</code> 个 <code>5m</code> bars mean gross ≈ <code>-5.39 / -3.34 / -0.83 bps</code></li>
+</ul>
+<p>这很关键：<strong>不要看见 spread fade 就本能想“越快越好”。</strong> 当前更合理的 desk 读法反而是：</p>
+<ul>
+<li>alpha 识别在 <code>15m</code></li>
+<li>持有窗至少给到 <code>1h~3h</code></li>
+<li><code>5m</code> 只适合做更细的挂单/分批，不适合拿来重写信号本体</li>
+</ul>
+<p>---</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li><strong>方向属性：</strong> 相对价值 / pairs / stat-arb / 逆势回归</li>
+<li><strong>基础 alpha：</strong> <code>cointegration-first residual spread mean reversion</code></li>
+<li><strong>regime：</strong> pair 关系稳定、残差 half-life 有限、不要在结构断裂时硬做</li>
+<li><strong>filter / veto：</strong> 相关性预筛；更严格版本用 Engle-Granger / ADF；只做 <code>abs(z)</code> 足够大、且 strongest-only 的 dislocation</li>
+<li><strong>risk / sizing / execution overlay：</strong> beta-neutral 配腿；<code>|z|&lt;exit_z</code> 平仓或 <code>1h~3h</code> time-box；<code>|z|&gt;stop_z</code> 止损；成本要按双腿进出场估算，而不是单腿 thinking</li>
+</ul>
+<p>---</p>
+<h2>为什么这轮值得进研究池</h2>
+<p>因为它补的是 <strong>raw alpha 素材池</strong>，不是又一个“shared gate”。</p>
+<p>而且它服务的是我们最近持续在补的空缺：</p>
+<ul>
+<li>不是 trend / breakout</li>
+<li>不是单币 direction</li>
+<li>而是 <strong>relative-value / stat-arb</strong></li>
+</ul>
+<p>更具体地说，这轮先回答了一个很直接的问题：</p>
+<p>&gt; <strong>对 short-cycle crypto desk，pairs/stat-arb 该先押注在哪一层？</strong></p>
+<p>当前答案不是“复杂图聚类”也不是“先上 Kalman 全家桶”，而是：</p>
+<p>&gt; <strong>先把 <code>pair admission</code> 和 <code>residual extreme fade</code> 这条最朴素的 raw alpha 壳测扎实。</strong></p>
+<p>---</p>
+<h2>最小可复刻实验</h2>
+<ol>
+<li>选 <code>10~20</code> 个 liquid perp；</li>
+<li>每天/每周重算一次 pair admission：相关性预筛 + residual stationarity/half-life；</li>
+<li>每根 <code>15m</code> 更新 residual z-score；</li>
+<li>若 <code>|z|&gt;=2</code>，做 beta-neutral spread fade；若多组同时触发，只做 <code>abs(z)</code> 最大的 1 组；</li>
+<li>固定持有 <code>8~12</code> 根 <code>15m</code>，或 <code>|z|&lt;0.5</code> 提前出；</li>
+<li>粗扣双腿 round-trip 成本后，再看这条线是不是还活着。</li>
+</ol>
+<p><strong>先看两个指标：</strong></p>
+<ul>
+<li><code>gross / net bps per trade</code></li>
+<li><code>pair breakdown</code>：edge 是否被少数 mid-cap pair 独占</li>
+</ul>
+<p><strong>下一步怎么测：</strong></p>
+<ol>
+<li><strong>把本轮 lightweight proxy 升级成正式 Engle-Granger / ADF admission；</strong></li>
+<li><strong>做 friction ladder：</strong> <code>8 / 12 / 16 / 20 bps</code> 的双腿 round-trip 生死线；</li>
+<li><strong>加 break-risk veto：</strong> 当 BTC 单边大波动或 funding/event 边界来临时，pair 关系是否更容易断裂；</li>
+<li><strong>做 horse race：</strong> 和现有 <code>ratio-zscore pairs</code>、<code>cluster deviation stat-arb</code>、<code>residual loser-bounce basket</code> 比，确认它是不是独立 pocket。</li>
+</ol>
+<p>---</p>
+<h2>风险与保留意见</h2>
+<ol>
+<li><strong>本轮本地 probe 不是 repo 的严格复刻。</strong></li>
+<p>repo 有更完整的 Engle-Granger / ADF / WFO / cost 结构；我这轮先做的是 short-cycle portability proxy。</p>
+</ol>
+<ol>
+<li><strong>成本非常关键。</strong></li>
+<p>这是双腿进、双腿出；gross <code>15~24bps</code> 看着不错，但如果 taker/slippage 合计上到 <code>16~20bps</code>，很多边际样本就会被吃掉。</p>
+</ol>
+<ol>
+<li><strong>pair break 是真风险，不是 paper risk。</strong></li>
+<p>crypto 里叙事切换、funding、链上事件、上币/下币消息，都会让原本稳定的 pair 突然失效。</p>
+</ol>
+<ol>
+<li><strong>当前 pocket 更偏 mid-cap。</strong></li>
+<p>这意味着 edge 可能更厚，但容量、滑点、冲击成本也会更差。</p>
+</ol>
+<p>---</p>
+<h2>我对这条线的当前判断</h2>
+<p>这轮我会把它放进：</p>
+<p>&gt; <strong>可独立复现、且可直接落成完整策略壳的 raw alpha 候选。</strong></p>
+<p>不是因为 repo 的日频成绩单很漂亮，恰恰相反—— <strong>正因为 repo 把骨架写清楚、但原版成绩并不神，我们才更容易老老实实地把它拆成 desk 真正该先测的那一层。</strong></p>
+<p>当前最值得保留的，不是“大而全 stat-arb 平台”这件事，而是：</p>
+<p>&gt; <strong><code>pair admission × strongest residual dislocation fade</code> 在 <code>15m</code> 上有 pocket evidence，但不适合直接压成 <code>5m</code> 高频执行。</strong></p>
+<p>---</p>
+<h2>来源</h2>
+<ul>
+<li>Atharva Joshi. (2026). *crypto-stat-arb*. GitHub repository.</li>
+<li>Repo URL: &lt;<a href="https://github.com/atharvajoshi01/crypto-stat-arb&gt;">https://github.com/atharvajoshi01/crypto-stat-arb&gt;</a></li>
+<li>README: &lt;<a href="https://raw.githubusercontent.com/atharvajoshi01/crypto-stat-arb/main/README.md&gt;">https://raw.githubusercontent.com/atharvajoshi01/crypto-stat-arb/main/README.md&gt;</a></li>
+<li>Pairs module: &lt;<a href="https://raw.githubusercontent.com/atharvajoshi01/crypto-stat-arb/main/cryptoarb/pairs.py&gt;">https://raw.githubusercontent.com/atharvajoshi01/crypto-stat-arb/main/cryptoarb/pairs.py&gt;</a></li>
+<li>Signals module: &lt;<a href="https://raw.githubusercontent.com/atharvajoshi01/crypto-stat-arb/main/cryptoarb/signals.py&gt;">https://raw.githubusercontent.com/atharvajoshi01/crypto-stat-arb/main/cryptoarb/signals.py&gt;</a></li>
+<li>Backtest module: &lt;<a href="https://raw.githubusercontent.com/atharvajoshi01/crypto-stat-arb/main/cryptoarb/backtest.py&gt;">https://raw.githubusercontent.com/atharvajoshi01/crypto-stat-arb/main/cryptoarb/backtest.py&gt;</a></li>
+<li>Backtest results: &lt;<a href="https://raw.githubusercontent.com/atharvajoshi01/crypto-stat-arb/main/results/backtest_results.json&gt;">https://raw.githubusercontent.com/atharvajoshi01/crypto-stat-arb/main/results/backtest_results.json&gt;</a></li>
+</ul>
+</body>
+</html>

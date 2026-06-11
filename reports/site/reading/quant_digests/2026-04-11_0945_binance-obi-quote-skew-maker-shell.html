@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Binance OBI quote skew × inventory-bounded maker shell（LIGHTER_Market_Making, 2026）</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Binance OBI quote skew × inventory-bounded maker shell（LIGHTER_Market_Making, 2026）</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-11 09:46 UTC</span>
+      <span class="pill">研究时间：2026-04-11 09:45 UTC</span>
+      <span class="pill">类型：GitHub / 公共数据快检</span>
+      <span class="pill">主题标签：maker / market-making / microstructure / order-book-imbalance / quote-skew / inventory / execution / Binance / Lighter / 1m / 3m</span>
+      <span class="pill">证据类型：工程经验 + repo source audit + 公开数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-11_0945_binance-obi-quote-skew-maker-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-11 09:45 UTC</li>
+<li>类型：GitHub / 公共数据快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>Binance Futures 深度 OBI（order-book imbalance）z-score 先给出未来数秒 mid-price 漂移方向，再把方向优势塞进 maker quote skew 里吃 spread + drift</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：maker / market-making / microstructure / order-book-imbalance / quote-skew / inventory / execution / Binance / Lighter / 1m / 3m</li>
+<li>证据类型：工程经验 + repo source audit + 公开数据 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 <code>djienne/LIGHTER_Market_Making</code> 这份 2026 GitHub repo。它表面上是给 Lighter perp 做双边做市，但真正值得 desk 拎出来的不是“零手续费 DEX 做市”，而是更底层的 <strong>Binance 深度 OBI → maker skew</strong>：先用 Binance <code>@depth@100ms</code> 维护本地 order book，算 <code>2.5%</code> 深度内的 <code>sum_bid_qty - sum_ask_qty</code>，再对滚动窗口做 z-score，把它当未来几秒方向偏置，最后只用来把 bid/ask 向一边轻推，而不是裸做 directional taker。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这份 repo 的 <strong>base alpha 很清楚</strong>：不是 inventory mean reversion，也不是 spread capture 本身，而是 <code>OBI extreme -&gt; future short-horizon drift</code>。</li>
+<li>repo 给的是完整壳，不只是信号：<code>vol_obi</code> 负责半价差，<code>BinanceDiffDepthClient</code> 提供 alpha，<code>inventory skew</code> 控仓，<code>adaptive requote threshold / quota recovery / circuit breaker / stale-order poller</code> 负责执行与风控。</li>
+<li>默认参数很 desk 化：<code>window_steps=6000</code>、<code>step_ns=100ms</code>（约 10 分钟滚动窗），<code>c1_ticks=20</code>，<code>min_half_spread=8bps</code>，<code>skew=3.0</code>，<code>alpha stale_seconds=5</code>。</li>
+<li>我用 Binance USDⓈ-M 公共 <code>BTCUSDT</code> depth REST 做了一个 <strong>180 秒、1 秒采样的缩尺 proxy probe</strong>：<code>alpha_z</code> 与未来 <code>1s</code> 收益的相关约 <code>0.22</code>；按 top/bottom 20% bucket 看，最高 OBI 桶未来 <code>1s/3s/5s</code> 原始 mid return 约 <code>+0.04 / +0.08 / +0.12 bps</code>，最低桶约 <code>-0.07 / -0.21 / -0.35 bps</code>，<code>high-low 5s spread ≈ +0.47 bps</code>。这说明 OBI 更像 <strong>maker skew admission</strong>，而不是单独拿去做 5m 裸方向单。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和当前 desk 直接相关，因为它补的不是又一个“15m 形态故事”，而是 <strong>更快、更底层、可给多个 alpha 共用的 execution-aware raw alpha 组件</strong>：</p>
+<ul>
+<li>对 <code>1m/3m</code>：它本身就可以做 maker alpha；</li>
+<li>对 <code>5m/15m</code>：它可以当 <strong>entry veto / quote-side bias / child execution router</strong>，决定顺着信号挂哪边、哪边缩量、哪边暂停；</li>
+<li>对当前素材池：它把 <code>alpha / execution / inventory / safety</code> 四层拆得很清楚，适合后续单独迁移进我们自己的微观结构实验框架。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：微观结构顺势 + 做市价差捕获</li>
+<li>基础 alpha：<code>depth imbalance z-score -&gt; next-few-second signed drift</code></li>
+<li>regime：高流动、价差稳定、书本更新连续时更可信</li>
+<li>filter / veto：alpha stale &gt; 5s、book 不健康、quote quota 紧张、orderbook sanity fail 时停机</li>
+<li>risk / sizing / execution overlay：vol-based half spread、inventory skew、dynamic max position、POST_ONLY、adaptive requote threshold、circuit breaker</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设</strong>：Binance 顶层到浅层深度的 OBI 极值，能在 <code>1s~10s</code> 内给出足够稳定的 drift，值得用来给 maker quote 做单边偏置。</p>
+<p><strong>最小定义</strong>：</p>
+<ol>
+<li>采 <code>BTC/ETH/SOL</code> 的 <code>depth@100ms</code> 或至少 <code>1s</code> depth snapshot；</li>
+<li>算 <code>imbalance_t = bid_qty(within 2.5%) - ask_qty(within 2.5%)</code>；</li>
+<li>用 <code>60s / 300s / 600s</code> 滚动窗算 <code>z_t</code>；</li>
+<li>当 <code>z_t &gt; z*</code> 时，把 bid 抬高/ask 也抬高（偏多）；<code>z_t &lt; -z*</code> 时反向；</li>
+<li>做一个最简 maker 仿真：<code>min_half_spread 1~4 ticks</code>、<code>inventory cap</code>、<code>5~30s timeout</code>。</li>
+</ol>
+<p><strong>最该先看</strong>：</p>
+<ul>
+<li><code>fill-adjusted net bps</code>（扣 maker fee / rebate 后）</li>
+<li><code>adverse selection</code>（成交后 <code>1s/3s/5s</code> markout）</li>
+</ul>
+<p>如果这两项不过关，就说明 OBI 只够当 veto / skew，不够独立成策略。</p>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>我这次 public probe 是 <strong>REST 1s 缩尺代理</strong>，不是 repo 原生的 <code>@depth@100ms + 本地簿</code>，所以只能说明“方向性没死”，不能说明 production edge 大小。</li>
+<li>maker alpha 最怕 <strong>queue position / fill model / venue latency</strong>；这些如果不进仿真，纸面 edge 很容易被高估。</li>
+<li>这条 alpha 天生更像 <code>1m/3m</code>，硬拉到 <code>5m/15m</code> 做主方向会稀释信息密度。</li>
+<li>repo 跑在 Lighter、alpha 来自 Binance，本质是 <strong>cross-venue transfer</strong>；若两边微观结构脱钩，edge 会衰减。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>djienne. (2026). *LIGHTER_Market_Making*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/djienne/LIGHTER_Market_Making">https://github.com/djienne/LIGHTER_Market_Making</a></code></li>
+<li>关键文件：<code>README.md</code>、<code>market_maker_v2.py</code>、<code>binance_obi.py</code>、<code>vol_obi.py</code>、<code>config.json</code></li>
+<li>Binance USDⓈ-M Futures REST depth endpoint（本地 portability probe 数据源）</li>
+<li>Docs: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Order-Book">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Order-Book</a></code></li>
+<li>本地快检产物：</li>
+<li><code>reports/artifacts/literature/lighter_obi_probe_detail_2026-04-11.csv</code></li>
+<li><code>reports/artifacts/literature/lighter_obi_probe_summary_2026-04-11.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 copula pairs 只读成“更花哨的配对交易”：对 short-cycle crypto desk，更该先拆的是「BTC 参考资产残差 × copula 条件失衡 × alt-alt pair fade」这条 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 copula pairs 只读成“更花哨的配对交易”：对 short-cycle crypto desk，更该先拆的是「BTC 参考资产残差 × copula 条件失衡 × alt-alt pair fade」这条 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-22 12:12 UTC</span>
+      <span class="pill">研究时间：2026-04-22 12:15 UTC</span>
+      <span class="pill">类型：2025 论文全文 audit（Springer full text）+ Binance USDⓈ-M public-data portability probe（近 `28d`，`5m`）</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/copula/reference-asset/btc-anchor/conditional-probability/mispricing-index/5m/15m/paper/public-data/cost/risk</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-22_1215_refasset-copula-pairfade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-22 12:15 UTC</li>
+<li>类型：2025 论文全文 audit（Springer full text）+ Binance USDⓈ-M public-data portability probe（近 <code>28d</code>，<code>5m</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：先用 <code>BTC</code> 当参考资产，把候选 alt 各自转成 <code>BTC</code> 相对残差；当两条残差在 copula 条件概率里出现“一条相对低估、另一条相对高估”的联合失衡时，做 <code>long loser / short winner</code> 的 pair fade，等条件概率回归中性再平</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/copula/reference-asset/btc-anchor/conditional-probability/mispricing-index/5m/15m/paper/public-data/cost/risk</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主来源是：</p>
+<ul>
+<li><strong>Authors</strong>：Masood Tadi, Jiří Witzany</li>
+<li><strong>Year</strong>：2025</li>
+<li><strong>Title</strong>：*Copula-based trading of cointegrated cryptocurrency Pairs*</li>
+<li><strong>Venue</strong>：*Financial Innovation*, 11(1), Article 40</li>
+<li><strong>DOI</strong>：<code>10.1186/s40854-024-00702-7</code></li>
+<li><strong>Readable URL</strong>：<a href="https://link.springer.com/article/10.1186/s40854-024-00702-7/fulltext.html">https://link.springer.com/article/10.1186/s40854-024-00702-7/fulltext.html</a></li>
+<li><strong>PDF URL</strong>：<a href="https://link.springer.com/content/pdf/10.1186/s40854-024-00702-7.pdf">https://link.springer.com/content/pdf/10.1186/s40854-024-00702-7.pdf</a></li>
+<li><strong>Repo URL</strong>：未见作者官方复现仓</li>
+</ul>
+<p>它不是普通“拿两条价格做 z-score”那种 pairs。论文的关键改造是：</p>
+<ol>
+<li>先固定 <code>BTCUSDT</code> 为<strong>参考资产</strong>；</li>
+<li>把每个 alt 都变成一条相对 BTC 的 spread / residual；</li>
+<li>在 formation window 里筛 cointegration + Kendall tau 更高的候选；</li>
+<li>用 copula 去刻画 <strong>两条 BTC-relative spread</strong> 的联合分布；</li>
+<li>在 trading window 里用 <strong>conditional probability / mispricing index</strong> 触发 <code>long A short B</code> 或 <code>short A long B</code>。</li>
+</ol>
+<p>换句话说，<strong>base alpha 很清楚：不是赌 BTC 方向，而是赌两个 alt 相对 BTC 的错位会重新收敛。</strong> 这符合 desk 当前想补的 <code>pairs / stat-arb / relative value</code> 素材池。</p>
+<h2>2. 论文里真正值得 desk 保留的东西</h2>
+<h3>2.1 不是直接交易 coin1/coin2，而是先做“参考资产残差化”</h3>
+<p>这是这篇最该保留的点。</p>
+<p>普通 pairs 常见写法是直接找 <code>A/B</code> spread；这篇则先把 <code>A</code>、<code>B</code> 都投到 <code>BTC</code> 这个公共锚上，再比较两条残差。这样做的直觉是：</p>
+<ul>
+<li>先把大盘 beta / 市场共同驱动剥掉一层；</li>
+<li>剩下的更像“谁相对 BTC 过强、谁相对 BTC 过弱”；</li>
+<li>再用 copula 去看这两个残差是否出现不对称失衡。</li>
+</ul>
+<p>对 crypto short-cycle desk，这比“直接对两条价格做 z-score”更有现实意义，因为很多 alt-alt pair 本质上都被 BTC 市场态主导；不先去掉共同锚，pair signal 很容易只是伪相对价值、实则在追市场波动。</p>
+<h3>2.2 信号不是 spread level，而是 conditional probability</h3>
+<p>论文把 mispricing 理解成 copula 条件概率偏离 <code>0.5</code>。人话翻译：</p>
+<ul>
+<li>如果在当前联合分布下，<code>A</code> 的状态更像“被低估”，<code>B</code> 更像“被高估”，那就 <code>long A / short B</code>；</li>
+<li>反过来就 <code>short A / long B</code>；</li>
+<li>当两边条件概率重新回到中性带附近，就平仓。</li>
+</ul>
+<p>这比纯 z-score 多了一个优点：<strong>它允许 pair 关系是非线性的、尾部不对称的。</strong></p>
+<h3>2.3 它是完整策略，不只是统计描述</h3>
+<p>这篇不是“市场有效性讨论”。它给了：</p>
+<ul>
+<li>formation / trading 周期；</li>
+<li>参考资产选择；</li>
+<li>cointegration 检验；</li>
+<li>相关性排序；</li>
+<li>copula 拟合；</li>
+<li>开平仓触发；</li>
+<li>交易成本；</li>
+<li>5m 与 hourly 对比。</li>
+</ul>
+<p>所以它符合本轮优先级里的“<strong>可直接落地为完整策略的 raw alpha 候选</strong>”。</p>
+<h2>3. 论文里最有用的结果，先说人话</h2>
+<p>论文样本是 <strong>20 个 Binance USDT-margined futures 币种，2021-01-22 到 2023-01-19</strong>，按 <strong>三周 formation + 一周 trading</strong> 动态滚动，共 <code>104</code> 个交易周。</p>
+<p>作者结论里最关键的几组数：</p>
+<ul>
+<li><strong>5m 明显优于 hourly</strong>；</li>
+<li>在 EG cointegration test 下，<strong>5m 最佳 total net return 达 <code>205.9%</code></strong>；</li>
+<li>对应 <strong>annualized net return 从 <code>56.7%</code>（<code>α1=0.10</code>）升到 <code>75.2%</code>（<code>α1=0.20</code>）</strong>；</li>
+<li>文中还明确写到：该策略 <strong>annualized net returns up to <code>9.3%</code> 且 Sharpe 接近或高于 <code>0.95</code></strong>（这里是和其他基准方法比较时强调其风险调整后表现更稳）。</li>
+</ul>
+<p>这些数不能直接照搬到现在，但至少说明两点：</p>
+<ol>
+<li><strong>这不是只有 paper headline、没有交易壳的想法</strong>；</li>
+<li><strong>这条线天然更贴 <code>5m</code>，不是只能放到低频研究里当装饰。</strong></li>
+</ol>
+<h2>4. 我们自己的最小 portability probe：先看它能不能迁到近期公开数据</h2>
+<p>我额外做了一个<strong>简化版公开数据快检</strong>，目的不是完整复刻论文，而是回答一句：</p>
+<p>&gt; 这条壳，能不能在今天 desk 的 <code>5m/15m</code> 研究框架里很快做出第一轮实验？</p>
+<h3>4.1 本轮 probe 怎么做的</h3>
+<p>数据与实现：</p>
+<ul>
+<li>数据源：Binance USDⓈ-M public klines</li>
+<li>频率：<code>5m</code></li>
+<li>样本：近 <code>28d</code>（<code>2026-03-25 12:10 UTC</code> ~ <code>2026-04-22 12:05 UTC</code>）</li>
+<li>标的池：<code>BTC/ETH/BNB/SOL/XRP/DOGE/ADA/LINK/AVAX/TRX/DOT/LTC/BCH</code></li>
+<li>formation / trading：前 <code>21d</code> formation，后 <code>7d</code> trading</li>
+<li>参考资产：<code>BTCUSDT</code></li>
+<li>残差化：对每个 alt 做 <code>BTC</code> 线性 beta 残差</li>
+<li>候选选择：按“残差半衰期更短 + 与 BTC 收益相关性更高”做简化排序</li>
+<li>copula：<strong>不是论文里的全家桶 copula</strong>，而是更轻量的 <strong>empirical marginals + Gaussian copula</strong></li>
+<li>entry：<code>alpha = 0.10</code></li>
+<li>exit：两边条件概率都回到 <code>0.5 ± 0.2</code>，或 <code>6h</code> time stop（<code>72</code> 根 <code>5m</code>）</li>
+</ul>
+<p>对应实验脚本与结果文件：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/copula_reference_pairs_probe_20260422.py</code></li>
+<li><code>reports/artifacts/quant_digests/copula_reference_pairs_probe_20260422/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/copula_reference_pairs_probe_20260422/btc_reference_candidates.csv</code></li>
+<li><code>reports/artifacts/quant_digests/copula_reference_pairs_probe_20260422/signals_DOGEUSDT_XRPUSDT.csv</code></li>
+<li><code>reports/artifacts/quant_digests/copula_reference_pairs_probe_20260422/trades_DOGEUSDT_XRPUSDT.csv</code></li>
+</ul>
+<h3>4.2 快检结果</h3>
+<p>形成窗里，按我这版简化排序，最靠前的 BTC-reference 候选是：</p>
+<ul>
+<li><code>DOGEUSDT</code>：residual half-life <code>103.2</code> bars，BTC return corr <code>0.764</code></li>
+<li><code>XRPUSDT</code>：residual half-life <code>193.6</code> bars，BTC return corr <code>0.806</code></li>
+</ul>
+<p>于是最小测试对是：<code>DOGEUSDT / XRPUSDT</code>。</p>
+<p>Gaussian copula 拟合出来的依赖强度：</p>
+<ul>
+<li><code>rho ≈ 0.736</code></li>
+</ul>
+<p>最近 <code>7d</code> trading 窗里的简化结果：</p>
+<ul>
+<li>交易数：<code>12</code></li>
+<li>胜率：<code>33.3%</code></li>
+<li>平均 gross：<code>-58.8 bps/笔</code></li>
+<li>中位数 gross：<code>-69.3 bps/笔</code></li>
+<li>总 gross：<code>-706.1 bps</code></li>
+<li>平均持有：<code>72</code> bars，也就是正好常撞到 <code>6h</code> time stop</li>
+</ul>
+<p>人话结论：</p>
+<ul>
+<li><strong>这条思路是可迁移的，但“简化成 Gaussian copula + 近期单窗口 + 机械 6h timeout”后，目前没跑出正边。</strong></li>
+<li>负结果本身也有价值：它说明这不是“随便残差化一下就自动赚钱”的 alpha；真正的 edge 很可能依赖：</li>
+<li>更严格的 pair admission；</li>
+<li>更接近论文的 copula family selection；</li>
+<li>更长 formation / trading 轮换；</li>
+<li>更合理的 exit，而不是全靠 time stop；</li>
+<li>更好的成本与流动性过滤。</li>
+</ul>
+<h2>5. 为什么这条线仍值得留在研究池，而不是直接枪毙</h2>
+<p>因为它回答的是一个当前 desk 很需要的问题：</p>
+<p>&gt; 在一堆已经写过的 <code>pairs / z-score / cointegration</code> 之外，还有没有<strong>更像“完整 relative-value 壳”</strong>、而不是只换个指标名？</p>
+<p>这篇给出的答案是：<strong>有，关键升级不是“换一个 fancy 指标”，而是三件事一起上：</strong></p>
+<ol>
+<li><strong>先做 BTC 参考资产残差化</strong>，减少共同市场因子污染；</li>
+<li><strong>用 copula 条件概率</strong>，允许非线性/不对称关系；</li>
+<li><strong>把 signal 写成完整开平仓逻辑</strong>，而不是停在统计显著性。</li>
+</ol>
+<p>也就是说，它不是重复我们已经有的“普通 pair z-score fade”，而是给 pair stack 补了一个更高一层的 admission / signal 生成方式。</p>
+<h2>6. 和当前 short-cycle（<code>1m/3m/5m/15m</code>）的关系</h2>
+<p>这条 alpha 最自然落点仍然是：</p>
+<ul>
+<li><strong><code>15m</code></strong>：做 formation / pair admission / copula refit</li>
+<li><strong><code>5m</code></strong>：做正式信号层</li>
+<li><strong><code>1m/3m</code></strong>：做 child execution、盘口 veto、腿间偏离监控、orphan-leg 管理</li>
+</ul>
+<p>它不是 ultra-HFT，但也绝不是只能放在日频或周频里。论文本身就说明了：<strong>5m 比 hourly 更有信息密度。</strong></p>
+<h2>7. 这条策略怎么落成 desk 可测的完整版本</h2>
+<h3>7.1 最小可落地壳</h3>
+<ul>
+<li><strong>Universe</strong>：先从 <code>BTC + 12~20</code> 个 liquid majors / semi-majors 开始</li>
+<li><strong>Formation</strong>：过去 <code>15~21d</code></li>
+<li><strong>Reference asset</strong>：先固定 <code>BTCUSDT</code></li>
+<li><strong>Candidate selection</strong>：</li>
+<li>先筛和 BTC 残差更稳定的 alt</li>
+<li>再选 top-2 / top-k 形成 alt-alt pair</li>
+<li><strong>Signal</strong>：</li>
+<li>对两条 BTC-relative residual 做 marginal fit + copula fit</li>
+<li>用 conditional probability / MPI 触发 pair entry</li>
+<li><strong>Direction</strong>：<code>long 상대低估 leg / short 相对高估 leg</code></li>
+<li><strong>Exit</strong>：MPI 回中性、双边条件概率回中性、或 time stop</li>
+<li><strong>Sizing</strong>：dollar-neutral 起步，再逐步过渡到 vol-neutral / beta-adjusted</li>
+<li><strong>Cost / Risk</strong>：maker-first、单腿失败 kill switch、单 pair notional cap、同主题 pair cluster cap</li>
+</ul>
+<h3>7.2 最容易犯的错</h3>
+<ul>
+<li>把它误做成“又一个普通 spread z-score”；</li>
+<li>只看相关性，不看 residual 稳定性；</li>
+<li>formation 太短，copula 拟合噪声太大；</li>
+<li>exit 不基于回中，而是只靠时间止损；</li>
+<li>忽略两腿流动性不对称，导致一边能做、一边滑点爆炸。</li>
+</ul>
+<h2>8. 风险与保留意见</h2>
+<h3>8.1 论文结果不等于今天直接可复制</h3>
+<p>论文样本落在 <code>2021~2023</code>，和现在市场微结构已经不一样。即便 5m 仍然可做，也未必还能给出同样厚的 net edge。</p>
+<h3>8.2 copula 的复杂度是真成本，不是白送增强</h3>
+<p>我的简化快检已经证明：<strong>随便用一个 Gaussian copula 替代，并不能自动继承论文里的优势。</strong> 如果后续不愿意投入更完整的 copula fit / family selection，这条线就可能退化成“复杂但没比 z-score 强多少”。</p>
+<h3>8.3 它更像一个 pair signal generator，不是 execution alpha</h3>
+<p>真正实盘成败还得看：</p>
+<ul>
+<li>两腿盘口深度；</li>
+<li>maker fill 比例；</li>
+<li>触发后腿间价差是否继续扩散；</li>
+<li>是否频繁撞 time stop；</li>
+<li>同时开多组 pair 时的相关性聚集。</li>
+</ul>
+<h2>9. 结论</h2>
+<p><strong>这篇值得收进 raw alpha 素材池，而且属于“能直接补 pair/stat-arb 主线”的那类。</strong></p>
+<p>但本轮最诚实的结论不是“论文很强所以直接上”，而是：</p>
+<ul>
+<li><strong>base alpha 清楚，完整策略壳成立；</strong></li>
+<li><strong>5m 口径在论文里是正向加分项；</strong></li>
+<li><strong>我们自己的简化公开数据 probe 暂时没跑出正边，说明后续必须把 pair admission、copula 选择和 exit 规则做得更像正式研究，而不是随手简化。</strong></li>
+</ul>
+<p>所以它当前最合适的定位是：</p>
+<p>&gt; <strong>pairs / relative-value 研究栈里的高优先级“第二层升级件”</strong>——不是替代所有 z-score pairs，而是作为“BTC-anchor + nonlinear MPI signal”的增强模块继续测。</p>
+<h2>10. 下一步怎么测（直接可执行）</h2>
+<ol>
+<li><strong>先做论文更接近版复现</strong>：把 formation / trading 改成 <code>3w + 1w</code> 滚动，至少跑最近 <code>6~12</code> 个月，而不是只看一个 28d 窗口。</li>
+<li><strong>补 copula family sweep</strong>：不要只用 Gaussian；至少比较 <code>Gaussian / Student-t / Gumbel / Clayton / Frank / BB7/BB8</code> 近似可行替代，并记录 AIC + OOS 信号质量。</li>
+<li><strong>把 pair admission 写严一点</strong>：先做 <code>BTC</code> 残差半衰期、残差波动稳定性、rolling Kendall tau、liquidity veto，再决定能不能入池。</li>
+<li><strong>把 exit 从 time-stop 改成 signal-stop 为主</strong>：测试 <code>MPI 回中性</code>、<code>双边条件概率回 0.5</code>、<code>residual z-score 回 0</code> 三类退出。</li>
+<li><strong>做 15m/5m 双层结构</strong>：<code>15m</code> 负责 refit / admission，<code>5m</code> 负责执行信号；再用 <code>1m</code> 测 child execution 与单腿风险。</li>
+<li><strong>和现有 pair baseline 正面对照</strong>：对同一批 pair，同期比较</li>
+</ol>
+<ul>
+<li>普通 residual z-score fade</li>
+<li>Kalman hedge ratio fade</li>
+<li>BTC-reference copula MPI fade</li>
+<p>看谁在扣费后更稳。</p>
+</ul>
+<h2>11. 关键来源</h2>
+<ol>
+<li><strong>Tadi, M., &amp; Witzany, J. (2025).</strong> *Copula-based trading of cointegrated cryptocurrency Pairs*. *Financial Innovation*, 11(1), 40. DOI: <code>10.1186/s40854-024-00702-7</code></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://link.springer.com/article/10.1186/s40854-024-00702-7/fulltext.html">https://link.springer.com/article/10.1186/s40854-024-00702-7/fulltext.html</a></li>
+<li>PDF URL: <a href="https://link.springer.com/content/pdf/10.1186/s40854-024-00702-7.pdf">https://link.springer.com/content/pdf/10.1186/s40854-024-00702-7.pdf</a></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures API</strong>. Kline/Candlestick Data</li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://binance-docs.github.io/apidocs/futures/en/#kline-candlestick-data">https://binance-docs.github.io/apidocs/futures/en/#kline-candlestick-data</a></li>
+</ul>
+<p>---</p>
+<h2>附：本轮实验文件</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/tadi_witzany_2025_copula_pairs.pdf</code></li>
+<li><code>reports/artifacts/quant_digests/copula_reference_pairs_probe_20260422.py</code></li>
+<li><code>reports/artifacts/quant_digests/copula_reference_pairs_probe_20260422/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/copula_reference_pairs_probe_20260422/btc_reference_candidates.csv</code></li>
+<li><code>reports/artifacts/quant_digests/copula_reference_pairs_probe_20260422/signals_DOGEUSDT_XRPUSDT.csv</code></li>
+<li><code>reports/artifacts/quant_digests/copula_reference_pairs_probe_20260422/trades_DOGEUSDT_XRPUSDT.csv</code></li>
+</ul>
+</body>
+</html>

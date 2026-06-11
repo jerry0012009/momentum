@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 funding carry 只做成 always-on 收租：这份 2025 GitHub 新仓库更该先测的是「预测 funding sign → carry on/off / reverse」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 funding carry 只做成 always-on 收租：这份 2025 GitHub 新仓库更该先测的是「预测 funding sign → carry on/off / reverse」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-28 00:22 UTC</span>
+      <span class="pill">研究时间：2026-03-28 00:20 UTC</span>
+      <span class="pill">类型：2025 GitHub 新仓库 + report.md + 源码审阅</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/basis/spot-perp/sign-prediction/hyperliquid/eth/hourly/5m/15m/repo/external-data/cost</span>
+      <span class="pill">证据类型：仓库源码 + report.md + 子报告证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-28_0020_predicted-funding-sign-carry-switch-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-28 00:20 UTC</li>
+<li>类型：2025 GitHub 新仓库 + report.md + 源码审阅</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：spot-perp 对冲仓位本身赚的是 funding / basis cashflow；若能提前识别下一段 funding sign，就能把 carry 从“永远收租”改成“该收时开、该停时停、极端时反手”</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/carry/funding/basis/spot-perp/sign-prediction/hyperliquid/eth/hourly/5m/15m/repo/external-data/cost</li>
+<li>证据类型：仓库源码 + report.md + 子报告证据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Pudovikov Andrey &amp; Bolotin Danila (2025)</strong> 的 GitHub 仓库 <strong>_crypto_strategy_</strong>，核心材料包括主报告 <strong>_The modification of the basis-trading between spot and perpetuals_</strong>、ETH funding sign 预测子报告，以及 <code>ml_basis_strategy.py / mb_hl_strategy.py</code> 的实现骨架。</p>
+<p>对 desk 最有用的，不是“又一个 funding 看板”，而是它把一条 <strong>可直接落成完整策略的 carry / basis raw alpha</strong> 讲清楚了：</p>
+<p>&gt; <strong>base alpha 很明确：当下一段 funding 更可能为正时，做 long spot + short perp 收 funding；当下一段 funding 更可能为负时，不是傻扛，而是 flat 或在收益覆盖成本时反向做 short spot + long perp。</strong></p>
+<p>所以这不是单纯 filter，也不是 overlay；预测模型只是 timing 层，真正赚钱的 alpha 本体依然是 <strong>funding / basis carry</strong>。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份仓库真正值得 desk 先测的，不是“LSTM 能不能预测 funding”，而是 <strong>“predicted funding sign 驱动 carry on/off / reverse”</strong> 这条完整 raw alpha 骨架。</li>
+<li><strong>一句话它怎么证明：</strong> 作者用 <strong>ETH 小时级 funding 数据 + spot/perp 价格序列</strong>，先证明 funding sign 有一定可预测性，再把这个 sign 预测接到 basis strategy 的持仓切换规则上。</li>
+<li><strong>sign 可预测性并不弱：</strong> 子报告里，ETH funding sign 预测的 <strong>LSTM F1</strong> 在 <strong>1h / 3h / 8h / 24h</strong> 窗口分别约为 <strong>0.8397 / 0.8099 / 0.7645 / 0.7494</strong>；Prophet 对应约 <strong>0.8004 / 0.7748 / 0.7278 / 0.6885</strong>。</li>
+<li><strong>样本本身有 carry 偏置：</strong> 2025-01-01 到 2025-05-13 的 ETH funding 统计里，<strong>正 funding 占 71.21%</strong>，<strong>负 funding 占 28.79%</strong>。这意味着“永远 long spot + short perp”确实有直觉基础，但负 funding 也并不稀少到可以忽略。</li>
+<li><strong>完整策略结果给了一个可用但要打折的上界：</strong> 主报告声称网格搜索最优点的 <strong>APY 约 16.4%</strong>、<strong>最大回撤约 -1.17%</strong>，但同时伴随 <strong>最小杠杆 11x、最大杠杆 41x+、目标杠杆 3x</strong> 这类非常激进的设定，不适合直接照搬进 desk。</li>
+<li><strong>更值得偷的是骨架而不是最终绩效：</strong> 源码里真正可复用的，是 <code>predict-negative -&gt; exit</code> / <code>predict-positive -&gt; re-enter</code> 这套状态机，以及把费用门槛明确写进切换规则的思路。</li>
+<li><strong>要保持诚实：</strong> 仓库材料存在轻微口径不一致——funding 分析主样本写的是 <strong>2025-01-01 ~ 2025-05-13</strong>，但主报告实验段又写到 <strong>2023-01-01 ~ 2025-05-05</strong>。所以这条线更像 <strong>高价值研究骨架</strong>，还不是可直接相信的已审计业绩。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线值得进池，原因很直接：</p>
+<ul>
+<li>它属于当前明确优先补的 <strong>raw alpha 家族</strong>，而且是和 breakout / reversal / pairs 平行的一条 <strong>carry / funding / basis</strong> 主线；</li>
+<li>它不是“拿 funding 当 gate 去修补别的 alpha”，而是 funding 本身就是利润来源；</li>
+<li>它天然带着完整策略元素：<code>entry / exit / sizing / risk / cost</code> 全都能写清楚；</li>
+<li>对当前 desk 很友好：虽然信号刷新是 <strong>1h</strong>，但执行完全可以落在 <strong>5m / 15m</strong>，用更细粒度做开平与风控；</li>
+<li>它还能补当前素材池里的一个空白：<strong>我们已经积累了不少 momentum / reversal / lead-lag / pairs，但“什么时候该开 carry、什么时候该停 carry”这条完整 timing 线还不够扎实。</strong></li>
+</ul>
+<p>更重要的是，这篇东西很适合 desk 的现实约束：</p>
+<ul>
+<li>若不能稳定做 short spot，就先测试 <strong>predict-negative 时 flat</strong>；</li>
+<li>若 borrow / transfer / gas 不友好，就先做 <strong>同 venue 或低搬砖依赖</strong> 的 carry timing 版本；</li>
+<li>若 <code>1h</code> forecast 已经能大幅减少负 funding 暴露，那它就是一条很实用的原始 alpha，而不只是学术花活。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：market-neutral carry / relative value</li>
+<li>基础 alpha：收取有利 funding，并规避或反向吃不利 funding</li>
+<li>entry：在每次 funding 预测刷新后，若 <code>predicted_sign &gt; 0</code> 且预期净 funding 覆盖 fees，则开 <code>long spot + short perp</code>；若 <code>predicted_sign &lt; 0</code> 且绝对值足够大、可覆盖 round-trip + borrow / carry 成本，则允许 <code>short spot + long perp</code></li>
+<li>exit：预测 sign 翻转、预期 funding 收益跌破成本门槛、持有达到 <code>1 / 3 / 8</code> 个 funding interval、或 basis 偏离/杠杆超限时平仓</li>
+<li>sizing：第一轮先固定 notional；第二轮再做 <code>inverse-basis-vol</code> 或 <code>signal-confidence</code> sizing；desk 默认先把杠杆压到 <strong>1x~3x</strong>，不要照搬 repo 的 11x+ 下界</li>
+<li>risk：净 delta 约束、basis 失控止损、单 venue / 单资产上限、单日 funding sign 连续误判熔断</li>
+<li>cost：spot/perp 手续费、spread、借币成本、资金费率、可能的 transfer / gas；若做反向 carry，还要额外核算 short spot 可得性</li>
+<li>更适合的 regime：funding 偏置持续、市场拥挤明显、perp 溢价/折价状态相对稳定的阶段</li>
+<li>主要 veto：新币、薄流动性、借币困难、basis 已严重拉爆、重大宏观/清算事件前后</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 在 public funding 数据上，<code>predicted funding sign</code> 至少能把“always-on carry”改造成一条更诚实的短周期可执行 raw alpha：负 funding 小时少扛、正 funding 小时多待、必要时才反手。</p>
+<p><strong>最小实验建议：</strong></p>
+<ol>
+<li><strong>Universe：</strong> 先做 ETH、BTC；第三个加 SOL。只做高流动、可稳定拿 funding 与价格数据的标的。</li>
+<li><strong>数据源：</strong></li>
+</ol>
+<ul>
+<li>funding：Hyperliquid 公共 funding 数据，<strong>公开可得</strong>，原仓库口径为 <strong>1h 更新</strong>；</li>
+<li>价格：Binance 或 Hyperliquid 的现货/永续 OHLCV，<strong>公开可得</strong>；</li>
+<li>desk 执行层：把小时级 sign forecast 映射到 <strong>5m / 15m</strong> 开平仓。</li>
+</ul>
+<ol>
+<li><strong>最小特征：</strong> 先只复刻仓库里最轻的那套：<code>lag 1/2/3/6/12/24</code>、<code>rolling mean 3/8/24</code>、<code>rolling std 8/24</code>。不要上来就堆链上或情绪数据。</li>
+<li><strong>先跑三层基线，不要一步到位：</strong></li>
+</ol>
+<ul>
+<li>A：<code>always-on long spot + short perp</code></li>
+<li>B：<code>predict-negative -&gt; flat</code></li>
+<li>C：<code>predict-negative and expected edge &gt; cost floor -&gt; reverse carry</code></li>
+</ul>
+<ol>
+<li><strong>模型顺序：</strong></li>
+</ol>
+<ul>
+<li>baseline 0：sign persistence（下一小时等于这一小时）</li>
+<li>baseline 1：logistic / tree model</li>
+<li>baseline 2：LSTM 24h sequence</li>
+<p>先证明“simple model 能不能打过 persistence”，再考虑深度模型。</p>
+</ul>
+<ol>
+<li><strong>执行口径：</strong> 每个整点生成下一 funding interval 的 sign 预测；在下一根 <strong>5m</strong> bar 或 <strong>15m</strong> bar 执行；持有到下次预测刷新，或在中途达到 risk trigger 退出。</li>
+<li><strong>成本口径：</strong> 至少拆成四层：</li>
+</ol>
+<ul>
+<li>只看 funding cashflow</li>
+<li>funding + 手续费</li>
+<li>funding + 手续费 + spread</li>
+<li>funding + 手续费 + spread + short/borrow/transfer</li>
+</ul>
+<ol>
+<li><strong>成功标准：</strong></li>
+</ol>
+<ul>
+<li>B 是否显著优于 always-on carry；</li>
+<li>C 在扣完反手额外成本后是否仍有边；</li>
+<li>5m 执行是否优于 15m 执行；</li>
+<li>优势是否主要来自“少吃负 funding”，而不是靠高杠杆放大。</li>
+</ul>
+<h2>5. 我对这条线的当前判断</h2>
+<p>我的判断是：<strong>值得进研究池，而且优先级不低。</strong></p>
+<p>原因不是它已经证明了“16% APY 可以直接抄”，而是它提供了一条非常实用的 desk 化问题：</p>
+<p>&gt; <strong>carry 到底该 always-on，还是应该做 sign-timed on/off？</strong></p>
+<p>这是一个能很快拿到 first verdict 的问题，而且结果无论正负都很有价值：</p>
+<ul>
+<li>如果 <code>predict-negative -&gt; flat</code> 已经能显著改善收益回撤比，这条线就值得继续；</li>
+<li>如果连最简单的 sign timing 都帮不了太多，说明 raw carry 可能已经足够，复杂模型不必继续堆；</li>
+<li>如果只有“反向 carry”才赚钱，但必须依赖高 borrow / 高杠杆，那就该降级，不要硬推到短周期主池。</li>
+</ul>
+<p>也就是说，这条线最像的是 <strong>“完整 raw alpha 的 honest intake”</strong>，不是又一个只会给主策略贴创可贴的 overlay。</p>
+<h2>6. 下一步最该怎么测</h2>
+<p>如果只给一个最优先动作，我会做这个：</p>
+<p>&gt; <strong>先在 ETH 上做 <code>always-on carry</code> vs <code>predict-negative -&gt; flat</code> 的 A/B，对同一批小时级 funding sign 预测，统一映射到 5m 执行层，并强制加入 4 档成本。</strong></p>
+<p>这一步最便宜，也最能快速回答三个关键问题：</p>
+<ul>
+<li>funding sign timing 到底有没有真价值；</li>
+<li>价值是来自“少付负 funding”，还是来自“反手赚负 funding”；</li>
+<li>5m/15m 执行层会不会把小时级 forecast 的边际收益全磨掉。</li>
+</ul>
+<h2>7. 来源与可复用材料</h2>
+<ol>
+<li><strong>Pudovikov, A., &amp; Bolotin, D. (2025). _crypto_strategy_（GitHub repository）.</strong></li>
+<p>Repo URL：&lt;<a href="https://github.com/pudovikoff/crypto_strategy&gt;">https://github.com/pudovikoff/crypto_strategy&gt;</a> GitHub API metadata：创建于 <strong>2025-05-14</strong>，最后 push 于 <strong>2025-05-19</strong>。</p>
+<li><strong>Pudovikov, A., &amp; Bolotin, D. (2025). _The modification of the basis-trading between spot and perpetuals_（repo report）.</strong></li>
+<p>Readable URL：&lt;<a href="https://github.com/pudovikoff/crypto_strategy/blob/main/report.md&gt;">https://github.com/pudovikoff/crypto_strategy/blob/main/report.md&gt;</a> Raw URL：&lt;<a href="https://raw.githubusercontent.com/pudovikoff/crypto_strategy/main/report.md&gt;">https://raw.githubusercontent.com/pudovikoff/crypto_strategy/main/report.md&gt;</a></p>
+<li><strong>Pudovikov, A., &amp; Bolotin, D. (2025). _Ethereum Funding Rate Sign Prediction: Comprehensive Report_.</strong></li>
+<p>Readable URL：&lt;<a href="https://github.com/pudovikoff/crypto_strategy/blob/main/funding_rate_analysis/eth_funding_rate_sign_prediction_report.md&gt;">https://github.com/pudovikoff/crypto_strategy/blob/main/funding_rate_analysis/eth_funding_rate_sign_prediction_report.md&gt;</a> Raw URL：&lt;<a href="https://raw.githubusercontent.com/pudovikoff/crypto_strategy/main/funding_rate_analysis/eth_funding_rate_sign_prediction_report.md&gt;">https://raw.githubusercontent.com/pudovikoff/crypto_strategy/main/funding_rate_analysis/eth_funding_rate_sign_prediction_report.md&gt;</a></p>
+<li><strong>可直接复用的源码骨架：</strong></li>
+</ol>
+<ul>
+<li><code>managed_basis_strategy/ml_basis_strategy.py</code>：<code>predict-positive -&gt; hold / rebalance</code>，<code>predict-negative -&gt; exit</code></li>
+<li><code>managed_basis_strategy/mb_hl_strategy.py</code>：把 Hyperliquid funding + price history 组装成可回测 observation</li>
+</ul>
+<ol>
+<li><strong>官方文档（数据/费用口径）</strong></li>
+</ol>
+<ul>
+<li>Hyperliquid funding docs：&lt;<a href="https://hyperliquid.gitbook.io/hyperliquid-docs/trading/funding&gt;">https://hyperliquid.gitbook.io/hyperliquid-docs/trading/funding&gt;</a></li>
+<li>Hyperliquid fee docs：&lt;<a href="https://hyperliquid.gitbook.io/hyperliquid-docs/trading/fees&gt;">https://hyperliquid.gitbook.io/hyperliquid-docs/trading/fees&gt;</a></li>
+<li>Hyperliquid onboarding / gas 说明：&lt;<a href="https://hyperliquid.gitbook.io/hyperliquid-docs/onboarding/how-to-start-trading&gt;">https://hyperliquid.gitbook.io/hyperliquid-docs/onboarding/how-to-start-trading&gt;</a></li>
+</ul>
+</body>
+</html>

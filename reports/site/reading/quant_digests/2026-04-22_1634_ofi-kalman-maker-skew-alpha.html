@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 `mm-live` 只读成“做市工程模板”：对 short-cycle crypto desk，更该先拆的是「OFI/Kalman fair-value skew × maker markout」这条 microstructure raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 `mm-live` 只读成“做市工程模板”：对 short-cycle crypto desk，更该先拆的是「OFI/Kalman fair-value skew × maker markout」这条 microstructure raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-22 16:34 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `signals/fair_value.py` + `signals/imbalance.py` + `strategy/quoting.py` + `research/markout.py`）+ Binance USDⓈ-M public L2 REST probe（`BTC/ETH/SOL`，约 `45s × 0.5s`）</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/order-flow-imbalance/kalman-fair-value/microprice/avellaneda-stoikov/market-making/markout/binance-perpetual/1m/3m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 规则骨架 + public L2 first probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-22_1634_ofi-kalman-maker-skew-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-22 16:34 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>signals/fair_value.py</code> + <code>signals/imbalance.py</code> + <code>strategy/quoting.py</code> + <code>research/markout.py</code>）+ Binance USDⓈ-M public L2 REST probe（<code>BTC/ETH/SOL</code>，约 <code>45s × 0.5s</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：盘口买卖量失衡 / microprice 偏移能预测下一小段 mid-price drift；交易上不追市价单，而是把 fair value 往优势方向 skew，并用 maker quote 捕获半价差 + 短 horizon markout</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/microstructure/order-flow-imbalance/kalman-fair-value/microprice/avellaneda-stoikov/market-making/markout/binance-perpetual/1m/3m/repo/public-data/cost/risk</li>
+<li>证据类型：repo 规则骨架 + public L2 first probe</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<p>这轮主来源是一个 2026 新仓：</p>
+<ul>
+<li><strong>Authors</strong>：Aliipou</li>
+<li><strong>Year</strong>：2026（repo 创建时间 2026-03-23）</li>
+<li><strong>Title</strong>：mm-live</li>
+<li><strong>Venue</strong>：GitHub repository</li>
+<li><strong>DOI</strong>：N/A</li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/Aliipou/mm-live&gt;">https://github.com/Aliipou/mm-live&gt;</a></li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/Aliipou/mm-live&gt;">https://github.com/Aliipou/mm-live&gt;</a></li>
+<li><strong>关键源码</strong>：</li>
+<li>&lt;<a href="https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/signals/fair_value.py&gt;">https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/signals/fair_value.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/signals/imbalance.py&gt;">https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/signals/imbalance.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/strategy/quoting.py&gt;">https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/strategy/quoting.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/research/markout.py&gt;">https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/research/markout.py&gt;</a></li>
+</ul>
+<p>repo 的可复用点不是“又一个 A-S 做市公式”，而是把信号链写得很完整：<code>fair_value = Kalman(mid) + alpha × imbalance</code>，再用 Avellaneda-Stoikov 的 reservation price / half-spread，把 quote 向订单流优势方向 skew；最后用 markout 检验成交后 <code>100ms~30s</code> 中价是否继续对自己有利。</p>
+<h2>2) 先回答一句：base alpha 是什么？</h2>
+<p>&gt; <strong>base alpha = L2 order-flow imbalance / microprice 对短 horizon mid-price drift 的方向预测。</strong></p>
+<p>所以它不是纯 execution overlay。它有可交易表达：当 OFI / microprice 指向上行时，提高 fair value、收紧 ask / 放宽 bid；指向下行时反过来。收益来源不是市价追涨，而是 <strong>maker fill 后的正 markout + 半价差捕获</strong>。</p>
+<h2>3) first probe：盘口失衡确实有短 horizon 方向性，但 edge 只有微结构级别</h2>
+<p>我用 Binance USDⓈ-M 公共 depth REST 做一个很小的 feasibility probe：<code>BTC/ETH/SOL</code>，每 <code>0.5s</code> 抓 top20 depth，约 <code>90</code> 个 snapshot / symbol，计算：</p>
+<ul>
+<li><code>top_imb = (best_bid_size - best_ask_size) / sum</code></li>
+<li><code>depth_imb = top10 bid/ask size imbalance</code></li>
+<li><code>micro_dev_bps = (microprice - mid) / mid</code></li>
+<li>下一 snapshot 的 <code>mid return bps</code></li>
+</ul>
+<p>对应文件：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/mm_live_ofi_markout_summary_2026-04-22.csv</code></li>
+<li><code>reports/artifacts/quant_digests/mm_live_ofi_markout_detail_2026-04-22.csv</code></li>
+</ul>
+<p>最有信息量的数字：</p>
+<p>| symbol | signal | n | corr(next) | highQ - lowQ next bps | median spread bps | |---|---:|---:|---:|---:|---:| | BTCUSDT | depth_imb | 89 | <code>0.289</code> | <code>+0.362</code> | <code>0.013</code> | | ETHUSDT | depth_imb | 89 | <code>0.166</code> | <code>+0.411</code> | <code>0.042</code> | | SOLUSDT | top_imb | 89 | <code>0.313</code> | <code>+0.569</code> | <code>1.138</code> |</p>
+<p><strong>人话结论</strong>：这个信号在 <code>0.5s</code> 级别能看到方向性，但单次差异大多是 <code>0.3~0.6 bps</code>。它不适合伪装成 <code>5m/15m</code> 方向主信号；更适合做 <code>1m/3m</code> child execution / maker-first alpha sleeve：只在父策略允许交易时，用 OFI 决定挂哪边、挂多近、是否撤单。</p>
+<h2>4) 如何落成完整策略（entry/exit/sizing/risk/cost）</h2>
+<ul>
+<li><strong>Entry / quote admission</strong>：父层先给可交易方向或中性做市许可；子层要求 <code>|depth_imb|</code> 或 <code>|micro_dev_bps|</code> 进入 top quantile，才允许主动 skew。</li>
+<li><strong>Quote placement</strong>：沿用 repo 的 A-S 框架：<code>reservation = fv - qγσ²T</code>，<code>delta</code> 随 vol regime 放大；OFI 为正时 fair value 上调，同时 quote 更偏向不被 adverse selection pick off。</li>
+<li><strong>Exit</strong>：不是 K 线固定 hold，而是 fill 后做 markout 监控；若 <code>100ms/500ms/1s</code> markout 连续为负，立即降 size / widen / 暂停。</li>
+<li><strong>Sizing</strong>：按 inventory cap + realized vol + recent markout quality 缩放；不做 “98% 仓位” 这类方向策略仓位。</li>
+<li><strong>Risk</strong>：高波动、深度骤降、spread 扩大、连续负 markout 时 kill-switch；单 symbol inventory 硬上限。</li>
+<li><strong>Cost</strong>：必须 maker-first；若退化成 taker 追单，这条 edge 基本会被费用和滑点吃掉。</li>
+</ul>
+<h2>5) 为什么这条线值得进研究池</h2>
+<p>最近 digest 已经有不少 <code>15m</code> parent alpha：pairs、basis、cross-sectional、mean reversion、breakout。它们共同的问题是：gross edge 常有，但成本后容易被吞。<code>mm-live</code> 这类材料的价值在于补一个可复用的 <strong>child execution alpha</strong>：不是帮我们决定“买哪个币”，而是帮已经通过 admission 的交易更便宜、更少被打穿地成交。</p>
+<h2>6) 下一步怎么测（明确动作）</h2>
+<ol>
+<li><strong>把 probe 从 REST 升级成 WebSocket</strong>：至少采 <code>BTC/ETH/SOL/AVAX/LINK</code>，<code>1h</code>，100ms/500ms/1s/5s markout。</li>
+<li><strong>做 fill simulator</strong>：用 post-only bid/ask 规则模拟排队成交，不只看 mid drift；统计 fill rate、markout、cancel ratio。</li>
+<li><strong>接到现有 parent alpha</strong>：选 2 条已有 <code>15m</code> 策略（例如 xs momentum router + pair fade），比较 <code>next-open/taker</code> vs <code>OFI maker child</code> 的 slippage / net PnL。</li>
+<li><strong>建立 kill-switch 阈值</strong>：若过去 N 笔 <code>avg_markout &lt; -0.3 × half_spread</code>，自动 widen 或停机。</li>
+<li><strong>成本阶梯</strong>：分别按 maker rebate / maker 0 / taker fallback 三档，确认 edge 是否只存在于 maker 成交。</li>
+</ol>
+<h2>7) 结论一句话</h2>
+<p><strong><code>mm-live</code> 值得收进池子，但不要把它当新的 15m 方向信号；它更像一条可复现的 microstructure raw alpha：用 OFI/Kalman fair value 预测极短 horizon drift，再把这个预测转成 maker quote skew、markout 风控和 child execution 降成本组件。</strong></p>
+</body>
+</html>

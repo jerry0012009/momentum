@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Hyperliquid quant dashboard 只读成“信号看板”：对 short-cycle crypto desk，更该先拆的是「cross-sectional overextension top-vs-bottom fade」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Hyperliquid quant dashboard 只读成“信号看板”：对 short-cycle crypto desk，更该先拆的是「cross-sectional overextension top-vs-bottom fade」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-19 19:00 UTC</span>
+      <span class="pill">研究时间：2026-04-19 19:06 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `app/reversion/page.tsx` + `app/api/signals/route.ts` + `lib/calc/reversion.ts` + `lib/calc/relative-strength.ts` + `lib/data/hyperliquid.ts`）+ Hyperliquid public `15m/5m` portability probe（10 liquid majors）</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/relative-value/mean-reversion/overextension/bollinger-position/return-zscore/top-vs-bottom/router/hyperliquid/15m/5m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：仓库源码规则 + 公共 API 最小探针</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-19_1906_hl-xs-overextension-fade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-19 19:06 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>app/reversion/page.tsx</code> + <code>app/api/signals/route.ts</code> + <code>lib/calc/reversion.ts</code> + <code>lib/calc/relative-strength.ts</code> + <code>lib/data/hyperliquid.ts</code>）+ Hyperliquid public <code>15m/5m</code> portability probe（10 liquid majors）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一时刻里，<strong>短窗最“涨多了且贴近上轨”的币</strong>，后续更容易跑输 <strong>最“跌多了且贴近下轨”的币</strong>；把它做成 top-vs-bottom market-neutral spread，比单腿追空/抄底更适合当前 desk</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/relative-value/mean-reversion/overextension/bollinger-position/return-zscore/top-vs-bottom/router/hyperliquid/15m/5m/repo/public-data/cost/risk</li>
+<li>证据类型：仓库源码规则 + 公共 API 最小探针</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这篇东西的 base alpha 很清楚，就是 raw alpha，不是 filter。</strong></p>
+<p>主材料是 2026 新仓库 <strong><code>zkmike11/crypto-quant-dashboard</code></strong>。repo 表面上像“实时因子仪表盘”，但对我们更值钱的不是网页本身，而是它在 <code>reversion</code> 这条分支里把两个很适合短周期 desk 的部件拼成了一个透明的 mean-reversion score：</p>
+<ul>
+<li><code>lib/calc/reversion.ts</code>：<code>bollingerPosition(closes, 20, 2)</code>，衡量价格贴近上/下轨的程度；</li>
+<li><code>app/api/signals/route.ts</code>：先算横截面 <code>priceZScores1W</code>，再把它喂给 <code>computeReversionFromCandles</code>；</li>
+<li><code>relativeReversion(priceChange1WZScore) = -priceChange1WZScore</code>，即<strong>最近相对涨多的更该被做空，跌多的更该被做多</strong>；</li>
+<li>最终 <code>compositeReversion = 0.5 * bollingerPos + 0.5 * relativeReversion</code>。</li>
+</ul>
+<p>repo 自己用的是 Hyperliquid 公共数据、偏 <code>1D/1W</code> 可视化语境；但它给的 skeleton 很适合我们 desk 直接压缩到 <code>15m/5m</code>： <strong>把“横截面 return z-score + 自身布林带位置”做成 overextension score，然后做 strongest-overbought vs strongest-oversold 的 spread fade。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话结论：</strong> 这条线当前最值得 intake 的，不是把 dashboard 原样搬来，而是把它改写成 <strong><code>15m</code> top1-vs-top1 cross-sectional overextension fade</strong> 的 market-neutral raw alpha。</li>
+<li><strong>一句话证据：</strong> 我按 repo 的 reversion skeleton 做了 Hyperliquid 公共 <code>15m/5m</code> portability probe；结果显示 <code>15m</code> 的 top-vs-bottom spread 在 <code>1h~3h</code> 持有窗里都稳定为正，且 <code>12-bar</code> 最像样。</li>
+</ul>
+<p>最关键的数据点：</p>
+<ol>
+<li><strong><code>15m</code> top1-bottom1，持有 <code>4</code> bars（约 <code>1h</code>）</strong>：<code>n=4909</code>，<code>gross_mean≈+5.60 bps</code>，胜率约 <code>54.9%</code>。</li>
+<li><strong><code>15m</code> top1-bottom1，持有 <code>8</code> bars（约 <code>2h</code>）</strong>：<code>n=4905</code>，<code>gross_mean≈+8.56 bps</code>，胜率约 <code>55.4%</code>。</li>
+<li><strong><code>15m</code> top1-bottom1，持有 <code>12</code> bars（约 <code>3h</code>）</strong>：<code>n=4901</code>，<code>gross_mean≈+12.04 bps</code>，胜率约 <code>56.0%</code>。</li>
+<li><strong><code>5m</code> top1-bottom1，持有 <code>8</code> bars（约 <code>40m</code>）</strong>：<code>n=4731</code>，<code>gross_mean≈+6.11 bps</code>，胜率约 <code>56.4%</code>。</li>
+<li><strong><code>5m</code> top1-bottom1，持有 <code>12</code> bars（约 <code>1h</code>）</strong>：<code>n=4727</code>，<code>gross_mean≈+7.81 bps</code>，胜率约 <code>56.2%</code>。</li>
+</ol>
+<p>如果按保守口径把它理解成 <strong>两腿 roundtrip 合计约 <code>8 bps</code></strong> 的 taker 成本，那么：</p>
+<ul>
+<li><code>15m, 12-bar</code> 仍大致还能留出 <strong><code>~+4 bps</code></strong> 的净空间；</li>
+<li><code>15m, 8-bar</code> 基本接近成本线；</li>
+<li><code>5m</code> 版本更像 <strong>child execution / quicker recycle</strong>，不如 <code>15m</code> 母信号稳。</li>
+</ul>
+<h2>3. 为什么和当前 desk 直接相关</h2>
+<p>这轮值得保留，不是因为“又找到一个 loser→winner fade”，而是因为 repo 给的是一个更<strong>可工程化、可模块化、可扩 universe</strong> 的 raw alpha 壳：</p>
+<ul>
+<li><strong>横截面腿</strong>：同一时刻找谁“相对涨太多/跌太多”；</li>
+<li><strong>时序腿</strong>：再看这个币自身是否已经贴近布林带极端；</li>
+<li><strong>组合方式</strong>：不是单腿猜方向，而是直接做 <code>most-overextended short</code> vs <code>most-oversold long</code>；</li>
+<li><strong>数据源</strong>：Hyperliquid 公共 API，无需 key，可快速复现；</li>
+<li><strong>落地形态</strong>：天然适合 <code>15m signal -&gt; 5m execution</code>，也适合接 funding / OI / liquidity veto。</li>
+</ul>
+<p>换句话说，它不是“纯解释性看板”，而是<strong>已经把 signal family 写进代码</strong>的 repo-based raw alpha intake。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面、relative-value、market-neutral、mean-reversion</li>
+<li>基础 alpha：同一时刻里，涨幅最离谱且贴上轨的币更容易回吐；跌幅最离谱且贴下轨的币更容易反弹</li>
+<li>regime：更适合 liquid majors、非单边爆量趋势挤压时段；若市场进入单边 broad risk-on/risk-off，同向挤压会削弱 fade</li>
+<li>filter / veto：</li>
+<li>横截面分布太平（<code>ret_z</code> 不够分散）时不做；</li>
+<li>布林带宽度过窄时，可能只是无聊震荡，不值得付费；</li>
+<li>funding / OI / news shock 很极端时，单纯价格 overextension 容易被 trend 碾过去</li>
+<li>risk / sizing / execution overlay：</li>
+<li>基础版用 top1-bottom1 等权；</li>
+<li>每腿 notional 对称，做成 beta-lite spread；</li>
+<li>先用 <code>8/12</code> bars 固定退出，再比较 <code>score</code> 回归中性提前平仓</li>
+</ul>
+<h2>4. 本地最小快检（公开可得数据）</h2>
+<h3>4.1 数据源、公开性、更新频率、实验口径</h3>
+<ul>
+<li>数据源 A（主策略来源）：GitHub 公开仓 <code>zkmike11/crypto-quant-dashboard</code></li>
+<li>数据源 B（代理回测数据）：Hyperliquid 公共 <code>candleSnapshot</code> REST API，无需 API key</li>
+<li>更新频率：原仓通过 Hyperliquid 公共接口实时更新；本轮最小实验使用 <code>15m/5m</code> candles</li>
+<li>最小实验口径：</li>
+<li>标的：<code>BTC/ETH/SOL/XRP/DOGE/ADA/LINK/AVAX/BNB/HYPE</code></li>
+<li><code>15m</code> 样本：近 <code>60d</code>，1 日 lookback = <code>96</code> bars</li>
+<li><code>5m</code> 样本：近 <code>20d</code>，1 日 lookback = <code>288</code> bars</li>
+<li>分数：<code>score = 0.5 * bb_pos + 0.5 * ret_z</code></li>
+<li>组合：每个 bar 做 <code>long lowest-score 1</code>、<code>short highest-score 1</code></li>
+<li>持有：<code>4/8/12</code> bars 固定持有</li>
+<li>成本：研究口径先用 <strong>两腿合计 <code>8 bps</code> roundtrip</strong> 做保守压力测试</li>
+</ul>
+<h3>4.2 这组快检怎么读</h3>
+<ul>
+<li><strong>最值得保留的是 spread，不是单腿。</strong> 单腿很容易被 broad market 方向淹没，但 top-vs-bottom 更贴合 repo 的横截面 DNA。</li>
+<li><strong><code>15m</code> 比 <code>5m</code> 更像母信号。</strong> <code>5m</code> 也有 edge，但更像执行层和加速版，不如 <code>15m</code> 稳。</li>
+<li><strong>持有时间不是越短越好。</strong> 当前结果反而是 <code>12-bar</code> 明显优于 <code>4-bar</code>，说明这条线不是秒级噪声修复，而是 <strong><code>1~3h</code> 的 overextension normalization</strong>。</li>
+</ul>
+<h2>5. 为什么这次不把它降级成 filter / overlay</h2>
+<p>因为这里最核心的问题“到底做什么”已经很清楚： &gt; <strong>做多当前最被压低的一腿，做空当前最被抬高的一腿，赌的是相对价格回归。</strong></p>
+<p>这就是标准的 raw alpha 叙事，而且 entry / hold / sizing / cost 都能讲清楚。它不是只在告诉你“什么时候别做别的 alpha”，而是自己就能站成一个独立的 relative-value 策略原型。</p>
+<h2>6. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 cost ladder</strong>：重点看 <code>4 / 6 / 8 / 10 bps</code> 下，<code>15m 8-bar</code> 和 <code>15m 12-bar</code> 还能不能保住正净值。</li>
+<li><strong>加横截面 admission</strong>：只有当 <code>max(score) - min(score)</code> 超过阈值时才开仓，避免平庸时段白付手续费。</li>
+<li><strong>把 top1-bottom1 扩成 top2-bottom2</strong>：检验 edge 是 strongest-only 还是可以平滑成 basket。</li>
+<li><strong>补 funding / OI veto</strong>：若最强 overextended 同时伴随极端 funding/OI 扩张，可能更适合延后 fade。</li>
+<li><strong>做 <code>15m signal -&gt; 5m child execution</code></strong>：比较 next-open、半仓分批、回踩入场三种执行，对净 bps 的影响。</li>
+<li><strong>再切到更贴近实盘的 universe</strong>：把 <code>BTC/ETH/SOL/XRP/LINK/BNB</code> 作为第一版 production pool，先验证是否比 10 币混池更干净。</li>
+</ol>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>这轮是 <strong>repo skeleton portability probe</strong>，不是对作者 dashboard 全栈逐行复刻。</li>
+<li>repo 原始代码更偏日级 lookback 和 broad universe 看板；我们这轮做的是 <strong>short-cycle desk 改写版</strong>，因此结果应理解为“这个 skeleton 能否迁移”，而不是“作者原设定已经被完全验证”。</li>
+<li>这条线和我们近期一些 loser-winner / residual-reversal 主题有家族相似性，所以更需要靠 <strong><code>bb_pos</code> 这条时序 overextension 腿</strong> 来证明它不是单纯重复 old idea。</li>
+</ul>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>zkmike11. (2026). _crypto-quant-dashboard_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/zkmike11/crypto-quant-dashboard">https://github.com/zkmike11/crypto-quant-dashboard</a></li>
+<li>Readable URL: <a href="https://github.com/zkmike11/crypto-quant-dashboard">https://github.com/zkmike11/crypto-quant-dashboard</a></li>
+<li>GitHub API metadata 显示创建时间：<code>2026-04-13</code></li>
+</ul>
+<ol>
+<li><strong>Source audit files</strong></li>
+</ol>
+<ul>
+<li>README: <a href="https://github.com/zkmike11/crypto-quant-dashboard/blob/main/README.md">https://github.com/zkmike11/crypto-quant-dashboard/blob/main/README.md</a></li>
+<li>Reversion page: <a href="https://github.com/zkmike11/crypto-quant-dashboard/blob/main/app/reversion/page.tsx">https://github.com/zkmike11/crypto-quant-dashboard/blob/main/app/reversion/page.tsx</a></li>
+<li>Signals route: <a href="https://github.com/zkmike11/crypto-quant-dashboard/blob/main/app/api/signals/route.ts">https://github.com/zkmike11/crypto-quant-dashboard/blob/main/app/api/signals/route.ts</a></li>
+<li>Reversion calc: <a href="https://github.com/zkmike11/crypto-quant-dashboard/blob/main/lib/calc/reversion.ts">https://github.com/zkmike11/crypto-quant-dashboard/blob/main/lib/calc/reversion.ts</a></li>
+<li>Relative strength calc: <a href="https://github.com/zkmike11/crypto-quant-dashboard/blob/main/lib/calc/relative-strength.ts">https://github.com/zkmike11/crypto-quant-dashboard/blob/main/lib/calc/relative-strength.ts</a></li>
+<li>Hyperliquid data adapter: <a href="https://github.com/zkmike11/crypto-quant-dashboard/blob/main/lib/data/hyperliquid.ts">https://github.com/zkmike11/crypto-quant-dashboard/blob/main/lib/data/hyperliquid.ts</a></li>
+</ul>
+<ol>
+<li><strong>Hyperliquid Docs / Public API usage context</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint</a></li>
+<li>本轮实际调用的是公开 <code>info</code> endpoint 下的 <code>candleSnapshot</code></li>
+</ul>
+<h2>9. 本地产物</h2>
+<ul>
+<li>Probe 脚本：<code>reports/artifacts/quant_digests/2026-04-19_hl_xs_overextension_probe.py</code></li>
+<li><code>15m</code> panel：<code>reports/artifacts/quant_digests/2026-04-19_hl_xs_overextension_15m_panel.csv</code></li>
+<li><code>15m</code> top1 summary：<code>reports/artifacts/quant_digests/2026-04-19_hl_xs_overextension_15m_top1_summary.csv</code></li>
+<li><code>15m</code> top1 events：<code>reports/artifacts/quant_digests/2026-04-19_hl_xs_overextension_15m_top1_events.csv</code></li>
+<li><code>5m</code> panel：<code>reports/artifacts/quant_digests/2026-04-19_hl_xs_overextension_5m_panel.csv</code></li>
+<li><code>5m</code> top1 summary：<code>reports/artifacts/quant_digests/2026-04-19_hl_xs_overextension_5m_top1_summary.csv</code></li>
+<li><code>5m</code> top1 events：<code>reports/artifacts/quant_digests/2026-04-19_hl_xs_overextension_5m_top1_events.csv</code></li>
+<li>JSON summary：<code>reports/artifacts/quant_digests/2026-04-19_hl_xs_overextension_summary.json</code></li>
+</ul>
+</body>
+</html>

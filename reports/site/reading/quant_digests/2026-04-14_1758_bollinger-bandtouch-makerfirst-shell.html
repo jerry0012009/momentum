@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Hyperliquid BB bot 只读成“布林带小机器人”：对 short-cycle desk，更该先拆的是「band-touch mean reversion × maker-first opposite-band exit」这条完整 raw alpha 壳——而源码已经比 README 更像 production shell</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Hyperliquid BB bot 只读成“布林带小机器人”：对 short-cycle desk，更该先拆的是「band-touch mean reversion × maker-first opposite-band exit」这条完整 raw alpha 壳——而源码已经比 README 更像 production shell</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-14 17:54 UTC</span>
+      <span class="pill">研究时间：2026-04-14 17:58 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `config/accounts.json` + `src/main.py` + `src/perps_trading.py` + `tests/test_signals.py` + `tests/test_exit_flow.py` + `tests/test_stop_logic.py` + `tests/test_pnl.py` + `test/compare_backtest_vs_live.py`）+ Binance Spot `5m/15m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/mean-reversion/bollinger-band/ema-filter/maker-first/opposite-band-exit/breakeven-refresh/hyperliquid/binance-spot/binance-perpetual/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：源码规则 + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-14_1758_bollinger-bandtouch-makerfirst-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-14 17:58 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>config/accounts.json</code> + <code>src/main.py</code> + <code>src/perps_trading.py</code> + <code>tests/test_signals.py</code> + <code>tests/test_exit_flow.py</code> + <code>tests/test_stop_logic.py</code> + <code>tests/test_pnl.py</code> + <code>test/compare_backtest_vs_live.py</code>）+ Binance Spot <code>5m/15m</code> public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>价格触碰 Bollinger 外侧后，向对侧 band 回归的均值回复；EMA(200) 只负责顺大方向过滤，不是 alpha 本体。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/single-asset/mean-reversion/bollinger-band/ema-filter/maker-first/opposite-band-exit/breakeven-refresh/hyperliquid/binance-spot/binance-perpetual/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：源码规则 + public-data portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主来源是 GitHub 仓库：</p>
+<ul>
+<li><strong>Author / Owner：</strong> vitor-chagas</li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> *dex-trading-bot*</li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/vitor-chagas/dex-trading-bot&gt;">https://github.com/vitor-chagas/dex-trading-bot&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/vitor-chagas/dex-trading-bot&gt;">https://github.com/vitor-chagas/dex-trading-bot&gt;</a></li>
+</ul>
+<p>这份 repo 的价值，不只是“BB+EMA”这套老指标，而是它把一条 <strong>真能下单的完整 MR 壳</strong> 写得很细：限价进场、60 秒未成交撤单、止损、对侧 band 目标位、TP 漂移后的 break-even、maker/taker 费用、仓位 sizing、同向仓位上限、以及回测 vs live 对照脚本。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 值得 intake 的不是 README 上那句 “BB(20,2)+EMA(200)” 本身，而是 <strong><code>band-touch mean reversion + maker-first execution + dynamic break-even TP refresh</code> 这条完整 raw alpha 壳</strong>；它不像纯 filter，也不是只会讲故事的 demo。</li>
+<li><strong>一句话证明方式：</strong> 我先做源码审计，确认 entry / exit / sizing / risk / fee 是闭环的；再把它的 core rules 按 repo 自带费率假设迁到 Binance Spot 公共 <code>5m/15m</code> 数据上，直接看 trades、胜率、净 bps/笔、stop / breakeven 占比。</li>
+<li><strong>base alpha 很清楚</strong>：<code>price &lt;= lower band &amp; price &gt; EMA</code> 做多，<code>price &gt;= upper band &amp; price &lt; EMA</code> 做空；收益来自 <strong>价格从 band 外侧向对侧 band 回归</strong>，EMA 只是顺着长周期方向过滤逆势单。</li>
+<li><strong>这确实是完整策略壳，不是半成品</strong>：<code>src/perps_trading.py</code> 里已经把 <code>60s pending limit</code>、<code>stop-market</code>、<code>opposite-band maker TP</code>、<code>TP 反穿 entry 时改成 break-even</code>、<code>same-direction exposure cap</code>、<code>min_band_width_pct</code> 过滤都写出来了；<code>test_signals / test_exit_flow / test_stop_logic / test_pnl</code> 也说明作者不是只写 README。</li>
+<li><strong>但 README 已经部分过时</strong>：README 说“进场限价挂在 band level”，源码现在其实改成了 <strong>直接用当前价格作为 maker/ALO 限价基准</strong>，因为 band level 容易因为 stale 而触发 ALO rejection；也就是 repo 已经从“教科书 BB bot”往更像 production 的执行壳走了一步。</li>
+<li><strong>README 参数和 live 配置也不再一致</strong>：README 还是 BTC <code>BB(20,2), SL 2.5%, target_risk 8%</code>；当前 <code>config/accounts.json</code> 里 active BTC 已变成 <strong><code>BB(10,1.8), SL 4.0%, target_risk 10%</code></strong>，而且同一账户还挂了 <strong>12 个 active tokens</strong>，<code>src/main.py</code> 会把资金按 active token 数自动平分，结果 BTC 实际 <code>capital_pct</code> 会被压到约 <strong>8.33%</strong>，不再是 README 里那种“单 BTC 重仓”口径。</li>
+<li><strong>本地 public probe 没有立刻塌掉</strong>，这是它比很多近期壳更值钱的地方：按 repo <code>compare_backtest_vs_live.py</code> 的费率假设（maker <code>1bp</code>，stop taker <code>5bps</code>），过去约 <code>180d</code> 的 Binance Spot BTCUSDT 上，README canonical <code>5m</code> 壳得到 <strong>468 笔 / 63.0% 胜率 / +29.13 bps/笔净值 / 持有中位 132.5 分钟</strong>；<code>15m</code> 也还有 <strong>172 笔 / 58.7% 胜率 / +26.60 bps/笔</strong>。当前 active BTC 配置更激进：<code>5m</code> <strong>954 笔 / +21.34 bps/笔</strong>，<code>15m</code> <strong>301 笔 / +35.14 bps/笔</strong>。</li>
+<li>真正值得盯的细节是 <strong>breakeven bucket 很大</strong>：<code>5m</code> canonical 约 <strong>35.9%</strong>、active config 约 <strong>46.6%</strong> 的平仓都是 break-even，这说明这条壳的 edge 不只是“赌对侧 band 一定打满”，而是 <strong>用动态 TP refresh 把坏单尽量压到只亏手续费</strong>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮值得进素材池，因为它满足你这轮最想要的那类候选：</p>
+<ol>
+<li><strong>base alpha 说得清楚</strong>：就是 band-touch MR，不是把 filter 伪装成 alpha；</li>
+<li><strong>能直接落成完整策略</strong>：signal、entry、exit、sizing、risk、cost 全有；</li>
+<li><strong>适配当前短周期</strong>：repo 原生就是 <code>5m</code>，而 <code>15m</code> transfer 也没有马上失真；</li>
+<li><strong>能直接服务后续实盘组件拆解</strong>：特别是 maker-first、pending-order cancel、dynamic TP refresh、break-even rescue 这些执行层细节。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>single-asset / mean reversion / 双边可做</strong></li>
+<li>基础 alpha：<strong><code>touch outer Bollinger band -&gt; revert toward opposite band</code></strong></li>
+<li>regime：<strong><code>EMA(200)</code> 方向过滤，只做顺长周期方向的反身回归</strong></li>
+<li>filter / veto：<strong><code>min_band_width_pct</code>、<code>max_same_direction</code>、60 秒未成交撤单、价格走远撤单</strong></li>
+<li>risk / sizing / execution overlay：<strong><code>target_risk_pct -&gt; capital_pct</code>、stop-market、maker TP、TP 漂移时 break-even、ALO rejected 后 retry / GTC fallback</strong></li>
+</ul>
+<h2>4. 可复刻的最小实验 + 下一步怎么测</h2>
+<h3>本轮最小实验</h3>
+<ul>
+<li>市场：Binance Spot <code>BTCUSDT</code>（按 repo 原设作为 signal source）</li>
+<li>周期：<code>5m / 15m</code></li>
+<li>样本：最近约 <code>180d</code></li>
+<li>口径：</li>
+<li><code>readme_shell</code>: <code>BB(20,2), EMA(200), SL 2.5%</code></li>
+<li><code>live_config_btc</code>: <code>BB(10,1.8), EMA(200), SL 4.0%</code></li>
+<li>成本：entry maker <code>1bp</code>；target/breakeven exit maker <code>1bp</code>；stop exit taker <code>5bps</code></li>
+<li>产物：</li>
+<li>脚本：<code>reports/artifacts/quant_digests/2026-04-14_bandtouch_makerfirst_probe.py</code></li>
+<li>汇总：<code>reports/artifacts/quant_digests/bandtouch_makerfirst_probe_summary_2026-04-14.csv</code></li>
+<li>明细：<code>reports/artifacts/quant_digests/bandtouch_makerfirst_probe_detail_2026-04-14.csv</code></li>
+</ul>
+<h3>下一步怎么测</h3>
+<ol>
+<li><strong>先补 60 秒 working-order fill simulator</strong>：当前 public probe 用 bar-close 近似，会高估 post-only 成交质量；下一步要把 <code>ALO reject / retry / timeout cancel / price-moved-away cancel</code> 真正模拟进去。</li>
+<li><strong>把 signal-source 与 execution-source 分开测</strong>：repo 用 Binance spot 出信号、Hyperliquid perp 执行；下一步应加上 perp book / fee / fill proxy，确认 edge 不是被“signal spot, fill spot”高估出来的。</li>
+<li><strong>分开验证 README canonical vs current live config</strong>：现在最该 intake 的是 shell，不是参数；先确认 <code>20/2/2.5</code> 和 <code>10/1.8/4.0</code> 谁更稳，再决定要不要继续压 <code>1m/3m</code>。</li>
+<li><strong>最后再加 overlay</strong>：若 base shell 在 fill-aware 口径下仍成立，再补 funding / vol / session veto；别反过来先堆 filter。</li>
+</ol>
+<h2>5. first verdict</h2>
+<p>这份 repo <strong>可以名正言顺地进 raw alpha / 完整策略壳素材池</strong>。更诚实的读法不是“又一个 BB bot”，而是：</p>
+<p>&gt; <strong><code>band-touch mean reversion</code> 这条 alpha 本体清楚，源码已经把它包成了 maker-first、可回放、可实盘拆件的 production-ish shell；README 虽然有点过时，但这反而说明 repo 真在往可执行方向进化。</strong></p>
+<p>当前最合理的落点不是直接信 README 年化，而是把它作为 <strong><code>5m native first</code>、可向 <code>15m</code> 平移、并且能继续拆 fill model 的完整 raw alpha 候选</strong>。</p>
+<h2>6. 来源</h2>
+<ul>
+<li>vitor-chagas. (2026). *dex-trading-bot*. GitHub repository.</li>
+<li>Readable URL: &lt;<a href="https://github.com/vitor-chagas/dex-trading-bot&gt;">https://github.com/vitor-chagas/dex-trading-bot&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/vitor-chagas/dex-trading-bot&gt;">https://github.com/vitor-chagas/dex-trading-bot&gt;</a></li>
+<li>Key source files audited:</li>
+<li>&lt;<a href="https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/README.md&gt;">https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/README.md&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/config/accounts.json&gt;">https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/config/accounts.json&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/src/main.py&gt;">https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/src/main.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/src/perps_trading.py&gt;">https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/src/perps_trading.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/tests/test_signals.py&gt;">https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/tests/test_signals.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/tests/test_exit_flow.py&gt;">https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/tests/test_exit_flow.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/tests/test_stop_logic.py&gt;">https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/tests/test_stop_logic.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/tests/test_pnl.py&gt;">https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/tests/test_pnl.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/test/compare_backtest_vs_live.py&gt;">https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/test/compare_backtest_vs_live.py&gt;</a></li>
+</ul>
+</body>
+</html>

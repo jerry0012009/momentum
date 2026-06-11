@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rank213c 策略架构与组件分析</title>
+  <style>
+    body { margin:0; background:#f6f3ec; color:#172033; font-family:"Noto Sans SC","Source Han Sans SC","PingFang SC","Microsoft YaHei",sans-serif; line-height:1.62; }
+    main { max-width:1220px; margin:0 auto; padding:28px 16px 56px; }
+    .card { background:white; border:1px solid #e6dccb; border-radius:14px; padding:18px 20px; margin:14px 0; }
+    .hero { border-color:#0f766e; background:#f0fdfa; }
+    .warn { background:#fff7ed; border-color:#fdba74; }
+    .good { background:#f0fdf4; border-color:#86efac; }
+    .bad { background:#fef2f2; border-color:#fecaca; }
+    .info { background:#eff6ff; border-color:#93c5fd; }
+    .grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+    .twocol { display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; }
+    .metric { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px; }
+    .metric b { display:block; font-size:22px; line-height:1.2; }
+    .muted { color:#64748b; }
+    .table-wrap { overflow-x:auto; }
+    table { border-collapse:collapse; min-width:940px; width:100%; }
+    th,td { border-bottom:1px solid #e2e8f0; padding:8px 10px; text-align:right; vertical-align:top; font-size:13px; }
+    th { background:#f8fafc; color:#475569; }
+    td:first-child,th:first-child,td:nth-child(2),th:nth-child(2) { text-align:left; }
+    code { background:#f1f5f9; border-radius:6px; padding:2px 6px; }
+    a { color:#2563eb; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .arch-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; margin:8px 0; font-family:monospace; font-size:14px; line-height:1.8; }
+    .arch-arrow { color:#0f766e; font-weight:700; }
+    .arch-label { color:#64748b; font-size:12px; }
+    .verdict-pass { color:#059669; font-weight:700; }
+    .verdict-watch { color:#d97706; font-weight:700; }
+    .verdict-fail { color:#dc2626; font-weight:700; }
+    .verdict-diag { color:#6366f1; font-weight:700; }
+    .highlight-row { background:#f0fdf4; }
+    @media (max-width:760px) { .grid,.twocol { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+
+<!-- ==================== SECTION 1: HERO ==================== -->
+<section class="card hero">
+  <h1>Rank213c 策略架构与组件分析</h1>
+  <p>更新时间：2026-05-07。本文档将 213c 策略拆解为信号、宇宙、基线、修饰器四层结构，对每个组件用统一指标（日均净收益、累计、回撤、夏普、胜率、换手率）进行标准化评估，便于判断哪些组件有效、哪些是噪声。</p>
+  <p class="muted">样本期：2020-02-01 至 2026-05-06，2286 个交易日。除非注明，所有指标基于 Top50 4L4S monthly-volume causal universe，12bps/1x turnover 成本口径。</p>
+  <p><a href="/momentum/paper/rank213_version_overview.html">版本总览</a> · <a href="/momentum/paper/213c_round5_thickness.html">第五轮利润厚度</a> · <a href="/momentum/paper/213c_buffer_research.html">Buffer8 专题</a> · <a href="/momentum/paper/213c_execution_stability.html">执行稳定性</a> · <a href="/momentum/paper/213c_round4_attribution.html">第四轮归因</a></p>
+</section>
+
+<!-- ==================== SECTION 2: ARCHITECTURE ==================== -->
+<section class="card">
+  <h2>策略架构</h2>
+  <p>213c 是一个<strong>日频横截面动量多空策略</strong>，由四层组成。每一层独立可替换，便于模块化研究。</p>
+  <div class="arch-box">
+    <div><span class="arch-label">Layer 1 — Signal</span></div>
+    <div><code>retvol_14d_skip1d</code> = return(t-15d → t-1d) / realized_vol(t-15d → t-1d)</div>
+    <div><span class="arch-arrow">↓</span> <span class="arch-label">rank 所有 eligible 币，选 top/bottom N</span></div>
+    <div><span class="arch-label">Layer 2 — Universe</span></div>
+    <div>monthly_volume_causal Top50 · age ≥ 90d · eligible ≥ 6</div>
+    <div><span class="arch-arrow">↓</span> <span class="arch-label">每月 2 号用上月成交额重建池子</span></div>
+    <div><span class="arch-label">Layer 3 — Baseline</span></div>
+    <div>4L4S 等权 $-neutral · daily rebalance · $20/leg</div>
+    <div><span class="arch-arrow">↓</span> <span class="arch-label">以下为可选修饰器，可叠加</span></div>
+    <div><span class="arch-label">Layer 4 — Modifiers</span></div>
+    <div>├─ <b>Buffer</b>：rank_buffer_extra — 减少噪声驱动的换仓</div>
+    <div>├─ <b>Short Gate</b>：条件化 short leg 开关</div>
+    <div>├─ <b>Turnover Control</b>：weekly cadence / turnover cap / partial rebalance</div>
+    <div>├─ <b>Capital Mix</b>：long/short 比例调整（75/25 等）</div>
+    <div>└─ <b>Dispersion</b>：基于离散度的仓位缩放</div>
+  </div>
+</section>
+
+<!-- ==================== SECTION 3: METRIC LEGEND ==================== -->
+<section class="card">
+  <h2>指标说明</h2>
+  <p class="muted">所有组件评估使用同一套指标，便于横向比较。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>指标</th><th>含义</th><th>读法</th></tr></thead>
+      <tbody>
+        <tr><td><code>net_mean_bps</code></td><td>日均净收益（扣除成本后）</td><td>主要比较指标；>0 表示覆盖成本</td></tr>
+        <tr><td><code>net_cum_pct</code></td><td>累计净收益</td><td>全样本复利结果；注意路径依赖</td></tr>
+        <tr><td><code>max_drawdown_pct</code></td><td>最大回撤</td><td>越小越好；<-50% 需要强信念才能持有</td></tr>
+        <tr><td><code>sharpe</code></td><td>年化夏普比</td><td>>0.5 可接受，>1.0 良好</td></tr>
+        <tr><td><code>win_rate_pct</code></td><td>正收益天占比</td><td>~50% 对多空策略正常</td></tr>
+        <tr><td><code>avg_turnover_x</code></td><td>日均换手率</td><td>越低成本越低；0.6x = 每天换 60% 仓位</td></tr>
+        <tr><td><code>long_half_mean_bps</code></td><td>Long 半边日均收益</td><td>正 = long 选股有 alpha</td></tr>
+        <tr><td><code>short_half_mean_bps</code></td><td>Short 半边日均收益</td><td>正 = short 选股有 alpha</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ==================== SECTION 4: BASELINE ==================== -->
+<section class="card good">
+  <h2>基线定义：base_50_50_daily</h2>
+  <p>基线是<strong>无修饰器的原始 213c</strong>：Top50 universe、4L4S 等权、daily rebalance、无 buffer、无 gate、无 turnover 控制。以下展示不同成本假设下的表现。</p>
+  <div class="grid">
+    <div class="metric"><b style="color:#059669">14.52 bps</b><span>4bps 日均净收益</span><small>当前回测假设</small></div>
+    <div class="metric"><b style="color:#059669">1283.52%</b><span>4bps 累计</span><small>最大回撤 -42.65%</small></div>
+    <div class="metric"><b style="color:#d97706">6.53 bps</b><span>12bps 日均净收益</span><small>真实成本上限</small></div>
+    <div class="metric"><b style="color:#dc2626">2.54 bps</b><span>16bps 日均净收益</span><small>接近盈亏平衡</small></div>
+  </div>
+  <div class="table-wrap" style="margin-top:16px">
+    <table>
+      <thead><tr><th>成本 (flat bps/day)</th><th>日均净收益 (bps)</th><th>累计净收益</th><th>最大回撤</th><th>胜率</th><th>夏普</th><th>读法</th></tr></thead>
+      <tbody>
+        <tr><td>0</td><td>18.51</td><td>3311.87%</td><td>-38.26%</td><td>49.76%</td><td>—</td><td>理论上限</td></tr>
+        <tr><td>4</td><td><b>14.52</b></td><td><b>1283.52%</b></td><td>-42.65%</td><td>49.09%</td><td>—</td><td>回测假设</td></tr>
+        <tr><td>8</td><td>10.52</td><td>460.82%</td><td>-50.63%</td><td>48.03%</td><td>—</td><td>仍可用</td></tr>
+        <tr><td>12</td><td>6.53</td><td>127.25%</td><td>-67.19%</td><td>46.93%</td><td>—</td><td>边际可用</td></tr>
+        <tr><td>16</td><td>2.54</td><td>-7.95%</td><td>-78.52%</td><td>45.91%</td><td>—</td><td>不可用</td></tr>
+        <tr><td>20</td><td>-1.45</td><td>-62.73%</td><td>-87.08%</td><td>44.72%</td><td>—</td><td>严重亏损</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="table-wrap" style="margin-top:16px">
+    <table>
+      <thead><tr><th>成本 (bps/1x turnover)</th><th>日均净收益 (bps)</th><th>累计净收益</th><th>最大回撤</th><th>胜率</th><th>隐含日均成本 (bps)</th></tr></thead>
+      <tbody>
+        <tr><td>4</td><td>16.11</td><td>1882.79%</td><td>-41.23%</td><td>49.36%</td><td>2.40</td></tr>
+        <tr><td>8</td><td>13.71</td><td>1052.10%</td><td>-44.05%</td><td>48.92%</td><td>4.80</td></tr>
+        <tr><td>12</td><td><b>11.31</b></td><td><b>569.32%</b></td><td>-48.68%</td><td>48.30%</td><td>7.21</td></tr>
+        <tr><td>16</td><td>8.91</td><td>274.22%</td><td>-53.29%</td><td>47.73%</td><td>9.61</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted">换手成本口径下基线更厚：平均换手率 0.600x/day，12bps/1x turnover 实际日均成本 7.21bps，低于 flat 12bps 的 12bps。这是换手成本模型与 flat 成本模型的核心区别。</p>
+</section>
+
+<!-- ==================== SECTION 5: LONG/SHORT DECOMPOSITION ==================== -->
+<section class="card">
+  <h2>基线分解：Long vs Short</h2>
+  <p>理解 alpha 来源的第一步是拆分 long 和 short 的贡献。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>组件</th><th>日均 (bps)</th><th>累计</th><th>最大回撤</th><th>胜率</th></tr></thead>
+      <tbody>
+        <tr><td><b>组合（4L4S $-neutral）</b></td><td><b>14.52</b></td><td><b>1283.52%</b></td><td>-42.65%</td><td>49.09%</td></tr>
+        <tr><td>Long 半边（0.5 capital）</td><td>16.63</td><td>1539.71%</td><td>-59.60%</td><td>51.52%</td></tr>
+        <tr><td>Short 半边（0.5 capital）</td><td>1.88</td><td>-26.15%</td><td>-82.77%</td><td>48.92%</td></tr>
+        <tr><td>Full Long-only（1.0 capital, -4bps）</td><td>29.26</td><td>1459.98%</td><td>-92.58%</td><td>51.13%</td></tr>
+        <tr><td>Full Short-only（1.0 capital, -4bps）</td><td>-0.23</td><td>-94.84%</td><td>-99.20%</td><td>48.39%</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><b>读法</b>：Long 是主要 alpha 来源（16.63 bps），Short 贡献微薄（1.88 bps）且单独来看是负的（-0.23 bps full capital）。Short 的价值在于：(1) 降低组合波动率，(2) 在熊市（2022、2025）提供对冲。</p>
+</section>
+
+<!-- ==================== SECTION 6: BUFFER ==================== -->
+<section class="card">
+  <h2>组件评估：Buffer（rank_buffer_extra）</h2>
+  <p><b>机制</b>：如果当前持仓的 rank 仍在前 N 名 ± buffer 范围内，就不换仓。本质上是对信号做噪声过滤，减少因 rank 小幅波动产生的无效换仓。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Buffer 宽度</th><th>日均净 (bps)</th><th>累计</th><th>最大回撤</th><th>夏普</th><th>胜率</th><th>换手率</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr><td>0（基线）</td><td>-2.19</td><td>-66.53%</td><td>-84.08%</td><td>-0.183</td><td>45.71%</td><td>0.598x</td><td class="verdict-fail">Fail</td></tr>
+        <tr><td>4</td><td>-1.67</td><td>-60.02%</td><td>-78.05%</td><td>-0.147</td><td>46.54%</td><td>0.292x</td><td class="verdict-fail">Fail</td></tr>
+        <tr class="highlight-row"><td>6</td><td>3.19</td><td>20.53%</td><td>-60.32%</td><td>0.278</td><td>47.07%</td><td>0.242x</td><td class="verdict-diag">Diagnostic</td></tr>
+        <tr class="highlight-row"><td><b>8</b></td><td><b>4.11</b></td><td><b>52.78%</b></td><td><b>-48.88%</b></td><td><b>0.368</b></td><td><b>47.64%</b></td><td><b>0.210x</b></td><td class="verdict-watch">Watch</td></tr>
+        <tr><td>10</td><td>1.90</td><td>-7.70%</td><td>-53.22%</td><td>0.171</td><td>47.81%</td><td>0.191x</td><td class="verdict-fail">Fail</td></tr>
+        <tr><td>12</td><td>1.16</td><td>-19.26%</td><td>-51.95%</td><td>0.108</td><td>46.41%</td><td>0.171x</td><td class="verdict-fail">Fail</td></tr>
+        <tr><td>16</td><td>-0.34</td><td>-44.52%</td><td>-60.03%</td><td>-0.030</td><td>47.11%</td><td>0.149x</td><td class="verdict-fail">Fail</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted">所有变体均在 12bps/1x turnover 成本口径下评估。基线（buffer=0）因换手率高（0.598x），12bps 成本下已转负。</p>
+  <p><b>结论</b>：Buffer 是<strong>结构性改善</strong>——所有宽度都比基线好，buffer8 是甜蜜点。机制可解释：减少噪声驱动的无效换仓。但 buffer8 的 4.11 bps 只是 Watch，不是 Promising，因为回撤仍达 -48.88%。</p>
+</section>
+
+<!-- ==================== SECTION 7: SHORT GATES ==================== -->
+<section class="card">
+  <h2>组件评估：Short Gate</h2>
+  <p><b>机制</b>：Long 半边每天保留；Short gate OFF 时 short 半边空仓。目的是减少"bad short"天数。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Gate 条件</th><th>日均净 (bps)</th><th>累计</th><th>最大回撤</th><th>夏普</th><th>胜率</th><th>换手率</th><th>Active Short 天数</th><th>Short 均值</th></tr></thead>
+      <tbody>
+        <tr><td>short_every_day（基线）</td><td>-2.19</td><td>-66.53%</td><td>-84.08%</td><td>-0.183</td><td>45.71%</td><td>0.598x</td><td>2257</td><td>-1.12</td></tr>
+        <tr class="highlight-row"><td>btc_prior7_positive</td><td>3.40</td><td>-7.74%</td><td>-72.77%</td><td>0.237</td><td>48.60%</td><td>0.501x</td><td>1203</td><td>3.31</td></tr>
+        <tr class="highlight-row"><td>btc_above_ma20</td><td>2.98</td><td>-17.76%</td><td>-77.30%</td><td>0.205</td><td>47.68%</td><td>0.475x</td><td>1197</td><td>2.58</td></tr>
+        <tr><td>eligible_prior7_negative</td><td>0.73</td><td>-41.26%</td><td>-90.26%</td><td>0.056</td><td>46.85%</td><td>0.485x</td><td>1053</td><td>0.45</td></tr>
+        <tr><td>prior30_dispersion_high</td><td>1.94</td><td>-32.85%</td><td>-85.47%</td><td>0.136</td><td>46.94%</td><td>0.389x</td><td>756</td><td>0.51</td></tr>
+        <tr><td>prior30_dispersion_mid_high</td><td>-0.16</td><td>-54.60%</td><td>-80.94%</td><td>-0.012</td><td>47.38%</td><td>0.498x</td><td>1510</td><td>-0.28</td></tr>
+        <tr><td>btc_above_ma50</td><td>-1.44</td><td>-69.20%</td><td>-83.81%</td><td>-0.101</td><td>46.98%</td><td>0.458x</td><td>1216</td><td>-2.05</td></tr>
+        <tr><td>btc_prior7_negative</td><td>-4.10</td><td>-80.70%</td><td>-96.43%</td><td>-0.313</td><td>45.14%</td><td>0.487x</td><td>1044</td><td>-4.35</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><b>结论</b>：最好的 gate（btc_prior7_positive）把日均从 -2.19 提升到 3.40 bps，但累计仍为 -7.74%，回撤 -72.77%。Gate 能减少坏 short 天数（1203/2257），但<strong>没有解决组合路径风险</strong>。Dispersion 作为 gate 效果更差（756 天 active，short 均值仅 0.51 bps）。</p>
+</section>
+
+<!-- ==================== SECTION 8: TURNOVER CONTROL ==================== -->
+<section class="card">
+  <h2>组件评估：Turnover Control</h2>
+  <p><b>机制</b>：通过降低 rebalance 频率或限制每次换仓数量来减少交易成本。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>方案</th><th>日均净 (bps)</th><th>累计</th><th>最大回撤</th><th>夏普</th><th>胜率</th><th>换手率</th></tr></thead>
+      <tbody>
+        <tr><td>daily rebalance（基线）</td><td>-2.19</td><td>-66.53%</td><td>-84.08%</td><td>-0.183</td><td>45.71%</td><td>0.598x</td></tr>
+        <tr><td>rebalance every 2d</td><td>1.06</td><td>-28.67%</td><td>-63.68%</td><td>0.089</td><td>47.51%</td><td>0.406x</td></tr>
+        <tr><td>rebalance every 3d</td><td>-0.74</td><td>-52.44%</td><td>-69.64%</td><td>-0.063</td><td>47.11%</td><td>0.325x</td></tr>
+        <tr class="highlight-row"><td><b>rebalance every 7d</b></td><td><b>4.56</b></td><td><b>68.05%</b></td><td>-66.11%</td><td>0.405</td><td>48.25%</td><td>0.200x</td></tr>
+        <tr><td>replacement cap 1/side</td><td>-1.43</td><td>-58.83%</td><td>-77.20%</td><td>-0.123</td><td>46.02%</td><td>0.419x</td></tr>
+        <tr><td>replacement cap 2/side</td><td>-2.16</td><td>-65.96%</td><td>-82.81%</td><td>-0.181</td><td>46.19%</td><td>0.572x</td></tr>
+        <tr><td>rank_buffer_extra_8</td><td>4.11</td><td>52.78%</td><td>-48.88%</td><td>0.368</td><td>47.64%</td><td>0.210x</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><b>结论</b>：降低换手率是 12bps 成本下唯一能同时保留正均值和降低成本的方向。weekly（4.56 bps）和 buffer8（4.11 bps）效果接近，但 weekly 回撤更大（-66.11% vs -48.88%）。replacement cap 效果不明显。</p>
+</section>
+
+<!-- ==================== SECTION 9: CAPITAL MIX ==================== -->
+<section class="card">
+  <h2>组件评估：Capital Mix</h2>
+  <p><b>机制</b>：调整 long/short 资金比例，减少 short 暴露。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>方案</th><th>日均净 (bps)</th><th>累计</th><th>最大回撤</th><th>夏普</th><th>胜率</th><th>Long 资金</th><th>Short 资金</th></tr></thead>
+      <tbody>
+        <tr><td>50/50（基线）</td><td>-2.19</td><td>-66.53%</td><td>-84.08%</td><td>-0.183</td><td>45.71%</td><td>0.50</td><td>0.50</td></tr>
+        <tr><td>75/25 daily</td><td>1.77</td><td>-66.50%</td><td>-97.34%</td><td>0.093</td><td>46.19%</td><td>0.75</td><td>0.25</td></tr>
+        <tr><td>100/0 (long only)</td><td>4.94</td><td>-94.12%</td><td>-99.83%</td><td>0.161</td><td>48.95%</td><td>1.00</td><td>0.00</td></tr>
+        <tr><td>50/25 (half short)</td><td>0.34</td><td>-39.70%</td><td>-87.38%</td><td>0.028</td><td>45.28%</td><td>0.50</td><td>0.25</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><b>结论</b>：Long-only 在 12bps 后有 4.94 bps，但回撤 -99.83%——纯粹的 long 暴露在 crypto 熊市中会被摧毁。75/25 更差（-97.34% 回撤）。Capital mix <strong>不是生产方案</strong>，但说明 short 的对冲价值。</p>
+</section>
+
+<!-- ==================== SECTION 10: DISPERSION ==================== -->
+<section class="card">
+  <h2>组件评估：Dispersion Control</h2>
+  <p><b>机制</b>：基于同日 eligible 币的离散度（p90-p10）来 gate 或 scale 仓位。离散度高时截面选币能力更强。</p>
+  <p class="muted">以下数据基于 Top30 3L3S 口径（第四轮），非 Top50 4L4S。仅用于判断方向，不直接可比。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>方案</th><th>日均 (bps)</th><th>累计</th><th>最大回撤</th><th>胜率</th><th>Active 天数</th><th>Active 率</th></tr></thead>
+      <tbody>
+        <tr><td>base（无 dispersion control）</td><td>10.92</td><td>455.65%</td><td>-60.08%</td><td>49.05%</td><td>2263</td><td>100%</td></tr>
+        <tr><td>gate: 仅 high dispersion 天交易</td><td>4.48</td><td>88.59%</td><td>-41.29%</td><td>16.04%</td><td>748</td><td>33%</td></tr>
+        <tr><td>gate: mid+high dispersion 天交易</td><td>8.28</td><td>252.89%</td><td>-50.55%</td><td>32.70%</td><td>1495</td><td>66%</td></tr>
+        <tr><td>scale: low×0.5 / mid×1.0 / high×1.5</td><td>11.76</td><td>369.88%</td><td>-62.96%</td><td>48.56%</td><td>2243</td><td>99%</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><b>结论</b>：Dispersion gate（仅 high 天交易）把回撤从 -60% 降到 -41%，但 active rate 只有 33%，胜率暴跌到 16%。Scale 方案（11.76 bps）略好于 base（10.92 bps），但改善幅度有限。<b>Dispersion 适合做监控标签，不适合做主交易开关。</b></p>
+</section>
+
+<!-- ==================== SECTION 11: UNIVERSE & PARAMETER ==================== -->
+<section class="card">
+  <h2>组件评估：Universe 大小 × Leg 数</h2>
+  <p>第四轮扩展研究测试了不同 universe 大小和 leg 数的组合，找最优参数空间。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Universe</th><th>Legs</th><th>日均 (bps)</th><th>累计</th><th>最大回撤</th><th>胜率</th><th>Long 均值</th><th>Short 均值</th><th>Eligible 数</th></tr></thead>
+      <tbody>
+        <tr><td>Top20</td><td>3L3S</td><td>11.71</td><td>639.37%</td><td>-43.87%</td><td>49.71%</td><td>13.63</td><td>2.08</td><td>18.3</td></tr>
+        <tr><td>Top20</td><td>4L4S</td><td>9.17</td><td>410.98%</td><td>-53.70%</td><td>50.02%</td><td>12.64</td><td>0.53</td><td>18.3</td></tr>
+        <tr><td>Top30</td><td>3L3S</td><td>10.97</td><td>462.00%</td><td>-59.63%</td><td>49.01%</td><td>13.63</td><td>1.34</td><td>26.9</td></tr>
+        <tr><td>Top30</td><td>4L4S</td><td>8.64</td><td>309.30%</td><td>-49.42%</td><td>49.85%</td><td>12.65</td><td>-0.01</td><td>26.9</td></tr>
+        <tr class="highlight-row"><td><b>Top50</b></td><td><b>3L3S</b></td><td>13.48</td><td>758.20%</td><td>-51.77%</td><td>47.86%</td><td>17.18</td><td>0.29</td><td>43.1</td></tr>
+        <tr class="highlight-row"><td><b>Top50</b></td><td><b>4L4S</b></td><td><b>14.52</b></td><td><b>1283.52%</b></td><td><b>-42.65%</b></td><td><b>49.09%</b></td><td><b>16.63</b></td><td><b>1.88</b></td><td><b>43.1</b></td></tr>
+        <tr><td>Top70</td><td>3L3S</td><td>4.78</td><td>20.69%</td><td>-79.07%</td><td>47.59%</td><td>9.41</td><td>-0.64</td><td>57.8</td></tr>
+        <tr><td>Top70</td><td>4L4S</td><td>9.02</td><td>289.10%</td><td>-63.22%</td><td>48.34%</td><td>13.62</td><td>-0.60</td><td>57.8</td></tr>
+        <tr><td>Top100</td><td>3L3S</td><td>3.30</td><td>-27.21%</td><td>-90.77%</td><td>46.75%</td><td>8.48</td><td>-1.19</td><td>77.2</td></tr>
+        <tr><td>Top100</td><td>4L4S</td><td>5.74</td><td>70.92%</td><td>-83.11%</td><td>47.86%</td><td>10.38</td><td>-0.65</td><td>77.2</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><b>结论</b>：Top50 + 4L4S 是甜蜜点。4x4 只在 Top50 上优于 3x3（更大的池子支撑更多腿数的分散化）。Top70+ 明显稀释，Short 转负。</p>
+</section>
+
+<!-- ==================== SECTION 12: ANNUAL STABILITY ==================== -->
+<section class="card">
+  <h2>年度稳定性对比</h2>
+  <p>比较基线（213c Top50 4L4S flat 4bps）与 buffer8 变体的年度表现，判断 buffer 是否在所有市场环境下都更好。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>年份</th><th colspan="4">基线 213c (flat 4bps)</th><th colspan="4">buffer8_50_50 (12bps/1x)</th></tr>
+      <tr><th></th><th>累计</th><th>回撤</th><th>Long</th><th>Short</th><th>累计</th><th>回撤</th><th>Long</th><th>Short</th></tr></thead>
+      <tbody>
+        <tr><td>2020</td><td>51.16%</td><td>—</td><td>24.69</td><td>-6.36</td><td>48.91%</td><td>-19.21%</td><td>22.50</td><td>-7.59</td></tr>
+        <tr><td>2021</td><td>128.65%</td><td>—</td><td>54.70</td><td>-23.03</td><td>42.31%</td><td>-33.39%</td><td>51.81</td><td>-35.06</td></tr>
+        <tr><td>2022</td><td>9.75%</td><td>—</td><td>-10.22</td><td>18.57</td><td style="color:#dc2626">-22.79%</td><td>-38.50%</td><td>-22.35</td><td>19.89</td></tr>
+        <tr><td>2023</td><td>14.15%</td><td>—</td><td>15.49</td><td>-6.41</td><td>13.32%</td><td>-30.00%</td><td>9.82</td><td>-2.35</td></tr>
+        <tr><td>2024</td><td>35.79%</td><td>—</td><td>10.16</td><td>4.33</td><td style="color:#dc2626">-2.79%</td><td>-35.48%</td><td>-2.91</td><td>6.32</td></tr>
+        <tr><td>2025</td><td>50.45%</td><td>—</td><td>-3.36</td><td>21.15</td><td style="color:#dc2626">-2.38%</td><td>-22.87%</td><td>-15.39</td><td>19.89</td></tr>
+        <tr><td>2026 YTD</td><td>56.40%</td><td>—</td><td>48.80</td><td>10.38</td><td style="color:#dc2626">-13.17%</td><td>-29.20%</td><td>-21.04</td><td>15.55</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><b>关键发现</b>：基线 213c 每年都为正（2022 最差 +9.75%）。buffer8_50_50 在 2022、2024、2025、2026 YTD 均为负。<b>Buffer 改善了 12bps 成本下的均值，但恶化了年度稳定性。</b>这是 buffer 作为"降成本机制"而非"alpha 来源"的直接证据。</p>
+</section>
+
+<!-- ==================== SECTION 13: OVERFITTING ==================== -->
+<section class="card warn">
+  <h2>过拟合风险评估</h2>
+  <div class="twocol">
+    <div>
+      <h3>测试规模</h3>
+      <ul>
+        <li>第五轮：32 个变体</li>
+        <li>Buffer8 专题：~26 个变体</li>
+        <li>探索性扩展：~18 个变体</li>
+        <li><b>合计：~76 个变体</b></li>
+      </ul>
+      <p>在 95% 置信度下，测 76 个方案期望有 ~3.8 个假阳性。最好的变体（buffer8_weekly 6.78 bps）很可能就是其中之一。</p>
+    </div>
+    <div>
+      <h3>哪些结果是稳健的？</h3>
+      <ul>
+        <li><b>稳健</b>：Buffer 方向性改善（所有宽度都好于基线）</li>
+        <li><b>稳健</b>：Top50 + 4L4S 优于其他参数组合</li>
+        <li><b>稳健</b>：Long 是主要 alpha 来源</li>
+        <li><b>可能过拟合</b>：buffer8 精确宽度（7 或 9 未测试）</li>
+        <li><b>可能过拟合</b>：buffer8_weekly 的 6.78 bps</li>
+        <li><b>未验证</b>：所有变体的 walk-forward 表现</li>
+      </ul>
+    </div>
+  </div>
+  <div style="margin-top:16px">
+    <h3>如何区分"真改善"和"过拟合"？</h3>
+    <ol>
+      <li><b>方向性 vs 精确值</b>："buffer 改善策略"是方向性结论，不太可能是过拟合。"buffer8 比 buffer7 好 1.2 bps"是精确值，很可能是过拟合。</li>
+      <li><b>机制可解释性</b>：buffer 减少噪声换仓，机制清晰。buffer8_weekly 为什么额外好 2.67 bps？机制不清晰，可能是噪声。</li>
+      <li><b>参数敏感性</b>：buffer6/8/10 都正（单调先升后降），说明 buffer8 不是孤立的尖峰。但只测了 3 个宽度，不够密。</li>
+      <li><b>年度稳定性</b>：基线每年都正，buffer8 四年亏损——这说明 buffer 不是"更好的策略"，而是"成本结构不同的策略"。</li>
+    </ol>
+  </div>
+  <p><b>总结</b>：Buffer 作为降成本机制是真实改善，但不应把 buffer8_weekly 的 6.78 bps 当作"策略可行"的证据。更合理的读法是：<b>213c 的 gross alpha 约 5-7 bps，在 12bps 成本下只有通过大幅降换手才能勉强为正，且这种正收益不稳定。</b></p>
+</section>
+
+<!-- ==================== SECTION 14: RELATED ==================== -->
+<section class="card">
+  <h2>相关页面</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>页面</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><a href="/momentum/paper/rank213_version_overview.html">版本总览</a></td><td>213a/213b/213c 版本命名、核心指标对比、成本敏感性、年度稳定性</td></tr>
+        <tr><td><a href="/momentum/paper/213c_round5_thickness.html">第五轮：利润厚度</a></td><td>12bps+ 成本下测试 short gate、降换手、信号微调、funding sensitivity</td></tr>
+        <tr><td><a href="/momentum/paper/213c_buffer_research.html">Buffer8 专题</a></td><td>buffer 宽度、weekly cadence、short overlay、turnover cap、capital mix</td></tr>
+        <tr><td><a href="/momentum/paper/213c_execution_stability.html">执行稳定性</a></td><td>成本阶梯、年度稳定性、月度分析、离散度切片</td></tr>
+        <tr><td><a href="/momentum/paper/213c_round4_attribution.html">第四轮归因</a></td><td>Universe 扩展、Benchmark 对比、Beta 分析、参数稳定性</td></tr>
+        <tr><td><a href="/momentum/paper/213b_phase3_validation.html">Phase 3 验证</a></td><td>执行压力测试、walk-forward 检查、gate grid</td></tr>
+        <tr><td><a href="/momentum/paper/rank213_evidence_map.html">Evidence Map</a></td><td>证据分层与 universe 口径说明</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card" style="text-align:center; color:#64748b">
+  <p>生成时间：2026-05-07 · 基于 Rank213 项目现有回测数据整理</p>
+</section>
+
+</main>
+</body>
+</html>

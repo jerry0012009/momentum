@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 crypto stat-arb repo 只读成 2.10 Sharpe README：对 short-cycle desk，更该先拆的是「低成交 state 下的 XS reversal + 高成交 state 下的 slow TSMOM」这条组合 raw alpha，但 15m perp 版本先被换手吃掉</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 crypto stat-arb repo 只读成 2.10 Sharpe README：对 short-cycle desk，更该先拆的是「低成交 state 下的 XS reversal + 高成交 state 下的 slow TSMOM」这条组合 raw alpha，但 15m perp 版本先被换手吃掉</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-12 07:51 UTC</span>
+      <span class="pill">研究时间：2026-04-12 07:49 UTC</span>
+      <span class="pill">类型：quant_digest</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/relative-value/time-series-momentum/mean-reversion/volume-state/router/turnover/cost/market-neutral/binance-perpetual/15m/5m/3m/1m/repo/public-data/risk</span>
+      <span class="pill">证据类型：2026 GitHub repo source audit（`README.md` + `crypto-stat-arb.py`）+ Binance USDⓈ-M `15m` public portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-12_0749_volume-routed-xsreversal-tsmom-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-12 07:49 UTC</li>
+<li>类型：quant_digest</li>
+<li>主题标签：raw-alpha/cross-sectional/relative-value/time-series-momentum/mean-reversion/volume-state/router/turnover/cost/market-neutral/binance-perpetual/15m/5m/3m/1m/repo/public-data/risk</li>
+<li>证据类型：2026 GitHub repo source audit（<code>README.md</code> + <code>crypto-stat-arb.py</code>）+ Binance USDⓈ-M <code>15m</code> public portability probe</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：在高流动性 crypto 横截面里，<strong>低成交状态优先做短周期横截面反转（long loser / short winner），高成交状态优先做较慢的时序动量（follow relative strength）</strong>，再把两条书合成一个 beta-light 组合</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次不是继续补一个单币形态，而是补一条<strong>横截面 / relative-value 家族</strong>的新 repo 线索。原因很简单：当前 desk 的 raw alpha 池里，单币趋势、单币均值回归、盘口流这类材料已经很多；但<strong>“一条能完整写出 entry / exit / sizing / cost 的横截面组合策略”</strong>依然值得持续补货。</p>
+<p>这份 2026 GitHub repo 最值得拿走的，不是 README 里的 <code>2.10 Sharpe</code> 结论本身，而是它提供了一条很清楚的组合骨架：</p>
+<ul>
+<li>一条<strong>慢一些的 time-series momentum</strong> 书；</li>
+<li>一条<strong>快一些的 cross-sectional reversal</strong> 书；</li>
+<li>中间用<strong>volume state</strong> 去路由或放大；</li>
+<li>最后再做策略层组合。</li>
+</ul>
+<p>翻成人话：<strong>不是“押单币方向”，而是在币篮子里决定“现在更该追强，还是更该抄弱”</strong>。</p>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p>先把话说死：</p>
+<ul>
+<li>它的 <strong>base alpha 不是</strong> volume filter 本身；</li>
+<li>它的 <strong>base alpha 不是</strong> Sharpe-weighting 本身；</li>
+<li>它的 <strong>base alpha 也不是</strong>“低 beta”这种结果描述。</li>
+</ul>
+<p>真正的 alpha 本体是两条可独立存在的书：</p>
+<ol>
+<li><strong>XS reversal 书</strong></li>
+</ol>
+<ul>
+<li>在一篮子币里，找最近相对弱的币做多、相对强的币做空；</li>
+<li>本质是 <strong>cross-sectional mean reversion / liquidity provision</strong>。</li>
+</ul>
+<ol>
+<li><strong>TSMOM 书</strong></li>
+</ol>
+<ul>
+<li>看每个币最近表现相对自己长期基线是更强还是更弱；</li>
+<li>本质是 <strong>time-series momentum</strong>。</li>
+</ul>
+<p>volume state 的作用，是决定<strong>哪条书该更大、哪条书该更小</strong>。所以这轮主题属于 <strong>raw alpha</strong>，不是纯 filter / overlay。</p>
+<h2>3. 为什么这轮值得写</h2>
+<h3>3.1 它补的是“组合级 raw alpha”，不是又一个局部触发器</h3>
+<p>当前 desk 已经有很多：</p>
+<ul>
+<li>单币 directional</li>
+<li>事件驱动</li>
+<li>microstructure</li>
+<li>options RV</li>
+</ul>
+<p>但<strong>横截面 long-short 组合</strong>的补货价值依然很高，因为这类策略天然更接近：</p>
+<ul>
+<li>beta-light</li>
+<li>可做 market-neutral</li>
+<li>可把风险拆到组合层，而不是每次都赌单币方向</li>
+</ul>
+<h3>3.2 它是完整策略，不是只有一句 intuition</h3>
+<p>repo 虽然小，但并不空：</p>
+<ul>
+<li>数据抓取</li>
+<li>信号公式</li>
+<li>仓位合成</li>
+<li>成本扣减</li>
+<li>alpha/beta 统计</li>
+</ul>
+<p>都写在 <code>crypto-stat-arb.py</code> 里，足够拆成可执行研究笔记。</p>
+<h3>3.3 它非常适合拿来做“desk 化二次拆解”</h3>
+<p>repo 原版是：</p>
+<ul>
+<li>Binance US</li>
+<li><code>4h</code></li>
+<li>15 个币</li>
+</ul>
+<p>这不适合原样搬到我们这里；但它背后的<strong>结构</strong>很适合 desk 化迁移：</p>
+<ul>
+<li>把 fast reversal 和 slow momentum 分开测；</li>
+<li>把 volume state 从“解释变量”变成“路由器”；</li>
+<li>把组合层 turnover 问题提前暴露出来。</li>
+</ul>
+<h2>4. 来源信息</h2>
+<h3>4.1 主来源：GitHub repo</h3>
+<ul>
+<li><strong>Author</strong>：Parnell Thrower</li>
+<li><strong>Year</strong>：2026</li>
+<li><strong>Title</strong>：*Cryptocurrency Statistical Arbitrage*</li>
+<li><strong>Venue</strong>：GitHub repository</li>
+<li><strong>DOI</strong>：N/A</li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/PThrower/crypto-start-arb&gt;">https://github.com/PThrower/crypto-start-arb&gt;</a></li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/PThrower/crypto-start-arb&gt;">https://github.com/PThrower/crypto-start-arb&gt;</a></li>
+<li><strong>关键文件</strong>：<code>README.md</code>、<code>crypto-stat-arb.py</code></li>
+</ul>
+<h3>4.2 repo README 里给出的 headline 数字</h3>
+<p>README 报告的是一套 <code>4h</code>、15 币、Binance US 的组合结果：</p>
+<ul>
+<li><strong>Combined Sharpe</strong>：<code>2.10</code></li>
+<li><strong>Total Return</strong>：<code>1.78x</code></li>
+<li><strong>Max Drawdown</strong>：<code>-5.07%</code></li>
+<li><strong>Beta vs BTC</strong>：<code>0.011</code></li>
+<li><strong>Annual Trading Cost</strong>：<code>0.16%</code></li>
+</ul>
+<p>这些数字能不能原样信，不是本轮重点；重点是：<strong>这个 repo 提供了一条值得拆的 alpha 结构。</strong></p>
+<h2>5. repo 代码到底在做什么</h2>
+<h3>5.1 横截面反转：找最近相对输家的反打</h3>
+<p><code>xs_strategy(ret, N)</code> 的核心很直接：</p>
+<ol>
+<li>先算过去 <code>N</code> 根的滚动均值收益；</li>
+<li>在横截面里做 rank；</li>
+<li>去均值；</li>
+<li>再按绝对值和归一化。</li>
+</ol>
+<p>也就是说，这不是“找 cointegration pair”，也不是“找一个 winner-long-only 列表”，而是： <strong>在整个 universe 里同时 long losers、short winners。</strong></p>
+<p>repo 里用的是：</p>
+<ul>
+<li><code>N = 6</code> 个 <code>4h</code> bar</li>
+<li>也就是大约 <strong>24 小时</strong> 的横截面 reversal 书</li>
+</ul>
+<h3>5.2 时序动量：看“最近强弱”相对自己长期基线</h3>
+<p><code>ts_momentum(ret, short_window, long_window)</code> 的写法也很标准：</p>
+<ul>
+<li>短窗均值减长窗均值</li>
+<li>再除以长窗波动</li>
+<li>最后用 <code>tanh</code> 压成有限仓位</li>
+</ul>
+<p>repo 参数是：</p>
+<ul>
+<li><code>short_window = 42</code> 个 <code>4h</code> bar（约 1 周）</li>
+<li><code>long_window = 1080</code> 个 <code>4h</code> bar（约 6 个月）</li>
+</ul>
+<p>翻成人话： <strong>不是单纯看“涨了就追”，而是看“最近这段强弱，相对于它自己长历史算不算异常”。</strong></p>
+<h3>5.3 volume state：README 说的是 router，代码写的是连续 signed multiplier</h3>
+<p>repo README 的叙事是：</p>
+<ul>
+<li>momentum 在高成交时更有用</li>
+<li>reversal 在低成交时更有用</li>
+</ul>
+<p>但代码层的实现其实更细一点：</p>
+<ul>
+<li>先算 <code>volume_signal</code></li>
+<li>再对它做 <code>tanh</code></li>
+<li>然后直接乘到 momentum / reversal 权重上</li>
+</ul>
+<p>也就是说，代码不是一个硬切换的“高量=momentum、低量=reversal”二元路由器，而更像： <strong>一个连续的、带正负号的 volume multiplier。</strong></p>
+<p>这个细节很重要，因为它决定了：</p>
+<ul>
+<li>原版更像“连续缩放 / 连续翻转”</li>
+<li>desk 化时更值得先测的是“离散 router 版本”</li>
+</ul>
+<h2>6. 这条策略最值得拿走的几个硬点</h2>
+<h3>6.1 这是一个“组合级双书结构”</h3>
+<p>repo 不是只给一条信号，而是给了两个层次明显不同的 alpha：</p>
+<ul>
+<li><strong>slow TSMOM</strong>：更慢、方向性更强</li>
+<li><strong>fast XS reversal</strong>：更快、更偏 market-neutral</li>
+</ul>
+<p>这对 desk 很有用，因为我们不一定非要一起做；完全可以把它拆成两条研究分支。</p>
+<h3>6.2 反转书天然更贴近 short-cycle，但也更容易死在换手上</h3>
+<p>从结构上看：</p>
+<ul>
+<li>XS reversal 的持仓更新会更频繁；</li>
+<li>组合层 turnover 会比单币策略高很多；</li>
+<li>如果没有 no-trade band、top-bottom 截断、分批 rebalance，很容易<strong>gross 有 edge，net 被手续费和冲击吃掉</strong>。</li>
+</ul>
+<p>这轮 public probe 也基本验证了这一点。</p>
+<h3>6.3 原 repo 的 Sharpe-weighting 本身带有“研究期内知道谁更强”的味道</h3>
+<p>代码里先用全样本算每个币、每条书的 Sharpe，再拿这个结果去做组合权重； 这更像研究期内的静态组合说明，不是 production-ready 的在线分配器。</p>
+<p>对 desk 来说，这意味着：</p>
+<ul>
+<li><strong>先别迷信最终组合 Sharpe</strong>；</li>
+<li>更该看的是每条书本身的可迁移性，以及它们在短周期上的 turnover / cost 轮廓。</li>
+</ul>
+<h2>7. Binance USDⓈ-M <code>15m</code> portability probe：先看结构能不能迁到短周期 perp</h2>
+<h3>7.1 我怎么测的</h3>
+<p>为了看这套结构能不能服务 short-cycle desk，我做了一个<strong>最小 desk 化 probe</strong>：</p>
+<ul>
+<li><strong>数据源</strong>：Binance USDⓈ-M perpetual public klines</li>
+<li><strong>频率</strong>：<code>15m</code></li>
+<li><strong>区间</strong>：<code>2026-01-12 ~ 2026-04-12</code>（近 90 天）</li>
+<li><strong>币种</strong>：<code>BTC, ETH, BNB, XRP, SOL, ADA, DOGE, LINK</code></li>
+<li><strong>成本假设</strong>：单边 <code>4 bps</code></li>
+<li><strong>desk 化窗口</strong>：</li>
+<li>momentum：<code>224 / 1344</code> bars（约 <code>2.3d / 14d</code>）</li>
+<li>reversal：<code>32</code> bars（约 <code>8h</code>）</li>
+<li>volume state：<code>32 / 224</code> bars（约 <code>8h / 2.3d</code>）</li>
+</ul>
+<p>这里我没有硬抄 repo 的 <code>4h</code> 原参数，而是做了一个<strong>适合 <code>15m</code> desk 最小实验</strong>的缩短版。</p>
+<h3>7.2 probe 结果：gross 里有东西，但 15m net 基本被换手吃掉</h3>
+<p>#### A. repo 风格 momentum 分支</p>
+<ul>
+<li><strong>gross cumulative return</strong>：<code>+3.1%</code></li>
+<li><strong>net cumulative return</strong>：<code>-34.0%</code></li>
+<li><strong>gross Sharpe</strong>：<code>0.50</code></li>
+<li><strong>net Sharpe</strong>：<code>-2.74</code></li>
+<li><strong>平均每 bar turnover</strong>：<code>0.129</code></li>
+</ul>
+<p>结论：慢动量分支在 <code>15m</code> 上不是完全没信号，但<strong>边太薄</strong>，一上 perp 成本就不够看。</p>
+<p>#### B. repo 风格 reversal 分支</p>
+<ul>
+<li><strong>gross cumulative return</strong>：<code>-19.3%</code></li>
+<li><strong>net cumulative return</strong>：<code>-74.5%</code></li>
+<li><strong>gross Sharpe</strong>：<code>-3.76</code></li>
+<li><strong>net Sharpe</strong>：<code>-24.50</code></li>
+<li><strong>平均每 bar turnover</strong>：<code>0.334</code></li>
+</ul>
+<p>结论：照 repo 的 signed volume multiplier 直接搬到 <code>15m</code> perp，<strong>reversal 这条线不成立</strong>。</p>
+<p>#### C. repo 风格 combo（两条书直接合成）</p>
+<ul>
+<li><strong>gross cumulative return</strong>：<code>-11.1%</code></li>
+<li><strong>net cumulative return</strong>：<code>-71.3%</code></li>
+<li><strong>gross Sharpe</strong>：<code>-0.80</code></li>
+<li><strong>net Sharpe</strong>：<code>-10.73</code></li>
+<li><strong>平均每 bar turnover</strong>：<code>0.327</code></li>
+</ul>
+<p>结论：<strong>整套 README 叙事原样 desk 化，不行。</strong></p>
+<p>#### D. 只拿“plain XS reversal”出来看</p>
+<ul>
+<li><strong>gross cumulative return</strong>：<code>+22.0%</code></li>
+<li><strong>net cumulative return</strong>：<code>-55.0%</code></li>
+<li><strong>gross Sharpe</strong>：<code>5.60</code></li>
+<li><strong>net Sharpe</strong>：<code>-22.06</code></li>
+<li><strong>平均每 bar turnover</strong>：<code>0.289</code></li>
+</ul>
+<p>#### E. 只拿“low-volume XS reversal”出来看</p>
+<ul>
+<li><strong>gross cumulative return</strong>：<code>+38.6%</code></li>
+<li><strong>net cumulative return</strong>：<code>-49.3%</code></li>
+<li><strong>gross Sharpe</strong>：<code>5.43</code></li>
+<li><strong>net Sharpe</strong>：<code>-10.88</code></li>
+<li><strong>平均每 bar turnover</strong>：<code>0.291</code></li>
+</ul>
+<p>这两条最有启发：</p>
+<ul>
+<li><strong>反转书本体不是没东西</strong>；</li>
+<li>但在 <code>15m</code> perp、按 bar 级重排、单边 <code>4 bps</code> 成本下，<strong>alpha 先被 turnover 杀死了</strong>。</li>
+</ul>
+<h2>8. 这轮 probe 真正说明了什么</h2>
+<h3>8.1 值得 intake 的不是 README 里的组合，而是“反转书 gross edge + 成本问题”</h3>
+<p>如果只看 repo headline，很容易得到一个错觉： &gt; 把 TSMOM + reversal + volume filter 搬过来就行。</p>
+<p>但这轮最诚实的结论其实是：</p>
+<ul>
+<li><code>15m</code> 上，<strong>最有信息量的是 low-volume XS reversal 这条书的 gross edge</strong>；</li>
+<li>repo 那种直接组合方式，对 perp 短周期不够稳；</li>
+<li>真正的工作重点应该转向<strong>turnover compression / execution transfer</strong>，而不是继续往 signal 里塞新指标。</li>
+</ul>
+<h3>8.2 这更像 <code>15m signal, slower rebalance / narrower basket / cheaper execution</code> 题，而不是 bar-close taker 题</h3>
+<p>如果你每根 <code>15m</code> 都按全横截面重排，组合 turnover 太高。</p>
+<p>所以这条线更合理的读法是：</p>
+<ul>
+<li>信号可以在 <code>15m</code> 生成；</li>
+<li>但<strong>组合再平衡频率</strong>不一定也要是 <code>15m</code>；</li>
+<li>甚至更应该：</li>
+<li>只做 top/bottom 少数名次；</li>
+<li>用 no-trade band / hysteresis；</li>
+<li>用 <code>30m / 60m</code> hold 或 staggered rebalance；</li>
+<li>由 <code>1m / 5m</code> 去找更好的执行点。</li>
+</ul>
+<h3>8.3 对 short-cycle desk，最该优先拆的是“低量反转书”，不是整个 README combo</h3>
+<p>因为：</p>
+<ul>
+<li>slow TSMOM 这条线，在 <code>15m</code> 上边很薄；</li>
+<li>low-volume XS reversal 至少 gross 上像真东西；</li>
+<li>而且它天然适合做：</li>
+<li>market-neutral</li>
+<li>relative-value</li>
+<li>beta-light</li>
+<li>basket-style execution routing</li>
+</ul>
+<h2>9. 我对这份材料的 desk 结论</h2>
+<h3>9.1 这轮主题仍然是 raw alpha，不降级成 filter</h3>
+<p>原因很简单：</p>
+<ul>
+<li>把 volume state 拿掉，plain XS reversal 仍然是一条完整策略；</li>
+<li>把 TSMOM 拿掉，reversal 仍然能单独做；</li>
+<li>所以它不是纯 filter / regime 主题。</li>
+</ul>
+<h3>9.2 但当前 short-cycle desk 最值得保留的，只是其中一个“可压缩换手”的分支</h3>
+<p>我会这样排序：</p>
+<ol>
+<li><strong>优先保留</strong>：<code>low-volume XS reversal</code> 这条 raw alpha 候选</li>
+<li><strong>次级保留</strong>：<code>plain XS reversal</code> 作为对照书</li>
+<li><strong>延后处理</strong>：slow TSMOM 分支</li>
+<li><strong>不建议直接照搬</strong>：repo 原版 continuous volume multiplier + static Sharpe-weighted combo</li>
+</ol>
+<h3>9.3 它和当前 desk 的关系很直接</h3>
+<p>这轮不是离题的“泛化综述”，而是直接补：</p>
+<ul>
+<li>raw alpha 素材池里的 <strong>cross-sectional / relative-value / stat-arb</strong> 家族</li>
+<li>且非常适合和现有的：</li>
+<li>funding / basis</li>
+<li>positioning</li>
+<li>liquidity / cost</li>
+<li>execution veto</li>
+<p>这些 shared component 拼起来</p>
+</ul>
+<h2>10. 对 <code>1m / 3m / 5m / 15m</code> 的最小落地建议</h2>
+<h3>10.1 别先做全市场全排序，先做 top-bottom 截断</h3>
+<p>第一版建议：</p>
+<ul>
+<li>只在 <code>8~12</code> 个高流动性 perp 里做</li>
+<li>每次只做 <strong>top 2 / bottom 2</strong> 或 <strong>top 3 / bottom 3</strong></li>
+<li>其余币不动</li>
+</ul>
+<p>这样做的目的很直接： <strong>把 turnover 从“全横截面重排”压成“极端名次轮换”。</strong></p>
+<h3>10.2 别每根 bar 全量 rebalance，先试 fixed hold + hysteresis</h3>
+<p>建议先测：</p>
+<ul>
+<li>signal bar：<code>15m</code></li>
+<li>hold：<code>30m / 60m / 90m</code></li>
+<li>只有当 rank gap 或 score gap 超过阈值，才允许换仓</li>
+</ul>
+<p>翻成人话： <strong>不要因为第 4 名和第 5 名交换了一次就整本书重排。</strong></p>
+<h3>10.3 成本测试必须前置，不要等到最后再扣</h3>
+<p>至少要同时跑：</p>
+<ul>
+<li>单边 <code>1 bps</code></li>
+<li>单边 <code>2 bps</code></li>
+<li>单边 <code>4 bps</code></li>
+</ul>
+<p>如果只在 <code>&lt;=1 bps</code> 下活着，那它更像：</p>
+<ul>
+<li>maker / queue-aware execution 题</li>
+<li>或内部撮合 / 低冲击执行题</li>
+</ul>
+<p>而不是普通 bar-close taker 题。</p>
+<h3>10.4 TSMOM 分支先降级成 slow companion，不要和 fast reversal 同频同权</h3>
+<p>更合理的 desk 版本是：</p>
+<ul>
+<li><strong>fast book</strong>：<code>15m</code> low-volume XS reversal</li>
+<li><strong>slow book</strong>：<code>1h</code> 或 <code>30m</code> 的 TSMOM companion</li>
+<li>两条书的 rehedge / rebalance 频率分开</li>
+</ul>
+<p>否则组合层 turnover 只会继续恶化。</p>
+<h2>11. 下一步怎么测</h2>
+<p>按优先级，我建议直接做下面 4 组实验：</p>
+<h3>实验 1：只测 <code>low-volume XS reversal</code></h3>
+<ul>
+<li>universe：8~12 个高流动性 USDT perp</li>
+<li>signal：过去 <code>8h / 12h / 24h</code> 横截面 loser-winner 排名</li>
+<li>filter：仅在 volume z-score &lt; 0 时开仓</li>
+<li>holding：<code>30m / 60m / 90m</code></li>
+<li>rebalance：非每 bar，改成 fixed hold</li>
+</ul>
+<p>目标：确认<strong>gross edge 在降低换手后能否留到 net</strong>。</p>
+<h3>实验 2：top-bottom 截断 + no-trade band</h3>
+<ul>
+<li>只做 top2-bottom2 / top3-bottom3</li>
+<li>设 score gap 门槛</li>
+<li>小于门槛不调仓</li>
+</ul>
+<p>目标：确认 repo 的失败是不是主要来自<strong>横截面尾部噪声 + 过度重排</strong>。</p>
+<h3>实验 3：执行层 transfer</h3>
+<ul>
+<li>signal 仍然 <code>15m</code></li>
+<li>execution 改到 <code>1m / 5m</code></li>
+<li>用 VWAP 偏离、盘口滑点、短时反弹/回踩做分批挂单</li>
+</ul>
+<p>目标：确认这条线到底是<strong>signal 不行</strong>，还是<strong>execution 太贵</strong>。</p>
+<h3>实验 4：把 slow TSMOM 单独升到 <code>30m / 1h</code></h3>
+<ul>
+<li>不和 fast reversal 同频混合</li>
+<li>单独测它的 cost survival</li>
+</ul>
+<p>目标：确认它是否值得作为第二条 companion book 留在素材池里。</p>
+<h2>12. 一句话结论</h2>
+<p>这份 2026 repo 真正值得 desk intake 的，不是 README 里的“2.10 Sharpe 组合神话”，而是：</p>
+<p><strong>“低成交状态下的横截面反转书，本体可能有 edge；但 <code>15m</code> perp 上若按 bar-close 全量重排，换手会先把它吃死。”</strong></p>
+<p>所以本轮结论不是“照搬”，而是：</p>
+<ul>
+<li><strong>保留 raw alpha 本体</strong>：<code>low-volume XS reversal</code></li>
+<li><strong>降级原版 combo</strong>：不直接照抄</li>
+<li><strong>下一步重点</strong>：turnover compression + execution transfer，而不是继续往信号里加花样</li>
+</ul>
+</body>
+</html>

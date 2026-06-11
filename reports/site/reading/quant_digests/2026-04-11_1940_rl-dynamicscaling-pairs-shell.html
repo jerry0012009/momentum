@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2024 RL pairs paper 只读成“让 agent 学会开平仓”：对 short-cycle desk，更该先测的是「hedged spread z-score fade × clipped dynamic sizing shell」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2024 RL pairs paper 只读成“让 agent 学会开平仓”：对 short-cycle desk，更该先测的是「hedged spread z-score fade × clipped dynamic sizing shell」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-11 19:41 UTC</span>
+      <span class="pill">研究时间：2026-04-11 19:40 UTC</span>
+      <span class="pill">类型：2024 论文 + 开源 repo source audit（Crossref/OpenAlex metadata + `README.md` + `envs/env_gridsearch.py` + `envs/env_rl.py` + `envs/mock_trading.py`）+ Binance USDⓈ-M `15m/5m` portability probe</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/dynamic-sizing/reinforcement-learning/hedge-ratio/zscore/binance-perpetual/5m/15m/repo/paper/public-data/cost/risk</span>
+      <span class="pill">证据类型：论文摘要元数据 + 开源策略代码 + Binance 公共数据 probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-11_1940_rl-dynamicscaling-pairs-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-11 19:40 UTC</li>
+<li>类型：2024 论文 + 开源 repo source audit（Crossref/OpenAlex metadata + <code>README.md</code> + <code>envs/env_gridsearch.py</code> + <code>envs/env_rl.py</code> + <code>envs/mock_trading.py</code>）+ Binance USDⓈ-M <code>15m/5m</code> portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>配对两腿的 hedge-adjusted spread 一旦偏离滚动均值，后续更容易向常态回归；RL / dynamic sizing 服务的是这条 spread mean reversion，而不是另起一条新 alpha。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/dynamic-sizing/reinforcement-learning/hedge-ratio/zscore/binance-perpetual/5m/15m/repo/paper/public-data/cost/risk</li>
+<li>证据类型：论文摘要元数据 + 开源策略代码 + Binance 公共数据 probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Hongshen Yang, Abdul Malik (2024), _Reinforcement Learning Pair Trading: A Dynamic Scaling Approach_, Journal of Risk and Financial Management</strong>，以及作者公开的 repo <strong><code>Hongshen-Yang/pair-trading-envs</code></strong>。</p>
+<p>这篇东西最容易被误读成：</p>
+<p>&gt; “又一个把 RL 套到交易上、让 agent 自己学买卖。”</p>
+<p>但如果按 desk 视角拆开看，它真正清楚的地方其实是：</p>
+<p>&gt; <strong>base alpha 仍然是 pair spread mean reversion；RL 真正想解决的是“仓位要不要 all-in、能不能按偏离强弱动态缩放”。</strong></p>
+<p>Crossref 摘要给的原文关键信息也支持这个读法：作者用 <strong><code>BTC-GBP / BTC-EUR</code> 的 <code>1m</code> 数据、共 <code>263,520</code> 条样本</strong>，传统非 RL pair trading 年化约 <strong><code>8.33%</code></strong>，RL 版年化约 <strong><code>9.94% ~ 31.53%</code></strong>。所以 paper 的亮点不是重新发明 alpha，本质上还是在同一条 spread fade 上，讨论 <strong>dynamic scaling</strong> 有没有价值。</p>
+<h2>2. repo 里最值得拿走的，不是“黑盒 agent”，而是这几个明确零件</h2>
+<h3>2.1 rule-based baseline 已经很像完整 shell</h3>
+<p><code>envs/env_gridsearch.py</code> 给的是很清楚的 baseline：</p>
+<ul>
+<li>spread / z-score 监控；</li>
+<li><code>OPEN_THRE=1.6</code>、<code>CLOS_THRE=0.4</code>；</li>
+<li><code>zscore &gt; open</code> 时做 <code>short leg0 / long leg1</code>；</li>
+<li><code>zscore &lt; -open</code> 时做反向；</li>
+<li><code>|zscore| &lt;= close</code> 时平仓。</li>
+</ul>
+<p>翻成人话就是：<strong>先承认 alpha 本体就是“价差拉太开，后面更容易收回来”</strong>。</p>
+<h3>2.2 RL 版核心不是改方向，而是改仓位表达</h3>
+<p><code>envs/env_rl.py</code> 里有两条路：</p>
+<ul>
+<li><code>RL_FixAmt_PairTrade</code>：动作还是离散 <code>{开反向, 平, 开正向}</code>；</li>
+<li><code>RL_FreeAmt_PairTrade</code>：动作变成连续 <code>[-1, 1]</code>，本质是<strong>目标仓位大小</strong>。</li>
+</ul>
+<p>这就很关键： <strong>repo 并没有把 raw alpha 改成别的东西，而是在问——同样的 spread reversion，仓位该不该动态缩放。</strong></p>
+<h3>2.3 对当前 desk 更值钱的 branch，不一定是“真 RL”，而可能是“clipped size rule”</h3>
+<p>因为一旦把连续仓位真的逐 bar 重调，最先爆炸的往往不是预测，而是：</p>
+<ul>
+<li>换手；</li>
+<li>成本；</li>
+<li>反复减仓/加仓带来的噪声；</li>
+<li>本来抓得到的 mean reversion，被 re-hedge 自己吃掉。</li>
+</ul>
+<p>所以这份材料最值得先偷的，不一定是 PPO / SAC / DQN 本身，而是： <strong>能不能把“偏离越大、仓位越大”做成一个更克制的 clipped sizing shell。</strong></p>
+<h2>3. 这轮 portability probe：把它压到 Binance perp <code>15m/5m</code> 上，dynamic sizing 到底有没有用？</h2>
+<h3>3.1 快检口径</h3>
+<p>我没有复现原文的 RL 训练，而是把 repo 的想法改写成 desk 更快能验证的三种壳：</p>
+<ul>
+<li>标的对：<code>ETH/SOL</code>、<code>XRP/ADA</code>、<code>DOGE/ADA</code>、<code>ETH/BNB</code>、<code>XRP/DOGE</code>、<code>BTC/ETH</code></li>
+<li>数据：Binance USDⓈ-M 公共 klines</li>
+<li>周期：<code>15m</code>（近 <code>90d</code>）和 <code>5m</code>（近 <code>45d</code>）</li>
+<li>spread：先对 log price 做 rolling hedge ratio，再算 residual z-score</li>
+<li>开平规则：沿用 repo 语义，<code>entry=1.6</code>、<code>exit=0.4</code></li>
+<li>成本：每边 <strong><code>4 bps</code></strong></li>
+</ul>
+<p>三种模式：</p>
+<ol>
+<li><strong>fixed</strong>：进场就满仓，直到 exit 才平；</li>
+<li><strong>scaled_entry</strong>：只在进场时按 <code>|z|</code> 大小给 <code>0.25~1.0</code> 的 clipped 仓位，持有期间不频繁重调；</li>
+<li><strong>continuous</strong>：每根 bar 都按当前 <code>|z|</code> 连续调目标仓位，最接近 repo 的 free-amount 思路。</li>
+</ol>
+<p>本地 artifact：</p>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/rl_pair_dynamic_scaling_probe_summary_2026-04-11.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/rl_pair_dynamic_scaling_probe_detail_2026-04-11.csv</code></li>
+</ul>
+<h3>3.2 first verdict：<strong>continuous free-amount 在 short-cycle 上明显被换手拖死</strong></h3>
+<p>先看 6 对资产的平均结果：</p>
+<p>#### <code>15m</code></p>
+<ul>
+<li><code>fixed</code>：平均累计收益约 <strong><code>-4.26%</code></strong>，平均换手约 <strong><code>331x</code></strong></li>
+<li><code>scaled_entry</code>：平均累计收益约 <strong><code>-0.80%</code></strong>，平均换手约 <strong><code>111x</code></strong></li>
+<li><code>continuous</code>：平均累计收益约 <strong><code>-16.78%</code></strong>，平均换手约 <strong><code>683x</code></strong></li>
+</ul>
+<p>#### <code>5m</code></p>
+<ul>
+<li><code>fixed</code>：平均累计收益约 <strong><code>+1.05%</code></strong>，平均换手约 <strong><code>186x</code></strong></li>
+<li><code>scaled_entry</code>：平均累计收益约 <strong><code>+0.59%</code></strong>，平均换手约 <strong><code>56.5x</code></strong></li>
+<li><code>continuous</code>：平均累计收益约 <strong><code>-15.85%</code></strong>，平均换手约 <strong><code>604x</code></strong></li>
+</ul>
+<p>一句话： <strong>同一条 pairs raw alpha，在 <code>5m/15m</code> 上最先死掉的不是信号方向，而是 continuous re-sizing 的换手。</strong></p>
+<h3>3.3 但“进场时按偏离强度缩放仓位”这条 branch 是有价值的</h3>
+<p>几个更有代表性的 pair：</p>
+<ul>
+<li><strong><code>BTC/ETH 15m</code></strong>：</li>
+<li><code>fixed</code>：约 <strong><code>-4.44%</code></strong></li>
+<li><code>scaled_entry</code>：约 <strong><code>+0.15%</code></strong></li>
+<li>换手从约 <strong><code>325x</code></strong> 降到 <strong><code>106.8x</code></strong></li>
+<li><strong><code>ETH/BNB 15m</code></strong>：</li>
+<li><code>fixed</code>：约 <strong><code>-7.51%</code></strong></li>
+<li><code>scaled_entry</code>：约 <strong><code>-0.44%</code></strong></li>
+<li><strong><code>XRP/DOGE 5m</code></strong>：</li>
+<li><code>fixed</code>：约 <strong><code>+0.63%</code></strong></li>
+<li><code>scaled_entry</code>：约 <strong><code>+1.01%</code></strong></li>
+</ul>
+<p>这说明 repo 对 desk 最可迁移的，不是“continuous control agent”，而是：</p>
+<p>&gt; <strong>pair MR alpha 可以保留，但 sizing 最好离散化、区间化、clip 化。</strong></p>
+<h2>4. 为什么它和当前项目直接相关</h2>
+<p>最近 intake 里我们已经补了很多 pairs / stat-arb raw alpha，但大多还停在：</p>
+<ul>
+<li>选哪对；</li>
+<li>怎么算 spread；</li>
+<li>用什么 threshold。</li>
+</ul>
+<p>这篇补的是另一层： <strong>同一条 raw alpha，仓位表达怎么写，才不会被成本先杀死。</strong></p>
+<p>所以它不是单纯 overlay 话题，因为它服务的对象非常明确：</p>
+<ul>
+<li>base alpha：spread mean reversion</li>
+<li>branch value：dynamic sizing / action representation</li>
+<li>适用场景：<code>5m/15m</code> pairs、basket residual fade、甚至后续 funding/basis convergence shell</li>
+</ul>
+<h2>5. 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：market-neutral / relative-value / mean reversion</li>
+<li>基础 alpha：hedged spread 的 z-score 极端偏离后更容易回归</li>
+<li>regime：只在高相关、半衰期可接受的 pair 上启用</li>
+<li>filter / veto：<code>|z|</code> 不到开仓带、不在高相关 / 可回归 pair、或成本阈值不过线时不做</li>
+<li>risk / sizing / execution overlay：固定满仓、entry-time clipped sizing、continuous resizing 三种表达；成本至少按 <code>4bps/side</code> 压测</li>
+</ul>
+<h2>6. 下一步怎么测</h2>
+<p>先别急着真训练 RL。更合理的下一步是：</p>
+<ol>
+<li><strong>把 sizing 离散成 3~5 档</strong>，而不是 continuous <code>[-1,1]</code>；</li>
+<li>在现有 <code>5m/15m</code> pairs shell 上做 <strong>固定仓位 vs clipped 分档仓位</strong> 的正式 friction ladder；</li>
+<li>把 pair admission 接回去——只在 <code>corr / half-life / residual-vol</code> 合格的窗口启用 sizing shell；</li>
+<li>若离散分档在成本后仍稳定优于 fixed，再考虑是否值得用 RL 学“分档切换”，而不是直接学连续仓位。</li>
+</ol>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>原论文主样本是 <strong><code>BTC-GBP / BTC-EUR 1m</code></strong>，更像同一 underlying 的 cross-quote pair；我这里用的是 <strong>cross-asset perp pairs</strong>，所以是 portability，不是 strict replication。</li>
+<li>这轮没有复现原文 agent 训练，只验证了 <strong>repo 想表达的 sizing 命题</strong> 在 Binance short-cycle 上是否值得继续追。</li>
+<li>当前 probe 还没接更真实的 maker/taker path、腿间成交不同步、资金费率与流动性上限，所以只能当 first verdict。</li>
+</ul>
+<h2>8. 来源</h2>
+<ul>
+<li><strong>Yang, H., &amp; Malik, A. (2024).</strong> *Reinforcement Learning Pair Trading: A Dynamic Scaling Approach*. <strong>Journal of Risk and Financial Management</strong>.</li>
+<li>DOI: &lt;<a href="https://doi.org/10.3390/jrfm17120555&gt;">https://doi.org/10.3390/jrfm17120555&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://doi.org/10.3390/jrfm17120555&gt;">https://doi.org/10.3390/jrfm17120555&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/Hongshen-Yang/pair-trading-envs&gt;">https://github.com/Hongshen-Yang/pair-trading-envs&gt;</a></li>
+<li>README: &lt;<a href="https://raw.githubusercontent.com/Hongshen-Yang/pair-trading-envs/main/README.md&gt;">https://raw.githubusercontent.com/Hongshen-Yang/pair-trading-envs/main/README.md&gt;</a></li>
+</ul>
+<h2>9. 一句话带走</h2>
+<p><strong>别把这篇 paper 的卖点理解成“RL 会替你找到新 alpha”；它真正对 desk 有价值的是：pairs 的 raw alpha 还是 spread fade，但仓位最好做成 clipped dynamic sizing，而不是 continuous 来回拧。</strong></p>
+</body>
+</html>

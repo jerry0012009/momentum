@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 crypto pairs 继续只做静态 z-score：这份 2026 新 repo 更该先抄的是「5m cointegration pair + graduation + daily throttle」完整 stat-arb 操作系统</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 crypto pairs 继续只做静态 z-score：这份 2026 新 repo 更该先抄的是「5m cointegration pair + graduation + daily throttle」完整 stat-arb 操作系统</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-31 11:27 UTC</span>
+      <span class="pill">研究时间：2026-03-31 11:25 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库（README + selection / execution / daily guard 核心源码细读）</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/graduation/risk-overlay/daily-throttle/bybit/perpetual/5m/15m/repo/live-results/cost/execution</span>
+      <span class="pill">证据类型：仓库（README + 4 个核心源码文件 + 自带 execution 导出）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-31_1125_cointegration-graduation-daily-throttle-statarb.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-31 11:25 UTC</li>
+<li>类型：2026 GitHub 新仓库（README + selection / execution / daily guard 核心源码细读）</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/graduation/risk-overlay/daily-throttle/bybit/perpetual/5m/15m/repo/live-results/cost/execution</li>
+<li>证据类型：仓库（README + 4 个核心源码文件 + 自带 execution 导出）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：对 cointegrated perp pairs 做 spread z-score 均值回归交易，只让通过统计检验且最近实盘/回测表现达标的 pairs 升级进 live book，再叠加日内 profit-lock throttle 与 daily stop</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次不是再补一个“pairs 也能做”的概念卡，而是补一个 <strong>能直接拆成 production skeleton 的 2026 repo</strong>：</p>
+<ul>
+<li>作者把系统拆成 <strong>selection layer + execution layer + daily guard</strong>；</li>
+<li>信号不是抽象地说“价差回归”，而是落成了 <strong>5m 更新、5m 半衰期、分级 pair 池、分块下单、逐日节流</strong>；</li>
+<li>README 里给了作者自报的 live test 指标（<code>2025-06 ~ 2025-11</code>）：</li>
+<li><code>704</code> 笔交易</li>
+<li><code>64.6%</code> 胜率</li>
+<li><code>Profit Factor = 1.22</code></li>
+<li><code>Balance return = 35%</code></li>
+<li><code>Max drawdown = -4.36%</code></li>
+</ul>
+<p>最重要的是：这份仓库虽然 <strong>不是开箱即跑</strong>（缺 DB schema / config / credentials），但它已经把 desk 真正关心的 5 件事写清楚了：</p>
+<ol>
+<li><strong>pair 什么时候能进 live 池</strong></li>
+<li><strong>entry 到底用什么阈值</strong></li>
+<li><strong>仓位怎么随流动性和 beta 变化</strong></li>
+<li><strong>什么条件平仓</strong></li>
+<li><strong>日内赚了/亏了以后，系统如何自动降速或停机</strong></li>
+</ol>
+<h2>2. 先回答：这篇东西的 base alpha 是什么？</h2>
+<p>这篇东西的 <strong>base alpha 很清楚</strong>：</p>
+<ul>
+<li>对两条高相关 perp 价格序列估一个 <strong>hedge ratio</strong>；</li>
+<li>构造 <strong>spread = P1 - beta × P2</strong>；</li>
+<li>当 spread 的 <strong>z-score 偏离足够大</strong> 时，做 <strong>short rich leg / long cheap leg</strong>；</li>
+<li>持有到 spread 回到中线、PnL 命中阈值、或 cointegration 失效。</li>
+</ul>
+<p>所以它不是单纯 filter，也不是只有风险管理。 <strong>核心 alpha 本体就是 cointegration spread mean reversion。</strong></p>
+<p>repo 真正有价值的旁支，在于它把这个 raw alpha 外面又包了两层 desk 很缺的可复现组件：</p>
+<ul>
+<li><strong>pair graduation / admission layer</strong></li>
+<li><strong>daily throttle / daily stop overlay</strong></li>
+</ul>
+<h2>3. 为什么它值得进当前 desk 的研究池</h2>
+<p>当前池里已经有不少 pairs / stat-arb 题材，但很多还停留在：</p>
+<ul>
+<li>只讲 pair formation</li>
+<li>只讲 z-score entry</li>
+<li>只讲某个 fancy filter（copula / Kalman / graph）</li>
+<li>很少把 <strong>entry / exit / sizing / risk / concurrency / daily governance</strong> 一次说全</li>
+</ul>
+<p>这份 repo 的价值恰好在于：</p>
+<ol>
+<li><strong>它仍然是 raw alpha</strong>，不是“pairs 旁边的一层 gate”；</li>
+<li><strong>它给的是完整 operating system</strong>，而不是单点 feature；</li>
+<li><strong>它天然服务 5m / 15m</strong>：</li>
+</ol>
+<ul>
+<li>selection 以 <code>5m</code> bar 刷新</li>
+<li>监控循环 <code>30s</code></li>
+<li>进出场采用 chunked execution</li>
+<li>hold horizon 由 spread half-life 决定</li>
+</ul>
+<ol>
+<li><strong>它很适合 desk 做最小实验</strong>：先不用追求全自动 pair discovery，先用一个小 pairbook 就能开始跑。</li>
+</ol>
+<h2>4. repo 里最值得先抄的，不是“cointegration”四个字，而是三层结构</h2>
+<h3>A. Pair 质量层：不是所有 z-score 都配进 live</h3>
+<p>selection 端先在 <code>5m</code> 上更新 pair 状态：</p>
+<ul>
+<li>用 OLS 估 <strong>hedge ratio</strong></li>
+<li>计算 spread、z-score、半衰期 <code>HL</code></li>
+<li>计算 cointegration 检验：</li>
+<li><code>ADF</code></li>
+<li><code>p-value</code></li>
+<li><code>Hurst</code></li>
+</ul>
+<p>核心统计门槛来自源码：</p>
+<ul>
+<li><code>ADF &lt;= -2.9</code></li>
+<li><code>p-value &lt;= 0.05</code></li>
+<li><code>Hurst &lt;= 0.45</code></li>
+<li><code>HL &gt; 0</code></li>
+<li><code>|last_spread| &lt; 1.2 × hl_spread_med</code></li>
+</ul>
+<p>这其实已经不是“看到价差大就上”，而是： <strong>只有看起来真的像均值回复 spread 的 pair，才有资格进入 execution 候选池。</strong></p>
+<h3>B. Graduation 层：pair 要先证明自己最近还能赚钱</h3>
+<p><code>SQL-DB-Stat-upd-5.py</code> 里还有一层特别 desk 化的东西：<strong>pair level assignment</strong>。</p>
+<p>repo 会基于最近 <code>60d</code>、最多 <code>30</code> 笔交易的统计，把 pair 打成 <code>Level_0 / 1 / 2</code>：</p>
+<ul>
+<li><code>Level_30 = L2</code> 条件：</li>
+<li><code>n &gt;= 15</code></li>
+<li><code>win_rate &gt;= 0.55</code></li>
+<li><code>reward_risk &gt;= 1.1</code></li>
+<li><code>Expect_30 = 1</code></li>
+<li><code>Level_30 = L1</code> 条件：</li>
+<li><code>n &gt;= 5</code></li>
+<li><code>win_rate &gt;= 0.50</code></li>
+<li><code>Expect_30 = 1</code></li>
+<li>然后 live <code>Level_2</code> 的最终条件更严：</li>
+<li><code>Expect = 1</code></li>
+<li><code>Coint = 1</code></li>
+<li><code>num_trades &gt; 20</code></li>
+<li><code>level30 in (L1, L2)</code></li>
+</ul>
+<p>这点很关键： <strong>repo 不是“组合搜索出 pair 就长期持有信仰”，而是让 pair 先通过最近表现的毕业考试。</strong></p>
+<p>对 desk 来说，这比继续空谈“pair selection 最优算法”更值钱，因为它直接给了一个可测 admission layer：</p>
+<ul>
+<li>raw alpha：spread mean reversion</li>
+<li>gate：recent realized expectancy graduation</li>
+</ul>
+<h3>C. Execution / overlay 层：让 alpha 以更像真实 desk 的方式活下来</h3>
+<p>execution bot 里最有意思的，不是单独某个阈值，而是它把交易写成了完整流程：</p>
+<ol>
+<li><strong>候选选择</strong></li>
+</ol>
+<ul>
+<li>只从 <code>Level_2</code> 挑</li>
+<li>避免资产重叠</li>
+<li><code>ORDER BY Num trades ASC, ABS(last_z_score) DESC</code></li>
+<li>最多 <code>4</code> 个并发 pair</li>
+</ul>
+<ol>
+<li><strong>entry 触发</strong></li>
+</ol>
+<ul>
+<li>预筛要求 <code>ABS(last_z_score)</code> 达到半衰期相关门槛的 <code>90%</code></li>
+<li>对更长半衰期的 pair，提高预筛门槛：</li>
+<li><code>HL &lt; 60 -&gt; 2</code></li>
+<li><code>HL &lt; 100 -&gt; 2.5</code></li>
+<li><code>HL &lt; 140 -&gt; 3</code></li>
+<li>else <code>3.5</code></li>
+<li>正式进场端要求 <code>|z| &gt;= 2</code></li>
+<li>同时要求 <code>|z| &lt; 5</code>，避免追太离谱的异常点</li>
+</ul>
+<ol>
+<li><strong>sizing</strong></li>
+</ol>
+<ul>
+<li>用 <strong>beta-normalized hedge</strong> 决定双腿 exposure</li>
+<li>控制腿取 <strong>5m 成交额更小</strong> 的那条腿</li>
+<li>另一腿按 <code>beta_norm</code> 配比，但把 <code>beta_norm</code> clamp 在 <code>[0.8, 1.2]</code></li>
+<li>单腿最小 notional <code>500 USDT</code></li>
+<li>最大 leverage <code>5x</code></li>
+<li>若触发日内 throttle，则 exposure 直接减半</li>
+</ul>
+<ol>
+<li><strong>execution</strong></li>
+</ol>
+<ul>
+<li>不是一笔梭哈，而是按 <code>100 USDT</code> chunk 分块开平</li>
+<li>chunk 之间暂停 <code>3s</code></li>
+<li>监控循环 <code>30s</code></li>
+</ul>
+<ol>
+<li><strong>exit</strong></li>
+</ol>
+<ul>
+<li><code>pnl% &gt;= pair_tp</code>：止盈</li>
+<li><code>pnl% &lt;= -pair_sl</code>：止损</li>
+<li>超过 <code>HL × 5min</code> 后若 cointegration 丢失：退出</li>
+<li>若 <code>|z| &gt;= 6</code> 且 cointegration 丢失：退出</li>
+<li>若 z-score 穿过 <code>0</code>：退出</li>
+</ul>
+<p>这比“z-score 回到 0 就平”多了一整层真实交易语义。</p>
+<h2>5. 对短周期 desk，最值得抄的其实是「raw alpha + graduation + daily guard」三段式</h2>
+<p>如果把它 desk 化，最值得先测的不是“完全 faithful 地重建它的数据库工程”，而是下面这条更小、但仍然忠于仓库精神的版本：</p>
+<h3>策略骨架</h3>
+<ul>
+<li><strong>方向</strong>：pairs / stat-arb / relative-value / market-neutral</li>
+<li><strong>alpha 本体</strong>：cointegrated spread mean reversion</li>
+<li><strong>admission layer</strong>：recent realized expectancy graduation</li>
+<li><strong>risk overlay</strong>：daily TP throttle + daily SL block</li>
+</ul>
+<h3>为什么这个版本最适合先做</h3>
+<p>因为它同时满足四件事：</p>
+<ol>
+<li><strong>base alpha 清楚</strong>：spread MR</li>
+<li><strong>能独立交易</strong>：不是别人的附庸 gate</li>
+<li><strong>能快速实验</strong>：公开 K 线即可启动第一版</li>
+<li><strong>能直接接实盘组件</strong>：pairbook、sizing、chunk execution、daily risk 全都可落地</li>
+</ol>
+<h2>6. 我认为 repo 最有价值的“旁支想法”</h2>
+<p>如果只抄 headline，大家会说： “哦，这不就是 cointegration pair trading 吗？”</p>
+<p>但对我们 desk，真正更有价值的其实是 <strong>旁支</strong>：</p>
+<h3>旁支 1：graduation 比更花哨的 signal 更重要</h3>
+<p>很多 pair 策略死，不是因为 spread 信号完全没信息，而是因为：</p>
+<ul>
+<li>某个 pair 的边已经衰退</li>
+<li>但系统还在机械复用老 pair</li>
+</ul>
+<p>这个 repo 用 <code>60d / max 30 trades</code> 的 recent expectancy 去做升级/降级，给了一个很诚实的 pair rotation 框架：</p>
+<ul>
+<li><strong>先承认 pair alpha 会过期</strong></li>
+<li>再决定 pair 能不能继续占用 live 预算</li>
+</ul>
+<p>这很适合直接服务我们后续所有 pairs / stat-arb 线，而不只是这一篇 repo 本身。</p>
+<h3>旁支 2：日内 profit-lock throttle 很适合 crypto 24/7 desk</h3>
+<p><code>daily_guard_2.py</code> 不是只会“亏到某处就停机”。它还做了一个更有意思的东西：</p>
+<ul>
+<li>日内收益达到 <code>1%</code> -&gt; 开启 throttle</li>
+<li>下一档阈值翻倍到 <code>2%</code></li>
+<li>再到 <code>4%</code>、<code>8%</code> ……</li>
+<li>throttle 状态下新仓 exposure 直接打半</li>
+<li>若日内 PnL 到 <code>-3%</code> -&gt; block 当天不再开新仓</li>
+</ul>
+<p>这不等于 alpha 本体，但它非常适合当 <strong>shared risk overlay</strong>：</p>
+<ul>
+<li>顺风日减少回吐</li>
+<li>逆风日直接停手</li>
+<li>不需要低频宏观数据</li>
+<li>可以直接挂到 <code>1m / 3m / 5m / 15m</code> 的任何快策略上</li>
+</ul>
+<h3>旁支 3：control leg 用低流动性腿，比“固定等额双边”更 desk 化</h3>
+<p>仓位这块它不是死板地 1:1 配，而是：</p>
+<ul>
+<li>先看两腿 <code>5m</code> dollar volume</li>
+<li>让 <strong>流动性更差</strong> 的那条腿当 controller</li>
+<li>先 cap controller exposure</li>
+<li>再按 beta 扩到另一腿</li>
+<li>若另一腿超 cap，再双边一起缩小</li>
+</ul>
+<p>这给了我们一个很现实的 sizing 原则： <strong>stat-arb 的容量，应该由更难成交的那条腿决定。</strong></p>
+<h2>7. 这条线的明显短板</h2>
+<p>这 repo 不是神谕，明显短板也要写清：</p>
+<ol>
+<li><strong>缺数据库 schema / 配置 / 凭证</strong></li>
+</ol>
+<ul>
+<li>说明它更像“可读 operating blueprint”，不是开箱复现包。</li>
+</ul>
+<ol>
+<li><strong>live 成绩是作者自报，暂时没有独立审计</strong></li>
+</ol>
+<ul>
+<li><code>704 trades / 64.6% / PF 1.22 / +35% / -4.36%</code> 可当线索，不能直接当事实真相。</li>
+</ul>
+<ol>
+<li><strong>pair formation 仍不够透明</strong></li>
+</ol>
+<ul>
+<li>repo 核心更强的是 execution + governance；</li>
+<li>真正的 pairbook 生成似乎部分依赖外部维护的 <code>list1.csv</code> / 预先筛选流程。</li>
+</ul>
+<ol>
+<li><strong>部分参数仍偏经验化</strong></li>
+</ol>
+<ul>
+<li>例如 <code>|z| &gt;= 2</code>、<code>|z| &lt; 5</code>、<code>z_exit = 6</code>、<code>daily TP = 1%</code>、<code>daily SL = 3%</code>，需要 desk 自己再做敏感度测试。</li>
+</ul>
+<p>但即便如此，它仍然值钱，因为： <strong>它把“pair alpha 如何活成一个日常可跑系统”这件事写得比大多数论文都具体。</strong></p>
+<h2>8. 对我们最像最小实验的版本</h2>
+<h3>实验目标</h3>
+<p>先验证： <strong>cointegration spread MR 在 5m / 15m crypto perp 上，是否只有叠 recent-graduation 与 daily-throttle 后，才更像能活的完整策略。</strong></p>
+<h3>最小实验口径</h3>
+<p><strong>Universe</strong></p>
+<ul>
+<li>Binance 或 Bybit USDT perp，过去 <code>30d</code> ADV 前 <code>20~30</code> 个币</li>
+<li>上线满 <code>120d</code></li>
+<li>去掉长期限价保护 / 极低价 / 异常 funding 币</li>
+</ul>
+<p><strong>Pairbook（第一轮别贪大）</strong></p>
+<ul>
+<li>先人工/半自动选 <code>10~15</code> 组高相关 pair</li>
+<li>可优先同 beta / 同 sector / 同叙事（L1、meme、AI、exchange 等）</li>
+<li>先不做全组合爆搜</li>
+</ul>
+<p><strong>Signal</strong></p>
+<ul>
+<li>bar：<code>5m</code></li>
+<li>rolling OLS beta</li>
+<li>spread z-score</li>
+<li><code>ADF / p-value / Hurst / HL</code></li>
+<li>只有通过：</li>
+<li><code>ADF &lt;= -2.9</code></li>
+<li><code>p &lt;= 0.05</code></li>
+<li><code>Hurst &lt;= 0.45</code></li>
+<li><code>HL &gt; 0</code></li>
+<p>才允许进候选</p>
+</ul>
+<p><strong>Entry</strong></p>
+<ul>
+<li>baseline：<code>|z| &gt;= 2</code></li>
+<li>strong version：按 HL 分桶提高门槛（<code>2 / 2.5 / 3 / 3.5</code>）</li>
+<li>hard cap：<code>|z| &lt; 5</code></li>
+</ul>
+<p><strong>Sizing</strong></p>
+<ul>
+<li>用较低 <code>5m</code> ADV 腿控制双边容量</li>
+<li>beta-normalized 双腿敞口</li>
+<li>beta clamp 到 <code>[0.8, 1.2]</code></li>
+<li>单腿最小 notional <code>300~500 USDT</code></li>
+</ul>
+<p><strong>Exit</strong></p>
+<ul>
+<li><code>z cross 0</code></li>
+<li><code>pair TP / SL</code></li>
+<li><code>HL timeout + coint lost</code></li>
+<li><code>|z| &gt;= 6 + coint lost</code></li>
+</ul>
+<p><strong>Overlay</strong></p>
+<ul>
+<li>日内 <code>+1%</code> 开始半仓 throttle</li>
+<li>日内 <code>-3%</code> 当天停手</li>
+</ul>
+<p><strong>Cost</strong></p>
+<ul>
+<li>第一轮先用 <code>6 / 10 / 15 bps per side</code> 三档</li>
+<li>另记 funding、maker/taker 占比与 chunk execution 滑点</li>
+</ul>
+<h2>9. 我会怎么排优先级</h2>
+<p>如果只给一次实验预算，我不会先做“全自动 pair discovery + 全自动毕业系统 + 实盘接单”三件套。</p>
+<p>我会按下面顺序：</p>
+<ol>
+<li><strong>先测 raw alpha 本体</strong></li>
+</ol>
+<ul>
+<li>小 pairbook</li>
+<li><code>|z|&gt;=2</code></li>
+<li><code>z cross 0</code> 平仓</li>
+</ul>
+<ol>
+<li><strong>再加 graduation</strong></li>
+</ol>
+<ul>
+<li>recent <code>60d / 30 trades</code> 的 expectancy gate</li>
+</ul>
+<ol>
+<li><strong>最后加 daily guard</strong></li>
+</ol>
+<ul>
+<li><code>+1%</code> throttle</li>
+<li><code>-3%</code> daily stop</li>
+</ul>
+<p>也就是先回答三个问题：</p>
+<ul>
+<li>spread MR 本体有没有边？</li>
+<li>admission layer 是不是比“继续堆 fancy signal”更值钱？</li>
+<li>daily throttle 到底是在保利润，还是只是在砍交易数美化？</li>
+</ul>
+<h2>10. 我的判断</h2>
+<p>这篇 repo 最该进研究池的，不是因为它证明了“pairs 很强”，而是因为它给了一个很难得的东西：</p>
+<p><strong>raw alpha + pair graduation + daily risk governor 的完整可复现骨架。</strong></p>
+<p>如果要继续扩 desk 的 <strong>raw alpha 素材池 / 实盘组件池</strong>，我会给它一个相当高的优先级，因为它同时补了三块：</p>
+<ul>
+<li>pairs alpha 本体</li>
+<li>pair-level admission</li>
+<li>shared daily overlay</li>
+</ul>
+<p>其中最值得复用到别的线上的，不一定是 z-score 本身，反而是：</p>
+<ul>
+<li><strong>recent expectancy graduation</strong></li>
+<li><strong>profit-lock throttle</strong></li>
+<li><strong>low-liquidity-leg controller sizing</strong></li>
+</ul>
+<h2>11. 下一步怎么测</h2>
+<p>直接做一个 <strong>A/B/C 三层递进实验</strong>，不要一步上 production：</p>
+<ol>
+<li><strong>A = raw spread MR baseline</strong></li>
+</ol>
+<ul>
+<li><code>5m</code></li>
+<li><code>|z| &gt;= 2</code></li>
+<li><code>z cross 0</code> exit</li>
+<li>不加 graduation，不加 daily overlay</li>
+</ul>
+<ol>
+<li><strong>B = A + graduation</strong></li>
+</ol>
+<ul>
+<li>只交易 recent <code>60d / max 30 trades</code> 里 <code>Expect_30 = 1</code> 的 pair</li>
+<li>对比 trade count、胜率、PF、成本后净值</li>
+</ul>
+<ol>
+<li><strong>C = B + daily throttle / stop</strong></li>
+</ol>
+<ul>
+<li>日内 <code>+1%</code> 后新仓半仓</li>
+<li>日内 <code>-3%</code> 后停手</li>
+<li>对比回吐、MDD、收益偏斜、活跃天数</li>
+</ul>
+<p>第一轮输出至少要有：</p>
+<ul>
+<li>pair-level PnL 分布</li>
+<li>graduation 前后 retained pairs 数量</li>
+<li>throttle 触发频率</li>
+<li>daily stop 触发频率</li>
+<li>gross / net Sharpe</li>
+<li>PF</li>
+<li>MDD</li>
+<li>turnover</li>
+<li>平均持仓时长</li>
+<li>单腿 ADV 占比</li>
+</ul>
+<p>如果结果显示：</p>
+<ul>
+<li><strong>A 就死透</strong>：这 repo 的价值降级为 execution/risk overlay 参考，不再把它当主 alpha。</li>
+<li><strong>A 有边，B 明显更稳</strong>：优先保留 graduation，把它作为 pairs 主线的 admission 标配。</li>
+<li><strong>B 有边，C 只是在大幅砍单</strong>：daily guard 只能算 risk overlay，不能拿来伪装 alpha 改进。</li>
+<li><strong>C 同时降低回撤且回吐收窄</strong>：daily throttle 可升级为跨 alpha 的 shared component。</li>
+</ul>
+<h2>12. 来源</h2>
+<ol>
+<li><strong>Anton Velychko (2026). _statistical_arbitrage_trading_system_V1_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: 无</li>
+<li>Readable URL / Repo URL: <a href="https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1">https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1</a></li>
+</ul>
+<ol>
+<li><strong>Anton Velychko (2026). _README.md_ — live results / architecture / system overview. GitHub Repository file.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: 无</li>
+<li>Readable URL: <a href="https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/blob/main/README.md">https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/blob/main/README.md</a></li>
+</ul>
+<ol>
+<li><strong>Anton Velychko (2026). _selection/SQL-DB-Coint-upd-6.py_ — 5m spread / half-life / ADF / Hurst / z-score update logic. GitHub Repository file.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: 无</li>
+<li>Readable URL: <a href="https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/blob/main/selection/SQL-DB-Coint-upd-6.py">https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/blob/main/selection/SQL-DB-Coint-upd-6.py</a></li>
+</ul>
+<ol>
+<li><strong>Anton Velychko (2026). _selection/SQL-DB-Stat-upd-5.py_ — pair graduation / recent expectancy / level assignment logic. GitHub Repository file.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: 无</li>
+<li>Readable URL: <a href="https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/blob/main/selection/SQL-DB-Stat-upd-5.py">https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/blob/main/selection/SQL-DB-Stat-upd-5.py</a></li>
+</ul>
+<ol>
+<li><strong>Anton Velychko (2026). _execution/Level_2_CFT_bot_07-12-2025.py_ — candidate selection / dynamic leverage / chunked execution / exit rules. GitHub Repository file.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: 无</li>
+<li>Readable URL: <a href="https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/blob/main/execution/Level_2_CFT_bot_07-12-2025.py">https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/blob/main/execution/Level_2_CFT_bot_07-12-2025.py</a></li>
+</ul>
+<ol>
+<li><strong>Anton Velychko (2026). _execution/daily_guard_2.py_ — profit-lock throttle / daily stop overlay. GitHub Repository file.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: 无</li>
+<li>Readable URL: <a href="https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/blob/main/execution/daily_guard_2.py">https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/blob/main/execution/daily_guard_2.py</a></li>
+</ul>
+</body>
+</html>

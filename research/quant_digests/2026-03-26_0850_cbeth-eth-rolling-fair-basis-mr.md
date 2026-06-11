@@ -1,0 +1,96 @@
+# 别把 liquid staking basis 只当链上慢变量：这篇 2024 JFM 论文更该先测的是「CBETH-ETH rolling fair-basis MR」
+- 时间：2026-03-26 08:50 UTC
+- 类型：2024 *Journal of Futures Markets* 论文（Crossref 摘要可得）+ Coinbase 公共 `15m/5m` 最小快检
+- 主题类型：raw alpha
+- 基础 alpha：liquid staking token 相对 ETH 的**慢变公平 basis**周围存在短周期偏离；做 `long cheap LSD / short ETH` 或反向，赌 rolling fair-basis 回归
+- 是否可独立复现：是
+- 是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是
+- 主题标签：raw-alpha/relative-value/basis/liquid-staking/cbeth/eth/mean-reversion/carry/coinbase/spot-perp/15m/5m/paper/external-data
+- 证据类型：论文摘要证据 + Coinbase 公共数据最小快检
+
+## 1. 这次看了什么
+先回答 base alpha：**不是“LSD 基本面解释”本身，而是 CBETH-ETH 这类 liquid staking basis 围绕慢变公平值的短周期回归。**
+
+主论文是 **Scharnowski, Jahanshahloo (2024), _The Economics of Liquid Staking Derivatives: Basis Determinants and Price Discovery_, Journal of Futures Markets**。论文本身更偏 basis determinants / price discovery，但对我们 desk 最值钱的旁支很清楚：**既然 LSD basis 会被收益率、波动、流动性、注意力持续推来推去，而且公平值又不是固定 1:1，那么短周期最该测的不是“回 1”神话，而是“回 rolling fair basis”这条 relative-value raw alpha。**
+
+## 2. 核心结论
+- **一句话核心结论：** 对 short-cycle desk 来说，liquid staking basis 最值得先测的不是慢频 carry，而是 **围绕慢变 fair basis 的 intraday mean reversion**。
+- **一句话它怎么证明：** 论文用经济学视角证明 LSD basis 本来就会系统性时变；我再用 Coinbase 公共 `CBETH-USD` / `ETH-USD` `15m/5m` K 线做 rolling-z 最小快检，验证短周期偏离有没有 admission-level 生存性。
+- 论文摘要里最值得 desk 记住的 4 点：
+  1. **liquid staking basis 明显时变**，不是静态常数；
+  2. 当 **LSD 相对直接 staking 的收益更差、crypto 波动更高、二级流动性更差** 时，basis 更宽；
+  3. 当 **投资者注意力更高、情绪更正** 时，basis 更窄；
+  4. LSD 对底层币价格发现的贡献 **显著且整体在上升**。
+- 这组结论翻成人话就是：**fair value 会漂，但漂移比 5m/15m 噪音慢很多；所以 desk 真正可交易的是“围绕慢 anchor 的偏离回归”，不是把 CBETH 当成固定 peg。**
+
+## 3. 为什么和当前项目直接相关
+- 这是标准 **raw alpha / relative-value / basis**，不是又拿一个 filter 假装 alpha。
+- 它补的是当前池子里相对稀缺的一条线：**staking-derivative relative value**，而不是继续只在 perp funding / basis / pairs 里内循环。
+- 数据公开、定义简单、可快速 admission check：
+  - 标的：`CBETH-USD` vs `ETH-USD`
+  - 频率：直接可拿 `5m/15m`
+  - 策略骨架：`entry / exit / timeout / cost` 都能一次写清
+- 对 desk 的现实落法也不抽象：**long/short 的对冲腿可以是 `CBETH spot + ETH perp`**，不一定要求两边都现货可融。
+
+## 3.5 策略拆解（必填）
+- 方向属性：relative-value / basis mean reversion
+- 基础 alpha：`spread_t = log(CBETH_t) - log(ETH_t)` 相对 rolling fair basis 的偏离会回归
+- regime：只在 fair basis 漂移较平滑、ETH 波动未失控、CBETH 深度尚可时开仓；宏观暴波与链上 staking 事件期单独降权
+- filter / veto：CBETH 盘口过薄、借券/对冲腿不可得、basis 漂移速度突然抬升、交易所事件或流动性塌陷时 veto
+- risk / sizing / execution overlay：`long cheap CBETH + short ETH perp` 或反向；按 CBETH 深度限仓；`|z|` 回到 close band 或 timeout 平仓；显式计入 spot+perp 费用、滑点、funding 与残余 basis drift
+
+## 4. 本地最小快检（Coinbase 公共数据）
+我直接用 Coinbase Exchange 公共 candles 对 `CBETH-USD` 与 `ETH-USD` 做最小 proxy：
+- `15m`：最近 **60 天**，rolling lookback **7 天**，timeout **24h**，pair round-trip 成本先按 **20 bps**；
+- `5m`：最近 **14 天**，rolling lookback **3 天**，timeout **12h**，成本同样按 **20 bps**；
+- 规则：当 `z` 超过 `1.25 / 1.5 / 2.0` 开仓，`|z| <= 0.25` 平仓。
+
+### `15m` 结果
+- 样本中位 `CBETH/ETH` premium 约 **12.22%**，说明绝对 peg 根本不是正确锚。
+- `1.5σ`：**408 笔**，`net_total_bps ≈ +8305`，`mean_trade ≈ +20.4 bps`，胜率 **91.4%**。
+- `2.0σ`：**220 笔**，`net_total_bps ≈ +6570`，`mean_trade ≈ +29.9 bps`，胜率 **99.5%**。
+- 人话：**15m 上这条线不像“慢 carry”，更像能反复收残差的短周期 basis MR。**
+
+### `5m` 结果
+- 样本中位 premium 约 **12.51%**。
+- `1.5σ`：**203 笔**，`net_total_bps ≈ +1943`，`mean_trade ≈ +9.6 bps`，胜率 **71.9%**。
+- `2.0σ`：**110 笔**，`net_total_bps ≈ +1799`，`mean_trade ≈ +16.4 bps`，胜率 **94.5%**。
+- 人话：**5m 也活，但明显比 15m 更薄、更噪；如果只能先推一档，`15m` 更像 first-production 候选。**
+
+## 5. 下一步怎么测（必须）
+1. **把对冲腿改成真正可交易口径**：用 `CBETH spot + ETH perp`，显式加上 perp funding，而不是只看双 spot 收盘价。  
+2. **补 cost ladder**：至少跑 `10 / 20 / 30 / 40 bps pair RT`，确认 edge 是不是只在过低成本假设下才成立。  
+3. **把 fair basis 漂移单独建模**：rolling mean 只是 admission proxy，下一步要把 staking accrual / 质押收益差纳入慢 anchor。  
+4. **做深度与冲击过滤**：只有在 CBETH top-of-book 深度过门槛时才允许入场，别把 close-to-close 幻觉当 production edge。  
+5. **补跨 venue / 跨 LSD 对照**：若后续能拿到 `stETH/rETH` 的可交易分钟数据，比较这条线到底是 `CBETH-specific` 还是 `LSD basis` 的普遍 pocket。  
+
+## 6. 风险与保留意见
+- 主论文更偏 **basis determinants / price discovery**，不是直接写给 `5m/15m` 做市或 stat-arb desk 的策略论文；这篇 digest明确抽的是更适合我们 desk 的旁支。  
+- 本地快检只用 **OHLC close-to-close proxy**，没有历史盘口和冲击，**一根 bar 的持有时长很容易把结果抬得过于漂亮**。  
+- `CBETH` 的可融券、借贷、托管与跨 venue 对冲现实，会决定这条线能不能从研究走到 live。  
+- 这不是 peg reversion。**绝对 premium 长期会漂**，所以只能交易 rolling fair basis，不应拿“回 1”做锚。  
+- 若后续在真实盘口 + 高成本 + 对冲 funding 下 survival 大幅收缩，这条线就应从 raw-alpha 候选降级为 niche watchlist。  
+
+## 7. 来源
+1. **Scharnowski, S., & Jahanshahloo, H. (2024). _The Economics of Liquid Staking Derivatives: Basis Determinants and Price Discovery_. Journal of Futures Markets.**  
+   - Venue: *Journal of Futures Markets*  
+   - DOI: `10.1002/fut.22556`  
+   - Readable URL: `https://doi.org/10.1002/fut.22556`  
+   - Repo URL: **未见 paper-specific public repo**
+
+2. **Coinbase Exchange API – Public Candles / Order Book endpoints.**  
+   - Readable URL: `https://api.exchange.coinbase.com/products/ETH-USD/candles`  
+   - Readable URL: `https://api.exchange.coinbase.com/products/CBETH-USD/candles`  
+   - Readable URL: `https://api.exchange.coinbase.com/products/CBETH-USD/book?level=1`
+
+## 8. 本地复现产物
+- `reports/artifacts/quant_digests/cbeth_eth_basis_probe_20260326_0850_15m/summary.json`
+- `reports/artifacts/quant_digests/cbeth_eth_basis_probe_20260326_0850_15m/summary.csv`
+- `reports/artifacts/quant_digests/cbeth_eth_basis_probe_20260326_0850_15m/trade_log.csv`
+- `reports/artifacts/quant_digests/cbeth_eth_basis_probe_20260326_0850_15m/pair_series.csv`
+- `reports/artifacts/quant_digests/cbeth_eth_basis_probe_20260326_0850_15m/meta.json`
+- `reports/artifacts/quant_digests/cbeth_eth_basis_probe_20260326_0850_5m/summary.json`
+- `reports/artifacts/quant_digests/cbeth_eth_basis_probe_20260326_0850_5m/summary.csv`
+- `reports/artifacts/quant_digests/cbeth_eth_basis_probe_20260326_0850_5m/trade_log.csv`
+- `reports/artifacts/quant_digests/cbeth_eth_basis_probe_20260326_0850_5m/pair_series.csv`
+- `reports/artifacts/quant_digests/cbeth_eth_basis_probe_20260326_0850_5m/meta.json`

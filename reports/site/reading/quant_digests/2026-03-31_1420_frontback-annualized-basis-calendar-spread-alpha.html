@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 新 repo 只看成 BTC curve 回测：更该先测的是「front-vs-back annualized basis 收敛 × regime-aware calendar spread」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 新 repo 只看成 BTC curve 回测：更该先测的是「front-vs-back annualized basis 收敛 × regime-aware calendar spread」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-31 14:22 UTC</span>
+      <span class="pill">研究时间：2026-03-31 14:20 UTC</span>
+      <span class="pill">类型：GitHub 仓库源码审阅</span>
+      <span class="pill">主题标签：raw alpha / relative value / stat-arb / calendar spread / term structure / basis / btc / futures / 15m / 5m / repo / public-data / cost</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-31_1420_frontback-annualized-basis-calendar-spread-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-31 14:20 UTC</li>
+<li>类型：GitHub 仓库源码审阅</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：BTC 近月/远月期货年化 basis 的期限结构均值回复（calendar spread mean reversion）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw alpha / relative value / stat-arb / calendar spread / term structure / basis / btc / futures / 15m / 5m / repo / public-data / cost</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了 <code>abailey81/Crypto-Statistical-Arbitrage</code> 这个 2026 GitHub 仓库的 <code>strategies/futures_curve</code> 模块，重点审了 <code>__init__.py</code>、<code>calendar_spreads.py</code>、<code>futures_walk_forward.py</code>。README 里写了 BTC futures curve 策略 Sharpe <code>5.81</code>、总收益 <code>203.70%</code>、最大回撤 <code>0.89%</code>、总交易 <code>44,652</code>，这些绩效先不要信；真正有价值的是：它把 entry / exit / sizing / risk / walk-forward 骨架都公开了，足够我们做一轮诚实的 first verdict。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha</strong> 很清楚：不是 generic funding carry，而是 <strong>BTC 期限结构过陡后的近远月年化 basis 收敛</strong>。换句话说，赌的是 curve mean reversion，不是赌 BTC 单边方向。</li>
+<li>代码里给出的主规则很完整：<code>avg_basis &gt; 15%</code> 且处于 contango 时，做 <strong>long near / short far</strong>；<code>avg_basis &lt; -10%</code> 且处于 backwardation 时，反向做 <strong>short near / long far</strong>。这已经是完整 raw alpha，不只是 filter。</li>
+<li>出场也写得很清楚：long calendar 在 basis 回落到 <code>5%</code> 附近止盈，short calendar 在 basis 回升到 <code>-3%</code> 附近止盈；若 basis 继续朝不利方向多走 <code>5%</code>，或者 near DTE <code>&lt; 7</code>、持有 <code>&gt; 90</code> 天，就强制离场。</li>
+<li>风控/仓位不是空白：默认最大仓位上限来自 <code>max_position_pct=25%</code>，再乘 <code>signal_strength × liquidity × regime_multiplier</code>；危机期再乘 <code>0.3</code>，并加 venue capacity 上限。这说明它不是“有信号没执行壳”的半成品。</li>
+<li>对当前 desk 更重要的价值，是它补的是 <strong>期限结构 / 日历价差</strong> 这条 raw alpha 支线。我们最近已经积累了很多 funding、pair spread、lead-lag、XS reversal/momentum，但 <strong>front-back curve MR</strong> 明显还不够密。</li>
+<li><strong>一句话核心结论</strong>：当 BTC dated futures 的整条曲线过于陡峭时，先别只盯 funding，直接测 near-far 年化 basis 的收敛，可能更像一个能独立下单的相对价值 alpha。</li>
+<li><strong>一句话证明方式</strong>：这个判断不是靠摘要吹出来的，而是靠 repo 源码里明确的阈值、止盈止损、DTE 约束、仓位规则和 walk-forward 外壳撑起来的。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>当前 <code>momentum</code> 项目已经不缺“再来一个 breakout / retest / funding ranking”的 intake；更缺的是 <strong>能直接扩充 raw alpha 素材池、且与现有素材不完全同质</strong> 的方向。这个主题的好处有三点：</p>
+<ul>
+<li>它是 <strong>relative-value / stat-arb</strong>，不是再做一篇单边趋势；</li>
+<li>它天然能映射到 <code>15m</code> 监控、<code>5m</code> 精细入场，不要求 tick 级 order book；</li>
+<li>它把 <code>entry / exit / sizing / risk / cost</code> 一次性写齐，适合作为 desk 的完整策略候选，而不是只当辅助过滤器。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / 期限结构均值回复</li>
+<li>基础 alpha：BTC 近月 vs 远月期货的年化 basis 收敛</li>
+<li>regime：只在 steep contango / steep backwardation 这类“曲线过陡”状态下开仓</li>
+<li>filter / veto：curve quality、near DTE <code>&gt;= 7</code>、front/back DTE 差 <code>&gt;= 30</code>、流动性分数、可选 funding 一致性校验</li>
+<li>risk / sizing / execution overlay：<code>25%</code> 资本上限、signal-strength/liquidity/regime 乘数、危机期 size-down、4-leg 成本模型、到期前强平、basis adverse move <code>5%</code> 止损</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：BTC 曲线在极端 contango / backwardation 时，后续 <code>1~5</code> 天存在足够稳定的收敛，能覆盖四腿手续费与滑点。</li>
+<li><strong>可计算定义</strong>：</li>
+</ul>
+<ol>
+<li><code>basis_i = (F_i / S - 1) * 365 / DTE_i * 100</code></li>
+<li>选 near/front 与 far/back 两腿，定义 <code>avg_basis = (basis_near + basis_far) / 2</code></li>
+<li>long calendar：<code>avg_basis &gt; 15</code>、regime=contango、nearDTE <code>&gt;= 7</code>、far-near DTE <code>&gt;= 30</code></li>
+<li>short calendar：<code>avg_basis &lt; -10</code>、regime=backwardation</li>
+<li>exit：long 在 <code>avg_basis &lt; 5</code>；short 在 <code>avg_basis &gt; -3</code>；若自开仓后 adverse basis move 超过 <code>5</code>，立刻止损</li>
+</ol>
+<ul>
+<li><strong>最小回测切口</strong>：先只做 <strong>同 venue</strong> 的 BTC 当季/次季合约，<code>15m</code> 作为交易时钟，<code>5m</code> 只用于更细的入场定位；样本先拉 <code>2024-01 ~ now</code>。若 spot 难拿，可先用同 venue perp mid 作为 spot proxy，但必须单独记录 proxy 误差。</li>
+<li><strong>最该先看</strong>：先看 <code>post-cost net bps / trade</code> 与 <code>holding-days distribution</code>；第二层再看 <code>basis half-life</code> 与 <code>capacity after four-leg costs</code>。如果 trade count 很低但单笔边际厚，就把它当 event alpha，不强求 always-on。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是 <strong>brand-new repo + 0 star</strong> 的工程线索，不是已验证论文；README 的绩效数字必须当成“待证伪陈述”，不能直接继承。</li>
+<li>dated futures 的真实可成交性比 perp 差很多，<code>5m/15m</code> K 线回测很容易高估 fill quality；正式复现时最好切到 mid + bid/ask 或 top-of-book 近似。</li>
+<li>basis 年化公式非常吃合约日历、到期口径和 spot proxy 口径；如果 perp funding 时点处理不一致，会把 curve alpha 和 funding 噪音搅在一起。</li>
+<li>cross-venue calendar spread 的保证金切分、转仓与腿错配问题很重；第一轮应该先做 <strong>same-venue honest baseline</strong>，别一上来就跨 venue。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>abailey81. (2026). *Crypto-Statistical-Arbitrage*. GitHub repository.</li>
+<li>Readable URL: <code><a href="https://github.com/abailey81/Crypto-Statistical-Arbitrage">https://github.com/abailey81/Crypto-Statistical-Arbitrage</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/abailey81/Crypto-Statistical-Arbitrage.git">https://github.com/abailey81/Crypto-Statistical-Arbitrage.git</a></code></li>
+<li><code>strategies/futures_curve/__init__.py</code>（默认参数：<code>15%/-10%</code> entry、<code>5%/-3%</code> exit、<code>5%</code> stop、<code>7</code> 天 near DTE 下限）</li>
+<li>Readable URL: <code><a href="https://github.com/abailey81/Crypto-Statistical-Arbitrage/blob/main/strategies/futures_curve/__init__.py">https://github.com/abailey81/Crypto-Statistical-Arbitrage/blob/main/strategies/futures_curve/__init__.py</a></code></li>
+<li><code>strategies/futures_curve/calendar_spreads.py</code>（entry / exit / sizing / cost / crisis adjustment 核心逻辑）</li>
+<li>Readable URL: <code><a href="https://github.com/abailey81/Crypto-Statistical-Arbitrage/blob/main/strategies/futures_curve/calendar_spreads.py">https://github.com/abailey81/Crypto-Statistical-Arbitrage/blob/main/strategies/futures_curve/calendar_spreads.py</a></code></li>
+<li><code>strategies/futures_curve/futures_walk_forward.py</code>（walk-forward、危机期参数调整、regime adaptive 外壳）</li>
+<li>Readable URL: <code><a href="https://github.com/abailey81/Crypto-Statistical-Arbitrage/blob/main/strategies/futures_curve/futures_walk_forward.py">https://github.com/abailey81/Crypto-Statistical-Arbitrage/blob/main/strategies/futures_curve/futures_walk_forward.py</a></code></li>
+</ul>
+</body>
+</html>

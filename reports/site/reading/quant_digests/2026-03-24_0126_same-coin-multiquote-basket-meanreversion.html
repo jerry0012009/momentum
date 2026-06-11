@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 pairs 只做成“跨币种对冲”：这篇 2024 论文更值得先偷的是 **same-coin 多报价篮子** 的 stat-arb raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 pairs 只做成“跨币种对冲”：这篇 2024 论文更值得先偷的是 **same-coin 多报价篮子** 的 stat-arb raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-24 01:22 UTC</span>
+      <span class="pill">研究时间：2026-03-24 01:26 UTC</span>
+      <span class="pill">类型：近 5 年论文 + 开源仓库 + Kraken 公共数据最小快检</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/relative-value/stat-arb/pairs/multiquote/basket/crypto/5m/15m/1m/3m/paper/repo</span>
+      <span class="pill">证据类型：论文规则 + 开源代码 + 公开数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-24_0126_same-coin-multiquote-basket-meanreversion.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-24 01:26 UTC</li>
+<li>类型：近 5 年论文 + 开源仓库 + Kraken 公共数据最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：relative value / stat-arb / pairs mean reversion（同一币种在多报价路径上的短周期偏离回归）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/mean-reversion/relative-value/stat-arb/pairs/multiquote/basket/crypto/5m/15m/1m/3m/paper/repo</li>
+<li>证据类型：论文规则 + 开源代码 + 公开数据快检</li>
+</ul>
+<h2>1) 先回答：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = 同一资产（例如 ETH）在不同 quote 路径下的短期“相对错价”会均值回归。</strong></p>
+<p>不是 breakout，不是 confirmation。它本体就是可独立交易的 <strong>relative-value / stat-arb raw alpha</strong>：</p>
+<ul>
+<li>先构造多条 ETH 报价路径（例如 <code>ETHUSD</code>、<code>ETHEUR×EURUSD</code>、<code>ETHGBP×GBPUSD</code>）</li>
+<li>当两条路径出现极端偏离（z-score 超阈值）时，做多便宜腿、做空昂贵腿</li>
+<li>等偏离回归（或超时）后平仓</li>
+</ul>
+<p>---</p>
+<h2>2) 为什么这轮值得进研究池</h2>
+<p>最近我们已经补了不少 trend / breakout / funding 旁支。这个主题的价值在于：</p>
+<ol>
+<li><strong>直接扩 raw alpha 素材池</strong>（stat-arb / relative value 家族）</li>
+<li>论文 + repo 给了完整骨架：<code>entry / exit / sizing / risk / cost</code></li>
+<li>能快速映射到 <code>5m/15m</code>，也可下钻 <code>1m/3m</code></li>
+<li>和当前 desk 组件兼容：可做独立策略，也可做组合里的 market-neutral sleeve</li>
+</ol>
+<p>---</p>
+<h2>3) 论文与仓库里最该偷的“可执行骨架”</h2>
+<p>基于 Yang &amp; Malik (2024) + 开源实现：</p>
+<ul>
+<li><strong>Entry</strong>：spread z-score 超 <code>open_threshold</code></li>
+<li><strong>Exit</strong>：z-score 回落到 <code>close_threshold</code> 或超时</li>
+<li><strong>Sizing</strong>：不是简单 1:1；用优化分配多对冲腿权重（风险厌恶参数 <code>λ</code>）</li>
+<li><strong>Risk</strong>：market-neutral 约束、每币种资金占用约束、交易成本项</li>
+<li><strong>Cost</strong>：显式交易费用（论文/代码都强调“成本会显著吞噬边际”）</li>
+</ul>
+<p>论文关键数字（作者样本，非我们实盘结论）：</p>
+<ul>
+<li>全周期（含成本 0.1%）5min：<code>OTT λ=1 年化 15.49%</code>，DM 约 <code>0.60%</code></li>
+<li>牛市（2021，5min，0.1%）：<code>OTT λ=1 年化 36.75%</code></li>
+<li>熊市（2022，5min，0.1%）：<code>OTT λ=1 年化 4.99%</code></li>
+</ul>
+<p>&gt; 读法：它不是“保证赚钱模板”，而是说明 <strong>多报价偏离回归</strong> 在不同市场状态下都可能提供可交易信号。</p>
+<p>---</p>
+<h2>3.5) 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：market-neutral relative value / stat-arb</li>
+<li>基础 alpha：同一币种多报价路径偏离后的回归</li>
+<li>regime：偏离事件足够多、且流动性/执行可承接时更有效</li>
+<li>filter / veto：重大事件窗口、点差/冲击异常扩张、连续超时不回归</li>
+<li>risk / sizing / execution overlay：</li>
+<li>z-score 分级仓位</li>
+<li>多腿净敞口约束（近似 delta-neutral）</li>
+<li><code>time stop + adverse expansion stop</code></li>
+<li>成本梯度（maker/taker + spread + impact）</li>
+</ul>
+<p>---</p>
+<h2>4) 最小可复现实验（公开数据，已落地）</h2>
+<h3>4.1 数据源、公开性、更新频率</h3>
+<ul>
+<li>数据源：Kraken Public OHLC API（公开可得，无需私钥）</li>
+<li>品种：<code>ETHUSD, ETHEUR, ETHGBP, EURUSD, GBPUSD</code></li>
+<li>更新频率：可直接请求 <code>1m/5m/15m/...</code></li>
+<li>本轮口径：<code>5m</code> 与 <code>15m</code>；窗口各 721 根（近几天）</li>
+</ul>
+<h3>4.2 最小实验定义</h3>
+<ul>
+<li>构造三条 USD 路径：</li>
+<li><code>usd_direct = ETHUSD</code></li>
+<li><code>usd_from_eur = ETHEUR × EURUSD</code></li>
+<li><code>usd_from_gbp = ETHGBP × GBPUSD</code></li>
+<li>对任意两条路径做 spread z-score</li>
+<li>入场：<code>|z| &gt;= z_in</code></li>
+<li>出场：<code>|z| &lt;= z_out</code> 或 <code>max_hold</code> 到期</li>
+<li>成本假设：round-trip <code>8 bps</code>（轻量代理口径）</li>
+</ul>
+<h3>4.3 本轮关键数据点</h3>
+<ol>
+<li><strong>错价事件确实存在</strong>（不是 0）：</li>
+</ol>
+<ul>
+<li>5m 下 <code>usd_direct vs usd_from_gbp</code> 的 <code>p95 |mispricing| ≈ 15.81 bps</code></li>
+<li>15m 下同对 <code>p95 |mispricing| ≈ 12.70 bps</code></li>
+</ul>
+<ol>
+<li><strong>极端偏离出现频率可交易</strong>：</li>
+</ol>
+<ul>
+<li>5m 三组 pair 的 <code>|z|&gt;2</code> 计数约 <code>29~48</code></li>
+<li>15m 三组 pair 的 <code>|z|&gt;2</code> 计数约 <code>28~39</code></li>
+</ul>
+<ol>
+<li><strong>但当前 naive 参数在 8bps 成本下仍为负</strong>：</li>
+</ol>
+<ul>
+<li>最好的一组（5m, <code>usd_from_eur__usd_from_gbp</code>, <code>roll=192,z_in=2.5,z_out=0.25,max_hold=12</code>）</li>
+<li><code>gross_sum ≈ +55.73 bps</code>，<code>net_sum ≈ -48.27 bps</code></li>
+</ul>
+<p>结论要诚实：</p>
+<ul>
+<li>这条 raw alpha <strong>有信号密度和偏离幅度</strong>，方向上成立；</li>
+<li>但“naive 双阈值 + 固定持有”还没过成本线，下一步重点应放在 <strong>执行与筛选治理</strong>，而不是先堆更复杂模型。</li>
+</ul>
+<p>---</p>
+<h2>5) 下一步怎么测（直接可执行）</h2>
+<ol>
+<li><strong>成本分层回测</strong>：同一规则跑 <code>4/6/8/10 bps</code> 梯度，明确 break-even cost。</li>
+<li><strong>事件分层</strong>：把入场分成 <code>|z|∈[2,2.5), [2.5,3), &gt;=3</code>，验证是否“极端才有边”。</li>
+<li><strong>加入 regime gate</strong>：仅在 <code>spread 波动分位</code> 与 <code>流动性分位</code> 同时满足时开机。</li>
+<li><strong>执行口径升级</strong>：从固定成本换成 <code>maker占比 + spread/impact</code>，测 executable edge。</li>
+<li><strong>频率下钻</strong>：同框架下钻 <code>3m/1m</code>，但先加 <code>participation cap</code>，防止高频幻觉。</li>
+</ol>
+<p>---</p>
+<h2>6) 风险与保留意见</h2>
+<ul>
+<li>本轮快检窗口较短（近几天），只能作为 intake 级证据，不是最终结论。</li>
+<li>Kraken 多报价路径可交易性、手续费档位与我们目标 venue 可能不同，需迁移复核。</li>
+<li>该 alpha 可能高度依赖执行质量；若无 maker 优势，边际容易被成本抹平。</li>
+</ul>
+<p>---</p>
+<h2>7) 来源（论文 / 仓库 / 数据）</h2>
+<ol>
+<li><strong>Yang, H., &amp; Malik, A. (2024). _Optimal Market-Neutral Multivariate Pair Trading on the Cryptocurrency Platform_. International Journal of Financial Studies, 12(3), 77.</strong></li>
+</ol>
+<ul>
+<li>Venue: International Journal of Financial Studies (MDPI)</li>
+<li>DOI: <code>10.3390/ijfs12030077</code></li>
+<li>Readable URL: <a href="https://www.mdpi.com/2227-7072/12/3/77">https://www.mdpi.com/2227-7072/12/3/77</a></li>
+<li>Preprint URL: <a href="https://arxiv.org/abs/2405.15461">https://arxiv.org/abs/2405.15461</a></li>
+</ul>
+<ol>
+<li><strong>Hongshen-Yang. (2024). _optimal-trading-technique_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/Hongshen-Yang/optimal-trading-technique">https://github.com/Hongshen-Yang/optimal-trading-technique</a></li>
+<li>Readable URL: <a href="https://github.com/Hongshen-Yang/optimal-trading-technique">https://github.com/Hongshen-Yang/optimal-trading-technique</a></li>
+</ul>
+<ol>
+<li><strong>Kraken Support. _Downloadable historical OHLCVT data_ / Public OHLC API.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://support.kraken.com/hc/en-us/articles/360047124832-Downloadable-historical-OHLCVT-Open-High-Low-Close-Volume-Trades-data">https://support.kraken.com/hc/en-us/articles/360047124832-Downloadable-historical-OHLCVT-Open-High-Low-Close-Volume-Trades-data</a></li>
+<li>API URL: <a href="https://api.kraken.com/0/public/OHLC">https://api.kraken.com/0/public/OHLC</a></li>
+</ul>
+<p>---</p>
+<h2>8) 本地复现实验产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/multiquote_ott_proxy_20260324/spread_diagnostics.csv</code></li>
+<li><code>reports/artifacts/quant_digests/multiquote_ott_proxy_20260324/grid_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/multiquote_ott_proxy_20260324/best_by_pair_interval.csv</code></li>
+<li><code>reports/artifacts/quant_digests/multiquote_ott_proxy_20260324/best_trades.csv</code></li>
+<li><code>reports/artifacts/quant_digests/multiquote_ott_proxy_20260324/meta.json</code></li>
+</ul>
+</body>
+</html>

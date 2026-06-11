@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 OFI 只读成单币盘口压力：对 crypto short-cycle desk，更该先测的是「leader coin lagged integrated OFI × follower 1m/3m continuation」这条 cross-asset raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 OFI 只读成单币盘口压力：对 crypto short-cycle desk，更该先测的是「leader coin lagged integrated OFI × follower 1m/3m continuation」这条 cross-asset raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-02 02:35 UTC</span>
+      <span class="pill">研究时间：2026-04-02 02:32 UTC</span>
+      <span class="pill">类型：2023 *Quantitative Finance* 论文摘要 / OpenAlex metadata + 2023 *Mathematical Finance* 论文摘要 / OpenAlex metadata + 2025 GitHub repo（`ofi.py`）source audit + 2026 Binance 公共数据 repo scaffold（`README.md` + `data_integration.py` + `feature_engineering.py` + `model_training.py` + `backtester.py`）</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/cross-asset/lead-lag/ofi/integrated-ofi/order-book/relative-value/directional/binance/btc-eth-sol-bnb/1m/3m/5m/repo/paper/public-data/cost</span>
+      <span class="pill">证据类型：paper-first（alpha 命题）+ repo scaffold（特征工程 / 公共数据 / 最小回测骨架）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-02_0232_crossasset-integrated-ofi-leadlag-alpha.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>跨资产、滞后一期的 integrated OFI / cross-asset OFI</strong> 可以预测下一小段时间内跟随币种的短周期收益；翻成人话，就是“领涨/领跌币的订单流先动，后排币的价格再跟”</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>时间：2026-04-02 02:32 UTC</li>
+<li>类型：2023 *Quantitative Finance* 论文摘要 / OpenAlex metadata + 2023 *Mathematical Finance* 论文摘要 / OpenAlex metadata + 2025 GitHub repo（<code>ofi.py</code>）source audit + 2026 Binance 公共数据 repo scaffold（<code>README.md</code> + <code>data_integration.py</code> + <code>feature_engineering.py</code> + <code>model_training.py</code> + <code>backtester.py</code>）</li>
+<li>主题标签：raw-alpha/microstructure/cross-asset/lead-lag/ofi/integrated-ofi/order-book/relative-value/directional/binance/btc-eth-sol-bnb/1m/3m/5m/repo/paper/public-data/cost</li>
+<li>证据类型：paper-first（alpha 命题）+ repo scaffold（特征工程 / 公共数据 / 最小回测骨架）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮更值得 intake 的，不是再补一张“单币 OBI / microprice 会不会预测下一跳”的老卡，而是把 <strong>OFI 从单资产扩成跨资产 lead-lag raw alpha</strong>。</p>
+<p>这条线的核心证据链很干净：</p>
+<ol>
+<li><strong>Cont, Cucuringu, Zhang (2023, *Quantitative Finance*)</strong> 说明：</li>
+</ol>
+<ul>
+<li>把盘口多档位信息整合成 <strong>integrated OFI</strong>，比只看 best-level OFI 更能解释冲击；</li>
+<li>更重要的是，<strong>lagged cross-asset OFIs 确实能提升对 future returns 的预测</strong>；</li>
+<li>但这种 cross-impact <strong>主要发生在短期，而且衰减很快</strong>。</li>
+</ul>
+<ol>
+<li><strong>Kolm, Turiel, Westray (2023, *Mathematical Finance*)</strong> 说明：</li>
+</ol>
+<ul>
+<li>真正有信息量的不是原始 order book state，而是 <strong>stationary order-flow inputs</strong>；</li>
+<li>他们在 <strong>115 只 Nasdaq 股票</strong> 上发现：order-flow 类输入显著优于直接喂 raw book；</li>
+<li>有效预测窗口大约只有 <strong>两次平均价格变动</strong>，再次强调这是一条短命、要快测快杀的 alpha。</li>
+</ul>
+<ol>
+<li><strong>parshG/OFI-Feature-Construction (2025)</strong> 已经把这条线最关键的 engineering 拆出来：</li>
+</ol>
+<ul>
+<li><code>best_level_ofi</code></li>
+<li><code>multi_level_ofi</code></li>
+<li><code>integrated_ofi</code>（PCA 聚合多档位）</li>
+<li><code>cross_asset_ofi</code>（LassoCV 做 cross-impact beta）</li>
+</ul>
+<ol>
+<li><strong>tsuithomas/crypto_research_order_book_imbalance (2026)</strong> 虽然 headline 还是单币 OBI，但它给了我们一个现成的 <strong>Binance 公共数据 ingestion + 1m 特征工程 + walk-forward + 成本回测骨架</strong>，正好能把上面的跨资产 OFI 命题移植到 crypto 最小实验。</li>
+</ol>
+<p>所以这次真正该记进研究池的，不是“OBI 又能预测方向”，而是：</p>
+<p>&gt; <strong>如果 BTC / ETH 这些 leader coin 的 integrated OFI 先走强/走弱，后排币的 1m / 3m 收益是否会出现可交易的短暂跟随？</strong></p>
+<p>这是一条标准的 <code>raw alpha</code>，不是 filter，也不是只能依附别的策略的 overlay。</p>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha 很清楚：跨资产订单流 lead-lag。</strong></p>
+<p>不是：</p>
+<ul>
+<li>单币 OBI 过高，所以少做；</li>
+<li>或者“盘口有点偏，所以拿来当 veto”。</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li>先把 leader coin 的盘口多层订单流压缩成 <code>integrated OFI</code>；</li>
+<li>再看它对 follower coin 下一小段收益有没有 <strong>滞后预测力</strong>；</li>
+<li>如果有，就可以做：</li>
+<li><code>directional continuation</code>（直接做 follower）</li>
+<li>或 <code>relative-value long/short</code>（long 强流入腿、short 弱流入腿）</li>
+</ul>
+<p>翻成人话： <strong>先动的不是价格，而是订单流；先动的不是所有币一起，而是 leader 先动、follower 后跟。</strong></p>
+<h2>3. 为什么这轮值得写，而不是继续在单币 OBI 或 pairs 里内循环</h2>
+<p>最近 digest 里，single-asset microstructure、pairs、carry、cross-sectional 已经不少；但 <strong>multi-asset flow lead-lag</strong> 这块还相对空。</p>
+<p>这轮值得写，原因有三条：</p>
+<ol>
+<li><strong>它还是 raw alpha，不是旁支 filter。</strong></li>
+</ol>
+<ul>
+<li>入场信号本体就是“leader OFI 先动，follower 未来收益响应”。</li>
+</ul>
+<ol>
+<li><strong>它能直接扩素材池。</strong></li>
+</ol>
+<ul>
+<li>既可以服务 <code>1m / 3m</code> 的高强度 directional alpha；</li>
+<li>也可以服务 market-neutral 的 long/short spread 版本。</li>
+</ul>
+<ol>
+<li><strong>它比单币 OBI 更 desk-friendly。</strong></li>
+</ol>
+<ul>
+<li>单币 OBI 很容易死在延迟和 fee wall；</li>
+<li>cross-asset lagged OFI 至少在逻辑上多了一层“滞后可抓取窗口”，更像 <code>1m / 3m / 5m</code> desk 能诚实检验的东西。</li>
+</ul>
+<p>所以如果问“它为什么比继续补一个普通 OBI 卡更值得？” 答案是： <strong>因为它把单币微结构 edge 升级成了跨资产传导 edge，理论上更接近 desk 真正能抓的短周期 alpha。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：cross-asset directional / relative-value</li>
+<li>基础 alpha：leader coin 的 lagged integrated OFI 预测 follower coin 下一小段收益</li>
+<li>regime：只在高流动、低 spread、leader/follower 关系稳定时启用</li>
+<li>filter / veto：spread 异常放宽、成交稀薄、事件冲击、相关关系失稳时停做</li>
+<li>risk / sizing / execution overlay：按 leader-follower beta 缩放；做 cost ladder；maker-biased 优先，必要时 taker only 做 existence check</li>
+</ul>
+<h2>4. 这次看的主来源</h2>
+<h3>4.1 alpha 主来源（paper）</h3>
+<ol>
+<li><strong>Cont, Rama; Cucuringu, Mihai; Zhang, Chao (2023)</strong></li>
+<p><strong>Title:</strong> *Cross-impact of order flow imbalance in equity markets* <strong>Venue:</strong> *Quantitative Finance* <strong>DOI:</strong> <code>10.1080/14697688.2023.2236159</code> <strong>Readable URL:</strong> <a href="https://doi.org/10.1080/14697688.2023.2236159">https://doi.org/10.1080/14697688.2023.2236159</a> <strong>Open PDF URL:</strong> <a href="https://www.tandfonline.com/doi/pdf/10.1080/14697688.2023.2236159?download=true">https://www.tandfonline.com/doi/pdf/10.1080/14697688.2023.2236159?download=true</a> <strong>Repo URL:</strong> N/A</p>
+</ol>
+<ol>
+<li><strong>Kolm, Petter N.; Turiel, Jeremy; Westray, Nicholas (2023)</strong></li>
+<p><strong>Title:</strong> *Deep order flow imbalance: Extracting alpha at multiple horizons from the limit order book* <strong>Venue:</strong> *Mathematical Finance* <strong>DOI:</strong> <code>10.1111/mafi.12413</code> <strong>Readable URL:</strong> <a href="https://doi.org/10.1111/mafi.12413">https://doi.org/10.1111/mafi.12413</a> <strong>Open PDF URL:</strong> <a href="https://onlinelibrary.wiley.com/doi/pdfdirect/10.1111/mafi.12413">https://onlinelibrary.wiley.com/doi/pdfdirect/10.1111/mafi.12413</a> <strong>Repo URL:</strong> N/A</p>
+</ol>
+<h3>4.2 engineering 辅助来源（repo）</h3>
+<ol>
+<li><strong>parshG (2025), *OFI-Feature-Construction</strong>*</li>
+<p><strong>Venue:</strong> GitHub repository <strong>DOI:</strong> N/A <strong>Readable URL / Repo URL:</strong> <a href="https://github.com/parshG/OFI-Feature-Construction">https://github.com/parshG/OFI-Feature-Construction</a> <strong>GitHub metadata:</strong> created <code>2025-06-16T03:33:41Z</code>, pushed <code>2025-06-16T03:34:43Z</code> <strong>实际看的文件：</strong> <code>ofi.py</code></p>
+</ol>
+<ol>
+<li><strong>tsuithomas (2026), *crypto_research_order_book_imbalance</strong>*</li>
+<p><strong>Venue:</strong> GitHub repository <strong>DOI:</strong> N/A <strong>Readable URL / Repo URL:</strong> <a href="https://github.com/tsuithomas/crypto_research_order_book_imbalance">https://github.com/tsuithomas/crypto_research_order_book_imbalance</a> <strong>GitHub metadata:</strong> created <code>2026-03-03T08:54:44Z</code>, pushed <code>2026-03-03T08:58:05Z</code> <strong>实际看的文件：</strong> <code>README.md</code>, <code>src/data_integration.py</code>, <code>src/feature_engineering.py</code>, <code>src/model_training.py</code>, <code>src/backtester.py</code></p>
+</ol>
+<h2>5. 这条 alpha 到底有什么硬信息，不是空想</h2>
+<h3>5.1 2023 cross-impact paper 给出的最关键结论</h3>
+<p>OpenAlex 摘要重建后，最值钱的三句是：</p>
+<ul>
+<li><strong>integrated OFI 比 best-level OFI 更能解释 price impact</strong>；</li>
+<li>contemporaneous impact 上，多资产 cross-impact 没有比 sparse model 多太多解释力；</li>
+<li>但 <strong>lagged cross-asset OFIs 确实提升 future return forecasting</strong>，而且这种效应 <strong>主要发生在短期并快速衰减</strong>。</li>
+</ul>
+<p>这对 desk 的翻译很直接：</p>
+<ul>
+<li>同步共振没什么好做的，通常已经反映进价格；</li>
+<li>真正能做的是 <strong>小滞后窗口里的跨币传导</strong>。</li>
+</ul>
+<h3>5.2 2023 deep OFI paper 给出的窗口感</h3>
+<p>这篇 paper 摘要里至少有三个硬点：</p>
+<ul>
+<li>样本是 <strong>115 只 Nasdaq 股票</strong>；</li>
+<li><strong>order-flow derived inputs</strong> 明显优于直接喂 raw order book states；</li>
+<li>有效预测 horizon 大约只有 <strong>两次平均价格变动</strong>。</li>
+</ul>
+<p>翻成人话： <strong>如果这条 alpha 有边，它不会活很久，所以不适合装成慢速 15m 主信号。</strong></p>
+<h3>5.3 2025 repo 已经把核心特征写成代码</h3>
+<p><code>ofi.py</code> 里最关键的几段：</p>
+<ul>
+<li><code>compute_best_level_ofi()</code>：顶档 OFI</li>
+<li><code>compute_multi_level_ofi(levels=10)</code>：多档位 OFI 累加</li>
+<li><code>compute_integrated_ofi(levels=10, n_components=1)</code>：</li>
+<li>对不同档位 OFI 构造矩阵；</li>
+<li>再用 <code>PCA(n_components=1)</code> 压成单一 <code>integrated_ofi</code></li>
+<li><code>compute_cross_asset_ofi()</code>：</li>
+<li>把 <code>ofi_value</code> 和 <code>return</code> 按 <code>ts_event × symbol</code> pivot 成矩阵；</li>
+<li>用 <code>LassoCV</code> 回归每个 target asset 的 return 对全市场 OFI 的敏感度</li>
+</ul>
+<p>也就是说，<strong>从 best-level → multi-level → integrated → cross-asset</strong> 这条研究路径，repo 已经给出了一版最小工程实现。</p>
+<h3>5.4 2026 crypto repo 给出了 crypto 最小实验壳</h3>
+<p>这份 repo 的 evidence 强度一般，不能直接当论文结论，但工程上很值钱：</p>
+<ul>
+<li><code>data_integration.py</code> 直接从 <strong>Binance public aggTrades archive</strong> 抓数据；</li>
+<li>默认例子抓的是 <strong>BTCUSDT, 2025-10-01 到 2025-12-31</strong>；</li>
+<li><code>feature_engineering.py</code> 先把 tick 聚成 <code>1min</code>，然后做：</li>
+<li><code>buy_vol</code></li>
+<li><code>sell_vol</code></li>
+<li><code>obi</code></li>
+<li><code>volatility_20</code></li>
+<li>以及 <strong>5-period forward log return</strong>（如果 <code>freq=1min</code>，就是 5 分钟前瞻）</li>
+<li><code>model_training.py</code> 用 <code>XGBoost</code> 做 <code>80/20</code> walk-forward split；</li>
+<li>README 里给了几个可用的工程数字：</li>
+<li><strong>OBI ~45% feature importance</strong></li>
+<li>maker 假设下、<code>15 bps</code> conviction threshold 后，策略样例 <strong>+3.21%</strong>，同期市场 <strong>-12.76%</strong></li>
+</ul>
+<p>这些数字我不会当成强证据，但它告诉我们： <strong>Binance 公共数据 + 1m 聚合 + cost-aware threshold 的实验壳，已经足够搭一版跨资产 OFI 最小实验。</strong></p>
+<h2>6. 对当前 desk，更值得测的不是“单币 OBI”，而是“leader OFI -&gt; follower return”</h2>
+<p>如果沿着这条证据链走，最自然的 desk 化改写不是：</p>
+<ul>
+<li>继续在 BTC 单币上做 OBI 方向分类；</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li>选一组 leader/follower：</li>
+<li><code>BTC -&gt; ETH</code></li>
+<li><code>BTC -&gt; SOL</code></li>
+<li><code>ETH -&gt; SOL</code></li>
+<li><code>ETH -&gt; BNB</code></li>
+<li>每 <code>1m</code> 或事件聚合窗口计算 leader 的：</li>
+<li><code>best_level_ofi</code></li>
+<li><code>multi_level_ofi</code></li>
+<li><code>integrated_ofi</code></li>
+<li><code>microprice gap</code></li>
+<li>然后预测 follower 未来 <code>1m / 3m / 5m</code> 收益</li>
+</ul>
+<p>也就是： <strong>把 alpha 从“单币下一步往哪动”改成“谁先在订单流上表态，谁后在价格上跟”。</strong></p>
+<h2>7. 这条 raw alpha 可以怎样直接落地成完整策略</h2>
+<h3>7.1 Entry</h3>
+<p>第一版先别复杂化，直接做：</p>
+<ul>
+<li>设 leader-follower 对：<code>BTC/ETH</code>, <code>BTC/SOL</code>, <code>ETH/SOL</code>, <code>ETH/BNB</code></li>
+<li>每 <code>1m</code> 计算：</li>
+<li>leader <code>integrated_ofi_z</code></li>
+<li>leader <code>microprice_gap_z</code></li>
+<li>follower <code>ret_1m_lag0</code></li>
+<li>spread / vol / volume 状态</li>
+<li>当：</li>
+<li>leader <code>integrated_ofi_z &gt; z_up</code></li>
+<li><code>microprice_gap_z</code> 同向</li>
+<li>follower 当下还没完全跟上（例如 <code>follower_ret_1m &lt; leader_ret_1m * beta_cut</code>）</li>
+<p>→ 做多 follower</p>
+<li>做空同理</li>
+</ul>
+<h3>7.2 Exit</h3>
+<p>先用最朴素的三档：</p>
+<ul>
+<li>固定持有 <code>1 / 3 / 5</code> 根 <code>1m</code> bar</li>
+<li>若 leader OFI 反向，立即平</li>
+<li>若 follower 已补涨/补跌到阈值，平仓</li>
+</ul>
+<h3>7.3 Sizing</h3>
+<p>第一版先：</p>
+<ul>
+<li>单对固定 notional</li>
+<li>按 rolling vol 反比缩放</li>
+<li>若做 long/short 版本，则按 leader-follower beta 近似配平</li>
+</ul>
+<h3>7.4 Risk / Cost</h3>
+<p>至少要有：</p>
+<ol>
+<li><strong>spread gate</strong>：follower spread 超过滚动 80% 分位数就不做</li>
+<li><strong>liquidity gate</strong>：近 <code>N</code> 根 trade count 太低不做</li>
+<li><strong>event veto</strong>：大新闻 / 极端瞬时波动 bar 不做普通 lead-lag 解释</li>
+<li><strong>cost ladder</strong>：round-trip 先跑 <code>2 / 4 / 6 / 8 / 10 bps</code></li>
+<li><strong>leader decoupling veto</strong>：leader-follower 近几天相关性或 beta 崩掉则停用</li>
+</ol>
+<h2>8. 这条 alpha 与 <code>1m / 3m / 5m / 15m</code> 的关系</h2>
+<h3>8.1 <code>1m</code></h3>
+<p>这是最该先打的主战场。 原因：</p>
+<ul>
+<li>cross-impact paper 明说效应短且快衰减；</li>
+<li>deep OFI paper 也说明有效 horizon 很短；</li>
+<li>所以 <code>1m</code> 最适合先做 existence check。</li>
+</ul>
+<h3>8.2 <code>3m</code></h3>
+<p>如果 <code>1m</code> 太噪，<code>3m</code> 是最自然的第二站：</p>
+<ul>
+<li>还能保留短周期传导；</li>
+<li>又比 1m 更容易跨过 fee wall。</li>
+</ul>
+<h3>8.3 <code>5m</code></h3>
+<p><code>5m</code> 不是首选发现层，更像：</p>
+<ul>
+<li><code>1m/3m</code> alpha 已成立后，用来做 execution-friendly transfer；</li>
+<li>或只保留高 conviction 子集。</li>
+</ul>
+<h3>8.4 <code>15m</code></h3>
+<p>不建议把这条命题直接伪装成 <code>15m</code> 主信号。 更合理的是：</p>
+<ul>
+<li>把它当 <code>15m</code> 策略的 intrabar admission / veto；</li>
+<li>或当更慢策略的仓位倾斜层。</li>
+</ul>
+<h2>9. 最小可复现实验（直接对当前 desk）</h2>
+<h3>实验 A：最朴素的 leader-&gt;follower directional check</h3>
+<ul>
+<li><strong>Universe</strong>：BTC, ETH, SOL, BNB</li>
+<li><strong>数据源</strong>：</li>
+<li>公开可得：Binance public <code>aggTrades</code> / <code>bookTicker</code> / depth snapshot</li>
+<li>更新频率：tick / event-driven，聚合到 <code>1m</code></li>
+<li><strong>特征</strong>：leader 的 <code>best_level_ofi</code>, <code>multi_level_ofi proxy</code>, <code>integrated_ofi proxy</code>, <code>microprice gap</code></li>
+<li><strong>Target</strong>：follower 未来 <code>1m / 3m / 5m</code> log return</li>
+<li><strong>要回答的问题</strong>：lagged leader flow 是否比 leader return 更早、更稳？</li>
+</ul>
+<h3>实验 B：best-level vs integrated OFI ablation</h3>
+<p>同一批 leader/follower，只比较：</p>
+<ol>
+<li>best-level OFI</li>
+<li>multi-level OFI</li>
+<li>integrated OFI</li>
+<li>integrated OFI + microprice gap</li>
+</ol>
+<p>这一步要回答： <strong>多档位整合是否真的比顶档 OBI/OFI 更值钱？</strong></p>
+<h3>实验 C：directional vs relative-value</h3>
+<p>同一信号做两种交易壳：</p>
+<ol>
+<li>直接做 follower 单腿</li>
+<li>long follower / short leader（或反之）</li>
+</ol>
+<p>这一步要回答： <strong>edge 来自纯方向跟随，还是来自相对补涨补跌？</strong></p>
+<h3>实验 D：cost ladder</h3>
+<p>统一信号，统一持有期，只改：</p>
+<ul>
+<li><code>2 bps</code></li>
+<li><code>4 bps</code></li>
+<li><code>6 bps</code></li>
+<li><code>8 bps</code></li>
+<li><code>10 bps</code></li>
+</ul>
+<p>不先卷复杂模型，先看： <strong>哪一层摩擦下还有净边。</strong></p>
+<h2>10. 这条线最容易犯的错</h2>
+<ul>
+<li><strong>错法 1：</strong> 把 contemporaneous 共振误判成可交易 alpha；真正该看的是 lagged 版本。</li>
+<li><strong>错法 2：</strong> 只看 leader return，不看 leader order flow；结果把更早的信号扔了。</li>
+<li><strong>错法 3：</strong> 只做顶档 OBI，不做多档位 / integrated 版本；可能把更稳的信息压没了。</li>
+<li><strong>错法 4：</strong> 看到 <code>1m</code> 有显著性，就默认 <code>5m/15m</code> 更稳；实际上很多时候只是衰减完了。</li>
+<li><strong>错法 5：</strong> 只看预测分数，不跑 cost ladder；微结构 alpha 最后常死在执行上。</li>
+</ul>
+<h2>11. 为什么它值得进研究池</h2>
+<p>这张卡值得进池，不是因为它已经给出了一份现成可实盘的 Sharpe，而是因为它把一条很适合 short-cycle desk 的命题讲得足够清楚：</p>
+<p>&gt; <strong>真正有价值的，不一定是“单币盘口歪了一点”，而是“某个 leader 的订单流已经先转向，但 follower 价格还没完全反应”。</strong></p>
+<p>这比继续在单币 OBI 上抠 1bps 更值得先测，因为它更像 desk 能在 <code>1m / 3m / 5m</code> 上抓到的可交易传导窗口。</p>
+<h2>12. 下一步怎么测</h2>
+<ol>
+<li><strong>先用 Binance 公共数据做 7~14 天最小实验</strong>：只做 <code>BTC/ETH/SOL/BNB</code> 四币。</li>
+<li><strong>先做最简单的线性 / 阈值版本</strong>：不要一上来就上 XGBoost 或 LSTM。</li>
+<li><strong>一定做四组 ablation</strong>：</li>
+</ol>
+<ul>
+<li>leader return only</li>
+<li>leader best-level OFI</li>
+<li>leader integrated OFI</li>
+<li>integrated OFI + microprice</li>
+</ul>
+<ol>
+<li><strong>第二步只盯 cost ladder</strong>：这条线的关键不是预测显著，而是 after-cost 能不能活。</li>
+<li><strong>如果 <code>1m</code> 活、<code>3m</code> 还能留边</strong>，再决定是否把它升格成：</li>
+</ol>
+<ul>
+<li>单独的 fast raw alpha；</li>
+<li>或 pairs / spread / breakout 的 cross-asset admission layer。</li>
+</ul>
+<h2>13. 一句话结论</h2>
+<p>如果只带走一句话，我会带走这句：</p>
+<p><strong>别再把 OFI 只当单币盘口指标；对 crypto short-cycle desk，更值得快检的是「leader coin 的 lagged integrated OFI 是否能在 1m/3m 上提前预告 follower 的补涨补跌」这条 cross-asset raw alpha。</strong></p>
+</body>
+</html>

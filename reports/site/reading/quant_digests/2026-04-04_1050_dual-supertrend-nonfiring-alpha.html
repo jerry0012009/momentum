@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 新 repo 的高 Sharpe README 当结论：对 short-cycle desk，更该先确认的是「dual-SuperTrend flip × EMA50 × volume gate」这条 15m raw alpha，但按源码现状几乎不触发</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 新 repo 的高 Sharpe README 当结论：对 short-cycle desk，更该先确认的是「dual-SuperTrend flip × EMA50 × volume gate」这条 15m raw alpha，但按源码现状几乎不触发</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 10:52 UTC</span>
+      <span class="pill">研究时间：2026-04-04 10:50 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`README.md` + `src/strategy.py` + `docs/METHODOLOGY.md`）+ Binance Spot 公共 `15m` recent-window portability probe（`BTCUSDT / ETHUSDT / SOLUSDT / BNBUSDT`, 2026-01-04 ~ 2026-04-04）</span>
+      <span class="pill">主题标签：raw-alpha/trend/momentum/single-asset/dual-supertrend/ema/volume-confirmation/atr-stop/time-stop/repo/public-data/binance/15m/5m/3m/1m/cost/source-audit</span>
+      <span class="pill">证据类型：repo 源码证据 + 公共数据最小便携性快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_1050_dual-supertrend-nonfiring-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 10:50 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>README.md</code> + <code>src/strategy.py</code> + <code>docs/METHODOLOGY.md</code>）+ Binance Spot 公共 <code>15m</code> recent-window portability probe（<code>BTCUSDT / ETHUSDT / SOLUSDT / BNBUSDT</code>, 2026-01-04 ~ 2026-04-04）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>快慢双 SuperTrend 同向、且价格站在 <code>EMA50</code> 正确一侧并伴随放量时，顺着 <code>15m</code> 趋势方向开仓；随后用 <code>1.8 x ATR</code> 止损、<code>3.5 x ATR</code> 止盈、fast SuperTrend trailing stop 和 <code>20</code> 根 time stop 去抓短周期延续。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/trend/momentum/single-asset/dual-supertrend/ema/volume-confirmation/atr-stop/time-stop/repo/public-data/binance/15m/5m/3m/1m/cost/source-audit</li>
+<li>证据类型：repo 源码证据 + 公共数据最小便携性快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮我刻意没有再补 pairs / carry / OFI，而是补一条<strong>看起来像完整 15m 趋势 raw alpha 壳</strong>的新 repo：双 SuperTrend 顺势开仓，ATR 动态止盈止损，外加 volume / volatility filter。它之所以值得 intake，不是因为 README 上那串高 Sharpe 数字，而是因为它理论上确实覆盖了 entry / exit / sizing / cost 四个核心部件；但源码和 README 的口径冲突很大，而且我按公开 Binance <code>15m</code> 数据做 recent-window 复现后，结果是 <strong>90 天内 4 个主流币一笔都没打出来</strong>。所以这轮真正值得留下的不是“高 Sharpe CTA 已验证”，而是：<strong>这是一条 base alpha 清楚、但当前实现明显还没过 source-audit 的趋势 raw alpha 候选。</strong></p>
+<h2>2. 先回答最重要的一句：base alpha 是什么？</h2>
+<p>一句话版：</p>
+<p>&gt; <strong>base alpha 就是：当快慢双 SuperTrend 同向翻转、价格站上/跌破 EMA50、且量能放大时，顺势追一段 15m 趋势延续。</strong></p>
+<p>这条线非常明确：</p>
+<ol>
+<li>用 fast SuperTrend 抓较早的方向翻转；</li>
+<li>用 slow SuperTrend 避免太快、太噪的假翻转；</li>
+<li>用 <code>EMA50</code> 确保不是逆大方向去追；</li>
+<li>用成交量过滤避免在太干的 bar 里下手；</li>
+<li>再用 ATR 止损/止盈和 time stop 把持仓收敛成完整策略。</li>
+</ol>
+<p>所以它不是 filter，不是 overlay，也不是 execution-only 技巧；</p>
+<p>&gt; <strong>它本身就是一条完整的 trend / momentum raw alpha。</strong></p>
+<h2>3. repo 真正给了哪些完整策略部件</h2>
+<h3>3.1 Entry：快慢双 SuperTrend + EMA50 + 放量确认</h3>
+<p><code>src/strategy.py</code> 里真正会触发开仓的条件是：</p>
+<ul>
+<li><code>bull_flip</code> / <code>bear_flip</code>：fast SuperTrend 方向翻转；</li>
+<li><code>st_slow_dir</code> 与 fast flip 同向；</li>
+<li><code>close &gt; ema50</code> 才能做多，<code>close &lt; ema50</code> 才能做空；</li>
+<li><code>volume &gt;= 1.2 x SMA20(volume)</code>；</li>
+<li><code>atr_pct &lt; 3%</code>，即不在高波动状态。</li>
+</ul>
+<p>换成人话：</p>
+<p>&gt; <strong>它不是“只要 SuperTrend 翻了就追”，而是要求趋势方向、均线方向、量能状态一起同意。</strong></p>
+<h3>3.2 Exit：ATR 止损、ATR 止盈、fast ST trailing、20-bar 超时</h3>
+<p>repo 的退出层其实挺完整：</p>
+<ul>
+<li>止损：<code>1.8 x ATR</code></li>
+<li>止盈：<code>3.5 x ATR</code></li>
+<li>trailing stop：用 fast SuperTrend line 动态抬/压止损</li>
+<li>time stop：<code>20</code> 根 <code>15m</code> K，也就是最多大约 <code>5</code> 小时</li>
+<li>若 fast ST 反向 flip，也直接出场</li>
+</ul>
+<p>这意味着它不是只有入场，没有退场；而是一条可以完整写进回测器的策略定义。</p>
+<h3>3.3 Sizing / Cost：2.5% 风险、低波放大 1.2x、显式 fee/slippage</h3>
+<p>源码里 sizing 也是成体系的：</p>
+<ul>
+<li>每笔基础风险：<code>2.5%</code> 账户权益</li>
+<li>若 <code>ATR% &lt; 1.5%</code>，仓位乘 <code>1.2</code></li>
+<li>否则正常仓位；高波直接跳过</li>
+<li>成本口径：<code>4 bps</code> fee + <code>1 bp</code> slippage</li>
+</ul>
+<p>这对 desk 来说很重要，因为它至少承认：</p>
+<p>&gt; <strong>short-cycle 趋势 alpha 不是只看胜率，得把交易成本写进 PnL。</strong></p>
+<h2>4. 这份 repo 最大的问题：口径严重不一致，源码比 README 紧得多</h2>
+<p>这轮最值得记住的，不是策略名字，而是<strong>repo 的三套规则根本没对齐</strong>。</p>
+<h3>4.1 GitHub repo 简介、README、代码各说各话</h3>
+<p>我看到至少三套版本：</p>
+<ul>
+<li><strong>GitHub repo 简介</strong>：<code>ST(10,3)</code> + <code>ST(21,2)</code>，<code>ADX &gt; 22</code>，risk per trade <code>1%</code></li>
+<li><strong>README / METHODOLOGY</strong>：<code>ST(8,2.5)</code> + <code>ST(18,2)</code>，EMA50，<code>ATR% &lt; 3%</code>，volume <code>&gt; 1.2 x SMA20</code>，risk per trade <code>2.5%</code></li>
+<li><strong>源码</strong>：基本跟 README 版本一致，但又没有实现 README 里强调的 <code>fee_adjusted_edge &gt; 0.15%</code></li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; <strong>repo claim 说得最满，README 次之，真正执行的是第三套更窄、更简化的逻辑。</strong></p>
+<h3>4.2 代码里有些“写了像有、其实没用”的部件</h3>
+<p><code>src/strategy.py</code> 里还有几个很说明问题的点：</p>
+<ul>
+<li><code>rsi</code> 算了，但根本没参与信号；</li>
+<li><code>min_edge</code> 参数定义了，但没进入 entry 判断；</li>
+<li>README 说有 <code>1h trend bias</code>，代码里没有；</li>
+<li>README / repo 简介里提到 <code>ADX</code>，代码里没有；</li>
+<li><code>__main__</code> 只打印“Expected Performance”，并不会真的拉数据回测。</li>
+</ul>
+<p>所以正确读法不是“这份 repo 已经验证了一个完整 alpha”，而是：</p>
+<p>&gt; <strong>它给了一个完整 raw alpha 壳的轮廓，但实现和宣传明显没对齐。</strong></p>
+<h3>4.3 连回测主函数都有可复现性问题</h3>
+<p>我直接按源码调用 <code>run_backtest(raw_ohlcv)</code> 时，函数会因为缺少 <code>high_vol</code> 等信号列报错；要先手动对每个 DataFrame 调 <code>generate_signals()</code> 才能跑下去。</p>
+<p>这不是什么大 bug，但它说明一件事：</p>
+<p>&gt; <strong>repo 目前更像 research draft，而不是已经打磨好的可直接复现实验。</strong></p>
+<h2>5. Recent-window portability probe：按源码现状，90 天里 4 个币 0 笔交易</h2>
+<p>我用 Binance Spot 公共 <code>15m</code> OHLCV，按 repo 当前源码逻辑做了一版 recent-window 便携性快检：</p>
+<ul>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT / BNBUSDT</code></li>
+<li>区间：<code>2026-01-04 10:49 UTC ~ 2026-04-04 10:49 UTC</code></li>
+<li>每个标的 bar 数：<code>8640</code></li>
+<li>先跑 <code>generate_signals()</code>，再跑 repo 自带 <code>run_backtest()</code></li>
+<li>结果工件：<code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/supertrend_recent_90d_probe/summary.json</code></li>
+</ul>
+<h3>5.1 总结果：<code>0</code> trades，不是收益低，而是根本不开火</h3>
+<p>总结果非常直接：</p>
+<ul>
+<li>总交易数：<code>0</code></li>
+<li>胜率：<code>0</code></li>
+<li>净 PnL：<code>0</code></li>
+<li>Sharpe：<code>0</code></li>
+<li>Max Drawdown：<code>0</code></li>
+</ul>
+<p>这个结果的含义不是“它稳”，而是：</p>
+<p>&gt; <strong>当前代码在 recent 90d 的主流币 <code>15m</code> 样本上，几乎没有产生可交易信号。</strong></p>
+<h3>5.2 信号密度诊断：真正卡住的是 flip，不是高波过滤</h3>
+<p>四个币的诊断几乎一模一样：</p>
+<ul>
+<li><code>BTCUSDT</code>：<code>bull_flip = 2</code>，<code>bear_flip = 3</code>，<code>long_signal = 0</code>，<code>short_signal = 0</code></li>
+<li><code>ETHUSDT</code>：<code>bull_flip = 2</code>，<code>bear_flip = 3</code>，<code>long_signal = 0</code>，<code>short_signal = 0</code></li>
+<li><code>SOLUSDT</code>：<code>bull_flip = 2</code>，<code>bear_flip = 3</code>，<code>long_signal = 0</code>，<code>short_signal = 0</code></li>
+<li><code>BNBUSDT</code>：<code>bull_flip = 3</code>，<code>bear_flip = 3</code>，<code>long_signal = 0</code>，<code>short_signal = 0</code></li>
+</ul>
+<p>与此同时：</p>
+<ul>
+<li>volume filter 通过率大约只有 <code>25% ~ 27%</code></li>
+<li>但 high-vol bar 几乎没有：<code>BTC 0</code>、<code>ETH 1</code>、<code>SOL 9</code>、<code>BNB 1</code></li>
+<li><code>ATR%</code> 中位数也只在 <code>0.31% ~ 0.49%</code></li>
+</ul>
+<p>所以这轮 probe 最重要的结论不是“波动太大所以做不了”，而是：</p>
+<p>&gt; <strong>当前实现里，SuperTrend flip 本身就已经极少发生；真正的瓶颈在 SuperTrend 的实现/参数口径，而不是 ATR 风险门槛。</strong></p>
+<h3>5.3 这对 desk 来说反而是好事：很快就知道问题在哪</h3>
+<p>这类 source-audit 的价值就在这里。</p>
+<p>如果 recent 90d 跑出来是“有很多交易但收益一般”，下一步还得继续拆交易成本、择时质量、持仓效率。</p>
+<p>但现在不是。现在的问题更基础：</p>
+<p>&gt; <strong>它在 public data 上根本没有 firing density。</strong></p>
+<p>这反而让下一步清楚很多：先别谈 PnL，先谈“这套实现到底是不是 canonical SuperTrend”。</p>
+<h2>6. 这条主题为什么仍值得进研究池</h2>
+<p>虽然 recent probe 直接把 repo 当前实现判成了“几乎不触发”，但这条主题仍然值得 intake，原因是：</p>
+<ol>
+<li><strong>base alpha 很清楚</strong>：就是 trend continuation，不是 filter；</li>
+<li><strong>策略骨架完整</strong>：entry / exit / sizing / cost 都有；</li>
+<li><strong>失败方式也很清楚</strong>：不是玄学，是 source-audit 能直接定位的问题；</li>
+<li><strong>它补的是 trend raw alpha 家族的一个具体壳</strong>，而不是又一个泛泛“趋势可能有效”。</li>
+</ol>
+<p>所以它的正确 desk 定位不是“已验证 alpha”，而是：</p>
+<p>&gt; <strong>高优先级 source-debug 候选：如果 canonical 化后能恢复正常 signal density，它才配进入正式复现池。</strong></p>
+<h2>7. 它和 <code>1m / 3m / 5m / 15m</code> 的关系怎么理解</h2>
+<h3>7.1 这条线的原生时间尺度就是 <code>15m</code></h3>
+<p>不要被“短周期”三个字带偏。这份 repo 的原生持有和过滤尺度其实不短：</p>
+<ul>
+<li>fast ST <code>8 x 15m</code> ≈ <code>2</code> 小时</li>
+<li>slow ST <code>18 x 15m</code> ≈ <code>4.5</code> 小时</li>
+<li><code>EMA50 x 15m</code> ≈ <code>12.5</code> 小时</li>
+<li>time stop <code>20 x 15m</code> ≈ <code>5</code> 小时</li>
+</ul>
+<p>所以它天然更像：</p>
+<p>&gt; <strong><code>15m</code> 上做入场，持有几小时的 trend continuation 壳。</strong></p>
+<h3>7.2 如果要迁到 <code>5m</code>，必须保时间长度，不要保 bar 数</h3>
+<p>若未来要往 <code>5m</code> 迁，正确做法不是继续用 <code>8/18/50/20</code> 这组 bar 数，而是保住时间跨度：</p>
+<ul>
+<li>fast ST：<code>8@15m</code> → 约 <code>24@5m</code></li>
+<li>slow ST：<code>18@15m</code> → 约 <code>54@5m</code></li>
+<li>EMA：<code>50@15m</code> → 约 <code>150@5m</code></li>
+<li>max hold：<code>20@15m</code> → 约 <code>60@5m</code></li>
+</ul>
+<p>否则你测到的根本不是同一条 alpha。</p>
+<h3>7.3 <code>1m / 3m</code> 现在不该直接上</h3>
+<p>在当前版本里，连 <code>15m</code> 信号密度都几乎为零，没必要直接把它压到 <code>1m / 3m</code>。</p>
+<p>更合理的用法是：</p>
+<ul>
+<li>先在 <code>15m</code> 修好 canonical 逻辑；</li>
+<li>若能稳定出信号，再把 <code>15m</code> 状态降级成 <code>1m / 3m</code> execution gate；</li>
+<li>不要在尚未确认“会不会开火”之前，就急着做更快级别的迁移。</li>
+</ul>
+<h2>8. 我对这条材料的结论</h2>
+<h3>8.1 值得 intake 吗？</h3>
+<p><strong>值得，但只能作为“待修的 raw alpha 壳” intake。</strong></p>
+<h3>8.2 现在能直接当完整策略复现吗？</h3>
+<p><strong>不能。</strong></p>
+<p>原因非常具体：</p>
+<ol>
+<li>repo 简介 / README / 代码三套参数不一致；</li>
+<li><code>min_edge</code>、<code>ADX</code>、<code>1h bias</code> 等 claim 没有在代码里落地；</li>
+<li>recent 90d probe 显示 <code>0</code> trades；</li>
+<li><code>run_backtest()</code> 本身还要求先手工生成信号列，复现链条不够自洽。</li>
+</ol>
+<h3>8.3 最准确的 desk 化定位</h3>
+<p>我会把它定位成：</p>
+<p>&gt; <strong>趋势 raw alpha 的“代码审计优先级高于回测优先级”的候选。先修 canonical spec，再谈收益。</strong></p>
+<h2>9. 下一步怎么测</h2>
+<h3>实验 A：先做 canonical spec 对齐，不要继续在三套规则上空转</h3>
+<p>第一步不是调参，而是统一规范：</p>
+<ul>
+<li>到底用 <code>ST(10,3)/(21,2)</code> 还是 <code>ST(8,2.5)/(18,2)</code>？</li>
+<li>到底 risk per trade 是 <code>1%</code> 还是 <code>2.5%</code>？</li>
+<li><code>ADX</code> 和 <code>fee-adjusted edge</code> 到底是策略一部分，还是 README 装饰？</li>
+</ul>
+<p>如果这一步不做，后面的任何回测都没有意义。</p>
+<h3>实验 B：把 repo 的 SuperTrend 实现和 canonical 版本逐 bar 对账</h3>
+<p>这是下一步最重要的技术实验。</p>
+<p>最小口径：</p>
+<ul>
+<li>标的：<code>BTCUSDT 15m</code></li>
+<li>区间：最近 <code>90d</code></li>
+<li>对比：repo 当前实现 vs TradingView / <code>pandas-ta</code> / 自己重写的 canonical SuperTrend</li>
+<li>核对指标：</li>
+</ul>
+<ol>
+<li>bull/bear flip 次数</li>
+<li>每次 flip 的时间戳是否一致</li>
+<li><code>st_fast_dir</code> / <code>st_slow_dir</code> 的持续段长度</li>
+</ol>
+<p>通过条件不是 PnL，而是：</p>
+<p>&gt; <strong>在主流币 90d 样本里，翻转次数不能只有 2~3 次这种“近乎冻结”的状态。</strong></p>
+<h3>实验 C：若 canonical 化后恢复 signal density，再补一次真实 cost backtest</h3>
+<p>只有当 signal density 恢复正常，才值得继续做下一层：</p>
+<ul>
+<li>成本：<code>4 / 8 / 12 bps</code> round-trip</li>
+<li>标的：<code>BTC / ETH / SOL / BNB</code></li>
+<li>风险：<code>1% / 2.5%</code></li>
+<li>hold：<code>10 / 20 / 30</code> bars</li>
+</ul>
+<p>重点不是追最高 Sharpe，而是回答：</p>
+<p>&gt; <strong>这条 trend alpha 在主流币 <code>15m</code> 上扣成本后有没有连续存活的 pocket。</strong></p>
+<h3>实验 D：若 <code>15m</code> 成立，再做 <code>5m</code> 保时长迁移</h3>
+<p>迁移第一版我会只做一件事：</p>
+<ul>
+<li>fast / slow / EMA / hold 全部按时间长度等比下放到 <code>5m</code></li>
+<li>不改 alpha 定义，不混入别的 filter</li>
+</ul>
+<p>目的：</p>
+<p>&gt; 先判断“这条 alpha 的时钟是否可细化”，而不是一上来就把它改造成另一条策略。</p>
+<h2>10. 参考资料</h2>
+<ol>
+<li><strong>jaswanthobbu645-hub. (2026). _tightened-supertrend-alpha_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/jaswanthobbu645-hub/tightened-supertrend-alpha&gt;">https://github.com/jaswanthobbu645-hub/tightened-supertrend-alpha&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/jaswanthobbu645-hub/tightened-supertrend-alpha&gt;">https://github.com/jaswanthobbu645-hub/tightened-supertrend-alpha&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Repo source files used in this digest</strong></li>
+</ol>
+<ul>
+<li>README: &lt;<a href="https://raw.githubusercontent.com/jaswanthobbu645-hub/tightened-supertrend-alpha/main/README.md&gt;">https://raw.githubusercontent.com/jaswanthobbu645-hub/tightened-supertrend-alpha/main/README.md&gt;</a></li>
+<li>Strategy code: &lt;<a href="https://raw.githubusercontent.com/jaswanthobbu645-hub/tightened-supertrend-alpha/main/src/strategy.py&gt;">https://raw.githubusercontent.com/jaswanthobbu645-hub/tightened-supertrend-alpha/main/src/strategy.py&gt;</a></li>
+<li>Methodology: &lt;<a href="https://raw.githubusercontent.com/jaswanthobbu645-hub/tightened-supertrend-alpha/main/docs/METHODOLOGY.md&gt;">https://raw.githubusercontent.com/jaswanthobbu645-hub/tightened-supertrend-alpha/main/docs/METHODOLOGY.md&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Binance Spot API documentation / market data path used in portability probe</strong></li>
+</ol>
+<ul>
+<li>Venue: Binance Developers</li>
+<li>DOI: N/A</li>
+<li>Kline docs: &lt;<a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data&gt;">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data&gt;</a></li>
+<li>Endpoint used: &lt;<a href="https://api.binance.com/api/v3/klines&gt;">https://api.binance.com/api/v3/klines&gt;</a></li>
+</ul>
+</body>
+</html>

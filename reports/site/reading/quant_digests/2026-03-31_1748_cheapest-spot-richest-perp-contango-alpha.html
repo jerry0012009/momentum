@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 market-neutral repo 只读成韩国上币工作流：对 desk 更该先测的是「cheapest spot + richest perp」跨 venue contango capture raw alpha，但 admission 阈值必须高于费用壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 market-neutral repo 只读成韩国上币工作流：对 desk 更该先测的是「cheapest spot + richest perp」跨 venue contango capture raw alpha，但 admission 阈值必须高于费用壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-31 17:54 UTC</span>
+      <span class="pill">研究时间：2026-03-31 17:48 UTC</span>
+      <span class="pill">类型：quant_digest</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/carry/basis/cross-venue/spot-perp/contango/market-neutral/cheapest-spot/richest-perp/1m/3m/5m/repo/public-data/cost/execution</span>
+      <span class="pill">证据类型：2026 GitHub 新仓库 source audit（README + `config.py` + `overseas/price_analyzer.py` + `overseas/trade_executor.py` + `overseas/app.py`）+ Bybit/GateIO/OKX 三交易所公开 orderbook 即时 sanity check</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-31_1748_cheapest-spot-richest-perp-contango-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-31 17:48 UTC</li>
+<li>类型：quant_digest</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/carry/basis/cross-venue/spot-perp/contango/market-neutral/cheapest-spot/richest-perp/1m/3m/5m/repo/public-data/cost/execution</li>
+<li>证据类型：2026 GitHub 新仓库 source audit（README + <code>config.py</code> + <code>overseas/price_analyzer.py</code> + <code>overseas/trade_executor.py</code> + <code>overseas/app.py</code>）+ Bybit/GateIO/OKX 三交易所公开 orderbook 即时 sanity check</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一资产在不同 venue 的 <strong>spot ask / perp bid</strong> 会阶段性失衡；当 <code>最便宜 spot</code> 与 <code>最贵 perp</code> 的 fee-adjusted contango 足够大时，后续更可能向收敛方向回落</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主材料不是论文，而是一份刚在 2026-03 更新的 GitHub 仓库：<strong><code>sueun-dev/crypto-market-neutral-platform</code></strong>。</p>
+<p>它 headline 写的是：</p>
+<ul>
+<li>KRW premium workflow；</li>
+<li>韩国上币 / 海外对冲自动化；</li>
+<li>market-neutral platform。</li>
+</ul>
+<p>但如果按我们当前 desk 的优先级来读，<strong>最值得单独拎出来进素材池的，并不是韩国场景本身，而是仓库里已经写得很完整的 overseas 子系统</strong>：</p>
+<p><strong>实时扫描所有 venue 的 <code>spot ask</code> 与 <code>perp bid</code>，选出 <code>cheapest spot + richest perp</code> 的最佳净价差，只在 fee-adjusted contango 足够大时做 <code>long spot / short perp</code>，然后等 spread 收敛后配对平仓。</strong></p>
+<p>翻成人话： 这不是“新闻套利”也不是“上币叙事”，而是一条可以直接拆成 <strong>entry / exit / sizing / risk / cost</strong> 的跨 venue 相对价值 raw alpha。</p>
+<h2>2. 为什么它值得进当前研究池</h2>
+<p>最近几轮 digest 已经补了不少：</p>
+<ul>
+<li>same-underlier basis；</li>
+<li>cross-venue funding carry；</li>
+<li>options synthetic forward；</li>
+<li>pairs / PCA / copula / cointegration；</li>
+<li>stablecoin / quote-leg parity。</li>
+</ul>
+<p>但当前池子里还缺一块很实用的中间层：</p>
+<p><strong>“不靠长期 funding，不靠复杂 pair formation，只用实时最便宜 spot 和最贵 perp 的净差，能不能做成一个更短、更直接的跨 venue contango capture？”</strong></p>
+<p>这份 repo 值得补有 4 个原因：</p>
+<ol>
+<li><strong>base alpha 很清楚</strong>：不是 filter，不是 overlay，就是同一资产跨 venue spot-perp 净溢价的收敛；</li>
+<li><strong>是完整策略，不是概念卡</strong>：仓库已经给了扫描、下单、配对、风控和并发参数；</li>
+<li><strong>天然兼容 1m / 3m / 5m</strong>：这条线本质是 quote/pocket alpha，比 15m K 线形态更接近事件驱动短时相对价值；</li>
+<li><strong>非常适合做最小 falsification</strong>：直接用公开 orderbook 就能先验证“机会有没有厚到能盖过费用”。</li>
+</ol>
+<h2>3. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = 同一资产在不同交易所的 spot ask 与 perp bid 会暂时失衡；当 <code>最便宜 spot</code> 和 <code>最贵 perp</code> 的 fee-adjusted contango 被拉得足够开时，随后更可能向收敛方向回归。</strong></p>
+<p>所以它本质上是：</p>
+<ul>
+<li><code>relative-value</code></li>
+<li><code>stat-arb</code></li>
+<li><code>carry / basis pocket capture</code></li>
+<li>但交易对象不是 two-coin pair，而是 <strong>same-underlier, cross-venue, spot-vs-perp</strong> 的腿间错价。</li>
+</ul>
+<h2>4. 核心来源</h2>
+<h3>4.1 主仓库</h3>
+<ul>
+<li><strong>Author / Owner</strong>：sueun-dev</li>
+<li><strong>Year</strong>：2026（repo 创建于 2025-09-27，最近一次 push 为 2026-03-11）</li>
+<li><strong>Title</strong>：*crypto-market-neutral-platform*</li>
+<li><strong>Venue</strong>：GitHub repository</li>
+<li><strong>DOI</strong>：无</li>
+<li><strong>Repo URL</strong>：<a href="https://github.com/sueun-dev/crypto-market-neutral-platform">https://github.com/sueun-dev/crypto-market-neutral-platform</a></li>
+</ul>
+<h3>4.2 这次实际重点看的文件</h3>
+<ul>
+<li><code>README.md</code></li>
+<li><code>src/overseas_exchange_hedge/config.py</code></li>
+<li><code>src/overseas_exchange_hedge/overseas/price_analyzer.py</code></li>
+<li><code>src/overseas_exchange_hedge/overseas/trade_executor.py</code></li>
+<li><code>src/overseas_exchange_hedge/overseas/app.py</code></li>
+</ul>
+<h3>4.3 本地即时 sanity check 数据源（公开可得）</h3>
+<ul>
+<li><strong>Bybit spot/perp orderbook</strong>：<code>/v5/market/orderbook</code></li>
+<li><strong>GateIO spot orderbook</strong>：<code>/api/v4/spot/order_book</code></li>
+<li><strong>GateIO USDT perp orderbook</strong>：<code>/api/v4/futures/usdt/order_book</code></li>
+<li><strong>OKX books</strong>：<code>/api/v5/market/books</code></li>
+<li>数据公开性：公开 REST，无需私钥即可拿 top-of-book</li>
+<li>更新频率：秒级，天然适合 <code>1m / 3m</code>；聚合后也可映射到 <code>5m</code></li>
+</ul>
+<h2>5. 仓库里最该拿走的硬点</h2>
+<h3>5.1 这份 repo 的信号骨架非常直接：所有 venue 里找“最便宜现货”和“最贵合约”</h3>
+<p><code>price_analyzer.py</code> 里真正关键的，不是花哨的统计，而是一个非常 desk 化的实时 ranking：</p>
+<ul>
+<li>对每个 venue 同时抓 <code>spot order book</code> 与 <code>perp order book</code>；</li>
+<li>用 <code>spot ask</code> 代表买入现货成本；</li>
+<li>用 <code>perp bid</code> 代表做空永续的可成交价；</li>
+<li>再把 spot taker fee 和 futures taker fee 显式扣进去：</li>
+<li><code>effective_spot = spot_ask * (1 + spot_fee)</code></li>
+<li><code>effective_perp = perp_bid * (1 - perp_fee)</code></li>
+<li>最后算：</li>
+<li><code>net_spread = (effective_perp - effective_spot) / effective_spot</code></li>
+</ul>
+<p>然后它不是只看单一 venue，而是： <strong>遍历所有 <code>spot_exchange × perp_exchange</code> 组合，选出净价差最大的那一组。</strong></p>
+<p>这点很重要： 它让策略从“某个交易所的 basis”升级成了 <strong>跨 venue 的最佳路由问题</strong>。</p>
+<h3>5.2 config 已经把第一版完整策略壳写出来了</h3>
+<p><code>config.py</code> 的默认运行参数是：</p>
+<ul>
+<li><code>ENTRY_AMOUNT = 100 USDT</code></li>
+<li><code>MAX_ENTRIES = 40</code></li>
+<li><code>PRICE_DIFF_THRESHOLD = 0.0015</code>（15 bps）</li>
+<li><code>SLEEP_SEC = 3</code></li>
+<li><code>FUTURES_LEVERAGE = 1</code></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>每次先用小额试探；</li>
+<li>最多分 40 次建仓；</li>
+<li>每 3 秒重扫一次；</li>
+<li>永续只上 1x；</li>
+<li>看到 contango 超过阈值才动手。</li>
+</ul>
+<p>这已经不是“想法”，而是非常接近 live monitor + execution shell 的第一版。</p>
+<h3>5.3 它不是 paper alpha，而是 execution-aware alpha</h3>
+<p><code>trade_executor.py</code> 里有几个非常值得 desk 抄走的工程点：</p>
+<ul>
+<li><strong>先发 perp，收到 ACK 就允许继续 spot leg</strong>：<code>PROCEED_ON_PERP_ACK = True</code></li>
+<li><strong>fill polling + myTrades fallback</strong>：减少单边成交不确定性</li>
+<li><strong>强制 1x leverage / one-way mode</strong>：不让 hedge 壳滑向高杠杆方向赌波动</li>
+<li><strong>最小 notional / precision-aware sizing</strong>：避免“理论有 edge，实盘下不出去”</li>
+</ul>
+<p>所以这份材料真正值钱的地方，不只是“价差能回归”，而是： <strong>它已经把跨 venue delta-neutral contango capture 写成了真实 desk 会关心的样子。</strong></p>
+<h3>5.4 unwind 逻辑也给了一个很实用的 exit 原型</h3>
+<p><code>app.py</code> 的海外清算部分，不是无脑平仓，而是等：</p>
+<ul>
+<li><code>spot bid</code> 与 <code>perp ask</code> 的 gross spread 收敛到一个更窄区间；</li>
+<li>默认用 <code>abs(gross_spread) &lt;= 0.10%</code> 作为 paired close 的触发条件之一；</li>
+<li>然后按匹配数量 chunked unwind。</li>
+</ul>
+<p>这说明它的 exit 不是“时间到了就关”，而是： <strong>把 PnL realization 继续写成 spread 收敛过程。</strong></p>
+<h2>6. 这份 repo 最重要的 desk 化读法：15 bps admission 阈值太低，几乎只够覆盖最便宜的单次入场费用</h2>
+<p>仓库默认 <code>PRICE_DIFF_THRESHOLD = 15 bps</code>，但如果照它自己的 taker fee 表来算，<strong>仅仅开仓这一脚的费用壳就已经在 15~25.5 bps 之间</strong>：</p>
+<ul>
+<li>最便宜组合约 <strong>15 bps</strong>：</li>
+<li><code>Bybit/OKX spot 10 bps + GateIO/OKX perp 5 bps</code></li>
+<li>Bybit 自家 spot + perp 约 <strong>15.5 bps</strong></li>
+<li>最贵组合约 <strong>25.5 bps</strong>：</li>
+<li><code>GateIO spot 20 bps + Bybit perp 5.5 bps</code></li>
+</ul>
+<p>所以如果只按 15 bps admission：</p>
+<ul>
+<li>你只是刚好覆盖最便宜的开仓壳；</li>
+<li>还没算 exit taker；</li>
+<li>还没算 legging 风险；</li>
+<li>还没算滑点；</li>
+<li>更没算 orphan risk。</li>
+</ul>
+<p><strong>这篇东西最值得 desk 拿走的不是“15 bps 就上”，而是：这条 raw alpha 存在，但 admission 必须改成 fee-aware，而不是写死一个拍脑袋阈值。</strong></p>
+<h2>7. 三交易所公开 top-of-book 即时 sanity check：现在这条线不是 always-on，而是 pocket-driven</h2>
+<p>我用 Bybit / GateIO / OKX 的公开 orderbook，对 23 个常见币（BTC、ETH、SOL、XRP、DOGE、ADA、SUI、LTC、BCH、LINK、AVAX、TRX、DOT、BNB、PEPE、UNI、APT、ARB、OP、ETC、NEAR、FIL、ATOM）做了一个即时 snapshot sanity check。</p>
+<p>口径很简单：</p>
+<ul>
+<li>每个交易所取 <code>spot ask</code> 和 <code>perp bid</code> 的 top-of-book；</li>
+<li>用仓库自己的 taker fee 表做 fee-adjusted net spread；</li>
+<li>穷举 <code>spot venue × perp venue</code>，找当下的 best combo。</li>
+</ul>
+<h3>7.1 结果：<strong>23/23 没有一个币在当下快照里出现正的 after-fee entry spread</strong></h3>
+<p>也就是：</p>
+<ul>
+<li><strong>positive opportunities = 0 / 23</strong></li>
+<li>这条线不是“永远有票”；</li>
+<li>更像是 <strong>事件型 pocket / 供需短时撕裂</strong> 出现时才值得开火。</li>
+</ul>
+<h3>7.2 当下最接近可做的几个也仍然是负的</h3>
+<p>在 2026-03-31 17:48 UTC 左右的快照里：</p>
+<ul>
+<li><strong>BTC best combo ≈ -17.4 bps</strong></li>
+<li>buy <code>OKX spot @ 67686.9</code></li>
+<li>short <code>Bybit perp bid @ 67674.1</code></li>
+<li><strong>ETH best combo ≈ -18.8 bps</strong></li>
+<li>buy <code>OKX spot @ 2099.37</code></li>
+<li>short <code>OKX perp bid @ 2098.56</code></li>
+<li><strong>AVAX best combo ≈ -19.5 bps</strong></li>
+<li>buy <code>OKX spot @ 8.837</code></li>
+<li>short <code>OKX perp bid @ 8.833</code></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>大部分时候，市场自己已经把这条边抹得很薄；</li>
+<li>如果没有 listing、单 venue 扫单、funding clock、或局部 inventory squeeze 之类的事件，<strong>光看静态 contango 是不够肥的</strong>。</li>
+</ul>
+<h3>7.3 这不等于 alpha 不存在，反而说明正确玩法是“等 pocket”，不是“常开引擎”</h3>
+<p>这条 sanity check 对 desk 的价值，不是证明 repo 无效，而是告诉你：</p>
+<p><strong>这是一条需要事件式 admission 的 relative-value alpha，不是全天候持续刷单 alpha。</strong></p>
+<p>因此：</p>
+<ul>
+<li>可以做；</li>
+<li>但要等；</li>
+<li>而且要有比 repo 默认值更严格的触发门槛。</li>
+</ul>
+<h2>8. 对 1m / 3m / 5m / 15m 的正确读法</h2>
+<h3>8.1 这条线天然更偏 <code>1m / 3m</code></h3>
+<p>原因很直接：</p>
+<ul>
+<li>信号源是 top-of-book / quote dislocation；</li>
+<li>价差修复通常比 K 线形态演化快得多；</li>
+<li>你等到 15m 收盘再看，很多 pocket 早没了。</li>
+</ul>
+<p>所以这条 raw alpha 最自然的顺序是：</p>
+<ol>
+<li><strong>先做 <code>1m / 3m</code> 事件 pocket 采样</strong>；</li>
+<li>再看能否降采样成 <code>5m</code> 的 slower router；</li>
+<li><code>15m</code> 最多拿来做 regime / venue-health 过滤，不适合当主触发频率。</li>
+</ol>
+<h3>8.2 但它仍然服务当前 desk</h3>
+<p>虽然更快，但它和我们当前 desk 的关系是直接的：</p>
+<ul>
+<li>它补的是 <strong>relative-value / stat-arb / carry</strong> 这条原始 raw alpha 素材；</li>
+<li>不是继续围绕 breakout / retest 打转；</li>
+<li>而且其中的 fee-aware admission、legging、paired unwind，又能反哺很多更慢策略的 execution layer。</li>
+</ul>
+<h2>9. 这篇东西怎么拆成可执行策略</h2>
+<h3>9.1 Universe</h3>
+<p>先只做：</p>
+<ul>
+<li>同时在 2~3 个 venue 都有足够深度的币；</li>
+<li><code>spot</code> 与 <code>USDT perp</code> 都可交易；</li>
+<li>先从 BTC / ETH / SOL / XRP / DOGE / LINK / AVAX 这类通用标的起步。</li>
+</ul>
+<h3>9.2 Signal</h3>
+<p>定义：</p>
+<ul>
+<li><code>entry_spread(i, s_ex, p_ex, t) = (perp_bid * (1 - f_perp) - spot_ask * (1 + f_spot)) / spot_ask</code></li>
+<li>每一时刻对所有 <code>s_ex × p_ex</code> 组合取最大值</li>
+</ul>
+<p>只有当：</p>
+<ul>
+<li><code>best_entry_spread &gt;= θ_entry</code></li>
+<li>且 quote 没过期</li>
+<li>且 top-of-book size 够</li>
+<li>且 funding 没明显反向吞噬预期收益</li>
+</ul>
+<p>才允许：</p>
+<ul>
+<li><code>long cheapest spot</code></li>
+<li><code>short richest perp</code></li>
+</ul>
+<h3>9.3 Exit</h3>
+<p>可以先做最朴素版本：</p>
+<ul>
+<li><code>best_exit_spread &lt;= θ_exit</code></li>
+<li>或 hold 超过 <code>H</code> 分钟</li>
+<li>或价差继续扩大到 <code>stop_spread</code></li>
+<li>或腿间其中一边 quote stale / venue health 失常</li>
+</ul>
+<p>第一版可以测：</p>
+<ul>
+<li><code>θ_entry ∈ {25, 35, 45, 60} bps</code></li>
+<li><code>θ_exit ∈ {0, 5, 10} bps</code></li>
+<li><code>H ∈ {3, 5, 10, 30} min</code></li>
+</ul>
+<h3>9.4 Sizing</h3>
+<ul>
+<li>按弱腿 top-of-book volume 决定最大 notional；</li>
+<li>强制 <code>1x</code> perp；</li>
+<li>单币、单 venue、单时刻都设 notional 上限；</li>
+<li>并发数不要高于真实可配对资金数量。</li>
+</ul>
+<h3>9.5 Risk / Cost</h3>
+<p>这条线最重要的不是方向，而是 operational risk：</p>
+<ul>
+<li>双腿 taker fee</li>
+<li>双腿 exit fee</li>
+<li>slippage</li>
+<li>legging delay</li>
+<li>orphan leg</li>
+<li>venue API fail</li>
+<li>withdraw/transfer 不应假设当场可做</li>
+</ul>
+<p>正确假设应该是： <strong>预先在各 venue 都有库存与保证金，做的是已预注资的跨 venue 对冲，不是临时搬砖。</strong></p>
+<h2>10. 下一步怎么测</h2>
+<h3>实验 1：先验证 pocket 有没有厚度</h3>
+<p>用公开 API 录 <code>1s / 5s</code> top-of-book：</p>
+<ul>
+<li>交易所：Bybit / GateIO / OKX</li>
+<li>标的：先 10~20 个高流动币</li>
+<li>周期：至少 14 天</li>
+</ul>
+<p>输出：</p>
+<ul>
+<li>after-fee positive spread 出现频率</li>
+<li>按币种 / venue pair 分层的 <code>p95 / p99 spread</code></li>
+<li>pocket 持续时长分布</li>
+</ul>
+<h3>实验 2：做事件窗，不急着先做全回测</h3>
+<p>对所有 <code>best_entry_spread &gt;= θ_entry</code> 的时刻做 event study：</p>
+<ul>
+<li>1 / 3 / 5 / 10 / 30 分钟后 spread 收敛多少</li>
+<li>hit-rate</li>
+<li>max adverse excursion</li>
+<li>median time-to-close</li>
+</ul>
+<p>这一步能最快回答： <strong>它到底是“会回”还是只是“偶尔看着肥”。</strong></p>
+<h3>实验 3：把 legging 风险写进来</h3>
+<p>对每次信号额外模拟：</p>
+<ul>
+<li>250ms / 1s / 3s 延迟</li>
+<li>只按 top-of-book 成交</li>
+<li>quote stale veto</li>
+<li>orphan leg 强平</li>
+</ul>
+<p>如果一加延迟边就没了，这条线就只能留给更低延迟系统，不适合当前 desk。</p>
+<h3>实验 4：找 pocket 触发器，而不是盲扫全天</h3>
+<p>如果实验 1~3 有边，再往上叠最可能有用的 filter：</p>
+<ul>
+<li>funding clock 附近</li>
+<li>单 venue 大额扫单 / depth 抽空</li>
+<li>上币 / 事件 / 单 venue inventory shock</li>
+<li>高 realized vol 但 quote 仍未同步的窗口</li>
+</ul>
+<p>也就是说，<strong>第二阶段重点不是调参数，而是回答“什么时候这条边会厚起来”。</strong></p>
+<h2>11. 结论</h2>
+<p>这份 repo 值得进研究池，但要用对读法。</p>
+<p>它真正该留下来的不是：</p>
+<ul>
+<li>韩国上币 narrative；</li>
+<li>15 bps 固定阈值；</li>
+<li>“market-neutral 一定稳”。</li>
+</ul>
+<p>而是：</p>
+<p><strong>一条可独立复现、可直接落地、非常适合 <code>1m / 3m / 5m</code> 做最小实验的 raw alpha：<code>cheapest spot + richest perp</code> 的跨 venue fee-adjusted contango capture。</strong></p>
+<p>当前最关键的 desk 结论是：</p>
+<ol>
+<li><strong>这条 alpha 本体成立，且不是 filter；</strong></li>
+<li><strong>repo 已经把它写成完整执行壳；</strong></li>
+<li><strong>但默认 15 bps admission 明显过松，必须改成 fee-aware threshold；</strong></li>
+<li><strong>即时 sanity check 显示它不是 always-on，而是 pocket-driven，所以研究重点应放在“机会出现的条件”和“机会能活多久”。</strong></li>
+</ol>
+<p>如果只给一个最小动作： <strong>先别回测整年；先录 14 天三交易所 top-of-book，做 <code>after-fee positive spread</code> 的事件窗统计。</strong></p>
+<p>这一步最省时间，也最能决定这条线该不该进下一轮复现队列。</p>
+</body>
+</html>

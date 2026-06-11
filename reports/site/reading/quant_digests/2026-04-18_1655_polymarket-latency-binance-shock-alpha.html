@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Polymarket latency arb：Binance 先动、5m binary odds 后调，才是 base alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Polymarket latency arb：Binance 先动、5m binary odds 后调，才是 base alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-18 17:01 UTC</span>
+      <span class="pill">研究时间：2026-04-18 16:55 UTC</span>
+      <span class="pill">类型：GitHub repo source audit + Binance public-data sanity probe</span>
+      <span class="pill">主题标签：event-driven / prediction-market / latency-arb / Binance / Polymarket / 1m / 3m / 5m / execution / cost</span>
+      <span class="pill">证据类型：GitHub 工程实现 + repo 自带 backtest 配置 + Binance 公共数据 sanity probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-18_1655_polymarket-latency-binance-shock-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-18 16:55 UTC</li>
+<li>类型：GitHub repo source audit + Binance public-data sanity probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：CEX 现货/永续价格先发生短窗冲击，而 Polymarket 5m UP/DOWN 盘口概率尚未完全重定价，买入 stale side 捕捉概率回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：event-driven / prediction-market / latency-arb / Binance / Polymarket / 1m / 3m / 5m / execution / cost</li>
+<li>证据类型：GitHub 工程实现 + repo 自带 backtest 配置 + Binance 公共数据 sanity probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 <code>learningworship/polymarket-latency-bot</code>：一个专门交易 Polymarket 5 分钟 BTC/ETH UP/DOWN 市场的 latency arbitrage bot。它不是 <code>YES+NO&lt;1</code> 的补体套利，而是<strong>方向型事件 alpha</strong>：Binance 价格快速上/下冲时，Polymarket odds 可能慢 <code>2–10s</code> 才追上。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>base alpha 很清楚</strong>：<code>Binance 30–60s price shock -&gt; Polymarket binary probability stale -&gt; 买 UP/DOWN</code>。</li>
+<li>repo 的 live 配置给了完整壳：<code>30s</code> 窗口、价格变动阈值 <code>0.15%</code>、Polymarket 价格带 <code>0.28–0.72</code>、最小 edge <code>12%</code>、单笔 <code>20 USDC</code>、最长持有 <code>240s</code>、TP <code>15%</code>、max spread <code>3c</code>。</li>
+<li>backtester 里的 validated config 更像研究口径：<code>60s</code> window、<code>0.15%</code> shock、vol-adjust、acceleration confirm、<code>3m</code> hold、<code>15%</code> TP；自报 holdout <code>683</code> 笔、Sharpe <code>5.2196</code>、win rate <code>44.95%</code>。</li>
+<li>我用 Binance Spot <code>BTC/ETH 1m</code> 约 <code>25,000</code> 根 bar 做了裸 shock sanity：裸追 Binance 本身并不稳，BTC <code>0.15%</code> shock 后 next <code>3m/5m</code> 约 <code>-0.29/-1.01bps</code>，ETH <code>0.25%</code> shock 后 next <code>3m/5m</code> 约 <code>+3.70/+2.32bps</code>。所以这条线不能简化成“币价急涨就追”，真正价值在 <strong>Polymarket 盘口 stale-price gate</strong>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>它能补 short-cycle desk 当前较少的一类素材：<strong>外部场所慢重定价 alpha</strong>。传统 <code>1m/3m/5m</code> K 线只告诉我们 Binance 已经动了；Polymarket 盘口提供另一个交易面，如果概率价格还没反映这个移动，就可能出现短寿命可成交 edge。</p>
+<p>这比泛 sentiment / prediction-market 指标更直接：entry、exit、sizing、risk、cost 都在源码里有对应模块，可直接做 paper feed，不需要先发明一套策略壳。</p>
+<h2>3.5 策略拆解</h2>
+<ul>
+<li>方向属性：事件驱动顺势 / latency arbitrage</li>
+<li>基础 alpha：Binance 短窗冲击领先 Polymarket 5m binary odds 重定价</li>
+<li>regime：只在活跃 5m BTC/ETH binary market、剩余时间足够、价格还在中间概率带时启用</li>
+<li>filter / veto：Polymarket price band、<code>min_edge</code>、max spread、settlement buffer、盘口新鲜度</li>
+<li>risk / sizing / execution overlay：单笔 <code>20 USDC</code>、单方向最多 1 仓、最长持有 <code>3–4m</code>、TP <code>15%</code>、daily loss limit、taker fee + bid/ask spread 显式扣除</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：Binance <code>BTC/ETH</code> 在 <code>30–60s</code> 内移动超过 <code>0.15–0.40%</code> 后，若 Polymarket UP/DOWN 价格仍在 <code>0.28–0.72</code> 且 fair probability 与盘口价差超过 <code>10–12%</code>，买 stale side 的期望收益为正。</li>
+<li>可计算定义：<code>shock = close_t / close_{t-60s} - 1</code>；<code>fair_up = logistic(k * shock)</code>；<code>edge = fair_side - poly_ask_side</code>。</li>
+<li>最小切口：Polymarket 5m BTC/ETH UP/DOWN CLOB tick + Binance <code>1s/1m</code> price；先跑 <code>2026-04</code> holdout，再扩到 <code>60–90d</code>。</li>
+<li>先看指标：<code>net_edge_after_fee_spread</code>、成交后 <code>180s/240s</code> PnL、按 market 剩余时间分桶的胜率。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<p>最大风险是<strong>历史可测和实盘可吃不是一回事</strong>：这个 alpha 的寿命可能只有几秒，入口价、盘口深度、CLOB fee、Polygon/签名延迟都会吃掉 edge。repo 自报 Sharpe 很漂亮，但我们不能直接采信；必须用自己的 Polymarket order book 采样重放，且先用 test mode / paper fill 验证 slippage。</p>
+<h2>6. 来源</h2>
+<ul>
+<li>Author: learningworship</li>
+<li>Year: 2026</li>
+<li>Title: <code>polymarket-latency-bot</code></li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Repo URL: <a href="https://github.com/learningworship/polymarket-latency-bot">https://github.com/learningworship/polymarket-latency-bot</a></li>
+<li>Readable URLs:</li>
+<li><a href="https://raw.githubusercontent.com/learningworship/polymarket-latency-bot/main/README.md">https://raw.githubusercontent.com/learningworship/polymarket-latency-bot/main/README.md</a></li>
+<li><a href="https://raw.githubusercontent.com/learningworship/polymarket-latency-bot/main/config.yaml">https://raw.githubusercontent.com/learningworship/polymarket-latency-bot/main/config.yaml</a></li>
+<li><a href="https://raw.githubusercontent.com/learningworship/polymarket-latency-bot/main/strategy/latency_arb.py">https://raw.githubusercontent.com/learningworship/polymarket-latency-bot/main/strategy/latency_arb.py</a></li>
+<li><a href="https://raw.githubusercontent.com/learningworship/polymarket-latency-bot/main/backtester/best_signal_config.json">https://raw.githubusercontent.com/learningworship/polymarket-latency-bot/main/backtester/best_signal_config.json</a></li>
+<li>本地 artifacts：</li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_polymarket_latency_binance_shock_summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_polymarket_latency_binance_shock_events.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 microstructure repo 只当模拟器：对 short-cycle desk，更该先测的是「same-underlier cross-venue gap mean reversion × latency budget」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 microstructure repo 只当模拟器：对 short-cycle desk，更该先测的是「same-underlier cross-venue gap mean reversion × latency budget」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 01:50 UTC</span>
+      <span class="pill">研究时间：2026-04-04 01:46 UTC</span>
+      <span class="pill">类型：GitHub 新仓库 / notebook source audit / 本地公共数据快检</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/same-underlier/cross-venue/latency-arbitrage/mean-reversion/latency-budget/transfer-delay/binance/okx/public-data/repo/1m/3m/5m/15m/execution/cost</span>
+      <span class="pill">证据类型：2026 GitHub repo README + notebook source audit（NB04）+ 本地 Binance/OKX 公共 `1m` close 粗快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_0146_sameunderlier-crossvenue-gap-latency-budget-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 01:46 UTC</li>
+<li>类型：GitHub 新仓库 / notebook source audit / 本地公共数据快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一标的在不同 venue 的短暂报价偏离会向共同价格回归；当 <code>买便宜腿 + 卖更贵腿</code> 的预期收敛幅度大于双边费用、spread 与延迟损耗时，可做成短周期 cross-venue stat-arb。</strong></li>
+<li>是否可独立复现：<strong>是</strong></li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：<strong>是</strong></li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/same-underlier/cross-venue/latency-arbitrage/mean-reversion/latency-budget/transfer-delay/binance/okx/public-data/repo/1m/3m/5m/15m/execution/cost</li>
+<li>证据类型：2026 GitHub repo README + notebook source audit（NB04）+ 本地 Binance/OKX 公共 <code>1m</code> close 粗快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮刻意补一条<strong>不是 filter、不是 overlay，而是能直接写成完整策略的 raw alpha</strong>：2026 新仓库 <strong><code>mengrenman/microstructure-lab</code></strong> 里的 <strong>Notebook 04 — Two-Venue Latency Arbitrage Stress Study</strong>。它最有价值的地方不是“又一个模拟器”，而是把这条 alpha 说得很白：<strong>base alpha 就是 same-underlier cross-venue gap mean reversion；真正决定这条线能不能活的，不是你会不会算价差，而是你的 latency budget 有多紧。</strong></p>
+<p>更关键的是，它正好补上了当前素材池里相对少的一块：我们最近已经补了很多 pairs / funding / OFI / same-underlier multispread，但<strong>“跨 venue 同标的价差回归 + 延迟预算”</strong>这条线还缺一篇专门把 entry/exit/cooldown/threshold 和 execution cliff 拆开讲清楚的 digest。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 base alpha 很清楚：<strong>同标的跨 venue 价差回归</strong>，不是 filter，也不是泛化 execution 综述。</li>
+<li>repo 的玩具市场里，<code>threshold = 0.12</code>、<code>transfer_delay = 5</code> 时：</li>
+<li><strong><code>latency = 0</code></strong>：<code>final_pnl = +2.068</code>，<code>36</code> 笔，<code>win_rate = 86.1%</code></li>
+<li><strong><code>latency = 1</code></strong>：<code>final_pnl = -0.901</code>，<code>36</code> 笔，<code>win_rate = 33.3%</code></li>
+<li>也就是说，<strong>只多 1 个 step 的信号-成交延迟，就从赚钱翻成亏钱</strong>；这就是这条策略最核心的 latency cliff。</li>
+<li>同一个 toy setup 下，<code>threshold = 0.12</code> 时即使把 <code>transfer_delay</code> 从 <code>1</code> 拉到 <code>40</code>，在 <code>latency = 0</code> 仍然保持正值（<code>+2.521 → +1.445</code>）；但一旦 <code>latency &gt;= 1</code>，各个 delay 桶几乎全部转负。<strong>结论很直接：delay 主要伤害机会数，latency 才直接杀 edge。</strong></li>
+<li>baseline <code>latency = 1, delay = 5</code> 的 threshold sweep 也很干净：</li>
+<li><code>0.06</code>: <code>-10.987</code>（<code>290</code> 笔，<code>29.3%</code> 胜率）</li>
+<li><code>0.08</code>: <code>-7.532</code></li>
+<li><code>0.10</code>: <code>-3.504</code></li>
+<li><code>0.12</code>: <code>-0.901</code></li>
+<li><code>0.16</code>: <code>-0.239</code></li>
+<li><code>0.20</code>: <code>-0.032</code></li>
+<li>提高 threshold 只是<strong>少做错单</strong>，并不能把一条已经被 1-step latency 杀死的策略救回来。</li>
+<li>我又用公开可得的 Binance/OKX <code>1m</code> close 做了一个<strong>很粗的 bar 级快检</strong>（最近 <code>300</code> 个重合 bar，只看 next-bar 收敛、未计真实双腿成交/深度）：</li>
+<li><strong>BTCUSDT</strong>：venue gap 绝对值中位数约 <strong><code>0.40 bps</code></strong>，<code>p95 ≈ 1.11 bps</code>；当 gap <code>&gt;= 1 bps</code> 时只有 <code>27</code> 次样本，但 next-bar gross 平均约 <strong><code>+0.83 bps</code></strong>，胜率 <strong><code>92.6%</code></strong>。</li>
+<li><strong>ETHUSDT</strong>：绝对 gap 中位数约 <strong><code>1.02 bps</code></strong>；gap <code>&gt;= 1 bps</code> 有 <code>159</code> 次，next-bar gross 平均约 <strong><code>+0.31 bps</code></strong>，胜率 <strong><code>67.9%</code></strong>。</li>
+<li><strong>SOLUSDT</strong>：绝对 gap 中位数约 <strong><code>1.25 bps</code></strong>；gap <code>&gt;= 2 bps</code> 有 <code>50</code> 次，next-bar gross 平均约 <strong><code>+1.79 bps</code></strong>，胜率 <strong><code>86.0%</code></strong>。</li>
+<li>这组公共数据快检的意义不是“证明实盘能赚”，而是说明：<strong>bar 级别的 venue-gap 回归确实存在，但 gross edge 普遍只有亚 <code>1~2 bps</code> 量级，极度 fee/latency sensitive。</strong> 所以这条线对 desk 的正确定位不是“慢速 5m stat-arb”，而是<strong><code>1m / 3m</code> 优先、执行条件极其严格的高强度 raw alpha</strong>；<code>5m / 15m</code> 更适合拿来做 regime / sizing / 资产筛选，而不是慢悠悠地主执行。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和我们最近的积累是<strong>互补</strong>，不是重复：</p>
+<ul>
+<li>和 pairs / cointegration 线不同：它不需要先找长期稳定 spread，直接吃<strong>同一标的跨 venue 的瞬时错位</strong>。</li>
+<li>和 funding / basis 线不同：它不是等 funding 窗口收息，而是吃<strong>更快的 price convergence</strong>。</li>
+<li>和 OFI / directional microstructure 线不同：它天然是<strong>市场中性 / 相对价值</strong>，更适合补 desk 的 raw alpha 池结构。</li>
+<li>和已有 same-underlier multispread 线不同：那条更偏<strong>单 venue 内多 quote / 多 spread 优化</strong>；这一条更偏<strong>跨 venue execution budget</strong>。</li>
+</ul>
+<p>一句话说，这轮不是再补一个“确认层”，而是补一个<strong>对实盘基础设施要求更高、但逻辑非常干净的 raw alpha 类型</strong>。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>relative-value / stat-arb / same-underlier cross-venue mean reversion</strong></li>
+<li>基础 alpha：<strong>同一标的跨 venue 的短时价差会回归，alpha 来自 gap convergence，而不是方向判断。</strong></li>
+<li>regime：<strong>大市值、高流动性、盘口同步快、手续费低、可双边持仓/有库存时最适合；剧烈跳价、网络抖动、某 venue API 退化时应降权或停机。</strong></li>
+<li>filter / veto：<strong>仅当 <code>|gap| &gt; fee + spread + latency buffer + leg-risk buffer</code> 才能开；禁止低深度盘口、禁止单腿成交概率过低、禁止超出 venue inventory cap。</strong></li>
+<li>risk / sizing / execution overlay：<strong>按双边最小可成交深度定名义；设 per-venue / per-asset / per-leg exposure cap；若出现单腿成交未对冲，立即进入 kill/flatten 流程；对 transfer delay 用 inventory-funded 与 cooldown 两种版本分别回测。</strong></li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 在 <code>Binance / OKX / Bybit</code> 这类主流 venue 上，<code>BTC / ETH / SOL</code> 的同标的 gap 在 <code>1m / 3m</code> 仍有可测的回归倾向；但只有当阈值覆盖真实双腿成本，并且 latency 足够低时，才可能留下净 edge。</p>
+<p><strong>可计算定义：</strong></p>
+<ol>
+<li>数据：先拿<strong>公开 BBO / top-of-book</strong>（理想是 <code>1s</code> 或 <code>5s</code>）；如果临时只拿得到 bar，则先用 <code>1m</code> close 做 very rough precheck。</li>
+<li>gap：</li>
+</ol>
+<ul>
+<li><code>gap_bps_t = (rich_price_t - cheap_price_t) / mid_t * 10,000</code></li>
+<li>rich / cheap 每个时点动态判定。</li>
+</ul>
+<ol>
+<li>entry：当 <code>|gap_bps_t| &gt;= max(threshold_static, fee_spread_stack, k * rolling_sigma_gap, q95_gap_asset)</code> 时开仓。</li>
+<li>direction：<strong>long cheap venue leg / short rich venue leg</strong>。</li>
+<li>exit：优先测两种：</li>
+</ol>
+<ul>
+<li><strong>收敛退出</strong>：<code>|gap_bps| &lt;= exit_threshold</code></li>
+<li><strong>超时退出</strong>：持有 <code>1m</code> 或 <code>3m</code> 强平</li>
+</ul>
+<ol>
+<li>sizing：按 <code>min(depth_cheap, depth_rich)</code>、venue 限额和 inventory 余量共同决定。</li>
+</ol>
+<p><strong>最小回测切口：</strong></p>
+<ul>
+<li>资产：先只做 <code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li>频率：<code>1s/5s</code> 为主，<code>1m</code> 只做粗筛；聚合后看 <code>1m / 3m / 5m / 15m</code> 哪个 horizon 还保留 edge</li>
+<li>样本：最近 <code>14~30</code> 天</li>
+<li>venue：先 <code>Binance / OKX</code>，再扩到 <code>Bybit</code></li>
+</ul>
+<p><strong>先看 4 个指标：</strong></p>
+<ul>
+<li><code>gross convergence bps</code>（按 horizon 分桶）</li>
+<li><code>net bps after fee+spread</code>（静态成本先估，之后再上盘口）</li>
+<li><code>latency bucket pnl</code>：<code>L0 / L1 / L2 / L3</code></li>
+<li><code>opportunities per day</code> 与 <code>capital-at-risk per venue</code></li>
+</ul>
+<p><strong>下一步怎么测：</strong></p>
+<ol>
+<li><strong>先做最便宜的粗筛</strong>：拉 <code>Binance/OKX/Bybit</code> 的 <code>1m</code> close 或 mark，确认 gap 的分布、频次和 next-bar gross 收敛是否存在。</li>
+<li><strong>再上真正有意义的频率</strong>：把样本提升到 <code>1s</code> 或 <code>5s</code> top-of-book，重算 <code>gap -&gt; next-horizon convergence</code>，并且显式加入 <code>L0/L1/L2</code> 延迟桶。</li>
+<li><strong>把 threshold 改成成本感知版本</strong>：不是固定 <code>1/2/3 bps</code>，而是 <code>fee + spread + latency_buffer + z * sigma_gap</code>。</li>
+<li><strong>做两套执行假设并对照</strong>：</li>
+</ol>
+<ul>
+<li><code>inventory-funded</code>：不依赖即时转账，只看双边库存与风险限额</li>
+<li><code>transfer-cooled</code>：每次平仓后加 cooldown，验证 repo 里“delay 伤频次、不像 latency 那样直接杀 edge”的结论是否在真实数据还成立。</li>
+</ul>
+<ol>
+<li><strong>最后才谈 5m/15m</strong>：如果 <code>1s/5s/1m</code> 证明这条线只在快频有效，那 <code>5m/15m</code> 应该退到资产选择、仓位上限或是否启用该 alpha 的 regime gate，而不是硬把它伪装成慢频主信号。</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这份 repo 的核心证据来自<strong>synthetic market + notebook stress test</strong>，不是 live PnL；它证明的是<strong>机制</strong>，不是收益保证。</li>
+<li>NB04 明确简化了很多关键现实约束：<strong>没有 queue position、没有单腿失配、没有真实 bid/ask crossing、没有真实双边出入金/资金费路径</strong>；因此 notebook 里的正值结果应被视为<strong>理论上界</strong>。</li>
+<li>我做的 Binance/OKX <code>1m</code> close 快检只是一层很粗的 sanity check：它没有盘口、没有撮合、没有真实 entry/exit 价格，只能说明<strong>“gap 回归倾向存在”</strong>，不能说明<strong>“可净赚”</strong>。</li>
+<li>对这条线最致命的，不一定是方向判断错，而是：<strong>成交太慢、双腿一边先跑、费用高过 gross edge、盘口深度不够、API 抖动</strong>。</li>
+<li>所以它虽然是 raw alpha，但更像一条<strong>基础设施敏感型 raw alpha</strong>：有条件就很值得做，没有条件就不该自欺欺人地拿 bar close 回测当实盘替身。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Meng Ren. (2026). _microstructure-lab_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/mengrenman/microstructure-lab&gt;">https://github.com/mengrenman/microstructure-lab&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/mengrenman/microstructure-lab&gt;">https://github.com/mengrenman/microstructure-lab&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Meng Ren. (2026). _Notebook 04 — Two-Venue Latency Arbitrage Stress Study_. In <code>microstructure-lab</code>.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub Notebook</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/mengrenman/microstructure-lab/blob/main/notebooks/04_two_venue_latency_arb_analysis.ipynb&gt;">https://github.com/mengrenman/microstructure-lab/blob/main/notebooks/04_two_venue_latency_arb_analysis.ipynb&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://raw.githubusercontent.com/mengrenman/microstructure-lab/main/notebooks/04_two_venue_latency_arb_analysis.ipynb&gt;">https://raw.githubusercontent.com/mengrenman/microstructure-lab/main/notebooks/04_two_venue_latency_arb_analysis.ipynb&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Binance. (2026 access). _Spot API Docs – Market Data Endpoints_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official API Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints&gt;">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints&gt;</a></li>
+</ul>
+<ol>
+<li><strong>OKX. (2026 access). _REST API – Get Candlesticks History / Candlesticks_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official API Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://www.okx.com/docs-v5/en/#rest-api-market-data-get-candlesticks&gt;">https://www.okx.com/docs-v5/en/#rest-api-market-data-get-candlesticks&gt;</a></li>
+</ul>
+</body>
+</html>

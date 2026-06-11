@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 mean-reversion bot 只读成“包络线回归小工具”：对 short-cycle desk，更该先拆的是「multi-envelope overshoot × average-return」这条完整 raw alpha 壳——但 repo 自带回测记账口径有明显 sizing bug，真正值得抄的是 shell，不是截图收益</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 mean-reversion bot 只读成“包络线回归小工具”：对 short-cycle desk，更该先拆的是「multi-envelope overshoot × average-return」这条完整 raw alpha 壳——但 repo 自带回测记账口径有明显 sizing bug，真正值得抄的是 shell，不是截图收益</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-14 06:01 UTC</span>
+      <span class="pill">研究时间：2026-04-14 06:00 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `config/config.yaml` + `src/strategy.py` + `src/backtester.py` + `src/risk_manager.py`）+ Binance USDⓈ-M `1h/15m/5m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/mean-reversion/envelope/multi-band/ladder-entry/average-return/sma/donchian/ema/risk-blocker/binance-perpetual/1h/15m/5m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：源码规则 + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-14_0600_multienvelope-overshoot-reversion-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-14 06:00 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>config/config.yaml</code> + <code>src/strategy.py</code> + <code>src/backtester.py</code> + <code>src/risk_manager.py</code>）+ Binance USDⓈ-M <code>1h/15m/5m</code> public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>价格相对短均线出现多层 envelope 过冲后，往均线回归的均值回复；risk manager 只是 overlay，不是 alpha 本体。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/single-asset/mean-reversion/envelope/multi-band/ladder-entry/average-return/sma/donchian/ema/risk-blocker/binance-perpetual/1h/15m/5m/repo/public-data/cost/risk</li>
+<li>证据类型：源码规则 + public-data portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主来源是 GitHub 仓库：</p>
+<ul>
+<li><strong>Author / Owner：</strong> grantad</li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> *crypto-bot*</li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/grantad/crypto-bot&gt;">https://github.com/grantad/crypto-bot&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/grantad/crypto-bot&gt;">https://github.com/grantad/crypto-bot&gt;</a></li>
+</ul>
+<p>这份 repo 的价值，不在“包络线”这三个字本身，而在它把一条<strong>完整可下单的 MR 壳</strong>写得很清楚：<code>1h</code> 短均线、3 层 percent envelope、逐层加仓、回到均线就平、可选 jump close-all、session risk blocker、显式手续费。它很像一个能直接拿来做 short-cycle 改写的基础壳。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最值得 intake 的，是 <strong><code>multi-envelope overshoot -&gt; average-return</code> 的完整均值回复壳</strong>；真正适合 desk 的第一落点不是 repo 原生 <code>1h</code> 生搬硬套，也不是继续压到 <code>5m</code>，而是 <strong><code>15m</code> 级别的 wall-clock-scaled transfer</strong>。</li>
+<li><strong>一句话证明方式：</strong> 我先做源码审计，再把 repo 的核心规则单独迁到 Binance USDⓈ-M 公共 klines 上，分别测 <code>1h</code> 原样、<code>15m</code> 时间尺度平移、<code>5m</code> 继续下压三组口径，直接看 trade count、成本后 bps/笔、胜率和持有时长。</li>
+<li>源码层面，<strong>base alpha 很清楚</strong>：<code>close</code> 的短均值（SMA/EMA/Donchian mid）给参考中枢，<code>high/low</code> 触到 <code>±7%/11%/14%</code> 包络就分层逆势进场，<code>close</code> 回到均值即平仓；stop-loss、close-all、risk manager 都是壳层，不是 alpha 本体。</li>
+<li>但 repo 自带 backtest <strong>不能直接信</strong>：<code>src/backtester.py</code> 把 <code>capital_allocation / num_envelopes</code> 直接当成 <code>size</code> 传进持仓，再在 <code>TradeRecord.calculate_pnl()</code> 里用 <code>(exit - entry) * size</code> 记账；也就是说，<strong>USD 资金被当成了数量单位</strong>，headline PnL 口径明显失真。</li>
+<li>我按“正确按名义本金记账”的方式重跑后发现，<strong>repo 原生 <code>1h</code> 壳太稀疏</strong>：<code>2025-10-01 ~ 2026-04-14</code> 的 Binance perp 上，BTC 只有 <strong>1</strong> 笔、ETH <strong>2</strong> 笔，虽然单笔 net 分别约 <strong>+469.72 / +478.06 bps</strong>，但显然不适合当前 short-cycle desk 当主线。</li>
+<li>把它做成 <strong>wall-clock-scaled <code>15m</code> 迁移</strong>（BTC <code>24</code> bars、ETH <code>20</code> bars，对应同样的约 <code>6h/5h</code> 均值窗口；band 按 <code>sqrt(15m/1h)</code> 缩到 <code>3.5% / 5.5% / 7%</code>），形状反而更像我们要的：BTC <strong>23</strong> 笔、<strong>+25.01 bps/笔</strong>、<strong>65.2%</strong> 胜率、持有中位 <strong>4.75h</strong>；ETH <strong>69</strong> 笔、<strong>+14.59 bps/笔</strong>、<strong>66.7%</strong> 胜率、持有中位 <strong>4.5h</strong>。</li>
+<li>继续压到 <strong><code>5m</code></strong> 后 edge 基本被噪音和成本吃掉：BTC <strong>120</strong> 笔只剩 <strong>-0.27 bps/笔</strong>，ETH <strong>241</strong> 笔约 <strong>-3.50 bps/笔</strong>。这说明这条壳 <strong>更像 <code>15m</code> first lane / <code>1h admission × 15m execution</code> 候选，不像 broad <code>5m</code> taker book</strong>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮值得进素材池，不是因为它“又一个 MR repo”，而是因为它给的是<strong>非常干净的完整 raw alpha 壳</strong>：</p>
+<ul>
+<li>alpha 本体：价格过冲后回到均值；</li>
+<li>entry：多层 envelope 分批打；</li>
+<li>exit：回均值；</li>
+<li>sizing：按 envelope 层数均分；</li>
+<li>risk：stop-loss + session blocker；</li>
+<li>cost：开平手续费显式写出。</li>
+</ul>
+<p>对当前 <code>momentum</code> 项目，这比继续看“只有 filter 没有 alpha 本体”的材料更值钱，因为它能直接服务两件事：</p>
+<ol>
+<li>给我们补一条<strong>简单、可解释、可迁移</strong>的 single-asset mean reversion 壳；</li>
+<li>让我们明确看到：<strong><code>5m</code> 不是所有 raw alpha 都该硬压进去</strong>，有些壳子的自然落点就是 <code>15m</code>，再由更快周期只负责 child execution。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>single-asset / mean reversion / 双边可做</strong></li>
+<li>基础 alpha：<strong><code>price far from short-term average -&gt; snap back to average</code></strong></li>
+<li>regime：<strong>repo 原生没有强 regime gate；更像裸 MR 壳</strong></li>
+<li>filter / veto：<strong>re-entry block、可选 price-jump close-all；后续可再叠 liquid-hours / volatility veto</strong></li>
+<li>risk / sizing / execution overlay：<strong>3 层 envelope ladder、均值回归退出、40% stop-loss、session risk blocker、显式开平费；但 repo 自带 backtest 的 sizing 记账需先修正</strong></li>
+</ul>
+<h2>4. 可复刻的最小实验 + 下一步怎么测</h2>
+<h3>本轮最小实验</h3>
+<ul>
+<li>市场：Binance USDⓈ-M perpetual</li>
+<li>资产：<code>BTCUSDT / ETHUSDT</code></li>
+<li>样本：<code>2025-10-01 ~ 2026-04-14</code></li>
+<li>数据：公开 <code>1h / 15m / 5m</code> klines</li>
+<li>口径：</li>
+<li><code>1h repo_exact</code>：原样 <code>avg_period = 6 / 5</code>，bands <code>7% / 11% / 14%</code></li>
+<li><code>15m wallclock_scaled</code>：窗口放大 4 倍，bands 乘 <code>sqrt(15m/1h)</code></li>
+<li><code>5m wallclock_scaled</code>：窗口放大 12 倍，bands 乘 <code>sqrt(5m/1h)</code></li>
+<li>成本：开仓 <code>2 bps</code> + 平仓 <code>5 bps</code></li>
+<li>产物：</li>
+<li>脚本：<code>reports/artifacts/quant_digests/2026-04-14_envelope_shell_transfer_probe.py</code></li>
+<li>汇总：<code>reports/artifacts/quant_digests/envelope_shell_transfer_probe_summary_2026-04-14.csv</code></li>
+<li>明细：<code>reports/artifacts/quant_digests/envelope_shell_transfer_probe_detail_2026-04-14.csv</code></li>
+</ul>
+<h3>下一步怎么测</h3>
+<ol>
+<li><strong>先修正 repo backtester 的数量单位</strong>：<code>size</code> 应该是 <code>notional / entry_price</code>，不是直接拿 USD 资金当数量；不修这一步，就不要再讨论 repo 自带 Sharpe 或收益截图。</li>
+<li><strong>把 <code>15m</code> 壳做 friction ladder</strong>：先固定本轮 <code>3.5% / 5.5% / 7%</code>，测试 round-trip <code>4 / 8 / 12 bps</code> 三档，看 BTC/ETH 哪一档开始从正转负，再决定它更像 taker 还是 maker-first 候选。</li>
+<li><strong>做 <code>1h admission × 15m child execution</code></strong>：保留 repo 的 <code>1h</code> envelope 触发为 admission，但让 <code>15m</code> 负责更细的成交与减仓，例如“第一根回到最外层 band 内侧的 bar 开始分批减仓”，看看是否能把极稀疏 <code>1h</code> 信号变成可交易的 <code>15m</code> 壳。</li>
+<li><strong>最后才补 regime / veto</strong>：如果要继续增强，优先试 <code>ATR/realized-vol</code> 过热 veto 或 funding 同向拥挤 veto；但别先把 overlay 伪装成 alpha，本体仍然是 envelope overshoot 的均值回复。</li>
+</ol>
+<h2>5. first verdict</h2>
+<p>这份 repo <strong>值得留在 raw alpha 素材池</strong>，但正确读法不是“拿它的 backtest 图直接信”，而是：</p>
+<p>&gt; <strong><code>multi-envelope overshoot -&gt; average-return</code> 这条 MR 壳本身是清楚且可迁移的；native <code>1h</code> 太稀疏，broad <code>5m</code> 又太吵，当前最像样的落点是 <code>15m</code> 版，或者 <code>1h admission × 15m execution</code>。</strong></p>
+<p>也就是说，这轮真正被 intake 的不是 repo 的绩效数字，而是一个<strong>简单、完整、能快速做 first verdict 的 mean-reversion shell</strong>。</p>
+<h2>6. 来源</h2>
+<ul>
+<li>grantad. (2026). *crypto-bot*. GitHub repository.</li>
+<li>Readable URL: &lt;<a href="https://github.com/grantad/crypto-bot&gt;">https://github.com/grantad/crypto-bot&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/grantad/crypto-bot&gt;">https://github.com/grantad/crypto-bot&gt;</a></li>
+<li>Key source files audited:</li>
+<li>&lt;<a href="https://raw.githubusercontent.com/grantad/crypto-bot/main/README.md&gt;">https://raw.githubusercontent.com/grantad/crypto-bot/main/README.md&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/grantad/crypto-bot/main/config/config.yaml&gt;">https://raw.githubusercontent.com/grantad/crypto-bot/main/config/config.yaml&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/grantad/crypto-bot/main/src/strategy.py&gt;">https://raw.githubusercontent.com/grantad/crypto-bot/main/src/strategy.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/grantad/crypto-bot/main/src/backtester.py&gt;">https://raw.githubusercontent.com/grantad/crypto-bot/main/src/backtester.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/grantad/crypto-bot/main/src/risk_manager.py&gt;">https://raw.githubusercontent.com/grantad/crypto-bot/main/src/risk_manager.py&gt;</a></li>
+</ul>
+</body>
+</html>

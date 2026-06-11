@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>rank139 · P3 独立策略报告（详细版）</title>
+  <style>
+    :root { --bg:#f8fafc; --card:#fff; --line:#e2e8f0; --text:#0f172a; --muted:#64748b; }
+    body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; max-width:1180px; margin:26px auto; padding:0 16px; background:var(--bg); color:var(--text); line-height:1.64; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:12px; }
+    h1,h2 { margin:0 0 8px; }
+    .muted { color:var(--muted); }
+    .pill { display:inline-block; border-radius:999px; padding:3px 9px; font-size:12px; background:#e2e8f0; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    th,td { border-bottom:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+    th { background:#f1f5f9; }
+    code { background:#eff6ff; border-radius:6px; padding:1px 5px; }
+    pre { white-space:pre-wrap; background:#0b1220; color:#dbeafe; border-radius:10px; padding:10px; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>rank139 · P3 独立策略报告（详细版）</h1>
+    <p class="muted">本页针对 P3/P2 清单中的第 1 个 rank（rank139）做详细拆分：策略类型、挑战基线、信号定义、event-bar confirm/veto 机制与当前证据。</p>
+    <p>
+      <a href="../rank_registry_p3_p2/report.html">← 返回 P3/P2 总表</a> ｜
+      <a href="../rank_registry_p3_p2_entries/rank139/report.html">registry entry</a> ｜
+      <a href="../scout_rank139_cusum_event_bar_confirm_veto_15m/report.html">clean replication 报告</a> ｜
+      <a href="../scout_rank139_cusum_event_bar_confirm_veto_15m/narrow_paper_monitoring_board.html">pilot monitoring board</a>
+    </p>
+    <p class="muted">页面生成时间：2026-04-08 10:50:28 北京时间</p>
+  </div>
+
+  <div class="card">
+    <h2>1) 策略定位（P3 拆分）</h2>
+    <p><b>stage：</b>P3 ｜ <b>status：</b><span class="pill">watch</span></p>
+    <p><b>策略类型（mother theme）：</b>均值回复</p>
+    <p><b>角色（role）：</b>challenger</p>
+    <p><b>挑战基线（challenge baseline）：</b>均值回复主baseline（pairs/fair-value）</p>
+    <p><b>唯一增量（unique increment）：</b>residual window 重算稳定性</p>
+    <p><b>下一步动作（registry）：</b>补齐最新窗口的同口径复算摘要，决定回 P2 还是退场</p>
+  </div>
+
+  <div class="card">
+    <h2>2) 信号原理与定义（可审计）</h2>
+    <p class="muted">来自 clean replication 脚本：<code>scripts/build_rank139_cusum_event_bar_confirm_veto_clean_replication.py</code></p>
+
+    <h3>2.1 基础 setup 信号</h3>
+    <ul>
+      <li><b>ema_psar_long</b>：<code>close &gt; ema20</code> 且 <code>psar_long=True</code> 且 <code>volume &gt; vol_ma20</code></li>
+      <li><b>fib_reclaim_long</b>：<code>ema9 &gt; ema15</code>、<code>ema_slope &gt; 0</code>、<code>close &gt; fib_618</code></li>
+      <li><b>breakout_long</b>：<code>ema9 &gt; ema15</code>、<code>ema_slope &gt; 0.0003</code>、<code>close &gt; prior20_high + 0.20*atr14</code></li>
+      <li><b>breakout_short</b>：<code>ema9 &lt; ema15</code>、<code>ema_slope &lt; -0.0003</code>、<code>close &lt; prior20_low - 0.20*atr14</code></li>
+    </ul>
+
+    <h3>2.2 Event-bar confirm/veto 机制（rank139 核心）</h3>
+    <ul>
+      <li>入场后先等待 <code>latency_minutes=45</code> 分钟，再观察后续 1m 轨迹。</li>
+      <li>阈值：<code>thr = thr_mult * (atr14/close)</code>（以入场时 15m bar 的 ATR 百分比缩放）</li>
+      <li>在观察窗口内，记录首次触发事件：
+        <ul>
+          <li><code>same_dir_first</code>：先向持仓方向触发 +thr</li>
+          <li><code>opp_dir_first</code>：先向反方向触发 -thr</li>
+          <li><code>none</code>：都未触发</li>
+        </ul>
+      </li>
+      <li>三种 arm：
+        <ul>
+          <li><code>baseline</code>：全部保留</li>
+          <li><code>confirm_same_dir_only</code>：只保留 <code>same_dir_first</code></li>
+          <li><code>veto_opp_dir</code>：剔除 <code>opp_dir_first</code></li>
+        </ul>
+      </li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>3) 参数与样本口径</h2>
+    <p><b>assets：</b>BTC-USD, ETH-USD, SOL-USD</p>
+    <p><b>setups：</b>breakout_short, ema_psar_long, fib_retest_long</p>
+    <p><b>thr_mults：</b>0.4, 0.6, 0.8</p>
+    <p><b>latency_minutes：</b>45 ｜ <b>hold_bars_15m：</b>8 ｜ <b>cost_bps：</b>6.0</p>
+    <p><b>scored_window：</b>latency_end_to_exit_residual ｜ <b>trades：</b>141</p>
+    <p><b>generated_at (artifact)：</b>2026-04-08 02:40 UTC</p>
+  </div>
+
+  <div class="card">
+    <h2>4) 结果摘要（按 arm）</h2>
+    <p><b>baseline：</b>trades=141，mean_net@6bps=-0.00032，positive_ratio=41.13%</p>
+    <p><b>best gate（按 mean_net@6bps）：</b>thr_mult=0.40 / confirm_same_dir_only，trades=51，mean_net@6bps=0.00049</p>
+    <table>
+      <thead>
+        <tr><th>thr_mult</th><th>arm</th><th>trades</th><th>retention</th><th>mean_gross</th><th>mean_net@6bps</th><th>positive_ratio</th><th>same_dir_first</th><th>opp_dir_first</th></tr>
+      </thead>
+      <tbody><tr><td>0.40</td><td><code>baseline</code></td><td>141</td><td>100.00%</td><td>0.00088</td><td>-0.00032</td><td>41.13%</td><td>36.17%</td><td>63.12%</td></tr><tr><td>0.40</td><td><code>confirm_same_dir_only</code></td><td>51</td><td>36.17%</td><td>0.00169</td><td>0.00049</td><td>33.33%</td><td>100.00%</td><td>0.00%</td></tr><tr><td>0.40</td><td><code>veto_opp_dir</code></td><td>52</td><td>36.88%</td><td>0.00165</td><td>0.00045</td><td>32.69%</td><td>98.08%</td><td>0.00%</td></tr><tr><td>0.60</td><td><code>baseline</code></td><td>141</td><td>100.00%</td><td>0.00088</td><td>-0.00032</td><td>41.13%</td><td>36.88%</td><td>53.19%</td></tr><tr><td>0.60</td><td><code>confirm_same_dir_only</code></td><td>52</td><td>36.88%</td><td>0.00068</td><td>-0.00052</td><td>28.85%</td><td>100.00%</td><td>0.00%</td></tr><tr><td>0.60</td><td><code>veto_opp_dir</code></td><td>66</td><td>46.81%</td><td>0.00140</td><td>0.00020</td><td>36.36%</td><td>78.79%</td><td>0.00%</td></tr><tr><td>0.80</td><td><code>baseline</code></td><td>141</td><td>100.00%</td><td>0.00088</td><td>-0.00032</td><td>41.13%</td><td>30.50%</td><td>50.35%</td></tr><tr><td>0.80</td><td><code>confirm_same_dir_only</code></td><td>43</td><td>30.50%</td><td>0.00141</td><td>0.00021</td><td>30.23%</td><td>100.00%</td><td>0.00%</td></tr><tr><td>0.80</td><td><code>veto_opp_dir</code></td><td>70</td><td>49.65%</td><td>0.00168</td><td>0.00047</td><td>37.14%</td><td>61.43%</td><td>0.00%</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>5) Asset × Setup 监控（pilot board Top）</h2>
+    <p class="muted">以下按 <code>delta_net_vs_base@6bps</code> 排序，展示“保留后净收益相对 baseline 的改善”较高的条目。</p>
+    <table>
+      <thead>
+        <tr><th>asset</th><th>setup</th><th>arm</th><th>kept/base</th><th>retention</th><th>mean_net_base</th><th>mean_net_kept</th><th>delta</th></tr>
+      </thead>
+      <tbody><tr><td>ETH-USD</td><td><code>fib_retest_long</code></td><td><code>confirm_same_dir_only</code></td><td>2/12</td><td>16.67%</td><td>0.00102</td><td>0.00747</td><td>0.00644</td></tr><tr><td>SOL-USD</td><td><code>ema_psar_long</code></td><td><code>confirm_same_dir_only</code></td><td>4/18</td><td>22.22%</td><td>0.00659</td><td>0.01292</td><td>0.00633</td></tr><tr><td>ETH-USD</td><td><code>ema_psar_long</code></td><td><code>confirm_same_dir_only</code></td><td>8/18</td><td>44.44%</td><td>-0.00273</td><td>0.00339</td><td>0.00613</td></tr><tr><td>SOL-USD</td><td><code>breakout_short</code></td><td><code>confirm_same_dir_only</code></td><td>9/18</td><td>50.00%</td><td>-0.00195</td><td>-0.00173</td><td>0.00021</td></tr><tr><td>SOL-USD</td><td><code>fib_retest_long</code></td><td><code>confirm_same_dir_only</code></td><td>5/11</td><td>45.45%</td><td>-0.00067</td><td>-0.00070</td><td>-0.00003</td></tr><tr><td>ETH-USD</td><td><code>breakout_short</code></td><td><code>confirm_same_dir_only</code></td><td>6/18</td><td>33.33%</td><td>-0.00308</td><td>-0.00457</td><td>-0.00149</td></tr><tr><td>BTC-USD</td><td><code>fib_retest_long</code></td><td><code>confirm_same_dir_only</code></td><td>2/11</td><td>18.18%</td><td>0.00230</td><td>-0.00014</td><td>-0.00244</td></tr><tr><td>BTC-USD</td><td><code>breakout_short</code></td><td><code>confirm_same_dir_only</code></td><td>5/18</td><td>27.78%</td><td>-0.00249</td><td>-0.00552</td><td>-0.00303</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>6) 研究证据与复现路径</h2>
+    <ul>
+      <li><code>reports/artifacts/scout_rank139_cusum_event_bar_confirm_veto_15m/meta.json</code></li>
+      <li><code>reports/artifacts/scout_rank139_cusum_event_bar_confirm_veto_15m/summary_by_arm.csv</code></li>
+      <li><code>reports/artifacts/scout_rank139_cusum_event_bar_confirm_veto_15m/narrow_paper_pilot_monitoring_board.csv</code></li>
+      <li><code>reports/artifacts/scout_rank139_cusum_event_bar_confirm_veto_15m/trade_log.csv</code></li>
+      <li><code>scripts/build_rank139_cusum_event_bar_confirm_veto_clean_replication.py</code></li>
+    </ul>
+    <p class="muted">这页的作用是：把“策略类型/基线/信号定义/当前证据”放在一页说清楚，便于 P3/P2 维护与后续晋级判断。</p>
+  </div>
+</body>
+</html>

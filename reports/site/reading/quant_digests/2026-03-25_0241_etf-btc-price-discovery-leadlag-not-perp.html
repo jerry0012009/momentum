@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 ETF price discovery 只当机制文献：这篇 2025 论文更该先测的是「IBIT/FBTC/GBTC 5m lead → BTC follow-through」raw alpha，但 Binance perp 映射几乎不剩边</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 ETF price discovery 只当机制文献：这篇 2025 论文更该先测的是「IBIT/FBTC/GBTC 5m lead → BTC follow-through」raw alpha，但 Binance perp 映射几乎不剩边</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 02:44 UTC</span>
+      <span class="pill">研究时间：2026-03-25 02:41 UTC</span>
+      <span class="pill">类型：近 5 年论文（全文本地）+ 公共 ETF/BTC 行情最小快检</span>
+      <span class="pill">主题标签：raw-alpha/cross-asset/lead-lag/price-discovery/etf/btc/spot/perpetual/us-session/intraday/5m/15m/cost/paper/external-data</span>
+      <span class="pill">证据类型：论文证据 + 公共数据最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_0241_etf-btc-price-discovery-leadlag-not-perp.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 02:41 UTC</li>
+<li>类型：近 5 年论文（全文本地）+ 公共 ETF/BTC 行情最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：cross-asset / cross-venue lead-lag——US 上市 BTC ETF 篮子在 5m 上先动，随后 BTC 现货/期货在下一个 <code>5m~15m</code> 窗口同向跟随</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-asset/lead-lag/price-discovery/etf/btc/spot/perpetual/us-session/intraday/5m/15m/cost/paper/external-data</li>
+<li>证据类型：论文证据 + 公共数据最小快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这不是 ETF filter，本体就是“ETF tape 先动，BTC 后跟”的跨市场 lead-lag raw alpha。</strong></p>
+<p>主材料是 <strong>Azhar Mohamad (2025), _Do Bitcoin ETFs Lead Price Discovery Following their Introduction in the Bitcoin Market?_</strong>。论文 headline 是“price discovery 在哪边”，但对我们 desk 更值钱的旁支读法不是继续把它当机制论文，而是直接问：</p>
+<p>&gt; <strong>如果 <code>IBIT / FBTC / GBTC</code> 这类最活跃 ETF 的 5m return 先动，能不能在下一个 <code>5m / 15m</code> 窗口里交易 BTC？</strong></p>
+<p>这就把论文从“解释谁先反应”翻成了一个可执行的短周期 raw alpha 候选。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话结论：</strong> 这条线在“ETF → BTC spot”上还看得到可测毛边，但一映射到 <code>Binance BTCUSDT perp</code>，边几乎被吃光；所以它更像<strong>受 venue 约束的 cross-market raw alpha</strong>，不是可以直接搬进我们 crypto perp desk 的通用主策略。</li>
+<li>论文用 <code>2024-01-11 ~ 2024-10-11</code> 的 <strong>5m</strong> 数据（bitcoin spot + 9 只 ETF）做 <code>IS / CS / ILS</code>，结论是：<strong>IBIT / GBTC / FBTC 的 MA20 ILS 在约 85% 的时间里高于 0.5</strong>，说明最活跃 ETF 多数时候比 bitcoin spot 更快反映信息。</li>
+<li>我用公共可得的 <code>Yahoo Finance 5m</code> 数据，对 <code>IBIT / FBTC / GBTC</code> 做了一个美元成交额近似加权 basket，再看它对 <code>BTC-USD</code> 下一个窗口的带动：</li>
+<li>在 <code>2026-01-26 ~ 2026-03-24</code> 的重叠样本里，<strong>ETF basket 5m return 与 BTC-USD 下一根 5m return 的相关约 <code>0.119</code></strong>；</li>
+<li>当 ETF basket 出现 <strong><code>+1σ</code> 正冲击</strong> 时，BTC-USD 下一根 <strong>平均约 <code>+15.8 bps</code></strong>，<strong>同向率约 <code>65.7%</code></strong>；</li>
+<li>当 ETF basket 出现 <strong><code>-1σ</code> 负冲击</strong> 时，BTC-USD 下一根 <strong>平均约 <code>-13.1 bps</code></strong>，<strong>同向率约 <code>62.1%</code></strong>；</li>
+<li>放到下一段 <code>15m</code>（3 bars）后，边已经开始衰减到 <strong>约 <code>+9.9 / -8.2 bps</code></strong>。</li>
+<li>但把同一信号直接映射到 <strong>Binance Futures <code>BTCUSDT perp</code></strong> 时，结论明显变差：</li>
+<li>同期 ETF basket 对 <strong>perp 下一根 5m</strong> 的相关只剩 <strong>约 <code>0.012</code></strong>；</li>
+<li><code>+1σ</code> 正冲击后，perp 下一根平均只剩 <strong>约 <code>+0.7 bps</code></strong>；</li>
+<li><code>-1σ</code> 负冲击后，perp 下一根平均约 <strong><code>-3.5 bps</code></strong>，且同向率都不到 50%。</li>
+<li>翻成人话：<strong>这条 alpha 更像“ETF cash-session 先反应、部分 spot 跟上”的跨 venue pocket，而不是“ETF 一动，Binance perp 就会乖乖跟”的通用 desk alpha。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li>它补的是我们当前明确要持续扩充的 <strong>raw alpha 素材池</strong>，而且是和近期 <code>pairs / basis / cross-sectional / mean reversion</code> 不同的一类：<strong>regulated-market → crypto venue 的跨市场 lead-lag</strong>。</li>
+<li>它也给了一个很重要的 desk 边界判断：</li>
+<li><strong>raw alpha 本体</strong>：ETF 先动，BTC 后跟；</li>
+<li><strong>不是</strong> shared gate，也不是“ETF close 附近加一个确认就算完”；</li>
+<li><strong>真正关键的问题</strong>不是有没有相关性，而是：<code>它到底落在哪个 venue / 哪个可交易腿上</code>。</li>
+<li>这比继续泛化写“ETF 有信息”更有用，因为它直接回答：</li>
+</ul>
+<ol>
+<li>这是不是独立 raw alpha？<strong>是。</strong></li>
+<li>能不能快速做最小实验？<strong>能。</strong></li>
+<li>能不能直接迁移到我们最关心的 <code>1m/3m/5m/15m</code> crypto perp？<strong>目前看很难。</strong></li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：跨资产 / 跨 venue / 单标的 BTC lead-lag，可做多空双向</li>
+<li>基础 alpha：</li>
+<li><code>basket_ret_5m = Σ(w_i * ret_i)</code>，其中 <code>i ∈ {IBIT, FBTC, GBTC}</code></li>
+<li><code>w_i</code> 第一轮可先用等权，或用 <code>close * volume</code> 做美元成交额近似权重</li>
+<li><code>signal_z = zscore(basket_ret_5m, rolling_window)</code></li>
+<li>entry：</li>
+<li>若 <code>signal_z &gt;= z_enter</code>，则下一根 BTC bar 同向做多</li>
+<li>若 <code>signal_z &lt;= -z_enter</code>，则下一根 BTC bar 同向做空</li>
+<li>第一轮优先测 <code>z_enter ∈ {1.0, 1.5}</code></li>
+<li>exit：</li>
+<li>固定持有 <code>1 bar (5m)</code> 或 <code>3 bars (15m)</code></li>
+<li>或加 <code>opposite ETF shock</code> 提前出场作为对照臂</li>
+<li>sizing：</li>
+<li>先做 fixed-notional；第二轮再做 <code>size ∝ min(|signal_z|, z_cap)</code></li>
+<li>risk：</li>
+<li>只在 ETF 正常交易窗口内交易</li>
+<li>事件冲击过大时（如单根 ETF basket &gt; <code>2.5σ</code>）单独分 bucket，避免把 jump pocket 和常规 bar 混在一起</li>
+<li>cost：</li>
+<li>spot 代理第一轮先看低成本假设；</li>
+<li>perp 迁移必须单独看 <code>4 / 8 / 12 bps</code> round-trip，而不能拿 spot 结果替代。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>研究假设</h3>
+<p>如果 ETF 真在 price discovery 上领先，那么最小可交易读法就不是“谁更快”这句机制话，而是：</p>
+<ul>
+<li><strong>H1：</strong> 最活跃 BTC ETF basket 的 5m return，对 BTC 现货下一根 <code>5m</code> return 有同向预测力；</li>
+<li><strong>H2：</strong> 这种预测力在 <code>15m</code> 会衰减；</li>
+<li><strong>H3：</strong> 把它直接搬到 <code>Binance BTCUSDT perp</code> 后，alpha 大概率明显变弱，说明 edge 更像 venue-specific。</li>
+</ul>
+<h3>数据源、公开性、更新频率、最小可复现实验口径</h3>
+<ul>
+<li>ETF 数据：<code>Yahoo Finance Chart API</code>（公开可得，但有抓取频率限制）</li>
+<li>标的：<code>IBIT / FBTC / GBTC</code></li>
+<li>更新频率：分钟级，最小实验可用 <code>5m</code></li>
+<li>BTC 现货代理：<code>Yahoo Finance BTC-USD 5m</code></li>
+<li>公开可得，适合先验证“ETF → BTC spot”这条 paper-side lead-lag</li>
+<li>BTC perp 迁移：<code>Binance USDⓈ-M Futures Kline API</code></li>
+<li>公开可得，分钟级实时</li>
+<li>用于回答 desk 最关心的“能不能直接迁到 perp”</li>
+</ul>
+<h3>这次本地最小快检结果</h3>
+<ul>
+<li>ETF basket → <code>BTC-USD spot</code>：</li>
+<li>next <code>5m</code> corr ≈ <strong><code>0.119</code></strong></li>
+<li><code>+1σ</code> shock 后 next <code>5m</code> ≈ <strong><code>+15.8 bps</code></strong></li>
+<li><code>-1σ</code> shock 后 next <code>5m</code> ≈ <strong><code>-13.1 bps</code></strong></li>
+<li>ETF basket → <code>BTCUSDT perp</code>：</li>
+<li>next <code>5m</code> corr ≈ <strong><code>0.012</code></strong></li>
+<li><code>+1σ</code> shock 后 next <code>5m</code> ≈ <strong><code>+0.7 bps</code></strong></li>
+<li><code>-1σ</code> shock 后 next <code>5m</code> ≈ <strong><code>-3.5 bps</code></strong></li>
+</ul>
+<h3>下一步怎么测</h3>
+<ol>
+<li><strong>先做 venue A/B，不要一上来就只看 perp。</strong></li>
+</ol>
+<ul>
+<li><code>BTC-USD spot</code> vs <code>Coinbase BTC spot</code> vs <code>Binance BTC perp</code> 三腿并排，直接回答 edge 到底死在哪一层。</li>
+</ul>
+<ol>
+<li><strong>把 ETF basket 从单根 return，改成“冲击质量分层”。</strong></li>
+</ol>
+<ul>
+<li>分成 <code>0.5~1σ / 1~1.5σ / &gt;1.5σ</code>，看是不是只有中高冲击才有可交易边。</li>
+</ul>
+<ol>
+<li><strong>做 clock-aware 版本，而不是全天混算。</strong></li>
+</ol>
+<ul>
+<li>把 <code>open first hour / mid-session / close last hour</code> 分开，检验 edge 是否只在特定 cash-session pocket 成立。</li>
+</ul>
+<ol>
+<li><strong>若仍想服务 desk，就优先测“跟 BTC 现货，不跟 perp”的代理腿。</strong></li>
+</ol>
+<ul>
+<li>例如 Coinbase/Bitstamp/BTC spot proxy，再决定是否值得做更复杂的 cross-venue routing；</li>
+<li>如果 perp 端继续几乎没边，就应把它降级成“研究边界已确认”，而不是继续硬磨成主策略。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文里的 ETF 数据来自 <strong>Refinitiv</strong>，而我的最小实验用的是 <strong>Yahoo Finance 公共 5m bars</strong>；方向上能做 first-pass 验证，但不是论文原始数据的逐点复刻。</li>
+<li>论文本身是 <strong>price discovery / VECM</strong> 研究，不是交易回测论文；这里是按用户允许的“把更适合 desk 的旁支想法单独拎出来”来做 raw alpha 读法。</li>
+<li>目前最关键的 honesty point 已经很清楚：<strong>spot 侧还能看到一点 lead-lag，perp 侧几乎没有。</strong></li>
+<li>所以这条线暂时不该被包装成“可直接上 Binance perp 的高优先级主 alpha”；更诚实的定位是：</li>
+<li><code>cross-market raw alpha candidate</code></li>
+<li><code>venue-specific pocket</code></li>
+<li><code>值得做一次 venue boundary decisive test</code>，但不是默认继续重投入的 front-row 题。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Mohamad, A. (2025). _Do Bitcoin ETFs Lead Price Discovery Following their Introduction in the Bitcoin Market?_ Computational Economics.</strong></li>
+</ol>
+<ul>
+<li>Authors: Azhar Mohamad</li>
+<li>Year: 2025</li>
+<li>Venue: <code>Computational Economics</code></li>
+<li>DOI: <code>10.1007/s10614-025-10998-x</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1007/s10614-025-10998-x">https://doi.org/10.1007/s10614-025-10998-x</a></code></li>
+<li>Repo URL: <code>N/A（未见官方复现仓库）</code></li>
+</ul>
+<ol>
+<li><strong>Yahoo Finance Chart API（公开可得 ETF / BTC 分钟行情）</strong></li>
+</ol>
+<ul>
+<li>Data source: Yahoo Finance</li>
+<li>Publicness: 公开可得（有频率限制）</li>
+<li>Update frequency: 分钟级</li>
+<li>Readable URL: <code><a href="https://finance.yahoo.com/">https://finance.yahoo.com/</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures Kline API（desk 迁移实验）</strong></li>
+</ol>
+<ul>
+<li>Data source: Binance Developers</li>
+<li>Publicness: 公开可得</li>
+<li>Update frequency: 分钟级</li>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<ol>
+<li><strong>本地最小快检 artifact（2026-03-25）</strong></li>
+</ol>
+<ul>
+<li><code>reports/artifacts/quant_digests/etf_btc_price_discovery_probe_20260325/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/etf_btc_price_discovery_probe_20260325/spot_events_absz15.csv</code></li>
+<li><code>reports/artifacts/quant_digests/etf_btc_price_discovery_probe_20260325/perp_events_absz15.csv</code></li>
+</ul>
+</body>
+</html>

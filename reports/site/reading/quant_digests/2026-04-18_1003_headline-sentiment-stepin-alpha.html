@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Binance 这份 sentiment backtester 只读成“AI 新闻 demo”：对 short-cycle crypto desk，更该先测的是「headline polarity × next-few-bar drift」这条 event-driven raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Binance 这份 sentiment backtester 只读成“AI 新闻 demo”：对 short-cycle crypto desk，更该先测的是「headline polarity × next-few-bar drift」这条 event-driven raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-18 10:11 UTC</span>
+      <span class="pill">研究时间：2026-04-18 10:03 UTC</span>
+      <span class="pill">类型：GitHub repo source audit + Binance Spot `1m` public-data portability probe</span>
+      <span class="pill">主题标签：event-driven / sentiment / news / BTC / 1m / 5m / 15m / external-data / public-data / repo / cost / risk</span>
+      <span class="pill">证据类型：工程经验 + repo audit + public-data probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-18_1003_headline-sentiment-stepin-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-18 10:03 UTC</li>
+<li>类型：GitHub repo source audit + Binance Spot <code>1m</code> public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>crypto headline polarity（bullish / bearish）会在发布后的下几个 1m bar 里带来同向价格漂移</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：event-driven / sentiment / news / BTC / 1m / 5m / 15m / external-data / public-data / repo / cost / risk</li>
+<li>证据类型：工程经验 + repo audit + public-data probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 Binance 官方仓 <code>binance/ai-trading-prototype-backtester</code>。它不是在发明复杂模型，而是把一条很朴素的 raw alpha 假设写成了可复跑骨架：新闻标题被标成 <code>bullish / bearish / unknown</code> 后，按分钟对齐到 BTCUSDT K 线，在有新 headline 的 bar 里做一步交易。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这份 repo 真正可复用的，不是“AI 新闻一定能赚”，而是<strong>把外部新闻事件干净映射到 <code>1m/5m/15m</code> 交易实验</strong>的骨架。</li>
+<li><strong>一句话证明方式</strong>：我直接审了 repo 的 <code>StrategyManager</code> / <code>successive_strategy</code> / sample <code>sentiment_data.csv</code>，再把样本里的 <code>48</code> 个可用 <code>bullish/bearish</code> 事件对齐到 Binance Spot <code>BTCUSDT 1m</code> 公共数据做 event study。</li>
+<li>repo 默认逻辑很简单：上一根到这一根之间若出现新 headline，就取<strong>最后一条</strong>标签；<code>bullish</code> 买 <code>order_quantity</code>，<code>bearish</code> 卖同样数量，<code>unknown</code> 跳过；仓位只靠 <code>total_quantity_limit</code> 限制。</li>
+<li>这说明它的 base alpha 很清楚：<strong>headline polarity -&gt; short-horizon directional drift</strong>；不是 filter，也不是 overlay。</li>
+<li>但我用 repo 自带样本（2023-07-30~2023-08-27，<code>44</code> 条 bullish、<code>4</code> 条 bearish）做 portability probe 后，signed mean 并不漂亮：next <code>1m/5m/15m</code> 约 <code>-0.44 / -1.67 / -4.23 bps</code>；哪怕只看 bullish，也只有 next <code>3m</code> 微正（约 <code>+0.54 bps</code>），其余主要是负的。</li>
+<li>所以当前 first verdict 很直接：<strong>“新闻情绪一出来就追 BTC” 这条裸 directional 读法不够厚</strong>；更像应该往“headline class / source quality / surprise filter / cross-sectional routing”继续拆，而不是直接照抄 successive buy/sell。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>它和 <code>momentum</code> 有关，不在于新闻一定比价格信号更强，而在于它补了我们研究池里相对缺的一块：<strong>公开可得的外部事件型 raw alpha 骨架</strong>。如果后面要接入 Twitter/NewsAPI/RSS/ETF headlines/监管事件，这份 repo 提供了最小可复现路径：事件时间戳、标签、分钟对齐、单事件持有窗、成本后判断。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：事件驱动 / 单资产方向</li>
+<li>基础 alpha：<code>headline polarity -&gt; next-few-bar drift</code></li>
+<li>regime：高关注新闻、单一资产对新闻更敏感时可能更强</li>
+<li>filter / veto：新闻源质量、headline surprise、同分钟多条冲突新闻、事件后成交量/波动扩张</li>
+<li>risk / sizing / execution overlay：单事件固定持有窗、事件后 <code>1~3 bar</code> time stop、headline score 分层 sizing、只做高置信度来源</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：高置信度 bullish headline 后，<code>BTC/ETH/SOL</code> 在 next <code>1/3/5/15m</code> 更容易同向漂移；bearish 同理。</li>
+<li>可计算定义：按分钟聚合新闻，保留每分钟最后一条有效标签；计算 <code>signed_return = sign(sentiment) * fwd_return</code>。</li>
+<li>最小回测切口：先用 repo 自带 <code>sentiment_data.csv</code> + Binance <code>data.binance.vision</code> <code>BTCUSDT 1m</code>；然后再换成更干净的实时 RSS / NewsAPI / ETF headline feed，扩到 <code>ETH/SOL</code>。</li>
+<li>最该先看：<code>signed mean bps</code> 和 <code>hit rate</code>；第二步再看按 source / headline type 分层后的 tail。</li>
+<li><strong>下一步怎么测</strong>：不要继续测 repo 默认“连续加仓”。先把 headline 分成 <code>exchange/product/listing/regulation/security</code> 五类，只保留 <code>source in {Reuters, Binance, ETF issuers, exchange official}</code> 的高置信度事件，再比较 next <code>1/3/5m</code> 的 signed drift 是否从当前负值翻正。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这份 repo 自带样本很小，而且 <code>bearish</code> 只有 <code>4</code> 条，明显不够下强结论。</li>
+<li>新闻标签是离线情绪分类结果，不等于 live 时点可无延迟拿到；真实可交易性会被抓取延迟和 headline 去重吃掉。</li>
+<li>它默认只做 BTC 单资产，实际上这类新闻可能更适合做<strong>cross-sectional router</strong>（例如利好交易所生态币、利空相关主题币），不一定该压成 BTC 主信号。</li>
+<li>因此这轮我仍把它记为 <strong>raw alpha 候选</strong>，但不是现成 production shell。</li>
+</ul>
+<h2>6. 数据源与公开性</h2>
+<ul>
+<li>新闻数据：repo 自带 <code>sentiment_data/sentiment_data.csv</code>，字段含 <code>source / collected_timestamp / published_timestamp / headline / sentiment</code>。</li>
+<li>价格数据：Binance <code>data.binance.vision</code> Spot <code>BTCUSDT 1m</code> daily klines，公开可得。</li>
+<li>更新频率：新闻为事件驱动；K 线为 <code>1m</code>。</li>
+<li>最小可复现实验口径：保留 <code>bullish/bearish</code> 事件，按 <code>published_timestamp</code> floor 到分钟，对齐 <code>BTCUSDT 1m</code>，计算 next <code>1/3/5/15/30/60m</code> signed return。</li>
+</ul>
+<h2>7. 来源</h2>
+<ul>
+<li>Binance. *ai-trading-prototype-backtester*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/binance/ai-trading-prototype-backtester">https://github.com/binance/ai-trading-prototype-backtester</a></code></li>
+<li>Readable files: <code>README.md</code>, <code>aitradingprototypebacktester/strategy_manager.py</code>, <code>aitradingprototypebacktester/strategy/successive_strategy.py</code>, <code>sentiment_data/sentiment_data.csv</code></li>
+<li>Public market data: <code><a href="https://data.binance.vision/data/spot/daily/klines/BTCUSDT/1m/">https://data.binance.vision/data/spot/daily/klines/BTCUSDT/1m/</a></code></li>
+<li>Local artifacts:</li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_news_sentiment_events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_news_sentiment_summary.csv</code></li>
+</ul>
+</body>
+</html>

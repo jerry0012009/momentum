@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 BTC/ETH pairs repo 又读成一篇 spread fade：对 short-cycle desk，更该先测的是「BTC shock × ETH same-minute underreaction → next 1~2 bar catch-up」这条 relative-value raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 BTC/ETH pairs repo 又读成一篇 spread fade：对 short-cycle desk，更该先测的是「BTC shock × ETH same-minute underreaction → next 1~2 bar catch-up」这条 relative-value raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-15 10:39 UTC</span>
+      <span class="pill">研究时间：2026-04-15 10:37 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `analytics/features.py` + `analytics/mean_reversion_backtest.py` + `ingestion/binance_websocket.py` + `config.py` + `app.py`）+ Binance USDⓈ-M `1m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/lead-lag/event-driven/btc-shock/eth-underreaction/catch-up/binance-perpetual/1m/3m/5m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo source audit + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-15_1037_btcshock-eth-underreaction-catchup-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-15 10:37 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>analytics/features.py</code> + <code>analytics/mean_reversion_backtest.py</code> + <code>ingestion/binance_websocket.py</code> + <code>config.py</code> + <code>app.py</code>）+ Binance USDⓈ-M <code>1m</code> public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当 <code>BTC</code> 出现 <code>1m</code> 冲击、而 <code>ETH</code> 在同一分钟明显“没跟上”时，做 <code>long ETH / short BTC</code>（若是下跌冲击则反向理解为继续做相对 catch-up），持有接下来的 <code>1~2</code> 根 bar，赌 lagger 补动；repo 里的 <code>cross-correlation at lags</code> 更适合服务这条 event-driven relative-value alpha，而不该只留在 dashboard 里。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是，但需要补事件阈值、beta/vol scaling、next-bar 执行与成本约束</li>
+<li>主题标签：raw-alpha/relative-value/lead-lag/event-driven/btc-shock/eth-underreaction/catch-up/binance-perpetual/1m/3m/5m/repo/public-data/cost/risk</li>
+<li>证据类型：repo source audit + public-data portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看的是一个 2025-12 创建、2026-02 仍有更新的新 repo：</p>
+<ul>
+<li><strong>Author / Repo owner：</strong> <code>HerambPatilcoder</code></li>
+<li><strong>Year：</strong> 2025/2026</li>
+<li><strong>Title：</strong> *Crypto_Pairs_trading*</li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/HerambPatilcoder/Crypto_Pairs_trading&gt;">https://github.com/HerambPatilcoder/Crypto_Pairs_trading&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/HerambPatilcoder/Crypto_Pairs_trading&gt;">https://github.com/HerambPatilcoder/Crypto_Pairs_trading&gt;</a></li>
+<li><strong>GitHub API metadata（已复核）：</strong> repo 创建于 <code>2025-12-16</code>，最近更新时间 <code>2026-02-28</code></li>
+</ul>
+<p>repo 表面 headline 还是很像那类熟悉的 <code>BTC/ETH spread + z-score + mean reversion</code> dashboard，但这轮如果继续把它写成“又一篇 BTC/ETH spread fade”，和近几天素材池会太近。</p>
+<p>它真正还值得 intake 的旁支，是 <code>analytics/features.py</code> 里那条经常被忽略的函数：</p>
+<ul>
+<li><code>cross_corr(x, y, max_lag=20)</code></li>
+</ul>
+<p>再加上 repo 已经给好的 live plumbing：</p>
+<ul>
+<li><code>ingestion/binance_websocket.py</code>：实时 trade stream</li>
+<li><code>duckdb_storage.py</code>：本地 tick 存储</li>
+<li><code>resampler_filter.py</code>：<code>1s / 1m / 5m</code> 重采样</li>
+<li><code>app.py</code>：把 lag / corr / z-score / ADF 全都挂上 dashboard</li>
+</ul>
+<p>所以这轮更值钱的读法不是： &gt; “BTC/ETH spread 又能做均值回复。”</p>
+<p>而是： &gt; <strong>“既然 repo 已经显式给了 lag-scan，这份材料更适合拿来测 <code>BTC impulse -&gt; ETH delayed catch-up</code> 这条 event-driven relative-value raw alpha，到底有没有短周期 pocket。”</strong></p>
+<h2>2. base alpha 先说清楚</h2>
+<p>这轮的 <strong>base alpha</strong> 不是 correlation monitor，也不是 dashboard alert。</p>
+<p>它是： &gt; <strong><code>BTC</code> 先剧烈动、<code>ETH</code> 同一分钟却明显没跟上时，后面 <code>1~2</code> 根 <code>1m</code> bar 存在一段短暂的 relative-value catch-up pocket。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>这不是方向单；</li>
+<li>也不是 broad 的“BTC 永远领先 ETH”；</li>
+<li>更不是把 lag correlation 当解释型小图；</li>
+<li>它是一条 <strong>条件触发型 / event-driven / relative-value raw alpha</strong>。</li>
+</ul>
+<p>具体可写成：</p>
+<ol>
+<li>先识别 <code>BTC 1m shock</code>；</li>
+<li>再要求 <code>ETH same-minute underreaction</code>；</li>
+<li>然后做 <code>ETH catch-up vs BTC</code> 的短持有期交易；</li>
+<li>超时没补动就走。</li>
+</ol>
+<p>所以它仍然属于当前 bot7 优先级里更高的那一类：</p>
+<ul>
+<li><strong>可独立复现的 raw alpha 候选</strong>；</li>
+<li>而不只是给现有 alpha 当 shared filter。</li>
+</ul>
+<h2>3. 为什么这条旁支比“再写一篇 spread MR”更值得</h2>
+<p>因为 repo 的主壳当然还是 spread mean reversion：</p>
+<ul>
+<li><code>huber_hedge_ratio(y, x)</code></li>
+<li><code>kalman_hedge_ratio(y, x)</code></li>
+<li><code>spread_and_zscore(y, x, hr, window)</code></li>
+<li><code>mean_reversion_backtest(z, entry_z=2.0, exit_z=0.1)</code></li>
+</ul>
+<p>但这一类主题这几天已经补得很密：</p>
+<ul>
+<li>BTC/ETH spread fade</li>
+<li>dynamic hedge ratio spread fade</li>
+<li>pair admission / half-life / validation ranking</li>
+<li>vol-gated spread fade</li>
+</ul>
+<p>继续顺着 headline 写，边际增量不高。</p>
+<p>反而 repo 里 <strong>明确留着但没被写成主策略</strong> 的那条 <code>cross-correlation at lags</code>，更能补当前池子里一个没那么拥挤的 pocket： &gt; <strong>不是 always-on lead-lag，而是“冲击 + 同步失败 + 1~2 bar catch-up”这条更短、更诚实的 event pocket。</strong></p>
+<h2>4. repo 里哪些实现支撑这条读法</h2>
+<h3>4.1 <code>features.py</code></h3>
+<p>关键函数：</p>
+<ul>
+<li><code>cross_corr(x, y, max_lag=20)</code></li>
+<li><code>rolling_corr(x, y, window)</code></li>
+<li><code>huber_hedge_ratio(y, x)</code></li>
+<li><code>kalman_hedge_ratio(y, x, delta=1e-4, R=0.01)</code></li>
+<li><code>adf_test(series)</code></li>
+</ul>
+<p>这意味着 repo 不是只能看 contemporaneous spread，它已经允许：</p>
+<ul>
+<li>看 <code>lag 0</code> 之外的相关性；</li>
+<li>看 relationship 是否从“同步”偏到“谁先谁后”；</li>
+<li>再决定该做 spread fade，还是改做 catch-up / veto。</li>
+</ul>
+<h3>4.2 <code>config.py</code></h3>
+<p>repo 的默认实验口径本身就很 desk-friendly：</p>
+<ul>
+<li><code>SYMBOLS = [&quot;btcusdt&quot;, &quot;ethusdt&quot;]</code></li>
+<li><code>TIMEFRAMES = {&quot;1s&quot;: &quot;1s&quot;, &quot;1m&quot;: &quot;1min&quot;, &quot;5m&quot;: &quot;5min&quot;}</code></li>
+<li><code>DEFAULT_WINDOW = 50</code></li>
+<li><code>DEFAULT_Z_THRESHOLD = 2.0</code></li>
+</ul>
+<p>这说明作者虽然 README 主要讲 pairs analytics，但实际 scaffold 已经把 <code>1s/1m/5m</code> 快节奏入口给出来了。</p>
+<h3>4.3 <code>ingestion/binance_websocket.py</code></h3>
+<p>repo 用的是：</p>
+<ul>
+<li><code>wss://stream.binance.com:9443/ws/{symbol}@trade</code></li>
+</ul>
+<p>再配 DuckDB 存 tick，意味着它天然更适合：</p>
+<ul>
+<li>先积 tick / 1s；</li>
+<li>再聚到 <code>1m</code>；</li>
+<li>然后测 <code>shock -&gt; underreaction -&gt; catch-up</code>。</li>
+</ul>
+<p>这和“只用日级/小时级 pair cointegration”不是一回事。</p>
+<h2>5. 我这轮怎么做最小 portability probe</h2>
+<p>我没有继续复刻 repo 的 z-score MR，而是专门测它这条 lag 旁支。</p>
+<h3>5.1 数据</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M public klines（公开可得）</li>
+<li>频率：<code>1m</code></li>
+<li>标的：<code>BTCUSDT / ETHUSDT</code></li>
+<li>样本：最近 <code>30d</code></li>
+<li>实验脚本：</li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-15_btceth_lagscan_probe.py</code></li>
+<li>输出文件：</li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/btceth_laglead_corr30d_2026-04-15.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/btceth_laglead_roll30d_2026-04-15.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/btceth_laglead_events_q095_2026-04-15.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/btceth_laglead_q095_directional_2026-04-15.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/btceth_laglead_summary30d_2026-04-15.json</code></li>
+</ul>
+<h3>5.2 事件定义</h3>
+<p>这轮故意不用“泛泛 lag correlation”，而是更贴 desk：</p>
+<ol>
+<li><code>BTC 1m return</code> 达到近 <code>30d</code> 的高分位 shock（我扫了 <code>95% / 97.5% / 99%</code> 三档）；</li>
+<li>同一分钟里，<code>ETH</code> 的同向反应不到 <code>BTC</code> 幅度的 <code>40%</code>，或直接没同向跟上；</li>
+<li>把这类时刻视作 <code>ETH same-minute underreaction</code>；</li>
+<li>然后看后面 <code>1~2</code> 根 bar 的：</li>
+</ol>
+<ul>
+<li><code>ETH</code> 自身是否继续朝 BTC shock 方向补动；</li>
+<li><code>long ETH / short BTC</code> 的 relative-value PnL proxy 是否为正。</li>
+</ul>
+<h2>6. first verdict：broad lead-lag 不成立，但 event pocket 还在</h2>
+<h3>先给最关键的 4 个数据点</h3>
+<ol>
+<li><strong>无条件 lag-corr 基本不支持“BTC 稳定领先 ETH 1~5 分钟”这件事。</strong></li>
+</ol>
+<ul>
+<li><code>lag 0</code> 相关性约 <strong>0.873</strong>；</li>
+<li>非零 lag 相关都很小，最高也只是：</li>
+<li><code>lag -1</code> 约 <strong>0.054</strong></li>
+<li><code>lag +1</code> 约 <strong>0.020</strong></li>
+<li>rolling <code>6h</code> window、每小时取一次 peak lag，<strong><code>714/714</code> 次都是 <code>lag 0</code></strong>。</li>
+</ul>
+<p>这句很重要： &gt; <strong>别把 repo 里的 lag-scan 误读成“存在稳态 1m 级 BTC-&gt;ETH lead-lag”。至少 recent 30d 的 Binance perp proxy 不支持。</strong></p>
+<ol>
+<li><strong>但一旦只看“BTC 先冲、ETH 同分钟没跟上”的事件 pocket，relative-value edge 会出来。</strong></li>
+</ol>
+<ul>
+<li>用 <code>95%</code> shock 阈值时，近 <code>30d</code> 一共识别到 <strong>67</strong> 次事件；</li>
+<li>事件后 <code>1m</code> 的 <code>long ETH / short BTC</code> signed RV proxy 平均 <strong>+2.07 bps</strong>；</li>
+<li>事件后 <code>2m</code> 的 signed RV proxy 平均 <strong>+3.95 bps</strong>；</li>
+<li>两者 hit rate 都约 <strong>64.2%</strong>。</li>
+</ul>
+<ol>
+<li><strong>这个 pocket 在 downside shock 里更稳定。</strong></li>
+</ol>
+<ul>
+<li><code>BTC down-shock</code> 子样本：<code>33</code> 次</li>
+<li><code>1m RV</code> 平均 <strong>+3.35 bps</strong>，hit rate <strong>69.7%</strong></li>
+<li><code>2m RV</code> 平均 <strong>+3.42 bps</strong>，hit rate <strong>72.7%</strong></li>
+</ul>
+<ol>
+<li><strong>越极端不一定越好；<code>99%</code> shock 样本更少，稳定性反而下降。</strong></li>
+</ol>
+<ul>
+<li><code>99%</code> 只有 <strong>10</strong> 次事件</li>
+<li><code>1m RV</code> 平均反而 <strong>-2.22 bps</strong></li>
+<li><code>2m RV</code> 才回到 <strong>+1.28 bps</strong></li>
+</ul>
+<p>所以这轮最诚实的结论是： &gt; <strong>广义的 BTC/ETH lead-lag raw alpha 不成立；真正值得测的是“BTC shock × ETH same-minute underreaction”这种条件化 catch-up pocket。</strong></p>
+<h2>7. 这条 alpha 应该怎么 desk 化</h2>
+<p>如果把它写成最小策略骨架，建议是：</p>
+<h3>7.1 Entry</h3>
+<ul>
+<li>时间框架：<code>1m</code> 主状态，<code>3m/5m</code> 做背景过滤</li>
+<li>触发：</li>
+<li><code>|BTC 1m ret| &gt; q95</code> 或更稳健的 rolling EVT / realized-vol 标准化冲击</li>
+<li><code>ETH same-minute ret</code> 同向幅度 <code>&lt; 0.4 * |BTC ret|</code></li>
+<li>入场：</li>
+<li><code>BTC 上冲、ETH 没跟上</code> -&gt; <code>long ETH / short BTC</code></li>
+<li><code>BTC 下砸、ETH 没跟上</code> -&gt; 仍做 catch-up 方向的 <code>short ETH / long BTC</code></li>
+</ul>
+<h3>7.2 Exit</h3>
+<p>优先先测最简单三种：</p>
+<ol>
+<li>固定持有 <code>1 bar</code></li>
+<li>固定持有 <code>2 bars</code></li>
+<li><code>ETH</code> 补动到某个比例（例如达到 BTC 冲击的 <code>60~80%</code>）就走</li>
+</ol>
+<h3>7.3 Sizing</h3>
+<ul>
+<li>不要裸 notional 1:1；</li>
+<li>先用短窗 beta / vol ratio 做轻量中性化；</li>
+<li>shock 太大时可 size-down，避免把“事件有效”误做成“波动太大所以赚/亏都更大”。</li>
+</ul>
+<h3>7.4 风险 / 成本</h3>
+<p>这条线最容易死在两个地方：</p>
+<ol>
+<li><strong>下一分钟继续由 BTC 主导单边趋势</strong>，导致 short leader 腿被拖着跑；</li>
+<li><strong>双腿 taker 成本</strong> 很容易吞掉 <code>2~4 bps</code> 的毛边。</li>
+</ol>
+<p>所以 production 前至少要补：</p>
+<ul>
+<li>next-bar open / mid-to-bidask 执行口径</li>
+<li>双腿手续费 + 滑点</li>
+<li>超时退出</li>
+<li><code>BTC trend continuation</code> veto</li>
+<li>funding / basis 中性化检查（perp 版本）</li>
+</ul>
+<h2>8. 为什么这条线仍值得进研究池</h2>
+<ol>
+<li><strong>它补的是 raw alpha，不是又一个解释层。</strong></li>
+<p>base alpha 很明确：<code>underreaction catch-up</code>。</p>
+</ol>
+<ol>
+<li><strong>它比“再来一篇 spread MR”更有增量。</strong></li>
+<p>因为近几天 pairs/stat-arb 已经很多，而这条是更短、更事件化的 relative-value pocket。</p>
+</ol>
+<ol>
+<li><strong>repo 给了 live 化脚手架。</strong></li>
+<p><code>trade websocket + DuckDB + 1s/1m/5m resample + lag/corr dashboard</code> 这套东西，天然适合下一步做 online detector。</p>
+</ol>
+<h2>9. 下一步怎么测</h2>
+<p>优先按下面 4 个 ablation 走，不要直接上线：</p>
+<ol>
+<li><strong>事件阈值 sweep</strong></li>
+</ol>
+<ul>
+<li><code>q90 / q95 / q97.5 / q99</code></li>
+<li>underreaction 比例从 <code>0.2 / 0.4 / 0.6</code></li>
+<li>看 edge 是不是只靠少数极端点撑着</li>
+</ul>
+<ol>
+<li><strong>1bar vs 2bar vs adaptive exit</strong></li>
+</ol>
+<ul>
+<li>当前 first verdict 暗示 <code>2bar</code> 比 <code>1bar</code> 更像可留边</li>
+<li>但需要 next-bar 执行后重算</li>
+</ul>
+<ol>
+<li><strong>down-shock / up-shock 分书</strong></li>
+</ol>
+<ul>
+<li>当前 proxy 显示 downside 版本更稳</li>
+<li>可以拆成两本 alpha，不要强行对称</li>
+</ul>
+<ol>
+<li><strong>把 lag-scan 从“解释图表”改成在线 admission</strong></li>
+</ol>
+<ul>
+<li>平时只监控，不交易；</li>
+<li>只有 <code>BTC shock + ETH underreaction + lag0 high / no regime break</code> 同时满足时才开机。</li>
+</ul>
+<p>如果这 4 步之后，<code>1m/2m</code> 版本扣完双腿 friction 还能保住正的 <code>post-cost bps/event</code>，这条就有资格进入更正式的 event-driven RV replication 池。</p>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>HerambPatilcoder. (2025/2026). _Crypto_Pairs_trading_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://github.com/HerambPatilcoder/Crypto_Pairs_trading&gt;">https://github.com/HerambPatilcoder/Crypto_Pairs_trading&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/HerambPatilcoder/Crypto_Pairs_trading&gt;">https://github.com/HerambPatilcoder/Crypto_Pairs_trading&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Key repo files used in this digest</strong></li>
+</ol>
+<ul>
+<li>README: &lt;<a href="https://raw.githubusercontent.com/HerambPatilcoder/Crypto_Pairs_trading/main/README.md&gt;">https://raw.githubusercontent.com/HerambPatilcoder/Crypto_Pairs_trading/main/README.md&gt;</a></li>
+<li><code>analytics/features.py</code>: &lt;<a href="https://raw.githubusercontent.com/HerambPatilcoder/Crypto_Pairs_trading/main/analytics/features.py&gt;">https://raw.githubusercontent.com/HerambPatilcoder/Crypto_Pairs_trading/main/analytics/features.py&gt;</a></li>
+<li><code>analytics/mean_reversion_backtest.py</code>: &lt;<a href="https://raw.githubusercontent.com/HerambPatilcoder/Crypto_Pairs_trading/main/analytics/mean_reversion_backtest.py&gt;">https://raw.githubusercontent.com/HerambPatilcoder/Crypto_Pairs_trading/main/analytics/mean_reversion_backtest.py&gt;</a></li>
+<li><code>ingestion/binance_websocket.py</code>: &lt;<a href="https://raw.githubusercontent.com/HerambPatilcoder/Crypto_Pairs_trading/main/ingestion/binance_websocket.py&gt;">https://raw.githubusercontent.com/HerambPatilcoder/Crypto_Pairs_trading/main/ingestion/binance_websocket.py&gt;</a></li>
+<li><code>config.py</code>: &lt;<a href="https://raw.githubusercontent.com/HerambPatilcoder/Crypto_Pairs_trading/main/config.py&gt;">https://raw.githubusercontent.com/HerambPatilcoder/Crypto_Pairs_trading/main/config.py&gt;</a></li>
+<li><code>app.py</code>: &lt;<a href="https://raw.githubusercontent.com/HerambPatilcoder/Crypto_Pairs_trading/main/app.py&gt;">https://raw.githubusercontent.com/HerambPatilcoder/Crypto_Pairs_trading/main/app.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Public data portability probe</strong></li>
+</ol>
+<ul>
+<li>Binance USDⓈ-M public klines: &lt;<a href="https://fapi.binance.com/fapi/v1/klines&gt;">https://fapi.binance.com/fapi/v1/klines&gt;</a></li>
+<li>Local probe script: <code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-15_btceth_lagscan_probe.py</code></li>
+</ul>
+</body>
+</html>

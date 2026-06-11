@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 breakout / EMA 的坏样本都怪进场形状：这篇 2025 新论文更值钱的是把 `DFA Hurst` 变成 persistence gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 breakout / EMA 的坏样本都怪进场形状：这篇 2025 新论文更值钱的是把 `DFA Hurst` 变成 persistence gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-23 08:59 UTC</span>
+      <span class="pill">研究时间：2026-03-23 06:20 UTC</span>
+      <span class="pill">类型：论文 + 开源实现库</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/hurst/dfa/regime/filter/anti-chop/persistence/paper/repo/crypto/5m/15m</span>
+      <span class="pill">证据类型：论文证据 + 开源实现证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-23_0620_dfa-hurst-persistence-regime-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-23 06:20 UTC</li>
+<li>类型：论文 + 开源实现库</li>
+<li>主题类型：regime</li>
+<li>基础 alpha：breakout / ema-psar continuation（既有 setup）</li>
+<li>是否可独立复现：否</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/hurst/dfa/regime/filter/anti-chop/persistence/paper/repo/crypto/5m/15m</li>
+<li>证据类型：论文证据 + 开源实现证据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Noppakaew, Prinyasart, Chaiya &amp; Chaiya (2025)</strong> 的新论文：它研究的不是 crypto，但非常适合我们 desk 当前三条收口线的一个旁支问题——<strong>什么时候根本不该让 trend / breakout 类东西开火</strong>。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 对当前 15m desk，更值得先偷的不是又一层新触发，而是一个便宜的 <code>persistence gate</code>：<code>DFA Hurst</code> 高时才让 breakout / EMA continuation 认真说话，低时优先当作 whipsaw 区。</li>
+<li><strong>一句话说明它怎么证明：</strong> 论文把市场按 rolling Hurst regime 分桶，再比较 <code>EMA10</code> 驱动的 buy-hold / long-only / short-only / long-short 四类策略表现，结果显示 <strong>高 persistence 明显更利于 active trend-following</strong>，而且 <strong>DFA 比 R/S 更诚实</strong>。</li>
+<li>论文最值钱的不是“Hurst 很神”，而是 <strong>先校准 estimator 偏差，再拿它做 regime switch</strong>。他们对长度 <code>64</code> 的随机游走做 Monte Carlo 后发现：</li>
+<li><code>R/S</code> 对纯随机过程也会偏高，均值约 <code>0.6002</code>；</li>
+<li><code>DFA</code> 更接近理论值，均值约 <code>0.5012</code>。</li>
+<li>基于这组校准，论文给出 regime 切分：</li>
+<li><code>DFA low &lt; 0.42</code></li>
+<li><code>DFA medium = 0.42~0.58</code></li>
+<li><code>DFA high &gt; 0.58</code></li>
+<li>在 <code>DFA high</code> regime 下，<strong>combined long-short</strong> 的平均 <code>64-day return = 4.35%</code>，年化约 <code>17.13%</code>；</li>
+<p>但在 <code>DFA low</code> regime 下，同一 active 组合平均只剩 <code>-0.43%</code>。</p>
+<li>反过来，<code>DFA low</code> 时 <strong>buy-and-hold</strong> 平均 <code>64-day return = 2.61%</code>，反而优于 active trend；这很像在提醒我们：<strong>低 persistence 时别硬做 15m continuation，宁可少做，甚至退回被动/空仓。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li><strong><code>EMA / PSAR raw alpha focus</code></strong>：这是最直接的帮助。它给的是“先判这段市场有没有趋势记忆”，而不是继续在噪音段里微调 EMA / PSAR 参数。</li>
+<li><strong><code>V3 final-verdict / breakout-short follow-up</code></strong>：它很适合做 <code>avoid-chop / post-break continuation</code> 的 shared gate。若 <code>H_dfa</code> 落在 low bucket，很多所谓 post-break continuation，本质更可能只是来回抽打。</li>
+<li><strong><code>Fibonacci confirmation / retest_hold</code></strong>：Fib 回踩也不是只要碰位就能做。若 backdrop 本身是低 persistence，回踩更像区间噪音回摆，<code>retest_hold</code> 应优先降权或 veto。</li>
+<li>如果问“这轮为什么比继续闷头收某一条线更值得”：因为它是 <strong>一个 price-only、公开可得、理论上能同时给三条线减 whipsaw 的共享 regime gate</strong>，性价比很高。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势 / continuation 的 regime 过滤层</li>
+<li>基础 alpha：breakout-short follow-up、Fib retest_hold、EMA continuation skeleton 之一</li>
+<li>regime：rolling <code>DFA Hurst</code> persistence state</li>
+<li>filter / veto：<code>H_dfa</code> 低于 low threshold 时 veto；中间带谨慎；高于 high threshold 时才放大 trend 解释权</li>
+<li>risk / sizing / execution overlay：也可改成 <code>low=0x / mid=0.5x / high=1x</code> 的分档仓位，而不是只做二元 allow/deny</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>研究假设</h3>
+<p>对 <code>BTC/ETH/SOL perp 15m</code>，若只在 <code>high-persistence</code> 区间放行 breakout / EMA continuation，成本后表现会优于 baseline；<code>low-persistence</code> 区间更像 shared veto 区。</p>
+<h3>一个可计算定义</h3>
+<ol>
+<li>在 <code>15m close</code> 上计算 rolling <code>DFA Hurst</code>，先试 <code>window = 128 / 192 bars</code>；</li>
+<li>对同窗口长度做 Monte Carlo random walk 校准，得到该 estimator 的 <code>μ, σ</code>；</li>
+<li>用论文同样的规则切桶：</li>
+</ol>
+<ul>
+<li><code>low: H &lt; μ - 0.5σ</code></li>
+<li><code>mid: μ - 0.5σ &lt;= H &lt;= μ + 0.5σ</code></li>
+<li><code>high: H &gt; μ + 0.5σ</code></li>
+</ul>
+<ol>
+<li>把它接到现有三条线事件流上，只测试 gate，不改原 entry/exit。</li>
+</ol>
+<h3>最小回测切口</h3>
+<ul>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT</code> perpetual</li>
+<li>周期：<code>15m</code> 主回测，必要时 <code>5m</code> 仅用于执行价</li>
+<li>样本：近 <code>180d</code></li>
+<li>对照：</li>
+<li><code>A</code> = baseline</li>
+<li><code>B</code> = 仅 <code>high-H</code> 放行</li>
+<li><code>C</code> = <code>low veto / mid 0.5x / high 1x</code></li>
+</ul>
+<h3>第一轮先看</h3>
+<ul>
+<li><code>post-cost expectancy</code></li>
+<li><code>false-follow ratio</code> 或 <code>2~4 bar</code> 内反抽失败率</li>
+<li><code>trade retention</code>（别为了变好看只剩极少交易）</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文样本是 <strong>东亚股票日线</strong>，不是 crypto <code>15m</code>；可迁移的是“regime-switch 逻辑”，不是阈值直接照抄。</li>
+<li>Hurst 估计对窗口和实现细节敏感；论文已经明确提示 <strong>先做 estimator-specific 校准</strong>，不能直接拿网上某个 <code>H&gt;0.5</code> 就上生产。</li>
+<li>低频 persistence 指标会更像 backdrop/filter，不该伪装成逐根主触发。</li>
+<li>若加上 gate 后只是大幅减少交易，但成本后优势不稳，那它更可能只是“美化报表”的稀释器，不是真 gate。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Noppakaew, P., Prinyasart, T., Chaiya, M., &amp; Chaiya, S. (2025). _Hurst Exponent as a Regime-Switching Indicator for Trend-Following Strategies in East Asian Stock Markets_. Asia-Pacific Journal of Mathematics, 12:109.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code><a href="https://doi.org/10.28924/APJM/12-109">https://doi.org/10.28924/APJM/12-109</a></code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.28924/APJM/12-109">https://doi.org/10.28924/APJM/12-109</a></code></li>
+<li>PDF URL: <code><a href="https://apjm.apacific.org/PDFs/12-109.pdf">https://apjm.apacific.org/PDFs/12-109.pdf</a></code></li>
+<li>关键信息：<code>DFA high &gt; 0.58</code> 时 combined long-short 平均 <code>64-day return = 4.35%</code>；<code>DFA low &lt; 0.42</code> 时同策略平均 <code>-0.43%</code>。</li>
+</ul>
+<ol>
+<li><strong>Schölzel, C. (2019). _Nonlinear measures for dynamical systems_ (Version 0.5.2). Zenodo / nolds.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code><a href="https://doi.org/10.5281/zenodo.3814723">https://doi.org/10.5281/zenodo.3814723</a></code></li>
+<li>Readable URL: <code><a href="https://pypi.org/project/nolds/">https://pypi.org/project/nolds/</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/CSchoel/nolds">https://github.com/CSchoel/nolds</a></code></li>
+<li>相关实现：<code>nolds.dfa()</code> 可直接用于最小实验的 DFA 估计。</li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures Market Data API（用于最小实验的数据口径）</strong></li>
+</ol>
+<ul>
+<li>数据源：Binance Developers</li>
+<li>公开性：公开可得</li>
+<li>更新频率：分钟级</li>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+</body>
+</html>

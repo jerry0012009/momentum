@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Hyperliquid×Bybit funding carry 继续写成普通跨所利差：这份 2024/2026 GitHub repo 更该先测的是「asynchronous funding clock × net-hour hurdle」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Hyperliquid×Bybit funding carry 继续写成普通跨所利差：这份 2024/2026 GitHub repo 更该先测的是「asynchronous funding clock × net-hour hurdle」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-31 13:04 UTC</span>
+      <span class="pill">研究时间：2026-03-31 13:02 UTC</span>
+      <span class="pill">类型：quant_digest</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/perp-perp/cross-venue/relative-value/stat-arb/asynchronous-settlement-clock/net-hour-normalization/hyperliquid/bybit/delta-neutral/1m/3m/5m/15m/repo/public-data/cost</span>
+      <span class="pill">证据类型：2024/2026 GitHub 仓库元数据 + `README.md` / `docs/strategy.md` / `docs/risk-management.md` / `src/strategy/funding_arb.py` source audit + Hyperliquid / Bybit 公共 funding API live sanity check</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-31_1302_async-funding-clock-carry-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-31 13:02 UTC</li>
+<li>类型：quant_digest</li>
+<li>主题标签：raw-alpha/carry/funding/perp-perp/cross-venue/relative-value/stat-arb/asynchronous-settlement-clock/net-hour-normalization/hyperliquid/bybit/delta-neutral/1m/3m/5m/15m/repo/public-data/cost</li>
+<li>证据类型：2024/2026 GitHub 仓库元数据 + <code>README.md</code> / <code>docs/strategy.md</code> / <code>docs/risk-management.md</code> / <code>src/strategy/funding_arb.py</code> source audit + Hyperliquid / Bybit 公共 funding API live sanity check</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一币种在 Hyperliquid 与 Bybit perpetual 上的 funding 现金流差，按统一日化/小时口径归一后做 delta-neutral cross-venue carry</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是 <strong>gabrielee5/funding-arbitrage</strong> 这个公开仓库。它表面上像一个“执行面板”，但真正值得 desk 拿走的不是 UI，而是它把 <strong>Hyperliquid 1h funding</strong> 和 <strong>Bybit 8h funding</strong> 放进了同一个可执行框架里：</p>
+<ul>
+<li>同币种双 perp、双边对冲；</li>
+<li><code>min(HL_balance, BB_balance)</code> 做 sizing；</li>
+<li>分 tranche 同步下单；</li>
+<li>一条腿出事，另一条腿立刻 emergency close；</li>
+<li>风险不是抽象“市场波动”，而是 <strong>异步 funding 时钟 + 一腿成交另一腿没成交 + 单腿先爆仓</strong>。</li>
+</ul>
+<p>所以它不是“又一个 funding 看板”，而是一个已经能落成 <strong>entry / execution / sizing / risk / monitor</strong> 的完整 raw alpha 骨架。</p>
+<h2>2. 为什么这次值得进研究池</h2>
+<p>这轮 bot7 默认优先级里，<code>可独立复现且可直接落地完整策略</code> 高于纯解释型材料。这个主题值得 intake，不是因为“funding carry 很新”，而是因为它补的是我们当前素材池里相对少的一块：</p>
+<ol>
+<li><strong>base alpha 很清楚</strong>：alpha 本体不是 filter，不是 overlay，就是 <strong>同 underlier、不同 venue 的 funding cashflow spread</strong>。</li>
+<li><strong>这份 repo 有真正可迁移的 execution OS</strong>：不是只给一个 ranking 表，而是给了 tranche、保护单、balance cap、linked exit。</li>
+<li><strong>它和已有 generic funding digest 不完全重复</strong>：这次新增的关键细节是 <strong>异步结算时钟</strong>。很多 funding 笔记默认两边都是同一个 8h 钟点；这份仓库明确处理的是 <code>HL 1h</code> vs <code>Bybit 8h</code>，这决定了我们不能只看一个静态 funding diff，而要看 <strong>未来持有窗口里到底能收几次、付几次</strong>。</li>
+</ol>
+<h2>3. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = 同一资产在不同 venue perpetual 上的净 funding spread，经统一时钟归一后，做 market-neutral carry。</strong></p>
+<p>写成最简单的方向判断：</p>
+<ul>
+<li>若做 <strong><code>short HL / long BB</code></strong>，粗口径日化 gross carry 近似是 <code>24 × f_HL - 3 × f_BB</code>；</li>
+<li>若做 <strong><code>long HL / short BB</code></strong>，则是 <code>3 × f_BB - 24 × f_HL</code>；</li>
+<li>选 gross carry 更大的那一边，再扣掉开平仓成本、basis 漂移预算、滑点预算。</li>
+</ul>
+<p>所以它是 <strong>carry / relative-value / stat-arb raw alpha</strong>，不是只给 trend 策略加一个 funding veto。</p>
+<h2>4. 核心来源</h2>
+<h3>4.1 主仓库</h3>
+<ul>
+<li><strong>Authors / Org</strong>：GitHub <code>gabrielee5</code></li>
+<li><strong>Year</strong>：仓库创建于 2024-12-21，2026-03-31 仍在更新</li>
+<li><strong>Title</strong>：*funding-arbitrage*</li>
+<li><strong>Venue</strong>：GitHub Repository</li>
+<li><strong>DOI</strong>：无</li>
+<li><strong>Readable URL</strong>：<a href="https://github.com/gabrielee5/funding-arbitrage">https://github.com/gabrielee5/funding-arbitrage</a></li>
+<li><strong>Repo URL</strong>：<a href="https://github.com/gabrielee5/funding-arbitrage">https://github.com/gabrielee5/funding-arbitrage</a></li>
+<li><strong>本次重点审阅文件</strong>：</li>
+<li><code>README.md</code></li>
+<li><code>docs/strategy.md</code></li>
+<li><code>docs/risk-management.md</code></li>
+<li><code>src/strategy/funding_arb.py</code></li>
+</ul>
+<h3>4.2 公开数据 / 文档来源</h3>
+<ol>
+<li><strong>Hyperliquid Docs / Public API</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint</a></li>
+<li>本次实际使用：<code>POST <a href="https://api.hyperliquid.xyz/info">https://api.hyperliquid.xyz/info</a></code> with <code>{&quot;type&quot;:&quot;metaAndAssetCtxs&quot;}</code></li>
+<li>公开性：公开 REST，无需登录</li>
+<li>更新频率：近实时</li>
+</ul>
+<ol>
+<li><strong>Bybit V5 Market API</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<a href="https://bybit-exchange.github.io/docs/v5/market/tickers">https://bybit-exchange.github.io/docs/v5/market/tickers</a></li>
+<li>本次实际使用：<code>GET /v5/market/tickers?category=linear&amp;symbol=...</code></li>
+<li>公开性：公开 REST，无需登录</li>
+<li>更新频率：近实时</li>
+</ul>
+<h2>5. 证据里最值得拿走的硬点</h2>
+<h3>5.1 这份 repo 不是只讲概念，它已经把整套交易壳写明白了</h3>
+<p>仓库文档直接给出：</p>
+<ul>
+<li><strong>支持对冲腿</strong>：Hyperliquid × Bybit perp-perp；</li>
+<li><strong>默认标的</strong>：<code>BTC / ETH / SOL / ARB / DOGE / WIF / PEPE / LINK / AVAX / OP</code>；</li>
+<li><strong>sizing</strong>：<code>available_capital = min(HL_available_balance, BB_available_balance)</code>；</li>
+<li><strong>默认 tranche</strong>：<code>3</code> 档；</li>
+<li><strong>默认 tranche offset</strong>：<code>10 bps</code>；</li>
+<li><strong>fill timeout</strong>：<code>60s</code>；</li>
+<li><strong>grace period</strong>：<code>30s</code>；</li>
+<li><strong>默认 max leverage</strong>：<code>3x</code>；</li>
+<li><strong>默认 max allocation</strong>：<code>50%</code>；</li>
+<li><strong>monitor 轮询</strong>：每 <code>5s</code> 检查一次仓位与保护单。</li>
+</ul>
+<p>这几个数字很重要，因为它说明这条线不是“先证明 alpha，再慢慢补 execution”，而是 <strong>strategy shell 已经存在</strong>。</p>
+<h3>5.2 真正新信息不是 funding diff，而是「不同 funding 结算时钟」</h3>
+<p>repo 写得很明确：</p>
+<ul>
+<li><strong>Hyperliquid funding：每 1 小时结算一次</strong>；</li>
+<li><strong>Bybit funding：每 8 小时结算一次（00:00 / 08:00 / 16:00 UTC）</strong>。</li>
+</ul>
+<p>对 desk 的正确翻译不是“把 1h rate 和 8h rate直接摆一排”，而是：</p>
+<ul>
+<li>先统一到同一个口径（小时或日化）；</li>
+<li>再根据计划持有时长 <code>H</code>，计算 <strong>未来窗口内实际会发生几次 HL funding、几次 BB funding</strong>；</li>
+<li>最后才决定这笔 carry 是不是够厚。</li>
+</ul>
+<p>换句话说，<strong>静态 diff 只是候选池；真正 entry 该看的是 forward carry over holding window</strong>。</p>
+<h3>5.3 这份 repo 把最致命的风险说对了：不是方向错，而是单腿活下来、另一腿死掉</h3>
+<p><code>docs/risk-management.md</code> 最值得拿走的不是“风控很重要”这种废话，而是两条很具体的规则：</p>
+<ol>
+<li><strong>linked SL/TP</strong></li>
+</ol>
+<ul>
+<li>用各自实际 liquidation price 反推出 stop；</li>
+<li>一边 stop 触发，另一边按对应价格 take-profit / emergency close；</li>
+<li>目标不是赚更多，而是避免一腿清算、另一腿裸奔。</li>
+</ul>
+<ol>
+<li><strong>one-leg fill mismatch 先处理，再谈省手续费</strong></li>
+</ol>
+<ul>
+<li>一条腿 fill、另一条腿没 fill 时，先接受 market unwind 也可以；</li>
+<li>因为 funding carry 的核心风险不是多花一点手续费，而是临时暴露成方向仓位。</li>
+</ul>
+<p>这非常适合我们 desk：carry 类 alpha 最容易死在“执行时不够诚实”，这份 repo 至少在原则上是诚实的。</p>
+<h3>5.4 本地 live quick check：当前重叠 10 个币里，真正够厚的窗口并不多</h3>
+<p>我用 Hyperliquid <code>metaAndAssetCtxs</code> 和 Bybit <code>v5/market/tickers</code> 对 repo 的 10 个重叠币做了一个极简快检，把 funding 统一成日化 gross carry，再选更优方向。</p>
+<p>结果文件：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/hl_bybit_funding_clock_normalized_20260331_1302.csv</code></li>
+</ul>
+<p>当前快照里：</p>
+<ul>
+<li><strong>AVAX</strong>：最佳方向 <code>short HL / long BB</code>，gross carry 约 <strong>4.60 bps/day</strong>；</li>
+<li><strong>WIF</strong>：最佳方向 <code>short HL / long BB</code>，gross carry 约 <strong>3.79 bps/day</strong>；</li>
+<li><strong>DOGE</strong>：约 <strong>2.52 bps/day</strong>；</li>
+<li><strong>ETH</strong>：约 <strong>0.88 bps/day</strong>；</li>
+<li><strong>BTC</strong>：几乎没有，只剩 <strong>0.02 bps/day</strong>。</li>
+</ul>
+<p>这几个数的直观翻译：</p>
+<ul>
+<li>若你假设一笔对冲头寸全成本约 <strong>10 bps</strong>，那当前大概需要：</li>
+<li><strong>AVAX ~2.17 天</strong> 才能回本；</li>
+<li><strong>WIF ~2.64 天</strong>；</li>
+<li><strong>ETH ~11.32 天</strong>；</li>
+<li><strong>BTC ~418 天</strong>，基本没法看。</li>
+</ul>
+<p>所以这条线的正确用法不是 <code>always-on carry</code>，而是：</p>
+<ul>
+<li><strong>做 event-driven / pocket-driven carry</strong>；</li>
+<li>只在少数币、少数窗口里开；</li>
+<li>并且必须把持有期也写进 entry。</li>
+</ul>
+<h2>6. 对 crypto 1m / 3m / 5m / 15m 的正确读法</h2>
+<h3>6.1 它是 raw alpha，但不是“逐根 K 线方向预测”</h3>
+<p>这类策略的 alpha 本体是 funding cashflow，不是下一根 return sign。</p>
+<p>所以对 <code>1m / 3m / 5m / 15m</code> desk，更合理的分层是：</p>
+<ul>
+<li><strong>signal / decision layer</strong>：每 1m 或 5m 扫 funding、basis、盘口、可成交量；</li>
+<li><strong>execution layer</strong>：按短周期盘口去分 tranche、控 slippage；</li>
+<li><strong>carry realization layer</strong>：真正兑现 alpha 发生在接下来的若干 funding 结算点。</li>
+</ul>
+<p>别把它硬伪装成“每根 5m bar 都该有预测力”的主观趋势信号。</p>
+<h3>6.2 短周期里最值得测的，不是 generic rank，而是「forward holding-window carry」</h3>
+<p>我认为 first-pass 应该把 entry 改写成：</p>
+<p><code>expected_net_carry(H) = funding_cashflow_over_next_H - open_close_cost - basis_drift_budget - slippage_budget</code></p>
+<p>只在 <code>expected_net_carry(H) &gt; 0</code> 时开仓。</p>
+<p>这比单纯比较 <code>current_funding_diff</code> 更适合 desk，因为：</p>
+<ul>
+<li>HL 每小时结一次；</li>
+<li>BB 每 8 小时结一次；</li>
+<li>同一个“当前 diff”，在 <strong>距离下一个 Bybit funding 还剩 7h50m</strong> 和 <strong>还剩 10m</strong> 时，真实价值差很多。</li>
+</ul>
+<h3>6.3 对 1m/3m/5m/15m 最自然的迁移方式</h3>
+<ul>
+<li><strong>1m / 3m</strong>：更适合做执行与盘口 veto，不适合频繁换币轮动；</li>
+<li><strong>5m</strong>：最适合做 live scanner + expected carry refresh；</li>
+<li><strong>15m</strong>：适合做持有期、成本、净额统计与 boundary bucket 回测。</li>
+</ul>
+<p>换句话说，这条 alpha 的“交易频率”未必高，但它的 <strong>research / scan / execution cadence</strong> 完全可以是 1m~15m。</p>
+<h2>7. 如果把它落成完整策略，应该怎么写</h2>
+<h3>7.1 Entry</h3>
+<p>对每个重叠币、每个方向，计算：</p>
+<ol>
+<li><strong>统一口径 funding edge</strong></li>
+</ol>
+<ul>
+<li><code>gross_edge_day(direction)</code></li>
+</ul>
+<ol>
+<li><strong>未来持有窗口的 funding 现金流</strong></li>
+</ol>
+<ul>
+<li>用下一次 HL / BB funding 时间算未来 <code>H</code> 小时内会发生几次收付</li>
+</ul>
+<ol>
+<li><strong>成本预算</strong></li>
+</ol>
+<ul>
+<li>开仓 + 平仓 fee</li>
+<li>预估滑点</li>
+<li>basis / mark-oracle 偏离预算</li>
+</ul>
+<ol>
+<li><strong>盘口 veto</strong></li>
+</ol>
+<ul>
+<li>若盘口太薄、双边价差过宽、或一边 API 不稳定，则放弃</li>
+</ul>
+<p>first pass 可直接用：</p>
+<ul>
+<li><code>H = 24h / 48h / 72h</code> 三档；</li>
+<li>只有 <code>expected_net_carry(H) &gt; 0</code> 才开；</li>
+<li>同时要求 <code>basis_gap_z</code> 不要太极端，避免赚 funding、亏 basis 回归。</li>
+</ul>
+<h3>7.2 Exit</h3>
+<p>至少三种 exit：</p>
+<ol>
+<li><strong>净 carry 失效</strong>：<code>expected_net_carry(H_remaining) &lt;= 0</code></li>
+<li><strong>basis / premium 失控</strong>：mark-oracle gap 或跨所价差超过风控阈值</li>
+<li><strong>时间止盈 / 止损</strong>：达到计划 funding 窗口数后平仓，不恋战</li>
+</ol>
+<p>不要只写“funding 反转就平”，因为很多时候 <strong>carry 还没反转，但已经不够覆盖 close cost</strong>。</p>
+<h3>7.3 Sizing</h3>
+<p>直接继承 repo 最合理的部分：</p>
+<ul>
+<li>资本基数用 <code>min(HL_balance, BB_balance)</code>；</li>
+<li>单笔不超过可用资本的 <code>25%~50%</code>；</li>
+<li>再叠加一个 <strong>volatility / liquidity scalar</strong>：</li>
+<li>BTC/ETH 可以更高；</li>
+<li>WIF/PEPE/ARB 之类应更低；</li>
+<li>单腿 notional 与单 narrative exposure 设 hard cap。</li>
+</ul>
+<h3>7.4 Risk</h3>
+<p>最关键的四个：</p>
+<ul>
+<li><strong>one-leg fill mismatch</strong>：超过 <code>grace_period</code> 优先去掉裸 exposure；</li>
+<li><strong>linked protective orders</strong>：避免一腿清算；</li>
+<li><strong>venue health</strong>：任一 venue WebSocket / API 异常，不再开新仓；</li>
+<li><strong>clock risk</strong>：不要在临近低流动时段硬开，需要单独记录不同 funding boundary 的 fill quality。</li>
+</ul>
+<h3>7.5 Cost</h3>
+<p>这条线的研究成败几乎全靠成本诚实度：</p>
+<ul>
+<li>fee tier</li>
+<li>maker/taker mix</li>
+<li>开平两次滑点</li>
+<li>资金占用与持仓期间的 basis 漂移</li>
+<li>极端行情时的跨所不同步</li>
+</ul>
+<p>如果成本写得太乐观，这条 alpha 会看起来“几乎一直能做”；真实情况下并不是。</p>
+<h2>8. 对当前 desk，最值得先测的不是“大而全”，而是这 3 个最小实验</h2>
+<h3>实验 A：统一口径 funding scanner（必须先做）</h3>
+<ul>
+<li>数据源：Hyperliquid <code>metaAndAssetCtxs</code> + Bybit <code>v5/market/tickers</code></li>
+<li>频率：每 <code>5m</code></li>
+<li>输出：</li>
+<li><code>gross_edge_day</code></li>
+<li><code>expected_net_carry_24h / 48h / 72h</code></li>
+<li><code>best_direction</code></li>
+<li><code>days_to_recoup_10bps / 20bps</code></li>
+<li>目标：先知道到底哪些币、哪些时段值得看。</li>
+</ul>
+<h3>实验 B：Bybit funding boundary bucket test（这轮最该补）</h3>
+<ul>
+<li>数据源：同上 + 1m mid/mark/basis 快照</li>
+<li>频率：<code>1m</code></li>
+<li>切桶：距离 Bybit funding 结算 <code>[-60m, -30m, -10m, +10m, +30m, +60m]</code></li>
+<li>问题：同样的 normalized carry，<strong>在 Bybit funding 前后开仓</strong> 的 realized PnL / fill quality / close cost 是否不同？</li>
+<li>目标：验证“异步时钟”到底是不是可交易的 admission layer。</li>
+</ul>
+<h3>实验 C：execution honesty replay</h3>
+<ul>
+<li>数据源：1m order book top-of-book / bid-ask spread / trade notional proxy</li>
+<li>频率：<code>1m</code></li>
+<li>问题：用 repo 的 <code>3 tranche + 10bps offset + 60s timeout</code>，实际能不能在 10 个币里诚实成交？</li>
+<li>目标：防止 paper edge 全被成交摩擦吃掉。</li>
+</ul>
+<h2>9. 下一步怎么测</h2>
+<ol>
+<li><strong>先把 <code>expected_net_carry(H)</code> 扫描器落地</strong>：别再只看 static funding diff。至少先跑 <code>H=24/48/72h</code>。</li>
+<li><strong>补一份 1m boundary 数据集</strong>：围绕 Bybit <code>00/08/16 UTC</code> 前后各 60 分钟抓 funding / mark / spread / top-of-book。</li>
+<li><strong>把 repo 风控参数照搬成 first baseline</strong>：<code>3x leverage</code>、<code>25 bps liquidation buffer</code>、<code>3 tranches</code>、<code>60s timeout</code>、<code>30s grace</code>，先别自己发明。</li>
+<li><strong>先做 10 个 repo 支持币，不要一上来全市场</strong>：这条线更像 pocket alpha，不像全市场 always-on rank。</li>
+<li><strong>在回测里强制写 2 套成本</strong>：一套乐观 maker-heavy，一套保守 taker-heavy；没有双成本对照，这个方向很容易自欺。</li>
+</ol>
+<h2>10. 一句话结论</h2>
+<p>这份 Hyperliquid×Bybit repo 真正值得拿走的，不是“funding carry 还能做”这种老话，而是：<strong>把 cross-venue funding carry 明确改写成“异步 funding 时钟下、按未来持有窗口计价的完整 raw alpha”</strong>。当前 live 快照也说明它不是大票息常开策略——更像少数币、少数窗口、需要 execution honesty 的 pocket carry。</p>
+</body>
+</html>

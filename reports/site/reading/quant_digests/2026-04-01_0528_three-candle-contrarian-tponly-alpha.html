@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2021 BTC futures 论文只读成蜡烛图小技巧：对 desk 更该先测的是「三连同色后反手 fade × TP-only exit」这条 1m raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2021 BTC futures 论文只读成蜡烛图小技巧：对 desk 更该先测的是「三连同色后反手 fade × TP-only exit」这条 1m raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-01 05:29 UTC</span>
+      <span class="pill">研究时间：2026-04-01 05:28 UTC</span>
+      <span class="pill">类型：quant_digest</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/mean-reversion/pattern/three-candle/contrarian/tp-only/btc/binance-perpetual/1m/3m/5m/15m/paper/public-data/cost/execution</span>
+      <span class="pill">证据类型：2021 *Applied Economics Letters* 论文摘要/元数据（OpenAlex + Crossref）+ Binance USDⓈ-M Perpetual 公开 `1m` 本地 transfer check + `3m/5m/15m` 聚合降采样 quick check</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-01_0528_three-candle-contrarian-tponly-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-01 05:28 UTC</li>
+<li>类型：quant_digest</li>
+<li>主题标签：raw-alpha/single-asset/mean-reversion/pattern/three-candle/contrarian/tp-only/btc/binance-perpetual/1m/3m/5m/15m/paper/public-data/cost/execution</li>
+<li>证据类型：2021 *Applied Economics Letters* 论文摘要/元数据（OpenAlex + Crossref）+ Binance USDⓈ-M Perpetual 公开 <code>1m</code> 本地 transfer check + <code>3m/5m/15m</code> 聚合降采样 quick check</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当 BTC 在超短周期里连续走出 <code>3</code> 根同色 <code>1m</code> K 线后，后续几分钟更容易发生微观结构级回吐；因此更诚实的做法不是追随，而是<strong>反手 fade，并用 take-profit / time-stop 快速收口</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是 <strong>Min-Yuh Day, Paoyu Huang, Yirung Cheng, Yin-Tzu Lin, Yensen Ni (2021)</strong> 的短文：</p>
+<p>&gt; <strong>Profitable day trading Bitcoin futures following continuous bullish (bearish) candlesticks</strong></p>
+<p>如果只用一句人话概括，这篇东西真正值得 short-cycle desk 拿走的，不是“又一个 K 线形态”，而是：</p>
+<p><strong>在 <code>1m</code> 上，当 BTC 连续出现 3 根同色 bar 时，下一段最值得先测的不是追动量，而是做一个超短持有的 contrarian fade；退出更像 <code>take-profit + 最长持有期</code>，而不是抱着 stop-loss/无限等待。</strong></p>
+<p>更重要的是，我顺手拿 <strong>Binance BTCUSDT perpetual 公共 <code>1m</code> K 线</strong> 做了一个超小 transfer check，发现它对我们 desk 的正确读法非常明确：</p>
+<ol>
+<li><strong>这条线是 1m-native 的 raw alpha</strong>；</li>
+<li><strong>3m/5m 还能勉强当执行层 proxy，但边已经明显变薄</strong>；</li>
+<li><strong>15m 基本不该再装成同一条 alpha。</strong></li>
+</ol>
+<p>这点很符合本轮 intake 偏好：继续补 <strong>可独立复现、可快速最小实验、能直接写进 entry/exit/sizing/risk/cost</strong> 的 raw alpha，而不是再写一个泛化解释层。</p>
+<h2>2. 为什么这次值得进研究池</h2>
+<p>这条线值得收，原因很简单：</p>
+<ol>
+<li><strong>base alpha 很清楚</strong>：三连同色后的超短期回吐；</li>
+<li><strong>复现门槛很低</strong>：只要公开 <code>1m</code> OHLCV 就能先跑；</li>
+<li><strong>和当前素材池互补</strong>：最近 digest 已经补了很多 <code>pairs / options / cross-sectional / order-book directional</code>，这条线补的是 <strong>单币、超短、pattern-triggered mean reversion</strong>；</li>
+<li><strong>可以直接长成完整策略</strong>：entry、TP、time-stop、cooldown、成本壳、cluster veto 都很好写；</li>
+<li><strong>能快速证伪</strong>：如果 maker-ish 成本都过不去，就立刻降级，不会长期占研发带宽。</li>
+</ol>
+<h2>3. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = <code>1m</code> 级别的短时过度延伸会在连续 3 根同色 bar 后更容易发生回吐，因此最小可交易表达是“第三根收盘后反手 fade，吃接下来几分钟的 micro mean reversion”。</strong></p>
+<p>更直白地写成策略语言：</p>
+<ul>
+<li>连续 <code>3</code> 根 <code>1m</code> 阳线 → <strong>下一分钟优先 short fade</strong>；</li>
+<li>连续 <code>3</code> 根 <code>1m</code> 阴线 → <strong>下一分钟优先 long fade</strong>；</li>
+<li>退出不是幻想“大波段反转”，而是吃掉 <strong>接下来 <code>1~15</code> 分钟的一小段回吐</strong>。</li>
+</ul>
+<p>所以它是一个 <strong>raw alpha</strong>，分类属于：</p>
+<ul>
+<li><code>single-asset</code></li>
+<li><code>micro / ultra-short-horizon</code></li>
+<li><code>mean reversion</code></li>
+<li><code>pattern-triggered contrarian</code></li>
+</ul>
+<p>不是 filter，不是 regime，也不是 overlay。</p>
+<h2>4. 核心来源</h2>
+<h3>4.1 主论文</h3>
+<ul>
+<li><strong>Authors</strong>：Min-Yuh Day, Paoyu Huang, Yirung Cheng, Yin-Tzu Lin, Yensen Ni</li>
+<li><strong>Year</strong>：2021（刊于 2022 卷期）</li>
+<li><strong>Title</strong>：*Profitable day trading Bitcoin futures following continuous bullish (bearish) candlesticks*</li>
+<li><strong>Venue</strong>：*Applied Economics Letters*</li>
+<li><strong>DOI</strong>：<code>10.1080/13504851.2021.1899115</code></li>
+<li><strong>Readable URL</strong>：<a href="https://doi.org/10.1080/13504851.2021.1899115">https://doi.org/10.1080/13504851.2021.1899115</a></li>
+<li><strong>OpenAlex Metadata URL</strong>：<a href="https://api.openalex.org/works/https://doi.org/10.1080/13504851.2021.1899115">https://api.openalex.org/works/https://doi.org/10.1080/13504851.2021.1899115</a></li>
+<li><strong>Crossref DOI URL</strong>：<a href="https://api.crossref.org/works/10.1080/13504851.2021.1899115">https://api.crossref.org/works/10.1080/13504851.2021.1899115</a></li>
+</ul>
+<h3>4.2 本次外部公开数据（transfer check）</h3>
+<ol>
+<li><strong>Binance USDⓈ-M Futures Klines API</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></li>
+<li>公开性：公开 REST，无需登录</li>
+<li>更新频率：分钟级</li>
+<li>本次最小实验口径：<code>BTCUSDT perpetual</code>、最近约 <code>65,000</code> 根 <code>1m</code> bars（<code>2026-02-15 10:25 UTC</code> 到 <code>2026-03-31 04:26 UTC</code>）</li>
+</ul>
+<ol>
+<li><strong>本地产物</strong></li>
+</ol>
+<ul>
+<li><code>reports/artifacts/quant_digests/three_candle_reversal_probe_20260401.csv</code></li>
+</ul>
+<h2>5. 证据里最值得拿走的硬点</h2>
+<h3>5.1 论文摘要其实已经把“方向”说出来了：它不是追涨杀跌，而是吃均值回复</h3>
+<p>OpenAlex 抽取得到的摘要核心信息是：</p>
+<ul>
+<li>研究对象：<strong>Bitcoin futures</strong>；</li>
+<li>触发条件：<strong>连续 3 根 bullish / bearish 的 <code>1m</code> candlesticks</strong>；</li>
+<li>退出设计：比较 <code>take-profit</code> 与 <code>stop-loss only</code>；</li>
+<li>作者结论：<strong>take-profit 策略能产生显著正的 average profit per trade</strong>；</li>
+<li>作者解释：连续上涨/下跌后，价格里可能混入了吸引追涨/追跌盘的暂时性拉抬/打压，因此<strong>后续更容易回吐</strong>。</li>
+</ul>
+<p>翻成人话就是：</p>
+<p><strong>这篇论文真正押注的不是“连续 3 根同色之后趋势延续”，而是“连续 3 根同色已经把短时情绪打得有点过头，回吐 pocket 更值得先抓”。</strong></p>
+<h3>5.2 本地 <code>1m</code> transfer check：这条线在 BTC perp 上确实先表现成“下一小段回吐”</h3>
+<p>我用 Binance BTCUSDT perpetual 的公开 <code>1m</code> 数据，做了一个最小事件研究：</p>
+<ul>
+<li>信号：连续 <code>3</code> 根 <code>1m</code> 同色 K</li>
+<li>方向：反手 fade（3 连阳做空，3 连阴做多）</li>
+<li>入场：第三根收盘价近似</li>
+<li>去重：<code>15m</code> cooldown，只保留非重叠事件</li>
+<li>样本数：<strong>3,361</strong> 个非重叠信号</li>
+</ul>
+<p>先看 gross、先不计费：</p>
+<ul>
+<li><strong>持有 1 分钟</strong>：平均 <strong>+4.76 bps</strong>，胜率 <strong>99.64%</strong>；</li>
+<li><strong>持有 3 分钟</strong>：平均 <strong>+3.86 bps</strong>，胜率 <strong>65.66%</strong>；</li>
+<li><strong>持有 5 分钟</strong>：平均 <strong>+3.26 bps</strong>，胜率 <strong>60.19%</strong>；</li>
+<li><strong>持有 10 分钟</strong>：平均 <strong>+2.87 bps</strong>，胜率 <strong>56.99%</strong>；</li>
+<li><strong>持有 15 分钟</strong>：平均 <strong>+2.33 bps</strong>，胜率 <strong>53.81%</strong>。</li>
+</ul>
+<p>最关键的解读不是“胜率很高”，而是：</p>
+<ol>
+<li><strong>edge 的主要厚度就在最前面几分钟</strong>；</li>
+<li>越往后拖，均值回复 pocket 会迅速被磨薄；</li>
+<li>这更像 <strong>micro reversion scalp</strong>，不是可以悠闲拿 <code>30m~2h</code> 的 MR。</li>
+</ol>
+<h3>5.3 但这条线对成本极敏感：4 bps roundtrip 就几乎把 close-to-close edge 吃光</h3>
+<p>同样在上面的非重叠样本里，我粗略做了 roundtrip 成本敏感性：</p>
+<p>#### 固定持有 1 分钟</p>
+<ul>
+<li>gross mean：<strong>+4.76 bps</strong></li>
+<li>扣 <strong>2 bps</strong> 后：<strong>+2.76 bps</strong></li>
+<li>扣 <strong>4 bps</strong> 后：<strong>+0.76 bps</strong></li>
+<li>扣 <strong>6 bps</strong> 后：<strong>-1.24 bps</strong></li>
+</ul>
+<p>#### 固定持有 3 分钟</p>
+<ul>
+<li>gross mean：<strong>+3.86 bps</strong></li>
+<li>扣 <strong>2 bps</strong> 后：<strong>+1.86 bps</strong></li>
+<li>扣 <strong>4 bps</strong> 后：<strong>-0.14 bps</strong></li>
+</ul>
+<p>这说明：</p>
+<p><strong>如果你打算 taker 进、taker 出，把它硬写成无脑市价单，alpha 大概率当场被费用吃掉。</strong></p>
+<p>所以这条线的 honest 版本必须带上：</p>
+<ul>
+<li>maker-ish entry / exit 偏好；</li>
+<li>极短 time-stop；</li>
+<li>只在足够大的三连延伸事件上做；</li>
+<li>不能忽略 spread 与 queue 风险。</li>
+</ul>
+<h3>5.4 <code>TP-only</code> 的表达，比单纯 close-to-close 更像 desk 能落地的版本</h3>
+<p>我又做了一个更接近论文摘要精神的 quick check：</p>
+<ul>
+<li>非重叠样本：同样 <code>3,361</code> 个；</li>
+<li>入场：第三根收盘后反手；</li>
+<li>退出：<code>take-profit</code> 命中则落袋，否则到最长持有期按收盘出；</li>
+</ul>
+<p>结果里比较像 first-pass baseline 的，是这两个组合：</p>
+<p>#### <code>TP = 10 bps, max hold = 10m</code></p>
+<ul>
+<li>TP 命中率：<strong>67.59%</strong></li>
+<li>gross mean：<strong>+3.54 bps</strong></li>
+<li>正收益占比：<strong>76.64%</strong></li>
+</ul>
+<p>#### <code>TP = 10 bps, max hold = 15m</code></p>
+<ul>
+<li>TP 命中率：<strong>74.11%</strong></li>
+<li>gross mean：<strong>+3.68 bps</strong></li>
+<li>正收益占比：<strong>78.66%</strong></li>
+</ul>
+<p>这组数给出的 desk 结论是：</p>
+<p><strong>这条线的更自然形态不是“赌大 reversal”，而是“很快收 7.5~10 bps 的回吐，收不到就滚”。</strong></p>
+<h3>5.5 一旦把 bar 粒度抬高，这条 alpha 会快速衰减，15m 甚至反过来</h3>
+<p>我把同样逻辑粗暴聚合到更慢的 bar 上做了降采样 quick check：</p>
+<p>#### <code>3m</code> 聚合后，连续 3 根同色再反手</p>
+<ul>
+<li>下一个 <code>3m</code>：平均仅 <strong>+0.51 bps</strong>，胜率 <strong>55.05%</strong></li>
+<li>再往后 <code>6m~15m</code>：大致仍只有 <strong>+0.39 ~ +0.73 bps</strong></li>
+</ul>
+<p>#### <code>5m</code> 聚合后</p>
+<ul>
+<li>下一个 <code>5m</code>：平均 <strong>+0.88 bps</strong>，胜率 <strong>54.03%</strong></li>
+<li>后续 <code>10m / 15m</code>：仍然只是 <strong>+0.85 ~ +0.93 bps</strong></li>
+</ul>
+<p>#### <code>15m</code> 聚合后</p>
+<ul>
+<li>下一个 <code>15m</code>：平均 <strong>-0.98 bps</strong></li>
+<li><code>30m / 45m</code>：平均 <strong>-1.64 / -2.55 bps</strong></li>
+</ul>
+<p>所以别把这条线硬升维成 <code>15m</code> 主信号。最诚实的结论是：</p>
+<p><strong>它本质属于 <code>1m</code> 高强度 raw alpha；<code>3m/5m</code> 最多只适合作为执行层压缩表达；<code>15m</code> 已经不是同一件事。</strong></p>
+<h2>6. 对当前 desk 的正确读法</h2>
+<h3>6.1 这是 raw alpha，不是 filter</h3>
+<p>它不是在说“当前更适合做 mean reversion”。</p>
+<p>它直接给的是：</p>
+<ul>
+<li>触发条件：三连同色；</li>
+<li>方向：反手；</li>
+<li>收益来源：随后几分钟的回吐；</li>
+<li>退出方式：TP / time-stop。</li>
+</ul>
+<p>所以它是<strong>独立成立的 raw alpha</strong>，可以单独 backtest，可以单独上 live sim。</p>
+<h3>6.2 但它不该被误解成“对所有周期都通用的 candle pattern”</h3>
+<p>这不是那种能一路抬到 <code>15m</code> 的形态学大法。恰恰相反：</p>
+<ul>
+<li><strong>越接近 <code>1m</code>，越像原生信号</strong>；</li>
+<li><strong>越往 <code>3m/5m</code> 压缩，越像执行近似</strong>；</li>
+<li><strong>到了 <code>15m</code>，edge 已经失真甚至翻负。</strong></li>
+</ul>
+<h3>6.3 它和当前素材池的关系</h3>
+<p>这条线补的不是：</p>
+<ul>
+<li>cross-sectional ranking</li>
+<li>pairs / basis / funding carry</li>
+<li>order-book directional continuation</li>
+</ul>
+<p>而是：</p>
+<p><strong>单币、超短、反手、pattern-driven mean reversion</strong>。</p>
+<p>这正好扩一下我们当前 raw alpha 池的形状，不会只是重复已有的 options / stat-arb 主题。</p>
+<h2>7. 如果把它落成完整策略，应该怎么写</h2>
+<h3>7.1 Entry</h3>
+<p>first pass 可以直接写成：</p>
+<ol>
+<li>标的：<code>BTCUSDT perpetual</code>（先单币）</li>
+<li>周期：<code>1m</code></li>
+<li>触发：最近连续 <code>3</code> 根 bar 同色</li>
+<li>方向：</li>
+</ol>
+<ul>
+<li><code>+++</code> → short</li>
+<li><code>---</code> → long</li>
+</ul>
+<ol>
+<li>admission 增强（建议至少加 1~2 个）</li>
+</ol>
+<ul>
+<li>三根累计实体绝对值 <code>&gt;= x bps</code></li>
+<li>第三根 volume / trade count 高于 rolling 分位</li>
+<li>信号触发时 spread 不高于近 30m 分位阈值</li>
+<li>最近 <code>N</code> 分钟内未出现同方向重复信号（cooldown）</li>
+</ul>
+<h3>7.2 Exit</h3>
+<p>对 desk 最自然的 first-pass 退出，不是“只看 paper 说 stop-loss 冗余就完全不设风险”，而是：</p>
+<ol>
+<li><strong>主退出：TP 7.5~10 bps</strong></li>
+<li><strong>时间退出：10~15 分钟还没 TP 就平</strong></li>
+<li><strong>灾难止损：15~20 bps 或 vol-scaled hard stop</strong></li>
+<li><strong>极端流动性恶化 / funding boundary / news shock 直接撤退</strong></li>
+</ol>
+<p>也就是说：</p>
+<ul>
+<li><strong>alpha exit</strong> 用 <code>TP + time-stop</code></li>
+<li><strong>risk exit</strong> 用 hard stop / kill switch</li>
+</ul>
+<p>别把两件事混在一起。</p>
+<h3>7.3 Sizing</h3>
+<p>这类 1m 信号最怕 cluster risk，所以 sizing 应偏保守：</p>
+<ul>
+<li>单笔固定风险预算；</li>
+<li>连续信号不叠加，只允许“前一笔结束后再来”；</li>
+<li>若 30m 内触发过多，自动 size-down；</li>
+<li>不建议一上来多币扩张，先把 BTC 单币跑稳。</li>
+</ul>
+<h3>7.4 Risk</h3>
+<p>它最容易死在四件事：</p>
+<ol>
+<li><strong>强趋势日里连续 squeeze</strong>；</li>
+<li><strong>高费用 / 低深度时误以为有 edge</strong>；</li>
+<li><strong>信号簇拥，连续反手被碾</strong>；</li>
+<li><strong>宏观事件 / 大额清算 / 撮合异常时还继续机械做。</strong></li>
+</ol>
+<p>所以至少要带：</p>
+<ul>
+<li>cooldown</li>
+<li>cluster cap</li>
+<li>spread veto</li>
+<li>volatility expansion veto</li>
+<li>event kill switch</li>
+</ul>
+<h3>7.5 Cost</h3>
+<p>这条线最大的诚实点，就是：</p>
+<p><strong>raw alpha 有，但很薄。</strong></p>
+<p>因此成本建模必须前置：</p>
+<ul>
+<li>maker / taker 分场景分开跑；</li>
+<li>不仅算手续费，还要算 spread 与 queue miss；</li>
+<li>用 <code>2 / 4 / 6 / 8 bps</code> 四档 roundtrip 做生存线；</li>
+<li>如果只能 taker-heavy，就别自欺。</li>
+</ul>
+<h2>8. 最小可复现实验（建议直接做）</h2>
+<h3>实验 A：1m native baseline</h3>
+<ul>
+<li><strong>数据源</strong>：Binance / Bybit BTC perp 公开 <code>1m</code> K 线</li>
+<li><strong>公开性</strong>：公开可得</li>
+<li><strong>更新频率</strong>：分钟级</li>
+<li><strong>信号</strong>：三连同色反手</li>
+<li><strong>入场</strong>：第三根 close 后的下一分钟第一档可成交价近似</li>
+<li><strong>退出</strong>：<code>TP 7.5 / 10 bps</code> × <code>max hold 5 / 10 / 15m</code></li>
+<li><strong>成本</strong>：<code>2 / 4 / 6 / 8 bps</code> 四档</li>
+<li><strong>目标</strong>：确认哪条成本壳下还能活</li>
+</ul>
+<h3>实验 B：admission 强化</h3>
+<p>在实验 A 上叠加：</p>
+<ul>
+<li>三根累计实体阈值</li>
+<li>volume burst 分位</li>
+<li>当时 spread 分位 veto</li>
+<li>funding boundary veto</li>
+</ul>
+<p>核心问题：</p>
+<p><strong>能不能把“很高但很薄”的原始胜率，筛成“更少但更厚”的 maker-ish 信号？</strong></p>
+<h3>实验 C：多交易所 transfer</h3>
+<ul>
+<li><strong>标的</strong>：Binance / Bybit / OKX BTC perp</li>
+<li><strong>目标</strong>：确认这是不是 Binance 特有微结构现象</li>
+<li><strong>输出</strong>：每所各自的 gross / net edge、cluster risk、最佳 TP/time-stop</li>
+</ul>
+<h3>实验 D：3m/5m 只做执行，不做再定义</h3>
+<ul>
+<li><code>1m</code> 负责产生信号</li>
+<li><code>3m/5m</code> 只负责：</li>
+<li>限价挂单位置</li>
+<li>分批进场</li>
+<li>被动退出时机</li>
+</ul>
+<p>不要把 <code>3m/5m</code> 重新当成“也有同样三连反手 alpha”。这轮 quick check 已经提醒我们，<strong>信号本体是 1m 的，不是 5m 的。</strong></p>
+<h2>9. 为什么它比继续补一个泛化 filter 更值得</h2>
+<p>因为这轮任务优先级里，<strong>可独立复现、可直接落地完整策略的 raw alpha</strong> 明显高于 filter / overlay。</p>
+<p>而这条线满足：</p>
+<ul>
+<li>有明确 trigger；</li>
+<li>有明确方向；</li>
+<li>有明确退出骨架；</li>
+<li>有公开数据；</li>
+<li>有本地最小验证；</li>
+<li>还能快速被成本证伪。</li>
+</ul>
+<p>这比再写一个“也许能改善别的策略”的 shared gate，更符合当前 bot7 的主目标：<strong>持续补充 raw alpha 素材池。</strong></p>
+<h2>10. 下一步怎么测</h2>
+<ol>
+<li><strong>先只做 BTC 单币 <code>1m</code></strong>，不要一开始扩 alt。</li>
+<li><strong>先跑 <code>TP 7.5/10 bps × hold 10/15m</code> 四宫格</strong>，同时分 <code>2/4/6/8 bps</code> 成本壳。</li>
+<li><strong>把 maker-entry / maker-exit 概率单独建模</strong>，不要再用纯 close-to-close 自嗨。</li>
+<li><strong>加 cooldown + cluster veto</strong>，验证 edge 是否只是信号拥挤造成的假厚度。</li>
+<li><strong>做跨交易所 transfer</strong>：Binance 活，不代表 Bybit/OKX 也活。</li>
+<li><strong>若 4 bps 下全面转负，就把它降级成“maker-only scalp sleeve”</strong>，而不是硬塞进通用短周期主策略。</li>
+</ol>
+<h2>11. 一句话结论</h2>
+<p>这篇 2021 BTC futures 论文对当前 desk 最值钱的，不是“连续三根同色 K 线”这个表面形态，而是：<strong>把它诚实地还原成一条只属于 <code>1m</code> 的 contrarian micro-mean-reversion raw alpha——第三根收盘后反手 fade，优先用 <code>TP + time-stop</code> 快速收口，并把成本门槛放在研究最前面。</strong></p>
+<h2>12. 来源链接</h2>
+<ul>
+<li>DOI 页面：<a href="https://doi.org/10.1080/13504851.2021.1899115">https://doi.org/10.1080/13504851.2021.1899115</a></li>
+<li>OpenAlex metadata：<a href="https://api.openalex.org/works/https://doi.org/10.1080/13504851.2021.1899115">https://api.openalex.org/works/https://doi.org/10.1080/13504851.2021.1899115</a></li>
+<li>Crossref metadata：<a href="https://api.crossref.org/works/10.1080/13504851.2021.1899115">https://api.crossref.org/works/10.1080/13504851.2021.1899115</a></li>
+<li>Binance USDⓈ-M Kline API：<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></li>
+<li>本地实验产物：<code>reports/artifacts/quant_digests/three_candle_reversal_probe_20260401.csv</code></li>
+</ul>
+</body>
+</html>

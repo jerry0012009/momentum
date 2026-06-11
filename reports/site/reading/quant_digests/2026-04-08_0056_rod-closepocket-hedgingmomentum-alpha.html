@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2021 JFE 论文只读成美股尾盘现象：对 crypto short-cycle desk，更该先测的是「rest-of-window impulse × close-pocket continuation」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2021 JFE 论文只读成美股尾盘现象：对 crypto short-cycle desk，更该先测的是「rest-of-window impulse × close-pocket continuation」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-08 00:56 UTC</span>
+      <span class="pill">类型：论文（Journal of Financial Economics，全英文全文 PDF）</span>
+      <span class="pill">主题标签：trend / momentum / event-window / session-pocket / close-effect / external-clock / futures / ETF / options</span>
+      <span class="pill">证据类型：论文证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-08_0056_rod-closepocket-hedgingmomentum-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-08 00:56 UTC</li>
+<li>类型：论文（Journal of Financial Economics，全英文全文 PDF）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>rest-of-window return sign × close-pocket continuation</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：trend / momentum / event-window / session-pocket / close-effect / external-clock / futures / ETF / options</li>
+<li>证据类型：论文证据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 Baltussen、Da、Lammers、Martens 2021 年 JFE 论文 *Hedging demand and market intraday momentum*。它不是 crypto 论文，但给了一个非常干净、而且能直接写成规则的短周期 raw alpha：<strong>用“到收盘前一段时间的累计方向”去交易最后一个集中成交窗口的同向延续</strong>，并把这个现象和期权做市商 short-gamma 对冲、杠杆 ETF 尾盘再平衡联系起来。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>论文在 1974–2020 年、60+ 个股指/债券/商品/外汇期货上发现：<strong>收盘前最后 30 分钟收益 <code>r_LH</code>，会被“从上次收盘到最后 30 分钟之前”的收益 <code>r_ROD</code> 正向预测</strong>。</li>
+<li>这不是只在股票上成立；作者给出的 <code>η(r_ROD)</code> timing 策略在各大类资产的年化 Sharpe 大致落在 <strong>0.87–1.73</strong>，其中股指期货约 <strong>6.86% 年化收益 / 1.73 Sharpe</strong>，明显优于被动在尾盘一直做多。</li>
+<li>机制证据不是拍脑袋：当做市商 <strong>negative gamma</strong> 更深时，intraday momentum 更强；杠杆 ETF 的对冲需求越大，相关指数的尾盘延续也越强。</li>
+<li>这个效应<strong>会在后续几天反转</strong>，所以更像“已知再平衡/对冲窗口里的短时顺势”，不是长期趋势本体。</li>
+<li>论文还明确说了落地边界：高换手会被成本侵蚀，但在最液态市场（如 ES 一跳成本口径）仍有正净 Sharpe，说明它更像<strong>高流动性窗口 alpha</strong>，不是泛滥的全天候信号。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇最值钱的，不是“美股尾盘会动”，而是给了我们一个可迁移的 <strong>event-clock momentum shell</strong>：</p>
+<ul>
+<li>先找一个<strong>真实会聚集被动/对冲流</strong>的时钟；</li>
+<li>再用该窗口前面的累计方向，去押最后一个 pocket 的同向续行；</li>
+<li>最后用固定持有/固定时钟退出，而不是把它拖成普通趋势策略。</li>
+</ul>
+<p>对当前 <code>momentum</code> desk，它能直接补 raw alpha 素材池里相对稀缺的 <strong>“时钟驱动 continuation”</strong> 一类，而且比继续做泛 breakout 更像一个完整、可快速 first verdict 的策略壳。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势 / 事件窗 continuation</li>
+<li>基础 alpha：<code>pre-close cumulative return -&gt; close-pocket same-direction continuation</code></li>
+<li>regime：只在<strong>真实外部时钟</strong>附近启用（如 U.S. ETF cash close、Deribit 期权 gamma 敏感窗口、8h funding 边界）</li>
+<li>filter / veto：仅做 <code>|r_pre|</code> 高分位；若成交量、basis/funding、盘口冲击方向不一致则 veto</li>
+<li>risk / sizing / execution overlay：固定持有 1~2 个 bar；单次风险按 intraday vol 缩放；优先 maker/被动挂单，成本 ladder 至少测 <code>4/8/12 bps</code></li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设</strong>：在 crypto 里，若某个外部时钟前存在集中对冲/再平衡流，则该时钟前的累计方向会延续到最后一个 15m pocket，随后再快速衰减。</p>
+<p><strong>最小定义</strong>：</p>
+<ol>
+<li>先只测 <code>BTC / ETH</code> 永续；主周期先上 <code>15m</code>，再下钻 <code>5m</code>。</li>
+<li>先只测一个真实时钟：<strong>U.S. cash close 20:00 UTC</strong>（夏令时口径），把 <code>19:45–20:00</code> 当 close pocket。</li>
+<li>定义 <code>r_pre = return(13:30/13:45 -&gt; 19:45)</code>；若 <code>r_pre &gt; q80</code> 做多 pocket，若 <code>r_pre &lt; q20</code> 做空 pocket。</li>
+<li>出场先测两版：<code>20:00</code> 直接平、或持有到 <code>20:15</code> 看是否有一根 follow-through。</li>
+<li>成本先做 <code>4 / 8 / 12 bps</code> 三档；首看 <strong>post-cost Sharpe</strong> 与 <strong>avg trade / hit-rate</strong>，第二眼看 <code>|r_pre|</code> 分位越高时 alpha 是否更陡。</li>
+</ol>
+<p>如果这个最小实验成立，再扩到：<code>00:00 / 08:00 / 16:00 UTC funding 边界</code>、Deribit 高频 gamma 事件窗、以及 <code>SOL</code> 等高 beta 币。</p>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是<strong>时钟依赖型</strong> alpha，不是任意 UTC 切窗都该有效；随便造一个“伪收盘”大概率会把信号洗掉。</li>
+<li>crypto 是 24/7 市场，若没有 ETF / options / funding / liquidation 这种真实流量锚点，论文机制不能直接照搬。</li>
+<li>该 alpha 天生高换手，<code>5m</code> 口径尤其容易被手续费和冲击吃掉，所以要先把它当<strong>窗口 pocket 策略</strong>，别一上来扩成全天趋势策略。</li>
+<li>若后验发现收益集中在极少数宏观/ETF 事件日，则需要降级为 event-driven alpha，而不是日常稳定信号。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Baltussen, G., Da, Z., Lammers, S., &amp; Martens, M. (2021). *Hedging demand and market intraday momentum*. *Journal of Financial Economics*, 142(1), 377–403.</li>
+<li>DOI：<code>10.1016/j.jfineco.2021.04.029</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.1016/j.jfineco.2021.04.029">https://doi.org/10.1016/j.jfineco.2021.04.029</a></code></li>
+<li>Full-text PDF：<code><a href="https://www3.nd.edu/~zda/intramom.pdf">https://www3.nd.edu/~zda/intramom.pdf</a></code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把“涨速+放量”只写成一句追涨口号：这份 2025 新仓库更该先测的是「动态阈值 leader continuation + 二段式入场」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把“涨速+放量”只写成一句追涨口号：这份 2025 新仓库更该先测的是「动态阈值 leader continuation + 二段式入场」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 17:34 UTC</span>
+      <span class="pill">研究时间：2026-03-25 17:30 UTC</span>
+      <span class="pill">类型：2025 GitHub 新仓库 + TSMOM / intraday momentum literature 地基</span>
+      <span class="pill">主题标签：raw-alpha/trend/momentum/leader-continuation/price-velocity/volume-confirmation/sector-rotation/two-stage-entry/atr/position-sizing/risk/binance/spot/perpetual/1m/3m/5m/15m/repo/paper</span>
+      <span class="pill">证据类型：仓库实现 + 文献地基（工程经验/待验证）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_1730_velocity-volume-leader-continuation.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 17:30 UTC</li>
+<li>类型：2025 GitHub 新仓库 + TSMOM / intraday momentum literature 地基</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：短周期 price-velocity breakout 之后的 leader continuation（强势币在放量但未极端超买时，后续 <code>15m~4h</code> 继续延续）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/trend/momentum/leader-continuation/price-velocity/volume-confirmation/sector-rotation/two-stage-entry/atr/position-sizing/risk/binance/spot/perpetual/1m/3m/5m/15m/repo/paper</li>
+<li>证据类型：仓库实现 + 文献地基（工程经验/待验证）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答一句：<strong>这篇东西的 base alpha 是什么？</strong></p>
+<p>不是“板块轮动 filter”，也不是“ATR 风控壳子”，而是：<strong>短周期强势币在 price-velocity 突破后，若同时伴随放量、且尚未极端过热，后面一小段时间往往还有 continuation 可以吃。</strong></p>
+<p>这次主材料是 <strong>yeshunyi (2025), _crypto-momentum-strategy_</strong>。它不是学术论文型材料，而是一份把 <strong>entry / exit / sizing / risk / execution</strong> 都写进代码的完整工程仓库。对当前 desk 来说，最值钱的不是“又一个追涨 bot”，而是它把 <strong>leader continuation</strong> 这条 raw alpha 写成了一个可立即开最小实验的完整骨架：</p>
+<ul>
+<li>用 <strong>BTC ATR</strong> 决定看 <code>5m / 10m / 15m</code> 哪个涨速窗口；</li>
+<li>用 <strong>涨速阈值 + 量比 + RSI</strong> 选出真正像 leader 的币；</li>
+<li>再用 <strong>二段式入场</strong>、<code>ATR</code> 目标和总风险约束，避免把“看到拉升就梭哈”当策略。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这条线值得进 raw alpha 池，而且它不是“纯解释型 trend 研究”，而是已经接近可直接 desk 化的 <strong>完整 short-horizon leader continuation skeleton</strong>。</li>
+<li><strong>一句话它怎么证明：</strong> 仓库代码把信号、仓位、止损、总风险、板块集中度、黑名单和执行节奏都写出来了；虽然还缺严格 OOS 证据，但已经足够支撑一个 <code>5m/15m</code> admission 级最小复现。</li>
+</ul>
+<p>我从 README、<code>signal_generator.py</code>、<code>market_analyzer.py</code>、<code>risk_manager.py</code> 里抽出来，最有信息量的不是空泛口号，而是下面这些<strong>可直接落成实验参数</strong>：</p>
+<ol>
+<li><strong>动态信号窗口不是固定的。</strong></li>
+</ol>
+<ul>
+<li>若 <code>BTC ATR &gt; 5%</code>：看 <code>5m</code> 涨速，阈值 <code>3%~5%</code></li>
+<li>若 <code>3% &lt;= BTC ATR &lt;= 5%</code>：看 <code>10m</code> 涨速，阈值 <code>2%~3%</code></li>
+<li>若 <code>BTC ATR &lt; 3%</code>：看 <code>15m</code> 涨速，阈值 <code>1.5%~2.5%</code></li>
+<li>亚洲时段额外把阈值再抬 <code>+0.5%</code>；周末则降 <code>-0.3%</code></li>
+</ul>
+<ol>
+<li><strong>它不是只看价格，至少有一层“别追到最热那一下”的约束。</strong></li>
+</ol>
+<ul>
+<li>量比必须 <code>&gt; 1.5</code></li>
+<li><code>RSI &gt; 75</code> 直接过滤</li>
+<li>信号评分里，<code>momentum</code> 最多给 <code>40</code> 分，<code>volume</code> 给 <code>25</code> 分，热门板块给 <code>15</code> 分，<code>RSI</code> 最多给 <code>10</code> 分</li>
+<li>板块分数也不是拍脑袋：<code>0.4*平均涨幅 + 0.3*龙头涨幅 + 0.3*量比增长</code></li>
+</ul>
+<ol>
+<li><strong>风险壳子写得比一般“追涨脚本”完整。</strong></li>
+</ol>
+<ul>
+<li>单笔风险上限 <code>2%</code></li>
+<li>总风险上限 <code>15%</code></li>
+<li>单一板块占比上限 <code>40%</code></li>
+<li><code>BTC ATR &gt; 7%</code> 时暂停新开仓</li>
+<li>黑名单会剔除：<code>7d max drawdown &gt; 25%</code> 或 <code>30d volume &lt; $1,000,000</code></li>
+<li>仓位大小不是固定手数，而是 <code>risk_budget / 2% stop</code>，再按 market state 做 <code>1.2x / 0.7x / 0.5x</code> 调整</li>
+</ul>
+<p>翻成人话：<strong>真正值得先测的不是“某币拉了 3% 就追”，而是“在高/中/低波动状态下，用不同涨速窗口挑 leader，再用 volume / RSI / 板块强度做第二层筛，最后把进场做成试探 + 确认两段”。</strong></p>
+<h2>3. 为什么和当前项目直接相关</h2>
+<ul>
+<li>这次补的是 <strong>raw alpha 素材池</strong>，不是再补一个 overlay。基础 alpha 非常清楚：<strong>leader continuation</strong>。</li>
+<li>它和当前 desk 的时间尺度也对得上：</li>
+<li><code>5m / 15m</code> 是主频；</li>
+<li><code>1m / 3m</code> 更适合作为执行分片，而不是把 alpha 本体继续压碎。</li>
+<li>它还能自然服务两条后续分支：</li>
+</ul>
+<ol>
+<li><strong>单币 continuation</strong>：强币本身继续走；</li>
+<li><strong>cross-sectional winner basket</strong>：把同时满足条件的强势币做 winner basket，相对弱币做对冲或至少做相对评分排序。</li>
+</ol>
+<ul>
+<li>按 backlog 的优先级看，它比继续加一个 shared gate 更值钱，因为它本身就是一条可独立运行的趋势/动量类 raw alpha 骨架。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：短周期单币/多币 continuation，可扩成 cross-sectional winner basket</li>
+<li><code>entry</code>：</li>
+</ul>
+<ol>
+<li>按市场波动状态决定看 <code>5m / 10m / 15m</code> 哪个涨速窗口；</li>
+<li>若 <code>ret_window &gt; threshold</code> 且 <code>volume_ratio &gt; 1.5</code> 且 <code>RSI &lt; 75</code>，生成候选信号；</li>
+<li>第一段入场先上 <code>50%</code>；</li>
+<li>第二段仅在<strong>突破前高且 RSI 仍未过热</strong>时补另外 <code>50%</code>。</li>
+</ol>
+<ul>
+<li><code>exit</code>：</li>
+<li>固定止损：<code>-2%</code></li>
+<li>盈利目标：<code>1.5 * ATR</code>（上限 <code>10%</code>）</li>
+<li>浮盈超过 <code>+3%</code> 后，止损上移到成本价</li>
+<li>README 提示平均持仓时间控制在 <code>4h</code> 以内，可加 time stop</li>
+<li><code>sizing</code>：</li>
+<li>单笔风险预算 <code>2%</code></li>
+<li>总风险 <code>15%</code></li>
+<li>板块集中度上限 <code>40%</code></li>
+<li>依据 signal score 和 market state 调仓，而不是所有信号等权</li>
+<li><code>risk / veto</code>：</li>
+<li><code>BTC ATR &gt; 7%</code> 暂停开新仓</li>
+<li>黑名单：近期大回撤、成交量过小</li>
+<li>熊市只允许高分信号（代码里直接要求 <code>score &gt;= 70</code>）</li>
+<li><code>execution</code>：</li>
+<li>扫描周期 <code>5</code> 分钟</li>
+<li>冰山阈值与最小下单额已配置（<code>min_order_amount=10</code>）</li>
+<li>对 desk 更合理的改写是：信号在 <code>5m/15m</code> 生成，执行下沉到 <code>1m/3m</code> maker-first / TWAP</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>数据源</h3>
+<ol>
+<li><strong>Binance Spot 或 Binance USDⓈ-M Futures Klines</strong>（公开可得）</li>
+</ol>
+<ul>
+<li>spot: <code><a href="https://api.binance.com/api/v3/klines">https://api.binance.com/api/v3/klines</a></code></li>
+<li>futures: <code><a href="https://fapi.binance.com/fapi/v1/klines">https://fapi.binance.com/fapi/v1/klines</a></code></li>
+<li>更新频率：公开接口，支持 <code>1m / 3m / 5m / 15m</code></li>
+</ul>
+<ol>
+<li><strong>GitHub 仓库源码</strong></li>
+</ol>
+<ul>
+<li>Repo：<code><a href="https://github.com/yeshunyi/crypto-momentum-strategy">https://github.com/yeshunyi/crypto-momentum-strategy</a></code></li>
+</ul>
+<h3>最小实验口径</h3>
+<ul>
+<li><code>universe</code>：先做 <code>BTC/ETH/SOL/BNB/XRP/ADA/DOGE/LINK/AVAX/LTC</code>，后续再扩到 top-30 USDT 对</li>
+<li><code>market regime</code>：用 BTC <code>14d ATR%</code> 或 <code>1d</code> realized range 代理仓库里的 market ATR</li>
+<li><code>signal</code>：</li>
+</ul>
+<ol>
+<li>根据 regime 选择 lookback = <code>5m / 10m / 15m</code></li>
+<li>要求 <code>ret_lb &gt; threshold_regime</code></li>
+<li><code>volume_ratio &gt; 1.5</code></li>
+<li><code>RSI &lt; 75</code></li>
+</ol>
+<ul>
+<li><code>entry</code>：</li>
+<li>第一段：下一根开 <code>50%</code></li>
+<li>第二段：若未来 <code>1~3</code> 根内突破 signal-bar high，则补到 <code>100%</code></li>
+<li><code>exit</code>：</li>
+<li><code>-2% SL</code></li>
+<li><code>+1.5 ATR TP</code></li>
+<li><code>+3%</code> 以后移 breakeven</li>
+<li><code>max_hold = 16 根 15m</code> 或 <code>48 根 5m</code></li>
+<li>最先看四个指标：</li>
+</ul>
+<ol>
+<li><code>gross bps / trade</code></li>
+<li><code>net bps / trade</code>（至少先跑 <code>4 / 8 / 12 bps</code> round-trip）</li>
+<li><code>trade frequency / day</code></li>
+<li><code>post-entry 1 bar / 3 bar / 12 bar drift</code></li>
+</ol>
+<h2>5. 下一步怎么测</h2>
+<ol>
+<li><strong>先做最小 honest version，不要把板块和社交数据一次性全塞进去。</strong> 先只保留 <code>dynamic lookback + threshold + volume_ratio + RSI</code> 四件套，确认 base alpha 是否成立。</li>
+<li><strong>把二段式入场单独做 A/B。</strong> 比较“信号即满仓” vs “50% 试探 + 突破前高再补仓”，看它到底是在提高胜率，还是只是在拖慢成交。</li>
+<li><strong>把单币 continuation 和 winner basket 分开测。</strong> 若单币层面太薄，可以改成同一时点只做 top-<code>k</code> leaders，转成 cross-sectional winner basket。</li>
+<li><strong>做 regime 分桶。</strong> 关键不是全样本平均，而是看 <code>BTC ATR &lt;3 / 3~5 / &gt;5</code> 三档里哪一档真正留下 edge。</li>
+<li><strong>执行层下沉。</strong> 信号保留在 <code>5m/15m</code>，但撮合改成 <code>1m/3m maker-first</code>，否则这类 thin edge 很容易全死在 taker cost。</li>
+<li><strong>加“第二天不追同一币”拥挤约束。</strong> 强势 leader continuation 很容易退化成 late-chasing，必须看 repeated-entry decay。</li>
+</ol>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>这份仓库最强的是<strong>骨架完整</strong>，不是<strong>证据极强</strong>；目前还看不到严格 walk-forward / OOS / capacity 审计。</li>
+<li>板块、社交热度、黑名单等模块里有明显工程 shortcut，不能把 repo 自带设定直接当事实。</li>
+<li><code>BTC ATR</code> 作为全市场 regime 代理有点粗糙；若拿去做 multi-asset leader，最好补 cross-sectional realized-vol / funding / breadth。</li>
+<li>这条线最容易犯的错，就是把“leader continuation”做成“任何大涨都追”；实际上它更像<strong>动态阈值下的稀疏 continuation alpha</strong>。</li>
+<li>若 <code>5m</code> 频段成本后不够厚，不代表策略死了；更可能说明正确落点是 <code>15m</code> 信号 + <code>1m/3m</code> 执行，而不是把 alpha 本体继续切碎。</li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>yeshunyi. (2025). _crypto-momentum-strategy_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/yeshunyi/crypto-momentum-strategy">https://github.com/yeshunyi/crypto-momentum-strategy</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/yeshunyi/crypto-momentum-strategy/blob/main/README.md">https://github.com/yeshunyi/crypto-momentum-strategy/blob/main/README.md</a></code></li>
+</ul>
+<ol>
+<li><strong>Moskowitz, T. J., Ooi, Y. H., &amp; Pedersen, L. H. (2012). _Time series momentum_. Journal of Financial Economics, 104(2), 228–250.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1016/j.jfineco.2011.11.003</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.jfineco.2011.11.003">https://doi.org/10.1016/j.jfineco.2011.11.003</a></code></li>
+</ul>
+<ol>
+<li><strong>Gao, L., Han, Y., Li, S. Z., &amp; Zhou, G. (2018). _Market Intraday Momentum_. Journal of Financial Economics, 129(2), 394–414.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1016/j.jfineco.2018.05.009</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.jfineco.2018.05.009">https://doi.org/10.1016/j.jfineco.2018.05.009</a></code></li>
+</ul>
+<ol>
+<li><strong>Li, Z., Sakkas, A., &amp; Urquhart, A. (2022). _Intraday time series momentum: Global evidence and links to market characteristics_. Journal of Financial Markets, 57.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1016/j.finmar.2021.100619</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.finmar.2021.100619">https://doi.org/10.1016/j.finmar.2021.100619</a></code></li>
+</ul>
+<h2>8. 本地产物</h2>
+<ul>
+<li><code>research/quant_digests/2026-03-25_1730_velocity-volume-leader-continuation.md</code></li>
+</ul>
+</body>
+</html>

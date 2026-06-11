@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把第一次回踩就算确认：`retestCount&gt;=2` 更像 breakout-short follow-up 的 admission layer，对 Fib / EMA long 只算减亏、不算翻正</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把第一次回踩就算确认：`retestCount&gt;=2` 更像 breakout-short follow-up 的 admission layer，对 Fib / EMA long 只算减亏、不算翻正</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-19 17:33 UTC</span>
+      <span class="pill">研究时间：2026-03-19 17:34 UTC</span>
+      <span class="pill">类型：GitHub + 本地代理快检</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/retest-count/min-retests/admission/filter/repo/crypto/15m</span>
+      <span class="pill">证据类型：repo 规则（工程证据）+ 公开行情代理快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-19_1734_advancedma-retest-count-admission-layer.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-19 17:34 UTC</li>
+<li>类型：GitHub + 本地代理快检</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/retest-count/min-retests/admission/filter/repo/crypto/15m</li>
+<li>证据类型：repo 规则（工程证据）+ 公开行情代理快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是 <strong>Simone Gitter (2025) 的 <code>AdvancedMA-Toolkit</code></strong>。我没有照搬它整套 <code>14 MA + retest zones + Auto-RR</code> 的指标生态，而是只抽一个更贴近当前 desk 三条收口线的问题：</p>
+<p><strong>repo 明确把“要不要等第二次回踩”写成了参数。</strong></p>
+<p>源码里能直接看到这几项：</p>
+<ul>
+<li><code>Enable Retest System</code></li>
+<li><code>Repeat signals on each retest</code></li>
+<li><code>Retest Zone %</code></li>
+<li><code>Min Retests for Signal</code></li>
+<li><code>Use Patterns Confirmation</code></li>
+</ul>
+<p>其中最值得偷的不是“又一个 MA 工具包”，而是这句非常具体的执行语义：</p>
+<p>&gt; <strong>先把回踩定义成 zone，再决定最少要几次 retest 才允许发信号。</strong></p>
+<p>这正好击中我们现在的模糊点：</p>
+<ul>
+<li>breakout-short follow-up 到底要不要等“第一次上抽没杀死它、第二次再确认”；</li>
+<li>Fib / retest_hold 到底是一碰位就接，还是该把第一次触位看成 probe、第二次才当 admission；</li>
+<li>EMA / PSAR continuation 到底是“方向对就直接上”，还是至少要有一次没被打穿的 retest 记忆。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ol>
+<li><strong>一句话核心结论</strong>：<code>retestCount&gt;=2</code> 值得测，但它<strong>不是三条线共享的万能 gate</strong>；在这轮 15m 代理口径里，它更像 <strong>breakout-short follow-up 的 admission layer</strong>，对 Fib / EMA long 侧只能算“减亏”，还不够格升成通用放行条件。</li>
+<li><strong>一句话证明方式</strong>：我把 repo 的 <code>Min Retests for Signal</code> 思路，映射成一个公开 Binance Futures 15m 代理实验：<code>20-bar breakout -&gt; level zone retest -&gt; 第一次/第二次有效 retest close back across level -&gt; next-bar open -&gt; hold 4 bars -&gt; round-trip 12bps</code>，看第二次回踩是否更诚实。</li>
+<li>公开行情代理快检（BTC/ETH/SOL，近 1500 根 15m K）结果：</li>
+</ol>
+<ul>
+<li><strong>long pooled</strong>：<code>first_touch</code> 的 <code>mean_net_bps_h4 = -26.5bps</code>，到 <code>second_touch</code> 变成 <strong><code>-15.1bps</code></strong>；<code>hold4</code> 仅 <strong>46.4% -&gt; 49.2%</strong>，<code>fail_close4</code> <strong>55.1% -&gt; 49.2%</strong>，样本 <code>69 -&gt; 59</code>。也就是：<strong>少亏一点，但还没翻正。</strong></li>
+<li><strong>short pooled</strong>：<code>first_touch</code> 的 <code>mean_net_bps_h4 = -2.2bps</code>，到 <code>second_touch</code> 变成 <strong><code>+0.3bps</code></strong>；<code>fail_close4</code> <strong>36.6% -&gt; 34.4%</strong>，样本 <code>82 -&gt; 64</code>。也就是：<strong>短侧更像真的被 second-touch 改善了。</strong></li>
+<li><strong>cross-asset mean（更诚实）</strong>：short 侧从 <strong><code>-2.22bps -&gt; +1.67bps</code></strong>；但不是全币一致——BTC short <strong><code>-16.1 -&gt; +3.3bps</code></strong>、ETH short <strong><code>+8.4 -&gt; +8.5bps</code></strong>，SOL short 反而 <strong><code>+1.0 -&gt; -6.8bps</code></strong>。</li>
+</ul>
+<ol>
+<li>这说明它更像在回答：<strong>“第一次回踩要不要先当 probe，而不是立刻当确认？”</strong> 对 short follow-up，答案偏向 <strong>值得等一下</strong>；对 long retest_hold，答案更像 <strong>不能只靠 retest 次数</strong>。</li>
+</ol>
+<h2>3. 为什么它直接服务当前三条收口线</h2>
+<ul>
+<li><strong>V3 final-verdict / breakout-short follow-up（最直接）</strong>：这条最像 short 侧的 post-break path 过滤。第一次上抽没死，不代表就该追；<strong>第二次再回抽、还能收回 level 下方</strong>，更接近“反抽衰减后继续下行”的 follow-up 条件。当前代理结果里，它也是唯一接近从负到正翻过去的一侧。</li>
+<li><strong>Fibonacci confirmation / retest_hold</strong>：这轮给 Fib 的启发不是“第二次触位就一定更好”，而是相反——<strong>如果只多加一个 retest count，long 侧改善有限</strong>。所以 Fib 更像要把 <code>retestCount</code> 放进 <strong>确认分层</strong>，而不是单独 hard gate。</li>
+<li><strong>EMA / PSAR raw alpha focus</strong>：EMA / PSAR 继续负责方向读法；<code>retestCount</code> 更适合放在 <strong>触发后的 admission delay</strong>，尤其是 short / breakdown follow-up。对 long continuation，当前证据不支持把“等第二次回踩”直接升级成 shared rule。</li>
+</ul>
+<p>如果问“为什么这题比继续翻旧派生假设更值”：因为它来自 <strong>fresh repo source</strong>，而且补的是三条线共同缺的一块执行语义——<strong>回踩到底是一次确认，还是两次确认。</strong></p>
+<h2>4. 下一步怎么测（5m / 15m 最小实验）</h2>
+<h3>4.1 数据与公开性</h3>
+<ul>
+<li>数据源：<code>AdvancedMA-Toolkit</code> 仓库规则 + Binance Futures 公共 K 线 API</li>
+<li>公开性：公开可得</li>
+<li>更新频率：5m / 15m（本轮先做 15m 代理）</li>
+<li>本轮产物：</li>
+<li><code>reports/artifacts/quant_digests/advancedma_retest_count_proxy/event_log.csv</code></li>
+<li><code>reports/artifacts/quant_digests/advancedma_retest_count_proxy/asset_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/advancedma_retest_count_proxy/overall_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/advancedma_retest_count_proxy/summary_snapshot.json</code></li>
+</ul>
+<h3>4.2 最小可复现实验口径（建议先做这个）</h3>
+<p>不要把它先升成三线共享 hard gate，先做<strong>方向拆分</strong>：</p>
+<ol>
+<li><strong>breakout-short follow-up</strong></li>
+</ol>
+<ul>
+<li>在当前 <code>V3 final-verdict / follow-up</code> 上新增 <code>min_retests_before_entry ∈ {1,2}</code>；</li>
+<li>统一冻结：<code>signal bar close 后 -&gt; next-bar open -&gt; hold 8 bars -&gt; 6/10/15bps per side</code>；</li>
+<li>只看 3 组：<code>baseline / second-touch only / second-touch + candle-quality(CL V或body-wick)</code>。</li>
+</ul>
+<ol>
+<li><strong>Fib confirmation / retest_hold</strong></li>
+</ol>
+<ul>
+<li>不要单测 <code>second-touch only</code>；</li>
+<li>只测 <code>touch_count</code> 作为 admission score 子项，跟 <code>volume / reclaim / small-body</code> 绑一起；</li>
+<li>对照：<code>reclaim-only / reclaim+volume / reclaim+volume+touch_count&gt;=2</code>。</li>
+</ul>
+<ol>
+<li><strong>EMA / PSAR raw alpha</strong></li>
+</ol>
+<ul>
+<li>long 侧默认不要强制 <code>&gt;=2</code>；</li>
+<li>short 或 breakdown 侧才允许先做 <code>1 vs 2 touches</code> 的 cheap honesty check；</li>
+<li>若 <code>trade_count_retention &lt; 70%</code> 且收益没明显改善，直接降级为 setup-specific overlay。</li>
+</ul>
+<p>先看 5 个指标：</p>
+<ul>
+<li><code>post_cost_expectancy</code></li>
+<li><code>trade_count_retention</code></li>
+<li><code>hold8_rate</code></li>
+<li><code>fail_close_ratio</code></li>
+<li><code>time-pocket stability</code></li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>源 repo 是 <strong>工程实现 + TradingView 指标生态</strong>，不是论文；证据强度来自“规则写得足够清楚、能快速做代理快检”，不是正式跨市场统计检验。</li>
+<li>本轮代理实验用的是 <strong>20-bar breakout level retest</strong>，不是你三条线的原始信号本体；所以当前结论应读成 <strong>执行层启发</strong>，不是最终策略 verdict。</li>
+<li><code>second_touch</code> 本身会天然降样本；如果后续 OOS 发现收益改善主要来自“少交易”，而不是失败率真下降，应把它降级成 <strong>short-side admission delay</strong>，不要硬说成 shared alpha。</li>
+<li>跨资产分化已经出现：SOL short 这轮是反例，说明这条线更像 <strong>state / asset dependent</strong>，不是 universal truth。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Simone Gitter. (2025). _AdvancedMA Toolkit_.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub / TradingView</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/SimoneGitter/AdvancedMA-Toolkit&gt;">https://github.com/SimoneGitter/AdvancedMA-Toolkit&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/SimoneGitter/AdvancedMA-Toolkit&gt;">https://github.com/SimoneGitter/AdvancedMA-Toolkit&gt;</a></li>
+</ul>
+<ol>
+<li><strong>核心源码</strong>：<code>src/AdvancedMA_Toolkit_Private.pine</code></li>
+</ol>
+<ul>
+<li>关键字段：<code>retestEnabled</code>、<code>repeatSignals</code>、<code>retestPct</code>、<code>minRetests</code>、<code>usePatterns</code></li>
+<li>Readable URL: &lt;<a href="https://github.com/SimoneGitter/AdvancedMA-Toolkit/blob/main/src/AdvancedMA_Toolkit_Private.pine&gt;">https://github.com/SimoneGitter/AdvancedMA-Toolkit/blob/main/src/AdvancedMA_Toolkit_Private.pine&gt;</a></li>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/SimoneGitter/AdvancedMA-Toolkit/main/src/AdvancedMA_Toolkit_Private.pine&gt;">https://raw.githubusercontent.com/SimoneGitter/AdvancedMA-Toolkit/main/src/AdvancedMA_Toolkit_Private.pine&gt;</a></li>
+</ul>
+<ol>
+<li><strong>仓库说明</strong>：<code>README.md</code></li>
+</ol>
+<ul>
+<li>关键词：<code>Advanced retest zones</code>、<code>Filter stack</code>、<code>Dual signals</code></li>
+<li>Readable URL: &lt;<a href="https://github.com/SimoneGitter/AdvancedMA-Toolkit/blob/main/README.md&gt;">https://github.com/SimoneGitter/AdvancedMA-Toolkit/blob/main/README.md&gt;</a></li>
+</ul>
+<ol>
+<li><strong>仓库元数据（创建/更新时间）</strong></li>
+</ol>
+<ul>
+<li>URL: &lt;<a href="https://api.github.com/repos/SimoneGitter/AdvancedMA-Toolkit&gt;">https://api.github.com/repos/SimoneGitter/AdvancedMA-Toolkit&gt;</a></li>
+</ul>
+<ol>
+<li><strong>公开行情数据源</strong></li>
+</ol>
+<ul>
+<li>Binance Futures Klines API: &lt;<a href="https://fapi.binance.com/fapi/v1/klines&gt;">https://fapi.binance.com/fapi/v1/klines&gt;</a></li>
+</ul>
+</body>
+</html>

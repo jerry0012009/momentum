@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 GitHub 新仓库继续写成 3m HFT：它更该先测的是「1s 微结构压力 → 3m~15m 方向漂移」raw alpha，但当前 taker 只到 30m 才勉强留边</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 GitHub 新仓库继续写成 3m HFT：它更该先测的是「1s 微结构压力 → 3m~15m 方向漂移」raw alpha，但当前 taker 只到 30m 才勉强留边</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-27 19:24 UTC</span>
+      <span class="pill">研究时间：2026-03-27 19:27 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + README/source/输出文件审阅</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/directional/order-book/lightgbm/purged-walkforward/horizon-sweep/btc/gemini/1s/3m/5m/15m/30m/repo/cost</span>
+      <span class="pill">证据类型：repo 代码证据 + repo 输出文件证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-27_1927_1s-book-horizon-sweep-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-27 19:27 UTC</li>
+<li>类型：2026 GitHub 新仓库 + README/source/输出文件审阅</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>1s</code> 盘口失衡、microprice 偏移、主动/被动流与短时波动状态里，存在可学习的未来方向 edge；repo 把它实现成 <code>BTC</code> 的 long-only timing，但对 desk 更值钱的其实是「同一组微结构特征在 <code>3m/5m/15m</code> 到底能不能扛过成本」这条 raw alpha 母线</li>
+<li>是否可独立复现：是（需要自抓公开订单簿/成交事件流；repo 未附原始输入文件）</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha/microstructure/directional/order-book/lightgbm/purged-walkforward/horizon-sweep/btc/gemini/1s/3m/5m/15m/30m/repo/cost</li>
+<li>证据类型：repo 代码证据 + repo 输出文件证据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>kailiu0712 在 2026-03-15 发布的 GitHub 仓库 _-5-min-level-Directional-Prediction-for-Crypto-HFT_</strong>。</p>
+<p>先直接回答这篇东西的 <strong>base alpha</strong>：</p>
+<p>&gt; <strong>不是“LightGBM 预测方向”这种空话，而是：1 秒级盘口失衡、depth pressure、microprice-vs-mid、主动/被动成交流，能不能对未来几分钟的 BTC mid-price 漂移给出可交易的方向 edge。</strong></p>
+<p>repo 的实现方式很完整：</p>
+<ul>
+<li>从原始 BTC 事件流重建本地订单簿</li>
+<li>聚合成 <code>1s</code> snapshot</li>
+<li>做多类标签：<code>negative / mild / positive</code></li>
+<li>用 <strong>purged 5-fold walk-forward</strong> 训练 LightGBM</li>
+<li>再把 <code>prob_positive - prob_negative</code> 转成信号</li>
+<li>用滚动分位阈值做 <strong>dynamic entry / exit</strong></li>
+<li>最后跑一个 <strong>cost-aware long-only backtest</strong></li>
+</ul>
+<p>所以这不是单纯的“模型 demo”，而是一条可以明确拆解成 <strong>feature → label → model → signal → execution</strong> 的 raw alpha 骨架。</p>
+<p>不过，对当前 desk 真正更值钱的地方，不是照搬 repo 的 long-only 回测，而是回答一个更实际的问题：</p>
+<p>&gt; <strong>同一套 <code>1s</code> 微结构特征，放到 <code>3m / 5m / 15m</code> 的短周期方向 alpha 上，哪里开始有 gross edge，哪里成本后还能活？</strong></p>
+<p>这件事和当前素材池直接相关，因为最近 intake 里有不少 <code>pairs / XS reversal / carry / lead-lag</code>，但<strong>把超短微结构特征明确映射到更慢一点、可落到 short-cycle desk 的持有期</strong>，还值得继续补样本。</p>
+<h2>2. 核心结论</h2>
+<h3>2.1 repo 里真正的信号本体是什么</h3>
+<p><code>feature_engineering.py</code> 里，repo 先从事件流重建订单簿，再抽取 1 秒级微结构特征。最值得记的不是某个模型参数，而是下面这几类特征：</p>
+<ul>
+<li><strong>top-of-book 状态</strong>：<code>best_bid / best_ask / mid / spread / microprice</code></li>
+<li><strong>盘口深度与形状</strong>：<code>bid_depth_1 / ask_depth_1 / bid_depth_5 / ask_depth_5</code>、depth entropy、HHI、slope</li>
+<li><strong>盘口失衡</strong>：<code>imbalance_1 / imbalance_5 / depth_pressure_5</code></li>
+<li><strong>事件流</strong>：trade / place / cancel / fill 的计数与成交量</li>
+<li><strong>主动 + 被动净流</strong>：<code>signed_trade_flow_1s</code>、<code>net_passive_flow_1s</code>、<code>net_order_flow_1s</code></li>
+<li><strong>秒内路径</strong>：open/high/low/close mid、秒内 realized variation、spread variation</li>
+<li><strong>滚动窗口聚合</strong>：不同秒窗上的 volatility、flow、imbalance 均值与 z-score</li>
+</ul>
+<p>也就是说，repo 的 base alpha 不是“黑箱分类器”，而是一个很标准、很 desk 化的命题：</p>
+<p>&gt; <strong>当盘口深度倾斜、microprice 偏移、主动买卖失衡和被动流撤单/补单一起朝一个方向共振时，未来几分钟 mid-price 更容易延续漂移。</strong></p>
+<p>这首先是 <strong>raw alpha</strong>，不是 filter。</p>
+<h3>2.2 这套 repo 怎么把信号变成交易</h3>
+<p>README 和源码给出的主链路比较清楚：</p>
+<ol>
+<li><strong>标签是 cost-aware 的</strong></li>
+<p><code>mild</code> 中性带不是固定死的，而是： <code>max(MILD_RETURN_THRESHOLD, TRANSACTION_FEE_RATE * multiplier)</code></p>
+</ol>
+<ol>
+<li><strong>模型是 purged walk-forward</strong></li>
+<p><code>modeling.py</code> 用 <code>TimeSeriesSplit(n_splits=5)</code>，并且对 train/test、fit/validation 都加了与 <code>prediction_horizon</code> 等长的 purge gap。</p>
+</ol>
+<ol>
+<li><strong>信号不是固定阈值，而是动态分位数</strong></li>
+<p><code>signal = EWM((prob_positive - prob_negative) * (1 - prob_mild))</code></p>
+</ol>
+<p>再用上一段滚动窗口的：</p>
+<ul>
+<li><code>SIGNAL_SCORE_BUY_QUANTILE = 0.9</code></li>
+<li><code>SIGNAL_SCORE_CLOSE_QUANTILE = 0.1</code></li>
+<p>做买入/平仓阈值。</p>
+</ul>
+<ol>
+<li><strong>执行回测是保守的 taker 风格</strong></li>
+<p><code>hft_backtesting.py</code> 明确写的是：</p>
+</ol>
+<ul>
+<li>long-only</li>
+<li>next row 的 <code>best_ask</code> 买入</li>
+<li>next row 的 <code>best_bid</code> 卖出</li>
+<li>entry / exit 都扣手续费</li>
+<li><code>MIN_HOLD_SECONDS = max(60, PREDICTION_HORIZON // 3)</code></li>
+</ul>
+<p>这几个点拼起来以后，repo 真正给 desk 的不是“高命中率”，而是：</p>
+<p>&gt; <strong>一套相对诚实的、避免时间泄漏、并且把成本提前写进标签和执行层的微结构 raw alpha 骨架。</strong></p>
+<h3>2.3 最重要的几个数字</h3>
+<p>repo 当前 <code>config.py</code> 里最关键的参数是：</p>
+<ul>
+<li><code>PREDICTION_HORIZON = 180</code>（约 <code>3m</code>）</li>
+<li><code>TRANSACTION_FEE_RATE = 0.001</code>（单边 <code>10 bps</code>，round-trip 约 <code>20 bps</code>）</li>
+<li><code>SIGNAL_SCORE_WINDOW_MINUTES = 60</code></li>
+<li><code>BUY_QUANTILE = 0.9</code></li>
+<li><code>CLOSE_QUANTILE = 0.1</code></li>
+<li><code>MIN_HOLD_SECONDS = 60</code></li>
+</ul>
+<p>但更值得看的，是 repo 已经提交的 <code>output_minute/overall_metrics_*.csv</code>：</p>
+<p><strong>3m 版本：</strong></p>
+<ul>
+<li>trade count：<strong><code>34</code></strong></li>
+<li>avg holding time：<strong><code>1898.9s</code></strong>（约 <code>31.6m</code>）</li>
+<li>cumulative gross return：<strong><code>+0.253%</code></strong></li>
+<li>cumulative net return：<strong><code>-3.098%</code></strong></li>
+<li>max drawdown：<strong><code>-4.12%</code></strong></li>
+</ul>
+<p><strong>15m 版本：</strong></p>
+<ul>
+<li>trade count：<strong><code>20</code></strong></li>
+<li>avg holding time：<strong><code>3691.4s</code></strong>（约 <code>61.5m</code>）</li>
+<li>cumulative gross return：<strong><code>+1.793%</code></strong></li>
+<li>cumulative net return：<strong><code>-0.223%</code></strong></li>
+<li>max drawdown：<strong><code>-2.17%</code></strong></li>
+</ul>
+<p><strong>30m 版本：</strong></p>
+<ul>
+<li>trade count：<strong><code>18</code></strong></li>
+<li>avg holding time：<strong><code>4193.1s</code></strong>（约 <code>69.9m</code>）</li>
+<li>cumulative gross return：<strong><code>+2.003%</code></strong></li>
+<li>cumulative net return：<strong><code>+0.183%</code></strong></li>
+<li>max drawdown：<strong><code>-2.13%</code></strong></li>
+</ul>
+<p>这组数字最值钱的地方在于它回答了一个很硬的问题：</p>
+<ol>
+<li><strong>gross edge 不是完全没有</strong>，而且 horizon 拉长后更明显；</li>
+<li><strong>单边 10 bps / round-trip 20 bps 的 taker 假设，足够把 3m~15m 基本压平</strong>；</li>
+<li><strong>同样的微结构特征，不一定该交易成“更快更短”的 HFT，反而可能要往更慢的持有期迁移。</strong></li>
+</ol>
+<p>这比“accuracy 高不高”对 desk 更重要。</p>
+<h3>2.4 这份 repo 最值得注意的两个限制</h3>
+<p>#### 限制一：它训练的是方向分类，但执行只做了 long-only 模型本身是三分类：<code>negative / mild / positive</code>。</p>
+<p>也就是说，repo 明明已经在学：</p>
+<ul>
+<li>哪些状态更可能向上</li>
+<li>哪些状态更可能向下</li>
+<li>哪些状态不值得做</li>
+</ul>
+<p>但回测只把它变成了 <strong>long-only timing</strong>，没有对 <code>negative</code> 一侧做对称 short。</p>
+<p>对 desk 来说，这意味着：</p>
+<p>&gt; <strong>repo 现在展示出来的，不是这条 raw alpha 的上限；真正应该测的是 long/short 对称版。</strong></p>
+<p>#### 限制二：artifact 版本和 config 存在不一致 <code>config.py</code> 里：</p>
+<ul>
+<li><code>PREDICTION_HORIZON = 180</code>（约 <code>3m</code>）</li>
+<li>但 <code>VERSION = &quot;_30m_from_1s_ticks_smoothed&quot;</code></li>
+</ul>
+<p>同时 repo 又提交了 <code>3m / 10m / 15m / 30m</code> 多套输出文件。</p>
+<p>这说明：</p>
+<ul>
+<li>repo 里<strong>研究思路是真的</strong>；</li>
+<li>但<strong>版本管理并不干净</strong>，不能把它直接当严格可审计 benchmark。</li>
+</ul>
+<p>再加上原始输入文件 <code>gemini_24h_analysis.csv</code> 并未随 repo 一起发布，所以它是一个 <strong>高信号 research scaffold</strong>，但还不是 clean replication artifact。</p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>如果问：<strong>为什么这篇比再补一个泛 filter 更值得？</strong></p>
+<p>答案是：因为它补的还是 raw alpha，而且补的是当前素材池里很需要的一条细分支——<strong>单资产、微结构、可往 <code>1m/3m/5m/15m</code> 迁移的方向型 alpha 骨架</strong>。</p>
+<p>具体说有三点：</p>
+<ol>
+<li><strong>它不是只给解释层。</strong></li>
+<p>base alpha 很清楚，就是盘口压力和订单流能不能预测几分钟后 drift。</p>
+</ol>
+<ol>
+<li><strong>它回答了“horizon 选哪里”这个 desk 真问题。</strong></li>
+<p>不是所有 1 秒级特征都该拿去做 1~3 分钟；这份 repo 给出的更像是一个 <strong>horizon sweep 实验框架</strong>。</p>
+</ol>
+<ol>
+<li><strong>它比纯论文更快进入最小实验。</strong></li>
+<p>特征表、purged CV、动态阈值、回测骨架都已经有了；对当前项目来说，直接把数据源替成 Binance/Bybit 公共 feed 就能开始 first verdict。</p>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：单资产、方向型、事件驱动，repo 当前实现为 long-only；desk 更应改成 long/short 对称版</li>
+<li>基础 alpha：盘口失衡、microprice 偏移与净订单流的共振，会在未来 <code>3m~30m</code> 里留下可学习的 mid-price drift</li>
+<li>entry：<code>signal_score &gt; rolling 0.9 quantile</code> 时，在下一条 quote 的 <code>best_ask</code> 进场；desk 版建议改成 <code>p(pos)-p(neg)</code> 的双侧 threshold</li>
+<li>exit：<code>signal_score &lt; rolling 0.1 quantile</code> 时，在下一条 quote 的 <code>best_bid</code> 平仓；另有最小持有时间约束</li>
+<li>sizing：repo 是接近满仓的全有全无 long-only；desk 版应改成 <code>|p(pos)-p(neg)|</code> 分层，或 inverse-vol / edge-proportional sizing</li>
+<li>risk：单品种 BTC、单 venue、quote latency、spread 突刺、事件流缺口、版本管理不干净、原始数据缺失</li>
+<li>cost：repo 假设 <strong>单边 <code>10 bps</code></strong>，这几乎决定了 3m/10m/15m 版的生死；必须重新跑 maker/taker 梯度</li>
+<li>更适合的 regime：高流动性主币、深盘口、低显性成本窗口；重大新闻/盘口失真时需要单独隔离</li>
+<li>主要 veto：spread 抬升、盘口不连续、数据采样中断、极端事件时 next-quote 假设失真</li>
+</ul>
+<h2>4. 这份 repo 里哪些组件最值得偷</h2>
+<h3>4.1 最值得先偷的不是模型，而是“诚实的研究框架”</h3>
+<p>对 desk 来说，最值得复用的有四件：</p>
+<ol>
+<li><strong>cost-aware label</strong>：先把小于成本的 move 归到 <code>mild</code></li>
+<li><strong>purged walk-forward</strong>：避免 horizon overlap 泄漏</li>
+<li><strong>动态滚动分位阈值</strong>：不用死阈值硬切</li>
+<li><strong>把分类概率转成 signal score</strong>：而不是直接 argmax 硬开平仓</li>
+</ol>
+<h3>4.2 第二值得偷的是 feature family，而不是具体 feature importance 排名</h3>
+<p>即便不照搬 repo 全部列名，也至少应该保留这三族：</p>
+<ul>
+<li><strong>盘口失衡族</strong>：<code>imbalance_1 / imbalance_5 / depth pressure / microprice-mid</code></li>
+<li><strong>流族</strong>：<code>signed trade flow / passive flow / net order flow</code></li>
+<li><strong>波动-状态族</strong>：秒内 realized variation、spread variation、quote update intensity</li>
+</ul>
+<p>这是最容易快速转译到 Binance/Bybit 公共 feed 的部分。</p>
+<h2>5. 可复刻的最小实验</h2>
+<h3>最小实验 A：先做 Binance <code>BTCUSDT perp</code> 的对称 long/short 版本</h3>
+<ol>
+<li><strong>数据源：</strong> Binance Futures 公共 <code>bookTicker + aggTrades</code>，聚合成 <code>1s</code></li>
+<li><strong>目标：</strong> 先做 <code>180s / 300s / 900s</code> 三档（约 <code>3m / 5m / 15m</code>）</li>
+<li><strong>特征：</strong> 只保留最核心的三族：盘口失衡、净订单流、秒内波动状态</li>
+<li><strong>标签：</strong> <code>negative / mild / positive</code>，中性带至少覆盖预计 round-trip cost</li>
+<li><strong>模型：</strong> 继续用 purged 5-fold walk-forward</li>
+<li><strong>交易：</strong> 不做 long-only，改成：</li>
+</ol>
+<ul>
+<li><code>edge &gt; q90</code> 做多</li>
+<li><code>edge &lt; q10</code> 做空</li>
+<li>中间空仓</li>
+</ul>
+<ol>
+<li><strong>成本：</strong> 至少跑 <code>2 / 4 / 8 / 12 / 20 bps round-trip</code> 五档</li>
+</ol>
+<h3>最小实验 B：把“更快”与“更慢”做成同一张生存表</h3>
+<p>不要一上来执着 <code>3m</code>。直接做一张 grid：</p>
+<ul>
+<li>horizon：<code>60s / 180s / 300s / 900s</code></li>
+<li>hold：<code>30s / 60s / signal-exit / 1x horizon / 2x horizon</code></li>
+<li>execution：<code>taker / maker-lite / maker-first</code></li>
+</ul>
+<p>输出只看三件事：</p>
+<ul>
+<li>gross 是否单调改善</li>
+<li>net 在哪一档第一次转正</li>
+<li>avg holding time 是否明显长于预测 horizon</li>
+</ul>
+<p>如果像 repo 一样出现 <strong>“预测 horizon 很短，但实际持有很长”</strong>，就说明这更像一条 <strong>slower drift timing</strong>，不是 ultra-fast alpha。</p>
+<h3>最小实验 C：验证 short 侧到底是不是被 repo 白白浪费了</h3>
+<p>repo 现在最大的未测空白，就是它明明学了 <code>negative</code>，却没交易 short。</p>
+<p>下一步必须单独回答：</p>
+<ol>
+<li><code>negative</code> 侧 precision / recall 是否比 <code>positive</code> 更稳定？</li>
+<li>short 侧在 perp 上是否比 long 侧更容易覆盖成本？</li>
+<li>long+short 合并后，trade count / exposure / drawdown 会不会比 long-only 更诚实？</li>
+</ol>
+<h2>6. 风险与边界</h2>
+<ul>
+<li><strong>原始数据未附 repo</strong>：可复现，但不是开箱即跑。</li>
+<li><strong>版本管理不干净</strong>：<code>PREDICTION_HORIZON</code> 与 <code>VERSION</code> 不一致，说明 artifact 需要二次审计。</li>
+<li><strong>回测执行很简化</strong>：next-quote bid/ask 不是 queue-aware simulator。</li>
+<li><strong>当前展示是 long-only</strong>：不能把它当这条 alpha 的最终 verdict。</li>
+<li><strong>单边 10 bps 假设很重</strong>：更像在测“这条 alpha 能不能扛 taker 税”，不是最优 execution 上限。</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<ol>
+<li><strong>先把 repo 框架平移到 Binance/Bybit 公共数据</strong>，不要先纠结 Gemini。</li>
+<li><strong>优先补 long/short 对称版</strong>，这是当前 repo 最大漏项。</li>
+<li><strong>先做 horizon/cost/hold 三维表</strong>，别把 1 秒特征天然理解成 1~3 分钟就该最强。</li>
+<li><strong>若 <code>15m</code> 仍 gross 正、net 近平，先试 maker-first 和 edge buffer；若 <code>3m</code> gross 都弱，就不要继续在 execution 上硬救。</strong></li>
+</ol>
+<h2>8. 来源</h2>
+<ul>
+<li>Repo author: <code>kailiu0712</code></li>
+<li>Repo title: *-5-min-level-Directional-Prediction-for-Crypto-HFT*</li>
+<li>Repo created: <code>2026-03-15</code></li>
+<li>Repo URL: <a href="https://github.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT">https://github.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT</a></li>
+<li>README raw URL: <a href="https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/README.md">https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/README.md</a></li>
+<li>Config raw URL: <a href="https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/config.py">https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/config.py</a></li>
+<li>Core code URLs:</li>
+<li><a href="https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/feature_engineering.py">https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/feature_engineering.py</a></li>
+<li><a href="https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/modeling.py">https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/modeling.py</a></li>
+<li><a href="https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/hft_backtesting.py">https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/hft_backtesting.py</a></li>
+<li>Output metrics URLs:</li>
+<li><a href="https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/output_minute/overall_metrics_3m_from_1s_ticks_smoothed.csv">https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/output_minute/overall_metrics_3m_from_1s_ticks_smoothed.csv</a></li>
+<li><a href="https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/output_minute/overall_metrics_15m_from_1s_ticks_smoothed.csv">https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/output_minute/overall_metrics_15m_from_1s_ticks_smoothed.csv</a></li>
+<li><a href="https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/output_minute/overall_metrics_30m_from_1s_ticks_smoothed.csv">https://raw.githubusercontent.com/kailiu0712/-5-min-level-Directional-Prediction-for-Crypto-HFT/main/output_minute/overall_metrics_30m_from_1s_ticks_smoothed.csv</a></li>
+</ul>
+</body>
+</html>

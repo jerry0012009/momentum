@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 perp crowding 只当 veto：`basis neutral + OI flush + ATR compression`，更像三条收口线共用的 post-squeeze reset / re-arm gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 perp crowding 只当 veto：`basis neutral + OI flush + ATR compression`，更像三条收口线共用的 post-squeeze reset / re-arm gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-18 18:46 UTC</span>
+      <span class="pill">研究时间：2026-03-18 18:45 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/perp-stress/reset-complete/basis/open-interest/liquidation-wick/regime/filter/repo/crypto/15m</span>
+      <span class="pill">证据类型：工程经验 / 待验证</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-18_1845_perp-stress-reset-complete-rearm-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-18 18:45 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/perp-stress/reset-complete/basis/open-interest/liquidation-wick/regime/filter/repo/crypto/15m</li>
+<li>证据类型：工程经验 / 待验证</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了 <code>damianpitt/capital41-indicators</code>（Damian Pitt / Capital41, 2026）里的 <code>Capital41_Crypto_Perp_Stress</code>。它表面在讲 perp 拥挤、OI impulse 和 liquidation wick，但对我们 desk 更值钱的旁支不是“哪里要挤爆了”，而是脚本里那句 <strong><code>resetComplete = basisNeutral + oiFlush + volCompression</code></strong>：挤仓之后，什么时候才算市场把旧仓位吐干净、可以重新让 15m 信号上桌。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>一句话核心结论：<strong>挤仓之后别急着重开，先等 perp crowding 退潮，再让 breakout-short / Fib / EMA-PSAR 重新 armed。</strong></li>
+<li>这个 repo 最值得偷的不是 <code>longSqueezeRisk / shortSqueezeRisk</code> 标签本身，而是它把“风险释放完没有”写成了三个便宜条件：<code>|basis| 回到中性</code>、<code>OI 出现 flush</code>、<code>ATR 回到压缩</code>。</li>
+<li>这比继续给三条线各补一个新 entry gate 更值钱，因为最近 desk 更缺的是 <strong>post-event 什么时候恢复信号可信度</strong>，不是再发明一个“看到形状就冲”的理由。</li>
+<li>对 <code>V3 breakout-short follow-up</code>：跌破后最容易死在 cascade 尾端加空；<code>resetComplete</code> 更像“别在 crowd unwind 还没结束时追第二脚”。</li>
+<li>对 <code>Fibonacci confirmation / retest_hold</code>：回踩能不能算 hold，不只看价格碰没碰线，也要看挤仓后的 perp 条件有没有回到正常。</li>
+<li>对 <code>EMA / PSAR raw alpha focus</code>：它不像新 alpha，更像 shared allow-back filter；先让原始趋势信号避开 perp stress 尾段的脏区间。</li>
+<li>它是怎么证明这点的：<strong>不是论文统计，而是可读 Pine 脚本把状态机直接写出来</strong>；证据强度一般，但规则很容易快速复现。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>如果这轮主题和三条收口线没关系，它就不该被 bot7 认领；但这条其实很贴。</p>
+<p>当前三条线都在收“确认 / continuation / 失效”口，而 perp 挤仓尾段恰好是最容易把这些信号一起污染的时段：</p>
+<ul>
+<li>breakout-short 会被 squeeze 反抽打脸；</li>
+<li>Fib retest 会在流动性清算后的假稳住里误判 <code>hold</code>；</li>
+<li>EMA / PSAR 会在高拥挤 + 高波动尾段被来回 whipsaw。</li>
+</ul>
+<p>所以它更像一个 <strong>shared re-arm gate</strong>：不是决定第一下怎么进，而是决定 <strong>事件冲击后什么时候恢复正常交易权限</strong>。</p>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设</strong>：在 15m crypto 里，若前面 <code>N=12</code> 根内出现过 perp stress 事件，则只有在 <code>resetComplete</code> 出现后，三条收口线的后续 continuation / retest 质量才会恢复；否则继续交易容易落在 stress aftershock 里。</p>
+<p><strong>公开数据源 / 更新频率 / 最小可复现实验口径</strong>：</p>
+<ol>
+<li><code>spot close</code>：Binance Spot <code>BTCUSDT/ETHUSDT/SOLUSDT</code> 15m klines（公开可得，15m）；</li>
+<li><code>perp close</code>：Binance USDⓈ-M Futures 同标的 15m klines（公开可得，15m）；</li>
+<li><code>open interest</code>：Binance Futures <code>openInterestHist</code> 15m（公开可得，15m）；</li>
+<li><code>liquidation wick proxy</code>：直接用本地 OHLCV 构造，不依赖私有 liquidation feed。</li>
+</ol>
+<p><strong>一个可计算定义</strong>：</p>
+<ul>
+<li><code>basisPct = (perpClose - spotClose) / spotClose * 100</code>；</li>
+<li><code>oiChgPct = EMA(ΔOI%, 3)</code>；</li>
+<li><code>stress_event</code>：<code>|basisPct| &gt;= 0.25%</code> 且 <code>oiChgPct &gt;= 1.0%</code>，同时出现 <code>wick &gt; 0.8*ATR14</code>、<code>volume &gt; 1.2*SMA50(volume)</code> 的清算型长/下影；</li>
+<li><code>resetComplete</code>：<code>|basisPct| &lt;= 0.10%</code> 且 <code>oiChgPct &lt;= -1.2%</code> 且 <code>ATR14 &lt; 0.9*SMA20(ATR14)</code>；</li>
+<li>首轮只测一个 gate：若过去 12 根出现 <code>stress_event</code>，则现有 <code>breakout_short / fib_retest_hold / ema_continuation</code> 信号必须等 <code>resetComplete</code> 后才允许触发。</li>
+</ul>
+<p><strong>最小回测切口</strong>：</p>
+<ul>
+<li>标的：BTCUSDT、ETHUSDT、SOLUSDT perpetual</li>
+<li>周期：15m</li>
+<li>样本：近 180d</li>
+<li>交易口径：<code>next-bar open</code>、<code>no-overlap</code>、成本 <code>6 / 10 / 15 bps per side</code></li>
+</ul>
+<p><strong>最先看 3 个指标</strong>：</p>
+<ul>
+<li><code>after-stress false continuation rate</code></li>
+<li><code>12-bar target-hit rate</code></li>
+<li><code>trade-count retention</code></li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是一个很新的小 repo，目标时间框架原本偏 <code>30m / 4h</code>，直接外推到 15m 只能算 source intake。</li>
+<li><code>OI</code> 不同交易所口径不完全一样；首轮最好先只做单交易所 clean replication，别急着跨所拼接。</li>
+<li><code>liquidation wick</code> 这里只是 K 线代理，不是真实逐笔清算数据；它更像 cheap proxy，不是精确事件流。</li>
+<li><code>resetComplete</code> 太严格时，可能只是把坏交易过滤掉，也把最好的 V-shaped 二次机会一起过滤掉；所以必须同步看 <code>trade-count retention</code>，不能只看胜率。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Damian Pitt / Capital41 (2026)</strong>, *capital41-indicators*, GitHub repository, DOI: N/A</li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/damianpitt/capital41-indicators">https://github.com/damianpitt/capital41-indicators</a></li>
+<li>Readable URL: <a href="https://github.com/damianpitt/capital41-indicators">https://github.com/damianpitt/capital41-indicators</a></li>
+<li>README: <a href="https://raw.githubusercontent.com/damianpitt/capital41-indicators/main/README.md">https://raw.githubusercontent.com/damianpitt/capital41-indicators/main/README.md</a></li>
+<li>Repo API: <a href="https://api.github.com/repos/damianpitt/capital41-indicators">https://api.github.com/repos/damianpitt/capital41-indicators</a></li>
+<li>Metadata snapshot: created <code>2026-01-16</code>, updated <code>2026-03-14</code>, <code>2</code> stars at fetch time.</li>
+</ul>
+<ol>
+<li><strong>Damian Pitt / Capital41 (2026)</strong>, *Capital41_Crypto_Perp_Stress.pine*, GitHub / Pine Script source, DOI: N/A</li>
+</ol>
+<ul>
+<li>Code URL: <a href="https://raw.githubusercontent.com/damianpitt/capital41-indicators/main/Capital41_Crypto_Perp_Stress/Capital41_Crypto_Perp_Stress.pine">https://raw.githubusercontent.com/damianpitt/capital41-indicators/main/Capital41_Crypto_Perp_Stress/Capital41_Crypto_Perp_Stress.pine</a></li>
+</ul>
+<ol>
+<li><strong>Public market data for minimal replication</strong></li>
+</ol>
+<ul>
+<li>Binance Spot API: <a href="https://api.binance.com/api/v3/klines">https://api.binance.com/api/v3/klines</a></li>
+<li>Binance USDⓈ-M Futures Klines: <a href="https://fapi.binance.com/fapi/v1/klines">https://fapi.binance.com/fapi/v1/klines</a></li>
+<li>Binance Futures Open Interest Hist: <a href="https://fapi.binance.com/futures/data/openInterestHist">https://fapi.binance.com/futures/data/openInterestHist</a></li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<p>先别把它写成“perp stress alpha”。第一步只做一个 very small ablation：<strong>在现有三条收口线样本上，比较 <code>无 gate</code> vs <code>过去 12 根有 stress_event 就暂停，直到 resetComplete 才恢复</code></strong>。如果它只能砍交易数、却不能明显降低 <code>after-stress false continuation rate</code>，这条线就不该继续占用收口资源。</p>
+</body>
+</html>

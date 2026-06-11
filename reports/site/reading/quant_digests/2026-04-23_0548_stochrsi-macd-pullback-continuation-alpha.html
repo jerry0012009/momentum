@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个 2026 高星 Binance Futures bot 只读成“又一组指标拼接”：对 short-cycle crypto desk，更该先拆的是「StochRSI 极值回摆 × RSI 方向约束 × MACD 相位翻转」这条 pullback-continuation raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个 2026 高星 Binance Futures bot 只读成“又一组指标拼接”：对 short-cycle crypto desk，更该先拆的是「StochRSI 极值回摆 × RSI 方向约束 × MACD 相位翻转」这条 pullback-continuation raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-23 06:04 UTC</span>
+      <span class="pill">研究时间：2026-04-23 05:48 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `TradingStrats.py` + `LiveTradingConfig.py`）+ Binance USDⓈ-M public-data portability probe（8 liquid majors，`15m/5m`，近约 `1200` bars）</span>
+      <span class="pill">主题标签：raw-alpha / single-asset / trend-pullback / continuation / stochrsi / macd / rsi / oscillator-confluence / 15m / 5m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：repo source 证据 + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-23_0548_stochrsi-macd-pullback-continuation-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-23 05:48 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>TradingStrats.py</code> + <code>LiveTradingConfig.py</code>）+ Binance USDⓈ-M public-data portability probe（8 liquid majors，<code>15m/5m</code>，近约 <code>1200</code> bars）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>不是看到超卖/超买就反手，而是只在“更大方向仍站在你这边”时，接极值后的相位翻转：上行里接 oversold 回摆做 continuation，下行里接 overbought 回摆做 continuation。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / single-asset / trend-pullback / continuation / stochrsi / macd / rsi / oscillator-confluence / 15m / 5m / repo / public-data / cost / risk</li>
+<li>证据类型：repo source 证据 + public-data portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的不是论文，而是一个 <strong>2026 新仓库</strong>：<code>thomasdutraa07/Trading-Bot-for-Binance-Future</code>。它表面上是一个 Binance Futures 多策略 bot，但如果只把它当“11 个策略菜单”，信息密度其实被浪费了。</p>
+<p>这轮我挑出来的不是仓库默认主推的 <code>tripleEMAStochasticRSIATR</code>，而是一个对我们 desk 更像 <strong>可独立最小实验</strong> 的旁支策略：<code>StochRSIMACD</code>。</p>
+<p>先把 base alpha 说清楚：<strong>它不是裸 reversal，也不是裸 trend-following；它要抓的是“趋势中的极值回摆结束点”。</strong></p>
+<ul>
+<li>多头：StochRSI 先进入极低区，随后出现向上 cross；但只有当 <strong>RSI 仍在 50 上方</strong>，且 <strong>MACD 刚翻到 signal 上方</strong> 时才准入。</li>
+<li>空头：StochRSI 先进入极高区，随后出现向下 cross；但只有当 <strong>RSI 仍在 50 下方</strong>，且 <strong>MACD 刚翻到 signal 下方</strong> 时才准入。</li>
+</ul>
+<p>这其实是一个很 desk-friendly 的思路：<strong>把 oscillator 极值当“pullback 已接近结束”的候选，但用 RSI 与 MACD 把它限制在顺大方向的一侧。</strong></p>
+<h2>2. 源码里真正值得保留的东西</h2>
+<p>仓库里 <code>TradingStrats.py::StochRSIMACD()</code> 的逻辑很直接，适合快速移植：</p>
+<ol>
+<li>先检查过去 0~3 根里是否出现过 <strong>StochRSI 极值</strong>（多头 <code>&lt;20</code>，空头 <code>&gt;80</code>）；</li>
+<li>当前根要求 <strong>MACD 与 signal 刚发生方向翻转</strong>；</li>
+<li>同时要求 <strong>RSI 站在 50 的趋势同向一侧</strong>；</li>
+<li>还会避免 oscillator 已经跑到另一端，例如多头时当前 <code>fastd/fastk</code> 不能已经冲到 <code>&gt;80</code>。</li>
+</ol>
+<p>这几个约束叠在一起后，策略表达出来的不是“超卖就买”，而是：</p>
+<ul>
+<li><strong>上行趋势里的短时过冲回撤结束</strong> → 再顺趋势接回去；</li>
+<li><strong>下行趋势里的短时过冲反弹结束</strong> → 再顺趋势接回去。</li>
+</ul>
+<p>所以它更接近 <strong>trend pullback continuation</strong>，而不是均值回复主壳。</p>
+<h2>3. 为什么它值得进当前素材池</h2>
+<p>它有 3 个实际优点：</p>
+<h3>3.1 base alpha 很清楚</h3>
+<p>这条东西的 base alpha 可以一句话说完： <strong>“趋势没坏，只是局部过冲；等 oscillator 从极值回摆、MACD 相位确认，再顺趋势接续。”</strong></p>
+<p>这比很多“指标拼接策略”更重要——因为能一句话说清 base alpha，才配当 raw alpha 候选。</p>
+<h3>3.2 适合 <code>15m</code> 生成信号、<code>5m</code> 做 child execution</h3>
+<p>它天生不是超高频 LOB alpha，更像 <code>15m</code> parent decision：</p>
+<ul>
+<li><code>15m</code> 用来等 pullback 完成；</li>
+<li><code>5m</code> 用来控制追价、分批、maker-first / taker fallback。</li>
+</ul>
+<p>这跟我们当前 desk 的结构很贴：<strong>不要强迫 <code>5m</code> 直接承担全部预测任务。</strong></p>
+<h3>3.3 仓库本身就带了完整策略壳</h3>
+<p><code>LiveTradingConfig.py</code> 已经给出：</p>
+<ul>
+<li>leverage</li>
+<li>order size</li>
+<li>max positions</li>
+<li>timeframe</li>
+<li>trailing stop</li>
+<li>多种 TP/SL 模式（<code>%</code> / <code>ATR</code> / <code>Swing</code>）</li>
+</ul>
+<p>所以它不是“只有 entry 没有壳”的半成品。即便 alpha 本身还要再校准，<strong>策略落地接口已经足够完整</strong>。</p>
+<h2>4. 最小 portability probe：这条 alpha 在 Binance <code>15m/5m</code> 上有没有留下边</h2>
+<p>我用 Binance USDⓈ-M 公共 K 线，对 <code>BTC/ETH/BNB/SOL/XRP/DOGE/ADA/LINK</code> 做了一个轻量 probe。</p>
+<p>口径：</p>
+<ul>
+<li>只复刻 <code>StochRSIMACD</code> 的 <strong>入场判定</strong>；</li>
+<li>出场先不复刻仓库里复杂 bracket，而是用 <strong>固定 hold bars</strong> 看信号本身有没有方向性；</li>
+<li>检查 <code>5m</code> 与 <code>15m</code>，并对 <code>hold=2/4/6 bars</code> 做对照。</li>
+</ul>
+<h3>关键结果</h3>
+<p><strong>1）<code>15m</code> 明显比 <code>5m</code> 更像主信号时间框架。</strong></p>
+<ul>
+<li><code>15m, hold=2</code>：平均约 <strong><code>+7.55 bps/笔</code></strong>，胜率 <strong><code>55.0%</code></strong></li>
+<li><code>15m, hold=4</code>：平均约 <strong><code>+7.67 bps/笔</code></strong>，胜率 <strong><code>53.5%</code></strong></li>
+<li><code>15m, hold=6</code>：平均约 <strong><code>+3.38 bps/笔</code></strong>，胜率 <strong><code>51.2%</code></strong></li>
+</ul>
+<p><strong>2）<code>5m</code> 只在很短持有期还有点味道，拉长就塌。</strong></p>
+<ul>
+<li><code>5m, hold=2</code>：平均约 <strong><code>+1.99 bps/笔</code></strong></li>
+<li><code>5m, hold=4</code>：平均约 <strong><code>-1.76 bps/笔</code></strong></li>
+<li><code>5m, hold=6</code>：平均约 <strong><code>-2.71 bps/笔</code></strong></li>
+</ul>
+<p><strong>3）这条 alpha 更像“短持有 pullback continuation”，不是长拖仓趋势系统。</strong></p>
+<ul>
+<li><code>15m</code> 上 <code>hold=2~4</code> 明显优于 <code>hold=6</code></li>
+<li>说明 edge 更集中在 <strong>回摆刚结束后的前几根 bar</strong>，不是“买完一路拿很久”那种壳</li>
+</ul>
+<h3>横截面观感</h3>
+<ul>
+<li><code>ADA 15m</code>、<code>SOL 15m</code>、<code>XRP 15m</code> 这轮表现相对更干净；</li>
+<li><code>ETH/LINK 15m</code> 并不稳，说明这不是“所有主流币无脑通吃”的 universal rule；</li>
+<li>所以更像一个 <strong>single-asset family shell + symbol router</strong>，而不是全市场同权硬铺。</li>
+</ul>
+<h2>5. 当前 verdict</h2>
+<h3>结论先说</h3>
+<p><strong>这条东西值得收进 raw alpha 素材池，而且优先定位成：<code>15m</code> parent signal 的 pullback-continuation alpha。</strong></p>
+<p>但我不建议把它直接写成“<code>5m</code> 高频策略”：</p>
+<ul>
+<li><code>5m</code> 上如果只按信号本体硬打，edge 不够厚；</li>
+<li><code>15m</code> 上信号有味道，<code>5m</code> 更适合拿来做 child execution，而不是自己当主预测层。</li>
+</ul>
+<p>换句话说，这条东西的合理落位是：</p>
+<ul>
+<li><strong>主 alpha</strong>：<code>15m</code> StochRSI 极值回摆 × RSI 50 同向 × MACD 相位翻转</li>
+<li><strong>执行层</strong>：<code>5m</code> 控追价 / maker-first / 分批 / time-stop</li>
+</ul>
+<h2>6. 怎么把它落成完整策略</h2>
+<p>一个最小可交易壳可以这么写：</p>
+<h3>Entry</h3>
+<ul>
+<li>parent timeframe：<code>15m</code></li>
+<li>long 条件：</li>
+<li>最近 <code>0~3</code> 根出现过 <code>StochRSI &lt; 20</code></li>
+<li>当前 <code>fastk &gt; fastd</code></li>
+<li><code>RSI &gt; 50</code></li>
+<li><code>MACD &gt; signal</code> 且刚完成 bullish flip</li>
+<li>short 对称</li>
+</ul>
+<h3>Exit</h3>
+<p>先从最朴素版本开始：</p>
+<ul>
+<li>主版 time-stop：持有 <code>2~4</code> 根 <code>15m</code></li>
+<li>保护性止损：<code>1.2~1.8 x ATR(14)</code></li>
+<li>止盈：先试 <code>0.8~1.2 x ATR(14)</code> 或 <code>1R</code></li>
+<li>若 <code>MACD</code> 再次反向 flip，可提前平仓</li>
+</ul>
+<h3>Sizing / Risk</h3>
+<ul>
+<li>单标的单次风险预算固定；</li>
+<li>同时持仓数上限 <code>3~5</code>；</li>
+<li>若同一时刻多币同向触发，优先保留：</li>
+<li>波动成本更低的币</li>
+<li>最近同类信号 markout 更好的币</li>
+<li>回避 funding / spread / 滑点异常时段</li>
+</ul>
+<h3>Cost</h3>
+<p>这条 alpha 不是超厚边，所以成本不能随便放：</p>
+<ul>
+<li><code>15m hold=2~4</code> 的 gross edge 还行；</li>
+<li>但如果 child execution 做得差，很容易把 edge 吐回去；</li>
+<li>所以它天然要求 <strong>maker 优先、追价上限、时间止损</strong>。</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<p>必须继续往下压的，不是“再看一遍指标图”，而是这 4 个测试：</p>
+<ol>
+<li><strong>把 <code>15m</code> 信号 + <code>5m</code> 执行拆开测。</strong></li>
+<p>不要再把 <code>5m</code> 当主信号；改成：<code>15m</code> 触发后，在接下来 <code>1~3</code> 根 <code>5m</code> 里测试 maker-first / taker fallback / limit-chase 的 markout。</p>
+</ol>
+<ol>
+<li><strong>做 symbol router。</strong></li>
+<p>当前 probe 已经说明币种间差异很大。下一步不是全铺，而是测：哪些币在这条 alpha 上稳定、哪些只是样本噪声。</p>
+</ol>
+<ol>
+<li><strong>给它补一个简单 regime veto。</strong></li>
+<p>例如只在 <code>EMA50</code> 同向、或 <code>ADX</code> / realized vol 不过热时放行，看是否能减少那些“极值回摆失败、直接继续反向扩张”的烂单。</p>
+</ol>
+<ol>
+<li><strong>把 fixed-hold 换成 bracket + early-failure exit。</strong></li>
+<p>先测 <code>ATR</code> 止损 + <code>1R</code> 止盈，再加“入场后 <code>2</code> 根内若未走出正向扩张则撤退”的 time-fail 逻辑。</p>
+</ol>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>这轮优先验证的是 <strong>signal portability</strong>，不是完整逐笔成交仿真；</li>
+<li>当前样本窗不长，且只覆盖 8 个 liquid majors；</li>
+<li>仓库是多策略 bot，<code>StochRSIMACD</code> 只是其中一支，后续仍要避免“把参数表抄过来就当复现完成”。</li>
+</ul>
+<p>但即便如此，这轮已经足够回答最关键的问题： <strong>它是不是一个能一句话讲清、能快速独立复现、而且在 <code>15m</code> 上确实留下方向边的 raw alpha 候选？</strong></p>
+<p>我的答案是：<strong>是。</strong></p>
+<h2>9. 来源</h2>
+<h3>Repo metadata</h3>
+<ul>
+<li>Authors / Owner: <code>thomasdutraa07</code></li>
+<li>Year: <code>2026</code>（repo created <code>2026-01-02</code>）</li>
+<li>Title: *Trading-Bot-for-Binance-Future*</li>
+<li>Venue: GitHub repository</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://github.com/thomasdutraa07/Trading-Bot-for-Binance-Future">https://github.com/thomasdutraa07/Trading-Bot-for-Binance-Future</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/thomasdutraa07/Trading-Bot-for-Binance-Future">https://github.com/thomasdutraa07/Trading-Bot-for-Binance-Future</a></code></li>
+</ul>
+<h3>Inspected files</h3>
+<ul>
+<li>README: <code><a href="https://raw.githubusercontent.com/thomasdutraa07/Trading-Bot-for-Binance-Future/main/README.md">https://raw.githubusercontent.com/thomasdutraa07/Trading-Bot-for-Binance-Future/main/README.md</a></code></li>
+<li>Strategy source: <code><a href="https://raw.githubusercontent.com/thomasdutraa07/Trading-Bot-for-Binance-Future/main/TradingStrats.py">https://raw.githubusercontent.com/thomasdutraa07/Trading-Bot-for-Binance-Future/main/TradingStrats.py</a></code></li>
+<li>Config source: <code><a href="https://raw.githubusercontent.com/thomasdutraa07/Trading-Bot-for-Binance-Future/main/LiveTradingConfig.py">https://raw.githubusercontent.com/thomasdutraa07/Trading-Bot-for-Binance-Future/main/LiveTradingConfig.py</a></code></li>
+</ul>
+<h3>Local artifact</h3>
+<ul>
+<li>Probe script: <code>reports/artifacts/quant_digests/2026-04-23_stochrsi_macd_repo_probe.py</code></li>
+<li>Probe result CSV: <code>reports/artifacts/quant_digests/2026-04-23_stochrsi-macd-pullback-probe.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 4H spot repo 只读成“动量 vs 反转 notebook”：对 short-cycle desk，更该先拆的是「top-half-liquidity XS loser-bounce」这条完整 raw alpha 壳——但 `5m/15m` taker 版远不过成本线</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 4H spot repo 只读成“动量 vs 反转 notebook”：对 short-cycle desk，更该先拆的是「top-half-liquidity XS loser-bounce」这条完整 raw alpha 壳——但 `5m/15m` taker 版远不过成本线</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-13 14:31 UTC</span>
+      <span class="pill">研究时间：2026-04-13 14:28 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `src/crypto_statarb.py` + bundled PDF report）+ Binance USDⓈ-M `15m/5m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/relative-value/mean-reversion/liquidity-filter/volume-rank/top-half-admission/loser-bounce/winner-cooldown/market-neutral/cost-ladder/binance-perpetual/15m/5m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：开源代码 + 自带报告 + 公共数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-13_1428_tophalf-liquidity-xs-loserbounce-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-13 14:28 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>src/crypto_statarb.py</code> + bundled PDF report）+ Binance USDⓈ-M <code>15m/5m</code> public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>做空过去 H 根横截面最强币、做多过去 H 根横截面最弱币，赌短周期 cross-sectional loser-bounce / winner-cooldown 会回归；liquidity top-half 只是 admission/filter，不是 alpha 本体</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/relative-value/mean-reversion/liquidity-filter/volume-rank/top-half-admission/loser-bounce/winner-cooldown/market-neutral/cost-ladder/binance-perpetual/15m/5m/repo/public-data/cost/risk</li>
+<li>证据类型：开源代码 + 自带报告 + 公共数据 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看的是 GitHub 仓库 <strong>Jamestilfords / statarb-crypto (2026)</strong>。它最表面的读法是：</p>
+<p>&gt; “一个 4H Binance spot 上的横截面 momentum vs reversal notebook。”</p>
+<p>但真正更适合我们 desk 拿来拆的，不是“它也比较了 momentum”，而是这条更明确、也更可复刻的骨架：</p>
+<p>&gt; <strong>base alpha = cross-sectional short-horizon reversal。</strong> &gt; &gt; 每个 bar 按最近 <code>H</code> 根累计收益给币做横截面排序，<strong>long 最弱的一档、short 最强的一档</strong>，赌的是下一段短周期里 loser bounce / winner cooldown 的回归；<code>top-half volume rank</code> 只是降低薄币噪声与执行摩擦的 <strong>filter</strong>，不是 alpha 本体。</p>
+<p>所以这轮它是：</p>
+<ul>
+<li><code>raw alpha</code></li>
+<li>不是 <code>filter</code></li>
+<li>不是 <code>regime</code></li>
+<li>也不是单纯的 <code>risk overlay</code></li>
+</ul>
+<p>而且它还不是“只给一个信号名词”。repo 里把：</p>
+<ul>
+<li>signal 定义</li>
+<li>long/short 组合构建</li>
+<li>1-bar lag</li>
+<li>turnover cost</li>
+<li>liquidity admission</li>
+<li>cost stress</li>
+<p>都写成了比较完整的策略壳。</p>
+</ul>
+<h2>2. 一句话核心结论 + 一句话证明方式</h2>
+<h3>一句话核心结论</h3>
+<p>&gt; <strong>这份 repo 确实给出了一条可独立复现、且接近完整策略壳的 cross-sectional reversal raw alpha；但把它压到今天的 Binance USDⓈ-M <code>15m/5m</code> taker 口径后，gross 虽仍为正，净后却很快被换手吃穿，说明它更像 maker / 低费率 / 降频版本的候选，而不是现成可上线的 taker 主策略。</strong></p>
+<h3>一句话证明方式</h3>
+<p>&gt; <strong>repo 自带 4H spot 回测里，<code>H=3</code> reversal 在 <code>20bps</code> 仍显著为正；我再用 Binance USDⓈ-M <code>15m/5m</code> 公开 K 线，先对更宽 liquid universe 做 unfiltered stress，再对 <code>12</code> 个 liquid majors 做 top-half-liquidity 版最小实验，看到 gross 上都还有边，但一加 <code>4~8bps</code> 成本几乎全部翻成深负。</strong></p>
+<h2>3. repo 里到底写了什么</h2>
+<h3>3.1 alpha 定义非常清楚，不靠脑补</h3>
+<p><code>src/crypto_statarb.py</code> 里核心定义基本已经把 base alpha 写死了：</p>
+<ul>
+<li><code>reversal_score(rets, H) = -(rets.rolling(H).sum())</code></li>
+<li><code>make_long_short_weights(...)</code>：</li>
+<li>long top <code>q</code> 分位</li>
+<li>short bottom <code>q</code> 分位</li>
+<li>组内等权</li>
+<li><code>backtest_unconstrained(...)</code>：</li>
+<li><code>1-bar lag</code></li>
+<li>按 <code>turnover * cost_bps</code> 扣成本</li>
+<li>非 rebalance bar 持仓前推</li>
+<li><code>make_long_short_weights_masked(...)</code>：</li>
+<li>只在 <code>tradable=True</code> 的资产上排名，作为 liquidity filter</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>它不是预测绝对涨跌，而是在赌“横截面上刚刚最弱的会反弹，刚刚最强的会冷却”，然后做一个 equal-weight market-neutral spread。</strong></p>
+<h3>3.2 repo 自带结果为何值得看</h3>
+<p>README / 自带报告里给的 4H spot 结果是：</p>
+<ul>
+<li>universe：Binance USDT spot liquid names</li>
+<li>reversal lookback：<code>H ∈ {1,2,3,6}</code></li>
+<li>rebalance：每天一次（4H bar 上 <code>rebalance_every=6</code>）</li>
+<li>cost：baseline <code>20bps</code></li>
+<li>unfiltered best：<strong><code>H=3 (~12h)</code></strong></li>
+<li>README 给出的 cost ladder（unfiltered <code>H=3</code>）：</li>
+<li><code>20bps</code>：<strong>Sharpe 3.596 / CAGR 2.062 / FinalEquity 28.704x</strong></li>
+<li><code>40bps</code>：<strong>Sharpe 0.159 / CAGR -0.004 / FinalEquity 0.989x</strong></li>
+<li><code>60bps</code>：<strong>Sharpe -2.910 / CAGR -0.677 / FinalEquity 0.034x</strong></li>
+</ul>
+<p>这组数最有价值的地方不是“4H spot 真好做”，而是它已经提前告诉我们：</p>
+<p>&gt; <strong>这条 alpha 对 turnover / fee 极度敏感。</strong></p>
+<p>也就是说，它天然就该被 desk 读成：</p>
+<ul>
+<li><strong>完整 raw alpha 壳</strong>：是</li>
+<li><strong>可直接拿去做 taker</strong>：不一定</li>
+<li><strong>必须先做 friction ladder</strong>：是</li>
+</ul>
+<h2>4. 为什么它跟当前 desk 直接相关</h2>
+<h3>4.1 它补的是我们此轮明确想补的 raw alpha 方向</h3>
+<p>这不是再回到单币 breakout / retest / shape-only 内循环；它补的是：</p>
+<ul>
+<li><code>cross-sectional</code></li>
+<li><code>relative-value</code></li>
+<li><code>market-neutral</code></li>
+<li><code>short-horizon mean reversion</code></li>
+</ul>
+<p>这正是当前 intake 里要求主动补的家族。</p>
+<h3>4.2 它是少数把完整壳写得比较干净的 repo</h3>
+<p>这份 repo 对 short-cycle desk 的价值，不只是“反转因子存在”，而是已经把下面几层拆开了：</p>
+<ul>
+<li>alpha 本体：<code>xs loser-bounce / winner-cooldown</code></li>
+<li>filter：<code>volume rank top-half</code></li>
+<li>sizing：双边等权 gross-one</li>
+<li>execution：1-bar lag</li>
+<li>cost：turnover-based bps ladder</li>
+</ul>
+<p>所以它不是“一个模糊灵感”，而是一个可以很快进入 <strong>first verdict</strong> 的完整壳。</p>
+<h3>4.3 它还能顺便回答一个很现实的问题</h3>
+<p>很多 short-cycle raw alpha 的死因不是没方向感，而是：</p>
+<ul>
+<li>gross 有一点</li>
+<li>turnover 更大</li>
+<li>net 立刻翻负</li>
+</ul>
+<p>这份 repo 正适合拿来做这种边界判断。</p>
+<h2>5. 我做的 <code>15m/5m</code> 最小 portability probe</h2>
+<h3>5.1 口径</h3>
+<p>为了回答“这条壳能不能压到我们 desk 的短周期上”，我把 probe 分成了两步：</p>
+<p><strong>A. 先看 unfiltered gross / cost 边界（更宽横截面）</strong></p>
+<ul>
+<li>universe：<code>BTC/ETH/SOL/BNB/XRP/ADA/DOGE/LINK/AVAX/LTC/DOT/TRX/BCH/SUI/APT/NEAR/ETC/UNI/ATOM/XLM</code></li>
+<li>频率：<code>15m</code>（近 <code>90d</code>）</li>
+<li>组合：每根 bar 横截面排序，<code>long bottom 20% / short top 20%</code></li>
+<li>目的：先回答“这条 raw alpha 在更宽 liquid universe 上，gross 还在不在”</li>
+</ul>
+<p><strong>B. 再看 desk 更关心的 top-half liquidity admission</strong></p>
+<ul>
+<li>universe：<code>BTC/ETH/SOL/BNB/XRP/ADA/DOGE/LINK/AVAX/LTC/DOT/TRX</code></li>
+<li>频率：<code>15m</code>（近 <code>60d</code>）+ <code>5m</code>（近 <code>14d</code>）</li>
+<li>信号：<code>reversal_score = -过去 H 根收益和</code></li>
+<li>版本：<code>top-half liquidity</code>（按 quote volume 排前 50%；在 12 币池里等价于约 6 个名字；为避免横截面塌缩，最小可交易资产数放宽到 <code>6</code>）</li>
+<li>成本：<code>0 / 4 / 8 / 12 / 20 bps</code></li>
+</ul>
+<p>这两步合起来，分别回答：</p>
+<ol>
+<li><strong>alpha 本体在更宽横截面上是不是还活着</strong></li>
+<li><strong>把 liquidity admission 接回 desk 口径后，能不能救到净收益</strong></li>
+</ol>
+<h3>5.2 15m：gross 有，net 没有</h3>
+<p>#### A. 更宽横截面的 unfiltered quick stress（20 币、90d、平均 8 个 active names） 先看 alpha 本体，不加 liquidity admission 时，gross 其实是存在的：</p>
+<ul>
+<li><code>H=2</code>：<strong>gross +0.71 bps/bar</strong>, <code>avg_turnover 1.14</code></li>
+<li><code>H=4</code>：<strong>gross +0.68 bps/bar</strong>, <code>avg_turnover 0.84</code></li>
+<li><code>H=6</code>：<strong>gross +0.62 bps/bar</strong>, <code>avg_turnover 0.72</code></li>
+</ul>
+<p>但一旦加 taker 成本就迅速翻负：</p>
+<ul>
+<li><code>H=4 @ 8bps</code>：<strong>net -6.06 bps/bar</strong></li>
+<li><code>H=6 @ 8bps</code>：<strong>net -5.10 bps/bar</strong></li>
+<li><code>H=8 @ 8bps</code>：<strong>net -4.43 bps/bar</strong></li>
+</ul>
+<p>所以第一层 verdict 很清楚：</p>
+<p>&gt; <strong>alpha 本体没死，但 short-cycle taker 直译版已经被 turnover 压穿。</strong></p>
+<p>#### B. desk 口径的 top-half liquidity admission（12 币、60d、平均 2 个 active names） 放宽最小资产数后，liquidity filter 不是没用——它在 gross 上甚至更顺：</p>
+<ul>
+<li><code>H=8 @ 0bps</code>：<strong>gross +0.69 bps/bar</strong>, Sharpe <strong>8.57</strong></li>
+<li><code>H=6 @ 0bps</code>：<strong>gross +0.66 bps/bar</strong>, Sharpe <strong>8.21</strong></li>
+<li><code>H=3 @ 0bps</code>：<strong>gross +0.55 bps/bar</strong>, Sharpe <strong>6.97</strong></li>
+</ul>
+<p>但问题是 turnover 仍不低：</p>
+<ul>
+<li><code>H=8</code>：<code>avg_turnover 0.85</code></li>
+<li><code>H=6</code>：<code>avg_turnover 0.92</code></li>
+<li><code>H=3</code>：<code>avg_turnover 1.22</code></li>
+</ul>
+<p>所以：</p>
+<ul>
+<li><code>H=8 @ 4bps</code>：<strong>net -2.72 bps/bar</strong></li>
+<li><code>H=6 @ 4bps</code>：<strong>net -3.01 bps/bar</strong></li>
+<li><code>H=3 @ 4bps</code>：<strong>net -4.34 bps/bar</strong></li>
+<li><code>H=8 @ 8bps</code>：<strong>net -6.13 bps/bar</strong></li>
+</ul>
+<p><strong>结论：filter 能提高 gross 质量，但远不足以单独救 taker economics。</strong></p>
+<h3>5.3 5m：更像“gross 还行、摩擦更糟”</h3>
+<p>#### top-half liquidity（约 6 币、平均 2 个 active names） <code>14d</code> probe 的 gross 结果也不是零：</p>
+<ul>
+<li><code>H=1 @ 0bps</code>：<strong>gross +0.255 bps/bar</strong>, Sharpe <strong>11.36</strong></li>
+<li><code>H=12 @ 0bps</code>：<strong>gross +0.135 bps/bar</strong>, Sharpe <strong>5.68</strong></li>
+<li><code>H=3 @ 0bps</code>：<strong>gross +0.117 bps/bar</strong>, Sharpe <strong>5.14</strong></li>
+</ul>
+<p>但 <code>5m</code> 的核心问题更直白：<strong>turnover 太大</strong>。</p>
+<ul>
+<li><code>H=1</code>：<code>avg_turnover 1.74</code></li>
+<li><code>H=3</code>：<code>avg_turnover 1.25</code></li>
+<li><code>H=12</code>：<code>avg_turnover 0.88</code></li>
+</ul>
+<p>因此一到 <code>4bps</code> 就明显不行：</p>
+<ul>
+<li><code>H=1 @ 4bps</code>：<strong>net -6.70 bps/bar</strong></li>
+<li><code>H=12 @ 4bps</code>：<strong>net -3.40 bps/bar</strong></li>
+<li><code>H=12 @ 8bps</code>：<strong>net -6.94 bps/bar</strong></li>
+</ul>
+<p><strong>一句话：<code>5m</code> 比 <code>15m</code> 更像“有 gross、没执行空间”。</strong></p>
+<h2>6. 这轮最重要的判断</h2>
+<h3>6.1 它是 raw alpha，而且是完整壳，不需要降级成 filter</h3>
+<p>这点要先说死：</p>
+<p>&gt; <strong>base alpha 很清楚，就是 cross-sectional short-horizon reversal。</strong></p>
+<p>所以它不是“只适合作为某个别的 alpha 的过滤器”的材料，而是一个：</p>
+<ul>
+<li>可独立复现</li>
+<li>可明确写出 entry/exit/sizing/risk/cost</li>
+<li>能进入 replication 素材池</li>
+</ul>
+<p>的 <strong>完整 raw alpha shell</strong>。</p>
+<h3>6.2 但 short-cycle 直译版只剩低摩擦口袋</h3>
+<p>repo 在 4H spot 日度 rebalance 上能活，一个关键原因是 <strong>turnover 远低于我们 5m/15m 直译版</strong>。</p>
+<p>这轮 probe 的核心不是“alpha 完全失效”，而是：</p>
+<ul>
+<li>gross edge：<strong>存在</strong></li>
+<li>filter 改善 gross：<strong>存在</strong></li>
+<li>但当前 <code>5m/15m</code> taker 版净后：<strong>明显不行</strong></li>
+</ul>
+<p>换句话说，它更像：</p>
+<ol>
+<li><code>maker-first</code> 候选</li>
+<li><code>更低 rebalance 频率</code> 候选</li>
+<li><code>更宽 alt universe</code> 候选</li>
+<li>或者 <code>shared cross-sectional rank feature</code></li>
+</ol>
+<p>而不是今天就能直接挂到 taker 主 book 上的策略。</p>
+<h3>6.3 “liquidity filter”别误读成万能修复器</h3>
+<p>这轮一个很有用的副结论是：</p>
+<p>&gt; <strong>top-half liquidity filter 会提升 gross 质量，但如果同时把横截面压得太窄、而且换手没有同步大幅下降，它救不了成本。</strong></p>
+<p>所以后续如果继续做这条线，应该把 liquidity filter 当成：</p>
+<ul>
+<li>admission quality 提升器</li>
+<li>非 executable alpha -&gt; executable alpha 的必要条件之一</li>
+</ul>
+<p>而不是充分条件。</p>
+<h2>7. 下一步怎么测</h2>
+<p>这轮必须给明确 next step，我建议按下面顺序推进：</p>
+<ol>
+<li><strong>先测“降频不降信号”</strong></li>
+</ol>
+<ul>
+<li>保留同一套 <code>xs reversal rank</code></li>
+<li>但把 rebalance 改成 <code>每 2 / 3 / 4 根 bar</code> 才更新一次</li>
+<li>核心看：gross 掉多少、turnover 掉多少、net 能不能翻正</li>
+<li>这是当前最优先，因为 repo 原始胜点本来就部分来自更低换手</li>
+</ul>
+<ol>
+<li><strong>把 universe 扩到 <code>30~50</code> 个 liquid alts，再重跑 top-half liquidity</strong></li>
+</ol>
+<ul>
+<li>现在 12 币池做 top-half，只剩约 6 个可交易名字，横截面太窄</li>
+<li>更合理的做法是：先扩大 universe，再做 top-half admission</li>
+<li>重点看：gross dispersion 是否放大，且 turnover 是否不同比例上升</li>
+</ul>
+<ol>
+<li><strong>只在 rank 极端时入场，不要每根 bar 全量重排</strong></li>
+</ol>
+<ul>
+<li>例如只交易 <code>|rank z|</code> 或 <code>cross-sectional spread percentile</code> 最极端的一档</li>
+<li>目标是减少“轻微信号也强制换仓”的无效 churn</li>
+</ul>
+<ol>
+<li><strong>把它改成 shared rank feature，接入别的 relative-value book</strong></li>
+</ol>
+<ul>
+<li>若完整壳始终过不了成本，可以降级为：</li>
+<li>pair admission</li>
+<li>basket admission</li>
+<li>continuation / reversal router</li>
+<li>也就是：先保留 <code>xs reversal rank</code> 的信息量，不强求它单独做 book</li>
+</ul>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>这轮 portability 只用了 <code>12</code> 个 liquid majors perpetual，<strong>很可能低估</strong> 这类策略在更宽 alt universe 上的横截面离散度。</li>
+<li>probe 用的是 public kline + 简化 turnover cost，没有模拟 maker queue、rebate、内撮、滑点异质性；对低摩擦账户来说，结论可能没这么悲观。</li>
+<li><code>5m</code> 只看了近 <code>14d</code>，更像 quick first verdict，不是最终 OOS 认证。</li>
+<li>repo 原始环境是 spot <code>4H</code> + 日度 rebalance；把它压成 <code>5m/15m</code> 本来就是主动做高强度 stress，不应把 portability 失败误读成“原始 alpha 不存在”。</li>
+</ul>
+<h2>9. 本地 artifacts</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/xs_liquidity_reversal_probe_15m_2026-04-13.csv</code></li>
+<li><code>reports/artifacts/quant_digests/xs_liquidity_reversal_probe_5m_2026-04-13.csv</code></li>
+<li><code>reports/artifacts/quant_digests/xs_liquidity_reversal_tophalf6_probe_15m_2026-04-13.csv</code></li>
+<li><code>reports/artifacts/quant_digests/xs_liquidity_reversal_tophalf6_probe_5m_2026-04-13.csv</code></li>
+<li><code>reports/artifacts/quant_digests/xs_liquidity_reversal_probe_summary_2026-04-13.json</code></li>
+</ul>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>Jamestilfords (2026), _Crypto Statistical Arbitrage (4H Binance Spot): Momentum vs. Short-Horizon Reversal_</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub repository / bundled report</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://github.com/Jamestilfords/statarb-crypto">https://github.com/Jamestilfords/statarb-crypto</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/Jamestilfords/statarb-crypto">https://github.com/Jamestilfords/statarb-crypto</a></code></li>
+<li>Raw README: <code><a href="https://raw.githubusercontent.com/Jamestilfords/statarb-crypto/main/README.md">https://raw.githubusercontent.com/Jamestilfords/statarb-crypto/main/README.md</a></code></li>
+<li>Core source: <code><a href="https://raw.githubusercontent.com/Jamestilfords/statarb-crypto/main/src/crypto_statarb.py">https://raw.githubusercontent.com/Jamestilfords/statarb-crypto/main/src/crypto_statarb.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Bundled report in repo</strong></li>
+</ol>
+<ul>
+<li><code>Report/Statistical Arbitrage in Cryptocurrencies (4H Bars).pdf</code></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M public market data</strong></li>
+</ol>
+<ul>
+<li>Klines: <code><a href="https://fapi.binance.com/fapi/v1/klines">https://fapi.binance.com/fapi/v1/klines</a></code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 OI 当方向神谕：对 15m EMA / PSAR，更像该先测的是 `OI &gt; OI-SMA20` 的参与度 gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 OI 当方向神谕：对 15m EMA / PSAR，更像该先测的是 `OI &gt; OI-SMA20` 的参与度 gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-18 04:45 UTC</span>
+      <span class="pill">研究时间：2026-03-18 04:47 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：ema/psar/raw-alpha/open-interest/participation-gate/filter/crypto/15m</span>
+      <span class="pill">证据类型：仓库规则 + 公开数据可复现实验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-18_0447_ema-oi-participation-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-18 04:47 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：ema/psar/raw-alpha/open-interest/participation-gate/filter/crypto/15m</li>
+<li>证据类型：仓库规则 + 公开数据可复现实验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 gelatotrade 在 2025-12 发布的 Pine 仓库 <strong><code>15m-EMA-9-15-OI-Flip-Signals</code></strong>。它的代码很简单：<code>EMA 9/15</code> 负责给方向，<code>OI &gt; SMA20(OI)</code> 负责决定这次交叉值不值得看一眼；而且同一个 OI 条件同时套在 <strong>buy</strong> 和 <strong>sell</strong> 两边。</p>
+<p><strong>一句话核心结论：</strong> 这类 OI 条件更像 <strong>参与度 / crowdedness gate</strong>，适合给 <code>EMA / PSAR raw alpha focus</code> 当 15m 的 chop veto，而不是伪装成“用 OI 猜涨跌方向”的新主信号。</p>
+<p><strong>一句话说明它为什么值得先测：</strong> 和 funding / basis 那种更偏 8h 的拥挤度变量不同，公开 OI 数据本身就能直接拿到 <code>5m / 15m</code> 频率，所以它更贴近当前 desk 想收口的 <strong>EMA 原始信号成本后还剩什么</strong> 这个问题。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这个 repo 最有价值的地方，不是 <code>EMA 9/15</code> 本身，而是作者无意中做对的一件事：<strong>把 OI 当成不分方向的 participation gate</strong>。代码里 <code>signal_buy</code> 和 <code>signal_sell</code> 都要求同一个 <code>oi_bullish = data_src &gt; SMA20(data_src)</code>，说明它真正过滤的是“这次 cross 有没有新资金 / 新仓位参与”，不是“OI 高就一定看多”。</li>
+<li>这点对我们很重要，因为当前 <code>EMA / PSAR raw alpha</code> 的痛点并不是再找一个更花哨的均线，而是 <strong>怎么少做低参与度、低延续、成本一扣就归零的 15m 假动作</strong>。</li>
+<li>如果这个 gate 有用，它最该改善的不是峰值收益，而是：</li>
+</ul>
+<ol>
+<li><code>whipsaw rate</code>；</li>
+<li><code>4~8 bar false reversal</code>；</li>
+<li>扣成本后的 <code>median trade expectancy</code>。</li>
+</ol>
+<ul>
+<li>另一个现实优点是：Binance 的 <code>openInterestHist</code> 公共接口直接支持 <strong><code>5m</code> 和 <code>15m</code></strong>，<code>limit</code> 默认 <strong>30</strong>、最大 <strong>500</strong>，最近 <strong>1 个月</strong> 可直接取；这意味着它不是“理论上可得”，而是今天就能拉下来做最小实验。</li>
+<li>repo 里还留了一个很值得 desk 直接修正的细节：脚本在拿不到 OI 时会 fallback 到 <code>volume</code>。这提醒我们第一轮最好不要把“没有 OI 的 volume 替代版”和“真 OI 版”混回一起，而要拆成两个 bucket 单独看，否则容易把结论搞脏。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这题比去找一条全新的远线更值得，是因为它直接贴着 <code>EMA / PSAR raw alpha focus</code> 的当前收口口径：</p>
+<ul>
+<li><strong>不是新 entry</strong>：方向仍然让 EMA / PSAR / breakout 负责；</li>
+<li><strong>是低成本 filter</strong>：OI 只负责回答“这根 15m 动作是不是太空、太挤、太容易白做”；</li>
+<li><strong>能反哺另外两条线</strong>：</li>
+<li>对 <code>V3 breakout-short follow-up</code>，它可以变成 <strong>break 后 continuation vs. dead-on-arrival</strong> 的参与度过滤；</li>
+<li>对 <code>Fibonacci confirmation / retest_hold</code>，它可以变成 <strong>retest 是否真的有人接 / 有人追</strong> 的附加确认，而不是只看价格碰位。</li>
+</ul>
+<p>换句话说，它不是偏题；它是在给三条线补一个当前还比较缺的、而且是公开可得的 <strong>micro participation layer</strong>。</p>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：在同一套 15m <code>EMA</code> 或 <code>EMA+PSAR</code> 入场规则下，只有当 <code>OI</code> 明显高于自身短均值时，信号后的延续性更好、假翻转更少；反之，很多原始信号只是低参与度噪音。</li>
+<li><strong>数据源</strong>：</li>
+<li>Binance USDⓈ-M Futures <code>GET /futures/data/openInterestHist</code>（公开、支持 <code>5m/15m</code>、最近 1 个月、limit 最大 500）；</li>
+<li>Binance <code>GET /fapi/v1/openInterest</code>（公开、当前 OI snapshot）；</li>
+<li>现有 15m OHLCV。</li>
+<li><strong>最小可计算定义</strong>：</li>
+<li><code>oi_level_gate = OI_t &gt; SMA20(OI)_t</code></li>
+<li><code>oi_delta_gate = ΔOI_t &gt; 0</code></li>
+<li><code>oi_z_gate = zscore(ΔOI, 48) &gt; 0.5</code></li>
+<li><code>volume_fallback_gate = volume_t &gt; SMA20(volume)_t</code>（只作对照，不和真 OI 混算）</li>
+<li><strong>第一轮 bucket</strong>：</li>
+</ul>
+<ol>
+<li><code>raw EMA / EMA+PSAR</code></li>
+<li><code>+ oi_level_gate</code></li>
+<li><code>+ oi_level_gate + oi_delta_gate</code></li>
+<li><code>+ volume_fallback_gate</code></li>
+</ol>
+<ul>
+<li><strong>最该先看的 4 个指标</strong>：</li>
+</ul>
+<ol>
+<li><code>4/8/12 bar follow-through</code>；</li>
+<li><code>2~4 bar whipsaw ratio</code>（信号后很快反向穿回慢线 / anchor）；</li>
+<li><code>net expectancy @ 6bps/side and 10bps/side</code>；</li>
+<li><code>trade count retention</code>（过滤后别把样本砍没了）。</li>
+</ol>
+<ul>
+<li><strong>更像当前 desk 的落地方式</strong>：先不要把 OI 当 hard veto；更合理的是先试三挡：<code>high participation = 1.0x</code>、<code>neutral = 0.5x</code>、<code>low participation = 0x</code>，看看它更适合当 <strong>veto</strong> 还是 <strong>sizing overlay</strong>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是 <strong>repo 规则启发</strong>，不是论文级实证。它值钱在“想法干净、实现快”，不在“作者已经替我们证明过”。</li>
+<li>OI 上升不是方向标签。上涨时 OI 升可能是新多进场；下跌时 OI 升也可能是新空进场。<strong>方向仍然必须让价格规则来定</strong>。</li>
+<li>Binance <code>openInterestHist</code> 公开窗口只有最近 1 个月；如果最小实验第一轮有信号，下一步就要做日常抓取，不然没法做长窗 OOS。</li>
+<li>repo 代码里 <code>request.security(sym_oi, timeframe.period, open, ...)</code> 这种写法依赖 TradingView 上 OI 符号的具体口径；真正落到研究管线时，最好直接固定交易所 API 字段，别把图表平台黑箱带进来。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>gelatotrade (2025). *15m-EMA-9-15-OI-Flip-Signals*. GitHub repository.</li>
+<li>Venue：GitHub</li>
+<li>DOI：N/A</li>
+<li>Repo URL：<code><a href="https://github.com/gelatotrade/15m-EMA-9-15-OI-Flip-Signals">https://github.com/gelatotrade/15m-EMA-9-15-OI-Flip-Signals</a></code></li>
+<li>Raw script：<code><a href="https://raw.githubusercontent.com/gelatotrade/15m-EMA-9-15-OI-Flip-Signals/main/ema_crossover_+_OI_flip.pine">https://raw.githubusercontent.com/gelatotrade/15m-EMA-9-15-OI-Flip-Signals/main/ema_crossover_+_OI_flip.pine</a></code></li>
+<li>Repo metadata：created <code>2025-12-02</code>, updated <code>2025-12-15</code>, public MPL-2.0</li>
+<li>Public data doc 1：Binance <code>Open Interest Statistics</code> — <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest-Statistics">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest-Statistics</a></code></li>
+<li>Public data doc 2：Binance <code>Open Interest</code> — <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest</a></code></li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<p>先别扩到全世界，直接拿 <code>BTCUSDT / ETHUSDT / SOLUSDT</code> 的最近 30 天 15m，复用现有 <code>EMA raw alpha</code> 或 <code>EMA+PSAR</code> 入场定义，先跑上面 4 个 bucket。只要 <code>oi_level_gate</code> 能在 <strong>不显著砍掉 trade count</strong> 的前提下，稳定压低 <code>2~4 bar whipsaw ratio</code>，这条线就值得进入下一轮更长窗数据采集和 OOS 检验。</p>
+</body>
+</html>

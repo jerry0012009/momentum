@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 cross-market repo 只读成 RL demo：对 short-cycle desk，更该先测的是「Binance impulse × Polymarket 15m lagged binary mispricing」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 cross-market repo 只读成 RL demo：对 short-cycle desk，更该先测的是「Binance impulse × Polymarket 15m lagged binary mispricing」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-02 01:19 UTC</span>
+      <span class="pill">研究时间：2026-04-02 01:17 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 source audit（`README.md` + `TRAINING_JOURNAL.md` + `run.py` + `strategies/base.py` + `helpers/polymarket_api.py` + `helpers/binance_futures.py` + GitHub API metadata + 公共 API live snapshot）</span>
+      <span class="pill">主题标签：raw-alpha/cross-market/lead-lag/relative-value/binary-markets/polymarket/binance-futures/order-flow/cvd/microstructure/15m/5m/3m/1m/repo/public-data/external-data/cost</span>
+      <span class="pill">证据类型：repo source + GitHub API metadata + live public endpoint snapshot（repo-based）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-02_0117_binance-polymarket-lagged-binary-mispricing-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-02 01:17 UTC</li>
+<li>类型：2026 GitHub 新仓库 source audit（<code>README.md</code> + <code>TRAINING_JOURNAL.md</code> + <code>run.py</code> + <code>strategies/base.py</code> + <code>helpers/polymarket_api.py</code> + <code>helpers/binance_futures.py</code> + GitHub API metadata + 公共 API live snapshot）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>快市场 Binance futures 的超短冲击 / order-flow 状态，会先于慢市场 Polymarket 15m crypto binary 价格调整；因此可交易的本体不是“RL”本身，而是 <code>fast-market fair value - slow-market quoted probability</code> 的滞后错价。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-market/lead-lag/relative-value/binary-markets/polymarket/binance-futures/order-flow/cvd/microstructure/15m/5m/3m/1m/repo/public-data/external-data/cost</li>
+<li>证据类型：repo source + GitHub API metadata + live public endpoint snapshot（repo-based）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是一个 <strong>2025-12-29 创建、2026-03-31 仍有高信号活跃度、GitHub 约 366 stars</strong> 的新仓库：<code>humanplane/cross-market-state-fusion</code>。</p>
+<p>repo headline 写的是 <strong>RL agent fusing real-time Binance futures data into Polymarket prediction markets</strong>，但对我们 desk 来说，最值得 intake 的不是“PPO + MLX + 苹果芯片在线训练”这层外壳，而是它已经把一条 <strong>可独立复现、数据公开可拿、天然对应 15m 持有期</strong> 的 raw alpha 骨架摆出来了：</p>
+<ol>
+<li>Binance futures 这条快腿提供 <code>1m/5m/10m return</code>、<code>trade_flow_imbalance</code>、<code>CVD</code>、<code>large trade flag</code>、<code>realized vol</code>；</li>
+<li>Polymarket 这条慢腿提供实时 binary orderbook / mid / spread / depth；</li>
+<li>同一资产（BTC / ETH / SOL / XRP）的 15m binary 合约在信息吸收速度上比 Binance futures 更慢；</li>
+<li>于是可以把问题重写成：<strong>“Binance 已经告诉你 fair probability 应该往哪边偏，但 Polymarket 报价还没 fully 跟上。”</strong></li>
+</ol>
+<p>翻成人话： <strong>别先学它怎么训 RL；先测 <code>Binance 先动 → Polymarket 15m up/down 概率滞后调整</code> 这条跨市场错价能不能独立赚钱。</strong></p>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p>这轮的 base alpha 很清楚：</p>
+<ul>
+<li>不是 filter；</li>
+<li>不是 regime gate；</li>
+<li>不是“prediction market 解释学”；</li>
+<li>也不是“RL 学到了什么”的黑箱故事；</li>
+<li>而是 <strong>same-asset cross-market lead-lag mispricing</strong>。</li>
+</ul>
+<p>更具体地说： <strong>用 Binance futures 的超短价格 / order-flow 冲击去估一个“当前 15m 结算事件的公平上行概率”，然后和 Polymarket 的 <code>UP</code> token 中价比较；若 fair probability 显著高于当前 quoted probability，就买 <code>UP</code>，反之买 <code>DOWN</code>。</strong></p>
+<p>所以这轮应被定性为：</p>
+<ul>
+<li><code>raw alpha</code></li>
+<li><code>cross-market / relative-value / lead-lag</code></li>
+<li>只是交易载体从 spot / perp spread 换成了 <strong>15m binary market</strong>。</li>
+</ul>
+<h2>3. 为什么这轮值得 intake，而不是继续补第 N 条泛 lead-lag</h2>
+<p>最近池子里已经有不少 BTC→ALT、ETF→BTC、CEX→DEX、spot→futures 的 lead-lag / relative-value 材料；这轮还值得写，有三个原因：</p>
+<ol>
+<li><strong>结算钟更硬。</strong> Polymarket 的 15m crypto up/down 合约是明确 hard-expiry 的 binary 载体，不是无限持仓；entry / exit / timeout / near-expiry veto 都天然清晰。</li>
+<li><strong>慢腿公开且可实时拿。</strong> <code>gamma-api.polymarket.com</code> + <code>wss://ws-subscriptions-clob.polymarket.com/ws/market</code> 就能抓 active markets 和 L2 订单簿，不用私有数据。</li>
+<li><strong>它不是只能做方向猜测。</strong> 对 desk 更有价值的读法，是把 repo 从 “train PPO policy” 降维成 “估 fair value → 做 quoted-probability mispricing”。这比直接复刻黑箱 agent 更快得到 first verdict。</li>
+</ol>
+<p>如果要一句话概括这轮为什么比继续补一个 shared gate 更值钱： <strong>因为它本身就是一条能单独下单、能明确定义成本与 timeout 的 raw alpha，而不是只给现有策略再加一个 veto。</strong></p>
+<h2>4. 最值得记住的硬数据</h2>
+<h3>4.1 repo 自报结果很夸张，但最值得偷的是“错价骨架”，不是收益数字</h3>
+<p>README / TRAINING_JOURNAL 里给了几组很醒目的数字：</p>
+<ul>
+<li><strong>Phase 4（share-based PnL）</strong>：<code>$3,392 PnL</code>，对应 <code>170% ROI</code></li>
+<li><strong>Phase 5（LACUNA temporal architecture）</strong>：<code>~$50K PnL</code>，<code>2,500% ROI</code></li>
+<li><strong>Phase 5 duration</strong>：<code>10+ hours</code></li>
+<li><strong>Phase 5 trades</strong>：<code>34,730</code></li>
+<li><strong>Win rate</strong>：仅 <code>23.3%</code></li>
+<li><strong>By asset</strong>：BTC 一条腿就贡献了 <code>+$40,088</code></li>
+</ul>
+<p>这些数字明显不能直接当 live edge，相反更该当 warning：</p>
+<ul>
+<li>全是 <strong>paper trading</strong>；</li>
+<li>假设接近 mid fill；</li>
+<li>repo 自己也写了 live 可能要打 <strong>20%~50% performance degradation</strong>。</li>
+</ul>
+<p>但这些结果仍然提供了一个有用信号： <strong>即使 win rate 只有 23%，只要 binary 份额定价的不对称 + 慢腿报价滞后是真实的，低胜率也可以赚钱。</strong></p>
+<h3>4.2 这条线的状态空间已经被 repo 明确拆给你了</h3>
+<p>repo 没有含糊其辞，它把 state 直接写成 <strong>18 维</strong>：</p>
+<ul>
+<li>Binance futures 动量：<code>returns_1m</code>, <code>returns_5m</code>, <code>returns_10m</code></li>
+<li>Binance futures order flow：<code>trade_flow_imbalance</code>, <code>cvd_accel</code></li>
+<li>Polymarket CLOB：<code>best_bid</code>, <code>best_ask</code>, <code>spread</code>, <code>order_book_imbalance_l1/l5</code></li>
+<li>microstructure：<code>trade_intensity</code>, <code>large_trade_flag</code></li>
+<li>regime / timing：<code>vol_regime</code>, <code>trend_regime</code>, <code>time_remaining</code></li>
+</ul>
+<p>这对我们很关键，因为它说明第一轮根本不需要 PPO： <strong>先做一个 lagged fair-probability baseline（logit / isotonic / ridge / simple rules）就能 honest 地回答“slow-market mispricing 到底存不存在”。</strong></p>
+<h3>4.3 公开数据现在就拿得到</h3>
+<p>我直接用 repo helper 做了 live snapshot，当前时刻就能抓到 <strong>4 个 active 15m crypto markets</strong>：</p>
+<ul>
+<li>BTC：<code>UP 0.545 / DOWN 0.455</code></li>
+<li>ETH：<code>UP 0.495 / DOWN 0.505</code></li>
+<li>SOL：<code>UP 0.540 / DOWN 0.460</code></li>
+<li>XRP：<code>UP 0.550 / DOWN 0.450</code></li>
+</ul>
+<p>并且同一时刻 Binance futures 公开接口能同步给出 ultra-short returns，例如：</p>
+<ul>
+<li>BTC：<code>ret_1m = +0.0231%</code>，<code>ret_5m = -0.4712%</code></li>
+<li>ETH：<code>ret_1m = +0.2620%</code>，<code>ret_10m = +0.4964%</code></li>
+<li>SOL：<code>ret_5m = -0.8626%</code></li>
+</ul>
+<p>这不代表“单点 snapshot 已经证明有 edge”，但它证明了更重要的一件事： <strong>数据接线今天就是通的，第一版最小实验不需要等私有 feed。</strong></p>
+<h2>5. repo 最适合 desk 的读法：别先复刻 PPO，先复刻 fair-value 错价</h2>
+<p>repo 原始做法是 PPO agent；但更适合我们 desk 的 side branch 其实是：</p>
+<ol>
+<li>用 Binance 快腿特征先估 <code>p_fair_up</code>；</li>
+<li>再和 Polymarket 当前 <code>p_mid_up</code> 比较；</li>
+<li>只交易 <code>edge = p_fair_up - p_mid_up</code> 足够大的时点；</li>
+<li>并且把 near-expiry / spread / stale quote / depth imbalance 写成 execution veto。</li>
+</ol>
+<p>所以最实用的简化版可以直接写成：</p>
+<ul>
+<li><strong>signal</strong>：</li>
+<li><code>score_t = w1*z(ret_1m) + w2*z(ret_5m) + w3*trade_flow_imbalance + w4*z(cvd_accel) + w5*large_trade_flag*sign(trade_flow)</code></li>
+<li>再把 <code>score_t</code> 映射成 <code>p_fair_up</code></li>
+<li><strong>entry</strong>：</li>
+<li>若 <code>p_fair_up - p_mid_up &gt; entry_edge</code>，买 <code>UP</code></li>
+<li>若 <code>p_fair_up - p_mid_up &lt; -entry_edge</code>，买 <code>DOWN</code></li>
+<li><strong>exit</strong>：</li>
+<li>edge 回落到 <code>exit_edge</code></li>
+<li>或出现 opposite signal</li>
+<li>或剩余时间 &lt; <code>30~60s</code></li>
+<li><strong>position sizing</strong>：</li>
+<li>按 <code>|edge|</code>、spread、time remaining、盘口厚度，从 <code>0.25x / 0.5x / 1.0x</code> 分层</li>
+<li><strong>risk</strong>：</li>
+<li>每资产每个 15m market 最多一笔</li>
+<li>同时最多 2~4 个市场敞口</li>
+<li>stale data &gt; <code>2s</code> 不开仓</li>
+<li>spread &gt; <code>2~3c</code> 不追</li>
+<li><strong>cost</strong>：</li>
+<li>taker / maker fee</li>
+<li>bid-ask spread</li>
+<li>fill slippage</li>
+<li>expiry 前强平 / 未成交 / legging 风险</li>
+</ul>
+<p>这就已经是一条完整策略，不再依赖“RL 学出来什么”这个黑箱前提。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li><strong>方向属性：</strong> same-asset cross-market / lead-lag / relative-value</li>
+<li><strong>基础 alpha：</strong> Binance futures 冲击先于 Polymarket 15m binary quoted probability 调整</li>
+<li><strong>regime：</strong> 高成交 / 低延迟 / spread 不过宽 / 距离到期仍足够时更值得开机</li>
+<li><strong>filter / veto：</strong> stale quote veto、near-expiry veto、宽 spread veto、top-of-book 反向失衡 veto</li>
+<li><strong>risk / sizing / execution overlay：</strong> <code>edge</code> 分层仓位、单 market 单次开仓、临近到期强制平仓、maker/taker fallback、depth-aware size cap</li>
+</ul>
+<h2>6. 和当前 <code>1m / 3m / 5m / 15m</code> 的关系</h2>
+<h3>6.1 它天然是 <code>15m</code> 主信号，<code>1m/3m/5m</code> 做快腿特征与执行</h3>
+<p>这条线的结算对象本身就是 <strong>15m binary</strong>，所以最自然的映射不是把它硬压成 1m 高频主 alpha，而是：</p>
+<ul>
+<li><code>15m</code>：交易对象 / 持有期 / timeout clock</li>
+<li><code>5m</code>：快腿 return / flow 聚合与状态刷新</li>
+<li><code>3m / 1m</code>：更快的 impulse 捕捉、edge persistence 检验与 child-order timing</li>
+</ul>
+<p>换句话说： <strong>这里的 1m/3m 不是另起一套 alpha，而是给 15m main trade 提供更及时的 fair-value 更新。</strong></p>
+<h3>6.2 它也能服务纯 crypto desk，而不一定要求真正下 Polymarket</h3>
+<p>即使最后不做 Polymarket 实盘，这条材料仍有 desk 价值，因为它等价于在问： <strong>“当一个慢市场价格载体吸收同资产信息更慢时，快腿冲击能否被转写成可执行的概率错价？”</strong></p>
+<p>这层读法可迁移到：</p>
+<ul>
+<li>CEX vs DEX</li>
+<li>spot vs perp</li>
+<li>primary venue vs lagging venue</li>
+<li>options micro-binary / event contracts vs spot/perp</li>
+</ul>
+<p>所以它补的不只是一个特定 venue idea，也是一种 <strong>probability-marketized lead-lag 壳子</strong>。</p>
+<h2>7. 数据源、公开性、更新频率、最小可复现实验口径</h2>
+<h3>7.1 数据源</h3>
+<ul>
+<li><strong>Polymarket Gamma API（公开）</strong>：拿 active market / event / slug / market metadata</li>
+<li><strong>Polymarket CLOB WebSocket（公开）</strong>：拿 <code>book</code> / <code>price_change</code> / best bid/ask / depth</li>
+<li><strong>Binance USDⓈ-M Futures aggTrade stream（公开）</strong>：约 <code>100ms</code> 聚合成交</li>
+<li><strong>Binance Futures REST（公开）</strong>：<code>openInterest</code>、<code>premiumIndex</code>、<code>1m klines</code></li>
+</ul>
+<h3>7.2 更新频率</h3>
+<ul>
+<li>Polymarket market websocket：事件驱动，近实时</li>
+<li>Binance aggTrade：文档写明 <strong>100ms 聚合 trade stream</strong></li>
+<li>Binance open interest REST：按请求拉取，repo 默认约每 <code>10s</code> 刷新</li>
+<li>Binance klines：<code>1m</code> bar</li>
+</ul>
+<h3>7.3 最小可复现实验口径</h3>
+<p>第一轮不要做 RL，也不要做 full online learning；先做一版最小 honest backtest：</p>
+<ul>
+<li><strong>资产</strong>：BTC / ETH / SOL / XRP</li>
+<li><strong>样本</strong>：最近 <code>2~4</code> 周的 Polymarket 15m crypto markets + Binance futures 同步数据</li>
+<li><strong>标签</strong>：市场到期时 <code>UP/DOWN</code> binary outcome，或更保守地用中途 probability reversion / convergence 做 first-stage label</li>
+<li><strong>特征</strong>：<code>ret_1m</code>, <code>ret_5m</code>, <code>ret_10m</code>, <code>trade_flow_imbalance</code>, <code>cvd_accel</code>, <code>large_trade_flag</code>, <code>spread</code>, <code>ob_imbalance</code>, <code>time_remaining</code></li>
+<li><strong>模型</strong>：先从 <code>logit / ridge / isotonic / threshold rule</code> 开始</li>
+<li><strong>执行</strong>：必须用 one-tick / one-sample lag，不能 same-tick 幻觉成交</li>
+<li><strong>成本</strong>：至少扣 spread + fee；第二轮再补 market impact</li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 non-RL baseline。</strong> 用 <code>Binance features -&gt; fair probability</code>，直接检验 quoted-probability mispricing 是否存在。</li>
+<li><strong>先做 edge decile 曲线。</strong> 看 <code>p_fair_up - p_mid_up</code> 分位越极端，最终到期正确率 / 中途收敛收益是否单调上升。</li>
+<li><strong>把 timing 单独 ablation。</strong> 比较 <code>&gt;10m</code>、<code>5~10m</code>、<code>&lt;5m</code> 三个 time-to-expiry bucket，确认 edge 是不是只活在 early / mid window。</li>
+<li><strong>把 spread veto 单独测。</strong> 很多 paper edge 会死在宽 spread；这条线必须先回答 <code>edge/spread ratio</code> 是否够厚。</li>
+<li><strong>做 same-asset 对照。</strong> 同时跑“直接做 Binance 方向”与“做 Polymarket 错价”两版，确认真正的增益来自 slow-market lag，而不只是 Binance 本身的 continuation。</li>
+<li><strong>若 baseline 存活，再上 PPO。</strong> 否则直接上 RL 只是在用复杂度掩盖“本体 edge 可能不够厚”。</li>
+</ol>
+<h2>9. 风险与保留意见</h2>
+<ol>
+<li><strong>repo 结果极可能乐观。</strong> 它自己也承认 live trading 会因 latency / slippage / market impact 明显衰减。</li>
+<li><strong>15m binary 市场容量有限。</strong> edge 可能存在，但可容纳资金未必大。</li>
+<li><strong>share-based PnL 会鼓励低价合约。</strong> 这符合 binary economics，但也可能放大 tail-risk / fill-risk / quote staleness 风险。</li>
+<li><strong>Paper trading 的 mid fill 假设很危险。</strong> 若真实执行主要吃 ask / bid，很多“看起来够厚”的 edge 会被 spread 吃掉。</li>
+<li><strong>repo 里 Phase 5 的收益高度集中在 BTC。</strong> 说明 shared policy 未必稳健迁移到其他资产。</li>
+</ol>
+<p>所以我对它的定位是： <strong>高信号 repo intake，base alpha 很清楚；但 first verdict 必须靠非 RL、cost-first、lagged execution 的最小实验来给。</strong></p>
+<h2>10. 来源</h2>
+<ul>
+<li><strong>Author / Maintainer：</strong> <code>humanplane</code></li>
+<li><strong>Year：</strong> 2025-2026</li>
+<li><strong>Title：</strong> *Cross-Market State Fusion*</li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/humanplane/cross-market-state-fusion&gt;">https://github.com/humanplane/cross-market-state-fusion&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/humanplane/cross-market-state-fusion&gt;">https://github.com/humanplane/cross-market-state-fusion&gt;</a></li>
+<li><strong>GitHub API metadata：</strong> &lt;<a href="https://api.github.com/repos/humanplane/cross-market-state-fusion&gt;">https://api.github.com/repos/humanplane/cross-market-state-fusion&gt;</a></li>
+<li><strong>Presentation PDF（repo 内）：</strong> &lt;<a href="https://github.com/humanplane/cross-market-state-fusion/blob/master/cross-market-state-fusion.pdf&gt;">https://github.com/humanplane/cross-market-state-fusion/blob/master/cross-market-state-fusion.pdf&gt;</a></li>
+<li><strong>Training journal：</strong> &lt;<a href="https://github.com/humanplane/cross-market-state-fusion/blob/master/TRAINING_JOURNAL.md&gt;">https://github.com/humanplane/cross-market-state-fusion/blob/master/TRAINING_JOURNAL.md&gt;</a></li>
+<li><strong>Polymarket docs / readable URL：</strong> &lt;<a href="https://docs.polymarket.com/market-data/fetching-markets&gt;">https://docs.polymarket.com/market-data/fetching-markets&gt;</a></li>
+<li><strong>Polymarket market websocket docs：</strong> &lt;<a href="https://docs.polymarket.com/market-data/websocket/market-channel&gt;">https://docs.polymarket.com/market-data/websocket/market-channel&gt;</a></li>
+<li><strong>Binance futures aggTrade docs：</strong> &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Aggregate-Trade-Streams&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Aggregate-Trade-Streams&gt;</a></li>
+<li><strong>Binance open interest docs：</strong> &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest&gt;</a></li>
+</ul>
+<h2>11. 一句话结论</h2>
+<p><strong>这份 2026 repo 最值钱的不是“RL 在 prediction markets 上赚了多少钱”，而是它把一条可公开取数、天然对应 15m、可直接写成 entry/exit/sizing/risk/cost 的 raw alpha 摆在桌上：<code>Binance fast impulse -&gt; Polymarket slow probability catch-up</code>。对 desk，第一步该复现的是这条错价，不是 PPO。</strong></p>
+</body>
+</html>

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phase 2b 做空反转策略研究审阅</title>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--panel2:#101821;--border:#30363d;--text:#d1d7df;--dim:#8b949e;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922;--purple:#bc8cff}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.65;padding:22px;max-width:1360px;margin:0 auto}
+h1{color:var(--accent);font-size:2.05rem;line-height:1.2;margin:4px 0 10px}
+h2{color:var(--accent);margin:34px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--border);font-size:1.28rem}
+h3{color:var(--yellow);margin:22px 0 10px;font-size:1.06rem}
+h4{color:var(--purple);margin:16px 0 8px;font-size:1rem}
+p{margin:8px 0}
+ul{padding-left:22px;margin:10px 0}
+li{margin:7px 0}
+code{background:#0b1320;border:1px solid #263244;padding:2px 6px;border-radius:4px;font-size:.88em;color:#e6edf3}
+.subtitle{color:var(--dim);font-size:.95rem;margin-bottom:22px}
+.grid{display:grid;gap:14px;margin:16px 0}
+.grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.card,.box{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px}
+.metric-label{color:var(--dim);font-size:.78rem;text-transform:uppercase;letter-spacing:.02em;margin-bottom:4px}
+.metric-value{font-size:1.55rem;font-weight:750}
+.pos{color:var(--green)}.neg{color:var(--red)}.neu{color:var(--yellow)}
+.box{margin:15px 0}
+.box.info{border-color:var(--accent);background:rgba(88,166,255,.06)}
+.box.good{border-color:var(--green);background:rgba(63,185,80,.06)}
+.box.warn{border-color:var(--yellow);background:rgba(210,153,34,.08)}
+.box.bad{border-color:var(--red);background:rgba(248,81,73,.07)}
+.verdict{font-size:1.05rem;border-radius:8px;padding:17px;margin:16px 0;border:1px solid var(--yellow);background:rgba(210,153,34,.09)}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.91rem}
+th{text-align:left;padding:8px 10px;background:var(--panel2);color:var(--dim);font-weight:650;border-bottom:2px solid var(--border);font-size:.78rem;text-transform:uppercase}
+td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:hover{background:rgba(88,166,255,.045)}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.78rem;font-weight:700;white-space:nowrap}
+.badge-pos{background:rgba(63,185,80,.18);color:var(--green)}
+.badge-neg{background:rgba(248,81,73,.18);color:var(--red)}
+.badge-neu{background:rgba(210,153,34,.16);color:var(--yellow)}
+.bar-chart{display:flex;align-items:flex-end;gap:3px;height:150px;margin:20px 0 34px}
+.bar{flex:1;background:var(--accent);border-radius:3px 3px 0 0;position:relative;min-width:9px}
+.bar:hover{background:var(--green)}
+.bar-label{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:.65rem;color:var(--dim);white-space:nowrap}
+.bar-value{position:absolute;top:-20px;left:50%;transform:translateX(-50%);font-size:.65rem;color:var(--text);white-space:nowrap}
+.note{color:var(--dim);font-size:.9rem}
+.footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--border);color:var(--dim);font-size:.82rem}
+@media(max-width:900px){body{padding:14px}.grid-2,.grid-3,.grid-4{grid-template-columns:1fr}table{font-size:.82rem}th,td{padding:6px}.bar-label{display:none}}
+</style>
+</head>
+<body>
+<nav class="rank450-nav" style="margin:0 0 18px;padding:12px 14px;border:1px solid #334155;border-radius:10px;background:#0f172a;display:flex;gap:12px;flex-wrap:wrap;font-size:13px"><a style="" href="index.html">总览</a> · <a style="" href="phase2a_momentum_ignition.html">2a 二次点火追多</a> · <a style="font-weight:700;color:#fff;" href="phase2b_short_reversal.html">2b 冲高回落做空</a> · <a style="" href="phase2c_funding_squeeze_carry.html">2c 负费率延续做多</a> · <a style="" href="../../factors/phase2_strategy_portal/report.html">Phase2 当前总入口</a> · <a style="" href="../binance_event_study_hub.html">事件研究入口</a></nav>
+<div class="rank450-archive-notice" style="margin:0 0 18px;padding:12px 14px;border-left:4px solid #f59e0b;border-radius:0 8px 8px 0;background:rgba(245,158,11,.10);color:#e5e7eb"><strong>归档提示：</strong>Phase2b 当前是 WATCH 研究方向，不具备 paper/live 执行权限。当前 Phase2 执行只在 Phase2a SL-only。</div>
+<h1>Phase 2b 做空反转策略研究审阅</h1>
+<p class="subtitle">Binance 涨幅榜事件后的 short-side reversal 研究页，样本为 31,368 个事件、434 个 symbol、小时级事件面板；默认成本口径为 13 bps。</p>
+
+<div class="verdict">
+<strong>审阅结论：值得继续观察，但不能直接上线。</strong>
+最优组合 <code>B_sv5.0_dr-2 / hold_8h_tp5pct</code> 的单笔净均值是 <strong>+0.83%</strong>、胜率 <strong>60.01%</strong>、样本 <strong>5,201</strong>。它不是一个完全偶然的漂亮点：跨年都为正，成本敏感性也留有余量。但扫描面里只有 <strong>10 / 120</strong> 个可评估组合为正，收益高度集中在 B 类信号和 5% 止盈退出，说明它仍处在“候选 alpha”阶段，不是可直接放大 notional 的生产策略。
+</div>
+
+<div class="grid grid-4">
+<div class="card"><div class="metric-label">最佳净均值</div><div class="metric-value pos">+0.83%</div></div>
+<div class="card"><div class="metric-label">最佳胜率</div><div class="metric-value pos">60.01%</div></div>
+<div class="card"><div class="metric-label">最佳样本数</div><div class="metric-value neu">5,201</div></div>
+<div class="card"><div class="metric-label">粗略日均触发</div><div class="metric-value neu">3.3</div></div>
+</div>
+
+<h2>1. 这条策略好在哪里</h2>
+<div class="box good">
+<ul>
+<li><strong>行为逻辑是通顺的。</strong> B 类信号不是单纯追跌，而是要求前 12h 出现 5x 放量和 1% 以上冲高，然后等待价格回落 2%。这更像在捕捉事件驱动上涨后的买盘衰竭，而不是裸做空强势币。</li>
+<li><strong>退出规则承担了主要风控。</strong> 最优组合不是固定持有，而是 8h 内 5% 止盈；1,880 笔止盈交易均值约 +6.67%，覆盖了 3,320 笔到期退出的 -2.48%。这说明策略靠“少数快速回落”赚钱，机制清晰。</li>
+<li><strong>跨年没有单一年份独占。</strong> 2022 至 2026 年最佳组合逐年净均值都为正，最弱的 2024 年仍为 +0.32%。</li>
+<li><strong>成本余量暂时够看。</strong> 线性成本敏感性里，50 bps 成本后最佳组合仍有 +0.46%。这不能替代实盘滑点，但说明结果不是刚刚贴着手续费线。</li>
+</ul>
+</div>
+
+<h2>2. 最大风险在哪里</h2>
+<div class="box bad">
+<ul>
+<li><strong>扫描集中度很高。</strong> 可评估组合中只有 10 / 120 为正；A/C/D 三类在均值上全部偏弱，B 类也只有部分参数能赚钱。换句话说，这是一个窄参数候选，不是宽泛稳定的策略族。</li>
+<li><strong>收益依赖止盈尾部。</strong> 大部分交易没有触发止盈并在 8h 到期退出，均值为负。如果真实成交在急跌时滑点扩大，或者止盈触发价只在小时 bar 内短暂出现，实盘回放可能会显著变差。</li>
+<li><strong>2024 明显变薄。</strong> 最佳组合 2024 年只有 +0.32%，胜率 53.62%。这提示市场结构变化时，反转强度可能快速衰减。</li>
+<li><strong>资金费率不是简单红利。</strong> 负极端资金费率桶收益最高，正极端桶为负；这更像拥挤/恐慌状态的条件变量，而不是稳定可收的 funding carry。实盘不能把 funding 当作主要利润来源。</li>
+</ul>
+</div>
+
+<h2>3. 回测本身可能哪里有问题</h2>
+<div class="box warn">
+<ul>
+<li><strong>需要严格 OOS / walk-forward。</strong> 当前页面展示的是参数扫描后的最佳组合，存在选择偏差。下一步应按年份或月份滚动训练选择参数，再只在未来窗口评估。</li>
+<li><strong>事件可能重叠。</strong> 同一 symbol 在事件窗口内多次触发，会让样本数看起来很大，但真实持仓会相互排斥或叠加风险；需要 position-level replay 检查并发、冷却时间和单币上限。</li>
+<li><strong>小时 bar 止盈有乐观风险。</strong> 如果用 OHLC 判断 5% take-profit，必须确认进场价、触发顺序、滑点和 maker/taker 假设；否则急跌后的触发成交会偏理想化。</li>
+<li><strong>成本敏感性是近似项。</strong> 报表中的成本曲线按净收益平移估算，不能覆盖流动性分层、冲击成本、资金费时间点、下架币和极端行情无法成交。</li>
+</ul>
+</div>
+
+<h2>4. 峰值与回撤背景</h2>
+<p>事件后价格峰值中位数出现在 <strong>51h</strong>，第一次出现 2% 以上阴线的中位时间是 <strong>55h</strong>。事件涨幅越大，峰值出现越早，8h 回撤也越深，这给“等冲高后做空回落”提供了背景证据。</p>
+<div class="grid grid-4">
+<div class="card"><div class="metric-label">中位峰值时间</div><div class="metric-value neu">51h</div></div>
+<div class="card"><div class="metric-label">4h 平均回撤</div><div class="metric-value neg">-3.83%</div></div>
+<div class="card"><div class="metric-label">8h 平均回撤</div><div class="metric-value neg">-5.39%</div></div>
+<div class="card"><div class="metric-label">12h 平均回撤</div><div class="metric-value neg">-6.48%</div></div>
+</div>
+<h3>峰值小时分布（6h 分组）</h3>
+<div class="bar-chart"><div class="bar" style="height:60%"><span class="bar-value">1,759</span><span class="bar-label">0-6h</span></div>
+<div class="bar" style="height:66%"><span class="bar-value">1,928</span><span class="bar-label">6-12h</span></div>
+<div class="bar" style="height:83%"><span class="bar-value">2,428</span><span class="bar-label">12-18h</span></div>
+<div class="bar" style="height:83%"><span class="bar-value">2,443</span><span class="bar-label">18-24h</span></div>
+<div class="bar" style="height:76%"><span class="bar-value">2,236</span><span class="bar-label">24-30h</span></div>
+<div class="bar" style="height:55%"><span class="bar-value">1,599</span><span class="bar-label">30-36h</span></div>
+<div class="bar" style="height:49%"><span class="bar-value">1,451</span><span class="bar-label">36-42h</span></div>
+<div class="bar" style="height:37%"><span class="bar-value">1,092</span><span class="bar-label">42-48h</span></div>
+<div class="bar" style="height:41%"><span class="bar-value">1,209</span><span class="bar-label">48-54h</span></div>
+<div class="bar" style="height:39%"><span class="bar-value">1,141</span><span class="bar-label">54-60h</span></div>
+<div class="bar" style="height:40%"><span class="bar-value">1,179</span><span class="bar-label">60-66h</span></div>
+<div class="bar" style="height:34%"><span class="bar-value">995</span><span class="bar-label">66-72h</span></div>
+<div class="bar" style="height:39%"><span class="bar-value">1,133</span><span class="bar-label">72-78h</span></div>
+<div class="bar" style="height:36%"><span class="bar-value">1,069</span><span class="bar-label">78-84h</span></div>
+<div class="bar" style="height:40%"><span class="bar-value">1,186</span><span class="bar-label">84-90h</span></div>
+<div class="bar" style="height:36%"><span class="bar-value">1,065</span><span class="bar-label">90-96h</span></div>
+<div class="bar" style="height:47%"><span class="bar-value">1,383</span><span class="bar-label">96-102h</span></div>
+<div class="bar" style="height:47%"><span class="bar-value">1,376</span><span class="bar-label">102-108h</span></div>
+<div class="bar" style="height:60%"><span class="bar-value">1,764</span><span class="bar-label">108-114h</span></div>
+<div class="bar" style="height:100%"><span class="bar-value">2,932</span><span class="bar-label">114-120h</span></div></div>
+<h3>按事件结构看回撤</h3>
+<table><thead><tr><th>事件结构</th><th>中位峰值时间</th><th>8h 平均回撤</th></tr></thead><tbody>
+<tr><td>即时反转</td><td>27h</td><td><span class="badge badge-neg">-5.40%</span></td></tr>
+<tr><td>T2 停滞</td><td>49h</td><td><span class="badge badge-neg">-5.40%</span></td></tr>
+<tr><td>T3 停滞</td><td>71h</td><td><span class="badge badge-neg">-5.41%</span></td></tr>
+<tr><td>延续</td><td>98h</td><td><span class="badge badge-neg">-5.23%</span></td></tr>
+</tbody></table>
+<h3>按事件涨幅看回撤</h3>
+<table><thead><tr><th>事件涨幅</th><th>中位峰值时间</th><th>8h 平均回撤</th></tr></thead><tbody>
+<tr><td>&lt;5%</td><td>51h</td><td><span class="badge badge-neg">-5.30%</span></td></tr>
+<tr><td>5-10%</td><td>34h</td><td><span class="badge badge-neg">-8.69%</span></td></tr>
+<tr><td>10-15%</td><td>16h</td><td><span class="badge badge-neg">-10.87%</span></td></tr>
+<tr><td>15-20%</td><td>10h</td><td><span class="badge badge-neg">-9.37%</span></td></tr>
+<tr><td>20-30%</td><td>8h</td><td><span class="badge badge-neg">-15.80%</span></td></tr>
+</tbody></table>
+
+<h2>5. 信号设计与扫描广度</h2>
+<p>本轮测试 4 类做空信号、30 个信号变体，并搭配多种 8h 退出规则。固定 12h/24h 持有规则在本批汇总里没有形成有效净收益列，因此下面的“可评估组合”只统计净收益为有限值的 120 行。</p>
+<div class="grid grid-2">
+<div class="box info">
+<h3>四类信号</h3>
+<ul>
+<li><strong>A 缩量回撤：</strong>成交量低于 20 周期均值并伴随价格下跌。</li>
+<li><strong>B 放量冲高后回落：</strong>前 12h 异常放量冲高，随后从局部高点回落。</li>
+<li><strong>C 资金费/高点回撤：</strong>资金费率为正，并从近期高点下行。</li>
+<li><strong>D 主动买盘衰竭：</strong>主动买入占比曾高企，随后明显回落。</li>
+</ul>
+</div>
+<div class="box info">
+<h3>扫描结果的含义</h3>
+<p>如果一个策略族真实很厚，通常不会只有少数参数为正。本轮的优点是最佳点清晰，缺点也是最佳点太集中：B 类是唯一值得保留的方向，其余三类目前更像负样本。</p>
+</div>
+</div>
+<table><thead><tr><th>类型</th><th>含义</th><th>正收益/可评估</th><th>组内平均净值</th><th>组内最佳净值</th></tr></thead><tbody>
+<tr><td><code>A</code></td><td>缩量回撤</td><td>0 / 36</td><td><span class="badge badge-neg">-0.39%</span></td><td><span class="badge badge-neg">-0.03%</span></td></tr>
+<tr><td><code>B</code></td><td>放量冲高后回落</td><td>10 / 24</td><td><span class="badge badge-neg">-0.11%</span></td><td><span class="badge badge-pos">+0.83%</span></td></tr>
+<tr><td><code>C</code></td><td>资金费率/高点回撤</td><td>0 / 36</td><td><span class="badge badge-neg">-0.75%</span></td><td><span class="badge badge-neg">-0.48%</span></td></tr>
+<tr><td><code>D</code></td><td>主动买盘衰竭</td><td>0 / 24</td><td><span class="badge badge-neg">-0.66%</span></td><td><span class="badge badge-neg">-0.44%</span></td></tr>
+</tbody></table>
+<table><thead><tr><th>退出规则</th><th>正收益/可评估</th><th>平均净值</th><th>最佳净值</th></tr></thead><tbody>
+<tr><td><code>hold_8h_tp5pct</code></td><td>5 / 30</td><td><span class="badge badge-neg">-0.30%</span></td><td><span class="badge badge-pos">+0.83%</span></td></tr>
+<tr><td><code>hold_8h_tp3pct</code></td><td>3 / 30</td><td><span class="badge badge-neg">-0.30%</span></td><td><span class="badge badge-pos">+0.31%</span></td></tr>
+<tr><td><code>hold_8h_sl3_tp5</code></td><td>2 / 30</td><td><span class="badge badge-neg">-0.51%</span></td><td><span class="badge badge-pos">+0.25%</span></td></tr>
+<tr><td><code>hold_8h_sl3pct</code></td><td>0 / 30</td><td><span class="badge badge-neg">-0.88%</span></td><td><span class="badge badge-neg">-0.20%</span></td></tr>
+</tbody></table>
+
+<h2>6. Top 20 组合</h2>
+<table><thead><tr><th>#</th><th>Signal</th><th>Exit</th><th>Net</th><th>Win Rate</th><th>N</th><th>PF</th><th>Price Return</th><th>Funding</th></tr></thead><tbody>
+<tr><td>1</td><td><code>B_sv5.0_dr-2</code></td><td><code>hold_8h_tp5pct</code></td><td><span class="badge badge-pos">+0.83%</span></td><td>60.01%</td><td>5,201</td><td>1.38</td><td><span class="badge badge-pos">+0.38%</span></td><td><span class="badge badge-neg">-0.58%</span></td></tr>
+<tr><td>2</td><td><code>B_sv5.0_dr-1</code></td><td><code>hold_8h_tp5pct</code></td><td><span class="badge badge-pos">+0.47%</span></td><td>56.57%</td><td>8,140</td><td>1.23</td><td><span class="badge badge-pos">+0.14%</span></td><td><span class="badge badge-neg">-0.46%</span></td></tr>
+<tr><td>3</td><td><code>B_sv3.0_dr-2</code></td><td><code>hold_8h_tp5pct</code></td><td><span class="badge badge-pos">+0.34%</span></td><td>54.54%</td><td>12,866</td><td>1.15</td><td><span class="badge badge-pos">+0.11%</span></td><td><span class="badge badge-neg">-0.37%</span></td></tr>
+<tr><td>4</td><td><code>B_sv5.0_dr-2</code></td><td><code>hold_8h_tp3pct</code></td><td><span class="badge badge-pos">+0.31%</span></td><td>65.85%</td><td>5,201</td><td>1.16</td><td><span class="badge badge-pos">+0.01%</span></td><td><span class="badge badge-neg">-0.43%</span></td></tr>
+<tr><td>5</td><td><code>B_sv5.0_dr-2</code></td><td><code>hold_8h_sl3_tp5</code></td><td><span class="badge badge-pos">+0.25%</span></td><td>41.84%</td><td>5,201</td><td>1.13</td><td><span class="badge badge-pos">+0.14%</span></td><td><span class="badge badge-neg">-0.24%</span></td></tr>
+<tr><td>6</td><td><code>B_sv5.0_dr-1</code></td><td><code>hold_8h_tp3pct</code></td><td><span class="badge badge-pos">+0.21%</span></td><td>62.38%</td><td>8,140</td><td>1.12</td><td><span class="badge badge-pos">+0.00%</span></td><td><span class="badge badge-neg">-0.34%</span></td></tr>
+<tr><td>7</td><td><code>B_sv3.0_dr-1</code></td><td><code>hold_8h_tp5pct</code></td><td><span class="badge badge-pos">+0.10%</span></td><td>51.39%</td><td>22,660</td><td>1.05</td><td><span class="badge badge-neg">-0.02%</span></td><td><span class="badge badge-neg">-0.25%</span></td></tr>
+<tr><td>8</td><td><code>B_sv3.0_dr-2</code></td><td><code>hold_8h_tp3pct</code></td><td><span class="badge badge-pos">+0.06%</span></td><td>61.14%</td><td>12,866</td><td>1.03</td><td><span class="badge badge-neg">-0.08%</span></td><td><span class="badge badge-neg">-0.27%</span></td></tr>
+<tr><td>9</td><td><code>B_sv5.0_dr-1</code></td><td><code>hold_8h_sl3_tp5</code></td><td><span class="badge badge-pos">+0.02%</span></td><td>41.45%</td><td>8,140</td><td>1.01</td><td><span class="badge badge-neg">-0.04%</span></td><td><span class="badge badge-neg">-0.20%</span></td></tr>
+<tr><td>10</td><td><code>B_sv2.0_dr-2</code></td><td><code>hold_8h_tp5pct</code></td><td><span class="badge badge-pos">+0.00%</span></td><td>50.74%</td><td>24,444</td><td>1.00</td><td><span class="badge badge-neg">-0.13%</span></td><td><span class="badge badge-neg">-0.27%</span></td></tr>
+<tr><td>11</td><td><code>B_sv3.0_dr-1</code></td><td><code>hold_8h_tp3pct</code></td><td><span class="badge badge-neg">-0.00%</span></td><td>57.27%</td><td>22,660</td><td>1.00</td><td><span class="badge badge-neg">-0.06%</span></td><td><span class="badge badge-neg">-0.19%</span></td></tr>
+<tr><td>12</td><td><code>A_vc0.3_pb-0</code></td><td><code>hold_8h_tp3pct</code></td><td><span class="badge badge-neg">-0.03%</span></td><td>54.56%</td><td>6,206</td><td>0.98</td><td><span class="badge badge-neg">-0.04%</span></td><td><span class="badge badge-neg">-0.13%</span></td></tr>
+<tr><td>13</td><td><code>A_vc0.5_pb-2</code></td><td><code>hold_8h_tp5pct</code></td><td><span class="badge badge-neg">-0.07%</span></td><td>54.77%</td><td>3,372</td><td>0.98</td><td><span class="badge badge-neg">-0.28%</span></td><td><span class="badge badge-neg">-0.34%</span></td></tr>
+<tr><td>14</td><td><code>A_vc0.3_pb-0</code></td><td><code>hold_8h_tp5pct</code></td><td><span class="badge badge-neg">-0.08%</span></td><td>49.48%</td><td>6,206</td><td>0.96</td><td><span class="badge badge-neg">-0.12%</span></td><td><span class="badge badge-neg">-0.16%</span></td></tr>
+<tr><td>15</td><td><code>B_sv3.0_dr-2</code></td><td><code>hold_8h_sl3_tp5</code></td><td><span class="badge badge-neg">-0.10%</span></td><td>39.54%</td><td>12,866</td><td>0.95</td><td><span class="badge badge-neg">-0.12%</span></td><td><span class="badge badge-neg">-0.15%</span></td></tr>
+<tr><td>16</td><td><code>A_vc0.5_pb-1</code></td><td><code>hold_8h_tp5pct</code></td><td><span class="badge badge-neg">-0.12%</span></td><td>48.85%</td><td>15,821</td><td>0.94</td><td><span class="badge badge-neg">-0.16%</span></td><td><span class="badge badge-neg">-0.17%</span></td></tr>
+<tr><td>17</td><td><code>A_vc0.5_pb-0</code></td><td><code>hold_8h_tp3pct</code></td><td><span class="badge badge-neg">-0.14%</span></td><td>51.25%</td><td>37,614</td><td>0.92</td><td><span class="badge badge-neg">-0.08%</span></td><td><span class="badge badge-neg">-0.07%</span></td></tr>
+<tr><td>18</td><td><code>A_vc0.7_pb-2</code></td><td><code>hold_8h_tp5pct</code></td><td><span class="badge badge-neg">-0.14%</span></td><td>51.35%</td><td>8,762</td><td>0.95</td><td><span class="badge badge-neg">-0.29%</span></td><td><span class="badge badge-neg">-0.29%</span></td></tr>
+<tr><td>19</td><td><code>A_vc0.5_pb-1</code></td><td><code>hold_8h_tp3pct</code></td><td><span class="badge badge-neg">-0.14%</span></td><td>55.11%</td><td>15,821</td><td>0.93</td><td><span class="badge badge-neg">-0.14%</span></td><td><span class="badge badge-neg">-0.13%</span></td></tr>
+<tr><td>20</td><td><code>B_sv2.0_dr-2</code></td><td><code>hold_8h_tp3pct</code></td><td><span class="badge badge-neg">-0.14%</span></td><td>57.58%</td><td>24,444</td><td>0.93</td><td><span class="badge badge-neg">-0.22%</span></td><td><span class="badge badge-neg">-0.20%</span></td></tr>
+</tbody></table>
+
+<h2>7. 最佳组合拆解：B_sv5.0_dr-2 / hold_8h_tp5pct</h2>
+<h3>逐年稳定性</h3>
+<table><thead><tr><th>年份</th><th>交易数</th><th>净收益</th><th>胜率</th></tr></thead><tbody>
+<tr><td>2022</td><td>1,075</td><td><span class="badge badge-pos">+1.19%</span></td><td>60.37%</td></tr>
+<tr><td>2023</td><td>1,077</td><td><span class="badge badge-pos">+0.86%</span></td><td>57.66%</td></tr>
+<tr><td>2024</td><td>1,076</td><td><span class="badge badge-pos">+0.32%</span></td><td>53.62%</td></tr>
+<tr><td>2025</td><td>1,292</td><td><span class="badge badge-pos">+1.00%</span></td><td>64.24%</td></tr>
+<tr><td>2026</td><td>681</td><td><span class="badge badge-pos">+0.69%</span></td><td>65.20%</td></tr>
+</tbody></table>
+<h3>资金费率桶</h3>
+<table><thead><tr><th>资金费率区间</th><th>交易数</th><th>净收益</th><th>胜率</th></tr></thead><tbody>
+<tr><td>负中等 (-0.05%~-0.01%)</td><td>1,043</td><td><span class="badge badge-pos">+1.06%</span></td><td>60.69%</td></tr>
+<tr><td>中性 (-0.01%~0.01%)</td><td>1,184</td><td><span class="badge badge-pos">+0.73%</span></td><td>58.36%</td></tr>
+<tr><td>正中等 (0.01%~0.05%)</td><td>1,544</td><td><span class="badge badge-pos">+0.62%</span></td><td>56.02%</td></tr>
+<tr><td>负极端 (&lt;-0.05%)</td><td>1,018</td><td><span class="badge badge-pos">+1.47%</span></td><td>67.88%</td></tr>
+<tr><td>正极端 (&gt;0.05%)</td><td>412</td><td><span class="badge badge-neg">-0.29%</span></td><td>58.50%</td></tr>
+</tbody></table>
+<h3>事件结构</h3>
+<table><thead><tr><th>事件结构</th><th>交易数</th><th>净收益</th><th>胜率</th></tr></thead><tbody>
+<tr><td>延续</td><td>387</td><td><span class="badge badge-neg">-0.66%</span></td><td>49.10%</td></tr>
+<tr><td>即时反转</td><td>2,738</td><td><span class="badge badge-pos">+1.37%</span></td><td>64.43%</td></tr>
+<tr><td>T2 停滞</td><td>1,478</td><td><span class="badge badge-pos">+0.54%</span></td><td>57.37%</td></tr>
+<tr><td>T3 停滞</td><td>592</td><td><span class="badge badge-neg">-0.01%</span></td><td>53.21%</td></tr>
+</tbody></table>
+<h3>退出原因</h3>
+<table><thead><tr><th>退出原因</th><th>交易数</th><th>净收益</th></tr></thead><tbody>
+<tr><td>到 8h 上限</td><td>3,320</td><td><span class="badge badge-neg">-2.48%</span></td></tr>
+<tr><td>触发 5% 止盈</td><td>1,880</td><td><span class="badge badge-pos">+6.67%</span></td></tr>
+<tr><td>数据结束</td><td>1</td><td><span class="badge badge-neg">-2.74%</span></td></tr>
+</tbody></table>
+<p class="note">止盈触发占比约 36.15%。这解释了为什么胜率只有 60%，但净均值能到 +0.83%：策略依赖少数较大的快速回落。</p>
+<h3>成本敏感性</h3>
+<table><thead><tr><th>成本</th><th>净收益</th><th>胜率</th></tr></thead><tbody>
+<tr><td>0 bps</td><td><span class="badge badge-pos">+0.96%</span></td><td>60.01%</td></tr>
+<tr><td>5 bps</td><td><span class="badge badge-pos">+0.91%</span></td><td>60.01%</td></tr>
+<tr><td>10 bps</td><td><span class="badge badge-pos">+0.86%</span></td><td>60.01%</td></tr>
+<tr><td>13 bps</td><td><span class="badge badge-pos">+0.83%</span></td><td>60.01%</td></tr>
+<tr><td>20 bps</td><td><span class="badge badge-pos">+0.76%</span></td><td>60.01%</td></tr>
+<tr><td>30 bps</td><td><span class="badge badge-pos">+0.66%</span></td><td>60.01%</td></tr>
+<tr><td>50 bps</td><td><span class="badge badge-pos">+0.46%</span></td><td>60.01%</td></tr>
+</tbody></table>
+
+<h2>8. 下一步建议</h2>
+<div class="box info">
+<ul>
+<li>只保留 B 类候选，先做 walk-forward 参数选择，不要直接使用全样本最优参数。</li>
+<li>做 position-level replay：同币冷却、同时持仓上限、交易所最小下单量、实际可成交深度、止盈触发顺序。</li>
+<li>把 2024 单独当作压力样本，要求策略在 2024 仍能覆盖更保守成本；否则只能小 notional 纸面观察。</li>
+<li>把资金费率桶、事件结构和波动率/流动性做成交前过滤，但必须在 OOS 中验证，不要在全样本里继续堆条件。</li>
+</ul>
+</div>
+
+<div class="footer">
+数据目录：<code>reports/artifacts/binance_event_study_v1_6_2b</code> &middot;
+生成脚本：<code>scripts/build_v1_6_2b_report.py</code> &middot;
+回测脚本：<code>scripts/backtest_v1_6_2b_short_reversal.py</code>
+</div>
+</body>
+</html>

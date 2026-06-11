@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这套 crypto options 平台只读成“期权研究基建”：对 short-cycle desk，更该先保留的是「box implied financing dislocation」这条 relative-value raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这套 crypto options 平台只读成“期权研究基建”：对 short-cycle desk，更该先保留的是「box implied financing dislocation」这条 relative-value raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-18 19:31 UTC</span>
+      <span class="pill">研究时间：2026-04-18 19:32 UTC</span>
+      <span class="pill">类型：GitHub / public-data probe</span>
+      <span class="pill">主题标签：raw-alpha / relative-value / stat-arb / options / box-spread / implied-rate / financing / deribit / 1m / 5m / maker-first</span>
+      <span class="pill">证据类型：工程经验 + 公开实时数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-18_1932_option-box-financing-dislocation-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-18 19:32 UTC</li>
+<li>类型：GitHub / public-data probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同到期、不同行权价构成的 box spread，其隐含融资价格若显著偏离理论贴现值，就做 long box / short box 收敛</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha / relative-value / stat-arb / options / box-spread / implied-rate / financing / deribit / 1m / 5m / maker-first</li>
+<li>证据类型：工程经验 + 公开实时数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 GitHub 仓 <code>signorloops/crypto-options-research-platform</code> 里的 <code>strategies/arbitrage/option_box.py</code>，它把 crypto options 研究平台里最值得 desk 先抽出来的旁支，落成了 <strong>box spread 套利</strong>：四腿期权拼出一个到期现金流固定的盒子，再比较“今天买这个盒子的成本”与“到期一定拿回的 strike 宽度”。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这条线的 <strong>base alpha 很清楚</strong>：不是猜 BTC 涨跌，而是赌 <strong>隐含融资价格会回到更合理的无套利区间</strong>。</li>
+<li>repo 给出的策略骨架很完整：扫描同 expiry 的 strike 组合、比较 <code>net_premium</code> 与 <code>K_high-K_low</code>、在 <code>long_box / short_box</code> 之间选更赚钱的一边，并显式扣四腿成本。</li>
+<li>但它现在还<strong>不能直接照抄上线</strong>：仓库主打 coin-margined options，<code>option_box.py</code> 里的 box 关系仍更接近线性期权语义；真上 Deribit/OKX 前，必须先把合约单位、inverse payoff、成交费和可成交 size 全部按 venue 规则重写。</li>
+<li>我用 Deribit BTC 公共期权链做了 live quick check：当前有 <code>365</code> 个双边可配对的 call-put strike，若只看 <code>&lt;=45d</code> 且 <code>0.9~1.1</code> moneyness，仍有 <code>109</code> 个可配对 strike、可组成 <code>982</code> 个 near-ATM box。说明<strong>公开数据和实验素材非常够</strong>。</li>
+<li>但 taker 直做当前并不厚：这些 near-ATM <code>&lt;=45d</code> boxes 的 <strong>绝对偏离中位数约 <code>19.39bps</code></strong>，最好的一组（<code>2026-05-29</code>, <code>74k/76k</code>）粗扣四腿价差宽度和 <code>8bps</code> 后，仍约 <strong><code>-29.36bps</code></strong>；<code>982</code> 组里 <strong>0 组</strong> 在这个粗成本口径下转正。当前 first verdict：更像 <strong>maker-first / fee-edge / 高频监控 alpha</strong>，不是随手 taker 就能吃的午餐。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和当前 desk 有直接关系，因为它补的是我们还没系统积累够的 <strong>relative-value / stat-arb raw alpha</strong>，而且不是“慢频宏大叙事”，而是可以按 <code>1m/5m</code> 频率持续扫描的微结构型价格错位。对短周期研发更值钱的不是 repo 里的整个平台，而是这条可单独拆出来的 <strong>融资贴现偏离 → 盒子回归</strong> 壳。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / stat-arb</li>
+<li>基础 alpha：box implied financing mispricing</li>
+<li>regime：优先近到中期 expiry、ATM 附近、双边报价连续、size 足够的时段</li>
+<li>filter / veto：四腿都有双边价；四腿最小 size 过线；偏离幅度必须大于四腿 spread + fees + inventory buffer</li>
+<li>risk / sizing / execution overlay：maker-first、腿间成交顺序控制、残腿超时撤单、单 expiry / 单 strike-width 风险上限</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：Deribit/OKX 的短天期 near-ATM box，有时会给出高于或低于理论贴现值的瞬时融资价格，但多数可见偏离会先被四腿 spread 吃掉。</li>
+<li>可计算定义：对同 expiry 的 <code>K_low &lt; K_high</code>，算 <code>premium = C(K_low)-P(K_low)-C(K_high)+P(K_high)</code>；把期权 mid 按标的价格换成 USD 近似，比较 <code>premium_usd</code> 与 <code>K_high-K_low</code>；只有 <code>|deviation| &gt; four_leg_width + fee_buffer + inventory_buffer</code> 才算候选。</li>
+<li>最小回测切口：Deribit BTC options，先做 <code>1m</code> snapshot 采样，限定 <code>&lt;=45d</code>、<code>0.95~1.05</code> moneyness、四腿都有 bid/ask，再比较 <code>mid 口径</code>、<code>maker 口径</code>、<code>taker 口径</code> 三层净边。</li>
+<li>最该先看：<code>正净边机会占比</code>、<code>偏离持续时间</code>；其次才是年化 implied rate 和单腿残留风险。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>最大保留意见不是“没有机会”，而是 <strong>repo 当前 box 数学更像线性模板</strong>；coin-margined / inverse venue 要先校正 contract spec，否则容易把假边当真边。</li>
+<li>四腿策略天然怕残腿和排队，看到偏离不等于能同时成交。</li>
+<li>这类机会很可能只在低费率、maker rebate、或极短暂 order-book 失衡里存在；若默认 taker，今天这次快检已经给出偏负 verdict。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>signorloops. (2026). *crypto-options-research-platform*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/signorloops/crypto-options-research-platform">https://github.com/signorloops/crypto-options-research-platform</a></code></li>
+<li>Read files: <code>strategies/arbitrage/option_box.py</code>, <code>strategies/arbitrage/conversion.py</code>, <code>tests/test_arbitrage.py</code></li>
+<li>Deribit API Docs.</li>
+<li>Readable URL: <code><a href="https://docs.deribit.com/">https://docs.deribit.com/</a></code></li>
+<li>本地快检 artifact：</li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_option_box_arbitrage_summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_option_box_arbitrage_candidates.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 queue pressure 只读成静态 OBI：对 short-cycle desk，更该先测的是「one-sided depth depletion × slow refill → 同向短漂移」这条 microstructure raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 queue pressure 只读成静态 OBI：对 short-cycle desk，更该先测的是「one-sided depth depletion × slow refill → 同向短漂移」这条 microstructure raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-18 01:35 UTC</span>
+      <span class="pill">研究时间：2026-04-18 01:46 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `src/mm_live/signals/imbalance.py` + `src/mm_live/signals/microprice.py`）+ 2026 Preprints 论文 branch read（`Within-Venue Monitoring of BTC/USDT Liquidity and Resiliency on Binance: A Queueing-Theoretic Framework`）+ Binance Spot 公共深度 `1s` live probe（`BTCUSDT` / `ETHUSDT`，top20，约 210s）</span>
+      <span class="pill">主题标签：raw-alpha / microstructure / queue-pressure / depth-depletion / refill / resiliency / continuation / maker-taker / binance / btc / eth / 1m / 3m / 5m</span>
+      <span class="pill">证据类型：repo 信号结构 + 论文机制框架 + live public-data sanity probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-18_0146_queue-depletion-refill-asymmetry-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-18 01:46 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>src/mm_live/signals/imbalance.py</code> + <code>src/mm_live/signals/microprice.py</code>）+ 2026 Preprints 论文 branch read（<code>Within-Venue Monitoring of BTC/USDT Liquidity and Resiliency on Binance: A Queueing-Theoretic Framework</code>）+ Binance Spot 公共深度 <code>1s</code> live probe（<code>BTCUSDT</code> / <code>ETHUSDT</code>，top20，约 210s）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当买一侧或卖一侧近端深度被明显打薄，而且 2~3 秒内没有快速补回，这往往不是“噪声扫一下就结束”，而更像冲击还没消化完；价格随后几秒更容易继续朝被打薄那一侧漂移。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / microstructure / queue-pressure / depth-depletion / refill / resiliency / continuation / maker-taker / binance / btc / eth / 1m / 3m / 5m</li>
+<li>证据类型：repo 信号结构 + 论文机制框架 + live public-data sanity probe</li>
+</ul>
+<h2>1. 先把一句话说清楚：这篇东西的 base alpha 是什么？</h2>
+<p>&gt; <strong>base alpha 不是“OBI 大就追”这种静态厚薄判断，而是更动态的一句：<code>one-sided queue depletion that does not refill quickly -&gt; same-direction short-horizon drift</code>。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>如果买盘近端深度突然被打掉一截，说明下方托单被吃掉了；</li>
+<li>若随后几秒挂单没有迅速补回来，说明这一下冲击没有被市场立刻吸收；</li>
+<li>这时价格更容易继续往下挪；</li>
+<li>卖盘侧同理，卖一附近深度被打薄且补得慢，则价格更容易继续往上挪。</li>
+</ul>
+<p>这条东西仍然属于 <strong>raw alpha</strong>，不是单纯 filter。因为你可以直接拿它定义方向、进场、持有窗口和退出条件。只是它天然更适合和 maker/taker 执行壳绑在一起。</p>
+<h2>2. 这次看的两份主材料，分别提供了什么</h2>
+<h3>2.1 repo：把“静态 queue pressure”拆得很清楚</h3>
+<p>主仓延续昨天那条高信号 2026 repo：</p>
+<ul>
+<li><strong>Author / Maintainer：</strong> Aliipou</li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> *mm-live*</li>
+<li><strong>Venue：</strong> GitHub repo</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/Aliipou/mm-live&gt;">https://github.com/Aliipou/mm-live&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/Aliipou/mm-live&gt;">https://github.com/Aliipou/mm-live&gt;</a></li>
+</ul>
+<p>repo 里最核心的是两层：</p>
+<ul>
+<li><code>microprice.py</code>：把买一/卖一队列厚薄翻译成一个更接近“真实短时公允价”的价格；</li>
+<li><code>imbalance.py</code>：把 top-N 深度不平衡做成更平滑的 pressure signal。</li>
+</ul>
+<p>昨天那条 digest 已经把它读成： <code>microprice deviation × imbalance consensus -&gt; short drift</code></p>
+<p>但 repo 继续往前推一步，其实会自然得到一个更交易化的问题：</p>
+<p>&gt; <strong>如果 queue pressure 不是静态偏移，而是先发生“某一侧被打薄”的瞬时冲击，那么后面最该看的不是 OBI 当下有多大，而是“补单快不快”。</strong></p>
+<p>也就是说，repo 给了 <code>pressure</code> 的观测层；而我这轮更想保留的是它的 <strong>动态分叉版</strong>：</p>
+<ul>
+<li><strong>快速补回</strong>：更像虚惊一场，directional edge 要降级；</li>
+<li><strong>慢补 / 不补</strong>：更像冲击残留，继续漂移概率更高。</li>
+</ul>
+<h3>2.2 paper：把“补不补得回来”这件事变成可量化的韧性问题</h3>
+<p>第二份材料是：</p>
+<ul>
+<li><strong>Authors：</strong> Kyle Braughton, Matthew Bartholomew</li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> *Within-Venue Monitoring of BTC/USDT Liquidity and Resiliency on Binance: A Queueing-Theoretic Framework*</li>
+<li><strong>Venue：</strong> Preprints</li>
+<li><strong>DOI：</strong> <code>10.20944/preprints202604.0256.v1</code></li>
+<li><strong>Readable URL：</strong> <code><a href="https://www.preprints.org/manuscript/202604.0256/v1">https://www.preprints.org/manuscript/202604.0256/v1</a></code></li>
+</ul>
+<p>这篇 paper 上一轮我更偏向把它归到 <strong>regime / router</strong>：它讲的是 venue fragility、impact 强度、resiliency 速度，不直接给你方向。</p>
+<p>但如果把它和上面的 repo 接起来，desk 化后会出现一个更具体的分叉：</p>
+<p>&gt; <strong>静态 fragility 更像“今天市场脆不脆”；而单次 queue depletion 后的 refill speed，更像“这一脚冲击还会不会延续”。</strong></p>
+<p>换句话说：</p>
+<ul>
+<li>paper 给的是<strong>韧性语言</strong>；</li>
+<li>repo 给的是<strong>微观信号接口</strong>；</li>
+<li>两者拼起来后，更像一条可直接做 ultra-short entry 的 raw alpha。</li>
+</ul>
+<h2>3. 这条 alpha 怎么落成完整策略壳</h2>
+<h3>3.1 方向定义</h3>
+<ul>
+<li><strong>bid-side depletion</strong>：top1 或 top5 bid depth 相对上一个采样点显著下跳，且 ask 侧没有同步被打薄</li>
+<p>→ 看空 / 少接飞刀</p>
+<li><strong>ask-side depletion</strong>：top1 或 top5 ask depth 显著下跳，且 bid 侧没有同步被打薄</li>
+<p>→ 看多 / 少在上方继续挂空</p>
+</ul>
+<h3>3.2 关键确认：不是“被打薄”本身，而是“补得慢”</h3>
+<p>可直接用一个很土但很实用的定义：</p>
+<ul>
+<li>事件时刻记为 <code>t0</code></li>
+<li>近端深度损失量记为 <code>lost_depth</code></li>
+<li>看 <code>t0+1s ~ t0+3s</code> 内最多补回多少</li>
+<li><code>refill_ratio = recovered_depth / lost_depth</code></li>
+</ul>
+<p>再分三档：</p>
+<ul>
+<li><code>slow_refill &lt;= 0.3</code></li>
+<li><code>mid_refill 0.3~0.7</code></li>
+<li><code>fast_refill &gt;= 0.7</code></li>
+</ul>
+<p>我的 desk 读法：</p>
+<ul>
+<li><strong>slow_refill</strong>：允许做 continuation</li>
+<li><strong>fast_refill</strong>：不给 directional admission，甚至可当 veto</li>
+<li><strong>mid_refill</strong>：只减仓做，或者要求 microprice/imbalance 再同向确认</li>
+</ul>
+<h3>3.3 一个最小可执行壳</h3>
+<p>以 <code>1s</code> 事件为底层，聚合到 <code>1m / 3m</code> 执行也可以：</p>
+<p><strong>Entry</strong></p>
+<ul>
+<li>监控 <code>top5</code> depth</li>
+<li>若某侧深度单秒跌幅 <code>&lt;= -15%</code>，且另一侧跌幅 <code>&gt; -5%</code></li>
+<li>再要求 <code>refill_ratio_3s &lt;= 0.3</code></li>
+<li>同时 <code>microprice deviation</code> 与 depletion 方向一致</li>
+<li>则在 <code>t0+3s</code> 附近入场，做 <code>3s / 5s / 8s</code> 超短 continuation，或将事件强度聚合成 <code>1m</code> bar 内的 directional pressure 分数</li>
+</ul>
+<p><strong>Exit</strong></p>
+<ul>
+<li>固定持有 <code>5~10s</code>；</li>
+<li>或一旦 opposite-side queue 反向 depletion；</li>
+<li>或 <code>refill_ratio</code> 后续跃升到 <code>&gt; 0.7</code> 立刻走。</li>
+</ul>
+<p><strong>Sizing</strong></p>
+<ul>
+<li>按 <code>lost_depth / local_depth</code>、事件前 30s 波动、spread 宽度做分层；</li>
+<li>单事件只给小仓，允许事件簇叠加，但要设总库存上限。</li>
+</ul>
+<p><strong>Risk / Cost</strong></p>
+<ul>
+<li>这类 alpha 天然怕：撮合延迟、排队失败、价差回吐；</li>
+<li>若不能在亚秒级/几秒级拿到流数据和执行回报，最好先当 <strong>maker-skew bias</strong> 或 <strong>execution veto</strong> 用，而不是纯 taker 追单。</li>
+</ul>
+<h2>4. 我补的 Binance 公共 depth 快检</h2>
+<h3>4.1 数据源、公开性、更新频率、最小实验口径</h3>
+<ul>
+<li><strong>数据源：</strong> Binance Spot <code>api/v3/depth</code></li>
+<li><strong>公开性：</strong> 完全公开可得</li>
+<li><strong>更新频率：</strong> 本轮按 <code>1s</code> 轮询</li>
+<li><strong>标的：</strong> <code>BTCUSDT</code>、<code>ETHUSDT</code></li>
+<li><strong>深度口径：</strong> <code>top20</code> 抓取，计算 <code>top5 bid/ask qty</code></li>
+<li><strong>样本时长：</strong> 约 <code>210s</code></li>
+<li><strong>最小事件定义：</strong></li>
+<li>某侧 <code>top5 depth</code> 单秒跌幅 <code>&lt;= -15%</code></li>
+<li>对侧同秒跌幅 <code>&gt; -5%</code></li>
+<li>未来 <code>3s</code> 计算 <code>refill_ratio</code></li>
+<li>观察未来 <code>3s / 5s / 8s</code> 的 signed mid return</li>
+<li><strong>artifact：</strong></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-18_queue_refill_probe_summary.json</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-18_queue_refill_probe_events.json</code></li>
+</ul>
+<h3>4.2 先看最粗结论</h3>
+<p>总共抓到 <strong>139</strong> 个单侧 depletion 事件。把收益统一按“depletion 指向的 continuation 方向”签名后：</p>
+<ul>
+<li><strong>全部事件平均 signed return：</strong></li>
+<li><code>3s</code>: <strong>+0.25 bps</strong></li>
+<li><code>5s</code>: <strong>+0.33 bps</strong></li>
+<li><code>8s</code>: <strong>+0.42 bps</strong></li>
+</ul>
+<p>翻成人话： &gt; <strong>只看“某侧突然变薄”本身，就已经不是完全随机；至少在这轮 live probe 里，它后面几秒更偏向继续往被打薄那边漂。</strong></p>
+<h3>4.3 更关键：慢补比快补更像 continuation</h3>
+<p>#### bid-side depletion（买盘被打薄 → 看下）</p>
+<ul>
+<li><code>slow_refill</code>（30 例）</li>
+<li><code>5s</code>: <strong>+0.68 bps</strong></li>
+<li><code>8s</code>: <strong>+0.82 bps</strong></li>
+<li><code>fast_refill</code>（32 例）</li>
+<li><code>5s</code>: <strong>+0.33 bps</strong></li>
+<li><code>8s</code>: <strong>+0.37 bps</strong></li>
+</ul>
+<p>这组最干净： &gt; <strong>买盘被打薄后，如果几秒内补不回来，向下 continuation 大约是快补情形的 2 倍。</strong></p>
+<p>#### ask-side depletion（卖盘被打薄 → 看上）</p>
+<ul>
+<li><code>slow_refill</code>（36 例）</li>
+<li><code>5s</code>: <strong>+0.20 bps</strong></li>
+<li><code>8s</code>: <strong>+0.52 bps</strong></li>
+<li><code>fast_refill</code>（29 例）</li>
+<li><code>5s</code>: <strong>+0.12 bps</strong></li>
+<li><code>8s</code>: <strong>-0.07 bps</strong></li>
+</ul>
+<p>这组更 noisy，但方向上仍能读成： &gt; <strong>卖盘被打薄后，若补单很快，向上 edge 会明显衰减；到 <code>8s</code> 口径甚至被反向吃掉。</strong></p>
+<h3>4.4 我对这些数字的 desk 解读</h3>
+<p>这轮快检不能证明“直接上线就能赚钱”，但已经够回答一个更关键的问题：</p>
+<p>&gt; <strong>这条东西至少不是空想。队列被打薄以后，‘补不补得回来’这件事，确实在几秒尺度上携带了方向信息。</strong></p>
+<p>而且它比静态 OBI 更像一个能直接交易的事件型信号：</p>
+<ul>
+<li><strong>静态 OBI</strong>：像“现在书偏哪边”；</li>
+<li><strong>depletion + refill</strong>：像“刚刚挨了一脚，这脚还没缓过来没”。</li>
+</ul>
+<p>对超短执行来说，后者通常更接近真正的 entry trigger。</p>
+<h2>5. 为什么我认为它值得进当前素材池</h2>
+<h3>5.1 它直接补的是 raw alpha，不是又写一个解释层</h3>
+<p>最近很多材料容易滑向：</p>
+<ul>
+<li>regime</li>
+<li>router</li>
+<li>execution caution</li>
+<li>market-quality 注释</li>
+</ul>
+<p>这些都重要，但如果本轮目标是补 <strong>raw alpha 素材池</strong>，那么这条更合格，因为它能直接回答：</p>
+<ul>
+<li><strong>什么时候做多 / 做空？</strong></li>
+<li><strong>拿多久？</strong></li>
+<li><strong>什么情况下立刻撤退？</strong></li>
+</ul>
+<h3>5.2 它和已有 microprice / OBI digest 不是一回事</h3>
+<p>已有 digest 更偏：</p>
+<ul>
+<li><code>microprice deviation</code></li>
+<li><code>top-book imbalance</code></li>
+<li><code>fair value shift</code></li>
+</ul>
+<p>而这条强调的是：</p>
+<ul>
+<li><strong>事件发生时的 queue shock</strong></li>
+<li><strong>shock 后的 refill speed</strong></li>
+</ul>
+<p>前者像“静态偏置”，后者像“动态冲击延续”。两者可以一起用，但不是同一条主题的换皮。</p>
+<h3>5.3 它能自然服务 1m / 3m / 5m</h3>
+<p>虽然底层是秒级事件，但并不意味着只能做 HFT：</p>
+<ul>
+<li>把 <code>1s</code> depletion 事件聚合成 <code>1m pressure score</code>，可服务 <code>1m/3m</code> directional entry；</li>
+<li>把它当 <code>5m</code> bar 内的 microstructure confirm，也能服务更慢一点的 continuation / breakout sleeve；</li>
+<li>若连续出现 opposite-side depletion，可以反过来当 <strong>fade veto</strong>。</li>
+</ul>
+<h2>6. 主要保留意见</h2>
+<ul>
+<li><strong>样本很短。</strong> 这轮只有约 <code>210s</code> live probe，更多是 sanity check，不是稳定性证明。</li>
+<li><strong>公开 REST 轮询太粗。</strong> 真要做 production，必须换 WebSocket depth diff，而不是 <code>1s</code> HTTP poll。</li>
+<li><strong>成本门槛还没过。</strong> 这轮看到的是 <code>0.2~0.8 bps</code> 级别的超短 edge，若用 taker 追，很容易被手续费和排队失败吃掉。</li>
+<li><strong>更适合先做 maker/taker 混合壳。</strong> 最现实的第一步不是全 taker directional trade，而是：</li>
+<li>depletion 慢补时，把顺势那一边 quote 挂近一点；</li>
+<li>fast refill 时撤掉 directional bias。</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<h3>7.1 先做一个更像样的最小复现</h3>
+<ul>
+<li>改成 <strong>Binance WebSocket depth diff</strong>，至少拿 <code>30~60</code> 分钟连续样本；</li>
+<li>标的扩到 <code>BTCUSDT / ETHUSDT / SOLUSDT</code>；</li>
+<li>同时记录：</li>
+<li>top1 / top5 / top10 depletion</li>
+<li>refill ratio at <code>1s / 3s / 5s</code></li>
+<li>microprice deviation</li>
+<li>spread / realized vol</li>
+</ul>
+<h3>7.2 做 3 个最小壳对照</h3>
+<ol>
+<li><strong>pure taker continuation</strong>：事件后直接追，持有 <code>3s/5s/8s</code></li>
+<li><strong>maker-skew shell</strong>：只调整 quote skew，不主动追单</li>
+<li><strong>router-only</strong>：给现有 OBI / microprice alpha 做 allow / veto</li>
+</ol>
+<p>重点比较：</p>
+<ul>
+<li>gross bps</li>
+<li>fee 后 bps</li>
+<li>adverse selection</li>
+<li>fill ratio</li>
+</ul>
+<h3>7.3 真正决定它能否留下来的，不是 IC，而是成本后生存性</h3>
+<p>最该先问的不是“它有没有方向性”，而是：</p>
+<p>&gt; <strong>在 maker/taker 不同执行假设下，这条事件信号能不能留下正的 fee-after edge？</strong></p>
+<p>如果答案是：</p>
+<ul>
+<li>taker 死、maker 活 → 它应归到 <strong>maker shell alpha</strong></li>
+<li>两边都活 → 可升级成独立 ultra-short sleeve</li>
+<li>两边都死 → 留作 execution veto，不再当主 alpha</li>
+</ul>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>Aliipou (2026)</strong>, *mm-live*，GitHub repo</li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://github.com/Aliipou/mm-live&gt;">https://github.com/Aliipou/mm-live&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Kyle Braughton, Matthew Bartholomew (2026)</strong>, *Within-Venue Monitoring of BTC/USDT Liquidity and Resiliency on Binance: A Queueing-Theoretic Framework*, Preprints</li>
+</ol>
+<ul>
+<li>DOI: <code>10.20944/preprints202604.0256.v1</code></li>
+<li>Readable URL: <code><a href="https://www.preprints.org/manuscript/202604.0256/v1">https://www.preprints.org/manuscript/202604.0256/v1</a></code></li>
+</ul>
+</body>
+</html>

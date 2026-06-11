@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把未收盘 HTF 结构偷渡进 15m 确认：closed-bar `merge_asof(backward)` 才是 breakout-short / Fib / EMA-PSAR 的 honest context gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把未收盘 HTF 结构偷渡进 15m 确认：closed-bar `merge_asof(backward)` 才是 breakout-short / Fib / EMA-PSAR 的 honest context gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-21 02:48 UTC</span>
+      <span class="pill">研究时间：2026-03-21 02:46 UTC</span>
+      <span class="pill">类型：GitHub 仓库 + 官方文档</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/htf/merge_asof/closed-bar/no-lookahead/context/filter/repo/docs/crypto/15m</span>
+      <span class="pill">证据类型：工程规则证据（源码 + 官方 API/文档可复核）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-21_0246_closedbar-htf-context-honesty-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-21 02:46 UTC</li>
+<li>类型：GitHub 仓库 + 官方文档</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/htf/merge_asof/closed-bar/no-lookahead/context/filter/repo/docs/crypto/15m</li>
+<li>证据类型：工程规则证据（源码 + 官方 API/文档可复核）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了 <code>TheVision333/trading-bot</code> 里的 <code>strategy/mtf.py</code> 与 Pandas 官方 <code>merge_asof</code> 文档。最值得偷的不是某条均线，而是它把高周期上下文写成一个<strong>严格 closed-bar only</strong> 的合并规则：LTF 在时点 <code>T</code> 只能拿到 <strong>已收盘</strong> 的 HTF 状态，不能偷看正在形成中的 4H / 1D bar。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：15m 的 HTF 确认层，先要过“已收盘高周期”这道 honesty gate；否则很多看起来更稳的确认，其实只是未来信息泄漏。</li>
+<li><strong>一句话证明方式</strong>：主仓库明确用 <code>pd.merge_asof(..., direction=&#x27;backward&#x27;)</code>；Pandas 官方文档也明确写着，<code>backward</code> 只会选取 <code>right_key &lt;= left_key</code> 的最后一行，也就是<strong>只拿过去或当前已知值</strong>。</li>
+<li>这条规则的实际量级不小：如果 15m 直接读取“当前未收盘 HTF bar”，最大潜在前视泄漏可达：</li>
+<li><code>15m -&gt; 1h</code>：<strong>45 分钟 = 3 根 15m bar</strong></li>
+<li><code>15m -&gt; 4h</code>：<strong>225 分钟 = 15 根 15m bar</strong></li>
+<li><code>15m -&gt; 1d</code>：<strong>1425 分钟 = 95 根 15m bar</strong></li>
+<li>仓库注释给了一个很好的口径示例：<strong><code>14:00</code> 的 1H 信号，只能拿 <code>12:00</code> 已收盘 4H bar 的结构，不能拿 <code>16:00</code> 那根还没收完的 4H bar。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮虽然不是再加一个新 alpha，但它比继续堆一个新过滤器更值：<strong>先把三条收口线的 HTF 上下文做干净，否则后面的胜率/回撤改善可能只是“偷看未来”。</strong></p>
+<ul>
+<li><code>V3 final-verdict / breakout-short follow-up</code>：若 15m breakout-short 用了“当前 4H 已转弱/转强”当 follow-up gate，但那根 4H 其实还没收盘，final verdict 容易被虚高。</li>
+<li><code>Fibonacci confirmation / retest_hold</code>：Fib 回踩特别依赖 1H/4H 趋势背景；如果 HTF 对齐口径不诚实，<code>retest_hold</code> 的确认强度会被高估。</li>
+<li><code>EMA / PSAR raw alpha focus</code>：在继续讨论 EMA/PSAR 是主触发还是 overlay 之前，先确认 HTF trend filter 没有 lookahead，比再调参数更要紧。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：当前任何依赖 1H/4H/1D context 的 15m setup，只要把“当前未收盘 HTF 值”改成“closed-bar only”，绩效会有一部分回落；若几乎不回落，才说明这层确认是诚实的。</li>
+<li><strong>可计算定义</strong>：</li>
+</ul>
+<ol>
+<li><code>Honest</code>：HTF 特征先按 HTF close timestamp 计算，再用 <code>merge_asof(direction=&quot;backward&quot;)</code> 合并到 15m；</li>
+<li><code>Naive</code>：把当前 HTF bar 直接 <code>resample/ffill</code> 到 15m，允许未收盘 bar 的值提前进入。</li>
+</ol>
+<ul>
+<li><strong>最小回测切口</strong>：<code>BTC/ETH/SOL</code> perpetual，<code>15m</code> 主信号；HTF 先测 <code>1h/4h</code> 两层；时间先取 <code>2023-01-01</code> 至今；成本先固定 <code>6/10/15 bps per side</code>。</li>
+<li><strong>先看 4 个指标</strong>：</li>
+</ul>
+<ol>
+<li><code>post_cost_expectancy</code></li>
+<li><code>failure_rate</code></li>
+<li><code>trade_count_retention</code></li>
+<li><code>HTF gate flip rate</code>（多少笔在 naive 通过、honest 不通过）</li>
+</ol>
+<ul>
+<li><strong>优先顺序</strong>：先在现有 <code>breakout-short</code>、<code>fib_retest_hold</code>、<code>ema_psar</code> 三条线上各做一次 <code>naive vs honest</code> A/B；如果某条线对口径极敏感，就先暂停加新过滤器，回头重审证据。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这不是新 alpha，而是<strong>研究诚实性修复</strong>；它可能让回测更难看，但更可信。</li>
+<li>不同数据源对 bar timestamp 的标注（开盘时刻 vs 收盘时刻）可能不同，若不统一，<code>merge_asof</code> 也会错位。</li>
+<li>closed-bar 规则会牺牲一点“反应速度”；但这属于真实交易限制，不该在回测里被偷掉。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>TheVision333. (2026). <strong>trading-bot</strong>. GitHub Repository.</li>
+<li>Venue: GitHub</li>
+<li>DOI: <code>N/A</code></li>
+<li>Readable URL: <code><a href="https://github.com/TheVision333/trading-bot">https://github.com/TheVision333/trading-bot</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/TheVision333/trading-bot">https://github.com/TheVision333/trading-bot</a></code></li>
+<li>Key files:</li>
+<li><code><a href="https://raw.githubusercontent.com/TheVision333/trading-bot/main/strategy/mtf.py">https://raw.githubusercontent.com/TheVision333/trading-bot/main/strategy/mtf.py</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/TheVision333/trading-bot/main/config.py">https://raw.githubusercontent.com/TheVision333/trading-bot/main/config.py</a></code></li>
+<li>pandas development team. (2025-2026). <strong>pandas.merge_asof — pandas documentation</strong>. Official Documentation.</li>
+<li>Venue: pandas docs</li>
+<li>DOI: <code>N/A</code></li>
+<li>Readable URL: <code><a href="https://pandas.pydata.org/docs/reference/api/pandas.merge_asof.html">https://pandas.pydata.org/docs/reference/api/pandas.merge_asof.html</a></code></li>
+</ul>
+</body>
+</html>

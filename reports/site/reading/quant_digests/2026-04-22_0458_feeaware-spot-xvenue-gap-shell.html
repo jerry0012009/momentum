@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 stat-arb repo 只读成“作者自称有 alpha”：对 short-cycle crypto desk，更该先拆的是「fee-aware same-symbol cross-venue spot gap × inventory/maker-first deployment shell」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 stat-arb repo 只读成“作者自称有 alpha”：对 short-cycle crypto desk，更该先拆的是「fee-aware same-symbol cross-venue spot gap × inventory/maker-first deployment shell」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-22 04:56 UTC</span>
+      <span class="pill">研究时间：2026-04-22 04:58 UTC</span>
+      <span class="pill">类型：2025 GitHub repo source audit（`README.md` + `arbitrage/pure_arb_simulator.py`）+ public live quote sanity probe（Binance Spot / Bitstamp BTC，约 `40s`）</span>
+      <span class="pill">主题标签：raw-alpha / relative-value / stat-arb / cross-venue / same-symbol / spot / law-of-one-price / fee-aware / slippage / inventory-funded / maker-first / btc / 1m / 3m / 5m / repo / public-data</span>
+      <span class="pill">证据类型：工程实现 + repo 策略壳 + public live probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-22_0458_feeaware-spot-xvenue-gap-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-22 04:58 UTC</li>
+<li>类型：2025 GitHub repo source audit（<code>README.md</code> + <code>arbitrage/pure_arb_simulator.py</code>）+ public live quote sanity probe（Binance Spot / Bitstamp BTC，约 <code>40s</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一标的在不同交易 venue 的可执行买一/卖一出现足够大的瞬时价差时，买便宜 venue、卖贵 venue，赌同标的跨 venue 价差向 law-of-one-price 收敛</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / relative-value / stat-arb / cross-venue / same-symbol / spot / law-of-one-price / fee-aware / slippage / inventory-funded / maker-first / btc / 1m / 3m / 5m / repo / public-data</li>
+<li>证据类型：工程实现 + repo 策略壳 + public live probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是 <strong>Atrone / stat_arb_crypto</strong>。这个 repo 里其实混了几条线：一条是带 ESRNN 预测和 funding 条件的方向分支，另一条更干净、也更适合 desk intake 的，是 <code>arbitrage/pure_arb_simulator.py</code> 里的 <strong>same-symbol cross-venue gap capture</strong>。</p>
+<p>它最值得保留的地方，不是“跨所套利”这四个字，而是把一条很老但仍然重要的 raw alpha 壳写成了可检查的流程：</p>
+<ul>
+<li>先抓两边同标的价格；</li>
+<li>再显式扣掉 <strong>双边 slippage + 双边 taker fee</strong>；</li>
+<li>只有净利润 <code>&gt; arbitrage_threshold</code> 才记为可做机会；</li>
+<li>方向上同时检查 <code>A买/B卖</code> 和 <code>B买/A卖</code> 两边。</li>
+</ul>
+<p>翻成人话：<strong>不是看到价差就兴奋，而是先问“扣完摩擦后还剩几口肉”。</strong></p>
+<h2>2. 一句话核心结论</h2>
+<p>这篇东西最值钱的不是“又一次提醒你跨所会有价差”，而是：</p>
+<p>&gt; <strong>same-symbol cross-venue gap 当然是 raw alpha，但在今天的主流 BTC 现货里，taker 化通常不够厚；它更像一条必须依赖 inventory、maker-first、超低延迟和严成本门槛的 deployment shell。</strong></p>
+<h2>3. 它是怎么证明这点的</h2>
+<p>核心证据来自 <code>pure_arb_simulator.py</code> 的逻辑，而不是 README 口号：</p>
+<ul>
+<li><code>fetch_data(...)</code>：从交易所拉同标的 OHLCV / close；</li>
+<li><code>estimate_slippage(...)</code>：对买卖两边分别估计冲击；</li>
+<li><code>get_exchange_fees(...)</code>：显式取双边 fee；</li>
+<li><code>simulate_arbitrage(...)</code>：</li>
+</ul>
+<ol>
+<li>对两个 venue 同时算 <code>A买/B卖</code> 与 <code>B买/A卖</code>；</li>
+<li>用 <code>adjusted_buy_price = price * (1 + slippage)</code>、<code>adjusted_sell_price = price * (1 - slippage)</code> 先把“理论价差”压成“成交后价差”；</li>
+<li>再扣 fee，得到 <code>net_profit_usd</code>；</li>
+<li>只有 <code>net_profit_usd &gt; arbitrage_threshold</code> 才记为一笔机会。</li>
+</ol>
+<p>也就是说，这个 repo 至少把 <strong>alpha 本体</strong> 和 <strong>摩擦现实</strong> 放在同一个判定口径里，而不是只看裸 spread。</p>
+<h2>4. base alpha 到底是什么</h2>
+<p>先说清边界：</p>
+<ul>
+<li><strong>base alpha 不是</strong> “低延迟基础设施”；</li>
+<li><strong>base alpha 不是</strong> “maker rebate”；</li>
+<li><strong>base alpha 也不是</strong> “slippage 模型”；</li>
+</ul>
+<p>这篇东西的 <strong>base alpha</strong> 是：</p>
+<p>&gt; <strong>同一标的跨 venue 的瞬时错误定价 / 价差偏离，会在足够短时间内向统一价格回归。</strong></p>
+<p>其余这些都只是把它从“纸面套利”变成“可落地系统”的必要二层组件：</p>
+<ul>
+<li>fee gate</li>
+<li>slippage gate</li>
+<li>inventory 预铺货</li>
+<li>maker-first / hedge venue</li>
+<li>latency / stale-quote veto</li>
+</ul>
+<p>所以它符合本轮优先级：<strong>这是 raw alpha，而且能自然写成完整策略壳。</strong></p>
+<h2>5. 这轮 public live probe 看到了什么</h2>
+<p>我额外做了一个很轻的 live sanity check：</p>
+<ul>
+<li>标的：<code>BTC</code></li>
+<li>venue：Binance Spot <code>BTCUSDT</code> vs Bitstamp <code>BTCUSD</code></li>
+<li>口径：每 <code>5s</code> 采 1 次，共 <code>8</code> 次，近似看“买最便宜、卖最贵”的即时可执行 gap</li>
+<li>结果：</li>
+<li>可执行 gap 范围约 <strong><code>2.18 ~ 2.98 bps</code></strong></li>
+<li>均值约 <strong><code>2.45 bps</code></strong></li>
+<li>最高报价大多出现在 Bitstamp、最低报价大多出现在 Binance</li>
+</ul>
+<p>这组数的含义很直接：</p>
+<p>&gt; <strong>主流 BTC 现货的表面 gap 确实存在，但肉非常薄。</strong></p>
+<p>如果你用普通 taker×2 去打，别说再加提现、转账、库存占用和 API 延迟，单看显性手续费，很多时候就已经把这 <code>2~3 bps</code> 吃没了。</p>
+<h2>6. 对 short-cycle desk 真正有用的，不是“去搬砖”，而是三件事</h2>
+<h3>6.1 把它当相对价值 alpha 壳，而不是稳赚神话</h3>
+<p>这条边不是没有，但默认不该被写成“稳定无风险套利”。对 desk 更诚实的说法是：</p>
+<ul>
+<li><strong>alpha 本体</strong>：same-symbol venue dislocation close</li>
+<li><strong>能否活下来</strong>：取决于 fee tier、maker 命中率、库存预铺和 quote freshness</li>
+</ul>
+<h3>6.2 最适合映射到 <code>1m/3m</code>，其次才是 <code>5m</code></h3>
+<p>这条 edge 天生更接近 <strong>event-time / top-of-book</strong>，不是慢 bar 因子。 最小实验应是：</p>
+<ul>
+<li><code>1s~5s</code> 级 quote 采样；</li>
+<li>聚合成 <code>1m</code> 的 dislocation count / max gap / dwell time；</li>
+<li>再判断 <code>1m/3m/5m</code> 上是否还有可交易残留，而不是反过来先做 <code>15m</code> K 线。</li>
+</ul>
+<h3>6.3 更适合 inventory-funded / maker-first，不适合裸 taker 扫单</h3>
+<p>当前 probe 已经很说明问题：如果公开可见 gap 只剩 <code>2~3 bps</code>，那这条边更像：</p>
+<ul>
+<li>在薄 venue 先挂 maker；</li>
+<li>深 venue 做快速 hedge；</li>
+<li>或者双边都已有库存，只吃短暂偏离；</li>
+<p>而不是“看到 gap 就两边 taker”。</p>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<ol>
+<li><strong>做真实 quote-level 采集</strong>：至少抓 <code>1s</code> 级 bid/ask，而不是 close；连续采 <code>BTC/ETH/SOL</code>，先跑 <code>3~7d</code>。</li>
+<li><strong>统一 quote 货币</strong>：别把 <code>USD</code> / <code>USDT</code> 混在一起直接比；先补稳定币偏离修正。</li>
+<li><strong>先做 friction ladder</strong>：<code>gross gap -&gt; minus fee -&gt; minus half-spread -&gt; minus hedge delay</code>，别直接谈年化。</li>
+<li><strong>分三档 execution 假设</strong>：<code>taker/taker</code>、<code>maker/taker</code>、<code>inventory-funded maker/taker</code>，看哪一档才可能过线。</li>
+<li><strong>只保留 sparse shell 的预期</strong>：如果 <code>BTC</code> 太薄，就把它迁到更分散的 alt / 区域性 venue 组合，而不是继续在最卷的主流对上幻想无脑套利。</li>
+</ol>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>Atrone (2025). _stat_arb_crypto_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: &lt;<a href="https://github.com/Atrone/stat_arb_crypto&gt;">https://github.com/Atrone/stat_arb_crypto&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://github.com/Atrone/stat_arb_crypto&gt;">https://github.com/Atrone/stat_arb_crypto&gt;</a></li>
+<li>关键文件：<code>README.md</code>、<code>arbitrage/pure_arb_simulator.py</code></li>
+</ul>
+<ol>
+<li><strong>Binance Spot public book ticker API</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://api.binance.com/api/v3/ticker/bookTicker?symbol=BTCUSDT&gt;">https://api.binance.com/api/v3/ticker/bookTicker?symbol=BTCUSDT&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Bitstamp public ticker API</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://www.bitstamp.net/api/v2/ticker/btcusd/&gt;">https://www.bitstamp.net/api/v2/ticker/btcusd/&gt;</a></li>
+</ul>
+</body>
+</html>

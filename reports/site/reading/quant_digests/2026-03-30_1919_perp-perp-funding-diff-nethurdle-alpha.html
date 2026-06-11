@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 perp-perp funding diff 继续写成 funding 排名表：这份 2026 GitHub 仓库更该先测的是「net-EV hurdle × same-underlier venue pair」raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 perp-perp funding diff 继续写成 funding 排名表：这份 2026 GitHub 仓库更该先测的是「net-EV hurdle × same-underlier venue pair」raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-30 19:36 UTC</span>
+      <span class="pill">研究时间：2026-03-30 19:19 UTC</span>
+      <span class="pill">类型：2026 GitHub 仓库 + `README` / `config/main.yaml` / `strategies/perp_perp.py` / `optimization/opportunity_ranker.py` / `portfolio/profit_model.py` / `scripts/run_live_screener.py` source audit + Binance/Bybit/OKX 公开 funding live sanity check</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/perp-perp/cross-venue/relative-value/stat-arb/same-underlier/net-ev-hurdle/cost-stack/8h-clock/binance/bybit/okx/1m/3m/5m/15m/repo/public-data/cost</span>
+      <span class="pill">证据类型：工程实现证据 + 公开 live 快照 + 本地成本复核</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-30_1919_perp-perp-funding-diff-nethurdle-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-30 19:19 UTC</li>
+<li>类型：2026 GitHub 仓库 + <code>README</code> / <code>config/main.yaml</code> / <code>strategies/perp_perp.py</code> / <code>optimization/opportunity_ranker.py</code> / <code>portfolio/profit_model.py</code> / <code>scripts/run_live_screener.py</code> source audit + Binance/Bybit/OKX 公开 funding live sanity check</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一币种跨 venue 做 <code>short 高 funding perp + long 低 funding perp</code>，只在 funding differential <strong>扣完完整成本栈后</strong> 仍有净边时入场</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/carry/funding/perp-perp/cross-venue/relative-value/stat-arb/same-underlier/net-ev-hurdle/cost-stack/8h-clock/binance/bybit/okx/1m/3m/5m/15m/repo/public-data/cost</li>
+<li>证据类型：工程实现证据 + 公开 live 快照 + 本地成本复核</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主材料是 <strong>gencersarp</strong> 在 2026-03 仍在更新的 GitHub 仓库 <strong><code>cryptoarb</code></strong>。我重点看了：</p>
+<ul>
+<li><code>README.md</code></li>
+<li><code>config/main.yaml</code></li>
+<li><code>strategies/perp_perp.py</code></li>
+<li><code>optimization/opportunity_ranker.py</code></li>
+<li><code>portfolio/profit_model.py</code></li>
+<li><code>scripts/run_live_screener.py</code></li>
+</ul>
+<p>这次真正值得 intake 的，不是“跨所 funding 有时不一样”这个老结论，而是 repo 把 <strong>same-underlier、same-contract-family 的 perp-perp funding differential</strong> 写成了一个可以直接做 first verdict 的完整骨架：</p>
+<ol>
+<li>先做 <strong>venue pair 同币 funding spread</strong>；</li>
+<li>再用 <strong>spread z-score</strong> 过滤薄边噪音；</li>
+<li>再把 <strong>fees / slippage / latency / inventory risk</strong> 一次性扣进 <code>net_ev</code>；</li>
+<li>只留下 <strong>扣完成本仍为正</strong> 的候选。</li>
+</ol>
+<p>对当前 desk 来说，这比“看谁 funding 最高就去收租”更有价值，因为它把这条 alpha 最容易自欺的地方——<strong>毛边很多，净边很少</strong>——直接工程化了。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这条 raw alpha 的本体不是“funding spread 大”，而是 <strong>funding spread 大到足以覆盖完整双腿成本栈</strong>；如果过不了这道门，它就不是可执行 alpha，只是观察指标。</li>
+<li><strong>一句话它怎么证明：</strong> repo 一边在 <code>PerpPerpDiffStrategy</code> 里给出 entry/exit/hold/sizing，另一边在 live screener 里用 <code>expected_profit()</code> 把净边算到美元级别，而我补的 live 快照显示：<strong>当前 BTC / ETH 三所公开 funding spread 远远不够过线。</strong></li>
+</ul>
+<h3>2.1 repo 里最该记住的策略骨架</h3>
+<p><code>config/main.yaml</code> 给的 <code>PerpPerpDiff</code> 默认参数相当直接：</p>
+<ul>
+<li><code>assets = [BTC, ETH]</code></li>
+<li><code>venues = [binance, bybit]</code></li>
+<li><code>min_funding_spread = 0.0002</code>（即 <strong>2 bps / 8h</strong>）</li>
+<li><code>zscore_lookback = 30</code></li>
+<li><code>entry_z = 2.0</code></li>
+<li><code>exit_z = 0.5</code></li>
+<li><code>max_hold_bars = 6</code>（8h bar 下即 <strong>最多持有 48h</strong>）</li>
+<li><code>position_size_pct = 0.30</code></li>
+<li><code>max_open_positions = 2</code></li>
+</ul>
+<p><code>strategies/perp_perp.py</code> 的逻辑也很干净：</p>
+<ul>
+<li>同币对比两 venue funding；</li>
+<li><code>spread = fr_hi - fr_lo</code>；</li>
+<li>若 <code>abs(spread) &lt; min_funding_spread</code> 或 <code>abs(z) &lt; entry_z</code>，直接不做；</li>
+<li>若满足阈值，则 <strong>short 高 funding venue、long 低 funding venue</strong>；</li>
+<li>若已持仓且 <code>abs(z) &lt; exit_z</code>，则平仓。</li>
+</ul>
+<p>这说明它不是纯 headline carry，而是已经具备：</p>
+<ul>
+<li><code>entry</code></li>
+<li><code>exit</code></li>
+<li><code>max hold</code></li>
+<li><code>position cap</code></li>
+<li><code>open position limit</code></li>
+</ul>
+<p>也就是完整 raw alpha 应有的最小结构。</p>
+<h3>2.2 repo 里最值钱的不是信号，而是净边核算</h3>
+<p>真正把这条线从“想法”拉到“可执行”的，是 <code>portfolio/profit_model.py</code>：</p>
+<p><code>net = funding_edge - trading_fees - slippage_cost - latency_cost - inventory_risk_cost</code></p>
+<p>其中：</p>
+<ul>
+<li><code>funding_edge = notional * funding_diff</code></li>
+<li><code>trading_fees = notional * taker_fee_rate * 2</code></li>
+<li><code>slippage_cost = notional * (slippage_bps / 10000) * 2</code></li>
+<li><code>latency_cost = notional * (latency_bps / 10000)</code></li>
+<li><code>inventory_risk_cost = notional * (inventory_risk_bps / 10000)</code></li>
+</ul>
+<p><code>scripts/run_live_screener.py</code> 的默认 live 假设是：</p>
+<ul>
+<li><code>notional_usd = 50,000</code></li>
+<li><code>slippage_bps = 2.0</code></li>
+<li><code>latency_bps = 0.5</code></li>
+<li><code>inventory_risk_bps = 1.0</code></li>
+<li>taker fee：Binance <code>4 bps</code>、Bybit <code>6 bps</code>、OKX <code>5 bps</code></li>
+</ul>
+<p>这组参数其实已经很诚实了：它不是拿“paper-thin maker fee”去装收益，而是默认你最容易先踩到的 taker / legging / latency 现实。</p>
+<h3>2.3 本地 live sanity check：当前三所公开 funding spread 还远远不够</h3>
+<p>我用 Binance / Bybit / OKX 的公开 funding 接口做了一个本地快照，artifact 在：</p>
+<p><code>reports/artifacts/quant_digests/20260330_perp_perp_funding_diff_netev/live_sanity_snapshot.json</code></p>
+<p>快照时间：<code>2026-03-30T19:20:55Z</code></p>
+<p>最重要的几个硬数字：</p>
+<ul>
+<li><strong>BTC 当前最优 raw spread</strong> 是 <code>OKX - Binance = 0.6836 bps / 8h</code>；</li>
+<li>对 <code>50k USD</code> 名义本金，<code>funding_edge ≈ +3.42 USD</code></li>
+<li>但扣完 repo 默认成本后，<code>net_ev ≈ -114.08 USD</code></li>
+<li><strong>ETH 当前最优 raw spread</strong> 是 <code>Bybit - Binance = 0.5923 bps / 8h</code>；</li>
+<li><code>funding_edge ≈ +2.96 USD</code></li>
+<li>扣完成本后，<code>net_ev ≈ -124.54 USD</code></li>
+<li>repo 默认成本假设下的 <strong>breakeven funding spread</strong> 大概是：</li>
+<li><code>Binance ↔ OKX</code>：<strong>23.5 bps / 8h</strong></li>
+<li><code>Binance ↔ Bybit</code>：<strong>25.5 bps / 8h</strong></li>
+<li><code>Bybit ↔ OKX</code>：<strong>27.5 bps / 8h</strong></li>
+</ul>
+<p>换句话说，当前 live snapshot 给的不是“这条线没用”，而是一个更重要的 first verdict：</p>
+<p><strong>这条 alpha 不能拿日常小 funding diff always-on 跑；它只适合做极端 funding dislocation 的事件型 pocket，或者必须叠加更强的 maker/queue/execution edge。</strong></p>
+<h3>2.4 这次最值得 desk 记住的交易结论</h3>
+<p>如果这条线要进当前素材池，正确写法不该是：</p>
+<ul>
+<li>“perp-perp funding diff 存在，所以可以套利”</li>
+</ul>
+<p>而该是：</p>
+<ul>
+<li>“<strong>same-underlier perp-perp funding differential</strong> 是一条可独立复现的 raw alpha 候选；但它只有在 <strong>spread 过 z-score 门、过净边门、过 quote/depth 门</strong> 时才值得开机，平时大多数时段都应视作 <code>NO_TRADE</code>。”</li>
+</ul>
+<p>这点和前两天已经 intake 的 spot-perp carry / richest-venue routing 也不同：</p>
+<ul>
+<li>那两条更像 <strong>去哪条腿收 cashflow</strong>；</li>
+<li>这条更像 <strong>同一 underlier 的跨 venue funding mispricing 是否大到足以覆盖双腿现实摩擦</strong>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和当前 desk 直接相关，因为它满足这轮优先级里比较靠前的那类： <strong>可独立复现、可直接落地为完整策略、并且明确属于 carry / relative-value / stat-arb 家族的 raw alpha。</strong></p>
+<p>它和 <code>1m / 3m / 5m / 15m</code> 的关系也很清楚：</p>
+<ul>
+<li>慢变量是 funding clock（通常 8h）</li>
+<li>快变量是 <strong>什么时候进、在哪个 venue 进、两腿价差有没有爆、top-of-book depth 能不能吃下、单腿滑点会不会把 funding edge 吃光</strong></li>
+</ul>
+<p>也就是说： <strong>alpha 兑现靠 funding，alpha 存活靠短周期执行。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：carry / relative-value / cross-venue market-neutral</li>
+<li>基础 alpha：<code>funding_high_venue - funding_low_venue - fees - slippage - latency - inventory_risk</code></li>
+<li>regime：只在 funding differential 异常放大、并且同币跨 venue 价差仍紧、深度仍足够时启动；平常绝大多数 funding spread 不应视为可交易</li>
+<li>filter / veto：</li>
+<li><code>abs(funding_spread) &gt;= 2 bps / 8h</code></li>
+<li><code>abs(zscore) &gt;= 2.0</code></li>
+<li><code>net_ev &gt; 0</code>（desk 版必须强制加）</li>
+<li><code>cross-venue mid spread / top-of-book depth / settlement alignment</code> 任一异常直接 veto</li>
+<li>risk / sizing / execution overlay：</li>
+<li>单策略仓位 <code>30% capital</code> 起步</li>
+<li>最多 <code>2</code> 个同时 open pair</li>
+<li><code>max_hold = 6 × 8h = 48h</code></li>
+<li><code>abs(z) &lt; 0.5</code> 平仓</li>
+<li><code>orphan_protection.max_unhedged_bars = 1</code></li>
+<li><code>max_leg_divergence_bps = 35</code></li>
+<li>先以 taker-only 假设跑 first verdict，再讨论 maker 化</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 研究假设</h3>
+<p>比起 always-on 地在每个 funding 周期都上，<strong>只做 <code>net-EV hurdle</code> 之上的 perp-perp funding differential</strong>，更像一条真实可活的 short-cycle carry alpha。</p>
+<h3>4.2 数据源、公开性、更新频率</h3>
+<ul>
+<li><strong>Funding 数据</strong>：</li>
+<li>Binance <code>GET /fapi/v1/premiumIndex</code> / <code>GET /fapi/v1/fundingRate</code></li>
+<li>Bybit <code>GET /v5/market/funding/history</code></li>
+<li>OKX <code>GET /api/v5/public/funding-rate</code> / <code>funding-rate-history</code></li>
+<li><strong>行情/执行数据</strong>：三所公开 kline / ticker / order-book 顶档</li>
+<li><strong>公开性</strong>：全都可公开抓；最小实验不需要私钥</li>
+<li><strong>更新频率</strong>：funding 以 8h 为主，quote/depth 可以秒级采集，再聚合到 <code>1m / 3m / 5m / 15m</code></li>
+</ul>
+<h3>4.3 最小实验口径（建议先做这个）</h3>
+<ol>
+<li>标的先只做 <code>BTC / ETH / SOL</code>，venue 先做 <code>Binance / Bybit / OKX</code>。</li>
+<li>每分钟记录：</li>
+</ol>
+<ul>
+<li><code>funding_diff_{pair,t}</code></li>
+<li><code>funding_diff_z_{pair,t}</code></li>
+<li><code>cross_venue_mid_spread_{pair,t}</code></li>
+<li><code>top_of_book_depth_{pair,t}</code></li>
+<li><code>net_ev_{pair,t}</code></li>
+</ul>
+<ol>
+<li>生成两套版本：</li>
+</ol>
+<ul>
+<li>A：<code>spread-only</code>（只要 funding diff 为正就做 richest-vs-cheapest）</li>
+<li>B：<code>net-hurdle</code>（<code>z &gt;= 2</code>、<code>net_ev &gt; 0</code>、<code>mid_spread &lt;= x bps</code>、<code>depth &gt;= y × notional</code> 才开）</li>
+</ul>
+<ol>
+<li>入场先用最保守的短周期映射：</li>
+</ol>
+<ul>
+<li>在下一次 funding 结算前 <code>5m / 15m</code> 窗口择最紧 mid spread 入场；</li>
+<li>持有到下一 funding 兑现窗，或 <code>z &lt; 0.5</code> 提前出场；</li>
+<li>若腿间 mid spread 爆到阈值外则强平。</li>
+</ul>
+<ol>
+<li>first-verdict 只看四个指标：</li>
+</ol>
+<ul>
+<li><code>net funding captured</code></li>
+<li><code>mark-to-market leg drift</code></li>
+<li><code>slippage + fee drag</code></li>
+<li><code>trade admission ratio</code>（多少 funding 窗口 actually 过线）</li>
+</ul>
+<h3>4.4 当前 desk 更该先测哪一刀</h3>
+<p>不是先卷更复杂预测器，而是先问一句：</p>
+<p><strong>在真实 taker 成本下，历史上到底有多少个 8h funding 窗口，真的能让 same-underlier perp-perp diff 过净边门？</strong></p>
+<p>如果这个比例本身极低，这条线就该被降级成：</p>
+<ul>
+<li>事件 pocket</li>
+<li>极端拥挤时的 opportunistic carry</li>
+<li>或者 maker/queue 优化的二阶段项目</li>
+</ul>
+<p>而不是继续伪装成 always-on 收租机。</p>
+<h2>5. 下一步怎么测</h2>
+<ol>
+<li><strong>先补“过线率”统计</strong>：按 <code>BTC / ETH / SOL × 3 venue pairs</code> 回放近 12 个月，统计 <code>net_ev &gt; 0</code> 的 funding window 占比，而不是先看 headline spread。</li>
+<li><strong>把执行口径分层</strong>：至少拆 <code>taker-taker / maker-taker / maker-maker</code> 三档；如果只有 maker-maker 才勉强转正，就要诚实把它降级成 execution-heavy 项目，而不是信号项目。</li>
+<li><strong>把 entry 时点前移/后移做成网格</strong>：<code>-15m / -5m / +0m / +5m</code> relative to funding settlement，检验赚的是 funding 还是腿间 mark drift。</li>
+<li><strong>加一个 quote-stability veto</strong>：只有当腿间 mid spread、深度、盘口更新频率都稳定时才放行，避免把 funding edge 死在 legging risk 上。</li>
+</ol>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>gencersarp. (2026). _cryptoarb_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Author: gencersarp</li>
+<li>Year: 2026（2026-03 持续更新）</li>
+<li>Title: *cryptoarb*</li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://github.com/gencersarp/cryptoarb">https://github.com/gencersarp/cryptoarb</a></li>
+<li>Repo URL: <a href="https://github.com/gencersarp/cryptoarb">https://github.com/gencersarp/cryptoarb</a></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures API. _Premium Index / Funding Rate_</strong></li>
+</ol>
+<ul>
+<li>Venue: Binance API Docs</li>
+<li>Readable URL: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Mark-Price">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Mark-Price</a></li>
+<li>Funding history URL: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History</a></li>
+</ul>
+<ol>
+<li><strong>Bybit V5 API. _Get Funding Rate History_</strong></li>
+</ol>
+<ul>
+<li>Venue: Bybit API Docs</li>
+<li>Readable URL: <a href="https://bybit-exchange.github.io/docs/v5/market/history-fund-rate">https://bybit-exchange.github.io/docs/v5/market/history-fund-rate</a></li>
+</ul>
+<ol>
+<li><strong>OKX API v5. _Get funding rate / funding rate history_</strong></li>
+</ol>
+<ul>
+<li>Venue: OKX API Docs</li>
+<li>Readable URL: <a href="https://www.okx.com/docs-v5/en/#public-data-rest-api-get-funding-rate">https://www.okx.com/docs-v5/en/#public-data-rest-api-get-funding-rate</a></li>
+<li>Funding history URL: <a href="https://www.okx.com/docs-v5/en/#public-data-rest-api-get-funding-rate-history">https://www.okx.com/docs-v5/en/#public-data-rest-api-get-funding-rate-history</a></li>
+</ul>
+<ol>
+<li><strong>本地 live artifact（本次快照）</strong></li>
+</ol>
+<ul>
+<li>Path: <code>reports/artifacts/quant_digests/20260330_perp_perp_funding_diff_netev/live_sanity_snapshot.json</code></li>
+<li>Captured at: <code>2026-03-30T19:20:55Z</code></li>
+</ul>
+</body>
+</html>

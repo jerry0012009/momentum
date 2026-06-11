@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>2026 新 repo：别把横截面动量/反转写死成单边信仰——更像一条 `dispersion sign router`</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>2026 新 repo：别把横截面动量/反转写死成单边信仰——更像一条 `dispersion sign router`</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-25 19:17 UTC</span>
+      <span class="pill">研究时间：2026-04-25 19:16 UTC</span>
+      <span class="pill">类型：GitHub / 研究回测仓</span>
+      <span class="pill">主题标签：cross-sectional / relative-value / momentum / mean-reversion / dispersion / sign-router / 15m / 5m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-25_1916_xs-dispersion-sign-router.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-25 19:16 UTC</li>
+<li>类型：GitHub / 研究回测仓</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：横截面过去一段时间的强弱排序；<strong>分散度高时更像 winner continuation，分散度低时更像 loser→winner fade</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：cross-sectional / relative-value / momentum / mean-reversion / dispersion / sign-router / 15m / 5m / repo / public-data / cost / risk</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 <code>prams2104/crypto-momentum-backtest</code>（2026-02 更新）的完整研究仓：它不是只做“动量有没有效”，而是把 <code>20d xs momentum</code>、<code>1d xs reversal</code>、train/validation/OOS、transaction cost、dispersion regime 一起放进同一个可复跑框架里。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这仓最值钱的地方，不是“20 日动量”本身，而是提醒我们：<strong>同一个 past-return 排名信号，符号可能随横截面分散度切换</strong>。</li>
+<li>作者日频结果里，<code>20d momentum</code> 在训练期年化 alpha 约 <code>36.2%</code>、<code>t-stat=2.02</code>，但验证/OOS 明显失效；相反 <code>1d reversal</code> 在 OOS 年化 alpha 约 <code>73.0%</code>、<code>t-stat=4.64</code>，却被高换手完全吃掉。</li>
+<li>repo 给出的关键解释是：2023 后横截面 dispersion 约收缩 <code>38%</code>，winner/loser 拉不开，动量 edge 跟着塌。</li>
+<li>我补的 Binance USDⓈ-M <code>15m</code> portability probe（12 个 liquid majors，<code>24h</code> rank，7d rolling median dispersion split）里：<strong>高 dispersion 子样本</strong> 做 xs momentum 平均 gross 约 <code>+0.75 bps/bar</code>，但 net 约 <code>-0.67 bps/bar</code>；<strong>低 dispersion 子样本</strong> 做 xs reversal 平均 gross 约 <code>+2.48 bps/bar</code>、net 约 <code>+0.25 bps/bar</code>。</li>
+<li>翻成人话：市场横截面如果“强弱差距很大”，更容易顺着强弱做；如果大家都挤成一团、分不太开，反而更像短期反弹/回吐游戏。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这和 <code>momentum</code> 当前主线直接相关，因为它不是又一个抽象 regime 讨论，而是在回答：<strong>同一个 xs raw alpha，到底该顺着做还是反着做</strong>。这比继续堆一个新 filter 更值钱——它直接扩充了 short-cycle 的 <code>cross-sectional / relative-value</code> 素材池。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / 相对价值</li>
+<li>基础 alpha：按过去 <code>N</code> 根收益对币池做 rank；买强卖弱（momentum）或买弱卖强（reversal）</li>
+<li>regime：横截面分散度（过去 <code>N</code> 根收益在币池内的离散程度）</li>
+<li>filter / veto：仅在 dispersion 明显高/低于 rolling 中位数时启用对应符号；中间区间可空仓</li>
+<li>risk / sizing / execution overlay：top/bottom 分组等权，next-bar 执行，按 turnover 扣成本；若要实盘，优先加流动性门槛和 child execution，避免高换手把 gross edge 吃光</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：<code>24h xs rank</code> 在 <code>15m</code> 上不是固定 momentum 或固定 reversal，而是由 rolling dispersion 决定符号。</li>
+<li>一个可计算定义：<code>signal = close/close.shift(96)-1</code>；<code>dispersion = std(signal across universe)</code>；<code>dispersion &gt; rolling_median(7d)</code> 做 winner-minus-loser，反之做 loser-minus-winner。</li>
+<li>最小回测切口：Binance USDⓈ-M <code>BTC/ETH/BNB/SOL/XRP/DOGE/ADA/AVAX/LINK/DOT/UNI/LTC</code>，<code>15m</code> 主回测，再下沉到 <code>5m</code> 做 child execution。</li>
+<li>最该先看：<code>gross/net bps per bar</code>、<code>turnover</code>；第二眼看 <code>high-disp</code> 与 <code>low-disp</code> 的 trade count 是否足够稳定。</li>
+<li>下一步怎么测：先做 <code>24h / 12h / 6h</code> lookback × <code>15m/5m</code> 执行网格，再加 <code>dispersion tercile + liquidity veto + cooldown</code>，确认是否能把当前 low-disp reversal 的微弱 net edge 放大，而不是只在 gross 上好看。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这类 xs sign router 最大问题不是“信号看不懂”，而是<strong>换手太高</strong>；repo 自己就展示了 gross alpha 能被成本直接打穿。</li>
+<li>我这次 probe 仍是简化版：只做 top/bottom 等权、固定成本，没有 maker/taker、冲击和借券/资金费率细化。</li>
+<li><code>dispersion</code> 很可能不是唯一 regime 变量，后面还该和 liquidity、相关性、funding crowding 一起做联合门控；否则容易把一次阶段性 market structure 误当长期规律。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Pramesh / <code>prams2104</code>. (2026). *crypto-momentum-backtest*.</li>
+<li>Readable URL: <code><a href="https://github.com/prams2104/crypto-momentum-backtest">https://github.com/prams2104/crypto-momentum-backtest</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/prams2104/crypto-momentum-backtest">https://github.com/prams2104/crypto-momentum-backtest</a></code></li>
+<li>辅助文件：</li>
+<li><code>README.md</code></li>
+<li><code>01_data.ipynb</code></li>
+<li><code>02_signals.ipynb</code></li>
+<li><code>03_backtest.ipynb</code></li>
+<li>本地 artifact：</li>
+<li><code>reports/artifacts/quant_digests/2026-04-25_dispersion_router_probe_summary.csv</code></li>
+</ul>
+</body>
+</html>

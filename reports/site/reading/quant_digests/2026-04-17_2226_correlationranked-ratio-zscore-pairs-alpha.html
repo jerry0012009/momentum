@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Binance stat-arb 仓只读成“相关性热力图”：对 short-cycle desk，更该先拆的是「correlation-ranked pair admission × ratio z-score spread fade」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Binance stat-arb 仓只读成“相关性热力图”：对 short-cycle desk，更该先拆的是「correlation-ranked pair admission × ratio z-score spread fade」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-17 22:28 UTC</span>
+      <span class="pill">研究时间：2026-04-17 22:26 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `correlation_bot.py` + `phase1_data_fetch_correlation.py`）+ Binance USDⓈ-M public-data portability probe（`1m` / `5m`）</span>
+      <span class="pill">主题标签：raw-alpha / pairs / stat-arb / relative-value / mean-reversion / correlation-ranked / ratio-zscore / pair-admission / binance-perpetual / 1m / 5m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：repo 源码 + public-data probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-17_2226_correlationranked-ratio-zscore-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-17 22:26 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>correlation_bot.py</code> + <code>phase1_data_fetch_correlation.py</code>）+ Binance USDⓈ-M public-data portability probe（<code>1m</code> / <code>5m</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>先用短窗相关性筛出“平时一起走”的 pair，再盯它们的价格比值；当 ratio 的 z-score 偏到极端，做 <code>short rich leg / long cheap leg</code>，赌价差回到均值。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / pairs / stat-arb / relative-value / mean-reversion / correlation-ranked / ratio-zscore / pair-admission / binance-perpetual / 1m / 5m / repo / public-data / cost / risk</li>
+<li>证据类型：repo 源码 + public-data probe</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<ul>
+<li><strong>Authors / Maintainer</strong>：ApexQuant-Dev</li>
+<li><strong>Year</strong>：2026</li>
+<li><strong>Title</strong>：*Binance Correlation &amp; Stat-Arb Suite*</li>
+<li><strong>Venue / Type</strong>：GitHub repo</li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/ApexQuant-Dev/binance-correlation-stat-arb&gt;">https://github.com/ApexQuant-Dev/binance-correlation-stat-arb&gt;</a></li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/ApexQuant-Dev/binance-correlation-stat-arb&gt;">https://github.com/ApexQuant-Dev/binance-correlation-stat-arb&gt;</a></li>
+<li><strong>关键源码</strong>：</li>
+<li>README：&lt;<a href="https://raw.githubusercontent.com/ApexQuant-Dev/binance-correlation-stat-arb/main/README.md&gt;">https://raw.githubusercontent.com/ApexQuant-Dev/binance-correlation-stat-arb/main/README.md&gt;</a></li>
+<li><code>correlation_bot.py</code>：&lt;<a href="https://raw.githubusercontent.com/ApexQuant-Dev/binance-correlation-stat-arb/main/correlation_bot.py&gt;">https://raw.githubusercontent.com/ApexQuant-Dev/binance-correlation-stat-arb/main/correlation_bot.py&gt;</a></li>
+<li><code>phase1_data_fetch_correlation.py</code>：&lt;<a href="https://raw.githubusercontent.com/ApexQuant-Dev/binance-correlation-stat-arb/main/phase1_data_fetch_correlation.py&gt;">https://raw.githubusercontent.com/ApexQuant-Dev/binance-correlation-stat-arb/main/phase1_data_fetch_correlation.py&gt;</a></li>
+</ul>
+<p>先把 <strong>base alpha</strong> 说清楚：</p>
+<p>&gt; <strong>不是“相关性高就能赚钱”，而是“先用相关性做 pair admission，再对 admitted pair 做 ratio 极端偏离的均值回归”。</strong></p>
+<p>所以它不是单纯 <code>filter</code>，也不是研究工具本身，而是一条标准的 <code>pairs / relative-value / stat-arb / raw alpha</code>：</p>
+<ul>
+<li>交易对象不是裸 BTC 方向；</li>
+<li>交易对象也不是单腿 breakout；</li>
+<li>交易对象是 <strong>两条通常一起走的资产之间，短时价差是否偏得太离谱。</strong></li>
+</ul>
+<h2>2) repo 里真正可继承的 alpha 是什么</h2>
+<h3>2.1 用人话翻译源码</h3>
+<p>repo 的主逻辑很短，但交易本体很清楚：</p>
+<ol>
+<li>先从 Binance Futures 拉历史 K 线；</li>
+<li>挑出相关性高、平时比较同步的 pair；</li>
+<li>对每个 pair 计算 <code>ratio = price_A / price_B</code>；</li>
+<li>用最近一段 ratio 的均值和标准差，算当前 z-score；</li>
+<li>当 <code>z &gt; 2</code> 时，认为 <code>A 相对 B 偏贵</code>，做 <code>short A / long B</code>；</li>
+<li>当 <code>z &lt; -2</code> 时，认为 <code>A 相对 B 偏便宜</code>，做 <code>long A / short B</code>。</li>
+</ol>
+<p><code>correlation_bot.py</code> 里最核心的几行其实就这三件事：</p>
+<ul>
+<li>拉 <code>1m</code> OHLCV；</li>
+<li>直接算 ratio 序列；</li>
+<li>对 ratio 做 rolling z-score 并打印 long/short 提示。</li>
+</ul>
+<h3>2.2 为什么它算 raw alpha，不是 filter</h3>
+<p>因为这里的信号本体就是：</p>
+<ul>
+<li><code>pair admission = 这两个币最近确实在一起走</code></li>
+<li><code>entry trigger = 但此刻 ratio 偏离历史均值太多</code></li>
+</ul>
+<p>也就是说：</p>
+<ul>
+<li><strong>相关性</strong> 只是入场前筛 pair 的 admission；</li>
+<li><strong>真正开仓的 alpha</strong> 是 <code>ratio z-score reversion</code>。</li>
+</ul>
+<p>这点很重要。很多“相关性仓”最后只是做了个监控面板，这个 repo 虽然简陋，但至少已经把开仓方向写死了： &gt; <strong>价比值偏高就 short rich leg / long cheap leg；偏低就反过来。</strong></p>
+<h2>3) 对当前 desk 最有用的读法</h2>
+<p>如果只照 README 看，很容易把它当成“配对交易入门脚本”。</p>
+<p>但对 short-cycle desk，更值钱的读法是：</p>
+<p>&gt; <strong>把相关性当 pair admission 的最低成本近似，把 ratio z-score 当真正的 raw alpha，然后去问：在 <code>1m / 5m</code> 上，哪些 pair 还有 pocket，哪些 pair 其实已经被成本和结构变化吃死。</strong></p>
+<p>这比继续泛泛补一个“pairs 也许有用”的综述值钱得多，因为它直接回答：</p>
+<ul>
+<li>哪些 pair 还能做最小实验；</li>
+<li>哪些 pair 需要更严格阈值；</li>
+<li>哪些 pair 虽然高相关，但根本不值得短线动手。</li>
+</ul>
+<h2>4) repo 源码里值得保留、也值得警惕的部分</h2>
+<h3>4.1 值得保留：公开数据、超低复现门槛</h3>
+<p><code>phase1_data_fetch_correlation.py</code> 明确写了：</p>
+<ul>
+<li>数据源：Binance Futures public REST</li>
+<li>无需 API key</li>
+<li>默认 <code>5m</code>、<code>100</code> 根 lookback</li>
+<li>支持 top-volume symbol 扫描和 correlation matrix</li>
+</ul>
+<p>这对 desk 很友好：</p>
+<ul>
+<li><strong>数据公开可得</strong>；</li>
+<li><strong>更新时间就是 bar 级更新</strong>；</li>
+<li><strong>最小实验口径可以直接落到 <code>1m / 5m</code>。</strong></li>
+</ul>
+<h3>4.2 值得警惕：repo 只写了“看见偏离”，没把完整壳写完</h3>
+<p>repo 给了很清楚的 entry 语言，但几乎没写：</p>
+<ul>
+<li>hedge ratio 是否要用 <code>1:1 notionals</code> 还是 beta-neutral；</li>
+<li>exit 是回到 <code>z=0</code> 还是回到 <code>|z|&lt;0.5</code>；</li>
+<li>max hold、多 pair 并发、gross exposure cap；</li>
+<li>两腿成本、funding、滑点、单腿崩掉时怎么办。</li>
+</ul>
+<p>所以它是 <strong>合格的 raw alpha 母板</strong>，但不是现成 production 成品。</p>
+<p>不过本轮我仍把“是否可直接落地完整策略”标成 <strong>是</strong>，原因不是 repo 自己已经完美，而是：</p>
+<ul>
+<li>entry 足够明确；</li>
+<li>exit/sizing/risk/cost 都能用标准 desk 壳快速补齐；</li>
+<li>public-data first probe 已经能给出“哪些参数/哪些 pair 先测”的方向。</li>
+</ul>
+<h2>5) 最小可复现实验（本轮已跑）</h2>
+<h3>数据源</h3>
+<ul>
+<li><strong>Binance USDⓈ-M Futures <code>klines</code> API</strong></li>
+<li>URL：&lt;<a href="https://fapi.binance.com/fapi/v1/klines&gt;">https://fapi.binance.com/fapi/v1/klines&gt;</a></li>
+<li>公开性：公开可得</li>
+<li>更新频率：按 bar 更新</li>
+<li>本轮最小实验口径：</li>
+<li><code>5m</code>：近 <code>30d</code></li>
+<li><code>1m</code>：近 <code>7d</code></li>
+</ul>
+<h3>Pair universe</h3>
+<p>沿用 repo 默认/近似默认风格，测试：</p>
+<ul>
+<li><code>ETHUSDT / BTCUSDT</code></li>
+<li><code>SOLUSDT / AVAXUSDT</code></li>
+<li><code>LINKUSDT / UNIUSDT</code></li>
+<li><code>ARBUSDT / OPUSDT</code></li>
+<li><code>APTUSDT / SEIUSDT</code></li>
+</ul>
+<h3>Baseline 规则</h3>
+<p>最基础版本，先不加 fancy 模块：</p>
+<ul>
+<li>rolling lookback：<code>30</code> bars</li>
+<li>entry：<code>|z| &gt;= 2.0</code></li>
+<li>exit：回到 <code>|z| &lt;= 0.25</code></li>
+<li>max hold：</li>
+<li><code>5m</code> 版 <code>12</code> bars（约 <code>1h</code>）</li>
+<li><code>1m</code> 版 <code>20</code> bars（约 <code>20m</code>）</li>
+<li>持仓方向：</li>
+<li><code>z &gt; 0</code> ⇒ <code>short A / long B</code></li>
+<li><code>z &lt; 0</code> ⇒ <code>long A / short B</code></li>
+<li>成本：<strong>round-trip <code>12 bps</code> 总成本</strong>（双腿合并口径，保守但还不算极端）</li>
+</ul>
+<h2>6) 关键数据点：baseline 能复现，但大多数 pair 已经不够好</h2>
+<h3>结论 1：plain correlation-first spread fade 在 <code>5m</code> 上基本全面不过线</h3>
+<p>按 pair 看，<code>5m</code> baseline 全是负的：</p>
+<ul>
+<li><code>ETH/BTC</code>：<code>339</code> 笔，平均 <strong><code>-11.69 bps/笔</code></strong></li>
+<li><code>SOL/AVAX</code>：<code>351</code> 笔，平均 <strong><code>-9.34 bps/笔</code></strong></li>
+<li><code>LINK/UNI</code>：<code>339</code> 笔，平均 <strong><code>-9.01 bps/笔</code></strong></li>
+<li><code>ARB/OP</code>：<code>373</code> 笔，平均 <strong><code>-8.25 bps/笔</code></strong></li>
+<li><code>APT/SEI</code>：<code>355</code> 笔，平均 <strong><code>-6.30 bps/笔</code></strong></li>
+</ul>
+<p>人话： &gt; <strong>“相关 pair 出现 2σ 偏离就做回归” 这件事，在 recent <code>5m</code> perp 上几乎是全军覆没。</strong></p>
+<h3>结论 2：<code>1m</code> 上也不是普遍有效，但 pocket 开始出现</h3>
+<p><code>1m</code> baseline 同样大多为负：</p>
+<ul>
+<li><code>ETH/BTC</code>：<code>370</code> 笔，平均 <strong><code>-11.08 bps/笔</code></strong></li>
+<li><code>SOL/AVAX</code>：<code>378</code> 笔，平均 <strong><code>-9.92 bps/笔</code></strong></li>
+<li><code>LINK/UNI</code>：<code>399</code> 笔，平均 <strong><code>-6.95 bps/笔</code></strong></li>
+<li><code>APT/SEI</code>：<code>383</code> 笔，平均 <strong><code>-6.80 bps/笔</code></strong></li>
+</ul>
+<p>但 <code>ARB/OP</code> 明显是例外中的例外：</p>
+<ul>
+<li><code>ARB/OP 1m baseline</code>：<code>403</code> 笔，平均 <strong><code>-1.42 bps/笔</code></strong>，胜率 <strong><code>66.3%</code></strong></li>
+</ul>
+<p>这说明： &gt; <strong>不是整条 alpha 完全死掉，而是 baseline 阈值太松，只有某些“强替代关系” pair 还保留了 pocket。</strong></p>
+<h3>结论 3：<code>ARB/OP</code> 在更严格的 <code>3σ</code> 触发下，已经能转成小幅正值</h3>
+<p>我对 <code>ARB/OP 1m</code> 做了参数快扫。最有信息量的 pocket 是：</p>
+<ul>
+<li>lookback：<code>20</code> bars</li>
+<li>entry：<code>|z| &gt;= 3.0</code></li>
+<li>exit：回到 <code>|z| &lt;= 0.5</code></li>
+<li>max hold：<code>30</code> bars</li>
+<li>cost：round-trip <code>12 bps</code></li>
+</ul>
+<p>结果：</p>
+<ul>
+<li>交易数：<strong><code>205</code></strong></li>
+<li>平均净收益：<strong><code>+1.73 bps/笔</code></strong></li>
+<li>胜率：<strong><code>62.0%</code></strong></li>
+<li>累计净收益：<strong><code>+3.55%</code></strong>（样本期约 <code>7d</code>）</li>
+</ul>
+<p>这不是“已经 production-ready 印钞”，但已经足够说明：</p>
+<ul>
+<li>repo 里的 base alpha <strong>能在当前市场结构里找到仍活着的 pocket</strong>；</li>
+<li>关键不是“pair 越多越好”，而是 <strong>pair admission 更严格 + entry 阈值更苛刻</strong>。</li>
+</ul>
+<h3>结论 4：<code>5m</code> 口径里，连最好的 pair 也还只是接近成本线</h3>
+<p>同样对 <code>ARB/OP 5m</code> 做参数快扫，最好的几组也仍是负的：</p>
+<ul>
+<li>最优附近结果：平均大约 <strong><code>-0.49 bps/笔</code></strong>，<code>190</code> 笔，胜率 <strong><code>64.2%</code></strong></li>
+</ul>
+<p>这说明一个很关键的 desk 结论： &gt; <strong>这条 correlation-ranked spread fade 目前更像 <code>1m</code> pocket，不像 <code>5m</code> 主战 alpha。</strong></p>
+<h2>7) 这条线和当前 <code>1m / 3m / 5m / 15m</code> 的关系</h2>
+<ul>
+<li><strong>1m</strong>：当前最值得测。尤其是 <code>ARB/OP</code> 这种替代关系强、消息与流动性经常联动的 pair，已经看到 pocket。</li>
+<li><strong>3m</strong>：很适合作为下一轮折中层；比 <code>1m</code> 更抗噪，比 <code>5m</code> 更不容易让回归走完。</li>
+<li><strong>5m</strong>：当前 first verdict 偏负，更适合拿来做 higher-level admission 或冷却层，而不是直接主触发。</li>
+<li><strong>15m</strong>：对这种短寿命 ratio dislocation 来说通常太慢，除非改做更慢的 regime/cluster spread，而不是当前 repo 这类短窗 z-score。</li>
+</ul>
+<h2>8) 为什么这条主题比继续补一个 filter 更值得</h2>
+<p>因为它直接扩充的是 <strong>raw alpha 素材池</strong>，而且补的是当前 desk 仍然需要的 <code>pairs / stat-arb / relative-value</code> 母板：</p>
+<ol>
+<li><strong>base alpha 清楚</strong>：不是泛泛“相关性研究”，而是 <code>ratio extreme → mean reversion</code>；</li>
+<li><strong>公开数据就能复现</strong>：不依赖私有盘口或付费数据；</li>
+<li><strong>很适合快速做 fail-fast</strong>：几小时内就能知道某个 pair 有没有 pocket；</li>
+<li><strong>能直接服务 execution 研究</strong>：双腿成本、同步成交、单腿失配、持仓上限，全部都是真实工程问题。</li>
+</ol>
+<h2>9) 今天就能怎么写成完整策略壳</h2>
+<h3>9.1 Entry</h3>
+<p>最小 production shell 建议：</p>
+<ol>
+<li>先用过去 <code>N</code> 根 return correlation 做 pair admission；</li>
+<li>只保留 correlation 高、rolling beta 稳定、成交额合格的 pair；</li>
+<li>再对 admitted pair 计算 ratio z-score；</li>
+<li>只有满足以下条件才进场：</li>
+</ol>
+<ul>
+<li><code>|z| &gt;= entry_threshold</code></li>
+<li><code>spread_vol / level</code> 没有突然跳变</li>
+<li>两腿盘口 spread 都不恶化</li>
+<li>funding 方向不会把预期 edge 吞掉</li>
+<li>同一 pair 未处于 cooldown。</li>
+</ul>
+<h3>9.2 Exit</h3>
+<p>至少并行保留三种退出：</p>
+<ul>
+<li><strong>mean-revert exit</strong>：<code>|z|</code> 回到 <code>0 ~ 0.5</code>；</li>
+<li><strong>time stop</strong>：到 <code>10~30</code> bars 还不回，就强平；</li>
+<li><strong>structural break exit</strong>：rolling correlation/beta 崩掉、单腿出现 news shock 时直接退出。</li>
+</ul>
+<h3>9.3 Sizing</h3>
+<p>不要做 <code>1:1</code> 名义金额无脑对冲，建议：</p>
+<ul>
+<li>先用 rolling beta 或波动率比做 hedge ratio；</li>
+<li>再叠加 gross exposure cap；</li>
+<li>同一 sector/pair cluster 设组合级上限，避免全在一类替代币上堆仓。</li>
+</ul>
+<h3>9.4 Cost</h3>
+<p>这条线最容易被忽略、也最容易死在这里：</p>
+<ul>
+<li>双腿开平共四次交易摩擦；</li>
+<li>perp funding 在某些 pair 上不是噪音；</li>
+<li><code>1m</code> pocket 对 stale quote 特别敏感；</li>
+<li>若只能单腿先成交，另一腿补单时 edge 可能已经没了。</li>
+</ul>
+<p>所以所有回测都要至少输出：</p>
+<ul>
+<li>per-leg spread</li>
+<li>simultaneous fill 假设</li>
+<li>hedge slippage</li>
+<li>funding carry drift</li>
+</ul>
+<h2>10) 下一步怎么测（最重要）</h2>
+<h3>A. 不要再把“高相关”当充分条件，先做 pair admission 升级</h3>
+<p>优先加三层：</p>
+<ol>
+<li><strong>rolling correlation + rolling beta 稳定性</strong>；</li>
+<li><strong>行业/叙事相近性</strong>（例如 <code>ARB/OP</code> 这种强替代关系）；</li>
+<li><strong>成交额 / 盘口厚度门槛</strong>。</li>
+</ol>
+<h3>B. 先专攻 <code>ARB/OP 1m</code>，别急着横向铺太多 pair</h3>
+<p>下一轮最小实验建议直接围绕：</p>
+<ul>
+<li><code>ARB/OP</code></li>
+<li><code>1m signal / 1m execution / 3m aggregation</code></li>
+<li><code>lookback 20~40</code></li>
+<li><code>entry 2.5σ ~ 3.5σ</code></li>
+<li><code>exit 0.0 / 0.25 / 0.5</code></li>
+<li><code>max_hold 10 / 20 / 30 bars</code></li>
+<li>输出：<code>trade_count / avg_net_bps / time-of-day / side asymmetry / fill sensitivity</code></li>
+</ul>
+<h3>C. 把它和已有 raw alpha 组件串起来，而不是孤立裸跑</h3>
+<p>最值得组合的不是另一个 pairs 指标，而是：</p>
+<ul>
+<li><strong>市场级波动挤压 / 爆发状态</strong>：波动爆开时先少做 fade；</li>
+<li><strong>单腿 news shock veto</strong>：一边有独立催化时，别强行赌回归；</li>
+<li><strong>microstructure veto</strong>：盘口太薄、瞬时冲击太大时不做。</li>
+</ul>
+<h3>D. 明确 desk 当前结论</h3>
+<p>这轮最该记住的一句不是“pairs 失效了”，而是： &gt; <strong>plain correlation-first z-score fade 基线大多已经成本后不过线，但替代关系更强的 pair（当前最像 <code>ARB/OP</code>）在 <code>1m</code> 高频口径里，仍可能留下只有极端偏离才值得做的 pocket。</strong></p>
+<h2>11) 风险与保留意见</h2>
+<ul>
+<li>repo 用的是最简单的 ratio，不是 cointegration residual，也没估 hedge ratio；</li>
+<li>当前 pocket 主要来自短样本 recent <code>1m</code>，必须做滚动窗和分段验证；</li>
+<li><code>ARB/OP</code> 的 edge 可能强依赖当下叙事联动，不能假设长期稳态存在；</li>
+<li>若真实交易只能 taker、且双腿无法同步，回测 pocket 很可能被进一步吃掉。</li>
+</ul>
+<h2>12) 来源</h2>
+<ol>
+<li>ApexQuant-Dev (2026), *Binance Correlation &amp; Stat-Arb Suite*（GitHub repo）</li>
+<p>Repo URL: &lt;<a href="https://github.com/ApexQuant-Dev/binance-correlation-stat-arb&gt;">https://github.com/ApexQuant-Dev/binance-correlation-stat-arb&gt;</a></p>
+<li>README raw: &lt;<a href="https://raw.githubusercontent.com/ApexQuant-Dev/binance-correlation-stat-arb/main/README.md&gt;">https://raw.githubusercontent.com/ApexQuant-Dev/binance-correlation-stat-arb/main/README.md&gt;</a></li>
+<li><code>correlation_bot.py</code>: &lt;<a href="https://raw.githubusercontent.com/ApexQuant-Dev/binance-correlation-stat-arb/main/correlation_bot.py&gt;">https://raw.githubusercontent.com/ApexQuant-Dev/binance-correlation-stat-arb/main/correlation_bot.py&gt;</a></li>
+<li><code>phase1_data_fetch_correlation.py</code>: &lt;<a href="https://raw.githubusercontent.com/ApexQuant-Dev/binance-correlation-stat-arb/main/phase1_data_fetch_correlation.py&gt;">https://raw.githubusercontent.com/ApexQuant-Dev/binance-correlation-stat-arb/main/phase1_data_fetch_correlation.py&gt;</a></li>
+<li>Binance USDⓈ-M Futures Klines API（public）: &lt;<a href="https://fapi.binance.com/fapi/v1/klines&gt;">https://fapi.binance.com/fapi/v1/klines&gt;</a></li>
+</ol>
+</body>
+</html>

@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 2026 microstructure 新论文继续只读成 3 秒 taker continuation：对 desk 更值钱的是「跨资产可移植的 taker-imbalance × VWAP-pressure 1m/3m 反转篮子」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 2026 microstructure 新论文继续只读成 3 秒 taker continuation：对 desk 更值钱的是「跨资产可移植的 taker-imbalance × VWAP-pressure 1m/3m 反转篮子」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 22:30 UTC</span>
+      <span class="pill">研究时间：2026-03-25 22:27 UTC</span>
+      <span class="pill">类型：2026 arXiv 新论文（全文 PDF 可读）+ Binance Futures 公共 `1m/3m/5m` 最小快检</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/mean-reversion/cross-sectional/market-neutral/taker-imbalance/vwap-pressure/universal-feature-library/binance/perpetual/1m/3m/5m/paper</span>
+      <span class="pill">证据类型：新论文证据 + 本地公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_2227_portable-microstructure-reversion-basket.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 22:27 UTC</li>
+<li>类型：2026 arXiv 新论文（全文 PDF 可读）+ Binance Futures 公共 <code>1m/3m/5m</code> 最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一组微观结构压力特征（<code>taker imbalance + VWAP pressure</code>）在论文原设定里是超短线方向预测器，但对我们 desk 更适合的分支是：把 bar-level 极端买压/卖压当成短窗过冲，做 <code>1m/3m</code> 反转，优先落成跨资产 market-neutral reversion basket</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/microstructure/mean-reversion/cross-sectional/market-neutral/taker-imbalance/vwap-pressure/universal-feature-library/binance/perpetual/1m/3m/5m/paper</li>
+<li>证据类型：新论文证据 + 本地公共数据快检</li>
+</ul>
+<p>&gt; 先回答 base alpha：<strong>这篇东西的 base alpha 不是 filter，不是“可解释 AI”展示，也不只是 maker 教材。它的本体是：盘口/成交流压力能预测极短未来收益。</strong> 但对我们现在的 <code>1m/3m/5m</code> desk，更值得偷的不是论文 headline 里的 <code>3s</code> taker continuation，而是一个更容易公开复现、也更贴合短周期 bar 交易的分支：<strong>极端 taker pressure 在 <code>1m/3m</code> 上更像可交易的反转篮子。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>Bartosz Bieganowski, Robert Slepaczuk (2026)</strong> 的 arXiv 新论文 *Explainable Patterns in Cryptocurrency Microstructure*。论文用 <strong>Binance Futures perpetual</strong> 的 <strong>1 秒级订单簿 + 成交流</strong>，覆盖 <strong>BTC / LTC / ETC / ENJ / ROSE</strong>，目标是预测未来 <strong>3 秒 mid return</strong>。作者最有价值的贡献不是“又一个短线模型”，而是证明：<strong>同一套 order-flow / spread / VWAP-to-mid 特征，在大币到长尾之间的 SHAP 排名和 dependence shape 都很稳定。</strong></p>
+<p>对我们现在的 desk，最值钱的不是逐字复刻论文的 <code>3s</code> taker backtest，而是把它改写成一个更能用公开 K 线先快测的版本：</p>
+<ul>
+<li>用 Binance USDⓈ-M 公共 <code>1m</code> K 线重建最容易拿到的两类 proxy：</li>
+<li><code>taker imbalance = (2*taker_buy_quote - quote_volume) / quote_volume</code></li>
+<li><code>VWAP pressure = close / VWAP - 1</code></li>
+<li>再把它们拼成一个 <strong>反转分数</strong>：</li>
+<li><code>reversion_score = -(0.6 * z(taker_imbalance) + 0.4 * z(VWAP_pressure))</code></li>
+<li>每根 bar 做 <strong>long 高 reversion_score / short 低 reversion_score</strong> 的 market-neutral 篮子，看 <code>1m/3m/5m/15m</code> 哪个时钟还活着。</li>
+</ul>
+<h2>2. 一句话核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这篇论文真正值得 desk 化的，不是再写一遍“超高频 OFI continuation”，而是 <strong>把可移植的 microstructure feature library 改写成 <code>1m/3m</code> 的反转篮子</strong>；在我用公开 <code>1m</code> 数据做的最小实验里，<strong>cross-sectional market-neutral 版本在 <code>1m/3m/5m</code> 还有毛边，到了 <code>15m</code> 基本就不该再碰。</strong></li>
+<li><strong>一句话它怎么证明：</strong> 论文端先证明同一组特征在五个币上稳定有效；我再把其中最容易公开复现的 <code>taker imbalance + VWAP pressure</code> 投到 Binance <code>1m</code> K 线 proxy 上，发现 <strong>同样的“压力”信息到了分钟级更像 mean-reversion，而不是 headline continuation。</strong></li>
+</ul>
+<h2>3. 3 个最关键的数据点</h2>
+<ol>
+<li><strong>论文先把“这不是单币特例”讲清楚了。</strong> 作者用 <strong>5 个市值层级不同</strong> 的 perpetual（BTC/LTC/ETC/ENJ/ROSE），发现主导特征始终是 <strong>order flow imbalance、bid-ask spread、VWAP-to-mid deviation</strong>，而且 SHAP 形状跨资产近似稳定。这比“某个币刚好有效”更值钱，因为它直接支持我们做 <strong>universal feature library</strong>。</li>
+<li><strong>论文的交易证据是真有经济意义，但执行方式高度不对称。</strong> taker backtest 里，<strong>ETC / ENJ / ROSE</strong> 相对 buy-and-hold 的 t-test p-value 分别是 <strong><code>0.0431 / 0.0368 / 0.0192</code></strong>，而 maker backtest <strong>没有一个资产过 5% 显著性</strong>。这说明信号本体不是空气，但 <strong>adverse selection 与 execution style</strong> 决定了能不能活。</li>
+<li><strong>我做的公开 <code>1m</code> proxy 快检显示：分钟级 desk 更像“反转篮子”，不是 continuation。</strong> 在 <strong>2026-02-15 ~ 2026-03-25</strong> 的 Binance USDⓈ-M <code>1m</code> 数据上，用 <code>BTC/LTC/ETC/ENJ/ROSE</code> 五币做 market-neutral 排名：</li>
+</ol>
+<ul>
+<li><strong>1m bar，持有 1 bar：</strong> 平均 <strong><code>+1.171 bps</code></strong>，t-stat <strong><code>29.42</code></strong></li>
+<li><strong>1m bar，持有 3 bars：</strong> 平均 <strong><code>+1.209 bps</code></strong>，t-stat <strong><code>18.30</code></strong></li>
+<li><strong>3m bar，持有 1 bar：</strong> 平均 <strong><code>+0.667 bps</code></strong>，t-stat <strong><code>5.74</code></strong></li>
+<li><strong>5m bar，持有 1 bar：</strong> 平均 <strong><code>+0.645 bps</code></strong>，t-stat <strong><code>3.46</code></strong></li>
+<li><strong>15m bar：</strong> market-neutral 版本转弱，<code>hold 1 bar = -0.043 bps</code>，<code>hold 3 bars = -1.618 bps</code></li>
+</ul>
+<h2>4. 为什么它值得进研究池</h2>
+<h3>4.1 它补的是哪类 raw alpha</h3>
+<ul>
+<li>分类：<strong>microstructure / cross-sectional / market-neutral / short-horizon mean-reversion raw alpha</strong></li>
+<li>它不是：</li>
+<li>纯 <code>OFI</code> 解释文</li>
+<li>纯 maker 教程</li>
+<li>纯 execution veto / risk overlay</li>
+</ul>
+<h3>4.2 它为什么比继续补 generic microstructure continuation 更值钱</h3>
+<p>因为我们今天已经有过 <strong>“单资产 3 秒/超短线 taker continuation”</strong> 那条卡；这篇论文现在更值得挖的，是它的 <strong>跨资产可移植性</strong>。对 desk 而言，这意味着：</p>
+<ul>
+<li>不用每个币重新发明一套 feature；</li>
+<li>可以先做 <strong>共享 feature library</strong>，再根据 tick size / liquidity tier 做分层；</li>
+<li>最终形态不一定是单币方向追单，反而更可能是 <strong>market-neutral 的分钟级反转篮子</strong>。</li>
+</ul>
+<p>这比再写一篇“OFI 还能预测下一跳”更有研究价值，因为它更接近一个能批量扩展到 alt universe 的 <strong>research platform component</strong>。</p>
+<h2>5. desk 化后的完整策略骨架</h2>
+<h3>5.1 角色拆解（必填）</h3>
+<ul>
+<li>方向属性：<strong>market-neutral / cross-sectional short-horizon mean reversion</strong></li>
+<li>基础 alpha：<strong>bar 内极端 taker pressure 与成交均价偏离，到了 <code>1m/3m</code> 更像过冲而非延续；做的是 pressure unwind</strong></li>
+<li>entry：</li>
+<li>每根 <code>1m</code> 或 <code>3m</code> bar 计算每个币的：</li>
+<li><code>taker_imbalance</code></li>
+<li><code>VWAP_pressure = close/VWAP - 1</code></li>
+<li>在各币内 rolling z-score 后，构造：</li>
+<li><code>reversion_score = -(0.6*z_imb + 0.4*z_vwap)</code></li>
+<li>每根 bar 选 <strong>score 最高的一组做多</strong>（表示上一根卖压/折价最重，预期回补），<strong>score 最低的一组做空</strong>（表示上一根买压/溢价最重，预期回吐）</li>
+<li>exit：</li>
+<li><code>1m</code> 版本默认持有 <strong>1~3 bars</strong></li>
+<li><code>3m/5m</code> 版本默认持有 <strong>1 bar</strong> 起步</li>
+<li>若 score 先回到 0 附近，可提前平仓</li>
+<li>sizing：</li>
+<li>先做 <strong>dollar-neutral</strong></li>
+<li>再按 rolling realized vol 做 <strong>inverse-vol 缩放</strong></li>
+<li>长尾币单腿设 notional 上限，避免被 ROSE/ENJ 这类尾部币一把带飞或带死</li>
+<li>risk / veto：</li>
+<li>重大宏观事件前后 blackout</li>
+<li>当根 bar range / ATR 异常放大时降杠杆或停做</li>
+<li>funding / OI / spread 同时进入极端分位时，不做常规 reversion，防止其实是 regime break</li>
+<li>若 universe 内相关性塌陷，说明共用 microstructure library 可能暂时失灵</li>
+<li>cost：</li>
+<li><strong>毛边不够厚，默认不能双腿 taker-taker 硬打</strong></li>
+<li>优先级：<code>maker-entry + taker-exit</code> 或只在 <code>|score|</code> 进入高分位时交易</li>
+<li><code>1m</code> 版本必须先过 friction ladder，没过就上调到 <code>3m/5m</code></li>
+</ul>
+<h3>5.2 当前最小可执行版本</h3>
+<ol>
+<li>先固定 universe：<code>BTC/LTC/ETC/ENJ/ROSE</code>；</li>
+<li>用 Binance 公共 <code>1m</code> K 线实时更新 <code>taker_imbalance</code> 与 <code>VWAP_pressure</code>；</li>
+<li>做 <code>reversion_score</code> 排名；</li>
+<li>每分钟 long top-2 / short bottom-2；</li>
+<li>默认持有 <code>1~3</code> 分钟；</li>
+<li>先跑 <code>market-neutral gross edge</code>，再补 execution audit。</li>
+</ol>
+<h2>6. 本地最小快检：分钟级 proxy 结果怎么读</h2>
+<h3>6.1 数据与口径</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M Futures 公共 K 线，<strong>公开可得、持续更新</strong></li>
+<li>样本：<strong>2026-02-15 ~ 2026-03-25 UTC</strong></li>
+<li>资产：<code>BTCUSDT / LTCUSDT / ETCUSDT / ENJUSDT / ROSEUSDT</code></li>
+<li>原始频率：<code>1m</code></li>
+<li>特征 proxy：</li>
+<li><code>taker imbalance = (2*taker_buy_quote - quote_volume) / quote_volume</code></li>
+<li><code>VWAP pressure = close / VWAP - 1</code></li>
+<li>打分：<code>reversion_score = -(0.6*z_imb + 0.4*z_vwap)</code></li>
+<li>交易：</li>
+<li>横截面版本：每根 bar <code>long top-2 / short bottom-2</code></li>
+<li>单资产版本：看 score decile top-minus-bottom 的 forward return spread</li>
+</ul>
+<h3>6.2 结果怎么读</h3>
+<ul>
+<li><strong>横截面版本在 <code>1m/3m/5m</code> 都还有边，但更像高换手快 alpha。</strong></li>
+<p><code>1m</code> 的 <code>hold 1~3 bars</code> 分别是 <strong><code>+1.171 / +1.209 bps</code></strong>；到了 <code>3m</code> 还是 <strong><code>+0.667 / +0.684 bps</code></strong>；<code>5m</code> 仍有 <strong><code>+0.645 / +0.654 bps</code></strong>。</p>
+<li><strong><code>15m</code> 就别硬留了。</strong> 同一 market-neutral 模板在 <code>15m</code> 已经转弱甚至转负，说明这条线不该误升成 <code>15m</code> 主 alpha。</li>
+<li><strong>单资产 decile spread 也支持“分钟级反转”读法。</strong> <code>1m</code> 数据下，pooled single-asset decile top-minus-bottom：</li>
+<li>next <code>1m</code>: <strong><code>+1.546 bps</code></strong></li>
+<li>next <code>3m</code>: <strong><code>+1.732 bps</code></strong></li>
+<li>next <code>5m</code>: <strong><code>+1.675 bps</code></strong></li>
+<li><strong>强度明显受资产层级影响。</strong> 五币里，<code>ROSE</code> 的单资产 decile spread 最强：next <code>1m/3m/5m</code> 分别是 <strong><code>+4.889 / +5.658 / +5.678 bps</code></strong>；<code>BTC</code> 只有 <strong><code>+0.581 / +0.614 / +0.951 bps</code></strong>，<code>ETC</code> 几乎没边。这个现象和论文里“<strong>relative tick size 越大，imbalance 作用越强</strong>”的结论是同方向的。</li>
+</ul>
+<h2>7. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>先把五币玩具池扩到 20~40 个 liquid perp。</strong> 真正要验证的是 universal feature library，不是五个样本的巧合。</li>
+<li><strong>做 liquidity / tick-size split。</strong> 论文已经给了暗示：大 tick 更容易把 imbalance 映到价格跳动。下一轮要显式比较 <code>BTC/ETH</code>、中流动性、长尾三个层级。</li>
+<li><strong>做真实 friction ladder。</strong> 至少跑：<code>0.5 / 1 / 2 / 4 bps</code> 单边成本，并区分 <code>maker-maker / maker-taker / taker-taker</code>。当前 gross edge 看起来够做研究，不等于净值后还能活。</li>
+<li><strong>把 ranking version 与 threshold version 分开。</strong> 现在的 top-2/bottom-2 是 continuous rebalance；下一轮应测：只在 <code>|score|</code> 进入过去 N 根 top decile 时才开仓，看看能否显著降换手。</li>
+<li><strong>补 regime veto。</strong> 把 funding、OI、异常 range、宏观事件黑窗加进去，验证“极端压力其实是信息冲击”时，reversion 是否会被系统性打脸。</li>
+<li><strong>和现有 microstructure intake 做正交性检查。</strong> 重点对比：</li>
+</ol>
+<ul>
+<li>单资产 OFI + VWAP taker continuation</li>
+<li>maker skew / fair-value microprice</li>
+<li>横截面 taker-flow imbalance</li>
+<p>看这条“bar-level reversion basket”究竟是不是新卡，还是已有卡的 coarse-timeframe 投影。</p>
+</ul>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>论文原文做的是 <strong>1 秒特征 → 3 秒 mid return</strong>，我们现在是 <strong>1m K 线 proxy transfer</strong>，不是 paper-exact replication。</li>
+<li>当前 edge 以 <strong>gross spread</strong> 为主，执行稍不诚实就会被吃掉。</li>
+<li>ROSE/ENJ 这类尾部币贡献偏大，说明 universality 可能并不意味着“所有币同权”；更可能是 <strong>共享 feature family + 分层部署</strong>。</li>
+<li>如果极端压力来自真正的 regime break / 消息冲击，常规均值回归会很危险，这也是下一轮必须补 event blackout 的原因。</li>
+</ul>
+<h2>9. 来源</h2>
+<ol>
+<li><strong>Bieganowski, B., &amp; Slepaczuk, R. (2026). _Explainable Patterns in Cryptocurrency Microstructure_.</strong></li>
+</ol>
+<ul>
+<li>Venue: arXiv</li>
+<li>DOI: <code>10.48550/arXiv.2602.00776</code></li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2602.00776">https://arxiv.org/abs/2602.00776</a></code></li>
+<li>PDF URL: <code><a href="https://arxiv.org/pdf/2602.00776.pdf">https://arxiv.org/pdf/2602.00776.pdf</a></code></li>
+<li>Repo URL: 未见作者官方仓库</li>
+</ul>
+<ol>
+<li><strong>Binance Developers. _USDⓈ-M Futures API – Kline/Candlestick Data_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+<li>作用：提供 <code>1m/3m/5m</code> 公开可复现最小实验数据。</li>
+</ul>
+<h2>10. 本地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/portable-microstructure-reversion_20260325_2227/asset_summary_1m_proxy.csv</code></li>
+<li><code>reports/artifacts/quant_digests/portable-microstructure-reversion_20260325_2227/bar_horizon_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/portable-microstructure-reversion_20260325_2227/meta.json</code></li>
+<li><code>reports/artifacts/quant_digests/portable-microstructure-reversion_20260325_2227/raw_1m_sample.csv</code></li>
+</ul>
+<h2>11. 一句话 verdict</h2>
+<p><strong>进研究池，而且优先归到 <code>1m/3m</code> 的 raw alpha 候选：先别再把它写成超高频 continuation，真正更适合当前 desk 的，是“跨资产可移植的 microstructure pressure reversion basket”；但没有成本审计前，不要直接升格为实盘 always-on。</strong></p>
+</body>
+</html>

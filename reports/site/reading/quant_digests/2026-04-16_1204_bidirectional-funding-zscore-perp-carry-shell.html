@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 funding 只做单边 cash-and-carry：这份 2026 新仓库更该先测的是「双向 funding z-score × perp 组合中性」完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 funding 只做单边 cash-and-carry：这份 2026 新仓库更该先测的是「双向 funding z-score × perp 组合中性」完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-16 12:05 UTC</span>
+      <span class="pill">研究时间：2026-04-16 12:04 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（README + `strategy.py` + `notebook.ipynb`）</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/relative-value/stat-arb/cross-sectional/perp-only/zscore/oi-gate/macro-gate/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：工程证据（源码 + notebook 回测输出）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-16_1204_bidirectional-funding-zscore-perp-carry-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-16 12:04 UTC</li>
+<li>类型：2026 GitHub repo source audit（README + <code>strategy.py</code> + <code>notebook.ipynb</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：跨币种做 <code>funding_rate</code> 相对历史分位偏离的双向回归（<code>z&gt;阈值</code> 做空 perp、<code>z&lt;阈值</code> 做多 perp），靠 funding 现金流与偏离回归赚钱</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/carry/funding/relative-value/stat-arb/cross-sectional/perp-only/zscore/oi-gate/macro-gate/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：工程证据（源码 + notebook 回测输出）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <code>PietroC21/Crypto-PerpetualFutures</code>。它不是常见的「long spot + short perp」单腿 carry，而是一个<strong>双向、跨币、perp 组合化</strong>的 funding 异常交易壳：按每个币自己的 funding 历史算 z-score，极端正 funding 做空、极端负 funding 做多，并配 OI / 宏观门控。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这条线是可独立复现、可完整落地的 raw alpha 壳，但当前公开参数下最大问题不是“信号有没有”，而是<strong>成本后几乎被吃光</strong>。</li>
+<li><strong>一句话证明方式</strong>：直接用 repo 自带 notebook 的净值分解与敏感性输出看 <code>gross→net</code> 断层、break-even fee、分阶段表现与参数压力测试。</li>
+<li>notebook 给出 <code>Gross CAGR 13.0%</code>，但 <code>Net CAGR 0.2%</code>；<code>Net Sharpe -5.72</code>，说明 edge 对交易摩擦极敏感。</li>
+<li>平均换手约 <code>0.2755/period</code>，对应 <code>break-even taker fee ≈ 3.4 bps</code>，而默认 taker fee 用的是 <code>4 bps</code>，净值被费用压穿。</li>
+<li>分阶段结果显示：2020-2021 某些阶段可赚钱，但 <code>Post-FTX Cycle (2023-01~2026-02)</code> 退化明显（CAGR 为负、回撤抬升），说明该壳需要 regime/执行层再分流，不宜裸跑。</li>
+<li>参数压力测试里，<code>z_entry</code> 从 <code>1.0 -&gt; 2.5</code> 提升时回撤下降，但 Sharpe 仍长期为负，提示“只调阈值”不是解法，关键在执行与成本治理。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条主题对 desk 有直接价值： 1) 它属于我们当前优先级最高的 raw alpha 家族（carry/relative-value/stat-arb）； 2) 它给了完整可拆策略链路（signal→sizing→risk→cost）； 3) 它天然能映射到 <code>1m/3m/5m/15m</code>：alpha 决策在 funding 结算时钟（8h），分钟级负责执行切片、冲击控制与持仓管理。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative-value / carry（组合中性）</li>
+<li>基础 alpha：<code>funding_zscore_reversion + funding_cashflow - turnover_cost</code></li>
+<li>regime：高拥挤高摩擦阶段 edge 变薄；低摩擦、偏离可回归阶段更可做</li>
+<li>filter / veto：</li>
+<li>OI gate：<code>open_interest &gt;= ratio * rolling_mean(OI)</code></li>
+<li>macro gate：<code>VIX/SPY drawdown</code> 异常时整体降档或停机</li>
+<li>可选 OBI confirm：订单簿失衡不对齐时 veto</li>
+<li>risk / sizing / execution overlay：</li>
+<li>等权分配到活跃信号（1/N）</li>
+<li>15m/5m/3m/1m 做 TWAP/分片，避免一次性冲击</li>
+<li>设置持有上限（1~3 个 funding 周期）+ basis/价差异常扩张止损</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 数据源、公开性、更新频率</h3>
+<ul>
+<li>Binance funding（8h）、perp/spot OHLCV（可到 1m）；Bybit OI（1h）；均为公开接口可拿。</li>
+<li>VIX/SPY 在原仓库里是宏观 gate（低频）；对 short-cycle 可先替换为纯 crypto 可得 gate（如 realized vol / spread / depth）。</li>
+</ul>
+<h3>4.2 最小实验口径（先 15m，再下钻 5m/3m/1m）</h3>
+<ul>
+<li>标的：先 BTC/ETH/SOL 三币 perp，后扩到前 10 流动性币。</li>
+<li>信号：每 8h 刷新 <code>funding_z</code>；<code>z &gt; 1.5</code> 做空，<code>z &lt; -1.5</code> 做多。</li>
+<li>持有：1 个 funding 周期起步，做 1/2/3 周期网格。</li>
+<li>成本：至少做 <code>4/6/8 bps</code> 三档 round-trip 压测。</li>
+<li>首看指标：</li>
+<p>1) <code>post-cost pnl bps/trade</code> 2) <code>capacity-adjusted turnover</code>（防“高换手假 edge”）</p>
+</ul>
+<h2>5. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>把 8h 信号、15m 执行解耦</strong>：同一信号下比较一次性吃单 vs 15m TWAP 分片。</li>
+<li><strong>做 funding 极端分层</strong>：<code>|z| 1.5~2.0 / 2.0~2.5 / 2.5+</code>，看哪档成本后仍存活。</li>
+<li><strong>加“最小持有 + 迟滞”</strong>：减少来回翻仓，先压 turnover 再看净值恢复。</li>
+<li><strong>把宏观 gate 换成纯 crypto gate</strong>：避免 VIX/SPY 数据依赖导致实盘链路变长。</li>
+<li><strong>做跨币容量约束</strong>：限制单币权重与相关暴露，防止“看似中性、实则挤在同一风险因子”。</li>
+</ol>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>当前策略对 taker 成本极敏感，若无法降到 break-even 以下，信号优势很容易被吞噬。</li>
+<li>perp-only 组合并非天然完全 delta-neutral，极端单边行情下仍可能出现净方向暴露。</li>
+<li>OI 与订单簿确认层若数据质量不稳，会引入伪过滤与错杀。</li>
+<li>这条线更像“可复刻策略壳 + 执行工程问题”，不是“开箱即用生产 alpha”。</li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>PietroC21. (2026). _Crypto-PerpetualFutures_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://github.com/PietroC21/Crypto-PerpetualFutures">https://github.com/PietroC21/Crypto-PerpetualFutures</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/PietroC21/Crypto-PerpetualFutures">https://github.com/PietroC21/Crypto-PerpetualFutures</a></code></li>
+</ul>
+<ol>
+<li><strong>仓库关键源码</strong></li>
+</ol>
+<ul>
+<li><code>strategy.py</code>: <code><a href="https://raw.githubusercontent.com/PietroC21/Crypto-PerpetualFutures/main/strategy.py">https://raw.githubusercontent.com/PietroC21/Crypto-PerpetualFutures/main/strategy.py</a></code></li>
+<li><code>README.md</code>: <code><a href="https://raw.githubusercontent.com/PietroC21/Crypto-PerpetualFutures/main/README.md">https://raw.githubusercontent.com/PietroC21/Crypto-PerpetualFutures/main/README.md</a></code></li>
+<li><code>notebook.ipynb</code>: <code><a href="https://raw.githubusercontent.com/PietroC21/Crypto-PerpetualFutures/main/notebook.ipynb">https://raw.githubusercontent.com/PietroC21/Crypto-PerpetualFutures/main/notebook.ipynb</a></code></li>
+</ul>
+<ol>
+<li><strong>公开数据接口文档（最小复现）</strong></li>
+</ol>
+<ul>
+<li>Binance Funding: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History</a></code></li>
+<li>Binance Klines: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+</body>
+</html>

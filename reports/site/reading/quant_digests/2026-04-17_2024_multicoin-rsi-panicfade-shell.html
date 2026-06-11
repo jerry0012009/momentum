@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 多币 bot 只读成“RSI 教学脚本”：对 short-cycle desk，更该先测的是「oversold panic fade × hard stop / fixed TP」这条单资产 mean-reversion raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 多币 bot 只读成“RSI 教学脚本”：对 short-cycle desk，更该先测的是「oversold panic fade × hard stop / fixed TP」这条单资产 mean-reversion raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-17 20:24 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `BinanceAlgoTrader.py` + `backtester_rsi.py` + `optimizer.py` + GitHub API metadata）+ Binance Spot 公共 `1m/5m/15m` portability probe（BTC/ETH/SOL/BNB，各 1000 bars）</span>
+      <span class="pill">主题标签：raw-alpha / single-asset / mean-reversion / rsi / oversold / panic-fade / fixed-stop / fixed-tp / multi-coin / btc / eth / sol / bnb / 1m / 5m / 15m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：repo 源码 + Binance 公共行情最小迁移快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-17_2024_multicoin-rsi-panicfade-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-17 20:24 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>BinanceAlgoTrader.py</code> + <code>backtester_rsi.py</code> + <code>optimizer.py</code> + GitHub API metadata）+ Binance Spot 公共 <code>1m/5m/15m</code> portability probe（BTC/ETH/SOL/BNB，各 1000 bars）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当单币短窗 RSI 跌入极端超卖（repo 默认 <code>RSI(14) &lt; 30</code>）时，价格常出现一段可收割的技术性反弹；做法是<strong>在 oversold panic 时逆向买入</strong>，并用 <code>RSI &gt; 70</code>、<code>-2%</code> stop、<code>+6%</code> take-profit 三选一退出。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（repo 已给 entry / exit / 仓位 / 状态持久化 / 交易日志；成本建模与跨资产治理需补）</li>
+<li>主题标签：raw-alpha / single-asset / mean-reversion / rsi / oversold / panic-fade / fixed-stop / fixed-tp / multi-coin / btc / eth / sol / bnb / 1m / 5m / 15m / repo / public-data / cost / risk</li>
+<li>证据类型：repo 源码 + Binance 公共行情最小迁移快检</li>
+</ul>
+<h2>1. 为什么这轮选它</h2>
+<p>这轮优先级不是再补一个 filter，而是补一条<strong>base alpha 一句话能说清楚</strong>、并且真的带有完整交易壳的 raw alpha。</p>
+<p>我最后选的是 GitHub 仓库 <strong>panthu13147 / Python-Crypto-Algo-Trader</strong>：</p>
+<ul>
+<li>创建时间：2026-01-02</li>
+<li>最近更新时间：2026-04-16</li>
+<li>stars：1</li>
+<li>结构很轻，但不是只有 README——有 live bot、单独 RSI backtester、以及一个很粗糙但可读的 optimizer。</li>
+</ul>
+<p>先把 base alpha 说人话：</p>
+<p>&gt; <strong>这不是“RSI 指标有用吗”的空话；它真正下注的是：单币在短窗 panic oversold 后，常有一段可以用硬 stop / 固定 TP 收割的反弹。</strong></p>
+<p>它和 4 月 13 日已经 intake 过的那份 <strong>Wilder-RSI breakout × ADX/EMA trend shell</strong> 不是一回事：</p>
+<ul>
+<li>那篇是 <strong>顺势 breakout / momentum</strong>；</li>
+<li>这篇是 <strong>逆向 oversold mean reversion</strong>；</li>
+<li>前者赌延续，后者赌恐慌后的技术反弹。</li>
+</ul>
+<p>所以它虽然也叫 RSI，但这轮不算撞题，补的是<strong>另一条 raw alpha 家族</strong>。</p>
+<h2>2. repo 里真正可复用的 alpha 是什么</h2>
+<h3>2.1 README 说的是“RSI Mean Reversion”，源码里交易本体也确实一致</h3>
+<p><code>BinanceAlgoTrader.py</code> 的主逻辑非常直白：</p>
+<ul>
+<li>交易标的：<code>BTC / ETH / SOL / BNB</code></li>
+<li>主周期：<code>1m</code></li>
+<li>指标：手算 <code>RSI(14)</code></li>
+<li>开仓：<code>RSI &lt; 30</code></li>
+<li>平仓三选一：</li>
+<li><code>RSI &gt; 70</code></li>
+<li><code>pnl &lt;= -2%</code></li>
+<li><code>pnl &gt;= +6%</code></li>
+<li>名义仓位：每次固定 <code>100 USDT</code></li>
+<li>状态层：<code>bot_state.json</code></li>
+<li>结果层：<code>trade_history.csv</code></li>
+</ul>
+<p>也就是说，这个 repo 的贡献不是“提出了新因子”，而是把一个<strong>非常朴素的 panic fade alpha</strong>包装成了可运行的最小完整系统：</p>
+<ul>
+<li>signal</li>
+<li>execution</li>
+<li>stop</li>
+<li>take-profit</li>
+<li>state persistence</li>
+<li>trade ledger</li>
+</ul>
+<p>这对 desk 的价值，在于它是个<strong>可快速 first verdict 的完整壳</strong>。</p>
+<h3>2.2 base alpha 用一句话压缩</h3>
+<p>这条 alpha 可以压成一句：</p>
+<p>&gt; <strong>短窗 RSI 极端超卖，不一定代表趋势继续崩；在不少场景里，它更像局部流动性挤压后的反弹入口。</strong></p>
+<p>注意这里的 alpha 本体是：</p>
+<ul>
+<li><strong>单资产短窗 mean reversion</strong>；</li>
+<p>不是：</p>
+<li>横截面 relative value；</li>
+<li>pairs spread 回归；</li>
+<li>funding / basis carry；</li>
+<li>regime gate。</li>
+</ul>
+<p>这点很重要，因为它满足了本轮“先回答 base alpha 是什么”的硬要求。</p>
+<h2>3. 源码里最值得 desk 继承的部分</h2>
+<h3>3.1 它给的是完整 raw alpha 壳，不是只有 entry 条件</h3>
+<p>很多轻量仓库只有：</p>
+<ul>
+<li>一个 entry 规则；</li>
+<li>没有状态；</li>
+<li>没有真实的退出治理；</li>
+<li>没有 trade log。</li>
+</ul>
+<p>这份 repo 虽然简单，但至少把下面几件事都串起来了：</p>
+<ol>
+<li><strong>多币轮询扫描</strong>：同一主逻辑扫 <code>BTC/ETH/SOL/BNB</code>；</li>
+<li><strong>仓位持久化</strong>：重启后还能知道自己是不是在仓位里；</li>
+<li><strong>硬风控</strong>：<code>-2%</code> stop；</li>
+<li><strong>盈利实现</strong>：<code>+6%</code> TP；</li>
+<li><strong>事件退出</strong>：<code>RSI &gt; 70</code>；</li>
+<li><strong>交易留痕</strong>：CSV ledger。</li>
+</ol>
+<p>如果把它当成 desk 的 intake，对应的正确读法不是“照抄上线”，而是：</p>
+<p>&gt; <strong>把它当作单资产 oversold panic fade 的最小母板。</strong></p>
+<h3>3.2 它的退出层比 entry 更值得保留</h3>
+<p>repo 最容易被忽略的地方，不是 <code>RSI &lt; 30</code>，而是它给了三个互相竞争的 exit：</p>
+<ul>
+<li>过热退出（<code>RSI &gt; 70</code>）</li>
+<li>止损退出（<code>-2%</code>）</li>
+<li>止盈退出（<code>+6%</code>）</li>
+</ul>
+<p>这意味着它不是纯“均值回归指标脚本”，而是已经在回答：</p>
+<ul>
+<li>什么时候承认错了？</li>
+<li>什么时候把反弹兑现？</li>
+<li>什么时候等到过热再走？</li>
+</ul>
+<p>对 short-cycle desk 来说，这种<strong>完整策略壳</strong>本身就有研究价值。</p>
+<h3>3.3 但 repo 的 RSI 实现并不够“交易级”</h3>
+<p>源码里 RSI 是用简单 rolling mean 算的：</p>
+<ul>
+<li>不是 Wilder smoothing；</li>
+<li>没有 warmup 治理；</li>
+<li>没有 intrabar / next-bar execution 区分；</li>
+<li>没有 fees / slippage / borrow / funding 的显式成本层。</li>
+</ul>
+<p>另外，<code>optimizer.py</code> 甚至不是针对同一条 RSI alpha，而是去扫 <code>SMA short / SMA long / stop loss</code> 组合，说明 repo 在研究设计上并不严谨。</p>
+<p>所以它更像：</p>
+<ul>
+<li><strong>低门槛 raw alpha 母板</strong>，</li>
+<p>而不是：</p>
+<li>可直接相信的 production research。</li>
+</ul>
+<h2>4. public portability probe：这条 alpha 对 <code>1m / 5m / 15m</code> 还有没有活口</h2>
+<p>为了不把 README 空话当证据，我按 repo 的核心逻辑做了一个最小迁移快检：</p>
+<h3>4.1 快检口径</h3>
+<ul>
+<li>数据源：Binance Spot 公共 <code>klines</code></li>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT / BNBUSDT</code></li>
+<li>周期：<code>1m / 5m / 15m</code></li>
+<li>样本：每个标的每个周期最近 <code>1000</code> bars</li>
+<li>规则：</li>
+<li><code>RSI(14) &lt; 30</code> 开多</li>
+<li><code>RSI &gt; 70</code> 或 <code>-2% stop</code> 或 <code>+6% TP</code> 平仓</li>
+<li>成本假设：单边 <code>5 bps fee + 3 bps slippage</code>，round-trip 共 <code>16 bps</code></li>
+</ul>
+<p>注意： 这不是完整 walk-forward，也不是论文级 backtest；它只是用来回答一句最重要的话：</p>
+<p>&gt; <strong>这条 raw alpha 在 desk 默认频段上，是一眼就死，还是至少还有 pocket 可聊？</strong></p>
+<h3>4.2 <code>1m</code>：基本不值得直接照抄</h3>
+<p>最近 <code>1000</code> 根 <code>1m</code> bars 的结果：</p>
+<ul>
+<li><code>BTC</code>：12 笔，胜率 <strong>41.7%</strong>，平均每笔 <strong>-0.7 bps</strong>，累计 <strong>-0.10%</strong></li>
+<li><code>ETH</code>：10 笔，胜率 <strong>30.0%</strong>，平均每笔 <strong>-10.9 bps</strong>，累计 <strong>-1.09%</strong></li>
+<li><code>SOL</code>：9 笔，胜率 <strong>44.4%</strong>，平均每笔 <strong>-2.7 bps</strong>，累计 <strong>-0.26%</strong></li>
+<li><code>BNB</code>：9 笔，胜率 <strong>11.1%</strong>，平均每笔 <strong>-15.6 bps</strong>，累计 <strong>-1.40%</strong></li>
+</ul>
+<p>一句话结论：</p>
+<p>&gt; <strong>1m 直译版大体已经被摩擦吃掉，尤其 ETH / BNB 明显偏负。</strong></p>
+<p>这很符合直觉：</p>
+<ul>
+<li>oversold 信号在 <code>1m</code> 上太密；</li>
+<li>噪声和手续费占比太高；</li>
+<li>没有更强的 microstructure / event gate 时，很容易变成无效抄底。</li>
+</ul>
+<h3>4.3 <code>5m</code>：BTC / ETH / BNB 出现正 pocket，但不是全市场通杀</h3>
+<p>最近 <code>1000</code> 根 <code>5m</code> bars 的结果：</p>
+<ul>
+<li><code>BTC</code>：13 笔，胜率 <strong>76.9%</strong>，平均每笔 <strong>+14.2 bps</strong>，累计 <strong>+1.85%</strong></li>
+<li><code>ETH</code>：14 笔，胜率 <strong>57.1%</strong>，平均每笔 <strong>+15.4 bps</strong>，累计 <strong>+2.14%</strong></li>
+<li><code>SOL</code>：13 笔，胜率 <strong>61.5%</strong>，平均每笔 <strong>-8.6 bps</strong>，累计 <strong>-1.15%</strong></li>
+<li><code>BNB</code>：14 笔，胜率 <strong>71.4%</strong>，平均每笔 <strong>+6.7 bps</strong>，累计 <strong>+0.94%</strong></li>
+</ul>
+<p>这一档最值得注意：</p>
+<ul>
+<li><code>BTC / ETH</code> 不是只有 gross 正，而是<strong>扣了 16 bps round-trip 后仍有正 pocket</strong>；</li>
+<li><code>SOL</code> 明显掉队；</li>
+<li><code>BNB</code> 虽然仍正，但 edge 较薄。</li>
+</ul>
+<p>所以更诚实的说法是：</p>
+<p>&gt; <strong>它不是“多币通用 alpha”，而更像 major coin 的局部 panic fade 壳。</strong></p>
+<h3>4.4 <code>15m</code>：BTC / ETH 比 <code>1m</code> 更像能活，但资产分化依然明显</h3>
+<p>最近 <code>1000</code> 根 <code>15m</code> bars 的结果：</p>
+<ul>
+<li><code>BTC</code>：12 笔，胜率 <strong>75.0%</strong>，平均每笔 <strong>+21.3 bps</strong>，累计 <strong>+2.53%</strong></li>
+<li><code>ETH</code>：13 笔，胜率 <strong>69.2%</strong>，平均每笔 <strong>+20.4 bps</strong>，累计 <strong>+2.52%</strong></li>
+<li><code>SOL</code>：12 笔，胜率 <strong>50.0%</strong>，平均每笔 <strong>-7.1 bps</strong>，累计 <strong>-0.98%</strong></li>
+<li><code>BNB</code>：12 笔，胜率 <strong>58.3%</strong>，平均每笔 <strong>-8.7 bps</strong>，累计 <strong>-1.12%</strong></li>
+</ul>
+<p>这说明什么？</p>
+<ol>
+<li><strong>从 1m 提到 5m/15m，噪声显著下降；</strong></li>
+<li><code>BTC / ETH</code> 的 oversold panic fade 仍然有 pocket；</li>
+<li><code>SOL / BNB</code> 没有同步跟上，说明这不是“资产无关”的稳定 alpha。</li>
+</ol>
+<h2>5. 这轮 digest 的真正结论</h2>
+<p>如果必须只用一句话总结：</p>
+<p>&gt; <strong>这份 repo 真正值得 desk intake 的，不是“RSI 指标”本身，而是“major coin 上的 oversold panic fade + 硬 stop / 固定 TP”这条完整 raw alpha 壳；1m 直译基本不行，但 5m/15m 的 BTC / ETH 仍有继续深挖价值。</strong></p>
+<p>再翻成人话：</p>
+<ul>
+<li>不要把它当“全市场自动抄底机器人”；</li>
+<li>也不要因为它简单就直接忽略；</li>
+<li>它更像是一个<strong>能快速形成 first verdict 的单资产 MR baseline</strong>。</li>
+</ul>
+<h2>6. 它和当前 desk 素材池的关系</h2>
+<p>这条线对当前项目有直接补充价值，原因有三：</p>
+<h3>6.1 它补的是单资产 MR，而不是又一条 pairs / funding / options</h3>
+<p>最近 intake 里，</p>
+<ul>
+<li>pairs / stat-arb / funding / options / prediction-market 已经很密；</li>
+<li>单资产、可独立落地、带完整 exit 壳的 <strong>plain mean reversion</strong> 反而不算多。</li>
+</ul>
+<p>这份 repo 补的是： <strong>最朴素、最易 first verdict 的单资产 panic fade。</strong></p>
+<h3>6.2 它能作为很多复杂 alpha 的 baseline 对照组</h3>
+<p>后续若你要测：</p>
+<ul>
+<li>liquidation shock fade</li>
+<li>order-flow panic fade</li>
+<li>whale unwind bounce</li>
+<li>OI/volume shock fade</li>
+</ul>
+<p>都很适合先拿这条简单规则当 baseline：</p>
+<p>&gt; <strong>如果连 plain RSI panic fade 都打不过，那复杂事件层大概率也只是“讲了个更贵的故事”。</strong></p>
+<h3>6.3 它还能拆成更适合 desk 的模块</h3>
+<p>repo 自带的完整壳可以拆成三层：</p>
+<ol>
+<li><strong>base alpha</strong>：oversold panic fade</li>
+<li><strong>risk shell</strong>：<code>-2% stop / +6% TP</code></li>
+<li><strong>universe layer</strong>：只做 major / 只做高流动性币</li>
+</ol>
+<p>这正好符合当前 desk 喜欢的拆法：</p>
+<ul>
+<li>alpha 本体讲清楚；</li>
+<li>overlay / veto 后加；</li>
+<li>先做最小实验，再谈复杂化。</li>
+</ul>
+<h2>7. 如果今天就把它 desk 化，应该怎么改</h2>
+<h3>7.1 Entry：别再用裸 <code>RSI &lt; 30</code> 扫全市场</h3>
+<p>最先该测的不是参数微调，而是<strong>更少但更诚实的 admission</strong>：</p>
+<ul>
+<li>只做 <code>BTC / ETH</code></li>
+<li>只在 <code>5m / 15m</code></li>
+<li>入场条件改成：</li>
+<li><code>RSI(14) &lt; 30</code></li>
+<li>当根真实波动不超过过去 <code>N</code> 根 <code>p90</code>（避免接飞刀）</li>
+<li>成交量不低于 rolling 中位数（避免死流动性）</li>
+</ul>
+<h3>7.2 Exit：把固定 <code>+6%</code> 改成更短周期的现实口径</h3>
+<p>repo 的 <code>+6% TP</code> 放在 <code>1m</code> 上很不 desk。 对 <code>5m / 15m</code> 更合理的先测法是：</p>
+<ul>
+<li><code>1.0~1.5 ATR</code> 止盈</li>
+<li><code>0.8~1.0 ATR</code> 止损</li>
+<li>或 <code>time-stop = 6 / 12 / 24 bars</code></li>
+</ul>
+<p>因为我们真正想知道的是：</p>
+<p>&gt; <strong>panic fade 的回补能不能在有限 bars 内兑现，而不是等一个过大的固定百分比。</strong></p>
+<h3>7.3 Universe：先接受“不是所有币都适合”</h3>
+<p>这轮快检已经给了很明确的提醒：</p>
+<ul>
+<li><code>BTC / ETH</code> 相对更像有 edge；</li>
+<li><code>SOL / BNB</code> 至少在最近这段样本里并不稳定。</li>
+</ul>
+<p>所以别把它做成全币扫描器先上； 正确顺序应该是：</p>
+<ul>
+<li><code>BTC</code> baseline</li>
+<li><code>ETH</code> 对照</li>
+<li>其他币做 out-of-universe negative control</li>
+</ul>
+<h2>8. 下一步怎么测（必须给）</h2>
+<h3>最小实验 A：major-only panic fade</h3>
+<ul>
+<li>标的：<code>BTCUSDT / ETHUSDT</code></li>
+<li>周期：<code>5m / 15m</code></li>
+<li>规则：沿用当前 base alpha</li>
+<li>退出：改成 <code>ATR-stop + time-stop</code> 双版本</li>
+<li>目的：确认 edge 来自 alpha 本体，还是来自 repo 那个不现实的 <code>+6%</code> TP</li>
+</ul>
+<h3>最小实验 B：admission layer 是否真有用</h3>
+<p>在 A 的基础上，逐个加：</p>
+<ol>
+<li>成交量门槛</li>
+<li>大阴线 / 长上影 veto</li>
+<li>realized vol 分位过滤</li>
+</ol>
+<p>目的不是炼丹，而是回答：</p>
+<p>&gt; <strong>这条 alpha 到底死在信号质量，还是死在“什么时候不该接”。</strong></p>
+<h3>最小实验 C：和事件型 panic fade 对照</h3>
+<p>把它和当前素材池里的：</p>
+<ul>
+<li>liquidation cascade panic fade</li>
+<li>OI×volume shock fade</li>
+<li>downside outlier fade</li>
+</ul>
+<p>放到同一评估口径下比较：</p>
+<ul>
+<li>trade count</li>
+<li>mean trade bp</li>
+<li>post-cost cum return</li>
+<li>max adverse excursion</li>
+</ul>
+<p>若 plain RSI panic fade 都能接近事件型，那说明：</p>
+<ul>
+<li>复杂事件层的增量有限；</li>
+<p>若事件型明显更强，才说明复杂数据真的买来了额外信息。</p>
+</ul>
+<h2>9. 风险与失效方式</h2>
+<p>这条 alpha 最容易死在三种地方：</p>
+<ol>
+<li><strong>单边趋势日</strong>：oversold 不是反弹，而是趋势继续扩张；</li>
+<li><strong>微观摩擦</strong>：<code>1m</code> 级别的 edge 先被 fee / slippage 吃光；</li>
+<li><strong>资产泛化失败</strong>：major 能活，不代表山寨也能活。</li>
+</ol>
+<p>所以当前阶段的正确定位不是“production-ready”，而是：</p>
+<p>&gt; <strong>一个值得放进素材池的、可独立复现的单资产 MR baseline。</strong></p>
+<h2>10. 来源信息</h2>
+<h3>Repo</h3>
+<ul>
+<li>panthu13147 (2026), <strong>Python-Crypto-Algo-Trader</strong></li>
+<li>Repo URL: &lt;<a href="https://github.com/panthu13147/Python-Crypto-Algo-Trader&gt;">https://github.com/panthu13147/Python-Crypto-Algo-Trader&gt;</a></li>
+<li>README raw: &lt;<a href="https://raw.githubusercontent.com/panthu13147/Python-Crypto-Algo-Trader/main/README.md&gt;">https://raw.githubusercontent.com/panthu13147/Python-Crypto-Algo-Trader/main/README.md&gt;</a></li>
+<li>Core file raw: &lt;<a href="https://raw.githubusercontent.com/panthu13147/Python-Crypto-Algo-Trader/main/BinanceAlgoTrader.py&gt;">https://raw.githubusercontent.com/panthu13147/Python-Crypto-Algo-Trader/main/BinanceAlgoTrader.py&gt;</a></li>
+<li>Backtester raw: &lt;<a href="https://raw.githubusercontent.com/panthu13147/Python-Crypto-Algo-Trader/main/backtester_rsi.py&gt;">https://raw.githubusercontent.com/panthu13147/Python-Crypto-Algo-Trader/main/backtester_rsi.py&gt;</a></li>
+<li>Optimizer raw: &lt;<a href="https://raw.githubusercontent.com/panthu13147/Python-Crypto-Algo-Trader/main/optimizer.py&gt;">https://raw.githubusercontent.com/panthu13147/Python-Crypto-Algo-Trader/main/optimizer.py&gt;</a></li>
+</ul>
+<h3>Public data used in this digest</h3>
+<ul>
+<li>Binance Spot public klines: &lt;<a href="https://data-api.binance.vision/api/v3/klines&gt;">https://data-api.binance.vision/api/v3/klines&gt;</a></li>
+<li>公开性：公开可得</li>
+<li>更新频率：按所选 bar 周期更新（本轮使用 <code>1m/5m/15m</code>）</li>
+<li>最小可复现实验口径：<code>BTC/ETH/SOL/BNB</code>，最近 <code>1000</code> bars，<code>RSI(14)&lt;30</code> 入场，<code>RSI&gt;70/-2%/+6%</code> 退出，round-trip <code>16 bps</code> 成本</li>
+</ul>
+<h2>11. 一句话结论</h2>
+<p><strong>这份 2026 新 repo 最值得保留的，不是“RSI 指标课”，而是「major-coin oversold panic fade × hard stop / fixed TP」这条完整 raw alpha 壳：<code>1m</code> 直译基本不行，但 <code>5m/15m</code> 的 BTC / ETH 还有继续做 first-verdict / clean-replication 的价值。</strong></p>
+</body>
+</html>

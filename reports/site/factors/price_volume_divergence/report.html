@@ -1,0 +1,491 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Price-Volume Divergence Report</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 32px auto; max-width: 1100px; line-height: 1.6; color: #111; }
+    h1,h2,h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .card { border: 1px solid #e5e5e5; border-radius: 10px; padding: 14px; background: #fafafa; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; font-size: 14px; }
+    th { background: #f3f3f3; }
+    img { max-width: 100%; border: 1px solid #e5e5e5; border-radius: 8px; margin: 8px 0 20px; }
+    .qa { border-left: 4px solid #4f46e5; padding-left: 14px; margin: 18px 0; }
+    code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>量价背离（baseline A）过滤器报告</h1>
+  <p class="muted">Ticker: BTC-USD · period=60d · interval=5m · generated_at=2026-03-08 17:01 UTC</p>
+
+  <h2>0. 研究问题</h2>
+  <p>这份报告回答的问题不是“量价背离能不能单独抓顶/抓底”，而是：<b>把它作为 multi_tf_momentum 的过滤器，能不能减少弱量突破带来的低质量追单？</b></p>
+
+  <h2>1. baseline 结构</h2>
+  <div class="grid">
+    <div class="card"><b>base momentum</b><br>6 / 6 windows<br>th=0.003/0.006</div>
+    <div class="card"><b>default divergence</b><br>N=24<br>delta=0.5<br>z_confirm=0.5</div>
+    <div class="card"><b>warning_active_bars</b><br>3<br>fee/slippage=4.0/2.0bps</div>
+  </div>
+
+  <h2>2. 规则定义（baseline A）</h2>
+  <ul>
+    <li>价格创新高：<code>close[t] &gt; rolling_high(close, N)[t-1]</code></li>
+    <li>当前突破的 <code>vol_z</code> 低于上一次向上突破的 <code>vol_z - delta</code></li>
+    <li>且当前 <code>vol_z &lt; z_confirm</code></li>
+    <li>则记为 <code>bearish_divergence_warning</code>，并在接下来若干根 bar 内屏蔽追多</li>
+    <li>空头方向做对称定义</li>
+  </ul>
+
+  <h2>3. 裸动量 baseline vs 最优背离过滤器</h2>
+  <table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>variant</th>
+      <th>breakout_lookback</th>
+      <th>divergence_delta_z</th>
+      <th>z_confirm</th>
+      <th>warning_active_bars</th>
+      <th>bearish_divergence_events</th>
+      <th>bullish_divergence_events</th>
+      <th>filtered_signal_count</th>
+      <th>trades</th>
+      <th>win_rate</th>
+      <th>avg_ret</th>
+      <th>median_ret</th>
+      <th>total_return</th>
+      <th>max_drawdown</th>
+      <th>long_trades</th>
+      <th>short_trades</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>baseline</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>195</td>
+      <td>0.3282</td>
+      <td>-0.0002</td>
+      <td>-0.0058</td>
+      <td>-0.0731</td>
+      <td>-0.2446</td>
+      <td>97</td>
+      <td>98</td>
+    </tr>
+    <tr>
+      <td>divergence_filter</td>
+      <td>24.0000</td>
+      <td>0.5000</td>
+      <td>0.5000</td>
+      <td>3.0000</td>
+      <td>392.0000</td>
+      <td>412.0000</td>
+      <td>768.0000</td>
+      <td>181</td>
+      <td>0.3425</td>
+      <td>-0.0002</td>
+      <td>-0.0056</td>
+      <td>-0.0710</td>
+      <td>-0.2675</td>
+      <td>90</td>
+      <td>91</td>
+    </tr>
+  </tbody>
+</table>
+  <img src="assets/02_nav_compare.png" alt="nav compare" />
+
+  <h2>4. 价格与背离警告示意</h2>
+  <img src="assets/01_price_warnings.png" alt="price warnings" />
+
+  <h2>5. 参数扫描（N × delta）</h2>
+  <table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>variant</th>
+      <th>breakout_lookback</th>
+      <th>divergence_delta_z</th>
+      <th>z_confirm</th>
+      <th>warning_active_bars</th>
+      <th>bearish_divergence_events</th>
+      <th>bullish_divergence_events</th>
+      <th>filtered_signal_count</th>
+      <th>long_filtered_count</th>
+      <th>short_filtered_count</th>
+      <th>symbol</th>
+      <th>trades</th>
+      <th>win_rate</th>
+      <th>avg_ret</th>
+      <th>median_ret</th>
+      <th>total_return</th>
+      <th>max_drawdown</th>
+      <th>long_trades</th>
+      <th>short_trades</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>divergence_filter</td>
+      <td>24</td>
+      <td>0.5000</td>
+      <td>0.5000</td>
+      <td>3</td>
+      <td>392</td>
+      <td>412</td>
+      <td>768</td>
+      <td>369</td>
+      <td>399</td>
+      <td>BTC-USD</td>
+      <td>181</td>
+      <td>0.3425</td>
+      <td>-0.0002</td>
+      <td>-0.0056</td>
+      <td>-0.0710</td>
+      <td>-0.2675</td>
+      <td>90</td>
+      <td>91</td>
+    </tr>
+    <tr>
+      <td>divergence_filter</td>
+      <td>12</td>
+      <td>1.0000</td>
+      <td>0.5000</td>
+      <td>3</td>
+      <td>394</td>
+      <td>420</td>
+      <td>618</td>
+      <td>290</td>
+      <td>328</td>
+      <td>BTC-USD</td>
+      <td>183</td>
+      <td>0.3497</td>
+      <td>-0.0003</td>
+      <td>-0.0058</td>
+      <td>-0.0766</td>
+      <td>-0.2815</td>
+      <td>91</td>
+      <td>92</td>
+    </tr>
+    <tr>
+      <td>divergence_filter</td>
+      <td>36</td>
+      <td>0.5000</td>
+      <td>0.5000</td>
+      <td>3</td>
+      <td>315</td>
+      <td>322</td>
+      <td>696</td>
+      <td>330</td>
+      <td>366</td>
+      <td>BTC-USD</td>
+      <td>185</td>
+      <td>0.3405</td>
+      <td>-0.0003</td>
+      <td>-0.0054</td>
+      <td>-0.0897</td>
+      <td>-0.2948</td>
+      <td>92</td>
+      <td>93</td>
+    </tr>
+    <tr>
+      <td>divergence_filter</td>
+      <td>24</td>
+      <td>1.0000</td>
+      <td>0.5000</td>
+      <td>3</td>
+      <td>285</td>
+      <td>307</td>
+      <td>597</td>
+      <td>289</td>
+      <td>308</td>
+      <td>BTC-USD</td>
+      <td>185</td>
+      <td>0.3405</td>
+      <td>-0.0004</td>
+      <td>-0.0054</td>
+      <td>-0.1046</td>
+      <td>-0.3123</td>
+      <td>92</td>
+      <td>93</td>
+    </tr>
+    <tr>
+      <td>divergence_filter</td>
+      <td>12</td>
+      <td>0.5000</td>
+      <td>0.5000</td>
+      <td>3</td>
+      <td>556</td>
+      <td>584</td>
+      <td>804</td>
+      <td>381</td>
+      <td>423</td>
+      <td>BTC-USD</td>
+      <td>179</td>
+      <td>0.3464</td>
+      <td>-0.0006</td>
+      <td>-0.0060</td>
+      <td>-0.1353</td>
+      <td>-0.2670</td>
+      <td>89</td>
+      <td>90</td>
+    </tr>
+    <tr>
+      <td>divergence_filter</td>
+      <td>36</td>
+      <td>1.0000</td>
+      <td>0.5000</td>
+      <td>3</td>
+      <td>225</td>
+      <td>241</td>
+      <td>547</td>
+      <td>257</td>
+      <td>290</td>
+      <td>BTC-USD</td>
+      <td>189</td>
+      <td>0.3333</td>
+      <td>-0.0007</td>
+      <td>-0.0054</td>
+      <td>-0.1572</td>
+      <td>-0.3444</td>
+      <td>94</td>
+      <td>95</td>
+    </tr>
+    <tr>
+      <td>divergence_filter</td>
+      <td>36</td>
+      <td>0.0000</td>
+      <td>0.5000</td>
+      <td>3</td>
+      <td>496</td>
+      <td>515</td>
+      <td>995</td>
+      <td>467</td>
+      <td>528</td>
+      <td>BTC-USD</td>
+      <td>183</td>
+      <td>0.3279</td>
+      <td>-0.0016</td>
+      <td>-0.0065</td>
+      <td>-0.2715</td>
+      <td>-0.3379</td>
+      <td>91</td>
+      <td>92</td>
+    </tr>
+    <tr>
+      <td>divergence_filter</td>
+      <td>24</td>
+      <td>0.0000</td>
+      <td>0.5000</td>
+      <td>3</td>
+      <td>635</td>
+      <td>674</td>
+      <td>1130</td>
+      <td>535</td>
+      <td>595</td>
+      <td>BTC-USD</td>
+      <td>173</td>
+      <td>0.3064</td>
+      <td>-0.0017</td>
+      <td>-0.0072</td>
+      <td>-0.2775</td>
+      <td>-0.2906</td>
+      <td>86</td>
+      <td>87</td>
+    </tr>
+    <tr>
+      <td>divergence_filter</td>
+      <td>12</td>
+      <td>0.0000</td>
+      <td>0.5000</td>
+      <td>3</td>
+      <td>962</td>
+      <td>976</td>
+      <td>1174</td>
+      <td>555</td>
+      <td>619</td>
+      <td>BTC-USD</td>
+      <td>171</td>
+      <td>0.2924</td>
+      <td>-0.0021</td>
+      <td>-0.0081</td>
+      <td>-0.3239</td>
+      <td>-0.3677</td>
+      <td>85</td>
+      <td>86</td>
+    </tr>
+  </tbody>
+</table>
+  <img src="assets/03_param_heatmap.png" alt="heatmap" />
+  <img src="assets/04_top_variants.png" alt="top variants" />
+
+  <h2>6. Top 5 参数组合</h2>
+  <table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>variant</th>
+      <th>breakout_lookback</th>
+      <th>divergence_delta_z</th>
+      <th>z_confirm</th>
+      <th>warning_active_bars</th>
+      <th>bearish_divergence_events</th>
+      <th>bullish_divergence_events</th>
+      <th>filtered_signal_count</th>
+      <th>long_filtered_count</th>
+      <th>short_filtered_count</th>
+      <th>symbol</th>
+      <th>trades</th>
+      <th>win_rate</th>
+      <th>avg_ret</th>
+      <th>median_ret</th>
+      <th>total_return</th>
+      <th>max_drawdown</th>
+      <th>long_trades</th>
+      <th>short_trades</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>divergence_filter</td>
+      <td>24</td>
+      <td>0.5000</td>
+      <td>0.5000</td>
+      <td>3</td>
+      <td>392</td>
+      <td>412</td>
+      <td>768</td>
+      <td>369</td>
+      <td>399</td>
+      <td>BTC-USD</td>
+      <td>181</td>
+      <td>0.3425</td>
+      <td>-0.0002</td>
+      <td>-0.0056</td>
+      <td>-0.0710</td>
+      <td>-0.2675</td>
+      <td>90</td>
+      <td>91</td>
+    </tr>
+    <tr>
+      <td>divergence_filter</td>
+      <td>12</td>
+      <td>1.0000</td>
+      <td>0.5000</td>
+      <td>3</td>
+      <td>394</td>
+      <td>420</td>
+      <td>618</td>
+      <td>290</td>
+      <td>328</td>
+      <td>BTC-USD</td>
+      <td>183</td>
+      <td>0.3497</td>
+      <td>-0.0003</td>
+      <td>-0.0058</td>
+      <td>-0.0766</td>
+      <td>-0.2815</td>
+      <td>91</td>
+      <td>92</td>
+    </tr>
+    <tr>
+      <td>divergence_filter</td>
+      <td>36</td>
+      <td>0.5000</td>
+      <td>0.5000</td>
+      <td>3</td>
+      <td>315</td>
+      <td>322</td>
+      <td>696</td>
+      <td>330</td>
+      <td>366</td>
+      <td>BTC-USD</td>
+      <td>185</td>
+      <td>0.3405</td>
+      <td>-0.0003</td>
+      <td>-0.0054</td>
+      <td>-0.0897</td>
+      <td>-0.2948</td>
+      <td>92</td>
+      <td>93</td>
+    </tr>
+    <tr>
+      <td>divergence_filter</td>
+      <td>24</td>
+      <td>1.0000</td>
+      <td>0.5000</td>
+      <td>3</td>
+      <td>285</td>
+      <td>307</td>
+      <td>597</td>
+      <td>289</td>
+      <td>308</td>
+      <td>BTC-USD</td>
+      <td>185</td>
+      <td>0.3405</td>
+      <td>-0.0004</td>
+      <td>-0.0054</td>
+      <td>-0.1046</td>
+      <td>-0.3123</td>
+      <td>92</td>
+      <td>93</td>
+    </tr>
+    <tr>
+      <td>divergence_filter</td>
+      <td>12</td>
+      <td>0.5000</td>
+      <td>0.5000</td>
+      <td>3</td>
+      <td>556</td>
+      <td>584</td>
+      <td>804</td>
+      <td>381</td>
+      <td>423</td>
+      <td>BTC-USD</td>
+      <td>179</td>
+      <td>0.3464</td>
+      <td>-0.0006</td>
+      <td>-0.0060</td>
+      <td>-0.1353</td>
+      <td>-0.2670</td>
+      <td>89</td>
+      <td>90</td>
+    </tr>
+  </tbody>
+</table>
+
+  <h2>7. 文字版研究结论（问题 → 结论 → 动作）</h2>
+  <div class="qa">
+    <h3>Q1. 量价背离在这里扮演什么角色？</h3>
+    <p><b>结论：</b>量价背离更适合做过滤器，而不是直接做反转主信号。这版实现专门回答‘要不要追这个弱量突破’。</p>
+    <p><b>动作：</b>先把它当过滤器研究，不要一上来把它当独立反转系统。</p>
+  </div>
+  <div class="qa">
+    <h3>Q2. 当前样本里最值得保留的参数结构是什么？</h3>
+    <p><b>结论：</b>当前样本里，最优过滤组合是 breakout_lookback=24, divergence_delta_z=0.5，warning_active_bars=3。</p>
+    <p><b>动作：</b>后续先围绕这个参数结构做小步扩展，不要一下子引入摆点背离、OBV、MFI 全家桶。</p>
+  </div>
+  <div class="qa">
+    <h3>Q3. 过滤器有没有改善 multi_tf_momentum？</h3>
+    <p><b>结论：</b>当前样本里，过滤器相对裸动量有增益。</p>
+    <p><b>动作：</b>如果改善主要来自减少低质量追单，而不是极端偶然行情，就可以继续保留。</p>
+  </div>
+  <div class="qa">
+    <h3>Q4. 多参数下应该怎么判断它是不是过拟合？</h3>
+    <p><b>结论：</b>如果热图里一整片参数都差不多，说明它更像稳定过滤器；如果只有一个点好看，说明还要警惕过拟合。</p>
+    <p><b>动作：</b>看热图是不是“有一片能打”，而不是只看单点冠军。</p>
+  </div>
+  <div class="qa">
+    <h3>Q5. 这节课之后的研究决策是什么？</h3>
+    <p><b>结论：</b>研究上先把它当作趋势过滤器保留；后续再考虑更复杂的摆点背离（baseline B）。</p>
+    <p><b>动作：</b>当前先把 baseline A 固化进工程结构；baseline B（摆点背离）进入后续学习地图，不急着现在展开。</p>
+  </div>
+</body>
+</html>

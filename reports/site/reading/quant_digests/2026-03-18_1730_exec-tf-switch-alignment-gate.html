@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 15m 的触发周期固定死：4H/1H 同向时偷 5m BOS，对不齐时退回 15m 确认，更像三条收口线共用的 execution gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 15m 的触发周期固定死：4H/1H 同向时偷 5m BOS，对不齐时退回 15m 确认，更像三条收口线共用的 execution gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-18 17:37 UTC</span>
+      <span class="pill">研究时间：2026-03-18 17:30 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/execution/bos/mtf/alignment/filter/repo/crypto/15m</span>
+      <span class="pill">证据类型：仓库源码 + 公开 OHLCV / 可快速复现实验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-18_1730_exec-tf-switch-alignment-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-18 17:30 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/execution/bos/mtf/alignment/filter/repo/crypto/15m</li>
+<li>证据类型：仓库源码 + 公开 OHLCV / 可快速复现实验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 GitHub 仓库 <code>Frosty098/smc-bos-strategy</code>（2026-03）里的 <code>Second_Adj.pine</code>。repo 表面上是 SMC 结构交易框架，但对我们当前 desk 最值钱的旁支，不是 OB/FVG 这些名词本身，而是一个更朴素的执行层想法：<strong>别把所有 setup 都固定用同一个触发周期；当 <code>4H bias</code> 与 <code>1H trend</code> 同向时，可以让 <code>5m BOS</code> 提前点火；当两者对不齐时，退回 <code>15m BOS</code>，别让 micro 噪声替 15m 做决定。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这份 repo 最值得先偷的不是整套 SMC 语法，而是 <code>HTF alignment -&gt; execTF</code> 这条 shared execution rule：<strong>同向时用更快触发，对不齐时提高确认门槛。</strong></li>
+<li><strong>一句话证明方式</strong>：源码把规则写得非常直接：<code>execTF = (alignedBull or alignedBear) ? &quot;5&quot; : (opposedBull or opposedBear) ? &quot;15&quot; : &quot;15&quot;</code>；随后只在该执行周期上读取 <code>bosUpExec / bosDnExec</code>。也就是说，它不是“多看一个周期更安心”的口号，而是把 <strong>高周期方向一致性</strong> 真的落成了 <strong>触发周期切换</strong>。</li>
+<li>repo 还顺手加了一个很轻的 pressure 条件：<code>bodyPct &gt;= 0.55</code> 且 <code>volume &gt; SMA20</code> 才算 <code>buyPressure / sellPressure</code>。这说明它的真正骨架不是复杂对象，而是三层分工：<strong>HTF 给背景，execTF 给触发速度，pressure 给最后一脚确认。</strong></li>
+<li>这题现在比继续给三条线各补一个局部滤镜更值得，因为三条线眼下共同缺的，不是第 N 个新指标，而是：<strong>什么时候 15m setup 可以借 5m 提前进，什么时候必须坚持等 15m 自己站稳。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li>对 <code>V3 final-verdict / breakout-short follow-up</code>：最该补的不是更多破位后形状，而是 <strong>follow-up short 是否允许借 5m continuation trigger</strong>。若 <code>4H/1H</code> 同向向下，可让 <code>5m BOS</code> 负责更快 continuation；若 <code>1H</code> 和 <code>4H</code> 打架，就必须退回 <code>15m BOS</code>，减少假跌破后被反抽打脸。</li>
+<li>对 <code>Fibonacci confirmation / retest_hold</code>：Fib 负责位置，alignment gate 负责决定“回踩后是允许看 <code>5m reclaim</code>，还是必须等 <code>15m reclaim</code>”。也就是：<strong>不是所有 retest 都值得 micro front-run。</strong></li>
+<li>对 <code>EMA / PSAR raw alpha focus</code>：EMA/PSAR 继续承担方向层，但 entry 不必永远死守 15m。可以改成：<strong>方向仍看 15m/1H，触发周期随上层同向度切换。</strong> 这比直接再叠一个新指标，更像执行层的真实增量。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：对当前 <code>breakout_short</code>、<code>fib_retest_hold</code>、<code>ema_psar_raw</code>，把 entry trigger 从“永远 15m”改成“<code>4H/1H</code> 同向时 <code>5m</code>，不齐时 <code>15m</code>”，会比继续堆局部过滤器更有效地改善 continuation 质量，同时保留足够交易数。</li>
+<li><strong>公开数据源</strong>：Binance perpetual <code>5m / 15m / 1h / 4h</code> OHLCV 即可；不需要订单簿、OI、资金费率或收费数据。</li>
+<li><strong>最小可计算定义</strong>：</li>
+</ul>
+<ol>
+<li><code>4H bias = close_4h &gt; ema200_4h</code>（空头反之）；</li>
+<li><code>1H trend = close_1h &gt; ema200_1h</code>（空头反之）；</li>
+<li>若 <code>4H</code> 与 <code>1H</code> 同向，则该 setup 允许用 <code>5m</code> 的最近摆点 <code>BOS</code> 触发；否则只接受 <code>15m BOS</code>；</li>
+<li>可选最后再加 repo 的轻 pressure：<code>abs(close-open)/(high-low) &gt;= 0.55</code> 且 <code>volume &gt; SMA20(volume)</code>；</li>
+<li>第一轮先不要接完整 OB/FVG/Breaker，只测 <code>execTF switch</code> 本身。</li>
+</ol>
+<ul>
+<li><strong>第一轮 bucket</strong>：<code>base_15m_only</code> vs <code>always_5m_confirm</code> vs <code>alignment_switch(5m/15m)</code>；可再补一档 <code>alignment_switch + pressure</code>。</li>
+<li><strong>最先看 4 个指标</strong>：<code>post-cost expectancy</code>、<code>trade count retention</code>、<code>false-break / false-hold rate</code>、<code>MFE/MAE after entry</code>。</li>
+<li><strong>下一步怎么测</strong>：先固定 <code>BTC / ETH / SOL</code> perpetual、最近 <code>180d</code>、<code>next-bar open</code>、<code>no-overlap</code>。只回答一个问题：<strong><code>4H/1H</code> 同向时放宽到 <code>5m BOS</code>、其余维持 <code>15m BOS</code>，能否在交易数保留 ≥70% 的前提下，同时改善 breakout-short 的 follow-up、Fib 的 retest_hold、以及 EMA/PSAR continuation 的成本后质量？</strong> 若这一步都没有增量，就不要继续把它包装成更复杂的多结构框架。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这份 repo 很新、也几乎没有社区验证；它更像研究启发，不是可直接抄去 paper/live 的成熟模板。</li>
+<li><code>5m BOS</code> 很容易把成交频率和噪声一起放大，所以第一轮必须把 <code>trade retention</code> 和成本后指标并排看，不能只看命中率。</li>
+<li>repo 还混了 sweep、OB/FVG/EQ、breaker、pressure 等多层对象；如果不做 ablation，很容易把“触发周期切换有效”和“其它 confluence 有效”混在一起。</li>
+<li><code>EMA200 4H/1H</code> 只是最小起点，不代表最终最优。第一轮目标是验证“<strong>周期切换这件事</strong>值不值得存在”，不是先去炼 EMA 参数。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Frosty098. (2026). *smc-bos-strategy*. GitHub repository.</li>
+<li>Venue / DOI：GitHub / N/A</li>
+<li>Repo URL: &lt;<a href="https://github.com/Frosty098/smc-bos-strategy&gt;">https://github.com/Frosty098/smc-bos-strategy&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://github.com/Frosty098/smc-bos-strategy&gt;">https://github.com/Frosty098/smc-bos-strategy&gt;</a></li>
+<li>README: &lt;<a href="https://raw.githubusercontent.com/Frosty098/smc-bos-strategy/main/README.md&gt;">https://raw.githubusercontent.com/Frosty098/smc-bos-strategy/main/README.md&gt;</a></li>
+<li>Main source (<code>Second_Adj.pine</code>): &lt;<a href="https://raw.githubusercontent.com/Frosty098/smc-bos-strategy/main/Second_Adj.pine&gt;">https://raw.githubusercontent.com/Frosty098/smc-bos-strategy/main/Second_Adj.pine&gt;</a></li>
+<li>Baseline source (<code>Oiabm.pine</code>): &lt;<a href="https://raw.githubusercontent.com/Frosty098/smc-bos-strategy/main/Oiabm.pine&gt;">https://raw.githubusercontent.com/Frosty098/smc-bos-strategy/main/Oiabm.pine&gt;</a></li>
+<li>Repo metadata snapshot: created <code>2026-03-04</code>, updated <code>2026-03-05</code>, <code>0</code> stars, <code>0</code> forks at fetch time.</li>
+<li>Binance USDⓈ-M Futures. *Kline/Candlestick Data*.</li>
+<li>Readable URL: &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;</a></li>
+<li>用途：构造 <code>5m / 15m / 1h / 4h</code> 多周期对齐与执行周期切换实验。</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2026 永续收益论文 + 新 repo 只读成 funding 套壳：对 short-cycle desk，更该先测的是「log-basis × price-volume admission × funding persistence」这条 perp carry raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2026 永续收益论文 + 新 repo 只读成 funding 套壳：对 short-cycle desk，更该先测的是「log-basis × price-volume admission × funding persistence」这条 perp carry raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-01 13:49 UTC</span>
+      <span class="pill">研究时间：2026-04-01 13:48 UTC</span>
+      <span class="pill">类型：quant_digest</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/basis/spot-perp/same-venue/perpetual/log-basis/price-volume/funding-persistence/hedged/market-neutral/binance/bybit/okx/15m/5m/3m/1m/paper/repo/public-data/cost</span>
+      <span class="pill">证据类型：2026 SSRN 论文摘要/元数据（Crossref，abstract-only）+ 2026 GitHub repo source audit（`README.md` + `strategies/spot_perp.py` + `config/main.yaml`）+ 2018 SSRN 背景论文元数据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-01_1348_logbasis-pricevolume-funding-persistence-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-01 13:48 UTC</li>
+<li>类型：quant_digest</li>
+<li>主题标签：raw-alpha/carry/funding/basis/spot-perp/same-venue/perpetual/log-basis/price-volume/funding-persistence/hedged/market-neutral/binance/bybit/okx/15m/5m/3m/1m/paper/repo/public-data/cost</li>
+<li>证据类型：2026 SSRN 论文摘要/元数据（Crossref，abstract-only）+ 2026 GitHub repo source audit（<code>README.md</code> + <code>strategies/spot_perp.py</code> + <code>config/main.yaml</code>）+ 2018 SSRN 背景论文元数据</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当 perp 相对 spot 挂着可收的 carry（正/负 funding + log-basis 提示的持有回报）且该 carry 不是瞬时噪声，而是有持续性时，做 <code>long cheap leg / short rich leg</code> 的 delta-neutral 持有，赚 funding + basis 收敛 + 预期总回报；price-volume 只负责 admission / sizing，不是 alpha 本体。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<h3>一句话核心结论</h3>
+<p><strong>这轮最值得 intake 的，不是“funding 大于 0 就去收租”，而是把 <code>log-basis carry</code> 当作 alpha 本体，再用 <code>price-volume</code> 因子做短周期 admission，最后用 funding persistence + cost hurdle 决定是否真的开仓。</strong></p>
+<h3>一句话它是怎么证明的</h3>
+<ul>
+<li><strong>论文侧</strong>：2026 新论文先从 perpetual futures 的 cost-of-carry 框架出发，再在 <code>170</code> 个候选 predictor 上做截面检验，结果得到 <code>63</code> 个显著 total-return 策略，并称一个由 <strong>log-basis + price-volume relevant factor</strong> 构成的两因子模型可以解释这 <code>63</code> 条策略。</li>
+<li><strong>工程侧</strong>：2026 新 repo 直接把 carry 落成可交易规则：只有当 funding 过阈值、同向持续、预计 funding 收益能覆盖 round-trip 费用和 inventory 风险时，才让 spot-perp 对冲仓位进场。</li>
+</ul>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p>这次 <strong>base alpha 很清楚</strong>，不是 filter 伪装成 alpha。</p>
+<p>alpha 本体是：</p>
+<ol>
+<li><strong>perp 相对 spot 的 carry / basis 信号</strong>：谁更贵、谁更便宜；</li>
+<li><strong>这个 carry 在接下来一段持有期里还能不能继续兑现</strong>：看 funding 是否持续、basis 是否没有夸张到容易先继续恶化；</li>
+<li><strong>用对冲结构把大盘方向剥掉</strong>：尽量赚 funding + basis 收敛，而不是赌单边。</li>
+</ol>
+<p>所以它属于：</p>
+<ul>
+<li><code>raw alpha</code></li>
+<li>更具体地说是：<code>carry / funding / basis</code> 家族里的 <strong>完整 spot-perp market-neutral 策略</strong>。</li>
+</ul>
+<p><code>price-volume</code> 在这里的角色很重要，但它<strong>默认是 admission / sizing / ranking 增强层</strong>，不是 alpha 本体。</p>
+<h2>3. 为什么这轮值得写，而不是继续堆一个泛 carry 摘要</h2>
+<p>虽然 desk 最近已经 intake 过几条 funding / basis 线，但这轮仍然值得写，原因是它补的是<strong>一条更完整的“可直接落地策略骨架”</strong>：</p>
+<ol>
+<li><strong>论文给了最新学术支撑。</strong></li>
+<p>不是老生常谈地说“funding 可能有预测力”，而是明确说 perpetual returns 里，<strong>log-basis + price-volume</strong> 是系统性驱动。</p>
+<li><strong>repo 给了能直接复现的 entry / exit / sizing / risk / cost 规则。</strong></li>
+<p>这对当前 desk 比纯理论更有用。</p>
+<li><strong>很适合和短周期执行层解耦。</strong></li>
+<p>carry 本体本来就不该伪装成逐根 1m 主信号；更诚实的做法是：</p>
+</ol>
+<ul>
+<li><code>carry</code> 负责“值不值得拿”；</li>
+<li><code>15m / 5m</code> 的 <code>price-volume</code> 负责“什么时候拿、拿多大”；</li>
+<li><code>1m / 3m</code> 负责执行与减冲击。</li>
+</ul>
+<p>这比再写一篇“低频数据硬装成 1m alpha”的 digest 更干净。</p>
+<h2>4. 这次看了什么来源</h2>
+<h3>4.1 主 supporting paper（最新学术线索）</h3>
+<ul>
+<li><strong>Authors</strong>：Yi Cao, Pengfei Luo, Yuhan Cheng, Yizhe Dong</li>
+<li><strong>Year</strong>：2026</li>
+<li><strong>Title</strong>：*Anatomy of Cryptocurrency Perpetual Futures Returns*</li>
+<li><strong>Venue</strong>：SSRN preprint</li>
+<li><strong>DOI</strong>：&lt;<a href="https://doi.org/10.2139/ssrn.6365329&gt;">https://doi.org/10.2139/ssrn.6365329&gt;</a></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://www.ssrn.com/abstract=6365329&gt;">https://www.ssrn.com/abstract=6365329&gt;</a></li>
+<li><strong>证据级别说明</strong>：当前可稳定拿到的是 Crossref 元数据与摘要，<strong>属于 abstract-only supporting evidence</strong>，不把它当唯一主证据。</li>
+</ul>
+<h3>4.2 主工程来源（本轮真正可落地的主证据）</h3>
+<ul>
+<li><strong>Author / Repo owner</strong>：gencersarp</li>
+<li><strong>Year</strong>：2026</li>
+<li><strong>Title / Repo</strong>：*cryptoarb*</li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/gencersarp/cryptoarb&gt;">https://github.com/gencersarp/cryptoarb&gt;</a></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/gencersarp/cryptoarb&gt;">https://github.com/gencersarp/cryptoarb&gt;</a></li>
+<li><strong>关键文件</strong>：</li>
+<li><code>README.md</code></li>
+<li><code>strategies/spot_perp.py</code></li>
+<li><code>config/main.yaml</code></li>
+</ul>
+<h3>4.3 背景地基</h3>
+<ul>
+<li><strong>Authors</strong>：Igor Makarov, Antoinette Schoar</li>
+<li><strong>Year</strong>：2018（SSRN metadata）</li>
+<li><strong>Title</strong>：*Trading and Arbitrage in Cryptocurrency Markets*</li>
+<li><strong>Venue</strong>：SSRN working paper / journal version later exists, but here引用可稳定取到的 SSRN DOI 元数据</li>
+<li><strong>DOI</strong>：&lt;<a href="https://doi.org/10.2139/ssrn.3171204&gt;">https://doi.org/10.2139/ssrn.3171204&gt;</a></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://doi.org/10.2139/ssrn.3171204&gt;">https://doi.org/10.2139/ssrn.3171204&gt;</a></li>
+</ul>
+<h2>5. 2026 新论文真正给了 desk 什么</h2>
+<h3>5.1 不是一句“funding 很重要”，而是把 perpetual returns 写回 cost-of-carry</h3>
+<p>Crossref 摘要里最重要的不是漂亮术语，而是这句意思：</p>
+<p><strong>持有 perpetual futures 的预期回报，来自当前 log-basis、对未来 spot 的预期误差，以及持有期内 futures-spot spread 的变化。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>perp 并不是“永远贴着 spot”自动定价；</li>
+<li>当前 basis 里本身就含着未来回报信息；</li>
+<li>你赚不赚钱，不只看下一次 funding，而是看一整个持有窗口的 total return。</li>
+</ul>
+<p>这很关键，因为它把 short-cycle desk 常做的东西拆清楚了：</p>
+<ul>
+<li><strong>alpha 本体</strong>：carry / basis</li>
+<li><strong>兑现路径</strong>：funding + convergence + total-return drift</li>
+<li><strong>短周期执行层</strong>：只负责减少拿得太早、太挤、太贵</li>
+</ul>
+<h3>5.2 论文给出的 3 个硬数据点</h3>
+<p>根据当前可得的 Crossref 摘要：</p>
+<ol>
+<li>论文评估了 <strong>170</strong> 个 perpetual return predictors；</li>
+<li>其中得到 <strong>63</strong> 条统计显著的 total-return 策略；</li>
+<li>一个由 <strong>log-basis + price-volume relevant factor</strong> 构成的两因子模型，声称可以解释这 <strong>63</strong> 条策略。</li>
+</ol>
+<p>对 desk 的含义非常直接：</p>
+<ul>
+<li><code>log-basis</code> 值得当成 carry 主轴；</li>
+<li><code>price-volume</code> 不需要神化成另一条独立 alpha，更自然的用法是先做 admission / ranking / sizing；</li>
+<li>也就是说，<strong>论文更像在告诉我们：perp carry 不该裸奔，而该配一个 flow-sensitive 的增强层。</strong></li>
+</ul>
+<h3>5.3 但要诚实：论文当前仍是 abstract-only supporting</h3>
+<p>这轮不能把 paper 讲得太满。</p>
+<p>我们<strong>还没拿到稳定可读的全文</strong>，所以以下内容不能假装已经确认：</p>
+<ul>
+<li>paper 里 <code>price-volume relevant factor</code> 的精确定义；</li>
+<li>样本频率、换仓节奏、成本口径；</li>
+<li>63 条策略的具体分组方法与稳健性表。</li>
+</ul>
+<p>所以这轮更合理的做法是：</p>
+<ul>
+<li>把 paper 当成<strong>高信号学术线索</strong>；</li>
+<li>真正落地时，先靠 repo 和公开数据做最小实验。</li>
+</ul>
+<h2>6. repo 是怎么把这条 alpha 落成完整策略的</h2>
+<p>这份 2026 <code>cryptoarb</code> repo 在 <code>strategies/spot_perp.py</code> 里给出的逻辑，其实非常适合作为 desk 的第一版骨架。</p>
+<h3>6.1 Entry：不是 funding 为正就进</h3>
+<p>代码核心逻辑：</p>
+<ol>
+<li>读取当前 funding rate；</li>
+<li>只有当 <code>abs(funding_rate) &gt;= entry_threshold</code> 才继续；</li>
+<li>再把 funding 近似年化：<code>fr * 3 * 365</code>；</li>
+<li>只有年化 carry 也过最小门槛，才继续；</li>
+<li>再要求 funding 在最近若干 bar <strong>同号持续</strong>；</li>
+<li>再看 projected funding edge 是否大于 round-trip fee + slippage + inventory risk。</li>
+</ol>
+<p>这比“正 funding 就收租”高明的地方在于： <strong>它先判断 carry 是否真实、是否持续、是否足够厚，最后才问要不要做。</strong></p>
+<h3>6.2 Basis filter：basis 不是主信号，但能 veto 极端错误时点</h3>
+<p>源码里还有一层 <code>basis z-score</code> 过滤：</p>
+<ul>
+<li>如果 basis 已经拉得太极端，就跳过；</li>
+<li>原因不是否定 carry，而是承认“过度拥挤的 basis 可能先继续扩，再回归”，这会把对冲腿拖进 hidden cost。</li>
+</ul>
+<p>这对短周期 desk 非常重要。 因为 carry 交易真正亏钱的常见方式，不是 funding 本身没给钱，而是：</p>
+<ul>
+<li>你进得太挤；</li>
+<li>你在 basis 最 stretched 的时点开仓；</li>
+<li>然后被 leg divergence 和冲击成本先狠狠干一轮。</li>
+</ul>
+<h3>6.3 Exit：先别神化动态优化，简单规则就够</h3>
+<p>repo 的退出规则其实很朴素：</p>
+<ul>
+<li>如果 funding 回落到 <code>exit_threshold</code> 下方，就平；</li>
+<li>或者超过 <code>max_hold_bars</code> 就平。</li>
+</ul>
+<p>这很对。 当前 desk 更需要先回答： <strong>carry 本体 after-cost 能不能活</strong>，而不是一开始就把出场做成复杂 RL。</p>
+<h3>6.4 repo 给出的几个可直接拿走的配置数字</h3>
+<p><code>config/main.yaml</code> 里，SpotPerpFunding 当前启用参数包括：</p>
+<ul>
+<li>交易资产：<code>BTC, ETH, SOL, AVAX, LINK, DOGE</code></li>
+<li>venue：<code>binance</code></li>
+<li><code>entry_funding_threshold = 0.0000528762</code></li>
+<li><code>exit_funding_threshold = 0.0000118355</code></li>
+<li><code>expected_hold_bars = 13</code></li>
+<li><code>max_hold_bars = 53</code></li>
+<li><code>position_size_pct = 0.7178</code></li>
+<li><code>max_open_positions = 5</code></li>
+<li><code>min_expected_edge_bps = 0.4247</code></li>
+<li><code>inventory_risk_bps = 0.6046</code></li>
+</ul>
+<p>换算一下更直观：</p>
+<ul>
+<li><code>entry_funding_threshold</code> 大约是 <strong>0.53 bps / 8h</strong>；</li>
+<li><code>exit_funding_threshold</code> 大约是 <strong>0.12 bps / 8h</strong>；</li>
+<li><code>expected_hold_bars = 13</code>，对应大约 <strong>104 小时</strong>；</li>
+<li><code>max_hold_bars = 53</code>，对应大约 <strong>17.7 天</strong>。</li>
+</ul>
+<p>这再次说明： <strong>carry 本体不是 1m scalping。</strong> 它天然是一个更慢的 alpha，但完全可以用短周期数据去做 admission、减仓、执行与 veto。</p>
+<h2>7. 对 <code>1m / 3m / 5m / 15m</code> 的 desk 化读法</h2>
+<h3>7.1 别把低频 carry 硬装成逐根主信号</h3>
+<p>更诚实的分层应该是：</p>
+<ul>
+<li><strong>raw alpha 层</strong>：funding + log-basis carry</li>
+<li><strong>admission / sizing 层</strong>：<code>15m / 5m</code> 的 price-volume proxy</li>
+<li><strong>execution 层</strong>：<code>1m / 3m</code> 的微观结构与冲击控制</li>
+</ul>
+<p>也就是说：</p>
+<ul>
+<li>这条线完全服务当前短周期 desk；</li>
+<li>但服务方式不是“它每根 1m 都给方向”；</li>
+<li>而是“它决定这笔 delta-neutral carry 值不值得拿，以及拿的时候怎样更像人而不是铁头”。</li>
+</ul>
+<h3>7.2 一个 desk 可执行的 <code>price-volume</code> proxy</h3>
+<p>因为论文全文未得，<code>price-volume relevant factor</code> 的精确定义当前还不能硬抄。 所以 first-pass 应该老实用 <strong>proxy</strong>：</p>
+<ul>
+<li><code>rv_short = ret_15m × rel_quote_volume_15m</code></li>
+<li><code>rel_quote_volume_15m = quote_volume / rolling_median(quote_volume, 96)</code></li>
+<li><code>pv_proxy = zscore(rv_short, 96)</code></li>
+</ul>
+<p>含义：</p>
+<ul>
+<li>如果 carry 看起来值得拿，</li>
+<li>但最近 <code>15m</code> 的价格/量能流向完全反着你、而且还在加速，</li>
+<li>那就别急着进，或者至少降仓。</li>
+</ul>
+<h3>7.3 <code>15m</code> first-pass 比 <code>1m</code> 更对</h3>
+<p>建议第一刀这样落：</p>
+<ul>
+<li>carry 信号每 <code>15m</code> 重算一次；</li>
+<li>funding / basis 用最新可得 mark、index、spot、next funding 更新；</li>
+<li>只有当：</li>
+<li>carry 为正；</li>
+<li>funding 同号持续；</li>
+<li><code>pv_proxy</code> 没有强烈反向；</li>
+<li>预期收益覆盖费用壳；</li>
+<p>才允许进场。</p>
+</ul>
+<p>这样更符合这条 alpha 的真实节奏。</p>
+<h3>7.4 <code>5m</code> 可以拿来加快 admission，不建议先上 <code>1m</code></h3>
+<p>如果 <code>15m</code> first verdict 正常，再下钻到：</p>
+<ul>
+<li><code>5m</code> 的 volume / impact proxy；</li>
+<li><code>1m / 3m</code> 的 execution scheduling。</li>
+</ul>
+<p>但<strong>不要反过来</strong>。 先卷 <code>1m</code> 往往只是让你更早遇到滑点，而不是更早看见 alpha。</p>
+<h2>8. 可以怎样把它落成完整策略</h2>
+<h3>8.1 Entry</h3>
+<p>对每个候选资产 <code>i</code>：</p>
+<ol>
+<li>计算 <code>basis_i,t = ln(mark_perp_i,t / spot_i,t)</code></li>
+<li>读取 <code>next_funding_i,t</code> 或最近 funding carry proxy</li>
+<li>形成原始 carry 分数，例如：</li>
+</ol>
+<ul>
+<li><code>carry_score_i,t = z(basis_i,t) + z(expected_funding_i,t)</code></li>
+</ul>
+<ol>
+<li>做 persistence 检查：</li>
+</ol>
+<ul>
+<li>最近 <code>k</code> 个 funding observation 同号</li>
+<li>或最近 <code>n</code> 个 <code>15m</code> 更新里 carry_score 未跌破 admission threshold</li>
+</ul>
+<ol>
+<li>加 <code>pv_proxy</code> 作为 admission：</li>
+</ol>
+<ul>
+<li>若 <code>pv_proxy</code> 明显顺着 carry 有利方向，允许正常仓位</li>
+<li>若 <code>pv_proxy</code> 中性，允许小仓位</li>
+<li>若 <code>pv_proxy</code> 强烈逆向，延迟或 veto</li>
+</ul>
+<ol>
+<li><code>next bar</code> 再执行，避免同 bar 幻觉</li>
+</ol>
+<h3>8.2 Exit</h3>
+<p>第一轮别复杂化，先测三种：</p>
+<ol>
+<li><code>carry_score &lt; exit_threshold</code></li>
+<li><code>next funding</code> 明显塌掉</li>
+<li><code>max_hold</code> 到期</li>
+</ol>
+<p>如果想加第四种，再加：</p>
+<ol>
+<li><code>pv_proxy</code> 由支持转为强烈反向时，提前减半或平仓</li>
+</ol>
+<h3>8.3 Sizing</h3>
+<p>建议先用三层：</p>
+<ol>
+<li><strong>signal layer</strong>：按 <code>carry_score</code> 分层（小/中/大仓）</li>
+<li><strong>portfolio layer</strong>：单资产、单 venue、总 gross 上限</li>
+<li><strong>execution layer</strong>：参与率上限，避免 spot/perp 两腿把自己打穿</li>
+</ol>
+<h3>8.4 Risk</h3>
+<p>必须至少有：</p>
+<ul>
+<li>basis stretch veto</li>
+<li>funding flip veto</li>
+<li>leg divergence stop</li>
+<li>venue exposure cap</li>
+<li>单币名义价值上限</li>
+<li>事件日程 veto（上币、下币、重大公告）</li>
+</ul>
+<h3>8.5 Cost</h3>
+<p>至少做三档：</p>
+<ul>
+<li>maker-ish</li>
+<li>mixed</li>
+<li>taker-heavy</li>
+</ul>
+<p>并且把成本拆开看：</p>
+<ul>
+<li>perp 开平手续费</li>
+<li>spot 开平手续费</li>
+<li>slippage / impact</li>
+<li>borrow / inventory risk</li>
+<li>funding 实际兑现偏差</li>
+</ul>
+<h2>9. 最小可复现实验（直接面向当前 desk）</h2>
+<h3>实验 A：<code>15m</code> same-venue spot-perp carry with price-volume admission</h3>
+<ul>
+<li><strong>标的池</strong>：BTC, ETH, SOL, LINK, AVAX, DOGE</li>
+<li><strong>venue</strong>：先 Binance，再扩 Bybit / OKX</li>
+<li><strong>bar</strong>：<code>15m</code></li>
+<li><strong>base signal</strong>：<code>z(log_basis) + z(next_funding)</code></li>
+<li><strong>persistence</strong>：最近 <code>2~3</code> 次 funding observation 同号，或最近 <code>8~16</code> 个 <code>15m</code> carry_score 未翻负</li>
+<li><strong>admission</strong>：<code>pv_proxy</code> 不得强烈逆向</li>
+<li><strong>执行</strong>：spot-perp 对冲同步开仓</li>
+<li><strong>持有</strong>：到下一次 / 两次 funding，或 <code>carry_score</code> 跌破 exit</li>
+<li><strong>回答问题</strong>：<code>price-volume</code> admission 能不能让同一条 carry 在 after-cost 下更稳，而不是只减少交易次数？</li>
+</ul>
+<h3>实验 B：ablation ladder</h3>
+<p>在相同 universe、相同执行与相同成本口径下，只比较：</p>
+<ol>
+<li><strong>funding only</strong></li>
+<li><strong>funding + log-basis</strong></li>
+<li><strong>funding + log-basis + price-volume proxy</strong></li>
+<li><strong>funding + log-basis + price-volume proxy + persistence gate</strong></li>
+</ol>
+<p>这是这条线最值得先跑的实验，因为它直接回答： <strong>真正给你增量的，到底是 carry 本体，还是 admission 壳。</strong></p>
+<h3>实验 C：<code>5m</code> admission / <code>1m</code> execution transfer</h3>
+<ul>
+<li>carry 本体仍按慢频更新</li>
+<li>用 <code>5m</code> 重新算 <code>pv_proxy</code></li>
+<li>用 <code>1m</code> 做 TWAP / participation scheduling</li>
+</ul>
+<p>目的不是把 alpha 变成 <code>1m alpha</code>，而是测试： <strong>更细执行，能否降低冲击而不稀释 carry。</strong></p>
+<h2>10. 下一步怎么测</h2>
+<p>建议顺序别花：</p>
+<ol>
+<li><strong>先做实验 B</strong>：先确认增量来自哪里</li>
+<li>如果 <code>funding + log-basis</code> 本体就不行，先停，不要继续给 admission 壳贴金</li>
+<li>如果 <code>funding + log-basis</code> 可活，再看 <code>price-volume proxy</code> 是否提高：</li>
+</ol>
+<ul>
+<li>after-cost Sharpe</li>
+<li>MDD</li>
+<li>positive trade ratio</li>
+<li>average leg divergence</li>
+</ul>
+<ol>
+<li>如果 <code>15m</code> 可活，再把 admission 压到 <code>5m</code></li>
+<li>最后才讨论 <code>1m / 3m</code> 执行层</li>
+</ol>
+<p>最重要的一句： <strong>先验证 carry 本体，再优化 admission；先验证 admission，再优化 execution。</strong></p>
+<h2>11. 这条线最容易错在哪</h2>
+<h3>11.1 把 funding 当成唯一收益来源</h3>
+<p>很多时候你实际赚/亏的，更多来自：</p>
+<ul>
+<li>basis 变化</li>
+<li>进出场冲击</li>
+<li>两腿不同时成交造成的 divergence</li>
+</ul>
+<p>所以评价一定要看 <strong>total return</strong>，不是只看 funding 到账。</p>
+<h3>11.2 把 <code>price-volume</code> 说成新 alpha</h3>
+<p>这轮不该这么写。 更诚实的说法是：</p>
+<ul>
+<li>alpha 本体是 carry / basis</li>
+<li><code>price-volume</code> 是 admission / sizing / veto 增强层</li>
+</ul>
+<h3>11.3 直接把 repo 的 8h 参数抄到 15m</h3>
+<p>源码里的 <code>13</code>、<code>53</code>、<code>0.53 bps/8h</code> 都有参考价值， 但应该拿去当<strong>量级感</strong>，不是直接按数字照搬。</p>
+<h3>11.4 只在理想 maker 成本下成立</h3>
+<p>如果一条 carry 策略只有在完美 maker 成本下才活， 那它不是 ready，只能算候选。</p>
+<h2>12. 对当前 <code>momentum</code> 项目的直接意义</h2>
+<p>这条线和现有 backlog 的关系很清楚：</p>
+<ul>
+<li>它<strong>不是</strong>继续围绕 breakout / pullback 内循环；</li>
+<li>它补的是一条 <strong>carry / funding / basis raw alpha</strong>；</li>
+<li>同时给了一个很好的模块化拆法：</li>
+<li>raw alpha：carry</li>
+<li>filter / admission：price-volume</li>
+<li>risk：basis stretch / funding flip / leg divergence</li>
+<li>execution：<code>1m / 3m</code> scheduling</li>
+</ul>
+<p>对当前 desk，这条线最有价值的地方就是： <strong>可以很快做 first verdict，而且 verdict 非常干净。</strong></p>
+<h2>13. Sources</h2>
+<ol>
+<li>Cao, Y., Luo, P., Cheng, Y., &amp; Dong, Y. (2026). *Anatomy of Cryptocurrency Perpetual Futures Returns*. SSRN. DOI: &lt;<a href="https://doi.org/10.2139/ssrn.6365329&gt;.">https://doi.org/10.2139/ssrn.6365329&gt;.</a> Readable URL: &lt;<a href="https://www.ssrn.com/abstract=6365329&gt;">https://www.ssrn.com/abstract=6365329&gt;</a></li>
+<li>gencersarp. (2026). *cryptoarb* [GitHub repository]. &lt;<a href="https://github.com/gencersarp/cryptoarb&gt;">https://github.com/gencersarp/cryptoarb&gt;</a></li>
+<li>Key repo files used in this digest:</li>
+</ol>
+<ul>
+<li>&lt;<a href="https://raw.githubusercontent.com/gencersarp/cryptoarb/main/README.md&gt;">https://raw.githubusercontent.com/gencersarp/cryptoarb/main/README.md&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/gencersarp/cryptoarb/main/strategies/spot_perp.py&gt;">https://raw.githubusercontent.com/gencersarp/cryptoarb/main/strategies/spot_perp.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/gencersarp/cryptoarb/main/config/main.yaml&gt;">https://raw.githubusercontent.com/gencersarp/cryptoarb/main/config/main.yaml&gt;</a></li>
+</ul>
+<ol>
+<li>Makarov, I., &amp; Schoar, A. (2018). *Trading and Arbitrage in Cryptocurrency Markets*. SSRN. DOI: &lt;<a href="https://doi.org/10.2139/ssrn.3171204&gt;">https://doi.org/10.2139/ssrn.3171204&gt;</a></li>
+</ol>
+</body>
+</html>

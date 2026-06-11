@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把韩国 market-neutral 仓库只读成“跨境出金流程”：更该先测的是「跨交易所 cheapest-spot / richest-perp 净价差收敛」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把韩国 market-neutral 仓库只读成“跨境出金流程”：更该先测的是「跨交易所 cheapest-spot / richest-perp 净价差收敛」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-26 11:24 UTC</span>
+      <span class="pill">研究时间：2026-03-26 11:22 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + 2019/2023 论文地基 + Bybit/OKX/Gate 公共 order-book live quick check</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/cross-exchange/spot-perp/contango/carry/market-neutral/cheapest-spot-richest-perp/bybit/okx/gateio/1m/3m/5m/15m/repo/paper/external-data</span>
+      <span class="pill">证据类型：2026 GitHub 仓库代码级审阅 + 2019 JFE/2023 KAIS 论文 + 公共 order-book 最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-26_1122_cross-exchange-cheapest-spot-richest-perp-contango.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-26 11:22 UTC</li>
+<li>类型：2026 GitHub 新仓库 + 2019/2023 论文地基 + Bybit/OKX/Gate 公共 order-book live quick check</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当多交易所里 <strong>最便宜的 spot ask</strong> 与 <strong>最贵的 perp bid</strong> 的<strong>费后净价差</strong>超过阈值时，做 <code>long cheapest spot / short richest perp</code>，赚跨交易所现货-永续的收敛，而不是赌单腿方向</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/cross-exchange/spot-perp/contango/carry/market-neutral/cheapest-spot-richest-perp/bybit/okx/gateio/1m/3m/5m/15m/repo/paper/external-data</li>
+<li>证据类型：2026 GitHub 仓库代码级审阅 + 2019 JFE/2023 KAIS 论文 + 公共 order-book 最小快检</li>
+</ul>
+<p>先把 <strong>base alpha</strong> 说死：<strong>这不是“韩国上币套利流程”也不是“kimchi premium 监控面板”本身。真正可直接 desk 化的 raw alpha，是跨交易所 <code>spot ask</code> 与 <code>perp bid</code> 的费后 contango 净价差收敛。</strong></p>
+<p>也就是说，这轮我故意<strong>不</strong>把仓库 headline 里最吸睛的韩国出金腿当主角；对我们做 <code>1m / 3m / 5m / 15m</code> 的 desk，更值得先拆出来的是它里面那条更短、更纯、更可复制的分支：</p>
+<p>&gt; <strong>全市场扫一遍，找 cheapest spot + richest perp 的组合；只在 fee-adjusted net spread 真正为正、且超过 buffer 时，做 delta-neutral 收敛。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>主线材料是一份 2026 新仓库：</p>
+<ul>
+<li><strong>sueun-dev (2026), _crypto-market-neutral-platform_</strong></li>
+<li>Readable URL：<code><a href="https://github.com/sueun-dev/crypto-market-neutral-platform">https://github.com/sueun-dev/crypto-market-neutral-platform</a></code></li>
+<li>Repo URL：<code><a href="https://github.com/sueun-dev/crypto-market-neutral-platform">https://github.com/sueun-dev/crypto-market-neutral-platform</a></code></li>
+</ul>
+<p>如果只看 README，很容易把它读成：</p>
+<ul>
+<li>韩国交易所搬砖</li>
+<li>上币后转移现货去吃 kimchi premium</li>
+<li>一个偏“跨境资金/出入金流程”的套利平台</li>
+</ul>
+<p>但对我们当前 desk 更值钱的，其实不是这条最慢的跨境腿，而是仓库里已经写死的一条更原子的 alpha：</p>
+<ol>
+<li><strong>并行抓多交易所 spot/perp 最优盘口</strong>；</li>
+<li><strong>按 taker fee 折算成有效买入/卖出价</strong>；</li>
+<li><strong>找出 cheapest spot vs richest perp 的最佳组合</strong>；</li>
+<li><strong>当 <code>net_spread</code> 超过阈值时，做 long spot / short perp 的 delta-neutral 收敛</strong>；</li>
+<li><strong>等净价差回落再平仓</strong>；</li>
+<li>韩国腿只是一个<strong>可选增强退出</strong>，不是 alpha 本体。</li>
+</ol>
+<p>这就很符合这轮 intake 的优先级：</p>
+<ul>
+<li>raw alpha 很清楚；</li>
+<li>entry/exit/sizing/risk/cost 都能写出来；</li>
+<li>直接能映射到 <code>1m / 3m / 5m / 15m</code> 的最小实验；</li>
+<li>不需要先伪装成 filter / overlay 才能落地。</li>
+</ul>
+<h2>2. 这份仓库最值钱的，不是“韩国卖出”，而是它已经把 raw alpha 算式写好了</h2>
+<p>我这次重点看了 4 个文件：</p>
+<ol>
+<li><code>src/overseas_exchange_hedge/overseas/price_analyzer.py</code></li>
+<li><code>src/overseas_exchange_hedge/overseas/trade_executor.py</code></li>
+<li><code>src/overseas_exchange_hedge/overseas/position_tracker.py</code></li>
+<li><code>src/overseas_exchange_hedge/korea/exit/kimchi_premium.py</code></li>
+</ol>
+<p>最关键的是 <code>price_analyzer.py</code>。它不是泛泛说“找套利机会”，而是直接把 entry math 写出来了：</p>
+<ul>
+<li><code>effective_spot = spot_ask * (1 + spot_taker_fee)</code></li>
+<li><code>effective_perp = perp_bid * (1 - perp_taker_fee)</code></li>
+<li><code>net_spread = (effective_perp - effective_spot) / effective_spot</code></li>
+</ul>
+<p>然后在所有 <code>(spot_exchange, perp_exchange)</code> 组合里，<strong>找 <code>net_spread</code> 最大的那一组</strong>。</p>
+<p>换成人话：</p>
+<p>&gt; <strong>不是看名义 basis，也不是看单交易所 perp premium；而是看“扣完两边 taker fee 后，这笔 long-spot / short-perp 还能剩下多少真钱”。</strong></p>
+<p>这就是一条标准的 short-horizon relative-value raw alpha，而且是很诚实的那种——<strong>成本先入模，不是最后再补。</strong></p>
+<h2>3. 代码级别能抠出来的完整策略骨架</h2>
+<h3>3.1 entry：阈值入场，不碰方向赌注</h3>
+<p>仓库里有两个值得记的参数版本：</p>
+<ul>
+<li>README 展示版：<code>PRICE_DIFF_THRESHOLD = 0.0021</code>（<strong>21bp</strong>）</li>
+<li>当前代码版 <code>config.py</code>：<code>PRICE_DIFF_THRESHOLD = 0.0015</code>（<strong>15bp</strong>）</li>
+</ul>
+<p>同时当前代码里还有：</p>
+<ul>
+<li><code>ENTRY_AMOUNT = 100.0</code></li>
+<li><code>MAX_ENTRIES = 40</code></li>
+<li><code>SLEEP_SEC = 3</code></li>
+<li><code>FUTURES_LEVERAGE = 1</code></li>
+</ul>
+<p>这几个数字翻成人话就是：</p>
+<ul>
+<li>这是个<strong>阈值触发型</strong> alpha，不是持续做市；</li>
+<li>默认每次只打小额；</li>
+<li>会分批累积，而不是一把梭；</li>
+<li>永续腿固定 <code>1x</code>，强调的是 <strong>delta-neutral carry / convergence</strong>，不是融资放大。</li>
+</ul>
+<h3>3.2 execution：先 short perp，再补 long spot，优先快腿成交</h3>
+<p><code>trade_executor.py</code> 里写得很明确：</p>
+<ul>
+<li>先确保 perp 侧 <code>1x leverage</code></li>
+<li>使用 market order</li>
+<li><code>PROCEED_ON_PERP_ACK = True</code></li>
+<li>perp ACK 之后尽快打 spot</li>
+<li>对不同交易所有 precision / minQty / minNotional 的防守逻辑</li>
+</ul>
+<p>这说明作者自己也知道这条线的生死不在“预测准不准”，而在：</p>
+<ul>
+<li>盘口是不是还在</li>
+<li>ACK 到 fill 的延迟够不够短</li>
+<li>spot/perp 量纲能不能真正对齐</li>
+</ul>
+<p>所以这条线的本质不是低频 carry，而是：</p>
+<p>&gt; <strong>一个有明确 latency budget 的短周期收敛 alpha。</strong></p>
+<h3>3.3 exit：先看净价差回落；韩国腿只是 bonus，不该当主 alpha</h3>
+<p><code>position_tracker.py</code> 和 <code>price_analyzer.py</code> 已经把<strong>正常平仓</strong>该算的东西写齐了：</p>
+<ul>
+<li><code>spot_exit = spot_bid * (1 - spot_fee)</code></li>
+<li><code>perp_exit = perp_ask * (1 + perp_fee)</code></li>
+</ul>
+<p>也就是说，production 上最诚实的主退出其实应该是：</p>
+<ul>
+<li>看 open net spread</li>
+<li>看 close net spread</li>
+<li>净价差收敛到 break-even / target 区间就平</li>
+</ul>
+<p>而 <code>korea/exit/kimchi_premium.py</code> 只是额外给了一个增强退出：</p>
+<ul>
+<li><code>premium = (korean_bid - overseas_price_krw) / overseas_price_krw * 100</code></li>
+<li>默认 <code>threshold = 3.0%</code></li>
+</ul>
+<p>这条腿对更慢、更事件驱动的 regional spread 套利当然有用，但对我们要优先补充的短周期 raw alpha 池，<strong>更应该先把它当 optional bonus，而不是把整个主题都绑在韩国出金上。</strong></p>
+<h2>4. 文献怎么给这条 repo 分支垫地基</h2>
+<h3>4.1 Makarov &amp; Schoar (2019) 给的是“为什么这种跨 venue spread 会长期存在”</h3>
+<ul>
+<li><strong>Igor Makarov, Antoinette Schoar (2019). _Trading and arbitrage in cryptocurrency markets_. Journal of Financial Economics.</strong></li>
+<li>DOI：<code>10.1016/j.jfineco.2019.07.001</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.1016/j.jfineco.2019.07.001">https://doi.org/10.1016/j.jfineco.2019.07.001</a></code></li>
+</ul>
+<p>这篇老但非常硬的 JFE 论文，不是拿来直接抄 <code>1m</code> 信号的，而是告诉我们：</p>
+<ul>
+<li>crypto 跨交易所价差真实存在；</li>
+<li>资金、转账、法币通道、库存约束会让它们<strong>不是瞬间无摩擦消失</strong>；</li>
+<li>所以“跨 venue 收敛”本身可以是 alpha，不只是噪声。</li>
+</ul>
+<h3>4.2 Cho / Park / Ahn (2023) 给的是“韩国腿可以做成增强退出，但别把它误当 alpha 本体”</h3>
+<ul>
+<li><strong>GiJeong Cho, Jonghyun Park, Hyunchul Ahn (2023). _A Study on Statistical Arbitrage Transactions of Cryptocurrency Using Kimchi Premium and Exchange Rate Fluctuations Prediction_. Journal of the Korea Academia-Industrial cooperation Society.</strong></li>
+<li>DOI：<code>10.5762/KAIS.2023.24.10.354</code></li>
+<li>Readable URL：<code><a href="http://dx.doi.org/10.5762/kais.2023.24.10.354">http://dx.doi.org/10.5762/kais.2023.24.10.354</a></code></li>
+</ul>
+<p>OpenAlex 抽到的摘要很直白：</p>
+<ul>
+<li>他们用 <code>2017-09-26 ~ 2023-04-06</code> 的汇率 + Upbit/Binance BTC spot 数据；</li>
+<li>结论是 <strong>kimchi premium 会围绕由汇率决定的平均水平回归</strong>；</li>
+<li>并尝试用 LSTM 预测汇率，来提升统计套利机会与收益。</li>
+</ul>
+<p>对我们最值钱的翻译不是“去做一个汇率 LSTM”，而是：</p>
+<p>&gt; <strong>如果 regional premium 的确有均值回归属性，那它更像 cross-exchange spot/perp 主策略的二级退出增强，不该反过来吃掉主 alpha 的位置。</strong></p>
+<h2>5. 公共 live quick check：这条 alpha 现在在 majors 上根本不宽，别自欺欺人</h2>
+<p>为了不把 repo 直接神化，我补了一个很便宜但很诚实的 live check：</p>
+<h3>数据源与公开性</h3>
+<ul>
+<li>Bybit public orderbook</li>
+<li>OKX public books</li>
+<li>Gate.io public orderbook</li>
+<li>全都是公开 REST，无需私钥</li>
+<li>更新频率：秒级</li>
+</ul>
+<h3>最小实验口径</h3>
+<ul>
+<li>标的：先用 <code>BTCUSDT</code></li>
+<li>交易所：Bybit / OKX / Gate</li>
+<li>频率：每 <code>5s</code> 抓一次</li>
+<li>样本：连续 <code>24</code> 次快照（约 <code>2</code> 分钟）</li>
+<li>算法：严格照仓库逻辑，先加 spot taker fee、再减 perp taker fee，然后看 cheapest spot vs richest perp 的 <code>net_spread</code></li>
+</ul>
+<h3>这轮最重要的 4 个数</h3>
+<ol>
+<li><strong>24 次快照里，最佳费后净价差平均只有 <code>-20.1bp</code>。</strong></li>
+<li><strong>最好的一次也只有 <code>-18.5bp</code>，最差约 <code>-20.9bp</code>。</strong></li>
+<li><strong>超过代码阈值 <code>15bp</code> 的次数是 <code>0/24</code>；超过 README 旧阈值 <code>21bp</code> 的次数也是 <code>0/24</code>。</strong></li>
+<li><strong>最佳组合 24 次里有 21 次是 <code>Bybit spot -&gt; Gate perp</code>，说明“最优 pair 很稳定”，但稳定的是负毛边，不是正 edge。</strong></li>
+</ol>
+<p>对应 artifact：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/krw_or_cross_exchange_contango_20260326_live_snapshots.json</code></li>
+<li><code>reports/artifacts/quant_digests/cross_exchange_contango_20260326_live_summary.csv</code></li>
+</ul>
+<h3>再补一个 top-6 snapshot</h3>
+<p>我又做了一个单次 top-6 snapshot（<code>BTC / ETH / SOL / XRP / ADA / DOGE</code>）：</p>
+<ul>
+<li><code>BTC</code>: <strong>-19.7bp</strong></li>
+<li><code>ETH</code>: <strong>-19.2bp</strong></li>
+<li><code>SOL</code>: <strong>-21.8bp</strong></li>
+<li><code>XRP</code>: <strong>-21.5bp</strong></li>
+<li><code>ADA</code>: <strong>-30.4bp</strong></li>
+<li><code>DOGE</code>: <strong>-20.4bp</strong></li>
+</ul>
+<p>对应 artifact：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/cross_exchange_contango_20260326_top6_snapshot.json</code></li>
+</ul>
+<p>这组数的意思很明确：</p>
+<p>&gt; <strong>如果只扫 majors、只用 taker/taker、又没有更低手续费档或 maker rebate，这条 alpha 现在基本活不在 BTC/ETH 这些最拥挤品种上。</strong></p>
+<p>这不是坏消息，反而很重要，因为它帮我们提前避免把 repo 误读成“随便扫三家大所 BTC 就能收租”的幻觉。</p>
+<h2>6. 这条线对短周期 desk 的正确读法</h2>
+<h3>6.1 它仍然是 raw alpha，但不是“majors 常开型”</h3>
+<p>从代码骨架看，它确实是一条：</p>
+<ul>
+<li>可独立复现</li>
+<li>可写完整策略</li>
+<li>成本先入模</li>
+<li>纯 relative-value / stat-arb</li>
+</ul>
+<p>所以它是 <strong>raw alpha</strong> 没错。</p>
+<p>但从 live quick check 看，当前更合理的定位是：</p>
+<ul>
+<li><strong>对 BTC/ETH：默认不是 always-on 主策略</strong></li>
+<li><strong>对 alt / listing / 流动性偏薄合约：可能是 event pocket / dislocation scanner</strong></li>
+<li><strong>对有更低 fee tier / maker rebate / 内部库存的人：可能重新活过来</strong></li>
+</ul>
+<h3>6.2 真正值得 desk 先测的是“扫描器”，不是“韩国退出器”</h3>
+<p>更贴近我们现在短周期研发节奏的落地顺序，应该是：</p>
+<ol>
+<li>先把跨交易所 <code>spot ask vs perp bid</code> 扫描器跑起来；</li>
+<li>把触发事件存下来；</li>
+<li>看哪些币、哪些交易时段、哪些 venue pair 会反复出现正毛边；</li>
+<li>只有当主 alpha 被确认后，再决定要不要给它加韩国 premium exit 这类慢腿增强。</li>
+</ol>
+<h2>7. desk 版最小完整策略骨架</h2>
+<h3>7.1 entry</h3>
+<ul>
+<li>universe：先 <code>top 50~100</code> USDT spot/perp 共有币</li>
+<li>venues：Bybit / OKX / Gate（后续可扩 Binance、KuCoin、Bitget）</li>
+<li>计算：</li>
+<li><code>effective_spot_buy = best_spot_ask * (1 + taker_fee_spot)</code></li>
+<li><code>effective_perp_short = best_perp_bid * (1 - taker_fee_perp)</code></li>
+<li><code>net_spread = (effective_perp_short - effective_spot_buy) / effective_spot_buy</code></li>
+<li>触发：</li>
+<li>基线先测 <code>&gt; 15bp</code></li>
+<li>压力测试 <code>&gt; 21bp / 25bp / 30bp</code></li>
+</ul>
+<h3>7.2 exit</h3>
+<ul>
+<li>主退出：</li>
+<li><code>close_net_spread &lt;= 0bp</code> 或 <code>&lt;= 3bp</code></li>
+<li>时间退出：</li>
+<li><code>1m / 3m / 5m / 15m</code> 四档固定持有</li>
+<li>optional bonus：</li>
+<li>若该币可转韩国腿，再挂 <code>kimchi premium &gt;= 3%</code> 的慢速增强退出</li>
+</ul>
+<h3>7.3 sizing</h3>
+<ul>
+<li>单次 notional：按 repo 逻辑先从固定小额开始</li>
+<li>组合上限：按 venue pair / coin 做 caps</li>
+<li>只有当两腿盘口量都覆盖目标下单量，才允许入场</li>
+</ul>
+<h3>7.4 risk / veto</h3>
+<ul>
+<li>若 perp funding 极端转负，说明 rich perp 可能很快塌，要缩小持有窗</li>
+<li>若其中一腿 top-of-book 深度明显不够，直接 veto</li>
+<li>若 API ACK / fill 延迟超预算，直接 kill，不做“裸露半腿”幻想</li>
+<li>若正毛边只存在于 taker/taker 之前、费后一过就没了，直接 veto</li>
+</ul>
+<h3>7.5 cost</h3>
+<p>这条线最该诚实的地方就是 cost：</p>
+<ul>
+<li>taker/taker 是第一道生死线</li>
+<li>下一层才是 slippage、reject、partial fill、borrow/inventory friction</li>
+<li>所以 production 评估必须至少三档：</li>
+<li><code>fees only</code></li>
+<li><code>fees + 0.5 tick</code></li>
+<li><code>fees + 1 tick + partial fill</code></li>
+</ul>
+<h2>8. 为什么它能映射到 <code>1m / 3m / 5m / 15m</code></h2>
+<p>虽然 repo 代码是秒级轮询，但它对 desk 的短周期映射很自然：</p>
+<ul>
+<li><code>1m</code>：最适合事件采样与最快速 time stop</li>
+<li><code>3m</code>：最像“给收敛一点时间，但不让 inventory 风险拖太久”</li>
+<li><code>5m</code>：适合第一版 production backtest</li>
+<li><code>15m</code>：更适合作为“慢 pocket 兜底”，不该拿来做最早入场</li>
+</ul>
+<p>也就是说，这条线并不是“只能做 tick 级 HFT”。它完全可以先降采样成 <code>1m / 3m / 5m</code> 的 event-driven stat-arb 研究线。</p>
+<h2>9. 我现在的判断</h2>
+<p><strong>这主题值得进池，而且应该归类成 raw alpha。</strong></p>
+<p>但更准确的 verdict 不是：</p>
+<ul>
+<li>“韩国 market-neutral 仓库 = 可直接搬来跑 BTC 收租”；</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li><strong>“这仓库里面藏着一条很干净的 cross-exchange cheapest-spot / richest-perp 收敛 raw alpha；只是当前 majors 上费后基本不宽，所以研究重点应该转向 altcoin dislocation / fee-tier / maker 化，而不是沉迷韩国出金叙事。”</strong></li>
+</ul>
+<p>换句话说：</p>
+<p>&gt; <strong>alpha 候选是对的，headline 读法是错的。</strong></p>
+<h2>10. 下一步怎么测（最重要）</h2>
+<h3>P0：先把 event scanner 跑起来，而不是继续读 README</h3>
+<ul>
+<li>universe：<code>top 50~100</code> spot/perp 共有币</li>
+<li>venues：Bybit / OKX / Gate / Binance / Bitget</li>
+<li>频率：<code>5s</code> 或 <code>10s</code></li>
+<li>保存：每次触发时的 <code>coin / spot_ex / perp_ex / raw_spread / fee_adjusted_spread / top_depth / funding</code></li>
+</ul>
+<p>目标不是先算收益，而是先回答：</p>
+<ul>
+<li><strong>哪些币真的会出现费后正毛边？</strong></li>
+<li><strong>这些事件一天有几次？</strong></li>
+</ul>
+<h3>P1：做真正的 <code>1m / 3m / 5m / 15m</code> markout</h3>
+<p>对每个触发事件，至少输出：</p>
+<ul>
+<li>open spread</li>
+<li>close spread at <code>+1m/+3m/+5m/+15m</code></li>
+<li>gross bps</li>
+<li>net bps after cost assumptions</li>
+<li>hit rate / median / tail loss</li>
+</ul>
+<h3>P2：把 coin 按 liquidity bucket 分层</h3>
+<p>我强烈怀疑：</p>
+<ul>
+<li><code>BTC/ETH</code> 上这条边大概率被 fees 吃光；</li>
+<li>真正会活的是 <strong>中高流动性 alt 的短时 dislocation</strong>；</li>
+<li>再往小盘走，又会被深度和 partial fill 吃掉。</li>
+</ul>
+<p>所以下一步必须分：</p>
+<ul>
+<li>majors</li>
+<li>liquid alts</li>
+<li>thin alts</li>
+</ul>
+<h3>P3：单独测 maker/taker 混合版本</h3>
+<p>如果 taker/taker 费后全是负的，下一步别硬做更大样本，而是直接比较：</p>
+<ul>
+<li>taker/taker</li>
+<li>maker spot / taker perp</li>
+<li>taker spot / maker perp</li>
+</ul>
+<p>因为这条线的可活性，很可能主要取决于<strong>你能不能把其中一条腿 maker 化</strong>。</p>
+<h3>P4：韩国腿只在主 alpha 站稳后再接</h3>
+<p>只有当 P0~P3 证明主 alpha 存在后，再去评估：</p>
+<ul>
+<li><code>USDT/KRW</code></li>
+<li><code>Upbit/Bithumb bid</code></li>
+<li><code>kimchi premium &gt;= 3%</code></li>
+</ul>
+<p>是否能把某些事件升级成更慢的 region-exit bonus。不要反过来本末倒置。</p>
+<h2>11. 来源</h2>
+<ol>
+<li><strong>sueun-dev. (2026). _crypto-market-neutral-platform_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://github.com/sueun-dev/crypto-market-neutral-platform">https://github.com/sueun-dev/crypto-market-neutral-platform</a></code></li>
+<li>Repo URL：<code><a href="https://github.com/sueun-dev/crypto-market-neutral-platform">https://github.com/sueun-dev/crypto-market-neutral-platform</a></code></li>
+</ul>
+<ol>
+<li><strong>仓库源码：<code>price_analyzer.py</code></strong></li>
+</ol>
+<ul>
+<li>URL：<code><a href="https://raw.githubusercontent.com/sueun-dev/crypto-market-neutral-platform/main/src/overseas_exchange_hedge/overseas/price_analyzer.py">https://raw.githubusercontent.com/sueun-dev/crypto-market-neutral-platform/main/src/overseas_exchange_hedge/overseas/price_analyzer.py</a></code></li>
+</ul>
+<ol>
+<li><strong>仓库源码：<code>trade_executor.py</code></strong></li>
+</ol>
+<ul>
+<li>URL：<code><a href="https://raw.githubusercontent.com/sueun-dev/crypto-market-neutral-platform/main/src/overseas_exchange_hedge/overseas/trade_executor.py">https://raw.githubusercontent.com/sueun-dev/crypto-market-neutral-platform/main/src/overseas_exchange_hedge/overseas/trade_executor.py</a></code></li>
+</ul>
+<ol>
+<li><strong>仓库源码：<code>position_tracker.py</code></strong></li>
+</ol>
+<ul>
+<li>URL：<code><a href="https://raw.githubusercontent.com/sueun-dev/crypto-market-neutral-platform/main/src/overseas_exchange_hedge/overseas/position_tracker.py">https://raw.githubusercontent.com/sueun-dev/crypto-market-neutral-platform/main/src/overseas_exchange_hedge/overseas/position_tracker.py</a></code></li>
+</ul>
+<ol>
+<li><strong>仓库源码：<code>kimchi_premium.py</code></strong></li>
+</ol>
+<ul>
+<li>URL：<code><a href="https://raw.githubusercontent.com/sueun-dev/crypto-market-neutral-platform/main/src/overseas_exchange_hedge/korea/exit/kimchi_premium.py">https://raw.githubusercontent.com/sueun-dev/crypto-market-neutral-platform/main/src/overseas_exchange_hedge/korea/exit/kimchi_premium.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Makarov, I., &amp; Schoar, A. (2019). _Trading and arbitrage in cryptocurrency markets_. Journal of Financial Economics.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.1016/j.jfineco.2019.07.001</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.1016/j.jfineco.2019.07.001">https://doi.org/10.1016/j.jfineco.2019.07.001</a></code></li>
+</ul>
+<ol>
+<li><strong>Cho, G., Park, J., &amp; Ahn, H. (2023). _A Study on Statistical Arbitrage Transactions of Cryptocurrency Using Kimchi Premium and Exchange Rate Fluctuations Prediction_. Journal of the Korea Academia-Industrial cooperation Society.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.5762/KAIS.2023.24.10.354</code></li>
+<li>Readable URL：<code><a href="http://dx.doi.org/10.5762/kais.2023.24.10.354">http://dx.doi.org/10.5762/kais.2023.24.10.354</a></code></li>
+</ul>
+<ol>
+<li><strong>Bybit V5 Market Orderbook API</strong></li>
+</ol>
+<ul>
+<li>URL：<code><a href="https://api.bybit.com/v5/market/orderbook">https://api.bybit.com/v5/market/orderbook</a></code></li>
+</ul>
+<ol>
+<li><strong>OKX Market Books API</strong></li>
+</ol>
+<ul>
+<li>URL：<code><a href="https://www.okx.com/docs-v5/en/#order-book-trading-market-data-get-order-book">https://www.okx.com/docs-v5/en/#order-book-trading-market-data-get-order-book</a></code></li>
+</ul>
+<ol>
+<li><strong>Gate.io Spot / Futures Order Book API</strong></li>
+</ol>
+<ul>
+<li>Spot：<code><a href="https://api.gateio.ws/api/v4/spot/order_book">https://api.gateio.ws/api/v4/spot/order_book</a></code></li>
+<li>Futures：<code><a href="https://api.gateio.ws/api/v4/futures/usdt/order_book">https://api.gateio.ws/api/v4/futures/usdt/order_book</a></code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 perp-calendar repo 只读成“carry 公式作业”：对 short-cycle crypto desk，更该先回答的是「annualized basis spread 偏离 × perp-vs-quarterly 回归」这条 raw alpha 壳到底够不够厚</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 perp-calendar repo 只读成“carry 公式作业”：对 short-cycle crypto desk，更该先回答的是「annualized basis spread 偏离 × perp-vs-quarterly 回归」这条 raw alpha 壳到底够不够厚</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-21 12:41 UTC</span>
+      <span class="pill">研究时间：2026-04-21 12:45 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit + Binance USDⓈ-M public-data portability probe</span>
+      <span class="pill">主题标签：relative-value / stat-arb / carry / basis / perp-vs-calendar / annualized-basis / mean-reversion / Binance USDⓈ-M / 5m / 15m / repo / public-data</span>
+      <span class="pill">证据类型：工程经验 + repo rule shell + public-data first probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-21_1245_perp-calendar-basis-spreadfade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-21 12:45 UTC</li>
+<li>类型：GitHub / repo source audit + Binance USDⓈ-M public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当 perpetual 与季度合约之间的年化 basis 偏离自身短窗中枢过大时，做 <strong>long cheap leg / short rich leg</strong>，赌 basis spread 向中枢回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（但当前 first verdict 偏弱）</li>
+<li>主题标签：relative-value / stat-arb / carry / basis / perp-vs-calendar / annualized-basis / mean-reversion / Binance USDⓈ-M / 5m / 15m / repo / public-data</li>
+<li>证据类型：工程经验 + repo rule shell + public-data first probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 2024 GitHub repo <strong>joseamador0898 / hex_assesment</strong>。repo 前半部分是 order-book streaming 小作业，真正和 desk 更相关的是 README 后半段：它把一条 <strong>perpetual funding vs calendar implied rate</strong> 的 relative-value 交易思路直接写出来了。</p>
+<p>它的 base alpha 不复杂：</p>
+<ul>
+<li>用 perp 这一腿代表浮动 funding / short-dated carry；</li>
+<li>用季度合约这一腿代表更慢的到期 basis / implied financing；</li>
+<li>当两者之间的 spread 偏离过大，就做 convergence。</li>
+</ul>
+<p>对我们更有价值的读法，不是把它当“利率公式练习”，而是当成一条 <strong>可直接写成 <code>entry / exit / sizing / cost</code> 的 raw alpha 壳</strong>： &gt; <strong>short-cycle 上真正能不能做，不取决于你懂不懂 carry，而取决于 basis spread 的短窗偏离有没有厚到足以盖过两腿摩擦。</strong></p>
+<h2>2. 一句话核心结论</h2>
+<p>这条 perp-vs-calendar basis 回归思路 <strong>方向上是合理的 relative-value raw alpha</strong>，但在 Binance USDⓈ-M 的 <code>BTC/ETH</code> <code>5m/15m</code> 最小实验里，当前看到的 <strong>单笔 gross 只有 <code>1~2 bps</code> 量级，明显太薄</strong>，如果按双腿 round-trip 粗扣 <code>8 bps</code>，整体就是负的。</p>
+<h2>3. 它是怎么证明这点的</h2>
+<p>不是靠空讲 carry，而是直接用 Binance 公开合约 K 线，把 <code>perp</code> 与 <code>2026-06-26</code> 季度合约的 <strong>annualized basis</strong> 做 rolling z-score，按 <code>|z|&gt;=2</code> 入场、<code>zero-cross or timeout</code> 出场，统计实际每笔 spread-trade 的 gross / net bps。</p>
+<h2>4. 核心结论展开</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha 是清楚的</strong>：<code>perp-vs-calendar basis mean reversion</code>，属于 relative-value / stat-arb / carry 家族，不是 filter。</li>
+<li>它也确实能落成完整策略骨架：</li>
+<li>signal：年化 basis 偏离</li>
+<li>position：long cheap leg / short rich leg</li>
+<li>exit：回归到中枢或 time-stop</li>
+<li>sizing：双腿等名义或 beta-neutral</li>
+<li>risk：basis 继续扩张、临近交割、单腿滑点、资金费率跳变</li>
+<li>但这轮 portability probe 给的 first verdict 比较冷：</li>
+<li><code>15m</code>，<code>BTCUSDT vs BTCUSDT_260626</code>：<code>141</code> 笔，gross <code>+1.33 bps/笔</code>，net <code>-6.67 bps/笔</code></li>
+<li><code>15m</code>，<code>ETHUSDT vs ETHUSDT_260626</code>：<code>174</code> 笔，gross <code>+2.20 bps/笔</code>，net <code>-5.80 bps/笔</code></li>
+<li><code>5m</code>，<code>BTCUSDT vs BTCUSDT_260626</code>：<code>373</code> 笔，gross <code>+1.84 bps/笔</code>，net <code>-6.16 bps/笔</code></li>
+<li><code>5m</code>，<code>ETHUSDT vs ETHUSDT_260626</code>：<code>500</code> 笔，gross <code>+2.14 bps/笔</code>，net <code>-5.86 bps/笔</code></li>
+<li>连把入场阈值提高到 <code>z&gt;=3~4</code>、或把 timeout 拉长，这轮样本里也没翻正，说明问题不是“参数没抠对”，而更像是：</li>
+<li>这条 basis spread 本身在短周期上 <strong>会回，但回得不够猛</strong>；</li>
+<li>或者说它更适合做 <strong>低频 carry / inventory overlay</strong>，而不是 <code>5m/15m</code> 的主交易信号。</li>
+</ul>
+<h2>5. 为什么它仍然值得进研究池</h2>
+<p>尽管当前结果偏弱，这个题目还是值得保留，因为它补的是我们素材池里一个还不够系统化的 raw alpha 家族：</p>
+<ul>
+<li>不是单资产方向，而是 <strong>同一 underlier 不同期限之间的 financing spread</strong>；</li>
+<li>不是资金费率排行榜，而是 <strong>期限结构里“慢 carry vs 快 carry”的相对扭曲</strong>；</li>
+<li>如果后续能接入更细的 mark / premium / funding / order-book 微观数据，它有机会从“太薄的 standalone alpha”变成：</li>
+<li>carry 策略的 <strong>entry timing layer</strong></li>
+<li>delta-neutral inventory 的 <strong>deploy / unwind overlay</strong></li>
+<li>basis / funding 宽度异常时的 <strong>risk-on / risk-off gate</strong></li>
+</ul>
+<h2>6. 策略拆解</h2>
+<ul>
+<li>方向属性：relative-value / stat-arb / carry / basis mean reversion</li>
+<li>基础 alpha：perp 与季度合约之间的年化 basis 扭曲回归</li>
+<li>signal：<code>annualized_basis = (calendar / perp - 1) * 365 / ttm_days</code>，再做 rolling z-score</li>
+<li>entry：<code>z &gt;= +2</code> 做空 calendar、做多 perp；<code>z &lt;= -2</code> 反向</li>
+<li>exit：<code>z</code> 过零或 fixed timeout</li>
+<li>sizing：双腿等名义；若后续做更严谨版，可改成 DV01 / funding-beta / liquidity-aware sizing</li>
+<li>主要风险：交割临近导致 basis 机械收敛、perp funding regime 切换、两腿流动性不对称、单腿先成交后的 exposure 裸露</li>
+</ul>
+<h2>7. 可复刻的最小实验</h2>
+<h3>数据源</h3>
+<ul>
+<li>Binance USDⓈ-M 公开 K 线</li>
+<li>标的：<code>BTCUSDT / BTCUSDT_260626</code>、<code>ETHUSDT / ETHUSDT_260626</code></li>
+<li>公开性：公开可得，无需私有权限</li>
+<li>更新频率：K 线分钟级；这轮实验用 <code>5m / 15m</code></li>
+</ul>
+<h3>最小实验口径</h3>
+<ol>
+<li>拉最近 <code>45d</code> 的 perp 与 quarterly 合约 K 线；</li>
+<li>计算 <code>annualized basis</code>；</li>
+<li>做 rolling z-score；</li>
+<li><code>|z|&gt;=2</code> 入场，<code>zero-cross or timeout</code> 出场；</li>
+<li>统计 spread-trade 的 <code>gross/net bps</code>；</li>
+<li>做 <code>z=2/2.5/3/4</code> 与 <code>timeout</code> 网格敏感性。</li>
+</ol>
+<h2>8. 这轮我保留的判断</h2>
+<p>这条线 <strong>可以算 raw alpha 候选</strong>，但当前不该被高估。它最像的是：</p>
+<p>&gt; <strong>概念上正确、工程上清晰、但在 <code>5m/15m</code> 上太薄，不够当 standalone 主信号；更适合往 carry / basis 组合层或 execution-timing 层迁移。</strong></p>
+<p>换句话说，repo 值得学的是它的 <strong>相对价值框架</strong>，不是当前这版信号强度。</p>
+<h2>9. 下一步怎么测</h2>
+<ul>
+<li>把 <code>BTC/ETH</code> 扩到更多有季度合约的 liquid names，看是不是只有 majors 太有效率。</li>
+<li>不只看 close-to-close basis，补 <strong>mark / premium index / funding history</strong>，改成更贴近 repo 原意的 <code>perp funding - calendar implied rate</code> 真 spread。</li>
+<li>做 <strong>event-conditioned</strong> 版本：只在 funding 跳变、basis 突扩、或合约换月前后测试，不要默认全天候都交易。</li>
+<li>如果后续仍然太薄，就把它正式降级为 <strong>overlay / timing layer</strong>，不要继续把它当主 alpha 炼丹。</li>
+</ul>
+<h2>10. 来源</h2>
+<ul>
+<li>Jose Amador? / GitHub user <code>joseamador0898</code> (2024), <strong>Hex Assessment - Quantitative Trading and Development</strong>. GitHub repo. Repo URL: &lt;<a href="https://github.com/joseamador0898/hex_assesment&gt;">https://github.com/joseamador0898/hex_assesment&gt;</a></li>
+<li>Readable README URL: &lt;<a href="https://raw.githubusercontent.com/joseamador0898/hex_assesment/main/README.md&gt;">https://raw.githubusercontent.com/joseamador0898/hex_assesment/main/README.md&gt;</a></li>
+<li>Source audit 文件：<code>README.md</code>, <code>webstream_data.py</code></li>
+<li>本地 artifacts：</li>
+<li><code>reports/artifacts/quant_digests/perp_calendar_summary_all_2026-04-21.csv</code></li>
+<li><code>reports/artifacts/quant_digests/perp_calendar_summary_15m_2026-04-21.csv</code></li>
+<li><code>reports/artifacts/quant_digests/perp_calendar_summary_5m_2026-04-21.csv</code></li>
+<li><code>reports/artifacts/quant_digests/perp_calendar_trades_15m_2026-04-21.csv</code></li>
+<li><code>reports/artifacts/quant_digests/perp_calendar_trades_5m_2026-04-21.csv</code></li>
+</ul>
+</body>
+</html>

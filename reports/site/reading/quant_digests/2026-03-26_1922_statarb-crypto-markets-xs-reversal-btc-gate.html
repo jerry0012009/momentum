@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 2026 market-neutral repo 只读成“139 币 12h 高 Sharpe”：更该先拆的是「adaptive shock-threshold XS reversal + BTC crash gate」完整 raw alpha，但 15m transfer 先判负</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 2026 market-neutral repo 只读成“139 币 12h 高 Sharpe”：更该先拆的是「adaptive shock-threshold XS reversal + BTC crash gate」完整 raw alpha，但 15m transfer 先判负</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-26 19:22 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + README/source 审阅 + Binance Futures 公共 `15m` 最小 transfer check</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/mean-reversion/market-neutral/adaptive-threshold/shock-reversal/btc-regime-gate/linear-decay/inverse-vol/portfolio-risk/repo/binance/perpetual/15m/5m/1h/cost-turnover</span>
+      <span class="pill">证据类型：repo README/front-page claim 审阅 + 当前公开数据最小 transfer</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-26_1922_statarb-crypto-markets-xs-reversal-btc-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-26 19:22 UTC</li>
+<li>类型：2026 GitHub 新仓库 + README/source 审阅 + Binance Futures 公共 <code>15m</code> 最小 transfer check</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>在横截面内，对过去若干 lookback 上“绝对收益超过自适应分位阈值”的币做反手（loser-long / winner-short），按线性衰减持有，并用 BTC regime gate / inverse-vol / 组合层风险约束管理 crash 与集中度。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/mean-reversion/market-neutral/adaptive-threshold/shock-reversal/btc-regime-gate/linear-decay/inverse-vol/portfolio-risk/repo/binance/perpetual/15m/5m/1h/cost-turnover</li>
+<li>证据类型：repo README/front-page claim 审阅 + 当前公开数据最小 transfer</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答一句：<strong>这篇东西的 base alpha 是什么？</strong></p>
+<p>不是“风险控制做得很全”，也不是“多策略组合后 Sharpe 很高”。<strong>它的 alpha 本体，是 universe-level 的横截面 shock reversal：谁在最近几段里涨跌得过分，就在 market-neutral 篮子里反着做。</strong></p>
+<p>主材料是 GitHub 仓库：</p>
+<ul>
+<li><strong>carlo855 (2026), _StatArb-Crypto-Markets_</strong></li>
+<li>Readable URL：<code><a href="https://github.com/carlo855/StatArb-Crypto-Markets">https://github.com/carlo855/StatArb-Crypto-Markets</a></code></li>
+<li>Repo URL：<code><a href="https://github.com/carlo855/StatArb-Crypto-Markets">https://github.com/carlo855/StatArb-Crypto-Markets</a></code></li>
+</ul>
+<p>这份 repo 的首页 claim 很吸睛：</p>
+<ul>
+<li><strong>2.07 Sharpe</strong></li>
+<li><strong>20% MDD</strong></li>
+<li><strong>31% annual return at 15% volatility</strong></li>
+<li><strong>139 altcoins / 3.5 years / 12-hour bars / net of transaction costs</strong></li>
+</ul>
+<p>但真正值得 intake 的，不是把 headline 直接搬过来，而是它把一条<strong>可以独立落地的 cross-sectional raw alpha</strong>拆得很具体：</p>
+<ol>
+<li>在横截面里做 <strong>multi-lookback reversal ensemble</strong>；</li>
+<li>不是固定阈值，而是用 <strong>rolling percentile of absolute returns</strong> 做 adaptive shock trigger；</li>
+<li>信号触发后不是一把梭，而是 <strong>linear decay holding</strong>；</li>
+<li>在组合层加 <strong>BTC regime gate</strong>，避免大盘下坠时继续机械抄底；</li>
+<li>再叠 <strong>inverse BTC vol scaling / per-coin cap / vol targeting / drawdown deleveraging</strong>。</li>
+</ol>
+<p>翻成人话：<strong>repo 真正能服务我们 desk 的，不是“一个回测很好看的 12h stat-arb 组合”，而是“一条可以拆成 entry/exit/sizing/risk/cost 的横截面 reversal 完整骨架”。</strong></p>
+<h2>2. 核心结论</h2>
+<h3>2.1 这轮最该 intake 的是 raw alpha，不是 headline combo</h3>
+<p>repo 自己其实已经把风险写得很诚实：</p>
+<ul>
+<li>README 明说 <strong>mean reversion OOS Sharpe ~6 很可能不可信</strong>，高概率受 survivorship bias 影响；</li>
+<li>也明说 <strong>momentum OOS Sharpe ~-2</strong>，像是 in-sample 优化过头；</li>
+<li>成本只用了 <strong>固定 20 bps</strong>，没有做更完整的 fee / slippage / impact 敏感性分析。</li>
+</ul>
+<p>所以这轮不该学的是：</p>
+<ul>
+<li>“31% 年化 / 2.07 Sharpe 所以直接可上”；</li>
+<li>“mean reversion + momentum combo 才是完整答案”。</li>
+</ul>
+<p>更该学的是：</p>
+<ul>
+<li><strong>把 mean reversion leg 单拎出来，当作可复现 raw alpha；</strong></li>
+<li><strong>把 BTC gate、inverse-vol、vol targeting 看成生存层，而不是 alpha 本体。</strong></li>
+</ul>
+<h3>2.2 对当前 desk，最值钱的是“shock-thresholded XS reversal”这条线</h3>
+<p>这条线有三个优点：</p>
+<ol>
+<li><strong>alpha 本体说得清。</strong></li>
+<p>不是 vague 的“市场回归均值”，而是：</p>
+</ol>
+<ul>
+<li>recent move 超出 rolling shock quantile；</li>
+<li>横截面 market-neutral 反手；</li>
+<li>线性衰减持仓。</li>
+</ul>
+<ol>
+<li><strong>天然可 market-neutral。</strong></li>
+<p>对短周期 desk，这比单币“抄底/摸顶”更适合做成本、beta、集中度治理。</p>
+</ol>
+<ol>
+<li><strong>风险层和 alpha 层可以分开测。</strong></li>
+<p>先测 raw reversal 有没有 gross edge； 再测 BTC gate / top-k / carry-over 持仓 / vol targeting 到底是救活还是添噪音。</p>
+</ol>
+<h3>2.3 它和昨天那篇 <code>adaptive percentile shock reversal</code> 不是重复主题</h3>
+<p>昨天 intake 的那篇更像：</p>
+<ul>
+<li><strong>single-asset / time-series</strong></li>
+<li>针对单币自己的 shock fade</li>
+<li>重点在单条信号的触发与持仓衰减</li>
+</ul>
+<p>这份 repo 更像：</p>
+<ul>
+<li><strong>cross-sectional / market-neutral</strong></li>
+<li>在整组 alt universe 里做 rich-vs-cheap / winner-vs-loser 反手</li>
+<li>自带 <strong>BTC regime gate + portfolio risk shell</strong></li>
+</ul>
+<p>也就是说：<strong>共用了“adaptive shock + decay”这类设计语言，但 alpha 层级不同。前者是单币时间序列，后者是横截面统计套利。</strong></p>
+<h2>3. 为什么它和当前 desk 直接相关</h2>
+<p>如果按本轮选题规则问一句：</p>
+<ul>
+<li><strong>这篇东西的 base alpha 是什么？</strong></li>
+</ul>
+<p>答案很清楚：</p>
+<ul>
+<li><strong>cross-sectional short-term reversal / relative-value raw alpha</strong>。</li>
+</ul>
+<p>所以它不是 filter、不是 regime、也不是纯 overlay。</p>
+<p>而且它补的是当前 desk 仍值得继续堆厚的那类素材：</p>
+<ul>
+<li><code>mean reversion</code></li>
+<li><code>cross-sectional / relative value</code></li>
+<li><code>market-neutral</code></li>
+<li><code>entry/exit/sizing/risk/cost</code> 可以一次写全</li>
+</ul>
+<p>这比再多补一篇“宏观/外部数据只能做 gate”的材料，更贴当前阶段。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / market-neutral / short-term mean reversion</li>
+<li>基础 alpha：</li>
+<li>对资产 <code>i</code>，计算多个 lookback 上的最近收益 <code>ret(i, L)</code></li>
+<li>若 <code>|ret(i, L)|</code> 超过 rolling absolute-return percentile threshold，则触发反手方向信号 <code>-sign(ret)</code></li>
+<li>多 lookback ensemble 聚合</li>
+<li>横截面去均值、绝对权重归一，得到 long-short 篮子</li>
+<li>regime：</li>
+<li>primary：<code>BTC short SMA &gt; BTC long SMA</code> 才开仓</li>
+<li>optional：calm-vs-stress 用 BTC realized vol 做放缩</li>
+<li>entry：bar close 生成权重，<code>next bar</code> 执行</li>
+<li>exit：持仓按线性衰减逐步退出，或在新信号覆盖时 rebalance</li>
+<li>sizing：</li>
+<li>cross-sectional <code>demean + abs-normalize</code></li>
+<li>per-coin gross cap</li>
+<li>optional inverse-BTC-vol scaling</li>
+<li>risk：</li>
+<li>BTC crash gate</li>
+<li>per-coin cap</li>
+<li>portfolio vol target</li>
+<li>drawdown deleveraging</li>
+<li>cost：</li>
+<li>这条线的关键不只是方向对不对，而是 <strong>shock trigger 稀疏度 × decay 持有期 × rebalance turnover</strong></li>
+</ul>
+<h2>4. 当前 <code>15m</code> transfer check：短周期 desk 先不该直接照搬</h2>
+<p>为了避免只复述 repo，我做了一个更贴 desk 的最小迁移。</p>
+<h3>4.1 数据与口径</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M Futures 公共 <code>15m</code> K 线</li>
+<li>窗口：最近 <strong>120 天</strong></li>
+<li>可交易 universe：<code>ETH/BNB/SOL/XRP/DOGE/ADA/AVAX/LINK/LTC/DOT/TRX/SUI/TAO/HYPE</code></li>
+<li>参考大盘：<code>BTCUSDT</code></li>
+<li>迁移方式：</li>
+<li>lookbacks：<code>8/16/32/64</code> bars</li>
+<li>trigger：过去 <code>30d</code> rolling <code>|return|</code> 的 <strong>90% 分位阈值</strong></li>
+<li>持仓：<strong>16 bar linear decay</strong></li>
+<li>权重：横截面 <strong>demean + abs-normalize</strong></li>
+<li>执行：<code>next bar</code></li>
+<li>成本口径：单边 <strong>2 bps</strong> baseline</li>
+</ul>
+<p>产物目录：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/statarb-crypto-markets-transfer_20260326_1922/summary.json</code></li>
+</ul>
+<h3>4.2 结果一：不加 BTC gate 时，15m 上是“负 edge + 高换手”</h3>
+<p><code>always-on</code> 版本：</p>
+<ul>
+<li><strong>gross ≈ -0.409 bps/bar</strong></li>
+<li><strong>gross Sharpe ≈ -3.97</strong></li>
+<li><strong>turnover ≈ 11.04x/day</strong></li>
+<li><strong>net @ 2 bps/side ≈ -0.639 bps/bar</strong></li>
+</ul>
+<p>这说明至少在当前这版 Binance perp <code>15m</code> proxy 下，<strong>repo 那套横截面 reversal 不是直接缩放就能活。</strong></p>
+<h3>4.3 结果二：BTC 4h&gt;24h gate 有帮助，但远远不够</h3>
+<p>加一个很轻的 BTC regime gate：<code>BTC 4h SMA &gt; 24h SMA</code> 才允许持仓。</p>
+<p>结果变成：</p>
+<ul>
+<li><strong>gross ≈ -0.296 bps/bar</strong></li>
+<li><strong>gross Sharpe ≈ -3.85</strong></li>
+<li><strong>turnover ≈ 6.28x/day</strong></li>
+<li><strong>active fraction ≈ 43.6%</strong></li>
+<li><strong>net @ 2 bps/side ≈ -0.427 bps/bar</strong></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>gate 确实把 turnover 从 <code>11.0x/day</code> 压到 <code>6.3x/day</code>；</li>
+<li>也把损失削薄了一截；</li>
+<li><strong>但还没到“从负变正”的程度。</strong></li>
+</ul>
+<h3>4.4 这轮 transfer 给出的诚实结论</h3>
+<p>所以 desk 现在更该记住的是：</p>
+<ol>
+<li><strong>repo 的 raw alpha 骨架是清楚的；</strong></li>
+<li><strong>但 12h alt-universe 的故事，不能直接压缩到 15m perp；</strong></li>
+<li><strong>BTC gate 是必要条件，但不是充分条件；</strong></li>
+<li><strong>短周期要活下来，下一步必须从“稀疏化 + 降换手”入手，而不是继续优化 headline Sharpe。</strong></li>
+</ol>
+<h2>5. 对 desk 的真正 intake 应该是什么</h2>
+<h3>5.1 不要 intake 整个 headline combo，先 intake mean-reversion branch</h3>
+<p>repo 其实已经提示了最合理的读法：</p>
+<ul>
+<li>momentum leg 在 OOS 里明显更脆；</li>
+<li>mean reversion leg 至少有一个清楚可复现的 signal family；</li>
+<li>但 repo 自己的高 Sharpe 读数带明显 survivorship bias 警报。</li>
+</ul>
+<p>所以这轮应该 intake 的是：</p>
+<ul>
+<li><strong>shock-thresholded XS reversal raw alpha skeleton</strong></li>
+</ul>
+<p>而不是：</p>
+<ul>
+<li>“2026 又一个高 Sharpe stat-arb 组合”。</li>
+</ul>
+<h3>5.2 真正需要 desk 化的不是更复杂，而是更稀疏</h3>
+<p>当前 15m transfer 失败，不像是“reversal 逻辑完全错误”，更像是：</p>
+<ul>
+<li>触发太频繁；</li>
+<li>标的太宽；</li>
+<li>bar-bar 权重变化太密；</li>
+<li>组合层的安全壳不够救这种高换手迁移。</li>
+</ul>
+<p>也就是说，这条线如果还有希望，突破口更可能在：</p>
+<ul>
+<li><strong>稀疏 entry</strong></li>
+<li><strong>top-k 只做最极端 shock</strong></li>
+<li><strong>延长持有、减少 rebalance</strong></li>
+<li><strong>symbol pre-filter</strong></li>
+</ul>
+<p>而不是继续堆更多 portfolio cosmetics。</p>
+<h2>6. 下一步怎么测</h2>
+<p>这里必须给可执行的下一步，而不是“以后再看”。</p>
+<ol>
+<li><strong>先做 extreme-only top-k 版本。</strong></li>
+<p>不要每次 shock 都打。下一轮优先测：</p>
+</ol>
+<ul>
+<li>每个 bar 只做 <code>|score|</code> 最大的 top <code>2~4</code> 个币；</li>
+<li>其余资产不参与。</li>
+</ul>
+<ol>
+<li><strong>把 15m rebalance 改成 <code>hold 8~24 bars</code> 的稀疏调仓。</strong></li>
+<p>当前 <code>16 bar linear decay</code> 仍然太勤。下一轮测：</p>
+</ol>
+<ul>
+<li>新信号触发后锁定最短持有期；</li>
+<li>非必要不在每根 bar 重排全组合。</li>
+</ul>
+<ol>
+<li><strong>加 symbol admission filter，而不是全市场一锅端。</strong></li>
+<p>repo 用的是 volume-based universe，但对短周期还不够。优先测：</p>
+</ol>
+<ul>
+<li>只保留成熟主流 perp；</li>
+<li>去掉高跳空、高 funding、持续低深度币。</li>
+</ul>
+<ol>
+<li><strong>把 BTC gate 继续升级成“crash veto + vol compression allow”双层。</strong></li>
+<p>当前只用了 <code>4h&gt;24h</code> 的单层门。下一轮可以测：</p>
+</ol>
+<ul>
+<li><code>BTC gate</code> 只负责 veto；</li>
+<li><code>BTC realized vol percentile</code> 决定是否 size-down。</li>
+</ul>
+<ol>
+<li><strong>画 break-even cost curve。</strong></li>
+<p>当前只测了 <code>2 bps/side</code>。下一轮至少画：</p>
+</ol>
+<ul>
+<li><code>0.5 / 1 / 2 / 3 bps/side</code></li>
+<li>看这条线究竟死在 signal 还是死在 turnover。</li>
+</ul>
+<ol>
+<li><strong>把 15m 和 1h 一起做迁移边界图。</strong></li>
+<p>这类 12h 原型很可能不是 15m 最合适，反而更接近 <code>1h → 4h</code>。要尽快确认它到底是：</p>
+</ol>
+<ul>
+<li>真有短周期可迁移边；</li>
+<li>还是只能留在更慢频的 stat-arb 素材池。</li>
+</ul>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>repo headline 指标是 <strong>repo front-page claim</strong>，本轮没有独立重跑原始 notebook；</li>
+<li>README 已主动提示 survivorship bias / overfitting / 单一成本模型等问题；</li>
+<li>我的 transfer check 是 <strong>Binance perp 15m proxy</strong>，不等于对 repo 的严格 replication；</li>
+<li>这轮更值得关注的不是 annualized 大数，而是：</li>
+<li><strong>bps/bar</strong></li>
+<li><strong>turnover/day</strong></li>
+<li><strong>BTC gate 能否把负 edge 拉回到接近 0</strong></li>
+<li>当前证据下，这条线对 <code>15m</code> 还不能判成 ready；更像一条<strong>值得继续稀疏化测试的 raw alpha skeleton</strong>。</li>
+</ul>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>carlo855. (2026). _StatArb-Crypto-Markets_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/carlo855/StatArb-Crypto-Markets">https://github.com/carlo855/StatArb-Crypto-Markets</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/carlo855/StatArb-Crypto-Markets">https://github.com/carlo855/StatArb-Crypto-Markets</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Developers. _USDⓈ-M Futures API – Kline/Candlestick Data_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<h2>9. 本地相关产物</h2>
+<ul>
+<li>Digest：<code>research/quant_digests/2026-03-26_1922_statarb-crypto-markets-xs-reversal-btc-gate.md</code></li>
+<li>Artifact：<code>reports/artifacts/quant_digests/statarb-crypto-markets-transfer_20260326_1922/summary.json</code></li>
+<li>Page URL（build/publish 后）：<code><a href="https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-03-26_1922_statarb-crypto-markets-xs-reversal-btc-gate.html">https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-03-26_1922_statarb-crypto-markets-xs-reversal-btc-gate.html</a></code></li>
+</ul>
+</body>
+</html>

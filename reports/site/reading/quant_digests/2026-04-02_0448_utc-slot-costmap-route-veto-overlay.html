@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 15m 时段性只当盘感：这篇 2026 crypto 微观结构 working paper 更该先落地的是「UTC slot cost map × quote/venue routing × execution veto」共享 overlay</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 15m 时段性只当盘感：这篇 2026 crypto 微观结构 working paper 更该先落地的是「UTC slot cost map × quote/venue routing × execution veto」共享 overlay</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-02 04:42 UTC</span>
+      <span class="pill">研究时间：2026-04-02 04:48 UTC</span>
+      <span class="pill">类型：2026 SSRN working paper 摘要 / Crossref metadata + 2026 *Journal of Futures Markets* supporting abstract + Binance Spot 公共 `15m` 最小快检</span>
+      <span class="pill">主题标签：overlay/filter/execution/cost-map/time-of-day/utc-slot/liquidity/volatility/market-quality/quote-routing/venue-routing/shared-component/binance/coinbase/btc/eth/15m/5m/3m/1m/paper/public-data/cost</span>
+      <span class="pill">证据类型：paper metadata+abstract + public-data quick check</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-02_0448_utc-slot-costmap-route-veto-overlay.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：overlay</li>
+<li>基础 alpha：服务 <code>pairs/stat-arb</code>、<code>carry/funding/basis</code>、<code>breakout/continuation</code>、<code>lead-lag</code> 这些本来就想交易的 raw alpha；它本身<strong>不是</strong>独立 raw alpha，而是告诉我们<strong>哪些 UTC 时段更贵、更吵、更适合改 route / size-down / 延后进场</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>时间：2026-04-02 04:48 UTC</li>
+<li>类型：2026 SSRN working paper 摘要 / Crossref metadata + 2026 *Journal of Futures Markets* supporting abstract + Binance Spot 公共 <code>15m</code> 最小快检</li>
+<li>主题标签：overlay/filter/execution/cost-map/time-of-day/utc-slot/liquidity/volatility/market-quality/quote-routing/venue-routing/shared-component/binance/coinbase/btc/eth/15m/5m/3m/1m/paper/public-data/cost</li>
+<li>证据类型：paper metadata+abstract + public-data quick check</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看的是：</p>
+<ol>
+<li><strong>Aleksander R. Mercik, Barbara Będowska-Sojka (2026)</strong> 的 working paper：</li>
+<p>*When Markets Never Sleep: Intraday Liquidity Patterns and Volatility Effects in Cryptocurrency Trading*</p>
+<li><strong>Andrei Shynkevich (2026, Journal of Futures Markets)</strong>：</li>
+<p>*Trading Periodicity and Algorithmic Divide in Cryptocurrency Markets*</p>
+</ol>
+<p>这轮我没有把它硬包装成“新的方向 alpha”。先把话说清楚：</p>
+<p>&gt; <strong>它不是 raw alpha，本质上是一个共享 execution / routing overlay。</strong></p>
+<p>但它仍然值得写进研究池，因为最近 raw alpha 池已经在补：</p>
+<ul>
+<li>pairs / stat-arb</li>
+<li>carry / funding / basis</li>
+<li>breakout / continuation</li>
+<li>lead-lag / microstructure</li>
+</ul>
+<p>这些策略有一个共同死法：<strong>方向对了，但下单时段选错了，导致点差、滑点、拥挤流和噪音一起把薄 edge 吃掉。</strong></p>
+<p>这篇材料最值钱的，不是告诉你“哪一根一定涨跌”，而是告诉你： <strong>crypto 的 intraday liquidity / volatility / activity 有可预测的 UTC slot 结构；时段本身就该进你的 route、size、veto 逻辑。</strong></p>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>答不清，因为它不是 alpha 本体。</strong></p>
+<p>所以它应该被归类为：<strong>overlay / shared filter</strong>。</p>
+<p>它服务的 base alpha 可以是：</p>
+<ul>
+<li><code>pairs/stat-arb</code>：同样的 spread 偏离，在“贵时段”做，净值可能被冲击和换手吞掉；</li>
+<li><code>carry/funding/basis</code>：同样的 carry 或 basis 回归，在高噪音时段开腿，成本更差；</li>
+<li><code>breakout/continuation</code>：同样的方向信号，在高活动窗口更可能继续，也更可能被高波动假动作打脸；</li>
+<li><code>lead-lag</code>：leader 已经动了，但 follower 盘口很贵时，追不追应先看 slot cost map。</li>
+</ul>
+<p>翻成人话： <strong>这张卡片回答的不是“做不做多空”，而是“什么时候做更便宜、更干净、更适合成交”。</strong></p>
+<h2>3. 为什么这轮值得写，而不是继续补一张 raw alpha 卡</h2>
+<p>按默认优先级，raw alpha 当然更高。但这轮这篇 overlay 仍然值得 intake，理由很直接：</p>
+<ol>
+<li><strong>它是近 30 天的新 working paper（2026-03-12 posted）</strong>，不是旧 backlog 翻炒；</li>
+<li><strong>它直接用 <code>15m</code> 高频口径看 Binance / Coinbase、BTC / ETH、fiat / stablecoin quotes</strong>，离 desk 当前 <code>5m/15m</code> 更近；</li>
+<li><strong>它不是泛泛而谈 market quality</strong>，而是明确落在 intraday periodicity 与 out-of-sample spread forecasting；</li>
+<li><strong>它能同时服务至少 3 类已在池里的 raw alpha</strong>，边际价值高于再补一张“相似的单腿 directional 卡”。</li>
+</ol>
+<p>如果要心里先回答一句“它为什么比继续补 raw alpha 更值得？”——我的答案是：</p>
+<p>&gt; <strong>因为 raw alpha 素材池最近已经扩得够快，而这篇材料补的是它们共同缺的那层：统一的时段成本地图与执行 veto 逻辑。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：shared execution / routing overlay</li>
+<li>基础 alpha：</li>
+<li><code>pairs/stat-arb spread MR</code></li>
+<li><code>carry/funding/basis</code></li>
+<li><code>breakout/continuation</code></li>
+<li><code>lead-lag / event beta</code></li>
+<li>regime：优先用于 <code>1m/3m/5m/15m</code> 的高换手策略，尤其是 <strong>薄 edge、maker/taker 成本敏感、或多腿策略</strong></li>
+<li>filter / veto：对每个 <code>symbol × venue × quote × UTC slot</code> 预先打 <code>green / yellow / red</code> 成本标签；红区不轻易新开仓</li>
+<li>risk / sizing / execution overlay：</li>
+<li><code>green</code>：正常仓位</li>
+<li><code>yellow</code>：<code>0.5x~0.7x</code> 或要求更高 admission score</li>
+<li><code>red</code>：<code>0~0.3x</code>，或只允许减仓/平仓，不允许新开仓</li>
+<li>route 优先级：低成本 quote / venue 优先；高成本 route 只在强信号下启用</li>
+</ul>
+<h2>4. 这次看的主来源</h2>
+<h3>4.1 主来源（paper）</h3>
+<ol>
+<li><strong>Mercik, A. R., &amp; Będowska-Sojka, B. (2026).</strong></li>
+<p><strong>Title:</strong> *When Markets Never Sleep: Intraday Liquidity Patterns and Volatility Effects in Cryptocurrency Trading* <strong>Venue:</strong> SSRN working paper <strong>DOI:</strong> <code>10.2139/ssrn.6401099</code> <strong>DOI URL:</strong> <a href="https://doi.org/10.2139/ssrn.6401099">https://doi.org/10.2139/ssrn.6401099</a> <strong>Readable URL:</strong> <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6401099">https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6401099</a> <strong>Repo URL:</strong> N/A</p>
+</ol>
+<h3>4.2 supporting source</h3>
+<ol>
+<li><strong>Shynkevich, A. (2026).</strong></li>
+<p><strong>Title:</strong> *Trading Periodicity and Algorithmic Divide in Cryptocurrency Markets* <strong>Venue:</strong> *Journal of Futures Markets* <strong>DOI:</strong> <code>10.1002/fut.70089</code> <strong>DOI URL / Readable URL:</strong> <a href="https://doi.org/10.1002/fut.70089">https://doi.org/10.1002/fut.70089</a> <strong>Repo URL:</strong> N/A</p>
+</ol>
+<h2>5. 核心结论：这篇 paper 真正能带走什么</h2>
+<h3>5.1 Mercik &amp; Będowska-Sojka (2026) 给出的核心信息</h3>
+<p>Crossref 摘要已经够明确：</p>
+<ul>
+<li>数据口径是 <strong>high-frequency 15-minute data</strong>；</li>
+<li>交易场景覆盖 <strong>Binance 与 Coinbase</strong>；</li>
+<li>标的覆盖 <strong>BTC / ETH</strong>；</li>
+<li>quote currency 同时看 <strong>fiat 与 stablecoin</strong>；</li>
+<li>核心研究对象不是收益方向，而是 <strong>liquidity / volatility / spread periodicities</strong>；</li>
+<li>作者使用 <strong>depth-adjusted spread</strong>，而不是只盯 close-to-close return；</li>
+<li>结论是：</li>
+</ul>
+<ol>
+<li><strong>volatility 是 spread 变化的主驱动</strong>；</li>
+<li><strong>periodic factors 还能提供额外解释力</strong>；</li>
+<li>这些 periodicity <strong>能提升 out-of-sample spread forecasting</strong>；</li>
+<li><strong>venue 与 quote currency 的差异是稳定存在的</strong>。</li>
+</ol>
+<p>对 desk 来说，最重要的翻译是：</p>
+<p>&gt; <strong>别把“时段性”当成盘感。它应该是模型输入，而且最好是 <code>symbol × venue × quote × UTC slot</code> 级别的输入。</strong></p>
+<h3>5.2 supporting paper 的强化点</h3>
+<p>Shynkevich (2026) 这篇 supporting source 不是 15m，而是更细的 subsecond 交易活动周期。</p>
+<p>Crossref 摘要给了三句很关键的话：</p>
+<ul>
+<li><strong>periodic surges in trading activity recurring at regular time intervals increase volatility and raise transaction costs</strong>；</li>
+<li>这些 surges <strong>不一定造成显著 adverse price impact</strong>；</li>
+<li><strong>largest share of price discovery</strong> 发生在与 proprietary algorithms taking liquidity 相关的窗口。</li>
+</ul>
+<p>这说明什么？</p>
+<ol>
+<li><strong>高活动时段不等于不能做</strong>；</li>
+<li>但它常常意味着 <strong>更贵、更挤、更需要 execution discipline</strong>；</li>
+<li>所以你不该用“一刀切不做”的方式处理，而该用：</li>
+</ol>
+<ul>
+<li>route 选择</li>
+<li>size-down</li>
+<li>maker/taker 切换</li>
+<li>admission score 提高</li>
+</ul>
+<h3>5.3 我这轮最小快检：Binance 公开 <code>15m</code> 数据已经能看出明显 slot 结构</h3>
+<p>我这轮没有直接拿到真实 order-book spread，所以先用公开 <code>kline</code> 做粗代理快检：</p>
+<ul>
+<li><strong>样本</strong>：<code>2026-03-01 22:45 UTC ~ 2026-04-02 04:30 UTC</code></li>
+<li><strong>数据量</strong>：<code>12,000</code> 根 <code>15m</code> bars</li>
+<li><strong>交易对</strong>：<code>BTCUSDT</code>, <code>ETHUSDT</code>, <code>BTCFDUSD</code>, <code>ETHFDUSD</code></li>
+<li><strong>代理指标</strong>：</li>
+<li><code>range_bps = (high / low - 1) * 1e4</code></li>
+<li><code>abs_ret_bps = abs(close / open - 1) * 1e4</code></li>
+<li><code>quote_volume</code></li>
+<li><code>trade_count</code></li>
+<li><strong>方法</strong>：按 UTC <code>15m slot</code> 聚合，再用 <code>range + quote_volume + trade_count</code> 的 z-score 平均做 composite activity/cost proxy</li>
+</ul>
+<p>#### 快检结果 1：最热窗口非常集中 综合最热的 8 个 <code>15m</code> slot 基本都落在：</p>
+<ul>
+<li><strong>13:30 UTC</strong></li>
+<li><strong>13:45 UTC</strong></li>
+<li><strong>14:00 ~ 15:30 UTC</strong></li>
+</ul>
+<p>也就是明显偏向 <strong>美盘开盘 / 宏观数据高敏感时段</strong>。</p>
+<p>#### 快检结果 2：热时段和冷时段差异并不小 把 composite 最高的 24 个 slot 和最低的 24 个 slot 对比：</p>
+<ul>
+<li>热时段平均 <code>range_bps</code>：<strong>56.9 bps</strong></li>
+<li>冷时段平均 <code>range_bps</code>：<strong>32.7 bps</strong></li>
+<li><strong>高出约 73.9%</strong></li>
+</ul>
+<ul>
+<li>热时段平均 <code>quote_volume</code>：<strong>9.63M</strong></li>
+<li>冷时段平均 <code>quote_volume</code>：<strong>4.80M</strong></li>
+<li><strong>约 2.01x</strong></li>
+</ul>
+<ul>
+<li>热时段平均 <code>trade_count</code>：<strong>38.5k</strong></li>
+<li>冷时段平均 <code>trade_count</code>：<strong>17.1k</strong></li>
+<li><strong>约 2.26x</strong></li>
+</ul>
+<p>这说明： <strong>UTC slot 本身就能把“安静时段”和“昂贵拥挤时段”切开。</strong></p>
+<p>#### 快检结果 3：quote currency 差异也很真实 同一 base asset 下，<code>FDUSD</code> 相对 <code>USDT</code>：</p>
+<ul>
+<li><code>BTCFDUSD</code> 的平均 <code>quote_volume</code> 只有 <code>BTCUSDT</code> 的 <strong>5.5%</strong>；</li>
+<li><code>ETHFDUSD</code> 的平均 <code>quote_volume</code> 只有 <code>ETHUSDT</code> 的 <strong>4.1%</strong>；</li>
+<li>但 <code>range_bps</code> 只略低于 USDT 主对（约 <strong>96.5%~96.8%</strong>）。</li>
+</ul>
+<p>翻成人话： <strong>有些 quote route 没便宜多少波动，但深度和成交拥挤度完全不是一个量级。</strong></p>
+<p>对 market-neutral 或高换手策略，这种差异足以决定：</p>
+<ul>
+<li>你该不该走这个 quote；</li>
+<li>是否只把它当补充 route；</li>
+<li>或是否必须抬高 admission 门槛。</li>
+</ul>
+<h2>6. 这条 overlay 可以怎么直接落成完整规则</h2>
+<h3>6.1 先做一张 <code>UTC slot cost map</code></h3>
+<p>对每个：</p>
+<ul>
+<li><code>symbol</code></li>
+<li><code>venue</code></li>
+<li><code>quote currency</code></li>
+<li><code>UTC slot</code>（<code>96</code> 个 <code>15m</code> 桶，或 <code>288</code> 个 <code>5m</code> 桶）</li>
+</ul>
+<p>计算：</p>
+<ul>
+<li>realized range / realized vol</li>
+<li>quote volume</li>
+<li>trade count</li>
+<li>若拿得到，再加：</li>
+<li>bid-ask spread</li>
+<li>order-book depth</li>
+<li>taker buy/sell imbalance</li>
+<li>mark-index premium deviation</li>
+</ul>
+<p>然后压成一个 <code>slot_cost_score</code>。</p>
+<h3>6.2 把它接到 4 类策略上</h3>
+<ol>
+<li><strong>pairs / stat-arb</strong></li>
+</ol>
+<ul>
+<li>红区不新开双腿；</li>
+<li>或要求 spread z-score 更极端才开。</li>
+</ul>
+<ol>
+<li><strong>carry / funding / basis</strong></li>
+</ol>
+<ul>
+<li>carry 足够厚时才在黄区开腿；</li>
+<li>红区只允许平旧仓，不追新腿。</li>
+</ul>
+<ol>
+<li><strong>breakout / continuation</strong></li>
+</ol>
+<ul>
+<li>热时段可保留方向单，但把 taker entry 换成更保守的分批 / maker-ish execution。</li>
+</ul>
+<ol>
+<li><strong>lead-lag</strong></li>
+</ol>
+<ul>
+<li>leader 动了以后，先看 follower route 是否正处于高成本 slot；</li>
+<li>若是，就提高追单阈值或延后到下个 slice。</li>
+</ul>
+<h3>6.3 直接可执行的第一版规则</h3>
+<ul>
+<li><code>green zone</code>：正常仓位 + 正常阈值</li>
+<li><code>yellow zone</code>：仓位 <code>0.5x~0.7x</code>，或把 z-score / model score 门槛抬高一档</li>
+<li><code>red zone</code>：</li>
+<li>不新开仓；或</li>
+<li>只允许 <code>0~0.3x</code> 的试探仓；或</li>
+<li>只允许 maker / passive route</li>
+</ul>
+<p>这意味着： <strong>slot map 不决定方向，但直接决定你怎么成交。</strong></p>
+<h2>7. 风险与边界</h2>
+<ul>
+<li>这条材料不是“某 UTC 时刻一定涨/跌”的方向信号，不要伪装成 raw alpha；</li>
+<li>我这轮快检没有真实 spread，只用了 <code>range / volume / trade_count</code> 代理，因此更像执行粗筛；</li>
+<li>Binance 单一 venue 的快检，不足以直接外推到 Coinbase / Bybit / OKX；</li>
+<li><code>US open</code> 这类热时段虽然更贵，但也往往信息含量更高，不能机械 veto；</li>
+<li>对极强 event-driven 信号，更合理的是 <code>size-down</code> 和 <code>route change</code>，不是一刀切停做。</li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<ol>
+<li><strong>先把 <code>slot_cost_score</code> 接进三条现有主线做 A/B test</strong></li>
+</ol>
+<ul>
+<li><code>pairs/stat-arb</code></li>
+<li><code>funding/basis carry</code></li>
+<li><code>breakout/continuation</code></li>
+<p>比较：</p>
+<li>baseline</li>
+<li><code>yellow/red veto</code></li>
+<li><code>size-down only</code></li>
+<li><code>route-switch only</code></li>
+<p>看 net PnL、turnover、max drawdown 哪个改善最大。</p>
+</ul>
+<ol>
+<li><strong>把代理成本升级成真实成本</strong></li>
+</ol>
+<ul>
+<li>拉 <code>bookTicker / depth</code>，直接做真实或准真实 spread；</li>
+<li>区分 maker / taker 成本，而不是只看 kline range。</li>
+</ul>
+<ol>
+<li><strong>把 <code>15m</code> 下钻到 <code>5m/1m</code> 执行层</strong></li>
+</ol>
+<ul>
+<li>用 <code>15m</code> slot map 做高层 regime；</li>
+<li>用 <code>5m/1m</code> 决定具体切片、挂单与追单逻辑。</li>
+</ul>
+<ol>
+<li><strong>补 venue / quote routing 实验</strong></li>
+</ol>
+<ul>
+<li>同一 base asset 对比 <code>USDT / FDUSD / USDC</code>；</li>
+<li>同一 symbol 对比 <code>Binance / Coinbase / Bybit / OKX</code>；</li>
+<li>目标不是找“最热交易所”，而是找<strong>净成本最优 route</strong>。</li>
+</ul>
+<h2>9. 来源</h2>
+<ol>
+<li><strong>Mercik, A. R., &amp; Będowska-Sojka, B. (2026). _When Markets Never Sleep: Intraday Liquidity Patterns and Volatility Effects in Cryptocurrency Trading_.</strong></li>
+</ol>
+<ul>
+<li>Venue: SSRN working paper</li>
+<li>DOI: <code>10.2139/ssrn.6401099</code></li>
+<li>DOI URL: <a href="https://doi.org/10.2139/ssrn.6401099">https://doi.org/10.2139/ssrn.6401099</a></li>
+<li>Readable URL: <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6401099">https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6401099</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Shynkevich, A. (2026). _Trading Periodicity and Algorithmic Divide in Cryptocurrency Markets_.</strong></li>
+</ol>
+<ul>
+<li>Venue: *Journal of Futures Markets*</li>
+<li>DOI: <code>10.1002/fut.70089</code></li>
+<li>DOI URL / Readable URL: <a href="https://doi.org/10.1002/fut.70089">https://doi.org/10.1002/fut.70089</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<h2>10. 本地产物</h2>
+<ul>
+<li>研究笔记：<code>research/quant_digests/2026-04-02_0448_utc-slot-costmap-route-veto-overlay.md</code></li>
+<li>快检目录：<code>reports/artifacts/quant_digests/markets_never_sleep_slot_overlay_20260402/</code></li>
+<li>关键文件：</li>
+<li><code>slot_periodicity_summary.csv</code></li>
+<li><code>symbol_slot_stats.csv</code></li>
+<li><code>summary.json</code></li>
+</ul>
+</body>
+</html>

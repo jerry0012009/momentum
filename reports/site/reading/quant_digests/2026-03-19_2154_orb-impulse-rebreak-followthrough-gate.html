@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 breakout 后回踩确认写成“摸线就行”：`retest 后重破 impulse extreme` 更像 15m 的 continuation gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 breakout 后回踩确认写成“摸线就行”：`retest 后重破 impulse extreme` 更像 15m 的 continuation gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-19 21:54 UTC</span>
+      <span class="pill">类型：GitHub + 本地代理快检</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/orb/retest/bos/impulse-extreme/follow-through/confirmation/filter/repo/crypto/15m</span>
+      <span class="pill">证据类型：工程证据（仓库源码）+ 代理快检（公开行情）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-19_2154_orb-impulse-rebreak-followthrough-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-19 21:54 UTC</li>
+<li>类型：GitHub + 本地代理快检</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/orb/retest/bos/impulse-extreme/follow-through/confirmation/filter/repo/crypto/15m</li>
+<li>证据类型：工程证据（仓库源码）+ 代理快检（公开行情）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主来源是 GitHub 仓库 <strong>Abdelrahman-7gab / orb-backtester (2025)</strong>：它把 <code>NY ORB → retest → BOS</code> 写成可运行状态机，关键细节是 <strong>回踩后要在限定窗口内重破“回踩前 impulse 极值”</strong>，而不是只看“价格回到 breakout level”。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：对我们 5m/15m desk，更值得偷的是“<code>retest 后必须快速重破 impulse extreme</code>”这层确认，而不是把 ORB 原策略整套搬来做主信号。</li>
+<li><strong>一句话证明方式</strong>：仓库 <code>trader/backtester.py</code> 明确写了 <code>candlesToWait=5</code>、<code>breakCandles=6</code>，并要求 long/short 分别突破 <code>impulse_high_up / impulse_low_dn</code> 才触发 BOS 进场。</li>
+<li>该逻辑天然对应三条收口线：</li>
+<p>1) <code>V3 breakout-short follow-up</code>：回抽后若迟迟不能再破 impulse 低点，更像 failure； 2) <code>Fib retest_hold</code>：回踩后不只看守位，还要看是否“重夺前高/前低”； 3) <code>EMA/PSAR</code>：把 EMA/PSAR 留在方向层，<code>impulse re-break</code> 做执行确认层。</p>
+<li>本地代理快检（BTC/ETH/SOL 永续，15m，近 120 天，20-bar breakout、0.2% retest、等待 5 bars、确认窗 6 bars）显示：</li>
+<li>retest 事件里仅 <strong>24.9%</strong> 能在窗口内完成 impulse re-break（门槛不低）；</li>
+<li>通过确认组 4-bar 中位 signed return 约 <strong>+43.8 bps</strong>，未通过组约 <strong>-6.7 bps</strong>；</li>
+<li>通过确认组 4-bar 失效率约 <strong>2.3%</strong>，未通过组约 <strong>38.8%</strong>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这是在继续帮三条主线收口，而不是开新坑：它直接回答“breakout/retest 后什么时候算真延续、什么时候该 veto”。相比继续堆新因子，先把这层 confirmation 做实，更能提高 <code>final verdict</code> 的一致性。</p>
+<h2>4. 可复刻的最小实验</h2>
+<h3>研究假设</h3>
+<p>在 15m 上，给 breakout-short / Fib retest_hold / EMA-continuation 共用一层 <code>impulse re-break</code> gate，能显著降低“回踩后假延续”。</p>
+<h3>一个可计算定义</h3>
+<ul>
+<li>先定义 breakout level（可用 Donchian/区间边界/Fib 关键位）；</li>
+<li>出现 retest 后，记录 <code>impulse_extreme_pre_retest</code>：</li>
+<li>long 用回踩前局部最高价；</li>
+<li>short 用回踩前局部最低价；</li>
+<li>仅当 retest 后 <code>N</code> 根内（建议 <code>N=6</code>）<strong>收盘价重破该极值</strong>才放行；否则 veto/降仓。</li>
+</ul>
+<h3>最小回测切口</h3>
+<ul>
+<li>资产：BTC/ETH/SOL perp</li>
+<li>周期：15m（可加 5m 做执行细化）</li>
+<li>样本：近 120 天滚动</li>
+<li>成本：<code>6/10 bps per side</code></li>
+<li>对照：</li>
+<p>1) baseline（现有三线原规则） 2) baseline + level retest（二元） 3) baseline + <code>impulse re-break gate</code>（本轮）</p>
+</ul>
+<h3>最先看 3 个指标</h3>
+<ol>
+<li><code>post_cost_return</code></li>
+<li><code>false_follow_through_4bars</code></li>
+<li><code>max_drawdown</code> / <code>left-tail(5% trade pnl)</code></li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>该仓库主语境是 NY session ORB，不是 24/7 crypto 原生框架；我们借的是“确认机制”，不是交易时段假设。</li>
+<li>本轮快检是代理实验，不是完整策略回测；不能把 bps 结果当最终可交易结论。</li>
+<li><code>wait=5 / confirm=6</code> 对不同币种可能需要再做稳健性扫描（<code>wait∈{3,5,7}</code>，<code>N∈{4,6,8}</code>）。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li>Abdelrahman-7gab. (2025). *NY ORB + Retest + BOS Backtester*. GitHub Repository.</li>
+</ol>
+<ul>
+<li>Authors: Abdelrahman-7gab</li>
+<li>Year: 2025</li>
+<li>Title: NY ORB + Retest + BOS Backtester</li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/Abdelrahman-7gab/orb-backtester/master/README.md">https://raw.githubusercontent.com/Abdelrahman-7gab/orb-backtester/master/README.md</a></li>
+<li>Repo URL: <a href="https://github.com/Abdelrahman-7gab/orb-backtester">https://github.com/Abdelrahman-7gab/orb-backtester</a></li>
+</ul>
+<ol>
+<li>Abdelrahman-7gab. (2025). *Strategy State Machine Implementation* (<code>trader/backtester.py</code>).</li>
+</ol>
+<ul>
+<li>Authors: Abdelrahman-7gab</li>
+<li>Year: 2025</li>
+<li>Title: backtester.py (NY ORB + Retest + BOS logic)</li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/Abdelrahman-7gab/orb-backtester/master/trader/backtester.py">https://raw.githubusercontent.com/Abdelrahman-7gab/orb-backtester/master/trader/backtester.py</a></li>
+<li>Repo URL: <a href="https://github.com/Abdelrahman-7gab/orb-backtester">https://github.com/Abdelrahman-7gab/orb-backtester</a></li>
+</ul>
+<ol>
+<li>Binance. (2026). *USDⓈ-M Futures REST API — Kline/Candlestick Data* (<code>/fapi/v1/klines</code>).</li>
+</ol>
+<ul>
+<li>Authors: Binance</li>
+<li>Year: 2026</li>
+<li>Title: USDⓈ-M Futures API Docs</li>
+<li>Venue: Binance Developers</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+</body>
+</html>

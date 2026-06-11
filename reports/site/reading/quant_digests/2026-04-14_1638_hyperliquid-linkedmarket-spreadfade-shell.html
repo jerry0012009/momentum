@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Hyperliquid 验证仓只读成 lead-lag / basis checklist：对 short-cycle desk，更该先拆的是「economically linked market pair × spread z-score fade」这条 raw alpha 壳——但 first live probe 先暴露的是 stale-leg admission</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Hyperliquid 验证仓只读成 lead-lag / basis checklist：对 short-cycle desk，更该先拆的是「economically linked market pair × spread z-score fade」这条 raw alpha 壳——但 first live probe 先暴露的是 stale-leg admission</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-14 16:40 UTC</span>
+      <span class="pill">研究时间：2026-04-14 16:38 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `src/arb/signals/spreads.py` + `notebooks/03_spread_reversion.py` + `src/arb/backtest/engine.py` + `src/arb/backtest/metrics.py` + `tests/test_signals.py`）+ Hyperliquid public `allMids` live probe</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/linked-market/spread-zscore/mean-reversion/hyperliquid/hip-3/spot-vs-linked-market/stale-quote/admission/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：源码规则 + repo 研究框架 + 公共 live mids first verdict</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-14_1638_hyperliquid-linkedmarket-spreadfade-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-14 16:38 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>src/arb/signals/spreads.py</code> + <code>notebooks/03_spread_reversion.py</code> + <code>src/arb/backtest/engine.py</code> + <code>src/arb/backtest/metrics.py</code> + <code>tests/test_signals.py</code>）+ Hyperliquid public <code>allMids</code> live probe</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/linked-market/spread-zscore/mean-reversion/hyperliquid/hip-3/spot-vs-linked-market/stale-quote/admission/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：源码规则 + repo 研究框架 + 公共 live mids first verdict</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>把 Hyperliquid 上“经济上强相关 / 同主题 / 同底层映射”的两条市场腿视为 linked pair；当 rolling OLS hedge ratio 下的 spread 明显偏离自身均值时，做 <code>long cheap leg + short rich leg</code> 的 z-score fade，赚的是相对错位回归，而不是押单边方向。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+</ul>
+<h2>1. 先把一句话说清楚：这篇东西的 base alpha 是什么？</h2>
+<p>&gt; <strong>base alpha = economically linked market pair spread mean reversion。</strong></p>
+<p>这份新 repo 真正值得 desk 先收下来的，不是“它同时研究 lead-lag、funding、execution”这么泛，而是它把其中最贴 short-cycle raw alpha 的那条支线写得很清楚：</p>
+<ul>
+<li>先定义两条经济上相关的腿；</li>
+<li>用 rolling OLS 估 hedge ratio；</li>
+<li>看 spread 相对自己历史均值偏离了多少；</li>
+<li>偏得足够远就做反向收敛；</li>
+<li>回到均值附近就走；</li>
+<li>再看成本后是否还活着。</li>
+</ul>
+<p>翻成人话： 不是赌 SPX、BNB 或 gold proxy 下一根涨跌， 而是赌 <strong>两条本来应该跟得更近的市场腿，暂时错位后会回归。</strong></p>
+<p>所以这不是 filter，也不是 overlay；它本体就是一条 <strong>relative-value / stat-arb / spread-fade raw alpha</strong>。</p>
+<h2>2. 这次看了什么</h2>
+<h3>主来源（repo）</h3>
+<ul>
+<li><strong>Author / Owner：</strong> GitHub owner <code>prabhathc</code></li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> <code>natu</code></li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/prabhathc/natu&gt;">https://github.com/prabhathc/natu&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/prabhathc/natu&gt;">https://github.com/prabhathc/natu&gt;</a></li>
+<li><strong>GitHub metadata：</strong></li>
+<li>created: <code>2026-04-14T06:30:38Z</code></li>
+<li>pushed: <code>2026-04-14T07:42:05Z</code></li>
+<li>description: <code>HIP-3 cross-venue basis and lead-lag validation program for Hyperliquid</code></li>
+</ul>
+<h3>关键源码 / 文档</h3>
+<ul>
+<li><code>README.md</code></li>
+<li><code>src/arb/signals/spreads.py</code></li>
+<li><code>notebooks/03_spread_reversion.py</code></li>
+<li><code>src/arb/backtest/engine.py</code></li>
+<li><code>src/arb/backtest/metrics.py</code></li>
+<li><code>tests/test_signals.py</code></li>
+</ul>
+<h3>本轮自建 probe 产物</h3>
+<ul>
+<li>脚本：<code>reports/artifacts/quant_digests/2026-04-14_hyperliquid_linked_market_spread_probe.py</code></li>
+<li>原始采样：<code>reports/artifacts/quant_digests/hyperliquid_linked_market_spread_probe_2026-04-14_raw.csv</code></li>
+<li>汇总：<code>reports/artifacts/quant_digests/hyperliquid_linked_market_spread_probe_2026-04-14_summary.csv</code></li>
+</ul>
+<h2>3. 一句话核心结论 + 一句话证明方式</h2>
+<h3>一句话核心结论</h3>
+<p>&gt; <strong>这份 repo 最值得 desk 先吸收的，是 <code>linked-market spread z-score fade</code> 这条 raw alpha 壳；但 live public probe 先暴露出的第一瓶颈不是 z-score 阈值，而是 HIP-3 / deployer 腿在短窗口里经常明显 stale，所以下一层 admission 应先做“freshness / update-rate gate”，再谈 1m/3m/5m 真正迁移。</strong></p>
+<h3>一句话证明方式</h3>
+<p>&gt; <strong>证明来自两层：源码里 <code>spreads.py</code> 已把 OLS beta、z-entry/z-exit、half-life、post-cost edge 写成可复现规则；而我用 Hyperliquid public <code>allMids</code> 做 120 秒 live probe 后看到，<code>XAUT0/GLD</code>、<code>SPY/QQQ</code>、<code>BNB/BNB1</code> 这些 linked pair 的两条腿更新频率极不对称，最典型的是 <code>XAUT0 17 次 vs GLD 0 次</code>、<code>BNB 68 次 vs BNB1 2 次</code>，说明短周期 first verdict 必须先做 stale-leg veto。</strong></p>
+<h2>4. 为什么这轮值得写，而不是继续在已有 pairs / basis digest 里打转</h2>
+<p>这轮仍值得单独写，原因有三层：</p>
+<ol>
+<li><strong>它不是又一篇“纯 cointegration 教学对”。</strong></li>
+<p>已有很多 digest 在测 <code>cointegration / pair admission / spread fade</code>，但大多还是传统 <code>coin-vs-coin</code>、<code>spot-vs-perp</code>、<code>cross-venue futures basis</code>。这份 repo 把目标市场换成了 <strong>Hyperliquid 原生 perp + HIP-3/deployer token + 外部 reference</strong> 的混合 linked-market 宇宙，结构上更接近一条新数据面。</p>
+</ol>
+<ol>
+<li><strong>它天然服务于用户现在想补的 raw alpha 池。</strong></li>
+<p>这轮不是再讲 breakout、trend filter 或执行 veto，而是明确补一条 <strong>relative-value / stat-arb / pairs / spread MR</strong> 思路，而且能落到 <code>1s/1m/3m/5m/15m</code> 的最小实验。</p>
+</ol>
+<ol>
+<li><strong>它很诚实地把“prove or kill”写进 repo 目标。</strong></li>
+<p>README 明说四类假设要逐条验证，不是假定 edge 一定成立；这很适合 desk intake，因为我们要的是 <strong>first verdict 素材池</strong>，不是漂亮故事。</p>
+</ol>
+<h2>5. repo 真正提供了什么</h2>
+<h2>5.1 README 已经把 raw alpha 家族拆开了</h2>
+<p>README 里把四条假设分成：</p>
+<ul>
+<li>A：lead-lag price discovery</li>
+<li>B：cross-venue spread mean reversion</li>
+<li>C：delta-neutral funding carry</li>
+<li>D：routing / inventory control</li>
+</ul>
+<p>其中对本轮最重要的是 <strong>Hypothesis B = structural edge</strong>。 这等于 repo 作者自己已经帮我们把层级划好了：</p>
+<ul>
+<li>A 更像 informational alpha；</li>
+<li>B 是我们这轮最关心的 spread raw alpha；</li>
+<li>C 是 carry；</li>
+<li>D 是执行层。</li>
+</ul>
+<p>所以这轮完全可以不被 README 的“大而全”带偏，直接盯住 B。</p>
+<h2>5.2 <code>spreads.py</code> 已经把最关键的 raw alpha 骨架写清楚了</h2>
+<p><code>src/arb/signals/spreads.py</code> 的价值非常直接：</p>
+<ul>
+<li><code>hedge_ratio()</code>：rolling OLS，且是 <strong>no-intercept</strong> 口径；</li>
+<li><code>spread_series()</code>：<code>price_a - beta * price_b</code>；</li>
+<li><code>z_score_series()</code>：spread 相对 rolling mean/std 的标准化偏离；</li>
+<li><code>half_life()</code>：用 AR(1) 近似估回归半衰期；</li>
+<li><code>signal()</code>：</li>
+<li><code>z &lt; -z_entry</code> → <code>long_a_short_b</code></li>
+<li><code>z &gt; z_entry</code> → <code>short_a_long_b</code></li>
+<li><code>|z| &lt; z_exit</code> → <code>exit</code></li>
+<li><code>compute_stats()</code>：把 <code>avg_edge_bp</code>、<code>post_cost_edge_bp</code>、<code>ADF stationarity</code> 一起吐出来。</li>
+</ul>
+<p>默认阈值也很清楚：</p>
+<ul>
+<li><code>z_entry = 2.0</code></li>
+<li><code>z_exit = 0.5</code></li>
+</ul>
+<p>翻成人话就是： &gt; <strong>先别谈 fancy feature，先问 linked pair 的 spread 有没有“偏离够大再回去”的基本形状。</strong></p>
+<p>这正是 raw alpha 最该先回答的问题。</p>
+<h2>5.3 <code>03_spread_reversion.py</code> 说明它不是停在公式层</h2>
+<p><code>notebooks/03_spread_reversion.py</code> 进一步把研究口径写死了：</p>
+<ul>
+<li>对齐 mid prices 到统一时间网格（默认 <code>1s</code>）；</li>
+<li>跑 stationarity、half-life、post-cost edge；</li>
+<li>再做 <code>calm vs stress</code> 的 breakdown test；</li>
+<li>明确写着：</li>
+<li><strong>如果 <code>post_cost_edge_bp &lt;= 0</code> 且 <code>is_stationary == False</code>，那这不是 edge，只是噪音。</strong></li>
+</ul>
+<p>这句话很重要，因为它把 raw alpha intake 的录取线说得非常清楚。</p>
+<h2>5.4 回测与 falsification 层也不是空壳</h2>
+<p>虽然本轮不打算把它吹成“马上能上实盘的完整策略”，但 repo 的 backtest/metrics 层确实比很多新仓库认真：</p>
+<ul>
+<li><code>engine.py</code> 是 event-driven 回放，不是简单 candle 回测；</li>
+<li>quote / trade / funding 分流；</li>
+<li>可以加 <code>slippage_multiplier</code>、<code>fee_multiplier</code>、<code>latency_ms</code>；</li>
+<li>metrics 层预留了 falsification suite：2x slippage、2x fees、latency shock。</li>
+</ul>
+<p>所以更准确的定位不是： &gt; “这就是一条已经验证完成的策略。”</p>
+<p>而是： &gt; <strong>这是一条 raw alpha 候选 + 一套很像 desk intake 流程的验证壳。</strong></p>
+<h2>6. 我做的 Hyperliquid public live probe：先看到的不是 edge，而是 freshness 问题</h2>
+<h2>6.1 数据与口径</h2>
+<p>本轮 public probe 很轻，但足够说明问题：</p>
+<ul>
+<li><strong>数据源：</strong> Hyperliquid public <code>/info type=allMids</code></li>
+<li><strong>公开性：</strong> 完全公开 REST</li>
+<li><strong>更新频率：</strong> live mids snapshot，可按秒轮询</li>
+<li><strong>本轮采样：</strong> <code>120</code> 秒、<code>1s</code> 一次，共 <code>120</code> 个 snapshot</li>
+<li><strong>观测 pair：</strong></li>
+<li><code>XAUT0</code> vs <code>GLD</code></li>
+<li><code>SPY</code> vs <code>QQQ</code></li>
+<li><code>BNB perp</code> vs <code>BNB1 spot</code></li>
+<li><strong>最小实验口径：</strong></li>
+</ul>
+<ol>
+<li>看每条腿在 120 秒里更新了多少次；</li>
+<li>再看配对后的 <code>beta / spread_std / current_z / half_life / return corr</code>；</li>
+<li>判断它像不像“可以持续交易的 live pair”，还是“偶发跳点 + 长时间静止”。</li>
+</ol>
+<h2>6.2 先记最重要的 4 个数</h2>
+<h3>数 1：<code>XAUT0</code> 动了 <code>17</code> 次，但 <code>GLD</code> 在 120 秒里是 <code>0</code> 次更新</h3>
+<ul>
+<li><code>XAUT0 abs move ≈ 8.66 bps</code></li>
+<li><code>GLD abs move = 0</code></li>
+<li>summary note：<code>stale_leg_detected</code></li>
+</ul>
+<p>这说明什么？ 不是 gold proxy 这条线一定没 alpha， 而是 <strong>当一条腿在动、另一条腿基本不动时，短周期 z-score 更像 stale-quote 计数器，而不是可执行的 spread MR。</strong></p>
+<h3>数 2：<code>SPY/QQQ</code> 两条腿在 120 秒里都是 <code>0</code> 次更新</h3>
+<ul>
+<li><code>spread_std = 0</code></li>
+<li>note：<code>stale_leg_detected;zero_spread_variance</code></li>
+</ul>
+<p>这基本等于直接提醒我们： &gt; <strong>不能因为 pair 在 registry 里存在，就默认它适合做 1m/3m/5m first verdict。</strong></p>
+<h3>数 3：<code>BNB perp</code> 动了 <code>68</code> 次，但 <code>BNB1</code> 只有 <code>2</code> 次更新</h3>
+<ul>
+<li><code>BNB abs move ≈ 21.51 bps</code></li>
+<li><code>BNB1 abs move ≈ 502.31 bps</code></li>
+<li><code>hedge_ratio ≈ 1.003</code></li>
+<li><code>spread_std ≈ 1.414</code></li>
+<li><code>current_z ≈ 0.088</code></li>
+<li><code>leg_return_corr ≈ 0.169</code></li>
+</ul>
+<p>这一组更有代表性： 一条腿连续小步动，另一条腿长时间静止、偶尔跳一下， 最后看起来“也不是完全不相关”，但 <strong>它的时间结构根本不像持续、顺滑、可按 spread fade 做管理的 pair。</strong></p>
+<h3>数 4：<code>XAUT0/GLD</code> 的表面 half-life 约 <code>9.3</code> samples，不该被误读成“已经证明可做”</h3>
+<p>因为 <code>GLD</code> 这条腿根本没更新， 所以这个 half-life 更可能反映的是 <strong>单腿在对一条冻结锚点做回摆</strong>， 而不是双腿共同构成的 live MR。</p>
+<p>这也是本轮最重要的坑： &gt; <strong>如果不先做 freshness gate，半衰期、z-score、甚至 stationarity 都可能被 stale quotes 污染。</strong></p>
+<h2>7. 这条线对 short-cycle desk 的正确定位</h2>
+<h2>7.1 它是 raw alpha，不该降级成 filter</h2>
+<p>这一点很明确：</p>
+<ul>
+<li>base alpha 清楚；</li>
+<li>相对价值错位回归的收益来源清楚；</li>
+<li>与 breakout / filter / overlay 不是一回事。</li>
+</ul>
+<p>所以从题材分类上，它就是 <strong>raw alpha / stat-arb / relative-value</strong>。</p>
+<h2>7.2 但它现在还不是“拿到 repo 就能直接上”的完整策略</h2>
+<p>我给“是否可直接落地完整策略”打 <code>否</code>，原因不是 base alpha 不清楚， 而是：</p>
+<ol>
+<li>当前 repo 对 Hypothesis B 仍是 <strong>validation-first</strong>；</li>
+<li>linked-market universe 里不同腿的更新频率、可成交性、staleness 问题还没被正式纳入 admission；</li>
+<li>短周期真正能不能活，先取决于 <strong>两条腿是不是都在动</strong>，然后才轮到 z-score / fee / sizing。</li>
+</ol>
+<p>换句话说： &gt; <strong>不是 alpha 没定义好，而是 live admissibility 这一步还没补齐。</strong></p>
+<h2>7.3 它为什么仍然值得进素材池</h2>
+<p>因为它补了一个很有价值的研究问题：</p>
+<p>&gt; <strong>在 Hyperliquid 的原生 perp + HIP-3 / deployer token 混合宇宙里，短周期 relative-value 到底应该先看“价差”，还是先看“报价是否还活着”？</strong></p>
+<p>这对 desk 很有价值：</p>
+<ul>
+<li>如果 freshness gate 过不了，这类 pair 先别浪费回测资源；</li>
+<li>如果某些子宇宙能过（例如更新更活跃、报价更对称的 pair），那它就可能成为非常好的 1m/3m/5m stat-arb intake lane。</li>
+</ul>
+<h2>8. 下一步怎么测（必须项）</h2>
+<p>我会把下一步拆成 4 个最小实验，而不是继续空谈“等更多数据”：</p>
+<h3>8.1 先做 <strong>freshness admission</strong>，再做 spread alpha</h3>
+<p>对每个候选 pair 先打 3 个 admission 指标：</p>
+<ol>
+<li><code>both_leg_updates_per_5m</code></li>
+<li><code>stale_gap_p95_s</code>：两条腿最近一次更新时间差的 p95</li>
+<li><code>active_overlap_ratio</code>：两腿都在最近 <code>N</code> 秒内有更新的样本占比</li>
+</ol>
+<p>只有满足例如：</p>
+<ul>
+<li><code>both_leg_updates_per_5m &gt;= 10</code></li>
+<li><code>stale_gap_p95_s &lt;= 3</code></li>
+<li><code>active_overlap_ratio &gt;= 0.6</code></li>
+</ul>
+<p>才允许进入真正的 spread MR 回测。</p>
+<h3>8.2 把信号压到最小可复现实验</h3>
+<p>先不要做太大而全的组合，直接做：</p>
+<ul>
+<li>频率：<code>1s</code> mids → 聚合成 <code>1m / 3m / 5m</code></li>
+<li>formation：滚动 <code>30m / 2h / 6h</code></li>
+<li>signal：</li>
+<li>OLS <code>beta</code></li>
+<li>spread z-score</li>
+<li><code>|z| &gt;= 2</code> 开仓</li>
+<li><code>|z| &lt; 0.5</code> 平仓</li>
+<li><code>max_hold = 5 / 15 / 30 bars</code></li>
+<li>extra veto：若任一腿最近 <code>3s</code> 未更新，则不许开仓</li>
+</ul>
+<h3>8.3 成本阶梯要先保守，不要先假设低摩擦天堂</h3>
+<p>对每个 pair 先跑：</p>
+<ul>
+<li><code>2 / 4 / 8 / 12 bps</code> round-trip</li>
+<li>同时把 stale-leg 时段剔除前后做对照</li>
+</ul>
+<p>这样能先回答： &gt; <strong>这条线的 alpha 本体到底有多厚，以及它到底是被成本杀死，还是被 stale-leg 假信号污染。</strong></p>
+<h3>8.4 优先看哪几类 pair</h3>
+<p>下一轮别铺太宽，先盯 3 类：</p>
+<ol>
+<li><strong>原生 perp vs 活跃 deployer token</strong></li>
+<p>例如类似 <code>BNB perp vs BNB1 spot</code> 这种“有真实共底层映射可能性”的 pair。</p>
+</ol>
+<ol>
+<li><strong>commodity / ETF proxy pair</strong></li>
+<p>例如 <code>XAUT0 vs GLD</code>，但前提是 deployer 腿更新率先过 freshness gate。</p>
+</ol>
+<ol>
+<li><strong>index proxy cluster</strong></li>
+<p>例如 <code>SPX / SPY / QQQ / QQQM</code>，不是默认做 pair，而是先判断哪两条腿真的在 live window 里同时动。</p>
+</ol>
+<h2>9. 这轮的最终判断</h2>
+<p>我的判断很明确：</p>
+<p>&gt; <strong><code>natu</code> 这份 repo 这轮最该被吸收的不是“Hyperliquid 有很多奇怪 token”，而是它把 <code>linked-market spread MR</code> 作为独立 raw alpha 假设写得很清楚；但 public first verdict 也很明确：先别急着测收益，第一步先做 stale-leg / freshness admission，否则很多看起来漂亮的 z-score 只是报价冻结造成的幻觉。</strong></p>
+<p>如果只用一句更短的话收束：</p>
+<p>&gt; <strong>base alpha 是对的；第一道门不是 beta，也不是 ADF，而是两条腿到底有没有在同一个时间里活着。</strong></p>
+<h2>10. 来源</h2>
+<h3>Repo / code</h3>
+<ul>
+<li><code>prabhathc</code> (2026), <strong>natu</strong>. GitHub repo.</li>
+<li>Repo: &lt;<a href="https://github.com/prabhathc/natu&gt;">https://github.com/prabhathc/natu&gt;</a></li>
+<li>Raw README: &lt;<a href="https://raw.githubusercontent.com/prabhathc/natu/master/README.md&gt;">https://raw.githubusercontent.com/prabhathc/natu/master/README.md&gt;</a></li>
+<li>Raw <code>spreads.py</code>: &lt;<a href="https://raw.githubusercontent.com/prabhathc/natu/master/src/arb/signals/spreads.py&gt;">https://raw.githubusercontent.com/prabhathc/natu/master/src/arb/signals/spreads.py&gt;</a></li>
+<li>Raw <code>03_spread_reversion.py</code>: &lt;<a href="https://raw.githubusercontent.com/prabhathc/natu/master/notebooks/03_spread_reversion.py&gt;">https://raw.githubusercontent.com/prabhathc/natu/master/notebooks/03_spread_reversion.py&gt;</a></li>
+<li>Raw <code>engine.py</code>: &lt;<a href="https://raw.githubusercontent.com/prabhathc/natu/master/src/arb/backtest/engine.py&gt;">https://raw.githubusercontent.com/prabhathc/natu/master/src/arb/backtest/engine.py&gt;</a></li>
+<li>Raw <code>metrics.py</code>: &lt;<a href="https://raw.githubusercontent.com/prabhathc/natu/master/src/arb/backtest/metrics.py&gt;">https://raw.githubusercontent.com/prabhathc/natu/master/src/arb/backtest/metrics.py&gt;</a></li>
+<li>Raw <code>tests/test_signals.py</code>: &lt;<a href="https://raw.githubusercontent.com/prabhathc/natu/master/tests/test_signals.py&gt;">https://raw.githubusercontent.com/prabhathc/natu/master/tests/test_signals.py&gt;</a></li>
+</ul>
+<h3>Public data used in this note</h3>
+<ul>
+<li>Hyperliquid public API: <code>/info type=allMids</code></li>
+<li>Live probe script: <code>reports/artifacts/quant_digests/2026-04-14_hyperliquid_linked_market_spread_probe.py</code></li>
+<li>Live probe outputs:</li>
+<li><code>reports/artifacts/quant_digests/hyperliquid_linked_market_spread_probe_2026-04-14_raw.csv</code></li>
+<li><code>reports/artifacts/quant_digests/hyperliquid_linked_market_spread_probe_2026-04-14_summary.csv</code></li>
+</ul>
+</body>
+</html>

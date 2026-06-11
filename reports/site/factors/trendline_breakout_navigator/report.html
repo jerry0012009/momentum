@@ -1,0 +1,992 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trendline Breakout Navigator Report</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 1080px; margin: 40px auto; padding: 0 18px; line-height: 1.65; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .tbl { border-collapse: collapse; width: 100%; font-size: 14px; }
+    .tbl th, .tbl td { border-bottom: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; vertical-align: top; }
+    img { max-width: 100%; border: 1px solid #e5e7eb; border-radius: 10px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .replay-grid { display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: start; }
+    .replay-meta { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; font-size: 14px; }
+    .replay-meta dl { margin: 0; }
+    .replay-meta dt { font-weight: 600; margin-top: 8px; }
+    .replay-meta dd { margin: 2px 0 0 0; color: #374151; }
+    select { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #d1d5db; background: white; }
+    @media (max-width: 860px) { .replay-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Trendline Breakout Navigator Report</h1>
+  <p class="muted">样本：BTC-USD | 10d / 5m | 生成时间：2026-03-11 10:48 UTC</p>
+
+  <div class="card">
+    <h2>这次做了什么</h2>
+    <ul>
+      <li>学习 breakout navigator 的逻辑路径</li>
+      <li>做成我们自己的 <b>clean reimplementation</b></li>
+      <li>并排对照 <code>pytrendline</code> 研究结果</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>关键决定</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>question</th>
+      <th>answer</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>为什么不直接搬外部 breakout 代码</td>
+      <td>因为来源语义不干净；这次改成学习逻辑后 clean reimplementation。</td>
+    </tr>
+    <tr>
+      <td>这次正式入库的是什么</td>
+      <td>`trendline_breakout_navigator.py` —— 我们自己的状态机实现。</td>
+    </tr>
+    <tr>
+      <td>和 pytrendline 的关系</td>
+      <td>同页对照：前者偏逐 bar 趋势状态，后者偏趋势线搜索/scoring。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>怎么读这张图</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>label</th>
+      <th>meaning</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>support line（实线）</td>
+      <td>bullish active line，按当前仓库逻辑分开绘制；不会再和 resistance 硬连成一条折线。</td>
+    </tr>
+    <tr>
+      <td>resistance line（虚线）</td>
+      <td>bearish active line，和 support 分开画，趋势切换处自然断线。</td>
+    </tr>
+    <tr>
+      <td>anchor（方块）</td>
+      <td>当前这条线的起点，也就是 anchor pivot。</td>
+    </tr>
+    <tr>
+      <td>slope pivot（菱形）</td>
+      <td>当前这条线真正用于定斜率的第二个 pivot；如果还没出现，说明这条线仍是 provisional。</td>
+    </tr>
+    <tr>
+      <td>wick_bull</td>
+      <td>支撑线被下探但收盘守住，等价于 bullish rebound / false break down。</td>
+    </tr>
+    <tr>
+      <td>wick_bear</td>
+      <td>压力线被上刺但收盘压回，等价于 bearish rejection / false break up。</td>
+    </tr>
+    <tr>
+      <td>breakout_bear</td>
+      <td>收盘真正跌破 active support line，记作真 bearish breakout。</td>
+    </tr>
+    <tr>
+      <td>breakout_bull</td>
+      <td>收盘真正站上 active resistance line，记作真 bullish breakout。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>教学示意图 0：HH / HL / LH / LL 先是什么</h2>
+    <img src="../../artifacts/trendline_breakout_navigator/teaching_structure_labels.png" alt="teaching structure labels" />
+    <p class="muted">先记这个：上升结构常见是 HL + HH；下降结构常见是 LH + LL。</p>
+  </div>
+
+  <div class="card">
+    <h2>教学示意图 A：HH / LL 与 active line</h2>
+    <img src="../../artifacts/trendline_breakout_navigator/teaching_hh_ll_active_line.png" alt="teaching hh ll active line" />
+    <p class="muted">短理解：先确认 HH / LL，再从前一个关键 swing 点启动水平 provisional line；等后续同侧 pivot 出现后，才更新成真正斜线。</p>
+  </div>
+
+  <div class="card">
+    <h2>教学示意图 A2：为什么 HH 后盯支撑、LL 后盯压力，而不是直接画通道</h2>
+    <img src="../../artifacts/trendline_breakout_navigator/teaching_hh_ll_vs_channel_logic.png" alt="teaching hh ll vs channel logic" />
+    <p class="muted">这套 navigator 不是“上下轨同时存在”的 channel 模型，而是“结构刚转强/转弱后，先盯最关键失效边”的状态机模型。</p>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>框架</th>
+      <th>核心对象</th>
+      <th>你在图上真正看的是什么</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>navigator active line</td>
+      <td>单边结构失效线</td>
+      <td>HH 后优先盯支撑；LL 后优先盯压力</td>
+    </tr>
+    <tr>
+      <td>channel assumption</td>
+      <td>双边边界区间</td>
+      <td>上轨/下轨同时存在，真假突破相对于整个通道定义</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>active support / resistance line 的生命周期</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>阶段</th>
+      <th>active line 怎么定义</th>
+      <th>你应该怎么理解</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>第 0 步：还没 HH</td>
+      <td>还没有 bullish 结构被确认</td>
+      <td>不要把未来可能的上升线画出来</td>
+    </tr>
+    <tr>
+      <td>第 1 步：HH 刚确认</td>
+      <td>先从前一个 swing low 启动水平 provisional support line</td>
+      <td>这不是最终斜率，只是先声明：若结构转强，最该守住的是这个低点</td>
+    </tr>
+    <tr>
+      <td>第 2 步：价格继续运行</td>
+      <td>active line 暂时保持水平</td>
+      <td>此时它更像‘结构失效线’，不是成熟通道下轨</td>
+    </tr>
+    <tr>
+      <td>第 3 步：后续 pivot low 确认</td>
+      <td>用 anchor low + 新 pivot low 计算 slope，线更新为 low→low 斜线</td>
+      <td>到这一步才真正有了‘动态支撑线’</td>
+    </tr>
+    <tr>
+      <td>第 4 步：后续交易</td>
+      <td>看价格是守住这条线、下探收回，还是收盘真跌破</td>
+      <td>分别对应 rebound / breakdown 两类含义</td>
+    </tr>
+  </tbody>
+</table>
+    <p class="muted">最关键一句：<b>HH 刚出现时的那条水平线，不是成熟趋势线本身，而是一个 provisional 结构底线。</b> 先用它回答“转强结构最起码不能跌回哪里下面”，等后续同侧 pivot 出现，再把它升级成真正 low→low / high→high 斜线。</p>
+  </div>
+
+  <div class="card">
+    <h2>这条 support line 到底怎么用于交易</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>盘面现象</th>
+      <th>业务解释</th>
+      <th>交易含义（更稳妥的理解）</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>close 仍在线上方</td>
+      <td>bullish 结构仍存活</td>
+      <td>继续观察，不等于立刻追多</td>
+    </tr>
+    <tr>
+      <td>low 跌破但 close 收回线之上</td>
+      <td>更像测试支撑 / wick_bull / false break down</td>
+      <td>可作为‘结构仍在’的证据，但最好叠加别的确认</td>
+    </tr>
+    <tr>
+      <td>close 真跌破 support</td>
+      <td>bullish 结构失效</td>
+      <td>更像退出多头 / 禁止新多，而不是单独作为主入场</td>
+    </tr>
+    <tr>
+      <td>后续再形成新 HH + 新 HL</td>
+      <td>结构重新转强</td>
+      <td>才考虑新一轮顺势入场</td>
+    </tr>
+  </tbody>
+</table>
+    <p class="muted">更稳妥的教学口径：这条线首先是 <b>risk / invalidation line</b>，其次才可能被你拿来做入场辅助。也就是说，它更擅长回答“什么时候结构失效”，而不是单独回答“现在该不该冲进去买”。</p>
+  </div>
+
+  <div class="card">
+    <h2>教学示意图 B：支撑线的反弹 vs 真跌破</h2>
+    <img src="../../artifacts/trendline_breakout_navigator/teaching_support_rebound_breakdown.png" alt="teaching support rebound breakdown" />
+    <p class="muted">短理解：下探支撑但收盘收回，记作 <code>wick_bull</code>；收盘真正跌破支撑，记作 <code>breakout_bear</code>。</p>
+  </div>
+
+  <div class="card">
+    <h2>教学示意图 C：压力线的回落 vs 真上破</h2>
+    <img src="../../artifacts/trendline_breakout_navigator/teaching_resistance_rejection_breakout.png" alt="teaching resistance rejection breakout" />
+    <p class="muted">短理解：上刺压力但收盘压回，记作 <code>wick_bear</code>；收盘真正站上压力，记作 <code>breakout_bull</code>。</p>
+  </div>
+
+  <div class="card">
+    <h2>读图顺序</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>step</th>
+      <th>how_to_read</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>先看 HH / LL 标记：它们是趋势切换的触发点。</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>看到 HH 后，会先从前一个 swing low 启动一条水平 provisional support line；看到 LL 后，会先从前一个 swing high 启动水平 provisional resistance line。</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>只有后续同侧 pivot 出现后，active line 才会从水平线更新成真正的 low→low / high→high 斜线。</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>现在 support 和 resistance 会分开画：support 用实线，resistance 用虚线，趋势切换处断线，不再强行相连。</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>方块是 anchor 点，菱形是当前 slope pivot，所以你能直接看到这条线到底连的是哪两个点。</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>如果是 wick_bull / wick_bear，表示线被测试但收盘仍守在正确一侧，更像反弹 / rejection。</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>如果是 breakout_bear / breakout_bull，表示收盘真正穿过 active line，这才算真突破。</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>现在每条线也会以 segment state 存档：可以看到它的 start/end、end_reason，以及它是 provisional 还是 final。</td>
+    </tr>
+    <tr>
+      <td>9</td>
+      <td>你还可以在 Segment Replay 里点选某一段，查看它何时被计算出来、何时结束、以及它使用了哪些点。</td>
+    </tr>
+    <tr>
+      <td>10</td>
+      <td>最后看 `tbn_composite_trend` / `tbn_signal`，它们是 long/medium/short 三层结果的合成。</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>展示窗口说明</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>window</th>
+      <th>why</th>
+      <th>bars_with_active_line</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>最近 288 根</td>
+      <td>保留纯最近视角</td>
+      <td>288</td>
+    </tr>
+    <tr>
+      <td>最近 1000 根</td>
+      <td>给更长上下文，避免最近窗口刚好没有 active line</td>
+      <td>1000</td>
+    </tr>
+    <tr>
+      <td>自动挑出的 576 根窗口</td>
+      <td>按 active line 最密集原则自动选择，优先保证看得到线</td>
+      <td>576</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>我们的图 1：最近 288 根（纯最近视角）</h2>
+    <img src="../../artifacts/trendline_breakout_navigator/our_navigator_recent_288.png" alt="our navigator recent 288" />
+  </div>
+
+  <div class="card">
+    <h2>我们的图 2：最近 1000 根（更长上下文）</h2>
+    <img src="../../artifacts/trendline_breakout_navigator/our_navigator_recent_1000.png" alt="our navigator recent 1000" />
+  </div>
+
+  <div class="card">
+    <h2>我们的图 3：自动挑出的 active line 最清楚窗口</h2>
+    <img src="../../artifacts/trendline_breakout_navigator/our_navigator_best_active_576.png" alt="our navigator best active 576" />
+  </div>
+
+  <div class="card">
+    <h2>pytrendline 对照窗口（最近 96 根）</h2>
+    <img src="../../artifacts/trendline_breakout_navigator/pytrendline_compare.png" alt="pytrendline compare" />
+  </div>
+
+  <div class="card">
+    <h2>我们的模块统计</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>metric</th>
+      <th>value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>bars</td>
+      <td>2721</td>
+    </tr>
+    <tr>
+      <td>HH count</td>
+      <td>39</td>
+    </tr>
+    <tr>
+      <td>LL count</td>
+      <td>42</td>
+    </tr>
+    <tr>
+      <td>wick bull / rebound</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>wick bear / rejection</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>true breakout bull</td>
+      <td>42</td>
+    </tr>
+    <tr>
+      <td>true breakout bear</td>
+      <td>44</td>
+    </tr>
+    <tr>
+      <td>composite bullish bars</td>
+      <td>972</td>
+    </tr>
+    <tr>
+      <td>composite bearish bars</td>
+      <td>1680</td>
+    </tr>
+    <tr>
+      <td>active long bars</td>
+      <td>2406</td>
+    </tr>
+    <tr>
+      <td>active medium bars</td>
+      <td>1901</td>
+    </tr>
+    <tr>
+      <td>active short bars</td>
+      <td>1793</td>
+    </tr>
+    <tr>
+      <td>segment count</td>
+      <td>175</td>
+    </tr>
+    <tr>
+      <td>segment ended by breakout</td>
+      <td>89</td>
+    </tr>
+    <tr>
+      <td>segment ended by pivot_update</td>
+      <td>82</td>
+    </tr>
+    <tr>
+      <td>segment ended by trend_switch</td>
+      <td>3</td>
+    </tr>
+    <tr>
+      <td>segment ended by window_end</td>
+      <td>1</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Recent segment audit（最近线段状态）</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>timeframe</th>
+      <th>segment_id</th>
+      <th>side_label</th>
+      <th>is_provisional</th>
+      <th>start_timestamp</th>
+      <th>end_timestamp</th>
+      <th>bars_visible</th>
+      <th>end_reason</th>
+      <th>anchor_price</th>
+      <th>pivot_price</th>
+      <th>slope</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>tbn_long</td>
+      <td>16</td>
+      <td>resistance</td>
+      <td>0</td>
+      <td>2026-03-10T13:45:00Z</td>
+      <td>2026-03-10T14:10:00Z</td>
+      <td>6</td>
+      <td>breakout</td>
+      <td>65660.515625</td>
+      <td>69762.796875</td>
+      <td>8.709727</td>
+    </tr>
+    <tr>
+      <td>tbn_medium</td>
+      <td>40</td>
+      <td>support</td>
+      <td>0</td>
+      <td>2026-03-10T13:30:00Z</td>
+      <td>2026-03-10T14:50:00Z</td>
+      <td>17</td>
+      <td>breakout</td>
+      <td>71266.882812</td>
+      <td>70907.703125</td>
+      <td>-7.642121</td>
+    </tr>
+    <tr>
+      <td>tbn_short</td>
+      <td>104</td>
+      <td>support</td>
+      <td>1</td>
+      <td>2026-03-10T15:10:00Z</td>
+      <td>2026-03-10T15:55:00Z</td>
+      <td>10</td>
+      <td>pivot_update</td>
+      <td>69508.351562</td>
+      <td>NaN</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <td>tbn_short</td>
+      <td>105</td>
+      <td>resistance</td>
+      <td>0</td>
+      <td>2026-03-10T16:00:00Z</td>
+      <td>2026-03-10T16:10:00Z</td>
+      <td>3</td>
+      <td>breakout</td>
+      <td>69508.351562</td>
+      <td>70945.703125</td>
+      <td>68.445312</td>
+    </tr>
+    <tr>
+      <td>tbn_medium</td>
+      <td>41</td>
+      <td>support</td>
+      <td>1</td>
+      <td>2026-03-10T15:10:00Z</td>
+      <td>2026-03-10T17:45:00Z</td>
+      <td>32</td>
+      <td>pivot_update</td>
+      <td>69508.351562</td>
+      <td>NaN</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <td>tbn_medium</td>
+      <td>42</td>
+      <td>resistance</td>
+      <td>0</td>
+      <td>2026-03-10T17:50:00Z</td>
+      <td>2026-03-10T18:10:00Z</td>
+      <td>5</td>
+      <td>breakout</td>
+      <td>69508.351562</td>
+      <td>70619.226562</td>
+      <td>25.834302</td>
+    </tr>
+    <tr>
+      <td>tbn_short</td>
+      <td>106</td>
+      <td>resistance</td>
+      <td>1</td>
+      <td>2026-03-10T18:25:00Z</td>
+      <td>2026-03-10T20:40:00Z</td>
+      <td>28</td>
+      <td>pivot_update</td>
+      <td>71699.726562</td>
+      <td>NaN</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <td>tbn_short</td>
+      <td>107</td>
+      <td>support</td>
+      <td>0</td>
+      <td>2026-03-10T20:45:00Z</td>
+      <td>2026-03-10T20:50:00Z</td>
+      <td>2</td>
+      <td>breakout</td>
+      <td>71699.726562</td>
+      <td>70320.632812</td>
+      <td>-27.041054</td>
+    </tr>
+    <tr>
+      <td>tbn_medium</td>
+      <td>43</td>
+      <td>resistance</td>
+      <td>1</td>
+      <td>2026-03-10T18:25:00Z</td>
+      <td>2026-03-10T21:05:00Z</td>
+      <td>33</td>
+      <td>pivot_update</td>
+      <td>71751.718750</td>
+      <td>NaN</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <td>tbn_medium</td>
+      <td>44</td>
+      <td>support</td>
+      <td>0</td>
+      <td>2026-03-10T21:10:00Z</td>
+      <td>2026-03-10T23:30:00Z</td>
+      <td>29</td>
+      <td>breakout</td>
+      <td>71751.718750</td>
+      <td>70390.609375</td>
+      <td>-18.904297</td>
+    </tr>
+    <tr>
+      <td>tbn_long</td>
+      <td>17</td>
+      <td>resistance</td>
+      <td>1</td>
+      <td>2026-03-10T21:50:00Z</td>
+      <td>2026-03-11T04:55:00Z</td>
+      <td>86</td>
+      <td>pivot_update</td>
+      <td>71751.718750</td>
+      <td>NaN</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <td>tbn_short</td>
+      <td>108</td>
+      <td>support</td>
+      <td>1</td>
+      <td>2026-03-11T05:00:00Z</td>
+      <td>2026-03-11T05:20:00Z</td>
+      <td>5</td>
+      <td>pivot_update</td>
+      <td>69526.820312</td>
+      <td>NaN</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <td>tbn_short</td>
+      <td>109</td>
+      <td>resistance</td>
+      <td>0</td>
+      <td>2026-03-11T05:25:00Z</td>
+      <td>2026-03-11T05:30:00Z</td>
+      <td>2</td>
+      <td>breakout</td>
+      <td>69526.820312</td>
+      <td>69936.304688</td>
+      <td>17.803668</td>
+    </tr>
+    <tr>
+      <td>tbn_medium</td>
+      <td>45</td>
+      <td>support</td>
+      <td>1</td>
+      <td>2026-03-11T05:00:00Z</td>
+      <td>2026-03-11T05:40:00Z</td>
+      <td>9</td>
+      <td>breakout</td>
+      <td>69526.820312</td>
+      <td>NaN</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <td>tbn_short</td>
+      <td>110</td>
+      <td>resistance</td>
+      <td>1</td>
+      <td>2026-03-11T08:35:00Z</td>
+      <td>2026-03-11T09:45:00Z</td>
+      <td>15</td>
+      <td>pivot_update</td>
+      <td>69987.226562</td>
+      <td>NaN</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <td>tbn_long</td>
+      <td>18</td>
+      <td>support</td>
+      <td>0</td>
+      <td>2026-03-11T05:00:00Z</td>
+      <td>2026-03-11T10:40:00Z</td>
+      <td>69</td>
+      <td>breakout</td>
+      <td>71751.718750</td>
+      <td>70256.460938</td>
+      <td>-9.007577</td>
+    </tr>
+    <tr>
+      <td>tbn_medium</td>
+      <td>46</td>
+      <td>resistance</td>
+      <td>1</td>
+      <td>2026-03-11T05:45:00Z</td>
+      <td>2026-03-11T10:40:00Z</td>
+      <td>60</td>
+      <td>window_end</td>
+      <td>70256.460938</td>
+      <td>NaN</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <td>tbn_short</td>
+      <td>111</td>
+      <td>support</td>
+      <td>0</td>
+      <td>2026-03-11T09:50:00Z</td>
+      <td>2026-03-11T10:40:00Z</td>
+      <td>11</td>
+      <td>breakout</td>
+      <td>69987.226562</td>
+      <td>69732.140625</td>
+      <td>-7.729877</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Segment Replay（点选线段回放）</h2>
+    <p class="muted">点选某个 segment 后，会展示它何时被计算出来（computed at）、何时结束、用了哪些点（anchor / slope pivot），以及对应的局部 K 线回放图。</p>
+    <div class="replay-grid">
+      <div>
+        <label for="segment-select"><b>选择 segment</b></label>
+        <select id="segment-select"></select>
+        <div id="segment-meta" class="replay-meta" style="margin-top:12px;"></div>
+      </div>
+      <div>
+        <img id="segment-replay-img" alt="segment replay" />
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>pytrendline best support lines</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>id</th>
+      <th>is_breakout</th>
+      <th>num_points</th>
+      <th>m</th>
+      <th>b</th>
+      <th>score</th>
+      <th>starts_at_date</th>
+      <th>ends_at_date</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>S-[8,12,58,59,68,74,81,95]</td>
+      <td>True</td>
+      <td>8</td>
+      <td>0.064453</td>
+      <td>69526.304687</td>
+      <td>62037.201783</td>
+      <td>2026-03-11 03:25:00+00:00</td>
+      <td>2026-03-11 10:40:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[8,12,58,59,68,73,81]</td>
+      <td>True</td>
+      <td>7</td>
+      <td>0.010263</td>
+      <td>69526.738205</td>
+      <td>40035.675221</td>
+      <td>2026-03-11 03:25:00+00:00</td>
+      <td>2026-03-11 09:30:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[23,48,65,87,88]</td>
+      <td>True</td>
+      <td>5</td>
+      <td>-7.8175</td>
+      <td>70117.818125</td>
+      <td>10849.429944</td>
+      <td>2026-03-11 04:40:00+00:00</td>
+      <td>2026-03-11 10:05:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[39,68,73,81,95]</td>
+      <td>True</td>
+      <td>5</td>
+      <td>0.419807</td>
+      <td>69496.299403</td>
+      <td>9534.160779</td>
+      <td>2026-03-11 06:00:00+00:00</td>
+      <td>2026-03-11 10:40:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[16,58,59,68,73]</td>
+      <td>True</td>
+      <td>5</td>
+      <td>-0.213542</td>
+      <td>69542.408854</td>
+      <td>9476.733908</td>
+      <td>2026-03-11 04:05:00+00:00</td>
+      <td>2026-03-11 08:50:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[15,17,37,38,60,67,78]</td>
+      <td>True</td>
+      <td>7</td>
+      <td>0.195561</td>
+      <td>69541.347842</td>
+      <td>8142.824099</td>
+      <td>2026-03-11 04:00:00+00:00</td>
+      <td>2026-03-11 09:15:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[17,58,59,68,73]</td>
+      <td>True</td>
+      <td>5</td>
+      <td>-0.315549</td>
+      <td>69548.325267</td>
+      <td>7495.209313</td>
+      <td>2026-03-11 04:10:00+00:00</td>
+      <td>2026-03-11 08:50:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[35,52,53]</td>
+      <td>True</td>
+      <td>3</td>
+      <td>26.263787</td>
+      <td>68534.470588</td>
+      <td>7165.428743</td>
+      <td>2026-03-11 05:40:00+00:00</td>
+      <td>2026-03-11 07:10:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[31,51,52]</td>
+      <td>True</td>
+      <td>3</td>
+      <td>-1.694531</td>
+      <td>69988.835156</td>
+      <td>5762.299525</td>
+      <td>2026-03-11 05:20:00+00:00</td>
+      <td>2026-03-11 07:05:00+00:00</td>
+    </tr>
+    <tr>
+      <td>S-[59,68,73,74,81,95]</td>
+      <td>True</td>
+      <td>6</td>
+      <td>0.217014</td>
+      <td>69514.539931</td>
+      <td>5641.570469</td>
+      <td>2026-03-11 07:40:00+00:00</td>
+      <td>2026-03-11 10:40:00+00:00</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>pytrendline best resistance lines</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: left;">
+      <th>id</th>
+      <th>is_breakout</th>
+      <th>num_points</th>
+      <th>m</th>
+      <th>b</th>
+      <th>score</th>
+      <th>starts_at_date</th>
+      <th>ends_at_date</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>R-[9,65,66,74,75,79,85,95]</td>
+      <td>True</td>
+      <td>8</td>
+      <td>0.160268</td>
+      <td>69633.385714</td>
+      <td>59047.386168</td>
+      <td>2026-03-11 03:30:00+00:00</td>
+      <td>2026-03-11 10:40:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[13,65,66,74,75,79,80]</td>
+      <td>True</td>
+      <td>7</td>
+      <td>-0.048513</td>
+      <td>69648.529108</td>
+      <td>24973.140307</td>
+      <td>2026-03-11 03:50:00+00:00</td>
+      <td>2026-03-11 09:25:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[26,49,52,53,72,77]</td>
+      <td>True</td>
+      <td>6</td>
+      <td>-12.325747</td>
+      <td>70576.930367</td>
+      <td>18156.724254</td>
+      <td>2026-03-11 04:55:00+00:00</td>
+      <td>2026-03-11 09:10:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[46,74,92]</td>
+      <td>True</td>
+      <td>3</td>
+      <td>-9.392299</td>
+      <td>70342.897321</td>
+      <td>16253.776229</td>
+      <td>2026-03-11 06:35:00+00:00</td>
+      <td>2026-03-11 10:25:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[70,80,83,91,93]</td>
+      <td>True</td>
+      <td>5</td>
+      <td>-9.625</td>
+      <td>70412.203125</td>
+      <td>14918.362137</td>
+      <td>2026-03-11 08:35:00+00:00</td>
+      <td>2026-03-11 10:30:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[46,64,72,78,90]</td>
+      <td>True</td>
+      <td>5</td>
+      <td>-8.50434</td>
+      <td>70302.051215</td>
+      <td>9479.175736</td>
+      <td>2026-03-11 06:35:00+00:00</td>
+      <td>2026-03-11 10:15:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[3,74,75,78]</td>
+      <td>True</td>
+      <td>4</td>
+      <td>-2.834727</td>
+      <td>69857.636994</td>
+      <td>8987.804262</td>
+      <td>2026-03-11 03:00:00+00:00</td>
+      <td>2026-03-11 09:15:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[9,38,68,82,94]</td>
+      <td>True</td>
+      <td>5</td>
+      <td>-1.13847</td>
+      <td>69645.074353</td>
+      <td>5399.53109</td>
+      <td>2026-03-11 03:30:00+00:00</td>
+      <td>2026-03-11 10:35:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[0,9,16]</td>
+      <td>True</td>
+      <td>3</td>
+      <td>-8.225694</td>
+      <td>69708.859375</td>
+      <td>4953.314696</td>
+      <td>2026-03-11 02:45:00+00:00</td>
+      <td>2026-03-11 04:05:00+00:00</td>
+    </tr>
+    <tr>
+      <td>R-[26,46,47]</td>
+      <td>True</td>
+      <td>3</td>
+      <td>-17.280469</td>
+      <td>70705.753125</td>
+      <td>4666.023753</td>
+      <td>2026-03-11 04:55:00+00:00</td>
+      <td>2026-03-11 06:40:00+00:00</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>Artifacts</h2>
+    <ul>
+      <li><a href="../../artifacts/trendline_breakout_navigator/navigator_signals.csv">navigator_signals.csv</a></li>
+      <li><a href="../../artifacts/trendline_breakout_navigator/navigator_segments.csv">navigator_segments.csv</a></li>
+      <li><a href="../../artifacts/trendline_breakout_navigator/window_notes.csv">window_notes.csv</a></li>
+      <li><a href="../../artifacts/trendline_breakout_navigator/pytrendline_support.csv">pytrendline_support.csv</a></li>
+      <li><a href="../../artifacts/trendline_breakout_navigator/pytrendline_resistance.csv">pytrendline_resistance.csv</a></li>
+      <li><a href="../../artifacts/trendline_breakout_navigator/summary.json">summary.json</a></li>
+    </ul>
+  </div>
+  <script>
+    const SEGMENT_REPLAYS = [{"segment_id": 1, "timeframe": "tbn_short", "label": "tbn_short #1 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_001.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-02T06:05:00Z", "end_timestamp": "2026-03-02T08:15:00Z", "anchor_timestamp": "2026-03-02T05:45:00Z", "pivot_timestamp": "", "anchor_price": 66972.796875, "pivot_price": "", "bars_visible": 27, "is_provisional": 1}, {"segment_id": 2, "timeframe": "tbn_short", "label": "tbn_short #2 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_002.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-02T08:20:00Z", "end_timestamp": "2026-03-02T08:40:00Z", "anchor_timestamp": "2026-03-02T05:45:00Z", "pivot_timestamp": "2026-03-02T08:15:00Z", "anchor_price": 66972.796875, "pivot_price": 66053.1015625, "bars_visible": 5, "is_provisional": 0}, {"segment_id": 3, "timeframe": "tbn_short", "label": "tbn_short #3 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_003.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-02T08:55:00Z", "end_timestamp": "2026-03-02T10:00:00Z", "anchor_timestamp": "2026-03-02T08:25:00Z", "pivot_timestamp": "", "anchor_price": 65695.4375, "pivot_price": "", "bars_visible": 14, "is_provisional": 1}, {"segment_id": 4, "timeframe": "tbn_short", "label": "tbn_short #4 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_004.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-02T10:05:00Z", "end_timestamp": "2026-03-02T10:10:00Z", "anchor_timestamp": "2026-03-02T08:25:00Z", "pivot_timestamp": "2026-03-02T10:00:00Z", "anchor_price": 65695.4375, "pivot_price": 66162.609375, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 5, "timeframe": "tbn_short", "label": "tbn_short #5 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_005.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-02T11:10:00Z", "end_timestamp": "2026-03-02T11:45:00Z", "anchor_timestamp": "2026-03-02T09:15:00Z", "pivot_timestamp": "", "anchor_price": 66577.0703125, "pivot_price": "", "bars_visible": 8, "is_provisional": 1}, {"segment_id": 6, "timeframe": "tbn_short", "label": "tbn_short #6 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_006.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-02T11:50:00Z", "end_timestamp": "2026-03-02T14:40:00Z", "anchor_timestamp": "2026-03-02T09:15:00Z", "pivot_timestamp": "2026-03-02T11:45:00Z", "anchor_price": 66577.0703125, "pivot_price": 66439.4375, "bars_visible": 35, "is_provisional": 0}, {"segment_id": 7, "timeframe": "tbn_short", "label": "tbn_short #7 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_007.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-02T14:55:00Z", "end_timestamp": "2026-03-02T17:45:00Z", "anchor_timestamp": "2026-03-02T14:00:00Z", "pivot_timestamp": "", "anchor_price": 65309.109375, "pivot_price": "", "bars_visible": 35, "is_provisional": 1}, {"segment_id": 8, "timeframe": "tbn_short", "label": "tbn_short #8 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_008.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-02T17:50:00Z", "end_timestamp": "2026-03-02T18:00:00Z", "anchor_timestamp": "2026-03-02T14:00:00Z", "pivot_timestamp": "2026-03-02T17:45:00Z", "anchor_price": 65309.109375, "pivot_price": 68857.4453125, "bars_visible": 3, "is_provisional": 0}, {"segment_id": 1, "timeframe": "tbn_medium", "label": "tbn_medium #1 | support | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_001.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-02T14:55:00Z", "end_timestamp": "2026-03-02T19:10:00Z", "anchor_timestamp": "2026-03-02T14:00:00Z", "pivot_timestamp": "", "anchor_price": 65309.109375, "pivot_price": "", "bars_visible": 52, "is_provisional": 1}, {"segment_id": 2, "timeframe": "tbn_medium", "label": "tbn_medium #2 | resistance | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_002.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-02T19:15:00Z", "end_timestamp": "2026-03-02T19:40:00Z", "anchor_timestamp": "2026-03-02T14:00:00Z", "pivot_timestamp": "2026-03-02T19:10:00Z", "anchor_price": 65309.109375, "pivot_price": 68620.5, "bars_visible": 6, "is_provisional": 0}, {"segment_id": 9, "timeframe": "tbn_short", "label": "tbn_short #9 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_009.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-02T19:15:00Z", "end_timestamp": "2026-03-02T20:00:00Z", "anchor_timestamp": "2026-03-02T18:30:00Z", "pivot_timestamp": "", "anchor_price": 69227.859375, "pivot_price": "", "bars_visible": 10, "is_provisional": 1}, {"segment_id": 10, "timeframe": "tbn_short", "label": "tbn_short #10 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_010.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-02T20:05:00Z", "end_timestamp": "2026-03-02T20:40:00Z", "anchor_timestamp": "2026-03-02T18:30:00Z", "pivot_timestamp": "2026-03-02T20:00:00Z", "anchor_price": 69227.859375, "pivot_price": 69186.7734375, "bars_visible": 8, "is_provisional": 0}, {"segment_id": 11, "timeframe": "tbn_short", "label": "tbn_short #11 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_011.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-02T20:55:00Z", "end_timestamp": "2026-03-02T22:15:00Z", "anchor_timestamp": "2026-03-02T20:10:00Z", "pivot_timestamp": "", "anchor_price": 68676.7734375, "pivot_price": "", "bars_visible": 17, "is_provisional": 1}, {"segment_id": 12, "timeframe": "tbn_short", "label": "tbn_short #12 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_012.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-02T22:20:00Z", "end_timestamp": "2026-03-02T22:50:00Z", "anchor_timestamp": "2026-03-02T20:10:00Z", "pivot_timestamp": "2026-03-02T22:15:00Z", "anchor_price": 68676.7734375, "pivot_price": 69187.3359375, "bars_visible": 7, "is_provisional": 0}, {"segment_id": 13, "timeframe": "tbn_short", "label": "tbn_short #13 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_013.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-02T23:50:00Z", "end_timestamp": "2026-03-03T00:40:00Z", "anchor_timestamp": "2026-03-02T21:45:00Z", "pivot_timestamp": "", "anchor_price": 69525.984375, "pivot_price": "", "bars_visible": 11, "is_provisional": 1}, {"segment_id": 14, "timeframe": "tbn_short", "label": "tbn_short #14 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_014.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-03T00:45:00Z", "end_timestamp": "2026-03-03T01:10:00Z", "anchor_timestamp": "2026-03-02T21:45:00Z", "pivot_timestamp": "2026-03-03T00:40:00Z", "anchor_price": 69525.984375, "pivot_price": 69151.0859375, "bars_visible": 6, "is_provisional": 0}, {"segment_id": 15, "timeframe": "tbn_short", "label": "tbn_short #15 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_015.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-03T01:15:00Z", "end_timestamp": "2026-03-03T01:30:00Z", "anchor_timestamp": "2026-03-03T00:25:00Z", "pivot_timestamp": "", "anchor_price": 68701.4375, "pivot_price": "", "bars_visible": 4, "is_provisional": 1}, {"segment_id": 16, "timeframe": "tbn_short", "label": "tbn_short #16 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_016.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-03T01:35:00Z", "end_timestamp": "2026-03-03T01:55:00Z", "anchor_timestamp": "2026-03-03T00:25:00Z", "pivot_timestamp": "2026-03-03T01:30:00Z", "anchor_price": 68701.4375, "pivot_price": 68805.8046875, "bars_visible": 5, "is_provisional": 0}, {"segment_id": 1, "timeframe": "tbn_long", "label": "tbn_long #1 | support | end=pivot_update", "image_rel": "segment_replays/tbn_long_segment_001.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-02T16:50:00Z", "end_timestamp": "2026-03-03T02:00:00Z", "anchor_timestamp": "2026-03-02T14:00:00Z", "pivot_timestamp": "", "anchor_price": 65309.109375, "pivot_price": "", "bars_visible": 111, "is_provisional": 1}, {"segment_id": 2, "timeframe": "tbn_long", "label": "tbn_long #2 | resistance | end=breakout", "image_rel": "segment_replays/tbn_long_segment_002.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-03T02:05:00Z", "end_timestamp": "2026-03-03T02:15:00Z", "anchor_timestamp": "2026-03-02T14:00:00Z", "pivot_timestamp": "2026-03-03T02:00:00Z", "anchor_price": 65309.109375, "pivot_price": 68497.0546875, "bars_visible": 3, "is_provisional": 0}, {"segment_id": 17, "timeframe": "tbn_short", "label": "tbn_short #17 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_017.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-03T02:05:00Z", "end_timestamp": "2026-03-03T05:20:00Z", "anchor_timestamp": "2026-03-03T01:10:00Z", "pivot_timestamp": "", "anchor_price": 69220.9921875, "pivot_price": "", "bars_visible": 40, "is_provisional": 1}, {"segment_id": 18, "timeframe": "tbn_short", "label": "tbn_short #18 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_018.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-03T05:25:00Z", "end_timestamp": "2026-03-03T07:25:00Z", "anchor_timestamp": "2026-03-03T01:10:00Z", "pivot_timestamp": "2026-03-03T05:20:00Z", "anchor_price": 69220.9921875, "pivot_price": 68525.1953125, "bars_visible": 25, "is_provisional": 0}, {"segment_id": 3, "timeframe": "tbn_medium", "label": "tbn_medium #3 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_003.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-03T00:30:00Z", "end_timestamp": "2026-03-03T08:10:00Z", "anchor_timestamp": "2026-03-02T21:45:00Z", "pivot_timestamp": "", "anchor_price": 69525.984375, "pivot_price": "", "bars_visible": 93, "is_provisional": 1}, {"segment_id": 4, "timeframe": "tbn_medium", "label": "tbn_medium #4 | support | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_004.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-03T08:15:00Z", "end_timestamp": "2026-03-03T12:10:00Z", "anchor_timestamp": "2026-03-02T21:45:00Z", "pivot_timestamp": "2026-03-03T08:10:00Z", "anchor_price": 69525.984375, "pivot_price": 68248.921875, "bars_visible": 48, "is_provisional": 0}, {"segment_id": 19, "timeframe": "tbn_short", "label": "tbn_short #19 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_019.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-03T11:50:00Z", "end_timestamp": "2026-03-03T13:00:00Z", "anchor_timestamp": "2026-03-03T09:30:00Z", "pivot_timestamp": "", "anchor_price": 66401.0546875, "pivot_price": "", "bars_visible": 15, "is_provisional": 1}, {"segment_id": 20, "timeframe": "tbn_short", "label": "tbn_short #20 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_020.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-03T13:05:00Z", "end_timestamp": "2026-03-03T13:10:00Z", "anchor_timestamp": "2026-03-03T09:30:00Z", "pivot_timestamp": "2026-03-03T13:00:00Z", "anchor_price": 66401.0546875, "pivot_price": 67178.1875, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 21, "timeframe": "tbn_short", "label": "tbn_short #21 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_021.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-03T13:50:00Z", "end_timestamp": "2026-03-03T14:05:00Z", "anchor_timestamp": "2026-03-03T12:10:00Z", "pivot_timestamp": "", "anchor_price": 67754.734375, "pivot_price": "", "bars_visible": 4, "is_provisional": 1}, {"segment_id": 22, "timeframe": "tbn_short", "label": "tbn_short #22 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_022.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-03T14:10:00Z", "end_timestamp": "2026-03-03T14:20:00Z", "anchor_timestamp": "2026-03-03T12:10:00Z", "pivot_timestamp": "2026-03-03T14:05:00Z", "anchor_price": 67754.734375, "pivot_price": 67209.765625, "bars_visible": 3, "is_provisional": 0}, {"segment_id": 5, "timeframe": "tbn_medium", "label": "tbn_medium #5 | support | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_005.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-03T12:15:00Z", "end_timestamp": "2026-03-03T15:35:00Z", "anchor_timestamp": "2026-03-02T21:45:00Z", "pivot_timestamp": "2026-03-03T12:10:00Z", "anchor_price": 69525.984375, "pivot_price": 67754.734375, "bars_visible": 41, "is_provisional": 0}, {"segment_id": 3, "timeframe": "tbn_long", "label": "tbn_long #3 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_long_segment_003.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-03T03:25:00Z", "end_timestamp": "2026-03-03T15:50:00Z", "anchor_timestamp": "2026-03-02T16:45:00Z", "pivot_timestamp": "", "anchor_price": 70024.0625, "pivot_price": "", "bars_visible": 150, "is_provisional": 1}, {"segment_id": 4, "timeframe": "tbn_long", "label": "tbn_long #4 | support | end=breakout", "image_rel": "segment_replays/tbn_long_segment_004.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-03T15:55:00Z", "end_timestamp": "2026-03-03T16:05:00Z", "anchor_timestamp": "2026-03-02T16:45:00Z", "pivot_timestamp": "2026-03-03T15:50:00Z", "anchor_price": 70024.0625, "pivot_price": 67766.3203125, "bars_visible": 3, "is_provisional": 0}, {"segment_id": 23, "timeframe": "tbn_short", "label": "tbn_short #23 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_023.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-03T15:55:00Z", "end_timestamp": "2026-03-03T19:10:00Z", "anchor_timestamp": "2026-03-03T14:50:00Z", "pivot_timestamp": "", "anchor_price": 66317.4453125, "pivot_price": "", "bars_visible": 40, "is_provisional": 1}, {"segment_id": 24, "timeframe": "tbn_short", "label": "tbn_short #24 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_024.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-03T19:15:00Z", "end_timestamp": "2026-03-03T19:30:00Z", "anchor_timestamp": "2026-03-03T14:50:00Z", "pivot_timestamp": "2026-03-03T19:10:00Z", "anchor_price": 66317.4453125, "pivot_price": 68385.25, "bars_visible": 4, "is_provisional": 0}, {"segment_id": 6, "timeframe": "tbn_medium", "label": "tbn_medium #6 | support | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_006.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-03T15:55:00Z", "end_timestamp": "2026-03-03T20:50:00Z", "anchor_timestamp": "2026-03-03T14:50:00Z", "pivot_timestamp": "", "anchor_price": 66317.4453125, "pivot_price": "", "bars_visible": 60, "is_provisional": 1}, {"segment_id": 7, "timeframe": "tbn_medium", "label": "tbn_medium #7 | resistance | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_007.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-03T20:55:00Z", "end_timestamp": "2026-03-03T21:00:00Z", "anchor_timestamp": "2026-03-03T14:50:00Z", "pivot_timestamp": "2026-03-03T20:50:00Z", "anchor_price": 66317.4453125, "pivot_price": 68119.0859375, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 25, "timeframe": "tbn_short", "label": "tbn_short #25 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_025.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-03T20:20:00Z", "end_timestamp": "2026-03-03T22:00:00Z", "anchor_timestamp": "2026-03-03T19:25:00Z", "pivot_timestamp": "", "anchor_price": 68887.421875, "pivot_price": "", "bars_visible": 21, "is_provisional": 1}, {"segment_id": 26, "timeframe": "tbn_short", "label": "tbn_short #26 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_026.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-03T22:05:00Z", "end_timestamp": "2026-03-03T23:05:00Z", "anchor_timestamp": "2026-03-03T19:25:00Z", "pivot_timestamp": "2026-03-03T22:00:00Z", "anchor_price": 68887.421875, "pivot_price": 68502.46875, "bars_visible": 13, "is_provisional": 0}, {"segment_id": 27, "timeframe": "tbn_short", "label": "tbn_short #27 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_027.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-03T23:15:00Z", "end_timestamp": "2026-03-04T00:10:00Z", "anchor_timestamp": "2026-03-03T21:25:00Z", "pivot_timestamp": "", "anchor_price": 67858.7109375, "pivot_price": "", "bars_visible": 12, "is_provisional": 1}, {"segment_id": 28, "timeframe": "tbn_short", "label": "tbn_short #28 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_028.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-04T00:15:00Z", "end_timestamp": "2026-03-04T00:35:00Z", "anchor_timestamp": "2026-03-03T21:25:00Z", "pivot_timestamp": "2026-03-04T00:10:00Z", "anchor_price": 67858.7109375, "pivot_price": 68117.4296875, "bars_visible": 5, "is_provisional": 0}, {"segment_id": 29, "timeframe": "tbn_short", "label": "tbn_short #29 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_029.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-04T00:45:00Z", "end_timestamp": "2026-03-04T01:40:00Z", "anchor_timestamp": "2026-03-03T23:10:00Z", "pivot_timestamp": "", "anchor_price": 68728.7890625, "pivot_price": "", "bars_visible": 12, "is_provisional": 1}, {"segment_id": 30, "timeframe": "tbn_short", "label": "tbn_short #30 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_030.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-04T01:45:00Z", "end_timestamp": "2026-03-04T02:35:00Z", "anchor_timestamp": "2026-03-04T00:40:00Z", "pivot_timestamp": "", "anchor_price": 67934.5078125, "pivot_price": "", "bars_visible": 11, "is_provisional": 1}, {"segment_id": 31, "timeframe": "tbn_short", "label": "tbn_short #31 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_031.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-04T02:40:00Z", "end_timestamp": "2026-03-04T03:25:00Z", "anchor_timestamp": "2026-03-04T00:40:00Z", "pivot_timestamp": "2026-03-04T02:35:00Z", "anchor_price": 67934.5078125, "pivot_price": 68030.9375, "bars_visible": 10, "is_provisional": 0}, {"segment_id": 32, "timeframe": "tbn_short", "label": "tbn_short #32 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_032.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-04T03:40:00Z", "end_timestamp": "2026-03-04T05:20:00Z", "anchor_timestamp": "2026-03-04T01:40:00Z", "pivot_timestamp": "", "anchor_price": 68881.15625, "pivot_price": "", "bars_visible": 21, "is_provisional": 1}, {"segment_id": 33, "timeframe": "tbn_short", "label": "tbn_short #33 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_033.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-04T05:25:00Z", "end_timestamp": "2026-03-04T05:35:00Z", "anchor_timestamp": "2026-03-04T01:40:00Z", "pivot_timestamp": "2026-03-04T05:20:00Z", "anchor_price": 68881.15625, "pivot_price": 67930.2578125, "bars_visible": 3, "is_provisional": 0}, {"segment_id": 8, "timeframe": "tbn_medium", "label": "tbn_medium #8 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_008.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-04T03:40:00Z", "end_timestamp": "2026-03-04T05:55:00Z", "anchor_timestamp": "2026-03-04T01:40:00Z", "pivot_timestamp": "", "anchor_price": 68881.15625, "pivot_price": "", "bars_visible": 28, "is_provisional": 1}, {"segment_id": 9, "timeframe": "tbn_medium", "label": "tbn_medium #9 | support | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_009.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-04T06:00:00Z", "end_timestamp": "2026-03-04T06:30:00Z", "anchor_timestamp": "2026-03-04T01:40:00Z", "pivot_timestamp": "2026-03-04T05:55:00Z", "anchor_price": 68881.15625, "pivot_price": 68357.0546875, "bars_visible": 7, "is_provisional": 0}, {"segment_id": 34, "timeframe": "tbn_short", "label": "tbn_short #34 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_034.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-04T06:50:00Z", "end_timestamp": "2026-03-04T10:35:00Z", "anchor_timestamp": "2026-03-04T04:40:00Z", "pivot_timestamp": "", "anchor_price": 67496.234375, "pivot_price": "", "bars_visible": 46, "is_provisional": 1}, {"segment_id": 35, "timeframe": "tbn_short", "label": "tbn_short #35 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_035.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-04T10:40:00Z", "end_timestamp": "2026-03-04T10:45:00Z", "anchor_timestamp": "2026-03-04T04:40:00Z", "pivot_timestamp": "2026-03-04T10:35:00Z", "anchor_price": 67496.234375, "pivot_price": 71344.859375, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 10, "timeframe": "tbn_medium", "label": "tbn_medium #10 | support | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_010.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-04T06:50:00Z", "end_timestamp": "2026-03-04T12:05:00Z", "anchor_timestamp": "2026-03-04T03:35:00Z", "pivot_timestamp": "", "anchor_price": 67449.2734375, "pivot_price": "", "bars_visible": 64, "is_provisional": 1}, {"segment_id": 11, "timeframe": "tbn_medium", "label": "tbn_medium #11 | resistance | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_011.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-04T12:10:00Z", "end_timestamp": "2026-03-04T12:15:00Z", "anchor_timestamp": "2026-03-04T03:35:00Z", "pivot_timestamp": "2026-03-04T12:05:00Z", "anchor_price": 67449.2734375, "pivot_price": 70855.3359375, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 36, "timeframe": "tbn_short", "label": "tbn_short #36 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_036.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-04T11:40:00Z", "end_timestamp": "2026-03-04T13:05:00Z", "anchor_timestamp": "2026-03-04T09:40:00Z", "pivot_timestamp": "", "anchor_price": 71856.53125, "pivot_price": "", "bars_visible": 18, "is_provisional": 1}, {"segment_id": 37, "timeframe": "tbn_short", "label": "tbn_short #37 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_037.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-04T13:10:00Z", "end_timestamp": "2026-03-04T14:05:00Z", "anchor_timestamp": "2026-03-04T09:40:00Z", "pivot_timestamp": "2026-03-04T13:05:00Z", "anchor_price": 71856.53125, "pivot_price": 71594.09375, "bars_visible": 12, "is_provisional": 0}, {"segment_id": 38, "timeframe": "tbn_short", "label": "tbn_short #38 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_038.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-04T14:20:00Z", "end_timestamp": "2026-03-04T14:45:00Z", "anchor_timestamp": "2026-03-04T12:30:00Z", "pivot_timestamp": "", "anchor_price": 70634.0859375, "pivot_price": "", "bars_visible": 6, "is_provisional": 1}, {"segment_id": 39, "timeframe": "tbn_short", "label": "tbn_short #39 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_039.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-04T14:50:00Z", "end_timestamp": "2026-03-04T20:50:00Z", "anchor_timestamp": "2026-03-04T12:30:00Z", "pivot_timestamp": "2026-03-04T14:45:00Z", "anchor_price": 70634.0859375, "pivot_price": 71370.5390625, "bars_visible": 73, "is_provisional": 0}, {"segment_id": 40, "timeframe": "tbn_short", "label": "tbn_short #40 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_040.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-04T21:05:00Z", "end_timestamp": "2026-03-04T21:50:00Z", "anchor_timestamp": "2026-03-04T19:20:00Z", "pivot_timestamp": "", "anchor_price": 74041.8125, "pivot_price": "", "bars_visible": 10, "is_provisional": 1}, {"segment_id": 41, "timeframe": "tbn_short", "label": "tbn_short #41 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_041.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-04T21:55:00Z", "end_timestamp": "2026-03-04T22:00:00Z", "anchor_timestamp": "2026-03-04T19:20:00Z", "pivot_timestamp": "2026-03-04T21:50:00Z", "anchor_price": 74041.8125, "pivot_price": 73330.890625, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 5, "timeframe": "tbn_long", "label": "tbn_long #5 | support | end=pivot_update", "image_rel": "segment_replays/tbn_long_segment_005.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-04T08:00:00Z", "end_timestamp": "2026-03-04T22:55:00Z", "anchor_timestamp": "2026-03-04T03:35:00Z", "pivot_timestamp": "", "anchor_price": 67449.2734375, "pivot_price": "", "bars_visible": 180, "is_provisional": 1}, {"segment_id": 6, "timeframe": "tbn_long", "label": "tbn_long #6 | resistance | end=breakout", "image_rel": "segment_replays/tbn_long_segment_006.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-04T23:00:00Z", "end_timestamp": "2026-03-04T23:10:00Z", "anchor_timestamp": "2026-03-04T03:35:00Z", "pivot_timestamp": "2026-03-04T22:55:00Z", "anchor_price": 67449.2734375, "pivot_price": 72665.984375, "bars_visible": 3, "is_provisional": 0}, {"segment_id": 12, "timeframe": "tbn_medium", "label": "tbn_medium #12 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_012.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-04T23:00:00Z", "end_timestamp": "2026-03-05T01:10:00Z", "anchor_timestamp": "2026-03-04T19:20:00Z", "pivot_timestamp": "", "anchor_price": 74041.8125, "pivot_price": "", "bars_visible": 27, "is_provisional": 1}, {"segment_id": 42, "timeframe": "tbn_short", "label": "tbn_short #42 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_042.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-05T01:15:00Z", "end_timestamp": "2026-03-05T01:55:00Z", "anchor_timestamp": "2026-03-04T23:30:00Z", "pivot_timestamp": "", "anchor_price": 72336.9921875, "pivot_price": "", "bars_visible": 9, "is_provisional": 1}, {"segment_id": 43, "timeframe": "tbn_short", "label": "tbn_short #43 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_043.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-05T02:00:00Z", "end_timestamp": "2026-03-05T02:30:00Z", "anchor_timestamp": "2026-03-04T23:30:00Z", "pivot_timestamp": "2026-03-05T01:55:00Z", "anchor_price": 72336.9921875, "pivot_price": 72462.2578125, "bars_visible": 7, "is_provisional": 0}, {"segment_id": 44, "timeframe": "tbn_short", "label": "tbn_short #44 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_044.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-05T02:50:00Z", "end_timestamp": "2026-03-05T04:10:00Z", "anchor_timestamp": "2026-03-05T01:10:00Z", "pivot_timestamp": "", "anchor_price": 73261.5859375, "pivot_price": "", "bars_visible": 17, "is_provisional": 1}, {"segment_id": 45, "timeframe": "tbn_short", "label": "tbn_short #45 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_045.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-05T04:15:00Z", "end_timestamp": "2026-03-05T04:20:00Z", "anchor_timestamp": "2026-03-05T01:10:00Z", "pivot_timestamp": "2026-03-05T04:10:00Z", "anchor_price": 73261.5859375, "pivot_price": 72698.6640625, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 13, "timeframe": "tbn_medium", "label": "tbn_medium #13 | support | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_013.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-05T01:15:00Z", "end_timestamp": "2026-03-05T04:35:00Z", "anchor_timestamp": "2026-03-04T19:20:00Z", "pivot_timestamp": "2026-03-05T01:10:00Z", "anchor_price": 74041.8125, "pivot_price": 73261.5859375, "bars_visible": 41, "is_provisional": 0}, {"segment_id": 7, "timeframe": "tbn_long", "label": "tbn_long #7 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_long_segment_007.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-05T06:15:00Z", "end_timestamp": "2026-03-05T10:35:00Z", "anchor_timestamp": "2026-03-04T19:20:00Z", "pivot_timestamp": "", "anchor_price": 74041.8125, "pivot_price": "", "bars_visible": 53, "is_provisional": 1}, {"segment_id": 46, "timeframe": "tbn_short", "label": "tbn_short #46 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_046.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-05T09:15:00Z", "end_timestamp": "2026-03-05T11:25:00Z", "anchor_timestamp": "2026-03-05T08:25:00Z", "pivot_timestamp": "", "anchor_price": 71794.0078125, "pivot_price": "", "bars_visible": 27, "is_provisional": 1}, {"segment_id": 47, "timeframe": "tbn_short", "label": "tbn_short #47 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_047.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-05T11:30:00Z", "end_timestamp": "2026-03-05T11:35:00Z", "anchor_timestamp": "2026-03-05T08:25:00Z", "pivot_timestamp": "2026-03-05T11:25:00Z", "anchor_price": 71794.0078125, "pivot_price": 72947.5234375, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 14, "timeframe": "tbn_medium", "label": "tbn_medium #14 | support | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_014.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-05T10:40:00Z", "end_timestamp": "2026-03-05T13:10:00Z", "anchor_timestamp": "2026-03-05T08:25:00Z", "pivot_timestamp": "", "anchor_price": 71794.0078125, "pivot_price": "", "bars_visible": 31, "is_provisional": 1}, {"segment_id": 15, "timeframe": "tbn_medium", "label": "tbn_medium #15 | resistance | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_015.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-05T13:15:00Z", "end_timestamp": "2026-03-05T13:20:00Z", "anchor_timestamp": "2026-03-05T08:25:00Z", "pivot_timestamp": "2026-03-05T13:10:00Z", "anchor_price": 71794.0078125, "pivot_price": 72617.78125, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 48, "timeframe": "tbn_short", "label": "tbn_short #48 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_048.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-05T13:15:00Z", "end_timestamp": "2026-03-05T14:35:00Z", "anchor_timestamp": "2026-03-05T12:50:00Z", "pivot_timestamp": "", "anchor_price": 73047.9296875, "pivot_price": "", "bars_visible": 17, "is_provisional": 1}, {"segment_id": 49, "timeframe": "tbn_short", "label": "tbn_short #49 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_049.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-05T14:40:00Z", "end_timestamp": "2026-03-05T14:55:00Z", "anchor_timestamp": "2026-03-05T12:50:00Z", "pivot_timestamp": "2026-03-05T14:35:00Z", "anchor_price": 73047.9296875, "pivot_price": 72695.2109375, "bars_visible": 4, "is_provisional": 0}, {"segment_id": 16, "timeframe": "tbn_medium", "label": "tbn_medium #16 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_016.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-05T14:50:00Z", "end_timestamp": "2026-03-05T21:15:00Z", "anchor_timestamp": "2026-03-05T10:50:00Z", "pivot_timestamp": "", "anchor_price": 73527.2890625, "pivot_price": "", "bars_visible": 78, "is_provisional": 1}, {"segment_id": 17, "timeframe": "tbn_medium", "label": "tbn_medium #17 | support | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_017.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-05T21:20:00Z", "end_timestamp": "2026-03-05T21:25:00Z", "anchor_timestamp": "2026-03-05T10:50:00Z", "pivot_timestamp": "2026-03-05T21:15:00Z", "anchor_price": 73527.2890625, "pivot_price": 71504.3125, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 50, "timeframe": "tbn_short", "label": "tbn_short #50 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_050.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-05T21:20:00Z", "end_timestamp": "2026-03-05T21:55:00Z", "anchor_timestamp": "2026-03-05T20:05:00Z", "pivot_timestamp": "", "anchor_price": 70893.375, "pivot_price": "", "bars_visible": 8, "is_provisional": 1}, {"segment_id": 51, "timeframe": "tbn_short", "label": "tbn_short #51 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_051.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-05T22:00:00Z", "end_timestamp": "2026-03-05T23:30:00Z", "anchor_timestamp": "2026-03-05T20:05:00Z", "pivot_timestamp": "2026-03-05T21:55:00Z", "anchor_price": 70893.375, "pivot_price": 71038.296875, "bars_visible": 19, "is_provisional": 0}, {"segment_id": 52, "timeframe": "tbn_short", "label": "tbn_short #52 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_052.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-05T23:45:00Z", "end_timestamp": "2026-03-06T02:10:00Z", "anchor_timestamp": "2026-03-05T22:50:00Z", "pivot_timestamp": "", "anchor_price": 71321.265625, "pivot_price": "", "bars_visible": 30, "is_provisional": 1}, {"segment_id": 53, "timeframe": "tbn_short", "label": "tbn_short #53 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_053.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-06T02:15:00Z", "end_timestamp": "2026-03-06T03:15:00Z", "anchor_timestamp": "2026-03-06T01:25:00Z", "pivot_timestamp": "", "anchor_price": 70420.71875, "pivot_price": "", "bars_visible": 13, "is_provisional": 1}, {"segment_id": 54, "timeframe": "tbn_short", "label": "tbn_short #54 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_054.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-06T03:20:00Z", "end_timestamp": "2026-03-06T03:35:00Z", "anchor_timestamp": "2026-03-06T01:25:00Z", "pivot_timestamp": "2026-03-06T03:15:00Z", "anchor_price": 70420.71875, "pivot_price": 71029.078125, "bars_visible": 4, "is_provisional": 0}, {"segment_id": 55, "timeframe": "tbn_short", "label": "tbn_short #55 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_055.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-06T04:05:00Z", "end_timestamp": "2026-03-06T06:25:00Z", "anchor_timestamp": "2026-03-06T02:10:00Z", "pivot_timestamp": "", "anchor_price": 71357.8671875, "pivot_price": "", "bars_visible": 29, "is_provisional": 1}, {"segment_id": 56, "timeframe": "tbn_short", "label": "tbn_short #56 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_056.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-06T06:30:00Z", "end_timestamp": "2026-03-06T06:35:00Z", "anchor_timestamp": "2026-03-06T02:10:00Z", "pivot_timestamp": "2026-03-06T06:25:00Z", "anchor_price": 71357.8671875, "pivot_price": 70508.515625, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 57, "timeframe": "tbn_short", "label": "tbn_short #57 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_057.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-06T07:50:00Z", "end_timestamp": "2026-03-06T08:25:00Z", "anchor_timestamp": "2026-03-06T05:50:00Z", "pivot_timestamp": "", "anchor_price": 70162.8359375, "pivot_price": "", "bars_visible": 8, "is_provisional": 1}, {"segment_id": 58, "timeframe": "tbn_short", "label": "tbn_short #58 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_058.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-06T08:30:00Z", "end_timestamp": "2026-03-06T08:45:00Z", "anchor_timestamp": "2026-03-06T05:50:00Z", "pivot_timestamp": "2026-03-06T08:25:00Z", "anchor_price": 70162.8359375, "pivot_price": 70851.6640625, "bars_visible": 4, "is_provisional": 0}, {"segment_id": 59, "timeframe": "tbn_short", "label": "tbn_short #59 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_059.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-06T09:05:00Z", "end_timestamp": "2026-03-06T10:15:00Z", "anchor_timestamp": "2026-03-06T07:45:00Z", "pivot_timestamp": "", "anchor_price": 71162.75, "pivot_price": "", "bars_visible": 15, "is_provisional": 1}, {"segment_id": 60, "timeframe": "tbn_short", "label": "tbn_short #60 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_060.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-06T10:20:00Z", "end_timestamp": "2026-03-06T10:25:00Z", "anchor_timestamp": "2026-03-06T07:45:00Z", "pivot_timestamp": "2026-03-06T10:15:00Z", "anchor_price": 71162.75, "pivot_price": 70694.8515625, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 61, "timeframe": "tbn_short", "label": "tbn_short #61 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_061.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-06T19:25:00Z", "end_timestamp": "2026-03-06T19:25:00Z", "anchor_timestamp": "2026-03-06T17:40:00Z", "pivot_timestamp": "", "anchor_price": 67760.484375, "pivot_price": "", "bars_visible": 1, "is_provisional": 1}, {"segment_id": 62, "timeframe": "tbn_short", "label": "tbn_short #62 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_062.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-06T19:30:00Z", "end_timestamp": "2026-03-06T19:35:00Z", "anchor_timestamp": "2026-03-06T17:40:00Z", "pivot_timestamp": "2026-03-06T19:25:00Z", "anchor_price": 67760.484375, "pivot_price": 68171.140625, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 18, "timeframe": "tbn_medium", "label": "tbn_medium #18 | support | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_018.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-06T23:00:00Z", "end_timestamp": "2026-03-07T02:35:00Z", "anchor_timestamp": "2026-03-06T20:25:00Z", "pivot_timestamp": "", "anchor_price": 67778.1484375, "pivot_price": "", "bars_visible": 44, "is_provisional": 1}, {"segment_id": 63, "timeframe": "tbn_short", "label": "tbn_short #63 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_063.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-07T02:40:00Z", "end_timestamp": "2026-03-07T03:00:00Z", "anchor_timestamp": "2026-03-07T00:55:00Z", "pivot_timestamp": "", "anchor_price": 68348.6796875, "pivot_price": "", "bars_visible": 5, "is_provisional": 1}, {"segment_id": 19, "timeframe": "tbn_medium", "label": "tbn_medium #19 | resistance | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_019.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-07T02:40:00Z", "end_timestamp": "2026-03-07T03:50:00Z", "anchor_timestamp": "2026-03-06T20:25:00Z", "pivot_timestamp": "2026-03-07T02:35:00Z", "anchor_price": 67778.1484375, "pivot_price": 68092.2421875, "bars_visible": 15, "is_provisional": 0}, {"segment_id": 64, "timeframe": "tbn_short", "label": "tbn_short #64 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_064.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-07T03:15:00Z", "end_timestamp": "2026-03-07T03:50:00Z", "anchor_timestamp": "2026-03-07T02:35:00Z", "pivot_timestamp": "", "anchor_price": 68092.2421875, "pivot_price": "", "bars_visible": 8, "is_provisional": 1}, {"segment_id": 65, "timeframe": "tbn_short", "label": "tbn_short #65 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_065.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-07T03:55:00Z", "end_timestamp": "2026-03-07T04:00:00Z", "anchor_timestamp": "2026-03-07T02:35:00Z", "pivot_timestamp": "2026-03-07T03:50:00Z", "anchor_price": 68092.2421875, "pivot_price": 68108.3125, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 66, "timeframe": "tbn_short", "label": "tbn_short #66 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_066.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-07T06:40:00Z", "end_timestamp": "2026-03-07T07:45:00Z", "anchor_timestamp": "2026-03-07T03:10:00Z", "pivot_timestamp": "", "anchor_price": 68513.84375, "pivot_price": "", "bars_visible": 14, "is_provisional": 1}, {"segment_id": 67, "timeframe": "tbn_short", "label": "tbn_short #67 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_067.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-07T07:50:00Z", "end_timestamp": "2026-03-07T07:55:00Z", "anchor_timestamp": "2026-03-07T03:10:00Z", "pivot_timestamp": "2026-03-07T07:45:00Z", "anchor_price": 68513.84375, "pivot_price": 67822.625, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 20, "timeframe": "tbn_medium", "label": "tbn_medium #20 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_020.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-07T04:05:00Z", "end_timestamp": "2026-03-07T09:15:00Z", "anchor_timestamp": "2026-03-07T03:10:00Z", "pivot_timestamp": "", "anchor_price": 68513.84375, "pivot_price": "", "bars_visible": 63, "is_provisional": 1}, {"segment_id": 21, "timeframe": "tbn_medium", "label": "tbn_medium #21 | support | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_021.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-07T09:20:00Z", "end_timestamp": "2026-03-07T09:45:00Z", "anchor_timestamp": "2026-03-07T03:10:00Z", "pivot_timestamp": "2026-03-07T09:15:00Z", "anchor_price": 68513.84375, "pivot_price": 68046.0234375, "bars_visible": 6, "is_provisional": 0}, {"segment_id": 68, "timeframe": "tbn_short", "label": "tbn_short #68 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_068.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-07T09:20:00Z", "end_timestamp": "2026-03-07T10:35:00Z", "anchor_timestamp": "2026-03-07T09:00:00Z", "pivot_timestamp": "", "anchor_price": 67743.6796875, "pivot_price": "", "bars_visible": 16, "is_provisional": 1}, {"segment_id": 69, "timeframe": "tbn_short", "label": "tbn_short #69 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_069.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-07T10:40:00Z", "end_timestamp": "2026-03-07T10:50:00Z", "anchor_timestamp": "2026-03-07T09:00:00Z", "pivot_timestamp": "2026-03-07T10:35:00Z", "anchor_price": 67743.6796875, "pivot_price": 67921.9765625, "bars_visible": 3, "is_provisional": 0}, {"segment_id": 70, "timeframe": "tbn_short", "label": "tbn_short #70 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_070.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-07T11:10:00Z", "end_timestamp": "2026-03-07T11:15:00Z", "anchor_timestamp": "2026-03-07T10:15:00Z", "pivot_timestamp": "", "anchor_price": 68091.4296875, "pivot_price": "", "bars_visible": 2, "is_provisional": 1}, {"segment_id": 71, "timeframe": "tbn_short", "label": "tbn_short #71 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_071.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-07T11:25:00Z", "end_timestamp": "2026-03-07T12:10:00Z", "anchor_timestamp": "2026-03-07T11:05:00Z", "pivot_timestamp": "", "anchor_price": 67867.453125, "pivot_price": "", "bars_visible": 10, "is_provisional": 1}, {"segment_id": 72, "timeframe": "tbn_short", "label": "tbn_short #72 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_072.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-07T12:15:00Z", "end_timestamp": "2026-03-07T12:35:00Z", "anchor_timestamp": "2026-03-07T11:05:00Z", "pivot_timestamp": "2026-03-07T12:10:00Z", "anchor_price": 67867.453125, "pivot_price": 67971.7421875, "bars_visible": 5, "is_provisional": 0}, {"segment_id": 73, "timeframe": "tbn_short", "label": "tbn_short #73 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_073.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-07T12:50:00Z", "end_timestamp": "2026-03-07T13:15:00Z", "anchor_timestamp": "2026-03-07T11:20:00Z", "pivot_timestamp": "", "anchor_price": 68207.53125, "pivot_price": "", "bars_visible": 6, "is_provisional": 1}, {"segment_id": 22, "timeframe": "tbn_medium", "label": "tbn_medium #22 | support | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_022.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-07T10:20:00Z", "end_timestamp": "2026-03-07T14:10:00Z", "anchor_timestamp": "2026-03-07T07:10:00Z", "pivot_timestamp": "", "anchor_price": 67503.4140625, "pivot_price": "", "bars_visible": 47, "is_provisional": 1}, {"segment_id": 74, "timeframe": "tbn_short", "label": "tbn_short #74 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_074.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-07T13:20:00Z", "end_timestamp": "2026-03-07T14:40:00Z", "anchor_timestamp": "2026-03-07T11:20:00Z", "pivot_timestamp": "2026-03-07T13:15:00Z", "anchor_price": 68207.53125, "pivot_price": 68071.1328125, "bars_visible": 17, "is_provisional": 0}, {"segment_id": 23, "timeframe": "tbn_medium", "label": "tbn_medium #23 | resistance | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_023.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-07T14:15:00Z", "end_timestamp": "2026-03-07T18:00:00Z", "anchor_timestamp": "2026-03-07T07:10:00Z", "pivot_timestamp": "2026-03-07T14:10:00Z", "anchor_price": 67503.4140625, "pivot_price": 67628.859375, "bars_visible": 46, "is_provisional": 0}, {"segment_id": 24, "timeframe": "tbn_medium", "label": "tbn_medium #24 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_024.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-07T18:05:00Z", "end_timestamp": "2026-03-08T00:20:00Z", "anchor_timestamp": "2026-03-07T11:20:00Z", "pivot_timestamp": "", "anchor_price": 68207.53125, "pivot_price": "", "bars_visible": 76, "is_provisional": 1}, {"segment_id": 75, "timeframe": "tbn_short", "label": "tbn_short #75 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_075.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-08T00:15:00Z", "end_timestamp": "2026-03-08T00:55:00Z", "anchor_timestamp": "2026-03-07T22:35:00Z", "pivot_timestamp": "", "anchor_price": 67171.5625, "pivot_price": "", "bars_visible": 9, "is_provisional": 1}, {"segment_id": 76, "timeframe": "tbn_short", "label": "tbn_short #76 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_076.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-08T01:00:00Z", "end_timestamp": "2026-03-08T01:30:00Z", "anchor_timestamp": "2026-03-07T22:35:00Z", "pivot_timestamp": "2026-03-08T00:55:00Z", "anchor_price": 67171.5625, "pivot_price": 67177.8046875, "bars_visible": 7, "is_provisional": 0}, {"segment_id": 77, "timeframe": "tbn_short", "label": "tbn_short #77 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_077.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-08T01:40:00Z", "end_timestamp": "2026-03-08T01:55:00Z", "anchor_timestamp": "2026-03-08T00:20:00Z", "pivot_timestamp": "", "anchor_price": 67474.390625, "pivot_price": "", "bars_visible": 4, "is_provisional": 1}, {"segment_id": 78, "timeframe": "tbn_short", "label": "tbn_short #78 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_078.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-08T02:00:00Z", "end_timestamp": "2026-03-08T02:15:00Z", "anchor_timestamp": "2026-03-08T00:20:00Z", "pivot_timestamp": "2026-03-08T01:55:00Z", "anchor_price": 67474.390625, "pivot_price": 67350.0390625, "bars_visible": 4, "is_provisional": 0}, {"segment_id": 25, "timeframe": "tbn_medium", "label": "tbn_medium #25 | support | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_025.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-08T00:25:00Z", "end_timestamp": "2026-03-08T02:40:00Z", "anchor_timestamp": "2026-03-07T11:20:00Z", "pivot_timestamp": "2026-03-08T00:20:00Z", "anchor_price": 68207.53125, "pivot_price": 67474.390625, "bars_visible": 28, "is_provisional": 0}, {"segment_id": 79, "timeframe": "tbn_short", "label": "tbn_short #79 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_079.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-08T02:50:00Z", "end_timestamp": "2026-03-08T02:50:00Z", "anchor_timestamp": "2026-03-08T02:30:00Z", "pivot_timestamp": "", "anchor_price": 67133.8671875, "pivot_price": "", "bars_visible": 1, "is_provisional": 1}, {"segment_id": 80, "timeframe": "tbn_short", "label": "tbn_short #80 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_080.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-08T05:00:00Z", "end_timestamp": "2026-03-08T05:20:00Z", "anchor_timestamp": "2026-03-08T04:20:00Z", "pivot_timestamp": "", "anchor_price": 67077.75, "pivot_price": "", "bars_visible": 5, "is_provisional": 1}, {"segment_id": 81, "timeframe": "tbn_short", "label": "tbn_short #81 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_081.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-08T05:30:00Z", "end_timestamp": "2026-03-08T06:20:00Z", "anchor_timestamp": "2026-03-08T04:55:00Z", "pivot_timestamp": "", "anchor_price": 66612.984375, "pivot_price": "", "bars_visible": 11, "is_provisional": 1}, {"segment_id": 82, "timeframe": "tbn_short", "label": "tbn_short #82 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_082.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-08T06:25:00Z", "end_timestamp": "2026-03-08T06:30:00Z", "anchor_timestamp": "2026-03-08T04:55:00Z", "pivot_timestamp": "2026-03-08T06:20:00Z", "anchor_price": 66612.984375, "pivot_price": 67089.3359375, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 8, "timeframe": "tbn_long", "label": "tbn_long #8 | support | end=trend_switch", "image_rel": "segment_replays/tbn_long_segment_008.png", "side_label": "support", "end_reason": "trend_switch", "computed_timestamp": "2026-03-05T10:40:00Z", "end_timestamp": "2026-03-08T08:45:00Z", "anchor_timestamp": "2026-03-04T19:20:00Z", "pivot_timestamp": "2026-03-05T10:35:00Z", "anchor_price": 74041.8125, "pivot_price": 73521.203125, "bars_visible": 842, "is_provisional": 0}, {"segment_id": 26, "timeframe": "tbn_medium", "label": "tbn_medium #26 | support | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_026.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-08T06:00:00Z", "end_timestamp": "2026-03-08T11:40:00Z", "anchor_timestamp": "2026-03-08T04:55:00Z", "pivot_timestamp": "", "anchor_price": 66612.984375, "pivot_price": "", "bars_visible": 69, "is_provisional": 1}, {"segment_id": 27, "timeframe": "tbn_medium", "label": "tbn_medium #27 | resistance | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_027.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-08T11:45:00Z", "end_timestamp": "2026-03-08T12:05:00Z", "anchor_timestamp": "2026-03-08T04:55:00Z", "pivot_timestamp": "2026-03-08T11:40:00Z", "anchor_price": 66612.984375, "pivot_price": 67439.5703125, "bars_visible": 5, "is_provisional": 0}, {"segment_id": 9, "timeframe": "tbn_long", "label": "tbn_long #9 | support | end=pivot_update", "image_rel": "segment_replays/tbn_long_segment_009.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-08T08:50:00Z", "end_timestamp": "2026-03-08T12:15:00Z", "anchor_timestamp": "2026-03-08T04:55:00Z", "pivot_timestamp": "", "anchor_price": 66612.984375, "pivot_price": "", "bars_visible": 42, "is_provisional": 1}, {"segment_id": 10, "timeframe": "tbn_long", "label": "tbn_long #10 | resistance | end=trend_switch", "image_rel": "segment_replays/tbn_long_segment_010.png", "side_label": "resistance", "end_reason": "trend_switch", "computed_timestamp": "2026-03-08T12:20:00Z", "end_timestamp": "2026-03-08T13:25:00Z", "anchor_timestamp": "2026-03-08T04:55:00Z", "pivot_timestamp": "2026-03-08T12:15:00Z", "anchor_price": 66612.984375, "pivot_price": 66913.4375, "bars_visible": 14, "is_provisional": 0}, {"segment_id": 83, "timeframe": "tbn_short", "label": "tbn_short #83 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_083.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-08T11:45:00Z", "end_timestamp": "2026-03-08T14:05:00Z", "anchor_timestamp": "2026-03-08T10:25:00Z", "pivot_timestamp": "", "anchor_price": 68170.4453125, "pivot_price": "", "bars_visible": 29, "is_provisional": 1}, {"segment_id": 84, "timeframe": "tbn_short", "label": "tbn_short #84 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_084.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-08T14:10:00Z", "end_timestamp": "2026-03-08T14:15:00Z", "anchor_timestamp": "2026-03-08T10:25:00Z", "pivot_timestamp": "2026-03-08T14:05:00Z", "anchor_price": 68170.4453125, "pivot_price": 67342.515625, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 11, "timeframe": "tbn_long", "label": "tbn_long #11 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_long_segment_011.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-08T13:30:00Z", "end_timestamp": "2026-03-08T19:50:00Z", "anchor_timestamp": "2026-03-08T10:25:00Z", "pivot_timestamp": "", "anchor_price": 68170.4453125, "pivot_price": "", "bars_visible": 77, "is_provisional": 1}, {"segment_id": 28, "timeframe": "tbn_medium", "label": "tbn_medium #28 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_028.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-08T12:20:00Z", "end_timestamp": "2026-03-08T19:50:00Z", "anchor_timestamp": "2026-03-08T10:25:00Z", "pivot_timestamp": "", "anchor_price": 68170.4453125, "pivot_price": "", "bars_visible": 91, "is_provisional": 1}, {"segment_id": 85, "timeframe": "tbn_short", "label": "tbn_short #85 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_085.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-08T19:55:00Z", "end_timestamp": "2026-03-08T20:15:00Z", "anchor_timestamp": "2026-03-08T18:45:00Z", "pivot_timestamp": "", "anchor_price": 66768.0625, "pivot_price": "", "bars_visible": 5, "is_provisional": 1}, {"segment_id": 86, "timeframe": "tbn_short", "label": "tbn_short #86 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_086.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-08T20:20:00Z", "end_timestamp": "2026-03-08T20:25:00Z", "anchor_timestamp": "2026-03-08T18:45:00Z", "pivot_timestamp": "2026-03-08T20:15:00Z", "anchor_price": 66768.0625, "pivot_price": 67059.4453125, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 12, "timeframe": "tbn_long", "label": "tbn_long #12 | support | end=breakout", "image_rel": "segment_replays/tbn_long_segment_012.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-08T19:55:00Z", "end_timestamp": "2026-03-08T20:35:00Z", "anchor_timestamp": "2026-03-08T10:25:00Z", "pivot_timestamp": "2026-03-08T19:50:00Z", "anchor_price": 68170.4453125, "pivot_price": 67405.09375, "bars_visible": 9, "is_provisional": 0}, {"segment_id": 29, "timeframe": "tbn_medium", "label": "tbn_medium #29 | support | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_029.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-08T19:55:00Z", "end_timestamp": "2026-03-08T20:35:00Z", "anchor_timestamp": "2026-03-08T10:25:00Z", "pivot_timestamp": "2026-03-08T19:50:00Z", "anchor_price": 68170.4453125, "pivot_price": 67405.09375, "bars_visible": 9, "is_provisional": 0}, {"segment_id": 13, "timeframe": "tbn_long", "label": "tbn_long #13 | support | end=breakout", "image_rel": "segment_replays/tbn_long_segment_013.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-08T20:40:00Z", "end_timestamp": "2026-03-08T21:10:00Z", "anchor_timestamp": "2026-03-08T18:45:00Z", "pivot_timestamp": "", "anchor_price": 66768.0625, "pivot_price": "", "bars_visible": 7, "is_provisional": 1}, {"segment_id": 30, "timeframe": "tbn_medium", "label": "tbn_medium #30 | support | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_030.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-08T20:40:00Z", "end_timestamp": "2026-03-08T21:10:00Z", "anchor_timestamp": "2026-03-08T18:45:00Z", "pivot_timestamp": "", "anchor_price": 66768.0625, "pivot_price": "", "bars_visible": 7, "is_provisional": 1}, {"segment_id": 87, "timeframe": "tbn_short", "label": "tbn_short #87 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_087.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-08T21:15:00Z", "end_timestamp": "2026-03-08T23:05:00Z", "anchor_timestamp": "2026-03-08T20:35:00Z", "pivot_timestamp": "", "anchor_price": 67480.8671875, "pivot_price": "", "bars_visible": 23, "is_provisional": 1}, {"segment_id": 88, "timeframe": "tbn_short", "label": "tbn_short #88 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_088.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-08T23:10:00Z", "end_timestamp": "2026-03-08T23:20:00Z", "anchor_timestamp": "2026-03-08T20:35:00Z", "pivot_timestamp": "2026-03-08T23:05:00Z", "anchor_price": 67480.8671875, "pivot_price": 66418.9140625, "bars_visible": 3, "is_provisional": 0}, {"segment_id": 31, "timeframe": "tbn_medium", "label": "tbn_medium #31 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_031.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-08T21:15:00Z", "end_timestamp": "2026-03-09T00:35:00Z", "anchor_timestamp": "2026-03-08T20:35:00Z", "pivot_timestamp": "", "anchor_price": 67480.8671875, "pivot_price": "", "bars_visible": 41, "is_provisional": 1}, {"segment_id": 32, "timeframe": "tbn_medium", "label": "tbn_medium #32 | support | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_032.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-09T00:40:00Z", "end_timestamp": "2026-03-09T01:35:00Z", "anchor_timestamp": "2026-03-08T20:35:00Z", "pivot_timestamp": "2026-03-09T00:35:00Z", "anchor_price": 67480.8671875, "pivot_price": 66716.171875, "bars_visible": 12, "is_provisional": 0}, {"segment_id": 89, "timeframe": "tbn_short", "label": "tbn_short #89 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_089.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-09T00:40:00Z", "end_timestamp": "2026-03-09T02:05:00Z", "anchor_timestamp": "2026-03-09T00:25:00Z", "pivot_timestamp": "", "anchor_price": 65878.921875, "pivot_price": "", "bars_visible": 18, "is_provisional": 1}, {"segment_id": 90, "timeframe": "tbn_short", "label": "tbn_short #90 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_090.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-09T02:10:00Z", "end_timestamp": "2026-03-09T02:15:00Z", "anchor_timestamp": "2026-03-09T00:25:00Z", "pivot_timestamp": "2026-03-09T02:05:00Z", "anchor_price": 65878.921875, "pivot_price": 66135.5390625, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 14, "timeframe": "tbn_long", "label": "tbn_long #14 | resistance | end=trend_switch", "image_rel": "segment_replays/tbn_long_segment_014.png", "side_label": "resistance", "end_reason": "trend_switch", "computed_timestamp": "2026-03-08T21:15:00Z", "end_timestamp": "2026-03-09T03:20:00Z", "anchor_timestamp": "2026-03-08T20:35:00Z", "pivot_timestamp": "", "anchor_price": 67480.8671875, "pivot_price": "", "bars_visible": 74, "is_provisional": 1}, {"segment_id": 33, "timeframe": "tbn_medium", "label": "tbn_medium #33 | support | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_033.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-09T03:25:00Z", "end_timestamp": "2026-03-09T07:20:00Z", "anchor_timestamp": "2026-03-08T22:25:00Z", "pivot_timestamp": "", "anchor_price": 65660.515625, "pivot_price": "", "bars_visible": 48, "is_provisional": 1}, {"segment_id": 34, "timeframe": "tbn_medium", "label": "tbn_medium #34 | resistance | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_034.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-09T07:25:00Z", "end_timestamp": "2026-03-09T11:15:00Z", "anchor_timestamp": "2026-03-08T22:25:00Z", "pivot_timestamp": "2026-03-09T07:20:00Z", "anchor_price": 65660.515625, "pivot_price": 66968.28125, "bars_visible": 47, "is_provisional": 0}, {"segment_id": 91, "timeframe": "tbn_short", "label": "tbn_short #91 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_091.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-09T16:35:00Z", "end_timestamp": "2026-03-09T16:50:00Z", "anchor_timestamp": "2026-03-09T14:40:00Z", "pivot_timestamp": "", "anchor_price": 69453.5, "pivot_price": "", "bars_visible": 4, "is_provisional": 1}, {"segment_id": 92, "timeframe": "tbn_short", "label": "tbn_short #92 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_092.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-09T16:55:00Z", "end_timestamp": "2026-03-09T19:20:00Z", "anchor_timestamp": "2026-03-09T14:40:00Z", "pivot_timestamp": "2026-03-09T16:50:00Z", "anchor_price": 69453.5, "pivot_price": 69130.875, "bars_visible": 30, "is_provisional": 0}, {"segment_id": 93, "timeframe": "tbn_short", "label": "tbn_short #93 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_093.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-09T19:30:00Z", "end_timestamp": "2026-03-09T20:35:00Z", "anchor_timestamp": "2026-03-09T18:05:00Z", "pivot_timestamp": "", "anchor_price": 68265.109375, "pivot_price": "", "bars_visible": 14, "is_provisional": 1}, {"segment_id": 94, "timeframe": "tbn_short", "label": "tbn_short #94 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_094.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-09T20:40:00Z", "end_timestamp": "2026-03-09T20:45:00Z", "anchor_timestamp": "2026-03-09T18:05:00Z", "pivot_timestamp": "2026-03-09T20:35:00Z", "anchor_price": 68265.109375, "pivot_price": 68838.296875, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 95, "timeframe": "tbn_short", "label": "tbn_short #95 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_095.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-09T21:45:00Z", "end_timestamp": "2026-03-10T00:35:00Z", "anchor_timestamp": "2026-03-09T21:05:00Z", "pivot_timestamp": "", "anchor_price": 69117.7890625, "pivot_price": "", "bars_visible": 35, "is_provisional": 1}, {"segment_id": 35, "timeframe": "tbn_medium", "label": "tbn_medium #35 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_035.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-10T00:00:00Z", "end_timestamp": "2026-03-10T00:45:00Z", "anchor_timestamp": "2026-03-09T19:25:00Z", "pivot_timestamp": "", "anchor_price": 69347.0234375, "pivot_price": "", "bars_visible": 10, "is_provisional": 1}, {"segment_id": 96, "timeframe": "tbn_short", "label": "tbn_short #96 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_096.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-10T00:50:00Z", "end_timestamp": "2026-03-10T01:20:00Z", "anchor_timestamp": "2026-03-09T23:55:00Z", "pivot_timestamp": "", "anchor_price": 68401.4609375, "pivot_price": "", "bars_visible": 7, "is_provisional": 1}, {"segment_id": 97, "timeframe": "tbn_short", "label": "tbn_short #97 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_097.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-10T01:25:00Z", "end_timestamp": "2026-03-10T01:35:00Z", "anchor_timestamp": "2026-03-09T23:55:00Z", "pivot_timestamp": "2026-03-10T01:20:00Z", "anchor_price": 68401.4609375, "pivot_price": 68891.4375, "bars_visible": 3, "is_provisional": 0}, {"segment_id": 36, "timeframe": "tbn_medium", "label": "tbn_medium #36 | support | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_036.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-10T00:50:00Z", "end_timestamp": "2026-03-10T01:55:00Z", "anchor_timestamp": "2026-03-09T19:25:00Z", "pivot_timestamp": "2026-03-10T00:45:00Z", "anchor_price": 69347.0234375, "pivot_price": 69284.1796875, "bars_visible": 14, "is_provisional": 0}, {"segment_id": 98, "timeframe": "tbn_short", "label": "tbn_short #98 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_098.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-10T06:25:00Z", "end_timestamp": "2026-03-10T06:25:00Z", "anchor_timestamp": "2026-03-10T05:15:00Z", "pivot_timestamp": "", "anchor_price": 70311.6796875, "pivot_price": "", "bars_visible": 1, "is_provisional": 1}, {"segment_id": 99, "timeframe": "tbn_short", "label": "tbn_short #99 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_099.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-10T06:30:00Z", "end_timestamp": "2026-03-10T07:05:00Z", "anchor_timestamp": "2026-03-10T05:15:00Z", "pivot_timestamp": "2026-03-10T06:25:00Z", "anchor_price": 70311.6796875, "pivot_price": 70160.3125, "bars_visible": 8, "is_provisional": 0}, {"segment_id": 100, "timeframe": "tbn_short", "label": "tbn_short #100 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_100.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-10T07:25:00Z", "end_timestamp": "2026-03-10T10:25:00Z", "anchor_timestamp": "2026-03-10T06:20:00Z", "pivot_timestamp": "", "anchor_price": 69773.6015625, "pivot_price": "", "bars_visible": 37, "is_provisional": 1}, {"segment_id": 101, "timeframe": "tbn_short", "label": "tbn_short #101 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_101.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-10T10:30:00Z", "end_timestamp": "2026-03-10T10:35:00Z", "anchor_timestamp": "2026-03-10T06:20:00Z", "pivot_timestamp": "2026-03-10T10:25:00Z", "anchor_price": 69773.6015625, "pivot_price": 70779.515625, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 37, "timeframe": "tbn_medium", "label": "tbn_medium #37 | support | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_037.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-10T02:00:00Z", "end_timestamp": "2026-03-10T11:15:00Z", "anchor_timestamp": "2026-03-09T23:55:00Z", "pivot_timestamp": "", "anchor_price": 68401.4609375, "pivot_price": "", "bars_visible": 112, "is_provisional": 1}, {"segment_id": 38, "timeframe": "tbn_medium", "label": "tbn_medium #38 | resistance | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_038.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-10T11:20:00Z", "end_timestamp": "2026-03-10T11:30:00Z", "anchor_timestamp": "2026-03-09T23:55:00Z", "pivot_timestamp": "2026-03-10T11:15:00Z", "anchor_price": 68401.4609375, "pivot_price": 70598.3203125, "bars_visible": 3, "is_provisional": 0}, {"segment_id": 102, "timeframe": "tbn_short", "label": "tbn_short #102 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_102.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-10T11:50:00Z", "end_timestamp": "2026-03-10T13:15:00Z", "anchor_timestamp": "2026-03-10T09:30:00Z", "pivot_timestamp": "", "anchor_price": 71266.8828125, "pivot_price": "", "bars_visible": 18, "is_provisional": 1}, {"segment_id": 39, "timeframe": "tbn_medium", "label": "tbn_medium #39 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_039.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-10T11:50:00Z", "end_timestamp": "2026-03-10T13:25:00Z", "anchor_timestamp": "2026-03-10T09:30:00Z", "pivot_timestamp": "", "anchor_price": 71266.8828125, "pivot_price": "", "bars_visible": 20, "is_provisional": 1}, {"segment_id": 103, "timeframe": "tbn_short", "label": "tbn_short #103 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_103.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-10T13:20:00Z", "end_timestamp": "2026-03-10T13:25:00Z", "anchor_timestamp": "2026-03-10T09:30:00Z", "pivot_timestamp": "2026-03-10T13:15:00Z", "anchor_price": 71266.8828125, "pivot_price": 70830.9765625, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 15, "timeframe": "tbn_long", "label": "tbn_long #15 | support | end=pivot_update", "image_rel": "segment_replays/tbn_long_segment_015.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-09T03:25:00Z", "end_timestamp": "2026-03-10T13:40:00Z", "anchor_timestamp": "2026-03-08T22:25:00Z", "pivot_timestamp": "", "anchor_price": 65660.515625, "pivot_price": "", "bars_visible": 412, "is_provisional": 1}, {"segment_id": 16, "timeframe": "tbn_long", "label": "tbn_long #16 | resistance | end=breakout", "image_rel": "segment_replays/tbn_long_segment_016.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-10T13:45:00Z", "end_timestamp": "2026-03-10T14:10:00Z", "anchor_timestamp": "2026-03-08T22:25:00Z", "pivot_timestamp": "2026-03-10T13:40:00Z", "anchor_price": 65660.515625, "pivot_price": 69762.796875, "bars_visible": 6, "is_provisional": 0}, {"segment_id": 40, "timeframe": "tbn_medium", "label": "tbn_medium #40 | support | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_040.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-10T13:30:00Z", "end_timestamp": "2026-03-10T14:50:00Z", "anchor_timestamp": "2026-03-10T09:30:00Z", "pivot_timestamp": "2026-03-10T13:25:00Z", "anchor_price": 71266.8828125, "pivot_price": 70907.703125, "bars_visible": 17, "is_provisional": 0}, {"segment_id": 104, "timeframe": "tbn_short", "label": "tbn_short #104 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_104.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-10T15:10:00Z", "end_timestamp": "2026-03-10T15:55:00Z", "anchor_timestamp": "2026-03-10T14:10:00Z", "pivot_timestamp": "", "anchor_price": 69508.3515625, "pivot_price": "", "bars_visible": 10, "is_provisional": 1}, {"segment_id": 105, "timeframe": "tbn_short", "label": "tbn_short #105 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_105.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-10T16:00:00Z", "end_timestamp": "2026-03-10T16:10:00Z", "anchor_timestamp": "2026-03-10T14:10:00Z", "pivot_timestamp": "2026-03-10T15:55:00Z", "anchor_price": 69508.3515625, "pivot_price": 70945.703125, "bars_visible": 3, "is_provisional": 0}, {"segment_id": 41, "timeframe": "tbn_medium", "label": "tbn_medium #41 | support | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_041.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-10T15:10:00Z", "end_timestamp": "2026-03-10T17:45:00Z", "anchor_timestamp": "2026-03-10T14:10:00Z", "pivot_timestamp": "", "anchor_price": 69508.3515625, "pivot_price": "", "bars_visible": 32, "is_provisional": 1}, {"segment_id": 42, "timeframe": "tbn_medium", "label": "tbn_medium #42 | resistance | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_042.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-10T17:50:00Z", "end_timestamp": "2026-03-10T18:10:00Z", "anchor_timestamp": "2026-03-10T14:10:00Z", "pivot_timestamp": "2026-03-10T17:45:00Z", "anchor_price": 69508.3515625, "pivot_price": 70619.2265625, "bars_visible": 5, "is_provisional": 0}, {"segment_id": 106, "timeframe": "tbn_short", "label": "tbn_short #106 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_106.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-10T18:25:00Z", "end_timestamp": "2026-03-10T20:40:00Z", "anchor_timestamp": "2026-03-10T16:25:00Z", "pivot_timestamp": "", "anchor_price": 71699.7265625, "pivot_price": "", "bars_visible": 28, "is_provisional": 1}, {"segment_id": 107, "timeframe": "tbn_short", "label": "tbn_short #107 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_107.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-10T20:45:00Z", "end_timestamp": "2026-03-10T20:50:00Z", "anchor_timestamp": "2026-03-10T16:25:00Z", "pivot_timestamp": "2026-03-10T20:40:00Z", "anchor_price": 71699.7265625, "pivot_price": 70320.6328125, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 43, "timeframe": "tbn_medium", "label": "tbn_medium #43 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_medium_segment_043.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-10T18:25:00Z", "end_timestamp": "2026-03-10T21:05:00Z", "anchor_timestamp": "2026-03-10T15:05:00Z", "pivot_timestamp": "", "anchor_price": 71751.71875, "pivot_price": "", "bars_visible": 33, "is_provisional": 1}, {"segment_id": 44, "timeframe": "tbn_medium", "label": "tbn_medium #44 | support | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_044.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-10T21:10:00Z", "end_timestamp": "2026-03-10T23:30:00Z", "anchor_timestamp": "2026-03-10T15:05:00Z", "pivot_timestamp": "2026-03-10T21:05:00Z", "anchor_price": 71751.71875, "pivot_price": 70390.609375, "bars_visible": 29, "is_provisional": 0}, {"segment_id": 17, "timeframe": "tbn_long", "label": "tbn_long #17 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_long_segment_017.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-10T21:50:00Z", "end_timestamp": "2026-03-11T04:55:00Z", "anchor_timestamp": "2026-03-10T15:05:00Z", "pivot_timestamp": "", "anchor_price": 71751.71875, "pivot_price": "", "bars_visible": 86, "is_provisional": 1}, {"segment_id": 108, "timeframe": "tbn_short", "label": "tbn_short #108 | support | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_108.png", "side_label": "support", "end_reason": "pivot_update", "computed_timestamp": "2026-03-11T05:00:00Z", "end_timestamp": "2026-03-11T05:20:00Z", "anchor_timestamp": "2026-03-11T03:25:00Z", "pivot_timestamp": "", "anchor_price": 69526.8203125, "pivot_price": "", "bars_visible": 5, "is_provisional": 1}, {"segment_id": 109, "timeframe": "tbn_short", "label": "tbn_short #109 | resistance | end=breakout", "image_rel": "segment_replays/tbn_short_segment_109.png", "side_label": "resistance", "end_reason": "breakout", "computed_timestamp": "2026-03-11T05:25:00Z", "end_timestamp": "2026-03-11T05:30:00Z", "anchor_timestamp": "2026-03-11T03:25:00Z", "pivot_timestamp": "2026-03-11T05:20:00Z", "anchor_price": 69526.8203125, "pivot_price": 69936.3046875, "bars_visible": 2, "is_provisional": 0}, {"segment_id": 45, "timeframe": "tbn_medium", "label": "tbn_medium #45 | support | end=breakout", "image_rel": "segment_replays/tbn_medium_segment_045.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-11T05:00:00Z", "end_timestamp": "2026-03-11T05:40:00Z", "anchor_timestamp": "2026-03-11T03:25:00Z", "pivot_timestamp": "", "anchor_price": 69526.8203125, "pivot_price": "", "bars_visible": 9, "is_provisional": 1}, {"segment_id": 110, "timeframe": "tbn_short", "label": "tbn_short #110 | resistance | end=pivot_update", "image_rel": "segment_replays/tbn_short_segment_110.png", "side_label": "resistance", "end_reason": "pivot_update", "computed_timestamp": "2026-03-11T08:35:00Z", "end_timestamp": "2026-03-11T09:45:00Z", "anchor_timestamp": "2026-03-11T07:00:00Z", "pivot_timestamp": "", "anchor_price": 69987.2265625, "pivot_price": "", "bars_visible": 15, "is_provisional": 1}, {"segment_id": 18, "timeframe": "tbn_long", "label": "tbn_long #18 | support | end=breakout", "image_rel": "segment_replays/tbn_long_segment_018.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-11T05:00:00Z", "end_timestamp": "2026-03-11T10:40:00Z", "anchor_timestamp": "2026-03-10T15:05:00Z", "pivot_timestamp": "2026-03-11T04:55:00Z", "anchor_price": 71751.71875, "pivot_price": 70256.4609375, "bars_visible": 69, "is_provisional": 0}, {"segment_id": 46, "timeframe": "tbn_medium", "label": "tbn_medium #46 | resistance | end=window_end", "image_rel": "segment_replays/tbn_medium_segment_046.png", "side_label": "resistance", "end_reason": "window_end", "computed_timestamp": "2026-03-11T05:45:00Z", "end_timestamp": "2026-03-11T10:40:00Z", "anchor_timestamp": "2026-03-11T04:55:00Z", "pivot_timestamp": "", "anchor_price": 70256.4609375, "pivot_price": "", "bars_visible": 60, "is_provisional": 1}, {"segment_id": 111, "timeframe": "tbn_short", "label": "tbn_short #111 | support | end=breakout", "image_rel": "segment_replays/tbn_short_segment_111.png", "side_label": "support", "end_reason": "breakout", "computed_timestamp": "2026-03-11T09:50:00Z", "end_timestamp": "2026-03-11T10:40:00Z", "anchor_timestamp": "2026-03-11T07:00:00Z", "pivot_timestamp": "2026-03-11T09:45:00Z", "anchor_price": 69987.2265625, "pivot_price": 69732.140625, "bars_visible": 11, "is_provisional": 0}];
+    const selectEl = document.getElementById('segment-select');
+    const metaEl = document.getElementById('segment-meta');
+    const imgEl = document.getElementById('segment-replay-img');
+
+    function renderSegment(idx) {
+      const item = SEGMENT_REPLAYS[idx];
+      if (!item) {
+        metaEl.innerHTML = '<em>No segment data.</em>';
+        imgEl.removeAttribute('src');
+        return;
+      }
+      imgEl.src = `../../artifacts/trendline_breakout_navigator/` + item.image_rel;
+      imgEl.alt = item.label;
+      metaEl.innerHTML = `
+        <dl>
+          <dt>segment</dt><dd>${item.label}</dd>
+          <dt>computed at</dt><dd>${item.computed_timestamp}</dd>
+          <dt>end at</dt><dd>${item.end_timestamp}</dd>
+          <dt>end reason</dt><dd>${item.end_reason}</dd>
+          <dt>anchor</dt><dd>${item.anchor_timestamp} @ ${item.anchor_price}</dd>
+          <dt>slope pivot</dt><dd>${item.pivot_timestamp ? `${item.pivot_timestamp} @ ${item.pivot_price}` : 'none yet (provisional)'} </dd>
+          <dt>bars visible</dt><dd>${item.bars_visible}</dd>
+          <dt>state</dt><dd>${item.is_provisional ? 'provisional' : 'final'} / ${item.side_label}</dd>
+        </dl>
+      `;
+    }
+
+    if (SEGMENT_REPLAYS.length) {
+      SEGMENT_REPLAYS.forEach((item, idx) => {
+        const opt = document.createElement('option');
+        opt.value = String(idx);
+        opt.textContent = item.label;
+        selectEl.appendChild(opt);
+      });
+      selectEl.addEventListener('change', (e) => renderSegment(Number(e.target.value)));
+      renderSegment(SEGMENT_REPLAYS.length - 1);
+      selectEl.value = String(SEGMENT_REPLAYS.length - 1);
+    } else {
+      metaEl.innerHTML = '<em>No segment data.</em>';
+    }
+  </script>
+</body>
+</html>

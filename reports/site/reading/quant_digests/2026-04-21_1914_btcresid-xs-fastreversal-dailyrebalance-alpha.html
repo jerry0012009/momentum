@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 crypto stat-arb 仓只读成“reversal + momentum 拼盘”：对 short-cycle crypto desk，更该先拆的是「BTC 残差化横截面 loser→winner fade × 低频再平衡」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 crypto stat-arb 仓只读成“reversal + momentum 拼盘”：对 short-cycle crypto desk，更该先拆的是「BTC 残差化横截面 loser→winner fade × 低频再平衡」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-21 19:16 UTC</span>
+      <span class="pill">研究时间：2026-04-21 19:14 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit + Binance USDⓈ-M public-data portability probe</span>
+      <span class="pill">主题标签：cross-sectional / relative-value / mean-reversion / stat-arb / BTC residualization / inverse-vol / daily rebalance / Binance / 15m</span>
+      <span class="pill">证据类型：repo 工程骨架 + public-data first probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-21_1914_btcresid-xs-fastreversal-dailyrebalance-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-21 19:14 UTC</li>
+<li>类型：GitHub / repo source audit + Binance USDⓈ-M public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：先把各币种收益对 <code>BTC</code> 做滚动残差化，去掉大盘同涨同跌那一层；再在横截面里做 <strong>短窗 loser→winner fade</strong>，也就是做空刚刚相对涨得太多的、做多刚刚相对跌得太多的</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：cross-sectional / relative-value / mean-reversion / stat-arb / BTC residualization / inverse-vol / daily rebalance / Binance / 15m</li>
+<li>证据类型：repo 工程骨架 + public-data first probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主来源是一个 2026 GitHub 研究仓：<strong>ccollins80 / crypto-stat-arb</strong>。它表面上在讲“crypto 里的 reversal + momentum 两条 sleeve 怎么混”，但对我们这个 short-cycle desk，真正值得 intake 的不是整个慢速组合，而是它里面那条更硬、更容易最小复现的 <strong>BTC 残差化横截面反转壳</strong>。</p>
+<p>一句话先回答用户要求的 base alpha：</p>
+<p>&gt; <strong>这篇东西的 base alpha 是什么？</strong> &gt; &gt; <strong>答：是 BTC 残差化后的 cross-sectional short-horizon reversal。</strong> &gt; &gt; 也就是：先把“跟着 BTC 一起动”的共振部分剥掉，再去抓币与币之间的短期相对过冲回归。</p>
+<h3>来源</h3>
+<ul>
+<li><strong>Repo</strong>：ccollins80 (2026), *Crypto Statistical Arbitrage*</li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/ccollins80/crypto-stat-arb&gt;">https://github.com/ccollins80/crypto-stat-arb&gt;</a></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/ccollins80/crypto-stat-arb/blob/main/README.md&gt;">https://github.com/ccollins80/crypto-stat-arb/blob/main/README.md&gt;</a></li>
+<li><strong>关键代码</strong>：</li>
+<li><code>src/crypto_stat_arb/signals.py</code></li>
+<li><code>src/crypto_stat_arb/backtest.py</code></li>
+<li><code>src/crypto_stat_arb/portfolio.py</code></li>
+</ul>
+<h2>2. repo 里真正可交易的壳是什么</h2>
+<p>repo 的写法很清楚：</p>
+<ul>
+<li><strong>reversal sleeve</strong>：</li>
+<li>对收益先做 <code>BTC</code> 滚动残差化</li>
+<li>用过去 <code>k</code> 根 bar 累积收益做横截面 z-score</li>
+<li>取负号，等于 <strong>做空短期相对赢家 / 做多短期相对输家</strong></li>
+<li>加 <code>band</code>，只有过冲够大才入场</li>
+<li>再做 <code>inverse-vol</code> 缩放与 L1 中性化</li>
+<li><strong>portfolio / execution</strong>：</li>
+<li>权重下一根执行，避免 lookahead</li>
+<li>用 <code>downsample_weights(every=N)</code> 把组合改成低频再平衡，不是每根乱切</li>
+<li>成本按 turnover 直接扣</li>
+</ul>
+<p>如果翻成人话，这条壳不是“所有币都跟大盘一起跌了，然后抄底”。它更像：</p>
+<ol>
+<li><strong>先剥掉 BTC 大盘方向</strong>，只看各币自己的相对偏离；</li>
+<li><strong>再在同一时点横向比较谁偏离得最夸张</strong>；</li>
+<li><strong>只在偏离足够大时动手</strong>；</li>
+<li><strong>用低频再平衡压 turnover</strong>，别让本来就薄的 edge 被手续费吃光。</li>
+</ol>
+<p>这对当前 desk 很对路，因为它补的是：</p>
+<ul>
+<li><code>mean reversion</code></li>
+<li><code>cross-sectional / relative value</code></li>
+<li><code>stat-arb</code></li>
+</ul>
+<p>而不是再来一个单币 breakout / retest 变体。</p>
+<h2>3. repo 给出的原始证据</h2>
+<p>repo README 里公开给出的结论大概是：</p>
+<ul>
+<li><code>12</code> 个 liquid crypto pairs</li>
+<li>小时级数据，样本约 <code>2.6</code> 年</li>
+<li><strong>reversal sleeve</strong> 最优附近：<code>k=4</code>、<code>band=2.5</code>、<code>beta_win=168</code>、<code>vol_win=24</code>、<code>every=24</code></li>
+<li>报告的 <strong>net Sharpe ≈ 1.77</strong>，年化收益约 <code>36.6%</code>，年化波动约 <code>20.7%</code></li>
+<li>turnover 约 <code>89/年</code></li>
+<li>成本假设是每次再平衡约 <code>7 bps</code></li>
+</ul>
+<p>repo 还给了一个 slow momentum sleeve，以及 equal-vol mix。但这部分对我们当前 <code>5m/15m</code> 主线不应直接照抄，因为：</p>
+<ul>
+<li>slow momentum 更偏慢周期资产配置层</li>
+<li>equal-vol mix 好看，不代表搬到 <code>15m</code> 就还好看</li>
+<li>真正先该测的，是 <strong>快腿 reversal 壳在短周期能不能留下净边</strong></li>
+</ul>
+<h2>4. 为什么这条壳和最近 digest 不算重复</h2>
+<p>最近虽然已经连续做过多个 cross-sectional / pairs / relative-value 主题，但这篇仍然有一个明确新增量：</p>
+<h3>4.1 不是普通 loser→winner fade，而是 <strong>先做 BTC residualization</strong></h3>
+<p>这一步的作用很朴素：</p>
+<ul>
+<li>如果所有币都只是跟着 BTC 一起冲高或一起跳水，</li>
+<li>那么横截面反转里很多“过冲”其实只是大盘 beta，</li>
+<li>不先剥掉，就很容易把 market shock 误读成 relative-value dislocation。</li>
+</ul>
+<h3>4.2 不是高频乱调仓，而是 <strong>过冲 admission + 低频再平衡</strong></h3>
+<p>repo 的 <code>band + every=N</code> 非常 desk-friendly。 它不是在追求“每根都要有仓”，而是在追求：</p>
+<ul>
+<li>只有横截面偏离够大才入场</li>
+<li>中间用持仓延续压 turnover</li>
+</ul>
+<p>这比很多纯学术横截面 reversal 更接近可交易版本。</p>
+<h2>5. 我们自己的 <code>15m</code> public-data first probe</h2>
+<h3>5.1 probe 口径</h3>
+<p>我用 Binance USDⓈ-M public klines 做了一个轻量可复现实验：</p>
+<ul>
+<li>市场：Binance USDⓈ-M perpetual</li>
+<li>universe：<code>BTC/ETH/SOL/BNB/XRP/DOGE/ADA/LINK</code></li>
+<li>周期：<code>15m</code></li>
+<li>样本：<code>2026-03-09 01:15 UTC ~ 2026-04-21 19:00 UTC</code>，共 <code>4200</code> 根 bar 左右</li>
+<li>残差化：对 <code>BTCUSDT</code> 做滚动 beta 残差化，<code>beta_win=672</code>（约 <code>7d</code> 的 <code>15m</code> bar）</li>
+<li>fast reversal：</li>
+<li><code>k=16</code>（约 <code>4h</code>）</li>
+<li><code>band=2.0</code></li>
+<li><code>vol_win=96</code>（约 <code>1d</code>）</li>
+<li><code>every=96</code>（日频再平衡）</li>
+<li>成本：<code>4 bps</code> one-way 粗代理</li>
+<li>额外也顺手测了：</li>
+<li>slow momentum sleeve（更慢 lookback + 周频再平衡）</li>
+<li>equal-vol mix</li>
+</ul>
+<h3>5.2 结果</h3>
+<p>摘要文件：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-21_btcresid_fastrev_slowmom_probe_summary.csv</code></li>
+</ul>
+<p>核心数字：</p>
+<ul>
+<li><strong>fast reversal sleeve</strong></li>
+<li>gross 约 <code>+0.0276 bps/bar</code></li>
+<li>net 约 <code>+0.0203 bps/bar</code></li>
+<li><strong>net Sharpe ≈ 1.52</strong></li>
+<li>累计 net 约 <code>+0.84%</code></li>
+<li>平均日换手约 <code>0.175</code></li>
+<li><strong>slow momentum sleeve</strong></li>
+<li>net 约 <code>-0.1340 bps/bar</code></li>
+<li><strong>net Sharpe ≈ -5.76</strong></li>
+<li>累计 net 约 <code>-5.51%</code></li>
+<li><strong>equal-vol mix</strong></li>
+<li>net 约 <code>-0.0531 bps/bar</code></li>
+<li><strong>net Sharpe ≈ -4.40</strong></li>
+<li>累计 net 约 <code>-2.21%</code></li>
+</ul>
+<h2>6. first verdict：这轮到底该 intake 什么</h2>
+<h3>6.1 该 intake 的不是整个 repo，而是 <strong>fast reversal sleeve</strong></h3>
+<p>如果按我们 desk 的标准讲人话：</p>
+<ul>
+<li><strong>能先进入素材池的，是那条 BTC 残差化横截面 fast reversal</strong></li>
+<li><strong>不该直接搬进素材池的，是 slow momentum 和 equal-vol mix</strong></li>
+</ul>
+<p>也就是说，这篇东西最有价值的不是“组合看起来很漂亮”，而是它告诉我们：</p>
+<p>&gt; 在 short-cycle 上，<strong>去 beta 后的横截面过冲回归</strong> 还有机会； &gt; 但把 slow momentum 强行拼进来，不一定会让 <code>15m</code> 更好，反而可能把净边拉没。</p>
+<h3>6.2 这条 alpha 的第一性逻辑</h3>
+<p>这条壳能成立，核心不是神秘因子，而是三句话：</p>
+<ol>
+<li>crypto 横截面经常一起被 BTC 拖着跑；</li>
+<li>真正的 relative-value 过冲，要先把这层共振去掉；</li>
+<li>去掉以后，短期相对最极端那几只，常有一点回归压力。</li>
+</ol>
+<h3>6.3 low-frequency rebalance 很关键</h3>
+<p>这轮 probe 一个很重要的正面信号是：</p>
+<ul>
+<li>日频再平衡下，换手没有爆炸；</li>
+<li>cost 扣完后仍是正的；</li>
+<li>说明这条壳至少没一上来就死在 friction 上。</li>
+</ul>
+<p>这点比很多“看起来 gross 很强但 turnover 爆炸”的 reversal 候选更实用。</p>
+<h2>7. 策略拆解（按 desk 可落地口径）</h2>
+<h3>7.1 entry</h3>
+<p>在每个再平衡点：</p>
+<ol>
+<li>取最近 <code>k</code> 根 bar 的收益；</li>
+<li>对每个币相对 <code>BTC</code> 做滚动残差化；</li>
+<li>算横截面 z-score；</li>
+<li>只保留 <code>|z| &gt;= band</code> 的币；</li>
+<li><strong>long 最负 z-score 一侧，short 最正 z-score 一侧</strong>。</li>
+</ol>
+<h3>7.2 exit</h3>
+<ul>
+<li>默认到下一个再平衡点再统一更新；</li>
+<li>如果下一次 ranking 后信号消失，自动平掉；</li>
+<li>可以额外补一个 <code>max-hold</code> 或 <code>zero-cross</code>，但本轮最小实验先不加花。</li>
+</ul>
+<h3>7.3 sizing</h3>
+<ul>
+<li>先按 z-score 强度给方向</li>
+<li>再按 rolling vol 做 <code>inverse-vol</code> 缩放</li>
+<li>最后做横截面去均值 + L1 归一，保证 market-neutral / dollar-neutral</li>
+</ul>
+<h3>7.4 risk</h3>
+<ul>
+<li><code>BTC</code> 残差化是第一层 risk cleaning</li>
+<li><code>band</code> 是 admission gate</li>
+<li><code>every=N</code> 是 turnover gate</li>
+<li>可额外加：单币权重上限、事件日禁入、成交量门槛</li>
+</ul>
+<h3>7.5 cost</h3>
+<ul>
+<li>repo 基线：<code>7 bps</code> 每次调仓</li>
+<li>本轮 quick probe：<code>4 bps</code> one-way 粗代理</li>
+<li>下一轮必须补 <code>0 / 2 / 4 / 6 / 8 bps</code> ladder</li>
+</ul>
+<h2>8. 这条 alpha 和当前 short-cycle desk 的关系</h2>
+<p>这轮主题值钱的地方在于，它不是：</p>
+<ul>
+<li>单币 trend</li>
+<li>单币 breakout</li>
+<li>单币 RSI 超卖</li>
+</ul>
+<p>而是明确补了我们更需要的另一支：</p>
+<ul>
+<li><strong>cross-sectional / relative-value / stat-arb / mean-reversion</strong></li>
+</ul>
+<p>更具体地说，它适合扮演两个角色：</p>
+<ol>
+<li><strong>独立 raw alpha</strong>：直接做 market-neutral loser→winner fade</li>
+<li><strong>shared selector</strong>：给其他单币壳提供“当前谁最偏离”的横截面 admission</li>
+</ol>
+<h2>9. 下一步怎么测</h2>
+<ol>
+<li><strong>把 <code>15m</code> 父信号拆成 <code>5m/3m</code> child execution。</strong></li>
+<p>先不要改父信号逻辑，只优化 child entry：</p>
+</ol>
+<ul>
+<li><code>next-bar market</code></li>
+<li><code>VWAP-half-hour</code></li>
+<li><code>maker-first for 1~3 bars then cross</code></li>
+<p>比较净边能不能从 <code>+0.0203 bps/bar</code> 再抬一点。</p>
+</ul>
+<ol>
+<li><strong>把 <code>band</code> 做成明确的 turnover frontier。</strong></li>
+<p>至少扫：<code>1.0 / 1.5 / 2.0 / 2.5 / 3.0</code>。 这类策略常见现象不是“没 alpha”，而是“alpha 太薄，band 不够高就被摩擦吃掉”。</p>
+</ol>
+<ol>
+<li><strong>把 universe 从 7 个 alt 扩到 12~20 个 liquid perp。</strong></li>
+<p>横截面策略最怕池子太小。下一轮应加入更多高成交量永续，避免几只大币决定全局。</p>
+</ol>
+<ol>
+<li><strong>加入 funding / basis veto，而不是直接改 base alpha。</strong></li>
+<p>如果某个币的相对过冲，背后其实是 funding 或 basis 在重定价，那么纯价格反转可能会被 carry 持续顶住。这个 veto 适合做第二层，不要一开始就和主信号缠死。</p>
+</ol>
+<ol>
+<li><strong>补一个更实盘的风险口径。</strong></li>
+<p>下一轮至少看：</p>
+</ol>
+<ul>
+<li>单边拥挤时的权重上限</li>
+<li>事件窗口（CPI/FOMC/大额解锁）禁入</li>
+<li>单币 liquidity gate</li>
+</ul>
+<h2>10. 风险与提醒</h2>
+<ul>
+<li>当前正向证据只算 <strong>first probe</strong>，样本不到两个月，不能吹成稳定 alpha。</li>
+<li>本轮正向的是 fast reversal sleeve，不是整个 repo 的慢速组合。</li>
+<li><code>BTC</code> 残差化虽然能去掉部分共振，但也可能在强趋势市里把真实可赚 beta 一起剥掉；因此别默认它永远优于原始收益排序。</li>
+</ul>
+<h2>11. 一句话收尾</h2>
+<p><strong>这篇 repo 最值得留下的，不是“reversal + momentum 组合很漂亮”，而是：先剥掉 BTC 共振，再做横截面 loser→winner fade，这条 short-cycle relative-value 壳在 <code>15m</code> 上至少还没有被成本立刻判死刑。</strong></p>
+</body>
+</html>

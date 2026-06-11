@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 funding-arb repo 直接当成“APR&gt;5 就开”的 carry 脚本：对 short-cycle desk，更该先测的是「extreme-funding-only × boundary-time entry / fee-churn veto」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 funding-arb repo 直接当成“APR&gt;5 就开”的 carry 脚本：对 short-cycle desk，更该先测的是「extreme-funding-only × boundary-time entry / fee-churn veto」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 22:01 UTC</span>
+      <span class="pill">研究时间：2026-04-04 22:03 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`CLAUDE.md` + `config/settings.py` + `src/strategy/funding_arb.py` + `scripts/backtest.py`）+ Binance USDⓈ-M 公共 funding history 最小复现</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/basis/spot-perp/same-underlier/delta-neutral/extreme-apr-only/funding-boundary/fee-churn-veto/binance/btc/eth/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：开源 repo 规则审计 + 公共 funding API 快速复现</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_2203_extreme-funding-tail-carry-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 22:03 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>CLAUDE.md</code> + <code>config/settings.py</code> + <code>src/strategy/funding_arb.py</code> + <code>scripts/backtest.py</code>）+ Binance USDⓈ-M 公共 funding history 最小复现</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当同标的 perp funding 处于足够高的正值时，做 <code>long spot + short perp</code> 收 funding；但这条 alpha 不能按“APR&gt;5% 就持续开着”去跑，而要缩成“只做极端正 funding 尾部 + 靠近 funding boundary 的低周转收息”。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/carry/funding/basis/spot-perp/same-underlier/delta-neutral/extreme-apr-only/funding-boundary/fee-churn-veto/binance/btc/eth/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：开源 repo 规则审计 + 公共 funding API 快速复现</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看的是一个很新的仓库：</p>
+<ul>
+<li><strong>tomvdrslt (2026), _funding-rate-arbitrage-bot_</strong></li>
+<li>GitHub repo：&lt;<a href="https://github.com/tomvdrslt/funding-rate-arbitrage-bot&gt;">https://github.com/tomvdrslt/funding-rate-arbitrage-bot&gt;</a></li>
+<li>GitHub API 元数据显示：仓库创建于 <strong>2026-03-13</strong>，描述是 <strong>“Delta-neutral crypto bot collecting perpetual futures funding payments”</strong></li>
+</ul>
+<p>我之所以把它捞进来，不是因为“funding carry”这个词有多新，而是因为它把一条<strong>完整可执行策略</strong>写得非常明白：</p>
+<ul>
+<li>数据源：Binance public funding history</li>
+<li>entry / exit：APR 阈值状态机</li>
+<li>sizing：固定仓位上限</li>
+<li>risk：日亏损、总回撤、交易所暴露度 kill-switch</li>
+<li>cost：双腿进出费</li>
+</ul>
+<p>这符合我们本轮优先级里最值钱的那一档：</p>
+<p>&gt; <strong>不是解释 carry 为什么存在，而是直接给出一个能写成策略回测/实盘壳子的 raw alpha。</strong></p>
+<p>但 desk 真正该 intake 的，不是 repo 表面那句“APR &gt; 5% 就开”。</p>
+<p>真正值钱的结论反而是：</p>
+<p>&gt; <strong>正 funding carry 这条 raw alpha 只有在极端正 funding 尾部、并且你能把周转压得足够低时，才更像一条能留下净收益的 alpha；默认 5%/3% 阈值状态机会被手续费来回磨死。</strong></p>
+<h2>2. 先回答：这篇东西的 base alpha 是什么？</h2>
+<p>先把最关键的问题说透。</p>
+<h3>2.1 base alpha 不是 filter，也不是 overlay</h3>
+<p>这条东西的 base alpha 很明确：</p>
+<p>&gt; <strong>base alpha = 同标的、delta-neutral 的正 funding carry。</strong></p>
+<p>也就是：</p>
+<ul>
+<li>perp funding 为正；</li>
+<li>做 <code>long spot + short perp</code>；</li>
+<li>方向风险尽量互相对冲；</li>
+<li>主要赚的是 funding payment，而不是赌价格方向。</li>
+</ul>
+<p>所以它不是“拿 funding 当行情过滤器”； 它本身就是一条独立可交易的 <strong>carry / funding raw alpha</strong>。</p>
+<h3>2.2 但它不是逐根 <code>1m/5m</code> 方向预测</h3>
+<p>这里必须老实一点：</p>
+<ul>
+<li>funding 主时钟天然是 <strong>8h</strong>；</li>
+<li>它不是每根 <code>1m/3m/5m/15m</code> 都有独立预测力的那种方向型 signal。</li>
+</ul>
+<p>对 short-cycle desk 来说，正确读法是：</p>
+<ul>
+<li><strong>alpha 本体：</strong> funding carry</li>
+<li><strong>短周期价值：</strong> 用 <code>1m/3m/5m/15m</code> 做入场择时、basis 监控、滑点控制、临近 funding 边界的执行优化</li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; <strong>这是“慢 alpha，快执行”的 raw alpha，不是伪装成逐 bar 主信号的低频变量。</strong></p>
+<h2>3. repo 里到底写了什么硬规则</h2>
+<p>repo 的策略骨架非常直接。</p>
+<h3>3.1 entry / exit 规则</h3>
+<p><code>src/strategy/funding_arb.py</code> 写的是：</p>
+<ul>
+<li>funding &lt; 0 且当前持仓中 → <code>EXIT</code></li>
+<li>funding &lt; 0 且没持仓 → <code>NO_TRADE</code></li>
+<li>已持仓且 APR &lt; <code>min_exit_apr</code> → <code>EXIT</code></li>
+<li>未持仓且 APR &gt;= <code>min_entry_apr</code> → <code>ENTER</code></li>
+<li>已持仓且 APR &gt;= <code>min_exit_apr</code> → <code>HOLD</code></li>
+</ul>
+<p>默认阈值来自 <code>config/settings.py</code>：</p>
+<ul>
+<li><code>MIN_FUNDING_ENTRY_APR = 5.0</code></li>
+<li><code>MIN_FUNDING_EXIT_APR = 3.0</code></li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>repo 认为：只要正 funding 年化够到 5%，就值得开 delta-neutral carry；跌破 3% 或转负，就离场。</strong></p>
+<h3>3.2 sizing / risk / polling</h3>
+<p>同一个配置文件里还给了：</p>
+<ul>
+<li>单资产最大仓位：<code>20%</code> 组合资金</li>
+<li>交易所最大暴露：<code>50%</code></li>
+<li>日亏损停机：<code>3%</code></li>
+<li>总回撤停机：<code>15%</code></li>
+<li>delta 再平衡阈值：<code>2%</code></li>
+<li>funding poll interval：<code>3600s</code></li>
+</ul>
+<p>这意味着它不是单纯“看 funding 的 notebook”，而是已经把：</p>
+<ul>
+<li><strong>entry / exit</strong></li>
+<li><strong>仓位</strong></li>
+<li><strong>risk kill-switch</strong></li>
+<li><strong>execution cadence</strong></li>
+</ul>
+<p>都写成了一个完整壳子。</p>
+<h3>3.3 backtest 成本假设</h3>
+<p><code>scripts/backtest.py</code> 里把每次进场/离场的双腿费用都写死成：</p>
+<ul>
+<li><code>ENTRY_FEE_PCT = 0.0014</code></li>
+<li><code>EXIT_FEE_PCT = 0.0014</code></li>
+</ul>
+<p>也就是：</p>
+<ul>
+<li>一次开仓成本 ≈ <strong>14 bps of notional</strong></li>
+<li>一次平仓成本 ≈ <strong>14 bps of notional</strong></li>
+</ul>
+<p>而 funding 收益则按：</p>
+<ul>
+<li><code>annualized_apr = funding_rate_8h × 3 × 365 × 100</code></li>
+</ul>
+<p>这套假设简单，但足够做最小 sanity check。</p>
+<h2>4. 这份 repo 真正值钱的，不是“carry 存不存在”，而是它暴露了 fee-churn 问题</h2>
+<p>repo 的 aspirational checkpoint 写得挺乐观：</p>
+<ul>
+<li>跑 <code>BTC</code> 730 天回测，<strong>希望</strong>看到 annualized return &gt; 5%、Sharpe &gt; 1、MDD &lt; 15%</li>
+</ul>
+<p>但我更关心的是：</p>
+<p>&gt; <strong>如果我们按它源码里最朴素的 5%/3% 阈值和成本口径直接复现，结果到底活不活？</strong></p>
+<p>于是我直接抓了 Binance 公共 funding history，按 repo 的规则快跑了一遍。</p>
+<p>数据源：</p>
+<ul>
+<li>Binance Open Platform：<strong>Get Funding Rate History</strong></li>
+<p>&lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History&gt;</a></p>
+</ul>
+<p>口径：</p>
+<ul>
+<li>标的：<code>BTCUSDT</code>, <code>ETHUSDT</code></li>
+<li>样本：近 <code>365d</code> / <code>730d</code></li>
+<li>资金：<code>10,000</code></li>
+<li>持仓：<code>20%</code> 组合 notional</li>
+<li>费用：开/平各 <code>14 bps</code>（沿用 repo）</li>
+<li>规则：完全复刻 <code>APR &gt;= entry</code> 进，<code>APR &lt; exit 或 funding &lt; 0</code> 出</li>
+</ul>
+<h2>5. 最关键的 4 个数据点</h2>
+<h3>5.1 默认 <code>5% / 3%</code> 阈值，在 BTC/ETH 上都被手续费磨成负收益</h3>
+<p>近 <code>730d</code> 的最小复现结果：</p>
+<p>#### BTCUSDT</p>
+<ul>
+<li>平均 annualized APR：<strong>5.80%</strong></li>
+<li>满足 <code>APR &gt;= 5%</code> 且 funding 非负的窗口占比：<strong>54.7%</strong></li>
+<li>交易次数：<strong>422</strong> 次</li>
+<li>累计 funding 收入：<strong>$230.65</strong></li>
+<li>累计费用：<strong>$1181.60</strong></li>
+<li>组合总回报：<strong>-9.51%</strong></li>
+<li>最大回撤：<strong>9.56%</strong></li>
+</ul>
+<p>#### ETHUSDT</p>
+<ul>
+<li>平均 annualized APR：<strong>6.00%</strong></li>
+<li>满足 <code>APR &gt;= 5%</code> 且 funding 非负的窗口占比：<strong>57.6%</strong></li>
+<li>交易次数：<strong>414</strong> 次</li>
+<li>累计 funding 收入：<strong>$248.01</strong></li>
+<li>累计费用：<strong>$1159.20</strong></li>
+<li>组合总回报：<strong>-9.11%</strong></li>
+<li>最大回撤：<strong>9.16%</strong></li>
+</ul>
+<p>一句话总结：</p>
+<p>&gt; <strong>不是 funding 不够高，而是默认阈值导致周转太多，费用远大于 funding。</strong></p>
+<h3>5.2 把 entry 提高到 <code>10%</code>、exit 提到 <code>5%</code>，仍然没救活</h3>
+<p>近 <code>730d</code>：</p>
+<p>#### BTCUSDT</p>
+<ul>
+<li>收益：<strong>-3.71%</strong></li>
+<li>交易次数：<strong>194</strong></li>
+<li>funding：<strong>$172.06</strong></li>
+<li>fees：<strong>$543.20</strong></li>
+</ul>
+<p>#### ETHUSDT</p>
+<ul>
+<li>收益：<strong>-3.61%</strong></li>
+<li>交易次数：<strong>196</strong></li>
+<li>funding：<strong>$187.30</strong></li>
+<li>fees：<strong>$548.80</strong></li>
+</ul>
+<p>这说明“把阈值随便往上抬一点”还不够。</p>
+<h3>5.3 只有进入极端正 funding 尾部，carry 才开始勉强翻正</h3>
+<p>当阈值进一步抬到 <code>entry=15% / exit=8%</code>：</p>
+<p>#### BTCUSDT</p>
+<ul>
+<li>总回报：<strong>+0.41%</strong>（730d）</li>
+<li>交易次数：<strong>6</strong></li>
+<li>funding：<strong>$58.13</strong></li>
+<li>fees：<strong>$16.80</strong></li>
+</ul>
+<p>#### ETHUSDT</p>
+<ul>
+<li>总回报：<strong>+0.54%</strong>（730d）</li>
+<li>交易次数：<strong>6</strong></li>
+<li>funding：<strong>$70.80</strong></li>
+<li>fees：<strong>$16.80</strong></li>
+</ul>
+<p>但这个“翻正”有两个现实含义：</p>
+<ol>
+<li><strong>它只是在极端 funding 尾部才像个 alpha；</strong></li>
+<li><strong>它很慢、很稀疏，不该被误读成高频主引擎。</strong></li>
+</ol>
+<h3>5.4 极端 funding 尾部本来就很少</h3>
+<p>近 <code>730d</code>，满足条件的窗口占比：</p>
+<p>#### BTCUSDT</p>
+<ul>
+<li><code>APR &gt;= 5%</code>：<strong>54.7%</strong></li>
+<li><code>APR &gt;= 10%</code>：<strong>30.4%</strong></li>
+<li><code>APR &gt;= 15%</code>：<strong>2.60%</strong></li>
+<li><code>APR &gt;= 20%</code>：<strong>1.74%</strong></li>
+</ul>
+<p>#### ETHUSDT</p>
+<ul>
+<li><code>APR &gt;= 5%</code>：<strong>57.6%</strong></li>
+<li><code>APR &gt;= 10%</code>：<strong>31.6%</strong></li>
+<li><code>APR &gt;= 15%</code>：<strong>4.06%</strong></li>
+<li><code>APR &gt;= 20%</code>：<strong>2.51%</strong></li>
+</ul>
+<p>这组数字很重要，因为它告诉我们：</p>
+<p>&gt; <strong>真正有净边际的 funding carry，不是“大多数正 funding”，而是“极少数极端正 funding”。</strong></p>
+<h2>6. 对我们 desk 最有价值的重构读法</h2>
+<h3>6.1 不要把它继续当成“全天开着”的 carry bot</h3>
+<p>如果按 repo 默认读法：</p>
+<ul>
+<li>每小时轮询；</li>
+<li>只要 APR &gt;= 5% 就开；</li>
+<li>跌破 3% 就平；</li>
+</ul>
+<p>那更像是在制造：</p>
+<ul>
+<li>高频开平仓；</li>
+<li>低净 funding；</li>
+<li>高 fee churn。</li>
+</ul>
+<p>这不适合 short-cycle desk。</p>
+<h3>6.2 更适合我们的读法：extreme-funding-only</h3>
+<p>对 desk 更值钱的 branch idea 是：</p>
+<p>&gt; <strong>只做极端正 funding 尾部，把 carry 从“常开仓”改成“事件驱动的稀疏收息”。</strong></p>
+<p>也就是：</p>
+<ul>
+<li>alpha 本体仍然是正 funding carry；</li>
+<li>但只在 <code>APR &gt;= 15%</code>、甚至 <code>&gt;= 20%</code> 的极端窗口里考虑入场；</li>
+<li><code>1m / 3m / 5m / 15m</code> 只负责把这笔慢 alpha 做得更便宜、更稳。</li>
+</ul>
+<h3>6.3 短周期真正该干的事是 execution，不是假装逐 bar 预测</h3>
+<p>对 <code>1m / 3m / 5m / 15m</code>，最合理的工作不是：</p>
+<ul>
+<li>用 funding 直接预测下一根 K 线涨跌；</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li>监控 funding boundary 前后的 spot-perp basis 漂移；</li>
+<li>选择更便宜的入场时点；</li>
+<li>检查 funding 极端是否已经被 mark premium 过度透支；</li>
+<li>控制进出场的 taker 成本和再平衡次数。</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>这条 alpha 的 edge 在 funding，本地化收益在 execution。</strong></p>
+<h2>7. desk 化后的最小实验：直连 <code>1m / 3m / 5m / 15m</code></h2>
+<h3>7.1 第一轮不要再跑“全天候 5/3 carry”</h3>
+<p>直接比较 4 本书：</p>
+<ol>
+<li><strong>Repo baseline</strong></li>
+</ol>
+<ul>
+<li><code>entry=5%</code>, <code>exit=3%</code></li>
+</ul>
+<ol>
+<li><strong>Higher threshold</strong></li>
+</ol>
+<ul>
+<li><code>entry=10%</code>, <code>exit=5%</code></li>
+</ul>
+<ol>
+<li><strong>Extreme-only</strong></li>
+</ol>
+<ul>
+<li><code>entry=15%</code>, <code>exit=8%</code></li>
+</ul>
+<ol>
+<li><strong>Boundary-timed extreme-only</strong></li>
+</ol>
+<ul>
+<li>仍用 <code>15%/8%</code>，但只允许在下一个 funding 结算前 <code>30~60min</code> 内建仓，结算后固定持有 <code>1</code> 个 funding window 或到 <code>APR/basis</code> 失真时离场</li>
+</ul>
+<h3>7.2 执行层直接落到 <code>5m / 15m</code></h3>
+<p>建议第一版：</p>
+<ul>
+<li><code>15m</code>：决定是否允许开仓</li>
+<li><code>5m</code>：做具体进场择时</li>
+<li><code>1m / 3m</code>：只在第二轮评估 maker/taker 可行性时再细化</li>
+</ul>
+<h3>7.3 加一个我们 desk 更需要的 veto</h3>
+<p>第一轮最值得加的不是复杂 ML，而是一个很土但很有用的 veto：</p>
+<p>&gt; <strong>如果 funding 很高，但 spot-perp basis 在最近 <code>3 × 5m</code> 里还在持续扩大，就先不追；等 basis 停止继续拉大，再进 carry。</strong></p>
+<p>原因很简单：</p>
+<ul>
+<li>funding 很可能已经被 premium 预支；</li>
+<li>你若在 premium 扩张末端追进去，收的 funding 可能不够补 mark-to-market / 进出成本。</li>
+</ul>
+<h3>7.4 第一轮要看的不是 Sharpe，而是 funding/fee 比</h3>
+<p>核心报表先看：</p>
+<ul>
+<li>总 funding 收入</li>
+<li>总 fees</li>
+<li><code>funding / fees</code></li>
+<li>交易次数</li>
+<li>每次 funding event 的净收益分布</li>
+<li>持仓占用时间占比</li>
+<li>单次入场到下一次 funding 的 basis 回撤/扩张</li>
+</ul>
+<p>因为这条线最容易死在：</p>
+<p>&gt; <strong>方向没错，但净收益被费用和入场时机吃干净。</strong></p>
+<h2>8. 这轮最关键的“下一步怎么测”</h2>
+<ol>
+<li><strong>先把 repo baseline 和 extreme-only 拉开跑。</strong></li>
+<p>不要把 <code>5/3</code> 和 <code>15/8</code> 混在一起讲“carry 行不行”；先确认问题到底出在 funding 本身，还是出在周转。</p>
+</ol>
+<ol>
+<li><strong>把“全天持有”改成“围绕 funding boundary 的事件持有”。</strong></li>
+<p>第一轮最值得测的是：结算前 <code>30/60/90 min</code> 建仓，结算后持有 <code>1</code> 个 funding 窗口，看看 net funding/fee 比是否明显改善。</p>
+</ol>
+<ol>
+<li><strong>先只做 BTC / ETH。</strong></li>
+<p>这条线的关键不在 universe 扩张，而在确认：高流动主币上极端 funding 尾部是否真的能留下稳定净收益。</p>
+</ol>
+<ol>
+<li><strong>明确把 borrow / maker-taker / rebalance 算干净。</strong></li>
+<p>这类策略最怕“paper 上收 funding，实盘里全吐给手续费和腿间偏差”。</p>
+</ol>
+<ol>
+<li><strong>若 extreme-only 仍然太稀疏，再考虑跨 venue。</strong></li>
+<p>单 venue 尾部 carry 若信号太少，第二阶段才值得去做 cross-venue funding ranking / fee-coverage routing；别一上来就把问题复杂化。</p>
+</ol>
+<h2>9. 为什么这轮仍值得进研究池</h2>
+<p>尽管 carry 家族最近已经有积累，但这篇仍值得收，因为它补的是一个很具体、也很实用的 desk lesson：</p>
+<p>&gt; <strong>raw alpha 没错，但默认策略壳会把 raw alpha 跑死。</strong></p>
+<p>这和“carry 不存在”完全是两回事。</p>
+<p>对我们的素材池来说，它提供的不是又一个“正 funding 就收息”的老故事，而是一个更有用的命题：</p>
+<p>&gt; <strong>在公开 funding 数据、完整策略壳和明确成本假设下，<code>positive funding carry</code> 只有在极端尾部 + 低周转执行里才更像可留下净值的 raw alpha。</strong></p>
+<p>这正适合后面继续拆：</p>
+<ul>
+<li>boundary-time entry</li>
+<li>basis expansion veto</li>
+<li>cross-venue fee coverage</li>
+<li>maker-first execution</li>
+<li>event-level sizing</li>
+</ul>
+<h2>10. 资料与来源</h2>
+<ol>
+<li><strong>tomvdrslt (2026), _funding-rate-arbitrage-bot_.</strong> GitHub repository.</li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/tomvdrslt/funding-rate-arbitrage-bot&gt;">https://github.com/tomvdrslt/funding-rate-arbitrage-bot&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/tomvdrslt/funding-rate-arbitrage-bot.git&gt;">https://github.com/tomvdrslt/funding-rate-arbitrage-bot.git&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Repo metadata (GitHub API).</strong></li>
+</ol>
+<ul>
+<li>URL: &lt;<a href="https://api.github.com/repos/tomvdrslt/funding-rate-arbitrage-bot&gt;">https://api.github.com/repos/tomvdrslt/funding-rate-arbitrage-bot&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Repo strategy spec (<code>CLAUDE.md</code>).</strong></li>
+</ol>
+<ul>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/tomvdrslt/funding-rate-arbitrage-bot/master/CLAUDE.md&gt;">https://raw.githubusercontent.com/tomvdrslt/funding-rate-arbitrage-bot/master/CLAUDE.md&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Repo config (<code>config/settings.py</code>).</strong></li>
+</ol>
+<ul>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/tomvdrslt/funding-rate-arbitrage-bot/master/config/settings.py&gt;">https://raw.githubusercontent.com/tomvdrslt/funding-rate-arbitrage-bot/master/config/settings.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Repo signal logic (<code>src/strategy/funding_arb.py</code>).</strong></li>
+</ol>
+<ul>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/tomvdrslt/funding-rate-arbitrage-bot/master/src/strategy/funding_arb.py&gt;">https://raw.githubusercontent.com/tomvdrslt/funding-rate-arbitrage-bot/master/src/strategy/funding_arb.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Repo backtest (<code>scripts/backtest.py</code>).</strong></li>
+</ol>
+<ul>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/tomvdrslt/funding-rate-arbitrage-bot/master/scripts/backtest.py&gt;">https://raw.githubusercontent.com/tomvdrslt/funding-rate-arbitrage-bot/master/scripts/backtest.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Binance Open Platform, _Get Funding Rate History_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Binance Open Platform</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History&gt;</a></li>
+</ul>
+<h2>11. 一句话结论</h2>
+<p>&gt; <strong>这条 raw alpha 不是“APR&gt;5 就无脑开”的常开 carry，而更像“只做极端正 funding 尾部、围绕 funding boundary 低周转收息”的稀疏事件型 carry。默认状态机的真正敌人不是 funding 不够高，而是 fee churn。</strong></p>
+</body>
+</html>

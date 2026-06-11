@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 funding-rate repo 继续只读成 ML admission：对 short-cycle desk，更该先测的是「positive funding × spread-zscore 共振」这条规则型 delta-neutral raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 funding-rate repo 继续只读成 ML admission：对 short-cycle desk，更该先测的是「positive funding × spread-zscore 共振」这条规则型 delta-neutral raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-15 00:59 UTC</span>
+      <span class="pill">研究时间：2026-04-15 00:58 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit</span>
+      <span class="pill">主题标签：carry / funding / basis / delta-neutral / relative-value / stat-arb / rule-baseline / binance / btc</span>
+      <span class="pill">证据类型：工程证据（repo 文档 + 配置 + source audit + robustness report）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-15_0058_positivefunding-spreadzscore-deltaneutral-baseline.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-15 00:58 UTC</li>
+<li>类型：GitHub / repo source audit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当 perp 资金费率显著为正、且 perp 相对 spot 仍明显偏贵时，<code>short perp + long spot</code> 的 delta-neutral 头寸更可能同时兑现 <code>funding carry + basis convergence</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：carry / funding / basis / delta-neutral / relative-value / stat-arb / rule-baseline / binance / btc</li>
+<li>证据类型：工程证据（repo 文档 + 配置 + source audit + robustness report）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这不是“又一个 funding 预测模型项目”，而是一条可以直接说清楚的相对价值 raw alpha——当 <code>funding_rate_bps</code> 足够高、<code>spread_zscore_72h</code> 也够高时，说明 perp 不只是“收租高”，而且相对 spot 还处在偏贵状态，此时做 <code>short perp + long spot</code>，赚的是 funding + basis 回归的组合。</strong></p>
+<p>这轮主看的是 2026 GitHub repo <code>MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</code> 里更接近“可执行 baseline”的部分，而不是继续盯着深度学习 headline：</p>
+<ul>
+<li><code>configs/models/baseline.yaml</code></li>
+<li><code>src/funding_arb/models/baselines.py</code></li>
+<li><code>docs/labels.md</code></li>
+<li><code>docs/backtest.md</code></li>
+<li><code>reports/robustness/binance/btcusdt/1h/report.md</code></li>
+<li><code>reports/data_quality/binance/btcusdt/1h/report.md</code></li>
+</ul>
+<p>repo 默认数据口径是 <strong>Binance / BTCUSDT / 1h</strong>。数据质量报告给出的底层环境也很重要：</p>
+<ul>
+<li>样本 <code>46152</code> 条，覆盖 <code>2021-01-01 ~ 2026-04-07</code></li>
+<li>funding 事件 <code>3092</code> 次</li>
+<li><code>funding_rate_bps</code> 均值 <code>0.06966</code>，极值 <code>-11.1953 ~ 24.8993</code></li>
+<li>正 funding 占比 <code>0.878719</code></li>
+<li><code>spread_bps</code> 均值 <code>-1.534091</code></li>
+<li><code>funding_rate_bps</code> 与 <code>spread_bps</code> 相关性只有 <code>0.1697</code></li>
+</ul>
+<p>这组统计本身就在提醒：<strong>正 funding 很常见，但“高 funding”不等于“perp 仍然足够贵”，所以 funding carry 单腿筛选不够，必须叠 basis / spread 条件。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 真正值得 desk intake 的，不是 “DL 能不能赢”，而是它把一条可解释的规则型 baseline 写得很完整：<code>positive funding + rich perp spread</code> 共振时，做 <code>short perp + long spot</code> 的 delta-neutral stat-arb。</li>
+<li><strong>一句话证明方式：</strong> 我直接看了 baseline config、规则实现、label 定义、backtest 规则和 robustness 报告，发现 repo 最清楚、最可迁移的其实就是 <code>combined_funding_spread</code> 这条规则基线。</li>
+</ul>
+<h3>2.1 规则基线到底怎么写的</h3>
+<p><code>configs/models/baseline.yaml</code> 里有三条核心规则：</p>
+<ol>
+<li><code>funding_threshold_2bps</code></li>
+<li><code>spread_zscore_1p5</code></li>
+<li><code>combined_funding_spread</code></li>
+</ol>
+<p>其中最值得拿来做 desk baseline 的是第三条。源码 <code>src/funding_arb/models/baselines.py</code> 里实现得很直白：</p>
+<ul>
+<li><code>funding_margin = funding_rate_bps - funding_threshold_bps</code></li>
+<li><code>spread_margin = spread_zscore_72h - spread_threshold</code></li>
+<li><code>decision_score = funding_margin + spread_margin</code></li>
+<li><code>signal_threshold = 0.0</code></li>
+<li>真正开仓条件不是“和大于 0 就行”，而是 <strong><code>funding_margin &gt;= 0</code> 且 <code>spread_margin &gt;= 0</code></strong></li>
+<li>若设置 <code>regime_column</code>，还要再叠加 <code>positive_funding_regime == 1</code></li>
+</ul>
+<p>默认参数也已经给出来：</p>
+<ul>
+<li><code>funding_threshold_bps: 1.0</code></li>
+<li><code>spread_threshold: 1.5</code></li>
+<li><code>regime_column: positive_funding_regime</code></li>
+<li>rule search 允许在 funding 阈值 <code>[0.5, 1.0, 1.5, 2.0]</code>、spread 阈值 <code>[1.0, 1.25, 1.5, 1.75]</code> 上做验证集搜索</li>
+</ul>
+<p>这意味着 repo 并不是在说“黑箱模型才能抓到 funding alpha”，恰恰相反：<strong>它先把 base alpha 用最朴素的规则写清楚，再让 ML / DL 去判断哪些样本更值得做。</strong></p>
+<h3>2.2 这条 alpha 的完整策略骨架是齐的</h3>
+<p>这也是这轮比纯文献摘要更有用的地方。repo 里 entry / exit / cost / sizing 都有明确实现：</p>
+<ul>
+<li>默认方向：<code>short_perp_long_spot</code></li>
+<li>固定每腿 notional：<code>position_notional_usd</code></li>
+<li>信号在 <code>t</code> 观察，默认在 <code>t+1</code> 的 <code>open</code> 执行（<code>entry_delay_bars</code>）</li>
+<li>exit 支持：<code>signal_off</code>、<code>holding_window</code>、<code>maximum_holding</code>、<code>stop_loss_bps</code>、<code>take_profit_bps</code></li>
+<li>标签不是裸价格涨跌，而是未来 holding window 的 <strong>post-cost net return</strong></li>
+<li>成本显式建模：四腿 taker fee + slippage，再加 gas / borrow 等摩擦</li>
+</ul>
+<p>所以这条线不是“指标片段”，而是一个可直接迁成 desk 最小实验的完整 skeleton。</p>
+<h3>2.3 但公开结果并不强，别把 zero-trade winner 当 alpha</h3>
+<p>repo 的诚实之处也在这里：<strong>当前公开 <code>BTCUSDT 1h</code> 结果更像可复现 research intake，不像现成 production alpha。</strong></p>
+<p>robustness report 里，<code>test</code> split 的 family comparison 有个很典型的误读风险：</p>
+<ul>
+<li><code>combined_funding_spread</code>：<code>7</code> 笔交易，<code>cumulative_return = -0.002328</code>，平均每笔约 <code>-33.26 bps</code></li>
+<li><code>logistic_regression</code>：<code>3</code> 笔交易，<code>cumulative_return = -0.00105</code></li>
+<li><code>Deep Learning / lstm</code>：<code>0</code> 笔交易，但表头里却显示 <code>Best family under the base test-period configuration: Deep Learning</code></li>
+</ul>
+<p>这就是典型 <strong>zero-trade winner / threshold issue</strong>：</p>
+<ul>
+<li>按累计收益排序，<code>0</code> 交易会看起来“最好”</li>
+<li>但从 alpha 角度看，这不代表模型更强，只代表它几乎没给出可执行信号</li>
+</ul>
+<p>所以这轮更合理的结论不是“DL &gt; Rules”，而是：</p>
+<ol>
+<li><strong>base alpha 可以明确表达</strong>；</li>
+<li><strong>规则 baseline 已足够构成最小可复现实验</strong>；</li>
+<li><strong>当前公开样本很 sparse，而且 BTCUSDT 1h 下并未跑出强结果。</strong></li>
+</ol>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和当前 desk 直接相关，原因有三层：</p>
+<ol>
+<li><strong>它是 raw alpha，不是泛 filter。</strong></li>
+<p>base alpha 非常明确：<code>short rich perp + long spot</code>，赚 funding + basis convergence。</p>
+</ol>
+<ol>
+<li><strong>它能直接映射到 short-cycle 研发，但不能假装成逐 bar directional signal。</strong></li>
+<p>真正自然的映射方式是：</p>
+</ol>
+<ul>
+<li><code>15m</code>：做主信号 / admission 层</li>
+<li><code>5m / 3m / 1m</code>：做子执行、排队、入场优化</li>
+<p>而不是把 funding 这种低频经济机制硬扭成 <code>1m</code> K 线方向预测。</p>
+</ul>
+<ol>
+<li><strong>它补的是“规则型 baseline + 完整回测骨架”，不是再重复写一次 ML admission。</strong></li>
+<p>对 desk 来说，先把最可解释的 baseline 跑通，比上来就讨论 LSTM 更值钱。</p>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative-value / carry / delta-neutral</li>
+<li>基础 alpha：<code>positive funding + positive spread dislocation</code> 共振时，<code>short perp + long spot</code> 更可能在未来持有窗兑现 <code>funding carry + basis convergence</code></li>
+<li>regime：<code>positive_funding_regime == 1</code></li>
+<li>filter / veto：<code>funding_rate_bps</code> 必须过阈值、<code>spread_zscore_72h</code> 必须过阈值；若用 repo 完整框架，还可叠 <code>min_expected_return_bps</code> / <code>confidence</code> / <code>shock</code> 过滤</li>
+<li>risk / sizing / execution overlay：next-bar open 执行；单策略同时最多一笔；固定每腿 notional；可用 <code>holding_window / maximum_holding / stop_loss_bps / take_profit_bps</code> 收口</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 先做哪一版</h3>
+<p>最值得先做的是 <strong><code>15m</code> 主信号 + <code>5m</code> 子执行</strong>，不是先做 <code>1m</code> 方向预测。</p>
+<p>原因很简单：</p>
+<ul>
+<li>funding / basis 机制本身不是 <code>1m</code>-native alpha</li>
+<li>但它完全可以作为 <code>15m</code> 级别的 raw alpha / admission shell</li>
+<li>然后用更细颗粒度去优化 entry legging 与成本</li>
+</ul>
+<h3>4.2 最小实验口径</h3>
+<ul>
+<li>交易对：Binance <code>BTCUSDT</code> perp + <code>BTCUSDT</code> spot</li>
+<li>主频率：<code>15m</code></li>
+<li>执行子频率：<code>5m</code>（若有能力再下钻 <code>3m/1m</code>）</li>
+<li>主信号定义：</li>
+<li><code>funding_rate_bps &gt;= 1.0</code></li>
+<li><code>spread_zscore_72h &gt;= 1.5</code></li>
+<li><code>positive_funding_regime == 1</code></li>
+<li>时间映射：</li>
+<li><code>72h</code> z-score 在 <code>15m</code> 上对应 <code>288</code> 根 bar</li>
+<li><code>24h</code> hold 在 <code>15m</code> 上对应 <code>96</code> 根 bar</li>
+<li>开仓：信号在 bar close 确认后，下一根 <code>15m</code> 或下一组 <code>5m</code> 子 bar 分批执行</li>
+<li>平仓：先测三种——<code>signal_off</code>、固定 <code>24h</code>、<code>8h funding boundary 后退出</code></li>
+</ul>
+<h3>4.3 一定要做的对照组</h3>
+<p>至少要同时跑这三组：</p>
+<ol>
+<li><code>funding-only</code></li>
+<li><code>spread-only</code></li>
+<li><code>combined_funding_spread</code></li>
+</ol>
+<p>因为这轮最关键的问题不是“模型谁更强”，而是：<strong>到底是 funding 单独有用，还是一定要 funding 与 basis 共振才有 edge。</strong></p>
+<h3>4.4 先看哪些指标</h3>
+<p>先不要被 Sharpe 带跑，优先看：</p>
+<ul>
+<li><code>net bps / trade</code></li>
+<li><code>trade count</code></li>
+<li><code>funding contribution</code> vs <code>basis convergence contribution</code></li>
+<li><code>cost ladder</code>（<code>1 / 2 / 4 / 6 bps</code>）</li>
+<li><code>8h funding boundary</code> 前后分层表现</li>
+</ul>
+<h3>4.5 下一步怎么测</h3>
+<ul>
+<li><strong>第一步：</strong> 先在 <code>15m</code> 上复写 repo 规则 baseline，不加任何 ML。</li>
+<li><strong>第二步：</strong> 把 exit 从“固定 24h”拆成 <code>signal_off</code>、<code>max_hold</code>、<code>post-funding exit</code> 三套，找哪种更接近真实 carry/basis 兑现节奏。</li>
+<li><strong>第三步：</strong> 若 <code>15m</code> 有毛边，再只把 <code>5m/3m/1m</code> 用作 execution child layer：例如限制在 spread 回落一点、或 funding boundary 前后固定窗口入场，别把更快频率误当成新的主 alpha。</li>
+<li><strong>第四步：</strong> 如果 BTC 仍然交易稀疏，再扩到 <code>ETHUSDT</code>、<code>SOLUSDT</code>，但前提是 spot/perp 数据同样公开可拿、成本口径能统一。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li><strong>当前公开结果偏弱。</strong> 这条线现在更像“可复现 skeleton”，不是已经跑通的 desk alpha。</li>
+<li><strong>BTCUSDT 单资产太稀疏。</strong> repo 的公开 baseline 在 test split 里交易笔数非常少，说明信号覆盖率不是小问题，而是主问题。</li>
+<li><strong>容易被 zero-trade 配置误导。</strong> 任何 robustness / family comparison，只要出现 <code>0</code> trade winner，都不能直接当策略结论。</li>
+<li><strong>低频经济机制别伪装成高频方向。</strong> 若后续下钻到 <code>1m/3m</code>，最合理的定位是 execution / scheduler，不是把 funding 机制硬解释成逐 bar directional predictor。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>MengerWen. (2026). *Deep Learning-Based Delta-Neutral Statistical Arbitrage on Perpetual Funding Rates*. GitHub Repo.</li>
+<p>Repo URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</a></code></p>
+<li>MengerWen. (2026). *configs/models/baseline.yaml*.</li>
+<p>Readable URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/blob/main/configs/models/baseline.yaml">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/blob/main/configs/models/baseline.yaml</a></code></p>
+<li>MengerWen. (2026). *src/funding_arb/models/baselines.py*.</li>
+<p>Readable URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/blob/main/src/funding_arb/models/baselines.py">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/blob/main/src/funding_arb/models/baselines.py</a></code></p>
+<li>MengerWen. (2026). *docs/labels.md*.</li>
+<p>Readable URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/blob/main/docs/labels.md">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/blob/main/docs/labels.md</a></code></p>
+<li>MengerWen. (2026). *docs/backtest.md*.</li>
+<p>Readable URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/blob/main/docs/backtest.md">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/blob/main/docs/backtest.md</a></code></p>
+<li>MengerWen. (2026). *reports/robustness/binance/btcusdt/1h/report.md*.</li>
+<p>Readable URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/blob/main/reports/robustness/binance/btcusdt/1h/report.md">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/blob/main/reports/robustness/binance/btcusdt/1h/report.md</a></code></p>
+<li>MengerWen. (2026). *reports/data_quality/binance/btcusdt/1h/report.md*.</li>
+<p>Readable URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/blob/main/reports/data_quality/binance/btcusdt/1h/report.md">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates/blob/main/reports/data_quality/binance/btcusdt/1h/report.md</a></code></p>
+</ul>
+<h2>7. 本地产物</h2>
+<ul>
+<li>Digest：<code>research/quant_digests/2026-04-15_0058_positivefunding-spreadzscore-deltaneutral-baseline.md</code></li>
+</ul>
+</body>
+</html>

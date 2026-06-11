@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2021 IRFA 论文只读成“TSMOM 风险备注”：对 crypto short-cycle desk，更该先测的是「tail-state partial-moment router × intraday TSMOM」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2021 IRFA 论文只读成“TSMOM 风险备注”：对 crypto short-cycle desk，更该先测的是「tail-state partial-moment router × intraday TSMOM」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-10 00:15 UTC</span>
+      <span class="pill">研究时间：2026-04-10 00:10 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：trend / momentum / time-series-momentum / tail-risk / partial-moment / regime-router / 15m / 5m</span>
+      <span class="pill">证据类型：论文证据 + Binance USDⓈ-M 公共数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-10_0010_tailstate-partialmoment-tsmom-router-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-10 00:10 UTC</li>
+<li>类型：论文</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>lookback sign TSMOM</code>（过去一段收益的方向会延续）；<code>UPM/LPM</code> 只负责把 continuation 和 reversal 拆开</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：trend / momentum / time-series-momentum / tail-risk / partial-moment / regime-router / 15m / 5m</li>
+<li>证据类型：论文证据 + Binance USDⓈ-M 公共数据 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>我读的是 <strong>Zhenya Liu, Shanglin Lu, Shixuan Wang (2021), _Asymmetry, tail risk and time series momentum_, International Review of Financial Analysis</strong>。不是把它读成“TSMOM 也有尾部风险”这种泛结论，而是把它读成：<strong>同样是顺势信号，近期上涨尾巴和下跌尾巴的形状，能提示这笔趋势单更像该继续跟，还是该先别跟、甚至反手。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 base alpha 很清楚：<strong>时间序列动量</strong>。先用过去 <code>J</code> 天累计收益的正负给方向，再用 <code>UPM/LPM</code>（上行/下行 partial moment）判断当前 trend 更像 continuation 还是即将 reversal。</li>
+<li>论文不是纯机制文，而是给了<strong>可复现的 rule-based router</strong>：以 <code>30d</code> TSMOM 为母信号，再看 <code>5d UPM/LPM</code> 落在历史联合分布 <code>(80%, 80%)</code> 量化阈值划出的 4 个区域，做 <code>go momentum / close out / flip</code>。</li>
+<li>文中原始 TSM 在全样本（2008-2019，中国 <code>31</code> 个商品期货）里，<code>20d</code> lookback 约有 <strong><code>25.16%</code> annual return / <code>1.29</code> Sharpe / <code>-8.90%</code> max drawdown</strong>；说明 base alpha 先成立，再谈 tail router。</li>
+<li>更值钱的是后半段：在 <code>2013-2019</code> 子样本，作者说 <strong>MTSM-S2 相比原始 TSM 平均把 Sharpe 提高约 <code>20%</code></strong>；以 <code>30d</code> lookback 为例，约从 <strong><code>1.04 -&gt; 1.25</code></strong>，最大回撤约从 <strong><code>-18.73% -&gt; -11.13%</code></strong>。</li>
+<li>COVID crash 段也不是只会防守：<code>30d</code> lookback 下，文中 <code>MTSM-S2</code> 约 <strong><code>28.61%</code> annual return / <code>1.79</code> Sharpe / <code>-4.81%</code> max drawdown</strong>，而原始 TSM 约 <strong><code>24.49%</code> / <code>1.39</code> / <code>-8.51%</code></strong>。</li>
+<li>我做的 crypto portability probe 不是全文 faithful replication，只是快检这条思想能不能压到 <code>15m/5m</code>：在 Binance USDⓈ-M <code>BTC/ETH/SOL/XRP/ADA/DOGE/LINK/AVAX</code>、<code>2026-02-01 ~ 2026-04-10</code> 上，若先用 <strong><code>24h</code> 收益方向</strong>做 baseline TSM，再看近 <strong><code>6h</code> UPM/LPM</strong> 是否与趋势同向，则：</li>
+<li><code>15m</code> baseline next-bar signed return 约 <strong><code>-0.12 bps/bar</code></strong>；</li>
+<li>若只保留 <strong>tail 与趋势同向</strong> 桶，约 <strong><code>+0.07 bps/bar</code></strong>；</li>
+<li><strong>tail 与趋势冲突</strong> 桶约 <strong><code>-0.43 bps/bar</code></strong>；</li>
+<li>若做一个最粗糙的 <code>flip-on-conflict</code> router，<code>15m</code> 约可到 <strong><code>+0.20 bps/bar</code></strong>。</li>
+<li><code>5m</code> 上同样方向也成立，但更弱：baseline 约 <strong><code>+0.03 bps</code></strong>，粗糙 <code>flip</code> router 约 <strong><code>+0.10 bps</code></strong>。高置信结论是：<strong>这条线更像 15m 先验证、5m 再压缩。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇对 desk 的价值，不是又补一篇“趋势有效”的论文，而是把一个很实用的问题写清楚了： <strong>为什么同样是顺势信号，有时该跟，有时却会马上挨一刀？</strong></p>
+<p>对当前 <code>momentum</code> 主线，它更像：</p>
+<ul>
+<li>一个可独立复现的 <strong>trend raw alpha</strong>（TSMOM）</li>
+<li>再加一个能服务 trend sleeve 的 <strong>tail-state router / veto / flip layer</strong></li>
+</ul>
+<p>它特别适合接到我们已有的 <code>turning-point</code>、<code>anchor-open displacement</code>、<code>breakout</code>、<code>shock router</code> 这些 raw alpha 外面，做一个 shared gate： <strong>最近几小时的上/下行尾部风险，究竟是在给趋势加油，还是在提示“这段趋势已经变脏了”。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势为主；冲突 tail state 下允许 flat / 反手</li>
+<li>基础 alpha：过去一段收益方向会在下一小段时间继续（TSMOM）</li>
+<li>regime：<code>UPM/LPM</code> 联合状态；可用滚动 <code>(80%,80%)</code> 历史分位划四象限</li>
+<li>filter / veto：正趋势但 <code>LPM</code> 尾部主导时，不要机械继续做多；负趋势但 <code>UPM</code> 尾部主导时，不要机械继续做空</li>
+<li>risk / sizing / execution overlay：先用 <code>bar-close -&gt; next-bar</code> 测 direction router；过第一关后再补成本、holding horizon、vol-target、maker/taker 分层</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设</strong>：<code>15m</code> 上的原始 TSM baseline 很容易把“快要反转的坏趋势”也一并吃进去；若用近 <code>6h</code> 的 <code>UPM/LPM</code> 把 tail-state 分桶，可提升短持有窗的 post-cost expectancy。</p>
+<p><strong>一个可计算定义</strong>：</p>
+<ul>
+<li><code>trend_t = sign(log(close_t / close_{t-96}))</code>  （<code>15m</code> 的 <code>24h</code> trend sign）</li>
+<li><code>UPM_t = sum(max(ret, 0)^2, last 24 bars)</code></li>
+<li><code>LPM_t = sum(max(-ret, 0)^2, last 24 bars)</code></li>
+<li>快速版 router：</li>
+<li>若 <code>trend_t &gt; 0</code> 且 <code>UPM_t &gt; LPM_t</code>，保留 long；若 <code>LPM_t &gt; UPM_t</code>，先 flat 或 flip</li>
+<li>若 <code>trend_t &lt; 0</code> 且 <code>LPM_t &gt; UPM_t</code>，保留 short；若 <code>UPM_t &gt; LPM_t</code>，先 flat 或 flip</li>
+</ul>
+<p><strong>最小回测切口</strong>：</p>
+<ul>
+<li>资产：Binance / OKX top-liquid perps，先 <code>BTC/ETH/SOL/XRP/ADA/DOGE/LINK/AVAX</code></li>
+<li>周期：先 <code>15m</code>，持有 <code>1</code> 根与 <code>4</code> 根；再压到 <code>5m</code></li>
+<li>样本：近 <code>90~180d</code></li>
+<li>对照：<code>base TSM</code> vs <code>align-only veto</code> vs <code>flip-on-conflict</code></li>
+</ul>
+<p><strong>最该先看哪 1~2 个指标</strong>：</p>
+<ol>
+<li><code>post-cost expectancy / trade or / bar</code></li>
+<li><code>conflict bucket</code> 是否稳定显著更差（这是 router 值不值钱的关键）</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文样本是<strong>中国商品期货日频</strong>，不是 crypto perp；我这里只做了思想 portability，不是声称 paper 结果可直接平移。</li>
+<li>论文里明确说<strong>没有处理交易成本</strong>；对 <code>5m/15m</code> crypto 来说，这恰好是生死线，所以不能只看方向正确率。</li>
+<li>我本地 probe 只做了简化版 <code>UPM/LPM alignment</code>，<strong>没有完整复刻论文的四象限 + S1/S2 规则</strong>；下一步若要正式 admission，应该把 <code>(80%,80%)</code> joint-quantile quadrant faithfully 搬到 perp 数据上。</li>
+<li>当前 <code>15m</code> 结果优于 <code>5m</code>，说明这条线更像 <strong>short-horizon router</strong>，不是越快越好。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Zhenya Liu, Shanglin Lu, Shixuan Wang. (2021). *Asymmetry, tail risk and time series momentum*. *International Review of Financial Analysis*.</li>
+<li>DOI: <code>10.1016/j.irfa.2021.101938</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.irfa.2021.101938">https://doi.org/10.1016/j.irfa.2021.101938</a></code></li>
+<li>Accepted PDF: <code><a href="https://centaur.reading.ac.uk/100824/1/FINANA-D-21-00329-R1.pdf">https://centaur.reading.ac.uk/100824/1/FINANA-D-21-00329-R1.pdf</a></code></li>
+</ul>
+<h2>7. 一句话带走</h2>
+<p><strong>这篇最值钱的不是“TSMOM 也有尾部风险”，而是：近期上/下行 tail shape 本身就能把“该继续跟的趋势”和“更像快反转的假趋势”拆开。</strong></p>
+</body>
+</html>

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Hyperliquid TSMOM repo 只当传统 trend bot：更值得先测的是「多窗口 TSMOM × funding 惩罚 × edge gate」完整 raw alpha，但必须先修 universe/OI 口径</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Hyperliquid TSMOM repo 只当传统 trend bot：更值得先测的是「多窗口 TSMOM × funding 惩罚 × edge gate」完整 raw alpha，但必须先修 universe/OI 口径</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-28 08:49 UTC</span>
+      <span class="pill">研究时间：2026-03-28 08:50 UTC</span>
+      <span class="pill">类型：2025 GitHub 仓库 + 源码审阅 + Hyperliquid 公共 API live snapshot</span>
+      <span class="pill">主题标签：trend / momentum / time-series / perpetual / hyperliquid / funding / inverse-vol / vol-target / execution / cost</span>
+      <span class="pill">证据类型：工程经验 + 仓库代码证据 + 公共数据快照</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-28_0850_hyperliquid-fundingaware-tsmom-universe-audit.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-28 08:50 UTC</li>
+<li>类型：2025 GitHub 仓库 + 源码审阅 + Hyperliquid 公共 API live snapshot</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：多窗口 time-series momentum（每个币看最近多段收益 z-score，正则做多、负则做空）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：trend / momentum / time-series / perpetual / hyperliquid / funding / inverse-vol / vol-target / execution / cost</li>
+<li>证据类型：工程经验 + 仓库代码证据 + 公共数据快照</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 Gajesh2007 的 GitHub 仓库 <code>momentum-trading</code>（创建 2025-10-03，最近 push 2025-10-14，9 stars），以及其 <code>signals/engine.py</code>、<code>risk/engine.py</code>、<code>data/loader.py</code>、<code>config/*.yaml</code>。这不是单纯“追涨 bot”，而是一个已经把 <code>signal / funding / sizing / liquidity cap / cost gate / execution</code> 串起来的 perp TSMOM 骨架。</p>
+<p>Repo URL: <a href="https://github.com/Gajesh2007/momentum-trading">https://github.com/Gajesh2007/momentum-trading</a></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 base alpha 很清楚：<code>s_raw = mean(zscore(多窗口收益))</code>，然后按符号做多/做空，是标准但可落地的 raw alpha，不是纯 filter。</li>
+<li>仓库最值钱的不是“再证明趋势有效”，而是把 short desk 真正关心的几层都接上了：方向性 funding 惩罚、<code>w ~ s_adj / sigma</code>、组合年化波动目标 15%、单币上限 5%、<code>edge &gt;= 2.5x~3x friction</code>、ATR 止损、ALO/TWAP/Market 三套执行。</li>
+<li>repo 自带两个可直接迁移的快实验模板：<code>1h</code> 版用 <code>[6,24,72]</code> 小时 lookback；<code>4h</code> 版想做更慢的 swing。但对我们 desk，更应该先把它 desk 化成 <code>15m</code> 的多窗口 TSMOM，再测 funding penalty 是否真能在成本后留下净边。</li>
+<li>代码里有两个必须先修的口径问题。第一，<code>get_universe()</code> 直接拿 <code>openInterest &gt;= 5,000,000</code> 过滤，但 Hyperliquid 的 <code>openInterest</code> 是币本位数量，不是 USD；我用公共 API 现场快照看到：按 repo 原写法只剩 6 个币过阈值，而把 <code>OI</code> 先乘 <code>midPx</code> 转成 USD 后会变成 12 个，并把 BTC / ETH / SOL 拉回 universe。第二，<code>4h_swing.yaml</code> 里 <code>lookbacks: [24,96,240]</code> 的注释写成 <code>24h/4d/10d</code>，但代码按“bar 数”解释，实际对应的是 <code>4d/16d/40d</code>；不修这个，复现实验会以为自己在测 4h alpha，其实测得更慢。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>它和 <code>momentum</code> 当前阶段非常贴：不是继续围绕 breakout 形态内循环，而是补一条能直接进素材池的完整 raw alpha。更重要的是，它把 <code>raw alpha / funding overlay / risk sizing / execution cost</code> 的边界拆得很清楚，适合作为后续把趋势、carry、执行层分开评估的母版。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势</li>
+<li>基础 alpha：多窗口收益 z-score 的 time-series momentum</li>
+<li>regime：高流动性 perp universe；优先在 funding 不极端、交易成本可控时启用</li>
+<li>filter / veto：方向性 funding penalty；<code>edge &gt;= 2.5x~3x friction</code>；流动性/OI 过滤</li>
+<li>risk / sizing / execution overlay：inverse-vol sizing、组合 vol target、单币 cap、ATR stop、maker-first ALO、超大单 TWAP、kill switch</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：在 <code>15m</code> perp 上，<code>多窗口 TSMOM + directional funding penalty + edge gate</code> 会比裸 <code>TSMOM</code> 有更好的成本后收益/换手比。</li>
+<li>数据：Hyperliquid 或 Binance 永续 <code>15m</code> K 线 + 小时 funding（公开 API 可拿）；universe 先用 <code>dayNtlVlm &gt;= 10M</code> 且 <code>OI_USD &gt;= 5M</code>，不要直接复用 repo 的原始 OI 过滤。</li>
+<li>信号：先做 faithful transfer：把 repo <code>1h</code> 的 <code>[6,24,72]</code> 小时 lookback 改成 <code>15m</code> 的 <code>[24,96,288]</code> bars；<code>s_raw</code> 为三段收益 rolling z-score 平均，<code>s_adj</code> 再扣同方向 funding。</li>
+<li>交易：每 15 分钟收盘后再平衡；<code>w_raw = s_adj / sigma</code>，再做 vol target；若 <code>edge &lt; 2.5 x (fee + slippage)</code> 则跳过；sign flip 或 ATR(14)*2 止损出场。</li>
+<li>对照组至少做 4 个：<code>裸 TSMOM</code> / <code>+ funding penalty</code> / <code>+ edge gate</code> / <code>+ universe 修正</code>。先看 <code>post-cost return、turnover、positive-asset ratio、max drawdown</code>，不要先卷参数。</li>
+</ul>
+<h2>5. 风险与提醒</h2>
+<ul>
+<li>这个 repo 目前更像“完整骨架”而不是已验证 alpha；没有公开、可信的长期实盘绩效。</li>
+<li>funding 用的是 predicted funding，实盘要区分“预测值”和“真正收付值”。</li>
+<li>Hyperliquid 当前按 repo 默认阈值 universe 太窄，若直接照搬，最后可能只是在几只 meme/perp 上做集中押注。</li>
+<li>若落到 <code>5m/15m</code>，maker 占比和滑点模型会比 repo README 里写得更关键。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Gajesh (2025), Momentum Trading Strategy w/ HyperLiquid on EigenCompute, GitHub repo: <a href="https://github.com/Gajesh2007/momentum-trading">https://github.com/Gajesh2007/momentum-trading</a></li>
+<li>仓库关键文件：<code>momentum_trading/signals/engine.py</code>、<code>momentum_trading/risk/engine.py</code>、<code>momentum_trading/data/loader.py</code>、<code>config/test_fast.yaml</code>、<code>config/4h_swing.yaml</code></li>
+<li>Moskowitz, Ooi, Pedersen (2012), Time Series Momentum, Journal of Financial Economics, DOI: <a href="https://doi.org/10.1016/j.jfineco.2011.11.003">https://doi.org/10.1016/j.jfineco.2011.11.003</a> , Readable URL: <a href="https://docs.lhpedersen.com/TimeSeriesMomentum.pdf">https://docs.lhpedersen.com/TimeSeriesMomentum.pdf</a></li>
+<li>Park et al. (2025), Designing funding rates for perpetual futures in cryptocurrency markets, arXiv, DOI: <a href="https://doi.org/10.48550/arXiv.2506.08573">https://doi.org/10.48550/arXiv.2506.08573</a> , Readable URL: <a href="https://arxiv.org/abs/2506.08573">https://arxiv.org/abs/2506.08573</a></li>
+</ul>
+</body>
+</html>

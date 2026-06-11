@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 squeeze 直接升级成短周期 alpha：这份 2026 新仓库里更该先诚实快检的是「bottom-quartile BB compression breakout」raw alpha 候选</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 squeeze 直接升级成短周期 alpha：这份 2026 新仓库里更该先诚实快检的是「bottom-quartile BB compression breakout」raw alpha 候选</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-30 12:16 UTC</span>
+      <span class="pill">研究时间：2026-03-30 12:12 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + `bb_compression.py` / `main.py` / `risk.py` source audit + Binance USDⓈ-M Perpetual 公共 `15m` 最小快检</span>
+      <span class="pill">主题标签：raw-alpha/breakout/compression/bollinger-band/squeeze/vol-expansion/continuation/liquid-perps/hyperliquid/binance/15m/5m/3m/1m/repo/public-data/cost</span>
+      <span class="pill">证据类型：仓库源码 + 公开交易所数据最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-30_1212_bb-compression-bottomquartile-breakout-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-30 12:12 UTC</li>
+<li>类型：2026 GitHub 新仓库 + <code>bb_compression.py</code> / <code>main.py</code> / <code>risk.py</code> source audit + Binance USDⓈ-M Perpetual 公共 <code>15m</code> 最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：15m 液态 perp 在最近 <code>50</code> 根里属于最窄 <code>25%</code> 的 Bollinger 压缩后，若价格向 band 外突破，后面一段应继续沿突破方向扩张</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha/breakout/compression/bollinger-band/squeeze/vol-expansion/continuation/liquid-perps/hyperliquid/binance/15m/5m/3m/1m/repo/public-data/cost</li>
+<li>证据类型：仓库源码 + 公开交易所数据最小快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这是 raw alpha，不是 filter。alpha body 就是“低波压缩后向 band 外突破，赌扩张延续”，而不是先有别的主信号再拿 squeeze 当确认。</strong></p>
+<p>本轮主看 <strong>OlieSmith (2026) 的 <code>HyperLiquidBot</code></strong>，但我没有把整仓库按“多策略投票 bot”去读；更适合我们 desk 的，是把里面能独立成立的一条腿单独拎出来：<code>strategies/bb_compression.py</code>。</p>
+<p>源码把这条腿写得很直白：</p>
+<ul>
+<li>周期：<code>15m</code></li>
+<li>宽度定义：<code>BB(20,2)</code> 的标准化 band width</li>
+<li>压缩定义：当前 width 位于最近 <code>50</code> 根里的 <strong>bottom 25%</strong></li>
+<li>入场：<code>close &gt; upper BB</code> 做多，<code>close &lt; lower BB</code> 做空</li>
+<li>评分：<code>compression_score * 0.7 + breakout_pct * 0.3</code></li>
+</ul>
+<p>仓库主循环还额外给了完整落地壳：</p>
+<ul>
+<li>universe：<code>24h volume &gt; $1m</code> 的 Hyperliquid liquid perps</li>
+<li>veto：只允许顺 <code>200-bar SMA</code> 方向开仓</li>
+<li>sizing：按 conviction 做 <code>2% / 5% / 10%</code> 仓位</li>
+<li>risk：<code>ATR(14) * 3</code> trailing stop，并夹在 <code>1%~8%</code></li>
+<li>cooldown：平仓后 <code>30min</code></li>
+</ul>
+<p>所以它不是“又一个 squeeze 观察器”，而是一个<strong>可独立复现的 15m breakout alpha 候选</strong>。但候选不等于晋级——我额外做了一个公开数据最小快检。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话结论：</strong> 这条 <code>bottom-quartile BB compression breakout</code> 的 alpha body 很清楚，但在我这次公开 Binance perpetual <code>15m</code> proxy 上，<strong>还不够好到直接升格成 desk 的 standalone raw alpha</strong>。</li>
+<li><strong>一句话它怎么证明：</strong> 我按 repo 的核心规则做了一个诚实快检：<code>next-bar open</code> 入场、<code>ATR*3</code> trailing stop、<code>3bps/side</code> 成本、<code>200-SMA</code> 方向过滤、<code>30min</code> cooldown，先在 <code>BTC/ETH/SOL</code> 三个公开可取的 majors 上看 120 天结果。</li>
+</ul>
+<p>关键数据点（Binance USDⓈ-M Perpetual，近 <code>120d</code>，<code>15m</code>，独立最小 proxy）：</p>
+<ol>
+<li><strong>BTC：<code>100</code> 笔，胜率 <code>39.0%</code>，总收益 <code>-4.8%</code>，平均持仓 <code>29.0</code> 根 15m bar。</strong></li>
+<li><strong>ETH：<code>98</code> 笔，胜率 <code>34.7%</code>，总收益 <code>-14.2%</code>，平均持仓 <code>15.8</code> 根 bar。</strong></li>
+<li><strong>SOL：<code>106</code> 笔，胜率 <code>25.5%</code>，总收益 <code>-33.8%</code>；去掉 <code>200-SMA</code> 过滤后更差，BTC 会从 <code>-4.8%</code> 恶化到 <code>-16.2%</code>。</strong></li>
+</ol>
+<p>这几个数说明三件事：</p>
+<ul>
+<li><strong>压缩突破本体是 clear raw alpha 假说</strong>，不是概念不清；</li>
+<li>但它在公开 proxy 上<strong>没有自动变成可上线的 standalone breakout 策略</strong>；</li>
+<li><code>200-SMA</code> 方向过滤 <strong>有帮助，但只是在止血，不是在把负 alpha 变正</strong>。</li>
+</ul>
+<p>当前更诚实的 verdict：<strong><code>admit_to_research_pool / do not promote as standalone yet</code></strong>。</p>
+<h2>3. 为什么和当前 desk 直接相关</h2>
+<p>这轮仍然值得写，原因不是“又学了个 squeeze 指标”，而是它补了一个我们当前 raw alpha 池里还没单独冻结下来的命题：</p>
+<ul>
+<li><strong>它是原生 breakout / expansion alpha</strong>，和最近 intake 的 mean reversion / pairs / options parity 不是同一类；</li>
+<li><strong>repo 是 2026 新源</strong>，且把 entry / sizing / trailing stop / cooldown 一次写全，迁移到 desk 非常便宜；</li>
+<li><strong>最关键的是它被快检打回来了</strong>：这会帮我们避免把“压缩 + band breakout”误升成主线 alpha，而更可能把它降级成 breakout 家族的 participation gate 或 vote leg。</li>
+</ul>
+<p>也就是说，这篇笔记不是在吹它，而是在帮素材池更快完成 <strong>“可复现 ≠ 可晋级”</strong> 的筛选。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：突破 / 波动扩张 continuation</li>
+<li>基础 alpha：低波压缩结束后的方向性扩张</li>
+<li>regime：最近 <code>50</code> 根里处于低 width 分位时最相关</li>
+<li>filter / veto：仓库主循环里的 <code>200-bar SMA</code> 是方向过滤，不是 alpha 本体</li>
+<li>risk / sizing / execution overlay：<code>ATR*3</code> trailing stop、<code>1%~8%</code> 止损带、<code>2/5/10%</code> conviction sizing、<code>30min</code> cooldown、<code>max_positions=10</code></li>
+</ul>
+<h2>4. 与 <code>1m/3m/5m/15m</code> 的关系（实话版）</h2>
+<ul>
+<li><strong>15m：原生周期。</strong> 这条线现在最适合先留在 <code>15m</code> 做真假判定。</li>
+<li><strong>5m：可迁移，但不要直接照抄 <code>20/50</code>。</strong> 更合理的是按等效时间窗缩放到约 <code>60</code> 根 BB 窗口、<code>150</code> 根压缩 lookback，再重新做 width percentile。</li>
+<li><strong>3m / 1m：目前不建议直接下钻。</strong> 既然 <code>15m</code> public proxy 还没过生存线，更快周期大概率先被噪音和成本吃掉，除非先补 order-flow / volume-expansion / session filter。</li>
+</ul>
+<h2>5. 最小可复现实验口径（本轮）</h2>
+<h3>5.1 数据源、公开性、更新频率</h3>
+<ul>
+<li>repo 原始执行环境：Hyperliquid perpetuals（公开 API，可分钟级轮询）</li>
+<li>本轮 proxy 数据：Binance USDⓈ-M Perpetual <code>klines</code>（公开 REST）</li>
+<li>更新频率：原始信号 <code>15m</code>，可迁移到 <code>5m/3m/1m</code></li>
+</ul>
+<h3>5.2 本轮独立快检口径</h3>
+<ul>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li>样本：近 <code>120d</code></li>
+<li>信号：<code>BB(20,2)</code>；当前标准化 band width 属于最近 <code>50</code> 根 <strong>bottom 25%</strong>；close 突破上/下 band</li>
+<li>入场：<code>next-bar open</code></li>
+<li>方向过滤：仅做 <code>200-SMA</code> 同向突破</li>
+<li>出场：<code>ATR(14) * 3</code> trailing stop，且限制在 <code>1%~8%</code></li>
+<li>冷却：<code>30min</code></li>
+<li>成本：<code>3bps/side</code></li>
+<li>结果文件：<code>reports/artifacts/quant_digests/bb_compression_hyperliquidbot_20260330_mincheck.csv</code></li>
+</ul>
+<h2>6. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>先做 participation ablation</strong>：在当前 breakout body 上依次加 <code>volume spike</code>、<code>dollar-volume expansion</code>、<code>funding 同向/逆向 veto</code>，看它到底缺的是参与度过滤还是 alpha body 本身就不够强。</li>
+<li><strong>做 timeframe transfer</strong>：把 <code>15m</code> 规则缩放到 <code>5m</code>（如 <code>BB≈60</code>、compression lookback≈<code>150</code>），比较 <code>post-cost return / trade count / avg hold / false breakout ratio</code>。</li>
+<li><strong>做 standalone vs vote-leg 对照</strong>：比较 <code>纯 bb_compression</code>、<code>bb_compression + trend_following 共识</code>、以及 <code>bb_compression 仅作 admission gate</code> 三种角色，确认它更像主 alpha 还是组合里的一票。</li>
+<li><strong>做 universe 筛选</strong>：只保留 <code>BTC/ETH</code> 或 <code>top-dollar-volume decile</code>，不要默认让这条线在 SOL 这类高噪声标的一视同仁。</li>
+<li><strong>做成本阶梯</strong>：至少测 <code>2/4/6/8 bps</code> 总成本；若只在超低成本下存活，就把它标成 execution-sensitive toy，不要误判成稳健 breakout alpha。</li>
+</ol>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>这是 <strong>repo-based 新候选</strong>，不是论文里经过正式统计检验的结论；当前最硬的证据仍是源码 + public proxy。</li>
+<li>仓库真正运行时是 <strong>多策略聚合</strong>，<code>bb_compression</code> 可能更适合作为组合中的一票，而不是 standalone。</li>
+<li>本轮 proxy 用的是 Binance perpetual，不是 Hyperliquid 原生撮合；负 verdict 不等于永远无效，但已经足够阻止我们把它直接升成主线。</li>
+</ul>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>OlieSmith. (2026). _HyperLiquidBot_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://github.com/OlieSmith/HyperLiquidBot">https://github.com/OlieSmith/HyperLiquidBot</a></li>
+<li>Repo URL: <a href="https://github.com/OlieSmith/HyperLiquidBot">https://github.com/OlieSmith/HyperLiquidBot</a></li>
+</ul>
+<ol>
+<li><strong>OlieSmith. (2026). _strategies/bb_compression.py_.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/OlieSmith/HyperLiquidBot/main/strategies/bb_compression.py">https://raw.githubusercontent.com/OlieSmith/HyperLiquidBot/main/strategies/bb_compression.py</a></li>
+<li>Repo URL: <a href="https://github.com/OlieSmith/HyperLiquidBot/blob/main/strategies/bb_compression.py">https://github.com/OlieSmith/HyperLiquidBot/blob/main/strategies/bb_compression.py</a></li>
+</ul>
+<ol>
+<li><strong>OlieSmith. (2026). _main.py_.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/OlieSmith/HyperLiquidBot/main/main.py">https://raw.githubusercontent.com/OlieSmith/HyperLiquidBot/main/main.py</a></li>
+<li>Repo URL: <a href="https://github.com/OlieSmith/HyperLiquidBot/blob/main/main.py">https://github.com/OlieSmith/HyperLiquidBot/blob/main/main.py</a></li>
+</ul>
+<ol>
+<li><strong>OlieSmith. (2026). _risk.py_.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/OlieSmith/HyperLiquidBot/main/risk.py">https://raw.githubusercontent.com/OlieSmith/HyperLiquidBot/main/risk.py</a></li>
+<li>Repo URL: <a href="https://github.com/OlieSmith/HyperLiquidBot/blob/main/risk.py">https://github.com/OlieSmith/HyperLiquidBot/blob/main/risk.py</a></li>
+</ul>
+<ol>
+<li><strong>Binance Developers. _USDⓈ-M Futures Market Data: Kline/Candlestick Data_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></li>
+</ul>
+<h2>9. 本地复现产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/bb_compression_hyperliquidbot_20260330_mincheck.csv</code></li>
+</ul>
+</body>
+</html>

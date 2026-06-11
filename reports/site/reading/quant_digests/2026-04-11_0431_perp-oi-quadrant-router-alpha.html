@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>15m perp 价格×OI 象限路由：green+OI_up continuation，red+OI_up short veto</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>15m perp 价格×OI 象限路由：green+OI_up continuation，red+OI_up short veto</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-11 04:27 UTC</span>
+      <span class="pill">研究时间：2026-04-11 04:31 UTC</span>
+      <span class="pill">类型：论文 + 公共数据快检</span>
+      <span class="pill">主题标签：open-interest / perpetuals / continuation / squeeze / short-veto / binance / 5m / 15m / BTC / ETH / SOL</span>
+      <span class="pill">证据类型：论文证据 + 公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-11_0431_perp-oi-quadrant-router-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-11 04:31 UTC</li>
+<li>类型：论文 + 公共数据快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>单根 <code>15m</code> 收益方向 × <code>open-interest shock</code> 象限，能把 perp bar 区分成“趋势确认”与“挤仓陷阱”；其中 <code>green+OI_up</code> 最像可直接交易的 continuation，<code>red+OI_up</code> 更像 short veto / long-fade overlay</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：open-interest / perpetuals / continuation / squeeze / short-veto / binance / 5m / 15m / BTC / ETH / SOL</li>
+<li>证据类型：论文证据 + 公共数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主线材料是 <strong>Ioannis Giagkiozis, Emilio Said (2024), _Reconciling Open Interest with Traded Volume in Perpetual Swaps_, Ledger</strong>。这篇文章的 headline 不是“给你一个现成 alpha”，而是更基础也更重要的一件事：<strong>先确认 OI 口径能不能信</strong>。作者用 2023 年七家主流交易所 tick 级数据指出：一些大所的 BTC perp open interest 存在系统性错报、延迟记账或清算消息滞后的问题。</p>
+<p>这对 desk 的真正启发不是“别看 OI”，而是：<strong>OI 先过数据口径 sanity check，再把它和 bar 方向一起用</strong>。于是这轮我没有把论文硬翻成抽象市场结构评论，而是直接拿 <strong>Binance USDⓈ-M 公共 <code>openInterestHist + 15m/5m klines</code></strong> 做最小快检，看看 <strong><code>价格方向 × ΔOI</code> 象限</strong> 能不能变成一条短周期 raw alpha。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> <code>15m</code> 上，OI 不是方向神谕，但 <strong><code>bar sign × OI shock quadrant</code></strong> 的确能路由不同交易模式：</li>
+<li><code>green + OI_up</code>：最像 <strong>趋势确认 continuation raw alpha</strong></li>
+<li><code>red + OI_up</code>：最像 <strong>short veto / long-fade overlay</strong>（新空拥挤，容易被反向 squeeze）</li>
+<li><code>green + OI_down</code>：在部分大币上更像 <strong>慢一点的 short-covering continuation</strong></li>
+<li><strong>一句话证明方式：</strong> 我用 Binance 公共 <code>7</code> 个 liquid perp（<code>BTC/ETH/SOL/XRP/DOGE/BNB/ADA</code>）近窗 <code>15m/5m</code> 数据，按 <code>ΔOI</code> 的 rolling MAD z-score 分四象限，发现 <strong><code>15m green+OI_up</code></strong> 的后续漂移最稳定，而 <strong><code>15m red+OI_up</code></strong> 明显不该继续追空。</li>
+<li>本轮最值得 desk 先测的，不是“只要 OI 上升就追”，而是 <strong>先用 OI 给同一根 bar 做语义分类</strong>：这根 bar 到底是趋势确认、长仓挤出、还是新空堆积的 squeeze fuel。</li>
+<li>Binance 公共近窗快检（<code>7</code> 个币，<code>ΔOI z</code> 阈值先取 <code>|z| &gt; 1.5</code>）：</li>
+<li><strong><code>15m green+OI_up</code></strong>：持有 <code>4</code> 根（约 <code>1h</code>），总计约 <code>112</code> 笔、<strong>+26.87 bps/笔 gross</strong>、命中率约 <code>51.8%</code>；若只看 <code>2</code> 根（约 <code>30m</code>），仍有 <strong>+12.00 bps/笔 gross</strong>。</li>
+<li><strong><code>15m red+OI_up</code></strong>：持有 <code>2</code> 根时，signed return 约 <strong>-7.23 bps</strong>，命中率仅 <strong>39.4%</strong>；翻成人话就是：<strong>下跌同时 OI 还在明显增加时，继续追空反而更容易吃到反打</strong>。</li>
+<li><strong><code>15m green+OI_down</code></strong>：持有 <code>8</code> 根（约 <code>2h</code>） aggregate 约 <strong>+23.80 bps</strong>；其中 <code>BTCUSDT</code> 单币约 <code>25</code> 笔、<strong>+49.32 bps/笔 gross</strong>，更像慢一点的 short-covering continuation。</li>
+<li>资产侧不完全对称：<code>green+OI_up</code> 的 <code>1h</code> continuation 在 <code>SOL/ETH/XRP/BTC</code> 上更明显；<code>red+OI_up</code> 的 short-veto 在 <code>ETH/SOL/XRP</code> 上最明显，<code>BTC</code> 则相对没那么极端。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这不是慢频“情绪指数故事”。它是 <strong>交易所公开可拿、分钟级更新、能直接映射到 perp 方向书</strong> 的 crowding / leverage 语义信号。对当前 <code>1m/3m/5m/15m</code> desk，它至少有三种用途：</p>
+<ul>
+<li>一条独立 raw alpha：<code>green+OI_up</code> continuation</li>
+<li>一条共享 veto：<code>red+OI_up</code> 不要机械追空</li>
+<li>一条附属 pocket：<code>green+OI_down</code> 在部分大币可当 slower squeeze-follow</li>
+</ul>
+<p>和已有 funding / top-trader / liquidation 线相比，这条线的价值在于：<strong>它只依赖一个最基础、最容易公开获得的 positioning proxy（exchange-wide OI）</strong>，不要求额外抓 trader bucket、资金费率结算窗、或清算地图聚类。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势为主，兼带一个反身性 veto</li>
+<li>基础 alpha：<code>15m green+OI_up</code> continuation</li>
+<li>regime：优先 liquid majors；当前快检里 <code>15m</code> 明显优于 <code>5m</code></li>
+<li>filter / veto：</li>
+<li><strong>核心 long</strong>：只做 <code>ret_15m &gt; 0</code> 且 <code>ΔOI_z &gt; 1.5</code></li>
+<li><strong>short veto</strong>：若 <code>ret_15m &lt; 0</code> 且 <code>ΔOI_z &gt; 1.5</code>，默认不追空；更适合等下一根确认或直接反向当 long-fade pocket 测</li>
+<li><strong>可选第二条 continuation</strong>：<code>ret_15m &gt; 0</code> 且 <code>ΔOI_z &lt; -1.5</code>，只在 <code>BTC/SOL/BNB</code> 先测</li>
+<li>risk / sizing / execution overlay：</li>
+<li>持有期先试 <code>2 / 4 / 8</code> 根（<code>30m / 1h / 2h</code>）</li>
+<li>单笔先粗扣 <code>8~10 bps</code> round-trip 做 friction ladder</li>
+<li>仓位可按 <code>|ΔOI_z|</code> 分层，但要设单币上限；因为 <code>OI</code> 极端往往伴随波动放大，别把“大信号”误当“可无限加杠杆”</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设：</strong> 当 <code>15m</code> 正收益 bar 同时伴随显著 OI 扩张，它更像新风险入场后的趋势确认；当负收益 bar 同时伴随显著 OI 扩张，它更像新空堆积、后续更容易反打而不是继续流畅下跌。</li>
+<li><strong>可计算定义：</strong></li>
+<li><code>ret_15m = close / close[-1] - 1</code></li>
+<li><code>dOI = pct_change(sumOpenInterestValue)</code></li>
+<li><code>ΔOI_z = robust_zscore(dOI, rolling_median, rolling_MAD, window=96)</code></li>
+<li>象限先试四类：<code>green+OI_up</code>、<code>green+OI_down</code>、<code>red+OI_up</code>、<code>red+OI_down</code></li>
+<li><strong>最小回测切口：</strong> Binance USDⓈ-M 公共 <code>BTCUSDT / ETHUSDT / SOLUSDT / XRPUSDT / DOGEUSDT / BNBUSDT / ADAUSDT</code>；优先跑 <code>15m</code>，入场后固定持有 <code>2/4/8</code> 根。</li>
+<li><strong>first verdict（当前）</strong>：</li>
+</ul>
+<ol>
+<li><code>green+OI_up</code> 是当前最像 raw alpha 的主线；</li>
+<li><code>red+OI_up</code> 不该被包装成“更强下跌确认”，更像 short veto；</li>
+<li><code>green+OI_down</code> 值得作为 BTC/SOL 定向 continuation 分支单独再测。</li>
+</ol>
+<ul>
+<li><strong>最该先看：</strong> 扣 <code>8/10/12 bps</code> 后的 <code>bps/笔</code> 是否仍存活，以及 <code>asset × side</code> 是否稳定；不要强行把一个 OI 规则全币统一开机。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li><strong>论文本身解决的是 OI 数据可信度，不是直接给 bar-bar alpha。</strong> 这轮是有意识地从 paper 里抽取一个更适合 desk 的旁支：<strong>先过 OI integrity，再做 quadrant router</strong>。</li>
+<li>Binance 公共 <code>openInterestHist</code> 是聚合口径，不是逐笔开平仓分类；它能告诉我们“杠杆在变多还是变少”，但不能直接区分到底是谁主动开仓、谁被平仓。</li>
+<li><code>5m</code> 版本当前不够干净：<code>green+OI_up</code> 近窗几乎贴近零边，而 <code>red+OI_up</code> 更像轻微反打；所以别急着把 <code>15m</code> verdict 硬压到 <code>5m</code>。</li>
+<li>这类信号天然带 regime 性：宏观日、单边 squeeze 日、周末薄流动性时会更显著；常态期 edge 可能快速掉到成本线。</li>
+<li>因为 OI 本身有口径/延迟风险，<strong>建议先加一道数据完整性检查</strong>：若 <code>|ΔOI|</code> 与同窗成交量/成交额明显不匹配，宁可跳过该 bar，不要迷信单点数值。</li>
+</ul>
+<h2>6. 下一步怎么测</h2>
+<ol>
+<li><strong>先把 <code>green+OI_up</code> 单独做成可执行壳</strong>：<code>15m</code> 入场，<code>30m/1h/2h</code> 三档 time-stop，比较 gross / net / MFE / MAE。</li>
+<li><strong>做 asset-side admission</strong>：先只留 <code>BTC/ETH/SOL/XRP</code> 四个 first verdict 更像 continuation 的币，<code>BNB/DOGE</code> 先降级观察。</li>
+<li><strong>把 <code>red+OI_up</code> 从“做空信号”改成 veto 卡</strong>：拿它去拦已有 breakout-short / jump-follow / panic-short，比较被拦掉的亏损单占比。</li>
+<li><strong>加一层 funding / basis 交互</strong>：只问一个简单问题——<code>green+OI_up</code> 在 <code>neutral-to-positive basis</code> 下是否比 <code>negative basis</code> 更能续；如果是，就把 basis 变成二级 filter，而不是 alpha 本体。</li>
+<li><strong>做完整性门槛</strong>：先复用 OI-volume reconciliation 思路，过滤掉明显口径失真的 bar，再看 alpha 是否更干净。</li>
+</ol>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>Giagkiozis, I., &amp; Said, E. (2024). _Reconciling Open Interest with Traded Volume in Perpetual Swaps_. Ledger, 9.</strong></li>
+<p>DOI: <code>10.5195/ledger.2024.325</code> Readable URL: <code><a href="https://ledger.pitt.edu/ojs/ledger/article/view/325">https://ledger.pitt.edu/ojs/ledger/article/view/325</a></code> 说明：本轮实际阅读到摘要与正文可读页；核心用途是给 OI 口径风险和 integrity check 做地基。</p>
+<li><strong>Binance USDⓈ-M Futures public endpoints</strong></li>
+</ol>
+<ul>
+<li><code>futures/data/openInterestHist</code></li>
+<li><code>fapi/v1/klines</code></li>
+<p>说明：公开可得；<code>openInterestHist</code> 提供 <code>5m/15m/...</code> 聚合 OI 历史，足够做最小实验。</p>
+</ul>
+<ol>
+<li><strong>本地 portability artifacts</strong></li>
+</ol>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/binance_perp_oi_quadrant_router_probe_summary_2026-04-11.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/binance_perp_oi_quadrant_router_probe_detail_2026-04-11.csv</code></li>
+</ul>
+<h2>8. 数据源 / 公开性 / 更新频率 / 最小复现实验口径</h2>
+<ul>
+<li><strong>数据源</strong>：Binance USDⓈ-M Futures 公共 API</li>
+<li><strong>公开性</strong>：公开，无需私钥</li>
+<li><strong>更新频率</strong>：可直接请求 <code>5m / 15m</code> OI 历史聚合；K 线同样公开</li>
+<li><strong>最小可复现实验口径</strong>：</li>
+<li>universe：<code>BTC/ETH/SOL/XRP/DOGE/BNB/ADA</code></li>
+<li>bar：<code>15m</code></li>
+<li>signal：<code>ret_15m</code> 与 <code>ΔOI_z</code> 四象限</li>
+<li>holding：<code>2 / 4 / 8</code> bars</li>
+<li>cost：先粗扣 <code>8~10 bps</code> round-trip</li>
+<li>verdict：先做 <code>green+OI_up</code> raw alpha，再把 <code>red+OI_up</code> 作为 short veto 单独评估</li>
+</ul>
+</body>
+</html>

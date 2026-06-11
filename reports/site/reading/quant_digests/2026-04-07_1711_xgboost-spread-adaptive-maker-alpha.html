@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 options/MM repo 只读成 A-S 教材：对 short-cycle desk，更该先测的是「predicted-optimal spread × inventory-skew quote ladder」这条完整 maker raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 options/MM repo 只读成 A-S 教材：对 short-cycle desk，更该先测的是「predicted-optimal spread × inventory-skew quote ladder」这条完整 maker raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-07 17:27 UTC</span>
+      <span class="pill">研究时间：2026-04-07 17:11 UTC</span>
+      <span class="pill">类型：GitHub repo source audit（`README.md` + `strategies/market_making/xgboost_spread.py` + `strategies/market_making/avellaneda_stoikov.py`）</span>
+      <span class="pill">主题标签：raw-alpha / market-making / microstructure / order-book / spread-prediction / xgboost / inventory / options / 1m / 3m / 5m</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-07_1711_xgboost-spread-adaptive-maker-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-07 17:11 UTC</li>
+<li>类型：GitHub repo source audit（<code>README.md</code> + <code>strategies/market_making/xgboost_spread.py</code> + <code>strategies/market_making/avellaneda_stoikov.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：maker spread capture（在低毒性/可成交的盘口状态下，动态报出更合适的双边价差去吃 spread）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / market-making / microstructure / order-book / spread-prediction / xgboost / inventory / options / 1m / 3m / 5m</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>signorloops (2026) 的 <code>crypto-options-research-platform</code></strong>，但不再把它只读成经典 Avellaneda-Stoikov 教材，而是直接抽其中更适合我们 desk intake 的分支：<code>strategies/market_making/xgboost_spread.py</code>。这条线的 <strong>base alpha 很清楚</strong>：不是赌方向，而是赌“当前这段盘口状态下，报多宽的 spread 最容易在扣掉 adverse selection / inventory / 交易成本后留下真钱”。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 真正值钱的，不是“又上了 ML”，而是它把 maker alpha 写成了一个可直接训练的完整壳：先用盘口特征预测“最优报价宽度”，再把 inventory skew 和 size control 接到下单层。</li>
+<li><strong>一句话证明方式：</strong> 代码不是空谈，它直接把历史窗口特征 → 候选 spread 网格 → 未来窗口模拟收益/成本 → 最优 spread 标签 这条训练链写了出来。</li>
+<li>特征层很朴素但够 desk：<code>rv_short(20)</code>、<code>rv_long(100)</code>、盘口 <code>imbalance</code>、<code>bid/ask_volume_ratio</code>、<code>spread_percentile</code>、<code>price_change_5/20</code>、<code>inventory_ratio</code>，基本都能从公开 L2/L1 或聚合盘口快速移植。</li>
+<li>标签层不是分类涨跌，而是从候选 spread 网格里选最优值：代码默认用 <strong>10 档候选 spread（5~80 bps）</strong>，对每个候选 spread 做未来窗口模拟，目标函数里显式扣掉 <strong>inventory holding cost</strong> 和 <strong>execution cost</strong>。</li>
+<li>执行层也不是“预测完就完了”：预测出来的 spread 会再被 <strong><code>min/max_spread_bps</code></strong> 夹住，同时用 <code>inventory_skew = inventory_ratio * 0.25</code> 把 bid/ask 做非对称偏移，并在库存逼近上限时把 quote size 线性缩小。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和我们最近已经 intake 的 maker 主题（A-S、OFI reservation price、inventory-bounded quoting）是<strong>同一家族但不同一层</strong>：前几篇更多是在写“理论 fair value 怎么偏移”，这篇更像在补 <strong>quote width / quote aggressiveness</strong> 这一层。对 short-cycle desk 来说，它不是附属 overlay，而是能独立成策略壳的 raw alpha：</p>
+<ul>
+<li>当你已经接受“maker 赚的是 spread capture”后，下一步最值钱的问题就是：<strong>什么时候该报窄一点抢成交，什么时候该报宽一点防毒性？</strong></li>
+<li>这份 repo 给了一个很直接的工程答案：先别上复杂 RL，先用可解释的短窗特征去学 <strong>optimal spread bucket</strong>。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：流动性提供 / 微观结构 / 偏中性</li>
+<li>基础 alpha：predicted-optimal spread 下的 maker spread capture</li>
+<li>regime：低毒性、mid 相对稳定、盘口厚度尚可的时段更适合开机</li>
+<li>filter / veto：高 realized vol、极端 imbalance、库存逼近上限时应 widen / size-down / no-quote</li>
+<li>risk / sizing / execution overlay：<code>min/max spread clamp</code>、inventory skew、inventory-limited size、future-window cost simulation、cancel/replace quote ladder</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 在 <code>BTCUSDT / ETHUSDT</code> 的 <code>1s</code> 或更细盘口上，用最近 <code>20~100</code> 个观测构造的微观结构特征，可以把下一段 <code>30~60s</code> 的“最优 maker spread bucket”分出来；按模型报动态 spread，会优于固定 1 档 spread。</p>
+<p><strong>最小回测切口：</strong></p>
+<ul>
+<li>资产：<code>BTCUSDT</code>, <code>ETHUSDT</code></li>
+<li>周期：主测 <code>1m / 3m</code>，<code>5m</code> 只做聚合观察</li>
+<li>样本：先做最近 <code>14~30d</code> walk-forward</li>
+<li>对照组：</li>
+</ul>
+<ol>
+<li>固定 spread（如 <code>8bps</code>）</li>
+<li>A-S / 固定 inventory skew baseline</li>
+<li>XGBoost predicted spread bucket</li>
+</ol>
+<p><strong>先看 2 个指标：</strong></p>
+<ol>
+<li>成本后 <code>PnL / quote-hour</code> 或 <code>PnL / notional</code></li>
+<li>adverse-selection share（成交后短窗 markout 为负的比例）</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这类策略最容易把 <strong>future-window label</strong> 做成 lookahead 幻觉，训练/验证必须严格 walk-forward，不能把全样本最优 spread 倒灌回去。</li>
+<li>代码里的收益模拟仍然偏 research shell；如果没有 queue position、partial fill、撤单延迟、taker hedge slippage，回测很容易偏乐观。</li>
+<li>这是 options/MM repo 的实现思路，移植到 perp/spot maker 时，撮合速度、手续费阶梯、盘口厚度和成交密度都可能变。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>signorloops. (2026). _crypto-options-research-platform_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue：GitHub</li>
+<li>Readable URL：<code><a href="https://github.com/signorloops/crypto-options-research-platform">https://github.com/signorloops/crypto-options-research-platform</a></code></li>
+<li>Repo URL：<code><a href="https://github.com/signorloops/crypto-options-research-platform">https://github.com/signorloops/crypto-options-research-platform</a></code></li>
+</ul>
+<ol>
+<li><strong>signorloops. (2026). _strategies/market_making/xgboost_spread.py_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://github.com/signorloops/crypto-options-research-platform/blob/master/strategies/market_making/xgboost_spread.py">https://github.com/signorloops/crypto-options-research-platform/blob/master/strategies/market_making/xgboost_spread.py</a></code></li>
+<li>Raw URL：<code><a href="https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/strategies/market_making/xgboost_spread.py">https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/strategies/market_making/xgboost_spread.py</a></code></li>
+</ul>
+<ol>
+<li><strong>signorloops. (2026). _strategies/market_making/avellaneda_stoikov.py_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://github.com/signorloops/crypto-options-research-platform/blob/master/strategies/market_making/avellaneda_stoikov.py">https://github.com/signorloops/crypto-options-research-platform/blob/master/strategies/market_making/avellaneda_stoikov.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Avellaneda, M., &amp; Stoikov, S. (2008). _High-frequency trading in a limit order book_. Quantitative Finance.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.1080/14697680701381228</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.1080/14697680701381228">https://doi.org/10.1080/14697680701381228</a></code></li>
+</ul>
+</body>
+</html>

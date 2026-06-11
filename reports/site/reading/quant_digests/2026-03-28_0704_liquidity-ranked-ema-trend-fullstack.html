@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Hummingbot Hyperliquid repo 只当 generic EMA 练手：更值得先拆的是「top-1 流动性轮换 × EMA 趋势 × hard exits」单币全策略骨架</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Hummingbot Hyperliquid repo 只当 generic EMA 练手：更值得先拆的是「top-1 流动性轮换 × EMA 趋势 × hard exits」单币全策略骨架</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-28 07:14 UTC</span>
+      <span class="pill">研究时间：2026-03-28 07:04 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/trend/momentum/ema/liquidity-rotation/funding-veto/vol-veto/hard-exit/risk-sizing/hyperliquid/1m/3m/5m/15m/repo</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-28_0704_liquidity-ranked-ema-trend-fullstack.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-28 07:04 UTC</li>
+<li>类型：GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：单币趋势跟随（fast/slow EMA crossover）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha/single-asset/trend/momentum/ema/liquidity-rotation/funding-veto/vol-veto/hard-exit/risk-sizing/hyperliquid/1m/3m/5m/15m/repo</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了 <code>dronebassan/Hyperliquid-Trading-Bot</code> 这个 2026 新仓库，重点不是 README 里的“systematic trading bot”口号，而是源码里已经把 <strong>选币、入场、出场、仓位、日内 kill switch</strong> 写成了一个能直接 desk 化改造的骨架：先在 <code>BTC/ETH/SOL</code> 里按 <strong>深度优先、点差次之</strong> 选出 <code>TOP_N=1</code> 的交易对，再用 fast/slow EMA 决定方向，最后用 funding / vol / trend veto 决定是否放行。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最值得复用的不是“EMA crossover”本身，而是它把一条很普通的趋势 alpha，整理成了 <strong>可最小复现、可快速加成本、可继续插 gate 的完整交易壳</strong>。</li>
+<li><strong>一句话证明方式：</strong> 结论主要来自源码级拆解，而不是回测宣传：参数、过滤条件、止盈止损、持有时长和仓位上限都在代码里明牌。</li>
+<li>raw alpha 本体非常干净：<code>ema_fast &gt; ema_slow</code> 做多，反之做空；采样频率 <code>5s</code>，配置对应的大致有效窗口约是 <strong>10 分钟 vs 22 分钟</strong> 的短趋势跟随。</li>
+<li>真正有 desk 价值的是配套治理：<strong>每 5 分钟重做一次流动性筛选</strong>，要求每侧最少 <code>10,000 USD</code> 深度、点差不超过 <code>20 bps</code>，只交易当下最干净的那 1 个标的。</li>
+<li>代码把风险边界写得很实：<code>0.5%</code> 止损、<code>0.8%</code> 止盈、<code>30 分钟</code> 超时退出、<code>180 秒</code> cooldown、<code>50 USD</code> 日内亏损 kill switch；这比很多“只有信号、没有退出”的 repo 更适合进入复现池。</li>
+<li>但要诚实：repo 自带 backtest 文档明确承认 <strong>没有真实滑点、手续费、funding 完整建模</strong>，所以它现在更像 <strong>raw alpha + risk shell</strong>，还不是可直接上实盘的完成品。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>当前 <code>momentum</code> 主线虽然已经积累了不少 cross-sectional / pairs / carry 思路，但对 <strong>单币短趋势 full-stack baseline</strong> 的工程壳仍然不够固定。这个 repo 的价值，正好不是“证明趋势策略神奇有效”，而是替我们把几件经常被分开讨论的东西先焊在一起：<strong>流动性准入、方向信号、entry veto、hard exit、risk cap</strong>。对 desk 来说，这意味着我们可以先用一条很朴素的单币趋势 alpha 建一个统一试验台，再把已有的 <code>jump veto / funding crowding / volatility regime / execution cost ladder</code> 接进去做增量检验。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势 / 单币 / 轻度轮换</li>
+<li>基础 alpha：fast EMA 上穿 slow EMA 做多，下穿做空</li>
+<li>regime：更适合有持续短趋势、且短时 realized vol 不过热的环境</li>
+<li>filter / veto：流动性 <code>top-1</code> 轮换、<code>|funding| &lt;= 8 bps</code>、短窗波动率上限、最小趋势强度门槛</li>
+<li>risk / sizing / execution overlay：按风险预算反推 notional，<code>0.5%</code> SL、<code>0.8%</code> TP、<code>30m</code> time exit、<code>180s</code> cooldown、<code>50 USD</code> 日内 kill switch；但 <strong>cost 仍需外接</strong></li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设：</strong> 在 <code>1m / 3m / 5m</code> crypto perp 上，单币短趋势策略的 first failure mode 不一定是方向错，而可能是 <strong>选错交易标的 + 进在 funding/vol 过热时段 + 缺少硬退出</strong>。</li>
+<li><strong>一个可计算定义：</strong> 每分钟在 <code>BTC/ETH/SOL/XRP/DOGE</code> 等高流动 perp 中按 <code>depth_rank - spread_penalty</code> 选 <code>top1</code>；信号用 <code>EMA(10m) &gt; EMA(22m)</code> 做多、反向做空；若 <code>|funding_8h| &gt; 8bps</code> 或过去 <code>5m</code> realized vol 超阈值则不进场；出场按 <code>-50bps / +80bps / 30m / signal flip</code> 四选一。</li>
+<li><strong>最小回测切口：</strong> <code>Binance 或 Hyperliquid</code> 公共数据，先跑最近 <code>45~90d</code>；先做 <code>1m</code> 基线，再压缩到 <code>3m</code>，最后检查 <code>5m</code> 是否因反应过慢而失去 edge。</li>
+<li><strong>最该先看 2 个指标：</strong> <code>after-cost expectancy per trade</code> 与 <code>blocked-vs-allowed entry attribution</code>。如果 veto 只是在砍 trade count，却没提升单笔净收益，就别把过滤层神化。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这不是论文，也不是严谨历史回测框架；它更像一个写得相对清楚的工程原型。</li>
+<li>公开 universe 只有 <code>BTC/ETH/SOL</code>，容量与风格暴露都偏窄；直接照搬很可能只是在赌 beta。</li>
+<li>代码里用了 paper-trade mid-price 假设，真实做市队列、冲击、手续费和 funding 侵蚀都还没进来。</li>
+<li><code>trend_ok / vol_ok / funding_ok</code> 现在是硬阈值；下一步更值得测的是 <strong>把它们从 hard veto 改成分层 size rule</strong>，看是否比“全开/全关”更稳。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>dronebassan. (2026). <code>Hyperliquid-Trading-Bot</code>. GitHub repository.</li>
+<li>Repo URL: <code><a href="https://github.com/dronebassan/Hyperliquid-Trading-Bot">https://github.com/dronebassan/Hyperliquid-Trading-Bot</a></code></li>
+<li>README: <code><a href="https://github.com/dronebassan/Hyperliquid-Trading-Bot/blob/main/README.md">https://github.com/dronebassan/Hyperliquid-Trading-Bot/blob/main/README.md</a></code></li>
+<li>Strategy code: <code><a href="https://github.com/dronebassan/Hyperliquid-Trading-Bot/blob/main/strategies/hyperliquid_momentum.py">https://github.com/dronebassan/Hyperliquid-Trading-Bot/blob/main/strategies/hyperliquid_momentum.py</a></code></li>
+<li>Config: <code><a href="https://github.com/dronebassan/Hyperliquid-Trading-Bot/blob/main/strategies/hyperliquid_momentum_config.json">https://github.com/dronebassan/Hyperliquid-Trading-Bot/blob/main/strategies/hyperliquid_momentum_config.json</a></code></li>
+<li>Backtest methodology note: <code><a href="https://github.com/dronebassan/Hyperliquid-Trading-Bot/blob/main/docs/backtests/methodology.md">https://github.com/dronebassan/Hyperliquid-Trading-Bot/blob/main/docs/backtests/methodology.md</a></code></li>
+</ul>
+</body>
+</html>

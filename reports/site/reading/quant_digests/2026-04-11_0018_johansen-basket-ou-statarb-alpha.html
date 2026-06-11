@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 GitHub stat-arb repo 只读成日频组合实验：对 short-cycle desk，更该先测的是「rolling Johansen basket admission × strongest-basket OU fade」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 GitHub stat-arb repo 只读成日频组合实验：对 short-cycle desk，更该先测的是「rolling Johansen basket admission × strongest-basket OU fade」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-11 00:20 UTC</span>
+      <span class="pill">研究时间：2026-04-11 00:18 UTC</span>
+      <span class="pill">类型：仓库</span>
+      <span class="pill">主题标签：raw-alpha / stat-arb / pairs-plus / basket / johansen / cointegration / ou / mean-reversion / regime-filter / risk-parity / strongest-basket / market-neutral / binance / perpetual / 15m / 5m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：2026 GitHub repo source audit（`README.md` + `labs/research.ipynb` embedded outputs）+ Binance USDⓈ-M 公共 `15m/5m` portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-11_0018_johansen-basket-ou-statarb-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-11 00:18 UTC</li>
+<li>类型：仓库</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>cointegrated basket spread mean reversion / stat-arb</code> —— 不是赌单币涨跌，而是赌<strong>多资产协整篮子 spread 偏离会向长期均衡回归</strong>；OU alpha 负责把“偏得有多远”翻译成可交易信号</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / stat-arb / pairs-plus / basket / johansen / cointegration / ou / mean-reversion / regime-filter / risk-parity / strongest-basket / market-neutral / binance / perpetual / 15m / 5m / repo / public-data / cost / risk</li>
+<li>证据类型：2026 GitHub repo source audit（<code>README.md</code> + <code>labs/research.ipynb</code> embedded outputs）+ Binance USDⓈ-M 公共 <code>15m/5m</code> portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次选的是 <strong>Sujith Kamme (2026), _Crypto Statistical Arbitrage via Cointegration and Regime Filtering_</strong> 这个 GitHub repo，核心审计对象是：</p>
+<ul>
+<li><code>README.md</code></li>
+<li><code>labs/research.ipynb</code></li>
+<li><code>artifacts/crypto_pipeline_detailed.svg</code></li>
+</ul>
+<p>我这次不是把它当“又一个协整 repo”略过，而是先问一句： <strong>它的 base alpha 到底是什么？</strong></p>
+<p>答案是清楚的： <strong>base alpha 就是“协整 crypto basket spread 的均值回归 / OU fade”。</strong></p>
+<p>所以它不是纯 filter，不是纯 risk overlay，也不是“先有别的主信号，它来帮你 veto”。 它本身就是一条<strong>可独立落地的 market-neutral / relative-value / stat-arb raw alpha</strong>。</p>
+<p>而且它和当前 digest 池里常见的 BTC/ETH 单 pair 或 copula pair 也不完全一样：</p>
+<ul>
+<li>这里交易对象不是单 pair；</li>
+<li>它允许 <strong>2–4 资产 basket</strong>；</li>
+<li>admission 核心不是简单相关性，而是 <strong>Johansen cointegration</strong>；</li>
+<li>信号不是固定 z-score，而是 <strong>OU mean-reversion speed × standardized displacement</strong>；</li>
+<li>外层再包 <strong>regime filter + bucketed sizing + risk parity</strong>。</li>
+</ul>
+<p>换句话说，它更像一套<strong>完整的 basket stat-arb 壳子</strong>，而不是一条 pair 小技巧。</p>
+<h2>2. 先回答：这篇东西的 base alpha 是什么？</h2>
+<p>一句话： <strong>base alpha = 多资产协整篮子的 spread 在短期偏离后，按 OU 速度向均衡回归。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>先挑几只价格关系长期绑得比较紧的币；</li>
+<li>用 Johansen 方法给它们配一组权重，压成一条 spread；</li>
+<li>如果这条 spread 偏得太远，但统计上仍像“会回来”的东西，就做反向；</li>
+<li>赌的不是方向，而是<strong>相对价值回归</strong>。</li>
+</ul>
+<p>所以它的归类是：</p>
+<ul>
+<li><code>raw alpha</code>：<strong>是</strong></li>
+<li>方向属性：<strong>双向 / market-neutral / relative-value</strong></li>
+<li>不是纯 regime，不是纯 filter，也不是只适合作为 shared overlay。</li>
+</ul>
+<h2>3. repo 里真正值钱的，不是“协整”两个字，而是这 4 层策略壳</h2>
+<h2>3.1 第一层：basket discovery 不是固定 pair，而是 2–4 资产组合</h2>
+<p>repo README 直接写了：</p>
+<ul>
+<li><strong>2–4 asset baskets</strong></li>
+<li><strong>Johansen basket + OU + regime filter + risk parity</strong></li>
+<li><strong>365-day train / 60-day test / 8 folds walk-forward</strong></li>
+</ul>
+<p>这比很多“固定 pair + zscore”仓库更接近 live research：</p>
+<ul>
+<li>市场不是永远只给你一对稳定 pair；</li>
+<li>真正的 relative-value 关系可能要到 3 条腿才更干净；</li>
+<li>basket 化后，能把某个共同因子暴露拆得更细。</li>
+</ul>
+<h2>3.2 第二层：admission 不是“相关高就上”，而是四重筛选</h2>
+<p>从 notebook 输出能看到，repo 不是只跑 Johansen 就交易，而是一路筛：</p>
+<ul>
+<li>cointegration</li>
+<li>ADF stationarity</li>
+<li>variance ratio</li>
+<li>half-life + stability</li>
+<li>predictability</li>
+</ul>
+<p>例如 notebook 最后汇总阶段显示：</p>
+<ul>
+<li><strong>155 total → 10 passed thresholds</strong></li>
+<li>再做 diversify 后，最终只留 <strong>4 baskets</strong></li>
+</ul>
+<p>这点很重要，因为它明确告诉我们： <strong>真正的 alpha 不在“找到很多 basket”，而在“肯留下来的 basket 非常少”。</strong></p>
+<h2>3.3 第三层：信号不是裸 z-score，而是 OU alpha</h2>
+<p>notebook 里 <code>compute_ou_alpha_point()</code> 的逻辑非常清楚：</p>
+<ul>
+<li>先估计 half-life / kappa；</li>
+<li>若 half-life 不在可交易区间，直接把 alpha 归零；</li>
+<li>再用最近窗口的均值与波动，把 spread 当前位置标准化；</li>
+<li>最后得到 <code>|kappa| * (mu - current_spread) / sigma</code> 形式的 OU alpha；</li>
+<li>并做 <code>clip</code> 与 <code>deadband</code>。</li>
+</ul>
+<p>对应参数我审到的关键值包括：</p>
+<ul>
+<li><code>MIN_HALF_LIFE = 2</code></li>
+<li><code>MAX_HALF_LIFE = 15</code></li>
+<li><code>HL_WINDOW = 120</code></li>
+<li><code>REGIME_WINDOW = 30</code></li>
+<li><code>ALPHA_CLIP = 3.0</code></li>
+<li><code>ALPHA_DEADBAND = 0.10</code></li>
+</ul>
+<p>翻成人话就是： <strong>它不只问“偏了多少”，还问“这东西平时回得快不快、现在这次偏离够不够值得做”。</strong></p>
+<h2>3.4 第四层：执行层不是连续抖仓，而是 sticky buckets</h2>
+<p>repo 最让我愿意继续往下拆的，是 <code>compute_bucketed_positions()</code> 这层：</p>
+<ul>
+<li>alpha 落到不同 bucket 才变更仓位；</li>
+<li><code>|alpha|</code> 掉到 exit threshold 以下就平；</li>
+<li>alpha 翻符号就平；</li>
+<li>同 bucket 内不反复抖仓。</li>
+</ul>
+<p>notebook OOS 里最终用的是：</p>
+<ul>
+<li><strong>Buckets：<code>[(0.08, 0.5), (0.1, 1.0)]</code></strong></li>
+<li><strong>exit threshold：<code>0.02</code></strong></li>
+<li><strong>tcost：<code>20 bps</code></strong></li>
+</ul>
+<p>这件事对 short-cycle 非常关键： <strong>如果你把 OU alpha 直接连续映射成仓位，很多理论 edge 会死在换手里；sticky bucket 是这里真正有工程含量的一刀。</strong></p>
+<h2>4. repo 原始结果里，最值得记住的数据点</h2>
+<h3>4.1 walk-forward 主结果：先证明它不是玩具</h3>
+<p>notebook 输出的 walk-forward 总结：</p>
+<ul>
+<li><strong>WF Sharpe：<code>1.440</code></strong></li>
+<li><strong>Cumulative return：<code>40.08%</code></strong></li>
+<li><strong>Max drawdown：<code>-16.61%</code></strong></li>
+<li><strong>8 / 8 folds 有交易</strong></li>
+</ul>
+<p>这说明 repo 至少给的是一条<strong>完整且能滚动训练/测试</strong>的策略骨架，不是静态样本内演示。</p>
+<h3>4.2 最终精选 4 篮子后的 OOS 结果更像“可部署壳”</h3>
+<p>notebook 最后对精选 basket 做 bucketed + risk-parity OOS，结果是：</p>
+<ul>
+<li><strong>Gross Sharpe：<code>1.953</code></strong></li>
+<li><strong>Net Sharpe：<code>1.764</code></strong></li>
+<li><strong>Net cumulative：<code>5.61%</code></strong></li>
+<li><strong>Max drawdown(net)：<code>-1.38%</code></strong></li>
+<li><strong>Win rate(net)：<code>72.2%</code></strong></li>
+<li><strong>Entry events：<code>9</code></strong></li>
+<li><strong>Annual turnover：<code>7.05x</code></strong></li>
+<li>成本假设：<strong><code>20 bps</code></strong></li>
+</ul>
+<p>这组数字的意义，不是说我们可以直接照抄到 intraday perp； 而是说它已经把：</p>
+<ul>
+<li>admission</li>
+<li>alpha</li>
+<li>exit</li>
+<li>sizing</li>
+<li>cost</li>
+<li>diversification</li>
+</ul>
+<p>这些完整链条都写出来了。</p>
+<h2>5. 对当前 desk 最有价值的，不是原样搬 daily，而是拆成更适合 <code>15m/5m</code> 的旁支</h2>
+<p>如果你把这个 repo 生搬硬套成“多 basket 同时跑 + 风险平价 + 较慢 hold”，很可能会太钝。</p>
+<p>但它里面有一个非常适合当前 desk 的旁支： <strong>rolling Johansen basket admission × strongest-basket OU fade</strong>。</p>
+<p>也就是：</p>
+<ol>
+<li>rolling formation window 找 basket；</li>
+<li>保留通过 Johansen + ADF + VR + half-life 的候选；</li>
+<li>不急着同时部署很多篮子；</li>
+<li>每个短交易窗只先上<strong>最强那一个</strong>；</li>
+<li>用 OU alpha 做 bucketed fade；</li>
+<li>regime 坏掉就 flat。</li>
+</ol>
+<p>这条旁支仍然服务同一个 raw alpha： <strong>basket spread mean reversion / stat-arb</strong>。</p>
+<h2>6. 我做的 portability probe：把它压到 Binance USDⓈ-M <code>15m/5m</code></h2>
+<h3>6.1 probe 口径</h3>
+<p>我做的不是 full faithful replication，而是一个 desk-friendly 最小实验：</p>
+<ul>
+<li>数据：Binance USDⓈ-M 公共 klines</li>
+<li>资产：<code>ETH / SOL / XRP / ADA / DOGE / LINK / AVAX</code></li>
+<li><code>15m</code>：<strong>14 天 formation + 2 天 trading</strong></li>
+<li><code>5m</code>：<strong>7 天 formation + 1 天 trading</strong></li>
+<li>admission：</li>
+<li>Johansen rank = 1</li>
+<li>ADF <code>p &lt; 0.05</code></li>
+<li>variance ratio <code>&lt; 1</code></li>
+<li>half-life 落在 <code>[2, 64] bars</code></li>
+<li>信号：formation 估的权重固定到 trade window，做 OU-style spread fade</li>
+<li>regime veto：rolling vol 爆掉或 rolling ADF 明显转坏时强制 flat</li>
+<li>成本：简化按 <strong><code>4 bps</code>/side</strong> 计</li>
+</ul>
+<p>此外我专门比较了：</p>
+<ul>
+<li><strong>top-1 strongest basket</strong></li>
+<li><strong>top-2 baskets</strong></li>
+<li><strong>top-3 baskets</strong></li>
+</ul>
+<p>因为我怀疑： <strong>short-cycle 上，“先求准、后求多”比“先分散”更重要。</strong></p>
+<h3>6.2 结果：<code>15m</code> 有像样 pocket，<code>5m</code> 还不行</h3>
+<p>本地 probe 产物：</p>
+<ul>
+<li><code>reports/artifacts/literature/2026-04-11_johansen-basket-ou_portability_probe.json</code></li>
+<li><code>reports/artifacts/literature/2026-04-11_johansen-basket-ou_probe_windows.csv</code></li>
+<li><code>reports/artifacts/literature/2026-04-11_johansen-basket-ou_probe_details.csv</code></li>
+</ul>
+<p>#### <code>15m</code> strongest-basket only（top-1）</p>
+<ul>
+<li><strong>6 / 6 windows 有候选且有部署</strong></li>
+<li><strong>total net：<code>+232.8 bps</code></strong></li>
+<li><strong>cum return：<code>+2.36%</code></strong></li>
+<li><strong>max drawdown：<code>-0.80%</code></strong></li>
+<li><strong>total entries：<code>8</code></strong></li>
+<li><strong>active bar share：<code>18.2%</code></strong></li>
+</ul>
+<p>几个重复出现的 basket：</p>
+<ul>
+<li><code>ADAUSDT_DOGEUSDT</code></li>
+<li><code>XRPUSDT_DOGEUSDT_LINKUSDT</code></li>
+<li><code>ETHUSDT_ADAUSDT_AVAXUSDT</code></li>
+</ul>
+<p>#### 同一口径下，越想“组合化”，越容易把 edge 稀释掉</p>
+<ul>
+<li><code>15m top-2</code>：<strong><code>+85.8 bps</code></strong></li>
+<li><code>15m top-3</code>：<strong><code>-15.5 bps</code></strong></li>
+</ul>
+<p>这点我觉得非常关键： <strong>repo 日频上“精选 4 篮子 + risk parity”是成立的，但压到 intraday 后，第一反应不该是“复制更多篮子”，而该是“先抓最强那个 basket”。</strong></p>
+<p>#### <code>5m</code> strongest-basket only</p>
+<ul>
+<li><strong>total net：<code>-41.0 bps</code></strong></li>
+<li><strong>cum return：<code>-0.41%</code></strong></li>
+<li><strong>max drawdown：<code>-2.22%</code></strong></li>
+<li><strong>total entries：<code>38</code></strong></li>
+</ul>
+<p>翻成人话： <strong>这个思路在当前简化版上，<code>15m</code> 还能看，<code>5m</code> 已经明显更像被噪音和换手打坏。</strong></p>
+<h2>7. 这次 probe 最重要的判断，不是“repo 能不能搬”，而是“哪一支能搬”</h2>
+<p>我这轮结论不是“整个 repo 可以原样压缩到 <code>5m/15m</code>”。</p>
+<p>更准确地说：</p>
+<h3>7.1 可以保留的，是 raw alpha 主体</h3>
+<p>也就是： <strong>Johansen basket admission + OU spread fade</strong></p>
+<p>这条本体在 short-cycle 仍然说得通，因为：</p>
+<ul>
+<li>它抓的是 relative-value 偏离；</li>
+<li>不依赖方向行情；</li>
+<li>可以天然做成 market-neutral；</li>
+<li>与当前单 pair 库存不完全重复。</li>
+</ul>
+<h3>7.2 需要降并发的，是组合层</h3>
+<p>repo 日频版本靠多篮子 + risk parity； 但我的 <code>15m</code> probe 显示：</p>
+<ul>
+<li>strongest one：最好</li>
+<li>扩到 two：明显变差</li>
+<li>扩到 three：已经快没 edge</li>
+</ul>
+<p>所以 intraday 第一版更像： <strong>single-best-basket book</strong>，而不是 portfolio-of-baskets。</p>
+<h3>7.3 暂时不该硬上的，是 <code>5m</code> alpha 主体</h3>
+<p>从这个 probe 看：</p>
+<ul>
+<li><code>5m</code> 交易次数暴增；</li>
+<li>drawdown 也更难看；</li>
+<li>说明 basket OU 这套更像 <strong><code>15m</code> first lane</strong>；</li>
+<li><code>5m</code> 更适合先做 execution layer、confirm layer，或者只在 <code>15m</code> 信号触发后做 finer entry。</li>
+</ul>
+<h2>8. 为什么它和当前项目不撞题，但又刚好能补仓</h2>
+<p>已有 digest 里，pairs / stat-arb 很多是：</p>
+<ul>
+<li>单 pair</li>
+<li>动态 hedge ratio</li>
+<li>copula pair</li>
+<li>ratio spread</li>
+<li>Hurst pocket</li>
+</ul>
+<p>这份 repo 的新增价值在于：</p>
+<h3>8.1 它把 pair 提升成了 basket</h3>
+<p>pair 容易被单一共同因子污染； 3-leg basket 往往更接近“真正的相对价值残差”。</p>
+<h3>8.2 它把 admission 写得比“协整就做”更完整</h3>
+<p>Johansen 只是第一关，后面还有：</p>
+<ul>
+<li>ADF</li>
+<li>VR</li>
+<li>half-life</li>
+<li>stability</li>
+<li>predictability</li>
+</ul>
+<p>这更适合作为 research funnel，而不是一次性固定参数。</p>
+<h3>8.3 它天然允许以后接别的 overlay</h3>
+<p>这个壳子以后很好接：</p>
+<ul>
+<li>funding/basis crowding veto</li>
+<li>liquidity veto</li>
+<li>event window blacklist</li>
+<li>basket turnover cap</li>
+<li>maker-first execution</li>
+</ul>
+<p>所以它不只是一个“新 pair 变种”，而是一个<strong>可继续生长的 raw alpha 容器</strong>。</p>
+<h2>9. 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>双向 / market-neutral / relative-value / stat-arb</strong></li>
+<li>基础 alpha：<strong>cointegrated basket spread 会向均衡回归，OU speed 决定偏离是否值得做</strong></li>
+<li>regime：</li>
+<li>basket 在 formation 窗里必须仍像可逆 spread</li>
+<li>half-life 不可太慢</li>
+<li>rolling ADF / rolling vol 变坏就降级或 flat</li>
+<li>filter / veto：</li>
+<li>Johansen rank ≠ 1 不做</li>
+<li>ADF 不过不做</li>
+<li>VR 不过不做</li>
+<li>half-life 不在交易区间不做</li>
+<li>可再加 funding / 事件 / 深度 veto</li>
+<li>risk / sizing / execution overlay：</li>
+<li>先从 strongest-basket only 开始</li>
+<li>bucketed sizing 而不是连续抖仓</li>
+<li>并发数上限建议先 <code>1 → 2</code>，不要直接 portfolio 化</li>
+<li>成本必须按 taker / maker 分层重测</li>
+</ul>
+<h2>10. 风险与保留意见</h2>
+<ul>
+<li>这次 portability probe <strong>不是</strong> repo 的 full faithful replication；</li>
+<li>我压缩了 formation / trade horizon；</li>
+<li>简化了 regime 与成本模型；</li>
+<li>没把 repo 全套 risk parity 原样搬进 intraday。</li>
+<li><code>15m</code> probe 样本还很短，年化 Sharpe 看起来高，但<strong>不能当真值</strong>；</li>
+<li>更该看的是：</li>
+<li>strongest basket 优于多 basket</li>
+<li><code>15m</code> 明显好于 <code>5m</code></li>
+<li>当前 probe 只用少量 liquid majors / alts；</li>
+<li>真正上线前要扩到更完整 perp universe</li>
+<li>这条线依然怕：</li>
+<li>结构性 re-pricing</li>
+<li>事件跳空</li>
+<li>funding / basis 突变</li>
+<li>流动性断层</li>
+</ul>
+<h2>11. 下一步怎么测</h2>
+<h3>11.1 先做 faithful intraday transfer</h3>
+<p>把 repo 的核心结构更完整地搬到 perp：</p>
+<ul>
+<li>universe 扩到 <code>15–30</code> 个 liquid USDT-M perp</li>
+<li>formation / trade 改成多个组合：</li>
+<li><code>14d/2d</code></li>
+<li><code>21d/3d</code></li>
+<li><code>21d/7d</code></li>
+<li>bucket 与 exit threshold 按 <code>15m</code> 单独重扫</li>
+<li>并发数显式扫：<code>1 / 2 / 3</code></li>
+</ul>
+<h3>11.2 把 <code>15m</code> 定成 first lane，<code>5m</code> 只做 execution layer</h3>
+<p>优先测试：</p>
+<ul>
+<li><code>15m</code> 产生 admission + alpha</li>
+<li><code>5m</code> 只负责：</li>
+<li>更细进场</li>
+<li>spread 回补后更早落袋</li>
+<li>maker/taker 切换</li>
+</ul>
+<h3>11.3 把“是否组合化”当成单独实验，而不是默认设定</h3>
+<p>这轮已经给了一个很明确的工程信号： <strong>intraday 上，多 basket 并发不是默认更好。</strong></p>
+<p>所以单独做：</p>
+<ul>
+<li>strongest only</li>
+<li>strongest + second-best</li>
+<li>full eligible portfolio</li>
+</ul>
+<p>比较：</p>
+<ul>
+<li>post-cost expectancy / trade</li>
+<li>turnover</li>
+<li>overlap exposure</li>
+<li>drawdown clustering</li>
+</ul>
+<h3>11.4 最该先补的 live 风控</h3>
+<ol>
+<li>单 basket 最大持有时长</li>
+<li>事件窗 blacklist</li>
+<li>funding/basis 异常 veto</li>
+<li>单资产重复暴露上限</li>
+<li>执行时的 maker-first / adverse-selection 过滤</li>
+</ol>
+<h2>12. 来源</h2>
+<ul>
+<li>Author: <strong>Sujith Kamme</strong></li>
+<li>Year: <strong>2026</strong></li>
+<li>Title: <strong>Crypto Statistical Arbitrage via Cointegration and Regime Filtering</strong></li>
+<li>Venue: <strong>GitHub repository / notebook research project</strong></li>
+<li>DOI: <strong>无</strong></li>
+<li>Readable URL: <code>&lt;<a href="https://github.com/sujith-kamme/statistical-arbitrage-crypto&gt;">https://github.com/sujith-kamme/statistical-arbitrage-crypto&gt;</a></code></li>
+<li>Repo URL: <code>&lt;<a href="https://github.com/sujith-kamme/statistical-arbitrage-crypto&gt;">https://github.com/sujith-kamme/statistical-arbitrage-crypto&gt;</a></code></li>
+<li>Audited local clone: <code>/tmp/statistical-arbitrage-crypto</code></li>
+<li>Audited files:</li>
+<li><code>/tmp/statistical-arbitrage-crypto/readme.md</code></li>
+<li><code>/tmp/statistical-arbitrage-crypto/labs/research.ipynb</code></li>
+<li><code>/tmp/statistical-arbitrage-crypto/artifacts/crypto_pipeline_detailed.svg</code></li>
+<li>Latest audited commit:</li>
+<li><code>780a6c41402645c0187d3d535b5745f96784d551</code></li>
+<li><code>2026-04-08 19:23:57 -0700</code></li>
+<li>Local probe artifacts:</li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/2026-04-11_johansen-basket-ou_portability_probe.json</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/2026-04-11_johansen-basket-ou_probe_windows.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/2026-04-11_johansen-basket-ou_probe_details.csv</code></li>
+</ul>
+<h2>13. 一句话带走</h2>
+<p><strong>这份 repo 最值得 desk 先复现的，不是“多篮子日频 risk parity”整套外壳，而是里头那条更适合 intraday 的 raw alpha 主体：rolling Johansen basket admission × strongest-basket OU fade；从当前快检看，它更像 <code>15m</code> 的第一车道，而不是 <code>5m</code> 的主信号。</strong></p>
+</body>
+</html>

@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 BTC/ETH implied vol 只当慢频解释变量：这篇 2024 IRFA 更该先落地的是「IV quantile confirmation / veto」短周期共享 gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 BTC/ETH implied vol 只当慢频解释变量：这篇 2024 IRFA 更该先落地的是「IV quantile confirmation / veto」短周期共享 gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-28 15:04 UTC</span>
+      <span class="pill">研究时间：2026-03-28 14:33 UTC</span>
+      <span class="pill">类型：filter</span>
+      <span class="pill">主题标签：filter/shared-gate/options/implied-volatility/iv-quantile/confirmation/veto/return-volatility-asymmetry/bitcoin/ethereum/deribit/bitvol/ethvol/5m/15m/1m/3m/paper/external-data/cost</span>
+      <span class="pill">证据类型：2024 IRFA accepted manuscript 全文（University of Southampton ePrints 可读）+ Crossref 元数据 + Deribit 公共 IV 数据口径</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-28_1433_iv-quantile-confirmation-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-28 14:33 UTC</li>
+<li>类型：filter</li>
+<li>主题标签：filter/shared-gate/options/implied-volatility/iv-quantile/confirmation/veto/return-volatility-asymmetry/bitcoin/ethereum/deribit/bitvol/ethvol/5m/15m/1m/3m/paper/external-data/cost</li>
+<li>证据类型：2024 IRFA accepted manuscript 全文（University of Southampton ePrints 可读）+ Crossref 元数据 + Deribit 公共 IV 数据口径</li>
+</ul>
+<h2>0. 四个先答字段</h2>
+<ul>
+<li>主题类型：filter</li>
+<li>基础 alpha：<strong>它本身不是独立 raw alpha；它服务于两类已有 base alpha：① <code>5m/15m</code> breakout / continuation；② <code>5m/15m</code> 冲击后 fade / overreaction。核心假设是：价格冲击若得到 implied vol 变化确认，更像真扩散；若处在高 IV 分位却出现“价动、IV 不确认或反向”的组合，更像过冲，应该 veto 或反打。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是一篇直接研究 <strong>BTC / ETH 高频收益与 implied vol 非对称关系</strong> 的论文：</p>
+<ul>
+<li><strong>Authors</strong>：Muhammad Mahmudul Karim, Mohamed Eskandar Shah, Abu Hanifa Md. Noman, Larisa Yarovaya</li>
+<li><strong>Year</strong>：2024</li>
+<li><strong>Title</strong>：*Exploring Asymmetries in Cryptocurrency Intraday Returns and Implied Volatility: New Evidence for High-Frequency Traders*</li>
+<li><strong>Venue</strong>：*International Review of Financial Analysis*</li>
+<li><strong>DOI</strong>：10.1016/j.irfa.2024.103617</li>
+<li><strong>Readable URL</strong>：<a href="https://doi.org/10.1016/j.irfa.2024.103617">https://doi.org/10.1016/j.irfa.2024.103617</a></li>
+<li><strong>Accepted manuscript URL</strong>：<a href="https://eprints.soton.ac.uk/495838/1/High_frequency_Bitcoin_and_Ethereum_LY_final.docx">https://eprints.soton.ac.uk/495838/1/High_frequency_Bitcoin_and_Ethereum_LY_final.docx</a></li>
+<li><strong>Repo URL</strong>：未见作者配套 repo</li>
+</ul>
+<p>一句话判断：</p>
+<p>&gt; <strong>这篇东西的 base alpha 说不清，所以不该硬包装成主 alpha；它更适合被拆成一个 shared gate：用 BTC/ETH 的 IV 分位和 IV 变动，去给已有短周期方向信号做 confirmation / veto。</strong></p>
+<p>这也正好符合当前 desk intake 的灵活规则：如果材料更像 <strong>filter / regime / overlay</strong>，就明确写成 filter，不冒充 headline raw alpha。</p>
+<h2>2. 为什么这轮值得先补这个 gate，而不是再加一个同类 raw alpha</h2>
+<p>从 <code>INDEX.md</code> 看，最近素材池里的 raw alpha 已经堆了不少：</p>
+<ul>
+<li>intraday momentum / continuation</li>
+<li>short-term reversal / lottery fade</li>
+<li>pairs / relative-value / basis / funding</li>
+<li>order-book / options flow / event-driven</li>
+</ul>
+<p><strong>相对更薄的，是一层能跨策略复用的“短周期 admission / veto”组件。</strong></p>
+<p>这篇 paper 的价值正好在这里：</p>
+<ol>
+<li><strong>它不是慢频宏观变量</strong>，而是直接跟着 crypto 自身波动状态走；</li>
+<li><strong>它天然服务至少两类 alpha</strong>：</li>
+</ol>
+<ul>
+<li>trend / breakout：看价格扩散有没有得到 IV 确认；</li>
+<li>mean reversion / shock fade：看高 IV 状态下的单边 bar 是否已经过冲；</li>
+</ul>
+<ol>
+<li>它还回答了一个对我们很实用的问题：</li>
+</ol>
+<ul>
+<li><code>1m/3m</code> 和 <code>5m/15m</code> 不该一视同仁；</li>
+<li><strong>IV asymmetry 在高频是存在的，但在极高频低分位更弱，在更慢一点的频率和更高分位更强。</strong></li>
+</ul>
+<p>所以这轮不再继续补一个“又一个 breakout alpha”，而是补一个更像 <strong>shared state layer</strong> 的东西，我认为是合理的。</p>
+<h2>3. 论文里最值得拿走的证据</h2>
+<h3>3.1 样本不是小打小闹</h3>
+<p>论文核心样本有几个数很关键：</p>
+<ul>
+<li><strong>约 650 万条观测</strong>；</li>
+<li>同时覆盖 <strong>BTC / ETH</strong> 与其 <strong>model-free implied volatility</strong>（BitVol / EthVol）；</li>
+<li>频率同时看 <strong><code>1m / 5m / 10m / 15m / 60m / daily</code></strong>；</li>
+<li>IV 数据起点来自指数 inception，文中明确提到 <strong>2020-04-04</strong> 之后的样本期。</li>
+</ul>
+<p>这很重要，因为它不是用日频去硬推高频，而是真的把 <strong>高频 return-volatility 关系</strong> 单独拿出来测。</p>
+<h3>3.2 最关键的 headline：高频下，IV 对收益冲击的响应在所有波动分位都显著；日频不是</h3>
+<p>论文摘要给出的最重要结论其实已经够 desk 化了：</p>
+<ul>
+<li><strong>daily 频率</strong>下，估计系数只在 <strong>中高波动 regime</strong> 显著；</li>
+<li><strong>high-frequency 频率</strong>下，估计系数在 <strong>所有波动 regime</strong> 都高度显著。</li>
+</ul>
+<p>这对我们意味着什么？</p>
+<ul>
+<li>别把 implied vol 当成“只对日频有用、对 <code>5m/15m</code> 太慢”的变量；</li>
+<li>真正应该测的是：<strong>短周期价格冲击是否得到 IV 同步确认</strong>。</li>
+</ul>
+<p>换句话说，这篇 paper 更像在告诉我们：</p>
+<p>&gt; <strong>IV 不是慢解释变量，而是可以进入短周期信号 admission 的状态变量。</strong></p>
+<h3>3.3 第二个更实用的结论：弱不弱，取决于“频率 × IV 分位”</h3>
+<p>作者明确写到：</p>
+<ul>
+<li><strong>低 quantile + 更高频率</strong>：asymmetry 较弱；</li>
+<li><strong>高 quantile + 更低频率</strong>：asymmetry 较强。</li>
+</ul>
+<p>把它翻成人话：</p>
+<ul>
+<li>在 <strong><code>1m/3m</code></strong>，尤其当 IV 本来就不高时，拿 IV 做 bar-by-bar 方向确认，容易太噪；</li>
+<li>到 <strong><code>5m/15m</code></strong>，尤其当 IV 已经在高分位时，IV 的确认 / 否决信息更有价值。</li>
+</ul>
+<p>这正好给了我们一个很自然的实验分工：</p>
+<ul>
+<li><code>1m/3m</code>：更多拿来执行、风控、盘口 veto；</li>
+<li><code>5m/15m</code>：才是 IV confirmation gate 的主战场。</li>
+</ul>
+<h3>3.4 表格层面的两个定性事实也很有用</h3>
+<p>从文中的 quantile regression 表可以直接读出两件事：</p>
+<ol>
+<li><strong>BTC 和 ETH 都一样，不是单币特例</strong>；</li>
+<li>在 <code>1m</code> 频率下，正负收益项对 IV 变化在多个 quantile 上都非常显著；但到 <strong>daily</strong>，这种显著性明显收缩到更有限的 regime。</li>
+</ol>
+<p>这说明两点：</p>
+<ul>
+<li>这个结构不是“只在 Bitcoin 上成立”的偶然噪音；</li>
+<li>也不是“只有高频 HFT 才看得见、我们 5m/15m 用不上”的东西——相反，论文就是在提醒你：<strong>越往中速 intraday（尤其高 IV 状态），越值得纳入 gate。</strong></li>
+</ul>
+<h2>4. desk 化以后，最合理的读法是什么</h2>
+<p>我不建议把这篇 paper 解读成“用 IV 单独预测涨跌”。那样会把它读歪。</p>
+<p>更合适的 desk 版本是下面这两条：</p>
+<h3>4.1 作为 continuation gate</h3>
+<p>对已有的 breakout / momentum / lead-lag 信号：</p>
+<ul>
+<li>若价格上冲（或下砸）同时伴随 <strong>IV 上行确认</strong>，说明这更像 <strong>真扩散 / 真风险重估</strong>；</li>
+<li>若价格动了，但 <strong>IV 没确认甚至反向</strong>，则这次 price move 更像流动性脉冲或短时 squeeze，信号应降权。</li>
+</ul>
+<h3>4.2 作为 fade veto / fade admit layer</h3>
+<p>对已有的 reversal / shock-fade 信号：</p>
+<ul>
+<li>若价格单边极端，但 <strong>IV 已处高分位且继续扩张</strong>，别急着反打，先把它当成“趋势扩散尚未结束”；</li>
+<li>若高 IV 分位下出现 <strong>price extension + IV 不再确认</strong>，才更像 overreaction，可给 fade 更高优先级。</li>
+</ul>
+<p>所以它不是主 alpha，而是：</p>
+<p>&gt; <strong>一个把“该追”还是“该等”、以及“该反打”还是“先别碰”区分开的共享 gate。</strong></p>
+<h2>5. 最小可复现实验怎么做</h2>
+<h3>5.1 数据源</h3>
+<ul>
+<li><strong>IV / DVOL 侧</strong>：Deribit 公共 volatility index / options implied vol 数据（BTC, ETH）</li>
+<li>可先用 Deribit 公共 IV 指数或等价 proxy（BitVol / EthVol / ATM IV）</li>
+<li>参考：<code><a href="https://docs.deribit.com/">https://docs.deribit.com/</a></code></li>
+<li><strong>执行侧价格</strong>：Binance 或 Deribit perpetual <code>1m/5m/15m</code> K 线</li>
+<li><strong>公开性</strong>：公开可拉</li>
+<li><strong>更新频率</strong>：分钟级 / 近实时</li>
+<li><strong>最小实验口径</strong>：先用 <code>5m</code> 与 <code>15m</code> 聚合，避免把 <code>1m</code> 噪音当发现</li>
+</ul>
+<h3>5.2 先别做复杂模型，先做一个最小 gate</h3>
+<p>先定义：</p>
+<ul>
+<li><code>ret_t</code>：BTC/ETH perp 当前 bar 收益</li>
+<li><code>ivchg_t</code>：同 bar 的 IV 变化（或 log-diff）</li>
+<li><code>iv_q_t</code>：过去 20~40 个 bar 上 IV 所在分位</li>
+</ul>
+<p>然后只测一个很朴素的 admission rule：</p>
+<ul>
+<li><strong>continuation admit</strong>：</li>
+<li><code>|ret_t|</code> 进入过去 N bar 前 80%~90% 分位；</li>
+<li><code>sign(ivchg_t) == sign(|ret_t| shock 的方向扩散)</code>，即大方向上有 IV 确认；</li>
+<li><code>iv_q_t &gt;= 0.6</code> 或 <code>0.7</code></li>
+<li><strong>fade admit</strong>：</li>
+<li><code>|ret_t|</code> 很极端；</li>
+<li><code>iv_q_t &gt;= 0.8</code>；</li>
+<li>但 <code>ivchg_t</code> 没继续确认，或出现回落</li>
+</ul>
+<p>用这条规则分别去包两套 baseline：</p>
+<ol>
+<li><strong>baseline A：5m/15m breakout continuation</strong></li>
+<li><strong>baseline B：5m/15m shock fade</strong></li>
+</ol>
+<p>看 gate 是否提高：</p>
+<ul>
+<li>hit rate</li>
+<li>average markout（1/3/6 bars）</li>
+<li>tail loss</li>
+<li>turnover after veto</li>
+</ul>
+<h3>5.3 成本与风控</h3>
+<p>这类 gate 最大的风险不是“信号方向错”，而是：</p>
+<ul>
+<li>过度频繁切换 admission 状态；</li>
+<li>在 <code>1m</code> 上被 IV micro-noise 误导；</li>
+<li>使用非同源市场（Deribit IV vs Binance perp）时出现时钟错位。</li>
+</ul>
+<p>所以最小实验务必先加三条约束：</p>
+<ul>
+<li><strong>只在 <code>5m/15m</code> 做主判定</strong>；</li>
+<li><strong>同方向确认至少持续 2 个采样点</strong>；</li>
+<li><strong>执行仍走流动性更好的 perp，IV 只做 gate，不直接做 sizing 主驱动。</strong></li>
+</ul>
+<h2>6. 我认为这篇东西最该留下来的结论</h2>
+<p>如果只留一句给后续研究池，我会写：</p>
+<p>&gt; <strong>短周期里别把 implied vol 只当“解释涨跌的事后指标”；在 BTC/ETH 上，更值得先测的是“IV quantile × IV change”能不能做 continuation / fade 的 admission-veto layer，尤其优先放在 <code>5m/15m</code>，而不是噪音更大的 <code>1m/3m</code>。</strong></p>
+<p>这轮它不是来补一个新的 headline raw alpha，而是来补一块当前素材池里更缺的 <strong>shared gate</strong>。</p>
+<h2>7. 下一步怎么测</h2>
+<p>按优先级我建议直接做 3 步：</p>
+<ol>
+<li><strong>BTC perp baseline 对照</strong>：</li>
+</ol>
+<ul>
+<li>找一条现成 <code>5m/15m</code> breakout alpha，加入 <code>iv_q × ivchg</code> admission gate；</li>
+<li>比较 gate 前后 trade count、胜率、平均 <code>3-bar</code> markout。</li>
+</ul>
+<ol>
+<li><strong>ETH perp 平行复现</strong>：</li>
+</ol>
+<ul>
+<li>同样口径复现 BTC 与 ETH；</li>
+<li>看它是 shared gate 还是只在 BTC 上成立。</li>
+</ul>
+<ol>
+<li><strong>fade 版本反向验证</strong>：</li>
+</ol>
+<ul>
+<li>只挑 <code>iv_q &gt;= 0.8</code> 的极端 bar；</li>
+<li>比较“IV 继续扩张”和“IV 不再确认”两组后续 1~6 bar 路径差异。</li>
+</ul>
+<p>如果这三步里，gate 对 <strong>至少两类 alpha</strong> 都有稳定帮助，它就值得沉淀成一个正式组件：</p>
+<ul>
+<li><code>iv_regime_state</code></li>
+<li><code>iv_confirmation_gate</code></li>
+<li><code>iv_nonconfirmation_fade_admit</code></li>
+</ul>
+<h2>来源链接</h2>
+<ul>
+<li>Paper DOI / landing page：<a href="https://doi.org/10.1016/j.irfa.2024.103617">https://doi.org/10.1016/j.irfa.2024.103617</a></li>
+<li>Accepted manuscript：<a href="https://eprints.soton.ac.uk/495838/1/High_frequency_Bitcoin_and_Ethereum_LY_final.docx">https://eprints.soton.ac.uk/495838/1/High_frequency_Bitcoin_and_Ethereum_LY_final.docx</a></li>
+<li>Deribit API docs：首页 <a href="https://docs.deribit.com/">https://docs.deribit.com/</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 pairs 只写成 z-score 开平：这篇 2025 论文更值钱的是「cointegration 均值回归 + lookback/vol/stop」完整策略骨架</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 pairs 只写成 z-score 开平：这篇 2025 论文更值钱的是「cointegration 均值回归 + lookback/vol/stop」完整策略骨架</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-23 15:23 UTC</span>
+      <span class="pill">研究时间：2026-03-23 15:19 UTC</span>
+      <span class="pill">类型：近 5 年论文 + 作者开源仓库 + Binance 公共数据最小快检</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/lookback/vol-filter/trailing-stop/cost/crypto/5m/15m</span>
+      <span class="pill">证据类型：论文题录/摘要 + 工程证据 + 本地快检（可复现）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-23_1519_pairs-fullstack-not-just-zscore.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-23 15:19 UTC</li>
+<li>类型：近 5 年论文 + 作者开源仓库 + Binance 公共数据最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：pairs / stat-arb / relative-value mean reversion（cointegration spread 偏离后回归）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/lookback/vol-filter/trailing-stop/cost/crypto/5m/15m</li>
+<li>证据类型：论文题录/摘要 + 工程证据 + 本地快检（可复现）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这篇东西的基础 alpha 不是“参数优化”本身，而是 cointegration spread 的均值回归。</strong></p>
+<p>这次主看 <strong>Rafael Baptista Palazzi (2025)</strong> 的 *Trading Games: Beating Passive Strategies in the Bullish Crypto Market*，以及作者同步公开的 R 仓库 <code>trading-games-crypto</code>。对我们 desk 真正值钱的不是 headline“跑赢被动持有”，而是它把一条 <strong>可以直接拆成 entry / exit / risk / cost 的 pairs 完整骨架</strong>写出来了：</p>
+<ul>
+<li>spread 定义：<code>log(P_y) - gamma * log(P_x)</code></li>
+<li>entry：<code>z-score</code> 超阈值开仓</li>
+<li>pair sizing：按 <code>gamma</code> 做 beta-neutral 权重</li>
+<li>risk：volatility filter + adaptive trailing stop + min holding period</li>
+<li>cost：交易成本直接入回测</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 对当前短周期 desk，更值得抄的不是“pairs 会不会均值回归”这种老答案，而是 <strong>如何把这条 raw alpha 包装成一个成本诚实、风控完整、可以直接 first-verdict 的策略骨架</strong>。</li>
+<li><strong>一句话证明方式：</strong> 论文摘要给出样本与总体结论，作者 repo 直接公开了策略函数与参数语义；我又用 Binance 15m 公共数据做了最小快检，看这条骨架能不能往我们口径映射。</li>
+</ul>
+<p>最值得记住的 3 个数据点：</p>
+<ol>
+<li>论文样本是 <strong>10 个主流 crypto，2019-01 到 2024-05</strong>。</li>
+<li>作者 repo README 报告该策略约有 <strong>年化 Sharpe ≈ 2.0</strong>、<strong>年化收益 ≈ 71%</strong>，且声称相对 buy-and-hold 与 momentum 更优。</li>
+<li>我这边把它压到 Binance <strong>15m</strong> 后，若做“全 pair 广撒网”，<strong>28 个候选 pair 平均 gross 只有 +0.52 bps/bar，但 net 变成 -0.50 bps/bar</strong>；说明这条 alpha 不是“全池自动赚钱”，而是<strong>pair governance 很关键</strong>。</li>
+</ol>
+<h2>3. 为什么和当前 desk 直接相关</h2>
+<ul>
+<li>这是 <strong>独立 raw alpha 家族</strong>，不是继续给 breakout/retest 找一个附件过滤层。</li>
+<li>和当前 <code>1m/3m/5m/15m</code> 节奏兼容：pair 形成、z-score、退出、成本都能快速写成最小实验。</li>
+<li>它比很多“只给 filter 不给 alpha”的材料更适合现在，因为这条线天然就是完整策略：</li>
+<li>entry：<code>|z| &gt; threshold</code></li>
+<li>exit：回归到中线 / 反向信号 / max-hold / trailing stop</li>
+<li>sizing：beta-neutral 或 dollar-neutral</li>
+<li>risk：vol veto、结构断裂停机、pair 下线</li>
+<li>cost：双腿手续费 + 滑点 + 借贷/资金费率（若用 perp）</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative-value / stat-arb / market-neutral</li>
+<li>基础 alpha：当 cointegration spread 明显偏离自身滚动均值时，押注其向均值收敛</li>
+<li>regime：优先在 pair 关系稳定、波动未失控、流动性足够时启用</li>
+<li>filter / veto：事件窗口、波动爆表、相关结构断裂、pair 半衰期飘移时停机</li>
+<li>risk / sizing / execution overlay：按 <code>gamma</code> 中性配比、限制最大持有时长、显式计成本、优先 maker / 分批成交</li>
+</ul>
+<h2>4. 本地最小快检（Binance 公共数据）</h2>
+<h3>4.1 数据与口径</h3>
+<ul>
+<li>数据源：Binance Spot 公开 klines</li>
+<li>公开性：公开可得，无需私钥</li>
+<li>更新频率：15m</li>
+<li>样本：最近 <code>3000</code> 根 15m bars</li>
+<li>币池：<code>BTC/ETH/BNB/SOL/XRP/ADA/DOGE/LINK</code></li>
+<li>训练/测试：前 <code>60%</code> 估计 <code>gamma</code> 与 lookback，后 <code>40%</code> 看 OOS</li>
+<li>粗成本：pair 层每次完整进/出按约 <strong>16 bps round-trip</strong> 的简化口径（实现中按 <code>position change</code> 计）</li>
+</ul>
+<h3>4.2 快检结果怎么读</h3>
+<p><strong>A. 广撒网版（28 个 pair，全池扫描）</strong></p>
+<ul>
+<li>平均 <strong>gross = +0.52 bps/bar</strong></li>
+<li>平均 <strong>net = -0.50 bps/bar</strong></li>
+<li>最好的一对在 net 层也只有 <strong>-0.16 bps/bar</strong></li>
+</ul>
+<p>这说明：<strong>pairs raw alpha 不是“拿一堆相关币做 z-score 就行”</strong>。如果 pair formation 不严、成本处理不诚实，alpha 很容易只剩毛边。</p>
+<p><strong>B. 收窄到更像样的 pair（固定 <code>lookback=192</code>, <code>z=0.7</code>）</strong></p>
+<ul>
+<li><code>BTC-ETH</code>：<strong>gross +0.49 bps/bar，net +0.25 bps/bar</strong>，OOS 累计约 <strong>+1.00%</strong></li>
+<li><code>BNB-ADA</code>：<strong>gross +1.12 bps/bar，net +0.80 bps/bar</strong>，OOS 累计约 <strong>+3.22%</strong></li>
+</ul>
+<p>这组结果的读法是：</p>
+<ul>
+<li><strong>alpha 不是没有，但明显只活在少数 pair pocket 里；</strong></li>
+<li>repo 那套“动态 lookback + vol/risk overlay”的价值，恰恰在于帮你把“能做的 pair”与“不能碰的 pair”分开，而不是把所有 pair 一锅烩。</li>
+</ul>
+<h2>5. 下一步怎么测（可直接执行）</h2>
+<ol>
+<li><strong>先做 pair governance，不做全池平均。</strong> 从 <code>BTC-ETH / BNB-ADA / SOL-LINK</code> 这类高流动性对开始。</li>
+<li><strong>三维网格先跑小的：</strong> <code>lookback ∈ {64,128,192,256}</code> × <code>entry z ∈ {0.7,1.0,1.3}</code> × <code>exit z ∈ {0.0,0.2,0.4}</code>。</li>
+<li><strong>把 repo 的完整层补齐：</strong> 在当前最优 pair 上逐个加入 <code>vol filter</code>、<code>max_hold</code>、<code>adaptive trailing stop</code>，看哪一层是真提升、哪一层只是减交易。</li>
+<li><strong>把 15m first verdict 通过的 pair 下钻到 5m / 3m。</strong> 只下钻通过 15m 诚实门的 pair，不做全池盲扫。</li>
+<li><strong>显式画成本生存线：</strong> 至少测 <code>8 / 16 / 24 / 32 bps round-trip</code> 四档，确认哪档开始失活。</li>
+</ol>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>论文正文页面当前被 Cloudflare 挡住；本轮对论文本身主要依赖 <strong>Crossref 摘要 + 作者开源代码/README</strong>，所以对论文细节不做超出可见证据的延伸解读。</li>
+<li>作者 repo 的高收益结果是其样本与口径下的报告，不应直接外推到我们 15m crypto 生产口径。</li>
+<li>本地快检已经表明：<strong>全池平均不成立，局部 pair 才可能成立</strong>。这条线若要进主池，必须附带严格 pair governance，而不是只保留 signal 本体。</li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>Palazzi, Rafael Baptista. (2025). _Trading Games: Beating Passive Strategies in the Bullish Crypto Market_. Journal of Futures Markets.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1002/fut.70018</code></li>
+<li>Readable URL: <a href="https://doi.org/10.1002/fut.70018">https://doi.org/10.1002/fut.70018</a></li>
+</ul>
+<ol>
+<li><strong>Rafael Baptista Palazzi. (2025). _trading-games-crypto_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/rafaelpalazzi/trading-games-crypto">https://github.com/rafaelpalazzi/trading-games-crypto</a></li>
+<li>Readable URL: <a href="https://github.com/rafaelpalazzi/trading-games-crypto">https://github.com/rafaelpalazzi/trading-games-crypto</a></li>
+</ul>
+<ol>
+<li><strong>Palazzi, Rafael Baptista. (2024). _Trading Games: Beating Passive Strategies in the Bullish Crypto Market_ [Dataset]. Mendeley Data.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://doi.org/10.17632/2kky7c6xkn.1">https://doi.org/10.17632/2kky7c6xkn.1</a></li>
+</ul>
+<h2>8. 本地复现产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/pairs_fullstack_probe_20260323/pair_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/pairs_fullstack_probe_20260323/focused_pair_check.csv</code></li>
+<li><code>reports/artifacts/quant_digests/pairs_fullstack_probe_20260323/lookback_search.jsonl</code></li>
+<li><code>reports/artifacts/quant_digests/pairs_fullstack_probe_20260323/meta.json</code></li>
+</ul>
+</body>
+</html>

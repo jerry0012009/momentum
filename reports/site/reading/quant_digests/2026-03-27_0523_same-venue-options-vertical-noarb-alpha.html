@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 options repo 只当报警脚本：更该先测的是「同所同到期 vertical-spread no-arb 违例」事件驱动 raw alpha，但当前 live snapshot 很薄</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 options repo 只当报警脚本：更该先测的是「同所同到期 vertical-spread no-arb 违例」事件驱动 raw alpha，但当前 live snapshot 很薄</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-27 05:25 UTC</span>
+      <span class="pill">研究时间：2026-03-27 05:23 UTC</span>
+      <span class="pill">类型：仓库</span>
+      <span class="pill">主题标签：raw-alpha/options/vertical-spread/no-arbitrage/same-venue/same-expiry/adjacent-strike/relative-value/stat-arb/event-driven/delta-exchange/btc/eth/1m/3m/5m/15m/repo/external-data</span>
+      <span class="pill">证据类型：仓库证据（2026 GitHub repo + Delta Exchange India 公共 options API 最小快检）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-27_0523_same-venue-options-vertical-noarb-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-27 05:23 UTC</li>
+<li>类型：仓库</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一交易所、同一到期日下，若不同 strike 的 call/put 报价违反基本单调性（例如高 strike call 反而比低 strike call 更贵到足以覆盖买卖价差），就做多被低估腿、做空被高估腿，吃 vertical spread 的 no-arbitrage 收敛。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/options/vertical-spread/no-arbitrage/same-venue/same-expiry/adjacent-strike/relative-value/stat-arb/event-driven/delta-exchange/btc/eth/1m/3m/5m/15m/repo/external-data</li>
+<li>证据类型：仓库证据（2026 GitHub repo + Delta Exchange India 公共 options API 最小快检）</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<p>这次看的是 <strong>vk82313 (2026)</strong> 的 GitHub 仓库 <strong>《crypto-arbitrage-bot》</strong>。它表面上像一个泛泛的 “ETH &amp; BTC Options Arbitrage Bot”，但把源码拆开后，真正值得我们 desk intake 的 <strong>base alpha</strong> 很具体：<strong>同一 venue、同一 expiry、不同 strike 之间的 vertical spread 单调性违例</strong>。换成人话，就是：<strong>如果同到期权链里出现“贵的应该更便宜、便宜的反而更贵”的盘口错位，就做一个几乎 market-neutral 的收敛腿对。</strong></p>
+<p>我额外用仓库里直接调用的 <strong>Delta Exchange India 公共 <code>/v2/tickers</code></strong> 口径做了一个 live quick check，先看这个 raw alpha 在当前公开盘口里是不是至少还看得见。</p>
+<h2>2) 核心结论（先说人话）</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 真正该进入素材池的，不是“做 options arbitrage”这句大词，而是更窄、更可测的 <strong>same-venue / same-expiry vertical-spread no-arb 违例</strong> 事件驱动 raw alpha。</li>
+<li><strong>一句话证明方式：</strong> 仓库把信号、执行、超时、加价追单都写成了完整代码；我再对其公开数据源做 live quick check，发现这条 alpha <strong>逻辑完整但当前信号密度很薄</strong>。</li>
+<li>源码里的信号非常直接：</li>
+<li><strong>Call 侧</strong>：若 <code>K1 &lt; K2</code>，却出现 <code>bid(Call, K2) &gt; ask(Call, K1)</code>，就买低 strike call、卖高 strike call；</li>
+<li><strong>Put 侧</strong>：若 <code>K1 &lt; K2</code>，却出现 <code>bid(Put, K1) &gt; ask(Put, K2)</code>，就卖低 strike put、买高 strike put。</li>
+<li>这不是拍脑袋规则，而是最基本的 <strong>同到期 strike 单调性 / vertical spread no-arbitrage</strong>。正常情况下：</li>
+<li>call 价格应随 strike 上升而下降；</li>
+<li>put 价格应随 strike 上升而上升；</li>
+<li>若反过来，而且反过来的幅度足够大到覆盖 fees/slippage，就出现可交易的相对价值机会。</li>
+<li>仓库执行骨架也算完整：</li>
+<li><strong>1 秒轮询</strong> 公共 options tickers；</li>
+<li>先卖贵腿，<strong>5 秒</strong>等成交；</li>
+<li>再买便宜腿，按 <strong>2 秒 → 加一档 → 2 秒 → 提到对手卖价</strong> 的 ladder 去追；</li>
+<li>单笔最多 <strong>100 lots</strong>；</li>
+<li>默认阈值是 <strong>ETH 最小毛利 0.20、BTC 最小毛利 3.00</strong>。</li>
+<li>但 live quick check 很诚实地泼了冷水：</li>
+<li>当前公开 endpoint 一次返回约 <strong>942 个 options ticker</strong>；</li>
+<li><code>BTC/ETH</code> 各有 <strong>7 个 expiry</strong>；</li>
+<li>按 repo 的“<strong>相邻 strike</strong>”规则去扫，<strong>BTC 所有 expiry = 0 个 gross 违例，ETH 所有 expiry = 0 个 gross 违例</strong>；</li>
+<li>即便把扫描放宽到“<strong>同 expiry 的任意 strike 对</strong>”，也只在 <strong>ETH 当日到期 put</strong> 上看到 <strong>1 个 gross=0.01</strong> 的极小违例，远小于 repo 自己设的 <code>0.20</code> 阈值，更别说 fees/slippage。</li>
+<li>所以这条线当前更像：<strong>一个结构上成立、工程上完整、但 live 盘口里不一定常有肉的 raw alpha 家族</strong>。值钱的地方在于它是 <strong>可直接验证的完整策略骨架</strong>，而不是它今天已经被 quick check 证实“遍地是钱”。</li>
+</ul>
+<h2>3) 为什么和当前项目有关</h2>
+<p>这条线和当前 desk 相关，不是因为我们一定要转去做 options，而是因为它补的是一类我们还不算多的 <strong>“静态 no-arb / 盘口错位 → 事件驱动收敛”</strong> raw alpha。它和最近那些 perp lead-lag、funding carry、cross-sectional reversal 不同：</p>
+<ul>
+<li>它是 <strong>同资产、同到期、同 venue</strong> 内部的 relative-value；</li>
+<li>它天然 <strong>market-neutral / delta 较低</strong>，不是裸方向；</li>
+<li>它和 <code>1m/3m/5m/15m</code> desk 的关系，不是把 15m K 线当信号本体，而是把 <strong>秒级 quote 违例事件</strong> 聚合成可交易事件，再映射成分钟级监控、回放与风控框架。</li>
+</ul>
+<p>如果后续我们继续扩 raw alpha 素材池，这类“<strong>价差错位收敛</strong>”家族值得保留一条：它不跟 breakout / momentum 内循环撞车，也能补上 options / static-arb / quote-dislocation 这块空白。</p>
+<h2>3.5) 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>relative-value / stat-arb / 低方向暴露收敛型</strong></li>
+<li>基础 alpha：<strong>同所同到期 vertical spread 单调性违例会在短时间内回归 no-arb 区间</strong></li>
+<li>regime：<strong>近到期、盘口稀疏、报价刷新不同步、局部流动性空洞</strong> 的时段更容易出现</li>
+<li>filter / veto：</li>
+<li>仅做 <code>gross_edge &gt; fees + slippage + legging_buffer</code></li>
+<li>两腿最小可成交量都要过线</li>
+<li>quote age 不能太老</li>
+<li>underlying 在挂单期间不能大幅跳动</li>
+<li>到期前最后几分钟若流动性断裂，默认降权或 veto</li>
+<li>risk / sizing / execution overlay：</li>
+<li>单 expiry / 单资产设置 notional cap</li>
+<li>优先 IOC/FOK 或超短 timeout，减少单腿裸露时间</li>
+<li>对“先卖后买”的 legging risk 单独记账</li>
+<li>把 <code>edge / strike_gap</code>、盘口深度、距到期时间一起纳入 sizing</li>
+</ul>
+<h2>4) 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 即便 repo 当前的“相邻 strike + 固定阈值”版本在 live snapshot 上几乎抓不到 gross edge，<strong>更宽的 strike 对扫描 + 更严的 quote 质量过滤</strong>，仍可能在 near-expiry、薄盘口时段留下可交易的秒级错位事件。</p>
+<p><strong>一个最小可计算定义：</strong></p>
+<ol>
+<li>直接调用公开数据源：<code><a href="https://api.india.delta.exchange/v2/tickers?contract_types=call_options,put_options">https://api.india.delta.exchange/v2/tickers?contract_types=call_options,put_options</a></code>；</li>
+<li>对 <code>BTC/ETH</code> 按 <code>expiry × strike × option_type</code> 重组 order book top-of-book；</li>
+<li>同一 expiry 下同时计算两类信号：</li>
+</ol>
+<ul>
+<li><strong>adjacent vertical arb</strong>：只看相邻 strike；</li>
+<li><strong>full-pair vertical arb</strong>：看任意 <code>K1 &lt; K2</code>，但把 edge 用 <code>gross_edge / (K2-K1)</code> 归一化；</li>
+</ul>
+<ol>
+<li>成本口径先别乐观：至少扣 <strong>双边 taker fee + 2 腿半个 spread + legging shock buffer</strong>；</li>
+<li>记录每次违例的：出现时长、最大 gross edge、净 edge、两腿 size、到期剩余时间、underlying 同期波动。</li>
+</ol>
+<p><strong>最小回放切口：</strong></p>
+<ul>
+<li>资产：<code>BTC/ETH options</code></li>
+<li>频率：<strong>1 秒轮询</strong>；对 desk 展示时再聚合成 <code>1m/3m/5m/15m</code> 的 <strong>事件计数 / 最大净 edge / 持续时长</strong></li>
+<li>时间窗：先抓 <strong>近 7 天 × 全部 expiry</strong>，优先盯 <strong>当日到期 + 次日到期</strong></li>
+</ul>
+<p><strong>先看 4 个指标：</strong></p>
+<ul>
+<li><code>violations/day</code></li>
+<li><code>median net edge / opportunity</code></li>
+<li><code>median dwell time</code>（违例能活多久）</li>
+<li><code>legging-adjusted fill ratio</code></li>
+</ul>
+<h2>5) 风险与保留意见</h2>
+<ul>
+<li><strong>这是 repo 证据，不是论文证据。</strong> 理论没问题，但没有看到严肃样本内外检验。</li>
+<li>当前 live quick check 基本判定：<strong>repo as-is 的信号非常稀薄</strong>。如果继续做，必须接受“这可能主要是 stale quote artifact，而不是稳定 alpha”。</li>
+<li>仓库默认只扫 <strong>相邻 strike</strong>，这会漏掉不少跨档位异常；但扫太宽又会引入更多假信号。</li>
+<li>仓库执行是明显的 <strong>legging</strong>：先成交贵腿，再追便宜腿；真实交易里最容易死在这里。</li>
+<li>Delta Exchange India 不是 Deribit 这类更深的主战场，<strong>venue transfer</strong> 不一定成立；但也正因为更薄，才更可能有 quote-dislocation。</li>
+<li>代码里的固定阈值 <code>ETH 0.20 / BTC 3.00</code> 没有按 strike gap、手续费、到期时间归一化，作为 production 规则太粗。</li>
+</ul>
+<h2>6) 来源</h2>
+<ol>
+<li><strong>vk82313. (2026). _crypto-arbitrage-bot_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: &lt;<a href="https://github.com/vk82313/crypto-arbitrage-bot&gt;">https://github.com/vk82313/crypto-arbitrage-bot&gt;</a></li>
+<li>Readable README: &lt;<a href="https://raw.githubusercontent.com/vk82313/crypto-arbitrage-bot/main/README.md&gt;">https://raw.githubusercontent.com/vk82313/crypto-arbitrage-bot/main/README.md&gt;</a></li>
+<li>Source code: &lt;<a href="https://raw.githubusercontent.com/vk82313/crypto-arbitrage-bot/main/app.py&gt;">https://raw.githubusercontent.com/vk82313/crypto-arbitrage-bot/main/app.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Delta Exchange India public options ticker endpoint</strong></li>
+</ol>
+<ul>
+<li>Publicity: 公开可得</li>
+<li>Update frequency: 秒级可轮询（repo 按 <code>1s</code> 轮询）</li>
+<li>Endpoint used: &lt;<a href="https://api.india.delta.exchange/v2/tickers?contract_types=call_options,put_options&gt;">https://api.india.delta.exchange/v2/tickers?contract_types=call_options,put_options&gt;</a></li>
+<li>Minimal reproducible experiment: 重建 <code>expiry × strike × option_type</code> 顶层盘口，扫描 call/put vertical monotonicity 违例并扣除双边成本</li>
+</ul>
+<ol>
+<li><strong>Merton, R. C. (1973). _Theory of Rational Option Pricing_. Bell Journal of Economics and Management Science.</strong></li>
+</ol>
+<ul>
+<li>DOI: &lt;<a href="https://doi.org/10.2307/3003143&gt;">https://doi.org/10.2307/3003143&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://www.jstor.org/stable/3003143&gt;">https://www.jstor.org/stable/3003143&gt;</a></li>
+<li>用途：作为同到期 strike 单调性 / no-arbitrage 约束的理论地基，而不是 crypto-specific 证据</li>
+</ul>
+<h2>7) 下一步怎么测（一句话）</h2>
+<p>别先把它当 live bot，上来先做 <strong>7 天秒级抓数 + full-pair vertical 扫描 + 成本后净 edge 分布</strong>；如果连 <code>violations/day</code> 和 <code>dwell time</code> 都起不来，就把这条线降级为“薄盘口 quote-artifact 监控”，别进主复现队列。</p>
+</body>
+</html>

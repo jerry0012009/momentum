@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别继续只盯 near-expiry settlement pocket：对 short-cycle desk，更该先补的是「Deribit-OKX 长天期 wing quote-gap × delta/DTE capped close-out」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别继续只盯 near-expiry settlement pocket：对 short-cycle desk，更该先补的是「Deribit-OKX 长天期 wing quote-gap × delta/DTE capped close-out」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-12 05:22 UTC</span>
+      <span class="pill">研究时间：2026-04-12 05:18 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit + public live probe</span>
+      <span class="pill">主题标签：options / relative-value / stat-arb / cross-venue / quote-gap / long-dated-wing / delta-cap / dte-cap / deribit / okx / btc / 1m / 3m / 5m / 15m</span>
+      <span class="pill">证据类型：工程证据（repo source audit）+ Deribit / OKX 公共 API live scan</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-12_0518_deribit-okx-longdated-wing-quotegap-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-12 05:18 UTC</li>
+<li>类型：GitHub / repo source audit + public live probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一张 BTC 期权（same expiry / same strike / same C/P）在 Deribit 与 OKX 之间若出现可成交的 premium gap，做 <code>short rich venue / long cheap venue</code>，赌 quote gap 收敛；<code>delta cap</code> 与 <code>DTE cap</code> 只是 admission layer，不是 alpha 本体。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：options / relative-value / stat-arb / cross-venue / quote-gap / long-dated-wing / delta-cap / dte-cap / deribit / okx / btc / 1m / 3m / 5m / 15m</li>
+<li>证据类型：工程证据（repo source audit）+ Deribit / OKX 公共 API live scan</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看的是 GitHub 仓库 <strong>Hudie / crypto_algo_trading</strong>，重点读了：</p>
+<ul>
+<li><code>strategy/catch_gap.py</code></li>
+<li><code>strategy/catch_large_gap.py</code></li>
+<li>GitHub repo metadata</li>
+</ul>
+<p>这份仓库很老，接口也还是 <code>OKEx</code> 年代，不适合直接拿来跑实盘；但它有一个对当前 desk 仍然很值钱的地方：<strong>它把“同合约跨 venue premium gap 收敛”写成了完整策略壳，而不是只做监控面板。</strong></p>
+<p>先把 <strong>base alpha</strong> 说清楚： &gt; <strong>同 expiry / same strike / same option type 的 BTC option，本质上是同一份状态暴露；若 Deribit bid 明显高于 OKX ask，或反过来，就不是方向交易，而是 cross-venue relative-value convergence。</strong></p>
+<p>和我们 3 月 26 日那篇 <strong>近到期 OKX-Deribit call premium 收敛</strong> 不同，这次更值得 intake 的不是 <code>settlement-window</code> 那个老 pocket，而是：</p>
+<ul>
+<li>repo 本身其实已经把 <strong>delta / DTE / gap threshold</strong> 写成 admission shell；</li>
+<li>我这次 live scan 看到的残余 crossed-BBO，<strong>几乎都不在近到期，而在长天期 call wing</strong>；</li>
+<li>所以当前更值得 desk 化的问题变成：</li>
+<p><strong>近到期 pocket 可能已经很干净，剩下的 edge 是否主要迁移到了 long-dated wing inventory dislocation？</strong></p>
+</ul>
+<p>这不是 filter，不是 overlay，而是一条仍然能独立下单的 raw alpha；只是它的“最可能出现在哪里”变了。</p>
+<h2>2. repo 真正有价值的，不是旧 API，而是完整策略骨架</h2>
+<h3>2.1 <code>catch_gap.py</code> 直接把 entry shell 写死了</h3>
+<p>源码核心触发条件在这几行：</p>
+<ul>
+<li><code>v[&#x27;deribit&#x27;][0] - float(v[&#x27;okex&#x27;][2]) &gt;= gap</code></li>
+<li><code>float(v[&#x27;okex&#x27;][0]) - v[&#x27;deribit&#x27;][2] &gt;= gap</code></li>
+<li><code>timedelta &lt;= t</code></li>
+<li><code>abs(delta) &lt;= d</code></li>
+</ul>
+<p>也就是只在以下同时满足时触发：</p>
+<ol>
+<li><strong>rich venue bid &gt; cheap venue ask</strong>，形成 crossed gap；</li>
+<li>剩余到期时间在允许区间内；</li>
+<li>绝对 delta 不超过上限；</li>
+<li>gap 足够大，超过该 bucket 的最小门槛。</li>
+</ol>
+<p><code>catch_gap.py</code> 给的主触发梯度是：</p>
+<ul>
+<li><code>gap &gt;= 0.0025</code>, <code>|delta| &lt;= 0.36</code>, <code>DTE &lt;= 3d</code></li>
+<li><code>gap &gt;= 0.0040</code>, <code>|delta| &lt;= 0.33</code>, <code>DTE &lt;= 6d</code></li>
+<li><code>gap &gt;= 0.0055</code>, <code>|delta| &lt;= 0.32</code>, <code>DTE &lt;= 10d</code></li>
+<li><code>gap &gt;= 0.0070</code>, <code>|delta| &lt;= 0.31</code>, <code>DTE &lt;= 15d</code></li>
+<li><code>gap &gt;= 0.0090</code>, <code>|delta| &lt;= 0.30</code>, <code>DTE &lt;= 31d</code></li>
+</ul>
+<p>因为 BTC option premium 本身常以 BTC 计价，这套阈值可以直接读成： <strong>repo 只想做“至少 25~90 bps of underlier”的真实大 gap，而且只想做低 delta、较短期限的 contract。</strong></p>
+<h3>2.2 <code>catch_large_gap.py</code> 又额外给了一层长一点的壳</h3>
+<p><code>catch_large_gap.py</code> 进一步放宽成：</p>
+<ul>
+<li><code>gap &gt;= 0.01</code>, <code>DTE &lt;= 31d</code></li>
+<li><code>gap &gt;= 0.03</code>, <code>DTE &lt;= 93d</code></li>
+</ul>
+<p>这说明作者并不是只相信 near-expiry；他真正的思路更像： &gt; <strong>同合约跨 venue gap 是 alpha 本体；近到期 / 低 delta / 大 gap 只是为了提升 fill quality 与降低残余风险。</strong></p>
+<h3>2.3 它连 sizing / risk / execution 顺序都给了</h3>
+<p>源码不是只报信号，还把完整执行顺序写出来了：</p>
+<ul>
+<li><code>RISK_RATIO_CALL = 2</code></li>
+<li><code>RISK_RATIO_PUT = 4</code></li>
+<li><code>MAX_SIZE_PER_TRADE = 2</code></li>
+<li>仓位上限取以下几者最小值：</li>
+<li>OKX 顶层可卖/可买量</li>
+<li>Deribit 顶层可买/可卖量</li>
+<li>两侧账户保证金可承受量</li>
+<li>单笔最大 size cap</li>
+<li>执行顺序默认是：<strong>先买便宜腿，再逐档挂出贵腿</strong>；若贵腿未完全成交，再取消余单。</li>
+</ul>
+<p>这很关键，因为它说明这条线不是“想象中的理论 no-arb”，而是一个已经被拆成：</p>
+<ul>
+<li>entry</li>
+<li>direction-neutral hedge</li>
+<li>size clipping</li>
+<li>partial-fill handling</li>
+<li>risk-ratio margin control</li>
+<p>的完整原型。</p>
+</ul>
+<h3>2.4 但源码不能原样信任</h3>
+<p>仓库里直接写了历史 API key / secret，而且 OKEx 接口与当前交易所命名都过时。对 desk 来说，正确读法不是“git clone 直接跑”，而是：</p>
+<ul>
+<li><strong>保留 alpha 逻辑</strong></li>
+<li><strong>重写 data / execution adapter</strong></li>
+<li><strong>重做 today’s venue mapping 与 fee model</strong></li>
+</ul>
+<h2>3. live scan：现在真正还会 crossed 的，不是 near-expiry，而是 long-dated wing</h2>
+<p>我用公开 API 做了一次最小 live scan：</p>
+<ul>
+<li>Deribit：<code>public/get_book_summary_by_currency?currency=BTC&amp;kind=option</code></li>
+<li>Deribit：<code>public/get_order_book</code></li>
+<li>OKX：<code>/api/v5/public/instruments?instType=OPTION&amp;uly=BTC-USD</code></li>
+<li>OKX：<code>/api/v5/market/tickers?instType=OPTION&amp;uly=BTC-USD</code></li>
+</ul>
+<p>并把 Deribit / OKX 上 <strong>same expiry / same strike / same C/P</strong> 的 BTC options 对齐，得到 artifact：</p>
+<ul>
+<li><code>reports/artifacts/literature/crossvenue_option_gap_scan_summary_2026-04-12.csv</code></li>
+<li><code>reports/artifacts/literature/crossvenue_option_gap_scan_detail_2026-04-12.csv</code></li>
+</ul>
+<h3>3.1 这次快照的关键数字</h3>
+<p>快照时间：<code>2026-04-12 05:14:41 UTC</code></p>
+<ol>
+<li><strong>552 个</strong> matched instruments 里，只有 <strong>15 个</strong> 出现正的 crossed-BBO 候选。</li>
+<li>其中：</li>
+</ol>
+<ul>
+<li><code>11</code> 个是 <strong>sell Deribit / buy OKX</strong></li>
+<li><code>4</code> 个是 <strong>sell OKX / buy Deribit</strong></li>
+</ul>
+<ol>
+<li><strong>max gap = 0.002 BTC premium points</strong>（约 <strong>20 bps of underlier</strong>）</li>
+<li><strong>median gap = 0.0005</strong>（约 <strong>5 bps of underlier</strong>）</li>
+<li><strong>0 / 15</strong> 满足 repo 的主触发梯度；也就是按 repo 的原始 executable 口径，<strong>今天没有一笔真正过线</strong>。</li>
+</ol>
+<h3>3.2 残余 gap 的期限分布非常偏</h3>
+<p>按 DTE 分桶：</p>
+<ul>
+<li><code>&lt;=31d</code>：<strong>2</strong> 个，且最大 gap 只有 <strong>0.0001</strong></li>
+<li><code>32~93d</code>：<strong>0</strong> 个</li>
+<li><code>94~180d</code>：<strong>4</strong> 个，最大 gap <strong>0.0005</strong></li>
+<li><code>&gt;180d</code>：<strong>9</strong> 个，最大 gap <strong>0.0020</strong></li>
+</ul>
+<p>这组数字的含义很直白： &gt; <strong>今天还会肉眼看到的 cross-venue option gap，基本已经不在 near-expiry；它主要躲到了 long-dated wing。</strong></p>
+<h3>3.3 top candidates 也印证了这一点</h3>
+<p>最大的几档都集中在 <strong>2026-12-25</strong> 这组 long-dated calls：</p>
+<ul>
+<li><code>80k C</code>: gap <code>0.0020</code>, Deribit delta <code>0.4869</code></li>
+<li><code>85k C</code>: gap <code>0.0020</code>, Deribit delta <code>0.4237</code></li>
+<li><code>90k C</code>: gap <code>0.0015</code>, Deribit delta <code>0.3644</code></li>
+<li><code>95k C</code>: gap <code>0.0015</code>, Deribit delta <code>0.3114</code></li>
+<li><code>100k C</code>: gap <code>0.0010</code>, Deribit delta <code>0.2651</code></li>
+</ul>
+<p>反而 <code>&lt;=31d</code> 的两个小口袋只有：</p>
+<ul>
+<li><code>2026-04-24 84000 C</code>: gap <code>0.0001</code></li>
+<li><code>2026-04-13 70500 P</code>: gap <code>0.0001</code></li>
+</ul>
+<p>也就是说，<strong>近到期这条线目前不像“还能做但要精调阈值”，更像“已经被市场磨得只剩噪声”。</strong></p>
+<h2>4. 这条 raw alpha 现在该怎么 desk 化</h2>
+<h3>4.1 正确定位</h3>
+<ul>
+<li><strong>raw alpha 本体</strong>：same-contract cross-venue option premium convergence</li>
+<li><strong>不是本体的东西</strong>：delta cap / DTE cap / liquidity gate / cost buffer</li>
+<li><strong>当前最合理角色</strong>：event-driven relative-value alpha</li>
+<li><strong>短周期时钟的职责</strong>：<code>1m</code> 扫描、<code>1m/3m</code> 进场、<code>5m/15m</code> 管 time-stop 与 inventory risk</li>
+</ul>
+<h3>4.2 当前更诚实的 entry / exit 版本</h3>
+<p>#### Entry 只在以下同时满足时开仓：</p>
+<ol>
+<li>same expiry / same strike / same option type 可对齐；</li>
+<li><code>rich_bid - cheap_ask &gt; fees + spread buffer + stale buffer + venue risk buffer</code>；</li>
+<li>cheap 腿与 rich 腿顶层 size 都足够过最小名义金额；</li>
+<li>先不做极低流动性的极深虚值；第一版建议 <code>0.20 &lt;= |delta| &lt;= 0.55</code>；</li>
+<li>DTE 先分桶做，不混：<code>0~7d / 8~31d / 32~93d / 94~365d</code>。</li>
+</ol>
+<p>#### Exit 任一满足就平：</p>
+<ol>
+<li>gap 回落到 close threshold；</li>
+<li>到达固定 time-stop（如 <code>10m / 30m / 60m</code>）；</li>
+<li>一侧 quote 消失或明显 stale；</li>
+<li>距离 expiry / settlement 太近，但 gap 还没收敛；</li>
+<li>对 long-dated wing，若 vega / skew shift 让 mark-to-market 明显脱离 quote-close 逻辑，则强制减仓。</li>
+</ol>
+<h3>4.3 Sizing</h3>
+<p>第一版别做“理论无风险大容量”幻想，直接按：</p>
+<ul>
+<li><code>size_cap = min(cheap_ask_size, rich_bid_size, venue_margin_cap, MAX_SIZE_PER_TRADE)</code></li>
+<li>每个 expiry bucket 单独设总风险上限</li>
+<li>long-dated wing 与 near-expiry 分开记账</li>
+</ul>
+<h3>4.4 Risk</h3>
+<p>这条线最主要的风险不是 BTC 方向，而是：</p>
+<ul>
+<li><strong>单腿先成交、另一腿滑走</strong></li>
+<li><strong>wing quote 很稀，盘口 stale</strong></li>
+<li><strong>长天期合约的 vega / skew inventory 风险</strong></li>
+<li><strong>不同 venue 的保证金、持仓与强平逻辑差异</strong></li>
+<li><strong>名义 crossed 但真实 size 太小</strong></li>
+</ul>
+<h3>4.5 Cost</h3>
+<p>必须显式进模型：</p>
+<ul>
+<li>两腿 taker / maker fee</li>
+<li>盘口宽度</li>
+<li>部分成交与冲击成本</li>
+<li>资金占用与 venue haircut</li>
+<li>若非秒级 close-out，还要考虑持仓期间的 surface move 风险</li>
+</ul>
+<h2>5. 为什么这轮仍然值得进池</h2>
+<p>这轮不是在写一个泛泛的 options 微结构综述，而是在回答一个更具体的问题：</p>
+<p>&gt; <strong>repo 给的 same-contract cross-venue option arb 壳，今天还剩什么？</strong></p>
+<p>当前答案很明确：</p>
+<ol>
+<li><strong>base alpha 还在</strong>，而且仍然是可独立复现的 raw alpha；</li>
+<li>但 <strong>near-expiry pocket 当前非常干净</strong>，至少这次 live snapshot 看不到能过线的票；</li>
+<li>残余 crossed quote 更像 <strong>long-dated wing inventory dislocation</strong>，而不是之前那种 settlement-window pocket；</li>
+<li>所以这条线不该丢掉，但也不该继续按 3 月那种近到期故事重复写；</li>
+<li>对当前 desk，更值钱的是把它分裂成两个研究对象：</li>
+</ol>
+<ul>
+<li><code>near-expiry settlement pocket</code>：是否已经基本死掉？</li>
+<li><code>long-dated wing dislocation</code>：是否存在更稳定但更低频的 quote-close pocket？</li>
+</ul>
+<h2>6. 下一步怎么测</h2>
+<p>只做最小版，不扩 scope：</p>
+<h3>6.1 先跑 7 天 live sidecar</h3>
+<p>每 <code>1m</code> 记录：</p>
+<ul>
+<li>Deribit / OKX matched contracts 的 bid/ask</li>
+<li>underlier / mark / delta</li>
+<li>DTE / strike / option type</li>
+<li>crossed gap / gap net of simple fee buffer</li>
+</ul>
+<h3>6.2 只做 4 个核心分桶</h3>
+<ol>
+<li>DTE：<code>0~7d / 8~31d / 32~93d / 94~365d</code></li>
+<li>abs(delta)：<code>0.10~0.20 / 0.20~0.35 / 0.35~0.55</code></li>
+<li>side：<code>sell Deribit / buy OKX</code> vs <code>sell OKX / buy Deribit</code></li>
+<li>moneyness：ATM / slight OTM / wing</li>
+</ol>
+<h3>6.3 只回答 3 个问题</h3>
+<ol>
+<li><strong>真正过成本的票到底主要在哪个 bucket？</strong></li>
+<li><strong>near-expiry 是否已经接近 0 票，需要降级？</strong></li>
+<li><strong>long-dated wing 的 crossed gap 是瞬时噪声，还是可复现 pocket？</strong></li>
+</ol>
+<h3>6.4 kill rule</h3>
+<p>若连续 7 天里：</p>
+<ul>
+<li><code>repo-style executable hits ≈ 0</code></li>
+<li><code>net-of-fee crossed rate</code> 仍极低</li>
+<li>long-dated wing 也没有稳定的 close-out 成交条件</li>
+</ul>
+<p>那就把这条线从前排 raw-alpha pool 降到 <strong>options watchlist</strong>，不要继续烧时间。</p>
+<h2>7. 一句话结论</h2>
+<p>&gt; <strong>这条线依然是 raw alpha，但当前市场给出的残余形态已经变了：近到期 same-contract quote-gap 基本干净，真正还会 crossed 的更像 Deribit-OKX 长天期 wing inventory dislocation。对 short-cycle desk，下一步不是重复写 settlement-window，而是老老实实验证“long-dated wing quote-close”到底是不是还活着。</strong></p>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>Hudie. (2020). _crypto_algo_trading_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>Repo URL: <code><a href="https://github.com/Hudie/crypto_algo_trading">https://github.com/Hudie/crypto_algo_trading</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/Hudie/crypto_algo_trading">https://github.com/Hudie/crypto_algo_trading</a></code></li>
+<li>GitHub metadata used: created <code>2020-08-14</code>, updated <code>2026-03-29</code>, stars <code>55</code></li>
+<li>关键文件：</li>
+<li><code><a href="https://raw.githubusercontent.com/Hudie/crypto_algo_trading/master/strategy/catch_gap.py">https://raw.githubusercontent.com/Hudie/crypto_algo_trading/master/strategy/catch_gap.py</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/Hudie/crypto_algo_trading/master/strategy/catch_large_gap.py">https://raw.githubusercontent.com/Hudie/crypto_algo_trading/master/strategy/catch_large_gap.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Alexander, C., Chen, X., Deng, J., &amp; Wang, T. (2024). _Arbitrage opportunities and efficiency tests in crypto derivatives_. Journal of Financial Markets.</strong></li>
+</ol>
+<ul>
+<li>Venue: *Journal of Financial Markets*</li>
+<li>DOI: <code>10.1016/j.finmar.2024.100930</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.finmar.2024.100930">https://doi.org/10.1016/j.finmar.2024.100930</a></code></li>
+<li>用途：给“crypto derivatives 无效率口袋会收缩、但不会完全消失”这条判断提供近年的学术地基。</li>
+</ul>
+<ol>
+<li><strong>本轮 public live probe 实际使用的公开接口</strong></li>
+</ol>
+<ul>
+<li>Deribit instruments / book summary / order book:</li>
+<li><code><a href="https://www.deribit.com/api/v2/public/get_instruments">https://www.deribit.com/api/v2/public/get_instruments</a></code></li>
+<li><code><a href="https://www.deribit.com/api/v2/public/get_book_summary_by_currency">https://www.deribit.com/api/v2/public/get_book_summary_by_currency</a></code></li>
+<li><code><a href="https://www.deribit.com/api/v2/public/get_order_book">https://www.deribit.com/api/v2/public/get_order_book</a></code></li>
+<li>OKX public instruments / tickers:</li>
+<li><code><a href="https://www.okx.com/api/v5/public/instruments">https://www.okx.com/api/v5/public/instruments</a></code></li>
+<li><code><a href="https://www.okx.com/api/v5/market/tickers">https://www.okx.com/api/v5/market/tickers</a></code></li>
+</ul>
+<ol>
+<li><strong>本轮 artifact</strong></li>
+</ol>
+<ul>
+<li><code>reports/artifacts/literature/crossvenue_option_gap_scan_summary_2026-04-12.csv</code></li>
+<li><code>reports/artifacts/literature/crossvenue_option_gap_scan_detail_2026-04-12.csv</code></li>
+</ul>
+</body>
+</html>

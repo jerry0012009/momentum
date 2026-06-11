@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 大而全引擎只读成“策略超市”：对 short-cycle desk，更该先测的是「BB/z-score overshoot × RSI confirm × trend-veto」这条单币完整 mean reversion raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 大而全引擎只读成“策略超市”：对 short-cycle desk，更该先测的是「BB/z-score overshoot × RSI confirm × trend-veto」这条单币完整 mean reversion raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-02 23:55 UTC</span>
+      <span class="pill">研究时间：2026-04-02 23:56 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`README.md` + `src/strategies/mean_reversion.py` + GitHub API metadata）+ 2025 intraday BTC mean reversion thesis 作 sanity anchor</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/single-asset/bollinger-bands/zscore/rsi-confirmation/trend-veto/keltner-squeeze/atr-stop/zscore-bucket/5m/15m/1m/3m/repo/paper/public-data/cost</span>
+      <span class="pill">证据类型：2026 repo 源码证据（主）+ 2025 thesis 频率/成本 sanity anchor（辅）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-02_2356_bb-zscore-rsi-trendveto-meanreversion-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-02 23:56 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>README.md</code> + <code>src/strategies/mean_reversion.py</code> + GitHub API metadata）+ 2025 intraday BTC mean reversion thesis 作 sanity anchor</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>单资产价格在短窗内对 rolling mean 的偏离达到异常 z-score 后，后续若不是顺着更大级别趋势继续扩散，就更容易向均值/中轨回吐；alpha 本体是“overshoot snapback”，不是 RSI，也不是 trend filter。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/mean-reversion/single-asset/bollinger-bands/zscore/rsi-confirmation/trend-veto/keltner-squeeze/atr-stop/zscore-bucket/5m/15m/1m/3m/repo/paper/public-data/cost</li>
+<li>证据类型：2026 repo 源码证据（主）+ 2025 thesis 频率/成本 sanity anchor（辅）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<h3>一句话核心结论</h3>
+<p><strong>这轮最值得 intake 的，不是 repo 里“20+ strategies”那串清单，而是已经被源码写成完整闭环的一条单币 raw alpha：<code>|z-score| &gt;= 2</code> 的 BB overshoot，配 <code>RSI</code> 确认、<code>50-bar EMA slope</code> 反向 veto、<code>ATR stop</code> 与 <code>z-score/bb-mid</code> 回归出场。</strong></p>
+<h3>一句话它是怎么证明的</h3>
+<p><strong>证明方式不是作者在 README 里吹结果，而是源码把策略四层全写死了：异常偏离定义、入场 admission、出场与止损、按 z-score 分桶统计 edge。</strong> 这比“又一个均线/RSI 教程”更像可直接下场做最小实验的完整策略卡。</p>
+<h2>2. base alpha 是什么</h2>
+<p>先把这句说死：</p>
+<p>&gt; <strong>base alpha = 单币短周期 overshoot snapback。</strong></p>
+<p>更具体一点：</p>
+<ol>
+<li>先用 <code>z = (close - rolling_mean) / rolling_std</code> 衡量价格对短窗均值的偏离；</li>
+<li>当 <code>|z|</code> 足够大时，把它当成“局部过冲”，不是普通噪音；</li>
+<li>如果这次过冲没有获得更高一级趋势的继续扩散许可，那么价格更容易向均值回归；</li>
+<li>因此可以在 oversold 时做多、overbought 时做空，吃回到中轨/均值附近的那一小段回吐。</li>
+</ol>
+<p>翻成人话：<strong>不是“RSI 超卖就抄底”，而是“价格已经偏离到统计意义上的极端，再用 RSI 与更高一级趋势状态判断，这次偏离到底是该继续追，还是该赌回归”。</strong></p>
+<h2>3. 为什么这轮值得写</h2>
+<ul>
+<li>最近 intake 里 <code>pairs / stat-arb / carry / order-flow</code> 已经非常多；这轮补一张<strong>单币 5m/15m mean reversion 完整卡</strong>，能显著提高素材池多样性。</li>
+<li>它不是纯 filter 主题。<strong>raw alpha 本体非常清楚</strong>，而 RSI / trend / squeeze 都只是 admission 或 veto 层。</li>
+<li>它和当前 desk 节奏很对：</li>
+<li><code>5m / 15m</code> 是 repo README 明写的目标频率；</li>
+<li>源码里已经包含 <code>entry / exit / sizing / stop / bucket stats</code>；</li>
+<li>不需要外部稀缺数据，只用公开 OHLCV 就能先跑 existence test。</li>
+<li>相比再补一篇新 pairs，这条线更容易在一晚之内做出<strong>可解释的 ablation</strong>：</li>
+<li>base overshoot 是否有边；</li>
+<li>RSI 是否增益；</li>
+<li>trend veto 是否减少左侧抄底的灾难；</li>
+<li>哪个 <code>|z|</code> 桶费后还能活。</li>
+</ul>
+<h2>4. 来源信息</h2>
+<h3>主工程来源</h3>
+<ul>
+<li><strong>Repo owner：</strong> <code>mefai-dev</code></li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> <code>mefai-autotrade</code></li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/mefai-dev/mefai-autotrade&gt;">https://github.com/mefai-dev/mefai-autotrade&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/mefai-dev/mefai-autotrade&gt;">https://github.com/mefai-dev/mefai-autotrade&gt;</a></li>
+<li><strong>GitHub metadata：</strong> created <code>2026-03-25T12:26:28Z</code>，pushed <code>2026-03-29T21:37:33Z</code>，default branch <code>master</code>，⭐ <code>3</code></li>
+<li><strong>关键文件：</strong></li>
+<li><code>README.md</code></li>
+<li><code>src/strategies/mean_reversion.py</code></li>
+</ul>
+<h3>频率/成本 sanity anchor（不是主证据）</h3>
+<ul>
+<li><strong>Author：</strong> Marja Ekström</li>
+<li><strong>Year：</strong> 2025</li>
+<li><strong>Title：</strong> *Bitcoin trading performance evaluation: A comparative study of momentum and mean reversion strategies from 2020 to 2025*</li>
+<li><strong>Venue：</strong> Haaga-Helia University of Applied Sciences, Master’s thesis</li>
+<li><strong>DOI：</strong> 无 DOI</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://www.theseus.fi/handle/10024/902903&gt;">https://www.theseus.fi/handle/10024/902903&gt;</a></li>
+<li><strong>PDF URL：</strong> &lt;<a href="https://www.theseus.fi/bitstream/handle/10024/902903/Ekstrom%20Marja.pdf?sequence=2&gt;">https://www.theseus.fi/bitstream/handle/10024/902903/Ekstrom%20Marja.pdf?sequence=2&gt;</a></li>
+<li><strong>这篇在本文中的角色：</strong> 不是拿来证明 repo 必然有效，而是给一个更朴素的先验：<strong>BTC 的 intraday mean reversion 在更慢一级（1h）确实曾有存在证据，repo 则把它 desk 化成 5m/15m 更完整的多层 admission 版本。</strong></li>
+</ul>
+<h2>5. repo 具体是怎么把这条 alpha 写出来的</h2>
+<h2>5.1 目标频率就是我们关心的 5m / 15m</h2>
+<p>README 的策略表明确把这个模块标成：</p>
+<ul>
+<li><strong>Strategy：</strong> Mean Reversion</li>
+<li><strong>Description：</strong> Bollinger Band + z-score statistical mean reversion</li>
+<li><strong>Timeframes：</strong> <code>5m, 15m</code></li>
+</ul>
+<p>这点很关键，因为它不是“日频论文硬下沉”，而是工程作者一开始就把它摆在 short-cycle 档位里。</p>
+<h2>5.2 base signal：不是单看 BB 触边，而是先看 z-score 极端</h2>
+<p>源码默认参数：</p>
+<ul>
+<li><code>bb_period = 20</code></li>
+<li><code>bb_std = 2.0</code></li>
+<li><code>zscore_lookback = 20</code></li>
+<li><code>zscore_entry = 2.0</code></li>
+<li><code>zscore_exit = 0.5</code></li>
+<li><code>zscore_stop = 3.5</code></li>
+</ul>
+<p>也就是：</p>
+<ul>
+<li><strong>入场门槛：</strong> <code>|z| &gt;= 2.0</code></li>
+<li><strong>均值回复出场：</strong> long 回到 <code>z &gt;= -0.5</code>，short 回到 <code>z &lt;= 0.5</code></li>
+<li><strong>统计止损：</strong> long 若继续恶化到 <code>z &lt; -3.5</code>，short 若继续恶化到 <code>z &gt; 3.5</code>，直接认错</li>
+</ul>
+<p>所以最准确的 desk 读法是： <strong>BB 只是把“均值”可视化，真正的 alpha admission 核心是“异常偏离已经达到统计极端”。</strong></p>
+<h2>5.3 入场不是裸左侧，而是三层 admission</h2>
+<p>源码的 long/short 入场逻辑不是只看 z-score，还叠了 3 层 admission：</p>
+<h3>A. RSI 确认</h3>
+<ul>
+<li>默认 <code>rsi_period = 14</code></li>
+<li>默认要求：</li>
+<li><code>z &gt; 0</code> 做空时，<code>RSI &gt;= 70</code></li>
+<li><code>z &lt; 0</code> 做多时，<code>RSI &lt;= 30</code></li>
+</ul>
+<p>翻成人话：<strong>统计偏离要和传统“过热/过冷”方向一致，才允许开仓。</strong></p>
+<h3>B. 高一级趋势 veto</h3>
+<ul>
+<li>默认 <code>trend_ema_period = 50</code></li>
+<li>用 <code>EMA(50)</code> 最近 <code>5</code> 根 bar 的 slope 判断趋势方向</li>
+<li>若：</li>
+<li>当前 overbought，但更高一级仍是明显上行斜率，则<strong>不做空</strong>；</li>
+<li>当前 oversold，但更高一级仍是明显下行斜率，则<strong>不做多</strong>。</li>
+</ul>
+<p>这层非常值钱，因为它直接回答了均值回复最常见的死法： &gt; <strong>不是 every overshoot 都该 fade；在强趋势里，很多所谓 oversold 只是趋势中的正常扩散。</strong></p>
+<h3>C. 可选 squeeze gate</h3>
+<ul>
+<li><code>require_squeeze = False</code> 默认关闭</li>
+<li>若打开，就要求 Bollinger Band 处于 Keltner Channel 内（BB inside KC）</li>
+</ul>
+<p>这说明工程作者也承认：</p>
+<ul>
+<li>squeeze 更像<strong>可选的 range admission</strong>；</li>
+<li>它不该和 base alpha 本体混为一谈。</li>
+</ul>
+<h2>5.4 出场写得很实用：均值回归 + ATR 价格止损双轨制</h2>
+<p>源码里同时存在两套退出逻辑：</p>
+<h3>统计出场</h3>
+<ul>
+<li>long：<code>z &gt;= -0.5</code> 即认定“回归到差不多了”</li>
+<li>short：<code>z &lt;= 0.5</code> 即平仓</li>
+</ul>
+<h3>价格出场</h3>
+<ul>
+<li>take profit：直接挂在 <strong>Bollinger middle band</strong></li>
+<li>stop loss：</li>
+<li>long：<code>entry - 2.5 * ATR(14)</code></li>
+<li>short：<code>entry + 2.5 * ATR(14)</code></li>
+</ul>
+<p>也就是： <strong>它不是纯 z-score 策略，也不是纯 BB 策略，而是“统计极端入场 + BB 中轨止盈 + ATR 价格防守”的混合壳。</strong></p>
+<p>这很 desk：</p>
+<ul>
+<li>统计层负责发现错位；</li>
+<li>BB 中轨负责提供朴素、透明的回归目标；</li>
+<li>ATR 负责对付“这次不是回归，是 regime shift”的尾部风险。</li>
+</ul>
+<h2>5.5 Sizing 也不是空白</h2>
+<p>源码默认：</p>
+<ul>
+<li><code>risk_pct = 1.0</code></li>
+<li>用 <code>calculate_position_size(account_balance, entry, stop, risk_pct)</code> 按止损距离算仓位</li>
+<li>README 的全局风险模块还写了：</li>
+<li>风险型 sizing</li>
+<li>ATR-based stop</li>
+<li>correlation filter</li>
+<li>daily/weekly loss limits</li>
+</ul>
+<p>也就是说，<strong>这条线不是只有 signal，没有仓位骨架。</strong></p>
+<p>对我们来说，最值钱的不是 repo 的大一统风控平台，而是这条单策略最小闭环已经完整：</p>
+<ul>
+<li>entry</li>
+<li>exit</li>
+<li>stop</li>
+<li>size</li>
+<li>risk check</li>
+</ul>
+<h2>5.6 这份 repo 最独特的一点：它把 edge 按 z-score 桶追踪</h2>
+<p>源码显式维护 4 个桶：</p>
+<ul>
+<li><code>1.5-2.0</code></li>
+<li><code>2.0-2.5</code></li>
+<li><code>2.5-3.0</code></li>
+<li><code>3.0+</code></li>
+</ul>
+<p>每个桶都记录：</p>
+<ul>
+<li><code>trades</code></li>
+<li><code>win_rate</code></li>
+<li><code>avg_pnl</code></li>
+<li><code>total_pnl</code></li>
+</ul>
+<p>这点对 desk 特别有用，因为它让我们能直接回答： &gt; <strong>费后真正有边的是“轻微过冲”还是“深度过冲”？</strong></p>
+<p>很多均值回复策略死在这里：</p>
+<ul>
+<li><code>|z|</code> 太小：噪音太多，吃不掉成本；</li>
+<li><code>|z|</code> 太大：经常不是回归，而是 regime break / liquidation cascade。</li>
+</ul>
+<p>repo 把这件事从一开始就工程化成了<strong>bucket governance</strong>，这比“手动试几个阈值”更适合 desk 素材池。</p>
+<h2>6. 5 个最值得记住的硬数据点</h2>
+<ol>
+<li><strong>目标频率不是模糊的。</strong> README 明写 mean reversion 模块主要跑 <code>5m / 15m</code>。</li>
+<li><strong>默认入场阈值清楚。</strong> <code>|z| &gt;= 2.0</code> 才进，不是任何 BB 触边都做。</li>
+<li><strong>默认回归出场清楚。</strong> <code>zscore_exit = 0.5</code>，也就是回到“离均值不远”就收。</li>
+<li><strong>默认止损有两道。</strong> 统计止损 <code>|z| &gt; 3.5</code> + 价格止损 <code>2.5 × ATR(14)</code>。</li>
+<li><strong>bucket 治理已经内建。</strong> repo 不是只给你一个整体 Sharpe，而是支持按 <code>1.5-2.0 / 2.0-2.5 / 2.5-3.0 / 3.0+</code> 分桶追 edge。</li>
+</ol>
+<h2>7. 这条线最该怎么 desk 化理解</h2>
+<p>最容易犯的错，是把这条策略读成“BB + RSI + trend filter 的指标拼盘”。</p>
+<p>更好的拆法是：</p>
+<ul>
+<li><strong>raw alpha：</strong> 单币 overshoot snapback</li>
+<li><strong>stat trigger：</strong> <code>|z| &gt;= threshold</code></li>
+<li><strong>traditional confirmation：</strong> RSI overbought / oversold</li>
+<li><strong>regime veto：</strong> 50-bar EMA slope 不和你对着干</li>
+<li><strong>execution/risk：</strong> BB 中轨出、ATR 止、仓位按止损距离算</li>
+<li><strong>post-trade governance：</strong> 统计边际按 <code>|z|</code> 桶来更新</li>
+</ul>
+<p>换句话说： <strong>alpha 本体很老，但 repo 的价值在于把“怎么让它别死在强趋势和成本里”写成了清晰的 admission + governance 结构。</strong></p>
+<h2>8. 和当前 1m / 3m / 5m / 15m 的关系</h2>
+<h3>8.1 首选 15m 做 existence，不要先冲 1m</h3>
+<p>因为：</p>
+<ul>
+<li>repo 本身就支持 <code>5m / 15m</code>；</li>
+<li><code>1m / 3m</code> 上 BB/z-score 容易被 microstructure 噪音、手续费和滑点吃掉；</li>
+<li>这类 MR 最容易在更细级别上出现“看着经常回归，净值却被摩擦磨平”。</li>
+</ul>
+<p>所以更合理的次序是：</p>
+<ul>
+<li><strong>先 <code>15m</code> 验 existence；</strong></li>
+<li>再去 <code>5m</code> 看是否能提高 trade count 但仍保留费后边；</li>
+<li>最后才决定要不要把 <code>1m / 3m</code> 只当 execution refinement，而不是主信号级别。</li>
+</ul>
+<h3>8.2 这条线适合单币，不适合伪装成 shared gate</h3>
+<p>因为它的 base alpha 非常明确：</p>
+<ul>
+<li>就是单资产局部过冲后的回归；</li>
+<li>不是给别的 alpha 做 overlay；</li>
+<li>不是单独的 regime classifier。</li>
+</ul>
+<p>如果后面要服务其他 alpha，也应当是作为<strong>可迁移的 bucket/trend-veto 方法论</strong>，而不是硬把它改写成 shared filter 主题。</p>
+<h2>9. 最小可复现实验</h2>
+<h3>实验 A：15m 单币 baseline（最优先）</h3>
+<ul>
+<li><strong>标的：</strong> <code>BTC / ETH / SOL / BNB</code> 永续，先从 BTC+ETH 起步</li>
+<li><strong>bar：</strong> <code>15m</code></li>
+<li><strong>base signal：</strong></li>
+<li><code>z = (close - SMA20) / rolling_std20</code></li>
+<li>long 当 <code>z &lt;= -2.0</code></li>
+<li>short 当 <code>z &gt;= 2.0</code></li>
+<li><strong>exit：</strong></li>
+<li>版本 1：<code>z</code> 回到 <code>-0.5 / +0.5</code></li>
+<li>版本 2：触 <code>BB middle band</code></li>
+<li>版本 3：两者谁先到谁出</li>
+<li><strong>stop：</strong> <code>2.5 × ATR(14)</code></li>
+<li><strong>成本：</strong> round-trip <code>8 / 12 / 20 / 30 bps</code></li>
+</ul>
+<p>这一轮只回答一句： &gt; <strong>在 15m perp 上，单币 overshoot snapback 费后还有没有活口。</strong></p>
+<h3>实验 B：admission ablation</h3>
+<p>对同一套标的与成本，依次比较：</p>
+<ol>
+<li><code>z-score only</code></li>
+<li><code>z-score + RSI</code></li>
+<li><code>z-score + RSI + trend veto</code></li>
+<li><code>z-score + RSI + trend veto + squeeze</code></li>
+</ol>
+<p>目的不是找最好看的曲线，而是问：</p>
+<ul>
+<li>edge 到底来自 raw alpha 本体，还是来自 filter？</li>
+<li>squeeze 是真增益，还是只会让 trade count 掉到没法覆盖成本？</li>
+</ul>
+<h3>实验 C：z-score bucket 治理</h3>
+<p>固定最佳 admission 后，比较：</p>
+<ul>
+<li>只做 <code>2.0-2.5</code></li>
+<li>只做 <code>2.5-3.0</code></li>
+<li>只做 <code>3.0+</code></li>
+<li><code>2.0+</code> 全做</li>
+</ul>
+<p>重点看：</p>
+<ul>
+<li>哪个桶的 <strong>gross 胜率 / avg pnl</strong> 最好；</li>
+<li>哪个桶的 <strong>after-cost Sharpe / turnover</strong> 最能活；</li>
+<li>是否存在明显的“太浅是假信号、太深是刀口接血”的 U 型生存区间。</li>
+</ul>
+<h3>实验 D：long / short 拆开</h3>
+<p>很多 crypto MR 会出现：</p>
+<ul>
+<li>long 侧靠 oversold snapback 活着；</li>
+<li>short 侧因为牛市 drift、上行 squeeze、更差的 borrow/funding 结构而变弱。</li>
+</ul>
+<p>所以一定要拆：</p>
+<ul>
+<li><code>long-only</code></li>
+<li><code>short-only</code></li>
+<li><code>long+short</code></li>
+</ul>
+<p>不要默认上下对称。</p>
+<h2>10. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 <code>15m</code> 的 no-frills baseline。</strong> 不上 Keltner squeeze、不上复杂 regime，只测 <code>z + BB + ATR</code> 是否费后活着。</li>
+<li><strong>第二步才加 trend veto。</strong> 因为这层最可能真能减少“抄底抄在趋势腿中段”的灾难。</li>
+<li><strong>把 RSI 作为可开关 admission，不要默认必需。</strong> 很多时候 RSI 只是让交易更少，不一定让净边更强。</li>
+<li><strong>必须做 z-score 分桶统计。</strong> 这是这份 repo 最值得偷走的方法，不做等于白看。</li>
+<li><strong>成本先打厚。</strong> 这类短周期 MR 对手续费/滑点很敏感，first pass 不要低于 round-trip <code>12~20 bps</code>。</li>
+<li><strong>先看 cross-asset transfer。</strong> BTC 有边不代表 ETH/SOL 也有；单币 MR 很可能高度依赖波动结构。</li>
+<li><strong>如果 <code>15m</code> 活、<code>5m</code> 死，就把 <code>5m</code> 降级成 execution layer。</strong> 不要硬要求 alpha 必须在最细级别也成立。</li>
+</ol>
+<h2>11. 风险与保留意见</h2>
+<ul>
+<li><strong>repo 没给公开回测表。</strong> 这篇 digest 的主证据是源码结构，不是作者披露的已验证绩效。必须自己跑 first verdict。</li>
+<li><strong>趋势 veto 可能把最肥的 V-reversal 也筛掉。</strong> 所以它是待验证 layer，不是先验真理。</li>
+<li><strong>squeeze 可能过度稀释 trade count。</strong> 对 5m/15m 而言，这层很可能是“看起来高级，实际上把样本数杀没”。</li>
+<li><strong>极端 z-score 可能对应 liquidation cascade，不是均值回复。</strong> 所以 <code>3.0+</code> 桶未必最好，甚至可能是最危险的。</li>
+<li><strong>short 侧不能默认对称。</strong> crypto 的 drift、上行 squeeze 与下行反弹速度常常不对称。</li>
+</ul>
+<h2>12. 结论</h2>
+<p>如果只留一句话给后续复现：</p>
+<p>&gt; <strong>别把这份 2026 repo 的 mean reversion 模块读成“BB + RSI 指标拼盘”；对 short-cycle desk，更该先复现的是“单币 overshoot snapback”这条 raw alpha，再用 <code>RSI confirm × trend-veto × z-score bucket governance</code> 去判断它在哪些口袋还能费后活下来。</strong></p>
+<p>这也是为什么它值得进入当前研究池：</p>
+<ul>
+<li><strong>主题类型：raw alpha</strong></li>
+<li><strong>基础 alpha：单币 overshoot snapback</strong></li>
+<li><strong>可独立复现：是</strong></li>
+<li><strong>可直接落地完整策略：是</strong></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BTC-hedged residual sign fade alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>BTC-hedged residual sign fade alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-15 03:14 UTC</span>
+      <span class="pill">研究时间：2026-04-15 03:13 UTC</span>
+      <span class="pill">类型：GitHub repo source audit + Binance public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha / mean-reversion / relative-value / BTC-hedged / residual / one-bar-fade / sign / perp / short-cycle / Binance</span>
+      <span class="pill">证据类型：repo 源码 + 公开行情 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-15_0313_btchedged-residual-signfade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-15 03:13 UTC</li>
+<li>类型：GitHub repo source audit + Binance public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：BTC-hedged residual one-bar fade（先去掉 BTC beta，再反打上一根 residual 的方向）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha / mean-reversion / relative-value / BTC-hedged / residual / one-bar-fade / sign / perp / short-cycle / Binance</li>
+<li>证据类型：repo 源码 + 公开行情 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Dastrial / crypto_strat</strong>（2025 GitHub repo，描述是 *Cryptocurrency perpetual futures mean-reversion*）。它非常简陋，但胜在 <strong>base alpha 清楚、最小实验极快</strong>：</p>
+<ol>
+<li>先用训练集估计每个币对 BTC 的 beta：</li>
+<p>\[ \alpha_i = \frac{\operatorname{Cov}(r_i, r_{BTC})}{\operatorname{Var}(r_{BTC})} \]</p>
+<li>构造去 BTC 市场暴露后的 residual return：</li>
+<p>\[ r^{res}_i = r_i - \alpha_i r_{BTC} \]</p>
+<li>下一根直接做反向：</li>
+<p>\[ position_{t} = -\operatorname{sign}(r^{res}_{i,t-1}) \]</p>
+</ol>
+<p>repo 的核心一行其实就这一句：</p>
+<p>``<code>python mean_reversion_by_portfolio = -np.sign(returns).shift(1).fillna(0) * returns </code>``</p>
+<p>也就是说，它不是在做“pair cointegration”或“多因子 ranking”，而是在做一个更快、更粗暴的 <strong>beta-stripped one-bar contrarian baseline</strong>。</p>
+<p><strong>一句话核心结论：</strong> 这份 repo 的价值不在工程完成度，而在它提供了一条非常快就能 falsify 的 raw alpha 基线：<code>先去 BTC beta，再反打 residual sign</code>。 <strong>一句话证明方式：</strong> 我主要依赖 repo 源码拆解 + Binance USDⓈ-M liquid-major 短周期 probe 来判断它在 <code>15m/5m</code> 上是否还有生命体征。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>base alpha 很清楚</strong>：不是“全市场反转”，而是 <strong>去掉 BTC 共振后的 idiosyncratic residual 反转</strong>。</li>
+<li>和最近那类 <code>BTC-beta-neutral residual momentum ranking</code> 材料相反，这个 repo 走的是 <strong>residual momentum 的对手盘</strong>：它假设 residual 冲击更像短噪声，下一根倾向回吐。</li>
+<li>这类思路对 short-cycle desk 的意义很大，因为它几乎是最便宜的 relative-value baseline 之一：</li>
+<li>不需要 order book</li>
+<li>不需要 funding / OI / basis 外部数据</li>
+<li>不需要复杂 pair admission</li>
+<li>只需要 <code>BTC + 一组 liquid alts</code> 的 bar return</li>
+<li>但 repo 也很明显 <strong>不够 production</strong>：</li>
+<li>没有显式成本</li>
+<li>没有退出/持有期设计（本质上每根 bar 都重新定方向）</li>
+<li>没有 risk cap / kill switch</li>
+<li>没有 admission / filter</li>
+<li>没有解决 residual spike 的状态分层</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这个主题虽然不是完整策略壳，但它和当前 desk 很相关，因为它补的是一个 <strong>非常值得有的 fast null baseline</strong>：</p>
+<p>&gt; 如果连最基础的 <code>BTC-hedged residual one-bar fade</code> 都完全站不住，那后面加各种 regime/filter 大概率只是在给噪声做装修。</p>
+<p>换句话说，它适合作为：</p>
+<ul>
+<li><code>relative-value / mean reversion</code> 方向的零阶起点；</li>
+<li>后续 funding / OI / dispersion / session gate 的母信号；</li>
+<li>和 residual momentum / lead-lag / stat-arb 主题做对照的最小基线。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative-value / market-beta-stripped mean reversion</li>
+<li>基础 alpha：BTC-hedged residual return 的一根反转</li>
+<li>regime：repo 未提供，后续可外接 <code>BTC realized vol / dispersion / session pocket</code></li>
+<li>filter / veto：repo 未提供；更合理的扩展是 <code>|residual|</code> 分位阈值、liq filter、event veto</li>
+<li>risk / sizing / execution overlay：repo 只有最粗糙的等权平均；缺少明确 risk / cost / execution 设计</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设</strong>：短周期里，很多 alt 的单根冲击本质上只是“BTC 共振 + idiosyncratic overshoot”，先 strip 掉 BTC beta 后，residual sign 的下一根更可能回吐。 <strong>可计算定义</strong>：</p>
+<ol>
+<li>universe：<code>BTC + ETH/SOL/XRP/DOGE/ADA/BNB/LINK/AVAX/DOT/LTC/ATOM</code></li>
+<li>训练集估计 <code>alpha_i = cov(r_i, r_BTC)/var(r_BTC)</code></li>
+<li>生成 normalized residual：<code>(r_i - alpha_i * r_BTC) / (1 + |alpha_i|)</code></li>
+<li>信号：<code>position_t = -sign(residual_{t-1})</code></li>
+<li>组合：对所有 alt 等权平均</li>
+<li>cost ladder：<code>4 / 8 / 12 bps</code></li>
+</ol>
+<p><strong>最小回测切口</strong>：</p>
+<ul>
+<li>先做 <code>15m</code></li>
+<li>若 <code>15m</code> 连 gross 都不过线，就别急着下钻 <code>5m</code></li>
+<li>若 <code>15m</code> gross 有点生命，再看 <code>5m</code> 是否只是更差的高换手版本</li>
+</ul>
+<h2>5. portability probe</h2>
+<p>我先补了一个 <strong>Binance USDⓈ-M public-data quick probe</strong>。第一版为了快，用的是运行时 <code>24h quoteVolume</code> top-25 合约 + BTC hedge leg 的动态 universe，所以它更适合做 <strong>方向性 first verdict</strong>，不该被误当最终定版回测。</p>
+<p><code>15m</code> 结果很直接：</p>
+<ul>
+<li>矩阵规模约 <code>1321 x 26</code>（含 BTC），alt 侧 <code>25</code> 个组合；</li>
+<li><code>median |alpha| ≈ 0.80</code>，说明大部分币对 BTC 的 beta 不低；</li>
+<li><code>avg turnover / bar ≈ 0.91</code>，已经在提醒这条线极度换手；</li>
+<li><strong>gross 已经为负</strong>：约 <code>-2.04 bps / bar</code>；</li>
+<li>扣 <code>4bps</code> 后约 <code>-5.67 bps / bar</code>，测试段累计约 <code>-22.03%</code>；</li>
+<li>扣 <code>8bps / 12bps</code> 后测试段累计进一步恶化到约 <code>-33.46% / -43.21%</code>。</li>
+</ul>
+<p>也就是说，这条 repo baseline 至少在这版短周期 perp probe 里，不是“有点 edge 但被费用打掉”，而是 <strong>gross 就已经明显不过线，cost 只是雪上加霜</strong>。</p>
+<p><code>5m</code> 清洗版本来想继续跑，但在第二轮抓取时碰到 Binance 临时 rate-limit ban；因此这轮先把 <code>15m</code> 当 first verdict，<code>5m</code> 放到下一步固定 liquid-major 干净样本里复核。</p>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>这种 one-bar fade baseline 最大问题通常不是 admission，而是 <strong>换手太高</strong>；这轮 probe 的 <code>avg turnover / bar ≈ 0.91</code> 基本已经把这个问题直接暴露出来了。</li>
+<li>一旦用 BTC 对冲，名义上虽然更 market-neutral，但实际多了一条 BTC hedge 腿，成本只会更敏感。</li>
+<li>这轮更糟的是 <strong>gross 先坏掉</strong>，说明问题不只是费用，也可能是“逐根反打 residual sign”本身在当前 short-cycle perp 环境里过于生硬。</li>
+<li>如果 post-cost 不行，不代表 residual 方向完全错；更可能意味着：</li>
+<li>需要 <code>thresholded residual</code> 而不是全量逐根翻仓；</li>
+<li>需要 <code>hold 2~3 bars</code> 而不是 1 bar；</li>
+<li>需要只在高-dispersion / 非 BTC trend rush 时启用。</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 threshold 版</strong>：只在 <code>|residual_{t-1}|</code> 超过 rolling <code>70% / 80% / 90%</code> 分位时才入场。</li>
+<li><strong>再做 hold-horizon 扫描</strong>：对比 <code>1 / 2 / 3 / 4 bar</code> 持有，不要默认一根就平。</li>
+<li><strong>加最少量 regime gate</strong>：<code>BTC realized vol</code>、<code>cross-sectional dispersion</code>、<code>US session / Asia session</code> 三个就够。</li>
+<li><strong>若仍不过线</strong>：这条线应从“主信号”降级成 <code>shared veto / fade overlay</code>，服务于更强的 residual momentum / lead-lag / event-driven raw alpha。</li>
+</ol>
+<h2>8. 来源</h2>
+<ul>
+<li>Authors: Dastrial（GitHub handle）</li>
+<li>Year: 2025</li>
+<li>Title: *crypto_strat*</li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://github.com/Dastrial/crypto_strat">https://github.com/Dastrial/crypto_strat</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/Dastrial/crypto_strat">https://github.com/Dastrial/crypto_strat</a></code></li>
+<li>关键源码：</li>
+<li><code>datas/fetch_hourly_data.py</code></li>
+<li><code>datas/train_test_split.py</code></li>
+<li><code>portfolios/btc_hedged_portfolios.py</code></li>
+<li><code>strategy/basic_mean_reversion.py</code></li>
+<li><code>strategy/plotSignal.py</code></li>
+<li><code>statistic_tests/autoCorrelsEMAThreshold.py</code></li>
+<li>本地探针：</li>
+<li>汇总：<code>reports/artifacts/quant_digests/2026-04-15_btc_hedged_residual_fade_probe_summary.json</code></li>
+<li>脚本（后续 fixed-major clean rerun 用）：<code>reports/artifacts/quant_digests/2026-04-15_btc_hedged_residual_fade_probe.py</code></li>
+</ul>
+</body>
+</html>

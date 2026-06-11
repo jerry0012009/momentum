@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fibonacci Retest-Hold Portfolio Backtest</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 1180px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111827; background: #f8fafc; }
+    .card { border:1px solid #e5e7eb; border-radius:14px; background:white; padding:18px 20px; margin:16px 0; }
+    .muted { color:#6b7280; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#eef2ff; color:#3730a3; font-size:12px; margin-right:6px; }
+    img { max-width:100%; border:1px solid #e5e7eb; border-radius:12px; background:white; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; }
+    table { width:100%; border-collapse:collapse; margin-top:12px; font-size:14px; }
+    th,td { border-bottom:1px solid #e5e7eb; padding:8px 10px; text-align:left; vertical-align:top; }
+    a { color:#2563eb; text-decoration:none; }
+  </style>
+</head>
+<body>
+  <p><a href="../../index.html">← 返回首页</a></p>
+  <h1>Fibonacci 回撤策略（retest_hold）扩展策略回测</h1>
+  <p class="muted">生成时间：2026-03-14 04:15 UTC ｜ Binance 15m（BTC/ETH/SOL）｜ 成本：10bps round-trip ｜ 规则：同一资产同一时间只保留一笔仓位，不允许重叠开仓。</p>
+
+  <div class="card">
+    <h2>先说结论</h2>
+    <p><span class="pill">strategy chosen</span><span class="pill">retest_hold</span><span class="pill">portfolio-gated</span></p>
+    <p><b>策略确定：</b>根据前一轮 Fibonacci 变体比较，主策略定为 <code>retest_hold</code>：先恢复到有利方向，再等一次回踩确认后进场。</p>
+    <p><b>扩展回测最优格子：</b><b>120d / 持有 72 bars</b>（约 18.0 小时）。在“每个资产同一时间只持有一笔”的更像真实交易的口径下，这个格子的聚合表现约为：<b>单笔净收益 0.13%</b>、<b>平均总收益 13.62%</b>、<b>交易数 424</b>。</p>
+  </div>
+
+  <div class="card">
+    <h2>一句话摘要（最容易理解的版本）</h2>
+    <p><b>你可以把这条策略理解成：</b>不是价格一碰 Fibonacci 回撤位就买，而是要先看到它 <b>回到有利方向</b>，再等一次 <b>回踩但没破坏结构</b>，下一根再进场。</p>
+    <ul>
+      <li><b>什么时候信号出现？</b> 当价格先摸到回撤区（38.2%~50%），随后重新站回有利方向，并在 6 根 K 线内再次回踩该区但收盘没走坏。</li>
+      <li><b>信号出现后我该做什么？</b> 下一根 K 线开盘进场；如果是多头结构就做多，如果是空头结构就做空。</li>
+      <li><b>拿多久？</b> 这次最优组合是拿 <b>72 bars</b>，也就是大约 <b>18.0 小时</b>。</li>
+      <li><b>收益大概怎么样？</b> 在最优组合里，平均每笔约 <b>0.13%</b>，三资产平均总收益约 <b>13.62%</b>，共做了 <b>424</b> 笔。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Q &amp; A（人话版）</h2>
+    <h3>Q1：到底什么叫“信号出现”？</h3>
+    <p>A：不是“碰到 Fibonacci 就算”。真正的信号是 3 步：</p>
+    <ol>
+      <li>先有一段已经确认过的 swing high / swing low；</li>
+      <li>价格回到 38.2%~50% 回撤区；</li>
+      <li>价格先恢复到有利方向，再回踩一次但没破位，这时才算 <code>retest_hold</code> 信号成立。</li>
+    </ol>
+
+    <h3>Q2：信号出现的时候，我应该做什么？</h3>
+    <p>A：<b>下一根 K 线开盘进场</b>。如果当前结构是上升回踩，就做多；如果当前结构是下降反抽，就做空。然后按这次最佳组合，持有 <b>72 bars ≈ 18.0 小时</b> 后退出。</p>
+
+    <h3>Q3：具体收益是多少？</h3>
+    <p>A：按这次最优组合（<b>120d / 72 bars</b>）看：</p>
+    <ul>
+      <li>平均单笔净收益：<b>0.13%</b></li>
+      <li>平均总收益：<b>13.62%</b></li>
+      <li>总交易数：<b>424</b></li>
+      <li>正收益资产占比：<b>66.67%</b></li>
+    </ul>
+    <p class="muted">注意：这里的“平均总收益”是把 BTC / ETH / SOL 三个资产各自跑完后再求平均，不是说每一笔都能赚这么多。</p>
+
+    <h3>Q4：哪几个币表现最好？</h3>
+    <p>A：在这次最优组合里，<b>ETH 最强</b>，BTC 一般，SOL 接近打平：</p>
+    <ul>
+      <li>BTC：总收益约 <b>-0.90%</b>，交易数 142 笔</li>
+      <li>ETH：总收益约 <b>40.87%</b>，交易数 140 笔</li>
+      <li>SOL：总收益约 <b>0.89%</b>，交易数 142 笔</li>
+    </ul>
+
+    <h3>Q5：这是不是已经可以直接实盘？</h3>
+    <p>A：<b>还不建议直接当独立主策略实盘。</b> 原因很简单：它在某些样本段有效，但不是所有更长样本都稳定。更诚实的定位是：它现在更像一个 <b>confirmation / filter layer</b>，适合叠加到 breakout / pullback 主线上，而不是自己单独扛起整个策略。</p>
+  </div>
+
+  <div class="card">
+    <h2>为什么我又多做了一层 portfolio gate？</h2>
+    <ol>
+      <li>如果把所有触发都算进去，会出现大量重叠信号，次数会被夸大。</li>
+      <li>真正更像实盘的做法是：同一资产已经有仓位时，不再重复开新仓。</li>
+      <li>所以这页的数据，比单纯 signal-level 统计更接近“策略回测”。</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>热力图</h2>
+    <div class="grid">
+      <div><img src="portfolio_heat_ret.png" alt="portfolio mean net return" /></div>
+      <div><img src="portfolio_heat_total.png" alt="portfolio mean total return" /></div>
+      <div><img src="portfolio_heat_trades.png" alt="portfolio trade count" /></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>样本天数 × 持有期的策略汇总</h2>
+    <table class="dataframe dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>sample_days</th>
+      <th>hold_bars</th>
+      <th>trade_count</th>
+      <th>mean_net_return</th>
+      <th>median_net_return</th>
+      <th>win_ratio</th>
+      <th>mean_total_return</th>
+      <th>median_total_return</th>
+      <th>positive_asset_ratio</th>
+      <th>invalidation_ratio_12b</th>
+      <th>mean_entry_lag_bars</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>60</td>
+      <td>24</td>
+      <td>515</td>
+      <td>-0.22%</td>
+      <td>-0.23%</td>
+      <td>40.36%</td>
+      <td>-31.11%</td>
+      <td>-32.95%</td>
+      <td>0.00%</td>
+      <td>40.60%</td>
+      <td>5.92</td>
+    </tr>
+    <tr>
+      <td>60</td>
+      <td>48</td>
+      <td>301</td>
+      <td>0.02%</td>
+      <td>0.04%</td>
+      <td>50.19%</td>
+      <td>3.38%</td>
+      <td>-18.92%</td>
+      <td>33.33%</td>
+      <td>36.19%</td>
+      <td>5.52</td>
+    </tr>
+    <tr>
+      <td>60</td>
+      <td>72</td>
+      <td>212</td>
+      <td>0.22%</td>
+      <td>-0.09%</td>
+      <td>48.15%</td>
+      <td>11.89%</td>
+      <td>11.79%</td>
+      <td>66.67%</td>
+      <td>37.23%</td>
+      <td>5.72</td>
+    </tr>
+    <tr>
+      <td>60</td>
+      <td>96</td>
+      <td>163</td>
+      <td>-0.02%</td>
+      <td>-0.61%</td>
+      <td>42.33%</td>
+      <td>-3.07%</td>
+      <td>-1.91%</td>
+      <td>33.33%</td>
+      <td>42.35%</td>
+      <td>5.55</td>
+    </tr>
+    <tr>
+      <td>120</td>
+      <td>24</td>
+      <td>1041</td>
+      <td>-0.15%</td>
+      <td>-0.17%</td>
+      <td>42.55%</td>
+      <td>-41.83%</td>
+      <td>-34.14%</td>
+      <td>0.00%</td>
+      <td>38.73%</td>
+      <td>5.85</td>
+    </tr>
+    <tr>
+      <td>120</td>
+      <td>48</td>
+      <td>606</td>
+      <td>-0.07%</td>
+      <td>-0.07%</td>
+      <td>48.21%</td>
+      <td>-17.08%</td>
+      <td>-16.48%</td>
+      <td>33.33%</td>
+      <td>35.82%</td>
+      <td>5.73</td>
+    </tr>
+    <tr>
+      <td>120</td>
+      <td>72</td>
+      <td>424</td>
+      <td>0.13%</td>
+      <td>-0.07%</td>
+      <td>48.35%</td>
+      <td>13.62%</td>
+      <td>0.89%</td>
+      <td>66.67%</td>
+      <td>35.14%</td>
+      <td>5.80</td>
+    </tr>
+    <tr>
+      <td>120</td>
+      <td>96</td>
+      <td>327</td>
+      <td>0.09%</td>
+      <td>-0.09%</td>
+      <td>48.62%</td>
+      <td>6.06%</td>
+      <td>16.39%</td>
+      <td>66.67%</td>
+      <td>37.61%</td>
+      <td>5.82</td>
+    </tr>
+    <tr>
+      <td>180</td>
+      <td>24</td>
+      <td>1536</td>
+      <td>-0.15%</td>
+      <td>-0.18%</td>
+      <td>42.84%</td>
+      <td>-55.71%</td>
+      <td>-58.36%</td>
+      <td>0.00%</td>
+      <td>38.75%</td>
+      <td>5.86</td>
+    </tr>
+    <tr>
+      <td>180</td>
+      <td>48</td>
+      <td>896</td>
+      <td>-0.08%</td>
+      <td>-0.08%</td>
+      <td>47.68%</td>
+      <td>-24.70%</td>
+      <td>-23.55%</td>
+      <td>33.33%</td>
+      <td>37.29%</td>
+      <td>5.82</td>
+    </tr>
+    <tr>
+      <td>180</td>
+      <td>72</td>
+      <td>633</td>
+      <td>-0.05%</td>
+      <td>-0.11%</td>
+      <td>47.55%</td>
+      <td>-17.59%</td>
+      <td>-11.74%</td>
+      <td>0.00%</td>
+      <td>36.33%</td>
+      <td>5.79</td>
+    </tr>
+    <tr>
+      <td>180</td>
+      <td>96</td>
+      <td>489</td>
+      <td>0.03%</td>
+      <td>-0.08%</td>
+      <td>48.06%</td>
+      <td>-1.67%</td>
+      <td>7.31%</td>
+      <td>66.67%</td>
+      <td>37.21%</td>
+      <td>5.78</td>
+    </tr>
+  </tbody>
+</table>
+    <p class="muted">重点看 <code>mean_total_return</code>：它比单笔均值更接近你真正关心的“整段跑下来有没有赚”。</p>
+  </div>
+
+  <div class="card">
+    <h2>最优格子的分资产结果</h2>
+    <table class="dataframe dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>asset</th>
+      <th>trade_count</th>
+      <th>mean_net_return</th>
+      <th>win_ratio</th>
+      <th>total_return</th>
+      <th>invalidation_ratio_12b</th>
+      <th>mean_entry_lag_bars</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>BTC-USD</td>
+      <td>142</td>
+      <td>0.02%</td>
+      <td>45.77%</td>
+      <td>-0.90%</td>
+      <td>35.92%</td>
+      <td>5.85</td>
+    </tr>
+    <tr>
+      <td>ETH-USD</td>
+      <td>140</td>
+      <td>0.29%</td>
+      <td>49.29%</td>
+      <td>40.87%</td>
+      <td>35.00%</td>
+      <td>5.92</td>
+    </tr>
+    <tr>
+      <td>SOL-USD</td>
+      <td>142</td>
+      <td>0.06%</td>
+      <td>50.00%</td>
+      <td>0.89%</td>
+      <td>34.51%</td>
+      <td>5.62</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>为什么选 retest_hold（引用上一轮 60d 变体比较）</h2>
+    <table class="dataframe dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>variant</th>
+      <th>trade_count</th>
+      <th>mean_net_return</th>
+      <th>win_ratio</th>
+      <th>invalidation_ratio_12b</th>
+      <th>mean_entry_lag_bars</th>
+      <th>positive_asset_ratio</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>baseline</td>
+      <td>1962</td>
+      <td>-0.04%</td>
+      <td>45.36%</td>
+      <td>51.27%</td>
+      <td>1.00</td>
+      <td>33.33%</td>
+    </tr>
+    <tr>
+      <td>confirm_1bar</td>
+      <td>842</td>
+      <td>-0.07%</td>
+      <td>42.76%</td>
+      <td>32.19%</td>
+      <td>2.00</td>
+      <td>33.33%</td>
+    </tr>
+    <tr>
+      <td>confirm_2of3</td>
+      <td>849</td>
+      <td>-0.03%</td>
+      <td>44.05%</td>
+      <td>30.98%</td>
+      <td>4.00</td>
+      <td>33.33%</td>
+    </tr>
+    <tr>
+      <td>retest_hold</td>
+      <td>649</td>
+      <td>-0.02%</td>
+      <td>45.61%</td>
+      <td>37.13%</td>
+      <td>4.81</td>
+      <td>33.33%</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>小白版讲解</h2>
+    <ol>
+      <li><b>retest_hold</b> 不是“摸到回撤位就冲”，而是“先确认方向回来，再等一次更像样的回踩”。</li>
+      <li>这样通常能减少一部分假信号，但代价是机会更少、进场更晚。</li>
+      <li>扩展回测说明：这条规则在更长样本里有一定继续研究价值，但它更像 <b>过滤层</b>，不是已经成熟的独立主策略。</li>
+    </ol>
+  </div>
+</body>
+</html>

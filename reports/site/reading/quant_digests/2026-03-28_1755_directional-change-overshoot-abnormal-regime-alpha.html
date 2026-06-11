@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Directional Change 继续只当 breakout follow-up：这篇 2023 paper 更该先测的是「event-trigger overshoot capture + abnormal-regime veto」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Directional Change 继续只当 breakout follow-up：这篇 2023 paper 更该先测的是「event-trigger overshoot capture + abnormal-regime veto」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-28 18:19 UTC</span>
+      <span class="pill">研究时间：2026-03-28 17:55 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：raw-alpha/event-driven/directional-change/overshoot/trend/momentum/event-clock/hmm/regime-veto/adaptive-threshold/alpha-decay/binance/btc/eth/1m/3m/5m/15m/paper/public-data/cost</span>
+      <span class="pill">证据类型：2023 arXiv 全文 txt 抽取 + 规则/表格级结果核对</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-28_1755_directional-change-overshoot-abnormal-regime-alpha.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当价格从局部低点完成一次 Directional Change（DC）上行确认后，后续 overshoot 段存在可捕捉的顺势延续；但一旦出现 <code>α·θ</code> 级别的反向确认，或 HMM 把状态判成 abnormal regime，就应立即退出 / 停做。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>时间：2026-03-28 17:55 UTC</li>
+<li>类型：论文</li>
+<li>主题标签：raw-alpha/event-driven/directional-change/overshoot/trend/momentum/event-clock/hmm/regime-veto/adaptive-threshold/alpha-decay/binance/btc/eth/1m/3m/5m/15m/paper/public-data/cost</li>
+<li>证据类型：2023 arXiv 全文 txt 抽取 + 规则/表格级结果核对</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是：</p>
+<ul>
+<li><strong>Authors</strong>：Bing Wu, Xiangzu Han</li>
+<li><strong>Year</strong>：2023</li>
+<li><strong>Title</strong>：*Intelligent trading strategy based on improved directional change and regime change detection*</li>
+<li><strong>Venue</strong>：arXiv preprint</li>
+<li><strong>DOI</strong>：未见正式 DOI</li>
+<li><strong>Readable URL</strong>：<a href="https://arxiv.org/abs/2309.15383">https://arxiv.org/abs/2309.15383</a></li>
+<li><strong>PDF URL</strong>：<a href="https://arxiv.org/pdf/2309.15383">https://arxiv.org/pdf/2309.15383</a></li>
+<li><strong>Repo URL</strong>：未见作者官方公开 repo</li>
+</ul>
+<p>一句话先说结论：</p>
+<p>&gt; <strong>这篇东西最适合 desk 的，不是再把 DC 当成某个 breakout/follow-up 的确认器，而是把它直接升格成一个独立的 event-driven raw alpha：DC 上行确认后去吃 overshoot，反向 DC 确认或 abnormal regime 出现就撤。</strong></p>
+<p>这和前面已经写过的 <code>DC first-hit follow-up gate</code> 不是一回事。那条线本质是 <strong>filter / verdict</strong>；这篇 paper 给的则是一个可以单独站起来的 <strong>完整 raw alpha 骨架</strong>。</p>
+<h2>2. 这篇 paper 的 base alpha 到底是什么</h2>
+<p>先按你要求回答一句：</p>
+<p>&gt; <strong>base alpha = 事件驱动的短趋势延续。</strong></p>
+<p>不是传统 fixed-bar 的 <code>r[t-1] -&gt; r[t]</code>，也不是单纯 breakout 名词替换。</p>
+<p>它真正做的事情是：</p>
+<ol>
+<li>不再按固定时间切 K；</li>
+<li>先用 <strong>Directional Change（DC）</strong> 在价格真正走出一段有意义的位移时才“记一次事件”；</li>
+<li>当上行 DC 被确认后，假设后面通常还会有一段 <strong>overshoot</strong>；</li>
+<li>但如果价格很快走出反向确认，或者 HMM 把市场切进 <strong>abnormal regime</strong>，就立刻退出/停做。</li>
+</ol>
+<p>翻成人话：</p>
+<p>&gt; <strong>先等市场自己走出“值得记录”的位移，再去吃它后面的续动；一旦路径形态不对，或者状态机说现在是异常期，就别硬扛。</strong></p>
+<p>这就是一个清楚的 raw alpha，不是单纯 filter。</p>
+<h2>3. 为什么它值得进当前短周期素材池</h2>
+<p>和当前 desk 已经积累的材料对比，这篇 paper 有三个直接价值：</p>
+<h3>3.1 它补的是“事件时钟 raw alpha”，不是又一个固定 bar 动量</h3>
+<p>现在素材池里已经很多是：</p>
+<ul>
+<li>fixed-bar momentum / reversal</li>
+<li>cross-sectional rank</li>
+<li>funding / basis / pairs / lead-lag</li>
+<li>microstructure / order-flow / options-flow</li>
+</ul>
+<p>但<strong>真正用 event-clock 重采样价格路径</strong>、并且能直接落成交易规则的 raw alpha 还不多。</p>
+<p>DC 的价值就在这：</p>
+<p>&gt; <strong>不是先定 <code>5m/15m</code> 再问价格怎么走，而是先看价格是否真的动到值得触发事件，再决定有没有交易。</strong></p>
+<p>这对 crypto 很自然，因为 crypto 的“有事时很快、没事时很吵”。</p>
+<h3>3.2 它天然自带 path-aware exit，比“入场后固定拿 N 根”更诚实</h3>
+<p>paper 的主交易逻辑不是“买了以后机械 hold N 根”，而是：</p>
+<ul>
+<li>上行 DC 确认后进场；</li>
+<li>先尝试吃一段 <strong>overshoot continuation</strong>；</li>
+<li>若走出反向 DC 确认，则提前撤；</li>
+<li>若 regime 进入 abnormal，则暂停交易。</li>
+</ul>
+<p>这比很多只会写 entry 的材料更完整，离 desk 需要的 <code>entry / exit / veto / risk</code> 更近。</p>
+<h3>3.3 它是 raw alpha + regime gate 一体化骨架</h3>
+<p>当前允许更灵活地读 paper：如果 paper 里有更适合我们 desk 的旁支想法，可以单独拎出来。</p>
+<p>这篇最值钱的“旁支”其实就是：</p>
+<ul>
+<li><strong>raw alpha 本体</strong>：DC-confirmed overshoot continuation</li>
+<li><strong>shared gate / risk layer</strong>：RCD-HMM abnormal regime veto</li>
+</ul>
+<p>所以它既能单独落地成一条策略，也能沉淀出一个可复用组件：</p>
+<p>&gt; <strong>基于 DC 派生指标（RDC）的 abnormal regime veto。</strong></p>
+<h2>4. 论文里最值得拿走的证据</h2>
+<h3>4.1 样本和实验体量不小</h3>
+<p>paper 用的是 <strong>2019-01-01 到 2020-10-31</strong> 的外汇 tick data，覆盖：</p>
+<ul>
+<li><strong>8 个货币对</strong></li>
+<li><strong>176 个 dataset 切片</strong></li>
+<li><strong>超过 3.9 亿条 price entries</strong></li>
+</ul>
+<p>它不是小样本巧合，而是在多标的、多切片上看这个框架是否站得住。</p>
+<h3>4.2 关键 headline 不是“某个参数最好”，而是 IDC + HMM 组合整体明显更强</h3>
+<p>作者比较了四类方法：</p>
+<ul>
+<li><strong>FT</strong>：固定阈值、上下行对称处理的基础 DC 策略</li>
+<li><strong>OPTT</strong>：只优化阈值 θ</li>
+<li><strong>IDC</strong>：在阈值之外再加入下行 decay coefficient <code>α</code></li>
+<li><strong>ITA</strong>：<code>IDC + RCD-HMM</code></li>
+</ul>
+<p>最重要的结果在 Table 3 / Table 4：</p>
+<p>#### 收益（Cumulative Return Rate）</p>
+<ul>
+<li><strong>FT 平均</strong>：<code>-24.36%</code></li>
+<li><strong>OPTT 平均</strong>：<code>-10.47%</code></li>
+<li><strong>IDC 平均</strong>：<code>16.89%</code></li>
+<li><strong>ITA 平均</strong>：<code>58.76%</code></li>
+</ul>
+<p>也就是说，<strong>只做固定 DC 不够，单做参数优化也不够；真正把收益和稳健性同时拉起来的是“非对称 DC + abnormal regime veto”。</strong></p>
+<p>#### 回撤（Maximum Drawdown）</p>
+<ul>
+<li><strong>FT 平均 MDD</strong>：<code>19.08%</code></li>
+<li><strong>OPTT 平均 MDD</strong>：<code>13.30%</code></li>
+<li><strong>IDC 平均 MDD</strong>：<code>7.93%</code></li>
+<li><strong>ITA 平均 MDD</strong>：<code>3.53%</code></li>
+</ul>
+<p>这很关键：它不是“靠加大风险才多赚”，而是<strong>收益上去、回撤还明显更低</strong>。</p>
+<h3>4.3 几个单市场数字也很醒目</h3>
+<p>虽然我们不会直接把 FX 数字搬到 crypto，但几个点很说明问题：</p>
+<ul>
+<li><code>EUR/USD</code>：ITA <strong>137.47%</strong>，明显高于 IDC <strong>31.75%</strong></li>
+<li><code>USD/JPY</code>：ITA <strong>121.69%</strong>，明显高于 IDC <strong>17.29%</strong></li>
+<li><code>USD/CAD</code>：ITA <strong>75.86%</strong>，高于 IDC <strong>48.50%</strong></li>
+</ul>
+<p>同时回撤端：</p>
+<ul>
+<li><code>EUR/USD</code> 的 ITA MDD 只有 <strong>1.03%</strong></li>
+<li><code>USD/JPY</code> 的 ITA MDD 为 <strong>1.96%</strong></li>
+<li><code>USD/CAD</code> 的 ITA MDD 为 <strong>2.77%</strong></li>
+</ul>
+<p>这说明 abnormal-regime veto 并不是装饰件，而是真在压尾部风险。</p>
+<h3>4.4 统计检验也支持 ITA 排名第一</h3>
+<p>作者对 return 和 MDD 做了 Friedman / Conover 检验：</p>
+<ul>
+<li>在 <strong>收益</strong> 上，ITA 平均排名 <strong>1.0000</strong>，显著优于 IDC / OPTT / FT</li>
+<li>在 <strong>回撤</strong> 上，ITA 平均排名 <strong>1.2381</strong>，同样显著优于其余方法</li>
+</ul>
+<p>这意味着 paper 给出的不是“个别 pair 运气好”，而是一个更系统的结构改进。</p>
+<h2>5. 真正该搬进 desk 的，不是整套 FX 假设，而是这 3 个组件</h2>
+<h3>5.1 组件 A：自适应事件触发阈值 <code>θ</code></h3>
+<p>paper 把 <code>θ</code> 设在 <strong>[0.0003, 0.003]</strong>，也就是大约 <strong>3~30 bps</strong> 的触发范围；并用 Bayesian Optimization 动态找最优值。</p>
+<p>对 crypto，最可搬的不是精确数值本身，而是这个思想：</p>
+<p>&gt; <strong>触发阈值必须自适应，不能全年拿一个固定值。</strong></p>
+<p>尤其在 <code>1m/3m/5m/15m</code> 上，不同币、不同波动状态、不同 session 的合适 <code>θ</code> 会差很多。</p>
+<h3>5.2 组件 B：非对称回撤确认 <code>α·θ</code></h3>
+<p>paper 不是把上下行完全对称处理，而是给 down move 一个 <strong>decay coefficient <code>α</code></strong>，搜索范围 <strong>[0.1, 1]</strong>。</p>
+<p>翻成人话就是：</p>
+<p>&gt; <strong>不是每次上行事件都值得等到完整反转；有些时候只要出现较小级别的反向确认，就该认错离场。</strong></p>
+<p>这个设计很 desk 化，因为它本质上是：</p>
+<ul>
+<li>让 entry 去吃 overshoot continuation</li>
+<li>让 exit 更快响应路径衰减</li>
+</ul>
+<h3>5.3 组件 C：RDC -&gt; HMM abnormal regime veto</h3>
+<p>作者把 RDC（基于相邻 DC extremum 的 return / duration 指标）喂给 <strong>2-state HMM</strong>，输出：</p>
+<ul>
+<li><code>S1 = normal</code></li>
+<li><code>S2 = abnormal</code></li>
+</ul>
+<p>交易规则里最值钱的一条其实很简单：</p>
+<p>&gt; <strong>state = S2 时，直接暂停交易。</strong></p>
+<p>对我们 desk，这个东西不一定只服务这条 DC 策略。它以后完全可以被拿去当：</p>
+<ul>
+<li>intraday momentum gate</li>
+<li>breakout veto</li>
+<li>shock-fade size-down overlay</li>
+</ul>
+<h2>6. desk 化后的最小可复现实验</h2>
+<h3>6.1 先怎么把它翻译到 crypto</h3>
+<p>最小版不要从 tick 开始卷太深，先做 <strong>bar-proxy DC</strong>：</p>
+<ul>
+<li><strong>数据源</strong>：Binance public <code>aggTrades</code> / trade websocket（若要更细），以及公开 <code>1m</code> klines（最小近似实验）</li>
+<li><strong>标的</strong>：先 <code>BTCUSDT</code>、<code>ETHUSDT</code>，再加 <code>SOLUSDT</code></li>
+<li><strong>执行频率</strong>：事件在 <code>1m</code> 上判定；执行落在 <code>1m/3m/5m</code>，<code>15m</code> 仅做更慢版验证</li>
+</ul>
+<h3>6.2 最小 raw alpha 规则</h3>
+<p>先做 long-only 版本，别一开始就加反手：</p>
+<ol>
+<li>用 <code>1m</code> close 或 <code>1m</code> high/low 更新 DC 极值点；</li>
+<li>当价格从最近 trough 上行超过 <code>θ</code>，确认上行 DC；</li>
+<li><strong>下一根 bar 开盘做多</strong>；</li>
+<li>出场有三种：</li>
+</ol>
+<ul>
+<li>达到预设 overshoot 目标（例如从 trough 算的第二段延续）</li>
+<li>出现反向确认，幅度达到 <code>α·θ</code></li>
+<li>HMM/RDC 状态切到 abnormal</li>
+</ul>
+<ol>
+<li>abnormal 状态下暂停新开仓；</li>
+<li>sizing 先用固定风险或小额 vol-target，不用 paper 里的满仓设定。</li>
+</ol>
+<h3>6.3 第一轮参数怎么切</h3>
+<p>paper 给的 FX 搜索范围可以直接当起点，但 crypto 需要更现实：</p>
+<ul>
+<li><code>θ</code>：先测 <strong>5 / 10 / 15 / 20 / 30 / 40 / 60 bps</strong></li>
+<li><code>α</code>：先测 <strong>0.2 / 0.4 / 0.6 / 0.8 / 1.0</strong></li>
+<li>HMM：先固定 <strong>2-state</strong></li>
+<li>RDC 输入：先用事件 return / duration 的简化版，不要一开始堆太多特征</li>
+</ul>
+<h3>6.4 成本与风控</h3>
+<p>paper 明确说了：<strong>实验忽略 transaction costs</strong>，而且假设 <strong>short selling is not allowed</strong>。</p>
+<p>所以 desk 化时必须补这几件事：</p>
+<ul>
+<li>taker round-trip 先扣 <strong>4 / 6 / 8 bps</strong></li>
+<li>再测 maker+taker 混合版本</li>
+<li>限制 abnormal regime 下不加仓</li>
+<li>单笔风险先压在组合 NAV 的 <strong>25~50 bps</strong> 级别</li>
+<li>先不做反手；long-only 过线再考虑 short 对称化</li>
+</ul>
+<h2>7. 为什么我认为它现在比再补一个普通 fixed-bar 动量更值得</h2>
+<p>因为它补的是 <strong>raw alpha 素材池里还偏薄的一层：event-clock trend / overshoot capture</strong>。</p>
+<p>如果继续补普通 fixed-bar momentum，我们得到的多半还是：</p>
+<ul>
+<li>又一个 lookback</li>
+<li>又一个 threshold</li>
+<li>又一个 volatility filter</li>
+</ul>
+<p>而这篇给的是另一种价格组织方式：</p>
+<p>&gt; <strong>先换时钟，再谈 alpha。</strong></p>
+<p>这件事很重要，因为不少短周期 edge 不是“信号错了”，而是<strong>采样时钟错了</strong>。DC 正好提供了一个足够简单、又足够可复现的 alternative clock。</p>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li><strong>不是 crypto 原生论文</strong>：paper 在 FX tick data 上成立，迁移到 crypto 必须重新做成本与滑点检查。</li>
+<li><strong>原文是 long-only + 无成本</strong>：所以 headline 收益不能直接照搬。</li>
+<li><strong>HMM 有过拟合风险</strong>：尤其样本短、状态切换太勤时，容易把噪声学成 regime。</li>
+<li><strong>DC 参数很敏感</strong>：paper 自己也证明 <code>θ</code> 和 <code>α</code> 会随时间漂移，所以不能把某组参数神化。</li>
+<li><strong>bar-proxy 会损失 tick 信息</strong>：因此第一轮若 <code>1m</code> proxy 都没边，就别急着上 tick；但若 <code>1m</code> proxy 有边，再往 tick 提纯是合理的。</li>
+</ul>
+<h2>9. 下一步怎么测</h2>
+<h3>第一轮：先验证它是不是“独立 raw alpha”，不是滤镜</h3>
+<ol>
+<li><code>BTCUSDT / ETHUSDT</code> 上做 <code>1m</code> DC 事件流；</li>
+<li>不加任何外部 filter；</li>
+<li>只比较三种 exit：</li>
+</ol>
+<ul>
+<li>固定 <code>2θ</code> overshoot</li>
+<li><code>α·θ</code> 反向确认</li>
+<li><code>α·θ</code> + HMM abnormal veto</li>
+</ul>
+<ol>
+<li>看成本后是否仍有：</li>
+</ol>
+<ul>
+<li>正的 mean trade expectancy</li>
+<li>比 fixed-bar breakout 更低的 tail loss</li>
+</ul>
+<h3>第二轮：如果 raw alpha 过线，再扩成 shared component</h3>
+<ul>
+<li>把 <code>HMM abnormal veto</code> 拿去给现有 <code>5m/15m</code> breakout / continuation / shock-fade 做共享 gate；</li>
+<li>对比“有无 DC-state veto”时的 trade survival、tail loss、break-even cost。</li>
+</ul>
+<h3>第三轮：再考虑 short side 和 cross-asset</h3>
+<ul>
+<li>如果 BTC/ETH long-only 过线，再测试：</li>
+<li>short 对称化</li>
+<li>leader coin DC event -&gt; alt basket follow-through</li>
+<li>same-state basket sizing</li>
+</ul>
+<h2>10. 来源</h2>
+<ul>
+<li><strong>Wu, B., &amp; Han, X. (2023).</strong> *Intelligent trading strategy based on improved directional change and regime change detection*. arXiv preprint.</li>
+<li>DOI: 未见正式 DOI</li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2309.15383">https://arxiv.org/abs/2309.15383</a></code></li>
+<li>PDF URL: <code><a href="https://arxiv.org/pdf/2309.15383">https://arxiv.org/pdf/2309.15383</a></code></li>
+<li>Repo URL: 未找到官方公开 repo</li>
+</ul>
+<ul>
+<li><strong>Tsang, E. P. K., Chen, S.-H., Li, J., et al.</strong>（文中方法脉络引用）Directional Change / regime detection 系列工作。</li>
+<li>这类文献主要提供 <strong>DC event clock + RDC regime detection</strong> 方法地基；当前 digest 的主证据仍以上述 2023 paper 为主。</li>
+</ul>
+<ul>
+<li><strong>Binance Public Market Data</strong>（用于 desk 化最小实验）</li>
+<li>Klines: <code><a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data</a></code></li>
+<li>AggTrades: <code><a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#compressedaggregate-trades-list">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#compressedaggregate-trades-list</a></code></li>
+<li>WebSocket trades / aggTrades 也可公开订阅，用于后续 tick 级提纯</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Cornell CFEM repo 只读成 pairs 课程项目：对 short-cycle desk，更该先测的是「IC-ranked coint pair basket × margin-capped spread fade」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Cornell CFEM repo 只读成 pairs 课程项目：对 short-cycle desk，更该先测的是「IC-ranked coint pair basket × margin-capped spread fade」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-08 16:47 UTC</span>
+      <span class="pill">研究时间：2026-04-08 16:46 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit + public-data portability probe</span>
+      <span class="pill">主题标签：pairs / stat-arb / relative-value / mean-reversion / cointegration / zscore / market-neutral / 15m / 5m</span>
+      <span class="pill">证据类型：工程经验 + 公共数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-08_1646_ic-ranked-coint-basket-spread-fade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-08 16:46 UTC</li>
+<li>类型：GitHub / repo source audit + public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：cointegrated spread mean reversion（协整价差回归）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：pairs / stat-arb / relative-value / mean-reversion / cointegration / zscore / market-neutral / 15m / 5m</li>
+<li>证据类型：工程经验 + 公共数据 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 <code>Jim-Shao/CryptoPairTrading</code>：一个 2025–2026 的 Cornell CFEM 项目（repo 描述写明 *Sponsored by Hummingbot*）。本轮重点审了 <code>main.py</code>、<code>trade.py</code>、<code>export_after_signal_test.csv</code>、<code>output_chain.csv</code>，再把 repo 里更像 desk 可交易的 liquid-major pair，粗口径迁到 Binance USDⓈ-M <code>15m/5m</code> 做 portability probe。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 真正值钱的不是“又一个 z-score pairs”，而是把 <strong>pair admission → signal → sizing → stop → portfolio kill-switch</strong> 串成了一条完整 market-neutral 壳。</li>
+<li><strong>一句话证明方式：</strong> 证据来自源码里完整参数与风控链条，再加上我用公开 <code>15m/5m</code> perp 数据做的简化迁移测试，能直接看到哪一段是 alpha、哪一段是成本门槛。</li>
+<li>repo 默认不是盲做相关性，而是先用 <code>output_chain.csv / export_after_signal_test.csv</code> 做 shortlist，再在交易层要求协整通过；源码里 <code>top_n=100</code>、<code>train_len</code> 网格是 <code>7/15/30</code> 天（按 <code>1h</code> bar 写成 <code>7*24/15*24/30*24</code>）、<code>entry_k=2.0/2.25/2.5</code>、<code>exit_k=0/0.5</code>、<code>reset_len=5</code> 天。</li>
+<li>风控和落地是完整的：<code>stop_loss_pct=2%</code>、<code>margin_per_pair=15%</code>、组合 <code>deactivate_equity_ratio=85%</code>，并显式写了 <code>fee_rate=4 bps</code>、<code>margin_rate=20%</code>、stop-loss 冷却期与协整失效重检逻辑。</li>
+<li>repo 自带 shortlist 里，液态 majors 也能挑出像样 pair：例如 <code>ETH/SOL</code> 的 <code>Best IC=-0.6523</code>、<code>AVAX/NEAR</code> 的 <code>Best IC=-0.5437</code>，说明它想抓的不是“高相关一起涨跌”，而是<strong>信号后收益更容易向均值回归的 pair</strong>。</li>
+<li>但我把这套思路粗暴迁到 Binance USDⓈ-M 后，<strong>15m 还能看到 gross alpha，5m 明显更吃成本</strong>：<code>ETH/SOL</code> 在 <code>15m</code> 简化口径下约 <code>24</code> 笔、毛 <code>+13.16 bps/笔</code>，<code>AAVE/UNI</code> 约 <code>34</code> 笔、毛 <code>+14.69 bps/笔</code>；可一旦按四腿 taker-taker <code>16 bps</code> roundtrip 扣成本，两者都只剩约 <code>-2.84 / -1.31 bps/笔</code>。<code>5m</code> 的 <code>ETH/SOL</code> 更是只有约 <code>+9.00 bps/笔</code> 毛利，已经明显不够。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和 desk 现在的价值很直接：它不是单币 breakout，也不是纯 filter，而是<strong>可以独立成完整策略的 raw alpha</strong>。对当前素材池来说，它提供的是一条能跟单币 trend / momentum 互补的 <strong>market-neutral / relative-value</strong> 线路，而且源码里已经把：</p>
+<ul>
+<li>pair admission</li>
+<li>entry/exit</li>
+<li>仓位上限</li>
+<li>成本参数</li>
+<li>kill-switch</li>
+</ul>
+<p>这些 desk 真正在意的部件都拆出来了，适合直接搬进 <code>1m/3m/5m/15m</code> 复现框架。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / stat-arb / market-neutral</li>
+<li>基础 alpha：协整价差偏离后的均值回归</li>
+<li>regime：只在 pair 仍通过协整检验、且 shortlist IC 仍有效时开机</li>
+<li>filter / veto：<code>pval_alpha=0.05</code>（失败可放宽到 <code>0.15</code>）、<code>entry_k / exit_k</code>、止损、冷却期、组合权益跌破阈值停机</li>
+<li>risk / sizing / execution overlay：单 pair 保证金占用 <code>15%</code>、手续费显式建模 <code>4 bps</code>、组合级 <code>85%</code> deactivation、固定 beta spread + 定期 reset</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> repo 里 “IC shortlist + 协整 gate” 这层 admission，能把 <code>15m</code> perp pairs 的毛利保住到接近可交易，而不是任意找 pair 都能做。</p>
+<p><strong>可计算定义：</strong></p>
+<ol>
+<li>先在 top-liquid perp universe 上复刻 repo 的 shortlist 思路，至少保留 <code>Best IC</code> 或等价的 post-signal IC 排序；</li>
+<li>对 shortlist pair 计算 <code>spread_t = log(P2_t) - beta * log(P1_t)</code>；</li>
+<li><code>zscore(spread)</code> 超过 <code>±2</code> 入场，回到 <code>±0.5</code> 内平仓；再对比是否需要 <code>|z|&gt;=2.5</code> 才值得做。</li>
+</ol>
+<p><strong>最小回测切口：</strong></p>
+<ul>
+<li>资产：先做 <code>ETH/SOL</code>、<code>AVAX/NEAR</code>、<code>AAVE/UNI</code></li>
+<li>周期：先 <code>15m</code>，再看 <code>5m</code></li>
+<li>样本：最近 <code>3~6</code> 个月 Binance / OKX perp</li>
+</ul>
+<p><strong>最该先看：</strong></p>
+<ul>
+<li><code>gross bps / trade</code> 与 <code>breakeven cost</code></li>
+<li><code>positive pair ratio</code>（不是只看单一最好 pair）</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>repo 主口径是 <code>1h</code>；直接压到 <code>5m</code> 很容易把本来够用的 spread edge 压成纯手续费贡献者。</li>
+<li>我这次 portability probe 还是简化版，没有完整复刻 repo 的 IC shortlist 生成、cooldown、组合并发与更细的 fee/fill 逻辑，所以只能说明“毛 alpha 大小”和“成本崖”大概在哪。</li>
+<li>pairs 最大风险不是信号本身，而是<strong>admission 漂移</strong>：pair 关系失效、beta 漂移、单腿流动性塌陷，都会让看起来漂亮的 z-score 变成假均值回归。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Jim Shao. (2025/2026). *CryptoPairTrading* (Cornell CFEM Project Sponsored by Hummingbot). GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/Jim-Shao/CryptoPairTrading">https://github.com/Jim-Shao/CryptoPairTrading</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/Jim-Shao/CryptoPairTrading">https://github.com/Jim-Shao/CryptoPairTrading</a></code></li>
+<li>Source audit files:</li>
+<li><code>README.md</code></li>
+<li><code>main.py</code></li>
+<li><code>trade.py</code></li>
+<li><code>export_after_signal_test.csv</code></li>
+<li><code>output_chain.csv</code></li>
+<li>Local portability probe note:</li>
+<li><code>/root/clawd/tmp_research/jim_pairs_portability_probe_notes_20260408.txt</code></li>
+</ul>
+</body>
+</html>

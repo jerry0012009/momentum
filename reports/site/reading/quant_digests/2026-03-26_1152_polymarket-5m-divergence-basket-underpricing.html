@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Polymarket 5m crypto UP/DOWN 仓库只读成“自动下注机器人”：更该先测的是「硬到期二元分歧 basket underpricing」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Polymarket 5m crypto UP/DOWN 仓库只读成“自动下注机器人”：更该先测的是「硬到期二元分歧 basket underpricing」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-26 11:52 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + Polymarket 公共 CLOB / Gamma API</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/pairs/binary-basket/hard-expiry/polymarket/btc/eth/xrp/5m/1m/3m/repo/external-data</span>
+      <span class="pill">证据类型：2026 GitHub 仓库代码级审阅 + 公共 API 可得性</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-26_1152_polymarket-5m-divergence-basket-underpricing.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-26 11:52 UTC</li>
+<li>类型：2026 GitHub 新仓库 + Polymarket 公共 CLOB / Gamma API</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当 <code>BTC_UP + ETH_DOWN</code> 或 <code>BTC_DOWN + ETH_UP</code> 这类 <strong>5 分钟双腿 basket 的合成买入价</strong>落入经验低价带（repo 默认 <code>0.70~0.82</code>）时，买入两腿并持有到当轮 <code>5m</code> 结算，赚 <strong>hard-expiry payout</strong> 与 entry cost 的差额，而不是赌单腿方向</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/pairs/binary-basket/hard-expiry/polymarket/btc/eth/xrp/5m/1m/3m/repo/external-data</li>
+<li>证据类型：2026 GitHub 仓库代码级审阅 + 公共 API 可得性</li>
+</ul>
+<p>先把 <strong>base alpha</strong> 说清楚：<strong>这不是“看 BTC/ETH 会不会分歧”的嘴炮故事，也不是情绪面板。它更像一条有固定到期时间的两腿相对价值策略：只在 basket 合成成本足够便宜时买入，等 5 分钟结算兑现。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>主线材料是 GitHub 仓库：</p>
+<ul>
+<li><strong>andrew-cao-zc (2026), _Polymarket Pair Trading Bot_</strong></li>
+<li>Readable URL：<code><a href="https://github.com/andrew-cao-zc/polymarket-pair-trading">https://github.com/andrew-cao-zc/polymarket-pair-trading</a></code></li>
+<li>Repo URL：<code><a href="https://github.com/andrew-cao-zc/polymarket-pair-trading">https://github.com/andrew-cao-zc/polymarket-pair-trading</a></code></li>
+</ul>
+<p>我重点看了 <code>README.md</code>、<code>strategy.py</code>、<code>config.py</code>、<code>risk_manager.py</code>、<code>data_fetcher.py</code>。</p>
+<p>仓库最值钱的地方，不是 README 里那句“crypto 高相关，所以分歧会回归”，而是它已经把<strong>完整交易骨架</strong>写出来了：</p>
+<ul>
+<li>市场周期固定 <code>300s</code></li>
+<li>组合触发价带：<code>0.70 &lt;= combo_price &lt;= 0.82</code></li>
+<li>每方向最多 <code>2</code> 笔、每周期总共最多 <code>4</code> 笔</li>
+<li>最后 <code>30s</code> 禁止新开仓</li>
+<li>默认手续费 <code>0.7%</code></li>
+<li>默认日亏损上限 <code>$50</code></li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这份仓库真正可 intake 的，不是“预测谁涨谁跌”，而是“买便宜的 5 分钟双腿二元 basket，靠硬到期结算兑现错价”。</li>
+<li><strong>一句话证明方式</strong>：证据主要来自 repo 代码本身——entry、exit、trade cap、closing-window、daily-loss 都已经明确写成规则，不是只停留在概念图。</li>
+<li>对 desk 最可复用的点，是它把 <strong>hard-expiry、固定持有期、双腿合成成本、最后 30 秒 veto、每周期 trade cap</strong> 这套框架一次性给齐了。</li>
+<li>但仓库里也有一个很重要的<strong>诚实风险信号</strong>：<code>strategy.py</code> 真正使用的是 <code>0.70~0.82</code> 的组合阈值，而 <code>config.py</code> 里还留着 <code>PRICE_RANGE_MIN=0.38 / PRICE_RANGE_MAX=0.44 / COST_THRESHOLD=0.45</code> 这套并未被主策略调用的旧参数，说明实现存在<strong>参数漂移 / 配置未收口</strong>问题，live PnL 不能直接照单全收。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和我们现在的 desk 有 3 个直接关系：</p>
+<ol>
+<li>它是<strong>独立 raw alpha</strong>，不是 filter 假装成 alpha；</li>
+<li>它属于我们正在补的 <strong>relative value / pairs</strong> 家族，但不是传统 perp spread，而是 <strong>binary basket + hard expiry</strong> 的新变体；</li>
+<li>即使未来不做 Polymarket，本仓库里“固定结算时钟 + 双腿合成成本 + late-entry veto + 每周期限频”这套治理，也能迁移到 <code>BTC-ETH</code>、<code>leader-laggard</code>、<code>event-driven spread</code> 的 <code>1m/3m/5m</code> 设计里。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / pairs / 事件驱动</li>
+<li>基础 alpha：低价双腿二元 basket underpricing</li>
+<li>regime：5 分钟到期、流动性足够、盘口可同时成交的 crypto event 市场</li>
+<li>filter / veto：<code>combo_price</code> 落入低价带；最后 <code>30s</code> 不开新仓；可加 active-hours 过滤</li>
+<li>risk / sizing / execution overlay：固定 <code>BET_SIZE=$5</code>、每方向 <code>max 2</code>、每周期 <code>max 4</code>、<code>MAX_DAILY_LOSS=$50</code>、必须防单腿成交不对称</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设</strong>：当 <code>BTC_UP + ETH_DOWN</code> 或 <code>BTC_DOWN + ETH_UP</code> 的合成价格足够便宜时，5 分钟到期后的实际 payout 之和，平均上高于 entry cost + fee。</p>
+<p><strong>数据源 / 公开性 / 更新频率</strong>：</p>
+<ul>
+<li><code><a href="https://gamma-api.polymarket.com">https://gamma-api.polymarket.com</a></code></li>
+<li><code><a href="https://clob.polymarket.com">https://clob.polymarket.com</a></code></li>
+<li>都是公开端点；repo 已给出抓取路径；盘口更新接近实时，结算周期固定 <code>5m</code></li>
+</ul>
+<p><strong>最小口径</strong>：</p>
+<ul>
+<li>标的：先只做 <code>BTC/ETH</code>，后扩到 <code>BTC/XRP</code></li>
+<li>频率：<code>1s~5s</code> 级抓盘口，按 <code>5m</code> 周期结算</li>
+<li>入场：每轮开盘后 <code>30~60s</code> 开始观察；若 <code>combo_price ∈ [0.70, 0.82]</code> 则买入；最后 <code>30s</code> 禁开</li>
+<li>出场：只持有到当轮结算</li>
+<li>先看 3 个指标：<strong>费后单笔 EV、0/1/2 payout 分布、双腿同时成交率</strong></li>
+</ul>
+<p>如果这 3 个数里，<strong>双腿同时成交率</strong>先垮掉，说明问题不在 alpha 想法，而在 execution feasibility。</p>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>README 把 edge 解释成“分歧概率 + 均值回归”，这个说法<strong>偏粗糙</strong>；真正该算的是两腿 token 的合成定价与实际结算值，而不只是看分歧频率。</li>
+<li>单腿先成交、另一腿滑点或没成交，会把本来 market-neutral 的想法直接扭成方向暴露。</li>
+<li>参数漂移（README / <code>strategy.py</code> / <code>config.py</code> 不完全一致）说明仓库更像可研究 skeleton，不应直接相信截图收益。</li>
+<li>这条线最适合先做 <strong>paper trading / replay</strong>，不适合一上来当 production alpha。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li><strong>andrew-cao-zc. (2026). _Polymarket Pair Trading Bot_. GitHub repository.</strong></li>
+<li>Readable URL: <code><a href="https://github.com/andrew-cao-zc/polymarket-pair-trading">https://github.com/andrew-cao-zc/polymarket-pair-trading</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/andrew-cao-zc/polymarket-pair-trading">https://github.com/andrew-cao-zc/polymarket-pair-trading</a></code></li>
+<li><strong>Polymarket public endpoints（由 repo <code>config.py</code> / <code>data_fetcher.py</code> 调用）</strong></li>
+<li>Gamma API: <code><a href="https://gamma-api.polymarket.com">https://gamma-api.polymarket.com</a></code></li>
+<li>CLOB API: <code><a href="https://clob.polymarket.com">https://clob.polymarket.com</a></code></li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<p>先别急着相信 repo 的盈利截图。<strong>第一步就做 30 天 <code>BTC/ETH</code> 回放</strong>：逐轮记录 <code>combo_price</code>、结算 payout、双腿是否都能成交、费后 EV；如果 <code>0/1/2 payout</code> 分布看起来还行，但双腿同时成交率太差，就立刻把这个主题从“可交易 alpha”降级成“execution-sensitive 候选”。</p>
+</body>
+</html>

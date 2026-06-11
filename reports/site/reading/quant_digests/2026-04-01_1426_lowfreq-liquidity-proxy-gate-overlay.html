@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 liquidity 研究只当 market-quality 教科书：对 short-cycle desk，更该先补的是「CS/AR spread proxy × Amihud level × realized-vol trigger」这层共享 liquidity gate / sizing overlay</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 liquidity 研究只当 market-quality 教科书：对 short-cycle desk，更该先补的是「CS/AR spread proxy × Amihud level × realized-vol trigger」这层共享 liquidity gate / sizing overlay</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-01 14:28 UTC</span>
+      <span class="pill">研究时间：2026-04-01 14:26 UTC</span>
+      <span class="pill">类型：quant_digest</span>
+      <span class="pill">主题标签：overlay/filter/liquidity/cost-model/spread-proxy/corwin-schultz/abdi-ranaldo/amihud/kyle-obizhaeva/realized-volatility/market-quality/shared-component/binance/bybit/okx/btc/eth/1m/3m/5m/15m/paper/public-data/cost/execution</span>
+      <span class="pill">证据类型：2021 *Journal of Banking &amp; Finance* 开放获取 Highlights/Abstract + OpenAlex 元数据；2024 *Financial Innovation* 开放获取摘要/元数据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-01_1426_lowfreq-liquidity-proxy-gate-overlay.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-01 14:26 UTC</li>
+<li>类型：quant_digest</li>
+<li>主题标签：overlay/filter/liquidity/cost-model/spread-proxy/corwin-schultz/abdi-ranaldo/amihud/kyle-obizhaeva/realized-volatility/market-quality/shared-component/binance/bybit/okx/btc/eth/1m/3m/5m/15m/paper/public-data/cost/execution</li>
+<li>证据类型：2021 *Journal of Banking &amp; Finance* 开放获取 Highlights/Abstract + OpenAlex 元数据；2024 *Financial Innovation* 开放获取摘要/元数据</li>
+</ul>
+<ul>
+<li>主题类型：overlay</li>
+<li>基础 alpha：<strong>不是独立 raw alpha；它服务的 base alpha 是高换手短周期策略，尤其是 <code>order-book / taker-flow directional</code>、<code>breakout / continuation</code>、<code>pairs / spread MR</code> 这几类最容易被成本和流动性状态吞掉的 raw alpha。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是，但角色是 <strong>gate / sizing / cost overlay</strong>，不是方向信号本体。</li>
+</ul>
+<h2>1. 先说结论</h2>
+<p>如果现在还继续只补 raw alpha 叶子，而不补一层<strong>便宜、稳定、公开数据可得</strong>的 liquidity/cost gate，desk 很容易重复犯同一个错：</p>
+<p><strong>paper 上有 edge，实盘一上高换手就被 spread、冲击、挤仓时段和错误 venue 选择吃掉。</strong></p>
+<p>这轮最值得 intake 的，不是“又一个方向因子”，而是：</p>
+<ol>
+<li>用 <strong>Corwin-Schultz (CS)</strong> / <strong>Abdi-Ranaldo (AR)</strong> 这类只靠 OHLC 就能算的 spread proxy，去跟踪<strong>流动性变化</strong>；</li>
+<li>用 <strong>Amihud</strong> / <strong>Kyle-Obizhaeva (KO)</strong> 这类 price-impact proxy，去跟踪<strong>流动性水平</strong>；</li>
+<li>再用 <strong>realized volatility</strong> 做上游 trigger，因为 2024 支持材料表明，对 BTC liquidity 来说，<strong>已实现波动率是最稳的解释变量</strong>。</li>
+</ol>
+<p>翻成人话： <strong>先别急着问“方向对不对”，先问“这根 bar 值不值得交易、该不该降仓、是不是该换 maker-ish 执行”。</strong></p>
+<h2>2. 为什么这轮值得写，而不是继续补一条 raw alpha</h2>
+<p>当前 desk 已经连续 intake 了不少 raw alpha 候选：directional、pairs、cross-sectional、carry 都在加。 现在更缺的，是一层能同时服务多类 alpha 的<strong>共享成本壳</strong>：</p>
+<ul>
+<li>对 <code>OBI / flow continuation</code>：它决定你是该 aggress，还是等价差回到可交易区；</li>
+<li>对 <code>breakout / trend</code>：它决定高波动真突破时该不该放行，还是先被 spread tax 干掉；</li>
+<li>对 <code>pairs / spread MR</code>：它决定看起来很美的 z-score 回归，是否只是低流动性假信号。</li>
+</ul>
+<p>所以这轮虽然不是 raw alpha，但和当前短周期 desk 的关系非常直接： <strong>它不是解释世界，而是给已有/新 raw alpha 加一层“别在最贵的时候交易”的保护层。</strong></p>
+<h2>3. 这次看了什么</h2>
+<h3>3.1 主论文：低频 proxy 能不能替代高频真实 liquidity</h3>
+<ul>
+<li><strong>Authors</strong>：Alexander Brauneis, Roland Mestel, Ryan Riordan, Erik Theissen</li>
+<li><strong>Year</strong>：2021</li>
+<li><strong>Title</strong>：*How to measure the liquidity of cryptocurrency markets?*</li>
+<li><strong>Venue</strong>：*Journal of Banking &amp; Finance*</li>
+<li><strong>DOI</strong>：&lt;<a href="https://doi.org/10.1016/j.jbankfin.2020.106041&gt;">https://doi.org/10.1016/j.jbankfin.2020.106041&gt;</a></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://www.sciencedirect.com/science/article/pii/S0378426620303022?via%3Dihub&gt;">https://www.sciencedirect.com/science/article/pii/S0378426620303022?via%3Dihub&gt;</a></li>
+</ul>
+<p>当前可稳定拿到的核心信息：</p>
+<ul>
+<li>论文直接比较了<strong>高频 benchmark liquidity</strong> 与<strong>低频、易计算 proxy</strong> 在 crypto 里的表现；</li>
+<li>研究对象明确写到 <strong>BTC 和 ETH</strong>；</li>
+<li>Highlights 与 Abstract 都能稳定拿到，足够支撑这轮 digest 的主结论。</li>
+</ul>
+<h3>3.2 supporting paper：liquidity 到底被什么驱动</h3>
+<ul>
+<li><strong>Author</strong>：Walid M. A. Ahmed</li>
+<li><strong>Year</strong>：2024</li>
+<li><strong>Title</strong>：*On the robust drivers of cryptocurrency liquidity: the case of Bitcoin*</li>
+<li><strong>Venue</strong>：*Financial Innovation*</li>
+<li><strong>DOI</strong>：&lt;<a href="https://doi.org/10.1186/s40854-023-00598-9&gt;">https://doi.org/10.1186/s40854-023-00598-9&gt;</a></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://doi.org/10.1186/s40854-023-00598-9&gt;">https://doi.org/10.1186/s40854-023-00598-9&gt;</a></li>
+</ul>
+<p>这篇 supporting paper 的价值不在“给新 alpha”，而在告诉我们： <strong>当你想提前预判 liquidity 变坏时，最该盯的上游变量是什么。</strong></p>
+<h2>4. 这两篇东西给了 desk 哪 4 个硬点</h2>
+<h3>4.1 低频 proxy 不是没用，反而够资格做短周期 gate</h3>
+<p>2021 JBF 的 abstract 结论非常直接：</p>
+<ul>
+<li><strong>Corwin-Schultz (2012)</strong> 和 <strong>Abdi-Ranaldo (2017)</strong> 在描述<strong>流动性的时间序列变化</strong>时，优于其他候选；</li>
+<li>这个结论对<strong>不同观察频率、不同 venue、不同 benchmark、不同币种</strong>都成立；</li>
+<li>它们在<strong>高 / 低收益、高 / 低波动、高 / 低成交量时期</strong>都表现稳定。</li>
+</ul>
+<p>对 desk 的含义是： 如果你现在没有稳定全市场 L2 / tick 数据，<strong>不代表你只能裸跑策略</strong>。用 OHLC + volume 就能先搭一层足够像样的 liquidity state machine。</p>
+<h3>4.2 想看“变化”，优先 CS / AR；想看“绝对水平”，优先 Amihud / KO</h3>
+<p>这篇 2021 论文还给了一个很重要的拆分：</p>
+<ul>
+<li><strong>CS / AR 更擅长追踪 liquidity 的变化过程</strong>；</li>
+<li><strong>Amihud (2002) illiquidity ratio</strong> 和 <strong>Kyle-Obizhaeva (2016)</strong> 更擅长估计<strong>liquidity level</strong>；</li>
+<li>后两者还更能识别<strong>venue 之间的流动性差异</strong>。</li>
+</ul>
+<p>这点很关键，因为 short-cycle desk 经常把“有没有恶化”和“绝对贵不贵”混成一个维度。其实应该拆开：</p>
+<ul>
+<li><code>变化维度</code>：现在是不是突然变差了？</li>
+<li><code>水平维度</code>：这个 venue / 这个币 / 这个时段，本来是不是就贵？</li>
+</ul>
+<h3>4.3 Amihud 很便宜，先上它；CS/AR 做 second opinion</h3>
+<p>如果只从最小实验成本看，<strong>Amihud</strong> 最适合先落：</p>
+<ul>
+<li>公式简单：<code>ILLIQ_t = abs(ret_t) / dollar_volume_t</code>；</li>
+<li>公开 K 线 / quote volume 就能先做；</li>
+<li>很适合先给现有 alpha 做 <code>cost veto / size scaling</code>。</li>
+</ul>
+<p>但如果只用 Amihud，又会漏掉<strong>spread 自身的状态变化</strong>。所以更合理的 desk 化方案是：</p>
+<ul>
+<li>用 <strong>CS 或 AR</strong> 盯 spread proxy 的变化；</li>
+<li>用 <strong>Amihud</strong> 盯 impact/capacity；</li>
+<li>如果后面有更好的成交级数据，再补 KO。</li>
+</ul>
+<h3>4.4 2024 支持材料：最稳的上游 trigger 是 realized volatility</h3>
+<p>2024 *Financial Innovation* 的 abstract 也很有用：</p>
+<ul>
+<li>研究用的是 <strong>BTC/USD 的 60-min 高频数据</strong>；</li>
+<li>在 Leamer 版 EBA 下，<strong>realized volatility 是解释 Bitcoin liquidity 的唯一稳健变量</strong>；</li>
+<li>在 Sala-i-Martin 版 EBA 下，除 realized volatility 外，还多了 <strong>negative returns、trading volume、hash rate、Google search volume</strong> 这 4 个稳健解释变量。</li>
+</ul>
+<p>翻成人话： 如果你只允许先上一个最便宜、最稳的 liquidity deterioration trigger，<strong>先上 realized vol，不要先上“花哨情绪解释”。</strong></p>
+<h2>5. 这东西怎么映射到 1m / 3m / 5m / 15m</h2>
+<h3>5.1 它不是方向信号，而是 admission / sizing / execution veto</h3>
+<p>这轮要非常诚实：</p>
+<ul>
+<li>它<strong>不是</strong>独立 raw alpha；</li>
+<li>它更像一个共享的 <code>tradeability layer</code>；</li>
+<li>所以最适合的角色是：</li>
+<li><code>15m / 5m</code>：主 gate / size scaler</li>
+<li><code>3m / 1m</code>：execution veto / maker-vs-taker switch</li>
+</ul>
+<h3>5.2 最小可复现实验口径</h3>
+<p><strong>公开数据源</strong>：</p>
+<ul>
+<li>Binance / Bybit / OKX 公共 OHLCV / quote volume / 公开 trade 或 mark price 数据</li>
+<li>数据公开性：公开可得</li>
+<li>更新频率：<code>1m</code> 或更高，再聚合到 <code>3m/5m/15m</code></li>
+</ul>
+<p><strong>第一版指标建议</strong>：</p>
+<ol>
+<li><code>amihud_5m = abs(ret_5m) / quote_volume_5m</code></li>
+<li><code>amihud_15m = abs(ret_15m) / quote_volume_15m</code></li>
+<li><code>spread_proxy_5m = CS_or_AR_from_OHLC_5m</code></li>
+<li><code>rv_15m = realized_vol_15m_or_1h</code></li>
+<li><code>liq_state = z(amihud) + z(spread_proxy) + z(rv)</code></li>
+</ol>
+<p>其中：</p>
+<ul>
+<li><code>CS_or_AR</code> 先直接复用论文对应 estimator 的标准实现，不建议第一刀自己手写猜公式；</li>
+<li><code>rv</code> 先用最朴素的 rolling realized vol 就够；</li>
+<li><code>liq_state</code> 不要一开始搞复杂 ML，先做分桶和简单阈值。</li>
+</ul>
+<h2>6. 对当前 desk 最有价值的不是“测 proxy 本身”，而是做 transfer</h2>
+<p>这轮最该先跑的，不是孤零零地看 proxy 跟 spread 的相关系数，而是做<strong>对已有 alpha 的迁移实验</strong>。</p>
+<h3>实验 A：给 OBI / flow continuation 加 liquidity veto</h3>
+<p><strong>服务 alpha</strong>：<code>order-book imbalance / taker-flow continuation</code></p>
+<ul>
+<li>原信号照旧给方向；</li>
+<li>若 <code>liq_state</code> 进入最差分位（比如 top decile illiquid），则：</li>
+<li>禁止 taker 进场；</li>
+<li>或把 size 降到 25% / 50%；</li>
+<li>或改成 maker-ish 参与。</li>
+</ul>
+<p>要回答的问题： <strong>alpha 的毛 edge 会不会小降，但 after-cost Sharpe / hit-rate / avg trade pnl 反而上升？</strong></p>
+<h3>实验 B：给 breakout / continuation 做“高波动 ≠ 可交易”分流</h3>
+<p><strong>服务 alpha</strong>：<code>breakout / trend / continuation</code></p>
+<ul>
+<li>常见错误是把高波动直接当“更值得追”；</li>
+<li>这里改成二阶段判断：</li>
+</ul>
+<ol>
+<li>breakout 条件触发；</li>
+<li>只有当 <code>rv</code> 上升但 <code>spread_proxy</code> / <code>amihud</code> 没同步恶化到阈值外，才放行。</li>
+</ol>
+<p>要回答的问题： <strong>能不能把“方向对但成本太贵”的假阳性砍掉？</strong></p>
+<h3>实验 C：pairs / spread MR 上的 venue-aware 降仓</h3>
+<p><strong>服务 alpha</strong>：<code>pairs / stat-arb / spread MR</code></p>
+<ul>
+<li>如果 z-score 到位，但一条腿所在 venue 的 <code>Amihud / KO</code> 明显更差；</li>
+<li>或者 <code>CS/AR</code> 提示 spread proxy 正在恶化；</li>
+<li>那就不是不做，而是：</li>
+<li>降仓；</li>
+<li>拉宽 entry band；</li>
+<li>或强制 maker-only first leg。</li>
+</ul>
+<p>要回答的问题： <strong>MR 的表面回归优势，是否只是被 illiquid leg 的 hidden cost 假放大？</strong></p>
+<h2>7. 一个够用的 first-pass 策略骨架</h2>
+<h3>Entry gate</h3>
+<p>对任意已有 raw alpha <code>alpha_score_t</code>：</p>
+<ol>
+<li>先算 <code>alpha_score_t</code>；</li>
+<li>再算 <code>amihud_t</code>、<code>spread_proxy_t</code>、<code>rv_t</code>；</li>
+<li>得到 <code>liq_state_t</code>；</li>
+<li>只有当 <code>liq_state_t &lt; gate_threshold</code> 才允许正常进场；</li>
+<li>若 <code>liq_state_t</code> 落在灰区，只允许半仓或 maker-only；</li>
+<li>若 <code>liq_state_t</code> 极差，则 veto。</li>
+</ol>
+<h3>Sizing</h3>
+<ul>
+<li><code>normal</code>：底层 alpha size × 1.0</li>
+<li><code>watch</code>：× 0.5</li>
+<li><code>bad</code>：× 0 或只挂 maker 小仓</li>
+</ul>
+<h3>Cost/Risk</h3>
+<p>至少拆三档：</p>
+<ul>
+<li><code>maker-ish</code></li>
+<li><code>mixed</code></li>
+<li><code>taker-heavy</code></li>
+</ul>
+<p>如果一个 alpha 只有在 <code>liq_state</code> 最差时还必须用 <code>taker-heavy</code> 才能抓到信号，那它很可能不是真的 edge，只是 paper edge。</p>
+<h2>8. 这轮最该记住的 3 个数字 / 事实</h2>
+<ol>
+<li><strong>2021 JBF</strong>：BTC/ETH 上，<strong>CS / AR 最适合追时间序列变化</strong>；<strong>Amihud / KO 最适合看 liquidity level 与 venue 差异</strong>。</li>
+<li><strong>2024 Financial Innovation</strong>：基于 <strong>BTC/USD 60-min 高频数据</strong>，<strong>realized volatility 是最稳的 liquidity 解释变量</strong>。</li>
+<li>这意味着 short-cycle desk 完全可以先用<strong>公开 OHLCV + quote volume</strong>搭一层低成本 liquidity gate，而不用等完整 L2 基础设施才开始做成本控制。</li>
+</ol>
+<h2>9. 局限与别误读的地方</h2>
+<ol>
+<li><strong>这不是 raw alpha 本体。</strong> 不要把它伪装成“单独赚钱的方向信号”。</li>
+<li><strong>2021 论文的 benchmark 是高频 liquidity，不等于你的实际 fill。</strong> 所以 transfer 时一定要看 after-cost，不要只看 proxy 相关性。</li>
+<li><strong>2024 supporting paper 只看 Bitcoin。</strong> 所以 realized-vol trigger 迁移到 ALT 时，要单独做稳健性。</li>
+<li><strong>不同 venue 的 quote volume 口径可能不完全一致。</strong> first-pass 先做单 venue 内实验，再做 cross-venue。</li>
+</ol>
+<h2>10. 下一步怎么测</h2>
+<h3>本轮建议只做 1 个最小实验</h3>
+<p><strong>先拿一条已有高换手 alpha，给它外挂这层 gate，再做 ablation。</strong></p>
+<p>优先顺序：</p>
+<ol>
+<li><code>OBI / taker-flow directional</code></li>
+<li><code>breakout / continuation</code></li>
+<li><code>pairs / spread MR</code></li>
+</ol>
+<h3>最小 ablation ladder</h3>
+<ol>
+<li>原始 alpha（无 gate）</li>
+<li>+ <code>Amihud</code></li>
+<li>+ <code>Amihud + CS/AR</code></li>
+<li>+ <code>Amihud + CS/AR + realized-vol trigger</code></li>
+</ol>
+<h3>只看这 5 个输出</h3>
+<ul>
+<li>after-cost Sharpe</li>
+<li>avg trade pnl</li>
+<li>fill-adjusted hit-rate</li>
+<li>turnover change</li>
+<li>veto 后被砍掉交易的 pnl 分布</li>
+</ul>
+<p>如果第 4 档明显优于第 1 档，这层 overlay 就值得正式进入实盘组件池；如果只改善 paper pnl、不改善 after-cost，就说明它只是漂亮解释，不是好 gate。</p>
+<h2>11. 一句话收尾</h2>
+<p>这轮不是再找一条“看起来很聪明”的方向因子，而是补一层<strong>低数据门槛、可跨策略复用、直接决定 edge 能不能活过成本</strong>的 liquidity overlay。对现在这个 short-cycle desk，它比再多收一条相似 raw alpha 更值钱。</p>
+</body>
+</html>

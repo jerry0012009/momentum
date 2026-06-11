@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这两份 2026 prediction-market repo 只读成链上博彩脚本：对 short-cycle desk，更该先测的是「late-lock pool imbalance × payout-aware EV switch」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这两份 2026 prediction-market repo 只读成链上博彩脚本：对 short-cycle desk，更该先测的是「late-lock pool imbalance × payout-aware EV switch」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 14:52 UTC</span>
+      <span class="pill">研究时间：2026-04-04 14:55 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`README.md` / `src/index.ts` / `src/lib.ts` / `src/strategy.ts` / `src/config.ts`）+ PancakeSwap Prediction 官方 docs</span>
+      <span class="pill">主题标签：raw-alpha/prediction-market/binary/late-lock/pool-imbalance/payout-skew/expected-value/momentum/streak-reversal/contrarian/crowding/bsc/pancakeswap/bnb/btc/eth/5m/repo/docs/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 源码证据 + 官方机制文档</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_1455_pancakeswap-latelock-ev-prediction-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 14:55 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>README.md</code> / <code>src/index.ts</code> / <code>src/lib.ts</code> / <code>src/strategy.ts</code> / <code>src/config.ts</code>）+ PancakeSwap Prediction 官方 docs</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>在公开可见的 <code>5m</code> prediction round 里，用 bull/bear 池子金额推导赔率，再用超短线方向估计（recent rounds momentum / streak reversal / 外部现货微动量）计算每一侧的净期望值，只在 <code>EV &gt; fee + gas + safety margin</code> 时于 lock 前最后十几秒下注。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/prediction-market/binary/late-lock/pool-imbalance/payout-skew/expected-value/momentum/streak-reversal/contrarian/crowding/bsc/pancakeswap/bnb/btc/eth/5m/repo/docs/public-data/cost/risk</li>
+<li>证据类型：repo 源码证据 + 官方机制文档</li>
+</ul>
+<h2>1. 先回答一句：base alpha 是什么？</h2>
+<p><strong>base alpha = 公开池子不平衡（crowding / implied odds）和超短线方向概率之间的错配。</strong></p>
+<p>更直白一点：</p>
+<ul>
+<li>市场已经把 <code>bullAmount / bearAmount</code> 摆在链上；</li>
+<li>这等于给了你一个<strong>实时赔率</strong>；</li>
+<li>如果你能用最近几轮结果、streak、或者外部现货 <code>1m/3m</code> 微动量，估出一边真实胜率高于赔率隐含门槛，下注本身就是一条可独立运行的 raw alpha。</li>
+</ul>
+<p>它不是 filter，也不是 overlay；<strong>它本身就是带固定出场时钟的完整交易。</strong></p>
+<h2>2. 为什么这轮值得进研究池？</h2>
+<p>这不是又一篇“breakout / pairs / funding 老题材”的边角料，而是一条<strong>还没在当前 digest 池里重复出现的完整短周期 alpha 家族</strong>：</p>
+<ul>
+<li><strong>交易对象</strong>：PancakeSwap Prediction 的 <code>BNB/BTC/ETH</code> <code>5m</code> round；</li>
+<li><strong>数据公开</strong>：池子金额、round 状态、lock/close 规则都公开；</li>
+<li><strong>出场天然固定</strong>：到期结算，不存在“什么时候平仓”模糊地带；</li>
+<li><strong>最小实验快</strong>：抓取 round 数据就能回放，远比许多链上高频题材容易起步。</li>
+</ul>
+<p>如果现在继续补一篇普通 pairs / maker / time-of-day 题材，边际新增信息未必比这条更高。</p>
+<h2>3. 两份 repo 各自提供了什么可复用部件？</h2>
+<h3>3.1 <code>mooncitydev/crypto-prediction-bot</code>：给你 <strong>赔率侧 / crowding 侧</strong></h3>
+<p>这份 repo 的核心不是“自动下注脚本”本身，而是三件事：</p>
+<ol>
+<li><strong>下注时点非常晚</strong></li>
+<p><code>src/index.ts</code> 里把等待时间写成 <code>281500 ms</code>，也就是一轮 <code>300s</code> 的 <code>5m</code> round 里，大约在 <strong>lock 前 18.5 秒</strong> 才做决策。</p>
+</ol>
+<ol>
+<li><strong>直接读取 bull / bear 池子金额</strong></li>
+<p>然后在最后十几秒，用 <code>bullAmount</code> 和 <code>bearAmount</code> 判断 crowding。</p>
+</ol>
+<ol>
+<li><strong>明确把 crowding 写成规则</strong></li>
+<p>repo 提供了 <code>Against</code> 与 <code>With</code> 两种风格：</p>
+</ol>
+<ul>
+<li><code>Against</code>：逆着 crowding 做；</li>
+<li><code>With</code>：顺着 crowding 做；</li>
+<li><code>src/lib.ts</code> 里还用了一个<strong>5:1 ratio 门槛</strong>作为 regime 切换线索。</li>
+</ul>
+<p>也就是说，这份 repo 最值钱的不是“脚本会发交易”，而是它把 <strong>late-lock crowding / payout skew</strong> 变成了可执行壳。</p>
+<h3>3.2 <code>madewithai/pancakeswap-prediction-bot</code>：给你 <strong>方向概率估计侧</strong></h3>
+<p>这份 repo 更像一个简化版短线概率模型：</p>
+<ul>
+<li><code>LOOKBACK_ROUNDS=20</code></li>
+<li>最近 round 权重衰减 <code>0.95</code></li>
+<li><code>MIN_EDGE_SCORE=0.58</code></li>
+<li><code>STREAK_REVERSAL_THRESHOLD=3</code></li>
+<li>可加 <code>COOLDOWN_ROUNDS_AFTER_LOSS</code></li>
+<li><code>MAX_BET_BNB</code> 控制单轮暴露</li>
+</ul>
+<p>它提供的关键信息是：</p>
+<ul>
+<li>可以把最近 <code>N</code> 轮 bull/bear outcome 压成一个<strong>超短线方向概率</strong>；</li>
+<li>当出现连续 <code>3</code> 轮以上单边 streak 时，可以切到<strong>streak reversal</strong> 模式；</li>
+<li>风险层至少有 cap / cooldown 这种最小壳。</li>
+</ul>
+<p>这正好补上前一个 repo 缺的那半边：<strong>不是只看赔率，而是要估概率。</strong></p>
+<h2>4. 真正适合 desk 的读法：不是“跟 crowd / 反 crowd”二选一，而是 <strong>赔率感知后的 EV switch</strong></h2>
+<p>这是这轮最值得拿走的 reframing。</p>
+<h3>4.1 先把赔率写清楚</h3>
+<p>PancakeSwap 官方 docs 给了 3 个关键机制：</p>
+<ul>
+<li>每轮 <strong><code>5 分钟</code></strong>；</li>
+<li>平台 fee <strong><code>3%</code></strong>；</li>
+<li>结算看 <strong>Chainlink lock/close price</strong>，且文档写明更新间隔<strong>最高可到约 20 秒</strong>。</li>
+</ul>
+<p>如果当前轮：</p>
+<ul>
+<li>bull 池 = <code>B</code></li>
+<li>bear 池 = <code>R</code></li>
+<li>total = <code>T = B + R</code></li>
+</ul>
+<p>那么下注某一侧的<strong>赢时总回收倍数</strong>，近似就是：</p>
+<ul>
+<li><code>gross_mult_bull = 0.97 * T / B</code></li>
+<li><code>gross_mult_bear = 0.97 * T / R</code></li>
+</ul>
+<p>于是 break-even 胜率门槛就是：</p>
+<ul>
+<li><code>p*_bull = 1 / gross_mult_bull</code></li>
+<li><code>p*_bear = 1 / gross_mult_bear</code></li>
+</ul>
+<h3>4.2 这几个数字非常关键</h3>
+<p>假设当前 crowding 是 <code>4:1</code>：</p>
+<ul>
+<li>若你买 <strong>少数一侧</strong>，赢时回收约 <code>0.97 * 5 = 4.85x</code>，break-even 胜率只需 <strong><code>20.6%</code></strong>；</li>
+<li>若你买 <strong>多数一侧</strong>，赢时回收约 <code>0.97 * 1.25 = 1.2125x</code>，break-even 胜率却要 <strong><code>82.5%</code></strong>。</li>
+</ul>
+<p>若 crowding 到 <code>5:1</code>：</p>
+<ul>
+<li>少数侧 break-even 胜率约 <strong><code>17.2%</code></strong>；</li>
+<li>多数侧 break-even 胜率约 <strong><code>85.9%</code></strong>。</li>
+</ul>
+<p>这说明什么？</p>
+<p><strong>Prediction market 不该只问“谁更可能赢”，而要问“谁的赔率错得更厉害”。</strong></p>
+<p>所以最适合 desk 的版本不是：</p>
+<ul>
+<li>永远顺 crowd；或</li>
+<li>永远反 crowd；</li>
+</ul>
+<p>而是：</p>
+<p>&gt; <strong>先看 payout skew，再决定这轮该做 majority continuation、minority fade，还是直接 skip。</strong></p>
+<h2>5. 能不能直接落地成完整策略？可以。</h2>
+<h3>5.1 Entry（入场）</h3>
+<p><strong>推荐 desk 版最小规则：</strong></p>
+<ol>
+<li>round 进入最后 <code>15~20s</code>；</li>
+<li>抓当前 <code>bullAmount / bearAmount</code>；</li>
+<li>用最近 <code>20</code> 轮结果（或外部 <code>1m/3m</code> 现货微动量）估 <code>p_bull / p_bear</code>；</li>
+<li>分别计算：</li>
+</ol>
+<ul>
+<li><code>EV_bull = p_bull * 0.97 * T / B - 1</code></li>
+<li><code>EV_bear = p_bear * 0.97 * T / R - 1</code></li>
+</ul>
+<ol>
+<li>只有当 <code>max(EV_bull, EV_bear) &gt; gas + tie_buffer + safety_margin</code> 时才下注；</li>
+<li>若两边都不够，直接 skip。</li>
+</ol>
+<h3>5.2 Exit（出场）</h3>
+<ul>
+<li><strong>固定到期结算</strong>，没有 discretionary exit；</li>
+<li>这反而是优点：研究上更干净。</li>
+</ul>
+<h3>5.3 Sizing（仓位）</h3>
+<p>先别搞复杂 Kelly，直接用：</p>
+<ul>
+<li>固定 stake；</li>
+<li>或 <code>stake = min(max_cap, base_size * clipped_EV)</code>；</li>
+<li>单轮 cap 建议先照 repo 的保守口径，控制在小额 <code>BNB</code> 暴露。</li>
+</ul>
+<h3>5.4 Risk（风控）</h3>
+<p>最小必备：</p>
+<ul>
+<li><code>max bet per round</code></li>
+<li><code>cooldown after loss</code></li>
+<li>lock window 禁入</li>
+<li>pending oracle / round 状态异常禁入</li>
+<li>连续 <code>N</code> 轮亏损暂停</li>
+<li>明确禁止在网络拥堵导致 tx 容易迟到时追单</li>
+</ul>
+<h3>5.5 Cost（成本）</h3>
+<p>至少要扣：</p>
+<ul>
+<li>平台 <strong>3% fee</strong></li>
+<li>BSC gas</li>
+<li>tie 风险（文档写明 <strong>tie 时 house 赢</strong>）</li>
+<li>oracle / transaction timing 风险</li>
+</ul>
+<h2>6. 对 <code>1m / 3m / 5m / 15m</code> desk 的关系</h2>
+<p>这条 alpha 的<strong>主战场就是 <code>5m</code></strong>，不是硬往 perp 上伪装迁移。</p>
+<p>更合理的映射是：</p>
+<h3>6.1 直接交易层</h3>
+<ul>
+<li>直接做 PancakeSwap Prediction <code>5m</code> round；</li>
+<li>BTC / ETH / BNB 都能独立实验；</li>
+<li>这是最干净的主实验。</li>
+</ul>
+<h3>6.2 衍生 confirm / veto 层</h3>
+<p>如果未来要服务 perp desk，可以把它变成：</p>
+<ul>
+<li><code>5m round</code> 最后十几秒的 pool imbalance / implied odds，作为 BTC/ETH/BNB perp 的一个 crowding confirm；</li>
+<li>但这属于<strong>二级用途</strong>，不是本轮主结论。</li>
+</ul>
+<p>换句话说：<strong>这轮主题本身就是 raw alpha，不需要靠“服务别的 alpha”来证明价值。</strong></p>
+<h2>7. 这两份 repo 的保留意见</h2>
+<h3>7.1 <code>mooncitydev</code> repo 的规则实现有明显逻辑粗糙处</h3>
+<p><code>src/lib.ts</code> 里的 <code>isAgainstBet</code> / <code>isWithBet</code> 写法并不优雅，存在“ratio 条件和下注方向混在一起”的问题，不能原样当成 desk 级信号逻辑。</p>
+<p>但这不影响它提供最关键的两件资产：</p>
+<ul>
+<li><strong>late-lock timing</strong></li>
+<li><strong>public pool imbalance → executable shell</strong></li>
+</ul>
+<h3>7.2 <code>madewithai</code> repo 的概率模型过于轻量</h3>
+<ul>
+<li>只看最近 rounds 的 bull/bear outcome；</li>
+<li>没有把 payout side 真正并入 EV；</li>
+<li>也没有外部行情、盘口或 gas 条件。</li>
+</ul>
+<p>但它非常适合当我们第一版 <code>p_hat</code> 的 baseline。</p>
+<h2>8. 下一步怎么测（直接可排队）</h2>
+<h3>实验 A：赔率感知 vs 非赔率感知</h3>
+<p>对比三组：</p>
+<ol>
+<li>只顺 crowd</li>
+<li>只反 crowd</li>
+<li><code>EV-aware switch</code>（推荐主实验）</li>
+</ol>
+<p>看：</p>
+<ul>
+<li>win rate</li>
+<li>EV / round</li>
+<li>round-level Sharpe</li>
+<li>连续亏损段长度</li>
+</ul>
+<h3>实验 B：crowding 分桶</h3>
+<p>按 <code>max(B/R, R/B)</code> 分桶：</p>
+<ul>
+<li><code>1.0~1.5</code></li>
+<li><code>1.5~2.5</code></li>
+<li><code>2.5~4.0</code></li>
+<li><code>4.0~5.0</code></li>
+<li><code>&gt;5.0</code></li>
+</ul>
+<p>看不同桶里：</p>
+<ul>
+<li>minority side 是否更容易有正 EV</li>
+<li>majority side 何时仍值得追</li>
+<li>是否存在稳定的 skip 区间</li>
+</ul>
+<h3>实验 C：概率模型 baseline</h3>
+<p>用三套最小 <code>p_hat</code>：</p>
+<ol>
+<li>20-round decay momentum（照 repo）</li>
+<li>3-round streak reversal（照 repo）</li>
+<li>外部现货 <code>1m/3m</code> return sign + volatility gate</li>
+</ol>
+<p>目标不是一开始追最强模型，而是先看<strong>赔率侧本身有没有信息承接空间</strong>。</p>
+<h3>实验 D：时点敏感度</h3>
+<p>比较下注时间：</p>
+<ul>
+<li>lock 前 <code>60s</code></li>
+<li><code>30s</code></li>
+<li><code>20s</code></li>
+<li><code>15s</code></li>
+<li><code>10s</code></li>
+</ul>
+<p>验证 late-lock crowding 是否真的更有信息量，还是只是 tx fail 更高。</p>
+<h3>实验 E：跨品种可移植性</h3>
+<p>分别对：</p>
+<ul>
+<li><code>BNBUSD</code></li>
+<li><code>BTCUSD</code></li>
+<li><code>ETHUSD</code></li>
+</ul>
+<p>看哪一类 round：</p>
+<ul>
+<li>crowding 更极端</li>
+<li>break-even gap 更大</li>
+<li>net EV 更稳</li>
+</ul>
+<h2>9. 结论</h2>
+<p>如果只把这些 repo 当“prediction betting bot”，价值其实很低。</p>
+<p>但如果把它们重读成：</p>
+<ul>
+<li>一份负责给你 <strong>实时 crowding / payout skew</strong>，</li>
+<li>一份负责给你 <strong>简化版超短线胜率估计</strong>，</li>
+<li>然后在 lock 前最后十几秒做 <strong>EV-aware switch</strong>，</li>
+</ul>
+<p>那它就是一条<strong>可独立复现、可直接交易、而且非常短周期</strong>的 raw alpha。</p>
+<p>对当前研究池来说，这个主题的新增信息密度，明显高于再补一篇普通 breakout / pairs 派生 digest。</p>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>Gavrilov, E. (2026). _crypto-prediction-bot_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://github.com/mooncitydev/crypto-prediction-bot">https://github.com/mooncitydev/crypto-prediction-bot</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/mooncitydev/crypto-prediction-bot">https://github.com/mooncitydev/crypto-prediction-bot</a></code></li>
+</ul>
+<ol>
+<li><strong>Repo source files used in this digest (<code>mooncitydev/crypto-prediction-bot</code>)</strong></li>
+</ol>
+<ul>
+<li>README: <code><a href="https://raw.githubusercontent.com/mooncitydev/crypto-prediction-bot/master/README.md">https://raw.githubusercontent.com/mooncitydev/crypto-prediction-bot/master/README.md</a></code></li>
+<li>Main: <code><a href="https://raw.githubusercontent.com/mooncitydev/crypto-prediction-bot/master/src/index.ts">https://raw.githubusercontent.com/mooncitydev/crypto-prediction-bot/master/src/index.ts</a></code></li>
+<li>Shared lib: <code><a href="https://raw.githubusercontent.com/mooncitydev/crypto-prediction-bot/master/src/lib.ts">https://raw.githubusercontent.com/mooncitydev/crypto-prediction-bot/master/src/lib.ts</a></code></li>
+</ul>
+<ol>
+<li><strong>madewithai / Ricardicus (2026). _pancakeswap-prediction-bot_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://github.com/madewithai/pancakeswap-prediction-bot">https://github.com/madewithai/pancakeswap-prediction-bot</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/madewithai/pancakeswap-prediction-bot">https://github.com/madewithai/pancakeswap-prediction-bot</a></code></li>
+</ul>
+<ol>
+<li><strong>Repo source files used in this digest (<code>madewithai/pancakeswap-prediction-bot</code>)</strong></li>
+</ol>
+<ul>
+<li>README: <code><a href="https://raw.githubusercontent.com/madewithai/pancakeswap-prediction-bot/main/README.md">https://raw.githubusercontent.com/madewithai/pancakeswap-prediction-bot/main/README.md</a></code></li>
+<li>Main loop: <code><a href="https://raw.githubusercontent.com/madewithai/pancakeswap-prediction-bot/main/src/index.ts">https://raw.githubusercontent.com/madewithai/pancakeswap-prediction-bot/main/src/index.ts</a></code></li>
+<li>Strategy: <code><a href="https://raw.githubusercontent.com/madewithai/pancakeswap-prediction-bot/main/src/strategy.ts">https://raw.githubusercontent.com/madewithai/pancakeswap-prediction-bot/main/src/strategy.ts</a></code></li>
+<li>Config: <code><a href="https://raw.githubusercontent.com/madewithai/pancakeswap-prediction-bot/main/src/config.ts">https://raw.githubusercontent.com/madewithai/pancakeswap-prediction-bot/main/src/config.ts</a></code></li>
+</ul>
+<ol>
+<li><strong>PancakeSwap Docs. (accessed 2026-04-04). _Prediction_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official documentation</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://docs.pancakeswap.finance/play/prediction">https://docs.pancakeswap.finance/play/prediction</a></code></li>
+<li>Notes used: <code>5m</code> round frequency, <code>3%</code> fee, Chainlink lock/close oracle, tie/settlement rules, BNB/BTC/ETH supported markets.</li>
+</ul>
+</body>
+</html>

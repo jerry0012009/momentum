@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 Hawkes LOB 论文只读成 event-time ML：更该先测的是「base imbalance × next-event clock」1m execution-trigger raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 Hawkes LOB 论文只读成 event-time ML：更该先测的是「base imbalance × next-event clock」1m execution-trigger raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-28 11:17 UTC</span>
+      <span class="pill">研究时间：2026-03-28 11:15 UTC</span>
+      <span class="pill">类型：raw alpha</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/lob/base-imbalance/hawkes/point-process/event-time/single-asset/execution-trigger/bitfinex/usdtusd/1m/3m/5m/15m/paper/public-data/cost</span>
+      <span class="pill">证据类型：2023 arXiv 全文 HTML + 本地 PDF 抽取 + Crossref 元数据 + 2023 IFAC precursor 元数据交叉</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-28_1115_base-imbalance-hawkes-eventtime-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-28 11:15 UTC</li>
+<li>类型：raw alpha</li>
+<li>主题标签：raw-alpha/microstructure/lob/base-imbalance/hawkes/point-process/event-time/single-asset/execution-trigger/bitfinex/usdtusd/1m/3m/5m/15m/paper/public-data/cost</li>
+<li>证据类型：2023 arXiv 全文 HTML + 本地 PDF 抽取 + Crossref 元数据 + 2023 IFAC precursor 元数据交叉</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：订单簿前几档形状不对称（base imbalance）本身就含有下一次有效价格变动方向信息；再叠加“下一次簿上事件很快发生”的 Hawkes event-time 预测，可以把这条信息变成更可执行的短周期方向信号</li>
+<li>是否可独立复现：是（需要公开可抓的逐笔盘口/成交事件流；用交易所 websocket 即可做最小版）</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否（论文原版太贴近 1 秒级事件时钟且未计成本；但可很快 desk 化成 1m/3m 的最小完整实验）</li>
+</ul>
+<h2>1. 这次看了什么，为什么它比再补一篇泛 gate 更值得</h2>
+<p>这次主看的是：</p>
+<p>&gt; <strong>Raffaele Giuseppe Cestari, Filippo Barchi, Riccardo Busetto, Daniele Marazzina, Simone Formentin (2023 arXiv / 2025 ECC)</strong> &gt; <strong>Hawkes-based cryptocurrency forecasting via Limit Order Book data</strong></p>
+<p>以及它明确承接的 precursor：</p>
+<p>&gt; <strong>Riccardo Busetto, Simone Formentin (2023)</strong> &gt; <strong>Continuous-time modeling of financial returns based on Limit Order Book data</strong></p>
+<p>先回答这轮最重要的那句：<strong>这篇东西的 base alpha 是什么？</strong></p>
+<p>不是“LOB 很重要”，也不是“用 Hawkes 很高级”。</p>
+<p>更直接地说：</p>
+<p>&gt; <strong>盘口前几档的形状不对称，本身就带着下一次价格有效变动的方向信息；而当簿上事件到达很密、下一次 event 很快就要来时，这条方向信息更有机会在极短窗口里兑现。</strong></p>
+<p>所以它不是纯 filter，也不是只服务某个 breakout / retest 的附庸。它本身就是一条<strong>微结构 raw alpha</strong>：</p>
+<ul>
+<li>alpha 本体：<code>base imbalance -&gt; next-event return sign</code></li>
+<li>event-time 放大器：<code>high self-excitation / short expected inter-arrival time</code></li>
+<li>执行定位：<code>1m 为主，3m 次之，5m 还能测，15m 更像聚合或上层编排窗口</code></li>
+</ul>
+<p>为什么这轮值得补它？因为最近 intake 里：</p>
+<ul>
+<li>cross-sectional / pairs / carry 已经很多；</li>
+<li>纯外部慢变量（链上 / 宏观 / ETF）也不少；</li>
+<li><strong>但“盘口形状 + 事件时钟”这种可独立成型的微结构 raw alpha 家族，素材密度还不够。</strong></li>
+</ul>
+<p>这篇虽然不是最终可直接上实盘的完整答案，但它给了一个很清楚的<strong>可复现原子信号</strong>：</p>
+<p>&gt; <strong>book-shape edge 不该只按 bar-close 静态读，而该和“下一次事件多久来”一起读。</strong></p>
+<h2>2. 论文里真正有交易价值的部分是什么</h2>
+<p>论文的结构很简单：</p>
+<ol>
+<li>先证明 <strong>Base Imbalance（BI）</strong> 和未来 return sign 确实有关；</li>
+<li>再用 <strong>Hawkes process</strong> 预测“下一次 LOB event 何时发生”；</li>
+<li>把 event-time 预测喂给一个 <strong>continuous output error (COE)</strong> 模型，输出下一次 return sign；</li>
+<li>和几个 benchmark 比：</li>
+</ol>
+<ul>
+<li><code>Oracle</code>：假设你神知道下一次 event 时间</li>
+<li><code>Naive</code>：假设下一次 event 固定 1 秒后到来</li>
+<li><code>MA</code>：假设下一次 event 在过去 60 秒平均间隔后到来</li>
+<li><code>Hawkes</code>：根据自激强度动态预测</li>
+</ul>
+<p>真正值钱的不是“又一个分类器”，而是这个拆法：</p>
+<p>&gt; <strong>方向信息和事件时钟要分开建模。</strong></p>
+<p>这点对 desk 很重要，因为很多短周期研究会把“有没有 edge”和“edge 何时兑现”揉成一个黑箱概率。这个 paper 则把它拆成：</p>
+<ul>
+<li><strong>signal layer</strong>：book shape / imbalance</li>
+<li><strong>clock layer</strong>：event arrival intensity</li>
+</ul>
+<p>这比直接做一个 end-to-end 黑箱分类器更容易移植、调试、做失败归因。</p>
+<h2>3. Base alpha 到底长什么样</h2>
+<p>论文沿用 precursor 里的 <strong>Base Imbalance（BI）</strong> 定义。它不是常见那种“买一量 - 卖一量”的单点深度差，而是用<strong>盘口前若干档价格曲线形状</strong>去衡量 bid / ask 两边的“厚薄不对称”。</p>
+<p>文中的公式可写成：</p>
+<p><code>BI_k = ((P_bid,1 - P_bid,10) - (P_ask,10 - P_ask,1)) / ((P_bid,1 - P_bid,10) + (P_ask,10 - P_ask,1))</code></p>
+<p>翻成人话：</p>
+<ul>
+<li>不是看一档挂了多少量；</li>
+<li>而是看<strong>前 10 档 bid 曲线和 ask 曲线谁更“陡 / 厚 / 近”</strong>；</li>
+<li>这更接近“短期价格往哪边更容易被推过去”的几何结构。</li>
+</ul>
+<p>论文在去掉零收益事件后，把数据按 decile 分箱，得到：</p>
+<ul>
+<li><strong><code>corr(avg BI, avg future return) = -0.96</code></strong></li>
+</ul>
+<p>这个数字非常夸张。它不等于“直接可交易收益率 = 很高”，但说明：</p>
+<p>&gt; <strong>BI 和未来 return sign 的关系不是弱相关噪音，而是强结构。</strong></p>
+<p>所以真正的 raw alpha，不是“Hawkes 预测下一次 event 很厉害”，而是：</p>
+<p>&gt; <strong>盘口形状本身就带方向，只是这个方向需要配合“事件马上要来”才更容易兑现。</strong></p>
+<h2>4. 数据、样本和论文原始实验口径</h2>
+<p>论文用的是 <strong>Bitfinex 上 USDT/USD 的 LOB 数据</strong>，由 <strong>CryptoTick</strong> 提供：</p>
+<ul>
+<li>时间范围：<strong>2019-04-13 到 2019-05-07</strong></li>
+<li>总记录数：<strong>1,615,982 条 LOB records</strong></li>
+<li>深度：<strong>最多 50 档</strong></li>
+<li>时间戳分辨率：<strong>至少到 1 秒</strong></li>
+</ul>
+<p>作者还给了几个很重要的口径提醒：</p>
+<ul>
+<li><strong>零收益事件占约 80%</strong>，这些都被剔除了；</li>
+<li>剩余非零收益事件里，<strong>约 34% 有 1 分钟缺口</strong>；</li>
+<li>也就是说，这不是那种“完整丝滑、无缺失”的理想高频样本。</li>
+</ul>
+<p>验证与仿真设置：</p>
+<ul>
+<li><strong>50 个验证场景</strong></li>
+<li>每个场景 <strong>2 分钟</strong></li>
+<li>Hawkes 训练窗：<strong>20 分钟</strong></li>
+<li>COE 训练窗：<strong>50 分钟</strong></li>
+<li>Hawkes warm-up：<strong>2.5 分钟</strong></li>
+<li>预测窗：<strong>5 秒</strong></li>
+</ul>
+<p>交易仿真规则非常朴素：</p>
+<ul>
+<li>预测 sign 为正：买入 <strong>10,000 美元</strong> USDT</li>
+<li>预测 sign 为负：做空 <strong>10,000 美元</strong> USDT</li>
+<li>sign 预测对则盈利，错则亏损</li>
+<li><strong>不计交易成本</strong></li>
+</ul>
+<p>这也直接决定了我们该怎么读这篇文章：</p>
+<ul>
+<li><strong>它是 raw alpha 研究，不是可直接搬去实盘的 PnL 宣传册；</strong></li>
+<li>真正可迁移的是结构，而不是原文里那条“USDT/USD + 无成本”的 toy trading rule。</li>
+</ul>
+<h2>5. 论文结果该怎么读，别读歪</h2>
+<p>论文的 headline 是：</p>
+<ul>
+<li><code>Hawkes</code> 在 <strong>return sign accuracy</strong> 上优于 <code>Naive</code> 和 <code>MA</code></li>
+<li>在 <strong>累计 profit</strong> 上也优于两者</li>
+<li>效果接近 <code>Oracle</code>，但当然仍不如 <code>Oracle</code></li>
+</ul>
+<p>虽然文中可读文本没有直接给出每个 boxplot 的精确数值，但有三个结果是明确的：</p>
+<ol>
+<li><strong>BI 本身确实带强方向结构</strong>（decile 相关系数 <code>-0.96</code>）</li>
+<li><strong>单纯知道 BI 还不够，event-time 预测质量会影响收益兑现大小</strong></li>
+<li><strong>Hawkes 的价值主要不是换 alpha 本体，而是改善“什么时候该相信它”</strong></li>
+</ol>
+<p>这点很关键，因为如果你把这篇 paper 简化成：</p>
+<p>&gt; “Hawkes 比 Naive 更准”</p>
+<p>那就读窄了。</p>
+<p>更实用的 desk 读法应该是：</p>
+<p>&gt; <strong>book-shape alpha 的兑现速度，本身就是状态变量；当 event clustering 很强、下一次簿上事件很快发生时，盘口信息更值得下手。</strong></p>
+<h2>6. 为什么我把它归成 raw alpha，而不是 filter / overlay</h2>
+<p>因为它首先回答得清：<strong>基础 alpha 是什么。</strong></p>
+<p>不是 trend gate，不是 regime veto，不是 position sizing。它有自己独立的方向逻辑：</p>
+<ul>
+<li>输入：盘口前几档的 shape asymmetry</li>
+<li>标签：下一次有效 return sign</li>
+<li>兑现窗口：超短 event-driven horizon</li>
+</ul>
+<p>它当然也能往下拆成：</p>
+<ul>
+<li>filter：只在高-intensity 时段启用其他 alpha</li>
+<li>execution veto：event sparse 时别追</li>
+<li>maker skew：event clustering 强时调整挂单方向</li>
+</ul>
+<p>但这些都是<strong>二次利用</strong>。</p>
+<p>它的第一性身份仍然是：</p>
+<p>&gt; <strong>可独立建模、可独立回测、可独立关停的微结构 raw alpha。</strong></p>
+<h2>7. desk 化以后，最值得先做的不是“全量 Hawkes”，而是一个诚实的 1m execution-trigger 版本</h2>
+<p>原论文太贴近 1 秒级 event clock；如果你直接照抄，多半会遇到两个问题：</p>
+<ol>
+<li>自己没有那样干净的逐 event 数据；</li>
+<li>就算有，taker 成本也可能把极短 edge 吃没。</li>
+</ol>
+<p>所以更适合 desk 的最小版本，不是“完整复制论文”，而是把它拆成三层：</p>
+<h3>7.1 Signal：盘口形状不对称</h3>
+<p>先复刻一个更朴素的 <code>BI_t</code>：</p>
+<ul>
+<li>用公开 websocket 盘口快照取 top-10 depth</li>
+<li>每 <code>1s</code> 或 <code>5s</code> 重采样一次</li>
+<li>计算：</li>
+<li>top-1 vs top-10 的 bid/ask span</li>
+<li>或等价的 depth-weighted slope / convexity proxy</li>
+<li>对 <code>BI_t</code> 做 rolling z-score</li>
+</ul>
+<h3>7.2 Clock：事件密度 / 自激强度</h3>
+<p>第一版甚至不必硬上完整 Hawkes MLE，可以先做 proxy：</p>
+<ul>
+<li>最近 <code>5s / 10s / 30s</code> 的 order-book update count</li>
+<li>cancel/add burst ratio</li>
+<li>trade count burst</li>
+<li>book-change intensity EMA</li>
+</ul>
+<p>等确认“clock 确实改善兑现”后，再升级成真正的 Hawkes。</p>
+<h3>7.3 Trigger：只在“alpha 可能很快兑现”时开仓</h3>
+<p>初版规则可以非常诚实：</p>
+<ul>
+<li><strong>long</strong>：</li>
+<li><code>BI_z</code> 进入极端分位（如 <code>97.5%</code>）</li>
+<li>且 <code>event-intensity_z</code> 高于某阈值（如 <code>80%</code> 分位）</li>
+<li><strong>short</strong>：</li>
+<li><code>BI_z</code> 进入反向极端分位（如 <code>2.5%</code>）</li>
+<li>且 <code>event-intensity_z</code> 同样很高</li>
+</ul>
+<p>这就把论文的精神保住了：</p>
+<p>&gt; <strong>不是 book shape 一极端就交易，而是 book shape 极端 + next-event 真的快要来。</strong></p>
+<h2>8. 1m / 3m / 5m / 15m 上怎么摆</h2>
+<p>这里要很诚实。</p>
+<h3>8.1 最适合：<code>1m</code></h3>
+<p>因为这条线本质就是微结构 + event-time。</p>
+<ul>
+<li><code>1m</code> 最接近原论文的短兑现逻辑；</li>
+<li>也最容易看出 edge 是不是只存在于极短 markout；</li>
+<li>如果 <code>1m</code> 都没东西，往上大概率只会更稀释。</li>
+</ul>
+<h3>8.2 次适合：<code>3m</code></h3>
+<p>这是最值得测的“可交易化 compromise”。</p>
+<ul>
+<li>比 1m 更接近 desk 实际下单/成交/持仓节奏；</li>
+<li>还能保留相当一部分微结构信息；</li>
+<li>对成本也稍微更宽容。</li>
+</ul>
+<h3>8.3 仍可测：<code>5m</code></h3>
+<p><code>5m</code> 更像在问：</p>
+<p>&gt; <strong>盘口形状与 event burst 是否会引出一个更长的 follow-through，而不是只是一跳 micro-move？</strong></p>
+<p>如果 <code>5m</code> 还有残留 edge，这条线的价值会大很多，因为它能更容易接入当前短周期策略栈。</p>
+<h3>8.4 <code>15m</code> 不该硬装成主信号</h3>
+<p>到了 <code>15m</code>，这条线更像：</p>
+<ul>
+<li>execution trigger 的聚合统计量；</li>
+<li>或者给更慢 alpha 的 admission / veto；</li>
+<li>或者做 maker skew / size adjustment。</li>
+</ul>
+<p>也就是说：</p>
+<ul>
+<li><code>1m / 3m</code>：更像 alpha 本体</li>
+<li><code>5m</code>：看能否外溢成更稳 pocket</li>
+<li><code>15m</code>：更像上层编排变量</li>
+</ul>
+<h2>9. 最小可复现实验：公开数据、更新频率、实验口径</h2>
+<h3>9.1 数据源</h3>
+<p>可直接用公开可抓的交易所 websocket：</p>
+<ul>
+<li><strong>Binance Spot / Futures</strong></li>
+<li><strong>OKX</strong></li>
+<li><strong>Bybit</strong></li>
+</ul>
+<p>最小版只需要：</p>
+<ul>
+<li>top-of-book 或 top-10 depth updates</li>
+<li>trades / aggTrades</li>
+<li>mid / spread</li>
+</ul>
+<h3>9.2 公开性</h3>
+<ul>
+<li><strong>公开可得</strong></li>
+<li>不需要 vendor 才能做第一版</li>
+<li>不需要链上解析或专有终端</li>
+</ul>
+<h3>9.3 更新频率</h3>
+<ul>
+<li>原始 feed：毫秒到秒级</li>
+<li>研究重采样：建议先做 <code>1s</code>、再聚合到 <code>1m / 3m / 5m / 15m</code></li>
+</ul>
+<h3>9.4 最小复现实验口径</h3>
+<p>标的先别铺太广，建议先做：</p>
+<ul>
+<li>BTCUSDT perp</li>
+<li>ETHUSDT perp</li>
+<li>SOLUSDT perp</li>
+</ul>
+<p>回测框架：</p>
+<ol>
+<li><strong>特征</strong></li>
+</ol>
+<ul>
+<li><code>BI_t</code></li>
+<li><code>event_intensity_t</code></li>
+<li>spread</li>
+<li>trade-count burst</li>
+<li>taker imbalance（作为对照，不是必须）</li>
+</ul>
+<ol>
+<li><strong>标签</strong></li>
+</ol>
+<ul>
+<li><code>1m / 3m / 5m / 15m</code> forward mid return sign</li>
+<li>以及 bps markout</li>
+</ul>
+<ol>
+<li><strong>比较组</strong></li>
+</ol>
+<ul>
+<li>A: <code>BI only</code></li>
+<li>B: <code>intensity only</code></li>
+<li>C: <code>BI × high-intensity gate</code></li>
+<li>D: <code>full Hawkes/COE</code>（第二阶段再做）</li>
+</ul>
+<ol>
+<li><strong>成交假设</strong></li>
+</ol>
+<ul>
+<li>maker-first</li>
+<li>taker-at-close</li>
+<li>半档/一档滑点压力测试</li>
+</ul>
+<ol>
+<li><strong>评估</strong></li>
+</ol>
+<ul>
+<li>conditional hit rate</li>
+<li>average markout</li>
+<li>extreme quantile precision</li>
+<li>turnover / fill feasibility</li>
+<li>cost-after edge</li>
+</ul>
+<h2>10. 一个更像策略的初版骨架</h2>
+<p>如果要把它写成真正能跑的最小策略，而不是论文摘要，我会先这么做：</p>
+<h3>10.1 Entry</h3>
+<ul>
+<li><code>BI_z</code> 极端 + <code>event_intensity_z</code> 高</li>
+<li>只做流动性较好的币</li>
+<li>只在 spread 没明显恶化时进场</li>
+</ul>
+<h3>10.2 Exit</h3>
+<p>三层足够：</p>
+<ol>
+<li><strong>时间退出</strong>：<code>1m / 3m / 5m / 15m</code> 多档</li>
+<li><strong>信号回落退出</strong>：<code>BI_z</code> 回到中性带</li>
+<li><strong>price-based stop</strong>：固定 bps 或 micro-ATR</li>
+</ol>
+<h3>10.3 Sizing</h3>
+<p>不建议满仓，建议：</p>
+<ul>
+<li><code>size ∝ clip(|BI_z| * intensity_z, 0, cap)</code></li>
+<li>再按短窗 realized vol 做归一</li>
+<li>对同一资产连发信号设 cooldown</li>
+</ul>
+<h3>10.4 Risk / Cost</h3>
+<p>最关键的不是方向逻辑，而是三件事：</p>
+<ul>
+<li>spread 会不会在你最想下手时突然变宽；</li>
+<li>高频盘口更新是否能稳定抓到；</li>
+<li>edge 是否只够覆盖 paper world、覆盖不了真实手续费。</li>
+</ul>
+<p>所以这条线很适合：</p>
+<ul>
+<li><strong>maker / passive bias</strong></li>
+<li><strong>event-triggered taker only on strongest quantiles</strong></li>
+</ul>
+<p>而不适合无脑每次 sign 都打。</p>
+<h2>11. 这篇 paper 最大的坑，必须先写在前面</h2>
+<p>这篇东西有价值，但坑也很明显：</p>
+<h3>11.1 标的是 <code>USDT/USD</code>，不是 BTC/ETH perp</h3>
+<p>它证明的是<strong>结构存在</strong>，不是直接证明这条线在 Binance perp 一样赚钱。</p>
+<h3>11.2 horizon 非常短</h3>
+<p>原文更接近 next-event / next-few-second 逻辑。迁移到 <code>1m/3m/5m</code> 必须先验证是否仍有外溢。</p>
+<h3>11.3 不计成本</h3>
+<p>这是最直接的红旗。任何 taker-heavy 读法都可能失真。</p>
+<h3>11.4 剔除了大量 zero-return events</h3>
+<p>原文剔除了约 <strong>80%</strong> 零收益事件；这对“可预测性”一定是有帮助的。实盘时必须把“没动的时候怎么办”也纳入规则，不然会高估 edge。</p>
+<h3>11.5 样本不算长</h3>
+<ul>
+<li>时间范围不长；</li>
+<li>验证只用 <strong>50 个 2 分钟场景</strong>；</li>
+<li>更像 proof-of-concept，不像大样本生产级验证。</li>
+</ul>
+<h2>12. 给当前 desk 的最终判断</h2>
+<p>如果只问一句：<strong>这是不是值得进素材池？</strong></p>
+<p>我会给 <strong>是</strong>。</p>
+<p>原因不是论文回测多漂亮，而是它补的是一个很明确、而且当前还不算拥挤的 raw alpha 原子：</p>
+<p>&gt; <strong>盘口形状 edge 要和 event clock 一起读。</strong></p>
+<p>如果只问一句：<strong>是不是现在就该当完整实盘策略？</strong></p>
+<p>我会给 <strong>否</strong>。</p>
+<p>更合理的定位是：</p>
+<ul>
+<li><strong>一级身份</strong>：<code>1m / 3m</code> execution-trigger raw alpha 候选</li>
+<li><strong>二级身份</strong>：更慢 alpha 的 microstructure admission / veto</li>
+<li><strong>最优动作</strong>：先做一个公开 websocket 的最小复制实验，验证 edge 是否能从 next-event 外溢到 1m/3m markout</li>
+</ul>
+<h2>13. 下一步怎么测</h2>
+<p>先别上全量 Hawkes，先做一个 <strong>两阶段最小实验</strong>：</p>
+<h3>Phase A：验证 alpha 本体</h3>
+<ul>
+<li>用 Binance / OKX 公开 websocket 抓 30 天 BTC/ETH/SOL perp</li>
+<li>每秒重采样 top-10 盘口</li>
+<li>计算 <code>BI_z</code></li>
+<li>直接测 <code>BI_z</code> 对 <code>1m / 3m / 5m / 15m</code> 的 conditional markout</li>
+</ul>
+<p>如果这一步不成立，后面 Hawkes 都不用上。</p>
+<h3>Phase B：验证 clock layer 是否真有增益</h3>
+<ul>
+<li>在 Phase A 的基础上加入：</li>
+<li>update-count burst</li>
+<li>trade burst</li>
+<li>简化 Hawkes / intensity proxy</li>
+<li>看 <code>BI only</code> vs <code>BI × high-intensity gate</code> 的差异</li>
+</ul>
+<p><strong>只有当 gated 版本明显优于 ungated 版本时，才值得继续做完整 Hawkes/COE。</strong></p>
+<p>这是这篇论文最应该给我们的行动项，不是“再抄一个模型名”，而是：</p>
+<p>&gt; <strong>先确认 event clock 能不能把盘口 alpha 变得更可交易。</strong></p>
+<h2>14. 参考资料与来源</h2>
+<ol>
+<li><strong>Cestari, R. G., Barchi, F., Busetto, R., Marazzina, D., &amp; Formentin, S. (2023 / 2025). _Hawkes-based cryptocurrency forecasting via Limit Order Book data_.</strong></li>
+</ol>
+<ul>
+<li>Venue: arXiv preprint; later <strong>2025 European Control Conference (ECC)</strong> version titled _Univariate Hawkes-based cryptocurrency forecasting via Limit Order Book data_</li>
+<li>ECC DOI: <code>10.23919/ECC65951.2025.11187051</code></li>
+<li>arXiv DOI: <code>10.48550/arXiv.2312.16190</code></li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2312.16190">https://arxiv.org/abs/2312.16190</a></code></li>
+<li>HTML URL: <code><a href="https://arxiv.org/html/2312.16190v1">https://arxiv.org/html/2312.16190v1</a></code></li>
+<li>PDF URL: <code><a href="https://arxiv.org/pdf/2312.16190v1">https://arxiv.org/pdf/2312.16190v1</a></code></li>
+<li>Repo URL: 未见作者公开策略仓库</li>
+</ul>
+<ol>
+<li><strong>Busetto, R., &amp; Formentin, S. (2023). _Continuous-time modeling of financial returns based on Limit Order Book data_.</strong></li>
+</ol>
+<ul>
+<li>Venue: <strong>IFAC-PapersOnLine</strong></li>
+<li>DOI: <code>10.1016/j.ifacol.2023.10.218</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.ifacol.2023.10.218">https://doi.org/10.1016/j.ifacol.2023.10.218</a></code></li>
+<li>Repo URL: 未见公开仓库</li>
+</ul>
+</body>
+</html>

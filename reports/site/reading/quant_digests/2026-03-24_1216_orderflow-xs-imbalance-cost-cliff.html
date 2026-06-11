@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 order flow 只当风控旁路：这篇 2026 论文更值得先落地的是「横截面 taker-flow 失衡」短周期 raw alpha（但有明显成本断崖）</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 order flow 只当风控旁路：这篇 2026 论文更值得先落地的是「横截面 taker-flow 失衡」短周期 raw alpha（但有明显成本断崖）</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-24 12:16 UTC</span>
+      <span class="pill">类型：近 5 年论文（开放获取）+ GitHub 仓库 + Binance 公共数据最小快检</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/relative-value/order-flow/imbalance/microstructure/taker-flow/cost/cliff/crypto/5m/15m/paper/repo</span>
+      <span class="pill">证据类型：论文证据 + 工程证据 + 本地快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-24_1216_orderflow-xs-imbalance-cost-cliff.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-24 12:16 UTC</li>
+<li>类型：近 5 年论文（开放获取）+ GitHub 仓库 + Binance 公共数据最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一时刻按交易对的 taker 买卖失衡强弱做横截面排序，做 <code>long top-third / short bottom-third</code> 持有下一根 bar</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/relative-value/order-flow/imbalance/microstructure/taker-flow/cost/cliff/crypto/5m/15m/paper/repo</li>
+<li>证据类型：论文证据 + 工程证据 + 本地快检</li>
+</ul>
+<p>&gt; 先回答 base alpha：<strong>不是 filter，不是 veto。base alpha 就是“横截面 order-flow pressure 排序后的下一根收益延续/分化”。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>主线材料是 <strong>Anastasopoulos, Gradojevic, Liu, Maynard, Tsiakas (2026), _Order flow and cryptocurrency returns_</strong>（Journal of Financial Markets，open access）。论文核心信息是：world order flow 对 crypto return 有解释与预测力。</p>
+<p>我这次不抄它的“全球法币订单流”主设定，而是拎一个更适合我们 desk 的旁支：</p>
+<ul>
+<li>用公开可得的 Binance 永续 K 线字段 <code>taker_buy_quote_volume / quote_volume</code> 做 order-flow proxy；</li>
+<li>在 <code>15m / 5m</code> 上做<strong>横截面</strong> long-short 一根持有最小实验；</li>
+<li>先过最小诚实门：<code>gross 边际</code> 与 <code>cost 生存线</code> 分开看。</li>
+</ul>
+<p>同时参考了 2025 仓库 <code>davelamtrader/...Orderbook-Imbalance...</code> 的工程拆法（pressure ratio + 回测框架），但把其日频 long-only 逻辑改成了短周期 cross-sectional 版本。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>一句话核心结论：<strong>order-flow 失衡在短周期里可以形成可复现的 raw alpha 毛边，但容量/成本非常苛刻，先天像“成本断崖型 alpha”。</strong></li>
+<li>一句话证明方式：<strong>论文给出 order flow 预测 return 的主证据；本地用 Binance 公共数据做 15m/5m 横截面快检，得到“gross 为正、net 很快翻负”的可复核结果。</strong></li>
+</ul>
+<p>关键数据点（本地快检）：</p>
+<ol>
+<li><code>15m</code>（18 个主流 USDT 永续，60 天）：<code>gross +0.473 bps/bar</code>，<code>gross Sharpe 6.44</code>，break-even 约 <code>0.188 bps(one-way)</code>。</li>
+<li>同口径加 <code>0.5 bps(one-way)</code> 成本后：<code>net -0.788 bps/bar</code>，Sharpe 转负（<code>-10.73</code>）。</li>
+<li><code>5m</code>（同宇宙，30 天）：<code>gross +0.132 bps/bar</code>，break-even 仅 <code>0.052 bps(one-way)</code>，几乎不具备 taker 生存空间。</li>
+</ol>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li>这是独立 raw alpha 家族（cross-sectional / relative-value / microstructure），不是 breakout/retest 派生过滤器。</li>
+<li>它和我们已有的 pairs/stat-arb 素材池互补：前者偏“价差回归”，这条偏“流量压力排序”。</li>
+<li>它天然能拆成完整策略组件：<code>entry/exit/sizing/risk/cost</code> 都可明确定义，适合快速进入 clean replication 阶段。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / 相对价值</li>
+<li>基础 alpha：</li>
+<li>定义 <code>imbalance_{i,t} = 2*(taker_buy_quote_{i,t}/quote_volume_{i,t}) - 1</code></li>
+<li>每个时刻对全宇宙按 <code>imbalance</code> 排序，做 <code>long top-third / short bottom-third</code></li>
+<li>持有下一根 bar（1-bar horizon）</li>
+<li>regime：成交活跃、跨币种分化更明显时更友好</li>
+<li>filter / veto：极端低流动性币、重大事件窗口、成交量断层窗口</li>
+<li>risk / sizing / execution overlay：美元中性、单币权重上限、换手阈值、maker 优先与成本闸门</li>
+</ul>
+<h2>4. 可复刻的最小实验（下一步怎么测）</h2>
+<p><strong>研究假设</strong>：taker-flow 失衡有短周期横截面预测力，但可交易性取决于能否把执行成本压到极低。</p>
+<p><strong>数据源与公开性</strong>：</p>
+<ul>
+<li>数据源：Binance USDⓈ-M Futures 公共 REST Klines</li>
+<li>公开性：公开可得，无私钥</li>
+<li>更新频率：支持 <code>1m / 3m / 5m / 15m</code></li>
+</ul>
+<p><strong>最小可复现实验口径</strong>：</p>
+<ol>
+<li>宇宙：18 个主流 USDT 永续（与本次快检一致）</li>
+<li>周期：先 <code>15m</code>（主），再 <code>5m</code></li>
+<li>信号：横截面 <code>imbalance</code> 排序分组（top/bottom third）</li>
+<li>持有：固定 1 根 bar；后续对照 2~3 根</li>
+<li>成本阶梯：<code>0 / 0.2 / 0.5 / 1.0 bps(one-way)</code></li>
+<li>优先指标：<code>net bps/bar</code>、<code>break-even bps</code>、<code>turnover</code>、<code>rolling net Sharpe</code></li>
+</ol>
+<p><strong>下一步（最该先测）</strong>：</p>
+<ul>
+<li>不先加复杂 ML；先做 <code>trade buffer + 持有延长(1→2/3 bar) + top-third 改 decile</code> 三联实验，目标是把 break-even 从 <code>0.19 bps</code>（15m）抬到更接近现实可执行区间。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>本次是最小快检，不是 admission 级回测；样本窗口较短（15m 60 天、5m 30 天）。</li>
+<li><code>taker_buy_quote/quote_volume</code> 只是 order-flow proxy，不等同论文中的“world order flow”主构造。</li>
+<li>当前毛边很薄，若无法显著降换手/降冲击，这条线大概率只能作为“信号输入”，难以独立实盘。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Anastasopoulos, A., Gradojevic, N., Liu, F., Maynard, A., &amp; Tsiakas, I. (2026). _Order flow and cryptocurrency returns_. Journal of Financial Markets.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1016/j.finmar.2026.101047</code></li>
+<li>Readable URL: <code><a href="https://www.sciencedirect.com/science/article/pii/S1386418126000029">https://www.sciencedirect.com/science/article/pii/S1386418126000029</a></code></li>
+</ul>
+<ol>
+<li><strong>davelamtrader. (2025). _Order Book Imbalance Pattern based Cryptocurrencies Screening Trading Strategy_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/davelamtrader/Strategy-Backtest-Orderbook-Imbalance-Pattern-based-Cryptocurrencies-Screening-Trading-Strategy">https://github.com/davelamtrader/Strategy-Backtest-Orderbook-Imbalance-Pattern-based-Cryptocurrencies-Screening-Trading-Strategy</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/davelamtrader/Strategy-Backtest-Orderbook-Imbalance-Pattern-based-Cryptocurrencies-Screening-Trading-Strategy">https://github.com/davelamtrader/Strategy-Backtest-Orderbook-Imbalance-Pattern-based-Cryptocurrencies-Screening-Trading-Strategy</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures API Docs (Kline/Candlestick Data).</strong></li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<h2>7. 本地快检产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/orderflow_xs_probe_majors_20260324_1213/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/orderflow_xs_probe_majors_20260324_1213/meta.json</code></li>
+<li><code>reports/artifacts/quant_digests/orderflow_xs_probe_majors_20260324_1213/weights.csv</code></li>
+<li><code>reports/artifacts/quant_digests/orderflow_xs_probe_majors_20260324_1213/gross.csv</code></li>
+<li><code>reports/artifacts/quant_digests/orderflow_xs_probe_majors_20260324_1213/turnover.csv</code></li>
+<li><code>reports/artifacts/quant_digests/orderflow_xs_probe_majors_5m_20260324_1214/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/orderflow_xs_probe_majors_5m_20260324_1214/meta.json</code></li>
+</ul>
+</body>
+</html>

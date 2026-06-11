@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 spot-perp basis 仓只读成“0 交易失败案例”：对 short-cycle desk，更该先拆的是「funding percentile + z-score basis fade × stability admission」这条 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 spot-perp basis 仓只读成“0 交易失败案例”：对 short-cycle desk，更该先拆的是「funding percentile + z-score basis fade × stability admission」这条 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-16 10:50 UTC</span>
+      <span class="pill">研究时间：2026-04-16 10:48 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：raw-alpha / relative-value / stat-arb / carry / funding / basis / mean-reversion / admission / risk</span>
+      <span class="pill">证据类型：工程经验（repo 自带规则与回测输出，需二次独立验算）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-16_1048_stability-filtered-spotperp-basis-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-16 10:48 UTC</li>
+<li>类型：GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同标的 <code>spot-perp</code> 基差（basis）偏离的均值回归 + funding 方向筛选（carry-aware）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / relative-value / stat-arb / carry / funding / basis / mean-reversion / admission / risk</li>
+<li>证据类型：工程经验（repo 自带规则与回测输出，需二次独立验算）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>我这轮审计的是新仓库 <code>swingtradingtank/spot-perp-base-trading-strategy</code>（创建于 2026-02，最近更新 2026-04-07），重点看了 <code>README</code> 和 <code>spot_perp_basis_strategy.ipynb</code>。它不是只讲“基差会回归”，而是把 <code>entry/exit/risk/cost/walk-forward</code> 全链路都写出来了。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这份仓库最值钱的点，不是“赚了多少钱”，而是把<strong>同一套 alpha</strong>拆成三种 admission 强度（strict/moderate/research）并直接显示“可交易机会密度”如何塌陷。</li>
+<li>repo 报告里，<code>research</code> 模式（宽松准入）在 2022–2024、18 对、1H/15M/30M 合计给出 <strong>15,973 笔、$8,306.06、平均 Sharpe 0.24</strong>；但 <code>strict/moderate</code> 都是 <strong>0 笔交易</strong>。</li>
+<li>成本假设并不低：每腿手续费 0.10% + 滑点 0.05%，即约 <strong>0.30% round-trip</strong>；这让它更像“可部署性筛选实验”，不是只看毛收益的学术演示。</li>
+<li>一句话核心结论：<strong>很多“paper-mode 可见 alpha”会在稳定性/可部署过滤后直接变成无交易，不是参数问题，是 admission 结构问题。</strong></li>
+<li>一句话证明方式：<strong>同一信号、同一数据窗口，只改变稳定性门槛（ADF/Hurst/half-life/beta + 风控阻断），结果从 15973 笔变成 0 笔。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这和我们现在的 short-cycle 目标高度一致：我们不是缺“又一个 basis 故事”，而是缺一块可复用的 <strong>raw alpha admission layer</strong>。这份仓库给了一个很清楚的工程骨架：</p>
+<ul>
+<li>raw alpha 本体：<code>spot-perp spread z-score</code> 回归</li>
+<li>carry 信息：<code>funding percentile</code> 作为方向确认</li>
+<li>可部署约束：稳定性门槛 + 风控 blocker</li>
+</ul>
+<p>对当前 desk 的直接价值：可以把它作为 <code>pairs / basis / funding</code> 家族的统一准入模板，不再靠主观“这段看起来能跑”。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / 统计套利 / carry-aware mean reversion</li>
+<li>基础 alpha：<code>basis_t = log(perp_t) - log(spot_t)</code> 的极端偏离回归（z-score fade）</li>
+<li>regime：波动分层后动态调整阈值（high/normal/low vol 下不同 z_entry/z_exit）</li>
+<li>filter / veto：funding 分位（&gt;75% 或 &lt;25%）+ ADF/Hurst/half-life/beta 稳定性筛选</li>
+<li>risk / sizing / execution overlay：单笔/总敞口上限、10% DD 限制、3% stop、funding circuit breaker、交易成本显式计入</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设</strong>：在 crypto <code>15m</code>（并下钻到 <code>5m</code> 执行）里，<code>basis z-score</code> 的回归只有在“funding 与方向一致 + 稳定性过线”时才有成本后生存空间。</p>
+<p><strong>可计算定义（最小版）</strong>：</p>
+<ol>
+<li><code>basis_t = log(perp_t) - log(spot_t)</code>，滚动窗口做 <code>z_t</code></li>
+<li>入场：</li>
+</ol>
+<ul>
+<li>Short basis：<code>z_t &gt; 2.0</code> 且 <code>funding_pct_30d &gt; 75%</code></li>
+<li>Long basis：<code>z_t &lt; -2.0</code> 且 <code>funding_pct_30d &lt; 25%</code></li>
+</ul>
+<ol>
+<li>出场：<code>|z_t| &lt; 0.5</code> 或 <code>pnl &lt; -3%</code> 或 <code>max_hold</code> 到期</li>
+<li>成本：每腿 10bp 手续费 + 5bp 滑点（round-trip 30bp）</li>
+</ol>
+<p><strong>最小回测切口</strong>：</p>
+<ul>
+<li>资产：BTC/ETH/SOL/BNB/ADA（先 5 对）</li>
+<li>周期：信号 15m，执行对照 5m（可再补 3m）</li>
+<li>样本：最近 12 个月 walk-forward（9m train + 3m test）</li>
+</ul>
+<p><strong>先看 2 个指标</strong>：</p>
+<ul>
+<li>成本后 Sharpe / PnL（必须）</li>
+<li><code>trade starvation ratio</code>（过滤后交易数衰减比例，衡量“可部署性”）</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>证据主要来自 repo 自述与 notebook 输出，当前还不是独立第三方复核。</li>
+<li><code>strict/moderate=0 trade</code> 说明参数可能对币圈短周期过严；不代表 alpha 不存在，但代表“原门槛不可直接抄”。</li>
+<li>funding 分位若处理不当容易引入对齐偏差（8h 数据映射到 15m/5m 时要防 look-ahead）。</li>
+<li>若执行层用 taker-only，很多边际优势会被 30bp+ 成本吃掉，需要 maker/taker 混合或更细 execution veto。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Authors：Tancredi Rosch</li>
+<li>Year：2026</li>
+<li>Title：*Spot-Perpetual Basis Trading Strategy*</li>
+<li>Venue：GitHub repository</li>
+<li>DOI：N/A（仓库材料，无 DOI）</li>
+<li>Readable URL：<a href="https://github.com/swingtradingtank/spot-perp-base-trading-strategy">https://github.com/swingtradingtank/spot-perp-base-trading-strategy</a></li>
+<li>Repo URL：<a href="https://github.com/swingtradingtank/spot-perp-base-trading-strategy">https://github.com/swingtradingtank/spot-perp-base-trading-strategy</a></li>
+<li>关键源码/材料：<code>README</code>, <code>spot_perp_basis_strategy.ipynb</code></li>
+<li>（仓内引用）Gatev et al. (2006), Do &amp; Faff (2010), Avellaneda &amp; Lee (2010), Vidyamurthy (2004)</li>
+</ul>
+</body>
+</html>

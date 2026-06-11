@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Kalshi 宏观赔率重定价硬装成逐根 alpha：对 short-cycle desk，更该先测的是「Fed / CPI repricing × shared volatility regime gate」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Kalshi 宏观赔率重定价硬装成逐根 alpha：对 short-cycle desk，更该先测的是「Fed / CPI repricing × shared volatility regime gate」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 02:27 UTC</span>
+      <span class="pill">研究时间：2026-04-03 02:28 UTC</span>
+      <span class="pill">类型：2026 arXiv 全文 HTML（可读正文）+ Kalshi 公共数据路径</span>
+      <span class="pill">主题标签：regime / filter / overlay / external-data / prediction-market / kalshi / fed / cpi / recession-risk / volatility-forecast / shared-gate / position-sizing / breakout / momentum / mean-reversion / stat-arb / btc / eth / sol / ada / link / 15m / 5m / 3m / 1m / paper / public-data</span>
+      <span class="pill">证据类型：paper-based（全文可读）+ public-data short-cycle translation</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_0228_kalshi-macro-vol-regime-gate.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：regime</li>
+<li>基础 alpha：<strong>无独立 raw alpha；这是把 Kalshi 宏观事件合约的概率重定价，转成已有 short-cycle raw alpha（breakout / continuation / mean reversion / stat-arb）的共享波动率 regime gate / sizing layer</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>时间：2026-04-03 02:28 UTC</li>
+<li>类型：2026 arXiv 全文 HTML（可读正文）+ Kalshi 公共数据路径</li>
+<li>主题标签：regime / filter / overlay / external-data / prediction-market / kalshi / fed / cpi / recession-risk / volatility-forecast / shared-gate / position-sizing / breakout / momentum / mean-reversion / stat-arb / btc / eth / sol / ada / link / 15m / 5m / 3m / 1m / paper / public-data</li>
+<li>证据类型：paper-based（全文可读）+ public-data short-cycle translation</li>
+</ul>
+<h2>1. 这次为什么不是继续补 raw alpha，而是补一个 shared gate？</h2>
+<p>按这轮优先级，<strong>raw alpha 仍然排第一</strong>。但翻完最近的 digest 和学习轨迹后，当前素材池在以下几类已经连续补了不少：</p>
+<ul>
+<li><code>trend / momentum</code></li>
+<li><code>XS reversal / momentum</code></li>
+<li><code>pairs / stat-arb / relative value</code></li>
+<li><code>funding / basis</code></li>
+</ul>
+<p>这时候再补一条“只服务单一形态”的小 alpha，边际价值未必比一个<strong>能同时服务至少两类 raw alpha 的共享 regime layer</strong>更高。</p>
+<p>这篇 2026 arXiv 新文的价值就在这：</p>
+<p>&gt; 它不是给你一个新的逐根 entry signal，而是给你一个<strong>公开可拿、可每天更新、且对传统宏观指标与 DVOL 仍有增量信息</strong>的 crypto 波动率前视层。</p>
+<p>所以它不该被伪装成 raw alpha；更诚实的定位是：</p>
+<ul>
+<li><strong>BTC 方向</strong>：<code>Fed / recession repricing -&gt; 下一周 BTC realized vol 变高</code></li>
+<li><strong>Alt 方向</strong>：<code>CPI repricing -&gt; 下一周 ETH / SOL / ADA / LINK realized vol 变低</code></li>
+</ul>
+<p>对 short-cycle desk，这正适合被写成：</p>
+<ul>
+<li>shared regime gate</li>
+<li>shared sizing overlay</li>
+<li>breakout / continuation 的 allow-deny 层</li>
+<li>MR / stat-arb 的 vol-state 切换层</li>
+</ul>
+<h2>2. 先回答任务里最重要的那句：base alpha 是什么？</h2>
+<p>这篇东西的 <strong>base alpha 说不成一条独立 raw alpha</strong>。</p>
+<p>更准确的说法是：</p>
+<p>&gt; <strong>它预测的是未来 3~5 天的 realized volatility，而不是未来几根 K 线的方向。</strong></p>
+<p>所以这篇 note 必须老实标成 <code>regime</code>，不能冒充 <code>raw alpha</code>。</p>
+<p>但它依然值得进研究池，因为它满足了另外一档高优先级条件：</p>
+<p>&gt; <strong>它能同时服务至少 2 类以上 raw alpha 的 shared gate / filter。</strong></p>
+<p>具体服务对象非常明确：</p>
+<ol>
+<li><strong>trend / breakout / continuation</strong>：高波动周允许更大 target、更宽 stop，或只在高-vol regime 放行；低波动周则更容易被 chop 死。</li>
+<li><strong>mean reversion / stat-arb / pairs</strong>：高波动周更可能打穿静态 band，需要改小 size、放宽 entry band、或直接 veto。</li>
+<li><strong>carry / funding</strong>：波动骤升时先做 gross-down / leverage-down，避免让 carry 收益被 mark-to-market 吞掉。</li>
+</ol>
+<h2>3. 这次看了什么</h2>
+<ul>
+<li><strong>Authors</strong>: Hardhik Mohanty, Bhaskar Krishnamachari</li>
+<li><strong>Year</strong>: 2026</li>
+<li><strong>Title</strong>: *Do Prediction Markets Forecast Cryptocurrency Volatility? Evidence from Kalshi Macro Contracts*</li>
+<li><strong>Venue</strong>: arXiv preprint</li>
+<li><strong>DOI</strong>: <code>10.48550/arXiv.2604.01431</code></li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://arxiv.org/abs/2604.01431&gt;">https://arxiv.org/abs/2604.01431&gt;</a></li>
+<li><strong>Full-text HTML</strong>: &lt;<a href="https://arxiv.org/html/2604.01431v1&gt;">https://arxiv.org/html/2604.01431v1&gt;</a></li>
+<li><strong>Repo URL</strong>: 未见作者公开 repo</li>
+</ul>
+<p>论文做的事很直接：</p>
+<ul>
+<li>用 <strong>Kalshi</strong> 的宏观事件合约（Fed、CPI、衰退等）日度概率变化；</li>
+<li>构造 volume-weighted 的概率重定价信号；</li>
+<li>去预测 <strong>BTC / ETH / SOL / ADA / AVAX / LINK</strong> 的未来 <code>5-day realized volatility</code>；</li>
+<li>再和 HAR benchmark、VIX、DXY、S&amp;P500、Fed Funds、Treasury、Deribit DVOL 做比较。</li>
+</ul>
+<p>最有 desk 价值的一句话可以翻成人话：</p>
+<p>&gt; <strong>宏观赔率的“突然改口”，比很多传统宏观代理更早告诉你：接下来这几天 crypto 的波动状态要换档了。</strong></p>
+<h2>4. 论文里最硬的几条结论</h2>
+<h3>4.1 BTC：Fed dovish repricing 能预测未来一周更高波动</h3>
+<p>文中最强的 BTC in-sample 结果是：</p>
+<ul>
+<li><code>Fed-dovish signal -&gt; BTC 5-day realized vol</code></li>
+<li><code>t = 3.63</code></li>
+<li><code>p &lt; 0.001</code></li>
+<li>加入该信号后，Bitcoin 模型 adjusted <code>R^2</code> 从 <strong>14.1%</strong> 升到 <strong>15.5%</strong></li>
+</ul>
+<p>作者把该信号定义为：</p>
+<ul>
+<li><code>-ΔKXFED_vw</code></li>
+<li>即 <strong>降息预期上升 / 政策路径更鸽派</strong> 时，信号更高</li>
+</ul>
+<p>更直白地说：</p>
+<p>&gt; <strong>Kalshi 上“市场突然更信 Fed 会软下来”这件事，往往对应 BTC 接下来一周更容易进入高波动状态。</strong></p>
+<h3>4.2 但 BTC 更稳的 OOS 通道，不是 Fed，而是 recession-risk</h3>
+<p>论文最值得 desk 注意的不是单看 t 值，而是 <strong>OOS 谁更稳</strong>。</p>
+<p>BTC 上最稳的 out-of-sample 通道其实是：</p>
+<ul>
+<li><code>KXRECSSNBER -&gt; BTC vol</code></li>
+<li><code>MSFE ratio = 0.979</code></li>
+<li><code>Clark-West p = 0.020</code></li>
+</ul>
+<p>这说明：</p>
+<p>&gt; <strong>对 BTC 来说，衰退风险这类慢变量，可能比“正在发生的降息押注”更适合作为持续 daily regime state。</strong></p>
+<p>作者还明确说：Fed 通道有 <strong>regime dependence</strong>，收益主要集中在 <code>2024–2025</code> rate-cutting cycle，之后会反转或衰减。</p>
+<p>这对我们 desk 很关键，因为它直接决定：</p>
+<ul>
+<li><code>Fed gate</code> 更像 <strong>eventful / cyclical gate</strong></li>
+<li><code>Recession-risk gate</code> 更像 <strong>persistent / background regime layer</strong></li>
+</ul>
+<h3>4.3 Alt：CPI repricing 对 ETH / SOL / ADA / LINK 指向的是“更低的后续波动”</h3>
+<p>论文发现另一条完全不同的资产-宏观映射：</p>
+<ul>
+<li><code>KXCPI absolute repricing -&gt; ETH / SOL / ADA / LINK future vol</code></li>
+<li>t 统计范围约 <strong><code>-2.1</code> 到 <code>-3.4</code></strong></li>
+</ul>
+<p>其中 OOS 更硬的两条是：</p>
+<ul>
+<li><strong>ETH</strong>：<code>MSFE = 0.959</code>, <code>p = 0.010</code></li>
+<li><strong>SOL</strong>：<code>MSFE = 0.983</code>, <code>p = 0.048</code></li>
+</ul>
+<p>注意方向是 <strong>负的</strong>。</p>
+<p>也就是：</p>
+<p>&gt; <strong>不是“CPI 赔率大变 -&gt; alt 更乱”，而是“CPI 赔率剧烈重定价后，alt 接下来一周 realized vol 反而更低”。</strong></p>
+<p>作者给的解释是：</p>
+<ul>
+<li>大 CPI repricing 往往集中在数据发布前后；</li>
+<li>市场对 inflation uncertainty 的重新定价完成后，接下来的一周更像 <strong>uncertainty resolution</strong>；</li>
+<li>所以 ETH / SOL / ADA / LINK 会进入一个相对更安静的 realized-vol regime。</li>
+</ul>
+<p>这很适合被拿来做：</p>
+<ul>
+<li>breakout veto</li>
+<li>trend sleeve size-down</li>
+<li>range / MR sleeve allow</li>
+</ul>
+<h3>4.4 这不是 Treasury / Fed Funds / DVOL 的翻版</h3>
+<p>这篇 paper 最值钱的一点，是作者做了很认真地“你是不是只是重复老指标”排查。</p>
+<p>结果：</p>
+<ul>
+<li><strong>Fed 通道 first-stage <code>R^2 = 2.3%</code></strong></li>
+<li><strong>CPI 通道 first-stage <code>R^2 = 7.5%</code></strong></li>
+</ul>
+<p>也就是大部分 Kalshi 日度变化，<strong>并没有被</strong> Fed Funds、Treasury、VIX、DXY、S&amp;P500 这些常规指标解释掉。</p>
+<p>更重要的是，和 DVOL 联合回归后：</p>
+<ul>
+<li>BTC 上 Kalshi <code>Fed-dovish</code> 仍有 <code>t = 3.46</code>, <code>p = 0.001</code></li>
+<li>ETH 上 Kalshi <code>CPI</code> 仍有 <code>t = -2.08</code>, <code>p = 0.037</code></li>
+<li>对应的 DVOL 项反而 <strong>不显著</strong></li>
+</ul>
+<p>这说明它不只是“换个壳的传统 vol proxy”，而是<strong>有独立信息增量</strong>。</p>
+<h2>5. 为什么这东西对 <code>1m / 3m / 5m / 15m</code> 仍然有意义</h2>
+<p>乍一看，这篇是 <strong>daily -&gt; next 5 days vol forecast</strong>，像是太慢。</p>
+<p>但它对 short-cycle desk 依然有意义，因为它天然应该被摆在 <strong>日级 regime layer</strong>，而不是逐根信号层：</p>
+<h3>5.1 它不是用来决定这一根 K 线多空方向</h3>
+<p>它回答的不是：</p>
+<ul>
+<li>下一根涨还是跌？</li>
+<li>15 分钟后做多还是做空？</li>
+</ul>
+<p>它回答的是：</p>
+<ul>
+<li><strong>未来几天这套市场更像高波动还是低波动？</strong></li>
+<li><strong>你该让哪一类 alpha 上桌，哪一类 alpha 缩手？</strong></li>
+</ul>
+<p>这正是 short-cycle desk 很缺、但又常被拿很粗糙代理去替代的那层东西。</p>
+<h3>5.2 它最适合做“上层 slow state”</h3>
+<p>对我们来说，一个很自然的结构是：</p>
+<ul>
+<li><strong>底层</strong>：<code>1m / 3m / 5m / 15m</code> raw alpha 产生触发</li>
+<li><strong>上层</strong>：每日一次更新 <code>macro-vol state</code></li>
+<li><strong>执行层</strong>：按该 state 决定 allow / deny / half-size / full-size / stop width / target width</li>
+</ul>
+<p>所以它更像：</p>
+<p>``<code>text macro prediction market repricing -&gt; daily vol-state -&gt; short-cycle alpha routing / sizing / veto </code>``</p>
+<p>而不是：</p>
+<p>``<code>text Kalshi signal -&gt; directly long / short next 15m bar </code>``</p>
+<h2>6. 我会怎么把论文翻译成 desk 版规则</h2>
+<p>这里给三条最实用、最诚实的 translation。</p>
+<h3>6.1 BTC：<code>Fed / recession high repricing = high-vol BTC state</code></h3>
+<p><strong>服务对象</strong>：</p>
+<ul>
+<li>BTC breakout / continuation</li>
+<li>BTC intraday trend</li>
+<li>BTC mean reversion</li>
+</ul>
+<p><strong>daily gate 定义（第一版）</strong>：</p>
+<ul>
+<li><code>fed_dovish_z = zscore(-ΔKXFED_vw, lookback=60d)</code></li>
+<li><code>recession_z = zscore(|ΔKXRECSSNBER_vw|, lookback=60d)</code></li>
+<li><code>btc_highvol_state = (fed_dovish_z &gt;= 1.5) or (recession_z &gt;= 1.5)</code></li>
+</ul>
+<p><strong>routing 建议</strong>：</p>
+<ul>
+<li>对 breakout / continuation：<code>baseline</code> vs <code>highvol_only</code> vs <code>highvol_size_up(1.25x)</code></li>
+<li>对 mean reversion：<code>baseline</code> vs <code>highvol_halfsize</code> vs <code>highvol_veto</code></li>
+</ul>
+<p>先别预设高波动一定对 breakout 有利；要用同一 entry 规则直接测。</p>
+<h3>6.2 ETH / SOL / ADA / LINK：<code>CPI repricing spike = post-event low-vol alt state</code></h3>
+<p><strong>服务对象</strong>：</p>
+<ul>
+<li>alt breakout / momentum</li>
+<li>alt range / pullback / MR</li>
+<li>alt carry / funding sleeves</li>
+</ul>
+<p><strong>daily gate 定义（第一版）</strong>：</p>
+<ul>
+<li><code>cpi_z = zscore(|ΔKXCPI_vw|, lookback=60d)</code></li>
+<li><code>alt_lowvol_state = cpi_z &gt;= 1.5</code></li>
+</ul>
+<p><strong>routing 建议</strong>：</p>
+<ul>
+<li>breakout / trend：<code>baseline</code> vs <code>lowvol_veto</code> vs <code>lowvol_halfsize</code></li>
+<li>MR / stat-arb：<code>baseline</code> vs <code>lowvol_allow</code> vs <code>lowvol_size_up</code></li>
+<li>carry：<code>lowvol_state</code> 允许更高 gross，<code>non-lowvol</code> 收缩 gross</li>
+</ul>
+<p>这里的逻辑很简单：</p>
+<p>&gt; 论文已经告诉你，CPI repricing 大日子后，alt 下周 realized vol 更可能收下来；那就别再拿“趋势会继续发散”当前提。</p>
+<h3>6.3 不要先做连续加权，先做最笨的三档状态</h3>
+<p>第一轮最小实验别一上来就做 fancy nonlinear sizing。</p>
+<p>直接三档就够：</p>
+<ul>
+<li><code>off</code></li>
+<li><code>half-size</code></li>
+<li><code>full-size</code></li>
+</ul>
+<p>或者：</p>
+<ul>
+<li><code>allow</code></li>
+<li><code>neutral</code></li>
+<li><code>veto</code></li>
+</ul>
+<p>因为这轮最重要的问题不是最优参数，而是：</p>
+<p>&gt; <strong>这个 macro-vol state 到底有没有给我们的 raw alpha 带来稳定的条件分层。</strong></p>
+<h2>7. 数据源、公开性、更新频率、最小可复现实验口径</h2>
+<p>这轮主题主要依赖外部数据，所以这些信息必须写清楚。</p>
+<h3>7.1 数据源</h3>
+<ul>
+<li><strong>Prediction market 数据</strong>：Kalshi 公共 API / 公共合约行情</li>
+<li><strong>Crypto 价格 / 波动率代理</strong>：论文用 CoinGecko 日收盘；desk 版最小实验可直接换成 Binance / Bybit / OKX 永续 K 线</li>
+</ul>
+<h3>7.2 公开性</h3>
+<ul>
+<li><strong>Kalshi 数据</strong>：公开可拉</li>
+<li><strong>Crypto K 线</strong>：公开可拉</li>
+<li>不依赖私有订单流、私有做市或闭源供应商终端</li>
+</ul>
+<h3>7.3 更新频率</h3>
+<ul>
+<li>Kalshi 合约是连续交易，但 desk 第一版建议只取 <strong>daily close / fixed daily snapshot</strong></li>
+<li>论文锚点是 <strong>4:00 PM ET</strong> Kalshi 收盘状态</li>
+<li>short-cycle 实验里可把 <code>16:00 ET -&gt; 次日 16:00 ET</code> 视作一个固定 regime day</li>
+</ul>
+<h3>7.4 最小可复现实验口径</h3>
+<p>#### 实验 A：BTC shared vol gate</p>
+<ul>
+<li>底层 raw alpha：任选一条已经在池里的 BTC <code>5m / 15m</code> breakout 或 continuation</li>
+<li>把每天 <code>16:00 ET</code> 更新一次的 <code>btc_highvol_state</code> 固定到下一交易日</li>
+<li>对比：</li>
+</ul>
+<ol>
+<li><code>baseline</code></li>
+<li><code>highvol_allow_only</code></li>
+<li><code>highvol_halfsize</code></li>
+<li><code>highvol_size_up</code></li>
+</ol>
+<ul>
+<li>观察：post-cost Sharpe / turnover / MDD / false-break ratio / tail loss</li>
+</ul>
+<p>#### 实验 B：Alt low-vol veto</p>
+<ul>
+<li>底层 raw alpha：ETH / SOL 的 <code>5m / 15m</code> breakout 或 top-N momentum</li>
+<li>每天更新 <code>alt_lowvol_state</code></li>
+<li>对比：</li>
+</ul>
+<ol>
+<li><code>baseline</code></li>
+<li><code>lowvol_veto</code></li>
+<li><code>lowvol_halfsize</code></li>
+</ol>
+<ul>
+<li>观察：净 alpha 是否主要死在“低 realized-vol 的假突破日”</li>
+</ul>
+<p>#### 实验 C：MR / stat-arb 反向受益测试</p>
+<ul>
+<li>底层 raw alpha：ETH/SOL 或多币 pairs / stat-arb sleeve</li>
+<li>对比：</li>
+</ul>
+<ol>
+<li><code>baseline</code></li>
+<li><code>lowvol_allow</code></li>
+<li><code>highvol_veto</code></li>
+</ol>
+<ul>
+<li>观察：band breach、stopout、回归完成率、单位 turnover 收益</li>
+</ul>
+<h2>8. 论文里最适合 desk 复用的，不是 Forecast Model 本身，而是“channel-specific state map”</h2>
+<p>很多 volatility paper 的问题是：</p>
+<ul>
+<li>你知道它能 forecast vol，</li>
+<li>但你不知道如何落到交易组件上。</li>
+</ul>
+<p>这篇比较少见地把 <strong>asset-channel mapping</strong> 讲得很清楚：</p>
+<ul>
+<li>BTC ↔ Fed / recession</li>
+<li>ETH / SOL / ADA / LINK ↔ CPI</li>
+</ul>
+<p>这很重要，因为它意味着：</p>
+<p>&gt; <strong>你不该把所有宏观赔率信号统一压成一个“market risk-on/off”总开关。</strong></p>
+<p>更合适的做法是：</p>
+<ul>
+<li>BTC 看 <code>Fed / recession</code></li>
+<li>alt 看 <code>CPI</code></li>
+<li>不同资产用不同 macro-vol gate</li>
+</ul>
+<p>这比“全市场统一一个 Fear &amp; Greed 阈值”更细，也更接近这篇论文的原始证据。</p>
+<h2>9. 下一步怎么测</h2>
+<h3>Step 1：先做最小 A/B，而不是大一统宏观总分</h3>
+<p>优先顺序：</p>
+<ol>
+<li><strong>BTC breakout / continuation × BTC high-vol gate</strong></li>
+<li><strong>ETH / SOL breakout × alt low-vol gate</strong></li>
+<li><strong>ETH / SOL MR / stat-arb × alt low-vol allow</strong></li>
+</ol>
+<p>不要一上来把 <code>Fed + CPI + recession</code> 做成综合分。先测单一通道。</p>
+<h3>Step 2：先固定 daily snapshot，再测 intraday decay</h3>
+<p>第一版直接把 gate 固定一整天。</p>
+<p>若有效，再测：</p>
+<ul>
+<li><code>T+0</code> 当天有效</li>
+<li><code>T+1 ~ T+3</code> 递减</li>
+<li><code>T+5</code> 失效</li>
+</ul>
+<p>因为论文的主结果是 <code>3~5 day</code>，而不是无限持久。</p>
+<h3>Step 3：把它从“研究层”拉进“风险层”</h3>
+<p>如果 A/B 显示它确实能压住：</p>
+<ul>
+<li>breakout 假信号</li>
+<li>MR 的 band 失效</li>
+<li>carry 的 tail hit</li>
+</ul>
+<p>那就别只把它留在研究 notebook。下一步直接推进成：</p>
+<ul>
+<li>pre-trade state file</li>
+<li>风险引擎日级 gross cap</li>
+<li>各 alpha sleeve 的 routing tag</li>
+</ul>
+<h2>10. 主要风险</h2>
+<ul>
+<li><strong>频率错配</strong>：这是日级 slow state，不要硬装成 5m signal。</li>
+<li><strong>样本短</strong>：<code>2023-01</code> 到 <code>2026-03</code>，且 Fed 通道明显有 regime dependence。</li>
+<li><strong>平台依赖</strong>：论文只测 Kalshi；跨到 Polymarket / PredictIt 是否复现，还没证明。</li>
+<li><strong>交易方向未定</strong>：它预测的是 vol，不是涨跌；必须附着在已有 raw alpha 上用。</li>
+<li><strong>实施细节风险</strong>：论文用日收盘和 CoinGecko，desk 若改为 perp 高频实现，要避免时区和 snapshot 漂移。</li>
+</ul>
+<h2>11. 一句话结论</h2>
+<p>这篇 2026 arXiv 最值得 intake 的，不是把 Kalshi 宏观赔率当成新的逐根交易信号，而是把它老老实实降级成：</p>
+<p>&gt; <strong>给 BTC / alt 不同 raw alpha sleeve 共用的 daily volatility regime gate。</strong></p>
+<p>如果你只能先测一个最小实验，我会选：</p>
+<p>&gt; <strong><code>BTC 15m breakout/continuation × recession-risk high-vol gate</code></strong>，以及 <strong><code>ETH/SOL 15m breakout × CPI low-vol veto</code></strong>。</p>
+<h2>12. 来源</h2>
+<ol>
+<li>Mohanty, H., &amp; Krishnamachari, B. (2026). *Do Prediction Markets Forecast Cryptocurrency Volatility? Evidence from Kalshi Macro Contracts*. arXiv. DOI: <code>10.48550/arXiv.2604.01431</code></li>
+<p>Readable URL: &lt;<a href="https://arxiv.org/abs/2604.01431&gt;">https://arxiv.org/abs/2604.01431&gt;</a></p>
+<li>arXiv full-text HTML: &lt;<a href="https://arxiv.org/html/2604.01431v1&gt;">https://arxiv.org/html/2604.01431v1&gt;</a></li>
+<li>Kalshi（公开事件合约市场；论文数据源说明见正文第 2 节）: &lt;<a href="https://kalshi.com&gt;">https://kalshi.com&gt;</a></li>
+<li>论文关键结果包括：BTC <code>Fed-dovish</code> in-sample <code>t=3.63</code>、<code>adj R^2 14.1% -&gt; 15.5%</code>；BTC <code>recession risk</code> OOS <code>MSFE=0.979, p=0.020</code>；ETH <code>CPI</code> OOS <code>MSFE=0.959, p=0.010</code>；与传统宏观 / DVOL 联合后仍保留显著性。</li>
+</ol>
+</body>
+</html>

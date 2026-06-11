@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 intraday TSMOM 当全天候 bar-bar 信号：这篇 2022 JFM 论文更值得先偷的是「高波动 × 较低流动性 pocket」里的 15m own-past momentum</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 intraday TSMOM 当全天候 bar-bar 信号：这篇 2022 JFM 论文更值得先偷的是「高波动 × 较低流动性 pocket」里的 15m own-past momentum</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 10:53 UTC</span>
+      <span class="pill">研究时间：2026-03-25 11:08 UTC</span>
+      <span class="pill">类型：2022 JFM 论文 + 2025 GitHub 工程 companion + Binance Futures 公共 `15m/5m` 最小快检</span>
+      <span class="pill">主题标签：raw-alpha/trend/momentum/intraday/time-series/own-past-return/pocket-selection/liquidity/volatility/binance/perpetual/5m/15m/paper/repo</span>
+      <span class="pill">证据类型：论文证据 + 工程仓库 + 本地公共数据最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_1108_intraday-tsmom-highvol-lowliq-pocket.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 11:08 UTC</li>
+<li>类型：2022 JFM 论文 + 2025 GitHub 工程 companion + Binance Futures 公共 <code>15m/5m</code> 最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：单资产 own-past intraday return continuation（过去 <code>15~30m</code> 的方向延续到下一根短周期 bar）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/trend/momentum/intraday/time-series/own-past-return/pocket-selection/liquidity/volatility/binance/perpetual/5m/15m/paper/repo</li>
+<li>证据类型：论文证据 + 工程仓库 + 本地公共数据最小快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这篇东西的 base alpha 不是“流动性/波动 filter”，而是 very-short-horizon 的 own-past momentum。</strong></p>
+<p>主论文是 <strong>Li, Sakkas, Urquhart (2022), _Intraday time series momentum: Global evidence and links to market characteristics_</strong>。它最值钱的地方不是再说一遍“日内也有 momentum”，而是把 desk 更该偷的旁支讲清了：<strong>ITSM 不是全天候普适信号，它更集中出现在特定 microstructure pocket，尤其是低流动性、高波动、离散信息更强的时候。</strong></p>
+<p>我另外看了一个 2025 GitHub 工程 companion：<code>anthonymakarewicz/bitcoin-momentum-trading</code>。它虽然是 BTC 单资产 + ML 包装，但 entry/exit/cost 骨架写得比较完整，适合当我们把论文想法 desk 化时的工程参考。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这条线值得进 raw alpha 池，但正确读法不是“每根 bar 都追”，而是先把 <strong>高波动 × 较低流动性</strong> 的 pocket 挑出来，再测 very-short-horizon continuation。</li>
+<li><strong>一句话它怎么证明：</strong> 论文用 <code>16</code> 个发达市场高频样本做国际证据，并在截面和时间序列两侧都检验到：ITSM 在 <strong>low liquidity / high volatility / discrete information</strong> 条件下更强。</li>
+<li>论文摘要里最硬的三点：</li>
+</ul>
+<ol>
+<li>样本覆盖 <strong>16 个发达市场</strong> 的高频数据；</li>
+<li>ITSM 在大多数国家 <strong>样本内外都显著</strong>；</li>
+<li>强度与 <strong>低流动性 / 高波动 / 离散信息</strong> 正相关，说明不是纯粹 data-mined 花活。</li>
+</ol>
+<ul>
+<li>我补的 Binance Futures 最小快检（<code>BTC/ETH/SOL/BNB/XRP/ADA</code>，公共 <code>15m/5m</code> K 线）也给出一个很 desk 化的结论：</li>
+<li><code>15m</code> 上，如果直接把“过去 1~2 根 bar 的方向延续到下一根”无脑铺满全时段，<strong>全样本 gross 是负的</strong>：lookback=<code>1</code> 时 <strong>-0.62 bps/bar</strong>，lookback=<code>2</code> 时 <strong>-0.64 bps/bar</strong>；</li>
+<li>但切到 <strong>high-vol + low-liq pocket</strong> 后，<code>15m</code> 立刻翻正：lookback=<code>1</code> 时 <strong>+0.79 bps/bar</strong>，lookback=<code>2</code> 时 <strong>+1.04 bps/bar</strong>，命中率 <strong>49.5% / 51.4%</strong>；</li>
+<li><code>5m</code> 上同样 pocket 只剩 <strong>+0.28 bps/bar</strong>，说明更快频率不是没有 edge，而是边际已经薄到很容易被 fee/slippage 吃掉。</li>
+<li>翻成人话：<strong>base alpha 在 pocket 里有东西，但“全天候连续开火”大概率会把 edge 自己磨掉。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目直接相关</h2>
+<ul>
+<li>它补的是 <strong>raw alpha</strong>，不是又一篇只谈 filter 的旁路材料；只是这条 raw alpha 天生更像 <strong>pocket alpha</strong>。</li>
+<li>这很符合当前 desk：我们不是继续围着 breakout / retest 内循环，而是在补一个可独立运行的短周期趋势/延续家族分支。</li>
+<li>它还自然拆成三层：</li>
+<li>alpha 本体：own-past intraday continuation；</li>
+<li>pocket 选择：高波动、较低流动性、离散信息更强；</li>
+<li>execution 现实：5m 往往太薄，15m 更可能留下可交易边际。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：单资产、可多可空、短持有的 intraday TSMOM</li>
+<li><code>entry</code>：</li>
+<li><code>ret_lb = Close_t / Close_{t-L} - 1</code></li>
+<li>若 <code>ret_lb &gt; 0</code>，下一根开多；若 <code>&lt; 0</code>，下一根开空</li>
+<li>当前最值得先测的是 <code>15m, L=2</code>（即过去 <code>30m</code> 方向预测下一根 <code>15m</code>）</li>
+<li><code>regime / pocket gate</code>：</li>
+<li>仅在 rolling realized vol 位于最近窗口 <strong>top tercile</strong> 时开启；</li>
+<li>仅在 rolling quote-volume 位于该资产样本 <strong>lower tercile / lower half</strong> 时保留；</li>
+<li>“离散信息”先用 <strong>单根绝对收益冲击 / news clock / funding 时点前后</strong> 做 proxy 补测</li>
+<li><code>exit</code>：持有 <code>1</code> 根；若下一根反向信号出现则反手</li>
+<li><code>sizing</code>：按 <code>1 / realized_vol</code> 做 inverse-vol sizing；单币 notional cap <code>10%~15%</code></li>
+<li><code>risk</code>：</li>
+<li>单日亏损阈值熔断；</li>
+<li>同方向总 gross cap；</li>
+<li>跳过 funding 结算前后极端拥挤时段</li>
+<li><code>cost</code>：必须先跑 <code>4 / 8 / 12 bps round-trip</code>；因为当前 gross pocket 只有 <code>0.8~1.0 bps/bar</code> 量级，若没有更稀疏触发或 maker/microstructure 优势，净值大概率不够厚。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>数据源：Binance USDⓈ-M Futures <code>fapi/v1/klines</code>（公开可得，<code>5m/15m</code> 实时更新）</li>
+<li>universe：先做 <code>BTC/ETH/SOL/BNB/XRP/ADA</code>，全部是高流动合约</li>
+<li>最小实验：</li>
+</ul>
+<ol>
+<li><code>15m</code>：<code>L in {1,2,4}</code>，先只测 next-bar continuation；</li>
+<li>pocket gate：<code>RV top tercile × quote-volume bottom tercile</code>；</li>
+<li>对照：<code>all bars</code> vs <code>gated bars</code>；</li>
+<li>输出：gross bps/bar、hit-rate、trade share、post-cost bps/bar。</li>
+</ol>
+<ul>
+<li>当前 admission 级结果已经很清楚：</li>
+<li><code>15m all bars</code> 不值得直接上线；</li>
+<li><code>15m gated pocket</code> 值得进入下一轮 sparse-execution / maker-first 验证；</li>
+<li><code>5m</code> 更像高强度实验频段，不像默认生产频段。</li>
+</ul>
+<h2>5. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>先做 sparse 化</strong>：不要 bar-bar 连续交易，改成“只有 <code>|ret_lb|</code> 超过 rolling percentile 阈值才触发”，看 gross 是否还能留住。</li>
+<li><strong>补 discrete-information proxy</strong>：把 funding 时间点、OI 突变、单根绝对收益冲击加入 gate，验证论文里的第三条机制。</li>
+<li><strong>做 15m→5m 执行切片</strong>：信号仍在 <code>15m</code> 生成，但执行改成 <code>5m</code> TWAP / maker-first，别直接把 alpha 本体压到 <code>5m</code>。</li>
+<li><strong>做 cost ladder</strong>：<code>4 / 8 / 12 bps RT</code> + participation cap，确认这条线到底是“可交易 pocket”还是“只有 paper edge”。</li>
+<li><strong>做 cross-symbol pooling vs 单币</strong>：判断 edge 是否主要来自 <code>SOL/XRP/ADA</code> 这种相对更跳的币，而不是 BTC/ETH。</li>
+</ol>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>论文证据来自全球传统市场，不是原生 crypto；我们当前做的是 <strong>transfer test</strong>，不是原文精确复现。</li>
+<li>本地快检只用了 K 线级流动性/波动 proxy，还没把订单簿、OI、funding、news clock 放进来。</li>
+<li>这条线非常容易被误读成“5m/15m 都能无脑追动量”；实际上它更像 <strong>有条件触发的 pocket alpha</strong>。</li>
+<li>工程 companion repo 是 BTC 单资产 ML 框架，能借的是 backtest 骨架，不是要把黑箱模型当结论本体。</li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>Li, Z., Sakkas, A., &amp; Urquhart, A. (2022). _Intraday time series momentum: Global evidence and links to market characteristics_. Journal of Financial Markets, 57.</strong></li>
+</ol>
+<ul>
+<li>Venue: <code>Journal of Financial Markets</code></li>
+<li>DOI: <code>10.1016/j.finmar.2021.100619</code></li>
+<li>Readable URL: <code><a href="https://ideas.repec.org/a/eee/finmar/v57y2022ics138641812100001x.html">https://ideas.repec.org/a/eee/finmar/v57y2022ics138641812100001x.html</a></code></li>
+<li>DOI URL: <code><a href="https://doi.org/10.1016/j.finmar.2021.100619">https://doi.org/10.1016/j.finmar.2021.100619</a></code></li>
+</ul>
+<ol>
+<li><strong>anthonymakarewicz. (2025). _bitcoin-momentum-trading_ (GitHub repository).</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/anthonymakarewicz/bitcoin-momentum-trading">https://github.com/anthonymakarewicz/bitcoin-momentum-trading</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/anthonymakarewicz/bitcoin-momentum-trading/blob/main/README.md">https://github.com/anthonymakarewicz/bitcoin-momentum-trading/blob/main/README.md</a></code></li>
+<li>工程注记：repo 用 <code>5m</code> BTC OHLCV 特征预测下一段 momentum 方向，notebook 输出里 <code>XGBoost accuracy ≈ 54.17%</code>，并给了 <code>prob&gt;0.7 / &lt;0.3</code>、<code>0.5% TP/SL</code>、<code>max hold 15 bars</code>、<code>8 bps</code> cost 的完整 backtest 骨架。</li>
+</ul>
+<ol>
+<li><strong>Binance Developers. _USDⓈ-M Futures API – Kline/Candlestick Data_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<h2>8. 本地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/itsm_vol_liq_transfer_scan_20260325_1105/summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/itsm_vol_liq_transfer_scan_20260325_1105/chosen_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/itsm_vol_liq_transfer_scan_20260325_1105/state_scan.csv</code></li>
+</ul>
+</body>
+</html>

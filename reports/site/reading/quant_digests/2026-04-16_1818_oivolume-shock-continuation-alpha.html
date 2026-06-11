@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 OI 论文只读成“交易所数据质量批评”：对 short-cycle desk，更该先拆的是「OI-Volume 失衡冲击 × 短窗延续」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 OI 论文只读成“交易所数据质量批评”：对 short-cycle desk，更该先拆的是「OI-Volume 失衡冲击 × 短窗延续」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-16 18:16 UTC</span>
+      <span class="pill">研究时间：2026-04-16 18:18 UTC</span>
+      <span class="pill">类型：2024 *Ledger* 论文全文 + Binance USDⓈ-M `5m` public-data portability probe（BTC/ETH/SOL，29d）</span>
+      <span class="pill">主题标签：raw-alpha/event-driven/microstructure/open-interest/volume-imbalance/oiv-shock/continuation/1m/3m/5m/15m/binance-perpetual/paper/public-data/cost/risk</span>
+      <span class="pill">证据类型：论文机制约束 + public-data probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-16_1818_oivolume-shock-continuation-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-16 18:18 UTC</li>
+<li>类型：2024 *Ledger* 论文全文 + Binance USDⓈ-M <code>5m</code> public-data portability probe（BTC/ETH/SOL，29d）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>|ΔOI价值|/成交额</code> 异常放大（OIV shock）后，顺着当根价格方向做短窗延续（<code>+5m/+15m</code>）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/event-driven/microstructure/open-interest/volume-imbalance/oiv-shock/continuation/1m/3m/5m/15m/binance-perpetual/paper/public-data/cost/risk</li>
+<li>证据类型：论文机制约束 + public-data probe</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<ul>
+<li><strong>Authors</strong>：Ioannis Giagkiozis, Emilio Said</li>
+<li><strong>Year</strong>：2024</li>
+<li><strong>Title</strong>：*Reconciling Open Interest with Traded Volume in Perpetual Swaps*</li>
+<li><strong>Venue</strong>：*Ledger* (Vol. 9)</li>
+<li><strong>DOI</strong>：&lt;<a href="https://doi.org/10.5195/ledger.2024.325&gt;">https://doi.org/10.5195/ledger.2024.325&gt;</a></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://ledgerjournal.org/ojs/ledger/article/view/325&gt;">https://ledgerjournal.org/ojs/ledger/article/view/325&gt;</a></li>
+<li><strong>Repo URL</strong>：N/A</li>
+</ul>
+<p>论文核心约束是：在同一时间窗内，<code>|ΔOI|</code> 不应系统性大于该窗成交量（文中 Eq.1 / Eq.5 的思想）。 对 desk 来说，最值钱的不是“谁在 misreport”，而是把这条约束转成<strong>可交易事件因子</strong>：</p>
+<p>&gt; 当 <code>|ΔOI价值|/成交额</code>（OIV ratio）突然冲高时，市场往往处在强仓位重配/强制成交/拥挤换手窗口，短窗方向延续概率上升。</p>
+<h2>2) base alpha 先说清</h2>
+<p>这篇东西在本轮被定义为：</p>
+<p>&gt; <strong>raw alpha（事件驱动）</strong>：<code>OIV shock</code> 触发后，按当根价格方向在 <code>5m~15m</code> 做 continuation。</p>
+<p>注意：</p>
+<ul>
+<li>论文原文本体是“数据一致性与市场结构”研究，不直接给交易规则；</li>
+<li>但它给了一个很强的可复现统计约束，我们把它映射成短周期可执行信号。</li>
+</ul>
+<h2>3) 最小可复现实验（本轮已跑）</h2>
+<ul>
+<li>数据源（全部公开）：</li>
+<li>Binance USDⓈ-M OI 历史：<code>/futures/data/openInterestHist</code></li>
+<li>Binance USDⓈ-M K线：<code>/fapi/v1/klines</code></li>
+<li>频率：<code>5m</code></li>
+<li>样本：<code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li>区间：近 <code>29d</code>（每币 <code>8352</code> bars）</li>
+<li>定义：</li>
+<li><code>OIV ratio = |Δ(sumOpenInterestValue)| / quoteVolume</code></li>
+<li>冲击事件：<code>OIV ratio &gt;= 各币自身P95</code></li>
+<li>方向：当根 <code>ret_5m</code> 的符号</li>
+<li>评估：<code>dir * ret_fwd_5m</code> 与 <code>dir * ret_fwd_15m</code></li>
+</ul>
+<h2>4) 关键数据点（3条）</h2>
+<ol>
+<li><strong>冲击事件并不稀有但足够“尖峰”</strong>：三币统一约 <code>5.0%</code> bars 触发（<code>418/8352</code>）；<code>OIV ratio</code> 的 <code>P95</code> 约 <code>0.76~0.86</code>。</li>
+<li><strong>事件后方向延续为正且在 15m 更强</strong>：</li>
+</ol>
+<ul>
+<li>BTC：<code>+0.77 bps (5m)</code>，<code>+1.86 bps (15m)</code></li>
+<li>ETH：<code>+0.30 bps (5m)</code>，<code>+2.58 bps (15m)</code></li>
+<li>SOL：<code>+1.09 bps (5m)</code>，<code>+2.83 bps (15m)</code></li>
+</ul>
+<ol>
+<li><strong><code>OIV ratio &gt; 1</code> 在 Binance 也会出现</strong>（近29d）：</li>
+</ol>
+<ul>
+<li>BTC <code>2.02%</code>，ETH <code>3.20%</code>，SOL <code>2.13%</code> bars；</li>
+<p>说明该约束在实盘流里存在“偶发超限”，可作为冲击/异常状态识别器，而非只用于审计论文讨论。</p>
+</ul>
+<h2>5) entry / exit / sizing / risk / cost（可直接落地壳）</h2>
+<ul>
+<li><strong>Entry</strong>：</li>
+<p>1) <code>OIV ratio &gt;= P95</code>（滚动更新，建议 14~30 天窗口）； 2) 当根绝对收益 <code>|ret_5m| &gt;= rolling P60</code>（过滤噪声）； 3) 做 <code>sign(ret_5m)</code> 方向。</p>
+<li><strong>Exit</strong>：</li>
+<li>主退出：<code>+3 bars</code>（15m）</li>
+<li>提前退出：若下一根出现反向 <code>ret_5m</code> 超过 <code>entry_bar_move * 0.8</code> 则立即平仓</li>
+<li><strong>Sizing</strong>：</li>
+<li><code>size ∝ min(1, (OIV_ratio/P95 - 1) / 1.5)</code></li>
+<li>单笔 notional cap：组合净值 <code>0.35%~0.60%</code> 风险预算</li>
+<li><strong>Risk</strong>：</li>
+<li>交易时段 veto：大新闻窗口（CPI/FOMC）前后可降杠杆</li>
+<li>连续 3 笔亏损进入 cooldown（30~60min）</li>
+<li><strong>Cost 假设（first pass）</strong>：</li>
+<li>taker round-trip 先按 <code>6~10 bps</code> 分层压测；</li>
+<li>若 edge 仅 <code>1~3 bps</code>，默认转 maker-first 或降频，只做 top-decile 冲击。</li>
+</ul>
+<h2>6) 为什么这轮值得进研究池</h2>
+<ul>
+<li>它不是 funding/basis/pairs 的重复叙事，而是<strong>仓位流-成交流失衡</strong>这条独立事件轴；</li>
+<li>能直接服务至少两类 raw alpha：</li>
+<p>1) 作为独立 continuation alpha； 2) 作为 trend/pairs 的执行 admission（只在 OIV 冲击状态开仓）。</p>
+</ul>
+<h2>7) 下一步怎么测（必须项）</h2>
+<ol>
+<li><strong>频率下钻</strong>：同口径转 <code>1m/3m</code>，验证 edge 是“瞬时冲击”还是“15m 才显现”。</li>
+<li><strong>跨所对照</strong>：同样计算 Bybit/OKX（若能拿到稳定 OI+trade 数据流），验证“高争议交易所”是否信号更强但噪声更大。</li>
+<li><strong>执行分层</strong>：<code>taker-only</code> vs <code>maker-first</code> vs <code>hybrid</code>，比较净值与成交率，避免把纸面 edge 误判为可上线。</li>
+<li><strong>与现有 alpha 组合测试</strong>：</li>
+</ol>
+<ul>
+<li>给 trend book 做 <code>OIV shock admission</code>；</li>
+<li>给 MR book 做 <code>OIV shock veto</code>（避免逆势接飞刀）。</li>
+</ul>
+<h2>8) 本轮产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/oi_volume_imbalance_probe_2026-04-16_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/oi_volume_imbalance_probe_2026-04-16_top_events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/oi_volume_imbalance_probe_2026-04-16_summary.json</code></li>
+</ul>
+<h2>9) 来源</h2>
+<ol>
+<li>Giagkiozis, I., &amp; Said, E. (2024). *Reconciling Open Interest with Traded Volume in Perpetual Swaps*. Ledger, 9.</li>
+<p>DOI: &lt;<a href="https://doi.org/10.5195/ledger.2024.325&gt;">https://doi.org/10.5195/ledger.2024.325&gt;</a> Readable URL: &lt;<a href="https://ledgerjournal.org/ojs/ledger/article/view/325&gt;">https://ledgerjournal.org/ojs/ledger/article/view/325&gt;</a></p>
+<li>arXiv preprint/full text page: &lt;<a href="https://arxiv.org/abs/2310.14973&gt;">https://arxiv.org/abs/2310.14973&gt;</a> ; &lt;<a href="https://arxiv.org/html/2310.14973v2&gt;">https://arxiv.org/html/2310.14973v2&gt;</a></li>
+<li>Binance USDⓈ-M Open Interest History API（public）: &lt;<a href="https://fapi.binance.com/futures/data/openInterestHist&gt;">https://fapi.binance.com/futures/data/openInterestHist&gt;</a></li>
+<li>Binance USDⓈ-M Klines API（public）: &lt;<a href="https://fapi.binance.com/fapi/v1/klines&gt;">https://fapi.binance.com/fapi/v1/klines&gt;</a></li>
+</ol>
+</body>
+</html>

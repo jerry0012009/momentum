@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 stat-arb 篮子管理只当组合层：这篇 2025 MBSA 论文更该先测的是「moving-band spread 的 top-N Markowitz 篮子」raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 stat-arb 篮子管理只当组合层：这篇 2025 MBSA 论文更该先测的是「moving-band spread 的 top-N Markowitz 篮子」raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 23:08 UTC</span>
+      <span class="pill">研究时间：2026-03-25 22:53 UTC</span>
+      <span class="pill">类型：2025 Journal of Asset Management 论文 + 2024 Optimization and Engineering 伴随方法论文 + 官方 repo + Binance Futures 公共 `15m` 最小快检</span>
+      <span class="pill">主题标签：raw-alpha/stat-arb/relative-value/mean-reversion/moving-band/markowitz/basket-construction/top-n/risk-budget/cost-aware/binance/perpetual/15m/5m/paper/repo</span>
+      <span class="pill">证据类型：全文论文证据 + 官方 repo + 本地公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_2253_mbsa-markowitz-basket-raw-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 22:53 UTC</li>
+<li>类型：2025 Journal of Asset Management 论文 + 2024 Optimization and Engineering 伴随方法论文 + 官方 repo + Binance Futures 公共 <code>15m</code> 最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>若一组 spread / residual 组合本身围绕 rolling midpoint 来回摆动，那么 base alpha 仍是这些 moving-band stat-arb 的均值回归；2025 这篇文章新增的，不是另一个 overlay，而是“当同时有多条 raw alpha 在跑时，怎样用 cost-aware / risk-aware Markowitz 把它们装成一个可交易篮子”</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/stat-arb/relative-value/mean-reversion/moving-band/markowitz/basket-construction/top-n/risk-budget/cost-aware/binance/perpetual/15m/5m/paper/repo</li>
+<li>证据类型：全文论文证据 + 官方 repo + 本地公共数据快检</li>
+</ul>
+<p>&gt; 先回答 base alpha：<strong>这不是单独的 risk overlay。base alpha 还是 spread / residual 偏离 rolling midpoint 后的回归。</strong> 之所以这轮值得写，是因为 desk 最近已经补了很多 <code>pair selection / Hurst / dynamic factor / PCA residual</code>，但还缺一张更上层的卡：<strong>当你已经有一批可交易 spread 时，不要默认 equal-weight 硬堆；应先问“哪些该进篮子、每条给多少权重、成本和风险约束后还剩多少边”</strong>。</p>
+<h2>1. 这次看了什么</h2>
+<p>主线其实是两篇连着看的论文 + 一个官方代码库：</p>
+<ol>
+<li><strong>Kasper Johansson, Thomas Schmelzer, Stephen Boyd (2025), _A Markowitz Approach to Managing a Dynamic Basket of Moving-Band Statistical Arbitrages_, Journal of Asset Management</strong></li>
+<li><strong>Kasper Johansson, Thomas Schmelzer, Stephen Boyd (2024/2025), _Finding moving-band statistical arbitrages via convex–concave optimization_, Optimization and Engineering</strong></li>
+<li><strong>官方 repo：<code>cvxgrp/cvxstatarb</code></strong></li>
+</ol>
+<p>一句话讲人话：</p>
+<ul>
+<li>2024 那篇先回答“<strong>什么样的组合可以算 moving-band stat-arb</strong>”；</li>
+<li>2025 这篇再回答“<strong>如果你同时找到了很多条 stat-arb，怎么把它们装进一个真的能交易的 long-short 篮子</strong>”。</li>
+</ul>
+<p>对当前 desk 最相关的，不是美股背景本身，而是它把 relative-value raw alpha 拆成了两层：</p>
+<ul>
+<li><strong>alpha discovery</strong>：找到会围绕移动中枢摆动的 spread；</li>
+<li><strong>alpha allocation</strong>：在多条 spread 同时活跃时，用 cost / risk / size limit 决定谁上、上多少、什么时候自然退场。</li>
+</ul>
+<p>这正好衔接我们最近的学习进展：</p>
+<ul>
+<li>近期 intake 已经补了 <code>Hurst pairs / dynamic factor residual / stable pair selection / PCA residual / same-coin multi-quote</code>；</li>
+<li>但这些大多还停在“<strong>先找到 spread，再开仓</strong>”；</li>
+<li>这篇补的是下一层：<strong>raw alpha 不只要会找，也要会装篮子</strong>。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 不要把多条 stat-arb 默认 equal-weight 拼盘；对于同时活跃的 moving-band spread，<code>alpha_t = μ_t - p_t</code> 本身就能进入一个 cost-aware / risk-aware Markowitz 问题，进而决定 top-N 配置与再平衡节奏。</li>
+<li>2024 伴随方法论文把单条 MBSA 讲清楚了：</li>
+<li>组合价格：<code>p_t = s^T P_t</code></li>
+<li>rolling midpoint：<code>μ_t = (1/M) Σ p_τ</code></li>
+<li>alpha：<code>α_t = μ_t - p_t</code></li>
+<li>也就是：<strong>价格低于移动中枢就偏多，高于中枢就偏空</strong>。</li>
+<li>2025 主论文真正值钱的地方，是把多条 active MBSAs 记成 <code>S_t=[s^(1)...s^(K_t)]</code>，然后在每期求一个长短仓组合 <code>q_t</code>，最大化：</li>
+<li><code>alpha exposure</code></li>
+<li>减去 <code>trading cost</code></li>
+<li>减去 <code>shorting cost</code></li>
+<li>同时满足 <code>cash-neutral</code>、<code>collateral</code>、<code>per-MBSA size cap</code>、<code>risk budget</code>。</li>
+<li>这相当于把“spread 发现”和“spread 配资”彻底拆开：<strong>先承认 raw alpha 是 spread 回归，再单独优化如何把多条 spread 放进组合。</strong></li>
+</ul>
+<h2>3. 3 个关键数据点</h2>
+<ol>
+<li><strong>论文实证不是 toy sample。</strong> 2025 主论文用的是 <strong>CRSP 15405 只股票、2010-01-04 到 2023-12-30、共 3282 个交易日</strong>；每 <strong>21 个交易日</strong> 搜一次新 MBSA，每天做一次 Markowitz 再平衡。</li>
+<li><strong>绩效很硬。</strong> 论文 Table 给出的组合层结果是：<strong>年化收益 19%，年化波动 12%，Sharpe 1.61，最大回撤 15%</strong>。</li>
+<li><strong>它不是靠 market beta 吃饭。</strong> 论文还给了：<strong>residual return 18%，beta 11%，information ratio 1.53</strong>；也就是说，作者想要的不是“再来一个跟市场一起涨的 long-short 壳”，而是低相关 relative-value alpha。</li>
+</ol>
+<h2>4. 为什么和当前短周期 desk 有关</h2>
+<h3>4.1 它服务的是哪类 raw alpha</h3>
+<ul>
+<li>分类：<strong>relative-value / stat-arb / mean-reversion raw alpha</strong></li>
+<li>不是：</li>
+<li>纯 risk overlay</li>
+<li>纯 portfolio cosmetics</li>
+<li>只解释不落地的组合理论</li>
+</ul>
+<h3>4.2 它补的是当前素材池里还缺的一环</h3>
+<p>最近几轮 raw alpha intake 已经能找到很多“可交易 spread”：</p>
+<ul>
+<li>Hurst anti-persistence</li>
+<li>dynamic factor residual</li>
+<li>PCA residual</li>
+<li>stable pair selection funnel</li>
+<li>volume-ranked lead-lag spread</li>
+</ul>
+<p>但如果后续实盘真进入“同一时刻多条 spread 同时亮灯”，会立刻遇到几个现实问题：</p>
+<ol>
+<li>是否所有 signal 都该上？</li>
+<li>equal-weight 会不会把相关腿重复堆满？</li>
+<li>成本、再平衡、资金占用如何限制？</li>
+<li>某条 stat-arb 老化后，怎么自然退场？</li>
+</ol>
+<p>这篇就是直接回答这几个问题的，而且回答方式很 desk：<strong>不是再造黑箱，而是把它写成一个透明的 convex / SOCP 组合问题。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：market-neutral / relative-value / stat-arb</li>
+<li>基础 alpha：单条 MBSA 的 <code>α_t = μ_t - p_t</code>，即 spread 相对 rolling midpoint 的回归</li>
+<li>entry：默认不是二元开关，而是让 <code>α_t</code> 连续进入仓位优化；实务里可叠加 <code>|z|</code> / top-N 门槛</li>
+<li>exit：</li>
+<li><code>α_t</code> 回落</li>
+<li>spread 老化 / decommission</li>
+<li>风险预算或 size cap 逼仓位自然缩小</li>
+<li>sizing：通过 <code>q_t</code> 解一个 Markowitz 问题，而不是每条 spread 固定 equal-weight</li>
+<li>risk：论文用 <code>||Σ_t^{1/2} q|| &lt;= σ c</code> 约束的是“组合偏离各自 midpoint 的波动风险”，不是只看普通资产收益协方差</li>
+<li>cost：目标函数里显式扣掉 <code>trading cost</code> 与 <code>shorting cost</code></li>
+<li>decommission：单条 MBSA 活跃期后，size cap <code>ξ_t^(k)</code> 可线性降到 0，让组合自然淘汰旧 spread</li>
+</ul>
+<h2>5. 这篇论文最值得直接偷的 4 个细节</h2>
+<ol>
+<li><strong>把 alpha 定义在 stat-arb 自己的价格空间里。</strong> 不是先预测资产收益，而是先构造 spread 价格 <code>p_t</code>，再用 <code>μ_t - p_t</code> 做 alpha。</li>
+<li><strong>risk 也定义在“偏离中枢”的空间里。</strong> 论文不是直接把风险写成普通 return variance，而是估计 <code>(p_t-μ_t)</code> 的协方差，再约束 <code>q</code>。这点很适合 spread desk。</li>
+<li><strong>组合层显式现金中性。</strong> 论文要求 <code>p_t^T q = 0</code>，避免“看起来是 stat-arb，实际上偷带市场 beta”。</li>
+<li><strong>老 spread 不是靠主观拍脑袋下架。</strong> 论文让每条 MBSA 在生命周期后半段逐步缩到 0；这比 desk 上常见的“一刀切删掉”更平滑，也更利于控制换手。</li>
+</ol>
+<h2>6. 本地最小快检：把它翻成 Binance <code>15m</code> spread 篮子后，值不值得继续？</h2>
+<p>我做了一个<strong>明确不 faithful，但很适合 desk first verdict</strong> 的 proxy：</p>
+<ul>
+<li>数据：Binance USDⓈ-M Futures 公共 <code>15m</code> K 线</li>
+<li>样本：<strong>2026-01-06 20:15 UTC ~ 2026-03-25 23:00 UTC</strong></li>
+<li>标的：<code>BTC / ETH / BNB / SOL / XRP / ADA</code></li>
+<li>spread：两两配对，<code>spread = logA - β logB</code>，<code>β</code> 用 rolling OLS</li>
+<li>alpha proxy：<code>(rolling midpoint - spread) / rolling std</code></li>
+<li>活跃集：每个 bar 只留 <strong>|z|&gt;1.8 且 &lt;2.6 的 top-2 spread</strong></li>
+<li>组合层：每 <strong>16 根 15m bar（约 4h）</strong> 再平衡一次，对比</li>
+<li><strong>naive equal-weight top2</strong></li>
+<li><strong>Markowitz-smoothed top2</strong>（带持仓惩罚与单 spread cap）</li>
+</ul>
+<h3>6.1 关键结果</h3>
+<ol>
+<li><strong>管理层确实有增益，但不大。</strong> 不计成本时：</li>
+</ol>
+<ul>
+<li>naive：<strong>+8.31%</strong>，Sharpe <strong>2.37</strong></li>
+<li>Markowitz-smoothed：<strong>+9.30%</strong>，Sharpe <strong>2.61</strong></li>
+</ul>
+<ol>
+<li><strong>2 bps 后差距开始有意义。</strong></li>
+</ol>
+<ul>
+<li>naive：<strong>-1.28%</strong>，Sharpe <strong>-0.28</strong></li>
+<li>Markowitz-smoothed：<strong>-0.21%</strong>，Sharpe <strong>+0.03</strong></li>
+<p>这说明 basket 管理层至少能把边保住一点，不至于 equal-weight 一上成本就直接塌得更快。</p>
+</ul>
+<ol>
+<li><strong>但 4 bps 仍然过不去。</strong></li>
+</ol>
+<ul>
+<li>naive：<strong>-10.02%</strong></li>
+<li>Markowitz-smoothed：<strong>-8.89%</strong></li>
+<p>也就是说，这条线当前更像 <strong>15m spread discovery + 低频篮子再平衡框架</strong>，还不是 <code>15m bar-close taker</code> 成熟策略。</p>
+</ul>
+<h3>6.2 这组快检该怎么读</h3>
+<ul>
+<li>好消息：<strong>论文强调的“不要 equal-weight 硬堆”在 crypto transfer 上有点用。</strong></li>
+<li>坏消息：<strong>当前这版 proxy 的换手仍偏高，<code>4 bps</code> 下还活不下来。</strong></li>
+<li>所以更诚实的 desk 定位是：</li>
+<li>raw alpha 本体成立；</li>
+<li>篮子管理层有边际改善；</li>
+<li>但第一站应是 <strong>15m 生成 spread 候选 + 1h/4h 再平衡 + 5m 执行切片</strong>，不是直接 bar-bar 冲。</li>
+</ul>
+<h2>7. 这条线现在该怎么放进研究池</h2>
+<p>我的判断：<strong>值得进池，而且优先级不低。</strong></p>
+<p>原因不是它证明了一个新的 headline alpha，而是它把我们已经积累的一堆 raw alpha 候选，接上了“怎么真正装成一个篮子”的下一段工程骨架。对 desk 来说，这很关键：</p>
+<ul>
+<li>之前的 intake 更像“找到 spread”；</li>
+<li>这篇开始回答“多个 spread 同时活跃时，怎么避免互相打架、怎么做 cost-aware 筛选、怎么让老 signal 自然退场”。</li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<ol>
+<li><strong>别再用全 pair 暴力扫。</strong> 先把已有 intake（Hurst、dynamic factor、PCA residual、same-coin quote spread）产出的候选 spread 喂给这个组合层。</li>
+<li><strong>把再平衡再放慢一档。</strong> 重点测 <code>15m signal + 1h / 4h rebalance + 5m execution</code>，不要急着做 <code>15m bar-close taker</code>。</li>
+<li><strong>把 no-trade / decommission 写成显式实验。</strong> 比较 <code>top-1 / top-2 / top-3</code>、线性退场窗口、持仓惩罚 λ，对 turnover 和净收益的影响。</li>
+<li><strong>补真实 perp friction ladder。</strong> 至少分层测 <code>2 / 4 / 6 bps</code>、maker fill ratio、funding carry、深度容量；这条线非常容易“毛收益有、净收益没”。</li>
+<li><strong>做与 equal-weight 的 A/B 固化。</strong> 后续凡是新 spread basket，都默认先对比：equal-weight、inverse-vol、Markowitz-smoothed 三种篮子层，不再只报 signal 本体。</li>
+<li><strong>若 15m/4h 能活，再下钻 5m。</strong> <code>5m</code> 更像 execution 与 inventory slicing 层，而不是第一版 alpha 发现层。</li>
+</ol>
+<h2>9. 风险与保留意见</h2>
+<ul>
+<li>论文主实证是 <strong>美股日频</strong>，不是 crypto；当前本地结果只能算 desk transfer 审计。</li>
+<li>我这里的 proxy 没有 faithful 复刻 2024 论文里的 MBSA discovery，而是用 <code>rolling OLS beta spread + midpoint z-score</code> 近似。</li>
+<li>当前 active 比例仍偏高，说明候选 spread 的 admission 还不够苛刻；若不先压缩 turnover，成本仍会吞掉净值。</li>
+<li>所以它现在最诚实的标签应是：<strong>raw alpha 篮子化骨架已成立，但短周期落地要靠更慢再平衡与更强成本治理。</strong></li>
+</ul>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>Johansson, K., Schmelzer, T., &amp; Boyd, S. (2025). _A Markowitz approach to managing a dynamic basket of moving-band statistical arbitrages_. Journal of Asset Management, 26(4), 377–385.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1057/s41260-025-00405-3</code></li>
+<li>Readable URL: <code><a href="https://web.stanford.edu/~boyd/papers/portfolio_of_SAs.html">https://web.stanford.edu/~boyd/papers/portfolio_of_SAs.html</a></code></li>
+<li>DOI URL: <code><a href="https://doi.org/10.1057/s41260-025-00405-3">https://doi.org/10.1057/s41260-025-00405-3</a></code></li>
+</ul>
+<ol>
+<li><strong>Johansson, K., Schmelzer, T., &amp; Boyd, S. (2025). _Finding moving-band statistical arbitrages via convex–concave optimization_. Optimization and Engineering, 26, 1203–1224.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1007/s11081-024-09933-0</code></li>
+<li>Readable URL: <code><a href="https://web.stanford.edu/~boyd/papers/cvx_ccv_stat_arb.html">https://web.stanford.edu/~boyd/papers/cvx_ccv_stat_arb.html</a></code></li>
+<li>DOI URL: <code><a href="https://doi.org/10.1007/s11081-024-09933-0">https://doi.org/10.1007/s11081-024-09933-0</a></code></li>
+</ul>
+<ol>
+<li><strong>Repo: <code>cvxgrp/cvxstatarb</code></strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/cvxgrp/cvxstatarb">https://github.com/cvxgrp/cvxstatarb</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Developers – USDⓈ-M Futures Kline/Candlestick Data</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<h2>11. 本地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/mbsa-markowitz-basket-probe_20260325_2253/summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/mbsa-markowitz-basket-probe_20260325_2253/nav_curves.csv</code></li>
+<li><code>reports/artifacts/quant_digests/mbsa-markowitz-basket-probe_20260325_2253/asset_weights_markowitz.csv</code></li>
+<li><code>reports/artifacts/quant_digests/mbsa-markowitz-basket-probe_20260325_2253/README.md</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rank213 策略版本总览与命名规范</title>
+  <style>
+    body { margin:0; background:#f3efe6; color:#172033; font-family:"Noto Sans SC","Source Han Sans SC","PingFang SC","Microsoft YaHei",sans-serif; line-height:1.65; }
+    main { max-width:1200px; margin:0 auto; padding:28px 16px 56px; }
+    .card { background:#fff; border:1px solid #e6dccb; border-radius:16px; padding:18px 20px; margin:14px 0; box-shadow:0 1px 2px rgba(20,24,31,.04); }
+    .hero { background:linear-gradient(135deg,#ecfdf5,#fff 55%,#fff7ed); border-color:#6ee7b7; }
+    .warn { background:#fff7ed; border-color:#fdba74; }
+    .good { background:#f0fdf4; border-color:#bbf7d0; }
+    .info { background:#eff6ff; border-color:#93c5fd; }
+    .grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+    .twocol { display:grid; grid-template-columns:1fr 1fr; gap:14px; align-items:start; }
+    .metric { background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:12px; }
+    .metric b { display:block; font-size:22px; line-height:1.2; }
+    .metric small { color:#64748b; font-size:12px; }
+    .muted { color:#64748b; }
+    .table-wrap { overflow-x:auto; }
+    table { border-collapse:collapse; min-width:940px; width:100%; }
+    th,td { border-bottom:1px solid #e2e8f0; padding:8px 10px; text-align:right; vertical-align:top; font-size:14px; }
+    th { background:#f8fafc; color:#475569; }
+    td:first-child,th:first-child,td:nth-child(2),th:nth-child(2) { text-align:left; }
+    code { background:#f1f5f9; border-radius:6px; padding:2px 6px; }
+    a { color:#2563eb; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .version-tag { display:inline-block; padding:4px 12px; border-radius:999px; font-weight:700; font-size:14px; margin-right:8px; }
+    .v-a { background:#fee2e2; color:#991b1b; }
+    .v-b { background:#fef3c7; color:#92400e; }
+    .v-c { background:#d1fae5; color:#065f46; }
+    .v-active { background:#065f46; color:#fff; }
+    .timeline { position:relative; padding-left:32px; }
+    .timeline::before { content:''; position:absolute; left:12px; top:0; bottom:0; width:2px; background:#e2e8f0; }
+    .timeline-item { position:relative; margin-bottom:20px; }
+    .timeline-item::before { content:''; position:absolute; left:-24px; top:8px; width:12px; height:12px; border-radius:50%; border:2px solid #2563eb; background:#fff; }
+    .timeline-item.active::before { background:#2563eb; }
+    .annotation { background:#fffbeb; border-left:3px solid #f59e0b; padding:12px 16px; margin:12px 0; border-radius:0 8px 8px 0; }
+    .annotation-title { font-weight:700; color:#92400e; margin-bottom:4px; }
+    .thought { background:#f0f9ff; border-left:3px solid #3b82f6; padding:12px 16px; margin:12px 0; border-radius:0 8px 8px 0; }
+    .thought-title { font-weight:700; color:#1e40af; margin-bottom:4px; }
+    @media (max-width:760px) { .grid,.twocol { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <section class="card hero">
+    <h1>Rank213 策略版本总览</h1>
+    <p>更新时间：2026-05-07。本文档是 Rank213 策略研究的入口页：先说明版本命名，再把 213c 以及相关回测页的结论、证据和风险串起来，便于新研究者按顺序阅读。</p>
+    <p class="muted">当前活跃版本：<span class="version-tag v-active">213c</span> <code>rank213_age90_top50_4x4</code> — live canary active</p>
+  </section>
+
+  <section class="card good">
+    <h2>新手先读：5 分钟阅读路径</h2>
+    <ol>
+      <li><b>先读本页。</b> 目标是搞清楚 213a、213b、213c 分别代表什么，以及为什么当前研究集中在 213c。</li>
+      <li><b>再读 Top50 4x4 执行成本与稳定性。</b> 这页回答“为什么 213c 从 Top30 3x3 升级到 Top50 4x4”。重点看成本阶梯、年度稳定性、Long/Short 贡献。</li>
+      <li><b>然后读第五轮利润厚度。</b> 这页回答“真实换手成本更高时，213c 还有多少利润厚度”。重点看 12bps 下 Pass / Watch / Fail。</li>
+      <li><b>最后读 213c 试探性拓展研究。</b> 这页不是上线结论，而是下一轮研究方向筛选。重点看低换手和 short capital 降权。</li>
+      <li><b>补充读 213c Short Leg 深度研究。</b> 24 个 gate/仓位变体 + walk-forward 验证。结论：short leg 优化过拟合风险极高，无 OOS 稳定变体。</li>
+    </ol>
+    <p class="muted">读表时先看结论框，再看核心指标，最后再看长表。长表是证据，不是入口。</p>
+  </section>
+
+  <section class="card warn">
+    <h2>重要结论速记</h2>
+    <div class="grid">
+      <div class="metric"><b style="color:#065f46">213c</b><span>当前主线</span><small>Top50 4L4S，仍只适合 tiny-live / canary</small></div>
+      <div class="metric"><b style="color:#dc2626">12bps</b><span>关键成本门槛</span><small>第五轮显示利润厚度明显变薄</small></div>
+      <div class="metric"><b style="color:#92400e">低换手</b><span>下一步方向</span><small>rank buffer / carry / 慢 rebalance</small></div>
+      <div class="metric"><b style="color:#2563eb">Short</b><span>需要重构</span><small>贡献为正但薄，不能简单每日满配</small></div>
+    </div>
+    <div class="annotation">
+      <div class="annotation-title">放大规模前必须记住</div>
+      <p><b>213c 是当前最强候选，不等于已经通过放大。</b> 第四轮证明 Top50 4x4 比 Top30 3x3 更稳；第五轮证明在更接近真实的换手成本下，基准和多数变体都没有足够利润厚度。因此现在的核心任务是收集真实成交成本、滑点、funding 和 live-vs-shadow drift，而不是直接提高 notional。</p>
+    </div>
+  </section>
+
+  <section class="card info">
+    <h2>常用术语</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>术语</th><th>这套研究里的含义</th><th>读报告时要注意什么</th></tr></thead>
+        <tbody>
+          <tr><td>causal universe</td><td>每月只使用当时已经知道的上一完整月成交额来选币。</td><td>用于避免幸存者偏差。213a 在 frozen30 下好看，但 causal 口径下失效。</td></tr>
+          <tr><td>age90</td><td>币种上线满 90 天才允许进入候选池。</td><td>减少新币刚上线时的异常波动和数据不足问题。</td></tr>
+          <tr><td>Top50 4L4S</td><td>成交额 Top50 池子，每天做多排名前 4，做空排名后 4。</td><td>这是 213c 的核心结构。4L4S 需要足够大的池子支撑，Top20/30 上不一定更好。</td></tr>
+          <tr><td>flat cost</td><td>每天固定扣若干 bps，不管实际换手多少。</td><td>方便横向比较，但偏粗。第四轮主要用于看策略是否有大体余量。</td></tr>
+          <tr><td>turnover cost</td><td>按目标仓位变化量扣成本，换得越多成本越高。</td><td>更接近实盘。第五轮主读法看 12bps/1x turnover。</td></tr>
+          <tr><td>dispersion</td><td>横截面离散度，表示候选池内币种涨跌差异有多大。</td><td>适合解释市场环境和做监控，不应直接当成主交易开关。</td></tr>
+          <tr><td>live canary</td><td>极小资金真钱验证。</td><td>目的不是赚钱，而是验证成交、滑点、funding、实盘信号和回测是否一致。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>版本命名规范</h2>
+    <p>Rank213 策略按演进阶段划分为三个主要版本，每个版本代表一次重大参数调整或逻辑变更。</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>版本号</th><th>策略名称</th><th>Universe</th><th>Cadence</th><th>Legs</th><th>状态</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="version-tag v-a">213a</span></td>
+            <td><code>rank213_largecap_xs_jump_veto</code></td>
+            <td>frozen30 (静态)</td><td>15m</td><td>3L3S</td><td>archived</td>
+            <td>原始版本，静态名单导致幸存者偏差，monthly_volume_causal 口径下 -98.09%</td>
+          </tr>
+          <tr>
+            <td><span class="version-tag v-b">213b</span></td>
+            <td><code>rank213_age90_14d_skip1d_voladj</code></td>
+            <td>monthly_volume_top30</td><td>daily</td><td>3L3S</td><td>superseded</td>
+            <td>age90 过滤 + causal universe，Phase 1-3 研究版本，回撤深、成本敏感</td>
+          </tr>
+          <tr>
+            <td><span class="version-tag v-c">213c</span></td>
+            <td><code>rank213_age90_top50_4x4</code></td>
+            <td>monthly_volume_top50</td><td>daily</td><td>4L4S</td><td><b>live canary</b></td>
+            <td>当前活跃版本，Top50 + 4L4S 最强候选，flat 4bps 累计 +1283.52%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="annotation">
+      <div class="annotation-title">命名规则说明</div>
+      <p><b>213</b>：原始 Rank 编号，代表「日频动量多空」策略族。<br/>
+      <b>a/b/c</b>：版本后缀，按演进顺序递增。每次重大参数调整（universe 扩大、leg 数变化、信号公式修改）升级版本号。<br/>
+      <b>子版本</b>：如需进一步细分，可用 213c1、213c2 表示同一版本内的参数微调。</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>核心指标对比（flat 4bps 成本）</h2>
+    <p class="muted">所有指标基于 causal monthly-volume universe 口径，样本期 2020-02 至 2026-04。</p>
+    <div class="grid">
+      <div class="metric"><b style="color:#dc2626">-98.09%</b><span>213a 累计净收益</span><small>frozen30 → causal 口径</small></div>
+      <div class="metric"><b style="color:#2563eb">455.65%</b><span>213b 累计净收益</span><small>Top30 3L3S</small></div>
+      <div class="metric"><b style="color:#059669">1283.52%</b><span>213c 累计净收益</span><small>Top50 4L4S</small></div>
+      <div class="metric"><b style="color:#7c3aed">-42.65%</b><span>213c 最大回撤</span><small>vs 213b 的 -60.08%</small></div>
+    </div>
+    <div class="table-wrap" style="margin-top:16px">
+      <table>
+        <thead>
+          <tr><th>指标</th><th>213a (frozen30)</th><th>213b (Top30 3L3S)</th><th>213c (Top50 4L4S)</th><th>变化趋势</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>累计净收益</td><td style="color:#dc2626">-98.09%</td><td>455.65%</td><td style="color:#059669"><b>1283.52%</b></td><td>↑↑↑</td></tr>
+          <tr><td>最大回撤</td><td>-99.62%</td><td>-60.08%</td><td><b>-42.65%</b></td><td>↑↑</td></tr>
+          <tr><td>日均收益 (bps)</td><td>-1.58</td><td>10.92</td><td><b>14.52</b></td><td>↑↑</td></tr>
+          <tr><td>胜率</td><td>~45%</td><td>49.05%</td><td><b>49.09%</b></td><td>→</td></tr>
+          <tr><td>正收益月占比</td><td>~30%</td><td>~50%</td><td><b>61.33%</b></td><td>↑</td></tr>
+          <tr><td>Long 半边贡献</td><td>N/A</td><td>13.63 bps</td><td><b>16.63 bps</b></td><td>↑</td></tr>
+          <tr><td>Short 半边贡献</td><td>N/A</td><td>1.34 bps</td><td><b>1.88 bps</b></td><td>↑</td></tr>
+          <tr><td>平均换手率</td><td>N/A</td><td>~0.7x</td><td><b>0.600x</b></td><td>↓ (更好)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="thought">
+      <div class="thought-title">回测推论：为什么 213c 优于 213b？</div>
+      <p><b>1. Universe 扩大到 Top50 增加了选股空间</b>：Top30 的 eligible 平均只有 26.92 个，Top50 有 43.08 个。更大的池子让策略能更好地分散风险，同时保留横截面选币能力。</p>
+      <p><b>2. 4L4S 比 3L3S 更稳定</b>：在 Top50 上，4x4 的累计收益（1283.52%）远超 3x3（758.20%），且回撤更低（-42.65% vs -51.77%）。更多的腿数提供了更好的分散化。</p>
+      <p><b>3. Short leg 在 Top50 上真正贡献正收益</b>：213b 的 short 几乎不赚钱（1.34 bps），213c 的 short 贡献提升到 1.88 bps，虽然仍薄但已转正。</p>
+      <p><b>4. 换手率下降</b>：Top50 的平均换手率 0.600x 低于 Top30 的 ~0.7x，意味着更少的交易成本。</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Universe 大小敏感性分析</h2>
+    <p class="muted">第四轮扩展研究：每月用上一完整月成交额选 Top N，比较 3L3S 与 4L4S。成本 4bps flat。</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Universe</th><th>Legs</th><th>累计收益</th><th>最大回撤</th><th>日均 (bps)</th><th>Long 均值</th><th>Short 均值</th><th>读法</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Top20</td><td>3L3S</td><td>639.37%</td><td>-43.87%</td><td>11.71</td><td>13.63</td><td>2.08</td><td>可活，但池子太小</td></tr>
+          <tr><td>Top20</td><td>4L4S</td><td>410.98%</td><td>-53.70%</td><td>9.17</td><td>12.64</td><td>0.53</td><td>4x4 在小池子稀释</td></tr>
+          <tr><td>Top30</td><td>3L3S</td><td>462.00%</td><td>-59.63%</td><td>10.97</td><td>13.63</td><td>1.34</td><td>213b 版本</td></tr>
+          <tr><td>Top30</td><td>4L4S</td><td>309.30%</td><td>-49.42%</td><td>8.64</td><td>12.65</td><td>-0.01</td><td>short 不赚钱</td></tr>
+          <tr style="background:#d1fae5"><td><b>Top50</b></td><td><b>3L3S</b></td><td>758.20%</td><td>-51.77%</td><td>13.48</td><td>17.18</td><td>0.29</td><td>次优</td></tr>
+          <tr style="background:#d1fae5"><td><b>Top50</b></td><td><b>4L4S</b></td><td><b>1283.52%</b></td><td><b>-42.65%</b></td><td><b>14.52</b></td><td><b>16.63</b></td><td><b>1.88</b></td><td><b>最优 → 213c</b></td></tr>
+          <tr><td>Top70</td><td>3L3S</td><td>20.69%</td><td>-79.07%</td><td>4.78</td><td>9.41</td><td>-0.64</td><td>明显稀释</td></tr>
+          <tr><td>Top70</td><td>4L4S</td><td>289.10%</td><td>-63.22%</td><td>9.02</td><td>13.62</td><td>-0.60</td><td>勉强可活</td></tr>
+          <tr><td>Top100</td><td>3L3S</td><td style="color:#dc2626">-27.21%</td><td>-90.77%</td><td>3.30</td><td>8.48</td><td>-1.19</td><td>不可用</td></tr>
+          <tr><td>Top100</td><td>4L4S</td><td>70.92%</td><td>-83.11%</td><td>5.74</td><td>10.38</td><td>-0.65</td><td>回撤太大</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="annotation">
+      <div class="annotation-title">关键发现</div>
+      <p><b>Top50 是甜蜜点</b>：Top20-50 都能活，但 Top50 + 4L4S 组合最优。Top70/100 明显稀释，选股能力被稀释到无法覆盖成本。</p>
+      <p><b>4x4 只在 Top50 上优于 3x3</b>：在 Top20/30 上，4x4 反而不如 3x3，因为池子太小，4 条腿无法有效分散。只有 Top50 的 43 个 eligible 才能支撑 4L4S。</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>成本敏感性分析（213c Top50 4L4S）</h2>
+    <p class="muted">关键问题：如果真实成本高于 4bps 假设，策略是否仍可用？</p>
+    <div class="twocol">
+      <div>
+        <h3>Flat 成本阶梯</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>成本 (bps)</th><th>累计收益</th><th>最大回撤</th><th>读法</th></tr></thead>
+            <tbody>
+              <tr><td>0</td><td>3311.87%</td><td>-38.26%</td><td>理论上限</td></tr>
+              <tr style="background:#d1fae5"><td><b>4</b></td><td><b>1283.52%</b></td><td><b>-42.65%</b></td><td><b>当前假设</b></td></tr>
+              <tr><td>8</td><td>460.82%</td><td>-50.63%</td><td>仍可用</td></tr>
+              <tr><td>12</td><td>127.25%</td><td>-67.19%</td><td>边际可用</td></tr>
+              <tr style="background:#fee2e2"><td>16</td><td>-7.95%</td><td>-78.52%</td><td>不可用</td></tr>
+              <tr><td>20</td><td>-62.73%</td><td>-87.08%</td><td>严重亏损</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3>换手成本阶梯</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>每 1x 换手 (bps)</th><th>日均成本</th><th>累计收益</th><th>读法</th></tr></thead>
+            <tbody>
+              <tr><td>4</td><td>2.40</td><td>1882.79%</td><td>最乐观</td></tr>
+              <tr><td>8</td><td>4.80</td><td>1052.10%</td><td>仍强劲</td></tr>
+              <tr><td>12</td><td>7.21</td><td>569.32%</td><td>可用</td></tr>
+              <tr style="background:#fee2e2"><td>16</td><td>9.61</td><td>~200%</td><td>边际</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="thought">
+      <div class="thought-title">回测推论：成本是生死线</div>
+      <p><b>真实成本必须严控在 12bps 以内</b>：flat 12bps 时累计仍有 127.25%，但 flat 16bps 就转负。实际 maker 2bps + taker 5bps 的混合成本下，策略仍有空间，但不能有太多滑点。</p>
+      <p><b>换手率是关键杠杆</b>：平均 0.600x/day 的换手率意味着每天 8 条腿中约 5 条是 carry（不换仓）。如果能把换手率降到 0.5x 以下，成本容忍度会大幅提升。</p>
+      <p><b>实盘验证是唯一答案</b>：maker fill rate、实际滑点、funding cost 这些只能从 live canary 数据中获得。如果真实成本接近 12bps，当前所有高收益版本都需要重估。</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>年度稳定性（213c Top50 4L4S）</h2>
+    <p class="muted">检查收益是否集中在某些年份，以及是否有连续亏损年份。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>年份</th><th>天数</th><th>净收益</th><th>Long 半边</th><th>Short 半边</th><th>BTC 同期</th><th>读法</th></tr></thead>
+        <tbody>
+          <tr><td>2020</td><td>335</td><td>51.16%</td><td>98.21%</td><td>-28.11%</td><td>212.34%</td><td>牛市跟涨，short 拖后腿</td></tr>
+          <tr><td>2021</td><td>365</td><td style="color:#059669"><b>128.65%</b></td><td>465.72%</td><td>-64.13%</td><td>62.61%</td><td><b>最佳年份</b>，long 爆发</td></tr>
+          <tr><td>2022</td><td>365</td><td>9.75%</td><td>-40.43%</td><td style="color:#059669">73.63%</td><td>-65.18%</td><td>熊市中 short 救场</td></tr>
+          <tr><td>2023</td><td>365</td><td>14.15%</td><td>59.15%</td><td>-24.98%</td><td>166.28%</td><td>平稳，long 驱动</td></tr>
+          <tr><td>2024</td><td>366</td><td>35.79%</td><td>28.74%</td><td>5.96%</td><td>113.84%</td><td>long+short 都正</td></tr>
+          <tr><td>2025</td><td>365</td><td>50.45%</td><td>-20.94%</td><td style="color:#059669"><b>92.57%</b></td><td>-6.11%</td><td><b>Short 驱动年</b></td></tr>
+          <tr><td>2026 (YTD)</td><td>102</td><td>56.40%</td><td>51.56%</td><td>7.77%</td><td>-16.23%</td><td>开局强劲</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="annotation">
+      <div class="annotation-title">年度分布解读</div>
+      <p><b>没有连续亏损年份</b>：每年都为正收益，最差年份 2022 仍有 +9.75%。这是策略最重要的稳定性特征。</p>
+      <p><b>Long/Short 互补</b>：2021/2023 long 驱动，2022/2025 short 驱动。这种互补性让策略在不同市场环境下都能存活。</p>
+      <p><b>2022 年是关键压力测试</b>：BTC -65.18%，策略仍 +9.75%，主要靠 short 贡献 +73.63%。这证明了 short leg 的价值。</p>
+    </div>
+  </section>
+
+  <section class="card warn">
+    <h2>已知风险与局限性</h2>
+    <div class="twocol">
+      <div>
+        <h3>回测层面</h3>
+        <ul>
+          <li><b>成本假设乐观</b>：flat 4bps vs 实际 maker 2bps + taker 5bps</li>
+          <li><b>Short leg 薄弱</b>：均值仅 1.88 bps，可能被单月大亏吃掉</li>
+          <li><b>2022-2023 弱势</b>：累计仅 +24%，低于其他年份</li>
+          <li><b>Walk-forward 脆弱</b>：Phase 3 未通过正式 live promotion</li>
+        </ul>
+      </div>
+      <div>
+        <h3>实盘层面</h3>
+        <ul>
+          <li><b>Maker fill rate 未知</b>：20s TTL 后 fallback to market</li>
+          <li><b>滑点不可控</b>：市场单 vs 回测 close 价有偏差</li>
+          <li><b>Funding cost 未计入</b>：perp 持仓有 funding 费用</li>
+          <li><b>流动性风险</b>：小币种在大额交易时可能有冲击</li>
+        </ul>
+      </div>
+    </div>
+    <div class="thought">
+      <div class="thought-title">回测推论：Phase 3 未通过但仍然上线的原因</div>
+      <p>这是一个<b>有意的实盘 falsification</b> 决策。Phase 3 显示策略有明显的弱点（高回撤、成本敏感、walk-forward 脆弱），但：</p>
+      <p>1. 回测中的弱点可能在实盘中被放大或缩小，只有真实数据才能验证。</p>
+      <p>2. tiny-live canary（$20/leg）的风险可控，即使策略完全失效，最大损失约 $160。</p>
+      <p>3. 真实 maker fill rate、滑点、funding 这些数据只能从实盘获得。</p>
+    </div>
+  </section>
+
+  <section class="card good">
+    <h2>实盘状态（2026-05-06）</h2>
+    <div class="grid">
+      <div class="metric"><b style="color:#059669">✓</b><span>Entry 全流程</span><small>6/6 legs filled</small></div>
+      <div class="metric"><b style="color:#059669">✓</b><span>Horizon Close</span><small>6/6 legs closed</small></div>
+      <div class="metric"><b style="color:#059669">✓</b><span>Delta Rebalance</span><small>carry/close/open 全流程</small></div>
+      <div class="metric"><b style="color:#f59e0b">⏳</b><span>积累样本</span><small>观察 live vs shadow drift</small></div>
+    </div>
+    <div class="table-wrap" style="margin-top:16px">
+      <table>
+        <thead><tr><th>检查项</th><th>结果</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>信号公式一致性</td><td style="color:#059669"><b>通过</b></td><td>live engine 已切 Top50 4L4S，shadow 产出 4L+4S、eligible=44</td></tr>
+          <tr><td>Universe 动态 fallback</td><td style="color:#059669"><b>通过</b></td><td>monthly CSV 只有 Top30 时，live engine 会动态计算 Top50</td></tr>
+          <tr><td>Horizon 时间对齐</td><td style="color:#059669"><b>通过</b></td><td>planned_exit_ts = decision_ts + 1d = 00:00 UTC</td></tr>
+          <tr><td>Entry Window 时序</td><td style="color:#059669"><b>通过</b></td><td>shadow(00:01) → canary(00:02:15) → window(00:02-00:10)</td></tr>
+          <tr><td>Gate 逻辑</td><td style="color:#059669"><b>通过</b></td><td>回测和实盘都只检查 eligible >= 6</td></tr>
+          <tr><td>Basket 构造</td><td style="color:#059669"><b>通过</b></td><td>4L+4S 等权中性，$20/leg</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="annotation">
+      <div class="annotation-title">已知设计层面差异（不可消除）</div>
+      <p>Entry 价格偏离 close 几个 bps（maker limit vs close）· Exit 价格偏离 close 几个 bps（market order vs close）· 成本假设 4bps flat vs 实际 maker 2bps / taker 5bps</p>
+    </div>
+  </section>
+
+  <section class="card info">
+    <h2>下一步行动计划</h2>
+    <div class="timeline">
+      <div class="timeline-item active">
+        <h3>短期（1-2 周）</h3>
+        <ul>
+          <li><b>积累真钱样本</b>：观察 live vs shadow drift，记录实际 maker fill rate</li>
+          <li><b>评估真实成本</b>：基于实盘数据计算实际 maker/taker 混合成本</li>
+          <li><b>监控月度 universe rebuild</b>：确保每月 2 号定时跑 Top50 选池</li>
+        </ul>
+      </div>
+      <div class="timeline-item">
+        <h3>中期（1-2 月）</h3>
+        <ul>
+          <li><b>基于实盘数据决定是否扩大 notional</b>：如果真实成本 < 8bps，可考虑从 $20/leg 提升到 $50/leg</li>
+          <li><b>Short leg 优化研究</b>：short admission 条件化，减少 short squeeze 场景</li>
+          <li><b>Dispersion 监控</b>：作为仓位风险指标，不作为硬 gate</li>
+        </ul>
+      </div>
+      <div class="timeline-item">
+        <h3>长期（3-6 月）</h3>
+        <ul>
+          <li><b>213d 版本研究</b>：如果 short leg 优化成功，可考虑升级版本号</li>
+          <li><b>多策略组合</b>：213c 与其他 Rank 策略的组合效果</li>
+          <li><b>自动化运维</b>：减少人工干预，提升运维效率</li>
+        </ul>
+      </div>
+    </div>
+    <div class="thought">
+      <div class="thought-title">决策框架：何时扩大 notional？</div>
+      <p><b>条件 1</b>：真实成本（maker/taker 混合）< 8bps，且连续 2 周 live vs shadow drift < 5%。<br/>
+      <b>条件 2</b>：连续 4 周正收益，且最大单周亏损 < 5%。<br/>
+      <b>条件 3</b>：maker fill rate > 60%（说明 limit order 有效）。<br/>
+      <b>如果三个条件都满足</b>：从 $20/leg 提升到 $50/leg，继续观察。</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>全部页面目录（36 页）</h2>
+
+    <h3 style="margin-top:18px"><span class="version-tag v-c">213c</span> 当前活跃版本 — Top50 4L4S</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>页面</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><a href="/momentum/paper/rank213c_architecture.html">213c 策略架构与组件分析</a></td><td>Baseline 定义、Buffer / Short Gate / Turnover / Capital Mix / Dispersion 组件评估、过拟合风险</td></tr>
+          <tr><td><a href="/momentum/paper/213c_execution_stability.html">213c 执行成本与稳定性</a></td><td>成本阶梯（flat + turnover）、年度稳定性、Long/Short 分解、Universe × Legs 网格</td></tr>
+          <tr><td><a href="/momentum/paper/213c_round4_attribution.html">213c 第四轮 Benchmark 归因</a></td><td>Universe 扩展 Top20-100 × 3L3S/4L4S、Benchmark 对比、Beta 分析、参数稳定性</td></tr>
+          <tr><td><a href="/momentum/paper/213c_round5_thickness.html">213c 第五轮利润厚度</a></td><td>12bps+ 成本下测试 short gate、降换手、信号微调、funding sensitivity；0 Pass / 1 Watch / 31 Fail</td></tr>
+          <tr><td><a href="/momentum/paper/213c_buffer_research.html">213c Buffer 专题研究</a></td><td>buffer 宽度、分侧 buffer、short overlay、weekly/partial rebalance；1 Promising / 7 Watch</td></tr>
+          <tr><td><a href="/momentum/paper/213c_expansion.html">213c 试探性拓展研究</a></td><td>资本配比、short optional、低换手、风险开关、leg shape 探索；1 Promising / 4 Watch</td></tr>
+          <tr><td><a href="/momentum/paper/213c_roadmap.html">213c 研究路线图</a></td><td>真实成本校准、低换手 213c2、short overlay 重构、路径风险约束</td></tr>
+          <tr><td><a href="/momentum/paper/213c_short_leg_research.html">213c Short Leg 深度研究</a></td><td>24 变体 gate/仓位控制 + walk-forward 验证；过拟合风险高，无 OOS 稳定变体</td></tr>
+          <tr><td><a href="/momentum/paper/213c_live_launch.html">213c Live Launch 验证</a></td><td>首次真钱 entry / horizon close / delta rebalance 全流程测试</td></tr>
+          <tr><td><a href="/momentum/paper/213c_shadow_runner.html">213c 每日 Shadow Runner</a></td><td>每日 shadow 信号产出与 live vs shadow 对比</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:18px"><span class="version-tag v-b">213b</span> 已替代版本 — Top30 3L3S</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>页面</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><a href="/momentum/paper/213b_round2_validation.html">213b 第二轮验证</a></td><td>age90 首次完整回测，Top30 3L3S baseline</td></tr>
+          <tr><td><a href="/momentum/paper/213b_phase3_validation.html">213b Phase 3 严肃验证</a></td><td>执行压力测试、walk-forward 检查、gate grid；未通过 live promotion</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:18px"><span class="version-tag v-a">213a</span> 已归档版本 — frozen30</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>页面</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><a href="/momentum/paper/213a_paper_runner.html">213a Paper Runner</a></td><td>frozen30 原始回测主页面（13 个子页面入口）</td></tr>
+          <tr><td><a href="/momentum/paper/213a_spec.html">213a 最小可复现 Spec</a></td><td>冻结 live 版的最小复现规范</td></tr>
+          <tr><td><a href="/momentum/paper/213a_performance.html">213a Performance Review</a></td><td>冻结 admission seed 的绩效分析</td></tr>
+          <tr><td><a href="/momentum/paper/213a_long_history.html">213a 长历史回测</a></td><td>冻结 spec 的长历史回测</td></tr>
+          <tr><td><a href="/momentum/paper/213a_long_history_funding.html">213a 长历史含 Funding</a></td><td>含 funding 的长历史回测</td></tr>
+          <tr><td><a href="/momentum/paper/213a_fee_sensitivity.html">213a 费率敏感性</a></td><td>费率敏感性分析</td></tr>
+          <tr><td><a href="/momentum/paper/213a_ffill_audit.html">213a ffill() 审计</a></td><td>ffill() 前瞻偏差影响审计</td></tr>
+          <tr><td><a href="/momentum/paper/213a_honesty_audit.html">213a 诚实性审计</a></td><td>admission timeseries seed causality 审计</td></tr>
+          <tr><td><a href="/momentum/paper/213a_readiness.html">213a 上线准备</a></td><td>上线准备检查清单</td></tr>
+          <tr><td><a href="/momentum/paper/213a_regime.html">213a 市场环境</a></td><td>市场环境分析</td></tr>
+          <tr><td><a href="/momentum/paper/213a_shadow_compare.html">213a Shadow 对比</a></td><td>shadow vs live 对比</td></tr>
+          <tr><td><a href="/momentum/paper/213a_shadow_runner.html">213a Shadow Runner</a></td><td>shadow 信号产出</td></tr>
+          <tr><td><a href="/momentum/paper/213a_family_board.html">213a Family 操作看板</a></td><td>family 操作看板</td></tr>
+          <tr><td><a href="/momentum/paper/213a_formal_review.html">213a 正式策略评审</a></td><td>正式策略评审</td></tr>
+          <tr><td><a href="/momentum/paper/213a_asof_universe.html">213a As-of Universe</a></td><td>as-of universe 长历史回测</td></tr>
+          <tr><td><a href="/momentum/paper/213a_universe_audit.html">213a Universe 选择审计</a></td><td>universe 选择审计</td></tr>
+          <tr><td><a href="/momentum/paper/213a_monthly_marketcap.html">213a 月度市值（已废弃）</a></td><td>marketcap universe rebuild（已废弃）</td></tr>
+          <tr><td><a href="/momentum/paper/213a_volume_percentile_gate.html">213a 成交额百分位 Gate</a></td><td>成交额百分位 gate review（已废弃）</td></tr>
+          <tr><td><a href="/momentum/paper/213a_volume_baseline.html">213a 成交额基线</a></td><td>成交额基线刷新</td></tr>
+          <tr><td><a href="/momentum/paper/213a_volume_pct_gate_full.html">213a 成交额百分位 Gate 完整版</a></td><td>成交额百分位 gate review（完整版）</td></tr>
+          <tr><td><a href="/momentum/paper/213a_volume_segment.html">213a 成交额分段稳定性</a></td><td>成交额分段稳定性分析</td></tr>
+          <tr><td><a href="/momentum/paper/213a_volume_universe.html">213a 成交额 Universe</a></td><td>成交额 universe 重建</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:18px">跨版本 / 导航</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>页面</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><a href="/momentum/paper/rank213_evidence_map.html">Rank213 证据地图</a></td><td>证据分层与 universe 口径说明，213a→213b→213c 全链路证据</td></tr>
+          <tr><td><a href="/momentum/paper/rank213_baseline_v2_four_direction_review.html">基线四方向初筛</a></td><td>跨版本基线四方向对比</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" style="text-align:center; color:#64748b">
+    <p>生成时间：2026-05-07 03:00 UTC · 版本命名规范 v1.1</p>
+    <p class="muted">本文档基于 Rank213 项目现有回测数据与实盘记录整理。</p>
+  </section>
+</main>
+</body>
+</html>

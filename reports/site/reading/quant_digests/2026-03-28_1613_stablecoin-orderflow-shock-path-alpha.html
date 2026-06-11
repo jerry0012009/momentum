@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 stablecoin 市场只当流动性通道：这篇 2023 Digital Finance 更该先测的是「signed order-flow shock → 1 bar 延续 / 5m inventory fade」raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 stablecoin 市场只当流动性通道：这篇 2023 Digital Finance 更该先测的是「signed order-flow shock → 1 bar 延续 / 5m inventory fade」raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-28 16:15 UTC</span>
+      <span class="pill">研究时间：2026-03-28 16:13 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/order-flow/signed-volume/taker-imbalance/stablecoin/crypto-crypto/btc-usdt/eth-usdt/eth-btc/follow-through/inventory-fade/1m/3m/5m/15m/paper/public-data/cost</span>
+      <span class="pill">证据类型：2023 Digital Finance 开放获取全文 PDF + 本地表格抽取 + Springer article page</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-28_1613_stablecoin-orderflow-shock-path-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-28 16:13 UTC</li>
+<li>类型：论文</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：BTC/ETH 对 USDT 的标准化 signed order-flow shock（主动买量 − 主动卖量）会先推着价格做超短续动；当 order flow 确认消失后，<code>5m</code> 级别更容易出现 inventory / contrarian 式回吐</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/microstructure/order-flow/signed-volume/taker-imbalance/stablecoin/crypto-crypto/btc-usdt/eth-usdt/eth-btc/follow-through/inventory-fade/1m/3m/5m/15m/paper/public-data/cost</li>
+<li>证据类型：2023 Digital Finance 开放获取全文 PDF + 本地表格抽取 + Springer article page</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主看 <strong>Emilio Barucci, Giancarlo Giuffra Moncayo, Daniele Marazzina (2023), _Market impact and efficiency in cryptoassets markets_, Digital Finance</strong>。</p>
+<p>这篇 paper 表面上写的是 market impact / efficiency，但对当前 desk 更值钱的，不是再讲一次“stablecoin 很重要”，而是把它拆成一个能直接测的 <strong>microstructure raw alpha</strong>：</p>
+<p>&gt; <strong>不要先去盯 BTC-USD 这种法币腿；更该先盯 <code>BTC-USDT / ETH-USDT / ETH-BTC</code> 里的 signed order-flow shock，看它在超短窗口里如何先延续、再回吐。</strong></p>
+<h2>2. 核心结论</h2>
+<h3>2.1 论文真正给 desk 的，不是抽象效率结论，而是一个清楚的价格路径骨架</h3>
+<p>作者把市场分成两类：</p>
+<ul>
+<li><strong>crypto-crypto / stablecoin 腿</strong>：<code>BTC-USDT</code>、<code>ETH-USDT</code>、<code>ETH-BTC</code></li>
+<li><strong>crypto-USD 腿</strong>：<code>BTC-USD</code>、<code>ETH-USD</code>、<code>USDT-USD</code></li>
+</ul>
+<p>然后用 <strong>tick-by-tick Kaiko</strong> 数据，聚合成 <strong>1 秒价格、1 分钟收益、1 分钟 signed volume OF</strong>，检查两件事：</p>
+<ol>
+<li><strong>当下 OF 对当下收益的冲击有多强</strong></li>
+<li><strong>滞后 OF / 滞后收益，对后续路径还有没有解释力</strong></li>
+</ol>
+<p>最值得拿走的结论是：</p>
+<ul>
+<li><strong>crypto-crypto 腿的 contemporaneous impact 明显更强</strong>；</li>
+<li><strong>超短窗口里先是顺着 OF 冲击走</strong>；</li>
+<li><strong>再往后，尤其到 <code>5m+</code>，更容易出现 inventory-stabilization / contrarian 式回吐。</strong></li>
+</ul>
+<p>这就不是“解释市场结构”而已，而是已经足够改写成一个 <strong>事件驱动 alpha path</strong>。</p>
+<h3>2.2 几个最关键的数字</h3>
+<p>样本本身不小：</p>
+<ul>
+<li><strong>样本期</strong>：<code>2019-04-01 ~ 2020-10-31</code></li>
+<li><strong>数据源</strong>：Kaiko tick-by-tick</li>
+<li><strong>市场</strong>：6 个 pair、21 家交易所</li>
+<li><strong>1 分钟样本量</strong>：<strong>833,760</strong></li>
+</ul>
+<p>最重要的表是 contemporaneous OF → return 的回归（Table 4）。</p>
+<p>在 <strong>1m</strong> 上，<code>OrderFlow_t</code> 对 <code>return_t</code> 的系数：</p>
+<ul>
+<li><code>BTC-USDT</code>：<strong>0.4533</strong></li>
+<li><code>ETH-USDT</code>：<strong>0.4966</strong></li>
+<li><code>ETH-BTC</code>：<strong>0.2813</strong></li>
+<li><code>BTC-USD</code>：<strong>0.1274</strong></li>
+<li><code>ETH-USD</code>：<strong>0.0875</strong></li>
+<li><code>USDT-USD</code>：基本不显著</li>
+</ul>
+<p>同一个表里，回归解释度也差很大：</p>
+<ul>
+<li><code>BTC-USDT</code> 的 <code>R²</code>：<strong>20.55%</strong></li>
+<li><code>ETH-USDT</code> 的 <code>R²</code>：<strong>24.67%</strong></li>
+<li><code>ETH-BTC</code> 的 <code>R²</code>：<strong>7.91%</strong></li>
+<li><code>BTC-USD</code> 的 <code>R²</code>：<strong>1.62%</strong></li>
+<li><code>ETH-USD</code> 的 <code>R²</code>：<strong>0.77%</strong></li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>真正“order flow 一打进来，价格立刻有像样反应”的，不是法币腿，而是 stablecoin / crypto-crypto 腿。</strong></p>
+<h3>2.3 这条路径不是只有“冲一下就完”，后面还有可交易的第二段</h3>
+<p>Table 5 看的是 <code>return_t</code> 对 <code>return_{t-1}</code> 和 <code>OF_{t-1}</code> 的关系。</p>
+<p>先看 <strong>1m 的滞后 OF</strong>，在 crypto-crypto 腿上仍是正的：</p>
+<ul>
+<li><code>BTC-USDT</code>：<strong>0.0093</strong></li>
+<li><code>ETH-USDT</code>：<strong>0.0099</strong></li>
+<li><code>ETH-BTC</code>：<strong>0.0052</strong></li>
+</ul>
+<p>这意味着：</p>
+<p>&gt; <strong>大的 OF shock，不只是同分钟推价；到下一分钟，仍留有一点同向 follow-through。</strong></p>
+<p>但再往后看滞后收益，路径开始变味：</p>
+<ul>
+<li><code>BTC-USDT</code> 的 <code>return_{t-1}</code>：</li>
+<li><code>1m</code>：<strong>+0.0080</strong></li>
+<li><code>5m</code>：<strong>-0.0210</strong></li>
+<li><code>1h</code>：<strong>-0.0340</strong></li>
+<li><code>1d</code>：<strong>-0.1407</strong></li>
+<li><code>ETH-USDT</code> 的 <code>return_{t-1}</code>：</li>
+<li><code>1m</code>：约 <strong>0</strong></li>
+<li><code>5m</code>：<strong>-0.0143</strong></li>
+<li><code>10m</code>：<strong>-0.0092</strong></li>
+<li><code>1h</code>：<strong>-0.0250</strong></li>
+</ul>
+<p>这正是 desk 最该偷的结构：</p>
+<ul>
+<li><strong>第一段</strong>：<code>1m</code> shock 先有 continuation</li>
+<li><strong>第二段</strong>：确认衰减后，<code>5m+</code> 更容易出现 inventory fade / contrarian 回吐</li>
+</ul>
+<p>也就是说，这篇 paper 给的不是单点信号，而是一个 <strong>path-dependent alpha</strong>。</p>
+<h3>2.4 order flow 本身也有持续性，但 crypto-crypto 和 USD 腿的“性格”不一样</h3>
+<p>Table 3 / Table 11 里，OF 的自相关也很关键。</p>
+<p>在 <code>5m</code> 上，<code>OF_{t-1}</code> 系数：</p>
+<ul>
+<li><code>BTC-USDT</code>：<strong>0.1959</strong></li>
+<li><code>ETH-USDT</code>：<strong>0.2111</strong></li>
+<li><code>ETH-BTC</code>：<strong>0.1289</strong></li>
+<li><code>BTC-USD</code>：<strong>0.1960</strong></li>
+<li><code>ETH-USD</code>：<strong>0.1907</strong></li>
+</ul>
+<p>但到 <strong>1 day</strong>，差异就拉开：</p>
+<ul>
+<li><code>BTC-USDT</code>：<strong>0.3312</strong></li>
+<li><code>ETH-USDT</code>：<strong>0.4416</strong></li>
+<li><code>ETH-BTC</code>：<strong>0.8615</strong></li>
+<li><code>BTC-USD</code>：<strong>0.0076</strong></li>
+<li><code>ETH-USD</code>：<strong>0.0751</strong></li>
+</ul>
+<p>作者把这读成：</p>
+<ul>
+<li>crypto-crypto 腿里有更像 <strong>inventory target / contrarian</strong> 的交易者</li>
+<li>USD 腿里更像 <strong>herding</strong>，但 OF 对价格本身不太“有信息”</li>
+</ul>
+<p>对我们来说，重点不是复述行为金融，而是策略含义：</p>
+<p>&gt; <strong>如果你要在短周期里跟踪“谁真在推动价格”，先看 stablecoin / crypto-crypto 的 signed flow，不要先看法币腿。</strong></p>
+<h3>2.5 visible arbitrage 很多，但 USDT 腿扣费后并不美</h3>
+<p>这篇 paper 还给了一个很好的“别想当然”提醒。</p>
+<p>单 pair 跨所 arbitrage（Table 6）：</p>
+<ul>
+<li><code>BTC-USDT</code>：</li>
+<li>arbitrage opportunity 秒占比 <strong>20.84%</strong></li>
+<li>平均 spread <strong>4.73 bps</strong></li>
+<li><strong>net profits = 0</strong></li>
+<li><code>ETH-USDT</code>：</li>
+<li>秒占比 <strong>13.14%</strong></li>
+<li>平均 spread <strong>4.64 bps</strong></li>
+<li><strong>net profits = 0</strong></li>
+<li><code>BTC-USD</code>：</li>
+<li>秒占比 <strong>2.04%</strong></li>
+<li>平均 spread <strong>26.05 bps</strong></li>
+<li><strong>net profits ≈ 665,464 USD</strong></li>
+<li><code>ETH-USD</code>：</li>
+<li>秒占比 <strong>0.47%</strong></li>
+<li>平均 spread <strong>41.75 bps</strong></li>
+<li><strong>net profits ≈ 293,534 USD</strong></li>
+</ul>
+<p>这对 desk 的提醒很直接：</p>
+<p>&gt; <strong>stablecoin 腿更适合拿来读“价格被谁推动、冲击怎么走”；但别把肉眼可见的小 spread 当送钱。alpha 应该做流向冲击路径，不是做纸面无摩擦跨所套利。</strong></p>
+<p>一句话核心结论：</p>
+<p>&gt; <strong>对短周期 crypto desk，更值得先测的不是 BTC-USD 的慢反应，而是 <code>BTC/ETH-USDT</code> 的 signed order-flow shock：先抓 1 bar follow-through，再测 5m 级别的 inventory fade。</strong></p>
+<p>一句话证明方式：</p>
+<p>&gt; <strong>作者用 2019–2020 年 Kaiko tick 数据，对 6 个 pair 做 OF→return、lagged OF→return、autocorrelation 和 arbitrage 回归/统计，明确展示了 stablecoin / crypto-crypto 腿才是价格形成主战场。</strong></p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮我认为它值得进 digest，不是因为“市场微结构很重要”这种空话，而是因为它正好补了当前素材池里一块还不够系统的东西：</p>
+<ul>
+<li>我们已经有不少 <strong>return shock / breakout / basket lead-lag / Hawkes imbalance</strong></li>
+<li>但还缺一条更朴素、公开数据也能先做的：</li>
+<li><strong>signed taker flow shock path alpha</strong></li>
+</ul>
+<p>它的好处是：</p>
+<ol>
+<li><strong>base alpha 很清楚</strong>：不是 filter，不是 overlay，就是 OF shock 路径</li>
+<li><strong>数据公开可拿</strong>：Binance / OKX / Bybit 的 taker buy/sell volume、agg trades 都能做 proxy</li>
+<li><strong>能拆成两段</strong>：</li>
+</ol>
+<ul>
+<li><code>1m/3m</code> 的 follow-through</li>
+<li><code>5m/15m</code> 的 delayed fade / veto</li>
+</ul>
+<ol>
+<li><strong>还能服务别的 alpha</strong>：以后即使单独策略不强，这套 OF state 也能反哺 breakout / continuation admission</li>
+</ol>
+<p>但这轮我不把它写成 gate，原因很简单：</p>
+<p>&gt; <strong>它首先就是一条 raw alpha path；只有做完 first verdict 之后，才考虑把它降级成 shared state。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：microstructure / event-driven / same-asset 短窗路径 alpha</li>
+<li>基础 alpha：<code>BTCUSDT</code> / <code>ETHUSDT</code> 的 standardized signed order-flow shock 先预测下一小段同向延续；若第二段 OF 不再确认，后续更容易出现回吐</li>
+<li>regime：只在 major coin 流动性够深、成交活跃、spread 正常时开启；优先 USDT perp / spot 主市场</li>
+<li>filter / veto：<code>|OF_z|</code> 过小不做；事件前后（如大宏观分钟）先 veto；若 funding 结算或异常跳价导致 bar 不可解释，先剔除</li>
+<li>risk / sizing / execution overlay：单次风险固定；先做 BTC/ETH 单资产；maker 优先、taker 兜底；默认先按 round-trip <code>4~6 bps</code> 压测</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 数据源与公开性</h3>
+<p><strong>最小可复现实验数据：公开可得。</strong></p>
+<ul>
+<li><strong>价格 / 成交</strong>：Binance USDⓈ-M Perpetual 或 Binance Spot 公开成交 / aggTrade / kline</li>
+<li><strong>可计算 proxy</strong>：</li>
+<li>taker buy quote volume</li>
+<li>total quote volume</li>
+<li><code>signed_volume = taker_buy_quote - (total_quote - taker_buy_quote)</code></li>
+<li><strong>更新频率</strong>：秒级 / 分钟级</li>
+<li><strong>映射周期</strong>：</li>
+<li>主实验：<code>1m / 3m</code></li>
+<li>transfer：<code>5m / 15m</code></li>
+</ul>
+<p>这条线天然更偏 <strong>更快高强度 alpha</strong>，所以先从 <code>1m/3m</code> 起步是合理的；若成立，再转成 <code>5m/15m</code> 的 trigger / fade 版本。</p>
+<h3>4.2 先测最朴素的两段策略</h3>
+<p>#### A. Follow-through leg（主实验）</p>
+<p><strong>信号定义</strong>：</p>
+<ul>
+<li><code>of_z_t = zscore(signed_volume_t / total_volume_t)</code>，滚动窗口先试 <code>240~480</code> 个 <code>1m</code> bar</li>
+<li>触发条件：</li>
+<li><code>|of_z_t| &gt;= 2.0</code></li>
+<li><code>sign(ret_1m_t) == sign(of_z_t)</code></li>
+<li>当前分钟成交额进入过去 <code>N</code> 分钟前 <code>60%~80%</code> 分位，避免假流量</li>
+</ul>
+<p><strong>交易规则</strong>：</p>
+<ul>
+<li>entry：当前 <code>1m</code> bar 结束，下一分钟开盘按 <code>sign(of_z_t)</code> 入场</li>
+<li>exit：持有 <code>1~3</code> 个 <code>1m</code> bar；或聚合成下一根 <code>3m</code> bar 收盘退出</li>
+<li>sizing：先固定 notional；第二版再做 inverse-vol</li>
+<li>risk：单次止损先试 <code>0.6~0.8 x</code> 近 20 bar <code>1m ATR</code></li>
+<li>cost：先扣 round-trip <code>4 bps</code>，再做 <code>6 bps</code> stress</li>
+</ul>
+<p>#### B. Inventory fade leg（transfer 实验）</p>
+<p><strong>信号定义</strong>：</p>
+<ul>
+<li>先发生 A 类大 OF shock</li>
+<li>但后续 <code>1~2</code> 个 <code>1m</code> bar 的 <code>of_z</code> 快速回落到 <code>|0.5|</code> 以下，或方向翻转</li>
+<li>同时首个 <code>5m</code> 聚合收益已进入过去 20 天同 slot 前 <code>90%</code> 分位</li>
+</ul>
+<p><strong>交易规则</strong>：</p>
+<ul>
+<li>entry：第一个 <code>5m</code> 冲击窗结束后，若 OF 不再确认，则反向入场</li>
+<li>exit：持有 <code>1</code> 个 <code>5m</code> bar，必要时延长到 <code>3</code> 个 <code>5m</code> bar（即 <code>15m</code>）</li>
+<li>sizing：fade leg 仓位 &lt;= continuation leg 的 <code>50%~70%</code></li>
+<li>veto：若 BTC 与 ETH 两个 major 同时继续同向大 OF，不做 fade</li>
+</ul>
+<h3>4.3 第一轮先看哪些指标</h3>
+<p>先别一上来卷 Sharpe，先看 5 个最诚实的数：</p>
+<ol>
+<li>成本后 average markout（<code>1m / 3m / 5m / 15m</code>）</li>
+<li>hit rate</li>
+<li>尾部损失（shock 反向继续扩散时的 worst decile）</li>
+<li><code>BTCUSDT</code> 与 <code>ETHUSDT</code> 的可迁移性</li>
+<li>follow-through leg 与 fade leg 是否互补，而不是互相打脸</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文样本是 <strong>2019–2020 现货 / stablecoin 市场</strong>，不是 2026 perp 主导结构；所以我们迁移的是 <strong>机制</strong>，不是直接照搬系数。</li>
+<li>论文的 OF 来自 <strong>tick-by-tick trade sign</strong>；如果只用 kline 自带 taker buy volume 做 proxy，信息会更粗。</li>
+<li>这条线很怕两种东西：</li>
+</ul>
+<ol>
+<li>大事件分钟把正常 OF-path 彻底盖掉；</li>
+<li>你以为在做 order-flow alpha，实际只是在追一根已走完的大 bar。</li>
+</ol>
+<ul>
+<li>arbitrage 部分也提醒了：<strong>看见 spread 不等于赚得到</strong>。这条策略更像在做“流向冲击路径”，不是做无摩擦套利。</li>
+</ul>
+<h2>6. 下一步怎么测</h2>
+<p>我建议直接按下面顺序，不要发散：</p>
+<ol>
+<li><strong>只做 <code>BTCUSDT</code> / <code>ETHUSDT</code> 两个品种</strong>；</li>
+<li><strong>先跑 follow-through leg</strong>，持有 <code>1m / 3m</code> 两版；</li>
+<li>再把同一批 shock 聚合到 <code>5m</code>，测试 <strong>OF 消失后的 fade leg</strong>；</li>
+<li>全程统一扣 <code>4 bps</code> 和 <code>6 bps</code> 两档成本；</li>
+<li>若 BTC、ETH 两条都成立，再测第三步：</li>
+</ol>
+<ul>
+<li><code>BTC/ETH OF shock</code> 能不能当 alt basket 的 leader trigger。</li>
+</ul>
+<p>如果第一轮结果是：</p>
+<ul>
+<li><code>1m/3m</code> continuation 成立；</li>
+<li><code>5m</code> fade 也有稳定 pocket；</li>
+</ul>
+<p>那它就值得进入正式素材池，名字甚至可以非常朴素：</p>
+<p>&gt; <strong>signed-flow-shock path alpha</strong></p>
+<h2>7. 来源</h2>
+<ul>
+<li><strong>Barucci, E., Giuffra Moncayo, G., &amp; Marazzina, D. (2023).</strong> *Market impact and efficiency in cryptoassets markets*. *Digital Finance*, 5, 519–562.</li>
+<li>DOI: <code><a href="https://doi.org/10.1007/s42521-023-00095-9">https://doi.org/10.1007/s42521-023-00095-9</a></code></li>
+<li>Readable URL: <code><a href="https://link.springer.com/article/10.1007/s42521-023-00095-9">https://link.springer.com/article/10.1007/s42521-023-00095-9</a></code></li>
+<li>Repo URL: 未找到官方公开 repo</li>
+</ul>
+<ul>
+<li><strong>Kaiko</strong>（论文数据提供方；本文实际研究数据来自其 tick-by-tick 交易记录）</li>
+<li>Readable URL: <code><a href="https://www.kaiko.com/">https://www.kaiko.com/</a></code></li>
+<li>备注：论文使用的是商业数据；但 desk 最小实验可先用公开交易所 taker volume / agg trade 近似复刻机制</li>
+</ul>
+</body>
+</html>

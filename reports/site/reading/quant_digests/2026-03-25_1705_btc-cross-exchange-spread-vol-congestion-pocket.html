@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把跨所价差只做常开扫描：这篇 FRL 2023 更该先测的是「高波动 × 链拥堵 pocket 下的 BTC 跨所 spread 收敛」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把跨所价差只做常开扫描：这篇 FRL 2023 更该先测的是「高波动 × 链拥堵 pocket 下的 BTC 跨所 spread 收敛」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 17:06 UTC</span>
+      <span class="pill">研究时间：2026-03-25 17:05 UTC</span>
+      <span class="pill">类型：2023 Finance Research Letters 论文 + 2025 GitHub 新仓库 + Binance / Coinbase 官方公开行情文档</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/cross-exchange/spread-reversion/maker-taker/volatility/network-congestion/coinbase/binance/bookticker/btc/1m/3m/5m/15m/repo/paper/execution</span>
+      <span class="pill">证据类型：FRL 论文摘要页 + 2025 开源执行仓库 README/参数 + 官方 websocket 行情文档</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_1705_btc-cross-exchange-spread-vol-congestion-pocket.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 17:05 UTC</li>
+<li>类型：2023 Finance Research Letters 论文 + 2025 GitHub 新仓库 + Binance / Coinbase 官方公开行情文档</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一资产在不同交易所的<strong>可执行</strong>买卖价差会向中枢收敛；高波动、低同步、链拥堵时更容易撑开到足够覆盖成本的 spread，可做成“maker 一腿 + taker 一腿”的跨所 relative-value 策略</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/cross-exchange/spread-reversion/maker-taker/volatility/network-congestion/coinbase/binance/bookticker/btc/1m/3m/5m/15m/repo/paper/execution</li>
+<li>证据类型：FRL 论文摘要页 + 2025 开源执行仓库 README/参数 + 官方 websocket 行情文档</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这篇东西的 base alpha 不是 filter，而是“同币种跨交易所可执行 spread 的短时收敛”这一条独立 raw alpha；高波动和链拥堵只是让它更容易出现、也更值得开机的 regime pocket。</strong></p>
+<p>这次主看 Ladislav Kristoufek、Elie Bouri 发表于 *Finance Research Letters* 的 2023 论文 *Exploring sources of statistical arbitrage opportunities among Bitcoin exchanges*，再配一个 2025 年的开源仓库 <code>your-quantguy/cross-exchange-arbitrage</code>。一句话 desk 化结论：<strong>别把 spatial arb 继续理解成“看见价差就无脑打”，真正值得先复现的是“只在高波动/低同步 pocket 做、并且用 maker-taker 结构把 fee 打薄”的 BTC 跨所 spread 收敛骨架。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>论文看的不是单一交易所，而是 5 个 BTC 交易所的相关性裂口。</strong> 样本覆盖 <code>2017-10-20 ~ 2022-01-07</code>，交易所包括 <code>Binance / Bitfinex / Bitstamp / Coinbase / Kraken</code>。</li>
+<li><strong>统计套利机会更容易出现在“高波动 + 网络拥堵”时段。</strong> 论文用 Grey correlation 度量 Binance 与另外四所的联动强度，核心发现是：<strong>当 BTC 价格更波动、链更拥堵时，跨所同步性下降，套利机会更容易冒出来。</strong></li>
+<li><strong>成交越活跃、链上活动越强，反而越会压平机会。</strong> 论文直接写到：<strong>更高的交易所成交量与更强的 on-chain activity 会提高交易所间相关性，从而减少套利机会。</strong></li>
+<li><strong>作者自己就强调：这是 statistical arbitrage，不等于自动可赚。</strong> 也就是说，真正能不能活下来，关键不只在 signal，而在费率、挂单成交率、库存预置、延迟预算。</li>
+<li><strong>2025 仓库把“怎么落地”讲得比论文更实。</strong> <code>your-quantguy/cross-exchange-arbitrage</code> 的执行骨架是：</li>
+<li>在 <code>edgeX</code> 挂 <code>post-only</code> 限价单；</li>
+<li>在 <code>Lighter</code> 打市价单对冲；</li>
+<li>默认 <code>fill-timeout=5s</code>；</li>
+<li>README 示例阈值给到 <code>long-threshold=10 / short-threshold=10</code>，以及更激进的 <code>1 / 20</code> BTC 配置示例；</li>
+<li>还有显式 <code>max-position</code> 风控。</li>
+<li><strong>所以这次最该偷的不是“有没有价差”，而是“什么时候价差值得打，以及怎么用 maker-taker 结构把它做成完整策略”。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和当前 desk 的关系很直接，因为它补的是 <strong>raw alpha 素材池里的 cross-exchange / relative-value / stat-arb</strong>，不是再写一个解释层：</p>
+<ul>
+<li>它不是又一条“盘口/资金费确认”，而是<strong>同一资产跨 venue 的独立价格收敛 alpha</strong>。</li>
+<li>它天然适合 <code>1m/3m/5m</code> 执行，<code>15m</code> 做 regime bucket：<strong>短周期 quote 驱动，慢一点的 bar 只负责决定要不要开机、阈值开多大。</strong></li>
+<li>它和已有的 <code>basis / perp premium / same-coin multiquote / pairs</code> 相关但不重合：这条线赌的是<strong>venue 间同步修复</strong>，不是期限结构、也不是跨币种协整。</li>
+<li>它还能自然引入“库存预置 + maker 一腿 + taker 一腿 + 超时撤单”这类实盘组件，适合往 execution-ready 素材池里放。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative-value / stat-arb / same-asset cross-venue mean reversion</li>
+<li>基础 alpha：同一资产在 venue A 与 venue B 的<strong>可执行</strong> spread（<code>bid_A - ask_B</code> 或 <code>bid_B - ask_A</code>）偏离会在短时间内回补</li>
+<li>regime：优先交易 <code>15m</code> 高 realized vol、跨所短窗联动下降的 pocket；若能拿到外部数据，再把 BTC 链拥堵当额外 size-up 条件</li>
+<li>filter / veto：</li>
+<li>只做 top liquidity 资产（先从 BTC 开始）</li>
+<li>只在 <code>net spread &gt; 双边手续费 + 预估滑点 + 安全 buffer</code> 时入场</li>
+<li>避开 funding 结算、系统维护、单所盘口明显失真、深度不足、quote 冻结</li>
+<li>若没有预置库存，不做需要链上转币才能闭环的版本</li>
+<li>risk / sizing / execution overlay：</li>
+<li>maker 在更便宜的一侧挂单，taker 在更贵的一侧立刻对冲</li>
+<li>单腿 notional、净敞口、单所库存各自设上限</li>
+<li>未成交 <code>x</code> 秒强撤（repo 示例是 <code>5s</code>）</li>
+<li>价差压回阈值内、或达到超时、或净仓偏离过大则平仓/反向对冲</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 最小研究假设</h3>
+<p>在 BTC 这种高流动性资产上，<strong>跨所 top-of-book 可执行 spread 在高波动 pocket 更容易超过成本阈值，且在未来 <code>1m~15m</code> 内回补。</strong></p>
+<h3>4.2 公共可得数据</h3>
+<ul>
+<li><strong>Binance USDⓈ-M Futures <code>bookTicker</code></strong>：实时推送 best bid/ask 与数量。</li>
+<li><strong>Coinbase Exchange websocket <code>ticker</code></strong>：提供 <code>best_bid / best_ask / size / time</code>。</li>
+<li>这两类数据都是<strong>公开可拿</strong>，无需私有交易权限即可先做 signal 研究。</li>
+</ul>
+<h3>4.3 一个最小、诚实的实验口径</h3>
+<ol>
+<li>选 <code>BTCUSDT perp (Binance)</code> 对 <code>BTC-USD spot (Coinbase)</code>，或直接改成两家 perp / 两家现货的更可比组合。</li>
+<li>每 <code>1s~5s</code> 采样一次两边 best bid/ask，构造：</li>
+</ol>
+<ul>
+<li><code>spread_longA = bid_B - ask_A - fees - slip_buffer</code></li>
+<li><code>spread_longB = bid_A - ask_B - fees - slip_buffer</code></li>
+</ul>
+<ol>
+<li>把事件流聚合到 <code>1m/3m/5m/15m</code>：每个 bucket 记录最大可执行净 spread、触发次数、触发后 <code>1/3/5/15</code> 分钟的回补幅度。</li>
+<li><code>entry</code>：净 spread 超过阈值（先用固定 bps，再做 vol-scaled 阈值）。</li>
+<li><code>exit</code>：</li>
+</ol>
+<ul>
+<li>spread 回补到 entry 的 <code>25%~50%</code> 以内；或</li>
+<li>超过 <code>1m/3m/5m</code> 的 holding timeout；或</li>
+<li>maker 腿迟迟不成交、taker 腿库存约束触发。</li>
+</ul>
+<ol>
+<li><code>sizing</code>：先等额 notional；第二轮再改成按盘口深度、近 15m 波动、库存占用做 size throttle。</li>
+</ol>
+<h3>4.4 最该先看什么</h3>
+<ul>
+<li><code>post-cost hit rate</code></li>
+<li><code>mean reversion half-life</code></li>
+<li><code>maker fill ratio</code></li>
+<li><code>timeout cancel ratio</code></li>
+<li><code>inventory drift</code></li>
+<li>高/低 <code>15m</code> realized vol 分层后的净收益差</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li><strong>论文讲的是“机会何时出现”，不是直接给出可交易 PnL。</strong> 所以从统计裂口到真钱 alpha，中间最大的坑还是 execution。</li>
+<li><strong>现货-现货、现货-perp、perp-perp 的可转移性不同。</strong> 若标的、报价币、资金费和交易时段不一致，表面 spread 可能只是结构性基差，不会快速回补。</li>
+<li><strong>链拥堵是双刃剑。</strong> 它能制造价差，但如果你的闭环依赖转币/充提，它也会直接把真实可赚性打掉；所以 desk 版默认应先做<strong>库存预置</strong>版本。</li>
+<li><strong>maker-taker 架构会暴露在单腿成交与 adverse selection 风险下。</strong> 如果 maker 只在你“最不想成交”时成交，这条线会从 arb 变成裸方向。</li>
+<li><strong>这类 edge 很容易被 fee、rebate、VIP 等级改写。</strong> 没有真实费率表和排队位置假设时，回测很容易过度乐观。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Kristoufek, L., &amp; Bouri, E. (2023). _Exploring sources of statistical arbitrage opportunities among Bitcoin exchanges_. Finance Research Letters, 51, 103332.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code><a href="https://doi.org/10.1016/j.frl.2022.103332">https://doi.org/10.1016/j.frl.2022.103332</a></code></li>
+<li>Readable URL: <code><a href="https://www.sciencedirect.com/science/article/pii/S1544612322005116">https://www.sciencedirect.com/science/article/pii/S1544612322005116</a></code></li>
+</ul>
+<ol>
+<li><strong>your-quantguy (2025). _cross-exchange-arbitrage_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/your-quantguy/cross-exchange-arbitrage">https://github.com/your-quantguy/cross-exchange-arbitrage</a></code></li>
+<li>Readable README: <code><a href="https://raw.githubusercontent.com/your-quantguy/cross-exchange-arbitrage/main/README.md">https://raw.githubusercontent.com/your-quantguy/cross-exchange-arbitrage/main/README.md</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Developers. _Individual Symbol Book Ticker Streams_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Individual-Symbol-Book-Ticker-Streams">https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Individual-Symbol-Book-Ticker-Streams</a></code></li>
+</ul>
+<ol>
+<li><strong>Coinbase Exchange Docs. _WebSocket Channels_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://docs.cdp.coinbase.com/exchange/websocket-feed/channels">https://docs.cdp.coinbase.com/exchange/websocket-feed/channels</a></code></li>
+</ul>
+<h2>7. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>先做“纯公共 quote 版”回补统计</strong>：别急着碰私有撮合，先验证 BTC 跨所净 spread 在 <code>1m/3m/5m/15m</code> 上到底有没有稳定的 post-cost 回补。</li>
+<li><strong>做 <code>spread × 15m realized vol</code> 双分层</strong>：验证这条线是不是只在高波动 pocket 才值得开机，而不是全天候常开。</li>
+<li><strong>再加“短窗联动下降” gate</strong>：用 rolling correlation / Grey-correlation proxy 看，只有当 venue 同步性暂时掉下去时，净边是否才明显抬升。</li>
+<li><strong>最后才接 maker fill 模型</strong>：把 <code>fill-timeout</code>、maker 成交概率、撤单率、单所库存上限加进去，确认它是可执行 alpha，而不是纯看板价差。</li>
+<li><strong>若前四步成立，再补链拥堵数据</strong>：把 mempool congestion 作为可选 size-up gate，验证它是增益项还是只是解释项。</li>
+</ol>
+</body>
+</html>

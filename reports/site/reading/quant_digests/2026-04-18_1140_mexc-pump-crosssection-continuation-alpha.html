@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 MEXC pump bot 只读成“追涨提醒器”：对 short-cycle crypto desk，更该先测的是「短窗 price burst × volume burst」这条 cross-sectional raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 MEXC pump bot 只读成“追涨提醒器”：对 short-cycle crypto desk，更该先测的是「短窗 price burst × volume burst」这条 cross-sectional raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-18 11:40 UTC</span>
+      <span class="pill">类型：GitHub repo source audit + Binance Spot `1m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha / cross-sectional / event-driven / momentum / pump / attention / volume-burst / Binance / MEXC / 1m / 3m / 5m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：repo audit + public-data probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-18_1140_mexc-pump-crosssection-continuation-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-18 11:40 UTC</li>
+<li>类型：GitHub repo source audit + Binance Spot <code>1m</code> public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>短窗价格急拉且成交量同步放大的币，在接下来几个 1m bar 里更容易继续漂移</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha / cross-sectional / event-driven / momentum / pump / attention / volume-burst / Binance / MEXC / 1m / 3m / 5m / repo / public-data / cost / risk</li>
+<li>证据类型：repo audit + public-data probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是 GitHub 仓 <code>bpawnzZ/MEXC-Pump-Bot</code>（2025）。源码几乎都在 <code>pumpBot.py</code>：它每 <code>10s</code> 拉一次 MEXC swap ticker，盯的是三个很朴素的东西——<strong>相对价格变化、总价格变化、成交量变化</strong>，然后把当前最像“正在被点火”的币打出来。</p>
+<p>它没有回测器，也没有完整下单壳，但 base alpha 很清楚：<strong>短窗 attention burst 会不会带来后续几根 bar 的 continuation</strong>。这不是 filter，也不是 overlay，而是一条能单独成立的 raw alpha 假设。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：repo 值钱的不是“抓 pump”这层话术，而是它给了一个很容易映射到 <code>1m/3m/5m</code> 的 raw alpha 骨架：<code>price burst + volume burst -&gt; next few bars drift?</code></li>
+<li><strong>一句话证明方式</strong>：我直接审了 <code>pumpBot.py</code> 的事件筛选逻辑，再把它移植成 Binance Spot <code>1m</code> 的 cross-sectional top-burst 实验，检查 next <code>1/3/5/10m</code> 的 forward return。</li>
+<li>repo 里的事件定义很粗，但很诚实：上一拍到这一拍，若价格变化和成交量变化都明显抬升，就把这枚币记成“异动”。</li>
+<li>我用 Binance Spot <code>BTC/ETH/SOL/BNB/XRP/DOGE/ADA/LINK</code> 近 <code>14d</code> 的 <code>1m</code> 公共数据做 portability probe，映射规则为：<code>ret1&gt;0</code>、<code>ret1_z&gt;1</code>、<code>quote_volume_z&gt;1</code>、<code>vol_ratio&gt;1.2</code>，然后每分钟只选 score=<code>ret1_z+quote_volume_z</code> 最高的那一枚。</li>
+<li>结果并不支持“看到短窗拉升就追”的裸 continuation：全样本 <code>2231</code> 笔，next <code>1/3/5m</code> gross 约 <strong><code>-0.16 / -0.58 / -0.65 bps</code></strong>；即便拉到最强 <code>q75</code> 子样本（<code>558</code> 笔），next <code>1/3/5m</code> 也只有 <strong><code>-0.09 / -1.68 / -0.64 bps</code></strong>。</li>
+<li>更细看会发现：它也不是纯粹瞬时反转。两档样本到 next <code>10m</code> 才略转正，gross 约 <strong><code>+0.36 bps</code></strong>（全样本）和 <strong><code>+0.94 bps</code></strong>（<code>q75</code>），但离可交易还差得远；若粗扣 <code>8bps</code>，仍明显为负。</li>
+<li>所以这轮 first verdict 很直接：<strong>“分钟级异动榜首继续冲” 这条裸 raw alpha 在当前主流现货大币上不厚</strong>；比直接追涨更有价值的，反而是把它改写成 <strong>router / veto / delayed-follow-through filter</strong>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>它和 <code>momentum</code> 的关系不在于“又多了一个涨幅榜工具”，而在于它补了一块我们研究池还不算多的方向：<strong>极短 attention / flow shock 的横截面事件信号</strong>。这类线索天然适合 <code>1m/3m/5m</code>，而且未来可继续接到：</p>
+<ul>
+<li>新币/小币的异常成交量监控</li>
+<li>上所、公告、社媒热度后的 cross-sectional router</li>
+<li>breakout / news / liquidation 之后的“要不要追第二脚” veto</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / 事件驱动 / 顺势候选</li>
+<li>基础 alpha：<code>短窗 price burst × volume burst 会带来 follow-through</code></li>
+<li>regime：小币、低流动性币、外部催化更明确的时段可能更强；大币常更快被均值回复和做市吸收</li>
+<li>filter / veto：只保留高分位 burst、只做公告/上所/链上催化后的事件、避开 funding/盘口明显反向挤压的时刻</li>
+<li>risk / sizing / execution overlay：固定 time stop、只做 top1/topN、按 burst score 或成交额容量分级、对过宽点差和过低深度直接 veto</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：若某币在本分钟同时出现显著价格抬升和成交量抬升，则 next <code>1/3/5/10m</code> 存在 continuation pocket。</li>
+<li>可计算定义：</li>
+<li><code>ret1 = close/close[-1]-1</code></li>
+<li><code>ret1_z</code>：<code>60m</code> 滚动 z-score</li>
+<li><code>quote_volume_z</code>：<code>60m</code> 滚动 z-score</li>
+<li><code>vol_ratio = quote_volume / quote_volume[-1]</code></li>
+<li>事件：<code>ret1&gt;0 &amp; ret1_z&gt;1 &amp; quote_volume_z&gt;1 &amp; vol_ratio&gt;1.2</code></li>
+<li>每分钟只取 score=<code>ret1_z+quote_volume_z</code> 最高的那一枚</li>
+<li>最小回测切口：Binance Spot <code>BTC/ETH/SOL/BNB/XRP/DOGE/ADA/LINK</code>，<code>1m</code>，近 <code>14d</code>。</li>
+<li>最该先看：<code>next 1/3/5m gross bps</code> 和 <code>win rate</code>；第二步再看事件分层后的 <code>next 10m</code>。</li>
+<li><strong>下一步怎么测</strong>：不要继续在大币上裸追榜首。先把样本切成两层：<code>(a) 事件后 1m 不追、改在第 2 根 pullback/hold above VWAP 再进</code>，<code>(b) 只保留 burst 后 order-book / trade-count 继续扩张的样本</code>，再比较 next <code>3/5/10m</code> 是否从当前负值翻正。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这份 repo 没有真正的回测层，更多是实时扫描器；因此它给的是信号胚子，不是完整策略。</li>
+<li>我这轮 probe 用的是 Binance 大币现货代理，不是 MEXC swap 原场景；这有助于做 portability 判断，但不代表小币 pump 生态下结果相同。</li>
+<li>attention burst 很容易和做市回补、价差扩张、假突破混在一起，所以“看到异动就追”通常会先死在 execution 与 slippage。</li>
+<li>因而这轮我仍把它记为 <strong>raw alpha 候选</strong>，但更像<strong>事件路由层 / 二次确认层的母板</strong>，不是现成 production shell。</li>
+</ul>
+<h2>6. 数据源与公开性</h2>
+<ul>
+<li>repo：GitHub 公开仓，源码主要在 <code>pumpBot.py</code>。</li>
+<li>价格数据：Binance <code>data.binance.vision</code> Spot <code>1m</code> daily klines，公开可得。</li>
+<li>更新频率：repo 原始场景约 <code>10s</code> ticker；本轮 portability probe 用 <code>1m</code> bar。</li>
+<li>最小可复现实验口径：按分钟生成 cross-sectional burst score，取 top1，统计 next <code>1/3/5/10m</code> 收益。</li>
+</ul>
+<h2>7. 来源</h2>
+<ul>
+<li>bpawnzZ. (2025). *MEXC-Pump-Bot*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/bpawnzZ/MEXC-Pump-Bot">https://github.com/bpawnzZ/MEXC-Pump-Bot</a></code></li>
+<li>Readable files: <code>README.md</code>, <code>pumpBot.py</code></li>
+<li>Public market data: <code><a href="https://data.binance.vision/data/spot/daily/klines/">https://data.binance.vision/data/spot/daily/klines/</a></code></li>
+<li>Local artifacts:</li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_mexc_pump_crosssection_events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_mexc_pump_crosssection_events_q75.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_mexc_pump_crosssection_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_mexc_pump_crosssection_summary.json</code></li>
+</ul>
+</body>
+</html>

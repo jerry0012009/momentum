@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 funding spread 只当“看起来很肥的 carry”：这篇 2026 开放获取论文更值得先测的是「CEX lead × duration gate × cross-venue funding arbitrage」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 funding spread 只当“看起来很肥的 carry”：这篇 2026 开放获取论文更值得先测的是「CEX lead × duration gate × cross-venue funding arbitrage」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-05 16:00 UTC</span>
+      <span class="pill">研究时间：2026-04-05 16:06 UTC</span>
+      <span class="pill">类型：funding rate、funding interval、Open Interest rank、timestamp</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/basis/relative-value/stat-arb/cross-venue/perp/perpetuals/cex-dex/1m/5m/15m/public-api/open-data/cost/reversal-risk/portfolio-construction</span>
+      <span class="pill">证据类型：开放获取全文里给出数据来源、归一化方法、阈值、portfolio simulation、forced-exit 规则、成本假设与 1m/5m/15m 鲁棒性检验；足够做最小复现</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-05_1606_twotier-funding-rate-crossvenue-arb-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-05 16:06 UTC</li>
+<li>类型：2026 *Mathematics* 开放获取全文（MDPI PDF）+ Crossref 元数据</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一标的在不同永续合约交易所之间会出现可持续数分钟到数天的 funding rate 错位；做法是 long 低 funding venue、short 高 funding venue，赚 funding spread，本质上是 cross-venue / relative-value / carry arbitrage。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/carry/funding/basis/relative-value/stat-arb/cross-venue/perp/perpetuals/cex-dex/1m/5m/15m/public-api/open-data/cost/reversal-risk/portfolio-construction</li>
+<li>证据类型：开放获取全文里给出数据来源、归一化方法、阈值、portfolio simulation、forced-exit 规则、成本假设与 1m/5m/15m 鲁棒性检验；足够做最小复现</li>
+</ul>
+<h2>1. 先回答一句：base alpha 是什么？</h2>
+<p><strong>base alpha = cross-venue funding carry。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>同一个币，在 A 交易所做多永续可能收钱，在 B 交易所做空永续可能付得更少，甚至反过来；</li>
+<li>如果两边 funding rate 差得够大，理论上可以两边对冲价格风险，只赚 funding 差；</li>
+<li>真正的挑战不是“有没有 spread”，而是：</li>
+<li>这个 spread 能不能撑得够久；</li>
+<li>进出场成本能不能覆盖；</li>
+<li>funding 顺序会不会突然反过来，把 carry 变成反向亏损。</li>
+</ul>
+<p>所以这不是一篇“市场结构综述”。它讨论的是一条能直接落地的 <strong>carry / relative-value raw alpha</strong>。</p>
+<h2>2. 为什么这轮值得写它？</h2>
+<p>如果先问一句：<strong>它为什么比继续补 generic filter 更值得？</strong></p>
+<p>答案很直接：</p>
+<ol>
+<li><strong>它本身就是完整策略，不是附属 gate。</strong></li>
+<p>论文里有明确的：</p>
+</ol>
+<ul>
+<li>entry threshold</li>
+<li>exchange pairing</li>
+<li>持仓逻辑</li>
+<li>forced exit</li>
+<li>transaction cost</li>
+<li>风险调整后结果</li>
+</ul>
+<ol>
+<li><strong>它天然适配我们的时间尺度。</strong></li>
+<p>论文主数据就是 <strong>1 分钟 funding observations</strong>，而且专门做了 <strong>5m / 15m</strong> 鲁棒性检验；这比那种只能硬从日频往下压的材料更像 short-cycle 研发素材。</p>
+<li><strong>它补的是 raw alpha 素材池，不是解释性枝叶。</strong></li>
+<p>方向属于当前优先级较高的 <code>carry / funding / basis / relative value / stat-arb</code>。</p>
+<li><strong>它把“看上去很大的 spread”为何赚不到，讲得很具体。</strong></li>
+<p>这对 desk 很重要，因为很多 funding 套利材料只会告诉你“有 200%+ APY”，却不告诉你： <strong>round-trip 成本 + reversal risk 很可能把这条纸面 edge 吃光。</strong></p>
+</ol>
+<h2>3. 来源与论文信息</h2>
+<ul>
+<li><strong>Author</strong>：Petar Zhivkov</li>
+<li><strong>Year</strong>：2026</li>
+<li><strong>Title</strong>：*The Two-Tiered Structure of Cryptocurrency Funding Rate Markets*</li>
+<li><strong>Venue</strong>：*Mathematics*</li>
+<li><strong>DOI</strong>：<code>10.3390/math14020346</code></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://www.mdpi.com/2227-7390/14/2/346&gt;">https://www.mdpi.com/2227-7390/14/2/346&gt;</a></li>
+<li><strong>PDF URL</strong>：&lt;<a href="https://www.mdpi.com/2227-7390/14/2/346/pdf?download=1&gt;">https://www.mdpi.com/2227-7390/14/2/346/pdf?download=1&gt;</a></li>
+<li><strong>DOI URL</strong>：&lt;<a href="https://doi.org/10.3390/math14020346&gt;">https://doi.org/10.3390/math14020346&gt;</a></li>
+<li><strong>Repo URL</strong>：未见官方仓库</li>
+</ul>
+<h2>4. 这篇 paper 到底做了什么？</h2>
+<h2>4.1 数据不是拍脑袋：26 家交易所、1 分钟频率、749 个 symbol</h2>
+<p>论文构建的数据集非常 desk-friendly：</p>
+<ul>
+<li><strong>26 家交易所</strong></li>
+<li>11 家 CEX</li>
+<li>15 家 DEX</li>
+<li><strong>749 个 symbol</strong></li>
+<li><strong>35.7 million 条 1 分钟 observations</strong></li>
+<li>时间区间：<strong>2025-11-08 ~ 2025-11-15</strong>（连续 8 天）</li>
+<li>只保留 <strong>至少在 2 家交易所同时可交易</strong> 的 symbol</li>
+</ul>
+<p>这意味着所需数据并不神秘：</p>
+<ul>
+<li>数据源：交易所 API</li>
+<li>更新频率：分钟级</li>
+<li>类型：funding rate、funding interval、Open Interest rank、timestamp</li>
+<li>公开性：公开可抓</li>
+</ul>
+<p>对我们来说，这比“需要买昂贵数据库”的主题更容易进最小实验。</p>
+<h2>4.2 论文先做了一件很重要的小事：把不同交易所 funding 周期统一到 8h 口径</h2>
+<p>因为不同交易所 funding 结算周期不同：</p>
+<ul>
+<li>1h</li>
+<li>4h</li>
+<li>8h</li>
+</ul>
+<p>如果直接拿原始 funding 数字横比，会出错。</p>
+<p>论文先把所有 funding rate <strong>线性归一化到 8 小时等价口径</strong>：</p>
+<ul>
+<li>1h funding × 8</li>
+<li>4h funding × 2</li>
+<li>8h funding × 1</li>
+</ul>
+<p>然后才比较 venue 之间的 funding spread。</p>
+<p>这个细节很关键，因为 desk 真要做这条策略，<strong>第一步就不能把不同周期 funding 混着比</strong>。</p>
+<h2>4.3 他们定义的 raw alpha 很直白：赚 funding spread，不赌方向</h2>
+<p>论文定义的 spread：</p>
+<p>``<code>text Spread(s,t) = 同一 symbol 在所有 venue 中的最高 funding - 最低 funding </code>``</p>
+<p>然后做 <strong>delta-neutral</strong>：</p>
+<ul>
+<li>在 <strong>最低 funding</strong> 的 venue 做多</li>
+<li>在 <strong>最高 funding</strong> 的 venue 做空</li>
+<li>两边名义仓位相同</li>
+</ul>
+<p>也就是：</p>
+<p>&gt; 不赌币价方向，赌的是 funding 错位会在一段时间内持续存在。</p>
+<p>这就是一条很标准的 <strong>cross-venue carry / funding arb raw alpha</strong>。</p>
+<h2>5. 论文里最值得记住的结果</h2>
+<h2>5.1 spread 确实很多，但并不等于都能赚</h2>
+<p>先看纸面机会：</p>
+<ul>
+<li>论文把 <strong><code>Spread &gt;= 20 bps (8h equivalent)</code></strong> 定义为 economically significant opportunity</li>
+<li>这个阈值大约对应 <strong>219% annualized APY</strong></li>
+<li>样本里有 <strong>665,251 条</strong> observation 达到这个门槛，占 <strong>17.1%</strong></li>
+<li>这些机会里：</li>
+<li><strong>84% 是 CEX-DEX 配对</strong></li>
+<li><strong>16% 是 CEX-CEX</strong></li>
+<li>几乎没有 DEX-DEX</li>
+</ul>
+<p>这已经告诉我们两件事：</p>
+<ol>
+<li>真正的大错位主要出现在 <strong>中心化 vs 去中心化</strong> 之间；</li>
+<li>funding spread 大量存在，不代表能直接印钱。</li>
+</ol>
+<h2>5.2 市场是“两层结构”：CEX 领涨领跌，DEX 跟着调</h2>
+<p>论文最核心的市场结构结论是：</p>
+<ul>
+<li><strong>CEX-CEX funding correlation 平均 0.246</strong></li>
+<li><strong>DEX-DEX 平均 0.153</strong></li>
+<li>CEX 的 integration 约比 DEX <strong>高 61%</strong></li>
+<li>Granger causality 上，<strong>所有显著信息流都是 CEX → DEX，反向 0 次</strong></li>
+<li>这个方向性在 <strong>1m / 5m / 15m</strong> 下都还成立</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; funding 这件事不是各 venue 平等定价；多数时候是 <strong>CEX 先动、DEX 后跟</strong>。</p>
+<p>这对实盘很重要，因为它直接给了我们一个不只是“看到 spread 就上”的改进方向：</p>
+<ul>
+<li><strong>优先做 CEX-DEX spread</strong></li>
+<li>并把 <strong>CEX 端 funding / 价差信号</strong> 当成 leader</li>
+<li>DEX 端更多当 lagging leg / execution leg</li>
+</ul>
+<h2>5.3 不是所有超大 spread 都值钱；duration 比 headline APY 更重要</h2>
+<p>论文最实用的一句其实不是“最大 spread 2401 bps”，而是这句：</p>
+<p>&gt; 对 $10,000 每边的头寸，若 spread 只有 <strong>20 bps</strong>，那每分钟只赚大约 <strong>$0.042</strong>，要撑 <strong>5263 分钟（约 3.7 天）</strong> 才只够覆盖一轮约 <strong>$220</strong> 的 round-trip 成本。</p>
+<p>这句话直接把很多 funding 套利幻觉打碎了。</p>
+<p>也就是说：</p>
+<ul>
+<li>20 bps 看起来很夸张；</li>
+<li>但如果持续时间不够长，仍然不够吃掉手续费和滑点；</li>
+<li>因此这条 alpha 的关键不是“只看 spread 大”，而是：</li>
+<p><strong>spread 大 × 维持够久 × 不要太快反转。</strong></p>
+</ul>
+<h2>5.4 论文 portfolio simulation 的结论很诚实：能赚，但没你想得那么稳</h2>
+<p>论文对 top 20 opportunities 做了 delta-neutral portfolio simulation：</p>
+<ul>
+<li>每边头寸：<strong>$10,000</strong></li>
+<li>强制平仓：<strong>spread &lt; 0 bps</strong> 就退出</li>
+<li>round-trip 成本：</li>
+<li>流动性好：约 <strong>$60</strong></li>
+<li>多数 illiquid 机会：约 <strong>$220</strong>`</li>
+</ul>
+<p>结果：</p>
+<ul>
+<li><strong>只有 8/20（40%）</strong> 在扣掉成本后仍为正收益</li>
+<li><strong>19/20（95%）</strong> 最终出现 funding spread reversal pattern</li>
+<li><strong>12/20</strong> 真正触发了 <code>spread &lt; 0</code> 的 forced exit</li>
+<li>最佳个例 <strong>AIA</strong>：约 <strong>2 天净赚 $1,432.78</strong></li>
+<li>全部 20 个组合的 <strong>平均净 P&amp;L 只有 $22</strong></li>
+<li>平均 <strong>Sharpe = -7.40</strong></li>
+<li>最好的 AIA，<strong>Sharpe 也只有 -2.73</strong></li>
+</ul>
+<p>这说明什么？</p>
+<p>&gt; funding cross-venue alpha 不是“看见 spread 就开”的送钱机； &gt; 它更像一条 <strong>筛选条件极其重要</strong> 的 relative-value strategy。</p>
+<h2>5.5 机会主要集中在 CEX-DEX，不代表 DEX 一定更好做</h2>
+<p>论文里最常见的显著机会来自 <strong>CEX-DEX</strong>，但不要误读成“只要去 DEX 就有钱捡”。</p>
+<p>因为 CEX-DEX 的另一个含义是：</p>
+<ul>
+<li>结算机制不同</li>
+<li>流动性深度不同</li>
+<li>费用结构不同</li>
+<li>执行与撤退的 friction 不同</li>
+<li>spread reversal 也更常见</li>
+</ul>
+<p>论文实际上在提醒：</p>
+<p>&gt; <strong>跨 venue carry 的上限来自结构分层，下限来自执行摩擦。</strong></p>
+<h2>6. 对我们的 short-cycle desk，正确读法是什么？</h2>
+<h2>6.1 这是一条合格的 raw alpha，但不能只拿“高 APY”做选题理由</h2>
+<p>它能进入素材池，不是因为论文报了夸张 APY， 而是因为它给出了一条 <strong>可测试、可执行、可失败</strong> 的完整策略壳：</p>
+<ul>
+<li>数据公开</li>
+<li>时间粒度够细</li>
+<li>raw alpha 明确</li>
+<li>entry / exit / cost / risk 明确</li>
+<li>还能自然映射到 <code>1m / 5m / 15m</code></li>
+</ul>
+<h2>6.2 这条 alpha 更适合做成“spread × duration × venue-type gate”</h2>
+<p>如果只抄论文 headline，很容易变成：</p>
+<ul>
+<li><code>Spread &gt;= 20bps</code> 就上</li>
+<li><code>spread &lt; 0</code> 才走</li>
+</ul>
+<p>这太粗。</p>
+<p>更适合我们 desk 的读法是：</p>
+<h3>Raw alpha 本体</h3>
+<ul>
+<li>做 <strong>同标的跨 venue funding differential</strong></li>
+<li>long 最低 funding venue</li>
+<li>short 最高 funding venue</li>
+</ul>
+<h3>三个核心 gate</h3>
+<ol>
+<li><strong>Venue-type gate</strong></li>
+</ol>
+<ul>
+<li>优先 <code>CEX-DEX</code></li>
+<li>次选 <code>CEX-CEX</code></li>
+<li>暂不碰 <code>DEX-DEX</code></li>
+</ul>
+<ol>
+<li><strong>Duration / persistence gate</strong></li>
+</ol>
+<ul>
+<li>不只看瞬时 spread</li>
+<li>要看最近 <code>30m / 60m / 120m</code> 持续性</li>
+<li>也要看最近的 sign flip 次数</li>
+</ul>
+<ol>
+<li><strong>Leader-lagger gate</strong></li>
+</ol>
+<ul>
+<li>若 CEX funding 先动、DEX 还没跟，才更像可做错位</li>
+<li>若已经同步收敛，别被高 headline APY 诱惑</li>
+</ul>
+<p>换句话说：</p>
+<p>&gt; 这篇最该学的，不是“spread 大就能赚”，而是 <strong>把 funding arb 做成一个需要 regime / duration / venue hierarchy 共同确认的 raw alpha 壳。</strong></p>
+<h2>7. desk 版最小可复现实验</h2>
+<h2>数据源、公开性、更新频率、口径</h2>
+<ul>
+<li><strong>数据源</strong>：Binance / Bybit / OKX / Hyperliquid / Drift 等公开 API</li>
+<li><strong>公开性</strong>：公开可得</li>
+<li><strong>更新频率</strong>：1m 抓取 funding snapshot；按 venue 原始 funding interval（1h/4h/8h）记录</li>
+<li><strong>最小可复现实验口径</strong>：全部换算成 <strong>8h equivalent bps</strong>，并保留每分钟横截面的 max/min venue</li>
+</ul>
+<h2>实验 1：只验证 spread persistence，不先看 PnL</h2>
+<p><strong>目标：</strong> 先看 funding spread 是不是确实能在 <code>1m / 5m / 15m</code> 上维持到足以 cover 成本。</p>
+<ul>
+<li>universe：BTC / ETH / SOL / BNB / XRP + 5 个 mid-cap perp</li>
+<li>venues：2~4 家 CEX + 2 家 DEX</li>
+<li>采样：1m 原始、5m/15m 聚合</li>
+<li>指标：</li>
+<li><code>spread_8h_bps</code></li>
+<li>持续高于阈值的连续分钟数</li>
+<li>sign flip 次数</li>
+<li>由正转负的 reversal rate</li>
+</ul>
+<p><strong>验收标准：</strong></p>
+<ul>
+<li>若 <code>spread &gt;= 20bps</code> 的大多数事件在扣掉 realistic fee 前就撑不过预估 break-even duration，这条线要么降优先级，要么必须抬 entry threshold。</li>
+</ul>
+<h2>实验 2：做最简单的完整策略，对比不同 entry threshold</h2>
+<p>对比三组：</p>
+<ol>
+<li><code>spread &gt;= 20bps</code></li>
+<li><code>spread &gt;= 40bps</code></li>
+<li><code>spread &gt;= 20bps 且 最近60m内无 sign flip</code></li>
+</ol>
+<p>统一规则：</p>
+<ul>
+<li>long 最低 funding venue</li>
+<li>short 最高 funding venue</li>
+<li>名义对冲</li>
+<li>exit：</li>
+<li><code>spread &lt;= 5bps</code></li>
+<li>或 <code>spread &lt; 0</code></li>
+<li>或 max holding <code>24h</code></li>
+</ul>
+<p>看：</p>
+<ul>
+<li>net PnL / trade</li>
+<li>holding time</li>
+<li>win rate</li>
+<li>reversal before breakeven 比例</li>
+<li>max concurrent positions</li>
+</ul>
+<h2>实验 3：加入论文最有价值的 desk 改写 —— <code>CEX lead × DEX lag</code></h2>
+<p>这一步才是我认为最值得测的“旁支想法”。</p>
+<p><strong>目的：</strong> 不只赚 spread，而是只做更像“DEX 还没来得及跟”的那批错位。</p>
+<p>做法：</p>
+<ul>
+<li>只保留 <code>CEX-DEX</code> pair</li>
+<li>如果最近 <code>5m / 15m</code> 内 CEX funding / 相关价格代理先动，DEX funding 仍滞后，则入场</li>
+<li>若 DEX 已同步，放弃</li>
+</ul>
+<p>可直接比较：</p>
+<ul>
+<li>plain spread arb</li>
+<li>spread + persistence gate</li>
+<li>spread + persistence + CEX-lead gate</li>
+</ul>
+<p>如果第三组能明显提升：</p>
+<ul>
+<li><code>PnL/trade</code></li>
+<li>breakeven hit rate</li>
+<li>reversal 前平掉的概率</li>
+</ul>
+<p>那这篇就不只是“又一篇 funding 套利”，而是真的给 desk 补进了一个 <strong>可复用的 entry redesign</strong>。</p>
+<h2>8. 我对它的判断</h2>
+<p>我的判断是：<strong>值得进 raw alpha 池，但优先做“小范围、重成本、重持续时间”的验证版，而不是一上来铺很多 venue。</strong></p>
+<p>原因：</p>
+<ol>
+<li><strong>alpha 本体清楚</strong>：cross-venue funding carry</li>
+<li><strong>执行壳清楚</strong>：归一化 spread、对冲开仓、forced exit、成本核算</li>
+<li><strong>短周期映射自然</strong>：1m 原始数据，5m/15m 鲁棒性已被论文摸过</li>
+<li><strong>最值钱的不是 headline spread，而是 venue hierarchy + persistence</strong></li>
+<li><strong>失败也很快能证伪</strong>：只要发现 duration 盖不住成本，或者 reversal 太快，这条线立刻降级</li>
+</ol>
+<p>如果要一句话总结：</p>
+<p>&gt; 这篇 paper 不该被读成“funding spread 很大”，而该被读成：<strong>在 CEX 主导、DEX 滞后的两层市场里，只有持续够久、反转够慢的 cross-venue funding 错位，才配叫 raw alpha。</strong></p>
+<h2>9. 这轮建议直接开工的参数表</h2>
+<p>第一轮我会直接这样测：</p>
+<ul>
+<li>频率：<code>1m</code> 原始计算，<code>5m / 15m</code> 出信号</li>
+<li>标的：BTC / ETH / SOL / BNB / XRP / DOGE / ADA / LINK</li>
+<li>venue：Binance / Bybit / OKX / Hyperliquid / Drift</li>
+<li>funding 口径：统一到 <code>8h equivalent bps</code></li>
+<li>entry：</li>
+<li><code>spread &gt;= 30bps</code></li>
+<li>且最近 <code>60m</code> 内累计在阈值上方时间 <code>&gt;= 40m</code></li>
+<li>且最近 <code>30m</code> 内 sign flip = 0</li>
+<li>且优先 <code>CEX-DEX</code></li>
+<li>exit：</li>
+<li><code>spread &lt;= 5bps</code></li>
+<li>或 <code>spread &lt; 0</code></li>
+<li>或 max holding <code>12h / 24h</code></li>
+<li>sizing：按 venue 可成交名义和手续费等级限仓</li>
+<li>成本：双边 taker + 预估滑点 + 提现/链上成本（若需要真实跨 venue 调仓）</li>
+</ul>
+<p>然后只回答 3 个问题：</p>
+<ol>
+<li><code>spread × duration</code> 能不能稳定 cover 成本？</li>
+<li><code>CEX lead</code> 能不能提高净胜率？</li>
+<li>哪个阈值区间（20 / 30 / 40bps）开始真正像 raw alpha，而不是噪声幻觉？</li>
+</ol>
+<h2>10. 来源链接</h2>
+<h3>Primary paper</h3>
+<ul>
+<li>Zhivkov, P. (2026). *The Two-Tiered Structure of Cryptocurrency Funding Rate Markets*. *Mathematics*.</li>
+<li>DOI: &lt;<a href="https://doi.org/10.3390/math14020346&gt;">https://doi.org/10.3390/math14020346&gt;</a></li>
+<li>Readable: &lt;<a href="https://www.mdpi.com/2227-7390/14/2/346&gt;">https://www.mdpi.com/2227-7390/14/2/346&gt;</a></li>
+<li>PDF: &lt;<a href="https://www.mdpi.com/2227-7390/14/2/346/pdf?download=1&gt;">https://www.mdpi.com/2227-7390/14/2/346/pdf?download=1&gt;</a></li>
+</ul>
+<h3>Metadata</h3>
+<ul>
+<li>Crossref record: &lt;<a href="https://api.crossref.org/works/10.3390/math14020346&gt;">https://api.crossref.org/works/10.3390/math14020346&gt;</a></li>
+</ul>
+</body>
+</html>

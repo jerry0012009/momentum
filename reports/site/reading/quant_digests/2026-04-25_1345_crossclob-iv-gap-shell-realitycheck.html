@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 `options-arb` 只读成“期权多 venue 大平台”：对 short-cycle crypto desk，更该先回答的是「same-strike / same-expiry 跨 CLOB IV gap 收敛」这条 raw alpha 壳，在公开 mark 口径下到底还剩多少</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 `options-arb` 只读成“期权多 venue 大平台”：对 short-cycle crypto desk，更该先回答的是「same-strike / same-expiry 跨 CLOB IV gap 收敛」这条 raw alpha 壳，在公开 mark 口径下到底还剩多少</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-25 13:45 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`docs/plan.md` + `crates/arb-scanner/src/lib.rs` + `bin/options-arb/src/main.rs` + `crates/connector-aevo/src/lib.rs` + `crates/connector-derive/src/lib.rs`）+ Deribit / Aevo public-options overlap probe（`BTC/ETH`）</span>
+      <span class="pill">主题标签：raw-alpha/options/relative-value/stat-arb/cross-clob/implied-vol/convergence/deribit/aevo/derive/1m/3m/5m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo source audit + public options portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-25_1345_crossclob-iv-gap-shell-realitycheck.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-25 13:45 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>docs/plan.md</code> + <code>crates/arb-scanner/src/lib.rs</code> + <code>bin/options-arb/src/main.rs</code> + <code>crates/connector-aevo/src/lib.rs</code> + <code>crates/connector-derive/src/lib.rs</code>）+ Deribit / Aevo public-options overlap probe（<code>BTC/ETH</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一标的、同到期、同 strike 的期权，如果跨 venue 的隐波/报价出现短时可交易偏离，价格会向更深、更快的共识面收敛。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否（repo 已给出完整壳，但这轮公开数据快检显示：<code>mark-IV</code> 层几乎无边，真正值得测的是 <code>orderbook/local-lag/executable-quote</code> 层）</li>
+<li>主题标签：raw-alpha/options/relative-value/stat-arb/cross-clob/implied-vol/convergence/deribit/aevo/derive/1m/3m/5m/repo/public-data/cost/risk</li>
+<li>证据类型：repo source audit + public options portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主材料不是论文，而是一个 2026 新仓：</p>
+<ul>
+<li><strong>Author / Owner:</strong> <code>daiwanwei</code></li>
+<li><strong>Year:</strong> 2026</li>
+<li><strong>Title:</strong> <code>options-arb</code></li>
+<li><strong>Repo:</strong> &lt;<a href="https://github.com/daiwanwei/options-arb&gt;">https://github.com/daiwanwei/options-arb&gt;</a></li>
+<li><strong>Repo API metadata:</strong> created <code>2026-03-10</code>, Rust workspace, description = <code>Crypto options arbitrage system</code></li>
+</ul>
+<p>我这轮重点读的不是“能接多少 venue”，而是 repo 里最像 desk 可复现实盘壳的那几段：</p>
+<ol>
+<li><code>docs/plan.md</code></li>
+</ol>
+<ul>
+<li>直接把策略拆成：</li>
+<li><code>Cross-CLOB IV arb</code></li>
+<li><code>CeFi vs AMM vol lag</code></li>
+<li><code>Put-call parity</code></li>
+<li><code>0DTE arb</code></li>
+<li><code>Vol surface arb</code></li>
+</ul>
+<ol>
+<li><code>crates/arb-scanner/src/lib.rs</code></li>
+</ol>
+<ul>
+<li>明确把 <strong>same instrument cross-venue IV spread</strong> 写成扫描器；</li>
+<li><code>build_signal()</code> 的核心就是：<code>sell_bid_iv - buy_ask_iv - fees - slippage</code>；</li>
+<li>还顺手给了 <code>put_call_parity</code>、<code>cefi_amm_vol_lag</code>、<code>cross_venue_parity_dislocations</code>。</li>
+</ul>
+<ol>
+<li><code>bin/options-arb/src/main.rs</code></li>
+</ol>
+<ul>
+<li>已经不是“指标玩具”，而是 paper-trading / metrics / risk-manager / executor 的骨架。</li>
+</ul>
+<ol>
+<li><code>crates/connector-aevo/src/lib.rs</code></li>
+</ol>
+<ul>
+<li>明确了 Aevo 的公开入口：<code><a href="https://api.aevo.xyz">https://api.aevo.xyz</a></code>、<code>wss://ws.aevo.xyz</code>。</li>
+</ul>
+<ol>
+<li><code>crates/connector-derive/src/lib.rs</code></li>
+</ol>
+<ul>
+<li>明确了 Derive/Lyra 的公开接口：<code>wss://api.lyra.finance/ws</code>。</li>
+</ul>
+<p>所以，这个 repo 对我们最有价值的地方不是“又一个期权 bot”，而是它把 <strong>期权跨 venue 收敛</strong> 这条 alpha 拆得足够实盘化：</p>
+<p>&gt; <strong>base alpha 很清楚：同一份 option contract 的跨 venue vol / quote 偏离，最终应向统一面回归。</strong></p>
+<h2>2. 一句话结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这条 alpha 本身成立得很清楚，且 repo 已把 signal / fee / slippage / risk / paper-trading 壳拆出来；但我用 <strong>Deribit + Aevo 当前公开 mark 口径</strong> 做诚实快检后发现：<strong><code>mark IV</code> 基本已经贴平，当前能做的不是“盯 mark 搬砖”，而是继续下钻 <code>orderbook/local-lag/executable-quote</code> 层。</strong></li>
+<li><strong>一句话证明方式：</strong> repo 的 scanner 明确以跨 venue IV spread 为信号；但公开交集快检中，<code>BTC</code> 有 <code>840</code> 个重叠期权、<code>ETH</code> 有 <code>706</code> 个重叠期权，近 <code>7d</code> 合约的 <code>median abs IV gap</code> 基本都是 <strong><code>0.00</code> vol pts</strong>，最大也只有 <strong><code>0.01</code> vol pts</strong> 量级，说明 <strong>公开 mark 面几乎没肉</strong>。</li>
+</ul>
+<h2>3. 为什么这轮值得做</h2>
+<p>这轮值得做，不是因为“期权套利听起来高级”，而是因为它满足当前选题优先级里最关键的几条：</p>
+<ol>
+<li><strong>raw alpha 很清楚。</strong></li>
+<p>这不是 filter，也不是讲故事；就是典型 <code>relative value / stat-arb</code>：</p>
+</ol>
+<ul>
+<li>rich venue 卖</li>
+<li>cheap venue 买</li>
+<li>赌收敛</li>
+</ul>
+<ol>
+<li><strong>复现素材是公开可得的。</strong></li>
+</ol>
+<ul>
+<li>Deribit public option summaries</li>
+<li>Aevo public option markets</li>
+<li>如果继续往下测，还能直接接两边 websocket 盘口</li>
+</ul>
+<ol>
+<li><strong>它和 desk 当前积累直接相关。</strong></li>
+<p>我们已经连续做过 <code>pairs / basis / funding / cross-venue quote-gap</code>；这条是同一类“law-of-one-price / relative-value”主线在 <strong>options</strong> 上的自然延伸。</p>
+<li><strong>repo 的可落地性比很多“学术好看但落不了地”的论文强。</strong></li>
+<p>这里至少已经把 <code>scanner + risk + executor + paper trading</code> 的结构写出来了。</p>
+</ol>
+<h2>4. repo 真正值得拿走的是什么</h2>
+<h3>4.1 不是“支持好多 venue”，而是把 alpha 本体写清楚了</h3>
+<p><code>docs/plan.md</code> 里最关键的一行其实是：</p>
+<ul>
+<li><code>Cross-CLOB IV | Deribit ↔ Derive ↔ Aevo | Same strike/expiry, IV diff &gt; fees</code></li>
+</ul>
+<p>这句话很短，但交易上已经足够完整：</p>
+<ul>
+<li>标的怎么对齐：<strong>same strike / same expiry</strong></li>
+<li>信号怎么定义：<strong>IV diff</strong></li>
+<li>何时出手：<strong>大于 fees</strong></li>
+</ul>
+<p>这比很多只会说“发现 mispricing”却不说怎么对齐的材料强得多。</p>
+<h3>4.2 <code>arb-scanner</code> 不是抽象概念，而是实打实在算“能不能做”</h3>
+<p><code>crates/arb-scanner/src/lib.rs</code> 里 <code>build_signal()</code> 的逻辑很直接：</p>
+<ol>
+<li>读 <code>buy.ask_iv</code> 与 <code>sell.bid_iv</code></li>
+<li>算 <code>iv_spread</code></li>
+<li>用 <code>vega</code> 把 vol spread 变成大概的毛收益</li>
+<li>扣 <code>fees</code></li>
+<li>再扣 <code>slippage</code></li>
+<li>只有 <code>estimated_pnl &gt; min_expected_pnl</code> 才发信号</li>
+</ol>
+<p>翻成人话： &gt; 这不是“看见价差就激动”，而是先问一句：<strong>扣完真实摩擦后还剩不剩。</strong></p>
+<p>这也是它比很多 repo 更接近实盘的地方。</p>
+<h3>4.3 repo 还顺手给了一条很重要的 desk 启发：先别贪 multi-idea，先把最可验证的那一条做深</h3>
+<p>这个仓同时列了：</p>
+<ul>
+<li>cross-CLOB IV</li>
+<li>CeFi vs AMM vol lag</li>
+<li>parity</li>
+<li>0DTE</li>
+<li>vol surface</li>
+</ul>
+<p>但对我们现在的优先级，最应该先拿的不是最花的那条，而是：</p>
+<p>&gt; <strong>跨 CLOB、同 contract、vol/quote 收敛</strong></p>
+<p>因为它最接近：</p>
+<ul>
+<li>独立复现</li>
+<li>1m/3m/5m 快速实验</li>
+<li>明确的成本建模</li>
+<li>明确的 entry / exit / veto</li>
+</ul>
+<h2>5. 我做的最小 portability probe</h2>
+<h3>5.1 数据与口径</h3>
+<p>这轮我故意先做 <strong>最保守、最诚实</strong> 的快检，不去碰私有接口，不去假装自己有真实挂单成交：</p>
+<ul>
+<li><strong>数据源 1：</strong> Deribit public <code>get_book_summary_by_currency</code></li>
+<li><strong>数据源 2：</strong> Aevo public <code>/markets?asset=BTC|ETH&amp;instrument_type=OPTION</code></li>
+<li><strong>公开性：</strong> 都公开可得，无需 API key</li>
+<li><strong>资产：</strong> <code>BTC</code>, <code>ETH</code></li>
+<li><strong>匹配口径：</strong> <code>instrument_name</code> 完全一致，即 same underlying / expiry / strike / call-put</li>
+<li><strong>比较变量：</strong></li>
+<li>优先比较 <strong>IV</strong>，而不是直接比较价格；</li>
+<li>因为不同 venue 的价格展示/计价口径容易让人看花，但 <strong>IV 更适合做单位统一比较</strong>。</li>
+</ul>
+<p>本轮生成了两份产物：</p>
+<ul>
+<li>行级结果：<code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-25_134321_options_xvenue_iv_probe_rows.csv</code></li>
+<li>汇总结果：<code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-25_134321_options_xvenue_iv_probe_summary.json</code></li>
+</ul>
+<h3>5.2 快检结果</h3>
+<p>#### 交集合约数量</p>
+<ul>
+<li><code>BTC</code> 重叠合约：<strong><code>840</code></strong></li>
+<li><code>BTC</code> 近 <code>7d</code> 重叠合约：<strong><code>204</code></strong></li>
+<li><code>ETH</code> 重叠合约：<strong><code>706</code></strong></li>
+<li><code>ETH</code> 近 <code>7d</code> 重叠合约：<strong><code>166</code></strong></li>
+</ul>
+<p>#### IV gap 分布</p>
+<ul>
+<li><code>BTC_all</code>：</li>
+<li><code>mean IV gap</code> ≈ <strong><code>-0.0019</code> vol pts</strong></li>
+<li><code>median abs IV gap</code> = <strong><code>0.00</code> vol pts</strong></li>
+<li><code>p90 abs IV gap</code> = <strong><code>0.00</code> vol pts</strong></li>
+<li><code>BTC_near_7d</code>：</li>
+<li><code>mean IV gap</code> ≈ <strong><code>-0.0002</code> vol pts</strong></li>
+<li><code>median abs IV gap</code> = <strong><code>0.00</code> vol pts</strong></li>
+<li><code>p90 abs IV gap</code> = <strong><code>0.00</code> vol pts</strong></li>
+<li><code>ETH_all</code> / <code>ETH_near_7d</code>：结论也几乎一样，<strong>基本贴平</strong>。</li>
+</ul>
+<p>#### 当前最大 gap 也只有什么量级？ 近 <code>7d</code> 里能看到的 top case，大多也只有：</p>
+<ul>
+<li><strong><code>0.01</code> vol pts</strong> 左右</li>
+</ul>
+<p>例如：</p>
+<ul>
+<li><code>BTC-26APR26-76000-C</code>：Aevo <code>28.61</code> vs Deribit <code>28.62</code>，gap = <strong><code>-0.01</code> vol pts</strong></li>
+<li><code>BTC-26APR26-77000-P</code>：Aevo <code>19.81</code> vs Deribit <code>19.80</code>，gap = <strong><code>+0.01</code> vol pts</strong></li>
+<li><code>ETH-28APR26-2325-P</code>：Aevo <code>44.06</code> vs Deribit <code>44.07</code>，gap = <strong><code>-0.01</code> vol pts</strong></li>
+</ul>
+<h3>5.3 这组数说明什么</h3>
+<p>这组数基本把一个“太天真”的版本直接否了：</p>
+<p>&gt; <strong>如果你以为只盯公开 mark / summary 面就能稳定抓到跨 venue 期权 vol 偏离，那这轮结果不支持。</strong></p>
+<p>更直白点说：</p>
+<ol>
+<li><strong>raw alpha 的理论没问题；</strong></li>
+<li><strong>但公开 mark 面已经非常有效；</strong></li>
+<li>真正可能还剩 edge 的，不是 <code>mark IV convergence</code>，而是：</li>
+</ol>
+<ul>
+<li>本地 orderbook 不同步</li>
+<li>薄盘口瞬时穿档</li>
+<li>venue 更新时延</li>
+<li>maker/taker 费用差</li>
+<li>某边挂单为空、某边仍残留旧价</li>
+</ul>
+<p>也就是说，真正该测的是：</p>
+<p>&gt; <strong>可执行 quote gap / local lag，不是 summary page 上的 mark gap。</strong></p>
+<h2>6. 对当前 desk 最值钱的 desk 化读法</h2>
+<p>这轮最值钱的不是“找到一个立刻能跑的 options alpha”，而是把这条思路从概念拆成了两个层级：</p>
+<h3>层 1：不要把 <code>mark-IV spread</code> 当 alpha 本体</h3>
+<p>它更像：</p>
+<ul>
+<li>研究入口</li>
+<li>监控基准面</li>
+<li>sanity check</li>
+</ul>
+<p>但不是最该下注的地方。</p>
+<h3>层 2：真正值得下注的是 <code>executable quote divergence</code></h3>
+<p>也就是：</p>
+<ul>
+<li>同一 option</li>
+<li>A venue 能买到的真实价</li>
+<li>和 B venue 能卖掉的真实价</li>
+<li>扣掉 fee / slippage / hedge 成本</li>
+<li>还要剩 enough edge</li>
+</ul>
+<p>这才是这条策略在 <code>1m / 3m / 5m</code> 上真正能不能活下来的地方。</p>
+<h2>7. 最小可落地策略壳，应该怎么写</h2>
+<p>如果继续做，我会把它写成下面这个实盘骨架，而不是“盯一个 IV diff 就冲”：</p>
+<h3>7.1 universe</h3>
+<ul>
+<li>先只做 <code>BTC / ETH</code></li>
+<li>先只做 <strong>近 <code>0DTE ~ 7DTE</code>、ATM 附近</strong></li>
+<li>不碰太深虚值、也不碰远月</li>
+</ul>
+<h3>7.2 signal</h3>
+<ul>
+<li>同 contract 跨 venue 对齐</li>
+<li>优先看：</li>
+<li>executable bid / ask price</li>
+<li>对应换算出的 bid-IV / ask-IV</li>
+<li>触发条件：</li>
+<li><code>sell_bid_iv - buy_ask_iv &gt; fee + slippage + safety buffer</code></li>
+</ul>
+<h3>7.3 entry</h3>
+<ul>
+<li>默认 <strong>maker-first on rich venue</strong></li>
+<li>另一侧：</li>
+<li>能同步对敲就同步</li>
+<li>否则先用 underlying / perp 做临时 delta hedge</li>
+</ul>
+<h3>7.4 exit</h3>
+<ul>
+<li>gap 回到阈值内就平</li>
+<li>或者 TTL 超时（比如 <code>30s ~ 180s</code>）强平</li>
+<li>或 book 消失 / 深度掉到阈值下直接撤退</li>
+</ul>
+<h3>7.5 sizing</h3>
+<ul>
+<li>以最薄一边的可成交 size 为上限</li>
+<li>再叠加：</li>
+<li>net delta limit</li>
+<li>vega limit</li>
+<li>venue inventory cap</li>
+</ul>
+<h3>7.6 risk / veto</h3>
+<ul>
+<li>如果其中一边 orderbook 为空，直接 veto</li>
+<li>如果需要全 taker 才能成交，默认 veto</li>
+<li>如果 hedge venue 延迟高 / 盘口跳太快，默认 veto</li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<p>下一步别再盯 summary API 了，应该直接做 3 个更关键的最小实验。</p>
+<h3>实验 A：100ms book-level gap replay</h3>
+<ul>
+<li>同时接：</li>
+<li>Deribit <code>ticker/book</code> websocket</li>
+<li>Aevo <code>orderbook-100ms</code></li>
+<li>只看 overlapping contracts</li>
+<li>记录每次：</li>
+<li>best bid/ask</li>
+<li>executable spread</li>
+<li>quote 存活时间</li>
+<li>核心问题：</li>
+<li><strong>有没有持续超过 <code>300~500ms</code> 的可执行 gap？</strong></li>
+</ul>
+<h3>实验 B：near-ATM / near-expiry router</h3>
+<ul>
+<li>只保留：</li>
+<li><code>0DTE ~ 3DTE</code></li>
+<li><code>25Δ ~ 75Δ</code></li>
+<li>因为太深虚值和太远月虽然也可能有 gap，但常常只是“没人交易”。</li>
+<li>核心问题：</li>
+<li><strong>edge 是真来自收敛，还是来自 illiquidity 假象？</strong></li>
+</ul>
+<h3>实验 C：fill-model honesty check</h3>
+<ul>
+<li>maker fill 假设：挂单后最多等 <code>300ms / 500ms / 1s</code></li>
+<li>taker hedge 假设：扣保守 fee + 半档/一档滑点</li>
+<li>核心指标：</li>
+<li>signal count</li>
+<li>fill rate</li>
+<li>post-cost bps</li>
+<li>inventory overhang</li>
+<li>核心问题：</li>
+<li><strong>这条 alpha 是不是只有“看起来有”，实际上吃不到？</strong></li>
+</ul>
+<h2>9. 我的判断</h2>
+<p>这轮我会给一个很明确、但不夸张的判断：</p>
+<p>&gt; <strong><code>options-arb</code> 里的 cross-CLOB IV convergence 是一条合格的 raw alpha 候选；但当前公开 mark 口径下几乎已经被抹平，所以这轮最该保留的不是“mark spread 搬砖”，而是“book-level executable gap + local-lag replay”这个下一步。</strong></p>
+<p>换句话说：</p>
+<ul>
+<li><strong>题是对的</strong>；</li>
+<li><strong>第一层实现方式太天真就不对</strong>；</li>
+<li><strong>真正值得继续投研究时间的是 execution-heavy 版本。</strong></li>
+</ul>
+<h2>10. 风险与保留意见</h2>
+<ul>
+<li>这轮只用了 <strong>公开 summary / markets 数据</strong>，还没上真实双边 orderbook replay。</li>
+<li>Aevo 公开 <code>markets</code> 更接近 mark 面，不等于真实可成交深度。</li>
+<li>Derive 这轮还没纳入实时交集检验，所以目前更像 <code>Deribit ↔ Aevo</code> 的保守 sanity check。</li>
+<li>期权跨 venue 收敛很容易沦为“理论正确、实盘卡在成交与延迟”的典型 execution 策略，必须严防把不可成交的 paper edge 写成 alpha。</li>
+</ul>
+<h2>11. 本轮产物</h2>
+<ul>
+<li>研究笔记：<code>/root/clawd/jerry/momentum/research/quant_digests/2026-04-25_1345_crossclob-iv-gap-shell-realitycheck.md</code></li>
+<li>行级探针：<code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-25_134321_options_xvenue_iv_probe_rows.csv</code></li>
+<li>汇总探针：<code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-25_134321_options_xvenue_iv_probe_summary.json</code></li>
+</ul>
+<h2>12. 来源</h2>
+<h3>Repo / code</h3>
+<ul>
+<li>daiwanwei (2026), <strong>options-arb</strong>. GitHub repo: &lt;<a href="https://github.com/daiwanwei/options-arb&gt;">https://github.com/daiwanwei/options-arb&gt;</a></li>
+<li>Implementation plan: &lt;<a href="https://raw.githubusercontent.com/daiwanwei/options-arb/main/docs/plan.md&gt;">https://raw.githubusercontent.com/daiwanwei/options-arb/main/docs/plan.md&gt;</a></li>
+<li>Arb scanner: &lt;<a href="https://raw.githubusercontent.com/daiwanwei/options-arb/main/crates/arb-scanner/src/lib.rs&gt;">https://raw.githubusercontent.com/daiwanwei/options-arb/main/crates/arb-scanner/src/lib.rs&gt;</a></li>
+<li>Main binary: &lt;<a href="https://raw.githubusercontent.com/daiwanwei/options-arb/main/bin/options-arb/src/main.rs&gt;">https://raw.githubusercontent.com/daiwanwei/options-arb/main/bin/options-arb/src/main.rs&gt;</a></li>
+<li>Aevo connector: &lt;<a href="https://raw.githubusercontent.com/daiwanwei/options-arb/main/crates/connector-aevo/src/lib.rs&gt;">https://raw.githubusercontent.com/daiwanwei/options-arb/main/crates/connector-aevo/src/lib.rs&gt;</a></li>
+<li>Derive connector: &lt;<a href="https://raw.githubusercontent.com/daiwanwei/options-arb/main/crates/connector-derive/src/lib.rs&gt;">https://raw.githubusercontent.com/daiwanwei/options-arb/main/crates/connector-derive/src/lib.rs&gt;</a></li>
+</ul>
+<h3>Public data endpoints used in this round</h3>
+<ul>
+<li>Deribit public book summary by currency: &lt;<a href="https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=BTC&amp;kind=option&gt;">https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=BTC&amp;kind=option&gt;</a></li>
+<li>Deribit public book summary by currency: &lt;<a href="https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=ETH&amp;kind=option&gt;">https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=ETH&amp;kind=option&gt;</a></li>
+<li>Aevo public markets: &lt;<a href="https://api.aevo.xyz/markets?asset=BTC&amp;instrument_type=OPTION&gt;">https://api.aevo.xyz/markets?asset=BTC&amp;instrument_type=OPTION&gt;</a></li>
+<li>Aevo public markets: &lt;<a href="https://api.aevo.xyz/markets?asset=ETH&amp;instrument_type=OPTION&gt;">https://api.aevo.xyz/markets?asset=ETH&amp;instrument_type=OPTION&gt;</a></li>
+</ul>
+</body>
+</html>

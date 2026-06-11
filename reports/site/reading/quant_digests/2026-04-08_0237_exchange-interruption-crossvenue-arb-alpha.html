@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把交易所中断只读成运维事故：对 short-cycle desk，更该先测的是「venue-freeze price gap × re-link close」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把交易所中断只读成运维事故：对 short-cycle desk，更该先测的是「venue-freeze price gap × re-link close」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-08 02:55 UTC</span>
+      <span class="pill">研究时间：2026-04-08 02:37 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：raw-alpha / relative-value / stat-arb / cross-venue / exchange-interruption / outage / stale-quote / price-gap / event-driven / 1m / 3m / 5m / 15m</span>
+      <span class="pill">证据类型：论文证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-08_0237_exchange-interruption-crossvenue-arb-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-08 02:37 UTC</li>
+<li>类型：论文</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：单一交易所因延迟 / 宕机 / DDoS 出现<strong>报价冻结</strong>时，同一标的会相对健康交易所产生可交易的 cross-venue price gap；待该 venue 重新跟上全市场价格后，价差回补。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（更适合先做 <code>quote staleness / heartbeat gap</code> 代理版）</li>
+<li>主题标签：raw-alpha / relative-value / stat-arb / cross-venue / exchange-interruption / outage / stale-quote / price-gap / event-driven / 1m / 3m / 5m / 15m</li>
+<li>证据类型：论文证据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>Andrew Morin, Tyler Moore (2023), _How Cryptocurrency Exchange Interruptions Create Arbitrage Opportunities_</strong>。这篇东西最值得 desk 抄的，不是“交易所会掉线”这个常识，而是把它明确翻成一条可交易的 raw alpha：<strong>某一 venue 的价格在中断时更容易卡住，其他 venue 继续走，于是同币种跨所价差会突然拉大；等中断缓解后，这个价差往往向全市场重新收口。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>论文研究 <strong>Bitfinex 2015-04-01 到 2022-10-31 的 41 次中断事件</strong>，把事件分成 <code>delay / DDoS / outage</code>，并用 <strong>5 分钟</strong> 粒度比较 Bitfinex 与 CoinMarketCap 聚合价。</li>
+<li>作者把“显著套利机会”定义成：Bitfinex 与全市场价格差<strong>超过交易费+提现费形成的 arbitrage band</strong>。结果是：<strong>中断窗口里 68.5%</strong> 的时间伴随显著套利机会，非事件窗口只有 <strong>46.8%</strong>；卡方统计量 <strong>27.49</strong>，<code>p = 1.58e-7</code>。</li>
+<li>更值钱的是持续时间：中断期间的套利窗口平均可持续 <strong>109.0 分钟</strong>，而非事件期约 <strong>82.1 分钟</strong>；按类型拆开，<strong>delay 94.5 分钟、outage 81.4 分钟、DDoS 中位数 40 分钟（非事件中位数 20 分钟）</strong>，说明这不是只活几秒的 HFT 幻觉。</li>
+<li>作者按每个 5 分钟成交量乘价格差估算潜在利润，给出<strong>中位事件利润约 64,821 美元</strong>、样本总潜在利润约 <strong>105,807,735 美元</strong>。翻成人话：<strong>运营故障不是噪音，而是会把同币跨所价差直接拽到“能下单”的级别。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和当前 desk 的关系非常直接：它不是解释型 overlay，而是一条<strong>事件驱动的 relative-value raw alpha</strong>。我们不用照抄“等交易所真的挂掉”，更适合拿来做 short-cycle 版本：</p>
+<ul>
+<li>用 <strong>websocket heartbeat gap / order book staleness / quote age</strong> 当 <code>interruption proxy</code></li>
+<li>用健康 venue 的 mid / microprice 当 <code>fair reference</code></li>
+<li>在 <code>1m / 3m / 5m / 15m</code> 上测 <strong>gap 是否在 proxy 解除后回补</strong></li>
+</ul>
+<p>换句话说，这篇论文提供的不是“故障新闻解读”，而是一个很像 production admission layer 的主信号：<strong>先识别哪边的价格“卡住了”，再做 re-link close。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / stat-arb</li>
+<li>基础 alpha：<code>stale_venue_mid - healthy_reference_mid</code> 的异常偏离会在 venue 恢复同步后回补</li>
+<li>regime：单 venue 出现 <code>heartbeat gap / quote staleness / API error spike</code> 的运维异常窗口</li>
+<li>filter / veto：只做高流动性同标的跨所；若两边都异常、或健康腿 depth 不足，则 veto</li>
+<li>risk / sizing / execution overlay：按两边最小可成交深度定仓；优先 <code>maker on stale side + taker on healthy side</code> 或纯 taker 双腿；异常持续超时、单腿未成交、参考价反向继续扩张则强平/降仓</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：当某交易所出现报价陈旧/链路异常时，同标的跨所价差会显著扩大，并在异常缓解后于 <code>1~12</code> 根短周期 bar 内回补。</li>
+<li><strong>可计算定义</strong>：</li>
+<li><code>stale_flag = quote_age_sec &gt; q_th</code> 或 <code>heartbeat_gap_sec &gt; h_th</code></li>
+<li><code>gap_z = (mid_stale - mid_ref) / rolling_sigma(spread)</code></li>
+<li>入场：<code>stale_flag=1</code> 且 <code>|gap_z| &gt; z_in</code> 且 <code>edge &gt; fee + slippage + borrow_buffer</code></li>
+<li>出场：<code>|gap_z| &lt; z_out</code>、<code>stale_flag</code> 解除、或 <code>max_hold</code> 到时</li>
+<li><strong>最小回测切口</strong>：BTC/ETH/SOL 同标的跨 <code>Binance / OKX / Bybit</code>，先做 <code>1m</code> 事件条，再聚合到 <code>3m/5m/15m</code>；先不碰小币。</li>
+<li><strong>先看 2 个指标</strong>：<code>post-cost spread capture</code>、<code>fill asymmetry / orphan-leg ratio</code>。这条线如果单腿残留太多，再高 Sharpe 都是假象。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文样本核心是 <strong>Bitfinex vs CoinMarketCap</strong>，不是现代多 venue、低延迟、统一手续费的 perp 世界，直接搬运会高估收益。</li>
+<li>真 outage 时最麻烦的不是“信号对不对”，而是<strong>坏 venue 那条腿是否还能成交/撤单</strong>；因此 production 更该先测 <code>stale quote proxy</code>，而不是等真宕机。</li>
+<li>这条 alpha 天然稀疏，适合作为<strong>事件型 raw alpha 池补充</strong>，不适合作为全天候主策略。</li>
+<li>一旦健康 venue 也同步进入剧烈单边，价差可能是“信息领先”不是“冻结失真”，因此必须加 <code>reference breadth / depth sanity</code> 过滤。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Morin, A., &amp; Moore, T. (2023). _How Cryptocurrency Exchange Interruptions Create Arbitrage Opportunities_. 2023 IEEE European Symposium on Security and Privacy Workshops.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code><a href="https://doi.org/10.1109/EuroSPW59978.2023.00028">https://doi.org/10.1109/EuroSPW59978.2023.00028</a></code></li>
+<li>Readable URL: <code><a href="https://ieeexplore.ieee.org/document/10190776">https://ieeexplore.ieee.org/document/10190776</a></code></li>
+<li>PDF: <code><a href="https://tylermoore.utulsa.edu/wacco23arbitrage.pdf">https://tylermoore.utulsa.edu/wacco23arbitrage.pdf</a></code></li>
+</ul>
+<ol>
+<li><strong>论文内关键口径</strong>：Bitfinex 中断事件 <code>41</code> 次；事件窗口显著套利占比 <code>68.5%</code> vs 非事件 <code>46.8%</code>；平均套利持续 <code>109.0</code> 分钟；中位事件潜在利润约 <code>$64,821</code>。</li>
+</ol>
+</body>
+</html>

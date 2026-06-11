@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Hyperliquid 回测仓只读成 hourly premium 图：对 short-cycle desk，更该先测的是「mark-vs-oracle dislocation percentile fade」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Hyperliquid 回测仓只读成 hourly premium 图：对 short-cycle desk，更该先测的是「mark-vs-oracle dislocation percentile fade」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-15 11:12 UTC</span>
+      <span class="pill">研究时间：2026-04-15 11:28 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `src/strategies/basis_reversion.py` + `src/data/hyperliquid.py` + `research/run_hip3_analysis.py` + `src/engine/backtest.py`）+ Hyperliquid public API portability read</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/relative-value/stat-arb/mean-reversion/mark-vs-oracle/premium-dislocation/hyperliquid/hip-3/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：工程证据（repo 文档 + 源码 + 回测框架 + 公共 API 可得性）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-15_1128_mark-oracle-percentile-dislocation-fade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-15 11:28 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>src/strategies/basis_reversion.py</code> + <code>src/data/hyperliquid.py</code> + <code>research/run_hip3_analysis.py</code> + <code>src/engine/backtest.py</code>）+ Hyperliquid public API portability read</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当 perp 的 <code>mark / premium</code> 相对 oracle 出现极端偏离时，做反向收敛：<code>premium &gt; 0</code> 就 short，<code>premium &lt; 0</code> 就 long；本质上赚的是短时流动性失衡后的 basis / premium 压缩，而不是赌长期方向。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/single-asset/relative-value/stat-arb/mean-reversion/mark-vs-oracle/premium-dislocation/hyperliquid/hip-3/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：工程证据（repo 文档 + 源码 + 回测框架 + 公共 API 可得性）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看的是 2026 GitHub repo <code>andreaambrosio/hype-backtesting</code> 里最值得 short-cycle desk intake 的那条 raw alpha，而不是继续把它读成“又一个 funding / regime / momentum 杂烩框架”。</p>
+<p>先回答 base alpha：<strong>这不是 funding carry，也不是 generic trend filter；它是一条可以单独站住的短时相对价值 / 单资产 stat-arb raw alpha——当 perp 的成交标记价明显偏离 oracle 时，赌这个偏离会向正常区间压缩。</strong></p>
+<p>这轮主看的文件：</p>
+<ul>
+<li><code>README.md</code></li>
+<li><code>src/strategies/basis_reversion.py</code></li>
+<li><code>src/data/hyperliquid.py</code></li>
+<li><code>research/run_hip3_analysis.py</code></li>
+<li><code>src/engine/backtest.py</code></li>
+</ul>
+<p>repo 基本信息：</p>
+<ul>
+<li><strong>Author / Repo owner：</strong> <code>andreaambrosio</code></li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> *hype-backtesting*</li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/andreaambrosio/hype-backtesting&gt;">https://github.com/andreaambrosio/hype-backtesting&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/andreaambrosio/hype-backtesting&gt;">https://github.com/andreaambrosio/hype-backtesting&gt;</a></li>
+</ul>
+<p>README 里最关键的不是“这个仓里有 9 个策略”，而是它把 <strong>Basis Dislocation Reversion</strong> 明确列成当前 sample 里的最佳策略：</p>
+<ul>
+<li>样本：<code>90 days</code> 的 Hyperliquid <code>1h</code> 数据</li>
+<li>覆盖资产：<code>BTC / ETH / SOL / HYPE / TURBO / MEME / WIF</code></li>
+<li>repo 报告的 Basis Dislocation Reversion 结果：</li>
+<li>Return：<code>+3.88%</code></li>
+<li>Sharpe：<code>4.52</code></li>
+<li>Sortino：<code>6.16</code></li>
+<li>Max DD：<code>15.69%</code></li>
+<li>Win rate：<code>24.7%</code></li>
+<li>Profit factor：<code>1.05</code></li>
+<li>Trades：<code>299</code></li>
+</ul>
+<p>同时 README 还给了一个更 desk-friendly 的 microstructure 句子： &gt; 在 HIP-3 Silver crash 里，basis 一度冲到 <code>463 bps</code>，高于 <code>400 bps</code> 只持续了 <code>95 seconds</code>，随后在 <code>19 minutes</code> 内压回到 <code>&lt;50 bps</code>。</p>
+<p>这句比“小时线回测收益多少”更重要，因为它直接说明：<strong>这条 edge 的自然栖息地其实更像 <code>1m / 3m / 5m</code>，而不是只停留在 <code>1h</code>。</strong></p>
+<h2>2. base alpha 先说清楚</h2>
+<p>这条线的 <strong>base alpha</strong> 很简单：</p>
+<p>&gt; <strong>当 perp mark 明显偏离 oracle，而且偏离已经进入该资产自身的极端分位区间时，后续更容易发生 premium / basis 压缩；最小表达就是“做 dislocation fade”。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>不是“价格涨多了就跌”；</li>
+<li>也不是“funding 高就做空”；</li>
+<li>更不是抽象的 market-making overlay；</li>
+<li>它盯的是一个更具体、更交易化的对象：<strong><code>mark_price - oracle_price</code> 或 <code>premium</code> 本身。</strong></li>
+</ul>
+<p>所以它属于：</p>
+<ul>
+<li><code>raw alpha</code>，不是 filter；</li>
+<li><code>single-asset relative-value / stat-arb</code>，不是单纯 directional momentum；</li>
+<li><code>short-horizon mean reversion</code>，不是慢频 carry。</li>
+</ul>
+<h2>3. 为什么说这不是零散指标，而是一条完整策略</h2>
+<h3>3.1 entry 已经写得很清楚</h3>
+<p><code>src/strategies/basis_reversion.py</code> 的核心逻辑很直接：</p>
+<ol>
+<li>先把 premium 转成 <code>bps</code>：</li>
+</ol>
+<ul>
+<li>若 dataframe 已有 <code>premium</code> 列，直接 <code>premium * 10_000</code></li>
+<li>否则用 <code>(mark_price - oracle_price) / oracle_price * 10_000</code></li>
+</ul>
+<ol>
+<li>取最近 <code>lookback_bars=100</code> 的 premium 分布</li>
+<li>开仓阈值不是固定死值，而是：</li>
+</ol>
+<ul>
+<li><code>max(entry_dislocation_bps, rolling 95th percentile)</code></li>
+<li>默认 <code>entry_dislocation_bps = 50 bps</code></li>
+<li>默认 <code>percentile_entry = 0.95</code></li>
+</ul>
+<ol>
+<li>方向是反着做：</li>
+</ol>
+<ul>
+<li><code>current_premium &gt; 0</code>：short</li>
+<li><code>current_premium &lt; 0</code>：long</li>
+</ul>
+<p>这就把信号说得非常完整了： <strong>不是任何偏离都做，而是只做“已经极端化”的偏离。</strong></p>
+<h3>3.2 sizing 也不是空着的</h3>
+<p>源码不是简单 all-in / fixed size，而是按 dislocation 强度放大：</p>
+<ul>
+<li><code>base_position_pct = 0.10</code></li>
+<li><code>scale = min(abs_premium / entry_dislocation_bps, 3.0)</code></li>
+<li><code>max_position_pct = 0.25</code></li>
+</ul>
+<p>意思很直白：</p>
+<ul>
+<li>偏离刚过阈值，只开基础仓；</li>
+<li>偏离越大，仓位越大；</li>
+<li>但最多 cap 在 <code>25%</code> equity。</li>
+</ul>
+<p>这对 desk 很重要，因为它不是一句“极端更值得做”，而是<strong>已经把极端程度映射成仓位函数。</strong></p>
+<h3>3.3 exit / stop / time-stop 也齐了</h3>
+<p>同一个文件里 exit 条件也都明确给出：</p>
+<ul>
+<li><strong>Take profit：</strong> <code>abs_premium &lt; 10 bps</code></li>
+<li><strong>Time stop：</strong> <code>bars_held &gt;= 60</code></li>
+<li><strong>Hard stop：</strong> 若 dislocation 继续恶化到 <code>200 bps</code> 级别就止损</li>
+</ul>
+<p>也就是说，这条线不是“看到 premium 就写篇观察笔记”，而是已经自带：</p>
+<ul>
+<li>entry</li>
+<li>exit</li>
+<li>sizing</li>
+<li>stop</li>
+<li>max hold</li>
+</ul>
+<p>所以这轮它完全符合用户说的高优先级： &gt; <strong>可独立复现且可直接落地为完整策略的 raw alpha 候选。</strong></p>
+<h3>3.4 成本 / 风控也不是事后脑补</h3>
+<p><code>src/engine/backtest.py</code> 里，回测引擎默认就把这些东西收进去了：</p>
+<ul>
+<li><code>commission_bps = 2.0</code></li>
+<li><code>slippage_bps = 1.0</code></li>
+<li><code>max_position_pct = 0.25</code></li>
+<li><code>max_drawdown_pct = 0.15</code></li>
+</ul>
+<p>这当然不代表 repo 的结果就一定可信到能直接上线，但至少说明： <strong>它讨论的是“可交易 alpha”，不是只会画因子图的研究玩具。</strong></p>
+<h2>4. 这条 alpha 和当前 desk 为什么直接相关</h2>
+<h3>4.1 它补的是 raw alpha 素材池，不是旁支解释层</h3>
+<p>近几轮已经补了不少：</p>
+<ul>
+<li>funding / basis carry</li>
+<li>spread z-score fade</li>
+<li>lead-lag catch-up</li>
+<li>cross-sectional loser bounce</li>
+</ul>
+<p>而这条线补的是另一类更 microstructure、更 execution-native 的原料： &gt; <strong>极端 mark-vs-oracle 偏离本身就是 alpha 对象。</strong></p>
+<p>它不是给某条已有 alpha 当确认器，而是自己就能单独做成一条信号书。</p>
+<h3>4.2 它天然适合 <code>1m / 3m / 5m</code></h3>
+<p>原因很简单：</p>
+<ul>
+<li>README 给的最典型案例，本来就是 <code>95 seconds</code> 到 <code>19 minutes</code> 这种压缩尺度；</li>
+<li>这比 <code>funding 8h</code>、<code>日频横截面</code> 更自然地落在短周期；</li>
+<li><code>15m</code> 也能做，但更像 admission / coarse bucket，不是它最锋利的主战场。</li>
+</ul>
+<p>所以最自然的 desk 化映射应是：</p>
+<ul>
+<li><code>1m / 3m / 5m</code>：主信号</li>
+<li><code>15m</code>：极端 regime 标记 / 资产筛选 / 是否值得开 collector</li>
+</ul>
+<h3>4.3 它和已有 basis/funding digest 不是同一件事</h3>
+<p>需要刻意区分：</p>
+<ul>
+<li><strong>funding carry</strong>：赚长期拥挤付费</li>
+<li><strong>spot-perp basis trade</strong>：赚更慢的同所价差回归 / carry</li>
+<li><strong>这条 mark-vs-oracle dislocation fade</strong>：赚短时错误定价压缩</li>
+</ul>
+<p>也就是说，这条线更接近：</p>
+<ul>
+<li>短时 liquidity gap fade</li>
+<li>stale quote / panic premium fade</li>
+<li>microstructure stat-arb</li>
+</ul>
+<p>而不是“再来一篇 funding 逻辑”。</p>
+<h2>5. 公开数据能不能拿？最小实验怎么做？</h2>
+<h3>5.1 数据源</h3>
+<p><code>src/data/hyperliquid.py</code> 已经把公共数据入口写得很清楚，全部走 Hyperliquid 的公开 <code>info</code> 接口：</p>
+<ul>
+<li><code>get_candles()</code>：<code>1m / 5m / 15m / 1h / 4h / 1d</code></li>
+<li><code>get_funding_history()</code>：历史 funding + premium</li>
+<li><code>get_meta_and_asset_ctxs()</code>：全市场 live context（含 funding / mark / 资产状态）</li>
+<li><code>get_all_mids()</code>：当前 mid</li>
+</ul>
+<p>这说明：</p>
+<ul>
+<li><strong>公开性：</strong> 是，公共 API，无需私钥</li>
+<li><strong>更新频率：</strong> live context 近实时；candle 支持分钟级</li>
+<li><strong>最小可复现性：</strong> 能快速开 collector 开始录</li>
+</ul>
+<h3>5.2 但这里有个必须说清楚的现实约束</h3>
+<p>如果你要认真测 <code>1m / 3m / 5m</code> 的 premium-dislocation edge，<strong>不能只靠 funding history 的 8h 快照。</strong></p>
+<p>真正需要的是更高频的 <code>mark / oracle / premium</code> 路径。</p>
+<p>也就是说：</p>
+<ul>
+<li><code>1h</code> 研究可以先复用 repo 那种合并后的公共数据口径；</li>
+<li><strong>短周期最小实验</strong> 则应立刻自采：定时拉 <code>metaAndAssetCtxs()</code>，每 <code>10s / 15s / 30s</code> 存一笔，落地 DuckDB / Parquet。</li>
+</ul>
+<p>这不算“数据不可得”，只是： &gt; <strong>它是 public &amp; quickly collectable，但不是现成一键下载好的多月高频历史包。</strong></p>
+<h3>5.3 最小实验口径</h3>
+<p>先不要一上来就做复杂组合，最小实验可以很朴素：</p>
+<ul>
+<li>资产：<code>BTC / ETH / SOL / HYPE</code> + 1~2 个更容易失衡的 HIP-3 名字</li>
+<li>主频：<code>1m</code></li>
+<li>子频：<code>10s ~ 30s</code> collector</li>
+<li>信号：</li>
+<li><code>abs(premium_bps)</code> 超过 rolling <code>95%</code> 分位</li>
+<li>且绝对值也要过固定底线，例如 <code>50 bps</code></li>
+<li>方向：</li>
+<li><code>premium_bps &gt; 0</code> -&gt; short</li>
+<li><code>premium_bps &lt; 0</code> -&gt; long</li>
+<li>平仓：</li>
+<li><code>abs(premium_bps) &lt; 10</code></li>
+<li>或 <code>max_hold = 3 / 6 / 12</code> 根 <code>1m</code> bar</li>
+<li>或 adverse move 超过 <code>150 / 200 bps</code></li>
+</ul>
+<h3>5.4 第一批必须做的对照组</h3>
+<p>至少并排跑这四组：</p>
+<ol>
+<li><strong>fixed threshold only</strong>：只看 <code>50 bps</code></li>
+<li><strong>percentile only</strong>：只看 rolling <code>95%</code></li>
+<li><strong>max(fixed, percentile)</strong>：repo 默认逻辑</li>
+<li><strong>+ asset liquidity gate</strong>：只在相对 liquid 的名字上做</li>
+</ol>
+<p>因为真正该回答的问题不是“有无 reversion”，而是： <strong>极端阈值到底该用固定 bps、资产内部分位，还是两者取 max。</strong></p>
+<h2>6. first verdict：值得进池，但别把 repo 的 hourly 胜利直接当 short-cycle 结论</h2>
+<h3>6.1 为什么值得进池</h3>
+<ul>
+<li><strong>base alpha 非常清楚</strong>：做极端 premium 的回归</li>
+<li><strong>完整策略骨架齐全</strong>：entry / exit / sizing / stop / cost 都有</li>
+<li><strong>公开数据可拿</strong>：至少从现在开始能立刻收</li>
+<li><strong>和 short-cycle 匹配度高</strong>：案例本来就发生在分钟级</li>
+</ul>
+<h3>6.2 为什么还不能直接宣称“已过线”</h3>
+<p>要保留三点怀疑：</p>
+<ol>
+<li><strong>repo 公布的主结果是 <code>1h</code>，不是 <code>1m / 3m / 5m</code>。</strong></li>
+<p>这能证明思路可写成策略，但不能自动证明短周期净后也赚钱。</p>
+</ol>
+<ol>
+<li><strong>若只用单腿 perp fade，方向风险并没有消失。</strong></li>
+<p>它虽然盯的是 relative-value 变量，但执行上仍是单腿 long/short；若当下是持续性踩踏 / squeeze，premium 可能越拉越极端。</p>
+</ol>
+<ol>
+<li><strong>真正的边际在执行，而不是在口头逻辑。</strong></li>
+<p>这类 edge 很可能死在：</p>
+</ol>
+<ul>
+<li>采样太慢</li>
+<li>进场排队太差</li>
+<li>一律 taker</li>
+<li>极端时段 liquidity vacuum</li>
+</ul>
+<p>所以更诚实的定位是： &gt; <strong>高优先级 raw alpha intake，适合尽快做分钟级最小实验；但当前证据还不等于 production-ready。</strong></p>
+<h2>7. 下一步怎么测</h2>
+<h3>7.1 先做数据层</h3>
+<ul>
+<li>起一个最小 collector，拉 Hyperliquid <code>metaAndAssetCtxs</code> 或等价 live context</li>
+<li>每 <code>10~30s</code> 记录：</li>
+<li><code>mark_price</code></li>
+<li><code>oracle_price</code></li>
+<li><code>premium</code></li>
+<li><code>funding</code></li>
+<li><code>coin</code></li>
+<li><code>timestamp</code></li>
+<li>同步拉 <code>1m</code> candles，用来估算 realized vol、ATR、成交量过滤</li>
+</ul>
+<h3>7.2 先做 event study，不要先做花哨组合</h3>
+<p>第一版就回答 4 个问题：</p>
+<ol>
+<li>premium 超过 <code>50 bps</code> 后，回到 <code>10 bps</code> 的中位时间是多少？</li>
+<li><code>95%</code> / <code>97.5%</code> / <code>99%</code> 分位，哪档的 <code>net bps/trade</code> 最稳？</li>
+<li>正 premium 和负 premium 哪边更容易赚钱？</li>
+<li>liquid majors 和小币 / HIP-3 名字，谁更值得做？</li>
+</ol>
+<h3>7.3 exit 先做三挡，不要过拟合</h3>
+<p>先跑：</p>
+<ul>
+<li><code>compression exit</code></li>
+<li><code>fixed 3-bar / 6-bar / 12-bar exit</code></li>
+<li><code>compression or timeout whichever first</code></li>
+</ul>
+<h3>7.4 成本一定要分层</h3>
+<p>这类策略一定要显式做 cost ladder：</p>
+<ul>
+<li>maker / taker 混合</li>
+<li>纯 taker</li>
+<li>加入 stress slippage</li>
+</ul>
+<p>先看：</p>
+<ul>
+<li><code>gross bps / trade</code></li>
+<li><code>net bps / trade</code></li>
+<li><code>median time-to-compression</code></li>
+<li><code>fill sensitivity</code></li>
+</ul>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li><strong>stale oracle / stale mark 风险：</strong> 如果 oracle 更新节奏本身滞后，会制造假 dislocation。</li>
+<li><strong>极端行情 continuation 风险：</strong> 真正的崩盘 / squeeze 期，premium 可以继续扩张，不会立刻均值回复。</li>
+<li><strong>edge 衰减风险：</strong> 这种 microstructure alpha 一旦被更多做市 / 套利资金盯上，压缩会更快，留给 taker 的肉更少。</li>
+<li><strong>资产异质性很大：</strong> <code>BTC</code>、<code>ETH</code>、<code>HYPE</code>、长尾 HIP-3 名字的 dislocation 机制不一样，别混成一锅统一阈值。</li>
+</ul>
+<h2>9. 来源</h2>
+<ul>
+<li>Andrea Ambrosio. (2026). *hype-backtesting*. GitHub Repo.</li>
+<p>Repo URL: <code><a href="https://github.com/andreaambrosio/hype-backtesting">https://github.com/andreaambrosio/hype-backtesting</a></code></p>
+<li>Andrea Ambrosio. (2026). *README.md*.</li>
+<p>Readable URL: <code><a href="https://github.com/andreaambrosio/hype-backtesting/blob/main/README.md">https://github.com/andreaambrosio/hype-backtesting/blob/main/README.md</a></code></p>
+<li>Andrea Ambrosio. (2026). *src/strategies/basis_reversion.py*.</li>
+<p>Readable URL: <code><a href="https://github.com/andreaambrosio/hype-backtesting/blob/main/src/strategies/basis_reversion.py">https://github.com/andreaambrosio/hype-backtesting/blob/main/src/strategies/basis_reversion.py</a></code></p>
+<li>Andrea Ambrosio. (2026). *src/data/hyperliquid.py*.</li>
+<p>Readable URL: <code><a href="https://github.com/andreaambrosio/hype-backtesting/blob/main/src/data/hyperliquid.py">https://github.com/andreaambrosio/hype-backtesting/blob/main/src/data/hyperliquid.py</a></code></p>
+<li>Andrea Ambrosio. (2026). *research/run_hip3_analysis.py*.</li>
+<p>Readable URL: <code><a href="https://github.com/andreaambrosio/hype-backtesting/blob/main/research/run_hip3_analysis.py">https://github.com/andreaambrosio/hype-backtesting/blob/main/research/run_hip3_analysis.py</a></code></p>
+<li>Andrea Ambrosio. (2026). *src/engine/backtest.py*.</li>
+<p>Readable URL: <code><a href="https://github.com/andreaambrosio/hype-backtesting/blob/main/src/engine/backtest.py">https://github.com/andreaambrosio/hype-backtesting/blob/main/src/engine/backtest.py</a></code></p>
+</ul>
+<h2>10. 本地产物</h2>
+<ul>
+<li>Digest：<code>research/quant_digests/2026-04-15_1128_mark-oracle-percentile-dislocation-fade-alpha.md</code></li>
+<li>发布后页面：<code><a href="https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-04-15_1128_mark-oracle-percentile-dislocation-fade-alpha.html">https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-04-15_1128_mark-oracle-percentile-dislocation-fade-alpha.html</a></code></li>
+</ul>
+</body>
+</html>

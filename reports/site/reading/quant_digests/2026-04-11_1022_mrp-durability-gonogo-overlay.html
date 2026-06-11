@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Minimum Regime Performance（MRP）durability gate：别只看总 Sharpe，先看策略最差 regime 能不能活（Alexander &amp; Fabozzi, 2025）</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Minimum Regime Performance（MRP）durability gate：别只看总 Sharpe，先看策略最差 regime 能不能活（Alexander &amp; Fabozzi, 2025）</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-11 10:23 UTC</span>
+      <span class="pill">研究时间：2026-04-11 10:22 UTC</span>
+      <span class="pill">类型：论文 + GitHub engineering bridge</span>
+      <span class="pill">主题标签：overlay / go-no-go / durability / regime / strategy-decay / risk / validation / MRP / OOS / cost-stress / 5m / 15m</span>
+      <span class="pill">证据类型：论文摘要元数据 + publisher page abstract + repo source audit</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-11_1022_mrp-durability-gonogo-overlay.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-11 10:22 UTC</li>
+<li>类型：论文 + GitHub engineering bridge</li>
+<li>主题类型：overlay</li>
+<li>基础 alpha：<code>不是独立方向 alpha；它服务于现有 raw alpha（pairs / funding / basis / OFI / XS / carry）的 durability / go-no-go overlay，只回答“这条 alpha 在最差 regime 里还能不能活”</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：overlay / go-no-go / durability / regime / strategy-decay / risk / validation / MRP / OOS / cost-stress / 5m / 15m</li>
+<li>证据类型：论文摘要元数据 + publisher page abstract + repo source audit</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主源不是再补一条新 raw alpha，而是补一个<strong>更像“alpha 录取线”</strong>的东西：</p>
+<ol>
+<li><strong>Alexander, Nolan &amp; Fabozzi, Frank J. (2025)</strong></li>
+<p>*Measuring Strategy-Decay Risk: Minimum Regime Performance and the Durability of Systematic Investing*，*The Journal of Portfolio Management*。 它提出的核心量不是总 Sharpe，而是 <strong>MRP（minimum regime performance）= 一条策略在不同历史 regime 中，最差那个 regime 的风险调整收益</strong>。</p>
+<li><strong>gencersarp/cryptoarb (2026)</strong> 这份 repo 的工程桥接价值不在它某条 funding/basis 原始信号，而在它已经有一套很像 desk admission check 的 stop criteria：<code>OOS Sharpe ≥ 0.7</code>、<code>1.5× cost stress 仍要活</code>、<code>max DD ≤ 10%</code>、<code>单一 fold 不得贡献 &gt;75% 正收益</code>。</li>
+</ol>
+<p>把两者拼起来，值得 desk 先做的不是“再发明一个 durability 故事”，而是：<strong>给现有 raw alpha 池补一层统一的 regime durability gate</strong>，先筛掉那些“平均数好看、但只在一个 pocket 活着”的候选。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha 不存在</strong>；它本质上是 overlay，服务对象是现有 raw alpha。</li>
+<li>论文给的最重要一句话非常实用：<strong>长期 Sharpe 高，不等于最差 regime 也活得下来</strong>。也就是说，策略可能“平均分好看”，但在最关键的坏环境里完全塌掉。</li>
+<li>MRP 的定义够朴素，适合立刻搬进我们现在的 <code>5m/15m</code> alpha intake 流程：</li>
+<li>先把样本切成几个有交易意义的 regime；</li>
+<li>算每个 regime 的 post-cost Sharpe / mean return / trade survival；</li>
+<li>取最差值作为 durability 下界；</li>
+<li>再决定这条 alpha 是 <code>GO / size-down / PARK / DROP</code>。</li>
+<li>这比继续补第 N 条相似 funding / pairs 线索更值钱的原因是：<strong>素材池现在已经不缺“想法”，更缺“谁值得先花复现时间”</strong>。</li>
+</ul>
+<h2>3. 关键数据点（这轮最值得记住的 3 个数）</h2>
+<ol>
+<li>论文定义：<code>MRP = min_risk_adjusted_return_across_regimes</code>，也就是<strong>最差 regime 的风险调整收益</strong>。</li>
+<li><code>cryptoarb</code> repo 的 admission 风格阈值已经很接近 durability 思路：<code>OOS Sharpe ≥ 0.7</code>、<code>cost stress = 1.5×</code>、<code>max DD ≤ 10%</code>。</li>
+<li>同 repo 还额外要求：<strong>不能让单一 fold 贡献 &gt;75% 的正收益</strong>；这个约束本质上就是在防“只靠一个好口袋活着”的假稳健。</li>
+</ol>
+<h2>4. 为什么这轮值得做它，而不是再补一条 raw alpha</h2>
+<p>要先诚实回答用户给的那句内部问题：<strong>它为什么比继续补 raw alpha 更值得？</strong></p>
+<p>因为这轮边际价值更高的缺口，不是“再多一条候选线”，而是<strong>把现有几十条短周期 raw alpha 拉进同一套 admission / ranking 框架</strong>。如果没有这一层：</p>
+<ul>
+<li>pairs、funding、basis、OFI、XS reversal 都会继续各讲各的；</li>
+<li>很容易把“均值不错但 regime 极不稳”的策略排到前面；</li>
+<li>研发资源会浪费在那些只在单一样本窗活着的候选上。</li>
+</ul>
+<p>所以它虽然不是 raw alpha，但它<strong>直接服务 raw alpha 素材池的排序与淘汰</strong>，不是泛风险闲聊。</p>
+<h2>4.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：不是方向信号；属于 durability / admission / sizing overlay</li>
+<li>基础 alpha：无；服务于现有 <code>pairs / funding / basis / OFI / XS / event-driven</code> raw alpha</li>
+<li>regime：由你定义并切样本，例如 <code>波动高低 / 流动性高低 / funding sign / 美盘时段 / jump day vs non-jump day</code></li>
+<li>filter / veto：若某条策略的 <code>MRP &lt; 0</code>，或最差 regime 的 post-cost trade survival 很差，则 veto / park</li>
+<li>risk / sizing / execution overlay：可把 <code>MRP</code> 映射成 <code>gross scaler</code>、<code>max concurrent positions</code>、<code>是否允许 live shadow</code></li>
+</ul>
+<h2>5. 可复刻的最小实验</h2>
+<h3>研究假设</h3>
+<p>对一条 <code>5m/15m</code> raw alpha，<strong>最差 regime 的表现</strong>比全样本均值更能决定它是否值得继续做 clean replication / live shadow。</p>
+<h3>最小实验口径</h3>
+<p>拿当前已经积累的 4 类原型各挑 1 条：</p>
+<ul>
+<li>pairs：如 <code>dynamic-hedgeratio</code> 或 <code>half-life-bounded spread fade</code></li>
+<li>carry/funding：如 <code>funding extreme bandfade</code> 或 <code>spot-perp spread fade</code></li>
+<li>microstructure：如 <code>tradeflow OFI</code> 或 <code>OBI quote skew</code></li>
+<li>cross-sectional：如 <code>entropy loser-bounce</code> 或 <code>winner-only XS momentum</code></li>
+</ul>
+<p>然后对每条策略做同一套切分：</p>
+<ol>
+<li><strong>波动 regime</strong>：rolling RV 分成 low / mid / high 三档；</li>
+<li><strong>流动性 regime</strong>：spread 或成交额分三档；</li>
+<li><strong>时段 regime</strong>：Asia / Europe / US pocket；</li>
+<li><strong>拥挤 regime</strong>（若有 perp 数据）：funding sign × OI shock quadrant。</li>
+</ol>
+<p>对每个 regime 计算：</p>
+<ul>
+<li>post-cost mean return</li>
+<li>post-cost Sharpe</li>
+<li>max drawdown</li>
+<li>trade count</li>
+<li>positive trade ratio</li>
+</ul>
+<p>然后定义：</p>
+<ul>
+<li><code>MRP_sharpe = min(Sharpe_by_regime)</code></li>
+<li><code>MRP_return = min(mean_return_by_regime)</code></li>
+<li><code>active_regime_ratio = profitable_regimes / total_regimes</code></li>
+</ul>
+<h3>最实用的第一版 go/no-go 规则</h3>
+<p>对 short-cycle desk，我会先用非常朴素的一版：</p>
+<ul>
+<li><code>GO</code>：<code>MRP_sharpe &gt; 0</code> 且 <code>active_regime_ratio &gt;= 0.6</code></li>
+<li><code>SIZE_DOWN</code>：<code>MRP_sharpe &lt;= 0</code> 但全样本 Sharpe 仍明显为正</li>
+<li><code>PARK</code>：只有 1~2 个 regime 赚钱，或 <code>单一 regime / 单一 fold</code> 贡献过高</li>
+<li><code>DROP</code>：<code>MRP_sharpe &lt;&lt; 0</code> 且成本一加就死</li>
+</ul>
+<h2>6. 对当前 short-cycle desk 的直接落地方式</h2>
+<p>最值得先落地的不是复杂统计，而是这 3 个动作：</p>
+<h3>A. 在 first verdict 后立刻补一个 durability 页</h3>
+<p>现在很多 digest 停在“这个想法能测”。下一步应该统一补：</p>
+<ul>
+<li><code>best regime</code></li>
+<li><code>worst regime</code></li>
+<li><code>MRP_sharpe</code></li>
+<li><code>single-pocket dependence</code></li>
+</ul>
+<h3>B. 把 MRP 接到仓位而不是只接到淘汰</h3>
+<p>同一条策略不一定非黑即白。更实用的是：</p>
+<ul>
+<li><code>MRP 高</code> → 正常 gross</li>
+<li><code>MRP 略负</code> → 降仓 / 只保留最稳 regime</li>
+<li><code>MRP 很差</code> → 只保留 research，不进 live shadow</li>
+</ul>
+<h3>C. 和现有 friction ladder 一起看</h3>
+<p>一条策略若：</p>
+<ul>
+<li>全样本 Sharpe 看着不错；</li>
+<li>但 <code>1.5× fee/slippage</code> 一加就死；</li>
+<li>且 <code>MRP</code> 为负；</li>
+</ul>
+<p>那它大概率不是“待优化 alpha”，而是<strong>脆弱 alpha</strong>。</p>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>这篇 JPM 论文不是 crypto 专文；我们拿的是<strong>方法迁移</strong>，不是直接照搬结论。</li>
+<li>regime 切分本身也可能过拟合，所以第一版必须用<strong>简单、少量、交易上讲得通</strong>的 regime，而不是任意切 20 个桶。</li>
+<li>MRP 不能替代 raw alpha；它只负责回答“这条 alpha 的坏时候有多坏”。</li>
+<li>如果样本交易数太少，MRP 会不稳；所以要加一个最低 trade-count 门槛。</li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<ol>
+<li>先从现有 4 条代表性 alpha 开始，不要全池一起上。</li>
+<li>每条 alpha 固定同一套 <code>5m/15m</code> 成本模型与 regime 切分。</li>
+<li>产出一张统一表：<code>full-sample Sharpe / MRP_sharpe / profitable regime ratio / cost-stress survival / fold concentration</code>。</li>
+<li>只要这张表一出，就能把下一轮 clean replication 顺序从“凭感觉”改成“先做 durable alpha”。</li>
+</ol>
+<h2>9. 来源</h2>
+<ul>
+<li>Alexander, N., &amp; Fabozzi, F. J. (2025). *Measuring Strategy-Decay Risk: Minimum Regime Performance and the Durability of Systematic Investing*. *The Journal of Portfolio Management*, 52(4), 198–219.</li>
+<li>DOI: <code><a href="https://doi.org/10.3905/jpm.2025.1.807">https://doi.org/10.3905/jpm.2025.1.807</a></code></li>
+<li>Readable URL: <code><a href="https://www.pm-research.com/content/iijpormgmt/52/4/198">https://www.pm-research.com/content/iijpormgmt/52/4/198</a></code></li>
+<li>OpenAlex: <code><a href="https://openalex.org/W7117551681">https://openalex.org/W7117551681</a></code></li>
+<li>gencersarp. (2026). *cryptoarb*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/gencersarp/cryptoarb">https://github.com/gencersarp/cryptoarb</a></code></li>
+<li>关键文件：<code>README.md</code>、<code>config/main.yaml</code>、<code>strategies/spot_perp.py</code>、<code>strategies/perp_perp.py</code>、<code>strategies/basis_mean_revert.py</code></li>
+</ul>
+</body>
+</html>

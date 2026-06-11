@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 funding boundary repo 只读成 latency 工具：更该先测的是「结算后 long richest / short cheapest 的 60m spread」raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 funding boundary repo 只读成 latency 工具：更该先测的是「结算后 long richest / short cheapest 的 60m spread」raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-26 02:04 UTC</span>
+      <span class="pill">研究时间：2026-03-26 02:02 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + perpetual/funding 理论地基 + Binance Futures 公共 `1m` 最小快检</span>
+      <span class="pill">主题标签：raw-alpha / funding / carry / relative-value / cross-sectional / event-driven / settlement-boundary / post-settlement / continuation / market-neutral / perpetual / binance / 1m / 3m / 5m / 15m / 60m / repo / paper / external-data</span>
+      <span class="pill">证据类型：仓库 source audit + 理论文献 + 公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-26_0202_funding-boundary-post-settlement-spread-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-26 02:02 UTC</li>
+<li>类型：2026 GitHub 新仓库 + perpetual/funding 理论地基 + Binance Futures 公共 <code>1m</code> 最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：funding 结算边界的横截面 relative-value / event-driven continuation（结算后做多最高 funding，做空最低 funding）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / funding / carry / relative-value / cross-sectional / event-driven / settlement-boundary / post-settlement / continuation / market-neutral / perpetual / binance / 1m / 3m / 5m / 15m / 60m / repo / paper / external-data</li>
+<li>证据类型：仓库 source audit + 理论文献 + 公共数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主材料是 <strong>wangshaofu 2026 GitHub 仓库</strong>《LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps》。它做的不是完整策略回测，而是盯住 <strong>funding rate 结算边界</strong>：抓全市场 mark price stream、追踪最极端 funding 名单、在结算前后记录 <code>bookTicker</code> 延迟与价格路径，回答“边界时刻到底有没有可交易窗口”。理论地基则补了 <strong>He、Manela、Ross、von Wachter 2022/2024</strong>《Fundamentals of Perpetual Futures》——它说明 perpetual 的 funding 不是孤立手续费，而是把 perp/spot 偏离、杠杆需求与套利资本状态编码进价格里的机制变量。</p>
+<p>对我们 desk 来说，更值钱的不是把 repo 原意照搬成“最负 funding 临门一脚 short”，而是把它改读成一个更可复现的 <strong>事件时钟 + 横截面排序</strong> 框架：<strong>funding 结算刚发生后，richest-funded leg 和 cheapest-funded leg 的后续 5m/15m/60m 相对表现，是否存在可交易 spread？</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>这篇东西的 base alpha 是什么？</strong> 不是“赚 funding”本身，也不是单纯 latency audit，而是 <strong>结算边界后的横截面 relative-value continuation</strong>：在 funding print 刚落地后，<strong>做多最高 funding 币、做空最低 funding 币</strong>，押注两端在接下来一小时继续分化。</li>
+<li>这和传统 carry 有一个关键区别：<strong>仓位是在 funding 结算后才开</strong>，所以主要赚的不是 funding cashflow，而是 <strong>结算边界后 crowding / price pressure 的延续</strong>。</li>
+<li>我用 Binance USDT 永续公开 <code>fundingRate</code> + <code>1m klines</code> 做了最小快检，样本取最近 <strong>21 天</strong>、只保留 <code>00/08/16 UTC</code> 这类<strong>大批量主结算时点</strong>（以当次 funding 记录数 <code>&gt;=100</code> 近似），共 <strong>125 个事件</strong>。若每次都做 <strong>long highest-funding / short lowest-funding</strong>、等美元、结算后立刻进场：</li>
+<li><strong>5m gross spread = +9.3 bps</strong></li>
+<li><strong>15m gross spread = +26.7 bps</strong></li>
+<li><strong>30m gross spread = +21.1 bps</strong></li>
+<li><strong>60m gross spread = +98.2 bps</strong></li>
+<li><strong>60m spread win rate = 64.8%</strong></li>
+<li>若进一步只做 <strong>funding gap 前 25% 最大</strong> 的事件，edge 明显更集中：</li>
+<li><strong>5m gross spread = +37.3 bps</strong></li>
+<li><strong>15m gross spread = +52.5 bps</strong></li>
+<li><strong>60m gross spread = +270.2 bps</strong></li>
+<li>这意味着：</li>
+</ul>
+<ol>
+<li><code>1m/3m/5m</code> 可以用来做精细执行，但<strong>真正更像完整策略 pocket 的，是 15m~60m 持有</strong>；</li>
+<li>funding boundary 更像 <strong>event-driven raw alpha</strong>，不是“拿 funding 当低频 filter”；</li>
+<li>repo 里“盯最负 funding 的临门脚 short”不一定是最优 desk transfer，<strong>更诚实的 desk 化读法可能是 post-settlement spread，而不是 pre-settlement 单腿赌方向</strong>。</li>
+</ol>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线直接补的是当前 desk 的 <strong>raw alpha 素材池</strong>，而且是目前相对没被写烂的一种：</p>
+<ul>
+<li>它不是 breakout / retest 的继续内循环；</li>
+<li>它也不是把 funding 继续伪装成 shared gate；</li>
+<li>它给的是一条 <strong>可以独立立项</strong> 的 perp event alpha：</li>
+<li>信号来自公开 funding</li>
+<li>时钟天然固定在 <code>00/08/16 UTC</code>（也可扩到 <code>1h/4h</code> funding 币种）</li>
+<li>执行落在 <code>1m/3m/5m</code></li>
+<li>持有落在 <code>15m/30m/60m</code></li>
+<li>风险管理天然可写成 market-neutral basket</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / relative-value / market-neutral / event-driven continuation</li>
+<li>基础 alpha：结算后 long highest-funding，short lowest-funding</li>
+<li>entry：<code>fundingTime</code> 后第一根可交易 <code>1m</code> bar 或前 1~2 分钟 VWAP</li>
+<li>exit：优先测 <code>15m / 30m / 60m</code> 固定持有；当前最像可落地 pocket 的是 <code>60m</code></li>
+<li>sizing：两端等美元，单腿 notional cap；高 funding gap 事件允许 size-up，普通事件降权</li>
+<li>risk：只做高流动性 USDT perp；跳过重大新闻窗 / 极端异常波动 / 合约临时风控状态；单币最大权重上限</li>
+<li>cost：pair taker round-trip 粗估约 <strong>16 bps</strong>（四次成交、每次 4 bps 量级）；所以 <strong>15m pocket 仅边际可活，60m pocket 更舒服</strong>；若能 maker-first，<code>5m/15m</code> 可测性会更好</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：funding 结算会把“谁最拥挤 / 谁最贵”这件事明牌化；结算后最贵腿与最便宜腿的相对价格仍会延续一段时间。</li>
+<li><strong>数据源</strong>：Binance Futures 公共 <code>fundingRate</code> 历史 + <code>1m</code> K 线；完全公开可拿。</li>
+<li><strong>更新频率</strong>：funding 主要是 <code>8h</code>，部分合约还有 <code>1h/4h</code>；价格可到 <code>1m</code>。</li>
+<li><strong>最小口径</strong>：</li>
+</ul>
+<ol>
+<li>在每个 <code>00/08/16 UTC</code> funding print 后读取<strong>刚刚公布</strong>的 funding snapshot；</li>
+<li>在高流动性 universe 里按 funding 排名；</li>
+<li>做 <code>top1-vs-bottom1</code> 或 <code>top3-vs-bottom3</code> 的等美元 spread；</li>
+<li>用 <code>1m/3m</code> 做进场、<code>15m/30m/60m</code> 做固定持有；</li>
+<li>计入 taker/maker 两套成本版本。</li>
+</ol>
+<ul>
+<li><strong>先看 4 个指标</strong>：gross spread、净后 edge、60m win rate、funding-gap 分位分层后的单调性。</li>
+</ul>
+<h2>5. 风险与边界</h2>
+<ul>
+<li><strong>别把它误读成收 funding 策略</strong>：我们当前看到的 pocket，主要赚的是<strong>结算后价格延续</strong>，不是 funding cashflow。</li>
+<li><strong>微盘/梗币污染很可能很重</strong>：极端 funding 往往先出现在拥挤小币上，所以正式版本必须加流动性、成交额、最小价位/最小名义金额过滤。</li>
+<li><strong>事件稀疏但不算罕见</strong>：它不是 bar-by-bar alpha，而是每天几个明确事件点；这很适合作为 desk 的补充型 alpha，而不是全时段主驱动。</li>
+<li><strong>1h/4h funding 币种先别混在一起</strong>：主结算窗和边界微结构不同，第一版最好先锁定 <code>00/08/16 UTC</code> 的主批次，再单独扩展。</li>
+</ul>
+<h2>6. 下一步怎么测</h2>
+<ol>
+<li><strong>做流动性诚实版</strong>：把 universe 固定成 Binance 前 <code>30~50</code> 个高流动性 USDT perp，重跑 <code>top1/top3/top5</code>。</li>
+<li><strong>做方向拆分</strong>：分别测 <code>long richest only</code>、<code>short cheapest only</code>、<code>long-richest/short-cheapest spread</code>，确认 alpha 真正在哪一侧。</li>
+<li><strong>做时间拆分</strong>：比较 <code>entry at +0m / +1m / +3m</code>，以及 <code>hold 5/15/30/60m</code>，找最稳 pocket，而不是默认最早进场。</li>
+<li><strong>做成本生存线</strong>：单独跑 <code>all-taker</code>、<code>maker-first + taker fallback</code>、<code>TWAP 2~5m</code> 三套。</li>
+<li><strong>做 veto</strong>：加入 <code>quote volume / OI / basis / news blackout</code>，看 edge 是被过滤放大，还是被过拟合吃掉。</li>
+<li><strong>做更像实盘的 ranking 版本</strong>：从 <code>top1-vs-bottom1</code> 升到 <code>top3-vs-bottom3</code>，减小单币 idiosyncratic risk。</li>
+</ol>
+<h2>7. 来源与可复用材料</h2>
+<ol>
+<li><strong>wangshaofu (2026)</strong>, *LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps*, GitHub repo.</li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>Readable URL: <a href="https://github.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps">https://github.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps</a></li>
+<li>Repo URL: <a href="https://github.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps">https://github.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps</a></li>
+<li>可复用点：全市场 funding 极值追踪、结算边界调度、边界前后 <code>bookTicker</code>/latency 记录。</li>
+</ul>
+<ol>
+<li><strong>Songrun He, Asaf Manela, Omri Ross, Victor von Wachter (2022; v6 updated 2024)</strong>, *Fundamentals of Perpetual Futures*, arXiv preprint.</li>
+</ol>
+<ul>
+<li>Venue: arXiv / q-fin.PR</li>
+<li>DOI: 10.48550/arXiv.2212.06888</li>
+<li>Readable URL: <a href="https://arxiv.org/abs/2212.06888">https://arxiv.org/abs/2212.06888</a></li>
+<li>PDF URL: <a href="https://arxiv.org/pdf/2212.06888">https://arxiv.org/pdf/2212.06888</a></li>
+<li>关键信息：paper 明确指出 perpetual 偏离、funding 与套利资本状态共同决定短期定价偏差，且 implied arbitrage strategy 在样本里有高 Sharpe。</li>
+</ul>
+<ol>
+<li><strong>Binance Open Platform</strong>（公开文档）</li>
+</ol>
+<ul>
+<li>Funding history docs: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History</a></li>
+<li>Kline docs: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></li>
+<li>数据公开性 / 更新频率 / 最小复现实验口径：完全公开；funding 以结算时点更新，价格可到 <code>1m</code>，足够做 settlement-boundary event study。</li>
+</ul>
+</body>
+</html>

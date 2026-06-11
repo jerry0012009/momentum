@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 crypto carry 继续写成“正 funding 就一直收”：这份 2025 repo 更值得先测的是「BTC 单 venue spot-perp carry × 负 funding 阈值离场 / 再开仓」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 crypto carry 继续写成“正 funding 就一直收”：这份 2025 repo 更值得先测的是「BTC 单 venue spot-perp carry × 负 funding 阈值离场 / 再开仓」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 07:22 UTC</span>
+      <span class="pill">研究时间：2026-04-04 07:20 UTC</span>
+      <span class="pill">类型：2025 GitHub repo source audit（`README.md` + `Strategy.ipynb` + repo 原始数据）+ 2023/2024 crypto carry 论文链路校对</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/basis/spot-perp/same-underlier/delta-neutral/single-venue/btc/binance/threshold-veto/re-entry/5m/15m/3m/1m/repo/paper/public-data/cost/risk</span>
+      <span class="pill">证据类型：开源 notebook + repo 附带原始数据 + carry 论文摘要/论坛摘要</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_0720_btc-spotperp-funding-threshold-carry-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 07:20 UTC</li>
+<li>类型：2025 GitHub repo source audit（<code>README.md</code> + <code>Strategy.ipynb</code> + repo 原始数据）+ 2023/2024 crypto carry 论文链路校对</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当 BTC perp 预期/已实现 funding 为正时，做 <code>long spot + short perp</code> 收 funding；当 funding 转负且负到足以吃掉一次平仓/重开成本时，暂时退出，待 funding 恢复非负后再开回 delta-neutral carry</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/carry/funding/basis/spot-perp/same-underlier/delta-neutral/single-venue/btc/binance/threshold-veto/re-entry/5m/15m/3m/1m/repo/paper/public-data/cost/risk</li>
+<li>证据类型：开源 notebook + repo 附带原始数据 + carry 论文摘要/论坛摘要</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮我没继续找“跨 venue 扫最肥 funding”的复杂版本，而是故意回到一个<strong>更容易做最小实验</strong>的 carry 原型：</p>
+<ul>
+<li><strong>Aidasvenc (2025), _funding-rate-trading_</strong>, GitHub repo</li>
+<li>README 标题：_Crypto Carry Trade Analysis Using Perpetual Futures_</li>
+<li>关键材料：<code>Strategy.ipynb</code>、repo 自带数据文件 <code>data/Bitcoin 2019-09-10</code></li>
+<li><strong>Zhenzhen Fan, Feng Jiao, Lei Lu, Xin Tong (2023)</strong>, _Risk-Return Relation of Cryptocurrency Carry Trade_, SSRN Electronic Journal, DOI: <code>10.2139/ssrn.4361410</code></li>
+<li><strong>Zhenzhen Fan, Feng Jiao, Lei Lu, Xin Tong (2023/2024 version)</strong>, _The Risk and Return of Cryptocurrency Carry Trade_, SSRN / seminar abstract lineage, DOI: <code>10.2139/ssrn.4666425</code></li>
+</ul>
+<p>我这次要 intake 的，不是“crypto carry 是否存在”这个大命题，而是一个更适合我们 desk 的<strong>可快速复现 branch idea</strong>：</p>
+<p>&gt; <strong>把单 venue spot-perp carry 从“永远持有”改成“负 funding 超过 round-trip 成本预算就离场，恢复后再开回”。</strong></p>
+<p>这东西的好处是：</p>
+<ul>
+<li>raw alpha 很清楚；</li>
+<li>公开数据全都有；</li>
+<li>可以直接写成完整策略；</li>
+<li>对 <code>5m / 15m</code> desk 很友好，因为信号慢、执行快。</li>
+</ul>
+<h2>2. 这条东西的 base alpha 到底是什么</h2>
+<p>先用一句话说透：</p>
+<p>&gt; <strong>base alpha = 同标的、delta-neutral 的 funding carry。</strong></p>
+<p>也就是：</p>
+<ul>
+<li>perp funding 为正：说明多头愿意付钱给空头；</li>
+<li>做 <code>long spot + short perp</code>，把方向风险尽量对冲掉，主要赚 funding；</li>
+<li>但不是傻拿到底——如果 funding 转负，而且负到已经足够覆盖一次平仓 + 未来重开成本，那就先退出；</li>
+<li>等 funding 恢复非负，再重新建回 carry 头寸。</li>
+</ul>
+<p>所以这不是 filter，也不是 overlay 伪装货；它本身就是一条<strong>可独立复现的 carry raw alpha</strong>。</p>
+<h2>3. 为什么这条分支比继续写“跨市场大而全 carry”更值得先测</h2>
+<p>因为它是更干净的最小原型。</p>
+<p>和最近那些 multi-venue / ranking / routing 版本比，这个题的优势反而是简单：</p>
+<ol>
+<li><strong>标的一条腿就够</strong>：先只看 <code>BTCUSDT spot + BTCUSDT perp</code></li>
+<li><strong>数据全公开</strong>：Binance spot/perp K 线、funding history、mark price 都能拿</li>
+<li><strong>逻辑闭环完整</strong>：</li>
+</ol>
+<ul>
+<li>entry：正 funding 时开 <code>long spot + short perp</code></li>
+<li>exit：负 funding 且超过阈值预算时平</li>
+<li>re-entry：funding 恢复非负时再开</li>
+<li>sizing：固定美元 notional 或波动率归一</li>
+<li>risk：basis 偏离、腿价差、资金占用、借币/费率上限</li>
+<li>cost：spot + perp 双腿 taker/maker fee</li>
+</ul>
+<ol>
+<li><strong>非常适合 5m/15m 执行研究</strong>：signal 不需要逐根 bar 重算，但执行完全可以放到 <code>1m/3m/5m/15m</code></li>
+</ol>
+<p>如果这条最简单的单 venue carry shell 都活不下来，后面再叠 venue routing、cross-sectional carry、funding z-score，只会更乱，不会更清楚。</p>
+<h2>4. repo 和论文到底给了哪些硬信息</h2>
+<h3>4.1 学术地基：crypto carry 本身不是假命题</h3>
+<p>Fan 等人的 carry 论文链路里，公开摘要/摘要页给了两组很关键的数字：</p>
+<ul>
+<li>ZUEL 论坛摘要版本写的是：</li>
+<li><strong>annualized return = <code>43.4%</code></strong></li>
+<li><strong>Sharpe = <code>0.74</code></strong></li>
+<li>DuckDuckGo 指向 Bohrium 的摘要片段写的是：</li>
+<li><strong>annualized return = <code>49.3%</code></strong></li>
+<li><strong>Sharpe = <code>0.81</code></strong></li>
+</ul>
+<p>两版数字略有差异，说明版本可能更新过；但方向一致：</p>
+<p>&gt; <strong>long high-interest crypto / short low-interest crypto 的 carry，在截面上确实能形成正的 long-short 回报。</strong></p>
+<p>更重要的是，论坛摘要还明确说：</p>
+<ul>
+<li>carry 回报<strong>不能被常见 crypto factors</strong>（market、size、momentum、volatility、liquidity、downside risk、platform collapse risks）解释；</li>
+<li>它和 fiat carry 也<strong>没有显著一一映射</strong>；</li>
+<li>作者更倾向把一部分收益解释为<strong>equity volatility risk premium</strong> 的补偿。</li>
+</ul>
+<p>对我们来说，这篇 paper 的意义不是拿它做 1m 主信号，而是确认： <strong>carry 这条原始 risk premium 是值得继续拆成短周期执行版本的。</strong></p>
+<h3>4.2 repo 自带数据非常适合先做最小实验</h3>
+<p>repo 附带的 BTC 数据文件覆盖：</p>
+<ul>
+<li><strong>起点：<code>2019-09-10 08:00:00</code></strong></li>
+<li><strong>终点：<code>2024-05-15 08:00:00</code></strong></li>
+<li><strong>总样本：<code>5133</code> 个 8h 观察点</strong></li>
+</ul>
+<p>我对原始 funding 列做了快检，结果很直接：</p>
+<ul>
+<li><strong>正/非负 funding 占比：<code>87.1%</code></strong></li>
+<li><strong>负 funding 占比：<code>12.9%</code></strong></li>
+<li><strong>funding 中位数：<code>0.0001</code>（约 1 bp / 8h）</strong></li>
+<li><strong>25% 分位：<code>0.00004314</code></strong></li>
+<li><strong>最小值：<code>-0.003</code></strong></li>
+<li><strong>最大值：<code>0.003</code></strong></li>
+</ul>
+<p>这组数说明两件事：</p>
+<ol>
+<li>BTC perp 在这段样本里大多数时间都适合做 <code>long spot + short perp</code>；</li>
+<li>真正会伤 carry 的，不是“没有正 funding”，而是<strong>少数极端负 funding 窗口</strong>。</li>
+</ol>
+<p>所以 repo 里最值得 desk 抄的，不是 carry 本身，而是这句规则：</p>
+<p>&gt; <strong>当负 funding 已经大到足以吃掉一轮 round-trip 成本预算时，别硬扛，先退出。</strong></p>
+<h3>4.3 repo 的阈值设计，本质上是在做“funding-budget veto”</h3>
+<p><code>Strategy.ipynb</code> 的核心阈值 sweep 是：</p>
+<ul>
+<li><code>thresholds = np.linspace(0.00004, 0.0001, 10)</code></li>
+</ul>
+<p>翻成人话就是：</p>
+<ul>
+<li>当 funding 变负时，</li>
+<li>如果这次负 funding 造成的损失已经大于一个预设预算（近似于一次平仓 + 日后重开成本），</li>
+<li>那就先把 carry 拿掉；</li>
+<li>不是永久放弃，只是等 funding 环境恢复后再回来。</li>
+</ul>
+<p>这个写法非常 desk 化，因为它不是宏大叙事，而是很实在的 <strong>cost-aware veto</strong>。</p>
+<h3>4.4 我做的本地便携性快检：这条 veto 至少值得继续测</h3>
+<p>我用 repo 同一份 BTC 数据做了一个<strong>快速 portability probe</strong>：</p>
+<ul>
+<li>沿用 notebook 的逻辑；</li>
+<li>由于原始 <code>markPrice</code> 列有缺口，临时用 <code>Open BTCUSDT_PERP</code> 作为缺口替代，只拿来判断有没有继续研究价值，<strong>不把这版 PnL 当 production 结论</strong>；</li>
+<li>固定 <code>X = 10,000</code>，<code>spot fee = perp fee = 1 bp</code>。</li>
+</ul>
+<p>得到的结果是：</p>
+<ul>
+<li><strong>always-on 持有</strong>：最终累计约 <strong><code>24,933.6</code></strong></li>
+<li><strong>阈值 veto 版本</strong>：最终累计约 <strong><code>25,283 ~ 25,373</code></strong></li>
+<li>粗看最优阈值在 <strong><code>0.0000933</code></strong> 附近</li>
+<li>相比 always-on，多出大约 <strong><code>+439</code></strong>，也就是<strong>约 <code>+1.8%</code> 的增益</strong></li>
+<li>策略在样本中的激活占比仍然高，约 <strong><code>94.5% ~ 96.5%</code></strong></li>
+</ul>
+<p>这说明：</p>
+<ul>
+<li>这不是“把 carry 关掉一大半”的悲观过滤；</li>
+<li>它更像是<strong>只在最不划算的负 funding 段落里短暂撤退</strong>；</li>
+<li>至少从最小实验角度看，值得继续深挖。</li>
+</ul>
+<p>但我要强调一次： &gt; 这组快检数字的用途是“判断题值不值得继续做”，不是“宣布策略已验证”。</p>
+<p>因为 markPrice 缺口、借币成本、真实 maker/taker fill、资金占用，都还没严肃纳入。</p>
+<h2>5. 对我们 <code>1m / 3m / 5m / 15m</code> desk 的意义</h2>
+<p>这条东西虽然 funding 节奏天然偏慢，但它依然是合格的 short-cycle 素材，原因是：</p>
+<h3>5.1 它是慢信号、快执行的 raw alpha</h3>
+<ul>
+<li><strong>信号时钟</strong>：funding 更新 / funding sign flip / funding budget breach</li>
+<li><strong>执行时钟</strong>：<code>5m / 15m</code> 最自然，<code>1m / 3m</code> 可做更细的下单择时</li>
+</ul>
+<p>也就是说：</p>
+<ul>
+<li>alpha 本体不是逐根 1m 乱跳；</li>
+<li>但我们的实际开平仓、拆单、basis 监控、滑点 veto，全都可以放在短周期框架里。</li>
+</ul>
+<h3>5.2 它服务的是 carry 这类 raw alpha，而不是 filter 伪装</h3>
+<p>这条题最重要的定位是：</p>
+<ul>
+<li>它不是“拿 funding 当 market filter”；</li>
+<li>而是<strong>funding 本身就是收益来源</strong>；</li>
+<li><code>threshold exit</code> 只是让这条 carry 更 net、更可活。</li>
+</ul>
+<p>所以它完全符合这轮 intake 的优先级： <strong>完整策略 raw alpha &gt; 纯解释型主题。</strong></p>
+<h2>6. 公开数据、更新频率、最小可复现实验口径</h2>
+<h3>6.1 数据源</h3>
+<p>全部可以走公开接口：</p>
+<ul>
+<li><strong>Binance spot klines</strong></li>
+<li><strong>Binance perpetual klines / mark price</strong></li>
+<li><strong>Binance funding rate history</strong></li>
+<li>若要更完整，再补：</li>
+<li>借币/现货融资成本</li>
+<li>资金费率结算时间点</li>
+<li>maker/taker fee tier</li>
+</ul>
+<h3>6.2 更新频率</h3>
+<ul>
+<li>funding：通常是 <strong>8h</strong> 结算/刷新主时钟</li>
+<li>spot/perp 价格：可拿 <strong>1m</strong> 甚至更细</li>
+<li>basis / slippage / microstructure veto：可以放在 <strong>1m / 3m / 5m / 15m</strong></li>
+</ul>
+<h3>6.3 最小可复现实验</h3>
+<p>我建议第一版就做得很朴素：</p>
+<ol>
+<li>标的：<code>BTCUSDT</code> 单币先跑</li>
+<li>头寸：<code>long spot + short perp</code></li>
+<li>入场：</li>
+</ol>
+<ul>
+<li>funding 非负时持有；</li>
+<li>若刚从负 funding 转回非负，在下一根 <code>5m</code> 或 <code>15m</code> bar 重开</li>
+</ul>
+<ol>
+<li>离场：</li>
+</ol>
+<ul>
+<li>当前 funding 为负；</li>
+<li>且 <code>|negative funding| × notional &gt; round-trip cost budget</code></li>
+</ul>
+<ol>
+<li>成本：</li>
+</ol>
+<ul>
+<li>spot fee</li>
+<li>perp fee</li>
+<li>滑点</li>
+<li>资金占用 / 借币成本（如果现货融资或借币）</li>
+</ul>
+<ol>
+<li>评估：</li>
+</ol>
+<ul>
+<li>gross / net carry</li>
+<li>out-of-market 时间占比</li>
+<li>missed positive funding</li>
+<li>adverse basis move</li>
+<li>break-even fee</li>
+</ul>
+<p>这是一个完全可以在 <code>5m / 15m</code> desk 中快速落地的实验，不需要先上全市场截面。</p>
+<h2>7. 下一步怎么测</h2>
+<h3>Step 1：先把 repo 的数据口径补干净</h3>
+<p>优先处理：</p>
+<ul>
+<li><code>markPrice</code> 缺口</li>
+<li>funding 时间戳对齐</li>
+<li>现货与 perp 的 fee / borrow 假设</li>
+</ul>
+<p>先别急着扩标的；把 BTC 这个最小壳跑通更重要。</p>
+<h3>Step 2：做真正的 funding sign-flip event study</h3>
+<p>要回答的不是“carry 总体赚不赚钱”，而是：</p>
+<p>&gt; <strong>负 funding 翻转段，到底会不会系统性吞掉继续持有的 carry 收益？</strong></p>
+<p>建议把事件拆成：</p>
+<ul>
+<li>funding 从正转负后的 <code>1 / 2 / 3</code> 个结算窗</li>
+<li>funding 极端负值分位（如 bottom 5%、1%）</li>
+<li>同时观察 basis 漂移与 spot-perp 腿价差</li>
+</ul>
+<h3>Step 3：把阈值从固定值改成成本自适应</h3>
+<p>repo 现在更像固定预算；desk 版更该测：</p>
+<ul>
+<li><code>threshold = k × expected round-trip cost</code></li>
+<li><code>threshold = maker/taker mix + spread proxy + borrow proxy</code></li>
+<li><code>threshold</code> 是否需要按波动/流动性分层</li>
+</ul>
+<p>也就是把它从“魔法数字”改成<strong>显式成本模型</strong>。</p>
+<h3>Step 4：扩到 ETH / SOL，但不要急着做 cross-sectional carry</h3>
+<p>如果 BTC 单币版本能活，再扩：</p>
+<ul>
+<li><code>ETHUSDT</code></li>
+<li><code>SOLUSDT</code></li>
+</ul>
+<p>先看：</p>
+<ul>
+<li>负 funding 频率</li>
+<li>阈值最优区间</li>
+<li>re-entry 延迟敏感度</li>
+</ul>
+<p>只有单币壳稳定后，再考虑截面高 carry / 低 carry 排名，否则会把 raw alpha 和执行噪音搅在一起。</p>
+<h3>Step 5：最后再叠短周期执行 veto</h3>
+<p>等 carry 本体过了，再加：</p>
+<ul>
+<li><code>1m/3m</code> spread widening veto</li>
+<li>funding 结算前后 5m 的冲击成本 veto</li>
+<li>盘口薄时暂停重开</li>
+<li>大 basis 跳变时只平不重开</li>
+</ul>
+<p>顺序一定别反： <strong>先验证 carry 本体，再做 execution polish。</strong></p>
+<h2>8. 我当前的判断</h2>
+<p>我会把这条题放进研究池，而且优先级不低。</p>
+<p>不是因为它多性感，而是因为它满足现在最缺的几个条件：</p>
+<ul>
+<li><strong>raw alpha 清楚</strong></li>
+<li><strong>完整策略闭环清楚</strong></li>
+<li><strong>公开数据容易拿</strong></li>
+<li><strong>可以今天就做最小实验</strong></li>
+<li><strong>还能作为更复杂 carry / basis / funding 策略的干净基线</strong></li>
+</ul>
+<p>一句话说：</p>
+<p>&gt; <strong>如果要给 short-cycle desk 补一条最容易复现的 carry 原型，这个“正 funding 持有、负 funding 超预算就退出”的 BTC 单 venue shell，很值得先做。</strong></p>
+<h2>9. 来源与复现入口</h2>
+<h3>主 repo</h3>
+<ul>
+<li><strong>Aidasvenc (2025)</strong>, *funding-rate-trading*</li>
+<li>Repo URL: <code><a href="https://github.com/Aidasvenc/funding-rate-trading">https://github.com/Aidasvenc/funding-rate-trading</a></code></li>
+<li>README: <code><a href="https://github.com/Aidasvenc/funding-rate-trading/blob/main/README.md">https://github.com/Aidasvenc/funding-rate-trading/blob/main/README.md</a></code></li>
+<li>Notebook: <code><a href="https://github.com/Aidasvenc/funding-rate-trading/blob/main/Strategy.ipynb">https://github.com/Aidasvenc/funding-rate-trading/blob/main/Strategy.ipynb</a></code></li>
+<li>Raw data: <code><a href="https://raw.githubusercontent.com/Aidasvenc/funding-rate-trading/main/data/Bitcoin%202019-09-10">https://raw.githubusercontent.com/Aidasvenc/funding-rate-trading/main/data/Bitcoin%202019-09-10</a></code></li>
+</ul>
+<h3>学术链路</h3>
+<ul>
+<li><strong>Zhenzhen Fan, Feng Jiao, Lei Lu, Xin Tong (2023)</strong>, *Risk-Return Relation of Cryptocurrency Carry Trade*</li>
+<li>Venue: SSRN Electronic Journal</li>
+<li>DOI: <code>10.2139/ssrn.4361410</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.2139/ssrn.4361410">https://doi.org/10.2139/ssrn.4361410</a></code></li>
+<li><strong>Zhenzhen Fan, Feng Jiao, Lei Lu, Xin Tong (2023/2024 version)</strong>, *The Risk and Return of Cryptocurrency Carry Trade*</li>
+<li>Venue: SSRN / seminar abstract lineage</li>
+<li>DOI: <code>10.2139/ssrn.4666425</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.2139/ssrn.4666425">https://doi.org/10.2139/ssrn.4666425</a></code></li>
+<li><strong>ZUEL seminar abstract page</strong>（用于摘要数字校对）</li>
+<li>URL: <code><a href="https://dtfe.zuel.edu.cn/szjsyxdjryw-szjsyw_xshd/szjsyxdjryw_cont_news/details-40035.html">https://dtfe.zuel.edu.cn/szjsyxdjryw-szjsyw_xshd/szjsyxdjryw_cont_news/details-40035.html</a></code></li>
+</ul>
+<h3>这篇 digest 的一句话结论</h3>
+<p><strong>这次最该 intake 的，不是“carry 赚不赚钱”的大叙事，而是「BTC 单 venue spot-perp carry × 负 funding 成本阈值 veto / re-entry」这个今天就能上 <code>5m/15m</code> 做最小实验的完整 raw alpha 壳。</strong></p>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Hyperliquid funding-arb repo 只读成“又一个收租机器人”：对 short-cycle desk，更该先拆的是「bidirectional funding sign-flip × 15m child execution」这条 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Hyperliquid funding-arb repo 只读成“又一个收租机器人”：对 short-cycle desk，更该先拆的是「bidirectional funding sign-flip × 15m child execution」这条 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-19 19:33 UTC</span>
+      <span class="pill">研究时间：2026-04-19 19:32 UTC</span>
+      <span class="pill">类型：2025 GitHub repo source audit（`README.md` + `strategy.py` + `funding_monitor.py` + `position_manager.py` + `risk_manager.py` + `backtester.py` + `BACKTEST_README.md`）+ Hyperliquid public funding-history `90d` portability probe（`BTC/ETH/SOL/HYPE`）</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/basis/relative-value/stat-arb/delta-neutral/hyperliquid/sign-flip/threshold-streak/child-execution/15m/5m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：仓库源码规则 + 公共 funding-history 最小探针</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-19_1932_hyperliquid-funding-signflip-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-19 19:32 UTC</li>
+<li>类型：2025 GitHub repo source audit（<code>README.md</code> + <code>strategy.py</code> + <code>funding_monitor.py</code> + <code>position_manager.py</code> + <code>risk_manager.py</code> + <code>backtester.py</code> + <code>BACKTEST_README.md</code>）+ Hyperliquid public funding-history <code>90d</code> portability probe（<code>BTC/ETH/SOL/HYPE</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当 8h funding 显著为正时做 <code>long spot / short perp</code> 收 funding；当 8h funding 显著为负时反过来做 <code>short spot / long perp</code>；持有到 funding 回落到阈值内或方向翻转</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/carry/funding/basis/relative-value/stat-arb/delta-neutral/hyperliquid/sign-flip/threshold-streak/child-execution/15m/5m/repo/public-data/cost/risk</li>
+<li>证据类型：仓库源码规则 + 公共 funding-history 最小探针</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这条线的 base alpha 很清楚，就是 delta-neutral funding carry，本体是 raw alpha，不是 filter。</strong></p>
+<p>主材料是仓库 <strong><code>stephenpeters/delta_neutral_strategies</code></strong>。repo 名字像 generic funding bot，但源码里其实给了一个相当完整、而且很适合我们 desk 拆解的全策略骨架：</p>
+<ul>
+<li><code>funding_monitor.py</code>：以 <strong>绝对 funding 阈值</strong> 生成双向信号；</li>
+<li><code>strategy.py</code>：先看账户健康，再管理老仓、再找新机会；</li>
+<li><code>position_manager.py</code>：有 <strong>delta-neutral rebalance</strong>（默认偏离 <code>5%</code> 触发）；</li>
+<li><code>risk_manager.py</code>：有 <strong>liquidation buffer</strong>（默认 <code>30%</code>）、<strong>max slippage</strong>（默认 <code>0.1%</code>）和按账户规模收缩仓位；</li>
+<li><code>backtester.py</code> / <code>BACKTEST_README.md</code>：把这条线明确写成 <strong>8h funding-driven hold / exit</strong> 的 carry 策略，而不是硬装成逐根 K 线方向预测。</li>
+</ul>
+<p>对我们更值钱的，不是“再记一遍 funding carry 常识”，而是： &gt; <strong>这份 repo 把 carry alpha 的 entry / exit / sizing / rebalance / liquidation guard 都拆开了，很适合直接翻译成 <code>15m signal monitor + 5m child execution</code> 的实盘骨架。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话结论：</strong> 这次最值得 intake 的，不是 repo 自带的“收益宣传”，而是它给出的 <strong>双向 funding sign-flip 完整策略壳</strong>；但对 short-cycle desk，<code>15m/5m</code> 的角色更像 <strong>8h carry 事件窗执行层</strong>，不是逐 bar 主信号。</li>
+<li><strong>一句话证据：</strong> 我用 Hyperliquid 公共 <code>fundingHistory</code> 对 <code>BTC/ETH/SOL/HYPE</code> 做了近 <code>90d</code> probe，发现 repo 默认 <code>1 bp</code> 入场阈值在 majors 上几乎不触发，说明这条线若想服务短周期，必须把重点放在 <strong>threshold design + event-window execution</strong>，而不是幻想它天然是高频母信号。</li>
+</ul>
+<p>最关键的数据点：</p>
+<ol>
+<li><strong>repo 默认阈值是 <code>1 bp</code>（<code>funding_rate_threshold = 0.0001</code>）</strong>；但在近 <code>90d</code>、每币约 <code>500</code> 个 <code>8h</code> funding 点里，<code>BTC/ETH/HYPE</code> 的 <strong><code>|funding| &gt; 1 bp</code> 触发次数都是 <code>0</code></strong>，只有 <code>SOL</code> 还有 <strong><code>11</code> 次（占 <code>2.2%</code>）</strong>。</li>
+<li>若把阈值降到 <strong><code>0.5 bp</code></strong>，触发占比变成：<code>BTC 0.4%</code>、<code>ETH 0.8%</code>、<code>SOL 11.2%</code>、<code>HYPE 1.0%</code>。这说明 <strong>默认参数对 majors 过稀疏</strong>，但对某些高 beta 币（这里是 <code>SOL</code>）已经开始像“可交易 pocket”。</li>
+<li>若再降到 <strong><code>0.25 bp</code></strong>，<code>SOL</code> 的触发占比升到 <strong><code>36.6%</code></strong>，平均 streak 长度约 <strong><code>7.0</code> 个 funding periods<code>（约 </code>56h<code>）</strong>；</code>HYPE<code> 约 <strong></code>6.2%<code></strong>、但 streak 更短（平均约 </code>1.94<code> 个 </code>8h`），更像短促 carry burst。</li>
+<li>方向上也不对称：本轮样本里，<code>BTC/ETH/SOL</code> 超阈值样本<strong>几乎全是负 funding</strong>，而 <code>HYPE</code> 超阈值样本则<strong>几乎全是正 funding</strong>。这意味着这条线不只是“有无信号”，还天然带有 <strong>coin-specific direction bias</strong>。</li>
+</ol>
+<h2>3. 为什么和当前 desk 直接相关</h2>
+<p>这轮值得保留，不是因为“funding carry 很老”，而是因为它把 <strong>短周期 desk 迟早都要补的一整层实盘组件</strong> 用很透明的方式摆在了台面上：</p>
+<ul>
+<li><strong>entry</strong>：绝对 funding 阈值；</li>
+<li><strong>direction</strong>：正 funding 做 <code>long spot / short perp</code>，负 funding 做反向；</li>
+<li><strong>exit</strong>：funding 跌回阈值内，或直接 sign flip；</li>
+<li><strong>sizing</strong>：按账户与最大仓位限制；</li>
+<li><strong>rebalance</strong>：净 delta 偏离过大就调仓；</li>
+<li><strong>risk</strong>：liquidation buffer、slippage cap、margin utilization；</li>
+<li><strong>timing</strong>：天生围绕 <code>8h</code> funding 时钟，不是假装每根 <code>5m</code> bar 都有独立 edge。</li>
+</ul>
+<p>换句话说，它更像一个 <strong>carry alpha 的 production shell</strong>。对 <code>1m/3m/5m/15m</code> 而言，真正该测的是： <strong>如何在 funding 事件窗附近降低实现成本，而不是把 funding 本体误写成连续方向因子。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative-value / carry / market-neutral / delta-neutral</li>
+<li>基础 alpha：当 perp 的 funding 偏离足够大时，站到“收 funding 的那一边”，并在 funding 回落或翻转时退出</li>
+<li>regime：更适合 funding 偏离能持续若干结算周期、且底层流动性足够厚的时候</li>
+<li>filter / veto：</li>
+<li>价差过宽不做（repo 里有 <code>max_slippage</code> 思路）；</li>
+<li>太靠近 liquidation 不做或减仓；</li>
+<li>只有单次 funding spike、没有 streak 延续时，可能只够解释、未必够覆盖成本</li>
+<li>risk / sizing / execution overlay：</li>
+<li>默认单仓上限 <code>max_position_size_usd = 10000</code>（live config）/ 回测默认 <code>5000</code>；</li>
+<li>账户使用率以 <code>80%</code> 为保守上限；</li>
+<li><code>rebalance_threshold = 5%</code>；</li>
+<li><code>liquidation_buffer = 30%</code>；</li>
+<li><code>max_slippage = 0.1%</code>；</li>
+<li>回测默认交易费 <code>0.02%</code> / side（双腿开平都会算）。</li>
+</ul>
+<h2>4. 本地最小快检（公开可得数据）</h2>
+<h3>4.1 数据源、公开性、更新频率、实验口径</h3>
+<ul>
+<li>数据源 A（主策略来源）：GitHub 公开仓 <code>stephenpeters/delta_neutral_strategies</code></li>
+<li>数据源 B（代理验证数据）：Hyperliquid 公共 <code>fundingHistory</code> API，无需 key</li>
+<li>更新频率：funding 以 <code>8h</code> 为主时钟；本轮 probe 拉取近 <code>90d</code></li>
+<li>最小实验口径：</li>
+<li>标的：<code>BTC / ETH / SOL / HYPE</code></li>
+<li>样本：每币约 <code>500</code> 个 funding observations</li>
+<li>统计：分别看 <code>|funding| &gt; 0.25 / 0.5 / 1.0 bps</code> 的触发频率、方向偏置、streak 长度</li>
+<li>目的：不是回测收益，而是先回答 <strong>repo 默认阈值在 Hyperliquid 现况下到底够不够用</strong></li>
+</ul>
+<h3>4.2 这组快检怎么读</h3>
+<ul>
+<li><strong><code>1 bp</code> 默认阈值太高。</strong> 这不是“策略无效”，而是说明它在当前 majors 上更像稀疏事件策略，而不是稳定日内主线。</li>
+<li><strong>更值得测的是 <code>0.25~0.5 bp</code>。</strong> 特别是 <code>SOL</code>，已经出现持续数个 funding periods 的 streak，比较像可以往下翻译成 <code>15m/5m</code> 执行规则。</li>
+<li><strong>币种之间不能共用同一认知。</strong> <code>SOL</code> 明显更像负 funding pocket，<code>HYPE</code> 更像正 funding pocket；如果一锅端用单参数，很容易把 edge 稀释掉。</li>
+</ul>
+<h2>5. 为什么这次不把它降级成 filter / overlay</h2>
+<p>因为这里回答的是： &gt; <strong>“到底做什么仓位来赚钱？”</strong></p>
+<p>答案已经很明确：</p>
+<ul>
+<li>不是用 funding 去 veto 别的 alpha；</li>
+<li>不是只用 funding 判断市场情绪；</li>
+<li>而是<strong>直接建立能收 funding 的 delta-neutral 仓位</strong>。</li>
+</ul>
+<p>这就是标准 raw alpha，只是它的主时钟是 <code>8h funding boundary</code>，不是 <code>5m</code> 价格 bar。<code>5m/15m</code> 在这里服务的是 <strong>execution、re-entry、de-risk</strong>，而不是 alpha 本体。</p>
+<h2>6. 风险与保留意见</h2>
+<ol>
+<li><strong>repo 的 backtester 不能直接当收益证据。</strong> 源码里 <code>capital</code> / <code>positions</code> 的会计处理比较粗，<code>_create_result()</code> 甚至没有把 closed positions 正常累计到结果对象里；所以它更像骨架，不是 audited research result。</li>
+<li><strong>position manager 里“spot 腿”目前其实是 perp 代理。</strong> 代码注释写得很直白：*for now, we&#x27;ll use perps for both sides since Hyperliquid spot requires more setup*。所以 live 版要么补真实 spot 接入，要么承认自己其实在做 perp-only proxy。</li>
+<li><strong>funding 赚的是慢变量，短周期亏的是实现成本。</strong> 如果没有更细的入场、分批和 spread-cap 设计，<code>1m/3m/5m</code> 很容易只是在帮你多付手续费。</li>
+</ol>
+<h2>7. 下一步怎么测</h2>
+<ol>
+<li><strong>先把阈值从单一 <code>1 bp</code> 下修成 coin-specific grid</strong>：例如 <code>0.25 / 0.5 / 0.75 / 1.0 bps</code>，分别对 <code>BTC/ETH/SOL/HYPE</code> 做触发频率、持续时长、净 carry 覆盖成本能力评估。</li>
+<li><strong>把 <code>8h funding state</code> 前向映射到 <code>15m</code> bars</strong>：做 <code>15m signal monitor</code>，只在 funding sign-streak 还活着时允许 child execution。</li>
+<li><strong>加 <code>5m</code> 执行 admission</strong>：只在 <code>spread / depth / premium</code> 没有恶化时开双腿，避免把慢变量 alpha 做成滑点机器。</li>
+<li><strong>分开测正 funding pocket 与负 funding pocket</strong>：不要默认它们镜像对称；本轮 <code>SOL</code> 和 <code>HYPE</code> 已经提示这件事。</li>
+<li><strong>补真实 spot/perp 或 perp/perp proxy 对照</strong>：先决定这是“真正单 venue cash-and-carry”，还是“资金费率驱动的 perp 代理策略”，别把执行层定义混掉。</li>
+</ol>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>Stephen Peters. (2025). _delta_neutral_strategies_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://github.com/stephenpeters/delta_neutral_strategies">https://github.com/stephenpeters/delta_neutral_strategies</a></li>
+<li>Repo URL: <a href="https://github.com/stephenpeters/delta_neutral_strategies">https://github.com/stephenpeters/delta_neutral_strategies</a></li>
+<li>GitHub metadata：创建于 <code>2025-10-06</code>，最近更新 <code>2026-04-19</code></li>
+</ul>
+<ol>
+<li><strong>Source audit files</strong></li>
+</ol>
+<ul>
+<li>README: <a href="https://github.com/stephenpeters/delta_neutral_strategies/blob/master/README.md">https://github.com/stephenpeters/delta_neutral_strategies/blob/master/README.md</a></li>
+<li>Backtest guide: <a href="https://github.com/stephenpeters/delta_neutral_strategies/blob/master/BACKTEST_README.md">https://github.com/stephenpeters/delta_neutral_strategies/blob/master/BACKTEST_README.md</a></li>
+<li>Strategy: <a href="https://github.com/stephenpeters/delta_neutral_strategies/blob/master/strategy.py">https://github.com/stephenpeters/delta_neutral_strategies/blob/master/strategy.py</a></li>
+<li>Funding monitor: <a href="https://github.com/stephenpeters/delta_neutral_strategies/blob/master/funding_monitor.py">https://github.com/stephenpeters/delta_neutral_strategies/blob/master/funding_monitor.py</a></li>
+<li>Position manager: <a href="https://github.com/stephenpeters/delta_neutral_strategies/blob/master/position_manager.py">https://github.com/stephenpeters/delta_neutral_strategies/blob/master/position_manager.py</a></li>
+<li>Risk manager: <a href="https://github.com/stephenpeters/delta_neutral_strategies/blob/master/risk_manager.py">https://github.com/stephenpeters/delta_neutral_strategies/blob/master/risk_manager.py</a></li>
+<li>Backtester: <a href="https://github.com/stephenpeters/delta_neutral_strategies/blob/master/backtester.py">https://github.com/stephenpeters/delta_neutral_strategies/blob/master/backtester.py</a></li>
+</ul>
+<ol>
+<li><strong>Hyperliquid public API docs / context</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint</a></li>
+<li>本轮实际使用：公开 <code>fundingHistory</code> endpoint payload</li>
+</ul>
+<h2>9. 本地产物</h2>
+<ul>
+<li>Probe 脚本：<code>reports/artifacts/quant_digests/2026-04-19_hyperliquid_funding_signflip_probe.py</code></li>
+<li>Threshold summary：<code>reports/artifacts/quant_digests/2026-04-19_hyperliquid_funding_signflip_summary.json</code></li>
+<li>Threshold table：<code>reports/artifacts/quant_digests/2026-04-19_hyperliquid_funding_signflip_thresholds.csv</code></li>
+</ul>
+</body>
+</html>

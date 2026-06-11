@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2022 unsupervised pairs repo 只读成普通 cointegration：对 short-cycle desk，更该先拆的是「cluster-first pair admission × spread fade」这条 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2022 unsupervised pairs repo 只读成普通 cointegration：对 short-cycle desk，更该先拆的是「cluster-first pair admission × spread fade」这条 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-15 15:26 UTC</span>
+      <span class="pill">研究时间：2026-04-15 15:24 UTC</span>
+      <span class="pill">类型：2022 GitHub repo source audit（`README.md` + `strategies/AutoPairsTrading/__init__.py`）+ Binance USDⓈ-M `1h` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cluster-first/pair-admission/agglomerative-clustering/pca/adf/kalman/hedge-ratio/spread-zscore/binance-perpetual/1h/15m/5m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 源码规则 + 公共历史 K 线 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-15_1524_clusterfirst-pairadmission-spreadfade-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-15 15:24 UTC</li>
+<li>类型：2022 GitHub repo source audit（<code>README.md</code> + <code>strategies/AutoPairsTrading/__init__.py</code>）+ Binance USDⓈ-M <code>1h</code> public-data portability probe</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cluster-first/pair-admission/agglomerative-clustering/pca/adf/kalman/hedge-ratio/spread-zscore/binance-perpetual/1h/15m/5m/repo/public-data/cost/risk</li>
+<li>证据类型：repo 源码规则 + 公共历史 K 线 portability probe</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>cointegrated spread mean reversion；真正有增量的旁支不是“spread 会回归”这句老话，而是“先用 return-surface clustering 缩小候选池，再在簇内做 ADF/hedge-ratio 选对”的 pair admission 机制。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<h3>主来源（repo）</h3>
+<ul>
+<li><strong>Authors / Owner：</strong> <code>jinczing</code></li>
+<li><strong>Year：</strong> repo latest visible commit <code>2022-12-22</code></li>
+<li><strong>Title：</strong> *Cryptocurrency Pairs Trading via Unsupervised Learning*</li>
+<li><strong>Venue：</strong> GitHub repo</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/jinczing/crypto-pairs-trader&gt;">https://github.com/jinczing/crypto-pairs-trader&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/jinczing/crypto-pairs-trader&gt;">https://github.com/jinczing/crypto-pairs-trader&gt;</a></li>
+<li><strong>README 可见结论：</strong> naive cointegration baseline <code>Sharpe 0.47 / annualized return 8%</code>，clustering-based 版本 <code>Sharpe 1.89 / annualized return 50.44%</code></li>
+</ul>
+<h3>本轮自建 probe 产物</h3>
+<ul>
+<li>汇总：<code>reports/artifacts/quant_digests/2026-04-15_clusterfirst_pairs_probe_summary.json</code></li>
+<li>小时级事件流：<code>reports/artifacts/quant_digests/2026-04-15_clusterfirst_pairs_probe_hourly.csv</code></li>
+</ul>
+<h2>2. 先把一句话说清楚：这篇东西的 base alpha 是什么？</h2>
+<p>&gt; <strong>base alpha = 被筛选出来的 cointegrated pair 的 spread mean reversion。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>它本体不是趋势，不是 funding，也不是横截面 winner/loser 排名；</li>
+<li>它本体仍然是最经典那条 <strong>relative-value / stat-arb raw alpha</strong>：</li>
+</ul>
+<ol>
+<li>找两条价格行为足够接近、但短期会偏离的币；</li>
+<li>估计 hedge ratio；</li>
+<li>当 spread 偏到极端时做反向；</li>
+<li>等 spread 回到中枢就走。</li>
+</ol>
+<p>这轮真正值得写的新增量，在于 repo 没把“pair 从哪来”留空，而是给了一套 <strong>先聚类、再筛 cointegration、再滚动重选</strong> 的 admission 机制。也就是说： &gt; <strong>alpha 本体 = spread fade；增量部件 = cluster-first pair admission。</strong></p>
+<p>所以它不是 filter，不是 overlay，而是一条 <strong>可以直接写成 entry / exit / sizing / 风控的 raw alpha 壳</strong>。</p>
+<h2>3. 为什么这轮还值得写，而不是把它归到“又一篇 pairs”</h2>
+<p>如果只是“再来一篇 spread z-score fade”，这轮不值得写。</p>
+<p>这轮值得进池，原因在 3 点：</p>
+<ol>
+<li><strong>它补的是“pair discovery loop”，不是只补一条 pair 本身。</strong></li>
+<p>之前很多 pairs 主题默认 pair universe 已经给定；这份 repo 给的是：</p>
+</ol>
+<ul>
+<li>怎么把币先分簇；</li>
+<li>怎么在簇内做 candidate ranking；</li>
+<li>怎么每 <code>30d</code> 重新选对。</li>
+</ul>
+<ol>
+<li><strong>它只用公开 K 线就能跑。</strong></li>
+<p>不依赖私有订单流、不依赖昂贵数据商，复现门槛低，适合 desk 快速做最小实验。</p>
+</ol>
+<ol>
+<li><strong>它天然适合 desk 做“慢 admission + 快 execution”拆分。</strong></li>
+<p>pair selection 可以留在 <code>1h</code> 甚至更慢；真正的入场、减仓、stale-leg veto、冲击过滤，可以下沉到 <code>15m / 5m</code>。</p>
+</ol>
+<p>所以这轮真正可吸收的，不一定是 repo 原版 shell 整体照搬， 而是： &gt; <strong>把 cluster-first admission 当成 pairs/stat-arb book 的前置选对层。</strong></p>
+<h2>4. repo 里到底写了什么</h2>
+<h2>4.1 先聚类，再在簇里找 pair</h2>
+<p><code>strategies/AutoPairsTrading/__init__.py</code> 的第一层不是直接枚举全市场 pair，而是先做 feature clustering：</p>
+<ul>
+<li>交易所：<code>Binance Perpetual Futures</code></li>
+<li>基础频率：<code>1h</code></li>
+<li>universe：外部 <code>universe_symbols</code> 文件</li>
+<li>特征构造：</li>
+<li>先算 <code>24h</code> price change；</li>
+<li>再对多个窗口做 rolling mean；</li>
+<li>源码窗口从 <code>1d</code> 一路拉到约 <code>171d</code>（<code>24*i, i=1..171 step 10</code>）</li>
+<li>然后做：</li>
+<li>标准化；</li>
+<li><code>PCA</code> 降维；</li>
+<li><code>AgglomerativeClustering</code>（complete linkage，默认 <code>6</code> 簇）</li>
+</ul>
+<p>翻成人话： &gt; 它不是“谁跟谁看着像就配对”，而是先按多窗口收益轮廓把币分到行为相近的簇里，再在小池子里做 pair selection。</p>
+<p>这对 desk 的价值很直接：</p>
+<ul>
+<li>降低全市场乱配对；</li>
+<li>少做 sector 无关、风格不搭的 pair；</li>
+<li>让 pair admission 更像一个系统化模块，而不是人工灵感。</li>
+</ul>
+<h2>4.2 簇内 pair ranking：OLS hedge ratio + ADF p-value</h2>
+<p>簇内每一对候选，repo 做的是：</p>
+<ol>
+<li>对两腿价格做线性回归；</li>
+<li>取回归残差当 spread；</li>
+<li>用 <code>ADF</code> p-value 给 pair 排序；</li>
+<li>选最优且 <strong>symbol 不重叠</strong> 的 pair；</li>
+<li>最多保留 <code>3</code> 对。</li>
+</ol>
+<p>也就是说，repo 的 pair selection 不是“相关性大就上”，而是更接近： &gt; <strong>行为先相似，再看 spread 站不站得住 mean-reverting 统计检验。</strong></p>
+<h2>4.3 pair 不是永久的，默认每 30 天重选一次</h2>
+<p>源码里：</p>
+<ul>
+<li><code>period = 30</code></li>
+<li>到期后重新 <code>reevaluate_pairs()</code></li>
+</ul>
+<p>这点很关键，因为 crypto pair 关系很容易漂移：</p>
+<ul>
+<li>narrative 换了；</li>
+<li>板块轮动换了；</li>
+<li>流动性变了；</li>
+<li>上币/退市变了。</li>
+</ul>
+<p>因此这份 repo 真正提供的是： &gt; <strong>动态 pair universe，而不是固定 pair 名单。</strong></p>
+<h2>4.4 交易逻辑很朴素：spread 偏离 ±2σ 入场，回到中枢出场</h2>
+<p>交易层不花哨，但完整：</p>
+<ul>
+<li>spread 维护：</li>
+<li>初始化 <code>KalmanFilter</code></li>
+<li>在线更新 <code>beta/intercept</code></li>
+<li>信号层：</li>
+<li><code>bb_window = 24*7</code>（约 7 天小时级）</li>
+<li>当 spread <code>&gt; mean + 2σ</code>：做空 spread</li>
+<li>当 spread <code>&lt; mean - 2σ</code>：做多 spread</li>
+<li>出场层：</li>
+<li>当 spread 穿越均值附近（源码里用 sign flip / zero-cross）就平仓</li>
+</ul>
+<p>这意味着它不是只给 pair selection， 而是给了一条完整 raw alpha 壳：</p>
+<ul>
+<li>admission</li>
+<li>hedge ratio</li>
+<li>entry</li>
+<li>exit</li>
+<li>重新选对</li>
+</ul>
+<h2>4.5 sizing 很粗，但足够说明这真的是完整策略，不是概念 README</h2>
+<p>repo 默认：</p>
+<ul>
+<li>每腿仓位大致按 <code>balance / 6</code> 分配；</li>
+<li>hedge ratio 在 sizing 里没有完全严肃地打进去；</li>
+<li>风控更多是结构性平仓，而不是精细的成本/容量控制。</li>
+</ul>
+<p>所以它不是 production-ready， 但也不是一句“pairs trading 很酷”的空壳。</p>
+<h2>5. 我做的 Binance USDⓈ-M <code>1h</code> 最小 portability probe：选对逻辑能复现，但当前 direct shell first verdict 偏负</h2>
+<h2>5.1 数据与口径</h2>
+<ul>
+<li><strong>数据源：</strong> Binance USDⓈ-M public <code>/fapi/v1/klines</code></li>
+<li><strong>公开性：</strong> 完全公开 REST</li>
+<li><strong>更新频率：</strong> <code>1h</code></li>
+<li><strong>样本：</strong> <code>2025-12-16 16:00 UTC</code> 到 <code>2026-04-15 15:00 UTC</code>，共 <code>2880</code> 根小时 bar</li>
+<li><strong>可交易活跃子集：</strong> <code>AAVE / COMP / CRV / SNX / SUSHI / UNI / YFI</code></li>
+<li><strong>walk-forward 口径：</strong></li>
+</ul>
+<ol>
+<li>用最近 <code>60d</code> 训练；</li>
+<li>未来 <code>30d</code> 测试；</li>
+<li>每 <code>30d</code> 重做一次 clustering + pair ranking；</li>
+<li>每个测试窗最多保留 <code>2</code> 对不重叠 pair；</li>
+<li>训练期用 OLS beta，测试期用 <code>7d</code> z-score；</li>
+<li>entry=<code>±2σ</code>，exit=<code>0-cross</code>；</li>
+<li>成本先用较轻但不离谱的近似：<strong>每次腿变动 <code>4 bps</code></strong>。</li>
+</ol>
+<p>注意：</p>
+<ul>
+<li>这不是 repo 精确复刻；</li>
+<li>但足够回答一个更重要的问题：</li>
+<p>&gt; <strong>这套 cluster-first admission × spread fade，在今天 active Binance perp universe 上还能不能顺手跑起来？</strong></p>
+</ul>
+<h2>5.2 先记最重要的 6 个数</h2>
+<ul>
+<li>gross total return：约 <strong><code>-10.37%</code></strong></li>
+<li>net total return：约 <strong><code>-11.00%</code></strong></li>
+<li>gross Sharpe：约 <strong><code>-1.52</code></strong></li>
+<li>net Sharpe：约 <strong><code>-1.63</code></strong></li>
+<li>max drawdown：约 <strong><code>-15.38%</code></strong></li>
+<li>trade events：约 <strong><code>35</code></strong> 次腿变动事件</li>
+</ul>
+<p>两段测试窗里，选出来的 pair 分别是：</p>
+<ul>
+<li><code>2026-02-14 → 2026-03-16</code>：<code>CRV-SNX</code>、<code>AAVE-SUSHI</code></li>
+<li><code>2026-03-16 → 2026-04-15</code>：<code>AAVE-COMP</code>、<code>CRV-YFI</code></li>
+</ul>
+<p>一句话结论： &gt; <strong>pair discovery 这件事是能复现的，但 direct shell 迁到当前 liquid-major-ish DeFi perp 子集上，first verdict 偏负。</strong></p>
+<h2>5.3 这组数真正说明了什么</h2>
+<h3>结论 1：repo 最值钱的部分，可能不是交易壳，而是 admission layer</h3>
+<p>如果这轮 probe 连 pair 都选不出来，那就没什么好说的。 但现在不是这样：</p>
+<ul>
+<li>clustering 能稳定把 pair pool 缩出来；</li>
+<li>ADF ranking 能挑出看上去合理的 DeFi 对；</li>
+<li>问题主要出在 <strong>直接交易壳</strong> 的 portable performance。</li>
+</ul>
+<p>所以真正可复用的部分更像： &gt; <strong>cluster-first pair admission，是一块可插拔组件；原版 spread fade 壳，不应直接抬进 production 候选池。</strong></p>
+<h3>结论 2：当前 active universe 比 repo 当年的候选池更窄</h3>
+<p>repo 里原始 universe 有不少今天已经不在 Binance USDⓈ-M 活跃交易的符号：</p>
+<ul>
+<li><code>BAL</code></li>
+<li><code>DODO</code></li>
+<li><code>LRC</code></li>
+<li><code>MKR</code></li>
+<li><code>REN</code></li>
+</ul>
+<p>这意味着：</p>
+<ul>
+<li>原 repo 的 pair ecology，今天已经变了；</li>
+<li>你现在能跑的只是残余活跃子集；</li>
+<li>cluster admission 还在，但 alpha 密度可能已经被 universe 变化削弱。</li>
+</ul>
+<h3>结论 3：short-cycle desk 不该把它理解成“又一条现成 pair alpha”</h3>
+<p>更诚实的 desk 读法应该是：</p>
+<ul>
+<li><strong>base alpha</strong> 仍是 spread MR；</li>
+<li><strong>真正新增量</strong> 是 pair admission；</li>
+<li><strong>正确用法</strong> 是拿 admission 去喂更强的 spread/trade engine，而不是照抄原壳。</li>
+</ul>
+<h2>6. 这条线对 <code>1m / 3m / 5m / 15m</code> 的正确定位</h2>
+<h2>6.1 它服务短周期 desk 的方式，不是把 selection 本身压到 1m</h2>
+<p>最合理的拆法是：</p>
+<ul>
+<li><strong>selection layer（慢）：</strong> <code>1h / 4h / daily</code> 更新 cluster + pair list</li>
+<li><strong>signal layer（中）：</strong> <code>15m</code> 做 spread z-score / residual excursion</li>
+<li><strong>execution layer（快）：</strong> <code>5m / 1m</code> 做 stale-leg、盘口深度、滑点和 maker/taker 选择</li>
+<li><strong>risk layer：</strong> 遇到单腿异常拉升、funding 扭曲、盘口抽空就 veto</li>
+</ul>
+<p>也就是说，它对 short-cycle desk 的意义不是“高频选 pair”，而是： &gt; <strong>给你一个更系统化的 pair admission 前置层。</strong></p>
+<h2>6.2 所以这轮主题仍然算 raw alpha，但当前 priority 不该太高</h2>
+<p>为什么仍算 raw alpha？</p>
+<ul>
+<li>因为 base alpha 很清楚，就是 spread mean reversion；</li>
+<li>repo 也给了完整 entry / exit / sizing 壳。</li>
+</ul>
+<p>为什么 current priority 不该太高？</p>
+<ul>
+<li>因为 public-data first probe 偏负；</li>
+<li>说明这条壳不该直接排进“先做 production replication”的第一梯队。</li>
+</ul>
+<p>更合理的结论是： &gt; <strong>主题合格，部件有价值，但现阶段更像“pairs book 的 reusable admission module”，不是现成 alpha winner。</strong></p>
+<h2>7. 风险与保留意见</h2>
+<ol>
+<li><strong>repo 的成绩大概率强依赖当时 universe。</strong></li>
+<p>当前活跃子集缩水后，pair 结构已经变了。</p>
+</ol>
+<ol>
+<li><strong>probe 不是精确复刻。</strong></li>
+<p>我这里为了快速判断 portability，做了简化版 walk-forward，而不是完整还原 Jesse 环境与在线 Kalman 状态机。</p>
+</ol>
+<ol>
+<li><strong>原 repo sizing 很粗。</strong></li>
+<p>若真上 desk，至少要补：</p>
+</ol>
+<ul>
+<li>gross exposure cap</li>
+<li>beta-neutral sizing</li>
+<li>单腿极端偏离 kill-switch</li>
+<li>funding / fee / slippage 更真实口径</li>
+</ul>
+<ol>
+<li><strong>这条线很容易被误读成“pairs 永远有用”。</strong></li>
+<p>实际上，这轮恰恰说明：</p>
+</ol>
+<ul>
+<li>pair admission 可以保留；</li>
+<li>直接 spread fade 壳未必还好用。</li>
+</ul>
+<h2>8. 我给这轮主题的结论</h2>
+<p>&gt; <strong>这是一个合格的新 raw alpha 主题，但当前真正值得 desk 吸收的，不是“照抄 2022 clustering-based pairs shell”，而是“cluster-first pair admission”这块模块化组件。</strong></p>
+<p>更具体地说：</p>
+<ul>
+<li><strong>值得进研究池</strong>，因为 base alpha 清楚、复现门槛低、源码完整；</li>
+<li><strong>值得保留 admission 逻辑</strong>，因为它给了 pairs/stat-arb book 一个比“全市场乱扫 pair”更系统的入口；</li>
+<li><strong>不值得直接升成当前优先 production shell</strong>，因为这轮 public-data portability first verdict 偏负。</li>
+</ul>
+<h2>9. 下一步怎么测</h2>
+<p>按优先级，我建议直接做这 5 步：</p>
+<ol>
+<li><strong>把 selection 和 trading engine 分开评估</strong></li>
+<p>先固定这套 clustering admission，只替换交易壳：</p>
+</ol>
+<ul>
+<li>传统 z-score fade；</li>
+<li>OU / s-score；</li>
+<li>microprice / OBI 辅助入场；</li>
+<p>看问题到底出在 pair list，还是出在交易壳。</p>
+</ul>
+<ol>
+<li><strong>做 <code>15m</code> execution 版，而不是继续全靠 <code>1h</code> 触发</strong></li>
+<p><code>1h</code> 负责选 pair，<code>15m</code> 负责：</p>
+</ol>
+<ul>
+<li>更细的 spread 极值确认；</li>
+<li>stale-leg veto；</li>
+<li>maker-first / taker-fallback。</li>
+</ul>
+<ol>
+<li><strong>把 clustering admission 和“纯 ADF 全市场扫 pair”做 head-to-head</strong></li>
+<p>直接比较：</p>
+</ol>
+<ul>
+<li>pair 稳定性</li>
+<li>未来 30d half-life</li>
+<li>gross/net Sharpe</li>
+<li>turnover</li>
+<p>看 clustering 到底提供了多少真实增量。</p>
+</ul>
+<ol>
+<li><strong>扩成 sector-aware universe，而不是只看剩下的老 DeFi 币</strong></li>
+<p>下一版不要只盯 <code>AAVE/COMP/CRV/SNX/SUSHI/UNI/YFI</code>，应扩到：</p>
+</ol>
+<ul>
+<li>DeFi 一组</li>
+<li>L1/L2 一组</li>
+<li>meme 一组</li>
+<li>exchange / infra 一组</li>
+<p>看 cluster-first admission 在更大 universe 下是否反而更有价值。</p>
+</ul>
+<ol>
+<li><strong>把 funding / liquidity veto 接上去</strong></li>
+<p>对 pair 两腿补 3 个 veto：</p>
+</ol>
+<ul>
+<li>funding gap 突然扭曲；</li>
+<li>单腿成交额骤降；</li>
+<li>单腿 <code>5m</code> 冲击超过阈值。</li>
+<p>这一步最可能把“统计上像 pair、交易上却很脏”的假机会筛掉。</p>
+</ul>
+</body>
+</html>

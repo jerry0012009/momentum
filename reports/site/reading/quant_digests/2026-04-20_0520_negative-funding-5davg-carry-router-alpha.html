@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Hyperliquid funding screener 只读成“排行榜”：对 short-cycle crypto desk，更该先拆的是「5d 平均 funding 最负那一档 × next 1~3h carry persistence」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Hyperliquid funding screener 只读成“排行榜”：对 short-cycle crypto desk，更该先拆的是「5d 平均 funding 最负那一档 × next 1~3h carry persistence」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-20 05:25 UTC</span>
+      <span class="pill">研究时间：2026-04-20 05:20 UTC</span>
+      <span class="pill">类型：GitHub / public-data replication</span>
+      <span class="pill">主题标签：carry / funding / cross-sectional / relative value / stat-arb / Hyperliquid / 15m child execution</span>
+      <span class="pill">证据类型：工程经验 + public-data replication</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-20_0520_negative-funding-5davg-carry-router-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-20 05:20 UTC</li>
+<li>类型：GitHub / public-data replication</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>long 最负 funding perp + 外部对冲腿</code>，赚未来几小时继续收到的 funding carry</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：carry / funding / cross-sectional / relative value / stat-arb / Hyperliquid / 15m child execution</li>
+<li>证据类型：工程经验 + public-data replication</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 <code>traders-ark/hyperliquid-carry-screener</code>：它表面只是把 Hyperliquid 各币种 <code>current / 1d / 3d / 5d</code> funding 排名做成看板，但更值钱的读法不是“看谁 funding 高”，而是把它当成 <strong>carry raw alpha 的横截面选币器</strong>。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这份 repo 真正可复用的不是页面，而是它公开了 <strong>全市场 funding 历史拉取 + 多窗口平均排名</strong> 这条骨架。</li>
+<li>我用 repo 自带 <code>funding_data_main.csv</code>（<code>2026-01-20~2026-04-20</code>，<code>229</code> 个币，约 <code>49.4</code> 万条 hourly funding）做快检：每小时按过去 <code>5d</code> 平均 funding 排名，只做<strong>最负 funding 一档</strong>，下一小时平均可收约 <code>+4.47 bps</code>，未来 <code>3h</code> 累计约 <code>+13.07 bps</code>，命中率约 <code>87.9% / 92.2%</code>（<code>n=2037</code>）。</li>
+<li>反过来只做<strong>最正 funding 一档</strong>去 short 并不行：next <code>1h / 3h</code> 约 <code>-2.01 / -6.02 bps</code>，说明当前这套数据里真正厚的 pocket 不是“short rich-funding”，而是 <strong>long deeply negative-funding</strong>。</li>
+<li>今日 repo 快照也支持“负 funding 更像 persistent pocket”这个读法：负向 top10 在 <code>1d∩3d∩5d</code> 里仍有 <code>7</code> 个重合（<code>BLAST/BLUR/COMP/FET/FTT/MOVE/YZY</code>）；正向三窗重合虽有 <code>8</code> 个，但历史 realized carry 仍明显不如负向。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这不是慢频“收租综述”，而是能直接补进 desk 原料池的一条 <strong>carry / relative-value raw alpha</strong>：母信号在 hourly funding 排名，执行层完全可以下放到 <code>15m</code>，做 funding 结算前后的 child execution、spread veto 和 maker-first 入场。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / carry</li>
+<li>基础 alpha：过去 <code>5d</code> 平均 funding 最负的 perp，未来 <code>1~3h</code> 仍更可能继续保持“做多 perp 可收 funding”</li>
+<li>regime：资金费率分化明显、负 funding cluster 持续存在时更有效</li>
+<li>filter / veto：只保留 <code>5d</code> 最负一档；可再加 <code>1d/3d/5d</code> 共识排名、流动性阈值、单币 funding cap</li>
+<li>risk / sizing / execution overlay：对冲腿做 beta-neutral；按 funding 绝对值或盘口深度缩仓；<code>15m</code> 执行避开极薄盘口与大价差时段</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：<code>5d</code> 平均 funding 最负的币，未来几小时继续维持负 funding 的概率更高。</li>
+<li>可计算定义：每小时对全市场做 <code>avg_funding_5d</code> 排名，选最小值；交易为 <code>long perp + hedge leg</code>，持有 <code>1h / 3h</code>，只记 funding PnL 与基础交易成本。</li>
+<li>最小回测切口：Hyperliquid public funding history；先做 <code>top1</code>，再扩到 <code>top3</code> 等权；执行层映射到 <code>15m</code>，比较 funding 结算前 <code>15m</code> 入场 vs 即时入场。</li>
+<li>先看指标：<code>next 1h/3h realized funding bps</code>、扣掉双边手续费后的净 carry、排名稳定性（<code>1d/3d/5d</code> overlap）。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这轮快检只看 <strong>funding 现金流</strong>，还没扣对冲腿交易成本、basis 偏移和 borrow / inventory 占用。</li>
+<li>repo 数据来自 Hyperliquid 单 venue；若 hedge 放在别处，跨 venue basis 与转仓成本会吃掉一部分 edge。</li>
+<li>极端负 funding 名单里小币很多，capacity 和冲击成本未审；下一步要先做 liquidity gate，而不是直接把 <code>top1</code> 实盘化。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>traders-ark. (2026). *hyperliquid-carry-screener*. GitHub.</li>
+<li>Readable URL: <code><a href="https://github.com/traders-ark/hyperliquid-carry-screener">https://github.com/traders-ark/hyperliquid-carry-screener</a></code></li>
+<li>Repo raw snapshot: <code><a href="https://raw.githubusercontent.com/traders-ark/hyperliquid-carry-screener/main/docs/funding_data.json">https://raw.githubusercontent.com/traders-ark/hyperliquid-carry-screener/main/docs/funding_data.json</a></code></li>
+<li>Repo funding history CSV: <code><a href="https://raw.githubusercontent.com/traders-ark/hyperliquid-carry-screener/main/funding_data_main.csv">https://raw.githubusercontent.com/traders-ark/hyperliquid-carry-screener/main/funding_data_main.csv</a></code></li>
+<li>Hyperliquid public API used by repo: <code><a href="https://api.hyperliquid.xyz/info">https://api.hyperliquid.xyz/info</a></code></li>
+</ul>
+<h2>7. 本地 artifacts</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-20_hl_funding_carry_rank_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-20_hl_funding_carry_rank_events_head.csv</code></li>
+</ul>
+</body>
+</html>

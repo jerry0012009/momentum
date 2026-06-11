@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 pairs 只做成 rolling z-score：这篇 2026 Frontiers 更该先测的是「dynamic-coint spread forecast × percentile trigger × PIW gate」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 pairs 只做成 rolling z-score：这篇 2026 Frontiers 更该先测的是「dynamic-coint spread forecast × percentile trigger × PIW gate」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-30 06:27 UTC</span>
+      <span class="pill">研究时间：2026-03-30 06:33 UTC</span>
+      <span class="pill">类型：2026 *Frontiers in Applied Mathematics and Statistics* 开放获取全文 HTML + 表格/段落级抽取</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/dynamic-cointegration/spread-forecast/percentile-threshold/prediction-interval-width/uncertainty-gate/eth-bnb/binance/15m/5m/1m/3m/paper/public-data/cost</span>
+      <span class="pill">证据类型：开放获取全文论文证据 + 可直接转译的 desk 级策略骨架</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-30_0633_dynamic-coint-forecast-threshold-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-30 06:33 UTC</li>
+<li>类型：2026 *Frontiers in Applied Mathematics and Statistics* 开放获取全文 HTML + 表格/段落级抽取</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>动态协整关系下的 spread mean reversion</strong>——先筛出仍然维持长期均衡关系的币对，再对未来 spread 偏离做预测；当预测的 spread score 落到下分位就做多 spread、上分位就做空 spread，吃的是相对价格向动态均衡回摆的 alpha，而 <strong>PIW（prediction interval width）只是 sizing / veto 层，不是 alpha 本体。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/dynamic-cointegration/spread-forecast/percentile-threshold/prediction-interval-width/uncertainty-gate/eth-bnb/binance/15m/5m/1m/3m/paper/public-data/cost</li>
+<li>证据类型：开放获取全文论文证据 + 可直接转译的 desk 级策略骨架</li>
+</ul>
+<p>&gt; 先把 <strong>base alpha</strong> 说清楚： &gt; &gt; <strong>这不是“用深度学习做个过滤器”。真正的 alpha 本体，是动态协整 spread 的均值回归；论文最值得 desk 拿走的，是“预测 spread 偏离 + 分位阈值触发 + 不确定度宽度控仓”这套完整入场骨架。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>Johannes Tshepiso Tsoku, Katleho Makatjane (2026)</strong> 的开放获取论文 <strong>_Deep learning-based pairs trading: real-time forecasting of co-integrated cryptocurrency pairs_</strong>（*Frontiers in Applied Mathematics and Statistics*）。</p>
+<p>如果只用一句人话概括它最适合我们 desk 的读法：</p>
+<p>&gt; <strong>别再把 crypto pairs 固定成“rolling z-score 超过 ±2 就上”。这篇 paper 更值钱的部分，是把 pairs raw alpha 拆成三层：<code>dynamic-coint pair selection</code> → <code>forecasted spread score trigger</code> → <code>PIW uncertainty gate</code>。</strong></p>
+<p>这里最重要的是别把角色搞反：</p>
+<ul>
+<li><strong>alpha 本体</strong>：协整 spread 的回摆；</li>
+<li><strong>信号生成器</strong>：对未来 spread 偏离做 forecast；</li>
+<li><strong>风险/仓位层</strong>：用 prediction interval width 判断“这次 forecast 到底靠不靠谱”。</li>
+</ul>
+<p>所以它不是纯 filter，也不是纯 explainability 文献，而是可以独立落成完整策略的一条 <strong>pairs / stat-arb raw alpha</strong>。</p>
+<h2>2. 核心结论</h2>
+<h3>2.1 这篇东西真正新增了什么</h3>
+<p>最近库里关于 pairs 已经积了不少：</p>
+<ul>
+<li>固定 threshold spread MR</li>
+<li>threshold map / correlation-signed threshold</li>
+<li>cointegration sizing</li>
+<li>OBI veto / 成本生存线</li>
+<li>multi-pair stat-arb</li>
+</ul>
+<p>但还相对缺一块：</p>
+<p>&gt; <strong>不是“spread 现在离均值多远”，而是“未来几个 bar / 几个时点，spread 偏离预计会不会自己走回去，而且当前预测置信度够不够高”。</strong></p>
+<p>这篇 paper 最值得 intake 的，不是 “DNN/LSTM/ensemble” 这些模型名，而是下面这条可直接 desk 化的骨架：</p>
+<ol>
+<li><strong>先做动态协整，而不是静态 pair 关系。</strong></li>
+<li><strong>再预测 future spread / dynamic score，而不是只看当前 z-score。</strong></li>
+<li><strong>最后用 upper/lower percentile thresholds 做交易，而不是死写 ±1σ / ±2σ。</strong></li>
+<li><strong>同时把 PIW 当成 uncertainty gate / sizing dial。</strong></li>
+</ol>
+<p>翻成人话就是：</p>
+<p>&gt; <strong>同样都是做 spread MR，paper 的重点不是“看到偏离就赌它回归”，而是“只在模型预计这次偏离会回归、且预测带不算太宽时才上”。</strong></p>
+<h3>2.2 对 desk 最有价值的一句</h3>
+<p>如果只偷一句，不是“动态 ensemble 最优”，而是：</p>
+<p>&gt; <strong>pairs 的 raw alpha 可以继续保留为 spread MR，但 entry 不一定要盯当前 spread 本身，完全可以改成“预测后的 spread score 是否穿过 rolling percentile thresholds”，再用 PIW 决定这笔要不要降杠杆甚至 veto。</strong></p>
+<p>这句对 <code>1m / 3m / 5m / 15m</code> 很有用，因为它天然把整条策略拆成三块：</p>
+<ul>
+<li><code>raw alpha layer</code>：spread MR</li>
+<li><code>entry timing layer</code>：forecast-score percentile trigger</li>
+<li><code>risk layer</code>：PIW width / uncertainty veto</li>
+</ul>
+<h2>3. 3 个关键数据点</h2>
+<h3>3.1 样本与结构证据</h3>
+<p>论文使用 <strong>2018-01-02 到 2025-10-31</strong> 的加密货币价格样本，共 <strong>2,842 个观测</strong>。文中使用 dynamic Johansen cointegration 去识别时间变化的长期均衡关系。</p>
+<p>作者给出的一个关键信号是：</p>
+<ul>
+<li><strong>Trace statistic = <code>276.319</code></strong></li>
+<li><strong>95% critical value = <code>69.819</code></strong></li>
+<li>第一特征值约 <strong><code>0.0773</code></strong></li>
+</ul>
+<p>这说明作者确实不是在拿普通相关性硬冒充可交易 spread，而是在主张：</p>
+<p>&gt; <strong>先确认存在统计上显著的动态长期关系，再围绕这个 spread 做 MR。</strong></p>
+<h3>3.2 预测层：ensemble 比单模型更稳</h3>
+<p>在 spread forecasting 这一层，作者比较 DNN、LSTM 和 dynamic weighted ensemble：</p>
+<ul>
+<li><strong>Dynamic Ensemble</strong>：<code>MSE = 0.012124</code>、<code>RMSE = 0.110108</code>、<code>MAE = 0.083607</code>、<code>MFE = -0.043546</code></li>
+<li><strong>LSTM</strong> 在相对误差上最好：<code>MAPE = 1.490429%</code></li>
+</ul>
+<p>对 desk 来说，这些数字最重要的含义不是“我们也要马上上深度学习”，而是：</p>
+<p>&gt; <strong>spread signal 不一定非得由当前偏离直接触发，完全可以先做一个 forecast layer；只要 forecast layer 真能降低 magnitude error / bias，它就值得当 timing 层。</strong></p>
+<h3>3.3 信号层：percentile trigger + uncertainty width</h3>
+<p>论文交易信号部分给了几组很值得记的数：</p>
+<ul>
+<li>图 6 口径下，<strong>共生成 <code>113</code> 个信号</strong></li>
+<li>其中 <strong><code>81</code> 笔赢、<code>32</code> 笔输</strong>，文中写成 <strong><code>71.68%</code></strong> 赢率</li>
+<li>表 4 又给出：<strong>hit rate = <code>0.5821</code></strong>、<strong>avg profit/trade = <code>0.0111</code></strong>、<strong>Sharpe = <code>1.3662</code></strong>、<strong>Sortino = <code>1.1411</code></strong>、<strong>MDD = <code>-0.2875</code></strong>、<strong>correlation with market = <code>-0.6517</code></strong></li>
+<li>预测区间宽度方面，作者给出 <strong>平均 PIW = <code>0.0772</code></strong>、最小 <strong><code>0.0232</code></strong>、最大 <strong><code>0.3094</code></strong>、期末 <strong><code>0.0337</code></strong></li>
+</ul>
+<p>这里有两个读法：</p>
+<ol>
+<li><strong>正面读法</strong>：forecast-score trigger + PIW gate 这套东西，至少给出了“信号质量 + 风险轮廓”同时可看的完整交易面板；</li>
+<li><strong>保留意见</strong>：<strong><code>81/113 = 71.68%</code> 与表 4 的 <code>hit rate 0.5821</code> 明显不一致</strong>，说明这篇 paper 更适合当 idea source，而不是拿来逐字符抄参数。</li>
+</ol>
+<p>这反而对我们有帮助：</p>
+<p>&gt; <strong>它给的最值钱资产不是某个神奇超参数，而是一套可以拆回 desk 骨架的策略结构。</strong></p>
+<h2>4. 为什么和当前项目直接相关</h2>
+<p>先回答最关键的问题：</p>
+<p>&gt; <strong>它为什么比继续补另一个 generic trend/momentum headline 更值得？</strong></p>
+<p>因为当前素材池里：</p>
+<ul>
+<li>trend / momentum / breakout 已经不少；</li>
+<li>pairs / stat-arb 虽然也在补，但很多还停在 <code>current spread &gt; threshold</code> 这一层；</li>
+<li><strong>“forecasted spread + uncertainty-aware gating” 这种完整 timing 框架还不多。</strong></li>
+</ul>
+<p>所以这篇 paper 的价值非常直接：</p>
+<ol>
+<li><strong>它仍然是 raw alpha，不是纯 filter。</strong></li>
+<li><strong>它补的是 pairs raw alpha 的 timing / sizing 组件，而不是再换一种同质化 spread 名字。</strong></li>
+<li><strong>它可以直接落在 <code>15m -&gt; 5m -&gt; 3m/1m</code> 的最小实验链路上。</strong></li>
+<li><strong>即使不照搬深度学习，核心框架也能先用轻量模型复现。</strong></li>
+</ol>
+<h2>5. 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>pairs / stat-arb / relative-value / mean reversion</strong></li>
+<li>基础 alpha：<strong>动态协整 spread 的回摆</strong></li>
+<li>论文最值得 desk 化的口径：</li>
+<li><code>pair selection</code>：只保留 rolling 窗里仍通过动态协整/协整稳定性检查的币对</li>
+<li><code>signal core</code>：预测未来 spread / dynamic score</li>
+<li><code>entry</code>：forecast score 穿越 upper / lower percentile thresholds</li>
+<li><code>sizing / veto</code>：PIW 越宽越小仓，宽到阈值外直接不做</li>
+<li><code>exit</code>：forecast score 回到均值带 / spread 回归中线 / max hold 到期</li>
+<li>对 desk 的短周期翻译：</li>
+<li><code>15m</code> 先做信号主时钟</li>
+<li><code>5m</code> 做切片与二次确认</li>
+<li><code>1m/3m</code> 只做 execution veto，不要一开始就把整套模型硬压成超高频</li>
+</ul>
+<h2>6. 论文里的完整策略机制，怎么翻成人话</h2>
+<h3>6.1 alpha 本体：不是价格方向，而是相对价格错位回摆</h3>
+<p>这条线的根不是“预测 ETH 明天涨跌”，而是：</p>
+<ul>
+<li>某个 pair 在动态长期关系下本来应保持某种平衡；</li>
+<li>现在 spread 偏离了；</li>
+<li>模型判断这次偏离有较高概率回到中枢；</li>
+<li>那就做一笔 long-short spread trade。</li>
+</ul>
+<p>所以它属于非常标准的 <strong>relative-value / stat-arb raw alpha</strong>。</p>
+<h3>6.2 真正有用的新层：forecast score，而不是裸 spread</h3>
+<p>很多 pairs 研究都停在：</p>
+<ul>
+<li>当前 spread 超出某阈值 -&gt; 开仓</li>
+</ul>
+<p>这篇更像：</p>
+<ul>
+<li>先把当前 spread 及其时间结构喂给模型；</li>
+<li>生成 <strong>predicted dynamic score</strong>；</li>
+<li>再看它是否穿越 upper / lower percentile thresholds。</li>
+</ul>
+<p>对 desk 的意义是：</p>
+<p>&gt; <strong>entry 可以从“静态超阈值”升级为“预测后的极端分位事件”。</strong></p>
+<p>这样做的潜台词是：</p>
+<ul>
+<li>同样都是 <code>1σ</code> 偏离，有些会继续发散；</li>
+<li>有些则已经最容易开始回摆；</li>
+<li>forecast layer 想做的，就是把这两类状态拆开。</li>
+</ul>
+<h3>6.3 PIW 最适合我们的读法：不是 headline，而是 size / veto</h3>
+<p>这篇 paper 另一块可直接挪走的东西是 <strong>prediction interval width</strong>。</p>
+<p>我不会把它读成“又一个 fancy 指标”，而会直接 desk 化成：</p>
+<ul>
+<li><strong>PIW 窄</strong>：说明模型对 forecast 更有把握，可以正常开仓；</li>
+<li><strong>PIW 中等</strong>：缩仓；</li>
+<li><strong>PIW 极宽</strong>：说明不确定度上升，直接 veto。</li>
+</ul>
+<p>这特别适合短周期，因为很多 spread 策略不是死在方向错，而是死在：</p>
+<ul>
+<li>该做的时候仓位太小</li>
+<li>不该做的时候仓位太大</li>
+<li>波动结构切换时还在硬做</li>
+</ul>
+<h2>7. 对 desk 最可执行的最小实验</h2>
+<h3>7.1 不照抄 daily，不照抄 deep learning，先测最小 transfer</h3>
+<p>这篇 paper 的原始实现更偏日频 / 中频，而且还存在资产描述和指标口径不完全一致的问题。所以最合理的 desk 路线不是“完整复刻论文”，而是先把它拆成一个 <strong>最小可验证的 pairs full-stack hypothesis</strong>：</p>
+<p>&gt; <strong>在 Binance perp <code>15m</code> 上，若只保留 rolling 动态协整仍稳定的 majors pair，再用 forecasted spread score 的分位触发入场，并把 PIW/forecast uncertainty 作为 size-veto，那么这条 spread MR 是否比裸 z-score 更像样？</strong></p>
+<h3>7.2 一个能马上开跑的版本</h3>
+<p><strong>Universe</strong></p>
+<ul>
+<li>先只跑高流动性 majors pair：<code>ETH-BNB</code>、<code>ETH-SOL</code>、<code>BNB-SOL</code>、<code>ETH-XRP</code>、<code>BTC-ETH</code></li>
+<li>首轮别扩太多 pair，先看 transfer 是否存在</li>
+</ul>
+<p><strong>Sampling</strong></p>
+<ul>
+<li>主时钟：<code>15m</code></li>
+<li>execution 细化：<code>5m</code></li>
+<li>若 <code>15m</code> gross 明显活，再往 <code>5m</code> 缩；<code>1m/3m</code> 先只做 execution veto</li>
+</ul>
+<p><strong>Formation / estimation</strong></p>
+<ul>
+<li>rolling <code>30d~45d</code> 形成窗</li>
+<li>每根 bar 更新一次 pair 的 rolling 协整检验 / hedge ratio</li>
+<li>spread 标准化后，先不用深度学习，第一轮就做：</li>
+<li><code>AR(1) / ARIMA</code> baseline</li>
+<li><code>LightGBM</code> 或轻量 <code>LSTM</code> 二选一</li>
+<li>目标是预测 <code>next 1~4 bars</code> 的 standardized spread score</li>
+</ul>
+<p><strong>Entry</strong></p>
+<ul>
+<li>若 forecast score &gt; rolling <code>90th/95th percentile</code>：做空 spread</li>
+<li>若 forecast score &lt; rolling <code>10th/5th percentile</code>：做多 spread</li>
+<li>只有在 rolling 协整仍显著、且 hedge ratio 没明显跳变时才允许开仓</li>
+</ul>
+<p><strong>Sizing / veto</strong></p>
+<ul>
+<li>用 forecast interval width 或 forecast residual std 做 proxy</li>
+<li><code>PIW proxy</code> 落在最近 <code>40%</code> 最窄区间：正常开仓</li>
+<li>落在 <code>40%~70%</code>：半仓</li>
+<li>落在最宽 <code>30%</code>：直接 veto</li>
+</ul>
+<p><strong>Exit</strong></p>
+<ul>
+<li>spread 回到零轴附近 / forecast score 回到中性带</li>
+<li>或 <code>max hold = 4~8 bars</code></li>
+<li>或继续向不利方向再走 <code>1.0~1.5σ</code> 直接止损</li>
+</ul>
+<p><strong>Cost</strong></p>
+<ul>
+<li>第一轮必须显式扣：</li>
+<li><code>2 / 4 / 6 bps</code> 单边成本</li>
+<li>funding 先按持仓穿越结算与否单独记账</li>
+<li>不要先假设 maker fill；先按 taker 版看生存线</li>
+</ul>
+<h3>7.3 最该先回答的 4 个问题</h3>
+<ol>
+<li><strong>比裸 z-score pairs 好吗？</strong></li>
+</ol>
+<ul>
+<li>baseline：<code>current z-score threshold</code></li>
+<li>challenger：<code>forecast-score threshold</code></li>
+</ul>
+<ol>
+<li><strong>PIW proxy 真能提升净收益/回撤比吗？</strong></li>
+<li><strong>这套东西只在高相关 majors pair 上有效，还是在更分散 pair 也有 transfer？</strong></li>
+<li><strong>alpha 真在 <code>15m</code>，还是必须压到 <code>5m</code> 才能看见？</strong></li>
+</ol>
+<h2>8. 风险与保留意见</h2>
+<h3>8.1 这篇 paper 不能直接照抄的地方</h3>
+<p>有几处要明确写出来：</p>
+<ul>
+<li><strong>样本频率并不高。</strong> 论文主样本是 <code>2018-01-02 ~ 2025-10-31</code> 共 <code>2,842</code> 个观测，本质更像日频/中频，不是纯 1 分钟高频；</li>
+<li><strong>资产定义有内部不一致。</strong> 部分段落写 BTC 相关 pair，图表段落又强调 <code>ETH / BNB / LTC / XRP / USDT</code>；</li>
+<li><strong>交易指标也有不一致。</strong> <code>81/113</code> 对应的赢率与表 4 的 <code>0.5821</code> hit rate 不一致；</li>
+<li><strong>成本没有写得足够实盘。</strong> 对短周期 desk，这一条非常关键；</li>
+<li><strong>未见官方策略仓库。</strong> 说明它更适合做 research intake，不适合参数照搬。</li>
+</ul>
+<h3>8.2 但这不影响它进入研究池</h3>
+<p>因为我们要 intake 的不是“论文里某个神秘最优超参数”，而是：</p>
+<p>&gt; <strong>dynamic-coint spread MR + forecast percentile trigger + uncertainty-width gating</strong> 这条完整骨架。</p>
+<p>这条骨架对短周期是可转移的，而且能直接服务 pairs / stat-arb 主线。</p>
+<h2>9. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 <code>15m</code> ETH-BNB / ETH-SOL 两对，验证 transfer。</strong> 不要一上来全市场铺开。</li>
+<li><strong>同窗对照三版：</strong> <code>裸 z-score</code> / <code>forecast-score</code> / <code>forecast-score + PIW veto</code>。</li>
+<li><strong>持有期至少拆 <code>1 / 2 / 4 / 8 bars</code>。</strong> 这条 alpha 很可能不是 next-bar-only。</li>
+<li><strong>把 PIW 做成正式组件，不要只写在备注里。</strong> 记录每笔交易入场时的 uncertainty decile。</li>
+<li><strong>若 <code>15m</code> gross 活、净后死，优先修阈值和 veto，不要先换更复杂模型。</strong></li>
+<li><strong>若 <code>15m</code> 根本不活，再决定要不要压到 <code>5m</code>；不要直接跳 <code>1m</code>。</strong></li>
+</ol>
+<h2>10. 文件与产物</h2>
+<ul>
+<li>研究笔记：<code>research/quant_digests/2026-03-30_0633_dynamic-coint-forecast-threshold-pairs-alpha.md</code></li>
+</ul>
+<h2>Sources</h2>
+<ol>
+<li><strong>Tsoku, J. T., &amp; Makatjane, K. (2026). _Deep learning-based pairs trading: real-time forecasting of co-integrated cryptocurrency pairs_. Frontiers in Applied Mathematics and Statistics, 12, 1749337.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.3389/fams.2026.1749337</code></li>
+<li>DOI URL: <code><a href="https://doi.org/10.3389/fams.2026.1749337">https://doi.org/10.3389/fams.2026.1749337</a></code></li>
+<li>Readable URL: <code><a href="https://www.frontiersin.org/journals/applied-mathematics-and-statistics/articles/10.3389/fams.2026.1749337/full">https://www.frontiersin.org/journals/applied-mathematics-and-statistics/articles/10.3389/fams.2026.1749337/full</a></code></li>
+<li>PDF URL: <code><a href="https://www.frontiersin.org/journals/applied-mathematics-and-statistics/articles/10.3389/fams.2026.1749337/pdf">https://www.frontiersin.org/journals/applied-mathematics-and-statistics/articles/10.3389/fams.2026.1749337/pdf</a></code></li>
+<li>Repo URL: <code>未找到论文官方策略仓库（截至 2026-03-30）</code></li>
+</ul>
+<ol>
+<li><strong>Binance API / market data docs</strong>（论文实时部署段落引用的数据入口）</li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://www.binance.com/">https://www.binance.com/</a></code></li>
+</ul>
+<ol>
+<li><strong>Yahoo Finance / yfinance</strong>（论文历史样本说明中的数据来源）</li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://finance.yahoo.com/">https://finance.yahoo.com/</a></code></li>
+</ul>
+</body>
+</html>

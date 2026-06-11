@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把外部 flow veto 再重演一遍：对 15m 来说，更便宜先测的是 lower-TF volume-delta polarity mismatch</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把外部 flow veto 再重演一遍：对 15m 来说，更便宜先测的是 lower-TF volume-delta polarity mismatch</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-18 16:38 UTC</span>
+      <span class="pill">研究时间：2026-03-18 16:36 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/volume-delta/divergence/filter/repo/crypto/15m</span>
+      <span class="pill">证据类型：仓库脚本 + 公开 OHLCV / lower-TF 可复现实验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-18_1636_volume-delta-polarity-veto.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-18 16:36 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/volume-delta/divergence/filter/repo/crypto/15m</li>
+<li>证据类型：仓库脚本 + 公开 OHLCV / lower-TF 可复现实验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 GitHub 仓库 <code>Dropio12/MTF-EMA-ALMA-Strategy-with-RSI-Supertrend-and-Advanced-Volume-Delta-Divergence-Visualization</code>（2024）。这不是一份适合整仓照抄的策略模板，反而像一个典型的“把太多东西塞进一个 Pine 脚本”的大杂烩；但它里面有一块旁支思路，反而非常适合我们现在的 desk：<strong>别再把 volume-delta 当 15m 主信号去单独开仓，而是把 lower-TF volume-delta 与价格 K 线方向是否同向，降级成 shared veto / confirmation layer。</strong> 这对 <code>breakout-short follow-up</code>、<code>Fib retest_hold</code>、<code>EMA / PSAR raw alpha focus</code> 都是同一个问题——价格动作已经出来了，但这一下到底有没有真实跟随，还是只是“形状上看起来像”。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这份 repo 最值得偷的不是它 README 里那些夸张回测数字，而是一个更朴素、也更适合 15m 的问题：<strong>当 setup 触发时，若 lower-TF volume-delta polarity 和价格方向相反，就把它当 veto；若同向，只把它当 continuation-confirmation，而不是主 alpha。</strong></li>
+<li><strong>一句话证明方式</strong>：源码里真正可抽离的结构很清楚：它用 <code>request.security_lower_tf(...)</code> 去抓更低周期数据，<code>Auto</code> 模式下对 <code>&lt;=15m</code> 图表默认落到 <strong>30 秒</strong> 子周期；随后用子周期 <code>close-open</code> 或 candle pressure 近似拆分买/卖量，再在图上专门标记 <strong>“价格 K 线方向 vs volume delta 符号不一致”</strong> 的 bar。这其实已经不是“找新方向”，而是在做 <strong>failure / participation veto</strong>。</li>
+<li>这题现在比继续追“外部 aggTrades flow veto”更值得测，原因很直接：我们今天已经把 <code>trade-flow imbalance veto</code> 那条外部数据线跑到 <code>park / evidence pool</code>，说明“更强、更贵、更接近真实成交”的外部 flow 不一定自然能救 15m setup。那下一步最该问的，不是再找更花的微结构源，而是：<strong>更便宜、更好部署的内生 proxy，能不能保住一部分 veto 价值？</strong></li>
+<li>这也是它比继续堆新的 price-only confirmation 更值钱的地方：它不是偏题，而是在给三条收口线补一层<strong>共享、低摩擦、容易批量回测的参与度判断</strong>。尤其对 <code>EMA / PSAR raw alpha focus</code> 来说，这很像当前最该补的那块——不是再多一条均线，而是一句“翻向时到底有没有跟随量”。</li>
+<li>但要先把口径压诚实：这不是交易所逐笔 bid/ask volume delta，也不是完整 order-flow reconstruction；它只是 <strong>public lower-TF OHLCV 上的 delta proxy</strong>。如果这种粗糙 proxy 都没有边，那更没必要继续美化它。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这题值得现在做，不是因为它“新”，而是因为它正好卡在三条收口线共同缺的那一层：</p>
+<ul>
+<li>对 <code>V3 final-verdict / breakout-short follow-up</code>：最实用的读法不是“破位时 delta 为负就追空”，而是 <strong>价格已经给出 short continuation 结构后，若最近 3~5 分钟的 lower-TF delta 明显转正，直接把这次 follow-up 降级或 veto</strong>。它回答的是“这波破位有没有真空头跟随”。</li>
+<li>对 <code>Fibonacci confirmation / retest_hold</code>：很多 <code>0.5 / 0.618</code> 回踩的问题不在 Fib 位，而在 <strong>回踩后抬头那一下没有真实参与</strong>。如果 retest 刚出现，lower-TF delta 仍持续逆向，那就比再堆一层形态共振更像有效否决条件。</li>
+<li>对 <code>EMA / PSAR raw alpha focus</code>：它最适合作为一个与价格形状半独立的 participation gate。EMA / PSAR 继续给方向和结构，delta proxy 只回答一句话——<strong>这次翻向/延续是不是有人在推，而不是自己空转。</strong></li>
+<li>更关键的是，这个方向能直接对照今天已经被 park 的 <code>trade-flow imbalance veto</code>：如果外部 aggTrades 版本太重、太贵、OOS 不稳，而 lower-TF OHLCV proxy 反而能留下更朴素的 veto 效果，那 desk 更该要后者。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：对现有 <code>breakout-short / fib retest_hold / EMA-PSAR raw</code> setup 来说，若入场前最后一段 lower-TF volume-delta polarity 与信号方向相反，则后续 <code>2~4 bar</code> follow-through 更差、假突破/假守住更高；反之，同向时 setup 的 continuation 质量更好。</li>
+<li><strong>公开数据源</strong>：同一交易所的公开 <code>kline/candlestick</code> 数据即可，不要求逐笔成交。最小可行版本直接用 Binance USDⓈ-M Futures <code>GET /fapi/v1/klines</code>；字段里天然有 <code>open/high/low/close/volume</code>，更新时间随 bar 刷新。若 30 秒数据不方便统一抓取，第一轮可以退到 <strong>1m 子周期 proxy</strong>，先测方向性，不先追求最细粒度。</li>
+<li><strong>最小可计算定义</strong>：</li>
+</ul>
+<ol>
+<li>以 <code>15m</code> 为主图，给每个 setup 对齐一个 <code>1m</code>（或可得时 <code>30s</code>）子周期窗口；</li>
+<li>对每个子 bar 先定义最朴素 delta proxy：<code>sub_delta = +volume</code> 当 <code>close &gt; open</code>，<code>sub_delta = -volume</code> 当 <code>close &lt; open</code>；可选进阶版再试 repo 里的 candle-pressure 口径：<code>(close-low) &gt; (high-close)</code> 记为买压，否则卖压；</li>
+<li><code>delta_align_pre5m = sum(sub_delta over last 5m) / sum(volume over last 5m)</code>；</li>
+<li>long setup 要求 <code>delta_align_pre5m &gt; 0</code>，short setup 要求 <code>&lt; 0</code>；若相反，则记为 <code>opposite_delta_veto = 1</code>；</li>
+<li>可再补一个更硬的否决：<code>mismatch_share = share(sub bars whose sign != setup direction)</code>，若过去 <code>5m</code> 里逆向占比超过 <code>60%</code>，直接禁入。</li>
+</ol>
+<ul>
+<li><strong>第一轮 bucket</strong>：</li>
+</ul>
+<ol>
+<li><code>base</code>：现有 setup 原样；</li>
+<li><code>same-direction delta gate</code>：只保留 pre-entry delta 同向样本；</li>
+<li><code>opposite-delta veto</code>：只删除 pre-entry delta 反向样本；</li>
+<li><code>strong-same-direction only</code>：要求 <code>|delta_align_pre5m|</code> 进入过去 20 次 setup 的上半区。</li>
+</ol>
+<ul>
+<li><strong>最先看的 4 个指标</strong>：<code>2/4/8 bar forward return</code>、<code>false-break / false-hold rate</code>、<code>trade count retention</code>、<code>net expectancy @ 6/10 bps per side</code>。</li>
+<li><strong>下一步怎么测</strong>：先别引进新的复杂特征，也别把 delta 算到入场后。第一轮就固定 <code>BTC / ETH / SOL</code> perpetual、最近 <code>120d</code>、<code>15m</code> 主图、<code>next-bar open</code> 入场、<code>no-overlap</code> 持有 <code>4~8 bars</code>，只比较 <code>base</code> vs <code>same-direction gate</code> vs <code>opposite veto</code>。如果 <code>opposite-delta veto</code> 能在不把样本砍废的前提下，稳定压低 <code>false-break / false-hold</code>，它就值得进三条线共用的 shared confirmation layer；如果它只在极少样本或零成本假设下才好看，就直接 park。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这份 repo 是明显的 kitchen-sink script：EMA、ALMA、RSI、Supertrend、order block、volume delta 全堆在一起。<strong>不要把整份脚本当作高质量策略证据</strong>；真正可继承的只有其中那块 lower-TF delta mismatch 思路。</li>
+<li>README 里写的 <code>15m 96.7% win rate</code>、<code>Sharpe 22.1</code> 这类数字，当前都不该当成证据；这轮研究只把它们视为营销噪音，不进入 desk 的有效证据集。</li>
+<li>lower-TF OHLCV 推出来的 <code>volume-delta</code> 只是 proxy，不是逐笔成交方向，更不是订单簿失衡；所以它天然更适合当 <strong>filter / veto</strong>，不适合被包装成独立主信号。</li>
+<li>时间对齐必须非常严格：只能用 <strong>setup 触发前</strong> 的子周期窗口，不能把 setup bar 里入场后的 volume 倒灌回 delta 判断，否则会直接污染结果。</li>
+<li>如果 <code>1m</code> 版 proxy 已经没有任何稳定边际，就没必要再为 <code>30s</code> / 更复杂 candle-pressure 版本追加工程预算。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Dropio12; Kokoabe. (2024). *MTF-EMA-ALMA-Strategy-with-RSI-Supertrend-and-Advanced-Volume-Delta-Divergence-Visualization*. GitHub repository.</li>
+<li>Venue / DOI：GitHub / N/A</li>
+<li>Repo URL: &lt;<a href="https://github.com/Dropio12/MTF-EMA-ALMA-Strategy-with-RSI-Supertrend-and-Advanced-Volume-Delta-Divergence-Visualization&gt;">https://github.com/Dropio12/MTF-EMA-ALMA-Strategy-with-RSI-Supertrend-and-Advanced-Volume-Delta-Divergence-Visualization&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://github.com/Dropio12/MTF-EMA-ALMA-Strategy-with-RSI-Supertrend-and-Advanced-Volume-Delta-Divergence-Visualization&gt;">https://github.com/Dropio12/MTF-EMA-ALMA-Strategy-with-RSI-Supertrend-and-Advanced-Volume-Delta-Divergence-Visualization&gt;</a></li>
+<li>Raw README: &lt;<a href="https://raw.githubusercontent.com/Dropio12/MTF-EMA-ALMA-Strategy-with-RSI-Supertrend-and-Advanced-Volume-Delta-Divergence-Visualization/main/README.md&gt;">https://raw.githubusercontent.com/Dropio12/MTF-EMA-ALMA-Strategy-with-RSI-Supertrend-and-Advanced-Volume-Delta-Divergence-Visualization/main/README.md&gt;</a></li>
+<li>Raw strategy: &lt;<a href="https://raw.githubusercontent.com/Dropio12/MTF-EMA-ALMA-Strategy-with-RSI-Supertrend-and-Advanced-Volume-Delta-Divergence-Visualization/main/strategy&gt;">https://raw.githubusercontent.com/Dropio12/MTF-EMA-ALMA-Strategy-with-RSI-Supertrend-and-Advanced-Volume-Delta-Divergence-Visualization/main/strategy&gt;</a></li>
+<li>Repo metadata snapshot: created <code>2024-08-22</code>, updated <code>2024-08-22</code>, <code>3</code> stars, <code>1</code> fork.</li>
+<li>Binance USDⓈ-M Futures. *Kline Candlestick Data*.</li>
+<li>Readable URL: &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;</a></li>
+<li>Endpoint: <code>GET /fapi/v1/klines</code></li>
+<li>Example fields used in the minimal experiment: <code>open</code>, <code>high</code>, <code>low</code>, <code>close</code>, <code>volume</code>, <code>taker buy base asset volume</code>.</li>
+</ul>
+</body>
+</html>

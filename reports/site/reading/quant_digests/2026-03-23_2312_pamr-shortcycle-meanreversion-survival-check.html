@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 PAMR 当可直接上线的 15m 神器：更该先复现的是“one-bar 横截面均值回归 + 低频调仓阈值”生存线</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 PAMR 当可直接上线的 15m 神器：更该先复现的是“one-bar 横截面均值回归 + 低频调仓阈值”生存线</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-23 23:15 UTC</span>
+      <span class="pill">研究时间：2026-03-23 23:12 UTC</span>
+      <span class="pill">类型：经典论文 + 近 5 年工程仓库 + Binance 公共数据最小快检</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/cross-sectional/online-portfolio/pamr/rebalance-throttle/turnover/cost/binance/crypto/1m/3m/5m/15m</span>
+      <span class="pill">证据类型：论文公式 + 开源实现 + 本地最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-23_2312_pamr-shortcycle-meanreversion-survival-check.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-23 23:12 UTC</li>
+<li>类型：经典论文 + 近 5 年工程仓库 + Binance 公共数据最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：cross-sectional one-bar mean reversion（上一 bar 相对强弱在下一 bar 部分回归）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（但当前口径下为负样本，需先改造后再进候选池）</li>
+<li>主题标签：raw-alpha/mean-reversion/cross-sectional/online-portfolio/pamr/rebalance-throttle/turnover/cost/binance/crypto/1m/3m/5m/15m</li>
+<li>证据类型：论文公式 + 开源实现 + 本地最小快检</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这篇的 base alpha 不是趋势跟随，而是“上一根涨得多的资产下一根更容易回吐、跌得多的更容易反弹”的横截面短期回归</strong>。 我主看了 PAMR 经典公式（Li et al., 2012）+ 近 5 年可改造工程实现（ryanczm, 2024 里 <code>rsims.py</code> 的 trade buffer 思路），并在 Binance 公共 15m 数据上做了最小迁移快检。</p>
+<h2>2) 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> PAMR 这条 raw alpha 在我们当前 short-cycle 口径下<strong>可复现但不可直接上线</strong>；真正值得 intake 的是它的“均值回归分配逻辑 + 低频调仓/缓冲带降换手”骨架。</li>
+<li><strong>一句话证明方式：</strong> 同样 60 天、15m、8 资产篮子口径下，我跑了 <code>eps × rebalance cadence</code> 网格后，PAMR 在 perp 与 spot/BTC 两套宇宙都显著跑输对应等权基准，核心拖累来自换手与成本累积。</li>
+</ul>
+<p>3 个关键数据点（本地快检）：</p>
+<ol>
+<li><strong>Perp-USDT 宇宙（含 CASH）</strong>：最佳参数也仅 <code>final=0.402</code>（<code>total_return=-59.78%</code>），而等权基准 <code>final=0.771</code>（<code>-22.86%</code>）。</li>
+<li><strong>Spot-BTC 宇宙（含 BTCBTC）</strong>：最佳参数 <code>final=0.919</code>（<code>-8.09%</code>），仍弱于等权基准 <code>final=0.983</code>（<code>-1.74%</code>）。</li>
+<li>两套宇宙最佳参数的平均换手分别约 <strong>0.206/bar（perp）</strong> 与 <strong>0.398/bar（spot-BTC）</strong>，在 15m 下对净值杀伤明显。</li>
+</ol>
+<h2>3) 为什么和当前 desk 直接相关</h2>
+<p>这不是 filter/overlay，而是可独立建模的 raw alpha（cross-sectional mean reversion）。它的价值在于：</p>
+<ul>
+<li>给我们补一条和 breakout/momentum 不同机理的反向 alpha；</li>
+<li>能完整拆成 entry/exit/sizing/risk/cost；</li>
+<li>并且很快就能在 <code>1m/3m/5m/15m</code> 验证“是否被成本打穿”。</li>
+</ul>
+<h2>3.5) 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：cross-sectional / mean-reversion / long-short（或 long-cash）</li>
+<li>基础 alpha：横截面上一 bar 价格相对偏离会短时回归</li>
+<li>entry：按 PAMR 更新后目标权重与当前权重偏离触发调仓</li>
+<li>exit：权重回归到阈值内、超时、或 regime veto 触发减仓</li>
+<li>sizing：simplex 约束下按信号强度分配；可加权重上限与现金腿</li>
+<li>risk / veto：交易缓冲带（no-trade buffer）、最大单腿权重、日内回撤阈值</li>
+<li>cost：手续费/滑点显式扣减（本次快检按 5 bps 单边口径）</li>
+</ul>
+<h2>4) 可复刻最小实验（5m/15m 起步）</h2>
+<ul>
+<li>数据源：Binance Futures/Spot Klines（公开 REST）</li>
+<li>公开性：公开可得，无需私钥</li>
+<li>更新频率：1m/3m/5m/15m 可直接拉取</li>
+<li>最小口径：</li>
+<li>perp：<code>BTC/ETH/SOL/BNB/XRP/DOGE/ADA/LINK + CASH</code></li>
+<li>spot/BTC：<code>ETHBTC/SOLBTC/BNBBTC/XRPBTC/DOGEBTC/ADABTC/LINKBTC/TRXBTC + BTCBTC</code></li>
+<li>窗口：近 60 天 15m bars（约 5760 bars）</li>
+<li>参数：<code>eps ∈ {0.3,0.5,0.7,0.9}</code>，<code>rebalance_bars ∈ {1,2,4,8}</code></li>
+<li>首看指标：<code>final/Sharpe/MDD/avg_turnover</code> 与等权基准对比</li>
+</ul>
+<h2>5) 下一步怎么测（直接可执行）</h2>
+<ol>
+<li><strong>先做“降换手版 PAMR”</strong>：引入 <code>trade buffer</code>（参考 <code>rsims.py</code>）+ <code>min notional band</code>，看 net 能否从负转平。</li>
+<li><strong>改成 market-neutral 版本再测</strong>：从 simplex long-only 扩展到 dollar-neutral long/short（带杠杆上限），减少 beta 拖累。</li>
+<li><strong>做时段门控</strong>：只在 liquidity 高、spread 低的 UTC 时段启用（先在 15m 测，再下钻 5m/3m）。</li>
+<li><strong>加执行约束敏感性</strong>：maker/taker 混合、滑点分层、资金费（perp）三档压测，先画出生存边界再谈优化。</li>
+</ol>
+<h2>6) 风险与保留意见</h2>
+<ul>
+<li>PAMR 原论文是经典在线组合框架，不是专为 crypto 高频微结构设计。</li>
+<li>当前最小快检是“工程可迁移性验证”，不是最终生产参数。</li>
+<li>在 short-cycle 下，若不先压换手，均值回归信号很容易被成本完全吞噬。</li>
+</ul>
+<h2>7) 来源</h2>
+<ol>
+<li><strong>Li, B., Zhao, P., Hoi, S. C. H., &amp; Gopalkrishnan, V. (2012). _PAMR: Passive aggressive mean reversion strategy for portfolio selection_. Machine Learning.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1007/s10994-012-5281-z</code></li>
+<li>Readable URL: <a href="https://link.springer.com/article/10.1007/s10994-012-5281-z">https://link.springer.com/article/10.1007/s10994-012-5281-z</a></li>
+</ul>
+<ol>
+<li><strong>Chew, R. (2024). _Crypto-Stat-Arb_ (GitHub repository).</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/ryanczm/Crypto-Stat-Arb">https://github.com/ryanczm/Crypto-Stat-Arb</a></li>
+</ul>
+<ol>
+<li><strong>Binance API Docs (Klines).</strong></li>
+</ol>
+<ul>
+<li>Futures: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></li>
+<li>Spot: <a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data</a></li>
+</ul>
+<h2>8) 本地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/pamr_shortcycle_probe_20260323/perp_usdt_grid.csv</code></li>
+<li><code>reports/artifacts/quant_digests/pamr_shortcycle_probe_20260323/spot_btc_grid.csv</code></li>
+<li><code>reports/artifacts/quant_digests/pamr_shortcycle_probe_20260323/summary.json</code></li>
+</ul>
+</body>
+</html>

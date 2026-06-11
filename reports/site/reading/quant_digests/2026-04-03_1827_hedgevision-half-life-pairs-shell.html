@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 新 stat-arb repo 只读成“pairs dashboard”：对 short-cycle desk，更该先抄的是「cointegrated spread raw alpha × half-life/Hurst admission × z-score/time-stop shell」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 新 stat-arb repo 只读成“pairs dashboard”：对 short-cycle desk，更该先抄的是「cointegrated spread raw alpha × half-life/Hurst admission × z-score/time-stop shell」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 18:30 UTC</span>
+      <span class="pill">研究时间：2026-04-03 18:27 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（GitHub API metadata + `backend/api/services/backtest_engine.py` + `backend/api/services/cointegration_service.py` + `tests/test_backtest_engine_unit.py`）+ Binance Futures 公共 `15m/5m` 最小便携性快检</span>
+      <span class="pill">主题标签：raw-alpha / pairs / stat-arb / relative-value / mean-reversion / cointegration / half-life / hurst / admission-layer / zscore / time-stop / binance-perp / 5m / 15m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：repo（完整策略壳）+ 代码参数细读 + 本地 public-data proxy scan</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_1827_hedgevision-half-life-pairs-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-03 18:27 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（GitHub API metadata + <code>backend/api/services/backtest_engine.py</code> + <code>backend/api/services/cointegration_service.py</code> + <code>tests/test_backtest_engine_unit.py</code>）+ Binance Futures 公共 <code>15m/5m</code> 最小便携性快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>配对后 spread 偏离均衡会向均值回归</strong>；repo 里真正适合我们 desk 先拿来复现的，不只是 <code>z-score entry</code>，而是 <code>half-life/Hurst admission + time-stop</code> 这套“先筛会回来的 pair，再做 spread fade”的完整壳</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / pairs / stat-arb / relative-value / mean-reversion / cointegration / half-life / hurst / admission-layer / zscore / time-stop / binance-perp / 5m / 15m / repo / public-data / cost / risk</li>
+<li>证据类型：repo（完整策略壳）+ 代码参数细读 + 本地 public-data proxy scan</li>
+</ul>
+<p><strong>先回答 base alpha：这篇东西的 base alpha 很清楚，不是“多做几种统计检验就更科学”，而是 <code>spread mean reversion</code>。如果两条腿走散后不会回来，后面再漂亮的 score 都没用；如果会回来，真正决定 short-cycle 可交易性的就是：<code>回归速度够不够快</code>、<code>Hurst 是否真的偏均值回复</code>、以及 <code>time stop / cost</code> 会不会把纸上 alpha 吃掉。</strong></p>
+<h2>1) 这次看了什么</h2>
+<p>这轮主看的是一个很新的开源 repo：</p>
+<ol>
+<li><strong><code>ayush108108/hedgevision</code>（GitHub, 2026）</strong></li>
+</ol>
+<ul>
+<li>标题：<strong>HedgeVision — Open-source stat-arb engine</strong></li>
+<li>Venue：GitHub repository</li>
+<li>Authors：<code>ayush108108</code>（GitHub owner）</li>
+<li>Repo URL：&lt;<a href="https://github.com/ayush108108/hedgevision&gt;">https://github.com/ayush108108/hedgevision&gt;</a></li>
+<li>GitHub API metadata 显示：<strong>创建于 <code>2026-03-31</code>，最新 push 在 <code>2026-04-03</code></strong></li>
+<li>这次重点看的文件：</li>
+<li><code>backend/api/services/backtest_engine.py</code></li>
+<li><code>backend/api/services/cointegration_service.py</code></li>
+<li><code>backend/api/services/backtest_service.py</code></li>
+<li><code>tests/test_backtest_engine_unit.py</code></li>
+</ul>
+<ol>
+<li><strong>本地最小快检（不是复现 repo 收益，只是验证它对 crypto short-cycle 的可迁移性）</strong></li>
+</ol>
+<ul>
+<li>数据：Binance USDⓈ-M Futures 公共 klines</li>
+<li><code>15m</code> 扫描：<code>BTC/ETH/SOL/XRP/ADA/DOGE/LTC/BCH/LINK</code> 共 <code>9</code> 个主流 perp、<code>36</code> 个 pair、最近约 <code>31d</code></li>
+<li><code>5m</code> 聚焦：把 <code>15m</code> 扫描里最像“会回来的”3 组 pair 再拉到 <code>5m</code> 做短周期 proxy</li>
+<li>结果文件：</li>
+<li><code>reports/artifacts/quant_digests/2026-04-03_hedgevision_15m_pairs_proxy_scan.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-03_hedgevision_5m_focus_pairs_proxy_scan.csv</code></li>
+</ul>
+<p>为什么这条线现在值得写？因为我们最近 pairs 素材很多，但<strong>大部分材料更偏“论文思路”或“复杂选对器”</strong>；而这份 repo 的优势恰恰是：它把 <strong>entry / exit / stop / cost / half-life / Hurst / candidate scoring</strong> 都写成了能直接搬进 desk 的代码壳。</p>
+<h2>2) 这份 repo 真正值钱的，不是“pairs 又来了”，而是它把 raw alpha 和 admission layer 写在了一起</h2>
+<p>repo 的核心不是发明新 alpha，而是把一个<strong>可立即移植的 pairs 母板</strong>摆得很清楚：</p>
+<ul>
+<li><code>alpha 本体</code>：cointegrated spread / residual spread <strong>均值回复</strong></li>
+<li><code>admission</code>：先看 correlation、EG/Johansen/ADF/PP/KPSS、OU half-life、Hurst</li>
+<li><code>entry/exit</code>：再做 <code>|z|</code> 偏离入场、回归退出</li>
+<li><code>risk</code>：加入 stop-loss、time stop、成本扣减</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; 这份 repo 最适合 desk 抄的，不是“再写一份 pairs backtester”，而是把研究顺序改成：<strong>先筛“会回来而且回得够快”的 pair，再谈 z-score band。</strong></p>
+<p>这很重要，因为我们最近已经反复看到：</p>
+<ul>
+<li>高相关 ≠ 可交易 pair；</li>
+<li>能协整 ≠ short-cycle 能活；</li>
+<li><code>5m</code> 上看着很热闹的 pair，很多最后只是<strong>拖到 time exit</strong>。</li>
+</ul>
+<p>所以这篇更值得当成一个 <strong>raw alpha + admission layer</strong> 素材卡，而不是又一篇泛泛的 pairs 摘要。</p>
+<h2>3) 代码里有哪些硬参数，可以直接拿走</h2>
+<h3>3.1 <code>backtest_engine.py</code> 给出的 baseline 交易壳非常明确</h3>
+<p><code>BacktestConfig</code> 里直接写了：</p>
+<ul>
+<li><code>initial_capital = 10,000</code></li>
+<li><code>position_size = 1.0</code></li>
+<li><code>transaction_cost = 0.001</code>（约 <code>10bps</code>）</li>
+<li><code>slippage = 0.0005</code>（约 <code>5bps</code>）</li>
+<li><code>entry_threshold = 2.0</code></li>
+<li><code>exit_threshold = 0.5</code></li>
+<li><code>stop_loss_threshold = 3.0</code></li>
+<li><code>max_holding_period = None</code>（可配置）</li>
+</ul>
+<p><code>PairBacktester</code> 的交易逻辑也很朴素：</p>
+<ul>
+<li><code>z &gt;= +2</code>：做空 spread</li>
+<li><code>z &lt;= -2</code>：做多 spread</li>
+<li><code>short spread</code> 在 <code>z &lt;= +0.5</code> 止盈，在 <code>z &gt;= +3</code> 止损</li>
+<li><code>long spread</code> 在 <code>z &gt;= -0.5</code> 止盈，在 <code>z &lt;= -3</code> 止损</li>
+<li>若设置了 <code>max_holding_period</code>，则触发 <code>time_exit</code></li>
+<li>每笔 round-trip 默认<strong>先扣掉 <code>15bps</code> 成本 proxy</strong></li>
+</ul>
+<p>这说明它不是“只有信号没有壳”的 repo，而是<strong>完整到能直接迁移成 desk baseline</strong>。</p>
+<h3>3.2 <code>cointegration_service.py</code> 里最有 desk 价值的，其实是 pair admission 而不是 entry band</h3>
+<p>这个文件做的事情非常全：</p>
+<ul>
+<li>相关性：Pearson / Spearman / Kendall</li>
+<li>协整：Engle-Granger + Johansen</li>
+<li>残差平稳性：ADF / Phillips-Perron / KPSS</li>
+<li>对冲比率：OLS beta / alpha</li>
+<li>均值回复：OU half-life、mean-reversion speed、Hurst exponent</li>
+<li>spread / z-score 统计</li>
+<li>signal quality score / overall score / risk level</li>
+</ul>
+<p>其中对 desk 最值钱的三件事是：</p>
+<ol>
+<li><strong>half-life</strong> 直接按 OU 过程估</li>
+<p><code>hl = ln(2) / lambda</code>；如果 <code>lambda &lt;= 0</code>，直接视为“不均值回复”。</p>
+</ol>
+<ol>
+<li><strong>Hurst exponent</strong> 明确作为可交易性判断</li>
+<p>文件里写得很直白：<code>H &lt; 0.5</code> 更像 mean-reverting，<code>H &gt; 0.5</code> 更像 trending。</p>
+</ol>
+<ol>
+<li><strong>overall score</strong> 不是只看 p-value**</li>
+<p>它把 EG、Johansen、ADF、相关性、half-life/Hurst、signal quality 拼成一个总分；也就是说，repo 作者默认就不是“过个 cointegration test 就开做”，而是要先做候选排序。</p>
+</ol>
+<p>这对我们 desk 的正确翻译是：</p>
+<p>&gt; <strong>pairs 的 alpha 本体还是 spread fade，但真正决定 5m/15m 能不能做的，是 admission layer。</strong></p>
+<h2>4) Binance 公共 <code>15m/5m</code> 快检：repo 这套壳迁到 short-cycle 后，最大的现实问题不是 entry，而是“回归速度不够快”</h2>
+<p>先强调口径：下面只是 <strong>public close proxy</strong>，不是盘口级、不是可执行 mid/bid/ask，也没加 funding 和真实撮合逻辑，所以只能当<strong>最小便携性快检</strong>，不能当 production PnL。</p>
+<h3>4.1 <code>15m</code> 宇宙扫描：top pocket 还算像 raw alpha</h3>
+<p>我把 <code>9</code> 个主流 Binance perp 两两配对，按 repo 风格做了一个粗壳：</p>
+<ul>
+<li>rolling z-score 窗口：<code>288 bars</code></li>
+<li><code>entry = |z| &gt;= 2</code></li>
+<li><code>exit = |z| &lt;= 0.5</code></li>
+<li><code>stop = |z| &gt;= 3.5</code></li>
+<li><code>time stop = 16 bars</code>（约 <code>4h</code>）</li>
+</ul>
+<p>在这组很粗的 <code>15m</code> proxy 里，最像“能拿进下一轮正式实验”的 pocket 有三组：</p>
+<ol>
+<li><strong>DOGEUSDT / LINKUSDT</strong></li>
+</ol>
+<ul>
+<li><code>corr = 0.921</code></li>
+<li><code>half-life ≈ 59.3 bars ≈ 14.8h</code></li>
+<li><code>Hurst ≈ 0.434</code></li>
+<li>近 <code>31d</code> 触发 <code>41</code> 笔</li>
+<li><code>win rate ≈ 68.3%</code></li>
+<li><code>avg pnl ≈ 38.3 bps proxy</code></li>
+<li><code>median hold = 12 bars = 3h</code></li>
+</ul>
+<ol>
+<li><strong>SOLUSDT / ADAUSDT</strong></li>
+</ol>
+<ul>
+<li><code>corr = 0.923</code></li>
+<li><code>half-life ≈ 96.0 bars ≈ 24.0h</code></li>
+<li><code>Hurst ≈ 0.328</code></li>
+<li><code>44</code> 笔</li>
+<li><code>win rate ≈ 65.9%</code></li>
+<li><code>avg pnl ≈ 34.2 bps proxy</code></li>
+</ul>
+<ol>
+<li><strong>SOLUSDT / LTCUSDT</strong></li>
+</ol>
+<ul>
+<li><code>corr = 0.946</code></li>
+<li><code>half-life ≈ 48.9 bars ≈ 12.2h</code></li>
+<li><code>Hurst ≈ 0.341</code></li>
+<li><code>37</code> 笔</li>
+<li><code>win rate ≈ 67.6%</code></li>
+<li><code>avg pnl ≈ 33.0 bps proxy</code></li>
+</ul>
+<p>这组结果最值得记住的不是“哪组最好”，而是：</p>
+<p>&gt; <strong>在 <code>15m</code> 上，repo 这套“先看回复性，再做 z-score fade”的逻辑，至少还像一条诚实的 raw alpha 候选。</strong></p>
+<h3>4.2 一压到 <code>5m</code>，问题立刻暴露：time exit 占比很高</h3>
+<p>我再把上面三组 pair 拉到 <code>5m</code>，用同一套思路做近 <code>13.8d</code> proxy：</p>
+<ul>
+<li><code>entry = |z| &gt;= 2</code></li>
+<li><code>exit = |z| &lt;= 0.5</code></li>
+<li><code>stop = |z| &gt;= 3.5</code></li>
+<li><code>time stop = 48 bars</code>（约 <code>4h</code>）</li>
+</ul>
+<p>结果明显变“没那么顺”了：</p>
+<ol>
+<li><strong>SOLUSDT / ADAUSDT</strong></li>
+</ol>
+<ul>
+<li><code>32</code> 笔</li>
+<li><code>win rate ≈ 56.3%</code></li>
+<li><code>avg pnl ≈ 11.39 bps proxy</code></li>
+<li><code>median hold = 240 min</code></li>
+<li><strong><code>time exit share ≈ 59.4%</code></strong></li>
+</ul>
+<ol>
+<li><strong>DOGEUSDT / LINKUSDT</strong></li>
+</ol>
+<ul>
+<li><code>44</code> 笔</li>
+<li><code>win rate ≈ 52.3%</code></li>
+<li><code>avg pnl ≈ 11.05 bps proxy</code></li>
+<li><code>median hold = 125 min</code></li>
+<li><strong><code>stop-loss share ≈ 40.9%</code></strong></li>
+</ul>
+<ol>
+<li><strong>SOLUSDT / LTCUSDT</strong></li>
+</ol>
+<ul>
+<li><code>46</code> 笔</li>
+<li><code>win rate ≈ 45.7%</code></li>
+<li><code>avg pnl ≈ 10.26 bps proxy</code></li>
+<li><code>median hold = 142.5 min</code></li>
+<li><strong><code>stop-loss + time-exit</code> 占比过半</strong></li>
+</ul>
+<p>这组数字说明了一个非常关键的 desk 结论：</p>
+<p>&gt; <strong>pairs raw alpha 不是不能往 <code>5m</code> 压，但 repo 里的 baseline 不能无脑下采样。真正需要先调的，不是 entry band，而是 admission / half-life / time-stop。</strong></p>
+<p>换句话说，repo 给我们的最大启发不是“2/0.5/3 这组阈值神奇有效”，而是：</p>
+<ul>
+<li><code>15m</code> 先做 primary signal 更诚实；</li>
+<li><code>5m</code> 更适合做 finer execution / early exit / stop 管理；</li>
+<li>如果 pair 的 half-life 本来就偏长，硬塞进 <code>5m</code> 只会变成<strong>拖时间的伪短周期 alpha</strong>。</li>
+</ul>
+<h2>5) 这条线对当前 short-cycle desk 的正确翻译</h2>
+<h3>5.1 策略拆解（必填）</h3>
+<ul>
+<li>方向属性：market-neutral / relative-value / pairs stat-arb</li>
+<li>基础 alpha：<strong>spread 偏离均衡后的均值回复</strong></li>
+<li>raw alpha 主体：<code>zscore(spread)</code> 极端偏离 → 回归均值</li>
+<li>regime：只在 <code>Hurst &lt; 0.45~0.50</code>、<code>half-life</code> 有限且不太慢、rolling beta 稳定时启用</li>
+<li>filter / veto：</li>
+<li>funding 单边过大时 veto</li>
+<li>重大事件币 / 上下架 / 解锁窗口 veto</li>
+<li>pair 两腿相关性或 beta 急变 veto</li>
+<li>sizing / risk：</li>
+<li>等风险或 beta-neutral 配平</li>
+<li>按 residual vol / expected half-life 缩放仓位</li>
+<li>单 pair notional cap + 同叙事 pair 数量上限</li>
+<li>entry：<code>|z| &gt;= 2.0</code> 先做 baseline</li>
+<li>exit：<code>|z| &lt;= 0.5</code> 或 <code>z -&gt; 0</code></li>
+<li>stop：<code>|z| &gt;= 3.0~3.5</code></li>
+<li>time stop：<code>min(4h, 1.0~1.5 × expected half-life window)</code></li>
+<li>cost：必须显式测 maker/taker、资金费、滑点、以及两腿同时成交失败风险</li>
+</ul>
+<h3>5.2 对 <code>5m / 15m</code> 的建议，不要平均用力</h3>
+<p>如果按这轮快检结果，我会这样落地：</p>
+<ul>
+<li><strong><code>15m</code></strong>：优先做主信号层</li>
+<p>因为 raw alpha 的回归速度和噪声比，在这个频段更像“能被解释”的均值回复。</p>
+</ul>
+<ul>
+<li><strong><code>5m</code></strong>：优先做管理层</li>
+<p>用来做：</p>
+<li>finer execution</li>
+<li>提前减仓 / 分批止盈</li>
+<li>波动突然放大时提前 veto</li>
+</ul>
+<ul>
+<li><strong>不要把 <code>5m</code> 硬伪装成主 alpha 频段</strong></li>
+<p>如果大部分 trade 最后都靠 <code>time_exit</code> 结束，那这不是高频 edge，只是“更频繁地观察一个本来更适合 15m/1h 管理的 pair”。</p>
+</ul>
+<h2>6) 为什么这篇现在比继续补一个 generic breakout 更值得</h2>
+<p>因为它补的是一张<strong>可立即开工的 market-neutral 母板</strong>：</p>
+<ol>
+<li><strong>base alpha 清楚</strong>：spread mean reversion，不是滤镜伪装成 alpha；</li>
+<li><strong>代码够完整</strong>：entry / exit / stop / time stop / cost 都有；</li>
+<li><strong>研究顺序正确</strong>：先 admission，再 z-score；</li>
+<li><strong>对素材池有直接价值</strong>：以后可以继续接上</li>
+</ol>
+<ul>
+<li>same-underlier cross-venue pairs</li>
+<li>funding / basis gate</li>
+<li>sector-neutral cluster pairs</li>
+<li>execution veto / maker-first routing</li>
+</ul>
+<p>也就是说，这篇不只是“又多一张 pairs 卡”，而是给了我们一个<strong>可以反复复用的 raw alpha 壳</strong>。</p>
+<h2>7) 下一步怎么测（本篇最重要的部分）</h2>
+<h3>实验 A：先做“规则版 HedgeVision admission layer”</h3>
+<p><strong>目的</strong>：验证 <code>pair admission</code> 是否比“继续调 entry band”更重要。</p>
+<ul>
+<li>universe：Binance / Bybit / Hyperliquid 前 <code>20~40</code> 个高流动 perp</li>
+<li>每日或每 <code>4h</code> 计算：</li>
+<li>correlation</li>
+<li>OU half-life</li>
+<li>Hurst</li>
+<li>zero-cross density</li>
+<li>rolling beta stability</li>
+<li>residual vol stability</li>
+<li>对比两套组合：</li>
+</ul>
+<ol>
+<li><code>Top corr pairs</code></li>
+<li><code>Top admission-score pairs</code></li>
+</ol>
+<ul>
+<li>downstream execution 完全相同</li>
+</ul>
+<p><strong>要看什么：</strong></p>
+<ul>
+<li>net pnl after cost</li>
+<li>pnl per turn</li>
+<li>median holding bars</li>
+<li>time-exit 占比</li>
+</ul>
+<h3>实验 B：把 <code>15m</code> 当主信号、<code>5m</code> 当管理层</h3>
+<p><strong>目的</strong>：别把 raw alpha 本体和 execution 层混在一起。</p>
+<ul>
+<li><code>15m</code>：产生 entry / exit / stop 主信号</li>
+<li><code>5m</code>：做提前减仓、加严止损、短时冲击 veto</li>
+<li>比较：</li>
+<li>纯 <code>15m</code> 管理</li>
+<li><code>15m signal + 5m management</code></li>
+</ul>
+<p><strong>关键判断：</strong> <code>5m</code> 是不是提升了 net edge，还是只提升了 turnover 和噪声。</p>
+<h3>实验 C：把 same-underlier / cross-venue 对照也接进来</h3>
+<p><strong>目的</strong>：验证 repo 这套壳在 crypto 里到底更适合“跨资产 pair”，还是“同一资产跨 venue pair”。</p>
+<ul>
+<li>组 1：alt/alt cross-asset pairs</li>
+<li>组 2：same-underlier cross-venue pairs</li>
+<li>同样用：</li>
+<li>half-life/Hurst admission</li>
+<li>z-score entry</li>
+<li>time stop</li>
+</ul>
+<p><strong>要看：</strong> 哪类 pair 在 after-cost 口径下更诚实。</p>
+<h3>实验 D：成本压力测试必须单独做</h3>
+<p><strong>目的</strong>：避免把 gross spread alpha 误判成 production alpha。</p>
+<p>至少分四档：</p>
+<ul>
+<li>maker / maker</li>
+<li>maker / taker</li>
+<li>taker / maker</li>
+<li>taker / taker</li>
+</ul>
+<p>并额外叠加：</p>
+<ul>
+<li>funding drag</li>
+<li>双腿不同步成交</li>
+<li>单腿滑点放大</li>
+</ul>
+<p>如果某组 pair 的 <code>gross edge &lt; 2x round-trip cost budget</code>，直接降级，不再当主交易候选。</p>
+<h2>8) 这篇的最终结论</h2>
+<p>这份 2026 新 repo 真正适合我们 desk 先搬的，不是“再写一个 stat-arb app”，而是下面这句话：</p>
+<p>&gt; <strong>pairs 的 raw alpha 仍然是 spread mean reversion；但 short-cycle 能不能做，关键不在 z-score 本身，而在 <code>half-life/Hurst admission + time-stop discipline</code>。</strong></p>
+<p>这轮 <code>15m/5m</code> public proxy 也给了一个很实用的现实判断：</p>
+<ul>
+<li><code>15m</code> 上，这条线还像一条能认真继续测的 raw alpha；</li>
+<li>一压到 <code>5m</code>，大量 trade 开始依赖 <code>time exit</code> 或被 stop 吃掉；</li>
+<li>所以当前最值得进素材池的，不是“更激进的 band”，而是<strong>更严格的 pair admission</strong>。</li>
+</ul>
+<h2>9) 来源与落地文件</h2>
+<h3>主来源（repo）</h3>
+<ol>
+<li><strong><code>ayush108108</code> (2026), *hedgevision</strong>*</li>
+</ol>
+<ul>
+<li>Repo URL: &lt;<a href="https://github.com/ayush108108/hedgevision&gt;">https://github.com/ayush108108/hedgevision&gt;</a></li>
+<li>GitHub API metadata: &lt;<a href="https://api.github.com/repos/ayush108108/hedgevision&gt;">https://api.github.com/repos/ayush108108/hedgevision&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Backtest engine</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://raw.githubusercontent.com/ayush108108/hedgevision/main/backend/api/services/backtest_engine.py&gt;">https://raw.githubusercontent.com/ayush108108/hedgevision/main/backend/api/services/backtest_engine.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Cointegration service</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://raw.githubusercontent.com/ayush108108/hedgevision/main/backend/api/services/cointegration_service.py&gt;">https://raw.githubusercontent.com/ayush108108/hedgevision/main/backend/api/services/cointegration_service.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Unit tests</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://raw.githubusercontent.com/ayush108108/hedgevision/main/tests/test_backtest_engine_unit.py&gt;">https://raw.githubusercontent.com/ayush108108/hedgevision/main/tests/test_backtest_engine_unit.py&gt;</a></li>
+</ul>
+<h3>本地 artifacts</h3>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-03_hedgevision_15m_pairs_proxy_scan.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-03_hedgevision_5m_focus_pairs_proxy_scan.csv</code></li>
+</ul>
+<h3>本文路径</h3>
+<ul>
+<li><code>research/quant_digests/2026-04-03_1827_hedgevision-half-life-pairs-shell.md</code></li>
+</ul>
+</body>
+</html>

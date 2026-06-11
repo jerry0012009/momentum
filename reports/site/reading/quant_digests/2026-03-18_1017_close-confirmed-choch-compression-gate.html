@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别让 wick 把 15m 趋势直接翻面：HTF swing close + CHoCH 确认，更像 breakout-short / Fib / EMA 的 shared failure gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别让 wick 把 15m 趋势直接翻面：HTF swing close + CHoCH 确认，更像 breakout-short / Fib / EMA 的 shared failure gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-18 10:18 UTC</span>
+      <span class="pill">研究时间：2026-03-18 10:17 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/structure/choch/liquidity-sweep/filter/repo/crypto/15m</span>
+      <span class="pill">证据类型：仓库规则拆解 + 公开代码可复现实验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-18_1017_close-confirmed-choch-compression-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-18 10:17 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/structure/choch/liquidity-sweep/filter/repo/crypto/15m</li>
+<li>证据类型：仓库规则拆解 + 公开代码可复现实验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 Jerome Cornier 在 2026-02 发布的 GitHub 仓库 <code>jcornierfra/TradingView_Indicator_JCO_Swings_Trend_HTF</code>。它表面上是 <code>CHoCH + liquidity sweep + SMC</code> 风格指标，但对我们 desk 真正值钱的，不是术语包装，而是一个很实用的判断：<strong>别因为一根 wick 刺穿 swing high/low，就把 15m 的方向或结构 gate 立刻翻面；先看 higher-TF pivot close 有没有真正完成 break。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这份 repo 最值得抄的，不是整套 SMC 词汇，而是 <strong><code>close-confirmed CHoCH + no-CHoCH-no-flip</code></strong> 这层 shared failure gate：没有收盘确认的结构破坏，宁可先当 <code>compression / unclear</code>，不要急着把趋势翻向。</li>
+<li><strong>一句话证明方式</strong>：作者不是靠主观画图，而是把规则写死在代码里——默认用 <strong>最近 3 组 swing highs/lows</strong> 定义结构、用 <strong>HTF=60m</strong>、<code>Swing Period=5</code> 找 pivot，并明确要求 <code>pivot candle close</code> 真正突破前一 swing 水平，才接受 CHoCH reversal。</li>
+<li>对 bullish / bearish 的判断也很适合 desk 读法：上涨不只看新高，而先看 <strong>higher lows</strong>；下跌不只看新低，而先看 <strong>lower highs</strong>。这和我们当前三条收口线都更接近，因为它关心的是“结构有没有被接受”，不是“线有没有被碰到”。</li>
+<li>最关键的一条是 <strong>trend reversal gating</strong>：如果 raw trend 看起来翻了，但没有 CHoCH close-confirm，repo 不会直接认新方向，而是先维持前方向的 <code>Compression</code>，只有当更大结构也失效时才降到 <code>Unclear</code>。这正好对应我们 15m 上最常见的假动作：<strong>先被 wick 吓翻，再被主趋势打脸。</strong></li>
+<li>repo 还把 <code>liquidity sweep</code> 和真实 reversal 分开：如果双向 CHoCH 同时出现，却最终还是回到前趋势方向，作者把它记成 <strong>liquidity sweep / 假破流动性</strong>，不是反转成立。这对 <code>breakout-short follow-up</code> 特别重要，因为很多失败空头不是没破位，而是 <strong>只破了 stop，不破 acceptance</strong>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这题现在值得先做，不是因为我们缺一个新花样，而是因为最近几篇 digest 已经在补 <code>session</code>、<code>VWAP</code>、<code>flow</code>、<code>participation</code> 这些过滤层；下一个最自然、也最贴三条收口线的缺口，就是：<strong>价格到底是“真翻了”，还是只是 wick 把人甩下车。</strong></p>
+<ul>
+<li>对 <code>V3 final-verdict / breakout-short follow-up</code>：最直接的用法就是 <strong>short 侧别因一根 low break 就默认 continuation</strong>。如果 1h swing low 被刺穿，但没有 close-confirmed bearish CHoCH，甚至随后回到前结构内，更诚实的读法应是 <code>compression / sweep</code>，而不是继续加码 short。</li>
+<li>对 <code>Fibonacci confirmation / retest_hold</code>：Fib 位本来就只是位置。若回踩后虽然摸破前低，但 higher-TF close 没有确认跌破，反而更像 <strong>retest_hold 仍有效</strong>；反过来，若真出现 bearish CHoCH close break，再好的 Fib 位也不该硬接。</li>
+<li>对 <code>EMA / PSAR raw alpha focus</code>：它提供的是一个比“再叠一条均线”更健康的结构 gate。EMA / PSAR 给方向，HTF close-confirmed structure 只回答：<strong>这次翻向是不是被更高一级结构真正接受了。</strong></li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：给现有 <code>breakout-short / Fib retest_hold / EMA-PSAR</code> 加一层 <code>1h close-confirmed CHoCH / compression gate</code> 后，<code>2~4 bar</code> 的假突破、假回踩和过早翻向会下降，成本后表现更稳。</li>
+<li><strong>公开数据源</strong>：只需要现有交易所公开 <code>15m OHLCV</code>；把同一份数据重采样成 <code>1h</code> 即可，不依赖额外付费数据。</li>
+<li><strong>最小可计算定义</strong>：</li>
+</ul>
+<ol>
+<li>用 <code>1h</code> 重采样 bars 计算 swing pivots（先按 repo 的 <code>Swing Period=5</code> 试）；</li>
+<li>trend 只用 pivot candle <code>close</code> 序列判断 <code>higher lows / lower highs</code>；</li>
+<li><code>bullish CHoCH</code> = 新高突破前高，且 pivot close 真站上去；<code>bearish CHoCH</code> 反之；</li>
+<li>若 raw trend 翻向但无 CHoCH close confirm，则标为 <code>compression</code>，不立刻翻方向；</li>
+<li>若先破 swing、后又回到前方向结构内，则记为 <code>liquidity sweep veto</code>。</li>
+</ol>
+<ul>
+<li><strong>第一轮 bucket</strong>：</li>
+</ul>
+<ol>
+<li><code>base</code>：现有原始 setup；</li>
+<li><code>+ htf_close_trend_gate</code>：只允许更高一级 close-based trend 同向；</li>
+<li><code>+ no-choch-no-flip</code>：无 close-confirm CHoCH 时不接受趋势翻转；</li>
+<li><code>+ liquidity_sweep_veto</code>：若出现 sweep recovery / sweep rejection，禁做逆 sweep 方向的 entry。</li>
+</ol>
+<ul>
+<li><strong>最先看的 4 个指标</strong>：<code>2/4 bar fail rate</code>、<code>false-break / false-hold rate</code>、<code>post-cost expectancy @ 6/10/15 bps per side</code>、<code>trade count retention</code>。</li>
+<li><strong>下一步怎么测</strong>：先别一次铺满全策略。就拿 <code>BTC / ETH / SOL</code> 最近 <code>120~365</code> 天 <code>15m</code>，把 <code>1h CHoCH/compression gate</code> 压到三条现有 base archetype 上，只问一个问题——<strong>close-confirmed HTF structure 能不能比 wick-only 结构，稳定减少 15m 的过早翻向？</strong> 如果能，它就值得升格成 shared failure gate；如果只是砍样本、不改善 pocket，就把它留在 evidence pool。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>repo 很新，当前只有 <strong>1 star / 0 forks</strong>，社会证明很弱；我们继承的是它的规则骨架，不是它的权威性。</li>
+<li>这类 pivot / swing 逻辑天然有确认滞后；如果实现时把未确认 pivot 偷渡进信号，会立刻产生 lookahead。第一轮必须统一成 <strong>pivot 确认后 next-bar open</strong>。</li>
+<li><code>Compression</code> 很容易被滥用成“什么都能解释”；因此回测里必须把 <code>compression</code> 单独当 bucket，别和 trend continuation 混在一起。</li>
+<li>这条线和 <code>chanlun structural reclaim</code> 有邻近关系，但焦点不同：前者更偏回抽后的形态确认，这次更偏 <strong>wick vs close acceptance / reversal gating</strong>。如果实验结果高度重合，就别重复保留两层近义 gate。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Jerome Cornier. (2026). *JCO Swings Trend HTF*. GitHub repository.</li>
+<li>Venue / DOI：GitHub / N/A</li>
+<li>Repo URL: &lt;<a href="https://github.com/jcornierfra/TradingView_Indicator_JCO_Swings_Trend_HTF&gt;">https://github.com/jcornierfra/TradingView_Indicator_JCO_Swings_Trend_HTF&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://github.com/jcornierfra/TradingView_Indicator_JCO_Swings_Trend_HTF&gt;">https://github.com/jcornierfra/TradingView_Indicator_JCO_Swings_Trend_HTF&gt;</a></li>
+<li>Raw README: &lt;<a href="https://raw.githubusercontent.com/jcornierfra/TradingView_Indicator_JCO_Swings_Trend_HTF/main/README.md&gt;">https://raw.githubusercontent.com/jcornierfra/TradingView_Indicator_JCO_Swings_Trend_HTF/main/README.md&gt;</a></li>
+<li>Raw script: &lt;<a href="https://raw.githubusercontent.com/jcornierfra/TradingView_Indicator_JCO_Swings_Trend_HTF/main/Indicator_JCO_Swings_Trend_HTF.pine&gt;">https://raw.githubusercontent.com/jcornierfra/TradingView_Indicator_JCO_Swings_Trend_HTF/main/Indicator_JCO_Swings_Trend_HTF.pine&gt;</a></li>
+<li>Repo API: &lt;<a href="https://api.github.com/repos/jcornierfra/TradingView_Indicator_JCO_Swings_Trend_HTF&gt;">https://api.github.com/repos/jcornierfra/TradingView_Indicator_JCO_Swings_Trend_HTF&gt;</a></li>
+<li>Repo metadata snapshot: created <code>2026-02-05</code>, updated <code>2026-02-26</code>, <code>1</code> star, <code>0</code> forks.</li>
+</ul>
+</body>
+</html>

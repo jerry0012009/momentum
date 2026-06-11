@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hyperliquid 小时 funding 排名，不只是看榜：它更像一条 `XS carry` 原始 alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Hyperliquid 小时 funding 排名，不只是看榜：它更像一条 `XS carry` 原始 alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-09 00:45 UTC</span>
+      <span class="pill">研究时间：2026-04-09 00:41 UTC</span>
+      <span class="pill">类型：GitHub / 数据型仓库</span>
+      <span class="pill">主题标签：carry / funding / cross-sectional / relative-value / delta-neutral / Hyperliquid / hourly / liquidity</span>
+      <span class="pill">证据类型：工程经验 + 公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-09_0041_hyperliquid-xs-funding-carry-persistence-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-09 00:41 UTC</li>
+<li>类型：GitHub / 数据型仓库</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>trailing-24h funding rank × next-4h/24h funding persistence</code>，以 delta-neutral carry 方式兑现</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：carry / funding / cross-sectional / relative-value / delta-neutral / Hyperliquid / hourly / liquidity</li>
+<li>证据类型：工程经验 + 公共数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 GitHub 仓库 <code>exo-trading/crypto-carry-screener</code>。虽然 README 几乎没写内容，但源码里很明确：<code>market_data_collector.py</code> 直接从 Hyperliquid <code>fundingHistory</code> 和 <code>candleSnapshot(1h)</code> 拉全市场小时 funding 与成交额，<code>docs/script.js</code> 再把最新值与 <code>1d/3d/5d/30d</code> 年化 funding、<code>isNew/isDelisted</code> 等状态做成 screener。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这东西最值得拿来做的，不是“看谁 funding 高”，而是 <strong>做小时级横截面 carry 排名</strong>：挑持续最贵的 perp 去做 <code>short perp + long spot</code>，挑持续最便宜的 perp 去做 <code>long perp + short spot</code>。</li>
+<li>我用 repo 自带的 <code>funding_data_all_coins.csv</code>（229 币，2026-01-09~2026-04-09）和 <code>ohlcv_data_main.csv</code> 做了本地快检；在有成交额数据的公共窗口（2026-03-12~2026-04-08）里，若只保留 <strong>24h ADV 前 10</strong> 且至少有 <code>72h</code> 历史的名字，再按 <code>24h 平均 funding</code> 做 top/bottom 20% 分桶：</li>
+<li>top bucket 的 trailing funding 约 <strong>+1096.9 bps 年化</strong>；</li>
+<li>bottom bucket 约 <strong>-2807.9 bps 年化</strong>；</li>
+<li>等权 <code>long bottom + short top</code> 的 <strong>未来 funding spread</strong> 约为：<code>+0.41 bps / 1h</code>、<code>+1.70 bps / 4h</code>、<code>+3.50 bps / 8h</code>、<code>+10.69 bps / 24h</code>。</li>
+<li>更关键的是它不是“一次性跳点”而是 <strong>会持续</strong>：top bucket 未来 <code>4h/24h</code> funding 继续为正的比例约 <strong>97.4% / 99.4%</strong>，bottom bucket 继续为负的比例约 <strong>76.7% / 97.4%</strong>。</li>
+<li>但容量并不对称：正 funding 那边的 top bucket 平均 <code>24h ADV</code> 只有约 <strong>$6.88m</strong>，负 funding 那边约 <strong>$18.26m</strong>。这说明它更像 <strong>可做的小型 carry sleeve</strong>，不是无限加码的大容量主引擎。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和 desk 当前目标直接相关，因为它补的是 <strong>carry / funding</strong> 这一类可独立复现的 raw alpha，而不是又一个趋势过滤器。它的好处是：</p>
+<ul>
+<li>不依赖复杂标签，公开 API 就能拿；</li>
+<li>信号频率天然是小时级，但完全可以在 <code>1m/3m/5m/15m</code> 上做分批入场、冲击控制和 funding boundary execution；</li>
+<li>后续还能和 basis、OI、liquidation、borrow/spot availability 叠成更完整的 relative-value 书。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / 相对价值 / carry</li>
+<li>基础 alpha：<code>24h funding mean rank</code> 本身，而不是价格方向</li>
+<li>regime：优先在 funding 符号稳定、近 <code>4~24h</code> 持续性高时开机</li>
+<li>filter / veto：<code>24h ADV</code>、新币排除、极端 premium 偏离、spot 不可借/借币太贵 veto</li>
+<li>risk / sizing / execution overlay：delta-neutral 对冲；按 <code>min(ADV, funding edge)</code> 缩放；在 funding 时点前后用 <code>5m/15m TWAP</code> 分批进出；设置 sign-flip / edge-decay / time-stop</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：<strong>小时 funding 的横截面极值具有 4~24h 持续性，可支撑一条小容量 delta-neutral carry 书。</strong></li>
+<li>可计算定义：每小时对可交易币计算 <code>fund24h_mean</code>，在流动性前 10~15 名里做 top/bottom 20% 分桶；记录未来 <code>1/4/8/24h</code> 累积 funding。</li>
+<li>最小回测切口：Hyperliquid 全市场小时 funding + 小时成交额；交易层先用 <code>15m</code> 切片模拟 <code>short rich perp + long spot</code> / <code>long cheap perp + short spot</code>。</li>
+<li>先看两项指标：</li>
+</ul>
+<ol>
+<li><code>post-fee future funding bps</code>；</li>
+<li><code>sign persistence</code> 与 <code>edge decay half-life</code>。</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这篇东西的主证据目前还是 <strong>funding 持续性</strong>，不是完整净收益回测；要正式进 desk，必须补上现货借贷/借币成本、maker/taker 费用、冲击和可借券约束。</li>
+<li>Hyperliquid 的高 funding 名单里会混入容量偏小的币，容量约束比表面看起来更严。</li>
+<li>负 funding 端虽然更肥，但未必总能低成本做 <code>long perp + short spot</code>；借券与融币条件会决定能不能把“看起来很肥”真的吃到嘴里。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>exo-trading. (2025/2026). *crypto-carry-screener*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/exo-trading/crypto-carry-screener">https://github.com/exo-trading/crypto-carry-screener</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/exo-trading/crypto-carry-screener">https://github.com/exo-trading/crypto-carry-screener</a></code></li>
+<li>Key source files:</li>
+<li><code><a href="https://raw.githubusercontent.com/exo-trading/crypto-carry-screener/main/market_data_collector.py">https://raw.githubusercontent.com/exo-trading/crypto-carry-screener/main/market_data_collector.py</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/exo-trading/crypto-carry-screener/main/docs/script.js">https://raw.githubusercontent.com/exo-trading/crypto-carry-screener/main/docs/script.js</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/exo-trading/crypto-carry-screener/main/funding_data_all_coins.csv">https://raw.githubusercontent.com/exo-trading/crypto-carry-screener/main/funding_data_all_coins.csv</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/exo-trading/crypto-carry-screener/main/ohlcv_data_main.csv">https://raw.githubusercontent.com/exo-trading/crypto-carry-screener/main/ohlcv_data_main.csv</a></code></li>
+</ul>
+</body>
+</html>

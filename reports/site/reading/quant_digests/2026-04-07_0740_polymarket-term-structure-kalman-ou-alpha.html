@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Polymarket 只读成情绪盘：对 short-cycle desk，更该先测的是「adjacent-horizon YES-price spread × Kalman-OU reversion」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Polymarket 只读成情绪盘：对 short-cycle desk，更该先测的是「adjacent-horizon YES-price spread × Kalman-OU reversion」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-07 08:00 UTC</span>
+      <span class="pill">研究时间：2026-04-07 07:40 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo + Polymarket public docs source audit</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/prediction-market/polymarket/term-structure/mean-reversion/kalman/ou/kelly/external-data/1m/3m/5m/15m</span>
+      <span class="pill">证据类型：工程经验 / repo source audit</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-07_0740_polymarket-term-structure-kalman-ou-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-07 07:40 UTC</li>
+<li>类型：2026 GitHub 新 repo + Polymarket public docs source audit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一事件族里、相邻到期/截止时间的 YES 概率曲线会短时扭曲，随后向更平滑的 term structure 回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/prediction-market/polymarket/term-structure/mean-reversion/kalman/ou/kelly/external-data/1m/3m/5m/15m</li>
+<li>证据类型：工程经验 / repo source audit</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>razr321 (2026) 的 GitHub repo <code>polymarket-pairs</code></strong>，repo 自我描述就很直接：<strong>“Polymarket term structure pairs trading — Kalman + OU + Kelly sizing”</strong>。虽然仓库目前公开出来的主文件是 <code>streamlit_app.py</code>，不是完整论文或回测报告，但它已经把策略骨架暴露得很清楚：<code>pair_state</code> 里有 <code>last_z / last_hr / ou_kappa / ou_halflife / is_cointegrated / coint_pval / kelly_fraction / position_size</code>，<code>signals</code> 里记录 <code>signal_type / z_score / price_short / price_long</code>，<code>trades</code> 里还有 <code>entry_z / exit_z / hours_held / exit_reason / pnl_usd</code>。这说明它不是泛看板，而是一条已经拆到<strong>配对、建模、入场、 sizing、出场</strong>的 relative-value 策略壳。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这条东西的 <strong>base alpha 很清楚</strong>：不是赌 BTC 会涨还是跌，而是赌<strong>同一事件不同 horizon 的隐含概率曲线不会长期扭曲</strong>。短腿贵了、长腿便宜了，或者反过来，往往更像 term structure 的局部 kink，而不是永久新信息。</li>
+<li>repo 暗示的最小可交易定义也很清楚：<strong>Kalman 动态 hedge ratio + OU half-life + z-score 入场 + Kelly fraction sizing</strong>。也就是先把两条相关合约做成 spread，再赌 spread 向均值回去。</li>
+<li>这对当前 desk 的价值在于：它补的是一条<strong>和 trend / breakout / 单币 mean reversion 完全不同的 raw alpha</strong>。你不用先判断方向，只需要抓<strong>同事件曲线内部的相对错价</strong>。</li>
+<li>它和短周期的关系也顺：Polymarket 的公开盘口/市场列表天然能按分钟采，先做 <code>1m</code>，再降采到 <code>3m/5m/15m</code> 看噪音与成交可行性，研发成本不高。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线最值钱的地方，是它把 <strong>external-data / prediction-market</strong> 真正变成了一条可独立复现的 raw alpha，而不是把外部数据硬装成 shared gate。对当前 <code>momentum</code> desk，它更像：</p>
+<ul>
+<li>一条新的 <strong>relative-value / stat-arb</strong> 素材；</li>
+<li>一个和现有 breakout、LOB continuation、basis/funding 收敛互补的 alpha 家族；</li>
+<li>一个能训练我们把“外部概率曲线”也写成 <strong>entry / exit / sizing / risk</strong> 的工程模板。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / 统计套利</li>
+<li>基础 alpha：相邻 horizon YES-price spread 的均值回复</li>
+<li>regime：同事件族、可配对、cointegration 仍成立、距离结算还有安全缓冲</li>
+<li>filter / veto：<code>coint_pval</code> 不通过不做；盘口过宽/过浅不做；临近结算、信息跳变或 stale quote 不做</li>
+<li>risk / sizing / execution overlay：<code>kelly_fraction</code> 上限、单 pair gross cap、<code>2×OU half-life</code> time stop、maker-first 或严格 taker 成本门槛</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：同一 crypto 事件族（例如同一标的、不同截止时间）里，相邻合约的 YES 概率曲线若出现异常陡峭/倒挂，未来 <code>1~12h</code> 会向更平滑结构回归。</li>
+<li><strong>一个可计算定义</strong>：每分钟抓取同事件族两个相邻 horizon 的 <code>yes_price</code>，用 Kalman 估动态 hedge ratio，定义 <code>spread_t = price_long - hr_t * price_short</code>，再用 rolling OU / z-score 标准化；当 <code>|z| &gt; 2</code> 才开仓，<code>z</code> 回到 <code>0 ~ 0.5</code>、或达到 <code>2×half-life</code>、或接近结算时平仓。</li>
+<li><strong>最小回测切口</strong>：只选 Polymarket 上流动性最好的 crypto recurring markets，先做最近 <code>60~90d</code>，主频 <code>1m</code>，再对照 <code>3m/5m/15m</code>。</li>
+<li><strong>最该先看</strong>：<code>post-cost pnl/trade</code>、<code>持仓时长 vs OU half-life</code>，再补 <code>胜率 / max adverse excursion / 成交占比</code>。如果 <code>1m</code> 太吵，就先看 <code>5m</code> term-structure spread bar。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是 <strong>repo 级证据</strong>，不是论文级强证据；当前公开仓库更像 live monitor + state schema，证据强度中等。</li>
+<li>Prediction market 的价格会受<strong>离结算时间、盘口深度、单边情绪、手续费</strong>强影响，不能把它当连续期货曲线。</li>
+<li>同事件不同 horizon 也可能对应<strong>真实信息更新</strong>，不一定回归；所以必须加<strong>临近结算 veto、盘口宽度 veto、最大持有时长</strong>。</li>
+<li>若成交主要靠 taker，成本和滑点可能直接吃掉 edge；这条线优先适合做<strong>高流动 pair 的轻仓 relative-value sleeve</strong>，不是无脑全市场扫射。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>razr321 (2026). _polymarket-pairs_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/razr321/polymarket-pairs">https://github.com/razr321/polymarket-pairs</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/razr321/polymarket-pairs">https://github.com/razr321/polymarket-pairs</a></code></li>
+<li>Code URL: <code><a href="https://raw.githubusercontent.com/razr321/polymarket-pairs/main/streamlit_app.py">https://raw.githubusercontent.com/razr321/polymarket-pairs/main/streamlit_app.py</a></code></li>
+<li>Repo note: description 为 <code>Polymarket term structure pairs trading — Kalman + OU + Kelly sizing</code>；创建时间 <code>2026-03-29</code>，最近 push <code>2026-04-01</code>。</li>
+</ul>
+<ol>
+<li><strong>Polymarket Docs. _CLOB Introduction_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://docs.polymarket.com/developers/CLOB/introduction">https://docs.polymarket.com/developers/CLOB/introduction</a></code></li>
+</ul>
+<ol>
+<li><strong>Polymarket Docs. _Gamma Markets API / Get Markets_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://docs.polymarket.com/developers/gamma-markets-api/get-markets">https://docs.polymarket.com/developers/gamma-markets-api/get-markets</a></code></li>
+</ul>
+</body>
+</html>

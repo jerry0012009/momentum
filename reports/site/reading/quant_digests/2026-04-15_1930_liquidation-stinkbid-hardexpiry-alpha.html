@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Polymarket liquidation bot 只读成预测市场机器人：对 short-cycle desk，更该先测的是「BTC liquidation shock × 30% pullback stink-bid × 5m hard-expiry continuation」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Polymarket liquidation bot 只读成预测市场机器人：对 short-cycle desk，更该先测的是「BTC liquidation shock × 30% pullback stink-bid × 5m hard-expiry continuation」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-15 19:32 UTC</span>
+      <span class="pill">研究时间：2026-04-15 19:30 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `liq_stink_bot_v2.py` + `.env.example` + GitHub API metadata）</span>
+      <span class="pill">主题标签：raw-alpha/prediction-market/event-driven/liquidation/continuation/pullback-stink-bid/hard-expiry/maker-entry/polymarket/hyperliquid/binance/1m/3m/5m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo source audit</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-15_1930_liquidation-stinkbid-hardexpiry-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-15 19:30 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>liq_stink_bot_v2.py</code> + <code>.env.example</code> + GitHub API metadata）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当 <code>BTC</code> 出现中等规模强平事件（repo 默认 <code>25k~100k USD</code>）后，短时方向冲击会传到 <code>Polymarket</code> 的 <code>5m UP/DOWN</code> 二元市场；但与其追价吃 taker fee，更好的执行壳是：沿强平方向做 <code>hard-expiry continuation</code>，只是通过 <code>30% pullback</code> 的 maker stink bid 低吸合约，若成交再用 <code>Hyperliquid</code> 反向开 perp 对冲。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是，repo 已给出 signal / entry / hedge / time-stop / kill-switch / maker-fee 逻辑，但要先把 liquidation feed 完整迁到公开流并补 fill backtest</li>
+<li>主题标签：raw-alpha/prediction-market/event-driven/liquidation/continuation/pullback-stink-bid/hard-expiry/maker-entry/polymarket/hyperliquid/binance/1m/3m/5m/repo/public-data/cost/risk</li>
+<li>证据类型：repo source audit</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看的是一个 <strong>2026-04-01</strong> 创建的新 repo：</p>
+<ul>
+<li><strong>Author / Repo owner：</strong> <code>cemdenizexe</code></li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> *polymarket-trade-bot-v1*</li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/cemdenizexe/polymarket-trade-bot-v1&gt;">https://github.com/cemdenizexe/polymarket-trade-bot-v1&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/cemdenizexe/polymarket-trade-bot-v1&gt;">https://github.com/cemdenizexe/polymarket-trade-bot-v1&gt;</a></li>
+<li><strong>GitHub API metadata（已复核）：</strong> repo 创建于 <code>2026-04-01 00:38:56Z</code>，最近 push 时间 <code>2026-04-01 15:59:34Z</code></li>
+</ul>
+<p>README headline 很像“预测市场小机器人”，但源码真正值得 desk intake 的不是“能不能自动下 Polymarket 单”，而是它把一条 <strong>事件驱动方向 alpha</strong> 讲得非常具体：</p>
+<p>&gt; <strong><code>BTC liquidation shock -&gt; 5 分钟 hard-expiry 二元方向延续</code>，只是执行上不追价，而用 maker stink bid 去吃回撤。</strong></p>
+<p>这就不是我们前面已经做过的那些 Polymarket 主题：</p>
+<ul>
+<li>不是 <code>stale quote</code>；</li>
+<li>不是 <code>negation parity gap</code>；</li>
+<li>不是 <code>same-event strike surface mispricing</code>；</li>
+<li>也不是 <code>favorite-side late-entry continuation</code>。</li>
+</ul>
+<p>它的主轴更像： &gt; <strong>强平事件本身给方向，prediction market 只是一种更适合挂 maker pullback 单的执行载体。</strong></p>
+<h2>2. base alpha 先说清楚</h2>
+<p>这轮的 <strong>base alpha</strong> 不是“预测市场有价差”这么泛。</p>
+<p>它是： &gt; <strong>当 <code>BTC</code> 出现一笔足够大的强平事件后，未来几分钟的方向并没有立刻结束；但直接追 Polymarket taker 单太贵，于是更优的壳是：保留原方向判断，等一段短回撤，用 maker stink bid 去拿更便宜的 <code>UP/DOWN</code> 合约，然后持有到 <code>5m</code> 事件结束，并在 <code>Hyperliquid</code> 开反向 perp 做 delta/路径对冲。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li><strong>方向来自 liquidation shock 本身</strong>；</li>
+<li><strong>edge 不是“是否看对方向” alone，而是“方向 edge + maker entry + hard expiry” 三件套一起成立</strong>；</li>
+<li>这是一条 <strong>event-driven / directional / complete-shell raw alpha</strong>，不是单纯 filter。</li>
+</ul>
+<p>README 与源码写得很明确：</p>
+<ul>
+<li><code>$25K-$100K LONG liq -&gt; bearish -&gt; buy DOWN</code></li>
+<li><code>$25K-$100K SHORT liq -&gt; bullish -&gt; buy UP</code></li>
+<li>在 <code>signal price</code> 基础上 <strong>下调 <code>30%</code></strong> 做 stink bid</li>
+<li>若成交，则在 <code>Hyperliquid</code> 开 <strong>反向 <code>3x isolated</code> hedge</strong></li>
+</ul>
+<h2>3. 为什么这条线值得，而不是再写一篇 prediction-market 价差</h2>
+<p>因为它补的是我们当前池子里相对缺的一块：</p>
+<ol>
+<li><strong>它是 raw alpha，不是 pricing identity。</strong></li>
+<p>不是“YES+NO 应该等于 1”这种静态约束，而是“强平后 5 分钟方向可能还会继续”这种事件型 directional alpha。</p>
+</ol>
+<ol>
+<li><strong>它有完整执行壳。</strong></li>
+<p>很多 repo 只给信号；这份直接把：</p>
+</ol>
+<ul>
+<li>触发条件</li>
+<li>maker 入场</li>
+<li>硬到期</li>
+<li>对冲</li>
+<li>日损 kill switch</li>
+<p>全部写进去了。</p>
+</ul>
+<ol>
+<li><strong>它天然适配 <code>1m/3m/5m</code>。</strong></li>
+<p>这里不是低频情绪故事，而是：</p>
+</ol>
+<ul>
+<li>liquidation stream：秒级/亚秒级</li>
+<li>Polymarket orderbook：tick 级</li>
+<li>Hyperliquid hedge：实时</li>
+<li>决策窗口：<code>&lt;5m</code></li>
+</ul>
+<p>也就是说，这不是把慢变量硬塞进短周期；它从一开始就是短周期事件交易。</p>
+<h2>4. repo 里哪些实现支撑这条读法</h2>
+<h3>4.1 信号层：强平事件不是噪音，而是主触发器</h3>
+<p><code>liq_stink_bot_v2.py</code> 顶部的策略说明写得很直白：</p>
+<ol>
+<li><code>Stream BTC liquidations from Binance Futures + HyperLiquid</code></li>
+<li><code>LONG liq -&gt; bearish signal -&gt; buy DOWN</code></li>
+<li><code>SHORT liq -&gt; bullish signal -&gt; buy UP</code></li>
+<li><code>Place stink bid at PULLBACK_PCT below signal price</code></li>
+<li><code>On Polymarket fill -&gt; hedge inverse on HyperLiquid</code></li>
+</ol>
+<p>源码默认参数：</p>
+<ul>
+<li><code>LIQUIDATION_THRESHOLD_MIN = 25_000</code></li>
+<li><code>LIQUIDATION_THRESHOLD_MAX = 100_000</code></li>
+<li><code>LIQUIDATION_WINDOW = 600</code>（10 分钟滚动窗口）</li>
+</ul>
+<p>这说明它不是把任意小额清算都当信号，而是在做一个“中等规模、足够有信息量”的事件 pocket。</p>
+<h3>4.2 入场层：核心不是追价，而是 <code>30% pullback stink bid</code></h3>
+<p>源码默认：</p>
+<ul>
+<li><code>PULLBACK_PCT = 0.30</code></li>
+<li><code>MIN_TIME_LEFT = 60</code></li>
+<li><code>MARKET_DURATION = 300</code></li>
+</ul>
+<p>这几行其实很关键：</p>
+<ul>
+<li>如果你直接 taker 追 <code>UP/DOWN</code>，prediction market fee/spread 很容易把 edge 吃掉；</li>
+<li>这个 repo 的真正创意不是“看到清算就追方向”，而是：</li>
+<p><strong>保留方向判断，但只在短回撤里挂 maker 单。</strong></p>
+</ul>
+<p>所以它更像： &gt; <strong>liquidation continuation alpha + execution alpha</strong></p>
+<p>而不是裸方向赌大小。</p>
+<h3>4.3 成本层：这是个明显在跟 2026 Polymarket 新 fee 结构对齐的壳</h3>
+<p>源码注释明确写了 2026 规则变化：</p>
+<ul>
+<li><code>500ms taker delay removed</code></li>
+<li><code>Dynamic taker fees up to ~1.56%</code></li>
+<li><code>makers pay ZERO + earn rebates</code></li>
+</ul>
+<p>然后它做了两件事：</p>
+<ul>
+<li>WebSocket 订阅 orderbook，不再 REST 轮询；</li>
+<li>动态请求 <code>fee-rate</code>，但默认以 maker 视角处理。</li>
+</ul>
+<p>这说明作者不是只在讲概念，而是在围绕： &gt; <strong>“如果 prediction market taker 变贵，那就把 alpha 改写成 maker-first。”</strong></p>
+<p>对 short-cycle desk 来说，这很值钱，因为这不是 UI 层优化，而是直接决定策略能不能活下来的成本建模。</p>
+<h3>4.4 对冲层：方向判断在 Polymarket，路径风险在 Hyperliquid 管</h3>
+<p>源码给的默认对冲参数：</p>
+<ul>
+<li><code>POLY_USD_PER_POSITION = 5.0</code></li>
+<li><code>HEDGE_USD = 3.0</code></li>
+<li><code>HEDGE_LEVERAGE = 3</code></li>
+<li><code>HEDGE_FILL_WAIT = 0.5</code></li>
+<li><code>HEDGE_MAX_ATTEMPTS = 10</code></li>
+</ul>
+<p>这意味着作者默认是：</p>
+<ul>
+<li>Polymarket 名义仓位更大（约总风险的 60%）</li>
+<li>Hyperliquid 反向 perp 作为剩余 40% 的路径/尾部管理工具</li>
+</ul>
+<p>这不是纯套利，因为两腿 payoff 结构并不等价；但它确实是一个很短周期、很实际的 <strong>event trade + hedge shell</strong>。</p>
+<h3>4.5 风控层：它不只是会下单，还明确知道自己可能在哪些地方死</h3>
+<p>源码 / <code>.env.example</code> 至少给了：</p>
+<ul>
+<li><code>PAPER_TRADING=true</code></li>
+<li><code>DAILY_LOSS_LIMIT_USD=10</code></li>
+<li><code>MIN_TIME_LEFT = 60</code></li>
+<li>订单取消 / 重新拉取 fee / reconnect backoff</li>
+</ul>
+<p>这里还有一个很值得记的 audit 点：</p>
+<ul>
+<li>README 里写的是：</li>
+<li><code>POLY_USD_PER_POSITION = $15</code></li>
+<li><code>HEDGE_USD = $10</code></li>
+<li><code>DAILY_LOSS_LIMIT_USD = $50</code></li>
+<li>但源码 / <code>.env.example</code> 实际默认是：</li>
+<li><code>POLY_USD_PER_POSITION = 5</code></li>
+<li><code>HEDGE_USD = 3</code></li>
+<li><code>DAILY_LOSS_LIMIT_USD = 10</code></li>
+</ul>
+<p>也就是说： &gt; <strong>repo 的“对外文案口径”和“实际代码口径”并不一致。</strong></p>
+<p>这类不一致很常见，但对我们做复现特别重要：</p>
+<ul>
+<li>如果只读 README，很容易高估仓位与风险预算；</li>
+<li>真正复现时应该以源码/<code>.env.example</code> 为主。</li>
+</ul>
+<h2>5. 这条策略为什么算“可直接落地完整策略”</h2>
+<p>因为 entry / exit / sizing / risk / cost 五层它都给了最小实现：</p>
+<h3>Entry</h3>
+<ul>
+<li>liquidation shock 触发</li>
+<li>决定 <code>UP</code> / <code>DOWN</code> 方向</li>
+<li>挂 <code>signal price * (1 - 0.30)</code> 的 maker stink bid</li>
+</ul>
+<h3>Exit</h3>
+<ul>
+<li><code>5m</code> hard-expiry 到期天然结算</li>
+<li>未成交则取消</li>
+<li>剩余时间 <code>&lt;60s</code> 不再参与</li>
+</ul>
+<h3>Sizing</h3>
+<ul>
+<li>Polymarket leg 固定美元仓位</li>
+<li>Hyperliquid leg 固定美元对冲 + 杠杆</li>
+</ul>
+<h3>Risk</h3>
+<ul>
+<li>daily loss kill switch</li>
+<li>paper trading default</li>
+<li>hedge fill wait / retry</li>
+</ul>
+<h3>Cost</h3>
+<ul>
+<li>maker-first</li>
+<li>dynamic fee-rate</li>
+<li>taker 高费率背景显式建模</li>
+</ul>
+<p>当然，“可直接落地完整策略” 不等于“今天就能实盘上”。 这里最诚实的说法是： &gt; <strong>这是一条已经把完整策略骨架写出来的 raw alpha 壳，但它还没完成 public-feed migration 与 fill/backtest 审计。</strong></p>
+<h2>6. 外部数据口径：公开性、更新频率、最小可复现实验</h2>
+<p>这条主题主要依赖外部实时数据，所以口径必须写清楚。</p>
+<h3>6.1 数据源</h3>
+<ol>
+<li><strong>Binance Futures liquidation / trade stream</strong></li>
+</ol>
+<ul>
+<li>公开性：公开可得</li>
+<li>更新频率：实时 WebSocket</li>
+<li>作用：生成 liquidation shock 主信号</li>
+</ul>
+<ol>
+<li><strong>Hyperliquid public book / meta / execution path</strong></li>
+</ol>
+<ul>
+<li>公开性：公开可得（行情层）</li>
+<li>更新频率：实时或近实时</li>
+<li>作用：hedge 定价与路径风险管理</li>
+</ul>
+<ol>
+<li><strong>Polymarket Gamma / CLOB orderbook</strong></li>
+</ol>
+<ul>
+<li>公开性：公开可得（行情与市场元数据层）</li>
+<li>更新频率：实时 orderbook + market metadata</li>
+<li>作用：选择对应 <code>5m UP/DOWN</code> 市场、挂 maker stink bid、到期结算</li>
+</ul>
+<h3>6.2 为什么它能映射到 <code>1m / 3m / 5m / 15m</code></h3>
+<ul>
+<li>原始策略壳本身就是 <code>5m</code> 硬到期；</li>
+<li>liquidation 触发与 maker 入场判断完全可以在 <code>1m</code> 或更细粒度上做；</li>
+<li><code>3m</code> 可作为一个更粗的 fill/反弹确认层；</li>
+<li><code>15m</code> 更适合做上层 veto，例如：高波动时段 / 大盘单边时段是否禁开。</li>
+</ul>
+<h3>6.3 最小可复现实验口径</h3>
+<p>最小实验其实不复杂：</p>
+<ol>
+<li>收集近 <code>30d~60d</code> 的 BTC liquidation 事件（公开流）；</li>
+<li>对齐对应时刻的 BTC 现货/永续价格路径；</li>
+<li>对齐对应 <code>5m</code> Polymarket <code>UP/DOWN</code> 市场的 mid / bid / ask；</li>
+<li>定义事件：</li>
+</ol>
+<ul>
+<li><code>25k~100k USD</code> 强平</li>
+<li>LONG liq -&gt; 做 <code>DOWN</code></li>
+<li>SHORT liq -&gt; 做 <code>UP</code></li>
+</ul>
+<ol>
+<li>模拟执行：</li>
+</ol>
+<ul>
+<li>在信号时刻的 Polymarket 价格基础上下调 <code>30%</code> 挂 maker 单</li>
+<li>若 <code>60s</code> 内/到期前成交则持有至结算</li>
+<li>成交后同步开 Hyperliquid 反向 hedge</li>
+</ul>
+<ol>
+<li>输出：</li>
+</ol>
+<ul>
+<li>fill rate</li>
+<li>unhedged PnL</li>
+<li>hedged PnL</li>
+<li>maker rebate / fee 影响</li>
+<li>“无 hedge / 40% hedge / 100% hedge” 对比</li>
+</ul>
+<h2>7. 这轮的 first verdict</h2>
+<p>先给最关键的 5 个判断：</p>
+<ol>
+<li><strong>这不是 filter，而是真 raw alpha。</strong></li>
+<p>方向源头很清楚：<code>liquidation shock -&gt; short-horizon continuation</code>。</p>
+</ol>
+<ol>
+<li><strong>这不是“prediction market 一定更慢”的泛论。</strong></li>
+<p>真正可测的是：</p>
+</ol>
+<ul>
+<li>liquidation 事件先给方向</li>
+<li>Polymarket 用于 maker-first 执行</li>
+<li>Hyperliquid 负责 hedge</li>
+</ul>
+<ol>
+<li><strong>它是完整策略壳，不只是信号片段。</strong></li>
+<p>这点比很多 repo 强，因为它连 kill switch 和 fee handling 都考虑到了。</p>
+</ol>
+<ol>
+<li><strong>它最大的工程缺口不是想法，而是 feed migration 与 fill simulation。</strong></li>
+<p>README 也承认 liquidation feed 从 MoonDev 迁到 Binance + Hyperliquid public streams “pending”。</p>
+</ol>
+<ol>
+<li><strong>它更像 production candidate，而不是解释型材料。</strong></li>
+<p>不是说它已经验证过线，而是： &gt; 这份材料已经足够让我们直接开始做最小回放，而不是先写半天框架文档。</p>
+</ol>
+<h2>8. 这条 alpha 应该怎么 desk 化</h2>
+<p>如果把它改写成更适合我们 desk 的壳，我会这样拆：</p>
+<h3>8.1 Entry</h3>
+<ul>
+<li>主时钟：<code>1m</code></li>
+<li>触发：<code>BTC liquidation shock</code></li>
+<li>方向：</li>
+<li><code>LONG liq -&gt; buy DOWN</code></li>
+<li><code>SHORT liq -&gt; buy UP</code></li>
+<li>执行：</li>
+<li>不追 Polymarket ask</li>
+<li>用 <code>30%</code> pullback 做 maker stink bid</li>
+</ul>
+<h3>8.2 Exit</h3>
+<p>先测三种：</p>
+<ol>
+<li>repo 原始版：持有到 <code>5m</code> 结算</li>
+<li>若 Hyperliquid hedge 已经覆盖掉主要路径风险，则允许 Polymarket 腿持有到期</li>
+<li>若 <code>BTC</code> 在事件后 <code>1~2m</code> 迅速反向收回超过阈值，可提前平 hedge/取消后续挂单</li>
+</ol>
+<h3>8.3 Sizing</h3>
+<p>先不要盲信 repo 固定值，建议直接做三组：</p>
+<ul>
+<li><code>5 / 3</code>（源码默认）</li>
+<li><code>15 / 10</code>（README 口径）</li>
+<li>波动标准化 notional</li>
+</ul>
+<h3>8.4 Risk</h3>
+<p>至少补：</p>
+<ul>
+<li>单市场日内最大连亏次数</li>
+<li>同时挂单上限</li>
+<li>同分钟重复 liquidation 去重</li>
+<li>大波动时段禁开（例如宏观数据前后）</li>
+</ul>
+<h3>8.5 Cost</h3>
+<p>这里的关键不是“手续费多少”一句话，而是：</p>
+<ul>
+<li>maker fill 概率</li>
+<li>partial fill</li>
+<li>time priority</li>
+<li>Polymarket 最小 tick / 最小 size</li>
+<li>Hyperliquid hedge 的冲击成本</li>
+</ul>
+<p>prediction market 这种壳，<strong>fill assumption 比方向预测还重要</strong>。</p>
+<h2>9. 为什么它和已有 digest 不重复</h2>
+<p>虽然我们前面已经写过几篇 Polymarket / prediction-market 相关题目，但这篇的核心不同：</p>
+<ul>
+<li>不是 <code>stale quote lag-arb</code></li>
+<li>不是 <code>negation pair parity</code></li>
+<li>不是 <code>same-event strike surface mispricing</code></li>
+<li>不是 <code>favorite-side VWAP stretch</code></li>
+</ul>
+<p>这篇真正独立的 base alpha 是： &gt; <strong><code>liquidation shock</code> 本身提供方向 edge，而 <code>Polymarket maker stink bid</code> 只是执行层最优解之一。</strong></p>
+<p>所以它在研究池里的位置更接近：</p>
+<ul>
+<li><code>event-driven directional alpha</code></li>
+<li><code>hard-expiry execution shell</code></li>
+<li><code>prediction market as execution venue</code></li>
+</ul>
+<p>而不是又一篇 prediction-market 定价一致性文章。</p>
+<h2>10. 下一步怎么测</h2>
+<p>优先按下面 6 步走，不要直接实盘：</p>
+<ol>
+<li><strong>先做 public-feed 回放，不接私有 API。</strong></li>
+<p>用 Binance / Hyperliquid 公共流 + Polymarket 历史 orderbook 快照或可得 market replay，先重建事件簇。</p>
+</ol>
+<ol>
+<li><strong>先跑纯方向版，再跑 stink-bid 版。</strong></li>
+<p>先看 liquidation shock 本身有没有 <code>5m</code> 方向 edge； 再看 <code>30% pullback maker entry</code> 是否改善 payoff。</p>
+</ol>
+<ol>
+<li><strong>把 fill 当第一层研究对象。</strong></li>
+<p>至少扫：</p>
+</ol>
+<ul>
+<li><code>10% / 20% / 30% / 40%</code> pullback</li>
+<li><code>30s / 60s / 90s</code> min-time-left</li>
+<li>maker-only vs maker-then-cross</li>
+</ul>
+<ol>
+<li><strong>hedge 要单独 ablation。</strong></li>
+<p>对比：</p>
+</ol>
+<ul>
+<li>不对冲</li>
+<li><code>40%</code> notional 反向 hedge</li>
+<li><code>100%</code> delta hedge</li>
+</ul>
+<ol>
+<li><strong>补“事件质量”分层。</strong></li>
+<p>不是所有 liquidation 都一样，至少分：</p>
+</ol>
+<ul>
+<li><code>25k~50k</code></li>
+<li><code>50k~100k</code></li>
+<li>单边趋势中 vs 横盘中</li>
+<li>高波动时段 vs 普通时段</li>
+</ul>
+<ol>
+<li><strong>最终只接受成本后结论。</strong></li>
+<p>这类壳最容易被“maker fill 幻觉”骗到，所以最后必须给：</p>
+</ol>
+<ul>
+<li>fill-adjusted PnL</li>
+<li>fee/rebate 后 PnL</li>
+<li>hedge 后 PnL</li>
+<li>resolution payout vs path PnL 分解</li>
+</ul>
+<h2>11. 一句话结论</h2>
+<p>如果只用一句话概括这轮 intake：</p>
+<p>&gt; <strong>这份 2026 repo 最值钱的地方，不是“Polymarket bot” 四个字，而是它把一条很少被完整写清的短周期 raw alpha 壳讲透了：<code>BTC liquidation shock</code> 给方向，<code>5m hard-expiry binary</code> 给 payoff，<code>maker stink bid</code> 给成本优势，<code>Hyperliquid hedge</code> 给路径控制。</strong></p>
+</body>
+</html>

@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 GitHub funding-boundary repo 只读成 latency benchmark：对 short-cycle desk，更该先测的是「funding rank dispersion × settlement-bar continuation（long high / short low）」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 GitHub funding-boundary repo 只读成 latency benchmark：对 short-cycle desk，更该先测的是「funding rank dispersion × settlement-bar continuation（long high / short low）」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-12 00:59 UTC</span>
+      <span class="pill">研究时间：2026-04-12 00:57 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `streams.py` + `main.py` + `analyze_latency.py` + `short_order.py`）+ Binance USDⓈ-M `fundingRate / 5m / 15m` portability probe</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/relative-value/carry/funding/settlement-boundary/event-time/perpetuals/binance/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 源码证据 + 公共数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-12_0057_funding-settlement-xs-continuation-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-12 00:57 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>streams.py</code> + <code>main.py</code> + <code>analyze_latency.py</code> + <code>short_order.py</code>）+ Binance USDⓈ-M <code>fundingRate / 5m / 15m</code> portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>在 funding 结算边界，横截面上“更贵”的 perp（更高 funding）会在接下来一个 <code>5m/15m</code> bar 里继续相对跑赢“更便宜”的 perp（更低 funding）；更适合 desk 的第一落点不是单币追单，而是 <code>long highest-funding bucket / short lowest-funding bucket</code> 的 event-time relative-value book。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/relative-value/carry/funding/settlement-boundary/event-time/perpetuals/binance/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：repo 源码证据 + 公共数据 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主材料是一个很新的 GitHub repo：</p>
+<ul>
+<li><strong>Author / owner:</strong> <code>wangshaofu</code></li>
+<li><strong>Year:</strong> 2026</li>
+<li><strong>Title:</strong> <code>LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps</code></li>
+<li><strong>Venue:</strong> GitHub repository</li>
+<li><strong>Repo URL:</strong> &lt;<a href="https://github.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps&gt;">https://github.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps&gt;</a></li>
+<li><strong>Readable README:</strong> &lt;<a href="https://raw.githubusercontent.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps/main/README.md&gt;">https://raw.githubusercontent.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps/main/README.md&gt;</a></li>
+<li><strong>Repo created:</strong> <code>2026-02-19T09:15:18Z</code></li>
+<li><strong>Repo pushed:</strong> <code>2026-02-20T17:06:23Z</code></li>
+<li><strong>DOI:</strong> N/A</li>
+</ul>
+<p>README 给它的自我描述很直白：</p>
+<p>&gt; <strong>Measures WebSocket delivery latency around funding rate settlement times on Binance USD-M Futures, with the goal of identifying a viable short entry price at settlement.</strong></p>
+<p>但源码比 README 更有意思：</p>
+<ul>
+<li><code>streams.py</code> 里不是泛泛地盯全市场，而是直接把 <strong>funding boundary</strong> 当成特殊时刻；</li>
+<li>它会从全市场 mark price stream 持续更新 funding，挑出 <code>funding_rates[symbol] &lt; -0.003</code> 的合约；</li>
+<li><code>main.py</code> 会在 <strong>结算前 30 秒</strong> 启动 60 秒 logging session；</li>
+<li><code>analyze_latency.py</code> 再把结算前后几秒的 <strong>bid、latency、trade volume</strong> 画出来；</li>
+<li><code>short_order.py</code> 则说明作者其实在尝试把这个 boundary pocket 进一步落成真实下单脚本。</li>
+</ul>
+<p>也就是说，这份 repo 真正值钱的，不是“某个神秘阈值”，而是它把一个对 short-cycle 很关键的事实写死了：</p>
+<p>&gt; <strong>funding settlement 本身就是一个可交易的 event-time pocket。</strong></p>
+<p>不过 repo 还有个很重要的信号：<strong>它的 side 叙事并不稳定。</strong></p>
+<ul>
+<li>README 说目标是找 <code>short entry price at settlement</code>；</li>
+<li>但 <code>streams.py</code> 实际又在盯 <strong>most negative funding / below -0.003</strong> 的合约；</li>
+<li>这说明作者也还没把“到底该顺着 funding 做，还是反着 funding 做”彻底讲明白。</li>
+</ul>
+<p>对我们 desk，这反而是好事：</p>
+<p>&gt; <strong>repo 已经告诉你“结算边界值得交易”；剩下更值得做的，是把方向问题改写成更鲁棒的横截面 raw alpha，而不是执着于单币单边。</strong></p>
+<h2>2. 先回答最重要的一句：base alpha 到底是什么</h2>
+<p>这轮 base alpha 是清楚的，不是 filter，也不是纯执行层：</p>
+<p>&gt; <strong>funding-ranked cross-sectional continuation at settlement</strong>。</p>
+<p>翻成人话：</p>
+<ul>
+<li>到 funding 结算时刻，市场已经把一部分拥挤程度写进了 funding rate；</li>
+<li>如果横截面上有些合约 funding 明显更高、另一些明显更低，那么在结算后紧接着的第一个 <code>5m/15m</code> bar，强弱分化往往不会马上消失；</li>
+<li>更像出现的是：</li>
+<li><strong>高 funding 那一边继续相对强；</strong></li>
+<li><strong>低 funding 那一边继续相对弱；</strong></li>
+<li>所以 desk 更适合先测：</li>
+<li><strong>long highest-funding bucket</strong></li>
+<li><strong>short lowest-funding bucket</strong></li>
+<li>持有 1 个 event bar（<code>5m</code> 或 <code>15m</code>）</li>
+</ul>
+<p>它属于：</p>
+<ul>
+<li><code>raw alpha</code></li>
+<li><code>cross-sectional / relative-value</code></li>
+<li><code>carry / crowding / event-time continuation</code></li>
+</ul>
+<p>而不是：</p>
+<ul>
+<li>慢频宏观 regime 注释；</li>
+<li>只能做解释、不能下单的 funding 故事；</li>
+<li>单纯 execution overlay。</li>
+</ul>
+<h2>3. repo 真正适合 desk 拿走的，不是“某个币在结算瞬间怎么打”，而是“结算边界要用横截面读”</h2>
+<p>如果机械照着 README 走，你很容易把它理解成：</p>
+<ul>
+<li>funding 极端；</li>
+<li>结算到了；</li>
+<li>找一个更好的短线打点；</li>
+<li>单币直接 short / long。</li>
+</ul>
+<p>但从 desk 的角度，这个读法有两个问题：</p>
+<ol>
+<li><strong>单币方向不稳。</strong></li>
+</ol>
+<ul>
+<li>同样是 funding 极值，不同币、不同 beta、不同流动性状态下，结算后的方向并不一致。</li>
+</ul>
+<ol>
+<li><strong>repo 已经暴露出自己也没把方向讲干净。</strong></li>
+</ol>
+<ul>
+<li>README、负 funding threshold、short entry 脚本，这三者并不是一条很自洽的单边叙事。</li>
+</ul>
+<p>因此更 desk 化、也更适合 <code>5m/15m</code> 快速复现的改写方式是：</p>
+<p>&gt; <strong>把 settlement boundary 当成统一触发时刻，把 funding 当成横截面排序变量，然后做 relative-value。</strong></p>
+<p>这比“继续猜单币应该 short 还是 long”更像一个可迭代、可扩 universe、可控 beta 的 raw alpha 素材。</p>
+<h2>4. 本地 portability probe：结算后到底该怎么读 funding 排序？</h2>
+<p>本轮我直接用 Binance USDⓈ-M 公共数据做了一个最小 event-time probe。</p>
+<h3>4.1 数据口径</h3>
+<ul>
+<li><strong>Funding source:</strong> <code><a href="https://fapi.binance.com/fapi/v1/fundingRate">https://fapi.binance.com/fapi/v1/fundingRate</a></code></li>
+<li><strong>Price source:</strong> <code><a href="https://fapi.binance.com/fapi/v1/klines">https://fapi.binance.com/fapi/v1/klines</a></code></li>
+<li><strong>Universe:</strong> <code>BTCUSDT / ETHUSDT / SOLUSDT / XRPUSDT / DOGEUSDT / BNBUSDT / ADAUSDT / LINKUSDT</code></li>
+<li><strong>Sample:</strong> <code>2026-02-01</code> 到 <code>2026-04-12</code> UTC</li>
+<li><strong>Event definition:</strong> 每个 funding settlement timestamp</li>
+<li><strong>Horizon:</strong> settlement 后第一个 <code>5m</code> bar、以及第一个 <code>15m</code> bar</li>
+</ul>
+<h3>4.2 信号定义</h3>
+<p>对每个 funding 结算时刻：</p>
+<ol>
+<li>把 universe 内所有币按 <strong>当前 funding rate</strong> 排序；</li>
+<li>取 <strong>最高 quartile</strong> 做多，<strong>最低 quartile</strong> 做空；</li>
+<li>记下一根 <code>5m</code> 或 <code>15m</code> bar 的相对收益；</li>
+<li>先看等权 bucket 组合，再看最极端 <code>1v1</code>（最高 funding vs 最低 funding）做对照。</li>
+</ol>
+<p>翻译成一句话就是：</p>
+<p>&gt; <strong>结算时刻做一笔 very-short-horizon 的 funding rank long-short。</strong></p>
+<h3>4.3 结果先说结论</h3>
+<p>结论很明确：</p>
+<p>&gt; <strong>比起单币猜方向，这条线更像“横截面 continuation / relative-value”问题。</strong></p>
+<p>因为：</p>
+<ul>
+<li>bucket 版是正的；</li>
+<li><code>1v1</code> 极端版明显更弱；</li>
+<li>说明这更像 <strong>排序分层</strong> 的 edge，而不是“只抓最贵和最便宜各 1 个”的彩票打法。</li>
+</ul>
+<h2>5. 这轮最值得记住的 5 个数</h2>
+<p>Artifacts：</p>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/funding_settlement_xs_continuation_summary_2026-04-12.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/funding_settlement_xs_continuation_series_2026-04-12.csv</code></li>
+</ul>
+<h3>5.1 全样本 <code>5m</code>：bucket 组合已经是正的</h3>
+<ul>
+<li>事件数：<strong>211</strong> 个 funding settlement</li>
+<li>策略：<strong>long top funding quartile / short bottom funding quartile</strong></li>
+<li>平均收益：<strong><code>+2.16 bps / event</code></strong></li>
+<li>中位数：<strong><code>+1.67 bps</code></strong></li>
+<li>胜率：<strong>57.3%</strong></li>
+</ul>
+<h3>5.2 全样本 <code>15m</code>：比 <code>5m</code> 更肥</h3>
+<ul>
+<li>事件数：<strong>211</strong></li>
+<li>同样的 quartile long-short</li>
+<li>平均收益：<strong><code>+3.42 bps / event</code></strong></li>
+<li>中位数：<strong><code>+1.98 bps</code></strong></li>
+<li>胜率：<strong>55.9%</strong></li>
+</ul>
+<p>这说明第一落点更像：</p>
+<p>&gt; <strong>不是超快 <code>1m</code> 抢针，而是 funding 结算后下一个 <code>15m</code> 的 relative-value continuation。</strong></p>
+<h3>5.3 dispersion 越大，<code>5m</code> 结果更像 first lane</h3>
+<p>如果只保留 funding 横截面差距最大的那一档（<code>funding_spread &gt;= 0.000226305</code>，也就是约 <strong>2.26 bps</strong> 的 funding spread）：</p>
+<ul>
+<li><code>5m</code> 事件数：<strong>53</strong></li>
+<li>平均收益：<strong><code>+2.89 bps / event</code></strong></li>
+<li>中位数：<strong><code>+4.52 bps</code></strong></li>
+<li>胜率：<strong>64.2%</strong></li>
+</ul>
+<p>这个数很关键，因为它说明：</p>
+<p>&gt; <strong>不是所有结算都值得做；真正更像 alpha 的，是 funding dispersion 足够大的结算。</strong></p>
+<h3>5.4 <code>15m</code> 高 dispersion 也仍为正</h3>
+<ul>
+<li><code>15m</code> 事件数：<strong>53</strong></li>
+<li>平均收益：<strong><code>+3.86 bps / event</code></strong></li>
+<li>中位数：<strong><code>+2.12 bps</code></strong></li>
+<li>胜率：<strong>54.7%</strong></li>
+</ul>
+<p>所以如果要先选一个主战周期，当前我会优先：</p>
+<ul>
+<li><strong><code>15m</code></strong> 看 gross bps 更厚；</li>
+<li><strong><code>5m</code></strong> 在强 dispersion 档更适合做第一段确认或更快 time-stop。</li>
+</ul>
+<h3>5.5 最极端 <code>1v1</code> 反而不如 bucket</h3>
+<ul>
+<li>全样本 <code>5m 1v1</code>：<strong><code>+1.29 bps</code></strong>，胜率 <strong>52.6%</strong></li>
+<li>全样本 <code>15m 1v1</code>：<strong><code>+1.50 bps</code></strong>，胜率 <strong>53.1%</strong></li>
+</ul>
+<p>这说明这条线暂时不该被读成：</p>
+<p>&gt; “只抓 funding 最极端的那两个币。”</p>
+<p>而更该被读成：</p>
+<p>&gt; <strong>“让 funding 排序先把横截面切层，再做 bucket relative-value。”</strong></p>
+<h2>6. 为什么这轮值得做，而不是继续补另一条旧 funding fade</h2>
+<p>因为这条线补的是一个<strong>不同维度</strong>的 raw alpha：</p>
+<ol>
+<li><strong>不是单资产 funding fade。</strong></li>
+</ol>
+<ul>
+<li>已有池子里已经有 <code>funding spike × range fade</code>、<code>funding extreme × band fade</code>、<code>basis-funding gap convergence</code> 这些更偏单资产/双腿/单侧均值回归的东西。</li>
+</ul>
+<ol>
+<li><strong>它是 event-time 的横截面 relative-value。</strong></li>
+</ol>
+<ul>
+<li>交易的是 funding 排序后的强弱分化，不是“某个币 funding 高就空”。</li>
+</ul>
+<ol>
+<li><strong>它更贴近 desk 的短周期执行。</strong></li>
+</ol>
+<ul>
+<li>直接映射到 <code>5m/15m</code>；</li>
+<li>不需要先把 spot/perp、quarterly/perp、options/perp 那套重腿框架搬进来。</li>
+</ul>
+<ol>
+<li><strong>它能扩充 raw alpha 素材池。</strong></li>
+</ol>
+<ul>
+<li>尤其补的是 <code>cross-sectional / carry / relative-value / event-driven</code> 交叉区，而不是又一条泛化 filter。</li>
+</ul>
+<h2>6.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>横截面 / relative-value / event-time continuation / market-neutral-ish</strong></li>
+<li>基础 alpha：<strong>funding 结算时刻，高 funding bucket 在下一根短周期 bar 里继续相对跑赢低 funding bucket</strong></li>
+<li>regime：</li>
+<li>更适合 <strong>流动性足、funding 真有层次差</strong> 的 majors + liquid alts universe；</li>
+<li>funding 长时间贴零、横截面几乎没分层时应默认降级。</li>
+<li>filter / veto：</li>
+<li>只在 funding settlement 时刻触发；</li>
+<li><code>funding_spread</code> 至少过某个门槛（当前 first cut 可先试 <strong><code>&gt;= 2.26 bps</code></strong>）；</li>
+<li>universe 只保留高流动标的；</li>
+<li>可额外 veto：极端新闻、单边爆仓、盘口断层、临近重要宏观时点。</li>
+<li>execution / risk / sizing：</li>
+<li>入场：结算时刻对应的下一根 <code>5m</code> 或 <code>15m</code> bar open；</li>
+<li>出场：固定持有 1 根 event bar；</li>
+<li>sizing：等权 bucket，或按近窗 realized vol / ADV 逆波动缩放；</li>
+<li>risk：单币上限、bucket 最大集中度、dispersion 不足不交易；</li>
+<li>cost：优先低费率账户、maker/被动成交、或至少别把它假装成全 taker 厚边策略。</li>
+</ul>
+<h2>7. 最小可执行版本</h2>
+<h3>7.1 第一版策略壳</h3>
+<ul>
+<li><strong>Universe：</strong> <code>BTC / ETH / SOL / XRP / DOGE / ADA / LINK</code>（<code>BNB</code> 可先排除，因为 funding 常贴零，排序信息量差）</li>
+<li><strong>Trigger：</strong> 每个 funding settlement timestamp</li>
+<li><strong>Ranker：</strong> 当期 funding rate</li>
+<li><strong>Book：</strong></li>
+<li>long top quartile</li>
+<li>short bottom quartile</li>
+<li><strong>Entry：</strong> 结算对应 bar open</li>
+<li><strong>Exit：</strong> 1 根 <code>15m</code> 后平仓（并平行对照 <code>5m</code>）</li>
+<li><strong>Sizing：</strong> 等权或 inverse-vol</li>
+<li><strong>No-trade gate：</strong> funding spread 小于阈值不做</li>
+</ul>
+<h3>7.2 为什么先不做单边版</h3>
+<p>因为本轮 probe 已经给了一个很清楚的提示：</p>
+<ul>
+<li>单币按 funding sign 去猜方向，表现很乱；</li>
+<li>比如 summary 里有些币在 top-decile funding 上偏 continuation，有些又完全相反；</li>
+<li>这恰恰说明：</li>
+<li><strong>单边方向不是这轮最稳的东西；</strong></li>
+<li><strong>横截面 rank book 才是更自然的第一落点。</strong></li>
+</ul>
+<h2>8. 它和 <code>1m / 3m / 5m / 15m</code> 的关系该怎么理解</h2>
+<p>这条线当前最合理的落点不是 <code>1m</code>。</p>
+<p>更像：</p>
+<ul>
+<li><strong>触发时钟</strong> 来自 funding settlement；</li>
+<li><strong>最小交易 bar</strong> 先看 <code>5m</code>；</li>
+<li><strong>更成熟的 first lane</strong> 当前反而是 <code>15m</code>。</li>
+</ul>
+<p>所以：</p>
+<ul>
+<li><code>1m / 3m</code>：更适合作为 execution 优化层，去改进入场点和滑点；</li>
+<li><code>5m</code>：适合作为更快止盈/止损和 confirmation；</li>
+<li><code>15m</code>：当前更像 raw alpha 的主承载周期。</li>
+</ul>
+<h2>9. 下一步怎么测</h2>
+<p>这轮必须继续往下走的 6 件事：</p>
+<ol>
+<li><strong>正式扣成本。</strong></li>
+</ol>
+<ul>
+<li>这条线的 gross edge 只有 <code>2~4 bps/event</code>，非常成本敏感；</li>
+<li>下一步必须把 maker/taker、双腿滑点、借由 bucket 扩腿后的成交冲击一起扣进去。</li>
+</ul>
+<ol>
+<li><strong>把 <code>BNB</code> 这种长期贴零 funding 的币从主 universe 里剔掉。</strong></li>
+</ol>
+<ul>
+<li>否则 funding rank 会被“零附近噪音排序”污染。</li>
+</ul>
+<ol>
+<li><strong>做流动性分层。</strong></li>
+</ol>
+<ul>
+<li><code>majors-only</code>、<code>majors + liquid alts</code>、<code>full alt bucket</code> 三档分开跑，别假装全 universe 一个性质。</li>
+</ul>
+<ol>
+<li><strong>把结算前 30 秒/10 秒的微结构加回来。</strong></li>
+</ol>
+<ul>
+<li>这正是 repo 原本在干的事；</li>
+<li>可以把 <code>1m/3m</code> 层留给 execution：看结算前是否 already front-run、是否该推迟到下一分钟再进。</li>
+</ul>
+<ol>
+<li><strong>加入 premium / basis / OI 联合 gate。</strong></li>
+</ol>
+<ul>
+<li>funding 只是 crowding 的一个写法；</li>
+<li>若 settlement 同时伴随 premium 回落或 OI 方向确认，edge 可能会更干净。</li>
+</ul>
+<ol>
+<li><strong>做 rank persistence。</strong></li>
+</ol>
+<ul>
+<li>看 funding rank 在结算后是否还维持 1~2 个 observation；</li>
+<li>如果高 funding 很快归零，那 alpha 可能只值一根 <code>5m</code>；</li>
+<li>如果 persistence 强，<code>15m</code> 甚至 <code>2-bar hold</code> 才可能有更厚收益。</li>
+</ul>
+<h2>10. 风险与保留意见</h2>
+<ul>
+<li><strong>这是一条 gross edge 很薄的策略。</strong></li>
+<li>没有低成本执行，就别自欺欺人。</li>
+<li><strong>样本只有约 70 天。</strong></li>
+<li>211 个结算事件不算少，但离 production 结论还差得远。</li>
+<li><strong>当前 universe 还偏人工。</strong></li>
+<li>后面要用稳定流动性过滤，而不是随手挑 8 个币长期不动。</li>
+<li><strong>repo 更偏 microstructure logging，不是现成回测论文。</strong></li>
+<li>这轮真正值钱的是：repo 把 settlement boundary 标成了特殊时刻；alpha 本体是我们基于公共数据把它翻译成了横截面 relative-value 版本。</li>
+<li><strong>不能把它误读成“funding 高就追多、funding 低就追空”的单边圣杯。</strong></li>
+<li>当前证据支持的是 <strong>bucket long-short</strong>，不是单币单边万能方向。</li>
+</ul>
+<h2>11. 来源</h2>
+<ol>
+<li><strong>wangshaofu (2026). _LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: &lt;<a href="https://github.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps&gt;">https://github.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps&gt;</a></li>
+<li>Readable README: &lt;<a href="https://raw.githubusercontent.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps/main/README.md&gt;">https://raw.githubusercontent.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps/main/README.md&gt;</a></li>
+<li>Key files used:</li>
+<li>&lt;<a href="https://raw.githubusercontent.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps/main/streams.py&gt;">https://raw.githubusercontent.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps/main/streams.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps/main/main.py&gt;">https://raw.githubusercontent.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps/main/main.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps/main/analyze_latency.py&gt;">https://raw.githubusercontent.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps/main/analyze_latency.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps/main/short_order.py&gt;">https://raw.githubusercontent.com/wangshaofu/LolaFun-Latency-Aware-Arbitrage-at-Funding-Rate-Boundaries-in-Crypto-Perpetual-Swaps/main/short_order.py&gt;</a></li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M public APIs</strong></li>
+</ol>
+<ul>
+<li>Funding history: &lt;<a href="https://fapi.binance.com/fapi/v1/fundingRate&gt;">https://fapi.binance.com/fapi/v1/fundingRate&gt;</a></li>
+<li>Futures klines: &lt;<a href="https://fapi.binance.com/fapi/v1/klines&gt;">https://fapi.binance.com/fapi/v1/klines&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Local portability artifacts</strong></li>
+</ol>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/funding_settlement_xs_continuation_summary_2026-04-12.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/funding_settlement_xs_continuation_series_2026-04-12.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2025 实时 pairs repo 只读成 dashboard：对 short-cycle desk，更该先测的是「dynamic hedge ratio spread × z-score fade」这条 BTC/ETH raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2025 实时 pairs repo 只读成 dashboard：对 short-cycle desk，更该先测的是「dynamic hedge ratio spread × z-score fade」这条 BTC/ETH raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-08 14:30 UTC</span>
+      <span class="pill">研究时间：2026-04-08 14:29 UTC</span>
+      <span class="pill">类型：GitHub repo source audit + Binance Spot public `1m/5m` portability probe</span>
+      <span class="pill">主题标签：pairs / stat-arb / relative-value / mean-reversion / dynamic-hedge-ratio / zscore / BTC / ETH / 1m / 5m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：工程经验 + 本地最小可移植性验证</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-08_1429_dynamic-hedgeratio-btceth-pairs-fade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-08 14:29 UTC</li>
+<li>类型：GitHub repo source audit + Binance Spot public <code>1m/5m</code> portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>BTC/ETH dynamic hedge-ratio spread mean reversion</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是，但当前 repo 需补 sizing / hard risk / execution realism</li>
+<li>主题标签：pairs / stat-arb / relative-value / mean-reversion / dynamic-hedge-ratio / zscore / BTC / ETH / 1m / 5m / repo / public-data / cost / risk</li>
+<li>证据类型：工程经验 + 本地最小可移植性验证</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>KulkarniPushakar (2025)</strong> 的 GitHub 仓库 <strong>Real-Time Crypto Pair Trading Analytics Platform</strong>（commit <code>fb49d7b</code>，repo 更新时间 <code>2025-12-17</code>）。source audit 重点覆盖：<code>README.md</code>、<code>analytics/hedge_ratio.py</code>、<code>analytics/spread.py</code>、<code>analytics/zscore.py</code>、<code>analytics/backtest.py</code>、<code>analytics/runner.py</code>、<code>analytics/resample.py</code>、<code>analytics/ADF_test.py</code>、<code>analytics/rolling_corr.py</code>。</p>
+<p>一句话先说：<strong>这份 repo 真正值钱的不是“实时看板”，而是它把 short-cycle pairs 最核心的 raw alpha 明确拆成了——动态对冲比率先把 BTC/ETH 两腿对齐，再做 spread 的 z-score 回归。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>base alpha 很清楚</strong>：不是做方向预测，而是做 <strong>相对价值回归</strong>——当 <code>BTC - β_t * ETH</code> 的动态 spread 偏离过大，就赌它回到中线。</li>
+<li>repo 的关键不是固定 OLS，而是把 <strong>Huber / TheilSen / Kalman 风格动态 hedge ratio</strong> 放进主流程；这更适合 crypto 短周期里相关性和 beta 会漂移的现实。</li>
+<li>它已经把短周期最常见的辅助件补齐了：<strong>tick → <code>1s/1m/5m</code> resample、rolling correlation、ADF、spread、z-score、entry/exit backtest skeleton</strong>。也就是说，这不是“pairs 概念笔记”，而是可直接迁到我们 desk 的实验骨架。</li>
+<li>我做的本地 portability probe（Binance Spot 公共 <code>BTCUSDT/ETHUSDT</code>）显示：<strong>dynamic beta 明显比 static beta 更能压缩 spread 噪声</strong>。最近样本里：</li>
+<li><code>1m</code>：spread std 约从 <code>29.42 bps</code> 压到 <code>3.58 bps</code></li>
+<li><code>5m</code>：约从 <code>94.38 bps</code> 压到 <code>8.21 bps</code></li>
+<li>用一个很粗的 <code>z_entry=2 / z_exit=0</code> 最小回测壳快检：</li>
+<li><code>1m</code>：约 <code>172</code> 笔，毛 <code>+9.65 bps/trade</code>，按双腿 <code>8 bps</code> 粗成本后仍约 <code>+1.65 bps/trade</code></li>
+<li><code>5m</code>：约 <code>198</code> 笔，毛 <code>+21.72 bps/trade</code>，按双腿 <code>8 bps</code> 后约 <code>+13.72 bps/trade</code></li>
+<li>但别误会：<strong>这还不是 production verdict</strong>。这个 probe 仍然偏乐观，因为我用的是同步 bar close spread、零冲击、无 funding、无 next-bar execution lag 的简化口径；它现在更像“raw alpha 没死”，不是“可以直接上钱”。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>它和我们当前主线的关系非常直接：这不是又一个 breakout / pullback filter，而是<strong>可独立复现的完整 pairs raw alpha 候选</strong>。而且它正好补的是 desk 现在最该继续积累的那块：</p>
+<ul>
+<li>raw alpha 家族里的 <strong>pairs / stat-arb / relative value</strong></li>
+<li>可快速压缩到 <code>1m / 3m / 5m / 15m</code> 的最小实验</li>
+<li>还能顺手服务后续的 shared gate（corr、ADF、liquidity、execution veto）</li>
+</ul>
+<p>一句话核心结论：<strong>对 BTC/ETH 这种高相关腿，先做动态 beta 对齐，再做 spread fade，比直接拿固定 ratio/z-score 更像能活下来的短周期 pairs 原型。</strong></p>
+<p>一句话证明方式：<strong>repo 给了完整工程骨架，我再用 Binance 公开 <code>1m/5m</code> 数据做了最小移植快检，先看 spread 压缩，再看成本前后每笔期望。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / pairs / market-neutral</li>
+<li>基础 alpha：<code>dynamic hedge-ratio spread mean reversion</code></li>
+<li>regime：高相关、spread 仍近似可回归的阶段</li>
+<li>filter / veto：rolling corr、ADF、liquidity、极端 news / gap veto</li>
+<li>risk / sizing / execution overlay：beta-neutral notional sizing、z-score capped sizing、max holding bars、cost hurdle、next-bar / maker-first 执行</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设</strong>：对 <code>BTC/ETH</code>，动态 hedge ratio 比 static beta 更能产出可交易的短周期 spread fade。</p>
+<p><strong>一个可计算定义</strong>：</p>
+<ol>
+<li>用 <code>1m</code> 或 <code>5m</code> close 计算 <code>log(BTC)</code>、<code>log(ETH)</code>；</li>
+<li>用递归/Kalman 风格方法估 <code>β_t</code>；</li>
+<li>定义 <code>spread_t = log(BTC_t) - β_t * log(ETH_t)</code>；</li>
+<li><code>z_t</code> 超过 <code>±2</code> 开仓，回到 <code>0</code> 平仓，附加 <code>max_hold</code>；</li>
+<li>统一按双腿 round-trip <code>6~12 bps</code> 做 friction ladder。</li>
+</ol>
+<p><strong>最小回测切口</strong>：</p>
+<ul>
+<li>资产：<code>BTCUSDT / ETHUSDT</code></li>
+<li>周期：先 <code>5m</code>，再降到 <code>1m/3m</code></li>
+<li>样本：最近 <code>30~90d</code> 连续 Binance Spot 或 perp</li>
+</ul>
+<p><strong>最该先看</strong>：</p>
+<ul>
+<li><code>post-cost expectancy / trade</code></li>
+<li><code>trade count</code> 与 <code>median hold</code></li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>当前快检对 fill 太友好，必须换成 <strong>next-bar open / bid-ask side execution</strong> 再看。</li>
+<li><code>1m</code> 上看起来能活，不代表加上 queue / latency 后还活。</li>
+<li>BTC/ETH 是最容易的一对，后续不能只盯这一对；要扩到 <code>BTC-ETH</code> 之外的 majors peer set。</li>
+<li>dynamic beta 若更新太快，可能把可交易偏离“吸掉”；若太慢，又会退化成滞后的 static ratio，需要参数稳定性检查。</li>
+<li>真正的 production 版本必须补：<strong>notional neutrality、hard stop、pair admission、rolling correlation floor、ADF survival、成本分层</strong>。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>KulkarniPushakar. (2025). _Real-Time Crypto Pair Trading Analytics Platform_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://github.com/KulkarniPushakar/Real-Time-Crypto-Pair-Trading-Analytics-">https://github.com/KulkarniPushakar/Real-Time-Crypto-Pair-Trading-Analytics-</a></code></li>
+<li>Repo URL：<code><a href="https://github.com/KulkarniPushakar/Real-Time-Crypto-Pair-Trading-Analytics-">https://github.com/KulkarniPushakar/Real-Time-Crypto-Pair-Trading-Analytics-</a></code></li>
+</ul>
+<ol>
+<li><strong>Source audit files</strong></li>
+</ol>
+<ul>
+<li><code>README.md</code></li>
+<li><code>analytics/hedge_ratio.py</code></li>
+<li><code>analytics/spread.py</code></li>
+<li><code>analytics/zscore.py</code></li>
+<li><code>analytics/backtest.py</code></li>
+<li><code>analytics/runner.py</code></li>
+<li><code>analytics/resample.py</code></li>
+<li><code>analytics/ADF_test.py</code></li>
+<li><code>analytics/rolling_corr.py</code></li>
+</ul>
+<ol>
+<li><strong>Binance Spot public market data</strong></li>
+</ol>
+<ul>
+<li>Klines API：<code><a href="https://api.binance.com/api/v3/klines">https://api.binance.com/api/v3/klines</a></code></li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<p>先别扩 universe，先做一个最干净的 A/B：</p>
+<ol>
+<li><code>static beta</code> vs <code>dynamic beta</code></li>
+<li><code>close-to-close</code> vs <code>next-bar-open</code></li>
+<li>成本从 <code>4 / 8 / 12 bps</code> 三档往上压</li>
+<li>再加一层最便宜的 pair admission：<code>rolling corr floor + ADF veto</code></li>
+</ol>
+<p>如果这四步后 <code>5m</code> 还能保住正的 post-cost expectancy，这条就有资格进更正式的 pairs replication 池。</p>
+</body>
+</html>

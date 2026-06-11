@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把确认层写成“可无限等待”：`confirmWindow + entryWindow` 双时窗 expiry，更像 15m breakout-short / Fib / EMA-PSAR 的 honest follow-up gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把确认层写成“可无限等待”：`confirmWindow + entryWindow` 双时窗 expiry，更像 15m breakout-short / Fib / EMA-PSAR 的 honest follow-up gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-21 01:46 UTC</span>
+      <span class="pill">研究时间：2026-03-21 01:45 UTC</span>
+      <span class="pill">类型：GitHub 仓库（代码规则审阅）</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/follow-up/confirmation/latency-budget/expiry/state-machine/filter/repo/crypto/5m/15m</span>
+      <span class="pill">证据类型：工程规则证据（源码可复核）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-21_0145_state-expiry-latency-budget-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-21 01:45 UTC</li>
+<li>类型：GitHub 仓库（代码规则审阅）</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/follow-up/confirmation/latency-budget/expiry/state-machine/filter/repo/crypto/5m/15m</li>
+<li>证据类型：工程规则证据（源码可复核）</li>
+</ul>
+<h2>1) 这次为什么值得先写</h2>
+<p>这轮优先级直接服务三条收口线，而且比再堆一个新指标更紧急： <strong>我们最近反复碰到的是 <code>late retest / stale follow-up</code>——信号触发后拖太久才确认，最后把“过期路径”也当成同一笔 continuation。</strong></p>
+<p><code>CO0Ki3/smc-structure-ts</code> 这份 2026 新仓库里，最值得偷的旁支不是 SMC 名词本身，而是它把流程明确写成： <code>SWEPT -&gt; CONFIRMED -&gt; ENTRY</code>，并且每一步都带<strong>超时失效（expiry）</strong>。</p>
+<h2>2) 看的来源</h2>
+<h3>Source A（主）</h3>
+<ul>
+<li><strong>CO0Ki3 (2026). _smc-structure-ts_. GitHub repository.</strong></li>
+<li>Venue: GitHub</li>
+<li>DOI: <code>N/A</code></li>
+<li>Readable URL: <code><a href="https://github.com/CO0Ki3/smc-structure-ts">https://github.com/CO0Ki3/smc-structure-ts</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/CO0Ki3/smc-structure-ts">https://github.com/CO0Ki3/smc-structure-ts</a></code></li>
+<li>关键代码：</li>
+<li><code>src/strategy/runStrategy.ts</code></li>
+<li><code>src/strategy/types.ts</code></li>
+<li><code>src/smc/structure.ts</code></li>
+</ul>
+<h3>Source B（补充对照）</h3>
+<ul>
+<li><strong>yeboster (2026). _liquidity-sweep-freqtrade_. GitHub repository.</strong></li>
+<li>Venue: GitHub</li>
+<li>DOI: <code>N/A</code></li>
+<li>Readable URL: <code><a href="https://github.com/yeboster/liquidity-sweep-freqtrade">https://github.com/yeboster/liquidity-sweep-freqtrade</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/yeboster/liquidity-sweep-freqtrade">https://github.com/yeboster/liquidity-sweep-freqtrade</a></code></li>
+</ul>
+<h2>3) desk 版一句话结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 对 15m 来说，确认层最该先补的不是“再加一个更花的过滤器”，而是给 post-trigger 路径加<strong>时间预算</strong>：确认超时作废、入场超时作废。</li>
+<li><strong>一句话证明方式：</strong> 主仓库把交易链写成显式状态机，并在源码里硬编码了 <code>sweep-&gt;confirm</code> 与 <code>confirm-&gt;entry</code> 两段 window 过期逻辑；这让“过期信号”不能偷偷混入同一类样本。</li>
+</ul>
+<h2>4) 最关键的数据点（来自源码默认参数）</h2>
+<ol>
+<li><code>confirmWindowBars = 12</code>（15m 下约 3 小时）</li>
+<li><code>entryWindowBars = 24</code>（15m 下约 6 小时）</li>
+<li><code>timeoutBars = 288</code>（15m 下约 3 天）</li>
+</ol>
+<p>补充：同一实现还把 <code>rr=2.0</code>、<code>feeBps=10</code>（round-trip）直接参数化，说明它默认就把“成本+超时”视为规则的一部分，不是事后补丁。</p>
+<h2>5) 对三条收口线的直接价值</h2>
+<ul>
+<li><strong>V3 final-verdict / breakout-short follow-up</strong>：</li>
+<p>把“破位后拖很久才出现的确认”剔除，可直接减少 stale continuation 假阳性。</p>
+<li><strong>Fibonacci confirmation / retest_hold</strong>：</li>
+<p>Fib 回踩不是无限期有效；<code>signal-&gt;retest_hold</code> 也该有最大等待窗，否则会把结构变形后的回踩误算成同类样本。</p>
+<li><strong>EMA / PSAR raw alpha focus</strong>：</li>
+<p>先不改 EMA/PSAR 本体，先加 <code>latency budget</code> 这层 honesty gate，通常比再调参数更便宜、更可审计。</p>
+</ul>
+<h2>6) 下一步怎么测（最小实验）</h2>
+<p>先不引入新因子，只测“时间预算”本身有没有增量：</p>
+<ul>
+<li><strong>实验对象</strong>：现有三条 setup（breakout-short / fib_retest_hold / ema_psar_long）</li>
+<li><strong>固定项</strong>：<code>BTC/ETH/SOL</code> perpetual，<code>15m</code>，<code>next-bar open</code>，<code>no-overlap</code>，成本 <code>6/10/15 bps per side</code></li>
+<li><strong>三臂对照</strong>：</li>
+<li><code>A</code>：无 expiry（当前口径）</li>
+<li><code>B</code>：仅 <code>confirmWindow</code>（例如 8/12/16 bars）</li>
+<li><code>C</code>：<code>confirmWindow + entryWindow</code>（例如 (8,16)/(12,24)/(16,32)）</li>
+<li><strong>先看 4 个指标</strong>：</li>
+<p>1) <code>post_cost_expectancy</code> 2) <code>failure_rate</code>（或 <code>tp_first</code> 对应失败侧） 3) <code>trade_count_retention</code> 4) <code>time-to-confirm</code> / <code>time-to-entry</code> 分布是否左移</p>
+</ul>
+<p>若 <code>B/C</code> 只是靠极端砍单好看（retention 过低），就不升 shared gate；若 failure 下降且 retention 仍可接受，再进入下一轮。</p>
+<h2>7) 风险与保留意见</h2>
+<ul>
+<li>这是 repo 规则启发，不是已验证的跨市场论文结论；</li>
+<li>源仓库是 SMC 语境，直接照搬名词会过拟合；我们只借“状态机 + expiry”框架；</li>
+<li>window 过严时很容易只剩稀疏样本，必须和 retention 联合审计，不能只看收益均值。</li>
+</ul>
+<h2>8) 本轮产物</h2>
+<ul>
+<li>研究笔记：<code>research/quant_digests/2026-03-21_0145_state-expiry-latency-budget-gate.md</code></li>
+</ul>
+<h2>9) 来源</h2>
+<ol>
+<li><strong>CO0Ki3. (2026). _smc-structure-ts_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: <code>N/A</code></li>
+<li>Readable URL: <code><a href="https://github.com/CO0Ki3/smc-structure-ts">https://github.com/CO0Ki3/smc-structure-ts</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/CO0Ki3/smc-structure-ts">https://github.com/CO0Ki3/smc-structure-ts</a></code></li>
+<li>Key files:</li>
+<li><code><a href="https://raw.githubusercontent.com/CO0Ki3/smc-structure-ts/main/src/strategy/runStrategy.ts">https://raw.githubusercontent.com/CO0Ki3/smc-structure-ts/main/src/strategy/runStrategy.ts</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/CO0Ki3/smc-structure-ts/main/src/strategy/types.ts">https://raw.githubusercontent.com/CO0Ki3/smc-structure-ts/main/src/strategy/types.ts</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/CO0Ki3/smc-structure-ts/main/src/smc/structure.ts">https://raw.githubusercontent.com/CO0Ki3/smc-structure-ts/main/src/smc/structure.ts</a></code></li>
+</ul>
+<ol>
+<li><strong>yeboster. (2026). _liquidity-sweep-freqtrade_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: <code>N/A</code></li>
+<li>Readable URL: <code><a href="https://github.com/yeboster/liquidity-sweep-freqtrade">https://github.com/yeboster/liquidity-sweep-freqtrade</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/yeboster/liquidity-sweep-freqtrade">https://github.com/yeboster/liquidity-sweep-freqtrade</a></code></li>
+<li>Key file: <code><a href="https://raw.githubusercontent.com/yeboster/liquidity-sweep-freqtrade/main/README.md">https://raw.githubusercontent.com/yeboster/liquidity-sweep-freqtrade/main/README.md</a></code></li>
+</ul>
+<p>--- 一句话收口：</p>
+<p><strong>先把确认层从“无限等待”改成“有时效预算”，是当前 15m 三条收口线更值得优先做的一步诚实修复。</strong></p>
+</body>
+</html>

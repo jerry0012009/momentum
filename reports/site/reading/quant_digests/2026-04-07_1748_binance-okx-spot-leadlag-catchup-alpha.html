@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2025 cross-venue notebook 只读成相关性 EDA：对 short-cycle desk，更该先测的是「Binance spot impulse × OKX delayed catch-up」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2025 cross-venue notebook 只读成相关性 EDA：对 short-cycle desk，更该先测的是「Binance spot impulse × OKX delayed catch-up」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-07 17:53 UTC</span>
+      <span class="pill">研究时间：2026-04-07 17:48 UTC</span>
+      <span class="pill">类型：GitHub repo / notebook source audit</span>
+      <span class="pill">主题标签：cross-venue / lead-lag / same-underlier / spot / event-time / microstructure / 1m / 3m / binance / okx / btc</span>
+      <span class="pill">证据类型：工程经验 / notebook 内嵌结果</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-07_1748_binance-okx-spot-leadlag-catchup-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-07 17:48 UTC</li>
+<li>类型：GitHub repo / notebook source audit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一标的在跨所之间存在<strong>非对称秒级 lead-lag</strong>；当 Binance 现货先走出显著冲击、而 OKX 还没完全跟上时，做 OKX 方向性 catch-up。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：cross-venue / lead-lag / same-underlier / spot / event-time / microstructure / 1m / 3m / binance / okx / btc</li>
+<li>证据类型：工程经验 / notebook 内嵌结果</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 GitHub 仓库 <strong><code>ybektas20/crypto_ll</code></strong> 里的 <code>eda.ipynb</code>。它不是完整交易系统，而是一份把 <strong>Binance BTCUSDT 现货/永续</strong> 与 <strong>OKX BTC-USDT 现货/永续</strong> 逐笔成交对齐后，直接做跨所 lead-lag 相关性扫描的 notebook。仓库保存了输出，不只是空代码：样本覆盖 <code>2025-06-03</code> 到 <code>2025-06-04</code>，Binance perp 样本约 <code>218,756</code> 笔，OKX spot / perp 分别约 <code>308,461</code> / <code>577,663</code> 笔，OKX 内部 spot+perp 对齐后约 <code>1,464,400</code> 行。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份材料最值钱的不是“两个所很相关”，而是 <strong>领导权不对称</strong>：在它的样本里，<code>Binance spot -&gt; OKX spot</code> 的领先强于反方向。</li>
+<li>notebook 直接给出的 lag-scan 结果里，<code>spot_binance_spot_okx_corr</code> 的<strong>最大相关系数约 <code>0.4332</code>，出现在 lag=<code>17</code></strong>；反方向 <code>spot_okx_spot_binance_corr</code> 的<strong>最大相关仅约 <code>0.3387</code>，出现在 lag=<code>19</code></strong>。</li>
+<li>该 notebook 还给了时间尺度：按 <code>timestamp.diff(21)</code> 统计，<strong>21 个对齐观测点平均约 <code>2.61s</code></strong>，中位数约 <code>2.06s</code>。也就是说，这里最该关注的不是 15m，而是 <strong>秒级到 1m 内</strong> 的跟随补价 pocket。</li>
+<li><strong>一句话证明方式：</strong> 它是靠<strong>逐笔成交对齐 + 滞后相关扫描</strong>把这个判断撑起来的，不是靠主观“看图觉得谁先谁后”。</li>
+<li>notebook 还画了 rolling correlation，这提醒我们：这不是恒定不变的机械边，而更像<strong>可切换的微观结构 regime alpha</strong>，需要领导权强度过滤。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和我们最近积累的 <code>pairs / funding / basis</code> 不同：它是更短、更“原始”的 <strong>same-underlier cross-venue lead-lag raw alpha</strong>。对当前 desk 有两层价值：</p>
+<ol>
+<li>直接扩充 <code>1m / 3m</code> 高强度素材池，不必再把跨所只读成静态价差回归；</li>
+<li>以后还能反哺已有 <code>XEMM / quote-gap-close / maker-taker hedge</code> 壳，作为<strong>领导权 admission</strong> 或 <strong>no-chase veto</strong>。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / 跨所 lead-lag directional</li>
+<li>基础 alpha：<strong>Binance 现货短冲击领先，OKX 同标的延迟补价</strong></li>
+<li>regime：仅在 <code>leader-follower</code> 相关仍稳定、两所价差未被费用吃掉、且事件窗口内 Binance 仍是 leader 时启用</li>
+<li>filter / veto：低流动性时段禁做；若 follower 已完成大部分补价、或两所方向同时剧烈反转，则 veto</li>
+<li>risk / sizing / execution overlay：仓位按 leader 冲击强度与 follower 未补价幅度缩放；默认极短 time-box；优先 maker on follower / taker 只在 edge 明显覆盖手续费与冲击时使用</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设：</strong> 当 Binance BTC 现货在最近 <code>3s~10s</code> 内出现显著单向冲击，而 OKX BTC perp/spot 同窗仍落后时，OKX 后续 <code>3s~30s</code> 有同向补价。</li>
+<li><strong>一个可计算定义：</strong></li>
+<li><code>leader_impulse = ret_binance_spot_{3s}</code></li>
+<li><code>follower_gap = ret_binance_spot_{3s} - ret_okx_perp_{3s}</code>（或 <code>- ret_okx_spot_{3s}</code>）</li>
+<li>仅当 <code>|leader_impulse| &gt; z1</code> 且 <code>follower_gap</code> 与 <code>leader_impulse</code> 同号、并且 gap 超过费用门槛时开仓。</li>
+<li><strong>最小回测切口：</strong> BTC，Binance + OKX 公共逐笔成交；先做 <code>1s / 5s / 15s</code> 聚合，再降到 <code>1m</code> 检查是否还剩可迁移边；样本先取 7~30 天。</li>
+<li><strong>entry / exit / sizing / risk / cost：</strong></li>
+<li>entry：leader 冲击确认后的下一秒在 follower 侧入场；</li>
+<li>exit：<code>3s / 10s / 30s</code> time-box 或 gap 收敛 <code>50%~80%</code>；</li>
+<li>sizing：按 <code>gap / realized short-horizon vol</code> 缩放，单笔不超过盘口可吃深度阈值；</li>
+<li>risk：若 leader 在持仓期内反转、或 follower 先走过头，则立即平；</li>
+<li>cost：必须显式计入 maker/taker、滑点、跨所时钟偏差与网络延迟。</li>
+<li><strong>最该先看哪 1~2 个指标：</strong> <code>post-cost bp/trade</code>、<code>edge-after-latency</code>；其次看 <code>hit rate within 10s</code>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>notebook 证据强在<strong>方法清楚、结果直给</strong>，弱在它还不是 production backtest：没有完整 fill model、没有手续费/滑点/排队位置。</li>
+<li>这条边很可能对<strong>延迟和时钟同步</strong>极敏感；如果我们拿不到足够快的公共数据或执行路径，alpha 会迅速塌缩成解释型现象。</li>
+<li>当前保存输出主要展示的是 <strong>spot 对 spot</strong> 的领导关系；把它迁到 <code>spot -&gt; perp</code> 或 <code>perp -&gt; perp</code>，必须重新做 clean replication，不能偷推。</li>
+<li>如果把它硬拉到 <code>5m / 15m</code>，大概率会被均值化掉；更诚实的定位是 <strong><code>1s~1m</code> 微结构 raw alpha</strong>，或作为更慢策略的 execution/confirmation 组件。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>ybektas20 (2025). _crypto_ll_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Authors / Year / Title / Venue：<code>ybektas20</code> / 2025 / *crypto_ll* / GitHub</li>
+<li>Readable URL：<code><a href="https://github.com/ybektas20/crypto_ll">https://github.com/ybektas20/crypto_ll</a></code></li>
+<li>Repo URL：<code><a href="https://github.com/ybektas20/crypto_ll">https://github.com/ybektas20/crypto_ll</a></code></li>
+</ul>
+<ol>
+<li><strong>Notebook:</strong> <code>eda.ipynb</code></li>
+</ol>
+<ul>
+<li>Raw URL：<code><a href="https://raw.githubusercontent.com/ybektas20/crypto_ll/master/eda.ipynb">https://raw.githubusercontent.com/ybektas20/crypto_ll/master/eda.ipynb</a></code></li>
+</ul>
+<ol>
+<li><strong>Repo metadata sanity:</strong> GitHub repo description = <code>researching the lead-lag relationships between okx and binance for spot and perps</code>，最近 push 时间为 <code>2025-06-06</code>。</li>
+</ol>
+</body>
+</html>

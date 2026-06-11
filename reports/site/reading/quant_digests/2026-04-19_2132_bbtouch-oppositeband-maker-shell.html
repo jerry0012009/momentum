@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Hyperliquid perp bot 只读成“BTC 布林带脚本”：对 short-cycle crypto desk，更该先保留的是「EMA200 顺势下的外轨触碰回归 × opposite-band maker exit」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Hyperliquid perp bot 只读成“BTC 布林带脚本”：对 short-cycle crypto desk，更该先保留的是「EMA200 顺势下的外轨触碰回归 × opposite-band maker exit」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-19 21:36 UTC</span>
+      <span class="pill">研究时间：2026-04-19 21:32 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `src/perps_trading.py` + `tests/test_signals.py` + `tests/test_stop_logic.py` + `config/accounts.json`）+ Binance USDⓈ-M `15m/5m` portability probe（`BTC/ETH/SOL`）</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/mean-reversion/trend-filter/bollinger-band/ema200/opposite-band-exit/maker-first/hyperliquid/binance-perpetual/5m/15m/repo/public-data/cost/risk/shell</span>
+      <span class="pill">证据类型：仓库源码规则 + 公共 K 线最小探针</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-19_2132_bbtouch-oppositeband-maker-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-19 21:32 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>src/perps_trading.py</code> + <code>tests/test_signals.py</code> + <code>tests/test_stop_logic.py</code> + <code>config/accounts.json</code>）+ Binance USDⓈ-M <code>15m/5m</code> portability probe（<code>BTC/ETH/SOL</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>顺着大趋势做小波动均值回归</strong>；更直白点说，<code>EMA200</code> 还没坏时，价格短暂戳穿 Bollinger 外轨，后面更容易先回到带内、再朝对侧 band 修复一段</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/single-asset/mean-reversion/trend-filter/bollinger-band/ema200/opposite-band-exit/maker-first/hyperliquid/binance-perpetual/5m/15m/repo/public-data/cost/risk/shell</li>
+<li>证据类型：仓库源码规则 + 公共 K 线最小探针</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这篇东西的 base alpha 很清楚，是 raw alpha，而且是能直接落地成完整策略的那种。</strong></p>
+<p>主材料是 GitHub 仓库 <strong><code>vitor-chagas/dex-trading-bot</code></strong>（创建于 <code>2026-03-21</code>，Python）。repo 自己给出的核心壳很完整：</p>
+<ul>
+<li><code>5m</code> K 线；</li>
+<li><strong>LONG</strong>：价格触到/跌破下轨，且价格仍在 <code>EMA200</code> 上方；</li>
+<li><strong>SHORT</strong>：价格触到/突破上轨，且价格仍在 <code>EMA200</code> 下方；</li>
+<li>入场是<strong>挂在 band 上的限价单</strong>；</li>
+<li>止盈是<strong>对侧 band</strong>；</li>
+<li>止损是<strong>固定百分比 stop</strong>；</li>
+<li>band 漂移到不利于当前仓位时，退出会降到<strong>保本</strong>；</li>
+<li>sizing 直接由 <code>target_risk_pct / leverage / stop_loss_pct</code> 算出来。</li>
+</ul>
+<p>这就不是“有个 signal，别的你自己补”的半成品，而是把 <strong>entry / exit / stop / maker-vs-taker / sizing / live-loop</strong> 都写出来了。</p>
+<p>更关键的是，repo README 里把它说成“Bollinger Band mean-reversion strategy with EMA trend filter”，而源码/测试把交易逻辑拆得很干净：</p>
+<ul>
+<li><code>tests/test_signals.py</code> 明确测了 <strong>下轨+EMA 上方做多 / 上轨+EMA 下方做空</strong>；</li>
+<li><code>tests/test_stop_logic.py</code> 明确测了 <strong>固定 stop</strong> 和 <strong>inverted band → breakeven</strong>；</li>
+<li><code>src/perps_trading.py</code> 里则把这条线包成了 <strong>maker-first 的完整执行壳</strong>。</li>
+</ul>
+<p>对 desk 来说，真正值得 intake 的不是“又一个 BB 策略”，而是： &gt; <strong>顺大势、吃小过冲、用对侧 band 做动态回补退出。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话结论：</strong> 这条线值得保留成 <strong>完整 raw alpha 壳</strong>，而不是只记成“布林带回归”。</li>
+<li><strong>一句话证据：</strong> 我把 repo 的 entry / exit 骨架搬到 Binance USDⓈ-M 公共 <code>15m/5m</code> 数据上做最小 portability probe，结果显示：<strong><code>15m</code> 版更稳，<code>5m</code> 版要给它更长一点持有窗才像真 edge。</strong></li>
+</ul>
+<p>最关键的数据点（均为<strong>扣除 roundtrip <code>8 bps</code> 成本后</strong>）：</p>
+<ol>
+<li><strong><code>15m</code> all-signals，持有 <code>4</code> bars（约 <code>1h</code>）</strong>：<code>n=2870</code>，<code>mean≈+2.5 bps</code>，胜率约 <code>52.4%</code>。</li>
+<li><strong><code>15m</code> all-signals，持有 <code>8</code> bars（约 <code>2h</code>）</strong>：<code>n=2870</code>，<code>mean≈+4.2 bps</code>，胜率约 <code>54.0%</code>。</li>
+<li><strong><code>15m</code> all-signals，持有 <code>12</code> bars（约 <code>3h</code>）</strong>：<code>n=2870</code>，<code>mean≈+4.5 bps</code>，胜率约 <code>54.9%</code>。</li>
+<li><strong><code>5m</code> all-signals，持有 <code>6</code> bars（约 <code>30m</code>）</strong>：<code>n=4820</code>，<code>mean≈-1.2 bps</code>，说明太快拿利润不够。</li>
+<li><strong><code>5m</code> all-signals，持有 <code>12</code> bars（约 <code>1h</code>）</strong>：<code>n=4820</code>，<code>mean≈+0.8 bps</code>，刚过盈亏平衡。</li>
+<li><strong><code>5m</code> all-signals，持有 <code>24</code> bars（约 <code>2h</code>）</strong>：<code>n=4820</code>，<code>mean≈+6.4 bps</code>，胜率约 <code>64.1%</code>，是这轮 probe 最像 pocket 的窗口。</li>
+<li><strong><code>5m / 24-bar</code> 分币结果</strong>：<code>BTC≈+6.1 bps</code>、<code>ETH≈+3.6 bps</code>、<code>SOL≈+9.5 bps</code>，说明这条线不只在 BTC 上站得住。</li>
+</ol>
+<p>保守一点读，这组结果在说：</p>
+<ul>
+<li><strong>这不是超短 30 分钟 scalp edge</strong>；</li>
+<li>它更像 <strong><code>15m</code> parent shell</strong>，或者 <strong><code>5m</code> 上但愿意拿到 <code>~2h</code> 的顺势回归壳</strong>；</li>
+<li>对我们当前 short-cycle desk 来说，最值钱的是它把 <strong>trend filter + mean reversion + dynamic band exit + maker-first execution</strong> 串成了一个完整组件。</li>
+</ul>
+<h2>3. 为什么和当前 desk 直接相关</h2>
+<p>这轮值得保留，不是因为“又遇到一个均值回归”，而是因为它刚好补的是我们现在需要的那种 <strong>完整策略壳</strong>：</p>
+<ul>
+<li><strong>base alpha 清楚</strong>：顺着长趋势，去接短时过冲；</li>
+<li><strong>entry 清楚</strong>：触下轨/上轨 + <code>EMA200</code> 方向过滤；</li>
+<li><strong>exit 清楚</strong>：优先回到对侧 band，不行就 stop，band 漂坏了就保本；</li>
+<li><strong>execution 清楚</strong>：band 上挂单、maker-first；</li>
+<li><strong>sizing 清楚</strong>：risk target / leverage / stop 三者联动；</li>
+<li><strong>适合 5m/15m 最小实验</strong>：全都能用公开 K 线先做低成本验证。</li>
+</ul>
+<p>换句话说，这条线不是“解释文”，而是已经足够像一个 <strong>可实盘拆件</strong>： 你可以把 signal 留着，也可以直接把 execution/exit/sizing 抽出来给别的 mean-reversion 家族复用。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：单资产、trend-filtered mean-reversion、双向</li>
+<li>基础 alpha：<strong>长趋势没坏时，短时价格对 Bollinger 外轨的过冲会向带内回归，并有机会继续修复到对侧 band</strong></li>
+<li>regime：更适合<strong>非瀑布式单边趋势</strong>、而是“趋势还在，但短时甩出过冲”的行情</li>
+<li>filter / veto：</li>
+<li><code>EMA200</code> 是主过滤：只做顺势那一边；</li>
+<li>如果 band 太窄，回归空间可能不够吃成本；</li>
+<li>如果市场进入强单边加速，外轨触碰可能不是过冲，而是趋势继续加速</li>
+<li>risk / sizing / execution overlay：</li>
+<li>固定 stop（repo README 提 <code>2.5%</code>，配置里也出现 <code>3%~4%</code> 变体）</li>
+<li>对侧 band 动态止盈</li>
+<li>inverted target 时切到 breakeven</li>
+<li>maker-first 限价挂单</li>
+<li>sizing 可由 <code>target_risk_pct / (leverage × stop_pct)</code> 直接算</li>
+</ul>
+<h2>4. 本地最小快检（公开可得数据）</h2>
+<h3>4.1 数据源、公开性、更新频率、实验口径</h3>
+<ul>
+<li>数据源 A（主策略来源）：GitHub 公开仓 <code>vitor-chagas/dex-trading-bot</code></li>
+<li>数据源 B（代理回测数据）：Binance USDⓈ-M 公共 <code>klines</code>，无需 API key</li>
+<li>更新频率：<code>5m / 15m</code> K 线公开可取</li>
+<li>最小实验口径：</li>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li>参数：<code>BB(20, 2)</code> + <code>EMA200</code> + <code>2.5%</code> stop</li>
+<li>LONG：<code>low &lt;= lower_band</code> 且 <code>close &gt; EMA200</code></li>
+<li>SHORT：<code>high &gt;= upper_band</code> 且 <code>close &lt; EMA200</code></li>
+<li>退出：先看对侧 band 是否被打到；若先 hit stop 则止损；若到时限仍未打到则 <code>time stop</code></li>
+<li>成本：roundtrip 统一先扣 <code>8 bps</code></li>
+<li><code>15m</code>：持有 <code>4 / 8 / 12</code> bars</li>
+<li><code>5m</code>：持有 <code>6 / 12 / 24</code> bars</li>
+</ul>
+<h3>4.2 这组快检怎么读</h3>
+<ul>
+<li><strong><code>15m</code> 比 <code>5m</code> 更像 parent shell。</strong> 它在 <code>1h~3h</code> 都还能留正净值，不像很多 15m 假信号那样一拉长就死掉。</li>
+<li><strong><code>5m</code> 不是不能做，但不能太急。</strong> <code>30m</code> 基本不够，<code>1h</code> 只是刚过线，愿意拿到 <code>2h</code> 时才开始有明显 pocket。</li>
+<li><strong>这条线不靠超级低频外部数据。</strong> 光用公开 K 线就能先做最小复现，因此非常适合作为素材池里的“快速验证壳”。</li>
+</ul>
+<h2>5. 为什么这次不把它降级成 filter / overlay</h2>
+<p>因为这里最核心的问题“到底做什么”已经完全说得清楚： &gt; <strong>顺着 EMA200 的大方向，在价格戳到 Bollinger 外轨时反向接回归，优先吃回到对侧 band 的那一段。</strong></p>
+<p>这本身就是完整的 raw alpha 叙事，不是单纯在告诉你“市场不好别做”或“仓位要缩小”。 而且 repo 把 <strong>entry / exit / stop / sizing / execution</strong> 都给了，所以它比一般“只给信号、不给交易结构”的素材更值得优先 intake。</p>
+<h2>6. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 band-width gate。</strong> 当前 probe 没有用最小带宽过滤，下一轮应直接测 <code>band_width_pct</code> 分桶，看窄带假信号能不能被砍掉。</li>
+<li><strong>做 maker-fill realism。</strong> 现在默认“触 band 就能成交”，下一步要把“挂单后 1 bar 内是否真成交、挂多久撤单”补进去。</li>
+<li><strong>把 <code>15m parent + 5m child execution</code> 拆开。</strong> 比起直接拿 <code>5m</code> 裸做，也许更该用 <code>15m</code> 决定方向与 admission，再在 <code>5m</code> 里做更细的挂单和止损。</li>
+<li><strong>测 stop 宽度梯度。</strong> 比较 <code>2.0% / 2.5% / 3.0% / 4.0%</code>，因为 repo README 和 live config 已经暗示这条线对 stop 宽度很敏感。</li>
+<li><strong>补 funding / OI veto。</strong> 当外轨触碰发生在极端去杠杆/追杠杆时，顺势回归可能会退化成“接飞刀”或“逆势抄顶”。</li>
+<li><strong>区分 BTC 与 alt。</strong> 当前 probe 显示 SOL pocket 最强，说明这条线可能该按波动属性分参数，而不是全币同参。</li>
+</ol>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>这轮是 <strong>repo skeleton portability probe</strong>，不是对作者 Hyperliquid live bot 的逐条成交复刻。</li>
+<li>当前 probe 没有真正模拟 <strong>maker queue priority / 未成交撤单 / funding / exchange fee tier</strong>，所以实盘净值会更保守。</li>
+<li>这条线和我们已经收集过的 <code>envelope / lower-band / oversold fade</code> 家族是近亲；但它的独特价值在于：<strong>退出逻辑和执行逻辑明显更完整</strong>，值得单独存成策略壳。</li>
+<li>如果未来发现主要收益只来自更长持有，而不是 band 触碰本身，那它就更应被重命名成“trend-filtered pullback shell”，而不该继续包装成纯 intrabar BB edge。</li>
+</ul>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>Vitor Chagas. (2026). _dex-trading-bot_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Year: 2026</li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://github.com/vitor-chagas/dex-trading-bot">https://github.com/vitor-chagas/dex-trading-bot</a></li>
+<li>Repo URL: <a href="https://github.com/vitor-chagas/dex-trading-bot">https://github.com/vitor-chagas/dex-trading-bot</a></li>
+</ul>
+<ol>
+<li><strong>Source audit files</strong></li>
+</ol>
+<ul>
+<li>README: <a href="https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/README.md">https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/README.md</a></li>
+<li>Trading logic: <a href="https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/src/perps_trading.py">https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/src/perps_trading.py</a></li>
+<li>Signal tests: <a href="https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/tests/test_signals.py">https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/tests/test_signals.py</a></li>
+<li>Stop logic tests: <a href="https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/tests/test_stop_logic.py">https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/tests/test_stop_logic.py</a></li>
+<li>Live config: <a href="https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/config/accounts.json">https://raw.githubusercontent.com/vitor-chagas/dex-trading-bot/main/config/accounts.json</a></li>
+</ul>
+<ol>
+<li><strong>Public data probe</strong></li>
+</ol>
+<ul>
+<li>Binance USDⓈ-M public <code>klines</code> endpoint（无需 API key）</li>
+</ul>
+<h2>9. 本地产物</h2>
+<ul>
+<li>Probe 脚本：<code>reports/artifacts/quant_digests/2026-04-19_bb_ema_oppositeband_probe.py</code></li>
+<li><code>5m</code> 事件面板：<code>reports/artifacts/quant_digests/2026-04-19_bb_ema_oppositeband_5m_events.csv</code></li>
+<li><code>5m</code> 汇总：<code>reports/artifacts/quant_digests/2026-04-19_bb_ema_oppositeband_5m_summary.csv</code></li>
+<li><code>5m</code> router 事件（实验性）：<code>reports/artifacts/quant_digests/2026-04-19_bb_ema_oppositeband_5m_router_top1_events.csv</code></li>
+<li><code>15m</code> 事件面板：<code>reports/artifacts/quant_digests/2026-04-19_bb_ema_oppositeband_15m_events.csv</code></li>
+<li><code>15m</code> 汇总：<code>reports/artifacts/quant_digests/2026-04-19_bb_ema_oppositeband_15m_summary.csv</code></li>
+<li><code>15m</code> router 事件（实验性）：<code>reports/artifacts/quant_digests/2026-04-19_bb_ema_oppositeband_15m_router_top1_events.csv</code></li>
+<li>JSON 汇总：<code>reports/artifacts/quant_digests/2026-04-19_bb_ema_oppositeband_summary.json</code></li>
+</ul>
+</body>
+</html>

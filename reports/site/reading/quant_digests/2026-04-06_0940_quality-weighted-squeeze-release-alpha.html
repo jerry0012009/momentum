@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Coinbase squeeze repo 只读成“TTM Squeeze 教程”：对 short-cycle desk，更该先测的是「quality-weighted squeeze release × ATR-defined R shell」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Coinbase squeeze repo 只读成“TTM Squeeze 教程”：对 short-cycle desk，更该先测的是「quality-weighted squeeze release × ATR-defined R shell」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-06 09:52 UTC</span>
+      <span class="pill">研究时间：2026-04-06 09:40 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（GitHub API metadata + `README.md` + `run_backtest.py` + `strategy/technical.py` + `strategy/signal_generator.py` + `core/backtester.py` + `results/params_library.csv`）</span>
+      <span class="pill">主题标签：raw-alpha/trend/momentum/breakout/squeeze-release/bollinger-band/keltner-channel/volume-confirmation/quality-weighted-sizing/atr-stop/trailing-stop/continuation/coinbase/perpetual/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：仓库源码直读（规则、执行、成本、仓位、风控都已落到代码）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-06_0940_quality-weighted-squeeze-release-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-06 09:40 UTC</li>
+<li>类型：2026 GitHub repo source audit（GitHub API metadata + <code>README.md</code> + <code>run_backtest.py</code> + <code>strategy/technical.py</code> + <code>strategy/signal_generator.py</code> + <code>core/backtester.py</code> + <code>results/params_library.csv</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>压缩结束后的方向性扩张会延续一段；更适合我们 desk 的不是“squeeze 存在”本身，而是把 <code>squeeze duration × volume × momentum</code> 写成入场与仓位评分，再配 <code>ATR stop / ATR target / trailing stop</code> 做成完整 continuation 壳</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/trend/momentum/breakout/squeeze-release/bollinger-band/keltner-channel/volume-confirmation/quality-weighted-sizing/atr-stop/trailing-stop/continuation/coinbase/perpetual/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：仓库源码直读（规则、执行、成本、仓位、风控都已落到代码）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看 <strong>jicheolha (2026) 的 GitHub repo <code>keltrader</code></strong>。它不是那种只给几张 equity curve、却不肯把规则写清楚的仓库；相反，源码里已经把下面几层都写出来了：</p>
+<ol>
+<li><strong>setup 定义</strong>：<code>BB inside KC</code> 压缩结束；</li>
+<li><strong>方向判断</strong>：突破 band，或者至少 momentum 与释放方向一致；</li>
+<li><strong>确认层</strong>：<code>volume_ratio</code> 和 <code>RSI</code> veto；</li>
+<li><strong>仓位层</strong>：<code>squeeze duration × volume × momentum</code> 组合成 signal quality，再映射到仓位；</li>
+<li><strong>执行层</strong>：next-bar open 入场，显式计入手续费与 slippage；</li>
+<li><strong>风险层</strong>：<code>ATR stop / ATR target / 1R 后 trailing stop / 连亏后降仓</code>。</li>
+</ol>
+<p>README 给的 headline 回测也足够具体：</p>
+<ul>
+<li>样本：<code>DOGE / ETH / SOL / XRP</code></li>
+<li>区间：<code>2021-01-01</code> 到 <code>2025-12-28</code></li>
+<li>结果：<code>+177%</code> return、<code>158</code> 笔、<code>58%</code> 胜率、<code>1.75</code> profit factor、<code>20%</code> max drawdown</li>
+</ul>
+<p>我不会直接信这个收益，但它至少说明：<strong>这不是“只会画图的 squeeze 指标仓库”，而是一个已经把完整策略骨架写出来的 repo。</strong></p>
+<h2>2. 先回答：这篇东西的 base alpha 是什么？</h2>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>compression release continuation</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<p>一句话翻成人话： &gt; 市场先收窄、再放大时，第一段放大量并不一定立刻结束；如果这次 release 伴随更长压缩、更高成交量、更强方向动量，那么顺着 release 方向跟一小段，往往比把所有 squeeze 都一视同仁更有交易价值。</p>
+<p>这里最关键的是： <strong>repo 真正值钱的不是“TTM Squeeze 有效”这句老话，而是它把“哪种 squeeze 值得做大、哪种只配轻仓”写成了一个可执行评分器。</strong></p>
+<h2>3. 为什么这轮值得进研究池</h2>
+<p>这轮仍然值得写，原因不是“我们又发现了一个 breakout 形态”，而是它补了一个当前素材池里还不够扎实的空位：</p>
+<ol>
+<li><strong>它是完整策略壳，不只是 shape。</strong></li>
+<p>最近我们已经收过不少 raw alpha，但很多还停在“信号像不像有用”。这份 repo 往前多走了一步：把 admission、sizing、risk、execution 都写成代码了。</p>
+</ol>
+<ol>
+<li><strong>它和 3 月底那篇“bottom-quartile BB compression breakout”不是同一件事。</strong></li>
+<p>那篇更像在问：<strong>压缩突破本体有没有 alpha？</strong> 这份 repo 更像在问：<strong>同样是压缩释放，哪些应该重仓，哪些应该轻仓甚至跳过？</strong></p>
+</ol>
+<ol>
+<li><strong>它对 <code>1m / 3m / 5m / 15m</code> 非常友好。</strong></li>
+<p>因为所需输入只有公开 OHLCV，不依赖 funding、L2、链上或私有特征；最小实验可以非常快地在 Binance / Hyperliquid / Coinbase 公共 bar 数据上重做。</p>
+</ol>
+<h2>4. 源码里真正写了什么</h2>
+<h3>4.1 setup：压缩结束，不是压缩期间乱开仓</h3>
+<p><code>strategy/technical.py</code> 里，压缩的定义非常标准：</p>
+<ul>
+<li><code>BB(20, 2.0)</code></li>
+<li><code>KC(20, 1.5 × ATR)</code></li>
+<li>当 <code>BB_Lower &gt; KC_Lower</code> 且 <code>BB_Upper &lt; KC_Upper</code> 时记作 <code>Squeeze = True</code></li>
+</ul>
+<p>真正触发 setup 的条件不是“正在 squeeze”，而是：</p>
+<ul>
+<li>前一根还在 squeeze；</li>
+<li>当前这根刚 release；</li>
+<li>且前面这段 squeeze 至少持续 <code>min_squeeze_bars</code>。</li>
+</ul>
+<p>默认 <code>min_squeeze_bars = 3</code>。这点很重要，因为它明确避免了把“仍在压缩里的噪声震荡”误当成可交易 breakout。</p>
+<h3>4.2 方向：先看 band 突破，不够清楚再看 momentum</h3>
+<p><code>detect_breakout()</code> 的顺序是：</p>
+<ul>
+<li>若当前 <code>close &gt; BB_Upper</code> → long</li>
+<li>若当前 <code>close &lt; BB_Lower</code> → short</li>
+<li>否则退回到 <code>Momentum_Norm</code> 的符号</li>
+</ul>
+<p>其中：</p>
+<ul>
+<li><code>Momentum = close - BB_Mid.shift(momentum_period)</code></li>
+<li><code>Momentum_Norm = Momentum / ATR</code></li>
+<li>默认 <code>momentum_period = 12</code></li>
+</ul>
+<p>也就是说，它不是纯粹“上轨外就是做多”，而是给了一个 <strong>band break &gt; normalized momentum</strong> 的双层方向判定。</p>
+<h3>4.3 admission：volume 和 RSI 不是主信号，而是确认/否决</h3>
+<p>默认 admission 参数：</p>
+<ul>
+<li><code>min_volume_ratio = 1.2</code></li>
+<li><code>RSI overbought = 75</code></li>
+<li><code>RSI oversold = 25</code></li>
+</ul>
+<p>翻译一下：</p>
+<ul>
+<li>没量的 release，不给过；</li>
+<li>long 侧如果已经非常 overbought，不追；</li>
+<li>short 侧如果已经非常 oversold，不追。</li>
+</ul>
+<p>这对 short-cycle 很实用，因为它把最常见的两个假突破来源——<strong>无量 release</strong> 和 <strong>极端末端追价</strong>——先挡掉一层。</p>
+<h3>4.4 sizing：repo 最值得偷的地方是 quality-weighted position size</h3>
+<p><code>strategy/signal_generator.py</code> 里最有意思的是这个 signal quality：</p>
+<ul>
+<li><code>40%</code> 权重给 squeeze 持续时间</li>
+<li><code>35%</code> 权重给 volume ratio</li>
+<li><code>25%</code> 权重给 normalized momentum</li>
+</ul>
+<p>而且不是线性打分，而是 <strong>exponential diminishing returns</strong>：</p>
+<ul>
+<li>刚刚超过阈值时，只给低分；</li>
+<li>超得越多，分数继续上升，但边际收益递减；</li>
+<li>再把这个 quality 从 <code>base_position=10%</code> 映射到 <code>max_position=30%</code>。</li>
+</ul>
+<p>另外它还有一条很 desk-friendly 的规则：</p>
+<ul>
+<li>若最近连续亏损，则仓位乘上 <code>0.85 ^ losses</code></li>
+</ul>
+<p>这就把“压缩释放后容易连错几次”的现实，直接写进了仓位退火逻辑。</p>
+<h3>4.5 exit / cost：next-bar open + ATR R-multiple，比很多 repo 诚实</h3>
+<p><code>run_backtest.py</code> 与 <code>core/backtester.py</code> 给了几条关键细节：</p>
+<ul>
+<li>默认 <code>trade timeframe = 1min</code></li>
+<li>默认 <code>signal timeframe = 2h</code></li>
+<li><strong>next-bar open</strong> 才入场，不偷看 signal bar close</li>
+<li><code>commission = 5 bps</code></li>
+<li><code>slippage = 2 bps</code></li>
+<li><code>ATR stop = 2.0</code></li>
+<li><code>ATR target = 3.0</code></li>
+<li><code>trail_trigger_r = 1.0</code>，即走出 <code>1R</code> 后才启动 trailing</li>
+</ul>
+<p>而 trailing 也不是胡乱追：</p>
+<ul>
+<li>先到 <code>1R</code> 才激活；</li>
+<li>long 侧 stop 不许再回到 break-even 以下；</li>
+<li>short 侧对称处理。</li>
+</ul>
+<p>所以这不是“看到突破，凭感觉拿一拿”的系统，而是已经把 <strong>收益目标、止损、持仓续拿、成本</strong> 一起写清了。</p>
+<h2>5. desk 版最该怎么改，不要机械照搬</h2>
+<p>repo 默认是：</p>
+<ul>
+<li><code>2h</code> 信号</li>
+<li><code>1m</code> 执行</li>
+<li>Coinbase spot price 生成信号，再去 perpetual 执行</li>
+</ul>
+<p>这对我们不是问题，因为真正可迁移的不是交易所，而是策略结构。</p>
+<h3>5.1 15m 主版本</h3>
+<p>建议先做一个最像 desk 的版本：</p>
+<ul>
+<li>universe：<code>BTC / ETH / SOL / XRP</code> 或 top liquid majors</li>
+<li>signal TF：<code>15m</code></li>
+<li>execution TF：<code>1m</code></li>
+<li>squeeze bars：<code>3 / 6 / 9</code></li>
+<li>volume ratio：<code>1.1 / 1.3 / 1.5</code></li>
+<li>stop / target：<code>1.5 / 2.0 / 2.5 ATR</code> vs <code>2.0 / 3.0 / 3.5 ATR</code></li>
+</ul>
+<p>最关键的 ablation 不是“band 该不该用 2.0”，而是：</p>
+<ol>
+<li><strong>equal-size vs quality-weighted-size</strong></li>
+<li><strong>无量不过 vs 直接做</strong></li>
+<li><strong>只固定 TP/SL vs 加 <code>1R trailing</code></strong></li>
+</ol>
+<h3>5.2 5m 快版本</h3>
+<p><code>5m</code> 版本可以更激进，但建议只保留一套轻量 admission：</p>
+<ul>
+<li>继续用 <code>squeeze release</code></li>
+<li>继续用 <code>volume_ratio</code></li>
+<li>先不要在第一版里叠太多 trend EMA / regime filter</li>
+</ul>
+<p>否则很容易把它做成“信号本体弱，只能靠很多 filter 才勉强存活”的伪 raw alpha。</p>
+<h3>5.3 1m / 3m 的角色</h3>
+<p><code>1m / 3m</code> 更适合做：</p>
+<ul>
+<li>child execution</li>
+<li>next-bar open / pullback entry 优化</li>
+<li>trailing / stop precision</li>
+</ul>
+<p>不建议一开始就把 alpha body 下沉到 <code>1m</code>，因为 squeeze release 在这个尺度上更容易被纯 microstructure 噪声打碎。</p>
+<h2>6. 最小实验怎么做</h2>
+<p>这轮最值得马上跑的，不是全资产大优化，而是一个 <strong>三步最小实验</strong>：</p>
+<h3>实验 A：alpha 本体有没有东西</h3>
+<p>在 <code>15m</code> 上测试：</p>
+<ul>
+<li>条件：<code>prev squeeze = 1</code>, <code>curr squeeze = 0</code>, <code>squeeze_bars &gt;= k</code>, <code>volume_ratio &gt;= v</code></li>
+<li>long/short 都做</li>
+<li>entry：next bar open</li>
+<li>exit：<code>2 ATR stop / 3 ATR target</code></li>
+<li>cost：双边 <code>4~6 bps</code> + 1 tick slippage</li>
+</ul>
+<p>先看：</p>
+<ul>
+<li>net profit factor</li>
+<li>expectancy / trade</li>
+<li>avg hold bars</li>
+<li>breakout 后前 <code>3/6/12</code> 根的 path drift</li>
+</ul>
+<h3>实验 B：quality-weighted size 到底有没有增量</h3>
+<p>在实验 A 通过后，只比较两件事：</p>
+<ol>
+<li><code>equal-risk fixed size</code></li>
+<li>repo 这套 <code>quality-weighted size</code></li>
+</ol>
+<p>如果 quality sizing 只是把回撤放大，却没提高 net PF / Sharpe / skew，那它就该降级成 overlay，而不是策略核心。</p>
+<h3>实验 C：1R trailing 是不是核心组件</h3>
+<p>再做三路对照：</p>
+<ul>
+<li>固定 <code>SL/TP</code></li>
+<li><code>SL/TP + 1R trailing</code></li>
+<li>只 trailing、不设固定 TP</li>
+</ul>
+<p>这个实验会直接告诉我们： <strong>这条 alpha 是赚在第一段脉冲，还是赚在后续延续。</strong></p>
+<h2>7. 我对这条线的判断</h2>
+<p>我的判断是：</p>
+<ol>
+<li><strong>它值得进池，但先别迷信 README 的 +177%。</strong></li>
+<p>那个结果很可能包含样本期 / 参数搜索 / 资产选择偏差。</p>
+</ol>
+<ol>
+<li><strong>真正可能可迁移到 desk 的，不是具体参数，而是结构。</strong></li>
+<p>尤其是：</p>
+</ol>
+<ul>
+<li>release 才触发</li>
+<li>volume-confirm</li>
+<li>quality-weighted sizing</li>
+<li>next-bar-open honesty</li>
+<li><code>1R</code> 后再 trailing</li>
+</ul>
+<ol>
+<li><strong>如果第一轮最小实验失败，最值得保留的残部依然是 quality scoring。</strong></li>
+<p>换句话说，就算这条 raw alpha 本体最后不够强，<code>squeeze duration × volume × momentum</code> 这套 admission / sizing 评分器，仍可能服务别的 breakout / trend 线。</p>
+</ol>
+<h2>8. 下一步怎么测</h2>
+<p>按优先级我会建议：</p>
+<ol>
+<li><strong>先跑 <code>15m signal + 1m execution</code> 的单币 majors 版本</strong></li>
+<p>这是最接近当前 desk 的主战场，也最容易诚实计成本。</p>
+</ol>
+<ol>
+<li><strong>先做 ablation，不要先做大优化</strong></li>
+<p>重点比较：</p>
+</ol>
+<ul>
+<li>有无 <code>volume_ratio</code> gate</li>
+<li>fixed size vs quality size</li>
+<li>有无 <code>1R trailing</code></li>
+</ul>
+<ol>
+<li><strong>若 <code>15m</code> 成立，再下沉到 <code>5m</code></strong></li>
+<p>不要反过来；否则很容易在更高噪声里误判 alpha 死活。</p>
+</ol>
+<ol>
+<li><strong>若 <code>5m</code> 也成立，再把 <code>1m / 3m</code> 留给 execution layer</strong></li>
+<p>不要把 <code>1m</code> 直接神化成 alpha 主体。</p>
+</ol>
+<h2>9. 公开数据、公开性与最小复现实验口径</h2>
+<p>这条线的数据要求很简单：</p>
+<ul>
+<li><strong>数据源</strong>：公开 OHLCV（repo 原生使用 Coinbase Advanced Trade API）</li>
+<li><strong>公开性</strong>：公开可得</li>
+<li><strong>更新频率</strong>：按 bar close 更新，可直接拿 <code>1m / 5m / 15m</code></li>
+<li><strong>最小可复现实验</strong>：只需要 <code>open/high/low/close/volume</code></li>
+</ul>
+<p>这点非常适合当前 intake：</p>
+<ul>
+<li>不需要 funding</li>
+<li>不需要 order book</li>
+<li>不需要链上</li>
+<li>不需要私有成交数据</li>
+</ul>
+<p>也因此，它是一个很好的 <strong>快复现、快打分、快淘汰</strong> 原型。</p>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>jicheolha (2026), <code>keltrader</code></strong></li>
+</ol>
+<ul>
+<li>Type: GitHub repository</li>
+<li>Venue: GitHub</li>
+<li>DOI: None</li>
+<li>Readable URL: &lt;<a href="https://github.com/jicheolha/keltrader&gt;">https://github.com/jicheolha/keltrader&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/jicheolha/keltrader&gt;">https://github.com/jicheolha/keltrader&gt;</a></li>
+<li>GitHub metadata: created <code>2026-03-05</code>, updated <code>2026-04-01</code></li>
+</ul>
+<ol>
+<li><strong>Repo README</strong></li>
+</ol>
+<ul>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/jicheolha/keltrader/main/README.md&gt;">https://raw.githubusercontent.com/jicheolha/keltrader/main/README.md&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Backtest runner</strong></li>
+</ol>
+<ul>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/jicheolha/keltrader/main/run_backtest.py&gt;">https://raw.githubusercontent.com/jicheolha/keltrader/main/run_backtest.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Signal logic</strong></li>
+</ol>
+<ul>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/jicheolha/keltrader/main/strategy/signal_generator.py&gt;">https://raw.githubusercontent.com/jicheolha/keltrader/main/strategy/signal_generator.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Technical indicators / squeeze detection</strong></li>
+</ol>
+<ul>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/jicheolha/keltrader/main/strategy/technical.py&gt;">https://raw.githubusercontent.com/jicheolha/keltrader/main/strategy/technical.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Backtester / execution / trailing stop</strong></li>
+</ol>
+<ul>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/jicheolha/keltrader/main/core/backtester.py&gt;">https://raw.githubusercontent.com/jicheolha/keltrader/main/core/backtester.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Optimization result library</strong></li>
+</ol>
+<ul>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/jicheolha/keltrader/main/results/params_library.csv&gt;">https://raw.githubusercontent.com/jicheolha/keltrader/main/results/params_library.csv&gt;</a></li>
+</ul>
+</body>
+</html>

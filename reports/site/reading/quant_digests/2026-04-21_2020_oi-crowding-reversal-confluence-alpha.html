@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 OI bot 只读成“情绪仪表盘”：更该先拆的是「crowded perp positioning reversal × OI/taker/CVD/RSI confluence」这条 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 OI bot 只读成“情绪仪表盘”：更该先拆的是「crowded perp positioning reversal × OI/taker/CVD/RSI confluence」这条 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-21 20:19 UTC</span>
+      <span class="pill">研究时间：2026-04-21 20:20 UTC</span>
+      <span class="pill">类型：GitHub repo source audit + Binance USDⓈ-M public-data portability probe</span>
+      <span class="pill">主题标签：open-interest / funding / taker-imbalance / cvd / rsi / crowding / mean-reversion / liquidation-proxy / 5m / 15m / repo / public-data</span>
+      <span class="pill">证据类型：工程经验 + public-data quick probe / 待严格回测</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-21_2020_oi-crowding-reversal-confluence-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-21 20:20 UTC</li>
+<li>类型：GitHub repo source audit + Binance USDⓈ-M public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：perp 仓位拥挤/解杠杆后的短周期反转；用 funding 极端、OI 变化、taker buy/sell pressure、CVD/RSI 与 L/S ratio 做入场确认</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否（repo 有 entry / TP / SL / size / cooldown，但没有显式手续费、滑点与冲击成本）</li>
+<li>主题标签：open-interest / funding / taker-imbalance / cvd / rsi / crowding / mean-reversion / liquidation-proxy / 5m / 15m / repo / public-data</li>
+<li>证据类型：工程经验 + public-data quick probe / 待严格回测</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看 <code>ksingh8/crypto-oi-strategy</code>：一个 2026 年创建、仍在更新的 Binance futures paper-trader。它把 OI、funding、RSI、global long/short ratio、taker buy/sell ratio、CVD 与 4H EMA trend gate 合成 0–100 分，分数达标且至少 2 个信号同向才开仓；默认还有固定仓位、TP/SL、冷却与最多 1 笔持仓。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>base alpha 很清楚</strong>：不是“看 OI 就追趋势”，而是当永续合约一侧拥挤、OI/taker/CVD 显示新仓或解杠杆压力时，押后续几根 <code>5m/15m</code> 的挤压或反转。</li>
+<li>repo 的完整度比普通指标包高：<code>README.md</code> 写了 funding 阈值、RSI 阈值、score gate、<code>SIGNAL_INTERVAL=5m</code>、<code>TP_PCT=1.5</code>、<code>SL_PCT=0.8</code>；<code>strategy.py</code> 进一步加入 4H EMA50/200 gate、taker pressure 与 CVD divergence。</li>
+<li>我用 Binance 公开接口做了一个简化 portability probe（8 个 liquid majors，近 <code>500</code> 根 <code>5m/15m</code>）：<code>5m</code> 共 <code>17</code> 个信号，next <code>3/6/12</code> bars 平均约 <code>+0.17 / -0.78 / -6.30 bps</code>；<code>15m</code> 共 <code>20</code> 个信号，next <code>3/6/12</code> bars 平均约 <code>-9.33 / -7.53 / +7.66 bps</code>。</li>
+<li>1.5% TP / 0.8% SL 的粗 bracket：<code>5m</code> 平均约 <code>-6.30 bps</code>、win rate <code>41.2%</code>；<code>15m</code> 平均约 <code>+2.16 bps</code>、win rate <code>35.0%</code>。样本很小，不能当结论，但说明这条壳更像<strong>高选择性 router / event trigger</strong>，不是无脑高频常开机。</li>
+<li>symbol pocket 很明显：<code>15m SOLUSDT</code> 在这次窗口里 <code>n=5</code>、bracket 平均约 <code>+83.0 bps</code>，而 <code>BNB/DOGE/LINK</code> 同口径偏弱；下一步应优先测 cross-symbol admission，而不是先调 score 参数。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p><code>momentum</code> 最近已经补了不少 trend、pairs、funding、basis 与 grid raw alpha；这条补的是<strong>仓位拥挤/清算代理数据驱动的短周期反转 alpha</strong>。它的好处是所有关键数据都来自公开 Binance futures endpoints，天然能落到 <code>1m/3m/5m/15m</code>，并且可以服务两类 desk 组件：</p>
+<ul>
+<li>作为 standalone event-driven mean-reversion / squeeze alpha；</li>
+<li>作为已有 breakout / momentum 策略的 execution veto：当 taker spike 过热或 CVD 反向时，少追最拥挤的一侧。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：逆势为主，夹带 squeeze continuation；属于 perp positioning / crowding alpha。</li>
+<li>基础 alpha：<code>funding/OI/taker/CVD/RSI</code> 多信号显示一侧拥挤或被迫平仓后，价格在短窗口内回归或挤压延续。</li>
+<li>regime：repo 用 <code>4H EMA50 &gt; EMA200</code> / <code>&lt;</code> 做大方向 gate；desk 可改成 <code>15m/1h trend + realized-vol percentile</code>。</li>
+<li>filter / veto：至少 2 个 distinct signals 同向；RSI 极端；taker ratio 过热时忽略；L/S ratio 动量辅助确认。</li>
+<li>risk / sizing / execution overlay：固定 size、单 symbol 最多 1 笔、TP/SL、SL cooldown；desk 必须补 maker/taker fee、slippage ladder、盘口深度与 funding settlement 边界。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：<code>funding crowded side + OI acceleration/unwind + taker/CVD confirmation</code> 的信号，在 <code>15m</code> 上比 <code>5m</code> 更容易覆盖成本；<code>5m/3m</code> 更适合做 child execution。</li>
+<li>可计算定义：复刻 repo score，但先只保留 5 个公开字段：<code>funding_rate</code>、<code>openInterestHist</code> 10-bar ROC/accel、<code>globalLongShortAccountRatio</code> 6-bar momentum、<code>takerlongshortRatio</code> vs 60-bar baseline、RSI14。</li>
+<li>最小切口：Binance USDⓈ-M <code>BTC/ETH/SOL/BNB/XRP/DOGE/ADA/LINK</code>，<code>5m/15m</code>，至少 90 天；next-open entry；<code>1.5% TP / 0.8% SL</code> 与 fixed hold <code>3/6/12</code> bars 双口径。</li>
+<li>先看指标：<code>gross bps/trade</code>、<code>net bps/trade</code>（2/4/8 bps 单边 ladder）、trade count、symbol positive ratio、funding extreme vs non-extreme 分组。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<p>这类信号最大的坑是<strong>把公开衍生品数据当成方向预测器</strong>：OI 上升可能是趋势加仓，也可能是对冲；funding 极端可能持续很久；taker spike 可能是趋势启动而不是衰竭。repo 本身是 paper trader，不含真实成交、手续费、滑点和盘口容量；另外源码里有部署/通知相关默认配置，不能直接照搬到生产环境。当前 probe 只有近 <code>500</code> 根 bar，样本不足，只能作为 intake 证据。</p>
+<h2>6. 来源</h2>
+<ul>
+<li>ksingh8. (2026). *OI Strategy — Crypto Futures Paper Trader*. GitHub repo.</li>
+<li>Repo URL: &lt;<a href="https://github.com/ksingh8/crypto-oi-strategy&gt;">https://github.com/ksingh8/crypto-oi-strategy&gt;</a></li>
+<li>README: &lt;<a href="https://raw.githubusercontent.com/ksingh8/crypto-oi-strategy/master/README.md&gt;">https://raw.githubusercontent.com/ksingh8/crypto-oi-strategy/master/README.md&gt;</a></li>
+<li>Strategy source: &lt;<a href="https://raw.githubusercontent.com/ksingh8/crypto-oi-strategy/master/backend/strategy.py&gt;">https://raw.githubusercontent.com/ksingh8/crypto-oi-strategy/master/backend/strategy.py&gt;</a></li>
+<li>Binance public endpoints used: <code>/futures/data/openInterestHist</code>, <code>/futures/data/globalLongShortAccountRatio</code>, <code>/futures/data/takerlongshortRatio</code>, <code>/fapi/v1/fundingRate</code>, <code>/fapi/v1/klines</code></li>
+<li>Probe artifact: <code>reports/artifacts/quant_digests/2026-04-21_oi_crowding_probe.csv</code></li>
+</ul>
+</body>
+</html>

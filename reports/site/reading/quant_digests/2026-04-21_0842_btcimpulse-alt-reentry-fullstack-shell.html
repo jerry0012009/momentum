@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个 vectorized backtester 只读成“回测引擎”：对 short-cycle desk，更该先回答的是「BTC impulse × alt own-move confirmation/reentry × BTC-fail exits」这条完整 raw alpha 壳有没有净边</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个 vectorized backtester 只读成“回测引擎”：对 short-cycle desk，更该先回答的是「BTC impulse × alt own-move confirmation/reentry × BTC-fail exits」这条完整 raw alpha 壳有没有净边</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-21 08:47 UTC</span>
+      <span class="pill">研究时间：最近约 `90d`；</span>
+      <span class="pill">类型：2024/2026 GitHub repo source audit（`README.md` + `config.example.json` + `vectorized_backtest.py` + `main_runner.py` + GitHub metadata）+ Binance USDⓈ-M public-data portability probe（8 个 liquid majors，`5m/15m`，90d）</span>
+      <span class="pill">主题标签：raw-alpha / leader-laggard / btc-impulse / altcoin-continuation / reentry / state-machine / dynamic-leverage / fear-greed / BTC-fail-exit / Binance USDⓈ-M / 5m / 15m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：repo 工程壳 + public-data quick probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-21_0842_btcimpulse-alt-reentry-fullstack-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-21 08:42 UTC</li>
+<li>类型：2024/2026 GitHub repo source audit（<code>README.md</code> + <code>config.example.json</code> + <code>vectorized_backtest.py</code> + <code>main_runner.py</code> + GitHub metadata）+ Binance USDⓈ-M public-data portability probe（8 个 liquid majors，<code>5m/15m</code>，90d）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：BTC 短窗快速上冲后，部分 alt 会出现滞后/同步延续；若 alt 自己也有最小正动量确认，则做多 alt，并用 BTC 反向下跌、take-profit、time-cap 做退出</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / leader-laggard / btc-impulse / altcoin-continuation / reentry / state-machine / dynamic-leverage / fear-greed / BTC-fail-exit / Binance USDⓈ-M / 5m / 15m / repo / public-data / cost / risk</li>
+<li>证据类型：repo 工程壳 + public-data quick probe</li>
+</ul>
+<h2>1. 先回答：这篇东西的 base alpha 是什么</h2>
+<p>一句话：<strong>BTC 出现短窗强上冲时，alt basket 不是同时完成定价；如果 alt 自己也刚开始动，下一段更可能继续跟随，而不是立刻均值回归。</strong></p>
+<p>这不是纯 filter。它有完整的 raw alpha 壳：</p>
+<ul>
+<li><strong>entry</strong>：BTC impulse 触发 <code>BE / BEL / SP_BE</code>，或 alt 自身 reentry 触发 <code>R / R2 / SP_R</code>；</li>
+<li><strong>confirmation</strong>：<code>asset_minimum_enable</code> 要求 alt 自己在短窗内至少有一点正动量，避免“BTC 拉、alt 完全不跟”也硬追；</li>
+<li><strong>exit</strong>：BTC 反向下跌 / BTC panic / take-profit / cooldown；</li>
+<li><strong>sizing/risk</strong>：按 entry reason 选择不同 leverage，并可按 Fear &amp; Greed 高低情绪切换参数。</li>
+</ul>
+<p>它和之前那些“BTC lead-lag 论文摘要”不完全重复：这里的新增价值不是再证明 BTC 会 lead alt，而是 repo 把它写成了 <strong>可执行状态机</strong>：entry taxonomy、own-asset confirmation、BTC-fail exit、fear-state parameter override、daily entry cap、red-alert re-arm 都在代码里。</p>
+<h2>2. repo 里真正值得拆的策略骨架</h2>
+<p>这次看的仓库是 <strong>AArt1552 / Vectorized-Crypto-Backtester</strong>。README 写得比较泛，但核心在 <code>vectorized_backtest.py</code> 和 <code>config.example.json</code>。</p>
+<p>GitHub 元数据：</p>
+<ul>
+<li>repo：&lt;<a href="https://github.com/AArt1552/Vectorized-Crypto-Backtester&gt;">https://github.com/AArt1552/Vectorized-Crypto-Backtester&gt;</a></li>
+<li>创建时间：2024-06-21</li>
+<li>最近 push：2026-04-21</li>
+<li>语言：Python</li>
+<li>stars/forks：<code>1 / 0</code></li>
+<li>描述：altcoin strategies driven by Bitcoin price action and quantitative analysis</li>
+</ul>
+<p>代码里能拆出 6 类入场：</p>
+<ul>
+<li><code>SP_BE</code>：BTC 在 <code>1</code> 根内上涨 <code>1%</code>，且 alt 最小正动量确认；</li>
+<li><code>BE</code>：BTC 在 <code>2</code> 根内上涨 <code>1%</code>，且 alt 最小正动量确认；</li>
+<li><code>BEL</code>：BTC 在 <code>3</code> 根内上涨 <code>1.4%</code>，且 alt 最小正动量确认；</li>
+<li><code>SP_R</code>：alt 自己在 <code>2</code> 根内上涨 <code>2%</code>；</li>
+<li><code>R</code>：alt 自己在 <code>3</code> 根内上涨 <code>2%</code>；</li>
+<li><code>R2</code>：alt 自己在 <code>5</code> 根内上涨 <code>2.3%</code>。</li>
+</ul>
+<p>默认 <code>config.example.json</code> 里还有几层风险/执行壳：</p>
+<ul>
+<li><code>asset_minimum_enable=true</code>，<code>asset_minimum_pct_to_entry=0.125%</code>，用于 BTC-led entry 的 alt 自身确认；</li>
+<li><code>take_profit_dynamic=true</code>，基础 TP 触发 <code>2.5%</code>；</li>
+<li><code>fixed_fee=0.001</code>，也就是单边 <code>10 bps</code> 的保守费率口径；</li>
+<li>BTC exit：例如 <code>BTC 15 bars 跌 2.25%</code>、<code>BTC 3 bars 跌 2%</code>、<code>BTC 20 bars 跌 4% panic</code>；</li>
+<li>Fear &amp; Greed：高/低情绪下切换 BTC trigger、reentry trigger 和 leverage；</li>
+<li>red-alert：离场后若 alt 再跌一段又从低点反弹，可 re-arm。</li>
+</ul>
+<p>这是一条“完整策略壳”，不是单个指标。</p>
+<h2>3. 我做的最小 public-data 快检</h2>
+<p>为了不把 repo 直接当信号，我做了一个可复现的简化 probe：</p>
+<ul>
+<li>数据：Binance USDⓈ-M public klines；</li>
+<li>标的：<code>ETH/SOL/BNB/XRP/DOGE/LINK/AVAX/ADA</code> vs <code>BTC</code>；</li>
+<li>时间：最近约 <code>90d</code>；</li>
+<li>周期：<code>5m / 15m</code>；</li>
+<li>方向：只测 repo 主体的 long-alt shell；</li>
+<li>入场：保留 <code>SP_BE / BE / BEL / SP_R / R / R2</code>，并保留 <code>asset_minimum</code> 作为 BTC-led entry 的确认；</li>
+<li>出场：保留 BTC-fail exits 与 TP；额外加一个 desk 侧 <code>8h time-cap</code>，避免没有 red-alert/fear-index 复刻时仓位无限拖着；</li>
+<li>成本：按 repo <code>fixed_fee=0.001</code> 粗扣单边 <code>10 bps</code>，round-trip proxy 为 <code>20 bps</code>；</li>
+<li>未复刻：Fear &amp; Greed 参数切换、dynamic leverage 的资金曲线、red-alert auto-entry、逐笔 maker/taker 成本。</li>
+</ul>
+<p>所以这不是“repo 完整复跑”，而是一个最小可迁移问题：<strong>BTC impulse + alt own-move confirmation 这条核心 alpha，在 5m/15m 上是否已经有足够厚的 gross edge？</strong></p>
+<p>本地 artifacts：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/probe_btc_led_alt_reentry_2026-04-21.py</code></li>
+<li><code>reports/artifacts/quant_digests/btc_led_alt_reentry_probe_combo_2026-04-21.json</code></li>
+<li><code>reports/artifacts/quant_digests/btc_led_alt_reentry_probe_summary_2026-04-21.json</code></li>
+<li><code>reports/artifacts/quant_digests/btc_led_alt_reentry_probe_trades_2026-04-21.csv</code></li>
+</ul>
+<h2>4. quick probe 结果：有信号密度，但默认成本口径下还不够厚</h2>
+<p>合并 8 个 liquid majors 后：</p>
+<ul>
+<li><code>5m</code>：<code>455</code> 笔，gross 平均 <code>-12.78 bps/trade</code>；扣 <code>20 bps</code> round-trip fee proxy 后，net proxy <code>-32.78 bps/trade</code>，净胜率 <code>44.4%</code>。</li>
+<li><code>15m</code>：<code>669</code> 笔，gross 平均 <code>+1.36 bps/trade</code>；扣费后 net proxy <code>-18.64 bps/trade</code>，净胜率 <code>43.5%</code>。</li>
+</ul>
+<p>先别看 net，先看 gross：<code>15m</code> 已经从 <code>5m</code> 的明显负 gross 变成接近持平 / 小正 gross，说明这条 BTC-led alt continuation 壳 <strong>不是完全没有结构</strong>。但按 repo 自带的 <code>10 bps</code> 单边成本，它仍然不够厚。</p>
+<p>出场结构也说明了问题：</p>
+<ul>
+<li><code>5m</code>：<code>time_cap 241</code>、<code>take_profit 107</code>、<code>btc_exit 93</code>、<code>btc_panic 6</code>、<code>btc_exit_long 8</code>；</li>
+<li><code>15m</code>：<code>time_cap 344</code>、<code>take_profit 163</code>、<code>btc_exit 103</code>、<code>btc_panic 28</code>、<code>btc_exit_long 31</code>。</li>
+</ul>
+<p>也就是说，大量仓位不是靠 TP 或 BTC-fail exit 清掉，而是拖到 <code>8h time-cap</code>。这对 short-cycle desk 是个坏信号：<strong>entry 能抓到事件，但 payoff / exit 壳还没把事件转成高周转净边。</strong></p>
+<h2>5. 单币 pocket：AVAX / ETH 值得优先留，但不是“直接上线”</h2>
+<p>最接近可用的是：</p>
+<ul>
+<li><code>15m AVAX</code>：<code>89</code> 笔，gross <code>+17.36 bps/trade</code>，扣 <code>20 bps</code> 后 net proxy <code>-2.64 bps/trade</code>；</li>
+<li><code>15m ETH</code>：<code>80</code> 笔，gross <code>+9.59 bps/trade</code>，扣费后 <code>-10.41 bps/trade</code>；</li>
+<li><code>5m AVAX</code>：<code>54</code> 笔，gross <code>+5.56 bps/trade</code>，扣费后 <code>-14.44 bps/trade</code>；</li>
+<li><code>5m SOL</code>：<code>54</code> 笔，gross <code>+2.19 bps/trade</code>，扣费后 <code>-17.81 bps/trade</code>。</li>
+</ul>
+<p>这几个 pocket 说明：</p>
+<ol>
+<li>不该全市场等权扫；</li>
+<li>需要 symbol router；</li>
+<li>如果真实执行能做到 maker-heavy 或更低费率，<code>15m AVAX</code> 这类 pocket 才有继续测的价值；</li>
+<li>但如果必须 taker 追价、且滑点明显，这条壳现在不够。</li>
+</ol>
+<h2>6. 对 desk 的判断</h2>
+<h3>判断 1：它合格地进入 raw alpha 素材池</h3>
+<p>原因很简单：base alpha、entry、exit、sizing、cost 全能说清楚。它不是“Fear &amp; Greed overlay”，Fear &amp; Greed 只是参数切换层；alpha 本体是 <strong>BTC impulse → alt continuation / reentry</strong>。</p>
+<h3>判断 2：短周期主战场更像 <code>15m</code>，不是 <code>5m</code></h3>
+<p>按这轮 quick probe，<code>5m</code> 太噪，BTC 上冲后 alt 的跟随窗口经常不够覆盖成本；<code>15m</code> 虽然仍未过成本，但 gross 结构明显好一些。对 desk 来说，下一轮应该先测 <code>15m entry + 1m/3m execution</code>，而不是纯 <code>5m close-to-close</code>。</p>
+<h3>判断 3：repo 里最该偷的不是 leverage，而是 “BTC-fail exit”</h3>
+<p>很多 leader-laggard 策略只写入场，不写退出。这个仓库有一个朴素但实用的退出思想：<strong>只要 BTC 这个 leader 反向跌破阈值，alt continuation 的前提就坏了。</strong></p>
+<p>这可以迁移给其他 raw alpha：</p>
+<ul>
+<li>BTC-led alt momentum；</li>
+<li>XS momentum top basket；</li>
+<li>liquidity-sweep continuation；</li>
+<li>funding-boundary continuation short。</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<ol>
+<li><strong>分拆 entry reason</strong>：单独测 <code>SP_BE / BE / BEL / SP_R / R / R2</code>，不要混在一起；重点看是不是 <code>SP_BE</code> 与 <code>BE</code> 在 15m 贡献了大部分可用 edge。</li>
+<li><strong>把 execution 改成 15m signal + 1m/3m fill</strong>：15m 收盘确认后，不要下一根 15m close 追；用 1m/3m 的回撤限价、spread gate 和超时撤单模拟。</li>
+<li><strong>成本敏感性</strong>：跑 <code>2 / 4 / 8 / 20 bps</code> round-trip 四档；如果只有 <code>2 bps</code> 才活，那它更像 maker/低费账户专属。</li>
+<li><strong>symbol router</strong>：先保留 <code>AVAX/ETH/SOL</code>，再加 liquidity / spread / beta-to-BTC 过滤，避免 ADA/DOGE 这类拖累 pocket。</li>
+<li><strong>复刻 Fear &amp; Greed 分层</strong>：不是拿 FNG 当 15m 主信号，而是看高/低情绪下 BTC impulse 的跟随半衰期是否不同；若不同，再把它用作参数选择器。</li>
+<li><strong>重写 exit</strong>：当前 time-cap 太多；要测试 <code>partial TP + BTC fail-fast + alt trailing stop</code>，目标是把 time-cap 占比从约一半压到三分之一以下。</li>
+</ol>
+<h2>8. 结论</h2>
+<p>这篇 repo 值得保留为 <strong>raw alpha / 完整策略壳</strong>：它把 BTC-led alt continuation 从“BTC 拉，山寨跟”这种口头说法，拆成了可测的 entry taxonomy、own-alt confirmation、BTC-fail exit 和成本参数。</p>
+<p>但 first probe 也很清楚：</p>
+<ul>
+<li><code>5m</code> 版本不行；</li>
+<li><code>15m</code> gross 有一点结构，但按 repo 的 <code>20 bps</code> round-trip cost 仍未过线；</li>
+<li>下一轮不要先调 leverage，应该先做 <strong>entry reason ablation + 15m signal / 1m execution + symbol router + lower-cost sensitivity</strong>。</li>
+</ul>
+<p>如果能在 <code>15m AVAX/ETH/SOL</code> 上把执行成本压到低双位 bps 以内，并把 time-cap 仓位减少，这条壳才有资格进入更正式的 walk-forward。</p>
+<h2>9. 来源</h2>
+<ul>
+<li>Author / Owner：AArt1552</li>
+<li>Year：2024 repo，2026 active push</li>
+<li>Title：<strong>Vectorized-Crypto-Backtester - Fast Backtesting for Crypto Strategies</strong></li>
+<li>Venue：GitHub repository</li>
+<li>DOI：无</li>
+<li>Readable URL：&lt;<a href="https://github.com/AArt1552/Vectorized-Crypto-Backtester&gt;">https://github.com/AArt1552/Vectorized-Crypto-Backtester&gt;</a></li>
+<li>Repo URL：&lt;<a href="https://github.com/AArt1552/Vectorized-Crypto-Backtester&gt;">https://github.com/AArt1552/Vectorized-Crypto-Backtester&gt;</a></li>
+<li>GitHub metadata API：&lt;<a href="https://api.github.com/repos/AArt1552/Vectorized-Crypto-Backtester&gt;">https://api.github.com/repos/AArt1552/Vectorized-Crypto-Backtester&gt;</a></li>
+<li>Source audit files：</li>
+<li><code>README.md</code></li>
+<li><code>config.example.json</code></li>
+<li><code>vectorized_backtest.py</code></li>
+<li><code>main_runner.py</code></li>
+</ul>
+</body>
+</html>

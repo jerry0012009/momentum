@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 cross-venue funding carry 当成“大 venue 都能跑”的公共票息：这篇 2026 论文更该先落地的是「venue tier + 持续时长」双门槛</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 cross-venue funding carry 当成“大 venue 都能跑”的公共票息：这篇 2026 论文更该先落地的是「venue tier + 持续时长」双门槛</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 19:20 UTC</span>
+      <span class="pill">研究时间：2026-03-25 19:18 UTC</span>
+      <span class="pill">类型：2026 论文（Crossref/OpenAlex 摘要可得）+ 多 venue 公共 funding 数据最小快检</span>
+      <span class="pill">主题标签：raw-alpha/carry/funding/cross-venue/relative-value/stat-arb/delta-neutral/cex/dex/duration-gate/cost/1m/3m/5m/15m/paper</span>
+      <span class="pill">证据类型：论文结构证据 + 公共 API 快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_1918_venue-tier-duration-gated-funding-carry.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 19:18 UTC</li>
+<li>类型：2026 论文（Crossref/OpenAlex 摘要可得）+ 多 venue 公共 funding 数据最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一币种跨 venue 做 <code>long 低 funding venue + short 高 funding venue</code> 的 delta-neutral funding spread carry，并要求 spread 在成本覆盖前持续足够久</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/carry/funding/cross-venue/relative-value/stat-arb/delta-neutral/cex/dex/duration-gate/cost/1m/3m/5m/15m/paper</li>
+<li>证据类型：论文结构证据 + 公共 API 快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这篇东西的 base alpha 不是“交易所分层解释”，而是跨 venue funding spread carry 本体。</strong></p>
+<p>更具体地说，交易逻辑是：</p>
+<ul>
+<li>在 funding 更贵的一侧做空；</li>
+<li>在 funding 更便宜的一侧做多；</li>
+<li>方向尽量 delta-neutral；</li>
+<li>真正决定能不能赚钱的，不只是 spread 有多大，还包括 <strong>它能持续多久</strong>、以及这个 spread 是不是来自 <strong>CEX/DEX 分层错位</strong> 而不是即将回归的短暂噪音。</li>
+</ul>
+<p>所以这篇 2026 新论文对我们 desk 最值钱的，不是“世界上存在 funding arbitrage”这句废话，而是把它 desk 化成一句更实用的话：<strong>先做 venue tier classification，再做 duration gate；否则很多看起来很肥的 spread，根本活不到覆盖 round-trip cost。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这条线仍然是可执行的 raw alpha，但它不该被读成“只要看到 funding spread 就上”；更诚实的读法是：<strong>只有 <code>大 spread × 足够持续 × venue tier 合适</code> 的那一小撮机会，才配进入 live 候选池。</strong></li>
+<li><strong>一句话它怎么证明：</strong> 论文用 26 家交易所、749 个合约、3570 万条 1 分钟观测做结构检验与 delta-neutral 组合仿真；我再用 Binance / Bybit / Hyperliquid 的公开 funding history 做 21 天快检，确认大 venue 主流币上的 spread 大多又薄又短，确实很容易被成本吃掉。</li>
+</ul>
+<p>关键数据点（论文）：</p>
+<ol>
+<li>论文样本是 <strong>26 家交易所（11 CEX、15 DEX）× 749 个 symbol × 8 天 × 3570 万条 1 分钟观测</strong>。</li>
+<li>作者发现 <strong>CEX 的市场整合度比 DEX 高 61%</strong>，且显著信息流方向是 <strong>CEX → DEX</strong>，没有反向因果。</li>
+<li>全样本里只有 <strong>17%</strong> 的观测出现“经济上显著”的 funding arbitrage spread（论文口径：<code>&gt;= 20 bps</code>）；而在作者挑出来的 top opportunities 里，<strong>扣掉交易成本和 spread reversal 后只有 40% 仍为正收益</strong>。</li>
+<li>更关键的是，<strong>95% 的机会最后都要靠 forced exit 结束</strong>，说明“等自然收敛”在实盘里并不可靠，持有时长本身就是生死线。</li>
+</ol>
+<p>关键数据点（本地快检，2026-03-05 ~ 2026-03-25，BTC/ETH/SOL × Binance/Bybit/Hyperliquid，统一换算成 8h funding bps）：</p>
+<ol>
+<li>主流币大 venue 之间的 funding spread 其实很薄：<code>median abs spread</code> 大多只在 <strong>0.24 ~ 0.65 bps/8h</strong>。</li>
+<li><code>&gt;= 2 bps/8h</code> 的 spread 在 BTC/ETH 基本是 <strong>0%</strong>；SOL 也只有 <strong>3.2%</strong> 左右的 8h bucket 够到这条线。</li>
+<li><code>&gt;= 1 bps/8h</code> 的 episode 中位持续时间几乎都是 <strong>8 小时（基本只活 1 个 funding bucket）</strong>；按 <strong>4 bps round-trip</strong> 粗糙成本估算，除了 <code>SOL × Hyperliquid</code> 相关 pair 只有 <strong>8.3%</strong> 的 episode 勉强覆盖成本外，其余组合都是 <strong>0%</strong>。</li>
+</ol>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li>这不是纯 filter，也不是纯解释型综述；它服务的是 <strong>carry / relative value / stat-arb</strong> 家族里非常明确的一条 raw alpha。</li>
+<li>它对当前 short-cycle desk 的直接价值，不在于“给你一个更花的 funding 看板”，而在于：</li>
+<li>告诉你 <strong>哪里更可能有 alpha</strong>：更碎片化的 CEX/DEX、长尾币、次级 venue；</li>
+<li>告诉你 <strong>哪里大概率没 alpha</strong>：BTC/ETH 主流币 × 主流 venue 的核心组合，spread 往往薄到不够覆盖成本；</li>
+<li>告诉你 <strong>该把 1m/3m/5m/15m 用在哪里</strong>：不是伪装成逐根方向预测，而是用来盯 spread persistence、进出场切片、腿间滑点与强平/挤仓风险。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative value / carry / cross-venue stat-arb（market-neutral 优先）</li>
+<li>基础 alpha：<code>cross_venue_funding_spread - trading_cost - hedge_slippage - spread_reversal_risk</code></li>
+<li>regime：</li>
+<li><code>CEX ↔ DEX</code> 分层更重要，优先做高碎片化组合；</li>
+<li>主流币核心 venue 通常太有效，更多是监控，不一定值得下单；</li>
+<li>长尾 alt / 次级 venue 更可能有厚 spread，但运维/风控也更重。</li>
+<li>filter / veto：</li>
+<li>只有当 <code>abs(funding_spread)</code> 超过最小成本覆盖线才允许进场；</li>
+<li>只有当 spread 已持续 <code>&gt;= N</code> 个短周期窗（如 3h / 2 个 1h funding tick / 2 个 8h bucket）才允许进场；</li>
+<li>若 CEX 领先腿已明显回归、DEX 只是滞后补价，避免追最后一口残差；</li>
+<li>主流币主流 venue 上若 spread 长期低于成本，直接 veto。</li>
+<li>risk / sizing / execution overlay：</li>
+<li>头寸按 venue tier、symbol liquidity、可对冲深度分层；</li>
+<li>设置 <code>max_hold</code>，不要假设 spread 一定自然回归；</li>
+<li>监控 funding 时钟差异、预估 funding 与实缴 funding 偏差；</li>
+<li>用 1m/3m/5m 切片对冲，减少四腿一次性冲击。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 数据源、公开性、更新频率</h3>
+<ul>
+<li>Binance USDⓈ-M <code>fundingRate</code>：公开 REST，历史 funding 可直接取。</li>
+<li>Bybit V5 <code>market/funding/history</code>：公开 REST。</li>
+<li>Hyperliquid <code>info</code> / <code>fundingHistory</code>：公开 API。</li>
+<li>更新频率：</li>
+<li>Binance / Bybit 常见是 8h funding；</li>
+<li>Hyperliquid 为更高频 funding（本地快检汇总成 8h 等价口径）；</li>
+<li>可自然映射到 <code>1m / 3m / 5m / 15m</code> 的执行与 persistence 监控。</li>
+</ul>
+<h3>4.2 最小实验口径（先 1m/5m 盯 persistence，再按 funding 时钟结算）</h3>
+<ul>
+<li>标的：先从 <code>BTC/ETH/SOL</code> 起步，再扩到 <code>20~50</code> 个流动性可接受的 perp。</li>
+<li>venue 组合：<code>Binance × Bybit</code>、<code>Binance × Hyperliquid</code>、<code>Bybit × Hyperliquid</code>。</li>
+<li>信号：</li>
+<li><code>spread_t = funding_high_t - funding_low_t</code>（统一换算成相同结算时长，例如 8h bps）；</li>
+<li><code>persist_t = spread</code> 是否已持续 <code>&gt;= N</code> 个短周期窗口；</li>
+<li><code>entry_score = abs(spread_t) - cost_floor</code>。</li>
+<li>交易规则（样例）：</li>
+<li>entry：<code>abs(spread_t) &gt;= max(q95, 2 bps/8h)</code> 且 <code>persist_t &gt;= 2</code>；</li>
+<li>direction：<code>long 低 funding venue + short 高 funding venue</code>；</li>
+<li>exit：<code>abs(spread_t)</code> 回落到 <code>q50</code> 以下、或到达 <code>max_hold=1~3 funding cycles</code>、或腿间滑点/风控触发；</li>
+<li>veto：若该 symbol 在最近 30 天的大 venue 组合里 <code>share(spread &gt;= cost_floor) &lt; 5%</code>，降级为观察池。</li>
+<li>成本：至少做 <code>4 / 8 / 12 bps round-trip</code> 三档压力测试。</li>
+<li>先看指标：<code>spread persistence</code>、<code>episode gross carry</code>、<code>post-cost win rate</code>、<code>forced-exit ratio</code>、<code>净 carry / max adverse excursion</code>。</li>
+</ul>
+<h2>5. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>把 universe 从 BTC/ETH/SOL 扩到 30~100 个 perp</strong>：验证 paper 的厚 spread 是否主要来自长尾 symbol，而不是核心大币。</li>
+<li><strong>拆开做 <code>CEX-CEX / CEX-DEX / DEX-DEX</code> 三组</strong>：别把 venue tier 混成一个池子。</li>
+<li><strong>给 spread persistence 建一个 ex-ante 生存模型</strong>：只用最近 <code>1h/3h</code> 的 spread 斜率、成交额、OI、基差斜率，先回答“这口 spread 能活多久”。</li>
+<li><strong>把 funding spread 与执行成本联立</strong>：尤其是四腿进出、maker/taker 切换、腿间不同步导致的残余 delta 风险。</li>
+<li><strong>若主流币主流 venue 继续太薄，就诚实降级</strong>：把它们从 live 候选池移到监控/基准池，别浪费 desk 带宽。</li>
+</ol>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>论文的 headline spread 很大，但来自 <strong>更广的 venue-symbol 长尾截面</strong>；主流币核心 venue 上不一定复制得出来。</li>
+<li>funding 结算频率不一致，若直接横比而不统一到相同时间基准，很容易高估 edge。</li>
+<li>真实跨 venue 策略不只是一条 spread 序列，还包括：资金碎片、充值提币延迟、保证金占用、强平规则、DEX 预言机风险。</li>
+<li>若没有 duration gate，只盯 spread 大小，极容易在“看起来最肥”的地方接到最后一跳 reversal。</li>
+<li>本地快检只覆盖 21 天、3 个币、3 个 venue，结论更像 <strong>负面筛查</strong>：告诉我们主流大 venue 组合有多薄，而不是替代完整 alpha discovery。</li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>Zhivkov, P. (2026). _The Two-Tiered Structure of Cryptocurrency Funding Rate Markets_. Mathematics, 14(2), 346.</strong></li>
+</ol>
+<ul>
+<li>Venue: Mathematics (MDPI)</li>
+<li>DOI: <a href="https://doi.org/10.3390/math14020346">https://doi.org/10.3390/math14020346</a></li>
+<li>Readable URL: <a href="https://doi.org/10.3390/math14020346">https://doi.org/10.3390/math14020346</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Binance Developers. _USDⓈ-M Futures API: Get Funding Rate History_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official API Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Bybit. _V5 Market API: Get Funding Rate History_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official API Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://bybit-exchange.github.io/docs/v5/market/history-fund-rate">https://bybit-exchange.github.io/docs/v5/market/history-fund-rate</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Hyperliquid. _Info endpoint / funding history_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official API</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://api.hyperliquid.xyz/info">https://api.hyperliquid.xyz/info</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<h2>8. 本地复现产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-03-25_funding_tier_duration_gate/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-03-25_funding_tier_duration_gate/episodes_ge_1bps.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-03-25_funding_tier_duration_gate/meta.json</code></li>
+</ul>
+</body>
+</html>

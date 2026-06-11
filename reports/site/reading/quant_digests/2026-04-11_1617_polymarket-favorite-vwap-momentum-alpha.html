@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Polymarket repo 只读成预测市场工具：对 short-cycle desk，更该先测的是「favorite-side VWAP stretch × 60s momentum × hard-expiry continuation」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Polymarket repo 只读成预测市场工具：对 short-cycle desk，更该先测的是「favorite-side VWAP stretch × 60s momentum × hard-expiry continuation」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-11 16:19 UTC</span>
+      <span class="pill">研究时间：2026-04-11 16:17 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（GitHub API metadata + `README.md` + `btc-binary-VWAP-Momentum-bot/README.md` + `PROJECT_LOGIC.md` + `CONFIG.md` + `config.json` + `main.py`）+ Polymarket Gamma API live availability probe</span>
+      <span class="pill">主题标签：raw-alpha/prediction-market/single-market/microstructure/vwap/momentum/hard-expiry/fixed-window/binary/continuation/polymarket/btc/5m/15m/repo/public-data/cost/risk/execution</span>
+      <span class="pill">证据类型：repo source + live public market metadata（repo-based）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-11_1617_polymarket-favorite-vwap-momentum-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-11 16:17 UTC</li>
+<li>类型：2026 GitHub repo source audit（GitHub API metadata + <code>README.md</code> + <code>btc-binary-VWAP-Momentum-bot/README.md</code> + <code>PROJECT_LOGIC.md</code> + <code>CONFIG.md</code> + <code>config.json</code> + <code>main.py</code>）+ Polymarket Gamma API live availability probe</li>
+<li>主题标签：raw-alpha/prediction-market/single-market/microstructure/vwap/momentum/hard-expiry/fixed-window/binary/continuation/polymarket/btc/5m/15m/repo/public-data/cost/risk/execution</li>
+<li>证据类型：repo source + live public market metadata（repo-based）</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>在 Polymarket <code>5m/15m</code> BTC Up/Down 硬到期二元市场里，当“当前 favorite 一侧”的 token 同时满足 <code>价格处于中高但未过贵区间</code>、<code>高于自己近端 VWAP</code>、<code>相对 60s 前仍在上冲</code> 时，这一侧更像会把领先优势延续到结算。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+</ul>
+<h2>先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p>这轮的 <strong>base alpha</strong> 不是“Polymarket 很热闹”，也不是“预测市场可以拿来当情绪滤镜”。</p>
+<p>真正要 intake 的，是一条非常具体的 <strong>single-market raw alpha</strong>：</p>
+<p>&gt; <strong>在固定 5 分钟 / 15 分钟生命周期的二元市场里，赢家侧 token 如果已经站上自己近端成交均价（VWAP），而且过去 60 秒还在继续变贵，那么这更像是“临近结算的顺势延续”，不是单纯随机噪音。</strong></p>
+<p>翻成人话： <strong>不是猜最终涨跌，而是看“当前领先那边，是不是还在被继续抢、而且抢得不算过贵”。</strong></p>
+<p>所以它不是：</p>
+<ul>
+<li>宏观解释；</li>
+<li>shared filter；</li>
+<li>纯 execution overlay；</li>
+<li>也不是上一篇那种 <code>spot-vs-strike fair value</code> 错价。</li>
+</ul>
+<p>它本身就是一条可以单独回放、单独下单、单独算成本的 <strong>raw alpha</strong>。</p>
+<p>---</p>
+<h2>为什么这轮值得写，而不是把它当成“又一个 prediction-market bot”</h2>
+<p>原因有 4 个：</p>
+<ol>
+<li><strong>raw alpha 够清楚。</strong></li>
+<p>不是“favorite 就买”，而是 <strong>favorite-side 自身的成交流是否继续推着它走</strong>。</p>
+</ol>
+<ol>
+<li><strong>它原生就是 <code>5m / 15m</code>。</strong></li>
+<p>不需要把日线逻辑硬压成短周期；产品生命周期本来就是我们现在最关心的时间框架。</p>
+</ol>
+<ol>
+<li><strong>复现门槛低。</strong></li>
+<p>市场发现、盘口、trade prints 都能从公开接口拿；研究回放阶段不需要先有下单权限。</p>
+</ol>
+<ol>
+<li><strong>它和已写过的 prediction-market digest 不同。</strong></li>
+</ol>
+<ul>
+<li>不是 <code>strike-gap / fair probability</code> 错价；</li>
+<li>不是 <code>adjacent-horizon spread</code>；</li>
+<li>不是简单的 <code>favorite-confidence late entry</code>；</li>
+<li>而是 <strong>同一市场内部、favorite token 自身的 VWAP + momentum continuation</strong>。</li>
+</ul>
+<p>也就是说，这轮补的是 <strong>binary microstructure continuation</strong>，不是再写一遍 prediction-market 套壳。</p>
+<p>---</p>
+<h2>主要来源</h2>
+<h3>1) 主来源：2026 新仓库</h3>
+<ul>
+<li><strong>Owner / Year</strong>: Poly-Tutor, 2026</li>
+<li><strong>Title</strong>: <code>polymarket-5min-15min-1hour-arbitrage-trading-bot-tools</code></li>
+<li><strong>Repo URL</strong>: <a href="https://github.com/Poly-Tutor/polymarket-5min-15min-1hour-arbitrage-trading-bot-tools">https://github.com/Poly-Tutor/polymarket-5min-15min-1hour-arbitrage-trading-bot-tools</a></li>
+<li><strong>Readable URL</strong>: <a href="https://github.com/Poly-Tutor/polymarket-5min-15min-1hour-arbitrage-trading-bot-tools">https://github.com/Poly-Tutor/polymarket-5min-15min-1hour-arbitrage-trading-bot-tools</a></li>
+<li><strong>Stars / Created / Updated</strong>: <code>203 stars</code> / <code>2026-02-18</code> / <code>2026-04-10</code></li>
+<li><strong>本轮重点子目录</strong>:</li>
+<li><code>btc-binary-VWAP-Momentum-bot/README.md</code></li>
+<li><code>btc-binary-VWAP-Momentum-bot/PROJECT_LOGIC.md</code></li>
+<li><code>btc-binary-VWAP-Momentum-bot/CONFIG.md</code></li>
+<li><code>btc-binary-VWAP-Momentum-bot/config.json</code></li>
+<li><code>btc-binary-VWAP-Momentum-bot/main.py</code></li>
+</ul>
+<h3>2) 公开市场数据路径</h3>
+<ul>
+<li><strong>Provider / Year</strong>: Polymarket Gamma API, 2026 live endpoint</li>
+<li><strong>用途</strong>: 市场发现、当前 bid/ask、流动性、最小订单约束</li>
+<li><strong>Readable URL</strong>:</li>
+<li>5m 示例：&lt;<a href="https://gamma-api.polymarket.com/markets?slug=btc-updown-5m-1775924100&amp;active=true&amp;closed=false&gt;">https://gamma-api.polymarket.com/markets?slug=btc-updown-5m-1775924100&amp;active=true&amp;closed=false&gt;</a></li>
+<li>15m 示例：&lt;<a href="https://gamma-api.polymarket.com/markets?slug=btc-updown-15m-1775924100&amp;active=true&amp;closed=false&gt;">https://gamma-api.polymarket.com/markets?slug=btc-updown-15m-1775924100&amp;active=true&amp;closed=false&gt;</a></li>
+</ul>
+<h3>3) repo 内写明的公开实时数据通道</h3>
+<ul>
+<li><strong>Market websocket</strong>: <code>wss://ws-subscriptions-clob.polymarket.com/ws/market</code></li>
+<li><strong>Chainlink RTDS channel（repo 文档中给出的实时价格通道）</strong>: <code>wss://ws-live-data.polymarket.com</code></li>
+<li><strong>作用</strong>:</li>
+<li>WebSocket 拉 trade prints / BBO</li>
+<li>RTDS 作为 BTC/USD 锚点与 market clock 对齐参考</li>
+</ul>
+<p>&gt; 这轮最值钱的不是“它能自动下单”，而是：<strong>它把一条 5m/15m hard-expiry raw alpha，拆成了可逐项审计的信号层。</strong></p>
+<p>---</p>
+<h2>这份 repo 真正给出的，不只是 bot 外壳，而是一条很具体的入场骨架</h2>
+<h3>1) 交易对象直接锁定 <code>5m / 15m</code> BTC hard-expiry market</h3>
+<p><code>config.json</code> 明写：</p>
+<ul>
+<li><code>market.interval_minutes = 5</code>（可切到 <code>15</code>）</li>
+<li>slug 规则就是 <code>btc-updown-5m-&lt;ts&gt;</code> / <code>btc-updown-15m-&lt;ts&gt;</code></li>
+</ul>
+<p>这很关键，因为它不是“先有日内信号，再找地方落地”，而是直接在 <strong>原生短周期固定到期产品</strong> 上交易。</p>
+<h3>2) 它不是买任意一侧，而是先识别当前 favorite</h3>
+<p>repo 的核心定义是：</p>
+<ul>
+<li><code>favorite = price 更高的一侧</code></li>
+<li>只评估 favorite 的 price / deviation / momentum</li>
+</ul>
+<p>翻成人话： <strong>不是在二元市场里做对敲，不是做均值回归，而是明确押“当前看起来更可能赢的那一边”，再看它是不是还在被继续追。</strong></p>
+<h3>3) 入场不是“只看涨跌”，而是三层同时成立</h3>
+<p>从 <code>config.json</code> / <code>CONFIG.md</code> / <code>main.py</code> 能拼出它的最小骨架：</p>
+<ul>
+<li><strong>价格区间</strong>：<code>min_price = 0.75</code>，<code>max_price = 0.88</code></li>
+<li><strong>VWAP 偏离</strong>：<code>min_deviation_pct = 3</code></li>
+<li><strong>动量窗口</strong>：<code>momentum_window_sec = 60</code></li>
+<li><strong>VWAP 窗口</strong>：<code>vwap_window_sec = 30</code></li>
+<li><strong>时间门槛（5m 默认）</strong>：<code>min_elapsed_sec = 180</code></li>
+<li><strong>禁止太晚入场（5m 默认）</strong>：<code>no_entry_before_end_sec = 110</code></li>
+</ul>
+<p>也就是：</p>
+<ol>
+<li>favorite 不要太便宜（否则说明共识还不够强）；</li>
+<li>favorite 也不要太贵（否则赔率已经太差）；</li>
+<li>current price 要明显高于近端成交均价；</li>
+<li>过去 60 秒还得继续往上冲；</li>
+<li>只在市场生命周期后段做。</li>
+</ol>
+<p>这 5 条合起来，才是这条 alpha 的本体。</p>
+<h3>4) 这其实是一种“bounded payoff 里的顺势追价”</h3>
+<p>在普通 perp 市场里，追涨常常会遇到“上面还有多远”这个问题； 但在二元市场里，收益上限天然被封在 <code>1.00</code>。</p>
+<p>所以这里最核心的问题不是“还能涨多少”，而是： <strong>“在 payout 已封顶的前提下，这个价格是不是还没贵到不值得买，但已经出现了明显的流持续推动？”</strong></p>
+<p>repo 用的其实就是这套思路：</p>
+<ul>
+<li><code>0.75~0.88</code> 控制赔率区间；</li>
+<li><code>VWAP deviation</code> 控制“是不是正在被追”；</li>
+<li><code>60s momentum</code> 控制“不是刚好站上去一下就掉下来”。</li>
+</ul>
+<p>---</p>
+<h2>最值得记录的硬数字</h2>
+<h3>1) 5m 默认参数已经够具体，可以直接做第一轮 replay</h3>
+<p>从公开 <code>config.json</code> 看到的默认值：</p>
+<ul>
+<li><code>interval_minutes = 5</code></li>
+<li><code>min_price = 0.75</code></li>
+<li><code>max_price = 0.88</code></li>
+<li><code>min_elapsed_sec = 180</code></li>
+<li><code>no_entry_before_end_sec = 110</code></li>
+<li><code>min_deviation_pct = 3</code></li>
+<li><code>momentum_window_sec = 60</code></li>
+<li><code>vwap_window_sec = 30</code></li>
+<li><code>bet_amount_usd = 5</code></li>
+<li><code>price_offset = 0.02</code></li>
+<li><code>order_type = FAK</code></li>
+<li><code>max_retries = 3</code></li>
+<li><code>hedge.enabled = true</code>，<code>hedge_price = 0.02</code></li>
+</ul>
+<p>这不是“以后可以再加风险管理”，而是 <strong>entry / execution / hedge</strong> 已经被写成了第一版完整壳。</p>
+<h3>2) repo 自己还给了 15m 的参数映射建议</h3>
+<p><code>CONFIG.md</code> 里明写：</p>
+<ul>
+<li>对 <code>15m</code> 市场，<code>min_elapsed_sec</code> 建议抬到 <code>530</code> 左右</li>
+<li><code>no_entry_before_end_sec</code> 建议改到 <code>335</code> 左右</li>
+</ul>
+<p>也就是说，这份 repo 不只是“支持 5m/15m 切换”，而是已经暗示了： <strong>15m 版更像在 market 后半段的一个很窄 admission window 里做 continuation。</strong></p>
+<h3>3) live public-data availability 是真的，不是 README 口嗨</h3>
+<p>我直接检查了 Polymarket Gamma API 当前 live market：</p>
+<ul>
+<li><strong>5m 市场</strong> <code>btc-updown-5m-1775924100</code></li>
+<li><code>bestBid = 0.50</code></li>
+<li><code>bestAsk = 0.51</code></li>
+<li><code>liquidityClob ≈ 20,075.11</code></li>
+<li><code>orderMinSize = 5</code></li>
+</ul>
+<ul>
+<li><strong>15m 市场</strong> <code>btc-updown-15m-1775924100</code></li>
+<li><code>bestBid = 0.45</code></li>
+<li><code>bestAsk = 0.46</code></li>
+<li><code>liquidityClob ≈ 30,920.12</code></li>
+<li><code>orderMinSize = 5</code></li>
+</ul>
+<p>这说明最关键的一点： <strong>研究数据入口是公开可得的，最小复现实验不需要先搞私有数据库。</strong></p>
+<p>---</p>
+<h2>为什么我把它归类成 raw alpha，而不是 filter / overlay</h2>
+<p>因为它的入场条件本身就是闭环的：</p>
+<ul>
+<li>市场对象：固定的 <code>BTC 5m / 15m hard-expiry binary</code></li>
+<li>方向：当前 favorite-side</li>
+<li>触发：<code>price band + VWAP deviation + momentum</code></li>
+<li>timing：生命周期后段</li>
+<li>execution：<code>FAK + price_offset + retry</code></li>
+<li>sizing：<code>bet_amount_usd</code></li>
+<li>hedge：可选 <code>0.02</code> 对侧挂单</li>
+</ul>
+<p>这已经是一条完整的 <strong>主信号雏形</strong>，不是依附于别的 alpha 才能存在的门控层。</p>
+<p>当然，它也可以反过来服务别的 raw alpha：</p>
+<ul>
+<li>给 prediction-market 其他策略做更细的 admission；</li>
+<li>给 BTC <code>1m</code> / <code>3m</code> perp 最后 60~120 秒做外部 sidecar。</li>
+</ul>
+<p>但那是 <strong>secondary use-case</strong>。第一性分类仍然应该是 <strong>raw alpha</strong>。</p>
+<p>---</p>
+<h2>这份 repo 最重要的价值，不是“能直接上线”，而是“能直接拿来拆”</h2>
+<p>这里要特别老实一点：</p>
+<h3>1) 文档和代码的 momentum 门槛并不完全一致</h3>
+<p><code>README / CONFIG.md</code> 的语言更像：</p>
+<ul>
+<li>只要 momentum 为正、方向一致即可。</li>
+</ul>
+<p>但 <code>main.py</code> 实际写的是：</p>
+<ul>
+<li><code>mom_ok = fav_mom is not None and fav_mom &gt; 5</code></li>
+</ul>
+<p>也就是要求： <strong>favorite token 相对 60 秒前，已经涨了 5% 以上。</strong></p>
+<p>这不是一个小差异。 因为对二元 token 来说，<code>+5%</code> 不是很轻的门槛，尤其当价格已经在 <code>0.75~0.88</code> 区间时，这会大幅减少信号数。</p>
+<p>所以第一轮实验不能只照 README 抄，必须把：</p>
+<ul>
+<li><code>mom &gt; 0</code></li>
+<li><code>mom &gt; 2</code></li>
+<li><code>mom &gt; 5</code></li>
+</ul>
+<p>做成三档比较。</p>
+<h3>2) exit / PnL 记账在公开代码里并不够严谨</h3>
+<p><code>main.py</code> 里有一个很值得警惕的实现：</p>
+<ul>
+<li>在距离结算 <code>&lt;= 10s</code> 时，用 <strong>当下 token <code>last_price</code></strong> 作为 <code>final_price</code></li>
+<li>然后把 <code>final_price &gt;= 0.70</code> 直接当成“赢了”</li>
+</ul>
+<p>这意味着公开代码里：</p>
+<ul>
+<li>不是按真实 market resolution（0 或 1）结算；</li>
+<li>更像是用临近到期的 last trade price 近似最终结果。</li>
+</ul>
+<p>对研究来说，这样做会把两件事混在一起：</p>
+<ol>
+<li><strong>alpha 是否真预测了结算结果</strong></li>
+<li><strong>临近收盘 token 自身 mark-to-market 有没有提前反映</strong></li>
+</ol>
+<p>所以它的策略骨架值得拿，但 <strong>PnL / exit accounting 不能直接信</strong>。</p>
+<h3>3) <code>win_rate_csv</code> 在配置里被引用，但公开仓库树里没有直接看到该文件</h3>
+<p><code>config.json</code> 引用了：</p>
+<ul>
+<li><code>data/win_rate.csv</code></li>
+</ul>
+<p>但本轮 GitHub 树检查时，没有在公开目录里直接拉到这个路径。</p>
+<p>这不影响我们复现 alpha 本体， 但说明： <strong>repo 里某些“显示历史胜率”的配套材料，不应被当成可直接复现的既成事实。</strong></p>
+<p>因此本轮 4 个字段里，我把“是否可直接落地完整策略”标成了 <strong>否</strong>。 不是因为它没有策略壳，而是因为： <strong>它的公开实现仍然需要先把 exit / accounting / conditioning table 审清楚。</strong></p>
+<p>---</p>
+<h2>最小可复现实验怎么做</h2>
+<h2>数据源</h2>
+<ol>
+<li><strong>Gamma API</strong></li>
+</ol>
+<ul>
+<li>市场发现</li>
+<li>live bid/ask</li>
+<li>liquidity / min size</li>
+</ul>
+<ol>
+<li><strong>Polymarket market WebSocket</strong></li>
+</ol>
+<ul>
+<li>trade prints</li>
+<li>BBO 更新</li>
+</ul>
+<ol>
+<li><strong>resolution 结果</strong></li>
+</ol>
+<ul>
+<li>用市场最终 outcome / redeemable result 对齐</li>
+<li>不要偷懒用 <code>10s before expiry</code> 的 last trade 当真结算</li>
+</ul>
+<h2>公开性</h2>
+<ul>
+<li>研究 / 回放阶段：公开可得</li>
+<li>真实下单：需要 Polymarket 凭证</li>
+</ul>
+<h2>更新频率</h2>
+<ul>
+<li>市场：每 <code>5m</code> / <code>15m</code> 一个新 hard-expiry contract</li>
+<li>WebSocket：近实时</li>
+<li>metadata：HTTP 轮询即可</li>
+</ul>
+<h2>最小实验口径</h2>
+<p>我建议第一轮先只做 BTC，别一上来加多币：</p>
+<h3>实验 1：忠实复刻 repo 信号，但修正结算口径</h3>
+<ul>
+<li>市场：BTC <code>5m</code> + <code>15m</code></li>
+<li>入场侧：当前 favorite</li>
+<li>条件：</li>
+<li>price in <code>[0.75, 0.88]</code></li>
+<li>elapsed &gt;= threshold</li>
+<li>deviation &gt;= <code>3%</code></li>
+<li>momentum &gt; <code>0 / 2 / 5</code> 分桶</li>
+<li>执行：假设 taker 买入 <code>best_ask + 0.01/0.02</code></li>
+<li>结算：必须按真实 outcome（0/1）</li>
+</ul>
+<p>先看：</p>
+<ul>
+<li>hit rate</li>
+<li>平均单笔 EV</li>
+<li>按价格桶的 ROI</li>
+<li>按 time-left 的 ROI</li>
+<li>按 momentum 桶的单调性</li>
+</ul>
+<h3>实验 2：和“favorite-only late-entry”基线做增量比较</h3>
+<p>同样只做 favorite，但分三版：</p>
+<ol>
+<li>只看 favorite + price band</li>
+<li>favorite + price band + deviation</li>
+<li>favorite + price band + deviation + momentum</li>
+</ol>
+<p>目的不是证明 repo 神，而是回答一个更有价值的问题： <strong>VWAP / momentum 到底有没有提供增量信息，还是只是把交易数砍少了？</strong></p>
+<h3>实验 3：拆开 <code>5m</code> 与 <code>15m</code></h3>
+<p>不要合并统计。 因为两者虽然都叫 Up/Down binary，但结构并不一样：</p>
+<ul>
+<li><code>5m</code> 更像超短 event-time continuation</li>
+<li><code>15m</code> 更像更慢的 late consensus continuation</li>
+</ul>
+<p>有很大概率会出现：</p>
+<ul>
+<li><code>5m</code> 更吃 momentum</li>
+<li><code>15m</code> 更吃 price band + time-left</li>
+</ul>
+<h3>实验 4：检验“过贵区”是不是主要杀手</h3>
+<p>重点分桶：</p>
+<ul>
+<li><code>0.75~0.80</code></li>
+<li><code>0.80~0.84</code></li>
+<li><code>0.84~0.88</code></li>
+<li><code>&gt;0.88</code></li>
+</ul>
+<p>因为这类 bounded payoff 策略最常见的失败，不是方向错，而是： <strong>方向对了，但赔率已经不值。</strong></p>
+<p>---</p>
+<h2>我最建议先测的 4 个假设</h2>
+<h3>假设 1：<code>deviation × momentum</code> 比单独任何一个都更值钱</h3>
+<p>只有高于 VWAP，不代表趋势在继续； 只有 60s momentum 为正，也可能只是偶发拉价。</p>
+<p>更可能有效的是： <strong>价格已经站上近期成交均价，而且还在继续被买。</strong></p>
+<h3>假设 2：<code>0.80~0.86</code> 可能比 repo 默认整段更甜</h3>
+<p><code>0.75</code> 太低时，共识可能不够稳； <code>0.88</code> 太高时，赔率经常太差。</p>
+<p>所以真正的甜蜜区，很可能是中间更窄的一段，而不是整段 <code>[0.75, 0.88]</code>。</p>
+<h3>假设 3：<code>15m</code> 的最优入场窗口可能比 repo 建议更靠后</h3>
+<p>repo 文档建议 15m 把 <code>min_elapsed_sec</code> 拉到 <code>530</code> 左右。</p>
+<p>但真正值得测的是：</p>
+<ul>
+<li><code>480~530s</code></li>
+<li><code>530~565s</code></li>
+<li><code>565s 以后</code></li>
+</ul>
+<p>因为 hard-expiry 市场常常在最后一小段才真正把赔率压实。</p>
+<h3>假设 4：对这类策略，<strong>赔率纪律</strong> 比“是否追上车”更重要</h3>
+<p>很多人看到这类 token continuation，第一反应是怕错过。</p>
+<p>但 binary 的数学本质决定了： <strong>买得太贵，比晚一点买更伤。</strong></p>
+<p>所以这条策略最终更可能死在：</p>
+<ul>
+<li>高价追入</li>
+<li>滑点过大</li>
+<li>临近结算成交稀薄</li>
+</ul>
+<p>而不是死在“方向逻辑完全无效”。</p>
+<p>---</p>
+<h2>风险与失败模式</h2>
+<ol>
+<li><strong>bounded payoff 的赔率天花板非常硬</strong></li>
+</ol>
+<ul>
+<li>方向对也不代表值；</li>
+<li>高胜率不等于高 EV。</li>
+</ul>
+<ol>
+<li><strong>最后一分钟最容易出现流动性抽干</strong></li>
+</ol>
+<ul>
+<li>即便盘口显示有 bid/ask，真实可成交深度也可能不稳定。</li>
+</ul>
+<ol>
+<li><strong>favorite flip 的速度比 indicator 刷新更快</strong></li>
+</ol>
+<ul>
+<li>尤其在 <code>5m</code> 市场最后几十秒，状态翻转很快。</li>
+</ul>
+<ol>
+<li><strong>公开 repo 的结算/PnL 写法会污染研究结论</strong></li>
+</ol>
+<ul>
+<li>如果继续沿用 <code>final_price &gt;= 0.70 -&gt; win</code>，很容易把“临近收盘的 mark”误当“真正预测力”。</li>
+</ul>
+<ol>
+<li><strong>prediction-market alpha 不应直接硬搬到 perp</strong></li>
+</ol>
+<ul>
+<li>先在它原生市场里证明成立，再考虑做 cross-market donor。</li>
+</ul>
+<p>---</p>
+<h2>和当前 short-cycle desk 的关系</h2>
+<h3>1) 最自然的主战场就是 <code>5m / 15m</code></h3>
+<p>这条策略不需要“映射”成短周期，它原生就是短周期。</p>
+<h3>2) 对 <code>1m / 3m</code> 的意义主要在两个地方</h3>
+<ul>
+<li>做更细的 replay / state sampling</li>
+<li>看最后 <code>60~180s</code> favorite-side 状态，能不能作为外部 donor 给 BTC perp 的微型方向判断</li>
+</ul>
+<h3>3) 它补的是我们素材池里还不够多的一类 alpha</h3>
+<p>我们已经有不少：</p>
+<ul>
+<li>perp / spot / basis / funding</li>
+<li>pairs / stat-arb</li>
+<li>OFI / maker / microstructure</li>
+<li>cross-sectional trend / reversal</li>
+</ul>
+<p>但 <strong>hard-expiry binary 内部的 order-flow continuation</strong> 仍然不多。 这类素材值得单独占一个位置。</p>
+<p>---</p>
+<h2>结论</h2>
+<p>这轮最该拿走的，不是“又一个 Polymarket bot”，而是这条更干净的研究命题：</p>
+<p>&gt; <strong>在 <code>5m / 15m</code> hard-expiry binary 市场里，favorite-side token 若处于“不过贵的中高赔率区”，并且同步出现 <code>站上近端 VWAP + 60s 正向 momentum</code>，它是否会比简单的 favorite-only late-entry 更稳定地延续到结算？</strong></p>
+<p>这是一条：</p>
+<ul>
+<li><strong>raw alpha 清楚</strong></li>
+<li><strong>周期原生贴合 desk</strong></li>
+<li><strong>公开数据可复现</strong></li>
+<li><strong>可以和现有 Polymarket / Kalshi / perp 研究形成互补</strong></li>
+</ul>
+<p>但也要保持克制： <strong>repo 的公开实现值得拆，不值得照抄。</strong> 尤其是：</p>
+<ul>
+<li>momentum 阈值要重新标定；</li>
+<li>exit / PnL 一定要改成真实结算口径；</li>
+<li><code>win_rate_csv</code> 不能当作现成真相。</li>
+</ul>
+<p>---</p>
+<h2>下一步怎么测</h2>
+<h3>第一优先（建议今天就开）</h3>
+<p>做一个 <strong>BTC-only Polymarket 5m/15m replay</strong>：</p>
+<ul>
+<li>从公开 market/trade data 重建每秒状态；</li>
+<li>用真实 resolution 做结算；</li>
+<li>对比 <code>favorite-only</code> vs <code>favorite+VWAP</code> vs <code>favorite+VWAP+momentum</code> 三版。</li>
+</ul>
+<h3>第二优先</h3>
+<p>把以下 3 个参数做 3×3×3 小网格：</p>
+<ul>
+<li><code>min_price</code>: <code>0.72 / 0.75 / 0.78</code></li>
+<li><code>max_price</code>: <code>0.84 / 0.86 / 0.88</code></li>
+<li><code>mom_threshold</code>: <code>0 / 2 / 5</code></li>
+</ul>
+<p>先看哪一层真正提供了 EV，而不是只减少交易数。</p>
+<h3>第三优先</h3>
+<p>若 Polymarket 原生 alpha 成立，再去测：</p>
+<ul>
+<li>最后 <code>180s / 120s / 60s</code> 的 favorite-side VWAP/momentum 状态</li>
+<li>是否对 Binance / Hyperliquid BTC <code>1m</code> 收盘方向有附加信息</li>
+</ul>
+<p>也就是： <strong>先把它当 alpha，本体成立后，再把它当 sidecar。</strong></p>
+</body>
+</html>

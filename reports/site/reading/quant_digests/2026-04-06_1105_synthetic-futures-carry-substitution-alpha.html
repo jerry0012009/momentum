@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别只把 funding spread 当 carry：对 short-cycle desk，更该先测「low-funding perp 充当 cheap synthetic future」这条完整 relative-value raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别只把 funding spread 当 carry：对 short-cycle desk，更该先测「low-funding perp 充当 cheap synthetic future」这条完整 relative-value raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-06 11:04 UTC</span>
+      <span class="pill">研究时间：2026-04-06 11:05 UTC</span>
+      <span class="pill">类型：GitHub repo</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/carry/funding/basis/synthetic-futures/perpetual-futures/calendar-spread/cross-venue/btc/15m/1h/public-data/repo/cost/risk</span>
+      <span class="pill">证据类型：仓库 README + methodology + strategy code + 公共 API 文档</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-06_1105_synthetic-futures-carry-substitution-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-06 11:05 UTC</li>
+<li>类型：2025 GitHub 仓库 README / methodology / strategy code + Binance / Hyperliquid 公共文档</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一份 BTC carry 暴露会在不同载体上被错价：当“dated future 年化基差”显著高于“低 funding perp 所隐含的 synthetic carry”并能覆盖交易成本时，做空更贵的 carry 载体、做多更便宜的 carry 载体，等 carry gap / basis gap 收敛；若暂时没有 dated future，也可先退化成“低 funding venue perp 多头 vs 高 funding venue perp 空头”的 perp-perp synthetic carry spread。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/carry/funding/basis/synthetic-futures/perpetual-futures/calendar-spread/cross-venue/btc/15m/1h/public-data/repo/cost/risk</li>
+<li>证据类型：仓库 README + methodology + strategy code + 公共 API 文档</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主材料不是论文，而是一套最近更新、而且明显带有“可直接落地壳子”的仓库：</p>
+<ul>
+<li><strong>Tamer Atesyakar (2025), _Crypto Statistical Arbitrage_</strong></li>
+<li>类型：GitHub repo</li>
+<li>Readable URL：&lt;<a href="https://github.com/abailey81/Crypto-Statistical-Arbitrage&gt;">https://github.com/abailey81/Crypto-Statistical-Arbitrage&gt;</a></li>
+<li>Repo URL：&lt;<a href="https://github.com/abailey81/Crypto-Statistical-Arbitrage&gt;">https://github.com/abailey81/Crypto-Statistical-Arbitrage&gt;</a></li>
+<li>README raw：&lt;<a href="https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/README.md&gt;">https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/README.md&gt;</a></li>
+<li>Methodology：&lt;<a href="https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/docs/methodology.md&gt;">https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/docs/methodology.md&gt;</a></li>
+<li>Synthetic futures code：&lt;<a href="https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/strategies/futures_curve/synthetic_futures.py&gt;">https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/strategies/futures_curve/synthetic_futures.py&gt;</a></li>
+<li>Futures curve package：&lt;<a href="https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/strategies/futures_curve/__init__.py&gt;">https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/strategies/futures_curve/__init__.py&gt;</a></li>
+<li>DOI：N/A</li>
+<li>Venue：GitHub</li>
+</ul>
+<p>补充的公开数据/文档口径：</p>
+<ul>
+<li><strong>Binance USDⓈ-M Futures Mark Price / Funding 文档</strong></li>
+<li>Readable URL：&lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Mark-Price&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Mark-Price&gt;</a></li>
+<li><strong>Hyperliquid Info endpoint 文档</strong></li>
+<li>Readable URL：&lt;<a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint&gt;">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint&gt;</a></li>
+</ul>
+<p>我最后选它，不是因为又想补一篇泛泛的“funding / basis / calendar spread 综述”，而是因为它给了一个对 desk 很实用、但我们最近 intake 里还没被单独讲透的组件：</p>
+<p>&gt; <strong>把低 funding perp 视为 cheap synthetic future，用它去替代更贵的 carry 载体。</strong></p>
+<p>这和“单纯收 funding”不一样，也和“看到 basis 大就做空”不完全一样。它更像一条完整的 <strong>carry / basis / relative-value raw alpha</strong>：</p>
+<ul>
+<li>alpha 本体明确；</li>
+<li>entry / exit / sizing / risk / cost 都能直接写；</li>
+<li>还能自然退化成更快可测的 perp-perp 版本。</li>
+</ul>
+<p>---</p>
+<h2>2. 先回答：这篇东西的 base alpha 是什么？</h2>
+<h3>2.1 base alpha 是清楚的，而且是 raw alpha</h3>
+<p>先讲一句人话：</p>
+<p>&gt; <strong>同样一份 BTC carry 暴露，有时候用“dated future”买太贵；这时改用“低 funding perpetual”去合成那份暴露，成本更低。贵的那边未来会向便宜的那边收敛。</strong></p>
+<p>把它写成 desk 语言，就是：</p>
+<ul>
+<li>观察 <strong>期货年化基差</strong>；</li>
+<li>观察 <strong>perp funding 所隐含的 synthetic carry</strong>；</li>
+<li>扣掉两边交易成本、滑点、换腿成本后，得到：</li>
+<li><code>net_carry_gap = futures_carry - synthetic_perp_carry - all_costs</code></li>
+<li>当这个 gap 够大，就：</li>
+<li><strong>short 贵的 carry 载体</strong></li>
+<li><strong>long 便宜的 carry 载体</strong></li>
+<li>等 gap 收敛、funding flip、basis 回到阈值内时平仓。</li>
+</ul>
+<p>这不是 filter。 这也不是 overlay。 它本体就是一条 <strong>relative-value / carry / basis</strong> raw alpha。</p>
+<h3>2.2 为什么它比“继续补一篇普通 funding capture”更值得</h3>
+<p>因为我们最近材料池里已经有不少：</p>
+<ul>
+<li>funding persistence / sign-flip</li>
+<li>basis mean reversion</li>
+<li>cross-venue funding differential</li>
+<li>futures curve / calendar spread</li>
+</ul>
+<p>但这篇 repo 真正多走了一步：</p>
+<p>&gt; <strong>不是只盯 funding 本身，而是把 funding 变成“替代 futures carry 的定价输入”。</strong></p>
+<p>也就是说，它把几条已经存在的零件——</p>
+<ul>
+<li>funding</li>
+<li>basis</li>
+<li>calendar spread</li>
+<li>cross-venue carry</li>
+</ul>
+<p>拼成了一条更完整的策略壳，而不是再单独多收一个 feature。</p>
+<p>这正好符合当前 bot7 的优先级：</p>
+<p>&gt; <strong>可独立复现且可直接落地完整策略（entry/exit/sizing/risk/cost）的 raw alpha 候选。</strong></p>
+<p>---</p>
+<h2>3. repo 到底给了什么对 desk 有用的证据</h2>
+<h3>3.1 它不是一句空话，而是明确把 synthetic futures 写成独立策略分支</h3>
+<p><code>synthetic_futures.py</code> 一开头就把策略写得很明确：</p>
+<ul>
+<li>用多个 perpetual 组合去 <strong>replicate futures exposure</strong>；</li>
+<li>比较：</li>
+<li><code>Futures Carry Cost = Basis_Annual / 100</code></li>
+<li><code>Perp Carry Cost = Funding_Rate_Annual / 100</code></li>
+<li><code>Savings = Futures_Carry - Perp_Carry - Transaction_Costs</code></li>
+</ul>
+<p>而且代码里直接把策略分成：</p>
+<ul>
+<li><code>SINGLE_VENUE_LONG</code></li>
+<li><code>SINGLE_VENUE_SHORT</code></li>
+<li><code>CROSS_VENUE_SPREAD</code></li>
+<li><code>FUNDING_HARVEST</code></li>
+<li><code>CARRY_REPLICATION</code></li>
+</ul>
+<p>这说明它不是在讲概念，而是在讲 <strong>哪种腿结构对应哪种 alpha 壳</strong>。</p>
+<h3>3.2 repo-level 的 BTC futures curve 结果很夸张，但至少告诉我们“这条路值得 first test”</h3>
+<p>README 给的 Phase 3（BTC Futures Curve Trading）repo-level walk-forward 结果是：</p>
+<ul>
+<li><strong>Sharpe：5.81</strong></li>
+<li><strong>Total Return：203.70%</strong></li>
+<li><strong>Max Drawdown：0.89%</strong></li>
+<li><strong>Total Trades：44,652</strong></li>
+<li><strong>Out-of-sample 测试区间：2023-07-01 到 2024-12-31</strong></li>
+<li><strong>注明：transaction costs included，1.0x only</strong></li>
+</ul>
+<p>我不会把这些数字直接当成 synthetic futures 子策略自己的已验证收益，原因很简单：</p>
+<ul>
+<li>这是 <strong>Phase 3 整体书架</strong> 的结果，不是单独 <code>synthetic_futures.py</code> 的隔离结果；</li>
+<li>repo 是大而全的系统工程，分支之间可能共享过滤与组合层；</li>
+<li>没有直接看到“只做 synthetic carry replication”那条单独的 attribution 表。</li>
+</ul>
+<p>但这些数字至少说明：</p>
+<p>&gt; <strong>作者不是只在嘴上说 carry/basis，而是真把它做成了 walk-forward 框架里的一部分。</strong></p>
+<h3>3.3 它把完整策略参数写出来了，这对我们最有价值</h3>
+<p><code>SyntheticFuturesConfig</code> 里直接给了第一版可测壳：</p>
+<ul>
+<li><strong>入场最小 funding spread</strong>：<code>10% annualized</code></li>
+<li><strong>最小 z-score</strong>：<code>1.5</code></li>
+<li><strong>最小 confidence</strong>：<code>0.5</code></li>
+<li><strong>max positions</strong>：<code>5</code></li>
+<li><strong>单仓最小/最大 notional</strong>：<code>$10k / $500k</code></li>
+<li><strong>单 venue 最大暴露</strong>：<code>40%</code></li>
+<li><strong>profit target</strong>：<code>5%</code></li>
+<li><strong>stop loss</strong>：<code>3%</code></li>
+<li><strong>max holding days</strong>：<code>30</code></li>
+<li><strong>max leverage</strong>：<code>2x</code></li>
+</ul>
+<p>更重要的是，它还给了 venue 偏好：</p>
+<ul>
+<li><code>preferred_long_venues</code>: <strong>Hyperliquid / dYdX</strong>（默认更低 funding）</li>
+<li><code>preferred_short_venues</code>: <strong>Binance / Bybit</strong>（默认更高 funding）</li>
+</ul>
+<p>翻成人话就是：</p>
+<p>&gt; <strong>先在低 funding venue 挂 cheap long leg，再在高 funding venue 放 expensive short leg。</strong></p>
+<p>这就不是“我知道 funding 有差”，而是“我已经知道这条 alpha 的默认腿怎么摆”。</p>
+<h3>3.4 它还给了 crisis 下的参数收缩逻辑</h3>
+<p>代码里专门写了 crisis 参数：</p>
+<ul>
+<li>入场 funding spread 阈值翻倍；</li>
+<li>仓位乘数降到 <code>0.25</code>；</li>
+<li>最大持仓时间砍半；</li>
+<li>stop 更紧。</li>
+</ul>
+<p>这非常对 desk 胃口，因为 carry / basis 壳最怕的不是平时，而是：</p>
+<ul>
+<li>exchange-specific liquidation spiral</li>
+<li>index / mark 偏离</li>
+<li>funding 机制失灵</li>
+<li>单 venue 风险突然暴露</li>
+</ul>
+<p>也就是说，这篇材料不是只会告诉你“信号是什么”，还告诉你：</p>
+<p>&gt; <strong>什么时候这条 alpha 要缩表。</strong></p>
+<p>---</p>
+<h2>4. 对 short-cycle desk，最值得拿走的不是“大而全系统”，而是这个更小、更诚实的策略壳</h2>
+<h3>4.1 别一开始就复刻 repo 全家桶，先做最小壳</h3>
+<p>对我们最实用的拆法不是直接复刻 32 venues 多阶段系统，而是先拆成两级实验：</p>
+<p>#### 版本 A：更快的 perp-perp synthetic carry spread（最快可测） 当暂时不接 dated future 时，先测：</p>
+<ul>
+<li>long 低 funding venue perp</li>
+<li>short 高 funding venue perp</li>
+<li>只吃 funding/carry 差与价差收敛</li>
+</ul>
+<p>这版最适合先做 <code>15m</code> 监控 + <code>1h</code> 主调仓。</p>
+<p>#### 版本 B：完整的 futures vs synthetic futures carry substitution（正式版） 当能稳定拿到 quarterly futures / dated futures 数据时，再测：</p>
+<ul>
+<li>short 昂贵的 dated future carry</li>
+<li>long 低 funding perpetual synthetic leg</li>
+<li>让 futures basis 与 synthetic carry gap 回归</li>
+</ul>
+<p>这版才是最完整的“same exposure, different carrier mispricing”版本。</p>
+<h3>4.2 这条 alpha 跟普通 funding arbitrage 的差别在哪</h3>
+<p>普通 funding arbitrage 更像：</p>
+<ul>
+<li>直接收 funding；</li>
+<li>或跨 venue 收 funding differential；</li>
+<li>但未必显式比较“替代 carry 载体”的定价。</li>
+</ul>
+<p>这条 synthetic-futures 壳则更像：</p>
+<p>&gt; <strong>把 perp funding 当成 futures carry 的替代贴现率。</strong></p>
+<p>因此它更接近：</p>
+<ul>
+<li>carry substitution</li>
+<li>exposure-carrier relative value</li>
+<li>term-structure execution optimization</li>
+</ul>
+<p>这会让它比“只盯 funding sign”更像一条完整策略，而不是单一 feature。</p>
+<h3>4.3 它和我们当前短周期框架的关系</h3>
+<p>对 <code>1m / 3m / 5m / 15m</code>，我会很诚实地定位：</p>
+<ul>
+<li><strong>alpha 本体节奏</strong>：更偏 <code>15m / 1h</code></li>
+<li><strong>1m / 3m / 5m` 的作用</strong>：执行择时、滑点控制、腿同步、异常 veto</li>
+</ul>
+<p>也就是说：</p>
+<ul>
+<li><strong>不要</strong>把 funding / basis 这种天然较慢的东西硬伪装成“逐分钟主信号”；</li>
+<li><strong>要</strong>把它当成 <code>15m / 1h</code> 的 raw alpha，再把更快周期拿来做 execution layer。</li>
+</ul>
+<p>这正符合用户给的约束。</p>
+<p>---</p>
+<h2>5. 公开数据能不能快速复现？能，但要分清主信号和执行层</h2>
+<h3>5.1 数据源：公开可得</h3>
+<p>最快的公开数据入口可以直接用：</p>
+<ul>
+<li><strong>Binance USDⓈ-M Futures</strong></li>
+<li>mark / index / last funding / next funding time</li>
+<li>文档：&lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Mark-Price&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Mark-Price&gt;</a></li>
+<li><strong>Hyperliquid Info API</strong></li>
+<li>mids / perp metadata / user-visible market data</li>
+<li>文档：&lt;<a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint&gt;">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint&gt;</a></li>
+<li>再补：Bybit / OKX / dYdX / GMX 的 funding 与 perp price 公共口径（repo 里已默认纳入 allowed venues）</li>
+</ul>
+<p>如果先走最小实验，实际上只需要：</p>
+<ul>
+<li>perp mid / mark</li>
+<li>funding rate history</li>
+<li>next funding time</li>
+<li>交易费与滑点假设</li>
+</ul>
+<h3>5.2 更新频率：适合 <code>15m / 1h</code> alpha，<code>1m / 3m / 5m</code> execution</h3>
+<p>这条线天然不是“每分钟重新发明世界”的 alpha：</p>
+<ul>
+<li>funding 事件是 <strong>离散</strong> 的；</li>
+<li>annualized carry 的变化，更多靠 <strong>basis / price spread</strong> 在 intraday 内波动；</li>
+<li>因此最合理的 first test 是：</li>
+<li><code>15m</code> 监控 feature</li>
+<li><code>1h</code> 计算主信号 / 是否换腿</li>
+<li><code>1m / 3m / 5m</code> 只用于腿同步和冲击成本控制</li>
+</ul>
+<h3>5.3 最小可复现实验口径</h3>
+<p><strong>最快实验（版本 A）</strong>：</p>
+<ul>
+<li>标的：<code>BTC</code> perp cross-venue</li>
+<li>venues：Binance / Bybit / Hyperliquid / dYdX（先挑 2~3 个）</li>
+<li>bar：<code>15m</code></li>
+<li>signal refresh：每 <code>1h</code></li>
+<li>feature：</li>
+<li><code>funding_spread_annual_pct</code></li>
+<li><code>cross_venue_basis_spread</code></li>
+<li><code>zscore(funding_spread, lookback=14d hourly)</code></li>
+<li><code>cost_adjusted_edge_bps</code></li>
+<li>entry：<code>funding_spread_annual_pct &gt; 10%</code> 且 <code>|z| &gt; 1.5</code> 且净 edge &gt; round-trip costs</li>
+<li>exit：edge 回落、funding flip、profit target、stop、max hold</li>
+</ul>
+<p><strong>完整实验（版本 B）</strong>：</p>
+<ul>
+<li>在版本 A 上再加：</li>
+<li>quarterly future / dated future basis</li>
+<li><code>futures_carry - synthetic_perp_carry</code></li>
+<li>核心问题变成：</li>
+<li><strong>同一份 BTC carry 暴露，用 futures 买贵了多少？用 low-funding perp 合成便宜了多少？</strong></li>
+</ul>
+<p>---</p>
+<h2>6. 如果直接落地成完整策略，我会怎么写</h2>
+<h3>6.1 entry</h3>
+<p>先用最小、可执行的定义：</p>
+<ol>
+<li>计算每个 venue 的 annualized funding carry；</li>
+<li>计算目标 futures / perp 载体的 annualized basis carry；</li>
+<li>估计全套 round-trip cost：</li>
+</ol>
+<ul>
+<li>taker / maker fee</li>
+<li>slippage</li>
+<li>跨 venue 资金占用 / 借币 / gas（如果有）</li>
+</ul>
+<ol>
+<li>只有当：</li>
+</ol>
+<ul>
+<li><code>net_carry_gap &gt; threshold</code></li>
+<li><code>|zscore(carry_gap)| &gt; 1.5</code></li>
+<li>市场流动性 / 深度 / mark-index 偏离未超阈值</li>
+<p>才开仓。</p>
+</ul>
+<h3>6.2 position structure</h3>
+<p>分两种：</p>
+<ul>
+<li><strong>perp-perp 版本</strong>：</li>
+<li>long 低 funding venue perp</li>
+<li>short 高 funding venue perp</li>
+<li><strong>future-vs-synthetic 版本</strong>：</li>
+<li>short 昂贵 future</li>
+<li>long cheap synthetic perp leg</li>
+<li>必要时叠加对冲腿，保证总 delta 近似中性</li>
+</ul>
+<h3>6.3 exit</h3>
+<p>代码给的壳已经够实用：</p>
+<ul>
+<li><code>profit_target_pct = 5%</code></li>
+<li><code>stop_loss_pct = 3%</code></li>
+<li><code>max_holding_days = 30</code></li>
+<li><code>funding_flip_exit = True</code></li>
+</ul>
+<p>对 short-cycle 版，我会再补一层更快的 exit：</p>
+<ul>
+<li><code>15m</code> 内若 <code>net_carry_gap</code> 回到 <code>0.5 * entry_threshold</code> 内，先减仓；</li>
+<li>若 legs 之间的 execution slippage 急剧扩大，也提前退出；</li>
+<li>funding 发放前后 1~2 个 bar 单独做 veto，避免硬吃结算跳变。</li>
+</ul>
+<h3>6.4 sizing</h3>
+<p>先用 repo 的保守框架：</p>
+<ul>
+<li>max positions：<code>5</code></li>
+<li>单 venue 最大暴露：<code>40%</code></li>
+<li>单笔 notional：<code>$10k</code> 到 <code>$500k</code></li>
+<li>max leverage：<code>2x</code></li>
+</ul>
+<p>落到我们 desk，我会先这样简化：</p>
+<ul>
+<li><code>size ∝ min(net_edge / target_edge, 1.0)</code></li>
+<li>再乘上：</li>
+<li>liquidity factor</li>
+<li>venue health factor</li>
+<li>crisis multiplier</li>
+</ul>
+<h3>6.5 risk</h3>
+<p>这条壳最关键的风险不是方向，而是 <strong>载体风险</strong>：</p>
+<ul>
+<li>funding regime 突变</li>
+<li>venue-specific liquidation / outage</li>
+<li>mark/index 失真</li>
+<li>单边腿先成交，另一边来不及对冲</li>
+<li>极端事件下 carry gap 不收敛，反而继续扩</li>
+</ul>
+<p>所以风控要盯：</p>
+<ul>
+<li>venue health</li>
+<li>mark-index dislocation</li>
+<li>basis gap 扩张速度</li>
+<li>单腿滑点</li>
+<li>可平仓深度</li>
+</ul>
+<h3>6.6 cost</h3>
+<p>这里千万别偷懒。 这条 alpha 如果不把 cost 算全，会特别容易“看起来年化很美，实际一上手就磨没”。</p>
+<p>至少要显式计入：</p>
+<ul>
+<li>双腿手续费</li>
+<li>双腿滑点</li>
+<li>funding 收/付方向</li>
+<li>inventory / collateral 占用</li>
+<li>如果走 DEX / hybrid，再加 gas 与失败重试成本</li>
+</ul>
+<p>---</p>
+<h2>7. 这轮最值得立刻做的，不是全复刻，而是 3 个最小实验</h2>
+<h3>7.1 实验 1：perp-perp funding spread 的 post-cost 单调性</h3>
+<p>目的：验证 repo 给的 <code>10% annualized + z&gt;1.5</code> 壳，在我们口径下还有没有边。</p>
+<p>要看：</p>
+<ul>
+<li><code>net_funding_spread_decile</code> 与未来 <code>1h / 4h / 8h</code> PnL 是否单调；</li>
+<li>交易成本后 decile-10 vs decile-1 还能不能拉开。</li>
+</ul>
+<h3>7.2 实验 2：加入 basis 后，synthetic carry gap 是否优于纯 funding spread</h3>
+<p>目的：回答 repo 真正新颖的那部分值不值钱。</p>
+<p>也就是比较：</p>
+<ul>
+<li>只用 funding differential</li>
+<li>用 <code>futures_carry - synthetic_perp_carry</code></li>
+</ul>
+<p>哪一个更有：</p>
+<ul>
+<li>单调性</li>
+<li>hit-rate</li>
+<li>风险调整后收益</li>
+</ul>
+<h3>7.3 实验 3：1m/3m/5m execution veto 是否能明显改善 realized edge</h3>
+<p>目的：别把 execution 留到最后。</p>
+<p>具体测：</p>
+<ul>
+<li>不加 veto 的裸入场</li>
+<li>加 <code>spread / depth / impact / mark-index</code> veto 的入场</li>
+</ul>
+<p>看是否能明显减少：</p>
+<ul>
+<li>adverse entry</li>
+<li>单腿偏离</li>
+<li>结算前后被噪音扫出</li>
+</ul>
+<p>---</p>
+<h2>8. 我对这条主题的判断</h2>
+<h3>8.1 这是 raw alpha，不是 filter 伪装</h3>
+<p>因为它的本体就是：</p>
+<p>&gt; <strong>做多便宜 carry 载体，做空昂贵 carry 载体，吃错价收敛。</strong></p>
+<p>不是“市场差时别做”的风控建议。 不是“高波动时减仓”的 overlay。 是可以直接独立回测、独立开平仓、独立算成本的一条策略。</p>
+<h3>8.2 它为什么值得进当前素材池</h3>
+<p>因为它给 desk 补上的不是第 N 条 funding feature，而是：</p>
+<ul>
+<li><strong>carry substitution</strong></li>
+<li><strong>synthetic future leg construction</strong></li>
+<li><strong>futures curve 与 perp funding 的桥梁层</strong></li>
+</ul>
+<p>这是一个明显更“可组装成完整策略”的组件。</p>
+<h3>8.3 我会把它放在什么优先级</h3>
+<p>我的判断：</p>
+<ul>
+<li><strong>优先级：中高</strong></li>
+<li>不是因为它已经被证明“马上可上实盘”；</li>
+<li>而是因为它同时满足：</li>
+<li>raw alpha 身份清楚</li>
+<li>可独立复现</li>
+<li>能写完整策略壳</li>
+<li>还能和已有 funding / basis / curve / execution 组件自然拼装</li>
+</ul>
+<p>---</p>
+<h2>9. 下一步怎么测</h2>
+<p>我建议下一步直接做一个 <strong>两层实验</strong>：</p>
+<ol>
+<li><strong>快速 verdict（2~4 小时研发工时）</strong></li>
+</ol>
+<ul>
+<li>用公开 funding + perp mid 数据</li>
+<li>先测 perp-perp 版本</li>
+<li>看 <code>net_funding_spread</code> 的 post-cost decile 单调性</li>
+</ul>
+<ol>
+<li><strong>正式最小版（半天到一天）</strong></li>
+</ol>
+<ul>
+<li>补一层 dated future / quarterly futures basis</li>
+<li>构造 <code>synthetic_carry_gap</code></li>
+<li>做 <code>15m</code> 监控、<code>1h</code> 主调仓、<code>5m</code> execution veto</li>
+</ul>
+<p>如果第二层显著优于第一层，就说明：</p>
+<p>&gt; <strong>repo 里最值得 desk 拿走的，不是“funding arbitrage”四个字，而是“synthetic future 作为 carry 载体替代”这条 alpha 结构。</strong></p>
+<h2>10. 来源清单</h2>
+<ul>
+<li>Tamer Atesyakar (2025), _Crypto Statistical Arbitrage_ (GitHub Repo)</li>
+<p>&lt;<a href="https://github.com/abailey81/Crypto-Statistical-Arbitrage&gt;">https://github.com/abailey81/Crypto-Statistical-Arbitrage&gt;</a></p>
+<li>Repo README</li>
+<p>&lt;<a href="https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/README.md&gt;">https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/README.md&gt;</a></p>
+<li>Methodology</li>
+<p>&lt;<a href="https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/docs/methodology.md&gt;">https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/docs/methodology.md&gt;</a></p>
+<li>Synthetic futures strategy code</li>
+<p>&lt;<a href="https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/strategies/futures_curve/synthetic_futures.py&gt;">https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/strategies/futures_curve/synthetic_futures.py&gt;</a></p>
+<li>Binance USDⓈ-M Futures Mark Price / Funding docs</li>
+<p>&lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Mark-Price&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Mark-Price&gt;</a></p>
+<li>Hyperliquid Info endpoint docs</li>
+<p>&lt;<a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint&gt;">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint&gt;</a></p>
+</ul>
+</body>
+</html>

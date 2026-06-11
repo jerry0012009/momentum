@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2026 EMA walk-forward 论文只读成“参数优化教程”：对 short-cycle desk，更该先测的是「EMA crossover × double-OOS admission」这条完整 trend raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2026 EMA walk-forward 论文只读成“参数优化教程”：对 short-cycle desk，更该先测的是「EMA crossover × double-OOS admission」这条完整 trend raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-19 11:54 UTC</span>
+      <span class="pill">研究时间：2026-04-19 11:35 UTC</span>
+      <span class="pill">类型：论文 + GitHub repo + Binance USDⓈ-M portability probe</span>
+      <span class="pill">主题标签：trend / momentum / EMA / walk-forward / double-OOS / cost / 1m / 5m / 15m / repo / paper</span>
+      <span class="pill">证据类型：论文全文 + GitHub 复现仓 + 本地 public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-19_1135_ema-wfo-double-oos-trend-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-19 11:35 UTC</li>
+<li>类型：论文 + GitHub repo + Binance USDⓈ-M portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：EMA crossover trend-following；快 EMA 高于慢 EMA 做多 / 低于慢 EMA 做空或翻空，参数只允许在训练窗里选，再到未见测试窗执行。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否（论文/仓库壳完整；但本轮 <code>5m/15m</code> taker-cost 快检不过线，需先改成低换手/成本门槛版本）</li>
+<li>主题标签：trend / momentum / EMA / walk-forward / double-OOS / cost / 1m / 5m / 15m / repo / paper</li>
+<li>证据类型：论文全文 + GitHub 复现仓 + 本地 public-data portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>Mroziewicz 与 Ślepaczuk (2026) 的 arXiv 论文把一个很朴素的 EMA crossover trend-following 策略放进严谨的 walk-forward 框架：先在全局训练期扫描训练窗/测试窗长度，再把最优的 <code>7d train / 28d test</code>、<code>14d train / 10d test</code> 等设置只执行一次到真正 unseen period。配套仓库 <code>tmr-crypto/wf_optim_crypto_analysis</code> 用 DVC + R 复现论文表格和图。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> EMA crossover 不是新 alpha，但“只在训练期选窗口、只在未见期执行一次”的纪律，比反复调参更值得 desk 复用。</li>
+<li>论文覆盖 Bitcoin <code>1m~60m</code> 六个频率、<code>81</code> 组 walk-forward window 组合；训练期 <code>19</code> 个月，unseen 测试期 <code>21</code> 个月。</li>
+<li>论文称测试期策略表现接近 buy-and-hold，但 drawdown 更低、Information Ratio 更高；与 buy-and-hold 组合后，组合 drawdown 约降低 <code>50%</code>。</li>
+<li>论文显式纳入 <code>0.1%</code>/transaction 成本，并做成本敏感性；break-even 约在 <code>0.4%</code>/transaction，说明作者没有把成本问题藏起来。</li>
+<li>我们的 Binance USDⓈ-M 快检不支持“直接照搬 taker EMA trend”：<code>15m</code> 近 <code>180d</code> 上，固定 <code>12/48</code> EMA 在 BTC/SOL gross 为正但扣 <code>8bps</code>/turn 后净值转负；<code>5m</code> 换手更高，成本吞噬更明显。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线补的是 <strong>完整策略壳</strong>，不是只补一个指标：</p>
+<ul>
+<li><code>entry</code>：EMA fast/slow cross 后下一根 bar 按方向进场；</li>
+<li><code>exit</code>：反向 cross 翻仓/离场；</li>
+<li><code>sizing</code>：先用固定名义，下一步可替换成 ATR / realized-vol sizing；</li>
+<li><code>risk</code>：walk-forward window 作为 admission discipline，禁止在 OOS 反复重调；</li>
+<li><code>cost</code>：先把 turnover 和 per-turn bps 明确写进 verdict。</li>
+</ul>
+<p>对 Jerry 当前阶段，最值钱的不是“EMA 又能不能赚钱”，而是把任何 raw alpha 都按这种 <strong>double-OOS / single-shot unseen</strong> 的方式入池，减少“看了 OOS 又调参”的假胜利。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势 / time-series momentum</li>
+<li>基础 alpha：EMA crossover trend-following</li>
+<li>regime：默认全天候；可加 BTC trend / realized-vol / liquidity gate</li>
+<li>filter / veto：只使用训练窗内选出的 EMA 参数和 walk-forward window；若 expected net &lt; cost hurdle 则不交易</li>
+<li>risk / sizing / execution overlay：固定仓位 baseline；后续加 ATR sizing、turnover cap、maker/child execution、single-shot OOS admission</li>
+</ul>
+<h2>4. 本地最小实验结果与下一步怎么测</h2>
+<p>我用 Binance USDⓈ-M 公共 K 线做了一个很小的 portability probe：<code>BTC/ETH/BNB/SOL</code>，<code>15m</code> 近 <code>180d</code>、<code>5m</code> 近 <code>60d</code>；比较固定 <code>EMA 12/48</code> 与简化 walk-forward <code>7/28</code>、<code>14/10</code>，fast/slow grid 为 <code>[6,8,12,16,24,32] × [24,32,48,64,96,128]</code>，按 <code>8bps</code>/turn 粗扣成本。</p>
+<p>关键数：</p>
+<ul>
+<li><code>15m fixed 12/48</code>：BTC gross <code>+0.156bps/bar</code>、SOL gross <code>+0.057bps/bar</code>，但 net 分别约 <code>-0.246 / -0.352bps/bar</code>；平均换手约 <code>4.8~4.9</code> unit/day。</li>
+<li><code>15m wfo_14_10</code>：SOL 是最接近的 pocket，gross <code>+0.230bps/bar</code>，net 仍约 <code>-0.047bps/bar</code>；换手约 <code>3.33</code> unit/day。</li>
+<li><code>5m</code>：固定 <code>12/48</code> 在 BTC/SOL gross 为正（约 <code>+0.095 / +0.084bps/bar</code>），但平均换手约 <code>14.7</code> unit/day，net 明显为负。</li>
+</ul>
+<p>下一步不要继续裸 EMA 炼丹，应该测：</p>
+<ol>
+<li><strong>low-turnover admission</strong>：只允许 <code>slow &gt;= 96</code> 且 cross 后至少持有 <code>N</code> bars，目标把换手压到 <code>&lt;1.5 unit/day</code>；</li>
+<li><strong>cost hurdle gate</strong>：训练窗内必须 <code>gross edge &gt; 2 × expected cost</code> 才启用该参数组；</li>
+<li><strong>trend-only sleeve</strong>：先只做 BTC/SOL 的 <code>15m long-only</code> 或 <code>directional flat/long</code>，避免 long-short 双边翻仓成本；</li>
+<li><strong>single-shot OOS protocol</strong>：任何候选只允许训练期选一次参数，然后锁死跑 unseen，不允许在测试期看结果改阈值。</li>
+</ol>
+<p>Artifact：<code>reports/artifacts/quant_digests/2026-04-19_ema_wfo_summary.csv</code>。</p>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文样本偏 BTC/ETH/BNB 大币，且策略与 buy-and-hold 组合后改善最明显；这不等于单独 EMA 策略能在高换手 perp taker 环境里独立赚钱。</li>
+<li>我们的本地快检只复现了思想，不是完整复刻作者 DVC pipeline；参数 grid 与成本口径是 desk 化简版。</li>
+<li>EMA crossover 本身很容易变成趋势市好、震荡市亏；如果没有 turnover cap / cost hurdle / regime gate，<code>5m</code> 尤其容易“毛利有、净利没”。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Tomasz Mroziewicz, Robert Ślepaczuk. (2026). *A novel approach to trading strategy parameter optimization using double out-of-sample data and walk-forward techniques*. arXiv:2602.10785.</li>
+<li>DOI: <code>10.48550/arXiv.2602.10785</code></li>
+<li>Readable URL: <a href="https://arxiv.org/html/2602.10785">https://arxiv.org/html/2602.10785</a></li>
+<li>arXiv URL: <a href="https://arxiv.org/abs/2602.10785">https://arxiv.org/abs/2602.10785</a></li>
+<li>Repo URL: <a href="https://github.com/tmr-crypto/wf_optim_crypto_analysis">https://github.com/tmr-crypto/wf_optim_crypto_analysis</a></li>
+</ul>
+</body>
+</html>

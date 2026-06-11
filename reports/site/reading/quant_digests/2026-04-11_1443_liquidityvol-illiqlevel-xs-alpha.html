@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2021 liquidity-volatility 论文只读成“流动性风险解释”：对 short-cycle desk，更该先测的是「high illiq-vol + high illiq-level × alt-basket long-short」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2021 liquidity-volatility 论文只读成“流动性风险解释”：对 short-cycle desk，更该先测的是「high illiq-vol + high illiq-level × alt-basket long-short」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-11 14:47 UTC</span>
+      <span class="pill">研究时间：2026-04-11 14:43 UTC</span>
+      <span class="pill">类型：2021 *Finance Research Letters* 论文摘要（OpenAlex + Crossref）+ Binance USDⓈ-M `15m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/relative-value/liquidity/illiquidity/liquidity-volatility/illiquidity-level/alt-basket/market-neutral/15m/1h/binance-perpetual/paper/abstract/public-data/cost/risk</span>
+      <span class="pill">证据类型：论文摘要 + 本地 public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-11_1443_liquidityvol-illiqlevel-xs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-11 14:43 UTC</li>
+<li>类型：2021 *Finance Research Letters* 论文摘要（OpenAlex + Crossref）+ Binance USDⓈ-M <code>15m</code> public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>横截面上，最近一段时间里“流动性更不稳定、且整体更差”的币，后续 1 小时更容易拿到更高回报；可交易翻译是 <code>long high(liquidity-volatility + illiquidity-level) / short low(...)</code>。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha/cross-sectional/relative-value/liquidity/illiquidity/liquidity-volatility/illiquidity-level/alt-basket/market-neutral/15m/1h/binance-perpetual/paper/abstract/public-data/cost/risk</li>
+<li>证据类型：论文摘要 + 本地 public-data portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主材料：</p>
+<ul>
+<li><strong>Thomas Leirvik (2021)</strong></li>
+<li><strong>Title:</strong> *Cryptocurrency returns and the volatility of liquidity*</li>
+<li><strong>Venue:</strong> *Finance Research Letters*, Volume 44</li>
+<li><strong>DOI:</strong> <code>10.1016/j.frl.2021.102031</code></li>
+<li><strong>Readable URL:</strong> &lt;<a href="https://doi.org/10.1016/j.frl.2021.102031&gt;">https://doi.org/10.1016/j.frl.2021.102031&gt;</a></li>
+<li><strong>Repo URL:</strong> 无公开 repo</li>
+</ul>
+<p>OpenAlex 摘要能稳定拿到的核心信息是：</p>
+<p>&gt; 作者在按市值计的前五大 crypto 上，记录到<strong>流动性波动（volatility of liquidity）与预期收益总体显著正相关，而且这一关系明显时变</strong>；同时，流动性水平与流动性波动大多负相关，因此<strong>在流动性水平偏低时，回报更高</strong>。</p>
+<p>这轮最值得拿走的，不是“流动性风险也有溢价”这句大白话，而是一个更能给 desk 直接做实验的翻译：</p>
+<p>&gt; <strong>别只盯着“流动性差”本身；更该盯着“流动性本来就差，而且还在剧烈波动”的那一侧。</strong></p>
+<p>对短周期 desk，这句话可以被压成一个很直接的横截面 raw alpha：</p>
+<ul>
+<li>用 <code>15m</code> bar 的公开数据先做一个 <strong>illiquidity proxy</strong>；</li>
+<li>再分别看它的 <strong>level</strong> 和 <strong>volatility</strong>；</li>
+<li>最后把两者合成一个横截面 score；</li>
+<li>做 <code>long high score / short low score</code>。</li>
+</ul>
+<h2>2. 先回答最重要的一句：base alpha 到底是什么</h2>
+<p>这轮 base alpha 是清楚的：</p>
+<p>&gt; <strong>liquidity-volatility premium / illiquidity-stress premium</strong>。</p>
+<p>翻成人话：</p>
+<ul>
+<li>不是“过去涨得猛所以继续追”；</li>
+<li>也不是“刚跌得狠所以抄反弹”；</li>
+<li>而是看<strong>谁的成交承接更差、而且这种差还不稳定</strong>；</li>
+<li>这类币在后续一段时间更可能给出更高的风险补偿。</li>
+</ul>
+<p>如果把它写成交易语句，就是：</p>
+<p>&gt; <strong>在横截面上，做多“高流动性波动 + 低流动性水平（等价于高 illiquidity level）”那一篮子，做空反方向那一篮子。</strong></p>
+<p>所以它不是 filter，不是 overlay，本身就可以单独形成一个 cross-sectional long-short raw alpha。</p>
+<h2>3. 这篇 2021 论文真正给了什么</h2>
+<h3>3.1 它的核心不是 liquidity level，而是 liquidity 的“波动”</h3>
+<p>很多人看到这类题目，第一反应会把它读成：</p>
+<ul>
+<li>流动性差 -&gt; 收益高；</li>
+<li>或者 illiquidity premium 的老故事。</li>
+</ul>
+<p>但这篇 paper 更关键的一层是：</p>
+<p>&gt; <strong>作者看的不是静态流动性水平，而是流动性本身的波动。</strong></p>
+<p>也就是：</p>
+<ul>
+<li>市场不是简单分成“流动性好 / 不好”；</li>
+<li>还要看这种流动性到底稳不稳；</li>
+<li><strong>越不稳定，投资者要求的补偿越高。</strong></li>
+</ul>
+<p>这对 crypto 很重要，因为很多币的问题不是“长期都不 liquid”，而是：</p>
+<p>&gt; <strong>有时能成交，有时突然抽干；平时看起来能做，真要换仓时深度却不在。</strong></p>
+<p>这恰好更像短周期 desk 真正面对的风险。</p>
+<h3>3.2 作者给出的方向是正的：流动性波动越高，预期收益越高</h3>
+<p>OpenAlex 摘要的关键信息可以浓缩成一句：</p>
+<p>&gt; <strong>volatility of liquidity 和 expected returns 整体显著正相关。</strong></p>
+<p>也就是：</p>
+<ul>
+<li>流动性越不稳定的币；</li>
+<li>后续回报要求越高；</li>
+<li>对交易上就是：<strong>高 liquidity-vol bucket 并不一定是 veto，也可能是你真正该拿 risk premium 的地方。</strong></li>
+</ul>
+<p>这很适合补当前素材池，因为我们已有不少：</p>
+<ul>
+<li>reversal</li>
+<li>OFI</li>
+<li>lead-lag</li>
+<li>pairs / basis / funding</li>
+</ul>
+<p>但“<strong>把 liquidity stress 本身当横截面 alpha</strong>”这条线还不算拥挤。</p>
+<h3>3.3 摘要还额外给了一个很有生产力的二阶提示：level 和 volatility 要一起看</h3>
+<p>摘要里另一句很关键：</p>
+<p>&gt; <strong>流动性水平和流动性波动大多负相关；当流动性水平低时，回报更高。</strong></p>
+<p>这意味着对 desk 来说，真正值得优先测试的可能不是：</p>
+<ul>
+<li>只看一个单变量 <code>vol(liquidity)</code>；</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li><strong><code>vol(liquidity)</code> + <code>level(liquidity)</code> 的联合排序。</strong></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li><strong>最有味道的，不是“流动性偶尔波动一下”的币；</strong></li>
+<li><strong>而是“本来就差，而且还很不稳定”的币。</strong></li>
+</ul>
+<p>这也是我这轮 portability probe 里重点验证的版本。</p>
+<h2>4. 为什么这轮值得写，而不是继续补一个 generic filter</h2>
+<p>先问一句：为什么这轮还值得做，而不是继续写一个 overlay / regime？</p>
+<p>因为这条线满足 3 个当前更稀缺的条件：</p>
+<ol>
+<li><strong>它是 raw alpha，不只是 veto。</strong></li>
+<li><strong>它服务的是 cross-sectional / relative-value book，能补当前素材池结构。</strong></li>
+<li><strong>它能直接压到 <code>15m</code> + <code>1h</code> 的最小实验，不需要等低频外部数据。</strong></li>
+</ol>
+<p>更重要的是，它提供的是一种和已有 reversal/OFI 很不同的抓手：</p>
+<p>&gt; <strong>不是从价格路径本身找 edge，而是从“成交承接的脆弱性”找风险补偿。</strong></p>
+<h2>5. 本地 public-data portability probe：把论文的 daily idea 压成 <code>15m</code> 横截面实验</h2>
+<p>本地 artifacts：</p>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/liquidity_volatility_illiqlevel_probe_summary_2026-04-11.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/liquidity_volatility_illiqlevel_probe_series_2026-04-11.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/liquidity_volatility_illiqlevel_probe_universe_2026-04-11.txt</code></li>
+</ul>
+<h3>5.1 Probe 设定</h3>
+<p>数据口径：</p>
+<ul>
+<li>市场：Binance USDⓈ-M perpetual</li>
+<li>bar 频率：<code>15m</code></li>
+<li>forward return：下一段 <strong><code>1h</code>（4 根 <code>15m</code>）</strong> close-to-close return</li>
+<li>价格数据：<code>fapi/v1/klines</code></li>
+<li>成交代理：每根 K 线自带 <code>quote volume</code></li>
+</ul>
+<p>代理变量：</p>
+<ul>
+<li>先构造一个非常朴素的 <strong>Amihud 风格 illiquidity proxy</strong>：</li>
+<li><code>ILLIQ_t = abs(ret_t) / quote_volume_t</code></li>
+<li>再对每个币分别算：</li>
+</ul>
+<ol>
+<li><code>lvl</code> = rolling mean of <code>log(ILLIQ)</code></li>
+<li><code>lv</code> = rolling std of <code>log(ILLIQ)</code></li>
+</ol>
+<ul>
+<li>横截面打分：</li>
+<li><code>score = z(lv) + z(lvl)</code></li>
+</ul>
+<p>也就是：</p>
+<p>&gt; <strong>高 score = illiquidity 本来就高，而且这种 illiquidity 还在剧烈波动。</strong></p>
+<p>组合做法：</p>
+<ul>
+<li>每个时点按 score 排序</li>
+<li><strong>做多 top 20%，做空 bottom 20%</strong></li>
+<li>持有未来 <code>1h</code></li>
+</ul>
+<h3>5.2 为什么这个 proxy 虽然不等于原文 exact spec，但仍值得做</h3>
+<p>这里我没有硬装成“完全复刻论文”，而是做了一个 desk-friendly 的 public-data proxy。</p>
+<p>原因很简单：</p>
+<ul>
+<li>论文摘要告诉你的核心是 <strong>方向关系</strong>：<code>liquidity volatility ↑ -&gt; expected return ↑</code>；</li>
+<li>但短周期 desk 真正先要回答的是：</li>
+<li>这个关系能不能压到 <code>15m</code>？</li>
+<li>公开数据能不能先做第一轮 transfer check？</li>
+</ul>
+<p>所以这轮 probe 的目标不是学术精确复刻，而是：</p>
+<p>&gt; <strong>先看它能否长成一个可以继续打磨的 short-cycle raw alpha family。</strong></p>
+<h2>6. 结果先说结论：这条线更像“广义 alt-basket premium”，不是 majors-only alpha</h2>
+<h3>6.1 broad universe：信号很干净</h3>
+<p>我先在一组更接近可交易 alt-basket 的 universe 上测：</p>
+<ul>
+<li><strong><code>top25_30d_quotevol</code></strong></li>
+<li>规则：USDT perp、上市超过 30 天、按 24h quote volume 取前 25</li>
+</ul>
+<p>结果很直白：</p>
+<p>#### <code>top25_30d_quotevol</code></p>
+<ul>
+<li><strong>24h window</strong>：</li>
+<li>long-short 平均 <strong><code>+12.44 bps / 1h</code></strong></li>
+<li><code>t ≈ 4.42</code></li>
+<li>胜率 <strong><code>54.4%</code></strong></li>
+<li><strong>3d window</strong>：</li>
+<li>long-short 平均 <strong><code>+28.88 bps / 1h</code></strong></li>
+<li><code>t ≈ 7.53</code></li>
+<li>胜率 <strong><code>57.4%</code></strong></li>
+<li><strong>7d window</strong>：</li>
+<li>long-short 平均 <strong><code>+34.76 bps / 1h</code></strong></li>
+<li><code>t ≈ 5.09</code></li>
+<li>胜率 <strong><code>57.9%</code></strong></li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>在更广一点、允许 alt 进入的 perp universe 里，这条 <code>high illiq-vol + high illiq-level</code> 横截面书不是贴地噪声，而是相当像一个活的 risk-premium factor。</strong></p>
+<p>而且一个很有意思的现象是：</p>
+<ul>
+<li><strong>3d / 7d 窗口明显比 24h 更强</strong>。</li>
+</ul>
+<p>这意味着它可能不是“超高频瞬时冲击”类信号，而更像：</p>
+<p>&gt; <strong>一种需要几天滚动窗口才能稳定识别的流动性压力溢价。</strong></p>
+<h3>6.2 majors12：几乎没边</h3>
+<p>我再把 universe 缩到更 desk 常用的 majors12：</p>
+<ul>
+<li><code>BTC, ETH, SOL, BNB, XRP, DOGE, ADA, AVAX, LINK, SUI, ARB, WLD</code></li>
+</ul>
+<p>结果几乎消失：</p>
+<p>#### <code>majors12</code></p>
+<ul>
+<li><strong>24h</strong>：<code>+0.09 bps / 1h</code>，<code>t ≈ 0.08</code></li>
+<li><strong>3d</strong>：<code>+0.38 bps / 1h</code>，<code>t ≈ 0.31</code></li>
+<li><strong>7d</strong>：<code>+1.44 bps / 1h</code>，<code>t ≈ 0.90</code></li>
+</ul>
+<p>也就是：</p>
+<p>&gt; <strong>这条线不是一个“拿大币就能做”的主流 perp alpha。</strong></p>
+<p>它更像：</p>
+<ul>
+<li><strong>广义 alt-basket</strong> 的横截面风险补偿；</li>
+<li>不太像 <strong>BTC/ETH/SOL 这种 majors-only</strong> 的日常轮动信号。</li>
+</ul>
+<h2>7. 这组结果怎么翻成人话</h2>
+<p>这轮最重要的，不是“paper 方向对了”这么简单，而是多了两个更实用的 desk 结论：</p>
+<h3>7.1 单看 liquidity volatility 不够，和 level 合起来才像 alpha</h3>
+<p>如果只看 <code>vol(log ILLIQ)</code>，first-pass 结果并不够干净；</p>
+<p>真正变得像样，是在做：</p>
+<ul>
+<li><code>z(liquidity-volatility)</code></li>
+<li><strong>加上</strong> <code>z(illiquidity-level)</code></li>
+</ul>
+<p>以后。</p>
+<p>所以对 desk 来说，更好的读法不是：</p>
+<p>&gt; “流动性波动高 -&gt; 买。”</p>
+<p>而是：</p>
+<p>&gt; <strong>“承接本来就差，而且还越来越不稳”的那一侧，更值得要求风险补偿。</strong></p>
+<h3>7.2 这条线更像 alt stress premium，不像 majors router</h3>
+<p>如果你把它理解成“给 BTC/ETH/SOL 做一个 universal filter”，大概率会失望。</p>
+<p>更合理的理解是：</p>
+<ul>
+<li>这是 <strong>broad alt perp cross-section</strong> 的风险溢价抓手；</li>
+<li>不是 <strong>majors-only</strong> 的主信号。</li>
+</ul>
+<p>这很重要，因为它直接决定了后续该往哪条 lane 走：</p>
+<ul>
+<li><strong>该去做 alt-basket 相对价值书；</strong></li>
+<li>不是把它硬塞进 BTC/ETH 主盘内核。</li>
+</ul>
+<h2>8. 对当前 desk，更合理的策略骨架是什么</h2>
+<h3>8.1 Universe</h3>
+<p>第一版不要用 majors-only。</p>
+<p>更合理的是：</p>
+<ul>
+<li>Binance USDⓈ-M USDT perp</li>
+<li>上市 &gt; 30 天</li>
+<li>24h quote volume 排名前 20~30</li>
+<li>再叠加最小 ADV / 最小成交笔数 / funding 异常过滤</li>
+</ul>
+<h3>8.2 Signal</h3>
+<p>每个 <code>15m</code> bar：</p>
+<ol>
+<li>算 <code>ILLIQ_t = abs(ret_t) / quote_volume_t</code></li>
+<li>对每个币滚动算：</li>
+</ol>
+<ul>
+<li><code>lvl = mean(log ILLIQ)</code></li>
+<li><code>lv = std(log ILLIQ)</code></li>
+</ul>
+<ol>
+<li>横截面 z-score 后合成：</li>
+</ol>
+<ul>
+<li><code>score = z(lv) + z(lvl)</code></li>
+</ul>
+<ol>
+<li><strong>long top bucket / short bottom bucket</strong></li>
+</ol>
+<h3>8.3 Entry / Exit</h3>
+<ul>
+<li><code>t</code> 收盘算 rank</li>
+<li><code>t+1</code> 开始持有未来 <strong><code>1h</code></strong></li>
+<li>每 <code>15m</code> 滚动更新；也可以先做 staggered book</li>
+</ul>
+<h3>8.4 Sizing</h3>
+<ul>
+<li>每侧等权</li>
+<li>单币 notional cap</li>
+<li>赛道集中度 cap</li>
+<li>先做 market-neutral gross，别急着加方向暴露</li>
+</ul>
+<h3>8.5 Risk / Cost</h3>
+<p>这条线虽然是 raw alpha，但它的风险也非常显然：</p>
+<ul>
+<li>它天然偏向 <strong>更差、更不稳流动性</strong> 的币；</li>
+<li>所以最怕两件事：</li>
+</ul>
+<ol>
+<li><strong>真实成交冲击比 proxy 想象得大</strong></li>
+<li><strong>极端事件 bar 把篮子变成脆弱小币拥挤仓位</strong></li>
+</ol>
+<p>所以至少要补：</p>
+<ul>
+<li>最小成交额/挂单深度过滤</li>
+<li>新币/异常公告 veto</li>
+<li>单赛道 cap</li>
+<li>单币 cap</li>
+<li>成交成本 stress</li>
+</ul>
+<h2>9. 为什么这轮我把“可直接落地完整策略”打成“否”</h2>
+<p>不是因为它没有 signal，而是因为它目前更像：</p>
+<p>&gt; <strong>一个方向清楚、transfer 也通过了的 raw alpha 候选。</strong></p>
+<p>还没到“完整策略可直接上线”的原因有三个：</p>
+<ol>
+<li><strong>exact paper spec 还没完全从正文恢复到逐公式级别</strong>；</li>
+<li><strong>当前强边主要出现在 broad alt universe，不是 majors universe</strong>；</li>
+<li><strong>它天然吃流动性风险，所以成本/容量/滑点约束会很重要。</strong></li>
+</ol>
+<p>所以现在最好的定位不是“成品策略”，而是：</p>
+<p>&gt; <strong>值得进入复现池的 alt-basket cross-sectional alpha family。</strong></p>
+<h2>10. 下一步怎么测（必须给）</h2>
+<h3>第一优先：把 <code>quote-volume proxy</code> 升级成更像真实流动性的指标</h3>
+<p>并排跑：</p>
+<ul>
+<li><code>abs(ret) / quote_volume</code>（当前 proxy）</li>
+<li>Corwin-Schultz / high-low spread proxy</li>
+<li>top-of-book spread / depth proxy</li>
+<li>taker buy imbalance 联合 proxy</li>
+</ul>
+<p>目标：确认 edge 是真的来自 liquidity stress，而不是 volume/volatility 混淆。</p>
+<h3>第二优先：把持有期从 <code>1h</code> 展开成 horizon surface</h3>
+<p>至少并排跑：</p>
+<ul>
+<li>next <code>15m</code></li>
+<li>next <code>30m</code></li>
+<li>next <code>1h</code></li>
+<li>next <code>2h</code></li>
+</ul>
+<p>看这条 premium 更像：</p>
+<ul>
+<li>需要一点 carry 时间去兑现；</li>
+<li>还是短窗口就被抢光。</li>
+</ul>
+<h3>第三优先：拆 universe，别把 majors 和 alts 混为一谈</h3>
+<p>至少分 3 桶：</p>
+<ul>
+<li>majors</li>
+<li>liquid alts</li>
+<li>tail alts</li>
+</ul>
+<p>目标：找清楚这条线真正活在哪一层，而不是拿全市场平均掩盖结构差异。</p>
+<h3>第四优先：把 score 从简单相加升级成更稳的 joint ranking</h3>
+<p>可以试：</p>
+<ul>
+<li><code>score = z(lv) + z(lvl)</code></li>
+<li>双排序（先按 level 分桶，再按 volatility 排）</li>
+<li>交互项 <code>lv * lvl</code></li>
+<li>和 funding / OI / sector-neutralization 联合</li>
+</ul>
+<p>目标：判断它到底是独立 premium，还是更适合作为 alt-basket admission layer。</p>
+<h2>11. 一句话落地结论</h2>
+<p>&gt; <strong>这篇 2021 FRL paper 真正值得带回 desk 的，不是“流动性风险有溢价”这句空话，而是：在更广的 alt perp 横截面里，<code>高 illiquidity 波动 + 高 illiquidity 水平</code> 这类名字，后续 <code>1h</code> 确实更容易给出更高回报；但这条线几乎不属于 majors-only，更像一个 broad-alt cross-sectional raw alpha 候选。</strong></p>
+</body>
+</html>

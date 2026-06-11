@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 research repo 只读成“又一个 pairs notebook”：对 short-cycle desk，更该先拆的是「validation-ranked pair admission × gross-exposure-capped spread fade」这条完整 raw alpha 壳——而且 repo 自带的 `15m` cost rerun 里，它扣完 Roll slippage 之后还活着</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 research repo 只读成“又一个 pairs notebook”：对 short-cycle desk，更该先拆的是「validation-ranked pair admission × gross-exposure-capped spread fade」这条完整 raw alpha 壳——而且 repo 自带的 `15m` cost rerun 里，它扣完 Roll slippage 之后还活着</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-15 03:37 UTC</span>
+      <span class="pill">研究时间：2026-04-15 03:36 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `config/default.yaml` + `src/crypto_trader/signals/pairs.py` + `src/crypto_trader/backtest/pairs_engine.py` + `src/crypto_trader/analysis/pairs_research.py` + `src/crypto_trader/backtest/slippage.py` + `data/processed/pairs/strategy/pairs_comparison_summary.csv` + `data/processed/costs/strategy_comparison.csv`）</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/walk-forward/validation-ranking/cost-aware-sizing/gross-exposure-cap/roll-slippage/binance-spot/15m/repo/cost/risk</span>
+      <span class="pill">证据类型：repo source audit + repo embedded results</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-15_0336_avaxicp-validationranked-spreadfade-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-15 03:36 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>config/default.yaml</code> + <code>src/crypto_trader/signals/pairs.py</code> + <code>src/crypto_trader/backtest/pairs_engine.py</code> + <code>src/crypto_trader/analysis/pairs_research.py</code> + <code>src/crypto_trader/backtest/slippage.py</code> + <code>data/processed/pairs/strategy/pairs_comparison_summary.csv</code> + <code>data/processed/costs/strategy_comparison.csv</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>先找协整 pair，再对 <code>spread = y - beta*x</code> 做历史滚动 z-score；<code>|z|</code> 偏离够大就做 spread mean reversion，回到均值附近平仓。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/walk-forward/validation-ranking/cost-aware-sizing/gross-exposure-cap/roll-slippage/binance-spot/15m/repo/cost/risk</li>
+<li>证据类型：repo source audit + repo embedded results</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是一个 2026 GitHub research repo：</p>
+<ul>
+<li><strong>Author</strong>：<code>Rah9742</code></li>
+<li><strong>Year</strong>：2026</li>
+<li><strong>Title</strong>：<code>Crypto-Stat-Arb</code></li>
+<li><strong>Venue</strong>：GitHub repository</li>
+<li><strong>DOI</strong>：N/A</li>
+<li><strong>Readable URL / Repo URL</strong>：&lt;<a href="https://github.com/Rah9742/Crypto-Stat-Arb&gt;">https://github.com/Rah9742/Crypto-Stat-Arb&gt;</a></li>
+</ul>
+<p>先把 base alpha 说清楚： &gt; <strong>这篇东西的 base alpha 不是“validation 排名”，也不是“成本模型”。它真正的 base alpha 仍然是 cointegrated spread mean reversion。</strong></p>
+<p>但这份 repo 值得 intake 的地方在于：它没有停在“找一对协整资产然后画 z-score”，而是把一条更接近 production review 的完整壳补齐了——<strong>rolling formation / zscore、状态机 entry-exit、cost-aware sizing、gross exposure cap、train-validation-test 排名、以及最终 cost rerun</strong> 全都在同一套框架里。</p>
+<h2>2. 核心结论</h2>
+<ol>
+<li><strong>alpha 本体很朴素，但实现壳比大多数 pairs repo 完整得多。</strong></li>
+<p><code>generate_pair_signal_state()</code> 用的是历史口径状态机：<code>|z| &gt;= entry</code> 开仓，<code>|z| &lt;= exit</code> 平仓，额外还有 <code>stop_zscore</code> 和 <code>max_holding_period_bars</code>。</p>
+</ol>
+<ol>
+<li><strong>它不是“拍脑袋挑最赚钱参数”，而是先过 validation/risk bar 再排名。</strong></li>
+<p><code>rank_validation_configurations()</code> 先筛：validation/test 不得爆仓、terminal equity 不能太低、drawdown 不能穿线、validation/test trade 数要够，然后再按 <code>validation_sharpe / test_sharpe / calmar / return / turnover / train-validation gap</code> 的加权分数排序。</p>
+</ol>
+<ol>
+<li><strong>它不是只会固定满仓开 pair，而是做了简单但实用的 cost-aware sizing。</strong></li>
+<p><code>build_pair_target_notionals()</code> 会按 <code>expected_move / round-trip cost</code> 和 <code>|z|/entry_threshold</code> 缩放 gross target，不够划算时最小只给 <code>cost_aware_min_scale</code>。</p>
+</ol>
+<ol>
+<li><strong>repo 给出的最终 chosen pair 是 <code>AVAXUSDT/ICPUSDT</code>，而且不是只在 in-sample 好看。</strong></li>
+<p><code>pairs_comparison_summary.csv</code> 第一名参数是：</p>
+</ol>
+<ul>
+<li>formation window：<code>12096</code> bars</li>
+<li>zscore window：<code>2016</code> bars</li>
+<li>entry：<code>2.5</code></li>
+<li>exit：<code>0.25</code></li>
+<li>time stop：<code>48</code> bars</li>
+<li>validation cumulative return：<code>+39.02%</code></li>
+<li>validation Sharpe：<code>1.87</code></li>
+<li>test cumulative return：<code>+31.74%</code></li>
+<li>test Sharpe：<code>1.34</code></li>
+<li>test trades：<code>23</code></li>
+<li>test avg holding：<code>47.39</code> bars</li>
+</ul>
+<ol>
+<li><strong>更关键的是，repo 还有一层真正的 cost rerun，而不是只报 sweep 指标。</strong></li>
+<p><code>strategy_comparison.csv</code> 里，pairs 最终 rerun（<code>AVAXUSDT/ICPUSDT</code>，<code>15m</code>）结果是：</p>
+</ol>
+<ul>
+<li>gross return：<code>+38.17%</code></li>
+<li>net return：<code>+25.74%</code></li>
+<li>total transaction cost：<code>1242.89 USDT</code></li>
+<li>turnover / initial capital：<code>140.75x</code></li>
+<li>net Sharpe：<code>1.18</code></li>
+<li>net max drawdown：<code>-30.31%</code></li>
+</ul>
+<p>一句话结论： &gt; <strong>这份 repo 最值得 desk 学的，不是“协整 spread 可以均值回复”这种老话，而是：如何把一条 pairs raw alpha 做成一套带 validation 证据门槛、成本缩放和 gross exposure 约束的完整研究壳。</strong></p>
+<p>它主要靠什么证明？ &gt; <strong>靠源码里的历史口径实现 + sweep 排名表 + 单独 cost rerun 表，而不是只靠 README 口号。</strong></p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这份东西和当前 <code>momentum</code> 主线直接相关，因为它补的不是泛解释，而是 <strong>可复现、可进素材池、可拆成实盘组件</strong> 的 raw alpha 壳：</p>
+<ul>
+<li>对 raw alpha 池：补的是 <code>pairs / stat-arb / relative-value / mean reversion</code></li>
+<li>对工程实现：补的是 <code>entry / exit / sizing / risk / cost</code> 一整条链</li>
+<li>对实盘候选池：它比“只会给 z-score 的 pairs notebook”更接近可审阅对象</li>
+</ul>
+<p>更现实一点说，最近 digest 里虽然 pairs 很多，但多数结论都落在：</p>
+<ul>
+<li>alpha 本体有点意思；</li>
+<li>但 taker friction 把它吃掉；</li>
+<li>或者 repo 只有 alpha，没有完整研究壳。</li>
+</ul>
+<p>这次不太一样： &gt; <strong>Rah 这份 repo 至少给出了一条成本后仍然为正的 <code>15m</code> 现成 rerun。</strong></p>
+<p>当然也要留个心眼：<code>config/default.yaml</code> 顶部还有个 <code>interval: 4h  #15m</code> 的旧注释，说明配置说明和最终产物存在过漂移；真正可信的口径，要以 <code>strategy_comparison.csv</code> 里落下来的 <code>bar_frequency=15m</code> 和具体参数表为准。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / 相对价值 / 均值回复</li>
+<li>基础 alpha：协整 spread 偏离后的均值回复</li>
+<li>regime：仅在 pair 关系仍可用、validation/test 没有被风险门槛淘汰时才保留该配置</li>
+<li>filter / veto：validation evidence、risk-limit checks、trade-count / active-bars bar</li>
+<li>risk / sizing / execution overlay：cost-aware gross target、gross exposure cap、max live gross leverage、time stop、Roll slippage rerun</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>研究假设</h3>
+<p>如果某对 liquid majors/alts 在滚动 formation 窗里仍维持较稳定的 cointegration / hedge ratio，那么 <code>15m</code> spread z-score fade 在加上最基本的 cost-aware sizing 和 gross cap 后，仍可能留下可交易净值曲线。</p>
+<h3>最小实验设计</h3>
+<p>先不要一上来就做全市场 pair search，直接做 4 步：</p>
+<ol>
+<li><strong><code>15m</code> 复刻 repo 口径</strong></li>
+</ol>
+<ul>
+<li>universe：先用 8~12 个 liquid contracts</li>
+<li>formation：<code>84d / 126d</code> 两档</li>
+<li>zscore window：<code>14d / 21d</code></li>
+<li>entry：<code>2.0 / 2.5</code></li>
+<li>exit：<code>0.25 / 0.5</code></li>
+<li>max hold：<code>24 / 48</code> bars</li>
+<li>先在 spot 或 same-venue perp 上复刻 <code>train / validation / test</code></li>
+</ul>
+<ol>
+<li><strong><code>5m</code> 只做 execution translation，不改 alpha 本体</strong></li>
+<p>保持 pair admission 和 signal state 在 <code>15m</code> 冻结，把执行拆到 <code>5m</code>：</p>
+</ol>
+<ul>
+<li><code>15m</code> 生成 state</li>
+<li><code>5m</code> 做被动 close-out / rebalance</li>
+<li>看成本是否能从 taker 壳再压一截</li>
+</ul>
+<ol>
+<li><strong><code>3m / 1m</code> 只测 exit microstructure，不要重做全套选 pair</strong></li>
+<p>最先测的不是新 alpha，而是：</p>
+</ol>
+<ul>
+<li><code>1m/3m</code> 是否更适合做 partial exit / passive unwind</li>
+<li>是否能减少 repo 里已经很高的 turnover cost</li>
+</ul>
+<ol>
+<li><strong>先做 friction ladder，再讨论扩大 universe</strong></li>
+<p>最少给三档：<code>1 bps / 2 bps / 5 bps</code>，否则 pairs 研究很容易把 gross alpha 误当净 alpha。</p>
+</ol>
+<h2>5. 下一步怎么测</h2>
+<p>按当前 desk 价值排序，我会先测这三件事：</p>
+<ol>
+<li><strong>把 repo 的 validation-ranked 壳迁到 Binance USDⓈ-M liquid majors</strong></li>
+<p>不是为了复制 <code>AVAX/ICP</code> 本身，而是为了回答：这个 ranking + evidence bar 是否真能筛出更稳的 crypto perp pairs。</p>
+</ol>
+<ol>
+<li><strong>把 <code>cost_aware sizing</code> 和 <code>fixed sizing</code> 做 A/B</strong></li>
+<p>这是 repo 最值得偷的旁支之一。先看：在同一个 raw alpha 上，它到底是实打实改善净收益，还是只是缩了风险同时也缩了机会。</p>
+</ol>
+<ol>
+<li><strong>把 <code>15m signal / 5m execution / 1m unwind</code> 拆层</strong></li>
+<p>如果这套壳未来真要进实盘，最像 production 的路线不是把 alpha 硬压到 <code>1m</code>，而是让更快频率去服务退出、减仓、冲击控制。</p>
+</ol>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Rah9742. (2026). _Crypto-Stat-Arb_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Readable URL / Repo URL：&lt;<a href="https://github.com/Rah9742/Crypto-Stat-Arb&gt;">https://github.com/Rah9742/Crypto-Stat-Arb&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Key source files audited</strong></li>
+</ol>
+<ul>
+<li><code>config/default.yaml</code></li>
+<li><code>src/crypto_trader/signals/pairs.py</code></li>
+<li><code>src/crypto_trader/backtest/pairs_engine.py</code></li>
+<li><code>src/crypto_trader/analysis/pairs_research.py</code></li>
+<li><code>src/crypto_trader/backtest/slippage.py</code></li>
+</ul>
+<ol>
+<li><strong>Embedded result files used in this digest</strong></li>
+</ol>
+<ul>
+<li><code>data/processed/pairs/strategy/pairs_comparison_summary.csv</code></li>
+<li><code>data/processed/costs/strategy_comparison.csv</code></li>
+</ul>
+</body>
+</html>

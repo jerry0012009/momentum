@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>maker/taker 跨所 BBO 价差 × fill-timeout 套利壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>maker/taker 跨所 BBO 价差 × fill-timeout 套利壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-10 16:02 UTC</span>
+      <span class="pill">研究时间：2026-04-10 16:01 UTC</span>
+      <span class="pill">类型：GitHub repo + 公共数据快检</span>
+      <span class="pill">主题标签：raw-alpha / relative-value / stat-arb / cross-venue / maker-taker / perp / bbo / execution / cost / 1m / 3m</span>
+      <span class="pill">证据类型：工程经验 + 公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-10_1601_makertaker-crossvenue-bbo-arb-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-10 16:01 UTC</li>
+<li>类型：GitHub repo + 公共数据快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一标的在不同 venue 的最优买一/卖一短暂失配，会给出 <code>long cheap venue + short rich venue</code> 的 market-neutral spread-capture 机会</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha / relative-value / stat-arb / cross-venue / maker-taker / perp / bbo / execution / cost / 1m / 3m</li>
+<li>证据类型：工程经验 + 公共数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 <code>your-quantguy/cross-exchange-arbitrage</code> 这个 2026 GitHub repo，主审计文件包括 <code>README.md</code>、<code>arbitrage.py</code>、<code>strategy/edgex_arb.py</code>、<code>strategy/order_manager.py</code>。这套壳不是泛泛说“跨所套利”，而是写成了很具体的 live 逻辑：当一边 venue 的 <code>best bid</code> 高过另一边 venue 的 <code>best ask</code> 到达阈值，就在 maker venue 先挂 <code>post-only</code>，成交后再去另一边 taker 对冲；同时带 <code>fill_timeout=5s</code>、<code>max_position</code> 和连续盘口监控。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这类 alpha 不是“完全没有 edge”，但在 Binance/Bybit 这种顶级 venue 的 liquid majors 上，edge 小得更像费率/排队/延迟竞争，不像当前 desk 应优先走的 <code>5m/15m</code> 主线 raw alpha。</li>
+<li><strong>一句话证明方式</strong>：先审 repo 里的 maker/taker 壳，再用 Binance USDⓈ-M + Bybit linear 公共 <code>bookTicker/BBO</code> 做 <code>180</code> 个 <code>1s</code> snapshot live probe，看 crossed-BBO 是否能稳定越过成本门槛。</li>
+<li>repo 里最值得复用的不是 <code>edgeX/Lighter</code> 这两个具体 venue，而是这套<strong>maker-first + taker-hedge + fill-timeout + max-position</strong> 的执行框架；它把 raw alpha、执行和风险边界拆得很清楚。</li>
+<li>我用 <code>BTC/ETH/SOL/XRP/DOGE</code> 做了 <code>1s × 180</code> 次 live BBO portability probe。结果里 <code>BTC/ETH</code> 的 <code>best crossed edge</code> 中位数只有约 <code>0.92 / 0.81 bps</code>，<code>p90</code> 约 <code>1.52 / 1.62 bps</code>；全样本最大值里，<code>ETH</code> 约 <code>5.36 bps</code>、<code>DOGE</code> 约 <code>3.25 bps</code>、<code>SOL</code> 约 <code>2.88 bps</code>、<code>BTC</code> 约 <code>2.46 bps</code>、<code>XRP</code> 约 <code>1.53 bps</code>。</li>
+<li>更关键的是：本次样本里 <strong>没有任何一个 symbol 出现过 <code>&gt;6 bps</code> 的 crossed-BBO</strong>。这意味着若按更现实的双边 maker+taker round-trip 成本去看，顶级 venue 上这条路大概率不够肥；要么得去更小众/更碎片化 venue，要么得依赖高 VIP rebate、极低延迟和很强的 queue/fill 优势。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条东西仍然值得进研究池，因为它属于很干净的 <strong>relative-value / stat-arb raw alpha</strong>：不是猜方向，而是抓同一标的跨 venue 的短暂定价不一致。但它给 desk 的高价值判断不是“立刻上”，而是一个很清楚的 <strong>go / no-go</strong>：如果连顶级 venue 的 BBO 交叉都很少越过 <code>6~10 bps</code>，那这条线就不该继续占用大量 <code>5m/15m</code> 研发预算。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / market-neutral / stat-arb</li>
+<li>基础 alpha：同一标的跨 venue 的 <code>best-bid vs best-ask</code> 短暂失配</li>
+<li>regime：venue fragmentation 高、局部盘口更新不同步、事件窗口或局部流动性抽空时更容易出现</li>
+<li>filter / veto：<code>crossed edge &gt; full fee hurdle</code>、top-of-book size 足够、maker venue 未失联、hedge venue 可立即成交、资金费率/标记价偏移不过度</li>
+<li>risk / sizing / execution overlay：maker-first、<code>fill-timeout</code> 取消、<code>max_position</code> 上限、必要时加 <code>flatten-after-N-seconds</code> 或 <code>edge&lt;=0</code> 平仓规则</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：在更碎片化的 venue 对，或在新闻/结算/资金费率边界窗口，<code>same-underlier crossed BBO</code> 越过 <code>8~10 bps</code> 的比例会显著高于平时，从而让 maker/taker 跨所套利变成可交易事件驱动 alpha。</li>
+<li>一个可计算定义：</li>
+<li><code>edge_buy_A = bid_B / ask_A - 1</code></li>
+<li><code>edge_buy_B = bid_A / ask_B - 1</code></li>
+<li><code>edge_t = max(edge_buy_A, edge_buy_B) * 10000 (bps)</code></li>
+<p>当 <code>edge_t &gt; hurdle_bps</code> 才允许开仓，方向为 <code>long cheap venue / short rich venue</code>。</p>
+<li>最小回测切口：先别做全历史，先抓 <code>Binance / Bybit / OKX</code> 的 <code>BTC/ETH/SOL</code> 公共 <code>1s</code> BBO，连续录 <code>3~7</code> 天；重点切出 <code>资金费率结算前后 ±10m</code>、<code>美盘数据/宏观事件</code>、<code>极端波动分钟</code> 三类窗口。</li>
+<li>最该先看哪 1~2 个指标：</li>
+</ul>
+<ol>
+<li><code>share(edge &gt; hurdle)</code> —— 真正越过成本线的机会占比；</li>
+<li>maker fill 后 <code>5s/15s/30s</code> 的 <code>realized close-edge</code> —— 有没有被 adverse selection 反吃掉。</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>repo 给的是 live 交易壳，不是严格的历史统计论文；当前更像工程启发，不是“已被学术验证”的高置信 alpha。</li>
+<li>我这次 portability probe 只有 <code>180s</code> live BBO，且只看 top-of-book，没有 depth、queue、latency、挂单成交率，所以这是 <strong>first verdict</strong>，不是最终否决。</li>
+<li>但也正因为只看最乐观的 top-of-book，若这里已经很难越过成本，真实成交后通常只会更差。</li>
+<li>因此当前更合理的定位是：<strong>把它当 cross-venue arb 候选池里的 execution shell / viability gate</strong>，而不是 desk 现在最优先推进的主策略。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>your-quantguy. (2026). *cross-exchange-arbitrage*.</li>
+<li>Repo URL: <code><a href="https://github.com/your-quantguy/cross-exchange-arbitrage">https://github.com/your-quantguy/cross-exchange-arbitrage</a></code></li>
+<li>Audited files: <code>README.md</code>, <code>arbitrage.py</code>, <code>strategy/edgex_arb.py</code>, <code>strategy/order_manager.py</code></li>
+<li>Binance USDⓈ-M public BBO:</li>
+<li><code><a href="https://fapi.binance.com/fapi/v1/ticker/bookTicker?symbol=BTCUSDT">https://fapi.binance.com/fapi/v1/ticker/bookTicker?symbol=BTCUSDT</a></code></li>
+<li>Bybit linear public BBO:</li>
+<li><code><a href="https://api.bybit.com/v5/market/tickers?category=linear&amp;symbol=BTCUSDT">https://api.bybit.com/v5/market/tickers?category=linear&amp;symbol=BTCUSDT</a></code></li>
+<li>本地快检产物：</li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/cross_exchange_makertaker_probe_detail_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/cross_exchange_makertaker_probe_summary_2026-04-10.csv</code></li>
+</ul>
+</body>
+</html>

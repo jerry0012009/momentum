@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rank 154 · 研发笔记：回测审计与成本分析</title>
+<style>:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: #0b1220; color: #e5e7eb;
+  font: 15px/1.65 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding: 28px 18px 64px; }
+h1 { font-size: 1.6em; margin: 0 0 8px; }
+h2 { font-size: 1.25em; margin: 28px 0 12px; color: #cbd5e1; }
+h3 { font-size: 1.05em; margin: 20px 0 8px; color: #94a3b8; }
+p, li { line-height: 1.65; }
+.muted { color: #94a3b8; font-size: 13px; }
+a { color: #7dd3fc; text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { background: #0f172a; color: #cbd5e1; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 18px 0 28px; }
+.card {
+  background: #111827; border: 1px solid #1f2937; border-radius: 14px; padding: 16px 18px;
+}
+.card .k { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+.card .v { font-size: 22px; font-weight: 700; line-height: 1.2; word-break: break-word; }
+.card .s { margin-top: 6px; color: #64748b; font-size: 12px; }
+.card.good { border-color: #22c55e33; }
+.card.good .v { color: #4ade80; }
+.card.bad { border-color: #ef444433; }
+.card.bad .v { color: #f87171; }
+.card.warn { border-color: #f59e0b33; }
+.card.warn .v { color: #fbbf24; }
+.hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border: 1px solid #334155; border-radius: 16px; padding: 24px 28px; margin-bottom: 24px;
+}
+.hero h1 { color: #f1f5f9; }
+.hero .subtitle { color: #94a3b8; margin-top: 4px; }
+table { width: 100%; border-collapse: collapse; background: #111827; border: 1px solid #1f2937; border-radius: 14px; overflow: hidden; margin: 12px 0 24px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid #1f2937; font-size: 13px; vertical-align: top; }
+th { background: #0f172a; color: #cbd5e1; font-weight: 600; white-space: nowrap; }
+td { color: #d1d5db; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #1a2332; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.pos { color: #4ade80; }
+.neg { color: #f87171; }
+.note {
+  border-left: 4px solid #3b82f6; background: #1e3a5f22;
+  padding: 12px 16px; border-radius: 0 10px 10px 0; margin: 16px 0;
+}
+.note.warn { border-left-color: #f59e0b; background: #78350f22; }
+.note.good { border-left-color: #22c55e; background: #14532d22; }
+.note.bad { border-left-color: #ef4444; background: #7f1d1d22; }
+.pill {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  background: #1e293b; color: #94a3b8; font-size: 12px; margin: 0 4px 4px 0;
+}
+.tag { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+.tag-long { background: #14532d; color: #4ade80; }
+.tag-short { background: #7f1d1d; color: #f87171; }
+.tag-flat { background: #1e293b; color: #94a3b8; }
+.footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #1f2937; color: #475569; font-size: 12px; }
+.chart-placeholder {
+  background: #111827; border: 1px solid #1f2937; border-radius: 14px;
+  padding: 40px; text-align: center; color: #475569; margin: 12px 0 24px;
+}
+
+.reading-md { margin: 18px 0; }
+.reading-md h1 { font-size: 1.4em; margin: 24px 0 8px; color: #f1f5f9; }
+.reading-md h2 { font-size: 1.15em; margin: 20px 0 8px; color: #cbd5e1; }
+.reading-md h3 { font-size: 1.0em; margin: 16px 0 6px; color: #94a3b8; }
+.reading-md p { margin: 8px 0; }
+.reading-md ul { margin: 8px 0; padding-left: 24px; }
+.reading-md li { margin: 4px 0; }
+.reading-md blockquote {
+  border-left: 4px solid #334155; padding: 8px 16px; margin: 12px 0;
+  background: #111827; border-radius: 0 10px 10px 0; color: #94a3b8;
+}
+.reading-md table { margin: 12px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="muted">Generated: 2026-03-24</p>
+  <p class="muted"><a href="../paper/rank154_overview.html">← Rank 154 Overview</a> · <a href="../../index.html">Site Index</a></p>
+  <div class="hero">
+    <h1>Rank 154 · 研发笔记：回测审计与成本分析</h1>
+    <p class="muted subtitle">Crypto-Stat-Arb · P2 admission honesty audit + cost sensitivity analysis</p>
+  </div>
+  <h2>📊 关键数据解读</h2>
+
+<div class="grid">
+  <div class="card good">
+    <div class="k">Combined 10bps Sharpe</div>
+    <div class="v">1.31 → 1.27</div>
+    <div class="s">滞后1天后仅降0.04，说明边际不靠同日执行幻觉</div>
+  </div>
+  <div class="card good">
+    <div class="k">Funding 贡献</div>
+    <div class="v">去掉 funding → Sharpe 1.08</div>
+    <div class="s">funding 是真实贡献项（+0.19 Sharpe），但 same-day vs lagged 差异很小</div>
+  </div>
+  <div class="card warn">
+    <div class="k">Buffer 敏感性</div>
+    <div class="v">0% buffer → Sharpe 0.73</div>
+    <div class="s">buffer=0% 换手极高（61.9%/日），5% 是合理甜点（7.2%/日）</div>
+  </div>
+  <div class="card">
+    <div class="k">分腿归因</div>
+    <div class="v">carry 29.8% / breakout 13.6%</div>
+    <div class="s">momentum 仅 5.6% 边际很弱，主要贡献来自 carry + breakout</div>
+  </div>
+</div>
+
+<div class="note good"><strong>结论：keep_P2</strong> — 权重 + funding 滞后一天后仍保持正边（Sharpe 1.27），但边际明显依赖 trade_buffer≈5% 的低换手实现，且 carry 单腿换手远高于 combined，未到可直接升 P3 的稳健度。<br><br><strong>Scorecard：</strong>执行现实性 7/10 · funding 诚实度 7/10 · buffer 摩擦稳健性 6/10 · P3 就绪度 5/10</div>
+<h2>Part 1 — P2 Admission Honesty / Execution Audit (2026-03-24 10:46 UTC)</h2>
+
+<div class="note"><strong>📝 中文注释 — 回测执行现实性审计</strong><br>本文档的核心问题是：Crypto-Stat-Arb 的回测结果是否依赖了过于乐观的执行假设？bot3 通过将权重和 funding 滞后一天来做"诚实压力测试"。</div>
+<div class="reading-md"><h1>bot3 自动优化日志：Crypto-Stat-Arb P2 admission（honesty / execution realism）</h1>
+<blockquote class="note">Post-hoc identity note（2026-03-24 10:53 UTC）：该对象现已正式分配 <code>Rank 154</code>；后续 desk 口径统一写作 <code>Rank 154 / Crypto-Stat-Arb</code>。</blockquote>
+<ul>
+<li>时间：2026-03-24 10:46 UTC</li>
+<li>路径判断：Scout</li>
+<li>主点：Active P2 slot admission follow-up</li>
+<li>紧邻子点：honesty / execution realism（daily close 执行、funding 记账、trade buffer / 成本口径）</li>
+<li>认领动作：<code>cycle_plan</code> 第 1 项</li>
+</ul>
+<h2>本轮执行</h2>
+<ul>
+<li><strong>1.</strong> 读取 policy 与 runtime state，确认本轮唯一合法动作是给 <code>ryanczm/Crypto-Stat-Arb</code> 做 1 次最小 P2 admission honesty 检查。</li>
+<li><strong>2.</strong> 直接从公开 repo 拉取 <code>rsims.py</code> 与 <code>model_df.pkl</code>，核对回测器的真实记账顺序，而不是只复述前两轮摘要。</li>
+<li><strong>3.</strong> 发现 repo 的执行顺序是：先按 <code>current_positions</code> 吃完 <code>previous_prices -&gt; current_prices</code> 的价格变动和当期 funding，再用 <code>current_target_weights</code> 按 <code>current_prices</code> 调仓；这等价于<strong>信号在当日 close 才成立、也按当日 close 成交</strong>的口径，天然比 next-day / next-bar 更友好。</li>
+<li><strong>4.</strong> 在不改策略定义的前提下，做最小保守重放：把权重整体滞后 1 天，再分别比较 <code>same-day funding</code>、<code>lagged funding</code>、以及更保守的手续费 / <code>trade_buffer</code> 组合。</li>
+</ul>
+<h2>关键结果</h2>
+<h3>1) daily-close 执行假设确实偏友好，但还没把组合边际吹成幻觉</h3>
+<p>在 <code>combined</code>、<code>10bps/side</code>、<code>trade_buffer=5%</code> 下：</p>
+<ul>
+<li>repo-like（同日权重执行）：CAGR 约 <code>45.5%</code>，Sharpe <code>1.32</code>，MDD <code>-33.0%</code>，平均日换手 <code>7.3%</code></li>
+<li><strong>权重滞后 1 天</strong>：CAGR 约 <code>42.2%</code>，Sharpe <code>1.26</code>，MDD <code>-28.5%</code>，平均日换手 <code>7.2%</code></li>
+<li><strong>权重 + funding 都滞后 1 天</strong>：CAGR 约 <code>42.8%</code>，Sharpe <code>1.27</code>，MDD <code>-28.5%</code></li>
+</ul>
+<p>读法：把同日 close 执行修正成更诚实的 1 日滞后后，组合表现有回落，但不是塌成接近零；说明这条线存在一点 execution optimism，<strong>但 survive 不是靠同 bar / 同日 fill 幻觉硬撑</strong>。</p>
+<h3>2) funding 不是装饰项，但“同日 funding 记账”没有把结果夸大太多</h3>
+<p>在 <code>combined</code>、<code>权重滞后 1 天</code>、<code>10bps/side</code>、<code>buffer=5%</code> 下：</p>
+<ul>
+<li><code>same-day funding</code>：CAGR 约 <code>42.2%</code>，Sharpe <code>1.26</code></li>
+<li><code>lagged funding</code>：CAGR 约 <code>42.8%</code>，Sharpe <code>1.27</code></li>
+<li><code>no funding</code>：CAGR 约 <code>34.2%</code>，Sharpe <code>1.08</code></li>
+</ul>
+<p>读法：funding 对这套 cross-sectional 组合是<strong>真实贡献项</strong>，拿掉 funding 会明显降档；但把 funding 从 same-day 改成 lagged 后并没有显著恶化，说明 repo 的 funding 记账时点不算主要夸大源。</p>
+<h3>3) 真正的脆弱点不是 10bps，而是 buffer 设太松或太紧都会伤边际</h3>
+<p>在更诚实的 <code>lagged weights + lagged funding</code> 口径下，<code>combined</code> 对 <code>trade_buffer</code> 很敏感：</p>
+<ul>
+<li><code>10bps / buffer=0%</code>：CAGR 约 <code>25.7%</code>，Sharpe <code>0.73</code>，换手 <code>61.9%/日</code></li>
+<li><code>10bps / buffer=2%</code>：CAGR 约 <code>43.4%</code>，Sharpe <code>1.05</code>，换手 <code>24.5%/日</code></li>
+<li><strong><code>10bps / buffer=5%</code>：CAGR 约 <code>42.8%</code>，Sharpe <code>1.27</code>，换手 <code>7.2%/日</code></strong></li>
+<li><code>10bps / buffer=10%</code>：CAGR 约 <code>4.4%</code>，Sharpe <code>0.35</code></li>
+</ul>
+<p>成本再抬高也没立刻打死它：</p>
+<ul>
+<li><code>15bps / buffer=5%</code>：CAGR 约 <code>40.9%</code>，Sharpe <code>1.23</code></li>
+<li><code>20bps / buffer=5%</code>：CAGR 约 <code>39.1%</code>，Sharpe <code>1.19</code></li>
+</ul>
+<p>读法：<code>5%</code> buffer 不是明显偷鸡参数，反而像把高频抖动压下去后的一个合理甜点；真正夸张的是 <strong>0% buffer 的高换手版本</strong>，那条线一加摩擦就明显失真。</p>
+<h2>本轮结论</h2>
+<ul>
+<li>verdict：<code>keep_P2</code></li>
+<li>一句话结果：<code>ryanczm/Crypto-Stat-Arb</code> 在把权重与 funding 统一改成更诚实的 1 日滞后后，<code>combined</code> 仍保持明显正边，说明它不是靠同日 close / funding 记账幻觉硬撑；但这套边际明显依赖 <code>trade_buffer≈5%</code> 的低换手实现，因此当前最诚实结论仍是 <code>keep_P2</code>，未到可直接升 <code>P3</code> 的稳健度。</li>
+</ul>
+<h2>简短 scorecard</h2>
+<ul>
+<li>execution realism：7/10</li>
+<li>funding accounting honesty：7/10</li>
+<li>buffer / friction robustness：6/10</li>
+<li>direct P3 readiness：5/10</li>
+<li>本轮总评：<strong>keep_P2，不升 P3，不退 background</strong></li>
+</ul>
+<h2>对下一轮的明确交接</h2>
+<ul>
+<li>bot2 下一轮应据此重排：这条线的核心 admission 缺口已经从“会不会纯粹是 same-day 偏乐观”收敛为“是否值得继续留在 P2，还是该基于 regime / universe / implementation scope 做 promote-or-park 决策”。</li>
+<li>bot3 本轮不再扩做 compare、fresh intake 或 launch handoff。</li>
+</ul></div>
+<h2>Part 2 — P2 Promotion Cost Sensitivity (2026-03-24 09:50 UTC)</h2>
+
+<div class="note"><strong>📝 中文注释 — P2 晋升成本敏感性分析</strong><br>这是 Rank 154 的首次正式 follow-up：对 carry / momentum / breakout 三条腿分别做佣金敏感性和 trade buffer 敏感性测试，决定是否从 P1 推进到 P2。</div>
+<div class="reading-md"><h1>bot3 自动优化日志：Crypto-Stat-Arb decisive follow-up</h1>
+<blockquote class="note">Post-hoc identity note（2026-03-24 10:53 UTC）：该对象现已正式分配 <code>Rank 154</code>；后续 desk 口径统一写作 <code>Rank 154 / Crypto-Stat-Arb</code>。</blockquote>
+<ul>
+<li>时间：2026-03-24 09:50 UTC</li>
+<li>路径判断：Scout</li>
+<li>主点：surviving candidate decisive follow-up</li>
+<li>紧邻子点：成本敏感性（commission / trade buffer）</li>
+<li>认领动作：<code>Next 3 bot3 runs</code> 第 1 项</li>
+</ul>
+<h2>本轮执行</h2>
+<ul>
+<li><strong>1.</strong> 读取 desk board、policy 与 runtime state，确认当前合法路径是 <code>Surviving candidate slot</code> 的唯一一次 follow-up，而不是重开 fresh intake。</li>
+<li><strong>2.</strong> 临时拉取 <code>ryanczm/Crypto-Stat-Arb</code> repo，直接读取 <code>model_df.pkl</code>、<code>rsims.py</code>、<code>readme.md</code>。</li>
+<li><strong>3.</strong> 用 repo 自带的 <code>scaled_carry_weight / scaled_momo_weight / scaled_breakout_weight / scaled_weight</code> 重建最小 daily backtest，比对 <code>carry / momentum / breakout / combined</code> 四条腿。</li>
+<li><strong>4.</strong> 对每条腿做 commission sensitivity（0 / 6 / 10 / 15 bps，trade buffer=5%），并额外检查 <code>carry</code> 与 <code>combined</code> 的 trade buffer 敏感性（0 / 2 / 5 / 10%）。</li>
+<li><strong>5.</strong> 基于分腿归因 + 成本敏感性，直接回答本轮 desk verdict，并把对象从 <code>P1</code> 推进到 <code>P2</code>。</li>
+</ul>
+<h2>关键结果</h2>
+<h3>1) 分腿归因（trade buffer=5%）</h3>
+<ul>
+<li><code>carry</code>：10bps 下年化约 <code>29.8%</code>、Sharpe <code>1.03</code>、平均日换手 <code>30.5%</code>。</li>
+<li><code>momentum</code>：10bps 下年化约 <code>5.6%</code>、Sharpe <code>0.33</code>，边际很弱。</li>
+<li><code>breakout</code>：10bps 下年化约 <code>13.6%</code>、Sharpe <code>0.65</code>，有贡献但回撤很深。</li>
+<li><code>combined</code>：10bps 下年化约 <code>45.3%</code>、Sharpe <code>1.31</code>、平均日换手仅 <code>8.1%</code>、最大回撤约 <code>-33.1%</code>。</li>
+</ul>
+<h3>2) 成本敏感性</h3>
+<ul>
+<li><code>combined</code> 在 <code>15bps</code> 下仍有：年化约 <code>43.2%</code>、Sharpe <code>1.27</code>。</li>
+<li><code>carry</code> 在 <code>15bps</code> 下仍为正，但降到：年化约 <code>22.8%</code>、Sharpe <code>0.84</code>，而且换手显著更高。</li>
+<li><code>momentum</code> 在 <code>15bps</code> 下几乎只剩擦边正值（年化约 <code>1.6%</code>）。</li>
+</ul>
+<h3>3) buffer 敏感性</h3>
+<ul>
+<li><code>carry</code> 对 buffer 很敏感：<code>2%</code> buffer 最好，<code>10%</code> buffer 直接转负，说明它更像高换手 carry sleeve。</li>
+<li><code>combined</code> 在 <code>2%~5%</code> buffer 都能保持高年化与正 Sharpe；<code>5%</code> buffer 时风险收益比最好、换手最低（约 <code>8.1%/日</code>）。</li>
+</ul>
+<h2>本轮结论</h2>
+<ul>
+<li>verdict：<code>promote_P2</code></li>
+<li>一句话结果：<code>ryanczm/Crypto-Stat-Arb</code> 的净边并不只是 carry 单腿硬撑；<code>breakout</code> 也提供了可保留贡献，而 <code>combined</code> 在 10~15bps 成本下仍显著为正、且比 carry 单腿低换手低回撤，因此这条 crypto perp cross-sectional skeleton 通过唯一 follow-up，升到 <code>P2</code>。</li>
+</ul>
+<h2>简短 scorecard</h2>
+<ul>
+<li>carry 独立可用性：8/10</li>
+<li>momentum 独立可用性：3/10</li>
+<li>breakout 独立可用性：6/10</li>
+<li>combined 成本后存活度：8/10</li>
+<li>是否值得进入 P2 admission：8/10</li>
+<li>本轮总评：<strong>promote_P2</strong></li>
+</ul>
+<h2>对下一轮的明确交接</h2>
+<p>下一轮不再做这条线的第二次 P1 follow-up，而应按 <code>P2 admission</code> 处理：</p>
+<ul>
+<li>只补 1 个最缺 admission 维度，优先 <code>time stability</code> 或 <code>honesty / execution realism</code>；</li>
+<li>目标直接回答 <code>keep_P2 / promote_P3 / drop_to_background</code>；</li>
+<li>不把它扩成新的全市场大工程。</li>
+</ul></div>
+</div>
+</body>
+</html>

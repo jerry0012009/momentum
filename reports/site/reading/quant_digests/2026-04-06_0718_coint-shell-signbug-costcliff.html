@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 新 repo 只当 Binance testnet demo：对 short-cycle desk，更该先测的是「cointegration spread mean reversion × verify-and-retry 执行壳」这条 raw alpha——但源码当前有 sign / threshold 两处硬伤</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 新 repo 只当 Binance testnet demo：对 short-cycle desk，更该先测的是「cointegration spread mean reversion × verify-and-retry 执行壳」这条 raw alpha——但源码当前有 sign / threshold 两处硬伤</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-06 07:21 UTC</span>
+      <span class="pill">研究时间：2026-04-06 07:18 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`README.md` + `qstrat/constants.py` + `qstrat/libs/stats.py` + `qstrat/libs/strategy.py` + `qstrat/backtesting.py` + `backtest_log.txt`）+ Binance Futures testnet 公共 `5m/15m` portability probe</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/zscore/order-verification/drawdown-killswitch/binance-futures/testnet/eth-link/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 工程证据（源码可读）+ 本地 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-06_0718_coint-shell-signbug-costcliff.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-06 07:18 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>README.md</code> + <code>qstrat/constants.py</code> + <code>qstrat/libs/stats.py</code> + <code>qstrat/libs/strategy.py</code> + <code>qstrat/backtesting.py</code> + <code>backtest_log.txt</code>）+ Binance Futures testnet 公共 <code>5m/15m</code> portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：cointegration spread mean reversion（<code>ETHUSDT</code> vs <code>LINKUSDT</code> 价差偏离后的回归）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/zscore/order-verification/drawdown-killswitch/binance-futures/testnet/eth-link/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：repo 工程证据（源码可读）+ 本地 portability probe</li>
+</ul>
+<p>&gt; 先回答一句：<strong>这篇东西的 base alpha 是什么？</strong> &gt; &gt; <strong>base alpha = <code>cointegration spread mean reversion</code>。</strong> &gt; 但这轮真正值得 intake 的，不是把它当“又一条 pairs z-score”，而是把它看成一个<strong>开源、最近、带 execution / verification / drawdown shell 的 raw-alpha 工程底座</strong>。只是源码当前至少有 3 处硬伤：<strong>entry threshold 配置不一致、z-score 方向疑似写反、cointegration admission 过松</strong>，所以它现在更像“值得修的策略壳”，还不是能直接抄上线的成品。</p>
+<h2>1. 这次看了什么，为什么这轮值得写它</h2>
+<p>这轮主看：</p>
+<ol>
+<li><strong>ssanin82 (2026). _strat-test-cointegration_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL：<code><a href="https://github.com/ssanin82/strat-test-cointegration">https://github.com/ssanin82/strat-test-cointegration</a></code></li>
+<li>Readable URL：<code><a href="https://github.com/ssanin82/strat-test-cointegration">https://github.com/ssanin82/strat-test-cointegration</a></code></li>
+<li>Venue / DOI：无（GitHub repo）</li>
+</ul>
+<ol>
+<li><strong>Engle, R. F., &amp; Granger, C. W. J. (1987). _Co-integration and Error Correction: Representation, Estimation, and Testing_. Econometrica.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.2307/1913236</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.2307/1913236">https://doi.org/10.2307/1913236</a></code></li>
+</ul>
+<ol>
+<li><strong>Gatev, E., Goetzmann, W. N., &amp; Rouwenhorst, K. G. (2006). _Pairs Trading: Performance of a Relative-Value Arbitrage Rule_. Review of Financial Studies.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.1093/rfs/hhj020</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.1093/rfs/hhj020">https://doi.org/10.1093/rfs/hhj020</a></code></li>
+</ul>
+<p>这轮值得写它，不是因为我们缺第 N 条 pairs 论文，而是因为它补的是一个当前很缺的东西：</p>
+<ul>
+<li><strong>最近、开源、可直接跑的 end-to-end shell</strong>：不只是信号，还包括 order placement、verify-and-retry、backtest harness、drawdown kill-switch；</li>
+<li><strong>和 desk 当前需求直接对齐</strong>：可以把已有多篇 pairs / stat-arb digest，从“论文卡”推进到“可跑 baseline”；</li>
+<li><strong>但又足够诚实</strong>：这份 repo 自己就暴露了一个很典型的现实问题——<code>repo headline alpha != 可上线 alpha</code>。源码看完以后，你会发现它最值钱的不是“ETH/LINK 有 edge”，而是“哪些工程层能留，哪些实现必须先修”。</li>
+</ul>
+<h2>2. 一句话核心结论 + 它是怎么证明的</h2>
+<h3>一句话核心结论</h3>
+<p><strong>这份 2026 repo 真正值得 desk intake 的，是「cointegration spread raw alpha + execution / verification / drawdown shell」这套完整骨架；但就当前源码状态看，直接照抄会把本该做 mean reversion 的东西，写成方向可疑、阈值混乱、成本后明显失血的半成品。</strong></p>
+<h3>一句话它怎么证明</h3>
+<p>我这轮不是只看 README，而是直接交叉了：</p>
+<ul>
+<li><code>README.md</code>：写的是 <code>1h</code> 级 <code>ETH/LINK</code> cointegration + z-score spread trading；</li>
+<li><code>qstrat/constants.py</code>：发现默认 <code>SIGNAL_TRIGGER_THRESHOLD = 0.02</code>，和 README 口径明显不一致；</li>
+<li><code>qstrat/libs/stats.py</code> + <code>qstrat/libs/strategy.py</code>：发现 spread 定义是 <code>series1 - hedge_ratio * series2</code>，但当 <code>z-score &gt; 0</code> 时，策略却下 <strong>long symbol1 / short symbol2</strong>，这和经典 spread-fade 的方向相反；</li>
+<li><code>backtest_log.txt</code>：repo 自带样本里只完成了 <strong>1 笔完整交易</strong>，总 PnL <strong><code>+236.83 USDT</code></strong>、最大回撤 <strong><code>3.53%</code></strong>，但日志里同时出现 <strong>order verification incomplete</strong>；</li>
+<li>我再补了一轮 Binance Futures testnet 公共 <code>markPriceKlines</code> 的 <code>5m/15m</code> portability probe：</li>
+<li><code>5m</code> 上，<code>|z|&gt;=2</code> 事件 <strong>87 次</strong>，中位数 <strong><code>6.5</code> bars</strong> 回到 <code>|z|&lt;0.5</code>；</li>
+<li><code>15m</code> 上，<code>|z|&gt;=2</code> 事件 <strong>93 次</strong>，中位数 <strong><code>6.0</code> bars</strong> 回到 <code>|z|&lt;0.5</code>；</li>
+<li>但一个最朴素的 <code>2σ -&gt; 0.5σ / max 12 bars / 4 bps per leg</code> 非重叠事件策略，<code>10k</code> 名义资金下依然是 <strong><code>5m: -917.5 USDT</code>、<code>15m: -795.6 USDT</code></strong>。</li>
+</ul>
+<p>翻成人话就是：</p>
+<p>&gt; <strong>repo 展示了“spread 会回”的影子，但当前开源实现还没把这点 edge 变成成本后能活下来的策略。</strong></p>
+<h2>3. 这篇东西最值钱的 4 个点</h2>
+<h3>3.1 base alpha 很清楚：就是 cointegration spread mean reversion，不是 filter，不是综述</h3>
+<p>这点先说死：</p>
+<ul>
+<li><code>stats.py</code> 里用 <code>statsmodels.tsa.stattools.coint</code> 做 cointegration 检验；</li>
+<li>用 OLS hedge ratio 构造 <code>spread = series1 - hedge_ratio * series2</code>；</li>
+<li>用 <code>21</code> bar rolling z-score 做偏离度；</li>
+<li><code>README</code> 和 <code>backtest_log</code> 也都在讲“spread 偏离后等待回归”。</li>
+</ul>
+<p>所以它不是 regime、不是 overlay，<strong>它本体就是 raw alpha</strong>。</p>
+<h3>3.2 这份 repo 的真正价值，不是 pair 选择，而是 execution shell</h3>
+<p>它开源给出的可复用部分，反而比信号本身更值钱：</p>
+<ol>
+<li><strong>verify-and-retry order shell</strong></li>
+</ol>
+<ul>
+<li>下完双腿之后会验证是否真的成交到目标方向；</li>
+<li>失败会进入 retry / partial verification；</li>
+<li>这比很多只会给你一个信号 notebook 的 repo 强得多。</li>
+</ul>
+<ol>
+<li><strong>drawdown kill-switch</strong></li>
+</ol>
+<ul>
+<li>常量里给了 <code>DRAWDOWN_LIMIT_PCT = 90</code>；</li>
+<li><code>main.py</code> / <code>backtesting.py</code> 都把 kill-switch 接进去了。</li>
+</ul>
+<ol>
+<li><strong>production/backtest 统一接口</strong></li>
+</ol>
+<ul>
+<li>live 走 gateway，backtest 走 mock gateway；</li>
+<li>对 desk 来说，这种壳比单篇论文更容易转成自己的 baseline。</li>
+</ul>
+<p>也就是说，它最适合服务的是： &gt; <strong>把我们已经积累的一堆 pairs / stat-arb raw alpha，先包进一套最小可执行壳。</strong></p>
+<h3>3.3 但源码审计的结论也很明确：当前实现有 3 处硬伤，不能直接抄</h3>
+<p>#### 硬伤 1：threshold 口径不一致</p>
+<ul>
+<li><code>README</code> 口径是：<code>z-score &gt; 2</code> 才触发；</li>
+<li><code>constants.py</code> 当前实际写的是：<code>SIGNAL_TRIGGER_THRESHOLD = 0.02</code>。</li>
+</ul>
+<p>这不是小数点误差，这是<strong>交易频率和噪声暴露会差一个数量级</strong>的问题。</p>
+<p>#### 硬伤 2：z-score 方向疑似写反</p>
+<ul>
+<li><code>stats.py</code> 先算：<code>spread = symbol1 - hedge_ratio * symbol2</code>；</li>
+<li>理论上如果 <code>z-score &gt; 0</code>，说明 spread 偏高，经典 pairs 写法应是：<strong>short symbol1 / long symbol2</strong>；</li>
+<li>但 <code>strategy.py</code> 当前写的是：<code>signal_side == positive -&gt; BUY symbol1, SELL symbol2</code>。</li>
+</ul>
+<p>也就是： &gt; <strong>当前 repo 对正 z-score 的处理，更像“追 spread 扩张”，不是“赌 spread 回归”。</strong></p>
+<p>除非作者后面对 spread 定义另有反向语义，否则这就是一个必须先修的 sign 问题。</p>
+<p>#### 硬伤 3：cointegration admission 太松 <code>stats.py</code> 里 admission 条件写的是：</p>
+<ul>
+<li><code>p_value &lt; 0.5</code></li>
+<li><code>coint_t &lt; critical_value</code></li>
+</ul>
+<p><code>p &lt; 0.5</code> 这种门槛，基本不够当 admission gate。对 short-cycle desk，更现实的做法至少应该是：</p>
+<ul>
+<li><code>p &lt; 0.05</code> 或更严格；</li>
+<li>再加 <code>half-life / zero-cross / spread vol / turnover budget</code> 这些二级 admission。</li>
+</ul>
+<h3>3.4 portability probe 给出的 desk 结论很现实：gross 有，但先别幻想 5m 直接上线</h3>
+<p>我补了一轮最小 transfer check，用的是：</p>
+<ul>
+<li>数据源：Binance Futures testnet 公共 <code>markPriceKlines</code>（无需授权）</li>
+<li>标的：<code>ETHUSDT</code> / <code>LINKUSDT</code></li>
+<li>频率：<code>5m</code>、<code>15m</code></li>
+<li>样本：各 <code>1500</code> 根 bar</li>
+<li>spread：静态 OLS beta</li>
+<li>signal：rolling <code>21</code> bar z-score</li>
+</ul>
+<p>先看事件层：</p>
+<ul>
+<li><code>5m</code>：<code>87</code> 次 <code>|z|&gt;=2</code> 事件，事件后中位 <strong><code>6.5</code> bars</strong> 回到 <code>|z|&lt;0.5</code>；</li>
+<li><code>15m</code>：<code>93</code> 次事件，中位 <strong><code>6.0</code> bars</strong> 回到 <code>|z|&lt;0.5</code>。</li>
+</ul>
+<p>这说明 <strong>spread 回归 pocket 是有的</strong>。</p>
+<p>但一上最朴素的可交易骨架：</p>
+<ul>
+<li>entry：<code>|z| &gt;= 2</code></li>
+<li>exit：<code>|z| &lt; 0.5</code> 或 <code>12 bars time-stop</code></li>
+<li>sizing：<code>10k</code> 名义资金，双腿各 <code>50%</code></li>
+<li>fee：<code>4 bps / leg</code></li>
+</ul>
+<p>结果就很直接：</p>
+<ul>
+<li><code>5m</code>：<strong><code>62</code> 笔</strong>，gross <strong><code>+74.49 USDT</code></strong>，net <strong><code>-917.51 USDT</code></strong>；</li>
+<li><code>15m</code>：<strong><code>64</code> 笔</strong>，gross <strong><code>+228.43 USDT</code></strong>，net <strong><code>-795.57 USDT</code></strong>。</li>
+</ul>
+<p>如果把 entry 拉到更保守的 <code>3σ</code>：</p>
+<ul>
+<li><code>5m</code>：gross <strong><code>+34.94</code></strong>，net <strong><code>-125.06</code></strong>；</li>
+<li><code>15m</code>：gross <strong><code>+65.82</code></strong>，net <strong><code>-94.18</code></strong>。</li>
+</ul>
+<p>这组数的含义非常清楚：</p>
+<p>&gt; <strong>15m 明显比 5m 更接近“能活”的方向，但 naked z-score 本身还不够，必须靠更严 entry / 更强 admission / 更低成本 / 更少重试 才有机会。</strong></p>
+<h2>4. 为什么和当前项目直接相关</h2>
+<p>它和当前项目的关系，不在于“我们还缺一篇 pairs digest”，而在于：</p>
+<ol>
+<li><strong>它补的是 runnable baseline，而不是纯概念。</strong></li>
+<li><strong>它能服务至少 3 类现有 raw alpha</strong>：cointegration pairs、cluster residual MR、same-underlier relative-value MR。</li>
+<li><strong>它把工程问题暴露得很完整</strong>：方向映射、threshold 配置、admission 宽松、verification friction、cost cliff。</li>
+</ol>
+<p>这正好适合当前 desk 的阶段：</p>
+<ul>
+<li>不是再收藏一条 headline alpha；</li>
+<li>而是把已有素材池压成一个更诚实的 baseline runner。</li>
+</ul>
+<h2>4.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：pairs / stat-arb / relative-value mean reversion</li>
+<li>基础 alpha：cointegration spread 偏离后的回归</li>
+<li>entry：rolling z-score 偏离达到阈值后，做 <strong>spread-fade</strong>（注意：repo 当前 sign 需要先校正）</li>
+<li>exit：<code>|z|</code> 回到较低阈值，或 time-stop 触发</li>
+<li>sizing：双腿各占名义资金 <code>50%</code>，beta-hedged；当前 repo 默认 <code>10x</code> leverage</li>
+<li>risk：drawdown kill-switch、active-order / active-position 检查、order verification</li>
+<li>cost：双腿四笔 legs 的手续费 / 滑点 / retry friction 必须显式入账；当前 portability probe 已经说明 <strong>这是第一性约束，不是附属项</strong></li>
+</ul>
+<h2>5. 给 desk 的最小可落地版本</h2>
+<p>如果只想把这份 repo 变成 desk 可用的第一版，不要直接照抄，先做这 6 个修正：</p>
+<ol>
+<li><strong>修正 sign</strong></li>
+</ol>
+<ul>
+<li><code>z &gt; +entry</code>：先按经典 spread-fade 写成 <code>short symbol1 / long beta*symbol2</code></li>
+<li><code>z &lt; -entry</code>：<code>long symbol1 / short beta*symbol2</code></li>
+</ul>
+<ol>
+<li><strong>把 threshold 拉回正常区间</strong></li>
+</ol>
+<ul>
+<li><code>entry ∈ {2.0, 2.5, 3.0}</code></li>
+<li><code>exit ∈ {0.5, 1.0}</code></li>
+</ul>
+<ol>
+<li><strong>重写 admission</strong></li>
+</ol>
+<ul>
+<li><code>p &lt; 0.05</code></li>
+<li>minimum zero-cross</li>
+<li>half-life ceiling</li>
+<li>ADV / spread vol / cost bucket</li>
+</ul>
+<ol>
+<li><strong>先从 <code>15m</code> 开始，不先上 <code>5m</code></strong></li>
+</ol>
+<ul>
+<li>这轮 probe 已经显示 <code>15m</code> 更接近 gross 可用；</li>
+<li><code>5m</code> 更像成本压力测试桶。</li>
+</ul>
+<ol>
+<li><strong>保留 repo 的 execution shell</strong></li>
+</ol>
+<ul>
+<li>verify-and-retry</li>
+<li>dual-leg position check</li>
+<li>kill-switch</li>
+</ul>
+<ol>
+<li><strong>显式记账 retry cost / maker-taker cost / slippage</strong></li>
+</ol>
+<ul>
+<li>不然回测会系统性高估。</li>
+</ul>
+<h2>6. 下一步怎么测（这轮最重要）</h2>
+<h3>6.1 先测什么</h3>
+<p>做一个最小 A/B/C：</p>
+<ol>
+<li><strong>A = corrected-sign baseline</strong></li>
+</ol>
+<ul>
+<li><code>15m</code></li>
+<li><code>2.0 / 2.5 / 3.0σ</code> entry</li>
+<li><code>0.5 / 1.0σ</code> exit</li>
+<li><code>8 / 12 / 16 bars</code> time-stop</li>
+</ul>
+<ol>
+<li><strong>B = A + stricter admission</strong></li>
+</ol>
+<ul>
+<li><code>p &lt; 0.05</code></li>
+<li>half-life ceiling</li>
+<li>zero-cross floor</li>
+</ul>
+<ol>
+<li><strong>C = B + repo execution shell</strong></li>
+</ol>
+<ul>
+<li>verification retry</li>
+<li>daily drawdown governor</li>
+<li>order-state audit</li>
+</ul>
+<h3>6.2 最小实验口径</h3>
+<ul>
+<li><strong>数据</strong>：Binance Futures 公共 <code>markPriceKlines</code></li>
+<li><strong>频率</strong>：先 <code>15m</code>，再 <code>5m</code> 当 stress test</li>
+<li><strong>标的池</strong>：先从高流动 <code>BTC/ETH/SOL/LINK/BNB</code> 里滚动选 pair，不要只绑死 <code>ETH/LINK</code></li>
+<li><strong>walk-forward</strong>：<code>train 30d / test 7d</code></li>
+<li><strong>hedge ratio</strong>：rolling OLS / TLS 都试</li>
+<li><strong>成本</strong>：至少跑 <code>4 / 8 / 12 bps</code> round-trip 等价三档</li>
+<li><strong>输出</strong>：gross/net pnl、Sharpe、trade count、avg hold、zero-cross hit ratio、verification fail ratio、retry 次数、cost 占 gross 比例</li>
+</ul>
+<h3>6.3 第一轮最该看什么结果</h3>
+<p>这轮别问“最终收益最大化”，先回答 4 个问题：</p>
+<ol>
+<li><strong>修正 sign 以后，gross 是否显著改善？</strong></li>
+<li><strong><code>15m 3σ</code> 能不能在合理 fee 下接近 break-even / 小幅转正？</strong></li>
+<li><strong>verification / retry 到底是在救策略，还是在扩大 friction？</strong></li>
+<li><strong>pair admission 做严格以后，trade count 下降多少、单位交易 edge 提升多少？</strong></li>
+</ol>
+<h2>7. 先别自嗨的风险</h2>
+<ol>
+<li><strong>repo 自带 backtest 样本太薄。</strong> <code>backtest_log.txt</code> 里只完成了 1 笔完整交易，不能把 <code>+236.83 USDT</code> 当成有效验证。</li>
+<li><strong>当前源码存在实现歧义。</strong> threshold、sign、admission 三块都需要先审再跑。</li>
+<li><strong>ETH/LINK 只是单 pair。</strong> 它可以当 smoke test，但不能代表 pair book。</li>
+<li><strong>testnet mark price 不等于真实可成交价格。</strong> 实盘里只会比这里更贵，不会更便宜。</li>
+</ol>
+<h2>8. 这轮最值得记住的 desk 化结论</h2>
+<p>如果只记一句：</p>
+<p>&gt; <strong>这份 2026 新 repo 值得 intake 的不是“ETH/LINK 圣杯”，而是 <code>cointegration raw alpha + execution shell</code> 这套可修底座；但就当前源码和 portability probe 看，先修 sign / threshold / admission，再谈上线。</strong></p>
+<p>再补一句更贴当前短周期：</p>
+<p>&gt; <strong>第一轮别上 <code>5m</code>，先拿 <code>15m</code> 做 corrected-sign + stricter-admission 的最小实验；<code>5m</code> 目前更像成本压力测试，不像主战场。</strong></p>
+<h2>9. 来源</h2>
+<ol>
+<li><strong>ssanin82 (2026). _strat-test-cointegration_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL：<code><a href="https://github.com/ssanin82/strat-test-cointegration">https://github.com/ssanin82/strat-test-cointegration</a></code></li>
+<li>Readable URL：<code><a href="https://github.com/ssanin82/strat-test-cointegration">https://github.com/ssanin82/strat-test-cointegration</a></code></li>
+<li>这轮直接审阅：<code>README.md</code>、<code>qstrat/constants.py</code>、<code>qstrat/libs/stats.py</code>、<code>qstrat/libs/strategy.py</code>、<code>qstrat/backtesting.py</code>、<code>backtest_log.txt</code></li>
+</ul>
+<ol>
+<li><strong>Engle, R. F., &amp; Granger, C. W. J. (1987). _Co-integration and Error Correction: Representation, Estimation, and Testing_. Econometrica, 55(2), 251–276.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.2307/1913236</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.2307/1913236">https://doi.org/10.2307/1913236</a></code></li>
+</ul>
+<ol>
+<li><strong>Gatev, E., Goetzmann, W. N., &amp; Rouwenhorst, K. G. (2006). _Pairs Trading: Performance of a Relative-Value Arbitrage Rule_. Review of Financial Studies, 19(3), 797–827.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.1093/rfs/hhj020</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.1093/rfs/hhj020">https://doi.org/10.1093/rfs/hhj020</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Futures testnet public <code>markPriceKlines</code>（本轮 portability probe）</strong></li>
+</ol>
+<ul>
+<li>公开性：公开可拉、无需鉴权</li>
+<li>更新频率：按交易所 bar 频率滚动更新</li>
+<li>最小复现实验口径：<code>ETHUSDT/LINKUSDT</code>，各 <code>1500</code> 根 <code>5m/15m</code> mark-price bars，rolling <code>21</code> bar z-score，<code>2σ/2.5σ/3σ</code> entry，<code>0.5σ/1.0σ</code> exit，<code>12</code> bar time-stop，双腿各 <code>50%</code> 名义资金，显式计入每 leg 手续费</li>
+</ul>
+</body>
+</html>

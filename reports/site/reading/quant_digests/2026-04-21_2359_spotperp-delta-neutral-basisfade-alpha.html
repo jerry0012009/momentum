@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 delta-basis repo 只读成“中性套利框架”：对 short-cycle crypto desk，更该先拆的是「spot↔perp basis z-score fade」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 delta-basis repo 只读成“中性套利框架”：对 short-cycle crypto desk，更该先拆的是「spot↔perp basis z-score fade」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-22 00:00 UTC</span>
+      <span class="pill">研究时间：2026-04-21 23:59 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit + Binance public-data portability probe</span>
+      <span class="pill">主题标签：carry / basis / relative-value / stat-arb / delta-neutral / spot-perp / mean-reversion / Binance / 5m / 15m / repo / public-data</span>
+      <span class="pill">证据类型：工程经验 + repo rule shell + public-data first probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-21_2359_spotperp-delta-neutral-basisfade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-21 23:59 UTC</li>
+<li>类型：GitHub / repo source audit + Binance public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当同一标的的 perpetual 相对 spot 出现异常升贴水时，做 <strong>long cheap leg / short rich leg</strong>，赌 basis spread 向自身短窗中枢回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（但当前 short-cycle first verdict 偏弱）</li>
+<li>主题标签：carry / basis / relative-value / stat-arb / delta-neutral / spot-perp / mean-reversion / Binance / 5m / 15m / repo / public-data</li>
+<li>证据类型：工程经验 + repo rule shell + public-data first probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 2025 GitHub repo <strong>mariamlulu / delta-basis-trading</strong>。它不是只给一个“套利会回归”的口号，而是把完整策略骨架都摆出来了：<code>basis_spread -&gt; rolling z-score -&gt; entry/exit -&gt; size -&gt; fees/slippage/funding -&gt; report</code>。对 desk 更有价值的读法是：<strong>这不是单纯 carry 研究，而是一条可直接落到 <code>5m/15m</code> 最小实验的 raw alpha 壳。</strong></p>
+<h2>2. 一句话核心结论</h2>
+<p>这条 <code>spot↔perp basis z-score fade</code> <strong>方向上完全成立，且 gross 几乎每笔都赚钱</strong>；但在 Binance <code>BTC/ETH</code> 的 <code>5m/15m</code> portability probe 里，<strong>单笔 gross 只有约 <code>1.8~2.1 bps</code>，远不够覆盖 repo 自带那档 realistic 四腿摩擦</strong>，所以当前更像一条 <strong>maker-first / event-conditioned / inventory-aware</strong> 的 relative-value 壳，而不是可直接 taker 化上线的主信号。</p>
+<h2>3. 它是怎么证明这点的</h2>
+<p>不是靠泛讲“套利无风险”，而是直接把 Binance spot 与 Binance USDⓈ-M perp 的同标的 K 线对齐，按 repo 配置近似复刻：<code>336h</code> rolling z-score、<code>|z|&gt;=2</code> 入场、<code>|z|&lt;=0.5</code> / <code>|z|&gt;=4</code> / <code>336h timeout</code> 出场，再统计每笔 basis-trade 的 gross bps，并粗扣 <code>28 / 40 bps</code> round-trip 四腿成本梯度。</p>
+<h2>4. 核心结论展开</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha 很清楚</strong>：不是方向赌币价涨跌，而是赌 <strong>spot-perp 升贴水偏离会回归</strong>。</li>
+<li>repo 的完整策略壳也很完整：</li>
+<li>signal：<code>basis = perp / spot - 1</code>，再做 rolling z-score</li>
+<li>entry：<code>|z| &gt;= 2</code></li>
+<li>exit：<code>|z| &lt;= 0.5</code>、<code>|z| &gt;= 4</code> 或 time-stop</li>
+<li>sizing：<code>50% NAV</code>、spot <code>1x</code> + perp <code>3x</code></li>
+<li>cost：maker / taker / slippage / funding 都有位置放</li>
+<li>这轮 Binance 公开数据 quick probe（最近约 <code>60d</code>，<code>BTCUSDT/ETHUSDT</code>）给出的 first verdict：</li>
+<li><code>15m BTC</code>：<code>122</code> 笔，gross <code>+2.14 bps/笔</code>，胜率 <code>99.2%</code></li>
+<li><code>15m ETH</code>：<code>94</code> 笔，gross <code>+1.78 bps/笔</code>，胜率 <code>94.7%</code></li>
+<li><code>5m BTC</code>：<code>332</code> 笔，gross <code>+2.06 bps/笔</code>，胜率 <code>99.1%</code></li>
+<li><code>5m ETH</code>：<code>239</code> 笔，gross <code>+1.81 bps/笔</code>，胜率 <code>95.0%</code></li>
+<li>问题也非常直接：repo 配置本身就假设了不低的摩擦。若按四腿 round-trip 粗扣：</li>
+<li><code>28 bps</code>（maker+slippage 风格）后，单笔 net 仍约 <code>-25.9 ~ -26.2 bps</code></li>
+<li><code>40 bps</code>（更保守 taker 风格）后，单笔 net 约 <code>-37.9 ~ -38.2 bps</code></li>
+<li>所以这条 alpha 的真实结论不是“没回归”，而是：<strong>回归存在，但常态幅度太薄；若 execution 不是特别强，这笔 edge 会全被摩擦吃掉。</strong></li>
+</ul>
+<h2>5. 为什么和当前项目有关</h2>
+<p>它补的是我们 raw alpha 素材池里一条很重要、但还没被彻底拆干净的支线：<strong>同一 underlier 的现货-永续 financing dislocation</strong>。这和前面的 perp-calendar / funding-sign-flip 不同，它更接近 desk 能直接落地的“单交易所、双腿、分钟级”最小原型，适合继续拆成：</p>
+<ul>
+<li>maker-first child execution</li>
+<li>funding / premium jump 条件下的 event router</li>
+<li>inventory 对冲层的 deploy / unwind timing</li>
+</ul>
+<h2>6. 策略拆解</h2>
+<ul>
+<li>方向属性：relative-value / stat-arb / carry-adjacent mean reversion</li>
+<li>基础 alpha：spot-perp basis 偏离后的回归</li>
+<li>signal：<code>basis_pct = perp_close / spot_close - 1</code>，再做 <code>336h</code> rolling z-score</li>
+<li>entry：<code>z &gt;= +2</code> → long spot / short perp；<code>z &lt;= -2</code> → short spot / long perp</li>
+<li>exit：<code>|z| &lt;= 0.5</code>、<code>|z| &gt;= 4</code>、或 <code>336h</code> timeout</li>
+<li>sizing：双腿等名义；perp 允许杠杆，但真实 desk 更该按流动性、库存与 borrow/funding 约束来缩放</li>
+<li>主要风险：funding 突变、perp mark / index 脱钩、现货腿成交与借贷限制、四腿摩擦、极端行情下 basis 继续扩张</li>
+</ul>
+<h2>7. 可复刻的最小实验</h2>
+<h3>数据源</h3>
+<ul>
+<li>Binance Spot 公开 K 线：<code>/api/v3/klines</code></li>
+<li>Binance USDⓈ-M Perp 公开 K 线：<code>/fapi/v1/klines</code></li>
+<li>公开性：公开可得，无需私有权限</li>
+<li>更新频率：分钟级；这轮实验用 <code>5m / 15m</code></li>
+</ul>
+<h3>最小实验口径</h3>
+<ol>
+<li>拉 <code>BTCUSDT/ETHUSDT</code> spot 与 perp 最近 <code>45~60d</code> K 线；</li>
+<li>对齐时间戳，算 <code>basis_pct</code>；</li>
+<li>用 repo 的 <code>336h / 2.0 / 0.5 / 4.0 / 336h timeout</code> 先跑 baseline；</li>
+<li>统计 <code>gross bps/trade</code>、<code>win rate</code>、<code>avg hold</code>；</li>
+<li>再加 <code>28/40 bps</code> friction ladder；</li>
+<li>若常态 net 仍明显为负，再测试 maker-only、funding jump、premium dislocation、结算前后等 event-conditioned 版本。</li>
+</ol>
+<h2>8. 这轮我保留的判断</h2>
+<p>这条线 <strong>绝对算 raw alpha，而且是完整策略壳</strong>。但当前更像：</p>
+<p>&gt; <strong>有稳定 gross 回归、却没有足够厚度覆盖常态摩擦的 spot-perp relative-value shell。</strong></p>
+<p>也就是说，值得留，不该高估。它最适合进入后续 <strong>execution-aware / event-aware / inventory-aware</strong> 复现分支，而不是直接当成 <code>5m/15m</code> standalone 主 alpha。</p>
+<h2>9. 下一步怎么测</h2>
+<ul>
+<li>把 <code>BTC/ETH</code> 扩到更容易出现资金费率/库存错配的币，别只盯最有效率的 majors。</li>
+<li>补 <code>fundingRate / premiumIndex / mark price</code>，测试 <strong>basis widening + funding shock</strong> 联合 admission，而不是全天候机械做回归。</li>
+<li>做 <strong>maker-first fill model</strong>：只有当预期回归幅度 <code>&gt; fee+slippage+inventory_penalty</code> 才下单。</li>
+<li>把它和我们已有的 funding / calendar / pairs 素材池串起来，测试它更适合当：</li>
+<li>standalone alpha</li>
+<li>carry entry-timing layer</li>
+<li>delta-neutral inventory unwind router</li>
+</ul>
+<h2>10. 来源</h2>
+<ul>
+<li>GitHub user <code>mariamlulu</code> (2025), <strong>Delta Basis Trading System</strong>. Repo URL: &lt;<a href="https://github.com/mariamlulu/delta-basis-trading&gt;">https://github.com/mariamlulu/delta-basis-trading&gt;</a></li>
+<li>Readable README URL: &lt;<a href="https://raw.githubusercontent.com/mariamlulu/delta-basis-trading/main/README.md&gt;">https://raw.githubusercontent.com/mariamlulu/delta-basis-trading/main/README.md&gt;</a></li>
+<li>Source audit 文件：<code>README.md</code>, <code>src/config.yaml</code>, <code>src/signals/threshold_strategy.py</code>, <code>src/backtest/backtest_engine.py</code></li>
+<li>本地 artifacts：</li>
+<li><code>reports/artifacts/quant_digests/delta_basis_spreadfade_summary_2026-04-21.csv</code></li>
+<li><code>reports/artifacts/quant_digests/delta_basis_spreadfade_trades_2026-04-21.csv</code></li>
+</ul>
+</body>
+</html>

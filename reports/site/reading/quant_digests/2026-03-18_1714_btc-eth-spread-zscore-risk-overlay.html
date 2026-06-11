@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 continuation 失败都怪进场形状：更值得先测的是 BTC-ETH spread z-score 作为三条线共用 risk overlay</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 continuation 失败都怪进场形状：更值得先测的是 BTC-ETH spread z-score 作为三条线共用 risk overlay</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-18 17:15 UTC</span>
+      <span class="pill">研究时间：2026-03-18 17:14 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/pairs-trading/cointegration/spread-zscore/risk-overlay/position-sizing/crypto/15m</span>
+      <span class="pill">证据类型：仓库代码 + 公开 OHLCV / 可快速复现实验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-18_1714_btc-eth-spread-zscore-risk-overlay.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-18 17:14 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/pairs-trading/cointegration/spread-zscore/risk-overlay/position-sizing/crypto/15m</li>
+<li>证据类型：仓库代码 + 公开 OHLCV / 可快速复现实验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <code>eshan-kaul/PairsTrading-Crypto</code>（2022）的 notebook。它主线是配对交易，但对我们当前 desk 更有价值的旁支，不是“直接做 market-neutral 主策略”，而是把 <code>BTC-ETH</code> 的相对价差偏离度（spread z-score）降级成 <strong>15m 的风险覆盖层</strong>，给三条收口线统一做 <code>allow / reduce / veto</code>。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：对当前三条线，最值得先偷的不是配对交易本体，而是“当 <code>BTC-ETH</code> 相对价差进入极端偏离时，先降低或否决 continuation 仓位”。</li>
+<li><strong>一句话证明方式</strong>：repo 在同一个 notebook 里把流程写成了可复刻链条：先做相关/协整筛选（Engle-Granger + Johansen），再构造 <code>spread = A2 - b*A1</code>（OLS 对冲比），最后用 <code>z-score</code> 阈值（示例为 ±1）触发信号；说明其可迁移价值在“偏离度量”本身，而不在某个神秘指标。</li>
+<li>对我们当前阶段最有用的读法：把 spread z-score 当 <strong>risk overlay / position sizing</strong>，不是硬伪装成逐根 15m 的主入场信号。</li>
+<li>这条线和今天已写的 OI / liquidation / VWAP 不冲突：它只用公开价格数据，成本低、上线快，适合作为 shared second-order filter。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li><code>V3 final-verdict / breakout-short follow-up</code>：当 <code>|z_spread|</code> 很高时，常见是“主币相对强弱在重配”，这类阶段 continuation 更容易被反抽；可先做 follow-up veto 或降仓。</li>
+<li><code>Fibonacci confirmation / retest_hold</code>：Fib 给位置，但 spread z-score 可以回答“这个回踩是不是发生在跨主币失衡修复期”；若是，优先降置信度。</li>
+<li><code>EMA / PSAR raw alpha focus</code>：EMA/PSAR 负责方向，spread 偏离负责拥挤/失衡风险提示；角色清晰，不和 entry trigger 打架。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：给三条 setup 加上 <code>BTC-ETH spread z-score</code> 风险覆盖层，能在不明显砍掉样本的前提下，降低 continuation 失败率与回撤。</li>
+<li><strong>数据源（公开可得）</strong>：Binance USDⓈ-M <code>BTCUSDT</code>、<code>ETHUSDT</code> 15m Kline（公开 REST）。</li>
+<li><strong>最小可计算口径</strong>：</li>
+</ul>
+<ol>
+<li>在 15m 上计算 <code>ret_btc</code>、<code>ret_eth</code>；</li>
+<li>滚动 OLS 得到 <code>beta_t</code>（如 288 bars）；</li>
+<li><code>spread_t = ret_eth - beta_t * ret_btc</code>；</li>
+<li><code>z_t = (spread_t - ma_96) / std_96</code>；</li>
+<li>覆盖层规则：<code>|z_t|&lt;=1</code> 全仓、<code>1&lt;|z_t|&lt;=2</code> 半仓、<code>|z_t|&gt;2</code> 禁入新 continuation。</li>
+</ol>
+<ul>
+<li><strong>第一轮 bucket</strong>：<code>base</code> vs <code>size-overlay</code> vs <code>hard-veto</code>。</li>
+<li><strong>最先看 4 个指标</strong>：<code>post-cost expectancy</code>、<code>trade count retention</code>、<code>false-break/false-hold rate</code>、<code>max drawdown</code>。</li>
+<li><strong>下一步怎么测</strong>：先固定 <code>BTC/ETH/SOL</code>、最近 <code>180d</code>、<code>next-bar open</code>、<code>no-overlap</code>，只回答一件事：<code>|z_spread|&gt;2</code> 的 veto，是否能在 trade retention ≥70% 前提下，把三条线的成本后回撤和失败率同时压下去；若做不到，就不要继续美化成“跨币种智能风控”。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>该 repo 是教学型 notebook，不是生产级交易系统；结论可启发，但不能当成已验证实盘模板。</li>
+<li>原仓库示例偏日频/较长窗口思路，直接搬到 15m 可能过噪；需滚动窗口敏感性检查。</li>
+<li>spread z-score 与已有 regime/filter 可能信息重叠，后续必须做 ablation，确认它不是“换名字重复过滤”。</li>
+<li>这是 overlay，不是主信号；若把它升级成主入场条件，容易偏离当前三条线收口目标。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Eshan Kaul. (2022). *Implementing the Pairs Trading Strategy on Crypto Markets* (GitHub notebook). Venue: GitHub. DOI: N/A.</li>
+<li>Readable URL: &lt;<a href="https://github.com/eshan-kaul/PairsTrading-Crypto&gt;">https://github.com/eshan-kaul/PairsTrading-Crypto&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/eshan-kaul/PairsTrading-Crypto&gt;">https://github.com/eshan-kaul/PairsTrading-Crypto&gt;</a></li>
+<li>Notebook URL: &lt;<a href="https://raw.githubusercontent.com/eshan-kaul/PairsTrading-Crypto/main/Pairs%20Trading%20Strategy%20for%20Crypto%20Markets.ipynb&gt;">https://raw.githubusercontent.com/eshan-kaul/PairsTrading-Crypto/main/Pairs%20Trading%20Strategy%20for%20Crypto%20Markets.ipynb&gt;</a></li>
+<li>Repo metadata snapshot: created <code>2022-07-07</code>, <code>12</code> stars at fetch time.</li>
+<li>Binance USDⓈ-M Futures API. *Kline/Candlestick Data*.</li>
+<li>Readable URL: &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;</a></li>
+<li>用途：构造 <code>BTC/ETH 15m</code> spread z-score 风险覆盖层的最小可复现实验。</li>
+</ul>
+</body>
+</html>

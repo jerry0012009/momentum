@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2025/2026 LOB repo 只读成 execution infra：对 short-cycle desk，更该先测的是「persistent L1 imbalance × signed-flow autocorr continuation」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2025/2026 LOB repo 只读成 execution infra：对 short-cycle desk，更该先测的是「persistent L1 imbalance × signed-flow autocorr continuation」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-07 06:49 UTC</span>
+      <span class="pill">研究时间：2026-04-07 06:40 UTC</span>
+      <span class="pill">类型：GitHub / microstructure analytics / execution toolkit</span>
+      <span class="pill">主题标签：raw-alpha / microstructure / order-book / imbalance / signed-flow / continuation / btc / binanceus / 1m / 3m / 5m / repo / public-data / cost</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-07_0640_persistent-imbalance-signedflow-continuation-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-07 06:40 UTC</li>
+<li>类型：GitHub / microstructure analytics / execution toolkit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当盘口一侧队列持续占优、且主动成交方向在短时间内连续同向时，mid-price 在接下来极短窗口里更容易继续朝占优一侧漂移。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha / microstructure / order-book / imbalance / signed-flow / continuation / btc / binanceus / 1m / 3m / 5m / repo / public-data / cost</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Mansoor Mamnoon (2025/2026)</strong> 的 GitHub 仓库 <strong><code>limit-order-book</code></strong>。表面上它像一个“高性能 LOB 引擎 + VWAP/TWAP/POV 回放框架”，但对我们 desk 更值钱的其实是 repo 里那条更容易复现的 raw alpha 线：<code>python/olob/microstructure.py</code> 会直接产出 <strong>impact curves、signed order-flow autocorrelation、以及 short-horizon drift vs. L1 imbalance deciles</strong>。</p>
+<p>也就是说，这份仓库不该只被读成 execution 基础设施；它其实把一个很朴素、但适合短周期 desk 的命题写得很清楚：<strong>盘口失衡如果只是瞬时快照，价值有限；但若它和主动成交同方向持续出现，就更像可以被交易的 continuation alpha。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最值得 intake 的不是 TWAP/VWAP 示例，而是 <strong>“L1 队列失衡 × signed-flow persistence” 这条 microstructure raw alpha 候选</strong>。</li>
+<li><strong>一句话证明方式：</strong> 作者没有只给口头叙事，而是把 raw analytics 做成可重复脚本，直接在真实 BTCUSDT 样本上输出 <strong>drift-vs-imbalance、impact、order-flow autocorr</strong> 三类证据，再把成本/执行层接到同一代码库里。</li>
+<li>repo 自带 <code>microstructure_summary.json</code> 显示：<strong>signed order-flow lag-1 autocorr ≈ <code>0.326</code></strong>，不是接近 0 的白噪声；这说明主动买卖方向在极短窗口里有明显簇集，适合和 queue imbalance 一起读，而不是孤立看单个 snapshot。</li>
+<li>同一份 summary 把 <strong>drift-vs-imbalance</strong> 明确写成 <strong><code>horizon_ms = 500</code>、<code>grid_ms = 1000</code></strong> 的短窗分析；这很重要，因为它提醒我们：这条 alpha 的原生尺度不是 15m 指标，而是<strong>先在秒级成立，再看能不能迁移成 1m/3m/5m 的聚合触发器</strong>。</li>
+<li>README/仓库元数据还给了一个很实用的配套事实：引擎声称能处理 <strong><code>20.7M msgs/sec</code></strong>、延迟 <strong><code>p50=0.04µs</code> / <code>p99≈1µs</code></strong>。这不是 alpha 证据本身，但意味着它不是“讲故事用 repo”，而是一个能把 <strong>alpha → impact → execution budget</strong> 串起来的实验骨架。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和当前 <code>momentum</code> 直接相关，因为它补的是我们 raw alpha 素材池里的 <strong>microstructure continuation</strong> 分支，而且不是只给“信号”，还顺手给了 <strong>成本 / 冲击 / 执行约束</strong>。</p>
+<p>更重要的是，它对当前 desk 的启发不是“马上去卷亚毫秒做市”，而是更务实的改写：</p>
+<ol>
+<li>保留 <strong>queue imbalance + signed flow persistence</strong> 作为 raw alpha 本体；</li>
+<li>把 repo 的 <strong>impact 曲线</strong> 改读成 size cap / trade veto；</li>
+<li>把秒级信号聚合成 <code>1m / 3m / 5m</code> 可测的 bar-level admission，而不是硬装成 tick-by-tick production 系统。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>单资产 / microstructure / continuation</strong></li>
+<li>基础 alpha：<strong>持续的 L1 bid/ask 失衡 + 同向主动成交簇集，会推着未来短窗 mid-price 继续朝该方向漂移</strong></li>
+<li>regime：<strong>只在 spread 较窄、深度未塌、冲击成本不过高时启用；高波动清算段默认降级</strong></li>
+<li>filter / veto：<strong>若 spread 扩大、impact 预算超阈值、或 imbalance 只是单点尖峰而非持续状态，则不做</strong></li>
+<li>risk / sizing / execution overlay：<strong>按 impact budget 限制名义仓位；优先 next-bar open / maker-ish 进入；固定 time stop + sign-flip exit；若预估冲击 &gt; 预期 edge 的 1/3，直接 veto</strong></li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 秒级的 <code>persistent imbalance × signed flow</code> continuation，能迁移成 BTC/ETH/SOL 上 <code>1m / 3m</code> 可测的短周期 directional alpha。</p>
+<p><strong>一个可计算定义：</strong> ``<code>python imb_t = bid_sz1_t / (bid_sz1_t + ask_sz1_t) - 0.5 flow_t = sum(sign_i * qty_i for trades in last_5s) persist_t = mean(1[imb_{t-k}&gt;q90] for k in 0..59) score_t = persist_t * sign(flow_t) * 1[abs(flow_t)&gt;q70] </code>`<code> 把秒级 </code>score_t<code> 在 1 分钟内聚合；若该分钟里大部分切片都同向，则在下一根 </code>1m<code> 或 </code>3m` 开盘入场。</p>
+<p><strong>最小回测切口：</strong></p>
+<ul>
+<li>标的：Binance / Bybit BTC、ETH、SOL 永续</li>
+<li>数据：公开 depth / aggTrades 或等价 L2 + trade feed</li>
+<li>周期：先 <code>1m</code>，再测 <code>3m</code>，最后看 <code>5m</code> 是否还活</li>
+<li>规则：</li>
+<li>long：上一分钟 <code>persist_t</code> 高于历史 <code>q90</code>，且 <code>flow_t &gt; q70</code></li>
+<li>short：对称反手</li>
+<li>exit：持有 <code>1~3</code> 根、或 <code>score</code> 翻转、或 hit time stop</li>
+<li>先看两项：</li>
+</ul>
+<ol>
+<li><strong>post-cost mean / hit rate</strong></li>
+<li><strong>trade count retention after spread+fee+impact veto</strong></li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li><strong>原生 alpha 尺度很短。</strong> repo 主要证据在 <code>500ms~1000ms</code> 量级；能否平移到 <code>1m/3m/5m</code>，必须实测，不能脑补。</li>
+<li><strong>L1 很容易脏。</strong> spoof、撤单、缺口深度、不同交易所的撮合细节，都会让“表面失衡”失真，所以 persistence 比单点 snapshot 更重要。</li>
+<li><strong>样本来自 BinanceUS，不等于 Binance global。</strong> 可迁移，但不能默认强度一致。</li>
+<li><strong>execution 才是生死线。</strong> 这条 alpha 若不能在 size/impact 上过关，很容易变成“方向对了，钱没赚到”。</li>
+</ul>
+<p>&gt; <strong>最值得复用/复现的点：不是把 repo 当做市/执行 demo，而是直接复用它那套 <code>drift vs imbalance + oflow autocorr + impact</code> 三件套，把 microstructure raw alpha 和成本约束放进同一个 first verdict。</strong></p>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Mansoor Mamnoon. (2025/2026). _limit-order-book_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL：<code><a href="https://github.com/mansoor-mamnoon/limit-order-book">https://github.com/mansoor-mamnoon/limit-order-book</a></code></li>
+<li>Readable URL：<code><a href="https://github.com/mansoor-mamnoon/limit-order-book">https://github.com/mansoor-mamnoon/limit-order-book</a></code></li>
+</ul>
+<ol>
+<li><strong><code>python/olob/microstructure.py</code>（repo 内原始分析脚本）</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://github.com/mansoor-mamnoon/limit-order-book/blob/main/python/olob/microstructure.py">https://github.com/mansoor-mamnoon/limit-order-book/blob/main/python/olob/microstructure.py</a></code></li>
+</ul>
+<ol>
+<li><strong><code>analytics/microstructure_summary.json</code>（repo 内示例输出）</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://github.com/mansoor-mamnoon/limit-order-book/blob/main/analytics/microstructure_summary.json">https://github.com/mansoor-mamnoon/limit-order-book/blob/main/analytics/microstructure_summary.json</a></code></li>
+</ul>
+<ol>
+<li><strong>仓库 README / repo metadata（性能、回放与回测范围说明）</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://github.com/mansoor-mamnoon/limit-order-book/blob/main/README.md">https://github.com/mansoor-mamnoon/limit-order-book/blob/main/README.md</a></code></li>
+</ul>
+</body>
+</html>

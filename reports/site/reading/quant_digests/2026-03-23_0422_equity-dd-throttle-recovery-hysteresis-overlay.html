@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 15m 风控只写成“入场前 veto”：`equity drawdown throttle + recovery hysteresis` 更像三条收口线共用的 live-safety overlay</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 15m 风控只写成“入场前 veto”：`equity drawdown throttle + recovery hysteresis` 更像三条收口线共用的 live-safety overlay</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-23 04:20 UTC</span>
+      <span class="pill">研究时间：2026-03-23 04:22 UTC</span>
+      <span class="pill">类型：论文 + GitHub 仓库</span>
+      <span class="pill">主题标签：breakout-short / fibonacci / retest-hold / ema / psar / equity-drawdown / recovery-hysteresis / risk-overlay / position-management / crypto / 5m / 15m</span>
+      <span class="pill">证据类型：论文证据 + 工程实现证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-23_0422_equity-dd-throttle-recovery-hysteresis-overlay.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-23 04:22 UTC</li>
+<li>类型：论文 + GitHub 仓库</li>
+<li>主题标签：breakout-short / fibonacci / retest-hold / ema / psar / equity-drawdown / recovery-hysteresis / risk-overlay / position-management / crypto / 5m / 15m</li>
+<li>证据类型：论文证据 + 工程实现证据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次不再盯“新入场信号”，而是看一个更适合 desk 当前阶段的旁支：<strong>权益曲线回撤触发的仓位降档 + 恢复滞后机制</strong>。来源是 2026 arXiv 论文 <code>AdaptiveTrend</code>（给了回撤控制与稳健性结果）和一个近期开源实现仓库 <code>xzjh/crypto-daytrading</code>（给了可直接抄的状态机参数）。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 对 5m/15m 三条收口线来说，最便宜、最可复现、最不改原信号语义的增强，不是再加一个确认指标，而是加一层“权益曲线回撤降档 + 恢复滞后”的仓位覆盖层。</li>
+<li><strong>一句话证明方式：</strong> <code>AdaptiveTrend</code> 在文内把“动态止损/风险控制”做了模块化比较，并报告该类模块对 Sharpe 与回撤有显著贡献；仓库代码把它落实成明确阈值状态机（<code>dd&gt;12% -&gt; 仓位降到 25%</code>，<code>回到峰值 95% -&gt; 恢复</code>），可直接落地复测。</li>
+<li>来自论文/仓库的可复用数字（用于最小实验锚点）：</li>
+<p>1) 论文 OOS（2022–2024）报告：Sharpe <code>2.41</code>，MaxDD <code>-12.7%</code>； 2) 文内 ablation 描述：动态风险退出/保护模块可带来明显 Sharpe 抬升与回撤压缩（文中给到约 <code>+0.73 Sharpe</code>、<code>-9.7pp MDD</code> 量级）； 3) 工程参数原型：<code>dd_reduce=0.12</code>、<code>reduce_size=0.25</code>、<code>recover_to_peak=0.95</code>（见 <code>strategies/robust.py</code> / <code>eth.py</code>）。</p>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>它直接服务三条收口线，而且<strong>不要求你先统一 entry 逻辑</strong>：</p>
+<ul>
+<li><code>V3 final-verdict / breakout-short follow-up</code>：当 follow-up 连续受挫时，先自动降档仓位，避免把 path 判错放大成资金曲线断层；</li>
+<li><code>Fibonacci confirmation / retest_hold</code>：回踩确认本来就会遇到“慢磨损”场景，权益降档层比继续堆形态过滤更稳；</li>
+<li><code>EMA / PSAR raw alpha focus</code>：raw 触发仍可能在震荡期反复被成本吃掉，权益层 throttle 可先救回撤，再决定要不要继续改信号。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：不改变方向判断（可挂在顺势/逆势/多空任意主信号上）</li>
+<li>基础 alpha：沿用各线既有 alpha（breakout / retest / EMA-PSAR）</li>
+<li>regime：权益曲线自身状态（peak-to-trough drawdown）</li>
+<li>filter / veto：无（不是入场 veto）</li>
+<li>risk / sizing / execution overlay：<code>DD 触发降仓 -&gt; 恢复阈值再加仓</code> 的两态/三态状态机（含 hysteresis）</li>
+</ul>
+<h2>4. 可复刻的最小实验（下一步怎么测）</h2>
+<p><strong>研究假设</strong>：在不改 entry/exit 信号的前提下，加“权益回撤降档 + 恢复滞后”可显著压低 MDD，且对收益伤害小于直接砍交易。</p>
+<p><strong>最小切口（先跑一晚）</strong></p>
+<ul>
+<li>资产：BTC / ETH / SOL perpetual</li>
+<li>周期：15m（可补 5m）</li>
+<li>样本：近 180 天</li>
+<li>成本：沿用 desk 现有 friction（6/10/15 bps 三档）</li>
+</ul>
+<p><strong>A/B 设计（每条收口线都跑）</strong></p>
+<ul>
+<li>A：原策略（baseline）</li>
+<li>B：加 overlay：</li>
+<li>当 <code>equity_dd_from_peak &gt; d</code>（<code>d ∈ {8%,10%,12%}</code>） -&gt; <code>gross_size *= s</code>（<code>s ∈ {0.25,0.5}</code>）</li>
+<li>当 <code>equity &gt;= 0.95~0.98 * peak_equity</code> 才恢复正常仓位（hysteresis）</li>
+</ul>
+<p><strong>优先看 4 个指标</strong></p>
+<ol>
+<li><code>max_drawdown</code>（第一优先）</li>
+<li><code>calmar</code></li>
+<li><code>post_cost_return</code></li>
+<li><code>time_in_reduced_mode</code>（降档占比，防止“长期半死不活”）</li>
+</ol>
+<p><strong>保留门槛（简版）</strong></p>
+<ul>
+<li>若 B 相比 A：<code>MDD 至少改善 15%</code>，且 <code>post_cost_return 回撤不超过 10%</code>，则进入三线共享 overlay 候选池。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是风险覆盖层，不是 alpha；不能拿它掩盖坏信号。</li>
+<li>路径依赖强：一次大回撤后可能“恢复过慢”，牛市反弹段会落后。</li>
+<li>阈值过紧会频繁切档，阈值过松则保护不足；必须做参数平原检查，避免只挑单点最优。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li>Bui, D., &amp; Nguyen, T. (2026). *Systematic Trend-Following with Adaptive Portfolio Construction: Enhancing Risk-Adjusted Alpha in Cryptocurrency Markets*. arXiv preprint.</li>
+</ol>
+<ul>
+<li>DOI: 未见正式 DOI（arXiv 预印本）</li>
+<li>Readable URL: <a href="https://arxiv.org/abs/2602.11708v1">https://arxiv.org/abs/2602.11708v1</a></li>
+<li>PDF URL: <a href="https://arxiv.org/pdf/2602.11708v1">https://arxiv.org/pdf/2602.11708v1</a></li>
+<li>Repo URL: 文中未给官方实现仓库</li>
+</ul>
+<ol>
+<li>xzjh (2026). *crypto-daytrading* (GitHub repository).</li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/xzjh/crypto-daytrading">https://github.com/xzjh/crypto-daytrading</a></li>
+<li>关键实现：</li>
+<li><a href="https://raw.githubusercontent.com/xzjh/crypto-daytrading/main/strategies/robust.py">https://raw.githubusercontent.com/xzjh/crypto-daytrading/main/strategies/robust.py</a></li>
+<li><a href="https://raw.githubusercontent.com/xzjh/crypto-daytrading/main/strategies/eth.py">https://raw.githubusercontent.com/xzjh/crypto-daytrading/main/strategies/eth.py</a></li>
+<li><a href="https://raw.githubusercontent.com/xzjh/crypto-daytrading/main/core/config.py">https://raw.githubusercontent.com/xzjh/crypto-daytrading/main/core/config.py</a></li>
+<li>仓库描述：Adaptive trend-following system for BTC/ETH with backtesting and walk-forward validation</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 CME 月度到期只当“波动提醒”：这篇 2023 IREF 论文对短周期 desk 更该先测的是「到期后 60~120 分钟 short BTC」事件型 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 CME 月度到期只当“波动提醒”：这篇 2023 IREF 论文对短周期 desk 更该先测的是「到期后 60~120 分钟 short BTC」事件型 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-26 10:37 UTC</span>
+      <span class="pill">研究时间：2026-03-26 10:35 UTC</span>
+      <span class="pill">类型：raw alpha</span>
+      <span class="pill">主题标签：raw-alpha/event-driven/btc/cme-expiry/expiration-effect/post-expiry/spot/perpetual/intraday/1m/3m/5m/15m/time-series/momentum/reversal/paper/external-data</span>
+      <span class="pill">证据类型：2023 IREF 论文（OpenAlex 摘要可得）+ CME 公共合约规则 + Binance Spot/Perp 公共 `1m` 最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-26_1035_cme-expiry-postfix-short-bias.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-26 10:35 UTC</li>
+<li>类型：raw alpha</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：CME BTC 月度到期（last Friday, 16:00 London）后，BTC 现货/永续在接下来 <code>60~120m</code> 出现相对普通周五更弱的负漂移；优先做事件时钟 short，而不是全天候方向交易</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/event-driven/btc/cme-expiry/expiration-effect/post-expiry/spot/perpetual/intraday/1m/3m/5m/15m/time-series/momentum/reversal/paper/external-data</li>
+<li>证据类型：2023 IREF 论文（OpenAlex 摘要可得）+ CME 公共合约规则 + Binance Spot/Perp 公共 <code>1m</code> 最小快检</li>
+</ul>
+<p>先把 <strong>base alpha</strong> 说死：<strong>不是“expiry 日会比较热闹”这种泛泛事件感，而是“月度 CME 到期时钟一敲，BTC 在后续 60~120 分钟更容易走弱”这条可交易的事件后漂移。</strong></p>
+<p>这轮我优先选它，不是因为 desk 缺一个宏观解释，而是因为它本身已经能落成一条 <strong>exact-time、可直接回测、可直接上线 watchlist 的 raw alpha</strong>：</p>
+<ol>
+<li><strong>信号时钟公开且精确</strong>：last Friday、16:00 London；</li>
+<li><strong>交易数据公开可拿</strong>：Binance spot / perp <code>1m</code> 就够做最小实验；</li>
+<li><strong>不是继续在 breakout/retest 上内循环</strong>，而是给素材池补一个很稀缺的 <strong>event-time BTC directional alpha</strong>。</li>
+</ol>
+<h2>1. 这篇东西真正值得 desk 化的，不是“到期有效应”，而是「到期后 drift」</h2>
+<p>主论文是：</p>
+<ul>
+<li><strong>Blasco, N., Corredor, P., &amp; Satrústegui, N. (2023). _Is there an expiration effect in the bitcoin market?_ International Review of Economics &amp; Finance.</strong></li>
+<li>DOI：<code>10.1016/j.iref.2023.02.013</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.1016/j.iref.2023.02.013">https://doi.org/10.1016/j.iref.2023.02.013</a></code></li>
+</ul>
+<p>论文原问题是：<strong>Bitcoin 市场在 futures 到期附近，是否存在类似传统市场的 expiration effect？</strong></p>
+<p>对我们这种做 <code>1m / 3m / 5m / 15m</code> 的 desk 来说，最值钱的读法不是“学术上有无效应”，而是把它翻译成一句更能交易的话：</p>
+<p>&gt; <strong>如果月度到期窗口真的改变了盘面行为，那最该先测的不是日级别均值，而是 exact event time 之后的短时漂移。</strong></p>
+<p>也就是说，这篇论文更适合被读成：</p>
+<ul>
+<li>一个 <strong>公开、可提前知道、时间精确</strong> 的事件；</li>
+<li>一个可能改变短时 order flow / roll pressure / inventory adjustment 的时点；</li>
+<li>一个可以直接变成 entry/exit/risk/cost 规则的 <strong>event-driven BTC alpha</strong>。</li>
+</ul>
+<h2>2. 为什么这次先测「到期后 short」，而不是把它降级成 overlay</h2>
+<p>如果只看论文标题，这个题目很容易被写成：</p>
+<ul>
+<li><code>regime gate</code></li>
+<li><code>volatility reminder</code></li>
+<li><code>execution veto</code></li>
+</ul>
+<p>但这次我不想这么保守，因为做完最小快检后，<strong>方向性已经够清楚</strong>：</p>
+<ul>
+<li><strong>Binance Perp</strong>：2025-01 到 2026-02 共 <strong>14 个</strong>月度到期事件里，<code>event -&gt; +60m</code> 平均收益 <strong>-21.0bp</strong>；</li>
+<li>同期 <strong>47 个非月度普通周五</strong> 的同一本地时钟窗口，<code>event -&gt; +60m</code> 平均收益 <strong>+15.5bp</strong>；</li>
+<li>也就是 <strong>expiry - placebo = -36.5bp</strong>。</li>
+</ul>
+<p>Spot 端几乎一样：</p>
+<ul>
+<li><strong>Binance Spot</strong>：<code>event -&gt; +60m</code> 平均收益 <strong>-20.8bp</strong>；</li>
+<li>普通周五对应窗口是 <strong>+15.4bp</strong>；</li>
+<li><strong>expiry - placebo = -36.2bp</strong>。</li>
+</ul>
+<p>如果继续把它只叫“overlay”，反而有点低估了这条线。更诚实的分类应该是：</p>
+<p>&gt; <strong>event-driven BTC raw alpha</strong>，只是它不是 always-on，而是按月触发。</p>
+<h2>3. 当前最小快检：方向性已经出来了，而且现货/永续一致</h2>
+<p>我这次没有去碰付费数据，直接用 <strong>CME 月度到期规则 + Binance 公共 <code>1m</code> K 线</strong> 做最小实验。</p>
+<h3>数据源与公开性</h3>
+<ul>
+<li><strong>CME 月度事件时钟</strong>：公开合约规则，按 <strong>last Friday, 16:00 Europe/London</strong> 对齐；</li>
+<li>CME BTC futures 页面：<code><a href="https://www.cmegroup.com/markets/cryptocurrencies/bitcoin/bitcoin.contractSpecs.html">https://www.cmegroup.com/markets/cryptocurrencies/bitcoin/bitcoin.contractSpecs.html</a></code></li>
+<li><strong>Binance Spot <code>BTCUSDT</code> 1m klines</strong>：公开 REST；</li>
+<li>文档：<code><a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data</a></code></li>
+<li><strong>Binance Perpetual <code>BTCUSDT</code> 1m klines</strong>：公开 REST；</li>
+<li>文档：<code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<h3>最小实验口径</h3>
+<ul>
+<li>样本：<code>2025-01-01</code> 到 <code>2026-03-01</code></li>
+<li>事件：每周五本地 <code>16:00 London</code></li>
+<li><code>expiry</code> 定义：<strong>每月最后一个周五</strong></li>
+<li><code>placebo</code>：其余普通周五同一本地时钟</li>
+<li>观察窗口：<code>pre60m / post60m / post120m</code></li>
+</ul>
+<h3>这次最重要的 4 个数</h3>
+<ol>
+<li><strong>Perp：expiry 后 60m 平均 -21.0bp，普通周五同窗 +15.5bp，差值 -36.5bp。</strong></li>
+<li><strong>Spot：expiry 后 60m 平均 -20.8bp，普通周五同窗 +15.4bp，差值 -36.2bp。</strong></li>
+<li><strong>Perp：expiry 后 120m 平均 -21.4bp，普通周五同窗 +20.0bp，差值 -41.4bp。</strong></li>
+<li><strong>Spot：expiry 后 120m 平均 -21.2bp，普通周五同窗 +19.9bp，差值 -41.2bp。</strong></li>
+</ol>
+<p>对应 artifact：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/cme_expiry_postfix_short_20260326/btc_expiry_vs_friday_events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/cme_expiry_postfix_short_20260326/bucket_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/cme_expiry_postfix_short_20260326/expiry_minus_placebo_summary.csv</code></li>
+</ul>
+<p>这里最关键的不是“每个月都跌”。它当然 <strong>不是 14/14 全中</strong>。关键在于：</p>
+<ul>
+<li><strong>普通周五同一时钟是正漂移</strong>；</li>
+<li><strong>月度到期那一窗却切成负漂移</strong>；</li>
+<li>而且 <strong>spot/perp 同步成立</strong>，不像单 venue 偶然噪声。</li>
+</ul>
+<p>这就足够把它从“日历提醒”提升成一条值得进池的 raw alpha 候选。</p>
+<h2>4. desk 版本的最小完整策略骨架</h2>
+<h3>4.1 最简版（先验证最粗 edge）</h3>
+<ul>
+<li><strong>交易对象</strong>：Binance <code>BTCUSDT</code> perp（优先），spot 作为对照</li>
+<li><strong>入场</strong>：CME 月度到期时点 <code>T0 = last Friday 16:00 London</code>，在 <code>T0 ~ T0+5m</code> 内按 VWAP/分批做空</li>
+<li><strong>出场</strong>：</li>
+<li>主退出：<code>T0+60m</code></li>
+<li>备选退出：<code>T0+120m</code></li>
+<li><strong>止损</strong>：自入场起浮亏 <code>&gt;= 35~45bp</code> 强平</li>
+<li><strong>仓位</strong>：事件固定 risk budget，例如单次只打日风险预算的 <code>20~35%</code></li>
+<li><strong>成本</strong>：先按 <code>2~4bp taker + 2~4bp slippage</code> 做保守回测，验证净值还能不能活</li>
+</ul>
+<h3>4.2 更像 production 的增强版</h3>
+<p>不要无脑每月都空。更合理的是给它加两个 gate：</p>
+<ul>
+<li><strong>Gate A：pre-expiry ramp</strong></li>
+<li>只有当 <code>T0-60m -&gt; T0</code> 本身先走出 <code>+20bp / +30bp / +40bp</code> 的上冲，才允许做 <code>post-expiry short</code>；</li>
+<li>逻辑：如果到期前已经被挤出一段正向 drift，后面的 inventory unwind / roll unwind 更有空间。</li>
+</ul>
+<ul>
+<li><strong>Gate B：basis / funding 不要逆着你</strong></li>
+<li>若到期前 8h funding 已显著转负，说明市场可能已经先消化部分压力；</li>
+<li>这时就别把 event short 当无条件信号。</li>
+</ul>
+<p>换成人话：</p>
+<p>&gt; <strong>这条线更像“到期前先被顶起来，再在到期后回吐”的事件后 short，不像纯日历开仓。</strong></p>
+<h2>5. 为什么它适合 <code>1m / 3m / 5m / 15m</code></h2>
+<p>因为这条 alpha 不是靠低频宏观慢变量吃饭，而是靠 <strong>精确时钟 + 短时 order flow 失衡</strong>：</p>
+<ul>
+<li><code>1m / 3m</code>：最适合做入场切片、观察首 5~15 分钟 follow-through；</li>
+<li><code>5m</code>：最适合做主回测频率，成本与噪声比较平衡；</li>
+<li><code>15m</code>：更适合做 event bucket 汇总，而不是最早入场。</li>
+</ul>
+<p>所以它完全不是“论文里日级别有效，短周期做不了”的那类题。恰恰相反，<strong>这题越短越像真交易。</strong></p>
+<h2>6. 这条线最大的风险，不是信号弱，而是样本少</h2>
+<p>要老实说，当前最大问题不是想法不对，而是：</p>
+<ul>
+<li>月度事件 <strong>一年只有 12 次左右</strong>；</li>
+<li>单看月度 CME 到期，样本天然小；</li>
+<li>很容易被少数大行情月份污染。</li>
+</ul>
+<p>所以这条线不能直接以“14 个样本均值为王”上线。必须继续做下面两层扩展：</p>
+<ol>
+<li><strong>扩样本</strong>：把历史往前拉到 2021/2022，至少做 <code>36~60</code> 个事件；</li>
+<li><strong>扩家族</strong>：把周度/季度 expiry、Deribit/OKX options settlement、Binance funding settlement 一起做 event family 对照。</li>
+</ol>
+<p>也就是说，<strong>这条 alpha 值得进池，但现在还更像 high-priority pilot，不是立刻满仓的生产信号。</strong></p>
+<h2>7. 下一步怎么测（最重要）</h2>
+<h3>P0：先把这条最小策略回测跑完整</h3>
+<ul>
+<li>标的：<code>BTCUSDT perp</code></li>
+<li>频率：<code>1m</code> 与 <code>5m</code></li>
+<li>规则：</li>
+<li><code>T0+0~5m</code> 做空</li>
+<li><code>T0+60m</code> / <code>T0+120m</code> 平仓</li>
+<li>成本：<code>4bp / 6bp / 8bp</code> 三档压力测试</li>
+<li>输出：</li>
+<li>每次事件 PnL</li>
+<li>hit rate</li>
+<li>mean / median / skew</li>
+<li>max adverse excursion</li>
+</ul>
+<h3>P1：验证「pre-expiry ramp gate」</h3>
+<p>把事件按 <code>T0-60m -&gt; T0</code> 的预热强度分桶：</p>
+<ul>
+<li><code>&lt;0bp</code></li>
+<li><code>0~20bp</code></li>
+<li><code>20~40bp</code></li>
+<li><code>&gt;40bp</code></li>
+</ul>
+<p>看 <strong>后 60m short edge 是否主要集中在预热最强桶</strong>。如果是，这条线就从“日历空”升级成“event + setup”策略。</p>
+<h3>P2：做 cross-venue / cross-instrument 验证</h3>
+<ul>
+<li>Binance spot</li>
+<li>Binance perp</li>
+<li>Coinbase spot</li>
+<li>Deribit perp / futures（若公共 API 拿得到）</li>
+</ul>
+<p>如果 edge 只在一处成立，它更像 venue microstructure； 如果多 venue 同向成立，它才更像可迁移的 desk alpha。</p>
+<h3>P3：与其他事件时钟做对照</h3>
+<p>把它和以下事件摆在同一张 event board：</p>
+<ul>
+<li>funding settlement</li>
+<li>options expiry / settlement</li>
+<li>ETF open / close</li>
+<li>FOMC / CPI</li>
+</ul>
+<p>看这条线到底是 <strong>独立 alpha</strong>，还是“事件波动家族”的一个成员。</p>
+<h2>8. 一句话结论</h2>
+<p>这篇 2023 论文如果只被读成“Bitcoin 到期附近可能有异常”，那对 desk 太浪费。<strong>更适合我们现在的读法，是把它直接落成一条 exact-time raw alpha：月度 CME 到期后，优先测 <code>60~120m short BTC</code>。</strong></p>
+<p>当前最小快检已经给出足够明确的方向：<strong>2025-01 到 2026-02，spot/perp 都显示月度到期后的 60~120 分钟明显弱于普通周五同窗，差值大约在 <code>-36bp</code> 到 <code>-41bp</code>。</strong></p>
+<p>这还不是 production-ready，但已经绝对值得进下一轮复现队列。</p>
+<h2>9. 来源</h2>
+<ol>
+<li><strong>Blasco, N., Corredor, P., &amp; Satrústegui, N. (2023). _Is there an expiration effect in the bitcoin market?_ International Review of Economics &amp; Finance.</strong></li>
+</ol>
+<ul>
+<li>Venue: International Review of Economics &amp; Finance</li>
+<li>DOI: <code>10.1016/j.iref.2023.02.013</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.iref.2023.02.013">https://doi.org/10.1016/j.iref.2023.02.013</a></code></li>
+</ul>
+<ol>
+<li><strong>CME Group — Bitcoin Futures Contract Specs / product page</strong></li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://www.cmegroup.com/markets/cryptocurrencies/bitcoin/bitcoin.contractSpecs.html">https://www.cmegroup.com/markets/cryptocurrencies/bitcoin/bitcoin.contractSpecs.html</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Spot API — Kline/Candlestick Data</strong></li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures API — Kline/Candlestick Data</strong></li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+</body>
+</html>

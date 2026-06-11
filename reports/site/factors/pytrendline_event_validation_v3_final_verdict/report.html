@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PyTrendline Event Validation v3 Final Verdict</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background: #f8fafc; color: #0f172a; }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 18px 48px; }
+    .card { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px 22px; margin-bottom: 18px; }
+    .muted { color: #64748b; }
+    .warn { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; border-radius: 10px; padding: 10px 12px; }
+    .pill { display: inline-block; margin-right: 8px; margin-top: 8px; padding: 5px 10px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; }
+    .tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
+    .tbl th, .tbl td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; vertical-align: top; }
+    .tbl th { background: #f8fafc; }
+    ul, ol { line-height: 1.7; }
+    img.chart { width: 100%; max-width: 1000px; border: 1px solid #e2e8f0; border-radius: 12px; background: white; }
+    code { background: #eff6ff; padding: 1px 5px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p><a href="../../index.html">← 返回站点首页</a></p>
+
+    <div class="card">
+      <h1>PyTrendline Event Validation v3 · Final Verdict</h1>
+      <p class="muted">这页只做一件事：给 v3 一个尽量诚实、足够能收工的结论。我们不再继续无限加样本、加市场、加参数，而是直接回答：<b>v3 里到底还有哪些对象值得保留，哪些该降级，哪些可以 park</b>。</p>
+      <div>
+        <span class="pill">Generated: 2026-03-14 05:45 UTC</span>
+        <span class="pill">source: 180d core4 / 60m / purged events</span>
+        <span class="pill">split: 60% train / 20% validate / 20% test</span>
+        <span class="pill">primary horizon: h24</span>
+        <span class="pill">small-param neighborhood: confirm = 0 / 1 / 2</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>先说结论（最短版）</h2>
+      <ul>
+        <li><b>可以保留的对象：</b><code>support_breakout_raw @ h24</code> 和 <code>support_breakout_confirm_1 @ h24</code>。它们当前更像 <b>continuation short 候选</b>，但还不够格被写成“正式生产 alpha 已确认”。</li>
+        <li><b>不该继续占主资源的对象：</b><code>support_breakout_confirm_2</code>。在这轮最小参数邻域里，它已经明显更不稳。</li>
+        <li><b>没有毕业成 alpha 的对象：</b><code>support_rebound_confirm_1</code>。它更像 <b>watch / feature</b>，不是 clean long alpha。</li>
+        <li><b>对 v3 整体的 final call：</b><b>可以收工</b>，但收工方式不是“确认了一个成熟 production alpha”，而是——<b>保留 breakout short 候选，关闭 v3 这条研究线，把后续动作移到更窄、更像实现验证的后继任务里。</b></li>
+      </ul>
+      <p class="warn"><b>一句人话：</b>v3 最终没告诉我们“趋势线反弹能稳定做多”，但它留下了一个仍值得保留的结论：<b>support-breakout 这类事件，在 h24 上更像 continuation short 候选</b>，只是强度没有强到可以直接毕业成正式阿尔法。</p>
+    </div>
+
+    <div class="card">
+      <h2>这页怎么做判断</h2>
+      <ol>
+        <li><b>先做 OOS honesty：</b>把 180d core4 的 purged 事件按全局时间顺序切成 <code>train / validate / test</code>。</li>
+        <li><b>再看 split-specific excess：</b>不是只看事件后收益是否为负，而是看它是否比同一时段、同一资产的无条件基线更弱。</li>
+        <li><b>最后做最小参数稳健性：</b>这次不跑大全参数搜索，只看 breakout short 最邻近的 <code>confirm = 0 / 1 / 2</code> 三档，判断它是不是一碰就碎。</li>
+      </ol>
+      <p class="muted">为什么用这套最小协议？因为目标是“尽快收工”，不是再开一条更大的研究支线。</p>
+    </div>
+
+    <div class="card">
+      <h2>Chart 1 · OOS honesty 主图（h24）</h2>
+      <img class="chart" src="split_excess_h24.png" alt="split excess h24" />
+      <ul>
+        <li><b>怎么读：</b>柱子低于 0，表示这个事件在该 split 里比同段基线更弱，也就更像 short continuation 候选。</li>
+        <li><b>图里最值得看的不是 train，而是 validate / test。</b> train 容易受样本内巧合影响；真正更有决策价值的是后两段有没有翻脸。</li>
+        <li><b>这张图告诉我们的核心：</b><code>support_breakout_raw</code> 和 <code>support_breakout_confirm_1</code> 在 test 都还是干净负 excess；而 <code>confirm_2</code> 已经开始不稳。</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>OOS honesty 细表（180d core4, split-specific excess）</h2>
+      <p class="muted">这张表是主判据。别只盯 <code>event_mean</code>，更该看 <code>avg_excess_ret</code> 和每个 split 里有多少资产同向为负。</p>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>event_type</th>
+      <th>horizon</th>
+      <th>split</th>
+      <th>events</th>
+      <th>event_mean</th>
+      <th>avg_excess_ret</th>
+      <th>pos_symbols_excess</th>
+      <th>neg_symbols_excess</th>
+      <th>zero_symbols_excess</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>24</td>
+      <td>test</td>
+      <td>41</td>
+      <td>-0.008026</td>
+      <td>-0.006509</td>
+      <td>1</td>
+      <td>3</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>24</td>
+      <td>train</td>
+      <td>125</td>
+      <td>-0.007272</td>
+      <td>-0.004485</td>
+      <td>1</td>
+      <td>3</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>24</td>
+      <td>validate</td>
+      <td>40</td>
+      <td>-0.008704</td>
+      <td>-0.003158</td>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>48</td>
+      <td>test</td>
+      <td>41</td>
+      <td>-0.009577</td>
+      <td>-0.007887</td>
+      <td>1</td>
+      <td>3</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>48</td>
+      <td>train</td>
+      <td>125</td>
+      <td>-0.004159</td>
+      <td>0.001397</td>
+      <td>3</td>
+      <td>1</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>48</td>
+      <td>validate</td>
+      <td>40</td>
+      <td>-0.014064</td>
+      <td>-0.000909</td>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>72</td>
+      <td>test</td>
+      <td>41</td>
+      <td>-0.002285</td>
+      <td>-0.001252</td>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>72</td>
+      <td>train</td>
+      <td>125</td>
+      <td>-0.007944</td>
+      <td>0.000525</td>
+      <td>3</td>
+      <td>1</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>72</td>
+      <td>validate</td>
+      <td>40</td>
+      <td>-0.028726</td>
+      <td>-0.004791</td>
+      <td>1</td>
+      <td>3</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_2</td>
+      <td>24</td>
+      <td>test</td>
+      <td>40</td>
+      <td>-0.005022</td>
+      <td>-0.003288</td>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_2</td>
+      <td>24</td>
+      <td>train</td>
+      <td>119</td>
+      <td>-0.005710</td>
+      <td>-0.002836</td>
+      <td>0</td>
+      <td>4</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_2</td>
+      <td>24</td>
+      <td>validate</td>
+      <td>40</td>
+      <td>-0.003620</td>
+      <td>0.002023</td>
+      <td>3</td>
+      <td>1</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_2</td>
+      <td>48</td>
+      <td>test</td>
+      <td>40</td>
+      <td>-0.025365</td>
+      <td>-0.022914</td>
+      <td>1</td>
+      <td>3</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_2</td>
+      <td>48</td>
+      <td>train</td>
+      <td>119</td>
+      <td>-0.005624</td>
+      <td>-0.000047</td>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_2</td>
+      <td>48</td>
+      <td>validate</td>
+      <td>40</td>
+      <td>-0.009189</td>
+      <td>0.004351</td>
+      <td>3</td>
+      <td>1</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_2</td>
+      <td>72</td>
+      <td>test</td>
+      <td>40</td>
+      <td>-0.009080</td>
+      <td>-0.007928</td>
+      <td>1</td>
+      <td>3</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_2</td>
+      <td>72</td>
+      <td>train</td>
+      <td>119</td>
+      <td>-0.009854</td>
+      <td>-0.001333</td>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_2</td>
+      <td>72</td>
+      <td>validate</td>
+      <td>40</td>
+      <td>-0.022915</td>
+      <td>0.001083</td>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>24</td>
+      <td>test</td>
+      <td>40</td>
+      <td>-0.006723</td>
+      <td>-0.005316</td>
+      <td>1</td>
+      <td>3</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>24</td>
+      <td>train</td>
+      <td>125</td>
+      <td>-0.004295</td>
+      <td>-0.001465</td>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>24</td>
+      <td>validate</td>
+      <td>43</td>
+      <td>-0.008373</td>
+      <td>-0.002867</td>
+      <td>0</td>
+      <td>4</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>48</td>
+      <td>test</td>
+      <td>40</td>
+      <td>-0.006887</td>
+      <td>-0.005184</td>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>48</td>
+      <td>train</td>
+      <td>125</td>
+      <td>-0.008939</td>
+      <td>-0.003391</td>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>48</td>
+      <td>validate</td>
+      <td>43</td>
+      <td>-0.018173</td>
+      <td>-0.004891</td>
+      <td>1</td>
+      <td>3</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>72</td>
+      <td>test</td>
+      <td>40</td>
+      <td>-0.000951</td>
+      <td>-0.000107</td>
+      <td>3</td>
+      <td>1</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>72</td>
+      <td>train</td>
+      <td>125</td>
+      <td>-0.009698</td>
+      <td>-0.001219</td>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>72</td>
+      <td>validate</td>
+      <td>43</td>
+      <td>-0.029188</td>
+      <td>-0.005249</td>
+      <td>1</td>
+      <td>3</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_rebound_confirm_1</td>
+      <td>24</td>
+      <td>test</td>
+      <td>44</td>
+      <td>-0.003110</td>
+      <td>-0.000689</td>
+      <td>1</td>
+      <td>3</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_rebound_confirm_1</td>
+      <td>24</td>
+      <td>train</td>
+      <td>128</td>
+      <td>-0.006970</td>
+      <td>-0.004079</td>
+      <td>1</td>
+      <td>3</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_rebound_confirm_1</td>
+      <td>24</td>
+      <td>validate</td>
+      <td>43</td>
+      <td>-0.003659</td>
+      <td>0.001782</td>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_rebound_confirm_1</td>
+      <td>48</td>
+      <td>test</td>
+      <td>44</td>
+      <td>-0.007340</td>
+      <td>-0.004213</td>
+      <td>3</td>
+      <td>1</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_rebound_confirm_1</td>
+      <td>48</td>
+      <td>train</td>
+      <td>128</td>
+      <td>-0.009811</td>
+      <td>-0.004208</td>
+      <td>1</td>
+      <td>3</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_rebound_confirm_1</td>
+      <td>48</td>
+      <td>validate</td>
+      <td>43</td>
+      <td>-0.005512</td>
+      <td>0.007438</td>
+      <td>4</td>
+      <td>0</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_rebound_confirm_1</td>
+      <td>72</td>
+      <td>test</td>
+      <td>44</td>
+      <td>0.000333</td>
+      <td>0.001818</td>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_rebound_confirm_1</td>
+      <td>72</td>
+      <td>train</td>
+      <td>128</td>
+      <td>-0.012133</td>
+      <td>-0.003628</td>
+      <td>0</td>
+      <td>4</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>support_rebound_confirm_1</td>
+      <td>72</td>
+      <td>validate</td>
+      <td>43</td>
+      <td>-0.023395</td>
+      <td>0.000131</td>
+      <td>2</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+  </tbody>
+</table>
+      <ul>
+        <li><b>support_breakout_raw @ h24：</b>validate = <b>-0.29%</b>，test = <b>-0.53%</b>。翻成人话：它没在 OOS 段直接塌掉。</li>
+        <li><b>support_breakout_confirm_1 @ h24：</b>validate = <b>-0.32%</b>，test = <b>-0.65%</b>。test 比 raw 更负，但 validate 不如 raw 干净。</li>
+        <li><b>support_breakout_confirm_2 @ h24：</b>validate 已到 <b>+0.20%</b>。这意味着确认再加一层，并没有把信号“救活”成更稳的版本。</li>
+        <li><b>support_rebound_confirm_1 @ h24：</b>validate = <b>+0.18%</b>，test = <b>-0.07%</b>。所以它仍不适合被写成 long alpha。</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>小参数稳健性（confirm 邻域：0 / 1 / 2）</h2>
+      <p class="muted">这页的小参数稳健性，不是全网格爆搜，而是只围着当前 breakout-short 候选看最近的一圈邻域：不确认 / 1-bar 确认 / 2-bar 确认。</p>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>event_type</th>
+      <th>train_h24_excess</th>
+      <th>validate_h24_excess</th>
+      <th>test_h24_excess</th>
+      <th>oos_avg_excess</th>
+      <th>validate_neg_assets</th>
+      <th>test_neg_assets</th>
+      <th>best_cell_count_validate_test</th>
+      <th>reading</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>-0.001465</td>
+      <td>-0.002867</td>
+      <td>-0.005316</td>
+      <td>-0.004091</td>
+      <td>4</td>
+      <td>3</td>
+      <td>4</td>
+      <td>raw 在 validate 更干净（4/4 负 excess），说明不加确认并没有被直接淘汰。</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>-0.004485</td>
+      <td>-0.003158</td>
+      <td>-0.006509</td>
+      <td>-0.004834</td>
+      <td>2</td>
+      <td>3</td>
+      <td>2</td>
+      <td>confirm=1 在 test 更强，但 validate 不如 raw 干净；更像 co-primary，而不是压倒性第一。</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_2</td>
+      <td>-0.002836</td>
+      <td>0.002023</td>
+      <td>-0.003288</td>
+      <td>-0.000633</td>
+      <td>1</td>
+      <td>2</td>
+      <td>2</td>
+      <td>confirm=2 在这圈邻域里最不稳：validate 已经翻成正 excess，不适合当 primary。</td>
+    </tr>
+  </tbody>
+</table>
+      <ul>
+        <li><b>这圈邻域没有一起塌：</b><code>raw</code> 和 <code>confirm_1</code> 都还活着，所以 breakout short 不是“只在一个参数点上碰巧成立”。</li>
+        <li><b>但它也没有稳到能只留一个：</b><code>raw</code> 在 validate 更干净，<code>confirm_1</code> 在 test 更强，所以更合理的说法是 <b>co-primary</b>，而不是压倒性冠军。</li>
+        <li><b>confirm_2 可以先放下：</b>它在 validate 已翻正，不值得继续占主研究资源。</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Chart 2 · 次级检查（horizon secondary check）</h2>
+      <img class="chart" src="horizon_secondary_test_excess.png" alt="horizon secondary" />
+      <p class="muted">这张图只回答一个问题：如果不只看 h24，而把眼睛伸到 h48 / h72，会不会马上完全翻脸？</p>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>event_type</th>
+      <th>horizon</th>
+      <th>validate_excess</th>
+      <th>test_excess</th>
+      <th>validate_neg_assets</th>
+      <th>test_neg_assets</th>
+      <th>reading</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>24</td>
+      <td>-0.002867</td>
+      <td>-0.005316</td>
+      <td>4</td>
+      <td>3</td>
+      <td>主评估 horizon；当前最适合拿来做最终 honesty judgement。</td>
+    </tr>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>48</td>
+      <td>-0.004891</td>
+      <td>-0.005184</td>
+      <td>3</td>
+      <td>2</td>
+      <td>方向还偏负，但 split 内资产同向性开始松动。</td>
+    </tr>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>72</td>
+      <td>-0.005249</td>
+      <td>-0.000107</td>
+      <td>3</td>
+      <td>1</td>
+      <td>方向还偏负，但 split 内资产同向性开始松动。</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>24</td>
+      <td>-0.003158</td>
+      <td>-0.006509</td>
+      <td>2</td>
+      <td>3</td>
+      <td>主评估 horizon；当前最适合拿来做最终 honesty judgement。</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>48</td>
+      <td>-0.000909</td>
+      <td>-0.007887</td>
+      <td>2</td>
+      <td>3</td>
+      <td>可以做 secondary check，但不如 h24 干净；不要拿它替代主结论。</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>72</td>
+      <td>-0.004791</td>
+      <td>-0.001252</td>
+      <td>3</td>
+      <td>2</td>
+      <td>可以做 secondary check，但不如 h24 干净；不要拿它替代主结论。</td>
+    </tr>
+  </tbody>
+</table>
+      <ul>
+        <li><b>主结论仍该锁在 h24：</b>因为这是当前最稳、也最容易讲清楚的一档。</li>
+        <li><b>h48 / h72 只能做 secondary check：</b>它们没有完全推翻 breakout short，但 split 内稳定度已经开始松动，不适合拿来替代主 verdict。</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Final verdict</h2>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>object</th>
+      <th>verdict</th>
+      <th>why</th>
+      <th>key_numbers</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>support_breakout_raw @ h24</td>
+      <td>keep as alpha candidate</td>
+      <td>validate 与 test 都是负 excess；validate 4/4 资产同向为负，说明它不是只在单一币种上好看。</td>
+      <td>validate -0.29%, test -0.53%</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1 @ h24</td>
+      <td>keep as co-primary alpha candidate</td>
+      <td>test 段比 raw 更负，但 validate 没有 raw 那么干净；最合理的身份是并列第一梯队。</td>
+      <td>validate -0.32%, test -0.65%</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_2 @ h24</td>
+      <td>park as primary variant</td>
+      <td>confirm=2 在这轮小参数邻域里明显更不稳；validate 已翻成正 excess，不适合继续占主资源。</td>
+      <td>validate +0.20%, test -0.33%</td>
+    </tr>
+    <tr>
+      <td>support_rebound_confirm_1 @ h24</td>
+      <td>keep as feature/watch, not alpha</td>
+      <td>它没有给出持续、干净的正 excess；更像观察名单，不像可以直接毕业成 long alpha。</td>
+      <td>validate +0.18%, test -0.07%</td>
+    </tr>
+    <tr>
+      <td>V3 overall</td>
+      <td>close research line with breakout-short candidate retained</td>
+      <td>v3 作为事件研究页已经回答了最关键问题：有一个还值得保留的 breakout-short 候选，但还不够支持“正式生产 alpha 已确认”。更合理的收工方式是保留 candidate，停止继续在 v3 页里无限扩题。</td>
+      <td>best retained objects = support_breakout_raw / support_breakout_confirm_1 @ h24</td>
+    </tr>
+  </tbody>
+</table>
+      <ul>
+        <li><b>keep as alpha candidate：</b><code>support_breakout_raw @ h24</code></li>
+        <li><b>keep as co-primary alpha candidate：</b><code>support_breakout_confirm_1 @ h24</code></li>
+        <li><b>park as primary variant：</b><code>support_breakout_confirm_2</code></li>
+        <li><b>keep as feature/watch：</b><code>support_rebound_confirm_1</code></li>
+        <li><b>V3 overall：</b><b>可以收工</b>。后续若还要做，不该继续叫“v3 研究扩写”，而该进入更窄的后继线：例如实现层、成本层、执行层、或独立 alpha-candidate follow-up。</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>收工建议（执行版）</h2>
+      <ol>
+        <li><b>把 v3 正式收尾：</b>这页就是 v3 的 final verdict，不再继续往 v3 里追加 365d、跨市场、大全参数搜索。</li>
+        <li><b>如果要继续做，只保留一个更窄的新问题：</b><code>support_breakout_raw / confirm_1 @ h24</code> 是否能在加入交易成本、执行延迟、非重叠持仓规则后，仍保有优势。</li>
+        <li><b>rebound long 这条线先别再烧主资源：</b>它当前更适合留在 watchlist 或特征池里。</li>
+      </ol>
+      <p class="warn"><b>最后一句：</b>v3 的价值在于帮我们筛掉了很多看起来漂亮但不稳的东西，并留下了一个还值得保留的 breakout-short 候选。对研究来说，这已经是一个合格的“收工点”。</p>
+    </div>
+
+    <div class="card">
+      <h2>Artifacts</h2>
+      <ul>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_final_verdict/candidate_split_excess_summary.csv'>candidate_split_excess_summary.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_final_verdict/candidate_split_excess_by_asset.csv'>candidate_split_excess_by_asset.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_final_verdict/baseline_split_summary.csv'>baseline_split_summary.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_final_verdict/confirm_neighborhood_h24.csv'>confirm_neighborhood_h24.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_final_verdict/secondary_horizon_check.csv'>secondary_horizon_check.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_final_verdict/final_verdict.csv'>final_verdict.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_final_verdict/split_cuts.json'>split_cuts.json</a></li>
+        <li><a href='../pytrendline_event_validation_v3/report.html'>120d 主报告</a></li>
+        <li><a href='../pytrendline_event_validation_v3_crypto_180d/report.html'>180d 扩样本报告</a></li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 CEX/DEX spread alpha 继续写成“看到价差就打”：这篇 2026 arXiv 更该先测的是「priority-fee / delay aware same-asset spread arbitrage」完整策略</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 CEX/DEX spread alpha 继续写成“看到价差就打”：这篇 2026 arXiv 更该先测的是「priority-fee / delay aware same-asset spread arbitrage」完整策略</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-01 00:36 UTC</span>
+      <span class="pill">研究时间：2026-04-01 00:34 UTC</span>
+      <span class="pill">类型：2026 arXiv 全文 PDF + 2023 JEDC/ICDCSW 论文链路 + Binance / Uniswap / Ethereum 公共数据映射</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/same-asset/cex-dex/spatial-arbitrage/priority-fee/stochastic-delay/convexity-cost/execution-latency/binance/uniswap/ethereum/public-data/1m/3m/5m/15m/paper</span>
+      <span class="pill">证据类型：论文全文 + arXiv 摘要 + 本地 PDF 文本抽取 + 公开数据源映射</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-01_0034_cex-dex-priority-fee-delay-arb-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-01 00:34 UTC</li>
+<li>类型：2026 arXiv 全文 PDF + 2023 JEDC/ICDCSW 论文链路 + Binance / Uniswap / Ethereum 公共数据映射</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/same-asset/cex-dex/spatial-arbitrage/priority-fee/stochastic-delay/convexity-cost/execution-latency/binance/uniswap/ethereum/public-data/1m/3m/5m/15m/paper</li>
+<li>证据类型：论文全文 + arXiv 摘要 + 本地 PDF 文本抽取 + 公开数据源映射</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一资产在 CEX 与 DEX 之间出现可执行价差后，做跨 venue 对冲套利，赚的是 <strong>价差向一致价格回归</strong>；priority fee、gas、随机延迟、AMM convexity cost 不是主 alpha，而是决定这条 alpha 何时还能活、下多大、是否值得打</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次为什么选它</h2>
+<p>先回答一句：<strong>这篇东西的 base alpha 是什么？</strong></p>
+<p>答案很清楚：</p>
+<p>&gt; <strong>same-asset cross-venue dislocation mean reversion</strong>。 &gt; 当 Binance 等 CEX 的有效价格和 Uniswap 等 DEX 的可执行价格出现足够大的偏离时，做一边买、一边卖，等价差回归。</p>
+<p>所以它不是纯 filter，也不是只有 execution 讨论。它本身就是一条 <strong>可独立交易的 relative-value / stat-arb raw alpha</strong>。</p>
+<p>之所以值得进池，不是因为“又来一篇 CEX 领先 DEX”，而是因为它把过去这条线里最欠缺的部分补上了：</p>
+<ul>
+<li><strong>entry 不是看到 spread 就冲</strong>，而是先过 no-trade band；</li>
+<li><strong>sizing 不是拍脑袋</strong>，而是被 AMM 深度/convexity cost 约束；</li>
+<li><strong>cost 不是只扣手续费</strong>，而是把 gas / priority fee / 随机延迟一起拉进来；</li>
+<li><strong>exit / timeout / fee choice</strong> 可以直接写成完整策略，而不再只是“有个 lead-lag 现象”。</li>
+</ul>
+<p>如果说 3 月底那批 spatial-arb / parity 题更多是在补“有无 edge”，这篇更像是在补： <strong>这条 edge 怎样才算可下单、可存活、可 desk 化。</strong></p>
+<h2>2. 这篇论文到底在做什么</h2>
+<p>本轮核心主线是：</p>
+<ol>
+<li><strong>Philippe Bergault, Yadh Hafsi, Leandro Sánchez-Betancourt (2026)</strong></li>
+<p>*Trading in CEXs and DEXs with Priority Fees and Stochastic Delays* arXiv:2602.10798 DOI: 10.48550/arXiv.2602.10798 URL: <a href="https://arxiv.org/abs/2602.10798">https://arxiv.org/abs/2602.10798</a></p>
+</ol>
+<p>它把 CEX/DEX 交易写成一个 <strong>mixed control</strong> 问题：</p>
+<ul>
+<li>在 <strong>CEX</strong> 上可以连续调整仓位；</li>
+<li>在 <strong>DEX</strong> 上下单是离散 impulse；</li>
+<li>DEX 单会因为区块打包而有 <strong>随机延迟</strong>；</li>
+<li>这个延迟可以通过 <strong>priority fee</strong> 部分控制；</li>
+<li>系统允许 <strong>多个 pending orders</strong> 同时挂在链上等待执行。</li>
+</ul>
+<p>论文最值钱的，不是数理控制本身，而是它给出一个非常 desk 化的结论：</p>
+<p>&gt; <strong>真正该交易的不是“观测到的 spread”，而是“扣完池子冲击、gas、priority fee、延迟风险之后，仍然活着的 spread”。</strong></p>
+<p>作者数值解里给出几个非常直观的策略结构：</p>
+<ul>
+<li>当 CEX/DEX 价格接近时，最优动作是 <strong>wait</strong>；</li>
+<li>只有当偏离穿出一条 <strong>continuation/no-action band</strong>，才进入 exercise region；</li>
+<li>偏离越大、离终点越近、库存越偏，越愿意付更高的 priority fee 去抢执行；</li>
+<li>如果链上整体执行更快，那么低优先级费用的适用区域会扩大，高 fee 区域会缩小；</li>
+<li>priority-fee 档位增加带来的价值提升很快 <strong>plateau</strong>，论文显示 <strong>超过约 30 档后增益已很小</strong>；</li>
+<li>相比随机选 fee 档，<strong>最优 fee 选择把 value function 提高了 18.2%</strong>。</li>
+</ul>
+<p>这条 <code>18.2%</code> 很重要： 它不是在说“alpha 强 18.2%”，而是在说 <strong>同一条 spatial-arb alpha，fee / delay 选得对不对，本身就能造成很大的执行质量差异</strong>。</p>
+<h2>3. 为什么我把它定性成 raw alpha，而不是 overlay</h2>
+<p>因为核心利润来源不是“更聪明地下单”，而是：</p>
+<ul>
+<li><strong>CEX 与 DEX 同资产价差会回归</strong>；</li>
+<li>你通过两边对冲把方向暴露压掉；</li>
+<li>收的是 <strong>跨 venue mispricing 的回归</strong>。</li>
+</ul>
+<p>priority fee / delay / gas / convexity cost 的角色是：</p>
+<ul>
+<li>过滤掉伪机会；</li>
+<li>决定何时出手；</li>
+<li>决定付多少执行成本；</li>
+<li>决定这笔单在现实中还能不能赚钱。</li>
+</ul>
+<p>所以它更准确的读法是：</p>
+<ul>
+<li><strong>raw alpha 本体</strong>：same-asset spread reversion；</li>
+<li><strong>策略落地骨架</strong>：priority-fee / delay aware execution；</li>
+<li><strong>shared 价值</strong>：这套 veto / sizing / timeout 也能反过来服务别的跨 venue alpha。</li>
+</ul>
+<h2>4. 这条线最硬的定量证据，不止来自 2026 新文，还来自作者 2023 的实盘式回放</h2>
+<p>2026 论文更偏控制与 delay/fee 决策。要判断这条线是否真能变成策略，需要看作者更早的实证底稿：</p>
+<ol>
+<li><strong>Álvaro Cartea, Fayçal Drissi, Marcello Monga (2025 version / forthcoming JEDC)</strong></li>
+<p>*Decentralised Finance and Automated Market Making: Execution and Speculation* arXiv:2307.03499 DOI: 10.48550/arXiv.2307.03499 URL: <a href="https://arxiv.org/abs/2307.03499">https://arxiv.org/abs/2307.03499</a></p>
+</ol>
+<ol>
+<li><strong>Álvaro Cartea, Fayçal Drissi, Marcello Monga (2023)</strong></li>
+<p>*Execution and Statistical Arbitrage with Signals in Multiple Automated Market Makers* 2023 IEEE 43rd International Conference on Distributed Computing Systems Workshops (ICDCSW) DOI: 10.1109/ICDCSW60045.2023.00012</p>
+</ol>
+<p>这条 2023→2026 的链路说明： 不是只有“理论上有价差”，而是作者已经在 <strong>Uniswap v3 + Binance</strong> 上把这类策略做过滚动窗口 OOS 回放。</p>
+<p>其中 2023/2025 这篇更直接给了 desk 真能用的数字：</p>
+<h3>ETH/USDC（流动性更高）</h3>
+<ul>
+<li>滚动 OOS 执行次数：<code>8,579</code> 次</li>
+<li>speculative strategy 平均 <strong>gross</strong> PnL：<code>23,818</code></li>
+<li>对比：TWAP 只有 <code>919</code></li>
+<li>单笔一把梭：<code>-827,692</code></li>
+<li>speculative strategy 平均费用：<code>15,096</code></li>
+</ul>
+<p>也就是说，即便把费用单独列出来， <code>23,818 - 15,096 ≈ 8,722</code>，粗看仍然有正的净边。</p>
+<h3>ETH/DAI（流动性更差）</h3>
+<ul>
+<li>滚动 OOS 执行次数：<code>1,747</code> 次</li>
+<li>speculative strategy 平均 <strong>gross</strong> PnL：<code>2,671</code></li>
+<li>对比：TWAP <code>-2,233</code></li>
+<li>单笔一把梭：<code>-148,352</code></li>
+<li>speculative strategy 平均费用：<code>2,381</code></li>
+</ul>
+<p>这里净边已经明显变薄， 但重点恰好说明：<strong>这条 alpha 对深度与成本极敏感，不能脱离 execution 讨论。</strong></p>
+<p>我会把这组结果解读成三句话：</p>
+<ol>
+<li>CEX→DEX spread reversion <strong>不是幻觉</strong>；</li>
+<li>但它不是“发现 spread 就赚”，而是 <strong>执行质量主导留存利润</strong>；</li>
+<li>越不液的池子，越要先做成本/延迟 veto，而不是迷信 headline spread。</li>
+</ol>
+<h2>5. 对 short-cycle desk，最应该抄的不是 PDE，而是这 4 个交易结论</h2>
+<h3>A. 真正的信号不是原始 spread，而是 executable spread</h3>
+<p>先算：</p>
+<ul>
+<li>CEX 可成交中价 / 对手价</li>
+<li>DEX marginal quote</li>
+<li>DEX executable quote（含 pool impact）</li>
+<li>pool fee</li>
+<li>gas</li>
+<li>priority fee</li>
+<li>延迟风险 buffer</li>
+</ul>
+<p>最后才得到：</p>
+<p><code>edge_t = sign-adjusted(CEX_price - DEX_exec_price) - all_in_cost_t - delay_risk_buffer_t</code></p>
+<p>只有 <code>edge_t &gt; 0</code>，才叫信号。</p>
+<h3>B. entry 应该是“穿出 no-trade band”，不是 spread&gt;0 就下</h3>
+<p>2026 论文里的 continuation region 本质上就是：</p>
+<ul>
+<li>偏离太小 -&gt; 不值得付费，不做；</li>
+<li>偏离够大 -&gt; 才进入 exercise region；</li>
+<li>离收盘/收敛终点越近，band 越窄，越容易触发；</li>
+<li>库存偏得越厉害，band 会向一边倾斜。</li>
+</ul>
+<p>翻成人话就是： <strong>不是所有价差都值得抢，只有大到能覆盖“执行不确定性”的那部分才值得。</strong></p>
+<h3>C. 高 fee 不应该常开，只该留给“大偏离 + 高时间紧迫 + 高库存偏移”状态</h3>
+<p>这也是论文数值图最有用的部分：</p>
+<ul>
+<li>fee level 不是常数；</li>
+<li>偏离越大，越应该用更高 priority 去换执行确定性；</li>
+<li>但如果链拥堵下降、低费也够快，就该自动降费；</li>
+<li>fee 档位加太多没必要，<strong>有限几个档就够</strong>。</li>
+</ul>
+<p>这对 desk 很实用，因为它暗示第一版根本不用做复杂连续优化， <strong>先做 3 档 fee bucket（low / mid / high）就足够做最小实验。</strong></p>
+<h3>D. sizing 应该由“更难成交的一侧”和 pool convexity 决定</h3>
+<p>2023/2025 那篇的关键经验是：</p>
+<ul>
+<li>AMM execution cost 与 trade size 线性相关；</li>
+<li>但与池子深度、汇率水平是非线性的；</li>
+<li>本质上要把 <strong>convexity cost</strong> 当成真正的容量约束。</li>
+</ul>
+<p>所以对 desk：</p>
+<ul>
+<li>不是固定 notional 两边对冲；</li>
+<li>而是先用 DEX 池子深度算这笔单打进去会把边吃掉多少；</li>
+<li>然后再反推 CEX 对冲腿的可下规模。</li>
+</ul>
+<h2>6. desk 化之后，我会把它写成什么最小策略</h2>
+<h3>策略定义</h3>
+<ul>
+<li><strong>主题类型</strong>：raw alpha</li>
+<li><strong>alpha 家族</strong>：same-asset cross-venue stat-arb / spatial arb</li>
+<li><strong>适用频率</strong>：<code>1m / 3m / 5m / 15m</code>，其中最值得先跑 <code>1m/3m/5m</code></li>
+<li><strong>更像真实执行的对象</strong>：ETH、WBTC 等有深 CEX 与深 DEX 池的资产</li>
+</ul>
+<h3>Entry</h3>
+<p>当下列条件同时满足时进场：</p>
+<ol>
+<li><code>edge_t &gt; theta_t</code></li>
+</ol>
+<ul>
+<li><code>edge_t</code> 为扣除池冲击 / gas / priority fee / delay buffer 后的 executable edge</li>
+<li><code>theta_t</code> 为最小安全边际，可设成 rolling 成本波动的分位阈值</li>
+</ul>
+<ol>
+<li>CEX 与 DEX 两侧都有足够容量</li>
+<li>当前 priority-fee bucket 对应的期望延迟仍在容忍区间内</li>
+<li>不在事件性 gas spike / 链异常拥堵黑名单里</li>
+</ol>
+<h3>Position / sizing</h3>
+<ul>
+<li>先按 DEX 池深度计算最大可接受 trade size，使得冲击后 edge 仍为正；</li>
+<li>再按 CEX 可成交量对冲；</li>
+<li>同一时刻限制 pending DEX orders 数量；</li>
+<li>若已有未确认链上单，则下调新单 size，避免堆叠延迟风险。</li>
+</ul>
+<h3>Exit</h3>
+<p>任一触发即平：</p>
+<ol>
+<li>spread 回到 band 内</li>
+<li>对冲后净 edge 回到 <code>&lt;= 0</code></li>
+<li>超过最大持有时间（例如 <code>3~10</code> 个 bar，按频率设）</li>
+<li>pending order 未按预期时间确认，且 CEX 侧风险超过阈值</li>
+<li>gas / priority fee 突然跳升，导致预期净边转负</li>
+</ol>
+<h3>Risk / cost</h3>
+<p>必须显式记：</p>
+<ul>
+<li>taker/maker fee</li>
+<li>pool fee</li>
+<li>gas</li>
+<li>priority fee</li>
+<li>延迟造成的补滑点</li>
+<li>未确认订单期间的裸露风险</li>
+</ul>
+<h2>7. 为什么它比继续补一个 generic filter 更值得</h2>
+<p>因为这轮目标优先级是： <strong>可独立复现且可直接落地为完整策略的 raw alpha &gt; 纯 filter / overlay。</strong></p>
+<p>这篇满足：</p>
+<ul>
+<li>raw alpha 清楚；</li>
+<li>公开数据可拿；</li>
+<li>entry / exit / sizing / risk / cost 都能定义；</li>
+<li>还能顺手补齐跨 venue 线最缺的 execution veto 组件。</li>
+</ul>
+<p>如果这轮继续去补某个“更聪明的情绪 filter”或“再一个 crowding gate”，价值反而没它高， 因为那些东西大多还得挂靠别的 alpha 才能活。</p>
+<p>而这条线自己就能交易。</p>
+<h2>8. 公开数据能不能支撑最小复现实验？可以</h2>
+<h3>数据源</h3>
+<ol>
+<li><strong>CEX：Binance 公共数据</strong></li>
+</ol>
+<ul>
+<li><code>bookTicker</code> / aggTrades / klines</li>
+<li>公开可得</li>
+<li>频率：秒级到分钟级</li>
+</ul>
+<ol>
+<li><strong>DEX：Uniswap v3 公共链上数据</strong></li>
+</ol>
+<ul>
+<li>pool <code>slot0</code>、liquidity、swaps、tick</li>
+<li>公开可得</li>
+<li>频率：逐笔 / 逐区块</li>
+</ul>
+<ol>
+<li><strong>Ethereum fee 数据</strong></li>
+</ol>
+<ul>
+<li><code>eth_feeHistory</code>、base fee、priority fee 建议值</li>
+<li>公开可得</li>
+<li>频率：逐区块</li>
+</ul>
+<ol>
+<li><strong>可选补充</strong></li>
+</ol>
+<ul>
+<li>公共 RPC / Dune / Flipside / 自建 archive 节点</li>
+<li>第一轮不要求 mempool 全量，先用区块级 feeHistory 近似即可</li>
+</ul>
+<h3>最小可复现实验口径</h3>
+<p>先别做太难的 tick-by-tick 全链撮合重建，第一轮直接做：</p>
+<ul>
+<li>资产：<code>ETH/USDC</code>（先），再加 <code>WBTC/USDC</code></li>
+<li>频率：<code>1m / 3m / 5m</code></li>
+<li>CEX 价格：bar close 或 bar 内 VWAP</li>
+<li>DEX 价格：同 bar 内最后一个可观测 marginal quote + 由池深度推 executable quote</li>
+<li>fee bucket：<code>low / mid / high</code> 三档</li>
+<li>delay 假设：映射成 <code>1 / 2 / 3</code> 个区块或经验均值延迟</li>
+</ul>
+<p>然后做三组回测：</p>
+<ul>
+<li><strong>A：不考虑 priority fee，只扣固定 gas</strong></li>
+<li><strong>B：固定三档 fee bucket，不做状态切换</strong></li>
+<li><strong>C：按 dislocation / inventory / 剩余时间切换 fee bucket</strong></li>
+</ul>
+<p>要看的不是只有总收益，而是：</p>
+<ul>
+<li>多少原始 spread 在扣完 all-in cost 后还活着</li>
+<li>不同 fee bucket 的 fill-quality / net edge 差异</li>
+<li>timeout / 未确认订单对净值的伤害</li>
+<li>哪些时间段（亚洲/欧洲/美盘）这条线更容易活</li>
+</ul>
+<h2>9. 我认为最值得先测的 3 个假设</h2>
+<h3>假设 1：priority fee 不是“多扣一项成本”，而是 alpha 生死开关</h3>
+<p>对照：</p>
+<ul>
+<li>固定低 fee</li>
+<li>固定中 fee</li>
+<li>状态切换 fee</li>
+</ul>
+<p>如果状态切换明显提高 net expectancy，这条线就不是 generic spatial-arb， 而是 <strong>priority-aware spatial-arb</strong>。</p>
+<h3>假设 2：大部分 headline spread，真实都是死在延迟和池冲击里</h3>
+<p>对照：</p>
+<ul>
+<li>raw observed spread</li>
+<li>executable spread after impact</li>
+<li>executable spread after impact + gas + fee + delay buffer</li>
+</ul>
+<p>如果 surviving ratio 断崖式下降，就说明这条线真正的 alpha 研究核心不是“找 spread”，而是“找 surviving spread”。</p>
+<h3>假设 3：这条策略更适合 1m/3m，而不是 15m</h3>
+<p>原因很简单：</p>
+<ul>
+<li>spread 收敛通常更快；</li>
+<li>延迟风险对长 bar 的解释力更差；</li>
+<li>15m 可能更像把大量已收敛机会平均掉。</li>
+</ul>
+<p>所以 15m 可以保留作 stress aggregation，但 <strong>主实验应优先 1m/3m/5m</strong>。</p>
+<h2>10. 这条线的明显短板</h2>
+<p>也要把丑话写前面：</p>
+<ol>
+<li><strong>2026 论文主结果偏数值控制，不是现成交易代码</strong></li>
+</ol>
+<ul>
+<li>需要我们自己把 band / fee bucket desk 化。</li>
+</ul>
+<ol>
+<li><strong>priority fee 与真实成交延迟的映射，第一轮只能近似</strong></li>
+</ol>
+<ul>
+<li>没有全量 mempool 时，先做区块级近似。</li>
+</ul>
+<ol>
+<li><strong>same-asset 跨 venue 套利容易被 infra 吞掉</strong></li>
+</ol>
+<ul>
+<li>真实上线对链上执行、对冲路由、风控同步要求高。</li>
+</ul>
+<ol>
+<li><strong>这条线更像 ETH/WBTC 主流资产策略</strong></li>
+</ol>
+<ul>
+<li>不适合直接外推到所有山寨币池。</li>
+</ul>
+<p>但这些不是否定理由，反而是它值得进池的原因： <strong>它是少数能逼着我们把 “alpha × execution × latency × cost” 一次讲完整的 raw alpha 题。</strong></p>
+<h2>11. 我的判断</h2>
+<p>我会把这条线放进当前 desk 研究池，而且优先级不低。</p>
+<p>不是因为它 headline 最性感， 而是因为它把一条已经“知道大概有 edge”的家族，往前推进了一整步：</p>
+<ul>
+<li>从“有 spread”</li>
+<li>变成“有 surviving spread”</li>
+<li>再变成“有 fee / delay aware 的完整策略骨架”</li>
+</ul>
+<p>如果后面要补跨 venue alpha，这篇比继续补一个泛化 filter 更值钱。</p>
+<h2>12. 下一步怎么测</h2>
+<p>直接做一个 <strong>三阶段最小实验</strong>：</p>
+<h3>Phase A：可执行 spread 生存线</h3>
+<ul>
+<li>标的：ETH/USDC</li>
+<li>频率：<code>1m / 3m / 5m</code></li>
+<li>信号：<code>raw spread -&gt; executable spread -&gt; net executable spread</code></li>
+<li>输出：surviving spread ratio、分时段生存率、平均净边</li>
+</ul>
+<h3>Phase B：fee bucket 状态切换</h3>
+<ul>
+<li><code>low / mid / high</code> 三档 priority fee</li>
+<li>用 spread 大小 + 剩余持有时间近似切换</li>
+<li>输出：不同档位的成交概率、延迟、净收益、timeout 率</li>
+</ul>
+<h3>Phase C：完整策略回放</h3>
+<ul>
+<li>entry：穿出 band</li>
+<li>sizing：按 pool convexity 限额</li>
+<li>exit：回到 band / timeout / 净边转负</li>
+<li>输出：gross/net PnL、hit rate、平均持有时间、fee 占毛利比例、不同拥堵 regime 表现</li>
+</ul>
+<p>第一轮实验只要回答一个问题：</p>
+<p>&gt; <strong>扣完 impact + gas + priority fee + 延迟 buffer 后，这条 same-asset cross-venue alpha 还剩多少？</strong></p>
+<p>如果剩得下来，就值得继续做 infra； 如果剩不下来，这篇也仍然能沉淀成跨 venue 策略的 shared veto / sizing 模块。</p>
+<h2>13. 来源</h2>
+<ol>
+<li><strong>Philippe Bergault, Yadh Hafsi, Leandro Sánchez-Betancourt (2026). _Trading in CEXs and DEXs with Priority Fees and Stochastic Delays_. arXiv.</strong></li>
+</ol>
+<ul>
+<li>Venue: arXiv</li>
+<li>DOI: 10.48550/arXiv.2602.10798</li>
+<li>Readable URL: <a href="https://arxiv.org/abs/2602.10798">https://arxiv.org/abs/2602.10798</a></li>
+<li>PDF URL: <a href="https://arxiv.org/pdf/2602.10798.pdf">https://arxiv.org/pdf/2602.10798.pdf</a></li>
+</ul>
+<ol>
+<li><strong>Álvaro Cartea, Fayçal Drissi, Marcello Monga (2025 version; forthcoming in JEDC). _Decentralised Finance and Automated Market Making: Execution and Speculation_. arXiv.</strong></li>
+</ol>
+<ul>
+<li>Venue: Journal of Economic Dynamics and Control (forthcoming) / arXiv</li>
+<li>DOI: 10.48550/arXiv.2307.03499</li>
+<li>Readable URL: <a href="https://arxiv.org/abs/2307.03499">https://arxiv.org/abs/2307.03499</a></li>
+<li>PDF URL: <a href="https://arxiv.org/pdf/2307.03499.pdf">https://arxiv.org/pdf/2307.03499.pdf</a></li>
+</ul>
+<ol>
+<li><strong>Álvaro Cartea, Fayçal Drissi, Marcello Monga (2023). _Execution and Statistical Arbitrage with Signals in Multiple Automated Market Makers_. 2023 IEEE 43rd International Conference on Distributed Computing Systems Workshops (ICDCSW).</strong></li>
+</ol>
+<ul>
+<li>Venue: ICDCSW 2023</li>
+<li>DOI: 10.1109/ICDCSW60045.2023.00012</li>
+<li>Readable URL: <a href="https://doi.org/10.1109/ICDCSW60045.2023.00012">https://doi.org/10.1109/ICDCSW60045.2023.00012</a></li>
+</ul>
+<ol>
+<li><strong>Ethereum JSON-RPC / fee history endpoints.</strong></li>
+</ol>
+<ul>
+<li>用途：base fee / priority fee / 区块级延迟近似</li>
+<li>公开性：公开可得</li>
+</ul>
+<ol>
+<li><strong>Binance Public Market Data + Uniswap v3 public on-chain pool state.</strong></li>
+</ol>
+<ul>
+<li>用途：CEX mid / DEX executable quote / liquidity / swap traces</li>
+<li>公开性：公开可得</li>
+</ul>
+</body>
+</html>

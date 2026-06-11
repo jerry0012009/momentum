@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Binance venue liquidity fragility × breakout / fade router</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Binance venue liquidity fragility × breakout / fade router</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-10 17:59 UTC</span>
+      <span class="pill">研究时间：2026-04-10 17:58 UTC</span>
+      <span class="pill">类型：2026 Preprints 论文 + Binance Spot `BTCUSDT 5m/15m` portability probe</span>
+      <span class="pill">主题标签：liquidity / market quality / regime / router / breakout / mean reversion / binance / btc / 5m / 15m</span>
+      <span class="pill">证据类型：论文证据 + 公共数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-10_1758_binance-liquidity-fragility-router-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-10 17:58 UTC</li>
+<li>类型：2026 Preprints 论文 + Binance Spot <code>BTCUSDT 5m/15m</code> portability probe</li>
+<li>主题类型：regime</li>
+<li>基础 alpha：不是独立 alpha；服务于 <code>15m breakout continuation</code> 与 <code>15m band-fade mean reversion</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：liquidity / market quality / regime / router / breakout / mean reversion / binance / btc / 5m / 15m</li>
+<li>证据类型：论文证据 + 公共数据 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Kyle Braughton, Matthew Bartholomew (2026)</strong> 的预印本 <strong>_Within-Venue Monitoring of BTC/USDT Liquidity and Resiliency on Binance: A Queueing-Theoretic Framework_</strong>。它不是再给一条新 directional alpha，而是想回答：<strong>同样在 Binance 里交易，什么时候市场“每 1 BTC 成交会打出更大的价格冲击”，以及这种脆弱状态第二天会不会延续。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西更适合被读成 <strong>共享 regime / router</strong>，不是独立 raw alpha。本体不是“做多/做空”，而是给现有 raw alpha 判定 <strong>今天更像 continuation 还是 snapback</strong>。</li>
+<li>论文里最有用的状态量是 <code>R_r</code>（可理解成“每成交 1 BTC 对价格造成的方差/冲击强度”）和 <code>θ_eff</code>（韧性/回归速度）。作者在 <strong>2023-10 ~ 2025-08 的 Binance BTC/USDT 1m 数据</strong>上发现：<code>R_r</code> 高的日子，<strong>次日方差和尾部风险更高</strong>；<code>R_r</code> 与 <code>θ_eff</code> 的联动在约 <strong>2/3 rolling windows</strong> 里为正、约 <strong>2/5 windows</strong> 里“明显为正”。</li>
+<li>对当前 desk，更值钱的读法不是“高冲击日一律停机”，而是 <strong>把它当 sleeve router</strong>。我用 Binance Spot <code>BTCUSDT 5m</code> 重建了一个更粗的代理：<code>前一日 realized variance / BTC volume</code> 作为 <code>R_r</code> proxy，再用 <strong>15m 大波动后 1h 内 50% 回补比例</strong> 当 <code>recovery_rate</code> proxy。</li>
+<li>用这个代理去切 <code>15m</code> 两个最小壳后，结果很像真正可用的 router：若只看前一日 <code>high_rr</code>（<code>R_r</code> top 20%），<strong>breakout</strong> 下一笔期望从正常状态约 <code>+4.08 bps/笔</code> 掉到 <code>-2.50 bps/笔</code>，<strong>mean reversion</strong> 从约 <code>+0.56 bps/笔</code> 掉到 <code>-6.68 bps/笔</code>，说明单纯“高冲击”对两边都不友好。</li>
+<li>但若进一步要求 <code>high_rr + low_recovery</code>，结论会分流：<strong>breakout</strong> 反而升到约 <code>+7.05 bps/笔</code>（<code>40</code> 笔，胜率约 <code>57.5%</code>），而 <strong>mean reversion</strong> 恶化到约 <code>-22.15 bps/笔</code>（<code>45</code> 笔，胜率约 <code>22.2%</code>）。到 <code>q90</code> 更严格口径时，这个方向仍在：breakout 约 <code>+8.03 bps/笔</code>，MR 约 <code>-21.36 bps/笔</code>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>当前 <code>momentum</code> 已经积了不少 raw alpha，但更缺的是：<strong>什么时候该让哪类 alpha 上场。</strong> 这篇 paper 的价值，不是替代 breakout / OFI continuation / band-fade，而是把“市场今天是厚、薄、脆、还是可恢复”这件事显式量化。对 desk 来说，它至少能服务两类东西：</p>
+<ul>
+<li>给 <strong>breakout / continuation</strong> 做 admission：只有在“高冲击且低恢复”时才放行；</li>
+<li>给 <strong>fade / mean reversion</strong> 做 veto：同样状态下少做逆势接飞刀。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：shared regime / router</li>
+<li>基础 alpha：<code>breakout continuation</code> 与 <code>band-fade mean reversion</code></li>
+<li>regime：前一日 <code>R_r</code> 高低 + 当日 shock recovery 强弱</li>
+<li>filter / veto：<code>high_rr</code> 先作为总风险黄灯；<code>high_rr + low_recovery</code> 更像 continuation allow / fade veto</li>
+<li>risk / sizing / execution overlay：高 fragility 状态下降低被动挂单幻想、提高滑点假设、对 fade sleeve 降仓或停机</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：前一日 venue fragility 会把次日 <code>15m</code> alpha 从“均值回归占优”切到“继续扩张占优”。</li>
+<li><strong>一个可计算定义</strong>：</li>
+<li><code>rr_proxy_d = sum(logret_5m^2) / sum(volume_btc_5m)</code></li>
+<li><code>recovery_rate_d = 15m |ret| &gt; 40bps 后，未来 4 根 15m 是否回补 50% 的平均比例</code></li>
+<li><strong>最小回测切口</strong>：Binance Spot <code>BTCUSDT 5m</code> 近 <code>~149</code> 个完整 UTC 日；交易层看 <code>15m</code>：</li>
+<li>breakout：<code>24-bar high/low + 1.5x volume</code>，持有 <code>4</code> 根 <code>15m</code></li>
+<li>MR：<code>BB(20,2) + RSI(14)</code>，持有 <code>4</code> 根 <code>15m</code></li>
+<li><strong>最该先看</strong>：<code>bps/笔</code> 与 <code>trade count</code>，再上 <code>1/2/4 bps</code> 成本阶梯。若 <code>BTC</code> 成立，再扩到 <code>ETH / SOL</code> 与 <code>OFI continuation</code>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文是 <strong>Binance spot BTC/USDT</strong> 的 market-quality 研究，不是直接给 perp 策略信号；迁移到 perp 前要重做 funding / taker-share / OI 联动。</li>
+<li>我这里的 <code>recovery_rate</code> 只是 <code>θ_eff</code> 的粗代理，不是论文里的 queueing-based 原定义。</li>
+<li><code>high_rr + low_recovery</code> 的样本不大，<code>q90</code> 只有几十笔，现阶段更适合当 <strong>router 候选</strong>，还不该直接当 production gate。</li>
+<li>这个状态量更像“今天市场结构长什么样”，不保证因果；跨资产、跨 venue、跨成本口径都要再做一次。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Braughton, K., &amp; Bartholomew, M. (2026). *Within-Venue Monitoring of BTC/USDT Liquidity and Resiliency on Binance: A Queueing-Theoretic Framework*. Preprints.</li>
+<li>DOI: <code>10.20944/preprints202604.0256.v1</code></li>
+<li>Readable URL: <code><a href="https://www.preprints.org/manuscript/202604.0256/v1">https://www.preprints.org/manuscript/202604.0256/v1</a></code></li>
+<li>Portability artifacts:</li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/btcusdt_liquidity_fragility_router_daily_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/btcusdt_liquidity_fragility_router_summary_2026-04-10.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Phase 2c 清洁回测：无未来函数负费率延续做多</title>
+<style>
+:root { color-scheme: dark; --bg:#0b1220; --panel:#111827; --muted:#94a3b8; --line:#263244; --text:#e5e7eb; --good:#22c55e; --warn:#f59e0b; --bad:#ef4444; --info:#38bdf8; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:14px/1.58 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif; }
+.wrap { max-width:1180px; margin:0 auto; padding:28px 18px 60px; }
+h1 { margin:0 0 8px; font-size:28px; line-height:1.2; }
+h2 { margin:28px 0 12px; font-size:20px; color:#dbeafe; }
+h3 { margin:18px 0 8px; font-size:15px; color:#cbd5e1; }
+p { margin:8px 0; } a { color:#7dd3fc; text-decoration:none; } code { background:#0f172a; color:#fbbf24; padding:2px 6px; border-radius:5px; }
+.muted { color:var(--muted); } .hero { border:1px solid #334155; background:#101827; padding:22px 24px; border-radius:12px; margin-bottom:18px; }
+.nav { margin:0 0 18px; padding:12px 14px; border:1px solid #334155; border-radius:10px; background:#0f172a; display:flex; gap:12px; flex-wrap:wrap; font-size:13px; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin:16px 0 22px; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px; }
+.card .k { color:var(--muted); font-size:12px; margin-bottom:5px; } .card .v { font-size:22px; font-weight:700; }
+.good .v { color:#4ade80; } .warn .v { color:#fbbf24; } .bad .v { color:#f87171; } .info .v { color:#7dd3fc; }
+.note { border-left:4px solid var(--info); background:#0c1a3d; padding:12px 14px; border-radius:0 8px 8px 0; margin:12px 0; }
+.note.warn { border-left-color:var(--warn); background:#3a2508; } .note.bad { border-left-color:var(--bad); background:#3a0f12; } .note.good { border-left-color:var(--good); background:#072a19; }
+table { width:100%; border-collapse:collapse; margin:10px 0 20px; background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+th,td { padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; } th { background:#0f172a; color:#cbd5e1; text-align:left; white-space:nowrap; } tr:last-child td { border-bottom:0; }
+.num { text-align:right; font-variant-numeric:tabular-nums; } .formula { background:#0f172a; border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin:10px 0; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre-wrap; }
+.flow { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin:12px 0 20px; } .step { border:1px solid var(--line); background:var(--panel); border-radius:8px; padding:10px; min-height:90px; } .step b { color:#e0f2fe; }
+ul { padding-left:20px; } li { margin:5px 0; } @media (max-width: 900px) { .flow { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="nav">
+    <a href="index.html">Rank 450 总览</a>
+    <a href="phase2a_momentum_ignition.html">2a 二次点火追多</a>
+    <a href="phase2b_short_reversal.html">2b 冲高回落做空</a>
+    <a href="../binance_event_study_hub.html">事件研究入口</a>
+  </div>
+  <section class="hero">
+    <p class="muted">Generated: 2026-06-03 04:03:27 UTC</p>
+    <h1>Phase 2c 清洁回测：无未来函数负费率延续做多</h1>
+    <p class="muted">本页替换旧版事后 <code>continuation</code> 分类入场。新版只使用入场时点之前可观测的价格路径、回撤、收盘位置和同刻 funding 横截面排名。</p>
+  </section>
+
+  <div class="grid">
+    <div class="card warn"><div class="k">最终状态</div><div class="v">WATCH</div><p class="muted">清洁后仍有 OOS 正样本，但强度明显低于旧版。</p></div>
+    <div class="card info"><div class="k">测试变体</div><div class="v">342</div><p class="muted">h=24/36/48 × funding × 价格代理 × 退出。</p></div>
+    <div class="card good"><div class="k">最佳 OOS 均值</div><div class="v">1.37%</div><p class="muted">按 2021-2024 训练、2025-2026 测试排序。</p></div>
+    <div class="card info"><div class="k">最佳 OOS Sharpe</div><div class="v">0.72</div><p class="muted">trade-level 年化，未按组合并发修正。</p></div>
+    <div class="card warn"><div class="k">最佳信号样本</div><div class="v">740</div><p class="muted">最佳 OOS 参数对应全样本交易数。</p></div>
+  </div>
+
+  <h2>1. 清洁规则</h2>
+  <div class="note good">新版信号不读取 <code>ev_structure</code>、<code>fwd_ret_t1/t2/t3</code> 或任何 entry_ts 之后的数据。旧的 <code>continuation</code> 只保留为事后诊断列。</div>
+  <div class="formula">entry_hour tau in {24, 36, 48}
+entry_ts = first hourly bar with hours_from_event >= tau
+
+ret_since_event = close(entry_ts) / open(h=0) - 1
+close_pos = (close(entry_ts) - min_low[0,tau]) / (max_high[0,tau] - min_low[0,tau])
+max_dd = min_low[0,tau] / open(h=0) - 1
+funding_pctl_ts = rank_pct(funding_rate(entry_ts) across events sharing entry_ts)
+
+signal = funding_pctl_ts <= q
+         AND ret_since_event >= ret_threshold
+         AND close_pos >= close_pos_threshold
+         AND max_dd >= max_dd_limit
+
+exit_ts = first hourly bar with hours_from_event >= tau + hold_hours
+net = price_return + funding_pnl - 0.13%
+funding_pnl for long = -sum(unique settlement funding_rate)</div>
+
+  <h2>2. 流程图</h2>
+  <div class="flow">
+    <div class="step"><b>事件池</b><br>只取已有 top gainer event，不用未来结构标签。</div>
+    <div class="step"><b>固定观察时点</b><br>h=24/36/48，等待 K 线完成后入场。</div>
+    <div class="step"><b>因果特征</b><br>截至 entry_ts 的收益、区间位置、最大回撤。</div>
+    <div class="step"><b>同刻 funding</b><br>按 entry_ts 横截面排名。</div>
+    <div class="step"><b>真实时间退出</b><br>entry + 12h/24h，不再用过滤后第 N 行。</div>
+  </div>
+
+  <h2>3. 样本内 Top 参数</h2>
+  <table><thead><tr><th>入场h</th><th>持有h</th><th>funding q</th><th>收益阈值</th><th>收盘位置阈值</th><th>最大回撤下限</th><th>N</th><th>净收益均值</th><th>胜率</th><th>Sharpe</th><th>价格贡献</th><th>Funding贡献</th></tr></thead><tbody><tr><td class="num">36.000</td><td class="num">24.000</td><td class="num">0.050</td><td class="num">0.050</td><td class="num">0.700</td><td class="num">-0.200</td><td class="num">430.000</td><td class="num">1.57%</td><td class="num">47.44%</td><td class="num">1.08</td><td class="num">0.32%</td><td class="num">1.38%</td></tr><tr><td class="num">36.000</td><td class="num">24.000</td><td class="num">0.050</td><td class="num">0.030</td><td class="num">0.700</td><td class="num">-0.200</td><td class="num">470.000</td><td class="num">1.54%</td><td class="num">48.51%</td><td class="num">1.04</td><td class="num">0.39%</td><td class="num">1.28%</td></tr><tr><td class="num">36.000</td><td class="num">24.000</td><td class="num">0.050</td><td class="num">0.050</td><td class="num">0.700</td><td class="num">-0.300</td><td class="num">433.000</td><td class="num">1.49%</td><td class="num">47.11%</td><td class="num">1.03</td><td class="num">0.24%</td><td class="num">1.37%</td></tr><tr><td class="num">36.000</td><td class="num">24.000</td><td class="num">0.050</td><td class="num">0.000</td><td class="num">0.700</td><td class="num">-0.200</td><td class="num">489.000</td><td class="num">1.48%</td><td class="num">49.08%</td><td class="num">1.04</td><td class="num">0.37%</td><td class="num">1.24%</td></tr><tr><td class="num">36.000</td><td class="num">24.000</td><td class="num">0.050</td><td class="num">0.030</td><td class="num">0.700</td><td class="num">-0.300</td><td class="num">473.000</td><td class="num">1.46%</td><td class="num">48.20%</td><td class="num">0.99</td><td class="num">0.31%</td><td class="num">1.28%</td></tr><tr><td class="num">36.000</td><td class="num">24.000</td><td class="num">0.050</td><td class="num">0.000</td><td class="num">0.700</td><td class="num">-0.300</td><td class="num">493.000</td><td class="num">1.42%</td><td class="num">48.88%</td><td class="num">1.00</td><td class="num">0.30%</td><td class="num">1.24%</td></tr><tr><td class="num">36.000</td><td class="num">12.000</td><td class="num">0.050</td><td class="num">0.050</td><td class="num">0.700</td><td class="num">-0.200</td><td class="num">430.000</td><td class="num">1.15%</td><td class="num">49.53%</td><td class="num">1.06</td><td class="num">0.33%</td><td class="num">0.94%</td></tr><tr><td class="num">36.000</td><td class="num">24.000</td><td class="num">0.050</td><td class="num">0.050</td><td class="num">0.600</td><td class="num">-0.200</td><td class="num">573.000</td><td class="num">1.14%</td><td class="num">45.72%</td><td class="num">0.97</td><td class="num">-0.02%</td><td class="num">1.29%</td></tr><tr><td class="num">36.000</td><td class="num">24.000</td><td class="num">0.050</td><td class="num">0.030</td><td class="num">0.600</td><td class="num">-0.200</td><td class="num">631.000</td><td class="num">1.12%</td><td class="num">46.75%</td><td class="num">0.95</td><td class="num">0.06%</td><td class="num">1.19%</td></tr><tr><td class="num">36.000</td><td class="num">12.000</td><td class="num">0.050</td><td class="num">0.030</td><td class="num">0.700</td><td class="num">-0.200</td><td class="num">470.000</td><td class="num">1.12%</td><td class="num">50.85%</td><td class="num">1.03</td><td class="num">0.37%</td><td class="num">0.88%</td></tr><tr><td class="num">36.000</td><td class="num">12.000</td><td class="num">0.050</td><td class="num">0.000</td><td class="num">0.700</td><td class="num">-0.200</td><td class="num">489.000</td><td class="num">1.11%</td><td class="num">51.33%</td><td class="num">1.06</td><td class="num">0.38%</td><td class="num">0.85%</td></tr><tr><td class="num">36.000</td><td class="num">12.000</td><td class="num">0.050</td><td class="num">0.050</td><td class="num">0.700</td><td class="num">-0.300</td><td class="num">433.000</td><td class="num">1.10%</td><td class="num">49.42%</td><td class="num">1.02</td><td class="num">0.29%</td><td class="num">0.94%</td></tr></tbody></table>
+
+  <h2>4. OOS 结果：2021-2024 训练，2025-2026 测试</h2>
+  <div class="note warn">下面按测试期净收益排序。若只看样本内 Top，仍可能重新引入数据挖掘偏差。</div>
+  <table><thead><tr><th>入场h</th><th>持有h</th><th>funding q</th><th>收益阈值</th><th>收盘位置阈值</th><th>最大回撤下限</th><th>训练N</th><th>训练均值</th><th>训练Sharpe</th><th>测试N</th><th>测试均值</th><th>测试胜率</th><th>测试Sharpe</th></tr></thead><tbody><tr><td class="num">24</td><td class="num">12</td><td class="num">0.050</td><td class="num">0.050</td><td class="num">0.500</td><td class="num">-0.300</td><td class="num">485</td><td class="num">0.69%</td><td class="num">0.99</td><td class="num">255</td><td class="num">1.37%</td><td class="num">43.14%</td><td class="num">0.72</td></tr><tr><td class="num">24</td><td class="num">12</td><td class="num">0.050</td><td class="num">0.050</td><td class="num">0.500</td><td class="num">-0.200</td><td class="num">485</td><td class="num">0.69%</td><td class="num">0.99</td><td class="num">253</td><td class="num">1.32%</td><td class="num">42.69%</td><td class="num">0.68</td></tr><tr><td class="num">24</td><td class="num">12</td><td class="num">0.050</td><td class="num">0.050</td><td class="num">0.700</td><td class="num">-0.300</td><td class="num">333</td><td class="num">0.46%</td><td class="num">0.57</td><td class="num">152</td><td class="num">1.29%</td><td class="num">40.79%</td><td class="num">0.42</td></tr><tr><td class="num">24</td><td class="num">12</td><td class="num">0.050</td><td class="num">0.030</td><td class="num">0.700</td><td class="num">-0.300</td><td class="num">374</td><td class="num">0.36%</td><td class="num">0.42</td><td class="num">163</td><td class="num">1.26%</td><td class="num">42.33%</td><td class="num">0.44</td></tr><tr><td class="num">24</td><td class="num">12</td><td class="num">0.050</td><td class="num">0.030</td><td class="num">0.500</td><td class="num">-0.300</td><td class="num">561</td><td class="num">0.53%</td><td class="num">0.76</td><td class="num">278</td><td class="num">1.26%</td><td class="num">44.24%</td><td class="num">0.72</td></tr><tr><td class="num">24</td><td class="num">12</td><td class="num">0.050</td><td class="num">0.050</td><td class="num">0.700</td><td class="num">-0.200</td><td class="num">333</td><td class="num">0.46%</td><td class="num">0.57</td><td class="num">151</td><td class="num">1.24%</td><td class="num">40.40%</td><td class="num">0.40</td></tr><tr><td class="num">24</td><td class="num">12</td><td class="num">0.050</td><td class="num">0.030</td><td class="num">0.700</td><td class="num">-0.200</td><td class="num">373</td><td class="num">0.36%</td><td class="num">0.43</td><td class="num">162</td><td class="num">1.22%</td><td class="num">41.98%</td><td class="num">0.42</td></tr><tr><td class="num">24</td><td class="num">12</td><td class="num">0.050</td><td class="num">0.030</td><td class="num">0.500</td><td class="num">-0.200</td><td class="num">560</td><td class="num">0.54%</td><td class="num">0.76</td><td class="num">276</td><td class="num">1.21%</td><td class="num">43.84%</td><td class="num">0.68</td></tr><tr><td class="num">24</td><td class="num">12</td><td class="num">0.050</td><td class="num">0.000</td><td class="num">0.700</td><td class="num">-0.300</td><td class="num">417</td><td class="num">0.31%</td><td class="num">0.41</td><td class="num">168</td><td class="num">1.17%</td><td class="num">42.26%</td><td class="num">0.42</td></tr><tr><td class="num">24</td><td class="num">12</td><td class="num">0.050</td><td class="num">0.000</td><td class="num">0.500</td><td class="num">-0.300</td><td class="num">640</td><td class="num">0.40%</td><td class="num">0.64</td><td class="num">306</td><td class="num">1.16%</td><td class="num">46.08%</td><td class="num">0.73</td></tr><tr><td class="num">24</td><td class="num">12</td><td class="num">0.050</td><td class="num">0.000</td><td class="num">0.700</td><td class="num">-0.200</td><td class="num">416</td><td class="num">0.32%</td><td class="num">0.41</td><td class="num">167</td><td class="num">1.13%</td><td class="num">41.92%</td><td class="num">0.40</td></tr><tr><td class="num">24</td><td class="num">12</td><td class="num">0.050</td><td class="num">0.000</td><td class="num">0.500</td><td class="num">-0.200</td><td class="num">638</td><td class="num">0.42%</td><td class="num">0.66</td><td class="num">304</td><td class="num">1.11%</td><td class="num">45.72%</td><td class="num">0.69</td></tr></tbody></table>
+
+  <h2>5. 最佳 OOS 参数的年度拆解</h2>
+  <table><thead><tr><th>年份</th><th>N</th><th>净收益均值</th><th>胜率</th><th>Sharpe</th><th>价格贡献</th><th>Funding贡献</th></tr></thead><tbody><tr><td class="num">2,022.000</td><td class="num">116.000</td><td class="num">1.00%</td><td class="num">49.14%</td><td class="num">1.36</td><td class="num">0.42%</td><td class="num">0.71%</td></tr><tr><td class="num">2,023.000</td><td class="num">195.000</td><td class="num">0.81%</td><td class="num">49.23%</td><td class="num">1.49</td><td class="num">-0.01%</td><td class="num">0.95%</td></tr><tr><td class="num">2,024.000</td><td class="num">174.000</td><td class="num">0.33%</td><td class="num">43.10%</td><td class="num">0.42</td><td class="num">0.02%</td><td class="num">0.44%</td></tr><tr><td class="num">2,025.000</td><td class="num">192.000</td><td class="num">2.23%</td><td class="num">44.79%</td><td class="num">1.34</td><td class="num">0.92%</td><td class="num">1.44%</td></tr><tr><td class="num">2,026.000</td><td class="num">63.000</td><td class="num">-1.23%</td><td class="num">38.10%</td><td class="num">-0.60</td><td class="num">-2.83%</td><td class="num">1.73%</td></tr></tbody></table>
+
+  <h2>6. 事后结构诊断，不参与入场</h2>
+  <div class="note">这里可以观察清洁信号最终落在哪些旧标签里，但这些标签没有参与信号计算。</div>
+  <table><thead><tr><th>事后结构</th><th>N</th><th>净收益均值</th><th>胜率</th></tr></thead><tbody><tr><td class="">immediate_reversal</td><td class="num">443</td><td class="num">-3.25%</td><td class="num">26.86%</td></tr><tr><td class="">stall_t2</td><td class="num">173</td><td class="num">8.14%</td><td class="num">72.83%</td></tr><tr><td class="">stall_t3</td><td class="num">77</td><td class="num">5.91%</td><td class="num">71.43%</td></tr><tr><td class="">continuation</td><td class="num">46</td><td class="num">5.53%</td><td class="num">80.43%</td></tr><tr><td class="">unknown</td><td class="num">1</td><td class="num">4.16%</td><td class="num">100.00%</td></tr></tbody></table>
+
+  <h2>7. Funding-only 基线</h2>
+  <div class="note warn">这里完全不加价格趋势代理，只看同刻低 funding 排名。本轮 funding-only 有小幅正 OOS，但胜率偏低、中位数偏弱；价格代理带来的是增量改善，而不是恢复旧版高夏普。</div>
+  <table><thead><tr><th>入场h</th><th>持有h</th><th>funding q</th><th>N</th><th>净收益均值</th><th>胜率</th><th>Sharpe</th><th>价格贡献</th><th>Funding贡献</th></tr></thead><tbody><tr><td class="num">36.000</td><td class="num">24.000</td><td class="num">0.100</td><td class="num">2,865.000</td><td class="num">0.54%</td><td class="num">44.99%</td><td class="num">0.60</td><td class="num">0.04%</td><td class="num">0.63%</td></tr><tr><td class="num">36.000</td><td class="num">24.000</td><td class="num">0.050</td><td class="num">1,393.000</td><td class="num">0.51%</td><td class="num">44.87%</td><td class="num">0.55</td><td class="num">-0.31%</td><td class="num">0.96%</td></tr><tr><td class="num">24.000</td><td class="num">12.000</td><td class="num">0.050</td><td class="num">1,395.000</td><td class="num">0.50%</td><td class="num">46.16%</td><td class="num">0.66</td><td class="num">-0.10%</td><td class="num">0.73%</td></tr><tr><td class="num">24.000</td><td class="num">24.000</td><td class="num">0.050</td><td class="num">1,393.000</td><td class="num">0.47%</td><td class="num">44.08%</td><td class="num">0.52</td><td class="num">-0.47%</td><td class="num">1.07%</td></tr><tr><td class="num">36.000</td><td class="num">12.000</td><td class="num">0.050</td><td class="num">1,393.000</td><td class="num">0.29%</td><td class="num">47.88%</td><td class="num">0.45</td><td class="num">-0.26%</td><td class="num">0.67%</td></tr><tr><td class="num">48.000</td><td class="num">12.000</td><td class="num">0.050</td><td class="num">1,387.000</td><td class="num">0.24%</td><td class="num">47.01%</td><td class="num">0.56</td><td class="num">-0.12%</td><td class="num">0.49%</td></tr><tr><td class="num">36.000</td><td class="num">12.000</td><td class="num">0.100</td><td class="num">2,865.000</td><td class="num">0.21%</td><td class="num">46.91%</td><td class="num">0.55</td><td class="num">-0.10%</td><td class="num">0.44%</td></tr><tr><td class="num">24.000</td><td class="num">12.000</td><td class="num">0.100</td><td class="num">2,871.000</td><td class="num">0.15%</td><td class="num">45.32%</td><td class="num">0.36</td><td class="num">-0.20%</td><td class="num">0.48%</td></tr><tr><td class="num">36.000</td><td class="num">24.000</td><td class="num">0.200</td><td class="num">5,678.000</td><td class="num">0.15%</td><td class="num">44.93%</td><td class="num">0.30</td><td class="num">-0.09%</td><td class="num">0.37%</td></tr><tr><td class="num">24.000</td><td class="num">24.000</td><td class="num">0.100</td><td class="num">2,868.000</td><td class="num">0.13%</td><td class="num">43.69%</td><td class="num">0.25</td><td class="num">-0.44%</td><td class="num">0.70%</td></tr></tbody></table>
+
+  <h2>8. 审计结论</h2>
+  <ul>
+    <li>旧版高夏普主要来自事后 <code>continuation</code> 路径筛选；新版已移除该未来函数。</li>
+    <li>清洁版还有正 OOS 口袋，但样本数比旧版少，且 trade-level Sharpe 仍未做组合并发和容量修正。</li>
+    <li>低 funding 本身留下弱正收益；事件后可观测趋势代理带来小幅增量，但没有恢复旧版事后 continuation 带来的高 Sharpe。</li>
+    <li>更准确的名字是 <code>post-event causal continuation proxy + low funding context</code>，而不是已经可执行的 carry harvest。</li>
+    <li>建议状态从 WATCH+ 下调到 WATCH：保留研究价值，但需要组合净值、滑点和 walk-forward 后才可谈 paper lane。</li>
+  </ul>
+
+  <h2>9. 产物</h2>
+  <ul>
+    <li><code>scripts/backtest_phase2c_causal_audit.py</code></li>
+    <li><code>reports/artifacts/binance_event_study_phase2c_causal_audit/causal_param_summary.csv</code></li>
+    <li><code>reports/artifacts/binance_event_study_phase2c_causal_audit/causal_oos_summary.csv</code></li>
+    <li><code>reports/artifacts/binance_event_study_phase2c_causal_audit/causal_trade_detail.csv</code></li>
+  </ul>
+</div>
+</body>
+</html>

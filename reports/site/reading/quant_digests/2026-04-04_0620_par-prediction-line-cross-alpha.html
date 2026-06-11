@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2023 AIMS 论文只当成“非线性拟合秀”：对 short-cycle desk，更该先测的是「PAR prediction-line cross × asset-specific long/short asymmetry」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2023 AIMS 论文只当成“非线性拟合秀”：对 short-cycle desk，更该先测的是「PAR prediction-line cross × asset-specific long/short asymmetry」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 06:19 UTC</span>
+      <span class="pill">研究时间：2026-04-04 06:20 UTC</span>
+      <span class="pill">类型：quant_digest</span>
+      <span class="pill">主题标签：raw-alpha/trend/nonlinear-autoregression/polynomial/prediction-line-cross/intraday/crypto/single-asset/long-short-asymmetry/btc/eth/bnb/ada/5m/15m/3m/1m/paper/public-data/cost/risk</span>
+      <span class="pill">证据类型：2023 AIMS Mathematics 开放获取全文论文（HTML + PDF）source audit + Crossref metadata grounding</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_0620_par-prediction-line-cross-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 06:20 UTC</li>
+<li>类型：quant_digest</li>
+<li>主题标签：raw-alpha/trend/nonlinear-autoregression/polynomial/prediction-line-cross/intraday/crypto/single-asset/long-short-asymmetry/btc/eth/bnb/ada/5m/15m/3m/1m/paper/public-data/cost/risk</li>
+<li>证据类型：2023 AIMS Mathematics 开放获取全文论文（HTML + PDF）source audit + Crossref metadata grounding</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：对单币价格做 <strong>polynomial autoregression（PAR）预测线</strong>，把“现价相对预测线的上穿/下穿”当成方向信号；本质上是在抓 <strong>短周期非线性趋势延续 / 方向切换</strong>，而不是均值回复</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这篇东西值得进池，不是因为它又讲了一遍“机器学习能预测价格”，而是因为它给了一个<strong>可以直接拆成信号层、方向层、仓位层、成本层</strong>的单币 raw alpha 壳：<strong>用一条滚动更新的非线性预测线做 direction regime，把价格穿越预测线后的顺势跟随当作主交易动作</strong>。对现在 desk 来说，这比再补一个解释型 filter 更有用，因为它本身就是一条能独立跑起来的多空策略。</p>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p>先把话说清楚：</p>
+<ul>
+<li><strong>base alpha 不是</strong> “ML 模型拟合得更漂亮”；</li>
+<li><strong>base alpha 不是</strong> 1.5% 的 buffer；</li>
+<li><strong>base alpha 也不是</strong> 多空仓位管理。</li>
+</ul>
+<p>它真正的 alpha 本体是：</p>
+<ol>
+<li>用过去一段分钟级价格拟合一条 <strong>PAR 预测线</strong>；</li>
+<li>当现价<strong>向上穿越</strong>预测线并越过最小 buffer 时，认为短周期上涨段正在形成，做多；</li>
+<li>当现价<strong>向下穿越</strong>预测线并跌破最小 buffer 时，认为短周期下跌段正在形成，做空；</li>
+<li>持仓直到反向穿越信号出现。</li>
+</ol>
+<p>所以这不是 headline momentum，也不是 breakout 叙事，而是一条<strong>非线性趋势线穿越型 raw alpha</strong>。</p>
+<h2>3. 论文里到底做了什么</h2>
+<h3>3.1 样本与建模</h3>
+<p>作者：Gil Cohen 年份：2023 标题：*Intraday trading of cryptocurrencies using polynomial auto regression* 期刊：AIMS Mathematics, Vol. 8, Issue 4, pp. 9782–9794 DOI：<code>10.3934/math.2023493</code></p>
+<p>论文使用：</p>
+<ul>
+<li>4 个币：Bitcoin、Ethereum、BNB、Cardano</li>
+<li>数据频率：<strong>minute-by-minute bars</strong></li>
+<li>样本区间：<code>2021-12-01</code> 到 <code>2022-11-30</code></li>
+<li>切分方式：前 6 个月训练，后 6 个月实际交易评估</li>
+</ul>
+<p>核心模型写成一个三次的 polynomial autoregression：</p>
+<ul>
+<li>预测对象：下一时点价格</li>
+<li>关键输入：当前价格与 <code>n</code> 分钟前价格</li>
+<li>交易信号：价格相对“预测线”的上穿 / 下穿</li>
+</ul>
+<h3>3.2 交易规则</h3>
+<p>论文给出的交易逻辑并不复杂：</p>
+<ul>
+<li>先估计一条 polynomial prediction line；</li>
+<li><strong>Long</strong>：<code>P_i &gt; P_pol_i + δ</code></li>
+<li><strong>Short</strong>：文中公式写成 <code>P_i &lt; P_pol_i + δ</code>，但结合“prediction line 上下两侧 buffer”语义，这里大概率是排版/符号笔误；可部署版本应理解为 <strong><code>P_i &lt; P_pol_i - δ</code></strong>；</li>
+<li>训练阶段优化 <code>δ</code> 与 minutes-bar 配置；</li>
+<li>持仓直到反向信号出现，也就是一个<strong>始终在 long / short 间切换</strong>的 sequential system。</li>
+</ul>
+<p>这点很关键：它不是“预测涨跌然后下一根平仓”的 classifier，而是<strong>直接输出可交易的 regime line-cross 策略</strong>。</p>
+<h2>4. 论文最值得记住的 4 个数据点</h2>
+<h3>4.1 全币种统一最优 buffer</h3>
+<p>作者在训练后得到的统一结果是：</p>
+<ul>
+<li><strong>最优 <code>δ = 1.5%</code></strong>（4 个币都一样）</li>
+</ul>
+<p>这很值得 desk 注意：</p>
+<ul>
+<li>说明作者找到的不是超精细微结构 edge；</li>
+<li>更像是一个<strong>需要价格真的脱离预测线才愿意追随</strong>的 trend confirmation 壳。</li>
+</ul>
+<h3>4.2 各币最佳 minutes 配置不同</h3>
+<p>最优窗口并不统一：</p>
+<ul>
+<li>BTC：<strong>67 分钟</strong></li>
+<li>ETH：<strong>61 分钟</strong></li>
+<li>BNB：<strong>62 分钟</strong></li>
+<li>ADA：<strong>47 分钟</strong></li>
+</ul>
+<p>这说明它不是“全市场一个固定回看长度就够了”的通用时钟，而更像<strong>每个资产各自有一段最适合被 PAR 线抽取的局部惯性长度</strong>。</p>
+<h3>4.3 6 个月实盘窗口里，收益显著跑赢 B&amp;H</h3>
+<p>论文给出的 6 个月 out-of-sample 结果：</p>
+<ul>
+<li><strong>BTC</strong>：<code>+15.58%</code>，PF <code>2.30</code>，PP <code>71.67%</code>；对照 B&amp;H <code>-44.8%</code></li>
+<li><strong>ETH</strong>：<code>+16.98%</code>，PF <code>2.04</code>，PP <code>66.67%</code>；对照 B&amp;H <code>-33.6%</code></li>
+<li><strong>BNB</strong>：<code>+9.33%</code>，PF <code>1.75</code>，PP <code>67.6%</code>；对照 B&amp;H <code>+0.28%</code></li>
+<li><strong>ADA</strong>：<code>+4.26%</code>，PF <code>1.38</code>，PP <code>66.7%</code>；对照 B&amp;H <code>-41.8%</code></li>
+</ul>
+<h3>4.4 多空不对称非常明显</h3>
+<p>拆开 long/short 后更有意思：</p>
+<ul>
+<li><strong>BTC</strong>：short 更强（PF <code>3.44</code> &gt; long <code>2.73</code>）</li>
+<li><strong>ETH</strong>：long 更强（NP <code>10.48%</code> &gt; short <code>6.50%</code>）</li>
+<li><strong>BNB</strong>：short 显著更强（NP <code>7.94%</code> vs long <code>1.39%</code>）</li>
+<li><strong>ADA</strong>：long 略强（NP <code>2.33%</code> vs short <code>1.93%</code>）</li>
+</ul>
+<p>这不是小细节，而是 desk 最该拿走的部署启发： <strong>同一个 prediction-line-cross alpha，在不同币上的主导方向并不一样。</strong></p>
+<h2>5. 为什么这东西和当前 desk 直接相关</h2>
+<p>它对我们有 3 个直接价值：</p>
+<h3>5.1 它是真正的 raw alpha，不只是 filter</h3>
+<p>这篇不是在说“什么时候别做交易”，而是在说：</p>
+<ul>
+<li>什么时候翻多</li>
+<li>什么时候翻空</li>
+<li>什么时候继续持有</li>
+</ul>
+<p>也就是一条完整策略主干。</p>
+<h3>5.2 它提供了一个和 MA / Donchian / breakout 不一样的 trend family</h3>
+<p>现在常见 short-cycle trend 壳，大多是：</p>
+<ul>
+<li>均线斜率</li>
+<li>通道突破</li>
+<li>N-bar return continuation</li>
+<li>回踩后确认</li>
+</ul>
+<p>而这篇提供的是另一类：</p>
+<ul>
+<li><strong>非线性估计线</strong></li>
+<li><strong>price-vs-estimated-curve crossing</strong></li>
+<li><strong>方向跟随，但信号核不是线性均线</strong></li>
+</ul>
+<p>这意味着它值得作为一个<strong>新 family</strong>进入 raw alpha 池，而不是只当现有 trend 因子的微调版。</p>
+<h3>5.3 它天然支持“按币种分方向偏置”</h3>
+<p>论文最有 desk 味道的地方，不是收益数字，而是：</p>
+<ul>
+<li>BTC / BNB 偏 short 更好</li>
+<li>ETH / ADA 偏 long 更好</li>
+</ul>
+<p>这使它很适合做成：</p>
+<ul>
+<li><strong>asset-specific long-short bias</strong></li>
+<li><strong>不同币单独选 long-only / short-only / symmetric mode</strong></li>
+<li>或者把它挂进更大的 alpha router 里，让 router 决定每个币只开哪一侧</li>
+</ul>
+<h2>6. desk 版最小可复现实验怎么搭</h2>
+<p>论文原版用的是 1 分钟数据，但我们完全可以先做一个<strong>5m 主实验 + 1m/3m 精细对照</strong>。</p>
+<h3>6.1 建议的 first-pass universe</h3>
+<p>先别铺太宽，先做流动性最稳的 4~6 个：</p>
+<ul>
+<li>BTCUSDT perp</li>
+<li>ETHUSDT perp</li>
+<li>BNBUSDT perp</li>
+<li>SOLUSDT perp</li>
+<li>ADAUSDT perp</li>
+<li>XRPUSDT perp</li>
+</ul>
+<p>先用 perp，而不是现货：</p>
+<ul>
+<li>更接近 desk 真正可部署市场；</li>
+<li>也能把 funding 成本和 taker fee 一起纳入。</li>
+</ul>
+<h3>6.2 5m 版信号定义</h3>
+<p>把论文里的 <code>47~67</code> 分钟窗口，先映射到 5m：</p>
+<ul>
+<li><code>n_bars ∈ {9, 10, 11, 12, 13, 14}</code>，大致对应 <code>45~70</code> 分钟</li>
+</ul>
+<p>每根 5m bar 更新一次：</p>
+<ol>
+<li>对最近 <code>n_bars</code> 的 log close 做 rolling PAR / cubic forecast</li>
+<li>得到当前预测线 <code>P_pol</code></li>
+<li>定义 buffer <code>δ</code></li>
+<li>若 <code>close_t &gt; P_pol_t * (1 + δ)</code>，目标方向 = <code>+1</code></li>
+<li>若 <code>close_t &lt; P_pol_t * (1 - δ)</code>，目标方向 = <code>-1</code></li>
+<li>否则维持上一状态或空仓（两种都要测）</li>
+</ol>
+<p>我建议 first-pass 同时测 2 个版本：</p>
+<ul>
+<li><strong>Version A：always-in-market</strong>（最忠于论文）</li>
+<li><strong>Version B：neutral zone flat</strong>（更 desk-friendly，减少 churn）</li>
+</ul>
+<h3>6.3 1m / 3m 对照实验</h3>
+<p>为了验证它是不是只能在 2022 的慢趋势里有效，再加两档：</p>
+<ul>
+<li><strong>3m</strong>：<code>n_bars ∈ {15, 20, 22}</code></li>
+<li><strong>1m</strong>：直接复刻论文的 <code>45~80</code> 分钟整数窗口</li>
+</ul>
+<p>优先看：</p>
+<ul>
+<li>高频化后 edge 是否被费用吃掉；</li>
+<li>1.5% 固定 buffer 是否太宽/太慢；</li>
+<li>资产间 long-short asymmetry 是否还能保留。</li>
+</ul>
+<h2>7. 可直接落地的完整策略壳</h2>
+<h3>7.1 Entry</h3>
+<ul>
+<li>long entry：<code>close &gt; pred_line * (1 + δ)</code></li>
+<li>short entry：<code>close &lt; pred_line * (1 - δ)</code></li>
+<li>为防止刚触线就反手，额外加一个 <strong>one-bar confirmation</strong> 版本做对照：</li>
+<li>两根连续收在 buffer 外才开仓</li>
+</ul>
+<h3>7.2 Exit</h3>
+<p>至少测 3 套：</p>
+<ol>
+<li><strong>反向线穿越平仓并反手</strong>（忠于论文）</li>
+<li><strong>先平仓，下一根再反手</strong>（减小 whipsaw）</li>
+<li><strong>回到中性带就平仓，不立即反手</strong>（更像 state machine）</li>
+</ol>
+<h3>7.3 Sizing</h3>
+<p>first-pass 不要花哨：</p>
+<ul>
+<li>单币目标波动率归一</li>
+<li>单币 notional cap：<code>10%~20% gross</code></li>
+<li>组合 gross cap：<code>100%~150%</code></li>
+</ul>
+<p>第二步再测：</p>
+<ul>
+<li>按币种方向历史优势做 bias scaling</li>
+<li>BTC / BNB：short gross 上限可略高</li>
+<li>ETH / ADA：long gross 上限可略高</li>
+</ul>
+<h3>7.4 Risk</h3>
+<p>至少加 4 个 kill-switch：</p>
+<ul>
+<li>单币日内回撤阈值</li>
+<li>连续翻向次数上限（防 chop）</li>
+<li>funding 异常阈值（perp 才有）</li>
+<li>极端波动时的 spread / slippage veto</li>
+</ul>
+<h3>7.5 Cost</h3>
+<p>论文<strong>没有认真交代费用与滑点</strong>，这是它最大硬伤之一。所以 desk 复现时必须先强行补齐：</p>
+<ul>
+<li>taker fee：先按 <code>3bp/side</code></li>
+<li>额外滑点：先按 <code>1~3bp/side</code></li>
+<li>funding：按真实持仓窗口累计</li>
+</ul>
+<p>first-pass 建议直接打三档：</p>
+<ul>
+<li><strong>低成本</strong>：<code>4bp</code> round-trip</li>
+<li><strong>中成本</strong>：<code>8bp</code> round-trip</li>
+<li><strong>高成本</strong>：<code>12bp</code> round-trip</li>
+</ul>
+<p>如果高成本档直接把 1m 版本吃穿，但 5m 还能活，那就说明它更适合作为 <strong>5m / 15m slow-state trend shell</strong>，不适合极高频刷单。</p>
+<h2>8. 这篇东西不能直接照抄的地方</h2>
+<h3>8.1 2022 bear-market 偏样本环境</h3>
+<p>它的 out-of-sample 是 <code>2022-06 ~ 2022-11</code>，本身就是 crypto 偏弱的大环境：</p>
+<ul>
+<li>BTC / BNB short 边更强，很可能有 regime 助推；</li>
+<li>不能把这个方向偏置默认当成永恒规律。</li>
+</ul>
+<h3>8.2 没有把交易成本讲透</h3>
+<p>如果不补费用，任何分钟级翻向系统都可能是纸上富贵。</p>
+<h3>8.3 数据源与交易场景交代不够细</h3>
+<p>论文没有把：</p>
+<ul>
+<li>具体交易所 / 数据供应商</li>
+<li>盘口深度</li>
+<li>执行方式</li>
+<li>maker/taker 约束</li>
+</ul>
+<p>写得足够清楚。所以我们只能把它当 <strong>alpha blueprint</strong>，不能当 production-ready spec。</p>
+<h3>8.4 1.5% 固定 buffer 未必可跨币跨周期直接复用</h3>
+<p>在 1m 数据里 1.5% 是很大的阈值，说明作者抓的是<strong>比较粗颗粒的段落性移动</strong>。到了 5m / 15m：</p>
+<ul>
+<li>固定百分比可能太宽，导致信号很少；</li>
+<li>更可能需要改成 <strong>ATR-normalized δ</strong> 或者 <strong>realized-vol scaled δ</strong>。</li>
+</ul>
+<h2>9. 我认为 desk 最值得先测的，不是“完全照抄论文”，而是这个变体</h2>
+<h3>9.1 推荐的 desk 变体</h3>
+<p>先别执着复刻论文里的裸百分比 buffer，优先测：</p>
+<ul>
+<li><strong>signal core</strong>：PAR prediction line cross</li>
+<li><strong>buffer</strong>：<code>k × ATR(12)</code> 或 <code>k × σ_realized</code></li>
+<li><strong>direction mode</strong>：按币种切 <code>long-only / short-only / symmetric</code></li>
+</ul>
+<p>理由很简单：</p>
+<ul>
+<li>prediction line cross 才是 alpha 本体；</li>
+<li>buffer 只是噪声过滤器；</li>
+<li>long-short bias 则是最有可能把它从“有意思”变成“可部署”的地方。</li>
+</ul>
+<h3>9.2 一个很具体的 first deploy 假设</h3>
+<p>我会先押这条：</p>
+<ul>
+<li><strong>BTC / BNB</strong>：更适合 <code>symmetric</code> 或 <code>short-biased</code></li>
+<li><strong>ETH / SOL</strong>：更适合 <code>long-biased</code></li>
+<li><strong>5m 执行 + 60m 左右 state estimator</strong>：比 1m 纯复刻更可能穿过费用</li>
+</ul>
+<h2>10. 下一步怎么测</h2>
+<p>按优先级直接做：</p>
+<ol>
+<li><strong>Binance perp 5m replication</strong>：<code>BTC/ETH/BNB/ADA/SOL/XRP</code>，时间 <code>2023-01-01</code> 至今</li>
+<li>对每个币测 <code>n_bars ∈ {9,10,11,12,13,14}</code>，<code>δ ∈ {0.4%,0.6%,0.8%,1.0%,1.2%,1.5%}</code></li>
+<li>同时跑 <code>always-in-market</code> 与 <code>neutral-zone-flat</code></li>
+<li>成本强制打 <code>4 / 8 / 12 bp</code> round-trip 三档</li>
+<li>统计 long-only、short-only、symmetric 三种模式</li>
+<li>看以下 6 个输出：</li>
+</ol>
+<ul>
+<li>净收益 / 夏普 / Calmar</li>
+<li>trade count</li>
+<li>avg holding time</li>
+<li>多空分边表现</li>
+<li>成本后 edge 保留率</li>
+<li>跨 bull / bear / chop 分 regime 稳定性</li>
+</ul>
+<p>如果要我只选一个最小实验，我会先做这条：</p>
+<ul>
+<li><strong>ETHUSDT perp, 5m bars, 12-bar PAR prediction line, ATR-scaled δ, neutral-zone-flat, long-only/symmetric 对照</strong></li>
+</ul>
+<p>因为从论文结果看，ETH 是最像“这个 family 真能活”的资产，而不是只吃 2022 下跌红利。</p>
+<h2>11. 一句话结论</h2>
+<p>这篇 2023 论文最该被 desk 拿走的，不是“PAR 模型很高级”，而是：<strong>可以把非线性预测线穿越，作为一条独立的单币 intraday trend raw alpha family 来测；再用币种级 long-short bias 与 vol-scaled buffer，把它改造成更像真实 desk 会部署的版本。</strong></p>
+<h2>12. 来源与链接</h2>
+<ul>
+<li>Gil Cohen (2023), *Intraday trading of cryptocurrencies using polynomial auto regression*, <strong>AIMS Mathematics</strong> 8(4): 9782–9794</li>
+<p>DOI: &lt;<a href="https://doi.org/10.3934/math.2023493&gt;">https://doi.org/10.3934/math.2023493&gt;</a></p>
+<li>Readable article page: &lt;<a href="https://www.aimspress.com/article/doi/10.3934/math.2023493&gt;">https://www.aimspress.com/article/doi/10.3934/math.2023493&gt;</a></li>
+<li>PDF: &lt;<a href="https://www.aimspress.com/aimspress-data/math/2023/4/PDF/math-08-04-493.pdf&gt;">https://www.aimspress.com/aimspress-data/math/2023/4/PDF/math-08-04-493.pdf&gt;</a></li>
+<li>Crossref metadata: &lt;<a href="https://api.crossref.org/works/10.3934/math.2023493&gt;">https://api.crossref.org/works/10.3934/math.2023493&gt;</a></li>
+<li>Repo URL: 未找到公开官方仓库</li>
+</ul>
+</body>
+</html>

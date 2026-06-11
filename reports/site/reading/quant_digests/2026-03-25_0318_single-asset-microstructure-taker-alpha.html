@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 microstructure 只做成 OBI 做市：这篇 2026 论文+同名仓库更值得先复现的是「单资产 OFI + VWAP pressure taker raw alpha」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 microstructure 只做成 OBI 做市：这篇 2026 论文+同名仓库更值得先复现的是「单资产 OFI + VWAP pressure taker raw alpha」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 03:20 UTC</span>
+      <span class="pill">研究时间：2026-03-25 03:18 UTC</span>
+      <span class="pill">类型：2026 arXiv 论文 + 2026 GitHub 同名工程仓库 + Binance 公共原始数据最小快检</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/time-series/order-flow/imbalance/vwap-pressure/taker/maker/binance/perpetual/1s/1m/3m/paper/repo/execution</span>
+      <span class="pill">证据类型：论文证据 + 工程证据 + 本地快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_0318_single-asset-microstructure-taker-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 03:18 UTC</li>
+<li>类型：2026 arXiv 论文 + 2026 GitHub 同名工程仓库 + Binance 公共原始数据最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：顶档深度失衡、主动成交失衡与买卖 VWAP 相对 mid 的偏离，可直接预测未来 <code>3s</code> 中间价收益；当预测值超过阈值时，按预测方向立即吃单</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/microstructure/time-series/order-flow/imbalance/vwap-pressure/taker/maker/binance/perpetual/1s/1m/3m/paper/repo/execution</li>
+<li>证据类型：论文证据 + 工程证据 + 本地快检</li>
+</ul>
+<p>&gt; 先回答 base alpha：<strong>不是 filter，不是纯解释。base alpha 就是“当前盘口/成交流微观结构状态 → 未来几秒收益方向”的单资产 directional raw alpha。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>主线材料是：</p>
+<ul>
+<li><strong>Bartosz Bieganowski, Robert Ślepaczuk (2026), _Explainable Patterns in Cryptocurrency Microstructure_</strong>（arXiv）</li>
+<li><strong>amazingchow/epcm</strong>（2026，同名复现工程仓库）</li>
+</ul>
+<p>这轮我不把它读成“又一个 OBI 解释文”或者“又一个做市教程”，而是把它拎回最适合我们 desk 的形态：</p>
+<p><strong>单资产、事件驱动、极短持有、可直接吃单执行的 microstructure raw alpha。</strong></p>
+<p>它和我们前面已经看过的两类东西不一样：</p>
+<ol>
+<li>不是把 OBI 塞进双边做市 reservation price 的那条线；</li>
+<li>也不是横截面 taker-flow 排名那条线；</li>
+<li>它更像是：<strong>用统一的微观结构特征库，直接预测单币未来 <code>3s</code> 收益，然后做阈值型 taker 交易。</strong></li>
+</ol>
+<h2>2. 核心结论</h2>
+<ul>
+<li>一句话核心结论：<strong>这篇 2026 论文真正值得先复现的，不是“SHAP 很好看”，而是“OFI + spread + VWAP pressure”这套统一特征库本身就是可独立交易的单资产 raw alpha。</strong></li>
+<li>一句话证明方式：<strong>论文给了完整 taker/maker 回测；同名仓库把数据构建、特征工程、CatBoost/Optuna、SHAP、回测全部工程化；我再用 Binance 公共原始 <code>bookTicker + trades</code> 做了 1 天最小快检，确认最基础的方向信息确实还在。</strong></li>
+</ul>
+<p>关键数据点（论文）：</p>
+<ol>
+<li><strong>数据口径</strong>：Binance Futures 永续，<code>1s</code> 级 order book + trades，样本从 <strong>2022-01-01 到 2025-10-12</strong>，覆盖 <strong>BTC / LTC / ETC / ENJ / ROSE</strong>。目标变量是未来 <strong><code>3s</code> mid log return</strong>。</li>
+<li><strong>taker 回测最强的不是 BTC，而是中小币</strong>：</li>
+</ol>
+<ul>
+<li><code>ETC</code>：<code>ARC 5.78</code>，<code>IR* 8.97</code>，t-test <code>p=0.0431</code></li>
+<li><code>ENJ</code>：<code>ARC 4.06</code>，<code>IR* 6.58</code>，t-test <code>p=0.0368</code></li>
+<li><code>ROSE</code>：<code>ARC 7.00</code>，<code>IR* 5.28</code>，t-test <code>p=0.0192</code></li>
+</ul>
+<ol>
+<li><strong>maker 并不天然更优</strong>：</li>
+</ol>
+<ul>
+<li><code>BTC</code> maker 还不错：<code>ARC 2.93</code>，<code>IR* 5.47</code></li>
+<li>但 <code>ENJ / ETC / ROSE</code> maker 明显弱很多，甚至接近负收益，说明这条 edge <strong>更先像 taker directional alpha</strong>，不是“先验适合做市”的 alpha。</li>
+</ul>
+<ol>
+<li><strong>极端行情验证</strong>：2025-10-10 flash crash 中，论文写到 taker 策略的异常持仓时间大约 <strong>20 秒</strong>，而平时多是 <strong>1~2 秒</strong>；maker 则因为逆向选择在崩盘中被持续打穿。</li>
+</ol>
+<p>关键数据点（我做的本地最小快检，公开 Binance 原始数据，1 天样本，仅作方向复核）：</p>
+<ol>
+<li><code>ROSEUSDT</code>（2024-01-15）：用 <code>order_flow_imbalance + depth_imbalance + vwap_pressure + relative_spread</code> 的简单线性 proxy，在测试半天内，对未来 <code>3s</code> 收益的相关系数约 <strong>0.137</strong>；强信号多头事件平均下一段收益约 <strong>+0.684 bps</strong>，强信号空头事件约 <strong>-0.812 bps</strong>。</li>
+<li><code>ENJUSDT</code> 同口径相关系数约 <strong>0.191</strong>；强信号多头约 <strong>+1.043 bps</strong>，强信号空头约 <strong>-0.929 bps</strong>。</li>
+<li>但把秒级信号<strong>粗暴压成 bar-close <code>1m/3m/5m</code> 因子后并不稳定</strong>：ROSE 在 <code>3m</code> 还有一点形状，ENJ 则明显发散。这说明它更适合做 <strong>event-driven micro alpha / execution alpha</strong>，而不是直接硬改造成逐根 <code>5m/15m</code> 主信号。</li>
+</ol>
+<h2>3. 为什么和当前项目直接相关</h2>
+<ul>
+<li>这是<strong>raw alpha</strong>，不是 shared gate。</li>
+<li>它扩充的是我们当前素材池里仍然值得继续加深的一类：<strong>单资产 microstructure directional alpha</strong>。</li>
+<li>它天然适配 <code>1m / 3m</code> 的高强度短周期研发；对 <code>5m / 15m</code> 也不是没用，但更应先定位成：</li>
+<li>更优入场时点选择</li>
+<li>taker/maker 执行切换</li>
+<li>极端 spread / adverse-selection veto</li>
+<li>更重要的是：这条线已经自带完整策略骨架，不是只有“某个解释变量很重要”。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：单资产 / 时间序列 / 微观结构 directional alpha</li>
+<li>基础 alpha：</li>
+<li><code>depth_imbalance = (bid_size - ask_size) / (bid_size + ask_size)</code></li>
+<li><code>order_flow_imbalance = (buy_volume - sell_volume) / (buy_volume + sell_volume)</code></li>
+<li><code>buy_vwap_dev = (buy_vwap - mid) / mid</code></li>
+<li><code>sell_vwap_dev = (sell_vwap - mid) / mid</code></li>
+<li><code>vwap_pressure = ((buy_vwap*buy_volume) - (sell_vwap*sell_volume)) / ((buy_volume+sell_volume)*mid)</code></li>
+<li>用上述特征预测 <code>r_{t→t+3s}</code>，当 <code>|prediction| &gt; θ</code> 时按符号开仓</li>
+<li>entry：<code>prediction &gt; θ</code> 做多；<code>prediction &lt; -θ</code> 做空</li>
+<li>exit：</li>
+<li>信号反向</li>
+<li>信号回落至阈值内</li>
+<li>或设置最大持有秒数（如 <code>3s / 5s / 10s / 20s</code>）</li>
+<li>sizing：先用固定 notional；后续可按 <code>|prediction| / rolling_vol / spread state</code> 做分层仓位</li>
+<li>risk：</li>
+<li><code>max_position_notional</code></li>
+<li>spread 突然放宽时强制降档 / 停机</li>
+<li>延迟、滑点、盘口真空单独建 kill-switch</li>
+<li>cost：</li>
+<li>taker 手续费必须显式进回测</li>
+<li>maker 版本不能只看 spread capture，必须单独记 adverse selection</li>
+</ul>
+<h2>4. 这条线最有价值的，不是“预测对不对”，而是“怎么映射到 desk”</h2>
+<p>如果强行问：它对我们 <code>1m / 3m / 5m / 15m</code> 有什么直接意义？</p>
+<p>我的判断是：</p>
+<ul>
+<li><strong>最适合：<code>1m / 3m</code> 的 event-driven alpha</strong></li>
+<li><strong>次适合：<code>5m / 15m</code> 的 execution / veto / timing layer</strong></li>
+<li><strong>暂不建议：直接把秒级平均值变成 <code>5m/15m</code> 主 raw alpha</strong></li>
+</ul>
+<p>原因很简单：这条 edge 的生成机制是<strong>微观结构状态的瞬时偏移</strong>，不是慢变量。 你把它压得太粗，信号会被 bar 内路径抵消掉。</p>
+<p>所以对 desk 更合理的读法不是：</p>
+<ul>
+<li>“把它改写成 15m 因子”；</li>
+<p>而是：</p>
+<li>“当 <code>1m / 3m</code> bar 内出现持续 <code>N</code> 秒的一致微观结构压力时，触发一笔独立 micro-trade”；或</li>
+<li>“当 5m 主信号准备入场时，用它判断该不该立刻吃单，还是等一脚回撤/盘口修复再进。”</li>
+</ul>
+<h2>5. 可复刻的最小实验（下一步怎么测）</h2>
+<p><strong>研究假设</strong>： <code>OFI + depth imbalance + VWAP pressure</code> 在 Binance perp 上可形成可交易的超短周期单资产 raw alpha，但真实可交易性高度依赖 <code>threshold × hold_seconds × fee/slippage × spread state</code>。</p>
+<p><strong>数据源与公开性</strong>：</p>
+<ul>
+<li>数据源：Binance USDⓈ-M Futures 公共历史数据 <code>bookTicker</code> 与 <code>trades</code></li>
+<li>公开性：公开可得，无私钥</li>
+<li>更新频率：毫秒事件，可聚合到 <code>1s</code></li>
+<li>最小可复现实验口径：公共 daily zip 即可</li>
+</ul>
+<p><strong>最小实验设计</strong>（最应该先做这个，而不是先上复杂网络）：</p>
+<ol>
+<li><strong>标的</strong>：<code>BTCUSDT / ETHUSDT / ROSEUSDT</code> 三档流动性</li>
+<li><strong>采样</strong>：先做最近 <code>14~30</code> 天 <code>1s</code> 数据</li>
+<li><strong>信号</strong>：先只用 4~6 个 paper 原生特征，不加花哨深度学习</li>
+<li><strong>训练/验证</strong>：walk-forward，至少做 <code>train 7d / test 1d</code> 滚动</li>
+<li><strong>持有期网格</strong>：<code>3s / 5s / 10s / 20s</code></li>
+<li><strong>阈值网格</strong>：按预测分布分位数（如 <code>80/90/95/97.5</code>）而不是拍脑袋固定值</li>
+<li><strong>成本阶梯</strong>：<code>fee only / fee+0.5tick / fee+1tick / latency stress</code></li>
+</ol>
+<p><strong>最先看 5 个指标</strong>：</p>
+<ul>
+<li><code>IC(score, next_ret_3s)</code></li>
+<li><code>avg bps per triggered event</code></li>
+<li><code>events/day</code></li>
+<li><code>post-cost pnl</code></li>
+<li><code>spread-conditioned pnl</code>（窄 spread vs 宽 spread）</li>
+</ul>
+<p><strong>最关键的下一步，不是再调模型，而是这 3 个实验：</strong></p>
+<ol>
+<li><strong>signal persistence</strong>：只有信号连续 <code>N</code> 秒同向才触发，看看能否把噪声降下去</li>
+<li><strong>hold-seconds sweep</strong>：检验这条 alpha 是 <code>3s</code> 即衰减，还是能拖到 <code>10~20s</code></li>
+<li><strong>taker-only vs maker-off switch</strong>：在 spread 扩大或盘口失衡极端时，maker 是否应该直接关闭</li>
+</ol>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>论文里的方向信息很强，但<strong>高频回测天然会高估实盘</strong>，因为 latency / queue / network jitter 很难完全诚实模拟。</li>
+<li>这条线对交易所状态极敏感：一旦 spread 扩大、深度塌陷、出现假挂单，信号质量和成交质量会一起掉。</li>
+<li>flash crash 里的高收益也意味着另一面：<strong>如果大家都在盯同样的 imbalance，alpha 可能会在极端时刻放大市场脆弱性。</strong></li>
+<li>对我们现在的 desk 来说，最现实的落地顺序应是：</li>
+</ul>
+<ol>
+<li>先做 <strong>taker event-driven 版本</strong></li>
+<li>再把它接到 <code>1m/3m</code> 的 execution layer</li>
+<li>最后才考虑 maker 化或更复杂的 queue 模型</li>
+</ol>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>Bieganowski, B., &amp; Ślepaczuk, R. (2026). _Explainable Patterns in Cryptocurrency Microstructure_. arXiv.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.48550/arXiv.2602.00776</code></li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2602.00776">https://arxiv.org/abs/2602.00776</a></code></li>
+<li>HTML URL: <code><a href="https://arxiv.org/html/2602.00776v1">https://arxiv.org/html/2602.00776v1</a></code></li>
+<li>PDF URL: <code><a href="https://arxiv.org/pdf/2602.00776.pdf">https://arxiv.org/pdf/2602.00776.pdf</a></code></li>
+</ul>
+<ol>
+<li><strong>amazingchow. (2026). _epcm_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/amazingchow/epcm">https://github.com/amazingchow/epcm</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/amazingchow/epcm">https://github.com/amazingchow/epcm</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Data Vision. USDⓈ-M Futures public historical data (<code>bookTicker</code>, <code>trades</code>).</strong></li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://data.binance.vision/">https://data.binance.vision/</a></code></li>
+</ul>
+<h2>8. 本地快检产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/epcm_microstructure_probe_20260325/summary_1s.csv</code></li>
+<li><code>reports/artifacts/quant_digests/epcm_microstructure_probe_20260325/summary_bars.csv</code></li>
+<li><code>reports/artifacts/quant_digests/epcm_microstructure_probe_20260325/roseusdt_test_predictions_head.csv</code></li>
+<li><code>reports/artifacts/quant_digests/epcm_microstructure_probe_20260325/enjusdt_test_predictions_head.csv</code></li>
+</ul>
+</body>
+</html>

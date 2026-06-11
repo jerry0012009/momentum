@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Hurst 只当 pairs 的二级过滤：这篇 2024 论文更该先测的是「H&lt;0.5 + spread band」快速均值回归完整骨架</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Hurst 只当 pairs 的二级过滤：这篇 2024 论文更该先测的是「H&lt;0.5 + spread band」快速均值回归完整骨架</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 01:57 UTC</span>
+      <span class="pill">研究时间：2026-03-25 01:58 UTC</span>
+      <span class="pill">类型：近 5 年论文（全文 PDF）+ 近 5 年 follow-up 论文 + Binance 公共数据最小快检</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/hurst/ghe/anti-persistence/spread-band/fast-meanreversion/cost/capacity/binance/crypto/5m/15m/1m/3m/paper</span>
+      <span class="pill">证据类型：全文论文证据 + follow-up 论文验证 + 本地公共数据最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_0158_antipersistent-hurst-pairs-fast-meanreversion.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 01:58 UTC</li>
+<li>类型：近 5 年论文（全文 PDF）+ 近 5 年 follow-up 论文 + Binance 公共数据最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：跨币种配对 spread 偏离后的快速均值回归；<code>H&lt;0.5</code> 用来把更容易“快回归”的那一段切出来</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/hurst/ghe/anti-persistence/spread-band/fast-meanreversion/cost/capacity/binance/crypto/5m/15m/1m/3m/paper</li>
+<li>证据类型：全文论文证据 + follow-up 论文验证 + 本地公共数据最小快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这篇东西的 base alpha 是“配对价差偏离后的均值回归”本体，不是单独一个 filter。</strong></p>
+<p>更准确地说，<code>H&lt;0.5</code> 在这里不是凭空产生 alpha，而是把 pairs raw alpha 里<strong>更可能快速回归、因此更可能活过成本</strong>的那一段切出来。对短周期 desk 来说，这很重要：pairs 最大敌人常常不是方向错，而是<strong>回得太慢，被手续费、资金占用和并发仓位拖死</strong>。</p>
+<p>本轮主看：</p>
+<ul>
+<li><strong>Grande, Borondo, Losada &amp; Borondo (2024, Mathematics)</strong>：直接给了 crypto 市场的 <code>local Hurst + spread band</code> 入场/出场骨架；</li>
+<li><strong>Ramos-Requena &amp; Bağcı (2025, Computational Economics)</strong>：作为 follow-up，进一步说明 <strong>GHE-based pair selection</strong> 在 2022–2023 crypto 上相对 Distance / Correlation / Cointegration 仍有竞争力。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这条线最值得 intake 的，不是“再加一个 Hurst filter”，而是把它当成 <strong>pairs raw alpha 的 fast-reversion admission layer</strong>：当 spread 已偏离、且局部 <code>H&lt;0.5</code> 时，回归更快，交易更短，更有希望活过成本。</li>
+<li>2024 主论文不是只做 backtest 讲故事，而是先做 quasi-natural experiment：</li>
+<li>Binance 数据；</li>
+<li><strong>Top 20 cryptocurrencies</strong>；</li>
+<li><strong>2019-01-01 ~ 2024-06-05</strong>；</li>
+<li><strong>hourly frequency</strong>；</li>
+<li>treatment=<code>H&lt;0.5</code>，control=<code>H&gt;=0.5</code>；</li>
+<li>结论是：<strong>对所有 tested window（1/3/5/7/10/14/21/28 天），<code>H&lt;0.5</code> 下 spread 回到均值都显著更快（全部 p&lt;0.001）</strong>。</li>
+<li>论文里一个对 desk 非常关键的数字：当 <code>TW=5 天</code> 时，treatment 与 control 的 <strong>median mean-reversion speed 差约 18 小时</strong>，有利于 <code>H&lt;0.5</code> 那组。</li>
+<li>作者后面把它直接落成完整策略：</li>
+<li>entry：spread 距离均值 <code>1~2 std</code>；</li>
+<li>condition：<code>H&lt;0.5</code>；</li>
+<li>exit：回到均值 / 偏离超过 <code>2 std</code> / <strong>72h expiry</strong>。</li>
+<li>论文回测里，<strong>所有六个版本都赚钱</strong>；其中按 cointegration 选对、再用 <code>H&lt;0.5</code> 触发的版本最好，表 A5 给的收益率是：</li>
+<li><strong>Cointegration: 61.56%</strong></li>
+<li><strong>MI: 42.57%</strong></li>
+<li><strong>H: 38.67%</strong></li>
+<li><strong>Correlation: 38.63%</strong></li>
+<li><strong>DTW: 23.43%</strong></li>
+<li>更值钱的是“交易速度”这层：论文里真正到均值的交易，<strong>使用 <code>H&lt;0.5</code> 触发时 median duration 约 13h；不满足 <code>H&lt;0.5</code> 时约 22h</strong>。翻成人话：<strong>它先改善的是持仓时长和容量，不是自动保证赚钱。</strong></li>
+</ul>
+<h2>3. 为什么和当前 desk 直接相关</h2>
+<ul>
+<li>这是标准的 <code>pairs / relative-value / stat-arb / mean-reversion</code> raw alpha，不是再给主线塞一个纯解释型 overlay。</li>
+<li>它直接补 desk 现在最需要的一类素材：<strong>可独立复现、可直接写成完整策略、并且能解释成本为何可能下降</strong>。</li>
+<li>对 <code>1m/3m/5m/15m</code> 的现实映射也顺：</li>
+<li><strong>15m</strong>：更适合形成 spread 偏离 + local H 触发；</li>
+<li><strong>5m</strong>：更适合做执行切片与更细的出场；</li>
+<li><strong>3m/1m</strong>：只建议做执行和 fail-fast，不建议把 H 本体直接压到太细频去承受噪声。</li>
+<li>这条线还有一个很适合 desk 的“旁支价值”：<strong>它天然服务 cost / capacity 治理</strong>。如果 raw alpha 本来就容易因持仓太久被成本拖死，那么先把“更快回归”的 pocket 切出来，本身就是实战价值。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative-value / pairs mean reversion（market-neutral 倾向）</li>
+<li>基础 alpha：<code>spread_t = log(P_A) - β_t log(P_B)</code> 偏离中枢后回归</li>
+<li><code>β_t</code>：按论文口径可用<strong>滚动波动率比</strong>做 hedge ratio 近似</li>
+<li>trigger / admission：</li>
+<li><code>z_spread</code> 进入 <code>1~2 std</code> 区间</li>
+<li>同时要求 local <code>H&lt;0.5</code></li>
+<li>exit：</li>
+<li>spread 回到 rolling mean</li>
+<li>或反向继续恶化超过 <code>2 std</code></li>
+<li>或超时（论文是 <strong>72h</strong>）</li>
+<li>pair selection：</li>
+<li>论文测试了 Correlation / Cointegration / DTW / MI / Hurst / Random</li>
+<li><strong>cointegration 选对 + H trigger</strong> 是他们样本里的最好版本</li>
+<li>risk / sizing / execution overlay：</li>
+<li>pair 内按 vol-balance 或 equal-risk 配仓</li>
+<li>组合层做 gross/net cap 与同时开仓上限</li>
+<li>显式纳入手续费、funding、滑点与 borrow / carry 代理成本</li>
+</ul>
+<h2>4. 论文里最值得直接偷的“完整规则”</h2>
+<h3>4.1 数据与 spread 定义</h3>
+<ul>
+<li>标的：按 2024-06-06 CoinMarketCap 市值前 20 个 crypto</li>
+<li>频率：1h</li>
+<li>样本：2019-01-01 ~ 2024-06-05</li>
+<li>spread：</li>
+<li><code>s_t = log(P_A,t) - β_t log(P_B,t)</code></li>
+<li><code>β_t = std(lr_A) / std(lr_B)</code></li>
+<li>波动率窗口：<strong>过去 30 天（720 个 hourly bar）</strong></li>
+</ul>
+<h3>4.2 local H 口径</h3>
+<ul>
+<li>论文用的是 <strong>GHE（generalized Hurst exponent）</strong>，<code>q=1</code></li>
+<li>rolling window 试了：<strong>1/3/5/7/10/14/21/28 天</strong></li>
+<li>每次计算都只用<strong>当前时点之前</strong>的数据，避免未来函数</li>
+<li>论文建议的折中区间是 <strong>3~10 天</strong>；正文后半段重点展示 <strong>7 天</strong>，因为它在“更快回归”和“信号数量”之间较平衡</li>
+</ul>
+<h3>4.3 入场与出场</h3>
+<ul>
+<li>入场（sell pair）：<code>m + 1σ &lt; s &lt; m + 2σ</code> 且 <code>H&lt;0.5</code></li>
+<li>入场（buy pair）：<code>m - 2σ &lt; s &lt; m - 1σ</code> 且 <code>H&lt;0.5</code></li>
+<li>出场：</li>
+</ul>
+<ol>
+<li>spread 回到均值 <code>m</code></li>
+<li>spread 继续偏离、超过 <code>2σ</code></li>
+<li>持仓超过 <strong>72h</strong></li>
+</ol>
+<p>翻成人话：这不是“只要 H&lt;0.5 就开”，而是 <strong>spread 已经偏离</strong>、且 <strong>这段 spread 看起来处在 anti-persistent regime</strong>，才去做那笔回归单。</p>
+<h2>5. 本地最小快检（Binance 公共数据，非论文精确复现）</h2>
+<p>我补了一个 desk 口径的最小 probe，只看“<strong>快回归特征是否还活着</strong>”，不直接宣称盈利：</p>
+<ul>
+<li>数据：Binance USDT perp 公共 <code>15m</code> K 线</li>
+<li>标的：<code>BTC/ETH/BNB/SOL/XRP/DOGE/ADA/LINK</code></li>
+<li>样本：最近 <strong>60 天</strong></li>
+<li>pair 数：<strong>28</strong></li>
+<li>quick-and-dirty 口径：</li>
+<li><code>β</code> 用 3 天 rolling vol ratio</li>
+<li>rolling mean / local H window 先取 <strong>5 天</strong></li>
+<li>max hold 先按论文思路保留 <strong>72h</strong></li>
+</ul>
+<h3>5.1 结果</h3>
+<ul>
+<li>在这套 15m 快检里，<code>H&lt;0.5</code> 只占全部有效观测的 <strong>5.47%</strong>，说明它天然是个<strong>稀疏 admission layer</strong>。</li>
+<li>但一旦出现，spread 回归速度明显更快：</li>
+<li><strong><code>H&lt;0.5</code>：median 回归时间 13.75h</strong></li>
+<li><strong><code>H&gt;=0.5</code>：median 回归时间 24.0h</strong></li>
+<li>如果直接把论文规则生硬压成“所有 pair 都做”的简化策略：</li>
+<li><code>H&lt;0.5</code> 过滤后共得到 <strong>1,971</strong> 个信号；</li>
+<li>median 持仓只有 <strong>7.5h</strong>；</li>
+<li><strong>没有 expiry exit</strong>；</li>
+<li>但粗糙的 spread-unit 正收益占比只有 <strong>35.2%</strong>。</li>
+<li>对照地，不加 H 过滤时：</li>
+<li>信号数暴增到 <strong>47,918</strong>；</li>
+<li>median 持仓升到 <strong>19.5h</strong>；</li>
+<li>出现 <strong>7,398</strong> 次 expiry exit。</li>
+</ul>
+<h3>5.2 这组快检怎么解读</h3>
+<ul>
+<li>好消息：<strong>论文最核心的“速度优势”在当前短周期 perp 上还在。</strong></li>
+<li>坏消息：<strong>把它粗暴地当“盈利过滤器”是不诚实的。</strong> 没有 pair selection、成本治理、并发上限和执行约束时，它不保证 PnL 变好。</li>
+<li>所以 desk 上更合理的定位是：</li>
+<li>它首先是 <strong>fast-reversion admission / capacity gate</strong>；</li>
+<li>然后才是盈利层面的帮助项；</li>
+<li>想把它变成完整正期望，必须配合更好的选对、成本、组合治理。</li>
+</ul>
+<h2>6. 最小可复现实验（面向 5m / 15m）</h2>
+<h3>6.1 公开数据源</h3>
+<ul>
+<li>Binance USDⓈ-M Futures Klines（公开、无需 key）</li>
+<li>可直接支持 <code>1m/3m/5m/15m</code></li>
+<li>如果后续要更贴近论文，可补现货或更大市值池</li>
+</ul>
+<h3>6.2 建议的最小实验口径</h3>
+<ul>
+<li><strong>先做 15m 形成信号，5m 执行</strong></li>
+<li>宇宙：8~12 个高流动 perp</li>
+<li>pair selection：</li>
+</ul>
+<ol>
+<li>先用 14d correlation / distance / cointegration 选前 N 对</li>
+<li>再对候选 pair 计算 3d / 5d / 7d local H</li>
+</ol>
+<ul>
+<li>entry：<code>1&lt;|z_spread|&lt;2</code> 且 <code>H&lt;0.5</code></li>
+<li>exit：mean / <code>|z|&gt;2</code> / timeout（先试 24h / 48h / 72h）</li>
+<li>cost：先显式分层 <code>8 / 12 / 16 / 20 bps round-trip</code></li>
+<li>核心指标：</li>
+</ul>
+<ol>
+<li><code>post-cost expectancy per trade</code></li>
+<li>median hold / expiry ratio</li>
+<li>max simultaneous open trades</li>
+<li>pair-selection 方法切换前后，速度优势是否仍在</li>
+</ol>
+<h2>7. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>先把 H 从“全宇宙过滤器”缩成“候选 pair admission layer”</strong>：只对 top-N correlation / cointegration pairs 用 <code>H&lt;0.5</code>，别对所有 pair 乱扫。</li>
+<li><strong>做 <code>TW grid</code></strong>：把 H window 从 <code>3d / 5d / 7d / 10d</code> 跑一遍，验证论文说的 sweet spot 是否在短周期 perp 上仍成立。</li>
+<li><strong>做 timeout grid</strong>：<code>24h / 48h / 72h</code> 三档，直接看持仓时长、expiry ratio、净收益的交换比。</li>
+<li><strong>补成本生存线</strong>：把 funding、手续费、冲击成本一起算，不要只看 signal-level 胜率。</li>
+<li><strong>做组合容量实验</strong>：记录并发开仓数，看看 <code>H&lt;0.5</code> 是否真的像论文说的那样，能在相同风险预算下容纳更大 pair 池。</li>
+<li><strong>若 15m 成立，再下钻 5m 执行</strong>：不要先把 H 本体压到 1m/3m；先让 15m 给方向和 pocket，再在更细频做切片与 fail-fast。</li>
+</ol>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>这条线最大的误读风险是：把 <code>H&lt;0.5</code> 当成“盈利保证器”。论文和本地快检都不支持这种偷懒读法。</li>
+<li>论文的盈利结果建立在<strong>pair 选择 + H trigger + timeout + stop</strong>整套闭环上；拆掉其中任何一块，都可能失真。</li>
+<li>H 估计本身对窗口长度、采样频率、极端波动都敏感；压得太细，容易把噪声误判成 anti-persistence。</li>
+<li>短周期实盘里，pairs 最容易死在执行细节：换手、funding、点差、并发占用，而不是“没找到 fancy 因子”。</li>
+<li>所以这条线最诚实的 desk 定位应当是：<strong>raw alpha 骨架 + fast-reversion admission layer</strong>，而不是“万能 filter”。</li>
+</ul>
+<h2>9. 来源</h2>
+<ol>
+<li><strong>Grande, M., Borondo, F., Losada, J. C., &amp; Borondo, J. (2024). _Anti-Persistent Values of the Hurst Exponent Anticipate Mean Reversion in Pairs Trading: The Cryptocurrencies Market as a Case Study_. Mathematics, 12(18), 2911.</strong></li>
+</ol>
+<ul>
+<li>Venue: Mathematics (MDPI)</li>
+<li>DOI: <code>10.3390/math12182911</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.3390/math12182911">https://doi.org/10.3390/math12182911</a></code></li>
+<li>PDF URL: <code><a href="https://oa.upm.es/86488/1/10254881.pdf">https://oa.upm.es/86488/1/10254881.pdf</a></code></li>
+</ul>
+<ol>
+<li><strong>Ramos-Requena, J. P., &amp; Bağcı, M. (2025). _Analysis Pairs Trading Strategy Applied to the Cryptocurrency Market_. Computational Economics.</strong></li>
+</ol>
+<ul>
+<li>Venue: Computational Economics</li>
+<li>DOI: <code>10.1007/s10614-025-11149-y</code></li>
+<li>Readable URL: <code><a href="https://link.springer.com/article/10.1007/s10614-025-11149-y">https://link.springer.com/article/10.1007/s10614-025-11149-y</a></code></li>
+<li>Abstract signal: 文中指出 <strong>GHE strategy 在 2022–2023 crypto 上相对 Distance / Correlation / Cointegration 持续占优，并在 OOS 中保持更优 Sharpe / Sortino / R²</strong>。</li>
+</ul>
+<ol>
+<li><strong>Binance Developers. _USDⓈ-M Futures API – Kline/Candlestick Data_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<h2>10. 本地复现产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/hurst_pairs_antipersistence_probe_20260325_0150/metrics.json</code></li>
+<li><code>reports/artifacts/quant_digests/hurst_pairs_antipersistence_probe_20260325_0150/mr_events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/hurst_pairs_antipersistence_probe_20260325_0150/strategy_signals.csv</code></li>
+</ul>
+</body>
+</html>

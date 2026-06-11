@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 triangular arbitrage 只读成“零风险三腿搬砖”：对 short-cycle crypto desk，更该先保留的是「closed-loop mispricing × fee/capacity veto」这条 execution-heavy raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 triangular arbitrage 只读成“零风险三腿搬砖”：对 short-cycle crypto desk，更该先保留的是「closed-loop mispricing × fee/capacity veto」这条 execution-heavy raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-23 19:15 UTC</span>
+      <span class="pill">研究时间：2026-04-23 19:10 UTC</span>
+      <span class="pill">类型：2025 *Finance Research Letters* 论文全文摘要级 audit（OpenAlex abstract + Crossref metadata）+ Binance Spot live public bookTicker probe（`BTCUSDT/LTCBTC/LTCUSDT`，约 `60s × 2Hz`）</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/triangular-arbitrage/closed-loop-mispricing/single-venue/spot/orderbook/fee-aware/slippage/capacity/execution-veto/1m/3m/5m/paper/public-data/cost/risk</span>
+      <span class="pill">证据类型：paper metadata + abstract + public live quote probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-23_1910_triangular-arb-fee-capacity-reality-check.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-23 19:10 UTC</li>
+<li>类型：2025 *Finance Research Letters* 论文全文摘要级 audit（OpenAlex abstract + Crossref metadata）+ Binance Spot live public bookTicker probe（<code>BTCUSDT/LTCBTC/LTCUSDT</code>，约 <code>60s × 2Hz</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一交易所内，若三条兑换边（如 <code>USDT→BTC→LTC→USDT</code>）的即时盘口乘积偏离 1，理论上可以通过三腿闭环交易锁定价差；也就是做 closed-loop relative-value arbitrage，而不是押方向。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是，但对延迟、手续费、盘口容量极度敏感</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/triangular-arbitrage/closed-loop-mispricing/single-venue/spot/orderbook/fee-aware/slippage/capacity/execution-veto/1m/3m/5m/paper/public-data/cost/risk</li>
+<li>证据类型：paper metadata + abstract + public live quote probe</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<p>主线材料：</p>
+<ul>
+<li><strong>Matthias Mück, Thomas Schmidl, Julian Wolf (2025)</strong></li>
+<li><strong>Title：</strong> *Wish or reality? On the exploitability of triangular arbitrage in cryptocurrency markets*</li>
+<li><strong>Venue：</strong> *Finance Research Letters*</li>
+<li><strong>DOI：</strong> <code>10.1016/j.frl.2024.106508</code></li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://doi.org/10.1016/j.frl.2024.106508&gt;">https://doi.org/10.1016/j.frl.2024.106508&gt;</a></li>
+<li><strong>Repo URL：</strong> N/A</li>
+</ul>
+<p>可复述的 OpenAlex abstract 关键信息： &gt; 作者用 Binance 高频数据、围绕 <code>Bitcoin / Litecoin / U.S. Dollar</code> 实做 triangular arbitrage 检验，发现<strong>样本里有 4,879 次表面上的 arbitrage opportunity</strong>；但一旦加入<strong>交易成本、潜在滑点和盘口容量限制</strong>，这些机会基本被吃光，因此文中结论偏向：<strong>中心化 crypto 市场已经相当有效</strong>，而且“机会次数多”本身并不能直接当成市场低效的证据。</p>
+<p>先把 base alpha 说清楚： &gt; <strong>这条线的 base alpha 不是“币价会涨/跌”，而是三条边的相对价格没有同时自洽。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>如果 <code>BTCUSDT</code>、<code>LTCBTC</code>、<code>LTCUSDT</code> 三条边里，有一条暂时偏贵/偏便宜；</li>
+<li>那么你可以沿着“买入低估边、卖出高估合成腿”的三腿闭环去赚回到一致价的那一小段；</li>
+<li>它本质上是 <strong>single-venue closed-loop relative-value arb</strong>，不是 trend，不是 mean-reversion 单腿猜方向，也不是 funding carry。</li>
+</ul>
+<p>这条线之所以仍值得进研究池，是因为：</p>
+<ul>
+<li>它是非常“干净”的 <code>raw alpha</code>；</li>
+<li>entry / exit / sizing / cost / risk 都能写清楚；</li>
+<li>即便最终不适合当前 <code>5m/15m</code> desk 直接做主策略，它也很适合沉淀成 <strong>fee/capacity veto</strong> 与 <strong>microstructure sanity check</strong> 模块，服务别的 relative-value / stat-arb 壳。</li>
+</ul>
+<p>---</p>
+<h2>2) 从论文里，真正该保留什么</h2>
+<p>这篇 paper 最重要的结论不是“tri-arb 还能赚大钱”，而恰恰相反：</p>
+<ol>
+<li><strong>看见价差，不等于能吃到价差</strong></li>
+</ol>
+<ul>
+<li>论文里已经能数出 <code>4,879</code> 次表面机会；</li>
+<li>但加上真实 frictions 后，机会并不等于利润。</li>
+</ul>
+<ol>
+<li><strong>对 tri-arb 来说，成本与容量比方向判断更重要</strong></li>
+</ol>
+<ul>
+<li>这类策略不是输在信号定义不清，而是输在：</li>
+<li>三腿都要成交；</li>
+<li>任一腿滑点扩大，闭环利润立刻归零；</li>
+<li>可成交量不足时，理论 edge 不能按名义仓位兑现。</li>
+</ul>
+<ol>
+<li><strong>“机会计数”不是好指标，<code>net executable edge</code> 才是</strong></li>
+</ol>
+<ul>
+<li>这点很适合当前 desk：</li>
+<li>与其统计有多少次 <code>gross edge &gt; 0</code>，不如直接统计：</li>
+<li>扣费后剩多少；</li>
+<li>扣最差一腿 half-spread 后还剩多少；</li>
+<li>在最薄腿的可成交量约束下，容量还剩多少。</li>
+</ul>
+<p>对我们真正有价值的，不是复读“市场很有效”，而是下面这句：</p>
+<p>&gt; <strong>如果一条 alpha 的 edge 量级还没厚到能扛住三腿手续费 + 最薄腿滑点 + 容量约束，那它更像研究层的价格一致性检验，不像 production-ready 短周期主策略。</strong></p>
+<p>---</p>
+<h2>3) 本轮最小 public-data live probe（Binance Spot）</h2>
+<h3>3.1 数据口径</h3>
+<p>为了避免只停在摘要，这轮补了一个最小 live 盘口快检：</p>
+<ul>
+<li>交易所：Binance Spot public API</li>
+<li>三角：</li>
+<li><code>BTCUSDT</code></li>
+<li><code>LTCBTC</code></li>
+<li><code>LTCUSDT</code></li>
+<li>采样：约 <code>60s × 2Hz = 120</code> 个 snapshot</li>
+<li>数据：best bid / best ask（<code>bookTicker</code>）</li>
+<li>两个闭环方向：</li>
+<li><strong>Cycle A</strong>：<code>USDT -&gt; BTC -&gt; LTC -&gt; USDT</code></li>
+<li><strong>Cycle B</strong>：<code>USDT -&gt; LTC -&gt; BTC -&gt; USDT</code></li>
+<li>无费 gross 定义：</li>
+<li><code>gross_a = (1 / ask_BTCUSDT) * (1 / ask_LTCBTC) * bid_LTCUSDT</code></li>
+<li><code>gross_b = (1 / ask_LTCUSDT) * bid_LTCBTC * bid_BTCUSDT</code></li>
+<li>粗略 taker 成本口径：每腿 <code>10 bps</code>，三腿后乘 <code>(1 - 0.001)^3</code></li>
+</ul>
+<p>产物：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-23_1910_triangular_arb_probe_raw.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-23_1910_triangular_arb_probe_summary.csv</code></li>
+</ul>
+<h3>3.2 关键结果（4 个最有用的数据点）</h3>
+<ol>
+<li><strong>120 个 snapshot 里，连无费 gross edge 都没有转正</strong></li>
+</ol>
+<ul>
+<li><code>gross_a_pos_count = 0 / 120</code></li>
+<li><code>gross_b_pos_count = 0 / 120</code></li>
+</ul>
+<ol>
+<li><strong>最佳 snapshot 也还是负的</strong></li>
+</ol>
+<ul>
+<li><code>max gross_a = -4.55 bps</code></li>
+<li><code>max gross_b = -4.53 bps</code></li>
+</ul>
+<ol>
+<li><strong>平均闭环缺口本身就已经偏负</strong></li>
+</ol>
+<ul>
+<li><code>avg gross_a = -8.00 bps</code></li>
+<li><code>avg gross_b = -7.83 bps</code></li>
+</ul>
+<ol>
+<li><strong>最薄的一腿是主要摩擦源</strong></li>
+</ol>
+<ul>
+<li><code>avg BTCUSDT spread = 0.0013 bps</code></li>
+<li><code>avg LTCUSDT spread = 1.81 bps</code></li>
+<li><code>avg LTCBTC spread = 14.04 bps</code></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>这轮 live 快检甚至还没走到“扣三腿手续费”那一步；</li>
+<li><strong>单看盘口最优买卖价拼起来，闭环已经是负数</strong>；</li>
+<li>真正把 tri-arb 打死的不是 BTCUSDT 这种深度腿，而是像 <code>LTCBTC</code> 这种相对薄、spread 明显更宽的桥接腿；</li>
+<li>所以 paper 里“机会很多但不可赚”的结论，对今天的 Binance 现货盘口依然很有解释力。</li>
+</ul>
+<p>---</p>
+<h2>4) 这条线对当前 desk 的真正价值</h2>
+<h3>4.1 它是 raw alpha，但不是当前 <code>5m/15m</code> desk 的优先 deployment</h3>
+<p>因为它满足 raw alpha 的定义：</p>
+<ul>
+<li>交易对象明确；</li>
+<li>long/short（或 buy/sell）路径明确；</li>
+<li>平仓条件明确；</li>
+<li>成本与容量决定是否可做。</li>
+</ul>
+<p>但它对当前 desk 的问题也很明显：</p>
+<ul>
+<li>edge 持续时间通常比 <code>5m</code> 更短；</li>
+<li>强依赖盘口级别撮合；</li>
+<li><code>1m/3m/5m/15m</code> bar 只能拿来做 <strong>事件桶统计 / veto / sanity check</strong>，很难直接拿来当 parent signal。</li>
+</ul>
+<p>所以这轮更诚实的定位是：</p>
+<ul>
+<li><strong>主题类型仍是 <code>raw alpha</code></strong>；</li>
+<li><strong>但当前 desk 一阶用途不是直接上 production tri-arb，而是把它当作“execution-heavy raw alpha 的边界案例”。</strong></li>
+</ul>
+<h3>4.2 更值得 desk 保留的，是它衍生出来的两个模块</h3>
+<p>#### 模块 A：<code>net executable edge</code> 审核器 任何 relative-value / cross-venue / basis / option quote-gap 策略，都该先过这道门：</p>
+<ul>
+<li>gross edge</li>
+<li>minus fee</li>
+<li>minus worst-leg half-spread</li>
+<li>minus depth cap</li>
+<li>minus stale-quote risk</li>
+</ul>
+<p>如果这 5 步走完 edge 归零，就别再把它包装成 alpha。</p>
+<p>#### 模块 B：最薄腿 veto tri-arb 给的教训非常直接：</p>
+<ul>
+<li>不是组合里每一腿都同等重要；</li>
+<li>往往 <strong>最薄、最宽、最容易滑的那一腿</strong> 决定了整条策略的死活。</li>
+</ul>
+<p>这个思想完全可以迁移到：</p>
+<ul>
+<li>cross-venue gap</li>
+<li>perp-vs-quarterly basis</li>
+<li>multi-leg options quote-gap</li>
+<li>pairs / basket 的 child execution</li>
+</ul>
+<p>---</p>
+<h2>5) 若真要做，可直接落地的完整策略壳</h2>
+<h3>5.1 Entry（入场）</h3>
+<p>按 snapshot/event-time 而不是按 bar：</p>
+<ol>
+<li>维护候选三角集合（优先高流动腿 + 少数桥接腿）</li>
+<li>实时计算两方向闭环：</li>
+</ol>
+<ul>
+<li><code>gross_edge_a = gross_a - 1</code></li>
+<li><code>gross_edge_b = gross_b - 1</code></li>
+</ul>
+<ol>
+<li>再算净边：</li>
+</ol>
+<ul>
+<li><code>net_edge = gross_edge - fees - slippage_buffer - stale_quote_buffer</code></li>
+</ul>
+<ol>
+<li>仅当 <code>net_edge &gt; theta_enter</code> 且最薄腿容量足够时才下单</li>
+</ol>
+<p>建议第一版阈值不要太乐观：</p>
+<ul>
+<li><code>theta_enter &gt;= 3 ~ 5 bps</code>（扣完一切后的净边）</li>
+<li>否则只是给交易所打工。</li>
+</ul>
+<h3>5.2 Exit（出场）</h3>
+<p>tri-arb 的 exit 不是传统 time-stop，而是：</p>
+<ul>
+<li>三腿成交即完成闭环；</li>
+<li>若任一腿未成交，立刻进入 <strong>failure unwind mode</strong>；</li>
+<li>失败 unwind 比原始信号更重要，因为这时你已从“无方向”变成“裸露单腿或双腿风险”。</li>
+</ul>
+<h3>5.3 Sizing（仓位）</h3>
+<ul>
+<li>以 <strong>最薄腿可成交量</strong> 决定整组 notional，而不是以最深腿决定；</li>
+<li>只做 <code>min(depth_i)</code> 能吃下的仓位；</li>
+<li>同时按预估 fill ratio 做折扣（例如只取显示量的 <code>20%~50%</code>）。</li>
+</ul>
+<h3>5.4 Risk（风控）</h3>
+<ul>
+<li>stale quote 超时熔断</li>
+<li>桥接腿 spread 突然放大熔断</li>
+<li>任一腿超时未成 → 立刻撤/反向对冲</li>
+<li>单三角 / 单桥接资产 / 单 venue notional cap</li>
+<li>网络延迟或 API 抖动期间禁开新闭环</li>
+</ul>
+<h3>5.5 Cost（成本）</h3>
+<p>这条线最该做的是极端保守的 friction ladder：</p>
+<ul>
+<li>maker/maker/maker</li>
+<li>maker/taker/taker</li>
+<li>taker/taker/taker</li>
+<li>再分别叠加最薄腿 <code>0.5x / 1.0x / 1.5x spread</code> 滑点缓冲</li>
+</ul>
+<p>只要在 <code>taker/taker/taker + thin-leg slippage</code> 下过不了线，就不要把它写成生产级机会。</p>
+<p>---</p>
+<h2>6) 对 <code>1m / 3m / 5m / 15m</code> 的映射</h2>
+<h3><code>1m</code></h3>
+<p>最勉强可接受的研究口径：</p>
+<ul>
+<li>不是拿 1m OHLC 做 tri-arb；</li>
+<li>而是把 1 秒 / event-time 的闭环机会聚合成 1m 统计：</li>
+<li><code>gross_pos_count</code></li>
+<li><code>net_pos_count</code></li>
+<li><code>max_net_edge</code></li>
+<li><code>thin_leg_spread</code></li>
+<li><code>depth_ratio</code></li>
+</ul>
+<h3><code>3m / 5m</code></h3>
+<p>更适合做 <strong>环境监控 / veto</strong>：</p>
+<ul>
+<li>哪些时段三角失衡明显增多？</li>
+<li>这些时段是否同时对应：</li>
+<li>薄腿 spread 异常拉大</li>
+<li>跨所 gap 变多</li>
+<li>basis / funding / option quote-gap 机会增多</li>
+</ul>
+<p>也就是把 tri-arb 当成 <strong>microstructure stress thermometer</strong>。</p>
+<h3><code>15m</code></h3>
+<p>不适合作 tri-arb 主执行周期； 但适合作为：</p>
+<ul>
+<li>市场质量面板</li>
+<li>子策略的 execution veto</li>
+<li>“今天这种盘口环境到底值不值得跑 multi-leg stat-arb” 的 admission layer</li>
+</ul>
+<p>---</p>
+<h2>7) 最小实验：下一步怎么测</h2>
+<p>这条线最值得做的不是“再写一篇摘要”，而是下面 3 个最小实验：</p>
+<h3>实验 1：三角宇宙扩展 + 事件桶统计</h3>
+<ul>
+<li>不只看 <code>BTC/LTC/USDT</code>；</li>
+<li>扩到 <code>BTC/ETH/USDT</code>、<code>ETH/BNB/USDT</code>、<code>SOL/BTC/USDT</code> 等高流动三角；</li>
+<li>记录：</li>
+<li><code>gross &gt; 0</code> 次数</li>
+<li><code>net &gt; 0</code> 次数</li>
+<li>最薄腿 spread</li>
+<li>最薄腿 depth</li>
+<li>目标：先确认“有没有哪类三角比 <code>LTCBTC</code> 这种桥接腿更友好”。</li>
+</ul>
+<h3>实验 2：把 tri-arb 指标迁移成 shared veto</h3>
+<p>在已有的：</p>
+<ul>
+<li>cross-venue gap</li>
+<li>basis fade</li>
+<li>options quote-gap</li>
+<li>pairs child execution</li>
+<p>上，加一个 5m gate：</p>
+<li>若近 <code>5m</code> 的 thin-leg spread / stale-quote / tri-arb negative-gap 明显恶化，则降仓或停机。</li>
+</ul>
+<p>这对当前 desk 反而比“真做 tri-arb”更可能马上有价值。</p>
+<h3>实验 3：maker-first 假设压力测试</h3>
+<p>如果仍想保留 production 幻想，就要直接测：</p>
+<ul>
+<li>maker-first fill ratio 假设是否现实；</li>
+<li>一旦一腿吃不到被迫 taker 补腿，edge 会不会瞬间翻负；</li>
+<li>这一步做完，通常就能知道它到底是策略，还是幻觉。</li>
+</ul>
+<p>---</p>
+<h2>8) 本轮结论</h2>
+<h3>结论一句话</h3>
+<p>&gt; <strong>triangular arbitrage 是一条定义非常干净的 raw alpha，但对当前 short-cycle crypto desk，它更像“execution-heavy 边界案例”而不是优先 deployment 主线；真正值得保留的，是它逼你把 <code>gross edge</code> 和 <code>net executable edge</code> 分开。</strong></p>
+<h3>当前 verdict</h3>
+<ul>
+<li><strong>是否值得进素材池：值得</strong></li>
+<li><strong>是否值得作为当前 <code>5m/15m</code> 主策略优先复现：不值得</strong></li>
+<li><strong>更合适的角色：</strong></li>
+<li>raw alpha 边界样本</li>
+<li>multi-leg relative-value 的 cost/capacity 教材</li>
+<li>shared execution veto / market-quality gate 的启发来源</li>
+</ul>
+<h3>对 Jerry 当前阶段的意义</h3>
+<p>最近 desk 已经堆了不少：</p>
+<ul>
+<li>pairs</li>
+<li>basis</li>
+<li>funding</li>
+<li>cross-venue outlier</li>
+<li>options quote-gap</li>
+</ul>
+<p>这篇的价值不在于再贡献一条能直接上的主策略，而在于补上一个重要认知缺口：</p>
+<p>&gt; <strong>不是所有 raw alpha 都输在“信号不够聪明”；很多 multi-leg alpha 是输在“edge 厚度不够穿过执行摩擦”。</strong></p>
+<p>这条认识，对后面继续做 relative-value / stat-arb，反而很值钱。</p>
+<p>---</p>
+<h2>9) 文件与链接</h2>
+<ul>
+<li>Digest 路径：<code>research/quant_digests/2026-04-23_1910_triangular-arb-fee-capacity-reality-check.md</code></li>
+<li>预计页面 URL：&lt;<a href="https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-04-23_1910_triangular-arb-fee-capacity-reality-check.html&gt;">https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-04-23_1910_triangular-arb-fee-capacity-reality-check.html&gt;</a></li>
+<li>Probe raw：<code>reports/artifacts/quant_digests/2026-04-23_1910_triangular_arb_probe_raw.csv</code></li>
+<li>Probe summary：<code>reports/artifacts/quant_digests/2026-04-23_1910_triangular_arb_probe_summary.csv</code></li>
+<li>Source DOI：&lt;<a href="https://doi.org/10.1016/j.frl.2024.106508&gt;">https://doi.org/10.1016/j.frl.2024.106508&gt;</a></li>
+<li>OpenAlex work：&lt;<a href="https://openalex.org/W4405131149&gt;">https://openalex.org/W4405131149&gt;</a></li>
+</ul>
+</body>
+</html>

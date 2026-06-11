@@ -1,0 +1,836 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Regime Switch Indicator Stack 论文复现回测报告</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f8fafc; color:#0f172a; margin:0; padding:24px; }
+    .wrap { max-width: 1260px; margin: 0 auto; }
+    .card { background:white; border:1px solid #e2e8f0; border-radius:14px; padding:18px 20px; margin-bottom:18px; }
+    .muted { color:#475569; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:12px; margin-right:6px; }
+    .warn { color:#92400e; background:#fffbeb; border:1px solid #fcd34d; border-radius:10px; padding:10px 12px; }
+    ul,ol { padding-left: 20px; }
+    img { max-width:100%; border:1px solid #e2e8f0; border-radius:10px; }
+    .data-table { width:100%; border-collapse: collapse; font-size: 14px; }
+    .data-table th,.data-table td { border-bottom:1px solid #e5e7eb; padding:8px 10px; text-align:left; vertical-align:top; }
+    code { background:#f1f5f9; padding:1px 4px; border-radius:6px; }
+    a { color:#2563eb; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <p><a href="../../index.html">← 返回首页</a></p>
+
+  <div class="card">
+    <h1>Regime Switch Indicator Stack · 论文复现回测报告</h1>
+    <p class="muted">生成时间：2026-03-14 04:19 UTC</p>
+    <p>
+      <span class="pill">paper replication</span>
+      <span class="pill">MIHS / MIHCS</span>
+      <span class="pill">跨市场</span>
+      <span class="pill">多频率</span>
+    </p>
+    <p class="muted">
+      复现对象：Naganjaneyulu et al. (2023), <i>Multi Indicator based Hierarchical Strategies for Technical Analysis of Crypto market Paradigm</i>。
+      本报告先按论文中可明确提取的规则做 faithful clean-room 复现，再扩展到加密+美股+A股、日频/周频/小时频，比较“趋势筛选前后”的收益差异。
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>这次实现了什么（规则口径）</h2>
+    <ul>
+      <li><b>四个单指标策略（未做趋势筛选）</b>：EMA(9/20)、BB(21,2)、RSI(40/60)、PSAR(0.02~0.2)。</li>
+      <li><b>四个原型（做趋势筛选）</b>：MIHS9、MIHS7、MIHCS9、MIHCS7。</li>
+      <li>Regime 定义：<code>EMA(RSI) > 60</code> 视为 Uptrend；<code>&lt; 40</code> 视为 Downtrend；其余视为 Fluctuating。</li>
+      <li>MIHCS 的核心约束：在 Downtrend / Fluctuating 分支忽略 BUY（仅保留保护性 SELL / HOLD）。</li>
+      <li>回测执行：long-only、单仓位、信号按当根 close 执行、期末若仍持仓按最后 close 平仓（与论文叙述口径一致）。</li>
+    </ul>
+    <p class="warn"><b>重要：</b>论文页中个别公式以图片形式给出，文本不可直接复制；本实现基于原文文字定义 + flowchart OCR 重建，属于 faithful clean-room replication，而非作者原始代码逐行复刻。</p>
+  </div>
+
+  <div class="card">
+    <h2>1) BTC 日频 2018-2022（论文窗口）复现实验</h2>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>strategy</th>
+      <th>profit_pct</th>
+      <th>np_pct</th>
+      <th>nt</th>
+      <th>cagr_pct</th>
+      <th>max_dd_pct</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>EMA</td>
+      <td>398.08%</td>
+      <td>27.78%</td>
+      <td>36</td>
+      <td>37.87%</td>
+      <td>-59.34%</td>
+    </tr>
+    <tr>
+      <td>BB</td>
+      <td>-71.08%</td>
+      <td>31.25%</td>
+      <td>16</td>
+      <td>-21.97%</td>
+      <td>-81.63%</td>
+    </tr>
+    <tr>
+      <td>RSI</td>
+      <td>-61.84%</td>
+      <td>41.18%</td>
+      <td>17</td>
+      <td>-17.53%</td>
+      <td>-82.91%</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>-14.31%</td>
+      <td>37.50%</td>
+      <td>72</td>
+      <td>-3.04%</td>
+      <td>-74.17%</td>
+    </tr>
+    <tr>
+      <td>MIHS9</td>
+      <td>149.45%</td>
+      <td>46.67%</td>
+      <td>60</td>
+      <td>20.06%</td>
+      <td>-69.15%</td>
+    </tr>
+    <tr>
+      <td>MIHS7</td>
+      <td>83.68%</td>
+      <td>44.44%</td>
+      <td>63</td>
+      <td>12.93%</td>
+      <td>-71.42%</td>
+    </tr>
+    <tr>
+      <td>MIHCS9</td>
+      <td>517.76%</td>
+      <td>55.56%</td>
+      <td>18</td>
+      <td>43.93%</td>
+      <td>-36.59%</td>
+    </tr>
+    <tr>
+      <td>MIHCS7</td>
+      <td>448.51%</td>
+      <td>43.48%</td>
+      <td>23</td>
+      <td>40.55%</td>
+      <td>-35.44%</td>
+    </tr>
+  </tbody>
+</table>
+    <p class="muted">指标含义：PP=Profit Percentage；NP=盈利交易占比；NT=完成的 BUY→SELL 交易数。</p>
+    <p><img src="../../../artifacts/regime_switch_indicator_stack_replication/paper_profit_bar.png" alt="paper profit bar" /></p>
+    <p><img src="../../../artifacts/regime_switch_indicator_stack_replication/paper_equity_curves.png" alt="paper equity curves" /></p>
+  </div>
+
+  <div class="card">
+    <h2>2) 论文声称值 vs clean-room 复现值</h2>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>strategy</th>
+      <th>paper_claim_pp</th>
+      <th>reproduced_pp</th>
+      <th>pp_diff_repro_minus_claim</th>
+      <th>reproduced_nt</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>EMA</td>
+      <td>394.13%</td>
+      <td>398.08%</td>
+      <td>3.95%</td>
+      <td>36</td>
+    </tr>
+    <tr>
+      <td>BB</td>
+      <td>-71.70%</td>
+      <td>-71.08%</td>
+      <td>0.62%</td>
+      <td>16</td>
+    </tr>
+    <tr>
+      <td>RSI</td>
+      <td>-64.50%</td>
+      <td>-61.84%</td>
+      <td>2.66%</td>
+      <td>17</td>
+    </tr>
+    <tr>
+      <td>PSAR</td>
+      <td>113.80%</td>
+      <td>-14.31%</td>
+      <td>-128.11%</td>
+      <td>72</td>
+    </tr>
+    <tr>
+      <td>MIHS9</td>
+      <td>154.45%</td>
+      <td>149.45%</td>
+      <td>-5.00%</td>
+      <td>60</td>
+    </tr>
+    <tr>
+      <td>MIHS7</td>
+      <td>437.48%</td>
+      <td>83.68%</td>
+      <td>-353.80%</td>
+      <td>63</td>
+    </tr>
+    <tr>
+      <td>MIHCS9</td>
+      <td>256.31%</td>
+      <td>517.76%</td>
+      <td>261.45%</td>
+      <td>18</td>
+    </tr>
+    <tr>
+      <td>MIHCS7</td>
+      <td>701.77%</td>
+      <td>448.51%</td>
+      <td>-253.26%</td>
+      <td>23</td>
+    </tr>
+  </tbody>
+</table>
+    <p><img src="../../../artifacts/regime_switch_indicator_stack_replication/paper_claim_compare.png" alt="paper claim compare" /></p>
+    <ul>
+      <li><b>EMA / BB / RSI</b> 的复现值和论文比较接近，说明基础单指标部分大体对上了。</li>
+      <li><b>分层原型差异更大</b>：我们的 MIHCS 明显更强，MIHS 明显更弱，提示 flowchart 里某些细节、执行假设、或作者代码实现细节很可能对结果有较大影响。</li>
+      <li>因此这份报告更应该读成：<b>论文思想可复现，但具体数值对实现细节敏感</b>。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>3) 多资产×多频率：趋势筛选前后收益</h2>
+    <p class="muted">比较口径：每个“资产×频率”先取四个未筛选策略中的最佳 PP，再取四个筛选原型中的最佳 PP，比较两者差值。</p>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset_class</th>
+      <th>freq</th>
+      <th>n</th>
+      <th>median_unfiltered_pp</th>
+      <th>median_filtered_pp</th>
+      <th>median_delta</th>
+      <th>mean_delta</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>A股</td>
+      <td>周频(1wk)</td>
+      <td>3</td>
+      <td>63.95%</td>
+      <td>139.34%</td>
+      <td>75.39%</td>
+      <td>143.17%</td>
+    </tr>
+    <tr>
+      <td>A股</td>
+      <td>小时频(60m)</td>
+      <td>3</td>
+      <td>31.75%</td>
+      <td>18.03%</td>
+      <td>-13.72%</td>
+      <td>-10.16%</td>
+    </tr>
+    <tr>
+      <td>A股</td>
+      <td>日频(1d)</td>
+      <td>3</td>
+      <td>133.13%</td>
+      <td>146.09%</td>
+      <td>-38.19%</td>
+      <td>-20.84%</td>
+    </tr>
+    <tr>
+      <td>Crypto</td>
+      <td>周频(1wk)</td>
+      <td>3</td>
+      <td>12030.52%</td>
+      <td>6441.02%</td>
+      <td>-3564.33%</td>
+      <td>-3183.57%</td>
+    </tr>
+    <tr>
+      <td>Crypto</td>
+      <td>小时频(60m)</td>
+      <td>3</td>
+      <td>19.19%</td>
+      <td>-3.19%</td>
+      <td>1.39%</td>
+      <td>6.96%</td>
+    </tr>
+    <tr>
+      <td>Crypto</td>
+      <td>日频(1d)</td>
+      <td>3</td>
+      <td>30070.63%</td>
+      <td>13851.83%</td>
+      <td>-5892.94%</td>
+      <td>-16332.50%</td>
+    </tr>
+    <tr>
+      <td>美股</td>
+      <td>周频(1wk)</td>
+      <td>3</td>
+      <td>307.99%</td>
+      <td>201.78%</td>
+      <td>-104.37%</td>
+      <td>-98.61%</td>
+    </tr>
+    <tr>
+      <td>美股</td>
+      <td>小时频(60m)</td>
+      <td>3</td>
+      <td>36.50%</td>
+      <td>53.73%</td>
+      <td>1.21%</td>
+      <td>17.28%</td>
+    </tr>
+    <tr>
+      <td>美股</td>
+      <td>日频(1d)</td>
+      <td>3</td>
+      <td>187.77%</td>
+      <td>137.29%</td>
+      <td>-61.59%</td>
+      <td>-146.76%</td>
+    </tr>
+  </tbody>
+</table>
+    <p><img src="../../../artifacts/regime_switch_indicator_stack_replication/trend_filter_compare_scatter.png" alt="trend filter compare" /></p>
+    <p><img src="../../../artifacts/regime_switch_indicator_stack_replication/trend_filter_delta_heatmap.png" alt="trend filter heatmap" /></p>
+    <ul>
+      <li>散点图在对角线上方，表示筛选后更强；下方则表示未筛选更强。</li>
+      <li>热力图更适合看单个资产：绿色越深，表示 regime gate 帮助越大；红色越深，表示 gate 拖累越明显。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>4) 哪些地方被趋势筛选明显帮到 / 拖累</h2>
+    <h3>帮助最大的样本</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset</th>
+      <th>asset_class</th>
+      <th>freq</th>
+      <th>best_unfiltered_strategy</th>
+      <th>best_unfiltered_pp</th>
+      <th>best_filtered_strategy</th>
+      <th>best_filtered_pp</th>
+      <th>delta_filtered_minus_unfiltered</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ETH</td>
+      <td>Crypto</td>
+      <td>周频(1wk)</td>
+      <td>PSAR</td>
+      <td>1716.56%</td>
+      <td>MIHS7</td>
+      <td>2266.66%</td>
+      <td>550.10%</td>
+    </tr>
+    <tr>
+      <td>贵州茅台</td>
+      <td>A股</td>
+      <td>周频(1wk)</td>
+      <td>EMA</td>
+      <td>230.25%</td>
+      <td>MIHS9</td>
+      <td>570.50%</td>
+      <td>340.25%</td>
+    </tr>
+    <tr>
+      <td>创业板ETF</td>
+      <td>A股</td>
+      <td>日频(1d)</td>
+      <td>EMA</td>
+      <td>133.13%</td>
+      <td>MIHS9</td>
+      <td>257.62%</td>
+      <td>124.50%</td>
+    </tr>
+    <tr>
+      <td>创业板ETF</td>
+      <td>A股</td>
+      <td>周频(1wk)</td>
+      <td>PSAR</td>
+      <td>63.95%</td>
+      <td>MIHS9</td>
+      <td>139.34%</td>
+      <td>75.39%</td>
+    </tr>
+    <tr>
+      <td>AAPL</td>
+      <td>美股</td>
+      <td>小时频(60m)</td>
+      <td>PSAR</td>
+      <td>35.49%</td>
+      <td>MIHS9</td>
+      <td>91.45%</td>
+      <td>55.96%</td>
+    </tr>
+    <tr>
+      <td>ETH</td>
+      <td>Crypto</td>
+      <td>小时频(60m)</td>
+      <td>PSAR</td>
+      <td>31.41%</td>
+      <td>MIHS9</td>
+      <td>78.78%</td>
+      <td>47.37%</td>
+    </tr>
+  </tbody>
+</table>
+    <h3>拖累最大的样本</h3>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset</th>
+      <th>asset_class</th>
+      <th>freq</th>
+      <th>best_unfiltered_strategy</th>
+      <th>best_unfiltered_pp</th>
+      <th>best_filtered_strategy</th>
+      <th>best_filtered_pp</th>
+      <th>delta_filtered_minus_unfiltered</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>SOL</td>
+      <td>Crypto</td>
+      <td>日频(1d)</td>
+      <td>EMA</td>
+      <td>55511.56%</td>
+      <td>MIHCS9</td>
+      <td>13851.83%</td>
+      <td>-41659.73%</td>
+    </tr>
+    <tr>
+      <td>SOL</td>
+      <td>Crypto</td>
+      <td>周频(1wk)</td>
+      <td>EMA</td>
+      <td>12977.50%</td>
+      <td>MIHS9</td>
+      <td>6441.02%</td>
+      <td>-6536.48%</td>
+    </tr>
+    <tr>
+      <td>ETH</td>
+      <td>Crypto</td>
+      <td>日频(1d)</td>
+      <td>EMA</td>
+      <td>7535.63%</td>
+      <td>MIHCS9</td>
+      <td>1642.69%</td>
+      <td>-5892.94%</td>
+    </tr>
+    <tr>
+      <td>BTC</td>
+      <td>Crypto</td>
+      <td>周频(1wk)</td>
+      <td>EMA</td>
+      <td>12030.52%</td>
+      <td>MIHS9</td>
+      <td>8466.19%</td>
+      <td>-3564.33%</td>
+    </tr>
+    <tr>
+      <td>BTC</td>
+      <td>Crypto</td>
+      <td>日频(1d)</td>
+      <td>EMA</td>
+      <td>30070.63%</td>
+      <td>MIHCS9</td>
+      <td>28625.80%</td>
+      <td>-1444.83%</td>
+    </tr>
+    <tr>
+      <td>AAPL</td>
+      <td>美股</td>
+      <td>日频(1d)</td>
+      <td>EMA</td>
+      <td>596.09%</td>
+      <td>MIHS9</td>
+      <td>267.87%</td>
+      <td>-328.21%</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>5) 分资产明细（最佳未筛选 vs 最佳筛选）</h2>
+    <table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: left;">
+      <th>asset</th>
+      <th>ticker</th>
+      <th>asset_class</th>
+      <th>freq</th>
+      <th>best_unfiltered_strategy</th>
+      <th>best_unfiltered_pp</th>
+      <th>best_filtered_strategy</th>
+      <th>best_filtered_pp</th>
+      <th>delta_filtered_minus_unfiltered</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>AAPL</td>
+      <td>AAPL</td>
+      <td>美股</td>
+      <td>周频(1wk)</td>
+      <td>PSAR</td>
+      <td>694.77%</td>
+      <td>MIHS7</td>
+      <td>590.40%</td>
+      <td>-104.37%</td>
+    </tr>
+    <tr>
+      <td>AAPL</td>
+      <td>AAPL</td>
+      <td>美股</td>
+      <td>小时频(60m)</td>
+      <td>PSAR</td>
+      <td>35.49%</td>
+      <td>MIHS9</td>
+      <td>91.45%</td>
+      <td>55.96%</td>
+    </tr>
+    <tr>
+      <td>AAPL</td>
+      <td>AAPL</td>
+      <td>美股</td>
+      <td>日频(1d)</td>
+      <td>EMA</td>
+      <td>596.09%</td>
+      <td>MIHS9</td>
+      <td>267.87%</td>
+      <td>-328.21%</td>
+    </tr>
+    <tr>
+      <td>BTC</td>
+      <td>BTC-USD</td>
+      <td>Crypto</td>
+      <td>周频(1wk)</td>
+      <td>EMA</td>
+      <td>12030.52%</td>
+      <td>MIHS9</td>
+      <td>8466.19%</td>
+      <td>-3564.33%</td>
+    </tr>
+    <tr>
+      <td>BTC</td>
+      <td>BTC-USD</td>
+      <td>Crypto</td>
+      <td>小时频(60m)</td>
+      <td>EMA</td>
+      <td>19.19%</td>
+      <td>MIHCS9</td>
+      <td>-8.67%</td>
+      <td>-27.87%</td>
+    </tr>
+    <tr>
+      <td>BTC</td>
+      <td>BTC-USD</td>
+      <td>Crypto</td>
+      <td>日频(1d)</td>
+      <td>EMA</td>
+      <td>30070.63%</td>
+      <td>MIHCS9</td>
+      <td>28625.80%</td>
+      <td>-1444.83%</td>
+    </tr>
+    <tr>
+      <td>ETH</td>
+      <td>ETH-USD</td>
+      <td>Crypto</td>
+      <td>周频(1wk)</td>
+      <td>PSAR</td>
+      <td>1716.56%</td>
+      <td>MIHS7</td>
+      <td>2266.66%</td>
+      <td>550.10%</td>
+    </tr>
+    <tr>
+      <td>ETH</td>
+      <td>ETH-USD</td>
+      <td>Crypto</td>
+      <td>小时频(60m)</td>
+      <td>PSAR</td>
+      <td>31.41%</td>
+      <td>MIHS9</td>
+      <td>78.78%</td>
+      <td>47.37%</td>
+    </tr>
+    <tr>
+      <td>ETH</td>
+      <td>ETH-USD</td>
+      <td>Crypto</td>
+      <td>日频(1d)</td>
+      <td>EMA</td>
+      <td>7535.63%</td>
+      <td>MIHCS9</td>
+      <td>1642.69%</td>
+      <td>-5892.94%</td>
+    </tr>
+    <tr>
+      <td>QQQ</td>
+      <td>QQQ</td>
+      <td>美股</td>
+      <td>周频(1wk)</td>
+      <td>EMA</td>
+      <td>307.99%</td>
+      <td>MIHCS7</td>
+      <td>201.78%</td>
+      <td>-106.21%</td>
+    </tr>
+    <tr>
+      <td>QQQ</td>
+      <td>QQQ</td>
+      <td>美股</td>
+      <td>小时频(60m)</td>
+      <td>RSI</td>
+      <td>52.52%</td>
+      <td>MIHS9</td>
+      <td>53.73%</td>
+      <td>1.21%</td>
+    </tr>
+    <tr>
+      <td>QQQ</td>
+      <td>QQQ</td>
+      <td>美股</td>
+      <td>日频(1d)</td>
+      <td>EMA</td>
+      <td>187.77%</td>
+      <td>MIHS9</td>
+      <td>137.29%</td>
+      <td>-50.48%</td>
+    </tr>
+    <tr>
+      <td>SOL</td>
+      <td>SOL-USD</td>
+      <td>Crypto</td>
+      <td>周频(1wk)</td>
+      <td>EMA</td>
+      <td>12977.50%</td>
+      <td>MIHS9</td>
+      <td>6441.02%</td>
+      <td>-6536.48%</td>
+    </tr>
+    <tr>
+      <td>SOL</td>
+      <td>SOL-USD</td>
+      <td>Crypto</td>
+      <td>小时频(60m)</td>
+      <td>EMA</td>
+      <td>-4.58%</td>
+      <td>MIHS9</td>
+      <td>-3.19%</td>
+      <td>1.39%</td>
+    </tr>
+    <tr>
+      <td>SOL</td>
+      <td>SOL-USD</td>
+      <td>Crypto</td>
+      <td>日频(1d)</td>
+      <td>EMA</td>
+      <td>55511.56%</td>
+      <td>MIHCS9</td>
+      <td>13851.83%</td>
+      <td>-41659.73%</td>
+    </tr>
+    <tr>
+      <td>SPY</td>
+      <td>SPY</td>
+      <td>美股</td>
+      <td>周频(1wk)</td>
+      <td>BB</td>
+      <td>151.04%</td>
+      <td>MIHS9</td>
+      <td>65.78%</td>
+      <td>-85.25%</td>
+    </tr>
+    <tr>
+      <td>SPY</td>
+      <td>SPY</td>
+      <td>美股</td>
+      <td>小时频(60m)</td>
+      <td>BB</td>
+      <td>36.50%</td>
+      <td>MIHS9</td>
+      <td>31.19%</td>
+      <td>-5.32%</td>
+    </tr>
+    <tr>
+      <td>SPY</td>
+      <td>SPY</td>
+      <td>美股</td>
+      <td>日频(1d)</td>
+      <td>BB</td>
+      <td>183.40%</td>
+      <td>MIHS7</td>
+      <td>121.81%</td>
+      <td>-61.59%</td>
+    </tr>
+    <tr>
+      <td>创业板ETF</td>
+      <td>159915.SZ</td>
+      <td>A股</td>
+      <td>周频(1wk)</td>
+      <td>PSAR</td>
+      <td>63.95%</td>
+      <td>MIHS9</td>
+      <td>139.34%</td>
+      <td>75.39%</td>
+    </tr>
+    <tr>
+      <td>创业板ETF</td>
+      <td>159915.SZ</td>
+      <td>A股</td>
+      <td>小时频(60m)</td>
+      <td>EMA</td>
+      <td>83.55%</td>
+      <td>MIHS7</td>
+      <td>93.08%</td>
+      <td>9.53%</td>
+    </tr>
+    <tr>
+      <td>创业板ETF</td>
+      <td>159915.SZ</td>
+      <td>A股</td>
+      <td>日频(1d)</td>
+      <td>EMA</td>
+      <td>133.13%</td>
+      <td>MIHS9</td>
+      <td>257.62%</td>
+      <td>124.50%</td>
+    </tr>
+    <tr>
+      <td>沪深300ETF</td>
+      <td>510300.SS</td>
+      <td>A股</td>
+      <td>周频(1wk)</td>
+      <td>PSAR</td>
+      <td>36.42%</td>
+      <td>MIHS7</td>
+      <td>50.29%</td>
+      <td>13.87%</td>
+    </tr>
+    <tr>
+      <td>沪深300ETF</td>
+      <td>510300.SS</td>
+      <td>A股</td>
+      <td>小时频(60m)</td>
+      <td>EMA</td>
+      <td>31.75%</td>
+      <td>MIHCS9</td>
+      <td>18.03%</td>
+      <td>-13.72%</td>
+    </tr>
+    <tr>
+      <td>沪深300ETF</td>
+      <td>510300.SS</td>
+      <td>A股</td>
+      <td>日频(1d)</td>
+      <td>BB</td>
+      <td>48.42%</td>
+      <td>MIHCS7</td>
+      <td>10.23%</td>
+      <td>-38.19%</td>
+    </tr>
+    <tr>
+      <td>贵州茅台</td>
+      <td>600519.SS</td>
+      <td>A股</td>
+      <td>周频(1wk)</td>
+      <td>EMA</td>
+      <td>230.25%</td>
+      <td>MIHS9</td>
+      <td>570.50%</td>
+      <td>340.25%</td>
+    </tr>
+    <tr>
+      <td>贵州茅台</td>
+      <td>600519.SS</td>
+      <td>A股</td>
+      <td>小时频(60m)</td>
+      <td>PSAR</td>
+      <td>28.90%</td>
+      <td>MIHCS9</td>
+      <td>2.62%</td>
+      <td>-26.28%</td>
+    </tr>
+    <tr>
+      <td>贵州茅台</td>
+      <td>600519.SS</td>
+      <td>A股</td>
+      <td>日频(1d)</td>
+      <td>PSAR</td>
+      <td>294.92%</td>
+      <td>MIHS9</td>
+      <td>146.09%</td>
+      <td>-148.83%</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>6) 结论（可直接用于策略讨论）</h2>
+    <ol>
+      <li><b>这篇论文最稳定可迁移的，不是某个固定参数，而是 regime gate 思想本身</b>：先判断 Uptrend / Downtrend / Fluctuating，再决定是否允许交易。</li>
+      <li><b>但它并不是跨市场通吃 alpha</b>。在这次扩展回测里，趋势筛选在 A 股更容易提供帮助；在强趋势 Crypto 日频/周频里，直接的 EMA / PSAR 往往已经非常强，gate 反而可能过度约束。</li>
+      <li><b>MIHCS 比 MIHS 更像可用的风险控制层</b>：忽略非理想状态下的 BUY，代价是牺牲部分反弹/震荡利润，换来更保守的路径。</li>
+      <li>因此从你当前“找靠谱 alpha”的目标看，<b>更合理的定位是把它作为 filter / gate / risk policy 候选</b>，先去管 breakout / retest / trend-following 规则什么时候允许出手，而不是直接把 MIHCS7 当成最终 alpha 本体。</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>7) 复现产物</h2>
+    <ul>
+      <li><code>reports/artifacts/regime_switch_indicator_stack_replication/paper_window_btc_2018_2022_metrics.csv</code></li>
+      <li><code>reports/artifacts/regime_switch_indicator_stack_replication/cross_market_results.csv</code></li>
+      <li><code>reports/artifacts/regime_switch_indicator_stack_replication/trend_filter_compare_pairs.csv</code></li>
+      <li><code>reports/artifacts/regime_switch_indicator_stack_replication/trend_filter_summary_by_class_freq.csv</code></li>
+      <li><code>reports/artifacts/regime_switch_indicator_stack_replication/cross_market_skipped.csv</code>（数据源缺失或频率不支持）</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>8) 下一步（若要纳入因子库）</h2>
+    <ol>
+      <li>把最优原型固定为候选门控层（建议先从 MIHCS7 开始），与当前 breakout/retest/confirmation 事件层耦合。</li>
+      <li>加入成本与滑点敏感性（当前报告按论文口径未扣交易成本）。</li>
+      <li>做 rolling / OOS / 子市场稳健性复验，避免单窗口偶然性。</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <p class="muted">参考：<a href="../quant_digests/2026-03-14_0128_regime-switch-indicator-stack.html">原始 digest 页面</a></p>
+  </div>
+</div>
+</body>
+</html>

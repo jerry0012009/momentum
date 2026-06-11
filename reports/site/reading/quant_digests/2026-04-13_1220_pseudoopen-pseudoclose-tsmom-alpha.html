@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2022 *Financial Review* BTC 论文只读成“固定时钟效应”：对 short-cycle desk，更该先测的是「pseudo-open overnight sign × pseudo-close half-hour continuation」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2022 *Financial Review* BTC 论文只读成“固定时钟效应”：对 short-cycle desk，更该先测的是「pseudo-open overnight sign × pseudo-close half-hour continuation」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-13 12:22 UTC</span>
+      <span class="pill">研究时间：2026-04-13 12:20 UTC</span>
+      <span class="pill">类型：2022 *The Financial Review* 论文全文可读版（University of Reading accepted version）+ Crossref 元数据 + Binance USDⓈ-M `5m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha/intraday/single-asset/time-series-momentum/pseudo-session/pseudo-open/pseudo-close/overnight-sign/half-hour-continuation/btc/eth/sol/binance-perpetual/5m/paper/fulltext/public-data/cost/risk</span>
+      <span class="pill">证据类型：论文全文 + 元数据 + 公共数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-13_1220_pseudoopen-pseudoclose-tsmom-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-13 12:20 UTC</li>
+<li>类型：2022 *The Financial Review* 论文全文可读版（University of Reading accepted version）+ Crossref 元数据 + Binance USDⓈ-M <code>5m</code> public-data portability probe</li>
+<li>主题标签：raw-alpha/intraday/single-asset/time-series-momentum/pseudo-session/pseudo-open/pseudo-close/overnight-sign/half-hour-continuation/btc/eth/sol/binance-perpetual/5m/paper/fulltext/public-data/cost/risk</li>
+<li>证据类型：论文全文 + 元数据 + 公共数据 portability probe</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>把“前一 pseudo-close 到当天 pseudo-open+30m 的 overnight+early-session 方向”当成主信号，去交易同一 pseudo-day 最后 30 分钟的同向 continuation；也就是 <code>r_ONFH -&gt; r_LH</code>，而不是泛泛地说“BTC 有固定时钟 seasonality”。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是一篇 2022 年的 BTC 日内动量论文。它真正值钱的地方，不是“BTC 某个 UTC 时段常涨常跌”这种 seasonality 概括，而是一个更尖锐、也更容易翻成 desk 语言的命题：</p>
+<p>&gt; <strong>pseudo-day 开头那段 overnight + first-30m 的方向，能不能预测同一 pseudo-day 最后 30 分钟的方向？</strong></p>
+<p>论文原始表达是：</p>
+<ul>
+<li>Bitcoin 没有股票那种天然开收盘；</li>
+<li>所以作者用<strong>成交量尖峰</strong>当作“开盘”代理，用 <strong>5pm EST</strong>（CME Bitcoin futures 日内休市开始）当“收盘”代理；</li>
+<li>然后测试 <code>first half-hour / overnight+first-half-hour</code> 能否预测 <code>last half-hour</code>。</li>
+</ul>
+<p>翻成人话就是：</p>
+<ul>
+<li>这不是普通的“开盘追涨”；</li>
+<li>也不是简单的“某个小时更强”；</li>
+<li>它更像一条<strong>伪会话（pseudo-session）内的首尾动量传导 alpha</strong>。</li>
+</ul>
+<h2>2. 先把一句话说清楚：这篇东西的 base alpha 是什么？</h2>
+<p>&gt; <strong>base alpha = <code>r_ONFH -&gt; r_LH</code> 的同向传导。</strong> &gt; 其中 <code>r_ONFH</code> 是“上一 pseudo-close 到本 pseudo-open+30m”的收益，<code>r_LH</code> 是“本 pseudo-close 前最后 30m”的收益。</p>
+<p>为什么这仍然是 <code>raw alpha</code>，不是 <code>filter / regime / overlay</code>？</p>
+<p>因为它本身就能独立定义：</p>
+<ol>
+<li><strong>entry</strong>：用 <code>r_ONFH</code> 的符号给出方向；</li>
+<li><strong>holding window</strong>：只持有 pseudo-close 前最后 30m；</li>
+<li><strong>exit</strong>：pseudo-close 平掉；</li>
+<li><strong>risk</strong>：可直接做 fixed notional / fixed risk cap；</li>
+<li><strong>cost</strong>：可以直接压 taker/maker 假设去看净值是否还活着。</li>
+</ol>
+<p>也就是说，这条线不是“依附别的信号才成立”的 gate，而是一条可以单独回测的 session-pocket raw alpha。</p>
+<h2>3. 来源</h2>
+<h3>主来源（paper）</h3>
+<ul>
+<li><strong>Authors：</strong> Dehua Shen, Andrew Urquhart, Pengfei Wang</li>
+<li><strong>Year：</strong> 2022</li>
+<li><strong>Title：</strong> *Bitcoin intraday time series momentum*</li>
+<li><strong>Venue：</strong> *The Financial Review*, 57(2), 319–344</li>
+<li><strong>DOI：</strong> &lt;<a href="https://doi.org/10.1111/fire.12290&gt;">https://doi.org/10.1111/fire.12290&gt;</a></li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://centaur.reading.ac.uk/100181/&gt;">https://centaur.reading.ac.uk/100181/&gt;</a></li>
+<li><strong>Publisher URL：</strong> &lt;<a href="https://onlinelibrary.wiley.com/doi/10.1111/fire.12290&gt;">https://onlinelibrary.wiley.com/doi/10.1111/fire.12290&gt;</a></li>
+<li><strong>Repo URL：</strong> N/A</li>
+</ul>
+<h3>元数据复核</h3>
+<ul>
+<li><strong>Crossref JSON：</strong> &lt;<a href="https://api.crossref.org/works/10.1111/fire.12290&gt;">https://api.crossref.org/works/10.1111/fire.12290&gt;</a></li>
+</ul>
+<h3>本轮本地 artifacts</h3>
+<ul>
+<li>Probe script：<code>reports/artifacts/quant_digests/2026-04-13_pseudoopen_pseudoclose_tsmom_probe.py</code></li>
+<li>Probe metrics：<code>reports/artifacts/quant_digests/2026-04-13_pseudoopen_pseudoclose_tsmom_probe_metrics.csv</code></li>
+</ul>
+<h2>4. 论文里真正值得 desk 记住的点</h2>
+<h3>4.1 作者不是随便拍脑袋选时段</h3>
+<p>论文里给的 pseudo-session 锚点是：</p>
+<ul>
+<li><strong>open proxy</strong>：成交量尖峰附近；</li>
+<li><strong>close proxy</strong>：<strong>5pm EST</strong>，因为 CME Bitcoin futures 在这个点开始 60 分钟休市；</li>
+<li>另外作者还强调了 <strong>8:30am ET</strong> 的 GDP / CPI 宏观发布时间，所以 overnight+early-session 段天然会吸纳一部分“先于美股开盘被 BTC 定价”的信息。</li>
+</ul>
+<p>所以它的真正读法不是“5pm 有 magic”。 而是： &gt; <strong>BTC 会不会先在 pseudo-open 吃掉 overnight / macro / 流动性冲击，再把方向传导到 pseudo-close 前最后半小时？</strong></p>
+<h3>4.2 论文摘要给出的主结论</h3>
+<p>作者摘要里给了三条对 desk 最有用的信息：</p>
+<ol>
+<li><strong>first half-hour 正向预测 last half-hour</strong>；</li>
+<li><strong>高 volume / 高 volatility 的 first session，预测力更强</strong>；</li>
+<li>这条线更像<strong>liquidity provision 驱动</strong>，不是 late-informed trading。</li>
+</ol>
+<p>如果这三句能迁移到当前 perp desk，最自然的翻译就是：</p>
+<ul>
+<li>优先把它当成 <strong>BTC single-asset session-pocket continuation alpha</strong>；</li>
+<li>再在上面加 volume / vol / order-flow gate；</li>
+<li>最后决定它更适合 <code>5m</code> taker，还是 <code>1m/3m</code> maker-first。</li>
+</ul>
+<h2>5. 为什么它值得进当前研究池</h2>
+<p>它值得写进池子，不是因为“又找到一个固定时段”，而是因为它补的是一块<strong>当前 raw alpha 素材池里相对少见的 session-internal sign handoff</strong>：</p>
+<ol>
+<li><strong>它是 raw alpha，不是解释型综述。</strong></li>
+</ol>
+<ul>
+<li>方向、持有窗口、平仓点都明确；</li>
+<li>不依赖外部非公开数据；</li>
+<li>公共 K 线就能做最小实验。</li>
+</ul>
+<ol>
+<li><strong>它和已有 clock/seasonality digest 不完全同义。</strong></li>
+</ol>
+<ul>
+<li>这条线重点不在“哪个时段均值为正”；</li>
+<li>而在“首段收益是否把尾段方向带过去”。</li>
+</ul>
+<ol>
+<li><strong>它天然适合做拆件。</strong></li>
+</ol>
+<ul>
+<li><code>volume-spike open</code> 可以替换成 Binance perp 自己的 volume-rank open；</li>
+<li><code>5pm EST close</code> 可以替换成 DST-aware 或 fixed-UTC pseudo-close；</li>
+<li><code>r_ONFH</code> 还可以再拆成 <code>overnight</code> 与 <code>first 30m</code> 两段。</li>
+</ul>
+<h2>6. 我这次怎么做最小 portability probe</h2>
+<h3>6.1 probe 口径</h3>
+<ul>
+<li><strong>市场：</strong> Binance USDⓈ-M Perpetual</li>
+<li><strong>标的：</strong> <code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li><strong>频率：</strong> <code>5m</code></li>
+<li><strong>样本：</strong> 近约 <code>139</code> 个 pseudo-sessions（约 2025-11-23 到 2026-04-13）</li>
+<li><strong>pseudo-open proxy：</strong> <code>13:30 UTC -&gt; 14:00 UTC</code>，近似论文里的 <code>08:30 -&gt; 09:00 EST</code></li>
+<li><strong>pseudo-close proxy：</strong> <code>21:30 UTC -&gt; 22:00 UTC</code>，近似论文里的 <code>16:30 -&gt; 17:00 EST</code></li>
+<li><strong>主信号：</strong> <code>sign(r_ONFH)</code></li>
+<li><strong>交易段：</strong> 只交易最后 <code>30m</code> 的 <code>r_LH</code></li>
+<li><strong>成本：</strong> 当前先看 gross，不含 fee / slippage / funding</li>
+</ul>
+<h3>6.2 这个 probe 故意保留了什么，省略了什么</h3>
+<p>保留的：</p>
+<ul>
+<li>论文核心骨架：<code>r_ONFH -&gt; r_LH</code></li>
+<li>pseudo-open / pseudo-close 结构</li>
+<li>high-volume 对照</li>
+</ul>
+<p>省略的：</p>
+<ul>
+<li>真正“按 volume spike 动态找 open”</li>
+<li>美东 DST 切换</li>
+<li>盘口级 liquidity-provision 解释</li>
+<li>交易所现货拼接（论文是多所 BTC 现货）</li>
+</ul>
+<p>所以这轮 probe 的定位很明确： &gt; 不是复刻原文，而是先看这条 raw alpha 骨架在当前 Binance perp 上还剩多少味道。</p>
+<h2>7. 关键结果：论文里的 raw alpha 结构能复现，但<strong>当前直译版很弱</strong></h2>
+<h3>7.1 BTC：有一点 gross，但远没有到“可直接上线”的程度</h3>
+<p><code>BTCUSDT | 5m | 139 pseudo-sessions</code></p>
+<ul>
+<li><code>sign-hit</code>：<strong>53.96%</strong></li>
+<li><code>gross</code>：<strong>+3.33 bps / session</strong></li>
+<li><code>median</code>：<strong>+2.57 bps / session</strong></li>
+<li><code>r_ONFH -&gt; r_LH</code> 线性关系：<strong>β = -0.004，p = 0.804，R² = 0.05%</strong></li>
+</ul>
+<p>这组数的意思很直白：</p>
+<ul>
+<li>如果只看“方向对没对”，它<strong>勉强高于 50%</strong>；</li>
+<li>但线性解释力几乎没有；</li>
+<li>gross 也只是在成本前勉强露头。</li>
+</ul>
+<p>所以当前最合理的判断不是“论文失效”，而是： &gt; <strong>这条 alpha 还在，但直译成 fixed-UTC + pure taker 的版本，味道已经非常淡。</strong></p>
+<h3>7.2 论文说“高 volume 更强”，但 recent Binance perp 里没有复现</h3>
+<p><code>BTCUSDT</code></p>
+<ul>
+<li>高 volume tercile <code>sign-hit</code>：<strong>48.94%</strong></li>
+<li>低 volume tercile <code>sign-hit</code>：<strong>56.52%</strong></li>
+</ul>
+<p>这点很重要，因为它直接告诉我们：</p>
+<ul>
+<li>论文里的“high-volume stronger”<strong>不能直接照搬</strong>到当前 perp；</li>
+<li>至少在这段 recent sample 上，volume 不能当成无脑绿灯；</li>
+<li>真正该测的可能不是“高 volume”，而是<strong>macro-release volume spike / US-hours volume spike / funding-reset-adjacent volume spike</strong> 这些更细分的 session state。</li>
+</ul>
+<h3>7.3 ETH / SOL 没有给出更干净的迁移</h3>
+<p><code>ETHUSDT</code></p>
+<ul>
+<li><code>sign-hit</code>：<strong>50.36%</strong></li>
+<li><code>gross</code>：<strong>+4.90 bps / session</strong></li>
+<li><code>r_ONFH -&gt; r_LH</code>：<strong>p = 0.658</strong></li>
+</ul>
+<p><code>SOLUSDT</code></p>
+<ul>
+<li><code>sign-hit</code>：<strong>49.64%</strong></li>
+<li><code>gross</code>：<strong>+5.02 bps / session</strong></li>
+<li><code>r_ONFH -&gt; r_LH</code>：<strong>p = 0.508</strong></li>
+<li>反而 <code>r_SLH -&gt; r_LH</code> 稍有一点末端自相关：<strong>β = 0.216, p = 0.028</strong></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>这条线不是“随便扩到 majors 就更强”；</li>
+<li>ETH/SOL 没给出明显更漂亮的首尾动量传导；</li>
+<li>SOL 倒更像<strong>尾盘内部 60m -&gt; 30m 的末端惯性</strong>，而不是论文原本那条 pseudo-open to pseudo-close alpha。</li>
+</ul>
+<h2>8. 对当前 desk 的落点：先别把它当 broad session alpha，更像一个待拆的 BTC raw-alpha pocket</h2>
+<p>我现在对它的结论是：</p>
+<ol>
+<li><strong>它仍然是 raw alpha 候选。</strong></li>
+</ol>
+<ul>
+<li>因为 entry/exit 足够明确；</li>
+<li>因为用公开数据可复现；</li>
+<li>因为不是单纯解释机制。</li>
+</ul>
+<ol>
+<li><strong>但当前不适合直接当完整策略上线。</strong></li>
+</ol>
+<ul>
+<li>recent Binance perp 直译版太弱；</li>
+<li>volume 过滤没有复现论文主结论；</li>
+<li>跨资产扩展也不干净。</li>
+</ul>
+<ol>
+<li><strong>更合理的定位是：BTC pseudo-session router 的一个子模块。</strong></li>
+</ol>
+<ul>
+<li>可以跟已有 <code>US close / NYSE open / pseudo-session open</code> 相关 digest 组合对照；</li>
+<li>也可以和 funding / OI / top-trader / OFI 这类 state 叠加，看看什么时候首尾传导才会变强。</li>
+</ul>
+<h2>9. 如果要继续拆，最值得先拆哪三刀</h2>
+<h3>9.1 不要把 <code>r_ONFH</code> 当整体，先拆成两段</h3>
+<p>拆成：</p>
+<ul>
+<li><code>overnight return</code>（prev close -&gt; pseudo-open）</li>
+<li><code>first 30m return</code>（pseudo-open -&gt; pseudo-open+30m）</li>
+</ul>
+<p>因为 desk 真正要知道的是：</p>
+<ul>
+<li>是 overnight gap 在传导？</li>
+<li>还是 macro release 后 first 30m 的 order-flow 在传导？</li>
+<li>还是两段方向一致时才有 alpha？</li>
+</ul>
+<h3>9.2 不要再用 fixed UTC，当成最终版</h3>
+<p>下一轮要直接比较：</p>
+<ul>
+<li><code>fixed EST proxy</code></li>
+<li><code>fixed ET/DST-aware proxy</code></li>
+<li><code>volume-spike detected pseudo-open</code></li>
+<li><code>funding-reset-adjacent pseudo-close</code></li>
+</ul>
+<p>否则现在这个 fixed-UTC probe 很可能把真正的 session state 稀释掉了。</p>
+<h3>9.3 volume filter 要改成“事件型 volume”，不是粗暴 tercile</h3>
+<p>论文里的 high-volume stronger，更可能是：</p>
+<ul>
+<li>宏观数据发布时的集中交易；</li>
+<li>美股 / CME 相关会话的 liquidity handoff；</li>
+<li>不是“日常任何高成交日”都更强。</li>
+</ul>
+<p>所以要优先测试：</p>
+<ul>
+<li>CPI / GDP / FOMC days</li>
+<li>US cash-equity open-adjacent days</li>
+<li>funding extreme + volume spike 共振 days</li>
+</ul>
+<h2>10. 策略拆解（当前版本）</h2>
+<ul>
+<li>方向属性：single-asset / intraday / session-pocket / long-short 对称可测</li>
+<li>基础 alpha：<code>pseudo-open overnight+first-30m sign -&gt; pseudo-close last-30m sign</code></li>
+<li>主信号：<code>sign(r_ONFH)</code></li>
+<li>交易窗口：pseudo-close 前最后 <code>30m</code></li>
+<li>执行：先测 taker，后测 maker-first / join-on-pullback</li>
+<li>风控：notional cap、single-slot exposure cap、重大宏观事件日单独分桶</li>
+<li>成本：优先压 <code>4 / 6 / 8 / 10 bps round-trip</code> 后再决定是否保留</li>
+</ul>
+<h2>11. 下一步怎么测（必须项）</h2>
+<ol>
+<li><strong>把 <code>r_ONFH</code> 拆成 overnight 与 first-30m 两腿，做 2x2 sign router。</strong></li>
+</ol>
+<ul>
+<li><code>overnight_sign</code></li>
+<li><code>first30_sign</code></li>
+<li><code>agreement vs disagreement</code></li>
+</ul>
+<ol>
+<li><strong>把 pseudo-open 从 fixed UTC 改成 volume-spike detected open。</strong></li>
+</ol>
+<ul>
+<li>每天找 US-hours 附近 rolling 30m 最大成交段；</li>
+<li>再看这个“真实 open proxy”是否更贴近论文。</li>
+</ul>
+<ol>
+<li><strong>只在事件型 days 上复测。</strong></li>
+</ol>
+<ul>
+<li>CPI / GDP / FOMC / 非农等；</li>
+<li>看论文口中的“macro + liquidity handoff”是不是其实只在这些天有效。</li>
+</ul>
+<ol>
+<li><strong>叠加已有 desk state，再看 alpha 有没有被放大。</strong></li>
+</ol>
+<ul>
+<li><code>OI quadrant</code></li>
+<li><code>funding extreme</code></li>
+<li><code>top-trader skew</code></li>
+<li><code>OFI / taker imbalance</code></li>
+</ul>
+<ol>
+<li><strong>把 BTC 与 ETH/SOL 分开，不要假设跨资产共用一个 session alpha。</strong></li>
+</ol>
+<ul>
+<li>当前更像 BTC 研究题，不像全市场模板。</li>
+</ul>
+<h2>12. 一句话结论</h2>
+<p>这篇 2022 论文真正给 desk 的，不是“某个固定时钟会涨”，而是<strong><code>pseudo-open</code> 那段先发生的方向，会不会在 <code>pseudo-close</code> 前最后 30 分钟再传一次</strong>。这条 raw alpha 在论文里很干净，但在 recent Binance perp 直译版上已经明显变淡——所以它现在更适合作为 <strong>BTC session-router 的待拆模块</strong>，而不是直接上线的完整策略。</p>
+</body>
+</html>

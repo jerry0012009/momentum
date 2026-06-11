@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2021 CME Bitcoin futures 论文只读成黑箱：对 desk 更该先测的是「next-bar sign classifier + 高阈值 abstain」raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2021 CME Bitcoin futures 论文只读成黑箱：对 desk 更该先测的是「next-bar sign classifier + 高阈值 abstain」raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-27 09:22 UTC</span>
+      <span class="pill">研究时间：2026-03-27 09:04 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/directional/next-bar/sign-classification/abstain/taker-imbalance/btc/futures/5m/15m/paper/external-data</span>
+      <span class="pill">证据类型：论文证据 + 公共数据最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-27_0904_cme-btcfutures-sign-classifier-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-27 09:04 UTC</li>
+<li>类型：论文</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：最近若干根 bar 的收益、波动与主动买卖失衡里，存在可学习的下一根方向 edge；交易上不是根根都做，而是只做高置信度那一小撮。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/microstructure/directional/next-bar/sign-classification/abstain/taker-imbalance/btc/futures/5m/15m/paper/external-data</li>
+<li>证据类型：论文证据 + 公共数据最小快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>Erdinç Akyıldırım、Oğuzhan Çepni、Samuel Corbet、Gazi Uddin 在 2021 年《Annals of Operations Research》里的 <strong>Forecasting mid-price movement of Bitcoin futures using machine learning</strong>。论文用 CME Bitcoin futures 的 <code>1M~5M</code> 合约、<code>5/10/15/30/60m</code> 频率，检验“下一根中间价方向”是否可预测。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>base alpha 很明确</strong>：不是“机器学习很厉害”，而是 <strong>next-bar sign prediction 本身就是 raw alpha</strong>；ML 只是把这个 edge 从高频特征里读出来。</li>
+<li>论文样本为 <code>2020-01-02 ~ 2020-09-10</code> 的 CME BTC futures；作者比较了 kNN、Logit、Naive Bayes、RF、SVM、XGBoost 与 ARIMA / random walk。</li>
+<li>论文里最强的不是平均收益率吹得多高，而是 <strong>方向命中率稳定高于 50%</strong>：摘要给出的最好结果是 <strong>SVM 平均 OOS 约 56%，个别 case 最高到 71%</strong>；强势 case 更集中在 <strong>更长久期合约、较慢 bar</strong>。</li>
+<li>我用 Binance Futures 公共 kline（OHLCV + taker buy volume）做了一个 desk 化最小迁移：最近约 <code>2,975</code> 根 bar 上，<code>15m</code> RF 的 OOS accuracy 约 <strong>52.3%</strong>；但若按 <code>0.55/0.45</code> 阈值做 next-bar long/short，trade rate 约 <strong>22.4%</strong>，扣 <strong>4 bps</strong> 换手成本后仍是 <strong>-1.05 bps/bar</strong>。</li>
+<li>这说明它<strong>不是没有 edge</strong>，而是当前最粗 public 版还不够：它更像需要 <strong>高阈值 abstain + 更细特征 + 更便宜执行</strong> 才可能活的方向型 raw alpha。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li>最近 intake 很多是 <code>pairs / XS reversal / relative value</code>，这篇正好补 <strong>single-asset directional raw alpha</strong> 这一桶。</li>
+<li>它和 desk 默认周期直接对上：论文本身就覆盖 <code>5m/15m/30m/60m</code>，不是硬把日频东西往短周期上搬。</li>
+<li>数据公开、实验很快：先用 Binance/Bybit 公共 futures kline 做 weak proxy，若值得再升到 <code>aggTrades + bookTicker</code> 或 L2。</li>
+<li>它还能自然拆成完整策略：<code>signal probability → abstain threshold → 持有 1~3 bars → maker/taker cost gate</code>，很适合 first verdict。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势 / 方向型 raw alpha</li>
+<li>基础 alpha：最近数根 bar 的 return/range/taker-flow 对下一根方向存在可学习 edge</li>
+<li>regime：优先 <code>15m</code>、高流动性主合约、低显性成本窗口；次优再看 quarterlies / longer-dated futures</li>
+<li>filter / veto：只在 <code>p(up) &gt;= 0.55</code> 或 <code>&lt;= 0.45</code> 时开仓；<code>p</code> 靠近 0.5 一律放弃</li>
+<li>risk / sizing / execution overlay：仓位按 <code>|p-0.5|</code> 分层；默认持有 1 bar，最多 3 bars；若 spread/fee &gt; 预期 edge，直接 veto</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：短周期 BTC futures 的下一根方向不是纯随机；edge 在 <code>15m</code> 和较长久期合约上比 <code>5m</code> 永续更干净。</li>
+<li><strong>数据源</strong>：Binance Futures 公共 <code>klines</code>（含 <code>taker_buy_base</code>），后续可升级到 <code>aggTrades/bookTicker</code>；完全公开可拿。</li>
+<li><strong>最小口径</strong>：<code>BTCUSDT perp</code> 与 <code>BTCUSDT_260626</code>，<code>5m/15m</code>；特征只先用过去 <code>6</code> 根的 return、body、range、signed taker imbalance、volume z-score。</li>
+<li><strong>交易规则</strong>：walk-forward 训练方向分类器；若 <code>p&gt;=0.55</code> 做多、<code>p&lt;=0.45</code> 做空，否则空仓；默认持有 1 bar，bar close 平仓；round-trip 先按 <code>4 bps</code>。</li>
+<li><strong>我这轮快检结果</strong>：</li>
+<li><code>BTCUSDT perp 15m</code>：RF OOS accuracy <strong>52.3%</strong>；<code>0.55</code> 阈值 trade rate <strong>22.4%</strong>，hit when trade <strong>56.5%</strong>，但净值仍约 <strong>-1.05 bps/bar</strong>。</li>
+<li><code>BTCUSDT perp 5m</code>：Logit OOS accuracy 只有 <strong>50.1%</strong>，基本不足以做 taker。</li>
+<li><code>BTCUSDT_260626 5m</code>：Logit OOS accuracy <strong>51.8%</strong>；<code>0.55</code> 阈值 hit when trade <strong>55.9%</strong>，但 trade rate 仅 <strong>5.9%</strong>，净值仍约 <strong>-0.31 bps/bar</strong>。</li>
+</ul>
+<h2>5. 风险与边界</h2>
+<ul>
+<li>论文主样本是 <strong>2020 COVID 冲击期的 CME futures</strong>，可迁移性不能默认成立。</li>
+<li>论文里最亮眼的高命中率集中在部分长久期 / 小 hold-out case，不能直接按 headline 接受。</li>
+<li>我这轮 public 迁移只用了 kline 级 proxy，离真正 microstructure 特征还差一层；当前结果更像“<strong>有弱 edge，但 taker 先不过线</strong>”。</li>
+</ul>
+<h2>6. 下一步怎么测</h2>
+<ol>
+<li>升级特征：把 <code>aggTrades</code> 的 signed volume、VWAP gap、trade count shock 加进来，不再只看 kline。</li>
+<li>做 <strong>maker/taker 双成本梯度</strong>：<code>1/2/4/6 bps</code>，确认它究竟是 maker alpha 还是根本没 edge。</li>
+<li>做 <strong>probability decile</strong>：只保留最极端 <code>top/bottom 10%</code> 置信度，看 net edge 是否跳变。</li>
+<li>把同一框架平移到 <code>ETHUSDT</code> 与 <code>BTC quarterlies → perp</code>，确认是不是只在 BTC 主合约有效。</li>
+</ol>
+<h2>7. 来源</h2>
+<ul>
+<li>Akyıldırım, E.; Çepni, O.; Corbet, S.; Uddin, G. (2021). *Forecasting mid-price movement of Bitcoin futures using machine learning*. <strong>Annals of Operations Research</strong>. DOI: <code>10.1007/s10479-021-04205-x</code></li>
+<li>Readable URL: <a href="https://link.springer.com/article/10.1007/s10479-021-04205-x">https://link.springer.com/article/10.1007/s10479-021-04205-x</a></li>
+<li>PMC full text: <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC8296834/">https://pmc.ncbi.nlm.nih.gov/articles/PMC8296834/</a></li>
+<li>DOI URL: <a href="https://doi.org/10.1007/s10479-021-04205-x">https://doi.org/10.1007/s10479-021-04205-x</a></li>
+<li>Repo URL：未见官方 repo</li>
+</ul>
+</body>
+</html>

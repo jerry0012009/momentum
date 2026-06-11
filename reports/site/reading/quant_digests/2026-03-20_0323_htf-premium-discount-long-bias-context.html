@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 HTF `premium/discount` 当多空对称 shared gate：repo 里的 `prev-4h range midline` 在 15m 更像 Fib retest / EMA continuation 的 long-side context，不适合 breakout-short</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 HTF `premium/discount` 当多空对称 shared gate：repo 里的 `prev-4h range midline` 在 15m 更像 Fib retest / EMA continuation 的 long-side context，不适合 breakout-short</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-20 03:24 UTC</span>
+      <span class="pill">研究时间：2026-03-20 03:23 UTC</span>
+      <span class="pill">类型：GitHub + 本地代理快检</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/fib/premium-discount/h4/context/asymmetry/continuation/filter/repo/crypto/15m</span>
+      <span class="pill">证据类型：工程证据（仓库源码）+ 代理快检（公开行情）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-20_0323_htf-premium-discount-long-bias-context.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-20 03:23 UTC</li>
+<li>类型：GitHub + 本地代理快检</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/fib/premium-discount/h4/context/asymmetry/continuation/filter/repo/crypto/15m</li>
+<li>证据类型：工程证据（仓库源码）+ 代理快检（公开行情）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看 GitHub 仓库 <strong>carlosrod723 / MQL5-Trading-Bot (2025)</strong>。真正值得偷的不是它整套 SMC + ML 外壳，而是一个很轻、很快能复现的旁支：</p>
+<ul>
+<li>用 <strong>上一根完整 H4 K 线的 high / low</strong> 定义 Fib 区间；</li>
+<li>用 <code>mid = low + 0.5 * (high-low)</code> 把当前价格分成 <code>premium / discount</code>；</li>
+<li>在它的 <code>FT (Follow-Through)</code> 里，<strong>bullish 只在 discount 放行，bearish 只在 premium 放行</strong>。</li>
+</ul>
+<p>源码很直白：<code>GetFibonacciZone()</code> 直接取 <code>HigherTF</code> 上一根完整 K 线的 <code>high/low</code>，<code>EvaluateFibPosition()</code> 用 <code>FibEntryLevel=0.5</code> 切 midline，<code>CheckFTSetup()</code> 再把 <code>close1/close2</code> 对 <code>prevHigh/prevLow</code> 的连续收盘突破，与 <code>inDiscount / inPremium</code> 绑定在一起。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这个 repo 里的 <code>premium/discount</code> 更像 <strong>Fib retest / EMA continuation 的 long-side context gate</strong>，不该直接镜像成 <code>breakout-short</code> 的 shared short gate。</li>
+<li><strong>一句话怎么证明</strong>：在 <code>BTC/ETH/SOL perp, 15m, ~125d</code> 的本地 FT 代理里，<code>discount 做多</code> 有轻度但一致的改善；但 <code>premium 做空</code> 反而比不加这个条件更差。</li>
+</ul>
+<h3>2.1 repo 里真正有用的实现细节</h3>
+<p>不是传统“画一段 swing 再盯 0.618 回踩”，而是更便宜的状态读法：</p>
+<ol>
+<li><code>HigherTF = H4</code></li>
+<li><code>fibHigh = iHigh(H4, shift=1)</code>，<code>fibLow = iLow(H4, shift=1)</code></li>
+<li><code>midLevel = fibLow + (fibHigh-fibLow) * 0.5</code></li>
+<li>当前价在 mid 下方记作 <code>discount</code>，上方记作 <code>premium</code></li>
+<li><code>FT</code> 信号本体只要求：最近两根 <code>15m</code> 收盘同时突破前两根范围（bars 3-4）</li>
+<li>再额外要求：</li>
+</ol>
+<ul>
+<li>bullish FT 必须 <code>inDiscount</code></li>
+<li>bearish FT 必须 <code>inPremium</code></li>
+</ul>
+<p>这点对我们 desk 很重要：<strong>repo 借的是 Fib 语义，不是精细回撤位本身</strong>。</p>
+<h3>2.2 本地 15m 代理快检（BTC/ETH/SOL，近约 125 天）</h3>
+<p>我按 repo 的 FT 核心骨架做了一个最小代理：</p>
+<ul>
+<li>long：最近两根 <code>15m</code> 收盘都高于 bars <code>3-4</code> 的前置区间高点</li>
+<li>short：最近两根 <code>15m</code> 收盘都低于 bars <code>3-4</code> 的前置区间低点</li>
+<li>context：使用<strong>上一根完整 4h K 线</strong>的 <code>midline</code></li>
+<li>评估：看未来 <code>4 bars</code>（1 小时）signed return</li>
+</ul>
+<p>#### long 侧：<code>discount</code> 有轻度改善</p>
+<ul>
+<li><code>discount match</code>：<code>n=916</code>，<code>mean = +2.60 bps</code>，<code>win rate = 49.78%</code></li>
+<li><code>discount mismatch</code>：<code>n=3101</code>，<code>mean = +1.23 bps</code>，<code>win rate = 45.15%</code></li>
+<li>差值：</li>
+<li><code>mean</code> 约 <strong>+1.36 bps</strong></li>
+<li><code>win rate</code> 约 <strong>+4.64 pct-pts</strong></li>
+<li><code>median</code> 从 <code>-4.82 bps</code> 改善到 <code>-0.13 bps</code></li>
+<li><code>median MAE</code> 从 <code>-33.96 bps</code> 收窄到 <code>-29.69 bps</code></li>
+</ul>
+<p>解释：这更像一个 <strong>long-side context filter</strong>，能让 continuation/pullback long 的质量略微更干净。</p>
+<p>#### short 侧：<code>premium</code> 不但没帮忙，反而更差</p>
+<ul>
+<li><code>premium match</code>：<code>n=960</code>，<code>mean = -0.79 bps</code>，<code>win rate = 43.65%</code></li>
+<li><code>premium mismatch</code>：<code>n=3312</code>，<code>mean = +3.16 bps</code>，<code>win rate = 46.29%</code></li>
+<li>差值：</li>
+<li><code>mean</code> 约 <strong>-3.95 bps</strong></li>
+<li><code>win rate</code> 约 <strong>-2.64 pct-pts</strong></li>
+<li><code>median</code> 也更差（<code>-5.87 bps</code> vs <code>-4.79 bps</code>）</li>
+</ul>
+<p>解释：<strong>不能把“premium 做空”当成 long 侧的镜像真理</strong>。这条 short gate 现阶段更像会误伤 <code>breakout-short follow-up</code>。</p>
+<p>#### aggregate 也不支持把它升成 shared gate</p>
+<ul>
+<li><code>context match</code> 总体：<code>n=1876</code>，<code>mean = +0.87 bps</code></li>
+<li><code>context mismatch</code> 总体：<code>n=6413</code>，<code>mean = +2.23 bps</code></li>
+</ul>
+<p>这说明：<strong>一旦把 long/short 合起来看，它不是共享放行键，反而更像一个需要保留方向不对称的 context 读数。</strong></p>
+<h2>3. 为什么和当前三条收口线直接相关</h2>
+<p>这题不是偏题，反而是在帮三条线少走弯路：</p>
+<ul>
+<li><code>Fibonacci confirmation / retest_hold</code>：Fib 不一定非得继续炼成“0.618 精确触位触发”，先把它降级成 <strong>HTF context</strong>，更快、更诚实。</li>
+<li><code>EMA / PSAR raw alpha focus</code>：如果想给 raw alpha 加一层低复杂度结构背景，这个 <code>prev-4h midline</code> 比继续叠更细的回撤比例更便宜。</li>
+<li><code>V3 breakout-short follow-up</code>：本轮最有价值的信息恰恰是<strong>别把这条逻辑镜像到 short 侧</strong>。也就是说，它帮我们明确了一件事：<code>breakout-short</code> 先不要认领这条 gate。</li>
+</ul>
+<p>如果现在继续把所有结构过滤层都写成多空对称，只会让三条收口线越来越乱；这轮更值得做的是把 <strong>可保留的不对称</strong> 先钉死。</p>
+<h2>4. 可复刻的最小实验（下一步怎么测）</h2>
+<h3>研究假设</h3>
+<p><code>prev-4h premium/discount midline</code> 只应作为 <strong>long-side context gate</strong> 服务 <code>Fib retest_hold / EMA continuation</code>，不应直接镜像成 <code>breakout-short</code> 的 mandatory short gate。</p>
+<h3>一个可计算定义</h3>
+<ul>
+<li><code>prev4h_high = high</code> of previous completed <code>4h</code> bar</li>
+<li><code>prev4h_low = low</code> of previous completed <code>4h</code> bar</li>
+<li><code>mid = (prev4h_high + prev4h_low) / 2</code></li>
+<li>long context match：<code>entry_price &lt; mid</code></li>
+<li>short context match：<code>entry_price &gt; mid</code></li>
+</ul>
+<h3>最小回测切口</h3>
+<p>优先做 <strong>三臂 honesty test</strong>：</p>
+<ol>
+<li>baseline（现有 <code>Fib retest_hold</code> / <code>EMA continuation</code> / <code>breakout-short</code> 原规则）</li>
+<li><strong>long-only context gate</strong>：只给 <code>Fib retest_hold</code> 与 <code>EMA continuation</code> 加 <code>entry &lt; prev4h_mid</code></li>
+<li><strong>symmetric gate 对照组</strong>：long 要 <code>discount</code>、short 也强行要 <code>premium</code></li>
+</ol>
+<h3>建议样本与口径</h3>
+<ul>
+<li>资产：<code>BTC/ETH/SOL perp</code></li>
+<li>周期：<code>15m</code> 主判定，<code>5m</code> 可做执行细化</li>
+<li>样本：最近 <code>180~365d</code></li>
+<li>成本：<code>6 / 10 / 15 bps per side</code></li>
+<li>观察窗：先看 <code>4 bars</code> 与 <code>8 bars</code> 两档</li>
+</ul>
+<h3>最先看 4 个指标</h3>
+<ol>
+<li><code>post_cost_return</code></li>
+<li><code>long vs short decomposition</code></li>
+<li><code>trade_count / turnover</code></li>
+<li><code>p5 trade pnl</code> 与 <code>max_drawdown</code></li>
+</ol>
+<h3>如果只做一个最小实验</h3>
+<p>先只在 <code>Fib retest_hold</code> 上测：</p>
+<ul>
+<li>触发仍按现有 retest_hold 定义</li>
+<li>只额外要求 <code>retest bar close &lt; prev4h_mid</code></li>
+<li>再和“同一套规则 + short 也加 premium gate”的版本对照</li>
+</ul>
+<p>如果 long-only 版本改善而 symmetric 版本变差，就说明这条 context 的角色已经很清楚了。</p>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是一份 <strong>repo 工程逻辑 + 本地代理快检</strong>，不是正式论文结论。</li>
+<li>该 repo 主语境是 <code>M15 + H4</code> 的 MetaTrader/FX 执行框架，还带 <code>kill zone</code>、fractal sweep、order block 等别的条件；我们本轮只抽取其中最便宜的一根旁支。</li>
+<li>它的“Fib”本质上只是 <strong>上一根完整 H4 K 线的 midline 分层</strong>，不等于传统 swing-based Fibonacci retracement。</li>
+<li>本地快检未纳入 funding / basis / 冲击成本，也不是完整策略回测；只能说明“这层 context 在 15m 上更像 long-side asymmetric gate”。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li>carlosrod723. (2025). *MQL5 Trading Bot*. GitHub Repository.</li>
+</ol>
+<ul>
+<li>Authors: carlosrod723</li>
+<li>Year: 2025</li>
+<li>Title: MQL5 Trading Bot</li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://raw.githubusercontent.com/carlosrod723/MQL5-Trading-Bot/main/README.md&gt;">https://raw.githubusercontent.com/carlosrod723/MQL5-Trading-Bot/main/README.md&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/carlosrod723/MQL5-Trading-Bot&gt;">https://github.com/carlosrod723/MQL5-Trading-Bot&gt;</a></li>
+</ul>
+<ol>
+<li>carlosrod723. (2025). *MyTradingBot.mq5* (<code>MQL5/Experts/MyTradingBot.mq5</code>).</li>
+</ol>
+<ul>
+<li>Authors: carlosrod723</li>
+<li>Year: 2025</li>
+<li>Title: MyTradingBot.mq5</li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://raw.githubusercontent.com/carlosrod723/MQL5-Trading-Bot/main/MQL5/Experts/MyTradingBot.mq5&gt;">https://raw.githubusercontent.com/carlosrod723/MQL5-Trading-Bot/main/MQL5/Experts/MyTradingBot.mq5&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/carlosrod723/MQL5-Trading-Bot&gt;">https://github.com/carlosrod723/MQL5-Trading-Bot&gt;</a></li>
+</ul>
+<ol>
+<li>Binance. (2026). *USDⓈ-M Futures REST API — Kline/Candlestick Data* (<code>/fapi/v1/klines</code>).</li>
+</ol>
+<ul>
+<li>Authors: Binance</li>
+<li>Year: 2026</li>
+<li>Title: USDⓈ-M Futures API Docs</li>
+<li>Venue: Binance Developers</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<h2>7. 本轮落地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/htf_premium_discount_ft_proxy_2026-03-20.csv</code></li>
+<li><code>reports/artifacts/quant_digests/htf_premium_discount_ft_proxy_summary_2026-03-20.csv</code></li>
+</ul>
+</body>
+</html>

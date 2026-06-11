@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PyTrendline Event Source Bridge v1</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background: #f8fafc; color: #0f172a; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 18px 48px; }
+    .card { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px 22px; margin-bottom: 18px; }
+    .muted { color: #64748b; }
+    .pill { display: inline-block; margin-right: 8px; margin-top: 8px; padding: 5px 10px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; }
+    .tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
+    .tbl th, .tbl td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; vertical-align: top; }
+    .tbl th { background: #f8fafc; }
+    ul { line-height: 1.7; }
+    code { background: #f1f5f9; padding: 1px 4px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p><a href="../../index.html">← 返回站点首页</a></p>
+    <div class="card">
+      <h1>PyTrendline Event Source Bridge v1</h1>
+      <p class="muted">把现有 <code>pytrendline_research</code> 产物翻译成一版最小 event-source sample，供 Mainline 后续统一 schema 与 cross-engine 比较使用。</p>
+      <div>
+        <span class="pill">Generated: 2026-03-12 20:30 UTC</span>
+        <span class="pill">symbol: BTC-USD</span>
+        <span class="pill">interval: 5m</span>
+        <span class="pill">representative events: 215</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>这页解决什么问题？</h2>
+      <ul>
+        <li>确认 <code>PyTrendline</code> 已经可以输出一版最小、可复用的 <code>event sample</code>，而不再只停留在 explainability 页面。</li>
+        <li>先把 <code>representative line</code> / <code>breakout tag</code> / <code>score</code> / <code>slope</code> 翻译成统一 schema 可消费的字段。</li>
+        <li>明确当前边界：v1 仍主要覆盖 <code>breakout</code> 与非 breakout 的 <code>touch candidate</code>，还不等于完整的 rebound / retest 事件宇宙。</li>
+      </ul>
+      <p><strong>核心结论：</strong>当前已经可以把 <code>PyTrendline</code> 输出成最小 event-source sample，足以进入下一步 schema 对照与 source-level comparison；但它当前仍偏 breakout / touch 语义，还不能直接宣称已覆盖完整 rebound 研究问题。</p>
+      <p><strong>证据：</strong>本次基于已存在的 <code>support_trendlines.csv</code> 与 <code>resistance_trendlines.csv</code>，稳定产出 <code>215</code> 条 representative event rows，其中 breakout=210、touch=5，并已写出 <code>outputs/research/pytrendline_event_sample.csv</code>。</p>
+    </div>
+
+    <div class="card">
+      <h2>v1 sample 概览</h2>
+      <ul>
+        <li>all lines: <strong>228</strong></li>
+        <li>representative lines: <strong>215</strong></li>
+        <li>breakout events: <strong>210</strong></li>
+        <li>touch events: <strong>5</strong></li>
+        <li>support-side rows: <strong>125</strong></li>
+        <li>resistance-side rows: <strong>90</strong></li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>字段映射（最小版）</h2>
+      <ul>
+        <li><code>engine_line_id</code> ← 原始 <code>id</code></li>
+        <li><code>line_origin_type</code> ← 是否为 <code>is_best_from_duplicate_group</code></li>
+        <li><code>event_family</code> ← <code>is_breakout ? breakout : touch</code></li>
+        <li><code>event_subtype</code> ← <code>breakout_tagged_line</code> / <code>line_touch_candidate</code></li>
+        <li><code>event_timestamp</code> ← breakout 用 <code>breakout_date</code>，否则退回 <code>ends_at_date</code></li>
+        <li><code>line_quality_bucket</code> / <code>score_bucket</code> ← 基于当前窗口内 <code>score</code> 分位数分桶</li>
+        <li><code>slope_bucket</code> ← 基于当前窗口内 <code>slope</code> 大小与方向分桶</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>事件计数分布</h2>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>event_family</th>
+      <th>line_side</th>
+      <th>line_quality_bucket</th>
+      <th>events</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>mid</td>
+      <td>32</td>
+    </tr>
+    <tr>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>high</td>
+      <td>29</td>
+    </tr>
+    <tr>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>low</td>
+      <td>27</td>
+    </tr>
+    <tr>
+      <td>breakout</td>
+      <td>support</td>
+      <td>mid</td>
+      <td>71</td>
+    </tr>
+    <tr>
+      <td>breakout</td>
+      <td>support</td>
+      <td>low</td>
+      <td>26</td>
+    </tr>
+    <tr>
+      <td>breakout</td>
+      <td>support</td>
+      <td>high</td>
+      <td>25</td>
+    </tr>
+    <tr>
+      <td>touch</td>
+      <td>resistance</td>
+      <td>low</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>touch</td>
+      <td>resistance</td>
+      <td>mid</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>touch</td>
+      <td>support</td>
+      <td>mid</td>
+      <td>3</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+
+    <div class="card">
+      <h2>最高分代表事件（Top 20）</h2>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>event_timestamp</th>
+      <th>event_family</th>
+      <th>line_side</th>
+      <th>engine_line_id</th>
+      <th>line_quality_bucket</th>
+      <th>slope_bucket</th>
+      <th>num_points</th>
+      <th>score</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>2026-03-12 06:20</td>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>R-[41,59,60]</td>
+      <td>high</td>
+      <td>down_mid</td>
+      <td>3</td>
+      <td>35305.885985</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 05:40</td>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>R-[16,41,63]</td>
+      <td>high</td>
+      <td>down_mid</td>
+      <td>3</td>
+      <td>35177.966123</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 07:30</td>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>R-[5,12,83]</td>
+      <td>high</td>
+      <td>down_mid</td>
+      <td>3</td>
+      <td>20911.947869</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 03:25</td>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>R-[1,12,16,17,31]</td>
+      <td>high</td>
+      <td>down_steep</td>
+      <td>5</td>
+      <td>17609.864328</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 07:45</td>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>R-[20,81,89]</td>
+      <td>high</td>
+      <td>up_flat</td>
+      <td>3</td>
+      <td>15585.690465</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 02:30</td>
+      <td>breakout</td>
+      <td>support</td>
+      <td>S-[19,46,56]</td>
+      <td>high</td>
+      <td>down_mid</td>
+      <td>3</td>
+      <td>14706.659380</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 04:05</td>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>R-[16,35,39,46]</td>
+      <td>high</td>
+      <td>down_steep</td>
+      <td>4</td>
+      <td>7078.110480</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 03:25</td>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>R-[12,16,17,31]</td>
+      <td>high</td>
+      <td>down_steep</td>
+      <td>4</td>
+      <td>5857.688478</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 04:35</td>
+      <td>breakout</td>
+      <td>support</td>
+      <td>S-[25,48,65,74]</td>
+      <td>high</td>
+      <td>up_mid</td>
+      <td>4</td>
+      <td>5829.019290</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 04:35</td>
+      <td>breakout</td>
+      <td>support</td>
+      <td>S-[25,49,54,64,73]</td>
+      <td>high</td>
+      <td>up_mid</td>
+      <td>5</td>
+      <td>5422.271111</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 02:50</td>
+      <td>breakout</td>
+      <td>support</td>
+      <td>S-[23,38,53,59,61,65]</td>
+      <td>high</td>
+      <td>up_flat</td>
+      <td>6</td>
+      <td>5329.810075</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 05:20</td>
+      <td>breakout</td>
+      <td>support</td>
+      <td>S-[46,51,64,73]</td>
+      <td>high</td>
+      <td>up_mid</td>
+      <td>4</td>
+      <td>5017.632378</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 02:50</td>
+      <td>breakout</td>
+      <td>support</td>
+      <td>S-[23,38,53,59,65,71]</td>
+      <td>high</td>
+      <td>up_flat</td>
+      <td>6</td>
+      <td>4648.959110</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 02:10</td>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>R-[16,21,25,27]</td>
+      <td>high</td>
+      <td>down_steep</td>
+      <td>4</td>
+      <td>4603.659863</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 07:45</td>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>R-[21,81,89]</td>
+      <td>high</td>
+      <td>up_flat</td>
+      <td>3</td>
+      <td>4045.466105</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 08:15</td>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>R-[69,85,88]</td>
+      <td>high</td>
+      <td>up_steep</td>
+      <td>3</td>
+      <td>3988.341423</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 02:05</td>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>R-[12,24,25]</td>
+      <td>high</td>
+      <td>down_steep</td>
+      <td>3</td>
+      <td>3877.185485</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 03:20</td>
+      <td>breakout</td>
+      <td>resistance</td>
+      <td>R-[28,46,53,66,72,74]</td>
+      <td>high</td>
+      <td>up_flat</td>
+      <td>6</td>
+      <td>3447.057008</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 04:50</td>
+      <td>breakout</td>
+      <td>support</td>
+      <td>S-[46,92,94]</td>
+      <td>high</td>
+      <td>up_mid</td>
+      <td>3</td>
+      <td>3388.615008</td>
+    </tr>
+    <tr>
+      <td>2026-03-12 02:20</td>
+      <td>breakout</td>
+      <td>support</td>
+      <td>S-[9,48,55]</td>
+      <td>high</td>
+      <td>down_mid</td>
+      <td>3</td>
+      <td>3325.186629</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+  </div>
+</body>
+</html>

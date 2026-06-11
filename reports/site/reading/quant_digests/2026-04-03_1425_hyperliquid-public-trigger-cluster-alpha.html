@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hyperliquid public-trigger-cluster cascade alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Hyperliquid public-trigger-cluster cascade alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 14:22 UTC</span>
+      <span class="pill">研究时间：`2026-04-03 14:19 UTC`</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_1425_hyperliquid-public-trigger-cluster-alpha.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>公开可见的 whale trigger orders / liquidation prices 会把短线价格“拉”向簇密集区；当价格进入高密度 cluster 邻域并出现同向微冲击时，更值得先做朝 cluster 的 continuation，而不是先猜顶猜底。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<p>&gt; 一句话先定性：这轮不把 2026 新 repo 的主叙事继续写成“funding + OI + liquidation 老三样”，而是把里面更适合我们 desk 的旁支单独拎出来——<strong>用 Hyperliquid 公共 <code>frontendOpenOrders</code> + <code>clearinghouseState</code> 做可扫描的 stop / liquidation map，再交易“向 cluster 逼近时的短时级联 continuation”</strong>。</p>
+<h2>1. 为什么这轮值得写</h2>
+<p>这轮它比再补一篇泛 breakout/filter 更值钱，原因很简单：</p>
+<ol>
+<li><strong>base alpha 说得清</strong>：公开 stop / liquidation cluster 不是纯背景噪音，而是短时 liquidity target；当价格已朝它移动时，后续 <code>1m/3m/5m</code> 往往先看“打到它”。</li>
+<li><strong>数据公开可得</strong>：Hyperliquid 官方 <code>info</code> endpoint 公开给出：</li>
+</ol>
+<ul>
+<li><code>frontendOpenOrders</code>：<code>isTrigger / orderType / triggerCondition / triggerPx</code></li>
+<li><code>clearinghouseState</code>：持仓、杠杆、<code>liquidationPx</code></li>
+<li><code>allMids</code> / <code>trades</code>：当前中间价与实时成交</li>
+</ul>
+<ol>
+<li><strong>不是只能当 filter</strong>：只要把 cluster 密度、距离、方向、时间窗和 cost 壳写清，它本身就是一条独立 event-driven raw alpha。</li>
+<li><strong>时间尺度天然匹配 desk</strong>：这不是日频链上慢变量；本质上是秒级/分钟级 stop-sweep 路径问题，天然属于 <code>1m/3m/5m</code>，<code>15m</code> 更像管理与二次确认层。</li>
+</ol>
+<p>这也符合当前 intake 优先级：它不是纯解释，不是纯 overlay，而是一个<strong>能直接下手做最小实验</strong>的 raw alpha 候选。</p>
+<p>---</p>
+<h2>2. 本次主源与证据类型</h2>
+<h3>主源 A：2026 GitHub 新 repo（旁支想法的核心来源）</h3>
+<ul>
+<li><strong>Author / Maintainer</strong>: <code>wilsontiger2222</code></li>
+<li><strong>Year</strong>: 2026</li>
+<li><strong>Title</strong>: *liquidation-hunter*</li>
+<li><strong>Venue / DOI</strong>: GitHub repo / N.A.</li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://github.com/wilsontiger2222/liquidation-hunter&gt;">https://github.com/wilsontiger2222/liquidation-hunter&gt;</a></li>
+<li><strong>Repo URL</strong>: &lt;<a href="https://github.com/wilsontiger2222/liquidation-hunter&gt;">https://github.com/wilsontiger2222/liquidation-hunter&gt;</a></li>
+<li><strong>GitHub metadata</strong>:</li>
+<li>created: <code>2026-02-08</code></li>
+<li>pushed: <code>2026-02-08</code></li>
+<li>description: <code>Liquidation cascade trading strategy for crypto perps</code></li>
+<li><strong>本次重点审阅文件</strong>:</li>
+<li><code>README.md</code></li>
+<li><code>config.yaml</code></li>
+<li><code>main.py</code></li>
+<li><code>src/data/hyperliquid_client.py</code></li>
+<li><code>src/data/positions.py</code></li>
+<li><code>src/signals/liquidation_map.py</code></li>
+<li><code>src/signals/signal_aggregator.py</code></li>
+<li><code>tests/test_signal_aggregator.py</code></li>
+</ul>
+<h3>主源 B：Hyperliquid 官方 API 文档（证明数据公开可扫）</h3>
+<ul>
+<li><strong>Author</strong>: Hyperliquid Docs</li>
+<li><strong>Year</strong>: 2026 访问版本</li>
+<li><strong>Title</strong>: *Info endpoint*</li>
+<li><strong>Venue / DOI</strong>: Hyperliquid Docs / N.A.</li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint&gt;">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint&gt;</a></li>
+<li><strong>关键公开字段</strong>:</li>
+<li><code>openOrders</code></li>
+<li><code>frontendOpenOrders</code></li>
+<li><code>allMids</code></li>
+<li><code>frontendOpenOrders</code> 返回 <code>isTrigger / orderType / triggerCondition / triggerPx / reduceOnly</code>，足够拼 stop-map</li>
+</ul>
+<h3>主源 C：Hyperliquid 官方 WebSocket 文档（实时触发流入口）</h3>
+<ul>
+<li><strong>Author</strong>: Hyperliquid Docs</li>
+<li><strong>Year</strong>: 2026 访问版本</li>
+<li><strong>Title</strong>: *Websocket*</li>
+<li><strong>Venue / DOI</strong>: Hyperliquid Docs / N.A.</li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket&gt;">https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket&gt;</a></li>
+<li><strong>用途</strong>: 用 <code>wss://api.hyperliquid.xyz/ws</code> 订阅 <code>trades</code>，给 cluster touch / break / follow-through 做实时触发。</li>
+</ul>
+<h3>微观结构地基（为什么 stop-sweep 这类事件值得先测）</h3>
+<ul>
+<li><strong>Easley, López de Prado, O’Hara (2012)</strong></li>
+<li><strong>Title</strong>: *Flow toxicity and liquidity in a high-frequency world*</li>
+<li><strong>Venue</strong>: *Review of Financial Studies*</li>
+<li><strong>DOI</strong>: <code>10.1093/rfs/hhs053</code></li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://doi.org/10.1093/rfs/hhs053&gt;">https://doi.org/10.1093/rfs/hhs053&gt;</a></li>
+</ul>
+<p>&gt; 这篇不是直接讲 crypto stop-map，但它给了足够硬的地基：<strong>当订单流已带方向性且流动性脆弱时，接下来短时价格并不“中性”，而是容易继续沿冲击方向走。</strong> public stop/liq cluster 可以理解成把“脆弱位置”显式化了。</p>
+<p>---</p>
+<h2>3. 这次不跟 repo headline，而是抽它更适合 desk 的旁支</h2>
+<p>repo headline 是 liquidation cascade strategy；但对我们更值钱的，其实是 README 里一句很关键的话：</p>
+<ul>
+<li>Hyperliquid 的 trigger orders（TP/SL）是<strong>可查询</strong>的</li>
+<li>没有全市场聚合热力图，需要<strong>按钱包逐个扫</strong></li>
+<li>结合 <code>liquidationPx</code>、trigger orders、order book depth，可以自己建 map</li>
+</ul>
+<p>这意味着：</p>
+<p>&gt; <strong>真正可复现的不是“看现成 heatmap 猜方向”，而是自己扫描公开钱包 → 聚合 stop / liq cluster → 交易 cluster 附近的短时 path。</strong></p>
+<p>这就从“可视化看板”升级成了可以编码的 raw alpha。</p>
+<p>---</p>
+<h2>4. repo 里能直接迁移成策略骨架的部分</h2>
+<h2>4.1 公共数据读取路径已经齐了</h2>
+<p><code>src/data/hyperliquid_client.py</code> 明确封装了：</p>
+<p>``<code>python {&quot;type&quot;: &quot;allMids&quot;} {&quot;type&quot;: &quot;clearinghouseState&quot;, &quot;user&quot;: user} {&quot;type&quot;: &quot;frontendOpenOrders&quot;, &quot;user&quot;: user} </code>``</p>
+<p>这三条已经足够做最小 stop-map：</p>
+<ol>
+<li><code>allMids</code> 给当前价</li>
+<li><code>clearinghouseState</code> 给仓位与 <code>liquidationPx</code></li>
+<li><code>frontendOpenOrders</code> 给 trigger orders 的 <code>triggerPx</code></li>
+</ol>
+<p>换句话说，<strong>公开 API 本身就支持把“谁会在什么价位被动出手”拼出来</strong>。</p>
+<h2>4.2 liquidation cluster 的构造规则非常适合直接改写到 trigger cluster</h2>
+<p><code>src/signals/liquidation_map.py</code> 的做法很直接：</p>
+<ul>
+<li>把每个 <code>liquidation_price</code> 按 <code>bin_pct = 0.5%</code> 分箱</li>
+<li>每箱累加 <code>volume</code> 与 <code>count</code></li>
+<li>计算 <code>distance_pct</code></li>
+<li>按 volume 排序，挑最近且最密的 cluster</li>
+</ul>
+<p>信号强度：</p>
+<p>``<code>text strength = 0.6 * distance_factor + 0.4 * volume_factor </code>``</p>
+<p>方向定义也很清楚：</p>
+<ul>
+<li>当前价下方的 long liquidation cluster → 更像向下 cascade → 做空</li>
+<li>当前价上方的 short liquidation cluster → 更像向上 cascade → 做多</li>
+</ul>
+<p>这个框架直接就能迁到 trigger-order map：</p>
+<ul>
+<li><code>triggerPx</code> 替代 <code>liquidationPx</code></li>
+<li><code>origSz</code> / <code>sz</code> / reduceOnly / tpsl 类型做权重</li>
+<li>同样用 bin、distance、density、direction 去打分</li>
+</ul>
+<h2>4.3 repo 的聚合器也已经给了完整方向壳</h2>
+<p><code>src/signals/signal_aggregator.py</code>：</p>
+<p>``<code>python WEIGHTS = { &quot;funding&quot;: 0.35, &quot;oi_divergence&quot;: 0.30, &quot;liquidation&quot;: 0.35, } </code>``</p>
+<p>它把 funding / OI / liquidation 三条线合成一个 <code>direction + confidence + target_price</code>。</p>
+<p>对我们更有用的不是照抄 35/30/35，而是看到：</p>
+<p>&gt; <strong>cluster 本身完全可以做主信号，funding / OI 只负责 admission / veto / sizing。</strong></p>
+<p>这点很重要，因为当前 desk 更需要 raw alpha，不该把所有 crowding 数据都写成 filter。</p>
+<p>---</p>
+<h2>5. 这条 raw alpha 应该怎么落成完整策略</h2>
+<p>下面给一版适合 <code>1m/3m/5m/15m</code> 的<strong>最小可交易版本</strong>。</p>
+<h2>5.1 Universe</h2>
+<p>先只做：</p>
+<ul>
+<li><code>BTC</code></li>
+<li><code>ETH</code></li>
+</ul>
+<p>原因：</p>
+<ul>
+<li>公开 wallet / position / trigger 数据足够密</li>
+<li>滑点相对可控</li>
+<li>cluster 被打穿后的 follow-through 更稳定</li>
+</ul>
+<p><code>SOL</code> 可以放二期。</p>
+<h2>5.2 数据与更新频率</h2>
+<h3>公共数据源</h3>
+<ol>
+<li><strong>Hyperliquid Info API</strong></li>
+</ol>
+<ul>
+<li><code>frontendOpenOrders</code></li>
+<li><code>clearinghouseState</code></li>
+<li><code>allMids</code></li>
+</ul>
+<ol>
+<li><strong>Hyperliquid WebSocket</strong></li>
+</ol>
+<ul>
+<li><code>trades</code></li>
+</ul>
+<ol>
+<li>（可选）repo 原生的 funding / OI 路径</li>
+</ol>
+<h3>更新频率</h3>
+<ul>
+<li><code>trigger / liq map</code>：每 <code>30s</code> 扫一轮</li>
+<li><code>trades</code>：实时</li>
+<li>bar 化：<code>1m</code></li>
+</ul>
+<h2>5.3 Cluster 构造</h2>
+<h3>A. Trigger cluster</h3>
+<p>对每个 wallet 的 <code>frontendOpenOrders</code>：</p>
+<ul>
+<li>仅保留 <code>isTrigger = true</code></li>
+<li>优先保留 <code>triggerCondition = sl</code></li>
+<li><code>tp</code> 单独记，不和 <code>sl</code> 混箱</li>
+<li><code>triggerPx</code> 按 <code>0.25%</code> 或 <code>0.5%</code> 分箱</li>
+<li>权重建议：</li>
+<li><code>w_notional = origSz * triggerPx</code></li>
+<li><code>reduceOnly = true</code> 给予更高可信度</li>
+<li><code>sl</code> 权重大于 <code>tp</code></li>
+</ul>
+<h3>B. Liquidation cluster</h3>
+<p>对每个 wallet 的 <code>clearinghouseState</code>：</p>
+<ul>
+<li>抽 <code>liquidationPx</code></li>
+<li>用 <code>marginUsed</code> 或 <code>abs(size) * liquidationPx</code> 近似体量</li>
+<li>同样按 <code>0.25%</code> 或 <code>0.5%</code> 分箱</li>
+</ul>
+<h3>C. 合成 public stress map</h3>
+<p>对每个 price bin：</p>
+<p>``<code>text cluster_score = 0.45 * stop_notional_z + 0.35 * liquidation_notional_z + 0.20 * address_count_z </code>``</p>
+<p>再计算：</p>
+<ul>
+<li><code>distance_pct</code></li>
+<li>cluster 方向（上方 short-stop / short-liq；下方 long-stop / long-liq）</li>
+<li>当前价到 cluster 的 gap</li>
+</ul>
+<h2>5.4 Entry：先做“向 cluster 的 continuation”，不先做 post-sweep fade</h2>
+<h3>Long entry</h3>
+<p>满足以下条件时开多：</p>
+<ol>
+<li>当前价上方 <code>0.3% ~ 1.2%</code> 内存在高分 cluster；</li>
+<li>该 cluster 方向对应 <strong>shorts/short stops 会被挤爆</strong>；</li>
+<li>最近 <code>3</code> 根 <code>1m</code> bar 至少 <code>2</code> 根收涨；</li>
+<li>最近 <code>1m</code> 主动买成交占优，或最新价重新站上最近 <code>3m</code> 局部高点；</li>
+<li>预期剩余空间 <code>gap_to_cluster &gt;= 5 * roundtrip_cost</code>。</li>
+</ol>
+<h3>Short entry</h3>
+<p>镜像：</p>
+<ol>
+<li>当前价下方 <code>0.3% ~ 1.2%</code> 内存在高分 cluster；</li>
+<li>该 cluster 对应 <strong>longs/long stops 会被挤爆</strong>；</li>
+<li>最近 <code>3</code> 根 <code>1m</code> bar 至少 <code>2</code> 根收跌；</li>
+<li>最新价跌破最近 <code>3m</code> 局部低点；</li>
+<li><code>gap_to_cluster &gt;= 5 * roundtrip_cost</code>。</li>
+</ol>
+<h3>Admission / veto（不是 alpha 本体）</h3>
+<ul>
+<li><strong>Funding 同向加分</strong>：拥挤方向若与 cluster path 一致，则放宽最小 cluster_score</li>
+<li><strong>OI 同向加分</strong>：价格未大动但 OI 继续累积时，更容易形成脆弱堆积</li>
+<li>若 funding / OI 明显反向，则降杠杆或跳过</li>
+</ul>
+<h2>5.5 Exit</h2>
+<h3>主止盈</h3>
+<ul>
+<li>第一目标：<code>0.8 ~ 1.0 * gap_to_cluster</code></li>
+<li>若价格已实际触发 cluster（穿越 bin 中心后回到 bin 内），立即减仓 <code>50%</code></li>
+</ul>
+<h3>剩余仓位</h3>
+<ul>
+<li>若触发后 <code>1m</code> follow-through 仍强，则剩余仓位改 trailing stop</li>
+<li>若触发后第一根 <code>1m</code> bar 出现长反向 wick + 收回，则全部平仓</li>
+</ul>
+<h3>止损</h3>
+<p>取更紧者：</p>
+<ul>
+<li><code>0.35 * gap_to_cluster</code></li>
+<li><code>0.8 * ATR(1m, 20)</code></li>
+</ul>
+<h3>Time stop</h3>
+<ul>
+<li><code>8~12</code> 分钟不打到 cluster，平仓</li>
+<li><code>15m</code> 级别最多不超过 <code>1</code> 根 bar</li>
+</ul>
+<h2>5.6 Sizing</h2>
+<p>按 cluster 质量分三档：</p>
+<ul>
+<li><code>top decile score</code>: 风险预算 <code>1.00R</code></li>
+<li><code>80~90 pct</code>: <code>0.70R</code></li>
+<li><code>70~80 pct</code>: <code>0.40R</code></li>
+</ul>
+<p>并加两条硬约束：</p>
+<ul>
+<li>同一方向同一币同时仅 1 笔</li>
+<li>BTC 与 ETH 相关事件同时触发时，总风险不超过 <code>1.5R</code></li>
+</ul>
+<h2>5.7 Cost</h2>
+<p>这条策略不能忽略 cost，因为它交易的是<strong>剩余 gap</strong>。</p>
+<p>最小要求：</p>
+<p>``<code>text expected_gap_bps &gt;= 5 * roundtrip_cost_bps </code>``</p>
+<p>其中 roundtrip cost 应含：</p>
+<ul>
+<li>taker fee</li>
+<li>预估滑点</li>
+<li>stop-sweep 时段的冲击成本上浮</li>
+</ul>
+<p>如果 cluster 离得太近但深度太薄，表面上“马上会打到”，实际上可能是<strong>没有足够 alpha 去覆盖冲击成本</strong>。</p>
+<p>---</p>
+<h2>6. 为什么它和当前 short-cycle desk 直接相关</h2>
+<h2>6.1 这不是形态派内循环</h2>
+<p>它服务的不是：</p>
+<ul>
+<li>breakout 图形本身</li>
+<li>RSI 超买超卖</li>
+<li>generic trend filter</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li><strong>公开可扫描的脆弱持仓/止损结构</strong></li>
+<li><strong>cluster 邻域的路径依赖</strong></li>
+<li><strong>分钟级 event-driven continuation</strong></li>
+</ul>
+<p>所以它确实在扩充 raw alpha 素材池，而不是继续围绕固定形态打转。</p>
+<h2>6.2 1m / 3m / 5m / 15m 怎么用</h2>
+<ul>
+<li><code>1m</code>：主触发频率，最适合做 touch / break / follow-through</li>
+<li><code>3m</code>：适合做 admission，减少假触发</li>
+<li><code>5m</code>：适合做持仓管理和 cluster 打到后的确认</li>
+<li><code>15m</code>：更适合风控限时，不适合拿来定义首触发</li>
+</ul>
+<p>换句话说：</p>
+<p>&gt; <strong>信号在 1m 生成，3m 做去噪，5m 做管理，15m 做 time cap。</strong></p>
+<p>---</p>
+<h2>7. 公开 live probe：这条数据路真的能拉出来吗？</h2>
+<p>我做了一个极小的公共接口快检。</p>
+<h3>Probe 口径</h3>
+<ul>
+<li>时间：<code>2026-04-03 14:19 UTC</code></li>
+<li>数据源：Hyperliquid 公共 <code>info</code> endpoint</li>
+<li>钱包：repo <code>config.yaml</code> 里的 <code>13</code> 个示例 whale wallets</li>
+<li>资产：<code>BTC / ETH / SOL</code></li>
+<li>拉取内容：</li>
+<li><code>frontendOpenOrders</code></li>
+<li><code>clearinghouseState</code></li>
+<li><code>allMids</code></li>
+</ul>
+<h3>结果摘要</h3>
+<p>当前价：</p>
+<ul>
+<li>BTC <code>66,698.5</code></li>
+<li>ETH <code>2,046.45</code></li>
+<li>SOL <code>79.6825</code></li>
+</ul>
+<p>扫描结果：</p>
+<ul>
+<li>一共拿到 <code>468</code> 行公开数据</li>
+<li>活跃持仓数：<code>BTC 9 / ETH 7 / SOL 4</code></li>
+<li>带 <code>liquidationPx</code> 的持仓：<code>BTC 2 / ETH 4 / SOL 3</code></li>
+<li>扫到的 trigger orders：仅 <code>BTC 1</code> 笔，离现价约 <code>13.0%</code></li>
+<li>在 <code>1%</code> 邻域内：<code>BTC/ETH/SOL</code> 都<strong>没有</strong>密集 trigger / liq cluster</li>
+</ul>
+<h3>这说明什么</h3>
+<p>这不是坏消息，反而把最关键的瓶颈说透了：</p>
+<ol>
+<li><strong>公共路径成立</strong>：公开接口确实能取到仓位、清算价、trigger 字段。</li>
+<li><strong>静态 13 钱包白名单太稀</strong>：拿 repo 示例 wallet list 直接跑，不足以支撑高频 live alpha。</li>
+<li><strong>真正该做的第一步不是“直接交易”，而是扩大 wallet discovery 层</strong>：</li>
+</ol>
+<ul>
+<li>动态发现高活跃钱包</li>
+<li>滚动更新地址池</li>
+<li>再做 cluster 事件研究</li>
+</ul>
+<p>对应 artifact：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/hl_trigger_map_probe_20260403_1420/summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/hl_trigger_map_probe_20260403_1420/wallet_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/hl_trigger_map_probe_20260403_1420/details.csv</code></li>
+</ul>
+<p>---</p>
+<h2>8. 最小可复现实验（MVE）应该怎么做</h2>
+<p>这轮最诚实的 MVE 不是直接上实盘，而是先做<strong>事件研究</strong>。</p>
+<h2>8.1 数据面</h2>
+<p>连续采集 <code>7~14</code> 天：</p>
+<ul>
+<li>每 <code>30s</code> 扫一次 <code>frontendOpenOrders</code> / <code>clearinghouseState</code></li>
+<li>实时订阅 <code>trades</code></li>
+<li>聚合到 <code>1m</code> bar</li>
+</ul>
+<p>先只做 <code>BTC / ETH</code>。</p>
+<h2>8.2 事件定义</h2>
+<p>对每个 <code>1m</code>：</p>
+<ul>
+<li>找最近的上方/下方 cluster</li>
+<li>记录：</li>
+<li><code>distance_pct</code></li>
+<li><code>cluster_score</code></li>
+<li><code>address_count</code></li>
+<li><code>stop_share</code> vs <code>liq_share</code></li>
+<li>是否有 funding/OI 同向拥挤</li>
+</ul>
+<p>定义 event：</p>
+<ul>
+<li><strong>approach event</strong>：价格首次进入 cluster <code>1.0%</code> 邻域</li>
+<li><strong>touch event</strong>：价格首次触达 bin 区间</li>
+<li><strong>breach event</strong>：价格穿越 cluster 中心</li>
+</ul>
+<h2>8.3 评估指标</h2>
+<p>对每类 event 测：</p>
+<ul>
+<li>forward return：<code>1m / 3m / 5m / 15m</code></li>
+<li>hit ratio：是否在 <code>N</code> 分钟内打到 cluster</li>
+<li>MAE / MFE</li>
+<li>触发后第一根 bar 的 wick reversal 比例</li>
+<li>按 <code>cluster_score</code> 分层后的单调性</li>
+</ul>
+<h2>8.4 先测哪两个版本</h2>
+<h3>Version A：pre-sweep continuation（主线）</h3>
+<ul>
+<li>交易“向 cluster 打过去”</li>
+<li>重点看 <code>1m/3m/5m</code></li>
+</ul>
+<h3>Version B：post-sweep snapback（支线）</h3>
+<ul>
+<li>交易“打到后第一根失败 bar 的反抽/反弹”</li>
+<li>重点看 <code>1m/3m</code></li>
+</ul>
+<p>我建议先做 A，因为 repo 原始 liquidation logic 本来就是 continuation 语义；B 可以等 A 的 cluster 数据积出来后再做。</p>
+<p>---</p>
+<h2>9. 对当前 desk 的结论</h2>
+<p>这轮我会把它归档为：</p>
+<ul>
+<li><strong>主题类型</strong>：<code>raw alpha</code></li>
+<li><strong>alpha 家族</strong>：<code>event-driven / relative-value-of-path / stress-cluster continuation</code></li>
+<li><strong>更细标签</strong>：<code>trigger-map / stop-sweep / liquidation / Hyperliquid / public-data</code></li>
+</ul>
+<p>最关键的判断是：</p>
+<p>&gt; <strong>这不是“现成 heatmap 指哪打哪”的主观交易笔记，而是一条公开 API 足以支撑、能编码、能做事件研究、也能落成完整策略壳的 short-cycle raw alpha 候选。</strong></p>
+<p>但也要诚实地补一句：</p>
+<p>&gt; <strong>当前 repo 自带的 13 钱包白名单太稀，不能直接拿来 live trade；真正的 alpha 门槛在 wallet discovery，不在 cluster 打分公式本身。</strong></p>
+<p>这个结论本身就很有价值——因为它告诉我们，下一步该把研发时间花在哪。</p>
+<p>---</p>
+<h2>10. 下一步怎么测</h2>
+<p>按优先级只做三步：</p>
+<ol>
+<li><strong>先补 wallet discovery</strong></li>
+</ol>
+<ul>
+<li>用 Hyperliquid 公共 <code>trades</code> / 排行榜 / 大额成交，动态生成 top active wallets</li>
+<li>不再依赖 repo 静态 13 钱包</li>
+</ul>
+<ol>
+<li><strong>做 <code>BTC/ETH</code> 的 14 天 30s cluster replay</strong></li>
+</ol>
+<ul>
+<li>每 30s 重建 trigger / liq map</li>
+<li>产出 approach / touch / breach 事件表</li>
+</ul>
+<ol>
+<li><strong>先跑 A 版主实验</strong></li>
+</ol>
+<ul>
+<li><code>pre-sweep continuation</code></li>
+<li>频率：<code>1m</code> 触发</li>
+<li>持有：<code>1m/3m/5m</code> 优先，<code>15m</code> 仅作上限</li>
+<li>admission：<code>cluster_score + distance + short-term impulse</code></li>
+</ul>
+<p>如果这三步做下来，<code>hit-to-cluster rate</code> 和 <code>forward 3m expectancy</code> 没有随 <code>cluster_score</code> 单调上升，这条线就不要再浪费时间；若单调性成立，再考虑把 funding/OI 接回来做 sizing/veto。</p>
+</body>
+</html>

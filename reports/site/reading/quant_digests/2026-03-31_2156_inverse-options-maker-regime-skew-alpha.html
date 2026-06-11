@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 options 新仓库只读成通用撮合骨架：对 desk 更该先测的是「inverse options maker spread-capture × regime widen × inventory skew」这条可直接落地的 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 options 新仓库只读成通用撮合骨架：对 desk 更该先测的是「inverse options maker spread-capture × regime widen × inventory skew」这条可直接落地的 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-31 21:59 UTC</span>
+      <span class="pill">研究时间：2026-03-31 21:56 UTC</span>
+      <span class="pill">类型：quant_digest</span>
+      <span class="pill">主题标签：raw-alpha/options/market-making/spread-capture/inventory-skew/regime/circuit-breaker/delta-neutral/deribit/btc/1m/3m/5m/15m/repo/public-data/cost</span>
+      <span class="pill">证据类型：2026 GitHub 新仓库 `README.md` + `strategies/market_making/hawkes_mm.py` + `strategies/market_making/integrated_strategy.py` + `research/risk/circuit_breaker.py` source audit + 经典做市论文地基 + Deribit BTC options 公开 live snapshot</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-31_2156_inverse-options-maker-regime-skew-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-31 21:56 UTC</li>
+<li>类型：quant_digest</li>
+<li>主题标签：raw-alpha/options/market-making/spread-capture/inventory-skew/regime/circuit-breaker/delta-neutral/deribit/btc/1m/3m/5m/15m/repo/public-data/cost</li>
+<li>证据类型：2026 GitHub 新仓库 <code>README.md</code> + <code>strategies/market_making/hawkes_mm.py</code> + <code>strategies/market_making/integrated_strategy.py</code> + <code>research/risk/circuit_breaker.py</code> source audit + 经典做市论文地基 + Deribit BTC options 公开 live snapshot</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>双边挂单赚 bid-ask spread</strong>，再用 <code>inventory skew + regime widening + circuit breaker</code> 尽量把 adverse selection 和库存爆仓压住</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主材料不是论文 headline，而是一份更新很新的 GitHub repo：<strong>signorloops (2026), _crypto-options-research-platform_</strong>。</p>
+<p>如果只把它读成“又一个 options 研究工程脚手架”，那价值一般；但如果按当前 desk 的口径去拆，它其实给了一条我们最近素材池里还不算多的 <strong>完整 raw alpha</strong>：</p>
+<p>&gt; <strong>不是去赌 BTC 下一根涨跌，而是在 BTC 期权簿里做两边报价，赚 spread；方向性风险不靠押方向赚钱，而靠库存倾斜、波动分档、熔断/降杠杆来控制。</strong></p>
+<p>这条线对 <code>1m / 3m / 5m / 15m</code> 很友好，因为它天然就是高频/短周期逻辑：</p>
+<ul>
+<li>信号更新是逐笔/逐秒的；</li>
+<li>但最小实验完全可以先压成 <code>1m</code> 特征栏 + <code>5m/15m</code> 风险汇总；</li>
+<li>而且它不是“只有入场没有出场”的概念卡，仓库把 <code>quote / skew / regime / circuit breaker / hedge</code> 都写出来了。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<h3>2.1 先说结论</h3>
+<p>这篇东西的 <strong>base alpha 很清楚</strong>：</p>
+<p><strong>base alpha = 期权簿上持续存在的双边价差本身。</strong></p>
+<p>也就是说，这不是 filter，不是 overlay，也不是“预测信号外面再包一层风控”； 它本体就是：</p>
+<ol>
+<li>在还算健康的 order book 上双边挂价；</li>
+<li>尽量拿到 maker spread；</li>
+<li>用库存/波动/风控状态决定你要不要继续报、报多宽、向哪边歪。</li>
+</ol>
+<h3>2.2 仓库里真正有价值的，不是“会报单”，而是它把完整策略骨架写出来了</h3>
+<p>从源码看，这份 repo 至少把下面这些关键信号/参数冻结成了可执行状态：</p>
+<ul>
+<li><code>IntegratedStrategyConfig.base_spread_bps = 20.0</code></li>
+<li><code>inventory_limit = 10.0</code></li>
+<li><code>gamma = 0.1</code></li>
+<li><code>max_skew_bps = 50.0</code></li>
+<li><code>regime_spread_multipliers = {LOW: 0.8, MEDIUM: 1.0, HIGH: 1.5}</code></li>
+<li>circuit breaker 的 spread multiplier：<code>NORMAL 1.0 / WARNING 1.5 / RESTRICTED 2.0 / HALTED 不报价</code></li>
+<li>circuit breaker 的仓位缩放：<code>NORMAL 1.0 / WARNING 0.5 / RESTRICTED 0.1</code></li>
+<li>风险阈值默认值：<code>daily loss warning 5% / daily loss halt 10% / drawdown warning 8% / max drawdown 15% / cooldown 300s</code></li>
+</ul>
+<p>翻成人话： 这不是“教你用某个指标判断波动高低”的说明文， 而是一份已经把 <strong>entry / exit / sizing / risk / cost 假设</strong> 拼得比较完整的 market-making 策略骨架。</p>
+<h3>2.3 当前公开 BTC options 盘口，确实给了 maker edge 的土壤，但也暴露出 repo 默认参数偏乐观</h3>
+<p>我拿 Deribit 公开 API 做了一个很小的 live snapshot（BTC options）：</p>
+<ul>
+<li><strong>857</strong> 个合约有双边报价</li>
+<li>在 <code>mid &gt;= 0.001 BTC premium</code> 的筛选后，仍有 <strong>788</strong> 个双边合约</li>
+<li>这些合约的 <strong>quoted spread / option mid</strong>：</li>
+<li>中位数约 <strong>384.1 bps</strong></li>
+<li><code>p75 ≈ 988.6 bps</code></li>
+<li><code>p90 ≈ 1557.5 bps</code></li>
+<li>若只看按 <code>OI + volume</code> 排前的 <strong>top-30</strong> 较液态合约：</li>
+<li>spread 中位数仍有 <strong>312.9 bps（相对 option premium）</strong></li>
+<li>绝对 spread 中位数约 <strong>68.4 USD premium</strong></li>
+</ul>
+<p>这说明两件事：</p>
+<ol>
+<li><strong>maker spread capture 不是空想</strong>——盘面上确实有肉；</li>
+<li>但 repo 默认的 <code>20 bps</code> base spread 更像<strong>研究/回测起点</strong>，离真实 live 盘口还有距离。</li>
+</ol>
+<p>对 desk 来说，最值得偷的不是“20bps 这个数”，而是：</p>
+<p>&gt; <strong>先把 empirical spread floor 接上，再测试 inventory skew / regime widen / circuit breaker 这三层是否真能保住 spread capture。</strong></p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮任务默认优先补 <strong>可独立复现且能直接落地成完整策略的 raw alpha</strong>。这条线值得进池，原因很直接：</p>
+<ol>
+<li><strong>它是完整 raw alpha，不是辅助层。</strong></li>
+<p>edge 就来自 order book spread capture，本体清楚。</p>
+<li><strong>它补的是当前池子里相对少的一类短周期素材。</strong></li>
+<p>我们最近 raw alpha 很多是 <code>basis / funding / pairs / XS / lead-lag</code>； 但 <strong>options maker 型 raw alpha</strong> 还不算多。</p>
+<li><strong>它天然适配 1m/3m/5m。</strong></li>
+<p>因为 quoting / cancel / hedge 本来就比 15m 更快。</p>
+<li><strong>它可以独立落完整策略。</strong></li>
+<p>不是只给一个 signal，再让我们自己脑补仓位/风控；源码已经把这些部件写出来了。</p>
+</ol>
+<p>所以这轮不继续补一篇 generic filter，而改补这条 raw alpha，是合逻辑的： 它直接扩的是 <strong>可部署的短周期素材池</strong>。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：BTC options 双边做市 / spread capture / 尽量 delta-neutral</li>
+<li>基础 alpha：<code>quoted_spread_capture</code></li>
+<li>regime：<code>volatility_state + trade_intensity/Hawkes intensity + circuit_breaker_state</code></li>
+<li>filter / veto：只在双边足够深、mid premium 不太小、近端活跃合约中报价；高波动毒流/熔断状态下停报或只报一侧</li>
+<li>risk / sizing / execution overlay：库存倾斜、delta hedge、OI/depth 限额、warning/restricted 状态缩仓与加宽 spread</li>
+</ul>
+<h2>4. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = option book 的 bid-ask spread 本身，而不是“预测 BTC 下一根方向”。</strong></p>
+<p>换句话说：</p>
+<ul>
+<li><code>inventory skew</code> 不是 alpha 本体；</li>
+<li><code>regime widening</code> 不是 alpha 本体；</li>
+<li><code>circuit breaker</code> 也不是 alpha 本体；</li>
+</ul>
+<p>它们都是为了让 <strong>spread capture 这条 raw alpha</strong> 在真实盘里少死一点。</p>
+<h2>5. 对 desk 更有价值的重读方式</h2>
+<p>这份 repo 最值得我们 intake 的，不是“它也用了 Hawkes / Avellaneda-Stoikov 术语”，而是下面这条 <strong>更适合 desk 的旁支想法</strong>：</p>
+<h3><strong>先把 empirical spread floor 接到 options maker shell 上</strong></h3>
+<p>也就是：</p>
+<ul>
+<li>alpha 本体仍是 maker spread capture；</li>
+<li>但别直接照抄 repo 的默认 <code>20bps</code>；</li>
+<li>先用公开盘口统计 <code>不同期限 / 不同 delta / 不同活跃度</code> 的真实 spread floor；</li>
+<li>再让 <code>inventory skew + regime + CB</code> 去决定在这个 floor 之上加多少。</li>
+</ul>
+<p>这比直接讨论“repo 里的 Hawkes 模块是不是最优”更值钱， 因为它能更快做成 <code>1m / 3m / 5m</code> 最小实验。</p>
+<h2>6. 怎么把它落成完整策略</h2>
+<h3>6.1 第一版最小 desk 读法</h3>
+<ul>
+<li>标的：Deribit BTC options，先只做 <strong>短中端到期（例如 7~35 DTE）</strong> 的活跃合约</li>
+<li>合约筛选：</li>
+<li><code>mid premium &gt;= 0.001 BTC</code></li>
+<li>双边报价都存在</li>
+<li>OI / volume 排名前若干</li>
+<li>报价中枢：option mid 或 microprice</li>
+<li>报价宽度：</li>
+<li><code>max(empirical_spread_floor, base_spread × regime_mult × CB_mult)</code></li>
+<li>skew：</li>
+<li>用库存 + 近端 realized vol + trade intensity 推 reservation price</li>
+<li>对冲：</li>
+<li>用 BTC perp/spot 做 delta hedge</li>
+<li>停报条件：</li>
+<li>risk state = <code>HALTED</code></li>
+<li>或 depth 突然塌掉 / spread 异常跳宽 / burst intensity 过高</li>
+</ul>
+<h3>6.2 这条线真正的 entry / exit 是什么</h3>
+<p>这类策略别用传统 directional 视角读：</p>
+<ul>
+<li><strong>Entry</strong>：开始双边报价，或恢复报价</li>
+<li><strong>Exit</strong>：停报 / 缩单 / 单边撤单 / 强制对冲 / 平库存</li>
+</ul>
+<p>也就是说，完整策略不是“某价位做多某价位止盈”，而是：</p>
+<ul>
+<li>什么时候可以报；</li>
+<li>报多宽；</li>
+<li>报多大；</li>
+<li>偏买还是偏卖；</li>
+<li>什么时候别再挣 spread，先保命。</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<p>最小可执行实验，我建议直接做下面这版：</p>
+<ol>
+<li><strong>数据</strong>：拉 Deribit BTC options 公开 order book / trades / summary，先做 <code>1m</code> 特征栏；风险与净值按 <code>5m</code>、<code>15m</code> 汇总。</li>
+<li><strong>Universe</strong>：先限制在 <code>7~35 DTE</code>、<code>mid&gt;=0.001 BTC</code>、<code>OI/成交额 top bucket</code> 的合约池。</li>
+<li><strong>对照组</strong>：</li>
+</ol>
+<ul>
+<li>A：对称固定 spread 做市</li>
+<li>B：<code>inventory skew only</code></li>
+<li>C：<code>inventory skew + regime widening</code></li>
+<li>D：<code>inventory skew + regime + circuit breaker</code></li>
+</ul>
+<ol>
+<li><strong>spread floor</strong>：先用 rolling 盘口统计做 <code>p25 / p50 / p75</code> 三档 empirical floor，而不是直接信 <code>20bps</code>。</li>
+<li><strong>hedge 规则</strong>：</li>
+</ol>
+<ul>
+<li>每 <code>1m</code> 检查一次净 delta</li>
+<li>或当 <code>|net_delta|</code> 超阈值立即 hedge</li>
+<li>hedge 标的先用 BTC perp</li>
+</ul>
+<ol>
+<li><strong>成本口径</strong>：</li>
+</ol>
+<ul>
+<li>maker fill capture 先做 <code>25% / 50% / 75%</code> 三档</li>
+<li>hedge taker cost 做 <code>1 / 2 / 4 bps</code> 三档</li>
+<li>再加 stale-quote cancel latency：<code>1s / 3s / 5s</code></li>
+</ul>
+<ol>
+<li><strong>风险约束</strong>：</li>
+</ol>
+<ul>
+<li>直接沿用 repo 的 CB 初值：<code>5% warning / 10% daily halt / 8% DD warning / 15% max DD / 300s cooldown</code></li>
+</ul>
+<ol>
+<li><strong>核心指标</strong>：</li>
+</ol>
+<ul>
+<li>delta-hedged PnL</li>
+<li>spread capture / hedge cost 比值</li>
+<li>inventory half-life</li>
+<li>adverse-selection loss</li>
+<li>warning/restricted/halt 触发率</li>
+</ul>
+<ol>
+<li><strong>先判生死，不急着精修</strong>：</li>
+</ol>
+<ul>
+<li>如果 <code>C/D</code> 连固定 spread 基线都赢不了，就别急着做更复杂 Hawkes；</li>
+<li>如果 <code>D</code> 明显减小左尾，再考虑往 <code>3m/1m</code> 下钻。</li>
+</ul>
+<h2>8. 风险与局限</h2>
+<ul>
+<li><strong>spread 宽不等于真能成交。</strong> 报价有肉，不代表 fill quality 好。</li>
+<li><strong>option premium bps 很容易看着夸张。</strong> 所以邮件和评估里要明确“这是相对 option premium 的 spread，不是相对 underlying 的 bps”。</li>
+<li><strong>公开 REST snapshot 只能做 very small sanity check。</strong> 真正 backtest 还是要更细的 quote/trade 数据。</li>
+<li><strong>inverse/coin-margined 计价和 Greeks 风险</strong> 比现货/perp 更容易把 PnL 直觉搞歪。</li>
+<li><strong>repo 默认参数更像研究起点</strong>，不是 production-ready 配置。</li>
+</ul>
+<h2>9. 这次最值得记住的一句话</h2>
+<p><strong>别把 options 做市理解成“预测方向后顺便挂单”；它本体就是 spread capture，方向判断只是拿来少吃毒流、少积坏库存。</strong></p>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>signorloops (2026). _crypto-options-research-platform_. GitHub repository.</strong></li>
+<p>Venue：GitHub DOI：无 Readable URL / Repo URL：<a href="https://github.com/signorloops/crypto-options-research-platform">https://github.com/signorloops/crypto-options-research-platform</a></p>
+<li><strong>Avellaneda, M., &amp; Stoikov, S. (2008). _High-frequency trading in a limit order book_. Quantitative Finance, 8(3), 217–224.</strong></li>
+<p>DOI：<code>10.1080/14697680701381228</code> Readable URL：<a href="https://www.tandfonline.com/doi/abs/10.1080/14697680701381228">https://www.tandfonline.com/doi/abs/10.1080/14697680701381228</a></p>
+<li><strong>Deribit API docs — public market data / book summary.</strong></li>
+<p>Readable URL：<a href="https://docs.deribit.com/">https://docs.deribit.com/</a></p>
+<li>本地 artifacts：</li>
+</ol>
+<ul>
+<li><code>reports/artifacts/quant_digests/deribit_btc_option_spread_snapshot_20260331.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 `go-trader` 里的 `range_scalper` 只读成“又一个布林带小指标”：对 short-cycle crypto desk，更该先拆的是「低波动静默区间 × band-touch fade」这条 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 `go-trader` 里的 `range_scalper` 只读成“又一个布林带小指标”：对 short-cycle crypto desk，更该先拆的是「低波动静默区间 × band-touch fade」这条 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-22 00:39 UTC</span>
+      <span class="pill">研究时间：2026-04-22 00:38 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `shared_strategies/range_scalper.py` + `shared_strategies/registry.py`）+ Binance USDⓈ-M public-data portability probe（8 个 liquid majors，`5m/15m`）</span>
+      <span class="pill">主题标签：raw-alpha / mean-reversion / range / bollinger-band / rsi / low-volume / router / binance-perpetual / 5m / 15m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：工程经验 + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-22_0038_quietrange-bbtouch-rsi-fade-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-22 00:38 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>shared_strategies/range_scalper.py</code> + <code>shared_strategies/registry.py</code>）+ Binance USDⓈ-M public-data portability probe（8 个 liquid majors，<code>5m/15m</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：低波动、低成交量的窄幅区间里，价格触碰布林带边缘后更容易向区间中轴回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha / mean-reversion / range / bollinger-band / rsi / low-volume / router / binance-perpetual / 5m / 15m / repo / public-data / cost / risk</li>
+<li>证据类型：工程经验 + public-data portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 <code>richkuo/go-trader</code> 这个 2026 仍在活跃维护的仓。它不是单一策略 repo，但其中 <code>shared_strategies/range_scalper.py</code> 给了一个很清楚、很适合短周期 desk 拆开的 raw alpha 壳：先用 <strong>Bollinger bandwidth 很窄 + 当前成交量低于均量</strong> 定义“安静横盘”，再在 <strong>触上/下轨 + RSI 极值</strong> 时做反向回归。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这不是“所有 BB touch 都做”的老派均值回归，而是先要求市场进入“安静、拥挤、还没启动趋势”的窄箱体，再去吃边缘回摆。</li>
+<li><strong>一句话证明方式：</strong> repo 直接把 alpha 写成可运行规则；我再用 Binance USDⓈ-M 8 个 liquid majors 做了 <code>5m/15m</code> 公开数据快检，看信号后几根 bar 的漂移与一个最小 midline-exit 壳是否站得住。</li>
+<li>repo 默认参数很直接：<code>bb_period=14</code>、<code>bb_std=1.5</code>、<code>bw_threshold=0.008</code>、<code>vol_ratio=0.8</code>、<code>rsi_period=7</code>、<code>rsi_ob/os=70/30</code>。它的真正价值不在 RSI，而在 <strong>先做 range admission，再做边缘 fade</strong>。</li>
+<li><code>15m</code> 全池（8 majors，45d）一共只有 <code>70</code> 个信号，说明它本来就不是高频主引擎，更像 <strong>high-selectivity range router</strong>。按“下一根开盘进场、向 signal-bar <code>bb_mid</code> 回归、1R 对称止损、<code>4</code> bar timeout”的最小壳，gross 约 <strong><code>+7.67 bps/笔</code></strong>，胜率约 <strong><code>64.3%</code></strong>。</li>
+<li><code>5m</code> 全池（30d）有 <code>376</code> 个信号，但同一最小壳 gross 只约 <strong><code>+0.59 bps/笔</code></strong>，明显太薄；更像 child execution / symbol router，而不是 taker 版 standalone alpha。</li>
+<li>pocket 很不均匀：<code>SOLUSDT 15m</code> 约 <strong><code>+24.2 bps/笔</code></strong>, <code>77.8%</code> 胜率；<code>BNBUSDT 15m</code> 约 <strong><code>+11.8 bps/笔</code></strong>；<code>LINKUSDT 5m</code> 约 <strong><code>+4.49 bps/笔</code></strong>。这说明它更像“<strong>特定币种 + 特定 regime</strong>”的 pocket，而不是 broad basket 同权策略。</li>
+<li>但如果粗扣单笔 round-trip <code>8 bps</code> taker 成本，<code>15m</code> 全池基本只剩接近打平，<code>5m</code> 明显转负；所以 first verdict 不是“均值回归成立了”，而是 <strong>range admission 这层值得保留，但 execution 不能太粗糙</strong>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和 desk 现在的意义很直接：它补的是 <strong>raw alpha 素材池里的“静默区间回摆”</strong>，不是又一个趋势/突破模板。对我们现在的 <code>1m/3m/5m/15m</code> 短周期研发，更值钱的不是“BB+RSI”四个字，而是这句拆法：</p>
+<ol>
+<li>先判断现在是不是 <strong>窄波动、低参与度、未展开趋势的箱体</strong>；</li>
+<li>再在箱体边缘做 <strong>band-touch fade</strong>；</li>
+<li>最后把它和已有趋势/突破 alpha 做 <strong>router / veto</strong> 分工，而不是混成一锅。</li>
+</ol>
+<p>换成人话：有些时候价格碰上轨/下轨不是要追，而是说明它在一个很安静的小箱子里“撞墙了”，这时候更适合赌它弹回中间。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：逆势 / 单资产 mean reversion</li>
+<li>基础 alpha：low-volatility range oscillation × band-touch fade</li>
+<li>regime：Bollinger bandwidth 压缩 + 当前量能低于均量</li>
+<li>filter / veto：RSI 极值确认；若 bandwidth 扩张或放量，不做 fade</li>
+<li>risk / sizing / execution overlay：更适合 maker-first / passive reversion；可加 <code>midline TP + timeout + spread/fee veto</code></li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 当 <code>bb_bandwidth &lt; 0.008</code> 且 <code>volume &lt; 0.8 * vol_sma</code> 时，边缘触带后的回归胜率会显著高于不加 range admission 的普通 BB fade。</p>
+<p><strong>一个可计算定义：</strong></p>
+<ul>
+<li>long：<code>close</code> 下穿 <code>bb_lower</code>，且 <code>RSI(7) &lt; 30</code>，且 <code>in_range=True</code></li>
+<li>short：<code>close</code> 上穿 <code>bb_upper</code>，且 <code>RSI(7) &gt; 70</code>，且 <code>in_range=True</code></li>
+<li>最小壳：下一根开盘入场；目标 <code>signal-bar bb_mid</code>；止损设为与目标距离对称的 <code>1R</code>；<code>15m</code> 先测 <code>4~6</code> bar timeout，<code>5m</code> 先测 <code>6~12</code> bar timeout</li>
+<li>样本：Binance USDⓈ-M <code>BTC/ETH/SOL/XRP/DOGE/ADA/LINK/BNB</code>，最近 <code>45d</code>，主看 <code>15m</code>，<code>5m</code> 作为 child 版</li>
+<li>最该先看：<strong>gross bps/笔</strong>、<strong>成本后 bps/笔</strong>，其次看 <code>midline_hit_rate</code></li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是很典型的 <strong>regime-sensitive</strong> alpha：只要横盘结束、趋势启动，fade 会被一脚踩穿。</li>
+<li>repo 只给了信号层，没有把 exit / sizing / fee / maker-fill 讲完整，所以我不把它算作“可直接上线的完整策略”。</li>
+<li>这类信号天然容易被手续费吃掉；如果不做被动挂单、spread 过滤、symbol 选择，广谱 taker 版大概率不值得。</li>
+<li>因为信号数不多，<code>15m</code> 的好看 pocket 需要继续做 rolling 与 OOS，不要直接把 <code>SOL</code> 的近期表现当稳定事实。</li>
+</ul>
+<h2>6. 下一步怎么测</h2>
+<ol>
+<li>做 <strong>A/B</strong>：<code>range_scalper admission</code> vs 普通 <code>BB touch + RSI</code>，直接比较 <code>gross/net bps</code>。</li>
+<li>给 <code>15m</code> 壳补 <strong>maker-first 假设</strong>：只统计可在下一根内以 <code>entry ± 0.5~1 tick</code> 被动成交的样本，看 net 是否能真正转正。</li>
+<li>做 <strong>symbol router</strong>：只保留 <code>SOL/BNB/LINK</code> 这类更厚 pocket，检验它是不是可迁移 pocket，而不是偶然样本。</li>
+<li>把这层 <code>in_range</code> gate 反向借给已有 breakout / trend alpha：箱体里别追突破，箱体外再追。</li>
+</ol>
+<h2>7. 相关产物</h2>
+<ul>
+<li>Probe summary：<code>reports/artifacts/quant_digests/range_scalper_probe_summary_2026-04-22.csv</code></li>
+<li>Event/trade 明细：<code>reports/artifacts/quant_digests/range_scalper_probe_{events,trades}_&lt;SYMBOL&gt;_&lt;INTERVAL&gt;_2026-04-22.csv</code></li>
+</ul>
+<h2>8. 来源</h2>
+<ul>
+<li>Rich Kuo. (2026). <strong>go-trader</strong>. GitHub repo.</li>
+<p>Repo URL: <code><a href="https://github.com/richkuo/go-trader">https://github.com/richkuo/go-trader</a></code></p>
+<li>Source file: <code>shared_strategies/range_scalper.py</code></li>
+<p>Readable URL: <code><a href="https://raw.githubusercontent.com/richkuo/go-trader/main/shared_strategies/range_scalper.py">https://raw.githubusercontent.com/richkuo/go-trader/main/shared_strategies/range_scalper.py</a></code></p>
+<li>Source file: <code>shared_strategies/registry.py</code></li>
+<p>Readable URL: <code><a href="https://raw.githubusercontent.com/richkuo/go-trader/main/shared_strategies/registry.py">https://raw.githubusercontent.com/richkuo/go-trader/main/shared_strategies/registry.py</a></code></p>
+<li>Source file: <code>README.md</code></li>
+<p>Readable URL: <code><a href="https://raw.githubusercontent.com/richkuo/go-trader/main/README.md">https://raw.githubusercontent.com/richkuo/go-trader/main/README.md</a></code></p>
+</ul>
+</body>
+</html>

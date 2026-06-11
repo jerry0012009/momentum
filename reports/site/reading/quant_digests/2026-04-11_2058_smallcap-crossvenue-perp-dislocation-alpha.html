@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 spread scanner repo 只读成 Telegram 报警器：对 short-cycle desk，更该先测的是「small-cap cross-venue perp BBO dislocation × fast close-out」这条 relative-value raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 spread scanner repo 只读成 Telegram 报警器：对 short-cycle desk，更该先测的是「small-cap cross-venue perp BBO dislocation × fast close-out」这条 relative-value raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-11 20:48 UTC</span>
+      <span class="pill">研究时间：2026-04-11 20:58 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/cross-venue/perpetuals/bbo/small-cap/symbol-normalization/staleness/liquidity-confidence/binance/hyperliquid/gate/1m/3m/5m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：源码审计 + 公共 live-BBO portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-11_2058_smallcap-crossvenue-perp-dislocation-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-11 20:58 UTC</li>
+<li>类型：GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一标的 perpetual 在不同交易所的顶级盘口会因碎片化流动性、报价陈旧、symbol alias / 1000x 面值差异而短暂错位；可交易部分不是“任何价差”，而是 <code>same-asset cross-venue net spread &gt; round-trip cost</code> 之后的快速回归。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/cross-venue/perpetuals/bbo/small-cap/symbol-normalization/staleness/liquidity-confidence/binance/hyperliquid/gate/1m/3m/5m/repo/public-data/cost/risk</li>
+<li>证据类型：源码审计 + 公共 live-BBO portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了 <code>VadymManiuk/spreadfinder</code> 这个 2026 新仓库。表面上它只是一个 <strong>Binance / Hyperliquid / Gate 三所 perp spread scanner + Telegram alerts</strong>，但真正值得 desk 拿走的不是报警器外壳，而是它把一条 <strong>same-asset cross-venue relative-value raw alpha</strong> 拆得相当清楚：</p>
+<ul>
+<li>先做 <strong>symbol normalization</strong>（含 <code>1000PEPE</code> / <code>kPEPE</code> 这类 1000x 面值归一）</li>
+<li>再做 <strong>顶级盘口 gross / net spread</strong></li>
+<li>再用 <strong>freshness / liquidity / volume / spread magnitude</strong> 算置信度</li>
+<li>最后用 <strong>persistence + cooldown + stale veto</strong> 过滤掉大部分假信号</li>
+</ul>
+<p>这比“看见跨所价差就冲”成熟得多，也比我们此前看过的 majors 跨所壳更贴近 <strong>small-cap / alias-heavy / quote-fragmented</strong> 这条新素材线。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 真正可迁移的，不是 Telegram 推送，而是它把「<strong>同资产跨所 perp 顶级盘口错位 -&gt; 价差回归</strong>」写成了一条可拆解的 raw alpha；其中 freshness、盘口深度、24h 成交额和 alias/collision 处理，不是附属细节，而是 alpha 能不能活下来的主体条件。</li>
+<li><strong>一句话证明方式：</strong> 结论来自源码拆解 + 三所公共实时盘口快检，而不是 README 宣传词。</li>
+<li><code>spread_engine/calculator.py</code> 明牌给了核心定义：</li>
+<li><code>gross_spread = sell_bid - buy_ask</code></li>
+<li><code>gross_spread_bps = gross_spread / buy_ask * 10000</code></li>
+<li><code>net_spread = gross_spread - estimated_fees - estimated_slippage</code></li>
+<li>它不是只比价格，还专门处理了 <strong>Binance <code>1000PEPE</code> / Hyperliquid <code>kPEPE</code> / Gate <code>PEPE</code></strong> 这类名义面值差异；若不做这个归一，很多“价差”其实只是合约单位不同导致的假象。</li>
+<li><code>ticker_aliases.py</code> 还显式屏蔽了不少 collision ticker（如 <code>BEAM</code>、<code>NEIRO</code>、<code>AI</code>、<code>CAT</code>、<code>X</code>），这对小币跨所策略非常关键：<strong>ticker 相同 ≠ underlying 相同</strong>。</li>
+<li><code>confidence.py</code> 把可执行性压成四个分量：<code>freshness 30%</code>、<code>liquidity 30%</code>、<code>volume 20%</code>、<code>spread magnitude 20%</code>。这其实已经在告诉我们：这条线不是“价差越大越好”，而是“<strong>价差真实 + 书够厚 + quote 够新</strong>”才值得上桌。</li>
+<li>我做了一个三所公共 live-BBO 快检（<code>WLD/SEI/PYTH/CRV/SUI/FLOKI/TRUMP/PEPE/APE/LINK/ENA/ARB/WIF/BONK/LDO/JUP/TIA/APT/DOGE/NEAR</code> 共 <code>20</code> 个三所重叠标的）：</li>
+<li><code>15/20</code> 个标的当前最优跨所 gross spread 非负；</li>
+<li><code>6/20</code> 个达到 <code>&gt;=5bps</code>；</li>
+<li><code>5/20</code> 个达到 <code>&gt;=10bps</code>；</li>
+<li><code>1/20</code> 个达到 <code>&gt;=20bps</code>。</li>
+<li>当次快检 top 5：</li>
+<li><code>PEPE</code>: Gate 买 / Hyperliquid 卖，gross 约 <code>21.5bps</code></li>
+<li><code>NEAR</code>: Gate 买 / Hyperliquid 卖，gross 约 <code>13.6bps</code></li>
+<li><code>WLD</code>: Gate 买 / Hyperliquid 卖，gross 约 <code>13.4bps</code></li>
+<li><code>ENA</code>: Gate 买 / Hyperliquid 卖，gross 约 <code>11.4bps</code></li>
+<li><code>TRUMP</code>: Binance 买 / Gate 卖，gross 约 <code>10.5bps</code></li>
+<li>但按源码默认费率近似，若用 <strong>taker 开两腿 + 把平仓成本也粗略预留进去</strong>，Gate↔Hyperliquid 一笔 round-trip 粗成本大约已经在 <code>15bps</code> 左右量级；这意味着<strong>不是所有 gross spread 都是 alpha，很多只是“看起来有肉、净后没肉”</strong>。这正是这份 repo 比普通价差报警器更有用的地方。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>当前 <code>momentum</code> 素材池里，跨所方向已经有 majors 的 maker/taker BBO 壳、same-expiry basis、funding/basis carry 等线，但 <strong>small-cap perp 的 same-asset cross-venue dislocation</strong> 还不够系统，尤其缺：</p>
+<ul>
+<li><strong>symbol normalization / collision veto</strong> 这一层工程现实；</li>
+<li><strong>盘口新鲜度 + 深度 + volume</strong> 这类可执行性评分；</li>
+<li><strong>不是 majors、而是 alt / meme / alias-heavy universe</strong> 的 relative-value 录取框架。</li>
+</ul>
+<p>这份 repo 正好补这块。它不是又一个“价差搬砖教程”，而是把 desk 真会踩到的坑——陈旧 quote、假同名、1000x 合约、薄书、过期机会——直接写进了 signal layer。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>跨所 / same-asset / relative-value / stat-arb / 快速收敛型</strong></li>
+<li>基础 alpha：<strong>同标的 perp 在不同交易所的顶级盘口短时错位，会在 quote 刷新或套利者对齐后收敛</strong></li>
+<li>regime：更适合 <strong>小币、交易所间上币节奏不一致、做市覆盖不均、局部流动性碎片化</strong> 的环境；majors 上通常被更快压平</li>
+<li>filter / veto：</li>
+<li><code>data_age_ms &lt;= 2000</code></li>
+<li><code>persistence &gt;= 1000ms</code></li>
+<li>盘口最小深度 / 24h 成交额过滤</li>
+<li>ticker collision / alias veto</li>
+<li>gross spread 过大（源码里默认上限很宽，但逻辑上应视作坏数据或风控警报）</li>
+<li>risk / sizing / execution overlay：</li>
+<li>以更薄的一腿的 top-of-book size 做仓位上限</li>
+<li>按交易所对单独设定 fee ladder</li>
+<li>时间止损（如 <code>10s/30s/60s</code>）+ spread re-cross exit</li>
+<li>必须区分 <code>可开仓 gross</code> 与 <code>可平仓 net</code></li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设：</strong> 在 <code>1m/3m/5m</code> 的 crypto perp 里，真正可迁移的不是“跨所都有机会”，而是 <strong>小币 / alias-heavy 标的在三所顶级盘口偶发失配后，是否存在足以覆盖 round-trip 成本的收敛 alpha</strong>。</li>
+<li><strong>最小信号定义：</strong></li>
+</ul>
+<ol>
+<li>对同 underlying 的三所 perp 做 canonical mapping；</li>
+<li>每秒或每 <code>250~500ms</code> 记录最优 <code>buy_ask</code> 与 <code>sell_bid</code>；</li>
+<li>当 <code>gross_spread_bps &gt; fee_budget_bps + slippage_budget_bps + entry_buffer</code> 时记为候选；</li>
+<li>仅保留 <code>data_age_ms &lt;= 2000</code>、<code>min(book_size_usd) &gt;= threshold</code>、<code>confidence &gt;= 0.3</code>、<code>persistence &gt;= 1000ms</code> 的样本。</li>
+</ol>
+<ul>
+<li><strong>最小数据口径：</strong></li>
+<li>Binance USDⓈ-M: <code>fapi/v1/ticker/bookTicker</code> 或 websocket <code>@bookTicker</code></li>
+<li>Gate Futures: <code>futures.book_ticker</code> / REST tickers</li>
+<li>Hyperliquid: <code>l2Book</code> + <code>/info</code></li>
+<li>数据公开可得，更新频率可做到实时或近实时</li>
+<li><strong>最小可复现实验口径：</strong></li>
+<li>先不做真成交，先做 <strong>paper fill</strong>：入场按 <code>buy ask / sell bid</code>，出场按下一次 <code>spread &lt;= exit_threshold</code> 或时间止损时的反向 BBO；</li>
+<li>先测 <code>PEPE / WLD / NEAR / ENA / TRUMP</code> 这类快检里出现 gross spread 的标的；</li>
+<li>先跑 <code>10s / 30s / 60s / 180s</code> 四档 holding window，再看 <code>1m/3m/5m</code> 聚合后是否还留边。</li>
+<li><strong>下一步怎么测：</strong></li>
+</ul>
+<ol>
+<li>把 repo 的 alert book 改成事件日志：记录 <code>entry gross/net/confidence/data_age/sizes</code> 与 <code>exit re-cross time</code></li>
+<li>单独做 <strong>fee realism sweep</strong>：<code>maker/maker</code>、<code>taker/maker</code>、<code>taker/taker</code></li>
+<li>按标的分组：meme（<code>PEPE/BONK/FLOKI</code>）vs mid-cap（<code>WLD/ENA/ARB/NEAR</code>）</li>
+<li>加上 funding 与 mark/index 偏离，区分“纯盘口错位”还是“风险转移导致的合理价差”</li>
+<li>若 <code>&gt;=10bps</code> gross 只在极薄书才出现，就把它降级成 <strong>execution-viability gate</strong>，不要硬说是稳定 raw alpha</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这份 repo <strong>没有 execution / hedge / close-out engine</strong>，只有 alerting；所以它更像 raw alpha 候选与研究抓手，不是可直接上 production 的完整策略。</li>
+<li>README 里的默认阈值（如 <code>MIN_GROSS_SPREAD_BPS=10</code>, <code>MIN_NET_SPREAD_BPS=5</code>）与 <code>config/settings.py</code> 里的默认值（<code>50bps / 100bps</code>）并不一致，说明项目还在快速演化，参数可信度不能照单全收。</li>
+<li><code>estimated_fees</code> 和 <code>slippage</code> 都是粗估，对 small caps 来说真实冲击成本可能显著更高；如果没有更细的盘口深度与成交回放，净值预估会偏乐观。</li>
+<li>这条线最怕的不是“没有 spread”，而是 <strong>spread 来自坏数据、合约差异、ticker 误配、或一腿根本吃不掉</strong>。因此 alias/collision 与 freshness 不是文书工作，而是策略主体。</li>
+<li>从我们这次 live 快检看，<strong>gross spread 常见，但真正越过 round-trip net 门槛的不算多</strong>；这意味着它更适合作为 <strong>高筛选、低频次、事件驱动的 relative-value book</strong>，而不是全时段不停打。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>admin. (2026). *Spread Scanner Bot / spreadfinder*. GitHub repository.</li>
+<li>Repo URL: <code><a href="https://github.com/VadymManiuk/spreadfinder">https://github.com/VadymManiuk/spreadfinder</a></code></li>
+<li>README: <code><a href="https://github.com/VadymManiuk/spreadfinder/blob/main/README.md">https://github.com/VadymManiuk/spreadfinder/blob/main/README.md</a></code></li>
+<li>Spread calculator: <code><a href="https://github.com/VadymManiuk/spreadfinder/blob/main/spread_engine/calculator.py">https://github.com/VadymManiuk/spreadfinder/blob/main/spread_engine/calculator.py</a></code></li>
+<li>Confidence scoring: <code><a href="https://github.com/VadymManiuk/spreadfinder/blob/main/spread_engine/confidence.py">https://github.com/VadymManiuk/spreadfinder/blob/main/spread_engine/confidence.py</a></code></li>
+<li>Filters: <code><a href="https://github.com/VadymManiuk/spreadfinder/blob/main/filters/opportunity_filters.py">https://github.com/VadymManiuk/spreadfinder/blob/main/filters/opportunity_filters.py</a></code></li>
+<li>Exchange adapters: <code><a href="https://github.com/VadymManiuk/spreadfinder/tree/main/exchange_adapters">https://github.com/VadymManiuk/spreadfinder/tree/main/exchange_adapters</a></code></li>
+<li>Symbol aliases / collision map: <code><a href="https://github.com/VadymManiuk/spreadfinder/blob/main/symbol_mapper/ticker_aliases.py">https://github.com/VadymManiuk/spreadfinder/blob/main/symbol_mapper/ticker_aliases.py</a></code></li>
+<li>Repo latest commit seen locally: <code>bb62a570d8262fd437614c924a3e583cfc43a54e</code> (<code>2026-04-11 15:46:50 +0300</code>)</li>
+<li>本地 public live probe：Binance USDⓈ-M <code>bookTicker</code>、Gate futures tickers、Hyperliquid <code>l2Book</code> / <code>metaAndAssetCtxs</code>，2026-04-11 UTC 当次快照，重叠标的 <code>20</code> 个，用于验证三所同资产 perp BBO 可得性与 gross spread 分布；<strong>不代表历史回测结果</strong></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 EMA 回踩确认继续写成“贴线越近越好”：`recent EMA respect score` 在 15m 只够做轻量 admission，`ATR corridor` 反而容易过筛</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 EMA 回踩确认继续写成“贴线越近越好”：`recent EMA respect score` 在 15m 只够做轻量 admission，`ATR corridor` 反而容易过筛</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-20 09:31 UTC</span>
+      <span class="pill">研究时间：2026-03-20 09:40 UTC</span>
+      <span class="pill">类型：GitHub 仓库 + Binance 公共数据快检</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/ema-respect/memory-score/atr-corridor/admission/filter/repo/crypto/5m/15m</span>
+      <span class="pill">证据类型：仓库代码（工程证据）+ 公开 OHLCV 代理快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-20_0940_ema-respect-memory-not-corridor-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-20 09:40 UTC</li>
+<li>类型：GitHub 仓库 + Binance 公共数据快检</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/ema-respect/memory-score/atr-corridor/admission/filter/repo/crypto/5m/15m</li>
+<li>证据类型：仓库代码（工程证据）+ 公开 OHLCV 代理快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>noahfm / continuation-screener（2026-02 仍有更新）</strong>。这轮不抄它的美股选股框架，而是只抽一个更适合我们 desk 的旁支： <strong>把“最近是否反复尊重 EMA9”量化成记分（<code>ema_bounce_score</code>），再和“离 EMA9 的 ATR 距离上限”分开评估。</strong></p>
+<p>仓库里对应实现很清楚：</p>
+<ul>
+<li><code>ema_bounce_score</code>: 最近窗口里统计 <code>low</code> 贴近 <code>EMA9</code>、且 <code>close&gt;EMA9</code> 的“尊重次数”；</li>
+<li><code>stacked_emas</code>: 额外限制 <code>dist_to_ema9 &lt;= 0.75 ATR</code>、<code>depth &gt;= -0.8 ATR</code> 等走廊条件。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 对 5m/15m crypto，<code>EMA respect memory</code> 可以当轻量上下文，但把它再收紧成 <code>ATR corridor + depth</code> 的硬门，容易把信号质量和交易密度一起筛坏。</li>
+<li><strong>一句话证明方式：</strong> repo 给了可计算规则；我用 Binance Futures <code>BTC/ETH/SOL 15m</code> 近 <code>6000</code> 根/币做了最小代理，比较 <code>base</code>、<code>score&gt;=2</code>、<code>score&gt;=2 + dist/depth</code> 三档在未来 <code>4 bars</code> 的表现。</li>
+</ul>
+<p>关键数据点（聚合 <code>ALL</code>）：</p>
+<ol>
+<li><strong>long 侧</strong>：<code>base</code> 平均 <code>-0.80 bps</code>（扣 12 bps 成本后 <code>-12.80 bps</code>），加 <code>score&gt;=2</code> 后到 <code>+0.46 bps</code>（净 <code>-11.54 bps</code>），只改善约 <strong>+1.26 bps</strong>，属于“轻微减亏”。</li>
+<li>long 再加 <code>dist&lt;=0.75 + depth</code> 后反而恶化：均值到 <code>-10.21 bps</code>（净 <code>-22.21 bps</code>），胜率降到 <strong>38.3%</strong>（<code>base</code> 为 <strong>45.8%</strong>）。</li>
+<li><strong>short 侧</strong>：<code>base</code> 净值约 <code>-6.66 bps</code>；加 <code>score&gt;=2</code> 几乎无增量（<code>-6.85 bps</code>）；加 <code>dist&lt;=0.75</code> 后明显变差到 <code>-11.13 bps</code>。</li>
+</ol>
+<p>翻成人话：</p>
+<ul>
+<li>“最近确实常在 EMA9 附近守住”有一点信息；</li>
+<li>但“必须贴得很近、且最近不能刺破太深”这类硬走廊，在 15m 上更像是过拟合式严筛，不像稳健提升器。</li>
+</ul>
+<h2>3. 为什么和当前三条收口线有关</h2>
+<ul>
+<li><strong>V3 final-verdict / breakout-short follow-up</strong>：这轮直接提醒我们，不要把 long 语境下的 <code>ATR distance corridor</code> 生搬给 short follow-up；镜像后 short 质量并没有变好。</li>
+<li><strong>Fibonacci confirmation / retest_hold</strong>：<code>recent EMA respect score</code> 可以当“趋势健康度旁证”（轻量 admission），但不该升级成单一硬门。</li>
+<li><strong>EMA / PSAR raw alpha focus</strong>：更诚实的路线是“先加轻量记分，再看是否真改善成本后表现”，而不是继续堆越来越硬的距离阈值。</li>
+</ul>
+<h2>4. 可复刻的最小实验（下一步怎么测）</h2>
+<h3>研究假设</h3>
+<p>在 15m 上，<code>memory-score</code> 适合做软分层（admission/sizing），<code>hard corridor</code> 不适合做共享准入门。</p>
+<h3>一个可计算定义（先冻最小版）</h3>
+<ol>
+<li><code>score14</code>：过去 14 根里，满足 <code>low ∈ EMA9±0.5%</code> 且 <code>close&gt;EMA9</code> 且 <code>close&gt;open</code> 的次数；</li>
+<li>分档：</li>
+</ol>
+<ul>
+<li><code>score&lt;2</code>：不加分（或半仓）</li>
+<li><code>score&gt;=2</code>：允许正常 admission</li>
+</ul>
+<ol>
+<li>暂不默认加 <code>dist&lt;=0.75</code> 与 <code>depth&gt;=-0.8</code> 硬门（只保留为对照组）。</li>
+</ol>
+<h3>最小回测切口</h3>
+<ul>
+<li>资产：<code>BTC/ETH/SOL</code> perpetual</li>
+<li>周期：<code>15m</code>（可补 <code>5m</code> 做执行细化）</li>
+<li>样本：先近 <code>180d</code></li>
+<li>执行：<code>next-bar open</code>、<code>no-overlap</code></li>
+<li>成本：<code>6 / 10 / 15 bps per side</code></li>
+</ul>
+<h3>先看哪 2 个指标</h3>
+<ul>
+<li><code>post-cost expectancy</code></li>
+<li><code>trade_count retention</code>（防止“只靠砍单变好看”）</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>主证据来自仓库代码 + 代理快检，不是论文级因果识别；</li>
+<li>continuation-screener 原场景是美股筛选，不是 crypto perp；我们只借“特征定义”，不借其收益结论；</li>
+<li>当前快检是固定 <code>4-bar</code> 观察窗，仍需在 <code>8/12-bar</code> 与完整出场规则下复核。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>noahfm. (2026). _continuation-screener_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Authors: GitHub user <code>noahfm</code></li>
+<li>Year: 2026（仓库最新提交 2026-02）</li>
+<li>Title: Russell 3000 Trend Continuation Screener</li>
+<li>Venue: GitHub</li>
+<li>DOI: <code>N/A</code></li>
+<li>Readable URL: <code><a href="https://github.com/noahfm/continuation-screener/blob/main/README.md">https://github.com/noahfm/continuation-screener/blob/main/README.md</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/noahfm/continuation-screener">https://github.com/noahfm/continuation-screener</a></code></li>
+</ul>
+<ol>
+<li><strong>关键实现：<code>trend_screener.py</code>（<code>ema_bounce_score</code> / <code>stacked_emas</code>）</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/noahfm/continuation-screener/blob/main/src/continuation_screener/trend_screener.py">https://github.com/noahfm/continuation-screener/blob/main/src/continuation_screener/trend_screener.py</a></code></li>
+</ul>
+<ol>
+<li><strong>关键实现：<code>entry_exit.py</code>（reclaim 逻辑）</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/noahfm/continuation-screener/blob/main/src/continuation_screener/simulator/entry_exit.py">https://github.com/noahfm/continuation-screener/blob/main/src/continuation_screener/simulator/entry_exit.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance. USDⓈ-M Futures Kline API（公开数据）</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+<li>公开性：公开可得</li>
+<li>更新频率：逐根 K 线更新（5m/15m）</li>
+</ul>
+<p>--- 快检文件：</p>
+<ul>
+<li><code>reports/artifacts/literature/ema_respect_memory_distance_quickcheck_2026-03-20.csv</code></li>
+<li><code>reports/artifacts/literature/ema_respect_memory_distance_events_2026-03-20.csv</code></li>
+<li><code>reports/artifacts/literature/ema_respect_memory_distance_meta_2026-03-20.json</code></li>
+</ul>
+</body>
+</html>

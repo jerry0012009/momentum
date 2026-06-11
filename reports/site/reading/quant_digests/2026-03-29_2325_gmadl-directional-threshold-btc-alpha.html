@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2025 Informer 论文只读成“Transformer 打败 MACD”：对 desk 更该先测的是「direction-aware loss × thresholded long/short state machine」BTC 单币 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2025 Informer 论文只读成“Transformer 打败 MACD”：对 desk 更该先测的是「direction-aware loss × thresholded long/short state machine」BTC 单币 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-29 23:26 UTC</span>
+      <span class="pill">研究时间：2026-03-29 23:25 UTC</span>
+      <span class="pill">类型：2025 arXiv 全文 PDF + 本地全文抽取 + 公开 GitLab 复现框架审阅</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/directional/next-bar/threshold-state-machine/direction-aware-loss/gmadl/informer/btc/binance/5m/15m/30m/1m/3m/paper/repo/public-data/cost</span>
+      <span class="pill">证据类型：全文规则 + 表格级结果 + 公开代码仓库</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-29_2325_gmadl-directional-threshold-btc-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-29 23:25 UTC</li>
+<li>类型：2025 arXiv 全文 PDF + 本地全文抽取 + 公开 GitLab 复现框架审阅</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>BTC 单币短窗 directional drift</strong>——用最近一段价格路径、波动、时间特征与低频风险状态去预测下一 bar 收益，并只在预测幅度足够大时进入 <code>long / short / flat</code> 状态机</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/single-asset/directional/next-bar/threshold-state-machine/direction-aware-loss/gmadl/informer/btc/binance/5m/15m/30m/1m/3m/paper/repo/public-data/cost</li>
+<li>证据类型：全文规则 + 表格级结果 + 公开代码仓库</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Filip Stefaniuk, Robert Ślepaczuk (2025)</strong> 的 arXiv 论文 <strong>_Informer In Algorithmic Investment Strategies on High Frequency Bitcoin Data_</strong>，以及作者公开的 GitLab 复现仓库。论文研究对象很集中：</p>
+<ul>
+<li>标的：<code>BTC/USDT</code></li>
+<li>数据：Binance 公共 kline</li>
+<li>频率：<code>5m / 15m / 30m</code></li>
+<li>核心动作：先预测下一 bar return，再把预测值映射成 <code>long / short / flat</code></li>
+<li>对照组：Buy &amp; Hold、MACD、RSI、Informer+RMSE、Informer+Quantile、Informer+GMADL</li>
+</ul>
+<p>如果只把它读成“Informer 比传统指标强”，价值其实一般；但对当前 desk 真正值钱的是，它把一条 <strong>可直接写成 entry / exit / cost / 评估框架</strong> 的短窗 directional alpha 讲清楚了，而且还给出一个很重要的 desk 启发：</p>
+<p>&gt; <strong>在高频/更短 bar 上，问题不只是模型好不好，而是 loss function 有没有把“方向”和“大波动尾部样本”学对。</strong></p>
+<p>换句话说，这篇东西更像一张 <strong>direction-aware loss / abstain threshold / 高频成本生存</strong> 的实验卡，而不是一篇“再上更大模型”的论文。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话结论</strong>：这篇东西的 base alpha 很清楚——<strong>BTC 存在可交易的短窗 directional drift</strong>，但必须先做 <strong>预测幅度阈值过滤</strong>，只在模型认为下一 bar 有足够净边时才入场；而在更短频率上，普通 RMSE 训练出来的预测会越来越“缩到 0 附近”，最后被成本吃死。</li>
+<li>论文最关键的不是 Informer 本身，而是 <strong>GMADL（Generalized Mean Absolute Directional Loss）</strong> 这一类 direction-aware loss。作者的结论非常直接：</li>
+<li><code>RMSE</code> 模型到了更高频会因为怕大错，输出越来越保守，很多预测都小到过不了手续费；</li>
+<li><code>Quantile</code> 版则过度活跃，频繁交易，被成本拖死；</li>
+<li><strong><code>GMADL</code> 版反而随着频率提高表现更好。</strong></li>
+<li>全样本测试期（2019-08-21 到 2024-07-24，滚动 <code>24m in-sample + 6m out-of-sample</code>，共 6 个窗口）里，<strong>GMADL Informer</strong> 的总体验证结果是：</li>
+<li><code>30m</code>：<code>ARC 31.79%</code>，<code>MD 53.35%</code>，<code>IR** 0.516</code>，<code>811</code> 次交易；</li>
+<li><code>15m</code>：<code>ARC 49.65%</code>，<code>MD 47.39%</code>，<code>IR** 0.987</code>，<code>362</code> 次交易；</li>
+<li><code>5m</code>：<code>ARC 115.88%</code>，<code>MD 32.66%</code>，<code>IR** 7.552</code>，<code>846</code> 次交易。</li>
+<li>对照的 <strong>Buy &amp; Hold</strong> 基本不变：</li>
+<li><code>30m</code>：<code>ARC 13.12%</code>，<code>MD 77.20%</code></li>
+<li><code>15m</code>：<code>ARC 13.10%</code>，<code>MD 77.23%</code></li>
+<li><code>5m</code>：<code>ARC 13.14%</code>，<code>MD 77.31%</code></li>
+<p>也就是说，论文里最强分支不是“更大收益换更大回撤”，而是 <strong>在 5m 上同时抬高收益、显著压低回撤</strong>。</p>
+<li>更有意思的是 <strong>RMSE vs GMADL 的频率方向完全相反</strong>：</li>
+<li><code>RMSE Informer (30m)</code> 还有 <code>ARC 40.37%</code>；</li>
+<li>到 <code>15m</code> 只剩 <code>ARC 14.93%</code>；</li>
+<li>到 <code>5m</code> 直接掉到 <code>ARC -13.88%</code>，而且整段只交易 <code>16</code> 次。</li>
+<p>这不是“模型弱”，而是 <strong>目标函数让模型在高频里不敢出手</strong>。</p>
+<li>论文用了严格的滚动样本评估，还对优于 B&amp;H 的策略做了 t-test；<code>GMADL (5m/15m/30m)</code> 全部在 <code>p &lt; 0.01</code> 下拒绝“IR 不优于 B&amp;H”的原假设。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮应该优先补 <strong>可独立复现的 raw alpha</strong>，而不是再补一层解释型 filter。这篇东西值得进素材池，原因有四个：</p>
+<ol>
+<li><strong>频率非常贴 desk。</strong> 它不是日频论文硬往分钟上套，而是直接在 <code>5m / 15m / 30m</code> 上做；</li>
+<li><strong>base alpha 清楚。</strong> 它不是“端到端黑箱配收益曲线”，而是很明确的 <code>next-bar return forecast -&gt; thresholded state machine</code>；</li>
+<li><strong>完整策略口径齐。</strong> 论文明确写了持仓状态、手续费、滚动样本拆分、阈值网格、交易次数、long/short 占比；</li>
+<li><strong>最值得偷的分支不是 Informer，而是 loss + gate。</strong> 这意味着我们不必第一步就复现 Transformer，也能先做一个 desk 版最小实验。</li>
+</ol>
+<p>更直接地说，这篇东西给 desk 的不是“用 Informer 才能赚钱”，而是：</p>
+<p>&gt; <strong>短周期 directional alpha 要想穿过成本，核心也许不是把模型做得更复杂，而是让训练目标和交易目标一致：方向对、尾部样本对、没把所有预测都缩成 0。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：BTC 单币 long/short/flat directional strategy</li>
+<li>基础 alpha：短窗 <code>next-bar directional drift</code></li>
+<li>regime：无单独硬性市场 regime；但输入中显式加入了 <code>VIX / Fed Funds / Fear&amp;Greed / hour / weekday</code>，本质上是在把宏观风险状态与时钟状态喂给预测器</li>
+<li>filter / veto：</li>
+<li><strong>预测幅度阈值</strong> 是核心 admission gate；</li>
+<li>若预测值不过阈值，则保持 <code>flat</code> 或维持旧仓；</li>
+<li>高频下最重要的 veto 其实就是 <strong>成本阈值</strong>：预测小到不足覆盖 fee/slippage，就不应交易。</li>
+<li>risk / sizing / execution overlay：</li>
+<li>论文原始设定是 <strong>单标的、满仓、不可分仓</strong>；</li>
+<li>允许 <code>long / short / flat</code> 三状态；</li>
+<li>仓位切换按上一 bar 收盘成交；</li>
+<li>每次 position change 收 <code>0.1%</code> 交易费；</li>
+<li>到期必须平仓；</li>
+<li>论文没有额外止损/波动目标层，核心风控来自 <strong>阈值过滤 + 可空可平</strong>。</li>
+</ul>
+<h2>4. 论文里真正值得 desk 先偷哪一段</h2>
+<p>我不建议第一步就全量复现 Informer。对当前 desk，最应该先偷的是下面这个更小、更诚实的分支：</p>
+<h3><strong>direction-aware loss × thresholded state machine</strong></h3>
+<p>也就是：</p>
+<ol>
+<li>用近端价格路径与少量状态变量预测下一 bar return；</li>
+<li>但训练目标不要只最小化 MSE/RMSE，而要更强调 <strong>方向正确性 + 大振幅样本</strong>；</li>
+<li>交易时不连续调仓，而是通过阈值把预测映射成 <code>long / short / flat</code>；</li>
+<li>只在预测足够大、扣成本后还有边时出手。</li>
+</ol>
+<p>这比“复现 Informer 架构细节”更适合 desk 的原因是：</p>
+<ul>
+<li>可快速实验；</li>
+<li>更容易 ablation；</li>
+<li>更容易移植到 <code>1m / 3m / 5m / 15m</code>；</li>
+<li>更容易回答：<strong>edge 到底来自模型结构，还是来自 loss / threshold / abstain 机制？</strong></li>
+</ul>
+<h2>5. 可复刻的最小实验</h2>
+<h3>5.1 先复现什么</h3>
+<p>先不要上全套 Informer。先做一个 <strong>两模型对照 + 同一状态机</strong> 的最小实验：</p>
+<ul>
+<li>标的：<code>BTCUSDT</code> perp（Binance / OKX 任一公共可得）</li>
+<li>频率：先 <code>15m</code>，再下钻 <code>5m</code>，最后才考虑 <code>3m</code></li>
+<li>训练框架：滚动 <code>24m train+val / 6m test</code></li>
+<li>预测目标：下一 bar return</li>
+<li>模型对照：</li>
+</ul>
+<ol>
+<li><code>baseline</code>：线性 / LightGBM / 小型 MLP + <code>MSE</code></li>
+<li><code>direction-aware</code>：同样特征、同样架构，但把 loss 改成 <strong>强调方向与大振幅样本</strong> 的 GMADL-like 目标</li>
+</ol>
+<h3>5.2 特征先怎么抄</h3>
+<p>第一版不需要花哨，直接抄论文里最能迁移的一组：</p>
+<ul>
+<li>OHLCV</li>
+<li>当前 return</li>
+<li><code>1h / 1d / 7d</code> realized vol</li>
+<li><code>SMA / EMA / MACD / RSI / Bollinger</code> 比率化特征</li>
+<li><code>hour / weekday</code></li>
+<li>若数据方便，再加：<code>fear &amp; greed</code>、<code>VIX</code>、<code>Fed Funds</code> 的 last-known value</li>
+</ul>
+<p>这里最重要的是：<strong>保持特征集不变，先只改 loss。</strong> 这样才能把“方向型 loss 是否真能救高频 edge”单独测出来。</p>
+<h3>5.3 entry / exit</h3>
+<p>直接沿用论文的状态机思路：</p>
+<ul>
+<li><code>enter long</code>: 预测 return <code>&gt; +threshold</code></li>
+<li><code>enter short</code>: 预测 return <code>&lt; -threshold</code></li>
+<li><code>exit long</code>: 预测回落到 <code>exit_long</code></li>
+<li><code>exit short</code>: 预测回升到 <code>exit_short</code></li>
+<li>若无 exit 条件，则持有到反向信号或样本结束</li>
+</ul>
+<p>论文阈值网格就是很好的起点：</p>
+<ul>
+<li><code>enter long</code>: <code>0.001 ~ 0.007</code></li>
+<li><code>enter short</code>: <code>-0.001 ~ -0.007</code></li>
+<li><code>exit long</code>: <code>-0.001 ~ -0.007</code></li>
+<li><code>exit short</code>: <code>0.001 ~ 0.007</code></li>
+</ul>
+<p>也就是 roughly <code>10~70 bps</code> 的预测收益门槛。这个口径对 <code>5m/15m</code> 很重要，因为它天然在问：<strong>模型给出的边，够不够覆盖 frictions？</strong></p>
+<h3>5.4 sizing / risk / cost</h3>
+<p>论文是满仓，但 desk 第一轮更稳的做法：</p>
+<ul>
+<li>sizing：先 <code>1x notional</code> 固定仓，不加杠杆，不做仓位放大</li>
+<li>单标的只允许一个方向持仓</li>
+<li>成本至少做两档：</li>
+<li><code>paper-like</code>: round-trip <code>20 bps</code>（近似论文 <code>0.1%</code> 单次换仓）</li>
+<li><code>desk-like</code>: maker/taker + slippage 分开估，先测 <code>4 / 8 / 12 bps</code> round-trip</li>
+<li>风险：</li>
+<li>连续亏损 / 波动急升时可加一个 <code>vol veto</code>，但放在第二轮；</li>
+<li>第一轮先别加太多 overlay，免得把 raw alpha 本体洗掉。</li>
+</ul>
+<h3>5.5 最先看什么</h3>
+<p>先盯四个问题：</p>
+<ol>
+<li><strong>direction-aware loss 是否真的比 MSE 在 <code>5m/15m</code> 更能留住非零预测？</strong></li>
+<li>预测值分布有没有从“全缩在 0 附近”变成“尾部更厚、可过成本门槛”？</li>
+<li>同样阈值下，交易次数、hit rate、avg trade、holding time 怎么变？</li>
+<li>若方向型 loss 的优势只出现在高 friction 前，那它不是 alpha；若在保守 friction 后还活，那才值得往下钻 <code>3m/1m</code>。</li>
+</ol>
+<h2>6. 风险与边界</h2>
+<ul>
+<li><strong>这篇东西是单币 raw alpha，不是组合 alpha。</strong> 当前价值在于补一张 BTC directional card，不是给出可直接扩到 whole-book 的统一框架。</li>
+<li>论文的最好结果出现在 <code>BTC/USDT</code> 单标的，不能自动外推到 ETH 或 alt；</li>
+<li>论文用的是 Binance spot kline，desk 真跑 perp 时还要重新计 funding、盘口深度、夜间滑点；</li>
+<li>低频外生变量（VIX、Fed、Fear&amp;Greed）在论文里是 last-known value，别把它们误读成高频主信号；它们更像状态增强特征；</li>
+<li>最重要的一点：<strong>如果复现实验发现 edge 主要来自阈值稀疏交易，而不是 loss 改进，那真正该搬的是 admission rule，不是 Informer。</strong></li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>Stefaniuk, Filip; Ślepaczuk, Robert (2025), _Informer In Algorithmic Investment Strategies on High Frequency Bitcoin Data_</strong></li>
+</ol>
+<ul>
+<li>Venue: arXiv</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://arxiv.org/abs/2503.18096">https://arxiv.org/abs/2503.18096</a></li>
+<li>PDF URL: <a href="https://arxiv.org/pdf/2503.18096.pdf">https://arxiv.org/pdf/2503.18096.pdf</a></li>
+<li>Repo URL: <a href="https://gitlab.com/FilipStefaniuk/wne-msc-thesis">https://gitlab.com/FilipStefaniuk/wne-msc-thesis</a></li>
+</ul>
+<ol>
+<li><strong>Michańków et al. (2024), GMADL loss related reference cited by the paper</strong></li>
+</ol>
+<ul>
+<li>Venue: paper-cited loss design reference inside the study</li>
+<li>DOI / readable URL: see bibliography in arXiv paper</li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Zhou et al. (2021), _Informer: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting_</strong></li>
+</ol>
+<ul>
+<li>Venue: AAAI / arXiv lineage</li>
+<li>Readable URL: <a href="https://arxiv.org/abs/2012.07436">https://arxiv.org/abs/2012.07436</a></li>
+<li>Repo URL: <a href="https://github.com/zhouhaoyi/Informer2020">https://github.com/zhouhaoyi/Informer2020</a></li>
+</ul>
+<ol>
+<li><strong>Supplementary implementation repo cited by the paper</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/martinwhl/Informer-PyTorch-Lightning">https://github.com/martinwhl/Informer-PyTorch-Lightning</a></li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<ol>
+<li><strong>先不复现全套 Informer，先复现同一状态机下的 <code>MSE vs direction-aware loss</code> 对照。</strong></li>
+<li>第一轮只做 <code>BTCUSDT 15m</code>；若成本后还活，再做 <code>5m</code>；<code>3m/1m</code> 放到最后。</li>
+<li>先固定特征集，只改 loss；再固定 loss，只改阈值网格，避免把“模型差异”和“admission 差异”混成一团。</li>
+<li>若 <code>direction-aware loss</code> 主要把预测分布尾部拉开、并显著改善成本后 avg trade，这条线就值得继续；反之就把结论写死：<strong>真正值钱的是 threshold abstain，不是复杂模型。</strong></li>
+<li>如果 <code>15m</code> 存活而 <code>5m</code> 崩掉，别硬追更快频；直接把它定位成 <strong><code>15m</code> 主 directional alpha + <code>5m</code> execution timing`</strong>，而不是伪装成 1m 高频 edge。</li>
+</ol>
+</body>
+</html>

@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Drift↔Hyperliquid 套利 bot 只读成“双所价差扫描”：更该先测的是「same-asset perp-perp basis pocket + rollback execution」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Drift↔Hyperliquid 套利 bot 只读成“双所价差扫描”：更该先测的是「same-asset perp-perp basis pocket + rollback execution」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-28 09:15 UTC</span>
+      <span class="pill">研究时间：2026-03-28 09:03 UTC</span>
+      <span class="pill">类型：raw alpha</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/cross-exchange/perpetual/basis/drift/hyperliquid/execution/cost/slippage/maker-pocket/1m/3m/5m/15m/repo/live-snapshot</span>
+      <span class="pill">证据类型：2025 GitHub 新仓库 + source audit + Drift/Hyperliquid 公共 order-book live snapshot</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-28_0903_drift-hyperliquid-basis-pocket.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-28 09:03 UTC</li>
+<li>类型：raw alpha</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/cross-exchange/perpetual/basis/drift/hyperliquid/execution/cost/slippage/maker-pocket/1m/3m/5m/15m/repo/live-snapshot</li>
+<li>证据类型：2025 GitHub 新仓库 + source audit + Drift/Hyperliquid 公共 order-book live snapshot</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一标的在 Drift 与 Hyperliquid 两个永续 venue 之间出现可交易净价差时，做 <code>short rich venue / long cheap venue</code>，等待 cross-venue basis 回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（但 taker-only 版本当前大概率不过成本，必须把 maker / pocket / rollback 一起设计）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是 <strong>Alex Bitok (2025)</strong> 的 GitHub 仓库 <strong>Drift ↔ Hyperliquid Arbitrage Bot</strong>。它不是那种只给一个“套利机会监控面板”的半成品，而是把两条可独立运行的策略都写出来了：</p>
+<ul>
+<li><strong>Basis arbitrage</strong>：同一标的在两个 venue 的永续价格出现净价差时，做跨所 market-neutral 收敛；</li>
+<li><strong>Funding arbitrage</strong>：同一标的在两个 venue 的 funding rate 出现差异时，做 long-low-funding / short-high-funding。</li>
+</ul>
+<p>我这轮只把它的 <strong>basis branch</strong> 拎出来，因为这条线的 <strong>base alpha 很清楚</strong>：</p>
+<p>&gt; <strong>同一资产、同一合约类型、不同 venue 的 perp-perp basis 会在短时间内向可成交的公允区间回归。</strong></p>
+<p>这比继续补一篇泛 trend/filter 更值得当前 desk 收进素材池，原因很直接：</p>
+<ul>
+<li><code>docs/LEARNING_TRACK.md</code>、<code>docs/FACTOR_BACKLOG.md</code> 里，当前主线已经有不少 trend / breakout / pullback 组件；</li>
+<li>但 <strong>relative value / stat-arb / cross-venue</strong> 这类可完整落地的 raw alpha，仍然值得持续补货；</li>
+<li>这份 repo 直接把 <code>entry / cost / slippage / rollback / timeout / safe_mode</code> 都写进去了，天然适合做 <strong>admission check</strong>。</li>
+</ul>
+<h2>2. 对 desk 真正有用的，不是“扫描价差”，而是把它改写成 pocket 型 raw alpha</h2>
+<p>repo 最值钱的地方，不是“发现 Drift 和 Hyperliquid 有价差”这句话，而是它已经把<strong>完整策略骨架</strong>搭好了：</p>
+<ul>
+<li>配置里直接给了：<code>amount=1.0</code>、<code>max_slippage_bps=10</code>、<code>min_profit_usd=1.0</code>、<code>poll_interval_sec=1</code>；</li>
+<li>成本预算写得很明白：<code>fees.drift=8bps</code>、<code>fees.hyperliquid=7bps</code>；</li>
+<li>执行层不是单腿乱打，而是 <code>ExecutionEngine</code> 协调双腿下单、等待成交、失败回滚；</li>
+<li>还有 <code>safe_mode</code>、<code>order_submit_sec=10</code>、<code>order_cancel_sec=5</code> 这些实盘保护；</li>
+<li>测试文件里也明确测了 basis/funding 两条策略的方向判定与 runner 行为。</li>
+</ul>
+<p>对我们 desk 来说，这意味着它不是“想法线索”，而是已经接近 <strong>可直接 dry-run 的完整策略底盘</strong>。</p>
+<p>但我做了最小 live snapshot 后，结论也很明确：</p>
+<ul>
+<li><strong>纯 taker/taker basis-arb，当前大概率不活。</strong></li>
+<li>这份 repo 真正该先测的，不是 <code>always-on</code> 扫描，而是：</li>
+<li><strong>maker/taker pocket</strong>，或</li>
+<li><strong>极端短时错价 pocket</strong>，或</li>
+<li><strong>basis 主信号 + funding/latency veto</strong>。</li>
+</ul>
+<p>换句话说，这条 raw alpha 不是没有，而是<strong>生存条件非常苛刻</strong>；要先把“什么时候值得出手”测清楚，而不是直接默认常开。</p>
+<h2>3. live snapshot：当前 gross spread 远小于 repo 默认 taker 成本</h2>
+<p>我用公开可得的两边盘口做了一个最小 live snapshot（UTC 2026-03-28 约 09:10）：</p>
+<ul>
+<li><strong>SOL</strong></li>
+<li>Drift best bid/ask：<code>83.0623 / 83.0863</code></li>
+<li>Hyperliquid best bid/ask：<code>83.1040 / 83.1050</code></li>
+<li>若做 <code>long Drift / short Hyperliquid</code>，当前可交叉 gross spread 约 <strong>2.13 bps</strong></li>
+<li><strong>ETH</strong></li>
+<li>Drift best bid/ask：<code>1994.35 / 1995.74</code></li>
+<li>Hyperliquid best bid/ask：<code>1995.90 / 1996.00</code></li>
+<li>同方向 gross spread 约 <strong>0.80 bps</strong></li>
+<li><strong>BTC</strong></li>
+<li>Drift best bid/ask：<code>66306.7 / 66314.5</code></li>
+<li>Hyperliquid best bid/ask：<code>66330.0 / 66331.0</code></li>
+<li>同方向 gross spread 约 <strong>2.34 bps</strong></li>
+<li><strong>repo 默认 taker round-trip 成本</strong>：</li>
+<li><code>2 × (8bps + 7bps) = 30bps</code></li>
+</ul>
+<p>这几个数放一起就够说明问题：</p>
+<ul>
+<li>当前 majors 上的<strong>瞬时可交叉 gross basis</strong>，大约只有 <strong>0.8 ~ 2.3 bps</strong>；</li>
+<li>但 repo 默认 taker/taker round-trip 成本是 <strong>30 bps</strong>；</li>
+<li>所以如果照 repo 配置把它理解成“看见价差就双边 taker 打掉”，那基本等于<strong>拿 execution 去补 alpha 的空洞</strong>。</li>
+</ul>
+<p>因此，这篇东西的正确 desk 化读法不是：</p>
+<p>&gt; “双所有价差，所以能套利。”</p>
+<p>而是：</p>
+<p>&gt; “cross-venue perp-perp basis 是一条真实 raw alpha，但只有在 fee budget、slippage、queue priority、rollback 风险都被严肃约束后，才会变成可活 pocket。”</p>
+<h2>4. desk 化后的完整策略骨架</h2>
+<h3>4.1 Base alpha</h3>
+<ul>
+<li><strong>raw alpha</strong>：<code>basis_t = rich_venue_crossable_bid - cheap_venue_crossable_ask</code></li>
+<li>当 <code>basis_t</code> 足够大，且扣掉成本后仍显著为正时，做：</li>
+<li><code>short rich venue</code></li>
+<li><code>long cheap venue</code></li>
+<li>等待 basis 收敛或价差回到 rolling fair band。</li>
+</ul>
+<h3>4.2 Entry</h3>
+<p>不要直接沿用“<code>profit &gt;= min_profit_usd</code> 就打”这种静态写法，建议改成 <strong>net-edge pocket</strong>：</p>
+<ul>
+<li>用目标 size 的<strong>深度加权成交价</strong>，不是只看 top-of-book；</li>
+<li>计算两个方向的：</li>
+<li><code>gross_edge_bps</code></li>
+<li><code>entry_fee_bps</code></li>
+<li><code>expected_exit_fee_bps</code></li>
+<li><code>slippage_buffer_bps</code></li>
+<li><code>rollback_buffer_bps</code></li>
+<li>只有当：</li>
+<li><code>net_edge_bps = gross_edge_bps - all_costs_bps &gt; threshold</code></li>
+<li>且盘口更新时间、深度、两腿健康度都满足条件，才允许开仓。</li>
+</ul>
+<p>一个更诚实的起点是分三档：</p>
+<ul>
+<li><strong>taker/taker 档</strong>：先当高门槛稀有 pocket，要求 <code>net_edge_bps</code> 明显大于 0；</li>
+<li><strong>maker/taker 档</strong>：rich venue 被动挂单、cheap venue 主动对冲；</li>
+<li><strong>maker/maker 档</strong>：只做研究，不先上生产，因为 queue 与 legging 风险更大。</li>
+</ul>
+<h3>4.3 Exit</h3>
+<p>建议别做“赚到固定金额就走”的粗口径，而是：</p>
+<ul>
+<li><strong>价差回归 exit</strong>：当 <code>basis_t</code> 压缩到入场时的 <code>25%~50%</code> 以下；</li>
+<li><strong>时间止盈/止损</strong>：<code>30s / 60s / 180s / 300s</code> 多档观察；</li>
+<li><strong>异常扩张止损</strong>：如果价差在开仓后继续逆向扩大到 <code>entry + stop_buffer</code>，直接平；</li>
+<li><strong>execution failure exit</strong>：任一腿未成交、挂单超时、quote stale，立刻撤退/回滚。</li>
+</ul>
+<h3>4.4 Sizing</h3>
+<p>适合用<strong>深度约束 + notional cap</strong>，而不是固定手数：</p>
+<ul>
+<li><code>size &lt;= min(drift_depth_cap, hyper_depth_cap, venue_margin_cap, strategy_notional_cap)</code></li>
+<li>初版可先限制成 top-of-book 或前 <code>3~5</code> 档的 <code>5%~10% participation</code>；</li>
+<li>大币先做 <code>BTC/ETH/SOL</code>，别一开始上小币。</li>
+</ul>
+<h3>4.5 Risk / Cost</h3>
+<p>这条策略的核心不是预测错，而是 <strong>execution / latency / fee cliff</strong>：</p>
+<ul>
+<li><code>max_slippage_bps</code> 要单独统计两腿，不要只看 max；</li>
+<li><code>rollback</code> 成功率本身就是主 KPI；</li>
+<li>要区分：</li>
+<li><strong>信号胜率</strong>（价差会不会回归）</li>
+<li><strong>执行胜率</strong>（双腿能否在预算内对上）</li>
+<li>如果净 edge 大部分都落在 <code>0~5bps</code>，那不是“再调调参数”，而是这条实现方式不该上。</li>
+</ul>
+<h2>5. 它和当前 <code>1m / 3m / 5m / 15m</code> 的关系</h2>
+<p>这条 alpha 的<strong>天然周期其实比 5m 更快</strong>，更像 <code>seconds → 1m / 3m</code> 的高强度 raw alpha。对当前 desk，最合理的定位是：</p>
+<ul>
+<li><strong><code>1m / 3m</code></strong>：可以直接做主策略 admission check；</li>
+<li><strong><code>5m / 15m</code></strong>：更适合作为</li>
+<li>relative-value 子策略，或</li>
+<li>execution-quality pocket overlay，或</li>
+<li>“当跨所错价显著时，允许更积极做 mean-rev / spread 收敛”的补充模块。</li>
+</ul>
+<p>所以它不是典型 bar-close 15m 因子，但<strong>完全符合用户允许的更快高强度 alpha intake</strong>。</p>
+<h2>6. 下一步最小实验（这次最重要）</h2>
+<p>先别急着回测 PnL，先做 <strong>pocket existence check</strong>：</p>
+<ol>
+<li><strong>数据抓取</strong></li>
+</ol>
+<ul>
+<li>每 <code>1s</code> 拉一次 Drift <code>l2</code> 与 Hyperliquid <code>l2Book</code></li>
+<li>先只做 <code>BTC/ETH/SOL</code></li>
+<li>持续 <code>3~7</code> 天</li>
+</ul>
+<ol>
+<li><strong>构造两个方向的可成交净边</strong></li>
+</ol>
+<ul>
+<li><code>gross_edge_bps(long Drift / short Hyper)</code></li>
+<li><code>gross_edge_bps(long Hyper / short Drift)</code></li>
+<li>用 depth-weighted price，不用裸 best bid/ask</li>
+</ul>
+<ol>
+<li><strong>分三种成本口径</strong></li>
+</ol>
+<ul>
+<li>taker/taker</li>
+<li>maker/taker</li>
+<li>maker/taker + rollback buffer</li>
+</ul>
+<ol>
+<li><strong>做 pocket 统计</strong></li>
+</ol>
+<ul>
+<li><code>gross_edge_bps &gt; 5 / 10 / 15 / 20 / 30 bps</code> 的出现频率</li>
+<li>pocket 持续时间（<code>1s/3s/5s/10s/30s</code>）</li>
+<li>pocket 发生后 <code>5s/15s/60s/180s</code> 的 markout</li>
+</ul>
+<ol>
+<li><strong>只回答一个 admission question</strong></li>
+</ol>
+<ul>
+<li>在现实成本下，这条策略到底有没有<strong>可重复 pocket</strong>？</li>
+</ul>
+<p>如果结果显示：</p>
+<ul>
+<li>taker/taker 几乎没有 pocket；</li>
+<li>但 maker/taker 在少数时段有稳定 pocket；</li>
+</ul>
+<p>那下一步就转成：</p>
+<p>&gt; <strong>“maker-first cross-venue basis pocket”</strong></p>
+<p>而不是继续把它包装成“普适双边套利”。</p>
+<h2>7. 风险与诚实约束</h2>
+<ul>
+<li><strong>成本悬崖极高</strong>：当前 snapshot 已经说明，gross edge 很容易远小于默认 taker 成本；</li>
+<li><strong>Drift 的流动性结构与 Hyperliquid 不完全同质</strong>：同样叫 perp，微观成交体验不同；</li>
+<li><strong>回滚风险不是附属问题，是主问题</strong>；</li>
+<li><strong>不能把 funding branch 混成 basis 胜率</strong>：两条策略必须分开评估；</li>
+<li><strong>不能只看 top-of-book</strong>：真正能不能做，取决于 size 后的成交价，而不是屏幕上那一跳。</li>
+</ul>
+<h2>8. 结论</h2>
+<p>这份 2025 repo 值得进素材池，但要换一个更诚实的标题：</p>
+<ul>
+<li>它不是“发现一个常开套利机”；</li>
+<li>它更像是：</li>
+<li><strong>一条很清楚的 raw alpha</strong>：cross-venue perp-perp basis convergence；</li>
+<li><strong>一个很完整的执行骨架</strong>：双腿协调、超时、回滚、safe mode；</li>
+<li><strong>一个必须先过 pocket-existence check 的 admission candidate</strong>。</li>
+</ul>
+<p>一句话总结：</p>
+<p>&gt; <strong>alpha 在，execution 更大；先验证 pocket 是否存在，再决定这是不是策略，而不是先假设它能赚钱。</strong></p>
+<h2>9. 来源</h2>
+<ol>
+<li><strong>Alex Bitok (2025). _Drift ↔ Hyperliquid Arbitrage Bot_. GitHub repository.</strong></li>
+<p>Venue: GitHub DOI: N/A Repo URL: <code><a href="https://github.com/Alex-bitok/drift-hyperliquid-arbitrage-bot_">https://github.com/Alex-bitok/drift-hyperliquid-arbitrage-bot_</a></code> Readable README: <code><a href="https://raw.githubusercontent.com/Alex-bitok/drift-hyperliquid-arbitrage-bot_/main/README.md">https://raw.githubusercontent.com/Alex-bitok/drift-hyperliquid-arbitrage-bot_/main/README.md</a></code> Key source files:</p>
+</ol>
+<ul>
+<li><code><a href="https://raw.githubusercontent.com/Alex-bitok/drift-hyperliquid-arbitrage-bot_/main/strategies/basis.py">https://raw.githubusercontent.com/Alex-bitok/drift-hyperliquid-arbitrage-bot_/main/strategies/basis.py</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/Alex-bitok/drift-hyperliquid-arbitrage-bot_/main/strategies/funding.py">https://raw.githubusercontent.com/Alex-bitok/drift-hyperliquid-arbitrage-bot_/main/strategies/funding.py</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/Alex-bitok/drift-hyperliquid-arbitrage-bot_/main/execution/engine.py">https://raw.githubusercontent.com/Alex-bitok/drift-hyperliquid-arbitrage-bot_/main/execution/engine.py</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/Alex-bitok/drift-hyperliquid-arbitrage-bot_/main/config/main.example.yaml">https://raw.githubusercontent.com/Alex-bitok/drift-hyperliquid-arbitrage-bot_/main/config/main.example.yaml</a></code></li>
+</ul>
+<ol>
+<li><strong>GitHub metadata (2025).</strong></li>
+<p>URL: <code><a href="https://api.github.com/repos/Alex-bitok/drift-hyperliquid-arbitrage-bot_">https://api.github.com/repos/Alex-bitok/drift-hyperliquid-arbitrage-bot_</a></code> 用于确认仓库创建时间、最近更新时间、stars 与描述。</p>
+</ol>
+<ol>
+<li><strong>Drift public DLOB endpoint.</strong></li>
+<p>URL 示例：<code><a href="https://dlob.drift.trade/l2?marketName=SOL-PERP">https://dlob.drift.trade/l2?marketName=SOL-PERP</a></code> 公开性：公开可得 更新频率：近实时 order-book 本轮最小实验口径：每秒抓取 <code>BTC-PERP / ETH-PERP / SOL-PERP</code> 的 bids/asks，构造 depth-weighted crossable edge。</p>
+</ol>
+<ol>
+<li><strong>Hyperliquid public Info API.</strong></li>
+<p>URL: <code><a href="https://api.hyperliquid.xyz/info">https://api.hyperliquid.xyz/info</a></code> 本轮使用 payload：</p>
+</ol>
+<ul>
+<li><code>{&quot;type&quot;:&quot;l2Book&quot;,&quot;coin&quot;:&quot;SOL&quot;}</code></li>
+<li><code>{&quot;type&quot;:&quot;l2Book&quot;,&quot;coin&quot;:&quot;ETH&quot;}</code></li>
+<li><code>{&quot;type&quot;:&quot;l2Book&quot;,&quot;coin&quot;:&quot;BTC&quot;}</code></li>
+<p>公开性：公开可得 更新频率：近实时 order-book 本轮最小实验口径：与 Drift 同步抓取后，计算双方向 crossable basis 与 pocket 持续时间。</p>
+</ul>
+</body>
+</html>

@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 新 repo 只读成“布林带网格模拟器”：对 crypto short-cycle desk，更该先拆的是「deep-quote BB fade × inventory-UNWIND state machine」这条完整 raw alpha 壳——但公开数据最小快检提示：它更像可拆件母板，不是当前优先上线候选</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 新 repo 只读成“布林带网格模拟器”：对 crypto short-cycle desk，更该先拆的是「deep-quote BB fade × inventory-UNWIND state machine」这条完整 raw alpha 壳——但公开数据最小快检提示：它更像可拆件母板，不是当前优先上线候选</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-15 09:55 UTC</span>
+      <span class="pill">研究时间：2026-04-15 09:58 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（GitHub API metadata + `README.md` + `config.py` + `strategy.py` + `portfolio.py` + `monitor.py`）+ Binance USDⓈ-M `15m/1h` 近 `180d` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha / mean-reversion / maker / market-making / single-asset / bollinger / deep-quote / inventory-skew / unwind-state-machine / dual-timeframe / binance-perpetual / 15m / 5m / 3m / 1m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：开源 repo 工程实现 + 公共行情最小便携性快检；**不是**论文级跨样本统计结论，也不是带真实盘口成交回放的 execution study</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-15_0958_asym-bb-deepquote-unwind-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-15 09:58 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（GitHub API metadata + <code>README.md</code> + <code>config.py</code> + <code>strategy.py</code> + <code>portfolio.py</code> + <code>monitor.py</code>）+ Binance USDⓈ-M <code>15m/1h</code> 近 <code>180d</code> public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>在 1h Bollinger 宽度推导出的极深报价区外侧分层挂 maker 反转单，成交后不要求价格回到起点，只要求先回一口气；若库存累积过深，则切到 15m <code>UNWIND</code> 模式只做去库存。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / mean-reversion / maker / market-making / single-asset / bollinger / deep-quote / inventory-skew / unwind-state-machine / dual-timeframe / binance-perpetual / 15m / 5m / 3m / 1m / repo / public-data / cost / risk</li>
+<li>证据类型：开源 repo 工程实现 + 公共行情最小便携性快检；<strong>不是</strong>论文级跨样本统计结论，也不是带真实盘口成交回放的 execution study</li>
+</ul>
+<p><strong>先回答 base alpha：这篇东西的 base alpha 不是“布林带碰上下轨就反转”那么简单，也不是“邮件监控器”。它真正的交易母板是：先把挂单放到一个非常深的局部偏离区，赌极端扩张后先回摆一段；如果回摆没来、库存越积越多，就用更快时间框架进入去库存模式。</strong></p>
+<h2>1. 这次为什么看它</h2>
+<p>这份 repo 是 <code>2026-04-12</code> 刚创建、<code>2026-04-14</code> 仍在更新的新仓库，定位很明确：</p>
+<ul>
+<li>只用 Binance Futures 公共 K 线；</li>
+<li>不下真实单，只做 20 个 USDM perpetual 的 paper-trading / virtual portfolio；</li>
+<li>策略主线是 <code>NORMAL (1h)</code> + <code>UNWIND (15m)</code> 的双时间框架 Bollinger grid；</li>
+<li>引擎会跟踪虚拟多空库存、反向 TP 挂单、库存偏移、状态切换，并通过邮件发组合摘要。</li>
+</ul>
+<p>它跟我们前面 intake 过的 <code>martin-binance</code> 同属单资产均值回归 / inventory shell 家族，但又不是完全一回事：</p>
+<ul>
+<li><code>martin-binance</code> 更像 <strong>bounded-bounce reverse-grid × trend veto</strong>；</li>
+<li>这份 repo 更像 <strong>deep-quote market-making shell × inventory-unwind state machine</strong>。</li>
+</ul>
+<p>所以它值得写，不是因为“又一个 grid”，而是因为它把<strong>库存管理和去库存状态机</strong>写得很完整，而且代码里还暴露出一个很关键的 desk 级事实：<strong>README 对策略几何形状的描述，和实际代码不是一回事。</strong></p>
+<h2>2. 代码里真正的策略几何：不是“在上下轨挂单”，而是在更深的位置挂单</h2>
+<h3>2.1 NORMAL 模式的实际报价位置</h3>
+<p><code>strategy.py</code> / <code>portfolio.py</code> 里给出的公式非常清楚：</p>
+<ul>
+<li><code>bw = bb_upper - bb_lower</code></li>
+<li><code>bw_pct = bw / mid</code></li>
+<li><code>inner = F * bw_pct</code></li>
+<li><code>outer = max(bw_pct/2, inner*2)</code></li>
+<li>冻结参数里 <code>F = 1</code>, <code>num_layers_calc = 20</code>, <code>L = 4</code></li>
+</ul>
+<p>于是 flat inventory 时：</p>
+<ul>
+<li><code>inner = bw_pct</code></li>
+<li><code>outer = 2 * bw_pct</code></li>
+<li><code>step = bw_pct / 19</code></li>
+<li>4 个 active layer 实际 offset 是：</li>
+<li><code>1.0000 * bw_pct</code></li>
+<li><code>1.0526 * bw_pct</code></li>
+<li><code>1.1053 * bw_pct</code></li>
+<li><code>1.1579 * bw_pct</code></li>
+</ul>
+<p>而这份 repo 的 NORMAL BB 设置是：</p>
+<ul>
+<li>上轨：<code>mid + 2.3σ</code></li>
+<li>下轨：<code>mid - 1.7σ</code></li>
+<li>所以总带宽 <code>bw = 4.0σ</code></li>
+</ul>
+<p>把两者合在一起翻成人话：</p>
+<p>&gt; 它的首层买单/卖单并不在 <code>-1.7σ / +2.3σ</code> 那两条带上，而是在<strong>大约 ±4σ</strong> 附近；后 3 层还更深，约到 <strong>±4.63σ</strong>。</p>
+<p>也就是说，README 里那张“上轨卖、下轨买”的直观图，对 desk 来说是不够准确的。<strong>真实代码挂的是比带边更远的 deep quotes。</strong></p>
+<h3>2.2 一个更关键的细节：<code>2.3 / 1.7</code> 的非对称，在 NORMAL 初始挂单里几乎没起到 README 宣称的作用</h3>
+<p>repo 自己在 <code>strategy.py</code> 注释里说： &gt; lower band 更靠近中轨，所以 buy orders 会在更小跌幅下触发。</p>
+<p>但从代码公式看，flat inventory 的 NORMAL 挂单只吃 <code>bw = upper - lower</code>，而 <code>2.3 + 1.7 = 4.0</code>，和对称 <code>2.0 + 2.0 = 4.0</code> 的总宽度一样。</p>
+<p>因此至少在 <strong>flat inventory 的 NORMAL 初始网格</strong> 下：</p>
+<ul>
+<li><code>2.3/1.7</code> 不会把买单往现价方向拉近；</li>
+<li>它不会让 long side “更容易触发”；</li>
+<li>它真正影响更明显的地方，反而是 <code>UNWIND</code> 模式下的目标位，以及 README 的叙事呈现。</li>
+</ul>
+<p>这个发现很重要，因为它直接改变我们对这条 alpha 的理解：</p>
+<p>&gt; 它不是“偏多友好的非对称布林带抄底壳”，而更接近一个<strong>总宽度固定、深外侧报价、库存累积后再切换去库存</strong>的状态机策略。</p>
+<h2>3. 完整策略壳长什么样</h2>
+<h3>3.1 进场：deep quote 分层接极端偏离</h3>
+<ul>
+<li>每边 4 层 active orders；</li>
+<li>每层默认 <code>$1000</code> notional；</li>
+<li><code>num_layers_calc = 20</code>，但只启用最靠内的前 4 层；</li>
+<li><code>max_pos_mult = 15</code>，即总可承受头寸上限约为 <code>15 × unit_size</code>。</li>
+</ul>
+<p>这不是“频繁小剥头皮”，而是：</p>
+<ul>
+<li>平时很久没事；</li>
+<li>真有大偏离才触发；</li>
+<li>一旦开始触发，策略会把库存逐步摊开。</li>
+</ul>
+<p>README 自己也承认两年回测里<strong>平均每对约 0.4 fills/day</strong>，说明它故意把报价挂得很远，不是高频小价差回补。</p>
+<h3>3.2 出场：counter TP + 自动轧差</h3>
+<p>每当一个非 close order 成交：</p>
+<ul>
+<li>会按当前带宽与 <code>counter_mult = 2.0</code> 放置反向 TP；</li>
+<li><code>spread = max(counter_mult * offset_now, 4 * maker_fee)</code>；</li>
+<li>maker fee 固定写成 <code>2bps</code>；</li>
+<li>long/short 库存可以自动 <code>try_offset()</code> 做内部轧差。</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; 它不是“等价格完全回到起点再说”，而是把每次成交都转成一个新的库存片段，再给这片库存挂一个能覆盖成本、并尽量吃到局部回摆的反向 TP。</p>
+<h3>3.3 风控：不是先挡住趋势，而是先让你进，再在库存过深时强制去库存</h3>
+<p>repo 的硬风控核心不在 admission gate，而在状态机：</p>
+<ul>
+<li>当 <code>|net_units| &gt;= E = 6</code> → 进入 <code>UNWIND</code></li>
+<li>当 <code>|net_units| &lt; X = 3</code> → 退出 <code>UNWIND</code></li>
+</ul>
+<p><code>UNWIND</code> 模式下：</p>
+<ul>
+<li>不再继续正常双边铺网格；</li>
+<li>切到 <code>15m BB(120, ±2.0σ)</code>；</li>
+<li>仅挂 close-only orders，把库存往 <code>mid / band edge</code> 方向卸。</li>
+</ul>
+<p>这和 <code>martin-binance</code> 的逻辑差异非常明显：</p>
+<ul>
+<li><code>martin-binance</code> 更强调<strong>趋势 veto，尽量别开错第一枪</strong>；</li>
+<li>这份 repo 更强调<strong>开了也没关系，仓位太深时切换到专门的去库存模式</strong>。</li>
+</ul>
+<h2>4. 最小便携性快检：recent Binance perp 上，这个壳的“先回一口气”并不算漂亮</h2>
+<p>我补了一个非常克制的 public-data probe：</p>
+<ul>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li>数据：Binance USDⓈ-M 公共 <code>15m</code> / <code>1h</code> K 线</li>
+<li>窗口：近 <code>180d</code></li>
+<li>事件定义：当 <code>15m</code> bar 触到 repo 公式生成的 <strong>L0 deep quote</strong>（不是 README 图示带边）</li>
+<li>聚类：<code>8h</code> 内连续触发算同一 episode</li>
+<li>检查：后续 <code>8h / 24h</code> 内，是否至少回到对应 <code>1h</code> 带边；以及 <code>24h</code> 内是否回到 <code>mid</code></li>
+</ul>
+<p>先强调：</p>
+<ul>
+<li>这<strong>不是</strong>完整 PnL backtest；</li>
+<li>也<strong>不是</strong>严格复刻 repo 的逐层成交 / TP / UNWIND 全流程；</li>
+<li>它只是回答一个最基本问题：<strong>这么深的单子打到以后，近期市场里“先回一口气”的统计基础够不够。</strong></li>
+</ul>
+<h3>4.1 结果摘要</h3>
+<p><strong>BTCUSDT</strong></p>
+<ul>
+<li>long 侧：<code>7</code> 个 episode；<code>24h</code> 内回到对应下轨仅 <code>43%</code>；回到中轨 <code>0%</code></li>
+<li>short 侧：<code>4</code> 个 episode；<code>24h</code> 内回到上轨 <code>25%</code>；回到中轨 <code>25%</code></li>
+</ul>
+<p><strong>ETHUSDT</strong></p>
+<ul>
+<li>long 侧：<code>9</code> 个 episode；<code>24h</code> 内回到下轨 <code>33%</code>；回到中轨 <code>11%</code></li>
+<li>short 侧：<code>8</code> 个 episode；<code>24h</code> 内回到上轨 <code>12.5%</code>；回到中轨 <code>12.5%</code></li>
+</ul>
+<p><strong>SOLUSDT</strong></p>
+<ul>
+<li>long 侧：<code>10</code> 个 episode；<code>24h</code> 内回到下轨 <code>30%</code>；回到中轨 <code>0%</code></li>
+<li>short 侧：<code>6</code> 个 episode；<code>24h</code> 内回到上轨 <code>83%</code>；回到中轨 <code>33%</code></li>
+</ul>
+<h3>4.2 这组结果说明什么</h3>
+<p>这组结果至少说明三件事：</p>
+<ol>
+<li><strong>这套报价真的很深。</strong></li>
+<p>近 <code>180d</code> 三个主流币总共也没多少次 episode，和 README 里“fill 不频繁”是同方向的。</p>
+</ol>
+<ol>
+<li><strong>recent 长侧 bounce 质量并不强。</strong></li>
+<p>至少在这 180 天里，BTC/ETH/SOL 的 long 侧 episode 后，<code>24h</code> 内连“先回到 1h 下轨”都不算稳，更别说回中轨。</p>
+</ol>
+<ol>
+<li><strong>short 侧在个别币上反而更像样。</strong></li>
+<p>尤其 SOL 这段样本里，short 侧“打到深卖单后再回到上轨”的概率明显高于 long 侧。也就是说，这条壳的可交易性可能比 README 暗示的“对称双边都可做”更偏<strong>择币 + 择边</strong>。</p>
+</ol>
+<p>我的 desk 级翻译是：</p>
+<p>&gt; 这条策略最近不是“深跌就弹、深涨也回”那种双边通吃结构；更像一个<strong>极深报价库存壳</strong>，要么靠更完整的逐层 TP / UNWIND 才能活，要么就必须做成择边版，而不能直接按 README 的双边直觉照抄。</p>
+<h2>5. 它和 <code>martin-binance</code> 的关系：同家族，但这条更适合拆组件，不适合当当前主力母板</h2>
+<h3>5.1 共同点</h3>
+<p>两者都属于：</p>
+<ul>
+<li>单资产短周期均值回归；</li>
+<li>maker-first / inventory-based；</li>
+<li>不是赌完全反转，而是赌“先回一口气”；</li>
+<li>都把 TP、库存、网格重建写成了完整交易壳。</li>
+</ul>
+<h3>5.2 关键差异</h3>
+<p><strong><code>martin-binance</code></strong> 更像：</p>
+<ul>
+<li>reverse-grid bounce shell</li>
+<li>adaptive width</li>
+<li>fee-aware TP</li>
+<li><strong>趋势 veto 是主角之一</strong></li>
+</ul>
+<p><strong><code>crypto-grid-trading-sim</code></strong> 更像：</p>
+<ul>
+<li>deep quote BB fade</li>
+<li>inventory skew</li>
+<li><strong>UNWIND 去库存状态机</strong></li>
+<li>public-kline paper simulation / email monitor infra</li>
+</ul>
+<h3>5.3 如果只能保留一个优先 intake</h3>
+<p>就当前证据强度和 recent portability 来看：</p>
+<p>&gt; <strong><code>martin-binance</code> 仍然是更强的“主 digest / 主母板”；这份新 repo 更适合作为“库存去化状态机 + 代码审计反例”补进研究池。</strong></p>
+<p>原因很简单：</p>
+<ul>
+<li><code>martin-binance</code> 至少把“什么时候别开新逆势库存”这个 admission 问题写清楚了；</li>
+<li>这份新 repo 更像“先进、再靠状态机善后”；</li>
+<li>在 recent 主流 perp 样本里，后者的 long 侧 bounce 统计基础并不漂亮。</li>
+</ul>
+<h2>6. 这份 repo 最值得复用的，不是 README 里那张图，而是这 4 个可拆件</h2>
+<h3>6.1 <code>NORMAL → UNWIND</code> 双模式状态机</h3>
+<p>这是它最有价值的部分。 很多均值回归壳死，不是因为第一枪一定错，而是因为：</p>
+<ul>
+<li>错了以后还继续按同一逻辑加；</li>
+<li>没有一个明确的“从赚钱模式切到去库存模式”的开关。</li>
+</ul>
+<p>这份 repo 把那个开关写得非常硬：库存过深就换挡。这个思想很值得移植到：</p>
+<ul>
+<li>reverse-grid</li>
+<li>pairs spread fade</li>
+<li>basis z-score fade</li>
+<li>maker inventory shell</li>
+</ul>
+<h3>6.2 <code>try_offset()</code> 的多空内部轧差思路</h3>
+<p>它的虚拟持仓不是简单净仓位，而是显式维护：</p>
+<ul>
+<li><code>long_size / long_avg</code></li>
+<li><code>short_size / short_avg</code></li>
+<li>自动 offset 后把 PnL realize 掉</li>
+</ul>
+<p>这对我们做多腿库存管理、或将来做 spot/perp 两腿 inventory accounting，都很有参考价值。</p>
+<h3>6.3 <code>orders_fingerprint()</code> / changed-pair digest 这类研究监控基础设施</h3>
+<p>虽然这不属于 base alpha，但对内部研究很实用：</p>
+<ul>
+<li>哪些 pair 真有结构变化；</li>
+<li>哪些只是轻微重报价，不值得 spam；</li>
+<li>如何把多品种虚拟 book 压成一封能读的 digest。</li>
+</ul>
+<h3>6.4 明确暴露“叙事 ≠ 代码”的审计价值</h3>
+<p>这可能是本次最值得记住的 lesson：</p>
+<p>&gt; README 说“在布林带上下轨挂单”，但代码实际挂的是更深的 <code>±4σ</code> 外侧区；README 说“lower band 更近所以更容易买到”，但 flat NORMAL 初始网格并不直接支持这个叙事。</p>
+<p>这类 repo 很适合做 source audit，因为它提醒我们：<strong>开源策略最危险的不是参数差一点，而是你以为自己复刻了 A，实际上代码干的是 B。</strong></p>
+<h2>7. 当前 verdict</h2>
+<h3>7.1 这条线还值不值得进研究池？</h3>
+<p>值，但位置要摆对。</p>
+<p>我的判断是：</p>
+<p>&gt; 它值得作为 <strong>raw alpha 壳 + inventory overlay 母板</strong> 进入研究池，但<strong>不该</strong>被当作当前优先级最高的单资产 MR 主线候选。</p>
+<h3>7.2 为什么不把它放更高优先级</h3>
+<p>因为它当前暴露出 3 个明显问题：</p>
+<ol>
+<li><strong>真实挂单位置比叙事深得多</strong>，导致触发稀少；</li>
+<li><strong>recent long-side bounce 不够好看</strong>；</li>
+<li><strong>没有像 <code>martin-binance</code> 那样把 trend-veto 前置到 admission 层。</strong></li>
+</ol>
+<h3>7.3 它更适合怎样的归宿</h3>
+<p>我更愿意把它放进下面这个篮子：</p>
+<ul>
+<li><strong>主标签</strong>：<code>raw alpha shell / inventory-unwind overlay</code></li>
+<li><strong>用途</strong>：给已有 MR / maker / pairs 库存壳补一个“何时切换到去库存模式”的结构模板</li>
+<li><strong>不是</strong>：下一条最优先直推 production 的 standalone alpha</li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<h3>A. 先做一个更 desk-friendly 的变体，而不是原样照抄</h3>
+<p>最值得测的是下面这个变体：</p>
+<ul>
+<li>报价位置不要直接从 <code>±4σ</code> 起跳；</li>
+<li>改成真的围绕 <code>band edge / 2.0σ / 2.5σ</code> 分层；</li>
+<li>保留 <code>UNWIND</code> 状态机；</li>
+<li>加 <code>trend veto</code>，不要等到库存积深了才认输。</li>
+</ul>
+<h3>B. 做三组对照</h3>
+<ol>
+<li><strong>repo 原版深报价</strong></li>
+<li><strong>带边附近报价 + UNWIND</strong></li>
+<li><strong>带边附近报价 + trend veto + UNWIND</strong></li>
+</ol>
+<p>如果第 3 组明显比第 1 组好，就说明这份 repo 最有价值的不是它现在的挂单几何，而是<strong>去库存状态机这个组件</strong>。</p>
+<h3>C. 明确加 execution realism</h3>
+<p>这条线尤其要补：</p>
+<ul>
+<li>maker-only / mixed / taker-worst-case friction ladder</li>
+<li>K 线穿价不等于真实成交：要加 missed fill / queue position 假设</li>
+<li>波动扩大时 spread widening 与滑点恶化</li>
+</ul>
+<h3>D. 值得先看的方向：short-only pocket</h3>
+<p>从 recent <code>BTC/ETH/SOL</code> 最小快检看，至少某些样本窗口里，<strong>short 侧比 long 侧更像样</strong>。因此很值得做：</p>
+<ul>
+<li><code>short-only</code> 版本</li>
+<li>或 <code>long/short asymmetric admission</code></li>
+<li>或只在 funding / regime / market state 对某一边更友好时放开深报价</li>
+</ul>
+<h2>9. 来源</h2>
+<ol>
+<li><strong>lindkkk (2026). _crypto-grid-trading-sim_. GitHub repository.</strong></li>
+<p>Venue: GitHub DOI: N/A Readable URL: &lt;<a href="https://github.com/lindkkk/crypto-grid-trading-sim&gt;">https://github.com/lindkkk/crypto-grid-trading-sim&gt;</a> Repo URL: &lt;<a href="https://github.com/lindkkk/crypto-grid-trading-sim&gt;">https://github.com/lindkkk/crypto-grid-trading-sim&gt;</a></p>
+</ol>
+<ol>
+<li><strong><code>README.md</code> for <code>crypto-grid-trading-sim</code>.</strong></li>
+<p>Readable URL: &lt;<a href="https://raw.githubusercontent.com/lindkkk/crypto-grid-trading-sim/main/README.md&gt;">https://raw.githubusercontent.com/lindkkk/crypto-grid-trading-sim/main/README.md&gt;</a></p>
+</ol>
+<ol>
+<li><strong><code>config.py</code> / <code>strategy.py</code> / <code>portfolio.py</code> / <code>monitor.py</code> for <code>crypto-grid-trading-sim</code>.</strong></li>
+<p>Readable URLs:</p>
+</ol>
+<ul>
+<li>&lt;<a href="https://raw.githubusercontent.com/lindkkk/crypto-grid-trading-sim/main/config.py&gt;">https://raw.githubusercontent.com/lindkkk/crypto-grid-trading-sim/main/config.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/lindkkk/crypto-grid-trading-sim/main/strategy.py&gt;">https://raw.githubusercontent.com/lindkkk/crypto-grid-trading-sim/main/strategy.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/lindkkk/crypto-grid-trading-sim/main/portfolio.py&gt;">https://raw.githubusercontent.com/lindkkk/crypto-grid-trading-sim/main/portfolio.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/lindkkk/crypto-grid-trading-sim/main/monitor.py&gt;">https://raw.githubusercontent.com/lindkkk/crypto-grid-trading-sim/main/monitor.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M public klines (<code>BTCUSDT/ETHUSDT/SOLUSDT</code>, <code>15m/1h</code>, recent 180d) portability probe, reproduced locally on 2026-04-15 UTC.</strong></li>
+<p>Venue: Binance Futures public market data DOI: N/A Readable URL: &lt;<a href="https://fapi.binance.com/fapi/v1/klines&gt;">https://fapi.binance.com/fapi/v1/klines&gt;</a></p>
+</ol>
+</body>
+</html>

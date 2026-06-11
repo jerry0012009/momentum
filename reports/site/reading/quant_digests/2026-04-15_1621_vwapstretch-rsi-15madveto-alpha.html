@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Scalp Radar 只读成“18 策略拼盘”：对 short-cycle desk，更该先拆的是「24h VWAP stretch × RSI exhaustion × 15m ADX veto」这条 5m mean-reversion raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Scalp Radar 只读成“18 策略拼盘”：对 short-cycle desk，更该先拆的是「24h VWAP stretch × RSI exhaustion × 15m ADX veto」这条 5m mean-reversion raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-15 16:25 UTC</span>
+      <span class="pill">研究时间：2026-04-15 16:21 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `backend/strategies/vwap_rsi.py` + `backend/core/config.py` + `backend/core/indicators.py` + `config/strategies.yaml`）+ Binance USDⓈ-M `BTCUSDT/ETHUSDT 5m/15m` 近 `60d` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha / single-asset / mean-reversion / VWAP / RSI / volume-spike / ADX / regime-veto / BTC / ETH / 5m / 15m / 30m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：repo 源码 + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-15_1621_vwapstretch-rsi-15madveto-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-15 16:21 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>backend/strategies/vwap_rsi.py</code> + <code>backend/core/config.py</code> + <code>backend/core/indicators.py</code> + <code>config/strategies.yaml</code>）+ Binance USDⓈ-M <code>BTCUSDT/ETHUSDT 5m/15m</code> 近 <code>60d</code> public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：单资产、短周期的 <strong>stretch-then-snapback mean reversion</strong>——当价格相对 <code>24h rolling VWAP</code> 偏离过大、<code>RSI(14)</code> 已经极端、同时出现 <code>2x</code> 放量，而 <code>15m ADX</code> 没有把市场判成强趋势时，未来 <code>5~30m</code> 更容易向均值回摆；<code>15m ADX/DI</code> 在这里是 <strong>regime/filter</strong>，不是 alpha 本体</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / single-asset / mean-reversion / VWAP / RSI / volume-spike / ADX / regime-veto / BTC / ETH / 5m / 15m / 30m / repo / public-data / cost / risk</li>
+<li>证据类型：repo 源码 + public-data portability probe</li>
+</ul>
+<p>先回答 base alpha：<strong>很清楚，就是“短周期价格对 24h 成交量加权均值的过冲回摆”。</strong> 这不是单纯 filter，也不是“指标越多越神”的 confluence 包装。Scalp Radar 里真正值得 intake 的，不是整套 18 策略大框架，而是 <code>vwap_rsi.py</code> 这条已经写成可下单壳的 <strong>5m 原生均值回归策略</strong>。</p>
+<h2>1. 这次看了什么</h2>
+<p>主来源：</p>
+<ul>
+<li><strong>Author / Owner：</strong> jackseg80</li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> *Scalp Radar*</li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/jackseg80/scalp-radar&gt;">https://github.com/jackseg80/scalp-radar&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/jackseg80/scalp-radar&gt;">https://github.com/jackseg80/scalp-radar&gt;</a></li>
+</ul>
+<p>这份 repo 表面上是一个 multi-strategy 平台，但 <code>vwap_rsi</code> 这条线已经足够像完整策略壳：</p>
+<ul>
+<li>主周期固定在 <strong><code>5m</code></strong>，过滤周期固定在 <strong><code>15m</code></strong>；</li>
+<li><code>VWAP</code> 用的是 <strong><code>288</code> 根 5m bar = 24h rolling VWAP</strong>；</li>
+<li>入场阈值写死得很清楚：</li>
+<li><code>RSI(14) &lt; 30</code> 且 <code>close &lt; VWAP - 0.3%</code> 做多；</li>
+<li><code>RSI(14) &gt; 70</code> 且 <code>close &gt; VWAP + 0.3%</code> 做空；</li>
+<li>同时要求 <code>volume &gt; 2 × volume_SMA(20)</code>；</li>
+<li><code>15m ADX &gt; 25</code> 直接 veto，全局避免在明显趋势盘硬接飞刀；</li>
+<li><code>5m</code> 本地还要通过 regime gate：只允许 <code>RANGING / LOW_VOLATILITY</code>；</li>
+<li>出场也不是只靠固定止盈止损：</li>
+<li>默认 <code>TP = 0.8%</code></li>
+<li>默认 <code>SL = 0.3%</code></li>
+<li>若 trade 已浮盈，且 <code>RSI</code> 回到 <code>50</code> 另一侧，就触发 <code>signal_exit</code>。</li>
+</ul>
+<p>源码里最值钱的一点是：<strong>它把 mean reversion 的 alpha body、15m 趋势 veto、5m regime gate、固定 TP/SL、以及 RSI 正常化 exit 分开写清楚了。</strong> 这对当前 desk 很重要，因为它天然适合拆成「base alpha / filter / exit overlay」而不是糊成一团。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最值得 intake 的不是“VWAP+RSI 指标组合”这层表皮，而是 <strong><code>24h VWAP stretch × RSI exhaustion × volume spike × 15m ADX veto</code> 这条 5m 原生 raw alpha 壳</strong>。</li>
+<li><strong>一句话证明方式：</strong> 我先做源码审计，确认 entry / veto / regime / TP / SL / signal-exit 都是闭环的；再把同一组规则迁到 Binance USDⓈ-M <code>BTCUSDT/ETHUSDT</code> 近 <code>60d</code> 公共 <code>5m/15m</code> 数据上做 quick portability probe。</li>
+<li>这条线最大的优点，不是“信号很多”，反而是 <strong>信号很稀疏</strong>。近 <code>60d</code> 里：</li>
+<li><code>BTCUSDT</code> 只有 <code>56</code> 个信号（<code>26</code> long、<code>30</code> short）</li>
+<li><code>ETHUSDT</code> 只有 <code>50</code> 个信号（<code>26</code> long、<code>24</code> short）</li>
+<li>占全部 <code>5m</code> bar 的比例都只有约 <strong><code>0.14%~0.17%</code></strong></li>
+<li>这些信号几乎全部落在 repo 设想的 pocket：<strong>100% 出现在 <code>5m RANGING</code> 状态，而不是趋势追单。</strong></li>
+<li>quick probe 先给出一个很实用的判断：<strong>对 liquid majors，这条母线目前更像“优先做 long-side stretch fade”，而不是对称 long/short 一本通。</strong></li>
+<li><code>BTCUSDT</code>：long 信号未来 <code>15m</code> 平均 <code>+7.20 bps</code>，但 short 只有 <code>-0.59 bps</code></li>
+<li><code>ETHUSDT</code>：long <code>+7.96 bps</code>，short <code>+7.85 bps</code>，比 BTC 对称得多</li>
+<li>再看一个带简化交易壳的 non-overlapping probe（加入 <code>TP 0.8% / SL 0.3% / RSI signal exit</code>，并额外加 <code>12</code> 根 bar cap 只为界定 quick test）：</li>
+<li><code>BTCUSDT</code> long：<code>18</code> 笔，平均 <strong><code>+3.44 bps/笔</code></strong></li>
+<li><code>BTCUSDT</code> short：<code>20</code> 笔，平均 <strong><code>-11.42 bps/笔</code></strong></li>
+<li><code>ETHUSDT</code> long：<code>21</code> 笔，平均 <strong><code>+13.99 bps/笔</code></strong></li>
+<li><code>ETHUSDT</code> short：<code>16</code> 笔，平均 <strong><code>+0.90 bps/笔</code></strong></li>
+</ul>
+<p>这说明当前最该 intake 的 branch 不是“照单全抄双边系统”，而是： &gt; <strong>保留 <code>5m VWAP downside stretch long</code> 这条母线，再决定 short leg 是不是要更强 veto，或者干脆只保留 ETH / 高 beta majors 的 short pocket。</strong></p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮选它，是因为它比继续写一篇泛化 filter 摘要更值：</p>
+<ol>
+<li><strong>base alpha 说得清楚</strong>：就是 VWAP stretch mean reversion，不是把 ADX/filter 伪装成 alpha；</li>
+<li><strong>天然贴近当前主周期</strong>：repo 原生就是 <code>5m</code>，并明确接 <code>15m</code> 过滤；</li>
+<li><strong>只吃公开 K 线和成交量</strong>：不依赖难拿的订单簿、OI、资金费率或私有流；</li>
+<li><strong>可以直接扩 raw alpha 素材池</strong>：当前库里虽然已有不少 MR 摘要，但这条特别之处在于它把 <strong>24h VWAP 锚、15m ADX veto、RSI 正常化 exit</strong> 写成了非常清楚的生产骨架。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：单资产、逆势、均值回归</li>
+<li>基础 alpha：<code>price vs 24h rolling VWAP</code> 的过冲回摆</li>
+<li>regime：<code>5m RANGING / LOW_VOLATILITY</code> 才允许开仓</li>
+<li>filter / veto：<code>15m ADX &gt; 25</code> 直接否决；<code>15m DI+/DI-</code> 用来避免顺着强趋势方向去逆接</li>
+<li>risk / sizing / execution overlay：<code>TP 0.8% / SL 0.3%</code>、浮盈后的 <code>RSI-&gt;50</code> 信号退出、平台层 <code>weight</code> / risk manager / backtesting shell</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 最小研究假设</h3>
+<p><strong>在 liquid majors 的 <code>5m</code> 上，极端偏离 <code>24h VWAP</code> 且放量的 bar，若同时不处于 <code>15m</code> 强趋势环境，则未来 <code>15~30m</code> 有可交易的 snapback；但这条 edge 可能主要集中在 long leg，而不是对称 short。</strong></p>
+<h3>4.2 一个可计算定义</h3>
+<p>在 <code>5m</code> K 线上计算：</p>
+<ul>
+<li><code>RSI(14)</code></li>
+<li><code>rolling VWAP(288)</code></li>
+<li><code>volume / volume_SMA(20)</code></li>
+<li><code>ATR(14)</code>、<code>ATR_SMA(20)</code></li>
+<li><code>ADX(14), DI+, DI-</code></li>
+</ul>
+<p>入场规则直接照 repo：</p>
+<ul>
+<li>long：<code>RSI &lt; 30</code>、<code>VWAP deviation &lt; -0.3%</code>、<code>vol_ratio &gt; 2</code>、<code>15m 非 bearish 趋势</code>、<code>5m regime ∈ {RANGING, LOW_VOL}</code></li>
+<li>short：对称</li>
+</ul>
+<h3>4.3 先怎么测</h3>
+<ol>
+<li><strong>先分 long / short，不要先合并净值。</strong> 这条 quick probe 已经说明对称性很差，尤其 BTC short 明显弱。</li>
+<li><strong>先扫 <code>15m / 30m</code> 持有窗口。</strong> 目前信号后的 <code>5m</code> 不是最稳定，<code>15m</code> 更像主 pocket。</li>
+<li><strong>先做双层 friction ladder：</strong> <code>2 / 4 / 8 bps</code> round-trip；因为信号稀疏，但单笔 edge 也不算厚。</li>
+<li><strong>只先测 <code>BTC / ETH / SOL</code> 三个 liquid majors。</strong> 不要一开始就扩到长尾山寨。</li>
+<li><strong>第二轮再加 short veto：</strong> 比如 <code>BTC short</code> 额外要求 <code>15m DI- 明显占优</code> 或 <code>5m realized vol</code> 不过热，验证 short leg 为什么塌得更快。</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这次 portability probe 用的是 Binance USDⓈ-M 公共 K 线，不是 repo 原始 Bitget live 环境；执行质量、手续费和滑点都还没 fully matched。</li>
+<li>quick trade sim 加了 <code>12 bar</code> cap，只是为了做 bounded first verdict；repo 原始逻辑并没有硬性 time stop，所以不能把这组结果当成 production 回测。</li>
+<li>信号非常稀疏，优点是少噪音，缺点是样本数也小；近 <code>60d</code> 只能先给 first verdict，不能下大结论。</li>
+<li>当前最值得保留的是 <strong>alpha body + veto structure</strong>，不是参数神圣化。<code>0.3%</code> 的 VWAP 偏离、<code>2x</code> volume spike、<code>30/70</code> RSI 阈值都应该做邻域稳定性检查。</li>
+</ul>
+<h2>6. 本轮产出文件</h2>
+<ul>
+<li>研究笔记：<code>research/quant_digests/2026-04-15_1621_vwapstretch-rsi-15madveto-alpha.md</code></li>
+<li>portability artifacts：</li>
+<li><code>reports/artifacts/quant_digests/2026-04-15_vwap_rsi_portability_probe.py</code></li>
+<li><code>reports/artifacts/quant_digests/vwap_rsi_probe_20260415_1621/signal_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/vwap_rsi_probe_20260415_1621/signal_details.csv</code></li>
+<li><code>reports/artifacts/quant_digests/vwap_rsi_probe_20260415_1621/sim_trades.csv</code></li>
+<li><code>reports/artifacts/quant_digests/vwap_rsi_probe_20260415_1621/sim_trade_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/vwap_rsi_probe_20260415_1621/meta.json</code></li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>jackseg80. (2026). _Scalp Radar_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://github.com/jackseg80/scalp-radar&gt;">https://github.com/jackseg80/scalp-radar&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/jackseg80/scalp-radar&gt;">https://github.com/jackseg80/scalp-radar&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Key source files used in this digest</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://raw.githubusercontent.com/jackseg80/scalp-radar/main/README.md&gt;">https://raw.githubusercontent.com/jackseg80/scalp-radar/main/README.md&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/jackseg80/scalp-radar/main/backend/strategies/vwap_rsi.py&gt;">https://raw.githubusercontent.com/jackseg80/scalp-radar/main/backend/strategies/vwap_rsi.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/jackseg80/scalp-radar/main/backend/core/config.py&gt;">https://raw.githubusercontent.com/jackseg80/scalp-radar/main/backend/core/config.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/jackseg80/scalp-radar/main/backend/core/indicators.py&gt;">https://raw.githubusercontent.com/jackseg80/scalp-radar/main/backend/core/indicators.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/jackseg80/scalp-radar/main/config/strategies.yaml&gt;">https://raw.githubusercontent.com/jackseg80/scalp-radar/main/config/strategies.yaml&gt;</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个 2026 Polymarket Rust bot 只读成“预测市场多策略拼盘”：对 short-cycle desk，更该先拆的是「retail skew × funding-confirmed fade」这条可独立落地的 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个 2026 Polymarket Rust bot 只读成“预测市场多策略拼盘”：对 short-cycle desk，更该先拆的是「retail skew × funding-confirmed fade」这条可独立落地的 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-23 09:42 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `src/strategies/basis_impl.rs` + repo metadata）</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/mean-reversion/polymarket/binance/funding/skew-fade/cross-venue/short-horizon/repo/external-data/cost/risk</span>
+      <span class="pill">证据类型：repo source + strategy code + config semantics</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-23_0942_polymarket-funding-confirmed-skewfade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-23 09:42 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>src/strategies/basis_impl.rs</code> + repo metadata）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>跨 venue 相对错价均值回复：当 Polymarket 小时级 YES/NO 隐含概率明显偏向一侧，但 Binance 现货短时并未同向加速、且 perpetual funding 站在反方向时，反做被 retail 挤贵的一侧，赌的是 skew 回归而不是单腿追方向。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/mean-reversion/polymarket/binance/funding/skew-fade/cross-venue/short-horizon/repo/external-data/cost/risk</li>
+<li>证据类型：repo source + strategy code + config semantics</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看：</p>
+<ul>
+<li><strong>Michael Bordash (2026), <code>mbordash/RustPolyBot</code></strong></li>
+<li>Repo URL：&lt;<a href="https://github.com/mbordash/RustPolyBot&gt;">https://github.com/mbordash/RustPolyBot&gt;</a></li>
+<li>Readable README：&lt;<a href="https://raw.githubusercontent.com/mbordash/RustPolyBot/main/README.md&gt;">https://raw.githubusercontent.com/mbordash/RustPolyBot/main/README.md&gt;</a></li>
+<li>Strategy source：&lt;<a href="https://raw.githubusercontent.com/mbordash/RustPolyBot/main/src/strategies/basis_impl.rs&gt;">https://raw.githubusercontent.com/mbordash/RustPolyBot/main/src/strategies/basis_impl.rs&gt;</a></li>
+<li>Repo metadata：public GitHub repo，创建于 <code>2026-03-22</code>，最近一次 push <code>2026-04-22</code></li>
+<li>License：GPL-3.0</li>
+</ul>
+<p>先把一句话说透：<strong>这篇东西的 base alpha 是 cross-venue relative-value / mean-reversion，不是 filter，不是 overlay。</strong></p>
+<p>它不是在说“funding 可以预测价格”这么空的话，而是把一个更适合我们 desk 的短周期壳写得很清楚：</p>
+<ol>
+<li><strong>Polymarket order book 给出 crowd skew；</strong></li>
+<li><strong>Binance spot velocity 负责否决“真在单边飞”的情况；</strong></li>
+<li><strong>Binance perpetual funding 给出 smart-money 方向确认；</strong></li>
+<li><strong>真正交易的是被挤贵的 YES 或 NO token 的反向 fade。</strong></li>
+</ol>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 对 short-cycle desk，这个 repo 最值得保留的不是“又一个预测市场 bot”，而是它把 <strong>retail skew fade × funding confirmation × flat-price veto</strong> 写成了一条能独立复现的完整 raw alpha 壳。</li>
+<li><strong>一句话证明方式：</strong> 证据不是论文回测，而是源码级规则拆解：<code>basis_impl.rs</code> 把 entry / exit / sizing / fee gate / expiry guard 全部明文写出来，足够直接翻译成你自己的 research harness。</li>
+<li>这条线最像什么：<strong>跨 venue 的 implied-probability mispricing 回归</strong>，而不是传统方向动量。</li>
+<li>它最值钱的点不在“用了 funding”，而在 <strong>funding 只是 confirm，不是单独触发</strong>；真正的 base alpha 仍然是 <strong>skew 本身过度偏离 0.5</strong>。</li>
+<li>代码里给出的默认阈值很具体：<strong>entry skew threshold = <code>7¢</code>，极端 skew bypass = <code>2× threshold</code>，TP = <code>+7%</code>，SL = <code>-9%</code>，skew-collapse exit = 回到 <code>3.5¢</code> 内，BTC velocity veto = <code>$25/5s</code>，BTC strike buffer = <code>$175</code>，max entry price = <code>$0.58</code>。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮和当前 desk 的关系很直接：</p>
+<ul>
+<li>它补的是 <strong>raw alpha 素材池里的 relative-value / mean-reversion / carry-adjacent</strong>，不是又一层 shared gate；</li>
+<li>它天然是 <strong>短周期</strong>：repo 主战场就是 hourly Up/Down 市场，评估循环写到 <strong>每 <code>50ms</code></strong> 扫一次快照，数据更新明确是实盘级；</li>
+<li>它特别适合当前研究阶段，因为规则可拆、变量可解释、能快速做 <strong>first verdict</strong>；</li>
+<li>即便你最后不做 Polymarket，本体思路也能迁移到别的二元市场/事件市场/赔率市场：<strong>先找 crowd skew，再用外部主市场价格与 carry 信号做 veto/confirm。</strong></li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>relative-value / cross-venue / mean-reversion / skew fade</strong></li>
+<li>基础 alpha：<strong>当 YES/NO 隐含概率偏得太离谱时，未来更可能向公平价回归。</strong></li>
+<li>regime：<strong>Binance 现货并未同向急速移动，且 oracle 价格仍靠近 strike，说明这个市场还没“被现实价格直接判死刑”。</strong></li>
+<li>filter / veto：<strong>高 velocity 禁做；距 strike 太远禁做；高 taker fee 禁做；离 expiry 太近禁做。</strong></li>
+<li>risk / sizing / execution overlay：<strong>fractional-Kelly 尺寸缩放、entry price ceiling、TP/SL、skew-collapse 提前止盈、expiry guard。</strong></li>
+</ul>
+<h2>4. 源码里到底写了什么</h2>
+<h3>4.1 入场逻辑</h3>
+<p><code>src/strategies/basis_impl.rs</code> 里的顺序非常清楚：</p>
+<ol>
+<li><strong>先过 expiry guard</strong>：离收盘太近不做；</li>
+<li><strong>必须有 strike</strong>：没 strike 就没法判断这个 binary 市场是否已被现货价格“决定”；</li>
+<li><strong>先过 fee gate</strong>：两边 taker fee 只要有一边太高，就直接跳过；</li>
+<li><strong>按币种切不同常数</strong>：BTC / ETH / SOL 用不同 velocity 阈值与 strike buffer；</li>
+<li><strong>现货必须够平</strong>：若 <code>abs(velocity)</code> 超过上限，说明这不是“错价回归”，而可能是现货真的在单边重定价；</li>
+<li><strong>现货不能离 strike 太远</strong>：否则 YES/NO 的高低价未必是 crowd 错，而可能只是结果已经快被现实锁定；</li>
+<li><strong>用 YES mid 计算 skew</strong>：<code>yes_mid - 0.50</code>，而不是拿 bid 或 ask 单边看；</li>
+<li><strong>skew 必须超过阈值</strong>：绝对值不够大，不做；</li>
+<li><strong>funding 要与 fade 方向一致，除非 skew 极端到直接 bypass</strong>；</li>
+<li><strong>最后再看 entry price</strong>：买 NO 或买 YES 时，ask 不得太贵。</li>
+</ol>
+<p>这套顺序很像我们当前喜欢的“<strong>先定义 raw alpha，再逐层加 veto</strong>”而不是反过来。</p>
+<h3>4.2 出场逻辑</h3>
+<p>源码里 exit 也不是一句“到点就平”：</p>
+<ul>
+<li><strong>TP</strong>：利润达到 <code>+7%</code>；</li>
+<li><strong>SL</strong>：亏损到 <code>-9%</code>，但要先过最小持有时间，避免 phantom fill / 极短噪声误杀；</li>
+<li><strong>Skew-collapse exit</strong>：如果 skew 已经显著回到 <code>0.5</code> 附近且仓位已有盈利，就别死等 full TP；</li>
+<li><strong>Expiry exit</strong>：过近到期直接走。</li>
+</ul>
+<p>这很重要，因为它说明作者不是把 funding 当成慢频因子，而是确实在做 <strong>短持有、事件窗内回归</strong>。</p>
+<h3>4.3 仓位</h3>
+<p>源码里还有独立函数 <code>basis_trade_size(skew_abs)</code>：</p>
+<ul>
+<li>以 <strong>entry threshold 的倍数</strong> 映射仓位；</li>
+<li><code>1× threshold</code> 对应最小 size；</li>
+<li>到 <code>BASIS_KELLY_MAX_MULTIPLIER</code>（README 里给的是 <code>3×</code>）放大到最大 size；</li>
+<li>本质是 <strong>signal-strength sizing</strong>，不是固定手数。</li>
+</ul>
+<h2>5. 为什么这条线像 raw alpha，而不只是 funding overlay</h2>
+<p>因为 funding 在这里不是主信号，而是 <strong>confirming signal</strong>。</p>
+<p>真正的交易对象是：</p>
+<ul>
+<li><code>YES mid</code> 偏得过高 → 说明 crowd 把 YES 买贵了；</li>
+<li>但如果 Binance 现货也在快速往上冲，那这未必是错价；</li>
+<li>只有当 <strong>现货没怎么动</strong>，同时 <strong>funding 还偏向反方向</strong> 时，才更像“赔率被 retail 挤歪了”。</li>
+</ul>
+<p>换句话说：</p>
+<ul>
+<li><strong>base alpha = skew mean reversion</strong></li>
+<li><strong>funding = side confirmation</strong></li>
+<li><strong>velocity / strike distance / fees / expiry = veto layer</strong></li>
+</ul>
+<p>这正符合当前 intake 规则：能把 <code>base alpha / filter / overlay</code> 拆干净，就值得进池。</p>
+<h2>6. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 在 Polymarket hourly BTC/ETH/SOL binary 市场里，若某一侧隐含概率对 <code>0.5</code> 的偏离足够大，同时 Binance spot 处于低 velocity 且 perp funding 与 crowd 偏向相反，则该侧被挤贵的概率更大，后续数分钟到数十分钟存在回归 edge。</p>
+<p><strong>一个可计算定义：</strong></p>
+<ol>
+<li>数据源：</li>
+</ol>
+<ul>
+<li>Polymarket CLOB best bid/ask + market close time + strike；</li>
+<li>Binance spot mid / recent <code>1s~5s</code> velocity；</li>
+<li>Binance perp funding（<code>fapi/v1/premiumIndex</code>）；</li>
+</ul>
+<ol>
+<li>定义 <code>yes_mid = (yes_bid + yes_ask)/2</code>；</li>
+<li>定义 <code>skew = yes_mid - 0.5</code>；</li>
+<li>当 <code>|skew| &gt;= 0.07</code> 时产生候选；</li>
+<li>若 <code>abs(spot_velocity_5s) &lt; cap</code> 且 <code>abs(oracle - strike) &lt; buffer</code>，继续；</li>
+<li>若 <code>skew &gt; 0</code> 且 funding &lt; 负阈值，则买 <code>NO</code>；若 <code>skew &lt; 0</code> 且 funding &gt; 正阈值，则买 <code>YES</code>；</li>
+<li>若 <code>|skew| &gt;= 0.14</code>，可测试 bypass funding 版本；</li>
+<li>出场先用 <code>TP/SL/skew-collapse/expiry</code> 四段式。</li>
+</ol>
+<p><strong>最小回测切口：</strong></p>
+<ul>
+<li>标的：Polymarket <code>BTC/ETH/SOL</code> hourly Up/Down markets</li>
+<li>周期：事件窗内原始时间戳，研究汇总可折到 <code>1m/3m/5m</code></li>
+<li>样本：先抓最近 <code>2~4</code> 周</li>
+<li>先看指标：<code>avg net bps/trade</code>、<code>median hold time</code>、<code>skew-collapse hit rate</code>、<code>fee-after hit rate</code></li>
+</ul>
+<p><strong>下一步怎么测：</strong></p>
+<ol>
+<li><strong>先做 raw alpha baseline：只用 <code>|skew|</code> 入场，不上 funding confirm</strong>，看本体有没有 edge；</li>
+<li><strong>再做 A/B：<code>skew only</code> vs <code>skew + funding</code> vs <code>skew + funding + flat-velocity veto</code></strong>；</li>
+<li><strong>单独扫 <code>0.05 / 0.07 / 0.09</code> 的 skew threshold</strong>，确认现在这条线是不是被参数写死；</li>
+<li><strong>单独做 fee ladder</strong>：<code>50 / 100 / 200 / 300 bps</code>；因为这条策略对 taker cost 非常敏感；</li>
+<li><strong>检查 hold-time 分布</strong>：若 edge 只存在于超短窗，就要把执行层当主问题，而不是继续研究高层因子；</li>
+<li><strong>如果要迁到纯 crypto perp desk</strong>，可测试替代版：把 Polymarket 的 <code>yes_mid-0.5</code> 换成“事件市场隐含概率 / 预测市场概率 / 链上赔率”的 crowd skew proxy。</li>
+</ol>
+<h2>7. 数据源、公开性、更新频率、最小复现实验口径</h2>
+<ul>
+<li><strong>Polymarket CLOB / Gamma API</strong></li>
+<li>用途：YES/NO bid-ask、market metadata、close time、strike</li>
+<li>公开性：公开可读</li>
+<li>更新频率：盘口实时 / WS 级</li>
+<li><strong>Binance spot / oracle price</strong></li>
+<li>用途：短时 velocity、是否已接近/穿过 strike</li>
+<li>公开性：公开可读</li>
+<li>更新频率：秒级到实时</li>
+<li><strong>Binance perp funding (<code>/fapi/v1/premiumIndex</code>)</strong></li>
+<li>用途：funding sign confirm</li>
+<li>公开性：公开可读</li>
+<li>更新频率：repo README 写的是每 <code>60s</code> 轮询注入快照</li>
+</ul>
+<p><strong>最小可复现实验口径：</strong> 只要你能连续抓取 <code>Polymarket top-of-book + strike/close</code> 和 <code>Binance spot/funding</code>，就能先做 event-time replay；甚至不需要先接实盘下单接口。</p>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>这是 <strong>repo-based intake</strong>，不是论文；当前强项是“规则清楚”，弱项是“没有同等强度的公开大样本业绩证明”。</li>
+<li>Repo 只有 <strong>5 stars</strong>，不能把它当成已验证 edge，只能当作 <strong>高可复刻候选壳</strong>。</li>
+<li>这条线对 <strong>taker fee、流动性、延迟</strong> 很敏感，代码里也明确加了 fee gate；所以它很可能是“执行决定生死”的策略，不是纸面 alpha 自动成立。</li>
+<li>这套逻辑的原始战场是 <strong>prediction market × crypto perp</strong>，不能直接当作 Binance perp 单市场 alpha；若迁移到纯 perp，需要重新找 crowd skew proxy。</li>
+<li>不过从研究价值看，它仍值得入池，因为它把 <strong>crowd mispricing → external-market veto/confirm → mean-reversion trade</strong> 这条链写得很完整。</li>
+</ul>
+<h2>9. 来源</h2>
+<ol>
+<li><strong>Michael Bordash (2026), <code>RustPolyBot</code></strong></li>
+</ol>
+<ul>
+<li>Repo：&lt;<a href="https://github.com/mbordash/RustPolyBot&gt;">https://github.com/mbordash/RustPolyBot&gt;</a></li>
+</ul>
+<ol>
+<li><strong>README.md</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://raw.githubusercontent.com/mbordash/RustPolyBot/main/README.md&gt;">https://raw.githubusercontent.com/mbordash/RustPolyBot/main/README.md&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Basis strategy source</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://raw.githubusercontent.com/mbordash/RustPolyBot/main/src/strategies/basis_impl.rs&gt;">https://raw.githubusercontent.com/mbordash/RustPolyBot/main/src/strategies/basis_impl.rs&gt;</a></li>
+</ul>
+<ol>
+<li><strong>GitHub repo metadata / commit history</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://api.github.com/repos/mbordash/RustPolyBot&gt;">https://api.github.com/repos/mbordash/RustPolyBot&gt;</a></li>
+<li>&lt;<a href="https://api.github.com/repos/mbordash/RustPolyBot/commits?per_page=5&gt;">https://api.github.com/repos/mbordash/RustPolyBot/commits?per_page=5&gt;</a></li>
+</ul>
+</body>
+</html>

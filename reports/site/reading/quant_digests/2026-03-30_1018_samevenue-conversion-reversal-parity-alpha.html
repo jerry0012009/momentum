@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 coin-margined options repo 继续当“又一个 box scanner”：对 desk 更该先测的是「carry-adjusted same-venue conversion/reversal × parity gap hurdle」raw alpha，但必须先统一 inverse premium 单位</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 coin-margined options repo 继续当“又一个 box scanner”：对 desk 更该先测的是「carry-adjusted same-venue conversion/reversal × parity gap hurdle」raw alpha，但必须先统一 inverse premium 单位</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-30 10:27 UTC</span>
+      <span class="pill">研究时间：2026-03-30 10:18 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + `strategies/arbitrage/conversion.py` / `docs/theory.md` source audit + Deribit BTC options 公共 live sanity check + 2023 *Mathematical Finance* 理论锚点</span>
+      <span class="pill">主题标签：raw-alpha/options/relative-value/stat-arb/put-call-parity/conversion/reversal/synthetic-forward/same-venue/coin-margined/inverse-options/deribit/okx/btc/eth/1m/3m/5m/15m/repo/public-data/cost</span>
+      <span class="pill">证据类型：代码级策略定义 + 公开 live 行情快检 + 理论论文锚点</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-30_1018_samevenue-conversion-reversal-parity-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-30 10:18 UTC</li>
+<li>类型：2026 GitHub 新仓库 + <code>strategies/arbitrage/conversion.py</code> / <code>docs/theory.md</code> source audit + Deribit BTC options 公共 live sanity check + 2023 *Mathematical Finance* 理论锚点</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同所、同到期、同执行价的 <code>call-put-spot/perp</code> 在 carry 调整后的 put-call parity 上出现可覆盖 frictions 的偏离；当偏离足够大时做 conversion / reversal，吃的是 synthetic forward 向理论 forward 回归的相对价值 alpha。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/options/relative-value/stat-arb/put-call-parity/conversion/reversal/synthetic-forward/same-venue/coin-margined/inverse-options/deribit/okx/btc/eth/1m/3m/5m/15m/repo/public-data/cost</li>
+<li>证据类型：代码级策略定义 + 公开 live 行情快检 + 理论论文锚点</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong><code>signorloops/crypto-options-research-platform</code> (2026)</strong> 里的 <code>strategies/arbitrage/conversion.py</code>。如果只用一句人话概括，这份 repo 真正适合 desk intake 的，不是再看一遍 box spread，而是：</p>
+<p>&gt; <strong>把 same-venue 的 put-call parity 偏离，直接写成 <code>trade only when deviation &gt; cost hurdle</code> 的 conversion / reversal 状态机。</strong></p>
+<p>对当前 desk，这条线的价值在于：它是一条<strong>独立完整的 raw alpha</strong>，不是 filter；而且它天然属于 <code>relative value / stat-arb</code>，能补现在素材池里更偏 trend / pairs / funding 的另一块。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>base alpha 很清楚。</strong> repo 不是拿 parity 做解释，而是直接定义：</li>
+<li><code>synthetic_forward = call_price - put_price</code></li>
+<li><code>theoretical_forward = S * exp(-qT) - K * exp(-rT)</code></li>
+<li><code>deviation = synthetic_forward - theoretical_forward</code></li>
+<li>若 <code>deviation &gt; total_cost</code> 做 <strong>conversion</strong>；若 <code>deviation &lt; -total_cost</code> 做 <strong>reversal</strong>。</li>
+<li><strong>它已经把完整策略骨架写出来了。</strong> 代码默认：<code>risk_free_rate = 5%</code>、<code>min_profit_threshold = 0.1%</code>、<code>transaction_cost = 0.2%</code> 单边；并把总门槛写成 <code>3 * transaction_cost * spot</code>，等于显式要求一次 trade 必须同时覆盖 <code>call + put + underlying</code> 三条腿的 frictions。</li>
+<li><strong>它把 carry 调整写进 parity，而不是假装 <code>q=0</code>。</strong> <code>calculate_parity_deviation()</code> 允许把 <code>staking_yield</code>/carry yield 带入 <code>S * exp(-qT)</code>。这点对 crypto 重要，因为这里的“现货腿”很多时候更像 <code>spot / perp / synthetic cash leg</code>，不是传统股票的静态 carry 环境。</li>
+<li><strong>repo 最该借的不是参数，而是 trade-on / trade-off 逻辑。</strong> <code>get_hedge_position()</code> 已经把 conversion 写成 <code>short call + long put + long underlying</code>，reversal 写成 <code>long call + short put + short underlying</code>；<code>calculate_margin_requirement()</code>、<code>calculate_pnl_scenarios()</code>、<code>verify_arbitrage_bounds()</code> 也已经把保证金、情景 PnL、无套利边界检查放进同一个壳子。</li>
+<li><strong>但这份代码不能直接照抄上实盘。</strong> repo 自己定位是 <strong>coin-margined / inverse options</strong> 平台，<code>docs/theory.md</code> 也明确写了 inverse 期权；可 <code>conversion.py</code> 里直接用 <code>call_price - put_price</code> 去和 <code>S - K e^{-rT}</code> 比，默认假设 premium 与 spot/strike 在同一计价单位。若 live 行情是 Deribit 常见的 <strong>BTC 计价 premium</strong>，就必须先统一 numeraire，否则 parity gap 会被“单位错位”污染。</li>
+</ul>
+<p>一句话核心结论：</p>
+<p>&gt; <strong>对 desk 更值得先测的，不是 box spread 的年化利率故事，而是 same-venue synthetic-forward mispricing 本身；但必须先把 inverse premium 统一到同一计价单位，再谈 alpha。</strong></p>
+<p>一句话说明它怎么证明：</p>
+<p>&gt; <strong>不是只在 README 里口头讲 parity，而是把偏离定义、成本门槛、三腿方向、保证金估算、PnL 场景和 bound check 全写成了可审计代码；再用公开 Deribit option chain 做 live sanity check，能直接看出“数据是公开的、机会是稀薄的、单位问题是真的”。</strong></p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮值得写它，而不是再补一篇纯解释型 options 综述，原因很直接：</p>
+<ol>
+<li><strong>它是 raw alpha，而且是完整策略。</strong> 信号、入场、对冲腿、出场思路、成本门槛、保证金全能落地。</li>
+<li><strong>它补的是 relative-value / stat-arb 素材池。</strong> 不是继续围绕 breakout / trend / funding 单线内循环。</li>
+<li><strong>它天然适合短周期。</strong> 这类机会不是靠日频持有，而是靠 <code>event-driven snapshot -&gt; 短时间收敛 -&gt; 快速平仓</code>；最自然的实验频率就是 <code>1m / 3m</code>，<code>5m</code> 做容错，<code>15m</code> 只适合做机会热度面板，不适合当主时钟。</li>
+<li><strong>它还能服务后续更多 options 线。</strong> 同一套 numeraire 校准、费用建模、quote staleness 检查，以后还能复用于 box / vertical / cross-venue parity 线。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>relative value / stat-arb / same-venue options-parity arbitrage</strong></li>
+<li>基础 alpha：<strong>carry-adjusted put-call parity 偏离会回归无套利带</strong></li>
+<li>regime：<strong>短到期、链路稳定、盘口非极端稀薄时更适合；重大波动/事件前后的 quote staleness 要单独标记</strong></li>
+<li>filter / veto：<strong>偏离不过 <code>friction hurdle</code> 不交易；腿的盘口深度不足、不同时戳、spread 过宽、估算 carry 不可靠时 veto</strong></li>
+<li>risk / sizing / execution overlay：<strong>按最短板腿的可成交名义 sizing；优先限价/半主动成交；加总三腿手续费、滑点、borrow/funding/carry；设置 quote age 与 max hold kill-switch</strong></li>
+</ul>
+<h2>4. 3 个关键数据点</h2>
+<ol>
+<li><strong>repo 默认门槛并不低：</strong> <code>transaction_cost = 0.2%</code> 单边，<code>total_cost = 3 * cost * spot</code>，意味着策略不是“看到一点点 parity 漂移就上”。</li>
+<li><strong>repo 默认只收够大的净边：</strong> <code>min_profit_threshold = 0.1%</code>，利润/现货价不过线直接过滤。</li>
+<li><strong>live 公共链快检显示机会很稀：</strong> 2026-03-30 UTC，Deribit 公共接口可见 <strong><code>880</code> 个未到期 BTC options</strong>；其中最近到期 ATM 附近的 <code>BTC-31MAR26-67500-C/P</code> 中间价折成 USD 后，<code>synthetic_forward - theoretical_forward ≈ -7.73 USD</code>，约 <strong><code>-1.15 bps</code> of spot</strong>，说明 <strong>same-venue parity 机会大概率不是“常驻宽边”，而是要做事件驱动 + 高质量费用口径。</strong></li>
+</ol>
+<h2>5. 真正值得 desk 先偷哪一段</h2>
+<p>最该先偷的，不是 repo 里写的 <code>5%</code> 无风险利率，也不是名义年化，而是这条 admission rule：</p>
+<p>&gt; <strong>parity 偏离只有在穿过三腿总 frictions 后，才允许变成仓位。</strong></p>
+<p>这件事对 options alpha 特别关键，因为很多“看起来有 gap”的机会其实会死在：</p>
+<ul>
+<li>call / put / underlying 不同步；</li>
+<li>其中一条腿的盘口很薄；</li>
+<li>premium 单位没对齐；</li>
+<li>你以为是 same-venue arb，实际吃的是 stale quote / latency illusion。</li>
+</ul>
+<p>repo 的价值正是把这些坑的框架搭好了：<strong>先算 deviation，再比 hurdle，再决定 conversion 还是 reversal。</strong></p>
+<h2>6. 可复刻的最小实验</h2>
+<h3>6.1 数据源、公开性、更新频率</h3>
+<ul>
+<li><strong>主数据源：</strong> Deribit Public API（options instrument list、book summary、index price）</li>
+<li><strong>公开性：</strong> 公开可得，无需私钥即可拉取 snapshots</li>
+<li><strong>更新频率：</strong> 可秒级轮询；第一轮最小实验直接做 <code>1s~5s</code> snapshot，再聚合到 <code>1m / 3m</code></li>
+<li><strong>可迁移源：</strong> OKX 公共 options API；若要用 perp 替 spot，也可接同所 perp mid</li>
+</ul>
+<h3>6.2 最小可复现实验口径</h3>
+<ol>
+<li><strong>只做 BTC 单标的。</strong> 先抓同所、同到期、同执行价的 call/put + index/perp mid。</li>
+<li><strong>先统一 numeraire。</strong> 若 premium 为 BTC 计价，先转成 USD 等价，再和 <code>S * exp(-qT) - K * exp(-rT)</code> 比；不要直接 <code>call_price - put_price</code> 硬减。</li>
+<li><strong>定义信号：</strong></li>
+</ol>
+<ul>
+<li><code>gap_usd = synthetic_forward_usd - theoretical_forward_usd</code></li>
+<li><code>gap_bps = gap_usd / spot * 10000</code></li>
+</ul>
+<ol>
+<li><strong>入场条件：</strong></li>
+</ol>
+<ul>
+<li><code>|gap_bps| &gt; fee + slip + stale_quote_buffer</code></li>
+<li>三腿时间戳差 &lt; <code>1~2s</code></li>
+<li>call/put/underlying 的 top-of-book notional 都过阈值</li>
+</ul>
+<ol>
+<li><strong>方向：</strong></li>
+</ol>
+<ul>
+<li><code>gap &gt; hurdle</code> -&gt; conversion</li>
+<li><code>gap &lt; -hurdle</code> -&gt; reversal</li>
+</ul>
+<ol>
+<li><strong>出场：</strong></li>
+</ol>
+<ul>
+<li>gap 回到零轴附近 / 压回成本带；或</li>
+<li><code>max_hold = 1m / 3m / 5m</code>；或</li>
+<li>任一腿报价失真/失联强平</li>
+</ul>
+<ol>
+<li><strong>第一轮 friction ladder：</strong> round-trip 先跑 <code>6 / 10 / 14 / 20 bps</code>，并把三腿分别记账，而不是只看总费用。</li>
+</ol>
+<h3>6.3 第一轮先回答什么</h3>
+<ul>
+<li>same-venue parity gap 在公开快照里到底有多少次真正穿过成本？</li>
+<li>这些事件主要出现在<strong>临近到期</strong>、<strong>波动突增</strong>，还是<strong>盘口切换</strong>时刻？</li>
+<li><code>1m</code> hold 与 <code>3m</code> hold 谁更像收敛而不是噪音？</li>
+<li>用 <strong>spot</strong> 还是 <strong>perp</strong> 当 underlying 腿，哪个更容易成交、哪个 funding/borrow 更诚实？</li>
+</ul>
+<h2>7. 这张卡最容易错在哪里</h2>
+<ul>
+<li><strong>错法 1：</strong> 忽略 inverse premium 单位问题，直接把 BTC premium 当 USD premium 做 parity。</li>
+<li><strong>错法 2：</strong> 只看 mid，不看 top-of-book size 与 quote age。</li>
+<li><strong>错法 3：</strong> 把这条线误写成 <code>15m</code> bar-close alpha；它更像 event-driven scanner。</li>
+<li><strong>错法 4：</strong> 看到小 gap 就激动；真实生存线取决于三腿费用、成交同步和仓位约束。</li>
+<li><strong>错法 5：</strong> 把 carry 写死成 <code>q=0</code>；crypto 里 spot/perp/staking 的持有收益和融资拖累都可能改掉 fair value。</li>
+</ul>
+<h2>8. 为什么值得进入研究池</h2>
+<p>它值得进池，不是因为 repo 已经给了可信回测，而是因为它补了一个当前素材池里<strong>很像 raw alpha、又很容易做 first verdict</strong> 的槽位：</p>
+<p>&gt; <strong>同所 options parity mispricing 本身就是 alpha；而且比很多“模型先行”的 options 线更容易被拆成干净的 trade-on / trade-off 规则。</strong></p>
+<p>对当前 desk，这比继续补一个纯 overlay 更值钱，因为它能直接产出一轮诚实的 <code>1m/3m</code> 事件驱动验证。</p>
+<h2>9. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 <code>Deribit BTC</code> 最近 <code>7~14</code> 天 snapshot 采集。</strong> 只抓同到期 call/put + index/perp。</li>
+<li><strong>把 premium 单位统一作为第一优先。</strong> 先做 USD 等价版 parity，再谈回测。</li>
+<li><strong>按 <code>same-venue conversion/reversal</code> 跑 friction ladder。</strong> 先测是否存在真正穿过 <code>10~20 bps</code> 成本带的事件。</li>
+<li><strong>对照 two-leg vs three-leg 版本。</strong> 比较 <code>call-put + spot</code> 与 <code>call-put + perp</code> 哪个更可执行。</li>
+<li><strong>若 BTC 能活，再扩 ETH。</strong> 不要一开始全链铺开。</li>
+</ol>
+<h2>10. 来源与链接</h2>
+<ol>
+<li><strong>signorloops (2026). _crypto-options-research-platform_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/signorloops/crypto-options-research-platform&gt;">https://github.com/signorloops/crypto-options-research-platform&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/signorloops/crypto-options-research-platform&gt;">https://github.com/signorloops/crypto-options-research-platform&gt;</a></li>
+<li>Key files:</li>
+<li>&lt;<a href="https://github.com/signorloops/crypto-options-research-platform/blob/master/strategies/arbitrage/conversion.py&gt;">https://github.com/signorloops/crypto-options-research-platform/blob/master/strategies/arbitrage/conversion.py&gt;</a></li>
+<li>&lt;<a href="https://github.com/signorloops/crypto-options-research-platform/blob/master/docs/theory.md&gt;">https://github.com/signorloops/crypto-options-research-platform/blob/master/docs/theory.md&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Alexander, C., Chen, J., &amp; Imeraj, A. (2023). _Crypto quanto and inverse options_. Mathematical Finance.</strong></li>
+</ol>
+<ul>
+<li>DOI: &lt;<a href="https://doi.org/10.1111/mafi.12410&gt;">https://doi.org/10.1111/mafi.12410&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://doi.org/10.1111/mafi.12410&gt;">https://doi.org/10.1111/mafi.12410&gt;</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Deribit API Docs / Public Endpoints (live snapshot sanity check, accessed 2026-03-30).</strong></li>
+</ol>
+<ul>
+<li>Venue: Deribit Developer Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://docs.deribit.com/&gt;">https://docs.deribit.com/&gt;</a></li>
+<li>Example endpoints used:</li>
+<li>&lt;<a href="https://www.deribit.com/api/v2/public/get_instruments?currency=BTC&amp;kind=option&amp;expired=false&gt;">https://www.deribit.com/api/v2/public/get_instruments?currency=BTC&amp;kind=option&amp;expired=false&gt;</a></li>
+<li>&lt;<a href="https://www.deribit.com/api/v2/public/get_book_summary_by_instrument?instrument_name=BTC-31MAR26-67500-C&gt;">https://www.deribit.com/api/v2/public/get_book_summary_by_instrument?instrument_name=BTC-31MAR26-67500-C&gt;</a></li>
+<li>&lt;<a href="https://www.deribit.com/api/v2/public/get_book_summary_by_instrument?instrument_name=BTC-31MAR26-67500-P&gt;">https://www.deribit.com/api/v2/public/get_book_summary_by_instrument?instrument_name=BTC-31MAR26-67500-P&gt;</a></li>
+<li>&lt;<a href="https://www.deribit.com/api/v2/public/get_index_price?index_name=btc_usd&gt;">https://www.deribit.com/api/v2/public/get_index_price?index_name=btc_usd&gt;</a></li>
+</ul>
+</body>
+</html>

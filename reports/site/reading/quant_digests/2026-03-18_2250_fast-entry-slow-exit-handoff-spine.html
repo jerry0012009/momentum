@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 fail-fast 当成 15m 全程管理：先让 entry 快，活下来后再 handoff 到 slow Donchian / Chandelier exit</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 fail-fast 当成 15m 全程管理：先让 entry 快，活下来后再 handoff 到 slow Donchian / Chandelier exit</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-18 22:51 UTC</span>
+      <span class="pill">研究时间：2026-03-18 22:50 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：breakout-short / fibonacci / retest-hold / ema / psar / continuation / exit / trailing-stop / chandelier / donchian / repo / crypto / 15m</span>
+      <span class="pill">证据类型：源码证据 + 工程迁移假设</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-18_2250_fast-entry-slow-exit-handoff-spine.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-18 22:50 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：breakout-short / fibonacci / retest-hold / ema / psar / continuation / exit / trailing-stop / chandelier / donchian / repo / crypto / 15m</li>
+<li>证据类型：源码证据 + 工程迁移假设</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>yukai1625 (2025), <code>freqtrade-strategy-portfolio</code></strong> 里的 <code>CTAAggressiveBreakout</code>。它不是一篇“证明 alpha 很强”的论文型材料，反而更像一份已经把交易哲学写进代码里的 repo：<strong>入场用快时钟，出场故意用慢时钟。</strong></p>
+<p>对我们 desk 真正值得偷的，不是“Donchian 突破”这件老事，而是它把 post-entry 管理拆得很清楚：</p>
+<ul>
+<li>入场看 <code>new breakout + volume filter</code>；</li>
+<li>真正离场不跟着 entry 一起同速翻脸，而是交给 <strong>更慢的 Donchian exit</strong> 或 <strong>ATR Chandelier stop</strong>；</li>
+<li>只有在很极端的拉升里，才额外用 <code>RSI + BB upper</code> 做一次低频获利了结。</li>
+</ul>
+<p>翻成人话：<strong>fail-fast 可以是前 2~3 根 bar 的生死检查，但不必是整笔 15m 交易从头到尾都拴着的狗绳。</strong> 一旦 continuation 已经走出来，更合理的做法可能是：把仓位管理 handoff 给更慢、更钝的 hold-time spine。</p>
+<h2>2. 最值得记下来的源码事实</h2>
+<p>这份 repo 的信息量不在故事，在参数：</p>
+<ul>
+<li>基础周期直接就是 <strong>5m</strong>，非常接近我们现在的执行颗粒度。</li>
+<li>入场 <code>breakout_len</code> 超参范围是 <strong>15~40</strong>，默认 <strong>20</strong>；也就是它承认 entry 应该更敏感。</li>
+<li>退出 <code>exit_len</code> 超参范围是 <strong>25~80</strong>，默认 <strong>35</strong>；也就是 exit 明确比 entry 更慢。</li>
+<li><code>ATR</code> 周期可调 <strong>7~35</strong>，<code>atr_mult</code> 可调 <strong>2.5~5.0</strong>，默认 <strong>3.5</strong>；Chandelier stop 不是贴身 stop，而是给趋势单留喘息空间。</li>
+<li>额外获利了结条件也写得很克制：<code>RSI &gt; 90</code> 且 <code>close &gt; BB upper</code> 才触发，显然不是想把每一笔都快进快出。</li>
+</ul>
+<p>一句话总结源码逻辑：<strong>先用快 trigger 抓到“开始动了”，再用慢 exit 判断“是不是已经真走坏了”。</strong></p>
+<h2>3. 为什么这轮值得先写，而不是继续加新的 entry filter</h2>
+<p>如果只看今天 bot7 已经消化过的材料，三条收口线的“前段确认”其实已经很拥挤了：</p>
+<ul>
+<li>breakout-short 已经补过 <code>fail-fast / path overlay / follow-up gate</code>；</li>
+<li>Fibonacci 已经补过 <code>0.618 hold / 0.5 fail / retest quality</code>；</li>
+<li>EMA / PSAR 也已经有 <code>role framing / close-confirm / regime veto</code>。</li>
+</ul>
+<p>这时候继续往 entry 端再塞一个新 veto，边际价值未必最高。<strong>更缺的反而是：一旦 entry 被确认，后半段到底该用什么 clock 管理。</strong> 这正好对应 backlog 里还没独立实验的 <code>trailing stop 变体</code>。</p>
+<p>所以这轮主题比继续找一个“新入场按钮”更值：它不是把三条线带偏，而是给三条线补了一个共同缺口——<strong>post-confirmation 之后的持仓时钟。</strong></p>
+<h2>4. 对三条收口线各自的启发</h2>
+<h3>4.1 <code>V3 final-verdict / breakout-short follow-up</code></h3>
+<p>对 breakout-short 来说，最容易犯的错不是“没看到 break”，而是<strong>刚 break 完、第一下逆抽就把 continuation 当失效</strong>。repo 给的启发是：</p>
+<ul>
+<li><code>fail-fast</code> 仍然保留，但只负责最前段；</li>
+<li>如果 trade 已经活过前几根 bar，exit 要切到更慢的结构钟；</li>
+<li>短边可先做镜像版：<code>rolling_low + ATR</code> 改成 <strong>short-side chandelier = rolling_low + k * ATR</strong>，再配 <code>slow Donchian high</code> 作为结构失效线。</li>
+</ul>
+<h3>4.2 <code>Fibonacci confirmation / retest_hold</code></h3>
+<p>对 Fib 来说，<code>0.5 fail</code> 很适合当<strong>是否 hold 失败</strong>的底线，但未必适合当<strong>整笔仓位一路怎么出</strong>的唯一规则。更像的做法是：</p>
+<ul>
+<li>entry 继续用 <code>0.618 hold / reclaim / confirmation</code>；</li>
+<li>若 entry 后存活 <code>N</code> 根 bar 或者顺向走出 <code>0.75~1.0 ATR</code>，再切到 slow exit；</li>
+<li>这样可以把“是否确认成功”和“确认成功后怎么拿”拆开，不再混成一个开关。</li>
+</ul>
+<h3>4.3 <code>EMA / PSAR raw alpha focus</code></h3>
+<p>EMA / PSAR 这条线现在最该警惕的是：<strong>别把所有改进都压到入场。</strong> 如果 raw alpha 本身有一点延续底子，那么更便宜的增益，可能来自 post-entry management 而不是新 filter。尤其 PSAR 这类天生偏快的翻面工具，更适合做 early-warning，而不是整笔单一路追着翻。</p>
+<h2>5. 最小实验：先测“两段式 exit”，不是直接全量换系统</h2>
+<h3>研究假设</h3>
+<p><strong>两段式 exit</strong>（前段 fail-fast，存活后 handoff 到 slow exit）会优于：</p>
+<ol>
+<li>全程都用 fail-fast；</li>
+<li>一上来就全程 slow trailing；</li>
+<li>只看固定 TP/SL。</li>
+</ol>
+<h3>冻结口径</h3>
+<ul>
+<li>资产：BTC / ETH / SOL perpetual</li>
+<li>周期：主评估先做 <strong>15m</strong>，必要时补 <strong>5m execution / 15m signal</strong></li>
+<li>样本：近 <strong>180d~365d</strong></li>
+<li>成本：至少跑 <strong>6 / 10 / 15 bps</strong> 三档</li>
+<li>规则：<strong>entry 完全冻结</strong>，只改 exit，避免把 alpha 和管理层混在一起</li>
+</ul>
+<h3>对照组</h3>
+<ul>
+<li><code>A</code>：现有 baseline exit</li>
+<li><code>B</code>：全程 fail-fast（沿用现有 fast failure 规则）</li>
+<li><code>C</code>：全程 slow Donchian / Chandelier</li>
+<li><code>D</code>：<strong>handoff 版</strong>：前 <code>2~3</code> 根 bar 用 fail-fast；若未触发，且顺向浮盈达到 <code>0.75 ATR</code> 或存活满 <code>3</code> 根 bar，则切到 slow exit</li>
+</ul>
+<h3>slow exit 的最小实现</h3>
+<ul>
+<li>Long：</li>
+<li><code>chandelier_long = rolling_high(L) - k * ATR(14)</code></li>
+<li><code>donchian_exit_long = close &lt; rolling_low(L_exit)</code></li>
+<li>Short：</li>
+<li><code>chandelier_short = rolling_low(L) + k * ATR(14)</code></li>
+<li><code>donchian_exit_short = close &gt; rolling_high(L_exit)</code></li>
+<li>第一轮参数别贪多：<code>L/L_exit ∈ {20, 35}</code>，<code>k ∈ {3.0, 3.5}</code> 就够了。</li>
+</ul>
+<h3>第一轮最该看什么</h3>
+<ol>
+<li><code>post_cost_expectancy</code></li>
+<li><code>winner_median_return</code> / <code>winner_hold_bars</code></li>
+<li><code>MFE_capture_ratio</code>（最大有利波动到底有没有被拿住）</li>
+<li><code>giveback_after_handoff</code>（handoff 后是否只是把利润吐回去）</li>
+</ol>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>这份 repo 本质是 <strong>工程 repo，不是严肃论文</strong>；它给的是可执行假设，不是已经被 OOS / 成本充分证明的答案。</li>
+<li>源码主版本是 <strong>long-only</strong>，short-side 镜像虽然直觉上合理，但必须单独验证，不能偷懒当作自动对称。</li>
+<li>trailing exit 很容易把 winner 拉长，也很容易把纸面利润吐回去；所以一定要看 <code>MFE_capture_ratio</code> 和 giveback，而不只看均值收益。</li>
+<li>handoff 阈值（<code>2~3 bars</code>、<code>0.75 ATR</code>）也可能过拟合；第一轮要用粗网格，小参数族，不要把管理层调成第二个黑盒。</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<p>最直接的一步，不是再写新 digest，而是把 <strong>当前三条线里已经冻结的 entry</strong> 各抽 1 个代表版本，跑同一套 <code>A/B/C/D</code> exit 对照：</p>
+<ul>
+<li>breakout-short：选当前最接近 <code>final-verdict</code> 的 follow-up 版本；</li>
+<li>Fibonacci：选 <code>0.618 hold / 0.5 fail</code> 当前最诚实版本；</li>
+<li>EMA / PSAR：选 raw alpha 最干净的 base lane。</li>
+</ul>
+<p>如果结果显示：</p>
+<ul>
+<li><code>D</code> 组能稳定抬升 <code>winner_median_return</code>，</li>
+<li>同时没有把 <code>post_cost_expectancy</code> 和 <code>max drawdown</code> 明显拖坏，</li>
+<p>那它就值得升成三条线共用的 <strong>shared exit overlay candidate</strong>；否则就把它老实留在 backlog，不要因为“听起来高级”就偷渡进主线。</p>
+</ul>
+<h2>8. 来源</h2>
+<h3>主要来源（Repo）</h3>
+<ul>
+<li>yukai1625 (2025), <strong>freqtrade-strategy-portfolio</strong></li>
+<li>Repo URL: <a href="https://github.com/yukai1625/freqtrade-strategy-portfolio">https://github.com/yukai1625/freqtrade-strategy-portfolio</a></li>
+<li>Repo API metadata: <a href="https://api.github.com/repos/yukai1625/freqtrade-strategy-portfolio">https://api.github.com/repos/yukai1625/freqtrade-strategy-portfolio</a></li>
+<li>Readable strategy file URL: <a href="https://github.com/yukai1625/freqtrade-strategy-portfolio/blob/main/strategies/cta_aggressive_breakout.py">https://github.com/yukai1625/freqtrade-strategy-portfolio/blob/main/strategies/cta_aggressive_breakout.py</a></li>
+<li>Raw strategy file URL: <a href="https://raw.githubusercontent.com/yukai1625/freqtrade-strategy-portfolio/main/strategies/cta_aggressive_breakout.py">https://raw.githubusercontent.com/yukai1625/freqtrade-strategy-portfolio/main/strategies/cta_aggressive_breakout.py</a></li>
+</ul>
+<h3>补充来源（背景参考）</h3>
+<ul>
+<li>SC4RECOIN, <strong>simple-crypto-breakout-strategy</strong>（作为更朴素的 breakout baseline，对比用，不是本次主论点来源）</li>
+<li>Repo URL: <a href="https://github.com/SC4RECOIN/simple-crypto-breakout-strategy">https://github.com/SC4RECOIN/simple-crypto-breakout-strategy</a></li>
+<li>README URL: <a href="https://raw.githubusercontent.com/SC4RECOIN/simple-crypto-breakout-strategy/main/README.md">https://raw.githubusercontent.com/SC4RECOIN/simple-crypto-breakout-strategy/main/README.md</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>32b global live-like 稳定性拆解（short-window only）</title>
+  <style>
+    :root{--bg:#0b1120;--panel:#111827;--panel2:#0f172a;--line:#24324a;--text:#e5e7eb;--muted:#94a3b8;--accent:#7dd3fc;--good:#34d399;--bad:#f87171;--warn:#f59e0b;--blue:#60a5fa}
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#08101f,#0f172a);color:var(--text);font:15px/1.65 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif}
+    .wrap{max-width:1200px;margin:0 auto;padding:28px 20px 60px}
+    .card{background:rgba(17,24,39,.94);border:1px solid var(--line);border-radius:18px;padding:18px 20px;margin-bottom:16px;box-shadow:0 10px 28px rgba(0,0,0,.22)}
+    .hero h1,.card h2,.card h3{margin:0 0 8px}
+    p{margin:0 0 10px;color:var(--muted)}
+    .lead{color:#dbeafe;font-size:17px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+    .stat{background:rgba(15,23,42,.9);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+    .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+    .v{font-size:26px;font-weight:800;color:#f8fafc;margin-top:2px}
+    .sub{font-size:13px;color:var(--muted);margin-top:4px}
+    .pill{display:inline-block;padding:3px 8px;border-radius:999px;background:#13233f;border:1px solid #28456d;color:#bfdbfe;font-size:12px;margin-right:8px}
+    .charts{display:grid;grid-template-columns:1fr;gap:14px}
+    .chart-box{background:linear-gradient(180deg,rgba(11,17,32,.8),rgba(15,23,42,.5));border:1px solid rgba(125,211,252,.14);border-radius:14px;padding:10px}
+    svg{display:block;width:100%;height:auto}
+    .twocol{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media (max-width: 920px){.twocol{grid-template-columns:1fr}}
+    table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}
+    th,td{padding:8px 10px;border-bottom:1px solid #22304a;text-align:left}
+    th{color:#bfdbfe;font-weight:700}
+    .good{color:var(--good)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+    a{color:var(--accent);text-decoration:none}
+    code{color:#bfdbfe}
+    .iframe-wrap{margin-top:12px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#0b1120}
+    .iframe-wrap iframe{display:block;width:100%;height:980px;border:0;background:#0b1120}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card hero">
+      <div class="pill">32b</div><div class="pill">official-close</div><div class="pill">live vs backtest</div>
+      <h1>32b global live-like 稳定性拆解（short-window only）</h1>
+      <p class="lead">这页现在只保留一个主口径：<b>historical official-close backtest</b> 对照 <b>current official-close live</b>。目标不是继续讨论 preview，而是把 live 和回测放在同一条定义线上，后面持续审计它们是否逐步贴合。</p>
+      <p>页面生成时间：2026-05-13 06:03:45 北京时间 / 2026-05-12 22:03:45 UTC</p>
+      <p>当前页面里的历史基准只保留 <b>short-window official-close backtest</b> 与 <b>recent-180d stability</b>；旧的 180d / 365d / 720d live-like long-window 产物已因 warmup 审计撤下。本页当前统一使用的短窗基准时点是：2026-05-13 06:03:45 北京时间 / 2026-05-12 22:03:45 UTC。</p>
+      <p>当前 live 已切到 <b>15m official-close only</b>，在每个 <code>00/15/30/45</code> 分钟的 <code>:05</code> 触发，关闭 preview；这份页面现在只展示最近几小时内生成的短窗 / recent-180d 结果，long-window 部分等修正版 backtest 重跑后再恢复。</p>
+      <p><b>口径审计说明：</b>本页只采用 <b>因果版 hourly EMA</b>：每根 15m bar 只引用 <b>上一根完整 1h</b> 的 EMA 基线，再用当前 bar close 做增量更新；不再使用会把同小时后段价格回灌到前半小时的旧 merge 方式。</p>
+    </div>
+
+    <div class="card">
+      <h2>Current Official Live</h2>
+      <div class="grid">
+        <div class="stat"><div class="k">mode</div><div class="v">official</div><div class="sub">15m cadence · trigger second = 5 · freshness = 3m</div></div>
+        <div class="stat"><div class="k">current live ledger</div><div class="v">41 closed</div><div class="sub">旧 preview/live 账本已归档，official 版本重新开始累计</div></div>
+        <div class="stat"><div class="k">active position</div><div class="v">0 open</div><div class="sub">none</div></div>
+        <div class="stat"><div class="k">last official run</div><div class="v">2026-05-04 15:30:07</div><div class="sub">warnings=0 · archive=official_transition_20260405T101057Z</div></div>
+      </div>
+      <p style="margin-top:10px">当前 live 的作用不是立刻证明盈利，而是先严格使用和回测一致的 <b>official-close 信号定义</b> 重新开始记账。等这条 official live 累够样本后，再和 180d / 365d / 720d official-close 基准做一对一对照。</p>
+    </div>
+
+    <div class="card">
+      <h2>Official-Close Backtest 基准</h2>
+      <div class="grid">
+        <div class="stat"><div class="k">180d / 365d / 720d</div><div class="v bad">withdrawn</div><div class="sub">warmup audit 后暂不展示旧 long-window 数值</div></div>
+        <div class="stat"><div class="k">status</div><div class="v">audit hold</div><div class="sub">需要用修正后的 backtest 重新生成 canonical ledger</div></div>
+        <div class="stat"><div class="k">raw cache</div><div class="v">retained</div><div class="sub">1m day cache 保留，可复用到后续重跑</div></div>
+        <div class="stat"><div class="k">next step</div><div class="v">rerun</div><div class="sub">先修正 warmup，再重跑 180/365/720</div></div>
+      </div>
+      <p style="margin-top:10px">当前 <b>180d / 365d / 720d</b> 的旧 long-window live-like 结果已因 warmup 审计撤下；在修正版 backtest 重跑完成前，页面只保留 short-window official-close 与 recent-180d 稳定性。</p>
+    </div>
+
+    <div class="card">
+      <h2>短窗 Official-Close（已按完整 Warmup 修正）</h2>
+      <p>这几档现在按统一口径重算：<b>评估窗口</b> 与 <b>signal warmup</b> 分离。当前配置下 <code>lookback_days=30</code>，因此短窗会按 <code>horizon + 30d</code> 拉历史 bars，再只评估最后目标窗口，避免继续出现 live / standalone / backtest 因 warmup 不足而分叉。</p>
+      <div class="grid">
+        <div class="stat"><div class="k">3d official-close</div><div class="v">-</div><div class="sub">尚未生成修正后结果</div></div><div class="stat"><div class="k">10d official-close</div><div class="v">-</div><div class="sub">尚未生成修正后结果</div></div><div class="stat"><div class="k">30d official-close</div><div class="v">-</div><div class="sub">尚未生成修正后结果</div></div><div class="stat"><div class="k">60d official-close</div><div class="v">-</div><div class="sub">尚未生成修正后结果</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Official-Close（TP=1.00 ATR / SL=1.00 ATR）</h2>
+      <p>这组是基于当前 official-close 回测链路，唯一把 exit 改成 <code>TP 1.00 ATR / SL 1.00 ATR</code> 后得到的独立结果；其他口径保持不变，仍然是 strongest-only / same-bar / same-symbol / max-concurrent=3 / timeout=120m / warmup=30d。</p>
+      <div class="grid">
+        <div class="stat"><div class="k">3d ATR 1.0 / 1.0</div><div class="v">-3.72U</div><div class="sub">closed 12 · win 50.00%</div></div><div class="stat"><div class="k">10d ATR 1.0 / 1.0</div><div class="v">-0.46U</div><div class="sub">closed 85 · win 54.12%</div></div><div class="stat"><div class="k">30d ATR 1.0 / 1.0</div><div class="v good">+12.36U</div><div class="sub">closed 302 · win 58.28%</div></div><div class="stat"><div class="k">60d ATR 1.0 / 1.0</div><div class="v">-24.61U</div><div class="sub">closed 640 · win 54.06%</div></div><div class="stat"><div class="k">180d ATR 1.0 / 1.0</div><div class="v">-63.75U</div><div class="sub">closed 2007 · win 52.22%</div></div>
+      </div>
+      <p style="margin-top:10px">这组参数在 <b>30d</b> 上转正，但扩大到 <b>60d / 180d</b> 后重新转负。也就是说，<code>1.00 / 1.00 ATR</code> 对短窗有改善，但从目前样本看，还不足以把中窗整体拉回稳定盈利。</p>
+      <table>
+        <thead><tr><th>窗口</th><th>PnL</th><th>Closed Trades</th><th>Win Rate</th><th>Artifacts</th></tr></thead>
+        <tbody>
+          <tr><td>3d</td><td>-3.72U</td><td>12</td><td>50.00%</td><td><a href="/momentum/artifacts/rank32b_shadow_global_live_like_backtest_atr1_1/trade_ledgers/paper_trades_3d.json">paper_trades_3d.json</a> · <a href="/momentum/artifacts/rank32b_shadow_global_live_like_backtest_atr1_1/trade_ledgers/monthly_summary_3d.json">monthly_summary_3d.json</a></td></tr><tr><td>10d</td><td>-0.46U</td><td>85</td><td>54.12%</td><td><a href="/momentum/artifacts/rank32b_shadow_global_live_like_backtest_atr1_1/trade_ledgers/paper_trades_10d.json">paper_trades_10d.json</a> · <a href="/momentum/artifacts/rank32b_shadow_global_live_like_backtest_atr1_1/trade_ledgers/monthly_summary_10d.json">monthly_summary_10d.json</a></td></tr><tr><td>30d</td><td>+12.36U</td><td>302</td><td>58.28%</td><td><a href="/momentum/artifacts/rank32b_shadow_global_live_like_backtest_atr1_1/trade_ledgers/paper_trades_30d.json">paper_trades_30d.json</a> · <a href="/momentum/artifacts/rank32b_shadow_global_live_like_backtest_atr1_1/trade_ledgers/monthly_summary_30d.json">monthly_summary_30d.json</a></td></tr><tr><td>60d</td><td>-24.61U</td><td>640</td><td>54.06%</td><td><a href="/momentum/artifacts/rank32b_shadow_global_live_like_backtest_atr1_1/trade_ledgers/paper_trades_60d.json">paper_trades_60d.json</a> · <a href="/momentum/artifacts/rank32b_shadow_global_live_like_backtest_atr1_1/trade_ledgers/monthly_summary_60d.json">monthly_summary_60d.json</a> · <a href="/momentum/artifacts/rank32b_shadow_global_live_like_backtest_atr1_1/trade_ledgers/ten_day_segments_60d.json">ten_day_segments_60d.json</a></td></tr><tr><td>180d</td><td>-63.75U</td><td>2007</td><td>52.22%</td><td><a href="/momentum/artifacts/rank32b_shadow_global_live_like_backtest_atr1_1/trade_ledgers/paper_trades_180d.json">paper_trades_180d.json</a> · <a href="/momentum/artifacts/rank32b_shadow_global_live_like_backtest_atr1_1/trade_ledgers/monthly_summary_180d.json">monthly_summary_180d.json</a> · <a href="/momentum/artifacts/rank32b_shadow_global_live_like_backtest_atr1_1/trade_ledgers/ten_day_segments_180d.json">ten_day_segments_180d.json</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>ATR 1.0 / 1.0 分段 PnL 折线图</h2>
+      <p>下面两组图直接把 <code>60d</code> 和 <code>180d</code> 的 <b>10 天分段 PnL</b> 与 <b>月度 PnL</b> 摊开。这样你可以直观看到，这组参数是“持续偏弱”，还是“少数坏窗口把整体拉负”。</p>
+      <div class="twocol">
+        <div class="chart-box"><div class="sub" style="margin:0 0 6px 4px">60d · 10-day segments</div><svg id="atr10-seg60" viewBox="0 0 1100 320"></svg></div>
+        <div class="chart-box"><div class="sub" style="margin:0 0 6px 4px">60d · monthly pnl</div><svg id="atr10-mon60" viewBox="0 0 1100 320"></svg></div>
+        <div class="chart-box"><div class="sub" style="margin:0 0 6px 4px">180d · 10-day segments</div><svg id="atr10-seg180" viewBox="0 0 1100 320"></svg></div>
+        <div class="chart-box"><div class="sub" style="margin:0 0 6px 4px">180d · monthly pnl</div><svg id="atr10-mon180" viewBox="0 0 1100 320"></svg></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>当前情况与目标</h2>
+      <table>
+        <thead><tr><th>项</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>主比较口径</td><td><b>official-close historical backtest</b> 对照 <b>official-close live</b>。preview 只保留为归档，不再作为主版本解释 live。</td></tr>
+          <tr><td>当前状态</td><td>历史基准已经按 <b>causal hourly EMA</b> 重新复算；以本页卡片与 artifacts 为准。current official live 刚刚完成切换并重置账本，所以目前还没有足够 closed trades 证明 live 已经贴近 backtest。</td></tr>
+          <tr><td>后续验收</td><td>先验证 live 与回测在 <b>signal 时间、入场币种、仓位、退出原因</b> 上逐步对齐；确认“定义一致”后，再看 live 是否沿着回测的盈利形状前进。</td></tr>
+          <tr><td>页面用途</td><td>这页现在主要回答两个问题：<b>short-window official-close 基准最近稳不稳</b>，以及 <b>当前 official live 离这条短窗基准还有多远</b>。旧的 180d/365d/720d long-window live-like 结果已因 warmup 审计撤下，避免误读。</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>最近 180d：18×10d / 6×30d 稳定性</h2>
+      <p>这部分仍然保留，用来看 <b>修正后的 official-close 历史基准</b> 在最近 180 天到底稳不稳。也就是说，这里不是预设“最近一定强”，而是把分段结果摊开给你直接看。</p>
+      <div class="grid">
+        <div class="stat"><div class="k">18 × 10d</div><div class="v">pending</div><div class="sub">修正后 180d 分段仍在重算，旧结果已下线</div></div>
+        <div class="stat"><div class="k">6 × 30d</div><div class="v">pending</div><div class="sub">修正后 180d 分段仍在重算，旧结果已下线</div></div>
+      </div>
+      <div class="iframe-wrap"><iframe src="/momentum/factors/rank32b/stability_snapshot.html" title="32b 180d stability snapshot"></iframe></div>
+    </div>
+
+    <div class="card">
+      <h2>720d：按月拆解，确认长窗贡献来自哪里</h2>
+      <div class="charts">
+        <div class="chart-box"><svg id="monthly-bars" viewBox="0 0 1100 340"></svg></div>
+        <div class="chart-box"><svg id="cum-line" viewBox="0 0 1100 320"></svg></div>
+      </div>
+      <p style="margin-top:10px">720d 结果尚未最终落盘，所以月度拆解和 older-than-365 贡献暂不展示；等 720d 跑完后再自动补齐。</p>
+    </div>
+
+    <div class="card">
+      <h2>滚动指标（3 个月窗口）</h2>
+      <p>这里的 <b>rolling return</b> 用的是 <b>按成交序列复合的 trade-return proxy</b>，不是严格 capital-normalized 资金曲线收益；<b>rolling Sharpe</b> 是按这 3 个月窗口内成交序列的 trade Sharpe 算的。作用主要是看“这条策略在不同阶段有没有明显变钝”。</p>
+      <div class="charts">
+        <div class="chart-box"><svg id="rolling-return" viewBox="0 0 1100 320"></svg></div>
+        <div class="chart-box"><svg id="rolling-sharpe" viewBox="0 0 1100 320"></svg></div>
+      </div>
+    </div>
+
+    <div class="card twocol">
+      <div>
+        <h3>Long-window 月度拆解（withdrawn pending rerun）</h3>
+        <table>
+          <thead><tr><th>Month</th><th>PnL</th><th>Trades</th><th>Win rate</th><th>Compound</th><th>Trade Sharpe</th></tr></thead>
+          <tbody><tr><td colspan='6'>暂无</td></tr></tbody>
+        </table>
+      </div>
+      <div>
+        <h3>滚动 3m 末端窗口</h3>
+        <table>
+          <thead><tr><th>Window</th><th>rolling PnL</th><th>Trades</th><th>rolling return</th><th>rolling Sharpe</th><th>positive months</th></tr></thead>
+          <tbody><tr><td colspan="6">暂无</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Artifacts</h2>
+      <table>
+        <thead><tr><th>项</th><th>链接</th></tr></thead>
+        <tbody>
+          <tr><td>official-close monthly json</td><td><a href="/momentum/artifacts/rank32b_shadow_global_live_like_backtest/monthly_stability_720d.json">monthly_stability_720d.json</a></td></tr>
+          <tr><td>official-close monthly md</td><td><a href="/momentum/artifacts/rank32b_shadow_global_live_like_backtest/monthly_stability_720d.md">monthly_stability_720d.md</a></td></tr>
+          <tr><td>current official live dashboard</td><td><a href="/momentum/factors/rank32b_global_live/report.html">rank32b_global_live/report.html</a></td></tr>
+          <tr><td>archived preview/live ledger</td><td><a href="/momentum/artifacts/rank32b_global_live/archive/official_transition_20260405T101057Z/live_recent_closed_trades.json">archived closed trades</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>怎么读这页</h2>
+      <ul>
+        <li>先看 <b>Current Official Live</b>，确认现在讨论的 live 已经是 official-close 版本，而不是 preview。</li>
+        <li>再看 <b>Official-Close Backtest 基准</b>，确认 365d / 720d 历史基准本身是什么形状。</li>
+        <li>当前先看 180d / 365d 两张长期卡片；720d 完成后再看长窗扩展有没有增益或拖累。</li>
+        <li>如果你想判断 historical official-close 最近是否变钝，再看 <b>180d stability</b> 和 <b>rolling 3m return / Sharpe</b>；本页这些分段结果也已经切到修正后的因果口径。</li>
+      </ul>
+      <p>当前目标很明确：先确保 <b>live 和回测可以对照</b>，再去验证 <b>live 是否会像回测一样盈利</b>。数据源：<code>backtest_windows.json</code> + <code>stability_180d.json</code> + <code>rank32b_global_live</code> 当前 live artifacts。</p>
+    </div>
+  </div>
+
+  <script>
+    const payload = {"generated_at_utc": "2026-05-12T22:03:45Z", "used_backtest_now_utc": "2026-05-12T22:03:45Z", "config_path": "/root/clawd/jerry/momentum/config/execution/rank32b_canary.yaml", "comparison": {"horizon_180": null, "horizon_365": null, "horizon_720": null, "horizon_720_status": "withdrawn_due_warmup_audit", "long_window_status": "withdrawn_due_warmup_audit", "long_window_note": "Long-window live-like outputs (180d/365d/720d) were withdrawn after the 2026-04-07 warmup audit. Re-run with the fixed backtest script before restoring them.", "delta_720_minus_365_usdt": null, "older_than_365_exact_live_like_pnl_usdt": 0.0, "recent_365_exact_live_like_pnl_usdt": 0.0}, "monthly": {"months": [], "negative_months": [], "best_month": null, "worst_month": null, "positive_month_count": 0, "negative_month_count": 0, "older_window_months": []}, "rolling_3m": [], "rolling_6m": [], "recent_180d_stability": {"generated_at_utc": "2026-04-06T07:15:00Z", "status": "pending_corrected_rerun", "note": "Corrected causal-hourly-EMA 180d segmentation is still rerunning. Prior non-causal 180d segmentation has been removed from the main pages.", "segments_10d": {"segments": [], "summary": {}}, "segments_30d": {"segments": [], "summary": {}}}, "official_live": {"closed_trades": 41, "open_positions": 0, "active_position": null, "last_run_utc": "2026-05-04T15:30:07Z", "entry_window": {"eligible": true, "cadence_minutes": 15, "trigger_second": 5, "freshness_seconds": 180, "minute_mod": 0, "second_of_minute": 6, "window_end_second": 185}, "warnings": 0, "history_reset_archive": "official_transition_20260405T101057Z"}, "short_official_windows": {"3": null, "10": null, "30": null, "60": null}, "atr_1_1": {"results": {"3": {"horizon_days": 3, "signal_generation_mode": "official_close_only", "tp_atr_mult": 1.0, "sl_atr_mult": 1.0, "timeout_15m": 8, "latest_bar_utc": "2026-04-06T03:12:00Z", "latest_signal_utc": "2026-04-04T15:15:00Z", "latest_observed_signal_utc": "2026-04-04T15:15:00Z", "signals_total": 14, "selected_winners": 12, "skipped_weaker_signals": 2, "paper_summary": {"paper_trades": 12, "paper_closed_trades": 12, "paper_open_positions": 0, "paper_skipped_by_max_concurrent": 0, "paper_rejected_same_symbol_open": 0, "paper_rejected_same_bar_consumed": 0, "paper_realized_total_return": -0.090086650494828, "paper_marked_total_return": -0.090086650494828}, "metrics": {"usdt_pnl_live_like": -3.722815456307842, "closed_usdt_pnl_live_like": -3.722815456307842, "max_drawdown": 0.09781910839922098, "effective_trade_count": 12, "closed_trade_count": 12, "closed_win_rate": 0.5, "avg_closed_net_ret": -0.007426422723054521}, "used_now_utc": "2026-04-06T03:11:25Z"}, "10": {"horizon_days": 10, "signal_generation_mode": "official_close_only", "tp_atr_mult": 1.0, "sl_atr_mult": 1.0, "timeout_15m": 8, "latest_bar_utc": "2026-04-06T03:12:00Z", "latest_signal_utc": "2026-04-04T15:15:00Z", "latest_observed_signal_utc": "2026-04-04T15:15:00Z", "signals_total": 118, "selected_winners": 86, "skipped_weaker_signals": 32, "paper_summary": {"paper_trades": 85, "paper_closed_trades": 85, "paper_open_positions": 0, "paper_skipped_by_max_concurrent": 1, "paper_rejected_same_symbol_open": 0, "paper_rejected_same_bar_consumed": 0, "paper_realized_total_return": 0.01589163431256635, "paper_marked_total_return": 0.01589163431256635}, "metrics": {"usdt_pnl_live_like": -0.45957940126292396, "closed_usdt_pnl_live_like": -0.45957940126292396, "max_drawdown": 0.09781910839922063, "effective_trade_count": 85, "closed_trade_count": 85, "closed_win_rate": 0.5411764705882353, "avg_closed_net_ret": 0.00035334448262157395}, "used_now_utc": "2026-04-06T03:11:25Z"}, "30": {"horizon_days": 30, "signal_generation_mode": "official_close_only", "tp_atr_mult": 1.0, "sl_atr_mult": 1.0, "timeout_15m": 8, "latest_bar_utc": "2026-04-06T03:12:00Z", "latest_signal_utc": "2026-04-04T15:15:00Z", "latest_observed_signal_utc": "2026-04-04T15:15:00Z", "signals_total": 459, "selected_winners": 313, "skipped_weaker_signals": 146, "paper_summary": {"paper_trades": 302, "paper_closed_trades": 302, "paper_open_positions": 0, "paper_skipped_by_max_concurrent": 1, "paper_rejected_same_symbol_open": 10, "paper_rejected_same_bar_consumed": 0, "paper_realized_total_return": 0.5437707901025164, "paper_marked_total_return": 0.5437707901025164}, "metrics": {"usdt_pnl_live_like": 12.362479991074755, "closed_usdt_pnl_live_like": 12.362479991074755, "max_drawdown": 0.17856683079910016, "effective_trade_count": 302, "closed_trade_count": 302, "closed_win_rate": 0.5827814569536424, "avg_closed_net_ret": 0.0015696105048418779}, "used_now_utc": "2026-04-06T03:11:25Z"}, "60": {"horizon_days": 60, "signal_generation_mode": "official_close_only", "tp_atr_mult": 1.0, "sl_atr_mult": 1.0, "timeout_15m": 8, "latest_bar_utc": "2026-04-06T03:27:00Z", "latest_signal_utc": "2026-04-04T15:15:00Z", "latest_observed_signal_utc": "2026-04-04T15:15:00Z", "signals_total": 1029, "selected_winners": 658, "skipped_weaker_signals": 371, "paper_summary": {"paper_trades": 640, "paper_closed_trades": 640, "paper_open_positions": 0, "paper_skipped_by_max_concurrent": 1, "paper_rejected_same_symbol_open": 17, "paper_rejected_same_bar_consumed": 0, "paper_realized_total_return": -0.01240238922249881, "paper_marked_total_return": -0.01240238922249881}, "metrics": {"usdt_pnl_live_like": -24.60733808827402, "closed_usdt_pnl_live_like": -24.60733808827402, "max_drawdown": 0.4907099935237512, "effective_trade_count": 640, "closed_trade_count": 640, "closed_win_rate": 0.540625, "avg_closed_net_ret": 8.965731588296937e-05}, "used_now_utc": "2026-04-06T09:20:25Z"}, "180": {"horizon_days": 180, "signal_generation_mode": "official_close_only", "tp_atr_mult": 1.0, "sl_atr_mult": 1.0, "timeout_15m": 8, "latest_bar_utc": "2026-04-06T03:27:00Z", "latest_signal_utc": "2026-04-04T15:15:00Z", "latest_observed_signal_utc": "2026-04-04T15:15:00Z", "signals_total": 3192, "selected_winners": 2066, "skipped_weaker_signals": 1126, "paper_summary": {"paper_trades": 2007, "paper_closed_trades": 2007, "paper_open_positions": 0, "paper_skipped_by_max_concurrent": 1, "paper_rejected_same_symbol_open": 58, "paper_rejected_same_bar_consumed": 0, "paper_realized_total_return": -0.3812212029334541, "paper_marked_total_return": -0.3812212029334541}, "metrics": {"usdt_pnl_live_like": -63.74950363039327, "closed_usdt_pnl_live_like": -63.74950363039327, "max_drawdown": 0.7102865442462983, "effective_trade_count": 2007, "closed_trade_count": 2007, "closed_win_rate": 0.5221723966118585, "avg_closed_net_ret": -9.73267252991206e-05}, "used_now_utc": "2026-04-06T09:20:25Z"}}, "seg60": [{"label": 1, "pnl_usdt": -5.906649322087854}, {"label": 2, "pnl_usdt": -11.922409950469515}, {"label": 3, "pnl_usdt": -20.61955332702589}, {"label": 4, "pnl_usdt": -0.7076027583509519}, {"label": 5, "pnl_usdt": 14.068080415650133}, {"label": 6, "pnl_usdt": 0.4807968540100589}], "mon60": [{"label": "2026-02", "pnl_usdt": -22.520287638113402}, {"label": "2026-03", "pnl_usdt": -2.6664495409023488}, {"label": "2026-04", "pnl_usdt": 0.5793990907417252}], "seg180": [{"label": 1, "pnl_usdt": -14.11989378456458}, {"label": 2, "pnl_usdt": -10.154522006419757}, {"label": 3, "pnl_usdt": -4.071462482842252}, {"label": 4, "pnl_usdt": 6.428986193335728}, {"label": 5, "pnl_usdt": 5.499728492080582}, {"label": 6, "pnl_usdt": 9.182051914846545}, {"label": 7, "pnl_usdt": -11.798000933121326}, {"label": 8, "pnl_usdt": -11.69806814936074}, {"label": 9, "pnl_usdt": 2.364722103096213}, {"label": 10, "pnl_usdt": 9.038050566741699}, {"label": 11, "pnl_usdt": 0.19651837016250617}, {"label": 12, "pnl_usdt": -18.68378313244191}, {"label": 13, "pnl_usdt": -13.101501561816104}, {"label": 14, "pnl_usdt": -8.879211301998659}, {"label": 15, "pnl_usdt": -16.944932762527394}, {"label": 16, "pnl_usdt": -1.2139597172763938}, {"label": 17, "pnl_usdt": 16.20478933244126}, {"label": 18, "pnl_usdt": -1.9990147707286}], "mon180": [{"label": "2025-10", "pnl_usdt": -29.404983968487905}, {"label": "2025-11", "pnl_usdt": 20.852765980206556}, {"label": "2025-12", "pnl_usdt": -23.54150379130121}, {"label": "2026-01", "pnl_usdt": 3.0747771283071135}, {"label": "2026-02", "pnl_usdt": -32.64350852895712}, {"label": "2026-03", "pnl_usdt": -2.6664495409023488}, {"label": "2026-04", "pnl_usdt": 0.5793990907417252}]}};
+    const months = payload.monthly.months || [];
+    const rolling3 = payload.rolling_3m || [];
+    const atr10Seg60 = [{"label": 1, "pnl_usdt": -5.906649322087854}, {"label": 2, "pnl_usdt": -11.922409950469515}, {"label": 3, "pnl_usdt": -20.61955332702589}, {"label": 4, "pnl_usdt": -0.7076027583509519}, {"label": 5, "pnl_usdt": 14.068080415650133}, {"label": 6, "pnl_usdt": 0.4807968540100589}];
+    const atr10Mon60 = [{"label": "2026-02", "pnl_usdt": -22.520287638113402}, {"label": "2026-03", "pnl_usdt": -2.6664495409023488}, {"label": "2026-04", "pnl_usdt": 0.5793990907417252}];
+    const atr10Seg180 = [{"label": 1, "pnl_usdt": -14.11989378456458}, {"label": 2, "pnl_usdt": -10.154522006419757}, {"label": 3, "pnl_usdt": -4.071462482842252}, {"label": 4, "pnl_usdt": 6.428986193335728}, {"label": 5, "pnl_usdt": 5.499728492080582}, {"label": 6, "pnl_usdt": 9.182051914846545}, {"label": 7, "pnl_usdt": -11.798000933121326}, {"label": 8, "pnl_usdt": -11.69806814936074}, {"label": 9, "pnl_usdt": 2.364722103096213}, {"label": 10, "pnl_usdt": 9.038050566741699}, {"label": 11, "pnl_usdt": 0.19651837016250617}, {"label": 12, "pnl_usdt": -18.68378313244191}, {"label": 13, "pnl_usdt": -13.101501561816104}, {"label": 14, "pnl_usdt": -8.879211301998659}, {"label": 15, "pnl_usdt": -16.944932762527394}, {"label": 16, "pnl_usdt": -1.2139597172763938}, {"label": 17, "pnl_usdt": 16.20478933244126}, {"label": 18, "pnl_usdt": -1.9990147707286}];
+    const atr10Mon180 = [{"label": "2025-10", "pnl_usdt": -29.404983968487905}, {"label": "2025-11", "pnl_usdt": 20.852765980206556}, {"label": "2025-12", "pnl_usdt": -23.54150379130121}, {"label": "2026-01", "pnl_usdt": 3.0747771283071135}, {"label": "2026-02", "pnl_usdt": -32.64350852895712}, {"label": "2026-03", "pnl_usdt": -2.6664495409023488}, {"label": "2026-04", "pnl_usdt": 0.5793990907417252}];
+
+    function axisTicks(min, max, count) {
+      if (min === max) return [min];
+      const out = [];
+      for (let i = 0; i <= count; i++) out.push(min + (max-min)*i/count);
+      return out;
+    }
+
+    function makeSvgEl(name, attrs = {}, text = null) {
+      const ns = 'http://www.w3.org/2000/svg';
+      const el = document.createElementNS(ns, name);
+      Object.entries(attrs).forEach(([k,v]) => el.setAttribute(k, String(v)));
+      if (text != null) el.textContent = text;
+      return el;
+    }
+
+    function drawBarChart(svgId, data, valueKey, labelKey, opts = {}) {
+      const svg = document.getElementById(svgId); if (!svg) return;
+      const W = 1100, H = 340, pad = {l:60,r:20,t:18,b:56};
+      const innerW = W-pad.l-pad.r, innerH = H-pad.t-pad.b;
+      const vals = data.map(d => Number(d[valueKey] || 0));
+      const minV = Math.min(0, ...vals) * 1.15;
+      const maxV = Math.max(0, ...vals) * 1.15 || 1;
+      const y = v => pad.t + innerH - ((v-minV)/(maxV-minV))*innerH;
+      const xStep = innerW / Math.max(1, data.length);
+      const barW = Math.max(8, xStep * 0.66);
+      const zeroY = y(0);
+      axisTicks(minV, maxV, 4).forEach(t => {
+        const yy = y(t);
+        svg.appendChild(makeSvgEl('line', {x1:pad.l,y1:yy,x2:W-pad.r,y2:yy,stroke:'rgba(148,163,184,.16)','stroke-width':1}));
+        svg.appendChild(makeSvgEl('text', {x:pad.l-10,y:yy+4,'text-anchor':'end',fill:'#94a3b8','font-size':12}, `${t.toFixed(0)}U`));
+      });
+      svg.appendChild(makeSvgEl('line', {x1:pad.l,y1:zeroY,x2:W-pad.r,y2:zeroY,stroke:'rgba(148,163,184,.32)','stroke-width':1.2}));
+      data.forEach((d, i) => {
+        const v = Number(d[valueKey] || 0);
+        const x = pad.l + i*xStep + (xStep-barW)/2;
+        const yy = y(Math.max(v,0));
+        const h = Math.abs(y(v)-zeroY);
+        const fill = v >= 0 ? 'rgba(52,211,153,.82)' : 'rgba(248,113,113,.82)';
+        const rect = makeSvgEl('rect', {x, y: v>=0 ? yy : zeroY, width:barW, height:Math.max(1,h), rx:4, fill});
+        rect.appendChild(makeSvgEl('title', {}, `${d[labelKey]} | ${v >= 0 ? '+' : ''}${v.toFixed(2)}U`));
+        svg.appendChild(rect);
+        const show = data.length <= 18 || i % 2 === 0 || i === data.length-1;
+        if (show) svg.appendChild(makeSvgEl('text', {x:x+barW/2, y:H-pad.b+18, 'text-anchor':'middle', fill:'#94a3b8', 'font-size':11}, d[labelKey]));
+      });
+    }
+
+    function drawLineChart(svgId, data, valueKey, labelKey, color, suffix='', zeroLine=false) {
+      const svg = document.getElementById(svgId); if (!svg || !data.length) return;
+      const W = 1100, H = 320, pad = {l:60,r:20,t:18,b:50};
+      const innerW = W-pad.l-pad.r, innerH = H-pad.t-pad.b;
+      const vals = data.map(d => Number(d[valueKey] ?? 0)).filter(v => Number.isFinite(v));
+      let minV = Math.min(...vals), maxV = Math.max(...vals);
+      if (!Number.isFinite(minV) || !Number.isFinite(maxV)) { minV = 0; maxV = 1; }
+      if (zeroLine) { minV = Math.min(minV, 0); maxV = Math.max(maxV, 0); }
+      if (minV === maxV) { minV -= 1; maxV += 1; }
+      minV *= (minV < 0 ? 1.15 : 0.92); maxV *= (maxV > 0 ? 1.15 : 0.92);
+      const x = i => pad.l + (data.length === 1 ? innerW/2 : i * innerW / (data.length-1));
+      const y = v => pad.t + innerH - ((v-minV)/(maxV-minV))*innerH;
+      axisTicks(minV, maxV, 4).forEach(t => {
+        const yy = y(t);
+        svg.appendChild(makeSvgEl('line', {x1:pad.l,y1:yy,x2:W-pad.r,y2:yy,stroke:'rgba(148,163,184,.16)','stroke-width':1}));
+        svg.appendChild(makeSvgEl('text', {x:pad.l-10,y:yy+4,'text-anchor':'end',fill:'#94a3b8','font-size':12}, `${t.toFixed(2)}${suffix}`));
+      });
+      if (zeroLine) {
+        svg.appendChild(makeSvgEl('line', {x1:pad.l,y1:y(0),x2:W-pad.r,y2:y(0),stroke:'rgba(248,113,113,.32)','stroke-width':1.2}));
+      }
+      const pts = data.map((d,i) => `${x(i)},${y(Number(d[valueKey] ?? 0))}`).join(' ');
+      svg.appendChild(makeSvgEl('polyline', {points:pts, fill:'none', stroke:color, 'stroke-width':3, 'stroke-linecap':'round', 'stroke-linejoin':'round'}));
+      data.forEach((d,i) => {
+        const cx = x(i), cy = y(Number(d[valueKey] ?? 0));
+        const c = makeSvgEl('circle', {cx,cy,r:4.5,fill:'#0b1120',stroke:color,'stroke-width':2});
+        c.appendChild(makeSvgEl('title', {}, `${d[labelKey]} | ${Number(d[valueKey] ?? 0).toFixed(4)}${suffix}`));
+        svg.appendChild(c);
+        const show = data.length <= 18 || i % 2 === 0 || i === data.length-1;
+        if (show) svg.appendChild(makeSvgEl('text', {x:cx, y:H-pad.b+18, 'text-anchor':'middle', fill:'#94a3b8', 'font-size':11}, d[labelKey]));
+      });
+    }
+
+    drawBarChart('monthly-bars', months, 'pnl_usdt', 'month');
+    drawLineChart('cum-line', months, 'cum_pnl_usdt', 'month', '#60a5fa', 'U', true);
+    drawLineChart('rolling-return', rolling3.map(x => ({...x, val:(Number(x.rolling_compound_trade_return||0)*100)})), 'val', 'end_month', '#34d399', '%', true);
+    drawLineChart('rolling-sharpe', rolling3.map(x => ({...x, val:Number(x.rolling_trade_sharpe ?? 0)})), 'val', 'end_month', '#f59e0b', '', true);
+    drawLineChart('atr10-seg60', atr10Seg60, 'pnl_usdt', 'label', '#38bdf8', 'U', true);
+    drawLineChart('atr10-mon60', atr10Mon60, 'pnl_usdt', 'label', '#34d399', 'U', true);
+    drawLineChart('atr10-seg180', atr10Seg180, 'pnl_usdt', 'label', '#f59e0b', 'U', true);
+    drawLineChart('atr10-mon180', atr10Mon180, 'pnl_usdt', 'label', '#f87171', 'U', true);
+  </script>
+</body>
+</html>

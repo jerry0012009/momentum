@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>v1.6 Phase 1 数据基建概览</title>
+<style>
+:root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff; --green: #3fb950; --red: #f85149; --yellow: #d29922; --purple: #bc8cff; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; padding: 2rem; max-width: 1100px; margin: 0 auto; }
+h1 { font-size: 1.8rem; color: var(--accent); margin-bottom: 0.5rem; border-bottom: 2px solid var(--accent); padding-bottom: 0.5rem; }
+h2 { font-size: 1.4rem; color: var(--yellow); margin: 2rem 0 1rem; }
+h3 { font-size: 1.1rem; color: var(--purple); margin: 1.5rem 0 0.5rem; }
+p, li { margin-bottom: 0.5rem; }
+ul { padding-left: 1.5rem; }
+.meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 2rem; }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+th, td { padding: 0.5rem 0.8rem; border: 1px solid var(--border); text-align: right; }
+th { background: #1c2129; color: var(--accent); font-weight: 600; }
+td:first-child, th:first-child { text-align: left; }
+.pos { color: var(--green); font-weight: 600; }
+.neg { color: var(--red); font-weight: 600; }
+.neu { color: var(--muted); }
+.highlight { background: #1a2332; }
+.box { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; margin: 1rem 0; }
+.box.warn { border-left: 4px solid var(--yellow); }
+.box.good { border-left: 4px solid var(--green); }
+.box.info { border-left: 4px solid var(--accent); }
+.box.bad { border-left: 4px solid var(--red); }
+code { background: #1c2129; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.88em; color: var(--yellow); }
+.grid4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 1rem 0; }
+.stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.2rem; }
+.stat-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.stat-card .value { font-size: 1.8rem; font-weight: 700; color: var(--accent); margin: 0.2rem 0; }
+.stat-card .sub { font-size: 0.8rem; color: var(--muted); }
+nav.top-link { margin-bottom: 1.5rem; }
+nav.top-link a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+.bar-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.bar-label { min-width: 160px; font-size: 0.85rem; text-align: right; }
+.bar-track { flex: 1; background: #1c2129; border-radius: 4px; height: 22px; overflow: hidden; position: relative; }
+.bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; font-size: 0.75rem; font-weight: 600; color: white; min-width: fit-content; white-space: nowrap; }
+.bar-count { margin-left: 8px; font-size: 0.8rem; color: var(--muted); min-width: 60px; }
+</style>
+</head>
+<body>
+<nav class="top-link"><a href="binance_event_study_hub.html">← 事件研究统一入口</a></nav>
+
+<h1>v1.6 Phase 1：小时级事件面板 · 数据基建概览</h1>
+<p class="meta">Generated: 2026-05-12 UTC · 数据源: Binance Vision S3 Archive · Panel: <code>hourly_event_panel.pkl</code></p>
+
+<!-- ==================== 核心数字 ==================== -->
+<div class="grid4">
+  <div class="stat-card">
+    <div class="label">面板行数</div>
+    <div class="value">4,503,803</div>
+    <div class="sub">小时级 K 线 + Funding</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">事件数</div>
+    <div class="value">31,397</div>
+    <div class="sub">来自 v1.5 涨幅榜研究</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">覆盖币种</div>
+    <div class="value">434</div>
+    <div class="sub">Binance U 本位合约</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">时间跨度</div>
+    <div class="value">4.3 年</div>
+    <div class="sub">2022-01 → 2026-04</div>
+  </div>
+</div>
+
+<!-- ==================== 我们要做什么 ==================== -->
+<h2>一、这个面板要回答什么问题？</h2>
+
+<div class="box info">
+<strong>核心问题：</strong>一个币登上 Binance 涨幅榜那天，<strong>接下来几个小时</strong>到底发生了什么？<br>
+v1.5 用的是<strong>日线</strong>数据 — 只看到 T+1 涨了还是跌了。但实际交易是在小时甚至分钟级别操作的。<br>
+v1.6 的目标：<strong>用小时级数据重新解剖这些事件</strong>，找到日线看不到的规律。
+</div>
+
+<h3>三阶段研究路线</h3>
+<table>
+<thead><tr><th>阶段</th><th>名称</th><th>目标</th><th>状态</th></tr></thead>
+<tbody>
+<tr><td>Phase 1</td><td>数据基建</td><td>构建 1h 粒度的事件面板</td><td class="pos">✅ 完成（本页）</td></tr>
+<tr><td>Phase 2</td><td>小时级事件解剖</td><td>峰值定位、结构重分类、Funding 结算效应、量能衰减</td><td class="neu">⏳ 待开始</td></tr>
+<tr><td>Phase 3</td><td>信号发现</td><td>5 个假设检验（前 4h 决定一切 / Funding 结算时机 / 量能衰减速度 / 主动买入比 / 入场时机优化）</td><td class="neu">⏳ 待开始</td></tr>
+</tbody>
+</table>
+
+<!-- ==================== 数据怎么来的 ==================== -->
+<h2>二、数据从哪来？怎么筛选？</h2>
+
+<h3>2.1 事件来源：v1.5 涨幅榜事件</h3>
+<p>每天从 Binance U 本位合约中筛选出<strong>日涨幅 Top 榜</strong>的币，形成"事件"。每个事件 = 某个币在某天登上涨幅榜。</p>
+
+<div class="box">
+<strong>进入面板的筛选标准：</strong>
+<ol>
+<li><strong>涨幅榜入选</strong> — 币种当日进入 Binance 合约日涨幅排名</li>
+<li><strong>事件标签分类</strong> — 每个事件带一个或多个标签，标注其特征：
+  <ul>
+    <li><code>top_gainer_1d</code> — 纯涨幅榜（无特殊 funding 信号），17,011 个事件</li>
+    <li><code>funding_extreme_negative+top_gainer_1d</code> — 涨幅榜 + Funding 极端负值，7,200 个事件</li>
+    <li><code>funding_extreme_positive+top_gainer_1d</code> — 涨幅榜 + Funding 极端正值，7,186 个事件</li>
+  </ul>
+</li>
+<li><strong>有对应 1h K 线数据</strong> — 从 Binance S3 下载的逐小时 OHLCV 数据</li>
+<li><strong>窗口完整性</strong> — 事件前后 [-24h, +120h] 范围内有数据</li>
+</ol>
+</div>
+
+<h3>2.2 每个事件带了什么信息？</h3>
+
+<table>
+<thead><tr><th>维度</th><th>字段</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>价格</td><td>open / high / low / close</td><td>每小时 OHLC</td></tr>
+<tr><td>成交量</td><td>volume / quote_volume / trades</td><td>成交额、笔数</td></tr>
+<tr><td>主动买入</td><td>taker_buy_quote_volume / taker_buy_ratio</td><td>买方主动吃单占比</td></tr>
+<tr><td>Funding Rate</td><td>funding_rate / funding_interval_hours</td><td>资金费率 + 结算周期（1h/2h/4h/8h 不等）</td></tr>
+<tr><td>Funding 结算时间</td><td>funding_settlement_ts</td><td>最近一次结算的精确时间戳</td></tr>
+<tr><td>事件结构</td><td>ev_structure</td><td>immediate_reversal / stall_t2 / stall_t3 / continuation</td></tr>
+<tr><td>Funding 分桶</td><td>ev_funding_bucket</td><td>neg_extreme / neg_moderate / mid / pos_moderate / pos_extreme</td></tr>
+<tr><td>成交量结构</td><td>ev_vol_structure</td><td>vol_expansion / vol_stable / vol_contraction / vol_collapse</td></tr>
+<tr><td>Funding 轨迹</td><td>ev_funding_traj</td><td>pos_stays_pos / neg_stays_neg / pos_flips_neg / neg_flips_pos</td></tr>
+<tr><td>未来收益</td><td>ev_fwd_ret_1d / 3d / 5d / 10d</td><td>事件日后的价格收益</td></tr>
+<tr><td>多空收益</td><td>ev_long_total_ret_5d / ev_short_total_ret_5d</td><td>含资金费的多空总收益</td></tr>
+<tr><td>Carry</td><td>ev_carry_raw</td><td>资金费本身的收益贡献</td></tr>
+</tbody>
+</table>
+
+<!-- ==================== 数据完整性 ==================== -->
+<h2>三、数据完整性</h2>
+
+<h3>3.1 总体覆盖率</h3>
+<div class="grid4">
+  <div class="stat-card">
+    <div class="label">Funding Rate 覆盖</div>
+    <div class="value" style="color: var(--green);">99.9%</div>
+    <div class="sub">31,355 / 31,397 事件完整</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Taker Buy Ratio 覆盖</div>
+    <div class="value" style="color: var(--green);">100%</div>
+    <div class="sub">31,397 / 31,397 事件完整</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">每事件小时数</div>
+    <div class="value">144</div>
+    <div class="sub">中位数 = 6 天 × 24h</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">事件窗口</div>
+    <div class="value">-24h ~ +119h</div>
+    <div class="sub">事件前 1 天 → 事件后 5 天</div>
+  </div>
+</div>
+
+<h3>3.2 缺失情况</h3>
+<table>
+<thead><tr><th>问题</th><th>数量</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>完全没有 K 线的事件</td><td>14</td><td>极早期币种，S3 上无 1h 数据</td></tr>
+<tr><td>窗口内数据为空</td><td>1,449</td><td>事件发生但窗口内数据不完整</td></tr>
+<tr><td>下载失败的文件</td><td>47</td><td>全部是 2026-05 月，S3 尚未发布</td></tr>
+<tr><td>缺失的币种</td><td>1 (BZRXUSDT)</td><td>已退市，S3 上无任何 1h 数据</td></tr>
+</tbody>
+</table>
+
+<div class="box good">
+<strong>结论：数据完整度足够进行分析。</strong>缺失率 &lt; 0.1%，且缺失集中在极端早期（2021 年底）和最新月份，不影响主体研究。
+</div>
+
+<!-- ==================== 事件画像 ==================== -->
+<h2>四、事件画像：这 31,397 个事件长什么样？</h2>
+
+<h3>4.1 事件结构分布（v1.5 日线分类）</h3>
+<p>每个事件根据日线 T+1~T+3 的走势被分为 4 种结构：</p>
+
+<div class="bar-row">
+  <div class="bar-label">immediate_reversal</div>
+  <div class="bar-track"><div class="bar-fill" style="width:55%;background:#f85149;">55.2%</div></div>
+  <div class="bar-count">17,326</div>
+</div>
+<div class="bar-row">
+  <div class="bar-label">stall_t2</div>
+  <div class="bar-track"><div class="bar-fill" style="width:25%;background:#d29922;">24.5%</div></div>
+  <div class="bar-count">7,702</div>
+</div>
+<div class="bar-row">
+  <div class="bar-label">stall_t3</div>
+  <div class="bar-track"><div class="bar-fill" style="width:11%;background:#bc8cff;">11.4%</div></div>
+  <div class="bar-count">3,579</div>
+</div>
+<div class="bar-row">
+  <div class="bar-label">continuation</div>
+  <div class="bar-track"><div class="bar-fill" style="width:9%;background:#3fb950;">8.8%</div></div>
+  <div class="bar-count">2,753</div>
+</div>
+
+<div class="box warn">
+<strong>关键发现：</strong>55% 的涨幅榜事件，T+1 就已经在跌了（immediate_reversal）。这意味着<strong>超过一半的涨幅榜，第二天就是顶</strong>。这是 v1.6 小时级研究最想搞清楚的 — 这些反转在小时级别有征兆吗？
+</div>
+
+<h3>4.2 各结构的后续收益</h3>
+<table>
+<thead><tr><th>结构</th><th>事件数</th><th>avg 1d 收益</th><th>avg 3d 收益</th><th>avg 5d 收益</th><th>做多 5d 含费</th><th>做空 5d 含费</th></tr></thead>
+<tbody>
+<tr><td>immediate_reversal</td><td>17,326</td><td class="neg">-0.05%</td><td class="neg">-0.05%</td><td class="neg">-0.05%</td><td class="neg">-0.05%</td><td class="pos">+0.05%</td></tr>
+<tr><td>stall_t2</td><td>7,702</td><td class="pos">+0.05%</td><td class="neu">0.00%</td><td class="neu">0.00%</td><td>+0.01%</td><td>-0.01%</td></tr>
+<tr><td>stall_t3</td><td>3,579</td><td class="pos">+0.05%</td><td class="pos">+0.06%</td><td class="pos">+0.05%</td><td class="pos">+0.06%</td><td class="neg">-0.06%</td></tr>
+<tr><td>continuation</td><td>2,753</td><td class="pos">+0.05%</td><td class="pos">+0.16%</td><td class="pos">+0.15%</td><td class="pos">+0.15%</td><td class="neg">-0.15%</td></tr>
+</tbody>
+</table>
+
+<p class="meta">注：这些是面板内全量平均，包含所有 funding bucket。v1.5 的细分桶（如 neg_extreme + stall_t3 + 放量）在子样本中收益更显著。</p>
+
+<h3>4.3 Funding 分桶 × 结构交叉表</h3>
+<table>
+<thead><tr><th>Funding 分桶</th><th>immediate_reversal</th><th>stall_t2</th><th>stall_t3</th><th>continuation</th><th>合计</th></tr></thead>
+<tbody>
+<tr><td>neg_extreme（极端负费率）</td><td>959</td><td>377</td><td>140</td><td>122</td><td>1,602</td></tr>
+<tr><td>neg_moderate</td><td>3,443</td><td>1,600</td><td>805</td><td>576</td><td>6,433</td></tr>
+<tr><td>mid（中性）</td><td>5,325</td><td>2,346</td><td>1,074</td><td>843</td><td>9,596</td></tr>
+<tr><td>pos_moderate</td><td>6,787</td><td>3,016</td><td>1,413</td><td>1,096</td><td>12,318</td></tr>
+<tr><td>pos_extreme（极端正费率）</td><td>812</td><td>363</td><td>147</td><td>116</td><td>1,448</td></tr>
+</tbody>
+</table>
+
+<h3>4.4 成交量结构</h3>
+<table>
+<thead><tr><th>量能结构</th><th>事件数</th><th>avg 5d 收益</th></tr></thead>
+<tbody>
+<tr><td>vol_expansion（放量）</td><td>8,964</td><td class="pos">+0.02%</td></tr>
+<tr><td>vol_stable（平稳）</td><td>9,756</td><td class="neg">-0.01%</td></tr>
+<tr><td>vol_contraction（缩量）</td><td>8,821</td><td class="neg">-0.02%</td></tr>
+<tr><td>vol_collapse（量能崩溃）</td><td>3,834</td><td class="neg">-0.03%</td></tr>
+</tbody>
+</table>
+
+<h3>4.5 Funding 轨迹（事件后 funding 走向）</h3>
+<table>
+<thead><tr><th>轨迹</th><th>事件数</th><th>avg 5d 收益</th></tr></thead>
+<tbody>
+<tr><td>pos_stays_pos（正费保持正）</td><td>20,080</td><td class="neg">-0.01%</td></tr>
+<tr><td>neg_stays_neg（负费保持负）</td><td>6,122</td><td class="neu">0.00%</td></tr>
+<tr><td>pos_flips_neg（正费转负）</td><td>2,803</td><td class="neu">0.00%</td></tr>
+<tr><td>neg_flips_pos（负费转正）</td><td>2,370</td><td class="neg">-0.01%</td></tr>
+</tbody>
+</table>
+
+<div class="box info">
+<strong>注意：</strong>这里展示的是面板内全量平均收益，funding 分桶和结构交叉后的细分收益需要在 Phase 2 中深入分析。v1.5 的核心发现 — <code>neg_extreme + stall_t3 + 放量 → 5d +26.17%</code> — 需要用小时级数据验证其真实性和可执行性。
+</div>
+
+<!-- ==================== 年份分布 ==================== -->
+<h2>五、时间分布</h2>
+
+<h3>5.1 事件年份分布</h3>
+<table>
+<thead><tr><th>年份</th><th>事件数</th><th>占比</th></tr></thead>
+<tbody>
+<tr><td>2021</td><td>80</td><td>0.3%</td></tr>
+<tr><td>2022</td><td>6,997</td><td>22.3%</td></tr>
+<tr><td>2023</td><td>7,300</td><td>23.3%</td></tr>
+<tr><td>2024</td><td>7,320</td><td>23.3%</td></tr>
+<tr><td>2025</td><td>7,300</td><td>23.3%</td></tr>
+<tr><td>2026 (截至 4 月)</td><td>2,400</td><td>7.6%</td></tr>
+</tbody>
+</table>
+
+<h3>5.2 Top 15 币种</h3>
+<table>
+<thead><tr><th>币种</th><th>事件数</th></tr></thead>
+<tbody>
+<tr><td>TRXUSDT</td><td>466</td></tr>
+<tr><td>BCHUSDT</td><td>381</td></tr>
+<tr><td>BNBUSDT</td><td>374</td></tr>
+<tr><td>BTCUSDT</td><td>363</td></tr>
+<tr><td>AAVEUSDT</td><td>350</td></tr>
+<tr><td>XRPUSDT</td><td>346</td></tr>
+<tr><td>CRVUSDT</td><td>344</td></tr>
+<tr><td>MKRUSDT</td><td>333</td></tr>
+<tr><td>LTCUSDT</td><td>326</td></tr>
+<tr><td>SOLUSDT</td><td>326</td></tr>
+<tr><td>XMRUSDT</td><td>323</td></tr>
+<tr><td>ETHUSDT</td><td>301</td></tr>
+<tr><td>UNIUSDT</td><td>297</td></tr>
+<tr><td>XLMUSDT</td><td>287</td></tr>
+<tr><td>NEARUSDT</td><td>276</td></tr>
+</tbody>
+</table>
+
+<!-- ==================== Phase 2 预告 ==================== -->
+<h2>六、Phase 2 预告：接下来要分析什么？</h2>
+
+<div class="box">
+<strong>Phase 2 — 小时级事件解剖</strong>
+<ol>
+<li><strong>峰值定位</strong> — 事件后价格在第几小时见顶？第几小时出现第一根大阴线？</li>
+<li><strong>小时级结构重分类</strong> — 用 1h 数据重新定义 immediate_reversal / stall / continuation，日线可能漏掉了 24h 内的暴涨暴跌</li>
+<li><strong>Funding 结算效应</strong> — 价格在 00:00 / 08:00 / 16:00 UTC 结算前后有没有系统性行为？</li>
+<li><strong>成交量衰减曲线</strong> — 事件后小时级成交量如何衰减？什么时候量能耗尽？</li>
+</ol>
+</div>
+
+<div class="footer">
+v1.6 Phase 1 Data Overview · Panel: <code>reports/artifacts/binance_hourly_event_study_v1_6/hourly_event_panel.pkl</code> · 434 symbols × 31,397 events × 144 hours
+</div>
+
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tether 跳变 × BTC 事后漂移：别把 stablecoin shock 只当风险提示，它本身可以是 event-driven raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Tether 跳变 × BTC 事后漂移：别把 stablecoin shock 只当风险提示，它本身可以是 event-driven raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-16 06:12 UTC</span>
+      <span class="pill">研究时间：2026-04-16 06:18 UTC</span>
+      <span class="pill">类型：论文 + public-data portability probe</span>
+      <span class="pill">主题标签：event-driven / cross-asset / stablecoin / jump / momentum / btc / 5m / 15m / 60m</span>
+      <span class="pill">证据类型：论文证据 + 工程快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-16_0618_tetherjump-bipower-btc-postshock-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-16 06:18 UTC</li>
+<li>类型：论文 + public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>USDT/USD 出现“统计意义上的上跳”且过去 24h 仍偏强时，BTC 在后续 15m~120m 存在可交易的方向漂移</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（baseline 版）</li>
+<li>主题标签：event-driven / cross-asset / stablecoin / jump / momentum / btc / 5m / 15m / 60m</li>
+<li>证据类型：论文证据 + 工程快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主看 Finance Research Letters 论文 <strong>When Tether says “JUMP!” Bitcoin asks “How low?”</strong>（Aharon &amp; Demir, 2021/2022），核心问题是：<code>USDT</code> 的跳变，是否会传导到 <code>BTC</code> 后续收益。然后我把它改写成更贴近 desk 的 <code>5m</code> 事件策略壳，并用 Bitfinex 公共 K 线做了最小可复现实验。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>论文原结论（小时/日频语境）是：<code>USDT</code> 的正跳 + 前一日 <code>USDT</code> 上涨，会显著预测 <strong>BTC 次日下跌</strong>；文中给出的量级约 <code>-3.65% ~ -8.49%</code>（daily）。</li>
+<li>我们在 <code>5m</code> 迁移版上看到的 first verdict 与论文方向<strong>相反</strong>：在 <code>2025-02-20 ~ 2026-04-16</code>，<code>jump_stat&gt;12</code> 且 <code>USDT 24h ret&gt;=+10bps</code> 的事件，后续 <code>60m</code> 的 BTC 平均 gross 约 <code>+28.03 bps</code>（相对全样本 <code>-0.14 bps</code>，lift 约 <code>+28.18 bps</code>）。</li>
+<li>用非重叠执行（60m 持有、4bps round-trip）做最小策略壳：共 <code>57</code> 笔，long BTC 平均 net <code>+14.88 bps/笔</code>、累计 net 约 <code>+8.70%</code>；反向 short 平均 net <code>-22.88 bps/笔</code>、累计约 <code>-12.36%</code>。这说明这条线在 recent regime 更像 <strong>shock 后顺势漂移</strong>，不是日频反打。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li>这是一条独立的 event-driven raw alpha，不依赖已有 breakout/retest 形态。</li>
+<li>数据公开且高频可拿：Bitfinex <code>tUSTUSD</code> + <code>tBTCUSD</code> 分钟级即可复现。</li>
+<li>它天然可接到 <code>1m/3m/5m/15m</code>：信号在 <code>5m</code> 触发，执行和持有窗口可缩放，不需要等低频宏观发布。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：事件驱动 + 单资产方向（long 偏置）</li>
+<li>基础 alpha：<code>USDT</code> 正跳事件后的 BTC 事后漂移</li>
+<li>regime：<code>USDT</code> 近 24h 为正（<code>ust_24h_ret &gt;= +10bps</code>）</li>
+<li>filter / veto：<code>jump_stat &gt; 12</code>（bipower-variation proxy），可再加 <code>BTC 近 1h 波动上限 veto</code></li>
+<li>risk / sizing / execution overlay：</li>
+<li>entry：信号 bar 后一根开仓（避免同 bar 未来函数）</li>
+<li>exit：固定 <code>60m</code>（12 根 <code>5m</code>）强制平仓</li>
+<li>sizing：每笔固定风险预算（如 25bps VaR）或波动缩放</li>
+<li>cost：先用 round-trip <code>4bps</code>；上线前必须做 <code>4/6/8bps</code> 梯度</li>
+<li>kill-switch：同方向连续亏损 <code>N</code> 笔或当日累计回撤超阈值时停机</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：<code>USDT</code> 正跳不是噪声，而是可交易的风险偏好冲击；在当前样本里更偏向 BTC 短时延续。</li>
+<li>可计算定义：</li>
+<li><code>jump_stat_t = r_t^2 / BV_t</code>，<code>BV_t = (π/2) * rolling_mean(|r_t||r_{t-1}|, 288)</code></li>
+<li>事件：<code>ust_ret_t &gt; 0</code> 且 <code>jump_stat_t &gt; 12</code> 且 <code>ust_24h_ret_t &gt;= 0.001</code></li>
+<li>最小回测切口：Bitfinex <code>tUSTUSD + tBTCUSD</code>，<code>5m</code>，近 <code>420d</code>。</li>
+<li>最先看 2 个指标：</li>
+<p>1) 事件后 <code>15/30/60/120m</code> 相对全样本的 return lift（bps） 2) 执行壳 net bps/笔 在 <code>4/6/8bps</code> 成本梯度下是否仍为正</p>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文的日频结论与我们 <code>5m</code> 结果方向不一致，说明<strong>强烈依赖时间尺度与市场阶段</strong>，不能直接照抄论文方向。</li>
+<li>信号稀疏（当前非重叠仅 <code>57</code> 笔），容易被少数极端事件主导，需要 rolling-window 稳定性检验。</li>
+<li>实盘里 <code>USDT/USD</code> 报价深度、成交偏差、跨 venue 执行延迟会显著影响可得收益；必须补 execution realism。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Aharon, D. Y., &amp; Demir, E. (2021/2022). _When Tether says “JUMP!” Bitcoin asks “How low?”_ Finance Research Letters.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1016/j.frl.2021.102644</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.frl.2021.102644">https://doi.org/10.1016/j.frl.2021.102644</a></code></li>
+<li>OpenAlex metadata: <code><a href="https://api.openalex.org/works/https://doi.org/10.1016/j.frl.2021.102644">https://api.openalex.org/works/https://doi.org/10.1016/j.frl.2021.102644</a></code></li>
+<li>Repo URL: <code>N/A (paper-only)</code></li>
+</ul>
+<ol>
+<li><strong>Bitfinex Public REST API (candles)</strong></li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://api-pub.bitfinex.com/v2/candles/trade:5m:tUSTUSD/hist">https://api-pub.bitfinex.com/v2/candles/trade:5m:tUSTUSD/hist</a></code></li>
+<li>URL: <code><a href="https://api-pub.bitfinex.com/v2/candles/trade:5m:tBTCUSD/hist">https://api-pub.bitfinex.com/v2/candles/trade:5m:tBTCUSD/hist</a></code></li>
+</ul>
+<ol>
+<li><strong>本轮 probe artifact</strong></li>
+</ol>
+<ul>
+<li>Script: <code>reports/artifacts/quant_digests/2026-04-16_tether_jump_btc_probe.py</code></li>
+<li>Summary: <code>reports/artifacts/quant_digests/2026-04-16_tether_jump_btc_probe_summary.json</code></li>
+</ul>
+</body>
+</html>

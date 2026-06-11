@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2025/2026 DB 驱动 repo 只读成工程脚手架：对 short-cycle desk，更该先测「HL-aware cointegration z-score pairs mean reversion × beta-hedged sizing」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2025/2026 DB 驱动 repo 只读成工程脚手架：对 short-cycle desk，更该先测「HL-aware cointegration z-score pairs mean reversion × beta-hedged sizing」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 11:28 UTC</span>
+      <span class="pill">研究时间：2026-04-04 11:20 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`README.md` + `selection/SQL-DB-Coint-upd-6.py` + `selection/SQL-DB-Stat-upd-5.py` + `execution/Level_2_CFT_bot_07-12-2025.py` + `execution/daily_guard_2.py`）+ Binance Spot 公共 `5m` recent-window portability probe（`BTCUSDT/ETHUSDT`, `ETHUSDT/SOLUSDT`, `BTCUSDT/SOLUSDT`, 近120天）</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/cointegration/zscore/hl-aware/beta-hedge/daily-guard/bybit/binance/5m/15m/1m/3m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 源码证据 + 公共数据最小便携性快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_1120_asian-session-ma-deviation-fade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 11:20 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>README.md</code> + <code>selection/SQL-DB-Coint-upd-6.py</code> + <code>selection/SQL-DB-Stat-upd-5.py</code> + <code>execution/Level_2_CFT_bot_07-12-2025.py</code> + <code>execution/daily_guard_2.py</code>）+ Binance Spot 公共 <code>5m</code> recent-window portability probe（<code>BTCUSDT/ETHUSDT</code>, <code>ETHUSDT/SOLUSDT</code>, <code>BTCUSDT/SOLUSDT</code>, 近120天）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>对通过 cointegration 筛选的配对，做 spread z-score 极值回归（<code>|z|</code> 扩张开仓、回归中线平仓）的 market-neutral pairs/stat-arb。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/cointegration/zscore/hl-aware/beta-hedge/daily-guard/bybit/binance/5m/15m/1m/3m/repo/public-data/cost/risk</li>
+<li>证据类型：repo 源码证据 + 公共数据最小便携性快检</li>
+</ul>
+<h2>1. 先回答一句：base alpha 是什么？</h2>
+<p><strong>base alpha = 配对 spread 的均值回复。</strong></p>
+<p>具体就是：先用协整与平稳性把“能配对”的资产筛出来，再在 <code>z-score</code> 偏离足够大时做反向双腿，等 spread 回到中线（或触发风险条件）就平仓。</p>
+<p>这不是 filter，也不是 overlay；它本身就是一条可独立运行的 raw alpha。</p>
+<h2>2. 这份 repo 里，完整策略部件是否齐全？</h2>
+<p>结论：<strong>齐全（在它的原生 DB + bot 架构里）</strong>。</p>
+<h3>2.1 Entry（入场）</h3>
+<p>从 <code>execution/Level_2_CFT_bot_07-12-2025.py</code> 可以直接读到：</p>
+<ul>
+<li>选对阶段要求 <code>ADF &lt;= -2.9</code>、<code>p-value &lt;= 0.05</code>、<code>Hurst &lt;= 0.45</code>；</li>
+<li>且 <code>ABS(last_z_score)</code> 需过 HL 相关门槛（<code>2/2.5/3/3.5</code> 分段），并小于上限 <code>5</code>；</li>
+<li>执行触发是 <code>last_z_score &gt;= 2</code> 或 <code>&lt;= -2</code>；</li>
+<li><code>z&gt;0</code> 时 short spread（卖 leg1 买 leg2），<code>z&lt;0</code> 时 long spread（买 leg1 卖 leg2）。</li>
+</ul>
+<h3>2.2 Exit（出场）</h3>
+<p>同一执行脚本里有多重退出：</p>
+<ul>
+<li><code>z-score</code> 穿 0（主回归退出）；</li>
+<li>浮盈/浮亏达到 pair 级 TP/SL 百分比；</li>
+<li><code>|z| &gt;= 6</code> 且协整丢失（stop-loss）；</li>
+<li>超过 HL 时限且协整丢失（timeout exit）。</li>
+</ul>
+<h3>2.3 Sizing / Risk</h3>
+<ul>
+<li><code>calculate_dynamic_leverage()</code> 做 beta-hedged 头寸配平；</li>
+<li><code>beta_norm</code> 被 clamp 到 <code>[0.8, 1.2]</code>，并按 5m 交易额 cap 分配双腿暴露；</li>
+<li>每腿最小名义暴露 <code>500 USDT</code>，总杠杆上限 <code>5x</code>；</li>
+<li><code>daily_guard_2.py</code> 有日内盈利节流与日损停机（默认 <code>DAILY_TP=1%</code>, <code>DAILY_SL=3%</code>）。</li>
+</ul>
+<p>&gt; 这意味着它不是“只会发信号”，而是完整覆盖了 entry/exit/sizing/risk。</p>
+<h2>3. 120 天 <code>5m</code> 公共数据快检（最小 portability）</h2>
+<p>我用 Binance Spot 公共 <code>5m</code> close 做了一个最小口径快检：</p>
+<ul>
+<li>配对：<code>BTC-ETH</code>, <code>ETH-SOL</code>, <code>BTC-SOL</code></li>
+<li>规则：rolling z-score(96 bars)；<code>|z|</code> 上穿 <code>2</code> 开仓；统计回归到 <code>z=0</code> 的命中</li>
+</ul>
+<p>关键结果：</p>
+<ol>
+<li><strong>信号密度不低</strong>：约 <code>9.2 ~ 10.0</code> 次/天（按 pair）</li>
+<li><strong>短时回归不强</strong>：<code>2h</code> 内回归到 0 的命中率约 <code>27.8% ~ 29.7%</code></li>
+<li><strong>更像“慢回归”</strong>：<code>8h</code> 内回归命中率升到 <code>86.3% ~ 88.0%</code></li>
+</ol>
+<p>解释：</p>
+<ul>
+<li>这条 alpha 在 <code>5m</code> 上并非不触发，但半衰期偏慢；</li>
+<li>更像“多小时回归”而不是 <code>1m</code> 级别快进快出 scalp。</li>
+</ul>
+<h2>4. 对当前 desk 的意义</h2>
+<ul>
+<li>它直接补的是我们要持续补的 <strong>pairs/stat-arb raw alpha 素材</strong>；</li>
+<li>而且比“只讲配对方法”的材料更可用：执行和风控结构已经给出来了；</li>
+<li>但若要适配 <code>1m/3m/5m/15m</code> 的短周期研发，重点应放在<strong>回归速度分层</strong>，不是盲目加频。</li>
+</ul>
+<h2>5. 下一步怎么测（可直接排进实验队列）</h2>
+<h3>实验 A：HL-aware 阈值 vs 固定 2σ</h3>
+<ul>
+<li>对照组：固定 <code>|z|&gt;=2</code></li>
+<li>实验组：按 HL 分段门槛（repo 思路：<code>2/2.5/3/3.5</code>）</li>
+<li>看：<code>2h/4h/8h</code> 回归命中、净 bps/trade、日均换手</li>
+</ul>
+<h3>实验 B：短周期迁移（5m→3m/1m）</h3>
+<ul>
+<li>不改 alpha 定义，只改采样与持有时钟</li>
+<li>先验证：信号密度是否上升但净值质量下降（典型 cost trap）</li>
+</ul>
+<h3>实验 C：成本梯度</h3>
+<ul>
+<li>round-trip 成本至少跑 <code>6/10/14 bps</code></li>
+<li>目标不是找“最优参数”，而是找“成本后还能活”的 pair bucket</li>
+</ul>
+<h3>实验 D：执行 veto</h3>
+<ul>
+<li>加入 <code>5m</code> 成交额下限与盘口冲击代理（避免低流动 pair）</li>
+<li>验证是否能提升短窗口（2h~4h）命中质量</li>
+</ul>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>仓库是“legacy + 架构展示”形态，缺少完整 schema/配置，直接一键运行并不现实；</li>
+<li>README 的 live 绩效（<code>704</code> 笔、<code>64.6%</code> 胜率、<code>PF 1.22</code>）需独立复核，不应直接当可迁移结论；</li>
+<li>公共 spot 快检与其 bybit perp 实盘口径并不完全同构，仍需在 perp 成本口径下做二次确认。</li>
+</ul>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>Velychko, A. (2025/2026). _statistical_arbitrage_trading_system_V1_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1">https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1">https://github.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1</a></code></li>
+</ul>
+<ol>
+<li><strong>Repo source files used in this digest</strong></li>
+</ol>
+<ul>
+<li>README: <code><a href="https://raw.githubusercontent.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/HEAD/README.md">https://raw.githubusercontent.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/HEAD/README.md</a></code></li>
+<li>Selection: <code><a href="https://raw.githubusercontent.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/HEAD/selection/SQL-DB-Coint-upd-6.py">https://raw.githubusercontent.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/HEAD/selection/SQL-DB-Coint-upd-6.py</a></code></li>
+<li>Stats/Leveling: <code><a href="https://raw.githubusercontent.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/HEAD/selection/SQL-DB-Stat-upd-5.py">https://raw.githubusercontent.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/HEAD/selection/SQL-DB-Stat-upd-5.py</a></code></li>
+<li>Execution: <code><a href="https://raw.githubusercontent.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/HEAD/execution/Level_2_CFT_bot_07-12-2025.py">https://raw.githubusercontent.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/HEAD/execution/Level_2_CFT_bot_07-12-2025.py</a></code></li>
+<li>Daily guard: <code><a href="https://raw.githubusercontent.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/HEAD/execution/daily_guard_2.py">https://raw.githubusercontent.com/velychkoanton-stack/statistical_arbitrage_trading_system_V1/HEAD/execution/daily_guard_2.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Gatev, E., Goetzmann, W. N., &amp; Rouwenhorst, K. G. (2006). _Pairs Trading: Performance of a Relative-Value Arbitrage Rule_. Review of Financial Studies.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1093/rfs/hhj020</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1093/rfs/hhj020">https://doi.org/10.1093/rfs/hhj020</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Spot API (public kline data used in portability probe)</strong></li>
+</ol>
+<ul>
+<li>Docs: <code><a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data</a></code></li>
+<li>Endpoint: <code><a href="https://api.binance.com/api/v3/klines">https://api.binance.com/api/v3/klines</a></code></li>
+</ul>
+</body>
+</html>

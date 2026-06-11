@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 `cryptoarb` repo 继续只读成 funding 套壳：对 desk 更该先测的是「positive perp-premium shock × spot-perp basis reversion」raw alpha，BTC/ETH 先降级</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 `cryptoarb` repo 继续只读成 funding 套壳：对 desk 更该先测的是「positive perp-premium shock × spot-perp basis reversion」raw alpha，BTC/ETH 先降级</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-31 17:26 UTC</span>
+      <span class="pill">研究时间：2026-03-31 17:14 UTC</span>
+      <span class="pill">类型：quant_digest</span>
+      <span class="pill">主题标签：raw-alpha/basis/spot-perp/mean-reversion/perp-premium/positive-basis-only/binance/link/avax/btc/eth/5m/15m/repo/public-data/cost</span>
+      <span class="pill">证据类型：2026 GitHub 仓库 source audit（README + `config/main.yaml` + `strategies/basis_revert.py`）+ Binance Spot / USDⓈ-M Perpetual 公共 `5m/15m` 本地最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-31_1714_positive-premium-basis-reversion-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-31 17:14 UTC</li>
+<li>类型：quant_digest</li>
+<li>主题标签：raw-alpha/basis/spot-perp/mean-reversion/perp-premium/positive-basis-only/binance/link/avax/btc/eth/5m/15m/repo/public-data/cost</li>
+<li>证据类型：2026 GitHub 仓库 source audit（README + <code>config/main.yaml</code> + <code>strategies/basis_revert.py</code>）+ Binance Spot / USDⓈ-M Perpetual 公共 <code>5m/15m</code> 本地最小快检</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一资产的 spot-perp basis（尤其是 <strong>perp 相对 spot 的正溢价冲高</strong>）在短周期内会向常态回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主材料不是论文，而是一份刚更新的 2026 新 repo：<strong><code>gencersarp/cryptoarb</code></strong>。它 headline 写的是 market-neutral arbitrage research framework，里面同时放了 funding、basis、perp-perp、stat-arb 几条线。</p>
+<p>但如果按我们当前 desk 的优先级来读，这份 repo 最值得先拎出来做独立 digest 的，不是 funding 壳子本身，而是其中更容易快速最小复现的一支：<strong>spot-perp basis mean reversion</strong>。</p>
+<p>更具体地说，这次真正该进素材池的 base alpha 不是“所有 basis 都能 fade”，而是：</p>
+<p><strong>当 perp 相对 spot 的正 premium 冲得足够高、又还没进入结构性失衡时，后续更可能回落；对我们 desk，更可交易的第一版不是双边对称 basis fade，而是先做 <code>positive basis only</code> 的 <code>short perp / long spot</code>。</strong></p>
+<h2>2. 为什么这次值得进研究池</h2>
+<p>结合最近几轮学习进展，我们已经补了很多：</p>
+<ul>
+<li>current+next funding carry；</li>
+<li>async funding clock；</li>
+<li>perp-perp funding differential；</li>
+<li>same-underlier multi-quote；</li>
+<li>多种 pairs / stat-arb / percentile entry。</li>
+</ul>
+<p>但当前素材池里，<strong>“短周期 spot-perp basis 自身是不是一个独立 raw alpha”</strong> 这块还不够清楚。</p>
+<p>这份 repo 值得补的地方在于：</p>
+<ol>
+<li><strong>base alpha 很清楚</strong>：不是 filter，不是 overlay，就是 basis 偏离本身的回归；</li>
+<li><strong>可直接落地成完整结构</strong>：entry / exit / sizing / stop / max hold / cost shell 都能写；</li>
+<li><strong>和现有 funding / premium / multi-quote 素材天然互补</strong>：basis 是它们中间最接近“可直接下手的相对价值腿”的那层；</li>
+<li><strong>很适合做快速 falsification</strong>：用公开 Binance spot + perp 数据，几分钟就能知道这条线在 majors 上是肥是瘦。</li>
+</ol>
+<h2>3. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = 同一资产 perp 相对 spot 的 basis 偏离会均值回复；其中对 desk 最友好的第一版，是 <code>perp 贵得过头 → short perp / long spot</code> 的正 basis 回归。</strong></p>
+<p>所以它本质上是：</p>
+<ul>
+<li><code>relative-value</code></li>
+<li><code>stat-arb</code></li>
+<li><code>mean reversion</code></li>
+<li>但交易对象不是两只 coin 的 spread，而是 <strong>同一资产 spot vs perp 的溢价差</strong>。</li>
+</ul>
+<h2>4. 核心来源</h2>
+<h3>4.1 主仓库</h3>
+<ul>
+<li><strong>Author / Owner</strong>：Gencer Sarp</li>
+<li><strong>Year</strong>：2026（repo 创建于 2026-03-29，2026-03-31 有更新）</li>
+<li><strong>Title</strong>：*CryptoArb — Production-Grade Crypto Market-Neutral Arbitrage Framework*</li>
+<li><strong>Venue</strong>：GitHub repository</li>
+<li><strong>DOI</strong>：无</li>
+<li><strong>Readable URL / Repo URL</strong>：<a href="https://github.com/gencersarp/cryptoarb">https://github.com/gencersarp/cryptoarb</a></li>
+</ul>
+<h3>4.2 这次实际重点看的文件</h3>
+<ul>
+<li><code>README.md</code></li>
+<li><code>config/main.yaml</code></li>
+<li><code>strategies/basis_revert.py</code></li>
+</ul>
+<h3>4.3 本地最小快检数据源（公开可得）</h3>
+<ul>
+<li><strong>Binance Spot klines</strong>：<code><a href="https://api.binance.com/api/v3/klines">https://api.binance.com/api/v3/klines</a></code></li>
+<li><strong>Binance USDⓈ-M Perpetual klines</strong>：<code><a href="https://fapi.binance.com/fapi/v1/klines">https://fapi.binance.com/fapi/v1/klines</a></code></li>
+<li>更新频率：秒级 / 毫秒时间戳，落到 <code>5m / 15m</code> 完全够用</li>
+</ul>
+<h2>5. 仓库里最该拿走的硬点</h2>
+<h3>5.1 repo 已经把 basis MR 写成了很清楚的策略骨架</h3>
+<p><code>strategies/basis_revert.py</code> 的逻辑非常直白：</p>
+<ul>
+<li><code>basis = (perp_price - spot_price) / spot_price</code></li>
+<li>basis z-score 太高：<code>short perp / long spot</code></li>
+<li>basis z-score 太低：<code>long perp / short spot</code></li>
+<li><code>exit_z</code> 回归就平</li>
+<li><code>stop_z</code> 超限就砍</li>
+<li>再配 <code>max_hold_bars</code></li>
+</ul>
+<p>也就是说，这不是综述材料，而是已经非常接近可复现策略说明书。</p>
+<h3>5.2 repo 默认参数给了一个完整的“第一版策略壳”</h3>
+<p><code>config/main.yaml</code> 对 <code>BasisMeanRevert</code> 的默认设置是：</p>
+<ul>
+<li><code>zscore_lookback = 48</code></li>
+<li><code>entry_z = 2.0</code></li>
+<li><code>exit_z = 0.5</code></li>
+<li><code>stop_z = 3.5</code></li>
+<li><code>max_hold_bars = 36</code></li>
+<li><code>position_size_pct = 0.35</code></li>
+<li><code>max_open_positions = 2</code></li>
+</ul>
+<p>注意它的原始数据频率是 <strong>8h</strong>，所以这些数值<strong>不能直接照抄</strong>到 <code>5m / 15m</code>。但结构本身很值得保留：</p>
+<ul>
+<li>先定 basis 统计窗口；</li>
+<li>用极端分位/极端 z admission；</li>
+<li>用回归阈值退出；</li>
+<li>用 stop_z 和 max-hold 把错误 pocket 限死。</li>
+</ul>
+<h3>5.3 这份 repo 的价值，不只是信号，还有交易壳</h3>
+<p>它在 <code>config/main.yaml</code> 里同时给了很重要的落地约束：</p>
+<ul>
+<li>1-bar execution delay</li>
+<li>cost stress 1.5x</li>
+<li>maker fill probability 55%</li>
+<li>slippage 0.5~18 bps</li>
+<li>max drawdown 10%</li>
+<li>max leg divergence 35 bps</li>
+<li>orphan protection: max unhedged 1 bar</li>
+</ul>
+<p>这意味着它对我们真正有价值的地方，不只是“basis 可以回归”这句话，而是： <strong>它把一个可执行的 market-neutral shell 先搭出来了。</strong></p>
+<h2>6. 本地最小快检：最有价值的不是“能不能做”，而是“该做哪一边、哪类币”</h2>
+<p>我用 Binance Spot + Binance USDⓈ-M Perpetual 公共 <code>5m/15m</code> 数据，做了一个非常粗但方向够用的 transfer check：</p>
+<ul>
+<li>信号：rolling basis z-score 极值；</li>
+<li>逻辑：1 bar delay；</li>
+<li>收益：用 perp-leg return 减 spot-leg return 近似 spread PnL；</li>
+<li>成本：双腿每次调仓按 taker+slip 的保守口径计入。</li>
+</ul>
+<h3>6.1 15m majors：BTC / ETH 不肥，after-cost 基本不值得继续重仓读</h3>
+<p>过去约 31 天、<code>15m</code> quick check 里：</p>
+<ul>
+<li><strong>BTC basis |p95| ≈ 6.71 bps</strong></li>
+<li><strong>ETH basis |p95| ≈ 6.66 bps</strong></li>
+</ul>
+<p>这个厚度对 short-cycle 来说太薄。 即使逻辑方向没错，绝大部分边也会被双腿成本吃掉。</p>
+<h3>6.2 5m mid-cap pockets：LINK / AVAX 比 BTC / ETH 更像候选</h3>
+<p>过去约 17 天、<code>5m</code> quick check 里：</p>
+<ul>
+<li><strong>LINK basis |p95| ≈ 14.72 bps</strong></li>
+<li><strong>AVAX basis |p95| ≈ 15.45 bps</strong></li>
+<li>而 BTC / ETH 还是只有 <strong>~7 bps</strong> 左右</li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>majors 的 basis 贴得太紧；</li>
+<li>中等活跃度但 perp 溢价偶尔能拉开的币，才更像我们能摸到的 pocket。</li>
+</ul>
+<h3>6.3 对称双边做法不如先做 <code>positive basis only</code></h3>
+<p>本地 <code>5m</code> 快检里，<code>positive basis only</code>（只做 <code>perp 贵 → short perp / long spot</code>）比对称双边更像 desk-friendly 版本：</p>
+<p>#### LINK（<code>5m</code>, 约 17 天）</p>
+<ul>
+<li>trades：<strong>7</strong></li>
+<li>gross：<strong>+1.09%</strong></li>
+<li>costs：<strong>0.98%</strong></li>
+<li>net：<strong>+0.11%</strong></li>
+<li>Sharpe：<strong>~1.08</strong></li>
+</ul>
+<p>#### AVAX（<code>5m</code>, 约 17 天, <code>positive basis only</code>）</p>
+<ul>
+<li>trades：<strong>5</strong></li>
+<li>gross：<strong>+0.77%</strong></li>
+<li>costs：<strong>0.70%</strong></li>
+<li>net：<strong>+0.07%</strong></li>
+<li>Sharpe：<strong>~1.01</strong></li>
+</ul>
+<p>#### 对照：BTC / ETH（<code>5m</code>, <code>positive basis only</code>）</p>
+<ul>
+<li>BTC net：<strong>-1.75%</strong></li>
+<li>ETH net：<strong>-1.32%</strong></li>
+</ul>
+<p>这组数的重点不是“已经能上线”，而是： <strong>同样的 basis fade 骨架，在 majors 上多半只是成本捐赠；在某些 mid-cap 上，至少开始出现“gross 能盖住一部分成本、净值接近转正”的味道。</strong></p>
+<h2>7. 对 desk 最重要的重读：不要把它写成对称 basis fade，要先单边化</h2>
+<p>如果直接照教科书写成：</p>
+<ul>
+<li>basis 太高就 short perp / long spot</li>
+<li>basis 太低就 long perp / short spot</li>
+</ul>
+<p>那在 desk 侧会立刻碰到两个现实问题：</p>
+<ol>
+<li><strong>负 basis 那一边更依赖 spot short / borrow 能力</strong>；</li>
+<li><strong>短周期里负 basis 侧经常既薄又难做，执行不如正 basis 侧顺手。</strong></li>
+</ol>
+<p>所以 repo 对我们真正有价值的“旁支想法”是：</p>
+<p><strong>先把 basis MR 做成 <code>positive basis only</code> 的 one-sided raw alpha，再把 negative side 留作后续扩展。</strong></p>
+<p>这就从“理论上对称”变成了“desk 上更容易真的做”。</p>
+<h2>8. 怎么把它拆成完整策略</h2>
+<h3>8.1 Entry</h3>
+<p>先定义：</p>
+<ul>
+<li><code>basis_t = (perp_t - spot_t) / spot_t</code></li>
+<li><code>z_t = zscore(basis_t)</code></li>
+</ul>
+<p>第一版建议：</p>
+<ol>
+<li>只做 <code>basis_z &gt;= entry_z</code></li>
+<li>同时要求 <code>basis_abs_bps &gt; roundtrip_cost_bps + safety_buffer</code></li>
+<li>spot/perp 两边盘口深度都够</li>
+<li>近几根 bar 没有极端跳价 / 无成交异常</li>
+</ol>
+<h3>8.2 Exit</h3>
+<p>先用最朴素三层：</p>
+<ol>
+<li><code>abs(z) &lt;= exit_z</code></li>
+<li><code>abs(z) &gt;= stop_z</code></li>
+<li><code>bars_held &gt;= max_hold</code></li>
+</ol>
+<h3>8.3 Sizing</h3>
+<p>先别花哨：</p>
+<ul>
+<li>基础仓位按 <code>abs(z) / entry_z</code> 线性放大，但 capped；</li>
+<li>再乘一个 <code>basis_abs_bps / cost_hurdle_bps</code> 的 pocket 质量因子；</li>
+<li>再乘一个 depth cap。</li>
+</ul>
+<h3>8.4 Risk</h3>
+<p>至少要有：</p>
+<ol>
+<li><strong>orphan protection</strong>：任一腿掉线最多允许裸露 1 bar；</li>
+<li><strong>leg divergence cap</strong>：超阈值直接强平；</li>
+<li><strong>venue health veto</strong>：spot/perp 任何一边 API 或流动性异常就停；</li>
+<li><strong>funding clock awareness</strong>：不要在 funding 结算前后把偶发 jump 错当常规均值回复。</li>
+</ol>
+<h3>8.5 Cost</h3>
+<p>这类 alpha 最怕“逻辑对、净值死”。 所以至少要做三套：</p>
+<ul>
+<li>maker 乐观版</li>
+<li>taker 保守版</li>
+<li>mixed realistic 版</li>
+</ul>
+<p>并且必须按 <strong>双腿 roundtrip</strong> 算：</p>
+<ul>
+<li>perp fee/slip</li>
+<li>spot fee/slip</li>
+<li>可能的 borrow / financing</li>
+<li>资金占用</li>
+</ul>
+<h2>9. 对 <code>1m / 3m / 5m / 15m</code> 的正确映射</h2>
+<h3>9.1 5m 是当前最自然的最小实验频率</h3>
+<p>原因很简单：</p>
+<ul>
+<li>1m 太容易被微观噪音和 quote 抖动淹没；</li>
+<li>15m 在 majors 上又可能太慢、太薄；</li>
+<li>5m 正好能保留一些 basis pocket，又没把 turnover 放大到最夸张。</li>
+</ul>
+<h3>9.2 15m 更适合先做 falsification card</h3>
+<p>这次 quick check 已经很说明问题：</p>
+<ul>
+<li>BTC / ETH 的 15m basis 厚度不够；</li>
+<li>如果 15m majors after-cost 都留不住边，那就不该继续把这条线当 universal alpha。</li>
+</ul>
+<h3>9.3 1m / 3m 目前先别直接上主回测</h3>
+<p>先做：</p>
+<ul>
+<li>盘口深度</li>
+<li>盘口恢复时间</li>
+<li>结算前后 basis 冲高回落的 microstructure path</li>
+</ul>
+<p>等这些搞清，再把频率往下压。</p>
+<h2>10. 数据公开性与最小可复现实验口径</h2>
+<h3>10.1 数据源</h3>
+<ul>
+<li>Binance Spot klines</li>
+<li>Binance USDⓈ-M Perpetual klines</li>
+</ul>
+<h3>10.2 公开性</h3>
+<ul>
+<li>完全公开</li>
+<li>无需私有 API key 就能先做最小实验</li>
+</ul>
+<h3>10.3 更新频率</h3>
+<ul>
+<li>秒级/毫秒时间戳，聚合到 <code>5m / 15m</code> 没问题</li>
+</ul>
+<h3>10.4 最小复现实验</h3>
+<p>#### 实验 A：5m positive-basis-only 单币 pocket screen</p>
+<ul>
+<li>universe：<code>BTC, ETH, SOL, DOGE, LINK, AVAX, ...</code></li>
+<li>signal：<code>basis_z &gt;= 2.5</code></li>
+<li>action：<code>short perp / long spot</code></li>
+<li>exit：<code>z &lt;= 0.5</code> 或 <code>z &gt;= 3.5</code> 或 <code>max_hold</code></li>
+<li>目标：先看哪类币 <code>gross &gt; cost</code></li>
+</ul>
+<p>#### 实验 B：15m majors falsification</p>
+<ul>
+<li>只做 BTC / ETH</li>
+<li>目标不是赚钱，而是确认“majors basis 太薄”是否稳定成立</li>
+<li>如果稳定为负，就把 majors 从这条线的主战场里降级</li>
+</ul>
+<p>#### 实验 C：funding-clock conditional basis MR</p>
+<ul>
+<li>只在 funding 前后固定窗口内允许 admission</li>
+<li>检查 basis 回归是否更集中发生在结算时钟附近</li>
+<li>若成立，它仍然是 raw alpha，只是 admission 更精确</li>
+</ul>
+<h2>11. 它和当前素材池怎么拼</h2>
+<p>我认为它最适合放在这里：</p>
+<ol>
+<li><strong>raw alpha 本体</strong>：</li>
+</ol>
+<ul>
+<li><code>positive perp-premium shock → spot-perp basis reversion</code></li>
+</ul>
+<ol>
+<li><strong>可复用 gate / overlay</strong>：</li>
+</ol>
+<ul>
+<li>funding 结算时钟</li>
+<li>depth collapse veto</li>
+<li>orphan/leg divergence protection</li>
+</ul>
+<p>也就是说：</p>
+<ul>
+<li>raw alpha 是 basis 本身的回归；</li>
+<li>时钟和执行约束只是把 pocket 做得更干净。</li>
+</ul>
+<h2>12. 局限与风险</h2>
+<ol>
+<li><strong>repo 默认是 8h 频率，不可机械照抄到 5m/15m</strong>。</li>
+<li><strong>本地 quick check 很粗</strong>：只是最小转译，不是正式 walk-forward。</li>
+<li><strong>mid-cap pocket 虽然更厚，但 trade count 偏少</strong>：容量和稳定性都要继续验证。</li>
+<li><strong>negative basis 侧未必 desk-friendly</strong>：若 borrow/short 代价高，就不该一上来做对称结构。</li>
+<li><strong>spot/perp 任何一腿执行失败都会把 market-neutral 变方向暴露。</strong></li>
+</ol>
+<h2>13. 我建议的“下一步怎么测”</h2>
+<ol>
+<li><strong>先把 universe 扩到 15~30 个 spot+perp 同时可交易资产</strong>，做 <code>5m positive-basis-only</code> 横截面筛选；</li>
+<li><strong>先看 gross-vs-cost，不先看 Sharpe 美观度</strong>；</li>
+<li><strong>只保留 <code>basis |p95|</code> 明显高于 roundtrip 成本的币</strong>；</li>
+<li><strong>对 LINK / AVAX 做更严格 walk-forward</strong>，检查 pocket 是否只集中在少数 funding 时钟或波动 regime；</li>
+<li><strong>把 negative-basis side 单独拆出去</strong>，等确认 borrow/融资/spot short 可做，再决定是否并回完整双边策略。</li>
+</ol>
+<h2>14. 一句话结论</h2>
+<p>这份 2026 <code>cryptoarb</code> repo 对 desk 最有价值的，不是把 funding / basis / stat-arb 全都一起抄，而是先诚实拆出一条更能快速复现的 raw alpha：<strong>只做 <code>perp 贵得过头</code> 的 spot-perp basis 回归，而且第一版优先看 LINK / AVAX 这类 mid-cap pocket，BTC / ETH 先降级。</strong></p>
+<h2>15. 来源链接</h2>
+<ul>
+<li>Repo：<a href="https://github.com/gencersarp/cryptoarb">https://github.com/gencersarp/cryptoarb</a></li>
+<li>Binance Spot klines：<a href="https://api.binance.com/api/v3/klines">https://api.binance.com/api/v3/klines</a></li>
+<li>Binance USDⓈ-M Perpetual klines：<a href="https://fapi.binance.com/fapi/v1/klines">https://fapi.binance.com/fapi/v1/klines</a></li>
+</ul>
+</body>
+</html>

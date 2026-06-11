@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Wintermute 的 Hyperliquid quoting repo 只读成“鲸鱼挂单观察”：对 short-cycle desk，更该先测的是「symmetric tiered maker ladder × inventory-skew / 外部对冲」这条完整 maker raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Wintermute 的 Hyperliquid quoting repo 只读成“鲸鱼挂单观察”：对 short-cycle desk，更该先测的是「symmetric tiered maker ladder × inventory-skew / 外部对冲」这条完整 maker raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 19:34 UTC</span>
+      <span class="pill">研究时间：2026-04-03 19:36 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（GitHub API metadata + `README.md` + `wintermute_hyperliquid_thread.txt` + `scripts/fetch_orders.py` + `scripts/fetch_positions.py` + `scripts/generate_charts.py`）+ Hyperliquid 公共 API live probe</span>
+      <span class="pill">主题标签：raw-alpha/maker/market-making/spread-capture/tiered-ladder/inventory-skew/external-hedge/hyperliquid/public-api/microstructure/1m/3m/5m/15m/repo/live-probe/cost/risk</span>
+      <span class="pill">证据类型：repo README + source 规则级证据 + 公共 API 实时快照</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_1936_wintermute-hl-tiered-maker-ladder-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-03 19:36 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（GitHub API metadata + <code>README.md</code> + <code>wintermute_hyperliquid_thread.txt</code> + <code>scripts/fetch_orders.py</code> + <code>scripts/fetch_positions.py</code> + <code>scripts/generate_charts.py</code>）+ Hyperliquid 公共 API live probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>被动做市的 spread capture</strong>——在流动性更深、成交更密的币种上，围绕 mid 对称挂出分层 maker 梯子，近端小尺寸运行、远端大尺寸运行；赚的是 <strong>被动成交时吃到的 spread / queue rent</strong>，并用库存对称、分层放量、必要时外部对冲来压 adverse selection。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/maker/market-making/spread-capture/tiered-ladder/inventory-skew/external-hedge/hyperliquid/public-api/microstructure/1m/3m/5m/15m/repo/live-probe/cost/risk</li>
+<li>证据类型：repo README + source 规则级证据 + 公共 API 实时快照</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>一句话：</p>
+<p>&gt; 这次不是在看“某个大户怎么挂单”，而是在拆一个<strong>可以直接翻译成可交易壳的 maker raw alpha</strong>：<code>对称分层挂单 + 分市场宽窄价差 + 库存尽量平衡 + 需要时外部 hedge</code>。</p>
+<p>为什么它值得进当前池子：</p>
+<ul>
+<li>它的 <strong>base alpha 很清楚</strong>，不是讲故事，也不是纯 filter：就是 <strong>maker spread capture</strong>。</li>
+<li>它天然不是 bar-close 策略，但<strong>非常适合补 desk 目前更偏 taker / stat-arb 的素材池</strong>。</li>
+<li>它给的是一套<strong>完整可落地骨架</strong>：<code>entry / exit / sizing / risk / cost</code> 都能拆出来。</li>
+<li>数据源是 <strong>Hyperliquid 公共 API</strong>，今天还能直接做 live probe，不需要私有数据才能先走最小验证。</li>
+</ul>
+<h2>2. 先把 base alpha 说清楚</h2>
+<p>翻成人话：</p>
+<ul>
+<li>你不是去猜 <code>BTC</code> 下一根涨跌；</li>
+<li>你是在盘口两边<strong>持续摆一套报价梯子</strong>；</li>
+<li>近 mid 的单更小、更密，目的是多吃流量；</li>
+<li>远离 mid 的单更大、更宽，目的是在波动更大、被挑中的风险更高时，拿更厚的 spread 补偿；</li>
+<li>如果库存偏向某一边，就通过 <strong>降低某侧侵略度 / 提高另一侧侵略度 / 外部 venue 对冲</strong>，把 book 拉回更中性。</li>
+</ul>
+<p>也就是：</p>
+<p>&gt; <strong>这条 alpha 的本体不是方向预测，而是“在有流量的地方，用可控库存去持续出租流动性”。</strong></p>
+<p>这和今天已经很多的 <code>breakout / z-score / lag-arb</code> intake 不一样：</p>
+<ul>
+<li>它是 <strong>maker alpha</strong>，不是 taker alpha；</li>
+<li>它赚的是 <strong>spread + queue position</strong>，不是 bar close 的方向 drift；</li>
+<li>它更适合做 <code>1m / 3m</code> 高频 sleeve，也能反向服务 <code>5m / 15m</code> 策略的执行层与 venue routing。</li>
+</ul>
+<h2>3. 这次看的主材料是什么</h2>
+<h3>3.1 主 repo</h3>
+<ul>
+<li><strong>Author / Repo owner</strong>：<code>0xLoris</code></li>
+<li><strong>Year</strong>：2026</li>
+<li><strong>Title / Repo</strong>：*Wintermute Hyperliquid Quoting Strategy Analysis*</li>
+<li><strong>Venue</strong>：GitHub repository</li>
+<li><strong>DOI</strong>：无</li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/0xLoris/wintermute-hyperliquid-analysis&gt;">https://github.com/0xLoris/wintermute-hyperliquid-analysis&gt;</a></li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/0xLoris/wintermute-hyperliquid-analysis&gt;">https://github.com/0xLoris/wintermute-hyperliquid-analysis&gt;</a></li>
+<li><strong>GitHub metadata</strong>：created <code>2026-01-13</code>；pushed <code>2026-01-13</code>；updated <code>2026-03-15</code>；stars <code>31</code></li>
+</ul>
+<h3>3.2 直接核对的 source</h3>
+<ul>
+<li><code>README.md</code></li>
+<li><code>wintermute_hyperliquid_thread.txt</code></li>
+<li><code>scripts/fetch_orders.py</code></li>
+<li><code>scripts/fetch_positions.py</code></li>
+<li><code>scripts/generate_charts.py</code></li>
+</ul>
+<h3>3.3 这次额外做的 live probe</h3>
+<p>直接用 Hyperliquid 公共 API 复核：</p>
+<ul>
+<li><code>POST <a href="https://api.hyperliquid.xyz/info">https://api.hyperliquid.xyz/info</a></code> with <code>{&quot;type&quot;:&quot;openOrders&quot;,&quot;user&quot;:...}</code></li>
+<li><code>POST <a href="https://api.hyperliquid.xyz/info">https://api.hyperliquid.xyz/info</a></code> with <code>{&quot;type&quot;:&quot;allMids&quot;}</code></li>
+<li><code>POST <a href="https://api.hyperliquid.xyz/info">https://api.hyperliquid.xyz/info</a></code> with <code>{&quot;type&quot;:&quot;clearinghouseState&quot;,&quot;user&quot;:...}</code></li>
+</ul>
+<p>本轮本地 artifact：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-03_wintermute_hyperliquid_summary_live.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-03_wintermute_hyperliquid_ladder_live.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-03_wintermute_hyperliquid_positions_live.csv</code></li>
+</ul>
+<h2>4. repo 真正给了什么策略骨架</h2>
+<h2>4.1 Entry：围绕 mid 的双边分层挂单</h2>
+<p><code>fetch_orders.py</code> 的分析口径很直接：</p>
+<ul>
+<li>先拉全市场 <code>openOrders</code>；</li>
+<li>再拉 <code>allMids</code>；</li>
+<li>对每个市场拆成 <code>bids</code> / <code>asks</code>；</li>
+<li>计算：</li>
+<li><code>best_bid / best_ask</code></li>
+<li><code>spread_pct</code></li>
+<li><code>bid_notional / ask_notional</code></li>
+<li><code>avg_bid_spacing / avg_ask_spacing</code></li>
+<li>各层距离 mid 的 <code>distance_from_mid_bps</code></li>
+</ul>
+<p>这意味着策略的最小 entry 单元其实很清楚：</p>
+<ul>
+<li>每个市场同时维护 bid / ask 两侧；</li>
+<li>每侧有多层价格；</li>
+<li>每层有不同 size；</li>
+<li>离 mid 越远，size 越大、spacing 越宽。</li>
+</ul>
+<p>换句话说：</p>
+<p>&gt; <strong>entry 不是“出信号后开仓”，而是“持续维护一个可成交的流动性曲面”。</strong></p>
+<h2>4.2 Sizing：小近大远，不同币种宽度不同</h2>
+<p>README 给的 January 2026 观察值：</p>
+<ul>
+<li>总 quoted notional 约 <strong>$199M</strong></li>
+<li><strong>1,732</strong> resting orders</li>
+<li><strong>76</strong> 个市场</li>
+<li>约 <strong>11 个 size tiers</strong></li>
+<li>相邻层级 size 典型增幅 <strong>2.5x ~ 2.8x</strong></li>
+</ul>
+<p>repo 作者举的例子：</p>
+<ul>
+<li>BTC：从 <code>0.05 BTC</code> 近端小单，逐层放大到 <code>27.5 BTC</code></li>
+<li>ETH：从 <code>2 ETH</code> 逐层放大到 <code>500 ETH</code></li>
+<li>小币明显给更宽的 spread、更少的 orders</li>
+</ul>
+<p>这背后的 sizing 逻辑非常 desk-friendly：</p>
+<ol>
+<li><strong>近端层</strong>：更像流量层，吃更多成交机会；</li>
+<li><strong>远端层</strong>：更像保险层，只有在价差厚、补偿高时才接更大单；</li>
+<li><strong>币种层</strong>：大盘币窄、小盘币宽；不是“一套 bps 打天下”。</li>
+</ol>
+<h2>4.3 Risk：核心不是“预测对”，而是“别被库存拖死”</h2>
+<p>README 和 thread 都反复强调两件事：</p>
+<ul>
+<li>quoted book 在 notional 上接近对称；</li>
+<li>perp inventory 实际会累积，而且<strong>不等于方向押注</strong>。</li>
+</ul>
+<p>repo 的解释是：</p>
+<ul>
+<li>maker book 尽量保持 bid / ask 接近均衡；</li>
+<li>真正成交后的库存会在本 venue 累积；</li>
+<li>专业做市商通常需要在别的 venue / 现货 / 永续仓位上做再平衡。</li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; <strong>risk 管理的重点不是“止损一笔单”，而是“整个库存曲线别单边漂移失控”。</strong></p>
+<p>这对我们非常重要，因为很多看起来“spread 很肥”的 maker 想法，死法都一样：</p>
+<ul>
+<li>fill 看起来很顺；</li>
+<li>但被动成交其实持续偏在同一侧；</li>
+<li>库存开始单边堆积；</li>
+<li>真正亏钱不是单次 spread，而是 inventory + adverse selection。</li>
+</ul>
+<h2>4.4 Cost：宽 spread 本身就是成本补偿，不是事后美化</h2>
+<p>这类策略不能只看名义 spread，必须同时看：</p>
+<ul>
+<li>maker fee / rebate</li>
+<li>被动成交后到 mid 的瞬时 adverse selection</li>
+<li>quote refresh / cancel 频率</li>
+<li>外部 hedge 的 taker 成本</li>
+<li>小币的冲击成本与 stale quote 风险</li>
+</ul>
+<p>repo 虽然不是一套可直接回放 fill 的 production engine，但已经把最关键的 economics 讲明白了：</p>
+<ul>
+<li><strong>大盘币</strong>：更窄 spread，靠更高成交率吃量；</li>
+<li><strong>小盘币</strong>：更宽 spread，靠更厚补偿覆盖 adverse selection；</li>
+<li><strong>库存不平</strong>：不是靠“相信会回来”，而是靠更对称 book 或外部 hedge。</li>
+</ul>
+<h2>5. 这次 live probe 看到了什么</h2>
+<p>为了避免只转述 README，我直接拉了 2026-04-03 的实时快照。结果和 repo 的 January 2026 结论方向一致，而且规模还更大。</p>
+<h3>5.1 当前 live snapshot headline</h3>
+<ul>
+<li><strong>1,783</strong> open orders</li>
+<li><strong>82</strong> quoted markets</li>
+<li>quoted notional 约 <strong>$206.8M</strong></li>
+<li>bid side notional 约 <strong>51.8%</strong>，ask side 约 <strong>48.2%</strong></li>
+</ul>
+<p>这说明 repo 里说的“近对称双边 book”不是一次性截图，而是今天仍能观察到的结构。</p>
+<h3>5.2 当前 top quoted markets（live）</h3>
+<ul>
+<li><code>BTC</code>：约 <strong>$89.1M</strong> quoted notional，<strong>104</strong> orders，best spread 约 <strong>3.90 bps</strong></li>
+<li><code>ETH</code>：约 <strong>$43.6M</strong>，<strong>105</strong> orders，best spread 约 <strong>1.95 bps</strong></li>
+<li><code>SOL</code>：约 <strong>$16.9M</strong>，<strong>39</strong> orders，best spread 约 <strong>2.62 bps</strong></li>
+<li><code>XRP</code>：约 <strong>$16.8M</strong>，<strong>38</strong> orders，best spread 约 <strong>4.56 bps</strong></li>
+</ul>
+<p>很直观：</p>
+<ul>
+<li>资金还是高度集中在最流动的几个币；</li>
+<li>但不同币的 spread / spacing 已经明显分层；</li>
+<li>这不是“一个统一参数”的做法，而是按 market quality 分 bucket。</li>
+</ul>
+<h3>5.3 当前分层 size 也还能看见</h3>
+<p>我按 repo 同样的思路，把相近 size 聚成 tier 后做了粗分组。结果：</p>
+<ul>
+<li><code>BTC</code> 双边大约能看出 <strong>5~6 个</strong>主要 size 组，组间典型放大量级约 <strong>2.0x ~ 2.24x</strong></li>
+<li><code>XRP</code> 双边大约 <strong>5 个</strong>主要组，组间放大量级约 <strong>2.72x ~ 2.78x</strong></li>
+<li><code>HYPE</code> 这类更偏中小盘的市场，层数更少，但组间放大更陡</li>
+</ul>
+<p>注意：这只是从静态挂单 sizes 推回的近似 tier grouping，不是 fill-based 的真实 production 参数。但它足以说明：</p>
+<p>&gt; <strong>repo 所说“tiered size ladder”在 live 盘面上仍然能看到，而不是 README 编出来的故事。</strong></p>
+<h3>5.4 quote 对称，不等于 inventory 平</h3>
+<p><code>clearinghouseState</code> live probe 显示，这个地址的显式 perp inventory 依然很重，例如：</p>
+<ul>
+<li><code>BTC</code> 约 <strong>$12.6M long</strong></li>
+<li><code>ETH</code> 约 <strong>$8.0M short</strong></li>
+<li><code>SOL</code> 约 <strong>$7.5M short</strong></li>
+<li><code>HYPE</code> 约 <strong>$5.4M short</strong></li>
+</ul>
+<p>这再次提醒：</p>
+<ul>
+<li><strong>book 对称</strong> 是 quote 层的目标；</li>
+<li><strong>库存中性</strong> 则要看更大的全局 book，单一 venue 上很可能并不平。</li>
+</ul>
+<p>这正是我们该学的地方：</p>
+<p>&gt; 不要把“挂单对称”误会成“风险已经中性”；真正的中性通常要靠多市场、多账户或外部 hedge 才成立。</p>
+<h2>6. 这条 alpha 为什么比继续补一篇普通 filter 更值得</h2>
+<p>先回答用户要求的那句：</p>
+<p>&gt; <strong>因为它本身就是可独立复现、可直接落地的完整 raw alpha，不是只能服务别人的 gate。</strong></p>
+<p>而且它补的是现在素材池里相对少的一类：</p>
+<ul>
+<li>maker spread capture</li>
+<li>inventory-managed quoting</li>
+<li>execution-layer raw alpha</li>
+</ul>
+<p>这类 alpha 的价值在于：</p>
+<ol>
+<li>它不依赖“下根 K 线方向猜对”；</li>
+<li>它可和 trend / MR / stat-arb 并列，形成独立收益来源；</li>
+<li>它还能反过来给你别的策略提供 execution benchmark：</li>
+</ol>
+<ul>
+<li>什么时候应该被动挂？</li>
+<li>什么时候必须主动吃？</li>
+<li>哪类币值得给更深层 ladder？</li>
+</ul>
+<h2>7. 它和 <code>1m / 3m / 5m / 15m</code> 的关系怎么落</h2>
+<p>严格说，它不是一条“15m 收盘后决策”的 alpha；但完全可以映射到当前 desk 时钟：</p>
+<h3>7.1 <code>1m / 3m</code>：主运行层</h3>
+<p>适合放在：</p>
+<ul>
+<li>quote refresh</li>
+<li>inventory skew 调整</li>
+<li>enable / disable maker sleeve</li>
+<li>大小盘不同 ladder 宽度的快速切换</li>
+</ul>
+<h3>7.2 <code>5m / 15m</code>：上层 gate / 预算层</h3>
+<p>适合放在：</p>
+<ul>
+<li>是否允许小盘币继续挂深层大单</li>
+<li>realized vol / funding / event 风险是否过高</li>
+<li>maker 预算向大盘币或某几个主流币集中</li>
+<li>inventory cap 是否收紧</li>
+</ul>
+<p>最实用的读法不是“把它硬改成 15m bar 策略”，而是：</p>
+<p>&gt; <strong><code>1m / 3m</code> 负责 quote 与 inventory 控制，<code>5m / 15m</code> 负责风险预算与是否开机。</strong></p>
+<h2>8. 对我们最有价值的不是“照抄 Wintermute”，而是先抄这 4 个组件</h2>
+<h3>8.1 组件 A：按市场质量分 bucket</h3>
+<p>最先抄的不是某个绝对 bps，而是：</p>
+<ul>
+<li><code>BTC/ETH</code> 一档</li>
+<li><code>SOL/XRP</code> 一档</li>
+<li>其余小盘一档</li>
+</ul>
+<p>每档有不同：</p>
+<ul>
+<li>基础 spread</li>
+<li>层数</li>
+<li>远端 size 放大倍率</li>
+<li>最大库存上限</li>
+</ul>
+<h3>8.2 组件 B：近端小、远端大</h3>
+<p>这比“所有层同 size”强得多，因为：</p>
+<ul>
+<li>近端 fill 多，但 adverse selection 更频繁；</li>
+<li>远端 fill 少，但补偿也更厚；</li>
+<li>不同层 size 不分化，会让你的 inventory 曲线很难控。</li>
+</ul>
+<h3>8.3 组件 C：quote 对称优先，inventory 另管</h3>
+<p>不要把“已经做空很多仓位了，所以 ask 删光”这种东西混进 quote alpha 本体。 更稳妥的做法是：</p>
+<ul>
+<li>quote book 尽量保持近对称；</li>
+<li>当库存超过阈值，再触发轻度 skew 或外部 hedge；</li>
+<li>不要一开始就把 maker 壳完全变成 directional book。</li>
+</ul>
+<h3>8.4 组件 D：先在 HL 单 venue 做被动 alpha 验证，再谈 cross-venue hedge</h3>
+<p>第一步别一上来就追 Wintermute 的全局结构。最小复现完全可以先做：</p>
+<ul>
+<li>单 venue：Hyperliquid</li>
+<li>单币：BTC / ETH / SOL</li>
+<li>单侧 / 双侧都测</li>
+<li>先看 gross maker alpha 是否存在</li>
+<li>再决定要不要补 CEX hedge 腿</li>
+</ul>
+<h2>9. 最小可复现实验怎么做</h2>
+<p>这是本轮最重要的落地部分。</p>
+<h3>实验 1：HL 单 venue maker alpha 可行性</h3>
+<p><strong>目标</strong>：先判断“被动出租流动性”本身是不是 gross positive。</p>
+<ul>
+<li>数据源：Hyperliquid 公共接口</li>
+<li><code>allMids</code></li>
+<li><code>l2Book</code></li>
+<li><code>recentTrades</code> / 可成交回报流</li>
+<li>标的：<code>BTC</code>, <code>ETH</code>, <code>SOL</code></li>
+<li>频率：原始采样 <code>1s~5s</code>；汇总观察口径按 <code>1m / 3m</code></li>
+<li>策略壳：</li>
+<li>双边各 <code>3~5</code> 层</li>
+<li><code>BTC/ETH</code> 用窄 ladder，<code>SOL</code> 用更宽 ladder</li>
+<li>近端小 size，远端大 size</li>
+<li>评估：</li>
+<li>fill rate</li>
+<li>fill 后 <code>5s / 30s / 60s</code> adverse selection</li>
+<li>gross spread capture</li>
+<li>按 quote age 分 bucket 的 stale-quote loss</li>
+</ul>
+<h3>实验 2：inventory-skew 是否真能救 PnL</h3>
+<p><strong>目标</strong>：别只看 fill，多看库存怎么把钱亏回去。</p>
+<ul>
+<li>在实验 1 基础上，加 3 个 inventory 规则版本：</li>
+</ul>
+<ol>
+<li>完全对称</li>
+<li>轻度 skew（库存超阈值才偏）</li>
+<li>超阈值直接暂停某侧近端 quote</li>
+</ol>
+<ul>
+<li>观察：</li>
+<li>inventory drift</li>
+<li>max notional inventory</li>
+<li>PnL 波动</li>
+<li>是否显著降低 adverse selection 后的单边累积亏损</li>
+</ul>
+<h3>实验 3：<code>5m / 15m</code> 风险预算层</h3>
+<p><strong>目标</strong>：把 maker 壳和当前 desk 时钟接上。</p>
+<ul>
+<li><code>5m</code> gate：近 5m realized vol / spread widening 是否超阈值</li>
+<li><code>15m</code> gate：是否只保留大盘币 ladder，关掉小盘深层挂单</li>
+<li>对比：</li>
+<li>always-on maker</li>
+<li><code>5m vol gate</code></li>
+<li><code>15m risk-budget gate</code></li>
+</ul>
+<p>如果这一步有效，说明它不仅是高频原型，还能成为 desk 统一执行组件。</p>
+<h2>10. 风险与容易自欺的地方</h2>
+<h3>10.1 静态 open orders ≠ 真正赚钱</h3>
+<p>repo 和 live probe 都主要是<strong>静态挂单截面</strong>。它们能证明：</p>
+<ul>
+<li>结构存在；</li>
+<li>参数分层存在；</li>
+<li>inventory 管理意识存在；</li>
+</ul>
+<p>但<strong>不能直接证明净利润</strong>。真正决定输赢的是：</p>
+<ul>
+<li>哪些层最常被 hit；</li>
+<li>被 hit 后多久回 mid；</li>
+<li>hedge 成本是否吃掉全部 gross spread；</li>
+<li>quote 更新是否足够快。</li>
+</ul>
+<h3>10.2 别把“鲸鱼能做”当成“我们也能做”</h3>
+<p>Wintermute 能承受：</p>
+<ul>
+<li>更高的数据刷新频率</li>
+<li>更复杂的 hedge 路由</li>
+<li>更大的库存资本</li>
+<li>更多 venue 的对冲通道</li>
+</ul>
+<p>所以 desk 的诚实切法应该是：</p>
+<p>&gt; <strong>先证明“小号版 symmetric tiered maker ladder”在少数大盘币上 gross 不烂，再考虑复杂化。</strong></p>
+<h3>10.3 小盘币最容易把人骗进 adverse selection</h3>
+<p>看 README 会很容易被“小盘 spread 很宽”吸引，但这恰恰是最危险的错觉。 宽 spread 不代表更好赚，很多时候只是：</p>
+<ul>
+<li>盘口更薄；</li>
+<li>价格更跳；</li>
+<li>你的 quote 更容易 stale；</li>
+<li>真成交时，对手往往更“有信息”。</li>
+</ul>
+<p>所以第一轮实验最好反着来：</p>
+<ul>
+<li><strong>先 BTC / ETH</strong></li>
+<li>再 SOL</li>
+<li>小盘最后再上</li>
+</ul>
+<h2>11. 本轮结论</h2>
+<p>我会把这条线的 verdict 写得很直接：</p>
+<p>&gt; <strong>值得进入 raw alpha 素材池，而且优先级不低。</strong></p>
+<p>不是因为它已经被证明能复刻 Wintermute 的收益，而是因为：</p>
+<ul>
+<li>base alpha 清楚；</li>
+<li>source 足够新；</li>
+<li>公共 API 今天就能 live probe；</li>
+<li>结构可以直接拆成完整策略；</li>
+<li>它补的是当前 desk 相对稀缺的 maker/execution 型 raw alpha。</li>
+</ul>
+<p>如果只保留一句话给后续复现同学：</p>
+<p>&gt; <strong>先别学“全市场鲸鱼画像”，先学“BTC/ETH/SOL 的双边分层 maker ladder + 库存阈值 skew + <code>5m/15m</code> 风险预算层”。</strong></p>
+<h2>12. 下一步怎么测</h2>
+<p>按优先级只做这三步，不扩题：</p>
+<ol>
+<li><strong>先做 <code>BTC/ETH/SOL</code> 的 HL 单 venue maker simulator</strong>：采 <code>1s~5s</code> 数据，比较 <code>3层/5层</code>、<code>对称/轻度 skew</code>。</li>
+<li><strong>先只做 gross + fee + adverse selection</strong>：不要一开始就塞跨 venue hedge，先确认 maker alpha 本体没死。</li>
+<li><strong>再加 <code>5m/15m</code> gate</strong>：看高波动时关掉小盘深层 quote 是否真改善 net outcome。</li>
+</ol>
+<p>若这三步里，第 1 步就已经 gross negative，就不用浪费时间讲更大的 Wintermute 全局故事；若第 1 步 gross positive、第 2 步仍能存活，再值得补外部 hedge 腿。</p>
+</body>
+</html>

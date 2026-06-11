@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Tadi &amp; Kortchemski (2021) 只读成“又一个配对交易论文”：对 short-cycle crypto desk，更该先拆的是「dynamic cointegration admission × half-life-aware spread fade」这条 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Tadi &amp; Kortchemski (2021) 只读成“又一个配对交易论文”：对 short-cycle crypto desk，更该先拆的是「dynamic cointegration admission × half-life-aware spread fade」这条 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-21 22:36 UTC</span>
+      <span class="pill">研究时间：2026-04-21 22:32 UTC</span>
+      <span class="pill">类型：论文（arXiv / journal metadata）+ Binance USDⓈ-M public-data portability probe</span>
+      <span class="pill">主题标签：pairs / stat-arb / relative-value / cointegration / half-life / mean-reversion / admission / 5m / 15m / Binance USDⓈ-M</span>
+      <span class="pill">证据类型：论文证据（摘要+元数据）+ public-data first probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-21_2232_dynamic-cointegration-halflife-admission-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-21 22:32 UTC</li>
+<li>类型：论文（arXiv / journal metadata）+ Binance USDⓈ-M public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：先用动态 cointegration / hedge ratio 找到相对稳定的两腿价差，再在 spread z-score 明显偏离时做均值回归；half-life 不直接产生方向，但决定更合适的 formation 窗口、持有时长和 admission</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：pairs / stat-arb / relative-value / cointegration / half-life / mean-reversion / admission / 5m / 15m / Binance USDⓈ-M</li>
+<li>证据类型：论文证据（摘要+元数据）+ public-data first probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Masood Tadi, Irina Kortchemski (2021), _Evaluation of dynamic cointegration-based pairs trading strategy in the cryptocurrency market_</strong>。这篇东西最值钱的，不是“cointegration 这三个字”，而是它把 <strong>pair alpha 的 admission layer</strong> 讲得更像完整策略：pair 不是一次性挑完就不动，而是随窗口重估；而 OU half-life 不是装饰指标，而是拿来约束 formation / holding horizon 的。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这篇东西真正可迁移到我们 desk 的，不是“配对本身”，而是 <strong>用 half-life 把 pair admission、lookback、timeout 连成一条因果链</strong>。</li>
+<li><strong>一句话证明方式</strong>：作者用 minute-binned crypto 数据，结合 cointegration 检验、OU half-life 和更接近盘口可成交的执行假设，比较不同设定下的收益与回撤，而不是只做静态 z-score 教科书回测。</li>
+<li>从 abstract 看，论文强调三件事：动态 cointegration、half-life 选窗、以及考虑 best bid/ask 与 signal-to-fill gap 的更现实执行；这比很多只写 <code>|z|&gt;2</code> 的 pairs 模板更接近 desk 可复现对象。</li>
+<li>我用 Binance USDⓈ-M <code>8</code> 个 liquid majors 做轻量 portability probe，拿 top-corr pairs 比较 <strong>固定 <code>96</code> bars</strong> vs <strong>从 <code>48/72/96/144</code> 中按 half-life 选更匹配窗口</strong>：</li>
+<li><code>15m</code>：固定窗 gross 约 <code>-0.75 bps/笔</code>，动态窗转成 <code>+0.19 bps/笔</code>，但仍远低于四腿 taker 成本</li>
+<li><code>5m</code>：固定窗 gross 约 <code>+3.66 bps/笔</code>，动态窗约 <code>+3.64 bps/笔</code>，有 gross edge，但仍不够覆盖保守成本</li>
+<li>动态窗下较厚的 pocket 出现在 <code>DOGE/ADA</code>、<code>ADA/LINK</code> 这类 alt-alt pair，而不是传统大币 pair</li>
+<li>所以更像真的 desk 结论是：<strong>half-life-aware admission 有帮助，但帮助主要体现在“少做不该做的 pair / 用更合适的 timeout”，还不够把短周期 pair MR 直接推成 standalone taker alpha。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇和当前 <code>momentum</code> 主线直接相关，因为它补的是我们最近在 raw alpha 池里还缺的一块：<strong>不是再找一个新的 pair entry 公式，而是把 relative-value MR 的 admission / holding 规则变得更因果、更可迁移。</strong> 这能直接服务后续 pairs、basket residual、PCA residual、basis spread 这几条线。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：pairs / stat-arb / relative-value / mean reversion</li>
+<li>基础 alpha：spread 偏离后的中枢回归</li>
+<li>regime：只在 cointegration / half-life 落在可交易区间时开机</li>
+<li>filter / veto：<code>|z|</code> 入场阈值、half-life 过长或过短 veto、pair admission 动态重估</li>
+<li>risk / sizing / execution overlay：beta 对冲、half-life-aware timeout、四腿成本门槛、maker-first 或至少 delayed-fill realism</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：对 short-cycle crypto，pairs alpha 的主要增益不在“更复杂入场”，而在 <strong>dynamic admission + half-life-aware timeout</strong>。</li>
+<li><strong>可计算定义</strong>：rolling OLS hedge ratio；formation 窗口在 <code>48/72/96/144</code> bars 中选与估计 half-life 更匹配的一档；<code>|z|&gt;=2</code> 入场，<code>|z|&lt;=0.5</code> 或 <code>2×half-life</code> timeout 出场。</li>
+<li><strong>最小回测切口</strong>：Binance USDⓈ-M <code>BTC/ETH/BNB/SOL/XRP/DOGE/ADA/LINK</code>，先跑 <code>15m/5m</code>，按 top-corr pairs 做 first verdict。</li>
+<li><strong>先看指标</strong>：<code>gross/net bps per trade</code>、<code>timeout rate</code>；若 gross 连 <code>8~12 bps</code> round-trip 都够不到，就别急着往 live 推。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<p>这轮 paper 侧我拿到的是摘要与元数据，不是全文逐表复核，所以不应把论文中的全部绩效数字当成已验证事实。另一个更关键的问题是：<strong>short-cycle perp 的四腿摩擦太重</strong>。即使 dynamic admission 把 <code>15m</code> 从负的 fixed baseline 拉到微正 gross，当前也更像“pair selection / timeout module”，而不是可直接独立上线的主 alpha。</p>
+<h2>6. 来源</h2>
+<ul>
+<li>Tadi, M., &amp; Kortchemski, I. (2021). *Evaluation of dynamic cointegration-based pairs trading strategy in the cryptocurrency market*. *Studies in Economics and Finance*.</li>
+<li>DOI: <code>10.1108/SEF-12-2020-0497</code></li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2109.10662">https://arxiv.org/abs/2109.10662</a></code></li>
+<li>Journal URL: <code><a href="https://doi.org/10.1108/SEF-12-2020-0497">https://doi.org/10.1108/SEF-12-2020-0497</a></code></li>
+<li>本地 artifacts：</li>
+<li><code>reports/artifacts/quant_digests/dynamic_cointegration_halflife_summary_2026-04-21.csv</code></li>
+<li><code>reports/artifacts/quant_digests/dynamic_cointegration_halflife_pairs_2026-04-21.csv</code></li>
+<li><code>reports/artifacts/quant_digests/dynamic_cointegration_halflife_trades_2026-04-21.csv</code></li>
+</ul>
+</body>
+</html>

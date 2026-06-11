@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Published pairs shell：dynamic lookback × vol filter × trailing stop，到了 15m crypto 还能剩多少？</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Published pairs shell：dynamic lookback × vol filter × trailing stop，到了 15m crypto 还能剩多少？</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-25 12:27 UTC</span>
+      <span class="pill">类型：论文 + GitHub + Binance USDⓈ-M public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha / pairs / stat-arb / relative-value / mean-reversion / zscore / dynamic-lookback / vol-filter / trailing-stop / 15m / 5m / repo / paper / public-data / cost / risk</span>
+      <span class="pill">证据类型：论文证据 + 工程实现 + public-data portability</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-25_1227_lookbackopt-pairs-voltrail-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-25 12:27 UTC</li>
+<li>类型：论文 + GitHub + Binance USDⓈ-M public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：cointegrated / hedge-adjusted pair spread 的均值回归（spread z-score fade）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / pairs / stat-arb / relative-value / mean-reversion / zscore / dynamic-lookback / vol-filter / trailing-stop / 15m / 5m / repo / paper / public-data / cost / risk</li>
+<li>证据类型：论文证据 + 工程实现 + public-data portability</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 Rafael Baptista Palazzi（2025, *Journal of Futures Markets*）的论文 *Trading Games: Beating Passive Strategies in the Bullish Crypto Market*，以及作者同步公开的 <code>trading-games-crypto</code> 仓库。它不是只给一个“pair spread 回归”概念，而是把 <strong>dynamic lookback、volatility filter、minimum holding period、adaptive trailing stop</strong> 都写进了可跑代码，属于少见的完整 pairs shell。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha 很清楚</strong>：两资产价差偏离均值后，做 spread fade，等它回归。</li>
+<li>论文/仓库给出的作者口径结果很强：年化 Sharpe 约 <code>2.0</code>，年化收益约 <code>71%</code>，而且强调优于 buy-and-hold 与 momentum benchmark。</li>
+<li>对 desk 更值钱的不是“pairs 又有效了”，而是：<strong>lookback 不是固定常数，而是一个要先被优化/筛掉的 admission layer</strong>；vol filter 和 trailing stop 是让 raw alpha 变成完整策略壳的关键组件。</li>
+<li>但我用 Binance USDⓈ-M 最近 <code>1500</code> 根 <code>15m</code> 公共数据，对 <code>BTC/ETH/SOL/BNB/XRP/DOGE</code> 做最小诚实快检后，发现这条壳 <strong>直接搬到短周期 perp 并不自然成立</strong>：<code>z=1.0</code> 时 pooled <code>hold 1/3/6</code> 平均 net 分别约 <code>-15.13 / -13.97 / -13.10 bps/笔</code>（按两腿 round-trip <code>16 bps</code> 成本）。</li>
+<li>唯一接近能留样的 pocket 是 <code>SOL-DOGE</code>：当 <code>|z|&gt;=2.0</code> 且 <code>hold 6</code> 根 <code>15m</code> 时，平均 gross 约 <code>+18.70 bps/笔</code>、net 约 <code>+2.70 bps/笔</code>，但只有 <code>22</code> 笔，样本明显太薄。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇更像 <strong>raw alpha + 完整策略壳</strong>，不是单纯 pair 教材。它补的是当前素材池里相对缺的一层：</p>
+<ul>
+<li>raw alpha：spread mean reversion</li>
+<li>entry admission：dynamic lookback / z-threshold</li>
+<li>filter：volatility filter</li>
+<li>exit：mean reversion + trailing stop + minimum hold</li>
+<li>cost discipline：代码里显式带交易成本参数</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / stat-arb / 均值回归</li>
+<li>基础 alpha：pair spread 偏离后的回归</li>
+<li>regime：更适合相关性高、spread 波动稳定、成本没把 edge 吃光的区间</li>
+<li>filter / veto：rolling volatility filter；极端噪声期抬高 admission 标准</li>
+<li>risk / sizing / execution overlay：dynamic lookback、minimum holding period、adaptive trailing stop、显式 transaction cost</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：published pairs shell 在 crypto <code>15m</code> 不是“到处都能跑”，但 <strong>高 z 极端 + 较长一点持有 + mid/alt pair</strong> 可能还留有 pocket。</li>
+<li>可计算定义：对 liquid universe 先做 rolling hedge ratio；当 <code>|z|&gt;=2.0</code> 才入场，做 spread fade；先测 <code>hold 3/6/9</code> 根，再加 <code>vol filter</code> 与 <code>min-hold</code>。</li>
+<li>最小回测切口：Binance USDⓈ-M，先测 <code>SOL/BNB/DOGE/XRP</code> 两两组合，周期 <code>15m</code>，样本先放到近 <code>120d</code>。</li>
+<li>最先看两个指标：<code>cost-after avg bps/trade</code>、<code>trade count</code>；第三个才看 <code>positive pair ratio</code>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>当前 portability probe 还没把 repo 的完整 trailing stop / dynamic lookback 全量搬进来，只能算 first verdict。</li>
+<li>论文结果可能更依赖作者的数据切口、pair 选择与较低频执行环境；直接压到 perp <code>15m</code> 后，成本与噪声会先吃掉大部分 edge。</li>
+<li>如果最后只剩少数 <code>|z|&gt;=2</code> 的 pocket，说明它更像 <strong>稀疏 admission shell</strong>，而不是“全 universe 常开型 pairs 主引擎”。</li>
+</ul>
+<h2>6. 一句话核心结论</h2>
+<p>这篇最值钱的地方不是“pair trade 重新伟大”，而是提醒我们：<strong>spread fade 要先过 lookback / vol / hold / stop 这几道 admission，裸 pair mean reversion 到短周期 perp 往往先死在成本上。</strong></p>
+<h2>7. 一句话说明它怎么证明</h2>
+<p>作者主要靠 <strong>论文回测 + 开源代码实现</strong> 把完整策略壳讲清；我这边再用 <strong>Binance 15m 公共数据诚实快检</strong> 验证它在 short-cycle crypto 上是否还能站住。</p>
+<h2>8. 来源</h2>
+<ul>
+<li>Palazzi, Rafael Baptista. (2025). *Trading Games: Beating Passive Strategies in the Bullish Crypto Market*. Journal of Futures Markets. DOI: <code>10.1002/fut.70018</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1002/fut.70018">https://doi.org/10.1002/fut.70018</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/rafaelpalazzi/trading-games-crypto">https://github.com/rafaelpalazzi/trading-games-crypto</a></code></li>
+<li>Dataset URL: <code><a href="https://doi.org/10.17632/2kky7c6xkn.1">https://doi.org/10.17632/2kky7c6xkn.1</a></code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>US equity session 附近的 cross-sectional intraday reversal：spot crypto 的时间窗反转 raw alpha，但当前更像低冲击 pocket 而不是可直接放大的主策略</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>US equity session 附近的 cross-sectional intraday reversal：spot crypto 的时间窗反转 raw alpha，但当前更像低冲击 pocket 而不是可直接放大的主策略</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-17 23:56 UTC</span>
+      <span class="pill">研究时间：2026-04-17 23:50 UTC</span>
+      <span class="pill">类型：GitHub / notebook source audit</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/mean-reversion/intraday/time-of-day/us-session/spot-crypto/reversal/15m/5m/cost/risk/repo/public-data</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-17_2350_us-session-crosssectional-reversal-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-17 23:50 UTC</li>
+<li>类型：GitHub / notebook source audit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：固定日内时间窗里的横截面反转——做多 15:30–16:00 ET 或 09:30–10:00 ET 表现最差币，做空同期表现最好币，持有接下来的 30–45 分钟</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/mean-reversion/intraday/time-of-day/us-session/spot-crypto/reversal/15m/5m/cost/risk/repo/public-data</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了 <strong>BNeillDickey (2026)</strong> 的 GitHub repo <strong>intraday-crypto-reversal-project</strong>，核心是 1 个完整 notebook：用 Binance spot 25 币 <code>15m</code> 数据，测试 US equity open / close 附近的固定时间窗横截面反转，并把 commission、spread、sqrt-impact 分开建模。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>base alpha 很清楚：不是趋势，不是 breakout，而是“固定时段的 losers-bounce / winners-fade 横截面反转”。</strong> close-window 版用 <code>15:30–16:00 ET</code> 做信号，<code>16:15–17:00 ET</code> 持有；morning 版用 <code>09:30–10:00 ET</code> 做信号，<code>10:15–10:45 ET</code> 持有。</li>
+<li><strong>gross edge 不弱。</strong> close-window test gross Sharpe <code>7.45</code>、平均 <code>+24.0 bps/day</code>；morning gross Sharpe <code>7.29</code>、平均 <code>+22.8 bps/day</code>。两套信号日度 PnL 相关性只有 <code>0.121</code>，说明更像两个相邻但不完全同源的 session-flow pocket。</li>
+<li><strong>成本把它打穿，主因不是手续费，而是冲击成本。</strong> close-window 在 test 里：commission <code>14.0 bps/day</code>、spread <code>7.4 bps/day</code>、impact <code>97.0 bps/day</code>、total <code>118.4 bps/day</code>；gross 还活着，但 full-model net Sharpe 直接掉到 <code>-24.22</code>。</li>
+<li><strong>这不是“alpha 不存在”，而是“alpha 太薄，不能用当前仓位/流动性假设硬吃”。</strong> 扣完 commission+spread 后 close-window 仍有 <code>+2.6 bps/day</code> 余量，但 impact 单项就比 gross alpha 大约高 <code>4x</code>。</li>
+<li><strong>对我们 desk 的真正价值，不是照抄全币篮子 spot 版，而是把它当成“时间窗 raw alpha 母板”。</strong> 适合继续往 <code>更高流动性标的 / 更少腿数 / 更小 participation / perp majors / 5m finer timing</code> 方向压缩实现。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇东西补的是我们最近 digest 相对少碰的一块：<strong>时间窗型 raw alpha</strong>。它不是又一个泛 mean reversion，也不是把 external data 硬包装成主信号，而是明确告诉我们：</p>
+<ul>
+<li>某些 alpha 的核心不是价格形态，而是 <strong>一天里哪个时段发生了什么流</strong>；</li>
+<li>这类 alpha 天生适合做 <code>1m/3m/5m/15m</code> 最小实验，因为 entry/exit 是固定窗口，不需要复杂状态机；</li>
+<li>即便原始实现 cost-dead，它也能为后续的 session gate、liquidity veto、basket compression、major-only 版本提供非常清楚的母体。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / 逆势</li>
+<li>基础 alpha：US session 特定 30 分钟窗口内的 loser-bounce / winner-fade</li>
+<li>regime：优先看 US open / close 附近、流动性明显抬升但未过度拥堵的时段</li>
+<li>filter / veto：ADV / volume filter、最大 participation cap、只做 majors、只保留单边最极端 decile、必要时加 market-beta neutral</li>
+<li>risk / sizing / execution overlay：小仓位、限价/被动成交优先、按 ADV 或 quote volume 缩放、超出冲击预算直接 veto</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：在 Binance USDⓈ-M majors 上，US open / close 附近的短窗横截面 loser-bounce 仍可能存在，但只在“高流动性 + 低 participation + 少数腿”条件下可保留部分成本后 alpha。</li>
+<li><strong>可计算定义</strong>：</li>
+</ul>
+<ol>
+<li>Universe：<code>BTC/ETH/SOL/BNB/XRP/DOGE/ADA</code> 或更窄；</li>
+<li>以 <code>15m</code> 先做母版：close signal=<code>15:30–16:00 ET</code> 收益排名，hold=<code>16:15–17:00 ET</code>；morning signal=<code>09:30–10:00 ET</code>，hold=<code>10:15–10:45 ET</code>；</li>
+<li>每天只做 bottom 1~2 vs top 1~2，等权或按近 30d dollar volume 反比缩放；</li>
+<li>再下钻到 <code>5m</code>：测试 <code>15:30–15:45 → 15:45–16:15</code>、<code>15:45–16:00 → 16:00–16:30</code> 两种更细切口。</li>
+</ol>
+<ul>
+<li><strong>最小回测切口</strong>：Binance USDⓈ-M，<code>15m</code> 为主、<code>5m</code> 为精修；样本先取最近 <code>180~365d</code>，只看 liquid majors。</li>
+<li><strong>先看哪 1~2 个指标</strong>：<code>post-cost mean bps/day</code>、<code>impact-aware Sharpe</code>。如果这两个不过线，不值得继续扩 universe。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>当前 repo 的强结果主要在 <strong>spot 中小币横截面</strong>，这和我们 desk 更常用的 liquid perp majors 不是同一执行环境，不能直接外推。</li>
+<li>这类时间窗 alpha 很容易被 <strong>拥挤、时段性 spread 扩大、成交不均匀</strong> 吃掉；所以 gross 好看不代表可做。</li>
+<li>notebook 的 strongest claim 是“信号真实但难交易”，不是“这里有一条现成 production 策略”。</li>
+<li>更实际的改写方向可能不是扩全市场，而是 <strong>压缩到少量最液体合约 + 更细时间分辨率 + 更保守 participation cap</strong>。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>BNeillDickey. (2026). *intraday-crypto-reversal-project*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/BNeillDickey/intraday-crypto-reversal-project">https://github.com/BNeillDickey/intraday-crypto-reversal-project</a></code></li>
+<li>Notebook URL: <code><a href="https://raw.githubusercontent.com/BNeillDickey/intraday-crypto-reversal-project/main/Intraday_Crypto_Reversal_Project.ipynb">https://raw.githubusercontent.com/BNeillDickey/intraday-crypto-reversal-project/main/Intraday_Crypto_Reversal_Project.ipynb</a></code></li>
+<li>Supporting refs cited in notebook:</li>
+<li>Heston, S., Korajczyk, R., &amp; Sadka, R. (2010). *Intraday Patterns in the Cross-Section of Stock Returns*. Journal of Finance.</li>
+<li>Bogousslavsky, V. (2016). *Intraday Trading Patterns and the Role of the Systematic Risk Factors*. Review of Financial Studies.</li>
+<li>Gao, L., Han, Y., Li, S. Z., &amp; Zhou, G. (2018). *Market Intraday Momentum*. Journal of Financial Economics.</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 funding 套利只看 funding 数字：这份 2025 OKX 新仓库更该先测的是「正 funding × 正 premium」spot-perp carry pocket</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 funding 套利只看 funding 数字：这份 2025 OKX 新仓库更该先测的是「正 funding × 正 premium」spot-perp carry pocket</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-27 10:52 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-27_1050_okx-positive-funding-positive-premium-carry.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同 venue 下，当永续合约既<strong>资金费率为正</strong>、又<strong>价格高于现货形成正 premium</strong> 时，做 <code>long spot / short perp</code>，同时赚 funding carry 与 rich-basis 向现货收敛；若只有 funding 为正、但 perp 并不贵，这条 carry 往往并不值得做。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+</ul>
+<h2>1. 为什么这次值得进池</h2>
+<p>这次主材料不是论文 headline，而是一份很短但方向很对的 2025 新仓库：<code>R1cK-ChaN/crypto-funding-arbitrage</code>。</p>
+<p>它最值钱的地方，不是“自动化监控 funding”这句废话，而是代码里其实已经写明白了一件对 desk 很重要的判断：</p>
+<p>&gt; <strong>base alpha 不是“看到 funding 为正就去 short perp 收租”，而是“只有当 perp 真的比 spot 贵，同时 funding 也站在同一边时，这个 carry 才更像可做 pocket”。</strong></p>
+<p>这条线对当前 desk 有直接价值，因为它属于我们明确要持续补的 <code>carry / funding / basis</code> raw alpha 素材池，而且能很快拆成最小实验：</p>
+<ol>
+<li>funding 本身是 <code>8h</code> 节奏的现金流；</li>
+<li>premium / basis 是 <code>1m / 5m</code> 可连续监控的状态；</li>
+<li>所以它天然不是“每根 bar 都出手”的主信号，而是<strong>低频 carry 方向 + 高频 timing / veto</strong> 的组合型 raw alpha。</li>
+</ol>
+<h2>2. 这份材料里真正值得抄的那一句</h2>
+<h3>2.1 核心来源</h3>
+<p><strong>Repo source</strong></p>
+<ul>
+<li><strong>Author / Year</strong>: <code>R1cK-ChaN</code> / 2025</li>
+<li><strong>Title</strong>: *crypto-funding-arbitrage*</li>
+<li><strong>Venue</strong>: GitHub repository</li>
+<li><strong>Repo URL</strong>: &lt;<a href="https://github.com/R1cK-ChaN/crypto-funding-arbitrage&gt;">https://github.com/R1cK-ChaN/crypto-funding-arbitrage&gt;</a></li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://github.com/R1cK-ChaN/crypto-funding-arbitrage&gt;">https://github.com/R1cK-ChaN/crypto-funding-arbitrage&gt;</a></li>
+<li><strong>Raw README</strong>: &lt;<a href="https://raw.githubusercontent.com/R1cK-ChaN/crypto-funding-arbitrage/main/README.md&gt;">https://raw.githubusercontent.com/R1cK-ChaN/crypto-funding-arbitrage/main/README.md&gt;</a></li>
+<li><strong>Raw strategy file</strong>: &lt;<a href="https://raw.githubusercontent.com/R1cK-ChaN/crypto-funding-arbitrage/main/src/strategies/funding_arbitrage.py&gt;">https://raw.githubusercontent.com/R1cK-ChaN/crypto-funding-arbitrage/main/src/strategies/funding_arbitrage.py&gt;</a></li>
+<li><strong>Raw OKX client</strong>: &lt;<a href="https://raw.githubusercontent.com/R1cK-ChaN/crypto-funding-arbitrage/main/src/exchange/okx_client.py&gt;">https://raw.githubusercontent.com/R1cK-ChaN/crypto-funding-arbitrage/main/src/exchange/okx_client.py&gt;</a></li>
+</ul>
+<p><strong>Paper ground truth</strong></p>
+<ul>
+<li><strong>Authors / Year</strong>: Damien Ackerer, Julien Hugonnier, Urban Jermann / 2024</li>
+<li><strong>Title</strong>: *Perpetual Futures Pricing*</li>
+<li><strong>Venue</strong>: NBER Working Paper 32936（后续 2025 online 版见 *Mathematical Finance*）</li>
+<li><strong>DOI</strong>: <code>10.3386/w32936</code></li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://www.nber.org/papers/w32936&gt;">https://www.nber.org/papers/w32936&gt;</a></li>
+<li><strong>Published DOI</strong>: <code>10.1111/mafi.70018</code></li>
+<li><strong>Published URL</strong>: &lt;<a href="https://doi.org/10.1111/mafi.70018&gt;">https://doi.org/10.1111/mafi.70018&gt;</a></li>
+</ul>
+<h3>2.2 repo 到底写了什么</h3>
+<p>这份仓库虽然很短，但 <code>src/strategies/funding_arbitrage.py</code> 已经把主判断写得很直白：</p>
+<p>``<code>python if funding_rate &gt; self.funding_threshold: price_diff = swap_price - spot_price if price_diff &gt; self.spread_threshold: return True </code>``</p>
+<p>翻成人话就是：</p>
+<ul>
+<li>先看 <strong>funding 是否足够正</strong>；</li>
+<li>再看 <strong>perp 是否真的比 spot 贵</strong>；</li>
+<li>两个条件都成立，才认为可以考虑去做 <code>long spot / short perp</code>。</li>
+</ul>
+<p>这跟很多“funding dashboard 式读法”最大的差别在于： <strong>它不是把 funding 当单变量，而是把 funding + basis 同时当成 alpha 的定义。</strong></p>
+<h3>2.3 为什么这和理论是对齐的</h3>
+<p>Ackerer, Hugonnier, Jermann（2024）那篇 *Perpetual Futures Pricing* 的核心提醒是：</p>
+<ul>
+<li>perpetual 的价格锚定，靠的是周期性 funding；</li>
+<li>funding 机制决定了 perp 与 spot 如何被拉回；</li>
+<li>若想把 perp 当成 carry / basis 交易对象，不能只看“有无 funding”，还要看<strong>价格锚定当前偏在哪边</strong>。</li>
+</ul>
+<p>所以，把 repo 里的读法压成一句最有用的话就是：</p>
+<p>&gt; <strong>carry 现金流要和 basis 方向站在同一边，才更像可交易的 raw alpha；否则 funding 可能只是表面上为正，但 rich/cheap 关系并不支持同向持仓。</strong></p>
+<h2>3. desk 化翻译：不要把它伪装成逐根 5m 主信号</h2>
+<p>这条 alpha 当然属于 <code>carry / funding / basis</code>，但它不是“每根 1m/5m bar 都能独立产生新边际信息”的那种 raw alpha。</p>
+<p>更诚实的 desk 化口径应该是：</p>
+<ul>
+<li><strong>alpha 本体</strong>：<code>long spot / short perp</code> 收 <code>正 funding + 正 premium 回归</code></li>
+<li><strong>短周期角色</strong>：<code>1m / 3m / 5m</code> 用来做</li>
+<li>entry timing（避免在 premium 已被吃平后再追）</li>
+<li>spread monitoring（看 rich basis 是否继续扩张）</li>
+<li>exit / veto（funding 翻负、premium 消失、盘口塌陷）</li>
+</ul>
+<p>也就是说： <strong>funding 决定“做不做这类 trade”，短周期 bar 决定“什么时候做、什么时候不做”。</strong></p>
+<h2>4. 我们自己的最小快检（OKX 公共 funding + ticker live snapshot）</h2>
+<h3>4.1 数据口径</h3>
+<ul>
+<li><strong>数据源</strong>：OKX public</li>
+<li><code>/api/v5/public/funding-rate</code></li>
+<li><code>/api/v5/market/tickers?instType=SWAP</code></li>
+<li><code>/api/v5/market/tickers?instType=SPOT</code></li>
+<li><strong>公开性</strong>：公开可得，无需 key</li>
+<li><strong>频率</strong>：funding 为 <code>8h</code> 节奏；premium 可按 <code>1m / 5m</code> 连续采样</li>
+<li><strong>样本</strong>：<code>2026-03-27 10:55 UTC</code> 当下全部 <code>USDT-SWAP</code> 且有同名 <code>USDT</code> spot twin 的币种</li>
+<li><strong>规模</strong>：共 <code>199</code> 个 spot-perp twin</li>
+<li><strong>实验口径</strong>：只做 live cross-sectional state scan，不做历史回测；先回答“repo 这种双条件筛法，在当前市场到底有多稀疏”。</li>
+</ul>
+<h3>4.2 结果 1：正 funding 很常见，但“正 funding + 正 premium”并不常见</h3>
+<p>在 <code>199</code> 个 OKX <code>USDT</code> spot-perp twin 里：</p>
+<ul>
+<li><strong><code>115</code> 个</strong>当前 funding 为正</li>
+<li>但其中只有 <strong><code>19</code> 个</strong> 同时满足 <code>premium &gt; 0</code></li>
+<li>也就是：<strong>只有约 <code>16.5%</code> 的正 funding 状态，真的和正 premium 站在同一边</strong></li>
+</ul>
+<p>这条数据很关键，因为它直接说明： <strong>如果只用 funding 选边，你会把大多数“方向没站对”的 carry 状态也一并收进来。</strong></p>
+<h3>4.3 结果 2：大币当前并不站在 repo 想要的 pocket 里</h3>
+<p>截至快检时：</p>
+<ul>
+<li><strong>BTC</strong>：funding 约 <strong><code>+0.229 bps / 8h</code></strong>，但 premium 约 <strong><code>-5.48 bps</code></strong></li>
+<li><strong>ETH</strong>：funding 约 <strong><code>-0.006 bps / 8h</code></strong>，premium 约 <strong><code>-3.93 bps</code></strong></li>
+<li><strong>SOL</strong>：funding 约 <strong><code>-2.26 bps / 8h</code></strong>，premium 约 <strong><code>-7.19 bps</code></strong></li>
+</ul>
+<p>也就是说，至少在 majors 上，<strong>你看 funding 面板不一定会看到一个该做的 spot-perp carry</strong>。</p>
+<h3>4.4 结果 3：真正过筛的 pocket 更多出现在小币 rich-basis 状态</h3>
+<p>当前同侧 pocket 的示例：</p>
+<ul>
+<li><strong>CVX</strong>：funding <strong><code>+0.5 bps / 8h</code></strong>，premium <strong><code>+30.12 bps</code></strong></li>
+<li><strong>IOTA</strong>：funding <strong><code>+1.0 bps / 8h</code></strong>，premium <strong><code>+7.15 bps</code></strong></li>
+<li><strong>FOGO</strong>：funding <strong><code>+0.5 bps / 8h</code></strong>，premium <strong><code>+16.11 bps</code></strong></li>
+</ul>
+<p>而 funding 为正但 premium 不支持的反例也很多：</p>
+<ul>
+<li><strong>SATS</strong>：funding <strong><code>+1.0 bps / 8h</code></strong>，premium <strong><code>-18.73 bps</code></strong></li>
+<li><strong>FLOKI</strong>：funding <strong><code>+1.0 bps / 8h</code></strong>，premium <strong><code>-14.20 bps</code></strong></li>
+<li><strong>OP</strong>：funding <strong><code>+1.0 bps / 8h</code></strong>，premium <strong><code>-9.43 bps</code></strong></li>
+</ul>
+<p>这说明真正该测的不是“funding 有多大”，而是： <strong><code>funding sign × basis sign × liquidity quality</code> 三者是不是一起站对。</strong></p>
+<p>相关 artifact：</p>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/okx_funding_premium_snapshot_20260327_1050/all_usdt_swap_with_spot_snapshot.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/okx_funding_premium_snapshot_20260327_1050/summary.json</code></li>
+</ul>
+<h2>5. 为什么我把它定性成“可独立复现，但还不算可直接落地完整策略”</h2>
+<p>因为 repo 本身还有两块明显没补完：</p>
+<ol>
+<li><strong>执行逻辑还只是骨架</strong></li>
+</ol>
+<ul>
+<li><code>execute_arbitrage()</code> 里只有 <code>TODO</code></li>
+<li><code>calculate_position_size()</code> 也只是直接返回 <code>max_size</code></li>
+</ul>
+<ol>
+<li><strong>没有把最关键的成本与风控冻结下来</strong></li>
+</ol>
+<ul>
+<li>maker / taker 假设没写清</li>
+<li>funding 预期与实际结算时点没拆开</li>
+<li>spot/perp 双腿滑点、库存、借贷、交易所风险都没冻结</li>
+</ul>
+<p>所以它现在更像： <strong>一条定义清楚的 raw alpha candidate，而不是已经能放心接实盘的完整执行栈。</strong></p>
+<h2>6. 但它很容易被 desk 化成完整策略骨架</h2>
+<h3>entry</h3>
+<p>对每个 <code>spot-perp twin</code> 定义：</p>
+<ul>
+<li><code>funding_bps_now</code></li>
+<li><code>premium_bps = (perp - spot) / spot * 10,000</code></li>
+<li><code>edge_score = premium_bps + λ * expected_funding_bps - entry_cost_buffer</code></li>
+</ul>
+<p>最小版本可先用：</p>
+<ul>
+<li><code>funding_bps_now &gt; 0</code></li>
+<li><code>premium_bps &gt; p_open</code></li>
+<li><code>edge_score &gt; 0</code></li>
+<li>同时过 liquidity / blacklist / event veto</li>
+</ul>
+<p>然后执行：</p>
+<ul>
+<li><strong>long spot</strong></li>
+<li><strong>short perp</strong></li>
+</ul>
+<h3>exit</h3>
+<p>不要只写“拿到 funding 就走”，更诚实的 exit 应该至少有三种：</p>
+<ol>
+<li><strong>premium 回到 close band</strong>：例如 <code>premium_bps &lt; p_close</code></li>
+<li><strong>funding 翻负或显著走弱</strong></li>
+<li><strong>持仓过 funding boundary 后的固定观察窗</strong>：如 <code>1~3</code> 个 funding period 内若 basis 不收敛就撤</li>
+</ol>
+<h3>sizing</h3>
+<p>第一版别复杂：</p>
+<ul>
+<li>单资产 cap</li>
+<li>单 cluster cap</li>
+<li><code>size ∝ min(edge_score, cap)</code></li>
+<li>再叠一层盘口深度 cap：<code>size &lt;= x% of top-book / y minutes ADV</code></li>
+</ul>
+<h3>risk</h3>
+<p>这类 alpha 的风险不是方向判断，而是 plumbing：</p>
+<ul>
+<li>spot/perp 双腿成交不同步</li>
+<li>funding 窗口前 crowding / 抢跑</li>
+<li>小币 rich basis 看起来肥，但深度与冲击极差</li>
+<li>交易所/合约规格/下架/限仓风险</li>
+<li>极端行情下，basis 可能先继续失真，再谈收敛</li>
+</ul>
+<h3>cost</h3>
+<p>这类 alpha 最容易死在这里：</p>
+<ul>
+<li>若只看 <code>+1 bps/8h funding</code> 就冲进去，<strong>根本不够覆盖双腿进出场成本</strong></li>
+<li>更诚实的最小门槛是：</li>
+<li><code>premium_bps + expected_funding_bps</code></li>
+<li>必须明显大于 <code>spot leg fee + perp leg fee + 双腿滑点 + 安全 buffer</code></li>
+</ul>
+<p>所以第一轮别问“有没有 alpha”，先问： <strong>gross basis+carry 能不能先穿过成本生存线。</strong></p>
+<h2>7. 我会怎么排“下一步怎么测”</h2>
+<h3>P0：先做历史 funding boundary event study</h3>
+<p>对 <code>OKX BTC/ETH/SOL + 20~50 个有 spot twin 的 liquid alts</code>：</p>
+<ol>
+<li>拉过去 <code>30~90d</code> 的 funding history</li>
+<li>在每个 funding 时点记录：</li>
+</ol>
+<ul>
+<li>funding sign / size</li>
+<li>spot-perp premium</li>
+<li>未来 <code>1m / 5m / 15m / 60m</code> premium 收敛幅度</li>
+</ul>
+<ol>
+<li>比较四组：</li>
+</ol>
+<ul>
+<li><code>funding&gt;0</code> only</li>
+<li><code>premium&gt;0</code> only</li>
+<li><code>funding&gt;0 &amp; premium&gt;0</code></li>
+<li><code>funding&gt;0 &amp; premium&gt;0 &amp; liquidity gate</code></li>
+</ul>
+<p>第一问很简单： <strong>双条件组的后续 basis 收敛，是否显著好于 funding-only。</strong></p>
+<h3>P1：把成本假设正式搬进来</h3>
+<p>至少分三档：</p>
+<ul>
+<li>maker-spot / taker-perp</li>
+<li>maker/maker</li>
+<li>taker/taker</li>
+</ul>
+<p>若一条 pocket 只有在理想 maker/maker 下才活，那它就不能被写成“完整可落地 alpha”。</p>
+<h3>P2：分 majors 与 small-caps 看 transfer boundary</h3>
+<p>因为当前快检已经很清楚：</p>
+<ul>
+<li>majors 很多时候不给 pocket</li>
+<li>真正的 rich basis 往往在小币</li>
+</ul>
+<p>所以必须拆成两条研究问题：</p>
+<ol>
+<li>majors：edge 小，但流动性好</li>
+<li>small-caps：gross 看起来大，但可能全被冲击吃掉</li>
+</ol>
+<h3>P3：再决定它在 desk 里扮演什么角色</h3>
+<p>如果历史验证后成立，这条线可走三种落地形态：</p>
+<ol>
+<li><strong>独立 carry alpha</strong>：低频事件驱动 book</li>
+<li><strong>shared veto</strong>：禁止在 <code>funding&gt;0 但 premium&lt;=0</code> 时机械 short perp 收租</li>
+<li><strong>sizing overlay</strong>：按 <code>edge_score</code> 做强弱分层，不再一刀切</li>
+</ol>
+<h2>8. 一句话结论</h2>
+<p>这份 2025 repo 真正值得 desk 先拿走的，不是“自动盯 funding”，而是更朴素也更有用的那句：</p>
+<p>&gt; <strong>spot-perp carry 不能只看 funding；只有当 perp 确实偏贵、funding 也站在同一边时，它才更像一条可复现的 raw alpha pocket。</strong></p>
+</body>
+</html>

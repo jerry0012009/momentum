@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Passivbot 只读成“马丁格尔网格机器人”：对 short-cycle crypto desk，更该先拆的是「volatility-forager × contrarian grid bounce capture」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Passivbot 只读成“马丁格尔网格机器人”：对 short-cycle crypto desk，更该先拆的是「volatility-forager × contrarian grid bounce capture」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-21 22:01 UTC</span>
+      <span class="pill">研究时间：2026-04-21 21:54 UTC</span>
+      <span class="pill">类型：GitHub repo source audit + Binance USDⓈ-M public-data portability probe</span>
+      <span class="pill">主题标签：mean-reversion / grid / market-making / volatility-selection / forager / trailing / risk / cost / 5m / 15m</span>
+      <span class="pill">证据类型：工程经验 + repo source audit + public-data quick probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-21_2154_passivbot-forager-grid-bounce-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-21 21:54 UTC</li>
+<li>类型：GitHub repo source audit + Binance USDⓈ-M public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>高近期波动合约里，短时价格冲击更容易出现小幅反弹/回吐；用分层限价网格吃这个 bounce</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：mean-reversion / grid / market-making / volatility-selection / forager / trailing / risk / cost / 5m / 15m</li>
+<li>证据类型：工程经验 + repo source audit + public-data quick probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是高星开源仓 <code>enarjord/passivbot</code>：它不是预测趋势的 bot，而是明确写成 contrarian market maker，在 perp 上用 grid / trailing entry / trailing close、EMA band、wallet exposure limit、auto-unstuck、hard-stop 等组件管理仓位。最值得 desk intake 的不是“马丁格尔”标签，而是 <strong>Forager 选币 + 波动自适应网格 + 小幅反弹止盈</strong> 这一条完整 raw alpha 壳。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>Base alpha 很清楚：先选近期最“会动”的合约，再在冲击后反向提供流动性，赌下一小段会有可吃的反弹/回吐。</li>
+<li>repo 的完整度很高：entry 有 EMA band / grid spacing / trailing threshold，exit 有 TP grid / trailing close，sizing 有 <code>wallet_exposure_limit / n_positions</code>，risk 有 auto-unstuck 与 equity hard stop。</li>
+<li>我做了一个保守 transfer probe：10 个 Binance liquid majors，<code>5m/15m</code> 最近各 1500 根；用 rolling normalized range 选 top3，再用 <code>|ret_z| &gt; 1.75</code> 反向开仓，<code>5m</code> 15bps TP / 40bps SL / 6 bar timeout，<code>15m</code> 25bps TP / 60bps SL / 4 bar timeout。</li>
+<li>结果不支持“全池无脑网格”：<code>5m</code> 全池 <code>316</code> 笔，gross <code>-2.96 bps/笔</code>，粗扣 <code>8 bps</code> 后 <code>-10.96 bps/笔</code>；<code>15m</code> 全池 <code>351</code> 笔，gross <code>-6.62 bps/笔</code>，net <code>-14.62 bps/笔</code>。</li>
+<li>但有一个可继续拆的 pocket：<code>LINKUSDT 15m</code> <code>31</code> 笔，gross <code>+7.99 bps/笔</code>，胜率 <code>77.4%</code>，扣 <code>8 bps</code> 后约 <code>-0.01 bps/笔</code>，说明这条线不是不能做，而是必须转成 <strong>symbol/router + maker-first + 更严格 shock admission</strong>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p><code>momentum</code> 现在缺的不是又一个“漂亮网格”，而是能拆成完整策略组件的 raw alpha 壳。Passivbot 给了一个值得复用的工程拆法：把“反向吃小回弹”拆成 <code>选币 / 初始入场 / 加仓间距 / 止盈网格 / trailing close / stuck 处理 / 总风险上限</code>，这比只测一个 RSI 超卖更接近实盘可控。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：逆势 / 单币 mean reversion / maker-first market making</li>
+<li>基础 alpha：高波动合约在短时冲击后出现局部 bounce / retracement</li>
+<li>regime：优先高 normalized range、但不能是单边崩盘；需要成交额和可挂单深度足够</li>
+<li>filter / veto：low-volume prune、Forager volatility rank、EMA readiness、极端趋势日 veto、funding / news shock veto</li>
+<li>risk / sizing / execution overlay：wallet exposure cap、grid spacing 随波动放宽、TP grid、trailing close、auto-unstuck、equity hard stop、maker-first 限价执行</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p>下一步不要直接复刻完整 Passivbot，而是测一条干净 baseline：</p>
+<ul>
+<li>假设：<code>volatility top-k</code> 合约里，<code>ret_z &lt; -z</code> 后的 long bounce 与 <code>ret_z &gt; z</code> 后的 short pullback 是否有成本后边。</li>
+<li>定义：<code>forager_score = rank(mean(log(high/low), 48 bars))</code>；只交易 top1/top3；entry 用下一根开盘或 maker-limit mid-pullback；exit 用 <code>TP = 0.3~0.6 × recent_rr</code>、<code>SL = 1.5~2.5 × TP</code>、timeout <code>3~8 bars</code>。</li>
+<li>切口：Binance USDⓈ-M <code>1m/3m/5m/15m</code>，先测 <code>LINK/AVAX/DOGE/ADA/SOL</code> 这类更会动的币，再和 <code>BTC/ETH</code> 分开统计。</li>
+<li>指标：每笔 gross / net、TP hit rate、SL first rate、持仓时长、maker fill 假设下的 cost ladder。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<p>这类策略最大风险是“均值回复假设在趋势崩盘里失效”。repo 的 auto-unstuck 能让权益曲线更平滑，但它本质上是在受控范围内承认亏损，不是免费午餐。当前 quick probe 已经说明：如果用 taker 成本和粗糙 shock rule，全池不成立；只有在特定币种、maker-first、严格 admission 下才可能接近可做。</p>
+<h2>6. 来源</h2>
+<ul>
+<li>enarjord. <code>passivbot</code> — Trading bot running on Bybit, OKX, Bitget, GateIO, Binance, Kucoin and Hyperliquid. GitHub repo.</li>
+<li>Repo URL: <a href="https://github.com/enarjord/passivbot">https://github.com/enarjord/passivbot</a></li>
+<li>Relevant docs: <code>README.md</code>, <code>docs/configuration.md</code>, <code>docs/risk_management.md</code></li>
+<li>Local probe artifacts:</li>
+<li><code>reports/artifacts/quant_digests/passivbot_forager_grid_probe_2026-04-21.py</code></li>
+<li><code>reports/artifacts/quant_digests/passivbot_forager_grid_probe_summary_2026-04-21.csv</code></li>
+<li><code>reports/artifacts/quant_digests/passivbot_forager_grid_probe_trades_2026-04-21.csv</code></li>
+</ul>
+</body>
+</html>

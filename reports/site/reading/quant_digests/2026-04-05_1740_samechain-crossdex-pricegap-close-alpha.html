@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 multi-venue repo 只读成“大而全框架”：对 short-cycle desk，更该先测的是「same-chain DEX pool price gap close × fee/gas/slippage hurdle」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 multi-venue repo 只读成“大而全框架”：对 short-cycle desk，更该先测的是「same-chain DEX pool price gap close × fee/gas/slippage hurdle」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-05 17:35 UTC</span>
+      <span class="pill">研究时间：2026-04-05 17:40 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（README + `strategies/vol_surface_or_dex_arb/cross_dex_arb.py` + `docs/source_attribution.md`）+ DexScreener 公共 API live same-chain pool snapshot</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/same-asset/same-chain/cross-dex/pool-arbitrage/amm/price-gap-close/uniswap/sushiswap/curve/base/arbitrum/ethereum/1m/3m/5m/15m/repo/public-api/cost/gas/slippage/mev</span>
+      <span class="pill">证据类型：repo 源码直接给出 spread threshold / liquidity floor / gas 假设 / slippage 近似 / sizing 上限；外加 live 公共 API 快照验证同链多池价差确实存在</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-05_1740_samechain-crossdex-pricegap-close-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-05 17:40 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（README + <code>strategies/vol_surface_or_dex_arb/cross_dex_arb.py</code> + <code>docs/source_attribution.md</code>）+ DexScreener 公共 API live same-chain pool snapshot</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一条链、同一交易对在不同 DEX 池子里的可执行价格会短时脱锚；当 gross spread 足够覆盖双边池费、滑点、gas 与 MEV buffer 后，买便宜池、卖昂贵池，赚的是 same-chain price-gap close，而不是赌币价单边方向。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/same-asset/same-chain/cross-dex/pool-arbitrage/amm/price-gap-close/uniswap/sushiswap/curve/base/arbitrum/ethereum/1m/3m/5m/15m/repo/public-api/cost/gas/slippage/mev</li>
+<li>证据类型：repo 源码直接给出 spread threshold / liquidity floor / gas 假设 / slippage 近似 / sizing 上限；外加 live 公共 API 快照验证同链多池价差确实存在</li>
+</ul>
+<h2>1. 先回答一句：base alpha 是什么？</h2>
+<p><strong>base alpha = same-chain / same-asset cross-DEX relative-value mean reversion。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>同一个币对，比如 <code>WETH/USDC</code>，在 Uniswap、SushiSwap、Curve、Aerodrome 这些池子里，不会永远一模一样；</li>
+<li>当某个池子被单边打穿、另一个池子还没完全跟上时，会出现短时价差；</li>
+<li>真正能赚钱的不是“看到价差”本身，而是：</li>
+<li>这是不是<strong>同链</strong>、能迅速完成双腿；</li>
+<li>gross spread 能不能覆盖<strong>双边 pool fee + 滑点 + gas + MEV 风险缓冲</strong>；</li>
+<li>价差是不是会在几分钟内回归，而不是卡成慢性失真。</li>
+</ul>
+<p>所以这不是 filter，不是宏观 regime，也不是 execution 附件。 它本体就是一条 <strong>same-asset / relative-value / stat-arb raw alpha</strong>。</p>
+<h2>2. 为什么这轮值得写它？</h2>
+<p>如果先问一句：<strong>它为什么比继续补 generic filter 更值得？</strong></p>
+<p>答案很直接：</p>
+<ol>
+<li><strong>它补的是当前素材池里还不够密的一支 raw alpha。</strong></li>
+<p>最近 intake 已经补了不少：</p>
+</ol>
+<ul>
+<li>funding / basis / calendar spread</li>
+<li>options parity / conversion</li>
+<li>CEX→DEX lead-lag</li>
+<li>pairs / cross-sectional reversal</li>
+</ul>
+<p>但<strong>同链多 DEX 池价差闭合</strong>这条更“原教旨”的 on-chain relative-value 壳，还没有单独落一篇。</p>
+<ol>
+<li><strong>它比 cross-chain arb 更适合 desk 先做最小实验。</strong></li>
+<p>cross-chain 很容易变成桥延迟、库存管理、异步结算问题； same-chain 则更像真正的短周期 alpha：</p>
+</ol>
+<ul>
+<li>数据秒级/分钟级可拿</li>
+<li>价差闭合更快</li>
+<li>两腿执行路径更短</li>
+<li>更适合 <code>1m / 3m / 5m / 15m</code> 首轮验证</li>
+</ul>
+<ol>
+<li><strong>repo 已经把“别只看 headline spread”这件事写进代码了。</strong></li>
+<p>这点很重要，因为很多人谈 DEX arbitrage 只会说“这里有价差”； 但这份 repo 至少给了：</p>
+</ol>
+<ul>
+<li><code>min_spread_pct = 0.5%</code></li>
+<li><code>min_liquidity_usd = 100_000</code></li>
+<li><code>max_trade_size_usd = 50_000</code></li>
+<li>链级 gas 假设（Ethereum <code>$15</code>、Arbitrum <code>$0.5</code>、Base <code>$0.2</code>、Polygon <code>$0.05</code>、Solana <code>$0.01</code>）</li>
+</ul>
+<p>也就是说，它不是纯概念，而是在逼你先做<strong>净价差</strong>计算。</p>
+<h2>3. 来源与材料信息</h2>
+<h3>Primary repo</h3>
+<ul>
+<li><strong>Repo owner / Year</strong>：<code>abailey81</code> / 2026</li>
+<li><strong>Title</strong>：*Crypto-Statistical-Arbitrage*</li>
+<li><strong>Venue</strong>：GitHub</li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/abailey81/Crypto-Statistical-Arbitrage&gt;">https://github.com/abailey81/Crypto-Statistical-Arbitrage&gt;</a></li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/abailey81/Crypto-Statistical-Arbitrage&gt;">https://github.com/abailey81/Crypto-Statistical-Arbitrage&gt;</a></li>
+<li><strong>Created / pushed</strong>：2026-03-13 / 2026-03-15（GitHub metadata）</li>
+<li><strong>Official DOI</strong>：未见</li>
+</ul>
+<h3>Key source files actually used this round</h3>
+<ul>
+<li>README：&lt;<a href="https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/README.md&gt;">https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/README.md&gt;</a></li>
+<li>Cross-DEX strategy code：&lt;<a href="https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/strategies/vol_surface_or_dex_arb/cross_dex_arb.py&gt;">https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/strategies/vol_surface_or_dex_arb/cross_dex_arb.py&gt;</a></li>
+<li>Data/source attribution：&lt;<a href="https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/docs/source_attribution.md&gt;">https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/docs/source_attribution.md&gt;</a></li>
+</ul>
+<h3>Public data endpoints for fast replication</h3>
+<ul>
+<li>DexScreener API：&lt;<a href="https://docs.dexscreener.com/api/reference&gt;">https://docs.dexscreener.com/api/reference&gt;</a></li>
+<li>Example token-pairs endpoint：&lt;<a href="https://api.dexscreener.com/token-pairs/v1/ethereum/0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2&gt;">https://api.dexscreener.com/token-pairs/v1/ethereum/0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2&gt;</a></li>
+</ul>
+<h2>4. 这份 repo 真正提供了什么？</h2>
+<p>别被 repo 首页的“32 venues / 211 symbols / 226k+ lines”带偏。 对我们 desk，这轮最值钱的不是它的大一统叙事，而是里面这个<strong>可拆出来单测的 side branch</strong>：</p>
+<p>&gt; <code>strategies/vol_surface_or_dex_arb/cross_dex_arb.py</code></p>
+<p>它把 same-chain / cross-chain DEX arbitrage 直接拆成一个独立策略壳，核心逻辑非常清楚：</p>
+<ol>
+<li><strong>按 chain + token pair 分组池子</strong>；</li>
+<li>在同组内找最便宜池与最贵池；</li>
+<li>先算 gross spread；</li>
+<li>再扣：</li>
+</ol>
+<ul>
+<li>双边 gas</li>
+<li>双边 pool fee</li>
+<li>买卖两侧 slippage</li>
+</ul>
+<ol>
+<li>只有 <code>expected_profit_pct &gt; 0</code> 才保留机会。</li>
+</ol>
+<p>这就是一条完整策略，而不是一句“DEX 有价差”。</p>
+<h2>5. repo 里最值得记住的三个策略参数</h2>
+<h2>5.1 它不是“看到 5bp 就冲”，而是先设 50bp 最低门槛</h2>
+<p>代码默认：</p>
+<ul>
+<li><code>min_spread_pct = 0.005</code> → <strong>50 bps</strong></li>
+<li><code>max_slippage_pct = 0.01</code> → <strong>1%</strong></li>
+<li><code>min_liquidity_usd = 100,000</code></li>
+<li><code>max_trade_size_usd = 50,000</code></li>
+</ul>
+<p>这说明 repo 作者的默认假设其实很保守：</p>
+<p>&gt; 对大多数池子，只有 spread 已经胖到足以明显超过 friction，才配进入候选集。</p>
+<p>这跟很多“只看报价差”的 DEX arb 讨论完全不是一个严谨度。</p>
+<h2>5.2 它默认承认：链不同，交易成本不是一个数量级</h2>
+<p>代码里硬编码的 gas 假设是：</p>
+<ul>
+<li>Ethereum：<code>$15</code></li>
+<li>Arbitrum：<code>$0.50</code></li>
+<li>Optimism：<code>$0.30</code></li>
+<li>Base：<code>$0.20</code></li>
+<li>Polygon：<code>$0.05</code></li>
+<li>Solana：<code>$0.01</code></li>
+</ul>
+<p>这对 short-cycle desk 的启发很直接：</p>
+<ul>
+<li><strong>L1 蓝筹大池</strong> 更可能是“有 gross spread，但净掉成本后没肉”；</li>
+<li><strong>L2 / 低 gas 链</strong> 才更像 first-pass research universe；</li>
+<li>如果你硬把 Ethereum 主网大池当成首发战场，很多事件会在成本后直接失真。</li>
+</ul>
+<h2>5.3 它把 same-chain 和 cross-chain 明确分开了</h2>
+<p>repo 没把这两件事混为一谈：</p>
+<ul>
+<li><strong>same-chain</strong>：更像真正的短时 microstructure alpha</li>
+<li><strong>cross-chain</strong>：额外要扣 bridge 成本与 bridge 时间价格风险</li>
+</ul>
+<p>对我们而言，这个区分很关键。 因为 bot7 当前更需要的是：</p>
+<p>&gt; <strong>能快速进 <code>1m / 3m / 5m / 15m</code> 最小实验、且能较快被证伪/证实的 raw alpha。</strong></p>
+<p>所以这轮最值得 intake 的，显然是 <strong>same-chain branch</strong>，不是更慢更重的 cross-chain branch。</p>
+<h2>6. live honesty check：同链价差确实有，但蓝筹主网未必够你吃</h2>
+<p>我做了一个非常简单但很诚实的 live sanity check，结果写在：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/cross_dex_samechain_20260405/summary.json</code></li>
+</ul>
+<h3>6.1 取样口径</h3>
+<ul>
+<li>数据源：DexScreener 公共 API</li>
+<li>链：Ethereum</li>
+<li>交易对：<code>WETH/USDC</code></li>
+<li>过滤：<code>liquidity &gt;= $1,000,000</code></li>
+<li>抓取时间：<code>2026-04-05 17:33 UTC</code></li>
+</ul>
+<h3>6.2 结果</h3>
+<p>在这个口径下，共找到 <strong>7 个流动性充足的池子</strong>。</p>
+<p>最便宜池：</p>
+<ul>
+<li><strong>Curve</strong></li>
+<li>价格：<strong>2053.15 USD</strong></li>
+<li>流动性：<strong>$6.44m</strong></li>
+</ul>
+<p>最贵池：</p>
+<ul>
+<li><strong>SushiSwap</strong></li>
+<li>价格：<strong>2055.60 USD</strong></li>
+<li>流动性：<strong>$2.05m</strong></li>
+</ul>
+<p>对应的 <strong>gross same-chain spread = 11.93 bps</strong>。</p>
+<h3>6.3 这个结果为什么反而有价值？</h3>
+<p>因为它很诚实地说明了一件事：</p>
+<p>&gt; <strong>同链多池价差确实存在，但以 Ethereum 蓝筹 <code>WETH/USDC</code> 为例，11.9 bps gross spread 大概率还不够你在双边 pool fee + gas + 滑点后舒服赚钱。</strong></p>
+<p>换句话说，这个 live snapshot 不是拿来证明“现在立刻开单就能赚”，而是拿来告诉我们：</p>
+<ol>
+<li>这条 alpha <strong>不是空想</strong>，真实市场里确实有 gap；</li>
+<li>但 first-pass 回测不该从 Ethereum 大蓝筹主网池开始幻想；</li>
+<li>更合理的首轮测试方向是：</li>
+</ol>
+<ul>
+<li><strong>低 gas 链</strong>（Base / Arbitrum / Solana）</li>
+<li><strong>更容易出现短时错位的次级池或事件窗口</strong></li>
+<li>或者只做<strong>高于净成本阈值很多</strong>的 tail events</li>
+</ul>
+<h2>7. 对 short-cycle desk，正确读法应该是什么？</h2>
+<h2>7.1 raw alpha 本体</h2>
+<p>最小可执行定义：</p>
+<p>```text net_gap_bps(t) = gross_gap_bps(t)</p>
+<ul>
+<li>buy_pool_fee_bps</li>
+<li>sell_pool_fee_bps</li>
+<li>est_slippage_buy_bps</li>
+<li>est_slippage_sell_bps</li>
+<li>gas_bps(notional, chain)</li>
+<li>mev_buffer_bps</li>
+<p>```</p>
+</ul>
+<p>其中：</p>
+<ul>
+<li><code>gross_gap_bps(t)</code> = 同链同币对下最贵可卖池 vs 最便宜可买池的价差</li>
+<li>只有当 <code>net_gap_bps(t) &gt; entry_hurdle</code>，这才算信号</li>
+</ul>
+<p>所以 alpha 本体不是“price gap”，而是：</p>
+<p>&gt; <strong>净掉摩擦之后仍显著为正的 same-chain executable price gap，会向零闭合。</strong></p>
+<h2>7.2 这条线最适合服务哪类 desk？</h2>
+<p>它最适合两类：</p>
+<ol>
+<li><strong>本来就做 on-chain / hybrid execution 的 desk</strong></li>
+<li><strong>虽然主做 perps，但想把 DEX relative-value 当成 event-driven 子策略库的 desk</strong></li>
+</ol>
+<p>如果 desk 完全没有链上执行能力，这条线也未必白看： 它仍然可以作为：</p>
+<ul>
+<li>DEX microstructure shock 的研究样本</li>
+<li>CEX/DEX spread 或 execution veto 的补充素材</li>
+</ul>
+<p>但本质上，它先是 raw alpha，再考虑能否退化成 filter。</p>
+<h2>8. 第一版最小可复现实验，应该怎么搭？</h2>
+<h2>数据源、公开性、更新频率、实验口径</h2>
+<ul>
+<li><strong>数据源</strong>：DexScreener / GeckoTerminal / 协议 subgraph（Uniswap / Curve / Aerodrome 等）</li>
+<li><strong>公开性</strong>：公开可得</li>
+<li><strong>更新频率</strong>：近实时快照，可按 <code>1m</code> 存档；若有 websocket/更高频可再下钻</li>
+<li><strong>最小可复现实验口径</strong>：</li>
+<li>按链分组</li>
+<li>按 token pair 分组</li>
+<li>每分钟记录 cheapest pool、richest pool、gross gap、TVL、24h volume、pool 类型、估计池费</li>
+<li>用固定名义（如 <code>$5k/$10k/$25k</code>）折算 <code>gas_bps</code> 和 <code>slippage_bps</code></li>
+</ul>
+<h2>实验 A：先做事件统计，不先跑全自动回测</h2>
+<p>目标：先回答“净价差事件”有没有持续性。</p>
+<ul>
+<li>链：<code>Base / Arbitrum / Ethereum</code></li>
+<li>交易对：</li>
+<li>蓝筹：<code>WETH/USDC</code>, <code>WBTC/USDC</code>, <code>cbBTC/WETH</code></li>
+<li>稳定币：<code>USDC/USDT</code>, <code>DAI/USDC</code></li>
+<li>再加 10~20 个中等活跃 long-tail pair</li>
+<li>频率：<code>1m</code></li>
+<li>指标：</li>
+<li><code>gross_gap_bps</code></li>
+<li><code>net_gap_bps</code></li>
+<li>事件持续分钟数</li>
+<li>闭合速度（到 0 / 到 50%）</li>
+<li>不同链、不同池费层的事件占比</li>
+</ul>
+<p><strong>验收标准：</strong> 如果大部分 <code>net_gap_bps &gt; 0</code> 事件只能活 1 帧，或者很快被反向 gap 吞掉，这条线要降优先级。</p>
+<h2>实验 B：只做 same-chain，不碰跨链</h2>
+<p>第一版策略规则可以非常朴素：</p>
+<ul>
+<li><code>entry</code>：</li>
+<li><code>net_gap_bps &gt; 3 / 5 / 8 bps</code> 三档分桶</li>
+<li>且连续存在 <code>2</code> 帧</li>
+<li>且两池 <code>TVL</code>、<code>24h volume</code> 过门槛</li>
+<li><code>exit</code>：</li>
+<li><code>net_gap_bps &lt;= 0</code></li>
+<li>或 max holding <code>3m / 5m / 15m</code></li>
+<li>或任一池流动性骤降 / 报价异常</li>
+<li><code>size</code>：</li>
+<li>不超过较小池有效深度的一定比例（例如 <code>2%~5%</code>）</li>
+<li>不超过固定名义上限</li>
+<li><code>risk</code>：</li>
+<li>单链限仓</li>
+<li>单 pair 并发限制</li>
+<li>事件级 kill switch（链拥堵、gas 飙升、区块延迟异常）</li>
+</ul>
+<h2>实验 C：把链成本当成 regime，而不是事后解释</h2>
+<p>直接分桶比较：</p>
+<ol>
+<li>Ethereum</li>
+<li>Base / Arbitrum</li>
+<li>稳定币池 vs 波动币池</li>
+<li>主流深池 vs 中等流动性池</li>
+</ol>
+<p>看的是：</p>
+<ul>
+<li>哪一桶的 <code>gross → net</code> 保留率最高；</li>
+<li>哪一桶的 <code>time-to-close</code> 最短；</li>
+<li>哪一桶在 <code>5m / 15m</code> 内仍留有 alpha。</li>
+</ul>
+<p>我猜首轮最可能有戏的，不是 Ethereum 主网蓝筹，而是：</p>
+<p>&gt; <strong>低 gas 链上的中高流动性池，在事件驱动时刻出现的短时价差闭合。</strong></p>
+<h2>9. 这条 alpha 最容易被误读成什么？</h2>
+<h3>误读 1：看到任意价差就当套利</h3>
+<p>错。很多 gap 只是：</p>
+<ul>
+<li>池费差异</li>
+<li>pool 类型差异</li>
+<li>报价 stale</li>
+<li>深度不够</li>
+<li>同一 DEX 不同 fee tier 的自然价差</li>
+</ul>
+<p>所以必须回到 <strong>net executable gap</strong>。</p>
+<h3>误读 2：把 cross-chain 和 same-chain 混写</h3>
+<p>错。桥延迟、库存调度、链间时间差，会把一条短周期 alpha 变成另一种生物。</p>
+<p>这轮应该严格聚焦： <strong>same-chain only。</strong></p>
+<h3>误读 3：只盯蓝筹池</h3>
+<p>错。蓝筹池确实最干净，但也最容易被竞争压平。 如果要从 <code>1m / 3m / 5m / 15m</code> 里找 pocket，很多时候应该把注意力放在：</p>
+<ul>
+<li>L2</li>
+<li>次级但非垃圾池</li>
+<li>高波动事件窗口</li>
+</ul>
+<h2>10. 我的判断</h2>
+<p><strong>Verdict：值得进入 raw alpha 池，而且比继续补一个 shared filter 更值。</strong></p>
+<p>原因：</p>
+<ol>
+<li><strong>base alpha 清楚</strong>：same-chain executable price-gap close</li>
+<li><strong>完整策略壳清楚</strong>：entry / exit / size / cost / gas / slippage 都能写</li>
+<li><strong>公开数据好拿</strong>：DexScreener / GeckoTerminal / subgraph 都足够做最小实验</li>
+<li><strong>与当前池子互补</strong>：它补的是 on-chain same-asset relative-value，而不是又一篇 funding / options / trend</li>
+<li><strong>可快速证伪</strong>：如果净价差事件太少、闭合太慢、成本太高，几天数据就能知道</li>
+</ol>
+<p>如果用一句话总结：</p>
+<p>&gt; 这份 repo 最值得 desk 抄的，不是“multi-venue 大系统”外壳，而是里面那条更容易独立复现的 same-chain DEX pool price-gap close：只有当 gross spread 扣完 fee / gas / slippage 还活着，它才配叫 raw alpha。</p>
+<h2>11. 下一步怎么测（直接排执行顺序）</h2>
+<h3>Step 1：先搭 <code>1m</code> 池快照板</h3>
+<p>连续抓 7 天：</p>
+<ul>
+<li><code>chain</code></li>
+<li><code>pair</code></li>
+<li><code>pool</code></li>
+<li><code>priceUsd</code></li>
+<li><code>liquidityUsd</code></li>
+<li><code>volume24h</code></li>
+<li><code>dexId</code></li>
+<li><code>estimated_fee_bps</code></li>
+<li><code>gross_gap_bps</code></li>
+<li><code>net_gap_bps($5k/$10k/$25k)</code></li>
+</ul>
+<h3>Step 2：只做 same-chain event study</h3>
+<p>统计：</p>
+<ul>
+<li><code>net_gap_bps &gt; 0</code> 事件数</li>
+<li>持续时间分布</li>
+<li>3m / 5m / 15m 闭合概率</li>
+<li>按链、按 pair、按池费层分桶</li>
+</ul>
+<h3>Step 3：再上最简单策略回测</h3>
+<ul>
+<li><code>entry</code>: <code>net_gap_bps &gt; 5 bps</code> 且连续 2 帧</li>
+<li><code>exit</code>: 回到 <code>&lt;= 0</code> 或 <code>15m</code> 超时</li>
+<li><code>size</code>: <code>$5k/$10k</code> 两档</li>
+<li><code>cost</code>: maker/taker、滑点、gas、MEV buffer 都显式计入</li>
+</ul>
+<h3>Step 4：只在证明 same-chain 能活后，才考虑 cross-chain</h3>
+<p>否则别急着把题目做重。</p>
+<h2>12. 来源链接</h2>
+<h3>Primary repo</h3>
+<ul>
+<li>GitHub: &lt;<a href="https://github.com/abailey81/Crypto-Statistical-Arbitrage&gt;">https://github.com/abailey81/Crypto-Statistical-Arbitrage&gt;</a></li>
+<li>README: &lt;<a href="https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/README.md&gt;">https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/README.md&gt;</a></li>
+<li>Strategy source: &lt;<a href="https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/strategies/vol_surface_or_dex_arb/cross_dex_arb.py&gt;">https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/strategies/vol_surface_or_dex_arb/cross_dex_arb.py&gt;</a></li>
+<li>Source attribution: &lt;<a href="https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/docs/source_attribution.md&gt;">https://raw.githubusercontent.com/abailey81/Crypto-Statistical-Arbitrage/main/docs/source_attribution.md&gt;</a></li>
+</ul>
+<h3>Public data</h3>
+<ul>
+<li>DexScreener API docs: &lt;<a href="https://docs.dexscreener.com/api/reference&gt;">https://docs.dexscreener.com/api/reference&gt;</a></li>
+<li>Ethereum WETH token-pairs endpoint used for live snapshot: &lt;<a href="https://api.dexscreener.com/token-pairs/v1/ethereum/0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2&gt;">https://api.dexscreener.com/token-pairs/v1/ethereum/0xC02aaA39b223FE8D0A0E5C4F27eAD9083C756Cc2&gt;</a></li>
+</ul>
+<h2>13. 本地 artifacts</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/cross_dex_samechain_20260405/summary.json</code></li>
+</ul>
+</body>
+</html>

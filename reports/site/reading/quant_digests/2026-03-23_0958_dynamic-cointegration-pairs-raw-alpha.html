@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别先把 DNN 当主角：这篇 2026 pairs 论文里更值钱的是 dynamic co-integration spread 这条 raw alpha 骨架</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别先把 DNN 当主角：这篇 2026 pairs 论文里更值钱的是 dynamic co-integration spread 这条 raw alpha 骨架</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-23 09:57 UTC</span>
+      <span class="pill">研究时间：2026-03-23 09:58 UTC</span>
+      <span class="pill">类型：近 5 年论文 + 开源复现仓库 + Binance 公共数据最小快检</span>
+      <span class="pill">主题标签：pairs/stat-arb/relative-value/mean-reversion/dynamic-cointegration/zscore/dnn/lstm/repo/paper/crypto/5m/15m</span>
+      <span class="pill">证据类型：论文证据 + 工程证据 + 本地快检（可复现）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-23_0958_dynamic-cointegration-pairs-raw-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-23 09:58 UTC</li>
+<li>类型：近 5 年论文 + 开源复现仓库 + Binance 公共数据最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：cross-asset relative-value / pairs mean reversion（动态均衡价差回归）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：pairs/stat-arb/relative-value/mean-reversion/dynamic-cointegration/zscore/dnn/lstm/repo/paper/crypto/5m/15m</li>
+<li>证据类型：论文证据 + 工程证据 + 本地快检（可复现）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>Tsoku, Makatjane (2026)</strong> 的 *Deep learning-based pairs trading: real-time forecasting of co-integrated cryptocurrency pairs*，以及对应的开源复现仓库。对我们 desk 来说，最值得先偷的不是 “DNN/LSTM 预测器” 本身，而是更底层、也更容易先复现的 <strong>dynamic co-integration spread → z-score 回归</strong> 这条 <code>raw alpha</code> 骨架。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这篇东西真正适合我们现在拿来做最小实验的 base alpha，不是“深度学习会算”，而是 <strong>跨币动态均衡偏离后，做 market-neutral 的价差回归</strong>。</li>
+<li><strong>一句话证明方式：</strong> 论文先用 rolling Johansen 找会随时间变化的均衡关系，再用 DNN/LSTM/DWE 预测 spread；仓库还把 look-ahead、退出状态机和 hedge-ratio turnover 问题补得更诚实。</li>
+<li>论文摘要的关键信号不是“所有相关币都能做”，而是：<strong>只有动态关系仍然 coherent 的 pair，mean reversion 才值得交易</strong>。</li>
+<li>仓库里最值钱的工程细节有 3 个：<strong>expanding percentile 防偷看未来</strong>、<strong>进入后持有到回归/超时的 finite-state exit</strong>、<strong>对 hedge ratio 做 EWM smoothing 以压 turnover</strong>；最后一个在仓库里把 hedge-ratio 换手压了约 <strong>72%</strong>。</li>
+<li>对我们 desk 最重要的启发：<strong>先把 pairs/stat-arb 作为独立 raw alpha 家族补进素材池</strong>，不要继续只在 breakout / retest / trend filter 上内循环。</li>
+</ul>
+<p>本地 15m 最小快检（Binance perp，2026-02-04 → 2026-03-23，rolling beta + spread z-score，<code>entry=|z|&gt;2</code>，<code>exit=|z|&lt;0.25 or timeout=24 bars</code>，双边成本粗估 <code>6bps</code>）结果：</p>
+<ul>
+<li><code>ETH~BTC</code>：<code>42</code> 笔，<code>mean gross ≈ +3.48bps/trade</code>，<code>mean net ≈ -8.52bps/trade</code></li>
+<li><code>SOL~ETH</code>：<code>43</code> 笔，<code>mean gross ≈ +0.32bps/trade</code>，<code>mean net ≈ -11.68bps/trade</code></li>
+</ul>
+<p>读法要诚实：<strong>raw alpha 方向是对的，但“把日频论文直接压成 15m naive z-score 交易”还不够过成本。</strong> 这反而说明下一步该优先补的是 pair selection / regime / turnover control，而不是先堆更复杂模型。</p>
+<h2>3. 为什么和当前项目直接相关</h2>
+<ul>
+<li>它补的是我们当前明显稀缺的 <strong>raw alpha 家族</strong>：<code>pairs / stat-arb / relative value / mean reversion</code>，不是又一个 filter。</li>
+<li>它天然是 <strong>完整策略骨架</strong>：有 entry、exit、仓位配比、超时、成本与换手问题，不需要先依附 breakout/EMA 才能存在。</li>
+<li>即使最后 DNN/LSTM 不上生产，<code>dynamic spread + z-score + beta smoothing + state exit</code> 这套骨架也能直接进入 <code>5m/15m</code> 的 first-verdict 阶段。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / stat-arb / market-neutral mean reversion</li>
+<li>基础 alpha：<code>spread_t = log(y_t) - beta_t * log(x_t)</code> 偏离 rolling equilibrium 后向均值回归</li>
+<li>regime：仅在 rolling cointegration / ADF / half-life 稳定、且 funding/波动不极端时开机</li>
+<li>filter / veto：pair 失稳、结构断裂、成交额不足、重大事件时段、spread 过宽但 liquidity 不足</li>
+<li>risk / sizing / execution overlay：beta-neutral 或 dollar-neutral 配比、EWM 平滑 hedge ratio、time stop、gross leverage cap、双边成本和 funding 明确计入</li>
+</ul>
+<h2>4. 可复刻的最小实验（下一步怎么测）</h2>
+<ul>
+<li><strong>研究假设：</strong> 在 <code>1m/3m/5m/15m</code>，不是所有主流币 pair 都有可交易回归；但对“关系稳定 + 换手可控”的 pair，dynamic spread mean reversion 可能成为独立 raw alpha。</li>
+<li><strong>最小定义：</strong></li>
+<li>候选池：<code>BTC/ETH/SOL/BNB</code> 两两成对</li>
+<li><code>beta_t</code>：rolling OLS 或 rolling Johansen（先从 OLS 开始）</li>
+<li><code>z_t</code>：对 spread 做 rolling z-score</li>
+<li>入场：<code>|z_t| &gt; 2.0</code></li>
+<li>出场：<code>|z_t| &lt; 0.5</code> 或 <code>max_hold</code> 到期</li>
+<li>仓位：按 <code>1 : beta_t</code> 做 beta-neutral，并对 <code>beta_t</code> 做 EWM smoothing</li>
+<li><strong>最小回测切口：</strong> 先跑 <code>ETH/BTC、SOL/ETH、BNB/ETH</code> 的 <code>15m</code>，样本 60~90 天；若有希望，再下钻 <code>5m/3m</code>。</li>
+<li><strong>先看 4 个指标：</strong> <code>post_cost_expectancy</code>、<code>turnover/day</code>、<code>mean-reversion hit ratio</code>、<code>timeout exit ratio</code>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文主体是 <strong>日频</strong> 设定，不能把它的表现直接偷渡成 15m 结论。</li>
+<li>pair trading 最容易死在 <strong>关系断裂 + 成本 + 高频重平衡</strong>，不是死在“信号不会回归”。</li>
+<li>DNN/LSTM 在我们当前阶段不是第一优先；若 raw spread 本体过不了 first verdict，先别让模型复杂度掩盖问题。</li>
+<li>本地快检目前只说明“naive 15m 直接移植不够”，不说明这条 raw alpha 应该放弃。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Tsoku, J. T., &amp; Makatjane, K. (2026). _Deep learning-based pairs trading: real-time forecasting of co-integrated cryptocurrency pairs_. Frontiers in Applied Mathematics and Statistics.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.3389/fams.2026.1749337</code></li>
+<li>Readable URL: <a href="https://www.frontiersin.org/journals/applied-mathematics-and-statistics/articles/10.3389/fams.2026.1749337/full">https://www.frontiersin.org/journals/applied-mathematics-and-statistics/articles/10.3389/fams.2026.1749337/full</a></li>
+</ul>
+<ol>
+<li><strong>M-man2591. (2026). _deep-learning-crypto-pairs-trading_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/M-man2591/deep-learning-crypto-pairs-trading">https://github.com/M-man2591/deep-learning-crypto-pairs-trading</a></li>
+<li>Readable URL: <a href="https://github.com/M-man2591/deep-learning-crypto-pairs-trading">https://github.com/M-man2591/deep-learning-crypto-pairs-trading</a></li>
+</ul>
+<h2>7. 本地复现产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/dynamic_pairs_proxy_20260323/summary_normalized.csv</code></li>
+<li><code>reports/artifacts/quant_digests/dynamic_pairs_proxy_20260323/trades_15m_ETHUSDT_BTCUSDT.csv</code></li>
+<li><code>reports/artifacts/quant_digests/dynamic_pairs_proxy_20260323/trades_15m_SOLUSDT_ETHUSDT.csv</code></li>
+<li><code>reports/artifacts/quant_digests/dynamic_pairs_proxy_20260323/BTCUSDT_15m.csv</code></li>
+<li><code>reports/artifacts/quant_digests/dynamic_pairs_proxy_20260323/ETHUSDT_15m.csv</code></li>
+<li><code>reports/artifacts/quant_digests/dynamic_pairs_proxy_20260323/SOLUSDT_15m.csv</code></li>
+</ul>
+</body>
+</html>

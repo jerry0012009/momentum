@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 funding spread 只读成“谁更高就去收租”：对 short-cycle crypto desk，更该先拆的是「extreme funding spread × duration-before-reversal」这条 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 funding spread 只读成“谁更高就去收租”：对 short-cycle crypto desk，更该先拆的是「extreme funding spread × duration-before-reversal」这条 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-23 18:05 UTC</span>
+      <span class="pill">研究时间：2026-04-23 18:06 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：carry / funding / relative value / stat-arb / cross-venue / duration / reversal-hazard / child-execution</span>
+      <span class="pill">证据类型：论文证据（abstract-only）+ 公共数据可复现</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-23_1806_crossvenue-fundingspread-duration-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-23 18:06 UTC</li>
+<li>类型：论文</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：跨 venue 同标的 funding spread 极端扩大后，做 <code>short rich-funding perp + long cheap-funding perp/hedge leg</code>，赚 funding carry + spread 回归；但只有“价差还会撑一段时间”时才值得做。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：carry / funding / relative value / stat-arb / cross-venue / duration / reversal-hazard / child-execution</li>
+<li>证据类型：论文证据（abstract-only）+ 公共数据可复现</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>一篇 2026 年 *Mathematics* 论文摘要与 Crossref 元数据：Petar Zhivkov, *The Two-Tiered Structure of Cryptocurrency Funding Rate Markets*。它不是在说“funding 套利永远有肉”，而是在说：跨 CEX/DEX 的 funding 分裂确实常见，但真正能赚钱的不是“看见大 spread 就上”，而是“spread 够大，而且在你建仓后不会立刻反转”。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>论文用 26 家交易所、749 个 symbol、3570 万条 <code>1m</code> 观察，说明 funding 市场确实存在结构性碎片化，不是偶发噪声。</li>
+<li>作者给出的最值钱数字不是“机会很多”，而是：仅约 <code>17%</code> 的观察达到 <code>&gt;=20bps</code> 的经济显著 spread；而即便看 top opportunities，成本后也只有约 <code>40%</code> 为正。</li>
+<li>更关键的是：成功与否取决于 spread 持续时间；论文写到约 <code>95%</code> 的机会最终都因 spread 反转被迫退出，说明 <strong>duration / reversal hazard</strong> 比“瞬时 spread 大小”更像核心 admission。</li>
+<li>信息流方向是 <code>CEX -&gt; DEX</code>，零反向因果；因此 child execution 应默认把 CEX 侧 funding / price discovery 当 leader，而不是双边对称对待。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线仍是 raw alpha，不是 overlay：base alpha 很明确，就是跨 venue funding spread 的 carry + convergence。它比我们之前那些“只看 funding diff 阈值”的壳更 desk 化，因为它直接回答了一个实盘问题：<strong>为什么很多 funding spread 看起来很肥，做进去却被 reversal 吃掉。</strong> 对 <code>1m/3m/5m/15m</code> desk 来说，真正该补的不是又一个静态 spread 排行榜，而是 <code>spread size + spread age + reversal hazard</code> 的 admission。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / carry / stat-arb</li>
+<li>基础 alpha：<code>funding_spread_extreme -&gt; short rich leg / long cheap leg</code></li>
+<li>regime：只在跨 venue spread 已达到经济显著阈值、且 leader venue 仍未出现快速回补时启用</li>
+<li>filter / veto：spread-age 太短、最近 <code>3~12</code> 根出现快速回补、或 rich leg 所在 venue 的价格发现已转弱时 veto</li>
+<li>risk / sizing / execution overlay：按两腿更差一侧的深度/费率限仓；统一 <code>next-bar open</code> 入场；优先 <code>1m/3m</code> 建腿、<code>5m/15m</code> 做持有与风控；触发快速半衰回补或时间止损就走</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：跨 venue funding spread 不是“越大越好”，而是“越大且越能维持几根 bar 不反转”才有正 EV。</li>
+<li>可计算定义：每个 <code>1m</code> 或 <code>5m</code> bar 计算同标的 richest venue 与 cheapest venue 的 funding spread；同时记录过去 <code>N</code> 根的 spread slope、spread-age、price-leader（先用 CEX 侧）和回补速度。</li>
+<li>最小回测切口：先只做 <code>BTC/ETH</code>，先用公开 funding history + mark/index price；信号生成在 <code>1m</code>，child execution 测 <code>1m/3m</code>，持有窗测 <code>5m/15m/30m</code>。</li>
+<li>先看 4 个东西：<code>event_count</code>、<code>post-cost mean net bps</code>、<code>spread reversal hazard by age bucket</code>、<code>forced-exit ratio</code>。</li>
+<li>最小 A/B：</li>
+</ul>
+<ol>
+<li>裸 <code>spread &gt;= X</code> 入场；</li>
+<li><code>spread &gt;= X</code> + <code>age &gt;= Y bars</code>；</li>
+<li><code>spread &gt;= X</code> + <code>recent reversal speed &lt;= Z</code>；</li>
+<li><code>spread &gt;= X</code> + <code>CEX leader still leads</code>。</li>
+</ol>
+<ul>
+<li>具体到当前 desk：</li>
+<li><code>1m</code>：测最短 child entry 是否被 reversal/fees 立刻吃掉；</li>
+<li><code>3m</code>：测 spread-age / slope 特征是否更稳；</li>
+<li><code>5m</code>：作为默认 formation 粒度；</li>
+<li><code>15m</code>：只负责 timeout / carry realization，不把它硬当主信号采样频率。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>当前证据口径主要来自摘要，不是全文精读；数字可信但细部方法仍待全文复核。</li>
+<li>论文覆盖 CEX+DEX，当前 desk 若先只做 CEX-to-CEX，可执行性会更高，但 edge 也可能更薄。</li>
+<li>funding 历史公开可得，不代表真实可成交容量也可得；若深度/手续费/借贷成本补进去后全被吃光，这条线就该回到素材池。</li>
+<li>最大风险不是方向错，而是 spread reversal 太快：所以这条线的诚实 read 不是“always-on 收租”，而是“高 spread × 低 reversal hazard pocket”。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Zhivkov, P. (2026). *The Two-Tiered Structure of Cryptocurrency Funding Rate Markets*. Mathematics.</li>
+<li>DOI: <code>10.3390/math14020346</code></li>
+<li>Readable URL: <code><a href="https://www.mdpi.com/2227-7390/14/2/346">https://www.mdpi.com/2227-7390/14/2/346</a></code></li>
+<li>Crossref URL: <code><a href="https://api.crossref.org/works/10.3390/math14020346">https://api.crossref.org/works/10.3390/math14020346</a></code></li>
+</ul>
+</body>
+</html>

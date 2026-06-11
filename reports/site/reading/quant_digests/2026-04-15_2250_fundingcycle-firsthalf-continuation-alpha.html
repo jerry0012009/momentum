@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>funding 周期前半段方向 × 后半段延续：把 intraday momentum 改写成 perp `8h` 可执行壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>funding 周期前半段方向 × 后半段延续：把 intraday momentum 改写成 perp `8h` 可执行壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-15 22:49 UTC</span>
+      <span class="pill">研究时间：2026-04-15 22:50 UTC</span>
+      <span class="pill">类型：GitHub / 论文 grounding / public-data portability probe</span>
+      <span class="pill">主题标签：raw alpha / trend / momentum / intraday / funding-cycle / time-series / regime-gate / Binance USDⓈ-M / 15m</span>
+      <span class="pill">证据类型：工程经验 + 论文证据 + repo 策略卡</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-15_2250_fundingcycle-firsthalf-continuation-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-15 22:50 UTC</li>
+<li>类型：GitHub / 论文 grounding / public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>8h funding 周期前半段（0~4h）收益方向，会在后半段（4~8h）继续延续</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw alpha / trend / momentum / intraday / funding-cycle / time-series / regime-gate / Binance USDⓈ-M / 15m</li>
+<li>证据类型：工程经验 + 论文证据 + repo 策略卡</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主材料不是再找一篇“又一个日频动量论文”，而是抓 2026 GitHub 策略库 <strong>RexRenatus / The-Art-of-Finance</strong> 里一条更适合 short-cycle desk 的分支：<code>trend/funding-momentum.md</code>。它把经典 intraday momentum 直接映射到 crypto perp 的 <strong><code>8h funding</code> 天然 session</strong>：看 funding 周期前半段涨跌，去做后半段 continuation，并在 funding 边界强制平仓。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这条策略真正值钱的，不是“crypto 也有日内动量”这句老话，而是可以把它改写成一个很清楚的 <code>trade on / trade off</code> 壳：<code>前 4h 看方向，后 4h 做延续，funding 边界硬退出</code>。</li>
+<li><strong>一句话证明方式：</strong> repo 给了清晰的 session 化策略骨架；我再用 Binance USDⓈ-M <code>15m</code> 公开数据把 plain 版和 corr-gated 版各跑一遍，看它在 BTC/ETH/SOL 上是否真能活过最小成本门槛。</li>
+<li>repo 里的 base alpha 很清楚：<strong>不是 funding 本身，也不是时钟效应本身，而是 funding 周期内部的 return autocorrelation / intraday momentum</strong>。</li>
+<li>我做的 recent portability probe（<code>2025-10-01 ~ 2026-04-15</code>，<code>BTC/ETH/SOL</code>，<code>15m</code>）显示：<strong>plain 版并不稳</strong>。无 gate、每个 8h 周期都做时，BTC 平均 gross 约 <code>+6.27 bps/笔</code>，ETH 约 <code>+0.58</code>，SOL 约 <code>+1.73</code>；按 <code>4 bps</code> round-trip 后，只剩 BTC 还勉强为正。</li>
+<li>但把 repo 的“session 内 continuation”再 desk 化成 <strong><code>|前 4h 收益| &gt;= 10 bps</code> + 最近 <code>30</code> 个周期 <code>corr(first_half, second_half) &gt;= 0.05</code></strong> 后，结果明显改善：BTC/ETH/SOL 的平均 <strong>net</strong> 约升到 <code>+8.51 / +18.27 / +9.42 bps/笔</code>，交易数降到 <code>190 / 158 / 119</code>。</li>
+<li>这说明更合理的读法不是“8h 里任何方向都追”，而是：<strong>只有当前 funding-cycle 的前半段冲击够明显，而且近期 half1→half2 相关性真的在，才开 second-half continuation。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和 desk 当前素材池直接相关，因为它补的是一条<strong>真正独立的 raw alpha</strong>，不是给现有策略打补丁：</p>
+<ul>
+<li>它属于 <code>trend / time-series momentum</code>，但不是普通 N-bar breakout，而是 <strong>event-time / session-time momentum</strong>；</li>
+<li>它天然适配 <code>5m / 15m</code>，因为 <code>8h</code> funding 周期本身就是 perp 市场的原生时钟；</li>
+<li>它还能顺手长出一个 shared gate：最近若 <code>first-half -&gt; second-half</code> 的滚动相关性转负，就直接不做，这比“永远追涨杀跌”更像可实盘的 desk 版本。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势 / time-series momentum</li>
+<li>基础 alpha：<code>sign(return_{0~4h}) -&gt; sign(return_{4~8h})</code></li>
+<li>regime：最近 <code>N=30</code> 个 funding 周期里，<code>corr(first_half_return, second_half_return)</code> 为正且高于阈值</li>
+<li>filter / veto：<code>|first_half_return|</code> 必须超过最小门槛（如 <code>10 bps</code>）；只在第二半周期开仓；cooldown 禁止连续重入</li>
+<li>risk / sizing / execution overlay：按钱包百分比限仓；<code>8h</code> funding 边界强制平仓；实盘先按 <code>4 bps</code> round-trip 做成本门槛</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设：</strong> perp funding 周期前半段的价格方向，能预测同一 funding 周期后半段的方向；但这个效应不是全天候，而是 regime-dependent。</li>
+<li><strong>可计算定义：</strong> 对每个 <code>8h</code> 周期（<code>00-08 / 08-16 / 16-24 UTC</code>），先算 <code>r1 = return(0~4h)</code>，再算 <code>r2 = return(4~8h)</code>；若 <code>|r1| &gt;= 10 bps</code> 且过去 <code>30</code> 个周期 <code>corr(r1, r2) &gt;= 0.05</code>，则在后半段开始时按 <code>sign(r1)</code> 入场，周期结束平仓。</li>
+<li><strong>最小回测切口：</strong> Binance USDⓈ-M <code>BTC/ETH/SOL</code>，先做 <code>15m</code>，样本先看近 <code>180d</code>；若成立，再下钻 <code>5m</code> 看入场 timing 能否更好。</li>
+<li><strong>最先看 2 个指标：</strong></li>
+</ul>
+<ol>
+<li><code>avg net bps/trade</code>（先看成本后单笔边际是不是还活着）</li>
+<li><code>trade count</code>（别把它优化成一年只做几次的假 edge）</li>
+</ol>
+<ul>
+<li><strong>这轮 artifact：</strong></li>
+<li><code>reports/artifacts/quant_digests/2026-04-15_funding_momentum_probe_grid.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-15_funding_momentum_probe_epochs.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-15_funding_momentum_probe_summary.json</code></li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>repo 目前更像<strong>策略卡片库</strong>，不是单条策略的完整 production 回测；它给了骨架，但没有把 fee/slippage/default params 讲满，所以我把它判成“可独立复现，但还不是完整可上线壳”。</li>
+<li>这里最大的 overfit 风险是：<code>8h funding</code> 恰好是 perp 特有时钟，<strong>同一效应未必能平移到现货或别的 venue</strong>。</li>
+<li>我这轮 probe 也提示 plain 版很弱：<strong>不加 gate 时，ETH/SOL 在 <code>4 bps</code> 成本下都不过线</strong>。所以这条线更像 <code>raw alpha + regime gate</code>，不是“见涨就追”的万能动量书。</li>
+<li>下一步别先调更多参数；先做两件事：</li>
+</ul>
+<ol>
+<li>把 <code>entry</code> 从后半段开头细化到 <code>5m</code>，测试 <code>0~30m</code> 的最佳入场延迟；</li>
+<li>加一个简单的 <code>funding-sign / realized-vol</code> veto，看 continuation 是不是只在某些 funding-cycle 状态里成立。</li>
+</ol>
+<h2>6. 来源</h2>
+<ul>
+<li>RexRenatus. (2026). *The-Art-of-Finance* — <code>trend/funding-momentum.md</code>.</li>
+<li>Repo URL: <code><a href="https://github.com/RexRenatus/The-Art-of-Finance">https://github.com/RexRenatus/The-Art-of-Finance</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/RexRenatus/The-Art-of-Finance/blob/master/trend/funding-momentum.md">https://github.com/RexRenatus/The-Art-of-Finance/blob/master/trend/funding-momentum.md</a></code></li>
+<li>Gao, L., Han, Y., Li, S. Z., &amp; Zhou, G. (2018). *Market Intraday Momentum*. *Journal of Financial Economics*, 129(2), 394-414.</li>
+<li>DOI: <code>10.1016/j.jfineco.2018.05.009</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.jfineco.2018.05.009">https://doi.org/10.1016/j.jfineco.2018.05.009</a></code></li>
+<li>Shen, D., Urquhart, A., &amp; Wang, P. (2022). *Bitcoin Intraday Time Series Momentum*. *Financial Review*, 57(2), 319-344.</li>
+<li>DOI: <code>10.1111/fire.12290</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1111/fire.12290">https://doi.org/10.1111/fire.12290</a></code></li>
+<li>Wen, Z., Bouri, E., Xu, Y., &amp; Zhao, Y. (2022). *Intraday Return Predictability in the Cryptocurrency Markets: Momentum, Reversal, or Both*. *The North American Journal of Economics and Finance*, 62.</li>
+<li>DOI: <code>10.1016/j.najef.2022.101733</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.najef.2022.101733">https://doi.org/10.1016/j.najef.2022.101733</a></code></li>
+</ul>
+</body>
+</html>

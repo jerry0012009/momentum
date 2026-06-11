@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 15m 动量继续写成固定 lookback 均线：这份 2026 新 repo 更适合先测的是「vol-normalized ROC shock × EMA displacement × volume confirmation」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 15m 动量继续写成固定 lookback 均线：这份 2026 新 repo 更适合先测的是「vol-normalized ROC shock × EMA displacement × volume confirmation」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-02 03:39 UTC</span>
+      <span class="pill">研究时间：2026-04-02 03:44 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 source audit（`walk_forward_optimization.py` + `README.md` + GitHub API metadata）+ 2022 crypto TA 成本文献作 sanity anchor</span>
+      <span class="pill">主题标签：raw-alpha/trend/momentum/single-asset/roc-shock/vol-normalized/ema-displacement/volume-confirmation/walk-forward/optuna/trailing-stop/binance/btc/15m/5m/3m/1m/repo/public-data/cost</span>
+      <span class="pill">证据类型：2026 GitHub repo source audit（主证据）+ 2022 论文元数据（成本诚实性背景）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-02_0344_volnorm-rocshock-ema-volume-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-02 03:44 UTC</li>
+<li>类型：2026 GitHub 新仓库 source audit（<code>walk_forward_optimization.py</code> + <code>README.md</code> + GitHub API metadata）+ 2022 crypto TA 成本文献作 sanity anchor</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当短周期收益冲击已经显著超过其自身近期波动、且价格已脱离均线并伴随放量时，后续数个 bar 更容易继续沿冲击方向走出短段延续；alpha 本体是“shock continuation”，不是 EMA filter 本身，也不是纯 volume gate。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/trend/momentum/single-asset/roc-shock/vol-normalized/ema-displacement/volume-confirmation/walk-forward/optuna/trailing-stop/binance/btc/15m/5m/3m/1m/repo/public-data/cost</li>
+<li>证据类型：2026 GitHub repo source audit（主证据）+ 2022 论文元数据（成本诚实性背景）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<h3>一句话核心结论</h3>
+<p><strong>这轮更值得 intake 的，不是“又一个动量回测脚本”，而是 repo 已经写成完整策略骨架的一条 directional raw alpha：<code>ROC &gt; k×ROC_std</code> 的异常收益冲击，只有在 <code>price &gt; EMA + m×EMA_std</code> 且 <code>volume &gt; volume_MA</code> 时才入场，随后用 <code>EMA 跌回/穿回 + trailing stop</code> 出场。</strong></p>
+<h3>一句话它是怎么证明的</h3>
+<p><strong>证明方式不是论文 headline，而是源码直接把 alpha 的四层都摆出来了：波动标准化冲击阈值、趋势位移确认、成交量确认、walk-forward 参数搜索。</strong> 这让它比“单纯 RSI/MA 交叉”更像一张可直接下场做最小实验的完整策略卡。</p>
+<h2>2. base alpha 是什么</h2>
+<p>这次的 <strong>base alpha 很清楚</strong>：</p>
+<ol>
+<li>用 <code>ROC = (P_t - P_{t-L}) / P_{t-L}</code> 衡量最近一段价格加速度；</li>
+<li>不是看绝对 ROC，而是看它相对自己近期波动是否异常：<code>ROC &gt; k × rolling_std(ROC)</code> 才算真正的 upward shock，<code>ROC &lt; -k × rolling_std(ROC)</code> 才算 downward shock；</li>
+<li>只有当价格已经明显站上/跌破均线结构，且成交量高于自身均量时，才承认这次 shock 不是噪音；</li>
+<li>入场后不赌固定持有期，而是让价格继续跑，直到 <strong>跌回 EMA / 涨回 EMA</strong> 或被 trailing stop 赶出去。</li>
+</ol>
+<p>翻成人话：<strong>它不是“均线多头就买”，而是“只有当异常强的收益冲击，已经穿透均线结构且有量能支持时，才去吃接下来那一小段延续”。</strong></p>
+<h2>3. 为什么这轮值得写</h2>
+<ul>
+<li>最近 intake 里 <code>pairs / stat-arb / carry / cross-market</code> 已经很多；这条线补的是一个<strong>更容易直接落到执行层的单币方向性 raw alpha</strong>。</li>
+<li>它和当前项目的学习轨迹是顺的：</li>
+<li><code>LEARNING_TRACK.md</code> 里一直在补 <strong>多周期动量、量价确认、ATR/止损、市场状态过滤</strong>；</li>
+<li><code>FACTOR_BACKLOG.md</code> 里也明确提到 <strong>trailing stop / volume / EMA 结构</strong>这些组件值得被抽成正式对象；</li>
+<li>但 bot7 当前优先级又要求别继续围着旧 breakout 模板内循环。这个 repo 刚好给的是 <strong>不同于“突破一根线”的 shock-continuation 骨架</strong>。</li>
+<li>它还自带 <strong>walk-forward + 参数搜索</strong> 壳子，比只写一个 entry rule 的 repo 更适合做 desk 化最小复现。</li>
+</ul>
+<h2>4. 来源信息</h2>
+<h3>主工程来源</h3>
+<ul>
+<li><strong>Author / Repo owner：</strong> <code>SigmaFlowX</code>（GitHub owner）；当前唯一提交作者显示为 <strong>Dmitrii Bakaev</strong></li>
+<li><strong>Year：</strong> 2026（repo 最后 push 在 2026-01-31）</li>
+<li><strong>Title：</strong> <code>Crypto-Momentum-Driven-Strategy</code></li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/SigmaFlowX/Crypto-Momentum-Driven-Strategy&gt;">https://github.com/SigmaFlowX/Crypto-Momentum-Driven-Strategy&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/SigmaFlowX/Crypto-Momentum-Driven-Strategy&gt;">https://github.com/SigmaFlowX/Crypto-Momentum-Driven-Strategy&gt;</a></li>
+<li><strong>GitHub metadata：</strong> created <code>2025-11-15T07:57:38Z</code>，pushed <code>2026-01-31T06:56:53Z</code>，default branch <code>main</code></li>
+<li><strong>关键文件：</strong></li>
+<li><code>walk_forward_optimization.py</code></li>
+<li><code>README.md</code>（内容几乎为空，核心证据主要在代码）</li>
+</ul>
+<h3>成本诚实性背景来源（不是这条 alpha 的主证据）</h3>
+<ul>
+<li><strong>Authors：</strong> Pablo Svogun, Sergio Bazán-Palomino</li>
+<li><strong>Year：</strong> 2022</li>
+<li><strong>Title：</strong> *Technical analysis in cryptocurrency markets: Do transaction costs and bubbles matter?*</li>
+<li><strong>Venue：</strong> *Journal of International Financial Markets, Institutions and Money*</li>
+<li><strong>DOI：</strong> &lt;<a href="https://doi.org/10.1016/j.intfin.2022.101601&gt;">https://doi.org/10.1016/j.intfin.2022.101601&gt;</a></li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://www.sciencedirect.com/science/article/pii/S1042443122000130&gt;">https://www.sciencedirect.com/science/article/pii/S1042443122000130&gt;</a></li>
+<li><strong>这篇在本文中的角色：</strong> 不是用来“证明 repo 这条 alpha 一定成立”，而是提醒我们：<strong>crypto TA 类 raw alpha 一开始就该带成本梯子，不能只看毛收益。</strong></li>
+</ul>
+<h2>5. repo 具体是怎么把这条 alpha 写出来的</h2>
+<h3>5.1 数据与 frequency</h3>
+<p><code>walk_forward_optimization.py</code> 直接读：</p>
+<ul>
+<li><code>BTCUSDT_1m.csv</code></li>
+</ul>
+<p>然后先做一次 desk 友好的降采样：</p>
+<ul>
+<li>把 <code>1m</code> OHLCV 聚合成 <code>15m</code></li>
+<li><code>open=first</code>，<code>high=max</code>，<code>low=min</code>，<code>close=last</code>，<code>volume=sum</code></li>
+</ul>
+<p>这点很重要：<strong>repo 的输入虽然是 1m，但 alpha 判定主框架其实已经落在 15m。</strong> 这正好贴近我们当前 desk 默认主频。</p>
+<h3>5.2 Train / test shell：不是随便挑一组参数就宣布胜利</h3>
+<p>repo 把 walk-forward 明确写成：</p>
+<ul>
+<li><code>6</code> 个月 train</li>
+<li><code>3</code> 个月 test</li>
+<li>每次窗口向前滚 <code>3</code> 个月</li>
+</ul>
+<p>也就是说，它不是在全样本上找最优参数然后自我感动，而是至少有一个<strong>滚动 OOS 壳子</strong>。</p>
+<h3>5.3 Entry：异常收益冲击 × 均线位移 × 放量确认</h3>
+<p>源码里 long 条件是：</p>
+<ul>
+<li><code>curr_roc &gt; roc_threshold * curr_roc_std</code></li>
+<li><code>curr_price &gt; curr_ema</code></li>
+<li><code>curr_vol &gt; curr_vol_ma</code></li>
+<li><code>curr_roc &gt; roc_prev</code></li>
+<li><code>curr_price &gt; curr_ema + ema_threshold * ema_std</code></li>
+</ul>
+<p>short 则完全镜像：</p>
+<ul>
+<li><code>curr_roc &lt; -roc_threshold * curr_roc_std</code></li>
+<li><code>curr_price &lt; curr_ema</code></li>
+<li><code>curr_vol &gt; curr_vol_ma</code></li>
+<li><code>curr_roc &lt; roc_prev</code></li>
+<li><code>curr_price &lt; curr_ema - ema_threshold * ema_std</code></li>
+</ul>
+<p>这条设计里，<strong>真正的 alpha 本体</strong> 是第一条： <code>ROC 相对自身波动显著异常</code>。</p>
+<p>后面几条更像 admission / confirmation：</p>
+<ul>
+<li><code>price vs EMA</code>：方向结构别和 shock 打架；</li>
+<li><code>volume &gt; volume_MA</code>：别在无量时追；</li>
+<li><code>curr_roc &gt; roc_prev</code>：要求冲击还在加速；</li>
+<li><code>price &gt; EMA + m×EMA_std</code>：要求不是刚碰到均线，而是已经明显偏离。</li>
+</ul>
+<p>所以更准确的 desk 读法应该是： <strong>raw alpha = shock continuation；EMA / volume / displacement 是 admission layer，而不是 alpha 本体本身。</strong></p>
+<h3>5.4 Exit：不是固定 hold，而是结构失效就走</h3>
+<p>repo 的出场没有搞太多花活：</p>
+<ul>
+<li>long：<code>price &lt; EMA</code> 或 <code>price &lt; trailing_stop</code></li>
+<li>short：<code>price &gt; EMA</code> 或 <code>price &gt; trailing_stop</code></li>
+</ul>
+<p>这比“永远持有 N 根 bar”更适合短周期 desk，因为它自然允许：</p>
+<ul>
+<li>有些 shock 只延续 2~3 根；</li>
+<li>有些冲击会拉出一段 trend leg；</li>
+<li>trailing stop 帮你留住继续加速的样本，而 EMA 回归负责切掉结构失效。</li>
+</ul>
+<h3>5.5 Sizing 与成本：很粗，但至少不是零</h3>
+<p>代码里：</p>
+<ul>
+<li><code>risk_percent = 10</code></li>
+<li><code>fee = 0.02</code></li>
+<li>PnL 扣减口径是 <code>2 * fee / 100</code></li>
+</ul>
+<p>翻成更直观的口径：</p>
+<ul>
+<li>每笔交易按约 <strong>10% 资金权重</strong>计入收益；</li>
+<li>round-trip fee 约 <strong>4 bps</strong>。</li>
+</ul>
+<p>这里要非常诚实：</p>
+<ul>
+<li><code>10%</code> 更像固定 notional fraction，不是完整风险预算；</li>
+<li><code>4 bps</code> 对很多真实 perp 执行场景都偏乐观；</li>
+<li>repo 没有显式 funding、冲击成本、挂吃单差异、延迟/队列成本。</li>
+</ul>
+<p>所以它更像一张 <strong>alpha existence card</strong>，而不是可直接拿去实盘的成本口径。</p>
+<h2>6. 5 个最值得记住的硬数据点</h2>
+<ol>
+<li><strong>主频其实已经是 <code>15m</code>，不是 repo 简介里那句“1m 数据”本身。</strong> 因为源码先把 <code>1m</code> 聚合成了 <code>15m</code> 再判信号。</li>
+<li><strong>walk-forward 不是装饰。</strong> 训练/测试壳子是 <code>6m train / 3m test / 3m step</code>。</li>
+<li><strong>参数搜索空间很宽。</strong> <code>EMA_length / volume_ma_period / roc_period / roc_std_window</code> 全都在 <code>10~300</code> 间搜索。</li>
+<li><strong>冲击阈值不是固定 return，而是波动标准化阈值。</strong> <code>roc_threshold</code> 搜 <code>0.5~10.0</code>，避免把不同波动环境下的同样绝对涨跌幅混为一谈。</li>
+<li><strong>位移确认与风控也被参数化了。</strong> <code>ema_threshold</code> 搜 <code>1~5</code> 个 rolling std，<code>trailing_pct</code> 搜 <code>0.5%~10%</code>。</li>
+</ol>
+<p>这 5 个点说明：repo 最值钱的不只是“做 momentum”，而是它把 <strong>冲击、确认、退出、WFO</strong> 四层都工程化了。</p>
+<h2>7. desk 最该偷走的，不是“Optuna 优化”这几个字</h2>
+<p>如果按 repo 自己的包装去读，很容易把重点放在参数搜索。但对我们更值钱的其实是下面这条 skeleton：</p>
+<ul>
+<li><strong>raw alpha：</strong> vol-normalized return shock continuation</li>
+<li><strong>admission：</strong> EMA 同向 + volume 确认 + displacement 够大</li>
+<li><strong>exit：</strong> EMA 回归 / trailing stop</li>
+<li><strong>research shell：</strong> rolling train/test + 宽参数区间</li>
+</ul>
+<p>也就是说，<strong>Optuna 只是外壳，alpha 内核是“异常冲击后的短段延续”。</strong></p>
+<h2>8. 和当前 1m / 3m / 5m / 15m 的关系</h2>
+<h3>8.1 这条线和我们当前主频是对得上的</h3>
+<p>repo 的判定层本来就是 <code>15m</code>。因此它最适合：</p>
+<ul>
+<li><code>15m</code>：做主实验与 first verdict；</li>
+<li><code>5m</code>：细化入场时机、做 execution refinement；</li>
+<li><code>1m / 3m</code>：只在确认 15m after-cost 活着后，再用于更细的追价/回撤优化。</li>
+</ul>
+<h3>8.2 不要错翻成“任何短涨跌都追”</h3>
+<p>真正可 desk 化的翻法不是：</p>
+<ul>
+<li>“5m 涨了就追”；</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li>“最近一段收益冲击，已经显著超过它自己近期常态波动”；</li>
+<li>“而且这次冲击不是 dry move，而是有量、有结构位移”；</li>
+<li>“这时才允许追第二段 continuation”。</li>
+</ul>
+<h3>8.3 它属于哪类 raw alpha</h3>
+<p>它不是 pairs，不是 carry，不是 funding，也不是单纯 breakout 画线。 它更接近：</p>
+<ul>
+<li><strong>single-asset trend / momentum</strong></li>
+<li><strong>shock continuation</strong></li>
+<li><strong>volatility-normalized directional alpha</strong></li>
+</ul>
+<h2>9. 最小可复现实验</h2>
+<h3>实验 A：15m baseline existence test（最优先）</h3>
+<ul>
+<li><strong>标的：</strong> <code>BTC / ETH / SOL / BNB</code> 永续；可先从 BTC+ETH 起步</li>
+<li><strong>bar：</strong> <code>15m</code></li>
+<li><strong>signal window：</strong> <code>roc_period ∈ {12, 24, 36, 48}</code>（约 <code>3h / 6h / 9h / 12h</code>）</li>
+<li><strong>shock 定义：</strong> <code>ROC / rolling_std(ROC) &gt; k</code> 做多；<code>&lt; -k</code> 做空，<code>k ∈ {1.0, 1.5, 2.0, 2.5}</code></li>
+<li><strong>admission：</strong></li>
+<li><code>price &gt; EMA_L</code> / <code>&lt; EMA_L</code></li>
+<li><code>volume &gt; rolling_volume_ma</code></li>
+<li><code>|price - EMA| / rolling_std(price) &gt; m</code></li>
+<li><strong>exit：</strong> <code>EMA cross-back</code> vs <code>1.0% / 1.5% / 2.0% trailing</code> vs 二者并用</li>
+<li><strong>成本：</strong> round-trip <code>6 / 10 / 14 / 20 / 30 bps</code></li>
+</ul>
+<p>先回答一个最朴素的问题：<strong>after-cost 下，shock continuation 在 15m perp 上到底有没有生存空间。</strong></p>
+<h3>实验 B：5m execution refinement</h3>
+<p>若实验 A 成立，再做：</p>
+<ul>
+<li><code>15m signal confirmed</code> 后，比较</li>
+<li>下一根 <code>5m</code> 立即追；</li>
+<li>等第一根 <code>5m</code> 小回踩后追；</li>
+<li>用 <code>VWAP pullback</code> 进；</li>
+<li>看哪个 entry 能把追涨/追跌的 adverse selection 压下来。</li>
+</ul>
+<h3>实验 C：shared veto / overlay（不要反客为主）</h3>
+<p>在 alpha 本体成立后，再叠：</p>
+<ol>
+<li>高 funding 逆向拥挤 veto；</li>
+<li>重大 news / liquidation cascade veto；</li>
+<li>超高 realized vol 环境下降杠杆。</li>
+</ol>
+<p>注意顺序：<strong>先验证 raw alpha，再加 overlay；不要让 overlay 冒充 alpha。</strong></p>
+<h2>10. 下一步怎么测</h2>
+<ol>
+<li><strong>先做“去优化版”复刻。</strong> 不要一上来就大网格 + Optuna；先固定 1~2 组合理参数，看 existence。否则很容易把 WFO 壳子误当成 alpha。</li>
+<li><strong>优先测 cross-asset transfer。</strong> repo 只喂了 <code>BTCUSDT_1m.csv</code>；我们更该看 BTC 以外，ETH / SOL / BNB 是否也有类似结构。</li>
+<li><strong>先把成本打厚。</strong> repo 默认约 <code>4bps</code> round-trip 太乐观；desk 版 first pass 应至少看 <code>10~30bps</code>。</li>
+<li><strong>把 alpha 与 admission 拆开做 ablation。</strong> 依次比较：</li>
+</ol>
+<ul>
+<li>shock only</li>
+<li>shock + EMA</li>
+<li>shock + EMA + volume</li>
+<li>shock + EMA + volume + displacement</li>
+<p>这样才知道 edge 到底来自哪一层。</p>
+</ul>
+<ol>
+<li><strong>比较 fixed hold vs structure exit。</strong> 很多 shock alpha 的好坏不止取决于 entry，也取决于“要不要让赢家多跑一段”。</li>
+</ol>
+<h2>11. 这条线最容易错在哪</h2>
+<ul>
+<li><strong>把 admission layer 当 alpha 本体。</strong> 其实真正的 raw alpha 是异常冲击后的延续，EMA/volume/displacement 只是筛选器。</li>
+<li><strong>把 Optuna 当护身符。</strong> 有 walk-forward 不等于一定稳；如果 alpha 本体弱，优化只是在放大噪音。</li>
+<li><strong>低估执行摩擦。</strong> 追强/追弱类策略最怕滑点和追单成本，repo 的 fee 口径明显偏薄。</li>
+<li><strong>只做 BTC 就宣布 universality。</strong> 单币 directional alpha 最怕只是在某段 BTC regime 中看起来好看。</li>
+<li><strong>把它硬说成 breakout。</strong> 它和经典 Donchian/通道突破不同：这里更核心的是 <strong>异常收益冲击的标准化与加速</strong>，不是一根线被穿。</li>
+</ul>
+<h2>12. 对当前项目的直接意义</h2>
+<p>这条主题值得进研究池，因为它满足当前高优先级条件：</p>
+<ul>
+<li><strong>主题类型：raw alpha</strong></li>
+<li><strong>基础 alpha 清楚</strong></li>
+<li><strong>可以直接写成 entry / exit / sizing / risk / cost</strong></li>
+<li><strong>数据公开可得（Binance 1m → 15m）</strong></li>
+<li><strong>和当前学习层匹配：动量 + 量价确认 + trailing 风控</strong></li>
+</ul>
+<p>如果要一句话概括：<strong>这份 repo 最值钱的不是“自动调参”，而是它把一条 short-cycle directional raw alpha 诚实拆成了四层：<code>异常冲击</code>、<code>结构确认</code>、<code>量能确认</code>、<code>结构失效退出</code>。</strong></p>
+<h2>13. 来源链接</h2>
+<h3>主来源</h3>
+<ul>
+<li>Repo：&lt;<a href="https://github.com/SigmaFlowX/Crypto-Momentum-Driven-Strategy&gt;">https://github.com/SigmaFlowX/Crypto-Momentum-Driven-Strategy&gt;</a></li>
+<li>GitHub API metadata：&lt;<a href="https://api.github.com/repos/SigmaFlowX/Crypto-Momentum-Driven-Strategy&gt;">https://api.github.com/repos/SigmaFlowX/Crypto-Momentum-Driven-Strategy&gt;</a></li>
+<li>Core file：&lt;<a href="https://raw.githubusercontent.com/SigmaFlowX/Crypto-Momentum-Driven-Strategy/main/walk_forward_optimization.py&gt;">https://raw.githubusercontent.com/SigmaFlowX/Crypto-Momentum-Driven-Strategy/main/walk_forward_optimization.py&gt;</a></li>
+</ul>
+<h3>背景来源</h3>
+<ul>
+<li>Paper DOI：&lt;<a href="https://doi.org/10.1016/j.intfin.2022.101601&gt;">https://doi.org/10.1016/j.intfin.2022.101601&gt;</a></li>
+<li>Readable article page：&lt;<a href="https://www.sciencedirect.com/science/article/pii/S1042443122000130&gt;">https://www.sciencedirect.com/science/article/pii/S1042443122000130&gt;</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2025 ML arbitrage 论文直接抄成黑箱分类器：对 desk 更该先测的是「inventory-funded cross-venue quote gap × confidence threshold」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2025 ML arbitrage 论文直接抄成黑箱分类器：对 desk 更该先测的是「inventory-funded cross-venue quote gap × confidence threshold」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-30 21:24 UTC</span>
+      <span class="pill">研究时间：2026-03-30 21:05 UTC</span>
+      <span class="pill">类型：2025 *International Journal of Network Management* 论文摘要元数据（Crossref）+ Binance/OKX/Bybit 公开 spot API live quick check</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/cross-venue/same-underlier/spot/arbitrage/quote-gap/confidence-threshold/inventory-funded/binance/okx/bybit/btc/eth/xrp/doge/1m/3m/5m/15m/paper/public-data/cost</span>
+      <span class="pill">证据类型：论文摘要级证据 + 公开 live API 快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-30_2105_crossvenue-confidence-threshold-arb-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-30 21:05 UTC</li>
+<li>类型：2025 *International Journal of Network Management* 论文摘要元数据（Crossref）+ Binance/OKX/Bybit 公开 spot API live quick check</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一币种在多交易所的最优买一/卖一会反复出现短命错位；若预先在多所备库存，且只在“价差足够大 + 置信度足够高”时出手，吃的是 cross-venue quote gap 的可成交收敛 alpha，而不是链上转币慢吞吞搬砖。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/cross-venue/same-underlier/spot/arbitrage/quote-gap/confidence-threshold/inventory-funded/binance/okx/bybit/btc/eth/xrp/doge/1m/3m/5m/15m/paper/public-data/cost</li>
+<li>证据类型：论文摘要级证据 + 公开 live API 快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是一篇很新、而且很像“可直接 desk 化”的跨所套利论文：</p>
+<ul>
+<li><strong>Authors</strong>：Kristína Okasová, Michal Géci, Kristián Košťál</li>
+<li><strong>Year</strong>：2025</li>
+<li><strong>Title</strong>：*Predicting Arbitrage Occurrences With Machine Learning and Improved Decision Threshold Level in Live‐Trading Crypto Environments*</li>
+<li><strong>Venue</strong>：*International Journal of Network Management*</li>
+<li><strong>DOI</strong>：10.1002/nem.70030</li>
+<li><strong>Readable URL</strong>：<a href="https://doi.org/10.1002/nem.70030">https://doi.org/10.1002/nem.70030</a></li>
+<li><strong>Metadata / abstract URL</strong>：<a href="https://api.crossref.org/works/10.1002/nem.70030">https://api.crossref.org/works/10.1002/nem.70030</a></li>
+<li><strong>Repo URL</strong>：未见作者公开配套 repo</li>
+</ul>
+<p>如果只用一句人话概括，这篇东西真正值得我们拿来测的，不是“机器学习又来预测市场了”，而是：</p>
+<p>&gt; <strong>先承认跨所价差这件事本来就存在，再把“什么时候这次价差真的值得打”写成一个 confidence-threshold admission rule。</strong></p>
+<p>这就比“看见跨所差价就无脑搬砖”诚实得多，也比“纯 ML 黑箱方向预测”更符合我们当前的短周期研发目标。</p>
+<h2>2. 核心结论</h2>
+<p>先把 base alpha 说清楚：</p>
+<p>&gt; <strong>base alpha 不是 ML。base alpha 是同一标的在不同 venue 的 quote gap / micro dislocation 会在极短时间内回归；ML 只是决定“这次 gap 值不值得打”的 admission layer。</strong></p>
+<p>这篇 paper 从摘要里给出的最有价值信息有 4 点：</p>
+<ol>
+<li><strong>它研究的是跨交易所 arbitrage，不是单所方向预测。</strong> 也就是说，主题本身就是 <code>relative value / stat-arb</code>，符合当前 desk 要补的 raw alpha 池。</li>
+<li><strong>它不是等“罕见大价差”才动，而是想提前预测离散时间窗口内是否会出现可盈利 arbitrage。</strong> 这点对 <code>1m / 3m / 5m</code> 特别重要，因为真正的问题不是“有没有 gap”，而是“能不能在 friction 前提下留下净边”。</li>
+<li><strong>它把信号使用方式写成 decision threshold，而不是分类概率直接下单。</strong> 这对 desk 的意义非常大：先有 <code>gap</code>，再有 <code>probability/confidence</code>，最后才有 <code>trade on / trade off</code>。</li>
+<li><strong>论文摘要声称整套策略 1 周收益超过 100%。</strong> 这个数字非常夸张，默认不能直接信；但恰好反过来提醒我们：<strong>应该偷的是它的 admission logic，不是它的 headline 收益率。</strong></li>
+</ol>
+<p>一句话核心结论：</p>
+<p>&gt; <strong>对 desk 更值得先测的，不是“ML 会不会神奇预测一切”，而是“跨所 quote gap 本身是 raw alpha；confidence threshold 只是把可打事件筛得更干净”。</strong></p>
+<p>一句话说明它怎么证明：</p>
+<p>&gt; <strong>论文摘要明确把研究对象写成“跨所 arbitrage strategy + ML + improved decision threshold”，并宣称只有在模型置信度足够高时才触发套利；再配合我们对 Binance/OKX/Bybit 公开 top-of-book 的 live 快检，可以确认 raw quote gap 的确经常出现，但绝大多数边本身很薄，必须靠 admission rule 和成本治理。</strong></p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮值得 intake，原因很直接：</p>
+<ol>
+<li><strong>它是 raw alpha，不是解释型材料。</strong> base alpha 就是 <code>cross-venue same-underlier quote-gap convergence</code>。</li>
+<li><strong>它是完整策略候选。</strong> 有 entry（gap+hurdle）、exit（gap close/max hold）、sizing（inventory/capacity）、risk（venue/quote-age kill-switch）、cost（maker/taker/withdrawal 不同场景）这整条链。</li>
+<li><strong>它补的是 relative-value / stat-arb 素材池。</strong> 不是继续在 breakout / trend 单线内循环。</li>
+<li><strong>它天然适配短周期。</strong> 真正的时间尺度不是日频，也不是 8h funding；而是 <code>sub-second -&gt; 1m</code> 的事件流，<code>3m/5m</code> 只是为了容纳执行摩擦与对账。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>cross-venue / same-underlier / spot stat-arb / inventory-funded arbitrage</strong></li>
+<li>基础 alpha：<strong>不同交易所对同一币种的最优报价会短暂错位，随后向更一致的价格带收敛</strong></li>
+<li>regime：<strong>高流动、高更新频率、跨所都活跃、链路稳定的时段更适合；宏观数据、交易所异常、单所维护时更容易出现“假 gap”</strong></li>
+<li>filter / veto：<strong>只有当 <code>raw gap &gt; fee + slip + inventory carry + stale-quote buffer</code> 且模型/规则置信度过线时才交易；若 quote age 异常、盘口 size 不对称、其中一所 spread 突然外扩则 veto</strong></li>
+<li>risk / sizing / execution overlay：<strong>必须预先在多所备库存；按最短板 venue 的可成交名义 sizing；优先 maker-taker 或 maker-maker 场景；禁用“发现价差再转币过去”的慢速搬砖口径</strong></li>
+</ul>
+<h2>4. 3 个关键数据点</h2>
+<h3>4.1 论文摘要给出的 headline 很激进</h3>
+<p>Crossref 收到的摘要原文写到：</p>
+<ul>
+<li>目标是 <strong>“predict the potential for arbitrage”</strong>；</li>
+<li>通过 <strong>“confidence level metrics”</strong> 只在模型足够确定时触发；</li>
+<li>并声称 <strong>“profitability of the entire strategy exceeds 100% within a 1-week timeframe.”</strong></li>
+</ul>
+<p>这个收益数字默认只能当 <strong>待复核 claim</strong>，不能当已验证事实。</p>
+<h3>4.2 公开 live quick check：majors 的 raw top-of-book cross-gap 确实频繁出现</h3>
+<p>我用 Binance / OKX / Bybit 公共 spot API，对 <code>BTCUSDT / ETHUSDT / DOGEUSDT / XRPUSDT</code> 做了 <strong>12 次、约 1.5 秒间隔</strong> 的 distinct-venue 最优 bid-vs-ask 快检（只允许 <code>bid venue != ask venue</code>）。结果：</p>
+<ul>
+<li><strong>BTCUSDT</strong>：12/12 次为正，<strong>median 0.5531 bps</strong>，<strong>max 1.6141 bps</strong></li>
+<li><strong>ETHUSDT</strong>：12/12 次为正，<strong>median 1.2489 bps</strong>，<strong>max 2.5945 bps</strong></li>
+<li><strong>DOGEUSDT</strong>：10/12 次为正，<strong>median 1.0965 bps</strong>，<strong>max 2.1939 bps</strong></li>
+<li><strong>XRPUSDT</strong>：11/12 次为正，<strong>median 1.1268 bps</strong>，<strong>max 4.5079 bps</strong></li>
+</ul>
+<p>这说明：<strong>可观察的 raw gap 并不稀缺</strong>。</p>
+<h3>4.3 但 raw gap 很可能不够厚，除非你是“有库存的人”</h3>
+<p>同样一组 live 数据也说明另一件事：</p>
+<ul>
+<li>majors 的常态 raw gap 常常只有 <strong>0.5~1.5 bps</strong>；</li>
+<li>若按普通 taker/taker 两边都吃单，很多场景会直接被费率吃掉；</li>
+<li>真正更像可交易策略的是：<strong>预布库存 + 低费率/VIP + venue 内/venue 间库存再平衡 + 只打高置信度事件。</strong></li>
+</ul>
+<p>所以这条线更像 <strong>inventory-funded micro stat-arb</strong>，不是链上转账搬砖。</p>
+<h2>5. 真正值得 desk 先偷哪一段</h2>
+<p>最该偷的不是“用哪个模型”，而是它的逻辑顺序：</p>
+<ol>
+<li><strong>先确认 raw alpha 存在：</strong> 有没有 distinct-venue 的净价差事件；</li>
+<li><strong>再确认成本后是否还有肉：</strong> fee/slip/inventory carry/quote staleness 都算进去；</li>
+<li><strong>最后才上 confidence threshold：</strong> 只打最像真机会的子集。</li>
+</ol>
+<p>也就是说，正确的研发顺序不是：</p>
+<p>&gt; 先堆模型 -&gt; 找到高概率 -&gt; 再去想交易什么。</p>
+<p>而应该是：</p>
+<p>&gt; 先定义 <code>best_bid - best_ask</code> 的 executable gap -&gt; 跑 friction ladder -&gt; 再看一个极简 classifier / threshold 有没有增益。</p>
+<p>这非常适合当前 desk，因为它不要求我们先搞一个重型预测系统；<strong>先从 rule-based threshold baseline 起步就够了。</strong></p>
+<h2>6. 可复刻的最小实验</h2>
+<h3>6.1 数据源、公开性、更新频率</h3>
+<ul>
+<li><strong>Binance Spot bookTicker / depth</strong>：公开 REST / WebSocket，可毫秒级更新</li>
+<li><strong>OKX Spot ticker / books</strong>：公开 REST / WebSocket，可毫秒级更新</li>
+<li><strong>Bybit Spot ticker / orderbook</strong>：公开 REST / WebSocket，可毫秒级更新</li>
+<li><strong>公开性</strong>：公开可得，无需私钥即可先做 snapshot / replay</li>
+<li><strong>最小实验频率</strong>：底层建议 <code>250ms~1s</code>，第一轮聚合到 <code>1m / 3m</code> 做 first verdict</li>
+</ul>
+<h3>6.2 最小可复现实验口径</h3>
+<ol>
+<li><strong>标的先只做高流动 <code>BTCUSDT / ETHUSDT / XRPUSDT / DOGEUSDT</code>。</strong></li>
+<li><strong>venue 先只接 3 所：Binance / OKX / Bybit。</strong></li>
+<li><strong>定义 executable gap：</strong></li>
+</ol>
+<ul>
+<li><code>gap_raw_bps = (max_bid_other_venue - min_ask_other_venue) / mid * 10000</code></li>
+<li>必须要求 <code>bid venue != ask venue</code></li>
+</ul>
+<ol>
+<li><strong>定义可交易门槛：</strong></li>
+</ol>
+<ul>
+<li><code>gap_net_bps = gap_raw_bps - taker_fee_bid - taker_fee_ask - slip_buffer - stale_quote_buffer</code></li>
+<li>若有 maker 能力，再单独跑 <code>maker-taker</code> 与 <code>maker-maker</code> 口径</li>
+</ul>
+<ol>
+<li><strong>方向：</strong></li>
+</ol>
+<ul>
+<li>在 ask venue 买入、在 bid venue 卖出；</li>
+<li>不做链上转账版，默认是 <strong>inventory-funded</strong></li>
+</ul>
+<ol>
+<li><strong>出场：</strong></li>
+</ol>
+<ul>
+<li>gap 回落至 <code>close_band</code>；或</li>
+<li><code>max_hold = 10s / 30s / 60s / 180s</code>；或</li>
+<li>任一 venue quote age / spread / API 状态异常强退</li>
+</ul>
+<ol>
+<li><strong>第一轮 baseline：</strong></li>
+</ol>
+<ul>
+<li>不上 ML，只跑 <code>raw threshold</code> 与 <code>persistence threshold</code></li>
+</ul>
+<ol>
+<li><strong>第二轮才加 classifier：</strong></li>
+</ol>
+<ul>
+<li>features 可先用 <code>gap level / gap velocity / venue spread / quote age / 最近 k 个 snapshot gap persistence / 同币 perp basis / 最近成交方向</code></li>
+</ul>
+<h3>6.3 第一轮先回答什么</h3>
+<ul>
+<li>哪些币、哪些 venue 组合最常给出 <strong>正的 distinct-venue gap</strong>？</li>
+<li><code>1s</code> 级别 gap 的持续时间分布如何？是 1 个 tick 闪一下，还是能撑到 5~30 秒？</li>
+<li>在 <code>taker-taker / maker-taker / maker-maker</code> 三套 friction 下，正净边事件各剩多少？</li>
+<li>若只做 <strong>高置信度 persistent gap</strong>，trade count 会掉多少、净边会厚多少？</li>
+</ul>
+<h2>7. 这张卡最容易错在哪里</h2>
+<ul>
+<li><strong>错法 1：</strong> 把它误做成“发现价差再转币”的传统搬砖。真正可活的版本更像<strong>预布库存</strong>。</li>
+<li><strong>错法 2：</strong> 用 last price 而不是 top-of-book + size + quote age。</li>
+<li><strong>错法 3：</strong> 只看 raw gap，不看 distinct venue、手续费、滑点、API 延迟。</li>
+<li><strong>错法 4：</strong> 先堆 ML，再发现 baseline 都没净边。</li>
+<li><strong>错法 5：</strong> 把论文里“1 周 &gt;100%”的结果当成可直接照搬的事实。</li>
+</ul>
+<h2>8. 为什么值得进入研究池</h2>
+<p>它值得进池，不是因为我们已经相信论文收益，而是因为它满足当前 Scout 最看重的几条：</p>
+<ol>
+<li><strong>数据稳定可拿。</strong> 三大所公开 book/ticker 足够起步；</li>
+<li><strong>规则能清楚写成 trade-on / trade-off。</strong> gap、成本、置信度、quote age 都能落成规则；</li>
+<li><strong>能很快做 first verdict。</strong> 连历史大样本都不用先等，先抓 1~3 天高频快照就能判断有没有肉；</li>
+<li><strong>是完整 raw alpha。</strong> 不是纯 filter，也不是解释型综述。</li>
+</ol>
+<p>对当前 desk，这条线的价值在于：</p>
+<p>&gt; <strong>它把“跨所价差”从一个泛泛而谈的 old story，压缩成了一个非常适合 <code>1m / 3m</code> 研发节奏的 executable alpha 候选。</strong></p>
+<h2>9. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 72 小时跨所 quote 采集。</strong> <code>BTC / ETH / XRP / DOGE</code> × <code>Binance / OKX / Bybit</code>，保留 top-of-book、size、timestamp、quote age。</li>
+<li><strong>先跑纯 baseline，不上 ML。</strong> 比较 <code>0.5 / 1 / 2 / 3 / 5 bps</code> raw gap 阈值，在不同 friction 假设下的净边与事件数。</li>
+<li><strong>把持仓前提写死：inventory-funded only。</strong> 同时记录各 venue 库存占用，别偷换成链上搬砖。</li>
+<li><strong>第二轮再加 confidence threshold。</strong> 先从极简 logistic/GBM 做起，看它相对阈值基线是否真的提升 <code>net expectancy</code>，而不是只提升 in-sample accuracy。</li>
+<li><strong>如果 majors 太薄，就转向次一层高流动 alts。</strong> 但仍要坚持先跑 friction ladder，再决定是否值得进正式 admission check。</li>
+</ol>
+<h2>10. 来源</h2>
+<h3>论文 / 元数据</h3>
+<ul>
+<li>Kristína Okasová, Michal Géci, Kristián Košťál (2025), *Predicting Arbitrage Occurrences With Machine Learning and Improved Decision Threshold Level in Live‐Trading Crypto Environments*, *International Journal of Network Management*.</li>
+<li>DOI: <a href="https://doi.org/10.1002/nem.70030">https://doi.org/10.1002/nem.70030</a></li>
+<li>Crossref metadata + abstract: <a href="https://api.crossref.org/works/10.1002/nem.70030">https://api.crossref.org/works/10.1002/nem.70030</a></li>
+</ul>
+<h3>公开 live 数据接口（本次快检）</h3>
+<ul>
+<li>Binance Spot bookTicker: <a href="https://api.binance.com/api/v3/ticker/bookTicker">https://api.binance.com/api/v3/ticker/bookTicker</a></li>
+<li>OKX Spot ticker: <a href="https://www.okx.com/api/v5/market/ticker">https://www.okx.com/api/v5/market/ticker</a></li>
+<li>Bybit Spot tickers: <a href="https://api.bybit.com/v5/market/tickers">https://api.bybit.com/v5/market/tickers</a></li>
+</ul>
+</body>
+</html>

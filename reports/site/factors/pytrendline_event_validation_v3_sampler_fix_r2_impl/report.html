@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>PyTrendline V3 · Sampler Fix R2 Implementation Note</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 32px auto; max-width: 1100px; line-height: 1.6; color: #1f2937; padding: 0 16px; }
+    h1, h2, h3 { color: #111827; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; background: #fff; }
+    .ok { background: #ecfdf5; border-left: 4px solid #10b981; padding: 12px 14px; }
+    .warn { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 14px; }
+    .muted { color: #6b7280; }
+    code { background: #f3f4f6; padding: 1px 4px; border-radius: 4px; }
+    pre { background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 10px; overflow-x: auto; font-size: 13px; }
+    .tbl { border-collapse: collapse; width: 100%; font-size: 14px; }
+    .tbl th, .tbl td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; vertical-align: top; }
+    .tbl th { background: #f9fafb; }
+    ul { margin-top: 0.3em; }
+  </style>
+</head>
+<body>
+  <h1>PyTrendline V3 · Sampler Fix R2 Implementation Note</h1>
+  <p><a href="../pytrendline_event_validation_v3/report.html">← 返回 v3 主报告</a> ｜ <a href="../pytrendline_event_validation_v3_sampler_fix_spec/report.html">上一页：sampler fix spec</a></p>
+
+  <div class="card warn">
+    <b>这页完成了什么？</b>
+    只完成 TODO 里的 <code>A4-b2</code>：把 <b>event-time strict wrong-side breakout 过滤</b> 实现在 v3 sampler 里。
+    这页不是重跑结果页，所以不会假装回答“修完后 alpha 还剩多少”。
+  </div>
+
+  <div class="card ok">
+    <b>一句话结论：</b>
+    v3 采样器源码里现在已经有了显式的 R2 几何门：<b>support breakout 若 line 已高于 event high，则该 breakout raw / confirm_1 / confirm_2 一起丢弃；resistance 则做镜像处理</b>。
+  </div>
+
+  <h2>1. 这轮发现了什么？</h2>
+  <div class="card">
+    <ul>
+      <li><b>Found:</b> support 分支已出现 R2 条件：<code>if breakout_raw and (lv_t &gt; h):</code>（检测结果：<b>是</b>）。</li>
+      <li><b>Found:</b> resistance 分支已出现 R2 条件：<code>if breakout_raw and (lv_t &lt; l):</code>（检测结果：<b>是</b>）。</li>
+      <li><b>Found:</b> 两边都不只是屏蔽 raw breakout，还会同步把 <code>breakout_confirm_1</code> / <code>breakout_confirm_2</code> 设为 <code>False</code>，避免坏样本换个确认标签重新溜回来。</li>
+    </ul>
+  </div>
+
+  <h2>2. 这轮没有发现什么？</h2>
+  <div class="card">
+    <ul>
+      <li><b>Not found:</b> 这轮没有做 BTC+ETH / 20~45d 的最小重跑，所以这页不是 A4-c。</li>
+      <li><b>Not found:</b> 这轮没有处理 exact mirrored breakout pair；那还是 <code>A4-b3</code> 的剩余工作。</li>
+      <li><b>Not found:</b> 这轮没有声称 breakout family 的 side-level 结论已经可信；需要等重跑审计回来再说。</li>
+    </ul>
+  </div>
+
+  <h2>3. 实现检查表</h2>
+  <div class="card"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>check_id</th>
+      <th>status</th>
+      <th>line</th>
+      <th>what_it_checks</th>
+      <th>reliability</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>R2-support-gate</td>
+      <td>present</td>
+      <td>300</td>
+      <td>support breakout rows are dropped when line_value_event &gt; event_high</td>
+      <td>high for source-code presence</td>
+    </tr>
+    <tr>
+      <td>R2-resistance-gate</td>
+      <td>present</td>
+      <td>328</td>
+      <td>resistance breakout rows are dropped when line_value_event &lt; event_low</td>
+      <td>high for source-code presence</td>
+    </tr>
+    <tr>
+      <td>R2-support-resets</td>
+      <td>present</td>
+      <td>301</td>
+      <td>support wrong-side gate zeroes raw / confirm_1 / confirm_2 breakout flags</td>
+      <td>high for source-code presence</td>
+    </tr>
+    <tr>
+      <td>R2-resistance-resets</td>
+      <td>present</td>
+      <td>329</td>
+      <td>resistance wrong-side gate zeroes raw / confirm_1 / confirm_2 breakout flags</td>
+      <td>high for source-code presence</td>
+    </tr>
+  </tbody>
+</table></div>
+
+  <h2>4. 代码证据（support 分支）</h2>
+  <div class="card">
+    <pre>0297: 
+0298:         # Event-time geometry gate: a support breakout row is unreliable if the
+0299:         # support line already sits above the entire event candle&#x27;s high.
+0300:         if breakout_raw and (lv_t &gt; h):
+0301:             breakout_raw = False
+0302:             breakout_confirm_1 = False
+0303:             breakout_confirm_2 = False</pre>
+  </div>
+
+  <h2>5. 代码证据（resistance 分支）</h2>
+  <div class="card">
+    <pre>0325:         breakout_confirm_2 = breakout_raw and (c1 &gt; lv_t1 + tolerance) and (c2 &gt; lv_t2 + tolerance)
+0326: 
+0327:         # Mirror event-time geometry gate for resistance breakouts.
+0328:         if breakout_raw and (lv_t &lt; l):
+0329:             breakout_raw = False
+0330:             breakout_confirm_1 = False
+0331:             breakout_confirm_2 = False</pre>
+  </div>
+
+  <h2>6. 结果该怎么读？</h2>
+  <div class="card">
+    <ul>
+      <li><b>Plain language：</b>以前 sampler 可能把“这根线在事件发生那根 K 线时，几何位置已经明显错边”的 breakout 也记进样本。现在至少先把这批最明显的坏 breakout 行挡住了。</li>
+      <li><b>What this supports：</b>后续 A4-c 的最小重跑，应该能诚实回答 strict wrong-side share 是否下降。</li>
+      <li><b>What this does NOT support：</b>还不支持直接说 support / resistance breakout 是两条独立 alpha，也不支持说 breakout short 主线已经审计干净。</li>
+    </ul>
+  </div>
+
+  <h2>7. 可靠性</h2>
+  <div class="card">
+    <ul>
+      <li><b>高：</b>“代码里有没有这道门”——这是直接扫源码得出的。</li>
+      <li><b>低 / 未测：</b>“这道门会让样本减少多少、alpha 还剩多少”——必须等最小重跑。</li>
+    </ul>
+  </div>
+
+  <h2>8. 下一步</h2>
+  <div class="card">
+    <ol>
+      <li>继续做 <code>A4-b3</code>：显式处理 exact mirrored breakout pairs。</li>
+      <li>然后做 <code>A4-c</code>：BTC+ETH / 20~45d 最小重跑，对比 strict wrong-side rows 与 mirrored pair rows 是否下降。</li>
+    </ol>
+  </div>
+
+  <h2>Artifacts</h2>
+  <div class="card">
+    <ul>
+      <li><a href="../../artifacts/pytrendline_event_validation_v3_sampler_fix_r2_impl/implementation_checks.csv">implementation_checks.csv</a></li>
+      <li><a href="../../artifacts/pytrendline_event_validation_v3_sampler_fix_r2_impl/support_gate_snippet.txt">support_gate_snippet.txt</a></li>
+      <li><a href="../../artifacts/pytrendline_event_validation_v3_sampler_fix_r2_impl/resistance_gate_snippet.txt">resistance_gate_snippet.txt</a></li>
+      <li><a href="../../artifacts/pytrendline_event_validation_v3_sampler_fix_r2_impl/summary.json">summary.json</a></li>
+    </ul>
+  </div>
+</body>
+</html>

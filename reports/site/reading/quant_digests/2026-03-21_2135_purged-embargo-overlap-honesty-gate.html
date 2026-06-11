@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 15m OOS 当真：先过 `purged + embargo` 的 interval-overlap honesty gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 15m OOS 当真：先过 `purged + embargo` 的 interval-overlap honesty gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-21 21:25 UTC</span>
+      <span class="pill">研究时间：2026-03-21 21:35 UTC</span>
+      <span class="pill">类型：GitHub 仓库 + 经典方法论文 + 本地快检</span>
+      <span class="pill">主题标签：breakout-short / fibonacci / retest_hold / EMA / PSAR / purged-cv / embargo / label-leakage / OOS / honesty-gate</span>
+      <span class="pill">证据类型：论文证据 + 工程实现 + 本地数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-21_2135_purged-embargo-overlap-honesty-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-21 21:35 UTC</li>
+<li>类型：GitHub 仓库 + 经典方法论文 + 本地快检</li>
+<li>主题标签：breakout-short / fibonacci / retest_hold / EMA / PSAR / purged-cv / embargo / label-leakage / OOS / honesty-gate</li>
+<li>证据类型：论文证据 + 工程实现 + 本地数据快检</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<p>我这轮不是再找一个新 trigger，而是补一层更直接服务三条收口线的“评估诚实门”：看 <code>CombinatorialPurgedCV</code>（skfolio）和 Purged/Embargo 方法怎么防止时间重叠泄漏，并用本地 15m trade log 做了最小快检。</p>
+<h2>2) 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 对我们这种 <code>signal -&gt; hold N bars</code> 的 15m 策略，先不处理 train/test 区间重叠，再漂亮的 OOS 都可能偏乐观。</li>
+<li><strong>一句话证明方式：</strong> 我直接用本地三条 archetype 的已落地交易区间（<code>signal_ts ~ exit_ts</code>）做重叠统计，结果显示随机切分时重叠非常高，而 <code>purged + embargo</code> 能把这块泄漏显式扣掉。</li>
+<li>本地快检（<code>reports/artifacts/scout_rank70_fast_entry_slow_exit_handoff_15m/trade_log.csv</code>，<code>baseline_exit</code>）显示：</li>
+<li>随机 80/20 切分下，train 与 test 标签区间重叠均值：</li>
+<li><code>breakout_short</code> <strong>44.5%</strong></li>
+<li><code>fib_retest_long</code> <strong>38.8%</strong></li>
+<li><code>ema_psar_long</code> <strong>50.5%</strong></li>
+<li>若改用时间分块 + purged/embargo（10 folds, test=2 folds, embargo=8 bars=120min），平均 purge 比例为：</li>
+<li><code>breakout_short</code> <strong>2.55%</strong>（额外 embargo <strong>0.73%</strong>）</li>
+<li><code>fib_retest_long</code> <strong>5.39%</strong></li>
+<li><code>ema_psar_long</code> <strong>1.69%</strong></li>
+<li>这说明：<strong>泄漏不是抽象风险，而是可量化且 setup 不对称的风险</strong>；<code>fib_retest_hold</code> 的重叠敏感性在这组数据里最高。</li>
+</ul>
+<h2>3) 为什么和当前项目有关</h2>
+<p>这轮和三条收口线是直接相关，不是“统计洁癖”：</p>
+<ul>
+<li><code>V3 final-verdict / breakout-short follow-up</code>：很多 verdict 都是事件后若干根 K 的路径判决，若 train/test 区间重叠，容易把“同一段波动结构”重复学习。</li>
+<li><code>Fibonacci confirmation / retest_hold</code>：回踩确认天然有 clustered signals，最容易出现标签区间互相覆盖。</li>
+<li><code>EMA / PSAR raw alpha focus</code>：raw edge 本来就薄，少量泄漏就可能把 OOS 符号翻正，导致错误晋级。</li>
+</ul>
+<p>所以这一刀的价值是：在继续收口前，先保证“我们看到的 OOS 改善”不是评估口径送的。</p>
+<h2>4) 可复刻的最小实验（下一步怎么测）</h2>
+<p><strong>研究假设</strong>：三条线里，凡是带 <code>hold 8 bars</code> 或更长管理窗的规则，如果不用 purged/embargo，OOS 会系统性偏乐观。</p>
+<p><strong>最小可计算定义</strong>：</p>
+<ul>
+<li>每笔信号对应一个标签区间：<code>[signal_ts, exit_ts]</code></li>
+<li>overlap 定义：train 区间与任一 test 区间相交</li>
+<li>purge：删除 overlap 的 train 样本</li>
+<li>embargo：删除 test 结束后 <code>H</code>（默认 8 bars）内的 train 样本</li>
+</ul>
+<p><strong>最小回测切口</strong>：</p>
+<ul>
+<li>资产：BTC/ETH/SOL</li>
+<li>周期：15m（必要时补 5m 作为 entry confirm）</li>
+<li>候选：每条线先固定 20~50 个变体（不要先上百）</li>
+<li>统一执行：<code>next-bar open + no-overlap + 6/10/15 bps</code></li>
+</ul>
+<p><strong>先看 2 个指标</strong>：</p>
+<ol>
+<li><code>OOS Sharpe / Calmar</code> 在 random split vs purged split 的降幅</li>
+<li><code>winner retention</code>（random split Top-N 在 purged split 还能留几条）</li>
+</ol>
+<p><strong>入池门槛建议（第一版）</strong>：</p>
+<ul>
+<li>仅在 purged/embargo 评估下仍为正且 trade count 过线的候选，才允许进下一轮 final-verdict 讨论。</li>
+</ul>
+<h2>5) 风险与保留意见</h2>
+<ul>
+<li>Purged/embargo 只能让评估更诚实，<strong>不会</strong>把坏 alpha 变好。</li>
+<li><code>embargo_size</code> 必须跟最大持仓窗、特征延迟窗口一致；写太小仍会漏，写太大会过度砍样本。</li>
+<li>若候选本来就稀疏，purged 后方差会显著变大，需要同步看 trade count 与窗口稳定性。</li>
+</ul>
+<h2>6) 来源</h2>
+<ul>
+<li><strong>López de Prado, M. (2018). _Advances in Financial Machine Learning_. Wiley.</strong></li>
+<li>Readable URL: <code><a href="https://www.oreilly.com/library/view/advances-in-financial/9781119482086/">https://www.oreilly.com/library/view/advances-in-financial/9781119482086/</a></code></li>
+<li>备注：Purged K-Fold / Embargo / CPCV 的方法母体。</li>
+<li><strong>Bailey, D. H., Borwein, J., López de Prado, M., &amp; Zhu, Q. J. (2015). _The Probability of Backtest Overfitting_. SSRN / Journal of Computational Finance.</strong></li>
+<li>DOI: <code><a href="https://doi.org/10.2139/ssrn.2326253">https://doi.org/10.2139/ssrn.2326253</a></code></li>
+<li>Readable URL: <code><a href="https://ssrn.com/abstract=2326253">https://ssrn.com/abstract=2326253</a></code></li>
+<li><strong>skfolio maintainers (2026). _CombinatorialPurgedCV_ docs + repo.</strong></li>
+<li>Readable URL: <code><a href="https://skfolio.org/generated/skfolio.model_selection.CombinatorialPurgedCV.html">https://skfolio.org/generated/skfolio.model_selection.CombinatorialPurgedCV.html</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/skfolio/skfolio">https://github.com/skfolio/skfolio</a></code></li>
+<li><strong>mlfinlab docs (Hudson &amp; Thames). Purged/Embargo + CPCV implementation note.</strong></li>
+<li>Readable URL: <code><a href="https://random-docs.readthedocs.io/en/latest/implementations/cross_validation.html">https://random-docs.readthedocs.io/en/latest/implementations/cross_validation.html</a></code></li>
+<li><strong>本地快检产物</strong>：</li>
+<li><code>reports/artifacts/literature/purged_embargo_overlap_quickcheck_2026-03-21.csv</code></li>
+<li><code>reports/artifacts/literature/random_split_overlap_benchmark_2026-03-21.csv</code></li>
+</ul>
+</body>
+</html>

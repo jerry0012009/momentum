@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把三角套利机会数当 alpha：这篇 2025 论文更值得先复现的是「可执行性阈值（成本+深度+延迟）」这条 raw alpha 生存线</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把三角套利机会数当 alpha：这篇 2025 论文更值得先复现的是「可执行性阈值（成本+深度+延迟）」这条 raw alpha 生存线</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-24 04:24 UTC</span>
+      <span class="pill">研究时间：2026-03-24 04:28 UTC</span>
+      <span class="pill">类型：近 5 年论文（全文）+ 高信号开源仓库 + Binance 公共数据最小快检</span>
+      <span class="pill">主题标签：raw-alpha/stat-arb/relative-value/triangular-arbitrage/cycle-arbitrage/execution-latency/orderbook-depth/transaction-cost/binance/crypto/1m/3m/5m/15m/paper/repo</span>
+      <span class="pill">证据类型：论文全文 + 开源检测仓库 + 公开 API 快检（本地）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-24_0428_triangular-arb-executability-not-edge-count.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-24 04:28 UTC</li>
+<li>类型：近 5 年论文（全文）+ 高信号开源仓库 + Binance 公共数据最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一交易所内 <code>USDT→BTC→LTC→USDT</code>（或更一般多边循环）短时定价不一致带来的无方向相对价值回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/stat-arb/relative-value/triangular-arbitrage/cycle-arbitrage/execution-latency/orderbook-depth/transaction-cost/binance/crypto/1m/3m/5m/15m/paper/repo</li>
+<li>证据类型：论文全文 + 开源检测仓库 + 公开 API 快检（本地）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这是 raw alpha，不是 filter。</strong></p>
+<p>alpha 本体是：</p>
+<ul>
+<li>当循环汇率乘积 <code>Y(t)</code> 暂时偏离 1（例如 <code>Y(t)&gt;1</code>）时，做一圈无方向换汇并回到起始资产，赚取偏离收敛前的价差；</li>
+<li>对应论文里的三角路径是 <code>USD→BTC→LTC→USD</code>。</li>
+</ul>
+<p>本轮主材料：</p>
+<ol>
+<li><strong>Muck, Schmidl, Wolf (2025, Finance Research Letters)</strong>：把三角套利从“有机会”拆到“能否执行并净赚”。</li>
+<li><strong>Drakkar-Software/Triangular-Arbitrage（2023 创建，2026 仍在更新，118★）</strong>：给出可直接跑的多资产循环机会检测框架（Binance/Hyperliquid 等），但 README 明确提示未计入手续费。</li>
+<li><strong>Binance 公共 1m K 线快检（本轮本地）</strong>：用 <code>BTCUSDT / LTCBTC / LTCUSDT</code> 做 7 天代理验证，检查 1m/3m/5m/15m 上“毛机会 vs 费用后机会”的存活率。</li>
+</ol>
+<h2>2. 核心结论（先给交易结论）</h2>
+<ul>
+<li><strong>一句话</strong>：三角套利不是“有没有机会”的问题，而是“机会是否大于成本、能否在延迟窗口内成交、且有足够深度”的问题。对 desk 来说，它是可复现 raw alpha，但执行门槛极高。</li>
+<li><strong>更直接地说</strong>：这条线值得进素材池，但应默认归类为<strong>执行敏感型 raw alpha</strong>，而不是常规 5m/15m 主策略。</li>
+</ul>
+<p>关键数据点（论文 + 本轮最小快检）：</p>
+<ol>
+<li>论文在 Binance 一周高频数据里识别 <strong>4,879</strong> 个潜在三角机会，但大多收益落在 <strong>0%~0.025%</strong>。</li>
+<li>计入交易费后，普通费率交易者仅剩 <strong>18</strong> 个可盈利机会；整周净利约 <strong>$12.43 ~ $17.73</strong>（按不同执行假设）。</li>
+<li>论文给出可执行阈值：平均需在 <strong>146ms</strong> 内完成执行，否则期望值转负；其采集延迟从欧洲约 <strong>80ms</strong> 优化到东京约 <strong>4ms</strong>。</li>
+<li>本轮 7 天 Binance 1m 代理快检（10080 bars）：<code>edge&gt;0</code> 占 <strong>56.22%</strong>，但 <code>edge&gt;0.225%</code>（论文 regular 费率阈值）仅 <strong>13 bars (0.13%)</strong>，且连续段中位数仅 <strong>1 bar</strong>、最大 <strong>2 bar</strong>。</li>
+<li>同一代理下，<code>edge&gt;0.30%</code> 在 1m/3m/5m/15m 全部为 <strong>0</strong>，说明“看起来很多机会”在成本后基本被抹平。</li>
+</ol>
+<h2>3. 为什么和当前 desk 直接相关</h2>
+<p>这轮不是补 overlay，而是补一个<strong>可独立复现的 stat-arb raw alpha 家族</strong>（triangular/cycle arb）。</p>
+<p>它对当前素材池的价值：</p>
+<ul>
+<li>补齐了“<strong>无方向相对价值</strong>”路线，不依赖趋势判断；</li>
+<li>论文+仓库都能直接转成可执行实验，不是纯综述；</li>
+<li>能反向服务其他 alpha：把“可执行性阈值（成本/延迟/深度）”作为统一 realism gate。</li>
+</ul>
+<h2>3.5 策略拆解（entry / exit / sizing / risk / cost）</h2>
+<ul>
+<li><strong>Entry（触发）</strong>：当循环报价乘积 <code>Y(t)</code> 超过阈值 <code>1 + fee_buffer + slippage_buffer</code>。</li>
+<li><strong>Exit（完成）</strong>：三腿（或多腿）循环全部成交并回到起始资产；若超时未成交则放弃（timeout kill）。</li>
+<li><strong>Sizing（仓位）</strong>：由最薄腿深度决定：<code>size = min(leg1_qty, leg2_qty换算, leg3_qty换算, ... )</code>。</li>
+<li><strong>Risk（风险）</strong>：</li>
+<li>任何一腿挂单超时 / 部分成交 → 立刻对冲或强平残留；</li>
+<li>设最大允许执行时延（论文给了 146ms 量级的参考）。</li>
+<li><strong>Cost（成本）</strong>：至少计入三腿手续费 + 滑点 + 取消重挂损耗；仅看“毛 edge”无意义。</li>
+</ul>
+<h2>4. 与 <code>1m/3m/5m/15m</code> 的关系（诚实版）</h2>
+<ul>
+<li><strong>1m/3m</strong>：可作为“机会雷达 + 生存线估计”频率；但真正执行通常要更低延迟数据（盘口/逐笔）。</li>
+<li><strong>5m/15m</strong>：不适合当逐根主信号；更适合做“执行可行性监控”或低频化的跨资产循环扫描。</li>
+<li>结论：该题材<strong>属于 raw alpha</strong>，但不是典型 K 线频率主策略，核心在 execution stack。</li>
+</ul>
+<h2>5. 最小可复现实验口径（本轮已跑）</h2>
+<h3>5.1 数据源、公开性、更新频率</h3>
+<ul>
+<li>数据源：Binance Spot REST <code>/api/v3/klines</code>（<code>BTCUSDT</code>,<code>LTCBTC</code>,<code>LTCUSDT</code>）</li>
+<li>公开性：公开可得，无需私有数据</li>
+<li>更新频率：1m（可聚合为 3m/5m/15m）</li>
+</ul>
+<h3>5.2 实验口径</h3>
+<ul>
+<li>时间窗：最近 7 天</li>
+<li>代理 edge：<code>edge_pct = LTCUSDT / (BTCUSDT * LTCBTC) - 1</code></li>
+<li>成本阈值：</li>
+<li>论文 regular 费率参照：<code>0.225%</code></li>
+<li>保守三腿 taker 参照：<code>0.30%</code></li>
+<li>输出：</li>
+<li><code>reports/artifacts/literature/triangular_arb_binance_1m_7d_proxy_2026-03-24.csv</code></li>
+</ul>
+<h2>6. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>从 K 线代理升级到盘口级</strong>：改用 top-of-book bid/ask 与可成交量，重算真实 <code>Y(t)</code> 与可成交 notional。</li>
+<li><strong>显式建模延迟预算</strong>：按 <code>20/50/100/150/200ms</code> 五档回放，直接画 <code>EV(latency)</code> 曲线，验证本地基础设施是否能过线。</li>
+<li><strong>做费用/角色分层</strong>：maker-only、maker+taker、VIP/regular 三套费用场景，确认策略是否仅在特定费率层可活。</li>
+<li><strong>扩展到多循环与多交易所</strong>：从三角扩到 4~7 边循环（对应开源仓库能力），但每条循环都要过“深度+延迟+成本”三重门。</li>
+<li><strong>把它接入组合治理</strong>：若无法稳定跨过执行门槛，则把该信号降级为“市场效率压力指标”，不进入主交易配额。</li>
+</ol>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>这类 alpha 对撮合与网络位置极端敏感，研究可复现 ≠ 实盘可赚钱。</li>
+<li>本轮本地快检是 K 线代理，不含盘口微结构与撮合队列位置，只能做“是否值得继续”的 first-pass。</li>
+<li>开源仓库默认不含费用，直接照跑容易高估收益。</li>
+</ul>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>Muck, M., Schmidl, T., &amp; Wolf, J. (2025). _Wish or reality? On the exploitability of triangular arbitrage in cryptocurrency markets_. Finance Research Letters, 73, 106508.</strong></li>
+</ol>
+<ul>
+<li>Venue: Finance Research Letters (Elsevier)</li>
+<li>DOI: <a href="https://doi.org/10.1016/j.frl.2024.106508">https://doi.org/10.1016/j.frl.2024.106508</a></li>
+<li>Readable URL: <a href="https://www.sciencedirect.com/science/article/pii/S154461232401537X">https://www.sciencedirect.com/science/article/pii/S154461232401537X</a></li>
+<li>Fulltext mirror URL: <a href="https://fis.uni-bamberg.de/server/api/core/bitstreams/8b9ae900-017a-4bed-94b9-609c16e89945/content">https://fis.uni-bamberg.de/server/api/core/bitstreams/8b9ae900-017a-4bed-94b9-609c16e89945/content</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Drakkar-Software. (2023–2026). _Triangular-Arbitrage_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://github.com/Drakkar-Software/Triangular-Arbitrage">https://github.com/Drakkar-Software/Triangular-Arbitrage</a></li>
+<li>Repo URL: <a href="https://github.com/Drakkar-Software/Triangular-Arbitrage">https://github.com/Drakkar-Software/Triangular-Arbitrage</a></li>
+</ul>
+<ol>
+<li><strong>Binance Developers. _Spot API – Kline/Candlestick data_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<h2>9. 本地复现产物</h2>
+<ul>
+<li><code>reports/artifacts/literature/triangular_arb_binance_1m_7d_proxy_2026-03-24.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 funding-rate repo 只读成 ML 作业：对 short-cycle desk，更该先测的是「post-cost funding+basis dislocation × delta-neutral carry admission」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 funding-rate repo 只读成 ML 作业：对 short-cycle desk，更该先测的是「post-cost funding+basis dislocation × delta-neutral carry admission」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-09 22:02 UTC</span>
+      <span class="pill">研究时间：2026-04-09 21:46 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit</span>
+      <span class="pill">主题标签：carry / funding / basis / relative value / delta-neutral / post-cost / admission / binance</span>
+      <span class="pill">证据类型：工程证据（repo 文档 + 配置 + source audit）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-09_2146_postcost-funding-basis-deltaneutral-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-09 21:46 UTC</li>
+<li>类型：GitHub / repo source audit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>正 funding + perp 相对 spot 偏贵</code> 的状态，在未来持有窗里更可能通过 <code>funding 收取 + basis 回归</code> 兑现；对应交易是 <code>short perp + long spot</code> 的 delta-neutral carry / relative-value。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：carry / funding / basis / relative value / delta-neutral / post-cost / admission / binance</li>
+<li>证据类型：工程证据（repo 文档 + 配置 + source audit）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 MengerWen 2026 GitHub repo <strong>Deep Learning-Based Delta-Neutral Statistical Arbitrage on Perpetual Funding Rates</strong>。它最有价值的点不是“用了 LSTM”，而是把一条 desk 真能落地的 carry 策略写成了完整研究管线：<code>市场数据 -&gt; feature -&gt; post-cost label -&gt; baseline/dl signal -&gt; backtest</code>。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份仓库真正值得抄的不是模型名，而是把 <code>funding + basis</code> 明确翻译成 <strong>未来净收益（post-cost net return）</strong> 的标签，先判断“这笔 delta-neutral carry 值不值得做”，再谈模型。</li>
+<li><strong>一句话证明方式：</strong> 作者不是预测裸价格方向，而是直接把未来 <code>perp leg + spot leg + funding - 全部摩擦成本</code> 做成监督目标，属于很适合 desk 的“机会质量预测”。</li>
+<li>label 设计很硬：默认方向直接写死为 <code>short perp + long spot</code>，目标是未来 <code>8h/24h</code> 的 <code>future_net_return_bps</code>，并区分 <code>盈利</code> 与 <code>可交易（&gt;5bps edge）</code> 两层标签。</li>
+<li>成本没有被藏起来：默认成本模型是 <code>4 * (5bps taker fee + 3bps slippage) + 10bps gas + borrow</code>，也就是<strong>仅四腿 taker+slippage 就先吃掉约 32bps</strong>，这比很多“看 funding 排行榜就上”的 repo 诚实得多。</li>
+<li>特征也不是玄学：主窗口是 <code>24h funding/basis</code>、<code>72h z-score</code>、<code>168h regime</code>，再叠 <code>open interest / volume / realized vol / shock</code>，本质是在做 <strong>carry persistence + basis MR + crowding/risk state</strong> 的联合 admission。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线比继续做“谁 funding 高就空谁”的粗糙 carry 更进一步，因为它已经把当前 desk 真正在意的四件事写清楚了：</p>
+<ol>
+<li><strong>base alpha 是什么</strong>：不是排行榜，而是 <code>funding+basis</code> 的 post-cost 可兑现性；</li>
+<li><strong>什么时候不做</strong>：edge 不够、shock 太大、regime 不对时不做；</li>
+<li><strong>成本后还剩多少</strong>：目标本身就是净收益；</li>
+<li><strong>怎么迁到短周期</strong>：虽然原 repo 先跑 <code>1h</code>，但完全可以把窗口映射到 <code>15m</code>，把它做成 <code>5m/15m</code> 的 entry router / carry admission 层。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / carry / delta-neutral</li>
+<li>基础 alpha：<code>positive funding + positive spread/basis</code> 在未来持有窗继续兑现，<code>short perp + long spot</code> 收 funding 并等 basis 回归</li>
+<li>regime：<code>positive_funding_regime</code>、<code>high_vol_regime</code>、<code>wide_spread_regime</code>、<code>shock_regime</code></li>
+<li>filter / veto：<code>min_expected_edge_bps=5</code>、<code>funding_rate_bps &gt; 1~2</code>、<code>spread_zscore_72h &gt; 1~1.5</code>、高 shock / 低 liquidity 可 veto</li>
+<li>risk / sizing / execution overlay：next-bar open 执行；默认 <code>position_notional=10,000 USD</code>、<code>max_open_positions=1</code>；显式扣 fee/slippage/gas/borrow</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设：</strong> <code>15m</code> 下，只要 <code>funding 持续为正 + spread_zscore 仍高 + OI/vol 不在极端 shock</code>，则未来 <code>8h/24h</code> 的 delta-neutral 净收益更高。</li>
+<li><strong>可计算定义：</strong> 在 Binance <code>BTCUSDT perp + BTCUSDT spot</code> 上，把 repo 的 <code>8/24/72/168h</code> 窗口改写成 <code>32/96/288/672</code> 根 <code>15m</code>；目标仍定义为未来 <code>32/96</code> 根的 <code>perp leg + spot leg + funding - costs</code>。</li>
+<li><strong>最小回测切口：</strong> 先只做 <code>BTCUSDT</code>，样本从 2024-01 到今；比较三组：<code>always-on carry</code>、<code>规则基线（funding&gt;1bps &amp; spread_z&gt;1.5）</code>、<code>post-cost score top bucket</code>。</li>
+<li><strong>最先看 2 个指标：</strong> <code>post-cost bps/trade</code> 与 <code>tradeable rate (&gt;5bps net edge)</code>；第三个再看 <code>shock bucket 下的回撤</code>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这份 repo 目前更像 <strong>课程项目级 research pipeline</strong>，不是已经验证完的 production alpha。</li>
+<li>先跑的是 <code>BTCUSDT 1h</code>；若硬压到 <code>1m/3m</code>，很可能会把本来是 carry/admission 的信号误用成逐 bar directional alpha。</li>
+<li>borrow、gas、资金费结算时间、spot/perp 实际可成交性都还是简化版，真实执行可能比 repo 默认更差。</li>
+<li>如果后续 desk 要把它接到更快节奏，最合理的位置不是“每 15m 必开仓”，而是 <strong>短周期 entry router + 8h funding window carry scheduler</strong>。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>MengerWen. (2026). *Deep Learning-Based Delta-Neutral Statistical Arbitrage on Perpetual Funding Rates*. GitHub Repo.</li>
+<li>Repo URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</a></code></li>
+<li>关键源码/文档：</li>
+<li><code>README.md</code></li>
+<li><code>docs/features.md</code></li>
+<li><code>docs/labels.md</code></li>
+<li><code>docs/signals.md</code></li>
+<li><code>configs/backtests/default.yaml</code></li>
+<li><code>configs/models/baseline.yaml</code></li>
+</ul>
+</body>
+</html>

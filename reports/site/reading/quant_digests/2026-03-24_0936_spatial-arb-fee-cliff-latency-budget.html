@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把跨交易所同币价差当“看见就赚”：这份 2026 C++ 仓库更该先测的是 `fee cliff + latency budget` 的 spatial-arb raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把跨交易所同币价差当“看见就赚”：这份 2026 C++ 仓库更该先测的是 `fee cliff + latency budget` 的 spatial-arb raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-24 09:41 UTC</span>
+      <span class="pill">研究时间：2026-03-24 09:36 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + 近 5 年论文 + Binance/OKX 公共盘口最小快检</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/spatial-arbitrage/cross-exchange/orderbook/latency/execution/cost/1m/3m/5m/15m/repo/paper</span>
+      <span class="pill">证据类型：工程证据 + 论文证据 + 公开数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-24_0936_spatial-arb-fee-cliff-latency-budget.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-24 09:36 UTC</li>
+<li>类型：2026 GitHub 新仓库 + 近 5 年论文 + Binance/OKX 公共盘口最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一资产在不同交易所的瞬时报价偏离（spatial spread）回归 / 收敛</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/spatial-arbitrage/cross-exchange/orderbook/latency/execution/cost/1m/3m/5m/15m/repo/paper</li>
+<li>证据类型：工程证据 + 论文证据 + 公开数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这条线的 base alpha 不是“趋势判断”，而是同币跨所报价短时错位会回归。</strong></p>
+<p>这次主看：</p>
+<ul>
+<li>2026 新仓库 <strong>Ra1nForest/Crypto_HFT_Engine</strong>（C++17，多线程、双所 order book、fee-adjusted arbitrage detector）；</li>
+<li>2025 论文 <strong>Werapun et al.</strong> 的跨交易所自动套利（CEX/DEX 路由思路）；</li>
+<li>2023 论文 <strong>Shu et al.</strong> 的 Binance/Coinbase 跨 venue 价差事件证据；</li>
+<li>外加一组本地公开 API 最小快检（Binance + OKX，ETHUSDT）。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这条 raw alpha 的关键不是“是否存在价差”，而是“价差能不能跨过手续费+延迟+冲击这道生存线”；在我们这轮公开盘口快检里，答案偏保守。</li>
+<li><strong>一句话证明方式：</strong> repo 给出可执行的实时骨架（order book→spread→fee-adjusted 判定），我用 Binance/OKX 公共 top-of-book 做 120 点快检，直接对比 <code>gross spread</code> 与 <code>post-fee spread</code>。</li>
+</ul>
+<p>关键数据点：</p>
+<ol>
+<li><strong>工程可行性（repo）</strong>：orderbook 更新 benchmark 从 <code>862ns</code> 到 <code>48ns</code>（约 <strong>18x</strong>），解析延迟给到 <code>p50 8~15us</code>、<code>p99 &lt;100us</code>（仓库 README 声明口径）。</li>
+<li><strong>公开盘口快检（本地）</strong>：120 个样本（0.5s 采样，ETHUSDT），<code>best gross spread</code> 均值约 <strong>0.95 bps</strong>、<code>p95 ≈ 1.95 bps</code>、最大约 <strong>2.41 bps</strong>。</li>
+<li><strong>成本生存线</strong>：按 round-trip <strong>4 bps</strong> 起算，<code>positive_after_4bps_ratio = 0</code>；8/12/20 bps 同样为 0，说明“看得见价差”并不等于“可交易利润”。</li>
+</ol>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮仍然是 <strong>raw alpha</strong>，且能直接补 desk 的 <code>relative value / stat-arb</code> 素材池，不是继续在固定形态里打转。</p>
+<p>它的价值在于：</p>
+<ul>
+<li>能和当前 <code>pairs / basis / funding</code> 线形成互补：都属于 market-neutral 家族，但这条是更偏 execution/microstructure 的“短半衰期”版本；</li>
+<li>可直接拆成完整策略组件，不是只有过滤层：entry/exit/sizing/risk/cost 全都能写清；</li>
+<li>可以自然映射到 <code>1m/3m/5m/15m</code>：</li>
+<li><code>1m/3m</code> 先看机会密度与成本后存活率；</li>
+<li><code>5m/15m</code> 适合验证“低频化后是否还能保留可交易边际”。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative value / stat-arb（双边对冲）</li>
+<li>基础 alpha：同币跨交易所报价偏离回归（spatial arbitrage）</li>
+<li>regime：高流动、高更新频率、跨所连接稳定时更有效；事件时段可能放大机会也放大风险</li>
+<li>filter / veto：</li>
+<li><code>gross_spread &lt;= fee + slippage_buffer</code> 直接 veto</li>
+<li>orderbook 深度不足、盘口单边空洞、连接延迟飙升时 veto</li>
+<li>risk / sizing / execution overlay：</li>
+<li>双腿名义对齐、单笔 participation 上限</li>
+<li>信号 TTL（超时即弃单）</li>
+<li>失败重试上限与单 venue 风险上限</li>
+<li>成本阶梯（maker/taker、滑点、冲击）必须实时计入</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 数据源 / 公开性 / 更新频率</h3>
+<ul>
+<li>Binance Spot <code>bookTicker</code> / depth：公开 API，秒级到百毫秒级可取</li>
+<li>OKX <code>market/ticker</code> / books：公开 API，秒级到百毫秒级可取</li>
+<li>主题主要依赖外部盘口数据，但它本身就是 raw alpha（不是伪装 filter）</li>
+</ul>
+<h3>4.2 最小实验口径（先做 1m，再扩 3m/5m/15m）</h3>
+<ol>
+<li>标的：<code>ETHUSDT</code>（Binance）vs <code>ETH-USDT</code>（OKX）</li>
+<li>信号：</li>
+</ol>
+<ul>
+<li><code>s1 = (okx_bid - bin_ask) / bin_ask * 1e4</code></li>
+<li><code>s2 = (bin_bid - okx_ask) / okx_ask * 1e4</code></li>
+<li><code>edge = max(s1, s2)</code></li>
+</ul>
+<ol>
+<li>交易开关：仅当 <code>edge &gt; fee_total + slippage_buffer + latency_buffer</code> 才允许入场</li>
+<li>出场：</li>
+</ol>
+<ul>
+<li>spread 回归到 <code>exit_threshold</code></li>
+<li>或 TTL 到期（强制平）</li>
+</ul>
+<ol>
+<li>先看指标：</li>
+</ol>
+<ul>
+<li><code>post-fee bps/trade</code></li>
+<li><code>opportunity_survival_ratio</code>（过成本线的机会占比）</li>
+</ul>
+<h3>4.3 本轮快检产物</h3>
+<ul>
+<li><code>reports/artifacts/quant_digests/spatial_cross_exchange_probe_20260324/summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/spatial_cross_exchange_probe_20260324/samples.csv</code></li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这类 alpha 半衰期短，<strong>延迟预算</strong>和<strong>真实成交概率</strong>往往比预测逻辑更关键。</li>
+<li>公开 top-of-book 不等于可成交深度，若不加 depth 与冲击约束，容易高估收益。</li>
+<li>单纯“看到正价差”并不够，必须先过成本门；本轮快检显示在常见 fee 档位下几乎全灭。</li>
+<li>因此它更像“需要强执行条件才可能存活”的 raw alpha，不应被当作低门槛策略。</li>
+</ul>
+<h2>6. 下一步怎么测（明确动作）</h2>
+<ol>
+<li><strong>从 top-of-book 升级到 depth-5/10</strong>：把可成交量引入 edge 计算，重算 post-fee 生存线。</li>
+<li><strong>加入延迟仿真</strong>：对每个机会强制 +100ms/+300ms/+500ms 执行延迟，看幸存率如何塌陷。</li>
+<li><strong>多标的扩展</strong>：<code>BTC/ETH/SOL</code> 三组并行，比较机会频次与容量。</li>
+<li><strong>时间尺度映射</strong>：把机会事件聚合到 <code>1m/3m/5m/15m</code>，确认哪些频段仍能留住净边际。</li>
+</ol>
+<h2>7. 来源</h2>
+<ol>
+<li><strong>Ra1nForest. (2026). _Crypto_HFT_Engine_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/Ra1nForest/Crypto_HFT_Engine">https://github.com/Ra1nForest/Crypto_HFT_Engine</a></li>
+<li>Readable URL: <a href="https://github.com/Ra1nForest/Crypto_HFT_Engine/blob/main/README.md">https://github.com/Ra1nForest/Crypto_HFT_Engine/blob/main/README.md</a></li>
+</ul>
+<ol>
+<li><strong>Werapun, W., Boonpeam, N., Sangiamkul, E., &amp; Suaboot, J. (2025). _The Automated Arbitrage Strategy of Cross-Cryptocurrency Exchanges_. International Journal of Information Technology &amp; Decision Making.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1142/S0219622025500130</code></li>
+<li>Readable URL: <a href="https://doi.org/10.1142/S0219622025500130">https://doi.org/10.1142/S0219622025500130</a></li>
+</ul>
+<ol>
+<li><strong>Shu, A., Cheng, F., Han, J., Liang, Z., &amp; Pan, Z. (2023). _Arbitrage across different Bitcoin exchange venues: Perspectives from investor base and market related events_. Accounting &amp; Finance.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1111/acfi.13102</code></li>
+<li>Readable URL: <a href="https://doi.org/10.1111/acfi.13102">https://doi.org/10.1111/acfi.13102</a></li>
+</ul>
+<ol>
+<li><strong>Binance Spot API Docs / OKX API Docs（公开市场数据接口）</strong></li>
+</ol>
+<ul>
+<li>Binance: <a href="https://developers.binance.com/docs/binance-spot-api-docs">https://developers.binance.com/docs/binance-spot-api-docs</a></li>
+<li>OKX: <a href="https://www.okx.com/docs-v5/en">https://www.okx.com/docs-v5/en</a></li>
+</ul>
+</body>
+</html>

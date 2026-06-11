@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 risk-managed momentum 只当“低波动防身”：这篇 2025 FRL 对 desk 更该先测的是「短窗 XS momentum × inverse-vol scaling」完整策略，但当前 15m transfer 仍不过线</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 risk-managed momentum 只当“低波动防身”：这篇 2025 FRL 对 desk 更该先测的是「短窗 XS momentum × inverse-vol scaling」完整策略，但当前 15m transfer 仍不过线</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-27 10:16 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：overlay/cross-sectional/momentum/risk-managed/inverse-volatility/sizing/wml/market-neutral/binance/perpetual/15m/5m/1m/3m/paper/external-data/cost</span>
+      <span class="pill">证据类型：论文摘要 + publisher section snippets（abstract-only / weak-to-medium evidence）+ Binance Futures 公共 `15m` 最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-27_1016_crypto-riskmanaged-xs-momentum.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-27 10:16 UTC</li>
+<li>类型：论文</li>
+<li>主题类型：overlay</li>
+<li>基础 alpha：cross-sectional momentum（同一时点做多近期赢家、做空近期输家），这里再叠加 inverse-vol / risk-managed sizing。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：overlay/cross-sectional/momentum/risk-managed/inverse-volatility/sizing/wml/market-neutral/binance/perpetual/15m/5m/1m/3m/paper/external-data/cost</li>
+<li>证据类型：论文摘要 + publisher section snippets（abstract-only / weak-to-medium evidence）+ Binance Futures 公共 <code>15m</code> 最小快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主线看的是 <strong>Ao Yang (2025), _Cryptocurrency market risk-managed momentum strategies_</strong>, 发表在 <strong>Finance Research Letters</strong>。</p>
+<p>这篇东西和我们前几天已经 intake 过的 <strong>Han / Kang / Ryu (2024)</strong>《Time-Series and Cross-Sectional Momentum in the Cryptocurrency Market》衔接得很顺：前一篇更像在问 <strong>plain crypto momentum 到底有没有、尤其 XS 那支有多脆弱</strong>；这一篇则是在问 <strong>如果 plain XS momentum 本体不够稳，用 Barroso &amp; Santa-Clara (2015) 式的 risk-managed scaling，能不能把它变成更像完整策略的东西</strong>。</p>
+<p>一句话先说：<strong>base alpha 很清楚，就是横截面动量 WML；risk management 不是另起炉灶，而是给这个 raw alpha 加一个 inverse-vol sizing 外壳。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这篇 2025 FRL 想告诉我们的不是“低波动更安全”，而是 <strong>在论文的周频 crypto 横截面里，inverse-vol risk scaling 能把 plain WML 做得更像能落地的完整策略；但搬到我们关心的 <code>15m</code> perp 后，它并不会自动救活短周期 edge。</strong></li>
+<li><strong>一句话它是怎么证明的</strong>：论文用 crypto 横截面周频回测 + transaction cost / short-sale constraint / 不同 formation-holding 的 robustness 做证明；我这轮再用 Binance Futures 公共 <code>15m</code> 数据做了一个 short-cycle transfer check。</li>
+</ul>
+<p>论文摘要页和 section snippets 给出的关键数字很明确：</p>
+<ul>
+<li>conventional momentum 的平均 <strong>weekly return 从 <code>3.18%</code> 提到 <code>3.47%</code></strong>；</li>
+<li>annualized <strong>Sharpe 从 <code>1.12</code> 提到 <code>1.42</code></strong>；</li>
+<li>论文强调 crypto 和 equity 的区别在于：这里的改进<strong>主要来自收益增强，而不是像股票那样主要靠防 momentum crash</strong>；</li>
+<li>文中还给了两个很有用的辅助数字：平均 scaling weight 大约 <strong><code>1.14</code></strong>（对比 equity 文献里约 <code>0.9</code>），excess kurtosis 从 <strong><code>63.89</code> 降到 <code>47.32</code></strong>，说明它不是简单“缩风险”，而更像在 crypto 里<strong>愿意在较低估计波动时放大原始 WML 仓位</strong>。</li>
+</ul>
+<p>所以它对 desk 最有价值的地方，是把一个原本偏研究型的 <code>WML</code> 排名信号，推进成 <strong><code>signal + sizing + robustness</code></strong> 的完整策略骨架。</p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇主题虽然按字段该归为 <code>overlay</code>，但它不是那种“脱离 alpha 本体的共享风控建议”，而是：</p>
+<ul>
+<li>明确服务于一个<strong>已有 raw alpha 家族</strong>：<code>cross-sectional momentum</code>；</li>
+<li>而且已经给出<strong>完整策略定义</strong>：formation / holding / long-short construction / risk scaling / friction robustness；</li>
+<li>正好承接我们最近的学习进展：</li>
+<li>已经 intake 了很多 <code>pairs / stat-arb / XS reversal / relative value</code>；</li>
+<li>也已经看过 plain crypto momentum 在 realistic assumptions 下并不总是好看；</li>
+<li>现在需要知道：<strong>若 raw alpha 本体一般，inverse-vol / risk-managed sizing 能不能把它从“研究概念”推进成“可部署策略”。</strong></li>
+</ul>
+<p>换句话说，这篇不是在和 raw alpha 抢位置，而是在回答一个更现实的问题：<strong>“如果我真想保留 XS momentum 这条支线，应该怎么把它做完整？”</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<code>overlay</code></li>
+<li>基础 alpha：<code>cross-sectional momentum</code>（做多近期赢家、做空近期输家）</li>
+<li>是否完整策略：<strong>是</strong>。因为它不只给 rank signal，还给了 <code>holding / rebalancing / volatility scaling / robustness</code>。</li>
+<li>论文主口径（可读到的 section snippet）：</li>
+<li><strong>formation</strong>：<code>2-week</code></li>
+<li><strong>holding</strong>：<code>1-week</code></li>
+<li><strong>组合</strong>：按 formation return 把币种分成 quintiles，<strong>long Winner / short Loser</strong>，构成 <strong>value-weighted WML</strong></li>
+<li><strong>risk layer</strong>：对 WML 叠加 <code>risk-managed</code> / <code>inverse-vol</code> 类型的 scaling</li>
+<li>desk 化翻译：</li>
+<li><code>raw alpha</code>：短窗横截面赢家-输家排序</li>
+<li><code>overlay</code>：不是固定 1x 下 WML，而是按最近 realized vol 调整 gross exposure</li>
+<li><code>risk/execution</code>：如果估计波动高，就缩；如果估计波动低，就放；但前提是 <strong>原始 WML 至少别先是负的</strong></li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<h3>4.1 论文可直接搬的最小骨架</h3>
+<p>如果先不纠结论文全文拿不到的细节，最小可复现实验已经够清楚：</p>
+<ol>
+<li>选一组可做多空的 liquid crypto universe；</li>
+<li>用过去一个 formation window 的横截面收益排序；</li>
+<li>long top bucket / short bottom bucket，形成 WML；</li>
+<li>再用 rolling realized vol 对 WML gross exposure 做 inverse-vol scaling；</li>
+<li>比较 plain WML 与 risk-managed WML 的 return / Sharpe / tail risk / cost 后存活率。</li>
+</ol>
+<h3>4.2 我这轮 short-cycle transfer check</h3>
+<p>为了看它和当前 desk 的 <code>15m</code> 是否真有关系，我做了一个最小迁移，不是照抄论文周频，而是直接往 intraday 压：</p>
+<ul>
+<li><strong>数据源</strong>：Binance Futures 公共 <code>15m klines</code></li>
+<li><strong>公开性</strong>：完全公开可得，无需私有数据</li>
+<li><strong>币种</strong>：<code>BTC / ETH / SOL / XRP / BNB / DOGE / ADA / LINK / LTC / AVAX</code> 十个主流 USDT perpetual</li>
+<li><strong>样本</strong>：<code>2026-01-23 22:15 UTC ~ 2026-03-27 10:00 UTC</code></li>
+<li><strong>short-cycle 映射口径</strong>：</li>
+<li>formation = <code>32</code> 根 <code>15m</code>（约 <code>8h</code>）</li>
+<li>holding = <code>8</code> 根 <code>15m</code>（约 <code>2h</code>）或 <code>16</code> 根 <code>15m</code>（约 <code>4h</code>）</li>
+<li>每次 rebalance 取横截面 top / bottom quintile-ish（10 个币时即 top 2 / bottom 2）</li>
+<li>plain 版：等权 long winners / short losers</li>
+<li>risk-managed 版：对 WML 用 trailing realized vol 做 scaling（clip 到 <code>0.5x~1.5x</code>，避免极端爆表）</li>
+</ul>
+<h3>4.3 快检结果</h3>
+<p>结果挺诚实，而且对 desk 很有用：</p>
+<ul>
+<li><strong><code>8h formation / 2h hold</code> plain WML</strong>：平均每次换仓约 <strong><code>-0.33 bps</code></strong>，累计约 <strong><code>-3.28%</code></strong>；</li>
+<li>同口径 <strong>risk-managed WML</strong>：平均约 <strong><code>-1.53 bps</code></strong>，累计约 <strong><code>-11.53%</code></strong>；</li>
+<li><strong><code>8h formation / 4h hold</code> plain WML</strong>：平均约 <strong><code>-0.90 bps</code></strong>；risk-managed 后约 <strong><code>-2.65 bps</code></strong>；</li>
+<li>更短的 <strong><code>4h / 2h</code></strong> 口径也没活：plain 约 <strong><code>-2.02 bps</code></strong>，risk-managed 后约 <strong><code>-3.08 bps</code></strong>；</li>
+<li>整个 quick grid 里，risk-managed 版的平均 weight 大约都在 <strong><code>1.10~1.13x</code></strong>，说明最近这段样本里它多数时候是在<strong>加杠杆一个已经偏负的短窗 WML</strong>，自然越放越亏。</li>
+</ul>
+<h3>4.4 desk 化解释</h3>
+<p>这组结果传达的不是“risk-managed momentum 没用”，而是更精确的两句话：</p>
+<ol>
+<li><strong>inverse-vol sizing 不能把一个当前已经不成立的短周期 XS momentum 硬救活</strong>；</li>
+<li>如果未来真要把它搬进 <code>1m/3m/5m/15m</code>，先得找到 <strong>plain WML 仍有残余 edge 的 pocket</strong>，然后 scaling 才值得上。</li>
+</ol>
+<h2>5. 可以怎么直接落成完整策略 / 规则</h2>
+<p>如果真要把它写成策略，不要只写“低波放大，高波缩小”，而要写成完整流水线：</p>
+<ol>
+<li><strong>signal 层</strong></li>
+</ol>
+<ul>
+<li>每 <code>1h / 2h / 4h</code> 做一次横截面排名；</li>
+<li>使用 <code>4h/8h/24h</code> formation 的 past return；</li>
+<li>long top quantile / short bottom quantile。</li>
+</ul>
+<ol>
+<li><strong>portfolio 层</strong></li>
+</ol>
+<ul>
+<li>默认 market-neutral；</li>
+<li>单币权重先 equal-weight，后续再看是否要改成 liquidity-cap 或 inverse-vol within leg。</li>
+</ul>
+<ol>
+<li><strong>risk-managed 层</strong></li>
+</ol>
+<ul>
+<li>对整个 WML spread 做 scaling，而不是对单腿各自瞎缩放；</li>
+<li><code>target_gross ~ target_vol / realized_vol(WML)</code>；</li>
+<li>设 clip，例如 <code>0.5x ~ 1.5x</code>，防止在极低波时无上限加大。</li>
+</ul>
+<ol>
+<li><strong>execution / cost 层</strong></li>
+</ol>
+<ul>
+<li>一定要先跑 friction ladder：<code>1/2/4/6 bps</code>；</li>
+<li>若 alpha 只在 <code>0~1 bps</code> 手续费下活，就不要当主线；</li>
+<li>尽量放到高流动、低 funding 干扰、maker 更容易成交的币组。</li>
+</ul>
+<ol>
+<li><strong>go/no-go 规则</strong></li>
+</ol>
+<ul>
+<li>先看 plain WML 是否 &gt; 0；</li>
+<li>再看 scaling 后 Sharpe / drawdown 是否改善；</li>
+<li>如果 plain 已经负，risk-managed 还继续给正向 gross，那本质上是在<strong>更聪明地放大错误方向</strong>。</li>
+</ul>
+<h2>6. 风险与边界</h2>
+<ul>
+<li><strong>证据强度要诚实</strong>：这轮外部材料能直接拿到的是 ScienceDirect 摘要页、RePEc 摘要与 publisher section snippets，<strong>不是全文可读版本</strong>；所以这篇目前只能算 <code>abstract-only / weak-to-medium evidence</code>，不是最高证据等级。</li>
+<li>论文主结论是<strong>周频</strong> crypto 横截面，不是为 <code>15m</code> 设计的；我这轮 short-cycle 映射只是在测“能不能 transfer”，不是替代原论文。</li>
+<li>我这轮 quick check 采用的是 <strong>non-overlapping 15m WML transfer</strong> 与一个 desk 化 scaling 版本，不保证和论文实现完全同口径；但对当前任务已经足够回答：<strong>短周期能不能先活下来。</strong></li>
+<li>当前样本只有最近约两个月，且多为空头/震荡混合环境；若要更认真判断，至少要再拉长到多个 regime。</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<ol>
+<li><strong>先找 plain XS momentum 的幸存 pocket，再谈 risk-managed</strong></li>
+</ol>
+<ul>
+<li>先按 universe 分层：<code>top-10 liquidity</code>、<code>mid-cap</code>、<code>alts ex majors</code>；</li>
+<li>再按 formation / hold 网格看 plain WML 何处不再系统为负。</li>
+</ul>
+<ol>
+<li><strong>把 momentum 与 reversal 分开测，不要混成一个“排名策略”</strong></li>
+</ol>
+<ul>
+<li>同一套 universe 上并排跑：<code>XS momentum</code> vs <code>XS reversal</code>；</li>
+<li>如果短周期里 reversal 明显更强，那 risk-managed momentum 就不该继续占主线资源。</li>
+</ul>
+<ol>
+<li><strong>改成 conditionally-on 的 scaling</strong></li>
+</ol>
+<ul>
+<li>不是永远 <code>target_vol / rv</code>；</li>
+<li>而是只有当 plain WML 近窗 hit-rate / breadth / dispersion 同时在线时，才允许放大 gross。</li>
+</ul>
+<ol>
+<li><strong>升级到更像 desk 的特征</strong></li>
+</ol>
+<ul>
+<li>不只用 past return 排名；</li>
+<li>加入 <code>funding dispersion / quote-volume breadth / taker flow breadth / beta-neutral residual return</code>，看看 risk-managed 是否更适合服务这些“更干净的 XS alpha”。</li>
+</ul>
+<ol>
+<li><strong>成本一定要和仓位联动</strong></li>
+</ol>
+<ul>
+<li>一旦 scaling 把 gross 拉高，成交成本与滑点不再线性；</li>
+<li>所以回测里不能只放固定费率，至少要加一个随 gross / participation 上升的 impact proxy。</li>
+</ul>
+<h2>8. 来源</h2>
+<ul>
+<li>Yang, Ao (2025). *Cryptocurrency market risk-managed momentum strategies*. <strong>Finance Research Letters</strong>. DOI: <code>10.1016/j.frl.2025.107879</code></li>
+<li>DOI URL: <a href="https://doi.org/10.1016/j.frl.2025.107879">https://doi.org/10.1016/j.frl.2025.107879</a></li>
+<li>Readable URL: <a href="https://www.sciencedirect.com/science/article/pii/S1544612325011377">https://www.sciencedirect.com/science/article/pii/S1544612325011377</a></li>
+<li>RePEc abstract page: <a href="https://ideas.repec.org/a/eee/finlet/v85y2025ipas1544612325011377.html">https://ideas.repec.org/a/eee/finlet/v85y2025ipas1544612325011377.html</a></li>
+<li>Alternate readable abstract mirror: <a href="https://colab.ws/articles/10.1016/j.frl.2025.107879">https://colab.ws/articles/10.1016/j.frl.2025.107879</a></li>
+<li>Repo URL：未见官方 repo</li>
+<li>方法母体：Barroso, P.; Santa-Clara, P. (2015). *Momentum has its moments*.</li>
+</ul>
+<h2>9. 本地产物</h2>
+<ul>
+<li>快检目录：<code>reports/artifacts/quant_digests/crypto_risk_managed_xs_momentum_20260327/</code></li>
+<li>关键文件：</li>
+<li><code>summary.json</code></li>
+<li><code>grid_summary.json</code></li>
+<li><code>wml_15m_8h4h_timeseries.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Hyperliquid 双引擎 repo 只读成“大而全机器人”：对 short-cycle desk，更该先拆的是「cointegration scan × half-life gate × spread z-score fade」这条 pairs raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Hyperliquid 双引擎 repo 只读成“大而全机器人”：对 short-cycle desk，更该先拆的是「cointegration scan × half-life gate × spread z-score fade」这条 pairs raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-01 18:53 UTC</span>
+      <span class="pill">研究时间：2026-04-01 18:50 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 source audit（`README.md` + `examples/README.md` + `examples/download_data.py` + `tests/test_output.md` + GitHub API metadata）</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/half-life/adf/hurst/dynamic-hedge-ratio/spread-zscore/hyperliquid/binance/perpetual/1h/15m/5m/3m/1m/repo/public-data/cost/execution</span>
+      <span class="pill">证据类型：GitHub repo README + data-download script + tests summary + GitHub API metadata（repo-based）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-01_1850_hyperliquid-cointegration-halflife-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-01 18:50 UTC</li>
+<li>类型：2026 GitHub 新仓库 source audit（<code>README.md</code> + <code>examples/README.md</code> + <code>examples/download_data.py</code> + <code>tests/test_output.md</code> + GitHub API metadata）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>cointegrated perp pair spread mean reversion</strong>；先用 <code>ADF + Hurst + half-life</code> 过滤可交易 pair，再对动态 hedge ratio 残差做 <code>z-score fade</code>。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/half-life/adf/hurst/dynamic-hedge-ratio/spread-zscore/hyperliquid/binance/perpetual/1h/15m/5m/3m/1m/repo/public-data/cost/execution</li>
+<li>证据类型：GitHub repo README + data-download script + tests summary + GitHub API metadata（repo-based）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p><strong>这轮更值得 intake 的，不是 repo 里那个“全自动双引擎 bot”叙事，而是它明明白白暴露出来的一条可单独拆走的 raw alpha：先从 <code>70+</code> 个 Hyperliquid/币安可映射永续里扫 <code>2400+</code> 个 pair，筛出 <code>612</code> 个 viable 组合，再只留下 <code>12</code> 个 live candidate；交易层做的不是方向预测，而是 cointegration spread 的均值回复。</strong></p>
+<p>最关键的硬数据有三组：</p>
+<ul>
+<li>pair discovery 从 <strong><code>2400+</code> 组合 → <code>612</code> viable → <code>12</code> live candidates</strong>；</li>
+<li>best pairs 的 repo 自报全样本收益是 <strong><code>+120% ~ +380%</code></strong>；</li>
+<li>同一批结果里给出 <strong><code>59% ~ 94%</code> win rate、<code>2.0 ~ 33.5</code> profit factor</strong>，而且 README 明写这些数已经包含 <strong><code>0.035%</code> taker fee + <code>1 bp</code> slippage simulation</strong>。</li>
+</ul>
+<p>这就足够把主题定性为： <strong>不是“又一个 bot 工程”，而是一条可直接进素材池的 pairs / stat-arb raw alpha blueprint。</strong></p>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p>这轮的 <strong>base alpha 很清楚</strong>：</p>
+<ul>
+<li>不是 SMC liquidity sweep；</li>
+<li>不是 ML fill predictor；</li>
+<li>不是 Telegram/风控壳；</li>
+<li>而是 <strong>cointegrated pair spread 偏离后向均值回归</strong>。</li>
+</ul>
+<p>翻成人话： <strong>两条长期一起走的永续合约短时偏离得太远，就做 long cheap / short rich，赌 spread 收回来。</strong></p>
+<p>repo 里真正有研究价值的“旁支”是：</p>
+<ul>
+<li>不是再发明新的 MR 本体；</li>
+<li>而是把 <strong><code>ADF + Hurst + half-life + dynamic hedge ratio + cointegration-break kill switch</code></strong> 这一整套筛选/风控壳写成了一个可直接迁移到 desk 的 pairs sleeve。</li>
+</ul>
+<p>所以这轮应归类为：</p>
+<ul>
+<li><code>raw alpha</code></li>
+<li><code>pairs / stat-arb / relative value / mean reversion</code></li>
+<li>但天然依赖一层 <strong>pair-selection gate + execution shell</strong></li>
+</ul>
+<h2>3. 为什么这轮值得写，而不是继续找一个更炫的 headline</h2>
+<p>这轮值得 intake，不是因为 repo 叙事大，而是因为它满足 bot7 当前更高优先级：</p>
+<ol>
+<li><strong>base alpha 清楚。</strong> 就是 spread MR，不是抽象 overlay。</li>
+<li><strong>可以独立成完整策略。</strong> entry / exit / sizing / risk / cost 都能落下来。</li>
+<li><strong>和 current desk 完全同向。</strong> Hyperliquid / Binance perpetual、1h 扫描、15m/5m 可执行。</li>
+<li><strong>旁支价值高。</strong> 即使 repo 不公开精确阈值，它公开的 pair discovery 管线、成本口径和 kill-switch 思路，也足够直接变成我们自己的最小实验。</li>
+<li><strong>它补的是 raw alpha 素材池，而不是再补一个泛 gate。</strong></li>
+</ol>
+<h2>4. 来源信息</h2>
+<h3>主来源（repo）</h3>
+<ul>
+<li><strong>Author / Maintainer：</strong> Jotanune（GitHub）</li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> *CryptoGuardian*</li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/Jotanune/CryptoGuardian&gt;">https://github.com/Jotanune/CryptoGuardian&gt;</a></li>
+<li><strong>GitHub API metadata：</strong> &lt;<a href="https://api.github.com/repos/Jotanune/CryptoGuardian&gt;">https://api.github.com/repos/Jotanune/CryptoGuardian&gt;</a></li>
+<li><strong>README（raw）：</strong> &lt;<a href="https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/README.md&gt;">https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/README.md&gt;</a></li>
+<li><strong>Examples README（raw）：</strong> &lt;<a href="https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/examples/README.md&gt;">https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/examples/README.md&gt;</a></li>
+<li><strong>Data download script（raw）：</strong> &lt;<a href="https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/examples/download_data.py&gt;">https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/examples/download_data.py&gt;</a></li>
+<li><strong>Tests summary（raw）：</strong> &lt;<a href="https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/tests/test_output.md&gt;">https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/tests/test_output.md&gt;</a></li>
+</ul>
+<h3>方法锚点（repo 明写）</h3>
+<ul>
+<li><strong>Cointegration methodology：</strong> Engle–Granger / ADF-test style pair screening</li>
+<li><strong>Additional filters：</strong> Hurst exponent、half-life</li>
+<li><strong>Execution note：</strong> atomic pairs execution、maker/taker fee routing、cointegration-break kill switch</li>
+</ul>
+<p>说明：这轮是 <strong>repo-based</strong> intake，不是某篇已发表 paper 的复刻卡；但它公开的信息已经足够让我们把 pairs sleeve 单独抽出来做 desk 版实验。</p>
+<h2>5. repo 实际公开了哪些对研究有用的东西</h2>
+<h3>5.1 Universe 和数据管线并不空泛</h3>
+<p>repo 自带的公开脚本 <code>examples/download_data.py</code> 给了很实用的复现口径：</p>
+<ul>
+<li>支持 <strong>Hyperliquid</strong> 和 <strong>Binance Futures</strong> 公共 OHLCV；</li>
+<li>币种映射覆盖 <strong><code>70+</code> perpetuals</strong>；</li>
+<li>支持 <code>1m / 5m / 15m / 1h / 4h / 1d</code>；</li>
+<li>README 示例里明确写了：</li>
+<li><code>python download_data.py --all-scan 1h --source binance</code></li>
+<li>用于 <strong>all-scan + cointegration scanning</strong>。</li>
+</ul>
+<p>这点很关键： <strong>它不是嘴上说 pairs，而是把“先在 1h 上扫全市场 pair universe”这个 discovery 步骤写死到了公开脚本里。</strong></p>
+<h3>5.2 Pair discovery 管线披露得比很多 repo 更完整</h3>
+<p>README 里 pair sleeve 的公开流程是：</p>
+<ol>
+<li>下载 <code>70+</code> 个 Hyperliquid-listed perpetuals 的 OHLCV；</li>
+<li>扫描 <strong><code>2400+</code> pair combinations</strong>；</li>
+<li>用 <strong>ADF</strong> 做 cointegration 筛选；</li>
+<li>再用 <strong>half-life</strong>（回复速度）和 <strong>Hurst exponent</strong> 继续过滤；</li>
+<li>对 entry / exit 参数做 grid search；</li>
+<li>用 <strong>60/40</strong> 与 <strong>70/30</strong> walk-forward 验证；</li>
+<li>最后按 <strong>OOS Sharpe / profit factor</strong> 排名，留下 <strong><code>12</code> 个</strong> live candidate。</li>
+</ol>
+<p>翻成人话： <strong>repo 的真贡献，不是“z-score 回归”这四个字，而是把 pair 从 universe discovery → statistical sanity → OOS ranking → live shortlist 的整条流水线讲清楚了。</strong></p>
+<h3>5.3 交易逻辑虽然没给阈值，但核心骨架已经足够明确</h3>
+<p>README 明写 pairs engine 是：</p>
+<ul>
+<li><strong>cointegration-based pairs trading</strong></li>
+<li><strong>Engle–Granger methodology</strong></li>
+<li><strong>entries/exits driven by z-score of the spread</strong></li>
+<li><strong>dynamic hedge ratio recalculation</strong></li>
+<li><strong>automatic position closure if cointegration breaks（p-value threshold）</strong></li>
+</ul>
+<p>这已经把我们最关心的几件事说清：</p>
+<ul>
+<li>alpha 本体：spread z-score fade；</li>
+<li>风险约束：cointegration 失效就平；</li>
+<li>参数更新：beta 不是固定死值，而是 rolling / dynamic；</li>
+<li>交易对象：pair，不是单腿方向单押。</li>
+</ul>
+<h3>5.4 成本口径是这轮最值钱的细节之一</h3>
+<p>README 对 pairs 结果的注释里明确写：</p>
+<p>&gt; All results include <code>0.035%</code> taker fees + <code>1 bps</code> slippage simulation.</p>
+<p>也就是：</p>
+<ul>
+<li><strong>单边 taker fee = 3.5 bps</strong>；</li>
+<li>还额外加了 <strong>1 bp slippage</strong>；</li>
+<li>而 pairs 策略是 <strong>双腿 × 入场 × 出场</strong>，真实 round-trip friction 不能按单腿思考。</li>
+</ul>
+<p>这对 desk 的启发非常直接： <strong>5m/1m 上如果你还默认两腿都 taker，这条 alpha 很容易在真实成本下被直接磨死。</strong></p>
+<h2>6. 3 个最值得记住的硬数据点</h2>
+<ol>
+<li><strong>Discovery funnel：</strong> <code>2400+</code> pair combinations → <code>612</code> viable → <code>12</code> live candidates。</li>
+<li><strong>Self-reported pair performance：</strong> best pairs 全样本收益 <strong><code>+120% ~ +380%</code></strong>。</li>
+<li><strong>Self-reported quality + friction：</strong> <strong><code>59% ~ 94%</code> win rate、<code>2.0 ~ 33.5</code> profit factor</strong>，并注明已计入 <strong><code>0.035% taker fee + 1 bp slippage</code></strong>。</li>
+</ol>
+<p>注意：这些都是 repo 披露值，不是我们独立复核后的本地结果；但足够说明它不是空口说“pairs 有效”。</p>
+<h2>7. 对 current desk 真正该偷走的是什么</h2>
+<p>如果把这份 repo 读成“又一个大而全 bot”，你会被工程壳分散注意力。</p>
+<p>对 short-cycle desk，真正该偷走的是这条完整策略读法：</p>
+<ol>
+<li><strong>raw alpha 本体：</strong> cointegrated spread mean reversion；</li>
+<li><strong>universe gate：</strong> 先全市场扫，再用 ADF / Hurst / half-life 做前置过滤；</li>
+<li><strong>entry/exit：</strong> 用残差 z-score 做 admission / close；</li>
+<li><strong>risk veto：</strong> cointegration break / p-value deterioration / max-hold / residual runaway；</li>
+<li><strong>execution shell：</strong> atomic pairs execution + maker/taker decision + slippage-aware routing。</li>
+</ol>
+<p>也就是说，这轮真正值得 intake 的不是“repo 赚了多少”，而是： <strong>它把 pairs raw alpha 从“理论上能做”推进到了“该按什么顺序筛、在哪一层死、该怎样把成本写进去”的工程化 blueprint。</strong></p>
+<h2>8. 和当前 <code>1m / 3m / 5m / 15m</code> 的关系</h2>
+<h3>8.1 不要把 1h pair discovery 和 5m execution 混成一件事</h3>
+<p>repo 的公开 discovery 示例是 <code>1h</code>。 这很合理，因为：</p>
+<ul>
+<li>cointegration / half-life / Hurst 本身就更适合在略慢一些的 bar 上做稳定估计；</li>
+<li>如果直接在 <code>1m</code> 上扫 universe，microstructure 噪音会把 pair 选择搞脏。</li>
+</ul>
+<p>对当前 desk 更合理的映射是：</p>
+<ul>
+<li><strong><code>1h</code>：</strong> pair discovery / beta estimation / half-life filter</li>
+<li><strong><code>15m</code>：</strong> 主要交易决策 bar</li>
+<li><strong><code>5m</code>：</strong> admission refinement / spread 回踩确认 / child-order slicing</li>
+<li><strong><code>1m / 3m</code>：</strong> 只做 execution，不要拿来当主 pair-selection 频率</li>
+</ul>
+<h3>8.2 这条 alpha 更像“慢筛选 + 快执行”，不是 ultra-fast scalp</h3>
+<p>pairs MR 在 crypto 上常见的误区是：</p>
+<ul>
+<li>看到 z-score 偏离就想在 <code>1m</code> 上高频抄；</li>
+<li>结果 pair 关系本身都不稳定，还被 fee + leg risk 吃掉。</li>
+</ul>
+<p>这份 repo 反而提醒了一条更靠谱的路： <strong>先用更慢的窗把 pair 选干净，再在更快的 bar 上执行。</strong></p>
+<h3>8.3 第一刀别铺全市场，先从 liquid majors / upper-mid 开始</h3>
+<p>虽然 repo 扫了 <code>70+</code> 币，但我们做最小实验没必要第一刀就跟满。 更适合先试的，是：</p>
+<ul>
+<li>BTC / ETH / SOL / BNB / XRP</li>
+<li>LINK / AVAX / DOGE / ADA / LTC</li>
+<li>以及 <code>L1/L2</code>、<code>DeFi</code> 这种有经济叙事同类的 pair bucket</li>
+</ul>
+<p>原因不是“这些最容易赚钱”，而是： <strong>这些合约更有机会同时满足流动性、稳定 beta、较低 legging friction。</strong></p>
+<h2>9. 可复刻的最小实验</h2>
+<h3>实验 A：weekly pair discovery（最优先）</h3>
+<ul>
+<li><strong>Universe：</strong> <code>20 ~ 30</code> 个最液态 USDT-margined / Hyperliquid perpetuals</li>
+<li><strong>Bar：</strong> <code>1h</code></li>
+<li><strong>样本窗：</strong> 最近 <code>180 ~ 365</code> 天</li>
+<li><strong>筛选流程：</strong></li>
+</ul>
+<ol>
+<li>先做 rolling correlation 初筛；</li>
+<li>再做 Engle–Granger / ADF；</li>
+<li>只保留 <strong>Hurst &lt; 0.5</strong> 的 spread；</li>
+<li>half-life 只保留在一个可交易区间，例如 <code>2 ~ 48</code> bars；</li>
+<li>对 rolling OLS / Kalman beta 都留一个分支。</li>
+</ol>
+<p>目标不是直接找到最赚钱的 pair，而是先回答： <strong>哪些 pair 在 2026 的 liquid perp universe 里，还配得上被拿去做 15m execution。</strong></p>
+<h3>实验 B：15m spread z-score raw alpha</h3>
+<ul>
+<li><strong>Signal：</strong> 对 hedge 后残差做 rolling z-score</li>
+<li><strong>Entry：</strong> <code>|z| &gt;= 2.0 / 2.5 / 3.0</code></li>
+<li><strong>Exit：</strong> <code>z</code> 回到 <code>0 ~ 0.5</code> 区间</li>
+<li><strong>Stop：</strong> <code>|z| &gt;= 3.5 / 4.0</code> 或 residual variance 爆掉</li>
+<li><strong>Max hold：</strong> <code>8 / 16 / 24 / 32</code> 根 <code>15m</code></li>
+<li><strong>Sizing：</strong> dollar-neutral / beta-neutral，pair vol-target</li>
+<li><strong>Risk：</strong> 单 pair gross cap + portfolio heat cap</li>
+</ul>
+<p>这一步要回答的是： <strong>after-cost 的 pairs raw alpha 在 <code>15m</code> 上有没有基本生命体征。</strong></p>
+<h3>实验 C：5m execution refinement</h3>
+<p>只在实验 B 有生命体征后再下钻：</p>
+<ul>
+<li><code>15m</code> 负责触发候选；</li>
+<li><code>5m</code> 决定是立即双腿吃单，还是做 maker-first / passive-leg-first；</li>
+<li>比较三种模式：</li>
+</ul>
+<ol>
+<li>双腿都 taker；</li>
+<li>主腿 maker、对冲腿保护性 taker；</li>
+<li>maker-first，超时 fallback 到 taker。</li>
+</ol>
+<h3>实验 D：kill-switch ablation</h3>
+<p>把 repo 里最值钱的风险层单独拆出来测：</p>
+<ul>
+<li><strong>No kill switch</strong></li>
+<li><strong>cointegration-break kill switch</strong></li>
+<li><strong>cointegration-break + max-hold 双 kill</strong></li>
+</ul>
+<p>如果 kill switch 不是提升 OOS，而只是让 IS 更好看，就别神化它。</p>
+<h2>10. 怎样把它落成完整策略（entry / exit / sizing / risk / cost）</h2>
+<h3>10.1 Entry</h3>
+<ul>
+<li>只在 pair 已通过最新一次 <code>ADF + Hurst + half-life</code> 过滤后才允许交易；</li>
+<li>用 <code>15m</code> spread z-score 给入场；</li>
+<li>若 <code>5m</code> 上 residual 继续恶化但 order book 不支持双腿同步，就宁可放弃，不做半腿暴露。</li>
+</ul>
+<h3>10.2 Exit</h3>
+<p>第一轮先用最朴素的三类：</p>
+<ol>
+<li><code>z-score</code> 回到中线附近；</li>
+<li><code>max_hold</code> 到期强平；</li>
+<li>cointegration / ADF 条件失效直接 kill。</li>
+</ol>
+<h3>10.3 Sizing</h3>
+<ul>
+<li>每条 pair 先做 <code>beta-neutral</code> 或 <code>dollar-neutral</code>；</li>
+<li>再按 spread realized vol 做 vol-target；</li>
+<li>同 underlying / 同主题篮子设相关性 cap，避免组合里堆满一个风格簇。</li>
+</ul>
+<h3>10.4 Risk</h3>
+<p>至少加这几层：</p>
+<ol>
+<li><strong>cointegration-break kill switch</strong></li>
+<li><strong>legging timeout</strong></li>
+<li><strong>max residual excursion stop</strong></li>
+<li><strong>single-pair DD cap</strong></li>
+<li><strong>portfolio heat cap</strong></li>
+</ol>
+<h3>10.5 Cost</h3>
+<p>这条线最容易被低估的就是成本：</p>
+<ul>
+<li>两腿 × 两次成交，本来就比单腿策略贵；</li>
+<li>repo 给的是 <strong>3.5 bps taker + 1 bp slippage</strong> 的标尺；</li>
+<li>但在我们这里，应该至少再跑一组 cost ladder：</li>
+<li><strong>单腿 one-way：</strong> <code>2 / 4.5 / 6 / 8 bps</code></li>
+<li>并分别看 maker-biased 与 taker-biased 两个世界。</li>
+</ul>
+<h2>11. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 1h pair discovery，不要先调 5m z-score。</strong> pair 选不干净，后面都白搭。</li>
+<li><strong>先验证 <code>15m</code> after-cost 是否存活。</strong> 如果 <code>15m</code> 都不活，别幻想 <code>1m/3m</code> 会更容易救活。</li>
+<li><strong>rolling beta 和 static beta 必须并排。</strong> repo 明写 dynamic hedge ratio，这是这轮最值得验的点之一。</li>
+<li><strong>kill switch 必须单独 ablation。</strong> 不要默认它一定提升净收益，只能先用实验说话。</li>
+<li><strong>把 atomic execution 当成 alpha 生死线来看。</strong> pairs 策略最大的假阳性来源之一，就是回测里假装双腿同时成交。</li>
+<li><strong>优先看 OOS plateau，不追单点最优阈值。</strong> pairs 策略一旦只有一个窄点参数赚钱，实盘大概率会很脆。</li>
+</ol>
+<h2>12. 这条线最容易错在哪</h2>
+<ul>
+<li><strong>把 pair selection 和 entry threshold 混在一起调。</strong> 这样不知道到底是谁带来的收益。</li>
+<li><strong>把 1h 发现逻辑粗暴压缩到 1m。</strong> 这通常只会放大噪音和费用。</li>
+<li><strong>只看 spread 回归，不看 legging 风险。</strong> 真正死人的地方常常是第二条腿没成交。</li>
+<li><strong>把 repo 自报收益当成已验证事实。</strong> 这轮应该把它当 high-signal blueprint，而不是已闭环证据。</li>
+<li><strong>忽略相关性拥挤。</strong> 即使每个 pair 单看都不错，组合层也可能是在同一个 risk bucket 上重复下注。</li>
+</ul>
+<h2>13. 对当前项目的直接意义</h2>
+<p>这轮主题值得进池，因为它满足当前 bot7 的主线偏好：</p>
+<ul>
+<li><strong>主题类型：raw alpha</strong></li>
+<li><strong>基础 alpha 清楚</strong></li>
+<li><strong>能独立复现成完整策略</strong></li>
+<li><strong>天然服务于 pairs / stat-arb 素材池</strong></li>
+<li><strong>公开数据足够，能很快做 <code>1h → 15m → 5m</code> 的最小实验</strong></li>
+</ul>
+<p>如果要一句话概括： <strong>这份 2026 Hyperliquid repo 最值钱的，不是“大而全交易机器人”叙事，而是它把一条 pairs raw alpha 的实盘化顺序讲清楚了：先筛干净 pair，再做 z-score fade，再把 kill switch 和双腿执行写进同一张策略卡。</strong></p>
+<h2>14. 来源链接</h2>
+<ul>
+<li>Repo：&lt;<a href="https://github.com/Jotanune/CryptoGuardian&gt;">https://github.com/Jotanune/CryptoGuardian&gt;</a></li>
+<li>GitHub API metadata：&lt;<a href="https://api.github.com/repos/Jotanune/CryptoGuardian&gt;">https://api.github.com/repos/Jotanune/CryptoGuardian&gt;</a></li>
+<li>README（raw）：&lt;<a href="https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/README.md&gt;">https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/README.md&gt;</a></li>
+<li>Examples README（raw）：&lt;<a href="https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/examples/README.md&gt;">https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/examples/README.md&gt;</a></li>
+<li>Data script（raw）：&lt;<a href="https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/examples/download_data.py&gt;">https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/examples/download_data.py&gt;</a></li>
+<li>Tests summary（raw）：&lt;<a href="https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/tests/test_output.md&gt;">https://raw.githubusercontent.com/Jotanune/CryptoGuardian/main/tests/test_output.md&gt;</a></li>
+</ul>
+</body>
+</html>

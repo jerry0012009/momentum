@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 BB 触边只当老派指标：这份 2026 新仓库更值得先复现的是「5m BTC 均值回归 + EMA 趋势过滤 + 诚实出场」完整 raw alpha 骨架</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 BB 触边只当老派指标：这份 2026 新仓库更值得先复现的是「5m BTC 均值回归 + EMA 趋势过滤 + 诚实出场」完整 raw alpha 骨架</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-24 03:19 UTC</span>
+      <span class="pill">研究时间：2026-03-24 03:18 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + 本地独立最小复核 + 论文地基</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/bollinger/ema/btc/5m/hyperliquid/binance/entry-exit/sizing/cost/repo/paper/crypto</span>
+      <span class="pill">证据类型：仓库源码 + 公开回测脚本 + 本地独立最小复核</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-24_0318_bb-ema-btc-5m-meanreversion-fullstack.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-24 03:18 UTC</li>
+<li>类型：2026 GitHub 新仓库 + 本地独立最小复核 + 论文地基</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：5m BTC 在中期趋势未破坏时，价格向 Bollinger Band 极端伸展后，向均值/对侧带回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/mean-reversion/bollinger/ema/btc/5m/hyperliquid/binance/entry-exit/sizing/cost/repo/paper/crypto</li>
+<li>证据类型：仓库源码 + 公开回测脚本 + 本地独立最小复核</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这不是 filter，而是一个原生 raw alpha——在 EMA(200) 定义的趋势方向里，做 5m 的 band-edge mean reversion。</strong></p>
+<p>本轮主看 <strong>debugger-engineer (2026) 的 <code>btc-trading-bot</code></strong>。它最值得收进素材池的，不是“Bollinger 这三个字”，而是它把完整策略链条一次写清了：</p>
+<ul>
+<li>entry：<code>price &lt;= lower BB 且 &gt; EMA200</code> 做多；<code>price &gt;= upper BB 且 &lt; EMA200</code> 做空</li>
+<li>exit：对侧 band 止盈、<code>2.5%</code> 硬止损、以及 <code>inverted TP -&gt; break-even</code></li>
+<li>execution：在 band 位置挂限价单，若 60 秒内没成交或价格走远就撤单</li>
+<li>sizing：按 <code>target_risk_pct / (leverage * stop_loss_pct)</code> 反推仓位</li>
+</ul>
+<p>这符合当前 desk 的最高优先级：<strong>可独立复现、且可直接落地为完整策略的 5m raw alpha。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话结论：</strong> 这份新仓库真正值钱的不是 README 里那串收益数字，而是它把“趋势内短线回归”写成了可直接 first-verdict 的完整策略骨架。</li>
+<li><strong>一句话它怎么证明：</strong> 源码和公开回测脚本把信号、出场、费用和仓位都写死了；我再按仓库逻辑独立重跑 Binance 5m BTC，确认它不是只有标题党、但也比 README 宣传更薄更诚实。</li>
+</ul>
+<p>关键数据点（本地独立复核，按仓库脚本口径）：</p>
+<ol>
+<li><strong>365d：954 笔，胜率 <code>59.85%</code>，净收益 <code>$1119.55</code>，平均每笔 <code>$1.17</code></strong>（固定 <code>$475</code> notional / <code>$95</code> 保证金口径）。</li>
+<li><strong>90d：236 笔，胜率 <code>61.86%</code>，净收益 <code>$331.85</code>，平均每笔 <code>$1.41</code>。</strong></li>
+<li><strong>平均持仓约 <code>30.4</code> 根 5m bar（约 2.5 小时），365d 里只有 <code>7</code> 次硬止损。</strong></li>
+</ol>
+<p>这几个数有两个重要含义：</p>
+<ul>
+<li>它确实像一个<strong>短持有期、可密集复核</strong>的 5m raw alpha；</li>
+<li>但 README 声称的 <code>69%</code> 胜率、<code>~88.8% annually</code> 并没有被我这次独立重跑原样复现，所以<strong>它更像“值得测”，不是“可直接信”</strong>。</li>
+</ul>
+<h2>3. 为什么和当前 desk 直接相关</h2>
+<p>这轮价值很直接：我们最近 intake 里 pairs / relative-value / event alpha 已经不少，而这条线补的是 <strong>单币、短持有、原生 5m、规则极少的 mean reversion 主策略</strong>。</p>
+<p>它对当前素材池的补充点在于：</p>
+<ul>
+<li><strong>raw alpha 足够清楚</strong>：不是“加个 BB filter”，而是直接拿 band stretch 当入场本体；</li>
+<li><strong>执行链条完整</strong>：entry / exit / sizing / cost 全有；</li>
+<li><strong>迁移成本低</strong>：天然适合先做 <code>5m</code>，再压到 <code>3m/1m</code> 或放大到 <code>15m</code>。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：均值回归（但只在 EMA 定义的趋势方向里开仓）</li>
+<li>基础 alpha：短线过度伸展后，回到带中轴/对侧带的概率大于随机</li>
+<li>regime：趋势未坏、但局部波动过冲时更友好</li>
+<li>filter / veto：EMA200 本质上是方向约束，不是这篇策略的 alpha 本体</li>
+<li>risk / sizing / execution overlay：2.5% hard stop、break-even 保护、限价进场、风险反推仓位、maker/taker fee 区分</li>
+</ul>
+<h2>4. 与 <code>1m/3m/5m/15m</code> 的关系（实话版）</h2>
+<ul>
+<li><strong>5m：原生成立。</strong> 这是这篇最适合我们 desk 的地方。</li>
+<li><strong>3m/1m：可以测，但必须先过成本生存线。</strong> 更快周期容易把“回归 edge”磨成手续费和滑点。</li>
+<li><strong>15m：可迁移，但不要机械照搬 20 bar。</strong> 更合理的是先做“等效时间窗”换算：<code>20x5m≈100 分钟</code>，15m 先从 <code>7 bar</code> 左右起步，而不是盲抄 <code>20 bar</code>。</li>
+</ul>
+<h2>5. 最小可复现实验口径（本轮）</h2>
+<h3>5.1 数据源、公开性、更新频率</h3>
+<ul>
+<li>价格信号：Binance <code>BTCUSDT</code> 5m K 线（公开 REST，分钟级可取）</li>
+<li>执行假设：Hyperliquid perp（仓库原始执行环境）</li>
+<li>更新频率：5m 主周期；可映射到 <code>1m/3m/15m</code></li>
+</ul>
+<h3>5.2 本轮独立复核口径</h3>
+<ul>
+<li>规则：仓库 <code>BB(20,2) + EMA(200) + SL=2.5%</code></li>
+<li>成本：maker <code>1bp</code>；stop 出场按 taker <code>5bp</code></li>
+<li>样本：近 <code>30/90/180/365d</code> Binance 5m BTC</li>
+<li>结果文件：<code>reports/artifacts/quant_digests/bb_ema_hyperliquid_style_20260324/metrics.json</code></li>
+</ul>
+<h2>6. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>先做执行诚实化</strong>：把“band 触发即成交”改成 <code>next-bar open</code>、<code>band 限价 1 bar</code>、<code>maker/taker 混合</code> 三种成交模型，先看 edge 剩多少。</li>
+<li><strong>做频率迁移</strong>：按等效时间窗把策略迁到 <code>3m / 15m</code>，比较 <code>post-cost expectancy / trade count / avg hold</code>，确认它到底是 5m 特供还是能跨频率生存。</li>
+<li><strong>做 filter ablation</strong>：比较 <code>有 EMA200</code>、<code>无 EMA200</code>、<code>只做多</code>、<code>只做空</code>，判断 EMA 是真 edge 还是只是减少反向交易。</li>
+<li><strong>做跨标的复核</strong>：同口径测 <code>ETH/SOL</code>，如果只在 BTC 活，就把它标记成 <code>BTC-specific raw alpha</code>，别误升成通用模板。</li>
+<li><strong>做 friction ladder</strong>：至少测 <code>2/4/6/8 bps</code> 总成本；若成本略升就失活，这条线只能算 research toy。</li>
+</ol>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>仓库很新，README 数字与本次独立重跑存在偏差，必须防宣传口径与真实口径不一致。</li>
+<li>该策略属于<strong>趋势内均值回归</strong>，最怕单边加速行情；若 1m/3m 强行下钻，滑点与连续冲击会明显放大。</li>
+<li>目前复核只用了 Binance 价格代理，尚未做 Hyperliquid 原生撮合口径与资金费率影响。</li>
+</ul>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>debugger-engineer. (2026). _btc-trading-bot_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://github.com/debugger-engineer/btc-trading-bot">https://github.com/debugger-engineer/btc-trading-bot</a></li>
+<li>Repo URL: <a href="https://github.com/debugger-engineer/btc-trading-bot">https://github.com/debugger-engineer/btc-trading-bot</a></li>
+</ul>
+<ol>
+<li><strong>debugger-engineer. (2026). _test/backtest_perps.py_.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/debugger-engineer/btc-trading-bot/main/test/backtest_perps.py">https://raw.githubusercontent.com/debugger-engineer/btc-trading-bot/main/test/backtest_perps.py</a></li>
+<li>Repo URL: <a href="https://github.com/debugger-engineer/btc-trading-bot/blob/main/test/backtest_perps.py">https://github.com/debugger-engineer/btc-trading-bot/blob/main/test/backtest_perps.py</a></li>
+</ul>
+<ol>
+<li><strong>Svogun, D., &amp; Bazán-Palomino, W. (2022). _Technical analysis in cryptocurrency markets: Do transaction costs and bubbles matter?_ Journal of International Financial Markets, Institutions and Money, 79, 101601.</strong></li>
+</ol>
+<ul>
+<li>Venue: Journal of International Financial Markets, Institutions and Money</li>
+<li>DOI: <a href="https://doi.org/10.1016/j.intfin.2022.101601">https://doi.org/10.1016/j.intfin.2022.101601</a></li>
+<li>Readable URL: <a href="https://api.crossref.org/works/10.1016/j.intfin.2022.101601">https://api.crossref.org/works/10.1016/j.intfin.2022.101601</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Binance Developers. _Spot Market Data Endpoint: Kline/Candlestick data_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data</a></li>
+</ul>
+<ol>
+<li><strong>Hyperliquid Docs. _API / exchange docs_.</strong></li>
+</ol>
+<ul>
+<li>Venue: Official Docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://hyperliquid.gitbook.io/hyperliquid-docs/">https://hyperliquid.gitbook.io/hyperliquid-docs/</a></li>
+</ul>
+<h2>9. 本地复现产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/bb_ema_hyperliquid_style_20260324/metrics.json</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1.5 进阶：为什么桶那么少？怎么优化？</title>
+<style>
+:root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff; --green: #3fb950; --red: #f85149; --yellow: #d29922; --purple: #bc8cff; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; padding: 2rem; max-width: 1100px; margin: 0 auto; }
+h1 { font-size: 1.8rem; color: var(--accent); margin-bottom: 0.5rem; border-bottom: 2px solid var(--accent); padding-bottom: 0.5rem; }
+h2 { font-size: 1.4rem; color: var(--yellow); margin: 2rem 0 1rem; }
+h3 { font-size: 1.1rem; color: var(--purple); margin: 1.5rem 0 0.5rem; }
+p, li { margin-bottom: 0.5rem; }
+ul { padding-left: 1.5rem; }
+.meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 2rem; }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+th, td { padding: 0.5rem 0.8rem; border: 1px solid var(--border); text-align: right; }
+th { background: #1c2129; color: var(--accent); font-weight: 600; }
+td:first-child, th:first-child { text-align: left; }
+.pos { color: var(--green); font-weight: 600; }
+.neg { color: var(--red); font-weight: 600; }
+.highlight { background: #1a2332; }
+.box { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; margin: 1rem 0; }
+.box.warn { border-left: 4px solid var(--yellow); }
+.box.good { border-left: 4px solid var(--green); }
+.box.info { border-left: 4px solid var(--accent); }
+.box.bad { border-left: 4px solid var(--red); }
+code { background: #1c2129; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.88em; color: var(--yellow); }
+.arrow { font-size: 1.2rem; color: var(--muted); }
+.step-num { display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center; border-radius: 50%; background: var(--accent); color: var(--bg); font-weight: 700; font-size: 0.85rem; margin-right: 0.5rem; }
+.verdict { font-size: 1.1rem; padding: 1rem; border-radius: 8px; margin: 1rem 0; }
+.verdict.ok { background: #0d2818; border: 1px solid #238636; }
+.verdict.meh { background: #2d1b00; border: 1px solid var(--yellow); }
+.verdict.no { background: #2d0000; border: 1px solid var(--red); }
+.toc { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; margin-bottom: 2rem; }
+.toc a { color: var(--accent); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+.toc li { margin-bottom: 0.3rem; }
+nav.top-link { margin-bottom: 1.5rem; }
+nav.top-link a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<nav class="top-link"><a href="binance_event_study_hub.html">← 回到统一入口</a></nav>
+
+<h1>1.5 进阶：为什么桶那么少？怎么优化？</h1>
+<p class="meta">基于日频数据 · 价格收益 + 资金费后收益 · v1.5 多类结构分类<br>Generated: 2026-05-12</p>
+
+<div class="toc">
+<strong>目录</strong>
+<ol>
+<li><a href="#q1">stall/other 是否过于粗糙？</a></li>
+<li><a href="#q2">24h 内暴涨暴跌，日线看不到？</a></li>
+<li><a href="#q3">G_neg_extreme_stall 为什么只有 101？</a></li>
+<li><a href="#q4">优化方案：多类结构分类</a></li>
+<li><a href="#q5">核心发现：结构 × 资金费 × 成交量</a></li>
+<li><a href="#q6">最优组合桶排名</a></li>
+<li><a href="#q7">重要警告：幸存者偏差 & 样本量</a></li>
+<li><a href="#q8">下一步建议</a></li>
+</ol>
+</div>
+
+<!-- ==================== Q1 ==================== -->
+<h2 id="q1">1. stall/other 是否过于粗糙？</h2>
+
+<div class="box warn">
+<strong>你说得对，确实粗糙。</strong>1.4 里只分了两种：stall（失速）和 other（非失速）。但现实中，一个暴涨币的后续走势有很多种可能，不是"失速"和"不失速"这么简单。
+</div>
+
+<p>1.4 的 stall 定义是：</p>
+<ul>
+<li>T+1 还在涨（`fwd_ret_t1 > 0`）</li>
+<li>但 T+2 反转下跌（`fwd_ret_t2_only < 0`）</li>
+</ul>
+
+<p>问题在于：</p>
+<ul>
+<li><strong>55% 的涨幅榜事件，T+1 就已经在跌了</strong> — 这些全部被归为 "other"，但它们其实是"立刻反转"，和"没失速"完全不同</li>
+<li>T+1 涨、T+2 涨、T+3 才跌的样本 — 也被归为 "stall"，但它们其实比"一天就失速"的更强势</li>
+<li>持续涨了 5 天的样本 — 归为 "other"，但应该叫 "continuation"</li>
+</ul>
+
+<p>所以 1.4 的分类把 5 种完全不同的走势模式，硬塞进了 2 个桶里。</p>
+
+<!-- ==================== Q2 ==================== -->
+<h2 id="q2">2. 24h 内暴涨暴跌，日线看不到？</h2>
+
+<div class="box bad">
+<strong>这是真实局限，无法回避。</strong>我们只有日线收盘价，没有高低价（high/low），也没有开盘价（open）。
+</div>
+
+<p>举例说明：</p>
+<ul>
+<li>某个币凌晨 2 点涨了 40%，早上 10 点跌回原位 — 日线收盘价可能只显示 +2%</li>
+<li>某个币 8 小时内暴涨暴跌 3 次 — 日线可能是一个小十字星</li>
+</ul>
+
+<p>这意味着：</p>
+<ul>
+<li>我们无法识别"日内冲高回落"的模式</li>
+<li>我们无法计算日内最大回撤（intraday MAE）</li>
+<li>我们无法知道真正的入场/出场价格</li>
+</ul>
+
+<p>在 1.3 的小时线验证中，我们已经看到：<strong>日内 MAE 是日线 MAE 的 2.3 倍</strong>（-8.97% vs -3.81%）。所以日线分析确实会低估真实风险。</p>
+
+<div class="box info">
+<strong>应对方案：</strong>在 Step 2（策略设计阶段），必须用小时线或更细的数据做验证。日线研究只用来做初步筛选和假设生成。
+</div>
+
+<!-- ==================== Q3 ==================== -->
+<h2 id="q3">3. G_neg_extreme_stall 为什么只有 101 个样本？</h2>
+
+<p>这是你最关键的问题。答案是：<strong>两个独立过滤条件相乘，样本急剧缩小。</strong></p>
+
+<div class="box warn">
+<strong>漏斗分析：</strong>
+<table>
+<tr><th>步骤</th><th>数量</th><th>占 neg extreme 比例</th></tr>
+<tr><td>全部涨幅榜事件</td><td>32,860</td><td>—</td></tr>
+<tr><td>极端负 funding（carry_raw ≤ p5）</td><td>1,643</td><td>100%</td></tr>
+<tr><td>T+1 还在涨（通过第一步）</td><td>659</td><td>40.1%</td></tr>
+<tr><td><strong>T+1 就在跌了（被过滤掉）</strong></td><td><strong>984</strong></td><td><strong>59.9%</strong></td></tr>
+<tr><td>T+1 涨 且 T+2 跌（stall_t2）</td><td>388</td><td>23.6%</td></tr>
+<tr><td>T+1 涨 且 T+2 涨（continuation 开始）</td><td>271</td><td>16.5%</td></tr>
+</table>
+</div>
+
+<p><strong>核心发现：59.9% 的极端负 funding 涨幅榜事件，T+1 就已经在跌了。</strong></p>
+
+<p>这不是 stall 定义太严的问题 — 而是<strong>大多数暴涨币第二天就回调</strong>这个事实。stall 定义要求"T+1 还在涨"，这是合理的，但它排除了大多数样本。</p>
+
+<p>1.4 里只有 101 个，是因为用了更窄的 neg_extreme 定义（<code>is_negative_funding</code> 标签 = 每日 funding 最低的 20 个），而不是我们这里用的 bottom 5%。</p>
+
+<!-- ==================== Q4 ==================== -->
+<h2 id="q4">4. 优化方案：多类结构分类</h2>
+
+<p>1.5 的核心改进：把 binary 的 stall/other 拆成 5 种结构。</p>
+
+<div class="box info">
+<strong>新分类规则：</strong>
+<table>
+<tr><th>结构类别</th><th>定义</th><th>通俗解释</th></tr>
+<tr><td><code>immediate_reversal</code></td><td>T+1 就在跌</td><td>涨了一天就没了</td></tr>
+<tr><td><code>stall_t2</code></td><td>T+1 涨，T+2 跌</td><td>涨了两天，第三天开始跌</td></tr>
+<tr><td><code>stall_t3</code></td><td>T+1 涨，T+2 涨，T+3 跌</td><td>涨了三天才开始回调</td></tr>
+<tr><td><code>continuation</code></td><td>T+1 涨，T+2 涨，T+3 涨</td><td>持续上涨</td></tr>
+<tr><td><code>no_data</code></td><td>数据缺失</td><td>临近上市末尾</td></tr>
+</table>
+</div>
+
+<h3>全量涨幅榜的结构分布</h3>
+<table>
+<tr><th>结构</th><th>样本数</th><th>占比</th><th>5天价格收益</th><th>5天胜率</th><th>5天含资金费（多）</th><th>5天含资金费（空）</th></tr>
+<tr><td>immediate_reversal</td><td>18,106</td><td>55.1%</td><td class="neg">-4.74%</td><td>30.0%</td><td class="neg">-4.60%</td><td class="pos">+4.60%</td></tr>
+<tr><td>stall_t2</td><td>8,085</td><td>24.6%</td><td>+0.46%</td><td>47.2%</td><td>+0.63%</td><td>-0.63%</td></tr>
+<tr class="highlight"><td><strong>stall_t3</strong></td><td>3,758</td><td>11.4%</td><td class="pos">+5.39%</td><td class="pos">66.5%</td><td class="pos">+5.58%</td><td>-5.58%</td></tr>
+<tr class="highlight"><td><strong>continuation</strong></td><td>2,873</td><td>8.7%</td><td class="pos">+15.36%</td><td class="pos">88.7%</td><td class="pos">+15.49%</td><td>-15.49%</td></tr>
+</table>
+
+<div class="box good">
+<strong>关键洞察：</strong>结构本身就是最强的信号。不需要 funding，不需要成交量 — 单看"涨了几天开始跌"就能区分强弱。<br><br>
+但问题是：<strong>你在 T+1 的时候不知道 T+2 和 T+3 会怎样</strong>。这就是为什么结构分类是"事后解释"，不是"事前预测"。
+</div>
+
+<!-- ==================== Q5 ==================== -->
+<h2 id="q5">5. 核心发现：结构 × 资金费 × 成交量</h2>
+
+<h3>5a. 资金费放大结构，但不创造结构</h3>
+<table>
+<tr><th>桶</th><th>样本</th><th>5天价格收益</th><th>5天胜率</th><th>5天含资金费（多）</th></tr>
+<tr><td colspan="5" style="background:#1c2129;color:var(--accent)"><strong>极端负 funding 涨幅榜</strong>（carry_raw ≤ p5）</td></tr>
+<tr><td>immediate_reversal</td><td>983</td><td class="neg">-5.37%</td><td>24.2%</td><td class="neg">-2.77%</td></tr>
+<tr><td>stall_t2</td><td>388</td><td>+2.86%</td><td>43.4%</td><td class="pos">+6.00%</td></tr>
+<tr class="highlight"><td><strong>stall_t3</strong></td><td>144</td><td class="pos">+10.15%</td><td class="pos">66.0%</td><td class="pos">+15.04%</td></tr>
+<tr class="highlight"><td><strong>continuation</strong></td><td>124</td><td class="pos">+19.45%</td><td class="pos">90.2%</td><td class="pos">+22.92%</td></tr>
+<tr><td colspan="5" style="background:#1c2129;color:var(--accent)"><strong>中性 funding 涨幅榜</strong>（对照组）</td></tr>
+<tr><td>immediate_reversal</td><td>5,415</td><td class="neg">-4.41%</td><td>31.0%</td><td class="neg">-4.41%</td></tr>
+<tr><td>stall_t2</td><td>2,387</td><td>-0.63%</td><td>44.7%</td><td>-0.61%</td></tr>
+<tr><td>stall_t3</td><td>1,090</td><td>+5.13%</td><td>66.6%</td><td>+5.12%</td></tr>
+<tr><td>continuation</td><td>856</td><td>+14.42%</td><td>88.7%</td><td>+14.43%</td></tr>
+</table>
+
+<div class="box info">
+<strong>解读：</strong>
+<ul>
+<li>同一种结构下，极端负 funding 的收益比中性 funding 高出 <strong>5-8 个百分点</strong></li>
+<li>但 funding 不能"拯救"不好的结构 — immediate_reversal 在任何 funding 下都亏钱</li>
+<li>所以优先级是：<strong>结构 > 资金费 > 成交量</strong></li>
+</ul>
+</div>
+
+<h3>5b. 成交量变化是第二重要维度</h3>
+<p>对于极端负 funding 涨幅榜：</p>
+<table>
+<tr><th>T+1 成交量变化</th><th>样本</th><th>5天价格收益</th><th>5天胜率</th><th>5天含资金费（多）</th></tr>
+<tr><td>放量（>120%）</td><td>336</td><td class="pos">+7.46%</td><td>52.4%</td><td class="pos">+12.60%</td></tr>
+<tr><td>持平（80%-120%）</td><td>302</td><td>+2.69%</td><td>41.3%</td><td class="pos">+6.10%</td></tr>
+<tr><td>缩量（50%-80%）</td><td>437</td><td class="neg">-2.53%</td><td>33.8%</td><td>-0.00%</td></tr>
+<tr><td>暴跌（<50%）</td><td>567</td><td class="neg">-4.50%</td><td>29.0%</td><td class="neg">-2.65%</td></tr>
+</table>
+
+<div class="box good">
+<strong>成交量放大的极端负 funding 事件，5 天含资金费做多收益 +12.60%，是所有单维度分类里最强的。</strong>
+</div>
+
+<h3>5c. 资金费变化方向很关键</h3>
+<p>极端负 funding 涨幅榜里：</p>
+<table>
+<tr><th>T+1 资金费方向</th><th>样本</th><th>5天价格收益</th><th>5天含资金费（多）</th></tr>
+<tr><td>仍然为负（空头继续承压）</td><td>1,537</td><td>+0.28%</td><td class="pos">+3.48%</td></tr>
+<tr><td>翻正（空头压力解除）</td><td>105</td><td class="neg">-6.99%</td><td class="neg">-7.01%</td></tr>
+</table>
+
+<div class="box warn">
+<strong>如果负资金费在 T+1 翻正了，收益暴跌到 -7%。</strong>这说明"空头承压持续"是核心 — 一旦压力解除，收益立刻恶化。
+</div>
+
+<!-- ==================== Q6 ==================== -->
+<h2 id="q6">6. 最优组合桶排名（极端负 funding 涨幅榜）</h2>
+
+<p>把结构 × 成交量组合起来：</p>
+
+<table>
+<tr><th>桶</th><th>样本</th><th>5天价格收益</th><th>5天胜率</th><th>5天含资金费（多）</th><th>可交易？</th></tr>
+<tr class="highlight"><td>continuation + 放量</td><td>32</td><td class="pos">+29.54%</td><td class="pos">87.5%</td><td class="pos">+37.42%</td><td>样本太少</td></tr>
+<tr class="highlight"><td>continuation + 持平</td><td>30</td><td class="pos">+21.94%</td><td class="pos">89.7%</td><td class="pos">+24.04%</td><td>样本太少</td></tr>
+<tr class="highlight"><td>stall_t3 + 放量</td><td>52</td><td class="pos">+17.87%</td><td class="pos">71.2%</td><td class="pos">+26.17%</td><td>⚠️ 边界</td></tr>
+<tr><td>stall_t3 + 持平</td><td>27</td><td class="pos">+8.08%</td><td>70.4%</td><td class="pos">+12.80%</td><td>样本太少</td></tr>
+<tr><td>stall_t3 + 缩量</td><td>39</td><td class="pos">+5.78%</td><td>64.1%</td><td class="pos">+7.93%</td><td>样本太少</td></tr>
+<tr><td>stall_t2 + 放量</td><td>144</td><td class="pos">+8.86%</td><td>54.2%</td><td class="pos">+12.96%</td><td>⚠️ 值得关注</td></tr>
+<tr><td>stall_t2 + 持平</td><td>90</td><td>+2.88%</td><td>35.6%</td><td class="pos">+6.95%</td><td>胜率偏低</td></tr>
+<tr><td>stall_t2 + 缩量</td><td>78</td><td class="neg">-2.21%</td><td>34.6%</td><td>-0.16%</td><td>不行</td></tr>
+<tr><td>immediate_reversal + 暴跌量</td><td>429</td><td class="neg">-6.31%</td><td>20.8%</td><td class="neg">-4.38%</td><td>做空对照</td></tr>
+</table>
+
+<div class="box good">
+<strong>最值得关注的组合：</strong><code>stall_t2 + 放量</code>（n=144）和 <code>stall_t3 + 放量</code>（n=52）。样本量勉强可用，5 天含资金费收益分别 +12.96% 和 +26.17%。
+</div>
+
+<!-- ==================== Q7 ==================== -->
+<h2 id="q7">7. 重要警告</h2>
+
+<div class="box bad">
+<strong>⚠️ 三个必须面对的问题：</strong>
+<ol>
+<li><strong>事后分类偏差：</strong>你必须在 T+1 结束后才知道是 stall_t2 还是 continuation。这意味着你不能在事件日就下单 — 必须等到 T+1 收盘确认结构。</li>
+<li><strong>样本量问题：</strong>最优组合桶（stall_t3 + 放量 + neg_extreme）只有 52 个样本。这不够做策略，但够做"值得进一步验证"的判断。</li>
+<li><strong>幸存者偏差：</strong>我们的 panel 只包含当前还在交易的币种。已经退市的币（很多小市值币会退市）不在这 679 个 symbol 里。这意味着我们的结果可能<strong>高估</strong>了收益。</li>
+</ol>
+</div>
+
+<!-- ==================== Q8 ==================== -->
+<h2 id="q8">8. 下一步建议</h2>
+
+<div class="box info">
+<strong>我建议的下一步方向：</strong>
+<ol>
+<li><strong>Step 1.6：事件日当天的"即时信号"</strong> — 不等 T+1，而是在事件日当天就识别哪些特征能预测后续结构。比如：事件日的 funding 极端程度、成交额放大幅度、前期走势（after_runup vs after_drawdown）。目标：找到"事件日就能判断"的过滤条件。</li>
+<li><strong>小时线验证：</strong>对 stall_t2 + 放量 这个组合，用小时线验证真正的入场/出场时间和价格，计算包含滑点和手续费的真实收益。</li>
+<li><strong>扩大样本：</strong>把 neg_extreme 的阈值从 p5 放宽到 p10，看样本量和收益的 trade-off。</li>
+</ol>
+</div>
+
+<h3>产物索引</h3>
+<table>
+<tr><th>文件</th><th>用途</th></tr>
+<tr><td><code>scripts/build_binance_daily_event_study_v1_5.py</code></td><td>本次分析脚本</td></tr>
+<tr><td><code>reports/artifacts/binance_daily_event_study_v1_5/summary_v1_5.csv</code></td><td>88 个桶的汇总结果</td></tr>
+<tr><td><code>reports/artifacts/binance_daily_event_study_v1_5/enriched_gainer_events_v1_5.csv</code></td><td>32,860 个事件的详细数据</td></tr>
+<tr><td><code>reports/artifacts/binance_daily_event_study_v1_5/diagnostic_funnel_v1_5.csv</code></td><td>漏斗诊断</td></tr>
+<tr><td><code>reports/artifacts/binance_daily_event_study_v1_5/manifest_v1_5.json</code></td><td>元数据</td></tr>
+</table>
+
+</body>
+</html>

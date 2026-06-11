@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Bitcoin options flow 只读成 IV 解释：更该先测的是「Deribit option-volume shock × OTM directional gate」BTC 短周期 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Bitcoin options flow 只读成 IV 解释：更该先测的是「Deribit option-volume shock × OTM directional gate」BTC 短周期 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-28 14:21 UTC</span>
+      <span class="pill">研究时间：2026-03-28 14:03 UTC</span>
+      <span class="pill">类型：raw alpha</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/options-flow/deribit/bitcoin/perp/volume-shock/directional-gate/volatility-learning/otm/dotm/public-data/5m/15m/paper/external-data/cost</span>
+      <span class="pill">证据类型：2022 arXiv 全文 PDF 本地抽取 + Deribit 官方 API 文档</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-28_1403_deribit-option-volume-shock-otm-flow-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-28 14:03 UTC</li>
+<li>类型：raw alpha</li>
+<li>主题标签：raw-alpha/single-asset/options-flow/deribit/bitcoin/perp/volume-shock/directional-gate/volatility-learning/otm/dotm/public-data/5m/15m/paper/external-data/cost</li>
+<li>证据类型：2022 arXiv 全文 PDF 本地抽取 + Deribit 官方 API 文档</li>
+</ul>
+<h2>0. 四个先答字段</h2>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>Deribit BTC options 的成交量冲击（volume shock）对下一段 BTC 现货/永续收益与波动有短暂预测力；而短期限 OTM/DOTM 的 call-vs-put directional pressure 更适合拿来做选边 / veto，而不是单独冒充主信号。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是一篇直接研究 <strong>Deribit 比特币期权逐笔成交信息</strong> 的论文：</p>
+<ul>
+<li><strong>Authors</strong>：Carol Alexander, Jun Deng, Jianfen Feng, Huning Wan</li>
+<li><strong>Year</strong>：2022（version date: 2022-03-28）</li>
+<li><strong>Title</strong>：*Net Buying Pressure and the Information in Bitcoin Option Trades*</li>
+<li><strong>Venue</strong>：arXiv, q-fin.GN</li>
+<li><strong>DOI</strong>：未见</li>
+<li><strong>Readable URL</strong>：<a href="https://arxiv.org/abs/2109.02776">https://arxiv.org/abs/2109.02776</a></li>
+<li><strong>PDF URL</strong>：<a href="https://arxiv.org/pdf/2109.02776v2.pdf">https://arxiv.org/pdf/2109.02776v2.pdf</a></li>
+<li><strong>Repo URL</strong>：未见作者配套 repo</li>
+</ul>
+<p>辅助确认的数据落地路径来自 Deribit 官方文档：</p>
+<ul>
+<li><code>public/get_last_trades_by_currency</code>：可直接拉 <code>BTC</code>、<code>kind=option</code> 的公开逐笔成交，含 <code>instrument_name / timestamp / direction / amount / iv / index_price / price</code></li>
+<li><a href="https://docs.deribit.com/api-reference/market-data/public-get_last_trades_by_currency.md">https://docs.deribit.com/api-reference/market-data/public-get_last_trades_by_currency.md</a></li>
+<li><code>public/get_instruments</code>：可拿到 option 元数据，含 <code>expiration_timestamp / strike / option_type / instrument_name</code></li>
+<li><a href="https://docs.deribit.com/api-reference/market-data/public-get_instruments.md">https://docs.deribit.com/api-reference/market-data/public-get_instruments.md</a></li>
+</ul>
+<p><strong>一句话结论</strong>： 这篇 paper 真正适合 desk 化的，不是“把 aggregate NBP 直接当方向键”，而是拆成两层：</p>
+<ol>
+<li><strong>raw alpha 主体</strong>：<code>BTC option volume shock -&gt; 下一小时 BTC 回报/波动继续动</code>；</li>
+<li><strong>direction gate</strong>：<code>短期限 OTM/DOTM call-put directional pressure</code> 用来判断这次 options activity 更像“方向下注”还是“纯波动下注”。</li>
+</ol>
+<p>这就比“直接复刻论文 headline：NBP 解释 smile 变化”更适合我们现在的 <code>5m / 15m</code> 短周期研发池。</p>
+<h2>2. 为什么它值得进当前研究池</h2>
+<p>对当前 desk，这个题目的价值在于它补的是一个<strong>还没被充分系统化的高频外部信息层</strong>：</p>
+<ul>
+<li>不是慢频宏观，也不是只能当天后验解释的新闻；</li>
+<li>是 <strong>公开、实时、可逐笔订阅</strong> 的交易流；</li>
+<li>它既能服务 <strong>单币方向 raw alpha</strong>，也能服务 <strong>波动模式切换 / sizing / veto</strong>；</li>
+<li>即使最后发现“方向 edge 不够厚”，也依然能沉淀成一个很有价值的 shared component：</li>
+<li><code>volume shock</code> 状态层</li>
+<li><code>directional-vs-volatility</code> flow decomposition</li>
+<li><code>OTM/DOTM short-dated</code> admission layer</li>
+</ul>
+<p>所以这不是“纯解释型 options microstructure 阅读”，而是很典型的 <strong>raw alpha + gate 可拆分材料</strong>。</p>
+<h2>3. 论文里真正能拿来交易的证据</h2>
+<h3>3.1 数据与样本口径</h3>
+<p>论文样本（第 1、14 页附近）是：</p>
+<ul>
+<li><strong>市场</strong>：Deribit BTC options</li>
+<li><strong>频率</strong>：tick-level trades（逐笔）</li>
+<li><strong>样本期</strong>：<strong>2017-01-01 到 2021-07-28</strong></li>
+<li><strong>来源</strong>：作者说明原始样本通过 Deribit API 获取；现在 Deribit 不再方便提供完整历史，长历史可通过 <strong>Tardis / CoinAPI</strong>，但<strong>实时与近期 recent history 仍可通过 Deribit 公共 API 直接拿到</strong>。</li>
+</ul>
+<p>论文里给了几个对 desk 很有用的背景数：</p>
+<ul>
+<li>Deribit BTC options 名义成交额从 <strong>2017 年的 0.26B USD</strong> 增到 <strong>2021 年（截至 7 月）的 102.96B USD</strong>；</li>
+<li>2021 年样本里，成交主要集中在 <strong>OTM / DOTM / ATM</strong>；</li>
+<li>短期限期权占比明显抬升，说明把它压到 <code>5m / 15m</code> 的短周期事件流上，并不违和。</li>
+</ul>
+<h3>3.2 最值钱的结果不是“aggregate NBP 预测收益”，而是“volume shock 预测收益”</h3>
+<p>第 15-16 页 Table 5 是这篇 paper 最适合我们短周期 desk 化的一张表。</p>
+<p>作者先做：</p>
+<p>\[ x_t = \gamma_0 + \gamma_1 x_{t-1} + \gamma_2 y_{t-1}, \quad x \in \{r, \Delta IV, \Delta RV\},\ y \in \{\Delta v, N\} \]</p>
+<p>其中：</p>
+<ul>
+<li><code>Δv</code> = options trading volume change</li>
+<li><code>N</code> = aggregate order imbalance / aggregate net buying pressure</li>
+</ul>
+<p>关键结果：</p>
+<ol>
+<li><strong>成交量冲击对未来收益有显著预测力</strong></li>
+</ol>
+<ul>
+<li><strong>1-hour return</strong>：<code>γ2 = 0.27***</code></li>
+<li><strong>1-day return</strong>：<code>γ2 = 0.51***</code></li>
+<li><strong>5-day return</strong>：<code>γ2 = 0.068</code>（不显著）</li>
+</ul>
+<p>这非常像一个<strong>短命、短持有期</strong>的事件型 alpha，而不是慢频 carry。</p>
+<ol>
+<li><strong>aggregate order imbalance 对未来收益不显著</strong></li>
+</ol>
+<ul>
+<li>1-hour：<code>8.43e-7</code></li>
+<li>1-day：<code>-1.38e-6</code></li>
+<li>5-day：<code>-6.08e-6</code></li>
+</ul>
+<p>也就是说：<strong>别把总 NBP 直接当方向键。</strong></p>
+<ol>
+<li><strong>但成交量与 NBP 都能预测未来波动 / IV</strong></li>
+</ol>
+<ul>
+<li>对 <code>ΔIV</code> 和 <code>ΔRV</code>，<code>Δv</code> 与 <code>N</code> 都显著；</li>
+<li>其中 <code>Δv -&gt; ΔIV</code> 的显著性最持久，甚至延续到后面几天。</li>
+</ul>
+<p>所以这篇 paper 给 desk 的最重要启发其实是：</p>
+<p>&gt; <strong>方向 raw alpha 的主信号更像是 volume shock；而 flow imbalance 更像“这次 volume shock 到底偏方向交易还是偏波动交易”的分类器。</strong></p>
+<h3>3.3 directional information 并非没有，但主要藏在 OTM / DOTM，而不是 ATM</h3>
+<p>论文第 17-18 页把净买压拆成两部分：</p>
+<p>对某个 moneyness 桶 <code>k</code>，先定义 call/put 各自的 delta-weighted net buying pressure：</p>
+<p>\[ A^k_{j,t}=\sum B^k_{ij,t}|\Delta^k_{ij,t}|-\sum S^k_{ij,t}|\Delta^k_{ij,t}|, \quad j\in\{C,P\} \]</p>
+<p>然后拆成：</p>
+<ul>
+<li><strong>Directional-motivated demand</strong></li>
+<p>\[ D^k_{C,t}=\frac{A^k_{C,t}-A^k_{P,t}}{2},\quad D^k_{P,t}=\frac{A^k_{P,t}-A^k_{C,t}}{2} \]</p>
+</ul>
+<ul>
+<li><strong>Volatility-motivated demand</strong></li>
+<p>\[ V^k_t=\frac{A^k_{C,t}+A^k_{P,t}}{2} \]</p>
+</ul>
+<p>解释非常直白：</p>
+<ul>
+<li><code>D^k_C &gt; 0</code>：更像在用 call 相对 put 表达<strong>看涨方向信息</strong>；</li>
+<li><code>D^k_C &lt; 0</code>：更像在表达<strong>看跌方向信息</strong>；</li>
+<li><code>V^k &gt; 0</code>：更像在表达<strong>看波动上升</strong>，不一定告诉你涨跌方向。</li>
+</ul>
+<p>作者把 moneyness 分成五档（第 11-12 页附近）：</p>
+<ul>
+<li>DOTM：<code>0.02 &lt; |Δ| &lt;= 0.125</code></li>
+<li>OTM：<code>0.125 &lt; |Δ| &lt;= 0.375</code></li>
+<li>ATM：<code>0.375 &lt; |Δ| &lt;= 0.625</code></li>
+<li>ITM：<code>0.625 &lt; |Δ| &lt;= 0.875</code></li>
+<li>DITM：<code>0.875 &lt; |Δ| &lt;= 0.98</code></li>
+</ul>
+<p>而真正和方向信息更有关系的，不是 ATM，而是 <strong>OTM / DOTM</strong>。</p>
+<h3>3.4 Table 7 / Table 8：OTM 与 DOTM 同时带 volatility learning 和 directional learning，但前者更强</h3>
+<p>第 25-27 页的回归结果可以直接转成 desk 语言：</p>
+<ol>
+<li><strong>市场制造商库存约束很强，且比成熟市场更强</strong></li>
+</ol>
+<ul>
+<li><code>α5</code> / <code>β5</code> 普遍在 <strong>-0.39 到 -0.46</strong> 左右且高度显著；</li>
+<li>作者直接说这比 S&amp;P 500/TAIEX 的绝对值更大，意味着 <strong>Deribit options market maker inventory pressure 更重</strong>。</li>
+</ul>
+<p>Desk 含义：options flow 的信息可能更容易先体现在 IV / quote 调整里，而不一定无摩擦传到 spot/perp。</p>
+<ol>
+<li><strong>ATM 主要是 volatility learning，不太像纯方向信号源</strong></li>
+</ol>
+<ul>
+<li>2021 ATM call：<code>β3 = 0.215<strong>*</code>, <code>β4 = 0.184</strong></code></li>
+<li>2021 ATM put：<code>β3 = 0.011</code>, <code>β4 = -0.243***</code></li>
+</ul>
+<p>这说明 ATM activity 很容易混着 volatility trade，拿来直接做 perp 方向键会很脏。</p>
+<ol>
+<li><strong>OTM/DOTM 才是方向信息更值得看的地方</strong></li>
+</ol>
+<ul>
+<li>2021 <strong>OTM call</strong>：<code>β3 = 0.484<strong>*</code>, <code>β4 = 0.335</strong>*</code></li>
+<li>2021 <strong>DOTM call</strong>：<code>β3 = 2.493<strong>*</code>, <code>β4 = 1.756</strong>*</code></li>
+<li>2019 短期限 <strong>OTM call [1,7 days]</strong>：<code>β3 = 22.084***</code>, <code>β4 = 3.808</code></li>
+</ul>
+<p>这里 <code>β3</code> 是 volatility-motivated pressure，<code>β4</code> 是 directional-motivated pressure。</p>
+<p>结论不是“direction &gt; vol”，恰好相反：</p>
+<ul>
+<li><strong>volatility-motivated demand 整体更强</strong>；</li>
+<li>但 <strong>directional demand 在 OTM/DOTM 是存在且可辨认的</strong>；</li>
+<li>所以它最适合干的不是“独立顶替主 alpha”，而是给 volume shock 做 <strong>方向分类与 veto</strong>。</li>
+</ul>
+<h3>3.5 一个容易被忽略、但很适合 desk 的分叉结论</h3>
+<p>论文自己的 headline 更偏向“期权净买压如何影响 smile/IV”。</p>
+<p>但对短周期 desk，更有价值的分叉其实是：</p>
+<ul>
+<li><strong>主 alpha</strong>：<code>option volume shock</code></li>
+<li><strong>辅助分类层</strong>：<code>OTM/DOTM short-dated D_t</code></li>
+<li><strong>波动模式层</strong>：<code>V_t</code></li>
+</ul>
+<p>这正好符合我们当前“不要只抄 headline，要优先拆能快速复现的 raw alpha / gate / overlay 组件”的 intake 原则。</p>
+<h2>4. desk 化后的最小策略骨架</h2>
+<p>下面给的是一个可以直接进入最小实验的版本，不是纸上谈兵。</p>
+<h3>4.1 交易对象</h3>
+<ul>
+<li><strong>信号市场</strong>：Deribit BTC options</li>
+<li><strong>执行市场</strong>：BTC perp（优先 Binance / Deribit perp 任一高流动 venue）</li>
+<li><strong>默认频率</strong>：<code>15m</code></li>
+<li><strong>更快版本</strong>：<code>5m</code></li>
+</ul>
+<h3>4.2 信号定义</h3>
+<p>#### Signal A：option volume shock（主 alpha）</p>
+<p>每个 bar（<code>5m</code> 或 <code>15m</code>）聚合所有 BTC option trades：</p>
+<ul>
+<li><code>gross_option_volume_t</code>：成交量总和（按 BTC 名义或美元名义都可以，先两套都测）</li>
+<li><code>signed_trade_count_t</code>：可作为次要稳定性特征</li>
+<li><code>Δv_t</code>：对 <code>gross_option_volume</code> 做变化率或 rolling z-score</li>
+</ul>
+<p>推荐先用最稳的版本：</p>
+<ul>
+<li><code>volshock_z_t = zscore(log(1 + gross_option_volume_t), lookback=20~40 bars)</code></li>
+</ul>
+<p>raw alpha 假设：</p>
+<ul>
+<li><code>volshock_z_t</code> 很高时，下一小时 BTC 更容易继续走出<strong>可交易净位移</strong>；</li>
+<li>但方向要靠下面的 <code>D_t</code> 来分边。</li>
+</ul>
+<p>#### Signal B：short-dated OTM/DOTM directional gate（方向选边）</p>
+<p>只看：</p>
+<ul>
+<li><code>TTM &lt;= 7 days</code></li>
+<li><code>0.02 &lt; |delta| &lt;= 0.375</code></li>
+<li>DOTM + OTM</li>
+</ul>
+<p>计算：</p>
+<ul>
+<li><code>A_call_t</code></li>
+<li><code>A_put_t</code></li>
+<li><code>D_t = (A_call_t - A_put_t) / 2</code></li>
+<li><code>V_t = (A_call_t + A_put_t) / 2</code></li>
+</ul>
+<p>对 <code>D_t</code> 和 <code>V_t</code> 再各自 rolling z-score：</p>
+<ul>
+<li><code>dir_z_t = zscore(D_t)</code></li>
+<li><code>volinfo_z_t = zscore(V_t)</code></li>
+</ul>
+<p>解释：</p>
+<ul>
+<li><code>dir_z_t &gt;&gt; 0</code>：options flow 更像<strong>看涨方向下注</strong></li>
+<li><code>dir_z_t &lt;&lt; 0</code>：更像<strong>看跌方向下注</strong></li>
+<li><code>volinfo_z_t &gt;&gt; 0</code> 且 <code>|dir_z_t|</code> 不高：更像<strong>纯波动交易</strong>，这时做方向单要保守</li>
+</ul>
+<h3>4.3 入场规则（最小可复现版）</h3>
+<p>#### 15m 版本</p>
+<ul>
+<li><strong>Long entry</strong></li>
+</ul>
+<ol>
+<li><code>volshock_z_t &gt;= 1.5</code></li>
+<li><code>dir_z_t &gt;= 0.75</code></li>
+<li><code>abs(dir_z_t) / max(abs(volinfo_z_t), 1e-6) &gt;= 0.33</code></li>
+</ol>
+<ul>
+<li>避免“全是 vol trade，几乎没方向信息”</li>
+</ul>
+<ul>
+<li><strong>Short entry</strong></li>
+</ul>
+<ol>
+<li><code>volshock_z_t &gt;= 1.5</code></li>
+<li><code>dir_z_t &lt;= -0.75</code></li>
+<li>同样要求方向占比门槛</li>
+</ol>
+<p>#### 5m 版本</p>
+<p>门槛略抬高，避免噪音：</p>
+<ul>
+<li><code>volshock_z_t &gt;= 2.0</code></li>
+<li><code>|dir_z_t| &gt;= 1.0</code></li>
+</ul>
+<h3>4.4 出场规则</h3>
+<p>先用和论文最一致的“1 小时短持有”骨架：</p>
+<ul>
+<li><code>15m</code>：持有 <strong>4 bars</strong></li>
+<li><code>5m</code>：持有 <strong>12 bars</strong></li>
+</ul>
+<p>同时加两个简单风控：</p>
+<ul>
+<li><strong>止损</strong>：<code>1.0 x ATR(20)</code></li>
+<li><strong>止盈 / 提前平仓</strong>：</li>
+<li>反向 <code>dir_z_t</code> 出现；或</li>
+<li><code>volshock_z_t</code> 在下一 bar 迅速回落到 0 附近，表示事件没延续</li>
+</ul>
+<h3>4.5 仓位与风控</h3>
+<ul>
+<li>基础仓位：按 perp 波动目标做 vol targeting</li>
+<li>放大条件：<code>volshock_z_t</code> 高且 <code>|dir_z_t|</code> 高</li>
+<li>缩小 / 不做：</li>
+<li><code>volinfo_z_t</code> 很高，但 <code>|dir_z_t|</code> 很低</li>
+<li>说明更像 <strong>long-vol / short-vol 交易挤在 options 里</strong>，未必有明确方向边</li>
+</ul>
+<p>一个简单可执行的 sizing：</p>
+<p>\[ size_t = size_0 \times \min(2.0, \max(0, volshock_z_t-1)) \times \min(1.5, |dir_z_t|) \]</p>
+<p>然后再乘：</p>
+<ul>
+<li><code>0.5</code>，如果 <code>|dir_z_t| / |volinfo_z_t| &lt; 0.5</code></li>
+<li><code>0</code>，如果 <code>|dir_z_t| / |volinfo_z_t| &lt; 0.25</code></li>
+</ul>
+<h3>4.6 成本与执行要求</h3>
+<p>这类信号能不能活，关键不在 paper 的 t 值，而在你能不能把它做成<strong>大于 perp 全成本</strong>的净位移。</p>
+<p>必须单独记录：</p>
+<ul>
+<li>perp taker / maker fee</li>
+<li>实际滑点</li>
+<li>信号触发后 1 bar 内是否已经被 chase 掉</li>
+<li><code>5m</code> vs <code>15m</code> 哪个更容易留下净利润</li>
+</ul>
+<p>我的默认判断：</p>
+<ul>
+<li><strong>15m 更像第一站</strong>，因为论文最强结果对应的是“下一小时”；</li>
+<li><code>5m</code> 可以做，但大概率要更高门槛，且对 execution 更敏感。</li>
+</ul>
+<h2>5. 为什么我把它定为 raw alpha，而不是纯 filter</h2>
+<p>因为这里的 <strong>base alpha 很清楚</strong>：</p>
+<p>&gt; <strong>option volume shock 本身就是一个独立可测的、短持有期的 BTC directional/volatility event alpha。</strong></p>
+<p>不是那种“先有别的主策略，我再给你加个修饰层”的材料。</p>
+<p>当然，它不是“裸 volume 一把梭”——需要 <code>dir_z</code> 和 <code>volinfo_z</code> 来拆语义。</p>
+<p>所以更准确地说，这是一条：</p>
+<ul>
+<li><strong>raw alpha 主体</strong>：<code>volume shock</code></li>
+<li><strong>regime / confirmation 层</strong>：<code>OTM/DOTM directional-vs-volatility decomposition</code></li>
+</ul>
+<p>这完全符合“<strong>可清楚拆成 raw alpha + regime/filter</strong>”这一档，而且主 alpha 不是虚的。</p>
+<h2>6. 数据可得性与最小复现实验口径</h2>
+<h3>6.1 数据源</h3>
+<p><strong>公开可得</strong>：是。</p>
+<ol>
+<li><strong>Deribit <code>public/get_last_trades_by_currency</code></strong></li>
+</ol>
+<ul>
+<li>拉 <code>currency=BTC</code>, <code>kind=option</code></li>
+<li>有 <code>timestamp / direction / amount / iv / index_price / instrument_name</code></li>
+</ul>
+<ol>
+<li><strong>Deribit <code>public/get_instruments</code></strong></li>
+</ol>
+<ul>
+<li>拿 <code>expiration_timestamp / strike / option_type</code></li>
+</ul>
+<ol>
+<li><strong>执行腿市场数据</strong></li>
+</ol>
+<ul>
+<li>Binance / Deribit BTC perp 的 1m K 线或逐笔均可公开拿到</li>
+</ul>
+<h3>6.2 更新频率</h3>
+<ul>
+<li>options trades：逐笔、实时</li>
+<li>instrument metadata：低频更新即可</li>
+<li>perp execution bar：1m 聚合后再压到 <code>5m/15m</code></li>
+</ul>
+<h3>6.3 最小可复现实验口径</h3>
+<p>#### Public-only live / recent backfill 版本</p>
+<ul>
+<li>连续采集 <strong>2~4 周</strong> Deribit BTC option trades</li>
+<li>聚合成 <code>5m</code>、<code>15m</code></li>
+<li>计算 <code>volshock_z</code>, <code>dir_z</code>, <code>volinfo_z</code></li>
+<li>执行腿用 BTC perp</li>
+<li>测：</li>
+<li>horizon = <code>1, 2, 4, 8</code> bars</li>
+<li>long / short 分开</li>
+<li>只做 <code>TTM&lt;=7d</code> vs 全部期限</li>
+<li>只做 <code>OTM+DOTM</code> vs <code>ATM+OTM+DOTM</code></li>
+</ul>
+<p>#### 如果要更长回测</p>
+<ul>
+<li>论文明确提到：Deribit 现在不再方便提供完整老历史；</li>
+<li>长历史需要 <strong>Tardis / CoinAPI</strong> 或自建录制。</li>
+</ul>
+<p>所以这条 alpha 的现实落地路径很明确：</p>
+<ul>
+<li><strong>先做 live-forward / recent history 最小实验</strong>；</li>
+<li>过关后再决定是否买历史档案做更长回测。</li>
+</ul>
+<p>这比一开始就上重型数据采购更合适。</p>
+<h2>7. 这条信号最容易踩的坑</h2>
+<h3>7.1 把 aggregate NBP 误当方向键</h3>
+<p>论文已经很清楚：</p>
+<ul>
+<li><code>N</code> 对未来 return <strong>不显著</strong>；</li>
+<li>真正对 return 有意义的是 <strong>volume shock</strong>；</li>
+<li><code>N</code> / <code>D</code> / <code>V</code> 更像解释“这波 options flow 的语义”。</li>
+</ul>
+<h3>7.2 ATM 太脏</h3>
+<p>ATM 很容易吸进大量纯波动交易。</p>
+<p>如果你把 ATM 也和 OTM/DOTM 一样当方向信息源，signal purity 大概率会掉得很快。</p>
+<h3>7.3 市场成熟后，edge 可能变薄</h3>
+<p>论文自己就强调：</p>
+<ul>
+<li>2019 -&gt; 2021，部分系数在衰减；</li>
+<li>Deribit 逐渐成熟，market maker inventory 管理也会改善。</li>
+</ul>
+<p>所以我们不该默认 paper 里的系数现在原封不动还在，而应该把它当 <strong>live alpha intake</strong>：</p>
+<ul>
+<li>先测现在是否还活；</li>
+<li>再决定要不要升成生产素材。</li>
+</ul>
+<h3>7.4 这更像 BTC 主信号，不是现成山寨横截面信号</h3>
+<p>它最自然的第一落点是：</p>
+<ul>
+<li><code>BTC perp directional event alpha</code></li>
+</ul>
+<p>而不是立刻外推到 alt basket。后者可以做二期：测 <code>BTC options flow shock -&gt; alt beta spillover</code>，但不应在本轮一上来就混进去。</p>
+<h2>8. 下一步怎么测</h2>
+<h3>实验 1：先验证最核心命题</h3>
+<p><strong>命题</strong>：Deribit BTC options 的 <code>volume shock × OTM/DOTM directional gate</code> 能否在 BTC perp <code>15m</code> 上留下净成本后 alpha。</p>
+<ul>
+<li>bar：<code>15m</code></li>
+<li>入场：<code>volshock_z &gt;= 1.5</code> 且 <code>|dir_z| &gt;= 0.75</code></li>
+<li>出场：持有 <code>4 bars</code></li>
+<li>成本：按真实 fee + conservative slippage</li>
+<li>输出：</li>
+<li>hit rate</li>
+<li>average net return</li>
+<li>information ratio / Sharpe</li>
+<li>long/short 分解</li>
+<li>分 bucket（高 <code>volinfo_z</code> / 低 <code>volinfo_z</code>）</li>
+</ul>
+<h3>实验 2：验证 direction gate 是否真的有增益</h3>
+<p>做三组对照：</p>
+<ol>
+<li><code>volume shock only</code></li>
+<li><code>volume shock + dir_z</code></li>
+<li><code>volume shock + dir_z + volinfo veto</code></li>
+</ol>
+<p>如果 2/3 明显优于 1，说明这篇 paper 的 desk 化分叉是对的。</p>
+<h3>实验 3：5m 压缩测试</h3>
+<ul>
+<li>同样信号逻辑压到 <code>5m</code></li>
+<li>但把触发阈值抬高</li>
+<li>看 edge 是被提早交易掉，还是确实还能留下更快 alpha</li>
+</ul>
+<h3>实验 4：只看短期限 vs 全期限</h3>
+<p>比较：</p>
+<ul>
+<li><code>TTM &lt;= 7d</code></li>
+<li><code>TTM &lt;= 21d</code></li>
+<li><code>all maturities</code></li>
+</ul>
+<p>我预期：<strong>短期限版本更干净</strong>，因为论文里方向信息最像是藏在短期限 OTM/DOTM。</p>
+<h2>9. 我对这篇材料的最终判断</h2>
+<p><strong>结论：值得进入研究池，而且优先级不低。</strong></p>
+<p>但进入研究池的方式不是：</p>
+<ul>
+<li>“复刻一篇 options-IV 解释论文”</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li><strong>把它拆成一条可独立复现的 BTC raw alpha：<code>option volume shock</code></strong>；</li>
+<li>再把 <strong><code>OTM/DOTM directional-vs-volatility decomposition</code></strong> 当作方向分边与 veto 层。</li>
+</ul>
+<p>如果最小实验有效，这条东西后续有三种扩展方向：</p>
+<ol>
+<li>做成 <strong>BTC 单币事件型 raw alpha</strong>；</li>
+<li>做成 <strong>BTC 主信号 -&gt; alt beta spillover gate</strong>；</li>
+<li>做成 <strong>波动模式切换 / sizing overlay</strong>，服务其他 raw alpha。</li>
+</ol>
+<p>所以它不是只能服务一个策略的“窄论文”，而是能沉淀成 <strong>一条主 alpha + 两条共享组件</strong> 的高质量 intake。</p>
+</body>
+</html>

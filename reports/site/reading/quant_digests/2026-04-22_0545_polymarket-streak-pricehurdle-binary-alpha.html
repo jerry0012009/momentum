@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Polymarket candle bot 只读成“方向猜涨跌”：对 short-cycle desk，更该先拆的是「连续同向 K 线后的反向 binary bet × 入场价格上限」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Polymarket candle bot 只读成“方向猜涨跌”：对 short-cycle desk，更该先拆的是「连续同向 K 线后的反向 binary bet × 入场价格上限」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-22 05:49 UTC</span>
+      <span class="pill">研究时间：2026-04-22 05:45 UTC</span>
+      <span class="pill">类型：GitHub repo source audit + Binance USDⓈ-M public-data portability probe</span>
+      <span class="pill">主题标签：binary-market / Polymarket / mean-reversion / streak-reversal / price-hurdle / 5m / 15m / external-venue / cost / risk</span>
+      <span class="pill">证据类型：工程经验 + public-data quick probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-22_0545_polymarket-streak-pricehurdle-binary-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-22 05:45 UTC</li>
+<li>类型：GitHub repo source audit + Binance USDⓈ-M public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>n</code> 根 <code>5m/15m</code> K 线连续同向后，下一根更容易短时反向；在 Polymarket/Kalshi 这类 fixed-payout candle market 里，只在 binary 合约价格低于胜率隐含上限时买反向 YES。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：binary-market / Polymarket / mean-reversion / streak-reversal / price-hurdle / 5m / 15m / external-venue / cost / risk</li>
+<li>证据类型：工程经验 + public-data quick probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>来源是 2026 年仍活跃的 repo <strong>0xrsydn/polymarket-crypto-toolkit</strong>：README 把系统拆成 Binance 数据、指标、策略、backtest、executor；核心可读策略包括 <code>streak_reversal.py</code>（连续同向 candle 后反手）和 <code>candle_direction.py</code>（EMA/MACD/RSI 方向）。Repo URL：&lt;<a href="https://github.com/0xrsydn/polymarket-crypto-toolkit&gt;。">https://github.com/0xrsydn/polymarket-crypto-toolkit&gt;。</a></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这不是简单“猜下一根涨跌”，真正值得复用的是 <strong>binary payout 的价格纪律</strong>：如果买价是 <code>p</code>、到期赢付约 <code>0.95</code>，最低胜率约是 <code>p / 0.95</code>；<code>0.50</code> 买入时要 <code>52.63%</code> 才打平。</li>
+<li>Binance USDⓈ-M 最近 <code>1500</code> 根 public bars 快检显示，repo 的 EMA/MACD/RSI 方向壳在 <code>5m/15m</code> 多数低于打平线；不宜直接搬成 binary 主信号。</li>
+<li>但 <code>streak reversal</code> 分支更像可交易候选：<code>5m ETH trigger=5</code> 有 <code>52</code> 次、胜率 <code>65.38%</code>、next-bar signed return <code>+4.31 bps</code>；<code>5m XRP trigger=4</code> 有 <code>138</code> 次、胜率 <code>65.94%</code>、<code>+3.12 bps</code>；<code>15m SOL trigger=5</code> 有 <code>43</code> 次、胜率 <code>74.42%</code>、<code>+2.47 bps</code>。</li>
+<li>这些高胜率样本偏少，不能直接实盘；但足以把它放进研究池：它是 <code>1m/3m/5m/15m</code> 都能快速验证的 binary / short-horizon mean-reversion raw alpha。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>它补的是 desk 当前较少的 <strong>外部 venue fixed-payout alpha</strong>：同一个方向预测，在 perp 上可能只有几 bps，成本后很薄；但在 binary market 里，只要买入价足够低，胜率 edge 可以直接映射成可交易 EV。对 <code>momentum</code> 来说，它更适合做一个独立 sleeve：Binance/venue price feed 负责触发，Polymarket/Kalshi order book 负责 admission 和执行。</p>
+<h2>3.5 策略拆解</h2>
+<ul>
+<li>Entry：在 <code>5m/15m</code> bar close 后计算连续同向 candle streak；若连续上涨 <code>&gt;= trigger</code>，买下一期 DOWN；若连续下跌 <code>&gt;= trigger</code>，买下一期 UP。</li>
+<li>Exit：持有到下一根 candle settlement；不做中途止盈，除非盘口给出明显 early-exit 正 EV。</li>
+<li>Sizing：按 <code>edge = 0.95 * win_prob - ask_price - fee/slippage_buffer</code> 分层；<code>edge &lt;= 0</code> 不进。</li>
+<li>Risk：单市场未结算 notional cap；同一标的连续亏损暂停；距离 settlement 太近或 order book 太薄时 veto。</li>
+<li>Cost：必须用真实 ask、盘口深度、撤单/成交概率和平台费用重算，不能假设永远 <code>0.50</code> 成交。</li>
+</ul>
+<h2>4. 最小实验：下一步怎么测</h2>
+<ol>
+<li>数据：Binance <code>1m/5m/15m</code> public OHLCV + Polymarket/Kalshi 对应 candle market 的 bid/ask/order book snapshots。</li>
+<li>先离线复现 <code>trigger=3/4/5/6</code>，按 symbol × interval × trigger 输出：trade count、win rate、<code>max_entry_price = 0.95 * win_rate</code>、真实可成交 ask 覆盖率。</li>
+<li>再做 event-time paper：只在 <code>ask &lt;= max_entry_price - 3~5c safety margin</code> 且 depth 足够时入场，比较 <code>5m ETH/XRP/SOL</code> 与 <code>15m SOL/BNB</code> pocket。</li>
+<li>失败线：若真实 order book 中可成交 ask 长期高于胜率上限，或者信号到 market open/settlement 存在不可控延迟，就只保留为 binary venue research shell，不进实盘候选。</li>
+</ol>
+<h2>来源与本地产物</h2>
+<ul>
+<li>Repo：0xrsydn, 2026, *polymarket-crypto-toolkit*, GitHub, &lt;<a href="https://github.com/0xrsydn/polymarket-crypto-toolkit&gt;">https://github.com/0xrsydn/polymarket-crypto-toolkit&gt;</a></li>
+<li>Source audit files：<code>README.md</code>、<code>packages/strategies/src/polymarket_algo/strategies/streak_reversal.py</code>、<code>candle_direction.py</code>、<code>packages/backtest/src/polymarket_algo/backtest/engine.py</code></li>
+<li>本地 probe：<code>reports/artifacts/quant_digests/polymarket_streak_reversal_probe_2026-04-22.csv</code>；对照弱基线：<code>reports/artifacts/quant_digests/polymarket_candle_direction_probe_2026-04-22.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 relative-value engine 只读成本地 dashboard：对 short-cycle desk，更该先测的是「BTC+ETH fair-value gap × residual z-score mean reversion」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 relative-value engine 只读成本地 dashboard：对 short-cycle desk，更该先测的是「BTC+ETH fair-value gap × residual z-score mean reversion」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-05 16:27 UTC</span>
+      <span class="pill">研究时间：2026-04-05 16:25 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（GitHub API metadata + `feature_engine.py` / `signal_engine.py` / `interval_profiles.py` / `engine.py` / `risk_engine.py` / `backtest.py` / `monitor.py`）+ Binance 公共 `15m/1h` live portability probe</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/mean-reversion/beta-adjusted/fair-value-gap/residual-zscore/btc-eth-benchmark/binance/15m/5m/3m/1m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：GitHub 源码审计 + 公共 API 最小 live probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-05_1625_btceth-fairvalue-gap-rv-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-05 16:25 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（GitHub API metadata + <code>feature_engine.py</code> / <code>signal_engine.py</code> / <code>interval_profiles.py</code> / <code>engine.py</code> / <code>risk_engine.py</code> / <code>backtest.py</code> / <code>monitor.py</code>）+ Binance 公共 <code>15m/1h</code> live portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>用 BTC 与 ETH 作为双 benchmark，对各 alt 的 log price 做滚动回归得到 fair value；当 alt 相对 fair value 的 residual z-score 极端偏离时，做向 fair value 回归的一边。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/mean-reversion/beta-adjusted/fair-value-gap/residual-zscore/btc-eth-benchmark/binance/15m/5m/3m/1m/repo/public-data/cost/risk</li>
+<li>证据类型：GitHub 源码审计 + 公共 API 最小 live probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看的是一个非常新的 GitHub repo：</p>
+<ul>
+<li><strong>Jose Duran (<code>joanduso</code>) (2026), _Crypto Relative Value Engine_</strong></li>
+<li>Venue：<strong>GitHub repository</strong></li>
+<li>Created：<strong>2026-03-13</strong></li>
+<li>Last pushed：<strong>2026-04-01</strong></li>
+<li>DOI：<strong>无</strong></li>
+<li>Readable URL：&lt;<a href="https://github.com/joanduso/crypto-relative-value-engine-&gt;">https://github.com/joanduso/crypto-relative-value-engine-&gt;</a></li>
+<li>Repo URL：&lt;<a href="https://github.com/joanduso/crypto-relative-value-engine-&gt;">https://github.com/joanduso/crypto-relative-value-engine-&gt;</a></li>
+</ul>
+<p>这次重点审了这些文件：</p>
+<ul>
+<li><code>README.md</code>：项目目标、模式、monitor / dashboard 结构</li>
+<li><code>feature_engine.py</code>：<strong>核心 fair-value / residual / z-score</strong> 计算</li>
+<li><code>signal_engine.py</code>：<strong>entry gate / ranking / fee 假设</strong></li>
+<li><code>interval_profiles.py</code>：<strong>15m / 1h / 4h 窗口映射</strong></li>
+<li><code>engine.py</code>：主流程与默认 risk limits</li>
+<li><code>risk_engine.py</code>：<strong>position sizing / stop / take-profit / time-stop</strong></li>
+<li><code>backtest.py</code>：历史 outcome 模拟框架</li>
+<li><code>monitor.py</code>：把 raw alpha 与 funding / basis / news / regime 叠加成监控器</li>
+</ul>
+<p>我最后选它，不是因为它有 dashboard，而是因为这里面真正值钱的不是 UI，而是一条<strong>非常明确、可独立复现、而且天然适合 <code>15m / 5m</code> 迁移</strong>的 raw alpha：</p>
+<p>&gt; <strong>beta-adjusted relative-value mean reversion</strong>。</p>
+<p>这条线比再写一篇 filter / overlay 更值得的原因很简单：</p>
+<ul>
+<li>它直接扩充的是 <strong>raw alpha 素材池</strong>；</li>
+<li>entry / exit / sizing / fee / risk 在源码里都已经拆出来了；</li>
+<li>并且它不是老式“找一对 cointegration pair 再做 z-score fade”，而是一个更 desk-friendly 的写法：</li>
+<li>每个 alt 都相对 <strong>BTC + ETH</strong> 的联合 fair value 定位；</li>
+<li>这更像一个<strong>多 benchmark 的 beta-adjusted mispricing</strong> 框架；</li>
+<li>很容易迁移到 <code>5m / 15m</code> 的 liquid perp universe。</li>
+</ul>
+<p>---</p>
+<h2>2. 先回答：这篇东西的 base alpha 是什么？</h2>
+<p>先把最关键的问题说透。</p>
+<h3>2.1 它的 base alpha 很明确，而且是 raw alpha</h3>
+<p>这条策略的核心不是 news，不是 ETF flow，也不是 BTC regime overlay。 真正的 base alpha 是：</p>
+<p>&gt; <strong>某个 alt 相对 BTC + ETH 联合解释出来的 fair value 出现了统计上足够大的偏离，而这种偏离倾向于均值回归。</strong></p>
+<p>翻成人话：</p>
+<ol>
+<li>先看 alt、BTC、ETH 的价格；</li>
+<li>用一个滚动回归估计：在最近一段时间里，这个 alt 正常应该跟着 BTC 和 ETH 怎么走；</li>
+<li>得到一个“理论 fair value”；</li>
+<li>如果 alt 明显低于这个 fair value，就偏向做多；</li>
+<li>如果 alt 明显高于这个 fair value，就偏向做空；</li>
+<li>再用 volatility / liquidity / spread stability / funding 把最差的样本过滤掉。</li>
+</ol>
+<p>这不是 filter 伪装成 alpha。 它本身就是一条：</p>
+<ul>
+<li><strong>raw alpha 类型</strong>：relative value / stat-arb / mean reversion</li>
+<li><strong>收益来源</strong>：beta-adjusted mispricing 的回归</li>
+<li><strong>交易对象</strong>：liquid alts 相对 BTC、ETH 的联合风险因子</li>
+</ul>
+<h3>2.2 为什么我把它当主 digest，而不是把 repo 里的 regime / news / bias 模块当主角</h3>
+<p>repo 里当然还有：</p>
+<ul>
+<li><code>btc_market_bias_engine.py</code></li>
+<li><code>regime_engine.py</code></li>
+<li><code>news_engine.py</code></li>
+<li><code>signals/funding_arbitrage.py</code></li>
+<li><code>signals/basis_trade.py</code></li>
+</ul>
+<p>但这些更像：</p>
+<ul>
+<li>filter</li>
+<li>regime gate</li>
+<li>overlay</li>
+<li>监控/路由层</li>
+</ul>
+<p>如果 bot7 这一轮要遵守“<strong>优先 raw alpha / 可独立复现完整策略</strong>”的原则，那最该拿走的显然不是这些附属层，而是：</p>
+<p>&gt; <strong>BTC+ETH fair-value gap 的 residual z-score 回归壳。</strong></p>
+<p>---</p>
+<h2>3. 为什么这条线比继续补纯 filter 主题更值得？</h2>
+<p>因为它直接补的是当前 desk 很需要的一类素材：</p>
+<ul>
+<li>不是单币 breakout；</li>
+<li>不是又一层 sentiment veto；</li>
+<li>不是只能依附于别的 alpha 才有意义的 overlay；</li>
+<li>而是一条<strong>可以单独成策略</strong>的 relative-value / stat-arb raw alpha。</li>
+</ul>
+<p>而且它有三个对 short-cycle desk 很实用的优点：</p>
+<h3>3.1 比“单 benchmark beta-neutral”更稳一点</h3>
+<p>它不是只拿 BTC 当 benchmark，而是把 <strong>BTC + ETH</strong> 一起放进回归里。</p>
+<p>这很重要，因为很多 alt 的短周期表现并不是“只跟 BTC 一条线”，而是：</p>
+<ul>
+<li>大盘方向看 BTC；</li>
+<li>beta / 风格 / L1-L2 情绪更容易被 ETH 共振带动。</li>
+</ul>
+<p>所以用双 benchmark 做 fair value，比单纯 <code>alt vs BTC spread</code> 更接近我们实际看到的盘面结构。</p>
+<h3>3.2 比传统 pair trading 更容易扩到一篮子 alt</h3>
+<p>传统 pairs 的问题是：</p>
+<ul>
+<li>pair admission 重；</li>
+<li>对稳定性敏感；</li>
+<li>一旦某对失配就要重建。</li>
+</ul>
+<p>这条写法更像：</p>
+<ul>
+<li>给每个 alt 一个相对大盘的 fair-value anchor；</li>
+<li>再做统一的 z-score / vol / liquidity / funding gate；</li>
+<li>然后横向比较机会分数。</li>
+</ul>
+<p>这对 desk 来说，比手工维护很多 pair 更容易工程化。</p>
+<h3>3.3 它已经自带完整策略壳，而不是只给一个 signal</h3>
+<p>源码里不只是给了 residual z-score，还把下面这些都写出来了：</p>
+<ul>
+<li>entry threshold</li>
+<li>fee 假设</li>
+<li>liquidity gate</li>
+<li>volatility gate</li>
+<li>spread stability gate</li>
+<li>funding veto</li>
+<li>top-N selection</li>
+<li>stop / take-profit</li>
+<li>time-stop</li>
+<li>risk budget</li>
+</ul>
+<p>也就是说，这不是“有个想法，但离实盘还很远”的材料；而是一个<strong>能直接压成最小实验</strong>的壳。</p>
+<p>---</p>
+<h2>4. 源码里的策略到底怎么做</h2>
+<h2>4.1 数据口径：公开可得，可直接最小复现</h2>
+<p>repo 默认用的是 Binance 公共接口：</p>
+<ul>
+<li><code>api/v3/klines</code>：spot K 线</li>
+<li><code>fapi/v1/fundingRate</code>：futures funding</li>
+</ul>
+<p>默认 alt universe：</p>
+<ul>
+<li><code>XRPUSDT</code></li>
+<li><code>SOLUSDT</code></li>
+<li><code>ADAUSDT</code></li>
+<li><code>DOGEUSDT</code></li>
+<li><code>BNBUSDT</code></li>
+<li><code>LTCUSDT</code></li>
+<li><code>LINKUSDT</code></li>
+<li><code>AVAXUSDT</code></li>
+</ul>
+<p>benchmark：</p>
+<ul>
+<li><code>BTCUSDT</code></li>
+<li><code>ETHUSDT</code></li>
+</ul>
+<p>这意味着最小复现实验不依赖私有数据：</p>
+<ul>
+<li><strong>公开性</strong>：公开 API 可拉</li>
+<li><strong>更新频率</strong>：跟 K 线频率同步（<code>15m / 1h / 4h</code>）</li>
+<li><strong>最小实验口径</strong>：直接按 repo 的 Binance 端点就能复现</li>
+</ul>
+<h3>4.2 fair value 是怎么来的</h3>
+<p><code>feature_engine.py</code> 的核心是一个滚动 OLS：</p>
+<p>``<code>python log_alt ~ intercept + beta_btc * log_btc + beta_eth * log_eth </code>``</p>
+<p>在每个时点得到：</p>
+<ul>
+<li><code>predicted_log_price</code></li>
+<li><code>fair_value = exp(predicted_log_price)</code></li>
+<li><code>residual_log = log_alt - predicted_log_price</code></li>
+<li><code>z_score = (residual_log - rolling_mean) / rolling_std</code></li>
+<li><code>deviation_pct = alt_price / fair_value - 1</code></li>
+</ul>
+<p>然后交易方向非常直接：</p>
+<ul>
+<li><code>deviation_pct &lt; 0</code> → <strong>LONG</strong>（alt 低于 fair value）</li>
+<li><code>deviation_pct &gt; 0</code> → <strong>SHORT</strong>（alt 高于 fair value）</li>
+</ul>
+<p>这是非常干净的 raw alpha 结构。</p>
+<h3>4.3 15m 框架不是乱拍脑袋，而是给了明确窗口</h3>
+<p><code>interval_profiles.py</code> 里，<code>15m</code> profile 直接写死为：</p>
+<ul>
+<li>回归窗口：<code>96 * 7 = 672 bars</code>（约 <strong>7 天</strong>）</li>
+<li>z-score 窗口：<code>96 * 3 = 288 bars</code>（约 <strong>3 天</strong>）</li>
+<li>stability 窗口：<code>96 bars</code>（约 <strong>1 天</strong>）</li>
+<li>volatility 窗口：<code>96 bars</code>（约 <strong>1 天</strong>）</li>
+</ul>
+<p>这点很关键，因为它说明：</p>
+<p>&gt; <strong>这不是日频想法硬搬到盘中；作者本来就在按 <code>15m</code> 口径设计。</strong></p>
+<h3>4.4 entry / filter / fee 假设</h3>
+<p><code>signal_engine.py</code> 里 <code>COPILOT</code> 默认阈值是：</p>
+<ul>
+<li><code>abs(z_score) &gt;= 1.75</code></li>
+<li><code>realized_volatility &lt;= 1.40</code></li>
+<li><code>quote_volume &gt;= 2,500,000</code></li>
+<li><code>spread_stability_score &gt;= 0.45</code></li>
+<li><code>abs(funding_rate) &lt;= 0.0015</code></li>
+<li><code>fee_bps = 8</code></li>
+<li><code>top_n = 5</code></li>
+</ul>
+<p>翻成人话就是：</p>
+<ul>
+<li>偏离不够大，不做；</li>
+<li>波动太爆，不做；</li>
+<li>流动性不够，不做；</li>
+<li>residual 本身太乱，不做；</li>
+<li>funding 太极端，不做；</li>
+<li>即使做，也只挑 top 机会。</li>
+</ul>
+<h3>4.5 risk / sizing / exit 已经给了完整壳</h3>
+<p><code>engine.py</code> + <code>risk_engine.py</code> 的 <code>COPILOT</code> 默认 risk 框架：</p>
+<ul>
+<li>最大并发仓位：<code>1</code></li>
+<li>最大日亏损：<code>3%</code></li>
+<li>最大周回撤：<code>7%</code></li>
+<li>单笔风险预算：<code>1% equity</code></li>
+<li>最大持有：<code>48h</code></li>
+<li>基础 stop：<code>3%</code></li>
+<li>基础 take-profit：<code>6%</code></li>
+</ul>
+<p>而且不是死板固定止损：</p>
+<ul>
+<li>stop 会随 realized vol 调整；</li>
+<li>take-profit 会根据 <code>edge_after_fees_pct</code> 和 stop 距离联动；</li>
+<li>position size 用风险预算 / stop distance 算出。</li>
+</ul>
+<p>所以这条题材满足“<strong>可直接落地完整策略（entry/exit/sizing/risk/cost）</strong>”这一条。</p>
+<p>---</p>
+<h2>5. 最关键的 6 个数据点</h2>
+<h3>5.1 这不是老 repo 翻新，而是 2026-03-13 新建、4 月还在更新</h3>
+<p>GitHub API 元数据：</p>
+<ul>
+<li><code>created_at = 2026-03-13T04:47:55Z</code></li>
+<li><code>pushed_at = 2026-04-01T19:57:14Z</code></li>
+</ul>
+<p>也就是说，这轮确实算得上<strong>近 5 年内、而且是最近几周还在活跃的新 repo</strong>。</p>
+<h3>5.2 15m 的 base alpha 定义很完整：7d fair value + 3d z-score + 1d stability/vol</h3>
+<p>这比很多只说“做 z-score reversion”但不告诉你窗口怎么压缩的材料强很多。</p>
+<p>作者已经明确把 <code>15m</code> 结构写成：</p>
+<ul>
+<li><code>7 天</code>回归看 fair value</li>
+<li><code>3 天</code>看 residual 是否极端</li>
+<li><code>1 天</code>看残差是否稳定、波动是否可接受</li>
+</ul>
+<p>这非常适合我们直接压成 <code>15m -&gt; 5m</code> 的最小移植实验。</p>
+<h3>5.3 entry threshold 不保守到完全不触发，也没宽到只剩噪音</h3>
+<p>核心 admission 条件：</p>
+<ul>
+<li><code>|z| &gt;= 1.75</code></li>
+<li><code>stability &gt;= 0.45</code></li>
+<li><code>fee = 8 bps</code></li>
+</ul>
+<p>这组阈值不是纯学术写法，而是明显在试图兼顾：</p>
+<ul>
+<li>偏离幅度</li>
+<li>可成交性</li>
+<li>成本后净边际</li>
+</ul>
+<h3>5.4 我按 repo 逻辑做了一个 <code>15m</code> live probe：信号是活的，但默认流动性门槛对 spot 15m 偏高</h3>
+<p>用 repo 默认 universe + Binance 公共数据，在 <code>2026-04-05 16:15 UTC</code> 的 <code>15m</code> 快检结果里：</p>
+<ul>
+<li><strong>SOLUSDT</strong></li>
+<li>fair-value gap：<strong>-3.12%</strong></li>
+<li><code>z = -2.19</code></li>
+<li><code>spread_stability_score = 0.86</code></li>
+<li>方向：<strong>LONG</strong></li>
+<li><strong>XRPUSDT</strong></li>
+<li>fair-value gap：<strong>-2.26%</strong></li>
+<li><code>z = -1.88</code></li>
+<li><code>spread_stability_score = 0.91</code></li>
+<li>方向：<strong>LONG</strong></li>
+</ul>
+<p>但：</p>
+<ul>
+<li>这轮 <strong>没有标的通过全部默认 filter</strong>；</li>
+<li>主因不是 z-score 不够，而是 <code>quote_volume &gt;= 2.5m</code> 这一条在 <strong>spot 15m</strong> 上偏严。</li>
+</ul>
+<p>这很有价值，因为它说明：</p>
+<p>&gt; <strong>alpha 本体是活的，但 15m 直接照搬 repo 的 spot volume gate，可能会把大部分机会先挡掉。</strong></p>
+<h3>5.5 同样逻辑切到 <code>1h</code>，SOL 当下就能过默认 admission</h3>
+<p>我又按 <code>1h</code> profile 快检了一次，<code>2026-04-05 16:00 UTC</code>：</p>
+<ul>
+<li><strong>SOLUSDT</strong></li>
+<li>fair-value gap：<strong>-3.32%</strong></li>
+<li><code>z = -1.82</code></li>
+<li><code>realized_vol = 0.31</code></li>
+<li><code>quote_volume ≈ 2.50m</code></li>
+<li><code>stability = 0.80</code></li>
+<li><strong>通过默认 filter</strong></li>
+</ul>
+<p>这进一步说明：</p>
+<ul>
+<li>这条 raw alpha 不是无效；</li>
+<li>更像是 <strong>15m 上的流动性门槛需要按 bar 周期重标定</strong>；</li>
+<li>核心 fair-value gap / residual z-score 结构仍然是可工作的。</li>
+</ul>
+<h3>5.6 这个 repo 最大的工程价值，是把 raw alpha 和 overlay 拆开了</h3>
+<p><code>monitor.py</code> 里还能叠：</p>
+<ul>
+<li>funding signal</li>
+<li>basis signal</li>
+<li>BTC directional bias</li>
+<li>macro / ETF / Fear &amp; Greed / news</li>
+</ul>
+<p>但这些没有盖掉 raw alpha 主体，反而让我们更容易做拆件实验：</p>
+<ul>
+<li>先测 base alpha；</li>
+<li>再测 regime gate；</li>
+<li>再测 external overlay。</li>
+</ul>
+<p>这正符合现在 desk 需要的“<strong>把素材拆成可复现实盘组件</strong>”的节奏。</p>
+<p>---</p>
+<h2>6. 对 short-cycle desk，最值得拿走的不是 dashboard，而是这条 desk 版策略壳</h2>
+<p>我会把这条 repo 里的核心思想，压成下面这个更适合我们 desk 的版本。</p>
+<h3>6.1 desk 版主结论</h3>
+<p>&gt; <strong>先用 BTC+ETH 双 benchmark 定义 alt 的 fair value，再做 residual z-score 回归；把 liquidity / vol / stability / funding 当 admission gate，而不是把 news / macro 当主信号。</strong></p>
+<p>这意味着它服务的是一条非常标准、但很实用的 raw alpha：</p>
+<ul>
+<li><strong>raw alpha 本体</strong>：beta-adjusted relative-value mean reversion</li>
+<li><strong>gate</strong>：liquidity / volatility / residual stability / funding</li>
+<li><strong>可选 overlay</strong>：BTC regime / macro / sentiment / news</li>
+</ul>
+<h3>6.2 为什么这条线特别适合 <code>5m / 15m</code></h3>
+<p>因为这类 fair-value gap 信号最怕两件事：</p>
+<ul>
+<li>太慢，回归已经走完才看到；</li>
+<li>太快，纯噪音把 z-score 搞脏。</li>
+</ul>
+<p><code>15m</code> 正好是个还不错的折中层：</p>
+<ul>
+<li>足够快，能抓 intraday dislocation；</li>
+<li>又没有 <code>1m</code> 那么吃微观结构噪音；</li>
+<li>很容易把 7d / 3d / 1d 这些窗口映射成稳定统计量。</li>
+</ul>
+<p>如果要往 <code>5m</code> 推，我反而建议：</p>
+<ul>
+<li>保留 fair-value 框架；</li>
+<li>但把 admission 设计得更严格；</li>
+<li>尤其要对 <code>volume gate</code> 和 <code>fill model</code> 重标定。</li>
+</ul>
+<h3>6.3 一个更适合我们 desk 的可执行版本</h3>
+<p>#### 交易对象</p>
+<ul>
+<li>Binance USDⓈ-M 前 <code>10~20</code> 个最活跃 perp</li>
+<li>benchmark：<code>BTCUSDT + ETHUSDT</code></li>
+</ul>
+<p>#### fair-value 模型 每个 alt 在每个 bar 做：</p>
+<p>``<code>text log(alt) = a + b1*log(BTC) + b2*log(ETH) </code>``</p>
+<p>得到：</p>
+<ul>
+<li><code>fair_value</code></li>
+<li><code>residual_log</code></li>
+<li><code>z_score</code></li>
+</ul>
+<p>#### 入场</p>
+<ul>
+<li><code>|z| &gt;= z_entry</code></li>
+<li><code>residual stability &gt;= threshold</code></li>
+<li><code>rolling realized vol &lt;= max_vol</code></li>
+<li><code>quote volume &gt;= liquidity_floor</code></li>
+<li><code>|funding| &lt;= funding_cap</code></li>
+</ul>
+<p>其中：</p>
+<ul>
+<li><code>z_entry</code> 初始先测 <code>{1.5, 1.75, 2.0, 2.25}</code></li>
+<li><code>liquidity_floor</code> 不要直接抄死 <code>2.5m</code>，而是改成：</li>
+<li>绝对值版：<code>{0.5m, 1.0m, 2.0m}</code></li>
+<li>或分位版：<code>过去 30 天本币同周期 volume 的 50% / 70% / 85% 分位</code></li>
+</ul>
+<p>#### 方向</p>
+<ul>
+<li>residual / deviation 为负 → LONG</li>
+<li>residual / deviation 为正 → SHORT</li>
+</ul>
+<p>#### 离场 优先测三种：</p>
+<ol>
+<li><code>z</code> 回到 <code>0 ~ ±0.25</code></li>
+<li>固定持有 <code>H ∈ {8, 16, 24, 32}</code> bars</li>
+<li>先到 time-stop 或 opposite signal 就平</li>
+</ol>
+<p>#### sizing / risk</p>
+<ul>
+<li>单笔风险预算：<code>0.5% ~ 1.0%</code></li>
+<li>并发：<code>1~3</code> 个最高分候选</li>
+<li>stop：<code>2.0% ~ 4.0%</code> 或 <code>k * residual-vol</code></li>
+<li>take-profit：<code>1.25x ~ 2.0x stop</code></li>
+<li>日内 kill-switch：<code>2R</code> 或 <code>3R</code></li>
+</ul>
+<p>#### 成本</p>
+<ul>
+<li>taker-only：<code>8 ~ 12 bps</code></li>
+<li>maker/taker mix：<code>4 ~ 8 bps</code></li>
+<li>另加保守滑点：<code>1 ~ 3 bps</code></li>
+</ul>
+<p>---</p>
+<h2>7. 最小实验应该怎么测</h2>
+<p>这是这篇最重要的部分：别只停在“能看懂源码”。</p>
+<h2>7.1 第一轮最小实验</h2>
+<h3>目标</h3>
+<p>先验证：</p>
+<p>&gt; <strong>BTC+ETH fair-value gap 的 residual z-score，在 crypto short-cycle 上是否有稳定回归边。</strong></p>
+<h3>实验口径</h3>
+<ul>
+<li>交易所：Binance USDⓈ-M（优先 perp，不要 spot/perp 混搭）</li>
+<li>周期：<code>15m</code> 主测，<code>5m</code> 次测</li>
+<li>universe：前 <code>10~20</code> 个高流动 USDT perp</li>
+<li>benchmark：<code>BTCUSDT + ETHUSDT</code></li>
+<li>训练/滚动窗口：</li>
+<li>回归窗：<code>{5d, 7d, 10d}</code></li>
+<li>z-score 窗：<code>{2d, 3d, 5d}</code></li>
+<li>entry：<code>|z| ∈ {1.5, 1.75, 2.0, 2.25}</code></li>
+<li>exit：<code>z→0</code> / <code>time-stop</code> / <code>opposite signal</code></li>
+<li>cost：<code>6 / 8 / 10 / 12 bps</code></li>
+</ul>
+<h3>关键输出</h3>
+<p>至少看这 8 个：</p>
+<ul>
+<li>gross Sharpe</li>
+<li>net Sharpe</li>
+<li>turnover</li>
+<li>avg holding bars</li>
+<li>hit rate</li>
+<li>payoff ratio</li>
+<li>MDD</li>
+<li>capacity proxy（按 volume / top-book notional）</li>
+</ul>
+<h2>7.2 第二轮：只改一件最关键的事——volume gate</h2>
+<p>这轮 live probe 已经给了一个很明确的信号：</p>
+<ul>
+<li>15m 上 base alpha 是活的；</li>
+<li>但 spot <code>2.5m</code> quote-volume gate 会过严。</li>
+</ul>
+<p>所以第二轮最该做的不是先叠 news，而是先做：</p>
+<p>&gt; <strong>absolute liquidity floor vs rolling percentile liquidity floor</strong></p>
+<p>也就是比较：</p>
+<ul>
+<li>固定 <code>2.5m</code></li>
+<li>固定 <code>1.0m</code></li>
+<li>rolling 70% 分位</li>
+<li>rolling 85% 分位</li>
+</ul>
+<p>看看哪种更适合 <code>15m</code>。</p>
+<h2>7.3 第三轮：测双 benchmark 是否真优于单 benchmark</h2>
+<p>把下面几种并排：</p>
+<ol>
+<li><code>alt ~ BTC</code></li>
+<li><code>alt ~ ETH</code></li>
+<li><code>alt ~ BTC + ETH</code></li>
+<li><code>alt ~ market basket</code></li>
+</ol>
+<p>这一步很关键，因为如果 <code>BTC+ETH</code> 没明显优于 <code>BTC only</code>，那实盘就该选更简单、更稳的版本。</p>
+<p>---</p>
+<h2>8. 这条题材的主要风险与注意点</h2>
+<h3>8.1 repo 现在是 spot klines + futures funding 混搭</h3>
+<p>这在研究阶段不是致命问题，但在实盘迁移上要小心：</p>
+<ul>
+<li>信号最好和交易 venue 尽量一致；</li>
+<li>否则 volume、funding、basis、执行成本口径会有偏差。</li>
+</ul>
+<p>所以 desk 版最好直接改成：</p>
+<ul>
+<li><strong>perp close / perp volume / perp funding 全套一致口径</strong>。</li>
+</ul>
+<h3>8.2 rolling OLS 在 regime 切换时会漂</h3>
+<p>fair-value 模型本身不是圣杯：</p>
+<ul>
+<li>beta 会变；</li>
+<li>ETH 主导和 BTC 主导会切换；</li>
+<li>单靠固定窗口 OLS，遇到风格突变会失真。</li>
+</ul>
+<p>所以后续可加：</p>
+<ul>
+<li>beta half-life</li>
+<li>EWLS</li>
+<li>regime-conditioned coefficient reset</li>
+</ul>
+<p>但这些是第二阶段，不应该妨碍先做最小实验。</p>
+<h3>8.3 这条策略不是“任何偏离都能回”</h3>
+<p>当偏离来自：</p>
+<ul>
+<li>listing / delisting</li>
+<li>chain exploit</li>
+<li>token unlock</li>
+<li>governance event</li>
+<li>巨额 liquidation cascade</li>
+</ul>
+<p>那 fair-value gap 可能不是 mispricing，而是真实 re-pricing。</p>
+<p>所以后续要加一个很实用的 veto：</p>
+<ul>
+<li><strong>event / news shock veto</strong></li>
+</ul>
+<p>但注意：这仍然是给 raw alpha 加保护，不是把主题改成 filter digest。</p>
+<p>---</p>
+<h2>9. 这轮结论</h2>
+<p>如果只用一句话总结：</p>
+<p>&gt; <strong>这份 2026 新 repo 最值得 desk intake 的，不是它的 dashboard，也不是它附带的宏观/新闻模块，而是那条很清楚的 raw alpha：用 BTC+ETH 双 benchmark 定义 alt fair value，再做 residual z-score mean reversion。</strong></p>
+<p>它为什么值得进研究池：</p>
+<ol>
+<li><strong>base alpha 清楚</strong>：不是 filter 伪装成 alpha；</li>
+<li><strong>可独立复现</strong>：全用 Binance 公共数据就能做；</li>
+<li><strong>可直接落地完整策略</strong>：entry / exit / sizing / risk / cost 源码都有；</li>
+<li><strong>和 short-cycle desk 直接相关</strong>：15m profile 已经内建；</li>
+<li><strong>live probe 说明信号活着</strong>：当前 <code>15m</code> 上 SOL / XRP 都出现了明显 fair-value gap，只是 default volume gate 对 spot 15m 偏严。</li>
+</ol>
+<p>如果本轮只留一个“下一步就该测”的任务，我的答案是：</p>
+<p>&gt; <strong>先把这条 BTC+ETH fair-value gap alpha 用统一的 Binance perp 口径，在 <code>15m</code> 上做一轮 volume-gate 重标定 + z-score / exit 网格测试。</strong></p>
+<p>这一步做完，才能判断它到底是：</p>
+<ul>
+<li>可直接实盘的主 alpha，还是</li>
+<li>一个很适合挂在更大 relative-value book 里的 admission shell。</li>
+</ul>
+<p>---</p>
+<h2>10. 来源链接</h2>
+<h3>Repo / readable</h3>
+<ul>
+<li>Repo homepage: &lt;<a href="https://github.com/joanduso/crypto-relative-value-engine-&gt;">https://github.com/joanduso/crypto-relative-value-engine-&gt;</a></li>
+<li>README: &lt;<a href="https://github.com/joanduso/crypto-relative-value-engine-/blob/main/README.md&gt;">https://github.com/joanduso/crypto-relative-value-engine-/blob/main/README.md&gt;</a></li>
+</ul>
+<h3>关键源码</h3>
+<ul>
+<li><code>feature_engine.py</code>: &lt;<a href="https://github.com/joanduso/crypto-relative-value-engine-/blob/main/feature_engine.py&gt;">https://github.com/joanduso/crypto-relative-value-engine-/blob/main/feature_engine.py&gt;</a></li>
+<li><code>signal_engine.py</code>: &lt;<a href="https://github.com/joanduso/crypto-relative-value-engine-/blob/main/signal_engine.py&gt;">https://github.com/joanduso/crypto-relative-value-engine-/blob/main/signal_engine.py&gt;</a></li>
+<li><code>interval_profiles.py</code>: &lt;<a href="https://github.com/joanduso/crypto-relative-value-engine-/blob/main/interval_profiles.py&gt;">https://github.com/joanduso/crypto-relative-value-engine-/blob/main/interval_profiles.py&gt;</a></li>
+<li><code>engine.py</code>: &lt;<a href="https://github.com/joanduso/crypto-relative-value-engine-/blob/main/engine.py&gt;">https://github.com/joanduso/crypto-relative-value-engine-/blob/main/engine.py&gt;</a></li>
+<li><code>risk_engine.py</code>: &lt;<a href="https://github.com/joanduso/crypto-relative-value-engine-/blob/main/risk_engine.py&gt;">https://github.com/joanduso/crypto-relative-value-engine-/blob/main/risk_engine.py&gt;</a></li>
+<li><code>backtest.py</code>: &lt;<a href="https://github.com/joanduso/crypto-relative-value-engine-/blob/main/backtest.py&gt;">https://github.com/joanduso/crypto-relative-value-engine-/blob/main/backtest.py&gt;</a></li>
+<li><code>monitor.py</code>: &lt;<a href="https://github.com/joanduso/crypto-relative-value-engine-/blob/main/monitor.py&gt;">https://github.com/joanduso/crypto-relative-value-engine-/blob/main/monitor.py&gt;</a></li>
+</ul>
+<h3>公共数据端点</h3>
+<ul>
+<li>Binance spot klines: &lt;<a href="https://api.binance.com/api/v3/klines&gt;">https://api.binance.com/api/v3/klines&gt;</a></li>
+<li>Binance futures funding history: &lt;<a href="https://fapi.binance.com/fapi/v1/fundingRate&gt;">https://fapi.binance.com/fapi/v1/fundingRate&gt;</a></li>
+</ul>
+</body>
+</html>

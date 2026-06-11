@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 新 repo 只读成夸张收益截图：对 short-cycle desk，更该先测的是「mid-liquidity alt-perp 宽价差 maker × inventory skew / trend-veto」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 新 repo 只读成夸张收益截图：对 short-cycle desk，更该先测的是「mid-liquidity alt-perp 宽价差 maker × inventory skew / trend-veto」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 17:05 UTC</span>
+      <span class="pill">研究时间：2026-04-04 17:02 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`README.md` + `strategies/market-making/mm_engine.py` + `mm_futures_backtest.py` + `mm_futures_scanner.py` + `mm_pair_scanner.py`）+ 经典 inventory-based market making 文献 grounding</span>
+      <span class="pill">主题标签：raw-alpha/maker/market-making/spread-capture/inventory-skew/liquidity-provision/altcoin-perpetual/binance-futures/orderbook-depth/adverse-selection/trend-veto/volatility-circuit-breaker/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：开源代码仓 + 经典 market making 论文 grounding</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_1702_altperp-maker-inventory-skew-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 17:02 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>README.md</code> + <code>strategies/market-making/mm_engine.py</code> + <code>mm_futures_backtest.py</code> + <code>mm_futures_scanner.py</code> + <code>mm_pair_scanner.py</code>）+ 经典 inventory-based market making 文献 grounding</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>在中等成交、非主流 USDT perpetual 上，持续挂双边被动单，吃的是“可覆盖 maker 成本后的稳定宽价差”；再用 inventory skew、depth cap、trend/vol veto 去压 adverse selection。换句话说，alpha 本体不是方向判断，而是“宽价差流动性供给”的重复 spread capture。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/maker/market-making/spread-capture/inventory-skew/liquidity-provision/altcoin-perpetual/binance-futures/orderbook-depth/adverse-selection/trend-veto/volatility-circuit-breaker/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：开源代码仓 + 经典 market making 论文 grounding</li>
+</ul>
+<h2>1. 这次为什么选它</h2>
+<p>这轮我不想继续在 pairs / spread forecast / basis shell 里内循环，原因很简单：</p>
+<ol>
+<li><strong>最近 intake 已经连续补了不少 pairs / relative-value / basis 题</strong>；</li>
+<li>但从 <code>docs/MAINLINE1_STRATEGY_FACTOR_MAP.md</code>、<code>docs/FACTOR_BACKLOG.md</code>、<code>docs/LEARNING_TRACK.md</code> 这轮对照看，<strong>显式写成“maker raw alpha shell”的条目并不多</strong>；</li>
+<li>对 short-cycle crypto desk 来说，<strong>流动性供给本身就是一类独立 raw alpha</strong>，不该永远被当成 execution 附件。</li>
+</ol>
+<p>这份 repo 虽然很新、而且 README 收益明显偏理想化，但它有一个优点：</p>
+<p>&gt; <strong>它不是只给一个抽象想法，而是把 universe、entry、quote shape、sizing、inventory control、risk kill-switch、pair scanner 全写成了完整壳。</strong></p>
+<p>这正符合这轮优先级里最值钱的那一档： <strong>可独立复现、可直接落地成完整策略的 raw alpha 候选。</strong></p>
+<h2>2. 这条东西的 base alpha 到底是什么</h2>
+<p>先把最关键的一句讲清楚：</p>
+<p>&gt; <strong>base alpha = 在非主流 alt perpetual 上，稳定存在的、能覆盖 maker 费和保守滑点的 bid-ask spread。</strong></p>
+<p>更具体一点，这条壳不是在赌：</p>
+<ul>
+<li>breakout；</li>
+<li>retest；</li>
+<li>funding 单边；</li>
+<li>某个趋势方向。</li>
+</ul>
+<p>它赌的是：</p>
+<ol>
+<li>某些币对的<strong>天然盘口价差够宽</strong>；</li>
+<li>这些币对的<strong>订单簿深度还没差到完全不能挂单</strong>；</li>
+<li>只要把 quote 放在合适距离，且在波动/趋势恶化时收手，</li>
+<li>就能重复赚到<strong>双边被动成交的 spread capture</strong>。</li>
+</ol>
+<p>所以这不是 filter，也不是 overlay 伪装货； 它本身就是一条<strong>maker/liquidity-provision raw alpha</strong>。</p>
+<h2>3. 这份 repo 里真正值钱的硬信息</h2>
+<h3>3.1 来源与版本</h3>
+<ul>
+<li><strong>Repo</strong>：<code>monkeyjack123/quant-research-portfolio</code></li>
+<li>GitHub：&lt;<a href="https://github.com/monkeyjack123/quant-research-portfolio&gt;">https://github.com/monkeyjack123/quant-research-portfolio&gt;</a></li>
+<li>最近提交：<code>30a15a0eff8c5ae8730a04b924a7fdeb8c539641</code></li>
+<li>提交时间：<code>2026-03-29T23:14:53-05:00</code></li>
+<li>当前仓库只有 1 个初始提交，说明它<strong>非常新</strong>，也说明结论更该按“研究假设壳”来读，而不是成熟 production track record。</li>
+</ul>
+<h3>3.2 它定义的 universe 其实很像一条可执行的 admission layer</h3>
+<p><code>mm_futures_scanner.py</code> 先做了一层非常清楚的 pair admission：</p>
+<ul>
+<li>Binance <strong>USDT perpetual</strong></li>
+<li>排除 majors（<code>BTC / ETH / BNB / SOL / XRP / DOGE / ADA ...</code>）</li>
+<li><code>24h quote volume</code> 在 <strong><code>100K ~ 20M</code> USDT</strong></li>
+<li>实时盘口 <code>spread_pct &gt; 0.04%</code></li>
+<li>打分公式：</li>
+</ul>
+<p>``<code>text score = net_spread × sqrt(volume) × (1 - volatility_penalty) </code>``</p>
+<p>其中：</p>
+<ul>
+<li><code>net_spread = spread_pct - 0.04%</code>（round-trip maker fee）</li>
+<li><code>volatility_penalty = max(0, (|24h priceChange%| - 10) / 10)</code></li>
+</ul>
+<p>翻成人话就是：</p>
+<p>&gt; <strong>先挑“价差够宽、量别太小、但也别大到已经被专业 MM 碾平、同时 24h 方向别太疯”的标的。</strong></p>
+<p>这不是泛泛筛币，而是一条能直接复现的 admission 规则。</p>
+<h3>3.3 live engine 的核心参数，已经足够拼出完整策略</h3>
+<p><code>mm_engine.py</code> 里的默认 futures maker 壳，关键参数是：</p>
+<ul>
+<li>默认交易对：<code>1000SATS / ALICE / IO / ACT / DENT</code></li>
+<li>初始 capital：<code>200 USDT</code></li>
+<li>leverage：<code>3x</code></li>
+<li><code>capital_per_pair_pct = 20%</code></li>
+<li><code>base_spread_pct = 0.40%</code></li>
+<li><code>min_spread_pct = 0.08%</code></li>
+<li><code>order_size_pct = 5%</code></li>
+<li><code>max_position_pct = 15%</code></li>
+<li><code>n_layers = 5</code></li>
+<li><code>layer_step_pct = 0.02%</code></li>
+<li>只在价格偏移 <code>&gt; 0.05%</code> 时重挂单</li>
+<li>冰山单阈值：<code>50 USDT</code></li>
+<li>top-5 深度 sizing cap：<code>depth_max_pct = 2%</code></li>
+<li>vol breaker：<code>当前波动 &gt; 2 × rolling mean</code> 时暂停</li>
+<li>trend veto：<code>30 ticks</code> 累计方向移动 <code>&gt; 0.3%</code> 时，把下单规模缩到 <code>30%</code> 左右</li>
+<li>portfolio DD：<code>-5%</code> 减半，<code>-10%</code> 全清</li>
+</ul>
+<p>这说明它不是“只有 alpha 没有壳”，而是天然已经拆成：</p>
+<ul>
+<li><strong>entry</strong>：双边挂单入场</li>
+<li><strong>exit</strong>：被动对手成交 / 风控暂停 / 组合清算</li>
+<li><strong>sizing</strong>：capital slice + depth cap + trend scale</li>
+<li><strong>risk</strong>：inventory cap + vol pause + trend scale + DD kill-switch</li>
+<li><strong>cost</strong>：maker fee floor 明确写在 scanner / backtest 假设里</li>
+</ul>
+<h3>3.4 inventory skew 的想法是对的，而且跟经典 MM 文献一致</h3>
+<p>这份 repo 最值得保留的，不是收益截图，而是它对<strong>库存风险</strong>的处理方向：</p>
+<ul>
+<li>持仓偏多时，把 bid / ask <strong>整体下移</strong>，鼓励卖出减仓；</li>
+<li>持仓偏空时，把 bid / ask <strong>整体上移</strong>，鼓励买回减仓；</li>
+<li>同方向仓位越满，同方向继续加仓的 quote size 越小；</li>
+<li>在 adverse move + 高波动同时出现时，反向减仓单会被放大。</li>
+</ul>
+<p>这跟 Avellaneda–Stoikov 那条经典逻辑是一致的：</p>
+<p>&gt; <strong>做市不是只盯 spread，而是要把 inventory risk 价格化。</strong></p>
+<p>对 short-cycle desk 很重要的一点是： 这类 inventory skew 完全可以迁移到 <code>1m / 3m / 5m / 15m</code> crypto 执行层，不依赖私有数据。</p>
+<h2>4. repo 自己声称的结果，哪些能看，哪些不能信</h2>
+<p>README 里给了很多漂亮数字，我只挑最有信息量的几条：</p>
+<h3>4.1 可作为“候选吸引力”参考的数字</h3>
+<p>README 给的 futures backtest（<code>Mar 2025 – Mar 2026</code>, <code>$200</code>, <code>1x</code>）里：</p>
+<ul>
+<li><code>1000SATS</code>: <strong>+609%</strong>, DD <code>-3.67%</code>, <code>15,826</code> trades, spread <code>0.526%</code></li>
+<li><code>ALICE</code>: <strong>+467%</strong>, DD <code>-3.60%</code>, <code>15,876</code> trades, spread <code>0.488%</code></li>
+<li><code>IO</code>: <strong>+426%</strong>, DD <code>-1.86%</code>, <code>16,082</code> trades, spread <code>0.457%</code></li>
+<li><code>ACT</code>: <strong>+402%</strong>, DD <code>-3.97%</code>, <code>15,816</code> trades, spread <code>0.453%</code></li>
+<li><code>DENT</code>: <strong>+395%</strong>, DD <code>-5.62%</code>, <code>15,933</code> trades, spread <code>0.410%</code></li>
+</ul>
+<p>这组数最有用的地方不在收益本身，而在于它告诉我们：</p>
+<p>&gt; <strong>作者真正想做的是“平均价差 41–53 bps”的 alt-perp maker 书，而不是 BTC/ETH 那种被专业做市挤平的市场。</strong></p>
+<h3>4.2 但这些结果明显不能直接当已验证结论</h3>
+<p>因为 README 还给了 IO 的 full-history leverage analysis：</p>
+<ul>
+<li><code>1x</code>: <code>+3,002%</code>, DD <code>-1.87%</code>, Sharpe <code>27.64</code></li>
+<li><code>3x</code>: <code>+3.17M%</code>, DD <code>-5.49%</code>, Sharpe <code>27.93</code></li>
+<li><code>5x</code>: <code>+25.6B%</code>, DD <code>-8.96%</code>, Sharpe <code>27.68</code></li>
+</ul>
+<p>这种结果本身就在提醒我们：</p>
+<p>&gt; <strong>repo 的 backtest 更像“概念验证 + optimistic simulator”，而不是可直接采信的收益证明。</strong></p>
+<p>也正因此，这轮 digest 的价值不在于“抄收益”，而在于把其中<strong>可迁移的 raw alpha 结构</strong>抽出来。</p>
+<h2>5. 这份源码最重要的 source-audit 发现</h2>
+<h3>5.1 live engine 比 backtest 更像真东西</h3>
+<p><code>mm_engine.py</code> 至少接了：</p>
+<ul>
+<li>Binance Futures WebSocket depth stream（<code>@depth5@100ms</code>）</li>
+<li>top-5 book depth sizing cap</li>
+<li>layered quoting</li>
+<li>inventory skew</li>
+<li>vol breaker</li>
+<li>trend scale-down</li>
+<li>price drift threshold 才更新订单</li>
+</ul>
+<p>也就是说，<strong>真正值钱的是 live shell</strong>。</p>
+<h3>5.2 backtest 用的是 1h kline，不是 order book replay</h3>
+<p><code>mm_futures_backtest.py</code> 的核心假设是：</p>
+<ul>
+<li>每根 bar 的 <code>mid = (high + low) / 2</code></li>
+<li>bid 放在 <code>mid - spread/2</code></li>
+<li>ask 放在 <code>mid + spread/2</code></li>
+<li>如果 <code>bar low &lt;= bid</code> 就算买单成交</li>
+<li>如果 <code>bar high &gt;= ask</code> 就算卖单成交</li>
+</ul>
+<p>这就带来几个明显乐观项：</p>
+<ol>
+<li><strong>没有 queue position</strong></li>
+</ol>
+<ul>
+<li>你挂到了那个价，不等于你真排到了量。</li>
+</ul>
+<ol>
+<li><strong>可能同一根 bar 双边都成交</strong></li>
+</ol>
+<ul>
+<li>这在粗粒度 K 线上容易高估回转效率。</li>
+</ul>
+<ol>
+<li><strong>没有真实盘口路径</strong></li>
+</ol>
+<ul>
+<li>bar 的 high/low 触达，并不代表你的 passive quote 真有可成交对手盘。</li>
+</ul>
+<ol>
+<li><strong>没有 cancel/replace latency</strong></li>
+</ol>
+<ul>
+<li>而 live maker 最怕的恰恰就是 stale quote。</li>
+</ul>
+<p>所以：</p>
+<p>&gt; <strong>repo 的 alpha 想法可以收，但回测收益绝不能直接抄。</strong></p>
+<h3>5.3 docstring 写了 funding，但代码里并没真正结算 funding</h3>
+<p><code>mm_futures_backtest.py</code> 顶部说明写了：</p>
+<ul>
+<li>maker fee <code>0.02%</code></li>
+<li>funding rate every 8 hours</li>
+</ul>
+<p>但实际回测逻辑里只看到了：</p>
+<ul>
+<li>fee 扣减</li>
+<li>inventory / capital / equity curve</li>
+</ul>
+<p><strong>没有真正 funding cashflow 的结算实现。</strong></p>
+<p>这意味着：</p>
+<ul>
+<li>如果 inventory 在单边累积，真实收益会被 funding 影响；</li>
+<li>尤其在 alt-perp 上，funding 有时不是小数点后噪音。</li>
+</ul>
+<h3>5.4 alpha 本体没问题，但 README 收益大概率混进了 fill-model 幻觉</h3>
+<p>这也是我这轮最想写清楚的一点：</p>
+<p>&gt; <strong>“宽价差 alt-perp maker” 这个 base alpha 本身是成立的；问题不在 alpha 类型，而在 repo 回测把它模拟得太顺了。</strong></p>
+<p>也就是说：</p>
+<ul>
+<li><strong>题目值得收</strong>；</li>
+<li><strong>收益不值得抄</strong>；</li>
+<li><strong>该复现的是壳，不是截图。</strong></li>
+</ul>
+<h2>6. 它和 <code>1m / 3m / 5m / 15m</code> 的关系</h2>
+<p>这条东西跟 short-cycle desk 的兼容性其实很强：</p>
+<h3><code>15m</code></h3>
+<p>适合做 <strong>symbol routing / admission refresh</strong>：</p>
+<ul>
+<li>哪些币今天还值得做；</li>
+<li>哪些币已从“宽价差可吃”变成“方向太毒不能碰”。</li>
+</ul>
+<h3><code>5m</code></h3>
+<p>适合做 <strong>health layer / state gate</strong>：</p>
+<ul>
+<li>最近 realized vol 是否过高；</li>
+<li>spread 是否开始塌缩；</li>
+<li>inventory 是否需要强制去风险。</li>
+</ul>
+<h3><code>1m / 3m</code></h3>
+<p>适合做 <strong>真正执行层</strong>：</p>
+<ul>
+<li>quote placement</li>
+<li>reprice</li>
+<li>layered order management</li>
+<li>stale quote cancel</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>这不是只能在小时级回测里好看的东西；相反，它天然更适合快频执行，只是 admission 和风控最好稍慢一层。</strong></p>
+<h2>7. 最小可复现实验：怎么把它变成 desk 可跑的第一版</h2>
+<h3>7.1 数据源</h3>
+<p>全部公开可得：</p>
+<ul>
+<li>Binance USDⓈ-M <code>bookTicker</code> / depth stream</li>
+<li>Binance USDⓈ-M <code>aggTrades</code> 或 recent trades</li>
+<li>Binance USDⓈ-M klines（做状态聚合）</li>
+<li>Binance funding rate history</li>
+</ul>
+<h3>7.2 第一版不要直接照抄 repo 的 5 层+3x</h3>
+<p>我建议先做一个更克制的版本：</p>
+<p>#### Universe / admission（<code>15m</code> 刷新） 保留 repo 的核心筛选：</p>
+<ul>
+<li>USDT perpetual</li>
+<li>排除 majors</li>
+<li>24h volume <code>100K ~ 20M</code></li>
+<li>live gross spread 要明显大于 fee floor</li>
+<li>再加一个我们自己的条件：</li>
+<li><code>top-5 depth / target order size &gt;= 20x</code></li>
+</ul>
+<p>#### Entry（<code>1m/3m</code> 执行）</p>
+<ul>
+<li>双边挂 maker quote</li>
+<li>先只上 <strong>2–3 层</strong>，不要一开始就 5 层</li>
+<li>初始 quote 宽度：</li>
+<li><code>max(live spread × 0.8, fee_floor + slippage_buffer + stale_quote_buffer)</code></li>
+</ul>
+<p>#### Exit / inventory reduction</p>
+<ul>
+<li>单边 inventory 超过 pair capital 的 <code>5%~8%</code> 就开始 aggressive skew</li>
+<li>超过 <code>10%</code> 就只挂减仓边，不再补同方向仓</li>
+<li>若 <code>N</code> 分钟内 inventory 无法回到安全区，直接 taker flatten 一部分</li>
+</ul>
+<p>#### Sizing</p>
+<ul>
+<li>第一版固定美元 notional</li>
+<li>单笔 quote size 不超过：</li>
+<li><code>top-5 depth</code> 的 <code>0.5%~1.0%</code></li>
+<li>pair allocated capital 的 <code>2%~3%</code></li>
+</ul>
+<p>#### Risk / veto</p>
+<ul>
+<li><code>1m realized vol &gt; 2 × 30m median</code> → pause</li>
+<li><code>30~60 ticks</code> 单向移动超阈值 → scale down</li>
+<li><code>spread collapse</code> 到 fee floor 附近 → 停止做这个币</li>
+<li>funding 异常跳变 → 只保留减仓边</li>
+</ul>
+<p>#### Cost 必须显式记：</p>
+<ul>
+<li>maker fee</li>
+<li>occasional taker flatten fee</li>
+<li>quote drift 带来的 adverse selection</li>
+<li>未成交导致的 inventory carry / funding drag</li>
+</ul>
+<h3>7.3 第一版最该看的不是 PnL，而是这四个 execution KPI</h3>
+<ol>
+<li><strong>双边成交占比</strong>：有多少 inventory 能靠被动对手盘自然回转？</li>
+<li><strong>单位库存的 adverse selection</strong>：持仓后 1m/3m markout 是否持续为负？</li>
+<li><strong>spread capture / fee</strong>：净 spread 收益是否稳定覆盖 maker+taker+funding</li>
+<li><strong>stale quote hit rate</strong>：被趋势扫掉的比例高不高？</li>
+</ol>
+<p>如果这四个数站不住，收益曲线再好看都没意义。</p>
+<h2>8. 下一步怎么测</h2>
+<h3>Step 1：先做 <code>15m admission + 1m execution</code> 的简化壳</h3>
+<p>只保留：</p>
+<ul>
+<li>spread admission</li>
+<li>depth cap</li>
+<li>inventory skew</li>
+<li>vol pause</li>
+</ul>
+<p>先别上冰山、先别上 5 层、先别上 3x leverage。</p>
+<h3>Step 2：做真实 markout 统计，而不是只看 bar 内是否触价</h3>
+<p>至少统计：</p>
+<ul>
+<li>fill 后 <code>30s / 60s / 180s</code> markout</li>
+<li>long inventory vs short inventory 的 markout 非对称</li>
+<li>maker fill 之后的 spread survival time</li>
+</ul>
+<h3>Step 3：单独测 trend veto 的增量价值</h3>
+<p>做两版对照：</p>
+<ul>
+<li>A：只有 spread + inventory skew</li>
+<li>B：A + <code>30 ticks &gt; 0.3%</code> 的 trend scale-down</li>
+</ul>
+<p>看它到底是：</p>
+<ul>
+<li>真减少 adverse selection；</li>
+<li>还是只是把成交量砍掉。</li>
+</ul>
+<h3>Step 4：补 funding 到 inventory carry 里</h3>
+<p>尤其 alt-perp 容易出现：</p>
+<ul>
+<li>本来 spread capture 是正的；</li>
+<li>但 inventory 偏一边太久，被 funding 吃回去。</li>
+</ul>
+<p>这一步不补，策略评估会偏乐观。</p>
+<h3>Step 5：再决定是否扩到 shared gate</h3>
+<p>如果 raw maker alpha 先站住，再考虑把这几类状态输出给别的策略：</p>
+<ul>
+<li><code>spread regime</code></li>
+<li><code>depth regime</code></li>
+<li><code>toxicity / trend regime</code></li>
+</ul>
+<p>也就是把它进一步变成：</p>
+<ul>
+<li>maker 主策略；</li>
+<li>以及别的 breakout / MR / pairs 策略的 execution veto。</li>
+</ul>
+<h2>9. 我对这条题的结论</h2>
+<p>这份 repo <strong>不是</strong>“可直接信的高收益做市系统”； 但它<strong>是</strong>一条值得放进研究池的完整 raw alpha shell。</p>
+<p>我给它的定位是：</p>
+<p>&gt; <strong>“mid-liquidity alt-perp 宽价差 maker × inventory-skewed liquidity provision” 这条 short-cycle raw alpha。</strong></p>
+<p>它之所以值得收，不是因为 README 写了几百上千个点的收益， 而是因为它把真正重要的几件事写全了：</p>
+<ul>
+<li>universe admission</li>
+<li>quote width</li>
+<li>inventory control</li>
+<li>depth-aware sizing</li>
+<li>vol/trend veto</li>
+<li>portfolio kill-switch</li>
+</ul>
+<p>对我们当前 desk 来说，它的价值在于：</p>
+<ol>
+<li><strong>base alpha 清楚</strong>：赚的是宽价差流动性供给，而不是方向；</li>
+<li><strong>可独立复现</strong>：公开 orderbook / trade / funding 数据足够；</li>
+<li><strong>可直接落地完整策略</strong>：entry/exit/sizing/risk/cost 都能拆；</li>
+<li><strong>和 <code>1m/3m/5m/15m</code> 节奏天然兼容</strong>：15m 选币，1m/3m 执行，5m 风控；</li>
+<li><strong>能扩成 shared gate</strong>：做市状态也能反哺别的 alpha 执行层。</li>
+</ol>
+<p>如果只给一句落地建议，那就是：</p>
+<p>&gt; <strong>不要复刻它的收益；先复刻它的“admission + inventory + veto”骨架。</strong></p>
+<h2>10. 参考来源</h2>
+<ol>
+<li><strong>monkeyjack123 (2026). _quant-research-portfolio_. GitHub.</strong></li>
+<p>Repo：&lt;<a href="https://github.com/monkeyjack123/quant-research-portfolio&gt;">https://github.com/monkeyjack123/quant-research-portfolio&gt;</a></p>
+<li><strong>Market making engine source</strong></li>
+<p>&lt;<a href="https://github.com/monkeyjack123/quant-research-portfolio/blob/main/strategies/market-making/mm_engine.py&gt;">https://github.com/monkeyjack123/quant-research-portfolio/blob/main/strategies/market-making/mm_engine.py&gt;</a></p>
+<li><strong>Futures backtest source</strong></li>
+<p>&lt;<a href="https://github.com/monkeyjack123/quant-research-portfolio/blob/main/strategies/market-making/mm_futures_backtest.py&gt;">https://github.com/monkeyjack123/quant-research-portfolio/blob/main/strategies/market-making/mm_futures_backtest.py&gt;</a></p>
+<li><strong>Futures pair scanner source</strong></li>
+<p>&lt;<a href="https://github.com/monkeyjack123/quant-research-portfolio/blob/main/strategies/market-making/mm_futures_scanner.py&gt;">https://github.com/monkeyjack123/quant-research-portfolio/blob/main/strategies/market-making/mm_futures_scanner.py&gt;</a></p>
+<li><strong>Spot pair scanner source</strong></li>
+<p>&lt;<a href="https://github.com/monkeyjack123/quant-research-portfolio/blob/main/strategies/market-making/mm_pair_scanner.py&gt;">https://github.com/monkeyjack123/quant-research-portfolio/blob/main/strategies/market-making/mm_pair_scanner.py&gt;</a></p>
+<li><strong>Avellaneda, M., &amp; Stoikov, S. (2008). _High-frequency trading in a limit order book_. Quantitative Finance, 8(3), 217–224.</strong></li>
+<p>DOI：&lt;<a href="https://doi.org/10.1080/14697680701381228&gt;">https://doi.org/10.1080/14697680701381228&gt;</a></p>
+</ol>
+<h2>11. 文件与页面</h2>
+<ul>
+<li>Digest：<code>research/quant_digests/2026-04-04_1702_altperp-maker-inventory-skew-alpha.md</code></li>
+<li>页面 URL（发布后）：<code><a href="https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-04-04_1702_altperp-maker-inventory-skew-alpha.html">https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-04-04_1702_altperp-maker-inventory-skew-alpha.html</a></code></li>
+</ul>
+</body>
+</html>

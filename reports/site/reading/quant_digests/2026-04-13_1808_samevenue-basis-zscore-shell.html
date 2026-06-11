@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2025 delta-basis repo 只读成课程级全流程工程：对 short-cycle desk，更该先拆的是「same-venue spot↔perp basis z-score fade」这条完整 raw alpha 壳——但 repo 默认成本位会把它直接打穿</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2025 delta-basis repo 只读成课程级全流程工程：对 short-cycle desk，更该先拆的是「same-venue spot↔perp basis z-score fade」这条完整 raw alpha 壳——但 repo 默认成本位会把它直接打穿</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-13 17:47 UTC</span>
+      <span class="pill">研究时间：2026-04-13 18:08 UTC</span>
+      <span class="pill">类型：2025 GitHub repo source audit（`README.md` + `src/config.yaml` + `src/signals/threshold_strategy.py` + `src/signals/position_manager.py` + `src/backtest/backtest_engine.py` + `src/backtest/portfolio.py` + `src/backtest/execution_simulator.py` + `src/backtest/funding_calculator.py` + `FINAL_SUMMARY.md`）+ Binance public `1h/15m` portability probe</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/carry/basis/spot-perpetual/delta-neutral/mean-reversion/zscore/same-venue/binance/bybit/btc/eth/1h/15m/5m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：源码规则 + repo 自带结果摘要 + 公共数据 first verdict</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-13_1808_samevenue-basis-zscore-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-13 18:08 UTC</li>
+<li>类型：2025 GitHub repo source audit（<code>README.md</code> + <code>src/config.yaml</code> + <code>src/signals/threshold_strategy.py</code> + <code>src/signals/position_manager.py</code> + <code>src/backtest/backtest_engine.py</code> + <code>src/backtest/portfolio.py</code> + <code>src/backtest/execution_simulator.py</code> + <code>src/backtest/funding_calculator.py</code> + <code>FINAL_SUMMARY.md</code>）+ Binance public <code>1h/15m</code> portability probe</li>
+<li>主题标签：raw-alpha/relative-value/carry/basis/spot-perpetual/delta-neutral/mean-reversion/zscore/same-venue/binance/bybit/btc/eth/1h/15m/5m/repo/public-data/cost/risk</li>
+<li>证据类型：源码规则 + repo 自带结果摘要 + 公共数据 first verdict</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当 perpetual 相对 spot 的 basis 明显偏离其自身滚动均值时，做 basis 收敛：perp 明显偏贵就 <code>long spot + short perp</code>，perp 明显偏便宜就做反向腿，赚的是 spread 回归加上 funding 辅助，而不是赌单边方向。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 先把一句话说清楚：这篇东西的 base alpha 是什么？</h2>
+<p>&gt; <strong>base alpha = same-venue spot↔perp basis mean reversion。</strong></p>
+<p>这份 repo 值得收进素材池，不是因为它“工程做得完整”这么空泛，而是因为它确实把一条 <strong>relative-value / carry / basis raw alpha</strong> 写成了完整可执行壳：</p>
+<ul>
+<li>basis 偏离够大才开仓；</li>
+<li>回到均值附近就平；</li>
+<li>极端继续扩张就止损；</li>
+<li>同时显式计入 funding、fee、slippage、position sizing。</li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>不是押 BTC 下一根涨还是跌；</li>
+<li>而是押 <strong>perp 和 spot 这两条腿的相对错位会回去</strong>；</li>
+<li>perp 太贵就空 perp、买 spot；</li>
+<li>perp 太便宜就反过来；</li>
+<li>收益来源是 basis 压缩，不是裸方向。</li>
+</ul>
+<p>所以它不是 filter，也不是 overlay；它本体就是一条 <strong>可独立回测的 raw alpha</strong>。</p>
+<h2>2. 这次看了什么</h2>
+<h3>主来源（repo）</h3>
+<ul>
+<li><strong>Author / Owner：</strong> GitHub owner <code>mariamlulu</code></li>
+<li><strong>Year：</strong> 2025</li>
+<li><strong>Title：</strong> *Delta Basis Trading System*</li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/mariamlulu/delta-basis-trading&gt;">https://github.com/mariamlulu/delta-basis-trading&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/mariamlulu/delta-basis-trading&gt;">https://github.com/mariamlulu/delta-basis-trading&gt;</a></li>
+<li><strong>GitHub metadata：</strong></li>
+<li>created: <code>2025-10-30T10:20:01Z</code></li>
+<li>pushed: <code>2025-10-30T10:25:33Z</code></li>
+<li>description: <code>Delta-neutral spot ↔ perpetual basis mean-reversion system for crypto (BTC/ETH) — backtest + reporting.</code></li>
+</ul>
+<h3>本轮自建 probe 产物</h3>
+<ul>
+<li>规则快检脚本：<code>reports/artifacts/quant_digests/2026-04-13_delta_basis_binance_probe.py</code></li>
+<li>汇总：<code>reports/artifacts/quant_digests/delta_basis_binance_probe_summary_2026-04-13.csv</code></li>
+<li>成本阶梯：<code>reports/artifacts/quant_digests/delta_basis_binance_probe_costladder_2026-04-13.csv</code></li>
+<li>逐笔明细：<code>reports/artifacts/quant_digests/delta_basis_binance_probe_detail_2026-04-13.csv</code></li>
+</ul>
+<h2>3. 一句话核心结论 + 一句话证明方式</h2>
+<h3>一句话核心结论</h3>
+<p>&gt; <strong>这份 repo 最有价值的地方，是把 <code>same-venue basis z-score fade</code> 写成了完整 raw-alpha 壳；但 public-data first verdict 很清楚：gross edge 只有个位数十分之一 bps/笔，8 bps round-trip 就全灭，repo 默认 40 bps 成本位更是直接判死。</strong></p>
+<h3>一句话证明方式</h3>
+<p>&gt; <strong>证明不是靠 README 口号，而是靠源码参数 + Binance public spot/perp/funding <code>180d</code> 快检：BTC/ETH 在 <code>1h</code> 与 <code>15m</code> 上的平均每笔 <code>gross+funding</code> 只剩 <code>0.35 ~ 0.78 bps</code>，而 <code>8 bps</code> round-trip 后四个 bucket 的平均净值全部落到 <code>-7.2 ~ -7.65 bps/笔</code>。</strong></p>
+<h2>4. 为什么这轮仍值得写，而不是跳去别的 funding/basis 题材</h2>
+<p>这个问题必须先回答，不然就会跟今天早些时候的 funding/basis digest 混成一类。</p>
+<p>这轮仍值得写，原因是它补的是另一件事：</p>
+<ol>
+<li><strong>它不是“funding + spread 的 rich-perp 单边 admission”，而是更原始、更对称的 basis MR 完整壳。</strong></li>
+</ol>
+<ul>
+<li>之前那类题材更多是在回答：什么时候 <code>short perp + long spot</code> 更像正期望；</li>
+<li>这份 repo 则是把 <strong>basis 偏离本身</strong> 当核心 alpha，再把 funding 作为持有期现金流并入。</li>
+</ul>
+<ol>
+<li><strong>它把完整策略外壳拆得非常直白。</strong></li>
+</ol>
+<ul>
+<li>data → processing → signal → execution → funding → performance 全是独立模块；</li>
+<li>很适合拿来做“短周期 desk 该保留哪一层、该扔哪一层”的解剖。</li>
+</ul>
+<ol>
+<li><strong>它的自带结果很诚实。</strong></li>
+</ol>
+<ul>
+<li>repo 自己的 <code>FINAL_SUMMARY.md</code> 直接写：<code>4,140</code> 笔交易、<code>97%</code> max drawdown、<code>$58,304</code> fees+slippage、<code>0%</code> win rate；</li>
+<li>这反而比只贴漂亮净值的 repo 更值得看，因为它让我们可以清楚回答：</li>
+<p>&gt; 这条线的问题究竟出在 alpha 本体，还是出在成本与落地方式？</p>
+</ul>
+<h2>5. repo 真正提供了什么</h2>
+<h2>5.1 核心配置已经是一条完整策略定义</h2>
+<p><code>src/config.yaml</code> 给的默认参数非常清楚：</p>
+<ul>
+<li><strong>资产：</strong> <code>BTC/USDT</code>, <code>ETH/USDT</code></li>
+<li><strong>交易所：</strong> <code>binance</code>, <code>bybit</code></li>
+<li><strong>频率：</strong> <code>1h</code></li>
+<li><strong>样本长度：</strong> <code>180d</code></li>
+<li><strong>lookback：</strong> <code>336h</code></li>
+<li><strong>entry：</strong> <code>|z| &gt;= 2.0</code></li>
+<li><strong>exit：</strong> <code>|z| &lt; 0.5</code></li>
+<li><strong>stop：</strong> <code>|z| &gt; 4.0</code></li>
+<li><strong>max hold：</strong> <code>336h</code></li>
+<li><strong>notional_fraction：</strong> <code>0.5</code></li>
+<li><strong>perp_leverage：</strong> <code>3x</code></li>
+<li><strong>funding_interval：</strong> <code>8h</code></li>
+<li><strong>cost：</strong> maker <code>2 bps</code>、taker <code>5 bps</code>、slippage <code>5 bps/side</code></li>
+</ul>
+<p>只看配置就知道： 这不是随手写个 z-score notebook， 而是一条已经明确了 <strong>entry / exit / sizing / risk / cost</strong> 的策略壳。</p>
+<h2>5.2 信号逻辑很朴素，但足够可复现</h2>
+<p><code>src/signals/threshold_strategy.py</code> 的逻辑就是：</p>
+<ul>
+<li><code>|z| &gt;= z_entry</code> 开仓</li>
+<li><code>|z| &lt; z_exit</code> 平仓</li>
+<li><code>|z| &gt; z_stop</code> 止损</li>
+</ul>
+<p>而且注释写得很清楚：</p>
+<ul>
+<li><strong>正 z-score</strong>：<code>perpetual &gt; spot</code>，预期 basis 向下回归，因此做 <code>long spot + short perp</code></li>
+<li><strong>负 z-score</strong>：<code>perpetual &lt; spot</code>，预期 basis 向上回归，因此做反向腿</li>
+</ul>
+<p>翻成人话： &gt; <strong>它不是在找趋势确认，而是在赌“偏得太远就会往回收”。</strong></p>
+<h2>5.3 组合层和风险层并没有偷懒</h2>
+<p><code>src/backtest/portfolio.py</code> / <code>src/signals/position_manager.py</code> 里至少把下面几件事写实了：</p>
+<ul>
+<li>每个资产同一时刻只允许一笔 open position；</li>
+<li>仓位大小按 <code>NAV × notional_fraction</code> 算；</li>
+<li>至少保留 <code>10%</code> cash buffer；</li>
+<li>position 生命周期单独跟踪 <code>fees_paid / funding_payments / pnl</code>；</li>
+<li>到点可触发 <code>time_exit</code>。</li>
+</ul>
+<p>这意味着它不是单纯“找信号”，而是真把资金占用、持有时长、组合管理也纳进来了。</p>
+<h2>5.4 成本与 funding 被当成一等公民</h2>
+<p><code>src/backtest/execution_simulator.py</code> 和 <code>src/backtest/funding_calculator.py</code> 的价值在于：</p>
+<ul>
+<li>双腿都显式计 fee / slippage；</li>
+<li>perpetual 腿 funding 按 <code>8h</code> 结算；</li>
+<li>backtest 不是 gross-only 幻觉。</li>
+</ul>
+<p>也正因为如此，repo 最终才会老老实实得出一组很难看的结果。</p>
+<h2>5.5 repo 自己的结论其实已经在提醒我们“别把 gross 当 alpha”</h2>
+<p><code>FINAL_SUMMARY.md</code> 给出的 6 个月回测摘要非常刺眼：</p>
+<ul>
+<li><code>4,140</code> trades executed</li>
+<li><code>97%</code> max drawdown</li>
+<li><code>Sharpe ≈ 0</code>（文中写成 <code>-0.000</code>）</li>
+<li><code>0%</code> win rate</li>
+<li><code>Total Costs = $58,304</code></li>
+</ul>
+<p>所以这份 repo 最适合 desk 的读法不是： &gt; “basis MR 不存在。”</p>
+<p>而是： &gt; <strong>“这条壳存在，但 broad same-venue taker 版大概率只是在给成本打工。”</strong></p>
+<h2>6. 我做的 public-data portability probe：结果很直白</h2>
+<h2>6.1 数据与口径</h2>
+<p>我没有直接照抄 repo 的内部数据文件，而是用公开 API 重做了一版最小实验：</p>
+<ul>
+<li><strong>数据源：</strong> Binance public spot klines + USDⓈ-M perpetual klines + fundingRate</li>
+<li><strong>公开性：</strong> 完全公开 REST</li>
+<li><strong>样本：</strong> 最近 <code>180d</code></li>
+<li><strong>资产：</strong> <code>BTCUSDT</code>, <code>ETHUSDT</code></li>
+<li><strong>频率：</strong> <code>1h</code> 与 <code>15m</code></li>
+<li><strong>信号：</strong> 尽量镜像 repo 默认参数</li>
+<li>lookback <code>336h</code></li>
+<li>entry <code>|z| &gt;= 2</code></li>
+<li>exit <code>|z| &lt; 0.5</code></li>
+<li>stop <code>|z| &gt; 4</code></li>
+<li>max hold <code>336h</code></li>
+<li>next-bar open 执行</li>
+<li><strong>PnL 近似：</strong></li>
+<li><code>basis_bps</code> 的收敛收益</li>
+<li>加上 funding 现金流</li>
+<li>再跑 <code>8 / 16 / 24 / 40 bps</code> round-trip 成本阶梯</li>
+</ul>
+<h2>6.2 先记最重要的 6 个数</h2>
+<h3>数 1：<code>1h BTC</code> 平均每笔 <code>gross+funding = 0.51 bps</code></h3>
+<ul>
+<li>trades：<code>138</code></li>
+<li>win rate（gross+funding）：<code>65.2%</code></li>
+<li>median hold：<code>3</code> bars</li>
+</ul>
+<p>这很关键： <strong>命中率不算差，但单笔 edge 小得离谱。</strong></p>
+<h3>数 2：<code>1h ETH</code> 是四个 bucket 里最好的，也只有 <code>0.78 bps/笔</code></h3>
+<ul>
+<li>trades：<code>132</code></li>
+<li>win rate：<code>67.4%</code></li>
+<li>median hold：<code>3</code> bars</li>
+</ul>
+<p>ETH 比 BTC 好一点，但也只是“gross 还活着”，离可交易还远。</p>
+<h3>数 3：压到 <code>15m</code> 后，频率上来了，edge 没跟着来</h3>
+<ul>
+<li><code>BTC 15m</code>：<code>454</code> 笔，<code>0.40 bps/笔</code></li>
+<li><code>ETH 15m</code>：<code>398</code> 笔，<code>0.35 bps/笔</code></li>
+<li>两者 median hold 都是 <code>3</code> bars（约 <code>45m</code>）</li>
+</ul>
+<p>也就是说： &gt; <strong>把这套 z-score 壳直接翻译到 <code>15m</code>，并不会自动变成更适合 short-cycle desk 的高频 alpha，只会把原本就很薄的 gross 切得更碎。</strong></p>
+<h3>数 4：<code>8 bps</code> round-trip 后四个 bucket 全灭</h3>
+<ul>
+<li><code>BTC 1h</code>：<code>-7.49 bps/笔</code></li>
+<li><code>ETH 1h</code>：<code>-7.22 bps/笔</code></li>
+<li><code>BTC 15m</code>：<code>-7.60 bps/笔</code></li>
+<li><code>ETH 15m</code>：<code>-7.65 bps/笔</code></li>
+</ul>
+<p>这里没有“个别币还能勉强过线”的侥幸，<strong>四个 bucket 全部为负。</strong></p>
+<h3>数 5：repo 默认 <code>40 bps</code> round-trip 成本位几乎等于直接宣判失败</h3>
+<ul>
+<li><code>BTC 1h</code>：<code>-39.49 bps/笔</code></li>
+<li><code>ETH 1h</code>：<code>-39.22 bps/笔</code></li>
+<li><code>BTC 15m</code>：<code>-39.60 bps/笔</code></li>
+<li><code>ETH 15m</code>：<code>-39.65 bps/笔</code></li>
+</ul>
+<p>这跟 repo 自带 summary 里的巨大成本损耗是同方向的。</p>
+<h3>数 6：funding 有帮助，但帮得很有限</h3>
+<p>平均每笔 funding 贡献大约是：</p>
+<ul>
+<li><code>BTC 1h</code>：<code>+0.10 bps</code></li>
+<li><code>ETH 1h</code>：<code>+0.21 bps</code></li>
+<li><code>BTC 15m</code>：<code>+0.03 bps</code></li>
+<li><code>ETH 15m</code>：<code>+0.05 bps</code></li>
+</ul>
+<p>所以这条线不是“funding 一加就复活”，而是： &gt; <strong>funding 只是把一个极薄的 basis MR gross 稍微抬高了一点点，远远抬不过广义 taker 成本。</strong></p>
+<h2>7. 这条线对 short-cycle desk 的正确定位</h2>
+<p>我现在对它的判断是：</p>
+<h3>7.1 它是 raw alpha，而且是 complete shell</h3>
+<p>这点不用含糊：</p>
+<ul>
+<li>base alpha 清楚；</li>
+<li>entry / exit / sizing / risk / cost 都清楚；</li>
+<li>不该把它降级成 filter 或 overlay。</li>
+</ul>
+<h3>7.2 但它不是 broad same-venue taker fast lane</h3>
+<p>这也必须钉死： &gt; <strong>same-venue、双腿都按 taker 近似去做的 broad basis-zscore fade，不是我们现在该直接上线的主线。</strong></p>
+<h3>7.3 更合理的 desk 读法是“保留壳，缩窄场景”</h3>
+<p>如果还想沿这条线继续挖，最合理的方向不是再调几个 z-score 参数，而是把适用场景主动缩窄：</p>
+<ol>
+<li><strong>只保留 rich-perp 一侧</strong></li>
+</ol>
+<ul>
+<li>即先测 <code>long spot + short perp</code>；</li>
+<li>因为 <code>perp cheap</code> 分支往往需要 spot short / borrow plumbing，落地难度更高。</li>
+</ul>
+<ol>
+<li><strong>把 <code>1h</code> 当 admission 层，<code>15m / 5m</code> 当 execution 层</strong></li>
+</ol>
+<ul>
+<li>不要把 <code>15m</code> 当重新发现 alpha 的主频；</li>
+<li>而是当更细的进出场时点层。</li>
+</ul>
+<ol>
+<li><strong>改成 low-friction / maker-first 版本</strong></li>
+</ol>
+<ul>
+<li>这条线最大的问题不是“完全没回归”，而是“回归太薄”；</li>
+<li>若不能把摩擦从 <code>8~40 bps</code> 大幅砍下来，几乎没有讨论价值。</li>
+</ul>
+<ol>
+<li><strong>优先转向 cross-venue 而非 same-venue</strong></li>
+</ol>
+<ul>
+<li>same-venue spot/perp basis 更容易被 funding 和微小搬砖压平；</li>
+<li>真要继续，下一步更像 cross-venue executable spread，而不是同所双腿 taker。</li>
+</ul>
+<h2>8. 下一步怎么测（必须项）</h2>
+<p>不要继续泛泛地说“basis 可能有用”。下一轮最小实验应该直接这样做：</p>
+<h3>8.1 最小实验 A：<code>1h admission × 5m/15m execution</code></h3>
+<p><strong>研究假设</strong></p>
+<ul>
+<li>若把 repo 的 <code>1h</code> basis-zscore 只当慢 admission，而不是直接按 <code>1h</code> next-open 执行，则 rich-perp 一侧在 <code>5m/15m</code> 上可能存在更低滑点的 close-out pocket。</li>
+</ul>
+<p><strong>具体动作</strong></p>
+<ol>
+<li><code>1h</code> 上保留：<code>z &gt;= 2</code> 的 rich-perp 触发；</li>
+<li>只做 <code>long spot + short perp</code> 单边；</li>
+<li><code>15m</code> 上等 basis 开始缩窄、或 microstructure 失衡转弱时进；</li>
+<li><code>5m</code> 上只优化 exit，不重新找入场；</li>
+<li>成本先跑 <code>2 / 4 / 6 / 8 bps</code>。</li>
+</ol>
+<h3>8.2 最小实验 B：加 shared gate，而不是再瞎调 z-score</h3>
+<p>优先加两类 gate：</p>
+<ol>
+<li><strong>funding sign / magnitude gate</strong>：只在正 funding 且 perp 明显偏贵时开 rich-perp 一侧；</li>
+<li><strong>liquidity / spread gate</strong>：只在 top-depth 足够厚、双腿 BBO 不太散时开。</li>
+</ol>
+<h3>8.3 最该先看的 3 个指标</h3>
+<ol>
+<li><code>8 bps</code> 后仍为正的 <strong>surviving trade ratio</strong></li>
+<li><strong>entry-to-close realized slippage</strong> 是否显著低于 bar-close 近似</li>
+<li>rich-perp 单边版本的 <strong>gross+funding per trade</strong> 能否稳定抬到 <code>&gt; 4 bps</code></li>
+</ol>
+<p>如果这三条里第一条都过不了，就别再给它加更复杂的模型层了。</p>
+<h2>9. 最后一行结论</h2>
+<p>&gt; <strong>这份 2025 delta-basis repo 值得收进研究池，不是因为它证明了 same-venue basis MR 很赚钱，而是因为它把这条 raw alpha 的完整壳和失败方式都写得足够清楚：alpha 本体不是零，但 broad taker 版 edge 只有 <code>0.35~0.78 bps/笔</code>，一上 <code>8 bps</code> 成本就全灭。对 short-cycle desk，真正该继续测的是 <code>1h admission × 5m/15m maker-first execution</code> 或直接转向 cross-venue richer pocket。</strong></p>
+</body>
+</html>

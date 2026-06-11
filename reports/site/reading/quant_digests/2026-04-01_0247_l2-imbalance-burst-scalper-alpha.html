@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 新 repo 只读成超低延迟 bot：对 desk 更该先测的是「L2 imbalance × volume-burst continuation」1m/3m raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 新 repo 只读成超低延迟 bot：对 desk 更该先测的是「L2 imbalance × volume-burst continuation」1m/3m raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-01 02:51 UTC</span>
+      <span class="pill">研究时间：2026-04-01 02:47 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 source audit（`README.md` + `strategies/orderbook_imbalance.py` + `config/config.yaml` + `backtest/backtester.py`）+ Binance USDⓈ-M Perpetual 公开 `1m` proxy quick check</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/order-book/l2-imbalance/volume-burst/directional/continuation/single-asset/btc-eth-sol/binance-bybit/1m/3m/5m/repo/public-data/cost/execution</span>
+      <span class="pill">证据类型：repo source audit + 公开数据最小 proxy quick check</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-01_0247_l2-imbalance-burst-scalper-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-01 02:47 UTC</li>
+<li>类型：2026 GitHub 新仓库 source audit（<code>README.md</code> + <code>strategies/orderbook_imbalance.py</code> + <code>config/config.yaml</code> + <code>backtest/backtester.py</code>）+ Binance USDⓈ-M Perpetual 公开 <code>1m</code> proxy quick check</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当 top-10 L2 盘口出现单边深度失衡、同时成交量突增且短窗价格动量同向时，未来 <code>1m/3m/5m</code> 更容易继续沿失衡方向漂移；RSI 只做过热/过冷 veto，不是 alpha 本体</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/microstructure/order-book/l2-imbalance/volume-burst/directional/continuation/single-asset/btc-eth-sol/binance-bybit/1m/3m/5m/repo/public-data/cost/execution</li>
+<li>证据类型：repo source audit + 公开数据最小 proxy quick check</li>
+</ul>
+<p>&gt; 先回答 base alpha：<strong>这不是 filter，不是 overlay。base alpha 就是“L2 盘口单边失衡 × 成交量突增 × 同向短窗动量”之后的超短线 continuation。RSI、止损、追踪止盈、5 分钟 time stop 只是风控/出场壳。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>这次主材料不是论文，而是一个很新的 repo：<strong><code>devinbrumbelow5-jpg/kimmy-scalper</code></strong>（GitHub metadata 显示创建于 <code>2026-03-30</code>）。表面标题是“ultra-low latency crypto scalping bot”，但真正值得 desk 抽出来的，不是 UI、sub-agent、paper/live mode 这些壳，而是它在 <code>strategies/orderbook_imbalance.py</code> 里给出的<strong>完整短线 directional skeleton</strong>：</p>
+<ol>
+<li><code>orderbook_depth = 10</code>，用 top-10 bid/ask volume 算 <code>imbalance = bid_volume / (bid_volume + ask_volume)</code>；</li>
+<li><code>imbalance_threshold = 0.65</code>，只有极端失衡才触发；</li>
+<li><code>momentum_lookback = 20</code>，要求短窗价格动量与盘口方向一致；</li>
+<li><code>volume_spike_multiplier = 2.0</code>，要求成交量爆发；</li>
+<li><code>rsi_period = 14</code>，仅用于避免过热 long / 过冷 short；</li>
+<li>交易壳是现成的：<code>0.5%</code> 初始止损、<code>1.0%</code> 初始止盈、<code>+0.5%</code> 后激活 <code>0.3%</code> trailing、<code>300s</code> time exit、<code>0.5%</code> 资金风险上限、日亏损/回撤阈值。</li>
+</ol>
+<p>更重要的是：repo 自带 <code>backtest/backtester.py</code>，但它不是用真实 L2 回放，而是<strong>拿 OHLCV 高低点去合成 orderbook</strong>。所以这份 repo 的价值，不在“它回测赚没赚钱”，而在<strong>它把一个可落地的 microstructure alpha 骨架写得很清楚</strong>，方便我们直接拆成真实可测版本。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>一句话核心结论：<strong>repo 里的可用部分不是“超低延迟 bot”这个 headline，而是一个可独立复现的 raw alpha：L2 单边失衡只有在“volume burst + 同向短窗动量”同时成立时，才更像 1m/3m continuation。</strong></li>
+<li>一句话证明方式：<strong>源码给出了明确定义、入场与出场全壳；我再用 Binance 公共 <code>1m</code> kline 的 taker-buy proxy 做最小 transfer check，发现这条线在 bar-space 里仍能留下薄毛边，但只适合极低成本执行。</strong></li>
+</ul>
+<p>关键数据点（本地 <code>1m</code> proxy quick check，<code>BTC/ETH/SOL</code>，近 10 天，public kline，用 <code>taker_buy_quote/quote_volume</code> 近似买盘压力）：</p>
+<ol>
+<li><strong>严格照 repo 的 <code>2.0x</code> volume burst 门槛搬到 <code>1m</code> bar-space，信号反而偏稀且平均边际为负</strong>；说明 repo 的事件级阈值不能直接平移成分钟 bar 阈值。</li>
+<li>把 bar-space 口径改成更温和的 <code>buy_ratio &gt; 0.70 / &lt; 0.30</code>、<code>volume_ratio20 &gt; 1.5x</code> 后，<strong>3 分钟持有 pooled gross <code>+0.460 bps/trade</code>，5 分钟持有 gross <code>+0.481 bps/trade</code></strong>。</li>
+<li>但这条线<strong>成本壳很薄</strong>：3 分钟持有的 break-even 大约只有 <code>0.23 bps(one-way)</code>，5 分钟持有约 <code>0.24 bps(one-way)</code>；一旦按 <code>0.25 bps(one-way)</code> 计，净值已接近或略低于 0。</li>
+<li>分资产看，当前 10 天窗口里 <strong>ETH 3m proxy 最强（<code>+1.06 bps/trade</code>）</strong>，BTC 只有 <code>+0.08 bps</code>，SOL 大约 <code>+0.36 bps</code>；所以这更像<strong>需要按币种分层 admission</strong>，不是全市场统一阈值。</li>
+</ol>
+<h2>3. 为什么和当前项目有关</h2>
+<ul>
+<li>它是<strong>raw alpha</strong>，不是又一个“给 breakout/mean-reversion 打辅助”的 gate。</li>
+<li>它补的是我们当前素材池里很需要的一块：<strong>“microstructure directional raw alpha + 完整出场壳”</strong>。最近我们已经有不少 <code>L1 imbalance / OFI / VWAP-pressure</code> 证据，但这份 repo 的额外价值是把<strong>volume burst admission、RSI veto、time stop、trailing stop</strong>一起写成了可直接复刻的完整策略骨架。</li>
+<li>它跟当前 short-cycle desk 的关系非常直接：<strong>最适合 <code>1m</code> 触发、<code>3m/5m</code> 持有</strong>；不是 <code>15m</code> 主 bar raw alpha，但可以作为 <code>15m</code> 体系里的“快时钟子模块”或者单独的 ultra-short alpha lane。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：单资产 directional / microstructure continuation</li>
+<li>基础 alpha：</li>
+<li>计算 <code>imbalance_t = bid_vol_top10 / (bid_vol_top10 + ask_vol_top10)</code></li>
+<li>long：<code>imbalance_t &gt; 0.65</code> 且短窗动量为正、volume burst 成立、RSI 未过热</li>
+<li>short：<code>imbalance_t &lt; 0.35</code> 且短窗动量为负、volume burst 成立、RSI 未过冷</li>
+<li>entry：信号触发后下一次可成交报价入场（真实版优先用 next-tick / next-1s mid + fill model；proxy 版用 next-1m open）</li>
+<li>exit：优先按 <code>TP 1.0% / SL 0.5% / trailing / 300s time stop</code> 的层级执行</li>
+<li>sizing：单笔风险预算上限 <code>0.5%</code> 账户权益；币种分层上限，避免 ETH/SOL 信号强时单币过度集中</li>
+<li>risk / veto：波动过大暂停、API/数据断流暂停、gross exposure cap、连续错误暂停</li>
+<li>cost：这条线不是“随便 taker 也能活”的 alpha，更像<strong>maker-ish 或超低费率 taker</strong>才有生存机会</li>
+</ul>
+<h2>4. 可复刻的最小实验（下一步怎么测）</h2>
+<p><strong>研究假设</strong>：真实 L2 盘口失衡只有在“短窗动量确认 + 成交量爆发”时，才会从纯噪音变成可交易 continuation；若不加 admission，盘口失衡本身不够稳。</p>
+<p><strong>数据源与公开性</strong>：</p>
+<ul>
+<li>一级数据：Binance / Bybit 公开 websocket depth + trades（公开可得，无私钥）</li>
+<li>最低配 proxy：Binance USDⓈ-M Futures 公共 REST klines（<code>quote_volume</code>、<code>taker_buy_quote_volume</code> 可得）</li>
+<li>更新频率：真实版建议 <code>100ms~1s</code>；最小诚实 proxy 可先落在 <code>1m</code>，再映射到 <code>3m/5m</code> 持有</li>
+</ul>
+<p><strong>最小可复现实验口径</strong>：</p>
+<ol>
+<li>资产：先 <code>BTC/ETH/SOL</code>，后续扩到流动性前 10 永续；</li>
+<li>采样：<code>1s</code> event bar 或 <code>5s</code> bar 为主，不建议先用 <code>15m</code>；</li>
+<li>特征：<code>top10 depth imbalance</code>、<code>trade-flow buy ratio</code>、<code>20s/60s price momentum</code>、<code>volume burst</code>、<code>spread</code>；</li>
+<li>入场：阈值触发后 next-tick / next-bar；</li>
+<li>出场：固定 <code>60s / 180s / 300s</code> 三档 + <code>TP/SL/trailing</code> 对照；</li>
+<li>成本阶梯：<code>0 / 0.1 / 0.25 / 0.5 / 1.0 bps(one-way)</code>；</li>
+<li>先看指标：<code>gross/net bps per trade</code>、<code>fill survival</code>、<code>queue loss</code>、<code>holding-time pnl decomposition</code>。</li>
+</ol>
+<p><strong>下一步最该先测</strong>：</p>
+<ul>
+<li><strong>不要先优化模型，先验证 repo 里最关键的 transfer 问题</strong>：</li>
+</ul>
+<ol>
+<li><code>event-time 2.0x</code> volume burst 到底对应分钟口径的多少倍？</li>
+<li><code>imbalance 0.65</code> 应该用绝对阈值还是 rolling quantile？</li>
+<li>在真实 L2 下，这条线到底活在 <code>30s/60s/180s</code> 哪个持有区间？</li>
+</ol>
+<ul>
+<li>如果只能做一个最小实验，我会先做：<strong><code>ETH/USDT perp</code> 的 <code>1s top10 imbalance × 20s volume burst × 180s hold</code>，成本分 maker/taker 两条曲线单独跑。</strong></li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>repo 的 backtester 用 OHLCV 合成 orderbook，这会严重美化微结构策略；<strong>不能把 repo 自带回测结果当证据</strong>。</li>
+<li>我这次 public quick check 也只是 proxy，不是真实 L2；<code>taker_buy_quote/quote_volume</code> 只能近似主动买盘压力，不能替代 top-10 depth imbalance。</li>
+<li>当前 proxy 证据说明它<strong>更像薄边 alpha</strong>：gross 有毛边，但只要 one-way 成本上到 <code>0.25 bps</code> 左右就基本吃光；因此不适合作为“默认 taker 策略”。</li>
+<li>这条线和 <code>15m</code> 主 bar 的关系不是“直接把信号压成 15m bar-close”；更合理的用法是<strong>快时钟触发器</strong>或 <code>15m</code> 母策略下的执行/加减仓子模块。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>devinbrumbelow5-jpg. (2026). _kimmy-scalper_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/devinbrumbelow5-jpg/kimmy-scalper">https://github.com/devinbrumbelow5-jpg/kimmy-scalper</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/devinbrumbelow5-jpg/kimmy-scalper">https://github.com/devinbrumbelow5-jpg/kimmy-scalper</a></code></li>
+</ul>
+<ol>
+<li><strong>devinbrumbelow5-jpg. (2026). _strategies/orderbook_imbalance.py_. GitHub Raw Source.</strong></li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://raw.githubusercontent.com/devinbrumbelow5-jpg/kimmy-scalper/main/strategies/orderbook_imbalance.py">https://raw.githubusercontent.com/devinbrumbelow5-jpg/kimmy-scalper/main/strategies/orderbook_imbalance.py</a></code></li>
+</ul>
+<ol>
+<li><strong>devinbrumbelow5-jpg. (2026). _config/config.yaml_ + _backtest/backtester.py_. GitHub Raw Source.</strong></li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://raw.githubusercontent.com/devinbrumbelow5-jpg/kimmy-scalper/main/config/config.yaml">https://raw.githubusercontent.com/devinbrumbelow5-jpg/kimmy-scalper/main/config/config.yaml</a></code></li>
+<li>URL: <code><a href="https://raw.githubusercontent.com/devinbrumbelow5-jpg/kimmy-scalper/main/backtest/backtester.py">https://raw.githubusercontent.com/devinbrumbelow5-jpg/kimmy-scalper/main/backtest/backtester.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures API Docs. _Kline/Candlestick Data_.</strong></li>
+</ol>
+<ul>
+<li>URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<h2>7. 本地快检产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/kimmy_scalper_proxy_20260401_0245/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/kimmy_scalper_proxy_20260401_0245/grid.csv</code></li>
+<li><code>reports/artifacts/quant_digests/kimmy_scalper_proxy_20260401_0245/by_symbol_bestproxy.csv</code></li>
+<li><code>reports/artifacts/quant_digests/kimmy_scalper_proxy_20260401_0245/cost_ladder_bestproxy.csv</code></li>
+<li><code>reports/artifacts/quant_digests/kimmy_scalper_proxy_20260401_0245/signals.csv</code></li>
+<li><code>reports/artifacts/quant_digests/kimmy_scalper_proxy_20260401_0245/panel.csv</code></li>
+<li><code>reports/artifacts/quant_digests/kimmy_scalper_proxy_20260401_0245/meta.json</code></li>
+</ul>
+</body>
+</html>

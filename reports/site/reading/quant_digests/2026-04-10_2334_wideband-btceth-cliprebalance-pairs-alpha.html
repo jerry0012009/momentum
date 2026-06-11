@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2025 BTC/ETH pairs repo 只读成入门作业：对 short-cycle desk，更该先测的是「wide-band spread fade × partial clip rebalance」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2025 BTC/ETH pairs repo 只读成入门作业：对 short-cycle desk，更该先测的是「wide-band spread fade × partial clip rebalance」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-10 23:29 UTC</span>
+      <span class="pill">研究时间：2026-04-10 23:34 UTC</span>
+      <span class="pill">类型：2025 GitHub repo source audit（`README.md` + `back_test_v2.ipynb` + `grid_back_test_v1.ipynb` + `checking_stationarity.ipynb` + `get_ohlc_data.ipynb`）+ Binance USDⓈ-M `1m/5m/15m` portability probe</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/btc-eth/wide-band/partial-rebalance/clip-execution/binance-futures/1m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：公开 repo 规则证据 + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-10_2334_wideband-btceth-cliprebalance-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-10 23:34 UTC</li>
+<li>类型：2025 GitHub repo source audit（<code>README.md</code> + <code>back_test_v2.ipynb</code> + <code>grid_back_test_v1.ipynb</code> + <code>checking_stationarity.ipynb</code> + <code>get_ohlc_data.ipynb</code>）+ Binance USDⓈ-M <code>1m/5m/15m</code> portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>BTC/ETH relative-value / pairs mean reversion；当 <code>BTC-ETH</code> spread 偏离其 rolling mean ± <code>kσ</code> 时，做“贵腿回落、便宜腿回补”的双腿 spread fade。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否（repo 已给出 <code>entry + partial sizing + fee</code> 骨架，但还缺动态 hedge ratio、funding/slippage、time-stop、pair admission 与组合级 risk shell）</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/btc-eth/wide-band/partial-rebalance/clip-execution/binance-futures/1m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：公开 repo 规则证据 + public-data portability probe</li>
+</ul>
+<p>&gt; 先回答一句：<strong>这篇东西的 base alpha 是什么？</strong> &gt; &gt; <strong>base alpha = BTC/ETH spread 偏离后的均值回归。</strong> &gt; 它不是 trend filter，也不是 regime overlay；repo 里真正的交易本体，就是 <strong>双腿 relative-value 的 spread fade</strong>。</p>
+<h2>1. 这次看了什么，为什么这轮值得写</h2>
+<p>这轮主看的是一个很新、但还没被 desk intake 过的公开 repo：</p>
+<ol>
+<li><strong><code>amirSamanQ</code> (2025), _crypto_pairs_stat_arb_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Author / Year / Title / Venue：<code>amirSamanQ</code> / <code>2025</code> / <code>crypto_pairs_stat_arb</code> / GitHub repository</li>
+<li>Repo URL：<code><a href="https://github.com/amirSamanQ/crypto_pairs_stat_arb">https://github.com/amirSamanQ/crypto_pairs_stat_arb</a></code></li>
+<li>Readable URL：<code><a href="https://github.com/amirSamanQ/crypto_pairs_stat_arb">https://github.com/amirSamanQ/crypto_pairs_stat_arb</a></code></li>
+<li>README Raw：<code><a href="https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/README.md">https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/README.md</a></code></li>
+<li>Notebook Raw（回测）：<code><a href="https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/back_test_v2.ipynb">https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/back_test_v2.ipynb</a></code></li>
+<li>Notebook Raw（参数网格）：<code><a href="https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/grid_back_test_v1.ipynb">https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/grid_back_test_v1.ipynb</a></code></li>
+<li>Notebook Raw（stationarity）：<code><a href="https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/checking_stationarity.ipynb">https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/checking_stationarity.ipynb</a></code></li>
+<li>Notebook Raw（data fetch）：<code><a href="https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/get_ohlc_data.ipynb">https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/get_ohlc_data.ipynb</a></code></li>
+<li>GitHub API metadata：<code><a href="https://api.github.com/repos/amirSamanQ/crypto_pairs_stat_arb">https://api.github.com/repos/amirSamanQ/crypto_pairs_stat_arb</a></code></li>
+</ul>
+<p>这轮值得写它，不是因为它发明了新奇统计学，而是因为它给的是一条 <strong>非常容易压成最小实验的 raw alpha</strong>：</p>
+<ul>
+<li>标的就 2 条腿：<code>BTCUSDT</code> / <code>ETHUSDT</code></li>
+<li>数据就 Binance Futures 公共 klines</li>
+<li>信号就 rolling mean / std 的 spread 偏离</li>
+<li>sizing 不是满仓翻面，而是 <strong>partial clip rebalance</strong></li>
+<li>代码骨架直接公开，几乎不用猜作者到底怎么下单</li>
+</ul>
+<p>对当前 desk 来说，这种材料的价值不在“学术 headline”，而在：</p>
+<p>&gt; <strong>它把 pairs / stat-arb 的最小可复现骨架写得足够直白，适合立刻做 <code>1m → 5m → 15m</code> portability sanity check。</strong></p>
+<h2>2. 一句话核心结论</h2>
+<p><strong>repo 原始思路是成立的：它确实是一条可复现的 BTC/ETH pairs mean-reversion alpha；但直接照搬到我们 desk 时，更值得保留的不是“固定 7 天 + <code>k=2.5</code>”这个参数，而是“wide-band 进场 + partial clip rebalance”这套执行骨架。</strong></p>
+<p>我这轮 public-data probe 的结论是：</p>
+<ul>
+<li><strong><code>5m</code> 比 <code>15m</code> 更像可继续打磨的主 lane；</strong></li>
+<li><strong>更宽的 band（<code>k≈3</code>）+ 更长的滚动窗（<code>≈10d</code>）比 repo 默认参数更适合当前 BTC/ETH 环境；</strong></li>
+<li><strong><code>15m</code> 目前更像 relative-value drawdown smoother，不像能直接上线的 standalone raw alpha。</strong></li>
+</ul>
+<h2>3. repo 里真正写了什么</h2>
+<p>这份 repo 很小，但骨架够完整：</p>
+<h3>3.1 数据获取</h3>
+<p><code>get_ohlc_data.ipynb</code> 直接调用 Binance Futures REST：</p>
+<ul>
+<li>endpoint：<code>/fapi/v1/klines</code></li>
+<li>interval：支持 <code>1m / 5m / 1h ...</code></li>
+<li>通过 sliding window 抓多天历史数据</li>
+</ul>
+<p>这意味着它不依赖私有 feed，也不依赖难复现的第三方库，<strong>公开数据可直接重跑</strong>。</p>
+<h3>3.2 stationarity 检查</h3>
+<p><code>checking_stationarity.ipynb</code> 里作者先对：</p>
+<ul>
+<li><code>BTC / ETH</code> ratio</li>
+<li><code>BTC - ETH</code> difference</li>
+</ul>
+<p>做了：</p>
+<ul>
+<li><strong>ADF</strong></li>
+<li><strong>KPSS</strong></li>
+</ul>
+<p>这一步虽然不豪华，但至少说明作者不是“看到两个价格一起动就直接做 pair”，而是先问：</p>
+<p>&gt; <strong>这条 spread 到底有没有一点 mean-reverting 统计基础？</strong></p>
+<h3>3.3 交易逻辑</h3>
+<p>repo 的核心回测逻辑非常直白：</p>
+<ol>
+<li>spread 定义为 <strong><code>BTC close - ETH close</code></strong>（不是 log spread，也不是 rolling beta residual）</li>
+<li>用 rolling window 算：</li>
+</ol>
+<ul>
+<li><code>mean_t</code></li>
+<li><code>std_t</code></li>
+</ul>
+<ol>
+<li>阈值：</li>
+</ol>
+<ul>
+<li><code>upper = mean + k * std</code></li>
+<li><code>lower = mean - k * std</code></li>
+</ul>
+<ol>
+<li>若 <code>spread &gt; upper</code>：</li>
+</ol>
+<ul>
+<li><strong>sell BTC / buy ETH</strong></li>
+</ul>
+<ol>
+<li>若 <code>spread &lt; lower</code>：</li>
+</ol>
+<ul>
+<li><strong>sell ETH / buy BTC</strong></li>
+</ul>
+<ol>
+<li>每次不是满仓，而是只 rebalance 一个 clip：</li>
+</ol>
+<ul>
+<li>默认单次 notional 大小约 <strong><code>$200</code></strong></li>
+</ul>
+<ol>
+<li>初始资本：</li>
+</ol>
+<ul>
+<li><code>BTC $500 + ETH $500</code></li>
+</ul>
+<ol>
+<li>手续费：</li>
+</ol>
+<ul>
+<li>repo 示例使用 <strong><code>0.1%</code></strong>（<code>fee_rate=0.001</code>）</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>它做的不是“all-in 方向切换”，而是每次 spread 过宽时，拿固定 clip 把组合往均衡方向扳一点。</strong></p>
+<p>这点对 short-cycle desk 很关键，因为它天然比“满仓翻边”更接近可执行版本。</p>
+<h2>4. repo 自带结果里，最值得记住的数字</h2>
+<p><code>back_test_v2.ipynb</code> 内嵌输出里，作者给的一个示例是：</p>
+<ul>
+<li>区间：<code>2025-01-01 → 2025-09-01</code></li>
+<li>参数：<code>k=2.5</code>、<code>window_days=7</code></li>
+<li>频率：README / notebook 口径默认为 <strong><code>1m</code> candles</strong></li>
+<li>初始资金：<code>$1000</code></li>
+<li>手续费：<code>10bps</code></li>
+</ul>
+<p>示例输出：</p>
+<ul>
+<li><strong>Strategy</strong>：<code>$1927.83</code>，回报 <strong><code>+92.78%</code></strong></li>
+<li><strong>BTC buy &amp; hold</strong>：<code>$1156.21</code>，回报 <strong><code>+15.62%</code></strong></li>
+<li><strong>ETH buy &amp; hold</strong>：<code>$1311.57</code>，回报 <strong><code>+31.16%</code></strong></li>
+<li><strong>50/50 组合</strong>：<code>$1233.89</code>，回报 <strong><code>+23.39%</code></strong></li>
+<li><strong>总交易数</strong>：<code>229</code></li>
+</ul>
+<p>所以这份 repo 至少回答了两件事：</p>
+<ol>
+<li><strong>它不是纯概念文档，作者确实把策略写成了回测。</strong></li>
+<li><strong>它的 sizing 不是抽象“做多做空”，而是固定 clip 的 inventory rebalance。</strong></li>
+</ol>
+<h2>5. 这份材料对当前 desk 真正值钱的，不是 pair formation，而是 clip-based shell</h2>
+<p>如果把它和我们已经积累的一堆 pairs / stat-arb digest 放一起看，这份 repo 最值钱的地方并不是：</p>
+<ul>
+<li>pair selection 多高级</li>
+<li>hedge ratio 多精细</li>
+<li>statistical test 多全面</li>
+</ul>
+<p>而是它给了一个 <strong>很容易转到实盘工程语言</strong> 的雏形：</p>
+<h3>5.1 它是“逐次修正库存”，不是“每次翻满整个 book”</h3>
+<p>很多 pairs 教程都默认：</p>
+<ul>
+<li>zscore 一超阈值就一把满仓进</li>
+<li>回到中线就一把全平</li>
+</ul>
+<p>但这份 repo 做的是：</p>
+<ul>
+<li><strong>每次偏离只打一个 clip</strong></li>
+<li>让组合逐步向便宜腿倾斜</li>
+<li>偏离越久，仓位越积累</li>
+</ul>
+<p>这在实盘里更像：</p>
+<ul>
+<li>inventory-aware scaling</li>
+<li>分段入场</li>
+<li>用偏离次数代替一次性豪赌</li>
+</ul>
+<h3>5.2 它特别适合压到 <code>5m</code></h3>
+<p>因为 <code>1m</code> 上很多 pairs alpha 很容易被：</p>
+<ul>
+<li>噪音</li>
+<li>funding / taker fee</li>
+<li>微观结构冲击</li>
+<li>短期同步跳变</li>
+</ul>
+<p>直接吃掉。</p>
+<p>而 <strong>clip-based shell + wide band</strong> 恰好是一个非常适合移植到 <code>5m</code> 的思路：</p>
+<ul>
+<li>band 放宽一点，减少噪音触发</li>
+<li>clip 分批，避免一次性冲太重</li>
+<li>time-stop/mean-cross exit 后补上即可形成完整最小策略</li>
+</ul>
+<h2>6. 我做的 public-data portability probe</h2>
+<h3>6.1 实验口径</h3>
+<p>我用 Binance USDⓈ-M public klines，对 <code>BTCUSDT / ETHUSDT</code> 跑了一版 repo 同款简化逻辑：</p>
+<ul>
+<li>spread：<code>BTC close - ETH close</code></li>
+<li>entry：<code>spread</code> 突破 rolling <code>mean ± kσ</code></li>
+<li>action：</li>
+<li><code>spread &gt; upper</code> → sell BTC / buy ETH</li>
+<li><code>spread &lt; lower</code> → sell ETH / buy BTC</li>
+<li>单次 rebalance：<code>$200</code></li>
+<li>初始：<code>BTC $500 + ETH $500</code></li>
+<li>fee：<code>10bps</code></li>
+<li>不加 funding / slippage / time-stop</li>
+<li>先做 <code>1m / 5m / 15m</code> baseline，再对 <code>5m / 15m</code> 做小网格</li>
+</ul>
+<p>本地产物：</p>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_1m_series_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_1m_trades_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_5m_series_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_5m_trades_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_15m_series_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_15m_trades_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_portability_summary_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_grid_portability_2026-04-10.csv</code></li>
+</ul>
+<h3>6.2 baseline 结果：原样直搬，并没有天然很强</h3>
+<p>baseline（<code>k=2.5</code>、<code>window_days=7</code>）结果：</p>
+<ul>
+<li><strong>1m / 近 30d</strong>：</li>
+<li>策略回报 <strong><code>+5.07%</code></strong></li>
+<li>50/50 BH <strong><code>+6.27%</code></strong></li>
+<li>excess ≈ <strong><code>-1.20%</code></strong></li>
+<li>交易数：<code>8</code></li>
+<li><strong>5m / 近 60d</strong>：</li>
+<li>策略回报 <strong><code>+4.75%</code></strong></li>
+<li>50/50 BH <strong><code>+4.96%</code></strong></li>
+<li>excess ≈ <strong><code>-0.21%</code></strong></li>
+<li>交易数：<code>18</code></li>
+<li><strong>15m / 近 120d</strong>：</li>
+<li>策略回报 <strong><code>-19.07%</code></strong></li>
+<li>50/50 BH <strong><code>-26.12%</code></strong></li>
+<li>excess ≈ <strong><code>+7.05%</code></strong></li>
+<li>交易数：<code>21</code></li>
+</ul>
+<p>这说明两件事：</p>
+<ol>
+<li><strong>repo 的核心逻辑不是假 edge</strong>，因为它在下跌阶段能明显减轻双腿组合损失；</li>
+<li><strong>但默认参数并不能直接证明它就是当前环境下的最优 short-cycle 版本。</strong></li>
+</ol>
+<h2>7. 小网格后，最值得保留的是 <code>5m</code> 的 wide-band 读法</h2>
+<p>我对 <code>5m / 15m</code> 做了一个很小的参数网格：</p>
+<ul>
+<li><code>k ∈ {1.5, 2.0, 2.5, 3.0}</code></li>
+<li><code>window_days ∈ {3, 5, 7, 10}</code></li>
+</ul>
+<h3>7.1 <code>5m</code> 最优读法：更宽 band、更长窗口</h3>
+<p>当前样本里，<code>5m</code> 最好的组合是：</p>
+<ul>
+<li><strong><code>k=3.0</code></strong></li>
+<li><strong><code>window_days=10</code></strong></li>
+<li>交易数：<code>8</code></li>
+<li>策略回报：<strong><code>+7.50%</code></strong></li>
+<li>50/50 BH：<strong><code>+5.01%</code></strong></li>
+<li>相对 BH excess：约 <strong><code>+2.37%</code></strong></li>
+</ul>
+<p>其次是：</p>
+<ul>
+<li><code>k=2.0, window_days=5</code></li>
+<li>回报：<strong><code>+5.69%</code></strong></li>
+<li>交易数：<code>25</code></li>
+</ul>
+<p>这说明对当前 desk 更有价值的读法不是“照搬 repo 默认 1m 参数”，而是：</p>
+<p>&gt; <strong>在 <code>5m</code> 上把触发带放宽，主动少做、但只做更极端的 spread 偏离。</strong></p>
+<h3>7.2 <code>15m</code> 更像防守型 relative-value，不像强 standalone alpha</h3>
+<p><code>15m</code> 网格里，最好的绝对结果也仍然是亏损：</p>
+<ul>
+<li><strong><code>k=3.0, window_days=5</code></strong></li>
+<li>策略回报：<strong><code>-17.79%</code></strong></li>
+<li>BH：<strong><code>-26.08%</code></strong></li>
+<li>相对 BH excess：约 <strong><code>+11.21%</code></strong></li>
+</ul>
+<p>所以 <code>15m</code> 当前更像：</p>
+<ul>
+<li><strong>下跌阶段减震器 / overlay</strong></li>
+<li>而不是可直接单独上桌的 raw alpha</li>
+</ul>
+<p>这正好把 lane 分清楚了：</p>
+<ul>
+<li><strong>主 lane：<code>5m</code></strong></li>
+<li><strong>辅助 lane：<code>15m</code>（看相对抗跌，不看绝对盈利）</strong></li>
+</ul>
+<h2>8. 这轮给 desk 的最值钱结论</h2>
+<h3>8.1 要保留的是 shell，不是字面 spread 定义</h3>
+<p>repo 直接用的是：</p>
+<ul>
+<li><code>BTC close - ETH close</code></li>
+</ul>
+<p>这很方便，但也很粗：</p>
+<ul>
+<li>没对冲 beta</li>
+<li>没做 log transform</li>
+<li>没处理波动尺度差异</li>
+</ul>
+<p>所以真正该搬的不是这个 spread 定义本身，而是：</p>
+<ul>
+<li><strong>wide-band entry</strong></li>
+<li><strong>partial clip rebalance</strong></li>
+<li><strong>双腿库存逐次修正</strong></li>
+</ul>
+<h3>8.2 这条线对 short-cycle desk 依然是 raw alpha，不是 filter</h3>
+<p>尽管我上面一直在讲 shell，但别搞混：</p>
+<ul>
+<li>本体仍然是 <strong>spread mean reversion</strong>；</li>
+<li>shell 只是把这条 alpha 变得更可执行。</li>
+</ul>
+<p>因此这轮主题仍然该归在：</p>
+<ul>
+<li><code>raw alpha</code></li>
+<li><code>pairs / relative value / stat-arb</code></li>
+</ul>
+<p>而不是 <code>filter / regime / overlay</code>。</p>
+<h3>8.3 当前最合理的 desk 改写</h3>
+<p>如果要把这条线正式往 desk 版本推进，我会建议这样改：</p>
+<ol>
+<li><strong>spread 改成 log-beta residual</strong></li>
+</ol>
+<ul>
+<li><code>spread_t = log(BTC) - beta_t * log(ETH)</code></li>
+<li><code>beta_t</code> 用 rolling OLS / EWLS</li>
+</ul>
+<ol>
+<li><strong>保留 partial clip，不做 all-in flip</strong></li>
+</ol>
+<ul>
+<li>单次 clip 可改成组合净值的 <code>10%~20%</code></li>
+</ul>
+<ol>
+<li><strong>entry 用 wider band</strong></li>
+</ol>
+<ul>
+<li>当前样本优先看 <code>k=2.5~3.0</code></li>
+</ul>
+<ol>
+<li><strong>补退出机制</strong></li>
+</ol>
+<ul>
+<li><code>z -&gt; 0</code></li>
+<li>或 <code>time-stop = 24~48 bars</code></li>
+</ul>
+<ol>
+<li><strong>把 funding / taker fee 真扣进去</strong></li>
+</ol>
+<ul>
+<li>当前 probe 只扣了简化手续费</li>
+</ul>
+<ol>
+<li><strong>把 pair admission 前置</strong></li>
+</ol>
+<ul>
+<li>不要默认 BTC/ETH 永久可做</li>
+<li>先测 rolling correlation / cointegration / half-life</li>
+</ul>
+<h2>9. 为什么这轮仍比继续补抽象 filter 更值得</h2>
+<p>因为这份材料和当前 desk 的 raw alpha 素材池是直接相连的：</p>
+<ul>
+<li>它不是泛泛讲“市场状态”；</li>
+<li>它不是单纯讲“相关性变了没”；</li>
+<li>它给的是一条 <strong>可独立开工、可写成回测、可压到 5m</strong> 的 pairs alpha。</li>
+</ul>
+<p>而且它有一个额外优点：</p>
+<p>&gt; <strong>即便最终 BTC/ETH 这对不够强，这套 shell 也能直接迁移到别的 majors pair。</strong></p>
+<p>也就是说，这轮 intake 的价值不只在单一 pair，而在 <strong>execution skeleton</strong>。</p>
+<h2>10. 下一步怎么测</h2>
+<p>最值得立刻做的是一个很小但诚实的 A/B/C：</p>
+<h3>A. repo faithful baseline</h3>
+<ul>
+<li>标的：<code>BTCUSDT / ETHUSDT</code></li>
+<li>bar：<code>5m</code></li>
+<li>spread：<code>BTC - ETH</code></li>
+<li><code>k = 2.5 / 3.0</code></li>
+<li><code>window_days = 7 / 10</code></li>
+<li>clip：固定 notional 或 NAV <code>15%</code></li>
+<li>exit：不开额外 time-stop，先看原始 shell</li>
+</ul>
+<h3>B. spread 升级版</h3>
+<ul>
+<li>spread 改为 <code>log-beta residual</code></li>
+<li>beta 窗口：<code>288 / 576</code> bars</li>
+<li>比较：</li>
+<li>trade count</li>
+<li>net bps / trade</li>
+<li>holding bars</li>
+<li>max inventory tilt</li>
+</ul>
+<h3>C. execution honest版</h3>
+<ul>
+<li>fee：<code>8 / 12 / 16 bps</code></li>
+<li>funding：按真实 funding 扣减</li>
+<li>exit：<code>z -&gt; 0</code> 或 <code>24 / 48</code> bars time-stop</li>
+<li>输出：</li>
+<li>每笔净 bps</li>
+<li>按方向拆的胜率</li>
+<li>连续加仓次数分布</li>
+<li>极端偏离下的库存占用</li>
+</ul>
+<p>如果 B 明显优于 A，说明可继续升成 desk 级 pair shell； 如果 B 也只是在熊市里相对抗跌，那就把它降级成：</p>
+<ul>
+<li><code>relative-value drawdown smoother</code></li>
+<li>而不是主 alpha 书。</li>
+</ul>
+<h2>11. 风险与保留意见</h2>
+<ol>
+<li><strong>repo 当前只做 BTC/ETH。</strong></li>
+</ol>
+<ul>
+<li>它更像 pair shell demo，不是完整 pairbook。</li>
+</ul>
+<ol>
+<li><strong>spread 定义偏粗。</strong></li>
+</ol>
+<ul>
+<li>直接用价格差，而不是对冲后的 residual，容易把趋势差异误当均值回归。</li>
+</ul>
+<ol>
+<li><strong>成本仍偏乐观。</strong></li>
+</ol>
+<ul>
+<li>repo/本地 probe 都没把 funding / slippage / queue position 认真写进去。</li>
+</ul>
+<ol>
+<li><strong>当前 <code>15m</code> 结果不支持把它吹成可直接上线的完整 raw alpha。</strong></li>
+</ol>
+<ul>
+<li>最多说明它在风险收缩期可能有相对抗跌价值。</li>
+</ul>
+<h2>12. 这轮给 Jerry 的一句话建议</h2>
+<p><strong>把这份 repo 收进素材池，但别照抄它的 spread 定义；优先保留的是 <code>5m</code> 上“wide-band + partial clip rebalance”的 pair shell，再用 <code>log-beta residual + honest costs</code> 做一次 desk 版最小复现。</strong></p>
+<h2>13. 来源</h2>
+<ol>
+<li><strong>amirSamanQ (2025). _crypto_pairs_stat_arb_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL：<code><a href="https://github.com/amirSamanQ/crypto_pairs_stat_arb">https://github.com/amirSamanQ/crypto_pairs_stat_arb</a></code></li>
+<li>README Raw：<code><a href="https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/README.md">https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/README.md</a></code></li>
+<li>Backtest notebook：<code><a href="https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/back_test_v2.ipynb">https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/back_test_v2.ipynb</a></code></li>
+<li>Grid notebook：<code><a href="https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/grid_back_test_v1.ipynb">https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/grid_back_test_v1.ipynb</a></code></li>
+<li>Stationarity notebook：<code><a href="https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/checking_stationarity.ipynb">https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/checking_stationarity.ipynb</a></code></li>
+<li>Data fetch notebook：<code><a href="https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/get_ohlc_data.ipynb">https://raw.githubusercontent.com/amirSamanQ/crypto_pairs_stat_arb/main/get_ohlc_data.ipynb</a></code></li>
+<li>GitHub API metadata：<code><a href="https://api.github.com/repos/amirSamanQ/crypto_pairs_stat_arb">https://api.github.com/repos/amirSamanQ/crypto_pairs_stat_arb</a></code></li>
+</ul>
+<h3>本地实验产物</h3>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_1m_series_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_1m_trades_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_5m_series_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_5m_trades_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_15m_series_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_15m_trades_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_portability_summary_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/amir_pairs_grid_portability_2026-04-10.csv</code></li>
+</ul>
+</body>
+</html>

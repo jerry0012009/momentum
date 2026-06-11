@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>rank183 · decomposition（baseline / components / ablation）</title>
+  <style>
+    body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; max-width: 1040px; margin: 28px auto; padding: 0 16px; line-height: 1.68; color:#0f172a; background:#f8fafc; }
+    .card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:14px 16px; margin-bottom:12px; }
+    .muted { color:#64748b; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    th,td { border-bottom:1px solid #e2e8f0; padding:8px 10px; text-align:left; vertical-align:top; }
+    code { background:#eff6ff; border-radius:6px; padding:1px 5px; }
+    pre { white-space:pre-wrap; background:#0b1220; color:#dbeafe; border-radius:10px; padding:10px; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>rank183 · decomposition（baseline / components / ablation）</h1>
+    <p class="muted">生成时间：2026-04-08 11:33:27 北京时间。本页服务于“把 P2/P3 策略拆到可执行组件”的需求。</p>
+    <p><a href="report.html">← 返回该 rank 主报告</a> ｜ <a href="../rank_registry_p3_p2/report.html">P3/P2 总表</a></p>
+  </div>
+
+  <div class="card">
+    <h2>一、baseline / components / ablation 拆分</h2>
+    <table>
+      <thead><tr><th>模块</th><th>定义</th><th>为什么需要</th></tr></thead>
+      <tbody>
+        <tr><td><code>baseline</code></td><td>均值回复主baseline（pairs/fair-value）</td><td>提供主 alpha 假设与对照面。</td></tr>
+        <tr><td><code>increment</code></td><td>cbETH-ETH rolling fair-basis MR</td><td>该 rank 相比 baseline 的独立改动点。</td></tr>
+        <tr><td><code>role</code></td><td>challenger</td><td>挑战/替代 baseline 的候选路线，先追求可解释增量，再看成本后存活。</td></tr>
+        <tr><td><code>stage/status</code></td><td>P3 / bench</td><td>决定当前是继续推进、观测，还是归档/降级。</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>二、信号定义（具体口径）</h2>
+    <p><b>策略类型：</b>均值回复</p>
+    <ol>
+      <li><b>输入层（Input）</b>：价格/成交/跨资产数据，要求明确频率与对齐时点。</li>
+      <li><b>候选触发层（Candidate Trigger）</b>：先给出“触发候选”的条件，不直接等同于下单。</li>
+      <li><b>过滤/否决层（Filter/Veto）</b>：说明哪些条件会阻止候选触发变成真实交易。</li>
+      <li><b>执行层（Execution Signal）</b>：给出最终下单定义（方向、仓位、并发约束、冷却时间）。</li>
+      <li><b>退出层（Exit）</b>：至少覆盖止损、止盈、超时退出与异常风控保护。</li>
+      <li><b>成本层（Cost）</b>：固定费率/滑点假设 + 敏感性结论（费率上升后是否仍成立）。</li>
+    </ol>
+    <p class="muted">简化记忆法：候选信号 ≠ 真实执行信号；只有通过过滤与执行约束后，才是可归因交易。</p>
+  </div>
+
+  <div class="card">
+    <h2>三、ablation 建议</h2>
+    <ul>
+      <li>先测 <code>baseline only</code>（无增量、无额外过滤）。</li>
+      <li>再测 <code>baseline + increment</code>（只加该 rank 独立增量）。</li>
+      <li>再测 <code>baseline + increment + filter/veto</code>（看收益与回撤是否同步改善）。</li>
+      <li>最后做 <code>cost stress</code>（费率/滑点提高后的存活性）。</li>
+    </ul>
+    <p><b>当前下一步：</b>先解除交易接入阻塞（Coinbase），否则维持 shelve</p>
+  </div>
+
+  <div class="card">
+    <h2>四、现有证据摘录</h2>
+    <p><b>证据摘要来源：</b><code>reports/artifacts/rank183_pair_proxy_scan_20260401/README.md</code></p><pre># Rank 183 deep-dive proxy scan (2026-04-01)
+
+## Goal
+Answer three concrete user questions:
+1. Why does Rank 183 use `CBETH spot + ETH perp` instead of two generic coins on the same exchange?
+2. How stable is Rank 183 historically, month by month?
+3. If we switch to generic crypto pairs like `BTC/ETH`, `ETH/SOL`, `ETH/XRP`, `SOL/XRP`, can simple correlation be turned into a tradable mean-reversion strategy?
+
+## Key conclusion
+- `Rank 183` is a **basis mean-reversion** strategy, not a generic cross-asset pair trade.
+- The reason it uses `CBETH spot + ETH perp` is that there is a clearer economic anchor:
+  - `CBETH` is a staked-ETH spot asset with a premium/discount structure,
+  - `ETH perp` is the cheap hedge leg for broad ETH beta,
+  - so the trade is betting on **basis / fair-value convergence**, not just &quot;these two charts usually move together&quot;.
+- By contrast, `BTC/ETH`, `ETH/SOL`, `ETH/XRP`, `SOL/XRP` are mostly **cross-asset correlation pairs**. They may co-move, but they do not automatically have a stable fair-value anchor strong enough for post-cost mean reversion.
+
+## Rank 183 local honest sample
+Using the current artifact:
+- `reports/artifacts/quant_digests/cbeth_eth_basis_probe_20260326_0850_15m/trade_log.csv`
+
+The local trade log only spans:
+- start: `2026-02-01 18:45 UTC`
+- end: `2026-03-26 08:45 UTC`
+
+So the exact current paper-spec evidence is only about **2 months**, not 1 year / 3 years / 5 years.
+Also, an exact `5y` backtest on the same instrument is not literally possible because `CBETH` itself is younger than 5 years.
+
+### Monthly split in the local trade log
+- `2026-02`
+  - `642` trades
+  - mean net `+26.69 bps/trade`
+  - win rate `98.13%`
+  - median hold `1` bar
+- `2026-03`
+  - `533` trades
+  - mean net `+12.17 bps/trade`
+  - win rate `80.30%`
+  - median hold `2` bars
+
+Interpretation:
+- still positive in both months,
+- but March is clearly weaker than February,
+- so even inside the local honest window, this is **positive but already decaying**, not a flat monthly machine.
+
+## Generic perp-pair proxy scan
+To answer the &quot;what if we replace the underlying&quot; question, we ran a simple **beta-hedged rolling-z mean-reversion shell** on Binance 15m pe</pre>
+  </div>
+</body>
+</html>

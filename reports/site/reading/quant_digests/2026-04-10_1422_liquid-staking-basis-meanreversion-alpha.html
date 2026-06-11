@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 liquid staking 只读成慢频 carry：对 short-cycle desk，更该先测的是「rolling basis z-score × WBETHETH fade」这条 relative-value raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 liquid staking 只读成慢频 carry：对 short-cycle desk，更该先测的是「rolling basis z-score × WBETHETH fade」这条 relative-value raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-10 14:23 UTC</span>
+      <span class="pill">研究时间：2026-04-10 14:22 UTC</span>
+      <span class="pill">类型：论文 + 公共数据快检</span>
+      <span class="pill">主题标签：raw-alpha / relative-value / stat-arb / liquid-staking / basis / mean-reversion / wbeth / eth / 5m / 15m</span>
+      <span class="pill">证据类型：论文证据（OpenAlex abstract + DOI metadata）+ Binance Spot 公共数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-10_1422_liquid-staking-basis-meanreversion-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-10 14:22 UTC</li>
+<li>类型：论文 + 公共数据快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：liquid staking derivative 相对 ETH 的 basis 偏离会向均值回归，可直接做 <code>WBETHETH</code> spread fade</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / relative-value / stat-arb / liquid-staking / basis / mean-reversion / wbeth / eth / 5m / 15m</li>
+<li>证据类型：论文证据（OpenAlex abstract + DOI metadata）+ Binance Spot 公共数据 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 <strong>The Economics of Liquid Staking Derivatives: Basis Determinants and Price Discovery</strong>（2024, *Journal of Futures Markets*）。论文主线是解释 liquid-staking 衍生品的 basis 为何存在、谁在做 price discovery；但对我们 desk 更值钱的，不是慢频市场结构讨论，而是把 <strong>LSD basis 本身</strong> 抽成一条可交易的 short-cycle relative-value raw alpha：当 staking token 相对 ETH 的交易价偏离滚动常态太多时，后面更容易往回收。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha</strong> 很清楚：不是情绪、不是 overlay，而是 <strong>staking derivative / underlying 之间的相对价值偏离回归</strong>。</li>
+<li>真正适合我们 desk 的落点，不是去复刻整篇 paper 的 price-discovery 分解，而是直接拿 Binance 现成可交易的 <code>WBETHETH</code> 做 <code>15m</code> basis fade。</li>
+<li>本地用 Binance Spot <code>WBETHETH</code> 近约 <code>180d</code> 做 portability probe 后，<code>15m</code> 上 rolling <code>192-bar</code> z-score 的极端偏离有明确回归：</li>
+<li>quintile 里，最低 z bucket 后续 <code>4/16/48</code> bar 约 <code>+0.52 / +0.98 / +2.08 bps</code>，最高 z bucket 约 <code>-0.49 / -0.68 / -0.86 bps</code>，对应 fade spread 约 <code>+1.01 / +1.66 / +2.94 bps</code>；</li>
+<li>若只看 <code>|z| &gt;= 3</code> 的极端，mean-reversion 对齐后的未来 <code>1/4/16/48</code> bar 约 <code>+1.14 / +1.67 / +2.35 / +2.45 bps</code>；</li>
+<li>做成简单 shell（<code>entry |z|&gt;=3</code>，回到 <code>|z|&lt;=0.5</code> 或 time-stop）时，<code>15m max_hold=32</code> 近样本约 <code>100</code> 笔、gross <code>+5.01 bps/笔</code>、胜率约 <code>86%</code>，粗扣 <code>4 bps</code> round-trip 后仍约 <code>+1.01 bps/笔</code>。</li>
+<li>同一思路在 <code>5m</code> 也能跑，但更弱：<code>|z|&gt;=3</code> 的 aligned future <code>12-bar</code> 约 <code>+1.72 bps</code>，简单 shell 只有在更长 hold / 更低摩擦下才开始像样，所以当前优先级应是 <strong><code>15m &gt; 5m</code></strong>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这不是泛金融结构知识，而是一条能直接补进素材池的 <strong>relative-value / stat-arb raw alpha</strong>。它和我们当前已积累的 trend、funding、top-trader、pairs 不冲突，反而补了一块此前较少覆盖的 <strong>staking-basis spread</strong>：</p>
+<ul>
+<li>可独立作为单一 spread 策略；</li>
+<li>也可作为 “crypto basis / carry / RV” 方向的补充素材；</li>
+<li>执行上比跨 venue / 跨腿 perp 套利简单，因为 <code>WBETHETH</code> 本身就是可直接交易的 pair。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / 均值回归</li>
+<li>基础 alpha：<code>WBETHETH</code> 相对其 rolling mean 的极端 basis 偏离会回归</li>
+<li>regime：优先在 pair 仍有正常成交、rolling std 未塌缩的时段运行</li>
+<li>filter / veto：低成交量、连续单边漂移、Binance staking token 机制变化时停机</li>
+<li>risk / sizing / execution overlay：按 <code>|z|</code> 或 rolling std 缩放；优先 maker / 被动挂单；设 time-stop 与机制事件 veto</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：<code>WBETHETH</code> 的 rolling basis 偏离在 <code>15m</code> 上存在可交易的短周期回归。</li>
+<li>一个可计算定义：</li>
+<li><code>z_t = (close_t - mean(close, 192)) / std(close, 192)</code></li>
+<li>long spread：<code>z &lt;= -3</code></li>
+<li>short spread：<code>z &gt;= 3</code></li>
+<li>exit：<code>|z| &lt;= 0.5</code> 或 <code>32 bars</code> time-stop</li>
+<li>最小回测切口：Binance Spot <code>WBETHETH</code>, <code>15m</code>, 近 <code>180d</code>。</li>
+<li>最该先看 2 个指标：</li>
+</ul>
+<ol>
+<li><code>gross / net bps per trade</code>（至少做 <code>2 / 4 / 8 bps</code> friction ladder）</li>
+<li><code>成交笔数 + 胜率 + 平均持有 bars</code>（确认不是只靠少数尾部样本）</li>
+</ol>
+<ul>
+<li>下一步怎么测：</li>
+</ul>
+<ol>
+<li>先做 <code>15m</code> 参数网格：lookback <code>96/192/288</code>、entry <code>2/2.5/3</code>、exit <code>0/0.5/1</code>；</li>
+<li>再比 <code>direct pair (WBETHETH)</code> vs <code>synthetic ratio (WBETHUSDT / ETHUSDT)</code>，确认是否是 pair 微观结构幻觉；</li>
+<li>最后加成交量 / spread veto，确认能否把 <code>4 bps</code> 以上的净值再抬高。</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>当前论文证据主要来自 abstract + metadata，不是全文逐表复刻；paper 是经济机制与 price discovery 研究，不是现成策略论文。</li>
+<li><code>WBETH</code> 带 staking accrual 与产品机制，basis 不是纯静态 1:1；若 token 规则、赎回路径或交易所激励变化，历史回归参数可能失效。</li>
+<li>这个 alpha 更像 <strong>低波动、低周转的 RV spread</strong>，不是高爆发单币 directional alpha；若手续费高、只能 taker、或流动性显著恶化，优势会被吃掉。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Milunovich, G., Nguyen, H., &amp; Zheng, X. (2024). *The Economics of Liquid Staking Derivatives: Basis Determinants and Price Discovery*. *Journal of Futures Markets*.</li>
+<li>DOI：<code>10.1002/fut.22556</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.1002/fut.22556">https://doi.org/10.1002/fut.22556</a></code></li>
+<li>OpenAlex metadata：<code><a href="https://api.openalex.org/works/https://doi.org/10.1002/fut.22556">https://api.openalex.org/works/https://doi.org/10.1002/fut.22556</a></code></li>
+<li>Public data：Binance Spot <code>WBETHETH</code> klines (<code>/api/v3/klines</code>)</li>
+<li>Portability artifacts：</li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/liquid_staking_basis_probe_summary_2026-04-10.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/liquid_staking_basis_probe_detail_2026-04-10.csv</code></li>
+</ul>
+</body>
+</html>

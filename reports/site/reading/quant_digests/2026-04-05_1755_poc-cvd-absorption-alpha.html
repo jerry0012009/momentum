@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 VPVR+CVD repo 只读成 volume-profile 指标脚本：对 short-cycle desk，更该先测的是「1H POC-proximal price/CVD absorption × 15m child execution」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 VPVR+CVD repo 只读成 volume-profile 指标脚本：对 short-cycle desk，更该先测的是「1H POC-proximal price/CVD absorption × 15m child execution」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-05 18:12 UTC</span>
+      <span class="pill">研究时间：2026-04-05 17:55 UTC</span>
+      <span class="pill">类型：repo / source audit</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/single-asset/volume-profile/poc/cvd-divergence/absorption/htf-anchor/child-execution/binance-futures/1h/15m/5m/3m/1m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：2026 GitHub 新 repo source audit（GitHub API metadata + `README.md` + `vpvr_cvd_backtest_v2.py` + `vpvr_cvd_validation_suite.py` + `vpvr_cvd_trailing_test.py` + `vpvr_cvd_grid_search.csv` + `configs.json`）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-05_1755_poc-cvd-absorption-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-05 17:55 UTC</li>
+<li>类型：repo / source audit</li>
+<li>主题标签：raw-alpha/mean-reversion/single-asset/volume-profile/poc/cvd-divergence/absorption/htf-anchor/child-execution/binance-futures/1h/15m/5m/3m/1m/repo/public-data/cost/risk</li>
+<li>证据类型：2026 GitHub 新 repo source audit（GitHub API metadata + <code>README.md</code> + <code>vpvr_cvd_backtest_v2.py</code> + <code>vpvr_cvd_validation_suite.py</code> + <code>vpvr_cvd_trailing_test.py</code> + <code>vpvr_cvd_grid_search.csv</code> + <code>configs.json</code>）</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>价格在 rolling volume-profile 的 POC 附近出现“价格路径与 CVD 方向相反”的 absorption 时，短期更容易向 POC / 局部公允区回摆</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是，但当前更像 <strong>1H 母信号</strong>，不宜把同一参数直接压缩到 <code>15m/5m</code></li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是一个 2026-03-21 创建、今天还在更新的 GitHub repo：<code>breloom22/VPVR-CVD</code>。它表面上像一个“VPVR + CVD divergence”脚本，但真正值得 intake 的不是指标名，而是它把一条<strong>可完整复现的单资产 raw alpha</strong>写得很清楚：</p>
+<ol>
+<li>先用 rolling VPVR 找最近一段成交量重心 <code>POC</code>；</li>
+<li>再看最近若干 bar 里，<strong>价格斜率</strong>和 <strong>CVD 斜率</strong>是否明显反着走；</li>
+<li>只有在价格与 POC 的距离、蜡烛实体大小都过关时才允许入场；</li>
+<li>出场不用花哨 trailing，而是固定 TP/SL。</li>
+</ol>
+<p>一句话先下判断：<strong>base alpha 是清楚的，它不是 filter 冒充 alpha；但 repo 自己已经明确给出一个很重要的 transfer boundary——这条 edge 主要活在 crypto <code>1H</code>，直接压到 <code>15m/30m</code> 是会失效的。</strong></p>
+<h2>2. 为什么这轮值得看它</h2>
+<p>先回答一句：<strong>这篇东西的 base alpha 是什么？</strong></p>
+<p>&gt; <strong>POC 附近的 absorption mean reversion。</strong></p>
+<p>也就是：</p>
+<p>&gt; <strong>当价格还在“成交量公允区”一侧附近，但主动成交流（CVD）继续朝相反方向挤压，说明被动流动性在吸收，随后更容易出现回摆。</strong></p>
+<p>这条线值得看，不是因为 <code>VPVR</code> 或 <code>CVD</code> 这两个词看起来高级，而是因为它补的是当前池子里相对少一点的一类 raw alpha：</p>
+<ul>
+<li>不是 funding / basis / pairs；</li>
+<li>不是单纯 RSI / MFI / breakout；</li>
+<li>而是 <strong>volume-profile 锚点 × signed-flow divergence</strong> 的单资产 absorption 壳。</li>
+</ul>
+<p>而且 repo 已经把：</p>
+<ul>
+<li>entry</li>
+<li>exit</li>
+<li>sizing</li>
+<li>fee</li>
+<li>TP/SL grid</li>
+<li>walk-forward</li>
+<li>timeframe transfer check</li>
+</ul>
+<p>都写成了源码或验证脚本，不是只有一张收益截图。</p>
+<h2>3. 来源与材料</h2>
+<h3>3.1 仓库信息</h3>
+<ul>
+<li>Author / Repo：<code>breloom22/VPVR-CVD</code></li>
+<li>Year：2026</li>
+<li>Repo title：<code>VPVR + CVD Divergence Strategy</code></li>
+<li>GitHub URL：&lt;<a href="https://github.com/breloom22/VPVR-CVD&gt;">https://github.com/breloom22/VPVR-CVD&gt;</a></li>
+<li>Created at：<code>2026-03-21 04:11:27 UTC</code></li>
+<li>Updated at：<code>2026-04-05 14:10:51 UTC</code></li>
+<li>Repo description：<code>VPVR + CVD divergence strategy for Binance Futures — smart money absorption detection</code></li>
+</ul>
+<h3>3.2 这份 repo 里最关键的文件</h3>
+<ul>
+<li><code>README.md</code></li>
+<li><code>vpvr_cvd_backtest_v2.py</code></li>
+<li><code>vpvr_cvd_validation_suite.py</code></li>
+<li><code>vpvr_cvd_trailing_test.py</code></li>
+<li><code>vpvr_cvd_grid_search.csv</code></li>
+<li><code>configs.json</code></li>
+</ul>
+<h3>3.3 数据公开性</h3>
+<ul>
+<li>交易数据路径：Binance Futures 公共 K 线 + <code>data.binance.vision</code> 公共 aggTrades</li>
+<li>CVD 两种口径：</li>
+<li><strong>real taker CVD</strong>：按 <code>aggTrades.is_buyer_maker</code> 逐笔聚合</li>
+<li><strong>CLV proxy CVD</strong>：按 K 线 close location value 近似</li>
+<li>可复现性：高；即使不跑原 repo，也能很快在 Binance 公共 <code>1h / 15m / 5m</code> 数据上重做</li>
+</ul>
+<h2>4. 这条 base alpha 到底是什么</h2>
+<h3>4.1 源码里的信号定义</h3>
+<p><code>vpvr_cvd_backtest_v2.py</code> 里，核心判定不是神秘黑盒，而是很朴素的四层条件：</p>
+<p>#### A. 先算 rolling POC</p>
+<ul>
+<li><code>vpvr_lookback = 50</code></li>
+<li><code>vpvr_num_bins = 50</code></li>
+<li>在最近 50 根 bar 的价格区间里分桶，找 volume 最大的桶作为 <code>POC</code></li>
+</ul>
+<p>#### B. 再算 divergence 源码 <code>detect_divergence()</code>：</p>
+<ul>
+<li>取最近 <code>div_lookback</code> 根 bar</li>
+<li>分别对 <code>price_window</code> 与 <code>cvd_window</code> 做线性回归斜率</li>
+<li>再用各自窗口标准差标准化</li>
+<li>阈值：<code>MIN_SLOPE = 0.1</code></li>
+</ul>
+<p>判定：</p>
+<ul>
+<li><code>bullish_absorption</code>：<code>price_slope_norm &gt; 0.1</code> 且 <code>cvd_slope_norm &lt; -0.1</code></li>
+<li><code>bearish_absorption</code>：<code>price_slope_norm &lt; -0.1</code> 且 <code>cvd_slope_norm &gt; 0.1</code></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>价格往上，但 CVD 往下，说明<strong>主动卖压还在打，价格却没被打下去</strong>；</li>
+<li>价格往下，但 CVD 往上，说明<strong>主动买压还在追，价格却推不上去</strong>。</li>
+</ul>
+<p>这就是典型的 <strong>absorption / adverse-selection</strong> 读法。</p>
+<p>#### C. 再加 POC 距离与实体过滤 主验证配置在 <code>vpvr_cvd_validation_suite.py</code> 里写成：</p>
+<ul>
+<li><code>div_lookback = 7</code></li>
+<li><code>min_body_atr = 0.7</code></li>
+<li><code>poc_min_atr = 0.3</code></li>
+<li><code>poc_max_atr = 2.5</code></li>
+</ul>
+<p>也就是：</p>
+<ul>
+<li>离 POC 太近不做；</li>
+<li>离 POC 太远也不追；</li>
+<li>蜡烛实体太小不做。</li>
+</ul>
+<p>#### D. 最终方向条件 在 <code>run_backtest_fast()</code> 里：</p>
+<ul>
+<li><code>cp &lt; poc</code> 且 <code>bullish_absorption</code> → <code>long</code></li>
+<li><code>cp &gt; poc</code> 且 <code>bearish_absorption</code> → <code>short</code></li>
+</ul>
+<p>注意这一步很关键：</p>
+<p>它不是单纯做 divergence，也不是单纯做 POC fade，而是：</p>
+<p>&gt; <strong>只有当价格站在 POC 某一侧，且同侧出现“流动性吸收”型 divergence 时，才赌向 POC / 公允区回归。</strong></p>
+<h3>4.2 用 desk 语言翻成人话</h3>
+<p>这条 alpha 的内核可以写成一句：</p>
+<p>&gt; <strong>POC-proximal absorption fade</strong></p>
+<p>比“CVD divergence”更准确，因为真正起约束作用的是三件事一起成立：</p>
+<ol>
+<li><strong>有公允锚点</strong>（POC）</li>
+<li><strong>有方向错配</strong>（price vs CVD）</li>
+<li><strong>错配发生在可交易距离内</strong>（0.3~2.5 ATR）</li>
+</ol>
+<p>所以这不是泛泛的“订单流分歧”，而是一条更具体的单资产 raw alpha。</p>
+<h2>5. repo 真正证明了什么</h2>
+<h3>5.1 README 给出的主配置结果</h3>
+<p>README 主配置写的是：</p>
+<ul>
+<li>标的：<code>BTC + ETH + SOL</code></li>
+<li>样本：<code>365d</code></li>
+<li>周期：<code>1H</code></li>
+<li>杠杆：<code>10x</code></li>
+</ul>
+<p>主结果：</p>
+<ul>
+<li>Trades：<code>86</code></li>
+<li>Win Rate：<code>47.7%</code></li>
+<li>Profit Factor：<code>2.316</code></li>
+<li>Return：<code>+144.8%</code></li>
+<li>Sharpe：<code>3.55</code></li>
+<li>Max Drawdown：<code>-9.9%</code></li>
+</ul>
+<p>如果只看 README，这已经足够把它归成：</p>
+<p>&gt; <strong>可独立复现、可完整落地的 raw alpha 候选。</strong></p>
+<h3>5.2 但它最值钱的不是收益截图，而是 transfer boundary</h3>
+<p>README 还明确写了几条比“高收益”更有价值的结论：</p>
+<ul>
+<li><strong>CLV approximation is sufficient</strong>：真实 aggTrades CVD 没有明显优于 OHLCV 的 CLV proxy</li>
+<li><strong>Crypto 1H is the only profitable timeframe</strong>：<code>15m / 30m / 2h / 4h</code> 全部 <code>PF &lt; 1.0</code></li>
+<li><strong>Strategy does not transfer to stocks</strong>：Nasdaq <code>1H</code> 多数也不行</li>
+<li><strong>Fixed TP/SL beats trailing stops</strong>：ATR trailing 全部跑输固定止盈止损</li>
+<li><strong>3-fold walk-forward</strong>：所有 OOS fold 的 PF 都大于 1</li>
+</ul>
+<p>这几句的价值很高，因为它们等于帮我们省掉了一堆无效内循环：</p>
+<ul>
+<li>不要先默认“更高频一定更强”；</li>
+<li>不要默认“真实逐笔 CVD 一定碾压 K 线 proxy”；</li>
+<li>不要默认“trailing stop 一定更聪明”。</li>
+</ul>
+<h3>5.3 grid search 也透露出一个实盘信号</h3>
+<p><code>vpvr_cvd_grid_search.csv</code> 里，PF 最高的极端参数组虽然能到 <code>2.37</code>，但只有 <code>7</code> 笔交易； 而 repo 最后落到主配置附近的更稳组合，是：</p>
+<ul>
+<li><code>div_lb = 7</code></li>
+<li><code>body_atr = 0.7</code></li>
+<li><code>poc_min = 0.3</code></li>
+<li><code>poc_max = 2.5</code></li>
+</ul>
+<p>这说明作者自己也意识到：</p>
+<p>&gt; <strong>真正可用的不是“最尖的 in-sample 顶格 PF”，而是 trade count、稳定性和 OOS 生存线。</strong></p>
+<p>这点和当前 desk 的学习主线是对齐的。</p>
+<h2>6. 对当前 short-cycle desk 的真正启发</h2>
+<h3>6.1 不要把它硬抄成 15m standalone</h3>
+<p>repo 自己已经给答案了：</p>
+<p>&gt; <strong>这条壳在 1H 活，在 15m/30m 不活。</strong></p>
+<p>所以如果这轮把主题写成“15m 直接照抄 VPVR+CVD 就能跑”，那是误读。</p>
+<p>更合理的 short-cycle 读法是：</p>
+<p>&gt; <strong>把 1H absorption 当母信号，把 15m 当子执行层。</strong></p>
+<p>也就是说，对我们现在的 <code>1m / 3m / 5m / 15m</code>，它的第一落点不是“缩频”，而是：</p>
+<ul>
+<li><code>1H</code> 负责判 state</li>
+<li><code>15m</code> 负责更好 entry / timeout / risk</li>
+</ul>
+<h3>6.2 哪 3 个组件最值得拆出来</h3>
+<p>#### A. <code>distance_to_POC</code> 当前价格距 <code>1H rolling POC</code> 多远：</p>
+<ul>
+<li>过近：没 edge</li>
+<li>过远：可能已经成趋势，不该硬 fade</li>
+</ul>
+<p>#### B. <code>price_vs_CVD slope disagreement</code> 这个 repo 最值钱的不是“CVD 数值”，而是：</p>
+<p>&gt; <strong>价格路径与成交流路径是否背离。</strong></p>
+<p>这可以服务：</p>
+<ul>
+<li>单资产回摆</li>
+<li>maker adverse-selection veto</li>
+<li>breakout exhaustion 否决</li>
+</ul>
+<p>#### C. <code>body / ATR impulse filter</code> 源码要求 <code>min_body_atr = 0.7</code>，说明作者并不想抓“慢慢磨”的背离，而是想抓：</p>
+<p>&gt; <strong>已经有足够实体推进、但推进里出现 absorption 的 bar。</strong></p>
+<p>这很适合拿去服务现有 fast fade / mean-reversion 壳。</p>
+<h2>7. 这轮最重要的判断：它为什么仍值得进研究池</h2>
+<p>如果只看“能不能直接做 15m standalone”，这条线不是当前最优先。</p>
+<p>但如果问：<strong>它为什么比继续补一个普通 breakout / pairs 题更值得看？</strong></p>
+<p>我的答案是：</p>
+<ol>
+<li><strong>它补的是目前池子里相对少见的 alpha 形态：</strong> volume-profile 锚点 × absorption；</li>
+<li><strong>它不是纯概念，已经是完整策略壳：</strong> entry / exit / TP/SL / fee / validation 都在源码里；</li>
+<li><strong>它自带强 transfer-boundary 信息：</strong> 明确告诉你“不要机械缩频”；</li>
+<li><strong>即便 standalone 只活在 1H，它仍能服务 <code>15m</code> 子执行与 shared gate。</strong></li>
+</ol>
+<p>所以这轮我会把它归成：</p>
+<ul>
+<li><strong>一级：raw alpha 候选</strong></li>
+<li><strong>二级：HTF parent signal for short-cycle execution</strong></li>
+</ul>
+<p>而不是简单降级成“一个 filter”。</p>
+<h2>8. 下一步怎么测</h2>
+<h3>8.1 最小实验 1：先做 <code>1H parent -&gt; 15m child</code></h3>
+<p>不要直接把 repo 参数压到 <code>15m</code>；先做：</p>
+<p><strong>Parent（1H）：</strong></p>
+<ul>
+<li>50-bar rolling POC</li>
+<li><code>div_lb = 7</code></li>
+<li><code>body_atr &gt;= 0.7</code></li>
+<li><code>0.3 &lt;= dist_to_POC / ATR &lt;= 2.5</code></li>
+<li>bullish / bearish absorption state</li>
+</ul>
+<p><strong>Child（15m）：</strong></p>
+<ul>
+<li>只在新 <code>1H</code> state 触发后的前 <code>4</code> 根 <code>15m</code> 内允许进场</li>
+<li>进场方式对比：</li>
+</ul>
+<ol>
+<li>next-open</li>
+<li>first pullback toward 15m VWAP</li>
+<li>first failed extension + close back inside micro range</li>
+</ol>
+<ul>
+<li>time stop：<code>4~8</code> 根 <code>15m</code></li>
+<li>成本：<code>2 / 4 / 6 bps</code> round-trip</li>
+</ul>
+<p>先回答一个简单问题：</p>
+<p>&gt; <strong>同样的 1H state，用更聪明的 15m 进场，能不能把 repo 的 1H edge 带进 short-cycle？</strong></p>
+<h3>8.2 最小实验 2：测它能不能当 shared gate</h3>
+<p>拿现有两类壳先叠：</p>
+<ol>
+<li><strong>5m downward impulse fade</strong></li>
+</ol>
+<ul>
+<li>只在 <code>1H bullish_absorption &amp; price &lt; POC</code> 时开多</li>
+</ul>
+<ol>
+<li><strong>maker / passive liquidity shell</strong></li>
+</ol>
+<ul>
+<li>遇到 <code>price-vs-CVD disagreement</code> 时，降低顺势追价，优先 maker</li>
+</ul>
+<p>要测的不是方向胜率，而是：</p>
+<ul>
+<li>fail rate 是否下降</li>
+<li>adverse-selection 是否下降</li>
+<li>持仓时间是否缩短</li>
+</ul>
+<h3>8.3 最小实验 3：CLV proxy 是否真的够用</h3>
+<p>repo 一个很实用的 claim 是：</p>
+<p>&gt; <strong>real aggTrades CVD 没有明显优于 CLV proxy。</strong></p>
+<p>这对 desk 很重要，因为如果 CLV 足够，<code>15m / 5m</code> 最小实验就不必先背逐笔数据负担。</p>
+<p>建议直接并排：</p>
+<ul>
+<li><code>CLV CVD</code></li>
+<li><code>signed aggTrades delta</code></li>
+<li><code>signed trade-count imbalance</code></li>
+</ul>
+<p>如果三者在 <code>1H parent -&gt; 15m child</code> 里差别不大，优先保留最便宜口径。</p>
+<h3>8.4 最小实验 4：不要忘记负迁移验证</h3>
+<p>既然 repo 已明确说 <code>15m / 30m / 2h / 4h</code> 都不行，desk 下一步不能只找“能赢”的改法，也要保留：</p>
+<ul>
+<li>direct <code>15m clone</code></li>
+<li>direct <code>5m clone</code></li>
+</ul>
+<p>作为负对照。</p>
+<p>如果 direct clone 继续死，而 <code>1H parent -&gt; 15m child</code> 能活，这本身就是研究结论。</p>
+<h2>9. 这篇东西最后怎么归档</h2>
+<h3>9.1 主题归类</h3>
+<ul>
+<li>主题类型：<code>raw alpha</code></li>
+<li>更细归类：<code>single-asset absorption / volume-anchor mean reversion</code></li>
+</ul>
+<h3>9.2 与当前短周期（1m/3m/5m/15m）的关系</h3>
+<ul>
+<li><strong>不是</strong>：<code>15m</code> 直接照抄的现成成品</li>
+<li><strong>更像</strong>：<code>1H</code> 母信号 + <code>15m</code> 子执行</li>
+<li><code>5m / 3m / 1m</code> 当前不建议直接压缩；先当 execution refinement，不当 primary signal</li>
+</ul>
+<h3>9.3 是否进入当前优先复现队列</h3>
+<p>我的建议：</p>
+<ul>
+<li><strong>进入 raw alpha 素材池</strong></li>
+<li><strong>进入 HTF-parent / LTF-child 实验优先队列</strong></li>
+<li><strong>不进入 15m direct-clone 高优先实盘队列</strong></li>
+</ul>
+<h2>10. 来源链接</h2>
+<ol>
+<li><strong>breloom22 (2026). _VPVR + CVD Divergence Strategy_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Author: breloom22</li>
+<li>Year: 2026</li>
+<li>Title: VPVR + CVD Divergence Strategy</li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/breloom22/VPVR-CVD&gt;">https://github.com/breloom22/VPVR-CVD&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/breloom22/VPVR-CVD&gt;">https://github.com/breloom22/VPVR-CVD&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Source file: <code>vpvr_cvd_backtest_v2.py</code></strong></li>
+</ol>
+<ul>
+<li>Title: VPVR + CVD Divergence Backtest v2</li>
+<li>Readable URL: &lt;<a href="https://github.com/breloom22/VPVR-CVD/blob/main/vpvr_cvd_backtest_v2.py&gt;">https://github.com/breloom22/VPVR-CVD/blob/main/vpvr_cvd_backtest_v2.py&gt;</a></li>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/breloom22/VPVR-CVD/main/vpvr_cvd_backtest_v2.py&gt;">https://raw.githubusercontent.com/breloom22/VPVR-CVD/main/vpvr_cvd_backtest_v2.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Source file: <code>vpvr_cvd_validation_suite.py</code></strong></li>
+</ol>
+<ul>
+<li>Title: VPVR + CVD Validation Suite</li>
+<li>Readable URL: &lt;<a href="https://github.com/breloom22/VPVR-CVD/blob/main/vpvr_cvd_validation_suite.py&gt;">https://github.com/breloom22/VPVR-CVD/blob/main/vpvr_cvd_validation_suite.py&gt;</a></li>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/breloom22/VPVR-CVD/main/vpvr_cvd_validation_suite.py&gt;">https://raw.githubusercontent.com/breloom22/VPVR-CVD/main/vpvr_cvd_validation_suite.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Source file: <code>vpvr_cvd_trailing_test.py</code></strong></li>
+</ol>
+<ul>
+<li>Title: VPVR + CVD Strategy -- Trailing Stop Comparison Test</li>
+<li>Readable URL: &lt;<a href="https://github.com/breloom22/VPVR-CVD/blob/main/vpvr_cvd_trailing_test.py&gt;">https://github.com/breloom22/VPVR-CVD/blob/main/vpvr_cvd_trailing_test.py&gt;</a></li>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/breloom22/VPVR-CVD/main/vpvr_cvd_trailing_test.py&gt;">https://raw.githubusercontent.com/breloom22/VPVR-CVD/main/vpvr_cvd_trailing_test.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Validation artifact: <code>vpvr_cvd_grid_search.csv</code></strong></li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://github.com/breloom22/VPVR-CVD/blob/main/vpvr_cvd_grid_search.csv&gt;">https://github.com/breloom22/VPVR-CVD/blob/main/vpvr_cvd_grid_search.csv&gt;</a></li>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/breloom22/VPVR-CVD/main/vpvr_cvd_grid_search.csv&gt;">https://raw.githubusercontent.com/breloom22/VPVR-CVD/main/vpvr_cvd_grid_search.csv&gt;</a></li>
+</ul>
+<h2>11. 最短版结论</h2>
+<p>这份 2026 repo 的 <strong>base alpha 是清楚的</strong>：<code>POC-proximal price/CVD absorption fade</code>。它不是一个 filter 冒充 alpha，而是一条能被完整复现的单资产 raw alpha 壳。</p>
+<p>但 repo 真正最值钱的结论不是“收益很好”，而是：</p>
+<ul>
+<li><code>1H</code> 能活；</li>
+<li><code>15m / 30m / 2h / 4h</code> 直接压缩会死；</li>
+<li><code>CLV proxy</code> 大概率就够；</li>
+<li>固定 <code>TP/SL</code> 比 trailing 更稳。</li>
+</ul>
+<p>所以这轮对 desk 最值得做的，不是照抄 <code>15m VPVR+CVD</code>，而是立刻去测：</p>
+<p>&gt; <strong><code>1H absorption parent signal × 15m child execution</code></strong></p>
+<p>如果这条桥接能活，它就不是普通的 1H 策略，而是能进入当前 short-cycle 组件库的一条新母信号。</p>
+</body>
+</html>

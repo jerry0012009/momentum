@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Basis dislocation percentile as a breakout-short disable filter</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Basis dislocation percentile as a breakout-short disable filter</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-20 05:06 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-20_0511_basis-dislocation-short-veto.md</code></p>
+  </div>
+  <ul>
+<li><strong>Date:</strong> 2026-03-20 05:11 UTC</li>
+<li><strong>Mainline:</strong> V3 final-verdict / breakout-short follow-up</li>
+<li><strong>Role:</strong> regime gate / veto（不是逐根 15m 主信号）</li>
+</ul>
+<h2>Why this topic, why now</h2>
+<p>这轮继续服务 V3 收口：我们已经测过 <code>funding</code>、<code>OI</code>、<code>compression</code>、<code>break severity</code>，但还缺一块常见且公开可得的衍生品上下文——<strong>perp basis（mark-index 偏离）</strong>。</p>
+<p>这比再做一篇泛化 S/R 更值得：它直接回答 V3 的关键问题——哪些下破不该追空。尤其在已经“贴地”负基差的阶段，继续追空常见的是拥挤与回补风险，而不是干净延续。</p>
+<h2>Source summary</h2>
+<h3>Paper（机制锚点）</h3>
+<ul>
+<li><strong>Authors:</strong> Kachnowski</li>
+<li><strong>Year:</strong> 2022</li>
+<li><strong>Title:</strong> *Futures As Prelude: Bitcoin Price Forecasting From Perpetual Futures Data*</li>
+<li><strong>Venue:</strong> SSRN Electronic Journal</li>
+<li><strong>DOI:</strong> <code>10.2139/ssrn.4097789</code></li>
+<li><strong>Readable URL:</strong> <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4097789">https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4097789</a></li>
+<li><strong>DOI URL:</strong> <a href="https://doi.org/10.2139/ssrn.4097789">https://doi.org/10.2139/ssrn.4097789</a></li>
+<li><strong>Repo URL:</strong> N/A（论文）</li>
+</ul>
+<p><strong>对我们有用的旁支结论（非 headline 抄写）</strong></p>
+<ul>
+<li>perp futures 侧变量对后续现货/价格路径有前瞻信息；</li>
+<li>desk 可落地的读法不是“用 basis 直接做入场信号”，而是：把它作为 <strong>breakout-short 的拥挤/透支过滤层</strong>。</li>
+</ul>
+<h3>Repo + public data plumbing（快速复现锚点）</h3>
+<ol>
+<li><strong>binance/binance-connector-python</strong>（官方 Python 连接器）</li>
+</ol>
+<ul>
+<li>URL: <a href="https://github.com/binance/binance-connector-python">https://github.com/binance/binance-connector-python</a></li>
+<li>用途：快速拉取衍生品公开接口，减少自写签名/重试/限速样板。</li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures public endpoints</strong>（公开、可直接拉）</li>
+</ol>
+<ul>
+<li>Mark Price: <code>GET /fapi/v1/premiumIndex</code></li>
+<p>文档: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Mark-Price">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Mark-Price</a></p>
+<li>Open Interest: <code>GET /fapi/v1/openInterest</code></li>
+<p>文档: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest</a></p>
+<li>Funding Rate History: <code>GET /fapi/v1/fundingRate</code></li>
+<p>文档: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History</a></p>
+<li>Premium Index Kline: premium 指数 K 线（可对齐 5m/15m）</li>
+<p>文档: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Premium-Index-Kline-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Premium-Index-Kline-Data</a></p>
+</ul>
+<h2>Desk interpretation</h2>
+<p>这不是“新 alpha 主引擎”，而是 V3 的 <strong>no-short gate</strong>：</p>
+<ul>
+<li><code>basis_t = (markPrice - indexPrice) / indexPrice</code></li>
+<li>重点不是 basis 的绝对值，而是其<strong>滚动分位/极端程度</strong>。</li>
+</ul>
+<p>直觉：</p>
+<ul>
+<li>当下破发生在 <code>basis</code> 已处于极端负分位（例如过去 30 天 P10 以下）时，继续追空更容易遇到透支 + 反抽；</li>
+<li>当 <code>basis</code> 仍中性、且 OI/波动结构支持时，下破延续概率更高。</li>
+</ul>
+<h2>Minimal test design (15m-first)</h2>
+<h3>Hypothesis</h3>
+<p>在 15m BTC/ETH/SOL 的 breakout-short 事件中：</p>
+<ul>
+<li><strong>极端负基差</strong>（<code>basis_pct_30d &lt;= 10%</code>）且</li>
+<li><strong>OI 未扩张或转负</strong>（<code>oi_delta_1h &lt;= 0</code>）</li>
+</ul>
+<p>对应的后续 4/8/12 bar 延续率显著更差；将其设为 veto 可降低 false-break short。</p>
+<h3>Data source / openness / update frequency</h3>
+<ul>
+<li><strong>数据源：</strong> Binance Futures 公开 REST（无需私钥即可读取市场数据）。</li>
+<li><strong>公开性：</strong> 公网可访问；接口文档公开。</li>
+<li><strong>更新频率（实务口径）：</strong></li>
+<li><code>premiumIndex</code>/<code>openInterest</code>：近实时快照（返回 <code>time</code> 时间戳）；</li>
+<li><code>fundingRate</code>：按资金费率结算节奏更新（通常 8h 档位）；</li>
+<li><code>premium index kline</code>：可直接取 5m/15m K 线粒度对齐实验。</li>
+</ul>
+<h3>Minimal reproducible experiment（最小复现实验口径）</h3>
+<ol>
+<li>复用当前 V3 breakout-short 触发事件集（不改入场定义）。</li>
+<li>对每个事件，取触发前最近可得：</li>
+</ol>
+<ul>
+<li><code>basis_pct_30d</code>（滚动 30d 分位）</li>
+<li><code>basis_z_7d</code></li>
+<li><code>oi_delta_1h</code>, <code>oi_delta_4h</code></li>
+<li><code>funding_sign_persist</code>（过去 N 次 funding 同号持续）</li>
+</ul>
+<ol>
+<li>仅加一条 veto 规则首测：</li>
+</ol>
+<ul>
+<li><code>if basis_pct_30d &lt;= 10% and oi_delta_1h &lt;= 0: skip short</code></li>
+</ul>
+<ol>
+<li>评估：</li>
+</ol>
+<ul>
+<li>continuation@4/8/12 bars</li>
+<li>false-break ratio</li>
+<li>MAE/MFE</li>
+<li>交易频率保留率（避免“过滤太猛”）</li>
+</ul>
+<h2>Risks / failure modes</h2>
+<ul>
+<li>极端负基差在某些崩跌段可能反而是“趋势确认”而非透支；需做 regime 分层。</li>
+<li>funding 低频，不能伪装成逐根 15m 主信号；只应做 gate/overlay。</li>
+<li>不同币种基差分布不同，分位阈值要按 symbol 标准化。</li>
+</ul>
+<h2>Next action</h2>
+<p>先做 <strong>1 日可交付</strong> 的 event-study：</p>
+<ul>
+<li>固定现有 V3 触发；</li>
+<li>增加 <code>basis_pct_30d + oi_delta_1h</code> 二维分桶；</li>
+<li>先在 BTC/ETH/SOL 15m 跑 90~180 天滚动窗口；</li>
+<li>若 <code>false-break</code> 降幅明显且频率留存 &gt; 60%，再考虑纳入正式 <code>no-short</code> gate。</li>
+</ul>
+</body>
+</html>

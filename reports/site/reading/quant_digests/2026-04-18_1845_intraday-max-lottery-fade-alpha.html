@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>intraday MAX / lottery-demand fade：先别把它读成情绪注脚，更像可移植的横截面 loser-fade 原型</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>intraday MAX / lottery-demand fade：先别把它读成情绪注脚，更像可移植的横截面 loser-fade 原型</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-18 18:43 UTC</span>
+      <span class="pill">研究时间：2026-04-18 18:45 UTC</span>
+      <span class="pill">类型：paper metadata + abstract audit + Binance public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha / cross-sectional / mean-reversion / lottery-demand / intraday / MAX / 5m / 15m / 1h / Binance / paper / public-data / cost / risk</span>
+      <span class="pill">证据类型：2025 论文摘要级证据 + Crossref/OpenAlex metadata + Binance USDⓈ-M `5m` 快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-18_1845_intraday-max-lottery-fade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-18 18:45 UTC</li>
+<li>类型：paper metadata + abstract audit + Binance public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：过去 <code>1h</code> 内刚出现过更极端单根 <code>5m</code> 上冲（<code>MAX</code> 更高）的币，在随后 <code>15m~1h</code> 横截面里更容易相对跑输；做法是<strong>做空高 MAX、做多低 MAX</strong>，而不是顺着追涨</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha / cross-sectional / mean-reversion / lottery-demand / intraday / MAX / 5m / 15m / 1h / Binance / paper / public-data / cost / risk</li>
+<li>证据类型：2025 论文摘要级证据 + Crossref/OpenAlex metadata + Binance USDⓈ-M <code>5m</code> 快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的主材料是：</p>
+<ul>
+<li><strong>Manisha Yadav (2025)</strong></li>
+<li><strong>Title:</strong> *Intraday lottery demands in cryptocurrency market*</li>
+<li><strong>Venue:</strong> *Studies in Economics and Finance*</li>
+<li><strong>DOI:</strong> <code>10.1108/sef-07-2024-0461</code></li>
+</ul>
+<p>这篇东西最有价值的不是“lottery demand”这个行为金融标签，而是它给了一个<strong>能直接落到短周期横截面的 raw alpha 说法</strong>：</p>
+<p>&gt; 用过去 <code>1h</code> 的 <code>5m</code> 收益里“最大那一根”作为 <code>MAX</code> 指标；<code>MAX</code> 越高，后续预期收益越低。</p>
+<p>OpenAlex 摘要里给出的核心结果也很直接：</p>
+<ul>
+<li>用 top-100 liquid cryptos 的高频数据；</li>
+<li>把 <code>MAX</code> 改成<strong>过去 1 小时内 <code>5m</code> log-return 的最大值</strong>；</li>
+<li>发现 <code>MAX</code> 上升 <code>1</code> 个标准差，对随后收益有 <strong><code>-0.043%</code></strong>（约 <code>-4.3bps</code>）的负向影响；</li>
+<li>相比 IVOL / skewness，作者结论更偏向：<strong>真正站得住的是 MAX 本身。</strong></li>
+</ul>
+<p>对我们 desk 来说，这就不是“又一篇行为金融注脚”，而是： <strong>“过去 1 小时里刚刚最像彩票票面的币，下一小时更该被 fade。”</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>base alpha 很清楚</strong>：<code>past-1h extreme 5m winner -&gt; next 15m~1h relative underperformance</code>。</li>
+<li>它属于我们当前更该补的那一类：</li>
+<li><code>raw alpha</code></li>
+<li><code>cross-sectional</code></li>
+<li><code>mean reversion / loser-fade / winner-fade</code></li>
+<li>这条线和最近做过的 <code>pairs / funding / options / Polymarket / OBI</code> 都不一样；它不依赖配对、盘口、外部 venue，也不依赖低频宏观数据，<strong>只靠公开 K 线就能先做最小实验。</strong></li>
+<li>但我这次用 Binance liquid-major perp 做的 portability quick probe 结果比较克制：</li>
+<li><strong>10 个 liquid majors、约 41.7 天、<code>5m</code> 粒度</strong>；</li>
+<li>每个时点按过去 <code>1h MAX</code> 做横截面排序，取<strong>低 MAX 组合 - 高 MAX 组合</strong>；</li>
+<li>next <code>15m</code> 平均多空收益差约 <strong><code>+0.29bps</code></strong>；</li>
+<li>next <code>1h</code> 平均多空收益差约 <strong><code>+1.09bps</code></strong>；</li>
+<li><code>MAX</code> 每升高 <code>1</code> 个横截面标准差，next <code>1h</code> 收益约降 <strong><code>0.53bps</code></strong>。</li>
+</ul>
+<p>也就是说：<strong>raw alpha 方向是对的，但 current liquid-major perp 迁移版更像“弱正 market-neutral router”，还不是可直接 taker 上线的完整策略。</strong></p>
+<h2>3. 为什么值得进研究池</h2>
+<p>因为它解决的是我们现在非常需要补的一块：</p>
+<h3>3.1 这是标准 raw alpha，不是 filter 假扮 alpha</h3>
+<p>它不是：</p>
+<ul>
+<li>regime gate</li>
+<li>风险覆盖层</li>
+<li>execution veto</li>
+<li>pairs admission</li>
+<li>funding/Polymarket 外部输入</li>
+</ul>
+<p>而是很直接的： <strong>横截面里，谁刚刚在短窗里打出最极端单根上涨，谁随后更容易相对回落。</strong></p>
+<h3>3.2 它天然适合 <code>5m / 15m / 1h</code> 最小实验</h3>
+<p>数据要求极低：</p>
+<ul>
+<li>公开可得</li>
+<li>只需要多币 <code>5m</code> K 线</li>
+<li>不需要订单簿</li>
+<li>不需要论文私有数据库</li>
+<li>不需要外部情绪源</li>
+</ul>
+<p>这点非常适合 bot7 当前目标：<strong>持续补 raw alpha 素材池，而不是把精力耗在难拿的数据上。</strong></p>
+<h3>3.3 它能直接服务我们已有横截面框架</h3>
+<p>这条线不是孤立主题，它很容易接到现有积累上：</p>
+<ul>
+<li>可以和 <code>BTC-beta-neutral residual reversal</code> 结合；</li>
+<li>可以和 <code>US session loser-bounce</code> 做对照；</li>
+<li>可以作为 <code>cross-sectional router</code>，决定哪些币值得给 reversal budget；</li>
+<li>也可以和 funding / OI / flow 组件拼成二阶段 admission。</li>
+</ul>
+<p>所以即便它本身未必单独够强，它也很像一个<strong>可复用的短窗横截面拥挤度特征</strong>。</p>
+<h2>4. 我做的最小 portability probe</h2>
+<h3>4.1 数据与口径</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M 公共 <code>5m</code> klines</li>
+<li>样本区间：<code>2026-03-08 03:40 UTC</code> 到 <code>2026-04-18 17:35 UTC</code></li>
+<li>样本长度：约 <code>41.7d</code></li>
+<li>币种：</li>
+<li><code>BTCUSDT</code></li>
+<li><code>ETHUSDT</code></li>
+<li><code>SOLUSDT</code></li>
+<li><code>BNBUSDT</code></li>
+<li><code>XRPUSDT</code></li>
+<li><code>DOGEUSDT</code></li>
+<li><code>ADAUSDT</code></li>
+<li><code>LINKUSDT</code></li>
+<li><code>AVAXUSDT</code></li>
+<li><code>LTCUSDT</code></li>
+</ul>
+<p>定义：</p>
+<ul>
+<li><code>MAX_1h</code> = 过去 <code>12</code> 根 <code>5m</code> 收益中的最大值</li>
+<li>每个 <code>5m</code> 时点做横截面排序</li>
+<li>组合：<strong>low-MAX basket - high-MAX basket</strong></li>
+<li>预测窗口：</li>
+<li>next <code>3</code> bars = next <code>15m</code></li>
+<li>next <code>12</code> bars = next <code>1h</code></li>
+</ul>
+<h3>4.2 快检结果</h3>
+<p>组合结果：</p>
+<ul>
+<li>next <code>15m</code>：<code>low - high = +0.29bps</code></li>
+<li>next <code>1h</code>：<code>low - high = +1.09bps</code></li>
+<li>next <code>15m</code> 胜率：<code>52.9%</code></li>
+<li>next <code>1h</code> 胜率：<code>54.8%</code></li>
+</ul>
+<p>分腿看：</p>
+<ul>
+<li>low-MAX 组合 next <code>15m / 1h</code>：约 <code>+0.33bps / +1.12bps</code></li>
+<li>high-MAX 组合 next <code>15m / 1h</code>：约 <code>+0.04bps / +0.03bps</code></li>
+</ul>
+<p>横截面斜率：</p>
+<ul>
+<li><code>MAX</code> 每升高 <code>1</code> 个横截面标准差：</li>
+<li>next <code>15m</code> 收益约少 <code>0.11bps</code></li>
+<li>next <code>1h</code> 收益约少 <code>0.53bps</code></li>
+</ul>
+<h2>5. 这组结果怎么解读</h2>
+<h3>5.1 它没有推翻论文方向</h3>
+<p>方向是一致的：</p>
+<ul>
+<li><code>MAX</code> 高 -&gt; 后续更差</li>
+<li>做多低 <code>MAX</code>、做空高 <code>MAX</code> 的 market-neutral 组合是正的</li>
+</ul>
+<p>所以这条线<strong>不是没有 portability</strong>。</p>
+<h3>5.2 但 edge 明显比论文摘要弱很多</h3>
+<p>论文摘要给的是：</p>
+<ul>
+<li><code>1 SD MAX increase -&gt; next return -4.3bps</code></li>
+</ul>
+<p>而我这次 liquid-major perp 快检只有：</p>
+<ul>
+<li><code>1 SD MAX increase -&gt; next 1h return -0.53bps</code></li>
+</ul>
+<p>差距不小。最可能的原因有三类：</p>
+<ol>
+<li><strong>样本宇宙不同</strong></li>
+</ol>
+<ul>
+<li>论文是 top-100 liquid cryptos；</li>
+<li>我这里只看 10 个最主流永续，大概率把“彩票 demand 最重”的尾部币裁掉了。</li>
+</ul>
+<ol>
+<li><strong>市场结构不同</strong></li>
+</ol>
+<ul>
+<li>论文更像全市场横截面定价；</li>
+<li>我们快检是 Binance liquid-major perpetual，更拥挤、更高效。</li>
+</ul>
+<ol>
+<li><strong>alpha 本来就更像横截面 ranking 特征，而非单腿裸信号</strong></li>
+</ol>
+<ul>
+<li>从结果看，更像 low-vs-high 排名有点用；</li>
+<li>但单独 short high-MAX 并不强，说明不能简化成“看到冲高币就空”。</li>
+</ul>
+<h2>6. 它到底适合被当成什么</h2>
+<p>我现在更倾向把它定位成：</p>
+<h3>6.1 一级：raw alpha 候选</h3>
+<p>因为 base alpha 确实清楚，而且可以独立回测。</p>
+<h3>6.2 二级：cross-sectional router / crowding feature</h3>
+<p>在 current Binance major perp 口径下，它更像：</p>
+<ul>
+<li>给 reversal basket 排序；</li>
+<li>给 market-neutral long-short 做 admission；</li>
+<li>给已有 mean-reversion alpha 加一层“别去追 lottery-like recent spikes”的 veto。</li>
+</ul>
+<h3>6.3 暂时不该被包装成“完整策略壳”</h3>
+<p>因为仅凭这次结果：</p>
+<ul>
+<li>gross edge 不厚；</li>
+<li>taker 成本大概率直接吃光；</li>
+<li>short-high-MAX 单腿版本不够硬；</li>
+<li>还没做更广 universe / 更细 liquidity bucket / funding / volume neutralization。</li>
+</ul>
+<p>所以它现在更像： <strong>值得继续压测的 raw alpha 原型</strong>，而不是“今晚就能接 OMS 的完整交易系统”。</p>
+<h2>7. 如何把它接到当前 desk 主线</h2>
+<p>最自然的三种接法：</p>
+<h3>7.1 当作横截面反转篮子里的第一层排序</h3>
+<p>先用 <code>MAX_1h</code> 做 primary rank：</p>
+<ul>
+<li>long 最低分位</li>
+<li>short 最高分位</li>
+<li>再叠加成交额、波动率、中性化约束</li>
+</ul>
+<p>这最贴近论文原始精神。</p>
+<h3>7.2 当作已有 reversal alpha 的拥挤度 veto</h3>
+<p>比如已有某个 loser-bounce / RSI panic-fade / residual reversal 信号时：</p>
+<ul>
+<li>若标的刚在过去 <code>1h</code> 出现极端正向 <code>MAX</code>，则降低做多优先级；</li>
+<li>若要做空，则允许更高预算。</li>
+</ul>
+<h3>7.3 当作 mean-reversion 对象选择器</h3>
+<p>很多短周期反转策略死在“全市场都测，但 edge 只在一小撮被过度追逐的币上”。 <code>MAX</code> 很像一个<strong>拥挤度代理变量</strong>，适合先决定谁进入反转候选池。</p>
+<h2>8. 与 <code>1m / 3m / 5m / 15m</code> 的关系</h2>
+<ul>
+<li><strong>最自然母频率：<code>5m</code></strong></li>
+<li>因为论文定义本身就是过去 <code>1h</code> 的 <code>5m</code> 极值。</li>
+<li><strong>最自然持有窗：<code>15m ~ 1h</code></strong></li>
+<li>也是这次快检里 slightly positive 的区间。</li>
+<li><strong><code>1m / 3m</code> 更适合做 child execution，而不是原始信号生成</strong></li>
+<li>比如 <code>5m</code> 生成横截面 rank；</li>
+<li><code>1m/3m</code> 再看是否已有价格回落、盘口是否支持入场。</li>
+<li><strong><code>15m</code> 不适合重定义 MAX 本体</strong></li>
+<li>若把 <code>MAX</code> 改成过去 <code>1h</code> 里的最大 <code>15m</code> return，味道就变了，容易丢掉论文的微观拥挤信息。</li>
+</ul>
+<h2>9. 风险与保留意见</h2>
+<h3>9.1 最大风险：论文 edge 主要来自长尾币，不来自 majors</h3>
+<p>如果真是这样，那么：</p>
+<ul>
+<li>研究上它仍成立；</li>
+<li>但实盘上会碰到更高冲击成本、更差流动性和更难借券/更高资金费率噪音。</li>
+</ul>
+<h3>9.2 另一个风险：它其实需要横截面中性化，不适合裸方向化</h3>
+<p>如果没有：</p>
+<ul>
+<li>beta neutral</li>
+<li>sector / theme neutral</li>
+<li>liquidity scaling</li>
+<li>funding / fee control</li>
+</ul>
+<p>那就容易把本来属于“relative underperformance”的 edge，误做成“绝对价格要跌”的错误版本。</p>
+<h3>9.3 还有一个现实风险：event crowding 太快</h3>
+<p>主流永续里，过去 1h 的极端 winner 很可能已经被各种 reversal / vol-selling / basis desks 部分套利掉，所以主流币口径 edge 会明显变薄。</p>
+<h2>10. 下一步怎么测</h2>
+<p>这条线值得继续，但必须按下面顺序测，别直接上线：</p>
+<ol>
+<li><strong>把 universe 扩到 <code>30~80</code> 个可交易币</strong></li>
+</ol>
+<ul>
+<li>至少分成 <code>majors / upper-mid / tail-liquid</code> 三档，检查 alpha 是否只活在尾部。</li>
+</ul>
+<ol>
+<li><strong>做严格横截面中性化</strong></li>
+</ol>
+<ul>
+<li>market beta neutral</li>
+<li>sector / L1-L2 / meme 分组约束</li>
+<li>quote-volume bucket neutral</li>
+</ul>
+<ol>
+<li><strong>把 <code>MAX</code> 和别的拥挤变量分开测</strong></li>
+</ol>
+<ul>
+<li>同时控制 <code>IVOL_1h</code>、<code>skew_1h</code>、<code>ret_1h</code></li>
+<li>看 <code>MAX</code> 是否还有独立解释力</li>
+</ul>
+<ol>
+<li><strong>做 cost ladder</strong></li>
+</ol>
+<ul>
+<li><code>0 / 2 / 4 / 6 / 8bps</code> 五档</li>
+<li>分别测 <code>15m</code> 与 <code>1h</code> horizon</li>
+<li>看它到底更适合 maker router 还是 taker router</li>
+</ul>
+<ol>
+<li><strong>测试更像 desk 版本的两阶段结构</strong></li>
+</ol>
+<ul>
+<li>stage A：<code>5m MAX rank</code></li>
+<li>stage B：<code>1m/3m</code> 入场确认（比如 pullback 一格、成交额回落、flow 转弱）</li>
+</ul>
+<ol>
+<li><strong>明确它服务哪个 raw alpha 母板</strong></li>
+</ol>
+<ul>
+<li>如果 standalone 不够厚，就把它正式降级为：</li>
+<li><code>cross-sectional reversal admission feature</code></li>
+<li>或 <code>winner-fade basket router</code></li>
+</ul>
+<h2>11. 一句话 verdict</h2>
+<p>这篇 2025 论文给出的 <strong>intraday MAX / lottery-demand fade</strong>，在定义上是很干净的 <code>cross-sectional mean-reversion raw alpha</code>；但 current Binance liquid-major perp <code>5m</code> 快检只显示出<strong>偏弱但同方向</strong>的 edge，所以它现在更像<strong>值得继续压测的 raw alpha 原型 / router 特征</strong>，还不是可以直接照抄上线的完整策略。</p>
+<h2>12. 来源</h2>
+<ul>
+<li>Author: Manisha Yadav</li>
+<li>Year: 2025</li>
+<li>Title: *Intraday lottery demands in cryptocurrency market*</li>
+<li>Venue: *Studies in Economics and Finance*</li>
+<li>DOI: <code>10.1108/sef-07-2024-0461</code></li>
+<li>DOI URL: <a href="https://doi.org/10.1108/sef-07-2024-0461">https://doi.org/10.1108/sef-07-2024-0461</a></li>
+<li>Crossref URL: <a href="https://api.crossref.org/works/10.1108/sef-07-2024-0461">https://api.crossref.org/works/10.1108/sef-07-2024-0461</a></li>
+<li>OpenAlex URL: <a href="https://api.openalex.org/works/https://doi.org/10.1108/sef-07-2024-0461">https://api.openalex.org/works/https://doi.org/10.1108/sef-07-2024-0461</a></li>
+<li>本地 artifacts：</li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_intraday_max_lottery_summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_intraday_max_lottery_ls.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_intraday_max_lottery_panel.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_intraday_max_lottery_strongshort.csv</code></li>
+</ul>
+</body>
+</html>

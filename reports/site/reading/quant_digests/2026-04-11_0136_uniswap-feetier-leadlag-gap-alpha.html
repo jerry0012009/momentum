@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 Uniswap 论文只读成“DEX 价格发现变强了”：对 short-cycle desk，更该先测的是「same-pair fee-tier lead-lag gap × cross-fee-tier close」这条 raw alpha 候选</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 Uniswap 论文只读成“DEX 价格发现变强了”：对 short-cycle desk，更该先测的是「same-pair fee-tier lead-lag gap × cross-fee-tier close」这条 raw alpha 候选</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-11 01:37 UTC</span>
+      <span class="pill">研究时间：2026-04-11 01:36 UTC</span>
+      <span class="pill">类型：2025 *Journal of Futures Markets* 开放获取全文 PDF + 原文 Table 3/4/6 + GeckoTerminal 公共 `1m` portability probe</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/same-asset/same-dex/cross-fee-tier/uniswap-v3/lead-lag/price-discovery/eth-usdt/1m/3m/5m/15m/paper/fulltext/public-probe/gas/mev/cost/risk</span>
+      <span class="pill">证据类型：论文实证 + 公共 minute 数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-11_0136_uniswap-feetier-leadlag-gap-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-11 01:36 UTC</li>
+<li>类型：2025 *Journal of Futures Markets* 开放获取全文 PDF + 原文 Table 3/4/6 + GeckoTerminal 公共 <code>1m</code> portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一币对在 Uniswap v3 的不同 fee tier 并不会永远同步；低费率、流动性更集中的池子更容易先吸收信息，而高费率/更钝的池子会短暂滞后。于是可交易对象不是“ETH 会涨还是跌”，而是 <code>same-pair cross-fee-tier price gap</code> 会不会向更一致的价格回归。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否（alpha 本体清楚，但实盘还要补 DEX 双腿/借贷或 CEX 对冲、gas、MEV、失败成交与路由细节）</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/same-asset/same-dex/cross-fee-tier/uniswap-v3/lead-lag/price-discovery/eth-usdt/1m/3m/5m/15m/paper/fulltext/public-probe/gas/mev/cost/risk</li>
+<li>证据类型：论文实证 + 公共 minute 数据 portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主论文是：</p>
+<ul>
+<li><strong>Alexander, Carol; Chen, Xi; Deng, Jun; Fu, Qi (2025)</strong></li>
+<li><strong>Title:</strong> *Price Discovery and Efficiency in Uniswap Liquidity Pools*</li>
+<li><strong>Venue:</strong> *Journal of Futures Markets*</li>
+<li><strong>DOI:</strong> <code>10.1002/fut.22593</code></li>
+<li><strong>Readable URL:</strong> &lt;<a href="https://doi.org/10.1002/fut.22593&gt;">https://doi.org/10.1002/fut.22593&gt;</a></li>
+<li><strong>Open-access PDF（Figshare repository）:</strong> &lt;<a href="https://figshare.com/articles/journal_contribution/Price_Discovery_and_Efficiency_in_Uniswap_Liquidity_Pools/29209757&gt;">https://figshare.com/articles/journal_contribution/Price_Discovery_and_Efficiency_in_Uniswap_Liquidity_Pools/29209757&gt;</a></li>
+<li><strong>Repo / code status:</strong> 论文说明 <code>Python + R scripts available upon request</code>，未见公开 GitHub 仓库</li>
+</ul>
+<p>这篇 paper 最容易被读成一句空话：</p>
+<p>&gt; <code>Uniswap v3 比 v2 更有效，某些 v3 池子的 price discovery 甚至逼近 Bitstamp。</code></p>
+<p>但对我们 desk 真正更值钱的，不是这句市场结构总结，而是它隐含的一条更硬的 raw alpha 候选：</p>
+<p>&gt; <strong>同一币对、同一个 DEX、不同 fee tier 之间，本身就会出现短时 lead-lag；尤其是 <code>0.05%</code> 池子，往往比 <code>0.30%</code> 池子和 v2 更快吸收信息。</strong></p>
+<p>一句话核心结论：</p>
+<p>&gt; <strong>别只把这篇 paper 当 DEX 市场质量报告；更值得先做最小实验的是：把 <code>0.05%</code> fee pool 当 leader，把 <code>0.30%/v2</code> 当 lagging leg，去测同币对跨 fee-tier 的短时 price-gap close。</strong></p>
+<p>一句话证明方式：</p>
+<p>&gt; <strong>论文用近 3 年、11 个 token pair 的 minute-level 数据，做 Granger causality、component share / modified information share、spillover 与回归解释；我再补一个公开可抓的 Uniswap v3 <code>1m</code> probe，先看最近样本里 <code>0.05%</code> 池领先 <code>0.30%</code> 池这件事有没有 first-pass 痕迹。</strong></p>
+<h2>2. 为什么这条线值得单独写，而不是并到旧的 DEX / price-discovery 主题里</h2>
+<p>这次单独拎出来，是因为它和现有 digest 里的几条线并不一样：</p>
+<ul>
+<li>它<strong>不是</strong> <code>CEX ↔ DEX</code> 同资产价差关闭（那更像跨 venue spatial arb）；</li>
+<li>它<strong>不是</strong> <code>same-chain cross-DEX pool arbitrage</code>（那是 Uniswap / Sushi / Curve 等不同协议间的价差）；</li>
+<li>它也<strong>不是</strong> “哪边更有效”的机制空结论。</li>
+</ul>
+<p>这条线更具体：</p>
+<p>&gt; <strong>同一条链、同一个协议、同一个币对，仅仅因为 fee tier 和池子结构不同，就会形成不同的信息吸收速度。</strong></p>
+<p>所以它的 base alpha 很清楚：</p>
+<p>&gt; <strong>cross-fee-tier relative-value mean reversion。</strong></p>
+<p>这不是 filter / regime / overlay；它是一条可定义入场、出场与持有窗口的 raw alpha 候选。</p>
+<h2>3. 论文里最该拿走的，不是“v3 更先进”，而是这 4 个 hard findings</h2>
+<h3>3.1 <code>0.05%</code> 池经常比 <code>0.30%</code> 池和 v2 更先反应</h3>
+<p>论文对 11 个 token pair 做 daily VECM / CS / MIS / spillover 之后，结论非常直接：</p>
+<ul>
+<li><code>Uniswap v3 (005)</code> 的价格发现能力，通常高于 <code>v3 (030)</code> 与 <code>v2</code>；</li>
+<li>文中原话几乎就是：<strong><code>v3 (005)</code> prices tend to lead those on <code>v2</code> and <code>v3 (030)</code></strong>；</li>
+<li>对部分 pair，<code>v3 (005)</code> 的 median CS / MIS 甚至高于 Bitstamp。</li>
+</ul>
+<p>这对交易最重要，因为它把 <code>哪个池先动</code> 这件事说清楚了。</p>
+<h3>3.2 低 fee tier 更像信息腿，高 fee tier 更像容量腿</h3>
+<p>论文的解释不是玄学，而是很像 desk 直觉：</p>
+<ul>
+<li>低费率池（尤其 <code>0.01% / 0.05%</code>）更适合低波动 pair，交易环境更高效；</li>
+<li>高费率 <code>0.30%</code> 池更适合高波动 pair 和大额单，但 price discovery 更弱；</li>
+<li>大单会<strong>降低</strong> <code>v3 (005)</code> 的价格发现能力，却会<strong>提高</strong> <code>v3 (030)</code> 与 <code>v2</code> 的价格发现能力。</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>小而灵的池子更像“先知道”的腿，大而厚的池子更像“后补成交”的腿。</strong></p>
+<p>这正是 lead-lag spread 会出现的微观来源。</p>
+<h3>3.3 波动高时，Uniswap 整体更像 shock receiver</h3>
+<p>Table 6 与正文结论都指出：</p>
+<ul>
+<li>波动上升时，Uniswap 各池的 CS / MIS / efficiency 普遍下降；</li>
+<li>说明更 informed 的交易者在高波动期更偏向 CEX；</li>
+<li>Uniswap 上相对更多的可能是 speculator / arbitrage flow。</li>
+</ul>
+<p>所以这条 alpha 不是全天候都该开：</p>
+<p>&gt; <strong>高波动时 cross-fee-tier gap 可能更大，但也更容易夹带 gas / congestion / MEV / non-informational flow。</strong></p>
+<h3>3.4 paper 已经把“哪个 pair 更适合哪个 fee tier”讲出来了</h3>
+<p>文中对 <code>ETH-USDC / ETH-USDT / BTC-ETH / DAI-USDC / ETH-DAI / LINK-ETH / UNI-BTC / LINK-USDT</code> 等 pair 做了比较，核心模式是：</p>
+<ul>
+<li><code>0.01% / 0.05%</code> 更适合低波动 pair；</li>
+<li><code>0.30%</code> 更像高波动 pair 的 liquidity bucket；</li>
+<li><code>0.05%</code> 池在多个 pair 上表现出更强 price discovery。</li>
+</ul>
+<p>所以这条线不是“所有 fee tier 都互相平等”。</p>
+<p>真正更像 desk 研究对象的是：</p>
+<ol>
+<li><strong>先选 pair</strong>；</li>
+<li><strong>再指定 leader fee tier</strong>；</li>
+<li><strong>最后才测 spread-close。</strong></li>
+</ol>
+<h2>4. 论文里最能直接转成交易语言的表格结论</h2>
+<h3>4.1 Table 3：Granger causality 显示不同 fee tier 之间存在稳定 lead-lag 关系</h3>
+<p>Table 3 最重要的不是死盯某一格百分比，而是看<strong>整篇 paper 的综合归纳</strong>：</p>
+<ul>
+<li><code>v3 (005)</code>、<code>v3 (030)</code>、<code>v2</code> 之间并不是同步一口价；</li>
+<li>不同 fee tier 之间存在持续的 Granger-causal linkage；</li>
+<li>结合 Table 4 的 CS / MIS 与 Table 5 的效率检验，作者最后明确总结为：<strong>比较 Uniswap 不同池子时，<code>v3 (005)</code> 往往领先 <code>v3 (030)</code> 与 <code>v2</code>。</strong></li>
+</ul>
+<p>也就是说，Table 3 给的是“有稳定传导关系”，而 paper 的总结合成结论给的是“哪条腿更像 leader”。</p>
+<h3>4.2 Table 4：<code>0.05%</code> 池的 CS / MIS 普遍更强</h3>
+<p>Table 4a 的整体模式非常一致：</p>
+<ul>
+<li><code>v3 (005)</code> 的 median CS / MIS 基本高于 <code>v3 (030)</code> 和 <code>v2</code>；</li>
+<li><code>v3 (030)</code> 常常是几个池里最弱的一腿；</li>
+<li>部分 pair 上 <code>v3 (005)</code> 甚至能压过 Bitstamp。</li>
+</ul>
+<p>这说明它不是偶尔的 event-time 现象，而是样本期内相对稳定的结构特征。</p>
+<h3>4.3 Table 6：波动 / basis / 大单对不同 fee tier 的作用方向不同</h3>
+<p>这张表对交易设计尤其重要：</p>
+<ul>
+<li><strong>Vol</strong>：大多数池子的 CS / MIS / ADH 都随波动升高而下降；</li>
+<li><strong>Basis</strong>：Uniswap 与 Coinbase / Bitstamp 的 basis 变大，通常会拖累 price discovery；</li>
+<li><strong>LTR（large trade ratio）</strong>：</li>
+<li>对 <code>v3 (005)</code> 多数 pair 是<strong>负向</strong>；</li>
+<li>对 <code>v3 (030)</code> 与 <code>v2</code> 则常是<strong>正向</strong>。</li>
+</ul>
+<p>翻译成策略语言就是：</p>
+<p>&gt; <strong><code>0.05%</code> 池更适合做“快信息腿”；<code>0.30%</code> 池更适合承接大额/高波动流。</strong></p>
+<p>所以我们不该只看 spread 是否偏了，还该看：</p>
+<ul>
+<li>当前是不是高波动时段；</li>
+<li>leader 池是不是仍然活跃；</li>
+<li>lagging 池是不是只是因为大额单或流动性迁移才临时偏离。</li>
+</ul>
+<h2>5. 本地 public-data probe：最近样本里，这条线还有没有 first verdict？</h2>
+<p>我用 <strong>GeckoTerminal 公共 API</strong> 做了一个非常克制的最小快检，只看：</p>
+<ul>
+<li>Ethereum 主网 Uniswap v3</li>
+<li>同一币对：<code>WETH / USDT</code></li>
+<li>fee tiers：</li>
+<li><code>0.05%</code> pool：<code>0x11b815efB8f581194ae79006d24E0d814B7697F6</code></li>
+<li><code>0.30%</code> pool：<code>0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36</code></li>
+<li>频率：<code>1m</code></li>
+<li>数据：各池最近 <code>1000</code> 条 minute OHLCV；两池可对齐后的重叠样本约 <strong>393 分钟</strong></li>
+</ul>
+<p>本地 artifact：</p>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/uniswap_fee_tier_leadlag_probe_summary_2026-04-11.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/uniswap_fee_tier_leadlag_probe_detail_2026-04-11.csv</code></li>
+</ul>
+<h3>5.1 最近重叠样本里，<code>0.05%</code> 池确实更像 leader</h3>
+<p>在这段最近窗口中：</p>
+<ul>
+<li>cross-fee-tier log spread 的均值约 <strong>+0.23 bps</strong>；</li>
+<li>spread 标准差约 <strong>2.46 bps</strong>；</li>
+<li>return cross-corr 里：</li>
+<li><code>corr(r_005[t-1], r_030[t]) ≈ 0.483</code></li>
+<li><code>corr(r_030[t-1], r_005[t]) ≈ 0.228</code></li>
+</ul>
+<p>这不是论文级证明，但至少和 paper 的方向一致：</p>
+<p>&gt; <strong>最近样本里，<code>0.05%</code> 池的一步领先相关性，明显强于 <code>0.30%</code> 池反过来的领先相关性。</strong></p>
+<h3>5.2 若只做 spread 极端回归，最近样本里有 first-pass 正 edge</h3>
+<p>我用很朴素的壳：</p>
+<ul>
+<li>定义 <code>spread = log(price_005 / price_030)</code></li>
+<li>用 <code>240</code> 分钟滚动均值/标准差构造 <code>z-score</code></li>
+<li>当 <code>|z| &gt; 2</code> 时，做 <strong>spread-close</strong>（<code>z&gt;2</code> 则 short spread，<code>z&lt;-2</code> 则 long spread）</li>
+<li>看未来 <code>1 / 3 / 5 / 15</code> 分钟的 signed spread-close bps</li>
+</ul>
+<p>结果（样本很小，只作 first verdict）：</p>
+<ul>
+<li><code>1m</code>：约 <strong>20</strong> 次事件，均值约 <strong>+6.82 bps</strong>，胜率约 <strong>85%</strong></li>
+<li><code>3m</code>：约 <strong>20</strong> 次事件，均值约 <strong>+5.97 bps</strong>，胜率约 <strong>90%</strong></li>
+<li><code>5m</code>：约 <strong>20</strong> 次事件，均值约 <strong>+6.92 bps</strong>，胜率约 <strong>100%</strong></li>
+<li><code>15m</code>：约 <strong>20</strong> 次事件，均值约 <strong>+7.46 bps</strong>，胜率约 <strong>95%</strong></li>
+</ul>
+<p>这组数字不能直接当 production PnL，但它至少说明：</p>
+<p>&gt; <strong>最近样本里，跨 fee-tier 的极端价差没有立刻塌成随机噪声，仍有可见的 close 倾向。</strong></p>
+<h2>6. 但必须诚实：这轮 probe 很容易高估</h2>
+<p>这里要非常保守。</p>
+<h3>6.1 当前还不是 executable quote</h3>
+<p>现在用的是 pool 的 minute OHLCV close proxy，不是：</p>
+<ul>
+<li>同步可执行 marginal quote</li>
+<li>指定 notional 后的 executable quote</li>
+<li>扣掉 gas / priority fee / MEV buffer 后的净价差</li>
+</ul>
+<p>所以这些 bps 不是“可以直接赚到”的 bps。</p>
+<h3>6.2 只对齐到了 393 个重叠分钟，样本很薄</h3>
+<p><code>0.30%</code> pool 的分钟活跃度明显比 <code>0.05%</code> 差，导致最近对齐样本不多。</p>
+<p>这本身也许就是信息：</p>
+<ul>
+<li><code>0.05%</code> 池更像主信息腿；</li>
+<li><code>0.30%</code> 更像低频、承接型、容量型腿。</li>
+</ul>
+<p>但它也意味着：</p>
+<p>&gt; <strong>当前快检更像“admission signal”而不是“足够大样本的策略定稿”。</strong></p>
+<h3>6.3 on-chain 真正的敌人不只是手续费</h3>
+<p>这条线最容易被忽略的成本包括：</p>
+<ul>
+<li>gas fee</li>
+<li>priority fee / inclusion delay</li>
+<li>MEV / sandwich / backrun risk</li>
+<li>pool 状态在同一块内被别人先吃掉</li>
+<li>你做第二条腿时 quote 已经变了</li>
+</ul>
+<p>所以如果真的做 production，核心问题不是“alpha 有没有”，而是：</p>
+<p>&gt; <strong>net executable edge 扣完这些链上摩擦后还剩多少。</strong></p>
+<h2>6.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative value / stat-arb / market-neutral-ish</li>
+<li>基础 alpha：same-pair cross-fee-tier price-gap close</li>
+<li>regime：优先低至中等波动、链上拥堵正常、leader pool 活跃而 lagging pool 非极端稀疏时</li>
+<li>filter / veto：<code>|z|</code> 不够大不做；gas / priority fee / MEV buffer 不过线不做；大额单冲击后 lagging pool 若本身 liquidity 太薄也不做</li>
+<li>risk / sizing / execution overlay：按 expected executable edge 分层 sizing；限制单次 notional 只打在不会把 pool 自己推回来的深度内；设置 <code>time stop + spread stop + chain congestion veto</code></li>
+</ul>
+<h2>7. 为什么它和当前 desk 仍然相关</h2>
+<p>虽然当前 desk 主战场不是纯 DEX，但这条线仍有直接价值：</p>
+<h3>7.1 它补的是“同协议内部”这层 relative-value</h3>
+<p>我们已经有：</p>
+<ul>
+<li>CEX ↔ DEX spread</li>
+<li>same-chain cross-DEX spread</li>
+<li>spot ↔ futures / perp basis</li>
+<li>cross-venue futures basis</li>
+</ul>
+<p>但<strong>同协议、同币对、不同 fee bucket</strong> 这层还没单独写过。</p>
+<p>这层很有研究价值，因为它更纯：</p>
+<ul>
+<li>不涉及不同协议的实现差异；</li>
+<li>不涉及不同 venue 的 custody / API / outage 差异；</li>
+<li>只剩下 <strong>fee tier + liquidity distribution + informed flow routing</strong>。</li>
+</ul>
+<h3>7.2 它也能反哺更大的 CEX/DEX 壳</h3>
+<p>即使最后不做独立策略，这条线也能服务：</p>
+<ul>
+<li>DEX leg 该打哪个池</li>
+<li>某个池的报价是否更适合作为 leader quote</li>
+<li>同链路由时是否该优先 <code>0.05%</code> 还是 <code>0.30%</code></li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; <strong>它既可以是独立 raw alpha candidate，也可以是未来 CEX/DEX routing shell 的 routing prior。</strong></p>
+<h2>8. 可复刻的最小实验</h2>
+<h3>数据源 / 公开性 / 更新频率</h3>
+<ul>
+<li><strong>论文层</strong>：开放获取 PDF（Figshare repository）</li>
+<li><strong>链上市场数据</strong>：GeckoTerminal / DexScreener / Uniswap subgraph / Dune（公开）</li>
+<li><strong>更新频率</strong>：可做到分钟级，进一步可下探到 swap-level / block-level</li>
+</ul>
+<h3>最小研究假设</h3>
+<p>&gt; 对同一币对，若 <code>0.05%</code> pool 相对 <code>0.30%</code> pool 的 price spread 明显偏离自己的滚动带宽，未来 <code>1m ~ 15m</code> 更容易发生 spread-close，而不是继续无限扩散。</p>
+<h3>最小回测切口</h3>
+<ol>
+<li>先只做 <code>WETH/USDT</code>、<code>WETH/USDC</code></li>
+<li>只比较 <code>0.05%</code> 与 <code>0.30%</code></li>
+<li>用 <code>1m / 3m / 5m / 15m</code> 测：</li>
+</ol>
+<ul>
+<li>leader-lag corr</li>
+<li>signed spread-close</li>
+<li>friction ladder 前后的剩余 edge</li>
+</ul>
+<h2>9. 下一步怎么测</h2>
+<p>下一步别急着扩到十几个 pair，我会先补这 4 件最值钱的事：</p>
+<ol>
+<li><strong>把 minute close proxy 升级成 swap / quote 级 executable edge</strong></li>
+</ol>
+<ul>
+<li>直接抓 pool swap 与 liquidity state</li>
+<li>对固定 notional 计算真实 executable price</li>
+</ul>
+<ol>
+<li><strong>把 cost ladder 补完整</strong></li>
+</ol>
+<ul>
+<li>gas</li>
+<li>priority fee</li>
+<li>MEV / reordering buffer</li>
+<li>单腿失败概率</li>
+</ul>
+<ol>
+<li><strong>把 pair 扩到 <code>ETH-USDC / ETH-USDT / DAI-USDC</code></strong></li>
+</ol>
+<ul>
+<li>检查是不是只有主流稳定币 pair 才成立</li>
+<li>还是更多 low-volatility pair 都能看到类似结构</li>
+</ul>
+<ol>
+<li><strong>做“独立交易壳”与“routing prior”两条分支</strong></li>
+</ol>
+<ul>
+<li>A 分支：直接做 cross-fee-tier spread-close</li>
+<li>B 分支：把 <code>0.05%</code> 视作 leader quote，只拿来指导更大的 CEX/DEX 价差交易</li>
+</ul>
+<p>如果 executable 版本扣完链上摩擦后还剩正 edge，它就能进 DEX-RV clean replication；如果一扣 gas / MEV 就塌，那它仍然值得保留为 <strong>DEX quote selection / routing prior</strong>，不算白做。</p>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>Alexander, C., Chen, X., Deng, J., &amp; Fu, Q. (2025). _Price Discovery and Efficiency in Uniswap Liquidity Pools_. Journal of Futures Markets.</strong></li>
+</ol>
+<ul>
+<li>DOI: &lt;<a href="https://doi.org/10.1002/fut.22593&gt;">https://doi.org/10.1002/fut.22593&gt;</a></li>
+<li>Publisher page: &lt;<a href="https://onlinelibrary.wiley.com/doi/10.1002/fut.22593&gt;">https://onlinelibrary.wiley.com/doi/10.1002/fut.22593&gt;</a></li>
+<li>OA repository / PDF: &lt;<a href="https://figshare.com/articles/journal_contribution/Price_Discovery_and_Efficiency_in_Uniswap_Liquidity_Pools/29209757&gt;">https://figshare.com/articles/journal_contribution/Price_Discovery_and_Efficiency_in_Uniswap_Liquidity_Pools/29209757&gt;</a></li>
+</ul>
+<ol>
+<li><strong>GeckoTerminal API</strong></li>
+</ol>
+<ul>
+<li>Pool info / OHLCV docs root: &lt;<a href="https://www.geckoterminal.com/dex-api&gt;">https://www.geckoterminal.com/dex-api&gt;</a></li>
+<li>Pools used in probe:</li>
+<li><code>WETH / USDT 0.05%</code>: <code>0x11b815efB8f581194ae79006d24E0d814B7697F6</code></li>
+<li><code>WETH / USDT 0.30%</code>: <code>0x4e68Ccd3E89f51C3074ca5072bbAC773960dFa36</code></li>
+</ul>
+<ol>
+<li><strong>本地 portability artifacts</strong></li>
+</ol>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/uniswap_fee_tier_leadlag_probe_summary_2026-04-11.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/uniswap_fee_tier_leadlag_probe_detail_2026-04-11.csv</code></li>
+</ul>
+</body>
+</html>

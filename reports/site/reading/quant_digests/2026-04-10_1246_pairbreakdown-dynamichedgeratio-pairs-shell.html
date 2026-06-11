@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>pair-breakdown veto × dynamic hedge-ratio pairs shell</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>pair-breakdown veto × dynamic hedge-ratio pairs shell</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-10 13:01 UTC</span>
+      <span class="pill">研究时间：2026-04-10 12:46 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `src/strategies/pairs_trading.py`）</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/dynamic-hedge-ratio/pair-breakdown-veto/binance/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：工程证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-10_1246_pairbreakdown-dynamichedgeratio-pairs-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-10 12:46 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>src/strategies/pairs_trading.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>cointegrated spread mean reversion</code>（价差偏离过大后向均值回归）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/dynamic-hedge-ratio/pair-breakdown-veto/binance/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：工程证据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了 <strong>mefai-dev / mefai-autotrade</strong> 里的 <code>src/strategies/pairs_trading.py</code>。它不是只给一个“协整 + z-score”口号，而是把 pairs 真正写成了完整策略壳：<strong>先扫 pair，再做 admission，再动态更新 hedge ratio，再在关系失效时强制平仓</strong>。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 对 short-cycle desk，pairs 的关键不只是“spread 到 2σ 就 fade”，而是<strong>持续确认这对资产还值不值得做</strong>；最值钱的分支是 <code>pair-breakdown veto</code>，不是固定 z-score 本身。</li>
+<li><strong>一句话证明方式：</strong> 源码把 pair admission 和存活条件写得很具体：<code>correlation &gt; 0.7</code>、<code>cointegration p &lt; 0.05</code>、<code>half-life ∈ [1, 50]</code>，并且每 <code>20</code> 根 bar 重新验证一次；一旦失效就触发 <code>pair_breakdown</code> 退出。</li>
+<li>这份实现里的完整策略骨架很清楚：<code>entry = |z| &gt;= 2.0</code>，<code>exit = |z| &lt;= 0.5</code>，<code>stop = |z| &gt;= 3.0</code>，<code>hedge_ratio_window = 30</code>，<code>lookback = 60</code>，<code>max_notional = 10000</code>，<code>risk_pct = 1%</code>。</li>
+<li>真正适合我们 desk 借的，不是它简化版 ADF 近似本身，而是<strong>admission / revalidation / breakdown exit</strong> 三段式；这让 pairs 不再像“永远有效的静态关系”，而更像可交易、可失效、可撤退的 live alpha。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>当前 <code>momentum</code> 已经积累了不少单资产趋势、均值回归、funding/basis、microstructure 线索，但 <strong>pairs / stat-arb 这条线最容易在 short-cycle 里犯的错</strong>，就是只盯 entry 阈值，不盯关系是否已经坏掉。这个 repo 的价值在于把 pairs 拆成 4 层：</p>
+<ol>
+<li><strong>pair selection</strong>：不是随便抓两个高相关币；</li>
+<li><strong>spread alpha</strong>：偏离够大才做；</li>
+<li><strong>dynamic hedge</strong>：仓位比例要滚动更新；</li>
+<li><strong>breakdown veto</strong>：关系失效就别继续“等回归”。</li>
+<p>这很适合补进我们当前 raw alpha 素材池，而且完全能映射到 <code>5m/15m</code> 最小实验。</p>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / market-neutral / pairs mean reversion</li>
+<li>基础 alpha：协整 spread 的短周期均值回归</li>
+<li>regime：仅在 pair 仍满足高相关、协整显著、half-life 合理时开机</li>
+<li>filter / veto：<code>corr &gt; 0.7</code>、<code>p &lt; 0.05</code>、<code>half-life ∈ [1,50]</code>、pair revalidation fail 即退出</li>
+<li>risk / sizing / execution overlay：rolling hedge ratio、<code>2σ</code> 入场 / <code>0.5σ</code> 出场 / <code>3σ</code> 止损、名义上限、<code>risk_pct</code> 仓位限制</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设：</strong> 在 Binance 高流动永续里，pairs 的 edge 不主要来自“更花的 entry 公式”，而来自<strong>动态 admission + breakdown exit</strong>；如果不做 live revalidation，很多看似便宜的 z-score fade 会拖成坏关系。</li>
+<li><strong>一个可计算定义：</strong></li>
+</ul>
+<ol>
+<li>universe 先取 <code>BTC / ETH / SOL / BNB / XRP / DOGE / ADA / LINK</code> 等高流动 perp；</li>
+<li>每天或每 <code>4h</code> 扫一次 pair：保留 <code>corr &gt; 0.7</code>、<code>EG p &lt; 0.05</code>、<code>half-life ∈ [1, 50]</code>；</li>
+<li><code>15m</code> 主交易，<code>spread_z = (spread - mean_60) / std_60</code>；</li>
+<li><code>|z| &gt;= 2</code> 入场，<code>|z| &lt;= 0.5</code> 出场，<code>|z| &gt;= 3</code> 止损；</li>
+<li>每 <code>20</code> 根 bar 重验 pair；若协整失效直接平仓。</li>
+</ol>
+<ul>
+<li><strong>最小回测切口：</strong> Binance USDⓈ-M <code>15m</code> 为主，<code>5m</code> 做 child execution；样本先跑 <code>2024-01-01</code> 以来，先只做 top-liquid pairs。</li>
+<li><strong>最该先看哪 1~2 个指标：</strong></li>
+</ul>
+<ol>
+<li><code>post-cost bps / trade</code></li>
+<li><code>breakdown-exit share</code>（多少亏损单其实来自 pair 已失效却还在等回归）</li>
+<p>第二层再看 <code>positive-window ratio</code> 和 <code>pair survival days</code>。</p>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这份 repo 的统计检验是<strong>轻量近似版</strong>，不能把它当论文级检验；真正上线前要换成更严谨的 EG/Johansen/rolling OLS 工具链。</li>
+<li><code>5m/15m</code> 下协整关系比日频更脆，revalidation 频率本身也是参数，过慢会放大坏关系，过快会造成 churn。</li>
+<li>只看相关性和 p-value 还不够，成本、funding、交易时段、单腿流动性差异都会让“看起来中性”的 pair 变成假中性。</li>
+<li>所以最合理的读法不是“源码参数可以照抄”，而是：<strong>这份 repo 给了一个更像 production 的 pairs 壳——尤其是 live breakdown veto 这一刀。</strong></li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>mefai-dev. (2026). *Mefai Autotrade*. GitHub repository.</li>
+<p>Repo URL: <code><a href="https://github.com/mefai-dev/mefai-autotrade">https://github.com/mefai-dev/mefai-autotrade</a></code></p>
+<li>Source file: <code>src/strategies/pairs_trading.py</code></li>
+<p>URL: <code><a href="https://github.com/mefai-dev/mefai-autotrade/blob/master/src/strategies/pairs_trading.py">https://github.com/mefai-dev/mefai-autotrade/blob/master/src/strategies/pairs_trading.py</a></code></p>
+<li>Project overview / strategy list:</li>
+<p>URL: <code><a href="https://github.com/mefai-dev/mefai-autotrade/blob/master/README.md">https://github.com/mefai-dev/mefai-autotrade/blob/master/README.md</a></code></p>
+</ul>
+</body>
+</html>

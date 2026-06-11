@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 options repo 只读成做市框架：对 short-cycle desk，更该先盯的是「same-expiry synthetic future × listed future parity gap」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 options repo 只读成做市框架：对 short-cycle desk，更该先盯的是「same-expiry synthetic future × listed future parity gap」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-11 18:56 UTC</span>
+      <span class="pill">研究时间：2026-04-11 19:18 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `strategies/arbitrage/conversion.py` + `strategies/arbitrage/option_box.py`）+ Binance Options / USDⓈ-M Quarterly Futures 公共 live-BBO probe</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/options/futures/same-expiry/synthetic-forward/put-call-parity/conversion-reversal/binance/btc/eth/1m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 策略代码 + 交易所公共报价 probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-11_1918_sameexpiry-synthfuture-listedfuture-parity-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-11 19:18 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>strategies/arbitrage/conversion.py</code> + <code>strategies/arbitrage/option_box.py</code>）+ Binance Options / USDⓈ-M Quarterly Futures 公共 live-BBO probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一标的、同一到期日、同一 strike 的 <code>call - put</code> 会合成一条 synthetic future；当它相对同 expiry 的 listed future 出现可交易的 parity gap 时，做多便宜 forward、做空更贵 forward，等 gap 收敛或持有到 expiry 锁定价差。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/options/futures/same-expiry/synthetic-forward/put-call-parity/conversion-reversal/binance/btc/eth/1m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：repo 策略代码 + 交易所公共报价 probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主材料不是论文，而是一份 <strong>2026 高信号 options research repo</strong>：</p>
+<ul>
+<li><strong>Repo:</strong> <code>signorloops/crypto-options-research-platform</code></li>
+<li><strong>Repo URL:</strong> &lt;<a href="https://github.com/signorloops/crypto-options-research-platform&gt;">https://github.com/signorloops/crypto-options-research-platform&gt;</a></li>
+<li><strong>Readable README:</strong> &lt;<a href="https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/README.md&gt;">https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/README.md&gt;</a></li>
+<li><strong>关键代码 1：conversion / reversal</strong></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/strategies/arbitrage/conversion.py&gt;">https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/strategies/arbitrage/conversion.py&gt;</a></li>
+<li><strong>关键代码 2：box spread</strong></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/strategies/arbitrage/option_box.py&gt;">https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/strategies/arbitrage/option_box.py&gt;</a></li>
+</ul>
+<p>这份 repo 很容易被读成：</p>
+<p>&gt; 又一个“期权做市 / 波动率 / Greeks / 风控”大而全框架。</p>
+<p>但对我们现在的 short-cycle desk，更值得先单独拎出来的，不是做市，也不是 IV 曲面，而是它在 <code>conversion.py</code> 里已经写得很清楚的一条 <strong>完整 raw alpha 壳</strong>：</p>
+<p>&gt; <strong>same-expiry synthetic future vs listed future parity gap。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>用同一 expiry、同一 strike 的 <code>call - put</code>，能拼出一条 synthetic future；</li>
+<li>再拿它去对同 expiry 的季度 future；</li>
+<li>谁更贵，就空谁；谁更便宜，就多谁；</li>
+<li>赌的是 <strong>同到期 forward 不该长期错开</strong>。</li>
+</ul>
+<p>这不是 filter，也不是 overlay。</p>
+<p>这是标准的 <strong>relative-value / stat-arb raw alpha</strong>。</p>
+<h2>2. 为什么这条线值得写，而且不算和已有 funding / basis 主题重复</h2>
+<p>我们最近已经写过不少：</p>
+<ul>
+<li>spot ↔ perp basis</li>
+<li>perp ↔ perp funding / carry</li>
+<li>same-expiry cross-venue futures basis</li>
+<li>options RND directional</li>
+</ul>
+<p>但这条线和它们都不一样：</p>
+<ol>
+<li><strong>它不是 directional options view</strong></li>
+<p>不是猜 BTC 会涨跌，而是看 <strong>options-implied forward</strong> 和 <strong>listed future</strong> 有没有偏离。</p>
+</ol>
+<ol>
+<li><strong>它不是普通 spot-perp basis</strong></li>
+<p>这里两条腿都是同 expiry forward exposure，噪声比 <code>spot + financing + borrow</code> 更少。</p>
+</ol>
+<ol>
+<li><strong>它不是 box spread carry 到期教材</strong></li>
+<p>box 更偏 hold-to-expiry carry；这里更适合 short-cycle desk 的地方在于： <strong>可以 1m / 5m 盯 parity gap，做 intraday 收敛，而不是只等到期。</strong></p>
+</ol>
+<p>一句话说清 base alpha：</p>
+<p>&gt; <strong>同 expiry 的 forward 曝险不该在同一交易所里长期出现两套价格；当 synthetic future 和 listed future 错开到足够大，就做 parity close。</strong></p>
+<h2>3. repo 里最该拿走的，不是“框架很全”，而是这 3 个可执行零件</h2>
+<h3>3.1 <code>conversion.py</code> 已经把策略骨架写出来了</h3>
+<p>repo 里的 <code>ConversionArbitrage</code> 很直接：</p>
+<ul>
+<li>算 <code>call - put</code> 的 synthetic forward；</li>
+<li>和理论 / 对冲腿比较；</li>
+<li>偏离过阈值就触发 <code>conversion</code> 或 <code>reversal</code>；</li>
+<li>同时给了：</li>
+<li><code>get_hedge_position()</code></li>
+<li><code>calculate_margin_requirement()</code></li>
+<li><code>calculate_pnl_scenarios()</code></li>
+<li><code>verify_arbitrage_bounds()</code></li>
+</ul>
+<p>也就是说，它不是一句空洞的“平价可能失效”。</p>
+<p>它已经接近完整策略：</p>
+<ul>
+<li><strong>entry</strong>：gap 过阈值</li>
+<li><strong>hedge</strong>：合成腿 vs 对冲腿</li>
+<li><strong>exit</strong>：gap 回归 / 到期 / time stop</li>
+<li><strong>risk</strong>：保证金与边界检查</li>
+<li><strong>PnL</strong>：逐腿可分解</li>
+</ul>
+<h3>3.2 这条线天然适合 desk 做成“分腿价格监控器”</h3>
+<p>对 short-cycle desk，最有价值的不是慢悠悠地讲 no-arb，而是把它变成一个持续运行的 intraday panel：</p>
+<ul>
+<li>synthetic bid / ask</li>
+<li>listed future bid / ask</li>
+<li>可执行 best-side edge</li>
+<li>gap z-score</li>
+<li>距离 expiry 天数</li>
+<li>strike 距离 ATM 的 moneyness</li>
+</ul>
+<p>所以这条线虽然属于 options RV，但落地方式反而很像我们已经熟悉的 futures RV / basis monitor。</p>
+<h3>3.3 它比 spot 版 conversion 更贴近 crypto 实盘</h3>
+<p>传统教材常写：</p>
+<ul>
+<li>long/short spot</li>
+<li>long/short call</li>
+<li>long/short put</li>
+</ul>
+<p>但在 crypto 实盘里，<strong>用同 expiry future 当对冲腿</strong> 往往更自然：</p>
+<ul>
+<li>不用单独处理现货借贷</li>
+<li>不必把 stablecoin 利率 / borrow rate 全部硬塞进第一版</li>
+<li>账面更接近我们现有 futures 执行栈</li>
+</ul>
+<p>所以这次更适合 desk 的改写不是：</p>
+<p>&gt; <code>call - put</code> vs <code>spot - PV(K)</code></p>
+<p>而是：</p>
+<p>&gt; <code>call - put + K</code> vs <code>same-expiry listed future</code></p>
+<h2>4. 这轮 public-data probe：Binance 同 expiry options / futures 上，当前 live BBO 有没有可打的 parity gap？</h2>
+<p>我做了一个很克制的 live probe：</p>
+<h3>数据源 / 公开性 / 更新频率</h3>
+<ul>
+<li>Binance Options <code>eapi/v1/ticker</code>：公开 REST</li>
+<li>Binance USDⓈ-M delivery futures <code>fapi/v1/ticker/bookTicker</code>：公开 REST</li>
+<li>频率：理论上可 <code>1m</code> 甚至更快轮询；这轮先做 one-shot live BBO snapshot</li>
+</ul>
+<h3>对齐口径</h3>
+<p>只保留：</p>
+<ul>
+<li><strong>BTC / ETH</strong></li>
+<li><strong>存在同 expiry listed future 的 expiry</strong>：<code>260626</code>、<code>260925</code></li>
+<li>同一 <code>(asset, expiry, strike)</code> 的 call / put 成对报价</li>
+<li>moneyness 约束：<code>|ln(K / F_mid)| &lt; 0.15</code></li>
+<li>期权价差不过分离谱：<code>call_spread_frac &lt; 0.5</code> 且 <code>put_spread_frac &lt; 0.5</code></li>
+</ul>
+<h3>可执行定义</h3>
+<p>定义：</p>
+<ul>
+<li><code>synthetic_bid = K + call_bid - put_ask</code></li>
+<li><code>synthetic_ask = K + call_ask - put_bid</code></li>
+</ul>
+<p>两种 best-side 机会：</p>
+<ol>
+<li><strong>long synthetic / short future</strong></li>
+<p><code>edge = future_bid - synthetic_ask</code></p>
+</ol>
+<ol>
+<li><strong>short synthetic / long future</strong></li>
+<p><code>edge = synthetic_bid - future_ask</code></p>
+</ol>
+<p>只要 <code>edge &gt; 0</code>，才算<strong>未扣手续费前</strong>就已经存在 gross parity gap。</p>
+<h3>本地 artifact</h3>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/binance_options_futures_parity_probe_summary_2026-04-11.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/binance_options_futures_parity_probe_detail_2026-04-11.csv</code></li>
+</ul>
+<h2>5. first verdict：结构是对的，但当前 Binance live BBO 下还没过线</h2>
+<p>先说结论：</p>
+<p>&gt; <strong>这条 alpha 的结构非常清楚，但我这轮在 Binance 同所 options / quarterly futures 的 live BBO 上，没有看到 gross-positive 的可执行 parity gap。</strong></p>
+<p>这不是坏事，反而说明：</p>
+<ul>
+<li>同所同 expiry 的 listed future 已经把 parity 吸得很紧；</li>
+<li>真正有价值的，不是把它吹成“白捡套利”，而是把它做成 <strong>严谨的 options RV 监控器</strong>；</li>
+<li>若要出正 edge，更可能要等 <strong>事件期、expiry 周、剧烈波动、薄 strike、跨 venue</strong>，而不是平时静态扫一眼就有肉。</li>
+</ul>
+<h3>5.1 BTC：16 个筛后 triplet，best-side 仍为负</h3>
+<p>summary 里 BTC 的结果：</p>
+<ul>
+<li>筛后 triplet：<strong>16</strong></li>
+<li>覆盖 expiry：<code>260626</code>、<code>260925</code></li>
+<li><strong>median best-side edge ≈ -23.07 bps</strong></li>
+<li>最好的一档也只是：</li>
+<li>expiry：<code>260626</code></li>
+<li>strike：<code>78000</code></li>
+<li>best side：<code>long synthetic / short future</code></li>
+<li><strong>edge ≈ -55 USDT / -7.46 bps</strong></li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>连最好的一档，synthetic ask 仍比 future bid 更贵约 7.5 bps；还没到可做的程度。</strong></p>
+<h3>5.2 ETH：12 个筛后 triplet，最好一档也没翻正</h3>
+<p>ETH 的结果：</p>
+<ul>
+<li>筛后 triplet：<strong>12</strong></li>
+<li>覆盖 expiry：<code>260626</code>、<code>260925</code></li>
+<li><strong>median best-side edge ≈ -31.95 bps</strong></li>
+<li>最好的一档：</li>
+<li>expiry：<code>260626</code></li>
+<li>strike：<code>2400</code></li>
+<li>best side：<code>short synthetic / long future</code></li>
+<li><strong>edge ≈ -2.98 USDT / -12.91 bps</strong></li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; <strong>ETH 当前 live BBO 下甚至比 BTC 更紧，至少在这轮筛选里没有看到可执行 gross edge。</strong></p>
+<h3>5.3 当前更像“没有被市场喂饭”，不是“alpha 不存在”</h3>
+<p>这里要区分两件事：</p>
+<ol>
+<li><strong>alpha 的定义是否成立？</strong></li>
+<p>成立。base alpha 很清楚。</p>
+</ol>
+<ol>
+<li><strong>当前这个 venue / 这组 strike / 这一个时点，有没有净可交易 edge？</strong></li>
+<p>这轮答案是：<strong>没有。</strong></p>
+</ol>
+<p>这两件事不矛盾。</p>
+<p>就像很多 cross-venue futures RV 一样：</p>
+<ul>
+<li>结构上是对的；</li>
+<li>但大多数时刻没信号；</li>
+<li>真正值钱的是把它盯住，并知道<strong>什么时候</strong>它会突然张开。</li>
+</ul>
+<h2>6. 这条线为什么仍然值得进研究池</h2>
+<p>尽管 live one-shot 没看到正 edge，我仍然认为它值得留在 raw alpha 素材池，原因有 4 个。</p>
+<h3>6.1 它补上了“options RV”这一层，而不是重复老题</h3>
+<p>我们现在的 raw alpha 池里：</p>
+<ul>
+<li>futures / perp RV 很多</li>
+<li>pairs / stat-arb 很多</li>
+<li>microstructure 也很多</li>
+</ul>
+<p>但 <strong>options-implied forward vs listed future</strong> 这一层几乎还没单独拆过。</p>
+<p>这次至少把它写清楚了：</p>
+<ul>
+<li>什么是 alpha 本体</li>
+<li>什么不是 alpha 本体</li>
+<li>怎么定义 entry / exit</li>
+<li>怎么做第一轮 public probe</li>
+</ul>
+<h3>6.2 它和 <code>1m / 5m / 15m</code> 并不冲突</h3>
+<p>这条线不是“每根 K 都强制交易”的 directional signal， 但非常适合做成：</p>
+<ul>
+<li><strong>1m</strong>：实时监控 / 事件触发</li>
+<li><strong>5m</strong>：主执行分辨率</li>
+<li><strong>15m</strong>：慢一点的 time-stop / carry-to-close 监控</li>
+</ul>
+<p>也就是说，它更像 <strong>dislocation book</strong>，不是全天候 sign book。</p>
+<h3>6.3 它是完整策略，不是研究散件</h3>
+<p>这条线天然自带：</p>
+<ul>
+<li>entry：best-side edge &gt; 0 且过费用阈值</li>
+<li>exit：edge 回到 0 附近 / time stop / expiry 前平仓</li>
+<li>sizing：按两腿最薄深度和净 edge 分层</li>
+<li>risk：单 strike、单 expiry、单 event gross limit</li>
+<li>cost：期权 spread + future spread + taker/maker fee + 撤单失败 / 追单滑点</li>
+</ul>
+<p>所以它不是 filter，不是 overlay。</p>
+<p>它是完整 raw alpha 壳。</p>
+<h3>6.4 当前 Binance 没肉，不代表 cross-venue 没肉</h3>
+<p>同所 parity 往往最紧，这是正常的。</p>
+<p>真正更值得 desk 下一步测的，反而可能是：</p>
+<ul>
+<li>Binance options synthetic future vs Deribit / OKX 同 expiry future proxy</li>
+<li>event window（CPI / FOMC / 大波动）前后 parity gap 是否瞬时拉开</li>
+<li>expiry 周 ATM / near-ATM 的 gap 是否系统性放大</li>
+</ul>
+<p>换句话说：</p>
+<p>&gt; <strong>Binance 同所没给肉，反而提示下一步该去找“谁的腿慢了”。</strong></p>
+<h2>7. 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative value / stat-arb / market-neutral-ish</li>
+<li>基础 alpha：same-expiry synthetic future vs listed future parity gap close</li>
+<li>regime：优先高活跃、near-ATM、报价连续、距离 expiry 不太远但仍有交易深度的时段</li>
+<li>filter / veto：best-side edge 未过 fees+slippage 不做；单腿 quote stale 不做；深度太薄不做；极端事件里单腿跳价过快不做</li>
+<li>risk / sizing / execution overlay：按净 edge / quote depth / strike liquidity 分层；限制单 expiry gross；优先 maker on slower leg；设置 <code>time stop + edge stop + quote-staleness kill-switch</code></li>
+</ul>
+<h2>8. 可复刻的最小实验</h2>
+<h3>最小研究假设</h3>
+<p>&gt; 当同 expiry synthetic future 与 listed future 的 best-side executable gap 超过成本阈值时，未来 <code>1m / 5m / 15m</code> 更可能出现 parity close，而不是继续扩张。</p>
+<h3>最小实验口径</h3>
+<ul>
+<li>资产：BTC / ETH</li>
+<li>expiry：<code>260626</code>、<code>260925</code>（后续可滚动更多季月）</li>
+<li>strike：near-ATM 到轻度 OTM</li>
+<li>数据：</li>
+<li>options bid/ask</li>
+<li>listed future bid/ask</li>
+<li>时间戳对齐后的 executable edge panel</li>
+<li>先看 3 个核心指标：</li>
+</ul>
+<ol>
+<li><code>best_side_edge_bps</code></li>
+<li>edge 触发后未来 <code>1m / 5m / 15m</code> 的 close 幅度</li>
+<li>扣 friction ladder 后剩余净 edge 的占比</li>
+</ol>
+<h2>9. 下一步怎么测</h2>
+<p>下一步我不会再停留在 one-shot snapshot，而是直接做 4 件事：</p>
+<ol>
+<li><strong>做 1m panel，不再只看单时点</strong></li>
+<p>连续抓 <code>options bid/ask + quarterly future bid/ask</code>，至少做 <code>7d~30d</code> 面板，先回答：</p>
+</ol>
+<ul>
+<li>正 edge 到底多久出现一次？</li>
+<li>主要集中在哪些 strike / 时段 / 波动状态？</li>
+</ul>
+<ol>
+<li><strong>做 event-study，不再混在平静样本里平均</strong></li>
+<p>重点看：</p>
+</ol>
+<ul>
+<li>高 realized vol 窗口</li>
+<li>宏观数据前后</li>
+<li>expiry week</li>
+<li>funding / basis 快速变化时段</li>
+</ul>
+<ol>
+<li><strong>把同所 parity 升级成跨 venue parity</strong></li>
+<p>如果 Binance 同所本来就很紧，那更可能出信号的地方是：</p>
+</ol>
+<ul>
+<li>one leg 在 Binance options</li>
+<li>另一 leg 在 Deribit / OKX future / perp proxy</li>
+</ul>
+<ol>
+<li><strong>显式加 friction ladder</strong></li>
+<p>第一版至少同时跑：</p>
+</ol>
+<ul>
+<li>gross edge</li>
+<li><code>gross - 5 bps</code></li>
+<li><code>gross - 10 bps</code></li>
+<li><code>gross - 20 bps</code></li>
+</ul>
+<p>如果 <code>gross</code> 都常年不过零，这条线在该 venue 就只是监控器； 如果 <code>gross</code> 偶发翻正、但 <code>gross-10bps</code> 全灭，它更像 ultra-selective event alpha； 只有 <code>gross-10bps</code> 仍有事件簇，才值得进可执行复现队列。</p>
+<h2>10. 来源</h2>
+<h3>Repo / code</h3>
+<ul>
+<li><code>signorloops/crypto-options-research-platform</code></li>
+<li>Repo URL：&lt;<a href="https://github.com/signorloops/crypto-options-research-platform&gt;">https://github.com/signorloops/crypto-options-research-platform&gt;</a></li>
+<li>README：&lt;<a href="https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/README.md&gt;">https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/README.md&gt;</a></li>
+<li>Conversion / reversal：&lt;<a href="https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/strategies/arbitrage/conversion.py&gt;">https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/strategies/arbitrage/conversion.py&gt;</a></li>
+<li>Option box：&lt;<a href="https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/strategies/arbitrage/option_box.py&gt;">https://raw.githubusercontent.com/signorloops/crypto-options-research-platform/master/strategies/arbitrage/option_box.py&gt;</a></li>
+</ul>
+<h3>Public data endpoints used in this note</h3>
+<ul>
+<li>Binance Options ticker：&lt;<a href="https://eapi.binance.com/eapi/v1/ticker&gt;">https://eapi.binance.com/eapi/v1/ticker&gt;</a></li>
+<li>Binance USDⓈ-M futures book ticker：&lt;<a href="https://fapi.binance.com/fapi/v1/ticker/bookTicker&gt;">https://fapi.binance.com/fapi/v1/ticker/bookTicker&gt;</a></li>
+<li>Binance Options exchange info：&lt;<a href="https://eapi.binance.com/eapi/v1/exchangeInfo&gt;">https://eapi.binance.com/eapi/v1/exchangeInfo&gt;</a></li>
+<li>Binance USDⓈ-M futures exchange info：&lt;<a href="https://fapi.binance.com/fapi/v1/exchangeInfo&gt;">https://fapi.binance.com/fapi/v1/exchangeInfo&gt;</a></li>
+</ul>
+<h3>Local artifacts</h3>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/binance_options_futures_parity_probe_summary_2026-04-11.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/binance_options_futures_parity_probe_detail_2026-04-11.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Harvest 里的 `ER-90` 只读成“高胜率口号”：对 short-cycle crypto desk，更该先拆的是「短时 ATR impulse exhaustion × RSI5 extreme × failure-to-extend fade」这条 mean-reversion raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Harvest 里的 `ER-90` 只读成“高胜率口号”：对 short-cycle crypto desk，更该先拆的是「短时 ATR impulse exhaustion × RSI5 extreme × failure-to-extend fade」这条 mean-reversion raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-24 20:44 UTC</span>
+      <span class="pill">研究时间：2026-04-24 20:43 UTC</span>
+      <span class="pill">类型：GitHub repo source audit（`README.md` + `strategies/er90.py` + `core/models.py` + `ml/base_strategy.py`）</span>
+      <span class="pill">主题标签：raw-alpha / single-asset / mean-reversion / exhaustion / impulse / atr / rsi5 / failure-to-extend / volume-spike-decay / btc / eth / 5m / 15m / 1m / repo / cost / risk</span>
+      <span class="pill">证据类型：repo source audit</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-24_2043_er90-impulse-exhaustion-fade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-24 20:43 UTC</li>
+<li>类型：GitHub repo source audit（<code>README.md</code> + <code>strategies/er90.py</code> + <code>core/models.py</code> + <code>ml/base_strategy.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：短时过度冲击后的衰竭反转。先找 <code>5m</code>（必要时退化到 <code>1h</code>）里最近 <code>2h</code> 的快速单边 impulse，再用 <code>RSI(5)</code> 极值、量能冲高回落、以及“不再创新高/新低”的 failure-to-extend 结构，去做下一段回归。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / single-asset / mean-reversion / exhaustion / impulse / atr / rsi5 / failure-to-extend / volume-spike-decay / btc / eth / 5m / 15m / 1m / repo / cost / risk</li>
+<li>证据类型：repo source audit</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>GareBear99 (2024), <code>Harvest — Multi-Timeframe Crypto Trading System</code></strong> 里的 <code>strategies/er90.py</code>。</p>
+<p>这个仓表面上很像“多引擎 + 大量生产就绪文档”的整套交易系统，但对当前 desk 更值得单拎出来的，不是它的系统包装，而是里面这条相对少见、而且确实适合短周期实验的 <strong>ER-90 / Exhaustion Reversion</strong> 线。</p>
+<p>它不是去追趋势，也不是单纯做 RSI 超买超卖；它真正想抓的是：</p>
+<p><strong>短时间内走得太急、成交量先冲后衰、而且价格已经开始“推不动了”的那一小段衰竭反转。</strong></p>
+<p>这比再补一个“EMA 对齐 + MACD 确认”的 trend 壳，更符合这轮你希望优先补的 <code>mean reversion / raw alpha</code> 方向。</p>
+<h2>2. base alpha 先说清楚</h2>
+<p>这篇东西的 <strong>base alpha 是清楚的</strong>：</p>
+<p><strong>短时单边冲击后的衰竭回归（exhaustion reversion）。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>价格先在很短时间里冲得过快；</li>
+<li>情绪和追单把 <code>RSI(5)</code> 顶到极端；</li>
+<li>但最新几根 K 已经没有继续刷新极值，说明“最后一把力气”开始耗尽；</li>
+<li>于是押注下一段不是继续加速，而是先回一段。</li>
+</ul>
+<p>所以它是标准的： <strong>single-asset / mean-reversion / exhaustion-fade raw alpha</strong>。</p>
+<p>不是 overlay，不是纯 filter，也不是“用 RSI 解释行情”的附属模块。</p>
+<h2>3. 上游代码到底写了什么</h2>
+<h2>3.1 设计意图：先找“冲得太快”的那一下</h2>
+<p><code>er90.py</code> 的文档字符串把信号写得很明确：</p>
+<ul>
+<li>最近 <code>&lt; 2h</code> 内价格 impulse 达到 <code>1.5~2.0 × ATR</code></li>
+<li><code>RSI(5)</code> 极端</li>
+<li>volume spike 后转弱</li>
+<li>failure to extend high / low</li>
+</ul>
+<p>也就是说，作者不是在做“便宜就买、贵了就空”的平庸反转，而是在找 <strong>冲刺末端</strong>。</p>
+<h2>3.2 但实际源码比注释更宽松</h2>
+<p>真正值得 desk 注意的是：<strong>实现代码比口头描述更宽松。</strong></p>
+<p>在 <code>core/models.py</code> 里，默认参数已经被放松到：</p>
+<ul>
+<li><code>er90_impulse_atr_min = 1.0</code></li>
+<li><code>er90_rsi_upper = 65</code></li>
+<li><code>er90_rsi_lower = 35</code></li>
+<li><code>er90_max_trades_per_day = 3</code></li>
+</ul>
+<p>而 <code>er90.py</code> 的实际 <code>check_entry()</code> 里，更关键的问题是：</p>
+<ul>
+<li>代码确实计算了 <code>impulse</code></li>
+<li>也计算了 <code>volume_spiked / volume_declining</code></li>
+<li>也计算了 <code>failed_to_extend_high / low</code></li>
+<li><strong>但当前版本并没有把这些条件真正硬性并入最终入场判定</strong></li>
+</ul>
+<p>最终入场逻辑被简化成了：</p>
+<ul>
+<li><code>rsi_signal &gt; upper</code> 且 <code>rsi_1h &gt; 50</code> → <code>SHORT</code></li>
+<li><code>rsi_signal &lt; lower</code> 且 <code>rsi_1h &lt; 50</code> → <code>LONG</code></li>
+</ul>
+<p>也就是说： <strong>代码里的“真正可执行 alpha”已经退化成“短周期 RSI 极值 + 1h 同向背景”的反转壳；而 impulse / volume / failure-to-extend 更像是作者原本想保留、但暂时没有真正接上的 admission 层。</strong></p>
+<p>这点很重要，因为它决定了我们该怎么读这份材料：</p>
+<ul>
+<li>不要把 README / 注释里的完整故事，直接当成已经被代码严格实现；</li>
+<li>但也不要因此把它整份丢掉——因为它依然给了一个很好的 <strong>可补全 alpha 骨架</strong>。</li>
+</ul>
+<h2>3.3 风险与仓位参数是完整的</h2>
+<p>尽管 entry 逻辑被简化了，风险层倒是写得相当完整：</p>
+<p>默认配置（<code>core/models.py</code>）里：</p>
+<ul>
+<li>杠杆：<code>10x ~ 20x</code></li>
+<li>单笔风险：<code>0.25% ~ 0.5%</code> equity</li>
+<li>止盈：<code>0.8% ~ 1.2%</code></li>
+<li>止损：<code>0.6% ~ 0.9%</code></li>
+<li>每日最多亏损次数：<code>1</code></li>
+<li>每日最多交易次数：<code>3</code></li>
+</ul>
+<p>而 <code>_calculate_execution_intent()</code> 实际做的是：</p>
+<ul>
+<li>取上述范围中值作为执行参数；</li>
+<li>根据止损距离反推仓位；</li>
+<li>再做 notional 上限和 liquidation buffer 校验；</li>
+<li>如果爆仓价离 stop 太近，还会自动降杠杆。</li>
+</ul>
+<p>这意味着它不是只有“信号点子”，而是已经把： <strong>entry / stop / tp / sizing / leverage safety</strong> 这一整套落地结构写出来了。</p>
+<h2>4. 为什么和当前 desk 直接相关</h2>
+<p>这轮你明确要求：如果能补 <code>mean reversion / cross-sectional / relative value / stat-arb / pairs</code>，就不要继续困在固定趋势形态里。</p>
+<p>ER-90 值得进研究池，原因有四个：</p>
+<h3>4.1 它补的是最近相对缺的 raw alpha 类型</h3>
+<p>最近 digest 已经连续有：</p>
+<ul>
+<li>pairs / stat-arb</li>
+<li>funding / carry</li>
+<li>EMA / MACD / pullback continuation</li>
+<li>Bollinger / RSI 传统均值回归</li>
+</ul>
+<p>而 <strong>“冲高衰竭 / 冲低衰竭”</strong> 这种 <strong>impulse-end exhaustion fade</strong>，和普通 band-touch fade 不是一回事：</p>
+<ul>
+<li>后者更偏“静态偏离回归”；</li>
+<li>前者更偏“情绪冲刺末端的动力耗尽”。</li>
+</ul>
+<p>这两类信号在短周期里经常长得像，但交易分布、持仓时长和最怕的市场状态并不一样。</p>
+<h3>4.2 它天然适合做 <code>5m</code> 主信号、<code>1m/3m</code> 子执行</h3>
+<p>ER-90 的核心叙事就是：</p>
+<ul>
+<li>用 <code>5m</code> 看最近 <code>2h</code> 是否发生过快冲刺；</li>
+<li>用更细粒度去抓“不再创新高/新低”的衰竭点；</li>
+<li>然后吃一段短回归。</li>
+</ul>
+<p>所以它非常适合：</p>
+<ul>
+<li><code>5m</code> 做 alpha 识别</li>
+<li><code>1m/3m</code> 做 child execution / early exit / stop tightening</li>
+</ul>
+<p>这正好贴合你说的默认 desk 频段。</p>
+<h3>4.3 它可以和现有 trend sleeve 形成互补</h3>
+<p>趋势策略最怕“追在末端”； ER-90 恰恰是去抓“末端已经开始推不动”的那一下。</p>
+<p>所以它和现有 trend / breakout sleeve 有天然互补性：</p>
+<ul>
+<li>trend 在扩张段赚钱；</li>
+<li>ER-90 在扩张结束的第一段均值回归赚钱。</li>
+</ul>
+<h3>4.4 它给了一个很好的“代码与叙事错位”样本</h3>
+<p>这个仓对 desk 还有一个额外价值：</p>
+<p><strong>它提醒我们，很多 repo 的 README 讲的是完整版故事，但真正跑的代码只实现了其中一半。</strong></p>
+<p>这类材料不是没用，反而很适合我们这种 desk：</p>
+<ul>
+<li>alpha 胚子已经有了；</li>
+<li>可执行壳也有；</li>
+<li>缺的只是把 admission 层真正接回去。</li>
+</ul>
+<h2>5. 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：single-asset / mean-reversion / exhaustion fade</li>
+<li>基础 alpha：短时 price impulse 过快后，下一段衰竭回归</li>
+<li>当前源码里的实际入场：<code>RSI(5)</code> 极值 + <code>1h</code> RSI 背景方向确认</li>
+<li>更适合 desk 的完整版入场：<code>2h impulse / ATR</code> + <code>RSI5</code> 极值 + volume spike-decay + failure-to-extend</li>
+<li>sizing：按 stop distance 反推仓位，风险约束在 equity 的 <code>0.25%~0.5%</code></li>
+<li>risk / execution：<code>0.8%~1.2%</code> take-profit，对应 <code>0.6%~0.9%</code> stop；每日 loss / trade cap；杠杆安全缓冲</li>
+<li>推荐 desk 映射：<code>5m</code> 识别衰竭，<code>1m/3m</code> 执行进出与 tighter stop</li>
+</ul>
+<h2>6. 对 short-cycle crypto 的 desk 读法</h2>
+<p>这条线最值得学的，不是“RSI 极值可以反手”，而是下面这句更精确的话：</p>
+<p><strong>不是所有极值都该反；更该反的是“刚冲完、量能开始掉、价格也推不出新极值”的那种极值。</strong></p>
+<p>把它拆开，其实是四层：</p>
+<ol>
+<li><strong>速度层</strong>：先确认最近涨/跌太快；</li>
+<li><strong>拥挤层</strong>：RSI 已到极端，说明追单已经很满；</li>
+<li><strong>衰竭层</strong>：量能回落、价格不再创新极值；</li>
+<li><strong>风控层</strong>：只吃第一段回归，不赌大级别反转。</li>
+</ol>
+<p>如果只保留第 2 层，策略就很容易变成“逆势硬接刀”； 如果把 1 / 3 / 4 层补齐，它就更像一个可交易的短周期 raw alpha。</p>
+<h2>7. 可复刻的最小实验</h2>
+<h3>最小研究假设</h3>
+<p><strong>在 liquid crypto perp 上，最近 <code>2h</code> 内发生过快单边 impulse 的 <code>5m</code> 片段里，如果再要求 <code>RSI(5)</code> 极值 + failure-to-extend，是否能形成 fee 后仍存活的 exhaustion reversion raw alpha。</strong></p>
+<h3>最小实验口径</h3>
+<ol>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT perp</code></li>
+<li>主频：<code>5m</code></li>
+<li>子执行：<code>1m</code> 或 <code>3m</code></li>
+<li>lookback：近 <code>90~180d</code></li>
+<li>impulse 定义：最近 <code>24</code> 根 <code>5m</code>（即 <code>2h</code>）内，净位移或极值位移达到 <code>1.0 / 1.5 / 2.0 × ATR(14)</code></li>
+<li>exhaustion admission：</li>
+</ol>
+<ul>
+<li>做空：<code>RSI(5) &gt; 65/70/75</code>，且最近 <code>2~3</code> 根 K 没有继续创新高</li>
+<li>做多：<code>RSI(5) &lt; 35/30/25</code>，且最近 <code>2~3</code> 根 K 没有继续创新低</li>
+</ul>
+<ol>
+<li>volume admission：上一根 volume 明显放大，当前根 volume 开始回落</li>
+<li>出场：</li>
+</ol>
+<ul>
+<li>第一版先用 repo 的固定 bracket：<code>TP 0.8~1.2% / SL 0.6~0.9%</code></li>
+<li>第二版改成“回到 EMA9 / VWAP / 短均值就平”</li>
+</ul>
+<ol>
+<li>成本：先跑单边 <code>2 / 4 / 6 / 10 bps</code> friction ladder</li>
+</ol>
+<h3>第一轮先看什么</h3>
+<ul>
+<li>fee 后 Sharpe / PF / maxDD</li>
+<li>平均持仓 bars</li>
+<li>趋势日 vs 震荡日表现</li>
+<li><code>BTC / ETH / SOL</code> 是否风格一致</li>
+<li>加上 failure-to-extend 后，hit rate 是否明显提升</li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<ol>
+<li><strong>先把 repo 当前“宽松版”逻辑原样复刻</strong>：</li>
+</ol>
+<ul>
+<li><code>RSI(5)</code> 极值</li>
+<li><code>1h</code> RSI 背景</li>
+<li>固定 bracket exit</li>
+<p>先确认最朴素可执行版本到底有没有 edge。</p>
+</ul>
+<ol>
+<li><strong>再把作者注释里提到、但代码没真正接上的 admission 层补回去</strong>：</li>
+</ol>
+<ul>
+<li>impulse ≥ <code>N × ATR</code></li>
+<li>volume spike then decay</li>
+<li>failure-to-extend</li>
+</ul>
+<ol>
+<li><strong>做 4 组递进对照</strong>：</li>
+</ol>
+<ul>
+<li>A：只有 RSI 极值</li>
+<li>B：RSI 极值 + 1h 背景</li>
+<li>C：B + impulse filter</li>
+<li>D：C + failure-to-extend + volume-decay</li>
+</ul>
+<ol>
+<li><strong>把 exit 分成两类单独测试</strong>：</li>
+</ol>
+<ul>
+<li>固定 <code>TP/SL bracket</code></li>
+<li>均值回归型 exit（回 EMA / VWAP / 中轨）</li>
+<p>因为 ER-90 的核心不一定是“大止盈”，更可能是“只吃第一段回归，快进快出”。</p>
+</ul>
+<ol>
+<li><strong>如果 <code>5m</code> 成立，再往 <code>3m/1m</code> 压缩执行，而不是直接把 alpha 本体粗暴搬到 <code>1m</code>。</strong></li>
+</ol>
+<h2>9. 风险与保留意见</h2>
+<ul>
+<li>这份材料最值得留的，是 alpha 结构；不是它对 win-rate 的口头宣称。<code>er90.py</code> 注释里写“85-92% win rate”，但这不能当作已验证事实。</li>
+<li>当前实现与注释存在明显错位：真正执行逻辑比叙事更简化，这意味着 repo 结果如果好，未必来自作者声称的那整套 exhaustion 机制。</li>
+<li>这类策略最怕“强趋势里极值继续极值”；因此第二轮实验必须单独测 trend regime 伤害，而不是只看全样本平均。</li>
+<li>高杠杆是部署选择，不是 alpha 本体。对 desk 来说，应先验证 <strong>不加高杠杆时信号本身是否过线</strong>。</li>
+</ul>
+<h2>10. 一句话总结</h2>
+<p><strong>Harvest 里真正值得 desk 吸收的，不是 ER-90 那句“高胜率反转”口号，而是这条很适合 <code>5m -&gt; 1m/3m</code> 最小实验的 raw alpha 骨架：先找短时冲刺，再找衰竭证据，最后只吃第一段回归。</strong></p>
+<h2>11. 来源</h2>
+<ul>
+<li>Author / Year / Title / Venue</li>
+<li>GareBear99. (2024). *Harvest — Multi-Timeframe Crypto Trading System*. GitHub repository.</li>
+<li>Focused component: <code>strategies/er90.py</code> (<code>ER-90</code> / Exhaustion Reversion)</li>
+<li>Venue: GitHub</li>
+<li>DOI：无</li>
+<li>Readable URL：<a href="https://github.com/GareBear99/Harvest">https://github.com/GareBear99/Harvest</a></li>
+<li>Repo URL：<a href="https://github.com/GareBear99/Harvest">https://github.com/GareBear99/Harvest</a></li>
+<li>Key source files used</li>
+<li>README：<a href="https://raw.githubusercontent.com/GareBear99/Harvest/main/README.md">https://raw.githubusercontent.com/GareBear99/Harvest/main/README.md</a></li>
+<li>ER90 source：<a href="https://raw.githubusercontent.com/GareBear99/Harvest/main/strategies/er90.py">https://raw.githubusercontent.com/GareBear99/Harvest/main/strategies/er90.py</a></li>
+<li>Config / risk params：<a href="https://raw.githubusercontent.com/GareBear99/Harvest/main/core/models.py">https://raw.githubusercontent.com/GareBear99/Harvest/main/core/models.py</a></li>
+<li>Base strategy defaults：<a href="https://raw.githubusercontent.com/GareBear99/Harvest/main/ml/base_strategy.py">https://raw.githubusercontent.com/GareBear99/Harvest/main/ml/base_strategy.py</a></li>
+</ul>
+</body>
+</html>

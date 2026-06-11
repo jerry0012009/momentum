@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 pairs 继续写成固定 z-score 教材：这份 2026 新 repo 更该先测的是「4-test pair admission × half-life-bounded spread MR × fractional-Kelly shell」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 pairs 继续写成固定 z-score 教材：这份 2026 新 repo 更该先测的是「4-test pair admission × half-life-bounded spread MR × fractional-Kelly shell」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-07 02:43 UTC</span>
+      <span class="pill">研究时间：2026-04-07 02:41 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`README.md` + `cointegration.py` + `signals.py` + `sizing.py` + `backtest.py`）</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/engle-granger/johansen/adf/ou-halflife/fractional-kelly/kill-switch/kraken/binance/15m/5m/3m/1m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 源码直读 + repo 内结果表 + 公开交易所 OHLC 数据可得性</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-07_0241_halflife-kelly-coint-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-07 02:41 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>README.md</code> + <code>cointegration.py</code> + <code>signals.py</code> + <code>sizing.py</code> + <code>backtest.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>先用 <code>Engle-Granger + Johansen + residual ADF + OU half-life</code> 找到“真的会回”的 crypto 配对，再在价差 <code>z-score</code> 偏离足够大时做 spread mean reversion；它的 alpha 本体不是 Kelly，不是 kill-switch，而是“通过多重配对准入后留下的可交易均值回复价差”。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/engle-granger/johansen/adf/ou-halflife/fractional-kelly/kill-switch/kraken/binance/15m/5m/3m/1m/repo/public-data/cost/risk</li>
+<li>证据类型：repo 源码直读 + repo 内结果表 + 公开交易所 OHLC 数据可得性</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮我选的是一个<strong>很新、而且能直接拆成完整策略壳</strong>的仓库：</p>
+<ul>
+<li><strong>Aman Syed (2026), _Stat-Arb-in-Crypto_</strong></li>
+<li>Repo URL：&lt;<a href="https://github.com/aman3599/Stat-Arb-in-Crypto&gt;">https://github.com/aman3599/Stat-Arb-in-Crypto&gt;</a></li>
+<li>数据源：Kraken public OHLC（仓库声明无需 API key）</li>
+</ul>
+<p>我选它，不是因为“pairs + z-score”这几个词本身有多新，而是因为它把一条 raw alpha 写成了比较完整的 production skeleton：</p>
+<ol>
+<li><strong>配对准入</strong>：不是只看一个 cointegration p-value，而是四重筛选；</li>
+<li><strong>入场/出场</strong>：<code>z-score</code> 明确；</li>
+<li><strong>仓位</strong>：有 fractional Kelly；</li>
+<li><strong>风险</strong>：有 stop 与 portfolio drawdown kill-switch；</li>
+<li><strong>成本</strong>：回测里明确扣了 <code>7 bps</code> 成本 + <code>3 bps</code> slippage。</li>
+</ol>
+<p>一句话说，这不是“pairs 概念介绍”，而是一个已经能让 desk 直接抄出 first replication 的完整模板。</p>
+<h2>2. 先回答：这篇东西的 base alpha 是什么？</h2>
+<p>先一句话：</p>
+<p>&gt; <strong>base alpha = 多重 cointegration 准入后的 spread mean reversion。</strong></p>
+<p>更具体一点：</p>
+<ul>
+<li>不是“只要两条线看起来像一起走，就做回归”；</li>
+<li>而是先要求这对资产同时通过：</li>
+<li><code>Engle-Granger</code></li>
+<li><code>Johansen trace</code></li>
+<li>residual <code>ADF</code></li>
+<li><code>OU half-life</code> 落在可交易区间</li>
+<li>然后才在价差偏离足够大时进场，赌它回到均值。</li>
+</ul>
+<p>这点很关键，因为它把很多 desk 上常见的“pairs 直觉”变成了可审计规则：</p>
+<ul>
+<li><strong>alpha 本体</strong>：spread 会回；</li>
+<li><strong>admission layer</strong>：不是所有 pair 都值得赌；</li>
+<li><strong>overlay</strong>：Kelly、成本、kill-switch 只是让这条 alpha 更像可实盘策略。</li>
+</ul>
+<p>如果 base alpha 说不清，就只能算 overlay；这份 repo 在这点上是说得清的。</p>
+<h2>3. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：对 short-cycle desk，pairs 值得抄的不是“固定 <code>z&gt;2</code> 就开”，而是“先把 pair admission 做严，再交易真正有半衰期约束的 spread”。</li>
+<li><strong>一句话证明方式</strong>：仓库直接把 <code>筛 pair → 算 hedge ratio → 生成 z-score 信号 → Kelly sizing → 成本回测</code> 串成了完整代码路径，并给出配对级结果表。</li>
+<li>这份 repo 的最值钱处，不是某个超高收益截图，而是它把 <strong>entry / exit / sizing / risk / cost</strong> 五层全放进了同一个最小系统里。</li>
+<li>README 给的结果里，<code>7</code> 个通过筛选的 pair 中，<code>BTC/SOL</code> 年化收益约 <code>4.8%</code>、Sharpe <code>3.66</code>、最大回撤仅 <code>-0.3%</code>；<code>XRP/AVAX</code> 年化收益约 <code>15.1%</code>、Calmar <code>24.2</code>，说明“高收益 pair”和“高稳健 pair”不一定是同一对。</li>
+<li>代码里最值得沿用的不是 4H 频率本身，而是 <strong>把 half-life 写成 calendar days、把 bar 长度显式参数化</strong>。这让 4H → 15m / 5m 的迁移更干净：改的是时间尺度，不是瞎改 bar 数。</li>
+<li>但 repo 也暴露了两个很实在的 source-audit 问题：</li>
+</ul>
+<ol>
+<li><code>signals.py</code> 默认 <code>lookback=30</code> 实际按 bar 数滚动，而 README 讨论的是 <code>120</code> 个 4H bars ≈ <code>20</code> 天；<strong>单位口径存在错位风险</strong>；</li>
+<li><code>Kelly f</code> 被 <code>clip(lower=0)</code>，意味着当 spread 漂移估计为负时，<strong>short-side sizing 会被压成 0</strong>，这不是我们想要的对称 pairs shell。</li>
+</ol>
+<h2>3.5 为什么和当前项目有关</h2>
+<p>它和当前 <code>momentum</code> 主线的关系非常直接，而且是 <strong>raw alpha 素材池</strong> 关系，不是泛泛“可借鉴”：</p>
+<ol>
+<li><strong>补 raw alpha 家族缺口</strong>：当前 digest 池虽然已经有不少 pairs / RV 主题，但很多更偏“单一 admission trick”或“某个 threshold 技巧”。这份 repo 的价值在于它把完整 shell 一次性摆齐了。</li>
+<li><strong>适合 desk 现阶段</strong>：当前用户明确希望多补可独立复现、可直接落地的主题。这份仓库恰好不是纯 filter，也不是纯综述，而是一条完整可执行的 pairs raw alpha。</li>
+<li><strong>有利于 5m / 15m 迁移</strong>：repo 最值得抄的其实是“calendar-time half-life + 明确 cost + 风险壳”，这些都能平移到 Binance / Hyperliquid 的更快数据上。</li>
+</ol>
+<h2>4. 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>相对价值 / market-neutral / pairs mean reversion</strong></li>
+<li>基础 alpha：<strong>通过四重检验后的 cointegrated spread 会向均值回归</strong></li>
+<li>regime：<strong>只交易 half-life 处于可交易区间的 pair；过快代表 execution risk，过慢代表资本占用太久</strong></li>
+<li>filter / veto：<strong>EG p-value、Johansen 95% trace、residual ADF、z-score 入场阈值、stop-z、pair 级最小样本长度</strong></li>
+<li>risk / sizing / execution overlay：<strong>25% fractional Kelly、单 pair 最大 <code>20%</code> 资本、回测扣 <code>10 bps</code> round-trip（<code>7 bps</code> 成本 + <code>3 bps</code> slippage）、<code>25%</code> portfolio drawdown kill-switch</strong></li>
+</ul>
+<h2>5. 这套 repo 实际怎么写策略</h2>
+<p>按源码看，它的主策略壳可以浓缩成下面 5 句：</p>
+<ol>
+<li>对每个 pair 做 <code>log(A) ~ beta * log(B)</code>，得到 hedge ratio 与 spread；</li>
+<li>只保留同时通过 <code>EG + Johansen + residual ADF + OU half-life</code> 的 pair；</li>
+<li>对 spread 做 rolling z-score：</li>
+</ol>
+<ul>
+<li><code>z &lt; -2</code> 做 long spread</li>
+<li><code>z &gt; +2</code> 做 short spread</li>
+<li><code>|z| &lt; 0.5</code> 平仓</li>
+<li><code>|z| &gt; 3.5</code> 止损</li>
+</ul>
+<ol>
+<li>用 fractional Kelly 决定仓位，但上限 <code>20%</code> 资本/对；</li>
+<li>回测按实际两腿收益算 PnL，并在 trade day 扣成本；若组合回撤超过 <code>25%</code>，直接停机。</li>
+</ol>
+<p>这就是它最适合我们 desk 的地方：<strong>不是只有信号，没有风控；也不是只有风控，没有 alpha。</strong></p>
+<h2>6. 可复刻的最小实验</h2>
+<h3>6.1 研究假设</h3>
+<p>在 <code>15m</code> 或 <code>5m</code> crypto 数据上，真正值得交易的 pairs alpha，不是“任何价差偏离都回”，而是：</p>
+<p>&gt; <strong>只有通过多重配对准入，且 half-life 落在短周期 desk 能接受的资本占用区间时，spread z-score mean reversion 才更像可交易 raw alpha。</strong></p>
+<h3>6.2 一个可计算定义</h3>
+<p>建议先做 <strong>Binance USDT perp 或 spot</strong> 的最小迁移版：</p>
+<ul>
+<li>Universe：<code>BTC, ETH, SOL, XRP, DOGE, ADA, LINK, AVAX, LTC, BCH</code> 等高流动资产</li>
+<li>Refit 频率：每日或每 <code>4h</code> 重算一次 pair admission</li>
+<li>Pair admission：</li>
+<li><code>EG p &lt; 0.15</code></li>
+<li>Johansen trace &gt; 95% critical value</li>
+<li>residual <code>ADF p &lt; 0.10</code></li>
+<li>half-life 落在：</li>
+<li><code>15m</code>：<code>0.5 ~ 10</code> 天</li>
+<li><code>5m</code>：<code>0.25 ~ 7</code> 天</li>
+<li>Signal：</li>
+<li>entry：<code>|z| &gt;= 2.0</code></li>
+<li>exit：<code>|z| &lt; 0.5</code></li>
+<li>stop：<code>|z| &gt; 3.5</code></li>
+</ul>
+<h3>6.3 最小回测切口</h3>
+<ul>
+<li>先做：<code>15m</code>，过去 <code>120~180</code> 天，top-liquid 8~12 币</li>
+<li>再做：<code>5m</code> 稳健性对照</li>
+<li>评估一定要先上 <strong>固定名义仓位</strong> 版本，再上 <strong>对称化 Kelly / vol-target</strong> 版本；不要一开始就把 sizing 和 alpha 混在一起</li>
+</ul>
+<h3>6.4 最该先看哪 2 个指标</h3>
+<ol>
+<li><strong>成本后净收益 / trade count / positive pair ratio</strong>：确认它不是只有少数 pair 偶然撑起来；</li>
+<li><strong>max drawdown + holding-time 分布</strong>：确认 short-cycle 上的 half-life 约束是不是把“看起来回归、其实拖很久”的 pair 过滤掉了。</li>
+</ol>
+<h3>6.5 我更建议的 first verdict 顺序</h3>
+<ol>
+<li><strong>先固定仓位</strong>，验证 raw alpha 本体；</li>
+<li>再加 <strong>half-life gate</strong>；</li>
+<li>最后才加 <strong>对称版 Kelly / vol-target / pair ranking</strong>。</li>
+</ol>
+<p>这样能避免把“仓位救了坏信号”错认成 alpha 成立。</p>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li><strong>样本太短</strong>：README 自己也承认当前结果大约只来自 <code>~4</code> 个月样本，这个长度不足以证明 pair 关系稳健。</li>
+<li><strong>Kraken 4H ≠ Binance 5m/15m</strong>：数据质量、流动性层级、交易成本、资金费率都会变，不能直接照抄收益数字。</li>
+<li><strong>calendar-time 是优点，也是迁移难点</strong>：如果把 <code>120</code> 个 4H bars 机械改成 <code>120</code> 个 15m bars，等于把 <code>20</code> 天窗口误缩成 <code>1.25</code> 天；这是最容易把策略抄坏的地方。</li>
+<li><strong>Kelly 实现当前不对称</strong>：源码的 <code>clip(lower=0)</code> 会让负漂移场景拿不到正常 short-side 尺寸，进入 live 前必须改成对称表达（例如基于 <code>|mu|</code> 或直接用 vol-target 壳）。</li>
+<li><strong>z-score shell 可能拥挤</strong>：pairs 的 alpha 往往死在 admission 之后的 execution、cost 与 relationship breakdown，而不是死在公式看不懂。</li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<p>如果只给这轮一个明确行动，我会建议：</p>
+<p>&gt; <strong>不要先复刻 repo 的 Kelly；先复刻它的“四重配对准入 + calendar-time half-life + fixed-notional spread z-score shell”。</strong></p>
+<p>更落地一点：</p>
+<ol>
+<li>在 Binance <code>15m</code> top-liquid perp 上跑 rolling pair admission；</li>
+<li>只保留 half-life <code>0.5~10</code> 天的 pair；</li>
+<li>用固定名义仓位回测 <code>z-entry / z-exit / z-stop</code>；</li>
+<li>看成本后是否仍有正的 pair ratio；</li>
+<li>只有 alpha 本体过关，再试对称化 Kelly 或 vol-target。</li>
+</ol>
+<p>这一步如果跑出来，哪怕收益一般，也会给当前 desk 多一类真正能进入后续 admission check 的 <strong>pairs raw alpha skeleton</strong>。</p>
+<h2>9. 来源</h2>
+<h3>主来源（repo）</h3>
+<ul>
+<li><strong>Aman Syed. (2026). _Stat-Arb-in-Crypto_. GitHub repository.</strong></li>
+<li>Repo URL：&lt;<a href="https://github.com/aman3599/Stat-Arb-in-Crypto&gt;">https://github.com/aman3599/Stat-Arb-in-Crypto&gt;</a></li>
+<li>Readable URL：&lt;<a href="https://github.com/aman3599/Stat-Arb-in-Crypto&gt;">https://github.com/aman3599/Stat-Arb-in-Crypto&gt;</a></li>
+</ul>
+<h3>理论地基（repo 中实际使用的方法族）</h3>
+<ul>
+<li><strong>Engle, R. F., &amp; Granger, C. W. J. (1987). _Co-integration and Error Correction: Representation, Estimation, and Testing_. Econometrica.</strong></li>
+<li>DOI：&lt;<a href="https://doi.org/10.2307/1913236&gt;">https://doi.org/10.2307/1913236&gt;</a></li>
+<li>Readable URL：&lt;<a href="https://www.jstor.org/stable/1913236&gt;">https://www.jstor.org/stable/1913236&gt;</a></li>
+</ul>
+<ul>
+<li><strong>Johansen, S. (1991). _Estimation and Hypothesis Testing of Cointegration Vectors in Gaussian Vector Autoregressive Models_. Econometrica.</strong></li>
+<li>DOI：&lt;<a href="https://doi.org/10.2307/2938278&gt;">https://doi.org/10.2307/2938278&gt;</a></li>
+<li>Readable URL：&lt;<a href="https://www.jstor.org/stable/2938278&gt;">https://www.jstor.org/stable/2938278&gt;</a></li>
+</ul>
+</body>
+</html>

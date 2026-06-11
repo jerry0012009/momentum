@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2025 JBF 论文只读成流动性解释：它更该先落地的是「横截面短反转 = 做流动性 premium」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2025 JBF 论文只读成流动性解释：它更该先落地的是「横截面短反转 = 做流动性 premium」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-27 15:26 UTC</span>
+      <span class="pill">研究时间：2026-03-27 15:32 UTC</span>
+      <span class="pill">类型：2025 Journal of Banking &amp; Finance 开放获取全文 PDF（University of Dundee 镜像可读）+ Binance Spot 公共 `5m/15m` 最小快检</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/mean-reversion/short-term-reversal/liquidity-provision/market-making-proxy/market-neutral/uncertainty-gate/uniswap-liquidity/tether-liquidity/5m/15m/1m/3m/paper/external-data/cost</span>
+      <span class="pill">证据类型：论文全文证据 + Binance Spot 公共 `5m/15m` 最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-27_1532_liquidity-provision-xs-short-reversal-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-27 15:32 UTC</li>
+<li>类型：2025 Journal of Banking &amp; Finance 开放获取全文 PDF（University of Dundee 镜像可读）+ Binance Spot 公共 <code>5m/15m</code> 最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：上一根横截面里涨得最急的币，下一根更容易回吐；跌得最急的币，下一根更容易反弹。也就是对短时 order imbalance 反向提供流动性，赚取短周期 reversal / liquidity-provision premium</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/mean-reversion/short-term-reversal/liquidity-provision/market-making-proxy/market-neutral/uncertainty-gate/uniswap-liquidity/tether-liquidity/5m/15m/1m/3m/paper/external-data/cost</li>
+<li>证据类型：论文全文证据 + Binance Spot 公共 <code>5m/15m</code> 最小快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Hisham Farag, Di Luo, Larisa Yarovaya, Damian Zieba (2025), _Returns from Liquidity Provision in Cryptocurrency Markets_</strong>, 发表在 <strong>Journal of Banking &amp; Finance</strong>。</p>
+<p>先直接回答这篇东西的 <strong>base alpha</strong>：</p>
+<p>&gt; <strong>不是“高波动时流动性很重要”这种解释层结论，而是一个很直接的横截面 short-term reversal：上一根相对市场涨得最猛的币，下一根倾向回吐；上一根相对市场跌得最猛的币，下一根倾向反弹。</strong></p>
+<p>论文把这件事解释成 <strong>liquidity provision premium</strong>：你在短时 order imbalance 最重的时候，反着市场去接单/给单，赚的是立即性需求带来的短暂价格冲击回归。</p>
+<p>所以它首先是 <strong>raw alpha</strong>，而不是单纯 filter / overlay：</p>
+<ul>
+<li>信号本体 = <code>上一根横截面相对市场的超额涨跌幅</code></li>
+<li>交易方向 = <code>long 上一根 losers / short 上一根 winners</code></li>
+<li>持有周期 = 下一根 bar（论文主信号是 <code>5m -&gt; next 5m</code>）</li>
+<li>组合形式 = 横截面 market-neutral / liquidity-provision proxy</li>
+</ul>
+<p>这点对当前 desk 很有价值，因为它补的是一条非常基础、非常原子的 <strong>横截面短反转母策略</strong>：</p>
+<ul>
+<li>不是 pairs spread</li>
+<li>不是 basis / funding carry</li>
+<li>不是跨市场 lead-lag</li>
+<li>也不是纯 filter</li>
+</ul>
+<p>而是一条可以直接当底座的 <strong>cross-sectional mean reversion / liquidity-taking exhaustion fade</strong> 线。</p>
+<h2>2. 核心结论</h2>
+<h3>2.1 论文到底怎么定义这条 alpha</h3>
+<p>论文使用 <strong>Coinpaprika 2017-01-01 到 2022-12-31 的 5 分钟数据</strong>：</p>
+<ul>
+<li>先从约 9000 个 active coins 里按市值预筛到 <code>176</code> 个</li>
+<li>再剔除缺失过多与异常数据后，最终保留 <strong>122 个币</strong></li>
+<li>每根 bar 上先算每个币 <code>Ri,t-1</code></li>
+<li>再算横截面等权市场回报 <code>Rm,t-1</code></li>
+<li>用 <code>Ri,t-1 - Rm,t-1</code> 作为 market-maker inventory / order imbalance 的 proxy</li>
+<li>组合权重与论文一致：</li>
+<li><strong>上一根相对市场跌得越多 → 当前权重越偏多</strong></li>
+<li><strong>上一根相对市场涨得越多 → 当前权重越偏空</strong></li>
+<li>再用 <code>0.5 * Σ|Ri,t-1 - Rm,t-1|</code> 做标准化</li>
+</ul>
+<p>直白说，就是：</p>
+<p>&gt; <strong>上一根相对市场最 extreme 的 winner/loser，在下一根最值得反着做。</strong></p>
+<p>这就是这篇 paper 最值得 desk 先复现的 raw alpha。</p>
+<h3>2.2 论文里的几个关键数字</h3>
+<p>论文 Table 1/2/3/7 里，最值得 desk 先记住的是下面这些：</p>
+<ul>
+<li><strong>这条 liquidity-provision premium 的样本内均值是 <code>0.720% / 5m</code></strong>，标准差 <code>4.526% / 5m</code></li>
+<li>使用 uncertainty predictors 做 out-of-sample forecast 时：</li>
+<li><code>h=2</code> 的 <code>R²OS</code> 大约在 <code>1.24% ~ 1.61%</code></li>
+<li><code>h=6</code> 的 <code>R²OS</code> 大约在 <strong><code>4.22% ~ 4.62%</code></strong></li>
+<li><code>h=12</code> 仍有 <strong><code>2.96% ~ 3.26%</code></strong></li>
+<li>在包含全部 predictor 的主回归（Model 5）里：</li>
+<li><code>SPOTVOL</code>: <code>-0.260%</code></li>
+<li><code>LTV</code>: <code>+0.100%</code></li>
+<li><code>RV</code>: <code>+0.056%</code></li>
+<li><code>RA</code>: <code>+0.085%</code></li>
+<li><code>NCSKEW</code>: <code>+0.031%</code></li>
+<li><code>Tail</code>: <code>+0.019%</code></li>
+<li><code>DV_INNOV_TETHER</code>: <strong><code>+0.187%</code></strong></li>
+<li>全部 predictor 一起上时，<strong>Adj-R² = <code>33.7%</code></strong></li>
+<li>如果按市值拆样本：</li>
+<li><strong>small-cap 子样本的 Adj-R² 最高到 <code>74.0%</code></strong></li>
+<li>large-cap 子样本则明显弱很多（最高约 <code>1.6%</code>）</li>
+</ul>
+<p>这几组数字非常重要，因为它们说明三件事：</p>
+<ol>
+<li><strong>raw alpha 本体是存在的</strong>，不是只剩解释；</li>
+<li><strong>它很吃 regime</strong>，尤其是高不确定性 / 高 stress 环境；</li>
+<li><strong>它更像“小币的流动性补偿”而不是大币稳定印钞机</strong>。</li>
+</ol>
+<h3>2.3 哪些变量最像 gate，而不是 alpha 本体</h3>
+<p>这篇 paper 很适合 desk 的地方，在于它把 raw alpha 和 gate 拆得很清楚：</p>
+<ul>
+<li><strong>alpha 本体：</strong> 横截面短反转 / 做流动性 premium</li>
+<li><strong>regime / filter：</strong></li>
+<li><code>LTV</code>（left-tail volatility）</li>
+<li><code>RV</code>（realized variance）</li>
+<li><code>RA</code>（risk aversion）</li>
+<li><code>NCSKEW</code> / <code>Tail</code></li>
+<li><code>Tether liquidity innovation</code></li>
+<li><strong>跨 venue / 结构层附加信息：</strong></li>
+<li>Uniswap liquidity / volume / tx count 变动</li>
+<li>Uniswap withdrawals / fees / impermanent loss</li>
+</ul>
+<p>也就是说，这篇论文不是“只有 macro filter 没有 alpha 本体”，而是：</p>
+<p>&gt; <strong>先有清楚的 raw alpha，然后再告诉你：哪些 stress / liquidity 状态会让这条 raw alpha 更值得做。</strong></p>
+<p>这正符合当前 bot7 的 intake 优先级。</p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇比继续补一篇泛泛 filter 文献更值得，原因很简单：</p>
+<ol>
+<li><strong>它补的是母策略，不是边角料。</strong></li>
+<p>当前 desk 已经有不少 pairs / carry / lead-lag / order-book / event-driven intake；这篇补的是更基础的 <strong>XS short reversal</strong>。</p>
+</ol>
+<ol>
+<li><strong>它天然适配 <code>1m / 3m / 5m / 15m</code>。</strong></li>
+<p>论文原始频率就是 <code>5m</code>，往更快做可以压到 <code>1m / 3m</code>，往更稳做可以抬到 <code>15m</code>。</p>
+</ol>
+<ol>
+<li><strong>它能清楚拆成“alpha 本体 + gate 层”。</strong></li>
+<p>这对 desk 很实用：</p>
+</ol>
+<ul>
+<li>不需要先把所有 predictor 都复刻完才能起步</li>
+<li>可以先跑 bare-bones raw alpha</li>
+<li>再分层加入 volatility / tail / stablecoin-liquidity / DEX-liquidity gate</li>
+</ul>
+<ol>
+<li><strong>它不是纯 headline alpha 的重复。</strong></li>
+<p>这不是“24h loser basket”那种慢频换壳，也不是“shock reversal”单资产版本，而是 <strong>横截面、超短周期、market-neutral、做流动性型</strong> 的 short reversal。</p>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面、market-neutral、双边、多币组合</li>
+<li>基础 alpha：短时 order imbalance 会过冲；上一根 extreme winners/losers 到下一根有 reversal</li>
+<li>entry：每根 bar close/next-open，按 <code>-(Ri,t-1 - Rm,t-1)</code> 排序或直接按论文公式赋权；long losers，short winners</li>
+<li>exit：默认持有 <code>1 bar</code>；更 desk 化时可加 <code>2~3 bar max_hold</code>、<code>signal decay</code>、<code>partial unwind</code></li>
+<li>sizing：最小复现先按论文规范化权重；实盘再加 <code>inverse-vol</code>、单币权重上限、行业/主题 cluster cap</li>
+<li>risk：限制单币权重、限制净 beta、限制单主题集中度、做市场急跌 / news / 清算级联时的临时降杠杆</li>
+<li>cost：核心风险在换手；必须按 maker/taker、滑点、借币/资金费（若上 perp）单独核算</li>
+<li>更适合的 regime：高 left-tail risk、高 realized variance、高 risk aversion、stablecoin 流动性冲击上行时</li>
+<li>主要 veto：交易费爬坡、盘口太薄的小币、极端新币、被 listing / delisting / 合约调整污染的截面</li>
+</ul>
+<h2>4. 论文里哪些 desk 化组件最值得偷</h2>
+<h3>4.1 最值得先偷的是 raw alpha 本体</h3>
+<p>如果只让我从这篇 paper 里先搬一件东西，不是 predictor 回归，而是：</p>
+<p>&gt; <strong>横截面上一根相对市场最 extreme 的 coins，在下一根做反向提供流动性。</strong></p>
+<p>这个骨架足够原子，也足够 portable：</p>
+<ul>
+<li>spot 可以做</li>
+<li>perp 可以做</li>
+<li>top-N liquid universe 可以做</li>
+<li>long-short / beta-neutral / dollar-neutral 都能做</li>
+</ul>
+<h3>4.2 第二层才是 gate</h3>
+<p>论文给的 gate 顺序，我会这样理解：</p>
+<ul>
+<li><strong>强推荐优先测试：</strong> <code>RV / LTV / Tether-liquidity shock</code></li>
+<li><strong>第二层再加：</strong> <code>risk aversion / crash risk / tail risk</code></li>
+<li><strong>结构扩展层：</strong> <code>DEX liquidity / fees / withdrawals / IL</code></li>
+</ul>
+<p>其中最 desk 化的三条是：</p>
+<ol>
+<li><strong>高 RV / 高 LTV 时 size-up</strong></li>
+<li><strong>低 stress 时 shrink or skip</strong></li>
+<li><strong>当 stablecoin liquidity 出现冲击时，允许更激进地做 reversal</strong></li>
+</ol>
+<h2>5. Binance 公共 <code>5m/15m</code> 最小快检</h2>
+<p>我没有重做论文的全样本，但做了一个足够诚实的 <strong>transfer sanity check</strong>：</p>
+<ul>
+<li><strong>数据：</strong> Binance Spot 公共 <code>5m</code> K 线</li>
+<li><strong>窗口：</strong> 最近约 <code>30d</code></li>
+<li><strong>Universe：</strong> 过滤稳定币/法币/黄金锚后、保留有完整 30 天 <code>5m</code> 历史的 <strong>25 个高流动性 USDT 现货对</strong></li>
+<li><strong>信号：</strong> 直接用论文核心公式的 desk 简化版</li>
+<p><code>w_t ∝ -(r_{i,t-1} - r_{m,t-1})</code></p>
+<li><strong>评估：</strong> <code>5m -&gt; next 5m</code> 与 <code>15m -&gt; next 15m</code></li>
+</ul>
+<h3>5.1 快检结果</h3>
+<p><strong>5m：</strong></p>
+<ul>
+<li>gross mean ≈ <strong><code>+1.84 bps/bar</code></strong></li>
+<li>hit-rate ≈ <strong><code>56.5%</code></strong></li>
+<li>平均换手 ≈ <strong><code>2.92x notional / rebalance</code></strong></li>
+<li>若按 <strong><code>1 bp</code> / turnover</strong> 扣成本，net mean 约 <strong><code>-1.07 bps/bar</code></strong></li>
+</ul>
+<p><strong>15m：</strong></p>
+<ul>
+<li>gross mean ≈ <strong><code>+3.83 bps/bar</code></strong></li>
+<li>hit-rate ≈ <strong><code>55.0%</code></strong></li>
+<li>平均换手 ≈ <strong><code>2.89x notional / rebalance</code></strong></li>
+<li>若按 <strong><code>1 bp</code> / turnover</strong> 扣成本，net mean 约 <strong><code>+0.94 bps/bar</code></strong></li>
+<li>对应这 30 天样本期 cumulative net 约 <strong><code>+16.8%</code></strong>（仅作 transfer sanity check，不可直接视为稳定实盘收益）</li>
+</ul>
+<h3>5.2 这组快检怎么解读</h3>
+<p>这组快检非常像一条 desk 会喜欢的结论：</p>
+<ol>
+<li><strong>raw alpha 本体还活着。</strong></li>
+<p>5m/15m 两个频率上，gross 都是正的，说明“上一根 extreme、下一根反打”这件事今天还不是死逻辑。</p>
+</ol>
+<ol>
+<li><strong>5m 最大问题不是没信号，而是换手太贵。</strong></li>
+<p>这点和论文精神一致：做流动性 premium 的代价就是高频换手，若 execution 不够好，很容易被吃掉。</p>
+</ol>
+<ol>
+<li><strong>15m 比 5m 更像当前 desk 的先手版本。</strong></li>
+<p>因为它没有明显抬高 turnover，却把每次 rebalance 的 gross edge 拉大了，成本后还有机会留下来。</p>
+</ol>
+<p>也就是说，我对这条线的第一判断不是“5m all-in”，而是：</p>
+<p>&gt; <strong>先从 <code>15m</code> 的 cost-aware 版本起跑，再往 <code>5m</code> 回推 execution 优化。</strong></p>
+<h2>6. 可复刻的最小实验</h2>
+<h3>最小实验 A：先做 bare-bones raw alpha</h3>
+<ol>
+<li><strong>Universe：</strong> Binance/OKX 的 top <code>20~40</code> liquid USDT perpetual 或 spot 对</li>
+<li><strong>Bar：</strong> 先跑 <code>15m</code>，再下钻 <code>5m</code>，最后才考虑 <code>3m/1m</code></li>
+<li><strong>信号：</strong></li>
+</ol>
+<ul>
+<li>算上一根所有币的 <code>r_{i,t-1}</code></li>
+<li>算横截面等权市场回报 <code>r_{m,t-1}</code></li>
+<li>设 <code>score_i = -(r_{i,t-1} - r_{m,t-1})</code></li>
+</ul>
+<ol>
+<li><strong>组合：</strong></li>
+</ol>
+<ul>
+<li>方案 A：按论文公式归一化权重</li>
+<li>方案 B：只做 top/bottom quantile，降低 turnover</li>
+</ul>
+<ol>
+<li><strong>持有：</strong> <code>1 bar</code> 为主；再比较 <code>2 bar</code> / <code>decay hold</code></li>
+<li><strong>成本：</strong> 至少跑 <code>2 / 4 / 6 / 8 bps round-trip</code> 四档</li>
+<li><strong>输出：</strong> gross/net mean、turnover、capacity proxy、tail PnL、分 market regime 的 hit-rate</li>
+</ol>
+<h3>最小实验 B：把 gate 层接上去</h3>
+<p>在 bare-bones 版本能活之后，再依次叠：</p>
+<ul>
+<li><code>RV gate</code>：过去 <code>N</code> bar market RV 高于滚动分位数才开仓</li>
+<li><code>LTV proxy gate</code>：用本地 downside semivariance / lower-tail realized vol 替代论文里的 option-implied LTV</li>
+<li><code>stablecoin liquidity proxy</code>：用 USDT/USDC/FDUSD 交易量或资金净流 proxy 做 size-up/down</li>
+<li><code>DEX stress proxy</code>：若要接 DeFi，则把 Uniswap pool liquidity / fee / withdrawal 作为二层 filter</li>
+</ul>
+<h3>最小实验 C：降低 turnover 的 desk 版</h3>
+<p>如果 <code>5m</code> 本体 gross 可以但 net 不行，优先试三种降换手方法：</p>
+<ol>
+<li><strong>top/bottom k% only</strong>，不做中间噪音币</li>
+<li><strong>entry buffer</strong>：仅当 <code>|r_i - r_m|</code> 超过横截面 rolling threshold 才开仓</li>
+<li><strong>staggered rebalance</strong>：每 <code>2~3</code> 根 bar 才全量更新一次</li>
+</ol>
+<p>我会把这三件事放在优先级最高的位置，因为这比继续堆 predictor 更直接决定能不能活过成本。</p>
+<h2>7. 我对这条线的当前判断</h2>
+<p>我的判断是：<strong>这条线值得进素材池，而且优先级不低；其中最该先测的不是论文里的解释变量，而是 raw alpha 本体 + cost control。</strong></p>
+<p>更具体地说：</p>
+<ul>
+<li><strong>如果目标是补 raw alpha 池：</strong> 这篇是合格候选</li>
+<li><strong>如果目标是直接找可跑的 desk 版本：</strong> 先从 <code>15m</code> 开始，比硬上 <code>5m</code> 更合理</li>
+<li><strong>如果目标是后续拆组件：</strong> 这篇还可以拆出 <code>RV/LTV gate</code>、<code>stablecoin-liquidity gate</code>、<code>DEX competition overlay</code></li>
+</ul>
+<p>一句话总结：</p>
+<p>&gt; <strong>这篇 paper 最值钱的地方，不是“流动性在 stress 时更贵”这个解释，而是它把 <code>XS short reversal = liquidity provision</code> 这条 raw alpha 说得足够清楚，而且公开数据最小快检显示：它在 2026 的交易环境里还没死，只是 5m 已经明显很吃执行。</strong></p>
+<h2>8. 下一步怎么测</h2>
+<p>下一步我建议直接做下面这个最小 pipeline：</p>
+<ol>
+<li><strong>先在 Binance perpetual 跑 <code>15m</code> top-30 liquid universe</strong></li>
+<li><strong>用 bare-bones 论文权重 + 1-bar hold，跑四档成本</strong></li>
+<li><strong>若 gross 正、net 接近 break-even，就上三种 turnover 控制：</strong></li>
+</ol>
+<ul>
+<li>top/bottom quantile</li>
+<li>entry threshold</li>
+<li>rebalance every 2 bars</li>
+</ul>
+<ol>
+<li><strong>只有在 <code>15m</code> 过线后，再回压 <code>5m</code></strong></li>
+<li><strong>最后才接 RV/LTV/stablecoin-liquidity gate</strong></li>
+</ol>
+<p>也就是：<strong>先验证本体，再加 gate；先过成本，再谈解释。</strong></p>
+<h2>9. 来源与链接</h2>
+<h3>论文主来源</h3>
+<ul>
+<li><strong>Authors:</strong> Hisham Farag, Di Luo, Larisa Yarovaya, Damian Zieba</li>
+<li><strong>Year:</strong> 2025</li>
+<li><strong>Title:</strong> _Returns from Liquidity Provision in Cryptocurrency Markets_</li>
+<li><strong>Venue:</strong> Journal of Banking &amp; Finance, Volume 175, Article 107411</li>
+<li><strong>DOI:</strong> <code>10.1016/j.jbankfin.2025.107411</code></li>
+<li><strong>Readable URL:</strong> <a href="https://doi.org/10.1016/j.jbankfin.2025.107411">https://doi.org/10.1016/j.jbankfin.2025.107411</a></li>
+<li><strong>Open PDF URL:</strong> <a href="https://discovery.dundee.ac.uk/ws/files/150922089/1-s2.0-S0378426625000317-main.pdf">https://discovery.dundee.ac.uk/ws/files/150922089/1-s2.0-S0378426625000317-main.pdf</a></li>
+<li><strong>Repo URL:</strong> 无</li>
+</ul>
+<h3>附加说明</h3>
+<ul>
+<li>论文里的 Uniswap 结果更适合作为 <strong>filter / overlay / structure monitor</strong>，不建议伪装成逐根主信号</li>
+<li>本文中的 Binance 快检只是 <strong>transfer sanity check</strong>，不是论文复现，也不是上线前回测结论</li>
+</ul>
+</body>
+</html>

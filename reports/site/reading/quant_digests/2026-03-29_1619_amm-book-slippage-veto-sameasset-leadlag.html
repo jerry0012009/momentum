@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2025 arXiv 继续写成“又一篇 CEX 领先 DEX”：更该先落地的是「AMM 可执行价重建 × slippage/gas veto」same-asset lead-lag 共享 filter</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2025 arXiv 继续写成“又一篇 CEX 领先 DEX”：更该先落地的是「AMM 可执行价重建 × slippage/gas veto」same-asset lead-lag 共享 filter</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-29 16:20 UTC</span>
+      <span class="pill">研究时间：2026-03-29 16:19 UTC</span>
+      <span class="pill">类型：filter</span>
+      <span class="pill">主题标签：filter/shared-gate/execution-veto/relative-value/same-asset/lead-lag/price-discovery/cex-dex/spot-futures/amm/order-book-reconstruction/slippage/gas/eth/btc/uniswap/binance/cme/1m/3m/5m/15m/paper/public-data/cost</span>
+      <span class="pill">证据类型：2025 arXiv 全文 HTML + 本地 PDF + 论文表格级结果抽取</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-29_1619_amm-book-slippage-veto-sameasset-leadlag.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-29 16:19 UTC</li>
+<li>类型：filter</li>
+<li>主题标签：filter/shared-gate/execution-veto/relative-value/same-asset/lead-lag/price-discovery/cex-dex/spot-futures/amm/order-book-reconstruction/slippage/gas/eth/btc/uniswap/binance/cme/1m/3m/5m/15m/paper/public-data/cost</li>
+<li>证据类型：2025 arXiv 全文 HTML + 本地 PDF + 论文表格级结果抽取</li>
+<li>主题类型：filter</li>
+<li>基础 alpha：same-asset cross-venue lead-lag / basis convergence（尤其是 CEX→DEX catch-up、futures→spot catch-up、跨 venue 同标的价差回归）</li>
+<li>是否可独立复现：是（公开 CEX 行情 + Uniswap pool 状态 / swap 数据 + gas 数据即可复现）</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否（更适合作为 same-asset relative-value 家族的 shared execution / admission filter）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是：</p>
+<p>&gt; <strong>Juan Plazuelo Pascual, Carlos Tardón Rubio, Juan Toro Cebada, Ángel Hernando Veciana (2025)</strong> &gt; <strong>Price Discovery in Cryptocurrency Markets</strong> &gt; *arXiv preprint* &gt; DOI：未见正式 DOI（当前为 arXiv 预印本） &gt; arXiv：<code>2506.08718</code> &gt; Readable URL：&lt;<a href="https://arxiv.org/abs/2506.08718&gt;">https://arxiv.org/abs/2506.08718&gt;</a> &gt; Full HTML：&lt;<a href="https://arxiv.org/html/2506.08718v1&gt;">https://arxiv.org/html/2506.08718v1&gt;</a> &gt; Repo URL：未见官方复现仓库</p>
+<p>如果只看 headline，这篇东西很容易被读成：</p>
+<ul>
+<li>ETH 上 <strong>Binance 领先 Uniswap</strong></li>
+<li>BTC 上 <strong>CME futures 多数时候领先 Binance spot</strong></li>
+</ul>
+<p>这些结论本身没错，但对我们这个已经积累了不少 same-asset lead-lag / basis / cross-venue relative-value 素材的 desk 来说，<strong>这已经不是最稀缺的那层</strong>。</p>
+<p>这篇 paper 真正更值钱的分支是：</p>
+<p>&gt; <strong>它认真处理了“DEX 没有传统 order book，仍然要先重建可执行价和滑点曲线，才知道 lead-lag alpha 到底能不能下单”这件事。</strong></p>
+<p>这正好补的是我们当前素材池里更缺的一层：</p>
+<ul>
+<li>不是再补一个“谁领先谁”的 raw alpha headline；</li>
+<li>而是给已经存在的 same-asset relative-value alpha，补一个<strong>shared execution veto / admission filter</strong>。</li>
+</ul>
+<h2>2. 先回答用户要求的那句：这篇东西的 base alpha 是什么？</h2>
+<p>这篇东西的 <strong>base alpha</strong> 其实不该硬说成它自己发明了新方向。</p>
+<p>更诚实的说法是：</p>
+<ul>
+<li>它服务的 <strong>base alpha</strong> 是：</li>
+<li><strong>same-asset lead-lag catch-up</strong></li>
+<li><strong>same-asset basis convergence</strong></li>
+<li><strong>cross-venue price-dislocation rollback</strong></li>
+<li>典型落点包括：</li>
+<li><code>Binance → Uniswap</code> 的 ETH 迟滞补动</li>
+<li><code>futures → spot</code> 的 BTC catch-up</li>
+<li>其他“同一标的，不同 venue / 机制”的 spread 回归</li>
+</ul>
+<p>所以本轮分类应当是：</p>
+<ul>
+<li><strong>主题类型：filter</strong></li>
+<li><strong>不是 standalone raw alpha</strong></li>
+<li><strong>而是 raw alpha 的执行可交易性过滤层</strong></li>
+</ul>
+<p>一句话说白：</p>
+<p>&gt; <strong>这篇 paper 最有用的，不是告诉你“有价差”；而是告诉你，DEX / AMM 上你必须先把“实际成交到手的价格”算出来，否则 paper alpha 只是中间价幻觉。</strong></p>
+<h2>3. 为什么这轮不继续写一个 raw alpha，而是写这个 filter</h2>
+<p>这个问题得正面回答。</p>
+<p>过去几天，desk 已经连续积累了不少 raw alpha：</p>
+<ul>
+<li>CEX/DEX same-asset catch-up</li>
+<li>futures-lead-spot spread alpha</li>
+<li>cross-venue funding carry</li>
+<li>same-asset perp-perp basis pocket</li>
+<li>pairs / stat-arb / basket MR</li>
+</ul>
+<p>反而当前更缺的是：</p>
+<p>&gt; <strong>一层能同时服务这些 same-asset / cross-venue raw alpha 的“执行真实性过滤器”。</strong></p>
+<p>如果没有这层，最容易犯的错是：</p>
+<ol>
+<li>用 mid-price 看到有 edge；</li>
+<li>实际一吃单，AMM 曲线滑点 + fee + gas 把 edge 吃光；</li>
+<li>回测还以为自己抓到了 alpha，实盘却只是“买到了论文图上的虚假价差”。</li>
+</ol>
+<p>所以这轮虽然不是 raw alpha 本体，但它不是泛泛解释文。</p>
+<p>它更像：</p>
+<p>&gt; <strong>给现有 same-asset relative-value alpha 家族补一块现在更缺的实盘层：先过 executable-price veto，再谈入场。</strong></p>
+<h2>4. 论文里最值得 desk 拿走的不是“谁领先”，而是三组硬结果</h2>
+<h3>4.1 ETH：中心化市场几乎每次都领先 DEX，但关键是这个结论必须建立在“可比价格”上</h3>
+<p>论文在 <code>ETH Binance vs Uniswap</code> 的 5 个事件日总结（Table 3.19）里给出：</p>
+<ul>
+<li><strong>Hasbrouck Centralized Share</strong>：</li>
+<li>March：<code>0.959</code></li>
+<li>April：<code>0.965</code></li>
+<li>May：<code>0.628</code></li>
+<li>August：<code>0.986</code></li>
+<li>September：<code>0.995</code></li>
+<li><strong>Hayashi-Yoshida Lead-Lag Ratio</strong> 也都是中心化市场领先：</li>
+<li>March：<code>1.86</code></li>
+<li>April：<code>1.47</code></li>
+<li>May：<code>1.22</code></li>
+<li>August：<code>1.20</code></li>
+<li>September：<code>1.11</code></li>
+</ul>
+<p>而论文自己的总结是：</p>
+<p>&gt; centralized market consistently leads the decentralized one on every occasion.</p>
+<p>但 desk 真该注意的不是“中心化领先”这句废话，而是：</p>
+<p>&gt; <strong>作者为了得到这个结论，先把 Uniswap 的 liquidity pool 重建成一个可比较的 order-book / executable-price 结构。</strong></p>
+<p>这一步对我们比“share=0.959”更重要，因为它决定了信号有没有成交意义。</p>
+<h3>4.2 BTC：futures 多数时候领先，但优势已经没想象中大，而且高波动会翻车</h3>
+<p>在 <code>BTC spot vs CME futures</code> 的 5 个事件日总结（Table 3.35）里：</p>
+<ul>
+<li><strong>Hasbrouck Futures Share</strong>：</li>
+<li>March：<code>0.563</code></li>
+<li>April：<code>0.552</code></li>
+<li>May：<code>0.521</code></li>
+<li>August：<code>0.158</code></li>
+<li>September：<code>0.539</code></li>
+<li><strong>Hayashi-Yoshida lag（秒）</strong>：</li>
+<li>March：<code>0.055s</code></li>
+<li>April：<code>0.066s</code></li>
+<li>May：<code>0.063s</code></li>
+<li>August：<code>-0.571s</code>（spot 反而领先）</li>
+<li>September：<code>0.15s</code></li>
+</ul>
+<p>论文总结得很清楚：</p>
+<ul>
+<li>futures <strong>多数时候领先</strong>；</li>
+<li>但 <strong>优势不大</strong>；</li>
+<li>高波动时会出现 <strong>mixed results</strong>；</li>
+<li>市场效率比 4~5 年前更高，价差没以前肥。</li>
+</ul>
+<p>对我们来说，这个结论其实是反向提醒：</p>
+<p>&gt; <strong>别把“谁领先”直接抄成 1m/3m 可收钱 alpha。</strong></p>
+<p>因为当 paper 里都只剩 <code>0.055s ~ 0.15s</code> 这种量级时，真正能迁移到 <code>1m/3m/5m</code> 的，不再是“秒级抢跑”本身，而是：</p>
+<ul>
+<li>哪些情况下 lag 会扩到足以覆盖成本；</li>
+<li>哪些情况下其实根本不该下单；</li>
+<li>哪些 venue / pool / 时段的 executable edge 仍然没被成本吃掉。</li>
+</ul>
+<h3>4.3 论文把“交易性”问题写得很实：套利分析必须显式扣 gas / liquidity constraints</h3>
+<p>论文在执行层面反复强调：</p>
+<ul>
+<li>stressed liquidity conditions 下，<strong>gas prices</strong> 和 <strong>liquidity constraints</strong> 很重要；</li>
+<li>arbitrage opportunity estimation 不能只看 mispricing；</li>
+<li>必须把 <strong>transaction costs in the form of gas fees</strong> 算进去；</li>
+<li>DEX 侧需要先构造 <strong>liquidity snapshot</strong>，再更新成 <code>t+1</code> 的可执行流动性状态。</li>
+</ul>
+<p>这意味着 paper 给我们的不是一句“有价差就冲”，而是更接近下面这条实盘原则：</p>
+<p>&gt; <strong>same-asset relative-value alpha 的 admission，必须基于 executable mispricing，而不是 observed mid mispricing。</strong></p>
+<h2>5. 这篇 paper 更适合 desk 的落地读法：把它做成 shared execution veto</h2>
+<h3>5.1 它服务哪类 raw alpha</h3>
+<p>最直接服务这几类：</p>
+<ol>
+<li><strong>CEX→DEX catch-up</strong></li>
+<li><strong>futures→spot / spot→perp 的 same-asset spread 回归</strong></li>
+<li><strong>cross-venue 同标的 basis pocket</strong></li>
+<li><strong>带 AMM / 薄流动性 venue 腿的 relative-value / stat-arb</strong></li>
+</ol>
+<p>它不负责决定方向；它负责决定：</p>
+<ul>
+<li><strong>这笔单能不能做</strong></li>
+<li><strong>做多大</strong></li>
+<li><strong>该用哪条腿做主动 / 被动执行</strong></li>
+<li><strong>预期 alpha 能不能扛得过滑点 + gas + fee</strong></li>
+</ul>
+<h3>5.2 最核心的 gate 变量不是 spread，而是“可执行 spread”</h3>
+<p>第一版最值得测的变量，不是：</p>
+<ul>
+<li><code>mid_CEX - mid_DEX</code></li>
+</ul>
+<p>而是：</p>
+<ul>
+<li><code>executable_spread = leader_ref_price - lagging_leg_executable_price_after_fee_gas</code></li>
+</ul>
+<p>其中 <code>lagging_leg_executable_price_after_fee_gas</code> 需要显式包含：</p>
+<ul>
+<li>AMM 曲线滑点</li>
+<li>LP / trading fee</li>
+<li>gas</li>
+<li>估算失败 / confirmation buffer</li>
+<li>可能的回补腿成本</li>
+</ul>
+<p>只有当：</p>
+<p><code>expected_catchup &gt; total_cost + safety_buffer</code></p>
+<p>这条 raw alpha 才允许入场。</p>
+<h3>5.3 这层 filter 不只服务 DEX</h3>
+<p>虽然 paper 一大亮点是 Uniswap order-book reconstruction，但它的思路不该只锁死在 DEX。</p>
+<p>更广义地说，这是一条：</p>
+<p>&gt; <strong>对任何“报价可见、但实际成交曲线并不线性”的 venue，都该先做 executable-price reconstruction。</strong></p>
+<p>所以它其实也可以服务：</p>
+<ul>
+<li>薄深度 perp venue</li>
+<li>多 stablecoin quote 的同币多报价 MR</li>
+<li>跨 venue maker pocket / rollback execution</li>
+<li>options 同 strike / 同 expiry 的相对价值</li>
+</ul>
+<h2>6. desk 最小可复现实验</h2>
+<h3>6.1 数据源、公开性、更新频率</h3>
+<p><strong>主实验对象</strong>：</p>
+<ul>
+<li><code>ETH</code>：Binance vs Uniswap（优先 v3，若工程图省事先做 v2/v3 简化版）</li>
+<li><code>BTC</code>：Binance spot / perp vs CME proxy 或先用 Binance spot-perp 替代做结构验证</li>
+</ul>
+<p><strong>公开数据源</strong>：</p>
+<ul>
+<li>CEX：Binance 公共 trade / kline / bookTicker / aggTrades</li>
+<li>DEX：Uniswap pool swap / mint / burn / slot0 / liquidity / tick state</li>
+<li>gas：Ethereum 公共 gas API / Etherscan gas tracker / on-chain block data</li>
+<li>可选代理：GeckoTerminal / Dune 导出的 pool OHLCV + liquidity</li>
+</ul>
+<p><strong>更新频率</strong>：</p>
+<ul>
+<li>底层最好 <code>1s~1m</code></li>
+<li>最小实验汇总到 <code>1m / 3m / 5m</code></li>
+<li>若只想快速出 first verdict，先做 <code>1m entry + 3m/5m exit</code></li>
+</ul>
+<h3>6.2 最小实验定义</h3>
+<p>先别做复杂 VECM / 信息份额在线估计，第一版直接做可交易版本：</p>
+<ol>
+<li><strong>leader impulse 定义</strong></li>
+</ol>
+<ul>
+<li>在 CEX 上定义 <code>1m</code> 冲击：</li>
+<li><code>abs(ret_1m) &gt; rolling q90</code> 或 <code>&gt; k * sigma_1m</code></li>
+</ul>
+<ol>
+<li><strong>lagging leg 可执行价重建</strong></li>
+</ol>
+<ul>
+<li>对 DEX / 薄深度腿，按给定 notional 计算：</li>
+<li><code>buy_exec_px(size)</code> / <code>sell_exec_px(size)</code></li>
+<li>再扣 fee + gas</li>
+</ul>
+<ol>
+<li><strong>可执行 edge</strong></li>
+</ol>
+<ul>
+<li><code>edge_exec = expected_reversion_target - current_exec_cost</code></li>
+</ul>
+<ol>
+<li><strong>filter</strong></li>
+</ol>
+<ul>
+<li>只在 <code>edge_exec &gt; buffer</code> 时允许开仓</li>
+<li><code>buffer</code> 可取 <code>1.2x ~ 1.5x</code> 估算总成本</li>
+</ul>
+<ol>
+<li><strong>exit</strong></li>
+</ol>
+<ul>
+<li><code>1m / 3m / 5m</code> 固定持有</li>
+<li>或当 spread 回到 rolling fair band 内即平</li>
+</ul>
+<h3>6.3 第一版就该做的对照</h3>
+<p>一定要做这两个版本的 A/B：</p>
+<ul>
+<li><strong>A：naive mid-price alpha</strong></li>
+<li><strong>B：executable-price veto alpha</strong></li>
+</ul>
+<p>核心看三件事：</p>
+<ol>
+<li>trade count 会不会大幅下降；</li>
+<li>成本后 pnl / hit-rate / avg trade 有没有明显改善；</li>
+<li>大亏损尾部是否明显收缩。</li>
+</ol>
+<p>如果 B 版本只是把交易全砍掉，那这层 gate 没价值； 如果 B 版本能：</p>
+<ul>
+<li>少做很多单，</li>
+<li>但净值更平，</li>
+<li>尾部更短，</li>
+<li>每笔更厚，</li>
+</ul>
+<p>那它就配进 shared execution layer。</p>
+<h2>7. 一个最适合当前 desk 的具体实现草图</h2>
+<h3>7.1 先服务 <code>Binance impulse → Uniswap catch-up</code></h3>
+<p>这是最直接的 paper 对应场景。</p>
+<p><strong>entry</strong>：</p>
+<ul>
+<li>Binance <code>1m</code> 冲击超过阈值；</li>
+<li>Uniswap 池的同方向 <code>executable move</code> 仍明显落后；</li>
+<li><code>net_edge_after_fee_gas &gt; threshold</code></li>
+</ul>
+<p><strong>exit</strong>：</p>
+<ul>
+<li>3m / 5m 固定离场；或</li>
+<li>当 <code>cex-dex executable spread</code> 回归到 <code>rolling z &lt; z_close</code></li>
+</ul>
+<p><strong>sizing</strong>：</p>
+<ul>
+<li>按 pool depth / gas percentile 动态降杠杆；</li>
+<li>gas &gt; rolling p80 直接 veto；</li>
+<li>pool depth &lt; size floor 直接 veto</li>
+</ul>
+<p><strong>risk / cost</strong>：</p>
+<ul>
+<li>只允许在 pool 价格 impact &lt; <code>x bp</code> 时入场；</li>
+<li>gas 费用统一乘一个保守 buffer；</li>
+<li>极端波动时扩大 cost haircut</li>
+</ul>
+<h3>7.2 再扩展到 <code>same-asset perp / spot / cross-venue</code></h3>
+<p>第二阶段可以不碰链上，只把同样的思想搬去：</p>
+<ul>
+<li>薄深度 venue 的 book-walk cost</li>
+<li>maker pocket 是否存在</li>
+<li>一腿主动、一腿被动时的 net executable spread</li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; <strong>这篇 paper 的最有用迁移，不是它那几个 share 数字，而是“别再拿中间价假装自己能成交”的执行哲学。</strong></p>
+<h2>8. 这轮最值得记住的 3 个关键数据点</h2>
+<ol>
+<li><strong>ETH：中心化市场在 5 个事件里 Hasbrouck share 分别为 <code>0.959 / 0.965 / 0.628 / 0.986 / 0.995</code></strong>，说明 CEX→DEX price discovery 优势非常稳定。</li>
+<li><strong>BTC：futures share 只有 <code>0.563 / 0.552 / 0.521 / 0.158 / 0.539</code></strong>，而且 August 甚至 spot 领先，说明“futures 一定碾压 spot”的旧叙事已经弱化。</li>
+<li><strong>论文明写了 gas / liquidity constraints / liquidity snapshot reconstruction</strong>，这说明 real tradability 的关键不是观察到 spread，而是算出 <strong>executable spread after cost</strong>。</li>
+</ol>
+<h2>9. 下一步怎么测</h2>
+<h3>最小下一步（本周内能做）</h3>
+<p>做一个 <strong>ETH Binance ↔ Uniswap 1m executable-spread veto</strong> 小实验：</p>
+<ol>
+<li>拉最近 <code>60~90</code> 天 Binance <code>ETHUSDT</code> <code>1m</code> / <code>aggTrades</code></li>
+<li>取 1 个主流 Uniswap ETH 池，重建简化版 executable price（先不追求 tick-level 完美）</li>
+<li>用 <code>Binance 1m impulse</code> 触发候选信号</li>
+<li>比较：</li>
+</ol>
+<ul>
+<li><strong>naive mid-gap catch-up</strong></li>
+<li><strong>executable-gap &gt; fee+gas+buffer 才入场</strong></li>
+</ul>
+<ol>
+<li>输出：</li>
+</ol>
+<ul>
+<li>trade count</li>
+<li>avg edge</li>
+<li>gross/net pnl</li>
+<li>p95 loss</li>
+<li>不同 gas 分位下的表现</li>
+</ul>
+<h3>如果第一版有边，再做第二步</h3>
+<p>把这层 gate 接到至少两类 alpha 上做 shared test：</p>
+<ul>
+<li><code>CEX→DEX catch-up</code></li>
+<li><code>same-asset cross-venue basis pocket</code></li>
+</ul>
+<p>如果它能同时改善两类策略，而不是只对某一个 setup 有用，它就值得正式升级成 desk 的 shared execution filter。</p>
+<h2>10. 来源与可复现性清单</h2>
+<h3>论文来源</h3>
+<ul>
+<li>arXiv 摘要页：&lt;<a href="https://arxiv.org/abs/2506.08718&gt;">https://arxiv.org/abs/2506.08718&gt;</a></li>
+<li>arXiv 全文 HTML：&lt;<a href="https://arxiv.org/html/2506.08718v1&gt;">https://arxiv.org/html/2506.08718v1&gt;</a></li>
+<li>本地 PDF：<code>/root/clawd/jerry/momentum/tmp_price_discovery_2025.pdf</code></li>
+</ul>
+<h3>公开数据口径</h3>
+<ul>
+<li>Binance 公共市场数据（trade / aggTrades / kline / bookTicker）</li>
+<li>Uniswap pool 状态 / swap / liquidity / tick 数据（公开链上可得）</li>
+<li>Ethereum gas 数据（公开 API / 链上）</li>
+</ul>
+<h3>复现口径</h3>
+<ul>
+<li>频率：<code>1m / 3m / 5m</code> 为主，必要时底层 <code>1s</code></li>
+<li>标的：<code>ETH</code> 优先，<code>BTC</code> 作对照</li>
+<li>角色：shared filter / execution veto</li>
+<li>服务对象：same-asset relative-value / lead-lag / basis convergence</li>
+</ul>
+<h2>11. 一句话结论</h2>
+<p>&gt; <strong>这篇 2025 arXiv 对我们最值钱的，不是再证明一次“CEX 领先 DEX”，而是提醒：凡是 same-asset lead-lag / basis alpha，只要有 AMM 或薄深度腿，就必须先把 executable price、slippage、fee、gas 算清楚，再决定这笔单是不是值得做。</strong></p>
+</body>
+</html>

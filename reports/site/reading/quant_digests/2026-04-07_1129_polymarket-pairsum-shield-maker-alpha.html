@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Polymarket maker repo 只读成“预测市场 bot”：对 short-cycle desk，更该先测的是「complementary-outcome sub-par spread × Binance latency shield」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Polymarket maker repo 只读成“预测市场 bot”：对 short-cycle desk，更该先测的是「complementary-outcome sub-par spread × Binance latency shield」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-07 11:33 UTC</span>
+      <span class="pill">研究时间：2026-04-07 11:29 UTC</span>
+      <span class="pill">类型：GitHub 新 repo source audit（`README.md` + `config.yaml` + `src/market_maker.py` + `src/window_tracker.py`）</span>
+      <span class="pill">主题标签：raw-alpha / prediction-market / relative-value / stat-arb / market-making / complementary-outcomes / pair-sum / latency-shield / binance / polymarket / BTC / ETH / SOL / 5m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-07_1129_polymarket-pairsum-shield-maker-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-07 11:29 UTC</li>
+<li>类型：GitHub 新 repo source audit（<code>README.md</code> + <code>config.yaml</code> + <code>src/market_maker.py</code> + <code>src/window_tracker.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一 <code>5m</code> 二元市场里，若 <code>UP</code> / <code>DOWN</code> 两边 maker bid 合计明显低于 <code>$1.00</code>，就能买到一对“互补结果”；Binance 现货先行价格只负责在单腿成交后帮你及时撤掉更危险的另一腿</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / prediction-market / relative-value / stat-arb / market-making / complementary-outcomes / pair-sum / latency-shield / binance / polymarket / BTC / ETH / SOL / 5m / repo / public-data / cost / risk</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Jordan Maragliano (2026)</strong> 的 GitHub 新 repo <strong><code>polymarket-spread-bot</code></strong>。它表面像“预测市场做市 bot”，但对我们 desk 真正更值钱的，不是押方向，而是 repo 里那条更像 <strong>relative-value raw alpha</strong> 的读法：<strong>在同一 <code>5m</code> crypto up/down 市场里，同时在 <code>UP</code> 和 <code>DOWN</code> 两边挂 maker 买单；只要两腿最终总成本 <code>&lt; $1</code>，到结算时天然只会有一边赔付、另一边兑付 <code>$1</code>，组合本身就锁定正毛利。</strong></p>
+<p>更重要的是，作者没有把风险处理留在口号层。<code>market_maker.py</code> 把这条 alpha 明确拆成：<strong>pair-sum edge</strong>（本体）+ <strong>Binance latency shield</strong>（单腿成交后的毒性防守）+ <strong>timebox / exposure cap</strong>（仓位与尾盘管理）。这就不再是“预测市场看起来可能有价差”，而是一个能直接写成 entry / exit / sizing / risk 的完整壳。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 真正值得抄的不是“去预测 5 分钟涨跌”，而是 <strong>“当互补结果两边一起买还不到 <code>$1</code> 时，优先做 pair capture；Binance 只拿来防守 one-leg adverse selection。”</strong></li>
+<li><strong>一句话证明方式：</strong> repo 直接在 <code>src/market_maker.py</code> 里写出 pair 评估、双腿下单、partial-fill 处理、shield cancel、到期结算与 guaranteed-profit 计算，不是只有概念图。</li>
+<li><code>evaluate_spread()</code> 的核心公式很直接：<code>profit_per_share = 1.0 - (up_best_bid + down_best_bid)</code>。当前配置要求 <code>min_spread_profit: 0.04</code>，也就是 <strong>至少留 4 美分/份</strong> 才允许开 pair；这比“只要小于 1 就上”更像真交易，不是教材硬套。</li>
+<li>这条线给了完整风控壳：<code>order_size: 5.0</code>、<code>max_position: 30.0</code>、<code>max_single_exposure: 10.0</code>、<code>partial_fill_timeout_sec: 10</code>、<code>cancel_time_remaining: 15</code>、全局 <code>max_drawdown: -20.0</code>。一句人话：<strong>作者默认不是无限补腿，而是把“先保命、再吃 pair edge”写进了参数。</strong></li>
+<li>repo 在双腿都成交时把收益写得很明白：<code>Guaranteed profit = 1 - (up_fill + down_fill)</code>。也就是说，这条策略本质不是方向预测，而是 <strong>complementary-outcome mispricing</strong>。</li>
+<li>还有一个很值钱的 source-audit 细节：当前 <code>config.yaml</code> 里 <strong><code>spread_capture_enabled: false</code>，但 <code>arb.enabled: true</code></strong>。这说明作者虽然把 pair-sum spread capture 这条壳写完整了，但默认运行更偏向另一条 directional lag-arb 分支。对我们是提醒：<strong>这个 raw alpha 值得进池，但 first verdict 要先验证“pair completion rate + one-leg risk”是否真能活。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和当前 <code>momentum</code> 的关系很直接：它补的是我们还不够系统化的 <strong>prediction-market / complementary-outcome stat-arb</strong> 素材，而不是再做一篇 generic Polymarket 情绪观察。</p>
+<p>对当前 desk，价值主要有三层：</p>
+<ol>
+<li><strong>它是完整 raw alpha，不是 filter。</strong> base alpha 很清楚：<code>UP + DOWN &lt; 1</code> 的互补合约错价；Binance shield 只是 risk / execution overlay。</li>
+<li><strong>它直接落在可接受的短周期。</strong> repo 默认就是 <code>BTC / ETH / SOL</code> 的 <code>5m</code> crypto 市场，和我们当前允许的短周期窗口直接兼容。</li>
+<li><strong>它提供了一个很可复用的“外部领先源 + 内部 pair edge”结构。</strong> 以后即使不做 Polymarket，这种“pair mispricing 本体 + 外部快市场 veto / shield”思路，也能迁移到期权、跨 venue、甚至某些 basket RV 壳里。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / stat-arb / market-making</li>
+<li>基础 alpha：同一 hard-expiry <code>5m</code> 二元市场中，互补结果 <code>UP</code> 与 <code>DOWN</code> 的双腿 maker 成本合计低于 <code>$1.00</code></li>
+<li>regime：Polymarket order book 更新慢于 Binance、且 pair edge 还没被 taker / 其他 maker 完全吃掉的活跃窗口</li>
+<li>filter / veto：仅做 <code>BTC / ETH / SOL</code>、仅做 <code>5m</code>、最小 pair edge ≥ <code>4c</code>、距离结算不足 <code>15s</code> 不再开新 pair、partial fill 超 <code>10s</code> 进入保护</li>
+<li>risk / sizing / execution overlay：<code>$5</code> 单笔、总敞口上限 <code>$30</code>、单腿上限 <code>$10</code>、单腿成交后用 Binance 现货变动做 shield cancel，避免被更快的外部价格先行打穿</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设：</strong> 在 Polymarket <code>BTC / ETH / SOL 5m</code> 市场里，<code>UP_bid + DOWN_bid &lt;= 0.96~0.98</code> 的 pair-sum 错价不是幻觉；若给单腿成交后的未成交腿加一个外部 <code>Binance</code> shield，净结果会明显好于裸做 pair。</li>
+<li><strong>一个可计算定义：</strong></li>
+<li><code>pair_edge_t = 1 - (best_bid_up_t + best_bid_down_t)</code></li>
+<li>当 <code>pair_edge_t &gt;= 0.04</code> 时，按相同 size 在两边各挂一笔 maker BUY</li>
+<li>若 <code>10s</code> 内仅单腿成交，且 Binance 从挂单时刻起对该 pair 不利移动超过阈值（先用 repo 的 0.1% 量级做起点），则取消另一腿</li>
+<li><strong>最小回测切口（公开可得）：</strong></li>
+<li>数据源：Polymarket CLOB 最优 bid/ask + Gamma 市场列表 + Binance 实时价格流</li>
+<li>标的：<code>BTC / ETH / SOL</code></li>
+<li>周期：先只做 <code>5m</code></li>
+<li>样本：先抓最近 <code>14~30d</code></li>
+<li><strong>最该先看 2 个指标：</strong></li>
+</ul>
+<ol>
+<li><code>both-filled rate</code> 与 <code>guaranteed-gross-edge</code>（真正吃到完整 pair 的比例）</li>
+<li><code>shield save rate</code> 与 <code>one-leg adverse-selection PnL</code>（shield 到底是在救命，还是只是在制造 missed fill）</li>
+</ol>
+<p>一个很值钱的 first verdict 问题不是“总收益多高”，而是：<strong>在公开数据上，pair edge 触发频率 × 两腿最终都成交的概率，够不够支撑这条策略成为 desk 的可复现素材。</strong></p>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li><strong>当前证据主要是源码与参数，不是公开回测表。</strong> 也就是说，它首先是一条高质量工程线索，不是已经被论文级统计验证的现成金矿。</li>
+<li><strong>repo 默认把 <code>spread_capture</code> 关掉，本身就是一个警报。</strong> 可能原因包括：pair-sum 机会太稀、queue priority 太重要、或单腿风险比想象中更难管。这个不能忽略。</li>
+<li><strong>Polymarket 的真问题不只是“有没有 edge”，而是能不能成交。</strong> maker priority、订单队列位置、取消延迟、部分成交，都可能让 paper edge 变成 production 噪音。</li>
+<li><strong>这条线和我们过去写过的 Polymarket directional lag-arb 不是同一件事。</strong> 这里真正值得测的是 complementary-outcome RV，不要把它又降级成“Binance 涨了就追 YES”。</li>
+<li>如果 first verdict 显示 pair completion rate 很低，这条主题就应退回 <code>shared execution idea / niche raw alpha</code>，而不是硬抬进主策略线。</li>
+</ul>
+<p>&gt; <strong>最值得复用/复现的点：</strong> 用外部更快的现货市场，不是为了直接给预测市场做方向信号，而是为了给“互补合约错价”这条 raw alpha 提供单腿成交后的保护层。</p>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Jordan Maragliano. (2026). _polymarket-spread-bot_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL：<code><a href="https://github.com/jordanmaragliano-coder/polymarket-spread-bot">https://github.com/jordanmaragliano-coder/polymarket-spread-bot</a></code></li>
+<li>README：<code><a href="https://raw.githubusercontent.com/jordanmaragliano-coder/polymarket-spread-bot/main/README.md">https://raw.githubusercontent.com/jordanmaragliano-coder/polymarket-spread-bot/main/README.md</a></code></li>
+<li>首次提交（repo 历史）：<code>2026-03-20</code>，提交信息为 <code>Polymarket spread bot - two-sided market making with Binance latency shield</code></li>
+</ul>
+<ol>
+<li><strong>Polymarket Developers — CLOB Quickstart / Market Channel</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://docs.polymarket.com/developers/CLOB/quickstart">https://docs.polymarket.com/developers/CLOB/quickstart</a></code></li>
+<li>Readable URL：<code><a href="https://docs.polymarket.com/developers/CLOB/websocket/market-channel">https://docs.polymarket.com/developers/CLOB/websocket/market-channel</a></code></li>
+</ul>
+<ol>
+<li><strong>公开市场发现与行情来源（repo 内使用）</strong></li>
+</ol>
+<ul>
+<li>Gamma API endpoint：<code><a href="https://gamma-api.polymarket.com/markets">https://gamma-api.polymarket.com/markets</a></code></li>
+<li>Binance Spot WebSocket docs：<code><a href="https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams">https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams</a></code></li>
+</ul>
+</body>
+</html>

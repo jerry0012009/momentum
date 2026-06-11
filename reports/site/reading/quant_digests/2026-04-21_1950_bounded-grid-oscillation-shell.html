@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 `binance_grid_trader` 只读成“挂机网格”：对 short-cycle crypto desk，更该先回答的是「bounded-range oscillation × one-step ladder capture」这条 raw alpha 壳到底适不适合 `5m/15m`</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 `binance_grid_trader` 只读成“挂机网格”：对 short-cycle crypto desk，更该先回答的是「bounded-range oscillation × one-step ladder capture」这条 raw alpha 壳到底适不适合 `5m/15m`</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-21 19:48 UTC</span>
+      <span class="pill">研究时间：2026-04-21 19:50 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit + Binance public-data range-occupancy probe</span>
+      <span class="pill">主题标签：single-asset / mean-reversion / grid / ladder / range-trading / maker-first / Binance / 5m / 15m</span>
+      <span class="pill">证据类型：repo 工程骨架 + public-data first probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-21_1950_bounded-grid-oscillation-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-21 19:50 UTC</li>
+<li>类型：GitHub / repo source audit + Binance public-data range-occupancy probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：在一个预先定义的价格区间内，价格会反复围绕局部公平价来回摆动；策略不是猜方向，而是用分层买卖单去连续收割“走一格又走回来”的一阶均值回复</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：single-asset / mean-reversion / grid / ladder / range-trading / maker-first / Binance / 5m / 15m</li>
+<li>证据类型：repo 工程骨架 + public-data first probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主来源是 GitHub 仓库 <strong>51bitquant / binance_grid_trader</strong>。它表面上像“老派现货/合约网格 bot”，但如果按我们 desk 的 intake 口径重读，真正该先问的不是“网格能不能挂机赚钱”，而是：</p>
+<p>&gt; <strong>这篇东西的 base alpha 是什么？</strong> &gt; &gt; <strong>答：是 bounded-range oscillation mean reversion。</strong> &gt; &gt; 也就是：只要价格还在某个已知区间里来回摆，单次摆动常常足够走完至少一格；策略就靠下方挂买、上方挂卖，反复吃“回到上一格”的小额回复，而不是押单边趋势。</p>
+<p>来源与关键代码：</p>
+<ul>
+<li><strong>Repo</strong>：51bitquant (ongoing), *Binance Grid Trader*</li>
+<li><strong>Repo URL</strong>：&lt;<a href="https://github.com/51bitquant/binance_grid_trader&gt;">https://github.com/51bitquant/binance_grid_trader&gt;</a></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://github.com/51bitquant/binance_grid_trader/blob/master/README.md&gt;">https://github.com/51bitquant/binance_grid_trader/blob/master/README.md&gt;</a></li>
+<li><strong>关键代码</strong>：</li>
+<li><code>gridtrader/trader/strategies/future_grid_strategy.py</code></li>
+<li><code>gridtrader/trader/strategies/spot_grid_strategy.py</code></li>
+<li><code>main_futures_script.py</code></li>
+<li><code>main_spot_script.py</code></li>
+</ul>
+<h2>2. repo 里真正可交易的壳是什么</h2>
+<p>这份 repo 的骨架非常直接：</p>
+<ul>
+<li>用户先给定 <code>upper_price / bottom_price / grid_number</code></li>
+<li>系统算出 <code>step_price = (upper - bottom) / grid_number</code></li>
+<li>当前价附近只保留有限层数的挂单，靠 <code>max_open_orders</code> 控制两侧挂单深度</li>
+<li>买单成交后，自动在上一格挂对应卖单；卖单成交后，自动在下一格挂对应买单</li>
+<li>现货版额外做了余额检查和“离盘口太远就撤单”的保护；期货版则更像纯对称中性网格</li>
+</ul>
+<p>翻成人话，就是：</p>
+<ol>
+<li>先假设“这一段不是趋势，是箱体”；</li>
+<li>再把箱体切成很多小台阶；</li>
+<li>每次只赚一格，不试图吃整段波段；</li>
+<li>真正的大敌不是信号缺失，而是<strong>价格离开箱体后继续单边走</strong>。</li>
+</ol>
+<p>所以这不是 trend / breakout alpha，而是一个<strong>完整的 range-MR shell</strong>：</p>
+<ul>
+<li>入场：挂在局部价差台阶上</li>
+<li>出场：回到相邻上一格/下一格</li>
+<li>sizing：<code>order_volume × max_open_orders</code></li>
+<li>risk：区间上/下边界 + 撤单逻辑</li>
+<li>cost：天然高度依赖 maker/taker 结构</li>
+</ul>
+<h2>3. 为什么它值得进研究池</h2>
+<p>它虽然不新，但对我们当前 desk 仍有两点价值：</p>
+<h3>3.1 它是少数能直接落成完整策略的 raw alpha 壳</h3>
+<p>很多 repo 只给信号，不给出场；这份网格仓反过来，<strong>信号几乎就等于出场机制本身</strong>。这对 <code>1m/3m/5m</code> 很重要，因为短周期里很多 edge 不是“方向猜得准”，而是“能不能稳定把小回复装进交易壳里”。</p>
+<h3>3.2 它天然提醒我们：grid 不是 alpha-free lunch，而是“卖趋势、买震荡”</h3>
+<p>也就是说，grid 本体能否活，不取决于它会不会挂单，而取决于：</p>
+<ul>
+<li>设的区间是不是对的</li>
+<li>每一格够不够厚</li>
+<li>趋势 breakout 来时止损/停机够不够快</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：逆势 / 区间均值回复</li>
+<li>基础 alpha：bounded-range oscillation × one-step ladder capture</li>
+<li>regime：横盘 / 低到中等单边强度、价格仍留在已定义区间内</li>
+<li>filter / veto：超出区间、波动突然放大、连续单边 bucket 跳跃过多时应停机</li>
+<li>risk / sizing / execution overlay：<code>order_volume</code>、<code>max_open_orders</code>、maker-first、突破边界即撤单/减仓/平仓</li>
+</ul>
+<h2>4. 我们自己的 public-data first probe</h2>
+<p>我这轮没直接硬做整套成交仿真，而是先用 Binance public data 做了一个更适合 grid 的快检： <strong>看“过去 24h 区间”对 <code>5m/15m</code> 是否足够稳定，以及一旦 break，损伤有多大。</strong></p>
+<p>probe 口径：</p>
+<ul>
+<li>市场：Binance Spot <code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li>周期：<code>5m</code>、<code>15m</code></li>
+<li>样本：最近约 <code>2500</code> 根 bar / symbol</li>
+<li>设定：用过去 <code>24h</code> rolling high-low 当动态箱体，<code>grid_number = 40</code></li>
+<li>指标：</li>
+<li><code>in_range_pct</code>：价格留在箱体里的占比</li>
+<li><code>avg_step_bps</code>：一格大约多厚</li>
+<li><code>bucket_cross_per_day</code>：一天大约能跨几格</li>
+<li><code>breakout drift</code>：一旦离开箱体，后面几个 bar 最远还能顺着走多远</li>
+</ul>
+<p>摘要文件：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-21_grid_range_probe_summary.csv</code></li>
+</ul>
+<p>核心数字：</p>
+<ul>
+<li><strong>5m</strong> 下，<code>BTC / ETH / SOL</code> 的 <code>in_range_pct</code> 约 <strong>98.3% / 99.0% / 97.9%</strong></li>
+<li>同样 <code>5m</code>、<code>40</code> 格设定下，平均单格厚度约 <strong>8.45 / 11.36 / 11.42 bps</strong></li>
+<li>但一旦发生 breakout，<code>5m</code> 的 <code>p90</code> 顺势延伸仍有 <strong>90 / 101 / 122 bps</strong>；到 <strong>15m</strong>，<code>p90 breakout drift</code> 更扩大到 <strong>133 / 187 / 166 bps</strong></li>
+</ul>
+<p>一句话结论：</p>
+<p>&gt; <strong>箱体内的小回复很密，但 breakout 的伤害是“很多格一起赔回去”；所以 grid 可以是 raw alpha 壳，但绝不能当成无条件 always-on。</strong></p>
+<p>这也解释了为什么 grid 更适合作为：</p>
+<ul>
+<li><code>1m/3m/5m</code> 的 maker-ish range sleeve</li>
+<li>或 <code>15m</code> 上先做 regime admission，再把执行下沉到更细周期</li>
+</ul>
+<p>而不适合直接拿 <code>15m</code> K 线裸跑。</p>
+<h2>5. 为什么和当前项目有关</h2>
+<p>这轮最有价值的，不是“我们也去做一个老网格机器人”，而是补齐一个此前研究池里相对少见的完整壳：</p>
+<ul>
+<li>它属于 <strong>single-asset mean reversion</strong>，但不是 RSI/BB 那种点状反打</li>
+<li>它强调的是 <strong>持续小幅回摆的交易壳设计</strong></li>
+<li>它和我们已有的 panic-bounce / oversold fade / basis MR 不同，补的是 <strong>range inventory harvesting</strong> 这一块</li>
+</ul>
+<p>对当前 desk，更合适的读法是：</p>
+<ol>
+<li>先别把它当“主策略”；</li>
+<li>先把它当 <strong>震荡 regime 专用 sleeve</strong>；</li>
+<li>再去验证它能不能和 trend sleeve 做开关互补。</li>
+</ol>
+<h2>6. 下一步怎么测</h2>
+<p>最小实验建议直接做三步：</p>
+<ol>
+<li><strong>Regime gate</strong>：先用 <code>ADX / rolling drift / breakout-count</code> 把 bar 分成 range vs trend；</li>
+<li><strong>Child execution</strong>：只在 range 段运行 <code>5m</code> parent grid，并把挂单执行细化到 <code>1m</code> 或 <code>bookTicker</code>；</li>
+<li><strong>成本梯度</strong>：至少比较 <code>maker 1bps / maker 2bps / taker 4bps+</code> 三档，看单格厚度还能剩多少。</li>
+</ol>
+<p>最先该看的不是收益曲线，而是两件事：</p>
+<ul>
+<li><code>grid capture / breakout loss</code> 比值</li>
+<li><code>停机是否足够快，能不能防止单次趋势把前面小利润全吞掉</code></li>
+</ul>
+<p>如果这两件事不过线，就说明它更适合作为 overlay / 子执行框架，而不是 standalone 主 alpha。</p>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>这类 repo 最大的问题不是代码复杂，而是<strong>区间设定太主观</strong>；上/下边界错了，整个策略就会从“收震荡”变成“逆趋势硬扛”。</li>
+<li>我这轮 probe 只做了“区间占用率 + breakout 伤害”的 first verdict，<strong>还不是完整成交级回测</strong>。</li>
+<li>真实可交易性极度依赖手续费和挂单成交率；若大部分成交被迫吃 taker，edge 会被迅速打穿。</li>
+<li>因此当前更稳妥的判断是：<strong>这条线值得入池，但优先级应是“range sleeve / maker-first execution shell”，不是直接升成 <code>15m</code> 主策略。</strong></li>
+</ul>
+<h2>8. 来源</h2>
+<ul>
+<li>51bitquant. *Binance Grid Trader*. GitHub repository.</li>
+<li>Repo URL: &lt;<a href="https://github.com/51bitquant/binance_grid_trader&gt;">https://github.com/51bitquant/binance_grid_trader&gt;</a></li>
+<li>README: &lt;<a href="https://github.com/51bitquant/binance_grid_trader/blob/master/README.md&gt;">https://github.com/51bitquant/binance_grid_trader/blob/master/README.md&gt;</a></li>
+<li>Raw code:</li>
+<li>&lt;<a href="https://raw.githubusercontent.com/51bitquant/binance_grid_trader/master/gridtrader/trader/strategies/future_grid_strategy.py&gt;">https://raw.githubusercontent.com/51bitquant/binance_grid_trader/master/gridtrader/trader/strategies/future_grid_strategy.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/51bitquant/binance_grid_trader/master/gridtrader/trader/strategies/spot_grid_strategy.py&gt;">https://raw.githubusercontent.com/51bitquant/binance_grid_trader/master/gridtrader/trader/strategies/spot_grid_strategy.py&gt;</a></li>
+</ul>
+</body>
+</html>

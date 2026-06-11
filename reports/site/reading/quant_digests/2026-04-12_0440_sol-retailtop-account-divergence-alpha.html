@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个 long/short ratio collector 只当情绪面板：对 short-cycle desk，更该先测的是「retail-more-short-than-top × SOL 反身性回补」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个 long/short ratio collector 只当情绪面板：对 short-cycle desk，更该先测的是「retail-more-short-than-top × SOL 反身性回补」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-12 04:34 UTC</span>
+      <span class="pill">研究时间：2026-04-12 04:40 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit</span>
+      <span class="pill">主题标签：raw-alpha / mean-reversion / positioning-divergence / retail-vs-top-trader / sol / binance / public-data / 5m</span>
+      <span class="pill">证据类型：工程证据（repo source audit）+ Binance 官方 public API live probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-12_0440_sol-retailtop-account-divergence-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-12 04:40 UTC</li>
+<li>类型：GitHub / repo source audit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当 <strong>Binance 全市场账户多空比</strong> 明显比 <strong>top trader 账户多空比</strong> 更悲观时，说明“小账户拥挤做空”没有得到大户账户侧同幅确认；在 <code>SOLUSDT</code> 上，这种 <strong>retail-more-short-than-top</strong> 的负向分歧，后续 <code>15m / 30m / 60m</code> 更容易出现向上回补。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / mean-reversion / positioning-divergence / retail-vs-top-trader / sol / binance / public-data / 5m</li>
+<li>证据类型：工程证据（repo source audit）+ Binance 官方 public API live probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的主材料是 GitHub 新仓库 <strong>Co-Messi / HyperData-Terminal</strong>（创建于 <code>2026-04-08</code>，最近更新 <code>2026-04-10</code>）。仓库本体是一个 crypto trading terminal，但对 desk 真正有价值的，不是终端 UI，而是它把一批<strong>可免费抓、可高频更新、可直接接成 alpha 输入</strong>的数据源先接好了。</p>
+<p>本轮最值得拆出来的，不是 liquidation、whale、funding 那些已经在近期 digest 中被写过很多次的线，而是它的数据层里这条更朴素的 <strong>long/short ratio collector</strong>：</p>
+<ul>
+<li><code>globalLongShortAccountRatio</code></li>
+<li><code>topLongShortAccountRatio</code></li>
+</ul>
+<p>也就是说，它已经把我们做 <strong>retail-vs-top positioning divergence</strong> 这类信号最关键的两条公开输入接通了。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话 base alpha：</strong> 不要把 <code>global long/short ratio</code> 当成单纯情绪温度计；更值得测的是 <strong>全市场账户更悲观、但 top trader 账户没那么悲观</strong> 时，<code>SOLUSDT</code> 后续 <code>15m~60m</code> 的<strong>向上回补</strong>。</li>
+<li><strong>一句话策略定义：</strong></li>
+<li>记</li>
+<p><code>spread_z = z(log(globalLongShortAccountRatio), 48) - z(log(topLongShortAccountRatio), 48)</code></p>
+<li>当 <code>spread_z &lt; -1.5</code> 时，做多 <code>SOLUSDT</code></li>
+<li>基线持有：<code>3 / 6 / 12</code> 根 <code>5m</code> bar（即 <code>15m / 30m / 60m</code>）</li>
+</ul>
+<p>这条线是 <strong>raw alpha</strong>，不是 overlay。因为它单独就能回答：</p>
+<ol>
+<li>何时进场：<code>spread_z &lt; -1.5</code></li>
+<li>做哪边：<code>long SOL</code></li>
+<li>持有多久：<code>15m / 30m / 60m</code></li>
+<li>风险怎么控：阈值、止损、冷却、成本缓冲都能直接写</li>
+</ol>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线值得进当前素材池，主要因为它补的是一个<strong>不那么重复、但能直接落地</strong>的短周期 mean-reversion alpha：</p>
+<ol>
+<li><strong>它不是纯 filter</strong>：可以直接给方向，且入场条件明确；</li>
+<li><strong>它用的是完全公开数据</strong>：Binance 公共接口即可，不依赖私有成交、付费数据或链上重 ETL；</li>
+<li><strong>它天然适配 <code>5m / 15m</code></strong>：原始数据就是按 <code>5m</code> 周期更新，拿来做最小实验非常顺手；</li>
+<li><strong>它和已有 BTC crowding 线不完全重复</strong>：</li>
+</ol>
+<ul>
+<li>3 月 22 日那篇更像 <code>overlay</code>，且核心是 <code>global-vs-top position gap</code> 去过滤 breakout；</li>
+<li>4 月 6 日那篇更偏 <code>BTC fuel-cascade</code>，依赖 crowding + OI + fuel exit 的更复杂壳；</li>
+<li>这次更简化，也更像<strong>单因子可落地 alpha</strong>：只抓 <strong>account-ratio divergence</strong>，并优先落在当前 portability 更好的 <code>SOL long-only</code> 这条腿上。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：short-cycle / mean-reversion / positioning-divergence / long-only</li>
+<li>基础 alpha：<code>retail-more-short-than-top</code> 后，<code>SOLUSDT</code> 向上回补</li>
+<li>主题定位：<strong>raw alpha</strong></li>
+<li>触发条件：</li>
+<li><code>z_g = z(log(globalLongShortAccountRatio), 48)</code></li>
+<li><code>z_t = z(log(topLongShortAccountRatio), 48)</code></li>
+<li><code>spread_z = z_g - z_t</code></li>
+<li>当 <code>spread_z &lt; -1.5</code> 时，开 <code>long SOLUSDT</code></li>
+<li>exit：</li>
+<li>基线版：固定持有 <code>6</code> 或 <code>12</code> 根 <code>5m</code> bar</li>
+<li>desk 版：<code>spread_z</code> 回到 <code>&gt;-0.5</code> 提前止盈；或到达最大持有 <code>60m</code> 强平</li>
+<li>sizing：</li>
+<li>初版按固定 notional；</li>
+<li>更稳的版本按 <code>|spread_z|</code> 分层：<code>1.5~2.0 / 2.0~2.5 / &gt;2.5</code></li>
+<li>risk：</li>
+<li>只做 <code>SOL</code> 这一条更干净的腿，先别一上来做跨资产泛化；</li>
+<li>极端波动时加价格止损与信号冷却；</li>
+<li>避免重大宏观/交易所事件窗口硬做逆势抄底</li>
+<li>成本：</li>
+<li>先按 round-trip <code>8 bps</code> 粗略摩擦估计</li>
+<li>如果能吃 maker 或减滑点，真实可交易性会更好</li>
+</ul>
+<h2>4. 代码级最有价值的地方</h2>
+<p>这份 repo 的价值，不是它已经帮你写好了最终 alpha，而是它把<strong>最有希望做成 alpha 的 positioning 输入</strong>标准化了。</p>
+<p>对 desk 有用的点主要是：</p>
+<h3>4.1 它把 <code>global</code> 和 <code>top-trader</code> 两类账户比率并列抓下来了</h3>
+<p>这很关键。很多人只看一条 <code>long/short ratio</code>，最后只能得到“市场偏多/偏空”的模糊叙事；但真正更像 alpha 的，往往不是 level，而是：</p>
+<p>&gt; <strong>小账户拥挤方向，和更强账户群体方向，是否开始分叉？</strong></p>
+<p>这正是 <code>globalLongShortAccountRatio</code> 与 <code>topLongShortAccountRatio</code> 组合起来的意义。</p>
+<h3>4.2 它提醒我们：positioning 因子真正值得测的是“谁在拥挤”，不是“市场现在看起来偏多还是偏空”</h3>
+<p>如果只盯 <code>global LSR</code>，很容易写回情绪周报； 如果改成 <code>global - top</code> 的分歧，才更像 desk 能下手的信号壳。</p>
+<h2>5. Binance public live probe：这条线现在有没有 alpha 壳？</h2>
+<p>我用 Binance 公共接口做了一个 <strong>20 天、<code>5m</code> 频率、public-only</strong> 的最小 portability probe，标的先看：</p>
+<ul>
+<li><code>BTCUSDT</code></li>
+<li><code>ETHUSDT</code></li>
+<li><code>SOLUSDT</code></li>
+</ul>
+<p>实验口径：</p>
+<ul>
+<li>数据：</li>
+<li><code>globalLongShortAccountRatio</code></li>
+<li><code>topLongShortAccountRatio</code></li>
+<li><code>fapi/v1/klines</code></li>
+<li>规则：</li>
+<li><code>spread_z = z(log(global),48) - z(log(top),48)</code></li>
+<li><code>spread_z &gt; 1.5</code>：代表 retail 比 top 更偏多</li>
+<li><code>spread_z &lt; -1.5</code>：代表 retail 比 top 更偏空</li>
+<li>持有窗口：<code>3 / 6 / 12</code> 根 <code>5m</code> bar</li>
+</ul>
+<h3>5.1 结果先说结论</h3>
+<ul>
+<li><strong>BTC</strong>：这条因子其实两边都能做，<code>30m / 60m</code> pooled gross 分别约 <strong><code>+8.65 bps / +13.55 bps</code></strong>；</li>
+<li><strong>ETH</strong>：不干净，long side 明显拖后腿，不适合作为当前主 intake；</li>
+<li><strong>SOL</strong>：最值得单独拎出来的是 <strong><code>spread_z &lt; -1.5</code> 的 long-only 回补壳</strong>。</li>
+</ul>
+<h3>5.2 SOL 这一腿的关键数字</h3>
+<p>当 <code>spread_z &lt; -1.5</code>（也就是 <strong>全市场账户显著比 top trader 更偏空</strong>）时：</p>
+<ul>
+<li>持有 <code>15m</code>：<code>n=197</code>，mean <strong><code>+11.04 bps</code></strong>，win rate <strong><code>61.4%</code></strong></li>
+<li>持有 <code>30m</code>：<code>n=197</code>，mean <strong><code>+13.45 bps</code></strong>，win rate <strong><code>64.0%</code></strong></li>
+<li>持有 <code>60m</code>：<code>n=197</code>，mean <strong><code>+16.29 bps</code></strong>，win rate <strong><code>54.3%</code></strong></li>
+</ul>
+<p>若先按 <code>8 bps</code> round-trip 粗略扣摩擦，仍分别约为：</p>
+<ul>
+<li><code>15m</code>: <strong><code>+3.04 bps</code></strong></li>
+<li><code>30m</code>: <strong><code>+5.45 bps</code></strong></li>
+<li><code>60m</code>: <strong><code>+8.29 bps</code></strong></li>
+</ul>
+<h3>5.3 阈值分层后，更像 desk 可以直接试的版本</h3>
+<p>只看 <code>SOLUSDT long-only</code> 且提高信号阈值：</p>
+<ul>
+<li><code>spread_z &lt; -2.0</code></li>
+<li><code>30m</code>: <code>n=106</code>，mean <strong><code>+14.88 bps</code></strong>，win rate <strong><code>68.9%</code></strong></li>
+<li><code>60m</code>: <code>n=106</code>，mean <strong><code>+31.01 bps</code></strong>，win rate <strong><code>64.2%</code></strong></li>
+<li><code>spread_z &lt; -2.5</code></li>
+<li><code>30m</code>: <code>n=64</code>，mean <strong><code>+16.14 bps</code></strong></li>
+<li><code>60m</code>: <code>n=64</code>，mean <strong><code>+48.88 bps</code></strong>，win rate <strong><code>70.3%</code></strong></li>
+</ul>
+<p>这说明它不是“阈值越松越稳”的宽温度计，反而更像<strong>极端负向 crowding 下的反身性回补</strong>：信号越极端，后续 bounce 反而越像可交易事件。</p>
+<h3>5.4 为什么我最后锁定 SOL，而不是 BTC</h3>
+<p>BTC 这条线其实也有东西，但与本月已经积累过的 crowding / fuel-cascade / smart-money 题材更近； <code>SOL long-only</code> 这条腿反而更像本轮新的、低重复的 intake：</p>
+<ul>
+<li>base alpha 清楚</li>
+<li>规则短</li>
+<li>portability probe 正向</li>
+<li>数据公开</li>
+<li>更适合先做最小实验</li>
+</ul>
+<h2>6. 对 short-cycle desk 的正确落地方式</h2>
+<p>别把它理解成“仓位面情绪指标”。更合理的姿势是：</p>
+<ul>
+<li><strong>信号时钟</strong>：每 <code>5m</code> 更新一次 spread</li>
+<li><strong>进场时钟</strong>：信号触发当根收盘进，或下一根开盘进</li>
+<li><strong>持有时钟</strong>：先测 <code>30m / 60m</code></li>
+<li><strong>策略本体</strong>：mean-reversion raw alpha</li>
+<li><strong>1m/3m 的职责</strong>：不是重新定义因子，而是做更细的 execution / split-entry / micro-stop</li>
+</ul>
+<h2>7. 最小可复现实验（下一步怎么测）</h2>
+<h3>7.1 先做最小策略壳</h3>
+<ol>
+<li>每 <code>5m</code> 拉：</li>
+</ol>
+<ul>
+<li><code>globalLongShortAccountRatio</code></li>
+<li><code>topLongShortAccountRatio</code></li>
+<li><code>SOLUSDT</code> <code>5m</code> kline 或 bookTicker</li>
+</ul>
+<ol>
+<li>滚动算：</li>
+</ol>
+<ul>
+<li><code>z_g = z(log(global),48)</code></li>
+<li><code>z_t = z(log(top),48)</code></li>
+<li><code>spread_z = z_g - z_t</code></li>
+</ul>
+<ol>
+<li>入场条件先试三档：</li>
+</ol>
+<ul>
+<li><code>spread_z &lt; -1.5</code></li>
+<li><code>spread_z &lt; -2.0</code></li>
+<li><code>spread_z &lt; -2.5</code></li>
+</ul>
+<ol>
+<li>exit 先并行测两套：</li>
+</ol>
+<ul>
+<li><strong>fixed-hold</strong>：持有 <code>6</code> / <code>12</code> 根 <code>5m</code></li>
+<li><strong>reversion exit</strong>：若 <code>spread_z &gt; -0.5</code> 则提前平仓</li>
+</ul>
+<h3>7.2 第一个版本必须看的 6 个指标</h3>
+<ul>
+<li><code>signals / week</code></li>
+<li><code>gross mean bps</code></li>
+<li><code>net after fee/slippage</code></li>
+<li><code>win rate</code></li>
+<li><code>max adverse excursion</code></li>
+<li><code>time-to-mean-reversion</code></li>
+</ul>
+<h3>7.3 第二轮必须加的现实过滤器</h3>
+<ul>
+<li><code>price trend veto</code>：若当根已是超大阴线，先分层看是否该等待一根确认</li>
+<li><code>funding / event veto</code>：大事件前后单独分层</li>
+<li><code>cooldown</code>：连续信号避免层层补仓变成硬接 falling knife</li>
+<li><code>volatility bucket</code>：高波动 / 低波动分桶，检查 edge 是否集中在某一类 regime</li>
+</ul>
+<h3>7.4 我建议的最先落地版本</h3>
+<p>最先别做太花，直接从这版开始：</p>
+<ul>
+<li>标的：<code>SOLUSDT</code></li>
+<li>bar：<code>5m</code></li>
+<li>entry：<code>spread_z &lt; -2.0</code></li>
+<li>exit：<code>30m</code> 与 <code>60m</code> 两版并行</li>
+<li>成本：<code>8 bps</code> round-trip</li>
+<li>风控：单笔固定风险 + <code>90m</code> 冷却</li>
+</ul>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>这条边际当前是 <strong>20 天 portability probe</strong>，不是多年完整样本；要防短样本过拟合。</li>
+<li><code>top trader</code> 与 <code>global</code> 都是 Binance 自己定义的账户分组，字段含义相对稳定，但仍要防接口口径变动。</li>
+<li><code>SOL</code> 的 edge 目前更像 <strong>long-only crowd-short unwind</strong>，不代表 short side 同样成立。</li>
+<li>极端趋势日里，这种逆 crowding 的均值回归壳可能会先吃较大浮亏，不能只看终值均值。</li>
+<li>如果实盘只能吃 taker 且滑点偏大，阈值必须更严；<code>-2.0 / -2.5</code> 很可能比 <code>-1.5</code> 更接近可交易版本。</li>
+</ul>
+<h2>9. 一句话结论</h2>
+<p>&gt; 这份新 repo 最值得 desk intake 的，不是 long/short ratio 看板，而是它提示了一条更可交易的 <strong>positioning-divergence raw alpha</strong>：当 <strong>retail 账户比 top trader 账户更极端地偏空</strong> 时，<code>SOLUSDT</code> 在接下来 <code>15m~60m</code> 更容易出现向上回补；先从 <code>spread_z &lt; -2.0</code> 的 <code>30m / 60m</code> long-only 壳开始测，最合适。</p>
+<h2>10. 本轮产出物与路径</h2>
+<ul>
+<li>研究笔记：<code>research/quant_digests/2026-04-12_0440_sol-retailtop-account-divergence-alpha.md</code></li>
+<li>live probe artifact：<code>reports/artifacts/literature/lsr_account_divergence_probe_2026-04-12/</code></li>
+<li><code>summary.csv</code></li>
+<li><code>detail.csv</code></li>
+<li><code>metadata.json</code></li>
+</ul>
+<h2>11. 来源</h2>
+<ol>
+<li><strong>Co-Messi</strong> (2026). *HyperData-Terminal*. GitHub Repo.</li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/Co-Messi/HyperData-Terminal">https://github.com/Co-Messi/HyperData-Terminal</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/Co-Messi/HyperData-Terminal">https://github.com/Co-Messi/HyperData-Terminal</a></code></li>
+<li>关键文件：<code>src/data_layer/long_short_ratio.py</code></li>
+<li>备注：仓库创建于 <code>2026-04-08</code>，更新于 <code>2026-04-10</code></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures Public API</strong>（本轮 live probe 实际使用）</li>
+</ol>
+<ul>
+<li>Global Long/Short Account Ratio: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Long-Short-Ratio">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Long-Short-Ratio</a></code></li>
+<li>Top Trader Long/Short Account Ratio: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Top-Trader-Long-Short-Account-Ratio">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Top-Trader-Long-Short-Account-Ratio</a></code></li>
+<li>Kline / Candlestick Data: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<ol>
+<li><strong>本轮 public-only portability probe</strong>（2026-04-12 04:30 UTC 生成）</li>
+</ol>
+<ul>
+<li>口径：<code>20d × 5m × BTC/ETH/SOL</code></li>
+<li>主规则：<code>spread_z = z(log(global),48) - z(log(top),48)</code></li>
+<li>重点结论：<code>SOLUSDT</code> 的 <code>spread_z &lt; -1.5 / -2.0 / -2.5</code> long-only 回补壳最值得继续复现</li>
+</ul>
+</body>
+</html>

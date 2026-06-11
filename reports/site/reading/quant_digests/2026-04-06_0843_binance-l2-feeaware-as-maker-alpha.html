@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 A-S 继续只读成教科书：这份 2026 Binance L2 repo 更该先测的是「fee-aware reservation-price maker × latency / queue realism」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 A-S 继续只读成教科书：这份 2026 Binance L2 repo 更该先测的是「fee-aware reservation-price maker × latency / queue realism」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-06 08:44 UTC</span>
+      <span class="pill">研究时间：2026-04-06 08:43 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`README.md` + `code/README.md` + `code/as_backtest.py` + `code/run_as_pipeline.py`）+ Binance Futures 官方公开文档 + 经典 inventory-based market making 文献 grounding</span>
+      <span class="pill">主题标签：raw-alpha/maker/market-making/spread-capture/avellaneda-stoikov/reservation-price/inventory-risk/fee-aware/latency/queue/binance-futures/btcusdt/orderbook-l2/aggtrade/1m/3m/5m/15m/repo/paper/public-data/cost/risk</span>
+      <span class="pill">证据类型：开源研究 repo + 经典 market making 论文 + Binance 官方公开 API 文档</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-06_0843_binance-l2-feeaware-as-maker-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-06 08:43 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>README.md</code> + <code>code/README.md</code> + <code>code/as_backtest.py</code> + <code>code/run_as_pipeline.py</code>）+ Binance Futures 官方公开文档 + 经典 inventory-based market making 文献 grounding</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>在 Binance Futures <code>BTCUSDT</code> 上持续挂双边 maker quote，赚的是“可覆盖 maker fee 的 bid-ask spread capture”；<code>reservation price / inventory skew / fee floor / latency / queue</code> 这些不是 alpha 替身，而是把这条 spread alpha 从玩具回测拉回现实所必需的执行层。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/maker/market-making/spread-capture/avellaneda-stoikov/reservation-price/inventory-risk/fee-aware/latency/queue/binance-futures/btcusdt/orderbook-l2/aggtrade/1m/3m/5m/15m/repo/paper/public-data/cost/risk</li>
+<li>证据类型：开源研究 repo + 经典 market making 论文 + Binance 官方公开 API 文档</li>
+</ul>
+<p>&gt; 先回答一句：<strong>这篇东西的 base alpha 是什么？</strong> &gt; &gt; <strong>base alpha = 在高流动、持续有对手盘的 perpetual order book 上，双边提供流动性并吃 spread。</strong> &gt; 不是方向预测，不是 filter，也不是 overlay；真正的赚钱假设仍然是 <strong>spread capture</strong>。只是这份 repo 的价值在于，它把「费率、延迟、排队」这些最容易把纸面 maker alpha 打回负数的现实约束，直接塞进了同一个可复现研究壳里。</p>
+<h2>1. 这次看了什么</h2>
+<p><strong>这轮更值得先收的，不是又一篇“maker 很赚钱”的截图，而是这份 2026 新 repo 对 <code>BTCUSDT</code> 真实 L2 的重建式 A-S 回测：它让我们第一次能把 maker raw alpha 本体，和 fee / latency / queue 这三层现实损耗拆开测清楚。</strong></p>
+<p>这轮选它，主要有 4 个原因：</p>
+<ol>
+<li><strong>不撞最近主题。</strong> 最近 digest 已经连续补了不少 <code>pairs / carry / cross-sectional / LOB directional</code> 题；maker 虽然也出现过，但更多是宽价差 alt-perp 壳，<strong>这次是 <code>BTCUSDT</code> + 真实 L2 + queue/latency realism</strong>，不是同一件事。</li>
+<li><strong>它是完整 raw alpha 壳，不是解释型综述。</strong> repo 明确给了：</li>
+</ol>
+<ul>
+<li>数据采集；</li>
+<li>order book 重建；</li>
+<li>A-S 报价；</li>
+<li>fee-aware quote floor；</li>
+<li>latency / cancel-replace 生命周期；</li>
+<li>inventory / cash / max-notional 约束；</li>
+<li>JSON 与 HTML 输出。</li>
+</ul>
+<ol>
+<li><strong>它正好补 desk 当前研究池里“maker alpha 现实校准版”的空缺。</strong> 之前很多材料把 maker alpha 写成“spread 足够宽就能收”；这份 repo 最有价值的地方是告诉我们：</li>
+<p>&gt; <strong>gross edge 可能有，但净值常常先死在 fee，再死在 stale quote 和 queue 幻觉。</strong></p>
+<li><strong>跟当前 short-cycle 研发链路能直接拼起来。</strong> 最近 desk 已经累了很多 <code>OBI / OFI / liquidity veto / adverse selection overlay</code> 素材；这份东西不是和它们竞争，而是给这些组件找到了一个更自然的宿主：</li>
+<p><strong>maker raw alpha 本体 + toxicity/regime veto。</strong></p>
+</ol>
+<h2>2. 这条东西的 base alpha 到底是什么</h2>
+<p>要先把话说死，不然很容易把 A-S 读歪：</p>
+<p>&gt; <strong>A-S 的 base alpha 不是“模型公式”，而是“被动挂单吃 spread”本身。</strong></p>
+<p>说人话：</p>
+<ul>
+<li>你在 bid 和 ask 两边都愿意提供流动性；</li>
+<li>如果对手持续来打你，且你的双边价差能覆盖手续费与库存风险；</li>
+<li>那么反复的小额 spread capture，理论上就能累积成正毛利。</li>
+</ul>
+<p>所以这里：</p>
+<ul>
+<li><code>reservation price</code> 负责把库存风险价格化；</li>
+<li><code>half-spread</code> 负责决定你挂多宽；</li>
+<li><code>fee floor</code> 负责避免“明明成交了，但每次 round-trip 都先亏给手续费”；</li>
+<li><code>latency / queue</code> 负责告诉你：</li>
+<p><strong>纸面上触价 ≠ 真实世界里轮得到你成交。</strong></p>
+</ul>
+<p>它们都重要，但它们服务的仍然是同一个 raw alpha： <strong>two-sided spread capture</strong>。</p>
+<h2>3. 这份 2026 repo 到底给了什么</h2>
+<h3>3.1 来源与定位</h3>
+<ul>
+<li><strong>Repo</strong>：Haoyu-tech, *An Avellaneda-Stoikov market-making research project built on real Binance Futures BTCUSDT L2 data* (GitHub, 2026)</li>
+<li>Repo URL：&lt;<a href="https://github.com/Haoyu-tech/An-Avellaneda-Stoikov-market-making-research-project-built-on-real-Binance-Futures-BTCUSDT-L2-data.&gt;">https://github.com/Haoyu-tech/An-Avellaneda-Stoikov-market-making-research-project-built-on-real-Binance-Futures-BTCUSDT-L2-data.&gt;</a></li>
+<li>创建时间：<code>2026-03-20</code></li>
+<li>最近更新时间：<code>2026-03-28</code></li>
+<li>GitHub stars：<code>16</code></li>
+</ul>
+<p>README 开宗明义写得很清楚： 这<strong>不是 production trading system</strong>，而是一个“把完整研究 workflow 复现出来”的项目。它的研究路径是：</p>
+<ol>
+<li>收集 Binance Futures <code>snapshot / diff depth / aggTrade</code>；</li>
+<li>用 <code>snapshot + diff depth</code> 重建 order book；</li>
+<li>跑带 inventory risk 的 Avellaneda–Stoikov backtest；</li>
+<li>显式加入 fees、cash constraints、inventory constraints、order latency、cancel latency；</li>
+<li>导出结构化 JSON 和 HTML 报告。</li>
+</ol>
+<p>这点很关键： &gt; <strong>它不是只给了一个公式，而是给了从 public data 到报告输出的完整研究闭环。</strong></p>
+<h3>3.2 当前 findings：最值钱的不是“能赚钱”，而是“知道先亏在哪”</h3>
+<p>repo README 自己总结的当前结论非常实：</p>
+<ul>
+<li>策略在一些短样本上<strong>有很薄的 gross edge</strong>；</li>
+<li>一旦加上真实手续费，<strong>net PnL 经常转负</strong>；</li>
+<li>latency 与 quote refresh 行为会明显影响 fills 和结果；</li>
+<li>更大的 <code>order_size</code> 往往同时放大收益和回撤；</li>
+<li>这比玩具回测更真实，但仍然<strong>不是交易所级 matching engine</strong>。</li>
+</ul>
+<p>这几句其实就是这篇 digest 的核心： <strong>maker alpha 值得收，但必须先当“gross alpha + execution haircut”去测，而不是把 gross 误当净 alpha。</strong></p>
+<h3>3.3 它给的默认参数，已经足够拼成完整策略</h3>
+<p>README 列出的 <code>as_backtest.py</code> 默认参数：</p>
+<ul>
+<li><code>order_size = 0.003</code></li>
+<li><code>max_order_notional = 300</code></li>
+<li><code>inventory_limit = 0.03</code></li>
+<li><code>maker_fee_rate = 0.0002</code></li>
+<li><code>dynamic_window_seconds = 10</code></li>
+<li><code>order_latency_ms = 150</code></li>
+<li><code>cancel_latency_ms = 100</code></li>
+<li><code>fee_spread_multiplier = 1.0</code></li>
+</ul>
+<p>这意味着它天然已经是一个完整策略壳：</p>
+<ul>
+<li><strong>entry</strong>：双边挂 quote，等待 passive fill；</li>
+<li><strong>exit</strong>：对手来打、库存回摆、或风控约束导致不再继续挂同向单；</li>
+<li><strong>sizing</strong>：固定 <code>order_size</code>，但受 <code>cash / max_notional / inventory_limit / qty_step</code> 共同裁剪；</li>
+<li><strong>risk</strong>：库存上限、现金上限、延迟、排队、手续费底线；</li>
+<li><strong>cost</strong>：maker fee 直接进入 quote 宽度与净 PnL。</li>
+</ul>
+<p>所以它不是单独一个 filter，也不是只会给一个“alpha 方向”； 它本身就是一条能落成完整策略的 raw alpha shell。</p>
+<h2>4. 这份源码里真正值得 desk 抄的 5 个东西</h2>
+<h3>4.1 它不是用 K 线触发成交，而是先重建 book，再回放 trade</h3>
+<p><code>as_backtest.py</code> 先读取：</p>
+<ul>
+<li><code>snapshot.ndjson</code></li>
+<li><code>depth.ndjson</code></li>
+<li><code>aggtrade.ndjson</code></li>
+</ul>
+<p>然后：</p>
+<ul>
+<li>用 snapshot 初始化 bids/asks；</li>
+<li>用 diff-depth 增量更新盘口；</li>
+<li>对每个事件重新计算 <code>best_bid / best_ask / mid / spread</code>；</li>
+<li>再用 <code>aggTrade</code> 去检查 resting order 是否真的能被打到。</li>
+</ul>
+<p>这是它相对很多 maker repo 最重要的升级： &gt; <strong>不再是“bar high/low 碰到报价就算成交”，而是起码有了 book state + trade replay。</strong></p>
+<p>这还不等于完美，但已经从“回测幻觉”往前走了一大步。</p>
+<h3>4.2 它把经典 A-S reservation price 真正落到了动态参数上</h3>
+<p>源码里最关键的一行是：</p>
+<ul>
+<li><code>reservation = event.mid - account.position_btc * auto_gamma * (sigma_now**2) * quote_horizon</code></li>
+</ul>
+<p>然后 half-spread 取：</p>
+<ul>
+<li>经典 A-S 风险补偿项；</li>
+<li>当前真实盘口半价差 <code>0.5 * event.spread</code>；</li>
+<li>手续费下限 <code>min_half_spread_from_fees</code>；</li>
+<p>三者的最大值。</p>
+</ul>
+<p>这件事的交易翻译很简单：</p>
+<ul>
+<li>库存越偏，<code>reservation price</code> 越往减仓方向偏；</li>
+<li>波动越大、成交衰减越快，理论 half-spread 越宽；</li>
+<li>但不管模型怎么说，<strong>如果连 fees 都覆盖不了，就不该挂太窄。</strong></li>
+</ul>
+<p>这比很多“只背 A-S 公式”的实现强很多，因为它明确承认： <strong>真实 maker quote 的下界，常常不是理论最优，而是成本最优。</strong></p>
+<h3>4.3 它不是静态 sigma/k，而是滚动估计</h3>
+<p>源码里 <code>dynamic_window_seconds = 10</code>，会在滚动窗口里动态估计：</p>
+<ul>
+<li><code>sigma</code></li>
+<li><code>intensity</code></li>
+<li><code>k</code></li>
+</ul>
+<p>并在 <code>gamma</code> 未手动指定时，先用库存风险预算推一个 base gamma，再在候选 gamma 网格上做小规模选择。</p>
+<p>这让它更像 short-cycle desk 会真的去做的事情： 不是用一个永远不变的全局参数，而是承认<strong>盘口毒性和 arrival intensity 是会随时间变的。</strong></p>
+<h3>4.4 它把 queue 与 latency 作为 alpha 生死线，而不是回测注脚</h3>
+<p>源码里专门做了两件多数 repo 会跳过的事：</p>
+<ol>
+<li><strong>queue ahead</strong></li>
+</ol>
+<ul>
+<li>resting buy order 若挂在 best bid，初始 <code>queue_ahead = best_bid_qty</code></li>
+<li>resting sell order 若挂在 best ask，初始 <code>queue_ahead = best_ask_qty</code></li>
+<li>后续再根据盘口更新慢慢消耗 queue</li>
+</ul>
+<ol>
+<li><strong>订单生命周期</strong></li>
+</ol>
+<ul>
+<li>新单不是立刻生效，而是 <code>order_latency_ms = 150</code></li>
+<li>cancel/replace 也不是瞬时，而是 <code>cancel_latency_ms = 100</code></li>
+<li>target quote 和 active quote 被分开处理</li>
+</ul>
+<p>这两层现实性非常关键，因为 maker alpha 的大坑往往不是“公式不够优雅”，而是：</p>
+<ul>
+<li>你以为自己挂在 best bid；</li>
+<li>其实你在队尾；</li>
+<li>你以为自己及时撤单了；</li>
+<li>其实 stale quote 还在市场里裸奔。</li>
+</ul>
+<h3>4.5 它把 size 真正受现金与库存约束，而不是永远固定不变</h3>
+<p>源码里 buy size 会被裁成：</p>
+<ul>
+<li><code>cash_usdt</code> 能负担的最大可买量；</li>
+<li><code>inventory_limit - current_position</code> 允许的最大量；</li>
+<li><code>max_order_notional / bid_quote</code> 的额度上限；</li>
+<li>再做 <code>qty_step</code> 对齐。</li>
+</ul>
+<p>sell side 也同样受库存边界控制。</p>
+<p>这意味着它不是“理论上一直双边对称挂满”，而是会因为已有库存与现金状态，<strong>动态缩一边、保另一边</strong>。</p>
+<p>对 desk 来说，这正是 maker raw alpha 该有的定义：</p>
+<ul>
+<li>alpha 本体是 spread；</li>
+<li>但持仓/现金状态会决定你还能不能继续吃这份 spread。</li>
+</ul>
+<h2>5. 这份 repo 里最该记住的关键数字</h2>
+<h3>5.1 5 分钟 baseline：gross 是正的，net 先被 fee 吃掉</h3>
+<p>README 给出的最新 5-minute full pipeline run：</p>
+<ul>
+<li><code>events = 2925</code></li>
+<li><code>trades_seen = 5304</code></li>
+<li><code>fills = 5</code></li>
+<li><code>gross_pnl_before_fees = +0.0453 USDT</code></li>
+<li><code>fees_paid = 0.1690 USDT</code></li>
+<li><code>net_pnl = -0.1237 USDT</code></li>
+</ul>
+<p>这组数非常值钱，因为它告诉我们：</p>
+<p>&gt; <strong>在真实 L2 + aggTrade 的短样本上，spread capture 毛利可以为正，但若 quote 不够宽、成交不够好、或 fill 数太稀，fee 很容易把净值直接吃穿。</strong></p>
+<h3>5.2 zero-fee size sweep：粗看不是“完全没有 alpha”，而是“alpha 先薄后死”</h3>
+<p>README 还给了一个信息点：</p>
+<ul>
+<li>在 <code>zero fees</code> 假设下，<code>size = 0.005</code> 大约 <code>net_pnl ≈ +0.00625 USDT</code></li>
+</ul>
+<p>这不是为了鼓吹“去掉 fee 就稳赚”； 恰恰相反，它告诉我们最现实的一句话：</p>
+<p>&gt; <strong>这条 alpha 更像“有一点点 gross edge，但边际很薄”，所以任何 fee、latency、queue 误判都会把它从正打成负。</strong></p>
+<h3>5.3 public data 的时间粒度足够给 1m/3m/5m/15m desk 做最小实验</h3>
+<p>Binance 官方公开文档写明：</p>
+<ul>
+<li><strong>Diff Book Depth Streams</strong>：盘口增量可按 <code>100ms / 250ms / 500ms</code> 推送；</li>
+<li><strong>Aggregate Trade Streams</strong>：<code>aggTrade</code> 以 <code>100ms</code> 聚合成交推送；</li>
+<li><strong>REST Order Book</strong>：<code>GET /fapi/v1/depth</code> 可取 snapshot，支持公开查询。</li>
+</ul>
+<p>这意味着这条研究不依赖私有撮合日志； <strong>最小实验所需数据是公开可拿、更新频率也足够高的。</strong></p>
+<h2>6. 这条东西为什么必须归成 raw alpha，而不是 overlay / filter</h2>
+<p>这个分类很重要。</p>
+<p>如果这篇东西的核心只是：</p>
+<ul>
+<li>高波动时别做；</li>
+<li>库存偏多时少买点；</li>
+<li>latency 高时谨慎点；</li>
+<p>那它顶多算 overlay。</p>
+</ul>
+<p>但这里不是。</p>
+<p>这里真正被交易的对象是：</p>
+<ul>
+<li>持续挂 bid/ask；</li>
+<li>用对手盘成交把 spread 兑现；</li>
+<li>通过反复的双边小额成交积累 PnL。</li>
+</ul>
+<p>所以：</p>
+<ul>
+<li><strong>raw alpha = maker spread capture</strong>；</li>
+<li><strong>filter / overlay = latency、queue、inventory、toxicity 只是在决定这份 raw alpha 能否活下来。</strong></li>
+</ul>
+<p>换句话说： &gt; <strong>它不是“maker 的风控研究”；它首先是一条 maker raw alpha，然后顺手把风控做对了。</strong></p>
+<h2>7. 它和 <code>1m / 3m / 5m / 15m</code> 的关系该怎么读</h2>
+<p>这条东西不是传统 K 线 directional signal，所以不能硬装成“每根 5m bar 预测未来 5m return”。</p>
+<p>更诚实、也更适合 desk 的读法是：</p>
+<h3><code>1m / 3m</code></h3>
+<p>拿来做：</p>
+<ul>
+<li>rolling sigma / spread / fill-rate / adverse-selection 监控；</li>
+<li>quote 开关；</li>
+<li>inventory skew 与 toxicity veto 的参数更新。</li>
+</ul>
+<h3><code>5m</code></h3>
+<p>拿来做：</p>
+<ul>
+<li>gamma/k 或 fee floor 参数分桶；</li>
+<li>gross spread 与 net spread 的 rolling 健康度评估；</li>
+<li>是否继续在这一段市场里挂双边。</li>
+</ul>
+<h3><code>15m</code></h3>
+<p>拿来做：</p>
+<ul>
+<li>maker shell 是否开启；</li>
+<li>是否切到更保守的 only-one-side / wider-spread / no-quote 模式；</li>
+<li>跨标的选择时的 admission refresh。</li>
+</ul>
+<p>也就是说： &gt; <strong>事件时间是执行时钟，<code>1m/3m/5m/15m</code> 是管理时钟。</strong></p>
+<p>这并不削弱它的价值，反而让策略定义更符合实盘。</p>
+<h2>8. 对当前 desk，最值得先测的不是“能不能赚”，而是 4 个 realism haircut 各砍掉多少</h2>
+<p>这是我认为这份材料最该带来的测试框架：</p>
+<h3>8.1 最小可复现实验口径</h3>
+<p><strong>数据源</strong></p>
+<ul>
+<li>Binance USDⓈ-M Futures 公开数据：</li>
+<li><code>/fapi/v1/depth</code> snapshot</li>
+<li>WebSocket diff-depth</li>
+<li>WebSocket aggTrade</li>
+</ul>
+<p><strong>公开性</strong></p>
+<ul>
+<li>官方公开 API / WebSocket，无需私有成交回报。</li>
+</ul>
+<p><strong>更新频率</strong></p>
+<ul>
+<li>depth 增量：<code>100ms/250ms/500ms</code></li>
+<li>aggTrade：<code>100ms</code></li>
+<li>snapshot：按需拉取初始化。</li>
+</ul>
+<p><strong>最小实验标的</strong></p>
+<ul>
+<li>先只做 <code>BTCUSDT</code>。</li>
+</ul>
+<p><strong>最小实验窗口</strong></p>
+<ul>
+<li>先抓 <code>20</code> 个独立 <code>15m</code> session；</li>
+<li>每个 session 内再切 <code>1m / 3m / 5m</code> 管理窗口看参数稳定性。</li>
+</ul>
+<h3>8.2 先不要直接调参暴力找正收益，先跑 4 组对照</h3>
+<p>A. <strong>Toy A-S</strong>：无 fee、无 latency、无 queue； B. <strong>+ Fee floor</strong>：加 maker fee 下界； C. <strong>+ Latency</strong>：加 <code>150ms/100ms</code> 订单生命周期； D. <strong>+ Queue</strong>：加 queue-ahead 与 aggTrade fill 检查。</p>
+<p>最该看的不是最终绝对收益，而是每加一层现实性时：</p>
+<ul>
+<li>fills 掉多少；</li>
+<li>gross spread capture 掉多少；</li>
+<li>fee 占 gross 的比例升多少；</li>
+<li>adverse selection 是否变重；</li>
+<li>inventory 偏离是否放大。</li>
+</ul>
+<p>如果 A 正、B/C/D 全负，那就别再骗自己“alpha 还在”。 如果 A/B/C 还能活，只是 D 砍掉一半，那下一步就该去做 <strong>queue / quote-priority 优化</strong>，而不是盲目 widen spread。</p>
+<h3>8.3 这条 alpha 对 desk 最现实的升级方向</h3>
+<p>我会把下一步拆成 3 级：</p>
+<ol>
+<li><strong>先复现 repo 原壳</strong></li>
+</ol>
+<ul>
+<li><code>BTCUSDT</code></li>
+<li>60s / 300s / 900s 多窗口</li>
+<li>复核 README 的 gross / fee / net 关系是否稳定出现。</li>
+</ul>
+<ol>
+<li><strong>再接 desk 已有的 microstructure veto 组件</strong></li>
+</ol>
+<ul>
+<li>把已有 <code>OBI / OFI / slippage / liquidity</code> 素材接成 maker veto；</li>
+<li>问的是：能不能少做“明知会被毒打”的时段，而不是靠更复杂公式挤收益。</li>
+</ul>
+<ol>
+<li><strong>最后才考虑扩到 ETH / SOL 或更宽价差 alt-perp</strong></li>
+</ol>
+<ul>
+<li>先在 <code>BTCUSDT</code> 把 realism haircut 拆清楚；</li>
+<li>再去更宽价差标的上吃更厚 spread，否则很容易把标的差异误当模型进步。</li>
+</ul>
+<h2>9. 我对这条东西的最终判断</h2>
+<h3>结论一句话</h3>
+<p><strong>值得进研究池，而且优先级不低。</strong></p>
+<p>但值得收的不是“Avellaneda–Stoikov”这个大名字本身，而是：</p>
+<p>&gt; <strong>这份 2026 repo 终于把 maker raw alpha 最容易自欺的三件事——fee、latency、queue——一起摆上桌了。</strong></p>
+<p>所以对当前 desk，它的最佳用法不是：</p>
+<ul>
+<li>再做一篇教科书公式复述；</li>
+<li>也不是把 README 当收益证明；</li>
+</ul>
+<p>而是把它当作：</p>
+<ul>
+<li><strong>maker raw alpha 的现实基线</strong>；</li>
+<li>后续所有 <code>OBI / OFI / toxicity / volatility veto</code> 组件的主宿主。</li>
+</ul>
+<h2>10. 下一步怎么测</h2>
+<h3>必做版（本周内可完成）</h3>
+<ol>
+<li>用 Binance 公开 <code>snapshot + diff-depth + aggTrade</code> 抓 <code>BTCUSDT</code> 连续 <code>20</code> 个 <code>15m</code> session。</li>
+<li>复现 4 组对照：<code>Toy / +Fee / +Latency / +Queue</code>。</li>
+<li>统一报 6 个指标：</li>
+</ol>
+<ul>
+<li><code>gross_pnl_before_fees</code></li>
+<li><code>fees_paid</code></li>
+<li><code>net_pnl</code></li>
+<li><code>fills</code></li>
+<li><code>inventory_abs_mean</code></li>
+<li><code>quote_refresh_events / replace_requests</code></li>
+</ul>
+<ol>
+<li>只要 <strong>D 组（全现实）仍在 20 个 session 里有稳定的 gross&gt;0 且 fee 占 gross 比例可压缩</strong>，才继续做下一层 veto；否则先停。</li>
+</ol>
+<h3>增量版（若必做版没死）</h3>
+<ol>
+<li>把最近 desk 已积累的：</li>
+</ol>
+<ul>
+<li>order-book imbalance</li>
+<li>flow toxicity</li>
+<li>slippage veto</li>
+<li>short-horizon realized vol gate</li>
+<p>依次接到 maker 壳上，测它们各自对 <code>fills / gross / net / inventory tail</code> 的边际改善。</p>
+</ul>
+<ol>
+<li>最后再做一次跨标的 portability：</li>
+</ol>
+<ul>
+<li><code>BTCUSDT -&gt; ETHUSDT -&gt; SOLUSDT</code></li>
+<li>看是“模型真的有效”，还是“只是 BTC 的微观结构刚好更友好”。</li>
+</ul>
+<h2>11. 来源</h2>
+<h3>论文 / 理论地基</h3>
+<ol>
+<li><strong>Marco Avellaneda, Sasha Stoikov (2008). _High-frequency trading in a limit order book_. Quantitative Finance.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.1080/14697680701381228</code></li>
+<li>Readable URL：&lt;<a href="https://doi.org/10.1080/14697680701381228&gt;">https://doi.org/10.1080/14697680701381228&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Olivier Guéant, Charles-Albert Lehalle, Joaquin Fernandez-Tapia (2013). _Dealing with the inventory risk: a solution to the market making problem_. Mathematics and Financial Economics.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.1007/s11579-012-0087-0</code></li>
+<li>Readable URL：&lt;<a href="https://doi.org/10.1007/s11579-012-0087-0&gt;">https://doi.org/10.1007/s11579-012-0087-0&gt;</a></li>
+<li>arXiv readable version：&lt;<a href="https://arxiv.org/abs/1105.3115&gt;">https://arxiv.org/abs/1105.3115&gt;</a></li>
+</ul>
+<h3>主体 repo</h3>
+<ol>
+<li><strong>Haoyu-tech (2026). _An Avellaneda-Stoikov market-making research project built on real Binance Futures BTCUSDT L2 data_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL：&lt;<a href="https://github.com/Haoyu-tech/An-Avellaneda-Stoikov-market-making-research-project-built-on-real-Binance-Futures-BTCUSDT-L2-data.&gt;">https://github.com/Haoyu-tech/An-Avellaneda-Stoikov-market-making-research-project-built-on-real-Binance-Futures-BTCUSDT-L2-data.&gt;</a></li>
+<li>README raw：&lt;<a href="https://raw.githubusercontent.com/Haoyu-tech/An-Avellaneda-Stoikov-market-making-research-project-built-on-real-Binance-Futures-BTCUSDT-L2-data./main/README.md&gt;">https://raw.githubusercontent.com/Haoyu-tech/An-Avellaneda-Stoikov-market-making-research-project-built-on-real-Binance-Futures-BTCUSDT-L2-data./main/README.md&gt;</a></li>
+<li>Code README raw：&lt;<a href="https://raw.githubusercontent.com/Haoyu-tech/An-Avellaneda-Stoikov-market-making-research-project-built-on-real-Binance-Futures-BTCUSDT-L2-data./main/code/README.md&gt;">https://raw.githubusercontent.com/Haoyu-tech/An-Avellaneda-Stoikov-market-making-research-project-built-on-real-Binance-Futures-BTCUSDT-L2-data./main/code/README.md&gt;</a></li>
+<li>Backtest core raw：&lt;<a href="https://raw.githubusercontent.com/Haoyu-tech/An-Avellaneda-Stoikov-market-making-research-project-built-on-real-Binance-Futures-BTCUSDT-L2-data./main/code/as_backtest.py&gt;">https://raw.githubusercontent.com/Haoyu-tech/An-Avellaneda-Stoikov-market-making-research-project-built-on-real-Binance-Futures-BTCUSDT-L2-data./main/code/as_backtest.py&gt;</a></li>
+<li>Pipeline raw：&lt;<a href="https://raw.githubusercontent.com/Haoyu-tech/An-Avellaneda-Stoikov-market-making-research-project-built-on-real-Binance-Futures-BTCUSDT-L2-data./main/code/run_as_pipeline.py&gt;">https://raw.githubusercontent.com/Haoyu-tech/An-Avellaneda-Stoikov-market-making-research-project-built-on-real-Binance-Futures-BTCUSDT-L2-data./main/code/run_as_pipeline.py&gt;</a></li>
+</ul>
+<h3>公开数据文档</h3>
+<ol>
+<li><strong>Binance Open Platform. USDⓈ-M Futures Market Data Docs.</strong></li>
+</ol>
+<ul>
+<li>Diff Book Depth Streams：&lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Diff-Book-Depth-Streams&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Diff-Book-Depth-Streams&gt;</a></li>
+<li>Aggregate Trade Streams：&lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Aggregate-Trade-Streams&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Aggregate-Trade-Streams&gt;</a></li>
+<li>REST Order Book：&lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Order-Book&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Order-Book&gt;</a></li>
+</ul>
+</body>
+</html>

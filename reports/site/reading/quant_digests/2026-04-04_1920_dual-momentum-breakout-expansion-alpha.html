@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>20-bar breakout × 20/60-bar momentum × ATR 扩张：一个带完整风控壳的 trend sleeve 候选</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>20-bar breakout × 20/60-bar momentum × ATR 扩张：一个带完整风控壳的 trend sleeve 候选</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 19:50 UTC</span>
+      <span class="pill">研究时间：2026-04-04 19:20 UTC</span>
+      <span class="pill">类型：raw alpha</span>
+      <span class="pill">主题标签：raw-alpha/trend/momentum/breakout/volatility-expansion/cross-sectional-ranking/correlation-filter/portfolio-risk/crypto/binance/15m/1h/repo/public-data/cost</span>
+      <span class="pill">证据类型：2026 GitHub 新 repo source audit（`README.md` + `src/strategies/trend_long.py` + `src/portfolio.py` + `main.py`）+ Binance Spot 公共 `1h/15m` 最小 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_1920_dual-momentum-breakout-expansion-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 19:20 UTC</li>
+<li>类型：raw alpha</li>
+<li>主题标签：raw-alpha/trend/momentum/breakout/volatility-expansion/cross-sectional-ranking/correlation-filter/portfolio-risk/crypto/binance/15m/1h/repo/public-data/cost</li>
+<li>证据类型：2026 GitHub 新 repo source audit（<code>README.md</code> + <code>src/strategies/trend_long.py</code> + <code>src/portfolio.py</code> + <code>main.py</code>）+ Binance Spot 公共 <code>1h/15m</code> 最小 portability probe</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：只在已处于 bull regime 的币上做 <strong>20-bar 新高突破</strong>，并要求 <strong>20/60-bar 动量同时为正且达到阈值</strong>、<strong>ATR 处于扩张分位</strong>；也就是“不是所有 breakout 都追，只追已经在加速的 breakout”。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的主源不是论文，而是一个 <strong>2026 年新 GitHub 仓库</strong>：<code>azuzxx9-jpg/quant-trade-system-v1</code>。它不是单一指标玩具，而是一个完整的多币组合研究壳；最值得单独拎出来的，不是整个系统，而是其中的 <strong><code>trend_long</code> sleeve</strong>：<code>20-bar breakout + 20/60-bar dual momentum + ATR expansion + bull-regime gate</code>，再接 <code>next-open</code> 入场、ATR/结构止损、partial take-profit、trailing stop、time stop、相关性上限、组合风险预算。</p>
+<p>对我们当前 desk，这条线的价值不在于“又一个 breakout 变体”，而在于它把 <strong>raw alpha、本地执行、组合约束</strong> 串成了完整策略壳，正好能补到我们当前主线里“趋势 raw alpha 有不少，但 portfolio 化 / cross-sectional rank / correlation gate 还可以继续拆”的空缺。</p>
+<h2>2. 源码里真正可复现的 alpha 是什么</h2>
+<h3>2.1 entry 条件（<code>src/strategies/trend_long.py</code>）</h3>
+<p>仓库里 <code>trend_long</code> 的核心触发非常清楚：</p>
+<ol>
+<li><strong>bull regime</strong>：<code>close &gt; SMA20 &gt; SMA50</code> 且 <code>ADX &gt;= 18</code></li>
+<li><strong>vol expansion</strong>：<code>ATR/close</code> 至少在过去 120 根里的 <strong>55% 分位以上</strong></li>
+<li><strong>20-bar breakout</strong>：当前 <code>close</code> 突破前 20 根最高价</li>
+<li><strong>20-bar momentum &gt; 3%</strong></li>
+<li><strong>60-bar momentum &gt; 5%</strong></li>
+</ol>
+<p>也就是说，这不是“单纯新高就追”，而是：</p>
+<ul>
+<li>先要确认市场已经在向上排列；</li>
+<li>再要求波动真的在扩张，而不是压缩末端假突破；</li>
+<li>最后要求短窗和中窗动量同时已经站起来。</li>
+</ul>
+<p>这条线的 <strong>base alpha</strong> 可以直接说清：</p>
+<p>&gt; <strong>正在加速的趋势币，在新高突破后更容易继续走，而不是立刻回落。</strong></p>
+<p>这满足 raw alpha 的定义，不只是 filter 或 overlay。</p>
+<h3>2.2 exit / sizing / risk / cost（<code>src/portfolio.py</code>）</h3>
+<p>这个 repo 有一整套可直接落地的策略壳：</p>
+<ul>
+<li><strong>入场</strong>：信号下一根 <code>open</code>，加 <code>5 bps</code> 入场滑点</li>
+<li><strong>初始止损</strong>：<code>min(SMA20 - 1.1 * ATR, signal-bar low)</code></li>
+<li><strong>分批止盈</strong>：到 <code>+2.2R</code> 先平一半</li>
+<li><strong>保护逻辑</strong>：partial 后把 stop 提到 break-even</li>
+<li><strong>追踪止损</strong>：<code>max_price - 5 * ATR</code></li>
+<li><strong>time stop</strong>：<code>96</code> 根 bar</li>
+<li><strong>手续费</strong>：<code>fee_rate = 4 bps</code></li>
+<li><strong>组合层</strong>：<code>max_portfolio_risk</code>、<code>max_gross_exposure</code>、每个 sleeve 的 risk/notional budget、cross-symbol correlation threshold、score-based sizing、cooldown、可选加仓（pyramid）</li>
+</ul>
+<p>所以这不是“只有 entry 点子”；它已经是一个能直接转成实盘 research spec 的完整壳。</p>
+<h2>3. 为什么这条线现在值得进研究池</h2>
+<p>结合当前项目文档，这条线有几个明确对接点：</p>
+<ol>
+<li><strong>它仍然是 raw alpha，不是纯 gate。</strong> 当前 bot7 的 intake 优先级里，raw alpha / 可直接落地完整策略的候选优先级最高，这条线满足。</li>
+<li><strong>它和我们现有主线兼容。</strong> 项目里已经有 trend / momentum / breakout / volatility expansion 这条主线；这个 repo 的价值是把这些元素组合成了一个更完整的 portfolio-ready sleeve。</li>
+<li><strong>它补的是“跨币 ranking + correlation gate + risk budget”这层。</strong> 很多趋势想法在单币上看着能做，但一到组合层就互相高度相关、一起回撤；这个 repo 至少给了一个可复现的组合化壳。</li>
+<li><strong>它能很快迁移到 15m / 1h。</strong> 虽然源码原始 timeframe 是 <code>4h</code>，但逻辑完全基于公开 OHLCV 与常规指标，迁移门槛很低。</li>
+</ol>
+<h2>4. 最小 portability probe：public Binance spot 上，这条线迁到 <code>1h/15m</code> 怎么样</h2>
+<p>我用 Binance Spot 公共 OHLCV 做了一个<strong>最小便携性快检</strong>，窗口为 <strong>2025-01-01 ~ 2026-04-04</strong>，标的为 <code>BTCUSDT / ETHUSDT / BNBUSDT / SOLUSDT</code>。</p>
+<p>为了不把 repo 的整套组合优化和相关性过滤混在一起，我先做了一个<strong>更保守但更透明的 isolated sleeve probe</strong>：</p>
+<ul>
+<li>只保留 <code>trend_long</code> 这条 raw alpha；</li>
+<li>每个币独立测试；</li>
+<li>用 repo 的核心 entry / stop / partial / trailing / time-stop 逻辑；</li>
+<li>按 <code>10 bps fee + 10 bps slippage?</code> 不对，按这次简化实现是 <strong>round-trip 约 15 bps 级别</strong> 的交易摩擦处理；</li>
+<li><strong>没有</strong>用到 repo 的 top-N ranking、组合相关性约束、sleeve risk budget、drawdown scalar、pyramid。</li>
+</ul>
+<p>所以这组数字更像是“alpha 核心本体能不能站住”，而不是“完整组合最终成绩”。</p>
+<h3>4.1 <code>1h</code> 快检结果</h3>
+<ul>
+<li><strong>ETHUSDT</strong>：<code>26</code> 笔，累计约 <strong>+6.63%</strong>，平均每笔 <strong>+0.38%</strong>，PF <strong>1.22</strong></li>
+<li><strong>BTCUSDT</strong>：<code>10</code> 笔，累计约 <strong>-2.89%</strong>，PF <strong>0.82</strong></li>
+<li><strong>SOLUSDT</strong>：<code>24</code> 笔，累计约 <strong>-0.64%</strong>，PF <strong>1.09</strong>（接近打平）</li>
+<li><strong>BNBUSDT</strong>：<code>18</code> 笔，累计约 <strong>-14.12%</strong>，PF <strong>0.59</strong></li>
+</ul>
+<h3>4.2 <code>15m</code> 快检结果</h3>
+<ul>
+<li><strong>BTCUSDT</strong>：<code>8</code> 笔，累计约 <strong>+1.88%</strong>，胜率 <strong>75.0%</strong>，PF <strong>1.63</strong></li>
+<li><strong>ETHUSDT</strong>：<code>40</code> 笔，累计约 <strong>-3.02%</strong>，PF <strong>0.98</strong></li>
+<li><strong>SOLUSDT</strong>：<code>49</code> 笔，累计约 <strong>-5.44%</strong>，PF <strong>0.94</strong></li>
+<li><strong>BNBUSDT</strong>：<code>20</code> 笔，累计约 <strong>-14.25%</strong>，PF <strong>0.43</strong></li>
+</ul>
+<h3>4.3 这组数字怎么读</h3>
+<p>我对这组结果的解读是：</p>
+<ol>
+<li><strong>这条 alpha 不是“全市场随便跑都行”的 broad trend alpha。</strong> 它明显更像一个需要做 universe selection / ranking 的 trend sleeve。</li>
+<li><strong>repo 里那些组合层约束不是装饰品。</strong> 我这次故意没带 <code>symbol_score</code> 排名、相关性阈值、组合预算；结果恰好说明：如果把这类趋势 breakout 规则无脑铺到所有币，容易被 BNB/SOL 之类名字拖垮。</li>
+<li><strong>它在 <code>1h</code> 上比在 <code>15m</code> 上更像能站住。</strong> 这说明它更适合作为 <code>1h regime + 15m execution</code> 的上层 alpha，而不是直接当成宽 universe 的 <code>15m</code> 裸跑主策略。</li>
+<li><strong>BTC/ETH 仍有继续挖的价值。</strong> 尤其是 <code>1h ETH</code> 和 <code>15m BTC</code> 两段，不像已经彻底死掉，更像阈值和 ranking 还没对齐。</li>
+</ol>
+<h2>5. 对 desk 真正有用的，不是“照抄 entire repo”，而是抄哪一层</h2>
+<p>如果只问一句：<strong>这篇东西最值得抄什么？</strong></p>
+<p>我的答案不是“抄它的回测收益”，而是下面三层：</p>
+<h3>5.1 raw alpha 层</h3>
+<p>把趋势延续写成：</p>
+<ul>
+<li><code>breakout</code> 负责确认价格已经脱离前高；</li>
+<li><code>20/60-bar momentum</code> 负责确认不是随机刺穿；</li>
+<li><code>ATR expansion</code> 负责确认不是低波动假动作。</li>
+</ul>
+<p>也就是把我们常见的“突破”改写成<strong>突破 + acceleration + expansion</strong> 三联条件。</p>
+<h3>5.2 组合层</h3>
+<p>这个 repo 一个很实用的地方是承认：</p>
+<p>&gt; 趋势 alpha 不是只看 entry 对不对，还要看同一时间到底让哪些币进组合。</p>
+<p>所以它加了：</p>
+<ul>
+<li><code>symbol_score</code> 排名</li>
+<li>candidate correlation penalty</li>
+<li>sleeve risk budget / notional budget</li>
+<li>drawdown-based risk scalar</li>
+</ul>
+<p>这对 short-cycle desk 很重要，因为趋势腿经常不是 <strong>单笔</strong> 亏，而是 <strong>一起亏</strong>。</p>
+<h3>5.3 迁移层</h3>
+<p>对 <code>5m/15m</code> 最现实的迁移，不是直接把所有参数照抄，而是：</p>
+<ul>
+<li>把 <code>1h</code> 的 trend sleeve 当 <strong>上层 raw alpha / regime gate</strong>；</li>
+<li>再用 <code>15m</code> 做更细的 trigger 和 execution；</li>
+<li>或者只把它保留给 <code>BTC/ETH</code> 这类更干净的 universe。</li>
+</ul>
+<h2>6. 最小实验该怎么做</h2>
+<h3>实验 A：先做“严格复刻版”</h3>
+<p>目标：知道 repo 的 edge 到底来自 <strong>raw alpha</strong>，还是来自 <strong>组合排名与风控壳</strong>。</p>
+<ol>
+<li>数据：Binance / Bybit perpetual 公共 <code>1h</code> 与 <code>15m</code></li>
+<li>标的：<code>BTC/ETH/SOL/BNB/XRP/AVAX</code>，先复刻 repo universe</li>
+<li>规则：完整照抄 <code>trend_long</code> + <code>portfolio.py</code></li>
+<li>输出：</li>
+</ol>
+<ul>
+<li>单币表现</li>
+<li>组合表现</li>
+<li>ranking 前后差异</li>
+<li>correlation gate 前后差异</li>
+<li><code>fee/slippage</code> 敏感度（<code>6/10/15 bps</code>）</li>
+</ul>
+<p>如果完整壳显著优于 isolated sleeve，就说明这条线真正值钱的是 <strong>portfolio wrapper</strong>，不是裸 breakout 本体。</p>
+<h3>实验 B：做“desk 版短周期迁移”</h3>
+<p>目标：把它变成更贴近 <code>15m</code> 的 desk alpha。</p>
+<ol>
+<li>上层 regime：<code>1h</code> bull regime + vol expansion</li>
+<li>下层 trigger：<code>15m</code> 20-bar breakout，但只在 <code>1h</code> regime 为真时允许入场</li>
+<li>universe：先只做 <code>BTC/ETH</code></li>
+<li>阈值改写：</li>
+</ol>
+<ul>
+<li>把固定 <code>3% / 5%</code> 改成 rolling percentile 或 ATR-normalized threshold</li>
+<li>避免在不同波动币种上阈值不可比</li>
+</ul>
+<ol>
+<li>出场：保留 <code>partial @ 2.2R + trailing stop</code>，对比 <code>full trailing only</code></li>
+</ol>
+<h3>实验 C：把它做成 cross-sectional sleeve，而不是全币通用规则</h3>
+<p>目标：解决这次快检里最明显的问题——<strong>币种选择比信号本身还重要</strong>。</p>
+<ol>
+<li>每个 bar 对所有候选币打分：</li>
+</ol>
+<ul>
+<li><code>trend_strength</code></li>
+<li><code>20/60-bar momentum</code></li>
+<li><code>ATR expansion</code></li>
+</ul>
+<ol>
+<li>只做 top-1 / top-2</li>
+<li>叠加 rolling correlation penalty</li>
+<li>对比：</li>
+</ol>
+<ul>
+<li>全 universe 同时做</li>
+<li>top-N 排名做</li>
+<li>只做 majors</li>
+</ul>
+<p>如果 top-N 明显改善，那它就很适合作为 desk 的 <strong>趋势篮子 sleeve</strong>，而不是单币固定模板。</p>
+<h2>7. 结论</h2>
+<p>这条 repo 里的 <code>trend_long</code>，我会把它放进研究池，但定位得很清楚：</p>
+<ul>
+<li><strong>它是 raw alpha</strong>，不是纯 filter；</li>
+<li><strong>它是完整策略壳</strong>，不是只有 entry 的半成品；</li>
+<li><strong>它在 1h 比在 15m 更自然</strong>；</li>
+<li><strong>它更像“需要 ranking / correlation gate 才成立”的趋势 sleeve</strong>，而不是一个对所有币裸跑都行的 broad breakout 规则。</li>
+</ul>
+<p>如果只留一句话给后续复现：</p>
+<p>&gt; <strong>先别把它当“又一个突破策略”；更该把它当“20/60-bar 加速确认 + ATR 扩张 + portfolio ranking/correlation 壳”的趋势组件。</strong></p>
+<h2>8. 来源</h2>
+<h3>主源（repo）</h3>
+<ul>
+<li><strong>Author / Org</strong>：<code>azuzxx9-jpg</code></li>
+<li><strong>Year</strong>：2026</li>
+<li><strong>Title</strong>：<code>quant-trade-system-v1</code></li>
+<li><strong>Venue</strong>：GitHub</li>
+<li><strong>DOI</strong>：无</li>
+<li><strong>Readable URL</strong>：<a href="https://github.com/azuzxx9-jpg/quant-trade-system-v1">https://github.com/azuzxx9-jpg/quant-trade-system-v1</a></li>
+<li><strong>Repo URL</strong>：<a href="https://github.com/azuzxx9-jpg/quant-trade-system-v1">https://github.com/azuzxx9-jpg/quant-trade-system-v1</a></li>
+<li><strong>关键源码</strong>：</li>
+<li><code>trend_long</code>：<a href="https://raw.githubusercontent.com/azuzxx9-jpg/quant-trade-system-v1/main/src/strategies/trend_long.py">https://raw.githubusercontent.com/azuzxx9-jpg/quant-trade-system-v1/main/src/strategies/trend_long.py</a></li>
+<li><code>portfolio shell</code>：<a href="https://raw.githubusercontent.com/azuzxx9-jpg/quant-trade-system-v1/main/src/portfolio.py">https://raw.githubusercontent.com/azuzxx9-jpg/quant-trade-system-v1/main/src/portfolio.py</a></li>
+<li><code>main config</code>：<a href="https://raw.githubusercontent.com/azuzxx9-jpg/quant-trade-system-v1/main/main.py">https://raw.githubusercontent.com/azuzxx9-jpg/quant-trade-system-v1/main/main.py</a></li>
+</ul>
+<h3>公共数据口径</h3>
+<ul>
+<li><strong>Data source</strong>：Binance Spot Klines REST API</li>
+<li><strong>公开性</strong>：公开可得，无需 key</li>
+<li><strong>更新频率</strong>：支持分钟级 / 小时级 OHLCV</li>
+<li><strong>最小可复现实验口径</strong>：<code>BTCUSDT/ETHUSDT/BNBUSDT/SOLUSDT</code>，<code>1h</code> / <code>15m</code>，next-open entry，显式 fees/slippage，独立 sleeve backtest</li>
+</ul>
+</body>
+</html>

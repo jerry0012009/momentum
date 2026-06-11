@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PyTrendline v3 breakout side audit</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; background: #f8fafc; color: #0f172a; }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 18px 48px; }
+    .card { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px 22px; margin-bottom: 18px; }
+    .muted { color: #64748b; }
+    .warn { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; border-radius: 10px; padding: 10px 12px; }
+    .ok { background: #ecfeff; border: 1px solid #a5f3fc; color: #155e75; border-radius: 10px; padding: 10px 12px; }
+    .tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
+    .tbl th, .tbl td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; vertical-align: top; }
+    .tbl th { background: #f8fafc; }
+    ul { line-height: 1.7; }
+    code { background: #f1f5f9; padding: 1px 4px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p><a href="../pytrendline_event_validation_v3/report.html">← 返回 v3 主报告</a></p>
+
+    <div class="card">
+      <h1>PyTrendline v3 breakout side audit</h1>
+      <p class="muted">Generated: 2026-03-13 18:44 UTC</p>
+      <p>这页只回答一个问题：为什么 <code>support_breakout_*</code> 和 <code>resistance_breakout_*</code> 在 purged 样本里会长得像同一批事件？</p>
+      <div class="warn"><b>结论先说：</b>当前证据强烈支持：<b>breakout 的 side 标签还没有通过几何审计</b>。最新 artifacts 里，“同一 bar 被同时记成 support / resistance breakout”的 exact-match 配对只剩极少数；但更关键的问题还在——<code>support_breakout_*</code> 的 support 线在事件时仍系统性位于价格上方，<code>resistance_breakout_*</code> 的 resistance 线也系统性位于价格下方。</div>
+    </div>
+
+    <div class="card">
+      <h2>Plain-language summary</h2>
+      <ul>
+        <li><b>发现了什么：</b>在 <code>event_sample_purged.csv</code> 里，<code>support_breakout_raw</code> 与 <code>resistance_breakout_raw</code> 仍有 <b>1</b> 条逐条 exact match，说明镜像配对问题还没彻底消失；但它已经不再是当前样本里的主量级问题。</li>
+        <li><b>更关键的发现：</b><code>support_breakout_raw</code> 里，support 线在事件发生时有 <b>100.0%</b> 位于价格上方；<code>resistance_breakout_raw</code> 里，resistance 线有 <b>100.0%</b> 位于价格下方。这里的 <code>price</code> 默认指事件 bar 收盘价。</li>
+        <li><b>这意味着什么：</b>当前 breakout 的 <code>support</code> / <code>resistance</code> 标签，至少在现有 v3 artifacts 里，还不能被当成两组已经干净分离的独立 alpha 事件；真正先要解决的是 side 几何语义失真，而不是直接比较哪一侧更强。</li>
+      </ul>
+      <div class="ok"><b>本轮没声称的东西：</b>我们还没有证明修复一定只需要一个几何 gate；也还没正式重跑修复后的最小样本。所以这轮完成的是 <b>审计定位</b>，不是修复关闭。</div>
+    </div>
+
+    <div class="card">
+      <h2>What was found / not found / reliability</h2>
+      <ul>
+        <li><b>Found:</b> purged breakout raw / confirm_1 / confirm_2 三组 support-vs-resistance 仍各有 1 条逐条 exact match，说明镜像配对问题还存在，但量级已很小。</li>
+        <li><b>Found:</b> 最新 raw 样本里“同一 bar 双边同时 breakout”的占比并不高；以 breakout raw 为例，配对占比是 <b>0.8%</b>。这说明当前 blocker 不能再简单概括成“大规模双边重复记账”。</li>
+        <li><b>Found:</b> breakout 几何异常依然系统性存在：<code>support_breakout_raw</code> 的 <code>support_above_price_share = 100.0%</code>，<code>resistance_breakout_raw</code> 的 <code>resistance_below_price_share = 100.0%</code>。</li>
+        <li><b>Found:</b> pair-level geometry audit 新增了 <code>crossed_lines_share</code>、<code>close_between_lines_share</code>、<code>both_inverted_share</code>，可直接看出“support/resistance 两条线是否已经互相穿越、价格是否还夹在两线之间”。</li>
+        <li><b>Not found:</b> 没看到“纯粹 summary 计算/打印 bug”的证据；因为 raw 样本里两边计数不同、均值也不完全一样，说明问题在报表之前就已经进入事件流。</li>
+        <li><b>Not found:</b> 还没证明底层 pytrendline 自身把 line_side 分错；更像是 <code>visible-line sampler</code> 还缺一个可复查的 side geometry gate / audit layer。</li>
+        <li><b>Reliability:</b> 对“breakout side 几何仍不干净”的判断是 <b>high</b>；对“应该怎么修”还是 <b>medium</b>，因为下一步还需要最小 sampler 修复与重跑确认。</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Pair summary</h2>
+      <p class="muted">看三组 breakout 事件在 raw / purged 样本里，support 与 resistance 是否落在同一批 bar 上。</p>
+      <h3>Raw sample</h3>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>sample</th>
+      <th>family</th>
+      <th>support_rows</th>
+      <th>resistance_rows</th>
+      <th>same_bar_groups</th>
+      <th>groups_with_both_sides</th>
+      <th>both_side_share</th>
+      <th>exact_match_rows</th>
+      <th>support_only_rows</th>
+      <th>resistance_only_rows</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>raw</td>
+      <td>breakout_raw</td>
+      <td>930</td>
+      <td>991</td>
+      <td>1906</td>
+      <td>15</td>
+      <td>0.007870</td>
+      <td>15</td>
+      <td>915</td>
+      <td>976</td>
+    </tr>
+    <tr>
+      <td>raw</td>
+      <td>breakout_confirm_1</td>
+      <td>733</td>
+      <td>764</td>
+      <td>1491</td>
+      <td>6</td>
+      <td>0.004024</td>
+      <td>6</td>
+      <td>727</td>
+      <td>758</td>
+    </tr>
+    <tr>
+      <td>raw</td>
+      <td>breakout_confirm_2</td>
+      <td>657</td>
+      <td>672</td>
+      <td>1326</td>
+      <td>3</td>
+      <td>0.002262</td>
+      <td>3</td>
+      <td>654</td>
+      <td>669</td>
+    </tr>
+  </tbody>
+</table>
+      <h3>Purged sample</h3>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>sample</th>
+      <th>family</th>
+      <th>support_rows</th>
+      <th>resistance_rows</th>
+      <th>same_bar_groups</th>
+      <th>groups_with_both_sides</th>
+      <th>both_side_share</th>
+      <th>exact_match_rows</th>
+      <th>support_only_rows</th>
+      <th>resistance_only_rows</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>purged</td>
+      <td>breakout_raw</td>
+      <td>48</td>
+      <td>50</td>
+      <td>97</td>
+      <td>1</td>
+      <td>0.010309</td>
+      <td>1</td>
+      <td>47</td>
+      <td>49</td>
+    </tr>
+    <tr>
+      <td>purged</td>
+      <td>breakout_confirm_1</td>
+      <td>47</td>
+      <td>50</td>
+      <td>96</td>
+      <td>1</td>
+      <td>0.010417</td>
+      <td>1</td>
+      <td>46</td>
+      <td>49</td>
+    </tr>
+    <tr>
+      <td>purged</td>
+      <td>breakout_confirm_2</td>
+      <td>46</td>
+      <td>50</td>
+      <td>95</td>
+      <td>1</td>
+      <td>0.010526</td>
+      <td>1</td>
+      <td>45</td>
+      <td>49</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+
+    <div class="card">
+      <h2>Geometry audit</h2>
+      <p>如果一个 <code>support_breakout</code> 在事件时 support 线竟然还在价格上方，这就说明当前标签和几何位置已经脱节。这里 <code>support_above_price_share / resistance_below_price_share</code> 里的 <code>price</code> 默认指事件 bar 收盘价；同时保留更严格的 <code>support_above_high_share / resistance_below_low_share</code> 供复查。</p>
+      <h3>Purged sample</h3>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>event_type</th>
+      <th>rows</th>
+      <th>support_above_price_share</th>
+      <th>support_above_close_share</th>
+      <th>support_above_high_share</th>
+      <th>resistance_below_price_share</th>
+      <th>resistance_below_close_share</th>
+      <th>resistance_below_low_share</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>resistance_breakout_confirm_1</td>
+      <td>50</td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.18</td>
+    </tr>
+    <tr>
+      <td>resistance_breakout_confirm_2</td>
+      <td>50</td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.18</td>
+    </tr>
+    <tr>
+      <td>resistance_breakout_raw</td>
+      <td>50</td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.22</td>
+    </tr>
+    <tr>
+      <td>resistance_rebound_confirm_1</td>
+      <td>51</td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td>0.098039</td>
+      <td>0.098039</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <td>resistance_rebound_confirm_2</td>
+      <td>50</td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td>0.2</td>
+      <td>0.2</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <td>resistance_touch_raw</td>
+      <td>52</td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td>0.134615</td>
+      <td>0.134615</td>
+      <td>0.0</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>47</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.234043</td>
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_2</td>
+      <td>46</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.23913</td>
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>48</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.1875</td>
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>support_rebound_confirm_1</td>
+      <td>48</td>
+      <td>0.083333</td>
+      <td>0.083333</td>
+      <td>0.020833</td>
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>support_rebound_confirm_2</td>
+      <td>48</td>
+      <td>0.0625</td>
+      <td>0.0625</td>
+      <td>0.0</td>
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>support_touch_raw</td>
+      <td>48</td>
+      <td>0.083333</td>
+      <td>0.083333</td>
+      <td>0.0</td>
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+      <h3>Raw sample</h3>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>event_type</th>
+      <th>rows</th>
+      <th>support_above_price_share</th>
+      <th>support_above_close_share</th>
+      <th>support_above_high_share</th>
+      <th>resistance_below_price_share</th>
+      <th>resistance_below_close_share</th>
+      <th>resistance_below_low_share</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>resistance_breakout_confirm_1</td>
+      <td>764</td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.196335</td>
+    </tr>
+    <tr>
+      <td>resistance_breakout_confirm_2</td>
+      <td>672</td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.21131</td>
+    </tr>
+    <tr>
+      <td>resistance_breakout_raw</td>
+      <td>991</td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.162462</td>
+    </tr>
+    <tr>
+      <td>resistance_rebound_confirm_1</td>
+      <td>1164</td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td>0.092784</td>
+      <td>0.092784</td>
+      <td>0.000859</td>
+    </tr>
+    <tr>
+      <td>resistance_rebound_confirm_2</td>
+      <td>926</td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td>0.086393</td>
+      <td>0.086393</td>
+      <td>0.00108</td>
+    </tr>
+    <tr>
+      <td>resistance_touch_raw</td>
+      <td>1800</td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td>0.148333</td>
+      <td>0.148333</td>
+      <td>0.001111</td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_1</td>
+      <td>733</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.173261</td>
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>support_breakout_confirm_2</td>
+      <td>657</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.190259</td>
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>support_breakout_raw</td>
+      <td>930</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.13871</td>
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>support_rebound_confirm_1</td>
+      <td>988</td>
+      <td>0.07996</td>
+      <td>0.07996</td>
+      <td>0.001012</td>
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>support_rebound_confirm_2</td>
+      <td>774</td>
+      <td>0.077519</td>
+      <td>0.077519</td>
+      <td>0.0</td>
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>support_touch_raw</td>
+      <td>1569</td>
+      <td>0.140854</td>
+      <td>0.140854</td>
+      <td>0.001912</td>
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+
+    <div class="card">
+      <h2>Pair-level geometry audit</h2>
+      <p class="muted">这张表把“同一 bar 被双边 breakout 记账”的配对事件单独拿出来看，避免把单边统计和配对统计混在一起。</p>
+      <ul>
+        <li><code>crossed_lines_share</code>：support 线值已经高于 resistance 线值，说明两条线几何上互相穿越了。</li>
+        <li><code>close_between_lines_share</code>：事件收盘价是否还位于 support / resistance 两线之间；如果很低，说明“线作为上下边界”的语义已经坏掉。</li>
+        <li><code>both_inverted_share</code>：support 在线上方 + resistance 在线下方同时成立的占比，是最直观的异常几何指标。</li>
+      </ul>
+      <div class="warn"><b>当前 purged breakout raw（paired_rows = 1）：</b><code>crossed_lines_share = 100.0%</code>，<code>close_between_lines_share = 0.0%</code>，<code>both_inverted_share = 100.0%</code>。</div>
+      <h3>Purged sample</h3>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>family</th>
+      <th>paired_rows</th>
+      <th>support_above_close_share</th>
+      <th>resistance_below_close_share</th>
+      <th>support_above_high_share</th>
+      <th>resistance_below_low_share</th>
+      <th>crossed_lines_share</th>
+      <th>close_between_lines_share</th>
+      <th>both_inverted_share</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>breakout_raw</td>
+      <td>1</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+    </tr>
+    <tr>
+      <td>breakout_confirm_1</td>
+      <td>1</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+    </tr>
+    <tr>
+      <td>breakout_confirm_2</td>
+      <td>1</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+    </tr>
+  </tbody>
+</table>
+      <h3>Raw sample</h3>
+      <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>family</th>
+      <th>paired_rows</th>
+      <th>support_above_close_share</th>
+      <th>resistance_below_close_share</th>
+      <th>support_above_high_share</th>
+      <th>resistance_below_low_share</th>
+      <th>crossed_lines_share</th>
+      <th>close_between_lines_share</th>
+      <th>both_inverted_share</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>breakout_raw</td>
+      <td>15</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.733333</td>
+      <td>0.333333</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+    </tr>
+    <tr>
+      <td>breakout_confirm_1</td>
+      <td>6</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>0.833333</td>
+      <td>0.666667</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+    </tr>
+    <tr>
+      <td>breakout_confirm_2</td>
+      <td>3</td>
+      <td>1.0</td>
+      <td>1.0</td>
+      <td>1.000000</td>
+      <td>0.666667</td>
+      <td>1.0</td>
+      <td>0.0</td>
+      <td>1.0</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+
+    <div class="card">
+      <h2>Artifacts</h2>
+      <ul>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_breakout_side_audit/summary.json'>summary.json</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_breakout_side_audit/raw_pair_summary.csv'>raw_pair_summary.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_breakout_side_audit/purged_pair_summary.csv'>purged_pair_summary.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_breakout_side_audit/raw_geometry_audit.csv'>raw_geometry_audit.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_breakout_side_audit/purged_geometry_audit.csv'>purged_geometry_audit.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_breakout_side_audit/raw_pair_geometry_audit.csv'>raw_pair_geometry_audit.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_breakout_side_audit/purged_pair_geometry_audit.csv'>purged_pair_geometry_audit.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_breakout_side_audit/purged_breakout_raw_pairs.csv'>purged_breakout_raw_pairs.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_breakout_side_audit/purged_breakout_confirm_1_pairs.csv'>purged_breakout_confirm_1_pairs.csv</a></li>
+        <li><a href='../../artifacts/pytrendline_event_validation_v3_breakout_side_audit/purged_breakout_confirm_2_pairs.csv'>purged_breakout_confirm_2_pairs.csv</a></li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个 2025 小 repo 只读成“小时级均值回复作业”：对 short-cycle crypto desk，更该先拆的是「BTC 对冲后的 alt 残差反打」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个 2025 小 repo 只读成“小时级均值回复作业”：对 short-cycle crypto desk，更该先拆的是「BTC 对冲后的 alt 残差反打」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-26 01:25 UTC</span>
+      <span class="pill">研究时间：2026-04-26 01:26 UTC</span>
+      <span class="pill">类型：GitHub repo source audit（`datas/fetch_hourly_data.py` + `portfolios/btc_hedged_portfolios.py` + `statistic_tests/autoCorrelsEMAThreshold.py` + `strategy/basic_mean_reversion.py`）+ Binance USDⓈ-M public-data portability probe（`BTC/ETH/BNB/SOL/XRP/ADA/DOGE/LINK/AVAX/LTC`，近 `90d`，`15m` + `1h`）</span>
+      <span class="pill">主题标签：raw-alpha / relative-value / stat-arb / btc-hedged / residual / mean-reversion / cross-asset / 1h / 15m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-26_0126_btchedged-altresid-fade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-26 01:26 UTC</li>
+<li>类型：GitHub repo source audit（<code>datas/fetch_hourly_data.py</code> + <code>portfolios/btc_hedged_portfolios.py</code> + <code>statistic_tests/autoCorrelsEMAThreshold.py</code> + <code>strategy/basic_mean_reversion.py</code>）+ Binance USDⓈ-M public-data portability probe（<code>BTC/ETH/BNB/SOL/XRP/ADA/DOGE/LINK/AVAX/LTC</code>，近 <code>90d</code>，<code>15m</code> + <code>1h</code>）</li>
+<li>主题类型：<strong>raw alpha</strong></li>
+<li>基础 alpha：<strong>先把每个 alt 的市场 beta 用 <code>BTC</code> 对冲掉；若剩下的 idiosyncratic residual 刚刚冲得过头，下一小段更容易反打，而不是继续单边延伸。</strong></li>
+<li>是否可独立复现：<strong>是</strong></li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：<strong>否，repo 只有 alpha 壳，缺正式成本/仓位/止损/组合约束。</strong></li>
+<li>主题标签：raw-alpha / relative-value / stat-arb / btc-hedged / residual / mean-reversion / cross-asset / 1h / 15m / repo / public-data / cost / risk</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是 GitHub repo <strong><code>Dastrial/crypto_strat</code></strong>（2025-06 更新，仓库描述直接写着 *Cryptocurrency perpetual futures mean-reversion*）。它表面上很朴素，但对 desk 真正有价值的不是“均值回复”这四个字，而是它先做了一个很明确的动作：</p>
+<ol>
+<li>先用 <code>BTC</code> 给每个 alt 做 beta 对冲；</li>
+<li>再只交易那个 <strong><code>alt_return - beta * btc_return</code></strong> 的残差；</li>
+<li>最后用最简单的规则验证：<strong>上一根残差什么方向，下一根先反着做。</strong></li>
+</ol>
+<p>也就是说，它不是在赌“全市场跌多了就反弹”，而是在赌：<strong>某个币相对 BTC 的短时错位会回归。</strong> 这比再写一篇泛泛的单资产超跌反弹，更贴近我们现在想补的 <code>relative value / stat-arb</code> 素材池。</p>
+<h2>2. 一句话核心结论</h2>
+<p><strong>这份 repo 最值得 desk 保留的，不是它的脚本写法，而是一个很容易最小复现的 raw alpha 壳：<code>BTC-hedged alt residual fade</code>；近 <code>90d</code> 的 Binance USDⓈ-M 快检显示 gross edge 还在，但厚度明显不够硬扛 taker 成本，更像 <code>1h parent / 15m child</code> 的相对价值 router，而不是裸做的主系统。</strong></p>
+<h2>3. 它是怎么证明这件事的</h2>
+<p>repo 的逻辑非常直白：</p>
+<ul>
+<li><code>fetch_hourly_data.py</code> 拉 <code>1h</code> perpetual 数据；</li>
+<li><code>btc_hedged_portfolios.py</code> 对每个 alt 估一个 <code>beta = cov(alt, BTC) / var(BTC)</code>；</li>
+<li>然后构造 <code>alt - beta*BTC</code> 的市场中性组合；</li>
+<li><code>autoCorrelsEMAThreshold.py</code> 再去看“大残差之后，后续自相关是不是更偏负”；</li>
+<li><code>basic_mean_reversion.py</code> 最终直接跑 <code>-sign(residual_{t-1}) * residual_t</code>。</li>
+</ul>
+<p>所以它给我们的不是完整实盘系统，而是一句很清楚的研究命题： &gt; <strong>如果某个 alt 这一小段相对 BTC 冲太快，下一段是否更容易回到均值？</strong></p>
+<h2>4. 为什么和当前项目有关</h2>
+<p>这条线和当前 desk 的关系很直接：</p>
+<ul>
+<li>它补的是 <strong>raw alpha</strong>，不是纯 filter；</li>
+<li>它属于我们现在应该持续补的 <strong>relative-value / stat-arb</strong> 分支，而不是继续围绕单一 breakout 形态内循环；</li>
+<li>它的最小实验门槛很低：只要 <code>BTC + alt</code> 公共 K 线就能先做 first verdict；</li>
+<li>即便最终主结论是“太薄、不能直接打”，它仍然能沉淀成一个共享组件：<code>BTC beta hedge + residual z-score admission</code>。</li>
+</ul>
+<h2>4.5 这轮 portability 快检</h2>
+<p>我补了一个 Binance USDⓈ-M 公共数据快检，标的为 <code>BTC/ETH/BNB/SOL/XRP/ADA/DOGE/LINK/AVAX/LTC</code>，近 <code>90d</code> <code>15m</code> 数据；先用前 <code>70%</code> 样本估 beta，再看后 <code>30%</code> 样本。</p>
+<h3>A. repo 原生读法：<code>1h</code> residual 每小时反打</h3>
+<p>把 <code>15m</code> 聚成 <code>1h</code> 后，<code>XRP / DOGE / ADA / SOL</code> 这几条 residual 的 gross 仍然最好：</p>
+<ul>
+<li><code>XRP</code>：平均约 <strong>+2.32 bps/小时</strong>，胜率约 <strong>53.7%</strong>；</li>
+<li><code>DOGE</code>：约 <strong>+1.94 bps/小时</strong>；</li>
+<li><code>ADA</code>：约 <strong>+1.76 bps/小时</strong>；</li>
+<li><code>SOL</code>：约 <strong>+1.73 bps/小时</strong>。</li>
+</ul>
+<p>但问题也很直接：这套 repo-native 规则几乎 <strong>每小时都在翻向</strong>，按 round-trip <code>8 bps</code> 粗扣后，最好的 <code>XRP</code> 也变成约 <strong>-5.68 bps/笔</strong>。所以 repo headline 更适合被读成“残差会回”，而不是“这份脚本能直接交易”。</p>
+<h3>B. desk 化读法：<code>15m</code> 直接做 residual fade，并加极值门槛</h3>
+<p>若把同样想法下沉到 <code>15m</code>，只在前一根 residual z-score 够极端时才开：</p>
+<ul>
+<li><code>|z| &gt;= 1.25</code> 时，<code>11106</code> 笔信号，平均 gross 约 <strong>+1.11 bps/笔</strong>，胜率约 <strong>54.8%</strong>；</li>
+<li><code>|z| &gt;= 1.00</code> 时，<code>16645</code> 笔，平均 gross 约 <strong>+0.85 bps/笔</strong>；</li>
+<li>不加门槛时虽然样本很多，但 gross 只有 <strong>+0.32 bps/笔</strong>。</li>
+</ul>
+<p>这说明一个挺重要的事：<strong>残差反打本体没死，但 edge 很薄，必须承认它更像“极值时才值得碰”的 admission / router。</strong></p>
+<h2>5. 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative value / BTC-neutral / mean reversion</li>
+<li>基础 alpha：<code>alt_return - beta * btc_return</code> 的短时偏离回归</li>
+<li>regime：单币 idiosyncratic 冲击、而 BTC 主导方向没有同步放大时更友好</li>
+<li>filter / veto：残差 <code>|z|</code> 极值、事件黑名单、funding/basis 同向拥挤 veto</li>
+<li>risk / sizing / execution overlay：按 <code>beta</code> 做腿权重；限制同时持有的 alt 数；优先 maker / queue-first，否则 taker 成本几乎必吃光</li>
+</ul>
+<h2>6. 可复刻的最小实验</h2>
+<h3>最小实验 A：先做最诚实的 alpha 本体</h3>
+<ul>
+<li>标的：<code>XRP / DOGE / ADA / SOL</code> vs <code>BTC</code></li>
+<li>周期：<code>1h</code> parent，<code>15m</code> child execution</li>
+<li>定义：前一 <code>1h</code> residual z-score 达到 <code>0.75 / 1.0 / 1.25</code> 时，下一 <code>15m~60m</code> 反向做 residual fade</li>
+<li>先看：<code>gross bps/trade</code>、<code>net bps/trade</code>、<code>hit rate</code>、<code>trade count</code></li>
+</ul>
+<h3>最小实验 B：再问能不能厚一点</h3>
+<ul>
+<li>不改 base alpha，只叠加：</li>
+</ul>
+<ol>
+<li><code>funding / basis</code> 不与 residual 方向冲突；</li>
+<li>只做 <code>quote volume</code> 更高时段；</li>
+<li>只做 <code>residual z-score</code> 极值后的前 <code>1~2</code> 根。</li>
+</ol>
+<ul>
+<li>目标不是把它包装成新 alpha，而是看能否把 <strong>gross ~1bps</strong> 抬到 <strong>可覆盖真实摩擦</strong> 的级别。</li>
+</ul>
+<h2>7. 风险与保留意见</h2>
+<ol>
+<li><strong>repo 太简化</strong>：没有正式成本、没有持仓冲突处理、没有 stop / timeout 设计。</li>
+<li><strong>当前 edge 过薄</strong>：这轮 public probe 下，gross 还在，但离 taker 可做差得很远。</li>
+<li><strong>beta 不是常数</strong>：若市场从“BTC 带队”切到“alt 自主行情”，固定 beta 容易失真。</li>
+<li><strong>更像 shared component，不像独立主系统</strong>：短周期上最现实的用途，可能是把它变成 <code>BTC-neutral mispricing veto / router</code>，而不是 always-on 主策略。</li>
+</ol>
+<h2>8. 我对这条线的判断</h2>
+<p>这轮值得留下来的，是一句更窄也更诚实的话：</p>
+<p>&gt; <strong>先把 <code>BTC-hedged alt residual fade</code> 当 raw alpha 壳收进池子；但当前更像“有统计味道的薄边素材”，下一步必须围绕 admission、成本和执行做厚度筛查，别把 repo 的零成本反手脚本误当成完整策略。</strong></p>
+<p>它仍然值得做，因为它补的是我们当前最缺的那一类：<strong>可快速复现的 BTC-neutral relative-value raw alpha</strong>。</p>
+<h2>9. 文件与页面</h2>
+<ul>
+<li>研究笔记：<code>research/quant_digests/2026-04-26_0126_btchedged-altresid-fade-alpha.md</code></li>
+<li>Probe script：<code>reports/artifacts/quant_digests/2026-04-26_btc_hedged_residual_reversion_probe.py</code></li>
+<li>Probe summary：<code>reports/artifacts/quant_digests/2026-04-26_btc_hedged_residual_native1h_summary.csv</code></li>
+<li>Probe summary：<code>reports/artifacts/quant_digests/2026-04-26_btc_hedged_residual_direct15m_summary.csv</code></li>
+<li>Probe trades：<code>reports/artifacts/quant_digests/2026-04-26_btc_hedged_residual_direct15m_trades.csv</code></li>
+<li>预期页面（发布后）：&lt;<a href="https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-04-26_0126_btchedged-altresid-fade-alpha.html&gt;">https://jp.jerrypsy.top/momentum/reading/quant_digests/2026-04-26_0126_btchedged-altresid-fade-alpha.html&gt;</a></li>
+<li>索引页：&lt;<a href="https://jp.jerrypsy.top/momentum/reading/quant_digests/report.html&gt;">https://jp.jerrypsy.top/momentum/reading/quant_digests/report.html&gt;</a></li>
+</ul>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>Dastrial / EsaieB. (2025). _crypto_strat_. GitHub.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: &lt;<a href="https://github.com/Dastrial/crypto_strat&gt;">https://github.com/Dastrial/crypto_strat&gt;</a></li>
+<li>仓库描述：*Cryptocurrency perpetual futures mean-reversion*</li>
+<li>Source files audited:</li>
+<li>&lt;<a href="https://github.com/Dastrial/crypto_strat/blob/master/datas/fetch_hourly_data.py&gt;">https://github.com/Dastrial/crypto_strat/blob/master/datas/fetch_hourly_data.py&gt;</a></li>
+<li>&lt;<a href="https://github.com/Dastrial/crypto_strat/blob/master/portfolios/btc_hedged_portfolios.py&gt;">https://github.com/Dastrial/crypto_strat/blob/master/portfolios/btc_hedged_portfolios.py&gt;</a></li>
+<li>&lt;<a href="https://github.com/Dastrial/crypto_strat/blob/master/statistic_tests/autoCorrelsEMAThreshold.py&gt;">https://github.com/Dastrial/crypto_strat/blob/master/statistic_tests/autoCorrelsEMAThreshold.py&gt;</a></li>
+<li>&lt;<a href="https://github.com/Dastrial/crypto_strat/blob/master/strategy/basic_mean_reversion.py&gt;">https://github.com/Dastrial/crypto_strat/blob/master/strategy/basic_mean_reversion.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures public klines</strong></li>
+</ol>
+<ul>
+<li>API docs: &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;</a></li>
+<li>This digest portability probe used recent public <code>15m</code> klines for <code>BTCUSDT / ETHUSDT / BNBUSDT / SOLUSDT / XRPUSDT / ADAUSDT / DOGEUSDT / LINKUSDT / AVAXUSDT / LTCUSDT</code>.</li>
+</ul>
+</body>
+</html>

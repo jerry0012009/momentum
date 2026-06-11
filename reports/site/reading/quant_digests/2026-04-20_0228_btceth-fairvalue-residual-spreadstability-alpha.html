@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BTC/ETH 双锚公平价残差回归（spread stability gate）——repo 直读 + Binance 5m/15m portability probe</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>BTC/ETH 双锚公平价残差回归（spread stability gate）——repo 直读 + Binance 5m/15m portability probe</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-20 02:29 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-20_0228_btceth-fairvalue-residual-spreadstability-alpha.md</code></p>
+  </div>
+  <p><strong>Base alpha（一句话）</strong>：把山寨币价格先用 <code>BTC + ETH</code> 两腿回归成“公平价”，当残差 <code>z-score</code> 偏离过大时做反向回归（低于公平价做多，高于公平价做空），并用 <code>spread stability</code>、波动、成交额、funding 做准入门槛。</p>
+<ul>
+<li>主题类型：<strong>raw alpha</strong></li>
+<li>基础 alpha：<strong>beta-neutral residual mean reversion（BTC/ETH 双锚公平价偏离回归）</strong></li>
+<li>是否可独立复现：<strong>是</strong></li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：<strong>是</strong>（仓库已有完整壳；但当前参数在我们的 first probe 下未过线）</li>
+</ul>
+<p>---</p>
+<h2>1) 为什么这轮选它（而不是继续做旧题）</h2>
+<p>这份 2026 新仓库不是纯“信号看板”，而是把以下链条都写出来了：</p>
+<ol>
+<li><code>feature_engine.py</code>：</li>
+</ol>
+<ul>
+<li>对每个 alt 做滚动回归：<code>log(alt) ~ a + b1*log(BTC) + b2*log(ETH)</code></li>
+<li>产出 <code>residual_log</code>、<code>z_score</code>、<code>spread_stability_score</code></li>
+</ul>
+<ol>
+<li><code>signal_engine.py</code>：</li>
+</ol>
+<ul>
+<li>明确入场门槛（<code>zscore_entry</code>、波动率、成交额、稳定度、funding）</li>
+<li>成本口径（<code>fee_bps</code>）</li>
+</ul>
+<ol>
+<li><code>backtest.py</code>：</li>
+</ol>
+<ul>
+<li>有仓位、换手、手续费、回测统计</li>
+<li>还能叠加 regime / bias overlay（但那是旁支，不是本体 alpha）</li>
+</ul>
+<ol>
+<li><code>data_ingestion.py</code>：</li>
+</ol>
+<ul>
+<li>公开可拿的数据口径（Binance Kline + funding）</li>
+</ul>
+<p>=&gt; 它符合这轮“优先补可独立复现 raw alpha 壳”的约束。</p>
+<p>---</p>
+<h2>2) Source audit（核心证据）</h2>
+<h3>2.1 仓库元数据</h3>
+<ul>
+<li>Authors: <code>joanduso</code></li>
+<li>Year: <code>2026</code>（created_at: <code>2026-03-13</code>, pushed_at: <code>2026-04-01</code>）</li>
+<li>Title: <code>crypto-relative-value-engine-</code></li>
+<li>Venue: GitHub Repository</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/joanduso/crypto-relative-value-engine-&gt;">https://github.com/joanduso/crypto-relative-value-engine-&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/joanduso/crypto-relative-value-engine-&gt;">https://github.com/joanduso/crypto-relative-value-engine-&gt;</a></li>
+</ul>
+<h3>2.2 与本题直接相关的源码</h3>
+<ul>
+<li><code>feature_engine.py</code></li>
+<li><code>signal_engine.py</code></li>
+<li><code>backtest.py</code></li>
+<li><code>interval_profiles.py</code></li>
+<li><code>data_ingestion.py</code></li>
+<li><code>quant_engine/opportunity_engine.py</code></li>
+</ul>
+<h3>2.3 与本题的关系（旁支 vs 本体）</h3>
+<ul>
+<li>本体（raw alpha）：<strong>残差偏离回归</strong>。</li>
+<li>旁支（可选 overlay）：新闻、ETF flow、MVRV、SOPR、BTC bias/regime。</li>
+<p>这些更适合作为 gate / sizing / veto，不该伪装成逐根主信号。</p>
+</ul>
+<p>---</p>
+<h2>3) 我们的最小可复现实验（public data）</h2>
+<h2>数据源与公开性</h2>
+<ul>
+<li>数据源：Binance 历史公开月度 K 线归档（<code>data.binance.vision</code>）</li>
+<li>市场：USDⓈ-M perpetual</li>
+<li>标的：<code>BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, DOGEUSDT</code></li>
+<li>公开性：公开可下载，无私有 key</li>
+<li>更新频率：交易所原生 K 线（5m / 15m）</li>
+</ul>
+<h2>实验口径（尽量贴仓库）</h2>
+<ul>
+<li>公平价回归：<code>log(alt)</code> 对 <code>log(BTC), log(ETH)</code> 滚动 OLS</li>
+<li>信号：残差 <code>z-score</code></li>
+<li>入场：<code>|z| &gt;= 2.0</code>（反向）</li>
+<li>出场：<code>|z|</code> 回落至 <code>0.5</code> 或超时</li>
+<li>成本：双边 <code>4 bps</code>（简化）</li>
+<li>版本 A（Base）：仅残差回归</li>
+<li>版本 B（Stable60）：加 <code>spread_stability</code> 前 40% 过滤（保留稳定度更高样本）</li>
+</ul>
+<p>&gt; 注：为了保证 5m 也有足够 warmup，5m 与 15m 都使用 2025-01~2025-03 三个月数据。</p>
+<p>---</p>
+<h2>4) 结果（first verdict）</h2>
+<h2>15m（2025-01~03）</h2>
+<ul>
+<li>Base：</li>
+<li>net return <strong>-19.77%</strong></li>
+<li>max DD <strong>-20.70%</strong></li>
+<li>Sharpe <strong>-6.48</strong></li>
+<li>trades <strong>143</strong></li>
+<li>Stable60（加稳定度门槛）：</li>
+<li>net return <strong>-11.09%</strong></li>
+<li>max DD <strong>-12.13%</strong></li>
+<li>Sharpe <strong>-6.85</strong></li>
+<li>trades <strong>60</strong></li>
+</ul>
+<h2>5m（2025-01~03）</h2>
+<ul>
+<li>Base：</li>
+<li>net return <strong>-21.95%</strong></li>
+<li>max DD <strong>-23.07%</strong></li>
+<li>Sharpe <strong>-4.06</strong></li>
+<li>trades <strong>277</strong></li>
+<li>Stable60：</li>
+<li>net return <strong>-15.33%</strong></li>
+<li>max DD <strong>-16.74%</strong></li>
+<li>Sharpe <strong>-3.87</strong></li>
+<li>trades <strong>117</strong></li>
+</ul>
+<h2>解读（人话版）</h2>
+<ul>
+<li>这条 alpha <strong>不是“无效”</strong>，而是“这个默认参数组合在我们口径下还不够可交易”。</li>
+<li><code>spread_stability</code> 有价值：它明显降了回撤和换手，但目前还没把净收益拉正。</li>
+<li>这说明本题更像“可落地策略壳 + 待校准参数”，而不是“可直接上线的现成 edge”。</li>
+</ul>
+<p>---</p>
+<h2>5) 为什么它仍值得留在素材池</h2>
+<ol>
+<li><strong>base alpha 清楚</strong>：不是讲故事，是可计算的 residual z-score。</li>
+<li><strong>工程壳完整</strong>：entry / filter / cost / ranking / backtest 都有。</li>
+<li><strong>可扩展到 1m/3m/5m/15m</strong>：</li>
+</ol>
+<ul>
+<li>通过 <code>interval_profiles.py</code> 思路，保持“统计窗口按天数等价”，不是硬套同一 bars 数。</li>
+</ul>
+<ol>
+<li><strong>旁支能拆分复用</strong>：BTC bias / news / onchain 可以独立做 overlay，不污染主信号定义。</li>
+</ol>
+<p>---</p>
+<h2>6) 下一步怎么测（必须做）</h2>
+<p>按优先级建议 4 步：</p>
+<ol>
+<li><strong>先做 admission 重标定（15m→5m）</strong></li>
+</ol>
+<ul>
+<li>网格：<code>z_entry ∈ {1.2,1.5,1.8,2.0}</code>，<code>z_exit ∈ {0.2,0.5,0.8}</code></li>
+<li>目标：把“trade count / turnover / post-cost return”拉到可生存区。</li>
+</ul>
+<ol>
+<li><strong>把 funding 从硬阈值改成惩罚项</strong></li>
+</ol>
+<ul>
+<li>当前硬 veto 可能切掉太多均值回归机会；改为 <code>score penalty</code> 再看净效应。</li>
+</ul>
+<ol>
+<li><strong>做横截面路由，不做全标的平均</strong></li>
+</ol>
+<ul>
+<li>每根 bar 只做 top-k（按 edge_after_fees + stability），而不是三币平均摊开。</li>
+</ul>
+<ol>
+<li><strong>把 1m/3m 作为子执行层，不直接复刻主信号</strong></li>
+</ol>
+<ul>
+<li>主信号仍用 5m/15m；1m/3m 只做 limit placement / 分批成交 / timeout。</li>
+</ul>
+<p>---</p>
+<h2>7) 给当前 desk 的结论</h2>
+<ul>
+<li>这轮主题属于 <strong>raw alpha（relative value / mean reversion）</strong>，满足“补充 raw alpha 素材池”的目标。</li>
+<li>但 first probe 给出的结论是：<strong>策略壳可复用，参数未过线</strong>。</li>
+<li>所以它当前状态应标为：<strong>KEEP（工程壳）+ RE-CALIBRATE（参数）</strong>，而不是直接升到 production candidate。</li>
+</ul>
+<p>---</p>
+<h2>References</h2>
+<ol>
+<li>joanduso (2026). *crypto-relative-value-engine-* (GitHub repository).</li>
+</ol>
+<ul>
+<li>Repo: &lt;<a href="https://github.com/joanduso/crypto-relative-value-engine-&gt;">https://github.com/joanduso/crypto-relative-value-engine-&gt;</a></li>
+<li>Key files:</li>
+<li>&lt;<a href="https://raw.githubusercontent.com/joanduso/crypto-relative-value-engine-/main/feature_engine.py&gt;">https://raw.githubusercontent.com/joanduso/crypto-relative-value-engine-/main/feature_engine.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/joanduso/crypto-relative-value-engine-/main/signal_engine.py&gt;">https://raw.githubusercontent.com/joanduso/crypto-relative-value-engine-/main/signal_engine.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/joanduso/crypto-relative-value-engine-/main/backtest.py&gt;">https://raw.githubusercontent.com/joanduso/crypto-relative-value-engine-/main/backtest.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/joanduso/crypto-relative-value-engine-/main/interval_profiles.py&gt;">https://raw.githubusercontent.com/joanduso/crypto-relative-value-engine-/main/interval_profiles.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/joanduso/crypto-relative-value-engine-/main/data_ingestion.py&gt;">https://raw.githubusercontent.com/joanduso/crypto-relative-value-engine-/main/data_ingestion.py&gt;</a></li>
+</ul>
+<ol>
+<li>Binance Public Data (monthly futures klines)</li>
+</ol>
+<ul>
+<li>Portal: &lt;<a href="https://data.binance.vision/&gt;">https://data.binance.vision/&gt;</a></li>
+</ul>
+</body>
+</html>

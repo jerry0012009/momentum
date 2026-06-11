@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Hyperliquid peer-pairs 继续写成“泛 pairs bot”：这份 2024/2025 GitHub repo 更该先测的是「whitelist peer-divergence × half-life-gated spread fade」，但要先修 96-bar 口径</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Hyperliquid peer-pairs 继续写成“泛 pairs bot”：这份 2024/2025 GitHub repo 更该先测的是「whitelist peer-divergence × half-life-gated spread fade」，但要先修 96-bar 口径</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-31 20:50 UTC</span>
+      <span class="pill">研究时间：2026-03-31 20:48 UTC</span>
+      <span class="pill">类型：quant_digest</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/peer-cluster/whitelist/cointegration/spread-zscore/half-life/hyperliquid/binance/15m/5m/1m/3m/repo/public-data/cost/execution</span>
+      <span class="pill">证据类型：2024/2025 GitHub 仓库 `README.md` + `docs/SERVER_ASSET_WHITELIST.md` + `docs/SERVER_POSITION_MANAGEMENT.md` + `docs/SERVER_ORDER_EXECUTION.md` + `server/src/utils/assetMappings.ts` + `server/src/analysis/correlationAnalyzer.ts` + `server/src/strategies/pairsCorrelationStrategy.ts` source audit + Binance USDⓈ-M Perpetual 公开 `15m` proxy quick check</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-31_2048_whitelist-peer-divergence-halflife-spread-fade.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-31 20:48 UTC</li>
+<li>类型：quant_digest</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/peer-cluster/whitelist/cointegration/spread-zscore/half-life/hyperliquid/binance/15m/5m/1m/3m/repo/public-data/cost/execution</li>
+<li>证据类型：2024/2025 GitHub 仓库 <code>README.md</code> + <code>docs/SERVER_ASSET_WHITELIST.md</code> + <code>docs/SERVER_POSITION_MANAGEMENT.md</code> + <code>docs/SERVER_ORDER_EXECUTION.md</code> + <code>server/src/utils/assetMappings.ts</code> + <code>server/src/analysis/correlationAnalyzer.ts</code> + <code>server/src/strategies/pairsCorrelationStrategy.ts</code> source audit + Binance USDⓈ-M Perpetual 公开 <code>15m</code> proxy quick check</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一白名单生态/风格簇里的高相关资产，若 <code>spread = price_B - beta * price_A</code> 偏离其均值超过阈值，就做 <strong>long laggard / short leader</strong> 的配对回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主材料不是论文，而是一份仍在更新的 Hyperliquid 配对交易仓库：<strong>Andrew Wilkinson / Privateer Capital（GitHub repo，2024 创建，2025 仍有 push）</strong>。</p>
+<p>它最值得 desk intake 的地方，不是“又一个 pairs trading repo”，而是它把问题收窄成了更可执行的一种版本：</p>
+<p><strong>先手工限定一个“同生态/同风格”的白名单，再只在这些 peer 里找高相关、短 half-life 的 spread 偏离。</strong></p>
+<p>翻成人话： 不是全市场瞎搜 cointegration，而是先承认很多可交易 alpha 根本不是“任意两币之间”的，而是 <strong>同类币之间的相对错位</strong>。</p>
+<p>仓库白名单里包含的就是这种思路：<code>ETH / ARB / OP / STRK / CELO / MNT / AAVE / ENA / LINK / UNI / MKR / CRV / PENDLE ...</code>。这比“全市场 pair search”更贴近 desk 真正会下手的短周期 relative-value lane。</p>
+<h2>2. 核心结论</h2>
+<p>从 repo 和代码本身，能直接提炼出 5 个关键点：</p>
+<ol>
+<li><strong>base alpha 很清楚</strong>：</li>
+</ol>
+<ul>
+<li>先估 <code>beta</code>；</li>
+<li>再算 <code>spread = price_B - beta * price_A</code>；</li>
+<li>计算 spread z-score；</li>
+<li>当 <code>|z| &gt; 2.5</code> 时，做 <strong>rich leg short / cheap leg long</strong>。</li>
+</ul>
+<ol>
+<li><strong>它不是纯 pairs 筛选器，而是完整执行骨架</strong>：</li>
+</ol>
+<ul>
+<li>pair 质量：相关系数阈值 <code>0.95</code>；</li>
+<li>mean reversion 过滤：<code>half-life</code> 必须落在 <code>6~15</code> 个 bar；</li>
+<li>sizing：双腿等美元；</li>
+<li>asset overlap protection：一个资产不能同时出现在多个打开的 pair 里；</li>
+<li>execution：IOC → 更宽 IOC → GTC 三层回退。</li>
+</ul>
+<ol>
+<li><strong>它的价值不在“找到很多 pair”，而在“只做很少但更像真同类的 pair”</strong>。</li>
+<p>这和 desk 当前需要的素材池是对得上的： 不是再堆一个抽象 stat-arb 名词，而是补一条能直接落到 <code>5m / 15m</code> perp 的 raw alpha lane。</p>
+</ol>
+<ol>
+<li><strong>repo 自带一个很重要的实现层提醒</strong>：</li>
+<p><code>pairsCorrelationStrategy.ts</code> 里写着： <code>minDataPoints: 96 // 1 week of 15-minute snapshots</code></p>
+</ol>
+<p>但 96 根 <code>15m</code> bar 实际上只有 <strong>24 小时</strong>，不是 1 周。 这不是注释小错，而是会直接改变 pair discovery、half-life 估计、信号密度的口径问题。</p>
+<ol>
+<li><strong>所以这份材料最该先测的，不是“repo 回测收益率”，而是：</strong></li>
+<p><strong>同一白名单 peer-cluster 内，short half-life spread fade 到底是不是一条能稳定产出、且不被成本秒杀的 raw alpha。</strong></p>
+</ol>
+<h2>3. 为什么和当前项目有关</h2>
+<p>它和我们这轮 intake 目标高度匹配：</p>
+<ul>
+<li>它是 <strong>raw alpha</strong>，不是纯 filter；</li>
+<li>它不是围着 breakout/retest 内循环，而是补 <strong>pairs / stat-arb / relative-value</strong> 的一条明确主线；</li>
+<li>它能直接拆成 <code>entry / exit / sizing / risk / cost</code>；</li>
+<li>它默认就适合 desk 常用的 <code>5m / 15m</code>，往 <code>3m / 1m</code> 压缩也有自然路径；</li>
+<li>它用的输入数据是 <strong>公开可得价格数据</strong>，复现门槛低。</li>
+</ul>
+<p>更关键的是，它不是那种“paper headline 很大，但落地只剩风格解释”的材料。这里的 base alpha 本身就能独立下单。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：pairs / stat-arb / relative-value / mean reversion</li>
+<li>基础 alpha：<code>peer_spread_zscore</code></li>
+<li>regime：<code>same-ecosystem whitelist + short half-life</code></li>
+<li>filter / veto：<code>corr &gt;= 0.95</code>、<code>6 &lt;= half_life &lt;= 15</code>、资产不重叠、低流动性腿剔除、事件币剔除</li>
+<li>risk / sizing / execution overlay：双腿等美元；单 pair 使用可用保证金固定比例；max open pairs；round-trip 成本分层；单腿成交失败必须 rollback</li>
+</ul>
+<h2>4. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = 同一白名单 peer pair 的 spread z-score 偏离；当同类资产之间的相对价格错位拉大到极端，就做回归。</strong></p>
+<p>所以它不是 filter，不是 overlay，而是一条可以独立写成完整策略的 raw alpha。</p>
+<h2>5. Repo audit：真正值得 desk 拿走的不是“pairs”两个字，而是这套白名单 + half-life 读法</h2>
+<h3>5.1 Pair discovery 不是任意两币，而是白名单 peer cluster</h3>
+<p><code>assetMappings.ts</code> 和白名单文档给出的宇宙，本质上是一组“同类风险资产”：</p>
+<ul>
+<li>L1 / infra：<code>ETH / CELO / MNT ...</code></li>
+<li>L2：<code>ARB / OP / STRK / BLAST</code></li>
+<li>DeFi / rates / beta proxies：<code>AAVE / ENA / LINK / UNI / MKR / CRV / PENDLE / GMX / LDO</code></li>
+</ul>
+<p>这个设计的好处是： <strong>先用主观先验把 pair search 限到“本来就可能一起动”的东西，再让统计量只负责判断有没有暂时错位。</strong></p>
+<p>这比全市场 cointegration 暴力扫描更像 desk 真会采用的做法。</p>
+<h3>5.2 代码里给出的 entry 骨架非常直接</h3>
+<p><code>pairsCorrelationStrategy.ts</code> 的核心逻辑可以翻成：</p>
+<ol>
+<li>用 rolling window 估计 pair 的相关性、hedge ratio、spread 均值/波动、half-life；</li>
+<li>只保留：</li>
+</ol>
+<ul>
+<li><code>corr &gt;= 0.95</code></li>
+<li><code>6 &lt;= half_life &lt;= 15</code></li>
+</ul>
+<ol>
+<li>实时算当前 spread z-score；</li>
+<li>若 <code>z &gt; 2.5</code>：认为 <code>B</code> 相对 <code>A</code> 偏贵，做 <strong>long A / short B</strong>；</li>
+<li>若 <code>z &lt; -2.5</code>：认为 <code>B</code> 相对 <code>A</code> 偏便宜，做 <strong>short A / long B</strong>。</li>
+</ol>
+<p>这套定义足够清楚，完全能独立复现。</p>
+<h3>5.3 execution / sizing 倒是比很多 toy repo 诚实</h3>
+<p>仓库不是停在“信号生成”那一步，而是把很多真实交易会踩的坑也写出来了：</p>
+<ul>
+<li>默认 <code>tradeSizePercent = 0.5</code>，即用 <strong>50% 可用保证金</strong> 开一组 pair；</li>
+<li><code>maxPositions = 4</code>；</li>
+<li>双腿按美元尽量配平，允许误差压到 <strong>5% 以下</strong>；</li>
+<li>最小单腿订单价值 <strong>$10</strong>；</li>
+<li>执行失败时，采用 <strong>pair integrity rollback</strong>：如果一条腿成了、另一条腿没成，第一条腿要立刻平掉；</li>
+<li>下单回退：<strong>IOC 0.5% 滑点 → IOC 2% → GTC 5%</strong>。</li>
+</ul>
+<p>这意味着它不是 paper-only idea，而是真在往“能活着执行”靠。</p>
+<h3>5.4 但 lookback 口径现在是 repo 最大的不确定项</h3>
+<p>最值钱的 audit 结论反而是一个很朴素的问题：</p>
+<p><code>96</code> 根 <code>15m</code> bar 被写成了 “1 week”。</p>
+<p>实际不是。</p>
+<p>这会带来三个直接后果：</p>
+<ol>
+<li>pair discovery 可能变得过短，容易把短暂共同波动错判成稳定关系；</li>
+<li>half-life 估计会更抖；</li>
+<li>signal density 可能被放大或扭曲。</li>
+</ol>
+<p><strong>所以这条 alpha 要不要进研究池，不该先问“repo 有没有 dashboard”，而该先问 <code>96 vs 672</code> 的信号结构差多少。</strong></p>
+<h2>6. Binance 15m proxy quick check：alpha 不是假的，但口径极敏感</h2>
+<p>我用 Binance USDⓈ-M Perpetual 公开 <code>15m</code> K 线，在 repo 白名单可映射的 12 个币上做了最小快检。</p>
+<p>样本口径：</p>
+<ul>
+<li>宇宙：<code>ETH / ARB / OP / STRK / CELO / AAVE / ENA / LINK / UNI / MKR / CRV / PENDLE</code></li>
+<li>频率：<code>15m</code></li>
+<li>当前窗口对比：<code>96 bars</code> vs <code>672 bars</code></li>
+<li>rolling quick check：最近 <code>1500</code> 根 <code>15m</code> bar 里，对每个 pair 做 <code>672-bar</code> 估计</li>
+</ul>
+<h3>6.1 先看最关键的复现问题：<code>96 bars</code> 和 <code>672 bars</code> 根本不是一回事</h3>
+<p>在同一时点上：</p>
+<ul>
+<li>若按 repo 代码里的 <strong>96-bar</strong> 口径（实际上只有 24h），<strong>当前 0 个 pair</strong> 同时满足 <code>corr &gt;= 0.95</code> 且 <code>6 &lt;= half-life &lt;= 15</code>；</li>
+<li>若按更像“1 周”的 <strong>672-bar</strong> 口径，当前能留下 <strong>3 个 pair</strong>：</li>
+<li><code>ARB/CRV</code></li>
+<li><code>ARB/LINK</code></li>
+<li><code>LINK/CRV</code></li>
+</ul>
+<p>这已经足够说明： <strong>这条 alpha 的第一优先级不是调 z-score，而是先把 lookback 定义说清楚。</strong></p>
+<h3>6.2 当前这 3 个可交易候选，并没有出现 live 极端错位</h3>
+<p>在 <code>672-bar</code> 口径下，当前最强的 z-score 也只有：</p>
+<ul>
+<li><code>LINK/CRV</code>: <code>|z| ≈ 1.09</code></li>
+<li><code>ARB/CRV</code>: <code>|z| ≈ 0.66</code></li>
+<li><code>ARB/LINK</code>: <code>|z| ≈ 0.52</code></li>
+</ul>
+<p>也就是说： <strong>现在这个时点，pair gate 有，但 entry 没到。</strong></p>
+<p>这是好事——它说明这不是那种“随时都在乱发信号”的伪均值回复框架。</p>
+<h3>6.3 历史滚动里，<code>ARB/CRV</code> 是这批 peer pair 里最像样的一组</h3>
+<p>对最近 <code>829</code> 个 rolling <code>672-bar</code> 窗口（约 8.6 天的判定序列）统计：</p>
+<ul>
+<li><code>ARB/CRV</code> 有 <strong>298</strong> 个窗口满足 gate，占比 <strong>35.9%</strong>；</li>
+<li>其中 <code>|z| &gt;= 2.5</code> 的原始信号窗口有 <strong>34</strong> 个，占全部窗口约 <strong>4.1%</strong>；</li>
+<li>如果把相邻簇状信号去重成独立 episode，只剩 <strong>5 次</strong>，说明它不是高频狂刷型，而是 <strong>少量 cluster shock</strong> 型机会。</li>
+</ul>
+<p>这类 alpha 的味道很明确： 不是“每小时都有新单”，而是 <strong>平时等，冲击来时抓 relative-value 回归</strong>。</p>
+<h3>6.4 但它更像“先压缩一截”，不一定在 15m 内完整回到均值</h3>
+<p>对这 5 个去重后的 <code>ARB/CRV</code> signal episode，再看未来 <code>10</code> 根 bar（约 2.5h）：</p>
+<ul>
+<li><strong>80%</strong> 的 episode 在 10 bars 内至少压回 <strong>0.5σ</strong>；</li>
+<li><strong>60%</strong> 的 episode 在 10 bars 内压回至少 <strong>1.0σ</strong>；</li>
+<li>但只有 <strong>20%</strong> 的 episode 能在 <code>15</code> 根 bar 内真正回到 <code>|z| &lt;= 0.5</code> 或翻过零轴。</li>
+</ul>
+<p>翻成人话： <strong>它不是那种“一触发马上 V 回”的 ultra-fast pair trade。更像先吃一段 spread 压缩，再决定要不要继续等 full reversion。</strong></p>
+<p>这对 desk 很关键，因为它直接决定：</p>
+<ul>
+<li>exit 应不应该等到回均值；</li>
+<li>还是应该先吃 <code>0.75σ ~ 1.25σ</code> 的第一段压缩。</li>
+</ul>
+<h2>7. 对 desk 更有价值的重读方式</h2>
+<p>所以这份 repo 最值得 intake 的，不是“有个 pairs engine”，而是下面这条更窄、更实盘的读法：</p>
+<p><strong>别做全市场任意 pair mean reversion；先做 whitelist peer-cluster divergence。</strong></p>
+<p>也就是：</p>
+<ul>
+<li><code>ARB/OP/STRK</code> 这种 L2 同类组；</li>
+<li><code>AAVE/UNI/MKR/CRV/LINK/PENDLE</code> 这种 DeFi beta 组；</li>
+<li>必要时再加 <code>ETH</code> 这类大 beta anchor。</li>
+</ul>
+<p>然后只在这些组里做：</p>
+<ul>
+<li>高相关；</li>
+<li>短 half-life；</li>
+<li>极端 z-score；</li>
+<li>非重叠资产；</li>
+<li>成本后还能活。</li>
+</ul>
+<p>这比“广撒网 pairs”更贴近短周期 desk，也更利于之后做实盘组件拆解。</p>
+<h2>8. 怎么把它落成完整策略</h2>
+<h3>8.1 第一版：15m peer-divergence baseline</h3>
+<ul>
+<li>Universe：同 venue 可做空 perp，按人工白名单分 peer buckets</li>
+<li>Discovery window：</li>
+<li><code>15m</code> 主版：<strong>672 bars</strong></li>
+<li><code>5m</code> 加速版：<strong>2016 bars</strong></li>
+<li>Pair gate：</li>
+<li><code>corr &gt;= 0.95</code></li>
+<li><code>6 &lt;= half_life &lt;= 15</code></li>
+<li>过去 7 天成交额 / OI / spread 达标</li>
+<li>Entry：<code>|z| &gt;= 2.5</code> 时 next-bar 进场，做 <code>long laggard / short leader</code></li>
+<li>Exit：</li>
+<li>主出场：<code>|z| &lt;= 0.5</code></li>
+<li>快速止盈版：先落袋第一段压缩，<code>abs(z_entry) - abs(z_now) &gt;= 1.0</code></li>
+<li>时间止损：<code>1.5 × half_life</code> 或 <code>12 bars</code> 取较大</li>
+<li>Hard stop：<code>|z|</code> 扩到 <code>4.0</code> 或 pair gate 失效（相关性/half-life 坏掉）</li>
+</ul>
+<h3>8.2 Sizing / risk / cost</h3>
+<ul>
+<li>Sizing：双腿等美元；单 pair 先别照 repo 直接上 <code>50%</code> 保证金，desk baseline 改成 <strong>10%~15% available margin/pair</strong> 更合理</li>
+<li>Overlap：同一资产只允许出现在 1 个活跃 pair 中</li>
+<li>Max positions：先限 <strong>2~3 个 pair</strong></li>
+<li>Cost ladder：round-trip <code>2 / 6 / 10 / 14 bps</code></li>
+<li>Execution：</li>
+<li>先做 taker-only 模拟；</li>
+<li>再试 maker-one-leg / taker-one-leg；</li>
+<li>任何单腿成交失败必须 rollback</li>
+</ul>
+<h2>9. 下一步怎么测</h2>
+<p>最小实验建议直接做这 5 件事：</p>
+<ol>
+<li><strong>先复现 repo 真实口径差异</strong>：同样的白名单、同样的阈值，比较 <code>96 vs 672</code>（15m）和 <code>288 vs 2016</code>（5m）的 pair 数、信号数、after-cost PnL。</li>
+<li><strong>做 bucket 内 pair search，而不是全宇宙 search</strong>：先限定 <code>L2</code>、<code>DeFi beta</code> 两个 bucket，看 bucket 内 alpha 是否明显强于 unrestricted pair scan。</li>
+<li><strong>把 exit 拆成两段</strong>：</li>
+</ol>
+<ul>
+<li><code>full reversion to |z|&lt;=0.5</code></li>
+<li><code>first compression &gt;=1.0σ</code></li>
+<p>比较哪个更适合 <code>5m / 15m</code>。</p>
+</ul>
+<ol>
+<li><strong>把 z-threshold 做成网格</strong>：<code>2.0 / 2.5 / 3.0</code>，看信号密度和净值的 trade-off。</li>
+<li><strong>把 execution 单独测掉</strong>：同一信号在 <code>taker/taker</code> 与 <code>maker/taker</code> 下，盈亏差多少；如果 edge 只剩纸面统计，不要急着升级到实盘。</li>
+</ol>
+<h2>10. 风险与局限</h2>
+<ul>
+<li>这次主材料是 repo，不是正式论文；统计定义要靠 source audit 自己补全。</li>
+<li>Binance 只是 public-data proxy，真实落地还要看 Hyperliquid/Bybit/OKX perp 的盘口深度、撮合、资金费率与最小下单单位。</li>
+<li>当前快检说明 <strong>lookback 极敏感</strong>，所以任何“这个 pair 很稳”的结论都必须先绑定窗口长度。</li>
+<li><code>ARB/CRV</code> 这类幸存者 pair 目前更像 <strong>shock-compression</strong>，不是稳定 full mean reversion；如果出场定义错了，很容易把 paper alpha 变成 execution 噪音。</li>
+<li>repo 默认 <code>50%</code> 可用保证金/组 的 sizing 对 desk 来说偏猛，不能原样照抄。</li>
+</ul>
+<h2>11. 这次最值得记住的一句话</h2>
+<p><strong>别把短周期 pairs 理解成“任意两币找协整”；对 desk 更值钱的，往往是白名单 peer-cluster 里的那种短 half-life 错位。</strong></p>
+<h2>12. 来源</h2>
+<ol>
+<li><strong>Andrew Wilkinson / Privateer Capital (2024 repo, 2025 latest push). _Privateer Capital_. GitHub repository.</strong></li>
+<p>Readable URL: <a href="https://github.com/ADWilkinson/privateer-capital">https://github.com/ADWilkinson/privateer-capital</a> Repo URL: <a href="https://github.com/ADWilkinson/privateer-capital">https://github.com/ADWilkinson/privateer-capital</a></p>
+<li><strong>Privateer Capital README / architecture / scheduling</strong></li>
+<p>Readable URL: <a href="https://raw.githubusercontent.com/ADWilkinson/privateer-capital/main/README.md">https://raw.githubusercontent.com/ADWilkinson/privateer-capital/main/README.md</a></p>
+<li><strong>Privateer Capital whitelist docs</strong></li>
+<p>Readable URL: <a href="https://raw.githubusercontent.com/ADWilkinson/privateer-capital/main/docs/SERVER_ASSET_WHITELIST.md">https://raw.githubusercontent.com/ADWilkinson/privateer-capital/main/docs/SERVER_ASSET_WHITELIST.md</a></p>
+<li><strong>Privateer Capital position management docs</strong></li>
+<p>Readable URL: <a href="https://raw.githubusercontent.com/ADWilkinson/privateer-capital/main/docs/SERVER_POSITION_MANAGEMENT.md">https://raw.githubusercontent.com/ADWilkinson/privateer-capital/main/docs/SERVER_POSITION_MANAGEMENT.md</a></p>
+<li><strong>Privateer Capital order execution docs</strong></li>
+<p>Readable URL: <a href="https://raw.githubusercontent.com/ADWilkinson/privateer-capital/main/docs/SERVER_ORDER_EXECUTION.md">https://raw.githubusercontent.com/ADWilkinson/privateer-capital/main/docs/SERVER_ORDER_EXECUTION.md</a></p>
+<li><strong>Privateer Capital source: asset whitelist mapping</strong></li>
+<p>Readable URL: <a href="https://raw.githubusercontent.com/ADWilkinson/privateer-capital/main/server/src/utils/assetMappings.ts">https://raw.githubusercontent.com/ADWilkinson/privateer-capital/main/server/src/utils/assetMappings.ts</a></p>
+<li><strong>Privateer Capital source: pair strategy / correlation analysis</strong></li>
+<p>Readable URL: <a href="https://raw.githubusercontent.com/ADWilkinson/privateer-capital/main/server/src/analysis/correlationAnalyzer.ts">https://raw.githubusercontent.com/ADWilkinson/privateer-capital/main/server/src/analysis/correlationAnalyzer.ts</a> Readable URL: <a href="https://raw.githubusercontent.com/ADWilkinson/privateer-capital/main/server/src/strategies/pairsCorrelationStrategy.ts">https://raw.githubusercontent.com/ADWilkinson/privateer-capital/main/server/src/strategies/pairsCorrelationStrategy.ts</a></p>
+<li><strong>Binance USDⓈ-M Futures API Docs</strong></li>
+<p>Readable URL: <a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></p>
+<li>本地 artifacts：</li>
+</ol>
+<ul>
+<li><code>reports/artifacts/quant_digests/privateer_peer_pair_scan_15m_20260331.csv</code></li>
+<li><code>reports/artifacts/quant_digests/privateer_arb_crv_signal_followthrough_15m_20260331.csv</code></li>
+</ul>
+</body>
+</html>

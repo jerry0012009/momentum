@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 funding-rate repo 只读成“资金费率预测方向”：对 short-cycle desk，更该先保留的是「extreme funding fade × 2% TP volatility harvest」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 funding-rate repo 只读成“资金费率预测方向”：对 short-cycle desk，更该先保留的是「extreme funding fade × 2% TP volatility harvest」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-16 02:58 UTC</span>
+      <span class="pill">研究时间：2026-04-16 02:57 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `Funding_Rate_Signal_Analysis.pdf` + `signals/zscore.py` + `signals/filters.py` + `backtest/engine.py` + `config.yaml` + GitHub API metadata）+ Bybit public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha/funding/carry/crowding/mean-reversion/volatility-harvest/tight-tp/oi-filter/volume-filter/bybit/perpetual/8h-event/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo source + bundled research memo + public-data probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-16_0257_fundingextreme-tighttp-volharvest-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-16 02:57 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>Funding_Rate_Signal_Analysis.pdf</code> + <code>signals/zscore.py</code> + <code>signals/filters.py</code> + <code>backtest/engine.py</code> + <code>config.yaml</code> + GitHub API metadata）+ Bybit public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当 perp funding rate 的长窗 z-score 进入极端区间时，市场通常已进入拥挤单边；真正更稳的交易，不是赌完整趋势反转，而是反着 crowd 只收第一段 snapback——也就是 <code>extreme funding fade × tight TP volatility harvest</code>。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（<strong>repo 已把 lookback / threshold / volume+OI filters / SL-TP / fixed position size / maker-taker fee 都写进完整回测壳</strong>）</li>
+<li>主题标签：raw-alpha/funding/carry/crowding/mean-reversion/volatility-harvest/tight-tp/oi-filter/volume-filter/bybit/perpetual/8h-event/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：repo source + bundled research memo + public-data probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是新仓：</p>
+<ul>
+<li><strong>Author：</strong> Farrell H</li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> *Crypto Funding Rate Strategy*</li>
+<li><strong>Venue：</strong> GitHub repository</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/farrellh1/crypto-funding-rate-strategy&gt;">https://github.com/farrellh1/crypto-funding-rate-strategy&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/farrellh1/crypto-funding-rate-strategy&gt;">https://github.com/farrellh1/crypto-funding-rate-strategy&gt;</a></li>
+<li><strong>GitHub metadata：</strong> repo 创建于 <code>2026-01-25</code>，最近 push 于 <code>2026-01-26</code></li>
+</ul>
+<p>先把一句话说清楚：</p>
+<p>&gt; <strong>这篇东西的 base alpha 不是“funding 很高就一定跌 / funding 很低就一定涨”。更值钱的，是把 funding extreme 当成“拥挤事件触发器”，然后只吃第一段回摆，而不是贪完整反转。</strong></p>
+<p>所以它不是纯 filter，也不是只会解释 crowding 的研究 memo；它本体仍是一条 <strong>event-driven raw alpha shell</strong>。</p>
+<h2>2. repo 真正有价值的地方</h2>
+<p><code>signals/zscore.py</code> 把假设拆得很干净：</p>
+<ul>
+<li>先对 funding 做 <code>168</code> 个 funding interval（约 <code>56d</code>）的 rolling z-score；</li>
+<li>z-score 超阈值才触发；</li>
+<li>可选再加：</li>
+<li><code>8h</code> 聚合成交量 z-score 过滤；</li>
+<li>open interest z-score 过滤；</li>
+<li><code>backtest/engine.py</code> 再把 <code>SL / TP / opposite signal exit / backtest end</code>、fixed USD sizing、maker/taker fee 与 slippage 全接上。</li>
+</ul>
+<p>这点对 desk 很重要，因为它不是“只给一个 signal idea”，而是已经把： <strong>entry / exit / sizing / cost / risk</strong> 都搭成了可直接 smoke test 的完整壳。</p>
+<h2>3. bundled PDF 给出的第一结论</h2>
+<p>repo 自带的 <code>Funding_Rate_Signal_Analysis.pdf</code> 用 <strong>BTCUSDT / Bybit / 2022-01 ~ 2025-12</strong> 做了一个很有用的 A/B 矩阵：</p>
+<ul>
+<li><strong>Test A：</strong> mean reversion + <code>2% SL / 4% TP</code></li>
+<li><strong>Test B：</strong> mean reversion + <code>4% SL / 2% TP</code></li>
+<li><strong>Test C：</strong> momentum + <code>2% SL / 4% TP</code></li>
+<li><strong>Test D：</strong> momentum + <code>4% SL / 2% TP</code></li>
+</ul>
+<p>PDF 里 after-cost 结果最值得记的不是“funding 能预测方向”，恰恰相反：</p>
+<ul>
+<li><strong>A：</strong> <code>-$1,207</code>，Sharpe <code>-3.88</code>，Trades <code>37</code></li>
+<li><strong>B：</strong> <code>+$804</code>，Sharpe <code>2.71</code>，Max DD <code>1.29%</code>，Trades <code>36</code>，Win Rate <code>72.22%</code></li>
+<li><strong>C：</strong> <code>-$2,196</code>，Sharpe <code>-7.66</code>，Trades <code>36</code></li>
+<li><strong>D：</strong> <code>-$207</code>，Sharpe <code>-0.65</code>，Trades <code>37</code></li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; <strong>repo 自己最强的证据不是“押方向押对了”，而是 “funding extreme 之后有足够的短时波动，可让 opposite-side tight TP 先兑现”。</strong></p>
+<p>这比“funding 解释价格”更适合 short-cycle desk，因为它更接近一个可执行的事件 alpha 壳。</p>
+<h2>4. public-data portability probe：recent majors 不同币、不同 sign</h2>
+<p>我另外补了一个最小迁移快检，artifact 在：</p>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-16_funding_zscore_extremes_probe.py</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-16_funding_zscore_extremes_probe_summary.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-16_funding_zscore_extremes_probe_summary.json</code></li>
+</ul>
+<p>口径：</p>
+<ul>
+<li><strong>数据源：</strong> Bybit V5 public funding / klines / open interest</li>
+<li><strong>公开性：</strong> 公开接口，无需 API key</li>
+<li><strong>更新频率：</strong> funding <code>8h</code>、kline <code>1h</code>、OI <code>4h</code></li>
+<li><strong>样本：</strong> <code>2025-01-01 ~ 2026-04-01</code></li>
+<li><strong>标的：</strong> <code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li><strong>统一参数：</strong> <code>lookback=168</code>、<code>threshold=2.0</code>、fixed size <code>$10k</code>、Bybit taker round-trip cost 约 <code>11bps</code></li>
+</ul>
+<p>几条关键数：</p>
+<ul>
+<li><strong>BTC mean reversion + vol/OI filter：</strong> <code>9</code> 笔，net <code>+1.10%</code>，Sharpe <code>20.24</code>，Max DD <code>0.51%</code></li>
+<li><strong>ETH momentum plain：</strong> <code>33</code> 笔，net <code>+1.44%</code>，Sharpe <code>5.52</code></li>
+<li><strong>SOL momentum plain：</strong> <code>31</code> 笔，net <code>+2.26%</code>，Sharpe <code>10.01</code></li>
+<li><strong>ETH mean reversion + vol/OI filter：</strong> <code>16</code> 笔，net <code>-2.38%</code></li>
+</ul>
+<p>所以 first verdict 很明确：</p>
+<p>&gt; <strong>这套壳值得保留，但别把“funding extreme 的方向”写死。BTC 最近更像 fade pocket，ETH/SOL 反而更像 continuation pocket。</strong></p>
+<p>也就是说，真正可复用的不是“统一押反向”，而是：</p>
+<ul>
+<li>用 funding z-score 定义事件；</li>
+<li>再决定某个 symbol/venue 到底该走 <strong>fade</strong> 还是 <strong>follow</strong>；</li>
+<li>exit 默认先保留 tight TP，而不是幻想吃完整趋势段。</li>
+</ul>
+<h2>5. 为什么它和当前 desk 直接相关</h2>
+<p>这题虽然底层事件是 <code>8h</code> funding print，但并不妨碍短周期实验，原因是它天然适合作为：</p>
+<ul>
+<li><code>5m / 15m</code> 的 <strong>event router</strong></li>
+<li>资金费率结算窗口前后的 <strong>event-driven raw alpha</strong></li>
+<li>carry / funding 线里的 <strong>最低门槛完整基线</strong></li>
+</ul>
+<p>尤其我们这几轮已经积了不少 funding / basis / carry 题材，但很多更像：</p>
+<ul>
+<li>venue spread</li>
+<li>delta-neutral carry</li>
+<li>cross-venue ranking</li>
+</ul>
+<p>这份 repo 的价值反而是把问题收敛成更朴素的一句：</p>
+<p>&gt; <strong>“funding extreme 发生时，到底能不能只靠 public data、固定风控、固定成本，先打出一个最小可活的方向壳？”</strong></p>
+<p>它给出的答案是：<strong>可以先打，但 edge 更像 <code>tight TP</code> 的 volatility harvest，而不是无脑押大反转。</strong></p>
+<h2>6. 下一步怎么测</h2>
+<p>按 desk 口径，我建议下一轮不要继续抄 repo 的 <code>1h</code> 执行，而是直接做三件事：</p>
+<ol>
+<li><strong>把事件映射到 <code>5m / 15m</code> 执行层</strong></li>
+</ol>
+<ul>
+<li>在 <code>00/08/16 UTC</code> funding print 后第一根 <code>5m</code> / <code>15m</code> bar 开始入场；</li>
+<li>对比 <code>fade</code> vs <code>follow</code> 两支。</li>
+</ul>
+<ol>
+<li><strong>做 symbol-specific sign split</strong></li>
+</ol>
+<ul>
+<li>BTC 默认先测 <code>fade + 2% TP</code>；</li>
+<li>ETH/SOL 默认先测 <code>follow + 2% TP</code>；</li>
+<li>不再强行全市场统一方向。</li>
+</ul>
+<ol>
+<li><strong>补更诚实的 friction ladder</strong></li>
+</ol>
+<ul>
+<li><code>maker/maker</code>、<code>maker/taker</code>、<code>taker/taker</code> 三档；</li>
+<li>再看这条线到底是“真的 alpha”，还是只是 repo 的 low-trade backtest 幻觉。</li>
+</ul>
+<p>如果这三步里 <code>5m/15m</code> 版还能在 recent majors 留下正的 post-cost pocket，这条线就值得继续升成 desk 的 funding-event baseline。否则它也依然值钱——因为它已经告诉我们：</p>
+<p>&gt; <strong>funding extreme 更像“事件触发器”，真正要优化的是 sign router 与 exit geometry。</strong></p>
+</body>
+</html>

@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Svogun 2022 · Cost/Regime Experiment v1</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f8fafc; color:#0f172a; margin:0; padding:24px; }
+    .wrap { max-width: 1240px; margin: 0 auto; }
+    .card { background:white; border:1px solid #e2e8f0; border-radius:14px; padding:18px 20px; margin-bottom:18px; }
+    .muted { color:#475569; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:12px; margin-right:6px; }
+    .tbl { width:100%; border-collapse: collapse; font-size: 14px; }
+    .tbl th,.tbl td { border-bottom:1px solid #e5e7eb; padding:8px 10px; text-align:left; vertical-align:top; }
+    a { color:#2563eb; text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    code { background:#f1f5f9; padding:1px 4px; border-radius:6px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <p><a href="../../index.html">← 返回首页</a></p>
+  <div class="card">
+    <h1>Svogun 2022 · Cost/Regime Experiment v1</h1>
+    <p class="muted">这是基于现有 8 币 `60m_365d / 60m_730d` 本地缓存数据做的第一版 clean-room survival experiment：先不用论文全部规则族，只测试两个最小 baseline——<code>ma_crossover</code> 与 <code>rolling_breakout_20</code>——看 gross / net / regime 会不会明显重排排序。</p>
+    <p class="muted"><span class="pill">data</span> 8 crypto / 60m / 365d+730d <span class="pill">rules</span> MA crossover + breakout baseline <span class="pill">cost</span> gross / net_low(10bps) / net_high(30bps) <span class="pill">hold</span> 12 bars</p>
+  </div>
+
+  <div class="card">
+    <h2>这页回答什么？</h2>
+    <ul>
+      <li>在我们自己的数据上，cost 会不会显著改变 breakout / trend 规则的排序？</li>
+      <li>regime（这里先用 bubble_proxy）会不会重排结果？</li>
+      <li>这是否足以支持把 gross/net + regime 变成后续 breakout 主线的默认约束？</li>
+    </ul>
+    <p><strong>核心结论：</strong>在当前 8 币 60m 样本上，cost 的确会让 breakout / trend baseline 全部进一步变差，而 bubble_proxy 分层也会显著改变均值与胜率，所以 `gross/net + regime` 应当成为后续 breakout 研究的默认报告项，而不是可选附录。</p>
+    <p><strong>证据：</strong>这轮用同一批本地缓存 bars，对 `ma_crossover` 与 `rolling_breakout_20` 同时跑了 `gross / net_low / net_high` 与 `bubble_proxy` 分层；无论在 `60m_365d` 还是 `60m_730d`，成本都会把均值进一步压低，而不同 regime 下的均值与胜率也出现明显分化。</p>
+  </div>
+
+  <div class="card">
+    <h2>实验口径</h2>
+    <ul>
+      <li>signal 在 bar close 触发；next bar open 入场；持有 12 bars 后 exit close 离场。</li>
+      <li><code>ma_crossover</code>：EMA(12) 上穿 EMA(48)</li>
+      <li><code>rolling_breakout_20</code>：close 上破前 20 根 close 高点</li>
+      <li><code>net_low</code> = gross - 10bps；<code>net_high</code> = gross - 30bps（round-trip 近似）</li>
+      <li><code>bubble_proxy</code>：价格在慢均线上方且 trend_strength / vol24 同时高于本 symbol 样本中位数</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>anchor view（60m_730d）</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>sample_key</th>
+      <th>rule</th>
+      <th>cost_case</th>
+      <th>trade_count</th>
+      <th>win_ratio</th>
+      <th>mean_return</th>
+      <th>median_return</th>
+      <th>iqr_return</th>
+      <th>positive_symbol_ratio</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>60m_730d</td>
+      <td>ma_crossover</td>
+      <td>gross</td>
+      <td>1712</td>
+      <td>48.07%</td>
+      <td>-0.08%</td>
+      <td>-0.10%</td>
+      <td>2.81%</td>
+      <td>25.00%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rolling_breakout_20</td>
+      <td>gross</td>
+      <td>8205</td>
+      <td>48.60%</td>
+      <td>0.12%</td>
+      <td>-0.07%</td>
+      <td>2.83%</td>
+      <td>75.00%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>ma_crossover</td>
+      <td>net_high</td>
+      <td>1712</td>
+      <td>42.17%</td>
+      <td>-0.38%</td>
+      <td>-0.40%</td>
+      <td>2.81%</td>
+      <td>12.50%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rolling_breakout_20</td>
+      <td>net_high</td>
+      <td>8205</td>
+      <td>42.80%</td>
+      <td>-0.18%</td>
+      <td>-0.37%</td>
+      <td>2.83%</td>
+      <td>12.50%</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>overall summary</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>sample_key</th>
+      <th>rule</th>
+      <th>cost_case</th>
+      <th>trade_count</th>
+      <th>win_ratio</th>
+      <th>mean_return</th>
+      <th>median_return</th>
+      <th>iqr_return</th>
+      <th>positive_symbol_ratio</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>60m_365d</td>
+      <td>ma_crossover</td>
+      <td>gross</td>
+      <td>867</td>
+      <td>48.10%</td>
+      <td>-0.09%</td>
+      <td>-0.08%</td>
+      <td>2.74%</td>
+      <td>25.00%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rolling_breakout_20</td>
+      <td>gross</td>
+      <td>4084</td>
+      <td>49.19%</td>
+      <td>0.10%</td>
+      <td>-0.04%</td>
+      <td>2.64%</td>
+      <td>62.50%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>ma_crossover</td>
+      <td>gross</td>
+      <td>1712</td>
+      <td>48.07%</td>
+      <td>-0.08%</td>
+      <td>-0.10%</td>
+      <td>2.81%</td>
+      <td>25.00%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rolling_breakout_20</td>
+      <td>gross</td>
+      <td>8205</td>
+      <td>48.60%</td>
+      <td>0.12%</td>
+      <td>-0.07%</td>
+      <td>2.83%</td>
+      <td>75.00%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>ma_crossover</td>
+      <td>net_low</td>
+      <td>867</td>
+      <td>45.67%</td>
+      <td>-0.19%</td>
+      <td>-0.18%</td>
+      <td>2.74%</td>
+      <td>12.50%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rolling_breakout_20</td>
+      <td>net_low</td>
+      <td>4084</td>
+      <td>47.04%</td>
+      <td>0.00%</td>
+      <td>-0.14%</td>
+      <td>2.64%</td>
+      <td>50.00%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>ma_crossover</td>
+      <td>net_low</td>
+      <td>1712</td>
+      <td>45.97%</td>
+      <td>-0.18%</td>
+      <td>-0.20%</td>
+      <td>2.81%</td>
+      <td>12.50%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rolling_breakout_20</td>
+      <td>net_low</td>
+      <td>8205</td>
+      <td>46.50%</td>
+      <td>0.02%</td>
+      <td>-0.17%</td>
+      <td>2.83%</td>
+      <td>50.00%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>ma_crossover</td>
+      <td>net_high</td>
+      <td>867</td>
+      <td>41.64%</td>
+      <td>-0.39%</td>
+      <td>-0.38%</td>
+      <td>2.74%</td>
+      <td>0.00%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rolling_breakout_20</td>
+      <td>net_high</td>
+      <td>4084</td>
+      <td>42.95%</td>
+      <td>-0.20%</td>
+      <td>-0.34%</td>
+      <td>2.64%</td>
+      <td>0.00%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>ma_crossover</td>
+      <td>net_high</td>
+      <td>1712</td>
+      <td>42.17%</td>
+      <td>-0.38%</td>
+      <td>-0.40%</td>
+      <td>2.81%</td>
+      <td>12.50%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rolling_breakout_20</td>
+      <td>net_high</td>
+      <td>8205</td>
+      <td>42.80%</td>
+      <td>-0.18%</td>
+      <td>-0.37%</td>
+      <td>2.83%</td>
+      <td>12.50%</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>bubble proxy split</h2>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>sample_key</th>
+      <th>rule</th>
+      <th>cost_case</th>
+      <th>bubble_proxy</th>
+      <th>trade_count</th>
+      <th>win_ratio</th>
+      <th>mean_return</th>
+      <th>median_return</th>
+      <th>iqr_return</th>
+      <th>positive_symbol_ratio</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>60m_365d</td>
+      <td>ma_crossover</td>
+      <td>gross</td>
+      <td>False</td>
+      <td>626</td>
+      <td>48.24%</td>
+      <td>-0.02%</td>
+      <td>-0.06%</td>
+      <td>2.47%</td>
+      <td>37.50%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>ma_crossover</td>
+      <td>gross</td>
+      <td>True</td>
+      <td>241</td>
+      <td>47.72%</td>
+      <td>-0.27%</td>
+      <td>-0.19%</td>
+      <td>3.65%</td>
+      <td>25.00%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rolling_breakout_20</td>
+      <td>gross</td>
+      <td>False</td>
+      <td>2686</td>
+      <td>51.45%</td>
+      <td>0.21%</td>
+      <td>0.08%</td>
+      <td>2.46%</td>
+      <td>100.00%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rolling_breakout_20</td>
+      <td>gross</td>
+      <td>True</td>
+      <td>1398</td>
+      <td>44.85%</td>
+      <td>-0.12%</td>
+      <td>-0.31%</td>
+      <td>3.11%</td>
+      <td>25.00%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>ma_crossover</td>
+      <td>gross</td>
+      <td>False</td>
+      <td>1221</td>
+      <td>48.98%</td>
+      <td>-0.02%</td>
+      <td>-0.05%</td>
+      <td>2.55%</td>
+      <td>12.50%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>ma_crossover</td>
+      <td>gross</td>
+      <td>True</td>
+      <td>491</td>
+      <td>45.82%</td>
+      <td>-0.21%</td>
+      <td>-0.28%</td>
+      <td>3.70%</td>
+      <td>37.50%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rolling_breakout_20</td>
+      <td>gross</td>
+      <td>False</td>
+      <td>5413</td>
+      <td>49.29%</td>
+      <td>0.08%</td>
+      <td>-0.03%</td>
+      <td>2.56%</td>
+      <td>62.50%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rolling_breakout_20</td>
+      <td>gross</td>
+      <td>True</td>
+      <td>2792</td>
+      <td>47.28%</td>
+      <td>0.19%</td>
+      <td>-0.17%</td>
+      <td>3.53%</td>
+      <td>50.00%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>ma_crossover</td>
+      <td>net_low</td>
+      <td>False</td>
+      <td>626</td>
+      <td>45.69%</td>
+      <td>-0.12%</td>
+      <td>-0.16%</td>
+      <td>2.47%</td>
+      <td>12.50%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>ma_crossover</td>
+      <td>net_low</td>
+      <td>True</td>
+      <td>241</td>
+      <td>45.64%</td>
+      <td>-0.37%</td>
+      <td>-0.29%</td>
+      <td>3.65%</td>
+      <td>12.50%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rolling_breakout_20</td>
+      <td>net_low</td>
+      <td>False</td>
+      <td>2686</td>
+      <td>49.37%</td>
+      <td>0.11%</td>
+      <td>-0.02%</td>
+      <td>2.46%</td>
+      <td>75.00%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rolling_breakout_20</td>
+      <td>net_low</td>
+      <td>True</td>
+      <td>1398</td>
+      <td>42.56%</td>
+      <td>-0.22%</td>
+      <td>-0.41%</td>
+      <td>3.11%</td>
+      <td>12.50%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>ma_crossover</td>
+      <td>net_low</td>
+      <td>False</td>
+      <td>1221</td>
+      <td>46.85%</td>
+      <td>-0.12%</td>
+      <td>-0.15%</td>
+      <td>2.55%</td>
+      <td>12.50%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>ma_crossover</td>
+      <td>net_low</td>
+      <td>True</td>
+      <td>491</td>
+      <td>43.79%</td>
+      <td>-0.31%</td>
+      <td>-0.38%</td>
+      <td>3.70%</td>
+      <td>25.00%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rolling_breakout_20</td>
+      <td>net_low</td>
+      <td>False</td>
+      <td>5413</td>
+      <td>47.09%</td>
+      <td>-0.02%</td>
+      <td>-0.13%</td>
+      <td>2.56%</td>
+      <td>50.00%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rolling_breakout_20</td>
+      <td>net_low</td>
+      <td>True</td>
+      <td>2792</td>
+      <td>45.34%</td>
+      <td>0.09%</td>
+      <td>-0.27%</td>
+      <td>3.53%</td>
+      <td>50.00%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>ma_crossover</td>
+      <td>net_high</td>
+      <td>False</td>
+      <td>626</td>
+      <td>41.69%</td>
+      <td>-0.32%</td>
+      <td>-0.36%</td>
+      <td>2.47%</td>
+      <td>12.50%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>ma_crossover</td>
+      <td>net_high</td>
+      <td>True</td>
+      <td>241</td>
+      <td>41.49%</td>
+      <td>-0.57%</td>
+      <td>-0.49%</td>
+      <td>3.65%</td>
+      <td>0.00%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rolling_breakout_20</td>
+      <td>net_high</td>
+      <td>False</td>
+      <td>2686</td>
+      <td>44.86%</td>
+      <td>-0.09%</td>
+      <td>-0.22%</td>
+      <td>2.46%</td>
+      <td>25.00%</td>
+    </tr>
+    <tr>
+      <td>60m_365d</td>
+      <td>rolling_breakout_20</td>
+      <td>net_high</td>
+      <td>True</td>
+      <td>1398</td>
+      <td>39.27%</td>
+      <td>-0.42%</td>
+      <td>-0.61%</td>
+      <td>3.11%</td>
+      <td>12.50%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>ma_crossover</td>
+      <td>net_high</td>
+      <td>False</td>
+      <td>1221</td>
+      <td>42.75%</td>
+      <td>-0.32%</td>
+      <td>-0.35%</td>
+      <td>2.55%</td>
+      <td>12.50%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>ma_crossover</td>
+      <td>net_high</td>
+      <td>True</td>
+      <td>491</td>
+      <td>40.73%</td>
+      <td>-0.51%</td>
+      <td>-0.58%</td>
+      <td>3.70%</td>
+      <td>12.50%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rolling_breakout_20</td>
+      <td>net_high</td>
+      <td>False</td>
+      <td>5413</td>
+      <td>43.01%</td>
+      <td>-0.22%</td>
+      <td>-0.33%</td>
+      <td>2.56%</td>
+      <td>0.00%</td>
+    </tr>
+    <tr>
+      <td>60m_730d</td>
+      <td>rolling_breakout_20</td>
+      <td>net_high</td>
+      <td>True</td>
+      <td>2792</td>
+      <td>42.41%</td>
+      <td>-0.11%</td>
+      <td>-0.47%</td>
+      <td>3.53%</td>
+      <td>37.50%</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class="card">
+    <h2>当前怎么读这页？</h2>
+    <ul>
+      <li>先看 same rule 在 <code>gross → net_low → net_high</code> 的退化幅度，确认成本是否值得被升格为默认报告项。</li>
+      <li>再看 <code>bubble_proxy = True / False</code> 的差异，确认 regime 是否会重排均值与胜率。</li>
+      <li>如果这两点都成立，那么后续内部 breakout / confirmation 研究就不应再只给 gross 总表。</li>
+    </ul>
+    <p class="muted">提醒：这仍是最小 survival experiment，不是完整论文复现，更不是最终策略页。</p>
+  </div>
+</div>
+</body>
+</html>

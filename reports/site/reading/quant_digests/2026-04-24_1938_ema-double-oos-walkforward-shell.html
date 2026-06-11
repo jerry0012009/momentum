@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2026 WFO 论文只读成“参数优化方法论”：对 short-cycle crypto desk，更该先拆的是「EMA fast/slow crossover × double-OOS walk-forward」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2026 WFO 论文只读成“参数优化方法论”：对 short-cycle crypto desk，更该先拆的是「EMA fast/slow crossover × double-OOS walk-forward」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-24 19:37 UTC</span>
+      <span class="pill">研究时间：2026-04-24 19:38 UTC</span>
+      <span class="pill">类型：Paper + GitHub</span>
+      <span class="pill">主题标签：raw-alpha / single-asset / trend / momentum / ema-crossover / walk-forward / double-oos / btc / eth / bnb / 1m / 5m / 15m / 60m / paper / repo / cost / risk</span>
+      <span class="pill">证据类型：arXiv full text + GitHub repo source + upstream strategy code</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-24_1938_ema-double-oos-walkforward-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-24 19:38 UTC</li>
+<li>类型：Paper + GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：单资产 EMA 快慢线趋势跟随。代码里是把 <code>fast EMA &gt; slow EMA</code> 记为做多、反之做空；再把不同 EMA 组合和 walk-forward 窗口长度一起做滚动选择。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / single-asset / trend / momentum / ema-crossover / walk-forward / double-oos / btc / eth / bnb / 1m / 5m / 15m / 60m / paper / repo / cost / risk</li>
+<li>证据类型：arXiv full text + GitHub repo source + upstream strategy code</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 2026 arXiv 论文 <strong>A novel approach to trading strategy parameter optimization using double out-of-sample data and walk-forward techniques</strong>，以及作者公开的两个配套仓：</p>
+<ul>
+<li><code>tmr-crypto/wf_optim_crypto_analysis</code></li>
+<li><code>tmr-crypto/wf_optim_crypto</code></li>
+</ul>
+<p>如果只看标题，很容易把它归到“研究方法/防过拟合框架”那一类；但对我们 desk 更有价值的读法，其实是：<strong>作者已经把一条最朴素、最可复跑的 EMA crossover raw alpha，写成了带成本、带滚动重估、带真正 unseen 检验的完整策略壳。</strong></p>
+<h2>2. base alpha 先说清楚</h2>
+<p>这篇东西的 <strong>base alpha 很清楚</strong>：</p>
+<p><strong>EMA 快慢线交叉的趋势延续。</strong></p>
+<p>不是 filter，不是 risk overlay，也不是只讲 walk-forward 架构。上游策略代码里，信号写得非常直白：</p>
+<ul>
+<li>先计算一组 EMA：<code>5, 7, 10, 15, 20, 30, 40, 50, 100, 150, 200</code></li>
+<li>以 <code>35</code> 为 cutoff，把前半组当 fast，后半组当 slow</li>
+<li>对每个 <code>fast/slow</code> 组合，如果 <strong>上一根</strong> <code>fast EMA &gt; slow EMA</code>，则下一根持有 <code>+1</code></li>
+<li>否则持有 <code>-1</code></li>
+<li>PnL 显式扣 <code>fee_int = 0.001</code>，也就是 <strong>每次换仓按 0.1% 成本</strong> 计入</li>
+</ul>
+<p>所以这不是“先有复杂优化，后找个指标凑数”；它本体就是一条可以直接落地的 <strong>single-asset trend/momentum raw alpha</strong>。</p>
+<h2>3. 核心结论</h2>
+<ul>
+<li>论文不是发明了新指标，而是把一条老但诚实的 alpha 壳，做成了更严格的检验流程：<strong>19 个月 global training + 21 个月 unseen period</strong>，而且 unseen 段只执行一次，不反复试错。</li>
+<li>作者在 <strong>6 个频率</strong> 上测试：<code>1m / 5m / 10m / 15m / 30m / 60m</code>；walk-forward 窗口长度则枚举 <strong><code>1, 2, 3, 5, 7, 10, 14, 21, 28</code> 天</strong> 的 train/test 组合，共 <strong>81 组窗口组合</strong>。</li>
+<li>repo 和论文摘要都给出一个很关键的结果：训练期里，所有 WFO 组合都跑赢 buy-and-hold；到了真正 unseen 期，策略收益与 buy-and-hold <strong>接近</strong>，但 <strong>回撤更低、Information Ratio 更高</strong>。</li>
+<li>最后留下来的两组最佳 walk-forward 窗口是：</li>
+<li><code>train=7d / test=28d</code></li>
+<li><code>train=14d / test=10d</code></li>
+<li>他们不只测 BTC，还把在 BTC 上挑出的参数直接搬到 <strong>ETH / BNB</strong> 的 unseen 段，结果仍然“方向上成立”；这对我们很重要，因为它说明这里更像是一条 <strong>可迁移的趋势壳</strong>，不只是 BTC 特例。</li>
+<li>成本不是被藏起来的：论文明确按 <strong>0.1% 每笔交易成本</strong> 计算，并做了 cost sensitivity；摘要里给出的 break-even 大约在 <strong>0.4%/transaction</strong>。这说明这条壳的 edge 虽然不算厚，但也不是完全脆弱到一碰成本就死。</li>
+<li>论文摘要里还有一个最值得 desk 记住的组合结论：如果把 buy-and-hold 和这条策略做组合，整体表现优于单独持有任一策略，而且 <strong>最大回撤约降低 50%</strong>。对 desk 语言来说，就是：它既可以当主 alpha，也可以当 <strong>beta diversification sleeve</strong>。</li>
+</ul>
+<h2>4. 为什么和当前 desk 直接相关</h2>
+<p>这轮 bot7 的优先级，是继续补能直接进素材池的 <strong>raw alpha</strong>，同时尽量别又回到 pairs / carry 的局部循环里。这个题目值得做，原因很直接：</p>
+<ol>
+<li><strong>它是 raw alpha，不是纯方法论。</strong></li>
+<p>信号本体就是 EMA crossover 趋势跟随，而且 entry/exit/持仓方向在代码里是明确的。</p>
+</ol>
+<ol>
+<li><strong>它天然贴 short-cycle。</strong></li>
+<p>作者直接测试了 <code>1m/5m/10m/15m/30m/60m</code>，不是拿日频论文硬掰到短周期。</p>
+</ol>
+<ol>
+<li><strong>它把“怎么避免自己骗自己”写进了策略壳。</strong></li>
+<p>很多 trend repo 会给你一个漂亮收益曲线，但不会给你真正 unseen 的单次执行；这篇恰恰把这一点作为主菜。</p>
+</ol>
+<ol>
+<li><strong>它是完整壳，不只是一个信号。</strong></li>
+<p>这里已经有：</p>
+</ol>
+<ul>
+<li>alpha 本体：EMA crossover trend following</li>
+<li>参数空间：30 组 fast/slow 组合</li>
+<li>训练/测试重估：walk-forward</li>
+<li>成本：0.1% 明扣</li>
+<li>跨资产可迁移性：BTC → ETH / BNB</li>
+<li>组合层读法：可与 buy-and-hold 拼 sleeve</li>
+</ul>
+<h2>5. 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：single-asset / trend / momentum</li>
+<li>基础 alpha：EMA fast/slow crossover continuation</li>
+<li>regime / admission：不是先做复杂 regime classifier，而是通过 walk-forward 在不同 market state 下滚动重选最合适的 EMA 组合与 train/test 窗口</li>
+<li>filter / veto：成本敏感性、single unseen execution、窗口长度本身就是 veto 维度</li>
+<li>risk / sizing / execution overlay：论文原始壳本质上是全仓方向切换；对 desk 落地时，最自然的是把它改成 <code>15m signal + 5m child execution + vol target/notional cap</code></li>
+</ul>
+<h2>6. desk 读法：最值得抄的不是 EMA，本质是“双层 OOS”</h2>
+<p>如果只看信号，EMA crossover 并不新鲜；但这篇最值得拿进研究池的，是下面这个顺序：</p>
+<ol>
+<li><strong>先承认 signal 很朴素</strong>：快慢线谁在上面，就跟谁站队；</li>
+<li><strong>再把“参数挑选”也变成需要被检验的对象</strong>：不是只调 EMA 参数，还同时调 walk-forward 的 train/test 长度；</li>
+<li><strong>最后把真正 unseen 段锁死，只执行一次</strong>：不允许把 OOS 用成另一个优化集。</li>
+</ol>
+<p>对我们 desk 来说，这种写法的价值在于：以后不管测 breakout、mean reversion、funding spread 还是 pairs，都能把同样的 <strong>double-OOS discipline</strong> 套进去。只是本轮主题仍然是 raw alpha，所以主角还是这条 EMA 趋势壳本身。</p>
+<h2>7. 可复刻的最小实验</h2>
+<h3>最小研究假设</h3>
+<p><strong>不是问“EMA 有没有 edge”这么笼统，而是问：在 crypto <code>5m/15m</code> 上，把 EMA crossover 做成 double-OOS walk-forward 壳后，OOS 表现是否比固定参数版本更稳、更耐成本。</strong></p>
+<h3>最小策略定义</h3>
+<ol>
+<li>标的：先从 <code>BTCUSDT perp</code> 开始，第二步再看 <code>ETHUSDT / BNBUSDT / SOLUSDT</code>。</li>
+<li>频率：</li>
+</ol>
+<ul>
+<li>主信号：<code>15m</code></li>
+<li>子执行：<code>5m</code></li>
+</ul>
+<ol>
+<li>指标：EMA <code>5, 7, 10, 15, 20, 30, 40, 50, 100, 150, 200</code></li>
+<li>组合空间：<code>fast ∈ {5,7,10,15,20,30}</code>，<code>slow ∈ {40,50,100,150,200}</code>，共 <strong>30 组</strong>。</li>
+<li>持仓规则：</li>
+</ol>
+<ul>
+<li><code>lag(fast) &gt; lag(slow)</code> → 下一根持有 <code>+1</code></li>
+<li>否则持有 <code>-1</code></li>
+</ul>
+<ol>
+<li>walk-forward 窗口：先只测论文留下来的两组：</li>
+</ol>
+<ul>
+<li><code>7d train / 28d test</code></li>
+<li><code>14d train / 10d test</code></li>
+</ul>
+<ol>
+<li>成本：先跑 <code>2 / 4 / 6 / 10 bps</code> 单边 friction ladder，再对照论文的 <code>10 bps</code> 单边近似口径。</li>
+</ol>
+<h3>最先看什么</h3>
+<ul>
+<li>OOS Sharpe / Information Ratio</li>
+<li>max drawdown</li>
+<li>turnover</li>
+<li>fee 后 <code>bps per trade</code> 与 <code>bps per bar</code></li>
+<li>fixed-parameter vs WFO 版本的稳定性差异</li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<ol>
+<li><strong>先复刻论文里最朴素的方向切换版本</strong>，不要一上来就加 RSI / ADX / volume confluence。先看朴素 EMA 壳在我们的成本口径下还有没有气。</li>
+<li>做三组关键对照：</li>
+</ol>
+<ul>
+<li>A：固定一组常见参数（例如 <code>10/50</code>）</li>
+<li>B：30 组 EMA 里滚动选最优，但 walk-forward 窗口固定</li>
+<li>C：EMA 参数 + walk-forward 窗口都滚动选择（论文读法）</li>
+</ul>
+<ol>
+<li>若 <code>15m</code> 上 C 明显比 A/B 稳，再把执行下沉到 <code>5m</code>：</li>
+</ol>
+<ul>
+<li>允许更细粒度换仓</li>
+<li>但不要在 <code>5m</code> 上重新优化整套参数，避免把 child execution 变成第二套偷看样本</li>
+</ul>
+<ol>
+<li>若 BTC 有存活迹象，再测一个非常实用的扩展：</li>
+</ol>
+<ul>
+<li>不做反手 <code>-1</code>，而是只做 <code>long / flat</code></li>
+<li>看它是否更适合作为 <strong>trend sleeve</strong>，和 mean reversion / stat-arb 组合</li>
+</ul>
+<ol>
+<li>若 <code>1m</code> 版本 turnover 过高，就别硬追；这篇材料最自然的 desk 落点，其实是 <strong><code>15m</code> 主信号 + <code>5m</code> 执行</strong>，而不是纯 <code>1m</code> 高频。</li>
+</ol>
+<h2>9. 风险与保留意见</h2>
+<ul>
+<li>这篇材料最强的是检验架构，不是说 EMA 从此在所有短周期里都稳稳赚；如果 desk 只抄信号、不抄 double-OOS discipline，很容易又回到参数偷看。</li>
+<li>论文摘要里说 unseen 期表现和 buy-and-hold 相近，而不是显著碾压；这意味着它更像 <strong>稳健壳</strong>，不是那种肉眼可见超厚 edge 的 monster alpha。</li>
+<li>原论文最好的 unseen 结果集中在 <code>60m</code>；对我们来说，<code>5m/15m</code> 是“可映射、可复测”，但不能直接把论文结论等同于已证明 <code>5m/15m</code> 一样成立。</li>
+<li>原始代码的持仓是 <code>+1/-1</code> 双向切换，这在 perp 上可做，但实际落地时必须额外审视 funding、滑点与夜间 liquidity hole。</li>
+</ul>
+<h2>10. 一句话总结</h2>
+<p><strong>这篇 2026 论文最值得 desk 吸收的，不是“EMA 很神”，而是如何把一条最朴素的趋势 raw alpha，写成带成本、带滚动重估、带真正 unseen 段的一条完整 short-cycle 研究壳。</strong></p>
+<h2>11. 来源</h2>
+<ul>
+<li>Author / Year / Title / Venue</li>
+<li>Tomasz Mroziewicz, Robert Ślepaczuk. (2026). *A novel approach to trading strategy parameter optimization using double out-of-sample data and walk-forward techniques*. arXiv preprint.</li>
+<li>DOI：10.48550/arXiv.2602.10785</li>
+<li>Readable URL：<a href="https://arxiv.org/html/2602.10785v1">https://arxiv.org/html/2602.10785v1</a></li>
+<li>Repo URL：<a href="https://github.com/tmr-crypto/wf_optim_crypto_analysis">https://github.com/tmr-crypto/wf_optim_crypto_analysis</a></li>
+<li>Additional repo source used</li>
+<li>Upstream data/strategy repo：<a href="https://github.com/tmr-crypto/wf_optim_crypto">https://github.com/tmr-crypto/wf_optim_crypto</a></li>
+<li>Raw analysis README：<a href="https://raw.githubusercontent.com/tmr-crypto/wf_optim_crypto_analysis/main/README.md">https://raw.githubusercontent.com/tmr-crypto/wf_optim_crypto_analysis/main/README.md</a></li>
+<li>Raw analysis params：<a href="https://raw.githubusercontent.com/tmr-crypto/wf_optim_crypto_analysis/main/params.yaml">https://raw.githubusercontent.com/tmr-crypto/wf_optim_crypto_analysis/main/params.yaml</a></li>
+<li>Raw upstream README：<a href="https://raw.githubusercontent.com/tmr-crypto/wf_optim_crypto/main/README.md">https://raw.githubusercontent.com/tmr-crypto/wf_optim_crypto/main/README.md</a></li>
+<li>Raw upstream strategy code：<a href="https://raw.githubusercontent.com/tmr-crypto/wf_optim_crypto/main/master/rcode/logic/strategy.r">https://raw.githubusercontent.com/tmr-crypto/wf_optim_crypto/main/master/rcode/logic/strategy.r</a></li>
+<li>Raw upstream strategy params：<a href="https://raw.githubusercontent.com/tmr-crypto/wf_optim_crypto/main/master/rcode/logic/strategy_param.yaml">https://raw.githubusercontent.com/tmr-crypto/wf_optim_crypto/main/master/rcode/logic/strategy_param.yaml</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2026 JFM 论文只读成“order flow 又能预测收益”：对 short-cycle desk，更该先测的是「cross-fiat order-flow share × next-bar XS continuation」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2026 JFM 论文只读成“order flow 又能预测收益”：对 short-cycle desk，更该先测的是「cross-fiat order-flow share × next-bar XS continuation」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-08 08:58 UTC</span>
+      <span class="pill">研究时间：2026-04-08 08:57 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：cross-sectional / relative-value / order-flow / continuation / taker-imbalance / liquidity / 5m / 15m / 3m / 1m</span>
+      <span class="pill">证据类型：论文证据（全文 PDF）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-08_0857_world-orderflow-xs-continuation-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-08 08:57 UTC</li>
+<li>类型：论文</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：横截面 order-flow continuation（做多最近净买盘最强的一篮子币，做空净买盘最弱的一篮子币）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：cross-sectional / relative-value / order-flow / continuation / taker-imbalance / liquidity / 5m / 15m / 3m / 1m</li>
+<li>证据类型：论文证据（全文 PDF）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>Alexia Anastasopoulos、Nikola Gradojevic、Fred Liu、Alex Maynard、Ilias Tsiakas 的 2026 *Journal of Financial Markets* 论文 <strong>Order Flow and Cryptocurrency Returns</strong>。作者把 <strong>82 个币、11 个法币口径的 order flow</strong> 聚合成“世界净买盘压力”，看它能不能预测下一期横截面收益。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>一句话核心结论：<strong>不是“价格涨了所以继续涨”，而是“真钱净买盘已经持续往哪边挤，下一期横截面收益大概率还往哪边偏”。</strong></li>
+<li>一句话证明方式：作者做了 <strong>面板回归 + quintile 排序组合 + 机器学习非线性预测</strong>，并且给了 OOS 结果，不只是相关性故事。</li>
+<li>直接用 lagged world order flow 做 quintile long-short，<strong>日频 OOS 收益约 0.30%/day</strong>。</li>
+<li>切到周频，long-short 组合 <strong>约 1.61%/week</strong>，其中 <strong>alpha 约 1.44%/week（t≈2.04）</strong>，<strong>Sharpe 约 1.68</strong>。</li>
+<li>再把 order flow 丢进非线性模型后，最强的 SGB 排序组合能做到 <strong>约 0.48%/day</strong>，对应 <strong>alpha 约 0.79%/day、Sharpe 约 2.72</strong>。</li>
+<li>作者还明确写到：这套结果<strong>不能被简单的 limits-to-arbitrage 变量解释掉</strong>，说明 order flow 本身不是纯噪音。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇东西最值钱的地方，不是让我们照搬“11 个法币世界流量”那套学术口径，而是把 <strong>横截面 raw alpha</strong> 讲清楚了： <strong>先看谁在被持续净买、谁在被持续净卖，再做 cross-sectional continuation。</strong> 这正好补 current desk 不该只围着 breakout / retest 打转的缺口。对 <code>1m/3m/5m/15m</code> 来说，可迁移的不是低频排序周期，而是：</p>
+<ul>
+<li>用公开 taker-buy / taker-sell 代理替代 world order flow；</li>
+<li>用短窗 <code>signed dollar flow</code> / <code>taker buy ratio</code> 做截面排序；</li>
+<li>把它当成独立 raw alpha，而不是某个趋势策略的小过滤器。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / 相对价值</li>
+<li>基础 alpha：<code>recent signed order-flow pressure -&gt; next-bar cross-sectional continuation</code></li>
+<li>regime：优先在高流动性、低跳空、主流 perp universe 内运行</li>
+<li>filter / veto：极端 funding、极端 spread、事件币、单边新闻币先剔除</li>
+<li>risk / sizing / execution overlay：等权或波动倒数权重；单币仓位上限；组合 dollar-neutral / beta-light；成交额与 taker cost 双门槛</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：<strong>过去 3~12 根 bar 的净主动买盘越强，下一根到后 3 根 bar 的截面收益越强。</strong></li>
+<li>一个可计算定义：对 Binance/OKX 主流 perp，每个 <code>5m</code> bar 计算 <code>signed_dollar_flow = taker_buy_quote_vol - taker_sell_quote_vol</code>，再除以过去 <code>N</code> 根总成交额，得到 <code>flow_pressure_N</code>。</li>
+<li>最小回测切口：<code>BTC/ETH/SOL/XRP/BNB/DOGE/ADA/LINK/AVAX</code> 等 top-liquid perp，周期先跑 <code>5m</code>，再下钻 <code>3m/1m</code>、上提 <code>15m</code>；每根 bar 截面排名，做多 top 20%，做空 bottom 20%，持有 <code>1~3</code> 根 bar。</li>
+<li>最该先看 2 个指标：<strong>post-cost spread return</strong>、<strong>hit ratio / 正收益窗口占比</strong>。</li>
+<li>成本先别自欺：先上 <strong>双边 4~8 bps</strong> 的 friction ladder，再看 short leg 是否值得保留；如果 short 明显拖后腿，就先测 <strong>winner-only + BTC beta hedge</strong>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文主口径是 <strong>日/周频 + world order flow</strong>，不是直接拿 Binance <code>5m</code> taker 流量回测，所以短周期迁移一定会掉信号强度。</li>
+<li>world order flow 含跨法币、跨 venue 的价格发现信息；单所 taker flow 只是它的便宜代理，可能更 noisy。</li>
+<li>这类信号最怕 <strong>新闻驱动单币暴走、流动性塌陷、手续费把 short leg 吃穿</strong>。</li>
+<li>因此最现实的路线不是一步追求论文收益，而是先回答：<strong>top-liquid perp 上，short-window flow rank 到底有没有稳定的 post-cost continuation。</strong></li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Anastasopoulos, A., Gradojevic, N., Liu, F., Maynard, A., &amp; Tsiakas, I. (2026). *Order Flow and Cryptocurrency Returns*. *Journal of Financial Markets*.</li>
+<li>DOI: <code>10.1016/j.finmar.2026.101047</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/j.finmar.2026.101047">https://doi.org/10.1016/j.finmar.2026.101047</a></code></li>
+<li>Full PDF / conference paper URL: <code><a href="https://www.efmaefm.org/0EFMAMEETINGS/EFMA%20ANNUAL%20MEETINGS/2025-Greece/papers/OrderFlowpaper.pdf">https://www.efmaefm.org/0EFMAMEETINGS/EFMA%20ANNUAL%20MEETINGS/2025-Greece/papers/OrderFlowpaper.pdf</a></code></li>
+</ul>
+</body>
+</html>

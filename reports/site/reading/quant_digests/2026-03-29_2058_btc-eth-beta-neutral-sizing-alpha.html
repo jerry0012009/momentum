@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 BTC/ETH pairs 继续写成“信号对了就行”：这份 2026 GitHub 仓库更该先测的是「cointegration spread × beta-consistent sizing」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 BTC/ETH pairs 继续写成“信号对了就行”：这份 2026 GitHub 仓库更该先测的是「cointegration spread × beta-consistent sizing」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-29 20:55 UTC</span>
+      <span class="pill">研究时间：2026-03-29 20:58 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + README/source pipeline 审阅 + Binance USDⓈ-M Perpetual 公共 `1h/15m` sizing transfer check</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/beta-neutral/sizing/hedge-ratio/btc/eth/binance/perpetual/1h/15m/5m/1m/3m/repo/public-data/cost/funding</span>
+      <span class="pill">证据类型：GitHub README/source 规则级证据 + Binance 公共 OHLCV 本地 transfer check + 15m 参数网格稳定性复核</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-29_2058_btc-eth-beta-neutral-sizing-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-29 20:58 UTC</li>
+<li>类型：2026 GitHub 新仓库 + README/source pipeline 审阅 + Binance USDⓈ-M Perpetual 公共 <code>1h/15m</code> sizing transfer check</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>BTC/ETH cointegration spread mean reversion</strong>——当 <code>log(BTC) - β·log(ETH)</code> 偏离其滚动均值太远时，做多被低估腿、做空被高估腿，吃的是相对定价向长期线性关系回摆的收益。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/beta-neutral/sizing/hedge-ratio/btc/eth/binance/perpetual/1h/15m/5m/1m/3m/repo/public-data/cost/funding</li>
+<li>证据类型：GitHub README/source 规则级证据 + Binance 公共 OHLCV 本地 transfer check + 15m 参数网格稳定性复核</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先把 <strong>base alpha</strong> 说清楚：</p>
+<p>&gt; <strong>这次不是 filter，不是 overlay，也不是“又一份 pairs 教程”。alpha 本体就是 BTC/ETH 的 cointegration spread mean reversion。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>BTC 和 ETH 长期会一起动，但短时间不会完全同步；</li>
+<li>如果两者的相对价格关系偏得太开，理论上会有“回到更正常关系”的动力；</li>
+<li>所以当 spread 的 z-score 很极端时，做多便宜腿、做空贵腿，赌的是 <strong>相对价差回摆</strong>，不是单边看涨看跌。</li>
+</ul>
+<p>这份 2026 新 repo 最值得 intake 的点，不是“BTC/ETH 能不能做 pairs”——这个市场早就知道了；真正更适合我们 desk 的，是它把一个常被当成细枝末节的东西单独做成了 <strong>受控实验</strong>：</p>
+<p>&gt; <strong>同一条 spread alpha，只改 position sizing：从 dollar-neutral 改成 beta-neutral，整条策略的最终 PnL 可以直接翻正。</strong></p>
+<p>对短周期 desk 来说，这个分支很值钱，因为它回答的是一个更底层的问题：</p>
+<p>&gt; <strong>如果你的 alpha 定义里用的是 <code>β</code>，但仓位还在按 1:1 美元对冲，那你到底是在交易原始 alpha，还是在交易一条被自己 sizing 改坏了的假 spread？</strong></p>
+<p>一句话结论先放前面：</p>
+<p>&gt; <strong>这条 raw alpha 值得继续留在素材池，但最先该搬的不是“再证明一次 pair 会回归”，而是把“hedge-ratio-consistent sizing”升级成 pairs / stat-arb 的默认必测组件。</strong></p>
+<h2>2. 核心结论</h2>
+<h3>2.1 这份 repo 真正新增了什么</h3>
+<p>repo 作者是 <strong>Howard (Cheng-Hao) Hsu</strong>，项目标题是 <strong>Statistical Arbitrage: BTC/ETH Cointegration Pairs Trading Strategy</strong>。它不是只给一个 notebook 图，而是把完整管线拆成了：</p>
+<ul>
+<li>数据抓取</li>
+<li>Rolling OLS hedge ratio</li>
+<li>ADF stationarity gate</li>
+<li>OU half-life</li>
+<li>状态机式入场/出场</li>
+<li>全成本回测</li>
+<li><code>Dollar-Neutral</code> vs <code>Beta-Neutral</code> 对照实验</li>
+</ul>
+<p>也就是说，这不是“有信号、没 execution”的半成品，而是一份可以直接拆 entry / exit / sizing / risk / cost 的完整 skeleton。</p>
+<h3>2.2 repo 里最该记住的数字</h3>
+<p>作者用的是 <strong>Binance USD-M perpetual 的 BTC/USDT 与 ETH/USDT 1 小时数据</strong>：</p>
+<ul>
+<li>样本：<strong>2021-01-01 → 2025-12-31</strong></li>
+<li>bar 数：<strong>43,824 根 hourly bars</strong></li>
+<li>滚动窗口：<strong>720 小时（30 天）</strong></li>
+<li>成本：<strong>单腿 <code>0.06%</code> = taker fee <code>0.04%</code> + slippage <code>0.02%</code></strong></li>
+<li>另外还显式计入了 <strong>8 小时 funding settlement</strong></li>
+</ul>
+<p>统计层面：</p>
+<ul>
+<li><code>β</code> 均值 / 标准差：<strong><code>0.629 / 0.301</code></strong></li>
+<li><code>β</code> 区间：<strong><code>-0.161 ~ 1.571</code></strong></li>
+<li>ADF <code>p &lt; 0.05</code> 的时间占比：<strong><code>9.8%</code></strong></li>
+<li>median half-life：<strong><code>468 小时</code></strong></li>
+</ul>
+<p>先看信号稀疏度：</p>
+<ul>
+<li>在严格 <code>ADF p &lt; 0.05</code> gate 下，<strong>5 年只成交 9 笔</strong>；</li>
+<li>也就是说，这不是一条高 turnover pair 策略，而是一个“只在 stationarity regime 出手”的稀疏 alpha。</li>
+</ul>
+<p>但真正重要的是 sizing 对照：</p>
+<p><strong>Version A：Dollar-Neutral（两腿都固定 5000 美元）</strong></p>
+<ul>
+<li>Final Equity：<strong><code>$9,208.40</code></strong></li>
+<li>Net PnL：<strong><code>-$791.60</code></strong></li>
+<li>Max Drawdown：<strong><code>-14.89%</code></strong></li>
+<li>Gross PnL：<strong><code>-$652.58</code></strong></li>
+<li>Total Fees：<strong><code>-$108.00</code></strong></li>
+<li>Funding &amp; Carry：<strong><code>-$30.99</code></strong></li>
+</ul>
+<p><strong>Version B：Beta-Neutral（ETH 腿按 <code>5000 × β_entry</code> 配）</strong></p>
+<ul>
+<li>Net PnL：<strong><code>+$67</code></strong></li>
+<li>Total Fees：<strong><code>-$96.48</code></strong></li>
+<li>Funding &amp; Carry：约 <strong><code>-$27</code></strong></li>
+</ul>
+<p>repo 自己给出的解释非常直接：</p>
+<ul>
+<li>因为样本里的平均 <code>β ≈ 0.629</code>；</li>
+<li>如果你还是按 1:1 美元做 BTC/ETH，两腿并不对应你定义 signal 时那条 <code>BTC - β·ETH</code> spread；</li>
+<li>你其实把 ETH 腿配重了，等于偷偷引入了一段多余的方向暴露；</li>
+<li>而 beta-neutral 不只是费率更省，本质上是 <strong>仓位终于和 signal 的数学定义一致了。</strong></li>
+</ul>
+<h3>2.3 最值得 desk 记住的判断</h3>
+<p>&gt; <strong>这份 repo 最该 intake 的不是“BTC/ETH pairs 可以做”本身，而是“错误 sizing 会把原本还算合理的 pairs alpha 直接做坏”。</strong></p>
+<h2>3. 为什么和当前项目直接相关</h2>
+<p>先回答最关键的问题：</p>
+<p>&gt; <strong>为什么这篇东西比继续补一个新的 headline alpha 还值得？</strong></p>
+<p>因为我们当前库里并不缺：</p>
+<ul>
+<li>pair 怎么选</li>
+<li>spread 怎么定义</li>
+<li>z-score 怎么入场</li>
+<li>ADF / OU / cointegration 这些标准件</li>
+</ul>
+<p>更缺的是：</p>
+<p>&gt; <strong>当 alpha 真的要从 notebook 走向 live 时，signal 定义和 position sizing 有没有保持同一种“统计中性”？</strong></p>
+<p>这点和当前 desk 非常直接相关：</p>
+<ol>
+<li><strong>它仍然是 raw alpha，不是纯风控。</strong></li>
+</ol>
+<ul>
+<li>alpha 本体仍然是 spread convergence。</li>
+</ul>
+<ol>
+<li><strong>它又不仅仅是“再来一条 pair”。</strong></li>
+</ol>
+<ul>
+<li>它补的是 pairs / stat-arb 最容易被低估的落地层：<code>sizing</code>。</li>
+</ul>
+<ol>
+<li><strong>它能直接扩到 <code>15m / 5m / 1m</code>。</strong></li>
+</ol>
+<ul>
+<li>signal 生成可在 <code>15m</code>，执行切片可下沉到 <code>5m / 1m</code>；</li>
+<li>真正该检验的是：快周期下 beta-neutral 是否仍普遍优于 dollar-neutral。</li>
+</ul>
+<ol>
+<li><strong>它对现有素材池是增量，不是重复。</strong></li>
+</ol>
+<ul>
+<li>我们已经有很多“entry signal”型 pairs 材料；</li>
+<li>但“hedge-ratio-consistent sizing”还没有被立成默认必测卡片。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>pairs / stat-arb / relative-value / mean reversion</strong></li>
+<li>基础 alpha：<strong>BTC/ETH 相对定价偏离长期线性关系后的 spread convergence</strong></li>
+<li>原 repo 的完整策略组件：</li>
+<li><code>signal layer</code>：rolling OLS <code>β</code> + spread z-score</li>
+<li><code>admission layer</code>：ADF <code>p &lt; 0.05</code></li>
+<li><code>entry</code>：<code>|Z| &gt; 2</code></li>
+<li><code>exit</code>：<code>|Z| &lt; 0.5</code></li>
+<li><code>risk</code>：<code>|Z| &gt; 4</code> stop；<code>3 × median half-life</code> time-stop</li>
+<li><code>cost</code>：每腿 <code>6 bps</code> + funding</li>
+<li><code>sizing</code>：对照 <code>dollar-neutral</code> vs <code>beta-neutral</code></li>
+<li>对 desk 的短周期翻译：</li>
+<li><code>raw alpha layer</code>：<code>15m</code> 或 <code>5m</code> 上的 spread 偏离回摆</li>
+<li><code>sizing layer</code>：按 <code>β_entry</code> 配腿，而不是机械 1:1 美元</li>
+<li><code>risk layer</code>：cointegration / corr gate、time-stop、止损、funding 结算规避</li>
+<li><code>execution layer</code>：<code>5m/1m</code> 分批成交 + maker/taker 切换 + 盘口 veto</li>
+</ul>
+<h2>4. repo 里的完整机制，翻成 desk 语言</h2>
+<h3>4.1 spread 是怎么定义的</h3>
+<p>repo 用的是：</p>
+<p><code>Spread_t = log(BTC_t) - β_t × log(ETH_t)</code></p>
+<p>其中 <code>β_t</code> 不是常数，而是 <strong>rolling OLS hedge ratio</strong>，并且显式 <code>shift(1)</code>，避免把当根 bar 信息偷偷用进来。</p>
+<p>这意味着：</p>
+<ul>
+<li>signal 不是“BTC vs ETH 谁涨得多”；</li>
+<li>而是 <strong>在当前估计的线性关系下，BTC 相对 ETH 是贵了还是便宜了。</strong></li>
+</ul>
+<h3>4.2 入场 / 出场规则</h3>
+<p>repo 的状态机很规整：</p>
+<ul>
+<li>平仓状态下：</li>
+<li><code>|Z| &gt; 2</code> 且 <code>ADF p &lt; 0.05</code> 才入场</li>
+<li><code>Z &gt; 2</code>：short spread</li>
+<li><code>Z &lt; -2</code>：long spread</li>
+<li>持仓状态下：</li>
+<li><code>|Z| &lt; 0.5</code>：止盈平仓</li>
+<li><code>|Z| &gt; 4</code>：stop-loss</li>
+<li><code>holding_hours &gt; 3 × median_HL</code>：time-stop</li>
+</ul>
+<p>换句话说，这不是“极端就赌回归”的裸奔版本，而是：</p>
+<ul>
+<li>先确认当前窗口还有 stationarity 痕迹；</li>
+<li>再赌 spread 过度偏离后的均值回归；</li>
+<li>如果迟迟不回、或者越走越偏，就强制认输。</li>
+</ul>
+<h3>4.3 这份 repo 最值钱的地方：sizing 和 signal 定义一致</h3>
+<p>repo 的关键 insight 可以压成一句话：</p>
+<p>&gt; <strong>你定义的是 <code>BTC - β·ETH</code> 这条 spread，就该配 <code>1 : β</code> 这组仓位；否则 signal 和仓位不是同一件东西。</strong></p>
+<p>这件事看起来像理论洁癖，实际上是 PnL 大事：</p>
+<ul>
+<li>当 <code>β &lt; 1</code> 时，1:1 美元对冲会让 ETH 腿偏重；</li>
+<li>于是策略会混入额外 ETH 方向暴露；</li>
+<li>这个暴露既会放大 drawdown，也会让交易成本变高；</li>
+<li>beta-neutral 则同时修了两件事：</li>
+</ul>
+<ol>
+<li>对冲结构更接近 signal 本身；</li>
+<li>ETH 腿 notional 更小，费用更低。</li>
+</ol>
+<h2>5. Binance 公共 <code>1h / 15m</code> sizing transfer check</h2>
+<p>我补了一个 <strong>轻量本地 transfer check</strong>，目标不是复刻 repo 全部统计检验，而是验证最核心的 desk 问题：</p>
+<p>&gt; <strong>同一条 BTC/ETH spread mean reversion，只改 sizing，beta-neutral 在当前 Binance 短周期上是不是普遍更优？</strong></p>
+<h3>5.1 本地 proxy 口径</h3>
+<p>为保证这轮 intake 速度，我用的是轻量版 proxy，而不是完整 repo 复刻：</p>
+<ul>
+<li>数据：<strong>Binance USDⓈ-M Perpetual 公共 <code>BTCUSDT / ETHUSDT</code> klines</strong></li>
+<li>频率：<code>1h</code> 与 <code>15m</code></li>
+<li>信号：rolling <code>β</code> + spread z-score</li>
+<li>gate：rolling return correlation <code>&gt;= 0.75</code></li>
+<li>成本：每腿 <strong><code>6 bps</code></strong></li>
+<li>暂未纳入：</li>
+<li>funding cashflow</li>
+<li>严格 rolling ADF p-value</li>
+<li>OU half-life 精确估计</li>
+</ul>
+<p>也就是说： &gt; <strong>这轮 proxy 只是在测 sizing 迁移，不是在给 BTC/ETH 现成 live verdict。</strong></p>
+<p>相关 artifact：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-03-29_btc_eth_beta_vs_dollar_proxy.json</code></li>
+<li><code>reports/artifacts/quant_digests/2026-03-29_btc_eth_beta_vs_dollar_15m_grid.json</code></li>
+</ul>
+<h3>5.2 <code>1h</code> proxy 结果：beta-neutral 明显减损，但还没把 alpha 救活</h3>
+<p>样本：</p>
+<ul>
+<li>区间：<strong>2025-02-02 → 2026-03-29</strong></li>
+<li>bars：<strong>10,080</strong></li>
+<li>median corr：<strong><code>0.821</code></strong></li>
+<li>median beta：<strong><code>0.532</code></strong></li>
+</ul>
+<p>结果：</p>
+<ul>
+<li><strong>Dollar-neutral</strong></li>
+<li>trades：<strong>46</strong></li>
+<li>cum net：<strong><code>-23.01%</code></strong></li>
+<li>mean trade：<strong><code>-50.0 bps</code></strong></li>
+<li>max DD：<strong><code>-25.30%</code></strong></li>
+<li><strong>Beta-neutral</strong></li>
+<li>trades：<strong>46</strong></li>
+<li>cum net：<strong><code>-15.23%</code></strong></li>
+<li>mean trade：<strong><code>-33.1 bps</code></strong></li>
+<li>max DD：<strong><code>-16.04%</code></strong></li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>同样的信号、同样的交易次数；</li>
+<li>只改 sizing，beta-neutral 就把累计亏损从 <strong><code>-23.0%</code> 收窄到 <code>-15.2%</code></strong>；</li>
+<li>drawdown 也从 <strong><code>-25.3%</code></strong> 缩到 <strong><code>-16.0%</code></strong>。</li>
+</ul>
+<h3>5.3 <code>15m</code> proxy 结果：短周期上 beta-neutral 也更优，但单靠 sizing 仍救不活</h3>
+<p>样本：</p>
+<ul>
+<li>区间：<strong>2025-11-29 → 2026-03-29</strong></li>
+<li>bars：<strong>11,521</strong></li>
+<li>median corr：<strong><code>0.892</code></strong></li>
+<li>median beta：<strong><code>0.671</code></strong></li>
+</ul>
+<p>结果：</p>
+<ul>
+<li><strong>Dollar-neutral</strong></li>
+<li>trades：<strong>98</strong></li>
+<li>cum net：<strong><code>-11.26%</code></strong></li>
+<li>mean trade：<strong><code>-11.49 bps</code></strong></li>
+<li>hit rate：<strong><code>23.5%</code></strong></li>
+<li>median hold：<strong>5 bars</strong></li>
+<li>max DD：<strong><code>-11.33%</code></strong></li>
+<li><strong>Beta-neutral</strong></li>
+<li>trades：<strong>98</strong></li>
+<li>cum net：<strong><code>-8.12%</code></strong></li>
+<li>mean trade：<strong><code>-8.29 bps</code></strong></li>
+<li>hit rate：<strong><code>27.6%</code></strong></li>
+<li>median hold：<strong>5 bars</strong></li>
+<li>max DD：<strong><code>-9.47%</code></strong></li>
+</ul>
+<p>这里最该记的不是“依然亏钱”，而是：</p>
+<p>&gt; <strong>在 15m 上，beta-neutral 仍然把同一组 trades 的净损失缩小了约 <code>313 bps</code>，同时把 hit rate 提高了约 <code>4.1 pct</code>。</strong></p>
+<p>也就是说：</p>
+<ul>
+<li>sizing 改善不是 repo 那段历史样本里的偶然故事；</li>
+<li>它在当前 <code>15m</code> pocket 上仍然有方向一致的正贡献；</li>
+<li>但 raw alpha 本体还不够强，不能指望 sizing 一个人把整条策略救活。</li>
+</ul>
+<h3>5.4 <code>15m</code> 小网格：这不是单点调参巧合</h3>
+<p>我又扫了一个小参数网格：</p>
+<ul>
+<li>lookback：<code>192 / 384 / 576</code></li>
+<li>entry z：<code>1.5 / 2.0 / 2.5</code></li>
+<li>exit z：<code>0.25 / 0.5 / 1.0</code></li>
+<li>max hold：<code>16 / 32 / 64</code></li>
+</ul>
+<p>总共 <strong>81 个 cells</strong>，结果：</p>
+<ul>
+<li><strong>beta-neutral 在 <code>61 / 81</code> 个 cells（<code>75.3%</code>）里优于 dollar-neutral</strong></li>
+<li>每笔交易的中位 uplift 约 <strong><code>+0.88 bps</code></strong></li>
+<li>但最好的 beta-neutral cell 仍只有 <strong><code>-7.07 bps/trade</code></strong>，还没翻正</li>
+</ul>
+<p>所以更诚实的结论是：</p>
+<p>&gt; <strong>beta-neutral 更像“该做的正确实现”，不是“自动把 BTC/ETH 15m pairs 做成赚钱策略”的魔法开关。</strong></p>
+<h2>6. 这组结果该怎么读</h2>
+<h3>6.1 正面结论：sizing 不是 garnish，是 alpha body 的一部分</h3>
+<p>如果 signal 依赖 rolling <code>β</code>，那 sizing 不该被降级成回测尾声才看的“仓位细节”。</p>
+<p>对 pairs / stat-arb desk 来说，更正确的表述应该是：</p>
+<p>&gt; <strong><code>position sizing</code> 不是 signal 后处理，而是 spread 定义的一部分。</strong></p>
+<h3>6.2 负面结论：当前 Binance 短周期上，BTC/ETH 单 pair 还不够强</h3>
+<p>这轮 proxy 同时告诉我们另一件更重要的事：</p>
+<ul>
+<li>即使 sizing 改对；</li>
+<li>即使相关性很高；</li>
+<li>即使 z-score 很极端；</li>
+<li>BTC/ETH 单 pair 在当前 <code>15m</code> 样本里，成本后仍然不够强。</li>
+</ul>
+<p>也就是说，下一步不该是“直接上线 beta-neutral BTC/ETH pairs”，而是：</p>
+<ol>
+<li>先把 <strong>sizing consistency</strong> 变成 pairs 默认标准件；</li>
+<li>再把 alpha 强度问题交给 pair selection / regime gate / execution 来解决。</li>
+</ol>
+<h3>6.3 对我们当前素材池的直接启发</h3>
+<p>这张卡最适合服务的，不只是 BTC/ETH 本身，而是整类：</p>
+<ul>
+<li>cointegration pairs</li>
+<li>same-underlier quote spread</li>
+<li>cross-venue same-asset basis</li>
+<li>basket stat-arb</li>
+</ul>
+<p>凡是 signal 里出现 <code>β</code> / hedge ratio / factor loading 的策略，都应该补一句：</p>
+<p>&gt; <strong>回测里到底是在按 signal 定义配仓，还是在按“习惯上的 1:1 dollars”配仓？</strong></p>
+<h2>7. 下一步怎么测</h2>
+<h3>7.1 最小可落地实验（优先级最高）</h3>
+<p>先做一张非常明确的 A/B/C 实验卡：</p>
+<ul>
+<li>数据：Binance USDⓈ-M <code>BTCUSDT / ETHUSDT / BNBUSDT</code></li>
+<li>周期：<code>15m</code> 信号，<code>5m</code> 执行</li>
+<li>信号：rolling OLS <code>β</code> + ADF p-value + spread z-score</li>
+<li>仓位方案：</li>
+</ul>
+<ol>
+<li><code>dollar-neutral</code></li>
+<li><code>beta-neutral</code></li>
+<li><code>beta-neutral + vol target</code></li>
+</ol>
+<ul>
+<li>成本：maker/taker 两套</li>
+<li>funding：显式扣除 8h funding</li>
+</ul>
+<p>核心验收条件不是“是否赚钱”，而是：</p>
+<ul>
+<li>在<strong>完全相同 signal</strong> 下，<code>beta-neutral</code> 是否持续优于 <code>dollar-neutral</code>；</li>
+<li>优势到底来自 <strong>方向暴露更小</strong>，还是 <strong>fee/funding 更低</strong>；</li>
+<li>改成 <code>15m→5m</code> 执行后，优势会不会被 execution 噪音吃掉。</li>
+</ul>
+<h3>7.2 再往前一步：别只测 BTC/ETH</h3>
+<p>如果只盯 BTC/ETH，很容易把这件事读成“一个 pair 的特例”。</p>
+<p>下一轮更应该扩成 liquid-major pair basket：</p>
+<ul>
+<li><code>BTC-ETH</code></li>
+<li><code>ETH-BNB</code></li>
+<li><code>BTC-BNB</code></li>
+<li><code>SOL-ETH</code></li>
+<li><code>SOL-BNB</code></li>
+</ul>
+<p>用统一框架比较：</p>
+<ul>
+<li>rolling corr</li>
+<li><code>β</code> 稳定性</li>
+<li>ADF hit-rate</li>
+<li>hold length</li>
+<li>funding drag</li>
+<li>dollar-neutral vs beta-neutral uplift</li>
+</ul>
+<p>最后做一个排序：</p>
+<p>&gt; <strong>哪些 pair 是“signal 一般，但 sizing 改对后能显著改善”；哪些 pair 则是“signal 本身就不够，改 sizing 也救不了”。</strong></p>
+<h3>7.3 真正适配 desk 的增强项</h3>
+<p>如果这条线继续往 <code>1m / 3m / 5m / 15m</code> 迁移，我会优先加这三层：</p>
+<ol>
+<li><strong>regime gate</strong>：</li>
+</ol>
+<ul>
+<li><code>ADF p &lt; 0.10</code> / corr floor / realized-vol veto / funding sign veto</li>
+</ul>
+<ol>
+<li><strong>execution gate</strong>：</li>
+</ol>
+<ul>
+<li>盘口宽度、滑点、maker fill ratio、结算前 funding veto</li>
+</ul>
+<ol>
+<li><strong>pair governance</strong>：</li>
+</ol>
+<ul>
+<li>只在 <code>β</code> 稳定、half-life 合理、funding 不恶化的窗口开仓</li>
+</ul>
+<h2>8. 来源与可复现性</h2>
+<h3>8.1 主来源（repo）</h3>
+<ol>
+<li><strong>Howard (Cheng-Hao) Hsu</strong> (2026), *Statistical Arbitrage: BTC/ETH Cointegration Pairs Trading Strategy*</li>
+</ol>
+<ul>
+<li>Venue：GitHub repository</li>
+<li>Readable URL：<code><a href="https://github.com/Bauch0430/crypto-pairs-trading-btc-eth">https://github.com/Bauch0430/crypto-pairs-trading-btc-eth</a></code></li>
+<li>Repo URL：<code><a href="https://github.com/Bauch0430/crypto-pairs-trading-btc-eth">https://github.com/Bauch0430/crypto-pairs-trading-btc-eth</a></code></li>
+<li>仓库创建 / 推送：<strong>2026-03-13</strong></li>
+<li>关键披露：5 年 <code>1h</code> Binance perpetual 数据；<code>β</code> rolling OLS；ADF gate；funding + <code>6 bps</code>/leg 成本；<code>Dollar-Neutral</code> vs <code>Beta-Neutral</code> 对照</li>
+</ul>
+<h3>8.2 理论地基</h3>
+<ol>
+<li><strong>Gatev, E.; Goetzmann, W. N.; Rouwenhorst, K. G.</strong> (2006), *Pairs Trading: Performance of a Relative-Value Arbitrage Rule*, *Review of Financial Studies*</li>
+</ol>
+<ul>
+<li>DOI：<code>10.1093/rfs/hhj020</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.1093/rfs/hhj020">https://doi.org/10.1093/rfs/hhj020</a></code></li>
+</ul>
+<ol>
+<li><strong>Ramos-Requena, J. P.; Trinidad-Segovia, J. E.; Sánchez-Granero, M. A.</strong> (2020), *An Alternative Approach to Measure Co-Movement between Two Time Series*, *Mathematics*</li>
+</ol>
+<ul>
+<li>DOI：<code>10.3390/math8020261</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.3390/math8020261">https://doi.org/10.3390/math8020261</a></code></li>
+</ul>
+<h3>8.3 本轮本地数据口径</h3>
+<ul>
+<li>数据源：<strong>Binance USDⓈ-M Futures 公共 klines</strong></li>
+<li>公开性：<strong>公开可得，无需私有权限</strong></li>
+<li>更新频率：<code>15m</code> / <code>1h</code> bar；funding 为 <code>8h</code></li>
+<li>本轮最小实验口径：</li>
+<li>标的：<code>BTCUSDT</code>, <code>ETHUSDT</code></li>
+<li>信号：rolling <code>β</code> + z-score</li>
+<li>gate：corr floor <code>0.75</code></li>
+<li>成本：单腿 <code>6 bps</code></li>
+<li>输出：<code>dollar-neutral</code> vs <code>beta-neutral</code> 同信号对照</li>
+</ul>
+<h2>9. 一句话收尾</h2>
+<p>&gt; <strong>这轮 intake 最值得带走的，不是“BTC/ETH pairs 能做”，而是：凡是 spread 定义里用了 <code>β</code>，就别再把 beta-neutral sizing 当可有可无的小修饰。它应该是 raw alpha 骨架的一部分。</strong></p>
+</body>
+</html>

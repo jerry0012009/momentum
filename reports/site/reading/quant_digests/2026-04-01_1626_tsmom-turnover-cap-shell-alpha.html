@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 新 repo 只读成“trend-vs-MR 课程作业”：对 short-cycle desk，更该先测的是「vol-normalized TSMOM × turnover-penalized cap allocator」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 新 repo 只读成“trend-vs-MR 课程作业”：对 short-cycle desk，更该先测的是「vol-normalized TSMOM × turnover-penalized cap allocator」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-01 16:23 UTC</span>
+      <span class="pill">研究时间：2026-04-01 16:26 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 source audit（`README.md` + `Code.ipynb` + `Report.pdf` + GitHub API metadata）</span>
+      <span class="pill">主题标签：raw-alpha/trend/momentum/time-series/vol-normalized/tanh/turnover-penalized/cap-constrained/multi-asset/binance/majors/btc/eth/bnb/xrp/ada/doge/15m/5m/3m/1m/repo/public-data/cost</span>
+      <span class="pill">证据类型：2026 GitHub 新仓库 source audit（README + notebook 公式/回测输出 + repo metadata）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-01_1626_tsmom-turnover-cap-shell-alpha.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>波动率归一化后的 time-series momentum / trend continuation</strong>；具体就是 <code>log(P_t / P_{t-L}) / (σ_t * √L)</code> 经过 <code>tanh</code> 压缩后，映射成连续多空目标仓位</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>时间：2026-04-01 16:26 UTC</li>
+<li>类型：2026 GitHub 新仓库 source audit（<code>README.md</code> + <code>Code.ipynb</code> + <code>Report.pdf</code> + GitHub API metadata）</li>
+<li>主题标签：raw-alpha/trend/momentum/time-series/vol-normalized/tanh/turnover-penalized/cap-constrained/multi-asset/binance/majors/btc/eth/bnb/xrp/ada/doge/15m/5m/3m/1m/repo/public-data/cost</li>
+<li>证据类型：2026 GitHub 新仓库 source audit（README + notebook 公式/回测输出 + repo metadata）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主材料不是论文，而是一份 <strong>2026-03-30 创建</strong> 的 GitHub 新仓库：<strong>mhtkrmz (2026), _crypto-alpha-comparison_</strong>。headline 看起来像“趋势 vs 均值回复”的课程项目，但对我们 desk 真正更值得 intake 的，不是它在讲两派孰优孰劣，而是它把一条 <strong>可直接复现的多资产 TSMOM 完整策略骨架</strong> 写得非常清楚：</p>
+<ul>
+<li>用 Binance 公共 <code>1h</code> OHLCV 抓 6 个 liquid majors；</li>
+<li>把 <strong>log-momentum / realized vol / rolling covariance / turnover penalty / gross cap</strong> 串成同一个目标仓位优化器；</li>
+<li>用完全相同的组合壳子，公平比较 <code>trend_following</code> 和 <code>mean_reversion</code>；</li>
+<li>最后再把 <strong>Roll / Corwin-Schultz</strong> 推出来的滑点估计接到净值端。</li>
+</ul>
+<p>翻成人话： <strong>它不是在说“趋势永远比反转好”，而是在说“如果你真要做短中短周期的多资产 raw alpha，至少该把信号、仓位、换手惩罚、风险协方差、成本放进同一个壳子里比较”。</strong></p>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p>这篇 digest 的主角不是 repo 里的 mean reversion 支线，而是它更清楚、也更适合当前 desk 主线的那条 <strong>trend-following raw alpha</strong>：</p>
+<ul>
+<li>先看某个币过去 <code>L</code> 根 bar 的对数收益 <code>log(P_t / P_{t-L})</code>；</li>
+<li>再除以 <code>σ_t * √L</code>，把不同币、不同波动状态下的动量强度归一到同一量纲；</li>
+<li>再用 <code>tanh</code> 压缩极端值，避免单个极端趋势把仓位直接拉满；</li>
+<li>最后得到连续目标收益 <code>mu = signal * sigma1</code>，再进入带换手惩罚和风险惩罚的仓位分配器。</li>
+</ul>
+<p>翻成人话： <strong>base alpha 就是“波动率调整后的趋势延续”：涨得又稳又持续的币，应该比刚刚乱冲的币拿到更高的持续性仓位。</strong></p>
+<p>所以这轮它明确属于：</p>
+<ul>
+<li><code>raw alpha</code></li>
+<li><code>trend / momentum</code></li>
+<li><code>time-series</code></li>
+<li>不是 filter，不是 regime，也不是只能挂靠别的 alpha 才有意义的 overlay。</li>
+</ul>
+<h2>3. 为什么这轮值得写，而不是继续补一个只会服务别人的 gate</h2>
+<p>结合当前学习主线，这轮值得写有三个原因：</p>
+<ol>
+<li><strong>它正好补的是主线缺口。</strong> <code>LEARNING_TRACK.md</code> 和 <code>FACTOR_BACKLOG.md</code> 里，趋势/动量一直是明确优先级，但当前 backlog 里更偏“方向过滤 / breakout / ATR 概念”，而缺一张真正把 <strong>raw alpha + sizing + risk + turnover + cost</strong> 串起来的完整趋势策略卡。</li>
+<li><strong>它不是抽象论文，而是公开 repo。</strong> 数据、公式、参数网格、验证 / 测试切分、成本估计都能直接抄成最小实验。</li>
+<li><strong>它提供了一个很值钱的对照。</strong> 在同样的组合壳子下，repo 里的 cross-sectional mean reversion 基本跑不出来，而 TSMOM 至少在 pre-cost / validation 上明显更强。这对 desk 很重要，因为它能帮助我们少走“均值回复幻觉 + 执行壳子没统一”的弯路。</li>
+</ol>
+<h2>4. 这次看的主来源</h2>
+<h3>4.1 主来源（repo）</h3>
+<ul>
+<li><strong>Author / Repo owner</strong>：mhtkrmz</li>
+<li><strong>Year</strong>：2026</li>
+<li><strong>Title / Repo</strong>：*crypto-alpha-comparison*</li>
+<li><strong>Venue</strong>：GitHub repository</li>
+<li><strong>DOI</strong>：N/A</li>
+<li><strong>Readable URL</strong>：<a href="https://github.com/mhtkrmz/crypto-alpha-comparison">https://github.com/mhtkrmz/crypto-alpha-comparison</a></li>
+<li><strong>Repo URL</strong>：<a href="https://github.com/mhtkrmz/crypto-alpha-comparison">https://github.com/mhtkrmz/crypto-alpha-comparison</a></li>
+<li><strong>GitHub metadata</strong>：created <code>2026-03-30T12:20:22Z</code>，pushed <code>2026-03-30T12:24:35Z</code></li>
+</ul>
+<h3>4.2 这轮实际看的关键文件</h3>
+<ul>
+<li><code>README.md</code></li>
+<li><code>Code.ipynb</code></li>
+<li><code>Report.pdf</code></li>
+</ul>
+<h2>5. 这条 raw alpha 在代码里到底怎么定义</h2>
+<h3>5.1 数据宇宙非常朴素，但够做 clean replication</h3>
+<p>repo 从 Binance 公共 <code>1h</code> K 线下载这 6 个币：</p>
+<ul>
+<li><code>BTCUSDT</code></li>
+<li><code>ETHUSDT</code></li>
+<li><code>BNBUSDT</code></li>
+<li><code>XRPUSDT</code></li>
+<li><code>ADAUSDT</code></li>
+<li><code>DOGEUSDT</code></li>
+</ul>
+<p>样本区间是：</p>
+<ul>
+<li><strong>2022-01-01 00:00 UTC → 2026-03-15 15:00 UTC</strong></li>
+<li>每个币 <strong>36,832 根 <code>1h</code> bars</strong></li>
+</ul>
+<p>这很重要，因为它不是拿几周数据讲故事，而是拿了一个跨牛熊、跨 regime 的中等长度样本。</p>
+<h3>5.2 repo 直接把趋势信号公式写出来了</h3>
+<p><code>Code.ipynb</code> 里的核心函数是：</p>
+<ul>
+<li><code>make_trend_mu(close_df, sigma1_df, lookback)</code></li>
+<li>公式：<code>signal_t ~ tanh( log(P_t / P_{t-L}) / (sigma_t * sqrt(L)) )</code></li>
+<li>然后 <strong>shift 1 bar</strong> 避免 lookahead</li>
+<li>再映射成 <code>mu = signal * sigma1</code></li>
+</ul>
+<p>几个关键点：</p>
+<ol>
+<li><strong>不是裸收益排序。</strong> 它先做了波动率归一化，避免高波动币因为“涨跌更猛”天然压过别的币。</li>
+<li><strong>不是二元多空。</strong> <code>tanh</code> 把仓位信号做成连续值，强趋势拿更大仓位，弱趋势拿更小仓位。</li>
+<li><strong>不是只看 signal，不管执行。</strong> 后面它不是简单 equal-weight，而是直接塞进带惩罚项的组合优化器。</li>
+</ol>
+<h3>5.3 组合壳子本身也是这份 repo 最值钱的部分</h3>
+<p><code>run_strategy(...)</code> 每根 bar 解的问题是：</p>
+<ol>
+<li><code>max_w mu&#x27;w - 0.5*lambda*w&#x27;Sw - 0.5*kappa||w - w_prev||^2</code></li>
+<li>约束：<code>||w||_1 &lt;= 1</code></li>
+<li>名义仓位：<code>theta = gross_cap * w</code></li>
+</ol>
+<p>翻成人话：</p>
+<ul>
+<li><code>mu&#x27;w</code>：你想追 alpha</li>
+<li><code>lambda*w&#x27;Sw</code>：但要怕波动 / 协方差风险</li>
+<li><code>kappa||w-w_prev||^2</code>：还要怕频繁调仓带来的换手与成本</li>
+<li><code>||w||_1 &lt;= 1</code>：总 gross 暴露不能无限开</li>
+</ul>
+<p>这对 desk 的价值非常直接： <strong>它已经把“信号强度”和“能不能低换手、低冲击地抱住仓位”放到同一层处理。</strong></p>
+<h3>5.4 参数网格也很适合直接迁移</h3>
+<p>repo 的固定设置：</p>
+<ul>
+<li><code>STARTING_CAPITAL = 10,000 USDT</code></li>
+<li><code>GROSS_CAP = 100,000 USDT</code></li>
+<li><code>VOL_COV_WIN = 168</code>（1 周 <code>1h</code> bar）</li>
+<li><code>RISK_AVERSION = 15.0</code></li>
+<li><code>COV_SHRINK = 0.25</code></li>
+<li>训练 / 验证 / 测试切分：<code>60% / 20% / 20%</code></li>
+</ul>
+<p>趋势 lookback grid：</p>
+<ul>
+<li><code>24 / 72 / 168 / 336</code> bars</li>
+</ul>
+<p>mean reversion lookback grid：</p>
+<ul>
+<li><code>4 / 8 / 12 / 24</code> bars</li>
+</ul>
+<p>turnover penalty grid：</p>
+<ul>
+<li><code>0.02 / 0.05 / 0.10</code></li>
+</ul>
+<p>这意味着： <strong>这份 repo 不是“给你一个结论”，而是直接给你一张能搬到 <code>15m/5m/3m/1m</code> 的实验模板。</strong></p>
+<h2>6. 最值得拿走的硬数据点</h2>
+<h3>6.1 validation 上，趋势分支明显比反转分支更像样</h3>
+<p>repo 在统一壳子下给出的最佳 validation 组合：</p>
+<p><strong>Trend-following</strong></p>
+<ul>
+<li>best lookback：<code>336</code> bars</li>
+<li>best turnover penalty：<code>0.02</code></li>
+<li><code>validation_sharpe = 2.5225</code></li>
+<li><code>validation_cum_pnl_usdt = 223,220</code></li>
+<li><code>validation_avg_turnover_usdt = 2,533</code></li>
+</ul>
+<p><strong>Mean reversion</strong></p>
+<ul>
+<li>best lookback：<code>24</code> bars</li>
+<li>best turnover penalty：<code>0.10</code></li>
+<li><code>validation_sharpe = -1.2071</code></li>
+<li><code>validation_cum_pnl_usdt = -69,136</code></li>
+<li><code>validation_avg_turnover_usdt = 7,461</code></li>
+</ul>
+<p>这组数非常值钱，因为它说明在同一 universe、同一 gross cap、同一 risk shell 下： <strong>反转不但没赢，换手还更高；趋势至少在 validation 上是又强又更省换手。</strong></p>
+<h3>6.2 test 不是爆炸优秀，但至少没有 validation 那么像幻觉</h3>
+<p>最佳 locked 参数在 test 上：</p>
+<p><strong>Trend-following</strong></p>
+<ul>
+<li><code>test_sharpe = 0.3430</code></li>
+<li><code>test_cum_pnl_usdt = 21,368.6</code></li>
+<li><code>test_avg_turnover_usdt = 2,522.6</code></li>
+</ul>
+<p><strong>Mean reversion</strong></p>
+<ul>
+<li><code>test_sharpe = 0.6227</code></li>
+<li><code>test_cum_pnl_usdt = 17,714.8</code></li>
+<li><code>test_avg_turnover_usdt = 6,246.8</code></li>
+</ul>
+<p>这里要注意两点：</p>
+<ol>
+<li>反转 test 看起来“意外转正”，但因为 validation 全面为负，所以更像 sample luck，而不是稳健 alpha。</li>
+<li>趋势 test sharpe 只有 <code>0.34</code>，说明这不是“闭眼就上的神策略”，而是 <strong>值得继续加 friction ladder、改时间尺度、换执行壳子</strong> 的 raw alpha 候选。</li>
+</ol>
+<h3>6.3 它给了一个很实用的滑点标尺</h3>
+<p>repo 用 Roll / Corwin-Schultz 做了资产级滑点估计，最后选出的统一标尺是：</p>
+<ul>
+<li><strong><code>s = 0.00086777</code> decimal per trade</strong></li>
+<li>也就是 <strong><code>8.6777 bps</code> one-way</strong></li>
+</ul>
+<p>并且 notebook 里展示的资产级估计里，至少可以看到：</p>
+<ul>
+<li>BNB 约 <code>5.23 bps</code></li>
+<li>BTC 约 <code>5.97 bps</code></li>
+<li>ETH 约 <code>6.92 bps</code></li>
+<li>ADA 约 <code>9.06 bps</code></li>
+<li>XRP 约 <code>10.41 bps</code></li>
+</ul>
+<p>翻成人话： <strong>这份 repo 最有价值的一点，不是回测赚了多少，而是它逼你承认“多资产短周期 alpha 的成本壳必须先写进去”。</strong></p>
+<h3>6.4 全样本净值一上成本，问题立刻暴露</h3>
+<p>在 Part 4 的 fixed-100k-cap 模式下：</p>
+<p><strong>Trend-following</strong></p>
+<ul>
+<li>gross total pnl：<code>333,853 USDT</code></li>
+<li>net total pnl：<code>243,432 USDT</code></li>
+<li>total cost：<code>90,421 USDT</code></li>
+<li>avg holding horizon：<code>70.05</code> bars（约 <code>2.92</code> 天）</li>
+</ul>
+<p><strong>Mean reversion</strong></p>
+<ul>
+<li>gross total pnl：<code>-141,851 USDT</code></li>
+<li>net total pnl：<code>-354,509 USDT</code></li>
+<li>total cost：<code>212,658 USDT</code></li>
+<li>avg holding horizon：<code>29.42</code> bars（约 <code>1.23</code> 天）</li>
+</ul>
+<p>这组数字的 desk 读法不是“趋势一定稳赚”，而是：</p>
+<ul>
+<li>趋势分支 <strong>更低换手、持有更久、成本侵蚀更慢</strong>；</li>
+<li>反转分支 <strong>先天换手更高，成本一上来就被吃死</strong>。</li>
+</ul>
+<h2>7. 对当前 desk，最该偷的不是“趋势赢了”，而是这 3 个具体组件</h2>
+<h3>7.1 组件一：vol-normalized momentum，而不是裸 return 排名</h3>
+<p>这能直接补当前主线里对“多周期动量”的理解：</p>
+<ul>
+<li>不是看谁涨得多就追谁；</li>
+<li>而是看谁在 <strong>单位波动风险下</strong> 的趋势更干净。</li>
+</ul>
+<h3>7.2 组件二：turnover penalty 要从第一天就跟 alpha 写在一起</h3>
+<p>repo 最有启发的一点不是 <code>Sharpe 2.52</code>，而是： <strong>同样的 alpha，如果你不惩罚换手，最终可能只是把 gross edge 全喂给滑点。</strong></p>
+<p>这和当前 <code>FACTOR_BACKLOG.md</code> 里强调的 post-cost 评估是完全一致的，而且比“先出信号、后补成本”更像能进实盘候选池的写法。</p>
+<h3>7.3 组件三：用同一 allocator 比 raw alpha，而不是每条策略都带不同壳子</h3>
+<p>很多 repo 看起来像在比较 signal，实际上比较的是：</p>
+<ul>
+<li>有的用了更强的仓位控制</li>
+<li>有的换手更少</li>
+<li>有的根本没算成本</li>
+</ul>
+<p>这份 repo 的好处是： <strong>它先把壳子固定，再比较 trend vs MR。</strong> 这让“哪条 raw alpha 更值得继续”这个问题变得更干净。</p>
+<h2>8. 这份 repo 为什么仍然不能直接照抄进实盘</h2>
+<h3>8.1 时间尺度不是我们现在的默认主战场</h3>
+<p>repo 的 native 实验是 <code>1h</code>。这对当前以 <code>5m / 15m</code> 为主、也接受 <code>1m / 3m</code> 的 desk 来说，不是最终答案。</p>
+<p>但它仍然很有用，因为：</p>
+<ul>
+<li>公式是 bar-based，可直接缩放到更快周期；</li>
+<li>组合壳子与成本壳本身就是可以复用的；</li>
+<li>它更像是一个 <strong>干净、公开、能搬运的骨架</strong>。</li>
+</ul>
+<h3>8.2 资本约束写法有点“作业式”而不是 production-ready</h3>
+<p>它设：</p>
+<ul>
+<li>initial capital <code>10k</code></li>
+<li>gross cap <code>100k</code></li>
+</ul>
+<p>这会让回测读起来更像“固定 gross exposure assignment”，而不是一个真正受保证金 / 爆仓 / 资金曲线约束的 production shell。</p>
+<p>所以： <strong>它是完整策略定义，不等于 production-ready portfolio engine。</strong></p>
+<h3>8.3 mean reversion 支线不该被误读成“又一条可用候选”</h3>
+<p>从 validation 来看，这条 cross-sectional MR 在这套壳子里基本是输家。</p>
+<p>因此更合理的 desk 读法是：</p>
+<ul>
+<li>把它当 repo 内的 <strong>对照组</strong>；</li>
+<li>主 intake 仍然是 <strong>trend-following raw alpha + allocator shell</strong>；</li>
+<li>而不是“顺手把反转支线也塞进 backlog”。</li>
+</ul>
+<h2>9. 对 <code>15m / 5m / 3m / 1m</code> 的最小实验怎么做</h2>
+<h3>9.1 先做 <code>15m</code>，因为它最像“保留趋势信息但不至于太慢”</h3>
+<p>第一版最小实验建议：</p>
+<ul>
+<li>universe：<code>BTC / ETH / BNB / SOL / XRP / ADA</code></li>
+<li>bar：<code>15m</code></li>
+<li>signal：</li>
+<li><code>mom_L = log(P_t / P_{t-L})</code></li>
+<li><code>z_L = mom_L / (σ_t * √L)</code></li>
+<li><code>signal = tanh(z_L)</code></li>
+<li><code>mu = signal.shift(1) * sigma1</code></li>
+<li>sigma：rolling <code>1-bar</code> return std，再 shift 1</li>
+<li>covariance window：<code>96 / 192</code> bars</li>
+<li>lookback grid：<code>96 / 192 / 384 / 672 / 1344</code> bars</li>
+<li>turnover penalty：<code>0.02 / 0.05 / 0.10 / 0.20</code></li>
+<li>gross cap：先固定成 <code>1x</code> 和 <code>2x</code> 两档，不要一上来就学 repo 的 <code>10x</code></li>
+</ul>
+<p>执行口径：</p>
+<ul>
+<li>每根 <code>15m</code> bar close 计算目标仓位</li>
+<li>下一根 open 或 next-bar VWAP 调整仓位</li>
+<li>统一 friction ladder：<code>2 / 4 / 6 / 8 / 10 bps</code> one-way</li>
+<li>perp 版本额外扣 funding</li>
+</ul>
+<h3>9.2 再下钻到 <code>5m</code></h3>
+<p>如果 <code>15m</code> 还能留边，再把同一骨架搬到 <code>5m</code>：</p>
+<ul>
+<li>lookback 先试 <code>96 / 288 / 576 / 864</code></li>
+<li>covariance window 先试 <code>96 / 288</code></li>
+<li>重点观察 turnover 是否失控</li>
+</ul>
+<p>这里最重要的不是追高 Sharpe，而是看： <strong>同样的 vol-normalized TSMOM，在更快 bar 上还能不能在成本后留下稳定边。</strong></p>
+<h3>9.3 <code>3m / 1m</code> 不建议直接上 full allocator，先做 alpha-existence</h3>
+<p>更快周期建议先降级：</p>
+<ul>
+<li>单币先看 <code>signal</code> 分层后的 forward return monotonicity</li>
+<li>再看 top-quantile vs bottom-quantile 的下一段收益差</li>
+<li>只有当 alpha-existence 明确存在，再上多资产 allocator</li>
+</ul>
+<p>不然会过早把“执行噪音 + 组合噪音 + 成本噪音”全揉在一起。</p>
+<h2>10. 下一步怎么测（必须落地）</h2>
+<h3>10.1 第一优先级：把 repo 的 trend 分支单独移植到 desk 默认框架</h3>
+<p>不是复刻整个 trend-vs-MR 作业，而是只移植：</p>
+<ul>
+<li><code>make_trend_mu</code></li>
+<li><code>run_strategy</code> 的目标函数结构</li>
+<li><code>turnover_penalty</code></li>
+<li><code>gross cap + friction ladder</code></li>
+</ul>
+<p>目标： <strong>先确认“vol-normalized TSMOM + turnover penalty”在 <code>15m</code> 上是否仍有成本后生存空间。</strong></p>
+<h3>10.2 第二优先级：做一个公平对照</h3>
+<p>用完全同一壳子，只换 alpha：</p>
+<ol>
+<li><code>vol-normalized TSMOM</code></li>
+<li>当前 desk 自带的 multi-timeframe momentum baseline</li>
+<li>一个简单 XS lagged-return continuation baseline</li>
+</ol>
+<p>只比较：</p>
+<ul>
+<li>post-cost return</li>
+<li>max drawdown</li>
+<li>avg turnover</li>
+<li>positive asset ratio / positive window ratio</li>
+</ul>
+<p>这样才能知道： <strong>值得搬的，到底是“repo 的 alpha”，还是“repo 的 allocator shell”。</strong></p>
+<h3>10.3 第三优先级：做 friction cliff 图</h3>
+<p>最值得先画的不是净值，而是：</p>
+<ul>
+<li>x 轴：one-way bps</li>
+<li>y 轴：net return / Sharpe / turnover-adjusted edge</li>
+<li>多条曲线：不同 <code>L</code>、不同 <code>kappa</code></li>
+</ul>
+<p>因为这类策略最怕的不是“均值收益不够高”，而是： <strong>一旦从 4 bps 滑到 8 bps，就整条曲线掉下悬崖。</strong></p>
+<h2>11. 一句话结论</h2>
+<p><strong>这份 2026 新 repo 真正值得 desk intake 的，不是“趋势赢了反转”，而是那条能直接搬到 <code>15m/5m</code> 的完整骨架：vol-normalized TSMOM 信号 + turnover-penalized cap allocator + 明确 friction shell。</strong></p>
+<h2>12. 它是怎么证明这件事的</h2>
+<p><strong>它靠的是公开 Binance 多资产样本上的统一壳子回测与成本估计：先把 trend 和 MR 放进同一优化器比较，再把滑点壳接进去，看谁还能活。</strong></p>
+</body>
+</html>

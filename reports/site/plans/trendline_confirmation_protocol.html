@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trendline Confirmation Protocol</title>
+  <style>
+    :root {
+      --fg: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --bg-soft: #f8fafc;
+      --bg-pill: #eef2ff;
+      --bg-done: #ecfdf5;
+      --bg-todo: #fff7ed;
+      --link: #2563eb;
+      --bg-card: #ffffff;
+      --bg-highlight: #f5f7ff;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: var(--fg); margin: 0; background: white; }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 32px 20px 64px; }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .hero { border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px; background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); margin-bottom: 20px; }
+    .hero h1 { margin: 0 0 8px; font-size: 34px; }
+    .muted { color: var(--muted); }
+    .layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 22px; align-items: start; }
+    .card { border: 1px solid var(--border); border-radius: 14px; background: var(--bg-card); padding: 18px 20px; }
+    .toc { position: sticky; top: 16px; }
+    .toc h2 { margin-top: 0; font-size: 18px; }
+    .toc-list { list-style: none; padding: 0; margin: 0; }
+    .toc-list li { margin: 8px 0; line-height: 1.35; }
+    .toc-h3 { padding-left: 12px; font-size: 14px; }
+    .content h1:first-child { display: none; }
+    .content h2 { margin-top: 28px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 28px; }
+    .content h3 { margin-top: 22px; font-size: 21px; }
+    .content p { line-height: 1.7; }
+    .content ul, .content ol { padding-left: 22px; line-height: 1.7; }
+    .content li.done { background: var(--bg-done); }
+    .content li.todo { background: var(--bg-todo); }
+    .content li { padding: 3px 6px; border-radius: 8px; margin: 3px 0; }
+    .content code, code { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.95em; }
+    blockquote { margin: 14px 0; padding: 10px 14px; border-left: 4px solid #93c5fd; background: #eff6ff; border-radius: 8px; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
+    .pills { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .pill { background: var(--bg-pill); color: #3730a3; border-radius: 999px; padding: 6px 12px; font-size: 13px; }
+    .list { display: grid; gap: 16px; }
+    .plan-link { display: block; border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; background: white; }
+    .plan-link h2 { margin: 0 0 6px; font-size: 24px; }
+    .entry-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .entry-link { display: block; border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; background: white; }
+    .entry-link h2 { margin: 8px 0 6px; font-size: 20px; }
+    .entry-pill { display:inline-block; font-size:12px; padding:4px 8px; border-radius:999px; background: var(--bg-pill); color:#3730a3; }
+    .stack { display: grid; gap: 22px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+    .summary-card { display: block; border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; background: var(--bg-highlight); color: inherit; }
+    .summary-card h3 { margin: 10px 0 8px; font-size: 18px; }
+    .summary-card p { margin: 0; line-height: 1.6; }
+    .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+    .status-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; background: white; }
+    .status-label { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    .status-value { font-size: 18px; margin-top: 8px; font-weight: 700; }
+    .live-meta { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+    .live-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 14px; }
+    .live-card { border:1px solid var(--border); border-radius:14px; padding:16px 18px; background:white; }
+    .live-card h3 { margin: 0 0 8px; font-size: 18px; }
+    .live-card p { margin: 6px 0; line-height: 1.6; }
+    .live-card .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .live-badge { display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:700; }
+    .live-badge.ok { background:#ecfdf5; color:#166534; }
+    .live-badge.warn { background:#fff7ed; color:#9a3412; }
+    .live-badge.error { background:#fef2f2; color:#b91c1c; }
+    .live-badge.idle { background:#f3f4f6; color:#374151; }
+    .live-badge.disabled { background:#e5e7eb; color:#4b5563; }
+    .mini-pill { display: inline-block; margin: 0 8px 8px 0; background: #f3f4f6; color: #374151; border-radius: 999px; padding: 5px 10px; font-size: 12px; }
+    .doc-details, .note-details { border: 1px solid var(--border); border-radius: 14px; padding: 0; background: white; margin-top: 14px; overflow: hidden; }
+    .doc-details summary, .note-details summary { cursor: pointer; list-style: none; padding: 16px 18px; background: #fafafa; }
+    .doc-details summary::-webkit-details-marker, .note-details summary::-webkit-details-marker { display: none; }
+    .doc-details[open] summary, .note-details[open] summary { border-bottom: 1px solid var(--border); }
+    .doc-details > :not(summary), .note-details > :not(summary) { padding: 16px 18px 18px; }
+    .doc-meta { margin-bottom: 8px; }
+    .doc-raw { margin: 0; white-space: pre-wrap; word-break: break-word; line-height: 1.65; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #0f172a; color: #e2e8f0; border-radius: 12px; padding: 16px; overflow: auto; }
+    .sub-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 18px; align-items: start; }
+    .subcard { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: #fbfdff; }
+    .subcard h3 { margin-top: 0; font-size: 16px; }
+    .note-body h1:first-child { display: block; }
+    .note-body h1 { font-size: 24px; margin-top: 0; }
+    .note-body h2 { font-size: 20px; }
+    @media (max-width: 960px) {
+      .layout { grid-template-columns: 1fr; }
+      .toc { position: static; }
+      .sub-layout { grid-template-columns: 1fr; }
+    }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <p><a href="report.html">← 返回 Plans / Roadmaps</a> · <a href="../index.html">站点首页</a></p>
+    <div class="hero">
+      <h1>Trendline Confirmation Protocol</h1>
+      <p class="muted">把 confirmation ladder 提升为跨引擎可复用的 Mainline 协议，而不再只是单一 source 的局部实现。</p>
+      <div class="pills">
+        <span class="pill">Generated: 2026-05-12 22:03 UTC</span>
+        <span class="pill">Source: docs/TRENDLINE_CONFIRMATION_PROTOCOL.md</span>
+      </div>
+    </div>
+    <div class="layout">
+      <aside class="card toc">
+        <h2>目录</h2>
+        <ul class="toc-list">
+<li class="toc-h2"><a href="#目标">目标</a></li>
+<li class="toc-h2"><a href="#1-为什么现在要把它协议化">1. 为什么现在要把它协议化</a></li>
+<li class="toc-h2"><a href="#2-协议边界它管什么不管什么">2. 协议边界：它管什么，不管什么</a></li>
+<li class="toc-h3"><a href="#它管什么">它管什么</a></li>
+<li class="toc-h3"><a href="#它不管什么">它不管什么</a></li>
+<li class="toc-h2"><a href="#3-协议里的统一对象">3. 协议里的统一对象</a></li>
+<li class="toc-h3"><a href="#31-最上层对象event-family">3.1 最上层对象：event family</a></li>
+<li class="toc-h3"><a href="#32-confirmation-level统一枚举">3.2 confirmation level（统一枚举）</a></li>
+<li class="toc-h3"><a href="#33-optimal-stopping-带来的机制解释为什么要分这些层">3.3 <code>Optimal Stopping</code> 带来的机制解释（为什么要分这些层）</a></li>
+<li class="toc-h2"><a href="#4-最小必备字段source---protocol-table">4. 最小必备字段（source -&gt; protocol table）</a></li>
+<li class="toc-h3"><a href="#41-source-to-protocol-示例行v1">4.1 source-to-protocol 示例行（v1）</a></li>
+<li class="toc-h3"><a href="#42-字段分层表required-nullable-engine-specific">4.2 字段分层表（required / nullable / engine-specific）</a></li>
+<li class="toc-h3"><a href="#43-source-onboarding-checklistv1">4.3 source onboarding checklist（v1）</a></li>
+<li class="toc-h3"><a href="#44-compare-page-honesty-labelsv1">4.4 compare-page honesty labels（v1）</a></li>
+<li class="toc-h2"><a href="#5-最小比较输出每个-source-至少给什么表">5. 最小比较输出（每个 source 至少给什么表）</a></li>
+<li class="toc-h3"><a href="#表-1overall-ladder-summary">表 1：overall ladder summary</a></li>
+<li class="toc-h3"><a href="#表-2side-split-summary">表 2：side split summary</a></li>
+<li class="toc-h3"><a href="#表-3bucket-split-summary">表 3：bucket split summary</a></li>
+<li class="toc-h2"><a href="#6-主线判定规则什么时候说更强确认值得保留">6. 主线判定规则：什么时候说“更强确认值得保留”</a></li>
+<li class="toc-h2"><a href="#7-pyindicators-v1-当前怎么接入这份协议">7. PyIndicators v1 当前怎么接入这份协议</a></li>
+<li class="toc-h3"><a href="#71-native---mainline-的最小映射例子">7.1 native -&gt; mainline 的最小映射例子</a></li>
+<li class="toc-h3"><a href="#72-当前已知结论">7.2 当前已知结论</a></li>
+<li class="toc-h2"><a href="#8-pytrendline-v1v2-该怎么接入这份协议">8. PyTrendline v1/v2 该怎么接入这份协议</a></li>
+<li class="toc-h3"><a href="#81-v1当前">8.1 v1（当前）</a></li>
+<li class="toc-h3"><a href="#82-v2下一阶段目标">8.2 v2（下一阶段目标）</a></li>
+<li class="toc-h2"><a href="#9-推荐的执行顺序">9. 推荐的执行顺序</a></li>
+<li class="toc-h2"><a href="#10-当前最直接的下一步">10. 当前最直接的下一步</a></li>
+<li class="toc-h2"><a href="#11-一句话总结">11. 一句话总结</a></li>
+</ul>
+      </aside>
+      <main class="card content">
+        <h1>TRENDLINE_CONFIRMATION_PROTOCOL</h1>
+<h2 id="目标">目标</h2>
+<p>把当前 <code>confirmation ladder</code> 从“主要服务 PyIndicators 的一页报告”，升级成一份 <strong>跨引擎可复用的事件确认协议</strong>。</p>
+<p>这份协议不负责定义某个引擎内部怎么画线，而只负责规定：</p>
+<ul>
+<li>哪些事件层级应该被统一表示；</li>
+<li>哪些字段必须产出；</li>
+<li>不同 source 怎样进入同一张 confirmation 对照表；</li>
+<li>什么情况下可以说“某个 confirmation 值得保留为默认口径”。</li>
+</ul>
+<p>一句话：</p>
+<blockquote><strong>它不是某个引擎的局部实现说明，而是 Mainline 的 confirmation 比较 contract。</strong></blockquote>
+<hr />
+<h2 id="1-为什么现在要把它协议化">1. 为什么现在要把它协议化</h2>
+<p>当前已经有两个现实情况：</p>
+<ol>
+<li><code>PyIndicators confirmation ladder</code> 已经跑出了第一批真实结论；</li>
+<li><code>PyTrendline</code> 也已经从 explainability 进入了 <code>bridge + validation v1</code>，后面迟早要接进来。</li>
+</ol>
+<p>如果不提前把 confirmation 层做成协议，后面很容易出现两个问题：</p>
+<ul>
+<li>不同引擎各自用自己的事件名，无法横向比较；</li>
+<li>大家都说自己做了“confirmation”，但实际上比较的不是同一层东西。</li>
+</ul>
+<p>因此，这份协议的核心用途是：</p>
+<ul>
+<li><strong>把 confirmation comparison 从引擎实现层，提升到主线研究层。</strong></li>
+</ul>
+<hr />
+<h2 id="2-协议边界它管什么不管什么">2. 协议边界：它管什么，不管什么</h2>
+<h3 id="它管什么">它管什么</h3>
+<ul>
+<li><code>event_family</code> 怎么分层（breakout / rebound / retest 等）</li>
+<li><code>confirmation_level</code> 怎么表达</li>
+<li>哪些字段必须进 unified table</li>
+<li>哪些比较指标必须产出</li>
+<li>什么情况下能说“更强确认值得保留”</li>
+</ul>
+<h3 id="它不管什么">它不管什么</h3>
+<ul>
+<li>引擎内部如何检测 line</li>
+<li>line score / duplicate grouping 的具体算法</li>
+<li>交易执行规则（仓位、止损、滑点模型）</li>
+<li>最终策略组合构造</li>
+</ul>
+<p>也就是说：</p>
+<ul>
+<li><strong>这是一份 event-confirmation protocol</strong></li>
+<li>不是 strategy protocol</li>
+</ul>
+<hr />
+<h2 id="3-协议里的统一对象">3. 协议里的统一对象</h2>
+<h3 id="31-最上层对象event-family">3.1 最上层对象：event family</h3>
+<p>当前统一到以下 family：</p>
+<ul>
+<li><code>breakout</code></li>
+<li><code>rebound</code></li>
+<li><code>retest</code></li>
+<li><code>touch</code></li>
+<li><code>switch</code></li>
+</ul>
+<p>第一阶段重点只强制要求：</p>
+<ul>
+<li><code>breakout</code></li>
+<li><code>rebound</code></li>
+</ul>
+<p>其余 family 可以先保留为扩展字段。</p>
+<h3 id="32-confirmation-level统一枚举">3.2 confirmation level（统一枚举）</h3>
+<p>#### breakout ladder</p>
+<ul>
+<li><code>raw_breach</code></li>
+<li><code>close_confirm_same_bar</code></li>
+<li><code>confirm1</code></li>
+<li><code>confirm3</code></li>
+<li><code>retest_hold</code></li>
+</ul>
+<p>#### rebound ladder</p>
+<ul>
+<li><code>touch_only</code></li>
+<li><code>inside_0</code></li>
+<li><code>inside_1</code></li>
+<li><code>inside_2</code></li>
+<li><code>inside_3plus</code></li>
+</ul>
+<p>说明：</p>
+<ul>
+<li>这些 label 是 <strong>Mainline label</strong>；</li>
+<li>某个引擎内部可以保留自己的 native 状态名；</li>
+<li>但进入主线比较时，必须映射到这些统一层。</li>
+</ul>
+<h3 id="33-optimal-stopping-带来的机制解释为什么要分这些层">3.3 <code>Optimal Stopping</code> 带来的机制解释（为什么要分这些层）</h3>
+<p><code>Optimal Stopping</code> 这条线最值得吸收的，不是某个直接可交易参数，而是它提供了一个更稳的解释框架：</p>
+<ul>
+<li><strong><code>touch_or_cross</code></strong> 不等于状态真的切换；</li>
+<li><strong><code>provisional_break</code></strong> 只说明价格短暂离开了原结构边界；</li>
+<li><strong><code>confirmed_switch</code></strong> 才更接近“原来的 support / resistance 语义真的改变了”。</li>
+</ul>
+<p>因此在主线协议里，推荐把 breakout ladder 读成：</p>
+<ul>
+<li><code>raw_breach</code></li>
+<li>最接近：<code>touch_or_cross / provisional_break</code></li>
+<li>说明：只说明发生了穿越，不代表 regime 已切换</li>
+</ul>
+<ul>
+<li><code>close_confirm_same_bar</code></li>
+<li>最接近：当根 bar 内的较强 provisional evidence</li>
+<li>说明：比纯 intrabar breach 更强，但仍不足以单独视为 confirmed switch</li>
+</ul>
+<ul>
+<li><code>confirm1</code></li>
+<li>最接近：一根 bar 后仍维持在线外</li>
+<li>说明：是第一层可执行的 confirmed-switch 候选</li>
+</ul>
+<ul>
+<li><code>confirm3</code></li>
+<li>最接近：短窗口内更强的持续性确认</li>
+<li>说明：它代表“状态切换并非单根噪音”的更强证据</li>
+</ul>
+<ul>
+<li><code>retest_hold</code></li>
+<li>最接近：最符合 <code>confirmed switch</code> 直觉的层级</li>
+<li>说明：它不是随手加的 filter，而是“旧边界被重新测试后未被夺回”的结构性证据</li>
+</ul>
+<p>对应到 rebound ladder，可把它理解成：</p>
+<ul>
+<li><code>touch_only</code></li>
+<li>只看到接触，不足以说明“守住”</li>
+<li><code>inside_0 / inside_1 / inside_2 / inside_3plus</code></li>
+<li>可以理解成“重新回到原结构内部并持续停留”的强弱层级</li>
+<li>层级越高，越接近“假突破 / 未切换成功”的 retained evidence</li>
+</ul>
+<p>这段映射的意义是：</p>
+<ul>
+<li><code>confirmation</code> 以后不再只是经验主义过滤器；</li>
+<li>它有了一个更清楚的机制解释：<strong>在区分 provisional move 与 confirmed switch。</strong></li>
+</ul>
+<hr />
+<h2 id="4-最小必备字段source---protocol-table">4. 最小必备字段（source -&gt; protocol table）</h2>
+<p>每个进入 confirmation 协议的 source，至少要产出以下字段：</p>
+<ul>
+<li><code>source_engine</code></li>
+<li><code>sample_key</code></li>
+<li><code>symbol</code></li>
+<li><code>timeframe</code></li>
+<li><code>event_family</code></li>
+<li><code>confirmation_level</code></li>
+<li><code>event_timestamp</code></li>
+<li><code>line_side</code></li>
+<li><code>engine_line_id</code></li>
+<li><code>is_representative</code></li>
+<li><code>slope_bucket</code></li>
+<li><code>line_quality_bucket</code></li>
+<li><code>sample_scope</code></li>
+</ul>
+<p>建议附加字段：</p>
+<ul>
+<li><code>event_subtype</code></li>
+<li><code>num_points_bucket</code></li>
+<li><code>score_bucket</code></li>
+<li><code>bars_since_first_cross</code></li>
+<li><code>bars_since_touch</code></li>
+<li><code>is_confirmed</code></li>
+<li><code>is_provisional</code></li>
+</ul>
+<p>明确允许保留为 engine-specific 的字段：</p>
+<ul>
+<li><code>duplicate_group_id</code></li>
+<li><code>navigator_state</code></li>
+<li><code>active_line_start_bar</code></li>
+<li><code>active_line_reset_reason</code></li>
+<li><code>pytrendline_score</code></li>
+</ul>
+<p>这些可以存在，但不能当成跨引擎强制字段。</p>
+<h3 id="41-source-to-protocol-示例行v1">4.1 source-to-protocol 示例行（v1）</h3>
+<p>为了避免后续每次接 source 都只停留在口头解释，下面给 2 个 <strong>最小示例行</strong>。</p>
+<p>说明：</p>
+<ul>
+<li>这些行是 <strong>字段落表样例</strong>，不是最终唯一实现；</li>
+<li>如果某个 source 当前没有天然对应字段，<code>v1</code> 允许先写成 <code>null</code>；</li>
+<li><strong>不要为了凑齐 schema 去伪造字段</strong>，尤其是 <code>is_representative / line_quality_bucket / score_bucket</code> 这类 source 原生没有的列。</li>
+</ul>
+<p>#### 示例 A：PyIndicators breakout_hold_1 -&gt; mainline <code>confirm1</code></p>
+<p>``<code>yaml source_engine: pyindicators sample_key: 60m_365d symbol: BTC-USD timeframe: medium event_family: breakout confirmation_level: confirm1 event_timestamp: &lt;signal_ts&gt; line_side: resistance engine_line_id: &lt;segment_id&gt; is_representative: null slope_bucket: down_steep line_quality_bucket: null sample_scope: 60m_365d event_subtype: breakout_long bars_since_first_cross: &lt;confirm_bars&gt; is_confirmed: true is_provisional: false </code>``</p>
+<p>这行样例强调的是：</p>
+<ul>
+<li><code>signal_ts + breakout_hold_1</code> 已经足够落到 <code>confirm1</code>；</li>
+<li>但 <code>PyIndicators</code> 当前没有天然的 <code>is_representative / line_quality_bucket</code>，所以 <code>v1</code> 不应硬补假值。</li>
+</ul>
+<p>#### 示例 B：PyTrendline v1 breakout -&gt; mainline <code>raw_breach</code></p>
+<p>``<code>yaml source_engine: pytrendline sample_key: BTC-USD_10d_5m_window96 symbol: BTC-USD timeframe: 5m event_family: breakout confirmation_level: raw_breach event_timestamp: &lt;breakout_date&gt; line_side: resistance engine_line_id: &lt;id&gt; is_representative: true slope_bucket: up_moderate line_quality_bucket: q4 sample_scope: recent_window_96 event_subtype: breakout_tagged_line bars_since_first_cross: 0 is_confirmed: false is_provisional: true </code>``</p>
+<p>这行样例强调的是：</p>
+<ul>
+<li><code>PyTrendline v1</code> 当前已经足够落成一条 <code>raw_breach</code> source row；</li>
+<li>但它还没有 native 的 <code>confirm1 / confirm3 / retest_hold</code> 状态层，所以不能假装已经接完整 ladder。</li>
+</ul>
+<p>#### v1 的实务规则</p>
+<ul>
+<li><strong>字段缺失可以保留 <code>null</code>，但语义缺失不能靠硬映射掩盖。</strong></li>
+<li>若某 source 只有 <code>raw_breach</code>，就老老实实只进 <code>raw_breach</code>；</li>
+<li>若某 source 只有 <code>inside_0/1/2/3</code>，就老老实实只参加 rebound ladder；</li>
+<li>先让表能诚实对齐，再谈更完整的 ladder coverage。</li>
+</ul>
+<h3 id="42-字段分层表required-nullable-engine-specific">4.2 字段分层表（required / nullable / engine-specific）</h3>
+<p>为了让后续 source 接表时不再争论“这个字段到底是必须填、允许空着，还是根本不该进主 schema”，这里给一个 <code>v1</code> 分层表：</p>
+<p>| 字段 | v1 口径 | 说明 | | --- | --- | --- | | <code>source_engine</code> | required | 不允许为空；必须能识别来源引擎 | | <code>sample_key</code> | required | 至少要能识别样本窗口/实验口径 | | <code>symbol</code> | required | 单资产样本也不应省略 | | <code>timeframe</code> | required | 可先用 engine horizon label，但不能缺失 | | <code>event_family</code> | required | 至少明确 breakout / rebound | | <code>confirmation_level</code> | required | 必须落到 mainline ladder | | <code>event_timestamp</code> | required | detection 或 confirmation 时间戳至少要有一个 | | <code>line_side</code> | required | support / resistance 不能为空 | | <code>engine_line_id</code> | required | 没有 id 就无法做 source-level audit | | <code>sample_scope</code> | required | 至少要能复原样本范围 | | <code>slope_bucket</code> | nullable | 当前 source 若没有稳定斜率桶，可先保留 <code>null</code> | | <code>is_representative</code> | nullable | <code>PyIndicators</code> 这类 source 当前可先为 <code>null</code> | | <code>line_quality_bucket</code> | nullable | 没有统一质量分桶时不要硬造 | | <code>event_subtype</code> | nullable | 没有就留空，不影响 first-pass protocol compare | | <code>bars_since_first_cross</code> | nullable | 只对部分 breakout source 原生存在 | | <code>bars_since_touch</code> | nullable | 只对部分 rebound source 原生存在 | | <code>is_confirmed</code> | nullable | 可以由 native ladder 推断时再填 | | <code>is_provisional</code> | nullable | 没有原生状态就不要伪造 | | <code>num_points_bucket</code> | engine-specific | 保留在 source audit / mapping 层，不作为 v1 强制列 | | <code>score_bucket</code> | engine-specific | 可存在，但不要求所有 source 都有 | | <code>duplicate_group_id</code> | engine-specific | 仅对带 duplicate grouping 的引擎有意义 | | <code>navigator_state</code> | engine-specific | 属于 <code>PyIndicators</code> 运行态上下文 | | <code>active_line_start_bar</code> | engine-specific | source 内部状态字段，不强制跨引擎对齐 | | <code>active_line_reset_reason</code> | engine-specific | source 内部状态字段，不强制跨引擎对齐 | | <code>pytrendline_score</code> | engine-specific | 仅保留为 <code>PyTrendline</code> 侧可审计字段 |</p>
+<p>这张表的核心意思是：</p>
+<ul>
+<li><code>required</code>：没有就不该进 protocol compare；</li>
+<li><code>nullable</code>：先允许为空，但要诚实承认 coverage 不完整；</li>
+<li><code>engine-specific</code>：可以保留，但不要强行升成跨引擎必填字段。</li>
+</ul>
+<h3 id="43-source-onboarding-checklistv1">4.3 source onboarding checklist（v1）</h3>
+<p>当后续要把一个新 source 接进 confirmation protocol 时，默认先按下面这张 checklist 过一遍；<strong>只有通过前 4 项，才值得继续做 compare page</strong>。</p>
+<p>#### 第 0 层：身份识别</p>
+<ul>
+<li class="todo">[ ] 能明确 <code>source_engine</code></li>
+<li class="todo">[ ] 能明确 <code>sample_key / sample_scope</code></li>
+<li class="todo">[ ] 能明确这是更像：</li>
+<li>breakout source</li>
+<li>rebound source</li>
+<li>mixed source</li>
+<li>还是只是 explainability / geometry reference</li>
+</ul>
+<p>#### 第 1 层：最小 required 字段</p>
+<ul>
+<li class="todo">[ ] <code>symbol</code></li>
+<li class="todo">[ ] <code>timeframe</code></li>
+<li class="todo">[ ] <code>event_family</code></li>
+<li class="todo">[ ] <code>confirmation_level</code></li>
+<li class="todo">[ ] <code>event_timestamp</code></li>
+<li class="todo">[ ] <code>line_side</code></li>
+<li class="todo">[ ] <code>engine_line_id</code></li>
+</ul>
+<p>如果这一层都不齐：</p>
+<ul>
+<li><strong>不要进 protocol compare</strong>；</li>
+<li>先停留在 <code>mapping / audit / bridge brief</code>。</li>
+</ul>
+<p>#### 第 2 层：native -&gt; mainline 映射是否清楚</p>
+<ul>
+<li class="todo">[ ] native state 名称已经能落到 mainline ladder</li>
+<li class="todo">[ ] 明确哪些层当前有 clean mapping</li>
+<li class="todo">[ ] 明确哪些层当前没有 mapping，必须保留空缺</li>
+<li class="todo">[ ] 没有把 <code>stronger native state</code> 草率误读成 <code>confirmed switch</code></li>
+</ul>
+<p>如果这层过不了：</p>
+<ul>
+<li>说明 source 还不适合进真正的 ladder compare；</li>
+<li>只能先作为 <code>raw-breach baseline</code> 或 <code>mechanism reference</code>。</li>
+</ul>
+<p>#### 第 3 层：字段缺失是否诚实</p>
+<ul>
+<li class="todo">[ ] 所有 <code>nullable</code> 字段都已检查是否需要先填 <code>null</code></li>
+<li class="todo">[ ] 没有为了凑 schema 伪造：</li>
+<li><code>is_representative</code></li>
+<li><code>line_quality_bucket</code></li>
+<li><code>score_bucket</code></li>
+<li><code>is_confirmed</code></li>
+<li class="todo">[ ] <code>engine-specific</code> 字段没有被硬升成统一必填列</li>
+</ul>
+<p>#### 第 4 层：是否足够进入 compare</p>
+<p>最小准入条件：</p>
+<ul>
+<li class="todo">[ ] 至少能稳定输出一种 <code>event_family</code></li>
+<li class="todo">[ ] 至少能稳定输出一种 mainline <code>confirmation_level</code></li>
+<li class="todo">[ ] 至少能产出 <code>overall ladder summary</code></li>
+</ul>
+<p>如果连这层都过不了：</p>
+<ul>
+<li>不要急着做 ladder compare report；</li>
+<li>先把 source 留在：</li>
+<li>bridge</li>
+<li>brief</li>
+<li>mapping</li>
+<li>explainability reference</li>
+</ul>
+<p>#### 第 5 层：进入 compare 后的默认诚实标签</p>
+<p>新 source 第一次进入 compare 时，默认要显式标注它属于哪类：</p>
+<ul>
+<li><code>source #1 / baseline compare source</code></li>
+<li><code>raw-breach-only source</code></li>
+<li><code>partial ladder coverage</code></li>
+<li><code>rebound-only source</code></li>
+<li><code>mechanism-backed but not full-event-universe</code></li>
+</ul>
+<p>这样做的目的，是避免页面读者误以为：</p>
+<ul>
+<li>只要已经进了 protocol compare，coverage 就一定完整。</li>
+</ul>
+<h3 id="44-compare-page-honesty-labelsv1">4.4 compare-page honesty labels（v1）</h3>
+<p>为了让后续页面在展示 source 时不要各写各的说明，下面把这批默认标签正式定成 <code>v1</code>：</p>
+<ul>
+<li><code>source #1 / baseline compare source</code></li>
+<li>适用场景：当前主 compare 主要依赖它</li>
+<li>读者应如何理解：它是当前默认对照源，但不等于它就是“主 thesis 正确”</li>
+</ul>
+<ul>
+<li><code>raw-breach-only source</code></li>
+<li>适用场景：只能稳定产出 <code>raw_breach</code></li>
+<li>读者应如何理解：只能参加 raw 层比较，不能假装已经接完整 ladder</li>
+</ul>
+<ul>
+<li><code>partial ladder coverage</code></li>
+<li>适用场景：已接入多层，但 coverage 仍不完整</li>
+<li>读者应如何理解：可以参与部分 ladder compare，但页面必须承认缺层</li>
+</ul>
+<ul>
+<li><code>rebound-only source</code></li>
+<li>适用场景：只在 rebound / inside ladder 上干净</li>
+<li>读者应如何理解：不应用它去支持 breakout 的强结论</li>
+</ul>
+<ul>
+<li><code>mechanism-backed but not full-event-universe</code></li>
+<li>适用场景：有机制解释或理论映射，但没有完整事件宇宙</li>
+<li>读者应如何理解：更适合作 protocol / interpretation reference，而不是 full compare source</li>
+</ul>
+<p>#### 当前默认示例</p>
+<ul>
+<li><code>PyIndicators</code></li>
+<li>推荐标签：<code>source #1 / baseline compare source</code> + <code>partial ladder coverage</code></li>
+<li>原因：它已经是当前最先落地的 compare source，但 breakout 侧仍缺 <code>close_confirm_same_bar / retest_hold</code> 等层，且仍混有 operational 语义。</li>
+</ul>
+<ul>
+<li><code>PyTrendline v1</code></li>
+<li>推荐标签：<code>raw-breach-only source</code></li>
+<li>原因：当前已可进入 protocol table，但只足够支撑 <code>raw_breach</code> / touch candidate 层，不应伪装成 full ladder source。</li>
+</ul>
+<ul>
+<li><code>Optimal Stopping</code></li>
+<li>推荐标签：<code>mechanism-backed but not full-event-universe</code></li>
+<li>原因：它帮助解释 <code>provisional_break / confirmed_switch</code>，但不是直接导出 full event rows 的 compare engine。</li>
+</ul>
+<p>这组标签的作用是：</p>
+<ul>
+<li>让页面读者一眼知道 coverage 边界；</li>
+<li>避免把“已接入 compare”误读成“已经完整且可直接下主结论”。</li>
+</ul>
+<hr />
+<h2 id="5-最小比较输出每个-source-至少给什么表">5. 最小比较输出（每个 source 至少给什么表）</h2>
+<p>每个 source 进入 confirmation 协议后，最少要给 3 张表：</p>
+<h3 id="表-1overall-ladder-summary">表 1：overall ladder summary</h3>
+<p>按：</p>
+<ul>
+<li><code>sample_key</code></li>
+<li><code>event_family</code></li>
+<li><code>confirmation_level</code></li>
+</ul>
+<p>输出：</p>
+<ul>
+<li><code>sample_count</code></li>
+<li><code>up_ratio_after_h</code> 或 <code>positive_asset_ratio</code></li>
+<li><code>mean_forward_return_h</code> / <code>mean_total_return</code></li>
+<li><code>median_forward_return_h</code></li>
+<li><code>iqr_forward_return_h</code></li>
+<li><code>trade_retention</code>（如果存在 parent ladder）</li>
+</ul>
+<h3 id="表-2side-split-summary">表 2：side split summary</h3>
+<p>按：</p>
+<ul>
+<li><code>sample_key</code></li>
+<li><code>event_family</code></li>
+<li><code>confirmation_level</code></li>
+<li><code>line_side</code></li>
+</ul>
+<p>输出同上。</p>
+<h3 id="表-3bucket-split-summary">表 3：bucket split summary</h3>
+<p>按：</p>
+<ul>
+<li><code>sample_key</code></li>
+<li><code>event_family</code></li>
+<li><code>confirmation_level</code></li>
+<li><code>slope_bucket</code></li>
+<p>或 <code>line_quality_bucket</code></p>
+</ul>
+<p>输出同上。</p>
+<hr />
+<h2 id="6-主线判定规则什么时候说更强确认值得保留">6. 主线判定规则：什么时候说“更强确认值得保留”</h2>
+<p>默认不接受“收益均值稍微高一点”就宣称更强确认更优。</p>
+<p>至少要同时看 3 件事：</p>
+<ol>
+<li><strong>方向质量是否改善</strong></li>
+</ol>
+<ul>
+<li><code>up_ratio_after_h</code> / <code>positive_asset_ratio</code> 有没有提升</li>
+</ul>
+<ol>
+<li><strong>收益质量是否改善</strong></li>
+</ol>
+<ul>
+<li><code>mean_forward_return_h</code> / <code>mean_total_return</code> 有没有提升</li>
+</ul>
+<ol>
+<li><strong>样本有没有塌得太厉害</strong></li>
+</ol>
+<ul>
+<li><code>trade_retention</code> / <code>sample_count retention</code> 是否还能接受</li>
+</ul>
+<p>默认判定逻辑：</p>
+<ul>
+<li>若只提升收益，但 retention 严重塌缩 → 不足以直接升默认口径</li>
+<li>若只提升胜率，但收益均值不改善 → 更像 filter 候选，不直接升默认口径</li>
+<li>若三者一起改善 → 可以进入 <code>default candidate</code></li>
+</ul>
+<hr />
+<h2 id="7-pyindicators-v1-当前怎么接入这份协议">7. PyIndicators v1 当前怎么接入这份协议</h2>
+<p>当前 <code>PyIndicators</code> 已经是这份协议的第一个真实 source，也就是当前默认的 <strong>source #1</strong>。</p>
+<h3 id="71-native---mainline-的最小映射例子">7.1 native -&gt; mainline 的最小映射例子</h3>
+<p>#### breakout 侧</p>
+<p>当前可先按下面这个近似口径进入主线：</p>
+<ul>
+<li><code>candidate_ts</code></li>
+<li>更接近：<code>raw_breach</code> 的 detection timestamp</li>
+</ul>
+<ul>
+<li><code>signal_ts + ladder_label=breakout_hold_1</code></li>
+<li>更接近：<code>confirm1</code></li>
+</ul>
+<ul>
+<li><code>signal_ts + ladder_label=breakout_hold_2/3</code></li>
+<li>更接近：<code>confirm3-like stronger confirmation</code></li>
+<li>说明：当前 <code>PyIndicators</code> 原生层级并不等于主线枚举名字，但已经足够归并到“更强持续确认”这一层</li>
+</ul>
+<ul>
+<li><code>breakout_hold_4</code></li>
+<li>当前可先视为：<code>confirm3-plus / stronger-than-confirm3</code></li>
+<li>说明：在主线 v1 里可先并入 <code>confirm3</code> 扩展层，暂不单独升成新默认枚举</li>
+</ul>
+<ul>
+<li>当前仍没有 clean 映射到：</li>
+<li><code>close_confirm_same_bar</code></li>
+<li><code>retest_hold</code></li>
+</ul>
+<p>也就是说，<code>PyIndicators breakout ladder</code> 当前最像：</p>
+<ul>
+<li><code>raw_breach</code></li>
+<li><code>confirm1</code></li>
+<li><code>confirm3(+ )</code></li>
+</ul>
+<p>但还不是一套完整的 <code>same-bar close confirm + retest-hold</code> 事件宇宙。</p>
+<p>#### rebound 侧</p>
+<p>当前可先按下面这个口径进入主线：</p>
+<ul>
+<li><code>rebound_inside_0</code> -&gt; <code>inside_0</code></li>
+<li><code>rebound_inside_1</code> -&gt; <code>inside_1</code></li>
+<li><code>rebound_inside_2</code> -&gt; <code>inside_2</code></li>
+<li><code>rebound_inside_3</code> 及以上 -&gt; <code>inside_3plus</code></li>
+</ul>
+<p>这部分映射当前是最干净的，因为 native label 与 mainline label 已经基本同构。</p>
+<h3 id="72-当前已知结论">7.2 当前已知结论</h3>
+<ul>
+<li>breakout：更强确认没有真正把整体质量救起来</li>
+<li>rebound retained subsets：较宽松的 <code>inside=0/1</code> 仍是当前更值得继续看的默认口径候选</li>
+<li>因此 <code>PyIndicators</code> 的现实角色是：</li>
+<li>当前最先落地的 <code>confirmation protocol source #1</code></li>
+<li>但仍不是 full event-universe truth table</li>
+</ul>
+<hr />
+<h2 id="8-pytrendline-v1v2-该怎么接入这份协议">8. PyTrendline v1/v2 该怎么接入这份协议</h2>
+<h3 id="81-v1当前">8.1 v1（当前）</h3>
+<p>当前 <code>PyTrendline</code> 只有：</p>
+<ul>
+<li><code>event source bridge v1</code></li>
+<li><code>event validation v1</code></li>
+</ul>
+<p>它当前主要覆盖：</p>
+<ul>
+<li><code>breakout</code></li>
+<li>少量 <code>touch candidate</code></li>
+</ul>
+<p>所以它现在：</p>
+<ul>
+<li><strong>已经可以接协议表头</strong></li>
+<li><strong>但还不能完整接 confirmation ladder</strong></li>
+</ul>
+<p>当前最接近的 native -&gt; mainline 读法是：</p>
+<ul>
+<li><code>is_breakout=True + breakout_date</code></li>
+<li>更接近：<code>raw_breach</code></li>
+</ul>
+<ul>
+<li><code>is_breakout=False + ends_at_date</code></li>
+<li>更接近：<code>touch_only / touch candidate</code></li>
+<li>说明：它当前更像“还没破、只是碰线/接近线”的对象，而不是已确认 rebound</li>
+</ul>
+<ul>
+<li>当前仍没有 clean 映射到：</li>
+<li><code>close_confirm_same_bar</code></li>
+<li><code>confirm1</code></li>
+<li><code>confirm3</code></li>
+<li><code>retest_hold</code></li>
+<li><code>inside_0/1/2/3plus</code></li>
+</ul>
+<p>所以 <code>PyTrendline v1</code> 的现实定位是：</p>
+<ul>
+<li>已足够做 source-level compare / raw-breach baseline</li>
+<li>还不足够直接参加完整 confirmation ladder 对照</li>
+</ul>
+<h3 id="82-v2下一阶段目标">8.2 v2（下一阶段目标）</h3>
+<p>要真正进入 confirmation 协议，<code>PyTrendline</code> 至少还要补：</p>
+<ul>
+<li><code>representative_only</code> vs <code>all_valid</code></li>
+<li><code>rebound / retest</code> 相关语义</li>
+<li>更明确的 <code>close_confirm / confirm1 / confirm3 / retest_hold</code> 映射</li>
+</ul>
+<p>推荐的 v2 目标口径是：</p>
+<ul>
+<li><code>line touched / crossed intrabar</code> -&gt; <code>raw_breach</code></li>
+<li><code>same bar close outside line</code> -&gt; <code>close_confirm_same_bar</code></li>
+<li><code>next bar still outside</code> -&gt; <code>confirm1</code></li>
+<li><code>3-bar persistence</code> -&gt; <code>confirm3</code></li>
+<li><code>post-break retest and hold</code> -&gt; <code>retest_hold</code></li>
+</ul>
+<p>也就是说，<code>PyTrendline v2</code> 真正该补的不是更多“解释图”，而是：</p>
+<ul>
+<li>让 native state transition 能稳定落到这 5 层 mainline ladder。</li>
+</ul>
+<hr />
+<h2 id="9-推荐的执行顺序">9. 推荐的执行顺序</h2>
+<p>后续任何新 source，要接入 confirmation 协议时，默认按这个顺序：</p>
+<ol>
+<li><strong>先接 source table</strong></li>
+</ol>
+<ul>
+<li>确认最小字段齐了没有</li>
+</ul>
+<ol>
+<li><strong>再接 overall ladder summary</strong></li>
+</ol>
+<ul>
+<li>不要一上来就做复杂 split</li>
+</ul>
+<ol>
+<li><strong>再接 side / bucket split</strong></li>
+</ol>
+<ul>
+<li>support vs resistance</li>
+<li>slope / quality buckets</li>
+</ul>
+<ol>
+<li><strong>最后才写 mainline judgement</strong></li>
+</ol>
+<ul>
+<li>breakout 是继续、park，还是只保留 feature / filter 价值</li>
+</ul>
+<hr />
+<h2 id="10-当前最直接的下一步">10. 当前最直接的下一步</h2>
+<ol>
+<li>把 <code>PyIndicators confirmation ladder</code> 显式标记成这份协议的 <code>source #1</code></li>
+<li>把 <code>PyTrendline v2</code> 的目标改写成：</li>
+</ol>
+<ul>
+<li>不是“做更多页面”</li>
+<li>而是“补齐进入 confirmation protocol 所缺字段与层级”</li>
+</ul>
+<ol>
+<li>把 <code>Optimal Stopping</code> 提供的这套 <code>touch_or_cross -&gt; provisional_break -&gt; confirmed_switch</code> 解释，继续落实成页面里可直接引用的 protocol 注释与 state examples</li>
+<li>后续所有 breakout/rebound 新实验，默认都引用这份 protocol，而不是各写一套确认层名字</li>
+</ol>
+<hr />
+<h2 id="11-一句话总结">11. 一句话总结</h2>
+<p><strong>从现在开始，confirmation ladder 不应再被理解成 “PyIndicators 那一页报告”，而应被理解成 <code>Structure-Event Mainline</code> 的跨引擎确认协议。</strong></p>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

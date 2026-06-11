@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 Binance options repo 只读成 Telegram 报警器：对 short-cycle desk，更该先测的是「European lower-bound breach × perp hedge-to-expiry」这条 event-driven raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 Binance options repo 只读成 Telegram 报警器：对 short-cycle desk，更该先测的是「European lower-bound breach × perp hedge-to-expiry」这条 event-driven raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-11 23:09 UTC</span>
+      <span class="pill">研究时间：2026-04-11 23:12 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit</span>
+      <span class="pill">主题标签：options / relative-value / stat-arb / lower-bound / perpetual-hedge / same-venue / binance / event-driven</span>
+      <span class="pill">证据类型：工程证据（repo README + source audit）+ Binance 官方 public API live probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-11_2312_samevenue-option-lowerbound-perphedge-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-11 23:12 UTC</li>
+<li>类型：GitHub / repo source audit</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>European option ask</code> 若低于其最基础的 <code>intrinsic lower bound</code>，可买入被低估的 call/put，并用同标的 perp 做反向对冲，赚取到期保底价值或价差回补；对应两条壳分别是 <code>long call + short perp</code> 与 <code>long put + long perp</code>。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：options / relative-value / stat-arb / lower-bound / perpetual-hedge / same-venue / binance / event-driven</li>
+<li>证据类型：工程证据（repo README + source audit）+ Binance 官方 public API live probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 GitHub 仓库 <strong>senyka0 / binance-options-arbitrage</strong>。仓库表面上像个“发现期权套利并发 Telegram 提醒”的小脚本，但它真正值得 desk intake 的，不是提醒器外壳，而是它把一条<strong>非常基础、但可直接交易化</strong>的 options raw alpha 写成了最小执行闭环：</p>
+<ul>
+<li>扫描 Binance 同所 USDT 结算 European options；</li>
+<li>找 <code>call ask &lt; S - K</code> 或 <code>put ask &lt; K - S</code> 这类 lower-bound breach；</li>
+<li>发现后直接下期权单，同时用同标的 perpetual futures 做对冲；</li>
+<li>默认只看近到期（<code>max_hold = 7d</code>）并要求最小边际（<code>min_pct = 1</code>）。</li>
+</ul>
+<p>比起很多需要三腿、四腿、跨 venue 转仓的 crypto options 想法，这条线更朴素：<strong>先只抓“单个 option 相对 underlying/perp 已经便宜到低于内在价值下界”的事件。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最值得抄的不是提醒器，而是把 textbook 级 <code>European lower bound</code> 变成了同所、可扫描、可下单的 event-driven raw alpha。</li>
+<li><strong>一句话证明方式：</strong> 源码里直接按两条条件扫单：</li>
+<li>若 <code>strike &lt; underlying</code> 且 <code>underlying - (strike + call_ask) &gt; 0</code>，则视为 <strong>call 被低估</strong>，执行 <code>buy call + sell perp</code>；</li>
+<li>若 <code>strike &gt; underlying</code> 且 <code>(strike - put_ask) - underlying &gt; 0</code>，则视为 <strong>put 被低估</strong>，执行 <code>buy put + buy perp</code>。</li>
+</ul>
+<p>把 payoff 写开就知道它不是“猜方向”，而是 <strong>relative-value / no-arb floor trade</strong>：</p>
+<h3>2.1 Call 壳</h3>
+<p>若在入场时满足 <code>S0 - K - C &gt; 0</code>，做：</p>
+<ul>
+<li>long 1 call</li>
+<li>short 1 perp</li>
+</ul>
+<p>到期时组合 payoff 为：</p>
+<ul>
+<li>若 <code>ST &gt;= K</code>：<code>(ST - K) + (S0 - ST) = S0 - K</code></li>
+<li>若 <code>ST &lt; K</code>：<code>0 + (S0 - ST) &gt; S0 - K</code></li>
+</ul>
+<p>所以 gross payoff 下界就是 <code>S0 - K</code>，只要入场成本 <code>C</code> 小于 <code>S0 - K</code>，就有正的静态边际。</p>
+<h3>2.2 Put 壳</h3>
+<p>若在入场时满足 <code>K - P - S0 &gt; 0</code>，做：</p>
+<ul>
+<li>long 1 put</li>
+<li>long 1 perp</li>
+</ul>
+<p>到期时组合 payoff 为：</p>
+<ul>
+<li>若 <code>ST &lt;= K</code>：<code>(K - ST) + (ST - S0) = K - S0</code></li>
+<li>若 <code>ST &gt; K</code>：<code>0 + (ST - S0) &gt; K - S0</code></li>
+</ul>
+<p>gross payoff 下界就是 <code>K - S0</code>。只要 put ask 便宜到低于这个 floor，就不是“看跌赌方向”，而是<strong>被动捡 static mispricing</strong>。</p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和当前 desk 很相关，原因是它虽然来自期权，但本质上是：</p>
+<ol>
+<li><strong>base alpha 很清楚</strong>：不是波动故事，不是希腊值故事，而是 <code>option ask &lt; intrinsic floor</code> 的可执行相对价值错价；</li>
+<li><strong>天然适合短周期监控</strong>：信号触发是 quote/event-driven，不需要等日频因子；<code>1m/3m/5m</code> 的角色是扫描和进场，不是硬把慢变量伪装成逐 bar 预测；</li>
+<li><strong>同 venue 更像 desk 工具</strong>：期权腿和 perp 腿都在 Binance，同结算资产 USDT，少了跨所转仓和资产搬运；</li>
+<li><strong>能直接落完整策略</strong>：entry、hedge、hold horizon、size、risk、exit、cost，全都能写清楚。</li>
+</ol>
+<p>它和我们 4 月 11 日前面做过的 <code>same-expiry synthetic future × listed future parity gap</code> 不是一回事。那条线本质是 <strong>call/put 组合出来的 synthetic future</strong> 去对比 listed future；这条线更原始，甚至不用先拼 synthetic，只看<strong>单腿 option 相对标的下界是否直接失真</strong>。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：options / relative-value / stat-arb / event-driven</li>
+<li>基础 alpha：<code>option ask</code> 低于 <code>intrinsic lower bound</code></li>
+<li>主题定位：<strong>raw alpha</strong>，不是 filter / regime / overlay</li>
+<li>做多壳：</li>
+<li><code>call underpriced</code>: <code>long call + short perp</code></li>
+<li><code>put underpriced</code>: <code>long put + long perp</code></li>
+<li>触发条件：</li>
+<li><code>g_call = (perp_bid - K - call_ask) / perp_mid</code></li>
+<li><code>g_put  = (K - put_ask - perp_ask) / perp_mid</code></li>
+<li>只有 <code>g_call</code> 或 <code>g_put</code> 超过成本缓冲时入场</li>
+<li>exit：</li>
+<li>基线版：持有到 option expiry</li>
+<li>desk 版：gap 回补到阈值内先平；或剩余到期时间 &lt; 指定窗口强平</li>
+<li>sizing：按期权盘口可成交张数和 perp 最小下单单位做 clip，优先 small notional 多次进场</li>
+<li>risk：期权腿流动性、perp funding、剩余到期时间、盘口跳空、腿间未同步成交</li>
+<li>成本：期权 taker/maker、perp fee、funding、滑点、可能的 basis 漂移</li>
+</ul>
+<h2>4. 代码级最有价值的地方</h2>
+<h3>4.1 它没有绕远路，直接扫最基本的错价</h3>
+<p><code>optionArb.py</code> 的核心逻辑非常直白：</p>
+<ul>
+<li>拉 futures 价格；</li>
+<li>拉 options 链；</li>
+<li>按 strike 和当前标的价判断 call/put 哪些合格；</li>
+<li>对满足 lower-bound breach 的合约，再查一遍 depth，确认 top ask 还在；</li>
+<li>若边际大于 <code>min_pct</code>，就直接执行两腿。</li>
+</ul>
+<p>这类 repo 的价值不在“代码高级”，而在它提醒我们： &gt; 有些最值得收进素材池的 alpha，不需要先做复杂表面拟合，而是先把<strong>最基础的 no-arb floor</strong> 做成 scanner。</p>
+<h3>4.2 但源码也暴露出一个关键工程问题：原始接口已过时</h3>
+<p>仓库里用的是：</p>
+<ul>
+<li><code><a href="https://www.binance.com/bapi/eoptions/v1/public/eoptions/exchange/tGroup?...">https://www.binance.com/bapi/eoptions/v1/public/eoptions/exchange/tGroup?...</a></code></li>
+<li><code><a href="https://www.binance.com/bapi/eoptions/v1/public/eoptions/market/depth?...">https://www.binance.com/bapi/eoptions/v1/public/eoptions/market/depth?...</a></code></li>
+</ul>
+<p>我本轮复核时，这组接口已返回：</p>
+<ul>
+<li><code>code: 10000</code></li>
+<li><code>message: &quot;Please upgrade to the latest version&quot;</code></li>
+<li><code>data: None</code></li>
+</ul>
+<p>也就是说，<strong>这条 alpha 不是失效了，而是 repo 的数据接法过期了。</strong> 对 desk 真正有用的动作，不是把它丢掉，而是把 scanner 迁到 Binance 官方 <code>eapi</code>：</p>
+<ul>
+<li><code>eapi/v1/exchangeInfo</code></li>
+<li><code>eapi/v1/ticker</code></li>
+<li><code>eapi/v1/depth</code></li>
+<li><code>eapi/v1/index</code></li>
+</ul>
+<h2>5. Binance 官方 public live probe：这条线现在有没有票？</h2>
+<p>我用 Binance 官方 <code>eapi</code> 做了一个最小 live probe，范围限定为：</p>
+<ul>
+<li>标的：<code>BTCUSDT / ETHUSDT / BNBUSDT</code></li>
+<li>只看 <code>7d</code> 内到期的 option</li>
+<li>只看已经有 ask 的 ITM call / OTM put（即可能触发 lower-bound 壳的那些）</li>
+</ul>
+<h3>5.1 本轮结果（2026-04-11 23:06 UTC）</h3>
+<ul>
+<li><code>BTCUSDT</code>：有 ask 的候选 <code>47</code> 个，<strong>0 个真正 breach</strong>；最接近的是 <code>BTC-260412-72500-C</code>，gap 仍为 <strong><code>-0.212%</code></strong>。</li>
+<li><code>ETHUSDT</code>：有 ask 的候选 <code>20</code> 个，<strong>0 个真正 breach</strong>；最接近的是 <code>ETH-260412-2300-P</code>，gap 为 <strong><code>-0.404%</code></strong>。</li>
+<li><code>BNBUSDT</code>：有 ask 的候选 <code>38</code> 个，<strong>0 个真正 breach</strong>；最接近的是 <code>BNB-260412-605-C</code>，gap 为 <strong><code>-0.250%</code></strong>。</li>
+</ul>
+<p>对应 order book 顶层报价也做了复核：</p>
+<ul>
+<li><code>BTC-260412-72500-C</code>：best ask <code>730</code>, best bid <code>550</code></li>
+<li><code>ETH-260412-2300-P</code>：best ask <code>25.0</code>, best bid <code>8.0</code></li>
+<li><code>BNB-260412-605-C</code>：best ask <code>5.4</code>, best bid <code>4.3</code></li>
+</ul>
+<h3>5.2 这说明什么</h3>
+<ul>
+<li><strong>这条 alpha 不是 always-on</strong>，更像 event-driven 稀疏票；</li>
+<li>同所 Binance 盘口目前不算离谱，至少在这次快照里还没出现“肉眼可捡”的 lower-bound breach；</li>
+<li>但最接近 breach 的几个点只差 <code>20~40 bps</code> 量级，说明它更像：</li>
+<li>盘口短暂真空时触发；</li>
+<li>大波动 / 流动性抽干 / 临近到期时出现；</li>
+<li>必须做连续 scanner，而不是一次性静态截图。</li>
+</ul>
+<h2>6. 对 short-cycle desk 的正确落地方式</h2>
+<p>别把它理解成“拿周频期权去做慢策略”。它更合理的姿势是：</p>
+<ul>
+<li><strong>信号时钟</strong>：<code>1m</code> 扫描，必要时更快；</li>
+<li><strong>入场时钟</strong>：一旦 breach 出现，优先在 <code>1m/3m</code> 内完成两腿成交；</li>
+<li><strong>监控时钟</strong>：<code>1m/3m/5m</code> 持续盯 gap 是否回补；</li>
+<li><strong>持有上限</strong>：到期前 or <code>max_hold &lt;= 7d</code>；</li>
+<li><strong>策略本体</strong>：event-driven raw alpha；</li>
+<li><strong>短周期的职责</strong>：quote monitoring + fast execution + early close，不是把 options 慢变量伪装成 bar-by-bar directional predictor。</li>
+</ul>
+<h2>7. 最小可复现实验（下一步怎么测）</h2>
+<h3>7.1 实验口径</h3>
+<p>先不要接私有下单，先做 public-only replay / live paper scan：</p>
+<ol>
+<li>每 <code>1m</code> 拉一次：</li>
+</ol>
+<ul>
+<li><code>eapi/v1/exchangeInfo</code></li>
+<li><code>eapi/v1/ticker</code></li>
+<li><code>eapi/v1/depth</code></li>
+<li><code>eapi/v1/index</code></li>
+<li><code>fapi/v1/ticker/bookTicker</code>（若要更 execution-aware 地用 perp bid/ask）</li>
+</ul>
+<ol>
+<li>只保留：</li>
+</ol>
+<ul>
+<li>剩余到期时间 <code>&lt; 7d</code></li>
+<li>call: <code>K &lt; S</code></li>
+<li>put: <code>K &gt; S</code></li>
+<li>option best ask 存在，且 top-of-book qty 足够做最小 notional</li>
+</ul>
+<ol>
+<li>定义两个 score：</li>
+</ol>
+<ul>
+<li><code>score_call = (perp_bid - K - call_ask)/perp_mid</code></li>
+<li><code>score_put = (K - put_ask - perp_ask)/perp_mid</code></li>
+</ul>
+<ol>
+<li>entry 条件先试三档：</li>
+</ol>
+<ul>
+<li><code>&gt; 0.30%</code></li>
+<li><code>&gt; 0.50%</code></li>
+<li><code>&gt; 0.80%</code></li>
+</ul>
+<ol>
+<li>exit 两套并行：</li>
+</ol>
+<ul>
+<li><strong>expiry exit</strong>：拿到 option expiry</li>
+<li><strong>gap close exit</strong>：score 回落到 <code>&lt; 0.10%</code> 就平</li>
+</ul>
+<h3>7.2 最先看 5 个指标</h3>
+<ul>
+<li><code>signals/day</code></li>
+<li><code>fillable rate</code>（两腿顶层盘口够不够）</li>
+<li><code>gross edge bps at entry</code></li>
+<li><code>net edge after fee + funding</code></li>
+<li><code>time-to-close / time-to-expiry</code></li>
+</ul>
+<h3>7.3 必须先加的现实过滤器</h3>
+<ul>
+<li><code>funding buffer</code>：perp 若需持有数天，funding 不能忽略</li>
+<li><code>basis buffer</code>：perp 不是现货，近到期时仍会有 basis 漂移</li>
+<li><code>depth symmetry</code>：期权腿和 perp 腿都要过最小成交量</li>
+<li><code>quote staleness</code>：option 深度更新慢时，先不做</li>
+<li><code>same-expiry crowding veto</code>：临近结算最后几小时单独分层，不要和普通时段混为一谈</li>
+</ul>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>这不是纯 textbook spot-option arbitrage；repo 实际用的是 <strong>perp hedge</strong>，所以会引入 funding / basis / 盯市路径风险。</li>
+<li>若 option 和 perp 两腿不能同步成交，短时方向暴露会非常大。</li>
+<li>Binance options 的可成交深度未必稳定，很多看起来“有价差”的点，真实能成交的 size 可能极小。</li>
+<li>越临近到期，breach 越可能出现，但盘口也越容易抽干。</li>
+<li>因为原 repo API 已过时，真正复现前，第一步不是回测，而是<strong>先重写数据抓取层</strong>。</li>
+</ul>
+<h2>9. 一句话结论</h2>
+<p>&gt; 这份仓库最值得 desk 抄的，不是“Binance options 报警器”，而是把 <code>European option lower bound</code> 变成了<strong>同所、近到期、可被 <code>1m/3m/5m</code> scanner 驱动的 event-driven raw alpha</strong>；本轮 live probe 首判目前 <strong>0 违例</strong>，但最近的几档只差 <code>20~40bps</code>，说明它值得做成长期常驻监控，而不是一次性读完就算。</p>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>senyka0</strong> (2023). *binance-options-arbitrage*. GitHub Repo.</li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/senyka0/binance-options-arbitrage">https://github.com/senyka0/binance-options-arbitrage</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/senyka0/binance-options-arbitrage">https://github.com/senyka0/binance-options-arbitrage</a></code></li>
+<li>关键文件：<code>README.md</code>, <code>optionArb.py</code></li>
+</ul>
+<ol>
+<li><strong>Robert C. Merton</strong> (1973). *Theory of Rational Option Pricing*. *The Bell Journal of Economics and Management Science*.</li>
+</ol>
+<ul>
+<li>DOI: <code>10.2307/3003143</code></li>
+<li>DOI URL: <code><a href="https://doi.org/10.2307/3003143">https://doi.org/10.2307/3003143</a></code></li>
+<li>用途：给这条 lower-bound / no-arb 壳提供经典理论地基。</li>
+</ul>
+<ol>
+<li><strong>Binance Options / Futures Public API</strong>（本轮 live probe 实际使用）</li>
+</ol>
+<ul>
+<li><code><a href="https://eapi.binance.com/eapi/v1/exchangeInfo">https://eapi.binance.com/eapi/v1/exchangeInfo</a></code></li>
+<li><code><a href="https://eapi.binance.com/eapi/v1/ticker">https://eapi.binance.com/eapi/v1/ticker</a></code></li>
+<li><code><a href="https://eapi.binance.com/eapi/v1/depth">https://eapi.binance.com/eapi/v1/depth</a></code></li>
+<li><code><a href="https://eapi.binance.com/eapi/v1/index">https://eapi.binance.com/eapi/v1/index</a></code></li>
+<li><code><a href="https://fapi.binance.com/fapi/v1/ticker/bookTicker">https://fapi.binance.com/fapi/v1/ticker/bookTicker</a></code></li>
+</ul>
+</body>
+</html>

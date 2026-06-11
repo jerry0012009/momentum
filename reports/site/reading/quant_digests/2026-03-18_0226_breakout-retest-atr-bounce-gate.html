@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Breakout 不是穿线就完：ATR 弹性回踩区 + bounce reclaim，更像 15m 可测的 retest_hold 确认层</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Breakout 不是穿线就完：ATR 弹性回踩区 + bounce reclaim，更像 15m 可测的 retest_hold 确认层</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-18 02:27 UTC</span>
+      <span class="pill">研究时间：2026-03-18 02:26 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：breakout-short / retest-hold / confirmation / atr / mtf / repo / crypto / 15m</span>
+      <span class="pill">证据类型：工程经验 / 待验证</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-18_0226_breakout-retest-atr-bounce-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-18 02:26 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：breakout-short / retest-hold / confirmation / atr / mtf / repo / crypto / 15m</li>
+<li>证据类型：工程经验 / 待验证</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 TheVision333 在 2026-02-23 更新的 GitHub 仓库 <strong>trading-bot</strong>。它表面上是一个 breakout + retest 的加密交易机器人，但对我们更值钱的不是“整套策略照抄”，而是它把 <strong>breakout → 等回踩 → 看是否站回/压回 → 再入场</strong> 写成了一个带因果约束的状态机，直接贴近 <code>V3 breakout-short follow-up</code> 和 <code>Fibonacci confirmation / retest_hold</code> 两条收口线。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：对 15m 来说，<code>retest_hold</code> 更像一个<strong>波动率缩放的确认层</strong>，而不是“碰到那根线就算回踩成功”。</li>
+<li><strong>一句话证明方式</strong>：这个 repo 不是靠画图讲故事，而是把确认 swing 的滞后、HTF 只向后对齐、retest 超时取消、深度失效和 bounce 入场全部写进代码状态机里，至少把“不能偷看未来”这件事先做诚实了。</li>
+<li>最值得复用的模块有 3 个：</li>
+</ul>
+<ol>
+<li><strong>breakout candle quality</strong>：要求实体至少占整根 K 线范围的 <code>50%</code>，且多头 close 在区间顶部 <code>30%</code>、空头在底部 <code>30%</code>；</li>
+<li><strong>ATR retest zone</strong>：不是死守固定百分比，而是要求价格在突破位附近 <code>0.5 ATR</code> 内完成回踩；</li>
+<li><strong>retest invalidation + bounce reclaim</strong>：若 close 穿越突破位超过 <code>1 ATR</code> 或 <code>20</code> 根内不回踩，setup 直接作废；真正入场要等价格重新站回/压回该水平，且 bounce K 线方向一致。</li>
+</ol>
+<ul>
+<li>这比单纯 <code>Fibonacci 点位回踩</code> 更适合 desk：Fib 线位仍可保留，但真正决定要不要做单的，应该是 <strong>“回踩有没有在可容忍波动区间内完成、且有没有出现 re-claim / re-break”</strong>。</li>
+<li>对 <code>breakout-short follow-up</code> 也有直接启发：repo 的 short 侧不是“跌破就空”，而是先确认 breakdown candle 够像样，再等价格回抽失败、RSI 在回抽期没有重新变强，才允许继续追空。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮值得做它，是因为它几乎同时服务三条收口线里最紧的两条：</p>
+<ul>
+<li>对 <code>V3 final-verdict / breakout-short follow-up</code>：它给了一个很清楚的 <strong>continuation vs failure</strong> 分界，重点不是跌破本身，而是“回抽后能不能重新压回去”。</li>
+<li>对 <code>Fibonacci confirmation / retest_hold</code>：它提供了比“回到 Fib 线附近”更可计算的升级版——<strong>ATR 宽度回踩区 + reclaim</strong>。</li>
+<li>对 <code>EMA / PSAR raw alpha focus</code>：这套东西更适合先当 <strong>entry veto / confirmation overlay</strong>，而不是再让 EMA 或 PSAR 单独扛 alpha。</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：在 <code>15m</code> crypto 上，把 <code>retest_hold</code> 从“固定线位触碰”改成“<code>0.5 ATR</code> 回踩区 + bounce reclaim”，能减少假突破/假跌破，尤其能帮助 <code>breakout-short</code> 的 continuation 判断。</li>
+<li><strong>可计算定义</strong>：</li>
+<li>level：先用当前已有的 <code>confirmed swing high/low</code>；Fib 版本可把 level 改成 <code>38.2/50/61.8</code> 回撤位；</li>
+<li>breakout：close 首次收在 level 之外；</li>
+<li>retest：之后 <code>1~8</code> 根 15m K 内，价格回到 level 附近 <code>&lt;= 0.5 ATR</code>；</li>
+<li>entry：回踩后 close 再次收回突破方向，且 bounce K 线与方向一致；</li>
+<li>invalidation：若 close 反向穿越 level 超过 <code>1 ATR</code>，或超时仍未回踩，则取消 setup。</li>
+<li><strong>最小回测切口</strong>：<code>BTC / ETH / SOL</code>，Binance perpetual，<code>15m</code> 信号，<code>1h</code> 作为 HTF 结构过滤；样本先做最近 <code>180~365</code> 天；成本至少看 <code>6 / 10 / 15 bps per side</code>。</li>
+<li><strong>最先看的 2 个指标</strong>：<code>成本后收益</code> + <code>false-break rate</code>（可先定义成入场后 <code>4</code> 根内 hit stop 或 <code>H+4/H+8</code> continuation 为负）。如果这两项没改善，就别再给 retest_hold 继续加装饰。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这只是 <strong>高信号 repo intake</strong>，不是论文验证；仓库里目前没有可信的公开结果表，不能把它当成已验证 alpha。</li>
+<li>原仓库主回测在 <code>1h / 4h</code>，下放到 <code>15m</code> 后，<code>RVOL / ADX / RSI / MACD / EMA / HTF structure</code> 这一整串过滤可能会把交易数压得太低。</li>
+<li>它的真正价值更像 <strong>确认层骨架</strong>，不是独立主信号；如果直接整套搬运，很可能变成“条件很多、交易很少、OOS 很脆”。</li>
+<li>swing 结构虽然做了确认滞后处理，但 <code>SWING_LOOKBACK=5</code>、<code>RETEST_TIMEOUT=20</code> 等参数仍需要 15m 语境下重新标定。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>TheVision333. (2026). *trading-bot: Crypto trading bot with breakout and retest strategies - backtesting on Binance, live execution on Hyperliquid*.</li>
+<li>Repo URL: &lt;<a href="https://github.com/TheVision333/trading-bot&gt;">https://github.com/TheVision333/trading-bot&gt;</a></li>
+<li>Repo API summary: &lt;<a href="https://api.github.com/repos/TheVision333/trading-bot&gt;">https://api.github.com/repos/TheVision333/trading-bot&gt;</a></li>
+<li>Key files:</li>
+<li><code>strategy/retest_signals.py</code>: &lt;<a href="https://raw.githubusercontent.com/TheVision333/trading-bot/main/strategy/retest_signals.py&gt;">https://raw.githubusercontent.com/TheVision333/trading-bot/main/strategy/retest_signals.py&gt;</a></li>
+<li><code>strategy/market_structure.py</code>: &lt;<a href="https://raw.githubusercontent.com/TheVision333/trading-bot/main/strategy/market_structure.py&gt;">https://raw.githubusercontent.com/TheVision333/trading-bot/main/strategy/market_structure.py&gt;</a></li>
+<li><code>strategy/mtf.py</code>: &lt;<a href="https://raw.githubusercontent.com/TheVision333/trading-bot/main/strategy/mtf.py&gt;">https://raw.githubusercontent.com/TheVision333/trading-bot/main/strategy/mtf.py&gt;</a></li>
+<li><code>config.py</code>: &lt;<a href="https://raw.githubusercontent.com/TheVision333/trading-bot/main/config.py&gt;">https://raw.githubusercontent.com/TheVision333/trading-bot/main/config.py&gt;</a></li>
+</ul>
+</body>
+</html>

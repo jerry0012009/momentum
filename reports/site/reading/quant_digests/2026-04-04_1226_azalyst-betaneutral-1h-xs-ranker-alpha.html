@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 research engine 只读成 ML 大拼盘：对 short-cycle desk，更该先拆的是「5m 特征 → beta-neutral 1h cross-sectional ranker」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 research engine 只读成 ML 大拼盘：对 short-cycle desk，更该先拆的是「5m 特征 → beta-neutral 1h cross-sectional ranker」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 12:27 UTC</span>
+      <span class="pill">研究时间：2026-04-04 12:26 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`README.md` + `azalyst_v6_engine.py` + `azalyst_factors_v2.py` + `azalyst_train.py` + `azalyst_validator.py`）</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/relative-value/stat-arb/beta-neutral/return-ranking/elastic-net/mean-reversion/momentum/regime-gate/top-bottom/binance/5m/15m/3m/1m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：repo 源码证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_1226_azalyst-betaneutral-1h-xs-ranker-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 12:26 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>README.md</code> + <code>azalyst_v6_engine.py</code> + <code>azalyst_factors_v2.py</code> + <code>azalyst_train.py</code> + <code>azalyst_validator.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>用公开 <code>5m</code> OHLCV 因子去预测“去掉当日截面均值后的 <code>1h</code> forward return”，再做 top/bottom cross-sectional long-short 排名书。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/relative-value/stat-arb/beta-neutral/return-ranking/elastic-net/mean-reversion/momentum/regime-gate/top-bottom/binance/5m/15m/3m/1m/repo/public-data/cost/risk</li>
+<li>证据类型：repo 源码证据</li>
+</ul>
+<h2>1. 先回答一句：base alpha 是什么？</h2>
+<p><strong>base alpha = 在 crypto 截面里，去预测“谁会在未来 <code>1h</code> 跑赢同一时点的市场平均”，然后做 top/bottom 排名交易。</strong></p>
+<p>这不是 filter，也不是 overlay。 它本体就是一条 <strong>cross-sectional / relative-value raw alpha</strong>：</p>
+<ul>
+<li>不是赌市场整体涨跌；</li>
+<li>而是赌同一时刻不同币之间的<strong>相对强弱排序</strong>；</li>
+<li>repo 里用的 target 不是裸 <code>future_ret_1h</code>，而是<strong>daily cross-sectional demeaned</strong> 的 beta-neutral target。</li>
+</ul>
+<p>所以这条思路对我们 desk 的价值，不在“它用了 Elastic Net / XGBoost”，而在于它把 <strong>short-horizon relative outperformance</strong> 明确写成了可训练、可排序、可交易的目标。</p>
+<h2>2. 一句话核心结论</h2>
+<p><strong>这份仓库真正值得 intake 的，不是它那层很重的 weekly ML 外壳，而是里面那条可独立抽出来的 raw alpha：<code>5m</code> 因子 → <code>1h</code> beta-neutral 相对收益排序 → top/bottom 组合。</strong></p>
+<p>换句话说：</p>
+<ul>
+<li><strong>该抄的不是“72 因子 + AI 共识重构”这个 headline；</strong></li>
+<li><strong>而是“把单币方向问题改写成截面相对收益问题”这一步。</strong></li>
+</ul>
+<p>这一步对 <code>1m/3m/5m/15m</code> short-cycle desk 很有用，因为它天然更适合：</p>
+<ul>
+<li>做 long/short 双开；</li>
+<li>做 market/beta neutral；</li>
+<li>在单币 trend / mean reversion 之外，补一条 <strong>relative-value 素材池</strong>。</li>
+</ul>
+<h2>3. 它是怎么证明这件事的？</h2>
+<p>repo 的证据链，至少在工程定义上是完整的：</p>
+<ol>
+<li><strong>数据层</strong>：<code>3+</code> 年、<code>444</code> 个 Binance 交易对、<code>5m</code> OHLCV、<code>26M+</code> 行；</li>
+<li><strong>目标层</strong>：预测 <code>12</code> 根 <code>5m</code> bar（即 <code>1h</code>）后的 forward return，但先减去同日截面均值，形成 beta-neutral target；</li>
+<li><strong>训练层</strong>：<code>26</code> 周 rolling 窗口、<code>13</code> 周重训、Purged K-Fold、并对 <code>1h</code> 目标做 <code>12</code> bar 非重叠抽样，尽量减少 label overlap；</li>
+<li><strong>组合层</strong>：默认 top-<code>5</code> longs + bottom-<code>5</code> shorts，equal-weight，round-trip fee 直接写成 <code>0.2%</code>；</li>
+<li><strong>否证层</strong>：不是只跑 ML，而是先拿 <code>ret_1w</code> / <code>ret_3d</code> / <code>vol_regime</code> / composite baseline 去打 falsification campaign，要求 ML 至少要<strong>打赢简单排序基线</strong>才算有存在价值。</li>
+</ol>
+<p>这套证据还<strong>不是独立验证后的 alpha 成立证明</strong>，但已经足够说明： &gt; 作者并不是在写一个“花哨预测器”，而是在认真定义一条 <strong>可交易的截面 raw alpha</strong>。</p>
+<h2>4. 对 short-cycle desk，真正该抄的是哪一层？</h2>
+<h3>4.1 值得抄的层</h3>
+<p>最值得拿走的是下面这个最小骨架：</p>
+<ul>
+<li><strong>输入</strong>：公开 <code>5m</code> OHLCV</li>
+<li><strong>核心特征</strong>：<code>ret_1w</code>, <code>ret_3d</code>, <code>vol_regime</code>, <code>rvol_1d</code>, <code>rsi_14</code>, <code>skew_1d</code>, <code>adx_14</code>, <code>kyle_lambda</code>, <code>mean_rev_zscore_1h</code>, <code>vol_ratio_1h_1d</code></li>
+<li><strong>目标</strong>：<code>future_ret_1h - same_day_cross_section_mean</code></li>
+<li><strong>决策</strong>：按预测值横截面排序，做 top/bottom bucket</li>
+<li><strong>risk shell</strong>：bull regime 不做空，high-vol 降半仓，成本直接进回测</li>
+</ul>
+<p>这比“单币做多/做空预测”更像我们当前素材池里缺的那类东西： <strong>cross-sectional relative-value raw alpha</strong>。</p>
+<h3>4.2 不该照单全收的层</h3>
+<p>repo 当前的执行外壳，反而是我最不想直接照抄的部分：</p>
+<ul>
+<li>target 明明是 <code>1h</code> forward return；</li>
+<li>但 <code>predict_week_v6()</code> / <code>simulate_weekly_trades_v6()</code> 这层，默认拿 pre-week snapshot 去做<strong>周度</strong> top/bottom 组合；</li>
+<li>这会把原本短周期 alpha 的信息压得过粗。</li>
+</ul>
+<p>所以对我们 desk，更合理的读法不是“把它整套 weekly engine 搬过来”，而是：</p>
+<p>&gt; <strong>把 repo 的 base alpha 抽出来，换掉它的 weekly shell，改成 <code>15m</code> rebalance / <code>1h</code> hold 或 <code>5m</code> staggered hold 的 short-cycle 版本。</strong></p>
+<h2>5. 为什么这轮值得优先于继续补单币结构型 raw alpha？</h2>
+<p>因为这条材料直接补的是我们现在仍然稀缺的一层：</p>
+<ul>
+<li>它不是 trend breakout；</li>
+<li>不是 retest / confirmation；</li>
+<li>也不是纯 filter；</li>
+<li>它是一条能和现有单币 alpha <strong>并行存在</strong> 的 raw alpha 家族：</li>
+<p><strong>cross-sectional / relative-value / beta-neutral ranking</strong>。</p>
+</ul>
+<p>而且它还有两个很实际的价值：</p>
+<ol>
+<li><strong>给我们一个“如何把市场方向剥掉”的干净定义</strong></li>
+<p>不是先做多空择时，再想办法对冲；而是一开始就把 target 定义成相对收益。</p>
+</ol>
+<ol>
+<li><strong>给我们一个“先证明简单基线，再谈 ML”的研发顺序</strong></li>
+<p>这跟当前 learning track 很契合。我们不用现在就上重 ML，先测：</p>
+</ol>
+<ul>
+<li><code>ret_1w</code> 排序 alone</li>
+<li><code>ret_3d</code> 排序 alone</li>
+<li><code>mean_rev_zscore_1h</code> / <code>rsi_14</code> 排序 alone</li>
+<li>简单双因子线性组合</li>
+<p>再看有没有必要上 Elastic Net。</p>
+</ul>
+<h2>6. 这条策略的完整策略部件是否齐全？</h2>
+<p>结论：<strong>齐全，但要把 holding clock 从 weekly 改回 short-cycle。</strong></p>
+<h3>6.1 Entry（入场）</h3>
+<p>repo 的本质入场并不复杂：</p>
+<ul>
+<li>每个决策时点拿横截面预测值；</li>
+<li>按 predicted beta-neutral return 排名；</li>
+<li>取 top <code>N</code> 做多、bottom <code>N</code> 做空。</li>
+</ul>
+<h3>6.2 Exit（出场）</h3>
+<p>repo 原生是周度 close-to-close 壳。 对我们 desk，更合适的 exit 改写是：</p>
+<ul>
+<li>固定 <code>1h</code> 持有（与训练 target 对齐）；</li>
+<li>或 <code>15m</code> rebalance、最多持有 <code>4</code> 个 <code>15m</code> bar；</li>
+<li>或 <code>5m</code> staggered overlapping book（每 <code>15m</code> 新开一层，单层持有 <code>1h</code>）。</li>
+</ul>
+<h3>6.3 Sizing / Risk</h3>
+<p>repo 已经给出两层有用模板：</p>
+<ul>
+<li><strong>equal-weight top/bottom</strong>：最适合 first verdict；</li>
+<li><strong>regime gating</strong>：<code>BULL_TREND</code> 只做多且半仓，<code>HIGH_VOL_LATERAL</code> 多空都做但半仓。</li>
+</ul>
+<p>这两层都能直接迁移到我们后续 <code>15m/5m</code> 实验。</p>
+<h3>6.4 Cost</h3>
+<p>repo 直接把 round-trip fee 写成 <code>20 bps</code>。 对我们 desk，第一轮更该跑 friction ladder：</p>
+<ul>
+<li><code>6 bps</code></li>
+<li><code>10 bps</code></li>
+<li><code>14 bps</code></li>
+<li><code>20 bps</code></li>
+</ul>
+<p>因为 cross-sectional ranker 很容易在 gross 上看着像样，但被 turnover 吃掉。</p>
+<h2>7. 下一步怎么测（直接可排实验）</h2>
+<h3>实验 A：先别上 ML，先跑 simple rank baselines</h3>
+<p>在 liquid universe（先 <code>20~30</code> 个主流 perp/spot）上，用公开 <code>5m</code> 数据做：</p>
+<ul>
+<li><code>ret_1w</code> 单因子排序</li>
+<li><code>ret_3d</code> 单因子排序</li>
+<li><code>mean_rev_zscore_1h</code> 单因子排序</li>
+<li><code>0.5 * ret_3d_rank + 0.5 * mean_rev_zscore_1h_rank</code> 简单双因子排序</li>
+</ul>
+<p>看：</p>
+<ul>
+<li>average cross-sectional IC</li>
+<li>positive-bar ratio</li>
+<li>top/bottom spread return</li>
+<li>cost 后是否还活着</li>
+</ul>
+<h3>实验 B：把 weekly shell 改成 short-cycle shell</h3>
+<p>固定同一组特征，不急着换模型，只改执行钟：</p>
+<ul>
+<li><strong>版本 1</strong>：<code>15m</code> rebalance + <code>1h</code> hold</li>
+<li><strong>版本 2</strong>：<code>5m</code> rebalance + <code>1h</code> hold</li>
+<li><strong>版本 3</strong>：<code>15m</code> rebalance + <code>45m</code> hold</li>
+</ul>
+<p>目标：先回答 <strong>alpha 本体有没有短周期可移植性</strong>，而不是先追最优 Sharpe。</p>
+<h3>实验 C：long-only bull gate 是否真的必要</h3>
+<p>对同一横截面 ranker，分三档比较：</p>
+<ul>
+<li>永远 long/short</li>
+<li>bull only 不做空</li>
+<li>bull 做空但半仓</li>
+</ul>
+<p>看它到底是：</p>
+<ul>
+<li>真正减少右尾被空头拖累；</li>
+<li>还是只是减少交易、掩盖 cost。</li>
+</ul>
+<h3>实验 D：feature truth table，而不是全量 72 因子</h3>
+<p>优先只看这 <code>10</code> 个 stable features 的 sign / rank 是否稳定：</p>
+<ul>
+<li>哪些在 <code>15m/5m</code> 上方向还一致？</li>
+<li>哪些只在 weekly 壳里看起来有效？</li>
+<li><code>ret_1w</code> 和 <code>mean_rev_zscore_1h</code> 是互补，还是互相抵消？</li>
+</ul>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>这份 repo <strong>证据强项是工程定义，不是独立复核后的绩效</strong>；</li>
+<li>README 展示了 sample IC / R² / 周度收益片段，但这些都还不能当成我们可迁移的 live 结论；</li>
+<li><code>1h</code> target 却配周度执行，是我对它最大的结构性保留；</li>
+<li>当前 learning track 仍强调“先简单可解释、再复杂 ML”，所以这轮不建议直接把 whole repo 视作生产候选，而应先把它拆成：</li>
+</ul>
+<ol>
+<li>raw alpha target 定义；</li>
+<li>simple rank baseline；</li>
+<li>regime gate 是否增益；</li>
+<li>只有在简单 baseline 成立后，才考虑 Elastic Net。</li>
+</ol>
+<h2>9. 来源</h2>
+<ol>
+<li><strong>Azalyst / gitdhirajsv (2026). _Azalyst Alpha Research Engine_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://github.com/gitdhirajsv/Azalyst-Alpha-Research-Engine">https://github.com/gitdhirajsv/Azalyst-Alpha-Research-Engine</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/gitdhirajsv/Azalyst-Alpha-Research-Engine">https://github.com/gitdhirajsv/Azalyst-Alpha-Research-Engine</a></code></li>
+</ul>
+<ol>
+<li><strong>Repo source files used in this digest</strong></li>
+</ol>
+<ul>
+<li>README: <code><a href="https://raw.githubusercontent.com/gitdhirajsv/Azalyst-Alpha-Research-Engine/main/README.md">https://raw.githubusercontent.com/gitdhirajsv/Azalyst-Alpha-Research-Engine/main/README.md</a></code></li>
+<li>Engine: <code><a href="https://raw.githubusercontent.com/gitdhirajsv/Azalyst-Alpha-Research-Engine/main/azalyst_v6_engine.py">https://raw.githubusercontent.com/gitdhirajsv/Azalyst-Alpha-Research-Engine/main/azalyst_v6_engine.py</a></code></li>
+<li>Factors: <code><a href="https://raw.githubusercontent.com/gitdhirajsv/Azalyst-Alpha-Research-Engine/main/azalyst_factors_v2.py">https://raw.githubusercontent.com/gitdhirajsv/Azalyst-Alpha-Research-Engine/main/azalyst_factors_v2.py</a></code></li>
+<li>Train utils: <code><a href="https://raw.githubusercontent.com/gitdhirajsv/Azalyst-Alpha-Research-Engine/main/azalyst_train.py">https://raw.githubusercontent.com/gitdhirajsv/Azalyst-Alpha-Research-Engine/main/azalyst_train.py</a></code></li>
+<li>Validator: <code><a href="https://raw.githubusercontent.com/gitdhirajsv/Azalyst-Alpha-Research-Engine/main/azalyst_validator.py">https://raw.githubusercontent.com/gitdhirajsv/Azalyst-Alpha-Research-Engine/main/azalyst_validator.py</a></code></li>
+</ul>
+<ol>
+<li><strong>López de Prado, M. (2018). _Advances in Financial Machine Learning_. Wiley.</strong></li>
+</ol>
+<ul>
+<li>Venue: Book</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086">https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086</a></code></li>
+</ul>
+<ol>
+<li><strong>Kyle, A. S. (1985). _Continuous Auctions and Insider Trading_. Econometrica.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.2307/1913210</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.2307/1913210">https://doi.org/10.2307/1913210</a></code></li>
+</ul>
+<ol>
+<li><strong>Amihud, Y. (2002). _Illiquidity and stock returns: cross-section and time-series effects_. Journal of Financial Markets.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1016/S1386-4181(01)00024-6</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1016/S1386-4181(01)00024-6">https://doi.org/10.1016/S1386-4181(01)00024-6</a></code></li>
+</ul>
+</body>
+</html>

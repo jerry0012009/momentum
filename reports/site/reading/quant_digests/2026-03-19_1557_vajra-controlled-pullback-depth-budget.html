@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 `controlled pullback &lt;= 1.5%` 当 15m 通用过滤：在 EMA/PSAR continuation 上，它更像“前置状态预算”，不是触发后 gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 `controlled pullback &lt;= 1.5%` 当 15m 通用过滤：在 EMA/PSAR continuation 上，它更像“前置状态预算”，不是触发后 gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-19 15:58 UTC</span>
+      <span class="pill">研究时间：2026-03-19 15:57 UTC</span>
+      <span class="pill">类型：GitHub + 本地代理快检</span>
+      <span class="pill">主题标签：ema/psar/raw-alpha/pullback/controlled-pullback/depth-budget/adx/volume/continuation/filter/repo/crypto/15m</span>
+      <span class="pill">证据类型：repo 规则（工程证据）+ 公开行情代理快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-19_1557_vajra-controlled-pullback-depth-budget.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-19 15:57 UTC</li>
+<li>类型：GitHub + 本地代理快检</li>
+<li>主题标签：ema/psar/raw-alpha/pullback/controlled-pullback/depth-budget/adx/volume/continuation/filter/repo/crypto/15m</li>
+<li>证据类型：repo 规则（工程证据）+ 公开行情代理快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是一个很新的仓库：<strong>Aatharva21 (2026) 的 <code>BTC-EMA-based-strategy-1H-</code>（Vajra）</strong>。 我没有照搬它的整套 1H BTC 策略，而是只抽了一个更适合我们 desk 的旁支问题：</p>
+<p>&gt; <code>controlled pullback &lt;= 1.5%</code> 这条规则，放到我们 <code>15m EMA/PSAR continuation</code> 里，应该当触发过滤，还是当“前置状态预算”来用？</p>
+<p>repo 里这条支路很清楚：</p>
+<ul>
+<li><code>pullbackLookback = 5</code></li>
+<li><code>maxPullbackPct = 1.5</code></li>
+<li><code>nearEMA</code></li>
+<li><code>volume &gt; 1.2 * SMA20</code></li>
+<li><code>ADX &gt;= 25</code></li>
+</ul>
+<h2>2. 核心结论</h2>
+<ol>
+<li><strong>一句话核心结论</strong>：在当前 15m EMA/PSAR 代理触发口径里，<code>pullback&lt;=1.5%</code> 几乎不筛选样本（108/109 已天然满足），所以它<strong>不适合当触发后 gate</strong>；更像该前置到“setup 预备状态预算”层。</li>
+<li><strong>一句话证明方式</strong>：复用本地 <code>BTC/ETH/SOL 120d 15m</code> cache，统一 <code>next-bar open + hold 8 bars + no-overlap + 6/10/15bps</code>，比较 <code>baseline / depth15 / depth15+touch+green / repo_branch</code>。</li>
+<li>关键数据（<code>6bps/side</code>）：</li>
+</ol>
+<ul>
+<li><code>baseline</code>：<code>mean_total_return = -3.66%</code>，<code>mean_trade_count = 34.67</code></li>
+<li><code>depth15</code>：<code>-2.53%</code>，但 <code>retention = 99.05%</code>（几乎没筛选）</li>
+<li><code>repo_branch(深度+nearEMA+green+vol1.2+ADX25)</code>：<code>-2.47%</code>，但 <code>retention = 29.94%</code>、<code>positive_asset_ratio = 0/3</code></li>
+</ul>
+<ol>
+<li>深度阈值扫一圈（同口径，6bps）后，<code>1.0%</code> 反而比 repo 默认 <code>1.5%</code> 更稳：</li>
+</ol>
+<ul>
+<li><code>depth&lt;=1.0%</code>：<code>mean_total_return ≈ -1.34%</code>，<code>retention ≈ 92.66%</code></li>
+<li><code>depth&lt;=1.5%</code>：<code>mean_total_return ≈ -2.53%</code>，<code>retention ≈ 94.50%</code></li>
+</ul>
+<h2>3. 为什么它直接服务当前三条收口线</h2>
+<ul>
+<li><strong>EMA / PSAR raw alpha focus（最直接）</strong>：这轮回答的是“回踩预算该放在哪一层”，属于 entry architecture，不是再加一个泛化指标。</li>
+<li><strong>Fibonacci confirmation / retest_hold</strong>：结论可迁移——“回踩深度预算”应优先作为 pre-condition，而非触发后再补刀。</li>
+<li><strong>V3 breakout-short follow-up</strong>：镜像后同理，<code>retest depth budget</code> 更像前置资格，不应和 post-break trigger 混成同层。</li>
+</ul>
+<p>如果问“为什么这题比继续做旧派生假设更值”：因为它是 <strong>fresh repo-based</strong>，且直接修正我们三线都在反复遇到的一个执行位错——<strong>预算层 vs 触发层混用</strong>。</p>
+<h2>4. 下一步怎么测（5m / 15m 最小实验）</h2>
+<h3>4.1 数据与公开性</h3>
+<ul>
+<li>数据源：Binance Futures 公共 K 线（本轮复用本地 cache）</li>
+<li>公开性：公开可得</li>
+<li>更新频率：5m / 15m</li>
+<li>本轮产物：</li>
+<li><code>reports/artifacts/quant_digests/vajra_controlled_pullback_proxy/candidate_events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/vajra_controlled_pullback_proxy/trade_log.csv</code></li>
+<li><code>reports/artifacts/quant_digests/vajra_controlled_pullback_proxy/asset_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/vajra_controlled_pullback_proxy/overall_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/vajra_controlled_pullback_proxy/depth_threshold_sweep.csv</code></li>
+<li><code>reports/artifacts/quant_digests/vajra_controlled_pullback_proxy/summary_snapshot.json</code></li>
+</ul>
+<h3>4.2 最小可复现实验口径（建议先做这个）</h3>
+<p>下一轮不要再把 <code>depth&lt;=x%</code> 接在 trigger 后面，改成 <strong>pre-armed 状态机</strong>：</p>
+<ol>
+<li>先定义 <code>armed_pullback</code>（过去 <code>N</code> 根内出现回踩，且 <code>depth&lt;=x%</code>、nearEMA 成立）；</li>
+<li>只有在 armed 状态下，后续 <code>EMA/PSAR continuation trigger</code> 才可放行；</li>
+<li>对照三臂：</li>
+</ol>
+<ul>
+<li>A：当前 baseline（触发即入场）</li>
+<li>B：post-trigger depth gate（本轮已证伪近似无效）</li>
+<li>C：pre-armed depth budget（主测试）</li>
+</ul>
+<ol>
+<li><code>x</code> 第一轮固定只测 <code>0.75% / 1.0% / 1.25%</code>，避免继续用过松 <code>1.5%</code>。</li>
+</ol>
+<p>先看 4 个指标：</p>
+<ul>
+<li><code>post_cost_expectancy</code></li>
+<li><code>trade_count_retention</code></li>
+<li><code>flip_to_fail_3bars_rate</code></li>
+<li><code>median_fwd3_ret</code></li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>源 repo 明确写了 <code>BTC 1H</code>，不是 15m crypto 通用模板；</li>
+<li>本轮是代理快检，不是完整 OOS 策略回测；</li>
+<li><code>emaAngle</code> 在 Pine 里用原始价差换算角度，跨资产可移植性弱，本轮未把它当硬门；</li>
+<li>当前结果不代表“pullback 预算无效”，只代表 <strong>放在触发后这层几乎不产生信息增益</strong>。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Aatharva21. (2026). _BTC-EMA-based-strategy-1H- (Vajra)_.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/Aatharva21/BTC-EMA-based-strategy-1H-&gt;">https://github.com/Aatharva21/BTC-EMA-based-strategy-1H-&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/Aatharva21/BTC-EMA-based-strategy-1H-&gt;">https://github.com/Aatharva21/BTC-EMA-based-strategy-1H-&gt;</a></li>
+</ul>
+<ol>
+<li><strong>策略源码（Pine）</strong>：<code>vajra_strategy.pine</code></li>
+</ol>
+<ul>
+<li>关键规则：<code>pullbackLookback=5</code>、<code>maxPullbackPct=1.5</code>、<code>nearEMA</code>、<code>volume &gt; 1.2*SMA20</code>、<code>ADX&gt;=25</code></li>
+<li>Readable URL: &lt;<a href="https://github.com/Aatharva21/BTC-EMA-based-strategy-1H-/blob/main/vajra_strategy.pine&gt;">https://github.com/Aatharva21/BTC-EMA-based-strategy-1H-/blob/main/vajra_strategy.pine&gt;</a></li>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/Aatharva21/BTC-EMA-based-strategy-1H-/main/vajra_strategy.pine&gt;">https://raw.githubusercontent.com/Aatharva21/BTC-EMA-based-strategy-1H-/main/vajra_strategy.pine&gt;</a></li>
+</ul>
+<ol>
+<li><strong>仓库元数据（创建时间/更新）</strong></li>
+</ol>
+<ul>
+<li>URL: &lt;<a href="https://api.github.com/repos/Aatharva21/BTC-EMA-based-strategy-1H-&gt;">https://api.github.com/repos/Aatharva21/BTC-EMA-based-strategy-1H-&gt;</a></li>
+</ul>
+<ol>
+<li><strong>公开行情数据源</strong></li>
+</ol>
+<ul>
+<li>Binance Futures Klines API: &lt;<a href="https://fapi.binance.com/fapi/v1/klines&gt;">https://fapi.binance.com/fapi/v1/klines&gt;</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个 deep-learning funding 仓只读成“模型竞赛”：对 short-cycle desk，更该先拆的是「basis 失衡回归 × funding carry」以及“阈值塌缩”这条 admission 教训</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个 deep-learning funding 仓只读成“模型竞赛”：对 short-cycle desk，更该先拆的是「basis 失衡回归 × funding carry」以及“阈值塌缩”这条 admission 教训</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-16 11:28 UTC</span>
+      <span class="pill">研究时间：2026-04-16 11:19 UTC</span>
+      <span class="pill">类型：GitHub repo source audit + Binance public-data portability quick check</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/carry/funding/basis/delta-neutral/threshold-search/binance/1m/3m/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：工程证据 + 公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-16_1119_fundingbasis-thresholdcollapse-transfer.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-16 11:19 UTC</li>
+<li>类型：GitHub repo source audit + Binance public-data portability quick check</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>short perp + long spot</code>，做 rich-basis 回归并叠加正 funding carry</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/carry/funding/basis/delta-neutral/threshold-search/binance/1m/3m/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：工程证据 + 公共数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次审的是 <code>MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</code>（2026），重点看了 <code>configs/labels/default.yaml</code>、<code>src/funding_arb/models/baselines.py</code>、<code>src/funding_arb/features/builders.py</code>，以及仓库自带回测产物（<code>strategy_metrics.csv</code>、<code>combined_strategy_metrics.csv</code>、<code>baseline_metrics.csv</code>）。另外做了一个 Binance 公共数据快检（spot/perp <code>15m</code> + funding）。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这条 alpha 的“方向”是对的（rich-basis 回归 + carry），但仓库默认阈值在 OOS test 上几乎塌成“无交易”，说明它目前更像可复刻的研究壳，而不是可直接上线策略。</li>
+<li><strong>一句话证明方式</strong>：直接看 repo 自带 OOS 指标 + 用 Binance 公共 <code>15m</code> 数据做最小 portability 复算，结果都指向“gross 有小边际、成本后易被吃掉”。</li>
+<li>仓库 <code>strategy_metrics.csv</code> 的 <code>test</code> split 中，多个规则（<code>logistic_*</code>、<code>elastic_net_regression</code>、<code>combined_funding_spread</code>）<code>trade_count=0</code>；只有 <code>spread_zscore_1p5</code> 有 200 笔，但 <code>cumulative_return=-0.0647</code>，<code>total_fees_usd=4000</code>，净值明显被摩擦打穿。</li>
+<li><code>combined_strategy_metrics.csv</code>（combined 口径）里某些规则看起来是正收益（如 <code>logistic_l1</code> 仅 3 笔、<code>cumulative_return=0.003553</code>），但这更像样本混合口径下的“好看截图”，不等于 OOS 可交易稳定性。</li>
+<li>我们的 Binance <code>15m</code> 快检（近约 31 天、<code>basis_z&gt;1.5 &amp; funding&gt;0</code>）得到：信号约 91 次，价差回归均值约 <code>+1.57 bps</code>，单次 funding 约 <code>+0.24 bps</code>，合计 <code>gross ~ +1.81 bps</code>；若按约 <code>8 bps</code> 单边摩擦估算，净值仍显著为负。</li>
+<li><strong>最值得复用点</strong>：不是它的“深度学习模型名”，而是它把 label、阈值搜索、成本项、回测流水线都写成了可替换组件，适合我们直接拿来做 <code>admission / veto / cost ladder</code> 的工程母板。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线仍然属于我们当前最优先补充的 <code>raw alpha</code> 池（relative-value / stat-arb / carry / funding / basis）。它的价值不在“现成可上”，而在于给了一个很清楚的研究事实：<strong>base alpha 可以成立，但若 admission 与执行层没过成本线，结果会从“paper edge”直接塌成“0 交易或负净值”</strong>。这对 <code>1m/3m/5m/15m</code> 研发是高价值反例。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 + 均值回归（价差逆势）</li>
+<li>基础 alpha：<code>perp 相对 spot 过贵（basis 富）时，short perp / long spot，赚价差回归 + funding carry</code></li>
+<li>regime：正 funding、basis 偏离显著、且流动性/冲击成本可控时</li>
+<li>filter / veto：<code>expected_edge_bps &gt; fee+slippage buffer</code>、盘口深度阈值、stale quote veto、资金费率临近切换时段限流</li>
+<li>risk / sizing / execution overlay：delta-neutral notional cap、单腿滑点上限、最大持有时长（8h/24h）、异常波动 kill-switch、分层减仓而非一次性平仓</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：<code>basis_z</code> 极端 + 同向 funding 的组合，能在短周期执行层产生可扣成本的净回归收益。</li>
+<li>可计算定义（先做最小版）：</li>
+<li>状态层（<code>1h</code>）：<code>basis_z_72h &gt; 1.5</code> 且 <code>funding_bps &gt; 0</code></li>
+<li>执行层（<code>15m/5m/3m/1m</code>）：下根开盘执行 <code>short perp + long spot</code>，当 <code>basis_z &lt; 0.3</code> 或持有到 <code>8h</code> 强平</li>
+<li>最小回测切口：Binance <code>BTCUSDT</code>，先跑最近 120 天，再扩到 365 天；<code>15m</code> 先做基线，再下钻到 <code>5m/3m/1m</code> 看执行改进空间。</li>
+<li>最先看 2 个指标：</li>
+<p>1) <code>post-cost avg pnl bps / trade</code>（必须 &gt; 0） 2) <code>trade_count × capacity</code>（防止“只剩几笔好看交易”）</p>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>当前仓库主数据基本集中在单资产与单交易所口径，跨资产泛化证据不足。</li>
+<li>funding 是离散结算（常见 8h），而执行在分钟级，若不做事件时钟对齐，容易高估 carry。</li>
+<li>阈值搜索很容易产生 validation 漂亮、test 归零的塌缩，需要强制加入最小成交笔数与稳定性约束。</li>
+<li>这类策略对费用、冲击、借贷/转仓细节极敏感，不应用“未扣全成本”的结果做上线依据。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>MengerWen. (2026). *Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates*. Venue: GitHub Repository.</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates">https://github.com/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</a></code></li>
+<li>API metadata: <code><a href="https://api.github.com/repos/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates">https://api.github.com/repos/MengerWen/Deep-Learning-Based-Delta-Neutral-Statistical-Arbitrage-on-Perpetual-Funding-Rates</a></code></li>
+<li>Public data docs: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Get-Funding-Rate-History</a></code>、<code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+</body>
+</html>

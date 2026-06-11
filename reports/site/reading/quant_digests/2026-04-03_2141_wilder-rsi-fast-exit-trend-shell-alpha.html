@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 RSI momentum repo 只读成 4h walk-forward 报告：对 crypto short-cycle desk，更该先测的是「Wilder RSI breakout × EMA200/ADX/volume allow × fast RSI-45 exit」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 RSI momentum repo 只读成 4h walk-forward 报告：对 crypto short-cycle desk，更该先测的是「Wilder RSI breakout × EMA200/ADX/volume allow × fast RSI-45 exit」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 21:43 UTC</span>
+      <span class="pill">研究时间：2026-04-03 21:41 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（GitHub API metadata + `README.md` + `Cypto_Trading_Wilder&#x27;s SmoothingRSI/rsi_momentum_backtest_v5.py` + `PRODUCTION_REPORT_V5.md` + `OPTIMIZATION_RESULTS.md` + `monte_carlo_bootstrap_v6.py`）+ Binance Futures 公共 `5m/15m/3m` 最小便携性快检</span>
+      <span class="pill">主题标签：raw-alpha / trend / momentum / single-asset / wilder-rsi / breakout / ema200 / adx / volume-confirm / atr-trailing-stop / fast-exit / 5m / 15m / 3m / binance-perp / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：完整开源 repo + 明确参数与回测逻辑 + 本地公共数据快检；但 repo 很新、stars 很少，**更适合当可复现候选与策略母板，不该直接当 production 证据**</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_2141_wilder-rsi-fast-exit-trend-shell-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-03 21:41 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（GitHub API metadata + <code>README.md</code> + <code>Cypto_Trading_Wilder&#x27;s SmoothingRSI/rsi_momentum_backtest_v5.py</code> + <code>PRODUCTION_REPORT_V5.md</code> + <code>OPTIMIZATION_RESULTS.md</code> + <code>monte_carlo_bootstrap_v6.py</code>）+ Binance Futures 公共 <code>5m/15m/3m</code> 最小便携性快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>趋势已成立时，短周期 RSI 向上突破不是“过热就该反手”，而更像一段可继续跟随的 momentum continuation；真正关键不只是 entry，而是用 EMA200 / ADX / volume 做准入，再用 ATR trail + 更快的 RSI 回落阈值把利润收回来。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / trend / momentum / single-asset / wilder-rsi / breakout / ema200 / adx / volume-confirm / atr-trailing-stop / fast-exit / 5m / 15m / 3m / binance-perp / repo / public-data / cost / risk</li>
+<li>证据类型：完整开源 repo + 明确参数与回测逻辑 + 本地公共数据快检；但 repo 很新、stars 很少，<strong>更适合当可复现候选与策略母板，不该直接当 production 证据</strong></li>
+</ul>
+<p><strong>先回答 base alpha：这篇东西的 base alpha 是清楚的——不是“walk-forward / bootstrap 工具链”，也不是“统计验证报告”本身，而是一个完整的 trend-momentum raw alpha：<code>RSI 向上突破 × 上方长均线 × ADX 趋势成立 × 成交量确认</code>，赌的是顺趋势方向的延续，不是回调均值回复。</strong></p>
+<h2>1）为什么这条线现在值得 intake</h2>
+<p>结合当前 <code>MAINLINE1_STRATEGY_FACTOR_MAP</code> / <code>FACTOR_BACKLOG</code> / <code>RESEARCH_AUTOMATION_BRIEF</code> 的优先级，我更在意的是：</p>
+<ul>
+<li>先补 <strong>raw alpha</strong>，不要继续围着旧 baseline gate 微调；</li>
+<li>如果是 trend / momentum 线，就要给出<strong>完整壳</strong>，而不是只给一个过滤器；</li>
+<li>要能快速映射到 <code>5m / 15m</code> 做 first verdict。</li>
+</ul>
+<p>这份 repo 值得写，不是因为它的 bootstrap 图好看，而是因为它刚好提供了一条<strong>完整 trend raw alpha 母板</strong>：</p>
+<ul>
+<li>entry：<code>RSI breakout</code></li>
+<li>allow：<code>EMA200 + ADX + volume</code></li>
+<li>exit：<code>ATR trailing stop + RSI exit</code></li>
+<li>sizing：<code>risk-based position sizing</code></li>
+<li>cost：<code>fee + slippage + funding</code></li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; 这不是“RSI 大于 70 追多”那么粗糙，而是把顺势延续写成了一条完整、可回测、可下放到短周期的交易壳。</p>
+<p>更重要的是，它能补我们最近更偏 mean reversion / pairs / maker / carry intake 之外的另一条主线：</p>
+<p>&gt; <strong>一个足够简洁、能快速复制到 crypto short-cycle 的单资产趋势延续壳。</strong></p>
+<h2>2）这次看了什么</h2>
+<h3>2.1 主来源</h3>
+<ol>
+<li><strong>FarisZnf (2026), _Production-Grade RSI Momentum Crypto Trading Strategy with Advanced Statistical Validation_</strong></li>
+</ol>
+<ul>
+<li>Venue：GitHub repository</li>
+<li>DOI：N/A</li>
+<li>Readable URL：&lt;<a href="https://github.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation&gt;">https://github.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation&gt;</a></li>
+<li>Repo URL：&lt;<a href="https://github.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation&gt;">https://github.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation&gt;</a></li>
+</ul>
+<ol>
+<li>重点核对文件：</li>
+</ol>
+<ul>
+<li><code>README.md</code></li>
+<li><code>Cypto_Trading_Wilder&#x27;s SmoothingRSI/rsi_momentum_backtest_v5.py</code></li>
+<li><code>Cypto_Trading_Wilder&#x27;s SmoothingRSI/PRODUCTION_REPORT_V5.md</code></li>
+<li><code>Cypto_Trading_Wilder&#x27;s SmoothingRSI/OPTIMIZATION_RESULTS.md</code></li>
+<li><code>Cypto_Trading_Wilder&#x27;s SmoothingRSI/monte_carlo_bootstrap_v6.py</code></li>
+</ul>
+<h3>2.2 repo 的客观信号</h3>
+<p>GitHub metadata：</p>
+<ul>
+<li>created：<code>2026-03-30</code></li>
+<li>pushed：<code>2026-03-30</code></li>
+<li>stars：<code>1</code></li>
+<li>forks：<code>0</code></li>
+</ul>
+<p>所以要先说实话：</p>
+<p>&gt; 这不是一个“社区已经验证过很多轮”的成熟策略库，而是一个<strong>新、轻、可读性强</strong>的研究型 repo。它的价值在于源码透明、策略骨架完整，适合作为 intake 素材，而不是拿 repo headline 回报直接背书 production。</p>
+<h2>3）repo 真正有价值的不是验证框架，而是这条完整趋势壳</h2>
+<h3>3.1 原版 entry：Wilder RSI breakout，不做逆势抄底</h3>
+<p><code>rsi_momentum_backtest_v5.py</code> 里，核心 entry 条件很明确：</p>
+<ul>
+<li><code>RSI_PERIOD = 14</code></li>
+<li><code>RSI_LONG_ENTRY = 65</code></li>
+<li><code>TREND_EMA_PERIOD = 200</code></li>
+<li><code>ADX_PERIOD = 14</code></li>
+<li><code>ADX_THRESHOLD = 20</code></li>
+<li><code>VOLUME_SMA_PERIOD = 20</code></li>
+</ul>
+<p>实际信号是：</p>
+<ul>
+<li><code>rsi &gt; entry_threshold</code></li>
+<li><code>rsi_prev &lt;= entry_threshold</code></li>
+<li><code>close &gt; ema_200</code></li>
+<li><code>adx &gt; 20</code></li>
+<li><code>volume &gt; volume_sma</code></li>
+</ul>
+<p>这条线的核心思想其实很对 short-cycle desk 胃口：</p>
+<p>&gt; <strong>只有趋势、方向性和成交量都站在你这边时，才把 RSI 上破当 continuation，而不是把它当 overbought 反转。</strong></p>
+<h3>3.2 bull filter：repo 最值得 desk 单独拆出来的旁支</h3>
+<p>repo 里还有一个很值得 intake 的小设计：</p>
+<ul>
+<li>当 <code>close &gt; ema_200</code> 且 <code>adx &gt; 25</code> 时，视为 <code>bull_regime</code></li>
+<li>这时把 entry threshold 从 <code>65</code> 下调到 <code>60</code></li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; 当市场已经明确进入强趋势时，不必死等更极端的 RSI；可以更早参与 continuation。</p>
+<p>这个想法很适合 crypto 短周期，因为很多真正好做的顺势腿，往往不会等 RSI 飙到特别夸张才给第二次上车点。</p>
+<h3>3.3 exit：repo headline 里最容易被忽略，但对短周期最关键</h3>
+<p>repo 原版出场：</p>
+<ul>
+<li><code>ATR_STOP_MULTIPLE = 4.0</code></li>
+<li><code>ATR_TARGET_MULTIPLE = 10.0</code></li>
+<li><code>RSI_LONG_EXIT = 30</code></li>
+</ul>
+<p>这在 <code>4h</code> 上是“让赢家多跑一会儿”的典型 trend-following 写法；但搬到 <code>5m / 15m</code> 时，<strong>它反而变成最值得先动手改的地方</strong>。</p>
+<p>原因很简单：</p>
+<ul>
+<li><code>RSI exit = 30</code> 对短周期来说太慢；</li>
+<li>continuation 腿经常先给你一段利润，再回落到中性；</li>
+<li>如果等到 RSI 真掉回 <code>30</code> 才走，很多 <code>5m / 15m</code> 利润已经 round-trip 掉了。</li>
+</ul>
+<p>所以这次真正值得 desk intake 的旁支，不是“原封不动抄 repo 参数”，而是：</p>
+<p>&gt; <strong>保留它的 trend entry 壳，但把短周期的收割逻辑改成更快的 <code>RSI-45 exit</code>。</strong></p>
+<h3>3.4 sizing / risk / cost：它确实是一条完整策略，不只是信号</h3>
+<p>repo 里这部分也写得比较全：</p>
+<ul>
+<li><code>RISK_PER_TRADE</code></li>
+<li><code>MAX_POSITION_PCT</code></li>
+<li><code>TRADING_FEE = 0.001</code></li>
+<li><code>SLIPPAGE = 0.0005</code></li>
+<li><code>FUNDING_RATE = 0.0001</code></li>
+</ul>
+<p>要特别提醒一个源码层面的细节：</p>
+<ul>
+<li><code>README</code> 说的是 <strong>2% risk per trade</strong>；</li>
+<li><code>v5</code> 代码里默认 <code>RISK_PER_TRADE = 0.06</code>，并把 <code>MAX_POSITION_PCT = 3.00</code>，解释为模拟 <code>3x leverage</code>。</li>
+</ul>
+<p>这说明：</p>
+<p>&gt; repo 的“表现数字”里带有一定风格化的资金使用假设；但这不影响我们 intake 它的<strong>信号壳与结构逻辑</strong>。真正要落地时，先用更保守的仓位上限测 admission，才是对的。</p>
+<h2>4）Binance 公共数据最小便携性快检：真正值得 desk 抄的是 faster-exit 版本</h2>
+<p>为了避免只转述 README，我用 Binance USDⓈ-M Futures 公共 klines 做了一个最小快检。</p>
+<h3>4.1 快检口径</h3>
+<ul>
+<li>数据源：Binance USDⓈ-M Futures 公共 <code>klines</code></li>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li>区间：<code>2026-01-01</code> ~ <code>2026-04-03</code></li>
+<li>时间框架：<code>5m / 15m</code>，外加 <code>ETH 3m</code> sidecar</li>
+<li>proxy 逻辑：</li>
+<li>保留 repo 的 <code>RSI breakout + EMA200 + ADX + volume</code> entry</li>
+<li>保留 <code>bull regime</code> 下调 entry threshold 的想法</li>
+<li>成本沿 repo：<code>10bps fee + 5bps slippage</code>；funding 按 bar 长度缩放</li>
+<li>sizing 采用<strong>更保守</strong>的 <code>2% risk / trade + 1.5x notional cap</code></li>
+<li>artifact：</li>
+<li><code>reports/artifacts/quant_digests/2026-04-03_rsi_momentum_shortcycle_portability_probe.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-03_rsi_momentum_15m_threshold_sweep.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-03_rsi_momentum_5m_faster_exit_probe.csv</code></li>
+</ul>
+<h3>4.2 先说坏消息：原版 <code>RSI exit = 30</code> 直接搬到短周期，表现很差</h3>
+<p>按 repo 原版更接近的 exit 逻辑做 quick proxy，结果是：</p>
+<ul>
+<li><code>5m</code>：三币都明显为负，<code>BTC -48.0% / ETH -41.9% / SOL -43.1%</code></li>
+<li><code>15m</code>：虽然没 <code>5m</code> 那么差，但仍偏弱，<code>BTC -12.4% / ETH -12.7% / SOL -4.7%</code></li>
+<li><code>ETH 3m</code> sidecar：约 <code>-63.4%</code></li>
+</ul>
+<p>这说明一个很关键的事实：</p>
+<p>&gt; <strong>repo 的 raw alpha 不是坏在 entry，而是坏在把更高时间框架的“慢退出”硬搬到 short-cycle。</strong></p>
+<h3>4.3 真正值得 desk intake 的旁支：把 exit 提快到 <code>RSI-45</code></h3>
+<p>我随后只在 <code>15m</code> 上做了一个很小的阈值 sweep，核心发现很明确：</p>
+<ul>
+<li><strong><code>BTC 15m</code>：entry <code>55</code> / exit <code>45</code>，proxy 总收益约 <code>+27.2%</code>，max DD 约 <code>-3.65%</code>，PF <code>5.97</code></strong></li>
+<li><strong><code>ETH 15m</code>：entry <code>60</code> / exit <code>45</code>，proxy 总收益约 <code>+48.2%</code>，max DD 约 <code>-3.94%</code>，PF <code>6.55</code></strong></li>
+<li><strong><code>SOL 15m</code>：entry <code>65</code> / exit <code>45</code>，proxy 总收益约 <code>+45.8%</code>，max DD 约 <code>-4.65%</code>，PF <code>3.59</code></strong></li>
+</ul>
+<p>最重要的不是数值本身，而是这个结构结论：</p>
+<p>&gt; <strong>对 short-cycle 来说，这条策略的关键不是“把 RSI 做得更激进”，而是“让盈利单更早落袋”。</strong></p>
+<h3>4.4 <code>5m</code> 反而更像这条旁支该去的主战场</h3>
+<p>在 <code>5m</code> 上只保留 <code>exit = 45</code>，结果比原版好得非常明显：</p>
+<ul>
+<li><strong><code>ETH 5m</code>：entry <code>58</code> / exit <code>45</code>，proxy 总收益约 <code>+90.8%</code>，max DD 约 <code>-4.40%</code>，PF <code>3.21</code></strong></li>
+<li><strong><code>SOL 5m</code>：entry <code>58</code> / exit <code>45</code>，proxy 总收益约 <code>+61.2%</code>，max DD 约 <code>-8.15%</code>，PF <code>2.57</code></strong></li>
+<li><strong><code>BTC 5m</code>：entry <code>62</code> / exit <code>45</code>，proxy 总收益约 <code>+35.1%</code>，max DD 约 <code>-7.61%</code>，PF <code>1.76</code></strong></li>
+</ul>
+<p>所以我对这份 repo 的 desk 版翻译是：</p>
+<p>&gt; 它不该被理解成“4h 验证框架”；真正适合当前 desk 的，是把它拆成一条 <strong><code>5m/15m fast-exit trend continuation shell</code></strong>。</p>
+<h2>5）它和当前 short-cycle desk 的关系该怎么摆</h2>
+<h3>5.1 它服务的是哪类 raw alpha</h3>
+<p>很明确，它属于：</p>
+<ul>
+<li><strong>single-asset trend / momentum raw alpha</strong></li>
+<li>更具体地说，是 <strong>breakout-continuation</strong>，不是 breakout-failure、也不是 mean reversion</li>
+</ul>
+<h3>5.2 它为什么比继续补一个 filter 更值得</h3>
+<p>因为这次不是在研究“哪个 gate 可能有帮助”，而是在 intake 一条<strong>可独立存在的完整 raw alpha</strong>：</p>
+<ul>
+<li>base alpha 说得清；</li>
+<li>entry/exit/sizing/risk/cost 齐；</li>
+<li>今天就能在公共数据上做最小实验；</li>
+<li>还能和现有 <code>multi_tf_momentum</code> baseline 做直接 A/B，而不是又加一层模糊 gate。</li>
+</ul>
+<h3>5.3 <code>1m / 3m / 5m / 15m</code> 上怎么分工</h3>
+<p>我会这样排序：</p>
+<ul>
+<li><strong><code>5m</code>：第一优先主实验层</strong> —— 这次 proxy 看起来最像可继续深挖的主战场</li>
+<li><strong><code>15m</code>：稳健对照层</strong> —— 更适合看参数是否平滑、是不是只靠高 turnover 撑出来</li>
+<li><strong><code>3m</code>：暂时只做 sidecar</strong> —— 原版慢退出在 <code>3m</code> 上明显太噪，必须先把 exit / cost / execution 处理好</li>
+<li><strong><code>1m</code>：先不作为第一轮 admission 层</strong> —— 除非同时加入更细的执行模型或 maker/taker 分层</li>
+</ul>
+<h2>6）我对这条线的判断</h2>
+<h3>值得保留的核心资产</h3>
+<ol>
+<li><strong>Wilder RSI breakout 本体</strong>：不是反转，是 continuation</li>
+<li><strong>EMA200 / ADX / volume 三重 allow</strong>：让它不至于沦为裸追涨</li>
+<li><strong>bull regime entry lowering</strong>：强趋势里更早参与，很适合 crypto</li>
+<li><strong>risk-based sizing + ATR trail</strong>：它确实是完整壳，不是只有信号</li>
+</ol>
+<h3>不建议原样照搬的部分</h3>
+<ol>
+<li><strong><code>4h</code> 原版 exit 口径</strong>：搬到 short-cycle 太慢</li>
+<li><strong>README headline performance</strong>：受资金假设影响，不应直接外推</li>
+<li><strong>long-only 结构</strong>：对 perp desk 来说，后续最好补 mirror short sleeve</li>
+</ol>
+<h3>当前 verdict</h3>
+<p>我的判断很直接：</p>
+<p>&gt; <strong>值得进入 raw alpha 素材池，而且优先级不低；但值得 intake 的不是 repo headline 里的“4h validated RSI momentum”，而是它被 short-cycle 重写后的旁支：<code>Wilder RSI breakout × EMA200/ADX/volume allow × fast RSI-45 exit</code>。</strong></p>
+<h2>7）下一步怎么测（最重要）</h2>
+<h3>A. 先做 exact-ish short-cycle replication</h3>
+<p>在 <code>momentum</code> 里先落一个最小原型：</p>
+<ul>
+<li>标的：<code>BTC / ETH / SOL</code></li>
+<li>主频段：<code>5m</code></li>
+<li>对照频段：<code>15m</code></li>
+<li>信号：</li>
+<li><code>RSI(14)</code> 向上突破 <code>58~62</code></li>
+<li><code>close &gt; EMA200</code></li>
+<li><code>ADX &gt; 20</code></li>
+<li><code>volume &gt; SMA20</code></li>
+<li>bull regime 下 entry 再放宽 <code>5</code> 点</li>
+<li>出场：</li>
+<li><code>ATR trail 4x</code></li>
+<li><code>RSI fast exit 45</code></li>
+<li>EOD / time-stop 作为附加对照</li>
+</ul>
+<h3>B. 明确做三组 A/B</h3>
+<ol>
+<li><strong>Original repo-ish</strong>：<code>entry 65/60, exit 30</code></li>
+<li><strong>Fast-exit branch</strong>：<code>entry 58~62, exit 45</code></li>
+<li><strong>Fast-exit + mirrored short sleeve</strong>：</li>
+</ol>
+<ul>
+<li>long：<code>RSI 上破 + above EMA200 + ADX + volume</code></li>
+<li>short：<code>RSI 下破 + below EMA200 + ADX + volume</code></li>
+</ul>
+<p>要回答的问题是：</p>
+<ul>
+<li>真正有效的是 continuation 本体，还是 long-only 偏置？</li>
+<li><code>5m</code> 优势是否仍能穿过更真实的成本模型？</li>
+<li><code>exit=45</code> 是只是 sample lucky，还是跨币稳定？</li>
+</ul>
+<h3>C. friction ladder 一开始就要加</h3>
+<p>至少加三档：</p>
+<ul>
+<li>maker-friendly</li>
+<li>mixed</li>
+<li>taker-worst-case</li>
+</ul>
+<p>因为这条线 turnover 不低；如果只在理想 friction 下赚钱，production 价值会明显下降。</p>
+<h3>D. 再决定它的最终归宿</h3>
+<p>根据 A/B 结果，分三种：</p>
+<ul>
+<li><strong>能活</strong>：独立单资产 trend sleeve</li>
+<li><strong>原始 alpha 一般，但 allow 结构很强</strong>：抽出 <code>EMA200+ADX+volume+bull-regime</code> 做共享趋势 admission 层</li>
+<li><strong>成本后不活</strong>：只保留 <code>fast exit + trailing stop</code> 逻辑，给其他 trend 壳复用</li>
+</ul>
+<h2>8）Sources</h2>
+<ol>
+<li><strong>FarisZnf (2026), _Production-Grade RSI Momentum Crypto Trading Strategy with Advanced Statistical Validation_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation&gt;">https://github.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation&gt;">https://github.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Repository README / strategy summary</strong></li>
+</ol>
+<ul>
+<li>Source URL: &lt;<a href="https://raw.githubusercontent.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation/main/README.md&gt;">https://raw.githubusercontent.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation/main/README.md&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Core strategy implementation (<code>rsi_momentum_backtest_v5.py</code>)</strong></li>
+</ol>
+<ul>
+<li>Source URL: &lt;<a href="https://raw.githubusercontent.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation/main/Cypto_Trading_Wilder%27s%20SmoothingRSI/rsi_momentum_backtest_v5.py&gt;">https://raw.githubusercontent.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation/main/Cypto_Trading_Wilder%27s%20SmoothingRSI/rsi_momentum_backtest_v5.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Production report / risk-sizing notes (<code>PRODUCTION_REPORT_V5.md</code>)</strong></li>
+</ol>
+<ul>
+<li>Source URL: &lt;<a href="https://raw.githubusercontent.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation/main/Cypto_Trading_Wilder%27s%20SmoothingRSI/PRODUCTION_REPORT_V5.md&gt;">https://raw.githubusercontent.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation/main/Cypto_Trading_Wilder%27s%20SmoothingRSI/PRODUCTION_REPORT_V5.md&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Optimization and validation notes</strong></li>
+</ol>
+<ul>
+<li>Optimization URL: &lt;<a href="https://raw.githubusercontent.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation/main/Cypto_Trading_Wilder%27s%20SmoothingRSI/OPTIMIZATION_RESULTS.md&gt;">https://raw.githubusercontent.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation/main/Cypto_Trading_Wilder%27s%20SmoothingRSI/OPTIMIZATION_RESULTS.md&gt;</a></li>
+<li>Monte Carlo URL: &lt;<a href="https://raw.githubusercontent.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation/main/Cypto_Trading_Wilder%27s%20SmoothingRSI/monte_carlo_bootstrap_v6.py&gt;">https://raw.githubusercontent.com/FarisZnf/Production-Grade-RSI-Momentum-Crypto-Trading-Strategy-with-Advanced-Statistical-Validation/main/Cypto_Trading_Wilder%27s%20SmoothingRSI/monte_carlo_bootstrap_v6.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>This run’s local artifacts</strong></li>
+</ol>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-03_rsi_momentum_shortcycle_portability_probe.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-03_rsi_momentum_15m_threshold_sweep.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-03_rsi_momentum_5m_faster_exit_probe.csv</code></li>
+</ul>
+</body>
+</html>

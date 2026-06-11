@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把跨币种 order-book 仓库只读成 ML demo：更该先测的是「BTC 盘口压力极端、ETH 盘口反向/迟钝」1m/3m cross-crypto raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把跨币种 order-book 仓库只读成 ML demo：更该先测的是「BTC 盘口压力极端、ETH 盘口反向/迟钝」1m/3m cross-crypto raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-26 09:52 UTC</span>
+      <span class="pill">研究时间：2026-03-26 09:50 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + Binance Spot 公共 `1m` 最小快检</span>
+      <span class="pill">主题标签：raw-alpha/cross-crypto/lead-lag/microstructure/order-book/order-flow/relative-value/stat-arb/btc/eth/1m/3m/5m/repo/external-data/binance</span>
+      <span class="pill">证据类型：仓库证据 + 公共数据代理快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-26_0950_btc-book-eth-divergence-catchup-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-26 09:50 UTC</li>
+<li>类型：2026 GitHub 新仓库 + Binance Spot 公共 <code>1m</code> 最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当 <code>BTC</code> 盘口压力 / taker-flow 明显单边，而 <code>ETH</code> 同时段盘口或 taker-flow 仍反向、且价格跟随不足时，<code>ETH</code> 在后续 <code>1m/3m</code> 存在向 <code>BTC</code> 方向补动的 cross-crypto lead-lag pocket</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-crypto/lead-lag/microstructure/order-book/order-flow/relative-value/stat-arb/btc/eth/1m/3m/5m/repo/external-data/binance</li>
+<li>证据类型：仓库证据 + 公共数据代理快检</li>
+</ul>
+<p>&gt; 先回答 base alpha：<strong>这不是 filter，也不是单纯模型工程。base alpha 就是“BTC 的盘口/成交流状态先动，ETH 还没完全跟上时，ETH 会在极短持有窗里补动”的 cross-crypto lead-lag raw alpha。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>主线材料是一份很新的 GitHub 仓库：</p>
+<ul>
+<li><strong>solalbaudoincs (2026), _IFCOG / ifcob: Information Flow in Crypto Order-Books_</strong></li>
+</ul>
+<p>它的 headline 看起来像“做一个 XBT/ETH 的 order-book 预测框架”，但对我们 desk 真正有价值的不是模型名字，而是它把一句可交易的话说清楚了：</p>
+<p><strong>用 <code>BTC/XBT</code> 的盘口特征去预测 <code>ETH</code> 的未来极短收益。</strong></p>
+<p>更关键的是，这不是停在 feature importance 的 explainability notebook。仓库已经把完整骨架搭出来：</p>
+<ol>
+<li>原始 order-book 预处理</li>
+<li><code>imbalance / slope / liquidity ratio / volume</code> 特征生成</li>
+<li><code>XBT -&gt; ETH</code> 的预测目标定义</li>
+<li>模型训练与性能报表</li>
+<li>事件驱动回测引擎</li>
+<li>明确 entry/exit 的策略类</li>
+</ol>
+<p>所以它不是“又一个微观结构概念展示”，而是<strong>可以直接翻译成 desk 最小实验的 raw alpha skeleton</strong>。</p>
+<h2>2. 一句话核心结论</h2>
+<ul>
+<li><strong>一句话结论</strong>：这份仓库最值得 intake 的，不是“随机森林能不能多提几点准确率”，而是 <strong>BTC 盘口压力极端、ETH 盘口还反着或没跟上时，ETH 后面 1~3 分钟会补动</strong> 这条高强度 cross-crypto raw alpha。</li>
+<li><strong>一句话它怎么证明</strong>：仓库直接把 <code>XBT</code> 的盘口特征拿去预测 <code>ETH</code> 未来 <code>200ms</code> 方向，并且给了策略类；我再用当前 Binance 公开 <code>1m</code> K 线里的 taker-buy proxy 做了一个便宜版 sanity check，看这条边压粗后还能不能留下影子。</li>
+</ul>
+<h2>3. 仓库里最值钱的，不是模型名，而是这 4 个可搬走的部件</h2>
+<h3>3.1 它明确在做「一个币的盘口 → 另一个币的未来收益」</h3>
+<p>仓库 README 写得很直接：目标是研究 <strong>multiple cryptocurrencies 的 order-books</strong>，用一个币的盘口特征（如 <code>bid-ask imbalance</code>、<code>depth shifts</code>）去预测另一个币的短期收益，并做 out-of-sample backtest。</p>
+<p>这点很关键，因为它把主题从“单资产方向预测”升级成了 <strong>cross-asset information flow</strong>，更贴近我们 desk 现在想补的 lead-lag / relative-value 素材池。</p>
+<h3>3.2 特征不是抽象 embedding，而是可直接落地的盘口量化因子</h3>
+<p>仓库当前直接列出了：</p>
+<ul>
+<li><code>bid-ask-imbalance-5-levels</code></li>
+<li><code>V-bid-5-levels</code> / <code>V-ask-5-levels</code></li>
+<li><code>slope-bid-5-levels</code> / <code>slope-ask-5-levels</code></li>
+<li><code>avg-250ms-of-slope-*</code></li>
+<li><code>avg-250ms-of-liquidity-ratio-5-levels</code></li>
+</ul>
+<p>也就是说，这条 alpha 的原始形态并不复杂： <strong>盘口偏斜、深度斜率、流动性倾斜、以及这些量在短窗口上的持续性。</strong></p>
+<h3>3.3 它已经把 alpha 写成了完整策略骨架，而不只是分类器</h3>
+<p><code>Mateo2StartStrategy</code> 的逻辑非常直接：</p>
+<ul>
+<li>用 <code>XBT</code> 特征做预测；</li>
+<li>若模型给出正向信号，则买入 <code>0.01 ETH</code>；</li>
+<li>并在 <code>200ms</code> 后自动程序化卖出。</li>
+</ul>
+<p>这说明仓库作者自己也没有把它当纯解释型项目，而是默认： <strong>这条边应该被写成短持有、事件驱动、快进快出的完整策略。</strong></p>
+<h3>3.4 它顺手也告诉我们：这条边寿命很短，别乱拉长 horizon</h3>
+<p>仓库里一个更像样的目标是：</p>
+<ul>
+<li><code>avg-10ms-of-mid-price-itincreases-after-200ms-with-threshold-5</code></li>
+</ul>
+<p>对应的 <code>perf.json</code> 给出：</p>
+<ul>
+<li>样本量 <code>363,537</code></li>
+<li>正类支持数 <code>12,244</code>（约 <code>3.37%</code>）</li>
+<li>正类 <strong>recall ≈ 60.5%</strong></li>
+<li>正类 <strong>precision ≈ 10.2%</strong></li>
+<li>总体 <strong>accuracy ≈ 80.8%</strong></li>
+</ul>
+<p>这不代表“直接实盘躺赚”，但至少说明： <strong>在稀有事件 pocket 里，<code>BTC</code> 盘口对 <code>ETH</code> 的 200ms 方向确实有可检出的信息。</strong></p>
+<p>更重要的是，仓库的 <code>500ms</code> 目标几乎塌掉：</p>
+<ul>
+<li>正类支持数只有 <code>56 / 363,537</code></li>
+<li>正类 recall <code>0</code></li>
+</ul>
+<p>这句对 desk 非常值钱： <strong>这条 edge 不是 horizon 越长越香，反而很可能只能在极短窗存活。</strong></p>
+<h2>4. 公共 <code>1m</code> 代理快检：压粗以后，这条边还剩多少影子？</h2>
+<p>我没有去伪装成“已经完整复刻 order-book”。第一轮只做一个更便宜、更容易大规模跑的代理实验：</p>
+<h3>4.1 公开数据源</h3>
+<ul>
+<li>Binance Spot <code>BTCUSDT</code> / <code>ETHUSDT</code> 公共 <code>1m</code> klines</li>
+<li>时间窗：最近约 <code>5000</code> 根 <code>1m</code> bar（约 <code>3.5</code> 天）</li>
+<li>可直接从公开 API 拿到，无需私有数据库</li>
+</ul>
+<h3>4.2 代理特征</h3>
+<p>因为没有真 <code>L2</code> 深度流，我先拿 K 线里的 taker-buy 字段做代理：</p>
+<ul>
+<li><code>ofi_proxy = (2 * taker_buy_quote - quote_volume) / quote_volume</code></li>
+<li><code>qv_z = zscore(quote_volume, 240)</code></li>
+<li>同时看 <code>BTC</code> 与 <code>ETH</code> 的 <code>ofi_proxy</code> 是否方向相反</li>
+</ul>
+<h3>4.3 事件定义</h3>
+<p>触发事件需要同时满足：</p>
+<ol>
+<li><code>BTC qv_z &gt; 1</code></li>
+<li><code>|BTC ofi_proxy| &gt; 0.25</code></li>
+<li><code>sign(BTC ofi_proxy) != sign(ETH ofi_proxy)</code></li>
+<li><code>ETH</code> 当根收益绝对值 <code>&lt; 0.5 * BTC</code> 当根收益绝对值</li>
+</ol>
+<p>直白翻译： <strong>BTC 这根 bar 明显有大单边 taker 压力，但 ETH 盘口/成交方向还没对齐，而且价格也没怎么跟。</strong></p>
+<h3>4.4 快检结果</h3>
+<p>在这段最近样本里，共得到 <strong>13 个事件</strong>。以 <code>BTC</code> 冲击方向为基准看 <code>ETH</code> 后续 signed move：</p>
+<ul>
+<li><strong>未来 <code>1m</code></strong>：hit rate <strong>61.5%</strong>，平均 <strong>+0.55 bps</strong>，中位数 <strong>+1.13 bps</strong></li>
+<li><strong>未来 <code>3m</code></strong>：hit rate <strong>69.2%</strong>，平均 <strong>+2.67 bps</strong>，中位数 <strong>+2.40 bps</strong></li>
+<li><strong>未来 <code>5m</code></strong>：hit rate <strong>61.5%</strong>，平均 <strong>+3.32 bps</strong>，中位数 <strong>+2.08 bps</strong></li>
+<li>事件发生时，同根 <code>BTC-ETH</code> signed gap 中位数约 <strong>2.78 bps</strong></li>
+</ul>
+<h3>4.5 这组数字怎么读</h3>
+<ul>
+<li><strong>有影子，但样本稀。</strong> 它不像 always-on alpha，更像 stress pocket / event pocket。</li>
+<li><strong>压成 <code>1m</code> 代理后，最像还能活的是 <code>3m</code> 持有窗。</strong> 这和仓库里“edge 很短，不要乱拉长”的结论是同方向的。</li>
+<li><strong>公共代理仍然是弱版证据。</strong> 真正值钱的部分还是 <code>L2</code> 深度、盘口 slope、250ms persistence，而不是 <code>1m</code> K 线本身。</li>
+</ul>
+<h2>5. 为什么这条线和当前 desk 直接相关</h2>
+<p>过去 24 小时里，我们 intake 了不少：</p>
+<ul>
+<li>pairs / distance / basis / parity 的 mean reversion</li>
+<li>CEX/DEX 价格发现</li>
+<li>单资产 LOB directional timing</li>
+</ul>
+<p>这篇的补位点在于： <strong>它不是单资产 LOB，也不是低频 BTC→alt basket，而是“cross-crypto、microstructure、极短 hold”的 lead-lag raw alpha。</strong></p>
+<p>换句话说，它补的是：</p>
+<ul>
+<li><code>1m / 3m</code> 更高强度 alpha 池</li>
+<li><code>BTC -&gt; ETH</code> 的跨币种信息流</li>
+<li>raw alpha 本体，而不是单纯 filter / overlay</li>
+</ul>
+<h2>5.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：cross-crypto / lead-lag / microstructure directional alpha</li>
+<li>基础 alpha：<code>BTC</code> 盘口压力与 <code>ETH</code> 盘口/价格尚未同步时，<code>ETH</code> 往往向 <code>BTC</code> 方向补动</li>
+<li>entry：</li>
+<li>原仓库版：<code>BTC</code> 特征模型给出正向 <code>ETH</code> 信号时，立即做 <code>ETH</code></li>
+<li>desk 代理版：当 <code>BTC</code> 的 <code>ofi / volume</code> 极端、<code>ETH ofi</code> 反向或迟钝、且 <code>ETH</code> 当根价格跟随不足时，下一根做 <code>ETH</code> 同向补动</li>
+<li>exit：</li>
+<li>原仓库版：<code>200ms</code> 自动平仓</li>
+<li>desk 第一轮：优先先测 <code>1m / 3m</code> 固定持有；若保留 edge，再回到 <code>10s / 30s / 90s / 180s</code> 更细粒度</li>
+<li>sizing：按 <code>|BTC ofi_proxy|</code>、<code>qv_z</code>、<code>ETH gap bps</code> 分 bucket；只在高分位事件里开仓</li>
+<li>risk / veto：</li>
+<li>若 <code>BTC</code> 自己下一秒/下一分钟反转，立即 kill</li>
+<li>若 <code>ETH</code> 同步已完成（gap 已回补超 <code>70%</code>），不追</li>
+<li>若估计毛边不足覆盖 taker fee + slip，则 veto</li>
+<li>execution / cost：</li>
+<li>双腿版可做 <code>long lagger / short leader</code> beta-neutral</li>
+<li>单腿验证版先做 <code>ETH</code> 单腿，先确认信号存在，再决定要不要上双腿与 maker/taker 优化</li>
+</ul>
+<h2>6. 下一步怎么测（这篇最重要）</h2>
+<h3>6.1 不要继续停在 K 线代理，下一轮直接上真 <code>L2</code></h3>
+<p>最小正式复现建议：</p>
+<ul>
+<li><strong>数据源</strong>：Binance public depth / bookTicker / aggTrades（公开可得）</li>
+<li><strong>标的</strong>：<code>BTCUSDT</code>, <code>ETHUSDT</code></li>
+<li><strong>粒度</strong>：<code>100ms / 250ms / 1s</code></li>
+<li><strong>窗口</strong>：最近 <code>7~14</code> 天先够</li>
+</ul>
+<h3>6.2 先测 3 组最关键的信号，而不是一口气堆模型</h3>
+<ol>
+<li><code>BTC imbalance shock</code></li>
+<li><code>BTC slope shock</code></li>
+<li><code>BTC signal - ETH signal</code> 的 cross-book divergence</li>
+</ol>
+<p>也就是先看： <strong>到底是 BTC 自己的单边压力最有用，还是 BTC-ETH 的盘口差分更有用。</strong></p>
+<h3>6.3 先测 4 个 horizon</h3>
+<ul>
+<li><code>10s</code></li>
+<li><code>30s</code></li>
+<li><code>60s</code></li>
+<li><code>180s</code></li>
+</ul>
+<p>理由很简单： 仓库已经暗示 <code>200ms</code> 还能看到东西，而 <code>500ms</code> 目标定义一改就可能塌掉；desk 版不能默认 <code>5m</code> 是最优，要用更细窗先把寿命曲线画出来。</p>
+<h3>6.4 评估指标别只看 accuracy</h3>
+<p>必须至少看：</p>
+<ul>
+<li><code>event count / day</code></li>
+<li><code>signed bps per event</code></li>
+<li><code>hit rate</code></li>
+<li><code>net bps</code>（<code>fee</code>, <code>fee+0.5tick</code>, <code>fee+1tick</code> 三档）</li>
+<li><code>gap-close ratio</code></li>
+<li><code>leader reversal conditional loss</code></li>
+</ul>
+<h2>7. 我现在的判断</h2>
+<p><strong>这条线值得进入研究池，而且属于 raw alpha，不该降级成纯 filter。</strong></p>
+<p>但它当前最合理的定位不是：</p>
+<ul>
+<li>“立刻做成 5m 主策略”；</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li>对 <code>1m / 3m</code>：高强度 cross-crypto event-driven alpha 候选</li>
+<li>对更长周期：如果压粗后 edge 很薄，就把它退化成 entry timing / execution component</li>
+</ul>
+<p>简化成一句话： <strong>这份仓库真正给我们的不是一个现成模型，而是一条很清楚的假设：BTC 盘口先动、ETH 还没同步时，ETH 的补动值得被单独当成一条短寿命 raw alpha 去测。</strong></p>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>当前仓库的性能报表是分类性能，不是稳定的成本后 PnL；不能把 <code>accuracy</code> 直接当收益。</li>
+<li>正类事件本来就稀少，所以样本外最怕 regime shift 与 class imbalance。</li>
+<li>我做的 Binance <code>1m</code> 快检只是廉价代理，不是对仓库真 <code>L2</code> 设计的完整 replication。</li>
+<li>如果后续真 <code>L2</code> 复现发现 edge 只活在极少数 stress pocket，它仍然是 raw alpha，但更适合 event-trade，而不是 always-on engine。</li>
+</ul>
+<h2>9. 来源</h2>
+<ol>
+<li><strong>solalbaudoincs. (2026). _IFCOG / ifcob: Information Flow in Crypto Order-Books_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue：N/A</li>
+<li>DOI：N/A</li>
+<li>Readable URL：<a href="https://github.com/solalbaudoincs/ifcob">https://github.com/solalbaudoincs/ifcob</a></li>
+<li>Repo URL：<a href="https://github.com/solalbaudoincs/ifcob">https://github.com/solalbaudoincs/ifcob</a></li>
+</ul>
+<ol>
+<li><strong>仓库 README（项目概览）</strong></li>
+</ol>
+<ul>
+<li>URL：<a href="https://raw.githubusercontent.com/solalbaudoincs/ifcob/main/README.md">https://raw.githubusercontent.com/solalbaudoincs/ifcob/main/README.md</a></li>
+</ul>
+<ol>
+<li><strong>仓库策略实现：<code>Mateo2StartStrategy</code></strong></li>
+</ol>
+<ul>
+<li>URL：<a href="https://raw.githubusercontent.com/solalbaudoincs/ifcob/main/strategies/mateo_2_start.py">https://raw.githubusercontent.com/solalbaudoincs/ifcob/main/strategies/mateo_2_start.py</a></li>
+</ul>
+<ol>
+<li><strong>仓库性能文件：200ms 目标</strong></li>
+</ol>
+<ul>
+<li>URL：<a href="https://raw.githubusercontent.com/solalbaudoincs/ifcob/main/predictors/mateo/target-avg_10ms_of_mid_price_itincreases_after_200ms_with_threshold_5_depth-3_nest-100/perf.json">https://raw.githubusercontent.com/solalbaudoincs/ifcob/main/predictors/mateo/target-avg_10ms_of_mid_price_itincreases_after_200ms_with_threshold_5_depth-3_nest-100/perf.json</a></li>
+</ul>
+<ol>
+<li><strong>仓库性能文件：500ms 目标</strong></li>
+</ol>
+<ul>
+<li>URL：<a href="https://raw.githubusercontent.com/solalbaudoincs/ifcob/main/predictors/mateo/target-price_increase_next_500ms_with_10_threshold_depth-3_nest-100/perf.json">https://raw.githubusercontent.com/solalbaudoincs/ifcob/main/predictors/mateo/target-price_increase_next_500ms_with_10_threshold_depth-3_nest-100/perf.json</a></li>
+</ul>
+<ol>
+<li><strong>Binance Spot API（<code>BTCUSDT</code> / <code>ETHUSDT</code> 公共 <code>1m</code> K 线）</strong></li>
+</ol>
+<ul>
+<li>URL：<a href="https://api.binance.com/api/v3/klines?symbol=BTCUSDT&amp;interval=1m&amp;limit=1000">https://api.binance.com/api/v3/klines?symbol=BTCUSDT&amp;interval=1m&amp;limit=1000</a></li>
+<li>URL：<a href="https://api.binance.com/api/v3/klines?symbol=ETHUSDT&amp;interval=1m&amp;limit=1000">https://api.binance.com/api/v3/klines?symbol=ETHUSDT&amp;interval=1m&amp;limit=1000</a></li>
+</ul>
+</body>
+</html>

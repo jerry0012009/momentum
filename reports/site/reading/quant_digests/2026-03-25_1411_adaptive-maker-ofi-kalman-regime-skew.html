@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Avellaneda-Stoikov 只当做市教材：这份 2026 新仓库更值得先测的是「Kalman fair value + OFI skew + regime widening」maker raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Avellaneda-Stoikov 只当做市教材：这份 2026 新仓库更值得先测的是「Kalman fair value + OFI skew + regime widening」maker raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 14:25 UTC</span>
+      <span class="pill">研究时间：2026-03-25 14:11 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + 经典 microstructure literature 地基 + repo 自带 benchmark / markout 证据 + 代码级参数审计</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/maker/market-making/avellaneda-stoikov/kalman/ofi/microprice/regime/quote-skew/inventory/adverse-selection/binance/spot/1m/3m/repo/paper/execution</span>
+      <span class="pill">证据类型：仓库 README/代码证据 + 经典论文地基 + 参数级 desk 审计</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_1411_adaptive-maker-ofi-kalman-regime-skew.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 14:11 UTC</li>
+<li>类型：2026 GitHub 新仓库 + 经典 microstructure literature 地基 + repo 自带 benchmark / markout 证据 + 代码级参数审计</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：用 <code>Kalman(mid) + imbalance</code> 与 <code>OFI / microprice / vol clustering</code> 估计未来 <code>100~500ms</code> 的短期漂移，把这个 edge 直接映射成 skewed maker quotes；只有当未来漂移能覆盖 adverse selection 与费用时，双边做市才有净边</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/microstructure/maker/market-making/avellaneda-stoikov/kalman/ofi/microprice/regime/quote-skew/inventory/adverse-selection/binance/spot/1m/3m/repo/paper/execution</li>
+<li>证据类型：仓库 README/代码证据 + 经典论文地基 + 参数级 desk 审计</li>
+</ul>
+<p>&gt; 先回答 base alpha：<strong>不是“挂双边等别人来打”这么空。base alpha 是：短期订单流与盘口结构会让未来几百毫秒的公平价格偏向某一边；如果你能把这个偏向及时体现在 reservation price、spread 宽度和 quote skew 里，maker 也能有 directional raw alpha，而不是纯手续费生意。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>这轮主线不是再写一篇“OBI 很重要”的泛泛笔记，而是直接拆一份很新的完整策略仓库：</p>
+<ul>
+<li><strong>Aliipou (2026), _mm-live_</strong>, GitHub 新仓库</li>
+<li>文献地基：</li>
+<li><strong>Avellaneda &amp; Stoikov (2008), _High-frequency trading in a limit order book_</strong>, *Quantitative Finance*</li>
+<li><strong>Stoikov (2018), _The micro-price: a high-frequency estimator of future prices_</strong>, *Quantitative Finance*</li>
+</ul>
+<p>对当前 desk 来说，最值得偷的不是“它会做市”这件事，而是这套<strong>完整 raw alpha 骨架</strong>：</p>
+<ol>
+<li>用 <code>Kalman(mid) + α·imbalance</code> 做 fair value；</li>
+<li>用 <code>OFI + microprice deviation + vol clustering</code> 判断 edge 朝哪边偏；</li>
+<li>用 <code>reservation price + adaptive spread + inventory cap + one-sided quoting</code> 把 edge 落成可执行报价；</li>
+<li>再用 <strong>benchmark / markout / drawdown breaker</strong> 验证“吃到的 spread 有没有被 adverse selection 吃回去”。</li>
+</ol>
+<p>这和今天已经写过的 <strong>single-asset taker micro alpha</strong> 不一样：</p>
+<ul>
+<li>那条线是“看见 edge 就直接吃单”；</li>
+<li>这条线是“<strong>让报价本身朝 edge 倾斜</strong>”，本质上是 maker 版的 microstructure raw alpha。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 真正值得先复现的，不是 textbook A-S 公式本身，而是 <strong><code>fair value drift → skewed quotes → markout clean</code></strong> 这条完整 maker alpha 闭环。</li>
+<li><strong>一句话证明方式：</strong> 仓库同时给了信号预测检验、策略基准对比、markout 分析和风险开关，不只是“会挂单”的 execution skeleton。</li>
+</ul>
+<h3>2.1 仓库里最硬的 3 组数字</h3>
+<ol>
+<li><strong>OFI 的 edge 很短，但不是 0</strong>：</li>
+</ol>
+<ul>
+<li><code>100ms</code>  horizon：<code>r = 0.12</code>，<code>R² = 0.014</code>，<code>t = 3.41</code>，<code>p = 0.0007</code></li>
+<li><code>500ms</code> horizon：<code>r = 0.09</code>，<code>R² = 0.008</code>，<code>t = 2.61</code>，<code>p = 0.0091</code></li>
+<li><code>1s</code> 之后显著性明显衰减；<code>5s</code> 基本消失</li>
+</ul>
+<p>翻成人话：<strong>这不是 5m 慢因子，而是几百毫秒到 1 秒内衰减的 micro edge。</strong></p>
+<ol>
+<li><strong>adaptive maker 明显优于固定宽度挂单</strong>：</li>
+</ol>
+<ul>
+<li><code>AdaptiveQuoteEngine</code>：<code>142</code> fills，fill rate <code>14.2%</code>，<code>P&amp;L +0.31</code>，<code>Sharpe 1.823</code>，<code>MaxDD 0.089</code>，<code>WinRate 54.1%</code></li>
+<li><code>FixedSpreadMaker(±5)</code>：<code>89</code> fills，<code>P&amp;L +0.18</code>，<code>Sharpe 0.941</code></li>
+<li><code>NaiveMaker(±0.5)</code>：<code>201</code> fills，<code>P&amp;L -0.22</code>，<code>Sharpe -0.612</code></li>
+</ul>
+<p>这组数最重要的含义不是“做市稳赚”，而是：<strong>同样是 maker，是否把 signal / inventory / regime 写进报价，结果差很多。</strong></p>
+<ol>
+<li><strong>markout 没有被 adverse selection 明显打穿</strong>：</li>
+</ol>
+<ul>
+<li><code>100ms</code>：平均 markout <code>+0.0031</code></li>
+<li><code>500ms</code>：平均 markout <code>+0.0018</code></li>
+<li><code>1s</code>：平均 markout <code>-0.0002</code></li>
+<li>README 给出的净 edge：<strong><code>+0.0479 USD / fill</code></strong></li>
+</ul>
+<p>这点很关键，因为 maker 策略最常见的假繁荣就是“看起来吃到了 spread，实际上 fill 后 mid 马上朝反方向跑”。这个仓库至少把这件事单独拿出来验了。</p>
+<h2>3. 为什么和当前项目直接相关</h2>
+<ul>
+<li>它是 <strong>raw alpha</strong>，不是 filter / overlay 伪装成本体。</li>
+<li>它补的是我们当前素材池里还不够多的一类：<strong>maker-side microstructure alpha</strong>。</li>
+<li>它天然对应完整策略，而不是“某个指标很重要”的解释性材料：</li>
+<li><code>entry</code>：什么时候挂、往哪边 skew、挂多宽</li>
+<li><code>exit</code>：何时只挂单边、何时触发 TP/库存回补</li>
+<li><code>sizing</code>：inventory cap / fill qty / gross guard</li>
+<li><code>risk</code>：drawdown breaker / spread sanity / one-sided quoting</li>
+<li><code>cost</code>：maker fee + markout + latency / queue 风险</li>
+<li>对当前 <code>1m / 3m / 5m / 15m</code> desk 的价值也很直接：</li>
+<li><strong>最适合</strong>：<code>1m / 3m</code> 高强度执行型 raw alpha</li>
+<li><strong>次适合</strong>：<code>5m / 15m</code> 主信号的 execution timing / maker-vs-taker 切换层</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：单资产 / 时间序列 / microstructure / maker raw alpha</li>
+<li>基础 alpha：未来超短 horizon 公平价格存在可测的方向漂移，maker 应把这个漂移写进 reservation price 与 skewed quotes，而不是围绕当前 mid 机械对称挂单</li>
+<li>核心信号：</li>
+<li><code>fair_value = Kalman(mid) + α · imbalance</code></li>
+<li><code>edge_score = w1·OFI + w2·microprice_dev + w3·vol_urgency</code></li>
+<li><code>reservation = fair_value - inventory · γ · σ² · T</code></li>
+<li>报价逻辑：</li>
+<li>正常状态：双边挂单</li>
+<li><code>imbalance &gt; 0</code>：<strong>tighten ask / widen bid</strong>（偏向卖给买方 aggressor）</li>
+<li>高波动：spread widen</li>
+<li>达库存上限：只挂能减仓的一边</li>
+<li>sizing：</li>
+<li>先固定 <code>fill_qty</code></li>
+<li>再按 <code>|edge_score| / σ / spread_state</code> 做 quote aggressiveness 分层</li>
+<li>risk：</li>
+<li><code>max_inventory_btc</code></li>
+<li><code>max_drawdown_usd</code></li>
+<li><code>max/min_spread</code></li>
+<li>盘口漂移太快或 latency 异常时停更/停机</li>
+<li>cost：</li>
+<li>maker fee / rebate</li>
+<li>adverse selection（必须看 markout，不可只看 spread capture）</li>
+<li>queue position / quote-to-fill delay / quote cancel 节流</li>
+</ul>
+<h2>4. 代码级 desk 读法：它默认更像「spread floor + skew + inventory」系统，不完全是 textbook A-S</h2>
+<p>这份 repo 最有价值的一点，是 README 之外还能做 <strong>代码级 sanity check</strong>。</p>
+<h3>4.1 一个值得先记下的小细节</h3>
+<p>README 里写的是 textbook A-S 半价差： <code>δ = γσ²T/2 + (1/γ) ln(1 + γ/k)</code></p>
+<p>但仓库 <code>quoting.py</code> 实现的是： <code>base_delta = γσ²T/2 + (1/k) ln(1 + γ/k)</code></p>
+<p>这两者不是一回事。 在默认参数 <code>γ=0.05, k=1.5, T=600</code> 下：</p>
+<ul>
+<li>textbook 常数项约 <strong><code>0.6558</code></strong></li>
+<li>仓库实现常数项约 <strong><code>0.0219</code></strong></li>
+</ul>
+<p>同时仓库还设了 <code>min_half_spread = 0.5 USD</code>。 我按代码把默认参数扫了一遍，得到一个很关键的 desk 结论：</p>
+<ul>
+<li>当 <code>sigma &lt; ~0.1785</code> 时，<strong>实际 half-spread 基本被 <code>0.5 USD</code> 的 floor 钉住</strong>；</li>
+<li>也就是说在大量正常波动时段，这个系统的实盘行为更像：</li>
+<li><strong>固定最小价差</strong></li>
+<li>+ <code>imbalance skew</code></li>
+<li>+ <code>inventory pressure</code></li>
+<li>+ <code>high-vol regime widen</code></li>
+</ul>
+<p>而不是一个由 A-S 理论项完全主导的连续最优 spread 模型。</p>
+<p>这反而更符合 desk 现实：<strong>很多时候真正起作用的不是 textbook 闭式解，而是 floor、skew、inventory、throttle 这些“脏工程参数”。</strong></p>
+<h3>4.2 这意味着什么</h3>
+<ul>
+<li>第一，<strong>repo 很适合做工程型完整策略 intake</strong>，不适合当“原论文一字不差 faithful replication”。</li>
+<li>第二，若要 live / paper-trade，<strong>先确认 spread 公式到底是故意改写还是实现偏差</strong>；否则参数调优会被错误解释。</li>
+<li>第三，对 desk 来说，这个 repo 的最佳拆法不是“迷信 A-S”，而是：</li>
+</ul>
+<ol>
+<li>保留 quote floor；</li>
+<li>明确 skew 来自哪些 micro alpha；</li>
+<li>再测 inventory / regime / throttle 是否真的改善 post-cost fill quality。</li>
+</ol>
+<h2>5. 与当前短周期（1m / 3m / 5m / 15m）的关系</h2>
+<h3>5.1 最适合的位置</h3>
+<ul>
+<li><strong><code>1m / 3m</code>：</strong> 可直接当独立 maker alpha / execution alpha</li>
+<li><strong><code>5m / 15m</code>：</strong> 更适合当 execution layer，而不是主 bar-close alpha</li>
+</ul>
+<p>原因很简单：仓库给出的 edge 有效窗口主要在 <code>100ms ~ 500ms</code>，到 <code>1s</code> 以后已经开始衰减。它不是天然 15m 主信号。</p>
+<h3>5.2 对 5m / 15m desk 最实用的读法</h3>
+<p>如果你已经有一个 <code>5m</code> 或 <code>15m</code> 主方向信号，这条 maker alpha 最值钱的用法可能是：</p>
+<ol>
+<li><strong>决定先 maker 还是直接 taker</strong>；</li>
+<li><strong>当 micro edge 与大周期方向相反时，延迟入场 / 降低报价尺寸</strong>；</li>
+<li><strong>在 inventory 已偏、spread 已宽、markout 变差时，暂停继续补单。</strong></li>
+</ol>
+<p>也就是：它既可以独立作为快节奏 alpha，也可以作为慢周期 alpha 的 execution veto / timing layer。</p>
+<h2>6. 最小可复现实验（面向 1m / 3m / 5m / 15m）</h2>
+<h3>6.1 数据源与公开性</h3>
+<ul>
+<li>数据源：<strong>Binance Spot / Futures 公共 WebSocket</strong> <code>bookTicker</code> + <code>trade</code> streams</li>
+<li>公开性：公开可得，无需私钥（只做行情采集时）</li>
+<li>更新频率：事件驱动，毫秒级</li>
+<li>最小可复现实验口径：自采 <code>2~6</code> 小时即可；先不用私有成交回报，也能先做信号预测与 paper fill 检验</li>
+</ul>
+<h3>6.2 最小实验设计</h3>
+<ol>
+<li><strong>标的</strong>：先跑 <code>BTCUSDT / ETHUSDT / SOLUSDT</code></li>
+<li><strong>采样</strong>：连续采集 <code>2~6h</code> 的 <code>bookTicker + trade</code></li>
+<li><strong>最小信号</strong>：先只保留 <code>imbalance / OFI / microprice_dev / relative_spread</code></li>
+<li><strong>先做 2 类检验</strong>：</li>
+</ol>
+<ul>
+<li><code>OFI -&gt; future mid return</code> 回归（<code>100ms / 500ms / 1s</code>）</li>
+<li>自适应 maker vs fixed spread vs naive maker 三路 benchmark</li>
+</ul>
+<ol>
+<li><strong>最先看 5 个指标</strong>：</li>
+</ol>
+<ul>
+<li><code>r / t-stat / p-value</code>（预测性）</li>
+<li><code>P&amp;L / Sharpe / MaxDD</code></li>
+<li><code>fill rate</code></li>
+<li><code>avg markout</code></li>
+<li><code>net edge per fill</code></li>
+</ul>
+<h3>6.3 先不要做的事</h3>
+<ul>
+<li>先不要一上来加深度学习</li>
+<li>先不要跨很多 symbol 扫 universe</li>
+<li>先不要把秒级 edge 粗暴压成 <code>15m</code> 因子再宣称它是 bar alpha</li>
+</ul>
+<h2>7. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>先做 paper-fill benchmark，不要直接 live。</strong> 先把 <code>adaptive vs fixed vs naive</code> 三组结果在本地自采数据上跑通。</li>
+<li><strong>把 markout 做成 hard gate。</strong> 若 <code>100ms/500ms</code> markout 变负，就算 spread capture 看起来漂亮，也先判死。</li>
+<li><strong>专门测“floor 主导还是 A-S 主导”。</strong> 先做 <code>min_half_spread × gamma × k × sigma regime</code> 网格，确认策略收益到底来自哪一层。</li>
+<li><strong>把 queue / cancel 节流单独测。</strong> maker 策略最容易纸上繁荣，实盘里却死在 cancel 限速和 queue ranking。</li>
+<li><strong>对 1m/3m 与 5m/15m 分开定位。</strong> 前者看独立 micro alpha；后者看 execution timing / maker-vs-taker 切换，别混成一个指标。</li>
+<li><strong>补一轮资产分层。</strong> BTC/ETH 先看是否 edge 更薄但稳；SOL / midcaps 再看是否 fill 更多但 adverse selection 更重。</li>
+<li><strong>先核对 spread 公式实现。</strong> 如果 <code>1/k</code> 不是刻意改写，修正后要重做全套 benchmark，避免对参数含义产生错觉。</li>
+</ol>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>这份 repo 的证据主要来自 README benchmark 与代码结构，不等于严格审稿级 live PnL 证明。</li>
+<li>maker alpha 的最大敌人通常不是方向预测误差，而是 <strong>queue position / latency / stale quote / cancel throttle</strong>，这些在回测里最容易被低估。</li>
+<li>这条 edge 衰减极快；如果基础设施跟不上，alpha 很可能在“知道正确方向”时仍赚不到钱。</li>
+<li>若把它硬翻译成 <code>5m/15m</code> 主信号，大概率会失真；更诚实的定位是 <strong>micro alpha / execution alpha</strong>。</li>
+<li>代码里的 A-S spread 项与 README 公式存在差异，这在 live 前必须先说清楚。</li>
+</ul>
+<h2>9. 来源</h2>
+<ol>
+<li><strong>Aliipou. (2026). _mm-live_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/Aliipou/mm-live">https://github.com/Aliipou/mm-live</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/Aliipou/mm-live">https://github.com/Aliipou/mm-live</a></code></li>
+</ul>
+<ol>
+<li><strong>Avellaneda, M., &amp; Stoikov, S. (2008). _High-frequency trading in a limit order book_. Quantitative Finance, 8(3), 217–224.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1080/14697680701381228</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1080/14697680701381228">https://doi.org/10.1080/14697680701381228</a></code></li>
+</ul>
+<ol>
+<li><strong>Stoikov, S. (2018). _The micro-price: a high-frequency estimator of future prices_. Quantitative Finance, 18(12), 1959–1966.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1080/14697688.2018.1489139</code></li>
+<li>Readable URL: <code><a href="https://doi.org/10.1080/14697688.2018.1489139">https://doi.org/10.1080/14697688.2018.1489139</a></code></li>
+</ul>
+<ol>
+<li><strong>Binance Developers. Spot / Futures WebSocket market streams.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams">https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams</a></code></li>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams">https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams</a></code></li>
+</ul>
+<h2>10. 本轮产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/mm_live_maker_alpha_20260325_1411/source_metrics.json</code></li>
+<li><code>reports/artifacts/quant_digests/mm_live_maker_alpha_20260325_1411/source_metrics.md</code></li>
+</ul>
+</body>
+</html>

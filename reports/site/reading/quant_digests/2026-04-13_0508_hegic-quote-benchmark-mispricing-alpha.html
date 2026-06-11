@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 Hegic 论文只读成 AMM 定价诊断：对 short-cycle desk，更该先测的是「on-chain option quote-vs-benchmark residual fade × delta-aware hedge」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 Hegic 论文只读成 AMM 定价诊断：对 short-cycle desk，更该先测的是「on-chain option quote-vs-benchmark residual fade × delta-aware hedge」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-13 05:10 UTC</span>
+      <span class="pill">研究时间：**2022-10-24 到 2024-05-21**；</span>
+      <span class="pill">类型：2025 arXiv / paper full text</span>
+      <span class="pill">主题标签：options / on-chain / relative-value / stat-arb / AMM / Hegic / Arbitrum / wBTC / ETH / delta-hedge / mispricing</span>
+      <span class="pill">证据类型：论文全文（arXiv abstract + PDF）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-13_0508_hegic-quote-benchmark-mispricing-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-13 05:08 UTC</li>
+<li>类型：2025 arXiv / paper full text</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：链上期权 AMM 的 <code>option ask / quoted premium</code> 若系统性低于一个更稳健的模型基准价（论文里用 <code>Black-Scholes + two-regime MS-AR-(GJR)-GARCH volatility</code>），就可以把“<strong>quote-vs-benchmark residual 回补</strong>”当成一条可交易的 relative-value alpha；最直接的 desk 版是 <code>long underpriced option + delta hedge</code>，赚 residual 压缩而不是赌纯方向。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：options / on-chain / relative-value / stat-arb / AMM / Hegic / Arbitrum / wBTC / ETH / delta-hedge / mispricing</li>
+<li>证据类型：论文全文（arXiv abstract + PDF）</li>
+</ul>
+<h2>1. 先回答：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = <code>链上期权报价相对模型基准价的可交易错价回补</code>。</strong></p>
+<p>不是“DeFi 期权挺有意思”，也不是“AMM 定价需要校准”，而是更直接的：</p>
+<ul>
+<li>先给每张链上期权一个外部基准价；</li>
+<li>再看 Hegic 的实际 quote 相对这个基准是不是<strong>持续偏便宜</strong>；</li>
+<li>若偏离足够大，就做 <code>long option + delta hedge</code>，等 residual 回补或到期兑现。</li>
+</ul>
+<p>所以它属于 <strong>raw alpha / relative-value / stat-arb</strong>，不是 filter / regime / overlay。</p>
+<p>---</p>
+<h2>2. 这次看了什么</h2>
+<p>这次看的是 <strong>Anastasiia Zbandut (2025)</strong> 的 arXiv 论文： <strong>_Pricing of wrapped Bitcoin and Ethereum on-chain options_</strong>。</p>
+<p>论文表面在做的是 <strong>Hegic on-chain options 的定价诊断</strong>：</p>
+<ul>
+<li>样本：<strong>Arbitrum 上 Hegic 的 wBTC / ETH 期权</strong>；</li>
+<li>时间：<strong>2022-10-24 到 2024-05-21</strong>；</li>
+<li>对照：<code>Black-Scholes</code>，但波动率不是随便塞个常数，而是用 <strong>two-regime MS-AR-(GJR)-GARCH</strong>；</li>
+<li>目标：解释为什么链上 AMM quote 会和 benchmark price 偏离。</li>
+</ul>
+<p>但对我们 desk 来说，真正值得 intake 的不是“AMM 校准建议”，而是： &gt; 这篇论文已经把 <strong>链上期权 quote 偏离外部 fair value</strong> 这件事做成了一个可量化的 residual；而 residual 本身，就是一条可被短周期监控和执行的 raw relative-value alpha 候选。</p>
+<p>---</p>
+<h2>3. 核心结论</h2>
+<h3>3.1 一句话结论</h3>
+<p><strong>这篇论文最值得 desk 先测的，不是 Hegic 定价机制本身，而是 <code>benchmark - quoted premium</code> 这个 residual：它在 wBTC call 上更大、更 persistent，并且会随 order size / strike / maturity / volatility 上升，随 underlying trading volume 下降。</strong></p>
+<h3>3.2 论文里最有用的几个直接结论</h3>
+<p>按论文摘要和正文前几节，作者给出的可交易线索很清楚：</p>
+<ol>
+<li><strong>benchmark price 通常高于 Hegic quote</strong>；</li>
+</ol>
+<ul>
+<li>尤其是 <strong>call options</strong>；</li>
+<li><strong>ETH puts</strong> 是少数例外。</li>
+</ul>
+<ol>
+<li><strong>wBTC 的 mispricing 更大、更 persistent；ETH 更接近 benchmark。</strong></li>
+</ol>
+<ul>
+<li>这直接给了 desk 一个最初的排序：</li>
+<li><strong>先看 wBTC，再看 ETH；先看 call，再看 put。</strong></li>
+</ul>
+<ol>
+<li>residual 会随着以下变量上升：</li>
+</ol>
+<ul>
+<li><strong>更大的 order size</strong></li>
+<li><strong>更远离 ATM 的 strike</strong></li>
+<li><strong>更长的 maturity</strong></li>
+<li><strong>更高的 estimated volatility</strong></li>
+</ul>
+<ol>
+<li>residual 会随着以下变量下降：</li>
+</ol>
+<ul>
+<li><strong>更高的 underlying trading volume</strong></li>
+</ul>
+<p>这几条很关键，因为它们说明这条 alpha 不是“全市场随机乱闪”，而是<strong>有明确横截面结构的错价</strong>。</p>
+<p>---</p>
+<h2>4. 为什么和当前项目有关</h2>
+<p>这条线和当前 <code>/root/clawd/jerry/momentum</code> 很相关，原因不是“我们突然转去做期权论文”，而是它刚好满足现在 intake 更看重的几件事：</p>
+<ol>
+<li><strong>base alpha 讲得清楚</strong></li>
+</ol>
+<ul>
+<li>不是宏观叙事，不是模糊解释；</li>
+<li>就是 <code>quoted premium &lt; benchmark fair value</code> 的 relative-value residual。</li>
+</ul>
+<ol>
+<li><strong>短周期角色清晰</strong></li>
+</ol>
+<ul>
+<li><code>1m/3m/5m/15m</code> 在这里不是拿来预测 long-run vol；</li>
+<li>而是拿来做：</li>
+<li>高频/准高频 quote 监控</li>
+<li>residual 扩张时的 entry</li>
+<li>residual 回补时的 early exit</li>
+<li>hedge rebalancing</li>
+</ul>
+<ol>
+<li><strong>它补的是当前 desk 相对少的“链上 options AMM 错价”素材</strong></li>
+</ol>
+<ul>
+<li>我们最近 options / parity / cross-venue 题很多，但大多是 <strong>CEX options</strong>；</li>
+<li>这篇给的是 <strong>DeFi AMM quote vs external benchmark</strong>，数据结构和执行 frictions 都不一样；</li>
+<li>因此不是简单重复已有的 Deribit / Binance options 条目。</li>
+</ul>
+<ol>
+<li><strong>它天然属于 raw relative-value，而不是又一个 overlay</strong></li>
+</ol>
+<ul>
+<li>你不是拿一个低频因子去 veto 别的信号；</li>
+<li>你是在直接交易“期权 quote 本身相对 fair value 的偏离”。</li>
+</ul>
+<p>---</p>
+<h2>5. 对 desk 最有价值的改写：别照抄论文 headline，直接拆成 residual trade</h2>
+<p>论文原文的目标更偏“诊断和校准 Hegic pricing logic”，并没有把它写成完整交易系统。</p>
+<p>但对 desk，更值得直接落成下面这条壳：</p>
+<h3>5.1 最小 raw alpha 壳</h3>
+<p>对每张可交易链上期权，在每个观测时刻计算：</p>
+<ul>
+<li><code>model_price_t</code>：基准模型价</li>
+<li><code>quote_ask_t</code>：Hegic 实时报价 / 可成交 ask</li>
+<li><code>residual_t = (model_price_t - quote_ask_t) / underlying_mid_t</code></li>
+</ul>
+<p>若：</p>
+<ul>
+<li><code>residual_t</code> 足够大；</li>
+<li><code>quote</code> 可成交；</li>
+<li><code>gas + fee + hedge slippage + hedge carry</code> 后仍有边际；</li>
+</ul>
+<p>则做：</p>
+<ul>
+<li><strong>long underpriced option</strong></li>
+<li><strong>short/long perp or spot 做 delta hedge</strong></li>
+</ul>
+<p>赚的是：</p>
+<ul>
+<li>residual 向 0 回补；</li>
+<li>或到 expiry 时实现的保底内在价值 / 更合理时间价值。</li>
+</ul>
+<h3>5.2 为什么它更像 raw alpha，而不是纯校准任务</h3>
+<p>因为真正入场的不是“模型参数有研究价值”，而是：</p>
+<ul>
+<li><code>当下这张合约便宜了多少</code>；</li>
+<li><code>这个便宜是否大到覆盖现实 frictions</code>；</li>
+<li><code>它会不会在接下来几根 bar / 几小时内回补</code>。</li>
+</ul>
+<p>只要这三步能量化，它就是可交易 alpha，不只是 paper explanation。</p>
+<p>---</p>
+<h2>6. 这篇 paper 给 desk 的 4 个最实用启发</h2>
+<h3>6.1 先做横截面排序，不要一上来就全链扫所有合约</h3>
+<p>论文已经给出第一层 admission：</p>
+<ul>
+<li><strong>underlying 优先级：wBTC &gt; ETH</strong></li>
+<li><strong>option side 优先级：call &gt; put</strong></li>
+<li><strong>market state 优先级：高波动期更值得看</strong></li>
+</ul>
+<p>所以第一版别上来就做“所有 strike / 所有 expiry / 所有 side 一视同仁”，而是先做：</p>
+<ul>
+<li><code>wBTC calls</code></li>
+<li><code>短中期限</code></li>
+<li><code>高 residual</code></li>
+<li><code>delta 可对冲</code></li>
+</ul>
+<h3>6.2 order size 是关键，不只是辅助解释变量</h3>
+<p>论文明确说 residual 会随 <strong>order size</strong> 上升。 这说明链上 AMM 报价不是“单一 mid 一刀切”，而是<strong>和你吃多少 size 有关</strong>。</p>
+<p>对我们最重要的启发是： &gt; 这条线不能只用 quote-level mid 回测，必须把 <code>size-aware quote</code> 写进实验口径。</p>
+<p>否则你回测到的是“纸上 residual”，不是可成交 residual。</p>
+<h3>6.3 先把 vol proxy 简化，别被论文的 MS-GARCH 门槛吓住</h3>
+<p>论文用的是：</p>
+<ul>
+<li><code>two-regime MS-AR-(GJR)-GARCH</code></li>
+</ul>
+<p>这当然更严谨，但 desk 第一轮最小实验不需要先把学术波动率模型完整复刻。</p>
+<p>更现实的推进顺序是：</p>
+<ol>
+<li><strong>先用简化版 benchmark</strong>：</li>
+</ol>
+<ul>
+<li>BS + rolling realized vol / EWMA vol / perp implied proxy</li>
+</ul>
+<ol>
+<li>看 residual 是否已经有结构；</li>
+<li>只有第一轮过线，再升级到 regime-sensitive vol。</li>
+</ol>
+<p>也就是说，<strong>论文给的是“高配 benchmark”</strong>，不是说没有它就完全不能做最小实验。</p>
+<h3>6.4 这条线天生更适合 maker-first / patience execution</h3>
+<p>因为链上期权的真问题不是“信号算不出来”，而是：</p>
+<ul>
+<li>gas</li>
+<li>quote stale</li>
+<li>链上拥堵</li>
+<li>AMM size impact</li>
+<li>hedge leg 不同步</li>
+</ul>
+<p>所以 desk 版更像：</p>
+<ul>
+<li><strong>稀疏事件驱动</strong></li>
+<li><strong>maker-first 或 patience-first</strong></li>
+<li><strong>size clip 很小</strong></li>
+<li><strong>先 paper-trade / replay，再谈放量</strong></li>
+</ul>
+<p>而不是像 perp 单腿信号那样 5m 一根一根无脑打。</p>
+<p>---</p>
+<h2>7. 主题定位（必填拆解）</h2>
+<ul>
+<li>方向属性：options / on-chain / relative-value / stat-arb</li>
+<li>基础 alpha：<code>Hegic quote</code> 相对 <code>external benchmark fair value</code> 的 residual 回补</li>
+<li>主题定位：<strong>raw alpha</strong></li>
+<li>标准壳：<code>long underpriced option + delta hedge</code></li>
+<li>更适合先做的标的：<code>wBTC call</code></li>
+<li>更适合先做的状态：<code>高 vol / 低 depth / 较高 order-size quote</code></li>
+</ul>
+<h3>7.1 为什么不把它归类成 overlay</h3>
+<p>因为它不是在给别的主信号加确认； 它自己就是主信号：<strong>你直接交易 quote-vs-fair-value gap。</strong></p>
+<h3>7.2 为什么我仍然把“可直接落地完整策略”写成“否”</h3>
+<p>因为论文虽然把 alpha 核心讲清楚了，但没把这几个 desk 关键问题 fully close：</p>
+<ul>
+<li>quote 数据接口和刷新机制</li>
+<li>链上成交 / gas / MEV / stale quote</li>
+<li>hedge leg 的 venue 选择和资金搬运</li>
+<li>American-style 行权与持有路径</li>
+<li>on-chain option 流动性容量</li>
+</ul>
+<p>所以它已经足够进研究池，但还没到“今天就能无脑上线”的程度。</p>
+<p>---</p>
+<h2>8. 最小可复现实验（下一步怎么测）</h2>
+<h3>8.1 数据源</h3>
+<p>必须先写清，不然这题很容易变成空谈。</p>
+<p><strong>期权 quote：</strong></p>
+<ul>
+<li>Hegic Arbitrum on-chain quote / trade / contract state</li>
+<li>公开性：公开链上数据，可通过合约调用、事件、索引服务或协议接口拿到</li>
+<li>更新频率：接近链上事件频率；desk 初版可先按 <code>1m/5m</code> snapshot 化</li>
+</ul>
+<p><strong>underlying price / hedge leg：</strong></p>
+<ul>
+<li>wBTC / ETH 对应的 CEX perp / spot（Binance、OKX、Bybit 等）</li>
+<li>公开性：公开 API 可得</li>
+<li>更新频率：秒级到 1m 级</li>
+</ul>
+<p><strong>波动率 / benchmark：</strong></p>
+<ul>
+<li>第一轮：rolling realized vol / EWMA vol</li>
+<li>第二轮：再升级到 regime-sensitive GARCH / MS-GARCH</li>
+</ul>
+<h3>8.2 第一轮最小实验口径（建议先做这个）</h3>
+<p>先别复刻论文全套统计回归，直接做 trading version：</p>
+<ol>
+<li>只选：</li>
+</ol>
+<ul>
+<li><code>wBTC calls</code></li>
+<li><code>近 7d / 14d</code> 到期</li>
+<li><code>delta</code> 在一个可对冲区间内的合约</li>
+</ul>
+<ol>
+<li>每 <code>5m</code> 生成一次 snapshot：</li>
+</ol>
+<ul>
+<li>option ask / quote</li>
+<li>underlying mid</li>
+<li>benchmark model price</li>
+<li>residual</li>
+<li>order-size-sensitive executable quote</li>
+</ul>
+<ol>
+<li>定义 entry score：</li>
+</ol>
+<ul>
+<li><code>score = (model_price - executable_option_ask) / underlying_mid</code></li>
+</ul>
+<ol>
+<li>初始入场阈值先试三档：</li>
+</ol>
+<ul>
+<li><code>score &gt; 30 bps</code></li>
+<li><code>score &gt; 60 bps</code></li>
+<li><code>score &gt; 100 bps</code></li>
+</ul>
+<ol>
+<li>hedge：</li>
+</ol>
+<ul>
+<li>用 perp 做 delta hedge</li>
+<li><code>|net delta|</code> 超阈值时再 rebalance，不要每个 tick 乱调</li>
+</ul>
+<ol>
+<li>exit 两套并行：</li>
+</ol>
+<ul>
+<li><strong>gap-close exit</strong>：<code>score</code> 回到入场时的 25% 以下就平</li>
+<li><strong>time-stop exit</strong>：持有超过 <code>6h / 12h / 24h</code> 强平</li>
+<li><strong>expiry-stop</strong>：距到期 <code>&lt; 12h</code> 不再新开；旧仓在 <code>expiry - 2h</code> 前平掉</li>
+</ul>
+<h3>8.3 第二轮升级版</h3>
+<p>若第一轮真看到结构，再加：</p>
+<ul>
+<li>论文的 regime-sensitive vol</li>
+<li>strike bucket / maturity bucket / call-vs-put 分层</li>
+<li>size-aware quote ladder</li>
+<li>gas / slippage / MEV 模拟</li>
+<li><code>wBTC vs ETH</code> 横截面对比</li>
+</ul>
+<h3>8.4 最先看 6 个指标</h3>
+<ul>
+<li><code>signals/day</code></li>
+<li><code>median entry residual</code></li>
+<li><code>residual half-life</code></li>
+<li><code>net pnl after fee + gas + hedge carry</code></li>
+<li><code>delta rebalance count</code></li>
+<li><code>fillable size / capacity</code></li>
+</ul>
+<p>---</p>
+<h2>9. 对 1m / 3m / 5m / 15m 的实际映射</h2>
+<p>这题不是拿 15m K 线预测下一根方向，而是：</p>
+<ul>
+<li><strong>1m / 3m</strong>：更适合 quote monitoring 和 hedge rebalancing</li>
+<li><strong>5m</strong>：更适合 first-pass snapshot / backtest bar size</li>
+<li><strong>15m</strong>：更适合先做粗颗粒 feasibility，不适合做真正入场时钟</li>
+</ul>
+<p>所以它和当前 short-cycle desk 的关系不是“预测下一根涨跌”，而是： &gt; 把短周期用在 <strong>错价监控、执行、回补退出</strong>，而不是硬套到方向预测。</p>
+<p>这点是合理的，不算偏题。</p>
+<p>---</p>
+<h2>10. 风险与保留意见</h2>
+<ol>
+<li><strong>这条线最怕成交与对冲不同步</strong></li>
+</ol>
+<ul>
+<li>option 成了，hedge 没成，短时风险会被放大。</li>
+</ul>
+<ol>
+<li><strong>链上 option quote 可能 stale</strong></li>
+</ol>
+<ul>
+<li>看起来很便宜，不代表你真能拿到那个价。</li>
+</ul>
+<ol>
+<li><strong>American-style / protocol-specific exercise logic 不能忽略</strong></li>
+</ol>
+<ul>
+<li>不能把它偷换成 textbook European option 再装作没差别。</li>
+</ul>
+<ol>
+<li><strong>真实成本不只是 fee</strong></li>
+</ol>
+<ul>
+<li>gas、桥、oracle latency、size impact、MEV 都可能吃掉 residual。</li>
+</ul>
+<ol>
+<li><strong>模型价本身也有误差</strong></li>
+</ol>
+<ul>
+<li>若 vol proxy 很差，你交易的可能是“模型错”，不是“市场错”。</li>
+</ul>
+<p>所以这题的正确姿势不是“看到 residual 就梭”，而是： <strong>先做 benchmark robustness + executable residual 校验。</strong></p>
+<p>---</p>
+<h2>11. 一句话结论</h2>
+<p>&gt; 这篇 2025 Hegic 论文最值得 desk intake 的，不是“链上期权 AMM 怎么校准”，而是它清楚暴露出一条可交易的 raw relative-value 线：<strong><code>on-chain option quote-vs-benchmark residual fade × delta-aware hedge</code></strong>；其中论文直接给出的第一批优先级是 <strong>wBTC &gt; ETH、call &gt; put、高 vol &gt; 低 vol</strong>。</p>
+<p>---</p>
+<h2>12. 来源</h2>
+<ol>
+<li><strong>Anastasiia Zbandut</strong> (2025). *Pricing of wrapped Bitcoin and Ethereum on-chain options*. arXiv.</li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2512.20190">https://arxiv.org/abs/2512.20190</a></code></li>
+<li>PDF URL: <code><a href="https://arxiv.org/pdf/2512.20190.pdf">https://arxiv.org/pdf/2512.20190.pdf</a></code></li>
+</ul>
+<ol>
+<li>论文正文中的核心样本描述（作者原文）</li>
+</ol>
+<ul>
+<li>Protocol / chain: <code>Hegic on Arbitrum</code></li>
+<li>Underlyings: <code>wBTC</code>, <code>ETH</code></li>
+<li>Sample window: <code>2022-10-24</code> to <code>2024-05-21</code></li>
+<li>Benchmark: <code>Black-Scholes + two-regime MS-AR-(GJR)-GARCH volatility</code></li>
+</ul>
+<ol>
+<li>Hegic / on-chain options 研究语境（论文文献综述中涉及）</li>
+</ol>
+<ul>
+<li>链上 AMM option pricing, oracle lag, pooled-liquidity inventory risk, denomination / settlement frictions</li>
+<li>用途：说明这条 residual 不只是统计噪音，而是有明确协议结构来源</li>
+</ul>
+</body>
+</html>

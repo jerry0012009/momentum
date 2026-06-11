@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别让 15m 的 final verdict 被“高准确率”绑架：`双阈值 abstain + 按收益选窗口` 更适合 breakout-short / Fib retest / EMA-PSAR</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别让 15m 的 final verdict 被“高准确率”绑架：`双阈值 abstain + 按收益选窗口` 更适合 breakout-short / Fib retest / EMA-PSAR</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-20 05:38 UTC</span>
+      <span class="pill">研究时间：2026-03-20 05:39 UTC</span>
+      <span class="pill">类型：论文 + 代码仓库</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/abstain/threshold/window-selection/profitability/regime/filter/crypto/15m</span>
+      <span class="pill">证据类型：论文证据 + 工程实现</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-20_0539_alpha-beta-abstain-profit-window-verdict.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-20 05:39 UTC</li>
+<li>类型：论文 + 代码仓库</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/abstain/threshold/window-selection/profitability/regime/filter/crypto/15m</li>
+<li>证据类型：论文证据 + 工程实现</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<p>主看 Parente, Rizzuti, Trerotola (2024) 的加密交易论文与配套代码。它真正可迁移到我们 desk 的旁支，不是“再训一个 MLP”，而是两件更快落地的机制： 1) <strong>双阈值标签/过滤（α, β）</strong>； 2) <strong>先按收益选窗口，不按准确率选窗口</strong>。</p>
+<h2>2) 一句话核心结论</h2>
+<p>对 5m/15m 来说，<code>小波动不做 + 过大冲击也不追 + 用 PnL 而非 accuracy 选窗口</code>，比继续在单一信号上微调参数，更能直接服务三条收口线的收敛。</p>
+<h2>3) 它怎么证明这件事（关键数据点）</h2>
+<ul>
+<li>数据：402 个 USDT 交易对，4h K，2017-08-17 ~ 2022-12-04，约 150 万样本。</li>
+<li>标签机制：</li>
+<li><code>|R| &lt;= α</code> 或 <code>|R| &gt;= β</code> → Hold（不交易）；</li>
+<li>仅在 <code>α &lt; |R| &lt; β</code> 且方向明确时给 Buy/Sell。</li>
+<li>阈值设定：<code>α=0.038</code>（85 分位），<code>β=0.24</code>（99.7 分位），且 β 随 forward window 增大按 10% 递增。</li>
+<li>关键反常识：<strong>最高准确率并非最高收益</strong>。按准确率最优是 <code>(backW=5, forW=1, Acc=0.72)</code>；但按收益选出来的是 <code>(5,2)</code>（文中回测模型）。</li>
+<li>回测（含 0.1% 费率）在 10% stop-loss 下给出较高 ROI（长周期）：ETH 165.91、BTC 61.22、ALGO 36.18；说明“窗口与阈值的交易语义”比单看分类分数更重要。</li>
+</ul>
+<h2>4) 对三条收口线的直接映射</h2>
+<ul>
+<li><code>V3 final-verdict / breakout-short follow-up</code>：</li>
+<p>把 <code>|预期位移|&gt;=β</code> 作为 <strong>shock/chase veto</strong>（避免末端追空）；<code>|预期位移|&lt;=α</code> 作为 <strong>chop veto</strong>。</p>
+<li><code>Fibonacci confirmation / retest_hold</code>：</li>
+<p>回踩后若位移仍落在 <code>α</code> 内，视作“没走出来”，不计确认；若一根冲到 <code>β</code> 外，默认不追，等二次确认。</p>
+<li><code>EMA / PSAR raw alpha focus</code>：</li>
+<p>先保留原始触发，再叠一层 <code>α-β</code> admission/veto，减少“信号有了但交易质量很差”的样本。</p>
+</ul>
+<h2>5) 最小可复现实验（5m/15m，先做这个）</h2>
+<ol>
+<li>资产：BTC/ETH/SOL perpetual；周期：15m（可加 5m 作为执行层）。</li>
+<li>对每条候选信号（breakout-short / fib retest / ema-psar），计算 <code>k</code> 根前瞻收益绝对值 <code>|R_{t→t+k}|</code>（含手续费口径，先用 6~10 bps 往返近似）。</li>
+<li>用训练段分位数定阈值：<code>α = p85(|R|)</code>，<code>β = p99.5~p99.7(|R|)</code>；并测试 <code>k=1,2,3</code>。</li>
+<li>只比较三组：</li>
+</ol>
+<ul>
+<li>baseline（无 gate）</li>
+<li><code>α</code> gate（去低位移）</li>
+<li><code>α+β</code> gate（去低位移 + 去冲击追单）</li>
+</ul>
+<ol>
+<li>verdict 指标优先级：<code>净收益/回撤/交易次数衰减/成本后 Sharpe</code>；<strong>不以 accuracy 排名做最终决策</strong>。</li>
+</ol>
+<h2>6) 风险与边界</h2>
+<ul>
+<li>论文原始频率是 4h，不可直接照搬到 15m；阈值必须按 15m 分布重估。</li>
+<li>β 过紧会错过趋势延续，过松会放大追单；要用 OOS + 成本敏感性一起定。</li>
+<li>该层是 filter/overlay，不是主信号替代品。</li>
+</ul>
+<h2>7) 来源（paper / repo）</h2>
+<ol>
+<li>Parente, M., Rizzuti, L., &amp; Trerotola, M. (2024). *A profitable trading algorithm for cryptocurrencies using a Neural Network model*. Expert Systems with Applications, 238, 121806.</li>
+</ol>
+<ul>
+<li>DOI: <a href="https://doi.org/10.1016/j.eswa.2023.121806">https://doi.org/10.1016/j.eswa.2023.121806</a></li>
+<li>Readable URL: <a href="https://www.sciencedirect.com/science/article/pii/S0957417423023084">https://www.sciencedirect.com/science/article/pii/S0957417423023084</a></li>
+</ul>
+<ol>
+<li>Parente, M., Rizzuti, L., &amp; Trerotola, M. (2023). *CryptoTrading.zip* (software archive).</li>
+</ol>
+<ul>
+<li>DOI: <a href="https://doi.org/10.6084/m9.figshare.22953377.v1">https://doi.org/10.6084/m9.figshare.22953377.v1</a></li>
+<li>Repo URL (code mirror): <a href="https://github.com/fovi-llc/CryptoTrading">https://github.com/fovi-llc/CryptoTrading</a></li>
+<li>Figshare URL: <a href="https://figshare.com/articles/software/CryptoTrading_zip/22953377">https://figshare.com/articles/software/CryptoTrading_zip/22953377</a></li>
+</ul>
+</body>
+</html>

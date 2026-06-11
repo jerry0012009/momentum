@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2024 IJFS 论文只读成“ETH 法币 quote 特例”：对 short-cycle desk，更该先测的是「same-underlier multispread mean reversion × optimizer sizing」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2024 IJFS 论文只读成“ETH 法币 quote 特例”：对 short-cycle desk，更该先测的是「same-underlier multispread mean reversion × optimizer sizing」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 03:58 UTC</span>
+      <span class="pill">研究时间：2026-04-03 03:55 UTC</span>
+      <span class="pill">类型：2024 IJFS 开放获取论文全文 + arXiv 预印本全文 + Kraken 公共历史数据口径</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/same-underlier/multispread/mean-reversion/optimizer-sizing/market-neutral/kraken/eth-fiat/public-data/cost/1m/3m/5m/15m/paper</span>
+      <span class="pill">证据类型：paper-based（期刊全文为主，arXiv 预印本与数据源说明为辅）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_0355_same-underlier-multispread-optimizer-statarb.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-03 03:55 UTC</li>
+<li>类型：2024 IJFS 开放获取论文全文 + arXiv 预印本全文 + Kraken 公共历史数据口径</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/same-underlier/multispread/mean-reversion/optimizer-sizing/market-neutral/kraken/eth-fiat/public-data/cost/1m/3m/5m/15m/paper</li>
+<li>证据类型：paper-based（期刊全文为主，arXiv 预印本与数据源说明为辅）</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>same-underlier multispread mean reversion</strong>；同一标的（论文里是 ETH）在不同 quote bucket 里的相对错价会短暂拉开，再通过 <code>long cheap leg / short rich leg</code> 回归，且多条 spread 可同时触发，用一个 optimizer 统一分配仓位。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<h3>一句话核心结论</h3>
+<p><strong>这篇论文真正值得 desk intake 的，不是“ETH 对不同法币也能做配对”这个表面结论，而是它给出了一条更适合我们迁移到 crypto short-cycle 的完整 skeleton：<code>同一底层资产的多条相对价差做均值回归，信号层看 spread 偏离，组合层用 optimizer 把重叠腿净额化并做 market-neutral sizing</code>。</strong></p>
+<h3>为什么这轮比继续补一个泛 filter 更值得</h3>
+<p>因为它补的是一条当前素材池里还不算拥挤的 <strong>same-underlier / same-asset relative-value raw alpha</strong>：</p>
+<ul>
+<li>不是 generic regime gate；</li>
+<li>不是再来一篇“不同币 cointegration pairs”；</li>
+<li>而是<strong>同一资产的多腿错价回归</strong>，天然更接近我们后面会做的：</li>
+<li><code>spot vs perp</code></li>
+<li><code>perp vs perp cross-venue</code></li>
+<li><code>front vs back</code></li>
+<li><code>同标的不同 quote / 不同 venue / 不同合成路径</code></li>
+<li>更重要的是，论文不只给 entry/exit，还把 <strong>capital allocation / overlapping spread netting / risk-aversion λ</strong> 一起写了出来，像一条可以直接拆零件复刻的完整策略卡。</li>
+</ul>
+<h3>最关键的硬数据</h3>
+<p>先记住这几组最有用的数字：</p>
+<ul>
+<li>交易对象是 <strong>Kraken 上 ETH 对 <code>USD / CAD / GBP / EUR</code> 的 spot quote bucket</strong>，从中形成 <strong><code>6</code> 条 spread</strong>；</li>
+<li>formation/screening 期是 <strong><code>2018-01-01 ~ 2020-01-01</code></strong>，主要测试期包括：</li>
+<li>bull：<code>2021-01-01 ~ 2022-01-01</code></li>
+<li>bear：<code>2022-01-01 ~ 2023-01-01</code></li>
+<li>full-cycle：<code>2021-01-15 ~ 2022-10-01</code></li>
+<li>论文比较了 <code>1m / 5m / 60m</code>；</li>
+<li>在 <strong>full-cycle + 0.1% fee + λ=1</strong> 下，年化收益约：</li>
+<li><code>1m: 14.87%</code></li>
+<li><code>5m: 15.49%</code></li>
+<li><code>60m: 5.00%</code></li>
+<li>同样 full-cycle 下，baseline Distance Method 只有：</li>
+<li><code>1m: 5.33%</code></li>
+<li><code>5m: 0.60%</code></li>
+<li><code>60m: 3.93%</code></li>
+<li>full-cycle 的 Sharpe：</li>
+<li><code>OTT λ=1: 0.68</code></li>
+<li><code>OTT λ=0.5: 1.11</code></li>
+<li><code>DM: -0.41</code></li>
+<li>full-cycle <code>5m</code> 交易指标：</li>
+<li>交易次数 <strong><code>12,166</code></strong></li>
+<li>胜率 <strong><code>54.4%</code></strong></li>
+<li>win/loss ratio <strong><code>1.19</code></strong></li>
+<li>平均持仓 <strong><code>5.09 小时</code></strong></li>
+<li>交易成本影响极大：<code>5m, λ=1</code> 的 full-cycle 年化收益，<strong>从 <code>44.98%</code>（0 fee）掉到 <code>15.49%</code>（0.1% fee）</strong>。</li>
+</ul>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p>这轮 <strong>base alpha 很清楚</strong>：</p>
+<p>&gt; <strong>同一底层资产在多条 quote/venue/synthetic 路径上的相对定价不会永远一致；当其中一条腿短时偏贵、另一条腿偏便宜时，做多便宜腿、做空昂贵腿，赌偏离回归。</strong></p>
+<p>论文的写法是 ETH 对多个法币 quote； 对 desk 来说，更重要的抽象层其实是：</p>
+<ul>
+<li><code>same-underlier</code>；</li>
+<li><code>multi-spread</code>；</li>
+<li><code>market-neutral</code>；</li>
+<li><code>mean reversion</code>。</li>
+</ul>
+<p>所以它不是：</p>
+<ul>
+<li>filter；</li>
+<li>regime；</li>
+<li>纯 risk overlay；</li>
+<li>或“解释 ETH/FX 关系”的综述。</li>
+</ul>
+<p>它是一条可以独立站住的 <strong>relative-value / stat-arb raw alpha</strong>。</p>
+<h2>3. 来源信息</h2>
+<h3>3.1 主来源</h3>
+<ul>
+<li><strong>Authors</strong>：Hongshen Yang, Avinash Malik</li>
+<li><strong>Year</strong>：2024</li>
+<li><strong>Title</strong>：*Optimal Market-Neutral Multivariate Pair Trading on the Cryptocurrency Platform*</li>
+<li><strong>Venue</strong>：*International Journal of Financial Studies*, 12(3), 77</li>
+<li><strong>DOI</strong>：&lt;<a href="https://doi.org/10.3390/ijfs12030077&gt;">https://doi.org/10.3390/ijfs12030077&gt;</a></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://www.mdpi.com/2227-7072/12/3/77&gt;">https://www.mdpi.com/2227-7072/12/3/77&gt;</a></li>
+<li><strong>Preprint URL</strong>：&lt;<a href="https://arxiv.org/abs/2405.15461&gt;">https://arxiv.org/abs/2405.15461&gt;</a></li>
+<li><strong>PDF URL</strong>：&lt;<a href="https://arxiv.org/pdf/2405.15461.pdf&gt;">https://arxiv.org/pdf/2405.15461.pdf&gt;</a></li>
+<li><strong>Repo URL</strong>：N/A（文中未提供公开代码仓库）</li>
+</ul>
+<h3>3.2 数据源</h3>
+<ul>
+<li><strong>Data Source</strong>：Kraken historical OHLCVT</li>
+<li><strong>Public URL</strong>：&lt;<a href="https://support.kraken.com/hc/en-us/articles/360047124832-Downloadable-historical-OHLCVT-Open-High-Low-Close-Volume-Trades-data&gt;">https://support.kraken.com/hc/en-us/articles/360047124832-Downloadable-historical-OHLCVT-Open-High-Low-Close-Volume-Trades-data&gt;</a></li>
+<li><strong>公开性</strong>：公开可下载</li>
+<li><strong>更新频率</strong>：交易所历史 K 线 / 成交统计数据，按所选 bar 频率聚合</li>
+<li><strong>最小可复现实验口径</strong>：同一底层资产在多个 quote / venue / synthetic legs 上，构造相对价差并做 bar 级回归策略。</li>
+</ul>
+<h2>4. 论文到底做了什么</h2>
+<h2>4.1 交易对象不是“两种不同币”，而是“同一币的 quote bucket”</h2>
+<p>论文选的是 Kraken 上同一个底层资产 <strong>ETH</strong>，对四种法币 quote：</p>
+<ul>
+<li><code>ETH/USD</code></li>
+<li><code>ETH/CAD</code></li>
+<li><code>ETH/GBP</code></li>
+<li><code>ETH/EUR</code></li>
+</ul>
+<p>于是能形成 <code>C(4,2)=6</code> 条 spread：</p>
+<ul>
+<li>USD:CAD</li>
+<li>USD:GBP</li>
+<li>USD:EUR</li>
+<li>CAD:GBP</li>
+<li>CAD:EUR</li>
+<li>GBP:EUR</li>
+</ul>
+<p>翻成人话： <strong>作者不是在赌 ETH 和 BTC 谁会重连，而是在赌“同一个 ETH，被不同 quote 体系映射出来的相对错位会回归”。</strong></p>
+<p>这点对我们很重要，因为它更像：</p>
+<ul>
+<li>同币跨 venue；</li>
+<li>同币 spot-perp；</li>
+<li>同币 calendar；</li>
+<li>同币现货直价 vs 合成价。</li>
+</ul>
+<h2>4.2 screening / formation：先验证这个 bucket 真的有相关性与协整基础</h2>
+<p>作者先用 <strong><code>2018-01-01 ~ 2020-01-01</code></strong> 的 ETH quote 数据做 formation / screening，按滚动一周去看相关性和 cointegration。</p>
+<p>论文 Table 2 给了很直观的基础盘：</p>
+<ul>
+<li><code>USD:CAD</code></li>
+<li><code>1m</code> 平均相关 <strong><code>0.978</code></strong>，cointegration 命中率 <strong><code>77.8%</code></strong></li>
+<li><code>5m</code> 平均相关 <strong><code>0.998</code></strong>，cointegration 命中率 <strong><code>100.0%</code></strong></li>
+<li><code>CAD:EUR</code></li>
+<li><code>5m</code> 相关 <strong><code>0.980</code></strong>，cointegration <strong><code>94.1%</code></strong></li>
+<li><code>60m</code> 相关 <strong><code>0.969</code></strong>，cointegration <strong><code>98.6%</code></strong></li>
+<li><code>GBP:EUR</code></li>
+<li><code>5m</code> cointegration <strong><code>98.0%</code></strong></li>
+<li><code>60m</code> cointegration <strong><code>91.3%</code></strong></li>
+</ul>
+<p>这说明： <strong>这个 bucket 的 spread 不是瞎编的，至少在 formation 期里，它确实长期呈现“相关且多数时间可视作可回归关系”。</strong></p>
+<h2>4.3 signal：核心不是 distance，而是 spread z-score 偏离</h2>
+<p>论文比较了两类东西：</p>
+<ul>
+<li>baseline：<strong>Distance Method (DM)</strong></li>
+<li>作者主方法：<strong>Optimal Trading Technique (OTT)</strong></li>
+</ul>
+<p>真正该拿走的不是 DM，而是 OTT 里的这条 raw alpha 逻辑：</p>
+<ol>
+<li>先把同一底层资产在多个 quote 下的价格序列标准化；</li>
+<li>对每条 spread 计算相对偏离；</li>
+<li>当某条 spread 的 z-score 超过开仓阈值时，</li>
+</ol>
+<ul>
+<li>做多便宜腿</li>
+<li>做空昂贵腿；</li>
+</ul>
+<ol>
+<li>当 spread 回到更窄的 close band 时平仓。</li>
+</ol>
+<p>论文用的是 <strong>threshold × spread standard deviation</strong> 的开平仓机制。 最赚钱的 grid-search 阈值（Table 3）是：</p>
+<ul>
+<li><code>1m</code>: open=<code>11σ</code>, close=<code>9σ</code></li>
+<li><code>5m</code>: open=<code>9σ</code>, close=<code>7σ</code></li>
+<li><code>60m</code>: open=<code>7σ</code>, close=<code>6σ</code></li>
+</ul>
+<p>这些阈值看上去很大，但别误读成“9σ 神奇参数”。 它本质表达的是： <strong>这个 same-underlier bucket 要吃的是很明显的离群偏差，不是轻微噪音摆动。</strong></p>
+<h2>4.4 position logic：多条 spread 可以同时触发，所以不能再用“两腿 all-in”的老写法</h2>
+<p>这是论文最值钱的部分之一。</p>
+<p>在普通两资产 pairs 里，信号一来，常见做法是：</p>
+<ul>
+<li>long loser</li>
+<li>short winner</li>
+<li>这笔单单独处理。</li>
+</ul>
+<p>但在 multispread bucket 里会出现：</p>
+<ul>
+<li><code>USD:GBP</code> 触发</li>
+<li><code>USD:CAD</code> 同时触发</li>
+<li><code>GBP:EUR</code> 也可能触发</li>
+</ul>
+<p>这时就会有：</p>
+<ul>
+<li>某个 currency 在不同 spread 中既被 long 又被 short；</li>
+<li>多条腿重叠；</li>
+<li>可以互相 net 掉一部分仓位和手续费。</li>
+</ul>
+<p>论文明确指出： <strong>multivariate 的真正增量不是“spread 变多了”，而是“多个 spread 同时触发时，资本分配本身变成了 alpha 生存的一部分”。</strong></p>
+<h2>4.5 sizing / risk：bi-objective convex optimization 不是 alpha 本体，而是组合层核心组件</h2>
+<p>论文的 optimizer 目标是：</p>
+<ul>
+<li><strong>最大化 expected profit</strong></li>
+<li><strong>最小化 covariance-based risk</strong></li>
+</ul>
+<p>其 expected profit 不是纯历史均值，而是把：</p>
+<ul>
+<li>每个 quote 的平均收益 <code>r</code></li>
+<li>每条 spread 的均值回复速度 <code>mr</code></li>
+<p>结合起来，形成 pair-level expected profit。</p>
+</ul>
+<p>目标函数再减去 <code>λ × portfolio variance penalty</code>。</p>
+<p>关键点：</p>
+<ul>
+<li><strong>alpha 本体</strong> 仍然是 spread mean reversion；</li>
+<li><strong>optimizer</strong> 是 sizing / risk / capital allocation 层；</li>
+<li>但因为 multispread 同时触发，<strong>这个 sizing layer 不再只是“锦上添花”，而是策略是否可执行的核心部件</strong>。</li>
+</ul>
+<p>论文还加了三个很实用的约束：</p>
+<ol>
+<li>单 pair 的 long/short 权重不能超过可用资金；</li>
+<li>单一货币层面的总占用不能超过 100%；</li>
+<li>回到 ETH 单位后，long 与 short 保持 market-neutral（并考虑交易成本微调）。</li>
+</ol>
+<p>翻成人话： <strong>它不是让你在每条 spread 上各自下注，而是把整个 bucket 当成一个受资金占用约束的 market-neutral 组合来下单。</strong></p>
+<h2>4.6 交易成本与市场中性假设</h2>
+<p>成本假设：</p>
+<ul>
+<li>统一使用 <strong><code>0.1%</code> 每笔 long/short order</strong> 的 flat fee。</li>
+</ul>
+<p>论文强调两点：</p>
+<ul>
+<li>这个策略交易频繁，所以成本很伤；</li>
+<li>但它尽量避免持有中间 crypto，本意是让组合尽量 market-neutral，而不是裸持有 ETH 趋势风险。</li>
+</ul>
+<p>对 desk 而言，这意味着：</p>
+<ul>
+<li><strong>raw alpha 是有的</strong>；</li>
+<li>但它能否活下来，高度取决于：</li>
+<li>fee tier</li>
+<li>maker/taker mix</li>
+<li>overlapping legs 能否净额化</li>
+<li>实盘滑点。</li>
+</ul>
+<h2>5. 最值得 desk 拿走的，不是 ETH/fiat 特例，而是 “same-underlier multispread OS”</h2>
+<p>如果只把这篇论文记成“ETH 对法币做多配对”，价值不大。</p>
+<p><strong>真正该拿走的是这三层：</strong></p>
+<h3>5.1 raw alpha 层：same-underlier relative-value mispricing</h3>
+<p>这个最容易迁移：</p>
+<ul>
+<li>不是 ETH/USD vs BTC/USD 这种跨资产；</li>
+<li>而是同一资产的不同映射路径短时错价。</li>
+</ul>
+<p>这天然更适合 desk 的：</p>
+<ul>
+<li><code>spot vs perp</code></li>
+<li><code>perp vs perp cross-venue</code></li>
+<li><code>front vs back</code></li>
+<li><code>direct cross vs synthetic cross</code></li>
+</ul>
+<h3>5.2 portfolio layer：重叠 spread 统一净额化</h3>
+<p>很多 raw alpha 回测都默认“每条腿单独开平”， 但同标的多路径里，真实情况往往是：</p>
+<ul>
+<li>多条 spread 会同时给出方向；</li>
+<li>很多腿能互相抵消；</li>
+<li>不做净额化，手续费和名义敞口会被虚增。</li>
+</ul>
+<p>论文把这件事明确写成了优化问题，这对实盘特别有用。</p>
+<h3>5.3 risk-preference λ：把同一 alpha 拉成一条 risk/return frontier</h3>
+<p>论文不是只给一个固定仓位，而是给：</p>
+<ul>
+<li><code>λ=2</code>：更保守</li>
+<li><code>λ=1</code>：中性</li>
+<li><code>λ=0.5</code>：更激进</li>
+</ul>
+<p>这给 desk 的启发是： <strong>很多 same-underlier alpha 未必要靠“换新信号”提升收益，先把 entry 不变、只改 capital allocator，可能就能把策略从普通提升到可部署。</strong></p>
+<h2>6. 结果里哪些数字最值得记</h2>
+<h2>6.1 full-cycle：<code>5m</code> 是论文主结果里最像 desk 可迁移的一档</h2>
+<p>在 <code>2021-01-15 ~ 2022-10-01</code> full-cycle，参与资产为 <code>USD/CAD/GBP/EUR against ETH</code>：</p>
+<h3>OTT（0.1% fee）</h3>
+<ul>
+<li><code>1m, λ=1</code>：<strong><code>14.87%</code></strong></li>
+<li><code>5m, λ=1</code>：<strong><code>15.49%</code></strong></li>
+<li><code>60m, λ=1</code>：<strong><code>5.00%</code></strong></li>
+</ul>
+<h3>DM（0.1% fee）</h3>
+<ul>
+<li><code>1m</code>：<code>5.33%</code></li>
+<li><code>5m</code>：<code>0.60%</code></li>
+<li><code>60m</code>：<code>3.93%</code></li>
+</ul>
+<p>这说明：</p>
+<ul>
+<li>作者主方法不是“稍微好一点”；</li>
+<li>在 <code>5m</code> 上对 baseline 是<strong>显著优势</strong>；</li>
+<li>而且 <strong><code>5m</code> 比 <code>60m</code> 更像甜点区</strong>，这对 short-cycle desk 友好得多。</li>
+</ul>
+<h2>6.2 bull：不是只有熊市避险才赚钱，bull 里也能跑</h2>
+<p>在 <code>2021-01-01 ~ 2022-01-01</code> bull market：</p>
+<ul>
+<li><code>5m, λ=1, TC=0.1%</code>：<strong><code>36.75%</code></strong></li>
+<li>对照 DM：<strong><code>19.89%</code></strong></li>
+<li><code>1m, λ=1</code>：<code>39.85%</code></li>
+<li><code>60m, λ=1</code>：<code>14.18%</code></li>
+</ul>
+<p>也就是说， <strong>这条 alpha 不是“只能靠大跌时回归”的熊市特供，它在强趋势 bull 里也能活。</strong></p>
+<h2>6.3 bear：在 ETH 跌 <code>-61.84%</code> 的环境里仍能保正</h2>
+<p>在 <code>2022-01-01 ~ 2023-01-01</code> bear market：</p>
+<ul>
+<li>Buy &amp; Hold：<strong><code>-61.84%</code></strong></li>
+<li><code>5m, λ=1, TC=0.1%</code>：<strong><code>+4.99%</code></strong></li>
+<li><code>1m, λ=1</code>：<code>+9.57%</code></li>
+<li><code>60m, λ=1</code>：<code>+9.01%</code></li>
+</ul>
+<p>这再次说明它的收益来源更像：</p>
+<ul>
+<li>市场中性 relative-value；</li>
+<li>而不是单边方向暴露。</li>
+</ul>
+<h2>6.4 risk / Sharpe：最激进的 λ=0.5 反而给出最好 Sharpe</h2>
+<p>Table 8：</p>
+<ul>
+<li>full-cycle</li>
+<li><code>DM</code>: Sharpe <strong><code>-0.41</code></strong>, σ=<code>0.082</code></li>
+<li><code>OTT λ=2</code>: Sharpe <strong><code>0.44</code></strong>, σ=<code>0.104</code></li>
+<li><code>OTT λ=1</code>: Sharpe <strong><code>0.68</code></strong>, σ=<code>0.193</code></li>
+<li><code>OTT λ=0.5</code>: Sharpe <strong><code>1.11</code></strong>, σ=<code>0.343</code></li>
+<li>bull</li>
+<li><code>OTT λ=1</code>: Sharpe <strong><code>2.66</code></strong>, σ=<code>0.126</code></li>
+<li>bear</li>
+<li><code>OTT λ=1</code>: Sharpe <strong><code>0.16</code></strong>, σ=<code>0.082</code></li>
+</ul>
+<p>这里最有意思的是： <strong>在作者样本里，更激进的 allocator 不只提高收益，连 Sharpe 都提高了。</strong> 这提示我们：</p>
+<ul>
+<li>alpha 本体也许没那么弱；</li>
+<li>很多利润是被 conservative sizing 压掉的。</li>
+</ul>
+<h2>6.5 trading metrics：不是“年化好看但靠一两笔大单”</h2>
+<p>full-cycle + <code>λ=1</code> + <code>0.1% fee</code> 的 Table 9：</p>
+<ul>
+<li><code>1m</code></li>
+<li>trade count：<strong><code>13,790</code></strong></li>
+<li>胜率：<code>53.2%</code></li>
+<li>avg holding：<code>4.52h</code></li>
+<li><code>5m</code></li>
+<li>trade count：<strong><code>12,166</code></strong></li>
+<li>胜率：<strong><code>54.4%</code></strong></li>
+<li>win/loss ratio：<strong><code>1.19</code></strong></li>
+<li>avg loss：<code>-$8.67</code></li>
+<li>avg win：<code>$9.21</code></li>
+<li>avg holding：<strong><code>5.09h</code></strong></li>
+<li><code>60m</code></li>
+<li>trade count：<code>1,906</code></li>
+<li>胜率：<code>52.6%</code></li>
+<li>avg holding：<code>16.10h</code></li>
+</ul>
+<p>这说明策略更像： <strong>高频率但单笔优势不夸张，靠稳定正期望和腿间净额化生存。</strong></p>
+<h2>6.6 交易成本真的是生死线</h2>
+<p>最直观的一组：</p>
+<ul>
+<li>full-cycle <code>5m, λ=1</code></li>
+<li><code>0 fee</code>: <strong><code>44.98%</code></strong></li>
+<li><code>0.1% fee</code>: <strong><code>15.49%</code></strong></li>
+<li>full-cycle <code>1m, λ=1</code></li>
+<li><code>0 fee</code>: <code>40.03%</code></li>
+<li><code>0.1% fee</code>: <code>14.87%</code></li>
+</ul>
+<p>这轮最不能忽视的结论不是“5m 很强”，而是： <strong>只要净额化做不好、成本模型写轻了，这条 alpha 会从可交易直接掉回论文收益幻觉。</strong></p>
+<h2>6.7 Appendix A：同样骨架迁移到 BTC / SOL 仍有结果</h2>
+<p>作者还在 <code>2020-10-01 ~ 2024-04-01</code> 做了 ETH/BTC/SOL 的扩展测试（15m/60m/720m，参与法币为 USD/GBP/EUR）。</p>
+<p>Table A2 在 <code>15m + 0.1% fee + λ=1</code>：</p>
+<ul>
+<li>ETH：<strong><code>22.66%</code></strong></li>
+<li>BTC：<strong><code>18.24%</code></strong></li>
+<li>SOL：<strong><code>7.42%</code></strong></li>
+</ul>
+<p>对应风险指标：</p>
+<ul>
+<li>ETH：σ=<code>0.151</code>, Sharpe=<code>1.24</code></li>
+<li>BTC：σ=<code>0.159</code>, Sharpe=<code>0.90</code></li>
+<li>SOL：σ=<code>0.032</code>, Sharpe=<code>1.07</code></li>
+</ul>
+<p>这对 desk 的意义是： <strong>它不是 ETH 专属现象；但越往流动性差、走势更极端的币种迁移，alpha 会明显变脆。</strong></p>
+<h2>7. 这轮对当前 desk 的直接意义</h2>
+<h2>7.1 它补的不是“又一篇 pairs”，而是同标的相对价差这条原型</h2>
+<p>当前 digest 池里已经有很多：</p>
+<ul>
+<li>不同币的 cointegration pairs；</li>
+<li>cross-sectional reversal / momentum；</li>
+<li>funding / basis carry；</li>
+<li>PCA residual stat-arb；</li>
+<li>cross-venue spread。</li>
+</ul>
+<p>但这篇论文的新增值在于： <strong>它把“同一底层资产的多路径价差回归”单独写成了一条完整策略，并把重叠腿优化分配明确建模。</strong></p>
+<p>所以它更像是：</p>
+<ul>
+<li><code>spot-perp / perp-perp / calendar / synthetic cross</code> 的共用母版；</li>
+<li>而不是又一条 generic 两资产 pairs 变体。</li>
+</ul>
+<h2>7.2 为什么它比继续补一个 overlay 更值得</h2>
+<p>因为它直接服务于：</p>
+<ul>
+<li><strong>raw alpha 素材池</strong>；</li>
+<li><strong>relative-value / stat-arb 复现池</strong>；</li>
+<li><strong>完整策略组件拆解</strong>；</li>
+<li><strong>资本分配层研究</strong>。</li>
+</ul>
+<p>如果今天继续写一个 crowding gate 或 macro veto，当然也能加知识； 但和这篇相比，<strong>对“下一步能不能马上测一个新 raw alpha”帮助没这么直接。</strong></p>
+<h2>8. 对 <code>1m / 3m / 5m / 15m</code> 的 desk 化映射</h2>
+<h2>8.1 最自然的映射不是照抄 ETH 法币，而是改成同标的多路径 bucket</h2>
+<p>对于我们，最自然的映射对象是：</p>
+<ul>
+<li><strong>单 venue</strong>：<code>spot vs perp</code>、<code>front vs back</code></li>
+<li><strong>跨 venue</strong>：<code>Binance perp vs Bybit perp</code>、<code>Binance spot vs OKX perp</code></li>
+<li><strong>合成路径</strong>：<code>ALTBTC 直价 vs ALTUSDT / BTCUSDT 合成价</code></li>
+</ul>
+<p>也就是说，论文里的法币 quote bucket 只是载体； <strong>真正可迁移的是 same-underlier multispread 框架。</strong></p>
+<h2>8.2 bar 频率如何映射到 <code>1m / 3m / 5m / 15m</code></h2>
+<p>论文是 <code>1m / 5m / 60m</code>。 对 desk 我更建议：</p>
+<ul>
+<li><code>15m</code>：做主回测频率，先验证策略是否 still alive；</li>
+<li><code>5m</code>：做主信号频率，因为论文里 5m 是最像甜点区的一档；</li>
+<li><code>3m</code>：做“更积极但仍可控”的压缩测试；</li>
+<li><code>1m</code>：主要留给执行与净额化更新，不建议一开始就拿它做最终策略频率。</li>
+</ul>
+<p>原因很简单：</p>
+<ul>
+<li>论文的 <code>1m</code> 虽有收益，但成本压力极大；</li>
+<li>我们真实 crypto 环境比 Kraken ETH 法币更 noisy；</li>
+<li>所以先在 <code>5m/15m</code> 站住，再压到 <code>3m/1m</code> 更稳。</li>
+</ul>
+<h2>8.3 论文里的 threshold 不能直接照搬，但“极端偏离才动”这个精神应该保留</h2>
+<p>论文的最佳阈值达到 <code>7σ~11σ</code>，这在 perp 市场未必应原样照抄。 更合理的 desk 化做法是：</p>
+<ul>
+<li>先试 rolling z-score <code>2.0 / 2.5 / 3.0 / 4.0</code></li>
+<li>再试 percentile entry（如 <code>97.5% / 99%</code>）</li>
+<li>再比较跨腿净额化前后，信号是否仍然赚钱。</li>
+</ul>
+<p>该保留的是： <strong>同标的多路径错价，只有在明显异常偏离时才值得付成本去收敛。</strong></p>
+<h2>9. 局限与踩坑</h2>
+<h3>9.1 场景比 desk 真实环境更“干净”</h3>
+<p>论文场景是：</p>
+<ul>
+<li>同一交易所；</li>
+<li>同一底层资产；</li>
+<li>主要是 quote 体系差异；</li>
+<li>没有典型跨 venue transfer / latency / funding settlement 风险。</li>
+</ul>
+<p>所以它天然比真实 perp/cross-venue 好做。</p>
+<h3>9.2 成本模型仍然偏粗</h3>
+<p>统一 <code>0.1%</code> flat fee：</p>
+<ul>
+<li>对某些 maker 场景可能偏高；</li>
+<li>对双腿不同时成交、滑点不对称、排队失败场景又可能偏低。</li>
+</ul>
+<h3>9.3 阈值有数据挖掘风险</h3>
+<p>论文明确做了 retrospective grid search 来找最赚钱的 <code>open_threshold / close_threshold</code>。 这能给我们参数起点， 但不能直接当 live 最优参数照抄。</p>
+<h3>9.4 市场制度差异</h3>
+<p>法币 quote bucket 的错误定价机制，和：</p>
+<ul>
+<li>perpetual funding</li>
+<li>mark/index 机制</li>
+<li>ADL/强平链</li>
+<li>cross-venue inventory frictions</li>
+<p>并不完全相同。</p>
+</ul>
+<p>所以它更像<strong>结构原型</strong>，不是现成 prod 配方。</p>
+<h2>10. 可复刻的最小实验</h2>
+<h3>实验 A：先做 same-underlier 双腿 baseline</h3>
+<ul>
+<li><strong>对象</strong>：BTC / ETH / SOL 的 <code>spot-perp</code> 或 <code>perp-perp cross-venue</code></li>
+<li><strong>bar</strong>：<code>5m</code> 主频，补 <code>15m</code> 与 <code>3m</code></li>
+<li><strong>spread</strong>：</li>
+<li>价格差 / 对数价差</li>
+<li>或 annualized basis diff</li>
+<li><strong>entry</strong>：rolling z-score <code>2.5 / 3.0 / 4.0</code></li>
+<li><strong>exit</strong>：回到 <code>0~0.5σ</code></li>
+<li><strong>sizing</strong>：equal-dollar market-neutral</li>
+<li><strong>cost</strong>：至少三档 round-trip friction：<code>4 / 8 / 15 bps</code></li>
+</ul>
+<p>先回答： <strong>same-underlier mispricing 在我们现在可拿到的公共数据下，到底有没有 after-cost alpha。</strong></p>
+<h3>实验 B：从双腿升级到 bucket-neutral multispread</h3>
+<p>在同一标的上放入三到四条路径，例如：</p>
+<ul>
+<li><code>Binance perp</code></li>
+<li><code>Bybit perp</code></li>
+<li><code>OKX perp</code></li>
+<li><code>spot synthetic</code></li>
+</ul>
+<p>然后比较：</p>
+<ol>
+<li><strong>pair-by-pair 独立开仓</strong></li>
+<li><strong>统一 optimizer 净额化</strong></li>
+</ol>
+<p>关键指标：</p>
+<ul>
+<li>net exposure</li>
+<li>capital utilization</li>
+<li>realized fee drag</li>
+<li>after-cost Sharpe</li>
+<li>concurrent-leg overlap ratio</li>
+</ul>
+<p>这一步专门验证： <strong>论文最值钱的 optimizer layer 到底是不是实盘增量。</strong></p>
+<h3>实验 C：把 λ 当成 sizing frontier，而不是信号参数</h3>
+<p>固定信号，只改 allocator：</p>
+<ul>
+<li><code>λ_high</code></li>
+<li><code>λ_mid</code></li>
+<li><code>λ_low</code></li>
+</ul>
+<p>观察：</p>
+<ul>
+<li>return</li>
+<li>volatility</li>
+<li>Sharpe</li>
+<li>max drawdown</li>
+<li>fill pressure</li>
+</ul>
+<p>如果 desk 版本也出现“更激进 allocator 连 Sharpe 都更高”，那说明： <strong>alpha 本体比我们想象得更强，问题更多在执行层与容量层。</strong></p>
+<h3>实验 D：做 honest cost ablation</h3>
+<p>最少要拆四层：</p>
+<ol>
+<li>maker-only fantasy</li>
+<li>maker/taker 混合</li>
+<li>双腿不同时成交</li>
+<li>overlap netting 前 vs 后</li>
+</ol>
+<p>因为这篇论文已经明确告诉我们： <strong>这条策略不是先看 gross alpha，再顺手加成本；而是成本从第一天就是主角。</strong></p>
+<h2>11. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 <code>same-underlier</code> baseline，不要上来就跑 generic pairs。</strong> 这篇最有价值的就是同标的多路径错价，不是跨币 cointegration。</li>
+<li><strong>优先测 <code>5m + 15m</code>，<code>3m</code> 次之，<code>1m</code> 最后。</strong> 论文结果和成本敏感性都在提醒我们，不要一上来冲最细 bar。</li>
+<li><strong>一定做“独立 pair 开仓” vs “统一 optimizer 净额化”对照。</strong> 这决定我们是不是只是在重做旧 pairs，还是在复现它真正的新东西。</li>
+<li><strong>先用最液态的大币。</strong> BTC/ETH/SOL 或主流 perp venue 足够；别一开始就扩到小票。</li>
+<li><strong>把资金占用和重叠腿暴露写进回测。</strong> 否则很多 bucket strategy 回测只是名义上 market-neutral，实际不是。</li>
+</ol>
+<h2>12. 一句话给当前项目的结论</h2>
+<p><strong>这篇 2024 IJFS 论文值得进池，不是因为它又证明了“配对交易有用”，而是因为它把一条很适合 short-cycle desk 迁移的 raw alpha 骨架写清了：<code>same-underlier multispread mean reversion</code> 负责出信号，<code>optimizer-based netting/sizing</code> 负责让这条信号在多腿重叠与成本压力下仍有机会活下来。</strong></p>
+<h2>13. 来源链接</h2>
+<ul>
+<li>DOI：&lt;<a href="https://doi.org/10.3390/ijfs12030077&gt;">https://doi.org/10.3390/ijfs12030077&gt;</a></li>
+<li>Journal page：&lt;<a href="https://www.mdpi.com/2227-7072/12/3/77&gt;">https://www.mdpi.com/2227-7072/12/3/77&gt;</a></li>
+<li>arXiv：&lt;<a href="https://arxiv.org/abs/2405.15461&gt;">https://arxiv.org/abs/2405.15461&gt;</a></li>
+<li>PDF：&lt;<a href="https://arxiv.org/pdf/2405.15461.pdf&gt;">https://arxiv.org/pdf/2405.15461.pdf&gt;</a></li>
+<li>Kraken historical OHLCVT：&lt;<a href="https://support.kraken.com/hc/en-us/articles/360047124832-Downloadable-historical-OHLCVT-Open-High-Low-Close-Volume-Trades-data&gt;">https://support.kraken.com/hc/en-us/articles/360047124832-Downloadable-historical-OHLCVT-Open-High-Low-Close-Volume-Trades-data&gt;</a></li>
+</ul>
+</body>
+</html>

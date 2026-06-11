@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang='zh'>
+<head>
+  <meta charset='utf-8'>
+  <title>PyTrendline v3 A4-c · sampler fix fresh rerun audit</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 24px auto; max-width: 1180px; color: #17202a; line-height: 1.6; padding: 0 16px 48px; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #5d6d7e; }
+    .card { border: 1px solid #dfe6e9; border-radius: 10px; padding: 16px 18px; margin: 16px 0; background: #fcfcfd; }
+    .good { background: #edf9f1; border-color: #b7e4c7; }
+    .warn { background: #fff8e8; border-color: #f7d794; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .tbl { border-collapse: collapse; width: 100%; font-size: 13px; }
+    .tbl th, .tbl td { border: 1px solid #dfe6e9; padding: 6px 8px; vertical-align: top; }
+    .tbl th { background: #f5f7fa; }
+    code { background: #f5f7fa; padding: 1px 4px; border-radius: 4px; }
+    ul { margin-top: 8px; }
+    img { max-width: 100%; border: 1px solid #e5e7eb; border-radius: 8px; background: white; }
+  </style>
+</head>
+<body>
+  <h1>PyTrendline v3 A4-c · 修正 sampler 后的最小 fresh rerun 审计</h1>
+  <p class='muted'>生成时间：2026-03-14T00:08:53.605005+00:00 ｜ old baseline = <code>01ad061</code>（R2/R3 前） ｜ fixed head = <code>c540d00</code> ｜ 页面定位：A4-c 最小 closure，不是全量 v3 正式重跑。</p>
+
+  <div class='card good'>
+    <h2>一句话结论</h2>
+    <p>在同一份 <strong>BTC + ETH / 20d / 60m</strong> 最小样本上，修正后的 sampler 确实把我们关心的两类 breakout 脏样本清掉了：<strong>strict wrong-side rows 归零</strong>，<strong>exact mirrored pair groups 也归零</strong>；同时 breakout 样本没有被“一刀切删光”。</p>
+  </div>
+
+  <div class='grid'>
+    <div class='card'>
+      <h3>本轮到底测了什么</h3>
+      <ul>
+        <li>同样本 A/B：同一份行情、同一组参数，只换 sampler 逻辑。</li>
+        <li>样本：<code>BTC-USD, ETH-USD</code>，<code>20d</code>，<code>60m</code>。</li>
+        <li>参数：window <code>72</code>，snapshot step <code>24</code>，confirm bars <code>2</code>，tol mult <code>0.08</code>，horizons <code>6, 24, 48, 72</code>。</li>
+        <li>pre-fix = 只有 snapshot-side gate；fixed = 再加 event-time strict wrong-side gate + exact mirrored pair resolution。</li>
+      </ul>
+    </div>
+    <div class='card'>
+      <h3>这轮明确发现了什么</h3>
+      <ul>
+        <li><strong>breakout_raw</strong>: strict wrong-side share 从 <strong>16.7%</strong> 降到 <strong>0.0%</strong>。</li><li><strong>breakout_confirm_1</strong>: strict wrong-side share 从 <strong>38.9%</strong> 降到 <strong>0.0%</strong>。</li><li><strong>breakout_confirm_2</strong>: strict wrong-side share 从 <strong>44.4%</strong> 降到 <strong>0.0%</strong>。</li>
+        <li>purged 样本里的 paired exact-match breakout groups：<strong>1</strong> → <strong>0</strong>。</li>
+        <li>raw breakout rows 仍然保留了可观样本，不是“修 bug = 全删样本”。</li>
+      </ul>
+    </div>
+    <div class='card warn'>
+      <h3>这轮没有发现 / 也不该过度声称什么</h3>
+      <ul>
+        <li>这页<strong>不等于</strong> full v3 45d/4-asset 主报告已经 closure。</li>
+        <li>这页也<strong>不支持</strong>“support breakout 和 resistance breakout 已经可以当独立 alpha 信号”——侧别 alpha 解释仍要继续谨慎。</li>
+        <li>这份 20d 双币最小样本没有强烈重现早先“大页里 side mean 完全相同”的现象，所以它更像 <strong>cleanliness audit</strong>，不是 full alpha verdict。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>怎么看这页</h2>
+  <div class='card'>
+    <p><strong>先看两张图：</strong>左图是 strict wrong-side 占比，右图是 exact mirrored pair group 数。只要 fixed 一侧降到 0，我们就知道 R2/R3 至少在这份最小 fresh rerun 里起效了。</p>
+    <div class='grid'>
+      <div><img src='strict_wrong_side_share_purged.png' alt='strict wrong-side share compare'></div>
+      <div><img src='mirrored_pair_groups_purged.png' alt='mirrored pair groups compare'></div>
+    </div>
+  </div>
+
+  <h2>核心结果表</h2>
+  <div class='card'>
+    <h3>1) strict geometry 对照（raw + purged）</h3>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>variant</th>
+      <th>stage</th>
+      <th>family</th>
+      <th>events</th>
+      <th>strict_wrong_side_rows</th>
+      <th>strict_wrong_side_share</th>
+      <th>support_rows</th>
+      <th>support_wrong_side_rows</th>
+      <th>support_wrong_side_share</th>
+      <th>resistance_rows</th>
+      <th>resistance_wrong_side_rows</th>
+      <th>resistance_wrong_side_share</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_raw</td>
+      <td>346</td>
+      <td>53</td>
+      <td>0.153179</td>
+      <td>165</td>
+      <td>30</td>
+      <td>0.181818</td>
+      <td>181</td>
+      <td>23</td>
+      <td>0.127072</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_confirm_1</td>
+      <td>275</td>
+      <td>50</td>
+      <td>0.181818</td>
+      <td>127</td>
+      <td>26</td>
+      <td>0.204724</td>
+      <td>148</td>
+      <td>24</td>
+      <td>0.162162</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_confirm_2</td>
+      <td>250</td>
+      <td>48</td>
+      <td>0.192000</td>
+      <td>118</td>
+      <td>28</td>
+      <td>0.237288</td>
+      <td>132</td>
+      <td>20</td>
+      <td>0.151515</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>raw</td>
+      <td>breakout_raw</td>
+      <td>310</td>
+      <td>0</td>
+      <td>0.000000</td>
+      <td>147</td>
+      <td>0</td>
+      <td>0.000000</td>
+      <td>163</td>
+      <td>0</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>raw</td>
+      <td>breakout_confirm_1</td>
+      <td>243</td>
+      <td>0</td>
+      <td>0.000000</td>
+      <td>112</td>
+      <td>0</td>
+      <td>0.000000</td>
+      <td>131</td>
+      <td>0</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>raw</td>
+      <td>breakout_confirm_2</td>
+      <td>216</td>
+      <td>0</td>
+      <td>0.000000</td>
+      <td>100</td>
+      <td>0</td>
+      <td>0.000000</td>
+      <td>116</td>
+      <td>0</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>breakout_raw</td>
+      <td>18</td>
+      <td>3</td>
+      <td>0.166667</td>
+      <td>8</td>
+      <td>1</td>
+      <td>0.125000</td>
+      <td>10</td>
+      <td>2</td>
+      <td>0.200000</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>breakout_confirm_1</td>
+      <td>18</td>
+      <td>7</td>
+      <td>0.388889</td>
+      <td>8</td>
+      <td>3</td>
+      <td>0.375000</td>
+      <td>10</td>
+      <td>4</td>
+      <td>0.400000</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>breakout_confirm_2</td>
+      <td>18</td>
+      <td>8</td>
+      <td>0.444444</td>
+      <td>8</td>
+      <td>3</td>
+      <td>0.375000</td>
+      <td>10</td>
+      <td>5</td>
+      <td>0.500000</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>breakout_raw</td>
+      <td>18</td>
+      <td>0</td>
+      <td>0.000000</td>
+      <td>8</td>
+      <td>0</td>
+      <td>0.000000</td>
+      <td>10</td>
+      <td>0</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>breakout_confirm_1</td>
+      <td>18</td>
+      <td>0</td>
+      <td>0.000000</td>
+      <td>8</td>
+      <td>0</td>
+      <td>0.000000</td>
+      <td>10</td>
+      <td>0</td>
+      <td>0.000000</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>breakout_confirm_2</td>
+      <td>18</td>
+      <td>0</td>
+      <td>0.000000</td>
+      <td>8</td>
+      <td>0</td>
+      <td>0.000000</td>
+      <td>10</td>
+      <td>0</td>
+      <td>0.000000</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class='card'>
+    <h3>2) exact mirrored pair 对照（raw + purged）</h3>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>variant</th>
+      <th>stage</th>
+      <th>family</th>
+      <th>paired_groups</th>
+      <th>rows_in_paired_groups</th>
+      <th>rows_to_drop_if_resolved</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_raw</td>
+      <td>6</td>
+      <td>12</td>
+      <td>6</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_confirm_1</td>
+      <td>1</td>
+      <td>2</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_confirm_2</td>
+      <td>1</td>
+      <td>2</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>raw</td>
+      <td>breakout_raw</td>
+      <td>0</td>
+      <td>0</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>raw</td>
+      <td>breakout_confirm_1</td>
+      <td>0</td>
+      <td>0</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>raw</td>
+      <td>breakout_confirm_2</td>
+      <td>0</td>
+      <td>0</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>breakout_raw</td>
+      <td>1</td>
+      <td>2</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>breakout_confirm_1</td>
+      <td>0</td>
+      <td>0</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>breakout_confirm_2</td>
+      <td>0</td>
+      <td>0</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>breakout_raw</td>
+      <td>0</td>
+      <td>0</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>breakout_confirm_1</td>
+      <td>0</td>
+      <td>0</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>breakout_confirm_2</td>
+      <td>0</td>
+      <td>0</td>
+      <td>0</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class='card'>
+    <h3>3) breakout 样本数有没有被删光？</h3>
+    <p>答案：没有。fix 主要是在清理坏 breakout，而不是把 breakout family 整体抹掉。</p>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>variant</th>
+      <th>stage</th>
+      <th>family</th>
+      <th>events</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_raw</td>
+      <td>346</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_confirm_1</td>
+      <td>275</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_confirm_2</td>
+      <td>250</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>raw</td>
+      <td>breakout_raw</td>
+      <td>310</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>raw</td>
+      <td>breakout_confirm_1</td>
+      <td>243</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>raw</td>
+      <td>breakout_confirm_2</td>
+      <td>216</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>breakout_raw</td>
+      <td>18</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>breakout_confirm_1</td>
+      <td>18</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>breakout_confirm_2</td>
+      <td>18</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>breakout_raw</td>
+      <td>18</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>breakout_confirm_1</td>
+      <td>18</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>breakout_confirm_2</td>
+      <td>18</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class='card'>
+    <h3>4) h24 breakout side summary（只作 sanity check，不当 alpha 定论）</h3>
+    <p>这张表的作用很有限：只是确认修复后 side-level 统计仍然能产出不同数值，而不是所有 breakout side 都被机械压成同一个结果。它<strong>不是</strong>“support / resistance 已可独立交易”的证据。</p>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>variant</th>
+      <th>stage</th>
+      <th>event_type</th>
+      <th>events</th>
+      <th>mean_ret</th>
+      <th>median_ret</th>
+      <th>up_ratio</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>support_breakout_raw</td>
+      <td>8</td>
+      <td>0.004526</td>
+      <td>-0.013526</td>
+      <td>0.250</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>resistance_breakout_raw</td>
+      <td>10</td>
+      <td>0.024137</td>
+      <td>0.029569</td>
+      <td>0.700</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>support_breakout_confirm_1</td>
+      <td>8</td>
+      <td>-0.009966</td>
+      <td>-0.009941</td>
+      <td>0.250</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>support_breakout_confirm_2</td>
+      <td>8</td>
+      <td>-0.006860</td>
+      <td>-0.014554</td>
+      <td>0.250</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>resistance_breakout_confirm_1</td>
+      <td>10</td>
+      <td>0.027038</td>
+      <td>0.031572</td>
+      <td>0.800</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>resistance_breakout_confirm_2</td>
+      <td>10</td>
+      <td>0.028064</td>
+      <td>0.029900</td>
+      <td>0.600</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>support_breakout_raw</td>
+      <td>8</td>
+      <td>0.004815</td>
+      <td>-0.013526</td>
+      <td>0.250</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>resistance_breakout_raw</td>
+      <td>10</td>
+      <td>0.023314</td>
+      <td>0.029569</td>
+      <td>0.700</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>support_breakout_confirm_1</td>
+      <td>8</td>
+      <td>-0.008678</td>
+      <td>-0.010149</td>
+      <td>0.250</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>support_breakout_confirm_2</td>
+      <td>8</td>
+      <td>-0.003262</td>
+      <td>-0.007224</td>
+      <td>0.375</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>resistance_breakout_confirm_1</td>
+      <td>10</td>
+      <td>0.030017</td>
+      <td>0.029526</td>
+      <td>0.700</td>
+    </tr>
+    <tr>
+      <td>fixed</td>
+      <td>purged</td>
+      <td>resistance_breakout_confirm_2</td>
+      <td>10</td>
+      <td>0.031149</td>
+      <td>0.023960</td>
+      <td>0.700</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class='card'>
+    <h3>5) pre-fix mirrored pair 明细（方便复查）</h3>
+    <p>如果想逐条看旧逻辑下哪些 bar 同时留下了 support / resistance 两边 breakout，可以先看这里。</p>
+    <h4>raw</h4>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>variant</th>
+      <th>stage</th>
+      <th>family</th>
+      <th>symbol</th>
+      <th>event_family</th>
+      <th>event_timestamp</th>
+      <th>confirm_timestamp</th>
+      <th>action_timestamp</th>
+      <th>group_rows</th>
+      <th>support_rows</th>
+      <th>resistance_rows</th>
+      <th>event_types</th>
+      <th>engine_line_ids</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_raw</td>
+      <td>BTC-USD</td>
+      <td>breakout_raw</td>
+      <td>2026-02-26 02:00</td>
+      <td>2026-02-26 02:00</td>
+      <td>2026-02-26 03:00</td>
+      <td>2</td>
+      <td>1</td>
+      <td>1</td>
+      <td>support_breakout_raw | resistance_breakout_raw</td>
+      <td>S-[37,38,45] | R-[66,67,71]</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_raw</td>
+      <td>BTC-USD</td>
+      <td>breakout_raw</td>
+      <td>2026-03-08 00:00</td>
+      <td>2026-03-08 00:00</td>
+      <td>2026-03-08 01:00</td>
+      <td>2</td>
+      <td>1</td>
+      <td>1</td>
+      <td>support_breakout_raw | resistance_breakout_raw</td>
+      <td>S-[67,68,70,71] | R-[1,21,67]</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_raw</td>
+      <td>ETH-USD</td>
+      <td>breakout_raw</td>
+      <td>2026-03-03 03:00</td>
+      <td>2026-03-03 03:00</td>
+      <td>2026-03-03 04:00</td>
+      <td>2</td>
+      <td>1</td>
+      <td>1</td>
+      <td>support_breakout_raw | resistance_breakout_raw</td>
+      <td>S-[0,24,37] | R-[64,68,69]</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_raw</td>
+      <td>ETH-USD</td>
+      <td>breakout_raw</td>
+      <td>2026-03-06 05:00</td>
+      <td>2026-03-06 05:00</td>
+      <td>2026-03-06 06:00</td>
+      <td>2</td>
+      <td>1</td>
+      <td>1</td>
+      <td>support_breakout_raw | resistance_breakout_raw</td>
+      <td>S-[6,65,66] | R-[46,68,71]</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_raw</td>
+      <td>ETH-USD</td>
+      <td>breakout_raw</td>
+      <td>2026-03-07 13:00</td>
+      <td>2026-03-07 13:00</td>
+      <td>2026-03-07 14:00</td>
+      <td>2</td>
+      <td>1</td>
+      <td>1</td>
+      <td>support_breakout_raw | resistance_breakout_raw</td>
+      <td>S-[3,67,71] | R-[34,35,55,56]</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_raw</td>
+      <td>ETH-USD</td>
+      <td>breakout_raw</td>
+      <td>2026-03-08 01:00</td>
+      <td>2026-03-08 01:00</td>
+      <td>2026-03-08 02:00</td>
+      <td>2</td>
+      <td>1</td>
+      <td>1</td>
+      <td>support_breakout_raw | resistance_breakout_raw</td>
+      <td>S-[67,68,70,71] | R-[59,62,65]</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_confirm_1</td>
+      <td>BTC-USD</td>
+      <td>breakout_confirm_1</td>
+      <td>2026-02-26 02:00</td>
+      <td>2026-02-26 03:00</td>
+      <td>2026-02-26 04:00</td>
+      <td>2</td>
+      <td>1</td>
+      <td>1</td>
+      <td>support_breakout_confirm_1 | resistance_breakout_confirm_1</td>
+      <td>S-[37,38,45] | R-[66,67,71]</td>
+    </tr>
+    <tr>
+      <td>pre_fix</td>
+      <td>raw</td>
+      <td>breakout_confirm_2</td>
+      <td>BTC-USD</td>
+      <td>breakout_confirm_2</td>
+      <td>2026-02-26 02:00</td>
+      <td>2026-02-26 04:00</td>
+      <td>2026-02-26 05:00</td>
+      <td>2</td>
+      <td>1</td>
+      <td>1</td>
+      <td>support_breakout_confirm_2 | resistance_breakout_confirm_2</td>
+      <td>S-[37,38,45] | R-[66,67,71]</td>
+    </tr>
+  </tbody>
+</table>
+    <h4>purged</h4>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>variant</th>
+      <th>stage</th>
+      <th>family</th>
+      <th>symbol</th>
+      <th>event_family</th>
+      <th>event_timestamp</th>
+      <th>confirm_timestamp</th>
+      <th>action_timestamp</th>
+      <th>group_rows</th>
+      <th>support_rows</th>
+      <th>resistance_rows</th>
+      <th>event_types</th>
+      <th>engine_line_ids</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>pre_fix</td>
+      <td>purged</td>
+      <td>breakout_raw</td>
+      <td>ETH-USD</td>
+      <td>breakout_raw</td>
+      <td>2026-03-06 05:00</td>
+      <td>2026-03-06 05:00</td>
+      <td>2026-03-06 06:00</td>
+      <td>2</td>
+      <td>1</td>
+      <td>1</td>
+      <td>support_breakout_raw | resistance_breakout_raw</td>
+      <td>S-[6,65,66] | R-[46,68,71]</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <div class='card'>
+    <h2>可靠性评估</h2>
+    <ul>
+      <li><strong>可靠的部分：</strong>这是同样本、同参数、旧逻辑 vs 新逻辑的 A/B，对“R2/R3 是否真的把脏 breakout 清掉”有中高可信度。</li>
+      <li><strong>还不够的部分：</strong>样本只有 2 个币、20 天；它适合做 sampler cleanliness closure，不适合直接升级成 full alpha 宣判。</li>
+      <li><strong>下一步最自然的动作：</strong>V3X-A 已可收口，后续应转到 V3X-B，把这些审计结论用用户可读方式补进主 v3 页面。</li>
+    </ul>
+  </div>
+
+  <div class='card'>
+    <h2>Artifacts</h2>
+    <ul>
+      <li><a href='../../artifacts/pytrendline_event_validation_v3_sampler_fix_rerun_a4c/strict_geometry_compare.csv'>strict_geometry_compare.csv</a></li>
+      <li><a href='../../artifacts/pytrendline_event_validation_v3_sampler_fix_rerun_a4c/mirrored_pair_compare.csv'>mirrored_pair_compare.csv</a></li>
+      <li><a href='../../artifacts/pytrendline_event_validation_v3_sampler_fix_rerun_a4c/breakout_count_compare.csv'>breakout_count_compare.csv</a></li>
+      <li><a href='../../artifacts/pytrendline_event_validation_v3_sampler_fix_rerun_a4c/breakout_h24_compare.csv'>breakout_h24_compare.csv</a></li>
+      <li><a href='../../artifacts/pytrendline_event_validation_v3_sampler_fix_rerun_a4c/pre_fix_mirrored_pair_details_raw.csv'>pre_fix_mirrored_pair_details_raw.csv</a></li>
+      <li><a href='../../artifacts/pytrendline_event_validation_v3_sampler_fix_rerun_a4c/pre_fix_mirrored_pair_details_purged.csv'>pre_fix_mirrored_pair_details_purged.csv</a></li>
+      <li><a href='../../artifacts/pytrendline_event_validation_v3_sampler_fix_rerun_a4c/summary.json'>summary.json</a></li>
+    </ul>
+  </div>
+</body>
+</html>

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Hummingbot 的 `cross_exchange_market_making` 只读成 bot 框架：对 short-cycle desk，更该先测的是「maker-first cross-venue quote gap × taker-hedge profitability buffer」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Hummingbot 的 `cross_exchange_market_making` 只读成 bot 框架：对 short-cycle desk，更该先测的是「maker-first cross-venue quote gap × taker-hedge profitability buffer」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-07 15:26 UTC</span>
+      <span class="pill">研究时间：2026-04-07 15:23 UTC</span>
+      <span class="pill">类型：GitHub repo source audit（`README.md` + `cross_exchange_market_making_config_map_pydantic.py` + `cross_exchange_market_making.py` + `start.py`）</span>
+      <span class="pill">主题标签：raw-alpha / relative-value / stat-arb / market-making / cross-venue / maker-first / taker-hedge / execution / cost / 1m / 3m / 5m / 15m</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-07_1523_xemm-makerfirst-takerhedge-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-07 15:23 UTC</li>
+<li>类型：GitHub repo source audit（<code>README.md</code> + <code>cross_exchange_market_making_config_map_pydantic.py</code> + <code>cross_exchange_market_making.py</code> + <code>start.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一标的在两个 venue 的可对冲报价错位；只有当 maker 侧挂单被成交后，能在 taker 侧立刻对冲、且扣掉手续费/滑点后仍保留最小利润，才值得挂单。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / relative-value / stat-arb / market-making / cross-venue / maker-first / taker-hedge / execution / cost / 1m / 3m / 5m / 15m</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>Hummingbot Foundation / <code>hummingbot/hummingbot</code></strong> 里的成熟策略模块 <strong><code>cross_exchange_market_making</code></strong>。它不是再讲“跨所套利存在”这句空话，而是把一条能直接跑起来的完整骨架写清楚：<strong>maker 侧先挂单赚价差，taker 侧负责立刻对冲，所有报价都先经过 profitability / slippage / balance / volume 几层约束。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这条策略的 <strong>base alpha 很朴素</strong>：不是猜方向，而是吃 <strong>同一标的跨 venue 的净价差</strong>。只要 maker 报价相对 taker 对冲价还有足够净边际，就可以挂。</li>
+<li>它最值钱的地方不是“发现 gap”，而是把 gap 明确翻译成 <strong>可执行报价</strong>：源码里 <code>get_market_making_price(...)</code> 会围绕 <code>min_profitability</code>、对冲侧可成交价、汇率换算与滑点缓冲来反推 maker 应该挂在哪里。</li>
+<li>它不是裸冲仓位。配置层直接把 <strong><code>order_size_taker_volume_factor</code>、<code>order_size_taker_balance_factor</code>、<code>order_size_portfolio_ratio_limit</code></strong> 暴露出来，说明仓位大小先受对冲深度、可用余额和组合上限约束。</li>
+<li>它也不是“挂了就不管”。源码里有 <strong><code>anti_hysteresis_duration</code>、<code>adjust_order_enabled</code>、<code>active_order_canceling</code></strong> 这类控制，核心目的都是减少顶档抖动带来的频繁改价、无效撤单和被 adverse selection 白打。</li>
+<li>对我们 desk 来说，这更像一条 <strong>完整 raw alpha shell</strong>：entry、hedge、sizing、cost、inventory/balance 约束都已经成形，比只抄“跨所有价差”更接近能上最小实验的状态。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线直接补的是我们最近很多 raw alpha 还缺的那一层：<strong>怎么把“价差存在”变成真实可挂、可吃、可对冲的单子。</strong> 它尤其适合服务这些已积累方向：</p>
+<ul>
+<li>cross-venue same-underlier spread close</li>
+<li>maker spread capture / market making</li>
+<li>carry / basis / pairs 在执行时的 venue routing</li>
+</ul>
+<p>一句话核心结论：<strong>跨 venue alpha 真正值钱的不是看见 gap，而是只挂那些“被打到之后还能立刻在另一边锁住净利润”的价。</strong> 一句话证明方式：<strong>Hummingbot 不是论文回测，而是把 profitability、slippage、余额、深度、撤单节奏全部写进策略参数和执行逻辑里，用工程约束把这个判断落地。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / stat-arb / maker-first</li>
+<li>基础 alpha：same-underlier cross-venue quote gap 的净价差捕获</li>
+<li>regime：优先流动性正常、两边 order book 都够深、连接稳定、费用可预估的时段</li>
+<li>filter / veto：<code>min_profitability</code>、对冲侧可成交量、余额约束、滑点缓冲、顶档抖动/改单阈值</li>
+<li>risk / sizing / execution overlay：maker 先挂、fill 后 taker 立刻对冲；仓位受 taker volume / balance / portfolio cap 限制；必要时取消或调整挂单</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：当 <code>maker_ask &gt;= taker_buy_cost * (1 + hurdle)</code> 或 <code>maker_bid &lt;= taker_sell_proceeds * (1 - hurdle)</code> 时，maker-first 挂单在 fill 后做 taker hedge，仍能留下正的净 edge。</li>
+<li>一个可计算定义：<code>hurdle = fees + slippage_buffer + min_profitability</code>；先用 public L1/L2 或 top-of-book 近似 <code>taker_buy_cost / taker_sell_proceeds</code>，再把 maker 可挂价反推出来。</li>
+<li>最小回测切口：<code>BTCUSDT / ETHUSDT</code>，两家高流动性 venue，先跑 <code>1m / 3m</code> 事件聚合；再把结果汇总成 <code>5m / 15m</code> 的「可对冲机会占比 / 净 edge 分布 / fill 后一跳 adverse selection」。</li>
+<li>最该先看哪 1~2 个指标：<strong>成本后净 edge 是否仍为正</strong>、<strong>fill 后 hedge 成功率 / hedge 延迟下的 adverse selection</strong>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这条 alpha 对 <strong>延迟、手续费、maker fill 假设</strong> 极敏感；public top-of-book 快检容易高估真实可吃 edge。</li>
+<li>它天然更适合 <code>1m / 3m</code> 甚至 event-time；若硬塞到 <code>15m</code>，更适合作为 <strong>venue-routing / execution overlay</strong>，而不是逐根主方向信号。</li>
+<li>Hummingbot 给的是成熟工程壳，不等于你的 venue 组合一定还有肉；是否还能活，最终取决于 <strong>费用、排队位置、撤单限制、对冲腿成交能力</strong>。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Hummingbot Foundation.</strong> <code>hummingbot/hummingbot</code>.</li>
+</ol>
+<ul>
+<li>Repo URL: <code><a href="https://github.com/hummingbot/hummingbot">https://github.com/hummingbot/hummingbot</a></code></li>
+<li>Repo metadata: GitHub repo，约 <code>17,995</code> stars，<code>2026-04-07</code> 仍有更新</li>
+</ul>
+<ol>
+<li><strong>Strategy config:</strong> <code>hummingbot/strategy/cross_exchange_market_making/cross_exchange_market_making_config_map_pydantic.py</code></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/hummingbot/hummingbot/blob/master/hummingbot/strategy/cross_exchange_market_making/cross_exchange_market_making_config_map_pydantic.py">https://github.com/hummingbot/hummingbot/blob/master/hummingbot/strategy/cross_exchange_market_making/cross_exchange_market_making_config_map_pydantic.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Strategy logic:</strong> <code>hummingbot/strategy/cross_exchange_market_making/cross_exchange_market_making.py</code></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/hummingbot/hummingbot/blob/master/hummingbot/strategy/cross_exchange_market_making/cross_exchange_market_making.py">https://github.com/hummingbot/hummingbot/blob/master/hummingbot/strategy/cross_exchange_market_making/cross_exchange_market_making.py</a></code></li>
+</ul>
+<ol>
+<li><strong>Start wiring:</strong> <code>hummingbot/strategy/cross_exchange_market_making/start.py</code></li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/hummingbot/hummingbot/blob/master/hummingbot/strategy/cross_exchange_market_making/start.py">https://github.com/hummingbot/hummingbot/blob/master/hummingbot/strategy/cross_exchange_market_making/start.py</a></code></li>
+</ul>
+</body>
+</html>

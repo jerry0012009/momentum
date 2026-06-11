@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2025 Deribit repo 只读成“期权偏度可视化工具”：对 short-cycle desk，更该先测的是「near-vs-far risk-reversal term-skew spread」这条 options relative-value raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2025 Deribit repo 只读成“期权偏度可视化工具”：对 short-cycle desk，更该先测的是「near-vs-far risk-reversal term-skew spread」这条 options relative-value raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-17 19:37 UTC</span>
+      <span class="pill">研究时间：2026-04-17 19:36 UTC</span>
+      <span class="pill">类型：2025 GitHub repo source audit（`README.md` + `websocket_client.py` + `draw_graph_skew.py` + `get_spd_pdf_log.py` + `create_tables.sql`）+ Deribit 公共 options live snapshot sanity check</span>
+      <span class="pill">主题标签：raw-alpha / options / relative-value / stat-arb / skew / risk-reversal / term-structure / deribit / btc / 1m / 3m / 5m / 15m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：repo 源码 + Deribit 公共 API live probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-17_1936_deribit-termskew-riskreversal-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-17 19:36 UTC</li>
+<li>类型：2025 GitHub repo source audit（<code>README.md</code> + <code>websocket_client.py</code> + <code>draw_graph_skew.py</code> + <code>get_spd_pdf_log.py</code> + <code>create_tables.sql</code>）+ Deribit 公共 options live snapshot sanity check</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同一标的 BTC 的不同到期日，其 OTM call-vs-put 偏度（repo 用 risk reversal / ATM slope 代理）大部分时间共享一个相对平滑的期限结构；当 <strong>近月偏度相对远月异常变陡/变平</strong>，并且四腿组合按当前 bid/ask 计算仍有正的净入场 edge 时，做 <code>short rich skew leg / long cheap skew leg</code>，赌 term-skew spread 回归。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（repo 已给四腿下单、保证金预检与监控壳；参数与平仓规则需补全）</li>
+<li>主题标签：raw-alpha / options / relative-value / stat-arb / skew / risk-reversal / term-structure / deribit / btc / 1m / 3m / 5m / 15m / repo / public-data / cost / risk</li>
+<li>证据类型：repo 源码 + Deribit 公共 API live probe</li>
+</ul>
+<h2>1. 为什么这轮选它</h2>
+<p>这轮优先目标不是再补一个解释型 filter，而是补一条 <strong>能独立复现、能直接进实盘组件池的 raw alpha</strong>。</p>
+<p>我最后选的是 GitHub 仓库 <strong>chanhyeong28 / SkewnessTrade_Deribit</strong>（2025，repo 最近提交日期 2025-09-25）。这不是论文型材料，而是一个已经把实时监控、四腿组合、保证金预检、Telegram 告警都写出来的 Deribit 期权策略原型。</p>
+<p>先把 base alpha 说清楚：</p>
+<p>&gt; <strong>它赌的不是 BTC 方向，而是 BTC 期权 surface 上“不同到期日的偏度相对位置”会回到常态。</strong></p>
+<p>这和我们最近几篇 digest 不同：</p>
+<ul>
+<li>不是 funding / basis carry；</li>
+<li>不是 perp-vs-future quote gap；</li>
+<li>也不是 order-book microstructure continuation。</li>
+</ul>
+<p>它补的是当前池子里相对少的那类： <strong>options relative-value / skew term-structure raw alpha。</strong></p>
+<h2>2. repo 里真正可复用的 alpha 是什么</h2>
+<h3>2.1 repo 表面上写的是“skewness strategy”，但交易本体其实很具体</h3>
+<p>README 说法偏泛：</p>
+<ul>
+<li>用 <strong>Risk Reversal (RR)</strong> 当 skewness proxy；</li>
+<li>监控两个不同 expiration 的 skew；</li>
+<li>若成本为负（即入场即有正 edge），才允许执行。</li>
+</ul>
+<p>真正落到代码里，交易本体比 README 更清楚：</p>
+<ol>
+<li>选两个 expiration；</li>
+<li>每个 expiration 各挑一只 OTM call 与一只 OTM put；</li>
+<li>用 call/put 的 bid/ask IV 与 bid/ask price 计算每个到期日的 RR leg；</li>
+<li>把 <strong>远月 RR</strong> 和 <strong>近月反向 RR</strong> 组合成一个四腿 spread；</li>
+<li>只有当组合后：</li>
+</ol>
+<ul>
+<li><code>latest_rr_spread &gt; 0</code>（IV 维度正 edge）</li>
+<li><code>latest_rr_spread_price &gt; 0</code>（价格维度正 edge）</li>
+<li><code>simulate_portfolio</code> 保证金检查通过</li>
+<p>才真正下单。</p>
+</ul>
+<p>这就已经不是“偏度故事”，而是一条很明确的 <strong>四腿 options stat-arb / relative-value alpha</strong>。</p>
+<h3>2.2 base alpha 用人话说</h3>
+<p>repo 的 base alpha 可以压缩成一句：</p>
+<p>&gt; <strong>如果某个时刻近月 put-skew 相对远月贵太多，或远月 skew 相对近月便宜太多，而四腿对敲后依然留有正的 net edge，那么这块 term-skew spread 往往比纯方向更容易向中枢回归。</strong></p>
+<p>换句话说：</p>
+<ul>
+<li>交易对象不是“买 BTC 还是卖 BTC”；</li>
+<li>交易对象是 <strong>skew 的期限结构差</strong>；</li>
+<li>这本质上是 <code>relative-value / stat-arb / options raw alpha</code>。</li>
+</ul>
+<h2>3. 源码里最关键的、值得 desk 继承的结构</h2>
+<h3>3.1 选腿规则：固定 log-moneyness，不是随便挑两只期权</h3>
+<p><code>update_subscribe()</code> 里，repo 不是乱选 strike，而是：</p>
+<ul>
+<li>call 取接近 <code>S * exp(0.1)</code> 的 OTM call；</li>
+<li>put 取与之大致对称 log-moneyness 的 OTM put；</li>
+<li>对两个 expiration 都这么做。</li>
+</ul>
+<p>所以它在尽量保持：</p>
+<ul>
+<li>同标的；</li>
+<li>相近 log-moneyness；</li>
+<li>不同到期日。</li>
+</ul>
+<p>这使得你做的是 <strong>偏度期限差</strong>，不是混入一堆 moneyness 漂移噪声。</p>
+<h3>3.2 信号公式：代码比 README 更实</h3>
+<p><code>risk_manager()</code> 里写得很直白。</p>
+<p>若选择 <code>SHORT</code>，组合信号是：</p>
+<ul>
+<li>远月：<code>bid_iv_call_far - ask_iv_put_far</code></li>
+<li>近月：<code>bid_iv_put_near - ask_iv_call_near</code></li>
+<li>两者相加得 <code>RR_spread</code></li>
+</ul>
+<p>同时再用 bid/ask price 算一遍 <code>RR_spread_price</code>。</p>
+<p>也就是说它不是只看 IV，不管实际成交；而是要求：</p>
+<ul>
+<li><strong>vol edge 为正</strong></li>
+<li><strong>price edge 也为正</strong></li>
+</ul>
+<p>这点很关键。很多 options relative-value 研究死在“模型上有 edge，但落到盘口就没 edge”。这个 repo 至少意识到了这件事。</p>
+<h3>3.3 执行壳：保证金预检先于下单</h3>
+<p>repo 还有三层实盘味很重的结构：</p>
+<ol>
+<li><code>simulate_portfolio()</code> 先测 projected margin；</li>
+<li>只有 <code>pre_margin_check_long/short == True</code> 才允许开仓；</li>
+<li>下单后还会持续看 <code>get_account_summary()</code>，若保证金逼近 maintenance margin，就触发平仓。</li>
+</ol>
+<p>这让它不只是一个“信号脚本”，而是已经带有：</p>
+<ul>
+<li>entry</li>
+<li>margin pre-check</li>
+<li>execution toggle</li>
+<li>live monitoring</li>
+<li>forced close</li>
+</ul>
+<p>的完整雏形。</p>
+<h2>4. 但 repo 也有明显缺点：不能原样照抄</h2>
+<h3>4.1 entry 规则偏粗糙</h3>
+<p>代码真正用于触发交易的条件其实很朴素：</p>
+<ul>
+<li><code>RR_spread &gt; 0</code></li>
+<li><code>RR_spread_price &gt; 0</code></li>
+</ul>
+<p>源码虽然还算了 <code>mean ± 2*std</code>，但当前版本并没有把这组 band 真正接进 entry 逻辑。</p>
+<p>所以 repo 更像是在做：</p>
+<ul>
+<li><strong>盘口有正 carry/正 edge 就试图吃掉</strong></li>
+<p>而不是严格意义的：</p>
+<li><strong>spread 偏离历史分布足够远才开仓</strong></li>
+</ul>
+<p>对我们 desk 来说，正确读法是： &gt; repo 给的是执行母板，不是最终参数答案。</p>
+<h3>4.2 风控和平仓还不完整</h3>
+<p>当前实现里，真正显式可见的硬风控主要是保证金层面；但：</p>
+<ul>
+<li>没有成熟的 time-stop；</li>
+<li>没有明确的 spread reversion exit band；</li>
+<li>没有更细的 vega / gamma / fill-risk 约束；</li>
+<li>平仓部分还有明显代码瑕疵（close 某些 put 腿时 instrument type 似乎写成了 <code>-C</code>）。</li>
+</ul>
+<p>因此它适合做 <strong>raw alpha intake</strong>，不适合直接接生产。</p>
+<h2>5. public live probe：今天的 Deribit snapshot 能不能支持它不是纯故事</h2>
+<p>我用 Deribit 公共 API 做了一个最小 live probe，口径尽量贴 repo：</p>
+<ul>
+<li>标的：BTC</li>
+<li>近月：<code>24APR26</code></li>
+<li>远月：<code>29MAY26</code> 与 <code>26JUN26</code></li>
+<li>用 <code>BTC-PERPETUAL</code> mark 近似 spot，按 repo 规则挑 OTM call / put</li>
+<li>选到的 strike 均为：<code>85000C</code> 与 <code>70000P</code></li>
+</ul>
+<h3>5.1 单腿 RR 当前确实有明显期限差</h3>
+<p>抓到的 live IV（约 2026-04-17 19:33~19:35 UTC）：</p>
+<p>#### <code>24APR26</code></p>
+<ul>
+<li><code>85000C</code>：bid IV ≈ <strong>41.92</strong>，ask IV ≈ <strong>43.34</strong></li>
+<li><code>70000P</code>：bid IV ≈ <strong>49.95</strong>，ask IV ≈ <strong>51.12</strong></li>
+<li>对应 long-RR leg（<code>-ask_call + bid_put</code>）≈ <strong>+6.61 vol pts</strong></li>
+</ul>
+<p>#### <code>29MAY26</code></p>
+<ul>
+<li><code>85000C</code>：bid IV ≈ <strong>39.98</strong>，ask IV ≈ <strong>40.43</strong></li>
+<li><code>70000P</code>：bid IV ≈ <strong>43.73</strong>，ask IV ≈ <strong>44.23</strong></li>
+<li>long-RR leg ≈ <strong>+3.30 vol pts</strong></li>
+</ul>
+<p>#### <code>26JUN26</code></p>
+<ul>
+<li><code>85000C</code>：bid IV ≈ <strong>40.05</strong>，ask IV ≈ <strong>40.68</strong></li>
+<li><code>70000P</code>：bid IV ≈ <strong>43.01</strong>，ask IV ≈ <strong>43.71</strong></li>
+<li>long-RR leg ≈ <strong>+2.33 vol pts</strong></li>
+</ul>
+<p>这说明什么？</p>
+<p>&gt; <strong>同样的 OTM pair 下，近月 put-skew 显著比远月更陡。</strong></p>
+<p>所以“近月 vs 远月 skew 有可交易 term spread”这件事，在 live quote 上是能看见的，不是 README 空谈。</p>
+<h3>5.2 按 repo 的四腿组合口径，当前 <code>SHORT</code> 方向一度是正 edge</h3>
+<p>若拿 <code>24APR26</code> 对 <code>26JUN26</code> 按 repo 的 <code>SHORT</code> 公式组合：</p>
+<ul>
+<li><code>RR_spread</code> ≈ <strong>+2.95 vol pts</strong></li>
+<li><code>RR_spread_price</code> ≈ <strong>+0.0021 BTC</strong></li>
+</ul>
+<p>拿 <code>24APR26</code> 对 <code>29MAY26</code>：</p>
+<ul>
+<li><code>RR_spread</code> ≈ <strong>+2.36 vol pts</strong></li>
+<li><code>RR_spread_price</code> ≈ <strong>+0.0001 BTC</strong></li>
+</ul>
+<p>也就是说，在至少这组 live snapshot 里， repo 设想的那种：</p>
+<ul>
+<li><strong>IV 上有正 edge</strong></li>
+<li><strong>按盘口价格算也没把 edge 全吃掉</strong></li>
+</ul>
+<p>并不是不存在。</p>
+<p>对 desk 来说，这已经足够把它从“机制故事”升级成“值得进研究池的 raw alpha 候选”。</p>
+<h2>6. 它和 <code>1m / 3m / 5m / 15m</code> 的关系应该怎么理解</h2>
+<p>别把它误会成“期权到期很慢，所以只能做低频”。</p>
+<p>更准确地说：</p>
+<ul>
+<li><strong>alpha 本体</strong>：skew term-structure relative-value</li>
+<li><strong>信号刷新</strong>：quote 级 / 秒级都能变</li>
+<li><strong>研究基准频率</strong>：先用 <code>1m / 3m / 5m</code></li>
+<li><strong>更稳的持仓观察窗</strong>：<code>15m</code> 可做 reversion / decay 检查</li>
+</ul>
+<p>也就是：</p>
+<ul>
+<li><code>1m</code>：最适合记 RR spread 的瞬时异常与回补速度；</li>
+<li><code>3m/5m</code>：更接近 desk 默认快频；</li>
+<li><code>15m</code>：判断是不是只是一跳报价噪声，而不是真正 spread pocket。</li>
+</ul>
+<p>这条线完全符合 short-cycle desk 的使用方式： <strong>信号是 options relative-value，执行和风控时钟则可以是 1m~15m。</strong></p>
+<h2>7. 今天如果把它改写成更适合 desk 的完整策略</h2>
+<h3>7.1 Entry</h3>
+<p>先只做最朴素版本：</p>
+<ol>
+<li>选一组 <code>near expiry</code> / <code>far expiry</code>；</li>
+<li>固定 log-moneyness（如 repo 的 ±0.1）；</li>
+<li>计算四腿 <code>RR_spread</code> 与 <code>RR_spread_price</code>；</li>
+<li>仅在以下同时满足时进场：</li>
+</ol>
+<ul>
+<li><code>RR_spread &gt; 0</code></li>
+<li><code>RR_spread_price &gt; 0</code></li>
+<li><code>RR_spread_z &gt;= 2.0</code> 或高于 rolling <code>p95</code></li>
+<li>quote size 足够</li>
+<li>margin pre-check 通过</li>
+</ul>
+<h3>7.2 Exit</h3>
+<p>任一满足就平：</p>
+<ol>
+<li><code>RR_spread</code> 回到 <code>0 ~ 0.5σ</code>；</li>
+<li>固定 time-stop（先试 <code>5m / 15m / 30m / 60m</code>）；</li>
+<li>一侧腿 fill quality 恶化，剩余 edge 被 spread 吃掉；</li>
+<li>组合净 delta / vega 超上限；</li>
+<li>到近月剩余 DTE 太短（如 <code>&lt; 2d</code>），避免 gamma 爆炸。</li>
+</ol>
+<h3>7.3 Sizing</h3>
+<ul>
+<li>先按最小可成交张数 / quote size 做小额；</li>
+<li>优先用 <strong>vega-neutral-ish</strong> 而不是名义数量完全相等；</li>
+<li>pair-level notional cap；</li>
+<li>expiry bucket cap；</li>
+<li>近月 gamma 更高时自动 size-down。</li>
+</ul>
+<h3>7.4 成本与风险</h3>
+<p>主要风险：</p>
+<ul>
+<li>四腿 fill risk；</li>
+<li>skew 不是回归，而是事件驱动重定价；</li>
+<li>近月 gamma 爆炸；</li>
+<li>surface 并非平移，而是 smile 局部扭曲；</li>
+<li>Deribit options 某些 strike 深度不足。</li>
+</ul>
+<p>主要成本：</p>
+<ul>
+<li>option bid-ask；</li>
+<li>taker fee / maker fee；</li>
+<li>多腿成交不同步带来的 slippage；</li>
+<li>可能的频繁改价 / 撤单成本。</li>
+</ul>
+<h2>8. first verdict</h2>
+<p>这轮我的结论很明确：</p>
+<p>&gt; <strong>这不是 filter，也不是解释层；它是可以独立复现的 options relative-value raw alpha。</strong></p>
+<p>而且它比 repo README 听起来更“可交易”：</p>
+<ul>
+<li>选腿明确；</li>
+<li>组合公式明确；</li>
+<li>保证金预检明确；</li>
+<li>live snapshot 也确实能看到正 edge pocket。</li>
+</ul>
+<p>但也要老实：</p>
+<ul>
+<li>repo 的 entry 还太粗；</li>
+<li>risk / exit 还不完整；</li>
+<li>需要把它从“正 edge 就上”升级成“正 edge + 偏离分布 + 可成交性一起满足”。</li>
+</ul>
+<p>所以它当前最合适的定位是： <strong>高优先级 raw alpha intake，值得做最小实验，但还不是可直接生产化的终版。</strong></p>
+<h2>9. 下一步怎么测</h2>
+<h3>9.1 最小可复现实验</h3>
+<p>先不要碰复杂 Greeks 回放，第一轮只做这 4 步：</p>
+<ol>
+<li>每 <code>1m</code> 抓一次 Deribit 两个 expiration 的目标 call/put top-of-book；</li>
+<li>复现 repo 的 <code>RR_spread</code> / <code>RR_spread_price</code>；</li>
+<li>记录未来 <code>1m / 3m / 5m / 15m / 30m</code> 的 spread 变化；</li>
+<li>扣掉保守 fee + slippage 假设，看净 markout 是否仍为正。</li>
+</ol>
+<h3>9.2 必须同时做的三个版本</h3>
+<ul>
+<li><strong>A</strong>：repo 原版 <code>RR_spread &gt; 0 &amp; RR_spread_price &gt; 0</code></li>
+<li><strong>B</strong>：加入 <code>z-score / percentile</code> admission</li>
+<li><strong>C</strong>：加入 <code>vega-balance + min quote size + max gamma</code> 风控壳</li>
+</ul>
+<p>先看哪一版在净成本后还活着。</p>
+<h3>9.3 这张表必须出</h3>
+<ul>
+<li>hit rate</li>
+<li>avg / median markout</li>
+<li>time-to-half-reversion</li>
+<li>fee-adjusted expectancy</li>
+<li>worst legging loss</li>
+<li>vega / gamma exposure drift</li>
+</ul>
+<h3>9.4 若第一轮成立，再做两步扩展</h3>
+<ol>
+<li>把固定 strike 改成固定 delta（如 25d RR）——更像标准 skew 交易；</li>
+<li>把 BTC 扩到 ETH，但不要默认 BTC 经验会直接复制到 ETH。</li>
+</ol>
+<h2>10. 来源</h2>
+<h3>Repo</h3>
+<ul>
+<li>GitHub: <code>chanhyeong28 / SkewnessTrade_Deribit</code></li>
+<li>Repo URL: <a href="https://github.com/chanhyeong28/SkewnessTrade_Deribit">https://github.com/chanhyeong28/SkewnessTrade_Deribit</a></li>
+<li>Readable URL: <a href="https://github.com/chanhyeong28/SkewnessTrade_Deribit/blob/main/README.md">https://github.com/chanhyeong28/SkewnessTrade_Deribit/blob/main/README.md</a></li>
+</ul>
+<h3>关键源码</h3>
+<ul>
+<li><code>websocket_client.py</code></li>
+<li><code>draw_graph_skew.py</code></li>
+<li><code>get_spd_pdf_log.py</code></li>
+<li><code>create_tables.sql</code></li>
+</ul>
+<h3>Public data probe</h3>
+<ul>
+<li>Deribit public API docs: <a href="https://docs.deribit.com/">https://docs.deribit.com/</a></li>
+<li>Instruments endpoint: <code>public/get_instruments</code></li>
+<li>Ticker endpoint: <code>public/ticker</code></li>
+</ul>
+<h2>11. 一句话版结论</h2>
+<p>如果只用一句话总结这轮 intake：</p>
+<p>&gt; <strong>别把它当“偏度可视化脚本”；对 short-cycle desk 更值得先测的是：近月 vs 远月的 RR term-skew spread 在多腿净成交后是否还能稳定回归，这是一条能独立复现的 options relative-value raw alpha。</strong></p>
+</body>
+</html>

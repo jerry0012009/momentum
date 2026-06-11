@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Hyperliquid ORB 仓只读成“又一个开盘突破 bot”：对 short-cycle desk，更该先拆的是「session opening-range breakout × box-width gate」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Hyperliquid ORB 仓只读成“又一个开盘突破 bot”：对 short-cycle desk，更该先拆的是「session opening-range breakout × box-width gate」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-18 05:41 UTC</span>
+      <span class="pill">研究时间：2026-04-18 05:58 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `scripts/save_opening_range.py` + `scripts/autonomous_trade.py` + `FORTSCHRITT.md` + `ERKENNTNISSE.md`）+ Binance USDⓈ-M `15m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha / breakout / intraday / session / opening-range / trend / continuation / box-width / risk-reward / Hyperliquid / Binance / 15m / 5m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：仓库源码 + live-notes + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-18_0558_session-orb-widthgate-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-18 05:58 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>scripts/save_opening_range.py</code> + <code>scripts/autonomous_trade.py</code> + <code>FORTSCHRITT.md</code> + <code>ERKENNTNISSE.md</code>）+ Binance USDⓈ-M <code>15m</code> public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>session opening-range breakout</strong>——先用某个交易时段开头第一根 <code>15m</code> K 线定义 <code>high/low</code>，后续若价格越过区间上沿就顺势做多、跌破下沿就顺势做空，赌的是“开盘定价完成后，短窗内继续单边扩张”</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / breakout / intraday / session / opening-range / trend / continuation / box-width / risk-reward / Hyperliquid / Binance / 15m / 5m / repo / public-data / cost / risk</li>
+<li>证据类型：仓库源码 + live-notes + public-data portability probe</li>
+</ul>
+<p>先回答 base alpha：<strong>说得清楚，而且是完整策略壳。</strong> 这份仓库的母体不是“泛突破”，而是更具体的 <strong>session ORB</strong>：把东京 / 欧洲 / 美股活跃时段都当成伪“开盘”，先锁第一根 <code>15m</code> 的高低点，再在后面 <code>60~75</code> 分钟追随真正突破的一边。对我们 desk 来说，最值得保留的不是“每个 session 都机械追 breakout”，而是它天然给了一个 <strong>完整可交易骨架</strong>，而且很容易拆成：<strong>session 选择 × box 宽度 gate × 固定 R multiple 出场</strong>。</p>
+<h2>1. 这次看了什么</h2>
+<p>主来源：</p>
+<ul>
+<li><strong>作者 / 组织：</strong> <code>fefotec</code></li>
+<li><strong>项目：</strong> <code>apex-trading-bot-template</code></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/fefotec/apex-trading-bot-template&gt;">https://github.com/fefotec/apex-trading-bot-template&gt;</a></li>
+<li><strong>关键文件：</strong></li>
+<li>README：三段 session（Tokyo / EU / US）+ <code>max 1 trade per session</code></li>
+<li><code>scripts/save_opening_range.py</code>：直接把第一根 <code>15m</code> candle 当 opening range box</li>
+<li><code>scripts/autonomous_trade.py</code>：突破入场、另一侧止损、默认 <code>2:1</code> R/R、kill switch</li>
+<li><code>FORTSCHRITT.md</code> / <code>ERKENNTNISSE.md</code>：作者后续已经开始意识到 <strong>box 太宽/太窄、session 差异、crypto 不存在真正 cash open</strong> 这些实盘问题</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>这不是只会讲方向的想法，而是完整壳。</strong> entry / stop / TP / session router / per-session max trades / drawdown kill switch 都写出来了。</li>
+<li><strong>plain 版直接照抄不行。</strong> 我用 Binance USDⓈ-M <code>BTC/ETH/SOL/AVAX 15m</code> 在 <code>2026-02-01 ~ 2026-04-18</code> 做最小 probe：896 笔，整体 <strong>gross 约 <code>-5.65 bps/笔</code></strong>，扣 <code>8 bps</code> 后更差，说明“任何 session 都追第一段 breakout”大概率会被噪音吃掉。</li>
+<li><strong>但它不是完全没料。</strong> 同一 probe 里，若只看 <strong>US session 且 opening box 宽度落在该 session 最宽四分位</strong>，约 74 笔，<strong>gross 约 <code>+10.62 bps/笔</code>，胜率约 <code>55.4%</code>，粗扣 <code>8 bps</code> 后仍约 <code>+2.62 bps/笔</code></strong>。</li>
+<li><strong>EU session 更像 filter-driven pocket。</strong> 若剔除最宽四分位，约 226 笔，<strong>gross 约 <code>+2.93 bps/笔</code></strong>；还没过 taker 成本线，但已经说明 <strong>box-width gate</strong> 比“无脑三段都做”更值得留下。</li>
+</ul>
+<p>一句话核心结论：<strong>session ORB 本体不是新鲜事，但在 crypto 里，它更像“只有特定 session + 特定 box 宽度才活”的条件型 raw alpha，而不是全天候通用母版。</strong></p>
+<p>一句话证明方式：<strong>repo 给了完整规则，我再用公开 <code>15m</code> perp 数据把它翻成最小事件回测，结果显示 plain 版负、session+box gate 后局部转正。</strong></p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线对 <code>momentum</code> 的价值不在“再写一篇 breakout 教科书”，而在于它提供了一个很清楚的短周期交易骨架：</p>
+<ul>
+<li>raw alpha 本体：<strong>开盘区间突破后的短窗延续</strong></li>
+<li>可复用模块：<strong>session gate、box-width gate、R-multiple 出场、每 session 只打一次</strong></li>
+<li>和当前 desk 的关系：它很适合做成 <strong>5m/15m intraday router</strong>，而不是全天信号；也适合跟已有 trend / VWAP / RSI / volume 线组合，充当“什么时候值得追第一段单边”的触发器</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势 / breakout / 单资产</li>
+<li>基础 alpha：session opening-range breakout</li>
+<li>regime：优先交易流动性集中、信息密度更高的 session（尤其 US）</li>
+<li>filter / veto：box-width 分位、是否同 bar 双向穿越、是否已有当 session 交易、是否遇到重大数据时段</li>
+<li>risk / sizing / execution overlay：另一侧 box 做 stop、固定 <code>2R</code> 或 split TP、按 box 风险定仓位、优先 maker/stop-limit 而不是裸 taker 追价</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设：</strong> crypto 的 ORB edge 不是“所有 session 都有”，而是集中在少数高信息流 session，且需要 box-width gate。</li>
+<li><strong>可计算定义：</strong></li>
+</ul>
+<ol>
+<li>session 开头第一根 <code>15m</code> bar 定义 <code>box_high / box_low</code></li>
+<li>后续 <code>60~75</code> 分钟首次突破上沿/下沿即入场</li>
+<li><code>SL = box 另一侧</code>，<code>TP = 2R</code>，超时 <code>2h</code> 平仓</li>
+<li>先按 session 分组，再按 <code>box_width_bps</code> 做分位切片</li>
+</ol>
+<ul>
+<li><strong>最小回测切口：</strong> Binance / Hyperliquid 高流动 perp；<code>BTC/ETH/SOL/AVAX</code>；周期先跑 <code>15m</code>，再向 <code>5m</code> 做更细 opening box 与更紧执行。</li>
+<li><strong>最该先看：</strong></li>
+<li><code>gross/net bps per trade</code></li>
+<li><code>session × box-width quantile</code> 的稳定性</li>
+<li><code>timeout rate</code>（这条线很高，说明很多单不是被打止盈，而是拖到失效）</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这条线<strong>非常怕假突破</strong>；plain 版一旦没做 session / box 过滤，很容易变成噪音收集器。</li>
+<li>这次 probe 用的是 Binance USDⓈ-M <code>15m</code>，而仓库真实执行在 Hyperliquid；跨 venue 可迁移，但不能当作等价复现。</li>
+<li>我这轮只做了最小规则翻译，<strong>还没加入</strong> repo 后续实盘里提到的 ATR / split TP / box 太窄 veto / 重大新闻回避，所以现在更像 first verdict，不是 final shell。</li>
+<li>由于 ORB 属于“大家都知道”的形态，<strong>执行摩擦和入场方式</strong> 比日线级别策略更关键；若最后只能 taker 追 break，edge 很可能很快被吃干净。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li><code>fefotec</code>. <code>apex-trading-bot-template</code>. GitHub repo. 2026.</li>
+<li>Repo URL：&lt;<a href="https://github.com/fefotec/apex-trading-bot-template&gt;">https://github.com/fefotec/apex-trading-bot-template&gt;</a></li>
+<li>README：&lt;<a href="https://github.com/fefotec/apex-trading-bot-template/blob/main/README.md&gt;">https://github.com/fefotec/apex-trading-bot-template/blob/main/README.md&gt;</a></li>
+<li><code>scripts/save_opening_range.py</code>：&lt;<a href="https://github.com/fefotec/apex-trading-bot-template/blob/main/scripts/save_opening_range.py&gt;">https://github.com/fefotec/apex-trading-bot-template/blob/main/scripts/save_opening_range.py&gt;</a></li>
+<li><code>scripts/autonomous_trade.py</code>：&lt;<a href="https://github.com/fefotec/apex-trading-bot-template/blob/main/scripts/autonomous_trade.py&gt;">https://github.com/fefotec/apex-trading-bot-template/blob/main/scripts/autonomous_trade.py&gt;</a></li>
+<li><code>FORTSCHRITT.md</code>：&lt;<a href="https://github.com/fefotec/apex-trading-bot-template/blob/main/FORTSCHRITT.md&gt;">https://github.com/fefotec/apex-trading-bot-template/blob/main/FORTSCHRITT.md&gt;</a></li>
+<li><code>ERKENNTNISSE.md</code>：&lt;<a href="https://github.com/fefotec/apex-trading-bot-template/blob/main/ERKENNTNISSE.md&gt;">https://github.com/fefotec/apex-trading-bot-template/blob/main/ERKENNTNISSE.md&gt;</a></li>
+<li>本地 portability artifacts：</li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-18_session_orb_widthgate_probe.py</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-18_session_orb_widthgate_probe_summary.json</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-18_session_orb_widthgate_probe_trades.csv</code></li>
+</ul>
+</body>
+</html>

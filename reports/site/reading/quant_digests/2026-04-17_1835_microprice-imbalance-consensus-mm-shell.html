@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 live market-making repo 只读成“工程化 A-S 引擎”：对 short-cycle desk，更该先保留的是「microprice 偏移 × top-book imbalance 共振 → 几秒级 mid 漂移」这条 raw alpha，再把 Kalman fair value / adaptive quoting 包成完整策略壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 live market-making repo 只读成“工程化 A-S 引擎”：对 short-cycle desk，更该先保留的是「microprice 偏移 × top-book imbalance 共振 → 几秒级 mid 漂移」这条 raw alpha，再把 Kalman fair value / adaptive quoting 包成完整策略壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-17 18:30 UTC</span>
+      <span class="pill">研究时间：2026-04-17 18:35 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `main.py` + `src/mm_live/signals/imbalance.py` + `src/mm_live/signals/fair_value.py` + `src/mm_live/signals/microprice.py` + `src/mm_live/signals/composite.py` + `src/mm_live/strategy/quoting.py` + `src/mm_live/execution/simulator.py`）+ Binance 公共深度 live probe（BTCUSDT，240s，top20，1s sampling）</span>
+      <span class="pill">主题标签：raw-alpha / microstructure / microprice / order-book-imbalance / queue-pressure / fair-value / kalman / avellaneda-stoikov / maker / market-making / quote-skew / binance / repo / public-data / 1m / 3m / 5m</span>
+      <span class="pill">证据类型：GitHub repo 实现 + 本地 live public-data sanity probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-17_1835_microprice-imbalance-consensus-mm-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-17 18:35 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>main.py</code> + <code>src/mm_live/signals/imbalance.py</code> + <code>src/mm_live/signals/fair_value.py</code> + <code>src/mm_live/signals/microprice.py</code> + <code>src/mm_live/signals/composite.py</code> + <code>src/mm_live/strategy/quoting.py</code> + <code>src/mm_live/execution/simulator.py</code>）+ Binance 公共深度 live probe（BTCUSDT，240s，top20，1s sampling）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>如果 best bid / ask 队列权重推出来的 <code>microprice</code> 已经高于 mid，且 top-book bid depth 也明显大于 ask depth，那么未来几秒 mid-price 更容易继续往上漂；反向同理。Kalman fair value 更像降噪与定价中枢，不是最强 alpha 本体。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / microstructure / microprice / order-book-imbalance / queue-pressure / fair-value / kalman / avellaneda-stoikov / maker / market-making / quote-skew / binance / repo / public-data / 1m / 3m / 5m</li>
+<li>证据类型：GitHub repo 实现 + 本地 live public-data sanity probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>主材料是一个 2026 新仓：</p>
+<ul>
+<li><strong>Author / Maintainer：</strong> Aliipou</li>
+<li><strong>Year：</strong> 2026</li>
+<li><strong>Title：</strong> *mm-live*</li>
+<li><strong>Venue：</strong> GitHub repo（事件驱动 market making engine，含 Binance/OKX feed、Kalman fair value、OFI / microprice / vol clustering、adaptive Avellaneda-Stoikov quoting、paper simulator、risk controls）</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://github.com/Aliipou/mm-live&gt;">https://github.com/Aliipou/mm-live&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/Aliipou/mm-live&gt;">https://github.com/Aliipou/mm-live&gt;</a></li>
+</ul>
+<p>先把一句话讲清楚：</p>
+<p>&gt; <strong>这份仓最值得 intake 的，不是“我们也做一个 A-S 做市框架”，而是 repo 把一条可直接解释的 ultra-short raw alpha 拆得很清楚：<code>inside queue pressure + near-book imbalance</code> 会先于几秒级价格微漂移，而 fair value / adaptive spread / inventory control 是把它包装成 live strategy 的外壳。</strong></p>
+<p>也就是说，这轮最值得保留到素材池里的第一层不是“做市引擎”本身，而是：</p>
+<ul>
+<li><strong>microprice 相对 mid 往上偏时，说明 inside bid queue 更厚，价格更容易往上挪；</strong></li>
+<li><strong>top-book imbalance 同向时，这种短时漂移更可信；</strong></li>
+<li><strong>Kalman fair value 负责把噪声 mid 平滑成可挂单中枢，但 alpha 本体更接近 queue pressure。</strong></li>
+</ul>
+<h2>2. 核心结论</h2>
+<h3>2.1 一句话结论</h3>
+<p>&gt; <strong>这是条可以独立成型、也能直接封装进完整 maker shell 的 microstructure raw alpha：<code>microprice deviation × imbalance consensus -&gt; short-horizon drift</code>。repo 提供的 A-S quoting、vol regime、inventory limit，是把这条 alpha 变成交易系统的第二层。</strong></p>
+<h3>2.2 一句话它是怎么证明的</h3>
+<p>&gt; <strong>repo 代码把 fair value、microprice、OFI、adaptive quote 和 simulator 全部接在一起；我又用 Binance 公共深度做了 240 秒 live probe，结果显示 <code>microprice deviation</code> 和 <code>top5 imbalance</code> 对未来 <code>1s/5s/10s</code> 的 mid return 都有一致方向性，而“Kalman fair-value gap 单独拿出来”反而明显更弱。</strong></p>
+<h3>2.3 为什么值得进素材池</h3>
+<ul>
+<li>它仍然是 <strong>raw alpha</strong>，不是单纯 execution 补丁；base alpha 可以一句话说清；</li>
+<li>repo 给的是 <strong>完整可落地壳</strong>：signal / quote placement / inventory / volatility regime / paper simulator / risk cap 都在；</li>
+<li>它和今天早些时候那类“纯 OBI 厚薄”相比，多了一层很实用的 desk 读法：</li>
+<li><strong>单看平滑 fair value 不够；</strong></li>
+<li><strong>inside-queue 的 microprice 偏移，才更像最该优先保留的 alpha anchor。</strong></li>
+</ul>
+<h2>3. repo 里最值钱的 4 层结构</h2>
+<h3>3.1 第一层：microprice 不是花哨名词，它就是“队列压力版的公允价”</h3>
+<p><code>src/mm_live/signals/microprice.py</code> 里写得很直白：</p>
+<ul>
+<li><code>microprice = (ask * bid_size + bid * ask_size) / (bid_size + ask_size)</code></li>
+<li>当 best bid queue 明显厚于 ask queue 时，<code>microprice &gt; mid</code></li>
+<li>当 ask queue 更厚时，<code>microprice &lt; mid</code></li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>如果最优买一后面排了更厚的队，市场短时间里更像“有人在下方托着价格”，所以真实短时公允价会更偏向 ask 那边。</strong></p>
+<p>这比只看 mid 更接近真实的 ultra-short directional edge。</p>
+<h3>3.2 第二层：OBI / OFI 是确认层，不只是同义反复</h3>
+<p><code>src/mm_live/signals/imbalance.py</code> 用 top-N depth 算：</p>
+<ul>
+<li><code>imbalance = (bid_volume - ask_volume) / (bid_volume + ask_volume)</code></li>
+<li>默认对 top <code>5</code> 档做汇总</li>
+<li>再做 EMA 平滑</li>
+<li>再用 <code>alpha_impact</code> 把 imbalance 转成 fair-value shift</li>
+</ul>
+<p>我的读法：</p>
+<p>&gt; <strong>microprice 更偏 inside queue；imbalance 更偏近端深度分布。两者不是一回事，但如果它们同向，那个方向更值得你去偏置报价。</strong></p>
+<p>也就是说，这不是“多算一个指标凑热闹”，而是 <strong>queue pressure 的双视角确认</strong>。</p>
+<h3>3.3 第三层：Kalman fair value 是定价中枢，不该被误读成 alpha 本体</h3>
+<p><code>src/mm_live/signals/fair_value.py</code> 的定义是：</p>
+<ul>
+<li><code>fair_value = Kalman(mid_price) + alpha * imbalance</code></li>
+</ul>
+<p>这一层很重要，但我的 desk 读法跟 README headline 稍有不同：</p>
+<p>&gt; <strong>Kalman 更像把 noisy mid 变成可交易的报价中心；真正决定你该把 quote 往哪边挪的，仍然主要是 queue pressure（microprice / imbalance）本身。</strong></p>
+<p>这轮 live probe 也支持这个读法：</p>
+<ul>
+<li><code>microprice deviation</code> 和未来回报相关性稳定为正；</li>
+<li><code>imbalance</code> 也有相似效果；</li>
+<li><strong>但 <code>fair_value - mid</code> 单独做排序时，方向性明显更弱。</strong></li>
+</ul>
+<h3>3.4 第四层：Adaptive A-S 才是把 alpha 变成“系统”的那层壳</h3>
+<p><code>src/mm_live/strategy/quoting.py</code> 和 README 给的是完整做市翻译：</p>
+<ul>
+<li>用 <code>fair_value</code> 当报价中心；</li>
+<li>用 dual EWMA volatility 决定 spread 宽度；</li>
+<li>用 imbalance skew 决定 bid/ask 偏向；</li>
+<li>用 inventory cap / one-sided quoting 限制持仓；</li>
+<li>用 simulator 和 risk loop 接回 paper/live execution。</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>raw alpha 回答的是“短时更可能往哪边漂”；A-S 壳回答的是“既然更可能往这边漂，我应该把哪边挂近一点、哪边挂远一点、仓位别做爆”。</strong></p>
+<h2>4. 我补的 Binance 公共深度 live probe</h2>
+<h3>4.1 数据源、公开性、更新频率、最小实验口径</h3>
+<ul>
+<li><strong>数据源：</strong> Binance Spot 公共 <code>api/v3/depth</code></li>
+<li><strong>公开性：</strong> 完全公开可得</li>
+<li><strong>更新频率：</strong> 这里按 <code>1s</code> 轮询抓 <code>top20 depth</code></li>
+<li><strong>标的：</strong> <code>BTCUSDT</code></li>
+<li><strong>样本：</strong> <code>240</code> 个样本，约 <code>240s</code></li>
+<li><strong>最小可复现实验口径：</strong></li>
+</ul>
+<ol>
+<li>每秒抓一次 <code>top20</code> depth；</li>
+<li>算 top5 imbalance、best-level microprice、Kalman fair value；</li>
+<li>看当前指标分位极端值，对未来 <code>1s / 5s / 10s</code> mid return 的影响；</li>
+<li>先做 signal-only sanity check，再考虑 quote simulator。</li>
+</ol>
+<ul>
+<li><strong>artifact：</strong></li>
+<li><code>reports/artifacts/quant_digests/2026-04-17_kalman_imbalance_fairvalue_probe.py</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-17_kalman_imbalance_fairvalue_probe_samples.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-17_kalman_imbalance_fairvalue_probe_summary.json</code></li>
+</ul>
+<h3>4.2 关键数字</h3>
+<p>先看 repo 最想表达的几层信号，哪层更像真 alpha：</p>
+<p>#### （1）<code>microprice deviation = microprice - mid</code></p>
+<ul>
+<li><strong>1s horizon：</strong> 高分位桶平均 <code>+0.336 bps</code>，低分位桶平均 <code>-0.216 bps</code>，top-bottom spread <code>+0.552 bps</code></li>
+<li><strong>5s horizon：</strong> 高分位桶平均 <code>+0.790 bps</code>，低分位桶平均 <code>-0.229 bps</code>，spread <code>+1.019 bps</code></li>
+<li><strong>10s horizon：</strong> 高分位桶平均 <code>+1.306 bps</code>，低分位桶平均 <code>-0.075 bps</code>，spread <code>+1.381 bps</code></li>
+<li><strong>相关性：</strong> <code>corr ≈ 0.205 / 0.184 / 0.185</code></li>
+</ul>
+<p>#### （2）top5 imbalance</p>
+<ul>
+<li><strong>1s horizon：</strong> 高分位桶 <code>+0.318 bps</code>，低分位桶 <code>-0.216 bps</code>，spread <code>+0.534 bps</code></li>
+<li><strong>5s horizon：</strong> 高分位桶 <code>+0.778 bps</code>，低分位桶 <code>-0.229 bps</code>，spread <code>+1.008 bps</code></li>
+<li><strong>10s horizon：</strong> 高分位桶 <code>+1.306 bps</code>，低分位桶 <code>-0.075 bps</code>，spread <code>+1.381 bps</code></li>
+<li><strong>相关性：</strong> <code>corr ≈ 0.203 / 0.180 / 0.181</code></li>
+</ul>
+<p>#### （3）Kalman fair-value gap = <code>fair_value - mid</code></p>
+<ul>
+<li><strong>1s horizon：</strong> top-bottom spread <code>-0.185 bps</code></li>
+<li><strong>5s horizon：</strong> top-bottom spread <code>+0.014 bps</code></li>
+<li><strong>10s horizon：</strong> top-bottom spread <code>+0.130 bps</code></li>
+<li><strong>相关性：</strong> <code>corr ≈ -0.019 / 0.009 / 0.012</code></li>
+</ul>
+<h3>4.3 我对这些数字的读法</h3>
+<p>这轮最值得记住的不是“所有东西都有效”，而是：</p>
+<p>&gt; <strong>repo 里最强、最能直接迁移到公开盘口实验上的，并不是平滑后的 fair-value gap，而是更原生的 queue-pressure 信号：<code>microprice deviation</code> 与 <code>imbalance</code>。</strong></p>
+<p>这对 desk 的意义很大，因为它直接告诉我们：</p>
+<ul>
+<li><strong>Kalman 层适合当中枢/去噪；</strong></li>
+<li><strong>microprice / imbalance 更适合当 admission / skew anchor；</strong></li>
+<li><strong>如果只拿 <code>fair_value - mid</code> 当主排序，edge 反而容易被平滑掉。</strong></li>
+</ul>
+<h2>5. 对我们 desk 的正确读法</h2>
+<h3>5.1 这轮为什么归到 <code>raw alpha</code></h3>
+<p>因为它的 base alpha 可以直接说清：</p>
+<p>&gt; <strong>inside queue pressure 和近端深度失衡，会先于几秒级 mid 漂移。</strong></p>
+<p>这本身就是一个独立 raw alpha；quote skew / spread control 只是执行壳。</p>
+<h3>5.2 和 <code>1m / 3m / 5m / 15m</code> 的关系</h3>
+<ul>
+<li><strong>1m / 3m：</strong> 最自然，适合做 maker quote skew、child-order veto、入场 refinement；</li>
+<li><strong>5m：</strong> 不适合把它当 bar-close 主因子硬做，但很适合做 <code>entry timing / execution admission</code>；</li>
+<li><strong>15m：</strong> 更适合当执行 veto 或仓位微调，不适合伪装成 15m 主驱动 alpha。</li>
+</ul>
+<h3>5.3 它服务于哪些 raw alpha</h3>
+<p>这条东西不只服务 market making：</p>
+<ol>
+<li><strong>ultra-short maker alpha：</strong> 直接决定 bid/ask 哪边更该 aggressive；</li>
+<li><strong>shock continuation / lagger catch-up 的 execution admission：</strong> 盘口不顺风就别追；</li>
+<li><strong>mean reversion / spread fade 的入场 refinement：</strong> 先等 microstructure 不再逆着你，再挂单。</li>
+</ol>
+<h2>6. 策略拆解（必填）</h2>
+<ul>
+<li><strong>方向属性：</strong> 单资产 / microstructure / ultra-short directional edge，执行形态偏 maker</li>
+<li><strong>基础 alpha：</strong> microprice 偏移与 near-book imbalance 共振，先于短时 mid-price 漂移</li>
+<li><strong>regime：</strong> 高噪声、撤单密集、盘口深度虚胖、重大事件前后，edge 易衰减</li>
+<li><strong>filter / veto：</strong> 最小有效深度、最小稳定 spread、撤单率 / 刷新稳定性、事件窗禁做、极端 vol widening</li>
+<li><strong>risk / sizing / execution overlay：</strong> A-S half-spread、inventory skew、one-sided quoting、position cap、drawdown breaker、maker-first / taker fallback 限制</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<p>别直接跳完整 live deployment，先做 4 个更决定性的最小实验：</p>
+<ol>
+<li><strong>consensus signal test</strong></li>
+</ol>
+<ul>
+<li>不是单看 <code>microprice</code> 或单看 <code>imbalance</code>，而是只在两者同向且都进极端分位时开信号；</li>
+<li>核心看：future <code>1s/3s/5s/10s</code> drift 是否更集中，trade count 是否明显下降。</li>
+</ul>
+<ol>
+<li><strong>WebSocket L2 版本</strong></li>
+</ol>
+<ul>
+<li>当前只是 <code>1s</code> REST 轮询；</li>
+<li>下步要用 Binance 增量深度流，测 <code>100ms~500ms</code> 刷新下，edge 会不会更强，还是会被噪声吞掉。</li>
+</ul>
+<ol>
+<li><strong>maker simulator 版本</strong></li>
+</ol>
+<ul>
+<li>用 repo 的 quote/simulator 结构，把 <code>microprice/imbalance consensus</code> 接到 bid/ask skew；</li>
+<li>至少比较三档：<code>mid symmetric</code> / <code>imbalance-only skew</code> / <code>microprice+imbalance consensus skew</code>。</li>
+</ul>
+<ol>
+<li><strong>跨资产 portability</strong></li>
+</ol>
+<ul>
+<li>同口径跑 <code>ETHUSDT / SOLUSDT</code>；</li>
+<li>看这是 BTC inside-book 独有，还是 liquid majors 都有。</li>
+</ul>
+<p>最该先盯两个指标：</p>
+<ul>
+<li><strong>极端高低分位的 future mid-return 差值是否在成本前稳定为正；</strong></li>
+<li><strong>引入 maker fill / cancel risk 后，edge 还能剩多少。</strong></li>
+</ul>
+<h2>8. 风险与保留意见</h2>
+<ul>
+<li>这轮 live probe 只有 <code>240s</code>，只是 sanity check，不是稳健回测；</li>
+<li>REST 轮询会漏掉亚秒级盘口变化，真实信号应以增量 WebSocket 为准；</li>
+<li>这类 alpha 对 spoofing、cancel-replace、交易所撮合细节很敏感；</li>
+<li>目前证据更支持它做 <strong>ultra-short quote skew / admission</strong>，不支持把它夸大成独立 <code>15m</code> bar alpha。</li>
+</ul>
+<h2>9. 来源</h2>
+<ol>
+<li><strong>Aliipou. (2026). _mm-live_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/Aliipou/mm-live&gt;">https://github.com/Aliipou/mm-live&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/Aliipou/mm-live&gt;">https://github.com/Aliipou/mm-live&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Aliipou. (2026). _README.md / main.py / src/mm_live/signals/*.py / src/mm_live/strategy/quoting.py / src/mm_live/execution/simulator.py_.</strong></li>
+</ol>
+<ul>
+<li>README: &lt;<a href="https://raw.githubusercontent.com/Aliipou/mm-live/main/README.md&gt;">https://raw.githubusercontent.com/Aliipou/mm-live/main/README.md&gt;</a></li>
+<li>main.py: &lt;<a href="https://raw.githubusercontent.com/Aliipou/mm-live/main/main.py&gt;">https://raw.githubusercontent.com/Aliipou/mm-live/main/main.py&gt;</a></li>
+<li>imbalance.py: &lt;<a href="https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/signals/imbalance.py&gt;">https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/signals/imbalance.py&gt;</a></li>
+<li>fair_value.py: &lt;<a href="https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/signals/fair_value.py&gt;">https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/signals/fair_value.py&gt;</a></li>
+<li>microprice.py: &lt;<a href="https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/signals/microprice.py&gt;">https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/signals/microprice.py&gt;</a></li>
+<li>composite.py: &lt;<a href="https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/signals/composite.py&gt;">https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/signals/composite.py&gt;</a></li>
+<li>quoting.py: &lt;<a href="https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/strategy/quoting.py&gt;">https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/strategy/quoting.py&gt;</a></li>
+<li>simulator.py: &lt;<a href="https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/execution/simulator.py&gt;">https://raw.githubusercontent.com/Aliipou/mm-live/main/src/mm_live/execution/simulator.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Binance Spot Market Data API.</strong></li>
+</ol>
+<ul>
+<li>Depth endpoint: &lt;<a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#order-book&gt;">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#order-book&gt;</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RF 预测最优阈值的高频 Pairs Rebalance：别只盯 cointegration spread，这篇 2025 论文更适合先拆成「threshold-classified HF pairs shell」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>RF 预测最优阈值的高频 Pairs Rebalance：别只盯 cointegration spread，这篇 2025 论文更适合先拆成「threshold-classified HF pairs shell」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-02 22:54 UTC</span>
+      <span class="pill">研究时间：2026-04-02 22:57 UTC</span>
+      <span class="pill">类型：raw alpha</span>
+      <span class="pill">主题标签：raw-alpha/pairs/relative-value/stat-arb/mean-reversion/high-frequency/rebalancing/threshold-selection/random-forest/binance/btc-quoted/1m/3m/5m/15m/paper/public-data/cost</span>
+      <span class="pill">证据类型：2025 Springer 开放获取全文（article + tables）/ Crossref metadata</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-02_2257_rf-threshold-hfpt-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：pairs / relative-value / stat-arb 下的双资产权重偏离均值回归；当两腿市值权重偏离超过阈值时，卖强买弱，回补到 50/50</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>时间：2026-04-02 22:57 UTC</li>
+<li>类型：raw alpha</li>
+<li>主题标签：raw-alpha/pairs/relative-value/stat-arb/mean-reversion/high-frequency/rebalancing/threshold-selection/random-forest/binance/btc-quoted/1m/3m/5m/15m/paper/public-data/cost</li>
+<li>证据类型：2025 Springer 开放获取全文（article + tables）/ Crossref metadata</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>在最近几篇 pairs digest 已经补过 <code>cointegration / OU / copula / microprice veto</code> 之后，这篇 2025 *Computational Economics* 值得补进素材池的点，不是再发明一个 spread，而是把 <strong>pairs shell 的阈值选择</strong> 单独做成可预测对象：先承认“同一个 pairs rebalancing 策略没有通用最优阈值”，再用 <code>RF</code> 把不同 pair 的最优阈值预测到 <strong>2 桶 / 3 桶</strong>，让策略从“固定阈值拍脑袋”变成“按 pair 特征自适应选择触发强度”。</p>
+<h2>2. 为什么这轮值得做它</h2>
+<p>先回答任务里最重要的那句：<strong>这篇东西的 base alpha 是什么？</strong></p>
+<p>答：<strong>pair 内相对强弱的短周期均值回归</strong>。不是 filter，不是 overlay，也不是“只帮你挑参数”的元分析。它本体就是一条完整的 pairs raw alpha：</p>
+<ol>
+<li>先持有双腿等权组合；</li>
+<li>当两腿权重偏离超过阈值 <code>T</code>，说明相对价格已经拉开；</li>
+<li>卖出当前更贵的一腿、买入当前更便宜的一腿；</li>
+<li>把两腿重新配平到平均权重；</li>
+<li>继续等待下一次偏离。</li>
+</ol>
+<p>所以它是 <strong>relative-value / stat-arb / mean reversion</strong>，而不是纯 filter。</p>
+<p>这轮优先它，而不是再补一个老的 breakout / retest 变体，原因有三点：</p>
+<ul>
+<li>它是 <strong>完整策略壳</strong>，而不是一句“相关性高时更好”的经验判断；</li>
+<li>它直接回答了 desk 真正会遇到的问题：<strong>pairs 壳该用多大触发阈值才不被手续费吃掉</strong>；</li>
+<li>它天然可迁移到 <code>1m / 3m / 5m / 15m</code>，并且最小实验几乎全靠公开 K 线就能先跑起来。</li>
+</ul>
+<h2>3. 论文信息</h2>
+<ul>
+<li><strong>Authors</strong>: Mahmut Bağcı, Pınar Kaya Soylu</li>
+<li><strong>Year</strong>: 2025</li>
+<li><strong>Title</strong>: *The Optimal Threshold Selection for High-Frequency Pairs Trading via Supervised Machine Learning Algorithms*</li>
+<li><strong>Venue</strong>: *Computational Economics*</li>
+<li><strong>DOI</strong>: <code>10.1007/s10614-025-10958-5</code></li>
+<li><strong>Readable URL</strong>: <a href="https://link.springer.com/article/10.1007/s10614-025-10958-5">https://link.springer.com/article/10.1007/s10614-025-10958-5</a></li>
+<li><strong>DOI URL</strong>: <a href="https://doi.org/10.1007/s10614-025-10958-5">https://doi.org/10.1007/s10614-025-10958-5</a></li>
+<li><strong>Repo URL</strong>: 无论文配套 repo（本文主要依赖 open-access article + tables）</li>
+</ul>
+<h2>4. 论文到底做了什么</h2>
+<h3>4.1 数据与样本</h3>
+<ul>
+<li>交易所：<strong>Binance</strong></li>
+<li>标的：<strong>50 个 BTC 计价 crypto-assets</strong>（例如 <code>AAVE/BTC</code>, <code>ADA/BTC</code> 这类）</li>
+<li>频率：<strong>1 分钟</strong></li>
+<li>样本期：<strong>2022–2023</strong> 用于训练 / 验证，<strong>2024 年 1–2 月</strong> 用于独立测试</li>
+<li>每个月对所有可能双资产组合做一次样本生成；50 个币两两成对，每月 <code>1225</code> 对，24 个月合计约 <code>29400</code> 个 monthly pair samples</li>
+</ul>
+<p>这点很关键：它不是只挑少数“看起来像 pairs”的币对，而是先把全部 pair 都扫一遍，再由特征决定该 pair 适合什么阈值。</p>
+<h3>4.2 策略壳（HFPT）</h3>
+<p>论文的 high-frequency pairs trading（HFPT）不是经典价差 z-score，而是一个<strong>权重偏离触发的双资产再平衡壳</strong>：</p>
+<ul>
+<li>初始时，两腿各配 <code>1 BTC</code>，即总资本 <code>2 BTC</code></li>
+<li>若两腿市值权重差超过阈值 <code>T</code></li>
+<li>卖出当前权重更高 / 更贵的一腿</li>
+<li>买入当前权重更低 / 更便宜的一腿</li>
+<li>把两腿重新拉回到相同市值</li>
+<li>交易成本：<strong>0.1% taker fee</strong></li>
+<li>论文把 <code>T</code> 从 <strong>1% 到 30%</strong> 以 <strong>1% 步长</strong>全扫一遍，取利润最高的阈值作为该 pair 的 <code>OT</code>（optimal threshold）</li>
+</ul>
+<p>换句话说，paper 先不争论“spread 该怎么建”，而是先承认：<strong>同样的 rebalance alpha，对不同 pair 来说最优触发阈值完全不同</strong>。</p>
+<h2>5. 最重要的 desk 启发：别固定阈值，先预测“阈值桶”</h2>
+<p>论文不是直接做回归预测精确阈值，而是把阈值预测降成 <strong>分类问题</strong>。这很实用，因为短周期 desk 真正在意的通常也不是“17% 和 18% 谁更神”，而是：</p>
+<ul>
+<li>这是个应该用 <strong>低阈值、频繁回补</strong> 的 pair？</li>
+<li>还是该用 <strong>高阈值、少交易、等极端偏离</strong> 的 pair？</li>
+</ul>
+<p>论文把 pair 按相关性先分 3 组：</p>
+<ul>
+<li><strong>正相关</strong>：<code>corr &gt; 0.3</code></li>
+<li><strong>弱相关</strong>：<code>-0.3 &lt;= corr &lt;= 0.3</code></li>
+<li><strong>负相关</strong>：<code>corr &lt; -0.3</code></li>
+</ul>
+<p>然后把最优阈值 <code>OT</code> 划分成 2/3/4 类：</p>
+<ul>
+<li><strong>2 类</strong>：<code>0–15%</code> / <code>15–30%</code></li>
+<li><strong>3 类</strong>：<code>0–10%</code> / <code>10–20%</code> / <code>20–30%</code></li>
+<li><strong>4 类</strong>：<code>0–7.5%</code> / <code>7.5–15%</code> / <code>15–22.5%</code> / <code>22.5–30%</code></li>
+</ul>
+<p>输入特征只用了 6 个、非常朴素但很容易复现：</p>
+<ul>
+<li>portfolio mean</li>
+<li>variance</li>
+<li>skewness</li>
+<li>kurtosis</li>
+<li>VaR</li>
+<li>correlation coefficient</li>
+</ul>
+<p>也就是说，这篇 paper 最有价值的地方不是花哨 ML，而是告诉你：</p>
+<p>&gt; <strong>pair 的最优触发强度，本身就是可以用低维统计特征来预测的。</strong></p>
+<h2>6. 关键证据</h2>
+<h3>6.1 RF 明显胜出，而且 2-class / 3-class 最实用</h3>
+<p>论文比较了 <code>LR / SVM / KNN / DT / RF / NB</code> 六种分类器。核心结果：<strong>RF 在正相关、弱相关、负相关三组里全部拿第一</strong>。</p>
+<p>训练/验证期的 <strong>RF average accuracy</strong>：</p>
+<ul>
+<li><strong>正相关 pairs</strong>：</li>
+<li>2-class <code>0.8751</code></li>
+<li>3-class <code>0.7285</code></li>
+<li>4-class <code>0.6406</code></li>
+<li><strong>弱相关 pairs</strong>：</li>
+<li>2-class <code>0.8399</code></li>
+<li>3-class <code>0.6998</code></li>
+<li>4-class <code>0.6091</code></li>
+<li><strong>负相关 pairs</strong>：</li>
+<li>2-class <code>0.8479</code></li>
+<li>3-class <code>0.7690</code></li>
+<li>4-class <code>0.6819</code></li>
+</ul>
+<p>独立测试集（2024 年 1–2 月）的 <strong>RF average accuracy</strong> 更值得看：</p>
+<ul>
+<li><strong>正相关</strong>：2-class <code>0.9217</code>，3-class <code>0.7097</code>，4-class <code>0.6083</code></li>
+<li><strong>弱相关</strong>：2-class <code>0.7715</code>，3-class <code>0.6294</code>，4-class <code>0.5462</code></li>
+<li><strong>负相关</strong>：2-class <code>0.8168</code>，3-class <code>0.7693</code>，4-class <code>0.6065</code></li>
+</ul>
+<p>这组数字对 desk 的意义很直接：</p>
+<ul>
+<li>若你只是要决定“<strong>低阈值 / 高阈值</strong>”两档，论文结果是够强的；</li>
+<li>若你要更细一点，<strong>3 档也还可用</strong>；</li>
+<li><strong>4 档开始明显变脆</strong>，不太像第一版 production 应该上的复杂度。</li>
+</ul>
+<h3>6.2 相关性越低，最优阈值越大</h3>
+<p>论文的分布图和文字结论都在指向同一件事：</p>
+<ul>
+<li><strong>正相关 pairs</strong> 的最优阈值更常落在低区间（很多 <code>&lt;15%</code>）</li>
+<li><strong>弱相关 pairs</strong> 更常落在中间区间（很多在 <code>10–20%</code>）</li>
+<li><strong>负相关 pairs</strong> 更常落在高区间（很多在 <code>22.5–30%</code>）</li>
+</ul>
+<p>这非常像一个可以直接带回 desk 的规则：</p>
+<p>&gt; <strong>pair 越“天然对冲”，可以越早动手；pair 越“彼此掰手腕”，越要等更大的偏离再回补。</strong></p>
+<h3>6.3 最佳样例利润很高，但不要直接当 production 预期</h3>
+<p>Table 8 给出的几组最佳样例：</p>
+<ul>
+<li><code>CHZ-ETC</code>（正相关，2024-01）：实际 OT <code>21%</code>，月利润 <code>18.1%</code></li>
+<li><code>STX-THETA</code>（正相关，2024-02）：实际 OT <code>24%</code>，月利润 <strong><code>41.2%</code></strong></li>
+<li><code>MKR-STX</code>（弱相关，2024-01）：实际 OT <code>12%</code>，月利润 <code>9.3%</code></li>
+<li><code>MANA-THETA</code>（弱相关，2024-02）：实际 OT <code>30%</code>，月利润 <code>25.9%</code></li>
+<li><code>CHZ-STX</code>（负相关，2024-01）：实际 OT <code>21%</code>，月利润 <code>12.3%</code></li>
+<li><code>DOGE-STX</code>（负相关，2024-02）：实际 OT <code>29%</code>，月利润 <code>25.1%</code></li>
+</ul>
+<p>这些收益数字<strong>可以当“阈值选择很重要”的证据</strong>，但不该直接当可实现业绩，因为：</p>
+<ul>
+<li>标的是 <strong>BTC 计价 spot</strong>，不等同于我们常用的 USDT perp；</li>
+<li>执行假设是固定 <code>0.1% taker</code>，没把真实盘口冲击拆得很细；</li>
+<li>策略是“持续回补型”，不是标准 flat-to-flat z-score round-trip。</li>
+</ul>
+<h2>7. 这篇 paper 对我们 desk 最值得拿走的，不是“照抄 spot-BTC”，而是 3 个组件</h2>
+<h3>7.1 组件 A：用最简单的 pair shell 先找 raw alpha</h3>
+<p>别一上来就先上 Johansen / OU / copula。先用最朴素的双腿回补壳：</p>
+<ul>
+<li>两腿初始等权</li>
+<li>偏离超阈值就卖强买弱</li>
+<li>回到等权后继续观察</li>
+</ul>
+<p>如果这个壳本身在 <code>1m / 3m / 5m / 15m</code> 就已经能赚钱，说明 alpha 是真实存在的；后面再叠加更复杂 spread 模型，胜率更高。</p>
+<h3>7.2 组件 B：把“阈值选取”从手调，改成可学习对象</h3>
+<p>很多 pairs 策略死在这一步：</p>
+<ul>
+<li>阈值太小，手续费和噪音把策略磨死；</li>
+<li>阈值太大，信号又太稀疏。</li>
+</ul>
+<p>这篇 paper 给的不是最终答案，而是一个非常好的最小范式：</p>
+<ul>
+<li>先在历史上 sweep 阈值；</li>
+<li>生成每个 pair / 月份的“最佳阈值桶”标签；</li>
+<li>用低维统计特征去预测该 pair 下个月应该用哪个桶。</li>
+</ul>
+<p>这比“全市场统一用 10%”靠谱得多。</p>
+<h3>7.3 组件 C：先避开 weak-correlation bucket</h3>
+<p>从测试集看，<strong>弱相关组最差</strong>。所以 desk 第一版不该把全部 pair 混在一起做。</p>
+<p>更合理的顺序是：</p>
+<ol>
+<li>先只做 <strong>正相关</strong> 和 <strong>负相关</strong> 两组；</li>
+<li>先只做 <strong>2-class</strong> 或 <strong>3-class</strong>；</li>
+<li>弱相关 pair 当作 backlog，不要抢第一版算力和注意力。</li>
+</ol>
+<h2>8. 映射到 <code>1m / 3m / 5m / 15m</code> 的最小可复现实验</h2>
+<h3>8.1 可直接复现的 base alpha 版本</h3>
+<p><strong>Universe</strong></p>
+<ul>
+<li>Binance / Bybit / OKX 上流动性靠前的 20–40 个 perp</li>
+<li>先用 <code>BTC / ETH / SOL / BNB / DOGE / XRP / ADA / LINK / LTC / AVAX / STX / ETC / THETA</code> 这类活跃币做起步</li>
+</ul>
+<p><strong>构造</strong></p>
+<ul>
+<li>每个周期（<code>1m / 3m / 5m / 15m</code>）维护所有 pair 的两腿等权市值组合</li>
+<li>可以先用简单等美元 notional；若担心 beta 不齐，再切换成 rolling beta-neutral</li>
+</ul>
+<p><strong>信号 / 触发</strong></p>
+<ul>
+<li>定义 pair 偏离：<code>abs(w1 - w2)</code>，其中 <code>w1,w2</code> 为两腿当前市值占组合净值的比例</li>
+<li>若偏离超过阈值 <code>T</code>：</li>
+<li>short 当前占比高的一腿</li>
+<li>long 当前占比低的一腿</li>
+<li>目标调回 <code>50/50</code></li>
+</ul>
+<p><strong>退出 / 继续持有</strong></p>
+<ul>
+<li>paper 的原始壳是 continuous rebalance，不是 flat exit</li>
+<li>desk 最小版可以先照 paper：只做再平衡，不强制平仓</li>
+<li>如果更想要标准 flat-to-flat 统计套利回测，可加一版对照：</li>
+<li>开仓：偏离超 <code>T</code></li>
+<li>平仓：偏离回落到 <code>T/3</code> 或回到 <code>50/50 ± ε</code></li>
+</ul>
+<p><strong>成本</strong></p>
+<ul>
+<li>第一版统一：单边 <code>4–6 bps</code> maker / <code>8–10 bps</code> taker 两套</li>
+<li>paper 参考值：<strong>10 bps taker</strong></li>
+</ul>
+<p><strong>仓位</strong></p>
+<ul>
+<li>每对 pair 固定风险预算</li>
+<li>论文给了一个很实用的粗 cap：</li>
+<li>单腿资金不超过低流动性腿日成交额的 <code>(1/T)%</code></li>
+<li>desk 里可改写成：</li>
+<li><code>pair_notional_cap = min(adv_leg1, adv_leg2) * k / T</code></li>
+<li><code>k</code> 先取 <code>0.5% ~ 1%</code></li>
+</ul>
+<h3>8.2 阈值预测版本（真正值得测的版本）</h3>
+<p>对每个 pair、每个月滚动生成 6 个特征：</p>
+<ul>
+<li>mean</li>
+<li>variance</li>
+<li>skewness</li>
+<li>kurtosis</li>
+<li>VaR</li>
+<li>corr</li>
+</ul>
+<p>然后：</p>
+<ol>
+<li>在过去 <code>N</code> 天 / <code>N</code> 周历史中 sweep <code>T = 1%..30%</code></li>
+<li>找到该 pair 的最佳阈值 <code>OT</code></li>
+<li>将其离散成：</li>
+</ol>
+<ul>
+<li>2-class：<code>&lt;=15%</code> vs <code>&gt;15%</code></li>
+<li>或 3-class：<code>&lt;=10%</code> / <code>10~20%</code> / <code>20~30%</code></li>
+</ul>
+<ol>
+<li>训练 RF</li>
+<li>在下一滚动窗预测 pair 应该使用的阈值桶</li>
+<li>live 交易时只在该桶内取一个代表阈值，例如：</li>
+</ol>
+<ul>
+<li>2-class：<code>10%</code> / <code>22%</code></li>
+<li>3-class：<code>7.5%</code> / <code>15%</code> / <code>25%</code></li>
+</ul>
+<p>这一步的重点不是把 RF 神化，而是先验证：</p>
+<p>&gt; <strong>pair-specific threshold bucket 是否显著优于全市场统一 threshold。</strong></p>
+<h2>9. 我对 desk 的具体改写建议</h2>
+<h3>9.1 不要继续用 BTC-quoted spot，改成 USDⓈ-M perp 或统一美元计价</h3>
+<p>论文用 BTC 计价现货，适合学术上统一 numeraire，但对实盘 desk 有两个问题：</p>
+<ul>
+<li>BTC 本身会把很多 pair 的共同波动“藏”进 quote currency；</li>
+<li>现货 borrow / inventory / 尾部成交习惯和 perp 很不一样。</li>
+</ul>
+<p>所以 desk 版更建议：</p>
+<ul>
+<li>先上 <strong>USDT perp</strong>；</li>
+<li>先用 <strong>equal-dollar</strong> 或 <strong>beta-neutral</strong>；</li>
+<li>再去看这套 threshold bucket 逻辑能否保留下来。</li>
+</ul>
+<h3>9.2 第一版只做 2-class RF，不做 4-class</h3>
+<p>原因很简单：paper 自己的结果已经说明 4-class 会明显掉精度。对实盘而言，<strong>“低阈值 / 高阈值”</strong> 先分出来就已经很有用。</p>
+<h3>9.3 第一版只保留正相关 / 负相关 pair</h3>
+<ul>
+<li>正相关组测试集 2-class average accuracy：<code>92.17%</code></li>
+<li>负相关组测试集 3-class average accuracy：<code>76.93%</code></li>
+<li>弱相关组整体最差</li>
+</ul>
+<p>这说明第一版没必要追求“所有 pair 都做”，而该先挑 <strong>结构最清楚</strong> 的 pair。</p>
+<h3>9.4 给它加一个交易频次 veto</h3>
+<p>这篇 paper 的大漏洞是：只看最后利润，没有把 <strong>每个 threshold 带来的 turnover</strong> 摊开得很细。</p>
+<p>所以 desk 里一定要补：</p>
+<ul>
+<li>每日最大 rebalance 次数上限</li>
+<li>pair 的 rolling turnover cap</li>
+<li>fee-to-edge 比率 veto</li>
+</ul>
+<p>否则 RF 可能只是帮你挑出了“看起来利润高、但交易过密”的 threshold bucket。</p>
+<h2>10. 下一步怎么测</h2>
+<h3>实验 1：先验证“固定阈值 rebalancing 壳”有没有 alpha</h3>
+<p><strong>目标</strong>：验证这不是纯 ML 幻觉，而是 pair shell 本身有边。</p>
+<ul>
+<li>数据：Binance USDⓈ-M 前 20–30 个高流动 perp</li>
+<li>周期：<code>1m / 3m / 5m / 15m</code></li>
+<li>pair 选法：先只取 rolling corr <code>&gt; 0.3</code> 或 <code>&lt; -0.3</code></li>
+<li>阈值：固定扫 <code>5%, 10%, 15%, 20%, 25%</code></li>
+<li>执行：偏离超阈值即回补到 50/50</li>
+<li>输出：</li>
+<li>net pnl</li>
+<li>Sharpe</li>
+<li>max drawdown</li>
+<li>rebalance count</li>
+<li>fee / gross ratio</li>
+<li>每个阈值下的 top / bottom pairs</li>
+</ul>
+<p><strong>判定标准</strong>：若某些 pair 在 <code>5m / 15m</code> 下固定阈值 already 有稳定正 edge，这篇主题成立。</p>
+<h3>实验 2：验证“pair-specific threshold”是否优于“统一 threshold”</h3>
+<p><strong>目标</strong>：证明 threshold selection 真能成为 alpha 组件。</p>
+<ul>
+<li>用滚动月窗给每个 pair 打 label：最佳阈值桶</li>
+<li>特征：<code>mean / var / skew / kurt / VaR / corr</code></li>
+<li>模型：先只用 RF</li>
+<li>对照组：</li>
+<li>全市场统一 <code>T=10%</code></li>
+<li>全市场统一 <code>T=15%</code></li>
+<li>pair-specific RF 2-class bucket</li>
+</ul>
+<p><strong>判定标准</strong>：pair-specific bucket 至少应在以下一项明显胜出：</p>
+<ul>
+<li>净收益</li>
+<li>fee-adjusted Sharpe</li>
+<li>turnover-adjusted pnl</li>
+</ul>
+<h3>实验 3：把 continuous rebalance 改写成 desk 更熟悉的 flat-to-flat 版本</h3>
+<p><strong>目标</strong>：把论文壳变成更标准的可审计交易单元。</p>
+<ul>
+<li>开仓：权重偏离超预测阈值 <code>T*</code></li>
+<li>平仓：偏离回落到 <code>T*/3</code> 或 <code>0</code></li>
+<li>止损：偏离继续扩大到 <code>1.5 * T*</code></li>
+<li>超时：<code>N</code> 根 bar 后仍未回补则平仓</li>
+</ul>
+<p><strong>判定标准</strong>：看 flat-to-flat 版本是否能保留 paper 的主要 edge，同时显著改善回测解释性和实盘可监控性。</p>
+<h2>11. 我会怎么给这篇东西下判断</h2>
+<p><strong>结论不是</strong>“RF 很强，直接上线”。</p>
+<p><strong>更准确的结论是</strong>：</p>
+<ol>
+<li>这篇 paper 提供了一条 <strong>可独立复现的 high-frequency pairs raw alpha shell</strong>；</li>
+<li>它最值得 desk 吸收的，不是 spot-BTC 这个实现细节，而是 <strong>threshold bucket 也是可学习对象</strong> 这个观念；</li>
+<li>对 <code>1m / 3m / 5m / 15m</code> desk，最佳落地方向不是照抄全部 50 币 spot，而是：</li>
+</ol>
+<ul>
+<li>先做 liquid perp universe</li>
+<li>先做正/负相关 pair</li>
+<li>先做 2-class RF threshold bucket</li>
+<li>再和统一阈值 baseline 正面对打。</li>
+</ul>
+<p>如果这一步打赢了，我们就得到了一块很实用的可复用组件：</p>
+<p>&gt; <strong>pair shell 不再用全市场统一触发阈值，而是按 pair 特征动态分桶。</strong></p>
+<p>这东西既能服务传统 coint / z-score pairs，也能服务后续的 microprice-pairs、funding-pairs、cross-venue relative-value 壳。</p>
+<h2>12. 主要风险与不该误读的地方</h2>
+<ul>
+<li><strong>它不是 spread 建模论文</strong>：别强行把它读成“替代 cointegration”。它更像 pairs 壳的触发层。</li>
+<li><strong>它不是 execution 论文</strong>：没有细拆盘口冲击、maker fill、queue position。</li>
+<li><strong>spot BTC quote 可能放大了公共因子</strong>：搬到 USDT perp 后，阈值分布未必原样保留。</li>
+<li><strong>continuous rebalance 可能掩盖了真实 round-trip 统计</strong>：所以一定要做 flat-to-flat 对照版。</li>
+<li><strong>弱相关组结果偏弱</strong>：第一版别把 weak bucket 当主力。</li>
+</ul>
+<h2>13. 来源摘录</h2>
+<ol>
+<li>Bağcı, M., Kaya Soylu, P. (2025). *The Optimal Threshold Selection for High-Frequency Pairs Trading via Supervised Machine Learning Algorithms*. *Computational Economics*. DOI: <code>10.1007/s10614-025-10958-5</code></li>
+<p>Readable URL: <a href="https://link.springer.com/article/10.1007/s10614-025-10958-5">https://link.springer.com/article/10.1007/s10614-025-10958-5</a></p>
+<li>Table 3–8 from Springer article page: RF 在正/弱/负相关三组中均为最佳分类器；测试集 2-class 正相关准确率均值 <code>0.9217</code>；最佳 pair <code>STX-THETA</code> 2024-02 在 <code>24%</code> 阈值下利润 <code>41.2%</code>。</li>
+</ol>
+<h2>14. 一句话版本</h2>
+<p>这篇 2025 paper 最值得 intake 的不是“又一个 pairs”，而是把 <strong>pairs 的触发阈值</strong> 从固定超参数，变成了一个可以用低维统计特征去预测的 <strong>strategy component</strong>；对我们当前 short-cycle desk，最该先测的是 <strong>USDT perp 上的 2-class RF threshold bucket vs 全市场统一阈值</strong>。</p>
+</body>
+</html>

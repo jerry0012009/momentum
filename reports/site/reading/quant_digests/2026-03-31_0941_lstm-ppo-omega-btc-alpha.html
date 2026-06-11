@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2021 *Applied Soft Computing* 论文只读成 RL demo：对 desk 更该先测的是「LSTM forecast prior × PPO inventory shell × Omega reward」BTC 单币 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2021 *Applied Soft Computing* 论文只读成 RL demo：对 desk 更该先测的是「LSTM forecast prior × PPO inventory shell × Omega reward」BTC 单币 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-31 09:41 UTC</span>
+      <span class="pill">类型：2021 *Applied Soft Computing* 论文全文（arXiv 绿 OA 可读）+ 本地全文抽取 + Crossref/OpenAlex 元数据交叉</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/directional/lstm/ppo/omega-ratio/inventory-shell/high-frequency/hourly/btc/binance/15m/5m/3m/1m/paper/public-data/cost</span>
+      <span class="pill">证据类型：全文规则 + 参数级设定 + 对照组收益表 + 开源公共数据来源</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-31_0941_lstm-ppo-omega-btc-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-31 09:41 UTC</li>
+<li>类型：2021 *Applied Soft Computing* 论文全文（arXiv 绿 OA 可读）+ 本地全文抽取 + Crossref/OpenAlex 元数据交叉</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>BTC 单币短窗 directional drift</strong>——用最近一段价格路径去预测下一 bar 的方向/幅度，再把这个 forecast 转成 <code>long / short / hold</code> 的离散持仓状态机</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/single-asset/directional/lstm/ppo/omega-ratio/inventory-shell/high-frequency/hourly/btc/binance/15m/5m/3m/1m/paper/public-data/cost</li>
+<li>证据类型：全文规则 + 参数级设定 + 对照组收益表 + 开源公共数据来源</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 <strong>Fengrui Liu, Yang Li, Baitong Li, Jiaxin Li, Huiyang Xie (2021)</strong> 的论文 <strong>_Bitcoin transaction strategy construction based on deep reinforcement learning_</strong>。如果只把它读成“又一篇用 RL 做 BTC 交易的论文”，那对当前 desk 价值很一般；但如果把它拆开看，它其实提供了一张现在素材池里还比较缺的卡：</p>
+<p>&gt; <strong>不是只给一个 forecast，也不是只给一个 filter，而是把“单币方向预测”直接装进一个可执行的 inventory shell，连 reward、动作空间、交易成本、最小下单单位都写出来了。</strong></p>
+<p>这点和最近一批 digest 很不一样。最近我们积累得比较多的是：</p>
+<ul>
+<li>cross-sectional / relative-value / pairs / funding / options 这些 <strong>横截面或相对价值 raw alpha</strong>；</li>
+<li>少量 event-driven / microstructure directional 卡；</li>
+<li>但<strong>单币方向型 alpha 如何被包装成完整策略</strong>，反而没有那么多“规则写全”的来源。</li>
+</ul>
+<p>而这篇论文的价值就在这里：它的 headline 是 PPO，但对 desk 更值得先偷的，不是“把 PPO 原封不动搬过来”，而是三件更朴素、也更容易转成 <code>15m/5m/3m</code> 实验的东西：</p>
+<ol>
+<li><strong>forecast prior</strong>：先承认 BTC 短窗里存在可学的 directional drift；</li>
+<li><strong>inventory shell</strong>：别每 bar 重新拍脑袋，而是让预测去驱动离散仓位切换；</li>
+<li><strong>Omega reward</strong>：别只看 raw PnL，让 agent 在奖励函数里同时感知收益与 downside。</li>
+</ol>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话结论</strong>：这篇东西的 base alpha 很清楚——<strong>BTC 最近价格路径里存在可交易的短窗 directional drift</strong>；作者先比较多个静态预测器，确认 <code>LSTM</code> 最能抓住这个 drift，再让 <code>PPO</code> 把 forecast 映射成离散持仓动作，因此得到一个完整单币 raw alpha 策略。</li>
+<li>论文使用的数据来自 <strong>CryptoDataDownload</strong>，共 <strong>30,984</strong> 条有效记录，覆盖 <strong>2017-08-17 04:00 到 2021-02-27 00:00</strong>。按记录数倒推，原始实验口径基本是 <strong>hourly BTC</strong>。</li>
+<li>在静态预测层，作者比较了 <code>SVM / MLP / LSTM / TCN / Transformer</code>，测试集最优 MSE 为：</li>
+<li><code>LSTM: 0.0015</code></li>
+<li><code>Transformer: 0.0044</code></li>
+<li><code>SVM: 0.0084</code></li>
+<li><code>TCN: 0.01327</code></li>
+<li><code>MLP: 0.0251</code></li>
+<p>对这篇论文来说，<strong>真正的 signal source 不是 PPO，而是“LSTM 确实比别的模型更能学到 next-step drift”。</strong></p>
+<li>在交易层，论文的 <strong>Proposed Framework（LSTM + PPO）</strong> 在测试集上的收益率是 <strong>341.28%</strong>，对照组分别为：</li>
+<li><code>Non-named strategy (i): 309.61%</code></li>
+<li><code>VMA oscillator: 302.12%</code></li>
+<li><code>Buy &amp; Hold: 301.79%</code></li>
+<li><code>Golden Cross/Death Cross: 26.11%</code></li>
+<li><code>Improved Momentum: 8.17%</code></li>
+<li>也就是说，论文最值得 desk 记住的不是“RL 很神”，而是：</li>
+<li><strong>只做 forecast 再生硬阈值化，并不是最优；</strong></li>
+<li><strong>让 forecast 进入一个会考虑库存路径与风险偏好的动作壳子，结果更好。</strong></li>
+<li>论文还明确写了 friction 假设：</li>
+<li>初始资金：<code>$10,000</code></li>
+<li>手续费：<strong>每次交易额的 <code>0.25%</code></strong></li>
+<li>最大滑点率：<strong><code>2%</code></strong></li>
+<li>最小交易单位：<strong><code>0.125 BTC</code></strong></li>
+<li>动作空间：<strong><code>24</code> 个离散动作</strong>（在 <code>buy / sell / hold</code> 三类上再离散仓位/数量）</li>
+</ul>
+<p>对 short-cycle desk 来说，这些参数未必能直接照搬，但它们非常宝贵，因为它们把论文从“模型预测”变成了“完整策略说明书”。</p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮任务默认优先补 <strong>可独立复现且能直接落地成完整策略的 raw alpha</strong>。这篇东西值得入池，原因不是它最“新”，而是它刚好补上当前池子里一块相对薄的区域：</p>
+<ol>
+<li><strong>它是 raw alpha，不是 filter。</strong></li>
+<p>base alpha 很清楚，就是 <code>BTC 单币短窗 directional drift</code>。</p>
+<li><strong>它不是只有入场，没有出场。</strong></li>
+<p>论文把动作空间、reward、手续费、最小交易单位都写了，能直接拆成 <code>entry/exit/sizing/risk/cost</code>。</p>
+<li><strong>它能服务于更快频的最小实验。</strong></li>
+<p>虽然原文是 hourly，但结构是 bar-based 的，且 state window 只有 <code>10</code> 个 time steps；把同样骨架压到 <code>15m/5m</code> 非常自然。</p>
+<li><strong>它给了我们一个值得单独测试的“旁支想法”。</strong></li>
+<p>当前对 desk 更值钱的，未必是复现一遍 PPO 本身，而是问： &gt; 把 directional forecast 装进“inventory shell + Omega reward”之后，是否比“预测值直接变信号”更稳？</p>
+</ol>
+<p>这就是它比继续写一篇泛泛 filter 更值得本轮 digest 的原因：<strong>它扩的是可部署的 raw alpha 素材池。</strong></p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：BTC 单币 <code>long / short / flat</code> directional strategy</li>
+<li>基础 alpha：短窗 <code>next-bar directional drift</code></li>
+<li>regime：论文没有单独显式的 market regime 模块</li>
+<li>filter / veto：</li>
+<li>论文的核心不是额外 filter，而是把 forecast 融进 PPO 动作选择；</li>
+<li>真正的隐含 veto 来自 <strong>高成本 + 离散仓位切换惩罚</strong>，即不值得动就不动。</li>
+<li>risk / sizing / execution overlay：</li>
+<li><code>PPO + Omega ratio reward</code> 本身就在做 risk-aware action selection；</li>
+<li>动作离散化相当于一个 inventory/sizing shell；</li>
+<li>最小交易单位、手续费、滑点上限，都是策略定义的一部分。</li>
+</ul>
+<h2>4. 论文里真正值得 desk 先偷哪一段</h2>
+<p>我不建议第一步就说“去复现 PPO agent”。对 desk，更值得先偷的是下面这个拆法：</p>
+<h3><strong>LSTM forecast prior × inventory shell × Omega reward</strong></h3>
+<p>它可以拆成三层：</p>
+<ol>
+<li><strong>forecast layer</strong></li>
+</ol>
+<ul>
+<li>输入：最近 <code>10</code> 个 bars 的价格路径（论文先做差分，再归一化）；</li>
+<li>输出：下一 bar 的价格/收益方向信息；</li>
+<li>论文结论：在 <code>SVM / MLP / LSTM / TCN / Transformer</code> 里，<code>LSTM</code> 最适合作 forecast prior。</li>
+</ul>
+<ol>
+<li><strong>decision layer</strong></li>
+</ol>
+<ul>
+<li>不是简单 <code>y_hat &gt; 0 就 long, y_hat &lt; 0 就 short</code>；</li>
+<li>而是把 forecast 和当前库存状态一起输入 policy，让 agent 决定“买/卖/持有 + 买卖多少”。</li>
+</ul>
+<ol>
+<li><strong>reward layer</strong></li>
+</ol>
+<ul>
+<li>不是只优化累计收益；</li>
+<li>论文用 <strong>Omega Ratio</strong> 当 reward signal，让策略对 downside 更敏感。</li>
+</ul>
+<p>对 desk 来说，最重要的 insight 是：</p>
+<p>&gt; <strong>如果 raw alpha 本体是可学的 directional drift，那么真正决定它能不能活过成本的，往往不是 forecast 模型本身，而是你用什么库存壳子和 reward 去包它。</strong></p>
+<p>这篇论文恰好把这层讲得比较完整。</p>
+<h2>5. 可复刻的最小实验</h2>
+<h3>5.1 第一轮不要复现什么</h3>
+<p>第一轮<strong>不要</strong>直接复现完整 PPO。那样会把问题搞得太黑箱，很难知道 edge 到底来自：</p>
+<ul>
+<li>forecast 本身，</li>
+<li>inventory state machine，</li>
+<li>还是 reward function。</li>
+</ul>
+<h3>5.2 第一轮该怎么测</h3>
+<p>先做一个 <strong>三段式 ablation</strong>：</p>
+<p>#### A. Forecast-only baseline</p>
+<ul>
+<li>标的：<code>BTCUSDT</code> perp</li>
+<li>频率：先 <code>15m</code>，再下钻 <code>5m</code></li>
+<li>特征：</li>
+<li>最近 <code>10</code> 根 bar returns / OHLCV</li>
+<li>realized vol (<code>1h</code>, <code>4h</code>, <code>1d</code>)</li>
+<li>经典技术指标轻量版（EMA, RSI, MACD, Bollinger width）</li>
+<li>模型：</li>
+<li><code>LSTM-small</code></li>
+<li>再配一个 <code>LightGBM / logistic sign model</code> 当非深度学习基线</li>
+<li>交易：<code>y_hat &gt; +th -&gt; long</code>，<code>y_hat &lt; -th -&gt; short</code>，否则 <code>flat</code></li>
+</ul>
+<p>#### B. Forecast + inventory shell</p>
+<ul>
+<li>保持同样的 forecast</li>
+<li>但把动作从 <code>{-1,0,+1}</code> 扩成离散仓位档位，例如：</li>
+<li><code>{-1, -0.5, 0, +0.5, +1}</code></li>
+<li>引入简单持仓惯性/换仓惩罚</li>
+<li>问题是：<strong>离散库存壳子是否已经能拿到大部分提升？</strong></li>
+</ul>
+<p>#### C. Forecast + inventory shell + Omega-like reward</p>
+<ul>
+<li>在 B 的基础上，用：</li>
+<li><code>rolling downside-penalized reward</code></li>
+<li>或 <code>Omega / Sortino proxy reward</code></li>
+<li>问题是：<strong>risk-aware reward 是否进一步改善 cost-after return / max drawdown / avg trade？</strong></li>
+</ul>
+<h3>5.3 参数口径怎么抄</h3>
+<p>论文的核心可迁移设定：</p>
+<ul>
+<li>state window：<code>10 bars</code></li>
+<li>split：<code>70% train / 10% valid / 20% test</code></li>
+<li>原文 friction：</li>
+<li><code>0.25%</code> per-trade fee</li>
+<li><code>2%</code> max slippage</li>
+<li>原文最小交易单位：<code>0.125 BTC</code></li>
+</ul>
+<p>desk 版第一轮建议改成：</p>
+<ul>
+<li>cost grid：<code>4 / 8 / 12 / 20 bps round-trip</code></li>
+<li>持仓档位：<code>0, ±0.5, ±1</code></li>
+<li>单次切换只允许变动一档，避免学出不现实的 inventory jump</li>
+</ul>
+<h3>5.4 最先看什么指标</h3>
+<p>第一轮别盯年化收益，先盯这 6 个：</p>
+<ol>
+<li>hit rate</li>
+<li>avg trade after cost</li>
+<li>trade frequency</li>
+<li>holding time</li>
+<li>max drawdown</li>
+<li>prediction distribution 是否过度挤在 0 附近</li>
+</ol>
+<p>如果实验发现：</p>
+<ul>
+<li><code>A</code> 就已经有 edge，说明 base alpha 本体不错；</li>
+<li><code>B</code> 明显好于 <code>A</code>，说明 inventory shell 值钱；</li>
+<li><code>C</code> 再明显好于 <code>B</code>，说明 Omega-like reward 不是噱头。</li>
+</ul>
+<p>这就是这篇论文最适合 desk 的读法：<strong>不是复现 PPO，而是拆出“哪一层真的值钱”。</strong></p>
+<h2>6. 风险与边界</h2>
+<ul>
+<li><strong>原文是 hourly，不是 1m/5m 原生论文。</strong></li>
+<p>所以这篇东西最合理的定位不是“直接证明 1m 可做”，而是提供一个 <strong>可压缩到 <code>15m/5m</code> 的完整策略骨架</strong>。</p>
+<li>原文 friction 假设偏粗：<code>0.25%</code> fee + <code>2%</code> slippage 更像 stress shell，而不是今天主流大所 BTC perp 的真实撮合成本。</li>
+<li>论文没有 order-book / taker imbalance / funding / basis 等更贴近 crypto microstructure 的特征；</li>
+<p>这意味着它更像一个<strong>纯价格型 directional shell</strong>，后续是可以叠加 desk 现有 microstructure 因子的。</p>
+<li>如果复现实验发现优势主要来自“少交易 + 持有更久”，那它更接近一个 <strong>inventory management overlay</strong>；</li>
+<p>但只要 base alpha 仍然是 directional drift，这条线依旧属于 raw alpha 的完整落地形式，而不是纯 filter。</p>
+</ul>
+<h2>7. 这篇东西对 1m / 3m / 5m / 15m 的意义</h2>
+<ul>
+<li><strong>15m</strong>：最该先测。结构最容易从 hourly 压缩下来，noise 也没 1m 那么极端。</li>
+<li><strong>5m</strong>：若 15m 成本后仍活，再测 5m；重点看 inventory shell 是否比 forecast-only 更明显。</li>
+<li><strong>3m / 1m</strong>：不建议一开始就上。若 5m 不活，通常说明问题不是“还不够高频”，而是 alpha 本体或 cost shell 不够强。</li>
+</ul>
+<p>所以对当前 desk，我会把这条线定位成：</p>
+<p>&gt; <strong>先作为 <code>15m</code> 单币 directional raw alpha + inventory-shell 实验卡，若存活，再向 <code>5m</code> 下钻；不是从一开始就把它包装成 1m HFT。</strong></p>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>Liu, Fengrui; Li, Yang; Li, Baitong; Li, Jiaxin; Xie, Huiyang (2021), _Bitcoin transaction strategy construction based on deep reinforcement learning_</strong></li>
+</ol>
+<ul>
+<li>Venue: *Applied Soft Computing*, Volume 113, Article 107952</li>
+<li>DOI: <a href="https://doi.org/10.1016/j.asoc.2021.107952">https://doi.org/10.1016/j.asoc.2021.107952</a></li>
+<li>Readable URL: <a href="https://arxiv.org/abs/2109.14789">https://arxiv.org/abs/2109.14789</a></li>
+<li>PDF URL: <a href="https://arxiv.org/pdf/2109.14789.pdf">https://arxiv.org/pdf/2109.14789.pdf</a></li>
+<li>Repo URL: N/A（未见作者公开策略代码仓库）</li>
+</ul>
+<ol>
+<li><strong>Schulman et al. (2017), _Proximal Policy Optimization Algorithms_</strong></li>
+</ol>
+<ul>
+<li>Venue: arXiv</li>
+<li>Readable URL: <a href="https://arxiv.org/abs/1707.06347">https://arxiv.org/abs/1707.06347</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Benhamou, Guez, Paris (2019), _Omega and Sharpe ratio_</strong></li>
+</ol>
+<ul>
+<li>Venue: arXiv</li>
+<li>Readable URL: <a href="https://arxiv.org/abs/1911.10254">https://arxiv.org/abs/1911.10254</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<h2>9. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 <code>BTCUSDT 15m</code> 的三段式 ablation：forecast-only / +inventory shell / +Omega-like reward。</strong></li>
+<li>第一轮不用 PPO，先用简单离散仓位壳子验证“inventory shell 是否值钱”。</li>
+<li>若 <code>15m</code> 成本后存活，再下钻 <code>5m</code>；若 <code>15m</code> 不活，就不要把它硬吹成更快频 alpha。</li>
+<li>若 inventory shell 明显提升 avg trade 和 MDD，就把这条线升级为：</li>
+</ol>
+<ul>
+<li><strong>单币 directional raw alpha 的通用执行壳</strong>，</li>
+<li>后续可接 OFI / basis / funding / jump sign 等更强的 forecast prior。</li>
+</ul>
+<ol>
+<li>若只有 Omega-like reward 有用，而 forecast 本体很弱，则这篇东西应降级为：</li>
+</ol>
+<ul>
+<li><strong>服务于其他 raw alpha 的 risk-aware decision shell</strong>，</li>
+<li>而不是继续作为主 raw alpha 主题深挖。</li>
+</ul>
+</body>
+</html>

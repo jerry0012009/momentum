@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 crypto stat-arb repo 只读成“又一个 pairs 回归模板”：对 short-cycle crypto desk，更该先拆的是「rolling-OLS residual z-score fade × cost-aware notional scaling × split-local state machine」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 crypto stat-arb repo 只读成“又一个 pairs 回归模板”：对 short-cycle crypto desk，更该先拆的是「rolling-OLS residual z-score fade × cost-aware notional scaling × split-local state machine」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-22 02:02 UTC</span>
+      <span class="pill">研究时间：2026-04-22 02:04 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit + Binance USDⓈ-M public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha / pairs / stat-arb / relative-value / mean-reversion / rolling-ols / residual-zscore / cost-aware-sizing / split-local-state / roll-slippage / Binance / 15m / 5m / repo / public-data</span>
+      <span class="pill">证据类型：工程实现 + repo 完整策略壳 + public-data first probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-22_0204_rollols-costaware-pairfade-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-22 02:04 UTC</li>
+<li>类型：2026 GitHub repo source audit + Binance USDⓈ-M public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：先用 rolling OLS 估计两腿相对定价关系；当 residual / spread 的 z-score 偏离足够深时做 <strong>long cheap leg / short rich leg</strong>，赌价差向局部中枢回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / pairs / stat-arb / relative-value / mean-reversion / rolling-ols / residual-zscore / cost-aware-sizing / split-local-state / roll-slippage / Binance / 15m / 5m / repo / public-data</li>
+<li>证据类型：工程实现 + repo 完整策略壳 + public-data first probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次看的是 2026 GitHub repo <strong>Rah9742 / Crypto-Stat-Arb</strong>。如果只看标题，它像一份普通的 crypto stat-arb 课程仓；但真正值得 desk 保留的，不是“pair trading 这四个字”，而是它把一条 <strong>更接近可实盘研究流程的完整 shell</strong> 写得很清楚：</p>
+<ol>
+<li><strong>先做 pair admission</strong>：rolling formation window 里评估 cointegration / hedge ratio 稳定性；</li>
+<li><strong>再做 strategy sweep</strong>：对 <code>formation / z-window / entry / exit / stop / max-hold</code> 做 train / validation / test；</li>
+<li><strong>split-local state machine</strong>：每个 split 内单独生成信号，不让 train 状态泄露到 validation / test；</li>
+<li><strong>cost-aware position sizing</strong>：不是所有 entry 都打满仓，而是看“预期回归幅度相对 round-trip cost 值不值”；</li>
+<li><strong>最后单独重跑 cost stage</strong>：用 Roll slippage 估计做 gross vs net 分离。</li>
+</ol>
+<p>这比我们前面见过的很多 pairs repo 更像一个真正能进入 desk intake 的“研究骨架”。</p>
+<h2>2. 一句话核心结论</h2>
+<p>这篇东西的真正价值，不是再次证明“spread 会回归”，而是把 <strong>pair MR 从信号研究推进到 cost-aware deployment shell</strong>：</p>
+<p>&gt; <strong>rolling residual z-score fade 这条 raw alpha 本身不新，但“split-local 防泄露 + cost-aware 缩仓 + asset-level Roll slippage”这一整套，明显比只写 <code>|z|&gt;2 就进</code> 的 pairs 模板更有迁移价值。</strong></p>
+<h2>3. 它是怎么证明这点的</h2>
+<p>不是靠一句“我们做了 stat-arb”，而是直接把研究流程拆成可检查的代码和产物：</p>
+<ul>
+<li><code>src/crypto_trader/signals/pairs.py</code></li>
+<li><code>build_pair_research_frame(...)</code>：rolling OLS hedge ratio → spread → rolling mean/std → z-score</li>
+<li><code>generate_pair_signal_state(...)</code>：entry / exit / stop / max-hold 的状态机</li>
+<li><code>build_pair_target_notionals(...)</code>：把 <strong>expected move / cost</strong> 变成实际 target notionals</li>
+<li><code>src/crypto_trader/analysis/pairs_research.py</code></li>
+<li><code>build_split_local_signal_frame(...)</code>：在 warmup / train / validation / test 内分别生成信号，避免状态穿越</li>
+<li><code>data/processed/pairs/strategy/pairs_comparison_summary.csv</code></li>
+<li>给出 shortlisted pair 的 train/validation/test 指标</li>
+<li><code>data/processed/costs/roll_slippage_summary.csv</code></li>
+<li>给出 asset-level Roll slippage</li>
+<li><code>README.md</code></li>
+<li>明确区分原始 strategy sweep 与独立 rerun 的 cost-adjusted comparison</li>
+</ul>
+<p>也就是说，这个 repo 不是“有个 idea”，而是把 <strong>alpha → state → sizing → cost rerun</strong> 这条链条都摆出来了。</p>
+<h2>4. base alpha 到底是什么</h2>
+<p>先把话说死一点：</p>
+<ul>
+<li><strong>base alpha 不是</strong> “cointegration 这个词”；</li>
+<li><strong>base alpha 也不是</strong> “cost-aware sizing”；</li>
+<li>这篇东西的 <strong>base alpha</strong> 是：</li>
+</ul>
+<p>&gt; <strong>当两腿 residual 相对其 rolling 中枢出现异常偏离时，做 spread mean reversion。</strong></p>
+<p>剩下这些东西都属于“把 raw alpha 变得更像可交易系统”的二层组件：</p>
+<ul>
+<li>pair admission</li>
+<li>split-local state machine</li>
+<li>max-hold / stop</li>
+<li>cost-aware sizing</li>
+<li>Roll slippage cost stage</li>
+</ul>
+<p>所以它符合这轮优先级：<strong>raw alpha 候选，而且是能直接落地成完整策略的 raw alpha 壳。</strong></p>
+<h2>5. repo 里最值得学的，不是 pair entry，而是这三个细节</h2>
+<h3>5.1 split-local signal frame：防止 state leakage</h3>
+<p><code>build_split_local_signal_frame(...)</code> 的核心思想很朴素，但非常值得 desk 直接抄：</p>
+<ul>
+<li><code>warmup / train / validation / test</code> 四段分开跑状态机</li>
+<li>每段内部各自决定 entry / exit / holding period</li>
+<li>不允许 train 的持仓状态直接“带进” validation / test</li>
+</ul>
+<p>这件事听起来像卫生习惯，但很多 pair / trend 回测仓都没做干净。对 <strong>有状态策略</strong>（尤其是 MR 和 trailing stop）来说，这个细节很关键。</p>
+<h3>5.2 cost-aware target notionals：不是每个 z-score 都值得打满</h3>
+<p>repo 的 sizing 不是简单 fixed gross，而是：</p>
+<ul>
+<li>先算 <code>expected_move ≈ (|z|-exit_z) × spread_std</code></li>
+<li>再除以当前 pair gross reference，得到一个近似 <code>expected_return</code></li>
+<li>再和 <code>round_trip_cost_rate</code> 比，得到 <code>cost_efficiency</code></li>
+<li>再结合 <code>conviction = min(|z| / entry_threshold, 2) / 2</code></li>
+<li>最后决定一个 <code>scale ∈ [cost_aware_min_scale, 1]</code></li>
+</ul>
+<p>翻成人话就是：</p>
+<p>&gt; <strong>偏离没多深、预期回归没多厚时，哪怕信号触发了，也别默认打满。</strong></p>
+<p>这和很多 pairs 研究的差别非常大。后者通常默认“信号是否交易”是二元的；这个 repo 则把它推进到“<strong>信号有了，但 size 可以按 edge/cost 比例缩放</strong>”。</p>
+<h3>5.3 cost stage 单独 rerun：gross / net 分开看</h3>
+<p>README 明确提醒：</p>
+<ul>
+<li>parameter sweep 里的 test return，不等于最终 cost rerun 的 net return；</li>
+<li>选完策略后，会单独做一轮 Roll slippage rerun；</li>
+<li>最终比较的是 gross/net/cumulative transaction cost 三套东西。</li>
+</ul>
+<p>这个研究姿势是对的：</p>
+<ul>
+<li><strong>先找 alpha 壳</strong>；</li>
+<li><strong>再问它能不能穿过成本</strong>；</li>
+<li>不要把两步混成一锅粥。</li>
+</ul>
+<h2>6. repo 自身给出的结果，说明了什么</h2>
+<p>README 的最终 headline：</p>
+<ul>
+<li>最终 pairs 选中的是 <strong><code>AVAXUSDT / ICPUSDT</code></strong></li>
+<li>cost rerun 后：</li>
+<li>gross PnL <code>3816.84 USDT</code></li>
+<li>net PnL <code>2573.95 USDT</code></li>
+<li>gross return <code>38.17%</code></li>
+<li>net return <code>25.74%</code></li>
+<li>total transaction cost <code>1242.89 USDT</code></li>
+</ul>
+<p>更细一点看 <code>pairs_comparison_summary.csv</code> 里的最佳 run（<code>a00a6c7066b7</code>）：</p>
+<ul>
+<li>pair：<code>AVAXUSDT / ICPUSDT</code></li>
+<li>formation <code>12096</code> bars</li>
+<li>z-score window <code>2016</code> bars</li>
+<li>entry <code>2.5</code></li>
+<li>exit <code>0.25</code></li>
+<li>max holding <code>48</code> bars</li>
+<li>test cumulative return <code>31.74%</code></li>
+<li>test annualised return <code>113.06%</code></li>
+<li>test Sharpe <code>1.34</code></li>
+<li>test max drawdown <code>-29.82%</code></li>
+<li>test trades <code>23</code></li>
+<li>test win rate <code>56.5%</code></li>
+<li>test mean trade pnl <code>137.99 USDT</code></li>
+</ul>
+<p>这组结果很有意思，因为它告诉我们两件事：</p>
+<ol>
+<li><strong>pairs MR 在 repo 的 spot 样本里不是“靠高胜率小钱”活着</strong>；</li>
+<li>它更像是 <strong>trade count 不高，但单笔厚度足够</strong>，再靠 max-hold 和 cost-aware sizing 把噪音削掉。</li>
+</ol>
+<h2>7. 为什么这轮值得写，而不是把它归进“又一篇 pairs”</h2>
+<p>我们最近确实已经写过不少 pairs / stat-arb，但这篇仍然值得保留，因为它补的是一个不同层级：</p>
+<ul>
+<li>之前很多仓重点在 <strong>admission / spread construction / entry-exit 规则</strong>；</li>
+<li>这篇重点在 <strong>如何把 pair alpha 包成更真实的研究-部署壳</strong>。</li>
+</ul>
+<p>它最有迁移价值的，不是“AVAX/ICP 这对能不能继续赚钱”，而是下面这套方法论：</p>
+<ul>
+<li><strong>train / validation / test 分层挑参数</strong></li>
+<li><strong>split-local state generation</strong></li>
+<li><strong>cost-aware sizing instead of binary full-size</strong></li>
+<li><strong>独立 cost rerun</strong></li>
+</ul>
+<p>这四块可以迁到：</p>
+<ul>
+<li>pairs</li>
+<li>basis fade</li>
+<li>spread residual basket</li>
+<li>cross-sectional loser→winner fade</li>
+<li>甚至 trend 里的 re-entry / partial sizing</li>
+</ul>
+<h2>8. 这轮 public portability probe：迁到 Binance USDⓈ-M <code>15m/5m</code> 后像什么</h2>
+<p>为了不只复述 repo，我额外做了一个很轻的 public-data probe：</p>
+<ul>
+<li>数据：Binance USDⓈ-M perpetual <code>AVAXUSDT / ICPUSDT</code></li>
+<li>周期：<code>15m</code> 与 <code>5m</code></li>
+<li>样本：最近约 <code>120d</code></li>
+<li>口径：沿用 repo 思路做 rolling-OLS residual z-score fade</li>
+<li>但把窗口缩到更适合短样本 first verdict 的量级：</li>
+<li><code>15m</code>：formation <code>8064</code> bars，z-window <code>1344</code>，entry <code>2.5</code>，exit <code>0.25</code>，timeout <code>48</code></li>
+<li><code>5m</code>：formation <code>12096</code> bars，z-window <code>2016</code>，entry <code>2.5</code>，exit <code>0.25</code>，timeout <code>48</code></li>
+</ul>
+<p>结果：</p>
+<ul>
+<li><code>15m</code></li>
+<li>trades：<code>5</code></li>
+<li>avg gross：<code>+190.50 bps/笔</code></li>
+<li>win rate：<code>80.0%</code></li>
+<li>avg hold：<code>48.0 bars</code></li>
+<li>timeout rate：<code>100%</code></li>
+<li><code>5m</code></li>
+<li>trades：<code>43</code></li>
+<li>avg gross：<code>+10.57 bps/笔</code></li>
+<li>median gross：<code>-3.61 bps/笔</code></li>
+<li>win rate：<code>48.8%</code></li>
+<li>avg hold：<code>47.37 bars</code></li>
+<li>timeout rate：<code>97.7%</code></li>
+</ul>
+<p>我对这组 first verdict 的读法是：</p>
+<h3>8.1 <code>15m</code> 看起来“厚”，但样本太稀，而且几乎全靠 timeout</h3>
+<p><code>15m</code> 的单笔 gross 很厚，但只有 <code>5</code> 笔，而且 <strong>全部靠 timeout 才出来</strong>。这更像：</p>
+<ul>
+<li>偶尔出现的大 residual excursion 被吃到；</li>
+<li>但不是一个已经成熟到可直接 child-exec 的高频 pocket。</li>
+</ul>
+<h3>8.2 <code>5m</code> 有交易频率，但厚度明显不够舒服</h3>
+<p><code>5m</code> 有 <code>43</code> 笔，看起来比 <code>15m</code> 更像研究对象；但：</p>
+<ul>
+<li>平均 gross 只有 <code>10.57 bps/笔</code></li>
+<li>中位数已经是负的</li>
+<li>绝大多数交易还是靠 timeout 出场</li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; <strong>在 perp <code>5m</code> 上，这条 residual fade 还没表现出“自然回中枢”的干净结构，更像是要么需要更强 admission，要么需要更厚 entry，要么干脆需要 maker-first / microstructure veto 才能成立。</strong></p>
+<h3>8.3 成本敏感度仍是第一风险</h3>
+<p>repo 自己给的 Roll slippage（15m，spot）是：</p>
+<ul>
+<li><code>AVAX</code>：约 <code>4.32 bps</code></li>
+<li><code>ICP</code>：约 <code>11.31 bps</code></li>
+</ul>
+<p>如果按双腿 round-trip 粗看，单次完整进出就是 <strong>低双位数到三十多 bps 量级的摩擦</strong>。这当然不能直接照搬到 Binance perp，但它至少提醒一件事：</p>
+<ul>
+<li><code>5m</code> probe 的 <code>+10.57 bps/笔</code> gross，<strong>厚度明显不保险</strong>；</li>
+<li><code>15m</code> 虽然 gross 很厚，但 trade count 太低、timeout 过高，不像稳健 pocket。</li>
+</ul>
+<p>所以当前 first verdict 不是“这条 alpha 死了”，而是：</p>
+<p>&gt; <strong>raw alpha 还在，但短周期迁移后更像“需要更强 admission + 更真实 execution”的 sparse RV shell，而不是可以直接 taker 化的分钟级主策略。</strong></p>
+<h2>9. desk 最该怎么复用这篇东西</h2>
+<p>如果把这篇 repo 当作 desk 组件库，我最想保留的不是某个固定 pair，而是下面三层：</p>
+<h3>9.1 raw alpha 层</h3>
+<ul>
+<li>rolling-OLS residual z-score fade</li>
+<li>entry：深偏离才进</li>
+<li>exit：center reclaim / stop / timeout</li>
+</ul>
+<h3>9.2 research hygiene 层</h3>
+<ul>
+<li>split-local state machine</li>
+<li>validation evidence gate</li>
+<li>不把 sweep return 和 cost rerun 混读</li>
+</ul>
+<h3>9.3 deployment shell 层</h3>
+<ul>
+<li>cost-aware sizing</li>
+<li>gross exposure cap</li>
+<li>asset-level slippage rerun</li>
+<li>max-holding escape hatch</li>
+</ul>
+<p>对我们当前素材池来说，这层壳不只服务 pairs，也很适合迁去：</p>
+<ul>
+<li>spot-perp basis fade</li>
+<li>perp-calendar spread fade</li>
+<li>cross-sectional residual baskets</li>
+<li>dual-anchor fair-value residual systems</li>
+</ul>
+<h2>10. 最小可复现实验</h2>
+<h3>数据源</h3>
+<ul>
+<li>Binance USDⓈ-M 公共 K 线：<code>/fapi/v1/klines</code></li>
+<li>标的：<code>AVAXUSDT / ICPUSDT</code>，后续可扩到 <code>SOL/ADA</code>、<code>XRP/DOGE</code>、<code>LTC/LINK</code> 一类替代 pair</li>
+<li>公开性：公开可得</li>
+<li>更新频率：分钟级</li>
+<li>可映射周期：<code>5m / 15m</code>（如需更快可继续压到 <code>1m / 3m</code>，但要先补 execution realism）</li>
+</ul>
+<h3>最小实验口径</h3>
+<ol>
+<li>用 rolling OLS 估 hedge ratio，构造 spread 与 z-score；</li>
+<li>entry 先测 <code>|z| &gt;= 2.5 / 3.0 / 3.5</code>；</li>
+<li>exit 对照：</li>
+</ol>
+<ul>
+<li><code>|z| &lt;= 0.25</code></li>
+<li><code>|z| &lt;= 0.5</code></li>
+<li><code>timeout 24 / 48 / 96 bars</code></li>
+</ul>
+<ol>
+<li>admission 对照：</li>
+</ol>
+<ul>
+<li>cointegration / p-value gate</li>
+<li>hedge-ratio stability gate</li>
+<li>spread-std / liquidity gate</li>
+</ul>
+<ol>
+<li>execution/cost：</li>
+</ol>
+<ul>
+<li>taker flat fee</li>
+<li>maker-first</li>
+<li>slippage ladder（<code>4 / 8 / 12 / 20+ bps</code> per round-trip per pair）</li>
+</ul>
+<ol>
+<li>统计：</li>
+</ol>
+<ul>
+<li><code>trade_count</code></li>
+<li><code>gross_bps / net_bps</code></li>
+<li><code>timeout_rate</code></li>
+<li><code>center-reclaim rate</code></li>
+<li><code>median trade bps</code></li>
+<li><code>per-pair contribution</code></li>
+</ul>
+<h2>11. 这轮我保留的判断</h2>
+<p>这份 repo 不是“最性感的新 alpha”，但它很适合进研究池，因为它补的是 <strong>如何把 raw alpha 壳做得更像能部署的研究单元</strong>。我当前更愿意把它定义成：</p>
+<p>&gt; <strong>一条仍值得保留的 pairs raw alpha shell，但它真正的增量在 cost-aware deployment design，而不是在 pair entry idea 本身。</strong></p>
+<p>再直白一点：</p>
+<ul>
+<li>如果你想找“又一个 pair 入场规则”，这篇不是最该记住的；</li>
+<li>如果你想找“怎么把 pair MR 做成更可靠的 research shell”，这篇很值。</li>
+</ul>
+<h2>12. 下一步怎么测</h2>
+<ol>
+<li><strong>先测更厚 entry</strong>：<code>2.5 -&gt; 3.0 -&gt; 3.5</code>，看能不能明显降低 timeout-rate，别让交易几乎都靠 time-stop 出。</li>
+<li><strong>把 admission 放到前面</strong>：不要只看 z-score，要联合看 <code>hedge-ratio stability / spread volatility / liquidity</code>。</li>
+<li><strong>做 maker-first 对照</strong>：如果 <code>5m</code> gross 本来就薄，必须直接问 execution 能不能救，而不是继续假设 taker 也行。</li>
+<li><strong>把 pair alpha 和 sizing 分开评估</strong>：先看 fixed-size 是否有 edge，再看 cost-aware sizing 是否只是“把亏损缩小”，还是能真正改善 net efficiency。</li>
+<li><strong>扩成多 pair pocket test</strong>：优先找 alt-alt 里更容易出现稳定 residual excursion 的组合，不要被 <code>AVAX/ICP</code> 单一案例锁死。</li>
+</ol>
+<h2>13. 来源</h2>
+<ul>
+<li>Rahman, R. (GitHub user <code>Rah9742</code>) (2026), <strong>Crypto Trading Research Repo / Crypto-Stat-Arb</strong>. Repo URL: &lt;<a href="https://github.com/Rah9742/Crypto-Stat-Arb&gt;">https://github.com/Rah9742/Crypto-Stat-Arb&gt;</a></li>
+<li>Readable README URL: &lt;<a href="https://raw.githubusercontent.com/Rah9742/Crypto-Stat-Arb/main/README.md&gt;">https://raw.githubusercontent.com/Rah9742/Crypto-Stat-Arb/main/README.md&gt;</a></li>
+<li>Source audit 文件：</li>
+<li><code>README.md</code></li>
+<li><code>config/default.yaml</code></li>
+<li><code>src/crypto_trader/signals/pairs.py</code></li>
+<li><code>src/crypto_trader/analysis/pairs_research.py</code></li>
+<li><code>data/processed/pairs/strategy/pairs_comparison_summary.csv</code></li>
+<li><code>data/processed/costs/roll_slippage_summary.csv</code></li>
+<li>本地 artifacts：</li>
+<li><code>reports/artifacts/quant_digests/rollols_pairfade_probe_2026-04-22.py</code></li>
+<li><code>reports/artifacts/quant_digests/rollols_pairfade_avax_icp_probe_2026-04-22.csv</code></li>
+<li><code>reports/artifacts/quant_digests/rollols_pairfade_avax_icp_trades_2026-04-22.csv</code></li>
+</ul>
+</body>
+</html>

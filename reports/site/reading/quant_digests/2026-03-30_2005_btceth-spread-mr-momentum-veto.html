@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个 2024 toy stat-arb repo 继续当 portfolio optimizer：它唯一还值得救的，其实是「BTC/ETH spread MR × momentum veto」raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个 2024 toy stat-arb repo 继续当 portfolio optimizer：它唯一还值得救的，其实是「BTC/ETH spread MR × momentum veto」raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-30 20:11 UTC</span>
+      <span class="pill">研究时间：2026-03-30 20:05 UTC</span>
+      <span class="pill">类型：2024 GitHub repo 源码审阅 + Binance Futures 公共 `15m` 最小快检</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/btc/eth/beta-neutral/spread-zscore/momentum-veto/cost-cliff/binance/perpetual/15m/5m/repo/public-data</span>
+      <span class="pill">证据类型：repo 源码 + 本地最小快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-30_2005_btceth-spread-mr-momentum-veto.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-30 20:05 UTC</li>
+<li>类型：2024 GitHub repo 源码审阅 + Binance Futures 公共 <code>15m</code> 最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：BTC/ETH 相对价格偏离（beta-neutral spread z-score）在短窗内回归；但若 spread 仍在同方向加速，则用 momentum veto 跳过入场</li>
+<li>是否可独立复现：是（repo 原样并不完整，但核心思路可用公开数据 clean-room 重写）</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（但当前 <code>15m</code> 口径下只有 gross edge，轻微成本后即转负）</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/btc/eth/beta-neutral/spread-zscore/momentum-veto/cost-cliff/binance/perpetual/15m/5m/repo/public-data</li>
+<li>证据类型：repo 源码 + 本地最小快检</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<p>先回答 base alpha：<strong>这条东西的 base alpha 是 BTC/ETH relative-value spread 的短窗均值回归，不是 portfolio optimization，也不是“两个币各做各的方向预测”。</strong></p>
+<p>我这次主看的是 <code>notaconduit/Statistical-Arbitrage-in-Cryptocurrencies</code> 这份 2024 更新的公开 repo。它表面上写的是“stat arb + mean reversion + portfolio optimization”，但源码层真正能为我们 desk 提供价值的，不是 README 里的大词，而是一个更小、更诚实的旁支想法：</p>
+<ul>
+<li>用 <strong>mean reversion</strong> 提供 spread 回归方向；</li>
+<li>用 <strong>momentum</strong> 不去追方向，而是当 <strong>entry veto</strong>；</li>
+<li>把这件事压成我们能在 <code>15m</code> 上很快复现的 <strong>BTC/ETH beta-neutral spread trade</strong>。</li>
+</ul>
+<p>更直白地说：<strong>别照抄 repo 那个“把 BTC/ETH 各自的 mean-reversion 和 momentum 平均起来”的写法；真正值得做最小实验的，是把它翻译成“spread MR × momentum veto”的完整 pairs raw alpha。</strong></p>
+<h2>2) 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这条 <code>BTC/ETH spread MR × momentum veto</code> 在当前 <code>15m</code> 口径下 <strong>有一点 gross edge，但净边极薄，轻微成本就会被打穿</strong>；因此它更适合当 <code>keep-as-control / reject-for-now</code> 的 raw-alpha 对照卡，而不是马上升优先级。</li>
+<li><strong>一句话证明方式：</strong> 我把 repo 的 <code>mean_reversion + momentum</code> 思路改写成 <code>BTC/ETH</code> 的 beta-neutral spread z-score 策略，在 Binance Futures 公共 <code>15m</code> 数据上做 120 天快检，gross 为正，但从极轻微成本开始就转负。</li>
+</ul>
+<p>3 个关键数据点（本地快检）：</p>
+<ol>
+<li><strong>带 momentum veto 的 baseline</strong>：近 <code>120d</code>、<code>15m</code>、<code>entry |z|&gt;2.0</code>、<code>exit |z|&lt;0.5</code>、<code>max_hold=8 bars</code>，<strong>gross <code>+0.58%</code>，Sharpe <code>0.57</code>，MDD <code>-1.08%</code></strong>。</li>
+<li><strong>成本非常敏感</strong>：同一 baseline 只要加入 <code>cost_per_turn=0.0001</code>，结果就变成 <strong><code>-0.66%</code>，Sharpe <code>-0.66</code></strong>；若到 <code>0.0003</code>，则是 <strong><code>-3.10%</code>，Sharpe <code>-3.08</code></strong>。</li>
+<li><strong>veto 确实有用，但不够救命</strong>：在 <code>cost_per_turn=0.0003</code> 下，不加 veto 时样本内 <strong>322 笔</strong>入场、总回报 <strong><code>-16.66%</code></strong>；加 veto 后只剩 <strong>62 笔</strong>入场，亏损缩到 <strong><code>-3.10%</code></strong>，说明 veto 主要作用是压换手与回撤，而不是把薄 edge 变成厚 edge。</li>
+</ol>
+<h2>3) 为什么和当前 desk 直接相关</h2>
+<p>这不是 filter/overlay 伪装成 alpha；它本身就是一条完整的 <strong>raw alpha</strong>：</p>
+<ul>
+<li>机理上属于 <strong>relative value / pairs / stat-arb / mean reversion</strong>；</li>
+<li>能直接拆成 <code>entry / exit / sizing / risk / cost</code>；</li>
+<li>并且特别适合做 <code>15m → 5m</code> 的快速 survival check。</li>
+</ul>
+<p>更重要的是，它满足这轮用户给的“灵活读法”：</p>
+<ul>
+<li>repo 本体其实写得很玩具，甚至带明显不完整处；</li>
+<li>但里面 <strong>“mean reversion 负责方向、momentum 负责否决”</strong> 这个旁支，反而比 repo headline 更适合我们 desk；</li>
+<li>所以这轮不是“照抄 repo 主标题”，而是<strong>从 repo 里拎出真正可做最小实验的 raw alpha 核心</strong>。</li>
+</ul>
+<h2>3.5) 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：pairs / stat-arb / relative-value / market-neutral / mean-reversion</li>
+<li>基础 alpha：BTC/ETH beta-neutral spread 偏离会在短窗内回归；但若 spread 还在沿入场方向加速，则胜率下降</li>
+<li>entry：</li>
+<li>先用 rolling beta 构造 <code>spread = log(ETH) - beta * log(BTC)</code>；</li>
+<li>对 spread 做 rolling z-score；</li>
+<li><code>z &gt; +2</code> 做 <strong>short spread</strong>（short ETH / long BTC）；</li>
+<li><code>z &lt; -2</code> 做 <strong>long spread</strong>（long ETH / short BTC）；</li>
+<li>若 spread 最近 <code>8 bars</code> 动量仍沿入场方向加速，则 <strong>跳过这次入场</strong>。</li>
+<li>exit：<code>|z|</code> 回到 <code>0.5</code> 内，或持仓达到 <code>8 bars</code> 强平退出</li>
+<li>sizing：按 rolling beta 做 gross-normalized hedge，控制两腿合计 gross ≈ 1</li>
+<li>risk / veto：momentum veto、最大持有时长、beta 失真时不交易、后续可加 funding diff / 波动阈值 / session filter</li>
+<li>cost：显式按每次换仓 gross 变化扣减；本次做了 <code>0 / 0.0001 / 0.0002 / 0.0003</code> 四档敏感性</li>
+</ul>
+<h2>4) Repo 层最关键的诚实判断</h2>
+<h3>4.1 这份 repo 最大的问题：它不是一个可直接复现的完整实现</h3>
+<p>源码里至少有三处明显问题：</p>
+<ol>
+<li><code>main.py</code> 调用了 <code>data.get_prices()</code> 与 <code>portfolio.get_positions()</code>，但 repo 当前公开文件里并没有对应可运行定义；</li>
+<li><code>portfolio.py</code> 原始文件本身是不完整的，代码在函数内部就截断了；</li>
+<li>所谓 “portfolio optimization” 与 “stat arb” 的关系在实现上并没真正闭环，更像教学型 scaffold。</li>
+</ol>
+<p>所以这份 repo <strong>不能当成 production-ready skeleton</strong>。</p>
+<h3>4.2 但它仍有 intake 价值</h3>
+<p>真正有价值的是它暴露了一个简单但可测试的问题：</p>
+<ul>
+<li><strong>如果 mean reversion 要做 short-cycle pairs，momentum 更像确认/否决层，而不是并行加权主信号。</strong></li>
+</ul>
+<p>这正是本次 digest 想留下的点。</p>
+<h2>5) 可复刻最小实验（15m 起步）</h2>
+<ul>
+<li>数据源：Binance Futures public kline REST</li>
+<li>公开性：公开可得，无需 API key</li>
+<li>更新频率：<code>1m/3m/5m/15m</code> 都可直接拉</li>
+<li>本次最小口径：</li>
+<li>标的：<code>BTCUSDT</code>、<code>ETHUSDT</code></li>
+<li>周期：<code>15m</code></li>
+<li>样本：近 <code>120d</code></li>
+<li>beta 窗口：<code>96 bars</code></li>
+<li>z-score 窗口：<code>96 bars</code></li>
+<li>entry / exit：<code>|z| &gt; 2.0</code> 入场，<code>|z| &lt; 0.5</code> 离场</li>
+<li>max hold：<code>8 bars</code></li>
+<li>veto：spread 最近 <code>8 bars</code> 若仍沿入场方向加速，则跳过</li>
+<li>首看指标：<code>return / Sharpe / MDD / trades / cost sensitivity</code></li>
+</ul>
+<h2>6) 下一步怎么测（直接可执行）</h2>
+<ol>
+<li><strong>先下钻到 <code>5m</code>，但别直接照搬参数</strong>：把 <code>beta/zscore/lookback/hold</code> 统一按“自然时间”而不是 bar 数重标，验证 veto 是否还能压换手。</li>
+<li><strong>补 funding diff</strong>：这条策略若跑在 perp 上，下一步必须测 <code>ETH funding - beta*BTC funding</code> 是否会把本来就很薄的 gross edge 吃掉，或反而提供额外 carry。</li>
+<li><strong>做 session pocket</strong>：只在 <code>UTC 13:00–17:00</code> 与 <code>20:00–24:00</code> 这种 liquidity 更厚的时段启用，看成本后是否能留下正 pocket。</li>
+<li><strong>把 veto 从“spread 过去 8 bar 动量”升级成两层 gate</strong>：<code>spread momentum veto + realized vol ceiling</code>，避免在单边扩散 regime 里一直逆势接刀。</li>
+<li><strong>做 control-card 对照</strong>：和已有 <code>cointegration spread × beta-consistent sizing</code>、<code>fixed-threshold pairs MR</code> 卡片并排，确认这条线是否只是另一个“gross 微正、净值不过线”的近亲。</li>
+</ol>
+<h2>7) 风险与保留意见</h2>
+<ul>
+<li>这份 repo 的实现质量偏低，<strong>不能把它当源码级证据的正样本</strong>；</li>
+<li>当前正边只存在于 gross，说明它更像 <strong>execution-sensitive control card</strong>，不是 ready-to-promote 候选；</li>
+<li>本次快检只用了 price spread，没有把 funding、手续费层级、maker/taker 混合成交显式建进去；</li>
+<li>若换成更长样本或更精细执行，也许能留出 pocket，但那已经属于下一轮验证，而不是本轮结论。</li>
+</ul>
+<h2>8) 来源</h2>
+<ol>
+<li><strong>notaconduit (updated 2024-08-25). _Statistical-Arbitrage-in-Cryptocurrencies_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/notaconduit/Statistical-Arbitrage-in-Cryptocurrencies">https://github.com/notaconduit/Statistical-Arbitrage-in-Cryptocurrencies</a></li>
+</ul>
+<ol>
+<li><strong>Repo source files inspected directly</strong></li>
+</ol>
+<ul>
+<li>README: <a href="https://raw.githubusercontent.com/notaconduit/Statistical-Arbitrage-in-Cryptocurrencies/master/README.md">https://raw.githubusercontent.com/notaconduit/Statistical-Arbitrage-in-Cryptocurrencies/master/README.md</a></li>
+<li>main.py: <a href="https://raw.githubusercontent.com/notaconduit/Statistical-Arbitrage-in-Cryptocurrencies/master/main.py">https://raw.githubusercontent.com/notaconduit/Statistical-Arbitrage-in-Cryptocurrencies/master/main.py</a></li>
+<li>trading.py: <a href="https://raw.githubusercontent.com/notaconduit/Statistical-Arbitrage-in-Cryptocurrencies/master/trading.py">https://raw.githubusercontent.com/notaconduit/Statistical-Arbitrage-in-Cryptocurrencies/master/trading.py</a></li>
+<li>portfolio.py: <a href="https://raw.githubusercontent.com/notaconduit/Statistical-Arbitrage-in-Cryptocurrencies/master/portfolio.py">https://raw.githubusercontent.com/notaconduit/Statistical-Arbitrage-in-Cryptocurrencies/master/portfolio.py</a></li>
+</ul>
+<ol>
+<li><strong>CoinGecko API Docs</strong>（repo 声称的数据来源）</li>
+</ol>
+<ul>
+<li><a href="https://docs.coingecko.com/reference/introduction">https://docs.coingecko.com/reference/introduction</a></li>
+</ul>
+<ol>
+<li><strong>Binance USDⓈ-M Futures Kline API Docs</strong>（本次最小快检使用）</li>
+</ol>
+<ul>
+<li><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></li>
+</ul>
+<h2>9) 本地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/btc_eth_pair_repo_probe_20260330/summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/btc_eth_pair_repo_probe_20260330/cost_sensitivity.csv</code></li>
+<li><code>reports/artifacts/quant_digests/btc_eth_pair_repo_probe_20260330/prices_15m.csv</code></li>
+</ul>
+</body>
+</html>

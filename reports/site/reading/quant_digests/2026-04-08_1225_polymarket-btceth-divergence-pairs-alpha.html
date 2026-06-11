@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 Polymarket repo 只读成预测市场 bot：对 short-cycle desk，更该先测的是「BTC/ETH 5m divergence-pair discount × hard-expiry reprice」这条完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 Polymarket repo 只读成预测市场 bot：对 short-cycle desk，更该先测的是「BTC/ETH 5m divergence-pair discount × hard-expiry reprice」这条完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-08 12:41 UTC</span>
+      <span class="pill">研究时间：2026-04-08 12:25 UTC</span>
+      <span class="pill">类型：2026 GitHub 新 repo source audit（`README.md` + `strategy.py` + `risk_manager.py` + `config.py` + `data_fetcher.py`）</span>
+      <span class="pill">主题标签：raw-alpha / prediction-market / relative-value / stat-arb / polymarket / btc / eth / 5m / hard-expiry / pair-trading / divergence / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：工程经验（开源代码 + 策略参数 + 风控实现）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-08_1225_polymarket-btceth-divergence-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-08 12:25 UTC</li>
+<li>类型：2026 GitHub 新 repo source audit（<code>README.md</code> + <code>strategy.py</code> + <code>risk_manager.py</code> + <code>config.py</code> + <code>data_fetcher.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：在 Polymarket 的 BTC/ETH 5 分钟 recurring binary markets 里，若 <code>BTC_UP+ETH_DOWN</code> 或 <code>BTC_DOWN+ETH_UP</code> 这类 divergence pair 的组合价跌到折价区，就同时买入两腿，等 5 分钟硬结算/官方 resolution 兑现</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / prediction-market / relative-value / stat-arb / polymarket / btc / eth / 5m / hard-expiry / pair-trading / divergence / repo / public-data / cost / risk</li>
+<li>证据类型：工程经验（开源代码 + 策略参数 + 风控实现）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 Andrew Cao 2026 的 GitHub 仓库 <code>andrew-cao-zc/polymarket-pair-trading</code>。别把它当成“预测市场自动下单脚本”；它真正值得 desk intake 的，是一条相当完整的 relative-value raw alpha：<strong>BTC 和 ETH 的 5 分钟方向 pair 在短时分歧里会出现组合价折价，而这种折价会在硬到期前后被重新定价。</strong></p>
+<ul>
+<li>一句话核心结论：这份 repo 真正值钱的不是 bot 外壳，而是 <strong>“跨资产 5m 分歧 pair 折价”</strong> 这条可独立下单的 raw alpha。</li>
+<li>一句话证明方式：作者把 entry、持有到官方 resolution、次数限制、连亏停机和回撤停机都写成了硬规则，直接围绕 Polymarket 订单簿与结算逻辑执行。</li>
+<li>最值得复用/复现的点：<strong>单腿价带 + 组合价带 + 官方结算</strong> 这个最小实验口径非常清楚，几乎拿来就能做 first verdict。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li>repo 不是做单腿方向，而是做两腿组合价：只交易 <code>BTC_UP+ETH_DOWN</code> / <code>BTC_DOWN+ETH_UP</code> 两个 divergence pair。</li>
+<li>entry 写得很硬：两腿单价都要在 <code>0.38~0.44</code>，组合价在 <code>0.70~0.82</code>。这本质上是在等“便宜的分歧票”，不是追热门单腿。</li>
+<li>signal 还要看当期 leader：若当前 5m 内 <code>btc_price &gt; eth_price</code> 就偏 <code>BTC_UP+ETH_DOWN</code>，反之做 <code>BTC_DOWN+ETH_UP</code>；也就是说它不是无脑买 pair，而是把相对强弱塞进 pair 方向。</li>
+<li>它天然带完整退出：持有到 5m 市场 official resolution；风控再加 <code>3</code> 连亏停机、日内回撤 <code>5%</code> 停机、单方向/单周期交易次数上限。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线跟我们最近写过的 Polymarket/Kalshi 锁定套利不一样：那些更像<strong>跨平台或互补合约的静态错误定价</strong>，这里更像<strong>同一平台、同一到期、跨资产方向分歧的动态 relative-value</strong>。它能直接补进 desk 的 raw alpha 素材池，而且周期天生就是 <code>5m</code>，几乎不用硬做 frequency transfer。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / stat-arb</li>
+<li>基础 alpha：<code>BTC/ETH divergence pair discount × hard-expiry reprice</code></li>
+<li>regime：只在 Polymarket <code>5m</code> recurring 市场活跃、盘口非空、进入新结算周期后启用</li>
+<li>filter / veto：两腿价格带 <code>0.38~0.44</code>；组合价 <code>0.70~0.82</code>；按 BTC-vs-ETH 当前强弱决定 pair 方向；流动性不足不做</li>
+<li>risk / sizing / execution overlay：固定 bet size；基于订单簿的 sweep 定价；<code>3</code> 连亏停机、日内 <code>5%</code> 回撤停机、每方向/每周期次数上限、持有到官方结算</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：Polymarket BTC/ETH <code>5m</code> recurring markets 里，<strong>分歧组合价的折价</strong>，在 1 个结算窗内有正的 net expectancy。</li>
+<li>一个可计算定义：每个 <code>5m</code> 周期开始后 <code>60~120s</code>，抓四个 token 的 mid/ask；构造 <code>BTC_UP+ETH_DOWN</code> 与 <code>BTC_DOWN+ETH_UP</code> 两个 pair。若两腿单价都在 <code>0.38~0.44</code> 且 pair 价在 <code>0.70~0.82</code>，按 BTC-vs-ETH 当期变动方向选一组，在 ask 买入，持有到官方 resolution。</li>
+<li>最小回测切口（资产 / 周期 / 样本）：Polymarket Gamma/CLOB 公共 API + BTC/ETH 外部现价源；样本先抓近 <code>2~4</code> 周全部 BTC/ETH <code>5m</code> recurring 市场；先只测 <code>5m</code>，不强行迁到 <code>1m/3m/15m</code>。</li>
+<li>最该先看哪 1~2 个指标：<code>post-cost expectancy / pair</code>、<code>fill-adjusted win rate</code>；其次看 <code>max losing streak</code> 和 <code>liquidity shortfall rate</code>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是 prediction-market relative-value，不是 CEX perp；容量、排队、resolution 延迟都可能比 README 设想更差。</li>
+<li>公开代码里“持有到结算”最干净，但真实收益会对买入 ask / 盘口深度极敏感；如果 sweep 成本抬高，alpha 很可能瞬间消失。</li>
+<li>它天然更适合 <code>5m</code>；若硬迁到 <code>1m/3m/15m</code>，应把它当作<strong>外部数据驱动的独立 5m alpha</strong>，而不是伪装成逐根币价信号。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Andrew Cao. (2026). *Polymarket Pair Trading Bot*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/andrew-cao-zc/polymarket-pair-trading">https://github.com/andrew-cao-zc/polymarket-pair-trading</a></code></li>
+<li>Public data APIs used by the repo:</li>
+<li>Polymarket Gamma API: <code><a href="https://gamma-api.polymarket.com/markets?slug=...">https://gamma-api.polymarket.com/markets?slug=...</a></code></li>
+<li>Polymarket CLOB book API: <code><a href="https://clob.polymarket.com/book?token_id=...">https://clob.polymarket.com/book?token_id=...</a></code></li>
+</ul>
+</body>
+</html>

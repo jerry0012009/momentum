@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2026 Hawkes LOB 论文只读成“高频预测模型”：对 short-cycle crypto desk，更该先拆的是「order-flow excitation state × base-imbalance signed drift」这条 microstructure raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2026 Hawkes LOB 论文只读成“高频预测模型”：对 short-cycle crypto desk，更该先拆的是「order-flow excitation state × base-imbalance signed drift」这条 microstructure raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-20 19:43 UTC</span>
+      <span class="pill">研究时间：2026-04-20 19:45 UTC</span>
+      <span class="pill">类型：论文 + GitHub</span>
+      <span class="pill">主题标签：microstructure / order-book / hawkes / base-imbalance / event-time / BTC / 1m / 3m / 5m</span>
+      <span class="pill">证据类型：论文证据 + 公开代码</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-20_1945_hawkes-lob-excitation-baseimbalance-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-20 19:45 UTC</li>
+<li>类型：论文 + GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：盘口事件的<strong>自激/互激强度</strong>先决定“下一次 mid-price 什么时候动”，再用 <strong>Base Imbalance（BI）</strong> 决定“更可能往哪边动”</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：microstructure / order-book / hawkes / base-imbalance / event-time / BTC / 1m / 3m / 5m</li>
+<li>证据类型：论文证据 + 公开代码</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 Davide Raffaelli、Raffaele Giuseppe Cestari、Daniele Marazzina、Simone Formentin 2026 年论文 *Forecasting Bitcoin price movements using multivariate Hawkes processes and limit order book data*，以及配套仓库 <code>Learning2Control/MultivariateHawkesLOB</code>。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha 很清楚</strong>：不是“静态盘口厚度大就涨”，而是<strong>盘口事件簇的到达节奏</strong>本身带信息；当某类吃单/撤单/中间价变动在短时间内连续冒出来时，下一次价格跳动的时间与方向都更可预测。</li>
+<li>作者把问题拆成两步：先用 <strong>multivariate Hawkes</strong> 预测下一次 mid-price change 的到达时间，再用 <strong>BI</strong> 预测那次变化更偏向上还是下；这比“只做 sign 分类”更贴近实盘，因为它把 <strong>什么时候该着急下单</strong> 也一起建模了。</li>
+<li>论文样本是 Bitfinex <code>BTC/USD</code> 2024-01 的约 <strong>300 万条 LOB 更新</strong>，其中约 <strong>374,538</strong> 次 mid-price change；事件间隔中位数只有 <strong>0.215 秒</strong>，这说明信号确实是超短微结构层，而不是慢频因子。</li>
+<li>结果上，<code>HawkesTime</code> 的平均方向准确率约 <strong>0.67</strong>，明显高于只用 Hawkes 直接判符号的 <code>HawkesSign</code> 约 <strong>0.55</strong>；同时平均推理时间约 <strong>1.8ms</strong>，快于对照的 <strong>2.6ms</strong>。</li>
+<li>时间预测本身也明显更像样：多元 Hawkes 的 median relative error 约 <strong>0.747</strong>，优于单变量 Hawkes <strong>1.525</strong>、移动平均 <strong>1.981</strong>、Poisson <strong>3.542</strong>、naive <strong>4.098</strong>；说明 <strong>跨事件类型的互激</strong> 不是装饰，而是主信号。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这和 <code>momentum</code> 当前主线的关系很直接：它给的不是又一个慢频“方向观点”，而是一条能服务 <code>1m/3m/5m</code> 的 <strong>microstructure raw alpha</strong>。更重要的是，它提醒我们：对短周期 desk，盘口 alpha 不一定非得退化成静态 <code>OBI/microprice</code>，也可以先建一个 <strong>event-time admission layer</strong>——只有当盘口进入“高激发、高可预测”状态时，才放大现有 <code>imbalance / microprice / queue-pressure</code> 信号。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：超短周期单资产微观结构 / 顺势漂移</li>
+<li>基础 alpha：<code>高 excitation 的盘口事件簇 + 偏置 BI -&gt; 下一次 mid-price 更可能沿该方向跳动</code></li>
+<li>regime：高流动、事件密集、盘口连续更新的时段更适合；死盘/稀疏盘时应降权</li>
+<li>filter / veto：点差过宽、深度过薄、事件到达稀疏、异常跳价时 veto</li>
+<li>risk / sizing / execution overlay：只适合小 size、低延迟、maker/taker 混合执行；若 1m 聚合后 edge 仍薄，应退回成 execution admission，而不是裸方向单独交易</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：<code>top-5~10 level</code> 的 BI 只有在“最近几十秒盘口事件显著自激/互激”时，才更稳定地预测下一段 <code>1m/3m</code> 漂移。</li>
+<li>一个可计算定义：在 Binance <code>bookTicker</code> / <code>depth</code> 流里先做 <code>1s</code> 采样，构造 <code>(i) top-5 BI</code>、<code>(ii) 最近 30~60s 的 mid-price change / best-bid depletion / best-ask depletion 计数</code>、<code>(iii) excitation proxy = 这些事件的 EWMA 强度</code>；只在 <code>excitation_proxy</code> 进入上分位时，测试 <code>BI</code> 对 next <code>12/36/60</code> 秒或 next <code>1/3</code> 根 <code>1m</code> bar 的方向命中率与 bps。</li>
+<li>最小回测切口：<code>BTCUSDT</code> 先做，周期先看 <code>1m/3m</code>，样本先取最近 <code>7~14d</code> 高频快照。</li>
+<li>最该先看哪 1~2 个指标：<code>gross bps / event</code>、<code>hit-rate uplift vs 静态 BI baseline</code>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文数据是 Bitfinex <code>BTC/USD</code>，迁移到 Binance/Hyperliquid 时，盘口层级、撮合节奏、fee 结构都会变。</li>
+<li>这条线天然偏高频；如果 desk 当前拿不到稳定 L2/L3 或低延迟执行，别硬包装成独立主策略，更合理的是先把它做成 <strong>短窗 admission / urgency score</strong>。</li>
+<li>方向准确率 <code>0.67</code> 听起来高，但对应的是“下一次 mid-price change”而不是扣完摩擦后的净收益；成本与队列位置仍是生死线。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Raffaelli, D., Cestari, R. G., Marazzina, D., &amp; Formentin, S. (2026). *Forecasting Bitcoin price movements using multivariate Hawkes processes and limit order book data*. *Decisions in Economics and Finance*.</li>
+<li>DOI: <code>10.1007/s10203-026-00570-z</code></li>
+<li>Readable URL: <code><a href="https://link.springer.com/article/10.1007/s10203-026-00570-z">https://link.springer.com/article/10.1007/s10203-026-00570-z</a></code></li>
+<li>PDF URL: <code><a href="https://link.springer.com/content/pdf/10.1007/s10203-026-00570-z.pdf">https://link.springer.com/content/pdf/10.1007/s10203-026-00570-z.pdf</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/Learning2Control/MultivariateHawkesLOB">https://github.com/Learning2Control/MultivariateHawkesLOB</a></code></li>
+</ul>
+</body>
+</html>

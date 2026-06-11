@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 OBI 只当 veto：这份高信号新仓库更适合先复现「订单簿失衡驱动的做市 raw alpha」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 OBI 只当 veto：这份高信号新仓库更适合先复现「订单簿失衡驱动的做市 raw alpha」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-23 12:50 UTC</span>
+      <span class="pill">类型：GitHub 新仓库教程 + 微观结构论文链路</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/order-book-imbalance/market-making/relative-value/execution/cost/latency/1m/3m/5m/15m</span>
+      <span class="pill">证据类型：工程证据 + 文献证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-23_1250_obi-market-making-raw-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-23 12:50 UTC</li>
+<li>类型：GitHub 新仓库教程 + 微观结构论文链路</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：Order Book Imbalance（OBI）标准化后对短时价格漂移的预测（用于 fair value 偏移与双边报价）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/microstructure/order-book-imbalance/market-making/relative-value/execution/cost/latency/1m/3m/5m/15m</li>
+<li>证据类型：工程证据 + 文献证据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong>nkaz001/hftbacktest（持续更新，2026 仍活跃）</strong> 里的官方教程 <strong>Market Making with Alpha - Order Book Imbalance</strong>。先回答 base alpha：<strong>不是趋势线/突破确认，而是盘口买卖深度不平衡（OBI）对未来几秒到几十秒价格漂移的预测</strong>，再把这个 alpha 直接塞进做市报价中心（reservation/fair price）。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> OBI 在 crypto perp 上可以作为可独立复现的 raw alpha，不必降级成“只做否决层”。</li>
+<li><strong>一句话证明方式：</strong> 教程给了完整可运行代码（信号→报价→库存约束→费用模型→队列模型）和多时段回测结果，不是口头经验。</li>
+<li>教程样例（BTCUSDT，2023-05）给出：<code>SR≈10.83</code>、<code>Return≈34.24%</code>、<code>MaxDD≈3.72%</code>、<code>Return/Trade≈0.0139%</code>（含 maker rebate 假设）。</li>
+<li>同参数迁移到更近市场（BTCUSDT，2025-01~02）仍有：<code>SR≈5.37</code>、<code>Return≈45.96%</code>、<code>MaxDD≈9.79%</code>、<code>Return/Trade≈0.0086%</code>，显示 edge 在衰减但未消失。</li>
+<li>2025-05~07 进一步走弱到 <code>SR≈3.04</code>、<code>Return/Trade≈0.0044%</code>，说明这条 alpha 的生存条件高度依赖<strong>费率+排队成交质量+延迟控制</strong>。</li>
+<li>最值得复用的不是某个单阈值，而是这条完整骨架：<code>OBI z-score -&gt; fair_price 偏移 -&gt; 库存 skew -&gt; 双边挂单更新 -&gt; 成本后评估</code>。</li>
+</ul>
+<h2>3. 为什么和当前项目直接相关</h2>
+<ul>
+<li>直接补充我们现在最缺的池子：<strong>microstructure raw alpha</strong>（区别于最近大量 filter/gate 主题）。</li>
+<li>能服务 <code>1m/3m</code> 快节奏研发（信号在秒级计算），也能反哺 <code>5m/15m</code>：作为执行层 alpha（更优入场时点、少吃冲击）。</li>
+<li>该主题天然包含完整策略要件：entry/exit、仓位上限、库存风控、交易费/返佣、延迟与排队模型。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：做市型短周期 alpha（可带轻度方向偏置），本质是微观结构相对价值</li>
+<li>基础 alpha：<code>alpha_t = zscore(sum_bid_depth - sum_ask_depth)</code>（或 VAMP/micro-price 变体）</li>
+<li>regime：高流动性、点差稳定、盘口深度连续、延迟可控时更有效</li>
+<li>filter / veto：极端跳价、盘口真空、消息冲击窗口、队列成交率塌陷时停机</li>
+<li>risk / sizing / execution overlay：</li>
+<li><code>reservation_price = fair_price - skew * normalized_position</code></li>
+<li><code>max_position_dollar</code> 硬上限</li>
+<li>挂单网格 <code>grid_num/grid_interval</code></li>
+<li>成本模型必须显式计入 <code>maker/taker + 滑点 + 延迟</code></li>
+</ul>
+<h2>4. 可复刻的最小实验（下一步怎么测）</h2>
+<ul>
+<li><strong>研究假设：</strong> OBI 标准化信号在 Binance USDT perp 上可提供可交易的秒级 edge，且在成本后仍有正期望。</li>
+<li><strong>最小定义：</strong></li>
+<p>1) 数据：Binance perp 公共深度流（top N 档）+ 成交流；采样到 <code>1s</code>。 2) 信号：<code>obi_raw = sum_bid_qty(0~x%) - sum_ask_qty(0~x%)</code>，<code>obi_z = rolling_zscore(30m~60m)</code>。 3) 交易：每 <code>1s</code> 更新 <code>fair_price = mid + c1*obi_z</code>，双边挂单；库存超阈值时只留一侧降仓。 4) 出场：库存回归、alpha 反转或超时撤单；异常波动触发 kill-switch。</p>
+<li><strong>样本与周期：</strong>先跑 BTC/ETH 最近 30 天，输出按 <code>1m/3m</code> 统计；再汇总到 <code>5m/15m</code> 看稳定性。</li>
+<li><strong>先看 4 个指标：</strong><code>post_cost_pnl</code>、<code>return_per_trade(bp)</code>、<code>fill_ratio</code>、<code>inventory_drawdown</code>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这条 alpha 对“成交质量”极敏感：排不到队、撤单慢、返佣不足，都会把 edge 吃掉。</li>
+<li>教程结果包含特定费率假设（含 maker rebate）；实盘需按我们账户等级重算。</li>
+<li>秒级策略的 infra 要求高，若当前 desk 先跑 <code>5m/15m</code>，建议先把它当<strong>执行增强层</strong>并行验证。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>nkaz001. (ongoing, accessed 2026). _hftbacktest_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/nkaz001/hftbacktest">https://github.com/nkaz001/hftbacktest</a></li>
+<li>Readable URL: <a href="https://github.com/nkaz001/hftbacktest">https://github.com/nkaz001/hftbacktest</a></li>
+</ul>
+<ol>
+<li><strong>hftbacktest Docs. _Market Making with Alpha - Order Book Imbalance_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://hftbacktest.readthedocs.io/en/latest/tutorials/Market%20Making%20with%20Alpha%20-%20Order%20Book%20Imbalance.html">https://hftbacktest.readthedocs.io/en/latest/tutorials/Market%20Making%20with%20Alpha%20-%20Order%20Book%20Imbalance.html</a></li>
+</ul>
+<ol>
+<li><strong>Stoikov, S. (2018). _The micro-price: a high-frequency estimator of future prices_. Quantitative Finance.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1080/14697688.2018.1489139</code></li>
+<li>Readable URL: <a href="https://doi.org/10.1080/14697688.2018.1489139">https://doi.org/10.1080/14697688.2018.1489139</a></li>
+</ul>
+<ol>
+<li><strong>Martin, R., Line Jr., W., &amp; Feng, L. (2023). _Mind the Gaps: Short-Term Crypto Price Prediction_. SSRN.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.2139/ssrn.4351947</code></li>
+<li>Readable URL: <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4351947">https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4351947</a></li>
+</ul>
+</body>
+</html>

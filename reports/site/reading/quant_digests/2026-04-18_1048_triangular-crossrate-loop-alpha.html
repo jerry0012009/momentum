@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把三角套利只读成“老掉牙搬砖”：对 short-cycle crypto desk，更该先测的是「同所同步报价里的 cross-rate inconsistency」这条 relative-value raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把三角套利只读成“老掉牙搬砖”：对 short-cycle crypto desk，更该先测的是「同所同步报价里的 cross-rate inconsistency」这条 relative-value raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-18 10:50 UTC</span>
+      <span class="pill">研究时间：2026-04-18 10:48 UTC</span>
+      <span class="pill">类型：GitHub repo source audit + Binance Spot `bookTicker` live public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha / relative-value / stat-arb / triangular-arbitrage / cross-rate / law-of-one-price / spot / binance / usdt / usdc / fdusd / eth / 1m / 3m / 5m / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：repo audit + live top-of-book probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-18_1048_triangular-crossrate-loop-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-18 10:48 UTC</li>
+<li>类型：GitHub repo source audit + Binance Spot <code>bookTicker</code> live public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>同一交易所、同一时点的多币对买一卖一若无法满足 cross-rate 一致性，存在可闭环执行的三腿汇率套利收益</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / relative-value / stat-arb / triangular-arbitrage / cross-rate / law-of-one-price / spot / binance / usdt / usdc / fdusd / eth / 1m / 3m / 5m / repo / public-data / cost / risk</li>
+<li>证据类型：repo audit + live top-of-book probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看的是 GitHub 仓库 <code>Drakkar-Software/Triangular-Arbitrage</code>，核心文件包括：</p>
+<ul>
+<li><code>README.md</code></li>
+<li><code>triangular_arbitrage/detector.py</code></li>
+<li><code>tests/test_detector.py</code></li>
+</ul>
+<p>它做的事情很直接：把交易对当成有向图上的边，遍历闭环路径，找出乘积大于 <code>1</code> 的 cycle。repo 默认用的是 <code>last/close</code> 价，<strong>不含买卖价差、不含手续费、不含执行顺序约束</strong>；所以它给的是一个 raw alpha 探测器，不是现成可上线的 execution engine。</p>
+<p>但它的优点也正好在这里：<strong>base alpha 非常清楚</strong>，不是 overlay，不是 filter，就是最朴素的 Law-of-One-Price 偏离——同一撮同步报价之间，若 <code>A -&gt; B -&gt; C -&gt; A</code> 的净兑换率大于 <code>1</code>，就有套利闭环。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：这份 repo 真正值得 desk 收进研究池的，不是“图搜索很酷”，而是它把一条<strong>可独立复现的相对价值 raw alpha</strong>讲得非常干净：<code>cross-rate inconsistency -&gt; immediate mean reversion / closure</code>。</li>
+<li><strong>一句话 first verdict</strong>：我把 repo 的“last-price 找环”改成了更严格的 Binance Spot <code>bookTicker</code> 版，用 <code>bid/ask</code> 和每腿费用去重算；结果很明确——<strong>裸 gross 确实经常有正值，但一上现实费用，公开顶档盘口下几乎全灭</strong>。</li>
+</ul>
+<h3>2.1 live probe 读出来的 3 个关键数</h3>
+<p>我对 Binance Spot <code>USDT / USDC / FDUSD / BTC / ETH / BNB / SOL / XRP / DOGE / ADA / LINK</code> 做了约 <code>90</code> 秒、每秒一次的 top-of-book 扫描，只保留从 <code>USDT</code> 出发的三腿闭环：</p>
+<ol>
+<li><strong>零费用 gross 版</strong>：<code>90/90</code> 个样本都能找到正的闭环，median 约 <strong><code>+1.50 bps</code></strong>，最好约 <strong><code>+4.68 bps</code></strong>。</li>
+<li><strong>每腿 4 bps</strong>（接近很优 taker / 普通 maker-taker 混合的乐观口径）后：<code>0/90</code> 个样本为正，best 也只有 <strong><code>-7.32 bps</code></strong>。</li>
+<li><strong>每腿 10 bps</strong>（更接近普通 taker 口径）后：同样 <code>0/90</code> 个样本为正，median 约 <strong><code>-28.47 bps</code></strong>。</li>
+</ol>
+<p>最常出现的最佳闭环是：</p>
+<ul>
+<li><code>USDT -&gt; ETH -&gt; USDC -&gt; USDT</code></li>
+</ul>
+<p>这说明什么？说明 <strong>edge 本体是存在的</strong>，而且公开数据一眼就能复现；但 <strong>它首先是 execution / fee / queue-priority 问题，不是信号是否存在的问题</strong>。</p>
+<h2>3. 为什么这题仍然值得进研究池</h2>
+<p>虽然公开 top-of-book + taker 口径下 first verdict 偏负，但这题仍值得保留，原因有三个：</p>
+<h3>3.1 它是很干净的 raw alpha，不是伪命题</h3>
+<p>很多“结构类”主题其实只有 filter 意义；但三角套利不是。它的 base alpha 可以直接写成：</p>
+<p><code>净环收益 = Π(逐腿可成交汇率) - 1</code></p>
+<p>只要 <code>净环收益 &gt; 全部费用 + 执行缓冲</code>，就能做；做完就平，没有方向暴露。这个定义足够干净，能独立存在。</p>
+<h3>3.2 它天然适合 <code>1m / 3m / 5m</code> 甚至更快的最小实验</h3>
+<p>这类信号不是日频/小时级宏观条件，而是<strong>秒级到分钟级</strong>的闭环偏离。对我们 desk 来说，很适合拿来做：</p>
+<ul>
+<li>高频 relative-value 基线监控</li>
+<li>“低费率/返佣/内部撮合条件下是否能活”的 execution feasibility study</li>
+<li>作为 stablecoin / quote-fragmentation 结构健康度指标</li>
+</ul>
+<h3>3.3 它能反过来当别的 raw alpha 的 execution veto</h3>
+<p>即便最后不单独上线 tri-arb，本题也能沉淀出一个很值钱的组件：</p>
+<ul>
+<li>当某个 quote asset（如 <code>USDC</code> / <code>FDUSD</code>）相对 <code>USDT</code> 出现短时错位时，很多同 underlier 的跨报价 spread、pair residual、stablecoin spread fade 都会被一起污染。</li>
+<li>所以 tri-arb 偏离本身，也可以反过来做 <strong>execution veto / stale-quote veto / quote-health regime</strong>。</li>
+</ul>
+<p>也就是说：这题既可以被当 raw alpha 主体，也可以降级复用成其它 relative-value 策略的风控层。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：market-neutral / closed-loop / immediate relative-value arbitrage</li>
+<li>基础 alpha：<code>同所同步报价中的三腿 cross-rate inconsistency 会被迅速修复</code></li>
+<li>regime：多报价资产、稳定币 quote 碎片化、高波动或局部流动性不均时更容易出现</li>
+<li>filter / veto：</li>
+<li>必须用 <code>bid/ask</code> 而不是 <code>last</code></li>
+<li>必须扣手续费、滑点、撤单失败、部分成交风险</li>
+<li>必须过滤 stale quote / 深度不足 / 最小成交额不足</li>
+<li>risk / sizing / execution overlay：</li>
+<li>entry：<code>expected_net_bps &gt; fee + slippage_buffer + latency_buffer</code></li>
+<li>exit：三腿闭环天然 exit；若某腿未成交，立即走 hedge/unwind 分支</li>
+<li>sizing：按三腿最浅一腿的顶档容量或前 <code>k</code> 档累计可成交量确定</li>
+<li>risk：挂单等待超时、残腿库存暴露、quote 突变、费率层级变化</li>
+</ul>
+<h2>4. repo 里真正有价值的部分</h2>
+<p><code>triangular_arbitrage/detector.py</code> 的关键价值不是“能找到 cycle”本身，而是它把问题抽象成了：</p>
+<ol>
+<li>每个交易对是一条可兑换边；</li>
+<li>反向兑换边用倒数价格表示；</li>
+<li>找乘积最大的闭环；</li>
+<li>乘积大于 <code>1</code> 就是候选机会。</li>
+</ol>
+<p>这让它天然可迁移到：</p>
+<ul>
+<li>只扫 <code>3</code> 条腿，而不是所有闭环；</li>
+<li>用 <code>bid/ask</code> 替代 <code>close</code>；</li>
+<li>把边权从“价格”改成“价格 × (1-fee) × fill_prob × depth_penalty”；</li>
+<li>把“最优环”改成“最优可执行环”。</li>
+</ul>
+<p>所以 repo 本身虽然只是探测器，但它提供了一个很干净的 alpha skeleton。</p>
+<h2>5. 可复刻的最小实验</h2>
+<h3>5.1 最小研究假设</h3>
+<p>同一所 spot 报价中，若某三腿循环在真实 <code>bid/ask</code> 与手续费后仍存在稳定正净值，则可形成可交易的短周期 stat-arb pocket。</p>
+<h3>5.2 最小可复现实验口径</h3>
+<ul>
+<li>交易所：Binance Spot</li>
+<li>数据：公开 <code>GET /api/v3/ticker/bookTicker</code></li>
+<li>频率：<code>1s</code> 轮询先做 feasibility；若要更严谨，再上 websocket best bid/ask</li>
+<li>资产池：先做 <code>USDT / USDC / FDUSD / BTC / ETH / BNB / SOL</code></li>
+<li>闭环：只看 <code>3</code> 条腿，从 <code>USDT</code> 出发回到 <code>USDT</code></li>
+<li>价格：</li>
+<li><code>base -&gt; quote</code> 用 <code>bid</code></li>
+<li><code>quote -&gt; base</code> 用 <code>1/ask</code></li>
+<li>净收益：</li>
+<li><code>gross = Π(rate_i)</code></li>
+<li><code>net = gross × Π(1-fee_i) - 1</code></li>
+<li>容量：取三腿中最紧那一腿对应的可成交起始名义</li>
+</ul>
+<h3>5.3 这轮已完成的 public-data probe</h3>
+<p>本地已生成：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-18_triangular_arb_bookticker_probe.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_triangular_arb_bookticker_summary.json</code></li>
+</ul>
+<p>结果摘要：</p>
+<ul>
+<li><code>fee=0 bps/leg</code>：<code>positive_rate = 100%</code>，median <code>+1.50 bps</code></li>
+<li><code>fee=4 bps/leg</code>：<code>positive_rate = 0%</code></li>
+<li><code>fee=10 bps/leg</code>：<code>positive_rate = 0%</code></li>
+<li>best cycle：<code>USDT&gt;ETH&gt;USDC&gt;USDT</code></li>
+<li>正 gross 样本对应的顶档起始容量约在 <strong><code>9.5 ~ 37054 USDT</code></strong> 之间，但这只是顶档理论容量，不代表三腿都能无冲击完成</li>
+</ul>
+<h2>6. 对 short-cycle desk 的实际读法</h2>
+<h3>6.1 不要把它理解成“普通账户直接 taker 三下就能赚”</h3>
+<p>公开盘口已经说明：<strong>如果你只是普通 taker，edge 很大概率会被费用直接吃掉</strong>。</p>
+<h3>6.2 真正更值钱的，是这三种 desk 级用法</h3>
+<ol>
+<li><strong>低费/返佣/做市权限账户</strong>：重新评估是否能把 gross pocket 留住。</li>
+<li><strong>内部路由 / 多账户 / 自建撮合优先级研究</strong>：验证 execution 是否比“公开顶档 + taker”更有优势。</li>
+<li><strong>作为 quote-health / stale-leg veto</strong>：给 stablecoin spread、same-underlier multi-quote、跨 quote pair 策略做 admission filter。</li>
+</ol>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>repo 原始实现用 <code>close/last</code>，会系统性高估机会；不能直接拿来下单。</li>
+<li>三腿任何一腿失败，都会把 market-neutral 策略瞬间变成单腿库存风险。</li>
+<li>top-of-book 看上去有利润，不代表深度吃进去后仍有利润。</li>
+<li>交易所内部撮合、延迟、费率等级、最小下单额、限价排队位置，都会决定这题是否能从“研究题”变成“生产题”。</li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<p>别再继续做 <code>last-price</code> 图搜索了，下一步应该是这 4 件事：</p>
+<ol>
+<li><strong>把 <code>bookTicker</code> 升级成 websocket BBO 流</strong>：看正净值机会的持续时间，而不是只看轮询快照。</li>
+<li><strong>把费用从常数改成真实账户费率场景</strong>：普通 taker / VIP taker / maker-first / maker+taker 混合分开测。</li>
+<li><strong>把容量从顶档扩成前 <code>3~5</code> 档累计深度</strong>：算真实可成交名义和冲击后净值。</li>
+<li><strong>只盯 <code>USDT/USDC/FDUSD + BTC/ETH/SOL</code> 的稳定币相关闭环</strong>：因为这轮 live probe 里最佳环长期集中在 quote fragmentation 最强的位置。</li>
+</ol>
+<p>如果这 4 步下来仍为负，就把 tri-arb 从“主策略候选”降级成：</p>
+<ul>
+<li>stablecoin quote stress monitor</li>
+<li>same-underlier multi-quote 策略的 veto / health metric</li>
+</ul>
+<h2>9. 数据源与公开性</h2>
+<ul>
+<li>Repo：公开 GitHub 仓库，公开代码，可直接 clone</li>
+<li>行情数据：Binance Spot <code>bookTicker</code> 公共 REST / websocket，公开可得</li>
+<li>更新频率：近实时</li>
+<li>最小可复现实验口径：用 BBO 数据重建三腿净环收益，扣费后统计 <code>positive_rate / best_bps / median_bps / capacity</code></li>
+</ul>
+<h2>10. 来源</h2>
+<h3>Repo source</h3>
+<ul>
+<li>Drakkar-Software. *Triangular-Arbitrage*. GitHub repository.</li>
+<li>Repo URL: <code><a href="https://github.com/Drakkar-Software/Triangular-Arbitrage">https://github.com/Drakkar-Software/Triangular-Arbitrage</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/Drakkar-Software/Triangular-Arbitrage/blob/master/README.md">https://github.com/Drakkar-Software/Triangular-Arbitrage/blob/master/README.md</a></code></li>
+<li>Key files:</li>
+<li><code>triangular_arbitrage/detector.py</code></li>
+<li><code>tests/test_detector.py</code></li>
+</ul>
+<h3>Public market data</h3>
+<ul>
+<li>Binance Spot bookTicker REST: <code><a href="https://api.binance.com/api/v3/ticker/bookTicker">https://api.binance.com/api/v3/ticker/bookTicker</a></code></li>
+</ul>
+<h3>Local artifacts</h3>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-18_triangular_arb_bookticker_probe.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-18_triangular_arb_bookticker_summary.json</code></li>
+</ul>
+<h2>11. 最后一句话</h2>
+<p>这题的答案不是“有没有 alpha”——<strong>有，而且公开数据很容易看到</strong>；真正的问题是：<strong>你的费用、延迟、排队权和执行兜底，够不够把这点 alpha 留在自己账上。</strong></p>
+</body>
+</html>

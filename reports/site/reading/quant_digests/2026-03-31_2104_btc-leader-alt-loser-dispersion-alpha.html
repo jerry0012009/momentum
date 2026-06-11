@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 HKU x Avenir 竞赛 repo 只看成 cointegration 框架：更该先测的是「BTC leader × 24h 弱势 alt loser basket」relative-value raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 HKU x Avenir 竞赛 repo 只看成 cointegration 框架：更该先测的是「BTC leader × 24h 弱势 alt loser basket」relative-value raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-31 21:26 UTC</span>
+      <span class="pill">研究时间：2026-03-31 21:04 UTC</span>
+      <span class="pill">类型：GitHub 新仓库源码审阅 + Binance USDⓈ-M Perpetual 公开 `1h/15m` 本地 quick check</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/cross-sectional/dispersion/btc-vs-alt/loser-basket/24h-lagged-return/continuation/variance-scaling/hourly/15m/5m/1m/3m/repo/public-data/cost</span>
+      <span class="pill">证据类型：工程经验 + public-data replication</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-31_2104_btc-leader-alt-loser-dispersion-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-31 21:04 UTC</li>
+<li>类型：GitHub 新仓库源码审阅 + Binance USDⓈ-M Perpetual 公开 <code>1h/15m</code> 本地 quick check</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>BTC 相对强势延续 + 过去 24h 弱势 alt 继续跑输</strong>，即 long BTC、short 过去 24h 为负收益的 alt basket，吃的是 <strong>leader-vs-loser dispersion / relative-value continuation</strong>，不是 generic pairs filter</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/relative-value/cross-sectional/dispersion/btc-vs-alt/loser-basket/24h-lagged-return/continuation/variance-scaling/hourly/15m/5m/1m/3m/repo/public-data/cost</li>
+<li>证据类型：工程经验 + public-data replication</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看的是 2026 GitHub 新仓库 <code>LevRoz630/hku-avenir-2nd-round</code>。它是 HKU x Avenir Web3 量化比赛第二轮的实盘/回测框架，README 明写：<strong>12 周 Binance perp 竞赛、全球 1,171 名参赛者、作者队伍拿到 top 11</strong>。repo 里当然有大家更熟悉的 <code>pairs</code> / <code>cointegration</code> 线，但对当前 desk 来说，真正更值得先收进 raw alpha 池的，其实是那条没那么显眼的 <code>v1_ls</code>：</p>
+<ul>
+<li><strong>long BTC futures</strong>；</li>
+<li><strong>short 过去 24h 收益为负的 altcoins</strong>；</li>
+<li>alt 权重按 <code>abs(24h return) / variance</code> 分配；</li>
+<li><strong>只保留权重大于 10% 的币</strong>，减少碎仓和手续费；</li>
+<li><strong>每日再平衡</strong>，另带 ratio-drift 触发；</li>
+<li>position manager 里还有 <strong>15% 单仓亏损 red button</strong> 和 <strong>allocation ramp-up</strong>。</li>
+</ul>
+<p>所以这不是一篇“解释 BTC 带 alt”或“再来一个 cross-sectional reversal”材料，而是一条已经把 <code>entry / exit / sizing / risk / cost shell</code> 写得比较全的 <strong>relative-value raw alpha</strong>。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha 很清楚</strong>：不是 generic market beta，也不是“跌多了就抄底”，而是 <strong>BTC 作为 leader 的相对强势延续 + 弱势 alt 继续跑输</strong>。</li>
+<li>repo 的可贵之处，不是它宣称自己比赛名次高，而是它把 <strong>完整策略骨架</strong> 明确写出来了：</li>
+<li><strong>entry</strong>：过去 <code>24h</code> 为负收益的 alt 入候选池；</li>
+<li><strong>selection</strong>：只留负收益 alt；</li>
+<li><strong>sizing</strong>：按 <code>|24h return| / var(24h return)</code> 做权重，再过滤掉 <code>&lt;10%</code> 的碎权重；</li>
+<li><strong>rebalance</strong>：按天重排，外加 BTC/alt ratio 漂移重平衡；</li>
+<li><strong>risk</strong>：<code>15%</code> 单仓亏损红按钮，仓位线性 ramp-up。</li>
+<li>更关键的是：这条线 <strong>不是只能照抄 repo 原版方向暴露</strong>。对我们 desk，更值得测的是把它拆成：</li>
+</ul>
+<ol>
+<li><strong>raw alpha 本体</strong>：BTC leader vs alt loser dispersion；</li>
+<li><strong>仓位治理层</strong>：是否做 beta-neutral / gross-neutral / vol-neutral；</li>
+<li><strong>执行层</strong>：<code>1h</code> 信号、<code>15m/5m</code> 执行。</li>
+</ol>
+<ul>
+<li><strong>一句话核心结论</strong>：这份 repo 最值得偷的，不是它的 cointegration 外壳，而是这条很朴素但可直接落地的 <strong>BTC-vs-weak-alt relative-value continuation</strong>。</li>
+<li><strong>一句话证明方式</strong>：我按 repo 公开规则做了 public-data proxy quick check 后发现，哪怕把原版强方向暴露削成更保守的 <strong>beta-neutralized</strong> 版本，边际也没有完全消失，说明它不只是蹭 market direction。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>当前 <code>momentum</code> 已经积累了不少：funding / basis / cross-venue carry / pairs / cointegration / lead-lag / single-name MR。但还缺一类很实用的原料：</p>
+<ul>
+<li><strong>不靠复杂协整，不靠黑箱 ML</strong>；</li>
+<li>只用公开 OHLCV 就能先做；</li>
+<li>可以自然映射到 <code>15m</code> 执行、<code>5m</code> 精细入场；</li>
+<li>同时又不是纯单边趋势。</li>
+</ul>
+<p>这条 BTC-vs-alt loser dispersion 正好卡在这个空档：</p>
+<ul>
+<li>它是 <strong>relative-value / cross-sectional raw alpha</strong>；</li>
+<li>信号很简单，公开数据就够；</li>
+<li>能快速做 honesty check：一看是不是纯 beta，二看成本后是否还活，三看 active-day 占比是否太低。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative-value / cross-sectional dispersion / leader-vs-loser continuation</li>
+<li>基础 alpha：<strong>BTC 相对强势延续 + 弱势 alt basket 继续跑输</strong></li>
+<li>regime：更适合 market dispersion 较大的时段；可后续叠加 BTC trend / cross-sectional breadth / vol regime gate</li>
+<li>filter / veto：只留 <code>24h return &lt; 0</code> 的 alt；过滤 <code>&lt;10%</code> 碎权重；无合格 alt 时空仓</li>
+<li>risk / sizing / execution overlay：<code>|24h return| / variance</code> 权重、daily rebalance、ratio drift 重平衡、<code>15%</code> 单仓止损、allocation ramp-up、成本按换手收取</li>
+</ul>
+<h2>4. 我先做了什么最小快检</h2>
+<p>我没有直接信 repo 叙事，而是用 <strong>Binance USDⓈ-M public <code>1h</code> / <code>15m</code> klines</strong> 做了一个 faithful proxy：</p>
+<ul>
+<li>样本：<code>2025-09-01 ~ 2026-03-31</code></li>
+<li>币池：<code>BTC, ETH, SOL, ADA, XRP, DOGE</code></li>
+<li>信号：<code>24h</code> log return</li>
+<li>权重：<code>abs(24h return) / var(24h return over 5d)</code></li>
+<li>过滤：保留权重 <code>&gt;10%</code></li>
+<li>成本：单边 <code>6 bps</code> taker-ish on turnover</li>
+<li>再平衡：按日</li>
+</ul>
+<h3>4.1 repo-like 版本（原版方向暴露）</h3>
+<ul>
+<li>持仓：<code>+10% BTC</code>，<code>-90% alt loser basket</code></li>
+<li><code>1h</code> quick check：</li>
+<li><strong>总收益约 <code>+110.1%</code></strong></li>
+<li><strong>Sharpe 约 <code>2.55</code></strong></li>
+<li><strong>最大回撤约 <code>-17.6%</code></strong></li>
+<li>active days：<code>150 / 212</code></li>
+<li>平均每天入选 alt 数：<code>3.47</code></li>
+<li><code>15m</code> transfer check（同逻辑、15m 执行）：</li>
+<li><strong>总收益约 <code>+109.4%</code></strong></li>
+<li><strong>Sharpe 约 <code>2.21</code></strong></li>
+<li><strong>最大回撤约 <code>-22.5%</code></strong></li>
+</ul>
+<h3>4.2 beta-neutralized 版本（更像 desk 可用形态）</h3>
+<p>我又把它压成更保守的 <strong>gross-neutral-ish</strong> 版本：</p>
+<ul>
+<li>持仓：<code>+50% BTC</code>，<code>-50% alt loser basket</code></li>
+</ul>
+<p>结果：</p>
+<ul>
+<li><code>1h</code> quick check：</li>
+<li><strong>总收益约 <code>+19.7%</code></strong></li>
+<li><strong>Sharpe 约 <code>1.93</code></strong></li>
+<li><strong>最大回撤约 <code>-5.5%</code></strong></li>
+<li><code>15m</code> transfer check：</li>
+<li><strong>总收益约 <code>+17.6%</code></strong></li>
+<li><strong>Sharpe 约 <code>1.39</code></strong></li>
+<li><strong>最大回撤约 <code>-9.7%</code></strong></li>
+</ul>
+<h3>4.3 这组快检说明了什么</h3>
+<ul>
+<li>原版 repo-like 结果确实更猛，但它也明显带了 <strong>净空 alt / 净空 beta</strong> 的方向暴露；</li>
+<li>更重要的是：<strong>把方向性砍掉一大截以后，这条线没有直接死掉</strong>；</li>
+<li>这说明 raw alpha 不只是“熊市里做空小币”；它至少有一部分，确实来自 <strong>leader-vs-loser 的相对强弱延续</strong>。</li>
+</ul>
+<h2>5. 可复刻的最小实验</h2>
+<p>如果下一步要把它正式收进研究池，我建议按这个顺序测：</p>
+<ol>
+<li><strong>faithful baseline</strong></li>
+</ol>
+<ul>
+<li>完整复刻 repo 版：<code>1h</code> 信号、daily rebalance、<code>BTC+loser basket</code>、<code>6/10/15 bps</code> 三档成本；</li>
+<li>先确认仓位/换手/活跃天数是不是诚实。</li>
+</ul>
+<ol>
+<li><strong>neutralization layer</strong></li>
+</ol>
+<ul>
+<li>在同一 alpha 上，比较：</li>
+<li>repo-like <code>10/90</code></li>
+<li><code>50/50 gross-neutral</code></li>
+<li><code>beta-matched BTC hedge</code></li>
+<li><code>vol-targeted basket hedge</code></li>
+<li>这一步是为了区分：到底赚的是 <strong>relative-value alpha</strong>，还是纯 market short。</li>
+</ul>
+<ol>
+<li><strong>execution transfer 到 <code>15m/5m</code></strong></li>
+</ol>
+<ul>
+<li>信号仍用 <code>24h</code> 窗口，但执行时钟改成 <code>15m</code>；</li>
+<li><code>5m</code> 只用于更细入场：例如把 daily rebalance 拆成 <code>00:00~01:00 UTC</code> VWAP/TWAP 执行带；</li>
+<li>记录执行后 drift 和成交成本，而不是只看 bar-close PnL。</li>
+</ul>
+<ol>
+<li><strong>universe 扩张</strong></li>
+</ol>
+<ul>
+<li>从 <code>BTC/ETH/SOL/ADA/XRP/DOGE</code> 扩到前 <code>15~30</code> 个 perp majors；</li>
+<li>但必须保留 <strong>最小流动性门槛</strong>，别让 microcaps 假装 Sharpe。</li>
+</ul>
+<ol>
+<li><strong>regime 分层</strong></li>
+</ol>
+<ul>
+<li>按 BTC trend、cross-sectional breadth、realized vol、funding crowding 分 bucket；</li>
+<li>看这条线是更像 <strong>risk-off dispersion alpha</strong>，还是普通日常 alpha。</li>
+</ul>
+<h2>6. 下一步怎么测（直接给实验单）</h2>
+<h3>实验 A：这条线是不是主要靠熊市 beta</h3>
+<ul>
+<li>指标：对 BTC 小时收益回归后的残差 alpha、down-beta、net exposure</li>
+<li>判据：如果 neutralized 版本 residual Sharpe 还在 <code>&gt;1</code>，就继续；如果掉到接近 0，说明原版主要靠方向</li>
+</ul>
+<h3>实验 B：<code>15m</code> 是否比 <code>1h</code> 更适合执行</h3>
+<ul>
+<li>做法：信号保持 <code>24h</code>，分别用 <code>1h close</code>、<code>15m TWAP window</code>、<code>5m TWAP window</code> 执行</li>
+<li>判据：比较 post-cost Sharpe、max DD、turnover 和 slippage proxy</li>
+</ul>
+<h3>实验 C：弱势 alt 的定义是否要分叉</h3>
+<ul>
+<li>对比：</li>
+<li>只看 <code>24h return &lt; 0</code></li>
+<li><code>24h return</code> bottom quartile</li>
+<li><code>24h residual return</code>（先对 BTC beta 残差化）</li>
+<li><code>24h return &lt; 0</code> 且 funding/oi 不拥挤</li>
+<li>判据：如果 residual loser 比原始 loser 更稳，就说明真正 alpha 更接近 <strong>idiosyncratic underperformance continuation</strong></li>
+</ul>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li>这仍然是 <strong>repo-based competition code</strong>，不是正式论文；比赛名次能说明作者做过实盘迭代，但不等于可直接继承绩效。</li>
+<li>repo 原版的 <code>+10% BTC / -90% alt basket</code> 暴露明显偏空，不是标准 market-neutral；如果不做 neutralization，很容易把 beta 当 alpha。</li>
+<li>我做的 public-data quick check 是 <strong>faithful proxy</strong>，不是原 repo OMS 的逐笔复刻；不能把数值当最终结论，只能当 first verdict。</li>
+<li>当前样本明显带有阶段性 market regime，active days 只有 <code>150/212</code>，说明这条线不是 always-on，空仓占比不低。</li>
+</ul>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>Lev Rozhkov et al. (2026). _hku-avenir-2nd-round_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>Readable URL: <code><a href="https://github.com/LevRoz630/hku-avenir-2nd-round">https://github.com/LevRoz630/hku-avenir-2nd-round</a></code></li>
+<li>Repo URL: <code><a href="https://github.com/LevRoz630/hku-avenir-2nd-round.git">https://github.com/LevRoz630/hku-avenir-2nd-round.git</a></code></li>
+</ul>
+<ol>
+<li><strong>README.md</strong>（比赛背景、top 11 / 1171、策略列表、15m backtester 框架）</li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/LevRoz630/hku-avenir-2nd-round/blob/main/README.md">https://github.com/LevRoz630/hku-avenir-2nd-round/blob/main/README.md</a></code></li>
+</ul>
+<ol>
+<li><strong><code>backtester/backtest/strategies/v1_ls.py</code></strong>（BTC long / negative-24h alt short 主策略）</li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/LevRoz630/hku-avenir-2nd-round/blob/main/backtester/backtest/strategies/v1_ls.py">https://github.com/LevRoz630/hku-avenir-2nd-round/blob/main/backtester/backtest/strategies/v1_ls.py</a></code></li>
+</ul>
+<ol>
+<li><strong><code>backtester/backtest/position_managers/v1_ls_pm.py</code></strong>（15% red button、allocation ramp-up）</li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/LevRoz630/hku-avenir-2nd-round/blob/main/backtester/backtest/position_managers/v1_ls_pm.py">https://github.com/LevRoz630/hku-avenir-2nd-round/blob/main/backtester/backtest/position_managers/v1_ls_pm.py</a></code></li>
+</ul>
+<ol>
+<li><strong><code>backtester/backtest/v1_ls_bt.py</code></strong>（默认 <code>lookback_days=5</code>、100 天样本、50 次 permutation test 外壳）</li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/LevRoz630/hku-avenir-2nd-round/blob/main/backtester/backtest/v1_ls_bt.py">https://github.com/LevRoz630/hku-avenir-2nd-round/blob/main/backtester/backtest/v1_ls_bt.py</a></code></li>
+</ul>
+<ol>
+<li><strong><code>backtester/src/backtester.py</code></strong>（回测与 permutation test 引擎）</li>
+</ol>
+<ul>
+<li>Readable URL: <code><a href="https://github.com/LevRoz630/hku-avenir-2nd-round/blob/main/backtester/src/backtester.py">https://github.com/LevRoz630/hku-avenir-2nd-round/blob/main/backtester/src/backtester.py</a></code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 大而全交易引擎只读成“volume profile 教学模块”：对 short-cycle desk，更该先拆的是「value-area 回归 × LVN 穿越」这条完整 raw alpha 壳</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 大而全交易引擎只读成“volume profile 教学模块”：对 short-cycle desk，更该先拆的是「value-area 回归 × LVN 穿越」这条完整 raw alpha 壳</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-18 00:49 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（GitHub API metadata + `README.md` + `src/strategies/volume_profile.py`）</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/auction-market/volume-profile/poc/value-area/lvn/mean-reversion/breakout-shell/vwap/atr/5m/15m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：源码规则</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-18_0049_auction-profile-poc-lvn-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-18 00:49 UTC</li>
+<li>类型：2026 GitHub repo source audit（GitHub API metadata + <code>README.md</code> + <code>src/strategies/volume_profile.py</code>）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：拍卖式均衡回归——价格脱离当期成交最密集区（Value Area / POC）后，倾向回到“成交最拥挤的公平价”；而穿越低成交空洞（LVN）时，倾向快速滑向下一块成交密集区</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/single-asset/auction-market/volume-profile/poc/value-area/lvn/mean-reversion/breakout-shell/vwap/atr/5m/15m/repo/public-data/cost/risk</li>
+<li>证据类型：源码规则</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了 <strong>mefai-dev (2026)</strong> 的 GitHub repo <strong>Mefai Autotrade</strong>，重点不是它 README 里那堆“20+ strategies”，而是源码里的 <code>src/strategies/volume_profile.py</code>。这个模块已经把一条可直接落地的短周期策略壳写得很完整：</p>
+<ul>
+<li>用最近一段 session K 线重建 volume profile；</li>
+<li>算 <code>POC</code>（成交最密集价）、<code>VAH/VAL</code>（70% 成交价值区上下沿）、<code>HVN/LVN</code>（高/低成交节点）；</li>
+<li>给出 3 类 entry：<code>POC bounce</code>、<code>value-area edge re-entry</code>、<code>LVN breakout</code>；</li>
+<li>exit / sizing / risk 也不是空着：<code>POC/VA</code> 目标位、<code>ATR stop</code>、<code>risk_pct</code> 仓位归一都在源码里。</li>
+</ul>
+<p>repo 元数据也说明它是很新的仓：创建于 <strong>2026-03-25</strong>，最近一次 push 在 <strong>2026-04-08</strong>。</p>
+<h2>2. 先回答：base alpha 是什么？</h2>
+<p><strong>base alpha 很清楚：不是泛“技术分析确认层”，而是 auction-market 里的两段式 raw alpha。</strong></p>
+<p>更直白地说：</p>
+<ol>
+<li><strong>回归腿</strong>：价格跑出价值区后，如果又回到 <code>VAH/VAL</code> 内，往往会继续朝 <code>POC</code> 这个“最拥挤成交价”回归；</li>
+<li><strong>穿越腿</strong>：如果价格穿过 <code>LVN</code> 这种低成交真空带，往往会更快滑向下一块有成交承接的区域。</li>
+</ol>
+<p>所以它不是单纯 mean reversion，也不是单纯 breakout，而是一个很适合 desk 的<strong>“拍卖结构路由器”</strong>：</p>
+<ul>
+<li>在 value edge 上更像 <strong>fade / reversion</strong>；</li>
+<li>在 LVN 上更像 <strong>acceptance breakout / fast traverse</strong>。</li>
+</ul>
+<p>这比继续写一篇泛 BB/RSI/EMA 壳更值钱，因为当前索引里几乎还没有把 <strong>volume profile / auction structure</strong> 当成主主题展开。</p>
+<h2>3. 源码里真正有价值的策略骨架</h2>
+<h3>3.1 Profile 怎么建</h3>
+<p>源码用最近 <code>session_bars</code> 根 K 线建 profile，默认：</p>
+<ul>
+<li><code>num_bins = 50</code></li>
+<li><code>value_area_pct = 70%</code></li>
+<li><code>session_bars = 288</code>（正好对应 <code>288 x 5m = 1</code> 天）</li>
+</ul>
+<p>实现上不是 tick 级真 profile，而是把每根 bar 的成交量均匀分摊到其覆盖的价格 bins。这个做法不完美，但<strong>对 5m/15m 最小实验已经够诚实</strong>，因为它只需要公开 OHLCV 就能复刻。</p>
+<h3>3.2 三类 entry 已经写死在源码里</h3>
+<p><strong>(a) POC bounce</strong></p>
+<ul>
+<li>若现价离 <code>POC</code> 足够近（默认 <code>0.1%</code> 内），</li>
+<li>现价在 <code>POC</code> 下方就做多，在 <code>POC</code> 上方就做空。</li>
+</ul>
+<p>这条最像“围绕公平价的短距回归”。</p>
+<p><strong>(b) Value-area edge re-entry</strong></p>
+<ul>
+<li>上一根还在 <code>VAH</code> 外、这一根重新回到 <code>VAH</code> 内：做空；</li>
+<li>上一根还在 <code>VAL</code> 外、这一根重新回到 <code>VAL</code> 内：做多。</li>
+</ul>
+<p>翻成人话：<strong>价格试图逃离高成交区，但又没逃出去，回到价值区时，先按失败逃逸处理。</strong></p>
+<p><strong>(c) LVN breakout / traverse</strong></p>
+<ul>
+<li>从下往上穿过 <code>LVN</code> 中部：做多；</li>
+<li>从上往下穿过 <code>LVN</code> 中部：做空。</li>
+</ul>
+<p>这条不是“突破就追”那么粗糙，本质更像：<strong>低成交区像空气层，价格一旦进去，容易更快滑向下一块有成交承接的区域。</strong></p>
+<h3>3.3 exit / sizing / risk 不是空白</h3>
+<p>源码里的完整壳：</p>
+<ul>
+<li><strong>止盈</strong>：优先回到 <code>POC</code>；若方向关系不合，就退到 <code>VAH/VAL</code></li>
+<li><strong>止损</strong>：<code>ATR stop</code>，默认 <code>atr_stop_mult = 1.5</code></li>
+<li><strong>仓位</strong>：<code>calculate_position_size(account_balance, entry, stop, risk_pct)</code></li>
+<li><strong>风险预算</strong>：默认 <code>risk_pct = 1.0</code></li>
+<li><strong>附加上下文</strong>：signal metadata 里还塞了 <code>poc / va_high / va_low / vwap / hvn_count / lvn_count</code></li>
+</ul>
+<p>也就是说，这不是“只有信号没有交易壳”的半成品；它已经满足我们这轮优先级里最重要那条：<strong>可直接落地为完整策略。</strong></p>
+<h2>4. 为什么这题现在值得进研究池</h2>
+<h3>4.1 它补的是当前 digest 池里的一个空白</h3>
+<p>最近几天已经很密的方向包括：</p>
+<ul>
+<li>order-flow / OBI / CVD</li>
+<li>pairs / cointegration / spread z-score</li>
+<li>funding / basis / carry</li>
+<li>maker / market-making</li>
+</ul>
+<p>但 <strong>volume profile / auction structure</strong> 几乎没被作为主 alpha 母板认真展开。这个主题刚好补空位，而且不依赖私有 L2、也不需要 prediction market 外部数据。</p>
+<h3>4.2 对短周期 desk 很友好</h3>
+<p>它天然适合 <code>5m/15m</code>，也能往 <code>1m/3m</code> 下钻：</p>
+<ul>
+<li><code>5m</code>：先做 session profile + POC/VA/LVN 母版；</li>
+<li><code>15m</code>：适合做更粗的 acceptance / rejection；</li>
+<li><code>1m/3m</code>：可把 <code>LVN traverse</code> 做得更接近 execution-aware routing。</li>
+</ul>
+<h3>4.3 数据门槛低</h3>
+<p><strong>最小可复现实验只需要公开 OHLCV。</strong></p>
+<ul>
+<li>数据源：Binance spot / USDⓈ-M perpetual klines</li>
+<li>公开性：公开可得</li>
+<li>更新频率：1m / 3m / 5m / 15m 都有</li>
+<li>最小实验口径：session rolling profile + bar-volume binning</li>
+</ul>
+<p>这点比很多看起来更“高级”的 microstructure 题更现实。</p>
+<h2>5. 我对这份源码的真实判断</h2>
+<h3>5.1 值得抄的是“壳”，不是参数</h3>
+<p>这份代码最值钱的是<strong>把 auction 结构拆成了 entry/exit/risk 的完整语言</strong>，不是默认参数本身：</p>
+<ul>
+<li><code>POC proximity 0.1%</code></li>
+<li><code>VA proximity 0.15%</code></li>
+<li><code>50 bins</code></li>
+<li><code>70% value area</code></li>
+</ul>
+<p>这些数值大概率都要重标。不同币、不同周期、spot/perp 都不会一样。</p>
+<h3>5.2 最大缺点：profile 还是 bar-based proxy</h3>
+<p>源码不是逐笔 volume-at-price，而是把整根 bar 的量均匀撒进价格区间。这会带来两个问题：</p>
+<ul>
+<li>越长周期，profile 越糊；</li>
+<li>大实体 K 会把并不存在的成交密度“抹平”。</li>
+</ul>
+<p>所以这更像<strong>低成本第一版研究母板</strong>，不是最终 production 口径。若最小实验有感觉，下一步就该升级到：</p>
+<ul>
+<li>用 Binance aggTrades 重建更细的 volume-at-price；或</li>
+<li>至少在 <code>1m</code> 先建 profile，再聚合到 <code>5m/15m</code> 做交易。</li>
+</ul>
+<h3>5.3 POC bounce 这条最可疑，VA re-entry / LVN traverse 更值得先测</h3>
+<p>源码里 <code>POC bounce</code> 逻辑非常激进：只要足够接近 <code>POC</code>，下方就多、上方就空。这个写法容易在单边趋势里被反复打脸。</p>
+<p>相比之下，我觉得更值得优先测的是两条：</p>
+<ol>
+<li><strong>VAH/VAL re-entry → POC 回归</strong></li>
+<li><strong>LVN 穿越 → 下一高成交区方向延续</strong></li>
+</ol>
+<p>因为这两条更贴近 auction-market 的“接受/拒绝”叙事，也更容易做出干净的事件定义。</p>
+<h2>6. 面向 desk 的最小实验</h2>
+<h3>实验 A：value-area re-entry fade</h3>
+<ul>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT</code> perpetual</li>
+<li>周期：先 <code>5m</code>，再看 <code>15m</code></li>
+<li>profile：滚动过去 <code>1d</code>（288 根 5m）或 <code>2d</code></li>
+<li>入场：</li>
+<li><code>prev_close &gt; VAH</code> 且 <code>close &lt;= VAH</code> → next bar open short</li>
+<li><code>prev_close &lt; VAL</code> 且 <code>close &gt;= VAL</code> → next bar open long</li>
+<li>出场：</li>
+<li><code>POC</code> 止盈</li>
+<li><code>1.5 x ATR</code> 止损</li>
+<li><code>max holding = 12~24 bars</code></li>
+<li>先看指标：<code>post-cost expectancy</code>、<code>hit rate to POC before stop</code></li>
+</ul>
+<h3>实验 B：LVN traverse continuation</h3>
+<ul>
+<li>标的：同上</li>
+<li>周期：<code>1m/3m/5m</code></li>
+<li>入场：价格首次穿越最近 session 某个 <code>LVN midpoint</code></li>
+<li>出场：</li>
+<li>下一 <code>HVN</code> / <code>VA edge</code></li>
+<li>或固定 <code>1R~1.5R</code></li>
+<li>先看指标：<code>穿越后 1/3/5 bar MFE</code>、<code>反向回抽概率</code></li>
+</ul>
+<h3>实验 C：把它当 shared router，而不是单独 alpha</h3>
+<p>如果 A/B 单独不过线，也值得测：</p>
+<ul>
+<li>趋势 alpha 只在 <strong>LVN 同向穿越</strong> 时放大仓位；</li>
+<li>均值回归 alpha 只在 <strong>VA re-entry</strong> 时开仓；</li>
+<li>一旦价格处于高成交拥挤区中央，统一降权或禁入。</li>
+</ul>
+<h2>7. 风险与保留意见</h2>
+<ul>
+<li><strong>最容易被忽悠的点</strong>：volume profile 看起来很“懂市场结构”，但如果只用 bar-volume proxy，很多漂亮的节点其实是分箱幻觉。</li>
+<li><strong>趋势市风险</strong>：POC/VA 回归在强趋势里会持续逆势。</li>
+<li><strong>交易成本风险</strong>：这类策略若频繁在 value edge 来回试单，会被 fee + spread 慢慢磨死。</li>
+<li><strong>session 定义风险</strong>：crypto 是 24/7，daily session 怎么切，会显著影响 profile 形状。UTC 日切、亚洲/欧洲/美洲 session，都该分别测试。</li>
+</ul>
+<h2>8. 一句话结论</h2>
+<p>这份 repo 真正值得拿走的，不是“volume profile 很酷”，而是：<strong>它把 auction-market 结构翻译成了一个可直接回测的完整策略壳。</strong> 对当前 short-cycle desk，最该先测的不是 POC 附近瞎抄底摸顶，而是 <strong><code>VA re-entry -&gt; POC</code> 的失败逃逸回归腿</strong>，以及 <strong><code>LVN traverse</code> 的低成交空洞穿越腿</strong>。</p>
+<h2>9. 下一步怎么测</h2>
+<ol>
+<li><strong>先做 5m Binance perpetual 三币母版</strong>：BTC/ETH/SOL，滚动 1d profile。</li>
+<li><strong>把三类 entry 分开回测</strong>：<code>POC bounce</code>、<code>VA re-entry</code>、<code>LVN traverse</code> 不要混在一起。</li>
+<li><strong>先看事件级而不是整套净值</strong>：每类事件的 <code>hit POC / hit next HVN / stop-first</code> 概率，先判断哪条腿真的有 edge。</li>
+<li><strong>再做 session 切法敏感性</strong>：UTC 0 点切日、8 小时 session、24 小时 rolling profile 三种并排。</li>
+<li><strong>若 bar-profile 有感觉，再升级到 aggTrades 重建 volume-at-price</strong>，确认 edge 不是分箱假象。</li>
+</ol>
+<h2>10. 来源</h2>
+<ul>
+<li>mefai-dev. (2026). *Mefai Autotrade*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/mefai-dev/mefai-autotrade">https://github.com/mefai-dev/mefai-autotrade</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/mefai-dev/mefai-autotrade/blob/master/src/strategies/volume_profile.py">https://github.com/mefai-dev/mefai-autotrade/blob/master/src/strategies/volume_profile.py</a></code></li>
+<li>Raw URL: <code><a href="https://raw.githubusercontent.com/mefai-dev/mefai-autotrade/master/src/strategies/volume_profile.py">https://raw.githubusercontent.com/mefai-dev/mefai-autotrade/master/src/strategies/volume_profile.py</a></code></li>
+<li>GitHub API metadata used: repository <code>created_at=2026-03-25</code>, <code>pushed_at=2026-04-08</code></li>
+</ul>
+</body>
+</html>

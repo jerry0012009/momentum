@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个 Bybit funding bot 只读成“又一个收租脚本”：对 short-cycle crypto desk，更该先回答的是「high positive funding persistence × exit-threshold」这条 carry raw alpha 到底够不够厚</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个 Bybit funding bot 只读成“又一个收租脚本”：对 short-cycle crypto desk，更该先回答的是「high positive funding persistence × exit-threshold」这条 carry raw alpha 到底够不够厚</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-21 07:01 UTC</span>
+      <span class="pill">研究时间：2026-04-21 07:00 UTC</span>
+      <span class="pill">类型：GitHub repo + public-data portability probe</span>
+      <span class="pill">主题标签：carry / funding / basis / relative value / same-venue / bybit / spot-perp / 15m child execution / cost</span>
+      <span class="pill">证据类型：工程证据 + public-data probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-21_0700_bybit-positive-funding-decay-carry-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-21 07:00 UTC</li>
+<li>类型：GitHub repo + public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同所 <code>positive funding</code> 足够高、且在接下来 <code>1~3</code> 个 funding windows 内持续不塌；交易上对应 <code>long spot + short perp</code>，赚 funding carry，直到 funding 低于退出阈值</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：carry / funding / basis / relative value / same-venue / bybit / spot-perp / 15m child execution / cost</li>
+<li>证据类型：工程证据 + public-data probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 <code>NikoSAN02/crypto-trading-bot</code>（2026）的 Bybit funding-arb repo，核心文件是 <code>strategies/funding_arb.py</code>、<code>risk/position_manager.py</code>、<code>simulate.py</code>。它不是在讲“预测涨跌”，而是在讲一个完整 carry 壳：<code>entry=annualized funding &gt;= 15%</code>，<code>exit=annualized funding &lt; 5%</code>，同所现货对冲，外加持仓上限、reserve、drawdown stop。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这份 repo 的 base alpha 很清楚：<strong>不是 funding 高这一刻本身，而是 funding 高了之后还能继续高 enough to pay costs</strong>。</li>
+<li>它值得学的不是“Bybit API 接法”，而是<strong>把 carry 写成完整策略壳</strong>：entry / exit / sizing / liquidity floor / drawdown guard 都给了。</li>
+<li>我用 Bybit 公共 funding history 对 <code>BTC/ETH/SOL/XRP/DOGE/ADA/LINK/AVAX/LTC/BCH</code> 做了 <code>180d</code> portability probe：若按 repo 风格把 round-trip 粗扣成 <code>17 bps</code>，<code>entry &gt;= 10% APY</code> 的 <code>1087</code> 个事件里，未来 <code>2</code> 次 funding 的平均 gross 仅 <code>+1.42 bps</code>，净值约 <code>-15.58 bps</code>。</li>
+<li>更狠一点按 repo 原阈值 <code>entry &gt;= 15% APY</code> 看，这个 10-major bucket 里最近 <code>180d</code> <strong>直接 0 个事件</strong>；当前 live snapshot 里最高也只是 <code>BCHUSDT ≈ +1.0 bps/8h ≈ 10.95% APY</code>。</li>
+<li>所以这条线目前更像：<strong>完整 raw alpha 壳成立，但 broad liquid-major same-venue 版明显不够厚</strong>；若要救，得去更小币、更极端 funding spike，或降成 <code>15m</code> child execution / maker-first / pre-funded<code> execution sleeve</code>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和 desk 现在要补的 raw alpha 素材池直接相关，因为它属于 <code>carry / funding / basis</code> 家族，而且 repo 已经把完整交易骨架写出来了。它的价值不在“今天就能开机”，而在于告诉我们：<strong>carry raw alpha 不是看 funding 排行榜就行，关键是 funding persistence 能不能覆盖真实摩擦。</strong> 这对后续所有 funding / basis / cross-venue intake 都是共通 admission 逻辑。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / carry</li>
+<li>基础 alpha：<code>high positive funding persistence</code>，即高正 funding 在后续若干结算窗里继续为正并维持足够厚度</li>
+<li>regime：高拥挤、多头杠杆需求强、perp 相对 spot 偏贵的阶段更容易出现</li>
+<li>filter / veto：spot twin 可交易、<code>24h</code> 流动性下限、entry APY 阈值、exit APY 阈值</li>
+<li>risk / sizing / execution overlay：单笔上限、总曝险上限、reserve、drawdown halt；对 short-cycle desk 更该补 <code>15m</code> maker-first child execution 与 basis/borrow veto</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：在 Bybit/币安这类同所 spot-perp 市场里，<strong>高正 funding 事件之后的 <code>1~3</code> 次 funding payment 是否足以覆盖 round-trip 成本</strong>。</li>
+<li>一个可计算定义：<code>entry = funding_annualized &gt;= {10%,15%,20%}</code>；<code>exit = funding_annualized &lt; 5%</code>；收益先只看 <code>sum(next_k funding)</code>，再粗扣 <code>fees + slippage</code>。</li>
+<li>最小回测切口：先跑 liquid majors，再单独跑 mid-cap bucket；bar 级别用 <code>15m</code> 只负责 child execution，不要硬伪装成逐根方向信号。</li>
+<li>最该先看指标：<code>事件数 / 平均 gross carry bps / 成本后 net bps / next-1 funding persistence</code>。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>我这轮 public probe 只验证了 <strong>funding persistence</strong>，没把真实 basis 变化、maker fill、borrow frictions、inventory 占用 fully 加进去；因此这里是偏乐观的第一层筛子。</li>
+<li>repo 里还写了负 funding 分支（long perp 收 funding），但那一侧不再是严格 delta-neutral，价格风险会重新回来；对我们 desk，不该直接和 spot-hedged positive-funding 壳混成一类。</li>
+<li>结论不是“funding carry 不存在”，而是：<strong>同所、liquid-major、粗暴 taker/半被动版现在明显不过线。</strong></li>
+</ul>
+<h2>6. 下一步怎么测</h2>
+<p>先别继续把 same-venue majors funding shell 当主 alpha 加仓；下一步更值钱的是两条：</p>
+<ol>
+<li>做 <code>mid-cap positive-funding spike</code> 的事件研究，按 <code>maker-first 15m child execution</code> 重算 break-even；</li>
+<li>同时补一个 <code>cross-venue funding/basis spread</code> 版本，对照“单所 funding persistence 不够厚”到底是 alpha 不存在，还是 venue 选错了。</li>
+</ol>
+<h2>7. 来源</h2>
+<ul>
+<li>NikoSAN02. (2026). *crypto-trading-bot*. GitHub.</li>
+<li>Repo URL: <code><a href="https://github.com/NikoSAN02/crypto-trading-bot">https://github.com/NikoSAN02/crypto-trading-bot</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/NikoSAN02/crypto-trading-bot/blob/main/README.md">https://github.com/NikoSAN02/crypto-trading-bot/blob/main/README.md</a></code></li>
+<li>Key source files:</li>
+<li><code><a href="https://raw.githubusercontent.com/NikoSAN02/crypto-trading-bot/main/strategies/funding_arb.py">https://raw.githubusercontent.com/NikoSAN02/crypto-trading-bot/main/strategies/funding_arb.py</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/NikoSAN02/crypto-trading-bot/main/risk/position_manager.py">https://raw.githubusercontent.com/NikoSAN02/crypto-trading-bot/main/risk/position_manager.py</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/NikoSAN02/crypto-trading-bot/main/simulate.py">https://raw.githubusercontent.com/NikoSAN02/crypto-trading-bot/main/simulate.py</a></code></li>
+<li>Public data:</li>
+<li>Bybit V5 Market API — funding history / tickers</li>
+<li><code><a href="https://bybit-exchange.github.io/docs/v5/market/history-fund-rate">https://bybit-exchange.github.io/docs/v5/market/history-fund-rate</a></code></li>
+<li><code><a href="https://bybit-exchange.github.io/docs/v5/market/tickers">https://bybit-exchange.github.io/docs/v5/market/tickers</a></code></li>
+<li>Local artifacts:</li>
+<li><code>reports/artifacts/quant_digests/bybit_positive_funding_decay_summary_2026-04-21.csv</code></li>
+<li><code>reports/artifacts/quant_digests/bybit_positive_funding_decay_detail_2026-04-21.csv</code></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2023 crypto pairs 论文只读成“又一篇配对教材”：对 short-cycle desk，更该先保留的是「walk-forward cointegration admission × half-life-bounded spread fade」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2023 crypto pairs 论文只读成“又一篇配对教材”：对 short-cycle desk，更该先保留的是「walk-forward cointegration admission × half-life-bounded spread fade」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-23 07:59 UTC</span>
+      <span class="pill">研究时间：2026-04-23 07:57 UTC</span>
+      <span class="pill">类型：2023 SSRN 论文摘要/实现镜像复核（QuantBuffet / Harbourfront / Crossref / OpenAlex）+ Binance USDⓈ-M public-data walk-forward portability probe（2026-04-23）</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/walk-forward/half-life/spread-zscore/15m/5m/paper/public-data/cost/risk</span>
+      <span class="pill">证据类型：paper abstract + strategy mirror + metadata + public-data portability</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-23_0757_walkforward-cointegration-halflife-pairs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-23 07:57 UTC</li>
+<li>类型：2023 SSRN 论文摘要/实现镜像复核（QuantBuffet / Harbourfront / Crossref / OpenAlex）+ Binance USDⓈ-M public-data walk-forward portability probe（2026-04-23）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>先用协整关系筛出会回归的 pair，再在 <code>1m/3m/5m/15m</code> 执行层对 spread 的极端偏离做反向 fade，赌的是两腿相对错价回归，而不是单腿方向。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/cointegration/walk-forward/half-life/spread-zscore/15m/5m/paper/public-data/cost/risk</li>
+<li>证据类型：paper abstract + strategy mirror + metadata + public-data portability</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看：</p>
+<ul>
+<li><strong>Chiara Lesa, Ronald Hochreiter (2023), _Cryptocurrency Pair Trading_</strong></li>
+<li>Venue：SSRN Electronic Journal</li>
+<li>DOI：<code>10.2139/ssrn.4433530</code></li>
+<li>Readable URL：&lt;<a href="https://doi.org/10.2139/ssrn.4433530&gt;">https://doi.org/10.2139/ssrn.4433530&gt;</a></li>
+<li>Mirror / summary：</li>
+<li>QuantBuffet：&lt;<a href="https://quantbuffet.com/en/2024/04/15/pairs-trading-in-cryptocurrencies/&gt;">https://quantbuffet.com/en/2024/04/15/pairs-trading-in-cryptocurrencies/&gt;</a></li>
+<li>Harbourfront：&lt;<a href="https://harbourfrontquant.substack.com/p/pairs-trading-in-the-cryptocurrency&gt;">https://harbourfrontquant.substack.com/p/pairs-trading-in-the-cryptocurrency&gt;</a></li>
+<li>Repo URL：N/A</li>
+</ul>
+<p>先把一句话说透：<strong>这篇东西的 base alpha 很清楚，就是 pair spread 的均值回复，不是 filter，不是 overlay。</strong></p>
+<p>对当前 desk 来说，最值钱的不是“crypto 也能做 pairs”这种废话，而是更具体的三件事：</p>
+<ol>
+<li><strong>pair admission 应优先保留 <code>cointegration-first</code>，而不是只看 distance；</strong></li>
+<li><strong>short-cycle 上更自然的落地法是 walk-forward 重选 pair，而不是一组选到底；</strong></li>
+<li><strong>风险控制别先本能套 hard stop，更该先看 half-life/time-stop/spread-normalization。</strong></li>
+</ol>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 对 short-cycle crypto desk，这篇 paper 最值得留下来的，不是“pairs 也能赚钱”，而是 <strong>walk-forward 协整筛选 + half-life 约束后的 spread fade</strong> 更像能复现的原型；很多看似“更安全”的 hard stop，反而可能把 MR edge 自己砍掉。</li>
+<li><strong>一句话证明方式：</strong> 论文把 distance vs cointegration、daily vs intraday、with-stop vs no-stop 放在同一框架下比较；我再用 Binance USDⓈ-M 公共数据做了 <code>15m/5m</code> walk-forward portability probe，看今天这种 perp 环境里哪类 pair 还活着。</li>
+<li>公开二级来源一致指向：<strong>cointegration 选 pair 通常优于 distance，intraday 往往比慢频更强，但机械 stop-loss 会明显伤 edge。</strong></li>
+<li>我这轮本地快检里，<code>15m</code> 最厚 pocket 是 <strong><code>BNBUSDT/DOGEUSDT</code>：14 笔、avg gross <code>+54.37 bps/笔</code>、粗扣 <code>8 bps</code> 后 avg net <code>+46.37 bps/笔</code>、cum net <code>+6.49%</code>、Sharpe <code>6.24</code></strong>。</li>
+<li><code>15m</code> 第二个可留意 pocket 是 <strong><code>SOLUSDT/DOGEUSDT</code>：18 笔、avg net <code>+13.08 bps/笔</code>、cum net <code>+2.35%</code></strong>；其余 4 个 <code>15m</code> pair 都已转负，说明这条线不是“随便找两腿都能做”。</li>
+<li><code>5m</code> 这次反而出现了更稳的横截面 pocket：<strong>5 个 pair 里 3 个为正</strong>，其中 <code>ADAUSDT/LINKUSDT</code> <code>+11.72 bps/笔</code>、<code>DOGEUSDT/LINKUSDT</code> <code>+10.02 bps/笔</code>、<code>ADAUSDT/DOGEUSDT</code> <code>+9.55 bps/笔</code>；说明这套东西可以直接进入 <code>5m</code> pairs raw alpha 候选池，而不是只留在 <code>15m</code>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮和当前 desk 的关系非常直接：</p>
+<ul>
+<li>它补的是 <strong>raw alpha 素材池里的 pairs / stat-arb / relative-value</strong>，不是又一层 shared gate；</li>
+<li>它天然能写成完整策略：<code>entry / exit / sizing / risk / cost</code> 都有第一版骨架；</li>
+<li>它和最近很多“更复杂的 basket / copula / ML pairs”不同，这条线更适合当 <strong>plain-vanilla 可落地 baseline</strong>；</li>
+<li>如果后面要叠加 overlay，最自然的是 funding veto、深度 veto、maker-first execution，而不是先把本体搞复杂。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：<strong>relative-value / market-neutral / pairs / mean reversion</strong></li>
+<li>基础 alpha：<strong>协整 pair 的 spread 偏离长期均衡后，未来更可能回归。</strong></li>
+<li>regime：<strong>pair 关系仍稳定、ADF 仍过、half-life 仍在可交易区间。</strong></li>
+<li>filter / veto：<strong>cointegration 失效、half-life 过长、两腿流动性不足、funding 冲突、事件窗异常波动。</strong></li>
+<li>risk / sizing / execution overlay：<strong>rolling OLS hedge ratio、spread z-score 入场、time-stop/half-life stop、gross cap、maker-first 或 child execution。</strong></li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 如果用 walk-forward 方式反复重选 pair，并把 <code>half-life</code> 当 admission gate，crypto perp 上仍能留下少数成本后为正的 spread fade pocket。</p>
+<p><strong>一个可计算定义：</strong></p>
+<ol>
+<li>universe 先取 6~10 个 liquid USDT-M majors / mid-caps；</li>
+<li>formation 窗用 <code>15m</code> 最近 <code>14d</code> 或 <code>5m</code> 最近 <code>7d</code>；</li>
+<li>pair admission：<code>cointegration p</code>、<code>ADF p</code>、<code>half-life</code> 同时过线；</li>
+<li>rolling OLS 算 hedge ratio，spread 标准化成 <code>z-score</code>；</li>
+<li><code>|z| &gt;= 2</code> 入场，<code>z</code> 回到 <code>0~0.5</code> 退出；</li>
+<li>风控先只用 <code>time-stop = 1~1.5 × half-life</code>，不要先上 directional hard stop；</li>
+<li>成本先按 round-trip <code>8 bps</code>。</li>
+</ol>
+<p><strong>最小回测切口：</strong></p>
+<ul>
+<li>资产：<code>ADA / DOGE / LINK / SOL / BNB / XRP</code></li>
+<li>周期：<code>5m</code> 与 <code>15m</code></li>
+<li>样本：最近 <code>30~60d</code></li>
+<li>先看指标：<code>avg net bps/笔</code>、<code>trade count</code>，再看 <code>cum net</code> 与 <code>Sharpe</code></li>
+</ul>
+<p><strong>下一步怎么测：</strong></p>
+<ol>
+<li><strong>A/B <code>cointegration-first</code> vs <code>distance-first</code></strong>；</li>
+<li><strong>A/B <code>no-stop</code> vs <code>time-stop</code> vs <code>spread-stop</code></strong>；</li>
+<li><strong>扫 <code>1.5σ / 2.0σ / 2.5σ</code> 与 <code>0.5× / 1.0× / 1.5× half-life</code> 的 time-stop</strong>；</li>
+<li><strong>把 <code>5m</code> 正 pocket 先做 top-1 strongest-only router</strong>，不要一上来平铺所有 pair；</li>
+<li><strong>补 maker/taker friction ladder（4/8/12 bps）</strong>，确认 edge 不是只活在粗糙成本假设里。</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这轮主证据仍不是论文全文，而是 DOI metadata + 二级镜像 + 自己的 public-data probe；<strong>可作 intake，但还不算 paper-faithful replication。</strong></li>
+<li>当前正 pocket 高度集中在 <strong>DOGE-linked</strong> pairs，说明这更像近期 regime pocket，不应直接当“普适 pairs 圣杯”。</li>
+<li><code>15m</code> 虽然出现超厚 pocket，但只有 2/6 pair 成本后为正；这条线的正确姿势更像 <strong>先做 strongest-only / sparse deployment</strong>。</li>
+<li><code>no-stop</code> 不等于不控风险。这里真正该测的是 <strong>half-life/time-stop 与 spread-normalization</strong>，而不是把单腿 directional stop 生搬到 pairs MR 上。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Lesa, C., &amp; Hochreiter, R. (2023). _Cryptocurrency Pair Trading_. SSRN Electronic Journal.</strong></li>
+</ol>
+<ul>
+<li>DOI：<code>10.2139/ssrn.4433530</code></li>
+<li>Readable URL：&lt;<a href="https://doi.org/10.2139/ssrn.4433530&gt;">https://doi.org/10.2139/ssrn.4433530&gt;</a></li>
+</ul>
+<ol>
+<li><strong>QuantBuffet strategy mirror</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://quantbuffet.com/en/2024/04/15/pairs-trading-in-cryptocurrencies/&gt;">https://quantbuffet.com/en/2024/04/15/pairs-trading-in-cryptocurrencies/&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Harbourfront summary</strong></li>
+</ol>
+<ul>
+<li>&lt;<a href="https://harbourfrontquant.substack.com/p/pairs-trading-in-the-cryptocurrency&gt;">https://harbourfrontquant.substack.com/p/pairs-trading-in-the-cryptocurrency&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Local portability artifacts</strong></li>
+</ol>
+<ul>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/walkforward_pairs_portability_probe_2026-04-23.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/literature/walkforward_pairs_portability_trades_2026-04-23.csv</code></li>
+</ul>
+</body>
+</html>

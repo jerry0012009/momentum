@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 U 型 grid 当 alpha：这份 2026 新仓库更该先复现的是「FDUSD/USDC 零费一跳回归」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 U 型 grid 当 alpha：这份 2026 新仓库更该先复现的是「FDUSD/USDC 零费一跳回归」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 12:37 UTC</span>
+      <span class="pill">研究时间：2026-03-25 12:34 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + 2021 stablecoin arbitrage 论文 + Binance Spot 公共 `1m/5m` 最小快检</span>
+      <span class="pill">主题标签：raw-alpha/mean-reversion/relative-value/stablecoin/spot/grid/execution/cost/1m/3m/5m/15m/repo/paper/binance</span>
+      <span class="pill">证据类型：代码级 repo 拆解 + 理论论文 grounding + 公共 kline 最小事件研究</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_1234_fdusdusdc-zero-fee-grid-peg-reversion.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 12:34 UTC</li>
+<li>类型：2026 GitHub 新仓库 + 2021 stablecoin arbitrage 论文 + Binance Spot 公共 <code>1m/5m</code> 最小快检</li>
+<li>主题标签：raw-alpha/mean-reversion/relative-value/stablecoin/spot/grid/execution/cost/1m/3m/5m/15m/repo/paper/binance</li>
+<li>证据类型：代码级 repo 拆解 + 理论论文 grounding + 公共 kline 最小事件研究</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>FDUSD/USDC</code> 对 <code>1.0000</code> peg 的短周期偏离会回归，真正可交易的是“偏离后的一跳/两跳回收”，不是 U 型挂单形状本身</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次最值得 intake 的，不是“又一个 stablecoin grid 机器人”，而是一个<strong>把完整策略链条写得很实</strong>的新仓库：<code>wangshaofu/mm_bot</code>（2025 创建、2026-02 仍更新）。它把 stablecoin pair 的一条常见误解拆得很清楚：<strong>alpha 是 peg deviation mean reversion；U 型 grid 只是 sizing / execution overlay。</strong></p>
+<p>这件事为什么值得现在写进池子？因为最近 desk 的 raw alpha 素材虽然已经不只 trend，但还是更偏 perp / momentum / pairs。这个题目补的是另一条很短、很“脏活累活”的 relative-value 原型：<strong>单场内、单 pair、低 beta、强 execution 约束、强 cost cliff</strong>。它非常适合做 <code>1m/3m</code> 的高强度最小实验，也能降采样成 <code>5m</code> 版本；<code>15m</code> 更适合拿来做 inventory refresh / regime gate，而不是直接当逐 bar 入场键。</p>
+<h2>2. 先回答那句最重要的话：base alpha 是什么？</h2>
+<p><strong>base alpha = stablecoin peg reversion。</strong></p>
+<p>更具体地说：当 <code>FDUSD/USDC</code> 在 Binance Spot 上跌到 <code>0.9998 / 0.9997 / 0.9996</code> 这类折价位时，后续很大概率会先回一跳（<code>+1 tick ≈ +1bp</code>），深一点时再看有没有两跳（<code>+2bp</code>）的空间。</p>
+<p>所以：</p>
+<ul>
+<li><code>U-shaped order distribution</code>：<strong>不是 alpha</strong>，只是把资金分散到更低价位的库存曲线；</li>
+<li><code>dynamic grid refresh</code>：<strong>不是 alpha</strong>，只是让挂单跟着振幅和 best bid 走；</li>
+<li><code>fee guard</code>：也<strong>不是 alpha</strong>，但它决定这条 alpha 能不能活；</li>
+<li>真正应该先测的，是 <strong>“折价 breach → 短时回到 fill+1tick / fill+2tick”</strong> 这条原始回归链。</li>
+</ul>
+<h2>3. repo 里真正有价值的工程点</h2>
+<p><code>wangshaofu/mm_bot</code> 的价值，不在“发明了新信号”，而在于它把完整策略需要的几个零件都交代清楚了：</p>
+<ol>
+<li><strong>entry</strong>：只在 best bid 下方挂买单，而且有 <code>buy_threshold</code>，避免追着价格在 peg 上方乱买；</li>
+<li><strong>exit</strong>：买到之后立刻镜像挂卖单，默认是“先收回一跳/几跳，再说”；</li>
+<li><strong>sizing</strong>：资金不是等距平铺，而是更偏向低价层的 U 型分布；</li>
+<li><strong>risk</strong>：有余额约束、最小下单单位、未成交订单刷新；</li>
+<li><strong>cost</strong>：最关键的是 <code>fee guard</code> —— 如果 maker/taker 费率不是它能承受的水平，策略直接不该跑。</li>
+</ol>
+<p>对我们 desk 最有启发的一句翻译是：<strong>这不是一个“grid alpha”，而是一个“one-tick peg reversion alpha + grid inventory allocator”。</strong> 先把 alpha 本体测清，再决定要不要借 repo 的网格外壳。</p>
+<h2>4. 公共数据最小快检：过去 30 天 <code>FDUSD/USDC</code> 到底有没有这条边？</h2>
+<p>数据源：Binance Spot 公共 <code>api/v3/klines</code>，标的 <code>FDUSDUSDC</code>，窗口为最近 30 天；本地 artifact 在： <code>reports/artifacts/quant_digests/fdusdusdc_zero_fee_grid_20260325_1205/</code></p>
+<h3>4.1 <code>1m</code> 事件研究（从上方跌破阈值才算新事件）</h3>
+<p>阈值取 <code>close &lt;= 0.9997</code>：</p>
+<ul>
+<li>30 天里共出现 <strong>212</strong> 个新 breach 事件，约 <strong>7 次/天</strong>；</li>
+<li>后续 <strong>15 分钟</strong> 内，平均最大反弹 <strong>+1.42 bps</strong>；</li>
+<li><strong>89.15%</strong> 的事件能先回到 <strong><code>entry + 1 tick</code></strong>；</li>
+<li><strong>44.34%</strong> 的事件能回到 <strong><code>entry + 2 tick</code></strong>。</li>
+</ul>
+<p>这组数说明：<strong>一跳是主航道，两跳不是没有，但明显更挑环境。</strong></p>
+<h3>4.2 repo 风格的超简化回测（<code>1m</code>）</h3>
+<p>规则：</p>
+<ul>
+<li>当 <code>close &lt;= 0.9997</code> 且前一分钟不满足阈值时入场；</li>
+<li>若后续 30 分钟内先触达目标价，则按目标价离场；</li>
+<li>否则 30 分钟超时按收盘价离场。</li>
+</ul>
+<p>结果：</p>
+<p><strong>方案 A：目标 <code>+1 tick</code></strong></p>
+<ul>
+<li>212 笔 trades</li>
+<li>平均毛收益：<strong>+0.91 bps / trade</strong></li>
+<li>胜率 / TP 率：<strong>94.34%</strong></li>
+<li>中位持有时间：<strong>2 分钟</strong></li>
+</ul>
+<p><strong>方案 B：目标 <code>+2 tick</code></strong></p>
+<ul>
+<li>212 笔 trades</li>
+<li>平均毛收益：<strong>+1.11 bps / trade</strong></li>
+<li>TP 率：<strong>56.60%</strong></li>
+<li>中位持有时间：<strong>20 分钟</strong></li>
+<li>5% 分位单笔：<strong>-1.00 bps</strong></li>
+</ul>
+<p>一句话总结：<strong>+1tick 更像库存回收；+2tick 已经从“收租”变成“等行情帮你”了。</strong></p>
+<h3>4.3 <code>5m</code> 降采样后还能不能看？</h3>
+<p>如果把它硬塞进我们更常用的 <code>5m</code> 节奏，信号没有消失，但天然变钝：</p>
+<ul>
+<li><code>5m close &lt;= 0.9997</code> 的新事件，30 天里有 <strong>100</strong> 次；</li>
+<li>这些事件里，后续 <strong>30 分钟</strong> 内有 <strong>90%</strong> 能回到 <code>entry + 1 tick</code>；</li>
+<li>平均最大反弹约 <strong>+1.61 bps</strong>。</li>
+</ul>
+<p>这说明它并非只能活在 tick 级；但<strong>最佳形态仍是 <code>1m/3m</code> 执行，<code>5m</code> 只是慢一点的 proxy。</strong></p>
+<h2>5. 这条 alpha 为什么比“再补一个 filter”更值得？</h2>
+<p>因为它满足了当前 intake 更高优先级的那几个条件：</p>
+<ul>
+<li><strong>它是 raw alpha，不是纯 filter；</strong></li>
+<li><strong>它能独立复现；</strong></li>
+<li><strong>它能直接落地成完整策略</strong>：entry / exit / sizing / risk / cost 都能写；</li>
+<li>它给素材池补的是一条 <strong>single-venue relative-value / stablecoin stat-arb</strong> 支线，而不是再加一个泛化确认层。</li>
+</ul>
+<p>更重要的是，它还能帮 desk 在方法论上少踩一个坑： <strong>不要把“能赚钱的库存分配器”误认成 alpha 本身。</strong> 先验证 <code>breach → one-tick recovery</code> 是否稳定存在，再谈要不要套 grid、怎么套 grid。</p>
+<h2>6. 这条策略最怕什么</h2>
+<p>这条策略的第一风险不是方向，而是<strong>成本和执行</strong>：</p>
+<ol>
+<li><strong>费用悬崖极陡</strong>：</li>
+</ol>
+<ul>
+<li>我们测到的毛收益核心区间只有 <strong>0.9~1.1 bps / trade</strong>；</li>
+<li>这意味着只要 round-trip 成本来到 <strong>1bp 以上</strong>，策略几乎就被吃光；</li>
+<li>所以它本质上是<strong>零费 / 超低 maker 费环境专用</strong> alpha。</li>
+</ul>
+<ol>
+<li><strong>容量有限</strong>：</li>
+</ol>
+<ul>
+<li>单一 stablecoin pair，目标只收一两跳；</li>
+<li>它不适合承载大仓位，更像低风险 sidecar / cash management pocket。</li>
+</ul>
+<ol>
+<li><strong>非常依赖 queue position</strong>：</li>
+</ol>
+<ul>
+<li>回一跳不代表你能成交到那一跳；</li>
+<li>如果挂单排不到前面，理论 edge 会被 queue loss 吃掉。</li>
+</ul>
+<ol>
+<li><strong>depeg / news regime 下会失真</strong>：</li>
+</ol>
+<ul>
+<li>平时的 mean reversion，在异常时刻会突然变成“接飞刀”；</li>
+<li>这时 <code>1.0000</code> 不是吸引点，反而可能是旧世界的锚。</li>
+</ul>
+<h2>7. 怎么把它翻成 desk 可执行的最小实验</h2>
+<h3>最小实验 A：先只测 alpha 本体</h3>
+<ol>
+<li>数据：Binance Spot <code>FDUSDUSDC</code> <code>1m</code> + <code>5m</code> klines；</li>
+<li>事件定义：<code>close</code> 从上向下首次跌破 <code>0.9998 / 0.9997 / 0.9996</code>；</li>
+<li>出场：<code>+1 tick</code>、<code>+2 tick</code>、<code>30m timeout</code> 三套并行；</li>
+<li>指标：命中率、平均最大反弹、timeout 占比、超时后尾部损失；</li>
+<li>成本：至少做 <code>0 / 0.5 / 1.0 / 2.0 bps</code> 四档敏感性。</li>
+</ol>
+<h3>最小实验 B：再看 repo 外壳有没有增益</h3>
+<p>在 alpha 本体通过后，再去加：</p>
+<ul>
+<li>U 型库存曲线；</li>
+<li>动态 grid 宽度（按最近振幅调节）；</li>
+<li>单次最多挂几层 / 每层资金占比；</li>
+<li>未成交订单刷新频率；</li>
+<li>inventory 上限。</li>
+</ul>
+<p>也就是：<strong>先证明“该买”，再优化“怎么买”。</strong></p>
+<h2>8. 下一步怎么测（直接给动作）</h2>
+<ol>
+<li><strong>做 fee cliff 图</strong>：把 <code>+1tick / +2tick</code> 两套规则分别在 <code>0~2bps</code> round-trip 成本上画净收益曲线，先确认生存区间；</li>
+<li><strong>加 order-book veto</strong>：拉 Binance 公共深度快照，测试“top-of-book depth / spread widening / quote imbalance” 是否能把 <code>+2tick</code> 的 TP 率抬起来；</li>
+<li><strong>做 depeg 例外隔离</strong>：把大于 <code>5bp</code> 的异常偏离单独分桶，看普通 peg noise 和异常事件是不是两种完全不同的 process；</li>
+<li><strong>试 <code>3m</code> 执行版</strong>：把 <code>1m</code> 信号聚合到 <code>3m</code>，看 trade count 下降多少、净 edge 留下多少；</li>
+<li><strong>把 <code>15m</code> 从入场键改成风控键</strong>：用 <code>15m</code> 只做“今天允不允许跑这个 one-tick harvester”的 regime gate，例如过去 2 小时 peg 波动过大则停机。</li>
+</ol>
+<h2>9. 结论</h2>
+<p>如果只给一句结论：</p>
+<p><strong>这篇 repo 最值得 desk 先偷的，不是 U 型 grid，而是“FDUSD/USDC 折价后一跳回归”这条可独立复现、可直接写成完整策略、但对费用极度敏感的 raw alpha。</strong></p>
+<p>它很小、很窄、很 execution-heavy，但这恰好是优点：</p>
+<ul>
+<li>好处是可快速复现、可快速验证、可快速知道自己是不是没有 edge；</li>
+<li>坏处也很明确：<strong>不是普适大 alpha，而是一条只有在零费/强排队权下才真的活的微利差 raw alpha。</strong></li>
+</ul>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>wangshaofu (2025/2026)</strong>, *mm_bot*（GitHub repo, Python）</li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/wangshaofu/mm_bot">https://github.com/wangshaofu/mm_bot</a></li>
+<li>Readable URL: <a href="https://github.com/wangshaofu/mm_bot">https://github.com/wangshaofu/mm_bot</a></li>
+<li>说明：Binance stablecoin pair 自动网格/挂单机器人；本次重点不是照抄其 U 型分布，而是拆出其中真正的 alpha 本体。</li>
+</ul>
+<ol>
+<li><strong>Ingolf Gunnar Anton Pernice (2021)</strong>, *On Stablecoin Price Processes and Arbitrage*, in *Financial Cryptography and Data Security. FC 2021 International Workshops*, Lecture Notes in Computer Science, Springer, pp.124-135</li>
+</ol>
+<ul>
+<li>DOI: <code>10.1007/978-3-662-63958-0_11</code></li>
+<li>Readable URL: <a href="https://link.springer.com/chapter/10.1007/978-3-662-63958-0_11">https://link.springer.com/chapter/10.1007/978-3-662-63958-0_11</a></li>
+<li>DOI URL: <a href="https://doi.org/10.1007/978-3-662-63958-0_11">https://doi.org/10.1007/978-3-662-63958-0_11</a></li>
+<li>用处：给 stablecoin peg 附近的套利 / 回归机制提供理论 grounding，提醒我们常态与异常状态不是同一种过程。</li>
+</ul>
+<ol>
+<li><strong>Binance Spot API Docs / Public Klines</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data</a></li>
+<li>Data endpoint used: <code><a href="https://api.binance.com/api/v3/klines?symbol=FDUSDUSDC&amp;interval=1m">https://api.binance.com/api/v3/klines?symbol=FDUSDUSDC&amp;interval=1m</a></code></li>
+</ul>
+<ol>
+<li><strong>本地最小实验 artifact</strong></li>
+</ol>
+<ul>
+<li><code>reports/artifacts/quant_digests/fdusdusdc_zero_fee_grid_20260325_1205/probe_fdusdusdc_zero_fee_grid.py</code></li>
+<li><code>reports/artifacts/quant_digests/fdusdusdc_zero_fee_grid_20260325_1205/summary.json</code></li>
+<li><code>reports/artifacts/quant_digests/fdusdusdc_zero_fee_grid_20260325_1205/forward_stats_1m.csv</code></li>
+<li><code>reports/artifacts/quant_digests/fdusdusdc_zero_fee_grid_20260325_1205/forward_stats_5m.csv</code></li>
+<li><code>reports/artifacts/quant_digests/fdusdusdc_zero_fee_grid_20260325_1205/repo_style_tp_runs.csv</code></li>
+</ul>
+</body>
+</html>

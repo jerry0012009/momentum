@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 BTC 大阴大阳后的反手只当老派均值回归：这篇 2021 论文更值得 desk 先测的是「极端 bar 反打」raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 BTC 大阴大阳后的反手只当老派均值回归：这篇 2021 论文更值得 desk 先测的是「极端 bar 反打」raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-26 14:30 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-26_1428_btc-jump-reversal-tail-fade.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>做反向</strong>——上一根 BTC bar 若出现足够大的单根涨跌（尤其是 <code>5m</code> 的极端尾部、或 <code>4h</code> 的大级别冲击），下一根按相反方向开仓，持有 1 根同周期 bar 后平仓。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1. 为什么这轮值得写</h2>
+<p>这不是“又一篇泛泛的反转论文”。它的 base alpha 很清楚：<strong>极端单根收益后的下一根反向 markout</strong>。而且它不是只给相关性，还给了可直接交易的最小骨架：<code>event definition -&gt; next-bar entry -&gt; one-bar exit -&gt; threshold sweep -&gt; fee sanity check</code>。</p>
+<p>对当前 short-cycle desk 的价值在于两点：</p>
+<ol>
+<li>它给了一个非常干净的 <strong>time-series raw alpha baseline</strong>，不是 filter 也不是解释型综述；</li>
+<li>它天然贴着 crypto 的 liquidation / overreaction 机制，后面无论接 <code>liquidation map</code>、<code>OI/funding crowding</code>、还是 <code>maker/taker execution veto</code>，都很好拆组件。</li>
+</ol>
+<p>更关键的是：这条线不必被误读成“全天候 15m fade”。我这轮最小 transfer check 的结论更像是：<strong>常态 15m 不诚实，真正有味道的是 <code>5m</code> 极端尾部反打，以及更稀疏但更干净的 <code>4h</code> 冲击后回摆。</strong></p>
+<h2>2. 论文在讲什么</h2>
+<h3>Source</h3>
+<ul>
+<li><strong>Authors</strong>: Giacomo De Nicola</li>
+<li><strong>Year</strong>: 2021</li>
+<li><strong>Title</strong>: *On the Intraday Behavior of Bitcoin*</li>
+<li><strong>Venue</strong>: *Ledger*, Vol. 6, pp. 58–80</li>
+<li><strong>DOI</strong>: <code>10.5195/LEDGER.2021.213</code></li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://doi.org/10.5195/LEDGER.2021.213&gt;">https://doi.org/10.5195/LEDGER.2021.213&gt;</a></li>
+<li><strong>PDF URL</strong>: &lt;<a href="https://ledger.pitt.edu/ojs/ledger/article/download/213/212&gt;">https://ledger.pitt.edu/ojs/ledger/article/download/213/212&gt;</a></li>
+<li><strong>Repo URL</strong>: 未见官方 repo</li>
+</ul>
+<h3>原论文数据与方法</h3>
+<ul>
+<li><strong>数据源</strong>：Bitstamp BTC/USD 1 分钟数据（Kaggle 镜像，由 Mark Zielinski 上传）</li>
+<li><strong>样本期</strong>：<code>2015-03-01</code> ~ <code>2018-06-27</code></li>
+<li><strong>更新频率</strong>：1 分钟，再聚合到 <code>5m / 15m / 30m / 1h / 2h / 4h / 1d</code></li>
+<li><strong>最小策略</strong>：</li>
+<li>若上一根 return 为大阳线，则下一根做空；</li>
+<li>若上一根 return 为大阴线，则下一根做多；</li>
+<li>持有 1 根同周期 bar；</li>
+<li>只在 <code>|r_{t-1}| &gt;= k·σ</code> 时触发，<code>k</code> 从 <code>0σ</code> 到 <code>6σ</code> 扫。</li>
+</ul>
+<h2>3. 论文里最该记住的数字</h2>
+<h3>3.1 先看一阶自相关：中等周期居然还是负的</h3>
+<p>论文 Table 3 给出的 BTC 一阶收益自相关：</p>
+<ul>
+<li><code>5m</code>: <strong>-0.1016</strong></li>
+<li><code>15m</code>: <strong>-0.0575</strong></li>
+<li><code>1h</code>: <strong>-0.0557</strong></li>
+<li><code>2h</code>: <strong>-0.0858</strong></li>
+<li><code>4h</code>: <strong>-0.0564</strong></li>
+</ul>
+<p>这点很关键：对传统市场来说，分钟级负自相关常常能被 bid-ask bounce 解释掉；但到了 <code>1h / 2h / 4h</code> 还显著为负，就更像 <strong>overreaction + liquidation cascade 后的回摆</strong>，而不是纯微观结构噪音。</p>
+<h3>3.2 越极端的 bar，反打越强</h3>
+<p>论文 Table 4 显示：阈值越高，下一根反向相关越强。几个最有代表性的点：</p>
+<ul>
+<li><code>5m</code>：从 <code>0σ</code> 的 <strong>-0.1027</strong>，一路加深到 <code>6σ</code> 的 <strong>-0.2186</strong></li>
+<li><code>1h</code>：从 <code>0σ</code> 的 <strong>-0.0557</strong>，到 <code>5σ</code> 的 <strong>-0.1863</strong></li>
+<li><code>2h</code>：从 <code>0σ</code> 的 <strong>-0.0858</strong>，到 <code>6σ</code> 的 <strong>-0.4010</strong></li>
+</ul>
+<p>翻成人话：<strong>不是所有下跌/上涨都值得反打；真正有 edge 的，是“冲过头”的那种 bar。</strong></p>
+<h3>3.3 论文里的最小策略，per-trade 毛收益并不小</h3>
+<p>论文 Table 5（未计手续费）的 mean per-trade profit：</p>
+<ul>
+<li><code>5m, 6σ</code>: <strong>0.30% / trade</strong></li>
+<li><code>15m, 6σ</code>: <strong>0.28% / trade</strong></li>
+<li><code>1h, 6σ</code>: <strong>0.58% / trade</strong></li>
+<li><code>2h, 6σ</code>: <strong>1.81% / trade</strong></li>
+</ul>
+<p>作者的结论很直接：<strong>高阈值、大时间框架的 shock-reversal，不像纯学术相关性，更像可交易 inefficiency。</strong></p>
+<h2>4. 我做的当前 transfer check：2024-01 至 2026-03 的 Binance BTCUSDT perp</h2>
+<h3>数据口径</h3>
+<ul>
+<li><strong>数据源</strong>：Binance Futures 公共 K 线 API</li>
+<li><strong>标的</strong>：<code>BTCUSDT perpetual</code></li>
+<li><strong>样本期</strong>：<code>2024-01-01 00:00 UTC</code> ~ <code>2026-03-26 14:00 UTC</code></li>
+<li><strong>公开性</strong>：完全公开可拉</li>
+<li><strong>更新频率</strong>：<code>5m / 15m / 4h</code></li>
+<li><strong>实验口径</strong>：</li>
+<li>先算 rolling 30-day sigma；</li>
+<li>若上一根 bar 的 <code>|ret| &gt;= k·rolling_sigma</code>，则下一根做反向；</li>
+<li>持有 1 根同周期 bar；</li>
+<li>成本只做简单 round-trip sanity check：<code>2 / 4 / 10 bps</code>。</li>
+<li><strong>artifact</strong>：<code>reports/artifacts/quant_digests/btc_intraday_jump_reversal_transfer_20260326_1407/key_transfer_rows.csv</code></li>
+</ul>
+<h3>4.1 结论先说</h3>
+<p><strong>这条 alpha 没死，但已经明显从“广谱反转”收缩成“只在尾部 event 里还值得动手”。</strong></p>
+<h3>4.2 当前最值得 desk 注意的三个数字</h3>
+<ol>
+<li><strong><code>5m, 6σ</code> 极端 bar 反打</strong>：</li>
+</ol>
+<ul>
+<li><code>n_trades = 403</code></li>
+<li>毛收益 <strong><code>4.59 bps/trade</code></strong></li>
+<li><code>4 bps</code> round-trip 下仍有 <strong><code>+0.59 bps/trade</code></strong></li>
+<li>累计加总收益约 <strong><code>+0.024</code></strong></li>
+</ul>
+<ol>
+<li><strong><code>5m, 5σ</code> 还不够</strong>：</li>
+</ol>
+<ul>
+<li><code>n_trades = 727</code></li>
+<li>毛收益 <strong><code>2.05 bps/trade</code></strong></li>
+<li><code>4 bps</code> round-trip 后变成 <strong><code>-1.95 bps/trade</code></strong></li>
+</ul>
+<ol>
+<li><strong><code>4h, 3σ</code> 稀疏但干净</strong>：</li>
+</ol>
+<ul>
+<li><code>n_trades = 89</code></li>
+<li>毛收益 <strong><code>10.08 bps/trade</code></strong></li>
+<li><code>4 bps</code> round-trip 后仍有 <strong><code>+6.08 bps/trade</code></strong></li>
+<li><code>10 bps</code> round-trip 下也几乎打平（<strong><code>+0.08 bps/trade</code></strong>）</li>
+</ul>
+<h3>4.3 哪些口径是负的</h3>
+<ul>
+<li><code>15m</code> 的 <code>1σ / 2σ / 3σ</code> 当前都不诚实：毛收益已接近 0 或直接转负，成本后更差。</li>
+<li>这意味着：<strong>别把这条线硬伪装成“15m always-on 主信号”。</strong></li>
+</ul>
+<h2>5. desk 化解读：它现在到底应该被当成什么</h2>
+<h3>最诚实的定位</h3>
+<p>这条线现在更像两档东西：</p>
+<p>#### A. <code>5m</code> 高频尾部 event alpha</p>
+<ul>
+<li>只做 <strong>极端 bar</strong>，例如 <code>5m &gt;= 6σ</code></li>
+<li>逻辑：单根冲击太猛，下一根出现短促回摆</li>
+<li>优点：更贴近 short-cycle desk</li>
+<li>缺点：edge 薄，<strong>极依赖费率、滑点和触发稀缺性</strong></li>
+</ul>
+<p>#### B. <code>4h</code> 中等频率 shock-reversal sleeve</p>
+<ul>
+<li>逻辑：大级别 liquidations / overreaction 后，下一根回摆更稳定</li>
+<li>优点：当前转移样本里更干净</li>
+<li>缺点：交易稀疏，不是“高强度流水线 alpha”</li>
+</ul>
+<p>换句话说，<strong>paper headline 是“中等周期均值回归存在”，但对我们 desk 更值钱的落点其实是：<code>5m</code> 只做最尾部、<code>15m</code> 不要装、<code>4h</code> 可以保留成稀疏 event sleeve。</strong></p>
+<h2>6. 一个可直接落地的最小策略骨架</h2>
+<h3>6.1 Entry</h3>
+<ul>
+<li>计算 <code>ret_{t-1}</code> 与 rolling <code>30d sigma</code></li>
+<li>若 <code>ret_{t-1} &lt;= -k·σ</code>：下一根 bar close 做多</li>
+<li>若 <code>ret_{t-1} &gt;= +k·σ</code>：下一根 bar close 做空</li>
+</ul>
+<h3>6.2 Exit</h3>
+<ul>
+<li>固定持有 <strong>1 根同周期 bar</strong> 后平仓</li>
+<li>不先加 trailing；先把“edge 是否真的只活 1 根”这件事看清楚</li>
+</ul>
+<h3>6.3 Sizing</h3>
+<ul>
+<li>默认 <code>vol-targeted</code>：<code>target_risk / realized_vol</code></li>
+<li>单次事件仓位 capped，避免在极端波动时被“看起来更强的 signal”反而放大爆仓风险</li>
+</ul>
+<h3>6.4 Risk / Cost</h3>
+<ul>
+<li><code>5m</code> 版本必须写死：</li>
+<li>fee bucket（maker / taker 分开）</li>
+<li>max spread</li>
+<li>max slippage</li>
+<li>consecutive event cooldown</li>
+<li><code>4h</code> 版本必须补：</li>
+<li>周期内 funding carry</li>
+<li>大事件时段（CPI/FOMC）是否 veto</li>
+</ul>
+<h2>7. 下一步怎么测</h2>
+<h3>P0：先把它测成一个诚实的 event family，而不是一句“BTC 会反转”</h3>
+<ol>
+<li><strong><code>5m</code> 阈值细扫</strong>：测 <code>5σ / 5.5σ / 6σ / 6.5σ</code>，看 break-even fee 到底落在哪。</li>
+<li><strong>entry timing</strong>：比较 <code>next-close entry</code> vs <code>next-open entry</code> vs <code>next-30s VWAP</code>，别把论文的 bar-close 假设直接当可成交价。</li>
+<li><strong>持有期</strong>：固定比较 <code>1 bar / 2 bar / half-bar time stop</code>，验证 edge 是否只活在第一根。</li>
+<li><strong>事件分层</strong>：把触发事件按 <code>liquidation burst / funding extreme / OI expansion / session bucket</code> 分层，回答：</li>
+</ol>
+<ul>
+<li>哪类极端 bar 真的会回摆？</li>
+<li>哪类极端 bar 其实应该继续顺势？</li>
+</ul>
+<h3>P1：别单独裸跑，尽快接 crypto 特有 veto / confirm</h3>
+<p>优先接三类公开可得数据：</p>
+<ul>
+<li><strong>liquidation heat / liquidation prints</strong>：判断这根 bar 是“被强平打穿”还是“真信息驱动”</li>
+<li><strong>OI + funding</strong>：区分拥挤挤仓式 spike vs 正常趋势延续</li>
+<li><strong>盘口厚度 / spread</strong>：决定 5m 尾部反打是否还能吃到那 0~5bps 的薄 edge</li>
+</ul>
+<h3>P2：扩成一个更像实盘的 raw alpha 组件</h3>
+<p>最值得继续的组合不是“把所有 bar 都反着做”，而是：</p>
+<ul>
+<li><code>base alpha</code>: extreme-bar reversal</li>
+<li><code>regime</code>: high leverage / crowding / cascade regime</li>
+<li><code>execution</code>: maker-first or tight-spread-only</li>
+<li><code>risk</code>: cool-down + stop-trading after repeated same-side bursts</li>
+</ul>
+<h2>8. 我对这条线的当前 verdict</h2>
+<p><strong>值得进入研究池，而且应该按 raw alpha 记账；但当前最诚实的版本不是 15m 全天候，而是 <code>5m</code> 尾部 event alpha + <code>4h</code> 稀疏冲击回摆 sleeve。</strong></p>
+<p>如果只问一句“这篇东西今天对 desk 最有用的 base alpha 是什么？”——答案就是：</p>
+<p>&gt; <strong>上一根 BTC bar 如果大到离谱，就反着做下一根；但只在真正的尾部事件上动手。</strong></p>
+<p>这句话够简单，也够能复现。</p>
+</body>
+</html>

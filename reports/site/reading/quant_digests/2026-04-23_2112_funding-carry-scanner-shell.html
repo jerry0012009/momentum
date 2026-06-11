@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Funding carry scanner shell：把正资金费率当成可筛选的 raw alpha，而不是“顺手看一下 APR”</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Funding carry scanner shell：把正资金费率当成可筛选的 raw alpha，而不是“顺手看一下 APR”</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-23 21:41 UTC</span>
+      <span class="pill">研究时间：2026-04-23 21:12 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：carry / funding / basis / relative-value / stat-arb / cross-venue / risk / sizing</span>
+      <span class="pill">证据类型：工程经验 + 公开数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-23_2112_funding-carry-scanner-shell.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-23 21:12 UTC</li>
+<li>类型：GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：positive funding carry（short perp / long spot，或反向低 funding pocket）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：carry / funding / basis / relative-value / stat-arb / cross-venue / risk / sizing</li>
+<li>证据类型：工程经验 + 公开数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了一个新仓库 <code>vvonha/crypto-trading-tools</code>，它把 funding rate scanner、cross-venue hedging、market monitor 和 risk sizing 放在同一个工具箱里；同时用 Binance USDⓈ-M 公共 funding 数据做了一个最小快检。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这套东西的 base alpha 很清楚：<strong>抓正资金费率 pocket，做 perp 空头 + 现货多头的 carry</strong>。</li>
+<li>它不是“只看 funding 值”的小抄，代码里已经把<strong>扫描、监控、风控</strong>放在一起了，说明可落地性比单点信号强。</li>
+<li>我跑的 8 币快检里，<strong>DOGE / ADA / XRP / AVAX / LINK</strong> 近 30 个 funding 点大多偏正；<strong>BTC / ETH</strong> 仍偏负，说明 carry 机会是<strong>分币种口袋化</strong>，不是全市场常开。</li>
+<li>当前 8 币当前 funding 也很分裂：BTC <code>-8.50% APR</code>、ETH <code>-5.25%</code>、SOL <code>-8.59%</code>；DOGE <code>+7.93%</code>、XRP <code>+4.09%</code>、ADA <code>+5.48%</code>、AVAX <code>+2.27%</code>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>对 <code>momentum</code> 来说，这不是纯“收益率面板”，而是一个能直接塞进素材池的<strong>carry raw alpha 组件</strong>：</p>
+<ul>
+<li>适合做独立策略：<code>正 funding × 流动性门槛 × 风险仓位</code></li>
+<li>也适合做其他 alpha 的 overlay：比如只在 funding 口袋足够厚时才启用别的方向单</li>
+<li>1m/3m/5m/15m 主要负责<strong>child execution / hedge timing</strong>，不是主信号本体</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / carry</li>
+<li>基础 alpha：perp funding 收租（正 funding pocket）</li>
+<li>regime：高 funding、低冲击、可对冲时段</li>
+<li>filter / veto：最小 funding 阈值、成交额阈值、basis/premium 过大则 veto</li>
+<li>risk / sizing / execution overlay：半凯利/固定风险上限、maker-first、分批进场、到期前/费率回落前退出</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>假设：<strong>正 funding 且持续性更强的币种，做 short perp + long spot 的 carry，在扣成本后仍能保留正收益。</strong></li>
+<li>可计算定义：<code>funding_apr = lastFundingRate * 3 * 365 * 100</code>；再加一个 <code>premium_pct</code> 过滤。</li>
+<li>最小切口：Binance USDⓈ-M，8~20 个 liquid majors，<code>30d~90d</code> funding history，按 8h 费率滚动统计。</li>
+<li>先看 2 个指标：<strong>成本前后 APR</strong>、<strong>正 funding 持续率</strong>（positive ratio / streak length）。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>funding carry 很容易被手续费、滑点、资金占用和借币/保证金约束吃掉；APR 看起来漂亮，不代表净值漂亮。</li>
+<li>如果正 funding 只是短暂脉冲，而不是持续 pocket，就会变成“追费率”而不是“收租”。</li>
+<li>这类策略更像<strong>可控的完整策略</strong>，不是单根 K 线 alpha；1m/3m/5m/15m 只能帮执行，不该伪装成主信号。</li>
+</ul>
+<h2>6. 来源（尽量结构化）</h2>
+<ul>
+<li>Source A（主来源，仓库）</li>
+<li>Authors：vvonha</li>
+<li>Year：2026（仓库活跃更新时间）</li>
+<li>Title：crypto-trading-tools</li>
+<li>Venue：GitHub repository</li>
+<li>DOI：N/A</li>
+<li>Readable URL：<a href="https://github.com/vvonha/crypto-trading-tools">https://github.com/vvonha/crypto-trading-tools</a></li>
+<li>Repo URL：<a href="https://github.com/vvonha/crypto-trading-tools">https://github.com/vvonha/crypto-trading-tools</a></li>
+<li>Source B（辅助来源，仓库）</li>
+<li>Authors：R1cK-ChaN</li>
+<li>Year：2026（仓库活跃更新时间）</li>
+<li>Title：crypto-funding-arbitrage</li>
+<li>Venue：GitHub repository</li>
+<li>DOI：N/A</li>
+<li>Readable URL：<a href="https://github.com/R1cK-ChaN/crypto-funding-arbitrage">https://github.com/R1cK-ChaN/crypto-funding-arbitrage</a></li>
+<li>Repo URL：<a href="https://github.com/R1cK-ChaN/crypto-funding-arbitrage">https://github.com/R1cK-ChaN/crypto-funding-arbitrage</a></li>
+<li>Source C（公开数据接口）</li>
+<li>Authors / Provider：Binance USDⓈ-M API</li>
+<li>Year：2026（本次抓取时间）</li>
+<li>Title：premiumIndex / fundingRate endpoints</li>
+<li>Venue：Binance public REST API</li>
+<li>DOI：N/A</li>
+<li>Readable URL：<a href="https://fapi.binance.com/fapi/v1/premiumIndex">https://fapi.binance.com/fapi/v1/premiumIndex</a></li>
+<li>Data URL：<a href="https://fapi.binance.com/fapi/v1/fundingRate">https://fapi.binance.com/fapi/v1/fundingRate</a></li>
+</ul>
+</body>
+</html>

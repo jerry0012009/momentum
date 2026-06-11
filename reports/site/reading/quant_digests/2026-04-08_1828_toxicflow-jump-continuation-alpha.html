@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>高毒性订单流后的大波动，不一定该反手：先测 `toxic-flow jump × short-horizon continuation`</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>高毒性订单流后的大波动，不一定该反手：先测 `toxic-flow jump × short-horizon continuation`</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-08 18:28 UTC</span>
+      <span class="pill">类型：论文 + Binance USDⓈ-M public-data portability probe</span>
+      <span class="pill">主题标签：microstructure / order-flow / VPIN / jump / continuation / BTC / 5m / 15m</span>
+      <span class="pill">证据类型：论文证据 + 公共数据最小可移植性验证</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-08_1828_toxicflow-jump-continuation-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-08 18:28 UTC</li>
+<li>类型：论文 + Binance USDⓈ-M public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>高毒性订单流（VPIN / toxic flow）伴随的大幅价格跳动，后续 1~3 bars 往往继续沿原方向漂移</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：microstructure / order-flow / VPIN / jump / continuation / BTC / 5m / 15m</li>
+<li>证据类型：论文证据 + 公共数据最小可移植性验证</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>一篇 2026 年 *Research in International Business and Finance* 的 open-access 论文：<strong>Atiwat Kitvanitphasu, Khine Kyaw, Tanakorn Likitapiwat, Sirimon Treepongkaruna, _Bitcoin wild moves: Evidence from order flow toxicity and price jumps_</strong>。作者用高频 Bitcoin 数据，把 <strong>VPIN（订单流毒性）</strong> 和 <strong>价格 jump</strong> 放进 VAR 框架里，问的是：大波动到底更像随机噪音，还是“带信息的冲击”。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 不是所有大阳/大阴线都该立刻 fade；如果这根大波动是被“有毒订单流”推出来的，它更像短期会续走一段。</li>
+<li><strong>一句话证明方式：</strong> 论文用高频数据 + VAR + 多种 jump test，发现 VPIN 能显著预测未来 price jumps，而且 VPIN 与 jump size 都有正序列相关。</li>
+<li>论文原文最值钱的判断，不是“Bitcoin 很波动”，而是：<strong>trade imbalance 质量</strong> 会决定同样一根大波动，后面更像 continuation 还是噪音回吐。</li>
+<li>这对短周期 desk 很重要，因为它给的是 <strong>raw alpha 本体</strong>，不是单纯风控插件：先看“这根冲击有没有毒性”，再决定是否顺着做下一段。</li>
+<li>我用 Binance USDⓈ-M <code>BTCUSDT</code> 公共 K 线做了一个 <strong>VPIN-ish portability probe</strong>：用 <code>24</code> 根滚动的 <code>abs(signed taker quote imbalance) / total quote volume</code> 近似 toxicity，再筛 <code>|ret_z| &gt;= 2</code> 的 jump。结果：</li>
+<li><code>5m</code>：<strong>全部 jump</strong> 的 next-bar 同向收益约 <code>-0.56 bps</code>；但 <strong>高 toxicity jump（top decile）</strong> 提升到约 <code>+1.41 bps</code>；<strong>低 toxicity jump</strong> 反而约 <code>-1.61 bps</code>。</li>
+<li><code>15m</code>：<strong>全部 jump</strong> 的 next-bar 同向收益约 <code>+0.75 bps</code>；但 <strong>高 toxicity jump</strong> 提升到约 <code>+9.99 bps</code>；<strong>低 toxicity jump</strong> 约 <code>-2.31 bps</code>。</li>
+<li>在 <code>15m</code> 上，<strong>负向高-tox jump</strong> 更强：next-bar 同向约 <code>+12.99 bps</code>，说明“有毒砸盘后继续杀一段”比“有毒拉盘后继续冲”更值得先测。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线服务的是 <strong>short-cycle directional alpha</strong>，而且和我们已经在做的 <code>OFI / imbalance / jump / continuation</code> 主线天然衔接：</p>
+<ul>
+<li>它不是再讲一个抽象 microstructure 指标，而是给出一个<strong>可下单的因果链</strong>：<code>toxic flow ↑ + jump confirmed -&gt; next 1~3 bars drift</code>。</li>
+<li>它比“纯 order-book imbalance continuation”更像完整策略入口，因为它自带 <strong>event admission layer</strong>：只有大波动且毒性高时才交易，不是每根 bar 都开机。</li>
+<li>它也能自然拆成我们 desk 熟悉的四层：raw alpha、admission、risk、cost ladder，很适合进复现池。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势 / event-driven</li>
+<li>基础 alpha：高毒性订单流驱动的 jump 后，短期同向 continuation</li>
+<li>regime：高波动、trade imbalance 明显、信息不对称更强的时段</li>
+<li>filter / veto：<code>toxicity &lt; q90</code> 不做；<code>|ret_z| &lt; 2</code> 不做；低流动性时段降级或停机</li>
+<li>risk / sizing / execution overlay：仓位随 toxicity 分位或 jump z-score 缩放；优先 next-open / maker-lean entry；<code>1~3 bars</code> time stop；成本 ladder 先看 <code>2 / 4 / 8 bps</code></li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 不是 jump 本身带来 continuation，而是 <strong>high-tox jump</strong> 带来 continuation；low-tox jump 更接近噪音或反转。</p>
+<p><strong>一个可计算定义：</strong></p>
+<ul>
+<li><code>signed_quote = 2 * taker_buy_quote - quote_volume</code></li>
+<li><code>tox_proxy = rolling_sum(abs(signed_quote), 24) / rolling_sum(quote_volume, 24)</code></li>
+<li><code>jump = abs(ret / rolling_std(ret, 96)) &gt;= 2</code></li>
+<li>多头：<code>jump &gt; 0 and tox_proxy &gt;= q90</code></li>
+<li>空头：<code>jump &lt; 0 and tox_proxy &gt;= q90</code></li>
+<li>出场：持有 <code>1</code> bar 与 <code>3</code> bars 两档 A/B；再测 <code>time stop + opposite shock exit</code></li>
+</ul>
+<p><strong>最小回测切口：</strong></p>
+<ul>
+<li>资产：<code>BTCUSDT</code> perp 起步，再扩到 <code>ETH / SOL</code></li>
+<li>周期：优先 <code>15m</code>，其次 <code>5m</code></li>
+<li>样本：最近 <code>3~6</code> 个月 Binance / OKX 公共数据</li>
+<li>最该先看：<code>post-cost expectancy / trade</code>、<code>事件数 / 月</code></li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文用的是 <strong>高频 VPIN + jump test</strong>；我这里的 probe 只是 <strong>bar-based toxicity proxy</strong>，方向对了，不等于已经 faithful replication。</li>
+<li><code>15m</code> 的高-tox jump 看起来最强，但这也可能说明 alpha 更依赖“极端事件样本”，要防止 sample thinning。</li>
+<li>这条线很吃执行：如果只能双边 taker，<code>5m</code> 可能大部分被费用吃掉；<code>15m</code> 更像还有存活空间。</li>
+<li>下一步最该补的不是继续换参数，而是：<strong>上 1m aggTrades 做真正 volume-synchronized VPIN，再比较 <code>all jump / high-tox jump / low-tox jump</code> 的成本后曲线。</strong></li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Kitvanitphasu, A., Kyaw, K., Likitapiwat, T., &amp; Treepongkaruna, S. (2026). *Bitcoin wild moves: Evidence from order flow toxicity and price jumps*. *Research in International Business and Finance*.</li>
+<li>DOI: <code>10.1016/j.ribaf.2025.103163</code></li>
+<li>Readable URL: <code><a href="https://www.sciencedirect.com/science/article/pii/S0275531925004192">https://www.sciencedirect.com/science/article/pii/S0275531925004192</a></code></li>
+<li>Data note from article page: <code>Data is available from Binance Exchange.</code></li>
+</ul>
+</body>
+</html>

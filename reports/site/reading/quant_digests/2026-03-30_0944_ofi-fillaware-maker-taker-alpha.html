@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 OFI repo 只读成风控壳子：对 desk 更该先测的是「lagged OFI z-score × cost-aware gating × fill-aware maker/taker split」BTC 单币完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 OFI repo 只读成风控壳子：对 desk 更该先测的是「lagged OFI z-score × cost-aware gating × fill-aware maker/taker split」BTC 单币完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-30 10:07 UTC</span>
+      <span class="pill">研究时间：2026-03-30 09:44 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + `strategy_core.py` / `alpha/microprice_ofi_alpha.py` source audit + repo 内置 IS/OOS 产物复核 + 2024 SSRN 元数据锚点</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/ofi/microprice/queue-imbalance/fill-aware/maker-taker/cost-aware-gating/single-asset/btc/binance/1m/3m/5m/repo/paper/public-proxy/cost</span>
+      <span class="pill">证据类型：代码级策略定义 + repo 自带回测产物 + 经典 microstructure 理论锚点 + crypto 论文元数据弱锚点</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-30_0944_ofi-fillaware-maker-taker-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-30 09:44 UTC</li>
+<li>类型：2026 GitHub 新仓库 + <code>strategy_core.py</code> / <code>alpha/microprice_ofi_alpha.py</code> source audit + repo 内置 IS/OOS 产物复核 + 2024 SSRN 元数据锚点</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>lagged OFI z-score 预测未来超短 drift</strong>，并用 <code>microprice edge / queue imbalance / half-spread</code> 把“方向 edge”直接变成 <strong>maker-or-taker、做/不做、做多大</strong> 的可执行状态机</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/microstructure/ofi/microprice/queue-imbalance/fill-aware/maker-taker/cost-aware-gating/single-asset/btc/binance/1m/3m/5m/repo/paper/public-proxy/cost</li>
+<li>证据类型：代码级策略定义 + repo 自带回测产物 + 经典 microstructure 理论锚点 + crypto 论文元数据弱锚点</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 <strong><code>jingyaolai17/tardis-python-private</code> (2026)</strong>。它最值钱的地方不是“又一个 OFI 指标”，而是把一条微结构 raw alpha 从 <code>signal -&gt; gate -&gt; execution -&gt; kill-switch</code> 全部写进同一份 <code>strategy_core.py</code>：</p>
+<ul>
+<li><code>ofi_z = (ofi - rolling_mean) / rolling_std</code></li>
+<li><code>beta_fwd = cov(ret_fwd_30s_bps, ofi_z) / var(ofi_z)</code></li>
+<li><code>alpha_bps = beta_fwd * ofi_z</code></li>
+<li><code>maker_edge = alpha_bps - join_thresh * half_spread_bps</code></li>
+<li><code>p_maker_fill = (1 - |QI|)^1.5</code></li>
+<li>只有当 <code>|alpha|</code> 同时穿过<strong>绝对门槛</strong>和<strong>成本门槛</strong>时才允许入场</li>
+</ul>
+<p>一句话核心结论：</p>
+<p>&gt; <strong>真正值得 intake 的不是“OFI 能不能预测几秒钟价格”，而是“OFI 这条边怎么在穿过 spread/fee/slippage 之后，仍然留下可交易的净边”。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>base alpha 很清楚：</strong> repo 不是把 OFI 当解释变量，而是直接把 <code>lagged OFI z-score -&gt; future 30s return</code> 写成 <code>alpha_bps</code>，这是 raw alpha，不是 filter。</li>
+<li><strong>最值钱的是成本感知 admission rule：</strong> <code>apply_alpha_gating()</code> 要求 <code>|alpha| &gt;= 0.8bps</code>，且 <code>|alpha| &gt;= 1.5 × hurdle_bps</code>；<code>hurdle_bps</code> 又显式包含 <code>half-spread + taker fee + taker slippage + maker slippage</code>。</li>
+<li><strong>执行层不是事后补丁：</strong> repo 先判断 <code>maker_edge &gt; 0</code> 再决定是否挂 maker，并用 <code>QI</code> 估算 <code>p_maker_fill</code>，把“信号对不对”和“能不能低成本成交”写成一个联合决策。</li>
+<li><strong>状态机可直接迁到 desk：</strong> 代码里有 <code>cooldown_bars=10</code>、<code>min_hold_bars=20</code>（在 <code>100ms</code> bar 上分别约 1s / 2s），本质上是在防止微结构 alpha 因 flip-churn 被成本吃死。</li>
+<li><strong>但 repo headline 业绩暂时不能照单全收：</strong> <code>IS_OOS_Validation_summary.md</code>、<code>IS/OOS csv/json</code> 和脚本里的数据区间/结果彼此不一致。机器可读产物里，OOS <code>net_edge_bps_on_executed ≈ 3.87bps</code>、<code>total_pnl_after_usd ≈ 159.8</code>（<code>$50k</code> 资本），说明<strong>结构值得偷</strong>，但<strong>收益数字必须重跑复核</strong>。</li>
+</ul>
+<p>一句话说明它怎么证明：</p>
+<p>&gt; <strong>不是只靠论文口头说 OFI 有效，而是把信号、成本门槛、maker/taker 分流、库存与 kill-switch 全写成代码，并附了 IS/OOS 产物；虽然产物口径有冲突，但策略骨架是可审计的。</strong></p>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这轮更值得写它，而不是再补一个泛泛的 regime/filter，原因很直接：</p>
+<ol>
+<li><strong>它是 raw alpha，而且是完整策略。</strong> 不是“高 OFI 所以少做”，而是“高 OFI 在穿过成本后该怎么做”。</li>
+<li><strong>它补的是 1m/3m 高强度素材池。</strong> 当前 digest 已有不少 <code>5m/15m</code> 方向与 pairs 卡，这张卡补的是更快、更 execution-sensitive 的单币微结构线。</li>
+<li><strong>它天然能拆成 desk 组件。</strong> <code>alpha</code>、<code>admission</code>、<code>maker/taker split</code>、<code>toxicity scaler</code>、<code>kill-switch</code> 都能单独 ablation。</li>
+<li><strong>它提醒我们别被好看的回测图骗。</strong> 这份 repo 最大价值也许不是 OOS 数字，而是教我们怎么把“净边必须大于 frictions”写进信号本体。</li>
+</ol>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：BTC 单币 long/short 超短周期 directional alpha</li>
+<li>基础 alpha：<code>OFI z-score</code> 对未来 <code>30s</code> drift 的预测</li>
+<li>regime：高波动 / 极端 spread / 高 toxicity 时做缩放，不把它们当 alpha 本体</li>
+<li>filter / veto：<code>|alpha|</code> 不过绝对阈值或不过成本阈值则不交易；sign flip 后强制 cooldown</li>
+<li>risk / sizing / execution overlay：<code>maker_edge</code> 决定 maker/taker；<code>QI</code> 决定 maker fill proxy；库存上限、inventory decay、drawdown kill-switch、linear flatten 都已写进框架</li>
+</ul>
+<h2>4. 真正值得 desk 先偷哪一段</h2>
+<p>最该先偷的不是 OFI，而是 <strong>“OFI 只有在净边能覆盖 frictions 时才允许变成仓位”</strong> 这条 admission 逻辑。很多微结构信号死掉，不是方向错，而是：</p>
+<ul>
+<li>edge 太小；</li>
+<li>交易太碎；</li>
+<li>flip 太频；</li>
+<li>maker 想象成交，实际全变 taker。</li>
+</ul>
+<p>这份 repo 把这几个坑一次性写出来了，所以它更像一张 <strong>raw alpha + execution shell</strong> 卡，而不是单纯指标卡。</p>
+<h2>5. 可复刻的最小实验</h2>
+<h3>5.1 数据源与公开性</h3>
+<ul>
+<li><strong>理想口径：</strong> Binance L2 + trades（repo 通过 Tardis 拉历史，非完全免费）</li>
+<li><strong>公开最小代理：</strong> Binance <code>bookTicker</code> 实时采集 + <code>aggTrades</code> 公共流，自己积累 7~14 天；先做 <code>L1 OFI / microprice / spread</code> 代理</li>
+<li><strong>映射频率：</strong> 先做 <code>1m / 3m</code>，若成本后存活，再看能否向 <code>5m</code> transfer；不建议直接伪装成 <code>15m</code> 主信号</li>
+</ul>
+<h3>5.2 最小策略口径</h3>
+<ol>
+<li>用 <code>bookTicker + aggTrades</code> 重建 <code>L1 OFI</code>、<code>QI</code>、<code>microprice-mid</code>、<code>half-spread_bps</code></li>
+<li>先用最近 <code>N=300~600</code> 个子样本标准化 <code>ofi_z</code></li>
+<li>定义 <code>alpha_proxy = beta_fwd * ofi_z</code>，<code>beta_fwd</code> 可先用 rolling OLS / cov-var</li>
+<li>入场条件：</li>
+</ol>
+<ul>
+<li><code>|alpha_proxy| &gt;= max(0.8bps, 1.5 × hurdle_bps)</code></li>
+<li><code>hurdle_bps = half_spread + fee + slip</code></li>
+<li><code>alpha_proxy &gt; 0</code> 做多，<code>&lt; 0</code> 做空</li>
+</ul>
+<ol>
+<li>出场条件：</li>
+</ol>
+<ul>
+<li><code>alpha_proxy</code> 回到门槛内；或</li>
+<li>sign flip；或</li>
+<li>超时 <code>1/3/5</code> 分钟</li>
+</ul>
+<h3>5.3 第一轮先看什么</h3>
+<ul>
+<li>成本前后 <code>avg trade</code> 差多少？</li>
+<li>maker share、taker share、fill proxy 分层后，哪一层还留边？</li>
+<li><code>1m</code> 与 <code>3m</code> 谁更能抗 flip-churn？</li>
+<li>toxicity scaler 是真降噪，还是把 raw alpha 也一起削没？</li>
+</ul>
+<h2>6. 这张卡最容易错在哪里</h2>
+<ul>
+<li><strong>错法 1：</strong> 只看到 OOS Sharpe，不核对 repo 内不同文件的口径冲突。</li>
+<li><strong>错法 2：</strong> 把 OFI 当免费方向因子，忽略 spread/slippage 后其实净边不够。</li>
+<li><strong>错法 3：</strong> 看到微结构 alpha 就强行迁到 <code>15m</code>；这条线更像 <code>1m/3m</code> 主实验、<code>5m</code> 仅做 transfer check。</li>
+<li><strong>错法 4：</strong> 以为 maker rebate 能自动救活策略；真实难点在于 fill quality，而不是名义费率。</li>
+</ul>
+<h2>7. 为什么值得进入研究池</h2>
+<p>它值得进池，不是因为 repo 业绩已经可信到可实盘，而是因为它把一个很多人嘴上会说、但很少代码里写完整的命题落地了：</p>
+<p>&gt; <strong>微结构 raw alpha 不是“预测方向”就结束，而是必须连同成本门槛、成交方式和 churn 抑制一起定义。</strong></p>
+<p>对当前 desk，这比再补一张纯解释型 microstructure 卡更值钱，因为它能直接产出一轮 <code>1m/3m</code> 的诚实 first verdict。</p>
+<h2>8. 来源与链接</h2>
+<ol>
+<li><strong>Lai, Jingyao? / GitHub handle <code>jingyaolai17</code> (2026). _tardis-python-private_. GitHub Repository.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/jingyaolai17/tardis-python-private&gt;">https://github.com/jingyaolai17/tardis-python-private&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/jingyaolai17/tardis-python-private&gt;">https://github.com/jingyaolai17/tardis-python-private&gt;</a></li>
+<li>Key files:</li>
+<li>&lt;<a href="https://github.com/jingyaolai17/tardis-python-private/blob/main/strategy_core.py&gt;">https://github.com/jingyaolai17/tardis-python-private/blob/main/strategy_core.py&gt;</a></li>
+<li>&lt;<a href="https://github.com/jingyaolai17/tardis-python-private/blob/main/alpha/microprice_ofi_alpha.py&gt;">https://github.com/jingyaolai17/tardis-python-private/blob/main/alpha/microprice_ofi_alpha.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Cont, R., Kukanov, A., &amp; Stoikov, S. (2014). _The Price Impact of Order Book Events_. Journal of Financial Econometrics.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1093/jjfinec/nbt003</code></li>
+<li>Readable URL: &lt;<a href="https://doi.org/10.1093/jjfinec/nbt003&gt;">https://doi.org/10.1093/jjfinec/nbt003&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Alexander, C., Heck, D., Kaeck, A., &amp; Riordan, R. (2024). _Order Flow Impact and Price Formation in Centralized Crypto Exchanges_. SSRN Electronic Journal.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.2139/ssrn.4867599</code></li>
+<li>Readable URL: &lt;<a href="https://doi.org/10.2139/ssrn.4867599&gt;">https://doi.org/10.2139/ssrn.4867599&gt;</a></li>
+</ul>
+<h2>9. 下一步怎么测</h2>
+<ol>
+<li><strong>先做公开数据代理版</strong>：连续抓 7~14 天 Binance <code>bookTicker + aggTrades</code>，只复刻 <code>L1 OFI + spread hurdle + sign flip exit</code>。</li>
+<li><strong>然后做 friction ladder</strong>：round-trip 先测 <code>2 / 4 / 6 / 8 bps</code>，再拆 maker/taker。</li>
+<li><strong>再做 1m vs 3m transfer</strong>：若 <code>1m</code> 成本后活、<code>3m</code> 也不塌，这张卡才值得升 replication queue。</li>
+<li><strong>最后才补 Tardis/L2</strong>：若公开代理版已有边，再为更高质量 L2 数据付复杂度；反之就别急着买更贵的数据。</li>
+</ol>
+</body>
+</html>

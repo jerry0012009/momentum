@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Deep Dive — Repo: ednunezg/pytrendline</title>
+  <style>
+    :root {
+      --fg: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --bg-soft: #f8fafc;
+      --bg-pill: #eef2ff;
+      --link: #2563eb;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--fg); margin: 0; background: white; }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 32px 20px 64px; }
+    .topnav { margin-bottom: 20px; }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .layout { display: grid; grid-template-columns: minmax(0, 780px) 300px; gap: 28px; align-items: start; }
+    .main { min-width: 0; }
+    .side { position: sticky; top: 24px; align-self: start; }
+    .card { border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; margin: 16px 0; background: white; }
+    .toc-card { background: var(--bg-soft); }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--bg-pill); color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 16px; }
+    h2 { font-size: 1.35rem; line-height: 1.3; margin-top: 30px; padding-top: 6px; border-top: 1px solid var(--border); }
+    h3 { font-size: 1.05rem; margin-top: 22px; }
+    p, li { line-height: 1.8; }
+    ul, ol { padding-left: 24px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    .muted { color: var(--muted); }
+    .toc-list { list-style: none; padding-left: 0; margin: 12px 0 0; }
+    .toc-list li { margin: 8px 0; line-height: 1.5; }
+    .toc-h3 { padding-left: 14px; font-size: 0.95rem; }
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      .side { position: static; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topnav"><a href="report.html">← 返回 Deep Dives</a> · <a href="../../index.html">站点首页</a></div>
+    <div class="layout">
+      <main class="main">
+        <h1>Deep Dive — Repo: ednunezg/pytrendline</h1>
+        <div class="card">
+          <span class="pill">2026-03-11</span>
+          <span class="pill">GitHub 仓库拆解</span>
+          <span class="pill">trendline / breakout / candlestick / support-resistance / confirmation</span>
+          <span class="pill">当前相关性：非常高</span>
+          <p class="muted">源文件：<code>research/deep_dives/2026-03-11_pytrendline-repo-deep-dive.md</code></p>
+        </div>
+        <ul>
+<li>时间：2026-03-11</li>
+<li>类型：GitHub 仓库拆解</li>
+<li>主题标签：trendline / breakout / candlestick / support-resistance / confirmation</li>
+<li>当前相关性：非常高</li>
+</ul>
+<h2 id="1-为什么-pytrendline-对你当前阶段特别重要">1. 为什么 <code>pytrendline</code> 对你当前阶段特别重要</h2>
+<p>如果你现在的兴趣点是：</p>
+<ul>
+<li>平行通道</li>
+<li>支撑阻力位</li>
+<li>趋势线突破</li>
+<li>breakout 后确认</li>
+</ul>
+<p>那么 <code>pytrendline</code> 比很多泛技术分析仓库都更贴你现在的问题。</p>
+<p>原因是它直接从 <strong>OHLC candlestick chart</strong> 出发，做：</p>
+<ul>
+<li>support / resistance line detection</li>
+<li>pivot points</li>
+<li>breakout-aware trendline evaluation</li>
+</ul>
+<p>这比只给“指标值”的库更接近你真正想研究的东西。</p>
+<h2 id="2-readme-里最关键的功能拆解">2. README 里最关键的功能拆解</h2>
+<h3 id="21-输入对象是-candlestickdata">2.1 输入对象是 CandlestickData</h3>
+<p>README 和 example 说明，它不是吃单一 close 序列，而是吃完整 K 线结构：</p>
+<ul>
+<li>Open</li>
+<li>High</li>
+<li>Low</li>
+<li>Close</li>
+<li>Date / time interval</li>
+</ul>
+<p>这点很重要，因为： <strong>趋势线、阻力位、突破、影线交互，本来就不该只靠 close。</strong></p>
+<h3 id="22-先识别-pivot-points">2.2 先识别 pivot points</h3>
+<p>仓库明确写了：</p>
+<ul>
+<li>pivot points = local maximum / minimum</li>
+<li>也就是 peaks / troughs</li>
+</ul>
+<p>这点和你后面做趋势线、通道都直接相关。</p>
+<h3 id="23-扫描所有-i-j-点对尝试画线">2.3 扫描所有 <code>(i, j)</code> 点对尝试画线</h3>
+<p>README 明说：</p>
+<ul>
+<li>它通过穷举点对去扫描 trendlines</li>
+<li>复杂度是 <strong>O(N^3)</strong></li>
+</ul>
+<p>这是它最重要的工程特征之一：</p>
+<ul>
+<li>研究分析很强</li>
+<li>实时大样本很贵</li>
+</ul>
+<h3 id="24-一条线是否有效要经过三类检查">2.4 一条线是否有效，要经过三类检查</h3>
+<p>#### 检查 1：有多少有效点落在线附近 通过 <code>max_allowable_error_pt_to_trend</code> 控制</p>
+<p>#### 检查 2：线是否穿过 candle body README 里很关键的一点是：</p>
+<ul>
+<li>如果 trendline 在某个位置穿过 candle body，并且超过 <code>breakout_tolerance</code>，就被视为 breakout</li>
+</ul>
+<p>这和你正在关心的“阻力位突破 / 假突破”是强相关的。</p>
+<p>#### 检查 3：pivot 约束 可以要求：</p>
+<ul>
+<li>first point must be pivot</li>
+<li>last point must be pivot</li>
+<li>all points must be pivots</li>
+</ul>
+<p>这点非常适合用来做“更严格/更保守”的结构线过滤。</p>
+<h3 id="25-scoring-duplicate-grouping">2.5 scoring + duplicate grouping</h3>
+<p>它不是找到线就结束，还会：</p>
+<ul>
+<li>给 trendlines 打分</li>
+<li>对相似 slope / last_price 的线做 grouping</li>
+<li>找每组最优线</li>
+</ul>
+<p>这很适合研究阶段，因为实际检测出来的线通常很多、很重复。</p>
+<h2 id="3-examplepy-暴露出的可调参数">3. example.py 暴露出的可调参数</h2>
+<p>从 example 可以看到，这个仓库已经很接近你后续真正要研究的信号要素：</p>
+<ul>
+<li><code>trend_type</code>：BOTH / SUPPORT / RESISTANCE</li>
+<li><code>first_pt_must_be_pivot</code></li>
+<li><code>last_pt_must_be_pivot</code></li>
+<li><code>all_pts_must_be_pivots</code></li>
+<li><code>trendline_must_include_global_maxmin_pt</code></li>
+<li><code>min_points_required</code></li>
+<li><code>ignore_breakouts</code></li>
+<li><code>config</code>（可覆盖默认 scoring 等）</li>
+</ul>
+<p>这意味着你后面完全可以围绕这些维度定义研究问题：</p>
+<ul>
+<li>更严格的线是否更稳？</li>
+<li>breakout line 要不要忽略？</li>
+<li>至少几次 touch 才算有效？</li>
+</ul>
+<h2 id="4-为什么它比-trendln-更适合你当前的-breakout-兴趣">4. 为什么它比 <code>trendln</code> 更适合你当前的 breakout 兴趣</h2>
+<p>我自己的判断是：</p>
+<ul>
+<li><code>trendln</code> 更像结构线识别工具箱</li>
+<li><code>pytrendline</code> 更像 <strong>candlestick 上的 trendline/breakout research engine</strong></li>
+</ul>
+<p>也就是说，如果你现在更关心：</p>
+<ul>
+<li>压力位突破</li>
+<li>阻力线突破后确认</li>
+<li>线有没有穿 candle body</li>
+<li>假突破/真突破怎么区分</li>
+</ul>
+<p>那么 <code>pytrendline</code> 的直接相关性更高。</p>
+<h2 id="5-它在你项目里已经怎么落地了">5. 它在你项目里已经怎么落地了</h2>
+<p>这不是纯外部学习，你项目里已经有明确接法。</p>
+<h3 id="51-项目文档docsresearch_pytrendlinemd">5.1 项目文档：<code>docs/RESEARCH_PYTRENDLINE.md</code></h3>
+<p>这里已经明确了它的定位：</p>
+<ul>
+<li><code>pytrendline</code> 是研究功能</li>
+<li>不直接当正式交易信号</li>
+<li>重点回答：最近窗口里找到了哪些 support / resistance / breakout 线</li>
+</ul>
+<h3 id="52-项目桥接层srcmomentumfactorspytrendline_bridgepy">5.2 项目桥接层：<code>src/momentum/factors/pytrendline_bridge.py</code></h3>
+<p>你项目里现在已经做了一个非常合理的 adapter：</p>
+<p>#### 已做的事</p>
+<ul>
+<li>用 <code>PyTrendlineConfig</code> 包一层本地配置</li>
+<li>只接受标准 columns：<code>timestamp/open/high/low/close</code></li>
+<li>自动把数据裁到最近窗口（默认 <code>96</code> bars）</li>
+<li>做 pandas 3 兼容（<code>DataFrame.append</code> patch）</li>
+<li>调用 <code>pytrendline.detect(...)</code></li>
+<li>返回：</li>
+<li><code>support_pivots</code></li>
+<li><code>resistance_pivots</code></li>
+<li><code>support_trendlines</code></li>
+<li><code>resistance_trendlines</code></li>
+</ul>
+<p>#### 这层的意义 非常大，因为它已经把外部 repo 从“直接依赖”变成了：</p>
+<ul>
+<li>可替换</li>
+<li>可审计</li>
+<li>可限制运行边界</li>
+<li>可向上层暴露结构化结果</li>
+</ul>
+<h2 id="6-我怎么看它和你当前研究问题的关系">6. 我怎么看它和你当前研究问题的关系</h2>
+<h3 id="问题-1平行通道能不能从它里头做出来">问题 1：平行通道能不能从它里头做出来？</h3>
+<p>能，但要你自己加一层定义。</p>
+<p><code>pytrendline</code> 直接给的是：</p>
+<ul>
+<li>support lines</li>
+<li>resistance lines</li>
+<li>breakout-aware trendlines</li>
+</ul>
+<p>你需要再定义：</p>
+<ul>
+<li>support slope ≈ resistance slope</li>
+<li>channel width 稳定</li>
+<li>两侧 touch count 足够</li>
+</ul>
+<p>这样才能变成“平行通道候选”。</p>
+<h3 id="问题-2它能不能直接回答突破后几根阳线确认">问题 2：它能不能直接回答“突破后几根阳线确认”？</h3>
+<p>不能直接回答。</p>
+<p>它擅长的是：</p>
+<ul>
+<li>识别线</li>
+<li>判断线与 candle body 的交互</li>
+<li>标记 breakout 相关结构</li>
+</ul>
+<p>但 “1 根确认 / 2 根确认 / 回踩确认” 这种，是你应该在上层 signal logic 里加的确认层。</p>
+<h3 id="问题-3它适合实盘直接跑吗">问题 3：它适合实盘直接跑吗？</h3>
+<p>不适合直接当高频实时引擎。</p>
+<p>原因：</p>
+<ul>
+<li>README 已明说 O(N^3)</li>
+<li>你项目文档也已经把它定位成 recent window offline analysis</li>
+</ul>
+<p>这点判断是对的，不要硬上实时主引擎。</p>
+<h2 id="7-你最值得复用的不是整个-repo而是这-4-个思想">7. 你最值得复用的，不是整个 repo，而是这 4 个思想</h2>
+<h3 id="思想-1先做结构检测再做交易解释">思想 1：先做结构检测，再做交易解释</h3>
+<p>不要把“线检测”和“交易确认”写成一锅粥。</p>
+<h3 id="思想-2用-pivot-line-validity-约束提升线质量">思想 2：用 pivot + line validity 约束提升线质量</h3>
+<p>你的后续通道研究应该明确：</p>
+<ul>
+<li>至少几个点</li>
+<li>哪些点必须是 pivot</li>
+<li>线与 candle 的误差阈值是多少</li>
+</ul>
+<h3 id="思想-3把-breakout-当成线与-k-线几何关系">思想 3：把 breakout 当成“线与 K 线几何关系”</h3>
+<p>而不是只看：</p>
+<ul>
+<li><code>close &gt; resistance</code></li>
+</ul>
+<p>可以扩展出：</p>
+<ul>
+<li>close breakout</li>
+<li>wick breakout</li>
+<li>body penetration</li>
+<li>retest hold</li>
+</ul>
+<h3 id="思想-4结果要以-dataframe-structured-outputs-暴露">思想 4：结果要以 DataFrame / structured outputs 暴露</h3>
+<p>这和你自己的 adapter 一致，非常适合后续做：</p>
+<ul>
+<li>report</li>
+<li>filtering</li>
+<li>clustering</li>
+<li>backtest join</li>
+</ul>
+<h2 id="8-一个很适合你的最小实验">8. 一个很适合你的最小实验</h2>
+<h3 id="研究目标">研究目标</h3>
+<p>验证：</p>
+<p>&gt; <code>pytrendline</code> 识别的 resistance breakout，是否比裸 rolling-high breakout 更接近“结构型基础 alpha”。</p>
+<h3 id="实验设计">实验设计</h3>
+<p>#### 输入</p>
+<ul>
+<li>BTC / ETH / SOL</li>
+<li>15m</li>
+<li>近 60d / 180d</li>
+<li>recent window：<code>96</code> bars</li>
+</ul>
+<p>#### 触发组</p>
+<ol>
+<li>裸 <code>close &gt; rolling_high(20)</code></li>
+<li><code>pytrendline</code> resistance breakout</li>
+<li><code>pytrendline</code> breakout + 1 根 close confirmation</li>
+<li><code>pytrendline</code> breakout + retest confirmation</li>
+</ol>
+<p>#### 输出先看</p>
+<ul>
+<li><code>post_cost_return</code></li>
+<li><code>positive_window_ratio</code></li>
+<li><code>trade_count</code></li>
+<li><code>false_breakout_rate</code>（你可以自己定义）</li>
+</ul>
+<h2 id="9-它的主要局限">9. 它的主要局限</h2>
+<ul>
+<li>O(N^3)，不适合粗暴扩大窗口</li>
+<li>更适合研究窗口，不适合直接在线上高频持续扫描</li>
+<li>趋势线检测本身很容易对 pivot 参数敏感</li>
+<li>如果把检测结果直接变成交易信号，容易发生 lookahead / retrospective beautification 风险</li>
+</ul>
+<h2 id="10-我对-pytrendline-的最终评价">10. 我对 <code>pytrendline</code> 的最终评价</h2>
+<p>如果你现在只选一个 repo 认真学，我会推荐你先学这个，而不是 <code>trendln</code>。</p>
+<p>原因不是 <code>trendln</code> 不好，而是：</p>
+<p><strong><code>pytrendline</code> 更贴你现在的真实问题：趋势线 / 支撑阻力 / breakout / candle-body 交互 / 假突破。</strong></p>
+<p>同时，你项目里已经有干净的接法了，这意味着它不仅能学，还能马上复用。</p>
+<h2 id="11-来源">11. 来源</h2>
+<ul>
+<li>Repo: &lt;<a href="https://github.com/ednunezg/pytrendline&gt;">https://github.com/ednunezg/pytrendline&gt;</a></li>
+<li>README raw: &lt;<a href="https://raw.githubusercontent.com/ednunezg/pytrendline/master/README.md&gt;">https://raw.githubusercontent.com/ednunezg/pytrendline/master/README.md&gt;</a></li>
+<li>Example raw: &lt;<a href="https://raw.githubusercontent.com/ednunezg/pytrendline/master/example.py&gt;">https://raw.githubusercontent.com/ednunezg/pytrendline/master/example.py&gt;</a></li>
+<li>项目内研究文档：<code>docs/RESEARCH_PYTRENDLINE.md</code></li>
+<li>项目内接入代码：<code>src/momentum/factors/pytrendline_bridge.py</code></li>
+</ul>
+      </main>
+      <aside class="side">
+        <div class="card toc-card">
+          <strong>目录</strong>
+          <p class="muted">这是一篇长报告，建议按目录跳读。</p>
+          <ul class="toc-list">
+<li class="toc-h2"><a href="#1-为什么-pytrendline-对你当前阶段特别重要">1. 为什么 <code>pytrendline</code> 对你当前阶段特别重要</a></li>
+<li class="toc-h2"><a href="#2-readme-里最关键的功能拆解">2. README 里最关键的功能拆解</a></li>
+<li class="toc-h3"><a href="#21-输入对象是-candlestickdata">2.1 输入对象是 CandlestickData</a></li>
+<li class="toc-h3"><a href="#22-先识别-pivot-points">2.2 先识别 pivot points</a></li>
+<li class="toc-h3"><a href="#23-扫描所有-i-j-点对尝试画线">2.3 扫描所有 <code>(i, j)</code> 点对尝试画线</a></li>
+<li class="toc-h3"><a href="#24-一条线是否有效要经过三类检查">2.4 一条线是否有效，要经过三类检查</a></li>
+<li class="toc-h3"><a href="#25-scoring-duplicate-grouping">2.5 scoring + duplicate grouping</a></li>
+<li class="toc-h2"><a href="#3-examplepy-暴露出的可调参数">3. example.py 暴露出的可调参数</a></li>
+<li class="toc-h2"><a href="#4-为什么它比-trendln-更适合你当前的-breakout-兴趣">4. 为什么它比 <code>trendln</code> 更适合你当前的 breakout 兴趣</a></li>
+<li class="toc-h2"><a href="#5-它在你项目里已经怎么落地了">5. 它在你项目里已经怎么落地了</a></li>
+<li class="toc-h3"><a href="#51-项目文档docsresearch_pytrendlinemd">5.1 项目文档：<code>docs/RESEARCH_PYTRENDLINE.md</code></a></li>
+<li class="toc-h3"><a href="#52-项目桥接层srcmomentumfactorspytrendline_bridgepy">5.2 项目桥接层：<code>src/momentum/factors/pytrendline_bridge.py</code></a></li>
+<li class="toc-h2"><a href="#6-我怎么看它和你当前研究问题的关系">6. 我怎么看它和你当前研究问题的关系</a></li>
+<li class="toc-h3"><a href="#问题-1平行通道能不能从它里头做出来">问题 1：平行通道能不能从它里头做出来？</a></li>
+<li class="toc-h3"><a href="#问题-2它能不能直接回答突破后几根阳线确认">问题 2：它能不能直接回答“突破后几根阳线确认”？</a></li>
+<li class="toc-h3"><a href="#问题-3它适合实盘直接跑吗">问题 3：它适合实盘直接跑吗？</a></li>
+<li class="toc-h2"><a href="#7-你最值得复用的不是整个-repo而是这-4-个思想">7. 你最值得复用的，不是整个 repo，而是这 4 个思想</a></li>
+<li class="toc-h3"><a href="#思想-1先做结构检测再做交易解释">思想 1：先做结构检测，再做交易解释</a></li>
+<li class="toc-h3"><a href="#思想-2用-pivot-line-validity-约束提升线质量">思想 2：用 pivot + line validity 约束提升线质量</a></li>
+<li class="toc-h3"><a href="#思想-3把-breakout-当成线与-k-线几何关系">思想 3：把 breakout 当成“线与 K 线几何关系”</a></li>
+<li class="toc-h3"><a href="#思想-4结果要以-dataframe-structured-outputs-暴露">思想 4：结果要以 DataFrame / structured outputs 暴露</a></li>
+<li class="toc-h2"><a href="#8-一个很适合你的最小实验">8. 一个很适合你的最小实验</a></li>
+<li class="toc-h3"><a href="#研究目标">研究目标</a></li>
+<li class="toc-h3"><a href="#实验设计">实验设计</a></li>
+<li class="toc-h2"><a href="#9-它的主要局限">9. 它的主要局限</a></li>
+<li class="toc-h2"><a href="#10-我对-pytrendline-的最终评价">10. 我对 <code>pytrendline</code> 的最终评价</a></li>
+<li class="toc-h2"><a href="#11-来源">11. 来源</a></li>
+</ul>
+        </div>
+      </aside>
+    </div>
+  </div>
+</body>
+</html>

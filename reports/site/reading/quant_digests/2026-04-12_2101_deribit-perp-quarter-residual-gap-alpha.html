@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2020 Deribit 旧 repo 只看成过时套利脚本：对 short-cycle desk，更该先测的是「perp-vs-quarter residual gap 收敛 × maker-first hedge shell」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2020 Deribit 旧 repo 只看成过时套利脚本：对 short-cycle desk，更该先测的是「perp-vs-quarter residual gap 收敛 × maker-first hedge shell」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-12 21:02 UTC</span>
+      <span class="pill">研究时间：2026-04-12 21:01 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit + Deribit public futures live probe</span>
+      <span class="pill">主题标签：raw-alpha / relative-value / stat-arb / perp-vs-quarter / quote-gap / carry-residual / convergence / maker-first / deribit / btc / 1m / 3m / 5m / 15m</span>
+      <span class="pill">证据类型：工程证据（repo source audit）+ Deribit 公共 API live snapshot</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-12_2101_deribit-perp-quarter-residual-gap-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-12 21:01 UTC</li>
+<li>类型：GitHub / repo source audit + Deribit public futures live probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：同 venue、同 underlier 的 <code>BTC perpetual</code> 与 <code>BTC dated future</code> 本质上共享大部分方向暴露；当顶层可成交 quote 相对“该期限应有 carry”出现异常扩张时，做 <code>short rich leg / long cheap leg</code>，赌 residual gap 回落。carry 只是公平价值基线，不是 alpha 本体。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（repo 已给执行骨架；阈值需按当前期限结构做残差化重标定）</li>
+<li>主题标签：raw-alpha / relative-value / stat-arb / perp-vs-quarter / quote-gap / carry-residual / convergence / maker-first / deribit / btc / 1m / 3m / 5m / 15m</li>
+<li>证据类型：工程证据（repo source audit）+ Deribit 公共 API live snapshot</li>
+</ul>
+<h2>1. 这次为什么选它</h2>
+<p>这轮优先目标还是补 <strong>可独立复现、尽量可直接落地</strong> 的 raw alpha，而不是再写一篇泛泛的 filter / overlay。</p>
+<p>我最后选的是 GitHub 仓库 <strong>Hudie / crypto_algo_trading</strong> 里那条 <strong>Deribit perpetual-vs-dated-future</strong> 套利执行壳，重点读了：</p>
+<ul>
+<li><code>strategy/backup_deribit_perpetual_future_arb.py</code></li>
+<li><code>strategy/deribit_cross_future.py</code></li>
+<li><code>strategy/deribit_cross_remote_future.py</code></li>
+<li><code>README.md</code></li>
+</ul>
+<p>先把 <strong>base alpha</strong> 说清楚：</p>
+<p>&gt; <strong>不是看 BTC 涨跌，而是看同一条 BTC 曲线里，两条近似同质暴露（perp 与季度 future / 两个远月 future）的可成交价差，是否短时偏离了该期限本该有的 carry 水平，并在几分钟到几十分钟内向中枢回落。</strong></p>
+<p>它属于：</p>
+<ul>
+<li><code>raw alpha</code></li>
+<li><code>relative value / stat-arb</code></li>
+<li><code>carry / basis</code> 家族里的 <strong>短周期执行化版本</strong></li>
+</ul>
+<p>和我们之前已经写过的几类主题不一样：</p>
+<ul>
+<li>不是 <strong>front-vs-back annualized basis</strong> 的 bar-level calendar spread 回测；</li>
+<li>不是 <strong>basis - implied funding</strong> 的中枢收敛框架；</li>
+<li>也不是跨 venue options quote gap。</li>
+</ul>
+<p>这次真正值钱的，是一个更贴近实盘组件拆解的东西： <strong>repo 把 entry / edit / cancel / hedge / rebalance 全写成了 live execution shell。</strong></p>
+<h2>2. repo 里真正可复用的，不是旧阈值，而是完整策略骨架</h2>
+<h3>2.1 <code>backup_deribit_perpetual_future_arb.py</code> 给的是“先 future 挂 maker，再 perp 做对冲”</h3>
+<p>从源码可以直接抽出这条执行顺序：</p>
+<ol>
+<li>实时监听 <code>BTC-PERPETUAL</code> 与一条季度 future 的 quote；</li>
+<li>观察两种可成交方向：</li>
+</ol>
+<ul>
+<li><code>future.ask - perp.ask</code></li>
+<li><code>perp.bid - future.bid</code></li>
+</ul>
+<ol>
+<li>当 gap 超过某层 entry threshold，就先在 <strong>future 腿</strong>挂 <code>post_only limit</code>；</li>
+<li>如果 future 腿成交或部分成交，再用 <strong>perp 腿 market order</strong> 立即把另一边补齐；</li>
+<li>若 gap 回落到 admission 区以下，就撤掉 future 挂单；</li>
+<li>若持仓腿数不平衡，就额外发一笔 market order 做净额修复。</li>
+</ol>
+<p>这套骨架之所以值钱，是因为它不是“看见价差就口头说一句能套利”，而是已经写成：</p>
+<ul>
+<li>entry</li>
+<li>price edit</li>
+<li>cancel</li>
+<li>filled-leg hedge</li>
+<li>net exposure rebalance</li>
+<li>持仓阈值限制</li>
+</ul>
+<p>的完整原型。</p>
+<h3>2.2 源码里能直接看到的关键设计</h3>
+<p>从 <code>backup_deribit_perpetual_future_arb.py</code> 能抽出几件事：</p>
+<ul>
+<li>触发信号看的是<strong>顶层可成交 gap</strong>，不是收盘价指标；</li>
+<li>开仓前会按 gap 所处档位决定是否还能继续加仓；</li>
+<li>future 腿挂单后，如果盘口继续移动，会 <code>edit order</code> 跟价；</li>
+<li>若 gap 消失，就 <code>cancel</code>；</li>
+<li>future limit fill 后，perp 腿立刻用 market 对冲；</li>
+<li>若两腿剩余仓位不平，就再做一轮净额修复。</li>
+</ul>
+<p>这就是一个非常典型的 <strong>event-driven relative-value execution shell</strong>。</p>
+<h3>2.3 <code>deribit_cross_future.py</code> / <code>deribit_cross_remote_future.py</code> 说明作者不只做一条配对</h3>
+<p>同 repo 里还写了：</p>
+<ul>
+<li><code>BTC-PERPETUAL</code> vs <code>BTC-25SEP20</code></li>
+<li><code>BTC-25SEP20</code> vs <code>BTC-25DEC20</code></li>
+</ul>
+<p>这说明作者并不是只盯着“perp 对单一季度合约”，而是在做一整个 <strong>同 venue term-structure dislocation family</strong>：</p>
+<ul>
+<li>perp vs 季月</li>
+<li>近月 vs 远月</li>
+<li>不同方向各自有分层 gap threshold 与 position threshold</li>
+</ul>
+<p>对当前 desk 来说，这意味着它不只是单点灵感，而是一个可以扩成：</p>
+<ul>
+<li><code>perp-vs-quarter</code></li>
+<li><code>front-vs-back</code></li>
+<li><code>short carry residual</code></li>
+<li><code>term-structure quote-gap</code></li>
+</ul>
+<p>的研究分支。</p>
+<h2>3. 但源码不能原样抄：旧 repo 最大的问题，是阈值口径和今天市场不再同尺度</h2>
+<p>这里要老实一点：<strong>repo 不能直接 clone 就跑。</strong></p>
+<p>原因至少有三层：</p>
+<h3>3.1 合约是 2020 年的历史品种</h3>
+<p>源码里写死的是类似：</p>
+<ul>
+<li><code>BTC-PERPETUAL</code></li>
+<li><code>BTC-25SEP20</code></li>
+<li><code>BTC-25DEC20</code></li>
+</ul>
+<p>这些当然早就过期了。</p>
+<h3>3.2 阈值是旧市场微结构下的数值</h3>
+<p>源码里存在一堆写死的 gap 档位，比如：</p>
+<ul>
+<li><code>LONG_GAP = [1160, 1177, 1200, 1230, 1255]</code></li>
+<li><code>SHORT_GAP = [245, 40, 30, 10, -20, -60, -110, -170]</code></li>
+<li>另一份脚本里还有 <code>[180, 225, 270, 315, 360]</code> 这类档位</li>
+</ul>
+<p>这些数值今天不能生搬硬套。真正该保留的是：</p>
+<ul>
+<li><strong>分层开仓</strong></li>
+<li><strong>仓位越大，阈值越苛刻</strong></li>
+<li><strong>maker-first / taker-hedge</strong></li>
+<li><strong>gap 消失就撤单</strong></li>
+</ul>
+<p>而不是 2020 年那串具体数字。</p>
+<h3>3.3 repo 的配置卫生很差，必须当作“不可信旧生产残片”来读</h3>
+<p>仓库里配置文件暴露了历史账户配置痕迹，说明这不是一个可以直接接生产的安全工程样板。</p>
+<p>对我们来说，正确读法是：</p>
+<ul>
+<li><strong>保留 alpha 与 execution 结构</strong>；</li>
+<li><strong>重写 today’s adapter / parameterization / fee model / risk control</strong>；</li>
+<li><strong>不要复用它的私有配置方式。</strong></li>
+</ul>
+<h2>4. public live probe：今天的 Deribit 曲线依然有 carry，但 raw quote gap 已经不能直接拿旧阈值套</h2>
+<p>我用 Deribit 公共 API 看了 2026-04-12 21:00 UTC 附近的 futures 曲线快照。</p>
+<h3>4.1 当时的关键 mid 数据</h3>
+<ul>
+<li><code>BTC-PERPETUAL</code>：<code>71362.25</code></li>
+<li><code>BTC-29MAY26</code>：<code>71451.25</code></li>
+<li><code>BTC-26JUN26</code>：<code>71571.25</code></li>
+<li><code>BTC-25SEP26</code>：<code>72081.25</code></li>
+<li><code>BTC-25DEC26</code>：<code>72758.75</code></li>
+</ul>
+<p>对应到 perp 的 basis：</p>
+<ul>
+<li><code>26JUN26</code>：<code>+209.0</code>（<code>+0.293%</code>，约 <code>1.44% annualized</code>）</li>
+<li><code>25SEP26</code>：<code>+719.0</code>（<code>+1.008%</code>，约 <code>2.22% annualized</code>）</li>
+<li><code>25DEC26</code>：<code>+1396.5</code>（<code>+1.957%</code>，约 <code>2.79% annualized</code>）</li>
+</ul>
+<h3>4.2 这组数说明什么</h3>
+<p>这组快照很直白：</p>
+<p>&gt; <strong>今天 perp-vs-quarter 的 raw price gap，大头本来就来自正常 contango，而不是异常错价。</strong></p>
+<p>例如同一时刻：</p>
+<ul>
+<li><code>BTC-25SEP26 best_ask - BTC-PERPETUAL best_ask = 720.5</code></li>
+</ul>
+<p>如果你直接拿旧脚本那种固定 gap 数字去套，极容易把“正常期限结构”误当成 alpha。</p>
+<p>所以当前 desk 真正该继承的，不是“固定价差阈值”，而是：</p>
+<p>&gt; <strong>对 carry 先做公平价值基线，再看 residual gap 有没有短时异常扩张。</strong></p>
+<h2>5. 抽成今天可落地的版本，alpha 本体应该怎么定义</h2>
+<h3>5.1 更干净的 today 口径</h3>
+<p>把 raw gap 改写成 <strong>fair-value-adjusted residual gap</strong>：</p>
+<ul>
+<li><code>fair_gap(τ) = perp_mid × carry_curve(τ) × τ / 365</code></li>
+<li><code>residual_ask = (future_ask - perp_ask) - fair_gap(τ)</code></li>
+<li><code>residual_bid = (future_bid - perp_bid) - fair_gap(τ)</code></li>
+</ul>
+<p>人话版：</p>
+<ul>
+<li>先承认远月比 perp 贵，本来就正常；</li>
+<li>真正可做的，不是“远月为什么贵”，而是<strong>它比“本该贵的水平”又额外贵了一截，或额外便宜了一截</strong>；</li>
+<li>这额外多出来的一截，才是短周期 relative-value alpha。</li>
+</ul>
+<h3>5.2 对应的交易方向</h3>
+<p>若 <code>residual_ask</code> 明显过高：</p>
+<ul>
+<li>做 <code>sell future / buy perp</code></li>
+<li>赌 residual 收敛</li>
+</ul>
+<p>若 <code>residual_bid</code> 明显过低：</p>
+<ul>
+<li>做 <code>buy future / sell perp</code></li>
+<li>赌 residual 收敛</li>
+</ul>
+<h3>5.3 这条线为什么适合 <code>1m / 3m / 5m / 15m</code></h3>
+<p>因为它本来就是：</p>
+<ul>
+<li>quote-driven</li>
+<li>event-driven</li>
+<li>top-of-book driven</li>
+</ul>
+<p>所以最自然的实验频率其实是：</p>
+<ul>
+<li><code>1m</code>：最小 baseline</li>
+<li><code>3m</code>：降噪版本</li>
+<li><code>5m</code>：更接近 desk 当前主频</li>
+<li><code>15m</code>：用于看 carry residual 是否只是秒级噪声，还是能延续成更慢的 close-out pocket</li>
+</ul>
+<h2>6. 这条策略壳，可以怎么直接映射成完整实验</h2>
+<h3>6.1 Entry</h3>
+<p>只在以下同时满足时进场：</p>
+<ol>
+<li>选定一组 pair，例如 <code>perp-vs-near quarter</code>；</li>
+<li>先估一条 bucket-level <code>fair_gap(τ)</code>；</li>
+<li><code>residual</code> 超过 rolling <code>p95 / p97.5</code> 或 <code>z &gt;= 2.0 / 2.5 / 3.0</code>；</li>
+<li>顶层可成交量够；</li>
+<li>两腿净成本后仍有剩余 edge；</li>
+<li>当前 funding / liquidation / news 没把 curve 直接打进 regime break。</li>
+</ol>
+<h3>6.2 Exit</h3>
+<p>任一满足就平：</p>
+<ol>
+<li><code>residual</code> 回到 <code>0 ~ 0.5σ</code>；</li>
+<li>到达固定 time-stop（先试 <code>5m / 15m / 30m / 60m</code>）；</li>
+<li>盘口一侧 size 消失；</li>
+<li>净敞口修复失败；</li>
+<li>basis regime 突变，原先的 fair gap 估计明显失效。</li>
+</ol>
+<h3>6.3 Sizing</h3>
+<p>沿用 repo 的思想，不沿用它的旧数值：</p>
+<ul>
+<li><code>size_per_trade = min(future_top_size, perp_top_size, venue risk cap)</code></li>
+<li>position ladder：仓位越大，下一档 entry threshold 越苛刻</li>
+<li>pair-level notional cap：perp-vs-quarter 单独设上限</li>
+<li>tenor bucket cap：近月 / 远月分别记账，别混在一起</li>
+</ul>
+<h3>6.4 Risk</h3>
+<p>主要风险不是方向，而是：</p>
+<ul>
+<li><strong>单腿先成交、另一腿补不齐</strong></li>
+<li><strong>残差其实没回归，而是 carry regime 变了</strong></li>
+<li><strong>盘口 stale / quote flicker</strong></li>
+<li><strong>持仓期间 funding / margin / fee 把 edge 吃掉</strong></li>
+<li><strong>一条 pair 看着中性，但多条 pair 叠加后在 curve 上形成净暴露</strong></li>
+</ul>
+<h3>6.5 Cost</h3>
+<p>至少显式建三档：</p>
+<ul>
+<li>maker+taker 乐观档</li>
+<li>taker+taker 保守档</li>
+<li>“future maker fill 率不足”的中性档</li>
+</ul>
+<p>否则很容易把 paper alpha 误读成可成交 alpha。</p>
+<h2>7. 为什么我认为这轮它值得进研究池</h2>
+<p>这轮它值得，不是因为“repo 很新”，而是因为它把我们当前最缺的一类素材补得很实：</p>
+<p>&gt; <strong>短周期、可事件驱动、可落到执行细节的 same-venue relative-value raw alpha。</strong></p>
+<p>对当前 desk，它的价值有三点：</p>
+<ol>
+<li><strong>它是 raw alpha，不是 overlay。</strong></li>
+<p>方向很明确：做 residual gap 收敛，而不是做解释性分析。</p>
+</ol>
+<ol>
+<li><strong>它离实盘组件很近。</strong></li>
+<p>repo 里已经有 order edit / cancel / hedge / rebalance 这些我们真正要拆的东西。</p>
+</ol>
+<ol>
+<li><strong>它能扩展成一整个 family。</strong></li>
+<p>先做 <code>perp-vs-quarter</code>，再扩到：</p>
+</ol>
+<ul>
+<li><code>perp-vs-next-quarter</code></li>
+<li><code>front-vs-back</code></li>
+<li><code>same-underlier multi-pair netting</code></li>
+</ul>
+<h2>8. 下一步怎么测</h2>
+<p>这轮必须落到最小实验，不空谈。</p>
+<h3>8.1 第一版先别碰全事件级回放，先做 <code>1m / 3m / 5m / 15m</code> baseline</h3>
+<p>输入：</p>
+<ul>
+<li>Deribit public futures best bid / ask snapshot</li>
+<li>instrument expiration timestamp</li>
+<li>perp mid / future mid</li>
+<li>funding（可选，先不做也行）</li>
+</ul>
+<p>构造：</p>
+<ol>
+<li>选 <code>BTC-PERPETUAL</code> 对 <code>BTC-26JUN26 / BTC-25SEP26 / BTC-25DEC26</code>；</li>
+<li>对每个 tenor 估 <code>fair_gap(τ)</code>；</li>
+<li>计算 <code>residual_bid / residual_ask / residual_mid</code>；</li>
+<li>在 <code>1m / 3m / 5m / 15m</code> 上分别做 rolling z-score / percentile；</li>
+<li>比较 residual 是否存在可重复的收敛半衰期。</li>
+</ol>
+<h3>8.2 第一批参数先只扫这几个</h3>
+<ul>
+<li>entry：<code>z &gt;= 2.0 / 2.5 / 3.0</code></li>
+<li>exit：<code>z &lt;= 0.5 / 0</code></li>
+<li>time stop：<code>5 / 15 / 30 / 60 min</code></li>
+<li>cost：<code>2 / 5 / 10 bps</code> 三档</li>
+<li>bar freq：<code>1m / 3m / 5m / 15m</code></li>
+</ul>
+<h3>8.3 第一轮只回答 4 个问题</h3>
+<ol>
+<li>residual gap 在哪一个 tenor 最容易回归？</li>
+<li><code>1m</code> 的信号是不是只是噪声，还是比 <code>5m</code> 更有 edge？</li>
+<li>maker-first / taker-hedge 的 fill 假设对结果有多敏感？</li>
+<li>单 pair 有 edge 后，多 pair 净额化能不能明显降 inventory risk？</li>
+</ol>
+<h3>8.4 kill rule</h3>
+<p>如果第一轮 baseline 显示：</p>
+<ul>
+<li>residual 没有稳定回归；</li>
+<li>过成本后 edge 基本消失；</li>
+<li>maker-first 假设一放松就全没了；</li>
+</ul>
+<p>那这条线就降级，不继续占 bot7 的主 intake。</p>
+<h2>9. 来源与可复现性</h2>
+<h3>9.1 Repo / readable URL</h3>
+<ul>
+<li><strong>Repo：</strong> <code><a href="https://github.com/Hudie/crypto_algo_trading">https://github.com/Hudie/crypto_algo_trading</a></code></li>
+<li><strong>Readable URL：</strong> <code><a href="https://github.com/Hudie/crypto_algo_trading">https://github.com/Hudie/crypto_algo_trading</a></code></li>
+<li><strong>核心源码：</strong></li>
+<li><code><a href="https://raw.githubusercontent.com/Hudie/crypto_algo_trading/master/strategy/backup_deribit_perpetual_future_arb.py">https://raw.githubusercontent.com/Hudie/crypto_algo_trading/master/strategy/backup_deribit_perpetual_future_arb.py</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/Hudie/crypto_algo_trading/master/strategy/deribit_cross_future.py">https://raw.githubusercontent.com/Hudie/crypto_algo_trading/master/strategy/deribit_cross_future.py</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/Hudie/crypto_algo_trading/master/strategy/deribit_cross_remote_future.py">https://raw.githubusercontent.com/Hudie/crypto_algo_trading/master/strategy/deribit_cross_remote_future.py</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/Hudie/crypto_algo_trading/master/README.md">https://raw.githubusercontent.com/Hudie/crypto_algo_trading/master/README.md</a></code></li>
+</ul>
+<h3>9.2 live probe 数据源</h3>
+<ul>
+<li>Deribit instruments：<code><a href="https://www.deribit.com/api/v2/public/get_instruments?currency=BTC&amp;kind=future&amp;expired=false">https://www.deribit.com/api/v2/public/get_instruments?currency=BTC&amp;kind=future&amp;expired=false</a></code></li>
+<li>Deribit book summary：<code><a href="https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=BTC&amp;kind=future">https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=BTC&amp;kind=future</a></code></li>
+<li>Deribit order book：<code><a href="https://www.deribit.com/api/v2/public/get_order_book?instrument_name=BTC-PERPETUAL&amp;depth=1">https://www.deribit.com/api/v2/public/get_order_book?instrument_name=BTC-PERPETUAL&amp;depth=1</a></code></li>
+</ul>
+<h3>9.3 复现口径</h3>
+<ul>
+<li><strong>公开性：</strong> 是，公共 API</li>
+<li><strong>更新频率：</strong> 近实时</li>
+<li><strong>最小可复现实验口径：</strong> 只拿 best bid/ask + expiry timestamp，就能先做 residual gap 的 bar-level baseline；要往更真实推进，再补 event-driven order edit / fill model。</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cross-Engine Mapping</title>
+  <style>
+    :root {
+      --fg: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --bg-soft: #f8fafc;
+      --bg-pill: #eef2ff;
+      --bg-done: #ecfdf5;
+      --bg-todo: #fff7ed;
+      --link: #2563eb;
+      --bg-card: #ffffff;
+      --bg-highlight: #f5f7ff;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: var(--fg); margin: 0; background: white; }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 32px 20px 64px; }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .hero { border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px; background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); margin-bottom: 20px; }
+    .hero h1 { margin: 0 0 8px; font-size: 34px; }
+    .muted { color: var(--muted); }
+    .layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 22px; align-items: start; }
+    .card { border: 1px solid var(--border); border-radius: 14px; background: var(--bg-card); padding: 18px 20px; }
+    .toc { position: sticky; top: 16px; }
+    .toc h2 { margin-top: 0; font-size: 18px; }
+    .toc-list { list-style: none; padding: 0; margin: 0; }
+    .toc-list li { margin: 8px 0; line-height: 1.35; }
+    .toc-h3 { padding-left: 12px; font-size: 14px; }
+    .content h1:first-child { display: none; }
+    .content h2 { margin-top: 28px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 28px; }
+    .content h3 { margin-top: 22px; font-size: 21px; }
+    .content p { line-height: 1.7; }
+    .content ul, .content ol { padding-left: 22px; line-height: 1.7; }
+    .content li.done { background: var(--bg-done); }
+    .content li.todo { background: var(--bg-todo); }
+    .content li { padding: 3px 6px; border-radius: 8px; margin: 3px 0; }
+    .content code, code { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.95em; }
+    blockquote { margin: 14px 0; padding: 10px 14px; border-left: 4px solid #93c5fd; background: #eff6ff; border-radius: 8px; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
+    .pills { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .pill { background: var(--bg-pill); color: #3730a3; border-radius: 999px; padding: 6px 12px; font-size: 13px; }
+    .list { display: grid; gap: 16px; }
+    .plan-link { display: block; border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; background: white; }
+    .plan-link h2 { margin: 0 0 6px; font-size: 24px; }
+    .entry-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .entry-link { display: block; border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; background: white; }
+    .entry-link h2 { margin: 8px 0 6px; font-size: 20px; }
+    .entry-pill { display:inline-block; font-size:12px; padding:4px 8px; border-radius:999px; background: var(--bg-pill); color:#3730a3; }
+    .stack { display: grid; gap: 22px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+    .summary-card { display: block; border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; background: var(--bg-highlight); color: inherit; }
+    .summary-card h3 { margin: 10px 0 8px; font-size: 18px; }
+    .summary-card p { margin: 0; line-height: 1.6; }
+    .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+    .status-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; background: white; }
+    .status-label { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    .status-value { font-size: 18px; margin-top: 8px; font-weight: 700; }
+    .live-meta { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+    .live-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 14px; }
+    .live-card { border:1px solid var(--border); border-radius:14px; padding:16px 18px; background:white; }
+    .live-card h3 { margin: 0 0 8px; font-size: 18px; }
+    .live-card p { margin: 6px 0; line-height: 1.6; }
+    .live-card .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .live-badge { display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:700; }
+    .live-badge.ok { background:#ecfdf5; color:#166534; }
+    .live-badge.warn { background:#fff7ed; color:#9a3412; }
+    .live-badge.error { background:#fef2f2; color:#b91c1c; }
+    .live-badge.idle { background:#f3f4f6; color:#374151; }
+    .live-badge.disabled { background:#e5e7eb; color:#4b5563; }
+    .mini-pill { display: inline-block; margin: 0 8px 8px 0; background: #f3f4f6; color: #374151; border-radius: 999px; padding: 5px 10px; font-size: 12px; }
+    .doc-details, .note-details { border: 1px solid var(--border); border-radius: 14px; padding: 0; background: white; margin-top: 14px; overflow: hidden; }
+    .doc-details summary, .note-details summary { cursor: pointer; list-style: none; padding: 16px 18px; background: #fafafa; }
+    .doc-details summary::-webkit-details-marker, .note-details summary::-webkit-details-marker { display: none; }
+    .doc-details[open] summary, .note-details[open] summary { border-bottom: 1px solid var(--border); }
+    .doc-details > :not(summary), .note-details > :not(summary) { padding: 16px 18px 18px; }
+    .doc-meta { margin-bottom: 8px; }
+    .doc-raw { margin: 0; white-space: pre-wrap; word-break: break-word; line-height: 1.65; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #0f172a; color: #e2e8f0; border-radius: 12px; padding: 16px; overflow: auto; }
+    .sub-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 18px; align-items: start; }
+    .subcard { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: #fbfdff; }
+    .subcard h3 { margin-top: 0; font-size: 16px; }
+    .note-body h1:first-child { display: block; }
+    .note-body h1 { font-size: 24px; margin-top: 0; }
+    .note-body h2 { font-size: 20px; }
+    @media (max-width: 960px) {
+      .layout { grid-template-columns: 1fr; }
+      .toc { position: static; }
+      .sub-layout { grid-template-columns: 1fr; }
+    }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <p><a href="report.html">← 返回 Plans / Roadmaps</a> · <a href="../index.html">站点首页</a></p>
+    <div class="hero">
+      <h1>Cross-Engine Mapping</h1>
+      <p class="muted">梳理 PyIndicators / PyTrendline 两套定义方式如何映射到统一的 Structure-Event Mainline。</p>
+      <div class="pills">
+        <span class="pill">Generated: 2026-05-12 22:03 UTC</span>
+        <span class="pill">Source: docs/CROSS_ENGINE_MAPPING.md</span>
+      </div>
+    </div>
+    <div class="layout">
+      <aside class="card toc">
+        <h2>目录</h2>
+        <ul class="toc-list">
+<li class="toc-h2"><a href="#先给一句结论">先给一句结论</a></li>
+<li class="toc-h2"><a href="#1-两个引擎各自负责什么">1. 两个引擎各自负责什么</a></li>
+<li class="toc-h3"><a href="#pyindicators">PyIndicators</a></li>
+<li class="toc-h3"><a href="#pytrendline">PyTrendline</a></li>
+<li class="toc-h2"><a href="#2-哪些概念可以对齐哪些不能硬对齐">2. 哪些概念可以对齐，哪些不能硬对齐</a></li>
+<li class="toc-h3"><a href="#21-可以对齐的上位概念">2.1 可以对齐的上位概念</a></li>
+<li class="toc-h3"><a href="#22-不能直接硬对齐的对象">2.2 不能直接硬对齐的对象</a></li>
+<li class="toc-h2"><a href="#3-推荐的-unified-event-schema草案-v0">3. 推荐的 unified event schema（草案 v0）</a></li>
+<li class="toc-h3"><a href="#31-必备通用字段">3.1 必备通用字段</a></li>
+<li class="toc-h3"><a href="#32-建议的-line-context-字段">3.2 建议的 line context 字段</a></li>
+<li class="toc-h3"><a href="#33-建议的-confirmation-state-字段">3.3 建议的 confirmation / state 字段</a></li>
+<li class="toc-h3"><a href="#34-当前不建议强行统一的字段">3.4 当前不建议强行统一的字段</a></li>
+<li class="toc-h2"><a href="#4-一个实用的映射方式先做两层翻译">4. 一个实用的映射方式：先做“两层翻译”</a></li>
+<li class="toc-h3"><a href="#layer-1-engine-native-object">Layer 1. Engine-native object</a></li>
+<li class="toc-h3"><a href="#layer-2-mainline-event-object">Layer 2. Mainline event object</a></li>
+<li class="toc-h2"><a href="#5-当前最合理的项目组织落点">5. 当前最合理的项目组织落点</a></li>
+<li class="toc-h3"><a href="#mainline-放什么">Mainline 放什么</a></li>
+<li class="toc-h3"><a href="#engine-lab-pyindicators-放什么">Engine Lab · PyIndicators 放什么</a></li>
+<li class="toc-h3"><a href="#engine-lab-pytrendline-放什么">Engine Lab · PyTrendline 放什么</a></li>
+<li class="toc-h2"><a href="#6-这页最重要的阅读结论">6. 这页最重要的阅读结论</a></li>
+<li class="toc-h3"><a href="#结论-1">结论 1</a></li>
+<li class="toc-h3"><a href="#结论-2">结论 2</a></li>
+<li class="toc-h3"><a href="#结论-3">结论 3</a></li>
+<li class="toc-h2"><a href="#7-pyindicators-mapping-v1当前哪些字段已经能接-unified-schema">7. PyIndicators mapping v1（当前哪些字段已经能接 unified schema）</a></li>
+<li class="toc-h3"><a href="#71-已经有明确落点的-unified-字段">7.1 已经有明确落点的 unified 字段</a></li>
+<li class="toc-h3"><a href="#72-已经接近可用但当前仍需派生的字段">7.2 已经接近可用、但当前仍需派生的字段</a></li>
+<li class="toc-h3"><a href="#73-当前仍然缺失或不应硬补的字段">7.3 当前仍然缺失、或不应硬补的字段</a></li>
+<li class="toc-h2"><a href="#8-pytrendline-mapping-v1当前已落地的最小-bridge">8. PyTrendline mapping v1（当前已落地的最小 bridge）</a></li>
+<li class="toc-h3"><a href="#81-v1-具体怎么映射">8.1 v1 具体怎么映射</a></li>
+<li class="toc-h3"><a href="#82-v1-明确没覆盖什么">8.2 v1 明确没覆盖什么</a></li>
+<li class="toc-h2"><a href="#9-下一步建议">9. 下一步建议</a></li>
+</ul>
+      </aside>
+      <main class="card content">
+        <h1>Cross-Engine Mapping</h1>
+<blockquote>目的：把 <code>PyIndicators</code> 与 <code>PyTrendline</code> 这两套不同的结构定义方式，映射到同一个 <strong>Structure-Event Mainline</strong> 里，避免把“定义引擎”误读成“研究主线”。</blockquote>
+<h2 id="先给一句结论">先给一句结论</h2>
+<ul>
+<li><code>PyIndicators</code> 和 <code>PyTrendline</code> 不是两个并列主 thesis。</li>
+<li>它们是两个 <strong>event source / definition engine</strong>。</li>
+<li>真正主线是：<strong>这些结构事件本身，是否有 alpha / feature / confirmation 价值。</strong></li>
+</ul>
+<p>因此：</p>
+<ul>
+<li>主目录应该按 <strong>Mainline → Engine Labs</strong> 组织；</li>
+<li>不是按“先选 PyIndicators 项目”或“先选 PyTrendline 项目”组织。</li>
+</ul>
+<hr />
+<h2 id="1-两个引擎各自负责什么">1. 两个引擎各自负责什么</h2>
+<h3 id="pyindicators">PyIndicators</h3>
+<p>更像：</p>
+<ul>
+<li><code>active support / resistance</code> 的逐 bar 状态机</li>
+<li>更容易生成：</li>
+<li>active line</li>
+<li>breakout</li>
+<li>failed-breakout</li>
+<li>rebound</li>
+<li>confirmation-like state transition</li>
+</ul>
+<p>它的强项：</p>
+<ul>
+<li>更接近 <strong>event generator</strong></li>
+<li>更适合先做第一轮 event study / subset audit / confirmation ladder</li>
+</ul>
+<p>它的弱项：</p>
+<ul>
+<li>之前大量回测已经说明：<strong>raw breakout 整体偏弱</strong></li>
+<li>所以它不能再被默认当作最终 alpha thesis，只能先作为 baseline source</li>
+</ul>
+<h3 id="pytrendline">PyTrendline</h3>
+<p>更像：</p>
+<ul>
+<li>pivot → candidate lines → filters → duplicate grouping → representative line 的静态/半静态结构解释器</li>
+<li>更容易生成：</li>
+<li>candidate line</li>
+<li>representative line</li>
+<li>breakout tag / breakout line</li>
+<li>line quality / grouping / score</li>
+</ul>
+<p>它的强项：</p>
+<ul>
+<li>更适合做 <strong>explainability baseline</strong></li>
+<li>更适合解释“线是怎么来的、为什么保留这条线、不保留那条线”</li>
+</ul>
+<p>它的弱项：</p>
+<ul>
+<li>当前还没有像 PyIndicators 那样直接沉淀成系统性的 event-study source</li>
+<li>它给出的 breakout 语义，与 active-line state machine 的 breakout 语义 <strong>不能直接视为同一个对象</strong></li>
+</ul>
+<hr />
+<h2 id="2-哪些概念可以对齐哪些不能硬对齐">2. 哪些概念可以对齐，哪些不能硬对齐</h2>
+<h3 id="21-可以对齐的上位概念">2.1 可以对齐的上位概念</h3>
+<p>这几个上位概念可以先放进 unified event schema：</p>
+<ul>
+<li><code>source_engine</code></li>
+<li><code>symbol</code></li>
+<li><code>timeframe</code></li>
+<li><code>line_side</code>（support / resistance）</li>
+<li><code>event_timestamp</code></li>
+<li><code>event_type</code></li>
+<li><code>confirmation_level</code></li>
+<li><code>line_quality_bucket</code></li>
+<li><code>slope_bucket</code></li>
+<li><code>sample_scope</code></li>
+</ul>
+<p>这些是 <strong>mainline 可复用字段</strong>。</p>
+<h3 id="22-不能直接硬对齐的对象">2.2 不能直接硬对齐的对象</h3>
+<p>以下对象不能直接假装相同：</p>
+<ul>
+<li><code>PyIndicators active line</code></li>
+<p>vs <code>PyTrendline representative line</code></p>
+</ul>
+<ul>
+<li><code>PyIndicators breakout</code></li>
+<p>vs <code>PyTrendline breakout tag</code></p>
+</ul>
+<ul>
+<li><code>PyIndicators rebound</code></li>
+<p>vs <code>PyTrendline line-touch rejection</code></p>
+</ul>
+<p>原因不是名字不同，而是：</p>
+<ul>
+<li>它们的检测时点不同</li>
+<li>它们依赖的历史上下文不同</li>
+<li>它们对 line lifecycle 的定义不同</li>
+<li>它们是否允许事后 grouping / best-line selection 也不同</li>
+</ul>
+<p>所以统一时，应该先统一到 <strong>event family</strong>，而不是直接统一到底层 engine object。</p>
+<hr />
+<h2 id="3-推荐的-unified-event-schema草案-v0">3. 推荐的 unified event schema（草案 v0）</h2>
+<p>下面这组字段，适合先作为跨引擎最小公约数。</p>
+<h3 id="31-必备通用字段">3.1 必备通用字段</h3>
+<ul>
+<li><code>source_engine</code></li>
+<li><code>pyindicators</code></li>
+<li><code>pytrendline</code></li>
+<li>future: <code>parallel_channel</code> / others</li>
+</ul>
+<ul>
+<li><code>event_family</code></li>
+<li><code>breakout</code></li>
+<li><code>rebound</code></li>
+<li><code>touch</code></li>
+<li><code>switch</code></li>
+</ul>
+<ul>
+<li><code>event_subtype</code></li>
+<li>例如：</li>
+<li><code>raw_breach</code></li>
+<li><code>close_confirm_same_bar</code></li>
+<li><code>confirm1</code></li>
+<li><code>confirm3</code></li>
+<li><code>retest_hold</code></li>
+<li><code>wick_rejection</code></li>
+<li><code>touch_close_back_inside</code></li>
+</ul>
+<ul>
+<li><code>line_side</code></li>
+<li><code>support</code></li>
+<li><code>resistance</code></li>
+</ul>
+<ul>
+<li><code>event_timestamp</code></li>
+<li><code>symbol</code></li>
+<li><code>timeframe</code></li>
+<li><code>sample_key</code></li>
+</ul>
+<h3 id="32-建议的-line-context-字段">3.2 建议的 line context 字段</h3>
+<ul>
+<li><code>engine_line_id</code></li>
+<li><code>line_origin_type</code></li>
+<li><code>active_line</code></li>
+<li><code>representative_line</code></li>
+<li><code>group_best_line</code></li>
+<li>future others</li>
+</ul>
+<ul>
+<li><code>line_quality_bucket</code></li>
+<li><code>slope_bucket</code></li>
+<li><code>is_representative</code></li>
+<li><code>num_points_bucket</code></li>
+<li><code>score_bucket</code></li>
+</ul>
+<h3 id="33-建议的-confirmation-state-字段">3.3 建议的 confirmation / state 字段</h3>
+<ul>
+<li><code>confirmation_level</code></li>
+<li><code>is_provisional</code></li>
+<li><code>is_confirmed</code></li>
+<li><code>bars_since_first_cross</code></li>
+<li><code>bars_since_touch</code></li>
+</ul>
+<h3 id="34-当前不建议强行统一的字段">3.4 当前不建议强行统一的字段</h3>
+<p>这些字段先允许 engine-specific：</p>
+<ul>
+<li><code>duplicate_group_id</code></li>
+<li><code>pytrendline_score</code></li>
+<li><code>is_best_from_duplicate_group</code></li>
+<li><code>navigator_state</code></li>
+<li><code>active_line_start_bar</code></li>
+<li><code>active_line_reset_reason</code></li>
+</ul>
+<p>做法应该是：</p>
+<ul>
+<li>保留在 source artifacts 里</li>
+<li>但不要一上来就要求所有 engine 都必须产出</li>
+</ul>
+<hr />
+<h2 id="4-一个实用的映射方式先做两层翻译">4. 一个实用的映射方式：先做“两层翻译”</h2>
+<p>推荐不要直接：</p>
+<ul>
+<li>engine raw object → final strategy label</li>
+</ul>
+<p>而应该分两层：</p>
+<h3 id="layer-1-engine-native-object">Layer 1. Engine-native object</h3>
+<p>由各自引擎负责：</p>
+<ul>
+<li>PyIndicators: active line / state transition / breakout / rebound</li>
+<li>PyTrendline: candidate line / representative line / breakout tag / group info</li>
+</ul>
+<h3 id="layer-2-mainline-event-object">Layer 2. Mainline event object</h3>
+<p>统一翻译成：</p>
+<ul>
+<li><code>event_family</code></li>
+<li><code>event_subtype</code></li>
+<li><code>confirmation_level</code></li>
+<li><code>line context</code></li>
+<li><code>quality / slope buckets</code></li>
+</ul>
+<p>这样好处是：</p>
+<ul>
+<li>engine 差异不会被粗暴抹平</li>
+<li>mainline 仍然可以做统一比较</li>
+<li>后续加入 <code>parallel channel</code> 也更容易</li>
+</ul>
+<hr />
+<h2 id="5-当前最合理的项目组织落点">5. 当前最合理的项目组织落点</h2>
+<h3 id="mainline-放什么">Mainline 放什么</h3>
+<ul>
+<li><code>Momentum TODO / Roadmap</code></li>
+<li><code>Trendline Event Research Plan</code></li>
+<li><code>Trendline Event Foundation Report</code></li>
+<li><code>Trendline Event Slope Audit</code></li>
+<li><code>Trendline Confirmation Ladder Report</code></li>
+<li>本文：<code>Cross-Engine Mapping</code></li>
+</ul>
+<h3 id="engine-lab-pyindicators-放什么">Engine Lab · PyIndicators 放什么</h3>
+<ul>
+<li><code>Trendline Breakout Navigator</code></li>
+<li><code>Trendline Segment Backtest</code></li>
+<li><code>Interval Sweep</code></li>
+<li><code>Cross-Market</code></li>
+<li><code>Rebound Scan</code></li>
+</ul>
+<h3 id="engine-lab-pytrendline-放什么">Engine Lab · PyTrendline 放什么</h3>
+<ul>
+<li><code>PyTrendline Research Report</code></li>
+<li>后续如有：PyTrendline event-source bridge / schema export / source audit</li>
+</ul>
+<hr />
+<h2 id="6-这页最重要的阅读结论">6. 这页最重要的阅读结论</h2>
+<h3 id="结论-1">结论 1</h3>
+<p>以后不要再问：</p>
+<ul>
+<li>“这是 PyIndicators 项目还是 PyTrendline 项目？”</li>
+</ul>
+<p>更应该问：</p>
+<ul>
+<li>“这是 Mainline 的问题，还是某个 Engine Lab 的问题？”</li>
+</ul>
+<h3 id="结论-2">结论 2</h3>
+<ul>
+<li><code>PyIndicators</code> 当前更像 <strong>first event-study source</strong></li>
+<li><code>PyTrendline</code> 当前更像 <strong>explainability baseline</strong></li>
+<li>二者都不是默认终局</li>
+</ul>
+<h3 id="结论-3">结论 3</h3>
+<p>下一步真正该做的不是继续混淆目录，而是：</p>
+<ul>
+<li>让 <code>PyTrendline</code> 也能输出一版最小 event-source sample</li>
+<li>然后把它接进 mainline 的 unified event schema</li>
+</ul>
+<hr />
+<h2 id="7-pyindicators-mapping-v1当前哪些字段已经能接-unified-schema">7. PyIndicators mapping v1（当前哪些字段已经能接 unified schema）</h2>
+<p>这轮先补 <code>B2-C</code> 里一个很具体、但一直缺少明确落点的问题：</p>
+<blockquote><code>PyIndicators</code> 现有产物里，哪些字段其实已经足够接到 unified event schema，哪些还没有？</blockquote>
+<p>当前最可审计的 3 份输入分别是：</p>
+<ul>
+<li><code>reports/artifacts/trendline_segment_backtest/segment_strategy_events.csv</code></li>
+<li><code>reports/artifacts/trendline_segment_backtest/navigator_segments.csv</code></li>
+<li><code>reports/artifacts/trendline_confirmation_ladder/trade_detail.csv</code></li>
+</ul>
+<p>这 3 份文件合在一起，已经足够明确：<code>PyIndicators</code> <strong>不是完全没有 schema bridge</strong>，而是<strong>已经有一批核心字段，只是仍混着 execution 语义</strong>。</p>
+<h3 id="71-已经有明确落点的-unified-字段">7.1 已经有明确落点的 unified 字段</h3>
+<p>如果当前先以 <code>trade_detail.csv</code> 作为 confirmation-aware 主样本、再用 <code>segment_strategy_events.csv</code> / <code>navigator_segments.csv</code> 补 detection 语义，那么下面这些字段已经有明确映射：</p>
+<ul>
+<li><code>source_engine</code></li>
+<li>当前可直接写成常量：<code>pyindicators</code></li>
+</ul>
+<ul>
+<li><code>sample_key</code></li>
+<li>直接来自：<code>trade_detail.sample_key</code></li>
+<li>当前样本里已含 <code>60m_365d</code> / <code>60m_730d</code></li>
+</ul>
+<ul>
+<li><code>symbol</code></li>
+<li>直接来自：<code>symbol</code></li>
+</ul>
+<ul>
+<li><code>timeframe</code></li>
+<li>当前可先保留 engine horizon label：<code>short / medium / long</code></li>
+<li>若需要外部实验窗口，则同时读 <code>sample_key</code> / <code>interval</code></li>
+</ul>
+<ul>
+<li><code>event_family</code></li>
+<li>直接来自：<code>strategy</code> 或 <code>strategy_event</code></li>
+<li>当前已稳定分成：<code>breakout</code> / <code>rebound</code></li>
+</ul>
+<ul>
+<li><code>line_side</code></li>
+<li>直接来自：<code>side_label</code></li>
+<li>当前已稳定分成：<code>support</code> / <code>resistance</code></li>
+</ul>
+<ul>
+<li><code>event_timestamp</code></li>
+<li>confirmation-aware 视角：优先用 <code>signal_ts</code></li>
+<li>detection-aware 视角：回退到 <code>candidate_ts</code></li>
+<li>这说明 <code>PyIndicators</code> 已经不是“完全没有事件时间戳”，而是<strong>同时存在 detection 与 confirmation 两种时点</strong></li>
+</ul>
+<ul>
+<li><code>engine_line_id</code></li>
+<li>当前可直接用：<code>segment_id</code></li>
+<li>它更像 active-line segment handle，而不是 PyTrendline 式的静态 line id</li>
+</ul>
+<ul>
+<li><code>line_origin_type</code></li>
+<li>当前可先固定为：<code>active_line</code></li>
+</ul>
+<ul>
+<li><code>confirmation_level</code></li>
+<li>直接来自：<code>ladder_label</code></li>
+<li>breakout 侧当前已有：<code>breakout_hold_1/2/3/4</code></li>
+<li>rebound 侧当前已有：<code>rebound_inside_0/1/2/3</code></li>
+</ul>
+<ul>
+<li><code>is_provisional</code></li>
+<li>直接来自：<code>segment_is_provisional</code> / <code>is_provisional</code></li>
+</ul>
+<ul>
+<li><code>slope_bucket</code></li>
+<li>直接来自：<code>slope_bucket</code></li>
+<li>同时已有 <code>slope_sign</code> 与 <code>slope_magnitude_bucket</code> 可追溯</li>
+</ul>
+<h3 id="72-已经接近可用但当前仍需派生的字段">7.2 已经接近可用、但当前仍需派生的字段</h3>
+<p>这些字段并不是完全没有，只是还没有以最终 mainline 口径单独导出：</p>
+<ul>
+<li><code>event_subtype</code></li>
+<li>当前可由 <code>event_type</code> + <code>ladder_type</code> + <code>ladder_label</code> 派生</li>
+<li>例如把 <code>breakout_long / breakout_hold_2</code> 归到 <code>breakout / confirm2-like</code></li>
+</ul>
+<ul>
+<li><code>is_confirmed</code></li>
+<li>当前可由 <code>ladder_label</code>、<code>confirm_bars</code>、<code>breakout_confirm_bars_cfg</code> / <code>rebound_confirm_bars_cfg</code> 派生</li>
+</ul>
+<ul>
+<li><code>bars_since_first_cross</code></li>
+<li>breakout 侧已有近似信息：<code>confirm_bars</code> / <code>breakout_confirm_bars_cfg</code></li>
+</ul>
+<ul>
+<li><code>bars_since_touch</code></li>
+<li>rebound 侧已有近似信息：<code>rebound_confirm_bars_cfg</code></li>
+</ul>
+<ul>
+<li><code>sample_scope</code></li>
+<li>当前可由 <code>sample_key + interval + period</code> 组合得到</li>
+<li>只是还没被单独沉淀成统一字段</li>
+</ul>
+<h3 id="73-当前仍然缺失或不应硬补的字段">7.3 当前仍然缺失、或不应硬补的字段</h3>
+<p>下面这些字段要么当前没有，要么不应为了“强行对齐”而假造：</p>
+<ul>
+<li><code>line_quality_bucket</code></li>
+<li><code>num_points_bucket</code></li>
+<li><code>score_bucket</code></li>
+<li><code>is_representative</code></li>
+<li><code>duplicate_group_id</code></li>
+<li>与 execution 解耦后的 <strong>full event-universe rows</strong></li>
+</ul>
+<p>这也解释了为什么：</p>
+<ul>
+<li><code>PyIndicators</code> 现在已经足够做 <strong>confirmation protocol source #1</strong>；</li>
+<li>但它还不能被误读成“已经有一份干净的 unified event-source export”。</li>
+</ul>
+<h2 id="8-pytrendline-mapping-v1当前已落地的最小-bridge">8. PyTrendline mapping v1（当前已落地的最小 bridge）</h2>
+<p>本轮已经把 <code>pytrendline_research</code> 现有产物翻译成一版最小 event-source bridge：</p>
+<ul>
+<li>样本文件：<code>outputs/research/pytrendline_event_sample.csv</code></li>
+<li>网页入口：<code>reports/site/factors/pytrendline_event_source/report.html</code></li>
+</ul>
+<h3 id="81-v1-具体怎么映射">8.1 v1 具体怎么映射</h3>
+<p>当前 v1 的做法是：</p>
+<ul>
+<li>输入来源：</li>
+<li><code>reports/artifacts/pytrendline_research/support_trendlines.csv</code></li>
+<li><code>reports/artifacts/pytrendline_research/resistance_trendlines.csv</code></li>
+<li>只取：</li>
+<li><code>is_best_from_duplicate_group == True</code> 的 representative lines 作为默认样本</li>
+<li>最小映射规则：</li>
+<li><code>engine_line_id</code> ← <code>id</code></li>
+<li><code>line_side</code> ← <code>SUPPORT / RESISTANCE</code></li>
+<li><code>line_origin_type</code> ← <code>group_best_line</code></li>
+<li><code>event_family</code> ← <code>is_breakout ? breakout : touch</code></li>
+<li><code>event_subtype</code> ← <code>breakout_tagged_line / line_touch_candidate</code></li>
+<li><code>event_timestamp</code> ← breakout 用 <code>breakout_date</code>，否则退回 <code>ends_at_date</code></li>
+<li><code>line_quality_bucket</code> / <code>score_bucket</code> ← 当前样本内 <code>score</code> 分位数分桶</li>
+<li><code>slope_bucket</code> ← 当前样本内 <code>slope</code> 方向 + 强度分桶</li>
+</ul>
+<h3 id="82-v1-明确没覆盖什么">8.2 v1 明确没覆盖什么</h3>
+<p>这版 bridge 还没有覆盖：</p>
+<ul>
+<li>完整的 <code>rebound</code> 语义</li>
+<li><code>retest_hold</code> / <code>confirmed switch</code> 一类更强事件状态</li>
+<li>多 symbol / 多 sample 的统一输出</li>
+<li>与 <code>PyIndicators</code> 一样细的逐 bar state transition</li>
+</ul>
+<p>所以它当前的定位应是：</p>
+<ul>
+<li><strong>足够进入 unified schema 比较</strong></li>
+<li><strong>还不足够直接进入完整 event validation 终局</strong></li>
+</ul>
+<h2 id="9-下一步建议">9. 下一步建议</h2>
+<ol>
+<li>先把 <code>PyIndicators</code> 这批已存在字段单独导出成一份更干净的 baseline event-source sample</li>
+</ol>
+<ul>
+<li>只保留 detection / confirmation / line context</li>
+<li>不再把 trade execution 字段混在同一层</li>
+</ul>
+<ol>
+<li>把 <code>PyTrendline v1</code> 再推进一格：</li>
+</ol>
+<ul>
+<li>明确 representative only vs all valid 两种输出口径</li>
+<li>单独标记 breakout-only 与 non-breakout candidate</li>
+</ul>
+<ol>
+<li>再做第二轮更严格的 source 对照：</li>
+</ol>
+<ul>
+<li>同一资产 / 周期下</li>
+<li>尽量同样窗口、同样 bucket</li>
+<li>比较 <code>PyIndicators source vs PyTrendline source</code> 谁更像可继续的事件来源</li>
+</ul>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

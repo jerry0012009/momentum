@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 breakout-short 的 final verdict 写成“跌破后继续追”：`outside-close → back-inside-close` 更像 15m 的 failure 判决层</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 breakout-short 的 final verdict 写成“跌破后继续追”：`outside-close → back-inside-close` 更像 15m 的 failure 判决层</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-19 10:59 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/post-break-path/failure-verdict/reentry/sequence-extreme/risk-overlay/repo/crypto/5m/15m</span>
+      <span class="pill">证据类型：repo 代码规则（工程证据）+ 待验证最小实验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-19_1059_breakout-reentry-inside-sequence-failure-verdict.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-19 10:59 UTC</li>
+<li>类型：GitHub</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/post-break-path/failure-verdict/reentry/sequence-extreme/risk-overlay/repo/crypto/5m/15m</li>
+<li>证据类型：repo 代码规则（工程证据）+ 待验证最小实验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是 <strong>Harro Moen (MoDiggler75, 2026)</strong> 的仓库 <code>crypto-trading-bot</code>，重点文件是 <code>backtest_breakout_retest.py</code>。它有个很适合当前 desk 的旁支想法：</p>
+<p>&gt; 先等价格 <strong>收盘突破区间外</strong>，再等它 <strong>收盘回到区间内</strong>；这一下不是“继续追趋势”，而是把刚才那次 break 当成一次可交易的 failure event。</p>
+<p>脚本把这个逻辑写成了显式状态机：<code>waiting_for_breakout -&gt; tracking_top/bottom_sequence -&gt; re-entry signal</code>，并把风控绑定到 breakout 后那段 <code>sequence</code> 的极值。</p>
+<h2>2. 核心结论</h2>
+<ol>
+<li><strong>一句话核心结论</strong>：对 <code>V3 breakout-short follow-up</code> 来说，<code>outside-close -&gt; back-inside-close</code> 更像 <strong>post-break failure verdict</strong>，比“看到破位就默认 continuation”更诚实。</li>
+<li><strong>一句话证明方式</strong>：源码明确要求先出现区间外收盘，再出现区间内收盘才触发；并把止损固定在 breakout 序列极值，止盈固定 <code>2R</code>，不是主观画图。</li>
+<li>关键可迁移骨架（来自代码）：</li>
+</ol>
+<ul>
+<li>先用前 4 小时区间高低定义 <code>zone_high/zone_low</code>；</li>
+<li><code>close &gt; zone_high</code> 进入 <code>tracking_top_sequence</code>，<code>close &lt; zone_low</code> 进入 <code>tracking_bottom_sequence</code>；</li>
+<li>若随后 <code>close</code> 回到区间内（<code>zone_low &lt;= close &lt;= zone_high</code>），把这次外扩判成 failure，触发反向单；</li>
+<li>风险锚：<code>SL = sequence_high/low</code>，<code>TP = 2 * SL distance</code>。</li>
+</ul>
+<ol>
+<li>这条线最像给我们补的是 <strong>判决层</strong>，不是主 alpha：它回答“这次 break 是否已被市场否决”。</li>
+</ol>
+<h2>3. 为什么和当前三条收口线直接相关</h2>
+<ul>
+<li><strong>V3 final-verdict / breakout-short follow-up</strong>：可直接作为“是否继续追空”的反向判决。若下破后很快 <code>back-inside-close</code>，就该把 continuation 降级甚至反手，不该再硬追。</li>
+<li><strong>Fibonacci confirmation / retest_hold</strong>：当 Fib retest 看似守住，但随后出现“先外扩再收回区间”的路径时，可作为 hold 失败的强否决条件。</li>
+<li><strong>EMA / PSAR raw alpha focus</strong>：EMA/PSAR 继续负责方向与触发；这层负责在 post-break 路径上做 <strong>entry veto / reversal overlay</strong>，降低“破位后一脚追在末端”的成本消耗。</li>
+</ul>
+<h2>4. 可复刻的最小实验（5m/15m）</h2>
+<h3>4.1 数据与公开性</h3>
+<ul>
+<li>数据源：Binance Futures 公共 K 线（<code>/fapi/v1/klines</code>）</li>
+<li>公开性：公开可得</li>
+<li>更新频率：5m / 15m</li>
+<li>首轮样本：BTC/ETH/SOL，<code>180d IS + 60d OOS</code></li>
+</ul>
+<h3>4.2 最小可计算定义</h3>
+<p>以 15m 为主（5m 做触发细化）：</p>
+<ol>
+<li>定义 rolling 区间边界（先用 <code>N=16</code> 根 15m，约 4 小时）；</li>
+<li>事件 A（outside close）：<code>close_t &gt; high_range_t</code> 或 <code>&lt; low_range_t</code>；</li>
+<li>事件 B（back-inside close）：在接下来 <code>M</code> 根（先用 <code>M=1~4</code>）出现 <code>low_range &lt;= close &lt;= high_range</code>；</li>
+<li>仅当 A→B 成立，记为 <code>failure verdict</code> 事件；</li>
+<li>方向映射：</li>
+</ol>
+<ul>
+<li>顶部外扩后回内：优先 short / short follow-up veto for longs</li>
+<li>底部外扩后回内：优先 long / long follow-up veto for shorts</li>
+</ul>
+<h3>4.3 对照组与判据</h3>
+<ul>
+<li>A组：现有 breakout/fib/ema-psar baseline</li>
+<li>B组：A + <code>outside-&gt;inside</code> failure verdict（binary veto）</li>
+<li>C组：B + sequence-extreme 风险分档（按 overshoot 深浅调仓）</li>
+</ul>
+<p>首轮只看三项：</p>
+<ul>
+<li><code>false_follow_ratio</code>（入场后 4 bars 内反向收回）</li>
+<li><code>post_cost_expectancy</code>（6/10/15 bps per side）</li>
+<li><code>trade_count_retention</code></li>
+</ul>
+<p>建议过线：相对 A，<code>false_follow_ratio</code> 下降 ≥8%，且 <code>trade_count_retention</code> ≥40%，同时 expectancy 不恶化。</p>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>该仓库主实现混用美股时段与 Yahoo 数据口径，不能原样当 crypto 生产模板；</li>
+<li>代码参数是工程默认值（如 <code>risk_per_trade=5%</code>、<code>max_position_value=30%</code>、<code>2R</code>），不代表我们 desk 最优；</li>
+<li>这是规则证据，不是已验证 OOS 绩效；</li>
+<li>若实验显示它只在个别币对有效，应降级为“币对特异 overlay”，不做全局硬规则。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Harro Moen (MoDiggler75). (2026). _crypto-trading-bot_.</strong></li>
+</ol>
+<ul>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://github.com/MoDiggler75/crypto-trading-bot&gt;">https://github.com/MoDiggler75/crypto-trading-bot&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/MoDiggler75/crypto-trading-bot&gt;">https://github.com/MoDiggler75/crypto-trading-bot&gt;</a></li>
+</ul>
+<ol>
+<li><strong>关键实现：<code>backtest_breakout_retest.py</code></strong></li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://github.com/MoDiggler75/crypto-trading-bot/blob/master/backtest_breakout_retest.py&gt;">https://github.com/MoDiggler75/crypto-trading-bot/blob/master/backtest_breakout_retest.py&gt;</a></li>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/MoDiggler75/crypto-trading-bot/master/backtest_breakout_retest.py&gt;">https://raw.githubusercontent.com/MoDiggler75/crypto-trading-bot/master/backtest_breakout_retest.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>辅助实现：<code>backtest_4hr_rsi_retest.py</code>（同仓库中的 retest 状态机变体）</strong></li>
+</ol>
+<ul>
+<li>Readable URL: &lt;<a href="https://github.com/MoDiggler75/crypto-trading-bot/blob/master/backtest_4hr_rsi_retest.py&gt;">https://github.com/MoDiggler75/crypto-trading-bot/blob/master/backtest_4hr_rsi_retest.py&gt;</a></li>
+<li>Raw URL: &lt;<a href="https://raw.githubusercontent.com/MoDiggler75/crypto-trading-bot/master/backtest_4hr_rsi_retest.py&gt;">https://raw.githubusercontent.com/MoDiggler75/crypto-trading-bot/master/backtest_4hr_rsi_retest.py&gt;</a></li>
+</ul>
+<ol>
+<li><strong>仓库元数据（API）</strong></li>
+</ol>
+<ul>
+<li>URL: &lt;<a href="https://api.github.com/repos/MoDiggler75/crypto-trading-bot&gt;">https://api.github.com/repos/MoDiggler75/crypto-trading-bot&gt;</a></li>
+<li>参考字段：<code>created_at=2026-01-17</code>，<code>pushed_at=2026-02-07</code></li>
+</ul>
+</body>
+</html>

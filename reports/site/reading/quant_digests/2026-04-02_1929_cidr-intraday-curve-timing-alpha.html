@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2021 IRFA 论文只读成 functional time series：对 short-cycle desk，更该先测的是「predict-next-day intraday curve × buy forecasted low / sell post-low high」这条 BTC directional raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2021 IRFA 论文只读成 functional time series：对 short-cycle desk，更该先测的是「predict-next-day intraday curve × buy forecasted low / sell post-low high」这条 BTC directional raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-02 19:24 UTC</span>
+      <span class="pill">研究时间：2026-04-02 19:29 UTC</span>
+      <span class="pill">类型：2021 *International Review of Financial Analysis* 接收稿全文 PDF + Binance USDⓈ-M `15m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha/single-asset/btc/intraday/time-of-day/cidr/functional-forecast/curve-shape/long-only/timing/15m/5m/3m/1m/paper/public-data/cost</span>
+      <span class="pill">证据类型：paper-based（accepted PDF fulltext 可读）+ public-data desk translation</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-02_1929_cidr-intraday-curve-timing-alpha.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>Bitcoin 的“次日整条日内收益曲线”并不完全随机；如果能提前大致预测次日 CIDR（cumulative intraday return）曲线形状，就可以在预测的日内低点附近做多，并在其后的预测高点前后平仓，吃一段日内 drift</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>时间：2026-04-02 19:29 UTC</li>
+<li>类型：2021 *International Review of Financial Analysis* 接收稿全文 PDF + Binance USDⓈ-M <code>15m</code> public-data portability probe</li>
+<li>主题标签：raw-alpha/single-asset/btc/intraday/time-of-day/cidr/functional-forecast/curve-shape/long-only/timing/15m/5m/3m/1m/paper/public-data/cost</li>
+<li>证据类型：paper-based（accepted PDF fulltext 可读）+ public-data desk translation</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看的是一篇 <strong>公开可读接收稿 PDF</strong>：</p>
+<ul>
+<li><strong>Authors / Year</strong>: Elie Bouri, Chi Keung Marco Lau, Tareq Saeed, Shengyang Wang, Yuqian Zhao (2021)</li>
+<li><strong>Title</strong>: *On the intraday return curves of Bitcoin: predictability and trading opportunities*</li>
+<li><strong>Venue</strong>: *International Review of Financial Analysis*, Volume 76, Article 101784</li>
+<li><strong>DOI</strong>: <code>10.1016/j.irfa.2021.101784</code></li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://centaur.reading.ac.uk/97607/1/Bitcoin_Functional_Accepted.pdf&gt;">https://centaur.reading.ac.uk/97607/1/Bitcoin_Functional_Accepted.pdf&gt;</a></li>
+<li><strong>Publisher URL</strong>: &lt;<a href="https://doi.org/10.1016/j.irfa.2021.101784&gt;">https://doi.org/10.1016/j.irfa.2021.101784&gt;</a></li>
+<li><strong>Repo URL</strong>: N/A</li>
+</ul>
+<p>它不是在讲“某个 5 分钟形态会不会涨”这种单点信号，而是在问更底层的一件事：</p>
+<p>&gt; <strong>次日整条 BTC 日内收益曲线，是不是有可预测的 shape？如果有，能不能把它直接翻译成一个“日内什么时候买、什么时候卖”的交易计划？</strong></p>
+<p>这件事对 short-cycle desk 值钱，因为它提供的不是某个单独 candle pattern，而是一个 <strong>“日内路径预测 → 时间窗交易”</strong> 的主壳。</p>
+<h2>2. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha 很清楚：</strong></p>
+<p>&gt; <strong>Bitcoin 的次日日内收益路径存在可预测的曲线形状；因此，可以根据前一段时间估出来的次日 intraday curve，提前决定“预测低点买、预测后续高点卖”。</strong></p>
+<p>翻成人话： 不是赌“下一根 5m 红还是绿”，而是赌 <strong>“明天这一天大概率先走弱再走强，或者先慢慢抬升再在后段见高点”</strong>，然后把交易压缩成一笔日内 long-only 定时交易。</p>
+<p>所以这轮它属于 <strong>raw alpha</strong>，不是 filter / overlay。</p>
+<h2>3. 论文里到底怎么做这条 alpha</h2>
+<h2>3.1 数据口径</h2>
+<p>论文用的是：</p>
+<ul>
+<li><strong>交易所</strong>：Bitstamp</li>
+<li><strong>频率</strong>：<code>5m</code></li>
+<li><strong>样本期</strong>：<code>2014-11-01</code> 到 <code>2019-08-10</code></li>
+<li><strong>有效天数</strong>：<strong>1367 天</strong></li>
+<li><strong>异常处理</strong>：剔除了 <code>2015-01-05</code> 到 <code>2015-01-10</code> 的 hacked exchange event 区间</li>
+</ul>
+<p>作者把每一天都表示成一条 <strong>CIDR 曲线</strong>：</p>
+<p><code>CIDR_t(u) = 100 × (log P_t(u) - log P_t(0))</code></p>
+<p>也就是：</p>
+<ul>
+<li>当天开盘价作为 0；</li>
+<li>后面每个 <code>5m</code> 点，都看“相对当日开盘已累计涨跌多少”。</li>
+</ul>
+<p>这一步很重要，因为它把“很多根 5m bar”变成了“一条完整的日内路径”。</p>
+<h2>3.2 预测层：不是直接预测 return，而是预测整条 curve</h2>
+<p>论文先对历史日内曲线做 FPCA（functional PCA）：</p>
+<ul>
+<li><strong>前两个主成分就解释了 90.23% 的总变异</strong>；</li>
+<li>作者解释为：</li>
+<li><strong>第一主成分</strong>更像是对整体上行均值曲线的强弱偏离；</li>
+<li><strong>第二主成分</strong>更像是 <strong>日内均值回归 / 路径弯折</strong> 机制。</li>
+</ul>
+<p>然后作者滚动训练，用两种方法预测“次日主成分分数”：</p>
+<ol>
+<li><strong>FPES</strong>：对 score 做 exponential smoothing；</li>
+<li><strong>FPAR</strong>：只有当 score 序列存在 serial correlation 时，才对它做 AR(1) 预测；否则直接回到均值曲线。</li>
+</ol>
+<p>对 desk 来说，这里的关键不是函数分析术语，而是：</p>
+<p>&gt; <strong>先预测“明天一天会怎么走”，再从预测曲线上直接读 entry time 和 exit time。</strong></p>
+<h2>3.3 交易层：完整的 buy-low / sell-later-high 壳子已经给了</h2>
+<p>论文的 long-only 日内交易规则很直接：</p>
+<ol>
+<li>用滚动窗口数据预测次日整条 CIDR 曲线；</li>
+<li>找到预测曲线的 <strong>全局最低点时间</strong> <code>u_min</code>；</li>
+<li>在 <code>u_min</code> 之后，再找 <strong>后续最高点时间</strong> <code>u_max</code>；</li>
+<li>次日到点后：</li>
+</ol>
+<ul>
+<li>在 <code>u_min</code> 买入 BTC；</li>
+<li>在 <code>u_max</code> 平仓；</li>
+</ul>
+<ol>
+<li><strong>不隔夜</strong>，所有仓位午夜前清掉。</li>
+</ol>
+<p>这点很重要： 它不是“解释性论文”，而是已经把 <strong>entry / exit / no-overnight</strong> 这套基本交易骨架写出来了。</p>
+<h2>3.4 论文里为什么专门强调 serial-correlation gate</h2>
+<p>作者发现：</p>
+<ul>
+<li>不是什么时候都存在可预测性；</li>
+<li>真正值得交易的时段，往往是 <strong>FPC score 自身存在 serial correlation</strong> 的那些日子。</li>
+</ul>
+<p>这其实就是一个非常 desk-friendly 的结论：</p>
+<p>&gt; <strong>别每天机械做；只在“路径可预测性明显没死”的 regime 里做。</strong></p>
+<p>所以这篇 paper 真正最像 desk 组件的，不是纯粹的 functional forecasting，而是：</p>
+<ul>
+<li><strong>预测次日 curve shape</strong></li>
+<li><strong>把交易压缩成一笔日内 timing trade</strong></li>
+<li><strong>再用 serial-dependence 作为 admission gate</strong></li>
+</ul>
+<h2>4. 论文给了哪些硬信息</h2>
+<h2>4.1 forecasting 层面：不是每次都比均值强，但 gated 时更像样</h2>
+<p>全文里 Table 3 的核心信息是：</p>
+<ul>
+<li>在 <strong>entire sample</strong> 上，FPAR 相对 Fmean 的预测误差改善很有限；</li>
+<li>但在 <strong>first and second scores 都 serially correlated</strong> 的样本里，FPAR 才明显更好。</li>
+</ul>
+<p>也就是说： <strong>这条 alpha 不是“永远预测得很好”，而是“可预测性本身有 regime”。</strong></p>
+<h2>4.2 交易层面：FPAR 是论文里最强那条</h2>
+<p>论文 Table 4 给出的最关键一组结果：</p>
+<h3>交易全部样本（每天都做）</h3>
+<p>在 <strong>FPAR + <code>S=182</code></strong> 下：</p>
+<ul>
+<li><strong>Annualised Return：64.70%</strong></li>
+<li><strong>Annualised Volatility：58.15%</strong></li>
+<li><strong>Sharpe：1.11</strong></li>
+<li><strong>Maximum Drawdown：-99.25%</strong></li>
+</ul>
+<p>同表里：</p>
+<ul>
+<li><code>S=365</code> 的 FPAR 仍优于另外两种方法；</li>
+<li>说明“用 AR(1) 预测 score、并在无 serial correlation 时退回均值”这条思路，比机械均值曲线更强。</li>
+</ul>
+<p>但也别被 headline 迷惑： <strong>它的 gross Sharpe 不差，但路径极粗糙，回撤非常深。</strong></p>
+<h2>4.3 只在 serial-correlation 样本做，风险显著下降</h2>
+<p>如果只在“第一或第二 score 存在 serial correlation”的样本里做，<code>S=365</code> 的 FPAR 表现为：</p>
+<ul>
+<li><strong>Annualised Return：42.10%</strong></li>
+<li><strong>Annualised Volatility：40.03%</strong></li>
+<li><strong>Sharpe：1.05</strong></li>
+<li><strong>Maximum Drawdown：-53.95%</strong></li>
+</ul>
+<p>这里真正重要的不是 return 更高，而是：</p>
+<p>&gt; <strong>把策略限制在“可预测性活着”的日子里，drawdown 明显变浅。</strong></p>
+<p>这比“无脑每天做”更像 desk 能接受的策略壳。</p>
+<h2>4.4 成本不是没影响，但不是一句话就把 edge 判死</h2>
+<p>作者还做了交易费敏感性：</p>
+<ul>
+<li>假设 <strong>Bitstamp fee rate = 0.03%</strong>；</li>
+<li>在 <strong>entire sample + <code>S=182</code></strong> 下，FPAR 的 <strong>Sharpe 仍有 0.74</strong>；</li>
+<li>且作者明确指出：<strong>如果只在 serial-correlation 样本做，交易频率更低，费率冲击更小。</strong></li>
+</ul>
+<p>所以论文的直觉很清楚：</p>
+<ul>
+<li><strong>全样本硬做</strong>：有 alpha，但成本和回撤都重；</li>
+<li><strong>加 dependence gate</strong>：更像实际能交易的版本。</li>
+</ul>
+<h2>5. 对 short-cycle desk 真正有用的，不是“functional”三个字，而是这条主壳</h2>
+<p>如果把它翻译成 desk 语言，这篇论文最值钱的是：</p>
+<ol>
+<li><strong>信号对象不是单 bar，而是日内整条路径</strong>；</li>
+<li><strong>交易动作极简单：一天只做一笔 long-only timing trade</strong>；</li>
+<li><strong>天然适合 <code>15m -&gt; 5m -&gt; 3m/1m</code> 三层拆解</strong>：</li>
+</ol>
+<ul>
+<li><code>15m</code> 负责发现大致的日内低点-高点时间窗；</li>
+<li><code>5m</code> 负责细化到更窄 entry/exit window；</li>
+<li><code>3m/1m</code> 只做 execution improvement，而不是重新发现 alpha。</li>
+</ul>
+<p>换句话说，它不是“直接拿去实盘就完事”，但非常适合作为：</p>
+<p>&gt; <strong>BTC 单币 directional intraday timing alpha 的研究母体。</strong></p>
+<h2>5.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：single-asset / directional / intraday timing / long-only</li>
+<li>基础 alpha：次日日内收益曲线 shape 有弱可预测性，可据此做“预测低点买、后续高点卖”</li>
+<li>regime：只在历史日内曲线主成分 score 显示 serial dependence 时更值得开</li>
+<li>filter / veto：serial-correlation gate；若预测曲线的高点出现在低点之前，则不做或改为别的壳</li>
+<li>risk / sizing / execution overlay：单日单笔、午夜前清仓、成本先行；<code>1m/3m</code> 只做入场精修与滑点控制</li>
+</ul>
+<h2>6. 我做的最小 portability probe：Binance BTCUSDT perp <code>15m</code></h2>
+<p>我没有在这轮硬复刻论文的所有 functional 细节到 <code>5m</code>，而是先做一个 <strong>desk translation</strong>：</p>
+<ul>
+<li>数据：Binance USDⓈ-M <code>BTCUSDT</code> perpetual 公共 <code>15m</code> K 线</li>
+<li>样本：<strong>2025-02-07 到 2026-04-01，共 419 个完整 UTC 日</strong></li>
+<li>训练窗：<strong>182 天</strong></li>
+<li>日内曲线：每个 UTC 日 96 根 <code>15m</code> bar，构造日内 CIDR 曲线</li>
+<li>预测：</li>
+<li>每天滚动做 PCA；</li>
+<li>取解释 <strong>≥90%</strong> 变异的主成分；</li>
+<li>对存在 Ljung-Box serial dependence 的 score 做简化 <strong>AR(1)</strong> 预测；</li>
+<li>否则 score 预测为 0（回到均值曲线）；</li>
+<li>交易：</li>
+<li>从预测次日曲线里找 <code>u_min</code>；</li>
+<li>再找 <code>u_min</code> 之后的 <code>u_max</code>；</li>
+<li>次日 <code>u_min</code> 买、<code>u_max</code> 卖；</li>
+<li>只做多，不隔夜。</li>
+</ul>
+<p>这不是 paper-perfect replication，但足够回答一个问题：</p>
+<p>&gt; <strong>这条“日内曲线预测 → 一笔日内 timing trade”的骨架，放到 2025-2026 的 Binance perp <code>15m</code> 上，还有没有最小生命迹象？</strong></p>
+<h2>6.1 probe 结果：gross 还有点东西，但成本非常关键</h2>
+<h3>全部可交易日（236 天）</h3>
+<ul>
+<li><strong>平均单日收益：+3.90 bps</strong></li>
+<li><strong>胜率：52.97%</strong></li>
+<li><strong>年化收益：15.31%</strong></li>
+<li><strong>Sharpe：0.65</strong></li>
+<li><strong>最大回撤：-13.35%</strong></li>
+</ul>
+<h3>只在“前两主成分至少一个 serially correlated”时做（22 天）</h3>
+<ul>
+<li><strong>平均单日收益：+8.30 bps</strong></li>
+<li><strong>胜率：54.55%</strong></li>
+<li><strong>年化收益：35.36%</strong></li>
+<li><strong>Sharpe：1.21</strong></li>
+<li><strong>最大回撤：-4.04%</strong></li>
+</ul>
+<p>这组数很说明问题：</p>
+<ol>
+<li><strong>alpha 没死，但比论文年代薄很多</strong>；</li>
+<li><strong>不 gating 地每天做，gross edge 很薄；</strong></li>
+<li><strong>一旦用 serial-dependence gate，单位交易质量明显上升。</strong></li>
+</ol>
+<h2>6.2 成本敏感性：这条线绝不能假装自己不怕费</h2>
+<p>我又对同一组 <code>15m</code> probe 做了 round-trip 固定成本敏感性：</p>
+<h3>全样本版本</h3>
+<ul>
+<li><strong>0 bps</strong>：Sharpe <strong>0.65</strong></li>
+<li><strong>4 bps</strong>：Sharpe <strong>-0.02</strong>（基本被打平）</li>
+<li><strong>6 bps</strong>：Sharpe <strong>-0.35</strong></li>
+<li><strong>8 bps</strong>：Sharpe <strong>-0.69</strong></li>
+</ul>
+<h3>gated 版本</h3>
+<ul>
+<li><strong>0 bps</strong>：Sharpe <strong>1.21</strong></li>
+<li><strong>4 bps</strong>：Sharpe <strong>0.63</strong></li>
+<li><strong>6 bps</strong>：Sharpe <strong>0.33</strong></li>
+<li><strong>8 bps</strong>：Sharpe <strong>0.04</strong>（几乎归零）</li>
+</ul>
+<p>结论非常直白：</p>
+<p>&gt; <strong>这条 alpha 在今天更像“低成本、低频 gated timing 壳”，而不是高成本环境里随便硬打的主策略。</strong></p>
+<p>也就是说，如果 desk 做它：</p>
+<ul>
+<li>必须争取 maker / passive fill；</li>
+<li>或者把它当成 <strong>日内方向时间窗 gate</strong>，再让更快的 microstructure 组件决定精确 entry。</li>
+</ul>
+<h2>6.3 最近一年这条曲线偏向什么时间窗</h2>
+<p>在这组 Binance <code>15m</code> probe 里：</p>
+<ul>
+<li><strong>全样本版本的中位买点</strong>大约在 <strong>20:00 UTC</strong>；</li>
+<li><strong>中位卖点</strong>大约在 <strong>22:45 UTC</strong>；</li>
+<li><strong>gated 版本的中位买点</strong>更早，约在 <strong>10:00 UTC</strong>；</li>
+<li><strong>gated 版本的中位卖点</strong>接近 <strong>23:45 UTC</strong>。</li>
+</ul>
+<p>这说明两件事：</p>
+<ol>
+<li><strong>intraday curve alpha 的“低点/高点时段”本身也会迁移</strong>；</li>
+<li>所以 desk 不该把论文读成固定时段季节性，而该读成：</li>
+</ol>
+<ul>
+<li><strong>每天滚动预测路径</strong>；</li>
+<li>再从路径里读时间窗。</li>
+</ul>
+<h2>7. 这条线和当前素材池的关系</h2>
+<p>最近素材池里已经有：</p>
+<ul>
+<li>microstructure continuation / reversal</li>
+<li>pairs / residual mean reversion</li>
+<li>funding / basis / carry</li>
+<li>ETF / Polymarket / on-chain cross-market lead-lag</li>
+</ul>
+<p>但 <strong>“把次日日内路径本身作为交易对象”</strong> 这条主线还比较少。</p>
+<p>这篇 paper 补上的，正是一个不同于 breakout / OFI / pairs 的视角：</p>
+<p>&gt; <strong>不是预测方向点，而是预测“方向在一天里的展开顺序”。</strong></p>
+<p>这能直接服务：</p>
+<ul>
+<li>BTC directional intraday timing；</li>
+<li>breakout 策略的 <strong>time-of-day admission gate</strong>；</li>
+<li>execution shell（什么时候更值得等、什么时候该提前平）。</li>
+</ul>
+<h2>8. 先测什么，不先测什么</h2>
+<p><strong>先测：</strong></p>
+<ol>
+<li>在 <code>BTCUSDT</code> 上把 discovery 固定在 <code>15m</code>，执行下钻到 <code>5m/3m</code>；</li>
+<li>只保留 <strong>serial-dependence gate = on</strong> 的日子；</li>
+<li>加一层最简单的 execution rule：</li>
+</ol>
+<ul>
+<li>入场不追单，等 <code>u_min</code> 附近 <code>1~2</code> 根小回拉；</li>
+<li>出场不一定卡死 <code>u_max</code>，可加 <code>post-entry trailing high</code>；</li>
+</ul>
+<ol>
+<li>成本先跑 <strong>2 / 4 / 6 / 8 bps</strong> 四档，不要只看 gross。</li>
+</ol>
+<p><strong>不先测：</strong></p>
+<ul>
+<li>不先卷更复杂的 functional 学术细节；</li>
+<li>不先把它扩成多币篮子；</li>
+<li>不先加入太多宏观 / 链上 / funding overlay 把来源搞混。</li>
+</ul>
+<h2>9. 下一步怎么测（最重要）</h2>
+<h3>最小实验 A：<code>15m</code> discovery + <code>5m</code> execution refine</h3>
+<ul>
+<li>用最近 18 个月 Binance perp <code>BTCUSDT</code> 数据；</li>
+<li>每天 UTC 00:00 之前滚动预测次日日内 curve；</li>
+<li>得到 <code>u_min</code> / <code>u_max</code> 之后，不直接用 <code>15m close</code> 成交；</li>
+<li>改成在对应 <code>15m</code> 窗内用 <code>5m</code>：</li>
+<li>入场等第一根停止创新低 / micro pullback；</li>
+<li>出场用窗口内最高 close 或 trailing-stop。</li>
+</ul>
+<p>要验证的是： <strong>在不改变 alpha 本体的前提下，execution 是否能把 4~8 bps 的成本问题救回来。</strong></p>
+<h3>最小实验 B：slot-return 版本替代 full-curve 版本</h3>
+<p>如果嫌 FPCA 太学术，可以先做更工程化的替身：</p>
+<ul>
+<li>直接预测次日 96 个 <code>15m</code> slot return 的符号 / 强弱；</li>
+<li>把“低点后高点”问题改成“连续净多窗口最大化”；</li>
+<li>和论文版 <code>curve-min / curve-max</code> 做 A/B。</li>
+</ul>
+<p>要验证的是： <strong>真正值钱的是“路径预测”本身，还是只是一个 time-of-day mean pattern。</strong></p>
+<h3>最小实验 C：把它变成 gate，而不是独立主策略</h3>
+<p>把这条信号拿去给现有 BTC directional 线做 gate：</p>
+<ul>
+<li>只有当预测曲线显示“未来 4~8 小时整体上行”时，才允许 breakout / OFI continuation 开多；</li>
+<li>若预测曲线显示“先弱后强”，则更适合先等回踩再接。</li>
+</ul>
+<p>要验证的是： <strong>这条线独立做可能太薄，但当 timing gate 也许更值钱。</strong></p>
+<h2>10. 主要风险</h2>
+<ul>
+<li><strong>成本风险</strong>：今天这条线最脆弱的就是 round-trip 成本；</li>
+<li><strong>路径漂移</strong>：低点/高点时段会迁移，不能把历史固定时段当铁律；</li>
+<li><strong>结构失效</strong>：论文里 2017 后就出现显著衰减，说明 alpha 可能与市场成熟度有关；</li>
+<li><strong>单币风险</strong>：这篇主看 BTC，不能自动外推到 ETH/SOL；</li>
+<li><strong>过度学术化风险</strong>：functional 术语很多，但 desk 真正需要的是可交易路径壳，不是更复杂的统计仪式。</li>
+</ul>
+<h2>11. 一句话带走</h2>
+<p>如果把这篇 2021 论文翻成 desk 语言，我会把它定义成：</p>
+<p>&gt; <strong>“预测次日日内路径，再做一笔 buy-forecasted-low / sell-later-high 的 BTC timing trade。”</strong></p>
+<p>它今天在 Binance perp 上 <strong>还有微弱 raw alpha 痕迹</strong>，但更像一个 <strong>低成本、serial-dependence gated 的 directional timing 壳</strong>；下一步最值得做的不是继续卷 functional 术语，而是把它下钻成 <code>15m discovery + 5m/3m execution</code> 的成本后版本。</p>
+</body>
+</html>

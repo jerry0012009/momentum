@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这个实时 pairs dashboard 只读成“看板”：对 short-cycle crypto desk，更该先拆的是「Kalman 动态 hedge ratio × rolling z-score spread fade」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这个实时 pairs dashboard 只读成“看板”：对 short-cycle crypto desk，更该先拆的是「Kalman 动态 hedge ratio × rolling z-score spread fade」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-20 12:14 UTC</span>
+      <span class="pill">研究时间：2026-04-20 12:16 UTC</span>
+      <span class="pill">类型：GitHub / repo source audit + Binance USDⓈ-M `15m` portability probe</span>
+      <span class="pill">主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/kalman/dynamic-hedge-ratio/zscore/spread-fade/binance-perpetual/15m/5m/repo/public-data/cost/risk</span>
+      <span class="pill">证据类型：GitHub 工程证据 + Binance public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-20_1216_kalman-dynhedge-pair-spreadfade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-20 12:16 UTC</li>
+<li>类型：GitHub / repo source audit + Binance USDⓈ-M <code>15m</code> portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：两个高度相关的币短时偏离动态 hedge ratio 后，spread 往滚动均值回归</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/pairs/stat-arb/relative-value/mean-reversion/kalman/dynamic-hedge-ratio/zscore/spread-fade/binance-perpetual/15m/5m/repo/public-data/cost/risk</li>
+<li>证据类型：GitHub 工程证据 + Binance public-data portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主材料是 2025-12 新仓 <strong><code>KulkarniPushakar/Real-Time-Crypto-Pair-Trading-Analytics-</code></strong>。README 和 <code>app.py</code> 的核心不是 Streamlit UI，而是一条很标准、可直接拆成交易规则的 pairs/stat-arb sleeve：Binance WebSocket 对齐双币价格，计算 OLS / Huber / Theil-Sen / <strong>Kalman dynamic hedge ratio</strong>，再用 spread、rolling z-score、rolling correlation、ADF p-value 和 <code>z_entry / z_exit</code> 阈值生成 <code>LONG / SHORT / EXIT</code> alerts。</p>
+<p>一句话核心结论：<strong>这条线最值得拿走的是“不要用一根固定 beta 去做 pairs，先让 hedge ratio 随市场慢慢漂，再只 fade 真正偏离 beta 的 spread”。</strong></p>
+<p>一句话证明方式：<strong>repo 把实时数据、动态 hedge、z-score 阈值和 rule-based alert 串成了可执行骨架；我再用 Binance USDⓈ-M <code>15m</code> 公共数据做了一个最小 portability probe，看它是否还有成本后 pocket。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>base alpha 是 raw alpha，不是 filter。</strong> 信号本体是：<code>spread = price_y - beta_t * price_x</code>；当 <code>z(spread) &gt; 2</code>，做空 rich leg / 做多 cheap leg；当 <code>z &lt; -2</code> 反向；<code>|z| &lt; 0.5</code> 平仓。</li>
+<li><strong>Kalman / dynamic beta 的价值是减少“关系变了还硬做回归”的假信号。</strong> 对 crypto pairs 来说，<code>BTC/ETH</code>、<code>XRP/DOGE</code>、<code>SOL/AVAX</code> 这类相关关系会随叙事和波动切换漂移，固定 OLS beta 很容易把 beta 漂移误读成 spread alpha。</li>
+<li><strong>最小 probe 显示：广谱铺开不够，局部 pair pocket 有交易价值。</strong> 我用 <code>BTC/ETH/BNB/SOL/XRP/DOGE/ADA/LINK/AVAX/LTC</code>，<code>2026-01~03</code>、<code>15m</code>，对 45 个 pair 做 Kalman-style beta + <code>96-bar</code> z-score + <code>corr&gt;0.55</code> admission：</li>
+<li>全部离散交易合计约 <code>6,928</code> 笔，说明机会很多，但也意味着成本非常敏感。</li>
+<li><code>XRPUSDT/DOGEUSDT</code> 最突出：<code>187</code> 笔，平均 <code>+11.04 bps gross/trade</code>，粗扣 <code>8 bps</code> 双腿 round-trip 后仍约 <code>+3.04 bps/trade</code>，gross win rate 约 <code>56.1%</code>。</li>
+<li><code>BTCUSDT/ETHUSDT</code> 很稳定但太薄：<code>325</code> 笔，平均 <code>+2.11 bps gross</code>，扣 <code>8 bps</code> 后约 <code>-5.89 bps/trade</code>；它更适合当 sanity benchmark，不适合直接上 taker 版。</li>
+<li><strong>所以这不是“pairs 都能赚钱”，而是一个 pair-admission / execution 问题。</strong> 先找同叙事、高相关、spread 回归快、且 gross edge 能覆盖双腿成本的 pair，再谈上策略。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这篇对当前素材池有用，因为它补的是 <strong>pairs / stat-arb / relative value</strong> 族里的一个清楚 raw alpha 壳，和最近的 trend / funding digest 不同：</p>
+<ul>
+<li>对 <code>15m</code>：可直接做母信号，尤其适合 <code>XRP/DOGE</code>、<code>SOL/AVAX</code>、<code>LINK/LTC</code> 这种同风格 alt pair。</li>
+<li>对 <code>5m</code>：更适合做 child execution——<code>15m</code> 发现 spread extreme，<code>5m</code> 等回归第一脚或 maker queue placement。</li>
+<li>对实盘组件：可以拆成 <code>pair admission</code>、<code>dynamic hedge</code>、<code>spread z-score entry</code>、<code>exit / timeout / stop-z</code>、<code>cost ladder</code> 五个模块，后续可以独立替换。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：相对价值 / pairs / stat-arb / 均值回归</li>
+<li>基础 alpha：<code>Kalman dynamic hedge ratio</code> 调整后的 pair spread 偏离滚动均值后回归</li>
+<li>regime：只在 <code>rolling_corr &gt; 0.55</code>、beta 为正且不过度异常时启用；更严格版本应加 ADF / half-life / liquidity admission</li>
+<li>filter / veto：<code>|z| &lt; 2</code> 不开；<code>corr</code> 降低、beta 跳变、spread stop-z、单腿跳空、资金费率/新闻事件可 veto</li>
+<li>sizing / risk / execution overlay：双腿 gross exposure 归一化为 <code>1 + |beta|</code>；<code>|z| &lt; 0.5</code> 平仓；<code>12 bars</code> timeout；<code>|z| &gt; 4</code> 同向扩张止损；研究期先按 <code>4/8/12 bps</code> 双腿 round-trip friction ladder</li>
+<li>cost：当前 probe 粗扣 <code>8 bps</code> round-trip；真实执行若走 taker 双腿会很吃亏，优先测 maker-first / one-leg-maker-one-leg-taker</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>数据源：Binance USDⓈ-M public monthly klines，公开可得，分钟级可映射到 <code>1m/3m/5m/15m</code></li>
+<li>最小实验口径：先用 <code>15m</code>，<code>XRP/DOGE</code>、<code>BTC/ETH</code>、<code>SOL/AVAX</code>、<code>LINK/LTC</code> 四个代表 pair；样本先滚动 <code>90d</code></li>
+<li>一个可计算定义：</li>
+<li><code>beta_t = Kalman(price_y ~ beta_t * price_x)</code></li>
+<li><code>spread_t = price_y - beta_t * price_x</code></li>
+<li><code>z_t = (spread_t - rolling_mean_96) / rolling_std_96</code></li>
+<li><code>entry: z&gt;2 =&gt; short y/long beta*x; z&lt;-2 =&gt; long y/short beta*x</code></li>
+<li><code>exit: |z|&lt;0.5 or timeout=12 bars or stop_z=4</code></li>
+<li>最该先看：</li>
+</ul>
+<ol>
+<li><code>net_bps/trade</code> under <code>4/8/12 bps</code> friction</li>
+<li><code>mean-cross exit ratio</code> 与 median holding bars</li>
+<li>pair-by-pair stability，而不是 pooled average</li>
+</ol>
+<h2>4.5 下一步怎么测</h2>
+<ol>
+<li><strong>先做 desk 版 pair admission</strong>：<code>corr&gt;0.7 + ADF p&lt;0.1 + half-life 2~16 bars + quote_volume top bucket</code>，看 <code>XRP/DOGE</code> 的 <code>+3.04 bps net/trade</code> 是否还保得住。</li>
+<li><strong>把 <code>15m</code> signal 接 <code>5m</code> child execution</strong>：入场不直接 next-open taker，改成 <code>5m</code> 第一根 spread 回落 / maker mid-placement，目标是把 <code>8 bps</code> 成本打到 <code>4 bps</code> 以下。</li>
+<li><strong>做 rolling OOS pair selection</strong>：每周只从过去 <code>30d</code> 里选 top 3 pairs，下一周交易，避免事后挑 <code>XRP/DOGE</code>。</li>
+<li><strong>补 static OLS vs Kalman A/B</strong>：同一批 pair 比较固定 beta、rolling OLS beta、Kalman beta，确认动态 hedge 是否真的减少坏信号。</li>
+<li><strong>加 funding / borrow / shortability 检查</strong>：pairs alpha 不是无成本相对价值，perp 两腿资金费和保证金占用必须进 PnL。</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>当前结果只说明 <strong>Kalman dynamic spread fade 有局部 pocket</strong>，不是证明所有 pairs 都可交易；多数 pair 扣 <code>8 bps</code> 后为负。</li>
+<li><code>XRP/DOGE</code> 的好结果可能包含阶段性 meme / alt beta 结构，不应直接外推；必须做 rolling OOS selection。</li>
+<li>这份 repo 是实时 analytics / alert platform，不是完整回测框架；我补的 bracket / timeout / cost 是 desk 版最小策略壳，后续需要 clean replication。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li><strong>Author / Year / Title / Venue</strong>：KulkarniPushakar (2025), *Real-Time-Crypto-Pair-Trading-Analytics-*, GitHub repository</li>
+<li><strong>DOI</strong>：N/A</li>
+<li><strong>Readable URL</strong>：<a href="https://github.com/KulkarniPushakar/Real-Time-Crypto-Pair-Trading-Analytics-">https://github.com/KulkarniPushakar/Real-Time-Crypto-Pair-Trading-Analytics-</a></li>
+<li><strong>Repo URL</strong>：<a href="https://github.com/KulkarniPushakar/Real-Time-Crypto-Pair-Trading-Analytics-">https://github.com/KulkarniPushakar/Real-Time-Crypto-Pair-Trading-Analytics-</a></li>
+<li><strong>关键源码 / 文档</strong>：<code>README.md</code>, <code>app.py</code>, <code>main.py</code></li>
+<li><strong>GitHub metadata</strong>：created <code>2025-12-17</code>, pushed <code>2025-12-17</code>, language <code>Python</code></li>
+<li><strong>本地 probe artifacts</strong>：</li>
+<li><code>reports/artifacts/quant_digests/2026-04-20_kalman_pair_spreadfade_probe_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-20_kalman_pair_spreadfade_probe_trades.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-20_kalman_pair_spreadfade_probe_event_horizon.csv</code></li>
+</ul>
+</body>
+</html>

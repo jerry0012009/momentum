@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 pairs 只做单对 z-score：这篇因子模型论文更值钱的是“多对冲篮子 + stationary-F2 gate”的 stat-arb 骨架</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 pairs 只做单对 z-score：这篇因子模型论文更值钱的是“多对冲篮子 + stationary-F2 gate”的 stat-arb 骨架</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-23 22:45 UTC</span>
+      <span class="pill">研究时间：2026-03-23 22:31 UTC</span>
+      <span class="pill">类型：论文 + 工程仓库 + Binance 公共数据最小快检</span>
+      <span class="pill">主题标签：raw-alpha/stat-arb/pairs/relative-value/dynamic-factor/stationary-gate/regime/cost/turnover/crypto/5m/15m</span>
+      <span class="pill">证据类型：论文证据 + 工程实现启发 + 本地快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-23_2231_dynamic-factor-multispread-statarb-stationary-f2-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-23 22:31 UTC</li>
+<li>类型：论文 + 工程仓库 + Binance 公共数据最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：cross-sectional / relative-value stat-arb（用公共因子拆出共同趋势后，交易相对价差的均值回归）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是（但需先过短周期成本与换手生存线）</li>
+<li>主题标签：raw-alpha/stat-arb/pairs/relative-value/dynamic-factor/stationary-gate/regime/cost/turnover/crypto/5m/15m</li>
+<li>证据类型：论文证据 + 工程实现启发 + 本地快检</li>
+</ul>
+<h2>1) 这次看了什么</h2>
+<p>先回答 base alpha：<strong>不是“预测单币方向”，而是“剥离共同趋势后做相对价差回归”</strong>。主材料是 Figá‑Talamanca, Focardi, Patacca (2021) 的动态因子 + 多 pair 市场中性框架；工程侧补了一份可快速改成 crypto 的开源 stat-arb 引擎（OLS / Rolling / Kalman 三路对照）。</p>
+<h2>2) 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 对我们 desk，更值得抄的不是“某一对 coin 的 z-score 阈值”，而是<strong>先做 common-trend 拆分，再只在 <code>F2</code> 仍稳定时开多空篮子</strong>。</li>
+<li><strong>一句话证明方式：</strong> 论文先做 cointegration + 动态因子估计，再把交易收益映射到第二因子（stationary 因子）并给出含交易费后的累计表现；我补了 15m 最小快检验证可迁移边界。</li>
+</ul>
+<p>3 个关键数据点（论文 + 本地）：</p>
+<ol>
+<li>论文在 BTC/ETH/LTC/XMR（日频，2016–2019）中识别到两因子结构：<code>λ1≈0.9962</code>（接近单位根）与 <code>λ2≈0.9823</code>（更偏平稳）。</li>
+<li>论文报告在其样本期内，含交易费后策略净累计收益仍为正（文中 Table 6，<code>c=0.2</code> 时 net 统计优于 <code>c=0</code> 的高换手版本）。</li>
+<li>我用 Binance 15m（BTC/ETH/LTC/XRP，近 3000 bars）做“逐 bar 重平衡”的 toy 迁移，结果 <strong>gross 仅 +0.08 bps/bar、net -15.92 bps/bar</strong>（按 16 bps round-trip 口径）——说明短周期里先被成本打穿，不能直接照搬。</li>
+</ol>
+<h2>3) 为什么和当前 desk 直接相关</h2>
+<p>这条线属于可独立复现的 raw alpha（relative-value / stat-arb），不是继续给 breakout/retest 做附件过滤。并且它天然能拆成完整策略组件：</p>
+<ul>
+<li>entry：由因子分解后的相对价差偏离触发；</li>
+<li>exit：价差回归、超时退出、或 regime 失效退出；</li>
+<li>sizing：按 beta/因子暴露做 market-neutral 配比；</li>
+<li>risk：<code>stationary-F2 gate</code> + 结构失效停机；</li>
+<li>cost：显式交易费/滑点/资金费率口径。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：relative-value / market-neutral / mean-reversion</li>
+<li>基础 alpha：多币共同趋势可被因子吸收，剩余相对价差存在回归段</li>
+<li>regime：仅在第二因子仍可视为平稳（或足够远离单位根）时交易</li>
+<li>filter / veto：<code>|λ2-1|</code> 过小、结构突变、成本超阈值时 veto</li>
+<li>risk / sizing / execution overlay：beta-neutral 权重、换手上限、成交成本闸门、分批执行</li>
+</ul>
+<h2>4) 可复刻最小实验（5m/15m 起步）</h2>
+<ul>
+<li>数据源：Binance Spot Klines（公开可得）</li>
+<li>公开性：公开 REST，无私钥</li>
+<li>更新频率：1m/3m/5m/15m 都可直接拉取</li>
+<li>最小口径：<code>BTC/ETH/LTC/XRP</code>，滚动窗 <code>L=960</code>（15m 约 10 天）估计两因子；仅当 <code>λ2 &lt; 0.995</code> 且成交成本假设可覆盖时开仓</li>
+<li>首看指标：</li>
+<p>1) gross/net bps per traded bar； 2) turnover（每 bar 换手腿数）； 3) <code>λ2</code> 分布与收益条件分布（检验 stationary gate 是否真有信息）</p>
+</ul>
+<h2>5) 下一步怎么测（直接可执行）</h2>
+<ol>
+<li><strong>先做门控再做 alpha</strong>：把 <code>stationary-F2 gate</code> 从单阈值升级为分桶（<code>λ2&lt;0.98 / 0.98~0.995 / &gt;=0.995</code>），比较每桶净收益。</li>
+<li><strong>降换手版本优先</strong>：从“逐 bar 重平衡”改为“信号翻转才调仓 + 最大持有 bars”，先测试成本生存线。</li>
+<li><strong>5m→3m 下钻只对通过 15m 的币篮子</strong>：先过 15m net&gt;0 的币篮子再下钻，不做全池盲扫。</li>
+<li><strong>补全实盘口径成本</strong>：手续费、滑点、maker/taker 混合、资金费率（若迁移到 perp）四档敏感性。</li>
+</ol>
+<h2>6) 风险与保留意见</h2>
+<ul>
+<li>论文主证据是日频与 2016–2019 环境，直接外推到 2026 高频会失真。</li>
+<li>PCA 近似的 toy 迁移会天然压低因子相关性，不等价于论文完整估计流程。</li>
+<li>若不控制换手，short-cycle stat-arb 很容易“毛利为正、净利为负”。</li>
+</ul>
+<h2>7) 来源</h2>
+<ol>
+<li><strong>Figá‑Talamanca, G., Focardi, S., &amp; Patacca, M. (2021). _Common dynamic factors for cryptocurrencies and multiple pair-trading statistical arbitrages_. Decisions in Economics and Finance.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1007/s10203-021-00318-x</code></li>
+<li>Readable URL: <a href="https://doi.org/10.1007/s10203-021-00318-x">https://doi.org/10.1007/s10203-021-00318-x</a></li>
+</ul>
+<ol>
+<li><strong>Sung, E. (2026). _statistical-arbitrage-engine_ (GitHub repository).</strong></li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/eddiesung111/statistical-arbitrage-engine">https://github.com/eddiesung111/statistical-arbitrage-engine</a></li>
+</ul>
+<ol>
+<li><strong>Binance Spot API Docs (Klines).</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data</a></li>
+</ul>
+<h2>8) 本地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/dynamic_factor_multispread_probe_20260323/bar_results.csv</code></li>
+<li><code>reports/artifacts/quant_digests/dynamic_factor_multispread_probe_20260323/summary.json</code></li>
+</ul>
+</body>
+</html>

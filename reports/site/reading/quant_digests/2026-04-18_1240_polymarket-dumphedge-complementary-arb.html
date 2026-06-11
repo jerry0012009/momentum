@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Polymarket dump hedge：YES+NO &lt; 1 的补体错价，才是 base alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>Polymarket dump hedge：YES+NO &lt; 1 的补体错价，才是 base alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-18 12:45 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-18_1240_polymarket-dumphedge-complementary-arb.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：Polymarket 二元合约的补体错价（YES+NO 合价低于 1）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>一句话结论</h2>
+<p>这不是“预测方向”的题，而是<strong>买入 YES + NO 的结构性套利</strong>：当同一二元市场的两腿合计买价低于 $1.00 时，持有到结算可锁定面值回归收益；源码里还能直接看到 entry、early-exit、size、cooldown、Kelly 和 kill switch。</p>
+<h2>这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = 二元互补合约的定价不守恒。</strong></p>
+<p>对 Polymarket 这类 binary market，YES 和 NO 在结算时总和必然等于 $1。若当前 order book 里两腿买价之和显著低于 1，买双腿本身就是一笔锁定利润的 relative-value / stat-arb。</p>
+<p>这类 alpha 的核心不是方向判断，而是：</p>
+<ul>
+<li>合价偏离是否足够大</li>
+<li>还能不能在结算前安全退出</li>
+<li>交易成本、滑点、手续费后是否仍为正</li>
+</ul>
+<h2>为什么它值得进素材池</h2>
+<p>它很适合 short-cycle desk，因为它天然就是一个<strong>完整策略壳</strong>，不需要再硬补方向模型：</p>
+<ul>
+<li>entry：<code>YES ask + NO ask &lt;= threshold</code></li>
+<li>exit：早退阈值或持有到结算</li>
+<li>sizing：固定 USDC 或 Kelly</li>
+<li>risk：单笔上限、并发上限、daily halt、kill switch</li>
+<li>cost：Polymarket CLOB 费率 + 滑点</li>
+</ul>
+<p>这比“只有信号没有执行”的外部数据主题更适合先做最小闭环。</p>
+<h2>源码里最值钱的 3 个点</h2>
+<ol>
+<li><strong>2.7 秒 latency arb 不是主线唯一内容</strong>，主线还有 dump hedge。</li>
+<li><strong>dump hedge 不依赖 Binance</strong>，只看 Polymarket 自身订单簿。</li>
+<li><strong>风险层是完整的</strong>：单笔仓位、并发仓位、日内止损、总回撤 kill switch、circuit breaker。</li>
+</ol>
+<h2>适合的短周期实验口径</h2>
+<p>虽然这是预测市场，不是传统 K 线 alpha，但它仍然能映射到短周期：</p>
+<ul>
+<li><code>5m / 15m</code> market series</li>
+<li>盘口级别的秒级更新</li>
+<li>结构性价差机会通常是短命的</li>
+</ul>
+<p>最小实验可以先做：</p>
+<ol>
+<li>抓取活跃 binary market 的 YES/NO 最优买价</li>
+<li>统计 <code>YES + NO</code> 的分布、持续时间、可成交深度</li>
+<li>加上手续费和保守滑点后，测 <code>net edge</code></li>
+<li>只保留 <code>net edge &gt; 0</code> 且剩余时间足够的机会</li>
+</ol>
+<h2>下一步怎么测</h2>
+<ul>
+<li>用 Polymarket CLOB 逐分钟/逐秒采样，记录 <code>YES ask</code>、<code>NO ask</code>、<code>spread</code>、<code>depth</code>、<code>seconds remaining</code></li>
+<li>计算：</li>
+<li><code>combined = yes + no</code></li>
+<li><code>discount = 1 - combined</code></li>
+<li><code>net_discount = discount - fees - slippage</code></li>
+<li>分桶测：</li>
+<li>5m vs 15m</li>
+<li>market 年化/窗口剩余时间</li>
+<li>流动性高低</li>
+<li>看三件事：</li>
+<li>机会密度</li>
+<li>可成交率</li>
+<li>净利润分布</li>
+</ul>
+<h2>来源</h2>
+<ul>
+<li>Authors: genoshide</li>
+<li>Year: 2026</li>
+<li>Title: Polymarket Arbitrage Trading Bot — OpenClaw Edition</li>
+<li>Venue: GitHub</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <a href="https://raw.githubusercontent.com/genoshide/polymarket-arbitrage-trading-bot/main/README.md">https://raw.githubusercontent.com/genoshide/polymarket-arbitrage-trading-bot/main/README.md</a></li>
+<li>Repo URL: <a href="https://github.com/genoshide/polymarket-arbitrage-trading-bot">https://github.com/genoshide/polymarket-arbitrage-trading-bot</a></li>
+</ul>
+<h2>备注</h2>
+<p>这篇更像<strong>raw alpha + 完整执行壳</strong>，不是纯 filter/regime/overlay。它可以直接作为后续复现与实盘素材池里的一个独立模块：先做纸面回测，再做小额 live paper，再看是否值得真仓。</p>
+</body>
+</html>

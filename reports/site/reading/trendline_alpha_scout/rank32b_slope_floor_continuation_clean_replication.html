@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang='zh-CN'>
+<head>
+  <meta charset='utf-8' />
+  <meta name='viewport' content='width=device-width, initial-scale=1' />
+  <title>Rank 32b · slope-floor continuation gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 1100px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111827; background: #f8fafc; }
+    .card { border:1px solid #e5e7eb; border-radius:14px; background:white; padding:18px 20px; margin:16px 0; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#eef2ff; color:#3730a3; font-size:12px; margin-right:6px; }
+    .muted { color:#6b7280; }
+    code { background:#f3f4f6; padding:1px 5px; border-radius:6px; }
+    table { width:100%; border-collapse:collapse; margin-top:12px; font-size:14px; }
+    th,td { border-bottom:1px solid #e5e7eb; padding:8px 10px; text-align:left; vertical-align:top; }
+    a { color:#2563eb; text-decoration:none; }
+  </style>
+<style>
+.rank32b-portal-nav{margin:16px 0 20px;padding:14px 16px;border:1px solid #24324a;border-radius:14px;background:#0d1525;color:#e5e7eb;font:14px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif}
+.rank32b-portal-nav .title{font-weight:700;margin-bottom:8px}
+.rank32b-portal-nav .links{display:flex;flex-wrap:wrap;gap:10px 12px}
+.rank32b-portal-nav a{color:#7dd3fc;text-decoration:none;font-weight:600}
+.rank32b-portal-nav .muted{margin-top:8px;color:#94a3b8;font-size:13px}
+</style>
+</head>
+<body>
+<div style="background:#fee;border:2px solid #c00;padding:12px 16px;margin:16px 0;border-radius:6px;font-size:15px;line-height:1.6;"><strong style="color:#c00;">&#9888; 策略已永久停用 (2026-05-04)</strong><br>Rank32B / Rank32B Canary / Rank32B Global Live 已永久关闭，不再产生交易信号。<br><strong>停用原因：</strong>(1) <code>preview_unclosed_15m</code> 模式用未收盘 15m K 线价格估算小时级 EMA，等效提前约 45 分钟预知未来；(2) 回测脚本 warmup 窗口膨胀，导致长期回测结果被撤回作废（见 <code>INVALIDATED_BY_WARMUP_AUDIT_2026-04-07.md</code>）；(3) 实盘 vs 模拟 close match rate 仅 11.8%，去除 preview 后所有时间窗口 live-like 回测均为负收益。<br>本页仅作历史存档参考，不构成任何交易依据。</div>
+
+<div class="rank32b-portal-nav">
+  <div class="title">32b 策略导航</div>
+  <div class="links">
+    <a href="/momentum/factors/rank32b/report.html">32b 主页面</a>
+    <a href="/momentum/factors/rank32b_canary/report.html">实盘 Dashboard</a>
+    <a href="/momentum/factors/rank32b/transparency.html">交易逻辑透明页</a>
+    <a href="/momentum/factors/rank32b/decomposition.html">结构拆解页</a>
+    <a href="/momentum/factors/rank32b/exp12_decision.html">Exp1 / Exp2 决策页</a>
+    <a href="/momentum/factors/rank_registry_p3_p2/report.html">全量 Rank（P3+P2）总表</a>
+    <a href="/momentum/canary-doc/">实盘控制台</a>
+    <a href="/momentum/factors/scout_rank32b_slope_floor_continuation_15m/report.html">主研究报告</a>
+    <a href="/momentum/factors/rank32b/global_live_like_stability.html">稳定性拆解页</a>
+    <a href="/momentum/factors/scout_rank32b_slope_floor_continuation_15m/cross_asset_expansion.html">跨资产扩展</a>
+    <a href="/momentum/reading/trendline_alpha_scout/rank32b_slope_floor_continuation_clean_replication.html">原始 Clean Replication</a>
+  </div>
+  <div class="muted">建议使用顺序：主页面 → 实盘 Dashboard / 交易逻辑透明页 / 结构拆解页 / Exp1-Exp2 决策页 → 控制台 → 稳定性拆解页 / 主研究报告 → 跨资产扩展 → 原始 baseline。</div>
+</div>
+  <p><a href='../../reading/trendline_alpha_scout/report.html'>← 返回 Trendline Alpha Scout</a></p>
+  <h1>Rank 32b · slope-floor continuation gate</h1>
+  <p class='muted'>生成时间：2026-03-18 01:35 UTC ｜ 类型：derived-hypothesis clean replication ｜ 角色：active Scout 候选</p>
+
+  <div class='card'>
+    <h2>这轮只回答什么</h2>
+    <ul>
+      <li>它不是重做旧的 Rank 32，而是只验证一个窄派生：<code>remove spread-mid reclaim requirement; keep EMA cross + aligned slope floor</code>。</li>
+      <li>固定复用 <code>BTC/ETH/SOL 120d 15m</code> cache，不追新 bar，不扩 universe。</li>
+      <li>本轮只做 1 个相邻检查：<code>时间稳定性（3 terciles）</code>，回答它是不是全靠单一时间 pocket。</li>
+    </ul>
+  </div>
+
+  <div class='card'>
+    <h2>clean-room 规则</h2>
+    <ul>
+      <li><b>baseline：</b><code>ema_cross_only = higher_tf EMA fast > slow（空头镜像）+ close 重新站回 fast EMA</code></li>
+      <li><b>Rank 32b：</b><code>ema_cross_plus_slope_floor = 在 baseline 基础上要求 fast/slow slope 同向，且 |fast slope| 过最小门槛</code></li>
+      <li><b>删掉的只有一刀：</b>不再要求最近 4 根必须先出现向 <code>spread mid</code> 的回抽 / reclaim。</li>
+      <li><b>执行口径：</b><code>next-bar open</code> 入场、持有 <code>8</code> 根 15m bar、默认 non-overlap。</li>
+    </ul>
+  </div>
+
+  <div class='card'>
+    <h2>hard verdict</h2>
+    <p><span class='pill'>P1 weak candidate / evidence pool</span></p>
+    <p><b>主变体 ema_cross_plus_slope_floor 在 6bps/side 下：跨资产 mean_total_return≈50.76%、positive_asset_ratio≈100.00%、mean_trades≈75.7、mean_false_reclaim_ratio≈7.87%、mean_no_trade_ratio≈99.34%。</b></p>
+    <p class='muted'>删掉 reclaim 后 pocket 仍保留，而且时间 tercile 没有塌；但 no-trade ratio 依旧过高，只配拿 1 次便宜诚实检查，不足以直接升到 paper candidate。</p>
+  </div>
+
+  <div class='card'>
+    <h2>成本对照（baseline vs Rank 32b）</h2>
+    <table><thead><tr><th>variant</th><th>cost_bps_per_side</th><th>mean_total_return</th><th>positive_asset_ratio</th><th>mean_trades</th><th>mean_false_reclaim_ratio</th><th>mean_no_trade_ratio</th><th>mean_win_rate</th></tr></thead><tbody><tr><td>ema_cross_only</td><td>6.00</td><td>-18.73%</td><td>33.33%</td><td>257.3</td><td>26.65%</td><td>97.77%</td><td>39.86%</td></tr><tr><td>ema_cross_only</td><td>10.00</td><td>-33.77%</td><td>0.00%</td><td>257.3</td><td>26.65%</td><td>97.77%</td><td>34.80%</td></tr><tr><td>ema_cross_only</td><td>15.00</td><td>-48.71%</td><td>0.00%</td><td>257.3</td><td>26.65%</td><td>97.77%</td><td>29.46%</td></tr><tr><td>ema_cross_only</td><td>20.00</td><td>-60.28%</td><td>0.00%</td><td>257.3</td><td>26.65%</td><td>97.77%</td><td>25.32%</td></tr><tr><td>ema_cross_plus_slope_floor</td><td>6.00</td><td>50.76%</td><td>100.00%</td><td>75.7</td><td>7.87%</td><td>99.34%</td><td>59.62%</td></tr><tr><td>ema_cross_plus_slope_floor</td><td>10.00</td><td>41.59%</td><td>100.00%</td><td>75.7</td><td>7.87%</td><td>99.34%</td><td>55.73%</td></tr><tr><td>ema_cross_plus_slope_floor</td><td>15.00</td><td>30.94%</td><td>100.00%</td><td>75.7</td><td>7.87%</td><td>99.34%</td><td>54.31%</td></tr><tr><td>ema_cross_plus_slope_floor</td><td>20.00</td><td>21.11%</td><td>100.00%</td><td>75.7</td><td>7.87%</td><td>99.34%</td><td>51.34%</td></tr></tbody></table>
+  </div>
+
+  <div class='card'>
+    <h2>分资产摘要（Rank 32b 主变体）</h2>
+    <table><thead><tr><th>asset</th><th>variant</th><th>cost_bps_per_side</th><th>trades</th><th>total_return</th><th>false_reclaim_ratio</th><th>no_trade_ratio</th><th>win_rate</th><th>long_share</th><th>short_share</th></tr></thead><tbody><tr><td>BTC-USD</td><td>ema_cross_plus_slope_floor</td><td>6.00</td><td>54</td><td>19.54%</td><td>11.11%</td><td>99.53%</td><td>57.41%</td><td>40.74%</td><td>59.26%</td></tr><tr><td>ETH-USD</td><td>ema_cross_plus_slope_floor</td><td>6.00</td><td>83</td><td>33.41%</td><td>3.61%</td><td>99.28%</td><td>61.45%</td><td>36.14%</td><td>63.86%</td></tr><tr><td>SOL-USD</td><td>ema_cross_plus_slope_floor</td><td>6.00</td><td>90</td><td>99.31%</td><td>8.89%</td><td>99.22%</td><td>60.00%</td><td>45.56%</td><td>54.44%</td></tr></tbody></table>
+  </div>
+
+  <div class='card'>
+    <h2>时间稳定性（唯一额外诚实检查）</h2>
+    <table><thead><tr><th>time_bucket</th><th>mean_total_return</th><th>positive_asset_ratio</th><th>mean_trades</th><th>mean_win_rate</th></tr></thead><tbody><tr><td>bucket_1</td><td>16.07%</td><td>100.00%</td><td>25.3</td><td>68.33%</td></tr><tr><td>bucket_2</td><td>9.48%</td><td>100.00%</td><td>25.0</td><td>52.99%</td></tr><tr><td>bucket_3</td><td>16.95%</td><td>100.00%</td><td>25.3</td><td>58.43%</td></tr></tbody></table>
+  </div>
+
+  <div class='card'>
+    <h2>reader-facing 结论</h2>
+    <ul>
+      <li>删掉 reclaim 后，主 pocket 没塌，说明真正贡献 edge 的更像 <code>aligned slope floor</code>，不是那层更“漂亮”的 reclaim 文案。</li>
+      <li>但 <code>mean_no_trade_ratio</code> 仍接近 99%，所以它还不是能直接推进到 paper candidate 的密度。</li>
+      <li>因此这轮最诚实的 desk verdict 是：<b>P1 weak candidate / evidence pool</b>，并把后续预算限制为最多 1 次便宜诚实检查。</li>
+    </ul>
+  </div>
+
+  <div class='card'>
+    <h2>extended-history robustness（新增）</h2>
+    <p class='muted'>新增时间：2026-03-19 01:42 UTC ｜ 样本：Binance spot 15m ｜ 窗口：最近 365 天 ｜ 角色：reader-facing 补充证据，不替代原 120d clean replication 主 verdict。</p>
+    <p><b>365d 扩展历史下，主变体 ema_cross_plus_slope_floor 在 6bps/side：mean_total_return≈135.02%、positive_asset_ratio≈100.00%、mean_trades≈220.0、mean_false_reclaim_ratio≈6.36%、mean_no_trade_ratio≈99.37%。</b></p>
+    <p class='muted'>这组额外证据不是新的主 verdict，只是更久历史的 robustness 补充。当前 365d 时间分桶里正收益 bucket = 6/6；若 older/middle/recent 三段都没塌，说明 Rank 32b 不只是最近 120d 的偶然口袋。</p>
+    <h3>365d 分资产摘要</h3>
+    <table><thead><tr><th>asset</th><th>variant</th><th>cost_bps_per_side</th><th>trades</th><th>total_return</th><th>false_reclaim_ratio</th><th>no_trade_ratio</th><th>win_rate</th><th>long_share</th><th>short_share</th></tr></thead><tbody><tr><td>BTC-USD</td><td>ema_cross_plus_slope_floor</td><td>6.00</td><td>129</td><td>59.29%</td><td>7.75%</td><td>99.63%</td><td>63.57%</td><td>47.29%</td><td>52.71%</td></tr><tr><td>ETH-USD</td><td>ema_cross_plus_slope_floor</td><td>6.00</td><td>229</td><td>108.04%</td><td>3.06%</td><td>99.35%</td><td>61.57%</td><td>46.29%</td><td>53.71%</td></tr><tr><td>SOL-USD</td><td>ema_cross_plus_slope_floor</td><td>6.00</td><td>302</td><td>237.73%</td><td>8.28%</td><td>99.14%</td><td>60.60%</td><td>45.70%</td><td>54.30%</td></tr></tbody></table>
+    <h3>365d 时间稳定性（6 buckets）</h3>
+    <table><thead><tr><th>time_bucket</th><th>mean_total_return</th><th>positive_asset_ratio</th><th>mean_trades</th><th>mean_win_rate</th></tr></thead><tbody><tr><td>bucket_1</td><td>6.78%</td><td>100.00%</td><td>36.7</td><td>60.28%</td></tr><tr><td>bucket_2</td><td>11.66%</td><td>100.00%</td><td>36.7</td><td>71.09%</td></tr><tr><td>bucket_3</td><td>9.09%</td><td>100.00%</td><td>36.7</td><td>61.03%</td></tr><tr><td>bucket_4</td><td>20.09%</td><td>100.00%</td><td>36.7</td><td>66.76%</td></tr><tr><td>bucket_5</td><td>22.00%</td><td>100.00%</td><td>36.7</td><td>61.35%</td></tr><tr><td>bucket_6</td><td>19.58%</td><td>100.00%</td><td>36.7</td><td>54.07%</td></tr></tbody></table>
+    <h3>older / middle / recent 三段对照</h3>
+    <table><thead><tr><th>window</th><th>mean_total_return</th><th>positive_asset_ratio</th><th>mean_trades</th><th>mean_win_rate</th></tr></thead><tbody><tr><td>older_365d_to_240d</td><td>18.43%</td><td>100.00%</td><td>71.3</td><td>65.41%</td></tr><tr><td>middle_240d_to_120d</td><td>28.95%</td><td>100.00%</td><td>73.0</td><td>62.79%</td></tr><tr><td>recent_120d</td><td>50.98%</td><td>100.00%</td><td>75.7</td><td>58.74%</td></tr></tbody></table>
+  </div>
+<!-- rank32b-1825d-robustness:start -->
+
+  <div class='card'>
+    <h2>extended-history robustness（1825d）</h2>
+    <p class='muted'>新增时间：2026-03-19 01:52 UTC ｜ 样本：Binance spot 15m ｜ 窗口：最近 1825 天 ｜ 角色：reader-facing 补充证据，不替代原 120d clean replication 主 verdict。</p>
+    <p><b>1825d 扩展历史下，主变体 ema_cross_plus_slope_floor 在 6bps/side：mean_total_return≈25262.94%、positive_asset_ratio≈100.00%、mean_trades≈1238.0、mean_false_reclaim_ratio≈5.69%、mean_no_trade_ratio≈99.29%。</b></p>
+    <p class='muted'>这组额外证据不是新的主 verdict，只是更久历史的 robustness 补充。当前 1825d 时间分桶里正收益 bucket = 10/10；另外把整段历史拆成 5 个年度样本来对照，用来检查它是否只是某一段牛熊口袋有效。</p>
+    <h3>1825d 分资产摘要</h3>
+    <table><thead><tr><th>asset</th><th>variant</th><th>cost_bps_per_side</th><th>trades</th><th>total_return</th><th>false_reclaim_ratio</th><th>no_trade_ratio</th><th>win_rate</th><th>long_share</th><th>short_share</th></tr></thead><tbody><tr><td>BTC-USD</td><td>ema_cross_plus_slope_floor</td><td>6.00</td><td>867</td><td>1051.36%</td><td>4.73%</td><td>99.50%</td><td>62.75%</td><td>49.60%</td><td>50.40%</td></tr><tr><td>ETH-USD</td><td>ema_cross_plus_slope_floor</td><td>6.00</td><td>1136</td><td>1889.82%</td><td>5.11%</td><td>99.35%</td><td>59.15%</td><td>47.98%</td><td>52.02%</td></tr><tr><td>SOL-USD</td><td>ema_cross_plus_slope_floor</td><td>6.00</td><td>1711</td><td>72847.63%</td><td>7.25%</td><td>99.02%</td><td>57.98%</td><td>50.91%</td><td>49.09%</td></tr></tbody></table>
+    <h3>1825d 时间稳定性（10 buckets）</h3>
+    <table><thead><tr><th>time_bucket</th><th>mean_total_return</th><th>positive_asset_ratio</th><th>mean_trades</th><th>mean_win_rate</th></tr></thead><tbody><tr><td>bucket_1</td><td>68.80%</td><td>100.00%</td><td>124.0</td><td>59.98%</td></tr><tr><td>bucket_2</td><td>64.52%</td><td>100.00%</td><td>123.7</td><td>60.04%</td></tr><tr><td>bucket_3</td><td>21.18%</td><td>100.00%</td><td>123.7</td><td>56.01%</td></tr><tr><td>bucket_4</td><td>41.95%</td><td>100.00%</td><td>124.0</td><td>58.92%</td></tr><tr><td>bucket_5</td><td>49.06%</td><td>100.00%</td><td>123.7</td><td>61.43%</td></tr><tr><td>bucket_6</td><td>77.19%</td><td>100.00%</td><td>123.7</td><td>65.29%</td></tr><tr><td>bucket_7</td><td>43.59%</td><td>100.00%</td><td>124.0</td><td>57.23%</td></tr><tr><td>bucket_8</td><td>47.67%</td><td>100.00%</td><td>123.7</td><td>59.83%</td></tr><tr><td>bucket_9</td><td>43.62%</td><td>100.00%</td><td>123.7</td><td>62.69%</td></tr><tr><td>bucket_10</td><td>79.44%</td><td>100.00%</td><td>124.0</td><td>60.07%</td></tr></tbody></table>
+    <h3>5 个年度样本对照</h3>
+    <table><thead><tr><th>window</th><th>mean_total_return</th><th>positive_asset_ratio</th><th>mean_trades</th><th>mean_win_rate</th></tr></thead><tbody><tr><td>year_1</td><td>233.39%</td><td>100.00%</td><td>347.7</td><td>58.72%</td></tr><tr><td>year_2</td><td>148.90%</td><td>100.00%</td><td>247.0</td><td>60.67%</td></tr><tr><td>year_3</td><td>90.59%</td><td>100.00%</td><td>182.7</td><td>61.99%</td></tr><tr><td>year_4</td><td>117.69%</td><td>100.00%</td><td>240.7</td><td>58.26%</td></tr><tr><td>year_5_recent</td><td>135.02%</td><td>100.00%</td><td>220.0</td><td>61.91%</td></tr></tbody></table>
+  </div>
+<!-- rank32b-1825d-robustness:end -->
+<!-- rank32b-perp-funding-1825d-48h:start -->
+
+  <div class='card'>
+    <h2>perp vs spot + funding carry 对比（新增）</h2>
+    <p class='muted'>新增时间：2026-03-19 03:28 UTC ｜ 样本：Binance USDT-M perpetual 15m + fundingRate 公共接口 ｜ 窗口：最近 1825 天 ｜ 角色：reader-facing 补充对比。</p>
+    <p><b>5 年 Binance 永续 15m 下，Rank 32b 在多空都做时：perp 原始 mean_total_return≈26033.33%，叠加 48h funding 后≈11114.72%；方向拆开看，只做多≈757.90%，只做空≈673.94%。</b></p>
+    <p class='muted'>48h funding 假设 = 从进场后开始，累计未来 48 小时内的 funding prints（最多约 6 笔）；价格退出规则仍保持原报告的 next-bar open 入场 + 持有 8 根 15m bar。</p>
+    <h3>5y 总览：spot / perp / perp+funding</h3>
+    <table><thead><tr><th>scenario</th><th>side</th><th>mean_total_return</th><th>positive_asset_ratio</th><th>mean_trades</th><th>mean_win_rate</th><th>mean_funding_net_ret_48h</th><th>mean_funding_events_48h</th></tr></thead><tbody><tr><td>Spot 5y（现货原始）</td><td>多空都做</td><td>25262.94%</td><td>100.00%</td><td>1238.0</td><td>59.96%</td><td>0.00%</td><td>0.0</td></tr><tr><td>Spot 5y（现货原始）</td><td>只做多</td><td>1174.81%</td><td>100.00%</td><td>615.3</td><td>61.91%</td><td>0.00%</td><td>0.0</td></tr><tr><td>Spot 5y（现货原始）</td><td>只做空</td><td>965.74%</td><td>100.00%</td><td>622.7</td><td>58.13%</td><td>0.00%</td><td>0.0</td></tr><tr><td>Perp 5y（永续原始）</td><td>多空都做</td><td>26033.33%</td><td>100.00%</td><td>1228.3</td><td>59.77%</td><td>-</td><td>-</td></tr><tr><td>Perp 5y（永续原始）</td><td>只做多</td><td>1192.15%</td><td>100.00%</td><td>609.7</td><td>61.30%</td><td>-</td><td>-</td></tr><tr><td>Perp 5y（永续原始）</td><td>只做空</td><td>945.08%</td><td>100.00%</td><td>618.7</td><td>58.33%</td><td>-</td><td>-</td></tr><tr><td>Perp 5y + 48h funding（永续 + 两天资金费率）</td><td>多空都做</td><td>11114.72%</td><td>100.00%</td><td>1228.3</td><td>58.59%</td><td>-0.03%</td><td>6.0</td></tr><tr><td>Perp 5y + 48h funding（永续 + 两天资金费率）</td><td>只做多</td><td>757.90%</td><td>100.00%</td><td>609.7</td><td>58.49%</td><td>-0.06%</td><td>6.0</td></tr><tr><td>Perp 5y + 48h funding（永续 + 两天资金费率）</td><td>只做空</td><td>673.94%</td><td>100.00%</td><td>618.7</td><td>58.73%</td><td>0.00%</td><td>6.1</td></tr></tbody></table>
+    <h3>Perp + 48h funding：分资产 / 分方向</h3>
+    <table><thead><tr><th>side</th><th>asset</th><th>trades</th><th>total_return</th><th>win_rate</th><th>avg_net_ret</th><th>avg_funding_net_ret_48h</th><th>total_funding_net_ret_48h</th><th>avg_funding_events_48h</th></tr></thead><tbody><tr><td>多空都做</td><td>BTC-USD</td><td>858</td><td>844.60%</td><td>60.96%</td><td>0.27%</td><td>-0.01%</td><td>-9.75%</td><td>6.0</td></tr><tr><td>多空都做</td><td>ETH-USD</td><td>1125</td><td>1170.34%</td><td>57.78%</td><td>0.24%</td><td>-0.02%</td><td>-23.64%</td><td>6.0</td></tr><tr><td>多空都做</td><td>SOL-USD</td><td>1702</td><td>31329.21%</td><td>57.05%</td><td>0.36%</td><td>-0.05%</td><td>-58.48%</td><td>6.1</td></tr><tr><td>只做多</td><td>BTC-USD</td><td>421</td><td>176.29%</td><td>61.28%</td><td>0.25%</td><td>-0.07%</td><td>-24.07%</td><td>6.0</td></tr><tr><td>只做多</td><td>ETH-USD</td><td>547</td><td>237.79%</td><td>58.68%</td><td>0.23%</td><td>-0.08%</td><td>-34.12%</td><td>6.0</td></tr><tr><td>只做多</td><td>SOL-USD</td><td>861</td><td>1859.60%</td><td>55.52%</td><td>0.37%</td><td>-0.05%</td><td>-34.68%</td><td>6.0</td></tr><tr><td>只做空</td><td>BTC-USD</td><td>437</td><td>241.89%</td><td>60.64%</td><td>0.29%</td><td>0.04%</td><td>18.86%</td><td>6.0</td></tr><tr><td>只做空</td><td>ETH-USD</td><td>578</td><td>276.07%</td><td>56.92%</td><td>0.24%</td><td>0.03%</td><td>15.91%</td><td>6.0</td></tr><tr><td>只做空</td><td>SOL-USD</td><td>841</td><td>1503.86%</td><td>58.62%</td><td>0.35%</td><td>-0.05%</td><td>-36.43%</td><td>6.2</td></tr></tbody></table>
+    <h3>reader-facing 结论</h3>
+    <ul><li>对照现货 5 年原始结果（多空都做≈25262.94%），永续原始价格口径本身就和 spot 不完全一样；真正要看的，是 funding 叠加后有没有把 edge 吃掉。</li><li>在这组 48h 资金费率占用假设下，多空都做的 funding 影响约为 -14918.62%；只做多约 -434.25%，只做空约 -271.14%。</li><li>如果你关心的是 desk 上真实方向偏好，这页现在可以直接看 long-only / short-only / long+short 三条腿，而不是只看混在一起的 aggregate。</li></ul>
+    <p class='muted'>artifact：<code>reports/artifacts/scout_rank32b_slope_floor_continuation_15m/perp_funding_compare_1825d_overall_summary.csv</code>、<code>perp_funding_compare_1825d_asset_summary.csv</code>、<code>perp_1825d_trades_with_funding_48h.csv</code></p>
+  </div>
+<!-- rank32b-perp-funding-1825d-48h:end -->
+<!-- rank32b-execution-research-1825d:start -->
+
+  <div class='card'>
+    <h2>execution / exit research（新增）</h2>
+    <p class='muted'>新增时间：2026-03-19 06:19 UTC ｜ 信号层：Binance perp 15m Rank 32b 原规则不变 ｜ 执行层：Binance perp 5m 仿真 ｜ 费用假设：maker=0bps、taker=6bps ｜ 目的：回答 32b 是否值得往 limit / maker-friendly exit 继续推进。</p>
+    <p><b>从 15m 路径上看，32b 的均值利润不是极端前置：多空合并在 4 bars≈0.48%、8 bars≈0.45%、16 bars≈0.45%；离场族里当前最强的是 固定持有 4x15m（taker exit）（mean_total_return≈35269.24%）。</b></p>
+    <h3>1) 利润衰减 / MFE-MAE（15m 路径）</h3>
+    <table><thead><tr><th>side</th><th>horizon_15m_bars</th><th>avg_price_ret</th><th>median_price_ret</th><th>win_rate</th></tr></thead><tbody><tr><td>多空都做</td><td>1</td><td>0.29%</td><td>0.23%</td><td>75.09%</td></tr><tr><td>多空都做</td><td>2</td><td>0.44%</td><td>0.35%</td><td>78.89%</td></tr><tr><td>多空都做</td><td>4</td><td>0.48%</td><td>0.38%</td><td>72.59%</td></tr><tr><td>多空都做</td><td>8</td><td>0.45%</td><td>0.35%</td><td>64.07%</td></tr><tr><td>多空都做</td><td>12</td><td>0.47%</td><td>0.37%</td><td>62.47%</td></tr><tr><td>多空都做</td><td>16</td><td>0.45%</td><td>0.35%</td><td>59.59%</td></tr><tr><td>只做多</td><td>1</td><td>0.30%</td><td>0.22%</td><td>75.23%</td></tr><tr><td>只做多</td><td>2</td><td>0.43%</td><td>0.33%</td><td>78.18%</td></tr><tr><td>只做多</td><td>4</td><td>0.50%</td><td>0.38%</td><td>73.70%</td></tr><tr><td>只做多</td><td>8</td><td>0.48%</td><td>0.37%</td><td>65.17%</td></tr><tr><td>只做多</td><td>12</td><td>0.51%</td><td>0.39%</td><td>63.48%</td></tr><tr><td>只做多</td><td>16</td><td>0.54%</td><td>0.35%</td><td>60.69%</td></tr><tr><td>只做空</td><td>1</td><td>0.29%</td><td>0.24%</td><td>74.95%</td></tr><tr><td>只做空</td><td>2</td><td>0.44%</td><td>0.38%</td><td>79.58%</td></tr><tr><td>只做空</td><td>4</td><td>0.45%</td><td>0.37%</td><td>71.50%</td></tr><tr><td>只做空</td><td>8</td><td>0.43%</td><td>0.33%</td><td>62.98%</td></tr><tr><td>只做空</td><td>12</td><td>0.43%</td><td>0.35%</td><td>61.48%</td></tr><tr><td>只做空</td><td>16</td><td>0.36%</td><td>0.34%</td><td>58.51%</td></tr></tbody></table>
+    <table><thead><tr><th>side</th><th>trades</th><th>avg_mfe_16bars</th><th>avg_mae_16bars</th><th>median_time_to_mfe_bars</th><th>median_time_to_mae_bars</th></tr></thead><tbody><tr><td>多空都做</td><td>3685</td><td>2.12%</td><td>1.16%</td><td>7.0</td><td>7.0</td></tr><tr><td>只做多</td><td>1829</td><td>2.07%</td><td>1.15%</td><td>7.0</td><td>7.0</td></tr><tr><td>只做空</td><td>1856</td><td>2.16%</td><td>1.17%</td><td>7.0</td><td>7.0</td></tr></tbody></table>
+    <h3>2) 离场条件敏感性（5m execution engine）</h3>
+    <table><thead><tr><th>scenario</th><th>mean_total_return</th><th>positive_asset_ratio</th><th>mean_trades</th><th>mean_win_rate</th><th>mean_hold_minutes</th><th>mean_exit_maker_fill_rate</th><th>mean_target_hit_rate</th></tr></thead><tbody><tr><td>固定持有 4x15m（taker exit）</td><td>35269.24%</td><td>100.00%</td><td>1228.3</td><td>66.44%</td><td>60.0</td><td>0.00%</td><td>0.00%</td></tr><tr><td>固定持有 8x15m（当前 baseline）</td><td>26042.78%</td><td>100.00%</td><td>1228.3</td><td>59.77%</td><td>120.0</td><td>0.00%</td><td>0.00%</td></tr><tr><td>固定持有 12x15m（taker exit）</td><td>18034.15%</td><td>100.00%</td><td>1228.3</td><td>58.16%</td><td>180.0</td><td>0.00%</td><td>0.00%</td></tr><tr><td>固定持有 16x15m（taker exit）</td><td>16554.36%</td><td>100.00%</td><td>1228.3</td><td>56.95%</td><td>240.0</td><td>0.00%</td><td>0.00%</td></tr><tr><td>0.75 ATR 限价止盈，超时 16x15m taker</td><td>8002.26%</td><td>100.00%</td><td>1228.0</td><td>91.15%</td><td>45.7</td><td>90.92%</td><td>90.92%</td></tr><tr><td>1.00 ATR 限价止盈，超时 16x15m taker</td><td>9633.14%</td><td>100.00%</td><td>1228.0</td><td>86.47%</td><td>65.4</td><td>85.75%</td><td>85.75%</td></tr><tr><td>1.25 ATR 限价止盈，超时 16x15m taker</td><td>10282.63%</td><td>100.00%</td><td>1228.0</td><td>81.60%</td><td>85.7</td><td>79.88%</td><td>79.88%</td></tr></tbody></table>
+    <p class='muted'>分资产只展开 baseline 与最像 desk 可落地的 <code>1.00 ATR limit target</code> 对照。</p>
+    <table><thead><tr><th>scenario</th><th>asset</th><th>trades</th><th>total_return</th><th>win_rate</th><th>avg_net_ret</th><th>avg_hold_minutes</th><th>exit_maker_fill_rate</th><th>target_hit_rate</th></tr></thead><tbody><tr><td>固定持有 8x15m（当前 baseline）</td><td>BTC-USD</td><td>858</td><td>946.64%</td><td>62.24%</td><td>0.28%</td><td>120.0</td><td>0.00%</td><td>0.00%</td></tr><tr><td>固定持有 8x15m（当前 baseline）</td><td>ETH-USD</td><td>1125</td><td>1563.66%</td><td>59.02%</td><td>0.26%</td><td>120.0</td><td>0.00%</td><td>0.00%</td></tr><tr><td>固定持有 8x15m（当前 baseline）</td><td>SOL-USD</td><td>1702</td><td>75618.05%</td><td>58.05%</td><td>0.41%</td><td>120.0</td><td>0.00%</td><td>0.00%</td></tr><tr><td>1.00 ATR 限价止盈，超时 16x15m taker</td><td>BTC-USD</td><td>858</td><td>572.28%</td><td>87.18%</td><td>0.23%</td><td>59.0</td><td>87.06%</td><td>87.06%</td></tr><tr><td>1.00 ATR 限价止盈，超时 16x15m taker</td><td>ETH-USD</td><td>1125</td><td>1565.29%</td><td>88.00%</td><td>0.26%</td><td>62.0</td><td>87.29%</td><td>87.29%</td></tr><tr><td>1.00 ATR 限价止盈，超时 16x15m taker</td><td>SOL-USD</td><td>1701</td><td>26761.84%</td><td>84.24%</td><td>0.34%</td><td>75.0</td><td>82.89%</td><td>82.89%</td></tr></tbody></table>
+    <h3>3) maker-first 入场仿真（5m）</h3>
+    <table><thead><tr><th>scenario</th><th>mean_total_return</th><th>positive_asset_ratio</th><th>mean_trades</th><th>mean_win_rate</th><th>mean_hold_minutes</th><th>mean_entry_maker_fill_rate</th><th>mean_exit_maker_fill_rate</th><th>mean_target_hit_rate</th></tr></thead><tbody><tr><td>taker entry + 固定 8x15m taker exit</td><td>26042.78%</td><td>100.00%</td><td>1228.3</td><td>59.77%</td><td>120.0</td><td>0.00%</td><td>0.00%</td><td>0.00%</td></tr><tr><td>maker-first 入场 2bps / 15m TTL + 固定 8x15m taker exit</td><td>36361.43%</td><td>100.00%</td><td>1228.3</td><td>59.14%</td><td>120.0</td><td>86.43%</td><td>0.00%</td><td>0.00%</td></tr><tr><td>maker-first 入场 4bps / 15m TTL + 固定 8x15m taker exit</td><td>23647.10%</td><td>100.00%</td><td>1228.3</td><td>58.49%</td><td>120.0</td><td>80.17%</td><td>0.00%</td><td>0.00%</td></tr><tr><td>taker entry + 1.0 ATR 限价止盈 / 16x15m timeout</td><td>9633.14%</td><td>100.00%</td><td>1228.0</td><td>86.47%</td><td>65.4</td><td>0.00%</td><td>85.75%</td><td>85.75%</td></tr><tr><td>maker-first 入场 2bps / 15m TTL + 1.0 ATR 限价止盈 / 16x15m timeout</td><td>13732.66%</td><td>100.00%</td><td>1228.0</td><td>84.31%</td><td>72.9</td><td>86.43%</td><td>83.42%</td><td>83.42%</td></tr></tbody></table>
+    <table><thead><tr><th>scenario</th><th>asset</th><th>trades</th><th>total_return</th><th>win_rate</th><th>avg_net_ret</th><th>avg_hold_minutes</th><th>entry_maker_fill_rate</th><th>exit_maker_fill_rate</th></tr></thead><tbody><tr><td>taker entry + 固定 8x15m taker exit</td><td>BTC-USD</td><td>858</td><td>946.64%</td><td>62.24%</td><td>0.28%</td><td>120.0</td><td>0.00%</td><td>0.00%</td></tr><tr><td>taker entry + 固定 8x15m taker exit</td><td>ETH-USD</td><td>1125</td><td>1563.66%</td><td>59.02%</td><td>0.26%</td><td>120.0</td><td>0.00%</td><td>0.00%</td></tr><tr><td>taker entry + 固定 8x15m taker exit</td><td>SOL-USD</td><td>1702</td><td>75618.05%</td><td>58.05%</td><td>0.41%</td><td>120.0</td><td>0.00%</td><td>0.00%</td></tr><tr><td>maker-first 入场 2bps / 15m TTL + 1.0 ATR 限价止盈 / 16x15m timeout</td><td>BTC-USD</td><td>858</td><td>629.30%</td><td>84.73%</td><td>0.24%</td><td>68.5</td><td>82.75%</td><td>84.38%</td></tr><tr><td>maker-first 入场 2bps / 15m TTL + 1.0 ATR 限价止盈 / 16x15m timeout</td><td>ETH-USD</td><td>1125</td><td>1980.18%</td><td>85.42%</td><td>0.28%</td><td>70.8</td><td>85.60%</td><td>84.44%</td></tr><tr><td>maker-first 入场 2bps / 15m TTL + 1.0 ATR 限价止盈 / 16x15m timeout</td><td>SOL-USD</td><td>1701</td><td>38588.50%</td><td>82.77%</td><td>0.36%</td><td>79.6</td><td>90.95%</td><td>81.42%</td></tr></tbody></table>
+    <h3>reader-facing 结论</h3>
+    <ul><li>如果只看路径衰减，32b 的 edge 更像‘前 4 bars 基本成型’，但不是 1~2 根就完全走完；所以给 maker-first 一个很短 TTL 去试成交，是值得研究的。</li><li>在这版 5m 执行仿真里，温和的 maker-first 入场确实有帮助：baseline fixed8≈26042.78%，maker-first 2bps + fixed8≈36361.43%；但 4bps 那档已经回落，说明这条 continuation 可以争取一点价格改善，但不能贪得太深。</li><li>对 exit 来说，纯收益最优仍是更短的固定持有（尤其 4x15m）；maker-friendly target exit / timeout fallback 更像是‘可落地 compromise’——绝对收益低于 raw fixed-hold，但换来更短持仓、更高 maker exit rate，以及更像真实 desk 会接受的离场结构。当前最完整的 hybrid 方案（maker-first entry 2bps + 1ATR target）≈13732.66%。</li></ul>
+    <p class='muted'>重要假设：maker-first 入场 = 以 signal 后第一根 15m 的开盘价为锚，向自己有利方向改进 2/4 bps，给 3 根 5m TTL；没成交则 fallback 为 taker。limit target exit = 命中 ATR 目标时按 maker 成交，否则最晚在 16x15m timeout 用 taker 平仓。</p>
+    <p class='muted'>artifact：<code>execution_probe_1825d_path_horizon_summary.csv</code>、<code>execution_probe_1825d_exit_family_overall.csv</code>、<code>execution_probe_1825d_execution_scenarios_overall.csv</code> 等。</p>
+  </div>
+
+<!-- rank32b-execution-research-1825d:end -->
+<!-- rank32b-atr-exit-round2-1825d:start -->
+
+  <div class='card'>
+    <h2>ATR exit round 2（新增）</h2>
+    <p class='muted'>新增时间：2026-03-19 06:35 UTC ｜ 样本：Binance perp 15m 信号 + 5m 执行仿真 ｜ 这轮只做一件事：把 ATR 离场改成更像实盘可预埋的 OCO（TP limit + protective stop + timeout）。</p>
+    <p><b>第二轮把 ATR 离场改成更像真实 desk 会预埋的 OCO 结构后，当前最强方案是 maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m，mean_total_return≈18552.33%、平均持有≈46.6 分钟、target hit≈64.72%、stop hit≈25.90%。</b></p>
+    <h3>Top ATR-OCO 方案（overall）</h3>
+    <table><thead><tr><th>label</th><th>mean_total_return</th><th>positive_asset_ratio</th><th>mean_trades</th><th>mean_win_rate</th><th>mean_hold_minutes</th><th>mean_entry_maker_fill_rate</th><th>mean_exit_maker_fill_rate</th><th>mean_target_hit_rate</th><th>mean_stop_hit_rate</th><th>mean_timeout_rate</th><th>mean_same_bar_conflict_rate</th></tr></thead><tbody><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m</td><td>18552.33%</td><td>100.00%</td><td>1228.0</td><td>68.76%</td><td>46.6</td><td>86.43%</td><td>64.72%</td><td>64.72%</td><td>25.90%</td><td>9.38%</td><td>0.12%</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 16x15m</td><td>17430.27%</td><td>100.00%</td><td>1228.0</td><td>68.93%</td><td>52.2</td><td>86.43%</td><td>68.24%</td><td>68.24%</td><td>30.08%</td><td>1.67%</td><td>0.12%</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m</td><td>16605.34%</td><td>100.00%</td><td>1228.0</td><td>75.10%</td><td>39.5</td><td>86.43%</td><td>74.81%</td><td>74.81%</td><td>24.42%</td><td>0.76%</td><td>0.23%</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 8x15m</td><td>16355.96%</td><td>100.00%</td><td>1228.0</td><td>74.54%</td><td>36.9</td><td>86.43%</td><td>72.91%</td><td>72.91%</td><td>22.11%</td><td>4.97%</td><td>0.23%</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m</td><td>14558.61%</td><td>100.00%</td><td>1228.0</td><td>72.23%</td><td>44.6</td><td>0.00%</td><td>68.46%</td><td>68.46%</td><td>22.30%</td><td>9.25%</td><td>0.04%</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 16x15m</td><td>14347.31%</td><td>100.00%</td><td>1228.0</td><td>72.99%</td><td>49.8</td><td>0.00%</td><td>72.49%</td><td>72.49%</td><td>26.15%</td><td>1.35%</td><td>0.04%</td></tr><tr><td>taker 入场 + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m</td><td>13059.29%</td><td>100.00%</td><td>1228.0</td><td>79.02%</td><td>36.8</td><td>0.00%</td><td>78.81%</td><td>78.81%</td><td>20.68%</td><td>0.51%</td><td>0.04%</td></tr><tr><td>taker 入场 + TP 1.00 ATR / SL 1.00 ATR / timeout 8x15m</td><td>12526.49%</td><td>100.00%</td><td>1228.0</td><td>78.13%</td><td>34.6</td><td>0.00%</td><td>76.89%</td><td>76.89%</td><td>18.74%</td><td>4.37%</td><td>0.04%</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 0.75 ATR / timeout 16x15m</td><td>11008.31%</td><td>100.00%</td><td>1228.0</td><td>62.77%</td><td>42.9</td><td>86.43%</td><td>62.40%</td><td>62.40%</td><td>36.84%</td><td>0.76%</td><td>0.17%</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 0.75 ATR / timeout 8x15m</td><td>10636.41%</td><td>100.00%</td><td>1228.0</td><td>62.97%</td><td>39.9</td><td>86.43%</td><td>59.89%</td><td>59.89%</td><td>34.25%</td><td>5.87%</td><td>0.17%</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 0.75 ATR / timeout 16x15m</td><td>9551.98%</td><td>100.00%</td><td>1228.0</td><td>68.90%</td><td>32.5</td><td>86.43%</td><td>68.80%</td><td>68.80%</td><td>30.94%</td><td>0.26%</td><td>0.24%</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 0.75 ATR / timeout 16x15m</td><td>8972.48%</td><td>100.00%</td><td>1228.0</td><td>67.38%</td><td>41.7</td><td>0.00%</td><td>67.10%</td><td>67.10%</td><td>32.30%</td><td>0.61%</td><td>0.12%</td></tr></tbody></table>
+    <h3>与“只有 TP + timeout、无止损”同口径对照</h3>
+    <table><thead><tr><th>entry_style</th><th>无止损 mean_total_return</th><th>加 1.0 ATR 止损后 mean_total_return</th><th>增量（with stop - no stop）</th><th>无止损 mean_win_rate</th><th>加止损后 mean_win_rate</th><th>无止损 mean_hold_minutes</th><th>加止损后 mean_hold_minutes</th></tr></thead><tbody><tr><td>taker entry</td><td>9633.14%</td><td>13059.29%</td><td>3426.15%</td><td>86.47%</td><td>79.02%</td><td>65.4</td><td>36.8</td></tr><tr><td>maker-first 2bps / 15m TTL</td><td>13732.66%</td><td>16605.34%</td><td>2872.68%</td><td>84.31%</td><td>75.10%</td><td>72.9</td><td>39.5</td></tr></tbody></table>
+    <p class='muted'>读法：这里固定同一 entry 口径、同一 TP=1.0 ATR、同一 timeout=16x15m，只比较“是否额外加 1.0 ATR protective stop”。结论很直接：加 stop 后，mean_total_return 更高、平均持有更短，但 win rate 下降。所以 stop 的价值主要在切断坏单、释放资金占用，而不是单纯把胜率抬高。</p>
+    <h3>Top 方案分资产拆解</h3>
+    <table><thead><tr><th>label</th><th>asset</th><th>trades</th><th>total_return</th><th>win_rate</th><th>avg_net_ret</th><th>avg_hold_minutes</th><th>entry_maker_fill_rate</th><th>exit_maker_fill_rate</th><th>target_hit_rate</th><th>stop_hit_rate</th><th>same_bar_conflict_rate</th></tr></thead><tbody><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m</td><td>BTC-USD</td><td>858</td><td>740.00%</td><td>70.05%</td><td>0.25%</td><td>44.7</td><td>82.75%</td><td>66.08%</td><td>66.08%</td><td>24.48%</td><td>0.00%</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m</td><td>ETH-USD</td><td>1125</td><td>2181.74%</td><td>68.98%</td><td>0.28%</td><td>45.2</td><td>85.60%</td><td>65.51%</td><td>65.51%</td><td>25.96%</td><td>0.18%</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m</td><td>SOL-USD</td><td>1701</td><td>52735.24%</td><td>67.25%</td><td>0.38%</td><td>50.0</td><td>90.95%</td><td>62.55%</td><td>62.55%</td><td>27.28%</td><td>0.18%</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 16x15m</td><td>BTC-USD</td><td>858</td><td>767.94%</td><td>70.05%</td><td>0.25%</td><td>50.7</td><td>82.75%</td><td>69.58%</td><td>69.58%</td><td>28.44%</td><td>0.00%</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 16x15m</td><td>ETH-USD</td><td>1125</td><td>2391.98%</td><td>69.60%</td><td>0.29%</td><td>50.3</td><td>85.60%</td><td>68.71%</td><td>68.71%</td><td>29.60%</td><td>0.18%</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 16x15m</td><td>SOL-USD</td><td>1701</td><td>49130.88%</td><td>67.14%</td><td>0.37%</td><td>55.6</td><td>90.95%</td><td>66.43%</td><td>66.43%</td><td>32.22%</td><td>0.18%</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m</td><td>BTC-USD</td><td>858</td><td>638.19%</td><td>75.87%</td><td>0.23%</td><td>37.7</td><td>82.75%</td><td>75.76%</td><td>75.76%</td><td>23.43%</td><td>0.23%</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m</td><td>ETH-USD</td><td>1125</td><td>1937.43%</td><td>75.29%</td><td>0.27%</td><td>38.1</td><td>85.60%</td><td>74.84%</td><td>74.84%</td><td>24.27%</td><td>0.27%</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m</td><td>SOL-USD</td><td>1701</td><td>47240.38%</td><td>74.13%</td><td>0.37%</td><td>42.9</td><td>90.95%</td><td>73.84%</td><td>73.84%</td><td>25.57%</td><td>0.18%</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 8x15m</td><td>BTC-USD</td><td>858</td><td>655.90%</td><td>75.64%</td><td>0.24%</td><td>34.8</td><td>82.75%</td><td>74.24%</td><td>74.24%</td><td>20.75%</td><td>0.23%</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 8x15m</td><td>ETH-USD</td><td>1125</td><td>1698.50%</td><td>74.49%</td><td>0.26%</td><td>35.7</td><td>85.60%</td><td>72.89%</td><td>72.89%</td><td>22.67%</td><td>0.27%</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 8x15m</td><td>SOL-USD</td><td>1701</td><td>46713.48%</td><td>73.49%</td><td>0.37%</td><td>40.1</td><td>90.95%</td><td>71.60%</td><td>71.60%</td><td>22.93%</td><td>0.18%</td></tr></tbody></table>
+    <h3>reader-facing 结论</h3>
+    <ul><li>如果只看 taker 入场，当前最好的 ATR-OCO 方案是 taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m；它比‘只有 ATR target、没有 stop’更像真实挂单结构，因为你可以在入场后同时预埋 TP 和保护性 SL。</li><li>如果允许一个温和的 maker-first 入场（2bps/15m TTL），当前最好的 ATR-OCO 方案是 maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m；这说明 entry 端争取一点价格改善，和 ATR 预挂离场是能叠加的。</li><li>这轮还额外统计了 same-bar conflict（同一根 5m 里 TP/SL 都触发）比例；如果这个比例很低，说明用 5m OHLC 做 OCO 仿真的歧义不算大，结果更可信。</li></ul>
+    <p><b>当前 shortlist：</b></p>
+    <ul><li>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m ｜ return≈18552.33% ｜ hold≈46.6 分钟 ｜ TP≈64.72% ｜ SL≈25.90%</li><li>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 16x15m ｜ return≈17430.27% ｜ hold≈52.2 分钟 ｜ TP≈68.24% ｜ SL≈30.08%</li><li>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m ｜ return≈16605.34% ｜ hold≈39.5 分钟 ｜ TP≈74.81% ｜ SL≈24.42%</li></ul>
+    <p class='muted'>实盘解释：这轮 ATR exit 是“入场后立刻可预埋”的结构——目标止盈单是 maker limit，止损单和 timeout 是 taker protective exits。same-bar conflict 统一按保守口径处理：同一根 5m 同时打到 TP/SL 时，默认 stop first。</p>
+    <p class='muted'>artifact：<code>atr_exit_round2_1825d_overall.csv</code>、<code>atr_exit_round2_1825d_asset.csv</code>、<code>atr_exit_round2_1825d_trades.csv</code></p>
+  </div>
+
+<!-- rank32b-atr-exit-round2-1825d:end -->
+<!-- rank32b-unified-cost-round3-1825d:start -->
+
+  <div class='card'>
+    <h2>unified cost simulation（新增）</h2>
+    <p class='muted'>新增时间：2026-03-19 06:56 UTC ｜ 这轮把成本层统一到同一把尺子：Binance perp VIP0 fee、maker/taker 区分、实际持仓 funding、进出场 slippage、post-only fallback、OCO 成交口径。</p>
+    <p><b>统一到 Binance perp VIP0 + maker/taker + slippage + 实际持仓 funding 后，base 口径下 raw 收益最高的仍是 固定持有 4x15m（taker close）（mean_total_return≈34686.43%）；如果只看可预埋 OCO 结构，当前最强的是 taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m（≈11103.88%）。</b></p>
+    <h3>统一成本假设</h3>
+    <table><thead><tr><th>profile</th><th>maker_fee_bps</th><th>taker_fee_bps</th><th>maker_slip_bps</th><th>taker_entry_slip_bps</th><th>taker_exit_slip_bps</th><th>stop_slip_bps</th><th>timeout_slip_bps</th></tr></thead><tbody><tr><td>VIP0 base realistic</td><td>2.0</td><td>5.0</td><td>0.0</td><td>1.0</td><td>1.0</td><td>2.0</td><td>1.0</td></tr><tr><td>VIP0 stressed slippage</td><td>2.0</td><td>5.0</td><td>0.0</td><td>2.0</td><td>2.0</td><td>3.0</td><td>2.0</td></tr></tbody></table>
+    <p class='muted'>说明：maker 口径按 post-only resting order；maker-first entry 若在 TTL 内未成交，则 fallback 为 taker。OCO 冲突（同一根 5m 同时触发 TP/SL）统一按保守口径：stop first。</p>
+    <h3>VIP0 base：统一成本后头部方案</h3>
+    <table><thead><tr><th>scenario_label</th><th>mean_total_return</th><th>positive_asset_ratio</th><th>mean_win_rate</th><th>mean_hold_minutes</th><th>mean_entry_maker_fill_rate</th><th>mean_exit_maker_fill_rate</th><th>mean_funding_events</th><th>mean_funding_net_ret</th><th>mean_total_fees_bps</th><th>mean_total_slippage_bps</th></tr></thead><tbody><tr><td>固定持有 4x15m（taker close）</td><td>34686.43%</td><td>100.00%</td><td>66.46%</td><td>60.0</td><td>0.00%</td><td>0.00%</td><td>0.12</td><td>-0.00%</td><td>10.00</td><td>2.00</td></tr><tr><td>maker-first 入场 2bps / TTL15m + fixed 8x15m</td><td>25175.62%</td><td>100.00%</td><td>58.04%</td><td>120.0</td><td>86.43%</td><td>0.00%</td><td>0.28</td><td>-0.00%</td><td>7.41</td><td>1.14</td></tr><tr><td>固定持有 8x15m（taker entry/exit）</td><td>24543.72%</td><td>100.00%</td><td>59.60%</td><td>120.0</td><td>0.00%</td><td>0.00%</td><td>0.28</td><td>-0.00%</td><td>10.00</td><td>2.00</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m</td><td>11103.88%</td><td>100.00%</td><td>72.20%</td><td>44.6</td><td>0.00%</td><td>68.46%</td><td>0.08</td><td>-0.00%</td><td>7.95</td><td>1.54</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m</td><td>10474.19%</td><td>100.00%</td><td>68.47%</td><td>46.6</td><td>86.43%</td><td>64.72%</td><td>0.09</td><td>-0.00%</td><td>5.47</td><td>0.75</td></tr><tr><td>taker 入场 + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m</td><td>9584.84%</td><td>100.00%</td><td>79.02%</td><td>36.8</td><td>0.00%</td><td>78.81%</td><td>0.06</td><td>-0.00%</td><td>7.64</td><td>1.42</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m</td><td>9039.93%</td><td>100.00%</td><td>75.06%</td><td>39.5</td><td>86.43%</td><td>74.81%</td><td>0.07</td><td>-0.00%</td><td>5.16</td><td>0.63</td></tr></tbody></table>
+    <h3>base vs stress：关键候选同尺对照</h3>
+    <table><thead><tr><th>scenario_label</th><th>profile_label</th><th>mean_total_return</th><th>mean_win_rate</th><th>mean_hold_minutes</th><th>mean_funding_events</th><th>mean_total_fees_bps</th><th>mean_total_slippage_bps</th></tr></thead><tbody><tr><td>固定持有 4x15m（taker close）</td><td>VIP0 base realistic</td><td>34686.43%</td><td>66.46%</td><td>60.0</td><td>0.12</td><td>10.00</td><td>2.00</td></tr><tr><td>固定持有 4x15m（taker close）</td><td>VIP0 stressed slippage</td><td>24800.26%</td><td>65.09%</td><td>60.0</td><td>0.12</td><td>10.00</td><td>4.00</td></tr><tr><td>固定持有 8x15m（taker entry/exit）</td><td>VIP0 base realistic</td><td>24543.72%</td><td>59.60%</td><td>120.0</td><td>0.28</td><td>10.00</td><td>2.00</td></tr><tr><td>固定持有 8x15m（taker entry/exit）</td><td>VIP0 stressed slippage</td><td>17525.93%</td><td>58.90%</td><td>120.0</td><td>0.28</td><td>10.00</td><td>4.00</td></tr><tr><td>maker-first 入场 2bps / TTL15m + fixed 8x15m</td><td>VIP0 base realistic</td><td>25175.62%</td><td>58.04%</td><td>120.0</td><td>0.28</td><td>7.41</td><td>1.14</td></tr><tr><td>maker-first 入场 2bps / TTL15m + fixed 8x15m</td><td>VIP0 stressed slippage</td><td>20930.29%</td><td>57.55%</td><td>120.0</td><td>0.28</td><td>7.41</td><td>2.27</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m</td><td>VIP0 base realistic</td><td>11103.88%</td><td>72.20%</td><td>44.6</td><td>0.08</td><td>7.95</td><td>1.54</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m</td><td>VIP0 stressed slippage</td><td>8872.91%</td><td>72.04%</td><td>44.6</td><td>0.08</td><td>7.95</td><td>2.85</td></tr><tr><td>taker 入场 + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m</td><td>VIP0 base realistic</td><td>9584.84%</td><td>79.02%</td><td>36.8</td><td>0.06</td><td>7.64</td><td>1.42</td></tr><tr><td>taker 入场 + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m</td><td>VIP0 stressed slippage</td><td>7801.13%</td><td>79.00%</td><td>36.8</td><td>0.06</td><td>7.64</td><td>2.63</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m</td><td>VIP0 base realistic</td><td>10474.19%</td><td>68.47%</td><td>46.6</td><td>0.09</td><td>5.47</td><td>0.75</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m</td><td>VIP0 stressed slippage</td><td>9688.66%</td><td>68.35%</td><td>46.6</td><td>0.09</td><td>5.47</td><td>1.24</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m</td><td>VIP0 base realistic</td><td>9039.93%</td><td>75.06%</td><td>39.5</td><td>0.07</td><td>5.16</td><td>0.63</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m</td><td>VIP0 stressed slippage</td><td>8519.37%</td><td>75.06%</td><td>39.5</td><td>0.07</td><td>5.16</td><td>1.02</td></tr></tbody></table>
+    <h3>VIP0 base：fixed-hold vs OCO 分资产</h3>
+    <table><thead><tr><th>scenario_label</th><th>asset</th><th>total_return</th><th>win_rate</th><th>avg_net_ret</th><th>avg_hold_minutes</th><th>avg_funding_events</th><th>avg_total_fees_bps</th><th>avg_total_slippage_bps</th></tr></thead><tbody><tr><td>固定持有 4x15m（taker close）</td><td>BTC-USD</td><td>1056.20%</td><td>66.78%</td><td>0.29%</td><td>60.0</td><td>0.14</td><td>10.00</td><td>2.00</td></tr><tr><td>固定持有 4x15m（taker close）</td><td>ETH-USD</td><td>3383.11%</td><td>67.91%</td><td>0.32%</td><td>60.0</td><td>0.11</td><td>10.00</td><td>2.00</td></tr><tr><td>固定持有 4x15m（taker close）</td><td>SOL-USD</td><td>99619.97%</td><td>64.69%</td><td>0.42%</td><td>60.0</td><td>0.11</td><td>10.00</td><td>2.00</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m</td><td>BTC-USD</td><td>535.79%</td><td>69.70%</td><td>0.22%</td><td>44.7</td><td>0.09</td><td>5.53</td><td>0.76</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m</td><td>ETH-USD</td><td>1472.13%</td><td>68.62%</td><td>0.25%</td><td>45.2</td><td>0.08</td><td>5.47</td><td>0.75</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m</td><td>SOL-USD</td><td>29414.64%</td><td>67.08%</td><td>0.34%</td><td>50.0</td><td>0.10</td><td>5.40</td><td>0.74</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m</td><td>BTC-USD</td><td>450.44%</td><td>75.76%</td><td>0.20%</td><td>37.7</td><td>0.06</td><td>5.24</td><td>0.65</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m</td><td>ETH-USD</td><td>1276.30%</td><td>75.29%</td><td>0.24%</td><td>38.1</td><td>0.06</td><td>5.19</td><td>0.64</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 1.00 ATR / timeout 16x15m</td><td>SOL-USD</td><td>25393.05%</td><td>74.13%</td><td>0.33%</td><td>42.9</td><td>0.08</td><td>5.06</td><td>0.61</td></tr></tbody></table>
+    <h3>reader-facing 结论</h3>
+    <ul><li>把成本层统一后，fixed-hold 仍然强，但 OCO 版本没有被成本直接打死：fixed 4x15m≈34686.43%，fixed 8x15m≈24543.72%，最佳 OCO≈11103.88%。这说明 32b 的核心 edge 不是纯靠理想化成交撑出来的。</li><li>在这组真实持仓时长下，funding 的实际影响比前面 48h 假设小得多：base 口径下各候选的 mean_funding_events 通常接近 0，说明 ATR/OCO 这类短持仓结构主要该盯 fee + slippage，而不是先被 funding 吃死。</li><li>压力档（更高 taker/stop slippage）下，当前最强方案变成 固定持有 4x15m（taker close）（≈24800.26%）。如果 base 和 stress 的头部名单高度重合，说明这条线对成本假设不是一碰就碎。</li></ul>
+    <p class='muted'>artifact：<code>unified_cost_round3_1825d_overall.csv</code>、<code>unified_cost_round3_1825d_asset.csv</code>、<code>unified_cost_round3_1825d_trades.csv</code></p>
+  </div>
+
+<!-- rank32b-unified-cost-round3-1825d:end -->
+<!-- rank32b-break-even-round4-1825d:start -->
+
+  <div class='card'>
+    <h2>break-even with cost buffer（新增）</h2>
+    <p class='muted'>新增时间：2026-03-19 07:15 UTC ｜ 这轮只做 break-even，不上 trailing。所有结果都建立在统一成本层（VIP0 fee + maker/taker + slippage + funding + OCO 口径）上。</p>
+    <p><b>在统一成本层上加入 break-even with cost buffer 后，base 口径下当前最强的 BE 方案是 maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / BE@1ATR+cost，mean_total_return≈11290.35%、BE trigger≈38.09%、BE stop≈13.35%。</b></p>
+    <p class='muted'>注：当初始 SL = 1.00 ATR 时，1R 与 1ATR 是同一个触发阈值，所以只展示一档 BE@1ATR+cost，避免重复行。</p>
+    <h3>VIP0 base：break-even 头部方案</h3>
+    <table><thead><tr><th>scenario_label</th><th>mean_total_return</th><th>positive_asset_ratio</th><th>mean_win_rate</th><th>mean_hold_minutes</th><th>mean_break_even_trigger_rate</th><th>mean_break_even_stop_rate</th><th>mean_target_hit_rate</th><th>mean_stop_hit_rate</th><th>mean_cost_buffer_bps</th></tr></thead><tbody><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / BE@1ATR+cost</td><td>11290.35%</td><td>100.00%</td><td>73.67%</td><td>41.6</td><td>38.09%</td><td>13.35%</td><td>58.73%</td><td>35.46%</td><td>9.87</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / 无 BE</td><td>11103.88%</td><td>100.00%</td><td>72.20%</td><td>44.6</td><td>0.00%</td><td>0.00%</td><td>68.46%</td><td>22.30%</td><td>13.33</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / BE@1ATR+cost</td><td>11018.61%</td><td>100.00%</td><td>77.28%</td><td>39.1</td><td>39.85%</td><td>15.43%</td><td>60.76%</td><td>34.17%</td><td>13.33</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / 无 BE</td><td>10474.19%</td><td>100.00%</td><td>68.47%</td><td>46.6</td><td>0.00%</td><td>0.00%</td><td>64.72%</td><td>25.90%</td><td>9.87</td></tr><tr><td>taker 入场 + TP 1.00 ATR / SL 0.75 ATR / timeout 16x15m / 无 BE</td><td>5573.24%</td><td>100.00%</td><td>73.48%</td><td>30.9</td><td>0.00%</td><td>0.00%</td><td>73.38%</td><td>26.43%</td><td>13.66</td></tr><tr><td>taker 入场 + TP 1.00 ATR / SL 0.75 ATR / timeout 16x15m / BE@1ATR+cost</td><td>5573.24%</td><td>100.00%</td><td>73.48%</td><td>30.9</td><td>0.00%</td><td>0.00%</td><td>73.38%</td><td>26.43%</td><td>13.66</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 0.75 ATR / timeout 16x15m / 无 BE</td><td>5253.89%</td><td>100.00%</td><td>68.90%</td><td>32.5</td><td>0.00%</td><td>0.00%</td><td>68.80%</td><td>30.94%</td><td>10.20</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 0.75 ATR / timeout 16x15m / BE@1ATR+cost</td><td>5253.89%</td><td>100.00%</td><td>68.90%</td><td>32.5</td><td>0.00%</td><td>0.00%</td><td>68.80%</td><td>30.94%</td><td>10.20</td></tr><tr><td>taker 入场 + TP 1.00 ATR / SL 0.75 ATR / timeout 16x15m / BE@1R+cost</td><td>4044.22%</td><td>100.00%</td><td>79.38%</td><td>25.2</td><td>41.48%</td><td>19.22%</td><td>60.39%</td><td>39.56%</td><td>13.66</td></tr><tr><td>maker-first 入场 2bps + TP 1.00 ATR / SL 0.75 ATR / timeout 16x15m / BE@1R+cost</td><td>3852.26%</td><td>100.00%</td><td>75.48%</td><td>26.9</td><td>40.69%</td><td>17.76%</td><td>58.05%</td><td>41.89%</td><td>10.20</td></tr></tbody></table>
+    <h3>base vs stress：同尺对照</h3>
+    <table><thead><tr><th>scenario_label</th><th>profile_label</th><th>mean_total_return</th><th>mean_win_rate</th><th>mean_hold_minutes</th><th>mean_break_even_trigger_rate</th><th>mean_break_even_stop_rate</th><th>mean_cost_buffer_bps</th></tr></thead><tbody><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / BE@1ATR+cost</td><td>VIP0 base realistic</td><td>11290.35%</td><td>73.67%</td><td>41.6</td><td>38.09%</td><td>13.35%</td><td>9.87</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / BE@1ATR+cost</td><td>VIP0 stressed slippage</td><td>10299.26%</td><td>73.61%</td><td>41.5</td><td>38.09%</td><td>13.60%</td><td>11.01</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / 无 BE</td><td>VIP0 base realistic</td><td>11103.88%</td><td>72.20%</td><td>44.6</td><td>0.00%</td><td>0.00%</td><td>13.33</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / 无 BE</td><td>VIP0 stressed slippage</td><td>8872.91%</td><td>72.04%</td><td>44.6</td><td>0.00%</td><td>0.00%</td><td>15.33</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / BE@1ATR+cost</td><td>VIP0 base realistic</td><td>11018.61%</td><td>77.28%</td><td>39.1</td><td>39.85%</td><td>15.43%</td><td>13.33</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / BE@1ATR+cost</td><td>VIP0 stressed slippage</td><td>8111.65%</td><td>77.21%</td><td>39.0</td><td>39.85%</td><td>16.12%</td><td>15.33</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / 无 BE</td><td>VIP0 base realistic</td><td>10474.19%</td><td>68.47%</td><td>46.6</td><td>0.00%</td><td>0.00%</td><td>9.87</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / 无 BE</td><td>VIP0 stressed slippage</td><td>9688.66%</td><td>68.35%</td><td>46.6</td><td>0.00%</td><td>0.00%</td><td>11.01</td></tr><tr><td>taker 入场 + TP 1.00 ATR / SL 0.75 ATR / timeout 16x15m / 无 BE</td><td>VIP0 base realistic</td><td>5573.24%</td><td>73.48%</td><td>30.9</td><td>0.00%</td><td>0.00%</td><td>13.66</td></tr><tr><td>taker 入场 + TP 1.00 ATR / SL 0.75 ATR / timeout 16x15m / 无 BE</td><td>VIP0 stressed slippage</td><td>4496.42%</td><td>73.46%</td><td>30.9</td><td>0.00%</td><td>0.00%</td><td>15.66</td></tr><tr><td>taker 入场 + TP 1.00 ATR / SL 0.75 ATR / timeout 16x15m / BE@1ATR+cost</td><td>VIP0 base realistic</td><td>5573.24%</td><td>73.48%</td><td>30.9</td><td>0.00%</td><td>0.00%</td><td>13.66</td></tr><tr><td>taker 入场 + TP 1.00 ATR / SL 0.75 ATR / timeout 16x15m / BE@1ATR+cost</td><td>VIP0 stressed slippage</td><td>4496.42%</td><td>73.46%</td><td>30.9</td><td>0.00%</td><td>0.00%</td><td>15.66</td></tr></tbody></table>
+    <h3>VIP0 base：top 方案分资产</h3>
+    <table><thead><tr><th>scenario_label</th><th>asset</th><th>total_return</th><th>win_rate</th><th>avg_net_ret</th><th>avg_hold_minutes</th><th>break_even_trigger_rate</th><th>break_even_stop_rate</th><th>avg_cost_buffer_bps</th></tr></thead><tbody><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / BE@1ATR+cost</td><td>BTC-USD</td><td>459.96%</td><td>74.83%</td><td>0.20%</td><td>39.2</td><td>36.60%</td><td>14.57%</td><td>9.93</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / BE@1ATR+cost</td><td>ETH-USD</td><td>1310.67%</td><td>73.69%</td><td>0.24%</td><td>40.4</td><td>37.33%</td><td>12.89%</td><td>9.84</td></tr><tr><td>maker-first 入场 2bps + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / BE@1ATR+cost</td><td>SOL-USD</td><td>32100.42%</td><td>72.49%</td><td>0.35%</td><td>45.3</td><td>40.33%</td><td>12.58%</td><td>9.85</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / 无 BE</td><td>BTC-USD</td><td>602.08%</td><td>74.01%</td><td>0.23%</td><td>41.4</td><td>0.00%</td><td>0.00%</td><td>13.24</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / 无 BE</td><td>ETH-USD</td><td>1939.67%</td><td>73.16%</td><td>0.27%</td><td>43.1</td><td>0.00%</td><td>0.00%</td><td>13.26</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / 无 BE</td><td>SOL-USD</td><td>30769.90%</td><td>69.43%</td><td>0.34%</td><td>49.5</td><td>0.00%</td><td>0.00%</td><td>13.49</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / BE@1ATR+cost</td><td>BTC-USD</td><td>496.26%</td><td>78.90%</td><td>0.21%</td><td>35.4</td><td>39.04%</td><td>17.37%</td><td>13.24</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / BE@1ATR+cost</td><td>ETH-USD</td><td>1598.31%</td><td>78.04%</td><td>0.25%</td><td>37.6</td><td>37.96%</td><td>14.76%</td><td>13.26</td></tr><tr><td>taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / BE@1ATR+cost</td><td>SOL-USD</td><td>30961.25%</td><td>74.90%</td><td>0.34%</td><td>44.3</td><td>42.56%</td><td>14.17%</td><td>13.49</td></tr></tbody></table>
+    <h3>reader-facing 结论</h3>
+    <ul><li>和本轮纳入的无 BE 候选相比，当前最好无 BE 方案是 taker 入场 + TP 1.25 ATR / SL 1.00 ATR / timeout 8x15m / 无 BE（≈11103.88%）；最好 BE 方案≈11290.35%，说明 break-even 不是天然有害，但只在一部分 OCO 结构上真正加分。</li><li>对当前最值得做的 OCO 家族（TP 1.25 / SL 1.00 / timeout 8）来说，maker-first 版本从无 BE≈10474.19% 提升到 BE@1ATR+cost≈11290.35%；但 taker 版本从≈11103.88% 小幅回落到≈11018.61%。这说明 break-even 的价值和 entry 口径是耦合的。</li><li>对 TP 1.00 / SL 0.75 / timeout 16 这组，BE@1ATR+cost 和无 BE 几乎完全一样（≈5253.89% vs ≈5253.89%），因为 1ATR 触发点已经和 TP 太接近；而更早的 BE@1R+cost 反而把收益打到≈3852.26%，说明 stop 抬得太早会把 continuation 的肉提前切掉。</li><li>这轮的 BE 不是抬到名义 entry，而是抬到 entry + cost buffer；平均 buffer 规模大约在 9.87 bps，已经把开平手续费、预估滑点和 funding buffer 算进去了。为避免路径偷看，BE 触发后从下一根 5m 才生效。</li></ul>
+    <p class='muted'>关键口径：break-even 触发后从下一根 5m 才生效；抬 stop 的目标不是名义 entry，而是 entry + cost buffer。cost buffer = 开仓成本 + 预估 stop 平仓成本 + timeout 对应 funding buffer。</p>
+    <p class='muted'>artifact：<code>break_even_round4_1825d_overall.csv</code>、<code>break_even_round4_1825d_asset.csv</code>、<code>break_even_round4_1825d_trades.csv</code></p>
+  </div>
+
+<!-- rank32b-break-even-round4-1825d:end -->
+<!-- rank32b-cross-asset-expansion:start -->
+
+  <div class='card'>
+    <h2>cross-asset expansion</h2>
+    <p class='muted'>新增时间：2026-03-20 18:30 UTC ｜ 窗口：最近 365 天 ｜ 目的：检查原三腿结论能否外推到更多主流币。</p>
+    <p><span class='pill'>cross-asset pocket exists</span></p>
+    <p><b>扩到 17 个币种后，6bps/side 下 mean_total_return≈99.39%、positive_asset_ratio≈100.00%、worst_asset_return≈10.45%。</b></p>
+    <p class='muted'>扩展到 17 个币种后，6bps 下仍有 17/17 个币种为正，且均值、最差腿与交易密度都还在可讨论范围。</p>
+    <p><a href='./cross_asset_expansion.html'>查看完整跨币种稳定性页面</a></p>
+  </div>
+<!-- rank32b-cross-asset-expansion:end -->
+<!-- rank32b-candidate-5y-stability:start -->
+
+  <div class='card'>
+    <h2>candidate 5Y stability</h2>
+    <p class='muted'>新增时间：2026-03-20 18:57 UTC ｜ 目标：验证 LTC / NEAR / UNI 在更长历史里是否大部分时间稳定有效。</p>
+    <p><span class='pill'>candidates mostly stable</span></p>
+    <p class='muted'>3/3 个候选币总体为正，且至少 3 个候选币在分年/分段窗口里大部分时期为正。</p>
+    <p><a href='./candidate_5y_stability.html'>查看 5 年稳定性页面</a></p>
+  </div>
+<!-- rank32b-candidate-5y-stability:end -->
+<!-- rank32b-universe-admission:start -->
+
+  <div class='card'>
+    <h2>universe admission（新增）</h2>
+    <p class='muted'>新增时间：2026-03-25T03:55:01Z ｜ 目标：把 universe 研究结果整理成可执行的准入分层表。</p>
+    <p><span class='pill'>Tier 1 = 12</span><span class='pill'>Tier 2 = 6</span><span class='pill'>Watchlist = 2</span></p>
+    <p><b>当前 18 币 shortlist 在 1 年 / 6bps 下并没有被稀释，反而比之前 17 币版本更强；因此现在更合理的问题已经不是“要不要扩池”，而是“先上哪 12 个、哪 6 个先 paper / 轻仓”。</b></p>
+    <p><a href='./universe_admission.html'>查看 18 币准入分层表</a> ｜ <a href='./universe_shortlist18_1y.html'>查看 18 币组合层结果</a></p>
+  </div>
+<!-- rank32b-universe-admission:end -->
+<!-- rank32b-universe-evidence-brief:start -->
+
+  <div class='card'>
+    <h2>universe evidence brief（新增）</h2>
+    <p class='muted'>新增时间：2026-03-25T04:26:04Z ｜ 目标：把“为什么当前 18 币 shortlist 值得认真考虑扩池”拆成证据链。</p>
+    <p><b>当前 evidence brief 的核心结论：</b>16 个币达到 5/5 时间窗为正，2 个短历史币达到 3/3 为正；18/18 在 6~10bps 仍为正；从 core3 扩到 shortlist18 后，独立信号时间点约增加 4.7 倍，但胜率只小幅下降。</p>
+    <p><a href='./universe_evidence_brief.html'>查看证据讲解页</a> ｜ <a href='./universe_admission.html'>查看准入分层表</a></p>
+  </div>
+<!-- rank32b-universe-evidence-brief:end -->
+<!-- rank32b-live-parity-universe:start -->
+
+  <div class='card'>
+    <h2>live parity universe（新增）</h2>
+    <p class='muted'>新增时间：2026-03-30 18:16 UTC ｜ 目标：把当前 32b 实盘口径（TP/SL/timeout/selection/risk）搬到更大币池里，检验它是否仍然站得住。</p>
+    <p><a href='./recent7d_all26_live_parity_for_live_gap.html'>查看 live parity 回测结果</a></p>
+  </div>
+<!-- rank32b-live-parity-universe:end -->
+<!-- rank32b-live-parity-compare:start -->
+
+  <div class='card'>
+    <h2>live parity compare（新增）</h2>
+    <p class='muted'>新增时间：2026-03-25T05:33:20Z ｜ 目标：把 core3 和 shortlist18 放到当前实盘口径下做一比一对照。</p>
+    <p><b>当前结论：</b>扩到 shortlist18 后，真实入选交易数明显增加，胜率仅小幅回落，单笔平均净收益没有变差。</p>
+    <p><a href='./live_parity_compare_1y.html'>查看 live parity 对照页</a></p>
+  </div>
+<!-- rank32b-live-parity-compare:end -->
+<!-- rank32b-rollout-plan:start -->
+
+  <div class='card'>
+    <h2>rollout plan（新增）</h2>
+    <p class='muted'>新增时间：2026-03-25T05:58:04Z ｜ 目标：把 universe 研究翻译成实盘上线顺序。</p>
+    <p><b>当前建议：</b>先上 Tier 1 的 12 币（mc=1），稳定后再扩到 18 币，最后才考虑 mc=2。</p>
+    <p><a href='./rollout_plan.html'>查看 rollout 方案</a></p>
+  </div>
+<!-- rank32b-rollout-plan:end -->
+</body>
+</html>

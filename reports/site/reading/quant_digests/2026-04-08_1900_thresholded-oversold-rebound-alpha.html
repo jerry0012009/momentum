@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 BTC 均值回归 repo 只读成日线作业：对 short-cycle desk，更该先测的是 `thresholded oversold crash × symmetric rebound exit`</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 BTC 均值回归 repo 只读成日线作业：对 short-cycle desk，更该先测的是 `thresholded oversold crash × symmetric rebound exit`</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-08 19:07 UTC</span>
+      <span class="pill">研究时间：2026-04-08 19:00 UTC</span>
+      <span class="pill">类型：GitHub repo source audit + Binance USDⓈ-M public-data portability probe</span>
+      <span class="pill">主题标签：single-asset / mean-reversion / oversold-bounce / event-driven / BTC / ETH / SOL / 5m / 15m / public-data</span>
+      <span class="pill">证据类型：工程经验 + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-08_1900_thresholded-oversold-rebound-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-08 19:00 UTC</li>
+<li>类型：GitHub repo source audit + Binance USDⓈ-M public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：单资产在短时间发生极端负收益后，做反向均值回归，直到同口径动量修复到正阈值再平仓</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：single-asset / mean-reversion / oversold-bounce / event-driven / BTC / ETH / SOL / 5m / 15m / public-data</li>
+<li>证据类型：工程经验 + public-data portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>我这次看的是 <code>silas0700/Bitcoin-Mean-Reversion-Backtest</code>（2026，GitHub）。source audit 主要覆盖 <code>README.md</code> 和 <code>Mean_Reversion_Strategy.py</code>：repo 的规则非常直接——买入“短时间内跌得离谱”的 BTC，等同口径动量回到正阈值再平仓，并且显式把 taker fee 设成 <code>0.05%/side</code>。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>这篇东西的 <strong>base alpha 很清楚</strong>：不是“看起来超卖就抄底”，而是 <strong><code>k-bar 累计跌幅 &lt; -阈值</code> 的极端 oversold 事件 -&gt; 做 bounce -&gt; <code>k-bar 累计涨幅 &gt; +阈值</code> 离场</strong>。</li>
+<li>repo 原始日线口径其实不是“稳定常开策略”，而是<strong>极端事件 alpha</strong>：README 给出的 train 最优参数是 <code>7 days / 37.5% crash</code>，对应 <code>Train Sharpe 1.50</code>、<code>Train CAGR 53.12%</code>、<code>Train MDD -17.54%</code>；但 2025 out-of-sample 直接变成 <code>0 trades</code>，而 buy-and-hold 是 <code>-27.17%</code>。这不是坏消息，反而说明它提醒了一个更重要的 desk 事实：<strong>真正有用的 oversold bounce 往往非常稀疏，不能把阈值放松成“天天都想抄底”</strong>。</li>
+<li>我用 Binance USDⓈ-M 近 <code>120d</code> 公共 <code>5m/15m</code> 数据按同类逻辑做了 portability probe（long-only、进出都按 taker <code>5 bps/side</code>）：</li>
+<li><code>5m</code>：ETH 在 <code>12 bars / 3%</code> 下有 <code>18</code> 笔、平均约 <code>+136.2 bps/笔</code>、累计约 <code>+23.0%</code>；SOL 同参有 <code>16</code> 笔、平均约 <code>+119.8 bps/笔</code>、累计约 <code>+14.9%</code>。</li>
+<li>但同样是 ETH，若把阈值放松到 <code>12 bars / 1%</code>，会变成 <code>188</code> 笔、平均约 <code>-5.2 bps/笔</code>、累计约 <code>-14.5%</code>。<strong>结论很硬：这条线吃的是“极端事件后的反弹”，不是普通回踩。</strong></li>
+<li><code>15m</code>：BTC 在 <code>4 bars / 2%</code> 下还有 <code>14</code> 笔、平均约 <code>+68.0 bps/笔</code>、累计约 <code>+7.8%</code>；但 ETH / SOL 同参都转负，说明它当前更像 <strong>major-only / BTC-first</strong> 的事件壳，而不是全币种通用模板。</li>
+<li>所以这轮最值得带走的不是 repo 的日线参数，而是一个更适合 short-cycle 的翻译：<strong>只做“极端 oversold”事件，不做泛化均值回归；先从 major、固定硬阈值、long-only 版本开始。</strong></li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线和当前 desk 的关系很直接：</p>
+<ul>
+<li>它补的是 <strong>single-asset mean reversion raw alpha</strong>，不是又一篇 pairs / carry / overlay。</li>
+<li>它能很快映射到 <code>1m/3m/5m/15m</code>：只要有公开 K 线，就能先做最小实验。</li>
+<li>它还天然适合作为后续“过滤层”母体：比如 liquidation spike、OI jump、funding stretch、VPIN/toxic flow，都可以以后再加；但 <strong>第一步先把 raw alpha 本体做干净</strong>。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<p><strong>Strategy shell（当前最小可复现版）</strong></p>
+<ul>
+<li><strong>Universe</strong>：先只做 <code>BTC / ETH / SOL</code> 这类 top-liquid majors；当前证据不支持一上来就广撒 alt basket。</li>
+<li><strong>Entry</strong>：当过去 <code>k</code> 根累计收益 <code>&lt; -θ</code>，下一根开盘/收盘做多。</li>
+<li><strong>Exit</strong>：当过去 <code>k</code> 根累计收益 <code>&gt; +θ</code> 平仓；若要更实盘，可额外测试 <code>max-hold</code> 兜底。</li>
+<li><strong>Sizing</strong>：第一版先固定名义仓位；第二版再比较 vol-target / ATR-target。</li>
+<li><strong>Risk</strong>：long-only；单标的同时仅持一笔；避免多次连续补仓把它变成 martingale。</li>
+<li><strong>Cost</strong>：先按 taker-taker <code>10 bps round-trip</code>；如果这都活不下去，就不用再讲更复杂执行。</li>
+</ul>
+<p><strong>当前最值得先记住的 desk 版本</strong></p>
+<ul>
+<li><code>5m</code>: <code>lookback=12 bars</code>、<code>threshold=3%</code>，优先看 ETH / SOL</li>
+<li><code>15m</code>: <code>lookback=4 bars</code>、<code>threshold=2%</code>，优先先看 BTC</li>
+</ul>
+<h2>4. 下一步最该怎么测</h2>
+<ol>
+<li><strong>先做 fixed-threshold vs vol-normalized-threshold</strong>：把 <code>3%</code> / <code>2%</code> 换成 <code>ret_z</code> 或 <code>ATR-normalized move</code>，看不同币之间能否更稳定迁移。</li>
+<li><strong>做 major-only admission</strong>：只在 <code>BTC/ETH/SOL/BNB</code> 上跑，不要直接扩到长尾；目标是确认这是不是“高流动性大币的极端事件 bounce”。</li>
+<li><strong>做 exit A/B</strong>：</li>
+</ol>
+<ul>
+<li>A：repo 的 <code>+θ</code> 对称退出</li>
+<li>B：<code>time stop 4/8/12 bars</code></li>
+<li>C：<code>+θ</code> 或 <code>VWAP/EMA 回归</code> 二选一</li>
+<p>看哪种更适合 <code>5m/15m</code>。</p>
+</ul>
+<ol>
+<li><strong>做 event layering，但放在第二轮</strong>：只有 base alpha 站住后，再叠 <code>liquidation / OI / funding / toxic flow</code> 过滤器；不要反过来把 filter 当 alpha 本体。</li>
+</ol>
+<h2>5. 风险与边界</h2>
+<ul>
+<li><strong>极度稀疏</strong>：repo 的原始日线版本已经证明，阈值一旦设得足够极端，交易会非常少；这是它的本性，不是 bug。</li>
+<li><strong>跨币不对称</strong>：当前 <code>15m</code> 证据明显偏向 BTC，说明不能默认 ETH/SOL 会复制同样表现。</li>
+<li><strong>阈值一放松就容易死</strong>：ETH <code>5m 12 bars / 1%</code> 已经给出反例，说明普通回踩并不够支撑成本后均值回归。</li>
+<li><strong>当前仍是 long-only 读法</strong>：是否存在“极端上涨后做 short fade”的对称 alpha，本轮没有证明，别偷换。</li>
+</ul>
+<h2>6. 来源与可复现线索</h2>
+<h3>Repo</h3>
+<ul>
+<li><strong>Maintainer / Year</strong>: <code>silas0700</code> / 2026</li>
+<li><strong>Title</strong>: *Bitcoin Mean Reversion Backtest*</li>
+<li><strong>Venue</strong>: GitHub</li>
+<li><strong>DOI</strong>: None</li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://github.com/silas0700/Bitcoin-Mean-Reversion-Backtest&gt;">https://github.com/silas0700/Bitcoin-Mean-Reversion-Backtest&gt;</a></li>
+<li><strong>Repo URL</strong>: &lt;<a href="https://github.com/silas0700/Bitcoin-Mean-Reversion-Backtest&gt;">https://github.com/silas0700/Bitcoin-Mean-Reversion-Backtest&gt;</a></li>
+<li><strong>Audited files</strong>:</li>
+<li><code>README.md</code></li>
+<li><code>Mean_Reversion_Strategy.py</code></li>
+</ul>
+<h3>Public data used for portability probe</h3>
+<ul>
+<li><strong>Source</strong>: Binance USDⓈ-M Futures public klines</li>
+<li><strong>Publicness</strong>: 公开可得，无需私有 key</li>
+<li><strong>Frequency used</strong>: <code>5m / 15m</code></li>
+<li><strong>Sample</strong>: 近 <code>120d</code></li>
+<li><strong>Minimal replication lens</strong>: <code>top-liquid majors</code> 上测试 <code>k-bar crash -&gt; symmetric rebound exit</code>，先看 <code>post-cost expectancy / trade</code> 与 <code>trade count</code> 是否同时成立</li>
+</ul>
+<h2>7. 一句话结论</h2>
+<p>这条线值得进研究池，但<strong>正确姿势不是“跌了就抄底”</strong>，而是：<strong>只做 major、只做极端 oversold 事件、先用高阈值版本拿 first verdict。</strong></p>
+</body>
+</html>

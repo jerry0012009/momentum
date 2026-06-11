@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 BTC perp microstructure repo 只读成“何时别追”：对 short-cycle desk，更该先测的是「spread-shock completion × imbalance-consistency fade」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 BTC perp microstructure repo 只读成“何时别追”：对 short-cycle desk，更该先测的是「spread-shock completion × imbalance-consistency fade」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-13 15:25 UTC</span>
+      <span class="pill">研究时间：2026-04-13 15:23 UTC</span>
+      <span class="pill">类型：2026 GitHub repo source audit（`README.md` + `vortexbar_lab.py` + `ob_poc_v4.py` + bundled PDF report）</span>
+      <span class="pill">主题标签：raw-alpha/microstructure/mean-reversion/adverse-selection/spread-shock/taker-imbalance/volume-bar/domain-score/btc/perpetual/binance/bybit/1m/3m/5m/15m/repo/public-data/risk</span>
+      <span class="pill">证据类型：开源代码 + 自带 PDF 报告 + 公共 order-book/trade 数据可复刻</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-13_1523_spreadshock-imbalance-completion-mr-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-13 15:23 UTC</li>
+<li>类型：2026 GitHub repo source audit（<code>README.md</code> + <code>vortexbar_lab.py</code> + <code>ob_poc_v4.py</code> + bundled PDF report）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<code>当盘口价差突然拉宽、且最近几根里主动吃单持续单边时，最值得先测的不是继续追同向，而是等“事件接近走完”后做短持有反转；更直白地说，就是 adverse-selection completion 后的 microstructure mean reversion</code></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha/microstructure/mean-reversion/adverse-selection/spread-shock/taker-imbalance/volume-bar/domain-score/btc/perpetual/binance/bybit/1m/3m/5m/15m/repo/public-data/risk</li>
+<li>证据类型：开源代码 + 自带 PDF 报告 + 公共 order-book/trade 数据可复刻</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看的是 GitHub 新仓库 <strong>Woonggyu Lee / <code>btc-perp-microstructure</code> (2026)</strong>。</p>
+<p>它表面上的读法很容易变成：</p>
+<p>&gt; “又一个 order-book / LightGBM / microstructure 研究仓库。”</p>
+<p>但对我们 desk，更值得先 intake 的不是“又多了一个微观结构看板”，而是这条<strong>跟现有 continuation 系材料不完全同向</strong>的 raw alpha：</p>
+<p>&gt; <strong>base alpha = 当市场制造商因为信息不对称而把 spread 拉宽、且主动成交方向已经持续偏一边时，短窗口里更值得押注“事件完成后的回摆”，而不是继续追最后一脚。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>不是看“现在涨了，所以继续追多”；</li>
+<li>而是看“这段单边吃单已经把价差打宽、并且开始显得过度拥挤”，然后去测<strong>短持有反打</strong>；</li>
+<li><code>domain score</code> 只是把这类“值得反打”的微观状态再细分得更连续、更可筛选。</li>
+</ul>
+<p>所以这轮它是：</p>
+<ul>
+<li><code>raw alpha</code></li>
+<li>不是单纯 <code>filter</code></li>
+<li>不是纯 <code>regime</code></li>
+<li>但也<strong>还不能直接吹成完整 executable shell</strong>，因为 repo 里主要给的是研究信号与 walk-forward 结果，不是诚实的 live execution / fee / queue-fill 壳。</li>
+</ul>
+<h2>2. 一句话核心结论 + 一句话证明方式</h2>
+<h3>一句话核心结论</h3>
+<p>&gt; <strong>这份 repo 最值得复现的，不是“预测下一跳继续同向”，而是“spread shock + 单边吃单持续”之后的短持有反转 raw alpha；它补的是我们当前素材池里较少被单独拆开的 <code>adverse-selection completion -&gt; fade</code> 分支。</strong></p>
+<h3>一句话证明方式</h3>
+<p>&gt; README / 源码把逻辑写得很清楚：价格方向本身几乎像随机游走（README 报 <code>AC1 ≈ 0.003</code>），但<strong>什么时候容易出现可交易的短回摆</strong>是可筛选的；repo 报告里，<code>RT3</code> 触发器 8-fold walk-forward 的平均 Spearman 为 <strong>0.133</strong>，<code>Domain Score</code> 16-fold 全部为正，方向正确率 <strong>59.7%</strong>，再加 trailing 200-event rolling-Spearman 质量过滤后，Spearman 从 <strong>0.130 提到 0.212</strong>，覆盖约 <strong>61%</strong> 事件。注意：这些是 repo 自报结果，默认理解为<strong>未计入真实 taker/maker 成本的研究证据</strong>。</p>
+<h2>3. base alpha 到底是什么</h2>
+<p>这题最关键的是先把 <strong>base alpha</strong> 说清楚。</p>
+<h3>3.1 不是“价差扩大就追趋势”</h3>
+<p><code>vortexbar_lab.py</code> 里的 <code>compute_rt3_trigger(...)</code> 做了两件事：</p>
+<ol>
+<li><strong><code>spread_pct</code></strong>：当前 spread 在最近一段历史里处在什么分位数。</li>
+</ol>
+<ul>
+<li>默认 <code>spread_window = 500</code></li>
+<li><code>spread_pct_on = 0.80</code></li>
+<li>翻成人话：<strong>“现在的盘口价差，已经进入最近样本里偏宽的前 20% 了吗？”</strong></li>
+</ul>
+<ol>
+<li><strong><code>imb_consistency</code></strong>：最近 <code>K</code> 根里，主动买卖是不是大部分朝同一边。</li>
+</ol>
+<ul>
+<li>默认 <code>imb_consistency_on = 0.75</code></li>
+<li>README 讨论的强化版本是 <code>K=8</code></li>
+<li>翻成人话：<strong>“最近这段 aggressive flow，是不是基本都在一个方向上打？”</strong></li>
+</ul>
+<p>代码里先识别 “近期发生过 spread shock + 当前单边吃单还很一致” 的状态，再构出 <code>entry_direction</code>。但 README 明确说得很重要：</p>
+<p>&gt; <strong>最强信号不是继续同向追，而是事件接近完成后的短期 mean reversion。</strong></p>
+<p>也就是说，真正该拿来做 raw alpha 的，不是“<code>RT3 ON</code> 就顺着吃单方向追”，而是：</p>
+<p>&gt; <strong>把 <code>RT3 / Domain Score</code> 当作“过热完成”检测器，然后做与主导 taker imbalance 相反方向的短持有反打。</strong></p>
+<h3>3.2 repo 的第二层，其实已经更接近 1m 级可测 alpha</h3>
+<p><code>ob_poc_v4.py</code> 里还有一层更适合 desk 直接开测的定义：</p>
+<ul>
+<li>默认 <code>grid_interval_sec = 60</code></li>
+<li>默认 <code>max_hold_bars = 15</code></li>
+<li><code>compute_variable_target_vec(...)</code>：</li>
+<li>先取当前 1 分钟网格上的 <code>taker_imb</code> 方向</li>
+<li><strong>等第一次 future imbalance 反向翻转时退出</strong></li>
+<li>若 15 根内没翻，就在 <code>max_hold_bars</code> 强平</li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>入场方向 = 反着当前一分钟的单边吃单；出场 = 等失衡方向翻回去，或者最多拿 15 分钟。</strong></p>
+<p>这已经不是“抽象研究结论”，而是很接近一条可以写成回测函数的短周期 raw alpha。</p>
+<h2>4. repo 里最有价值的，不是模型名，而是这三个结构</h2>
+<h2>4.1 RT3：先抓“有毒单边流”已经打出来的时刻</h2>
+<p>源码里 <code>rt3_on</code> 的核心条件非常朴素：</p>
+<ul>
+<li>近期出现过 spread shock</li>
+<li>且最近 <code>K</code> 根里，taker imbalance 的方向高度一致</li>
+</ul>
+<p>这更像在抓：</p>
+<p>&gt; <strong>“单边主动单已经把做市商打得不愿意继续报紧 spread 了。”</strong></p>
+<p>对于 desk，这个状态本身就很值钱，因为它天然对应：</p>
+<ul>
+<li>追价越来越容易买在尾巴上</li>
+<li>maker 更容易被 adverse selection 打</li>
+<li>如果事件已经走到后段，反打可能比追单更合理</li>
+</ul>
+<h2>4.2 Domain Score：把“值不值得反打”从 0/1 改成连续分数</h2>
+<p><code>compute_domain_score(...)</code> 把 6 个组件加总成 <code>0~6</code> 左右的连续分数：</p>
+<ol>
+<li><strong>streak</strong>：主动成交单边持续多久</li>
+<li><strong>ob_opp</strong>：盘口挂单方向是否跟成交方向对着干</li>
+<li><strong>low_vol</strong>：短时波动是不是偏低</li>
+<li><strong>absorption</strong>：吃单很重，但价格并没有走得一样大</li>
+<li><strong>good_hours</strong>：作者经验上更好的时段</li>
+<li><strong>3consec</strong>：是否已经连续 3 根同向大波动</li>
+</ol>
+<p>翻成人话：</p>
+<p>&gt; 它不是在问“会不会涨”，而是在问：<strong>“这更像一段该反打的拥挤尾声，还是一段还没走完的真趋势？”</strong></p>
+<p>README 给出的单调关系也支持这个读法：</p>
+<ul>
+<li><code>score 0</code> 附近接近随机</li>
+<li><code>score &gt;= 4</code> 时 mean-reversion 强度明显更高</li>
+</ul>
+<p>这类分数对我们 desk 的好处是：</p>
+<ul>
+<li>可以做 <strong>hard trigger</strong>（<code>score &gt;= q</code> 才开）</li>
+<li>也可以做 <strong>size ladder</strong>（分数越高，单笔风险越大/越小自己定）</li>
+<li>或者只把它当 <strong>已有 OFI/continuation 书的 veto</strong></li>
+</ul>
+<p>但要强调：</p>
+<p>&gt; <strong>这轮主 digest 还是 raw alpha 本体：<code>score 高时做反打</code>；不是把它降级成 shared overlay。</strong></p>
+<h2>4.3 repo 真正补的是“completion fade”，不是又一个 continuation</h2>
+<p>我们这段时间已经积了不少：</p>
+<ul>
+<li>OFI continuation</li>
+<li>imbalance continuation</li>
+<li>fair-value shift continuation</li>
+<li>maker skew / quote bias</li>
+</ul>
+<p>这份材料的不同点在于：</p>
+<p>&gt; <strong>它更像 continuation 分支的反面兄弟：不是看“单边流刚开始时顺着走”，而是看“单边流已经把 spread 打宽、并且趋于完成时反着做”。</strong></p>
+<p>所以它跟现有池子的关系不是重复，而是：</p>
+<ul>
+<li>同样使用 public trade + depth 数据栈</li>
+<li>但补的是<strong>不同相位</strong>的 alpha</li>
+<li>以后很适合做一个 <code>start-vs-end router</code></li>
+</ul>
+<p>也就是：</p>
+<ul>
+<li>早段事件：也许继续看 continuation</li>
+<li>尾段事件：切换到 completion fade</li>
+</ul>
+<h2>5. 为什么这轮仍值得写，而不是再补一个 pairs / carry</h2>
+<p>这轮我也刻意卡了一下自己：</p>
+<p>&gt; <strong>它为什么比继续补 raw alpha 更值得？</strong></p>
+<p>答案是：<strong>因为它本身就是 raw alpha，而且是跟我们现有 microstructure continuation 池明显不同相位的一支。</strong></p>
+<p>更具体地说，它有三个优点：</p>
+<ol>
+<li><strong>base alpha 非常清楚</strong></li>
+</ol>
+<ul>
+<li>不是模糊地说“微观结构有用”</li>
+<li>而是明确到：<code>spread-shock + sustained imbalance -&gt; short-horizon fade</code></li>
+</ul>
+<ol>
+<li><strong>复现门槛比很多 options / prediction-market 题材低</strong></li>
+</ol>
+<ul>
+<li>数据直接用 Binance / Bybit 公共 trade + depth 就能起步</li>
+<li>不依赖奇怪的私有变量或难拿的全市场历史库</li>
+</ul>
+<ol>
+<li><strong>能直接扩充当前 short-cycle 原料池</strong></li>
+</ol>
+<ul>
+<li>它不是慢频 macro overlay</li>
+<li>不是纯综述</li>
+<li>也不是只能给某一条 breakout 书做附庸</li>
+<li>它本身就是一条可以独立立项的 microstructure MR raw alpha</li>
+</ul>
+<h2>6. 对 <code>1m / 3m / 5m / 15m</code> 怎么映射</h2>
+<p>这一题对 short-cycle desk 的好处，是它并不只活在亚秒级。</p>
+<h3>6.1 <code>1m</code>：最自然的第一落点</h3>
+<p><code>ob_poc_v4.py</code> 默认就是：</p>
+<ul>
+<li><code>grid_interval_sec = 60</code></li>
+<li><code>max_hold_bars = 15</code></li>
+</ul>
+<p>所以最自然的第一版不是硬上 100ms 高频执行，而是：</p>
+<ul>
+<li>每分钟算一次 <code>taker_imb</code></li>
+<li>同步更新 spread / absorption / streak 等分数</li>
+<li>当 <code>domain_score &gt;= threshold</code> 时</li>
+<li><strong>做与当前 taker imbalance 相反方向的 1m 反打</strong></li>
+<li>出场：</li>
+<li>imbalance sign flip</li>
+<li>或 <code>1/3/5/15</code> 分钟 time stop</li>
+</ul>
+<p>这对我们很友好，因为直接就是分钟级回测。</p>
+<h3>6.2 <code>3m</code>：很适合作为 fast-but-not-HFT 版本</h3>
+<p>如果 <code>1m</code> 太噪，第二步最应该测的是：</p>
+<ul>
+<li><code>3 x 1m</code> 聚合 imbalance sign / score</li>
+<li>只在连续 2~3 分钟都处于高分状态时开仓</li>
+<li>持有 <code>1~3</code> 个 3m bar</li>
+</ul>
+<p>这相当于把“尾声拥挤”再确认一层，减少单分钟假信号。</p>
+<h3>6.3 <code>5m / 15m</code>：更像事件桶，而不是机械压缩成普通 candle alpha</h3>
+<p>这题若直接压成普通 <code>5m/15m OHLCV</code>，信息会损失很多，所以更好的做法是：</p>
+<ul>
+<li>先在 <code>1m</code> 生成 event log</li>
+<li>再把最近 <code>5m / 15m</code> 的：</li>
+<li>high-score event count</li>
+<li>平均 domain score</li>
+<li>最近一次 event 距今多久</li>
+<li>累计单边 imbalance 是否已衰减</li>
+<p>聚成 slower-book 的输入</p>
+</ul>
+<p>也就是说：</p>
+<ul>
+<li><strong>base alpha 的真主战场是 <code>1m / 3m</code></strong></li>
+<li><strong><code>5m / 15m</code> 更像事件聚合版或 admission layer</strong></li>
+</ul>
+<p>这点要说清楚，别把它伪装成“一根 15m K 就能还原”的东西。</p>
+<h2>7. 最小可复现实验该怎么做</h2>
+<h2>7.1 数据源</h2>
+<p><strong>公开可得</strong>，不需要私有 feed：</p>
+<ul>
+<li>Binance USDⓈ-M / Spot：</li>
+<li><code>aggTrades</code></li>
+<li>depth snapshot / diff-book stream（100ms/250ms/1000ms 级别都可）</li>
+<li>Bybit 也可做交叉验证</li>
+</ul>
+<h3>公开性</h3>
+<ul>
+<li>公共 API / WebSocket</li>
+<li>不依赖账户私有成交</li>
+</ul>
+<h3>更新频率</h3>
+<ul>
+<li>trade：实时</li>
+<li>order book：子秒级更新</li>
+</ul>
+<h3>最小复现实验口径</h3>
+<p>先别一步到位复刻作者 5.4B ticks 全年样本，最小版可以这样：</p>
+<ol>
+<li><strong>资产</strong>：<code>BTCUSDT perpetual</code></li>
+<li><strong>频率</strong>：</li>
+</ol>
+<ul>
+<li>原始层：trade + top-of-book / shallow depth</li>
+<li>回测层：<code>1m</code> 网格</li>
+</ul>
+<ol>
+<li><strong>事件定义</strong>：</li>
+</ol>
+<ul>
+<li><code>spread_pct &gt;= 80%</code>（rolling percentile）</li>
+<li><code>imb_consistency &gt;= 0.75</code></li>
+<li><code>domain_score &gt;= q90</code> 或 <code>&gt;= 4</code></li>
+</ul>
+<ol>
+<li><strong>方向</strong>：</li>
+</ol>
+<ul>
+<li><code>side = -sign(taker_imb)</code></li>
+</ul>
+<ol>
+<li><strong>出场</strong>：</li>
+</ol>
+<ul>
+<li><code>1m / 3m / 5m / 15m</code> time-stop sweep</li>
+<li>或 imbalance sign flip</li>
+</ul>
+<ol>
+<li><strong>成本</strong>：</li>
+</ol>
+<ul>
+<li>至少跑 <code>2 / 4 / 6 / 8 bps per side</code></li>
+</ul>
+<ol>
+<li><strong>输出</strong>：</li>
+</ol>
+<ul>
+<li>mean bp/trade</li>
+<li>hit rate</li>
+<li>holding-time 分布</li>
+<li>event rate</li>
+<li>不同时段表现</li>
+<li>与 continuation 信号的重叠/冲突占比</li>
+</ul>
+<h2>7.2 第一批最该看的不是 Sharpe，而是这 4 件事</h2>
+<ol>
+<li><strong>事件频率够不够</strong></li>
+</ol>
+<ul>
+<li>如果 1m 上一天只出几次，就不适合当主书</li>
+</ul>
+<ol>
+<li><strong><code>1m-&gt;3m</code> 是否真的最强，还是只是一分钟噪音</strong></li>
+</ol>
+<ul>
+<li>README 已暗示 <code>1–3 bars</code> 最强 MR，先验证这点</li>
+</ul>
+<ol>
+<li><strong>成本后是否还能活</strong></li>
+</ol>
+<ul>
+<li>这类 microstructure edge 很容易 gross 有、net 没</li>
+</ul>
+<ol>
+<li><strong>它和现有 continuation alpha 是互补还是互相打架</strong></li>
+</ol>
+<ul>
+<li>这是后面做 router 的关键</li>
+</ul>
+<h2>8. 这轮最重要的判断</h2>
+<h3>8.1 这是 raw alpha，不该降级成纯 filter</h3>
+<p>先把这个点钉住：</p>
+<p>&gt; <strong>base alpha 说得清：就是“单边挤压尾声 -&gt; 短回摆”。</strong></p>
+<p>所以它不是那种“只能服务别的书”的材料。</p>
+<h3>8.2 但目前更像可复现候选，不是现成上线壳</h3>
+<p>我不愿意把“是否可直接落地完整策略”写成“是”，原因也很简单：</p>
+<ul>
+<li>repo 给了研究逻辑、特征、walk-forward 结果</li>
+<li>但没有把真实的 taker/maker fee、queue position、slippage、订单撤改单摩擦说透</li>
+<li>README 上最亮眼的指标主要是 Spearman / direction / MR leg，不是成本后净收益</li>
+</ul>
+<p>所以对 desk 的正确姿势是：</p>
+<p>&gt; <strong>把它收进 raw alpha 素材池，优先做 first-cost verdict；不要因为 README 漂亮就直接把它当 ready-to-trade。</strong></p>
+<h3>8.3 它的真正战略价值，是补“相位切换”而不是重复 OFI continuation</h3>
+<p>如果后面这条线成立，它最有价值的用法未必是孤立跑一本新策略，而可能是：</p>
+<ul>
+<li>continuation alpha 负责抓事件前半段</li>
+<li>completion-fade alpha 负责抓事件后半段</li>
+<li>两者中间用 spread / domain score / elapsed-time 做切换</li>
+</ul>
+<p>这对当前 desk 是非常实用的结构增量。</p>
+<h2>9. 下一步怎么测</h2>
+<p>按优先级，我建议直接这样排：</p>
+<ol>
+<li><strong>先做 <code>1m</code> event-study</strong></li>
+</ol>
+<ul>
+<li>不上模型，直接规则版：</li>
+<li><code>spread shock + imbalance consistency -&gt; opposite-side fade</code></li>
+<li>看 <code>1/3/5/15m</code> 持有收益曲线</li>
+</ul>
+<ol>
+<li><strong>再做 <code>Domain Score</code> 分层</strong></li>
+</ol>
+<ul>
+<li>按 <code>score 0~6</code> 分桶</li>
+<li>看 mean bp/trade 是否单调</li>
+<li>先验证 repo 自报的“分数越高，MR 越强”能不能在我们口径复现</li>
+</ul>
+<ol>
+<li><strong>和现有 continuation 信号做 overlap matrix</strong></li>
+</ol>
+<ul>
+<li>当 continuation 强、但 completion-fade 也强时，谁赢？</li>
+<li>这一步比单独再做一个微观结构 Sharpe 更值钱</li>
+</ul>
+<ol>
+<li><strong>补成本与时段压力测试</strong></li>
+</ol>
+<ul>
+<li><code>Asia / Europe / US</code></li>
+<li><code>2/4/6/8 bps</code></li>
+<li><code>1m</code> vs <code>3m</code></li>
+<li>只有这一步过了，才值得继续谈 maker/taker 壳</li>
+</ul>
+<h2>10. 来源与元数据</h2>
+<h3>10.1 主来源（本轮主 digest）</h3>
+<ol>
+<li><strong>Woonggyu Lee. (2026). _BTC Perpetual Futures Microstructure Research_. Venue: GitHub repository / bundled research brief. DOI: N/A.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://github.com/wglee-quant/btc-perp-microstructure">https://github.com/wglee-quant/btc-perp-microstructure</a></li>
+<li>Repo URL: <a href="https://github.com/wglee-quant/btc-perp-microstructure">https://github.com/wglee-quant/btc-perp-microstructure</a></li>
+</ul>
+<h3>10.2 理论锚点</h3>
+<ol>
+<li><strong>Glosten, L. R., &amp; Milgrom, P. R. (1985). _Bid, ask and transaction prices in a specialist market with heterogeneously informed traders_. Venue: Journal of Financial Economics, 14(1), 71–100. DOI: <code>10.1016/0304-405X(85)90044-3</code>.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://doi.org/10.1016/0304-405X(85)90044-3">https://doi.org/10.1016/0304-405X(85)90044-3</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<ol>
+<li><strong>Engle, R. F., &amp; Russell, J. R. (1998). _Autoregressive Conditional Duration: A New Model for Irregularly Spaced Transaction Data_. Venue: Econometrica, 66(5), 1127–1162. DOI: <code>10.2307/2999632</code>.</strong></li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://doi.org/10.2307/2999632">https://doi.org/10.2307/2999632</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<h2>11. 最后一行结论</h2>
+<p>&gt; <strong>这份 2026 repo 最值得先收进研究池的，不是“又一个 order-flow dashboard”，而是 <code>spread-shock completion × imbalance-consistency fade</code> 这条 microstructure mean-reversion raw alpha。它最适合先在 <code>1m / 3m</code> 做 first verdict；若成立，再把 <code>5m / 15m</code> 做成事件聚合版或 router 组件。</strong></p>
+</body>
+</html>

@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2024 *IJFS* multivariate pairs 论文只读成“多 fiat 套利”：对 short-cycle desk，更该先测的是「same-underlier multiquote bucket MR × conflict-netting allocator」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2024 *IJFS* multivariate pairs 论文只读成“多 fiat 套利”：对 short-cycle desk，更该先测的是「same-underlier multiquote bucket MR × conflict-netting allocator」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-13 13:11 UTC</span>
+      <span class="pill">研究时间：2026-04-13 13:48 UTC</span>
+      <span class="pill">类型：2024 *International Journal of Financial Studies* 论文全文（arXiv/MDPI 同文版本，本地全文抽取）+ OpenAlex/Crossref 元数据 + Binance Spot `5m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha/relative-value/stat-arb/mean-reversion/multiquote/same-underlier/bucket-allocation/conflict-netting/stablecoin-quote/binance-spot/btc/eth/usdt/usdc/fdusd/5m/paper/fulltext/public-data/cost/risk</span>
+      <span class="pill">证据类型：论文全文 + 元数据 + 公共数据 portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-13_1348_multiquote-bucket-netting-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-13 13:48 UTC</li>
+<li>类型：2024 *International Journal of Financial Studies* 论文全文（arXiv/MDPI 同文版本，本地全文抽取）+ OpenAlex/Crossref 元数据 + Binance Spot <code>5m</code> public-data portability probe</li>
+<li>主题标签：raw-alpha/relative-value/stat-arb/mean-reversion/multiquote/same-underlier/bucket-allocation/conflict-netting/stablecoin-quote/binance-spot/btc/eth/usdt/usdc/fdusd/5m/paper/fulltext/public-data/cost/risk</li>
+<li>证据类型：论文全文 + 元数据 + 公共数据 portability probe</li>
+</ul>
+<ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>同一标的在多个报价腿上的相对价格偏离会回归；与其把每个 pair 各做一遍，不如先把 richest quote / cheapest quote 压成一个 bucket spread，再用冲突净额分配去吃这段收敛。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮看的是：</p>
+<ul>
+<li><strong>Hongshen Yang, Avinash Malik (2024)</strong></li>
+<li><strong>Optimal Market-Neutral Multivariate Pair Trading on the Cryptocurrency Platform</strong></li>
+<li>*International Journal of Financial Studies*</li>
+<li>DOI：&lt;<a href="https://doi.org/10.3390/ijfs12030077&gt;">https://doi.org/10.3390/ijfs12030077&gt;</a></li>
+<li>arXiv：&lt;<a href="https://arxiv.org/abs/2405.15461&gt;">https://arxiv.org/abs/2405.15461&gt;</a></li>
+</ul>
+<p>这篇东西最容易被读成：</p>
+<p>&gt; “又一个 crypto pairs / fiat arbitrage 论文，而且还是 Kraken 上 ETH 对多国法币，离我们 desk 很远。”</p>
+<p>如果只按 headline 读，这个判断不算错；但对当前 short-cycle desk，更值钱的不是它那套 <strong>ETH/USD/CAD/GBP/EUR</strong> 的字面市场，而是它背后的 <strong>multivariate relative-value raw alpha 结构</strong>：</p>
+<p>&gt; <strong>同一 anchor 资产在多个报价腿上出现偏离时，alpha 本体不是某一对腿，而是“整个报价 bucket 的 richest-vs-cheapest 偏离会回归”；多 pair 同时触发时，关键不是再加更多 signal，而是怎么把冲突腿净掉、减少无谓费用。</strong></p>
+<p>这就把它从“又一篇多国法币论文”，翻译成了更贴合 desk 的一条可复现 branch：</p>
+<ul>
+<li><strong>same-underlier multiquote bucket mean reversion</strong></li>
+<li><strong>conflict-netting allocator</strong></li>
+<li><strong>适合先在 <code>5m</code> 做最小实验</strong></li>
+</ul>
+<h2>2. 先把一句话说清楚：这篇东西的 base alpha 是什么？</h2>
+<p>&gt; <strong>base alpha = same-underlier relative-value mean reversion。</strong></p>
+<p>也就是：</p>
+<ul>
+<li>不赌 <code>BTC</code> 本身涨跌；</li>
+<li>而是赌 <code>BTC</code> 在不同 quote leg 上的相对定价偏离会收敛；</li>
+<li><code>rich quote</code> 做空、<code>cheap quote</code> 做多；</li>
+<li>spread 回去就平。</li>
+</ul>
+<p>所以它是：</p>
+<ul>
+<li><code>raw alpha</code></li>
+<li>不是 <code>filter</code></li>
+<li>不是 <code>regime</code></li>
+<li>也不是单纯的 <code>sizing overlay</code></li>
+</ul>
+<p>论文里的优化器很重要，但那是<strong>服务这条 raw alpha 的仓位/净额分配层</strong>，不是 alpha 本体。</p>
+<h2>3. 来源</h2>
+<h3>主来源（paper）</h3>
+<ul>
+<li><strong>Authors：</strong> Hongshen Yang, Avinash Malik</li>
+<li><strong>Year：</strong> 2024</li>
+<li><strong>Title：</strong> *Optimal Market-Neutral Multivariate Pair Trading on the Cryptocurrency Platform*</li>
+<li><strong>Venue：</strong> *International Journal of Financial Studies*, 12(3), 77</li>
+<li><strong>DOI：</strong> &lt;<a href="https://doi.org/10.3390/ijfs12030077&gt;">https://doi.org/10.3390/ijfs12030077&gt;</a></li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://www.mdpi.com/2227-7072/12/3/77&gt;">https://www.mdpi.com/2227-7072/12/3/77&gt;</a></li>
+<li><strong>arXiv URL：</strong> &lt;<a href="https://arxiv.org/abs/2405.15461&gt;">https://arxiv.org/abs/2405.15461&gt;</a></li>
+<li><strong>Repo URL：</strong> N/A</li>
+</ul>
+<h3>元数据复核</h3>
+<ul>
+<li><strong>OpenAlex：</strong> &lt;<a href="https://api.openalex.org/works?search=Optimal%20Market-Neutral%20Multivariate%20Pair%20Trading%20on%20the%20Cryptocurrency%20Platform&amp;per-page=5&gt;">https://api.openalex.org/works?search=Optimal%20Market-Neutral%20Multivariate%20Pair%20Trading%20on%20the%20Cryptocurrency%20Platform&amp;per-page=5&gt;</a></li>
+</ul>
+<h3>本轮本地 artifacts</h3>
+<ul>
+<li>Probe script：<code>reports/artifacts/quant_digests/2026-04-13_multiquote_bucket_probe.py</code></li>
+<li>Probe summary：<code>reports/artifacts/quant_digests/multiquote_bucket_probe_summary_2026-04-13.csv</code></li>
+<li>Probe overlap：<code>reports/artifacts/quant_digests/multiquote_bucket_probe_overlap_2026-04-13.csv</code></li>
+</ul>
+<h2>4. 一句话核心结论 + 一句话证明方式</h2>
+<h3>一句话核心结论</h3>
+<p>&gt; <strong>这篇 paper 最该给 desk 拿走的，不是“ETH 对多法币”这个字面市场，而是“same-underlier 多报价 bucket 的 richest-vs-cheapest 偏离会回归，而且 simultaneous pair signal 应先做冲突净额”这条 raw alpha 结构。</strong></p>
+<h3>一句话证明方式</h3>
+<p>&gt; <strong>论文用 2020–2022 的 Kraken 多法币 ETH 数据做 full-cycle / bull / bear 回测，显示 5m bucket 版在带成本口径下仍有正年化；我再用 Binance Spot 的 <code>BTC/ETH × USDT/USDC/FDUSD</code> <code>5m</code> 公共数据做 portability probe，看到 max-min quote spread 的 1~3 bar 回归仍然存在，而且把多 pair 压成 bucket 后能显著减少腿数。</strong></p>
+<h2>5. 论文里真正值得 desk 记住的点</h2>
+<h3>5.1 它不是简单“找 pair 再做 z-score”，而是直接处理<strong>多腿同时出现信号</strong></h3>
+<p>论文的核心不是又加一个 pair selection 指标，而是：</p>
+<ol>
+<li>先把同一 crypto anchor 的多个报价腿放进一个 bucket；</li>
+<li>每两腿都会形成 spread；</li>
+<li>当多个 spread 同时发出 open / close signal 时，不是机械每对都下；</li>
+<li>而是用一个 <strong>bi-objective convex optimization</strong> 在“收益 vs 风险”之间分配资金；</li>
+<li>同时利用腿间可抵消关系，尽量减少无谓换手与费用。</li>
+</ol>
+<p>翻成人话：</p>
+<p>&gt; <strong>pair 很多时，难点不只是“哪对会回归”，而是“同一根 bar 同时有三四个 pair 都在叫，钱怎么分、哪些腿其实可以净掉”。</strong></p>
+<p>这点对 desk 是真问题，不是学院派装饰。</p>
+<h3>5.2 论文给了明确的 <code>5m</code> 结果，不是慢频空谈</h3>
+<p>论文里对 <code>1m / 5m / 60m</code> 都做了试验；对我们最重要的是 <code>5m</code>：</p>
+<ul>
+<li><strong>最优阈值（5m）</strong>：<code>open = 9σ</code>，<code>close = 7σ</code></li>
+<li><strong>5m full-cycle 年化（TC 0.1%）</strong>：</li>
+<li><code>OTT λ=0.5</code>：<strong>37.74%</strong></li>
+<li><code>OTT λ=1</code>：<strong>15.49%</strong></li>
+<li><code>OTT λ=2</code>：<strong>7.74%</strong></li>
+<li><strong>5m full-cycle Sharpe（文中 Table 8）</strong>：</li>
+<li><code>λ=0.5</code>：<strong>1.11</strong></li>
+<li><code>λ=1</code>：<strong>0.68</strong></li>
+<li><code>λ=2</code>：<strong>0.44</strong></li>
+<li><strong>5m bear-market 年化（TC 0.1%）</strong>：<code>λ=1</code> 仍约 <strong>4.99%</strong></li>
+</ul>
+<p>这不等于“我们照抄就能赚到同样的钱”，但至少说明：</p>
+<ul>
+<li>这不是纯概念文；</li>
+<li>它给了 <code>5m</code> 层面的完整策略骨架；</li>
+<li>而且重点就是 <strong>market-neutral / relative-value</strong>，不是单边牛市吃 β。</li>
+</ul>
+<h3>5.3 它最适合迁移的，不是“多法币”，而是“多报价腿 + 净额分配”</h3>
+<p>论文原始市场是 Kraken 的 ETH 多法币报价； 对我们 desk，更自然的迁移不是去复现 <code>ETHCAD / ETHGBP / ETHEUR</code>，而是：</p>
+<ul>
+<li><code>BTCUSDT / BTCUSDC / BTCFDUSD</code></li>
+<li><code>ETHUSDT / ETHUSDC / ETHFDUSD</code></li>
+<li>甚至未来再扩到多 venue / spot-perp / perp-perp 同 underlier 多报价腿</li>
+</ul>
+<p>因为真正可迁移的是：</p>
+<ul>
+<li><strong>quote-premium dispersion</strong></li>
+<li><strong>bucket-level richest vs cheapest</strong></li>
+<li><strong>signal conflict netting</strong></li>
+</ul>
+<h2>6. 为什么这轮值得进当前研究池</h2>
+<h3>6.1 它仍然是 raw alpha，不是“pairs 组合管理小修小补”</h3>
+<p>最近池子里 pairs / stat-arb 已经很多，但多数还是：</p>
+<ul>
+<li>pair admission</li>
+<li>hedge ratio</li>
+<li>spread z-score</li>
+<li>threshold / half-life</li>
+</ul>
+<p>这篇多补了一层很关键、也更 desk 化的东西：</p>
+<p>&gt; <strong>当你不是只有一对腿，而是一整个 quote bucket 时，raw alpha 依然成立，但 execution / sizing 不该再按 pair-by-pair 处理。</strong></p>
+<h3>6.2 它和当前 short-cycle desk 直接相关</h3>
+<p>它不是长周期资产配置题，因为：</p>
+<ul>
+<li>论文直接包含 <code>5m</code>；</li>
+<li>当前可迁移市场（stablecoin quote legs）也能落在 <code>5m / 1m / 3m</code>；</li>
+<li>最小实验不依赖付费数据。</li>
+</ul>
+<h3>6.3 它补的是当前素材池里相对少的一种 relative-value 形态</h3>
+<p>它不是：</p>
+<ul>
+<li>单币动量</li>
+<li>单币反转</li>
+<li>funding carry</li>
+<li>跨资产 lead-lag</li>
+</ul>
+<p>而是：</p>
+<ul>
+<li><strong>same-underlier, multi-quote, market-neutral mean reversion</strong></li>
+<li>这和已有大量“BTC 带 alt、funding、session pocket”的题材确实不一样</li>
+</ul>
+<h2>7. 我这次怎么做最小 portability probe</h2>
+<h3>7.1 probe 口径</h3>
+<p>为了把 paper 翻译到更像我们 desk 的环境，我没有去重建 Kraken 多法币，而是改成：</p>
+<ul>
+<li><strong>市场：</strong> Binance Spot</li>
+<li><strong>频率：</strong> <code>5m</code></li>
+<li><strong>样本：</strong> 近约 <code>60d</code>（<code>2026-02-12 13:10 UTC</code> 到 <code>2026-04-13 13:05 UTC</code>）</li>
+<li><strong>资产：</strong></li>
+<li><code>BTCUSDT / BTCUSDC / BTCFDUSD</code></li>
+<li><code>ETHUSDT / ETHUSDC / ETHFDUSD</code></li>
+<li><strong>bucket 定义：</strong> 同一时刻对三个 quote 的 log price 取横截面均值，计算各 quote premium</li>
+<li><strong>主信号：</strong> <code>bucket_spread = max(premium) - min(premium)</code></li>
+<li><strong>z-score：</strong> <code>24h rolling</code>（<code>288</code> 根 <code>5m</code> bar）</li>
+<li><strong>entry：</strong> <code>bucket_z &gt; 2</code></li>
+<li><strong>方向：</strong> <code>short richest quote / long cheapest quote</code></li>
+<li><strong>持有：</strong> <code>1 bar</code> 与 <code>3 bars</code> 两档对照</li>
+</ul>
+<h3>7.2 为什么这样做</h3>
+<p>这样做的目的不是证明“paper 原文原封不动搬到 Binance Spot 也成立”，而是先回答两个更实用的问题：</p>
+<ol>
+<li><strong>same-underlier 多报价腿的偏离回归，在今天还在不在？</strong></li>
+<li><strong>如果三组 pair 同时亮灯，把它们压成一个 bucket signal，会不会比 pairwise 平铺更有效率？</strong></li>
+</ol>
+<h2>8. 关键结果：bucket alpha 还在，而且比“把所有 pair 都做一遍”更干净</h2>
+<h3>8.1 BTC：bucket max-min spread 在 <code>5m</code> 上仍有明显 1~3 bar 回归</h3>
+<p><code>BTC × {USDT, USDC, FDUSD}</code></p>
+<ul>
+<li><code>z &gt; 2</code> 事件数：<strong>880</strong></li>
+<li><code>+1 bar</code>：<strong>+1.20 bps / 次</strong>，命中率 <strong>80.9%</strong></li>
+<li><code>+3 bars</code>：<strong>+1.31 bps / 次</strong>，命中率 <strong>80.6%</strong></li>
+</ul>
+<p>这说明：</p>
+<p>&gt; <strong>当 BTC 三个报价腿里 richest-vs-cheapest 撑得够开时，未来 5~15 分钟里 spread 回来的概率很高。</strong></p>
+<h3>8.2 ETH：同样结构在 ETH 上更强</h3>
+<p><code>ETH × {USDT, USDC, FDUSD}</code></p>
+<ul>
+<li><code>z &gt; 2</code> 事件数：<strong>751</strong></li>
+<li><code>+1 bar</code>：<strong>+1.78 bps / 次</strong>，命中率 <strong>83.6%</strong></li>
+<li><code>+3 bars</code>：<strong>+1.85 bps / 次</strong>，命中率 <strong>85.9%</strong></li>
+</ul>
+<p>所以这不是只在 BTC 上的单点现象； 至少在 major spot multiquote 上，<strong>same-underlier quote-premium MR</strong> 还是能看到的。</p>
+<h3>8.3 把多 pair 直接压成 bucket，比 pairwise 平铺更像 desk 要的东西</h3>
+<p>我同时做了一个 pairwise 对照：</p>
+<ul>
+<li>三个 quote 之间所有 pair 都单独算 spread z-score；</li>
+<li>每根 bar 对当下所有 active pair 的收益做 equal-bar 平均；</li>
+<li>看它和 bucket max-min 哪个更干净。</li>
+</ul>
+<p>结果：</p>
+<p>#### BTC</p>
+<ul>
+<li><code>pairwise_equalbar +1 bar</code>：<strong>+0.92 bps</strong>，命中率 <strong>78.9%</strong></li>
+<li><code>bucket_maxmin +1 bar</code>：<strong>+1.20 bps</strong>，命中率 <strong>80.9%</strong></li>
+<li><code>pairwise_equalbar +3 bars</code>：<strong>+0.98 bps</strong></li>
+<li><code>bucket_maxmin +3 bars</code>：<strong>+1.31 bps</strong></li>
+</ul>
+<p>#### ETH</p>
+<ul>
+<li><code>pairwise_equalbar +1 bar</code>：<strong>+1.12 bps</strong>，命中率 <strong>80.5%</strong></li>
+<li><code>bucket_maxmin +1 bar</code>：<strong>+1.78 bps</strong>，命中率 <strong>83.6%</strong></li>
+<li><code>pairwise_equalbar +3 bars</code>：<strong>+1.18 bps</strong></li>
+<li><code>bucket_maxmin +3 bars</code>：<strong>+1.85 bps</strong></li>
+</ul>
+<p>翻成人话：</p>
+<p>&gt; <strong>不是 pair 越多越好；把最极端的 richest-vs-cheapest 抽出来，反而比“所有 pair 平铺做一遍”更强。</strong></p>
+<h2>9. 关键结果二：conflict netting 确实值得做，不是形式主义</h2>
+<p>如果你把三条 quote 腿全拆成 pair，会有三组 spread：</p>
+<ul>
+<li>USDT-USDC</li>
+<li>USDT-FDUSD</li>
+<li>USDC-FDUSD</li>
+</ul>
+<p>问题是：这些信号经常会在同一根 bar 同时亮，而且方向上高度相关。</p>
+<h3>BTC</h3>
+<ul>
+<li>有任一 pair 亮灯的 bars：<strong>3208</strong></li>
+<li>其中 <code>&gt;=2</code> 条 pair 同时亮灯的比例：<strong>43.3%</strong></li>
+<li>如果只做“净额折叠”，把所有 pair 信号先压成 quote-level two-leg exposure：</li>
+<li>总腿数可从 <strong>9402</strong> 降到 <strong>6416</strong></li>
+<li><strong>腿数减少约 31.8%</strong></li>
+</ul>
+<h3>ETH</h3>
+<ul>
+<li>有任一 pair 亮灯的 bars：<strong>3095</strong></li>
+<li>其中 <code>&gt;=2</code> 条 pair 同时亮灯的比例：<strong>43.4%</strong></li>
+<li>净额折叠后：</li>
+<li>总腿数从 <strong>9102</strong> 降到 <strong>6190</strong></li>
+<li><strong>腿数减少约 32.0%</strong></li>
+</ul>
+<p>也就是说：</p>
+<p>&gt; <strong>即便不做复杂优化器，只先做最朴素的 signal netting，腿数也能少掉约三分之一。</strong></p>
+<p>这就是这篇 paper 对 desk 最现实的价值之一。</p>
+<h2>10. 但为什么我仍然把“可直接落地完整策略”写成“否”</h2>
+<p>因为当前 probe 还有几个硬限制：</p>
+<ol>
+<li><strong>gross edge 太薄</strong></li>
+</ol>
+<ul>
+<li>1~2 bps 的 spread 回归很好看；</li>
+<li>但若按普通双腿 taker、甚至普通 spot 成交成本算，很容易被吃掉。</li>
+</ul>
+<ol>
+<li><strong>现货同 underlier 多报价腿，不等于天然可 frictionless 做空 rich leg</strong></li>
+</ol>
+<ul>
+<li>如果没有 margin / inventory / internal conversion / maker queue，执行并不免费。</li>
+</ul>
+<ol>
+<li><strong>这轮只验证了 alpha 本体和 netting 价值</strong></li>
+</ol>
+<ul>
+<li>还没把真正的 fee ladder、borrow、maker queue、fill uncertainty 放进去。</li>
+</ul>
+<p>所以最诚实的定位是：</p>
+<p>&gt; <strong>这是一条可独立复现、而且结构很清楚的 raw alpha；但今天更像“same-venue quote dispersion sleeve / execution router / internal inventory book”候选，而不是 plain taker 现成策略。</strong></p>
+<h2>11. 对当前 desk 的落点</h2>
+<p>我会把它定位成三种用途之一：</p>
+<h3>11.1 raw alpha 素材池里的一个独立 relative-value 分支</h3>
+<p>不是单币，不是跨资产，也不是 funding； 它补的是 <strong>same-underlier quote dispersion MR</strong>。</p>
+<h3>11.2 pairs / basket 书的 allocator 设计参考</h3>
+<p>这篇 paper 其实在提醒我们：</p>
+<ul>
+<li>多 pair 同时亮灯时，</li>
+<li>不要本能地“每个 pair 各开一遍”；</li>
+<li>先看能不能压到 quote-level / leg-level 做净额。</li>
+</ul>
+<h3>11.3 执行/路由层的 veto / selector</h3>
+<p>如果之后我们还有：</p>
+<ul>
+<li>spot-perp basis</li>
+<li>perp-perp same-underlier spread</li>
+<li>cross-venue quote dislocation</li>
+</ul>
+<p>那这个 bucket 思路也可以反过来当：</p>
+<ul>
+<li><strong>selector</strong>：只挑 richest-vs-cheapest 的最极端腿</li>
+<li><strong>throttle</strong>：同一 underlier 不重复开太多互相关腿</li>
+</ul>
+<h2>12. 策略拆解（当前版本）</h2>
+<ul>
+<li>方向属性：market-neutral / same-underlier / relative-value / short-horizon mean reversion</li>
+<li>基础 alpha：<code>richest quote premium - cheapest quote premium</code> 回归</li>
+<li>最小信号：<code>bucket_z &gt; z_entry</code></li>
+<li>最小执行：<code>short rich quote / long cheap quote</code></li>
+<li>最小 exit：<code>1~3 bars</code> 或 <code>spread 回到 close band</code></li>
+<li>sizing / allocator：先做 quote-level netting，再谈 risk-weighted allocation</li>
+<li>主要风险：fee、滑点、稳定币本身的 peg 偏移、margin/borrow 可得性、队列成交不确定性</li>
+</ul>
+<h2>13. 下一步怎么测（必须项）</h2>
+<ol>
+<li><strong>把 gross 直接压进 fee ladder</strong></li>
+</ol>
+<ul>
+<li>至少测试 <code>0.5 / 1 / 2 / 4 bps per leg</code>；</li>
+<li>这样才能知道它是 maker-only、inventory-only，还是根本不该做。</li>
+</ul>
+<ol>
+<li><strong>从 fixed-hold 改成真正的 <code>open/close band</code></strong></li>
+</ol>
+<ul>
+<li>参考 paper 的 <code>open/close threshold</code> 思路；</li>
+<li>看 <code>z&gt;2 open, z&lt;0.5 close</code> 与 <code>1/3 bar fixed hold</code> 哪个更适合当前 quote leg。</li>
+</ul>
+<ol>
+<li><strong>把 bucket 从单 venue spot 扩到更可执行的腿</strong></li>
+</ol>
+<ul>
+<li><code>spot quote vs spot quote</code></li>
+<li><code>spot vs perp</code> 同 underlier</li>
+<li><code>perp vs perp</code> 多 venue 同 underlier</li>
+</ul>
+<ol>
+<li><strong>把 allocator 做成真正 quote-level netting，而不是 pair-by-pair 下单</strong></li>
+</ol>
+<ul>
+<li>输出最终 quote exposure，而不是输出三条 pair order；</li>
+<li>这是这篇 paper 最值得工程化的部分。</li>
+</ul>
+<ol>
+<li><strong>往更快频率下压 <code>1m / 3m</code></strong></li>
+</ol>
+<ul>
+<li>这类 quote dispersion 通常寿命更短；</li>
+<li><code>5m</code> 已经能看见结构，下一步应直接检查 <code>1m / 3m</code> 是否更像真实 pocket。</li>
+</ul>
+<h2>14. 当前结论</h2>
+<p>如果只问一句“这篇东西现在为什么值得进池子？”——我的答案是：</p>
+<p>&gt; <strong>因为它不是又一篇普通 pairs；它补的是“same-underlier 多报价腿 raw alpha + signal conflict netting”这层结构，而这层正好能服务于我们后续的 relative-value / stat-arb / execution router 组件拆解。</strong></p>
+<p>更具体一点：</p>
+<ul>
+<li>作为 <strong>raw alpha</strong>，它成立；</li>
+<li>作为 <strong>直接 taker 策略</strong>，当前不够；</li>
+<li>作为 <strong>desk 的 relative-value / allocator 素材</strong>，很值钱。</li>
+</ul>
+</body>
+</html>

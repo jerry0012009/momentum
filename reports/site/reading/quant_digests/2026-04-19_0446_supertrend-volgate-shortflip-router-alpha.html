@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 SuperTrend 仓只读成“TradingView 指标自动下单脚本”：对 short-cycle crypto desk，更该先拆的是「ATR-trail 趋势翻转 × vol gate × strongest short flip」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 SuperTrend 仓只读成“TradingView 指标自动下单脚本”：对 short-cycle crypto desk，更该先拆的是「ATR-trail 趋势翻转 × vol gate × strongest short flip」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-19 04:47 UTC</span>
+      <span class="pill">研究时间：2026-04-19 04:46 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：trend / supertrend / atr / trend-flip / short-router / volatility-gate / binance-perpetual / 15m / 5m</span>
+      <span class="pill">证据类型：工程经验 + repo source audit + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-19_0446_supertrend-volgate-shortflip-router-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-19 04:46 UTC</li>
+<li>类型：GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：当价格从 SuperTrend 下方重新跌回其下、且最近短窗波动已明显抬升时，说明 ATR-adjusted 趋势翻转可能刚开始而不是噪音回摆；若同一时点多币一起翻空，优先做离 SuperTrend 最远的一档。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：trend / supertrend / atr / trend-flip / short-router / volatility-gate / binance-perpetual / 15m / 5m</li>
+<li>证据类型：工程经验 + repo source audit + public-data portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 GitHub 仓 <code>yanboishere/Trade.with-SuperTrend.parameter</code>。虽然仓最早建于 2023，但最近可见更新时间到 <code>2026-04-06</code>，核心就是把 TradingView 的 SuperTrend 翻转信号接到交易接口，再补上 stop-loss / take-profit、波动率开仓门槛、以及“最近 30 分钟没继续变化就平仓”的超短超时逻辑。</p>
+<p><strong>一句话核心结论：</strong> 这条线当前不能被读成“SuperTrend 双向翻转都能直接做”，更像一个 <strong><code>15m</code> strongest-only short flip pocket</strong>；long 端和全样本都偏薄。 <strong>一句话证明方式：</strong> 我把 repo 的 <code>ATR-trail trend flip + vol gate + timeout</code> 思路，映射到 Binance USDⓈ-M <code>15m/5m</code> 多币公共数据上，比较 all-signals、long/short 拆分、以及同刻只留最强一档的 router 表现。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li>repo 提供的是<strong>完整策略壳</strong>，不是纯指标说明：有 SuperTrend 计算、下单、止损止盈、波动率门槛，还额外给了“近 <code>30m</code> 没继续变化就平仓”的退出思路。</li>
+<li>但 portability probe 很清楚：<strong>对称 long/short 读法不成立</strong>。<code>15m</code> 全样本 <code>1263</code> 笔，next <code>8</code> bars（约 <code>2h</code>）只有约 <code>-0.17bps gross / -8.17bps net</code>；<code>5m</code> 全样本 <code>1667</code> 笔更差，约 <code>-0.98bps gross / -8.98bps net</code>。</li>
+<li><code>15m</code> long flip 明显偏弱：<code>628</code> 笔，约 <code>-1.88bps gross / -9.88bps net</code>；这说明别把“翻多”想当然当成对称镜像机会。</li>
+<li>真正留下 pocket 的，是 <strong><code>15m</code> vol-positive strongest short flip top1 router</strong>：<code>237</code> 笔，约 <code>+9.17bps gross / +1.17bps net</code>，median 约 <code>+1.78bps gross</code>，胜率约 <code>50.63%</code>。厚度不算夸张，但至少说明“翻空后再顺着打最强那一档”比 all-signals 更像可继续深挖的 raw alpha。</li>
+<li><code>5m</code> 的 top1 long 虽然比 all-signals 好一些（<code>299</code> 笔，约 <code>+3.98bps gross</code>），但粗扣 <code>8bps</code> 后仍约 <code>-4.02bps net</code>；所以当前更像 <strong><code>15m</code> 母信号 + <code>5m</code> child execution</strong>，不是裸 <code>5m</code> 主策略。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>最近素材池里虽然已有不少 breakout / continuation / MR，但 <strong>ATR-trailing trend flip</strong> 这种“趋势翻转壳”还没有被单独拆干净。这类 repo 的价值，不是告诉我们“SuperTrend 很神”，而是把一个常见 TradingView 指标，往 <strong>entry / exit / timeout / volatility veto / router</strong> 这些更 desk-friendly 的组件上拆开。当前 probe 又进一步告诉我们：这类壳更值得先研究的是 <strong>short-side admission / router</strong>，而不是照单全收双向开仓。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：顺势翻转 / 单资产；当前 pocket 偏 short-only</li>
+<li>基础 alpha：ATR-adjusted trend flip after volatility expansion</li>
+<li>regime：更适合近期波动已经抬起来、不是低波死区里的假翻转</li>
+<li>filter / veto：<code>realized_vol20 &gt; 0.2%</code>；优先 <code>volume_z &gt; 0</code>；同一时点多币同时翻转时只留 <code>|close-supertrend|/ATR</code> 最大的一档</li>
+<li>risk / sizing / execution overlay：下一根开盘进场；固定 <code>8 x 15m</code> time-box；可补 repo 里的 <code>30m no-change timeout</code> 与止损止盈；成本先按 <code>8bps</code> round-trip 粗算</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li>研究假设：当 <code>15m</code> 收盘刚从 SuperTrend 上方翻到下方，且近 <code>20</code> 根的 realized vol 已超过 <code>0.2%</code>，后续 <code>~2h</code> 更可能继续顺势而不是立刻打回。</li>
+<li>一个可计算定义：标准 <code>SuperTrend(ATR=10, multiplier=3)</code>；若 <code>trend</code> 从 <code>+1 -&gt; -1</code>，记为 short flip；若当刻 <code>realized_vol20 &gt; 0.2%</code>，且 <code>volume_z &gt; 0</code>，则入候选池；若同刻多币同时触发，只做 <code>|close-supertrend|/ATR</code> 最高的一档。</li>
+<li>最小回测切口：Binance USDⓈ-M <code>BTC/ETH/SOL/BNB/XRP/DOGE/ADA/LINK/AVAX/LTC</code>，先测 <code>15m</code> 信号持有 <code>8</code> 根，再把 entry 下沉到 <code>5m</code> 做 pullback / child execution。</li>
+<li>最该先看：<code>15m top1 short</code> 的 net bps 是否能在更长样本、更多币、以及不同成本梯度下保持为正；其次再看 <code>timeout exit</code> 是否比固定 <code>8 bars</code> 更好。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>当前 pocket 很薄：<code>15m top1 short</code> 虽然转正，但 net 只约 <code>+1.17bps/trade</code>，远称不上“可直接上线”。</li>
+<li>胜率并不高，优势更多来自右尾而不是稳定高命中；如果 child execution 没做好，很容易被成本再吃掉。</li>
+<li>这类指标仓常见问题是<strong>把视觉上顺眼的翻转误当成系统性 alpha</strong>；本轮 probe 已明确提醒：long 端和全样本都不行。</li>
+<li>repo 本身更偏 API / demo 项目，不是严谨 backtest 框架；真正值钱的是它给出的组件拆法：<code>trend flip -&gt; vol veto -&gt; timeout exit -&gt; strongest-only router</code>。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>yanboishere. (repo active through 2026 metadata). *Trade.with-SuperTrend.parameter*.</li>
+<li>Repo URL: <code><a href="https://github.com/yanboishere/Trade.with-SuperTrend.parameter">https://github.com/yanboishere/Trade.with-SuperTrend.parameter</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/yanboishere/Trade.with-SuperTrend.parameter/blob/master/README.md">https://github.com/yanboishere/Trade.with-SuperTrend.parameter/blob/master/README.md</a></code></li>
+<li>Source audit used in this digest:</li>
+<li><code><a href="https://raw.githubusercontent.com/yanboishere/Trade.with-SuperTrend.parameter/master/README.md">https://raw.githubusercontent.com/yanboishere/Trade.with-SuperTrend.parameter/master/README.md</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/yanboishere/Trade.with-SuperTrend.parameter/master/How.SuperTrend.code.works.md">https://raw.githubusercontent.com/yanboishere/Trade.with-SuperTrend.parameter/master/How.SuperTrend.code.works.md</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/yanboishere/Trade.with-SuperTrend.parameter/master/main.py">https://raw.githubusercontent.com/yanboishere/Trade.with-SuperTrend.parameter/master/main.py</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/yanboishere/Trade.with-SuperTrend.parameter/master/%E6%A3%80%E6%9F%A5%E4%BB%A3%E7%A0%81%E8%BF%90%E8%A1%8C%E5%89%8D%E7%9A%84K%E7%BA%BF%E4%B8%AD%20%E5%A6%82%E6%9E%9C%E8%BF%87%E5%8E%BB%E4%B8%80%E6%AE%B5%E6%97%B6%E9%97%B4%20K%E7%BA%BF%E6%9C%80%E5%A4%A7%E6%B3%A2%E5%8A%A8%E7%8E%87%E5%B0%8F%E4%BA%8E0.2%25%20%E5%88%99%E4%B8%8D%E5%BC%80%E4%BB%93%E4%BA%A4%E6%98%93%20%E7%9B%B4%E5%88%B0%E6%B3%A2%E5%8A%A8%E7%8E%87%E5%A4%A7%E4%BA%8E%E8%BF%99%E4%B8%80%E6%B0%B4%E5%B9%B3%20%E5%86%8D%E8%BF%9B%E8%A1%8C%E6%8E%A5%E4%B8%8B%E6%9D%A5%E7%9A%84%E5%BC%80%E4%BB%93%E6%93%8D%E4%BD%9C.py">https://raw.githubusercontent.com/yanboishere/Trade.with-SuperTrend.parameter/master/%E6%A3%80%E6%9F%A5%E4%BB%A3%E7%A0%81%E8%BF%90%E8%A1%8C%E5%89%8D%E7%9A%84K%E7%BA%BF%E4%B8%AD%20%E5%A6%82%E6%9E%9C%E8%BF%87%E5%8E%BB%E4%B8%80%E6%AE%B5%E6%97%B6%E9%97%B4%20K%E7%BA%BF%E6%9C%80%E5%A4%A7%E6%B3%A2%E5%8A%A8%E7%8E%87%E5%B0%8F%E4%BA%8E0.2%25%20%E5%88%99%E4%B8%8D%E5%BC%80%E4%BB%93%E4%BA%A4%E6%98%93%20%E7%9B%B4%E5%88%B0%E6%B3%A2%E5%8A%A8%E7%8E%87%E5%A4%A7%E4%BA%8E%E8%BF%99%E4%B8%80%E6%B0%B4%E5%B9%B3%20%E5%86%8D%E8%BF%9B%E8%A1%8C%E6%8E%A5%E4%B8%8B%E6%9D%A5%E7%9A%84%E5%BC%80%E4%BB%93%E6%93%8D%E4%BD%9C.py</a></code></li>
+<li><code><a href="https://raw.githubusercontent.com/yanboishere/Trade.with-SuperTrend.parameter/master/%E6%A3%80%E6%9F%A5%E8%B6%85%E7%BA%A7%E8%B6%8B%E5%8A%BF%E6%8C%87%E6%A0%87%E6%98%AF%E5%90%A6%E5%9C%A8%E6%9C%80%E8%BF%9130%E5%88%86%E9%92%9F%E5%86%85%E5%8F%91%E7%94%9F%E5%8F%98%E5%8C%96%EF%BC%8C%E5%B9%B6%E5%9C%A8%E6%9C%89%E4%BB%93%E4%BD%8D%E6%97%B6%E5%B9%B3%E4%BB%93.py">https://raw.githubusercontent.com/yanboishere/Trade.with-SuperTrend.parameter/master/%E6%A3%80%E6%9F%A5%E8%B6%85%E7%BA%A7%E8%B6%8B%E5%8A%BF%E6%8C%87%E6%A0%87%E6%98%AF%E5%90%A6%E5%9C%A8%E6%9C%80%E8%BF%9130%E5%88%86%E9%92%9F%E5%86%85%E5%8F%91%E7%94%9F%E5%8F%98%E5%8C%96%EF%BC%8C%E5%B9%B6%E5%9C%A8%E6%9C%89%E4%BB%93%E4%BD%8D%E6%97%B6%E5%B9%B3%E4%BB%93.py</a></code></li>
+</ul>
+<h2>7. 本地 portability probe 产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/2026-04-19_supertrend_flip_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_supertrend_flip_router_summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_supertrend_flip_15m_events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_supertrend_flip_5m_events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/2026-04-19_supertrend_flip_portfolio.json</code></li>
+</ul>
+</body>
+</html>

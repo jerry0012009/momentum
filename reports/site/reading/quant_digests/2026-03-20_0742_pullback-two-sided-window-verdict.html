@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 EMA / PSAR raw trigger 当成入场：`pullback → two-sided breakout window` 更像 breakout-short / Fib / EMA 的 honest continuation verdict</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 EMA / PSAR raw trigger 当成入场：`pullback → two-sided breakout window` 更像 breakout-short / Fib / EMA 的 honest continuation verdict</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-20 07:44 UTC</span>
+      <span class="pill">研究时间：2026-03-20 07:42 UTC</span>
+      <span class="pill">类型：GitHub 仓库</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/pullback/two-sided-window/continuation/failure/timeout/final-verdict/follow-up/repo/crypto/5m/15m</span>
+      <span class="pill">证据类型：仓库代码 + 仓库自报回测</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-20_0742_pullback-two-sided-window-verdict.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-20 07:42 UTC</li>
+<li>类型：GitHub 仓库</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/pullback/two-sided-window/continuation/failure/timeout/final-verdict/follow-up/repo/crypto/5m/15m</li>
+<li>证据类型：仓库代码 + 仓库自报回测</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这次主看 GitHub 仓库 <strong>ilahuerta-IA/backtrader-pullback-window-xauusd</strong>（2025-10 创建，2026-03 仍在更新，37★）。这份 repo 最值得偷的不是它的 <code>EMA(1/14/18/24)</code> 参数，而是一个很适合我们当前三条收口线的旁支想法：<strong>把“raw trigger”降级成 <code>scan</code>，真正的 entry 交给 <code>pullback → two-sided breakout window</code> 来做 success / failure / timeout 判决。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：对 5m/15m crypto desk，更值得先测的不是“换一组更神的 EMA/PSAR 参数”，而是把原始信号之后的那段小路径离散成 <code>armed → pullback confirmed → window open → success/failure/timeout</code>。</li>
+<li><strong>一句话证明方式</strong>：repo 用 5 分钟 XAUUSD 回测一个 4-phase state machine；虽然资产不是 crypto、结果也属作者自报，但它明确给出了一个比“信号一亮就下单”更诚实的执行骨架。</li>
+<li>repo 自报结果（<strong>未独立复核</strong>）：2020-07~2025-07 的 5m XAUUSD 上，<code>175</code> 笔交易、<code>55.43%</code> 胜率、<code>1.64</code> Profit Factor、<code>5.81%</code> Max DD、总回报 <code>+44.75%</code>。</li>
+<li>repo 自报的细节里，最有启发的一条不是总收益，而是：<code>Window Breakout (Normal)</code> 有 <code>162</code> 笔、胜率 <code>56.2%</code>，而 <code>Quick Entry (Fast Market)</code> 只有 <code>13</code> 笔、胜率 <code>46.2%</code>。这基本就是在提醒我们：<strong>同一个方向 bias，晚一点、等 verdict，再进，可能比 trigger 当场冲更值钱。</strong></li>
+<li>代码层的关键骨架：</li>
+</ul>
+<ol>
+<li><code>SCANNING</code>：只负责发现 EMA crossover + 方向 candle + 可选 angle/ATR filter；</li>
+<li><code>ARMED</code>：不立刻进场，先等 <code>1~3</code> 根逆向 pullback candle；</li>
+<li><code>WINDOW_OPEN</code>：用最后一根 pullback candle 的 <code>high/low</code> 构造双边窗口，并允许 <code>time offset</code>；</li>
+<li><code>SUCCESS / FAILURE / TIMEOUT</code>：顺向破边才 entry；反向破边视为 instability；超时则 setup 作废。</li>
+</ol>
+<ul>
+<li>对我们更重要的不是 “Gold 也能赚”，而是这套骨架把 continuation / retest / re-break 统一写成了一个<strong>可离散、可统计、可否决</strong>的 verdict 机制。</li>
+</ul>
+<h2>3. 为什么这轮值得先做</h2>
+<p>这轮不是另开新宇宙，反而是直接给当前三条收口线补一个共同缺口：<strong>trigger 之后，到底什么才算“值得进”的 follow-up。</strong></p>
+<ul>
+<li><code>V3 final-verdict / breakout-short follow-up</code>：breakdown 本身只负责把 setup 变成 <code>armed_short</code>；随后若出现 <code>1~2</code> 根反抽绿转红/红转绿<code>(按方向定义)</code>，再开一个很短的下破窗口。<strong>向下 success 才叫 follow-up，向上 failure 就该直接否决。</strong></li>
+<li><code>Fibonacci confirmation / retest_hold</code>：Fib zone 触位后，不要把“摸到就算 hold”。更诚实的写法是：先确认 pullback 成立，再要求价格在 <code>W</code> 根内重新突破 pullback extremum；没突破是 timeout，跌穿 opposite edge 是 failure。</li>
+<li><code>EMA / PSAR raw alpha focus</code>：这套东西本质上没有改 EMA/PSAR 的本体，只是把 raw alpha 从 <code>entry key</code> 降成 <code>scan key</code>。这正适合当前阶段——先测“post-trigger verdict layer”能不能救 raw alpha，而不是继续炼更复杂指标堆叠。</li>
+</ul>
+<h2>4. 我们最该偷的，不是参数，而是 3 个 execution 结构件</h2>
+<h3>A. 双边窗口，而不是单边确认</h3>
+<p>repo 的窗口不是“只看顺向破位”，而是同时定义 <code>success boundary</code> 和 <code>failure boundary</code>。这点非常适合我们当前的 <code>final-verdict</code> 语境：</p>
+<ul>
+<li>breakout-short：下破 <code>pullback low - offset</code> 才算 success；上穿 <code>pullback high + offset</code> 就是 failure；</li>
+<li>Fib retest：重破 pullback high / low 才算 hold confirmed；反向失守就是 hold invalidated；</li>
+<li>EMA/PSAR：raw cross / flip 只是 <code>scan</code>，真正进场要等窗口给 verdict。</li>
+</ul>
+<h3>B. timeout 必须是一级公民</h3>
+<p>repo 明确把 <code>window_expiry_bar</code> 写进状态机。对 15m 很关键：</p>
+<ul>
+<li>如果 retest / follow-up 迟迟不发生，它本身就是负信息；</li>
+<li>这比事后再加 <code>late entry veto</code> 更干净，因为 timeout 是 setup 自带标签，不是补丁；</li>
+<li>这跟最近我们反复碰到的 <code>late retest / stale follow-up</code> 问题是同一个洞。</li>
+</ul>
+<h3>C. failure 后别直接归零，可回到 re-arm</h3>
+<p>repo 在 failure / timeout 后不是一律回 <code>SCANNING</code>，而是很多情形回到 <code>ARMED_*</code>，允许同方向 setup 重新找新的 pullback。这个细节很适合 <code>breakout-short follow-up</code>：<strong>失败不等于 bias 死亡，更可能只是这一次 re-break 质量不够。</strong></p>
+<h2>5. 先别急着照搬的地方</h2>
+<ul>
+<li>资产是 <code>XAUUSD 5m</code>，不是 crypto perp；它的时段性、跳动值、交易时段、spread 结构都不同。</li>
+<li>repo 的绩效数字是作者自报，且没有独立 clean replication；我们现在只能把它当“高信息执行模板”，不能当已验证 alpha。</li>
+<li>该 repo 还带了 angle / ATR / time filter / 头寸管理等一整包条件；<strong>这轮最该偷的是 state machine verdict，不是整包照抄。</strong></li>
+</ul>
+<h2>6. 可复刻的最小实验（先做这个）</h2>
+<h3>实验目标</h3>
+<p>验证：<strong>把 raw trigger 改成 <code>scan-only</code>，再加一个短窗口 success/failure/timeout verdict，是否能优于当场入场。</strong></p>
+<h3>6.1 统一母骨架</h3>
+<ol>
+<li>周期：先 <code>15m</code>，执行补充看 <code>5m</code>；标的先 <code>BTC/ETH/SOL perp</code>。</li>
+<li>原始 trigger：</li>
+</ol>
+<ul>
+<li>breakout-short：现有 <code>V3 final-verdict</code> 触发条件；</li>
+<li>Fib：现有 <code>zone touch / reclaim</code> 候选；</li>
+<li>EMA/PSAR：现有 raw cross / raw flip。</li>
+</ul>
+<ol>
+<li>一旦 trigger 出现，只标 <code>armed_dir=±1</code>，<strong>不立刻下单</strong>。</li>
+<li>pullback 定义：trigger 后出现 <code>1~3</code> 根逆向 candle，或 <code>pullback_depth &lt;= d</code>（可并行测 <code>candle-count</code> 与 <code>depth</code> 两种口径）。</li>
+<li>窗口定义：用最后一根 pullback bar 的 <code>high/low</code> 建双边窗口；先测：</li>
+</ol>
+<ul>
+<li><code>offset = 0, 0.25, 0.5 × pullback_range</code></li>
+<li><code>window = 2, 4, 6 bars</code></li>
+</ul>
+<ol>
+<li>verdict：</li>
+</ol>
+<ul>
+<li><code>success</code>：顺向破 success edge；</li>
+<li><code>failure</code>：反向破 failure edge；</li>
+<li><code>timeout</code>：到 <code>window_expiry_bar</code> 仍未 success。</li>
+</ul>
+<h3>6.2 三条线各自怎么压</h3>
+<ul>
+<li><strong>breakout-short</strong>：</li>
+<li><code>scan</code> = 原始 breakdown candidate</li>
+<li><code>pullback</code> = 1~2 根反抽</li>
+<li><code>success</code> = low 跌破 pullback low - offset</li>
+<li><code>failure</code> = high 上穿 pullback high + offset</li>
+<li><strong>Fib retest_hold</strong>：</li>
+<li><code>scan</code> = 触到目标 Fib 区且仍保有方向 bias</li>
+<li><code>pullback</code> = 进入区间后的停顿 / 逆向小回撤</li>
+<li><code>success</code> = close/ high 重破 pullback extremum</li>
+<li><code>failure</code> = 反向穿越 zone invalidation line</li>
+<li><strong>EMA / PSAR raw alpha</strong>：</li>
+<li><code>scan</code> = raw EMA cross / raw PSAR flip</li>
+<li><code>pullback</code> = trigger 后 1~3 根 counter bars</li>
+<li><code>success</code> = 重新突破 pullback edge</li>
+<li><code>failure</code> = 反向失守 opposite edge</li>
+</ul>
+<h3>6.3 先看哪几个指标</h3>
+<ul>
+<li><code>成本后 expectancy</code></li>
+<li><code>success rate / failure rate / timeout rate</code></li>
+<li><code>trigger→entry 平均延迟</code></li>
+<li><code>false-follow rate</code>（入场后 <code>N</code> 根内即回到 opposite edge）</li>
+<li><code>missed-fast-move cost</code>（因为等 verdict 而错过的趋势）</li>
+</ul>
+<h2>7. 我对这轮的判断</h2>
+<p>如果这层东西成立，它最可能带来的不是“信号数暴增”，而是三件更现实的好处：</p>
+<ol>
+<li><strong>把 breakout-short 的 final-verdict 写得更诚实</strong>：不是破了就追，而是先看 pullback 后能不能再给一次真实下破；</li>
+<li><strong>把 Fib retest_hold 从“碰位叙事”改成“窗口 verdict”</strong>：摸到位不再自动算 hold；</li>
+<li><strong>给 EMA/PSAR raw alpha 一个低侵入修复方向</strong>：先修 entry path，而不是继续堆 filter。</li>
+</ol>
+<p>我的倾向是：这条值得进研究池，而且优先级不低，因为它不是又一个零散过滤层，而是一个能同时作用于三条收口线的<strong>post-trigger execution skeleton</strong>。</p>
+<h2>8. 来源</h2>
+<ol>
+<li>ilahuerta-IA. (2025-2026). *Backtrader Gold (XAU/USD) Pullback Strategy*.</li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/ilahuerta-IA/backtrader-pullback-window-xauusd">https://github.com/ilahuerta-IA/backtrader-pullback-window-xauusd</a></li>
+<li>Readable URL: <a href="https://github.com/ilahuerta-IA/backtrader-pullback-window-xauusd/blob/main/README.md">https://github.com/ilahuerta-IA/backtrader-pullback-window-xauusd/blob/main/README.md</a></li>
+<li>Performance doc: <a href="https://github.com/ilahuerta-IA/backtrader-pullback-window-xauusd/blob/main/PERFORMANCE_METRICS.md">https://github.com/ilahuerta-IA/backtrader-pullback-window-xauusd/blob/main/PERFORMANCE_METRICS.md</a></li>
+<li>Raw strategy file: <a href="https://raw.githubusercontent.com/ilahuerta-IA/backtrader-pullback-window-xauusd/main/src/strategy/sunrise_ogle_xauusd.py">https://raw.githubusercontent.com/ilahuerta-IA/backtrader-pullback-window-xauusd/main/src/strategy/sunrise_ogle_xauusd.py</a></li>
+<li>DOI: N/A</li>
+<li>Authors: GitHub user <code>ilahuerta-IA</code>（未见论文式作者署名）</li>
+</ul>
+</body>
+</html>

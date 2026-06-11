@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2026 高星 repo 只读成通用交易 bot：对 short-cycle desk，更该先测的是「session VWAP σ-band fade」这条单资产 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2026 高星 repo 只读成通用交易 bot：对 short-cycle desk，更该先测的是「session VWAP σ-band fade」这条单资产 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-07 19:02 UTC</span>
+      <span class="pill">类型：GitHub / source audit（`README.md` + `shared_strategies/spot/strategies.py` + `backtest/backtester.py` + repo metadata）</span>
+      <span class="pill">主题标签：mean-reversion / single-asset / vwap / intraday / spot-perp-transfer / 1m / 3m / 5m / 15m / repo / cost / risk</span>
+      <span class="pill">证据类型：工程证据</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-07_1902_session-vwap-sigma-fade-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-07 19:02 UTC</li>
+<li>类型：GitHub / source audit（<code>README.md</code> + <code>shared_strategies/spot/strategies.py</code> + <code>backtest/backtester.py</code> + repo metadata）</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：日内价格相对 <strong>session VWAP</strong> 的大幅偏离会向均值回归；更具体地说，是 <code>close - session_vwap</code> 的滚动 σ 偏离在液态币上存在可交易的 fade 机会。</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：mean-reversion / single-asset / vwap / intraday / spot-perp-transfer / 1m / 3m / 5m / 15m / repo / cost / risk</li>
+<li>证据类型：工程证据</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看的是 <code>richkuo/go-trader</code>（2026-02 创建，2026-04-07 仍在更新，约 77 stars）里被埋在“大而全交易 bot”下面的一条小策略：<code>vwap_reversion</code>。源码把它写得很直接：按日重置 VWAP，默认 <code>entry_std=1.5</code>、<code>exit_std=0.2</code>，当价格跌破 <code>VWAP - 1.5σ</code> 时给多头信号，涨破 <code>VWAP + 0.2σ</code> 时给空头/平多信号；配套 backtester 默认吃 <code>10 bps</code> 手续费 + <code>5 bps</code> 滑点，并挂着组合 kill switch 与策略冷却。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最值钱的不是“又一个多市场 bot”，而是把 <strong>session VWAP 偏离均值回复</strong> 明确写成了一个能马上迁到 <code>1m/3m/5m/15m</code> 的原始 alpha 壳。</li>
+<li><strong>一句话证明方式：</strong> 证据不是论文表格，而是源码里把 anchor、band、entry/exit、成本和风控口径都写死了——它已经是一个可复跑、可立刻做 first verdict 的工程样本。</li>
+<li>它和普通 rolling-mean z-score MR 的差别在于：均值锚点不是过去 N 根收盘均值，而是<strong>当日成交量加权中心（VWAP）</strong>；这更像“日内偏离交易”，而不是纯统计平滑。</li>
+<li><code>entry_std=1.5</code> / <code>exit_std=0.2</code> 这个默认壳，本质是在赌：<strong>远离 VWAP 的瞬时失衡，常比趋势延续更短命</strong>；先用远端入场、近中心出场，把盈亏比交给回归距离，而不是赌大趋势。</li>
+<li>repo 自带的 backtester 默认是 <code>0.1%</code> commission + <code>0.05%</code> slippage；这很粗，但反而适合 desk 做第一轮 friction ladder：如果在这种偏严口径下都站不住，就别急着往 live 走。</li>
+<li>对我们当前研究池，它补的是一个<strong>单资产、anchor-based、非 pairs / 非 funding / 非 cross-sectional</strong> 的 raw alpha 缺口，适合和后续 trend gate、liq veto、session map 做解耦组合。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线值得收进 <code>momentum</code>，因为它不是“解释型 overlay”，而是一条能独立下单的单币 raw alpha：</p>
+<ul>
+<li>它补的是 <strong>mean reversion</strong> 素材池，而不是继续在 breakout / lead-lag / carry 上内循环；</li>
+<li>它对数据要求低：只要 OHLCV 就能先做最小实验，不需要先拿深度盘口或外部链上数据；</li>
+<li>它天然能迁到 <code>1m/3m/5m/15m</code>，尤其适合 BTC/ETH/SOL 这种高流动标的；</li>
+<li>后续若要增强，也很清楚：先在 alpha 本体上做 first verdict，再叠加 regime/filter（如 ADX、funding、流动性时段、波动分位）。</li>
+</ul>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：逆势 / 单资产</li>
+<li>基础 alpha：<code>session VWAP deviation mean reversion</code></li>
+<li>regime：优先在<strong>非单边趋势、流动性正常、不是消息冲击后第一段加速</strong>的环境中使用</li>
+<li>filter / veto：可后加 <code>ATR/realized vol 过高 veto</code>、<code>news/event veto</code>、<code>low-liquidity slot veto</code></li>
+<li>risk / sizing / execution overlay：固定风险仓位或 vol-target；优先 taker-in / taker-out 做 first verdict，再比较 maker-passive 版本；日内 flat，避免隔夜 carry/funding 污染</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<p><strong>研究假设：</strong> 对 liquid crypto，价格一旦偏离当日 VWAP 达到 <code>1.5σ~2.0σ</code>，短时间内更容易回到 VWAP 附近，而不是继续无条件漂移。</p>
+<p><strong>可计算定义：</strong></p>
+<ul>
+<li>用 <code>1m</code> 原始 K 线先算 <code>session_vwap_t = cumsum(tp*vol) / cumsum(vol)</code>，UTC 日切重置；</li>
+<li><code>sigma_t = rolling_std(close - session_vwap, 20)</code>；</li>
+<li>Long：<code>close &lt; vwap - k*sigma</code>；Short：<code>close &gt; vwap + k*sigma</code>；</li>
+<li>Exit 先测三版：<code>touch vwap</code>、<code>touch 0.2σ 内带</code>、<code>8 bar time stop</code>。</li>
+</ul>
+<p><strong>最小回测切口：</strong></p>
+<ul>
+<li>标的：<code>BTCUSDT / ETHUSDT / SOLUSDT</code> perp 或 spot</li>
+<li>周期：<code>1m -&gt; 3m/5m/15m</code> 聚合；但 <strong>VWAP 必须先用 1m 原始数据算</strong>，不要直接拿 15m bar 算假 VWAP</li>
+<li>样本：先跑 <code>2024-01-01 ~ 2026-04-07</code></li>
+<li>成本：先做 round-trip <code>4 / 8 / 12 / 20 bps</code> friction ladder</li>
+</ul>
+<p><strong>最该先看：</strong></p>
+<ol>
+<li>成本后每笔期望 / 每日 turnover；</li>
+<li>不同持有时长下的回归完成率（尤其 <code>&lt;= 8 bars</code> 是否占大头）。</li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>repo 现成调度主要跑 <code>1h</code>，而 desk 想测的是 <code>1m/3m/5m/15m</code>；<strong>信号思想能迁，但参数不能直接照抄</strong>。</li>
+<li>session VWAP 是强路径依赖锚点；若遇到单边趋势日，价格可能长时间“贴着偏离继续走”，fade 很容易被趋势拖死。</li>
+<li>UTC 日切未必是最优 session 切法；对 crypto 24/7 市场，亚洲/欧洲/美盘切法都值得单独对照。</li>
+<li>仅用 OHLCV 算 VWAP，会把真实逐笔成交结构压扁；第一轮可先做，但后续若 edge 接近成本线，必须补 trade-level VWAP 与 microstructure veto。</li>
+<li>repo 的 backtester 默认更像单腿 spot 壳；若 desk 走 perp 对称 long/short，需要自己把 <code>sell_cross</code> 明确拆成 short entry，而不只是平多。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>richkuo. (2026). *go-trader*.</li>
+<li>Repo URL: <code><a href="https://github.com/richkuo/go-trader">https://github.com/richkuo/go-trader</a></code></li>
+<li>Readable URL: <code><a href="https://github.com/richkuo/go-trader/blob/main/README.md">https://github.com/richkuo/go-trader/blob/main/README.md</a></code></li>
+<li>richkuo. (2026). <code>shared_strategies/spot/strategies.py</code>.</li>
+<li>Strategy snippet URL: <code><a href="https://github.com/richkuo/go-trader/blob/main/shared_strategies/spot/strategies.py">https://github.com/richkuo/go-trader/blob/main/shared_strategies/spot/strategies.py</a></code></li>
+<li>richkuo. (2026). <code>backtest/backtester.py</code>.</li>
+<li>Backtester URL: <code><a href="https://github.com/richkuo/go-trader/blob/main/backtest/backtester.py">https://github.com/richkuo/go-trader/blob/main/backtest/backtester.py</a></code></li>
+</ul>
+</body>
+</html>

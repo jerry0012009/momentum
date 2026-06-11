@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 BTC intraday TSMOM 只读成“24h 市场也有 open/close”：对 short-cycle desk，更该先测的是「volume-clock 首 30m 极端冲击 × 同向续行 30~60m」这条单币 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 BTC intraday TSMOM 只读成“24h 市场也有 open/close”：对 short-cycle desk，更该先测的是「volume-clock 首 30m 极端冲击 × 同向续行 30~60m」这条单币 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-03 00:42 UTC</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-03_0042_btc-volclock-first30-impulse-alpha.md</code></p>
+  </div>
+  <ul>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：BTC 在“伪开盘”首 30 分钟出现<strong>极端成交量 + 极端方向冲击</strong>时，随后 30~60 分钟仍有同向续行；若不做极端筛选，边际很快被成本吃掉</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+</ul>
+<h2>1) 为什么这轮值得 intake</h2>
+<p>先回答一句：这篇东西的 <strong>base alpha</strong> 是什么？</p>
+<p>&gt; <strong>base alpha = 单币 BTC 的会话起始冲击续行。</strong> &gt; 不是“时间段解释”、不是“市场微观结构综述”，而是一个可直接写成策略的 directional raw alpha：观察某个伪开盘窗口的首 30 分钟，如果这 30 分钟本身就是高成交/高波动且方向明确，则后续 30~60 分钟更容易沿原方向继续走。</p>
+<p>这比把论文 headline 机械翻成“first half-hour predicts last half-hour”更适合我们 desk，因为我们真正关心的是：</p>
+<ol>
+<li><strong>能不能在 <code>5m/15m</code> 上直接下单；</strong></li>
+<li><strong>是不是必须加 regime/filter 才能活过成本；</strong></li>
+<li><strong>最小实验是不是今天就能做。</strong></li>
+</ol>
+<p>答案是：<strong>可以，而且关键不是“所有首 30m 都追”，而是只追“极端量 + 极端冲击”的首 30m。</strong></p>
+<p>---</p>
+<h2>2) 来源与可信度</h2>
+<h3>论文</h3>
+<ul>
+<li><strong>Authors</strong>: Dehua Shen, Andrew Urquhart, Pengfei Wang</li>
+<li><strong>Year</strong>: 2021 online / 2022 print</li>
+<li><strong>Title</strong>: *Bitcoin intraday time series momentum*</li>
+<li><strong>Venue</strong>: *Financial Review*, Vol. 57, Issue 2, pp. 319–344</li>
+<li><strong>DOI</strong>: <code>10.1111/fire.12290</code></li>
+<li><strong>Readable URL</strong>: &lt;<a href="https://doi.org/10.1111/fire.12290&gt;">https://doi.org/10.1111/fire.12290&gt;</a></li>
+<li><strong>Repo URL</strong>: N/A</li>
+</ul>
+<h3>本轮实际可读取到的证据层级</h3>
+<ul>
+<li><strong>Crossref metadata</strong>：作者、期刊、卷期页码、online/print 时间可确认</li>
+<li><strong>OpenAlex abstract</strong>：可确认论文核心结论</li>
+<li><strong>本地 public-data portability probe</strong>：用 Binance USDⓈ-M <code>BTCUSDT</code> <code>15m</code> 数据做 desk 口径最小实验</li>
+</ul>
+<h3>需要先说清的限制</h3>
+<p>这轮<strong>没有拿到全文正文</strong>，所以论文细节（例如 volume-clock 的精确定义、资产配置实现细节）我不把它当已完全复原；本笔记更像：</p>
+<ul>
+<li><strong>论文 abstract 给出方向</strong></li>
+<li><strong>本地 public-data probe 验证 desk 可迁移部分</strong></li>
+</ul>
+<p>换句话说，<strong>这是高相关 intake，不是 production 认证。</strong></p>
+<p>---</p>
+<h2>3) 论文到底说了什么（abstract-level）</h2>
+<p>OpenAlex 抽到的摘要核心句子有 4 个：</p>
+<ol>
+<li>Bitcoin 24 小时交易，没有传统股票那种清晰 open / close；</li>
+<li>作者用 <strong>trading volume 作为 market trading time 的 proxy</strong>；</li>
+<li>论文发现 <strong>first half-hour positively predicts the last half-hour return</strong>；</li>
+<li><strong>最高成交量或最高波动的 first trading sessions</strong>，可预测性最强；且这种 intraday momentum 更像是 <strong>liquidity provision</strong> 驱动，而不是 late-informed trading。</li>
+</ol>
+<p>把这段翻成人话：</p>
+<ul>
+<li>BTC 虽然没有交易所开收盘，但市场还是会自己形成“像开盘一样重要”的时段；</li>
+<li>真正值得看的是<strong>最活跃、最有冲击的早段</strong>；</li>
+<li>如果一开始就走得很猛，而且量也大，这种 move 有更高概率不是纯噪音，而是会继续传导。</li>
+</ul>
+<p>---</p>
+<h2>4) 对 short-cycle desk 的重构：别照抄 headline，先拆成可交易部件</h2>
+<h3>4.1 论文 headline 版本</h3>
+<ul>
+<li>“first half-hour predicts last half-hour”</li>
+</ul>
+<p>这个 headline 如果直接照搬，问题有两个：</p>
+<ol>
+<li><strong>持有到 session 最后半小时太慢</strong>，未必是我们最优的短周期持有口径；</li>
+<li>不加筛选就全追，极容易被成本吃掉。</li>
+</ol>
+<h3>4.2 desk 更该先测的版本</h3>
+<p>对我们更有用的重构是：</p>
+<p>&gt; <strong>raw alpha：会话首 30m 的极端 directional impulse，会在接下来 30~60m 延续。</strong></p>
+<p>对应拆解：</p>
+<ul>
+<li><strong>alpha 本体</strong>：首 30m 同向续行</li>
+<li><strong>regime/filter</strong>：必须要求首 30m 同时满足高成交量 / 高波动 / 大实体冲击中的至少 2 个</li>
+<li><strong>execution</strong>：只在首 30m 结束后入场，不猜方向，不抢第一腿</li>
+<li><strong>risk</strong>：30m / 60m timeout 为主，避免把 intraday 冲击策略硬拖成日内摆动仓</li>
+</ul>
+<p>这就不再是“论文里的时间结构趣闻”，而是一个完整的 <code>entry/exit/filter/cost</code> 骨架。</p>
+<p>---</p>
+<h2>5) 本地最小 portability probe（Binance USDⓈ-M <code>BTCUSDT</code> <code>15m</code>）</h2>
+<h3>5.1 数据与口径</h3>
+<ul>
+<li><strong>数据源</strong>：本地已缓存 Binance USDⓈ-M <code>BTCUSDT</code> <code>15m</code> perp K 线</li>
+<li><strong>样本</strong>：<code>2021-03-20 03:30 UTC</code> → <code>2026-03-19 03:15 UTC</code></li>
+<li><strong>文件</strong>：</li>
+<li>原始 K 线：<code>reports/artifacts/scout_rank32b_slope_floor_continuation_15m/perp_cache/BTCUSDT__1825d__15m__perp.csv</code></li>
+<li>本轮事件明细：<code>reports/artifacts/quant_digests/btc_intraday_tsmom_20260403/session_events.csv</code></li>
+<li>本轮汇总：<code>reports/artifacts/quant_digests/btc_intraday_tsmom_20260403/key_configs.csv</code></li>
+</ul>
+<h3>5.2 会话定义（desk translation）</h3>
+<p>论文原文是 volume-clock 的“market trading time”，但全文没拿到，所以这轮先做一个<strong>诚实而保守的 desk translation</strong>：</p>
+<ul>
+<li>把一天切成 <code>00/08/16 UTC</code> 三个 <strong>8h funding-style sessions</strong>；</li>
+<li>每个 session 的<strong>前两根 <code>15m</code> bar = 首 30m</strong>；</li>
+<li>在首 30m 结束后决定是否入场；</li>
+<li>测：</li>
+<li>首 30m 后继续拿 <strong>30m / 1h / 2h</strong>；</li>
+<li>以及更接近论文 headline 的 <strong>session 最后 30m</strong>。</li>
+</ul>
+<h3>5.3 首先看：不加筛选时，edge 很薄</h3>
+<p>如果把所有 session 的首 30m 都拿来追：</p>
+<ul>
+<li><strong>gross</strong> 确实有一点点正边际；</li>
+<li>但进到 realistic friction 后，<strong>很快被吃穿</strong>。</li>
+</ul>
+<p>也就是说，论文里“有 intraday momentum”这句话，<strong>对交易不等于“直接无脑追”。</strong></p>
+<h3>5.4 真正有用的是极端 gate</h3>
+<p>我做了 rolling 120-session 的分位筛选，发现最像 desk 可交易版本的是：</p>
+<p>#### A. <code>first30m volume &gt;= rolling 95%</code> 且 <code>|first30m return| &gt;= rolling 95%</code></p>
+<ul>
+<li><strong>同向追 30m</strong></li>
+<li>trades: <code>120</code></li>
+<li>gross avg: <code>+11.84 bps/trade</code></li>
+<li>gross hit-rate: <code>55.8%</code></li>
+<li>gross Sharpe: <code>4.25</code></li>
+<li><strong>若按 <code>4 bps/side</code> 计</strong>：</li>
+<li>net avg: <code>+3.83 bps/trade</code></li>
+<li>net hit-rate: <code>50.8%</code></li>
+<li>net Sharpe: <code>1.38</code></li>
+<li>compounded return: <code>+4.17%</code></li>
+</ul>
+<ul>
+<li><strong>同向追 1h</strong></li>
+<li>trades: <code>120</code></li>
+<li>gross avg: <code>+12.29 bps/trade</code></li>
+<li>gross hit-rate: <code>51.7%</code></li>
+<li>gross Sharpe: <code>3.05</code></li>
+<li><strong>若按 <code>4 bps/side</code> 计</strong>：</li>
+<li>net avg: <code>+4.28 bps/trade</code></li>
+<li>net hit-rate: <code>47.5%</code></li>
+<li>net Sharpe: <code>1.06</code></li>
+<li>compounded return: <code>+4.17%</code></li>
+</ul>
+<p>#### B. <code>first30m range &gt;= rolling 95%</code> 且 <code>first30m volume &gt;= rolling 95%</code></p>
+<ul>
+<li><strong>同向追 30m</strong></li>
+<li>trades: <code>176</code></li>
+<li>gross avg: <code>+10.08 bps/trade</code></li>
+<li>gross hit-rate: <code>53.4%</code></li>
+<li>gross Sharpe: <code>3.15</code></li>
+<li><strong>若按 <code>4 bps/side</code> 计</strong>：</li>
+<li>net avg: <code>+2.07 bps/trade</code></li>
+<li>net Sharpe: <code>0.65</code></li>
+</ul>
+<p>#### C. 只用 <code>volume &gt;= rolling 95%</code></p>
+<ul>
+<li><strong>同向追 1h</strong></li>
+<li>trades: <code>279</code></li>
+<li>gross avg: <code>+9.44 bps/trade</code></li>
+<li><strong>但按 <code>4 bps/side</code> 计只剩 <code>+1.43 bps/trade</code>，Sharpe 也明显掉到 <code>0.37</code></strong></li>
+</ul>
+<h3>5.5 这组数怎么读</h3>
+<p>关键不是“paper 对不对”，而是：</p>
+<ol>
+<li><strong>方向上，paper 的 high-volume / high-volatility 版本确实能 transfer 到 BTC perp <code>15m</code>；</strong></li>
+<li><strong>但只有在非常极端的首 30m 冲击下才够厚；</strong></li>
+<li><strong>全样本追首 30m continuation 没法活过成本；</strong></li>
+<li>真正像 production 候选的是：</li>
+</ol>
+<ul>
+<li><strong>极端 first30 impulse 才开仓</strong>；</li>
+<li><strong>30m~1h 短持有</strong>；</li>
+<li>尽量压低执行成本，最好争取 maker / queue-aware 版本。</li>
+</ul>
+<p>---</p>
+<h2>6) 这条 alpha 的最小策略骨架</h2>
+<h2>6.1 Entry</h2>
+<p>在每个 <code>8h</code> session：</p>
+<ol>
+<li>观察前两根 <code>15m</code> bar；</li>
+<li>计算：</li>
+</ol>
+<ul>
+<li><code>ret_30m = close_t2 / open_t1 - 1</code></li>
+<li><code>vol_30m = sum(volume)</code></li>
+<li><code>range_30m = max(high)/min(low)-1</code></li>
+</ul>
+<ol>
+<li>若满足：</li>
+</ol>
+<ul>
+<li><code>sign(ret_30m) != 0</code></li>
+<li><code>vol_30m &gt;= rolling_q95(vol_30m, 120 sessions)</code></li>
+<li><code>abs(ret_30m) &gt;= rolling_q95(abs(ret_30m), 120 sessions)</code></li>
+</ul>
+<ol>
+<li>则在第 3 根 bar 开盘按 <code>sign(ret_30m)</code> <strong>同向入场</strong>。</li>
+</ol>
+<h2>6.2 Exit</h2>
+<p>两个最小版本都值得先测：</p>
+<ul>
+<li><strong>版本 A：固定持有 30m</strong>（更纯的冲击续行）</li>
+<li><strong>版本 B：固定持有 1h</strong>（给 move 一点扩散时间）</li>
+</ul>
+<h2>6.3 Sizing</h2>
+<p>建议第一轮别做复杂 Kelly：</p>
+<ul>
+<li>每笔固定风险预算 <code>r</code></li>
+<li>仓位按最近 24h 的 realized vol 做简单 inverse-vol scaling</li>
+<li>若同日已出现 1 笔同方向失败，后续同类信号减半</li>
+</ul>
+<h2>6.4 Risk</h2>
+<ul>
+<li>单笔 hard stop：<code>0.8 ~ 1.0 x first30m range</code></li>
+<li>若入场后下一根 bar 立即完全吞没首 30m 实体，直接平</li>
+<li>同一 session 最多 1 笔，避免把事件冲击策略做成连续加仓</li>
+</ul>
+<h2>6.5 Cost</h2>
+<p>这条策略对成本很敏感：</p>
+<ul>
+<li><strong>8 bps round-trip 以上基本只剩极窄 edge</strong>；</li>
+<li>若能做到更低成交成本（maker、rebate、低冲击进场），edge 才更像样。</li>
+</ul>
+<p>---</p>
+<h2>7) 它服务于哪个 raw alpha 家族</h2>
+<p>这是个很清楚的家族归属：</p>
+<ul>
+<li><strong>主家族</strong>：<code>trend / momentum / directional continuation</code></li>
+<li><strong>共享 gate</strong>：<code>volume shock / volatility shock / impulse size</code></li>
+<li><strong>可扩展方向</strong>：</li>
+<li>加 <code>OI</code> / <code>funding</code> 做 crowding veto</li>
+<li>加跨市场 lead（Coinbase/ETF/Asia venue）做更强确认</li>
+<li>加 <code>1m/5m</code> execution shell，减少吃单成本</li>
+</ul>
+<p>所以这不是“单篇论文的时间结构趣闻”，而是可以直接并进我们现有 directional alpha 池的一条 <strong>event-style momentum shell</strong>。</p>
+<p>---</p>
+<h2>8) 与当前 desk 的关系</h2>
+<p>这条东西和我们现在的短周期研发是直接相连的：</p>
+<ul>
+<li>和一般 EMA / breakout 不同，它不是持续持仓趋势，而是<strong>会话开头冲击事件</strong>；</li>
+<li>和纯 microstructure OFI 不同，它只用 OHLCV 就能做最小实验；</li>
+<li>和慢频日内 seasonality 不同，它强调的是<strong>极端首 30m 冲击</strong>，不是固定时间段平均效应。</li>
+</ul>
+<p>更直白地说：</p>
+<p>&gt; 如果我们需要一个“今天就能在 <code>15m/5m</code> 上最小复现”的 BTC directional intake，这条比继续泛泛写 open/close seasonality 更值。</p>
+<p>---</p>
+<h2>9) 下一步怎么测</h2>
+<p>这部分必须明确，不然 digest 只剩观点。</p>
+<h3>Step 1：把 <code>15m</code> signal 改成 <code>5m</code> execution</h3>
+<ul>
+<li>signal 仍用首 30m 冲击判定；</li>
+<li>但入场改用第 <code>7~9</code> 根 <code>5m</code> 内的 pullback / micro pullback；</li>
+<li>目标：把 round-trip cost 从 taker 版压到更低。</li>
+</ul>
+<h3>Step 2：把 gate 从 2 个扩成 4 个做 honest ablation</h3>
+<p>最该加的两个：</p>
+<ul>
+<li><code>first30m signed volume imbalance proxy</code></li>
+<li><code>first30m open-interest delta</code></li>
+</ul>
+<p>看是否能把：</p>
+<ul>
+<li>trades 维持在 <code>&gt;80</code>，同时</li>
+<li>net avg 提升到 <code>&gt;5 bps/trade @ 4 bps/side</code>。</li>
+</ul>
+<h3>Step 3：做 session 定义敏感性</h3>
+<p>目前是 <code>8h funding-style session</code>，下一轮应同时测试：</p>
+<ul>
+<li><code>UTC day</code></li>
+<li><code>Asia / Europe / US</code> 三段会话</li>
+<li><code>volume-ranked pseudo-open</code></li>
+</ul>
+<p>也就是更接近论文原始 volume-clock 的定义，而不是只用 funding-session 近似。</p>
+<h3>Step 4：加 market-state split</h3>
+<p>论文说 downturn 阶段更强；所以应补：</p>
+<ul>
+<li>BTC 在 <code>4h/1d</code> 下行 regime 时，这条边际是否更厚；</li>
+<li>若是，则把它升格成 <strong>bear-market directional playbook</strong> 组件，而不是全时段常开策略。</li>
+</ul>
+<p>---</p>
+<h2>10) 结论</h2>
+<p>这篇 paper 真正对我们有价值的，不是“BTC 也有 intraday TSMOM”这句 headline，而是下面这句更交易化的翻译：</p>
+<p>&gt; <strong>BTC 没有官方开盘，但市场会自己制造“伪开盘”；而只有当这个伪开盘的首 30 分钟同时出现极端量和极端方向冲击时，后续 30~60 分钟的同向续行才厚到值得测。</strong></p>
+<p>因此，这轮我会把它归类为：</p>
+<ul>
+<li><strong>主题类型</strong>：raw alpha</li>
+<li><strong>基础 alpha</strong>：<code>first30m extreme impulse continuation</code></li>
+<li><strong>当前 verdict</strong>：<strong>可进研究池，但必须带极端 gate；不带 gate 不值得上生产候选。</strong></li>
+</ul>
+<p>---</p>
+<h2>参考链接</h2>
+<ul>
+<li>DOI / 文章页：&lt;<a href="https://doi.org/10.1111/fire.12290&gt;">https://doi.org/10.1111/fire.12290&gt;</a></li>
+<li>Crossref metadata：&lt;<a href="https://api.crossref.org/works/10.1111/fire.12290&gt;">https://api.crossref.org/works/10.1111/fire.12290&gt;</a></li>
+<li>OpenAlex metadata / abstract：&lt;<a href="https://api.openalex.org/works/https://doi.org/10.1111/fire.12290&gt;">https://api.openalex.org/works/https://doi.org/10.1111/fire.12290&gt;</a></li>
+</ul>
+</body>
+</html>

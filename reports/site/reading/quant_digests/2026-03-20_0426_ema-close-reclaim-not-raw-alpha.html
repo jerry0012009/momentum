@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 EMA 回踩写成“碰线就算守住”：`close reclaim` 在 15m 只够给 Fib / EMA long 减亏，不够救活 raw alpha，也不该镜像给 breakout-short</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 EMA 回踩写成“碰线就算守住”：`close reclaim` 在 15m 只够给 Fib / EMA long 减亏，不够救活 raw alpha，也不该镜像给 breakout-short</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-20 04:28 UTC</span>
+      <span class="pill">研究时间：2026-03-20 04:26 UTC</span>
+      <span class="pill">类型：GitHub + 本地代理快检</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/ema-bounce/close-reclaim/continuation/asymmetry/filter/repo/crypto/15m</span>
+      <span class="pill">证据类型：工程证据（仓库源码）+ 代理快检（公开行情）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-20_0426_ema-close-reclaim-not-raw-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-20 04:26 UTC</li>
+<li>类型：GitHub + 本地代理快检</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/ema-bounce/close-reclaim/continuation/asymmetry/filter/repo/crypto/15m</li>
+<li>证据类型：工程证据（仓库源码）+ 代理快检（公开行情）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看两个 Pine 脚本的交集，而不是它们整套模板。</p>
+<ul>
+<li><strong>tweakerID / <code>EMA Bounce Strategy</code></strong>：把“EMA 回踩后守住”写成一个很干净的条件——上一根 <code>low</code> 还在 EMA 上方，这一根先刺穿 EMA，但 <strong>收盘重新站回 EMA 上方</strong>，才算 <code>Bull Bounce</code>。</li>
+<li><strong>juanchodeespada / <code>Trend Continuation</code></strong>：提醒我们这类回踩不要裸做，最好放回更宽的 EMA 趋势骨架里理解，例如 <code>EMA20 &gt; EMA50 &gt; EMA200</code> 一类 stacked trend。</li>
+</ul>
+<p>所以这轮真正要回答的是：<strong>对 15m crypto，<code>碰到 EMA</code> 和 <code>碰后收回 EMA</code> 到底是不是两回事？如果是，它更像 raw alpha，还是只是一个 long-side 的 admission / damage-control layer？</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论</strong>：<code>EMA close reclaim</code> 在 15m 上确实比“只碰到 EMA 但没收回”更像样，但它目前只够当 <strong>Fib retest / EMA continuation 的 long-side 减亏层</strong>，还不够把 <code>EMA / PSAR raw alpha</code> 救成正经可交易母信号。</li>
+<li><strong>一句话它怎么证明</strong>：源码把 bounce 明确写成 <code>prev low &gt; EMA</code>、本 bar <code>low &lt; EMA</code> 且 <code>close &gt; EMA</code>；我再用 <code>BTC/ETH/SOL perp, 15m, 近120天</code> 做代理快检，把“有 touch 的回踩”拆成 <strong>收回 EMA</strong> vs <strong>没收回 EMA</strong> 两组，比较后续 <code>4 bars / 8 bars</code> 表现。</li>
+</ul>
+<h3>2.1 repo 里最值得偷的不是“EMA 本身”，而是判定边界</h3>
+<p><code>tweakerID</code> 这份脚本最值钱的地方，不是单 EMA 策略，而是它把 retest 写得很诚实：</p>
+<ul>
+<li>long bounce：<code>low[1] &gt; ema[1]</code> 且 <code>low &lt; ema</code> 且 <code>close &gt; ema</code></li>
+<li>short bounce：<code>high[1] &lt; ema[1]</code> 且 <code>high &gt; ema</code> 且 <code>close &lt; ema</code></li>
+</ul>
+<p>这对我们当前 desk 很关键，因为它把 <strong>“碰线”</strong> 和 <strong>“收回防守线”</strong> 分开了。对 <code>Fib retest_hold</code> 来说，这基本就是同一个哲学：别再把触位本身误写成守住。</p>
+<h3>2.2 本地 15m 代理快检：long 有减亏价值，但还不够翻正</h3>
+<p>我先用最小代理做：</p>
+<ul>
+<li>数据：<code>BTC/ETH/SOL</code> perp，<code>15m</code>，近 <code>120d</code></li>
+<li>趋势底座：long 用 <code>EMA50 &gt; EMA200</code>，short 用镜像</li>
+<li>事件分组：同样都是先发生 <code>touch EMA20</code> 的回踩，再拆成：</li>
+</ul>
+<ol>
+<li><code>bounce_close_reclaim</code></li>
+<li><code>touch_no_reclaim</code></li>
+</ol>
+<ul>
+<li>评估：看后续 <code>4 bars</code> 与 <code>8 bars</code> signed return</li>
+</ul>
+<p>#### long 侧：close reclaim 比 touch-only 少亏一些，但还没变真 alpha 在基础趋势过滤（<code>EMA50 &gt; EMA200</code>）下：</p>
+<ul>
+<li><code>bounce_close_reclaim</code>：<code>n=559</code>，未来 <code>4 bars</code> 均值 <strong>-3.16 bps</strong>，中位 <code>MAE</code> <strong>-29.17 bps</strong></li>
+<li><code>touch_no_reclaim</code>：<code>n=483</code>，未来 <code>4 bars</code> 均值 <strong>-5.88 bps</strong>，中位 <code>MAE</code> <strong>-31.50 bps</strong></li>
+</ul>
+<p>也就是说，<strong>收回 EMA</strong> 比没收回好，大约少亏 <strong>2.72 bps</strong>，但 aggregate 还是负的。它更像“别做太烂的那种回踩”，还不是“这就能直接开火”。</p>
+<p>#### 放回更强的 stacked trend 后，long 侧才更像 admission layer 如果再要求 <code>EMA20 &gt; EMA50 &gt; EMA200</code>：</p>
+<ul>
+<li><code>bounce_close_reclaim</code>：<code>n=470</code>，未来 <code>4 bars</code> 均值 <strong>-1.74 bps</strong>，<code>8 bars</code> 均值 <strong>-2.17 bps</strong></li>
+<li><code>touch_no_reclaim</code>：<code>n=417</code>，未来 <code>4 bars</code> 均值 <strong>-7.18 bps</strong>，<code>8 bars</code> 均值 <strong>-5.27 bps</strong></li>
+</ul>
+<p>差值变成：</p>
+<ul>
+<li><code>4-bar mean</code> 改善约 <strong>+5.44 bps</strong></li>
+<li><code>8-bar mean</code> 改善约 <strong>+3.10 bps</strong></li>
+<li><code>win rate</code> 提升约 <strong>+1.19 pct-pts</strong></li>
+<li><code>median MAE</code> 收窄约 <strong>4.49 bps</strong></li>
+</ul>
+<p>这说明它比较像：<strong>必须嵌在更强趋势骨架里的 long-side admission / damage-control gate</strong>。</p>
+<p>#### short 镜像不成立，别硬塞给 breakout-short 在 <code>EMA20 &lt; EMA50 &lt; EMA200</code> 的 strong short stack 里：</p>
+<ul>
+<li><code>short bounce_close_reclaim</code>：<code>n=631</code>，未来 <code>4 bars</code> 均值 <strong>+3.32 bps</strong></li>
+<li><code>touch_no_reclaim</code>：<code>n=436</code>，未来 <code>4 bars</code> 均值 <strong>+5.90 bps</strong></li>
+</ul>
+<p>也就是 short 侧 <strong>close-back-below-EMA</strong> 并没有变得更好，反而更差。对我们现在的 <code>V3 breakout-short follow-up</code>，这轮更值钱的信息不是“找到一个 short gate”，而是：<strong>别把 long 的 honest retest 逻辑直接镜像到 short。</strong></p>
+<h2>3. 为什么和当前三条收口线直接相关</h2>
+<ul>
+<li><strong>Fibonacci confirmation / retest_hold</strong>：这轮最直接的启发就是，<code>touch</code> 和 <code>close reclaim</code> 必须拆开；后者才更像“守住”，前者最多只是“碰到过”。</li>
+<li><strong>EMA / PSAR raw alpha focus</strong>：即便用了 <code>close reclaim</code>，long 侧 aggregate 仍未翻正，说明它顶多是 admission layer，不该被误报成 raw alpha 已经被救活。</li>
+<li><strong>V3 final-verdict / breakout-short follow-up</strong>：short 镜像没占优，说明这套 bounce 逻辑目前不适合直接认领 breakout-short 的 shared follow-up gate。</li>
+</ul>
+<h2>4. 可复刻的最小实验（下一步怎么测）</h2>
+<h3>研究假设</h3>
+<p><code>EMA close reclaim</code> 只应作为 <strong>Fib retest_hold / EMA continuation 的 long-side 质量过滤层</strong>；它不该被当成多空对称默认 admission，更不该单独宣称自己是 raw alpha。</p>
+<h3>一个可计算定义</h3>
+<ul>
+<li><code>ema_fast = EMA20</code></li>
+<li>long trend template：<code>EMA20 &gt; EMA50 &gt; EMA200</code></li>
+<li>long reclaim：<code>low[1] &gt; ema_fast[1]</code> 且 <code>low &lt; ema_fast</code> 且 <code>close &gt; ema_fast</code></li>
+<li>short 镜像只保留为对照组，不默认纳入生产规则</li>
+</ul>
+<h3>最小回测切口</h3>
+<p>优先做三臂 honesty test：</p>
+<ol>
+<li><strong>touch-only</strong>：回踩触到 <code>EMA20</code> 就允许进</li>
+<li><strong>close reclaim</strong>：必须 <code>close &gt; EMA20</code></li>
+<li><strong>close reclaim + stacked trend</strong>：再加 <code>EMA20 &gt; EMA50 &gt; EMA200</code></li>
+</ol>
+<h3>建议场景</h3>
+<ul>
+<li>资产：<code>BTC/ETH/SOL</code> perp</li>
+<li>周期：<code>15m</code> 判定，<code>5m</code> 可做执行细化</li>
+<li>样本：最近 <code>180~365d</code></li>
+<li>成本：先看 <code>6 / 10 / 15 bps per side</code></li>
+<li>优先挂到：<code>Fib retest_hold long</code> 与 <code>EMA continuation long</code></li>
+</ul>
+<h3>最先看 4 个指标</h3>
+<ol>
+<li><code>post_cost_return</code></li>
+<li><code>trade_count</code></li>
+<li><code>positive_asset_ratio</code></li>
+<li><code>MAE / fail-fast rate</code></li>
+</ol>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这轮证据主体是仓库源码与最小代理快检，不是正式论文结论。</li>
+<li>代理快检没有把完整出场、资金费率、冲击成本和多因子上下文全部纳入，所以更像 <strong>状态边界测试</strong>，不是完整策略回测。</li>
+<li>long 侧虽然 <code>close reclaim</code> 明显比 <code>touch-only</code> 好，但 aggregate 仍偏弱，<strong>不要把“少亏一点”误读成“已经可单独交易”。</strong></li>
+<li>short 侧镜像不占优，当前默认应把它视为 <strong>not-shared / not-default</strong>，而不是继续强行做成 breakout-short follow-up。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li>tweakerID. (accessed 2026). *EMA Bounce Strategy*. GitHub code file / mirrored Pine script.</li>
+</ol>
+<ul>
+<li>Authors: tweakerID</li>
+<li>Year: N/A</li>
+<li>Title: EMA Bounce Strategy</li>
+<li>Venue: GitHub code file</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://raw.githubusercontent.com/hasnocool/tradingview-pine-scripts/main/EMA%20Bounce%20Strategy.pine&gt;">https://raw.githubusercontent.com/hasnocool/tradingview-pine-scripts/main/EMA%20Bounce%20Strategy.pine&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/hasnocool/tradingview-pine-scripts&gt;">https://github.com/hasnocool/tradingview-pine-scripts&gt;</a></li>
+</ul>
+<ol>
+<li>juanchodeespada. (accessed 2026). *Trend Continuation*. GitHub code file / mirrored Pine script.</li>
+</ol>
+<ul>
+<li>Authors: juanchodeespada</li>
+<li>Year: N/A</li>
+<li>Title: Trend Continuation</li>
+<li>Venue: GitHub code file</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://raw.githubusercontent.com/hasnocool/tradingview-pine-scripts/main/Trend%20Continuation.pine&gt;">https://raw.githubusercontent.com/hasnocool/tradingview-pine-scripts/main/Trend%20Continuation.pine&gt;</a></li>
+<li>Repo URL: &lt;<a href="https://github.com/hasnocool/tradingview-pine-scripts&gt;">https://github.com/hasnocool/tradingview-pine-scripts&gt;</a></li>
+</ul>
+<ol>
+<li>Binance. (2026). *USDⓈ-M Futures REST API — Kline/Candlestick Data*.</li>
+</ol>
+<ul>
+<li>Authors: Binance</li>
+<li>Year: 2026</li>
+<li>Title: Kline/Candlestick Data</li>
+<li>Venue: Binance Developers</li>
+<li>DOI: N/A</li>
+<li>Readable URL: &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;</a></li>
+<li>Repo URL: N/A</li>
+</ul>
+<h2>7. 本轮落地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/ema_bounce_proxy_events_2026-03-20.csv</code></li>
+<li><code>reports/artifacts/quant_digests/ema_bounce_proxy_summary_2026-03-20.csv</code></li>
+<li><code>reports/artifacts/quant_digests/ema_bounce_proxy_side_delta_2026-03-20.csv</code></li>
+</ul>
+</body>
+</html>

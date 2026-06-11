@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 realized variance 只当风险指标：这篇 2025 *JFQA* 更该先测的是「positive-jump variance × anti-lottery cross-sectional long-short」这条 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 realized variance 只当风险指标：这篇 2025 *JFQA* 更该先测的是「positive-jump variance × anti-lottery cross-sectional long-short」这条 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-06 06:21 UTC</span>
+      <span class="pill">研究时间：2026-04-06 06:19 UTC</span>
+      <span class="pill">类型：2025 *Journal of Financial and Quantitative Analysis* 开放获取论文全文（Cambridge PDF）+ Binance public `15m` spot portability probe</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/mean-reversion/anti-lottery/realized-variance/positive-jump/jump-robust/15m/intraday/weekly-sort/spot/coinbase/kaiko/binance/open-access/paper/public-probe/cost/risk</span>
+      <span class="pill">证据类型：开放获取论文全文 + 表格/回归结果 + 本地 Binance `15m` 便携性快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-06_0619_positive-jump-variance-antilottery-xs-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-06 06:19 UTC</li>
+<li>类型：2025 *Journal of Financial and Quantitative Analysis* 开放获取论文全文（Cambridge PDF）+ Binance public <code>15m</code> spot portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>做多低 realized-variance / 低 positive-jump-variance 币，做空高 realized-variance / 高 positive-jump-variance 币；赚的是“彩票偏好过热后，横截面回报被高波动/高正跳跃币透支”的反向价差。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/mean-reversion/anti-lottery/realized-variance/positive-jump/jump-robust/15m/intraday/weekly-sort/spot/coinbase/kaiko/binance/open-access/paper/public-probe/cost/risk</li>
+<li>证据类型：开放获取论文全文 + 表格/回归结果 + 本地 Binance <code>15m</code> 便携性快检</li>
+</ul>
+<h2>1. 先回答一句：这篇东西的 base alpha 是什么？</h2>
+<p><strong>base alpha = <code>横截面做多低波动/低正跳跃币，做空高波动/高正跳跃币</code>。</strong></p>
+<p>翻成人话：</p>
+<ul>
+<li>不是把 volatility 当成风控变量；</li>
+<li>而是把 <strong>“谁最近更像彩票、谁刚经历了更多极端正跳跃”</strong> 当成可交易的横截面特征；</li>
+<li>论文核心不是 generic low-vol，而是更尖一点的：</li>
+<li><code>positive jump variance</code>（正向极端跳跃的方差）</li>
+<li><code>jump-robust variance</code>（非跳跃但持续躁动的方差）</li>
+<p>这两块对后续收益的负预测最强。</p>
+</ul>
+<p>所以它属于 <strong>cross-sectional / anti-lottery raw alpha</strong>，不是单纯 overlay，也不是只给解释。</p>
+<h2>2. 为什么这轮值得进研究池</h2>
+<p>当前 mainline 文档和最近 digest 池，已经积累了很多：</p>
+<ul>
+<li>breakout / trend / TSMOM，</li>
+<li>pairs / spread mean reversion，</li>
+<li>funding / basis carry，</li>
+<li>microstructure continuation / reversal。</li>
+</ul>
+<p>这篇值得补，是因为它补的是另一块 <strong>可独立站立的 raw alpha</strong>：</p>
+<ol>
+<li><strong>它不是再围着 trend/breakout 打转。</strong></li>
+<p>这条线直接扩充 <code>cross-sectional / relative-value / anti-lottery</code> 素材池。</p>
+</ol>
+<ol>
+<li><strong>它的信号来自 intraday realized moments，本质上与 short-cycle infra 是兼容的。</strong></li>
+<p>论文直接用高频数据估计 variance，不是拿低频基本面硬套到分钟级。</p>
+</ol>
+<ol>
+<li><strong>它还能自然拆成 raw alpha + veto/filter。</strong></li>
+<p>主体当然是 long-low / short-high；但即便 desk 最后不直接上 market-neutral 壳，<code>high positive-jump variance</code> 也很适合做：</p>
+</ol>
+<ul>
+<li>不追涨 veto，</li>
+<li>选空优先级，</li>
+<li>或 cross-sectional momentum 的 short-side exclusion。</li>
+</ul>
+<h2>3. 来源与材料</h2>
+<h3>主论文</h3>
+<ul>
+<li><strong>Authors</strong>：Suzanne S. Lee, Minho Wang</li>
+<li><strong>Year</strong>：2024 online / 2025 print</li>
+<li><strong>Title</strong>：*Variance Decomposition and Cryptocurrency Return Prediction*</li>
+<li><strong>Venue</strong>：*Journal of Financial and Quantitative Analysis*</li>
+<li><strong>DOI</strong>：&lt;<a href="https://doi.org/10.1017/S002210902400022X&gt;">https://doi.org/10.1017/S002210902400022X&gt;</a></li>
+<li><strong>Readable URL</strong>：&lt;<a href="https://doi.org/10.1017/S002210902400022X&gt;">https://doi.org/10.1017/S002210902400022X&gt;</a></li>
+<li><strong>PDF URL</strong>：&lt;<a href="https://www.cambridge.org/core/services/aop-cambridge-core/content/view/9995E58095453CB44A3BC3C9C111969F/S002210902400022Xa.pdf/div-class-title-variance-decomposition-and-cryptocurrency-return-prediction-div.pdf&gt;">https://www.cambridge.org/core/services/aop-cambridge-core/content/view/9995E58095453CB44A3BC3C9C111969F/S002210902400022Xa.pdf/div-class-title-variance-decomposition-and-cryptocurrency-return-prediction-div.pdf&gt;</a></li>
+<li><strong>Repo URL</strong>：未见作者公开 companion repo（paper-only）</li>
+</ul>
+<h3>论文数据口径</h3>
+<ul>
+<li><strong>主数据源</strong>：Kaiko 高频 quote / order-book 数据</li>
+<li><strong>交易场所</strong>：以 Coinbase 为主样本构建基底，并验证其他交易所鲁棒性</li>
+<li><strong>公开性</strong>：论文主数据并非免费公共源；但方法、公式、回测口径是可读全文可复现的</li>
+<li><strong>采样频率</strong>：<code>15m</code> mid-quote returns</li>
+<li><strong>样本期</strong>：<code>2015-10 ~ 2023-06</code></li>
+<li><strong>样本规模</strong>：100 个 crypto（含 delisted coin，作者明确强调 survivorship bias 不是关键问题）</li>
+</ul>
+<h3>本轮本地 portability probe（公开数据）</h3>
+<ul>
+<li><strong>数据源</strong>：Binance spot public API <code>15m</code> klines</li>
+<li><strong>公开性</strong>：公开可得，无 key</li>
+<li><strong>最小实验字段</strong>：<code>close</code></li>
+<li><strong>本地产物目录</strong>：</li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-06_variance-jump-crosssection-alpha/probe_summary_all.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-06_variance-jump-crosssection-alpha/major_alts_summary.csv</code></li>
+<li><code>/root/clawd/jerry/momentum/reports/artifacts/quant_digests/2026-04-06_variance-jump-crosssection-alpha/speculative_alts_summary.csv</code></li>
+</ul>
+<h2>4. 论文里最该拿走的硬信息</h2>
+<h2>4.1 方法不是“低波动因子”空话，而是高频 realized moment 拆解</h2>
+<p>作者不是只看一个粗糙的 daily volatility，而是：</p>
+<ul>
+<li>用 <code>15m</code> mid-quote returns 估计 realized variance；</li>
+<li>再把总方差拆成：</li>
+<li><code>positive jump variance</code></li>
+<li><code>negative jump variance</code></li>
+<li><code>jump-robust variance</code></li>
+<li>每周做横截面排序；</li>
+<li>用<strong>前一个月</strong>的高频观测估计这些 realized measures，预测<strong>下一周</strong>超额收益。</li>
+</ul>
+<p>这点很关键：</p>
+<p>&gt; 论文真正的 edge 不是“波动大所以可能跌”，而是“用高频数据更及时地刻画谁刚变成彩票资产”。</p>
+<p>作者也明确拿 daily-data volatility 做对照，发现 <strong>daily volatility 系数不显著</strong>，而 intraday-based realized variance 显著。</p>
+<h2>4.2 最关键结论：高 realized variance 币，后续周收益显著更差</h2>
+<p>论文 Figure 2 / Table 4 最核心的数字：</p>
+<ul>
+<li><strong>总 realized variance 排序</strong>：</li>
+<li>Low 组下一周 EW excess return：<strong>+0.1%</strong></li>
+<li>High 组下一周 EW excess return：<strong>-3.6%</strong></li>
+<li><code>Low - High</code>：<strong>+3.7%/周</strong></li>
+<li>VW 口径 <code>Low - High</code>：<strong>+3.0%/周</strong></li>
+</ul>
+<p>这不是小 edge。</p>
+<p>更重要的是，作者继续拆分后发现：</p>
+<ul>
+<li><strong>positive jump variance 排序</strong>：</li>
+<li>EW <code>Low - High</code>：<strong>+3.6%/周</strong></li>
+<li>VW <code>Low - High</code>：<strong>+2.3%/周</strong></li>
+<li><strong>jump-robust variance 排序</strong>：</li>
+<li>EW <code>Low - High</code>：<strong>+3.2%/周</strong></li>
+<li>VW <code>Low - High</code>：<strong>+2.6%/周</strong></li>
+</ul>
+<p>换句话说：</p>
+<ul>
+<li>不只是“高波动”坏；</li>
+<li><strong>“刚出现很多大阳线式正跳跃”</strong> 更坏；</li>
+<li><strong>“即便不是跳跃，而是整体持续躁动”</strong> 也坏；</li>
+<li>反而 <strong>negative jump variance 不是主要驱动</strong>。</li>
+</ul>
+<h2>4.3 回归层面：positive jump variance 是最硬的解释变量</h2>
+<p>Fama-MacBeth 回归里，作者给出的几个特别值得记住的系数：</p>
+<ul>
+<li><code>total variance</code> 系数：<strong>-0.221</strong>*</li>
+<li><code>jump variance</code> 系数：<strong>-0.669</strong>*</li>
+<li><code>positive jump variance</code> 系数：<strong>-1.470</strong>*</li>
+<li><code>jump-robust variance</code> 系数：<strong>-0.152</strong>*</li>
+<li><code>daily volatility</code> 系数：**-0.134<code>（不显著）</code></li>
+</ul>
+<p>最有用的一句就是：</p>
+<p>&gt; <strong>用高频估出来的 variance 有预测力；用日频粗波动替代，不行。</strong></p>
+<p>这对我们 desk 很重要，因为它意味着：</p>
+<ul>
+<li>这不是传统资产里那种慢吞吞 low-vol story；</li>
+<li>它和 <code>5m/15m</code> 研究栈是有技术兼容性的。</li>
+</ul>
+<h2>4.4 机制不是“风险补偿”，更像“彩票偏好 + 零售追逐”</h2>
+<p>论文给出的机制读法很适合 desk：</p>
+<ul>
+<li>高 variance / 高 positive-jump variance 币通常：</li>
+<li><strong>更小市值</strong></li>
+<li><strong>更低价格</strong></li>
+<li><strong>更宽 bid-ask spread</strong></li>
+<li><strong>更高 retail trading proportion</strong></li>
+<li><strong>更高正向情绪/买入舆情</strong></li>
+<li>作者把它解释成 <strong>lottery preference / speculative retail trading</strong>。</li>
+</ul>
+<p>也就是：</p>
+<ul>
+<li>市场不是因为这些币“风险高所以应该给更高回报”；</li>
+<li>而是因为很多人愿意为了“可能再来一个大阳线”先把价格抬贵；</li>
+<li>所以后续反而给出更差回报。</li>
+</ul>
+<p>这对 crypto 尤其合理，因为彩票偏好和追热点资金，本来就是这里的常见定价力量。</p>
+<h2>5. 对 short-cycle desk，最诚实的读法是什么？</h2>
+<h2>5.1 诚实版：它是慢一点的横截面 raw alpha，不是逐根 5m 主信号</h2>
+<p>必须老实讲：</p>
+<ul>
+<li>论文交易频率是 <strong>周级排序、周级持有</strong>；</li>
+<li>信号估计用的是 <strong>过去一个月</strong> 的 intraday returns；</li>
+<li>所以它不是那种“下一根 5m K 线涨跌”的 ultra-short predictor。</li>
+</ul>
+<p>但这不妨碍它服务当前 desk，因为它完全可以读成：</p>
+<p><strong>一个由高频数据驱动、但 refresh 较慢的横截面 raw alpha sleeve。</strong></p>
+<p>更具体点：</p>
+<ul>
+<li>execution 可以在 <code>5m/15m</code>；</li>
+<li>但 signal refresh 不一定每根 bar；</li>
+<li>完全可以是：</li>
+<li>每 <code>4h</code> / <code>1d</code> 刷一次横截面分层；</li>
+<li>组合执行和风控仍在 <code>5m/15m</code> 完成。</li>
+</ul>
+<h2>5.2 这条线真正适合 desk 的支线读法</h2>
+<p>这篇 paper 对我们最值得先拆的，不只是完整的 long-short 组合，还有两条支线：</p>
+<h3>支线 A：short-side candidate ranker</h3>
+<ul>
+<li>把 <code>high positive-jump variance</code> 当成优先做空池；</li>
+<li>尤其在情绪高涨、山寨追涨很拥挤时，优先找“最像彩票”的那一篮子。</li>
+</ul>
+<h3>支线 B：momentum / breakout 的追涨 veto</h3>
+<ul>
+<li>若一个币刚出现很大的正跳跃方差，别把它继续当最舒服的 breakout 跟随对象；</li>
+<li>它更可能已经被过度追逐，后续 risk-reward 变差。</li>
+</ul>
+<p>所以即便完整 long-short 最后不进 production，<code>positive jump variance veto</code> 也很值。</p>
+<h2>6. 我做的最小 portability probe：直接搬到 Binance <code>15m</code>，近期样本先别急着上</h2>
+<p>为了避免只抄 paper，我做了一个很小但诚实的最近窗口快检。</p>
+<h3>6.1 实验口径</h3>
+<ul>
+<li>数据：Binance spot 公共 API，最近 <code>1000</code> 根 <code>15m</code> bars（约 10.4 天）</li>
+<li>信号：</li>
+<li><code>rv_1d</code>：过去 <code>96</code> 根 <code>15m</code> 的 realized variance</li>
+<li><code>psv_1d</code>：过去 <code>96</code> 根 <code>15m</code> 的 positive semivariance proxy</li>
+<li><code>bv_1d</code>：过去 <code>96</code> 根 <code>15m</code> 的 bipower variation proxy（jump-robust variance 近似）</li>
+<li>排序：每个时间点做横截面三分位</li>
+<li>组合：<code>long low tercile - short high tercile</code></li>
+<li>评估 horizon：<code>1h / 4h / 1d</code></li>
+<li>两组 universe：</li>
+<li><code>major_alts</code>：SOL/XRP/DOGE/BNB/ADA/AVAX/... 这类液态大中盘 alt</li>
+<li><code>speculative_alts</code>：SHIB/BONK/PIXEL/ONT/... 这类更偏投机的中小盘 alt</li>
+</ul>
+<h3>6.2 结果：<strong>最近这段 Binance tape，信号短期是反着的</strong></h3>
+<p>#### major_alts</p>
+<ul>
+<li><code>rv_1d</code> 的 <code>Low - High</code>：</li>
+<li><code>1h</code>：<strong>-0.0062%</strong></li>
+<li><code>4h</code>：<strong>-0.0526%</strong></li>
+<li><code>1d</code>：<strong>-0.3729%</strong></li>
+<li><code>psv_1d</code> 的 <code>Low - High</code>：</li>
+<li><code>1h</code>：<strong>-0.0160%</strong></li>
+<li><code>4h</code>：<strong>-0.0692%</strong></li>
+<li><code>1d</code>：<strong>-0.3591%</strong></li>
+</ul>
+<p>#### speculative_alts</p>
+<ul>
+<li><code>rv_1d</code> 的 <code>Low - High</code>：</li>
+<li><code>1h</code>：<strong>-0.0342%</strong></li>
+<li><code>4h</code>：<strong>-0.1577%</strong></li>
+<li><code>1d</code>：<strong>-0.7310%</strong></li>
+<li><code>psv_1d</code> 的 <code>Low - High</code>：</li>
+<li><code>1h</code>：<strong>-0.0415%</strong></li>
+<li><code>4h</code>：<strong>-0.1682%</strong></li>
+<li><code>1d</code>：<strong>-0.3854%</strong></li>
+</ul>
+<p>也就是说，在<strong>最近这 10 天左右的 Binance <code>15m</code> 样本</strong>里：</p>
+<p>&gt; 不是低 variance 币更强，而是高 variance / 高 positive-jump 币继续更强。</p>
+<p>这和 paper 的周级结论相反。</p>
+<h3>6.3 这不代表论文没用，代表我们不能“频率偷换”</h3>
+<p>最合理的解释不是“paper 错了”，而是：</p>
+<ol>
+<li><strong>paper 的 alpha 是周级横截面，不是近 10 天 15m 的追踪误差游戏；</strong></li>
+<li><strong>当前 tape 更像投机追涨环境，高方差币正处在被继续买的阶段；</strong></li>
+<li><strong>作者的效应更强于长期、更广的 Coinbase/Kaiko 横截面，并且更偏小币/零售拥挤环境；</strong></li>
+<li><strong>我们这里的 recent-window probe 更像在测“这条周级 alpha 能不能直接压缩成短线版本”，答案目前是：不能直接照搬。</strong></li>
+</ol>
+<p>这反而是好事，因为它告诉我们：</p>
+<ul>
+<li>这条线 <strong>值得测</strong>，</li>
+<li>但 <strong>不能粗暴降频率/缩 horizon</strong>。</li>
+</ul>
+<h2>7. desk 版该怎么落地，才不算乱改论文</h2>
+<h2>7.1 先做 paper-faithful replication</h2>
+<p>第一步不要自作聪明，先复原它的结构：</p>
+<ul>
+<li>universe：尽量广的 spot coin 横截面</li>
+<li>sampling：<code>15m</code></li>
+<li>feature window：过去 <code>1 month</code></li>
+<li>rebalance：每周</li>
+<li>portfolio：</li>
+<li><code>long low positive-jump variance tercile</code></li>
+<li><code>short high positive-jump variance tercile</code></li>
+<li>weighting：先 equal-weight，再加 liquidity cap</li>
+</ul>
+<p>这是<strong>主验证</strong>，不是可选项。</p>
+<h2>7.2 然后才是 desk adaptation</h2>
+<h3>版本 A：慢因子 + 快执行</h3>
+<ul>
+<li>signal 每 <code>1d</code> 或 <code>4h</code> 刷新一次；</li>
+<li>执行 bar 在 <code>15m</code>；</li>
+<li>组合仍是 market-neutral cross-sectional long-short。</li>
+</ul>
+<h3>版本 B：short-side ranker</h3>
+<ul>
+<li>只取 <code>high positive-jump variance</code> 分位做 short candidate 池；</li>
+<li>再叠一个 <code>breadth weakening / BTC not impulsing up</code> 的环境确认。</li>
+</ul>
+<h3>版本 C：trend / breakout veto</h3>
+<ul>
+<li>breakout 本来想追多的币，如果它的 <code>positive-jump variance</code> 已在横截面顶部分位，先降权或 veto。</li>
+</ul>
+<p>对当前 desk，<strong>版本 B / C 反而可能比直接上完整 long-short 更快。</strong></p>
+<h2>8. 一条最小可执行策略骨架</h2>
+<h2>8.1 Universe</h2>
+<ul>
+<li>Binance spot 或 perp 流动性前 <code>30~80</code> 币</li>
+<li>剔除：稳定币、包装资产、明显不可借不可空标的</li>
+<li>首轮优先：spot 做研究；能成立再映射 perp</li>
+</ul>
+<h2>8.2 Signal</h2>
+<ul>
+<li>bar frequency：<code>15m</code></li>
+<li>每个币估计：</li>
+<li><code>RV = sum(r_t^2)</code></li>
+<li><code>PSV = sum(max(r_t, 0)^2)</code></li>
+<li><code>BV ≈ (π/2) * sum(|r_t||r_{t-1}|)</code></li>
+<li>window：</li>
+<li>Paper-faithful：<code>~30d</code></li>
+<li>Desk-minimal：先从 <code>3d / 7d / 14d / 30d</code> 四档试</li>
+<li>排序：横截面 tercile / quintile</li>
+</ul>
+<h2>8.3 Entry / Exit</h2>
+<h3>Paper-faithful 版</h3>
+<ul>
+<li>周末或固定 UTC 时间做一次排序</li>
+<li>下周持有整周</li>
+</ul>
+<h3>Desk-adapted 版</h3>
+<ul>
+<li>每 <code>4h</code> 或 <code>1d</code> 刷一次排序</li>
+<li>固定持有 <code>1d / 3d</code></li>
+<li>不要先上 per-bar 动态翻仓，不然 turnover 会把 edge 吃掉</li>
+</ul>
+<h2>8.4 Sizing</h2>
+<ul>
+<li>equal-weight 起步</li>
+<li>再加：</li>
+<li>单币权重上限</li>
+<li>ADV cap / trade-count cap</li>
+<li>inverse-vol 微调，但不要把 alpha 又冲淡成 generic risk parity</li>
+</ul>
+<h2>8.5 Risk / Cost</h2>
+<ul>
+<li>手续费：先按 taker 双边 <code>4~8 bps</code></li>
+<li>做空可得性：优先在 perp 验证，但注意 funding 不要把 alpha 和 carry 混起来</li>
+<li>风险项：</li>
+<li>squeeze risk（尤其 short 高 positive-jump 币时）</li>
+<li>crowding / meme continuation</li>
+<li>regime dependency（risk-on 疯涨阶段，信号容易翻面）</li>
+</ul>
+<h2>9. 这篇 paper 目前最适合放在我们研究栈里的位置</h2>
+<p>我的判断：</p>
+<ul>
+<li><strong>主标签仍然是 <code>raw alpha</code></strong>，因为 base alpha 很清楚；</li>
+<li>但对当前 <code>1m/3m/5m/15m</code> desk，<strong>最优先的不是直接把它压成下一根 K 线预测器</strong>；</li>
+<li>更适合先作为：</li>
+</ul>
+<ol>
+<li><strong>慢横截面 alpha sleeve</strong></li>
+<li><strong>short-side ranker</strong></li>
+<li><strong>trend/breakout 的 anti-lottery veto</strong></li>
+</ol>
+<p>这比把它硬伪装成“分钟级主信号”诚实得多，也更可能跑出东西。</p>
+<h2>10. 下一步怎么测</h2>
+<p>按优先级，我建议直接做这 4 组实验：</p>
+<h3>P0：paper-faithful replication（必须先做）</h3>
+<ul>
+<li>数据：尽量广的 spot 横截面，<code>15m</code> 或更高质量 intraday 数据</li>
+<li>信号：<code>RV / PSV / BV</code></li>
+<li>窗口：<code>30d</code></li>
+<li>rebalance：weekly</li>
+<li>输出：<code>Low/Mid/High</code> 分组收益、<code>Low-High</code> spread、turnover、成本后收益</li>
+</ul>
+<h3>P1：desk 适配版慢刷新</h3>
+<ul>
+<li>用 Binance / Bybit 可拿到的公开数据</li>
+<li><code>15m</code> bar 估 <code>7d/14d/30d</code> variance family</li>
+<li>refresh：<code>4h</code> / <code>1d</code></li>
+<li>hold：<code>1d</code> / <code>3d</code></li>
+<li>验证这条线是不是只能慢做，还是能压缩到我们现有 infra</li>
+</ul>
+<h3>P2：regime split</h3>
+<p>把样本按以下条件切开：</p>
+<ul>
+<li>BTC <code>1d</code> 涨幅分位</li>
+<li>alt breadth</li>
+<li>high-beta risk-on / risk-off</li>
+<li>meme season proxy</li>
+</ul>
+<p>核心问题：</p>
+<p>&gt; <code>anti-lottery</code> 这条线是不是只在 risk-off / overheat-cooling 阶段成立，而在纯 risk-on 追涨阶段翻面？</p>
+<h3>P3：把它变成 veto，而不是强行当主 alpha</h3>
+<ul>
+<li>在现有 breakout / winner-only / market TSMOM / cross-sectional momentum 壳上，加入：</li>
+<li><code>positive-jump variance top decile veto</code></li>
+<li><code>jump-robust variance top decile size-down</code></li>
+<li>看它能不能改善：</li>
+<li>entry timing</li>
+<li>short-side hit rate</li>
+<li>MDD</li>
+</ul>
+<h2>11. 一句话结论</h2>
+<p>这篇 2025 *JFQA* 给的不是“vol 高要小心”这种废话，而是一条很清楚的 <strong>anti-lottery cross-sectional raw alpha</strong>：</p>
+<p>&gt; <strong>做多低 realized-variance / 低 positive-jump-variance 币，做空高 realized-variance / 高 positive-jump-variance 币。</strong></p>
+<p>但我这轮 public <code>15m</code> 快检也很明确：</p>
+<p>&gt; <strong>它不能被粗暴压缩成最近 10 天 Binance <code>15m</code> 的短线版本；当前 tape 里，高 variance 币反而在继续赢。</strong></p>
+<p>所以最该做的，不是把它误读成逐根信号，而是：</p>
+<ul>
+<li>先做 paper-faithful 周级 replication；</li>
+<li>再把它拆成 <code>slow cross-sectional sleeve / short-side ranker / anti-lottery veto</code> 三条线。</li>
+</ul>
+<h2>12. 参考链接</h2>
+<ul>
+<li>Paper DOI：&lt;<a href="https://doi.org/10.1017/S002210902400022X&gt;">https://doi.org/10.1017/S002210902400022X&gt;</a></li>
+<li>Paper PDF：&lt;<a href="https://www.cambridge.org/core/services/aop-cambridge-core/content/view/9995E58095453CB44A3BC3C9C111969F/S002210902400022Xa.pdf/div-class-title-variance-decomposition-and-cryptocurrency-return-prediction-div.pdf&gt;">https://www.cambridge.org/core/services/aop-cambridge-core/content/view/9995E58095453CB44A3BC3C9C111969F/S002210902400022Xa.pdf/div-class-title-variance-decomposition-and-cryptocurrency-return-prediction-div.pdf&gt;</a></li>
+<li>JFQA article landing（DOI 跳转）：&lt;<a href="https://doi.org/10.1017/S002210902400022X&gt;">https://doi.org/10.1017/S002210902400022X&gt;</a></li>
+</ul>
+</body>
+</html>

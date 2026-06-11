@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 basket stat-arb 只当 pairs 扩容：这份 2026 新 repo 更该先测的是「3-leg cointegrated basket + OU alpha + hysteresis bucket」完整 raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 basket stat-arb 只当 pairs 扩容：这份 2026 新 repo 更该先测的是「3-leg cointegrated basket + OU alpha + hysteresis bucket」完整 raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-26 03:44 UTC</span>
+      <span class="pill">研究时间：2026-03-26 03:42 UTC</span>
+      <span class="pill">类型：2026 GitHub 新仓库 + notebook 输出审计 + Binance Futures 公共 `15m/1h/4h` 最小快检</span>
+      <span class="pill">主题标签：raw-alpha/stat-arb/relative-value/cointegrated-basket/ou-alpha/hysteresis/bucketed-sizing/risk-parity/crypto/binance/perpetual/15m/1h/4h/repo</span>
+      <span class="pill">证据类型：GitHub notebook 输出审计 + 代码规则拆解 + 本地公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-26_0342_cointegrated-basket-ou-hysteresis.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-26 03:42 UTC</li>
+<li>类型：2026 GitHub 新仓库 + notebook 输出审计 + Binance Futures 公共 <code>15m/1h/4h</code> 最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>对 3-leg cointegrated basket 的 spread 做均值回归交易——先用 Johansen / rolling weights 找稳定组合，再用 OU/z-score 偏离开仓，靠 bucketed sizing / hysteresis / risk-parity 把 spread alpha 变成可执行组合；<code>regime-aware</code> 与 <code>bucket</code> 是治理层，不是 alpha 本体</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/stat-arb/relative-value/cointegrated-basket/ou-alpha/hysteresis/bucketed-sizing/risk-parity/crypto/binance/perpetual/15m/1h/4h/repo</li>
+<li>证据类型：GitHub notebook 输出审计 + 代码规则拆解 + 本地公共数据快检</li>
+</ul>
+<p>&gt; 先回答 base alpha：<strong>这篇东西的 base alpha 不是 filter，不是 throttle，也不是 bucket sizing。base alpha 就是“多腿 cointegrated spread 偏离均衡后回归”这条 relative-value / stat-arb raw alpha。</strong> 值得写它，是因为最近 digest 虽然已经补了不少 pairs / spread，但还缺一张更接近 desk 真实部署形态的卡：<strong>不是只做 2-leg pair，而是直接把 3-leg basket、入场滞后、仓位 bucket、组合配重一起拆给你。</strong></p>
+<h2>1. 这次看了什么</h2>
+<p>这次主看一份非常新的 GitHub repo：</p>
+<ol>
+<li><strong>Sujith Kamme (2026). _Trading Cointegrated Crypto Baskets with Regime-Aware Statistical Arbitrage_. GitHub repository / Jupyter notebook.</strong></li>
+</ol>
+<ul>
+<li>Repo：<code><a href="https://github.com/sujith-kamme/statistical-arbitrage-crypto">https://github.com/sujith-kamme/statistical-arbitrage-crypto</a></code></li>
+<li>创建时间（GitHub API）：<code>2026-03-20T03:07:38Z</code></li>
+<li>主 notebook：<code>labs/research.ipynb</code></li>
+</ul>
+<ol>
+<li>notebook 的主线不是“单对 pair 回归”，而是：</li>
+</ol>
+<ul>
+<li>在一篮子币里找 <strong>2~4 leg cointegrated baskets</strong>；</li>
+<li>对 spread 做 <strong>ADF / variance-ratio / half-life / predictability</strong> 筛选；</li>
+<li>用 <strong>OU alpha + two-tier regime score</strong> 出交易方向；</li>
+<li>再用 <strong>hysteresis / bucketed sizing / risk parity</strong> 做组合落地。</li>
+</ul>
+<p>翻成人话：</p>
+<ul>
+<li>很多 pairs 研究只回答“这两条线像不像会回归”；</li>
+<li>这份 repo 往前多走了一步，直接回答：</li>
+</ul>
+<ol>
+<li><strong>如果不是两条线，而是 3 条腿呢？</strong></li>
+<li><strong>如果 spread 的回归强度有高低档，仓位要不要跳档？</strong></li>
+<li><strong>如果 basket 本身是 market-neutral 候选，最后多个 basket 之间怎么配？</strong></li>
+</ol>
+<p>这比“又一个 z-score pairs demo”更接近我们当前 desk 的素材池需求：<strong>它给的是完整 raw alpha 骨架，而不是只给一个 entry 信号。</strong></p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份新 repo 真正该先 intake 的，不是“regime-aware”这几个字，而是 <strong>3-leg cointegrated basket spread → OU alpha → hysteresis bucket</strong> 这条完整 raw alpha 链；它在 repo 自带 OOS 输出里是成立的，但对 desk 来说更诚实的短周期读法不是“直接压成 15m 主信号”，而是 <strong><code>1h/4h discovery</code> + <code>15m execution</code></strong>。</li>
+<li><strong>一句话它怎么证明：</strong> repo notebook 已经把 basket discovery、筛选、OOS、风险中性检验都跑出来；我再把 repo 选出的 4 个 baskets 拿到 Binance perp 上做固定权重 proxy，结果是：<strong><code>1h</code> 还像样，<code>15m</code> 直接转负。</strong></li>
+</ul>
+<p>我的 desk 化判断很明确：</p>
+<ul>
+<li><strong>alpha 本体值得保留；</strong></li>
+<li><strong>15m bar-close 直接照抄不值得；</strong></li>
+<li>真正该进研究池的是：<strong>用慢一点的发现时钟找 basket，再把短周期资源用在执行，不要把 discovery 和 execution 压成同一个 15m 信号。</strong></li>
+</ul>
+<h2>3. 3 个最关键的数据点</h2>
+<ol>
+<li><strong>repo 自带的 walk-forward 结果，不只是“看起来有道理”，而是已经到完整组合层。</strong> notebook 输出显示：</li>
+</ol>
+<ul>
+<li><code>155</code> 个候选 baskets 经过阈值后只剩 <code>10</code> 个；</li>
+<li>再做 diversification 后最终只保留 <code>4</code> 个 baskets；</li>
+<li>这 4 个 baskets 的 <strong>OOS net Sharpe = <code>1.764</code>，net cumulative = <code>5.61%</code>，max drawdown = <code>-1.38%</code>，annual turnover = <code>7.05x</code>，entry events ≈ <code>15/年</code></strong>。</li>
+<p>这说明它不是“多腿越多越好”的故事，反而是在强调：<strong>basket stat-arb 的胜负手先在 admission funnel，再在仓位治理。</strong></p>
+</ul>
+<ol>
+<li><strong>把同一批 baskets desk-transfer 到 Binance perp 后，<code>1h</code> 还能活，<code>15m</code> 基本就塌。</strong> 我用 repo 最终留下的 4 个三腿 baskets，在 Binance USDⓈ-M 上做固定 train-weight proxy（Johansen 取权重，spread z-score 入场，含 <code>6 bps</code> taker-ish 成本）得到：</li>
+</ol>
+<ul>
+<li><strong><code>1h</code> 聚合平均：net cumulative <code>+3.61%</code>，Sharpe <code>+4.91</code></strong></li>
+<li><strong><code>15m</code> 聚合平均：net cumulative <code>-3.24%</code>，Sharpe <code>-4.74</code></strong></li>
+<p>这不是“15m 也许差一点”，而是很明显地提示：<strong>这条 alpha 的 discovery 时钟不该被硬压到 15m。</strong></p>
+</ul>
+<ol>
+<li><strong>最好的 basket 在慢时钟上很强，但压快后会反过来伤人。</strong> repo 里最强的一组之一 <code>OPUSDT / FILUSDT / APTUSDT</code>，我这边 proxy 的结果是：</li>
+</ol>
+<ul>
+<li><strong><code>4h</code>：net cumulative <code>+15.38%</code>，Sharpe <code>+5.06</code></strong></li>
+<li><strong><code>1h</code>：net cumulative <code>+5.85%</code>，Sharpe <code>+8.04</code></strong></li>
+<li><strong><code>15m</code>：net cumulative <code>-5.28%</code>，Sharpe <code>-6.89</code></strong></li>
+<p>读法非常直白：<strong>不是 spread alpha 不存在，而是把它压成更快的 bar-level 交易后，噪音和成本先把它吃掉。</strong></p>
+</ul>
+<h2>4. 为什么它和当前 desk 直接相关</h2>
+<h3>4.1 它服务的是哪类 raw alpha</h3>
+<ul>
+<li>分类：<strong>relative-value / stat-arb / cointegrated-basket mean reversion raw alpha</strong></li>
+<li>不是：</li>
+<li>单独的 regime filter</li>
+<li>纯 risk overlay</li>
+<li>只讲“怎么配仓”的组合学</li>
+</ul>
+<h3>4.2 它补的是哪块空白</h3>
+<p>最近 digest 已经有：</p>
+<ul>
+<li>2-leg pairs</li>
+<li>distance / copula / dynamic-factor / Kalman β 偏离</li>
+<li>funding / basis / spread / basket 类 relative-value</li>
+</ul>
+<p>但还比较缺一张<strong>更接近 desk 真实落地的 basket 卡</strong>：</p>
+<ul>
+<li>不只是“两个币的 spread 回不回”；</li>
+<li>而是“<strong>三腿组合</strong>能不能更稳、怎么发现、怎么分档开仓、怎么在多个 basket 之间分配 gross”。</li>
+</ul>
+<p>所以这篇的价值不在“又证明一次 mean reversion”，而在于它把 <strong>basket discovery → alpha extraction → sizing governance → portfolio layer</strong> 连成了一条完整链。</p>
+<h2>5. 策略拆解（按完整策略卡写）</h2>
+<h3>5.1 方向属性</h3>
+<ul>
+<li>market-neutral / relative-value / basket stat-arb / mean reversion</li>
+</ul>
+<h3>5.2 基础 alpha</h3>
+<ol>
+<li>先找一组 <code>2~4</code> 个币，使其 log-price 之间存在可交易的 cointegrated 关系；</li>
+<li>由 Johansen / rolling weights 构造 spread：</li>
+</ol>
+<ul>
+<li><code>spread_t = w1*log(P1_t) + w2*log(P2_t) + w3*log(P3_t) (+ ...)</code></li>
+</ul>
+<ol>
+<li>当 spread 偏离其 rolling equilibrium，赌其向中枢回归；</li>
+<li>这就是 alpha body。</li>
+</ol>
+<h3>5.3 entry</h3>
+<p>repo 不是直接写死“z &gt; 2 就开”，而是先构造：</p>
+<ul>
+<li>OU alpha</li>
+<li>two-tier regime score</li>
+<li>然后再映射到 bucketed / hysteresis position</li>
+</ul>
+<p>对 desk 的最小版可先写成：</p>
+<ul>
+<li><code>|z| &gt; z_entry</code> 开仓；</li>
+<li><code>z &gt; +entry</code> 做 short spread；</li>
+<li><code>z &lt; -entry</code> 做 long spread；</li>
+<li>同时记录 half-life 与最近 spread 波动，防止在明显失稳期追反转。</li>
+</ul>
+<h3>5.4 exit</h3>
+<p>repo 输出给了两个很重要的 exit 观念：</p>
+<ol>
+<li><strong>hysteresis</strong>：不要刚穿阈值就来回翻；</li>
+<li><strong>bucketed sizing</strong>：回归强度分层，而不是 all-in / all-out。</li>
+</ol>
+<p>desk 最小版可先用：</p>
+<ul>
+<li><code>|z| &lt; z_exit</code> 平仓；</li>
+<li><code>max_hold</code> 超时平仓；</li>
+<li><code>|z|</code> 继续远离时做风险退出；</li>
+<li>之后再引入 hysteresis 防抖。</li>
+</ul>
+<h3>5.5 sizing</h3>
+<p>这里是这份 repo 比普通 pairs notebook 更值钱的地方：</p>
+<ul>
+<li>先把 alpha 映射成离散 bucket；</li>
+<li>再对 surviving baskets 做 risk parity；</li>
+<li>最后组合成 portfolio。</li>
+</ul>
+<p>换成人话：</p>
+<ul>
+<li>它承认“信号有强弱档”；</li>
+<li>也承认“不同 basket 波动不一样，不该同权硬上”。</li>
+</ul>
+<h3>5.6 risk / cost</h3>
+<ul>
+<li>half-life 过滤</li>
+<li>stationarity / predictability 过滤</li>
+<li>regime-aware veto</li>
+<li>basket 间 risk parity</li>
+<li>交易成本明确计入（repo notebook OOS <code>tcost_bps = 20</code>）</li>
+</ul>
+<p>也就是说，这篇不是只给“alpha 会不会回归”；它直接把 <code>entry / exit / sizing / risk / cost</code> 五件套摆齐了。</p>
+<h2>6. 本地最小快检：把 repo 的 baskets 拿到 Binance perp，上快慢时钟看 transfer 边界</h2>
+<h3>6.1 数据与口径</h3>
+<ul>
+<li>数据：Binance USDⓈ-M Futures 公共 K 线</li>
+<li>baskets：直接用 repo OOS 最终保留的 4 组 3-leg baskets：</li>
+<li><code>OPUSDT / FILUSDT / APTUSDT</code></li>
+<li><code>FILUSDT / NEARUSDT / APTUSDT</code></li>
+<li><code>ADAUSDT / ATOMUSDT / CRVUSDT</code></li>
+<li><code>DOTUSDT / OPUSDT / LTCUSDT</code></li>
+<li>时钟：<code>4h / 1h / 15m</code></li>
+<li>proxy 规则：</li>
+<li>train 段 Johansen 固定权重</li>
+<li>test 段 spread rolling z-score</li>
+<li><code>entry = 1.75 / 2.0 / 2.2</code>（随时钟加严）</li>
+<li><code>exit = 0.35 / 0.4 / 0.5</code></li>
+<li><code>max_hold = 8 / 12 / 24 bars</code></li>
+<li>成本：按 <code>6 bps taker-ish</code> 的 leg turnover 粗记</li>
+</ul>
+<h3>6.2 结果怎么读</h3>
+<p>#### 先看 aggregate</p>
+<ul>
+<li><strong><code>4h</code> 平均：net cumulative <code>+1.60%</code>，Sharpe <code>+0.62</code></strong></li>
+<li><strong><code>1h</code> 平均：net cumulative <code>+3.61%</code>，Sharpe <code>+4.91</code></strong></li>
+<li><strong><code>15m</code> 平均：net cumulative <code>-3.24%</code>，Sharpe <code>-4.74</code></strong></li>
+</ul>
+<p>这组结果最有价值的，不是“1h 比 4h 还高”这件事本身，而是它把边界说清了：</p>
+<ul>
+<li><strong>这类 basket alpha 还能往 <code>1h</code> 压；</strong></li>
+<li><strong>但把 discovery 直接压成 <code>15m</code> 主信号，当前就是负的。</strong></li>
+</ul>
+<p>#### 再看单 basket</p>
+<ol>
+<li><code>OP/FIL/APT</code></li>
+</ol>
+<ul>
+<li><code>4h</code>：<code>+15.38% / Sharpe 5.06</code></li>
+<li><code>1h</code>：<code>+5.85% / Sharpe 8.04</code></li>
+<li><code>15m</code>：<code>-5.28% / Sharpe -6.89</code></li>
+</ul>
+<ol>
+<li><code>ADA/ATOM/CRV</code></li>
+</ol>
+<ul>
+<li><code>4h</code>：<code>+2.23% / Sharpe 3.05</code></li>
+<li><code>1h</code>：<code>+3.55% / Sharpe 5.27</code></li>
+<li><code>15m</code>：<code>-1.83% / Sharpe -3.51</code></li>
+</ul>
+<p>这说明两个问题：</p>
+<ul>
+<li>不是所有 basket 都值得继续；</li>
+<li>但 surviving basket 确实可能在 <code>1h</code> discovery 上保留边。</li>
+</ul>
+<h3>6.3 desk 读法</h3>
+<p>对当前 short-cycle desk，我更愿意把它定义成：</p>
+<ul>
+<li><strong>primary alpha clock：<code>1h/4h</code></strong></li>
+<li><strong>execution clock：<code>15m</code></strong></li>
+</ul>
+<p>而不是：</p>
+<ul>
+<li><code>15m</code> 每根 bar 都重新发现一次 basket、重新交易一次。</li>
+</ul>
+<h2>7. 这条线现在该怎么放进研究池</h2>
+<p>我的判断：<strong>值得进研究池，而且是 raw alpha 前排，但别误标。</strong></p>
+<p>更诚实的标签应是：</p>
+<ul>
+<li><code>raw alpha / basket stat-arb / slower-discovery faster-execution</code></li>
+</ul>
+<p>而不是：</p>
+<ul>
+<li><code>15m always-on spread signal</code></li>
+</ul>
+<p>也就是说，值得保留的不是“15m 压快后还能赚”；而是：</p>
+<ol>
+<li><strong>3-leg basket 比 2-leg pairs 更像可扩展的 relative-value 家族；</strong></li>
+<li><strong>OU alpha + hysteresis + bucket sizing 给了很完整的部署骨架；</strong></li>
+<li><strong>短周期该服务 execution，不该强行接管 discovery。</strong></li>
+</ol>
+<h2>8. 下一步怎么测（必须）</h2>
+<ol>
+<li><strong>把固定 train-weight 改成真正的 rolling walk-forward。</strong> 当前 proxy 还是 train-once/test-once；下一轮必须做 <code>1h</code> 的 rolling re-estimation，确认不是一次性样本幸运。</li>
+<li><strong>把 <code>1h discovery → 15m execution</code> 真正拆成两层。</strong> 不要再跑 <code>15m</code> 直接重估 basket；而是用 <code>1h</code> 出方向，用 <code>15m</code> 做挂单/切片/回归触发。</li>
+<li><strong>把 raw alpha、本地 hysteresis、risk parity 三层拆开 A/B。</strong> 先跑：</li>
+</ol>
+<ul>
+<li>raw spread z-score only</li>
+<li><code>+ hysteresis</code></li>
+<li><code>+ bucket sizing</code></li>
+<li><code>+ basket-level risk parity</code></li>
+<p>看哪一层真的在贡献净边。</p>
+</ul>
+<ol>
+<li><strong>补资金费与腿流动性约束。</strong> 这类多腿 basket 在 perp 上很容易被 funding / 某一腿容量拖死；下一轮必须记录每条腿的 funding、quote volume、以及最脆弱腿的 participation。</li>
+<li><strong>和现有 2-leg pairs 做正交性检查。</strong> 如果 basket 只是在复制 pair spread 的 beta-neutral 版本，就没必要单独占预算；要验证它是否提供了新的 residual source。</li>
+<li><strong>把仓位 bucket 改成 cost-aware bucket。</strong> repo 里 bucket 更像 alpha-strength bucket；desk 版下一轮应直接加 <code>expected edge &gt; fee budget</code> 的 no-trade 条件。</li>
+</ol>
+<h2>9. 风险与保留意见</h2>
+<ul>
+<li>这是一份新 repo，不是成熟期刊论文；证据强度天然弱于“论文 + 开源代码 + 独立复现”三件套。</li>
+<li>repo 的 notebook 输出是存量输出，不等于外部独立复核。</li>
+<li>我的 Binance 快检是 <strong>desk transfer proxy</strong>，不是 repo faithful replication；它更适合回答“压到 perp 短周期后还有没有边”，不适合拿来否定 repo 原始设定。</li>
+<li>当前最明确的负面信息是：<strong>15m direct transfer 不成立。</strong> 所以这条线不该被包装成 bar-by-bar 高频主 alpha。</li>
+</ul>
+<h2>10. 来源</h2>
+<ol>
+<li><strong>Kamme, S. (2026). _Trading Cointegrated Crypto Baskets with Regime-Aware Statistical Arbitrage_. GitHub repository / notebook.</strong></li>
+</ol>
+<ul>
+<li>Venue：GitHub repository</li>
+<li>DOI：无</li>
+<li>Readable URL：<code><a href="https://github.com/sujith-kamme/statistical-arbitrage-crypto">https://github.com/sujith-kamme/statistical-arbitrage-crypto</a></code></li>
+<li>Repo URL：<code><a href="https://github.com/sujith-kamme/statistical-arbitrage-crypto">https://github.com/sujith-kamme/statistical-arbitrage-crypto</a></code></li>
+<li>Evidence note：repo 创建于 <code>2026-03-20T03:07:38Z</code>；主 notebook <code>labs/research.ipynb</code> 含 walk-forward、筛选、OOS 与市场中性检验输出。</li>
+</ul>
+<ol>
+<li><strong>Johansen, S. (1991). _Estimation and Hypothesis Testing of Cointegration Vectors in Gaussian Vector Autoregressive Models_. Econometrica, 59(6), 1551–1580.</strong></li>
+</ol>
+<ul>
+<li>Venue：Econometrica</li>
+<li>DOI：<code>10.2307/2938278</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.2307/2938278">https://doi.org/10.2307/2938278</a></code></li>
+<li>Repo URL：无</li>
+<li>作用：多变量 cointegration / basket 权重估计的理论基础。</li>
+</ul>
+<ol>
+<li><strong>Avellaneda, M., &amp; Lee, J.-H. (2010). _Statistical Arbitrage in the U.S. Equities Market_. Quantitative Finance, 10(7), 761–782.</strong></li>
+</ol>
+<ul>
+<li>Venue：Quantitative Finance</li>
+<li>DOI：<code>10.1080/14697680903124632</code></li>
+<li>Readable URL：<code><a href="https://doi.org/10.1080/14697680903124632">https://doi.org/10.1080/14697680903124632</a></code></li>
+<li>Repo URL：无</li>
+<li>作用：把多资产统计套利放到组合层与成本层去读的经典地基。</li>
+</ul>
+<ol>
+<li><strong>Binance Developers. _USDⓈ-M Futures API – Kline/Candlestick Data_.</strong></li>
+</ol>
+<ul>
+<li>Readable URL：<code><a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data</a></code></li>
+</ul>
+<h2>11. 本地产物</h2>
+<ul>
+<li><code>reports/artifacts/quant_digests/cointegrated-basket-ou-hysteresis_20260326_0340/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/cointegrated-basket-ou-hysteresis_20260326_0340/interval_aggregate.csv</code></li>
+<li><code>reports/artifacts/quant_digests/cointegrated-basket-ou-hysteresis_20260326_0340/meta.json</code></li>
+<li><code>reports/artifacts/quant_digests/cointegrated-basket-ou-hysteresis_20260326_0340/*_series.csv</code></li>
+</ul>
+<h2>12. 一句话 verdict</h2>
+<p><strong>进研究池，而且按 raw alpha 前排保留；但更诚实的 desk 化方向是 <code>1h/4h basket discovery + 15m execution</code>，不是把 basket cointegration 直接压成 15m 主信号。</strong></p>
+</body>
+</html>

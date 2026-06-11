@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 Fib retest_hold 写成“单次触位就确认”：`violation-cluster + 1-bar memory` 更像 15m 的 honest gate</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 Fib retest_hold 写成“单次触位就确认”：`violation-cluster + 1-bar memory` 更像 15m 的 honest gate</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-20 21:54 UTC</span>
+      <span class="pill">研究时间：2026-03-20 21:42 UTC</span>
+      <span class="pill">类型：论文</span>
+      <span class="pill">主题标签：breakout-short/fibonacci/retest-hold/ema/psar/fib/violation-cluster/downtrend/confirmation/filter/paper/crypto/5m/15m</span>
+      <span class="pill">证据类型：论文证据（Financial Innovation 全文）</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-20_2142_fib-violation-cluster-memory-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-20 21:42 UTC</li>
+<li>类型：论文</li>
+<li>主题标签：breakout-short/fibonacci/retest-hold/ema/psar/fib/violation-cluster/downtrend/confirmation/filter/paper/crypto/5m/15m</li>
+<li>证据类型：论文证据（Financial Innovation 全文）</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>这轮主看 <strong>Gurrib, Nourani, Bhaskaran (2022)</strong> 的论文《Energy crypto currencies and leading U.S. energy stock prices: are Fibonacci retracements profitable?》。我这次不拿它的 headline（“Fib 是否盈利”）当主结论，而是抽一个更适合我们 desk 的旁支：<strong>Fib 水平被连续击穿时，是否应直接否决“retest_hold 成立”</strong>。</p>
+<h2>2. 核心结论（先说人话）</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> Fib 回踩确认不该只看“这根碰没碰到位”，还要看“前 1~2 根是否刚发生同向击穿”，否则很容易把延续失效误判成 hold。</li>
+<li><strong>一句话证明方式：</strong> 作者把价格击穿（violation）按上/下行趋势拆开，并统计 <code>t-1/t-2/t-3</code> 的连续击穿关系，发现<strong>连续击穿主要集中在最近 1 个 bar</strong>，且在下行阶段更频繁。</li>
+<li>样本是 <strong>2017-11 ~ 2020-01</strong> 的日频数据，覆盖 <strong>10 只美股能源股 + 4 只能源加密资产</strong>；虽然不是我们的 15m crypto 口径，但“连续击穿记忆”这个机制可迁移。</li>
+<li>论文给出一个很可执行的细节：在能源股里，出现过 <strong>14 次</strong>“当前跌破 23.6%，且 1 天前先破 38.2%”的链式击穿；往前看 2 天、3 天后，这类连续击穿明显变少。</li>
+<li>Fib + 50 日均线 crossover 的组合并没有稳定变好，反而常出现<strong>交易数下降甚至接近无交易</strong>（作者也提醒这会让 Sharpe 失真），这对我们是警示：别轻易把确认层叠成“稀疏到不可交易”。</li>
+</ul>
+<h2>3. 为什么这轮值得优先做（对齐三条收口线）</h2>
+<p>这轮直接服务三条收口线，且优先级不低于继续泛找新题：</p>
+<ol>
+<li><strong>Fibonacci confirmation / retest_hold：</strong> 这是直接命中；把“触位确认”升级成“触位 + 最近击穿记忆”的更诚实定义。</li>
+<li><strong>V3 breakout-short follow-up：</strong> 若下行阶段本就高发连续击穿，那么“刚破后再回踩失败”更像 continuation，不该过早判成反转。</li>
+<li><strong>EMA / PSAR raw alpha focus：</strong> EMA/PSAR 更适合作为 overlay 去约束 Fib 的误判（例如只在同向趋势中接受 hold），而不是独立接管入场。</li>
+</ol>
+<h2>4. 15m 最小可复现实验（下一步怎么测）</h2>
+<p><strong>目标：</strong> 给 <code>Fib retest_hold</code> 增加一个“最近击穿记忆”确认/否决层，看它能否减少假 hold。</p>
+<ul>
+<li>资产：<code>BTC/ETH/SOL</code> perpetual</li>
+<li>周期：<code>15m</code>（可加 <code>5m</code> 做执行层）</li>
+<li>成本：<code>6/10/15 bps per side</code></li>
+<li>执行：<code>next-bar open + no-overlap</code></li>
+</ul>
+<h3>实验三臂（只跑 first verdict）</h3>
+<ol>
+<li><code>A: Fib baseline</code></li>
+</ol>
+<ul>
+<li>现有 retest_hold 规则，不加记忆项。</li>
+</ul>
+<ol>
+<li><code>B: Fib + violation-cluster veto</code></li>
+</ol>
+<ul>
+<li>定义击穿：收盘穿过回踩层（先试 0.5/0.618）超过 <code>epsilon=0.1*ATR(14)</code>；</li>
+<li>若 <code>t-1</code> 已有同向击穿，则当前 hold 信号 veto；若 <code>t-1,t-2</code> 连续击穿，则强 veto。</li>
+</ul>
+<ol>
+<li><code>C: B + EMA/PSAR role overlay</code></li>
+</ol>
+<ul>
+<li>Fib 仍是主触发；EMA slope / PSAR side 仅做 admission，不新增方向。</li>
+</ul>
+<h3>先看 4 个指标</h3>
+<ul>
+<li><code>post_cost_expectancy</code></li>
+<li><code>false_hold_ratio@4bars</code>（入场后 4 根内反向击穿）</li>
+<li><code>trade_count_retention</code>（不能为了好看把交易数砍没）</li>
+<li><code>timeout_share</code>（若超时占比高，说明“守住”定义仍过宽）</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>论文主样本是能源相关资产的<strong>日频</strong>，不是 5m/15m crypto；本轮只能迁移“机制”，不能迁移收益数。</li>
+<li>文中部分资产出现极端 Sharpe，本质与交易过少相关，不能当可复制绩效。</li>
+<li>论文没有开源 repo，复现需我们自行实现规则口径。</li>
+<li>若 <code>B/C</code> 让交易数明显塌陷，应先放松 veto 强度（如仅 veto <code>t-1</code>，不 veto <code>t-2</code>）。</li>
+</ul>
+<h2>6. 来源</h2>
+<ol>
+<li><strong>Gurrib, I., Nourani, M., &amp; Bhaskaran, R. K. (2022). _Energy crypto currencies and leading U.S. energy stock prices: are Fibonacci retracements profitable?_ Financial Innovation.</strong></li>
+</ol>
+<ul>
+<li>DOI: &lt;<a href="https://doi.org/10.1186/s40854-021-00311-8&gt;">https://doi.org/10.1186/s40854-021-00311-8&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://jfin-swufe.springeropen.com/articles/10.1186/s40854-021-00311-8&gt;">https://jfin-swufe.springeropen.com/articles/10.1186/s40854-021-00311-8&gt;</a></li>
+<li>PDF URL: &lt;<a href="https://jfin-swufe.springeropen.com/counter/pdf/10.1186/s40854-021-00311-8&gt;">https://jfin-swufe.springeropen.com/counter/pdf/10.1186/s40854-021-00311-8&gt;</a></li>
+<li>Repo URL: <code>N/A (paper-based)</code></li>
+</ul>
+<ol>
+<li><strong>Binance Developers. USDⓈ-M Futures Kline/Candlestick Data</strong>（用于 5m/15m 最小实验数据）</li>
+</ol>
+<ul>
+<li>URL: &lt;<a href="https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;">https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data&gt;</a></li>
+</ul>
+<h2>7. 下一步怎么测（一句话）</h2>
+<p>先把 <code>Fib retest_hold</code> 从“单次触位”升级成“触位 + 最近 1~2 bar 击穿记忆”的 B 臂，与 baseline 做同口径成本对比；若 <code>false_hold_ratio@4bars</code> 明显下降且交易数仍可用，再考虑升为 shared confirmation。</p>
+</body>
+</html>

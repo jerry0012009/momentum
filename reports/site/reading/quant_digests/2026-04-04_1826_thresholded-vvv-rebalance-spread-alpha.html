@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这篇 2024 rebalancing 论文只读成执行优化：对 short-cycle desk，更该先测的是「thresholded VVV weight-gap spread」这条 cross-sectional mean-reversion raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这篇 2024 rebalancing 论文只读成执行优化：对 short-cycle desk，更该先测的是「thresholded VVV weight-gap spread」这条 cross-sectional mean-reversion raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-04 18:25 UTC</span>
+      <span class="pill">研究时间：2026-04-04 18:26 UTC</span>
+      <span class="pill">类型：2024 arXiv 全文 HTML source audit + Binance Spot 公共 `5m` 八币篮子最小快检</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/relative-value/mean-reversion/rebalance-spread/vvv/risk-parity/weight-gap/top-bottom/market-neutral/binance-spot/binance-perpetual/5m/15m/3m/1m/paper/public-data/cost/risk</span>
+      <span class="pill">证据类型：paper 机制证据 + 公共 API 快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-04_1826_thresholded-vvv-rebalance-spread-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-04 18:26 UTC</li>
+<li>类型：2024 arXiv 全文 HTML source audit + Binance Spot 公共 <code>5m</code> 八币篮子最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>横截面相对表现把组合权重推离“理想风险权重”后，赢家更容易回吐、输家更容易修复；因此可做“short overweight winners / long underweight losers”的 thresholded rebalance spread。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/relative-value/mean-reversion/rebalance-spread/vvv/risk-parity/weight-gap/top-bottom/market-neutral/binance-spot/binance-perpetual/5m/15m/3m/1m/paper/public-data/cost/risk</li>
+<li>证据类型：paper 机制证据 + 公共 API 快检</li>
+</ul>
+<h2>1) 先回答一句：base alpha 是什么？</h2>
+<p><strong>base alpha = 资产的短周期相对涨跌会把实际持仓权重推离目标风险权重；当偏离跨过阈值时，超配赢家更容易均值回归、低配输家更容易补涨，于是可以做成一个 market-neutral 的 cross-sectional rebalance spread。</strong></p>
+<p>这不是 filter / overlay。</p>
+<p>对我们 desk 更准确的分类是：<strong>cross-sectional / relative-value / mean-reversion raw alpha</strong>。</p>
+<p>---</p>
+<h2>2) 为什么这轮选它</h2>
+<p>当前学习地图和 backlog 里，已经有不少趋势、breakout、确认层、risk gate 素材；但 <strong>cross-sectional / relative value / rebalance 类 raw alpha</strong> 还不够密。</p>
+<p>这篇 paper 原文写的是 crypto portfolio rebalancing 与链上执行，但对 desk 真正更值钱的旁支，不是“怎样省 gas”，而是：</p>
+<ul>
+<li>能不能把 <strong>权重漂移（weight drift）</strong> 本身抽成信号；</li>
+<li>能不能从“长-only 再平衡”改写成 <strong>market-neutral long loser / short winner</strong>；</li>
+<li>能不能在 <code>5m/15m</code> 上做出最小实验。</li>
+</ul>
+<p>答案是：<strong>可以，而且这条线和当前素材池并不重复。</strong></p>
+<p>---</p>
+<h2>3) 论文里真正值得拿走的机制</h2>
+<p>来源论文：</p>
+<ul>
+<li><strong>Ravi Kashyap (2024), _To Trade Or Not To Trade: Cascading Waterfall Round Robin Rebalancing Mechanism for Cryptocurrencies_, arXiv:2407.12150 [q-fin.PM].</strong></li>
+</ul>
+<p>原文不是在讲“预测下一根涨跌”，而是在讲三件事：</p>
+<ol>
+<li><strong>理想权重怎么定</strong></li>
+</ol>
+<ul>
+<li>paper 给了多套权重方案：equal weight、inverse variance、simple parity、risk parity、VVV。</li>
+<li>其中作者把 <strong>VVV（Volatility of Volatility and Variance）权重</strong> 作为 ideal weight：</li>
+<li>先算波动率 <code>σ_i,t</code></li>
+<li>再算 <code>V_i,t = ln(σ_i,t / σ_i,t-1)</code></li>
+<li>用 <code>V</code> 的滚动方差作为 vol-of-vol 因子</li>
+<li>调整后波动率 <code>σ_adj = σ + θ * vol_of_vol_factor</code>，文中先取 <code>θ = 1</code></li>
+<li>最终 <code>w*_i,t ∝ 1 / σ_adj_i,t</code></li>
+</ul>
+<ol>
+<li><strong>什么时候需要交易</strong></li>
+</ol>
+<ul>
+<li>不是每次都把组合硬拉回 ideal weight；</li>
+<li>而是比较 <strong>当前实际 notional / weight</strong> 与 <strong>min / ideal / max 容量</strong>；</li>
+<li>只有偏离跨过边界时才下单，目的是过滤噪声。</li>
+</ul>
+<ol>
+<li><strong>怎么把执行成本并进来</strong></li>
+</ol>
+<ul>
+<li>文中把交易块大小（block size）单独建模：</li>
+<li>最小块大小参考平均 gas fee × multiplier，文中给的示例 multiplier 是 <code>1000</code>，对应约 <code>0.1%</code> 成本预算；</li>
+<li>示例最小订单参数 <code>MINSIZEPARAM = 25,000 USD</code>；</li>
+<li>示例最大订单参数 <code>MAXSIZEPARAM = 200,000 USD</code>；</li>
+<li>另外建议 <strong>单资产上限先从 <code>15%</code></strong> 开始。</li>
+</ul>
+<p>原文数值样例还给了一个很实用的现实感：</p>
+<ul>
+<li>历史样本示例是 <strong>2020-10-31 ~ 2021-10-31 的日频资产价格</strong>；</li>
+<li>作者举例不同链可用不同再平衡节奏：如 <strong>ETH 主网日频、BSC 4 小时、Polygon 1 小时</strong>。</li>
+</ul>
+<p>对我们来说，最值得拿走的不是这些具体数值本身，而是：</p>
+<p>&gt; <strong>“先定义理想风险权重，再交易偏离权重的资产，而且只在偏离越界时交易。”</strong></p>
+<p>---</p>
+<h2>4) 对 short-cycle desk 的正确改写</h2>
+<h3>4.1 不要照搬成长-only 组合管理</h3>
+<p>如果直接照原文做长-only 再平衡，它更像组合执行层； 但对我们 desk，可以把它改写成更干净的 raw alpha：</p>
+<ul>
+<li>选一个 top-liquid universe（如 8~20 个 USDT 永续）</li>
+<li>计算每个资产的 <code>ideal_weight</code></li>
+<li>假设上一次再平衡后持仓按 target 建好</li>
+<li>随着相对表现变化，得到当前 <code>actual_weight</code></li>
+<li>定义：<code>gap_i,t = actual_weight_i,t - ideal_weight_i,t</code></li>
+</ul>
+<p>解释：</p>
+<ul>
+<li><code>gap &gt; 0</code>：这只资产相对涨太多，已经“超配”</li>
+<li><code>gap &lt; 0</code>：这只资产相对跌太多，已经“低配”</li>
+</ul>
+<p>于是信号可直接写成：</p>
+<ul>
+<li><strong>short 最大正 gap 的资产（overweight winners）</strong></li>
+<li><strong>long 最大负 gap 的资产（underweight losers）</strong></li>
+<li>只在 <code>|gap|</code> 大于阈值时交易</li>
+</ul>
+<p>这就是一条能单独成立的 <strong>relative-value / stat-arb 式 raw alpha</strong>。</p>
+<h3>4.2 为什么它适合 <code>5m/15m</code></h3>
+<p>因为这条线不是依赖低频外部变量，而是依赖：</p>
+<ul>
+<li>近几小时的横截面相对走势</li>
+<li>实时更新的滚动波动 / vol-of-vol</li>
+<li>偏离是否跨阈值</li>
+</ul>
+<p>所以天然可以映射到：</p>
+<ul>
+<li><code>5m</code>：主信号层</li>
+<li><code>15m</code>：降噪 / 执行聚合层</li>
+<li><code>1m/3m</code>：微执行确认层（只决定怎么进，不决定做不做）</li>
+</ul>
+<p>---</p>
+<h2>5) 最小可复现实验（public data）</h2>
+<h3>5.1 数据源与公开性</h3>
+<ul>
+<li>数据源：Binance Spot Kline API（公开、免 key）</li>
+<li><code><a href="https://api.binance.com/api/v3/klines">https://api.binance.com/api/v3/klines</a></code></li>
+<li>标的：<code>BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT, XRPUSDT, ADAUSDT, DOGEUSDT, LINKUSDT</code></li>
+<li>频率：<code>5m</code></li>
+<li>样本区间：<code>2026-03-14 22:25 UTC ~ 2026-04-04 18:20 UTC</code></li>
+<li>每币 bars：约 <code>6000</code></li>
+</ul>
+<p>说明：</p>
+<ul>
+<li>这里先用 spot 公共数据做 <strong>信号层 sanity check</strong>；</li>
+<li>正式落地仍建议转到我们真正交易的 perp universe。</li>
+</ul>
+<h3>5.2 快检口径</h3>
+<p>我把 paper 的思路压成一个 desk-friendly 版本：</p>
+<ol>
+<li>用滚动 <code>288</code> 根 <code>5m</code>（约 1 天）估计 <code>σ</code></li>
+<li>用 <code>ln(σ_t / σ_{t-1})</code> 的滚动方差构造 VVV 因子</li>
+<li>得到 <code>ideal_weight ∝ 1 / (σ + vol_of_vol_factor)</code></li>
+<li>每 <code>12</code> 根 <code>5m</code>（1 小时）视作一次 rebalance clock</li>
+<li>在两个 rebalance 之间，让持仓随相对涨跌自然漂移，得到 <code>actual_weight</code></li>
+<li>定义 <code>gap = actual - ideal</code></li>
+<li>当 <code>gap</code> 超过阈值时：</li>
+</ol>
+<ul>
+<li>long 最低 gap 名单</li>
+<li>short 最高 gap 名单</li>
+</ul>
+<ol>
+<li>分别测试持有 <code>3 / 6 / 12</code> 根 <code>5m</code></li>
+</ol>
+<h3>5.3 关键结果</h3>
+<p>来自：</p>
+<ul>
+<li><code>reports/artifacts/quant_digests/thresholded_vvv_rebalance_spread_20260404/summary_topk.csv</code></li>
+</ul>
+<p><strong>pair-compressed（top1 vs bottom1）版本：</strong></p>
+<ul>
+<li><code>threshold = 0.75%</code>, <code>hold = 12 bars</code>（60m）</li>
+<li><code>n = 88</code></li>
+<li>平均 long-short 收益 <code>+11.86 bps</code></li>
+<li>胜率 <code>62.5%</code></li>
+<li><code>threshold = 1.00%</code>, <code>hold = 6 bars</code>（30m）</li>
+<li><code>n = 42</code></li>
+<li>平均 long-short 收益 <code>+16.25 bps</code></li>
+<li>胜率 <code>69.05%</code></li>
+<li><code>threshold = 1.00%</code>, <code>hold = 12 bars</code>（60m）</li>
+<li><code>n = 42</code></li>
+<li>平均 long-short 收益 <code>+11.55 bps</code></li>
+<li>胜率 <code>61.90%</code></li>
+</ul>
+<p><strong>broader（top2 vs bottom2）版本：</strong></p>
+<ul>
+<li><code>threshold = 0.75%</code>, <code>hold = 6 bars</code></li>
+<li><code>n = 30</code></li>
+<li>平均收益 <code>+11.92 bps</code></li>
+<li>胜率 <code>60.0%</code></li>
+</ul>
+<h3>5.4 怎么解读</h3>
+<p>先说结论：</p>
+<ul>
+<li><strong>alpha 方向是有的</strong>；</li>
+<li>而且更像一个 <strong>横截面回补 / winner-loser 回归</strong> 信号，而不是简单大盘 beta；</li>
+<li>但它对成本非常敏感。</li>
+</ul>
+<p>特别是：</p>
+<ul>
+<li><code>top2 vs bottom2</code> 虽然更平滑，但腿数更多；</li>
+<li><strong>naive taker 四腿 round-trip 很难吃下 10~12 bps gross edge</strong>；</li>
+<li>真正更有落地感的是 <strong>pair-compressed 的 top1 vs bottom1</strong>，因为交易腿更少。</li>
+</ul>
+<p>所以这条 alpha 的现实结论不是“已经可直接盲上”，而是：</p>
+<p>&gt; <strong>raw alpha 已经值得进池，但第一版必须把执行压成低腿数 / maker-first / 低费通道，否则毛 edge 会被磨掉。</strong></p>
+<p>---</p>
+<h2>6) 如何写成完整策略（entry / exit / sizing / risk / cost）</h2>
+<h3>Entry</h3>
+<p>主时钟建议从 <code>5m</code> 开始：</p>
+<ol>
+<li>计算 <code>ideal_weight_i,t</code></li>
+<li>计算 <code>actual_weight_i,t</code></li>
+<li>得到 <code>gap_i,t = actual_weight_i,t - ideal_weight_i,t</code></li>
+<li>若 <code>max(gap) &gt;= b</code> 且 <code>min(gap) &lt;= -b</code>：</li>
+</ol>
+<ul>
+<li>short <code>argmax(gap)</code></li>
+<li>long <code>argmin(gap)</code></li>
+</ul>
+<ol>
+<li>默认先做 <code>1×1</code> 压缩版；只有在低成本场景才扩到 <code>2×2</code></li>
+</ol>
+<p>建议首轮阈值：</p>
+<ul>
+<li><code>b = 0.75% ~ 1.00%</code></li>
+</ul>
+<h3>Exit</h3>
+<p>先用最朴素、最可测的版本：</p>
+<ul>
+<li>时间止盈 / 止损：持有 <code>6</code> 或 <code>12</code> 根 <code>5m</code></li>
+<li>若 <code>gap</code> 回到 <code>0</code> 附近（例如绝对值小于 <code>0.2%</code>），允许提前平仓</li>
+<li>若 winner/loser 排名互换，也可强制退出</li>
+</ul>
+<h3>Sizing</h3>
+<ul>
+<li>单腿 notional 与 <code>|gap|</code> 成比例：</li>
+<li><code>size_i ∝ clip(|gap_i| / b, 1, s_max)</code></li>
+<li>组合保持 dollar-neutral / beta-neutral（二选一都可先测）</li>
+<li>单腿 cap：先从组合风险预算的 <code>10%~15%</code> 开始，对齐 paper 的“15% asset cap”精神</li>
+</ul>
+<h3>Risk</h3>
+<p>至少加四道壳：</p>
+<ul>
+<li>流动性门槛：只做 top-liquidity perps</li>
+<li>相关性熔断：若篮子相关性瞬时接近 1，降杠杆</li>
+<li>波动熔断：若 <code>5m</code> RV 跳到过去 <code>N</code> 天高分位，暂停新开仓</li>
+<li>时间熔断：重大事件 / funding 结算 / 交易所异常窗口禁入</li>
+</ul>
+<h3>Cost</h3>
+<p>这是这条线最关键的一层：</p>
+<ul>
+<li>先分别测：</li>
+<li>taker/taker</li>
+<li>maker/taker</li>
+<li>maker/maker（乐观上限）</li>
+<li>对 <code>1×1</code> 压缩版，先看 <code>8 / 12 / 16 bps</code> round-trip 三档</li>
+<li>对 <code>2×2</code> 版，必须额外考虑多腿成交不一致和残腿风险</li>
+</ul>
+<p>一句话： <strong>这条 alpha 先天更适合“低腿数 + 成本受控”的执行方式。</strong></p>
+<p>---</p>
+<h2>7) 它和 overlay / filter 的边界在哪</h2>
+<p>之所以我把它定为 raw alpha，而不是 overlay，是因为：</p>
+<ul>
+<li>它不是在已有信号外面“加个开关”；</li>
+<li>它本身就定义了：<strong>做哪条 spread、何时做、何时不做</strong>；</li>
+<li>即使不依赖别的趋势因子，它也能独立生成交易。</li>
+</ul>
+<p>当然，它后面仍然可以接 filter：</p>
+<ul>
+<li>funding veto</li>
+<li>market-wide correlation regime gate</li>
+<li>execution quality veto</li>
+</ul>
+<p>但这些是 <strong>第二层增强</strong>，不是本体。</p>
+<p>---</p>
+<h2>8) 下一步怎么测（直接可排）</h2>
+<ol>
+<li><strong>从 spot quick-check 切到 perp 正式版</strong></li>
+</ol>
+<ul>
+<li>Binance / Bybit / Hyperliquid 任选其一</li>
+<li>同一套 <code>gap</code> 逻辑，先在 top-liquid perp universe 复跑</li>
+</ul>
+<ol>
+<li><strong>先做 <code>1×1</code> 压缩版，而不是一上来 <code>2×2</code></strong></li>
+</ol>
+<ul>
+<li>因为它最贴近真实成本约束</li>
+<li>先确认 raw edge 是否在两腿版本仍成立</li>
+</ul>
+<ol>
+<li><strong>把 target-weight 方案做 A/B/C</strong></li>
+</ol>
+<ul>
+<li>A: equal-weight</li>
+<li>B: inverse-vol</li>
+<li>C: VVV-adjusted inverse-vol</li>
+<li>看是否真的是 VVV 提升，而不是“任何再平衡都行”</li>
+</ul>
+<ol>
+<li><strong>把 rebalance clock 做离散化</strong></li>
+</ol>
+<ul>
+<li><code>15m</code>, <code>30m</code>, <code>60m</code>, <code>120m</code></li>
+<li>检查 alpha 来自“偏离本身”还是来自“过度交易”</li>
+</ul>
+<ol>
+<li><strong>把成本放到实验主表，而不是最后补一句</strong></li>
+</ol>
+<ul>
+<li><code>gross pnl</code></li>
+<li><code>net pnl @ maker/taker shells</code></li>
+<li><code>fill ratio / residual leg risk</code></li>
+</ul>
+<ol>
+<li><strong>加一个 shared gate 看是否能抬升净值质量</strong></li>
+</ol>
+<ul>
+<li>候选：market-wide correlation shock / BTC 5m realized vol shock / funding crowding veto</li>
+<li>这一步是为了提升成本后质量，不是为了替代 raw alpha</li>
+</ul>
+<p>---</p>
+<h2>9) 本轮结论（短版）</h2>
+<p>这篇 2024 论文表面上写的是 rebalancing 与执行，但对 short-cycle desk 更值得先落地的，不是链上执行细节，而是：</p>
+<p><strong>把“权重漂移相对理想风险权重的偏离”直接写成 long loser / short winner 的 thresholded rebalance spread。</strong></p>
+<p>从 public <code>5m</code> 八币篮子的最小快检看：</p>
+<ul>
+<li><code>1×1</code> 压缩版在 <code>30~60m</code> 持有区间已经出现 <code>+11~16 bps</code> 级别的 gross edge；</li>
+<li>说明这条线值得进入 raw alpha 池；</li>
+<li>但 production 第一版必须把重点放在 <strong>低腿数、低费率、残腿控制</strong>，否则很容易“信号对了，执行吃没了”。</li>
+</ul>
+<p>---</p>
+<h2>10) 来源（论文 / 文档 / 数据）</h2>
+<ol>
+<li><strong>Kashyap, Ravi (2024). _To Trade Or Not To Trade: Cascading Waterfall Round Robin Rebalancing Mechanism for Cryptocurrencies_. arXiv preprint, arXiv:2407.12150 [q-fin.PM].</strong></li>
+</ol>
+<ul>
+<li>Authors: Ravi Kashyap</li>
+<li>Year: 2024</li>
+<li>Venue: arXiv / preprint</li>
+<li>DOI: N/A（未见正式 DOI）</li>
+<li>Readable URL: <code><a href="https://arxiv.org/abs/2407.12150">https://arxiv.org/abs/2407.12150</a></code></li>
+<li>Full HTML: <code><a href="https://arxiv.org/html/2407.12150v1">https://arxiv.org/html/2407.12150v1</a></code></li>
+<li>PDF: <code><a href="https://arxiv.org/pdf/2407.12150">https://arxiv.org/pdf/2407.12150</a></code></li>
+<li>Repo URL: 未见公开 repo</li>
+</ul>
+<ol>
+<li><strong>Binance Spot API Docs — Kline/Candlestick Data</strong></li>
+</ol>
+<ul>
+<li>Venue: Official API docs</li>
+<li>DOI: N/A</li>
+<li>Readable URL: <code><a href="https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data">https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data</a></code></li>
+</ul>
+<p>---</p>
+<h3>附：本轮实验产物</h3>
+<ul>
+<li><code>reports/artifacts/quant_digests/thresholded_vvv_rebalance_spread_20260404/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/thresholded_vvv_rebalance_spread_20260404/summary_topk.csv</code></li>
+<li><code>reports/artifacts/quant_digests/thresholded_vvv_rebalance_spread_20260404/events.csv</code></li>
+<li><code>reports/artifacts/quant_digests/thresholded_vvv_rebalance_spread_20260404/events_topk.csv</code></li>
+<li><code>reports/artifacts/quant_digests/thresholded_vvv_rebalance_spread_20260404/gap_snapshot_timeseries.csv</code></li>
+<li><code>reports/artifacts/quant_digests/thresholded_vvv_rebalance_spread_20260404/meta.json</code></li>
+</ul>
+</body>
+</html>

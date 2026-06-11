@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>PyTrendline V3 · Sampler Fix Spec v1</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 32px auto; max-width: 1100px; line-height: 1.6; color: #1f2937; padding: 0 16px; }
+    h1, h2, h3 { color: #111827; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; background: #fff; }
+    .ok { background: #ecfdf5; border-left: 4px solid #10b981; padding: 12px 14px; }
+    .warn { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 14px; }
+    .muted { color: #6b7280; }
+    code { background: #f3f4f6; padding: 1px 4px; border-radius: 4px; }
+    .tbl { border-collapse: collapse; width: 100%; font-size: 14px; }
+    .tbl th, .tbl td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; vertical-align: top; }
+    .tbl th { background: #f9fafb; }
+    ul { margin-top: 0.3em; }
+  </style>
+</head>
+<body>
+  <h1>PyTrendline V3 · Sampler Fix Spec v1</h1>
+  <p><a href="../pytrendline_event_validation_v3/report.html">← 返回 v3 主报告</a> ｜ <a href="../pytrendline_event_validation_v3_breakout_metric_reaudit/report.html">上一页：breakout metric re-audit</a></p>
+
+  <div class="card warn">
+    <b>这页完成了什么？</b>
+    把 TODO 里的 <code>A4-b</code> 从一句很大的“修 sampler”拆成更小、可执行的 repair spec。
+    这页的目标不是宣称已经修好，而是先把 <b>该修什么、为什么修、修完要看什么</b> 写清楚。
+  </div>
+
+  <div class="card ok">
+    <b>一句话结论：</b>
+    当前最合理的最小修法不是把全部 breakout 样本一刀切删掉，而是：<b>保留 snapshot 可见性门槛，新增 event-time strict wrong-side filter，再单独处理 exact mirrored breakout pairs</b>。
+  </div>
+
+  <h2>1. 这轮发现了什么？</h2>
+  <div class="card">
+    <ul>
+      <li><b>Found:</b> purged 样本里 breakout 仍有一批严格几何异常，不是 100%，但也不是可以忽略的小噪声：
+        <ul>
+          <li><code>support_breakout_raw</code> strict wrong-side share = <b>18.8%</b>（9/48）</li>
+          <li><code>resistance_breakout_raw</code> strict wrong-side share = <b>22.0%</b>（11/50）</li>
+          <li><code>support_breakout_confirm_1</code> = <b>23.4%</b>；<code>resistance_breakout_confirm_1</code> = <b>18.0%</b></li>
+          <li><code>support_breakout_confirm_2</code> = <b>23.9%</b>；<code>resistance_breakout_confirm_2</code> = <b>18.0%</b></li>
+        </ul>
+      </li>
+      <li><b>Found:</b> purged breakout 三个 family 各还留着 <b>1</b> 条 exact mirrored pair，而且 pair-level geometry 仍然是彻底异常：<code>crossed_lines_share = 100%</code>、<code>both_inverted_share = 100%</code>。</li>
+      <li><b>Found:</b> 当前 sampler 源码里已经能检测到 snapshot 时刻的 side 可见性门槛（support 不应早已高于价格，resistance 不应早已低于价格）。说明下一步修法应继续往 <b>更晚一层的 event-time / pair-time 清洗</b> 补，而不是推翻已有全部逻辑。</li>
+    </ul>
+  </div>
+
+  <h2>2. 这轮没有发现什么？</h2>
+  <div class="card">
+    <ul>
+      <li><b>Not found:</b> 没有证据支持“全部 breakout 行都坏了”。上一轮最刺眼的 <code>100%</code> close-based 指标，主要是在重复 breakout 定义本身。</li>
+      <li><b>Not found:</b> 还没有修完后的最小重跑，因此这页不回答“修完后 breakout family 还剩多少 alpha”。</li>
+      <li><b>Not found:</b> 当前 purged 样本里没有观察到“support / resistance 两边都严格几何合法、却还 exact mirrored”的 clean case，所以若未来两边都存活，临时 tie-break 只能先视为低置信 fallback。</li>
+    </ul>
+  </div>
+
+  <h2>3. 建议的最小 repair rules</h2>
+  <div class="card"><table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>rule_id</th>
+      <th>title</th>
+      <th>scope</th>
+      <th>action</th>
+      <th>why</th>
+      <th>current_status</th>
+      <th>reliability</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>R1</td>
+      <td>Keep the snapshot-side visibility guard as the first screen</td>
+      <td>All future breakout/touch candidates</td>
+      <td>Reject lines that are already on the wrong side at snapshot time before generating any event rows.</td>
+      <td>This is the earliest causal checkpoint: if a support line is already above price (or resistance already below price) when the snapshot becomes visible, later event labels are hard to interpret.</td>
+      <td>present_in_sampler_code</td>
+      <td>high for code detection; medium for downstream impact</td>
+    </tr>
+    <tr>
+      <td>R2</td>
+      <td>Drop strict wrong-side breakout rows at event time</td>
+      <td>support/resistance breakout raw + confirm families</td>
+      <td>For support-side breakout rows, drop if line_value_event &gt; event_high. For resistance-side breakout rows, drop if line_value_event &lt; event_low.</td>
+      <td>These rows are not merely close-based breakouts; the entire event candle already sits on the wrong side of the labeled line, so the side tag is geometrically unreliable.</td>
+      <td>design_fixed_here_not_implemented_here</td>
+      <td>high for identifying bad rows; medium for how much alpha changes after rerun</td>
+    </tr>
+    <tr>
+      <td>R3</td>
+      <td>Resolve exact mirrored breakout pairs after row-level filtering</td>
+      <td>Rows sharing symbol + family + event/confirm/action timestamps across support/resistance</td>
+      <td>If only one side survives R2, keep that side. If both sides fail, drop both. If both sides survive, keep the higher-score row only as a temporary tie-break and mark it ambiguous in audit output.</td>
+      <td>The remaining mirrored rows are the clearest source of duplicated family returns. They should be handled explicitly instead of hoping the top-score-per-event_type rule removes them.</td>
+      <td>design_fixed_here_not_implemented_here</td>
+      <td>high that mirrored pairs exist; low-to-medium for the tie-break branch because this sample does not yet contain a clean surviving pair</td>
+    </tr>
+    <tr>
+      <td>R4</td>
+      <td>Judge success by rerun audits, not by hope</td>
+      <td>BTC+ETH / 20d-45d minimal rerun</td>
+      <td>After implementation, re-export the same audit tables and compare strict_wrong_side_rows and exact_match_rows before vs after.</td>
+      <td>A sampler fix is only credible if the known blockers shrink materially in the next audited sample.</td>
+      <td>next_step_after_this_spec</td>
+      <td>high</td>
+    </tr>
+  </tbody>
+</table></div>
+
+  <h2>4. 预计会先扫掉多少坏样本？（上限估算）</h2>
+  <div class="card">
+    <p>下面这个表不是“修后真实剩余量”，只是一个 <b>上限估算</b>：strict wrong-side rows 与 exact mirrored pairs 可能有重叠，所以不能简单相加。</p>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>family</th>
+      <th>support_rows</th>
+      <th>support_strict_wrong_side_rows</th>
+      <th>support_strict_wrong_side_share</th>
+      <th>resistance_rows</th>
+      <th>resistance_strict_wrong_side_rows</th>
+      <th>resistance_strict_wrong_side_share</th>
+      <th>exact_mirrored_pairs</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>breakout_raw</td>
+      <td>48</td>
+      <td>9</td>
+      <td>0.187500</td>
+      <td>50</td>
+      <td>11</td>
+      <td>0.22</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>breakout_confirm_1</td>
+      <td>47</td>
+      <td>11</td>
+      <td>0.234043</td>
+      <td>50</td>
+      <td>9</td>
+      <td>0.18</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>breakout_confirm_2</td>
+      <td>46</td>
+      <td>11</td>
+      <td>0.239130</td>
+      <td>50</td>
+      <td>9</td>
+      <td>0.18</td>
+      <td>1</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <h2>5. 镜像坏样本示例</h2>
+  <div class="card">
+    <p>这是当前 purged 样本里还能直接看到的 mirrored pair 示例。它的意义不是“样本很多”，而是证明：<b>剩下哪怕只有 1 条，也值得被 sampler 显式处理</b>，否则 family-level 统计里会继续混入重复记账。</p>
+    <table class="dataframe tbl">
+  <thead>
+    <tr style="text-align: right;">
+      <th>family</th>
+      <th>symbol</th>
+      <th>snapshot_asof_timestamp</th>
+      <th>event_timestamp</th>
+      <th>confirm_timestamp</th>
+      <th>action_timestamp</th>
+      <th>event_high</th>
+      <th>event_low</th>
+      <th>event_close</th>
+      <th>support_line_id</th>
+      <th>support_line_value</th>
+      <th>resistance_line_id</th>
+      <th>resistance_line_value</th>
+      <th>_merge</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>breakout_raw</td>
+      <td>ETH-USD</td>
+      <td>2026-01-30 23:00:00+00:00</td>
+      <td>2026-01-31 00:00:00+00:00</td>
+      <td>2026-01-31 00:00:00+00:00</td>
+      <td>2026-01-31 01:00:00+00:00</td>
+      <td>2709.52417</td>
+      <td>2699.653564</td>
+      <td>2702.658203</td>
+      <td>S-[66,68,69]</td>
+      <td>2711.808105</td>
+      <td>R-[6,46,70]</td>
+      <td>2695.124268</td>
+      <td>both</td>
+    </tr>
+    <tr>
+      <td>breakout_confirm_1</td>
+      <td>ETH-USD</td>
+      <td>2026-01-30 23:00:00+00:00</td>
+      <td>2026-01-31 00:00:00+00:00</td>
+      <td>2026-01-31 01:00:00+00:00</td>
+      <td>2026-01-31 02:00:00+00:00</td>
+      <td>2709.52417</td>
+      <td>2699.653564</td>
+      <td>2702.658203</td>
+      <td>S-[66,68,69]</td>
+      <td>2711.808105</td>
+      <td>R-[6,46,70]</td>
+      <td>2695.124268</td>
+      <td>both</td>
+    </tr>
+    <tr>
+      <td>breakout_confirm_2</td>
+      <td>ETH-USD</td>
+      <td>2026-01-30 23:00:00+00:00</td>
+      <td>2026-01-31 00:00:00+00:00</td>
+      <td>2026-01-31 02:00:00+00:00</td>
+      <td>2026-01-31 03:00:00+00:00</td>
+      <td>2709.52417</td>
+      <td>2699.653564</td>
+      <td>2702.658203</td>
+      <td>S-[66,68,69]</td>
+      <td>2711.808105</td>
+      <td>R-[6,46,70]</td>
+      <td>2695.124268</td>
+      <td>both</td>
+    </tr>
+  </tbody>
+</table>
+  </div>
+
+  <h2>6. 这页的可信度</h2>
+  <div class="card">
+    <ul>
+      <li><b>高：</b>坏样本数量、占比、mirrored pair 是否存在 —— 这些都直接来自现有 audit artifacts。</li>
+      <li><b>中：</b>repair rule 的设计是否正好就是最佳实现 —— 这是设计页，不是跑完后的 closure 页。</li>
+      <li><b>低 / 暂无：</b>修完后 breakout alpha 会不会彻底消失，或反而更稳定 —— 这必须等 A4-c 的最小重跑。</li>
+    </ul>
+  </div>
+
+  <h2>Artifacts</h2>
+  <div class="card">
+    <ul>
+      <li><a href='../../artifacts/pytrendline_event_validation_v3_sampler_fix_spec/summary.json'>summary.json</a></li>
+      <li><a href='../../artifacts/pytrendline_event_validation_v3_sampler_fix_spec/repair_rules.csv'>repair_rules.csv</a></li>
+      <li><a href='../../artifacts/pytrendline_event_validation_v3_sampler_fix_spec/expected_removal_upper_bound.csv'>expected_removal_upper_bound.csv</a></li>
+      <li><a href='../../artifacts/pytrendline_event_validation_v3_sampler_fix_spec/mirrored_pair_examples.csv'>mirrored_pair_examples.csv</a></li>
+      <li><a href='../pytrendline_event_validation_v3_breakout_metric_reaudit/report.html'>breakout metric re-audit</a></li>
+      <li><a href='../pytrendline_event_validation_v3_breakout_side_audit/report.html'>breakout side audit</a></li>
+    </ul>
+  </div>
+
+  <p class="muted">Generated by <code>scripts/build_pytrendline_event_validation_v3_sampler_fix_spec_report.py</code>.</p>
+</body>
+</html>

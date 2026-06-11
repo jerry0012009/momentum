@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 funding divergence gate 当主角：这份 2026 Hyperliquid 新 repo 更该先测的是「bucket-neutral 1h return mean reversion × funding misalignment gate」</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 funding divergence gate 当主角：这份 2026 Hyperliquid 新 repo 更该先测的是「bucket-neutral 1h return mean reversion × funding misalignment gate」</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-30 12:42 UTC</span>
+      <span class="pill">类型：GitHub</span>
+      <span class="pill">主题标签：raw-alpha/cross-sectional/mean-reversion/stat-arb/relative-value/hyperliquid/funding/divergence/gate/bucket-neutral/5m/15m/repo</span>
+      <span class="pill">证据类型：工程经验</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-30_1242_bucket-neutral-mr-funding-divergence-gate.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-30 12:42 UTC</li>
+<li>类型：GitHub</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：按 residual-correlation bucket 分组后的横截面 1 小时收益均值回归（long short-term losers / short short-term winners）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha/cross-sectional/mean-reversion/stat-arb/relative-value/hyperliquid/funding/divergence/gate/bucket-neutral/5m/15m/repo</li>
+<li>证据类型：工程经验</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了 Jbdelrio 在 2026 年公开的 <code>hyperstat-arb-bot</code> 源码与配置，重点不是 README 口号，而是 4 个真正决定可复现性的模块：<code>src/hyperstat/data/universe.py</code>、<code>src/hyperstat/strategy/stat_arb.py</code>、<code>src/hyperstat/strategy/funding_divergence_signal.py</code>、<code>src/hyperstat/strategy/allocator.py</code>，以及 <code>configs/default.yaml</code>、<code>configs/strategy_stat_arb.yaml</code>。</p>
+<p>这套骨架把一个短周期 relative-value 策略几乎完整写出来了：<code>5m</code> 数据、<code>30</code> 个币左右的 universe、每 <code>7</code> 天重做 bucket、<code>12 bar</code>（= <code>1h</code>）收益回看、<code>z_in=1.5 / z_out=0.5 / z_max=3.0</code>、<code>min_hold=30m / max_hold=24h</code>、组合 <code>gross_target=1.20</code>、单币上限 <code>12%</code>、单 bucket 上限 <code>35%</code>。成本也不是空白：默认 <code>next_open</code> 成交，<code>taker 6 bps / maker 2 bps</code>，滑点是 <code>8 bps + 10 bps × RV_1h(%)</code>，还有 <code>3%</code> 盘中回撤 kill-switch 与 <code>720m</code> cooldown。</p>
+<p>更关键的是，它把 <strong>base alpha</strong> 和 <strong>gate / overlay</strong> 分得很清楚：</p>
+<ul>
+<li><code>stat_arb.py</code> 只负责做 <strong>bucket 内的横截面均值回归 raw signal</strong>；</li>
+<li><code>funding_divergence_signal.py</code> 只负责做 <strong>乘法式 confidence gate</strong>；</li>
+<li><code>allocator.py</code> 再去做 <strong>vol scaling / neutrality / caps / emergency flatten</strong>。</li>
+</ul>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>一句话核心结论：</strong> 这份 repo 最值钱的不是“funding 会不会预测价格”，而是它给了我们一个可直接在 <code>5m/15m</code> 上做最小实验的 <strong>bucket-neutral 横截面均值回归完整策略骨架</strong>，而 funding divergence 只是后接的 gate。</li>
+<li><strong>一句话证明方式：</strong> 结论来自 source code + config 的明确参数与调用顺序，而不是作者口头描述。</li>
+<li>真正的 base alpha 很清楚：先用 <code>BTC</code> 作为市场因子，把各币种收益做 beta-neutral residual，再按 residual-return correlation 做层次聚类 bucket；然后在每个 bucket 内，对过去 <code>12</code> 根 <code>5m</code> bar 的 log return 做 <strong>median + MAD</strong> 标准化，long 最弱、short 最强，属于很干净的 cross-sectional mean reversion / stat-arb。</li>
+<li>这里不是随便拿“赛道标签”分组，而是 <code>universe.py</code> 里每周根据 residual correlation 动态重建 <code>4~6</code> 个 bucket，每个 bucket 约 <code>4~10</code> 个币。对我们 desk 来说，这比手工 sector 标签更值钱，因为它更像真实可维护的 relative-value 配对/分桶流程。</li>
+<li><code>stat_arb.py</code> 的入场/出场是完整可跑的：<code>abs(z) &gt;= 1.5</code> 才激活；raw weight 是 <code>-clip(z, -3, 3)</code>；至少持有 <code>30</code> 分钟；之后只有在 <code>abs(z) &lt;= 0.5</code> 才允许退出；超过 <code>24h</code> 强平。这个结构天然比“每根 bar 都跟着 z 值抖动”更适合短周期实盘。</li>
+<li><code>funding_divergence_signal.py</code> 不是另一个独立 alpha，而是把 3 个 funding 侧特征合成为 <code>[-1, 1]</code> gate：<code>carry cross-section z-score</code>、<code>price/funding misalignment divergence</code>、<code>funding velocity</code>，默认权重分别是 <code>0.35 / 0.40 / 0.25</code>，再按 <code>w_final = w_stat * (1 + 0.6 * FDS)</code> 去放大或削弱原始 MR 权重。<strong>重点不是它替代了 alpha，而是它告诉我们：MR 先单独测，gate 再后接测 uplift。</strong></li>
+<li><code>allocator.py</code> 明确写了组合层：先做 regime gating，再做 FDS gate，再重新做 <code>dollar_neutral + beta_neutral</code>，再按 <code>gross_target=1.20</code> 标准化，然后套 <code>12%</code> 单币上限与 <code>35%</code> 单 bucket 上限，最后还有 <code>z &gt; 3.5</code> 的 emergency flatten。这已经覆盖了 sizing / risk / exposure control。</li>
+<li>默认执行假设也够诚实：不是 mid fill，而是 <code>next_open</code>；不是零成本，而是 <code>taker 6bps + 波动率挂钩滑点</code>。所以这更像一个能拿来做 honest first verdict 的骨架，而不是 PPT alpha。</li>
+<li>对我们现在的研究池来说，最值得借的不是作者的“新故事”，而是这套拆法：<strong>raw alpha（bucket MR）先单测，shared gate（FDS）后测，overlay（neutralization / caps / kill-switch）单独归因。</strong> 这能直接服务后续的 pairs / cross-sectional / funding 类 alpha 组件化积累。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>当前 desk 的缺口不是“再找一个会讲 funding crowding 的 filter”，而是继续补 <strong>能直接落地的 raw alpha 骨架</strong>。这份 repo 的主价值恰好在这里：</p>
+<ul>
+<li>它是 <code>5m</code> 原生设计，天然贴近我们默认周期；</li>
+<li>base alpha 是相对价值 / 横截面均值回归，不是又一篇 breakout/retest 变体；</li>
+<li>entry / exit / sizing / neutrality / caps / cost 都写出来了，适合作为最小复现实验；</li>
+<li>它把 funding 相关信息放在 gate 位置，而不是硬伪装成 alpha 本体，这和我们现在要求的“先说清楚 base alpha 是什么”完全一致。</li>
+</ul>
+<p>如果这个 raw alpha 连 <code>raw-only</code> 版本都站不住，那就不该继续给它堆更多 filter；反过来，如果 <code>raw-only</code> 版本能勉强活，FDS 才值得作为 shared gate 去服务更多 relative-value alpha。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / 相对价值 / stat-arb</li>
+<li>基础 alpha：在动态 residual-correlation bucket 内，对 <code>1h</code> horizon return 做 robust z-score，long 短期相对跌过头的币，short 短期相对涨过头的币</li>
+<li>regime：更适合 bucket 内离散度抬升、均值回归半衰期不太长、整体市场不是单边强趋势碾压的环境</li>
+<li>filter / veto：Funding Divergence Signal 适合作为后接 confidence gate，不适合冒充 alpha 本体；另可继续加 universe liquidity floor / borrowability / jump veto</li>
+<li>risk / sizing / execution overlay：weekly rebucketing、vol scaling、dollar neutral、beta neutral、<code>gross 1.20</code>、单币 <code>12%</code> 上限、单 bucket <code>35%</code> 上限、<code>z&gt;3.5</code> emergency flatten、<code>3%</code> intraday DD kill-switch、<code>next_open + fee/slippage</code> 成本模型</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设：</strong> 在 Hyperliquid <code>5m</code> perp 上，<code>residual-correlation bucket</code> 内的 <code>1h</code> 横截面均值回归是可交易 raw alpha；funding-price misalignment 作为 gate 只在第二步验证是否能提高 after-cost 质量。</li>
+<li><strong>数据口径：</strong> 用 Hyperliquid 公开可得的 <code>5m</code> candles + funding rates；先做 <code>30d~60d</code> 样本；universe 先取 <code>20~30</code> 个高成交额币种；缺失率控制在 <code>1%</code> 内；剔除最差 <code>20%</code> Amihud illiquidity 和 funding-vol 过高币种。</li>
+<li><strong>bucket 构造：</strong> 用 <code>BTC</code> 作为 base factor，先估 rolling beta，再取 residual returns；对 residual correlation 做层次聚类，每周重建 <code>4~6</code> 个 bucket，每 bucket 控制在 <code>4~10</code> 个币。</li>
+<li><strong>实验 A（先测 raw alpha）：</strong> 直接复刻 repo 主体：<code>horizon=12 bars</code>、<code>z_in=1.5</code>、<code>z_out=0.5</code>、<code>min_hold=30m</code>、<code>max_hold=24h</code>、<code>gross=1.0~1.2</code>、<code>dollar+beta neutral</code>，<strong>不加 FDS，不加 funding overlay</strong>，先看它作为 bare-bones raw alpha 能不能在 <code>taker 6bps + 滑点模型</code> 下存活。</li>
+<li><strong>实验 B（再测 gate uplift）：</strong> 在实验 A 存活前提下，加入 FDS：<code>fast=8</code>、<code>slow=72</code>、<code>divergence_window=24</code>、<code>weights=0.35/0.40/0.25</code>，<code>gate_scale</code> 先跑 <code>0.3</code> 再跑 <code>0.6</code>。核心不是看总收益有没有偶然抬升，而是看 <strong>leg hit-rate、极端 adverse excursion、turnover 后的净改善</strong>。</li>
+<li><strong>15m 映射：</strong> 先把 raw alpha 做成更保守版：<code>horizon=4~8 bars</code>、<code>min_hold=45~60m</code>、<code>divergence_window=8~12 bars</code>。如果 <code>15m</code> 下 raw-only 更稳，说明 edge 可能主要死在 <code>5m</code> microstructure，而不是信号逻辑本身。</li>
+<li><strong>最先看 5 个指标：</strong> <code>after-cost spread pnl</code>、<code>bucket neutrality leakage</code>、<code>turnover/day</code>、<code>long leg vs short leg attribution</code>、<code>FDS on/off uplift</code>。如果 raw-only 版本 already 负得很稳定，就不要继续浪费时间调 gate。</li>
+<li><strong>下一步怎么测：</strong> 本周最值得先跑的是一个 <strong>两阶段 honest verdict</strong>：先做 <code>raw-only</code> 版本，再做 <code>raw + FDS gate</code> 版本；两者统一用同一套 universe、bucket、成本模型。只有 raw-only 过线，FDS 才进入后续组件池。</li>
+</ul>
+<h2>5. 风险与保留意见</h2>
+<ul>
+<li>这是一个 2026 新 repo，不是经论文同行评审或长期 OOS 验证的成熟策略，不能把代码存在本身误当成 alpha 已经成立。</li>
+<li>dynamic bucket clustering 可能制造额外换手与 bucket 漂移；如果 rebucketing 太频繁，回测很容易把“结构更新”误写成 alpha。</li>
+<li>FDS 的 divergence 分量本质上是 funding 与 return 的短窗错位关系，若数据时间戳对齐不严，极容易被伪 alpha 污染。</li>
+<li><code>taker 6bps + base slippage 8bps</code> 对很多 alt perp 已经不低，若 raw signal 只在 gross PnL 上勉强成立，after-cost 可能直接归零。</li>
+<li>repo 默认 universe 规模与历史长度都不算很大，先做 honest first verdict 可以，但别急着把它当 production-ready engine。</li>
+</ul>
+<h2>6. 来源</h2>
+<ul>
+<li>Jbdelrio. (2026). <strong>hyperstat-arb-bot</strong>. Venue: GitHub. DOI: N/A. Readable URL / Repo URL: <code><a href="https://github.com/Jbdelrio/hyperstat-arb-bot">https://github.com/Jbdelrio/hyperstat-arb-bot</a></code></li>
+<li>Key code 1（dynamic universe + residual buckets）: <code><a href="https://github.com/Jbdelrio/hyperstat-arb-bot/blob/main/src/hyperstat/data/universe.py">https://github.com/Jbdelrio/hyperstat-arb-bot/blob/main/src/hyperstat/data/universe.py</a></code></li>
+<li>Key code 2（raw alpha）: <code><a href="https://github.com/Jbdelrio/hyperstat-arb-bot/blob/main/src/hyperstat/strategy/stat_arb.py">https://github.com/Jbdelrio/hyperstat-arb-bot/blob/main/src/hyperstat/strategy/stat_arb.py</a></code></li>
+<li>Key code 3（funding gate）: <code><a href="https://github.com/Jbdelrio/hyperstat-arb-bot/blob/main/src/hyperstat/strategy/funding_divergence_signal.py">https://github.com/Jbdelrio/hyperstat-arb-bot/blob/main/src/hyperstat/strategy/funding_divergence_signal.py</a></code></li>
+<li>Key code 4（sizing/risk/allocation）: <code><a href="https://github.com/Jbdelrio/hyperstat-arb-bot/blob/main/src/hyperstat/strategy/allocator.py">https://github.com/Jbdelrio/hyperstat-arb-bot/blob/main/src/hyperstat/strategy/allocator.py</a></code></li>
+<li>Key config: <code><a href="https://github.com/Jbdelrio/hyperstat-arb-bot/blob/main/configs/default.yaml">https://github.com/Jbdelrio/hyperstat-arb-bot/blob/main/configs/default.yaml</a></code></li>
+<li>Key strategy config: <code><a href="https://github.com/Jbdelrio/hyperstat-arb-bot/blob/main/configs/strategy_stat_arb.yaml">https://github.com/Jbdelrio/hyperstat-arb-bot/blob/main/configs/strategy_stat_arb.yaml</a></code></li>
+<li>Avellaneda, Marco; Lee, Jeong-Hyun. (2010). <strong>Statistical arbitrage in the US equities market</strong>. Venue: *Quantitative Finance*, 10(7). DOI: <code>10.1080/14697680903124632</code>. Readable URL: <code><a href="https://doi.org/10.1080/14697680903124632">https://doi.org/10.1080/14697680903124632</a></code></li>
+<li>Fischer, Thomas; Krauss, Christopher; Deinert, Alexander. (2019). <strong>Statistical Arbitrage in Cryptocurrency Markets</strong>. Venue: *Journal of Risk and Financial Management*, 12(1). DOI: <code>10.3390/jrfm12010031</code>. Readable URL: <code><a href="https://doi.org/10.3390/jrfm12010031">https://doi.org/10.3390/jrfm12010031</a></code></li>
+<li>Makarov, Igor; Schoar, Antoinette. (2020). <strong>Trading and arbitrage in cryptocurrency markets</strong>. Venue: *Journal of Financial Economics*, 135(2). DOI: <code>10.1016/j.jfineco.2019.07.001</code>. Readable URL: <code><a href="https://doi.org/10.1016/j.jfineco.2019.07.001">https://doi.org/10.1016/j.jfineco.2019.07.001</a></code></li>
+</ul>
+</body>
+</html>

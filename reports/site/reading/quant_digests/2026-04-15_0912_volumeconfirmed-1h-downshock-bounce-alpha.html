@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把这份 2025/26 mean-reversion repo 只读成“oversold bounce 教程”：对 short-cycle desk，更该先测的是「高量 1h 下跌冲击 → 反弹」这条 raw alpha——但 recent perp 迁移版基本只剩 BTC 还站得住</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把这份 2025/26 mean-reversion repo 只读成“oversold bounce 教程”：对 short-cycle desk，更该先测的是「高量 1h 下跌冲击 → 反弹」这条 raw alpha——但 recent perp 迁移版基本只剩 BTC 还站得住</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-04-15 09:12 UTC</span>
+      <span class="pill">类型：2025/2026 GitHub repo source audit（`README.md` + `src/strategy.py` + `src/backtester.py` + `results/performance_metrics.json` + GitHub API metadata）+ Binance USDⓈ-M `15m` public-data portability probe</span>
+      <span class="pill">主题标签：raw-alpha / single-asset / event-driven / mean-reversion / downside-shock / volume-confirmation / btc / eth / sol / perpetual / binance / 15m / 1h / 2h / 4h / 8h / 24h / repo / public-data / cost / risk</span>
+      <span class="pill">证据类型：repo 源码 + public-data portability probe</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-04-15_0912_volumeconfirmed-1h-downshock-bounce-alpha.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-04-15 09:12 UTC</li>
+<li>类型：2025/2026 GitHub repo source audit（<code>README.md</code> + <code>src/strategy.py</code> + <code>src/backtester.py</code> + <code>results/performance_metrics.json</code> + GitHub API metadata）+ Binance USDⓈ-M <code>15m</code> public-data portability probe</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：<strong>当 major coin 在最近 <code>1h</code> 内出现“价格急跌（&lt;= -2%）+ 成交量显著放大（&gt;= 1.5x 过去 24h 平均 1h 成交量）”的联立冲击时，随后 <code>1~24h</code> 更容易出现反弹；但 recent Binance perp 迁移版显示，这条 edge 不能再被读成“所有 major 通吃”，而更像 BTC 主导、alts 需要更深 shock 才可能成立的 event-driven mean reversion。</strong></li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：否</li>
+<li>主题标签：raw-alpha / single-asset / event-driven / mean-reversion / downside-shock / volume-confirmation / btc / eth / sol / perpetual / binance / 15m / 1h / 2h / 4h / 8h / 24h / repo / public-data / cost / risk</li>
+<li>证据类型：repo 源码 + public-data portability probe</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>先回答 base alpha：<strong>不是“RSI oversold 会反弹”这种泛化说法，而是更窄、更可计算的一条 event alpha——“高量急跌后的短期 bounce”。</strong></p>
+<p>主材料是 2025 年末创建、2026 年初更新的 GitHub repo：</p>
+<ul>
+<li><strong>Author：</strong> Skylar Shi</li>
+<li><strong>Year：</strong> 2025/2026</li>
+<li><strong>Title：</strong> *crypto-stat-arb*</li>
+<li><strong>Venue：</strong> GitHub</li>
+<li><strong>DOI：</strong> N/A</li>
+<li><strong>Readable URL：</strong> &lt;<a href="https://raw.githubusercontent.com/skylarshi123/crypto-stat-arb/main/README.md&gt;">https://raw.githubusercontent.com/skylarshi123/crypto-stat-arb/main/README.md&gt;</a></li>
+<li><strong>Repo URL：</strong> &lt;<a href="https://github.com/skylarshi123/crypto-stat-arb&gt;">https://github.com/skylarshi123/crypto-stat-arb&gt;</a></li>
+<li><strong>GitHub API URL：</strong> &lt;<a href="https://api.github.com/repos/skylarshi123/crypto-stat-arb&gt;">https://api.github.com/repos/skylarshi123/crypto-stat-arb&gt;</a></li>
+</ul>
+<p>repo 自己把假设写得很直白：</p>
+<ul>
+<li><code>1h return &lt;= -2%</code></li>
+<li><code>1h volume / 24h avg 1h volume &gt;= 1.5x</code></li>
+<li>long-only</li>
+<li>测试 <code>4h / 8h / 12h / 24h</code> 持有期</li>
+<li>round-trip 成本按 <code>40 bps</code> 处理（代码里是 <code>20 bps/side</code>）</li>
+<li>标的：<code>BTC / ETH / SOL / AVAX</code></li>
+</ul>
+<p>repo 报告给出的 headline 很猛：</p>
+<ul>
+<li><code>24h</code> 为最佳持有期</li>
+<li><code>34.33%</code> total return</li>
+<li><code>72.7%</code> win rate</li>
+<li><code>8.2%</code> max drawdown</li>
+<li><code>22</code> 笔交易</li>
+<li>研究窗口约 <code>20</code> 个交易日、<code>2,884</code> 个小时样本</li>
+</ul>
+<p>但对我们 desk 真正重要的不是“这组回测数好不好看”，而是：</p>
+<p>&gt; <strong>它给了一条很干净的 raw alpha 母式：先要求 downside shock 足够大，再要求成交量确认这不是普通噪声 bar，最后赌的是接下来几个小时到一天的反弹。</strong></p>
+<p>这条 alpha 本体是可以一句话说清的，所以它确实属于 raw alpha，而不是 filter / overlay。</p>
+<h2>2. 核心结论</h2>
+<h3>2.1 repo 最值得 intake 的，不是“24h 持有最优”，而是这条 event alpha 的 admission 逻辑</h3>
+<p>如果只把它读成“又一个均值回归策略”，会错过它真正有用的部分。</p>
+<p>它最值钱的不是 exit，而是 <strong>entry 的双条件联立</strong>：</p>
+<ol>
+<li><strong>先有明显下跌冲击</strong>——不是随便回调一下；</li>
+<li><strong>再要量能确认</strong>——不是冷清市场里自己滑下去；</li>
+<li><strong>然后才去赌 bounce。</strong></li>
+</ol>
+<p>翻成人话就是：</p>
+<p>&gt; <strong>先找“被砸得够明显、同时市场真的在交换筹码”的时刻，再去做短期反弹。</strong></p>
+<p>这和很多只靠单一 RSI / Bollinger oversold 的壳不一样。它本质上是在用成交量把“普通回落”和“panic flush / forced unwind”分开。</p>
+<h3>2.2 但这条线对 short-cycle desk 的真正价值，不是“照抄 multi-major 24h hold”</h3>
+<p>repo 的实现更像一个 demo-quality baseline：</p>
+<ul>
+<li>有 entry</li>
+<li>有固定持有期扫描</li>
+<li>有成本建模</li>
+</ul>
+<p>但还缺很多 production 级部件：</p>
+<ul>
+<li>没有更细的 admission 分层</li>
+<li>没有明确 sizing 方案</li>
+<li>没有 trend / liquidation / funding 级别的 veto</li>
+<li>也没有解释“为什么 4 个币应该共用同一阈值”</li>
+</ul>
+<p>所以 desk 化的正确读法不是：</p>
+<p>&gt; <strong>“太好了，四个 major 都能拿来统一做高量急跌反弹。”</strong></p>
+<p>而是：</p>
+<p>&gt; <strong>“这是一条值得保留的 raw alpha 母线，但阈值、标的范围和持有期都必须重标定。”</strong></p>
+<h2>3. Binance USDⓈ-M <code>15m</code> portability probe：first verdict</h2>
+<p>我用本地已有 public-data cache 做了一个最小迁移版：</p>
+<ul>
+<li>数据：</li>
+<li><code>reports/artifacts/rank32b_regime_5y_quarterly/cache_15m/BTCUSDT__365d__15m__perp.csv</code></li>
+<li><code>reports/artifacts/rank32b_regime_5y_quarterly/cache_15m/ETHUSDT__365d__15m__perp.csv</code></li>
+<li><code>reports/artifacts/rank32b_regime_5y_quarterly/cache_15m/SOLUSDT__365d__15m__perp.csv</code></li>
+<li>口径：</li>
+<li>用 <code>15m</code> 数据重采样成 <code>1h</code> 信号时钟；</li>
+<li>当某个 <code>1h</code> bar 满足 <code>ret_1h &lt;= -2%</code> 且 <code>vol_ratio &gt;= 1.5x</code> 时，<strong>在下一根 <code>15m</code> 开盘价入场</strong>；</li>
+<li>持有 <code>1h / 2h / 4h / 8h / 24h</code>；</li>
+<li>同一标的不重叠持仓；</li>
+<li>成本梯度看 <code>4 / 8 / 12 bps</code> round-trip。</li>
+</ul>
+<h3>3.1 先说一句最重要的话</h3>
+<p>&gt; <strong>recent Binance perp 上，这条线不能再被当成“通用 majors bounce shell”；它现在更像 BTC 有效、ETH/SOL 失效，或者至少要用更深 shock 才能救回来的事件型 alpha。</strong></p>
+<h3>3.2 BTC：这条线还活着，而且 <code>1~2h</code> 就有可观 bounce</h3>
+<p><code>BTCUSDT</code> 在最近 <code>365d</code> 里只触发了 <code>33</code> 次信号，但质量不差：</p>
+<ul>
+<li><strong><code>1h</code> 持有：</strong></li>
+<li><code>33</code> 笔</li>
+<li>平均 gross：<code>+21.4 bps</code></li>
+<li>gross 胜率：<code>63.6%</code></li>
+<li><code>8 bps</code> 成本后平均仍有 <strong><code>+13.4 bps</code></strong></li>
+<li><strong><code>2h</code> 持有：</strong></li>
+<li><code>33</code> 笔</li>
+<li>平均 gross：<strong><code>+33.6 bps</code></strong></li>
+<li>中位数：<code>+44.7 bps</code></li>
+<li>gross 胜率：<code>60.6%</code></li>
+<li><code>8 bps</code> 成本后平均 <strong><code>+25.6 bps</code></strong></li>
+<li><strong><code>8h</code> 持有：</strong></li>
+<li><code>31</code> 笔</li>
+<li>平均 gross：<code>+46.1 bps</code></li>
+<li>gross 胜率：<code>58.1%</code></li>
+<li><strong><code>24h</code> 持有：</strong></li>
+<li><code>29</code> 笔</li>
+<li>平均 gross：<code>+38.5 bps</code></li>
+<li>gross 胜率：<code>55.2%</code></li>
+</ul>
+<p>这说明对 BTC 来说：</p>
+<ul>
+<li>bounce <strong>不是必须等到 24h 才出现</strong>；</li>
+<li>更 desk-friendly 的 <code>1~2h</code> 持有期已经有明显正向期望；</li>
+<li><code>8h</code> 虽然平均更高，但它已经更接近 swing pocket，而不是我们最偏好的 short-cycle 执行壳。</li>
+</ul>
+<h3>3.3 ETH / SOL：repo 那套固定阈值迁过来基本直接失效</h3>
+<p>同样的规则在 <code>ETHUSDT / SOLUSDT</code> 上最近 <code>365d</code> 基本不成立：</p>
+<ul>
+<li><code>ETHUSDT</code></li>
+<li><code>1h</code>：平均 gross <code>-9.3 bps</code></li>
+<li><code>2h</code>：<code>-7.6 bps</code></li>
+<li><code>4h</code>：<code>-57.5 bps</code></li>
+<li><code>8h</code>：<code>-29.1 bps</code></li>
+<li><code>24h</code>：<code>-34.3 bps</code></li>
+<li><code>SOLUSDT</code></li>
+<li><code>1h</code>：平均 gross <code>-5.0 bps</code></li>
+<li><code>2h</code>：<code>-20.4 bps</code></li>
+<li><code>4h</code>：<code>-55.4 bps</code></li>
+<li><code>8h</code>：<code>-36.3 bps</code></li>
+<li><code>24h</code>：<code>-21.4 bps</code></li>
+</ul>
+<p>这很关键，因为它直接否定了一个懒惰读法：</p>
+<p>&gt; <strong>“既然 repo 在几个 major 上都能做，那我直接复制到 majors perp basket 就行。”</strong></p>
+<p>至少在 recent Binance perp 口径下，不行。</p>
+<h3>3.4 量能确认不是越高越好：BTC 也出现了 panic saturation</h3>
+<p>对 <code>BTCUSDT</code> 的 <code>2h</code> 持有结果按 <code>vol_ratio</code> 分桶后，出现了很有意思的非单调性：</p>
+<ul>
+<li><code>3x~5x</code> 量能桶：平均 <strong><code>+69.1 bps</code></strong></li>
+<li><code>5x+</code> 极端量能桶：平均 <strong><code>-16.7 bps</code></strong></li>
+<li><code>2x~3x</code>：平均 <code>-68.9 bps</code></li>
+<li><code>1.5x~2x</code>：平均很高，但样本只有 <code>2</code> 个，不能当真</li>
+</ul>
+<p>这意味着：</p>
+<p>&gt; <strong>volume confirmation 不是“越大越稳”，而是存在一个更像“真 flush、但没进入事故区”的甜蜜点。</strong></p>
+<p>对于 BTC，这个甜蜜点目前更像 <code>3x~5x</code>，而不是 <code>5x+</code> 的极端 panic。</p>
+<h3>3.5 ETH / SOL 不是完全没有 bounce，而是 repo 阈值太松</h3>
+<p>如果把 <code>ETH / SOL</code> 的 <code>2h</code> forward return 按 shock 深度分桶，会看到另一个非常重要的细节：</p>
+<ul>
+<li><code>ETHUSDT</code></li>
+<li><code>2~3%</code> shock：平均 <code>-14.9 bps</code></li>
+<li><code>3~4%</code> shock：平均 <code>-64.8 bps</code></li>
+<li><code>4~6%</code> shock：平均 <strong><code>+33.0 bps</code></strong>（样本 <code>7</code>）</li>
+<li><code>6%+</code> shock：平均 <strong><code>+500.4 bps</code></strong>（样本 <code>3</code>）</li>
+<li><code>SOLUSDT</code></li>
+<li><code>2~3%</code> shock：平均 <code>-42.9 bps</code></li>
+<li><code>3~4%</code> shock：平均 <code>-17.0 bps</code></li>
+<li><code>4~6%</code> shock：平均 <strong><code>+10.7 bps</code></strong>（样本 <code>12</code>）</li>
+<li><code>6%+</code> shock：平均 <strong><code>+181.4 bps</code></strong>（样本 <code>3</code>）</li>
+</ul>
+<p>所以更准确的结论不是“ETH / SOL 没有反弹”，而是：</p>
+<p>&gt; <strong>对更高 beta 的 major alt，<code>-2%</code> 这种 repo 阈值太松了，很多时候只是普通波动，不足以构成可交易的过冲事件。</strong></p>
+<p>这正是 short-cycle desk 最需要知道的东西：<strong>事件阈值必须按资产个性重标定。</strong></p>
+<h2>4. 为什么这东西和现有素材池不重复</h2>
+<p>表面上看，这轮也属于 mean reversion / shock fade 家族，似乎和前面已经写过的跳跌反转、oversold confluence 有亲缘关系；但它仍然有新增量，原因在于它补的是下面三件事同时成立的那块空位：</p>
+<ol>
+<li><strong>alpha 母线极其干净：</strong></li>
+<p>不是多指标打分，而是一个明确的 event definition：<code>downside shock × volume confirmation</code>。</p>
+</ol>
+<ol>
+<li><strong>它把“有没有筹码交换”放进了 alpha 本体：</strong></li>
+<p>volume 在这里不是装饰性的 filter，而是 event 有效性的关键组成。</p>
+</ol>
+<ol>
+<li><strong>它直接暴露出“major-specific thresholding”这个研究问题：</strong></li>
+<p>BTC、ETH、SOL 并不应该共用同一套 <code>-2% + 1.5x</code> 阈值。</p>
+</ol>
+<p>换句话说，这篇真正扩充的不是“又一个 bounce idea”，而是：</p>
+<p>&gt; <strong>如何把“看起来一样的急跌”拆成可交易事件和不可交易噪声。</strong></p>
+<h2>4.5 策略拆解（必填）</h2>
+<ul>
+<li><strong>方向属性：</strong> 单资产 / event-driven / long-only mean reversion</li>
+<li><strong>基础 alpha：</strong> 高量下跌冲击后，短周期价格更容易反弹</li>
+<li><strong>regime：</strong> 这版 repo 没有显式 regime 层；但 recent 迁移结果暗示，不同资产实际上隐含了不同“有效 shock”阈值</li>
+<li><strong>filter / veto：</strong> 最重要的不是再叠 RSI，而是 <strong>shock 深度、volume bucket、以及是否进入极端 panic 区</strong></li>
+<li><strong>risk / sizing / execution overlay：</strong> repo 只有固定持有期和成本建模；short-cycle 版本还需要补充 sizing、trend veto、以及事件后的 child execution</li>
+</ul>
+<h2>5. 可复刻的最小实验</h2>
+<h3>5.1 最值得先做哪一版</h3>
+<p>我会把这条线先降维成两个子课题，而不是直接拿 repo 全量复制：</p>
+<ol>
+<li><strong>BTC-only shock bounce baseline</strong></li>
+</ol>
+<ul>
+<li>因为 recent 迁移版里，BTC 是唯一已经明显过线的 major</li>
+</ul>
+<ol>
+<li><strong>ETH / SOL deeper-shock rescue</strong></li>
+</ol>
+<ul>
+<li>因为数据提示它们不是没 bounce，而是 <code>-2%</code> 过于宽松</li>
+</ul>
+<h3>5.2 最小实验口径</h3>
+<p>先从最简单、最 desk-friendly 的版本开始：</p>
+<ul>
+<li>市场：Binance USDⓈ-M majors perpetuals</li>
+<li>主时钟：<code>15m</code></li>
+<li>信号时钟：<code>1h</code></li>
+<li>信号定义：</li>
+<li><code>ret_1h &lt;= threshold_asset</code></li>
+<li><code>1h_vol / avg_24h_1h_vol &gt;= vol_threshold</code></li>
+<li>执行：next <code>15m</code> open 进场</li>
+<li>持有：<code>1h / 2h / 4h</code></li>
+<li>成本：<code>4 / 8 / 12 bps</code> round-trip</li>
+</ul>
+<h3>5.3 第一轮最该测什么</h3>
+<ol>
+<li><strong>BTC 阈值细化</strong></li>
+</ol>
+<ul>
+<li><code>ret_1h &lt;= -2% / -2.5% / -3%</code></li>
+<li><code>vol_ratio</code> 分别试 <code>1.5x / 2x / 3x</code></li>
+<li>重点看 <code>2h</code> 持有是否仍最稳</li>
+</ul>
+<ol>
+<li><strong>ETH / SOL 资产特异阈值</strong></li>
+</ol>
+<ul>
+<li>不要再用 <code>-2%</code></li>
+<li>直接测 <code>-4% / -5% / -6%</code></li>
+<li>验证 deeper-shock rescue 是否能把 expectancy 拉回正值</li>
+</ul>
+<ol>
+<li><strong>极端 panic veto</strong></li>
+</ol>
+<ul>
+<li>BTC 上先验证 <code>5x+</code> 量能是否应直接 veto</li>
+<li>因为当前样本显示最极端量能未必最好，可能意味着趋势性事故而不是单纯 overreaction</li>
+</ul>
+<ol>
+<li><strong>事件后的执行形态</strong></li>
+</ol>
+<ul>
+<li>next <code>15m</code> open</li>
+<li>next <code>5m</code> TWAP / 分批</li>
+<li>signal 后等待 <code>1</code> 根 <code>5m</code> 再进</li>
+<li>看看是不是存在“让第一脚 knife 再飞一下”会更好</li>
+</ul>
+<h3>5.4 下一步怎么测</h3>
+<ul>
+<li><strong>第一步：</strong> 先只做 <code>BTCUSDT</code>，固定 <code>1h signal -&gt; next 15m open -&gt; hold 2h</code>，把阈值网格和成本梯度扫完整。</li>
+<li><strong>第二步：</strong> 对 <code>ETH / SOL</code> 单独做 deeper-shock grid，不再共用 BTC 阈值。</li>
+<li><strong>第三步：</strong> 在 BTC 上加入最便宜的两个 veto：<code>5x+ volume panic veto</code> 与 <code>trend-continuation veto</code>，看能否把坏事件过滤掉。</li>
+<li><strong>第四步：</strong> 再决定这条线是升格成独立 raw alpha，还是降级成“所有 oversold / jump-reversal 书的 shared admission module”。</li>
+</ul>
+<h2>6. 风险与保留意见</h2>
+<ul>
+<li>repo 自带的回测窗口很短，headline 数字漂亮，但 <strong>样本量与市场阶段覆盖都有限</strong>。</li>
+<li>recent Binance perp 迁移版已经明确提示：<strong>这不是可直接拿去做 multi-major 的现成策略。</strong></li>
+<li>ETH / SOL 的正向 pocket 目前主要集中在更极端 shock，上样本很少，容易过拟合。</li>
+<li><code>5x+</code> 极端量能在 BTC 上反而变差，说明最危险的不是“没信号”，而是<strong>把事故当 oversold 接刀</strong>。</li>
+<li>这条线现在更像 <strong>BTC event alpha + alt rescue hypothesis</strong>，还不能被包装成稳定组合书。</li>
+</ul>
+<h2>7. 本轮产出文件</h2>
+<ul>
+<li>研究笔记：<code>research/quant_digests/2026-04-15_0912_volumeconfirmed-1h-downshock-bounce-alpha.md</code></li>
+<li>portability artifacts：</li>
+<li><code>reports/artifacts/quant_digests/highvol-shock-bounce_probe_20260415_0910/summary.csv</code></li>
+<li><code>reports/artifacts/quant_digests/highvol-shock-bounce_probe_20260415_0910/event_forward_returns.csv</code></li>
+<li><code>reports/artifacts/quant_digests/highvol-shock-bounce_probe_20260415_0910/trade_list_no_overlap.csv</code></li>
+<li><code>reports/artifacts/quant_digests/highvol-shock-bounce_probe_20260415_0910/meta.json</code></li>
+</ul>
+<h2>8. 来源</h2>
+<ol>
+<li><strong>Skylar Shi. (2025/2026). _crypto-stat-arb_. GitHub repository.</strong></li>
+</ol>
+<ul>
+<li>Repo URL: &lt;<a href="https://github.com/skylarshi123/crypto-stat-arb&gt;">https://github.com/skylarshi123/crypto-stat-arb&gt;</a></li>
+<li>Readable URL: &lt;<a href="https://raw.githubusercontent.com/skylarshi123/crypto-stat-arb/main/README.md&gt;">https://raw.githubusercontent.com/skylarshi123/crypto-stat-arb/main/README.md&gt;</a></li>
+<li>Key files:</li>
+<li>&lt;<a href="https://raw.githubusercontent.com/skylarshi123/crypto-stat-arb/main/src/strategy.py&gt;">https://raw.githubusercontent.com/skylarshi123/crypto-stat-arb/main/src/strategy.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/skylarshi123/crypto-stat-arb/main/src/backtester.py&gt;">https://raw.githubusercontent.com/skylarshi123/crypto-stat-arb/main/src/backtester.py&gt;</a></li>
+<li>&lt;<a href="https://raw.githubusercontent.com/skylarshi123/crypto-stat-arb/main/results/performance_metrics.json&gt;">https://raw.githubusercontent.com/skylarshi123/crypto-stat-arb/main/results/performance_metrics.json&gt;</a></li>
+<li>GitHub API metadata: &lt;<a href="https://api.github.com/repos/skylarshi123/crypto-stat-arb&gt;">https://api.github.com/repos/skylarshi123/crypto-stat-arb&gt;</a></li>
+</ul>
+<ol>
+<li><strong>Zaremba, A., Bilgin, M. H., Long, H., Mercik, A., &amp; Szczygielski, J. J. (2021). _Up or down? Short-term reversal, momentum, and liquidity effects in cryptocurrency markets_. International Review of Financial Analysis, 78, 101908.</strong></li>
+</ol>
+<ul>
+<li>DOI: <code>10.1016/j.irfa.2021.101908</code></li>
+<li>Readable URL: &lt;<a href="https://ideas.repec.org/a/eee/finana/v78y2021ics1057521921002349.html&gt;">https://ideas.repec.org/a/eee/finana/v78y2021ics1057521921002349.html&gt;</a></li>
+</ul>
+<h2>9. 一句话结论</h2>
+<p><strong>这条 raw alpha 该保留，但别再把它当“所有 major 都能统一做的高量急跌反弹”：recent short-cycle perp 版目前更像 BTC 专属母线，ETH/SOL 要先做 deeper-shock rescue，才有资格进入下一轮。</strong></p>
+</body>
+</html>

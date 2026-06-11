@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别把 funding 只做绝对 carry：更该先测的是「funding dispersion rich-vs-cheap 篮子」raw alpha</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 960px; margin: 40px auto; padding: 0 18px; line-height: 1.7; color: #111; }
+    h1, h2, h3 { line-height: 1.25; }
+    .muted { color: #666; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; margin: 16px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; margin: 0 6px 6px 0; }
+    ul, ol { padding-left: 22px; }
+    code { background: #f3f4f6; padding: 1px 5px; border-radius: 6px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p><a href="report.html">← 返回 Quant Digests</a> · <a href="../../index.html">站点首页</a></p>
+  <h1>别把 funding 只做绝对 carry：更该先测的是「funding dispersion rich-vs-cheap 篮子」raw alpha</h1>
+  <div class="card">
+    <span class="pill">更新时间：2026-03-25 18:09 UTC</span>
+      <span class="pill">研究时间：2026-03-25 18:12 UTC</span>
+      <span class="pill">类型：论文 + GitHub + Binance 公共数据最小快检</span>
+      <span class="pill">主题标签：raw-alpha / carry / funding / cross-sectional / relative-value / stat-arb / perpetual / binance / 5m / 15m / 1h / 8h / 24h</span>
+      <span class="pill">证据类型：论文证据 + 工程实现 + 公共数据快检</span>
+    <p class="muted">源文件：<code>research/quant_digests/2026-03-25_1812_funding-dispersion-xs-carry-basket.md</code></p>
+  </div>
+  <ul>
+<li>时间：2026-03-25 18:12 UTC</li>
+<li>类型：论文 + GitHub + Binance 公共数据最小快检</li>
+<li>主题类型：raw alpha</li>
+<li>基础 alpha：横截面 funding carry / relative-value（多低 funding，空高 funding）</li>
+<li>是否可独立复现：是</li>
+<li>是否可直接落地完整策略（entry/exit/sizing/risk/cost）：是</li>
+<li>主题标签：raw-alpha / carry / funding / cross-sectional / relative-value / stat-arb / perpetual / binance / 5m / 15m / 1h / 8h / 24h</li>
+<li>证据类型：论文证据 + 工程实现 + 公共数据快检</li>
+</ul>
+<h2>1. 这次看了什么</h2>
+<p>看了两条 carry 主线：一是 Fan、Jiao、Lu、Tong 2024 working paper《Risk and Return of Cryptocurrency Carry Trade》，它证明 crypto carry 不是只能做单腿赚息差，横截面 long-short 也能形成独立因子；二是 Schmeling、Schrimpf、Todorov 2023 的 BIS/SSRN《Crypto Carry》，它解释了为什么高 carry 往往对应拥挤杠杆需求而不是“白送钱”。工程上再对照 <code>exo-trading/crypto-carry-screener</code>，它已经把“全币 funding 抓取 + xs-carry/basis 监控”写成可复用骨架。</p>
+<h2>2. 核心结论</h2>
+<ul>
+<li><strong>这篇东西的 base alpha 是什么？</strong> 不是“收 funding”本身，而是<strong>横截面上做多更便宜/更不拥挤的 perp，做空更贵/更拥挤的 perp</strong>，吃相对收益回归 + funding spread。</li>
+<li>对短周期 desk 来说，最值得偷的不是论文 headline 的长样本资产定价结论，而是它背后的 <strong>rich-vs-cheap 排名骨架</strong>：每个 funding 时点做一次横截面排序，再用 <code>5m/15m</code> 执行。</li>
+<li>我用 Binance USDT 永续 12 币（BTC/ETH/BNB/SOL/XRP/ADA/DOGE/LINK/AVAX/LTC/DOT/BCH）做了最小快检，样本为 <strong>2026-01-18 ~ 2026-03-25、199 个 funding 事件</strong>。若“永远开着跑” top1-vs-bottom1，<strong>下一段 8h 平均 gross 仅 -12.4 bps/次</strong>，说明它<strong>不是 always-on alpha</strong>。</li>
+<li>但当 funding dispersion 进入样本内 <strong>前 25%</strong> 时，若做 <strong>top3 高 funding 做空 / bottom3 低 funding 做多，并持有 24h</strong>，平均 <strong>gross +27.1 bps/次</strong>；按 <strong>16 bps round-trip</strong> 粗算后仍有 <strong>+11.1 bps/次</strong>，说明这条 edge 更像<strong>稀疏 pocket</strong>。</li>
+<li>在这些高 dispersion 事件里，平均 funding spread 只贡献约 <strong>5.6 bps</strong>，其余主要来自后续相对价格回归；所以 <strong>funding 更像 trigger，不是全部 PnL</strong>。</li>
+</ul>
+<h2>3. 为什么和当前项目有关</h2>
+<p>这条线直接补的是当前 desk 还不够厚的 <strong>carry / cross-sectional / relative-value raw alpha 素材池</strong>。它不是继续围绕 breakout/confirmation 内循环，而是给出一条可以独立立项的 perp basket 策略：信号时钟来自 funding，执行落在 <code>5m/15m</code>，风险管理可以完全按 market-neutral 组合去写。</p>
+<h2>3.5 策略拆解（必填）</h2>
+<ul>
+<li>方向属性：横截面 / 相对价值 / 轻逆拥挤</li>
+<li>基础 alpha：long 低 funding basket，short 高 funding basket</li>
+<li>regime：仅在 funding dispersion 进入高分位时 trade-on</li>
+<li>filter / veto：只保留高流动性 USDT perp；跳过重大宏观/链上事件窗；若两端年化 funding 差不足以覆盖预估成本则不做</li>
+<li>risk / sizing / execution overlay：美元中性；单币权重 capped；<code>5m</code> TWAP/被动挂单进出；默认 24h 持有或当 spread 回到中位数附近平仓</li>
+</ul>
+<h2>4. 可复刻的最小实验</h2>
+<ul>
+<li><strong>研究假设</strong>：高 funding dispersion 代表横截面拥挤分化，随后 rich leg 相对便宜 leg 更容易回落。</li>
+<li><strong>数据源</strong>：Binance Futures 公共 funding rate + 1h/5m K 线；完全公开可拿。</li>
+<li><strong>最小口径</strong>：每个 <code>00/08/16 UTC</code> 计算 liquid perp funding 排名；若 <code>high-low spread</code> &gt; 过去 30 天 75% 分位，则 long 底部 3、short 顶部 3；用 <code>5m</code> 执行，持有 24h；计入 <code>16~24 bps</code> round-trip。</li>
+<li><strong>先看 4 个指标</strong>：gross spread、净后 edge、命中率、rich/cheap 两端各自的 price leg 贡献。</li>
+</ul>
+<h2>5. 风险与边界</h2>
+<p>这条线最大的坑，是把它误当“稳定收息差”的低换手策略。实际更像<strong>拥挤分化过大时才出现的相对价值 pocket</strong>；如果 dispersion 不高、执行又是双边 taker，很容易把 edge 全部吃掉。另外 funding 发布频率是 <code>8h</code>，所以它是<strong>低频信号 + 短周期执行</strong>，不是逐根 <code>1m/5m</code> 主信号。</p>
+<h2>6. 下一步怎么测</h2>
+<ol>
+<li>把 universe 扩到 Binance 前 30~50 个高流动性 USDT perp，重跑 <code>top1/top3/top5</code> 与 <code>8h/24h</code> 持有矩阵。</li>
+<li>加 <code>open interest change / basis / volume shock</code>，看能否把高 dispersion pocket 从“接近 break-even”提到稳定净正。</li>
+<li>把执行从全 taker 改成 <code>maker-first + 5m TWAP</code>，单独估一版真实成本生存线。</li>
+<li>检查 beta 暴露：先对 BTC/ETH 做简单 beta 对冲，确认赚的是 rich-vs-cheap，而不是 alt beta 摆动。</li>
+</ol>
+<h2>7. 来源与可复用材料</h2>
+<ol>
+<li><strong>Feng Jiao, Lei Lu, Xing Tong, Zhenzhen Fan (2024)</strong>, *Risk and Return of Cryptocurrency Carry Trade*, working paper / SSRN.</li>
+</ol>
+<ul>
+<li>Readable URL: <a href="https://www.zhenzhenfan.com/research">https://www.zhenzhenfan.com/research</a></li>
+<li>SSRN URL: <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4666425">https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4666425</a></li>
+<li>关键信息：作者主页摘要写明 cross-sectional carry trade <strong>年化 46.71%</strong>, <strong>Sharpe 0.77</strong>。</li>
+</ul>
+<ol>
+<li><strong>Maik Schmeling, Andreas Schrimpf, Karamfil Todorov (2023)</strong>, *Crypto Carry*, BIS Working Papers No.1087 / SSRN.</li>
+</ol>
+<ul>
+<li>DOI: 10.2139/ssrn.4268371</li>
+<li>Readable URL: <a href="https://www.bis.org/publ/work1087.htm">https://www.bis.org/publ/work1087.htm</a></li>
+<li>关键信息：carry 可高于 <strong>10% annualized</strong>，高 carry 更多反映杠杆需求与套利资本稀缺。</li>
+</ul>
+<ol>
+<li><strong>exo-trading (2025)</strong>, *crypto-carry-screener*.</li>
+</ol>
+<ul>
+<li>Repo URL: <a href="https://github.com/exo-trading/crypto-carry-screener">https://github.com/exo-trading/crypto-carry-screener</a></li>
+<li>Raw code URL: <a href="https://raw.githubusercontent.com/exo-trading/crypto-carry-screener/main/market_data_collector.py">https://raw.githubusercontent.com/exo-trading/crypto-carry-screener/main/market_data_collector.py</a></li>
+<li>可复用点：全币 funding 历史抓取、小时级缺失补齐、xs-carry / basis 监控骨架。</li>
+</ul>
+<ol>
+<li><strong>Binance Futures Public API</strong>（公开数据源）</li>
+</ol>
+<ul>
+<li>Funding: <a href="https://binance-docs.github.io/apidocs/futures/en/#get-funding-rate-history">https://binance-docs.github.io/apidocs/futures/en/#get-funding-rate-history</a></li>
+<li>Klines: <a href="https://binance-docs.github.io/apidocs/futures/en/#kline-candlestick-data">https://binance-docs.github.io/apidocs/futures/en/#kline-candlestick-data</a></li>
+<li>更新频率 / 最小复现实验口径：funding <code>8h</code>，价格可到 <code>1m/5m</code>，足够做最小 basket 回测。</li>
+</ul>
+</body>
+</html>
