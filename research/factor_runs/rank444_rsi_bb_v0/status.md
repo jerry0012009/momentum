@@ -14,6 +14,8 @@
 research_status: REVIEW_REQUIRED
 code_trust_initial: B
 promotion_status: NOT_PAPER_OR_LIVE_ELIGIBLE
+human_review_status: PENDING
+human_decision: PENDING
 ```
 
 ## Status Rationale
@@ -47,6 +49,36 @@ Rank444 经历了 6 轮迭代（v1→v6），产出 14 个脚本和 6 个结果 
 - [ ] factor memo
 - [ ] 复现命令
 - [ ] 已审核的 Code Trust 状态
+
+## Human Decision
+
+```yaml
+human_review_status: PENDING
+human_decision: PENDING
+reviewed_by: TBD
+reviewed_at: TBD
+```
+
+Recommended decision for human review:
+
+```yaml
+old_code_decision: ARCHIVE_OLD_CODE
+old_code_should_be_extended: false
+old_code_should_be_deleted: false
+idea_decision: KEEP_AS_BASELINE_CANDIDATE
+possible_rebuild_name: clean_rsi_bb_baseline_v0
+```
+
+Rationale:
+
+- Rank444 的旧脚本是有价值的探索性研究记录，但不适合作为未来可审计因子库的核心代码继续扩展。
+- 旧代码应保留为历史证据和报告来源，不应删除。
+- RSI + Bollinger Bands 均值回复思想可保留为 baseline 候选；若继续研究，应新建 clean baseline，而不是修补旧脚本。
+- 在未重建为 `signal_time = close[t] -> execution_time = open[t+1]`、未补充滑点和标准 bar-level equity curve 前，不得进入 paper / shadow / live。
+
+Human reviewer notes:
+
+- TODO: human reviewer to confirm or revise the recommended decision.
 
 ## Related Artifacts
 
