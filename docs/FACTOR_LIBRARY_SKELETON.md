@@ -139,13 +139,13 @@ flowchart TD
 
 ### 4.1 Active Diagnostic Probes
 
-|| # | factor_id | family | implementation | evaluation |
-||---|---|---|---|---|
-|| 1 | `mom_20h` | momentum | IMPLEMENTED | DIAGNOSTIC_PROBE |
-|| 2 | `reversal_5h` | mean_reversion | IMPLEMENTED | DIAGNOSTIC_PROBE |
-|| 3 | `volatility_20h` | volatility | IMPLEMENTED | DIAGNOSTIC_PROBE |
-|| 4 | `rsi_14h` | technical | IMPLEMENTED | DIAGNOSTIC_PROBE |
-|| 5 | `bb_zscore_20h` | mean_reversion | IMPLEMENTED | DIAGNOSTIC_PROBE |
+| # | factor_id | family | implementation | evaluation |
+|---|---|---|---|---|
+| 1 | `mom_20h` | momentum | IMPLEMENTED | DIAGNOSTIC_PROBE |
+| 2 | `reversal_5h` | mean_reversion | IMPLEMENTED | DIAGNOSTIC_PROBE |
+| 3 | `volatility_20h` | volatility | IMPLEMENTED | DIAGNOSTIC_PROBE |
+| 4 | `rsi_14h` | technical | IMPLEMENTED | DIAGNOSTIC_PROBE |
+| 5 | `bb_zscore_20h` | mean_reversion | IMPLEMENTED | DIAGNOSTIC_PROBE |
 
 **CANDIDATE count:** 0 — all probes are still under evaluation.
 
