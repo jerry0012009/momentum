@@ -33,6 +33,7 @@ jerry/momentum/
 │  ├─ CANDIDATE_FACTOR_POOL.md
 │  ├─ AUDITABLE_FACTOR_RESEARCH_SKILL.md
 │  ├─ RESEARCH_LIFECYCLE.md
+│  ├─ FACTOR_LIBRARY_DESIGN.md
 │  ├─ CODE_TRUST_MAP.md
 │  ├─ BACKTEST_HONESTY_CHECKLIST.md
 │  ├─ SINGLE_FACTOR_REPORT_TEMPLATE.md
@@ -88,9 +89,10 @@ jerry/momentum/
 
 说明：`data/raw|bronze|silver|features` 在 `.gitignore` 中默认忽略，用于本地数据管理。
 
-研究生命周期：
+研究生命周期与因子库：
 - `docs/AUDITABLE_FACTOR_RESEARCH_SKILL.md`：可审计研究资产的最低标准。
 - `docs/RESEARCH_LIFECYCLE.md`：旧研究资产 / 新因子想法的标准流转流程。
+- `docs/FACTOR_LIBRARY_DESIGN.md`：因子库定义、第一套 universe、入库标准和评价协议。
 - `research/factor_runs/_TEMPLATE/`：每个研究对象的标准审计卷宗模板。
 - `docs/CODE_TRUST_MAP.md`：文件级代码可信度地图。
 - `docs/FACTOR_BACKLOG.md`：因子研究队列和优先级。
