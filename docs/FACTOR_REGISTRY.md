@@ -6,6 +6,14 @@
 >
 > 状态为 SCOPED 不代表已验证有效，仅代表公式和 universe 已定义。
 
+## Registry Status
+
+- All 5 registered factors are **DIAGNOSTIC_PROBE** status
+- They serve as test inputs for the factor evaluation pipeline and audit framework
+- None have been promoted to CANDIDATE status
+- See `docs/FACTOR_EVALUATION_STANDARD.md` for evaluation criteria
+- See `research/factor_runs/crypto_top50_factor_library/audit_v0/audit_summary.md` for audit results
+
 ## Universe
 
 | 字段 | 值 |
@@ -32,10 +40,10 @@
 | **known_at** | `close[t]` — bar 收盘后可知 |
 | **universe** | `crypto_top50_usdt_perp_1h` |
 | **frequency** | 1h |
-| **status** | SCOPED |
+| **status** | DIAGNOSTIC_PROBE |
 | **artifact_path** | `data/features/crypto_top50_usdt_perp_1h/mom_20h/factor_values.parquet` |
 | **eval_path** | `reports/artifacts/factor_eval/crypto_top50_usdt_perp_1h/mom_20h/` |
-| **notes** | 经典短期动量。crypto 中 20h ≈ 接近 1 个交易日。预期方向：正 IC（过去涨的继续涨）。可能在反转行情中失效。 |
+| **notes** | 经典短期动量。crypto 中 20h ≈ 接近 1 个交易日。预期方向：正 IC（过去涨的继续涨）。可能在反转行情中失效。 **DIAGNOSTIC_PROBE**: Used for pipeline testing and audit mechanism validation. Not promoted to V1. Not used in strategy backtesting. See audit_v0/ for details. |
 
 ### 2. reversal_5h
 
@@ -48,10 +56,10 @@
 | **known_at** | `close[t]` — bar 收盘后可知 |
 | **universe** | `crypto_top50_usdt_perp_1h` |
 | **frequency** | 1h |
-| **status** | SCOPED |
+| **status** | DIAGNOSTIC_PROBE |
 | **artifact_path** | `data/features/crypto_top50_usdt_perp_1h/reversal_5h/factor_values.parquet` |
 | **eval_path** | `reports/artifacts/factor_eval/crypto_top50_usdt_perp_1h/reversal_5h/` |
-| **notes** | 短期反转。取负号使因子值大 = 过去跌得多 = 预期反弹。与 mom_20h 方向相反，可用于正交性检验。 |
+| **notes** | 短期反转。取负号使因子值大 = 过去跌得多 = 预期反弹。与 mom_20h 方向相反，可用于正交性检验。 **DIAGNOSTIC_PROBE**: Used for pipeline testing and audit mechanism validation. Not promoted to V1. Not used in strategy backtesting. See audit_v0/ for details. |
 
 ### 3. volatility_20h
 
@@ -64,10 +72,10 @@
 | **known_at** | `close[t]` — bar 收盘后可知 |
 | **universe** | `crypto_top50_usdt_perp_1h` |
 | **frequency** | 1h |
-| **status** | SCOPED |
+| **status** | DIAGNOSTIC_PROBE |
 | **artifact_path** | `data/features/crypto_top50_usdt_perp_1h/volatility_20h/factor_values.parquet` |
 | **eval_path** | `reports/artifacts/factor_eval/crypto_top50_usdt_perp_1h/volatility_20h/` |
-| **notes** | 已实现波动率。可用于波动率择时或作为其他因子的条件过滤器。本身不预判方向，预期 IC 接近 0 或微负（低波跑赢高波效应）。 |
+| **notes** | 已实现波动率。可用于波动率择时或作为其他因子的条件过滤器。本身不预判方向，预期 IC 接近 0 或微负（低波跑赢高波效应）。 **DIAGNOSTIC_PROBE**: Used for pipeline testing and audit mechanism validation. Not promoted to V1. Not used in strategy backtesting. See audit_v0/ for details. |
 
 ### 4. rsi_14h
 
@@ -80,10 +88,10 @@
 | **known_at** | `close[t]` — bar 收盘后可知 |
 | **universe** | `crypto_top50_usdt_perp_1h` |
 | **frequency** | 1h |
-| **status** | SCOPED |
+| **status** | DIAGNOSTIC_PROBE |
 | **artifact_path** | `data/features/crypto_top50_usdt_perp_1h/rsi_14h/factor_values.parquet` |
 | **eval_path** | `reports/artifacts/factor_eval/crypto_top50_usdt_perp_1h/rsi_14h/` |
-| **notes** | 经典 RSI。作为连续因子使用（0-100），不做二值化。与 reversal_5h 有相关性但不完全相同（RSI 用 Wilder 平滑，reversal 用简单比值）。 |
+| **notes** | 经典 RSI。作为连续因子使用（0-100），不做二值化。与 reversal_5h 有相关性但不完全相同（RSI 用 Wilder 平滑，reversal 用简单比值）。 **DIAGNOSTIC_PROBE**: Used for pipeline testing and audit mechanism validation. Not promoted to V1. Not used in strategy backtesting. See audit_v0/ for details. |
 
 ### 5. bb_zscore_20h
 
@@ -96,10 +104,10 @@
 | **known_at** | `close[t]` — bar 收盘后可知 |
 | **universe** | `crypto_top50_usdt_perp_1h` |
 | **frequency** | 1h |
-| **status** | SCOPED |
+| **status** | DIAGNOSTIC_PROBE |
 | **artifact_path** | `data/features/crypto_top50_usdt_perp_1h/bb_zscore_20h/factor_values.parquet` |
 | **eval_path** | `reports/artifacts/factor_eval/crypto_top50_usdt_perp_1h/bb_zscore_20h/` |
-| **notes** | 布林带 z-score。值 > 0 表示价格高于均值，< 0 表示低于均值。预期均值回归效应：IC 为负（高 z-score → 未来跌）。与 rank444 RSI+BB 策略有渊源但此处作为独立因子评估。 |
+| **notes** | 布林带 z-score。值 > 0 表示价格高于均值，< 0 表示低于均值。预期均值回归效应：IC 为负（高 z-score → 未来跌）。与 rank444 RSI+BB 策略有渊源但此处作为独立因子评估。 **DIAGNOSTIC_PROBE**: Used for pipeline testing and audit mechanism validation. Not promoted to V1. Not used in strategy backtesting. See audit_v0/ for details. |
 
 ---
 
@@ -156,6 +164,7 @@ reports/artifacts/factor_eval/crypto_top50_usdt_perp_1h/<factor_name>/result_sum
 |--------|------|
 | IDEA | 未实现 |
 | SCOPED | 公式和 universe 已定义 |
+| DIAGNOSTIC_PROBE | 因子用于流水线测试和审计机制验证，未升级为候选因子 |
 | PROTOTYPED | 因子值已生成一次 |
 | REVIEW_REQUIRED | AI 辅助或未审计 |
 | REVIEWED | 公式、时序、数据、评价已检查 |
