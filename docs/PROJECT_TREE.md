@@ -31,6 +31,10 @@ jerry/momentum/
 │  ├─ LEARNING_TRACK.md
 │  ├─ MAINLINE1_STRATEGY_FACTOR_MAP.md
 │  ├─ CANDIDATE_FACTOR_POOL.md
+│  ├─ AUDITABLE_FACTOR_RESEARCH_SKILL.md
+│  ├─ RESEARCH_LIFECYCLE.md
+│  ├─ CODE_TRUST_MAP.md
+│  ├─ BACKTEST_HONESTY_CHECKLIST.md
 │  ├─ SINGLE_FACTOR_REPORT_TEMPLATE.md
 │  ├─ FACTOR_BACKLOG.md
 │  ├─ TODO.md
@@ -52,6 +56,20 @@ jerry/momentum/
 │  ├─ artifacts/
 │  └─ site/
 ├─ research/
+│  ├─ factor_runs/
+│  │  ├─ _TEMPLATE/
+│  │  │  ├─ status.md
+│  │  │  ├─ factor_memo.md
+│  │  │  ├─ data_contract.md
+│  │  │  ├─ audit_notes.md
+│  │  │  ├─ reproduction.md
+│  │  │  └─ decision.md
+│  │  └─ rank444_rsi_bb_v0/
+│  │     ├─ status.md
+│  │     ├─ factor_memo.md
+│  │     ├─ data_contract.md
+│  │     ├─ audit_notes.md
+│  │     └─ reproduction.md
 │  └─ quant_digests/   # 定时研究笔记 / 文献卡片 / 仓库拆解
 ├─ src/momentum/
 │  ├─ domain/ data/ factors/ signals/ risk/
@@ -69,6 +87,13 @@ jerry/momentum/
 ```
 
 说明：`data/raw|bronze|silver|features` 在 `.gitignore` 中默认忽略，用于本地数据管理。
+
+研究生命周期：
+- `docs/AUDITABLE_FACTOR_RESEARCH_SKILL.md`：可审计研究资产的最低标准。
+- `docs/RESEARCH_LIFECYCLE.md`：旧研究资产 / 新因子想法的标准流转流程。
+- `research/factor_runs/_TEMPLATE/`：每个研究对象的标准审计卷宗模板。
+- `docs/CODE_TRUST_MAP.md`：文件级代码可信度地图。
+- `docs/FACTOR_BACKLOG.md`：因子研究队列和优先级。
 
 关键脚本（当前）：
 - `scripts/build_updownwave_report.py`：生成 UpWave/DownWave 研究报告
