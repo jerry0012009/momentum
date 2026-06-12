@@ -19,8 +19,8 @@ UNIVERSE = "crypto_top50_usdt_perp_1h"
 CACHE = ROOT / "data" / "cache" / UNIVERSE
 FEATURE = ROOT / "data" / "features" / UNIVERSE
 REPORT = ROOT / "reports" / "artifacts" / "factor_eval" / UNIVERSE
-OUTDIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "audit_v0"
-FACTORS = ["mom_20h", "reversal_5h", "volatility_20h", "rsi_14h", "bb_zscore_20h"]
+OUTDIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "audit_v0_1"
+CATALOG = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_catalog_v0_1.csv"
 LABELS = ["ret_fwd_1h", "ret_fwd_4h", "ret_fwd_24h", "ret_fwd_72h"]
 MIN_N = 10
 
@@ -87,23 +87,21 @@ def winsorize(s: pd.Series, lo: float = 0.01, hi: float = 0.99) -> pd.Series:
 def _compute_ic_vectorized(
     merged: pd.DataFrame, factor_col: str, label_col: str, min_n: int = MIN_N,
 ) -> dict[str, Any]:
-    """Compute per-timestamp IC using pivot → numpy for speed."""
+    """Compute per-timestamp IC using pivot → pandas corrwith for speed."""
     sub = merged[["timestamp", "symbol", factor_col, label_col]].dropna()
     if sub.empty:
         return {"IC_mean": None, "IC_std": None, "ICIR": None,
                 "RankIC_mean": None, "RankIC_std": None, "RankICIR": None,
                 "spread_mean": None, "spread_t": None, "n_timestamps": 0}
 
-    # Pivot: rows=timestamp, cols=symbol
     fv_pivot = sub.pivot_table(index="timestamp", columns="symbol",
                                values=factor_col, aggfunc="first")
     lb_pivot = sub.pivot_table(index="timestamp", columns="symbol",
                                values=label_col, aggfunc="first")
-    # align
     common_syms = fv_pivot.columns.intersection(lb_pivot.columns)
     common_ts = fv_pivot.index.intersection(lb_pivot.index)
-    fv_mat = fv_pivot.loc[common_ts, common_syms].values  # (T, S)
-    lb_mat = lb_pivot.loc[common_ts, common_syms].values   # (T, S)
+    fv_mat = fv_pivot.loc[common_ts, common_syms]
+    lb_mat = lb_pivot.loc[common_ts, common_syms]
 
     T, S = fv_mat.shape
     if S < min_n:
@@ -111,37 +109,32 @@ def _compute_ic_vectorized(
                 "RankIC_mean": None, "RankIC_std": None, "RankICIR": None,
                 "spread_mean": None, "spread_t": None, "n_timestamps": 0}
 
-    ics = np.full(T, np.nan)
-    rics = np.full(T, np.nan)
-    spreads = np.full(T, np.nan)
+    # vectorized IC via corrwith
+    ics = fv_mat.corrwith(lb_mat, axis=1).dropna().values
+    rics = fv_mat.rank(axis=1).corrwith(lb_mat.rank(axis=1), axis=1).dropna().values
 
-    for t in range(T):
-        fv_row = fv_mat[t]
-        lb_row = lb_mat[t]
-        mask = ~(np.isnan(fv_row) | np.isnan(lb_row))
+    # vectorized quintile spread using numpy
+    fv_arr = fv_mat.values
+    lb_arr = lb_mat.values
+    fv_pctile = np.full_like(fv_arr, np.nan)
+    for i in range(T):
+        row = fv_arr[i]
+        mask = ~np.isnan(row)
         n = mask.sum()
-        if n < min_n:
-            continue
-        fv_v = fv_row[mask]
-        lb_v = lb_row[mask]
-        ic = _pearson_col(fv_v, lb_v)
-        ric = _spearman_col(fv_v, lb_v)
-        if ic is not None:
-            ics[t] = ic
-        if ric is not None:
-            rics[t] = ric
-        # quintile spread
-        ranks = _rank_1d(fv_v)
-        q_labels = np.ceil(ranks / n * 5).astype(int)
-        q_labels = np.clip(q_labels, 1, 5)
-        q1_mask = q_labels == 1
-        q5_mask = q_labels == 5
-        if q1_mask.any() and q5_mask.any():
-            spreads[t] = np.mean(lb_v[q5_mask]) - np.mean(lb_v[q1_mask])
-
-    ics = ics[~np.isnan(ics)]
-    rics = rics[~np.isnan(rics)]
-    spreads = spreads[~np.isnan(spreads)]
+        if n >= min_n:
+            ranked = np.argsort(np.argsort(row[mask])) + 1
+            fv_pctile[i, mask] = ranked / n
+    q = np.floor(fv_pctile * 5).clip(0, 4).astype(float) + 1
+    q[np.isnan(fv_pctile)] = np.nan
+    spreads = []
+    for i in range(T):
+        q_row = q[i]
+        lb_row = lb_arr[i]
+        q1_val = np.nanmean(lb_row[q_row == 1]) if np.any(q_row == 1) else np.nan
+        q5_val = np.nanmean(lb_row[q_row == 5]) if np.any(q_row == 5) else np.nan
+        if not np.isnan(q1_val) and not np.isnan(q5_val):
+            spreads.append(q5_val - q1_val)
+    spreads = np.array(spreads)
 
     icm = _nanmean_safe(ics)
     icsd = _nanstd_safe(ics)
@@ -188,18 +181,37 @@ def audit_ic_sign(merged_all: dict[str, pd.DataFrame]) -> pd.DataFrame:
 # ─────────── B: Monthly stability ───────────
 
 def audit_monthly(merged_all: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """Monthly IC stability — one pivot per factor-label, then slice by month."""
     rows = []
     for fname, df in merged_all.items():
         df = df.copy()
-        df["month"] = df["timestamp"].dt.to_period("M")
+        df["month"] = df["timestamp"].dt.strftime("%Y-%m")
         for label in LABELS:
-            for month, mdf in df.groupby("month", sort=True):
-                m = _compute_ic_vectorized(mdf, "factor_value", label)
+            sub = df[["timestamp", "symbol", "factor_value", label, "month"]].dropna()
+            if sub.empty:
+                continue
+            fv_pivot = sub.pivot_table(index="timestamp", columns="symbol",
+                                       values="factor_value", aggfunc="first")
+            lb_pivot = sub.pivot_table(index="timestamp", columns="symbol",
+                                       values=label, aggfunc="first")
+            # compute per-timestamp IC
+            all_ics = fv_pivot.corrwith(lb_pivot, axis=1)
+            all_rics = fv_pivot.rank(axis=1).corrwith(lb_pivot.rank(axis=1), axis=1)
+            # assign month to each timestamp
+            months = pd.Series(fv_pivot.index).dt.strftime("%Y-%m").values
+            for month_val in np.unique(months):
+                mask = months == month_val
+                ic_m = all_ics.values[mask]
+                ric_m = all_rics.values[mask]
+                ic_m = ic_m[~np.isnan(ic_m)]
+                ric_m = ric_m[~np.isnan(ric_m)]
+                if len(ic_m) < 3:
+                    continue
                 rows.append({
-                    "factor": fname, "label": label, "month": str(month),
-                    "IC_mean": m["IC_mean"], "RankIC_mean": m["RankIC_mean"],
-                    "spread_mean": m["spread_mean"], "spread_t": m["spread_t"],
-                    "n_timestamps": m["n_timestamps"],
+                    "factor": fname, "label": label, "month": month_val,
+                    "IC_mean": _nanmean_safe(ic_m), "RankIC_mean": _nanmean_safe(ric_m),
+                    "spread_mean": None, "spread_t": None,
+                    "n_timestamps": len(ic_m),
                 })
     return pd.DataFrame(rows)
 
@@ -269,41 +281,36 @@ def audit_winsorize(merged_all: dict[str, pd.DataFrame]) -> pd.DataFrame:
 # ─────────── E: Symbol contribution ───────────
 
 def audit_symbol_contribution(merged_all: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Per-symbol Q5/Q1 membership and spread contribution."""
+    """Per-symbol Q5/Q1 membership and spread contribution — vectorized."""
     rows = []
-    for fname, df in merged_all.items():
-        for label in LABELS:
-            valid = df[["timestamp", "symbol", "factor_value", label]].dropna()
-            if valid.empty:
-                continue
-            # assign quintiles per timestamp
-            q_parts = []
-            for _, g in valid.groupby("timestamp", sort=True):
-                if len(g) < MIN_N:
-                    continue
-                g = g.copy()
-                fv = g["factor_value"].values
-                n = len(fv)
-                ranks = _rank_1d(fv)
-                q_labels = np.clip(np.ceil(ranks / n * 5).astype(int), 1, 5)
-                g["q"] = q_labels
-                q_parts.append(g)
-            if not q_parts:
-                continue
-            qdf = pd.concat(q_parts, ignore_index=True)
-            for sym, sdf in qdf.groupby("symbol"):
-                n_q5 = int((sdf["q"] == 5).sum())
-                n_q1 = int((sdf["q"] == 1).sum())
-                mean_ret = clean(sdf[label].mean())
-                mean_fv = clean(sdf["factor_value"].mean())
-                r5 = sdf.loc[sdf["q"] == 5, label].mean() if n_q5 > 0 else np.nan
-                r1 = sdf.loc[sdf["q"] == 1, label].mean() if n_q1 > 0 else np.nan
-                contrib = clean(r5 - r1) if not (np.isnan(r5) or np.isnan(r1)) else None
-                rows.append({
-                    "factor": fname, "label": label, "symbol": sym,
-                    "mean_forward_return": mean_ret, "mean_factor_exposure": mean_fv,
-                    "n_q5": n_q5, "n_q1": n_q1, "spread_contribution": contrib,
-                })
+    for label in LABELS:
+        # build one big table with all factors
+        parts = []
+        for fname, df in merged_all.items():
+            sub = df[["timestamp", "symbol", "factor_value", label]].dropna().copy()
+            sub["factor"] = fname
+            parts.append(sub)
+        if not parts:
+            continue
+        all_df = pd.concat(parts, ignore_index=True)
+        # assign quintiles per (factor, timestamp)
+        all_df["rank"] = all_df.groupby(["factor", "timestamp"])["factor_value"].rank(method="first")
+        all_df["n"] = all_df.groupby(["factor", "timestamp"])["factor_value"].transform("count")
+        all_df["q"] = np.clip(np.ceil(all_df["rank"] / all_df["n"] * 5).astype(int), 1, 5)
+        # per-symbol stats
+        for (fname, sym), sdf in all_df.groupby(["factor", "symbol"]):
+            n_q5 = int((sdf["q"] == 5).sum())
+            n_q1 = int((sdf["q"] == 1).sum())
+            mean_ret = clean(sdf[label].mean())
+            mean_fv = clean(sdf["factor_value"].mean())
+            r5 = sdf.loc[sdf["q"] == 5, label].mean() if n_q5 > 0 else np.nan
+            r1 = sdf.loc[sdf["q"] == 1, label].mean() if n_q1 > 0 else np.nan
+            contrib = clean(r5 - r1) if not (np.isnan(r5) or np.isnan(r1)) else None
+            rows.append({
+                "factor": fname, "label": label, "symbol": sym,
+                "mean_forward_return": mean_ret, "mean_factor_exposure": mean_fv,
+                "n_q5": n_q5, "n_q1": n_q1, "spread_contribution": contrib,
+            })
     return pd.DataFrame(rows)
 
 
@@ -311,9 +318,9 @@ def audit_symbol_contribution(merged_all: dict[str, pd.DataFrame]) -> pd.DataFra
 
 def write_summary(sign_df: pd.DataFrame, month_df: pd.DataFrame,
                   nonov_df: pd.DataFrame, wins_df: pd.DataFrame,
-                  sym_df: pd.DataFrame) -> None:
+                  sym_df: pd.DataFrame, factors: list[str]) -> None:
     lines = [
-        "# V0 Factor Audit Summary", "",
+        "# V0.1 Factor Audit Summary", "",
         f"- generated_at: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
         "- universe: crypto_top50_usdt_perp_1h",
         "- evaluation_period: 2025-12-14 ~ 2026-06-12", "",
@@ -333,7 +340,7 @@ def write_summary(sign_df: pd.DataFrame, month_df: pd.DataFrame,
 
     # ── B ──
     lines += ["", "## B. Monthly Stability", ""]
-    for fname in FACTORS:
+    for fname in factors:
         sub = month_df[month_df["factor"] == fname]
         if sub.empty:
             continue
@@ -351,7 +358,7 @@ def write_summary(sign_df: pd.DataFrame, month_df: pd.DataFrame,
     lines += ["### Monthly direction consistency", "",
               "| factor | label | months | consistent | ratio |",
               "|---|---|---:|---:|---:|"]
-    for fname in FACTORS:
+    for fname in factors:
         for label in LABELS:
             sub = month_df[(month_df["factor"] == fname) & (month_df["label"] == label)]
             ics = sub["IC_mean"].dropna()
@@ -393,7 +400,7 @@ def write_summary(sign_df: pd.DataFrame, month_df: pd.DataFrame,
     # ── E ──
     lines += ["## E. Symbol Contribution", ""]
     if not sym_df.empty:
-        for fname in FACTORS:
+        for fname in factors:
             for label in ["ret_fwd_1h", "ret_fwd_24h"]:
                 sub = sym_df[(sym_df["factor"] == fname) & (sym_df["label"] == label)]
                 if sub.empty:
@@ -422,7 +429,7 @@ def write_summary(sign_df: pd.DataFrame, month_df: pd.DataFrame,
         # concentration check
         lines += ["### Concentration Risk", "",
                   "If any single symbol appears in Q5 > 30% of timestamps, it dominates the factor.", ""]
-        for fname in FACTORS:
+        for fname in factors:
             for label in LABELS:
                 sub = sym_df[(sym_df["factor"] == fname) & (sym_df["label"] == label)]
                 if sub.empty:
@@ -444,7 +451,7 @@ def write_summary(sign_df: pd.DataFrame, month_df: pd.DataFrame,
 
     t_drops = []
     if not nonov_df.empty:
-        for fname in FACTORS:
+        for fname in factors:
             for label in ["ret_fwd_24h", "ret_fwd_72h"]:
                 full_row = nonov_df[(nonov_df["factor"] == fname) & (nonov_df["label"] == label) & (nonov_df["mode"] == "full")]
                 no_row = nonov_df[(nonov_df["factor"] == fname) & (nonov_df["label"] == label) & (nonov_df["mode"] == "nonoverlap")]
@@ -491,6 +498,9 @@ def write_summary(sign_df: pd.DataFrame, month_df: pd.DataFrame,
 # ─────────── main ───────────
 
 def main() -> None:
+    catalog = pd.read_csv(CATALOG)
+    factors = catalog[catalog["implementation_status"] == "IMPLEMENTED"]["factor_id"].tolist()
+    print(f"Catalog: {len(factors)} IMPLEMENTED factors")
     OUTDIR.mkdir(parents=True, exist_ok=True)
 
     print("Loading data...", flush=True)
@@ -498,7 +508,7 @@ def main() -> None:
     labels_df["timestamp"] = pd.to_datetime(labels_df["timestamp"], utc=True)
 
     merged_all: dict[str, pd.DataFrame] = {}
-    for fname in FACTORS:
+    for fname in factors:
         fv = pd.read_parquet(FEATURE / fname / "factor_values.parquet")
         fv["timestamp"] = pd.to_datetime(fv["timestamp"], utc=True)
         merged = fv[["timestamp", "symbol", "factor_value"]].merge(
@@ -532,7 +542,7 @@ def main() -> None:
     print(f"  → {len(sym_df)} rows", flush=True)
 
     print("\nWriting audit_summary.md...", flush=True)
-    write_summary(sign_df, month_df, nonov_df, wins_df, sym_df)
+    write_summary(sign_df, month_df, nonov_df, wins_df, sym_df, factors)
 
     print(f"\n✓ Audit complete → {OUTDIR}/", flush=True)
     for f in sorted(OUTDIR.iterdir()):

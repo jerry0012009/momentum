@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Lightweight factor warning flag system.
-Reads audit_v0 CSVs and metrics.json, outputs warning_flags.csv + summary.md.
+Reads audit_v0_1 CSVs and metrics.json, outputs warning_flags.csv + summary.md.
 
 This is NOT a pass/fail gate. It's a risk-awareness mechanism for diagnostic probes.
 """
@@ -16,10 +16,11 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 UNIVERSE = "crypto_top50_usdt_perp_1h"
-AUDIT = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "audit_v0"
+RUN = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
+AUDIT = RUN / "audit_v0_1"
 METRICS = ROOT / "reports" / "artifacts" / "factor_eval" / UNIVERSE
-OUTDIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "warning_flags"
-FACTORS = ["mom_20h", "reversal_5h", "volatility_20h", "rsi_14h", "bb_zscore_20h"]
+OUTDIR = RUN / "warning_flags_v0_1"
+CATALOG = RUN / "factor_catalog_v0_1.csv"
 LABELS = ["ret_fwd_1h", "ret_fwd_4h", "ret_fwd_24h", "ret_fwd_72h"]
 
 # ── thresholds (tuned for awareness, not elimination) ──
@@ -53,6 +54,9 @@ def load_metrics(factor: str, label: str) -> dict:
 
 
 def main() -> None:
+    catalog = pd.read_csv(CATALOG)
+    factors = catalog[catalog["implementation_status"] == "IMPLEMENTED"]["factor_id"].tolist()
+    print(f"Catalog: {len(factors)} IMPLEMENTED factors")
     OUTDIR.mkdir(parents=True, exist_ok=True)
 
     # load audit outputs
@@ -64,7 +68,7 @@ def main() -> None:
 
     rows = []
 
-    for factor in FACTORS:
+    for factor in factors:
         for label in LABELS:
             flags = []
             m = load_metrics(factor, label)
@@ -201,7 +205,7 @@ def main() -> None:
 
     # per-factor summary
     lines += ["", "## Per-Factor Summary", ""]
-    for factor in FACTORS:
+    for factor in factors:
         sub = result_df[result_df["factor_name"] == factor]
         max_sev = "LOW"
         for s in sub["severity"]:
