@@ -12,7 +12,7 @@ Every factor in the library is described by a single record with the following f
 
 | Field | Type | Description |
 |---|---|---|
-| `factor_id` | `str` | Unique machine-readable identifier, e.g. `vol_20h`, `rsi_14h`, `bb_z_20h`. Convention: `<short_name>_<window>h`. |
+|| `factor_id` | `str` | Unique machine-readable identifier, e.g. `mom_20h`, `volatility_20h`, `bb_zscore_20h`. Convention: `<short_name>_<window>h`. |
 | `factor_name` | `str` | Human-readable name, e.g. "20-hour Realized Volatility". |
 | `factor_family` | `enum` | One of: `momentum`, `mean_reversion`, `volatility`, `technical`, `microstructure`, `crypto_specific`. |
 | `formula` | `str` | Mathematical expression in pseudo-code or LaTeX, e.g. `std(close, 20h) / mean(close, 20h)`. |
@@ -28,7 +28,7 @@ Every factor in the library is described by a single record with the following f
 ### 1.1 Example Record (YAML)
 
 ```yaml
-factor_id: bb_z_20h
+factor_id: bb_zscore_20h
 factor_name: "Bollinger Band Z-Score (20h)"
 factor_family: mean_reversion
 formula: "(close - sma(close, 20)) / std(close, 20)"
@@ -41,7 +41,7 @@ source: "Custom (standard technical indicator)"
 implementation_status: TESTED
 evaluation_status: DIAGNOSTIC_PROBE
 warning_flags: []
-notes: "Baseline probe. Weak standalone IC but useful as interaction term."
+notes: "Diagnostic probe. Used for pipeline and audit testing."
 ```
 
 ---
@@ -139,22 +139,22 @@ flowchart TD
 
 ### 4.1 Active Diagnostic Probes
 
-| # | factor_id | family | implementation | evaluation |
-|---|---|---|---|---|
-| 1 | `ret_1h` | momentum | IMPLEMENTED | DIAGNOSTIC_PROBE |
-| 2 | `ret_4h` | momentum | IMPLEMENTED | DIAGNOSTIC_PROBE |
-| 3 | `vol_20h` | volatility | IMPLEMENTED | DIAGNOSTIC_PROBE |
-| 4 | `rsi_14h` | technical | IMPLEMENTED | DIAGNOSTIC_PROBE |
-| 5 | `bb_z_20h` | mean_reversion | IMPLEMENTED | DIAGNOSTIC_PROBE |
+|| # | factor_id | family | implementation | evaluation |
+||---|---|---|---|---|
+|| 1 | `mom_20h` | momentum | IMPLEMENTED | DIAGNOSTIC_PROBE |
+|| 2 | `reversal_5h` | mean_reversion | IMPLEMENTED | DIAGNOSTIC_PROBE |
+|| 3 | `volatility_20h` | volatility | IMPLEMENTED | DIAGNOSTIC_PROBE |
+|| 4 | `rsi_14h` | technical | IMPLEMENTED | DIAGNOSTIC_PROBE |
+|| 5 | `bb_zscore_20h` | mean_reversion | IMPLEMENTED | DIAGNOSTIC_PROBE |
 
 **CANDIDATE count:** 0 — all probes are still under evaluation.
 
 ### 4.2 Next Steps
 
-1. **Run full evaluation pipeline** on the 5 probes to establish baseline metrics.
-2. **Add 5-10 crypto-specific factors** (funding, basis, OI delta) as next batch.
-3. **Port ~20 Qlib Alpha158 features** as a low-effort expansion.
-4. **Audit and promote** top-performing probes to CANDIDATE once IC/ICIR thresholds are met.
+1. **Batch-introduce factors** from Qlib Alpha158 or WQ101 (10-20 technical factors).
+2. **Add crypto-specific factors** (funding, basis, OI delta, liquidation cascade).
+3. **Run warning system** on new factors; look for ones that pass all 6 flags.
+4. **Consider lower frequency** (4h/1d) to reduce overlapping label issues.
 
 ---
 
