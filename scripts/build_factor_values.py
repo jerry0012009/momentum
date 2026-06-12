@@ -48,7 +48,10 @@ def main() -> None:
         raise ValueError("bars_1h.parquet is empty; fetch bars first")
     bars["timestamp"] = pd.to_datetime(bars["timestamp"], utc=True)
     bars = bars.sort_values(["symbol", "timestamp"])
-    wide = bars.groupby("symbol", group_keys=False, sort=False).apply(calc_group).reset_index(drop=True)
+    parts = []
+    for _sym, g in bars.groupby("symbol", sort=False):
+        parts.append(calc_group(g))
+    wide = pd.concat(parts, ignore_index=True)
     computed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     for name in NAMES:
         out = wide[["timestamp", "symbol", name]].rename(columns={name: "factor_value"}).copy()
