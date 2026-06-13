@@ -2,7 +2,7 @@
 
 > This is the entry point for all project documentation.
 >
-> Last updated: 2026-06-13 (Phase 2C closeout)
+> Last updated: 2026-06-13 (Phase 2D start)
 
 ---
 
@@ -15,7 +15,7 @@
 3. `docs/FACTOR_REGISTRY.md` — what factors exist and their status
 4. This file (`DOCS_INDEX.md`) — find anything else you need
 
-**Current mainline:** Phase 2C closeout. The project is building a crypto factor library, not a trading strategy.
+**Current mainline:** Phase 2D (External Factor Priors). The project is building a crypto factor library, not a trading strategy.
 
 ---
 
@@ -43,6 +43,8 @@
 | `docs/FACTOR_BACKLOG.md` | SUPPORTING | Factor research queue and priorities | When planning future factor work. |
 | `docs/CANDIDATE_FACTOR_POOL.md` | SUPPORTING | Candidate factor ideas pool | When brainstorming new factors. |
 | `docs/CRYPTO_FACTOR_PIPELINE_RUNBOOK.md` | ACTIVE | Step-by-step pipeline execution guide | When running the pipeline. |
+| `docs/EXTERNAL_FACTOR_PRIORS.md` | ACTIVE | External factor prior families: WQ101, GTJA191, Alpha158, technical, crypto-native | When exploring factor sources for Phase 2D+. |
+| `docs/CRYPTO_FACTOR_PRIOR_MAPPING.md` | ACTIVE | Maps external factors to crypto availability buckets (A–G) | When assessing which external factors are implementable. |
 
 ---
 
@@ -74,6 +76,8 @@ These documents belong to the active `crypto_top50_factor_library` research run.
 | `research/.../factor_catalog_v0_1.csv` | CURRENT_RUN | Official 5-factor catalog (12-column schema) | Reference for factor definitions. |
 | `research/.../experimental_catalog_v0_1.csv` | CURRENT_RUN | 19 exploratory factors (NOT official) | When reviewing experimental factors. |
 | `research/.../local_artifact_index.md` | CURRENT_RUN | Local artifact file index | Finding generated artifacts. |
+| `research/.../PHASE_2D_PLAN.md` | CURRENT_RUN | Phase 2D scope, allowed/forbidden actions | Understanding Phase 2D boundaries. |
+| `research/.../external_factor_prior_table.csv` | CURRENT_RUN | 56 prior records across 5 source families | Reference for external factor candidates. |
 
 Path prefix: `research/factor_runs/crypto_top50_factor_library/`
 
