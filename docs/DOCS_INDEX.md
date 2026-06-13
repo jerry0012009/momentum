@@ -84,6 +84,7 @@ These documents belong to the active `crypto_top50_factor_library` research run.
 | `research/.../phase_2e_batch1_spec.md` | CURRENT_RUN | Batch 1 formula specs (6 direct_formula factors) | Implementing Batch 1 factors. |
 | `research/.../phase_2e_batch1_candidates.csv` | CURRENT_RUN | Batch 1 candidate table (6 factors, PLANNED_ONLY) | Reference for Batch 1 scope. |
 | `research/.../PHASE_2E1_A_IMPLEMENTATION.md` | CURRENT_RUN | Batch 1 impl closeout: 6 functions, 30 tests | Review implementation quality |
+| `research/.../PHASE_2E_BATCH1_EVALUATION.md` | CURRENT_RUN | Batch 1 evaluation: 11 factors, metrics, status decisions | Review evaluation results |
 
 Path prefix: `research/factor_runs/crypto_top50_factor_library/`
 

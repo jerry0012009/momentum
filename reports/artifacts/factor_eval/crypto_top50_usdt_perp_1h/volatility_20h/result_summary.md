@@ -2,7 +2,7 @@
 
 - universe: `crypto_top50_usdt_perp_1h`
 - evaluation_period: `2025-12-15 09:00:00+00:00 ~ 2026-06-13 08:00:00+00:00`
-- generated_at: `2026-06-13T08:37:03Z`
+- generated_at: `2026-06-13T12:20:27Z`
 - caveat: Static current Top50 diagnostic universe; debug and initial screening only.
 - excluded_symbols (missing_bar_rate > 5%): ['SPACEUSDT']
 

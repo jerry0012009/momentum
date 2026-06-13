@@ -117,6 +117,112 @@
 
 ---
 
+## Phase 2E Batch 1 Diagnostic Probes
+
+### 6. wq101_alpha101
+
+| 字段 | 值 |
+|------|-----|
+| **factor_name** | `wq101_alpha101` |
+| **category** | intraday_position |
+| **formula** | `(close - open) / (high - low + 0.001)` |
+| **parameters** | lookback = 1 bar |
+| **known_at** | `close[t]` — bar 收盘后可知 |
+| **universe** | `crypto_top50_usdt_perp_1h` |
+| **frequency** | 1h |
+| **status** | DIAGNOSTIC_PROBE |
+| **expected_direction** | positive |
+| **artifact_path** | `data/features/crypto_top50_usdt_perp_1h/wq101_alpha101/factor_values.parquet` |
+| **eval_path** | `reports/artifacts/factor_eval/crypto_top50_usdt_perp_1h/wq101_alpha101/` |
+| **notes** | WQ101 Alpha#101. 日内位置因子：收盘价在日内范围的相对位置。Phase 2E Batch 1 diagnostic probe; not alpha evidence. |
+
+### 7. wq101_alpha12
+
+| 字段 | 值 |
+|------|-----|
+| **factor_name** | `wq101_alpha12` |
+| **category** | volume_price_momentum |
+| **formula** | `sign(volume.diff(1)) * (-close.diff(1))` |
+| **parameters** | lookback = 2 bars |
+| **known_at** | `close[t]` — bar 收盘后可知 |
+| **universe** | `crypto_top50_usdt_perp_1h` |
+| **frequency** | 1h |
+| **status** | DIAGNOSTIC_PROBE |
+| **expected_direction** | conditional |
+| **artifact_path** | `data/features/crypto_top50_usdt_perp_1h/wq101_alpha12/factor_values.parquet` |
+| **eval_path** | `reports/artifacts/factor_eval/crypto_top50_usdt_perp_1h/wq101_alpha12/` |
+| **notes** | WQ101 Alpha#12. 量价背离因子。方向不确定（conditional），direction_adjusted_spread 不使用。Phase 2E Batch 1 diagnostic probe; not alpha evidence. |
+
+### 8. wq101_alpha53
+
+| 字段 | 值 |
+|------|-----|
+| **factor_name** | `wq101_alpha53` |
+| **category** | intraday_position |
+| **formula** | `-1 * delta(((close-low)-(high-close))/(close-low+0.001), 9)` |
+| **parameters** | lookback = 10 bars |
+| **known_at** | `close[t]` — bar 收盘后可知 |
+| **universe** | `crypto_top50_usdt_perp_1h` |
+| **frequency** | 1h |
+| **status** | DIAGNOSTIC_PROBE |
+| **expected_direction** | conditional |
+| **artifact_path** | `data/features/crypto_top50_usdt_perp_1h/wq101_alpha53/factor_values.parquet` |
+| **eval_path** | `reports/artifacts/factor_eval/crypto_top50_usdt_perp_1h/wq101_alpha53/` |
+| **notes** | WQ101 Alpha#53. 日内位置变化率因子。公式含 -1*delta，方向不确定（conditional）。Phase 2E Batch 1 diagnostic probe; not alpha evidence. |
+
+### 9. q158_high_low_range
+
+| 字段 | 值 |
+|------|-----|
+| **factor_name** | `q158_high_low_range` |
+| **category** | volatility |
+| **formula** | `(high - low) / close` |
+| **parameters** | lookback = 1 bar |
+| **known_at** | `close[t]` — bar 收盘后可知 |
+| **universe** | `crypto_top50_usdt_perp_1h` |
+| **frequency** | 1h |
+| **status** | DIAGNOSTIC_PROBE |
+| **expected_direction** | conditional |
+| **artifact_path** | `data/features/crypto_top50_usdt_perp_1h/q158_high_low_range/factor_values.parquet` |
+| **eval_path** | `reports/artifacts/factor_eval/crypto_top50_usdt_perp_1h/q158_high_low_range/` |
+| **notes** | Alpha158 HL Range. 日内振幅因子，波动率代理。方向中性（conditional），direction_adjusted_spread 不使用。Phase 2E Batch 1 diagnostic probe; not alpha evidence. |
+
+### 10. tech_macd
+
+| 字段 | 值 |
+|------|-----|
+| **factor_name** | `tech_macd` |
+| **category** | technical |
+| **formula** | `EMA(close, 12) - EMA(close, 26) - signal` where `signal = EMA(MACD_line, 9)` |
+| **parameters** | EMA span 12/26/9 |
+| **known_at** | `close[t]` — bar 收盘后可知 |
+| **universe** | `crypto_top50_usdt_perp_1h` |
+| **frequency** | 1h |
+| **status** | DIAGNOSTIC_PROBE |
+| **expected_direction** | positive |
+| **artifact_path** | `data/features/crypto_top50_usdt_perp_1h/tech_macd/factor_values.parquet` |
+| **eval_path** | `reports/artifacts/factor_eval/crypto_top50_usdt_perp_1h/tech_macd/` |
+| **notes** | MACD Histogram. 经典趋势跟踪指标。Phase 2E Batch 1 diagnostic probe; not alpha evidence. |
+
+### 11. tech_atr
+
+| 字段 | 值 |
+|------|-----|
+| **factor_name** | `tech_atr` |
+| **category** | volatility |
+| **formula** | `SMA(TR, 14)` where `TR = max(H-L, |H-prev_C|, |L-prev_C|)` |
+| **parameters** | lookback = 15 bars (14-bar ATR + 1 for prev_close) |
+| **known_at** | `close[t]` — bar 收盘后可知 |
+| **universe** | `crypto_top50_usdt_perp_1h` |
+| **frequency** | 1h |
+| **status** | DIAGNOSTIC_PROBE |
+| **expected_direction** | conditional |
+| **artifact_path** | `data/features/crypto_top50_usdt_perp_1h/tech_atr/factor_values.parquet` |
+| **eval_path** | `reports/artifacts/factor_eval/crypto_top50_usdt_perp_1h/tech_atr/` |
+| **notes** | ATR 14. 真实波幅均值，波动率代理。方向中性（conditional），direction_adjusted_spread 不使用。Phase 2E Batch 1 diagnostic probe; not alpha evidence. |
+
+---
+
 ## Evaluation Protocol
 
 ### 指标定义

@@ -10,7 +10,9 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 BARS = ROOT / "data" / "cache" / "crypto_top50_usdt_perp_1h" / "bars_1h.parquet"
 FEATURE = ROOT / "data" / "features" / "crypto_top50_usdt_perp_1h"
-from scripts.crypto_factor_functions import (
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+from crypto_factor_functions import (
     compute_wq101_alpha101,
     compute_wq101_alpha12,
     compute_wq101_alpha53,

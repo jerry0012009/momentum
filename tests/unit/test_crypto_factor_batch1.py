@@ -13,7 +13,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from scripts.crypto_factor_functions import (
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parents[2] / "scripts"))
+from crypto_factor_functions import (
     compute_wq101_alpha101,
     compute_wq101_alpha12,
     compute_wq101_alpha53,
