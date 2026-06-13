@@ -9,6 +9,7 @@ V0 audit improvements:
 from __future__ import annotations
 
 import json
+import argparse
 import math
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,12 +19,7 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-UNIVERSE = "crypto_top50_usdt_perp_1h"
-FEATURE = ROOT / "data" / "features" / UNIVERSE
-CACHE = ROOT / "data" / "cache" / UNIVERSE
-REPORT = ROOT / "reports" / "artifacts" / "factor_eval" / UNIVERSE
 RUN = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
-LABELS = FEATURE / "labels.parquet"
 CATALOG = RUN / "factor_catalog_v0_1.csv"
 LABEL_NAMES = ["ret_fwd_1h", "ret_fwd_4h", "ret_fwd_24h", "ret_fwd_72h"]
 MIN_N = 10
@@ -86,8 +82,6 @@ def compute_missing_bar_rates(bars_path: Path | None = None) -> dict[str, float]
     Returns dict: symbol -> missing_rate (0.0 to 1.0).
     Symbols not in the parquet are treated as 100% missing.
     """
-    if bars_path is None:
-        bars_path = CACHE / "bars_1h.parquet"
     if not bars_path.exists():
         return {}
     bars = pd.read_parquet(bars_path)
@@ -251,11 +245,12 @@ def fmt(x: Any) -> str:
     return "" if v is None else f"{v:.6f}"
 
 
-def write_factor_md(factor: str, metrics: dict[str, Any], path: Path) -> None:
+def write_factor_md(factor: str, metrics: dict[str, Any], path: Path, universe: str = "crypto_top50_usdt_perp_1h") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         f"# Factor Evaluation: `{factor}`",
         "",
-        f"- universe: `{UNIVERSE}`",
+        f"- universe: `{universe}`",
         f"- evaluation_period: `{metrics['evaluation_period']}`",
         f"- generated_at: `{metrics['generated_at']}`",
         "- caveat: Static current Top50 diagnostic universe; debug and initial screening only.",
@@ -278,7 +273,20 @@ def write_factor_md(factor: str, metrics: dict[str, Any], path: Path) -> None:
 
 
 def main() -> None:
-    if not LABELS.exists():
+    p = argparse.ArgumentParser()
+    p.add_argument("--dataset-id", default="crypto_top50_usdt_perp_1h", help="Dataset ID under data/cache/ and data/features/")
+    args = p.parse_args()
+
+    dataset = args.dataset_id
+    feature = ROOT / "data" / "features" / dataset
+    cache = ROOT / "data" / "cache" / dataset
+    report = ROOT / "reports" / "artifacts" / "factor_eval" / dataset
+    labels_path = feature / "labels.parquet"
+
+    print(f"Evaluate factors")
+    print(f"Dataset: {dataset}")
+
+    if not labels_path.exists():
         raise FileNotFoundError("labels.parquet not found; run build_labels.py first")
     if not CATALOG.exists():
         raise FileNotFoundError(CATALOG)
@@ -291,7 +299,7 @@ def main() -> None:
     directions = load_catalog_directions(CATALOG)
 
     # Compute missing bar rates and exclude gap symbols
-    missing_rates = compute_missing_bar_rates()
+    missing_rates = compute_missing_bar_rates(cache / "bars_1h.parquet")
     excluded = get_excluded_symbols(missing_rates)
     if excluded:
         print(f"Excluded symbols (missing_bar_rate > {MISSING_BAR_RATE_THRESHOLD:.0%}): {sorted(excluded)}")
@@ -300,7 +308,7 @@ def main() -> None:
     else:
         print("No symbols excluded (all below 5% missing bar threshold)")
 
-    labels = pd.read_parquet(LABELS)
+    labels = pd.read_parquet(labels_path)
     labels["timestamp"] = pd.to_datetime(labels["timestamp"], utc=True)
 
     # Exclude gap symbols from labels
@@ -312,7 +320,7 @@ def main() -> None:
     master_rows = []
 
     for factor in factors:
-        fpath = FEATURE / factor / "factor_values.parquet"
+        fpath = feature / factor / "factor_values.parquet"
         if not fpath.exists():
             raise FileNotFoundError(fpath)
         fv = pd.read_parquet(fpath)
@@ -330,26 +338,27 @@ def main() -> None:
         }
         metrics = {
             "factor_name": factor,
-            "universe": UNIVERSE,
+            "universe": dataset,
             "evaluation_period": period,
             "generated_at": generated_at,
             "excluded_symbols": sorted(excluded),
             "missing_bar_threshold": MISSING_BAR_RATE_THRESHOLD,
             "label_metrics": label_metrics,
         }
-        outdir = REPORT / factor
+        outdir = report / factor
         outdir.mkdir(parents=True, exist_ok=True)
         (outdir / "metrics.json").write_text(json.dumps(metrics, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
-        write_factor_md(factor, metrics, outdir / "result_summary.md")
+        write_factor_md(factor, metrics, outdir / "result_summary.md", universe=dataset)
         for label, m in label_metrics.items():
             master_rows.append((factor, label, m))
         print(f"{factor} -> {outdir}")
 
-    RUN.mkdir(parents=True, exist_ok=True)
+    # Determine suffix for long-window result summary
+    suffix = f"_{dataset}" if dataset != "crypto_top50_usdt_perp_1h" else ""
     lines = [
-        "# Crypto Top50 Factor Library — Batch V0.1 Result Summary",
+        f"# Crypto Top50 Factor Library — Result Summary {'(' + dataset + ')' if suffix else '(V0.1)'}",
         "",
-        f"- universe: `{UNIVERSE}`",
+        f"- universe: `{dataset}`",
         f"- evaluation_period: `{period}`",
         f"- generated_at: `{generated_at}`",
         "- caveat: Static current Top50 diagnostic universe; debug and initial screening only.",
@@ -370,8 +379,9 @@ def main() -> None:
             f"| {fmt(m.get('turnover'))} | {fmt(m.get('coverage'))} | {m.get('n_timestamps', 0)} |"
         )
     lines += ["", "Next: inspect NaN, timestamp alignment, and IC signs before V1.", ""]
-    (RUN / "result_summary.md").write_text("\n".join(lines), encoding="utf-8")
-    print(f"master summary -> {RUN / 'result_summary.md'}")
+    result_path = RUN / f"result_summary{suffix}.md"
+    result_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"master summary -> {result_path}")
 
 
 if __name__ == "__main__":

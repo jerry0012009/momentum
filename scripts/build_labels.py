@@ -9,23 +9,20 @@ V0 convention: timestamp = bar_close_time.
 """
 from __future__ import annotations
 
+import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-CACHE = ROOT / "data" / "cache" / "crypto_top50_usdt_perp_1h"
-FEATURE = ROOT / "data" / "features" / "crypto_top50_usdt_perp_1h"
-BARS = CACHE / "bars_1h.parquet"
-LABELS = FEATURE / "labels.parquet"
 HORIZONS = [1, 4, 24, 72]
 
 
-def load_bars() -> pd.DataFrame:
-    if not BARS.exists():
-        raise FileNotFoundError(f"bars file not found: {BARS}")
-    bars = pd.read_parquet(BARS)
+def load_bars(bars_path: Path) -> pd.DataFrame:
+    if not bars_path.exists():
+        raise FileNotFoundError(f"bars file not found: {bars_path}")
+    bars = pd.read_parquet(bars_path)
     if bars.empty:
         raise ValueError("bars_1h.parquet is empty. Run scripts/fetch_crypto_top50_bars.py first.")
     missing = {"timestamp", "symbol", "close"} - set(bars.columns)
@@ -68,14 +65,24 @@ def build_labels(bars: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
-    print("Build forward-return labels (calendar-time join)")
-    bars = load_bars()
+    p = argparse.ArgumentParser()
+    p.add_argument("--dataset-id", default="crypto_top50_usdt_perp_1h", help="Dataset ID under data/cache/")
+    args = p.parse_args()
+
+    cache = ROOT / "data" / "cache" / args.dataset_id
+    feature = ROOT / "data" / "features" / args.dataset_id
+    bars_path = cache / "bars_1h.parquet"
+    labels_path = feature / "labels.parquet"
+
+    print(f"Build forward-return labels (calendar-time join)")
+    print(f"Dataset: {args.dataset_id}")
+    bars = load_bars(bars_path)
     labels = build_labels(bars)
-    FEATURE.mkdir(parents=True, exist_ok=True)
-    labels.to_parquet(LABELS, index=False)
+    feature.mkdir(parents=True, exist_ok=True)
+    labels.to_parquet(labels_path, index=False)
     print(f"input rows:  {len(bars)}")
     print(f"output rows: {len(labels)}")
-    print(f"output path: {LABELS}")
+    print(f"output path: {labels_path}")
     print("missing rate:")
     print(labels[["ret_fwd_1h", "ret_fwd_4h", "ret_fwd_24h", "ret_fwd_72h"]].isna().mean().to_string())
     print(f"computed_at: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}")

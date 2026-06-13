@@ -88,6 +88,7 @@ These documents belong to the active `crypto_top50_factor_library` research run.
 | `research/.../PHASE_2E_CLOSEOUT.md` | CURRENT_RUN | Phase 2E closeout: 11 factors evaluated, all DIAGNOSTIC_PROBE | Review Phase 2E completion |
 | `research/.../PHASE_3_PLAN.md` | CURRENT_RUN | Phase 3 V1 Long-window Baseline plan | Planning Phase 3 data extension |
 | `research/.../PHASE_3_DATA_VALIDATION.md` | CURRENT_RUN | Long-window data validation: 50 symbols, 721K rows, 2yr | Review data quality before Phase 3 pipeline |
+| `research/.../PHASE_3_LONG_WINDOW_EVALUATION.md` | CURRENT_RUN | Long-window evaluation: 11 factors, 180d vs 2yr comparison | Review Phase 3 results |
 
 Path prefix: `research/factor_runs/crypto_top50_factor_library/`
 

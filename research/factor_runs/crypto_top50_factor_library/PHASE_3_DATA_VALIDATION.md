@@ -17,8 +17,8 @@
 | **target_end** | 2026-06-13 00:00:00 UTC |
 | **actual_start** | 2024-06-13 01:00:00 UTC |
 | **actual_end** | 2026-06-13 12:00:00 UTC |
-| **n_symbols** | 50 (original universe) + 1 extra (TAOUSDT) |
-| **n_rows** | 721,426 |
+| **n_symbols** | 50 (original universe, reconciled) |
+| **n_rows** | 713,572 |
 | **expected_rows_per_symbol** | ~17,532 (730.5 days × 24 hours) |
 | **timestamp_convention** | `timestamp = bar_close_time` ✅ |
 | **bar_open_time present** | ✅ |
@@ -28,9 +28,19 @@
 
 ## 2. Universe Membership
 
-All 50 original symbols from Phase 2E are present.
+All 50 original symbols from Phase 2E are present. Extra symbol `TAUSDT` was removed during reconciliation — it is not in the original universe. `TAOUSDT` (Bittensor) is the correct symbol.
 
-Extra symbol `TAOUSDT` (Bittensor) was also fetched — this is the correct Binance listing name for the token that may have been mapped as `TAUSDT` in some contexts.
+## 2b. Universe Reconciliation
+
+| Field | Value |
+|-------|-------|
+| **original_phase2e_symbols_count** | 50 |
+| **long_window_raw_symbols_count** | 51 |
+| **extra_symbols** | `TAUSDT` (removed) |
+| **missing_original_symbols** | None |
+| **canonical_symbol_mapping** | `TAOUSDT` is the canonical Binance listing for Bittensor; `TAUSDT` is not a valid symbol |
+| **final_phase3_evaluation_symbols_count** | 50 |
+| **final_phase3_evaluation_symbols** | Same 50 as Phase 2E |
 
 ## 3. Per-Symbol Coverage
 
