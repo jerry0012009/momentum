@@ -162,3 +162,19 @@ def test_alpha101_basic():
 | Post-2E (human review) | `CANDIDATE_FACTOR` | Only if human approves |
 
 **Rule:** No automatic status upgrades. All upgrades require explicit human decision.
+
+---
+
+## 9. Expected Direction Policy
+
+If expected direction is ambiguous, use `expected_direction = conditional`.
+
+| Scenario | expected_direction | Direction-adjusted spread |
+|----------|-------------------|--------------------------|
+| Clear bullish predictor | `positive` | Use as-is |
+| Clear bearish predictor | `negative` | Flip sign |
+| Volatility / range proxy | `conditional` | `null` or not used as primary evidence |
+| Ambiguous sign (e.g., WQ with -1×delta) | `conditional` | `null` or not used as primary evidence |
+| Not yet determined | `conditional` | Evaluate raw first, then decide |
+
+**Rule:** Do not force `expected_direction` for volatility proxies or ambiguous WQ factors. Conditional factors still enter evaluation, but `direction_adjusted_spread` should be `null` or not used as primary evidence.

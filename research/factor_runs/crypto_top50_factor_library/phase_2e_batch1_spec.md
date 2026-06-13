@@ -37,7 +37,7 @@
 | **required_columns** | `volume, close` |
 | **lookback_window** | 2 (needs lag 1) |
 | **known_at_rule** | `timestamp` |
-| **expected_direction** | positive = volume increasing while price falling (distribution); negative = volume increasing while price rising (accumulation) |
+| **expected_direction** | conditional (sign(vol_delta)*neg(close_delta) can be positive or negative; interpret after evaluation) |
 | **output_path** | `data/features/crypto_top50_usdt_perp_1h/wq101_alpha12/factor_values.parquet` |
 | **unit_test_idea** | Volume [100, 120], Close [100, 98]: sign(120-100)=+1, -(98-100)=+2, output = +1 * +2 = +2 |
 | **risk_notes** | `sign()` produces discrete {-1, 0, +1}; may need smoothing for some use cases. Volume=0 edge case. |
@@ -55,7 +55,7 @@
 | **required_columns** | `high, low, close` |
 | **lookback_window** | 10 (current + lag 9) |
 | **known_at_rule** | `timestamp` |
-| **expected_direction** | positive = intraday position improving (close moving from low toward high); negative = deteriorating |
+| **expected_direction** | conditional (sign ambiguity from -1 * delta; do not force direction before evaluation) |
 | **output_path** | `data/features/crypto_top50_usdt_perp_1h/wq101_alpha53/factor_values.parquet` |
 | **unit_test_idea** | Bar t: C=105, H=110, L=95 → pos = (10-10)/(10) = 0. Bar t-9: C=98, H=110, L=95 → pos = (3-12)/(3) = -3.0. delta = 0-(-3) = 3.0. output = -3.0. |
 | **risk_notes** | `close - low` can be near zero; epsilon needed. The negative sign inverts the delta. |
@@ -73,7 +73,7 @@
 | **required_columns** | `high, low, close` |
 | **lookback_window** | 1 (current bar only) |
 | **known_at_rule** | `timestamp` |
-| **expected_direction** | higher value = higher intraday volatility (direction-neutral; may be positive or negative predictor depending on context) |
+| **expected_direction** | conditional (volatility proxy; direction-neutral by construction) |
 | **output_path** | `data/features/crypto_top50_usdt_perp_1h/q158_high_low_range/factor_values.parquet` |
 | **unit_test_idea** | H=110, L=95, C=100: output = 15/100 = 0.15 |
 | **risk_notes** | Always non-negative. Pure volatility proxy; direction-neutral by construction. |
@@ -111,7 +111,7 @@
 | **required_columns** | `high, low, close` |
 | **lookback_window** | 15 bars (current + lag 1 for TR, then 14-bar rolling mean) |
 | **known_at_rule** | `timestamp` |
-| **expected_direction** | higher ATR = higher volatility (direction-neutral) |
+| **expected_direction** | conditional (volatility proxy; direction-neutral by construction) |
 | **output_path** | `data/features/crypto_top50_usdt_perp_1h/tech_atr/factor_values.parquet` |
 | **unit_test_idea** | Constant H=110, L=95, C=100 for 15 bars: TR = max(15, 10, 5) = 15. ATR = 15. |
 | **risk_notes** | Always non-negative. First 14 bars will be NaN or use expanding mean. Use SMA (not Wilder's smoothing) for simplicity; document if switching to Wilder's. |
@@ -127,6 +127,13 @@ All 6 factors must:
 1. **Not use future data**: no `shift(-k)`, no lookahead.
 2. **Handle symbol grouping**: compute per-symbol, not across symbols (except cross-sectional rank factors in Batch 2).
 3. **Return NaN for insufficient history**: first `lookback_window` bars should be NaN.
-4. **Match existing pipeline schema**: output `factor_values.parquet` with columns `symbol, timestamp, factor_id, value, known_at`.
+4. **Match standard factor_values schema**: output `factor_values.parquet` with columns:
+   - `timestamp` — bar close time
+   - `symbol` — trading pair
+   - `factor_name` — must equal `factor_id`
+   - `factor_value` — computed value
+   - `known_at` — must equal `timestamp`
+   - `source_timeframe` — `1h` for this dataset
+   - `computed_at` — wall clock time when computation ran
 5. **Have unit tests**: at least one synthetic test per factor.
 6. **Expected direction documented**: used by `evaluate_factors.py` for direction-adjusted spread.
