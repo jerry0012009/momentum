@@ -141,23 +141,23 @@ REGISTRY: list[FactorSpec] = [
     FactorSpec(
         factor_id="wq101_alpha101", family="wq101",
         required_columns=["open", "high", "low", "close"], lookback_window=1,
-        expected_direction="negative",
+        expected_direction="conditional",
         compute_fn=_compute_wq101_alpha101,
-        notes="(close - open) / (high - low + eps)",
+        notes="(close - open) / (high - low + eps); direction intentionally set to conditional to avoid post-hoc fitting",
     ),
     FactorSpec(
         factor_id="wq101_alpha12", family="wq101",
-        required_columns=["volume", "close"], lookback_window=1,
+        required_columns=["volume", "close"], lookback_window=2,
         expected_direction="conditional",
         compute_fn=_compute_wq101_alpha12,
-        notes="sign(dvol) * (-dclose)",
+        notes="sign(dvol) * (-dclose); lookback=2 because delta(1) needs t and t-1",
     ),
     FactorSpec(
         factor_id="wq101_alpha53", family="wq101",
-        required_columns=["high", "low", "close"], lookback_window=9,
+        required_columns=["high", "low", "close"], lookback_window=10,
         expected_direction="conditional",
         compute_fn=_compute_wq101_alpha53,
-        notes="-delta(intraday_position, 9)",
+        notes="-delta(intraday_position, 9); lookback=10 because diff(9) needs t and t-9",
     ),
     # Batch 1: Alpha158
     FactorSpec(

@@ -117,3 +117,59 @@ class TestComputeFunctions:
         reversed_result = spec.compute_fn(reversed_df)
         # Results should differ (except maybe trivially for first few rows)
         assert not normal.dropna().equals(reversed_result.dropna().head(len(normal.dropna())))
+
+
+# ── Metadata hardening ─────────────────────────────────────────────
+
+class TestMetadataHardening:
+    """Tests for metadata conventions: direction, lookback, warmup."""
+
+    def test_wq101_alpha101_direction_conditional(self):
+        """alpha101 direction must be conditional — no post-hoc fitting."""
+        spec = REGISTRY_BY_ID["wq101_alpha101"]
+        assert spec.expected_direction == "conditional"
+
+    def test_wq101_alpha101_direction_note(self):
+        spec = REGISTRY_BY_ID["wq101_alpha101"]
+        assert "post-hoc" in spec.notes.lower() or "conditional" in spec.notes.lower()
+
+    def test_wq101_alpha12_lookback_2(self):
+        """delta(1) needs t and t-1 → lookback_window=2."""
+        spec = REGISTRY_BY_ID["wq101_alpha12"]
+        assert spec.lookback_window == 2
+
+    def test_wq101_alpha53_lookback_10(self):
+        """diff(9) needs t and t-9 → lookback_window=10."""
+        spec = REGISTRY_BY_ID["wq101_alpha53"]
+        assert spec.lookback_window == 10
+
+    def test_tech_atr_warmup_strict(self):
+        """ATR uses true_range (first row NaN) + rolling_mean(14, min_periods=14).
+        First valid ATR should appear at row 14 (0-indexed): 1 NaN + 14 values = 15 bars.
+        """
+        from factor_ops import true_range
+        from factor_formula_registry import _compute_tech_atr
+        df = _make_sample_df(n=30)
+        # Verify true_range first row is NaN
+        tr = true_range(df["high"], df["low"], df["close"])
+        assert np.isnan(tr.iloc[0])
+        assert tr.iloc[1] > 0  # second row is valid
+        # ATR first valid should be at index 14 (1 NaN from TR + 13 more for rolling(14))
+        atr = _compute_tech_atr(df)
+        assert np.isnan(atr.iloc[0:14]).all()  # rows 0-13 all NaN
+        assert atr.iloc[14] > 0  # row 14 first valid
+
+    def test_direction_set_from_domain_not_eval(self):
+        """All expected_direction values must be from domain knowledge, not evaluation."""
+        for spec in REGISTRY:
+            assert spec.expected_direction in ("positive", "negative", "conditional")
+            # No factor should have notes suggesting direction was fitted from results
+            for forbidden in ["fitted from", "IC sign", "empirical direction"]:
+                assert forbidden.lower() not in spec.notes.lower(), \
+                    f"{spec.factor_id}: direction appears post-hoc fitted"
+
+    def test_lookback_window_meaning(self):
+        """lookback_window = bars_required_including_current, must be >= 1."""
+        for spec in REGISTRY:
+            assert spec.lookback_window >= 1, \
+                f"{spec.factor_id}: lookback_window must be >= 1"

@@ -105,10 +105,17 @@ def ema(series: pd.Series, span: int) -> pd.Series:
 def true_range(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
     """True Range: max(high-low, |high-prev_close|, |low-prev_close|).
 
-    First row is NaN (needs prev_close).
+    First row per symbol is NaN because prev_close is unavailable.
+    Uses np.where to propagate NaN when prev_close is NaN (i.e. first row),
+    even though pd.DataFrame.max(skipna=True) would otherwise return high-low.
     """
     prev_close = close.shift(1)
     tr1 = high - low
     tr2 = (high - prev_close).abs()
     tr3 = (low - prev_close).abs()
-    return pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    result = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    # Force NaN when prev_close is unavailable (first row per symbol)
+    return pd.Series(
+        np.where(prev_close.isna(), np.nan, result),
+        index=high.index,
+    )

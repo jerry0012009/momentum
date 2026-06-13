@@ -188,8 +188,8 @@ class TestTrueRange:
         l = _series([10, 11, 12])
         c = _series([11, 13, 13])
         result = true_range(h, l, c)
-        # TR[0] = max(12-10, |12-NaN|, |10-NaN|) = 2.0 (NaN skipped by max)
-        assert result.iloc[0] == pytest.approx(2.0)
+        # TR[0] = NaN because prev_close is unavailable
+        assert np.isnan(result.iloc[0])
         # TR[1] = max(15-11, |15-11|, |11-11|) = max(4, 4, 0) = 4
         assert result.iloc[1] == pytest.approx(4.0)
         # TR[2] = max(14-12, |14-13|, |12-13|) = max(2, 1, 1) = 2
@@ -200,6 +200,6 @@ class TestTrueRange:
         l = _series([10, 10, 10])
         c = _series([10, 10, 10])
         result = true_range(h, l, c)
-        assert result.iloc[0] >= 0  # NaN skipped → high-low=0
+        assert np.isnan(result.iloc[0])  # first row NaN
         assert result.iloc[1] >= 0
         assert result.iloc[2] >= 0

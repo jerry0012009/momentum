@@ -87,3 +87,21 @@ bars_1h.parquet
 - No shift(-k) future leak
 - No strategy backtest
 - No portfolio construction
+## 6. Metadata Conventions
+
+### expected_direction
+
+Must be set from **domain knowledge** (formula structure), never from observed evaluation results.
+A WQ101 formula with ambiguous or sign-varying behavior defaults to `"conditional"`.
+
+### lookback_window
+
+Defined as **bars_required_including_current**.
+Example: `delta(volume, 1)` needs `t` and `t-1` → `lookback_window=2`.
+Example: `diff(9)` needs `t` through `t-9` → `lookback_window=10`.
+
+### true_range warmup
+
+`true_range` first row per symbol is **NaN** because `prev_close` is unavailable.
+`tech_atr` = `rolling_mean(true_range, 14)` with `min_periods=14`.
+First valid ATR appears at row 14 (0-indexed).
