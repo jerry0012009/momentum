@@ -125,6 +125,9 @@ Phase 6C+ will integrate this universe into the factor evaluation pipeline:
 
 ## 12. Status
 
-- Phase 6B: CURRENT — building dynamic universe builder
-- Phase 6C: NOT YET — integrate with factor evaluation
+- Phase 6B: COMPLETE — dynamic universe builder (524 candidates, 25 months)
+- Phase 6C: COMPLETE — data coverage audit (16.2% global coverage → new dataset needed)
+- Phase 6D: COMPLETE — dynamic-universe 1h bars dataset (266 symbols, 3.3M rows)
+- Phase 6D-QA: COMPLETE — membership-aware coverage (0 zero-bar months, labels build ALLOWED)
+- Phase 6E: ALLOWED — labels build can proceed
 - Phase 7: NOT YET — blocked on Phase 6 completion

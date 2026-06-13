@@ -199,3 +199,132 @@ class TestDownload404:
         from build_dynamic_universe_bars_1h import safe_download
         # Just verify the function exists and is callable
         assert callable(safe_download)
+
+
+# ── Membership-aware coverage ─────────────────────────────────────
+
+from build_dynamic_universe_bars_1h import compute_membership_aware_availability, compute_qa_conclusion
+
+
+class TestMembershipAwareCoverage:
+    """Tests for membership-aware coverage computation."""
+
+    def _make_bars(self, symbols, start, hours):
+        """Create synthetic bars for given symbols."""
+        rows = []
+        timestamps = pd.date_range(start, periods=hours, freq="h", tz="UTC")
+        for sym in symbols:
+            for ts in timestamps:
+                rows.append({"symbol": sym, "timestamp": ts})
+        return pd.DataFrame(rows)
+
+    def _make_snapshots(self, symbol_months):
+        """Create synthetic snapshots. symbol_months: dict[sym → list of YYYY-MM]."""
+        rows = []
+        for sym, months in symbol_months.items():
+            for m in months:
+                rows.append({
+                    "symbol": sym,
+                    "asof_time": pd.Timestamp(f"{m}-01", tz="UTC"),
+                })
+        return pd.DataFrame(rows)
+
+    def test_full_month_expected_bars(self):
+        """Full month should have ~720 expected bars (30 days × 24h)."""
+        start = pd.Timestamp("2024-06-13", tz="UTC")
+        end = pd.Timestamp("2024-08-13", tz="UTC")
+
+        # Symbol selected for July only (full month)
+        snap = self._make_snapshots({"SYM1": ["2024-07"]})
+        # Bars cover July fully
+        bars = self._make_bars(["SYM1"], pd.Timestamp("2024-07-01", tz="UTC"), 744)  # 31 days
+
+        avail, monthly = compute_membership_aware_availability(bars, snap, start, end)
+        july_row = monthly[(monthly["symbol"] == "SYM1") & (monthly["month"] == "2024-07")]
+        assert len(july_row) == 1
+        assert july_row.iloc[0]["expected_bars"] == 744  # July has 31 days × 24h
+        assert july_row.iloc[0]["observed_bars"] == 744
+        assert july_row.iloc[0]["missing_bar_rate"] == 0.0
+
+    def test_partial_first_month(self):
+        """First month clipped to dataset start should have fewer expected bars."""
+        start = pd.Timestamp("2024-06-13", tz="UTC")
+        end = pd.Timestamp("2024-08-13", tz="UTC")
+
+        snap = self._make_snapshots({"SYM1": ["2024-06"]})
+        # Bars from June 13 onward
+        bars = self._make_bars(["SYM1"], pd.Timestamp("2024-06-13", tz="UTC"), 432)  # 18 days
+
+        avail, monthly = compute_membership_aware_availability(bars, snap, start, end)
+        june_row = monthly[(monthly["symbol"] == "SYM1") & (monthly["month"] == "2024-06")]
+        assert len(june_row) == 1
+        # June 13 → June 30 = 18 days = 432 hours
+        assert june_row.iloc[0]["expected_bars"] == 432
+
+    def test_high_global_low_member_missing(self):
+        """Symbol listed late should have high global but low member missing rate."""
+        start = pd.Timestamp("2024-06-13", tz="UTC")
+        end = pd.Timestamp("2024-09-13", tz="UTC")
+
+        # Symbol selected only for August-September (listed late)
+        snap = self._make_snapshots({"LATECOIN": ["2024-08", "2024-09"]})
+        # Has data only from August onward
+        bars = self._make_bars(["LATECOIN"], pd.Timestamp("2024-08-01", tz="UTC"), 1000)
+
+        avail, monthly = compute_membership_aware_availability(bars, snap, start, end)
+        row = avail[avail["symbol"] == "LATECOIN"].iloc[0]
+        # Global missing is high (no June-July data)
+        assert row["global_missing_bar_rate"] > 0.3
+        # But member missing is low (data covers Aug-Sep)
+        assert row["member_missing_bar_rate"] < 0.05
+
+    def test_zero_bars_in_selected_month_blocks(self):
+        """Zero bars in a selected symbol-month should produce BLOCKED decision."""
+        start = pd.Timestamp("2024-06-13", tz="UTC")
+        end = pd.Timestamp("2024-08-13", tz="UTC")
+
+        snap = self._make_snapshots({"SYM1": ["2024-07"]})
+        # No bars at all
+        bars = pd.DataFrame(columns=["symbol", "timestamp"])
+
+        avail, monthly = compute_membership_aware_availability(bars, snap, start, end)
+        qa = compute_qa_conclusion(avail, monthly)
+        assert qa["decision"] == "BLOCKED"
+        assert qa["n_zero_bar_months"] > 0
+
+    def test_full_coverage_allows(self):
+        """Full coverage should produce ALLOWED decision."""
+        start = pd.Timestamp("2024-06-13", tz="UTC")
+        end = pd.Timestamp("2024-08-13", tz="UTC")
+
+        snap = self._make_snapshots({"SYM1": ["2024-07"]})
+        bars = self._make_bars(["SYM1"], pd.Timestamp("2024-07-01", tz="UTC"), 744)
+
+        avail, monthly = compute_membership_aware_availability(bars, snap, start, end)
+        qa = compute_qa_conclusion(avail, monthly)
+        assert qa["decision"] == "ALLOWED"
+
+    def test_membership_availability_schema(self):
+        """membership_availability should have required columns."""
+        start = pd.Timestamp("2024-06-13", tz="UTC")
+        end = pd.Timestamp("2024-08-13", tz="UTC")
+        snap = self._make_snapshots({"SYM1": ["2024-07"]})
+        bars = self._make_bars(["SYM1"], pd.Timestamp("2024-07-01", tz="UTC"), 744)
+
+        avail, _ = compute_membership_aware_availability(bars, snap, start, end)
+        for col in ["symbol", "selected_months", "first_selected_month", "last_selected_month",
+                     "member_expected_bars", "member_observed_bars", "member_missing_bars",
+                     "member_missing_bar_rate", "global_missing_bar_rate", "coverage_status"]:
+            assert col in avail.columns, f"Missing column: {col}"
+
+    def test_monthly_coverage_schema(self):
+        """membership_monthly_coverage should have required columns."""
+        start = pd.Timestamp("2024-06-13", tz="UTC")
+        end = pd.Timestamp("2024-08-13", tz="UTC")
+        snap = self._make_snapshots({"SYM1": ["2024-07"]})
+        bars = self._make_bars(["SYM1"], pd.Timestamp("2024-07-01", tz="UTC"), 744)
+
+        _, monthly = compute_membership_aware_availability(bars, snap, start, end)
+        for col in ["month", "symbol", "asof_time", "expected_bars",
+                     "observed_bars", "missing_bars", "missing_bar_rate", "coverage_status"]:
+            assert col in monthly.columns, f"Missing column: {col}"

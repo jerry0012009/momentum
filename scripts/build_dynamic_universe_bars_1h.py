@@ -275,6 +275,157 @@ def compute_symbol_availability(
     return pd.DataFrame(rows)
 
 
+# ── Membership-aware coverage ─────────────────────────────────────
+
+def compute_membership_aware_availability(
+    bars: pd.DataFrame,
+    snapshots: pd.DataFrame,
+    dataset_start: pd.Timestamp,
+    dataset_end: pd.Timestamp,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Compute coverage only during months when each symbol is selected.
+
+    Uses vectorized groupby instead of per-symbol-month loops.
+
+    Returns:
+        (membership_availability, membership_monthly_coverage)
+    """
+    # Build symbol→months mapping from snapshots
+    snap = snapshots.copy()
+    snap["asof_time"] = pd.to_datetime(snap["asof_time"], utc=True)
+    snap["month_str"] = snap["asof_time"].dt.strftime("%Y-%m")
+
+    # symbol → sorted list of selected months
+    symbol_months_sets: dict[str, set[str]] = {}
+    for _, row in snap.iterrows():
+        sym = row["symbol"]
+        m = row["month_str"]
+        symbol_months_sets.setdefault(sym, set()).add(m)
+    symbol_months = {k: sorted(v) for k, v in symbol_months_sets.items()}
+
+    # Build (symbol, month_str) → observed bar count via groupby
+    if not bars.empty:
+        bars_month = bars[["symbol", "timestamp"]].copy()
+        bars_month["month_str"] = bars_month["timestamp"].dt.strftime("%Y-%m")
+        observed_counts = (
+            bars_month.groupby(["symbol", "month_str"])
+            .size()
+            .rename("observed_bars")
+            .reset_index()
+        )
+    else:
+        observed_counts = pd.DataFrame(columns=["symbol", "month_str", "observed_bars"])
+
+    # Build all expected (symbol, month) pairs with expected_bars
+    expected_rows = []
+    for sym, months_list in symbol_months.items():
+        for m in months_list:
+            period = pd.Period(m, freq="M")
+            month_start = max(period.start_time.tz_localize("UTC"), dataset_start)
+            # Use start of next month as exclusive end boundary
+            month_end_excl = (period + 1).start_time.tz_localize("UTC")
+            month_end = min(month_end_excl, dataset_end)
+            if month_start >= month_end:
+                continue
+            expected_hours = int((month_end - month_start).total_seconds() / 3600)
+            expected_rows.append({
+                "symbol": sym,
+                "month_str": m,
+                "asof_time": period.start_time.tz_localize("UTC"),
+                "expected_bars": expected_hours,
+            })
+    expected_df = pd.DataFrame(expected_rows)
+
+    # Merge expected with observed
+    monthly_cov = expected_df.merge(observed_counts, on=["symbol", "month_str"], how="left")
+    monthly_cov["observed_bars"] = monthly_cov["observed_bars"].fillna(0).astype(int)
+    monthly_cov["missing_bars"] = monthly_cov["expected_bars"] - monthly_cov["observed_bars"]
+    monthly_cov["missing_bar_rate"] = (
+        monthly_cov["missing_bars"] / monthly_cov["expected_bars"]
+    ).round(6).fillna(0.0)
+    monthly_cov["coverage_status"] = np.where(
+        monthly_cov["missing_bar_rate"] <= 0.05, "ok", "missing",
+    )
+    monthly_cov = monthly_cov.rename(columns={"month_str": "month"})
+    monthly_cov = monthly_cov[["month", "symbol", "asof_time", "expected_bars",
+                                "observed_bars", "missing_bars", "missing_bar_rate", "coverage_status"]]
+    monthly_cov = monthly_cov.sort_values(["symbol", "month"]).reset_index(drop=True)
+
+    # Per-symbol aggregation
+    if monthly_cov.empty:
+        return pd.DataFrame(), monthly_cov
+
+    agg = monthly_cov.groupby("symbol").agg(
+        selected_months=("month", "nunique"),
+        first_selected_month=("month", "min"),
+        last_selected_month=("month", "max"),
+        member_expected_bars=("expected_bars", "sum"),
+        member_observed_bars=("observed_bars", "sum"),
+    ).reset_index()
+    agg["member_missing_bars"] = agg["member_expected_bars"] - agg["member_observed_bars"]
+    agg["member_missing_bar_rate"] = (
+        agg["member_missing_bars"] / agg["member_expected_bars"]
+    ).round(6).fillna(0.0)
+
+    # Global missing rate
+    full_expected = int((dataset_end - dataset_start).total_seconds() / 3600)
+    if not bars.empty:
+        global_obs = bars.groupby("symbol").size().rename("global_observed").reset_index()
+    else:
+        global_obs = pd.DataFrame(columns=["symbol", "global_observed"])
+    agg = agg.merge(global_obs, on="symbol", how="left")
+    agg["global_observed"] = agg["global_observed"].fillna(0).astype(int)
+    agg["global_missing_bar_rate"] = (
+        (full_expected - agg["global_observed"]) / full_expected
+    ).round(6).fillna(0.0)
+
+    # Coverage status
+    agg["coverage_status"] = "ok"
+    degraded_mask = (agg["member_expected_bars"] > 0) & (agg["member_missing_bar_rate"] > 0.05)
+    zero_mask = (agg["member_expected_bars"] > 0) & (agg["member_observed_bars"] == 0)
+    agg.loc[degraded_mask, "coverage_status"] = "degraded"
+    agg.loc[zero_mask, "coverage_status"] = "zero_bars"
+
+    avail = agg[["symbol", "selected_months", "first_selected_month", "last_selected_month",
+                 "member_expected_bars", "member_observed_bars", "member_missing_bars",
+                 "member_missing_bar_rate", "global_missing_bar_rate", "coverage_status"]]
+    return avail, monthly_cov
+
+
+def compute_qa_conclusion(
+    membership_avail: pd.DataFrame,
+    membership_monthly: pd.DataFrame,
+) -> dict:
+    """Determine whether Phase 6E labels build is allowed."""
+    zero_months = membership_monthly[membership_monthly["observed_bars"] == 0]
+    high_missing_months = membership_monthly[membership_monthly["missing_bar_rate"] > 0.05]
+
+    n_zero = len(zero_months)
+    n_high_missing = len(high_missing_months)
+    n_total_months = len(membership_monthly)
+
+    # Rule 1: any selected symbol-month with zero bars → BLOCK
+    if n_zero > 0:
+        decision = "BLOCKED"
+        reason = f"{n_zero} selected symbol-month(s) have zero bars"
+    # Rule 2: many selected symbol-months with >5% missing → BLOCK
+    elif n_high_missing > n_total_months * 0.1:
+        decision = "BLOCKED"
+        reason = f"{n_high_missing}/{n_total_months} selected symbol-months have >5% missing bars"
+    # Rule 3: high global missing but good selected-month coverage → ALLOW
+    else:
+        decision = "ALLOWED"
+        reason = "Membership-aware coverage is acceptable"
+
+    return {
+        "decision": decision,
+        "reason": reason,
+        "n_zero_bar_months": n_zero,
+        "n_high_missing_months": n_high_missing,
+        "n_total_selected_months": n_total_months,
+    }
+
+
 # ── Data quality report ───────────────────────────────────────────
 
 def write_quality_report(
@@ -362,6 +513,7 @@ def main():
     p.add_argument("--start", default="2024-06-13")
     p.add_argument("--end", default="2026-06-13")
     p.add_argument("--timeframe", default="1h")
+    p.add_argument("--qa-only", action="store_true", help="Only run membership-aware QA on existing data")
     args = p.parse_args()
 
     start = pd.Timestamp(args.start, tz="UTC")
@@ -387,60 +539,82 @@ def main():
     output_dir = DATA_DIR / "cache" / args.dataset_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    download_log: list[dict] = []
-    all_bars: list[pd.DataFrame] = []
+    # QA-only mode: skip download, use existing bars_1h.parquet
+    if args.qa_only:
+        bars_path = output_dir / "bars_1h.parquet"
+        if not bars_path.exists():
+            raise FileNotFoundError(f"bars_1h.parquet not found: {bars_path}")
+        combined = pd.read_parquet(bars_path)
+        n_rows = len(combined)
+        n_with_data = combined["symbol"].nunique()
+        availability = compute_symbol_availability(combined, symbols, start, end)
+        download_log = []
 
-    # Download each symbol
-    print(f"Downloading 1h klines for {len(symbols)} symbols...")
-    for i, sym in enumerate(symbols, 1):
-        raw = download_symbol_1h(sym, months, cache_dir, download_log)
-        if not raw.empty:
-            bars = build_symbol_bars(sym, raw)
-            if not bars.empty:
-                all_bars.append(bars)
-        if i % 25 == 0 or i == len(symbols):
-            print(f"  {i}/{len(symbols)} processed ({len(all_bars)} with data)")
-
-    # Combine all bars
-    if all_bars:
-        combined = pd.concat(all_bars, ignore_index=True)
-        combined = combined.sort_values(["symbol", "timestamp"]).reset_index(drop=True)
+        print(f"QA-only mode: loaded existing bars_1h.parquet ({n_rows:,} rows, {n_with_data} symbols)")
     else:
-        combined = pd.DataFrame()
+        download_log: list[dict] = []
+        all_bars: list[pd.DataFrame] = []
 
-    n_rows = len(combined)
-    n_with_data = combined["symbol"].nunique() if not combined.empty else 0
+        # Download each symbol
+        print(f"Downloading 1h klines for {len(symbols)} symbols...")
+        for i, sym in enumerate(symbols, 1):
+            raw = download_symbol_1h(sym, months, cache_dir, download_log)
+            if not raw.empty:
+                bars = build_symbol_bars(sym, raw)
+                if not bars.empty:
+                    all_bars.append(bars)
+            if i % 25 == 0 or i == len(symbols):
+                print(f"  {i}/{len(symbols)} processed ({len(all_bars)} with data)")
 
-    print(f"\nTotal rows: {n_rows:,}")
-    print(f"Symbols with data: {n_with_data}/{len(symbols)}")
+        # Combine all bars
+        if all_bars:
+            combined = pd.concat(all_bars, ignore_index=True)
+            combined = combined.sort_values(["symbol", "timestamp"]).reset_index(drop=True)
+        else:
+            combined = pd.DataFrame()
 
-    # Write bars_1h.parquet
-    bars_path = output_dir / "bars_1h.parquet"
-    combined.to_parquet(bars_path, index=False)
-    print(f"Wrote: {bars_path}")
+        n_rows = len(combined)
+        n_with_data = combined["symbol"].nunique() if not combined.empty else 0
 
-    # Compute symbol availability
-    availability = compute_symbol_availability(combined, symbols, start, end)
-    avail_path = output_dir / "symbol_availability.parquet"
-    availability.to_parquet(avail_path, index=False)
-    print(f"Wrote: {avail_path}")
+        print(f"\nTotal rows: {n_rows:,}")
+        print(f"Symbols with data: {n_with_data}/{len(symbols)}")
 
-    # Write download log
-    log_path = output_dir / "download_log.csv"
-    if download_log:
-        pd.DataFrame(download_log).to_csv(log_path, index=False)
-    else:
-        pd.DataFrame(columns=["symbol", "url", "status", "type", "period"]).to_csv(log_path, index=False)
-    print(f"Wrote: {log_path}")
+        # Write bars_1h.parquet
+        bars_path = output_dir / "bars_1h.parquet"
+        combined.to_parquet(bars_path, index=False)
+        print(f"Wrote: {bars_path}")
+
+        # Compute symbol availability
+        availability = compute_symbol_availability(combined, symbols, start, end)
+        avail_path = output_dir / "symbol_availability.parquet"
+        availability.to_parquet(avail_path, index=False)
+        print(f"Wrote: {avail_path}")
+
+        # Write download log
+        log_path = output_dir / "download_log.csv"
+        if download_log:
+            pd.DataFrame(download_log).to_csv(log_path, index=False)
+        else:
+            pd.DataFrame(columns=["symbol", "url", "status", "type", "period"]).to_csv(log_path, index=False)
+        print(f"Wrote: {log_path}")
 
     # Write manifest
+    actual_start = combined["timestamp"].min() if not combined.empty else None
+    actual_end = combined["timestamp"].max() if not combined.empty else None
+    uni_first = snap["asof_time"].min() if not snap.empty else None
+    uni_last = snap["asof_time"].max() if not snap.empty else None
+
     manifest = {
         "dataset_id": args.dataset_id,
         "universe_id": args.universe_id,
         "timeframe": args.timeframe,
         "source": "data.binance.vision",
-        "data_start": args.start,
-        "data_end": args.end,
+        "requested_start": args.start,
+        "requested_end": args.end,
+        "actual_data_start": str(actual_start) if actual_start is not None else None,
+        "actual_data_end": str(actual_end) if actual_end is not None else None,
+        "universe_first_asof_time": str(uni_first) if uni_first is not None else None,
+        "universe_last_asof_time": str(uni_last) if uni_last is not None else None,
         "timestamp_convention": "timestamp = bar_close_time = bar_open_time + 1h",
         "bar_open_time_convention": "Binance kline open_time (ms epoch)",
         "bar_close_time_convention": "bar_open_time + 1 hour",
@@ -458,6 +632,25 @@ def main():
     manifest_path = output_dir / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"Wrote: {manifest_path}")
+
+    # Compute membership-aware coverage
+    print("\nComputing membership-aware coverage...")
+    membership_avail, membership_monthly = compute_membership_aware_availability(
+        combined, snap, start, end,
+    )
+    mem_avail_path = output_dir / "membership_availability.parquet"
+    membership_avail.to_parquet(mem_avail_path, index=False)
+    print(f"Wrote: {mem_avail_path}")
+
+    mem_monthly_path = output_dir / "membership_monthly_coverage.parquet"
+    membership_monthly.to_parquet(mem_monthly_path, index=False)
+    print(f"Wrote: {mem_monthly_path}")
+
+    # QA conclusion
+    qa = compute_qa_conclusion(membership_avail, membership_monthly)
+    qa_path = output_dir / "qa_conclusion.json"
+    qa_path.write_text(json.dumps(qa, indent=2) + "\n", encoding="utf-8")
+    print(f"Wrote: {qa_path}")
 
     # Write data quality report
     report = write_quality_report(
@@ -477,6 +670,16 @@ def main():
     print(f"Symbols with zero rows: {len(zero_rows)}")
     print(f"Symbols with >5% missing bars: {len(high_missing)}")
     print(f"Download errors: {len(download_log)}")
+
+    # Membership-aware summary
+    print(f"\n=== Membership-Aware Coverage ===")
+    print(f"Selected symbol-months: {len(membership_monthly)}")
+    print(f"Symbol-months with zero bars: {qa['n_zero_bar_months']}")
+    print(f"Symbol-months with >5% missing: {qa['n_high_missing_months']}")
+    print(f"Median member_missing_bar_rate: {membership_avail['member_missing_bar_rate'].median():.1%}")
+    print(f"Actual data range: {actual_start} → {actual_end}")
+    print(f"QA decision: {qa['decision']}")
+    print(f"Reason: {qa['reason']}")
 
 
 if __name__ == "__main__":
