@@ -17,7 +17,7 @@
 | Phase 2 | Evaluation Protocol & Factor Library Skeleton | **COMPLETE** |
 | Phase 3 | Long-window Baseline | **COMPLETE** |
 | Phase 4 | Factor Factory & Evaluation Platform v1 | **COMPLETE** |
-| Phase 5 | Alphalens-compatible Export / External Tool Compatibility | **CURRENT** |
+| Phase 5 | Alphalens-compatible Export / External Tool Compatibility | **COMPLETE** |
 | Phase 6 | Dynamic Universe & Survivorship Control | NOT STARTED |
 | Phase 7 | Large-scale Factor Mining | NOT STARTED |
 | Phase 8 | Candidate Factor Review | NOT STARTED |
