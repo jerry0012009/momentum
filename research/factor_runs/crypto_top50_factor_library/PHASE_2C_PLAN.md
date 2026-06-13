@@ -52,7 +52,7 @@ Phase 2C 的目标不是寻找 alpha，而是建立**批量因子接入骨架**�
 - ❌ 策略回测（backtest）
 - ❌ 交易成本建模（slippage/spread/commission）
 - ❌ 把任何 probe 升级为 alpha 或 candidate
-- ❌ 进入 Phase 2D（策略构建）或 Phase 2E（paper trading）
+- ❌ 进入 Phase 2D（External Factor Priors）、Phase 2E（Batch Factor Evaluation）或更后阶段
 - ❌ 修改现有 V0 评价结果
 
 ---
@@ -79,15 +79,20 @@ DIAGNOSTIC_PROBE → CANDIDATE_REVIEW → CANDIDATE_FACTOR
 
 ## 5. 进入 Phase 2D 的条件
 
-Phase 2D（策略构建）需要以下全部满足：
+Phase 2D = **External Factor Priors**（引入外部先验因子族）。
 
+Phase 2D 的真实范围：
+- 收集外部因子先验族（WQ101、GTJA191、Alpha158 等）
+- 将概念映射为 crypto 兼容的因子族
+- 分类哪些可以用纯 OHLCV 数据实现
+- **不实现所有因子**（那是 Phase 2E）
+- **不批量评价**（那是 Phase 2E）
+
+Phase 2D 开始条件：
 1. Phase 2C 交付物全部完成并经 human review
-2. 至少 1 个因子达到 `CANDIDATE_FACTOR` 状态
-3. `CANDIDATE_FACTOR` 因子通过月度 IC 稳定性检验
-4. `CANDIDATE_FACTOR` 因子之间无高度共线性（|RankIC| < 0.8）
-5. Human 明确批准进入 Phase 2D
+2. Human 明确批准进入 Phase 2D
 
-**当前状态：** 以上条件均未满足。Phase 2D 不允许开始。
+**当前状态：** Phase 2C skeleton 已建，等待 closeout 审查。Phase 2D 不允许开始。
 
 ---
 
