@@ -2,7 +2,7 @@
 
 > This is the entry point for all project documentation.
 >
-> Last updated: 2026-06-13 (Phase 2D start)
+> Last updated: 2026-06-13 (Phase 4 closeout)
 
 ---
 
@@ -10,9 +10,10 @@
 
 **New reader?** Start here:
 
-1. `docs/FACTOR_LIBRARY_ROADMAP.md` — where the project is going (Phase 0–10)
-2. `docs/FACTOR_LIBRARY_SKELETON.md` — how the factor library works
-3. `docs/FACTOR_REGISTRY.md` — what factors exist and their status
+1. `docs/RESEARCH_PHASE_CONSTITUTION.md` — project positioning, phase roadmap, build-vs-borrow, rules
+2. `docs/FACTOR_LIBRARY_ROADMAP.md` — where the project is going (Phase 0–13)
+3. `docs/FACTOR_LIBRARY_SKELETON.md` — how the factor library works
+4. `docs/FACTOR_REGISTRY.md` — what factors exist and their status
 4. This file (`DOCS_INDEX.md`) — find anything else you need
 
 **Current mainline:** Phase 2D (External Factor Priors). The project is building a crypto factor library, not a trading strategy.
@@ -90,6 +91,7 @@ These documents belong to the active `crypto_top50_factor_library` research run.
 | `research/.../PHASE_3_DATA_VALIDATION.md` | CURRENT_RUN | Long-window data validation: 50 symbols, 721K rows, 2yr | Review data quality before Phase 3 pipeline |
 | `research/.../PHASE_3_LONG_WINDOW_EVALUATION.md` | CURRENT_RUN | Long-window evaluation: 11 factors, 180d vs 2yr comparison | Review Phase 3 results |
 | `docs/FACTOR_FACTORY_V1_DESIGN.md` | ACTIVE | Factor Factory v1 architecture: ops, specs, registry | Understand factor factory design |
+| `docs/RESEARCH_PHASE_CONSTITUTION.md` | ACTIVE | Project positioning, phase roadmap (0–13), build-vs-borrow, execution rules | **Read first.** Top-level constraint for all phases. |
 | `research/.../PHASE_4_FACTOR_FACTORY_V1.md` | CURRENT_RUN | Factor Factory v1 closeout: 11 factors registered, 187 tests pass | Review Phase 4 completion |
 
 Path prefix: `research/factor_runs/crypto_top50_factor_library/`

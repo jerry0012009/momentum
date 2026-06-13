@@ -4,7 +4,7 @@
 >
 > Each phase builds on the previous. No phase may be skipped.
 >
-> Last updated: 2026-06-13 (Phase 2E closeout)
+> See also: `docs/RESEARCH_PHASE_CONSTITUTION.md` for full constraints.
 
 ---
 
@@ -12,23 +12,20 @@
 
 | Phase | Name | Status |
 |-------|------|--------|
-| Phase 0 | Project Positioning & Data Convention | DONE |
-| Phase 1 | V0 Engineering Close | DONE |
-| Phase 2 | V0 Audit | IN PROGRESS |
-| Phase 2A | V0 Audit — Data & Pipeline | **COMPLETE** |
-| Phase 2B | Lightweight Quality Gate | **COMPLETE** |
-| Phase 2C | Factor Library Skeleton | **COMPLETE** |
-| Phase 2D | External Factor Priors | **COMPLETE** |
-| Phase 2E | Batch Factor Evaluation | **COMPLETE** |
-| Phase 2F | Gate Refinement | DEFERRED |
-| Phase 3 | V1 Long-window Baseline | **NEXT** |
-| Phase 4 | Dynamic Universe | NOT STARTED |
-| Phase 5 | Factor Library Expansion | NOT STARTED |
-| Phase 6 | Multi-factor Combination | NOT STARTED |
-| Phase 7 | Portfolio Backtest | NOT STARTED |
-| Phase 8 | Cost and Risk Modeling | NOT STARTED |
-| Phase 9 | Paper Trading | NOT STARTED |
-| Phase 10 | Small-capital Live Validation | NOT STARTED |
+| Phase 0 | Project Positioning & Data Contract | **COMPLETE** |
+| Phase 1 | V0 Engineering Loop | **COMPLETE** |
+| Phase 2 | Evaluation Protocol & Factor Library Skeleton | **COMPLETE** |
+| Phase 3 | Long-window Baseline | **COMPLETE** |
+| Phase 4 | Factor Factory & Evaluation Platform v1 | **CURRENT** |
+| Phase 5 | Alphalens-compatible Export / External Tool Compatibility | NOT STARTED |
+| Phase 6 | Dynamic Universe & Survivorship Control | NOT STARTED |
+| Phase 7 | Large-scale Factor Mining | NOT STARTED |
+| Phase 8 | Candidate Factor Review | NOT STARTED |
+| Phase 9 | Multi-factor Signal Construction | NOT STARTED |
+| Phase 10 | Strategy Backtest with Borrowed Engine | NOT STARTED |
+| Phase 11 | Cost / Slippage / Capacity / Risk | NOT STARTED |
+| Phase 12 | Paper Trading | NOT STARTED |
+| Phase 13 | Small-capital Live Validation | NOT STARTED |
 
 **No factor promoted to alpha. No strategy backtest started.**
 
@@ -36,151 +33,144 @@
 
 ## Phase Definitions
 
-### Phase 0: Project Positioning & Data Convention
+### Phase 0: Project Positioning & Data Contract
 
-Define what this project is and is not. Choose first universe, data source, frequency, and storage policy.
+Define what this project is and is not. Choose universe, data source, frequency, storage policy, timestamp convention.
 
-**Status:** DONE
-
----
-
-### Phase 1: V0 Engineering Close
-
-Build the minimum viable data pipeline: fetch bars, build labels, build factors, evaluate factors. Get 3–5 simple factors through the pipeline end-to-end.
-
-**Status:** DONE
+**Status:** COMPLETE
 
 ---
 
-### Phase 2: V0 Audit
+### Phase 1: V0 Engineering Loop
 
-Systematically audit the V0 pipeline for timing bugs, data leaks, survivorship bias, and evaluation protocol issues.
+Build the minimum viable data pipeline: fetch bars → build labels → build factors → evaluate factors. Get 5 simple OHLCV factors through end-to-end.
 
-#### Phase 2A: V0 Audit — Data & Pipeline
+**Status:** COMPLETE
 
-Audit timestamp semantics, universe definition, manifest consistency, data validation.
+---
 
-**Status:** COMPLETE (commit `3329165`)
+### Phase 2: Evaluation Protocol & Factor Library Skeleton
 
-#### Phase 2B: Lightweight Quality Gate
+Systematically build the evaluation protocol: data audit, quality gates, factor library skeleton, external factor priors, batch factor evaluation.
 
-Establish baseline quality checks: calendar-time labels, gap symbol exclusion, direction-adjusted spread. These are the "always-on health checks" — not hard thresholds.
+Sub-phases:
+- **2A:** V0 Audit — Data & Pipeline ✅
+- **2B:** Lightweight Quality Gate ✅
+- **2C:** Factor Library Skeleton ✅
+- **2D:** External Factor Priors ✅
+- **2E:** Batch Factor Evaluation ✅ (11 factors, all DIAGNOSTIC_PROBE)
+- **2F:** Gate Refinement — DEFERRED
 
-**Status:** COMPLETE (commit `140e5c0`)
+**Status:** COMPLETE
 
-#### Phase 2C: Factor Library Skeleton
+---
 
-Build the batch factor onboarding scaffold: catalog schema, implementation interface, evaluation protocol, test requirements, status enum, promotion rules. Ensure future factors can enter without breaking timing or data conventions.
+### Phase 3: Long-window Baseline
 
-**Status:** SKELETON BUILT, pending human closeout review
+Extend data from ~180d to ~2yr. Rerun evaluation. Compare signal stability. Confirm that probe weakness is not a short-window artifact.
 
-Deliverables:
-- `docs/FACTOR_LIBRARY_SKELETON.md` — full skeleton spec
-- `docs/FACTOR_LIBRARY_ROADMAP.md` — this file
-- `docs/FACTOR_REGISTRY.md` — updated status enum
-- `research/.../factor_catalog_v0_1.csv` — updated schema (12 columns)
-- `research/.../PHASE_2C_PLAN.md` — phase scope
-- `research/.../PHASE_2C_CLOSEOUT.md` — closeout report
+**Key result:** IC signs flip between 180d and 2yr for 5/11 factors. No stable signal.
 
-#### Phase 2D: External Factor Priors
+**Status:** COMPLETE
 
-Collect and classify external factor families before implementing them.
+---
 
-Scope:
-- Collect external factor prior families: WQ101 (101 Formulaic Alphas), GTJA191 (style factors), Alpha158/360 (Qlib)
-- Map each concept into crypto-compatible factor families
-- Classify which can be adapted to OHLCV-only crypto data
-- Document adaptation notes (e.g., cross-sectional rank → time-series zscore)
-- Do NOT implement all factors yet
-- Do NOT batch evaluate yet
+### Phase 4: Factor Factory & Evaluation Platform v1
 
-**Status:** NOT STARTED
+Build a lightweight factor factory: ops → specs → registry → registry-driven compute.
 
-#### Phase 2E: Batch Factor Evaluation
+**Deliverables:**
+- `factor_ops.py` — 12 pure-function building blocks ✅
+- `factor_specs.py` — FactorSpec dataclass ✅
+- `factor_formula_registry.py` — 11 factors registered ✅
+- Registry-driven `build_factor_values.py` ✅
+- 187 unit tests passing ✅
 
-Implement and evaluate the external factors identified in Phase 2D.
+**Status:** CURRENT (implementation complete, pending closeout)
 
-Scope:
-- Implement factors following the Phase 2C interface
-- Run each through the evaluation pipeline
-- Apply quality gate checks
-- Classify results: DIAGNOSTIC_PROBE / CANDIDATE_REVIEW / PARK / DROP
+---
 
-**Status:** NOT STARTED
+### Phase 5: Alphalens-compatible Export
 
-#### Phase 2F: Gate Refinement
+Compatibility layer — not migration.
 
-After seeing enough factors, refine the quality gate thresholds.
-
-Scope:
-- Review IC/RankIC/spread distributions across all evaluated factors
-- Adjust thresholds based on empirical evidence (not arbitrary)
-- Define what "enough factors" means for gate calibration
-- Document refined gate criteria
+**Scope:**
+- Export `factor_values` + prices into Alphalens-compatible `factor_data` format
+- Run 1–2 sample tear sheets for comparison
+- Verify IC / turnover / quantile metrics align
 
 **Status:** NOT STARTED
 
 ---
 
-### Phase 3: V1 Long-window Baseline
+### Phase 6: Dynamic Universe & Survivorship Control
 
-Replace V0's static 24h-volume universe with true 30-day rolling volume ranking. Establish the V1 baseline with refined gates.
+Point-in-time TopN universe with survivorship bias handling.
 
-**Status:** NOT STARTED
-
----
-
-### Phase 4: Dynamic Universe
-
-Implement monthly universe rebalancing with proper survivorship bias handling.
+**Scope:**
+- Historical volume-based universe selection
+- Delisted tokens included when active
+- Rerun selected factor diagnostics
 
 **Status:** NOT STARTED
 
 ---
 
-### Phase 5: Factor Library Expansion
+### Phase 7: Large-scale Factor Mining
 
-Add more factor families beyond the initial set. May include crypto-specific factors (funding rate, basis, OI, liquidation).
+Systematic factor expansion.
 
-**Status:** NOT STARTED
+**Sources:** WQ101, GTJA191, Alpha158, technical indicators, crypto-native factors.
 
----
-
-### Phase 6: Multi-factor Combination
-
-Combine CANDIDATE_FACTOR signals into composite scores. Explore equal-weight, IC-weight, and simple ML combinations.
+**Rule:** All new factors start as `DIAGNOSTIC_PROBE`. No auto-upgrades.
 
 **Status:** NOT STARTED
 
 ---
 
-### Phase 7: Portfolio Backtest
+### Phase 8: Candidate Factor Review
 
-Backtest multi-factor portfolios with position sizing, rebalancing, and risk constraints.
-
-**Status:** NOT STARTED
-
----
-
-### Phase 8: Cost and Risk Modeling
-
-Add slippage, spread, commission, and market impact models. Add drawdown and concentration risk controls.
+Review accumulated DIAGNOSTIC_PROBEs. Promote promising ones to CANDIDATE_REVIEW (requires human review).
 
 **Status:** NOT STARTED
 
 ---
 
-### Phase 9: Paper Trading
+### Phase 9: Multi-factor Signal Construction
 
-Run the full strategy in paper trading mode to validate execution feasibility.
+Combine CANDIDATE_FACTOR signals: equal-weight, IC-weight, simple ML.
 
 **Status:** NOT STARTED
 
 ---
 
-### Phase 10: Small-capital Live Validation
+### Phase 10: Strategy Backtest with Borrowed Engine
 
-Deploy with minimal capital for real-world validation.
+Backtest multi-factor portfolios using VectorBT or similar.
+
+**Status:** NOT STARTED
+
+---
+
+### Phase 11: Cost / Slippage / Capacity / Risk
+
+Slippage, spread, commission, market impact. Drawdown and concentration risk controls.
+
+**Status:** NOT STARTED
+
+---
+
+### Phase 12: Paper Trading
+
+Full strategy in paper trading mode.
+
+**Status:** NOT STARTED
+
+---
+
+### Phase 13: Small-capital Live Validation
+
+Minimal capital real-world deployment.
 
 **Status:** NOT STARTED
 
@@ -189,6 +179,10 @@ Deploy with minimal capital for real-world validation.
 ## Progression Rules
 
 1. **No phase skipping.** Each phase must be completed and reviewed before the next begins.
-2. **No factor is alpha.** Factors are inputs. Alpha is a property of a complete strategy with execution and costs.
-3. **Human approval required.** Phase transitions require explicit human decision.
-4. **Backward compatible.** Later phases must not break earlier phase conventions (timing, labels, evaluation protocol).
+2. **No unauthorized roadmap changes.** All changes require human review.
+3. **No unauthorized factor status upgrades.** Status changes require human review.
+4. **No strategy backtest in factor evaluation.** Keep evaluation diagnostic.
+5. **No over-interpretation.** A weak probe ≠ a dead factor family.
+6. **No default tool migration.** Each integration must be justified.
+7. **Human approval required.** Phase transitions require explicit human decision.
+8. **Backward compatible.** Later phases must not break earlier conventions.
