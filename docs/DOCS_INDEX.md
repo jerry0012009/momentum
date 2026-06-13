@@ -80,6 +80,9 @@ These documents belong to the active `crypto_top50_factor_library` research run.
 | `research/.../external_factor_prior_table.csv` | CURRENT_RUN | 56 prior records across 5 source families | Reference for external factor candidates. |
 | `research/.../PHASE_2D_REVIEW.md` | CURRENT_RUN | Phase 2D review: shortlist, park, skip decisions | Reviewing Phase 2D deliverables. |
 | `research/.../phase_2e_candidate_shortlist.csv` | CURRENT_RUN | 16 shortlisted candidates for Phase 2E | Planning Phase 2E implementation. |
+| `research/.../PHASE_2E_PLAN.md` | CURRENT_RUN | Phase 2E scope, batch definitions, status policy | Understanding Phase 2E structure. |
+| `research/.../phase_2e_batch1_spec.md` | CURRENT_RUN | Batch 1 formula specs (6 direct_formula factors) | Implementing Batch 1 factors. |
+| `research/.../phase_2e_batch1_candidates.csv` | CURRENT_RUN | Batch 1 candidate table (6 factors, PLANNED_ONLY) | Reference for Batch 1 scope. |
 
 Path prefix: `research/factor_runs/crypto_top50_factor_library/`
 

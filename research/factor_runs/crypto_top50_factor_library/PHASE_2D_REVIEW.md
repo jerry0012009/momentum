@@ -137,4 +137,10 @@ Phase 2D 初稿成功建立了 56 条外部因子先验记录，覆盖 5 个来�
 - 新增 ~16 个 factor implementation in `scripts/build_factor_values.py`
 - 新增 ~16 个 `factor_values.parquet`
 - 更新 `evaluate_factors.py` 以支持批量评价
-- 更新 `FACTOR_REGISTRY.md` 新增 factor 条目（status=CANDIDATE_REVIEW）
+- 更新 `FACTOR_REGISTRY.md` 新增 factor 条目
+
+**Status 升级规则：**
+- 新实现的 factor 在首次跑通 evaluation 后，只能设为 `DIAGNOSTIC_PROBE`
+- `CANDIDATE_REVIEW` 必须等 Phase 2E 结果出来，并经 human review 后才允许
+- No factor may enter `CANDIDATE_REVIEW` during Phase 2E implementation automatically
+- Human review required before any status upgrade beyond `DIAGNOSTIC_PROBE`
