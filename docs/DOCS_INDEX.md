@@ -92,6 +92,8 @@ These documents belong to the active `crypto_top50_factor_library` research run.
 | `research/.../PHASE_3_LONG_WINDOW_EVALUATION.md` | CURRENT_RUN | Long-window evaluation: 11 factors, 180d vs 2yr comparison | Review Phase 3 results |
 | `docs/FACTOR_FACTORY_V1_DESIGN.md` | ACTIVE | Factor Factory v1 architecture: ops, specs, registry | Understand factor factory design |
 | `docs/RESEARCH_PHASE_CONSTITUTION.md` | ACTIVE | Project positioning, phase roadmap (0–13), build-vs-borrow, execution rules | **Read first.** Top-level constraint for all phases. |
+| `docs/ALPHALENS_COMPATIBILITY_DESIGN.md` | ACTIVE | Alphalens-compatible export layer: goals, schema mapping, limitations | Phase 5 design |
+| `research/.../PHASE_5_ALPHALENS_EXPORT.md` | CURRENT_RUN | Phase 5 closeout: export tool, 2 factors exported, 216 tests pass | Review Phase 5 completion |
 | `research/.../PHASE_4_FACTOR_FACTORY_V1.md` | CURRENT_RUN | Factor Factory v1 closeout: 11 factors registered, 187 tests pass | Review Phase 4 completion |
 
 Path prefix: `research/factor_runs/crypto_top50_factor_library/`
