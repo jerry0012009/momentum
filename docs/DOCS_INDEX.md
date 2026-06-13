@@ -97,7 +97,8 @@ These documents belong to the active `crypto_top50_factor_library` research run.
 | `research/.../PHASE_5_ALPHALENS_EXPORT.md` | CURRENT_RUN | Phase 5A closeout: export tool, 2 factors exported, 216 tests pass | Review Phase 5A completion |
 | `research/.../PHASE_5B_ALPHALENS_SMOKE_CHECK.md` | COMPLETE | Phase 5B+5C: sample-aligned Alphalens smoke check, 8/8 near_match, 233 tests pass | Review Phase 5 completion |
 | `research/.../PHASE_6B_DYNAMIC_UNIVERSE_MONTHLY_VOLUME.md` | COMPLETE | Phase 6B closeout: monthly-volume dynamic universe, 524 candidates, 25 months, 13 tests | Review Phase 6B completion |
-| `research/.../PHASE_6C_DYNAMIC_UNIVERSE_DATA_COVERAGE.md` | CURRENT_RUN | Phase 6C closeout: coverage audit, 223/266 missing from bars, NOT_ALLOWED | Review Phase 6C completion |
+| `research/.../PHASE_6C_DYNAMIC_UNIVERSE_DATA_COVERAGE.md` | COMPLETE | Phase 6C: coverage audit, 16.2% coverage → new dataset needed | Review Phase 6C completion |
+| `research/.../PHASE_6D_DYNAMIC_UNIVERSE_BARS_1H.md` | CURRENT_RUN | Phase 6D: dynamic universe 1h bars, 266 symbols, 3.3M rows | Review Phase 6D completion |
 | `research/.../PHASE_4_FACTOR_FACTORY_V1.md` | CURRENT_RUN | Factor Factory v1 closeout: 11 factors registered, 187 tests pass | Review Phase 4 completion |
 
 Path prefix: `research/factor_runs/crypto_top50_factor_library/`
