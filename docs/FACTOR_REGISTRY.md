@@ -14,6 +14,12 @@
 - See `docs/FACTOR_EVALUATION_STANDARD.md` for evaluation criteria
 - See `research/factor_runs/crypto_top50_factor_library/audit_v0/audit_summary.md` for audit results
 
+## Experimental Catalog Boundary
+
+`factor_catalog_v0_1.csv` contains **only the 5 official V0 diagnostic probes** listed below.
+
+`experimental_catalog_v0_1.csv` contains 19 additional exploratory factors (window variants, volume factors, technical patterns). These are **exploratory diagnostics only** — they are NOT part of the official V0 factor registry. They were run through the evaluation pipeline for screening purposes but have not been individually validated. Do not treat experimental catalog entries as registered factors.
+
 ## Universe
 
 | 字段 | 值 |
@@ -22,7 +28,7 @@
 | market | crypto |
 | venue | Binance USDT-margined perpetual futures |
 | frequency | 1h |
-| selection_rule | top 50 by trailing 30-day dollar volume |
+| selection_rule | static_current_top50_by_24h_quote_volume |
 | rebalance_frequency | monthly |
 | min_listing_age_days | 90 |
 | data_path | `data/cache/crypto_top50_usdt_perp_1h/` |

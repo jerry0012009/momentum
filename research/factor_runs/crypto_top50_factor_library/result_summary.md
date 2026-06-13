@@ -5,6 +5,9 @@
 - generated_at: `2026-06-12T18:20:54Z`
 - caveat: Static current Top50 diagnostic universe; debug and initial screening only.
 
+**Official V0 Registry (5 diagnostic probes):** mom_20h, reversal_5h, volatility_20h, rsi_14h, bb_zscore_20h
+**Exploratory factors below:** 19 additional window variants / volume / technical factors from `experimental_catalog_v0_1.csv`. These are NOT part of the official registry.
+
 | factor | label | IC_mean | ICIR | RankIC_mean | RankICIR | spread_mean | spread_t | turnover | coverage | n_ts |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | mom_20h | ret_fwd_1h | 0.003600 | 0.009874 | -0.014668 | -0.073200 | 0.000286 | 1.711358 | 0.178633 | 0.995350 | 4299 |

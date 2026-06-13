@@ -60,8 +60,12 @@ venue: Binance USDT-margined perpetual futures
 instrument_type: perpetual_swap
 quote_asset: USDT
 frequency: 1h
-selection_rule: top 50 symbols by trailing 30-day dollar volume
+selection_rule: static_current_top50_by_24h_quote_volume
 rebalance_frequency: monthly
+# TODO V1: implement true trailing 30-day dollar volume ranking by aggregating
+# historical daily quote_volume data. Current V0 uses a single 24h ticker snapshot
+# which is NOT a 30-day rolling window. This means V0 universe is a static snapshot
+# of the current top 50 by 24h volume, subject to survivorship bias.
 min_listing_age_days: 90
 exclude_stablecoin_pairs: true
 exclude_leveraged_tokens: true

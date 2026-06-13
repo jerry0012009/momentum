@@ -1,6 +1,8 @@
 # Factor Library Pipeline Plan
 
 > Current execution policy: run V0 first. V0 means static current Top50 universe plus latest 180 days of 1h bars. V0 is for pipeline validation and initial screening only.
+>
+> **V0 is a debug pipeline, not final factor evidence. It uses static current Top50 by 24h quote volume and is affected by survivorship bias.**
 
 ## Completed
 

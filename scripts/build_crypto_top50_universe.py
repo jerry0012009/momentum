@@ -63,13 +63,17 @@ def fetch_exchange_info() -> list[dict]:
     return info.get("symbols", [])
 
 
-def fetch_30d_volume() -> dict[str, float]:
-    """Get 30-day rolling dollar volume from 24h ticker."""
+def fetch_24h_volume() -> dict[str, float]:
+    """Get 24h dollar volume from Binance 24h ticker.
+
+    NOTE: This is a 24h snapshot, NOT a trailing 30-day rolling volume.
+    V0 universe uses this snapshot for ranking. A true 30d rolling volume
+    requires aggregating historical daily data — deferred to V1.
+    """
     url = "https://fapi.binance.com/fapi/v1/ticker/24hr"
     resp = requests.get(url, timeout=30)
     resp.raise_for_status()
     tickers = resp.json()
-    # quoteVolume is 24h dollar volume
     return {t["symbol"]: float(t.get("quoteVolume", 0)) for t in tickers}
 
 
@@ -149,7 +153,7 @@ def main():
 
     # ── Step 4: Fetch 24h dollar volume and rank ──
     print("\n▸ Fetching 24h dollar volume...")
-    volume_map = fetch_30d_volume()
+    volume_map = fetch_24h_volume()
     print(f"  Got volume data for {len(volume_map)} symbols")
 
     for p in age_filtered:
@@ -190,7 +194,7 @@ def main():
             "rebalance_date": rebalance_date,
             "symbol": p["symbol"],
             "rank_by_dollar_volume": i + 1,
-            "trailing_30d_dollar_volume": p["dollar_volume_24h"],
+            "trailing_30d_dollar_volume": p["dollar_volume_24h"],  # NOTE: actually 24h snapshot, not 30d rolling
             "listing_age_days": p.get("listing_age_days"),
             "included": included,
             "exclusion_reason": exclusion_reason,
@@ -232,7 +236,7 @@ def main():
         "data_start": "",
         "data_end": "",
         "timeframe": "1h",
-        "selection_rule": "top 50 by trailing 30-day dollar volume",
+        "selection_rule": "static_current_top50_by_24h_quote_volume",
         "rebalance_frequency": "monthly",
         "min_listing_age_days": 90,
         "exclude_stablecoin_pairs": True,
