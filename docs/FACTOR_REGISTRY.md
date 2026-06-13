@@ -164,19 +164,23 @@ reports/artifacts/factor_eval/crypto_top50_usdt_perp_1h/<factor_name>/result_sum
 
 ---
 
-## Status Legend
+## Status Enum (Phase 2C canonical)
 
-| Status | 含义 |
-|--------|------|
-| IDEA | 未实现 |
-| SCOPED | 公式和 universe 已定义 |
-| DIAGNOSTIC_PROBE | 因子用于流水线测试和审计机制验证，未升级为候选因子 |
-| PROTOTYPED | 因子值已生成一次 |
-| REVIEW_REQUIRED | AI 辅助或未审计 |
-| REVIEWED | 公式、时序、数据、评价已检查 |
-| KEEP | 有足够证据保留 |
-| PARK | 证据不足但未证伪 |
-| DROP | 评价失败或无稳定信号 |
+| Status | 含义 | 谁能设 |
+|--------|------|--------|
+| `DIAGNOSTIC_PROBE` | 流水线测试通过；非 alpha 证据 | auto (首次 eval run 后) |
+| `CANDIDATE_REVIEW` | 通过基础质量门；需更深入统计审查 | human only |
+| `CANDIDATE_FACTOR` | 通过 Phase 2C 审查；可接入模型 | human only |
+| `PARK` | 证据不足但未证伪；稍后复查 | human only |
+| `DROP` | 评价失败或有已知缺陷 | human or auto (with audit) |
+
+**禁止使用的状态名:** `ALPHA`, `STRONG_ALPHA`, `DEPLOYABLE_ALPHA`, `LIVE`, `SHADOW`.
+这些在因子库中不存在。Alpha 是策略的属性，不是单个因子的属性。
+
+实现状态 (`implementation_status`) 独立于评价状态：
+`NOT_IMPLEMENTED` → `IMPLEMENTED` → (first eval run) → `DIAGNOSTIC_PROBE`
+
+详见 `docs/FACTOR_LIBRARY_SKELETON.md` §1-§2。
 
 ---
 
