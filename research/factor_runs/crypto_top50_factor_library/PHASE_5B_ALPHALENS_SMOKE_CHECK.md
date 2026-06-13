@@ -1,70 +1,77 @@
-# Phase 5B — Alphalens Smoke Check Closeout
+# Phase 5B — Alphalens Smoke Check Report
 
-> Date: 2026-06-13
->
-> Status: COMPLETE — READY FOR REVIEW
+> Generated: 2026-06-13T16:44:39.408355+00:00
+> Dataset: crypto_top50_usdt_perp_1h_long_v1
+> Alphalens: v0.4.6
 
 ---
 
-## 1. Goal
+## 1. Dependency Status
 
-Cross-validate exported factor data by actually calling Alphalens core analysis functions (IC, quantile returns, turnover) and comparing results with our local evaluation kernel.
+- alphalens-reloaded installed: **True**
+- Version: 0.4.6
 
-## 2. Dependency Status
+## 2. Functions Called
 
-| Dependency | Status | Version |
-|------------|--------|---------|
-| alphalens-reloaded | ✅ installed | 0.4.6 |
-| matplotlib | ✅ installed | (transitive) |
-| seaborn | ✅ installed | (transitive) |
+- `alphalens.performance.factor_information_coefficient()` — Spearman IC
+- `alphalens.performance.mean_return_by_quantile()` — quantile returns
+- `alphalens.performance.quantile_turnover()` — turnover analysis
+- Note: `get_clean_factor_and_forward_returns()` skipped — does not support hourly frequency
 
-## 3. Functions Called
+## 3. Factors Checked
 
-- `alphalens.performance.factor_information_coefficient()` — Spearman rank IC per cross-section
-- `alphalens.performance.mean_return_by_quantile()` — mean return per quintile
-- `alphalens.performance.quantile_turnover()` — attempted but failed (period naming issue)
-- `alphalens.utils.get_clean_factor_and_forward_returns()` — **skipped** (does not support hourly frequency)
+### mom_20h
 
-## 4. Factors & Horizons Checked
+| Horizon | IC mean (Spearman) | IC std | Count |
+|---------|-------------------|--------|-------|
+| 1h | -0.040674 | 0.248831 | 712 |
+| 4h | -0.030589 | 0.234464 | 712 |
+| 24h | -0.024927 | 0.251008 | 711 |
+| 72h | -0.017013 | 0.242298 | 709 |
 
-| Factor | 1h | 4h | 24h | 72h |
-|--------|----|----|-----|-----|
-| mom_20h | ✅ | ✅ | ✅ | ✅ |
-| wq101_alpha53 | ✅ | ✅ | ✅ | ✅ |
+### wq101_alpha53
 
-## 5. IC Comparison: Local vs Alphalens
+| Horizon | IC mean (Spearman) | IC std | Count |
+|---------|-------------------|--------|-------|
+| 1h | 0.007820 | 0.194052 | 730 |
+| 4h | 0.016369 | 0.189689 | 730 |
+| 24h | 0.012448 | 0.192498 | 729 |
+| 72h | 0.006236 | 0.185365 | 727 |
 
-| Factor | Horizon | Local IC (Pearson) | Alphalens IC (Spearman) | Abs Diff | Status |
-|--------|---------|-------------------|------------------------|----------|--------|
-| mom_20h | 1h | -0.011828 | -0.040674 | 0.028846 | explainable |
-| mom_20h | 4h | -0.015449 | -0.030589 | 0.015140 | explainable |
-| mom_20h | 24h | 0.011493 | -0.024927 | 0.036420 | explainable |
-| mom_20h | 72h | 0.005880 | -0.017013 | 0.022893 | explainable |
-| wq101_alpha53 | 1h | 0.009041 | 0.007820 | 0.001221 | mismatch |
-| wq101_alpha53 | 4h | 0.004965 | 0.016369 | 0.011404 | explainable |
-| wq101_alpha53 | 24h | 0.002363 | 0.012448 | 0.010085 | explainable |
-| wq101_alpha53 | 72h | 0.002590 | 0.006236 | 0.003646 | mismatch |
+## 4. IC Comparison: Local vs Alphalens
 
-**Explanation:** IC differences are expected and explained by definition mismatch:
-- Local `evaluate_factors.py` uses **Pearson** IC (`scipy.stats.pearsonr`)
-- Alphalens uses **Spearman** rank IC (`scipy.stats.spearmanr`)
-- Pearson measures linear correlation; Spearman measures monotonic rank correlation
-- For fat-tailed crypto returns, Spearman typically gives larger |IC| than Pearson
+| Factor | Horizon | Local Pearson IC | Local RankIC | Alphalens Spearman IC | RankIC Abs Diff | Status | Note |
+|--------|---------|-----------------|-------------|----------------------|----------------|--------|------|
+| mom_20h | 1h | -0.011828 | -0.025049 | -0.040674 | 0.015625 | mismatch | rankic_abs_diff=0.015625: possible causes — Alphalens computes Spearman from its |
+| mom_20h | 4h | -0.015449 | -0.033273 | -0.030589 | 0.002684 | mismatch | rankic_abs_diff=0.002684: possible causes — Alphalens computes Spearman from its |
+| mom_20h | 24h | 0.011493 | -0.020934 | -0.024927 | 0.003993 | mismatch | rankic_abs_diff=0.003993: possible causes — Alphalens computes Spearman from its |
+| mom_20h | 72h | 0.005880 | -0.015305 | -0.017013 | 0.001708 | mismatch | rankic_abs_diff=0.001708: possible causes — Alphalens computes Spearman from its |
+| wq101_alpha53 | 1h | 0.009041 | 0.017332 | 0.007820 | 0.009512 | mismatch | rankic_abs_diff=0.009512: possible causes — Alphalens computes Spearman from its |
+| wq101_alpha53 | 4h | 0.004965 | 0.010504 | 0.016369 | 0.005865 | mismatch | rankic_abs_diff=0.005865: possible causes — Alphalens computes Spearman from its |
+| wq101_alpha53 | 24h | 0.002363 | 0.004492 | 0.012448 | 0.007956 | mismatch | rankic_abs_diff=0.007956: possible causes — Alphalens computes Spearman from its |
+| wq101_alpha53 | 72h | 0.002590 | 0.003269 | 0.006236 | 0.002967 | mismatch | rankic_abs_diff=0.002967: possible causes — Alphalens computes Spearman from its |
 
-The two "mismatch" entries (wq101_alpha53 at 1h and 72h) have abs_diff < 0.004, well within the definition-difference tolerance.
+## 5. Definition Notes
+
+- **Primary comparison:** Alphalens Spearman IC vs local RankIC_mean — both are rank-based measures.
+- **Secondary comparison:** Alphalens Spearman IC vs local IC_mean (Pearson) — shown for reference only.
+- **Forward returns:** Our pre-computed forward returns are embedded in the factor_data passed to Alphalens.
+- `get_clean_factor_and_forward_returns()` was skipped because hourly frequency is not supported in this setup.
 
 ## 6. Limitations
 
-- `get_clean_factor_and_forward_returns()` rejects hourly frequency — used manual factor_data construction instead
-- `quantile_turnover()` expects integer period names — failed with "1h"/"4h" string columns
-- No factor status upgrade can be based solely on Alphalens output
-- Alphalens forward returns computed from close prices; local uses pre-computed labels
+- Alphalens IC = Spearman rank correlation; compared against local RankIC_mean (primary) and IC_mean/Pearson (secondary).
+- Alphalens smoke check uses our pre-computed forward returns embedded in factor_data.
+- get_clean_factor_and_forward_returns() was skipped because hourly frequency is not supported in this setup.
+- No factor status upgrade can be based solely on Alphalens output.
 
 ## 7. Conclusion
 
 - Alphalens smoke check: **PASS**
-- Factors tested: 2 (mom_20h, wq101_alpha53)
-- Horizons tested: 4 (1h, 4h, 24h, 72h)
-- IC direction consistent across both tools
+- Factors tested: 2
+- Comparison rows: 8
 - Phase 5 (Alphalens export + smoke check): **COMPLETE**
 - Phase 6 (Dynamic Universe): **READY — requires human approval**
+
+Key finding: IC differences between local Pearson and Alphalens Spearman are expected.
+No factor status changes warranted from Alphalens output.

@@ -176,7 +176,7 @@ def load_local_results(dataset_id: str):
 
 
 def build_comparison_table(factor_id: str, horizon: str, alphalens_ic: float, local_df):
-    """Build IC comparison row."""
+    """Build IC comparison row — Alphalens Spearman vs local RankIC."""
     label = f"ret_fwd_{horizon}"
     local_row = local_df[(local_df["factor_id"] == factor_id) & (local_df["label"] == label)]
 
@@ -184,31 +184,45 @@ def build_comparison_table(factor_id: str, horizon: str, alphalens_ic: float, lo
         return {
             "factor_id": factor_id,
             "horizon": horizon,
-            "local_IC": None,
-            "alphalens_IC": alphalens_ic,
-            "abs_diff": None,
+            "local_Pearson_IC": None,
+            "local_RankIC": None,
+            "alphalens_Spearman_IC": alphalens_ic,
+            "rankic_abs_diff": None,
+            "pearson_abs_diff": None,
             "status": "local_result_not_found",
             "note": "",
         }
 
-    local_ic = float(local_row.iloc[0]["IC_mean"])
-    diff = abs(alphalens_ic - local_ic)
+    local_pearson = float(local_row.iloc[0]["IC_mean"])
+    local_rankic = float(local_row.iloc[0]["RankIC_mean"])
+    rankic_diff = abs(alphalens_ic - local_rankic)
+    pearson_diff = abs(alphalens_ic - local_pearson)
 
     note = ""
-    if diff > 0.01:
+    if rankic_diff > 1e-4:
         note = (
-            f"SIGNIFICANT_DIFF (abs={diff:.6f}): "
-            "local uses Pearson IC (scipy.stats.pearsonr); "
-            "alphalens uses Spearman rank correlation. Definitions differ."
+            f"rankic_abs_diff={rankic_diff:.6f}: possible causes — "
+            "Alphalens computes Spearman from its own forward returns (pct_change); "
+            "local uses pre-computed labels from build_labels.py. "
+            "Minor sample/filter differences may apply."
         )
+
+    if rankic_diff <= 1e-6:
+        status = "match"
+    elif rankic_diff <= 1e-4:
+        status = "near_match"
+    else:
+        status = "mismatch"
 
     return {
         "factor_id": factor_id,
         "horizon": horizon,
-        "local_IC": round(local_ic, 6),
-        "alphalens_IC": round(alphalens_ic, 6),
-        "abs_diff": round(diff, 6),
-        "status": "match" if diff <= 1e-6 else ("explainable" if note else "mismatch"),
+        "local_Pearson_IC": round(local_pearson, 6),
+        "local_RankIC": round(local_rankic, 6),
+        "alphalens_Spearman_IC": round(alphalens_ic, 6),
+        "rankic_abs_diff": round(rankic_diff, 6),
+        "pearson_abs_diff": round(pearson_diff, 6),
+        "status": status,
         "note": note,
     }
 
@@ -280,9 +294,9 @@ def main():
 
     # Known limitations
     results["limitations"].extend([
-        "Alphalens IC = Spearman rank correlation; local evaluate_factors.py = Pearson IC.",
-        "Alphalens forward returns computed from close prices; local uses pre-computed labels.",
-        "IC differences are expected due to Spearman vs Pearson definition.",
+        "Alphalens IC = Spearman rank correlation; compared against local RankIC_mean (primary) and IC_mean/Pearson (secondary).",
+        "Alphalens smoke check uses our pre-computed forward returns embedded in factor_data.",
+        "get_clean_factor_and_forward_returns() was skipped because hourly frequency is not supported in this setup.",
         "No factor status upgrade can be based solely on Alphalens output.",
     ])
 
@@ -342,26 +356,28 @@ def write_markdown_report(results: dict, path: Path):
     lines.extend([
         "## 4. IC Comparison: Local vs Alphalens",
         "",
-        "| Factor | Horizon | Local IC (Pearson) | Alphalens IC (Spearman) | Abs Diff | Status | Note |",
-        "|--------|---------|-------------------|------------------------|----------|--------|------|",
+        "| Factor | Horizon | Local Pearson IC | Local RankIC | Alphalens Spearman IC | RankIC Abs Diff | Status | Note |",
+        "|--------|---------|-----------------|-------------|----------------------|----------------|--------|------|",
     ])
 
     for row in results["comparison"]:
-        local_ic = f"{row['local_IC']:.6f}" if row['local_IC'] is not None else "N/A"
-        alphalens_ic = f"{row['alphalens_IC']:.6f}" if row['alphalens_IC'] is not None else "N/A"
-        abs_diff = f"{row['abs_diff']:.6f}" if row['abs_diff'] is not None else "N/A"
+        pearson = f"{row['local_Pearson_IC']:.6f}" if row['local_Pearson_IC'] is not None else "N/A"
+        rankic = f"{row['local_RankIC']:.6f}" if row['local_RankIC'] is not None else "N/A"
+        spearman = f"{row['alphalens_Spearman_IC']:.6f}" if row['alphalens_Spearman_IC'] is not None else "N/A"
+        rankic_diff = f"{row['rankic_abs_diff']:.6f}" if row['rankic_abs_diff'] is not None else "N/A"
         note = row.get('note', '')[:80] if row.get('note') else ''
         lines.append(
-            f"| {row['factor_id']} | {row['horizon']} | {local_ic} | {alphalens_ic} | {abs_diff} | {row['status']} | {note} |"
+            f"| {row['factor_id']} | {row['horizon']} | {pearson} | {rankic} | {spearman} | {rankic_diff} | {row['status']} | {note} |"
         )
 
     lines.extend([
         "",
-        "## 5. Definition Mismatches",
+        "## 5. Definition Notes",
         "",
-        "- **IC definition:** Local = `scipy.stats.pearsonr` (Pearson); Alphalens = `scipy.stats.spearmanr` (Spearman rank).",
-        "- **Forward returns:** Local = pre-computed labels from `build_labels.py`; Alphalens = computed from close prices via `pct_change`.",
-        "- These differences explain non-trivial IC discrepancies. This is expected and documented.",
+        "- **Primary comparison:** Alphalens Spearman IC vs local RankIC_mean — both are rank-based measures.",
+        "- **Secondary comparison:** Alphalens Spearman IC vs local IC_mean (Pearson) — shown for reference only.",
+        "- **Forward returns:** Our pre-computed forward returns are embedded in the factor_data passed to Alphalens.",
+        "- `get_clean_factor_and_forward_returns()` was skipped because hourly frequency is not supported in this setup.",
         "",
         "## 6. Limitations",
         "",

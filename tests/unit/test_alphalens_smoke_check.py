@@ -41,7 +41,7 @@ def _make_exported_data(n=200, n_symbols=5):
 
 
 def _make_local_results_df():
-    """Create synthetic local evaluation results."""
+    """Create synthetic local evaluation results with both IC_mean and RankIC_mean."""
     rows = []
     for fid in ["mom_20h", "wq101_alpha53"]:
         for h in ["1h", "4h", "24h", "72h"]:
@@ -104,18 +104,27 @@ class TestRunAlphalensAnalysis:
 
 
 class TestBuildComparisonTable:
-    def test_match_when_close(self):
+    def test_match_when_exact(self):
+        """rankic_abs_diff <= 1e-6 → match."""
         local_df = _make_local_results_df()
-        comp = build_comparison_table("mom_20h", "1h", 0.01, local_df)
+        # alphalens_ic == local RankIC_mean (0.015)
+        comp = build_comparison_table("mom_20h", "1h", 0.015, local_df)
         assert comp["status"] == "match"
-        assert comp["abs_diff"] == 0.0
+        assert comp["rankic_abs_diff"] == 0.0
 
-    def test_explainable_when_large_diff(self):
+    def test_near_match_when_small_diff(self):
+        """1e-6 < rankic_abs_diff <= 1e-4 → near_match."""
+        local_df = _make_local_results_df()
+        # alphalens_ic slightly off from RankIC_mean (0.015)
+        comp = build_comparison_table("mom_20h", "1h", 0.01505, local_df)
+        assert comp["status"] == "near_match"
+
+    def test_mismatch_when_large_diff(self):
+        """rankic_abs_diff > 1e-4 → mismatch."""
         local_df = _make_local_results_df()
         comp = build_comparison_table("mom_20h", "1h", 0.05, local_df)
-        assert comp["status"] == "explainable"
-        assert "Pearson" in comp["note"]
-        assert "Spearman" in comp["note"]
+        assert comp["status"] == "mismatch"
+        assert "rankic_abs_diff" in comp["note"]
 
     def test_local_not_found(self):
         local_df = _make_local_results_df()
@@ -127,8 +136,32 @@ class TestComparisonTableSchema:
     def test_required_keys(self):
         local_df = _make_local_results_df()
         comp = build_comparison_table("mom_20h", "1h", 0.01, local_df)
-        required = {"factor_id", "horizon", "local_IC", "alphalens_IC", "abs_diff", "status", "note"}
+        required = {
+            "factor_id", "horizon",
+            "local_Pearson_IC", "local_RankIC", "alphalens_Spearman_IC",
+            "rankic_abs_diff", "pearson_abs_diff",
+            "status", "note",
+        }
         assert required.issubset(comp.keys())
+
+    def test_primary_comparison_uses_rankic(self):
+        """Primary diff must be rankic_abs_diff, not pearson_abs_diff."""
+        local_df = _make_local_results_df()
+        comp = build_comparison_table("mom_20h", "1h", 0.015, local_df)
+        # RankIC_mean=0.015, alphalens_ic=0.015 → rankic_abs_diff=0
+        assert comp["rankic_abs_diff"] == 0.0
+        assert comp["status"] == "match"
+        # Pearson IC_mean=0.015 → pearson_abs_diff should be 0.005
+        assert comp["pearson_abs_diff"] == 0.005
+
+    def test_status_based_on_rankic_diff(self):
+        """Status must be determined by rankic_abs_diff, not pearson_abs_diff."""
+        local_df = _make_local_results_df()
+        # RankIC_mean=0.015, alphalens=0.01505 → near_match
+        comp = build_comparison_table("mom_20h", "1h", 0.01505, local_df)
+        assert comp["status"] == "near_match"
+        # pearson_abs_diff would be |0.01505-0.01| = 0.00505 → mismatch if used
+        assert comp["pearson_abs_diff"] > 1e-4
 
 
 class TestDependencyHandling:
