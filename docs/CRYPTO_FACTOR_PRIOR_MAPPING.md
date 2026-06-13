@@ -178,3 +178,22 @@ These factors have no meaningful adaptation path for crypto perpetual futures.
 **Immediate implementation candidates (A + B + C):** ~120-165 factors
 **Deferred (D + E):** ~25-35 factors (need new data)
 **Not applicable (F + G):** ~60-90 factors
+
+---
+
+## Cross-Sectional Rank Adaptation Policy
+
+When adapting factors that originally use `rank(x)` (cross-sectional ranking across stocks), follow this policy:
+
+1. **If the prior uses `rank(x)` and the crypto universe has ≥20 symbols at each timestamp**, use `cross_sectional_rank` as the first adaptation mode. The current `crypto_top50_usdt_perp_1h` universe has 50 symbols, which is sufficient for timestamp-level cross-sectional rank.
+2. **If cross-sectional rank is unstable** (e.g., too few symbols at some timestamps, or rank distribution is heavily skewed), use `time_series_zscore` as an alternative: `(x - rolling_mean(x, window)) / rolling_std(x, window)`.
+3. **If a percentile interpretation is more meaningful**, use `rolling_percentile`: the fraction of historical values that the current value exceeds.
+4. **Do not automatically replace all ranks with rolling zscore.** The choice depends on the factor's intended signal: cross-sectional rank captures relative position within the universe; time-series zscore captures deviation from recent history. These are different signals.
+
+| Adaptation Mode | When to Use | Formula |
+|----------------|-------------|---------|
+| `cross_sectional_rank` | ≥20 symbols per timestamp; factor captures relative positioning | `rank(x, by=timestamp)` |
+| `time_series_zscore` | Few symbols or rank unstable; factor captures historical deviation | `(x - rolling_mean(x, w)) / rolling_std(x, w)` |
+| `rolling_percentile` | Percentile interpretation needed | `rolling_percentile_rank(x, w)` |
+| `direct_formula` | Original formula has no rank operation | Implement as-is |
+| `skip_or_park` | Too complex or not applicable | Do not implement |

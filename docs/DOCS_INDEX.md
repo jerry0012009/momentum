@@ -78,6 +78,8 @@ These documents belong to the active `crypto_top50_factor_library` research run.
 | `research/.../local_artifact_index.md` | CURRENT_RUN | Local artifact file index | Finding generated artifacts. |
 | `research/.../PHASE_2D_PLAN.md` | CURRENT_RUN | Phase 2D scope, allowed/forbidden actions | Understanding Phase 2D boundaries. |
 | `research/.../external_factor_prior_table.csv` | CURRENT_RUN | 56 prior records across 5 source families | Reference for external factor candidates. |
+| `research/.../PHASE_2D_REVIEW.md` | CURRENT_RUN | Phase 2D review: shortlist, park, skip decisions | Reviewing Phase 2D deliverables. |
+| `research/.../phase_2e_candidate_shortlist.csv` | CURRENT_RUN | 16 shortlisted candidates for Phase 2E | Planning Phase 2E implementation. |
 
 Path prefix: `research/factor_runs/crypto_top50_factor_library/`
 
