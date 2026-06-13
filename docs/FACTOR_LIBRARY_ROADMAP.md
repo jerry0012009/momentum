@@ -4,7 +4,7 @@
 >
 > Each phase builds on the previous. No phase may be skipped.
 >
-> Last updated: 2026-06-13
+> Last updated: 2026-06-13 (Phase 2E closeout)
 
 ---
 
@@ -17,11 +17,11 @@
 | Phase 2 | V0 Audit | IN PROGRESS |
 | Phase 2A | V0 Audit — Data & Pipeline | **COMPLETE** |
 | Phase 2B | Lightweight Quality Gate | **COMPLETE** |
-| Phase 2C | Factor Library Skeleton | **SKELETON BUILT**, pending closeout review |
-| Phase 2D | External Factor Priors | NOT STARTED |
-| Phase 2E | Batch Factor Evaluation | NOT STARTED |
-| Phase 2F | Gate Refinement | NOT STARTED |
-| Phase 3 | V1 Long-window Baseline | NOT STARTED |
+| Phase 2C | Factor Library Skeleton | **COMPLETE** |
+| Phase 2D | External Factor Priors | **COMPLETE** |
+| Phase 2E | Batch Factor Evaluation | **COMPLETE** |
+| Phase 2F | Gate Refinement | DEFERRED |
+| Phase 3 | V1 Long-window Baseline | **NEXT** |
 | Phase 4 | Dynamic Universe | NOT STARTED |
 | Phase 5 | Factor Library Expansion | NOT STARTED |
 | Phase 6 | Multi-factor Combination | NOT STARTED |
