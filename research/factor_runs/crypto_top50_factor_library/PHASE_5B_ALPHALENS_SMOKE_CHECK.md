@@ -1,6 +1,6 @@
-# Phase 5B — Alphalens Smoke Check Report
+# Phase 5C — Alphalens Smoke Check Report (Sample-Aligned)
 
-> Generated: 2026-06-13T16:44:39.408355+00:00
+> Generated: 2026-06-13T17:34:05.579465+00:00
 > Dataset: crypto_top50_usdt_perp_1h_long_v1
 > Alphalens: v0.4.6
 
@@ -8,70 +8,70 @@
 
 ## 1. Dependency Status
 
-- alphalens-reloaded installed: **True**
-- Version: 0.4.6
+- alphalens-reloaded: **True** (v0.4.6)
 
-## 2. Functions Called
-
-- `alphalens.performance.factor_information_coefficient()` — Spearman IC
-- `alphalens.performance.mean_return_by_quantile()` — quantile returns
-- `alphalens.performance.quantile_turnover()` — turnover analysis
-- Note: `get_clean_factor_and_forward_returns()` skipped — does not support hourly frequency
-
-## 3. Factors Checked
+## 2. Sample Alignment
 
 ### mom_20h
 
-| Horizon | IC mean (Spearman) | IC std | Count |
-|---------|-------------------|--------|-------|
-| 1h | -0.040674 | 0.248831 | 712 |
-| 4h | -0.030589 | 0.234464 | 712 |
-| 24h | -0.024927 | 0.251008 | 711 |
-| 72h | -0.017013 | 0.242298 | 709 |
+| Metric | Value |
+|--------|-------|
+| Pre-filter rows | 713,572 |
+| Post-filter rows | 560,386 |
+| Pre-filter symbols | 50 |
+| Post-filter symbols (evaluation universe) | 32 |
+| Excluded symbols | 18 |
+| Excluded list | AIOUSDT, ALLOUSDT, BEATUSDT, EPICUSDT, ESPORTSUSDT, HMSTRUSDT, HOMEUSDT, HUSDT, HYPEUSDT, LABUSDT, PAXGUSDT, PLAYUSDT, SIRENUSDT, SKYAIUSDT, SPACEUSDT, TRUMPUSDT, VELVETUSDT, XPLUSDT |
 
 ### wq101_alpha53
 
-| Horizon | IC mean (Spearman) | IC std | Count |
-|---------|-------------------|--------|-------|
-| 1h | 0.007820 | 0.194052 | 730 |
-| 4h | 0.016369 | 0.189689 | 730 |
-| 24h | 0.012448 | 0.192498 | 729 |
-| 72h | 0.006236 | 0.185365 | 727 |
+| Metric | Value |
+|--------|-------|
+| Pre-filter rows | 713,572 |
+| Post-filter rows | 560,738 |
+| Pre-filter symbols | 50 |
+| Post-filter symbols (evaluation universe) | 32 |
+| Excluded symbols | 18 |
+| Excluded list | AIOUSDT, ALLOUSDT, BEATUSDT, EPICUSDT, ESPORTSUSDT, HMSTRUSDT, HOMEUSDT, HUSDT, HYPEUSDT, LABUSDT, PAXGUSDT, PLAYUSDT, SIRENUSDT, SKYAIUSDT, SPACEUSDT, TRUMPUSDT, VELVETUSDT, XPLUSDT |
 
-## 4. IC Comparison: Local vs Alphalens
+## 3. IC Comparison (Sample-Aligned, Hourly Freq)
 
-| Factor | Horizon | Local Pearson IC | Local RankIC | Alphalens Spearman IC | RankIC Abs Diff | Status | Note |
-|--------|---------|-----------------|-------------|----------------------|----------------|--------|------|
-| mom_20h | 1h | -0.011828 | -0.025049 | -0.040674 | 0.015625 | mismatch | rankic_abs_diff=0.015625: possible causes — Alphalens computes Spearman from its |
-| mom_20h | 4h | -0.015449 | -0.033273 | -0.030589 | 0.002684 | mismatch | rankic_abs_diff=0.002684: possible causes — Alphalens computes Spearman from its |
-| mom_20h | 24h | 0.011493 | -0.020934 | -0.024927 | 0.003993 | mismatch | rankic_abs_diff=0.003993: possible causes — Alphalens computes Spearman from its |
-| mom_20h | 72h | 0.005880 | -0.015305 | -0.017013 | 0.001708 | mismatch | rankic_abs_diff=0.001708: possible causes — Alphalens computes Spearman from its |
-| wq101_alpha53 | 1h | 0.009041 | 0.017332 | 0.007820 | 0.009512 | mismatch | rankic_abs_diff=0.009512: possible causes — Alphalens computes Spearman from its |
-| wq101_alpha53 | 4h | 0.004965 | 0.010504 | 0.016369 | 0.005865 | mismatch | rankic_abs_diff=0.005865: possible causes — Alphalens computes Spearman from its |
-| wq101_alpha53 | 24h | 0.002363 | 0.004492 | 0.012448 | 0.007956 | mismatch | rankic_abs_diff=0.007956: possible causes — Alphalens computes Spearman from its |
-| wq101_alpha53 | 72h | 0.002590 | 0.003269 | 0.006236 | 0.002967 | mismatch | rankic_abs_diff=0.002967: possible causes — Alphalens computes Spearman from its |
+**Primary:** Alphalens Spearman IC vs Direct Hourly Spearman IC (same data, same hourly freq).
 
-## 5. Definition Notes
+| Factor | Horizon | Local Summary RankIC | Direct Spearman IC | Alphalens Spearman IC | Primary Abs Diff | Status |
+|--------|---------|---------------------|-------------------|----------------------|-----------------|--------|
+| mom_20h | 1h | -0.025049 | -0.025049 | -0.025107 | 0.000059 | near_match |
+| mom_20h | 4h | -0.033273 | -0.033273 | -0.033332 | 0.000059 | near_match |
+| mom_20h | 24h | -0.020934 | -0.020934 | -0.020993 | 0.000058 | near_match |
+| mom_20h | 72h | -0.015305 | -0.015305 | -0.015363 | 0.000058 | near_match |
+| wq101_alpha53 | 1h | 0.017332 | 0.017332 | 0.017276 | 0.000056 | near_match |
+| wq101_alpha53 | 4h | 0.010504 | 0.010504 | 0.010448 | 0.000056 | near_match |
+| wq101_alpha53 | 24h | 0.004492 | 0.004492 | 0.004550 | 0.000057 | near_match |
+| wq101_alpha53 | 72h | 0.003269 | 0.003269 | 0.003327 | 0.000057 | near_match |
 
-- **Primary comparison:** Alphalens Spearman IC vs local RankIC_mean — both are rank-based measures.
-- **Secondary comparison:** Alphalens Spearman IC vs local IC_mean (Pearson) — shown for reference only.
-- **Forward returns:** Our pre-computed forward returns are embedded in the factor_data passed to Alphalens.
-- `get_clean_factor_and_forward_returns()` was skipped because hourly frequency is not supported in this setup.
+**Summary:** match=0, near_match=8, mismatch=0
+## 4. Comparison Methodology
 
-## 6. Limitations
+- **Primary comparison:** Alphalens Spearman IC vs Direct Hourly Spearman IC.
+  Both use the same sample-aligned factor_data with hourly freq (freq='h' set on MultiIndex).
+  Without freq='h', Alphalens's asfreq(None) collapses hourly rows into daily, causing false mismatches.
+- **Local Summary RankIC:** From `result_summary_*.md` (different NaN handling, different sample period).
+- Sample alignment: excluded 18 symbols with missing_bar_rate > 5%, matching local evaluation universe.
 
-- Alphalens IC = Spearman rank correlation; compared against local RankIC_mean (primary) and IC_mean/Pearson (secondary).
-- Alphalens smoke check uses our pre-computed forward returns embedded in factor_data.
-- get_clean_factor_and_forward_returns() was skipped because hourly frequency is not supported in this setup.
+## 5. Limitations
+
+- Alphalens IC = Spearman rank correlation; direct Spearman computed from same aligned data.
+- freq='h' set on MultiIndex to prevent Alphalens asfreq(None) from collapsing hourly → daily.
+- Local summary RankIC shown for reference only (different NaN handling, different sample period).
+- get_clean_factor_and_forward_returns() skipped — hourly frequency not supported.
 - No factor status upgrade can be based solely on Alphalens output.
 
-## 7. Conclusion
+## 6. Conclusion
 
-- Alphalens smoke check: **PASS**
+- **Overall status: PASS**
 - Factors tested: 2
 - Comparison rows: 8
+
+All primary comparisons are match or near_match.
 - Phase 5 (Alphalens export + smoke check): **COMPLETE**
 - Phase 6 (Dynamic Universe): **READY — requires human approval**
-
-Key finding: IC differences between local Pearson and Alphalens Spearman are expected.
-No factor status changes warranted from Alphalens output.

@@ -94,7 +94,7 @@ These documents belong to the active `crypto_top50_factor_library` research run.
 | `docs/RESEARCH_PHASE_CONSTITUTION.md` | ACTIVE | Project positioning, phase roadmap (0–13), build-vs-borrow, execution rules | **Read first.** Top-level constraint for all phases. |
 | `docs/ALPHALENS_COMPATIBILITY_DESIGN.md` | ACTIVE | Alphalens-compatible export layer: goals, schema mapping, limitations | Phase 5 design |
 | `research/.../PHASE_5_ALPHALENS_EXPORT.md` | CURRENT_RUN | Phase 5A closeout: export tool, 2 factors exported, 216 tests pass | Review Phase 5A completion |
-| `research/.../PHASE_5B_ALPHALENS_SMOKE_CHECK.md` | CURRENT_RUN | Phase 5B closeout: Alphalens smoke check, IC cross-validation | Review Phase 5B completion |
+| `research/.../PHASE_5B_ALPHALENS_SMOKE_CHECK.md` | COMPLETE | Phase 5B+5C: sample-aligned Alphalens smoke check, 8/8 near_match, 233 tests pass | Review Phase 5 completion |
 | `research/.../PHASE_4_FACTOR_FACTORY_V1.md` | CURRENT_RUN | Factor Factory v1 closeout: 11 factors registered, 187 tests pass | Review Phase 4 completion |
 
 Path prefix: `research/factor_runs/crypto_top50_factor_library/`

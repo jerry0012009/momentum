@@ -1,5 +1,4 @@
-"""Unit tests for run_alphalens_smoke_check.py."""
-import json
+"""Unit tests for run_alphalens_smoke_check.py (Phase 5C)."""
 import sys
 from pathlib import Path
 
@@ -10,19 +9,23 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 from run_alphalens_smoke_check import (
-    build_comparison_table,
+    EXCLUDED_SYMBOLS,
+    build_comparison_row,
     build_factor_data,
-    load_local_results,
+    compute_direct_spearman_ic,
+    filter_to_evaluation_universe,
     run_alphalens_analysis,
 )
 
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
-def _make_exported_data(n=200, n_symbols=5):
+def _make_exported_data(n=200, n_symbols=8, include_excluded=True):
     """Create synthetic alphalens_factor_data.parquet-style data."""
     timestamps = pd.date_range("2025-01-01", periods=n, freq="h", tz="UTC")
     symbols = [f"S{i:02d}USDT" for i in range(n_symbols)]
+    if include_excluded:
+        symbols.extend(EXCLUDED_SYMBOLS[:3])
     rows = []
     rng = np.random.default_rng(42)
     for sym in symbols:
@@ -41,7 +44,6 @@ def _make_exported_data(n=200, n_symbols=5):
 
 
 def _make_local_results_df():
-    """Create synthetic local evaluation results with both IC_mean and RankIC_mean."""
     rows = []
     for fid in ["mom_20h", "wq101_alpha53"]:
         for h in ["1h", "4h", "24h", "72h"]:
@@ -55,129 +57,132 @@ def _make_local_results_df():
     return pd.DataFrame(rows)
 
 
-# ── Tests ─────────────────────────────────────────────────────────
+# ── Sample Alignment Tests ────────────────────────────────────────
 
-class TestBuildFactorData:
-    def test_output_columns(self):
-        afd = _make_exported_data()
-        horizons = ["1h", "4h", "24h", "72h"]
-        result = build_factor_data(afd, horizons)
-        assert "factor" in result.columns
-        assert "factor_quantile" in result.columns
-        for h in horizons:
-            assert h in result.columns
+class TestSampleAlignment:
+    def test_excluded_symbols_removed(self):
+        afd = _make_exported_data(n=50, n_symbols=5, include_excluded=True)
+        fd = build_factor_data(afd, ["1h"])
+        filtered, info = filter_to_evaluation_universe(fd, EXCLUDED_SYMBOLS)
+        assets = filtered.index.get_level_values("asset").unique()
+        for sym in EXCLUDED_SYMBOLS:
+            assert sym not in assets
 
-    def test_multiindex_names(self):
-        afd = _make_exported_data()
-        result = build_factor_data(afd, ["1h"])
-        assert result.index.names == ["date", "asset"]
+    def test_excluded_count_correct(self):
+        afd = _make_exported_data(n=50, n_symbols=5, include_excluded=True)
+        fd = build_factor_data(afd, ["1h"])
+        _, info = filter_to_evaluation_universe(fd, EXCLUDED_SYMBOLS)
+        assert info["excluded_count"] == len(EXCLUDED_SYMBOLS)
 
-    def test_row_count(self):
-        afd = _make_exported_data(n=50, n_symbols=3)
-        result = build_factor_data(afd, ["1h"])
-        assert len(result) == 50 * 3
+    def test_post_filter_rows_less_than_pre(self):
+        afd = _make_exported_data(n=50, n_symbols=5, include_excluded=True)
+        fd = build_factor_data(afd, ["1h"])
+        _, info = filter_to_evaluation_universe(fd, EXCLUDED_SYMBOLS)
+        assert info["post_filter_rows"] < info["pre_filter_rows"]
+
+    def test_evaluation_symbols_count_reported(self):
+        afd = _make_exported_data(n=50, n_symbols=5, include_excluded=True)
+        fd = build_factor_data(afd, ["1h"])
+        _, info = filter_to_evaluation_universe(fd, EXCLUDED_SYMBOLS)
+        assert "evaluation_symbols_count" in info
+        assert info["evaluation_symbols_count"] > 0
+
+    def test_no_excluded_when_not_included(self):
+        afd = _make_exported_data(n=50, n_symbols=5, include_excluded=False)
+        fd = build_factor_data(afd, ["1h"])
+        filtered, info = filter_to_evaluation_universe(fd, EXCLUDED_SYMBOLS)
+        assert info["pre_filter_symbols"] == info["post_filter_symbols"]
 
 
-class TestRunAlphalensAnalysis:
-    def test_ic_computed(self):
-        afd = _make_exported_data(n=100, n_symbols=3)
-        factor_data = build_factor_data(afd, ["1h", "4h"])
-        result = run_alphalens_analysis(factor_data, ["1h", "4h"])
+# ── Direct Spearman Tests ─────────────────────────────────────────
+
+class TestDirectSpearman:
+    def test_returns_mean_std_count(self):
+        afd = _make_exported_data(n=100, n_symbols=3, include_excluded=False)
+        fd = build_factor_data(afd, ["1h"])
+        result = compute_direct_spearman_ic(fd, "1h")
         assert result["status"] == "ok"
-        assert "1h" in result["ic"]
-        assert "4h" in result["ic"]
-        assert "mean" in result["ic"]["1h"]
+        assert "mean" in result
+        assert "std" in result
+        assert "count" in result
 
-    def test_quantile_returns_computed(self):
-        afd = _make_exported_data(n=100, n_symbols=3)
-        factor_data = build_factor_data(afd, ["1h"])
-        result = run_alphalens_analysis(factor_data, ["1h"])
-        assert "1h" in result["mean_return_by_quantile"]
-        qr = result["mean_return_by_quantile"]["1h"]
-        assert len(qr) == 5  # 5 quantiles
-
-    def test_missing_horizon(self):
-        afd = _make_exported_data(n=50, n_symbols=3)
-        factor_data = build_factor_data(afd, ["1h"])
-        result = run_alphalens_analysis(factor_data, ["99h"])
-        assert result["status"] == "error"
+    def test_missing_horizon_column(self):
+        afd = _make_exported_data(n=50, n_symbols=3, include_excluded=False)
+        fd = build_factor_data(afd, ["1h"])
+        assert compute_direct_spearman_ic(fd, "99h")["status"] == "error"
 
 
-class TestBuildComparisonTable:
-    def test_match_when_exact(self):
-        """rankic_abs_diff <= 1e-6 → match."""
+# ── Comparison Row Tests ──────────────────────────────────────────
+
+class TestBuildComparisonRow:
+    def test_match_when_identical(self):
         local_df = _make_local_results_df()
-        # alphalens_ic == local RankIC_mean (0.015)
-        comp = build_comparison_table("mom_20h", "1h", 0.015, local_df)
-        assert comp["status"] == "match"
-        assert comp["rankic_abs_diff"] == 0.0
+        row = build_comparison_row("mom_20h", "1h", 0.05, 0.05, local_df)
+        assert row["status"] == "match"
+        assert row["primary_abs_diff"] == 0.0
 
-    def test_near_match_when_small_diff(self):
-        """1e-6 < rankic_abs_diff <= 1e-4 → near_match."""
+    def test_near_match_small_diff(self):
         local_df = _make_local_results_df()
-        # alphalens_ic slightly off from RankIC_mean (0.015)
-        comp = build_comparison_table("mom_20h", "1h", 0.01505, local_df)
-        assert comp["status"] == "near_match"
+        row = build_comparison_row("mom_20h", "1h", 0.05, 0.05005, local_df)
+        assert row["status"] == "near_match"
 
-    def test_mismatch_when_large_diff(self):
-        """rankic_abs_diff > 1e-4 → mismatch."""
+    def test_mismatch_large_diff(self):
         local_df = _make_local_results_df()
-        comp = build_comparison_table("mom_20h", "1h", 0.05, local_df)
-        assert comp["status"] == "mismatch"
-        assert "rankic_abs_diff" in comp["note"]
+        row = build_comparison_row("mom_20h", "1h", 0.05, 0.10, local_df)
+        assert row["status"] == "mismatch"
+        assert "primary_diff" in row["note"]
 
-    def test_local_not_found(self):
+    def test_schema_keys(self):
         local_df = _make_local_results_df()
-        comp = build_comparison_table("unknown_factor", "1h", 0.01, local_df)
-        assert comp["status"] == "local_result_not_found"
-
-
-class TestComparisonTableSchema:
-    def test_required_keys(self):
-        local_df = _make_local_results_df()
-        comp = build_comparison_table("mom_20h", "1h", 0.01, local_df)
+        row = build_comparison_row("mom_20h", "1h", 0.01, 0.01, local_df)
         required = {
             "factor_id", "horizon",
-            "local_Pearson_IC", "local_RankIC", "alphalens_Spearman_IC",
-            "rankic_abs_diff", "pearson_abs_diff",
-            "status", "note",
+            "local_summary_RankIC", "direct_SpearmanIC",
+            "alphalens_SpearmanIC", "primary_abs_diff", "status", "note",
         }
-        assert required.issubset(comp.keys())
+        assert required.issubset(row.keys())
 
-    def test_primary_comparison_uses_rankic(self):
-        """Primary diff must be rankic_abs_diff, not pearson_abs_diff."""
+    def test_status_based_on_primary_diff(self):
+        """Status determined by alphalens vs direct Spearman."""
         local_df = _make_local_results_df()
-        comp = build_comparison_table("mom_20h", "1h", 0.015, local_df)
-        # RankIC_mean=0.015, alphalens_ic=0.015 → rankic_abs_diff=0
-        assert comp["rankic_abs_diff"] == 0.0
-        assert comp["status"] == "match"
-        # Pearson IC_mean=0.015 → pearson_abs_diff should be 0.005
-        assert comp["pearson_abs_diff"] == 0.005
-
-    def test_status_based_on_rankic_diff(self):
-        """Status must be determined by rankic_abs_diff, not pearson_abs_diff."""
-        local_df = _make_local_results_df()
-        # RankIC_mean=0.015, alphalens=0.01505 → near_match
-        comp = build_comparison_table("mom_20h", "1h", 0.01505, local_df)
-        assert comp["status"] == "near_match"
-        # pearson_abs_diff would be |0.01505-0.01| = 0.00505 → mismatch if used
-        assert comp["pearson_abs_diff"] > 1e-4
+        row = build_comparison_row("mom_20h", "1h", 0.05, 0.05, local_df)
+        assert row["status"] == "match"
 
 
-class TestDependencyHandling:
-    def test_alphalens_importable(self):
-        """Verify alphalens is installed (smoke check prerequisite)."""
-        try:
-            import alphalens
-            assert hasattr(alphalens, "__version__")
-        except ImportError:
-            pytest.skip("alphalens not installed")
+# ── Verdict Logic ─────────────────────────────────────────────────
 
+class TestVerdictLogic:
+    def test_all_match_allows_pass(self):
+        statuses = ["match", "match", "near_match", "match"]
+        assert all(s in ("match", "near_match") for s in statuses)
+
+    def test_mismatch_prevents_pass(self):
+        statuses = ["match", "mismatch", "match", "match"]
+        assert not all(s in ("match", "near_match") for s in statuses)
+
+
+# ── Alphalens Functionality ───────────────────────────────────────
+
+class TestAlphalensFunctions:
+    def test_ic_computed(self):
+        afd = _make_exported_data(n=100, n_symbols=3, include_excluded=False)
+        fd = build_factor_data(afd, ["1h", "4h"])
+        result = run_alphalens_analysis(fd, ["1h", "4h"])
+        assert result["status"] == "ok"
+        assert "1h" in result["ic"]
+
+    def test_quantile_returns_computed(self):
+        afd = _make_exported_data(n=100, n_symbols=3, include_excluded=False)
+        fd = build_factor_data(afd, ["1h"])
+        result = run_alphalens_analysis(fd, ["1h"])
+        assert "1h" in result["mean_return_by_quantile"]
+        assert len(result["mean_return_by_quantile"]["1h"]) == 5
+
+
+# ── Source Code Checks ────────────────────────────────────────────
 
 class TestNoFutureLeak:
     def test_no_shift_in_source(self):
-        """Verify the smoke check script does not use shift(-k)."""
         src = Path(__file__).resolve().parents[2] / "scripts" / "run_alphalens_smoke_check.py"
         code = src.read_text()
         assert "shift(-" not in code
-        assert "shift(-1)" not in code

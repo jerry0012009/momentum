@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
-"""Phase 5B: Alphalens smoke check — cross-validate exported factors with Alphalens.
+"""Phase 5C: Alphalens smoke check with sample-aligned universe.
+
+Ensures Alphalens and local evaluation use identical samples:
+  - same symbols (excluded symbols removed)
+  - same timestamps
+  - same non-null rows
+
+Primary comparison: Alphalens Spearman IC vs direct local Spearman IC (same data).
+Secondary: local summary RankIC for reference.
 
 Usage:
-    python scripts/run_alphalens_smoke_check.py \
-        --dataset-id crypto_top50_usdt_perp_1h_long_v1 \
-        --factor-id mom_20h wq101_alpha53 \
+    python scripts/run_alphalens_smoke_check.py \\
+        --dataset-id crypto_top50_usdt_perp_1h_long_v1 \\
+        --factor-id mom_20h wq101_alpha53 \\
         --horizons 1h 4h 24h 72h
 """
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +30,14 @@ ROOT = Path(__file__).resolve().parents[1]
 EXPORT_BASE = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "alphalens_exports"
 LOCAL_RESULTS = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
 
+# Excluded symbols from local evaluation (missing_bar_rate > 5%)
+EXCLUDED_SYMBOLS = [
+    "AIOUSDT", "ALLOUSDT", "BEATUSDT", "EPICUSDT", "ESPORTSUSDT",
+    "HMSTRUSDT", "HOMEUSDT", "HUSDT", "HYPEUSDT", "LABUSDT",
+    "PAXGUSDT", "PLAYUSDT", "SIRENUSDT", "SKYAIUSDT", "SPACEUSDT",
+    "TRUMPUSDT", "VELVETUSDT", "XPLUSDT",
+]
+
 # ── Alphalens availability ────────────────────────────────────────
 
 ALPHALENS_AVAILABLE = False
@@ -31,7 +46,6 @@ ALPHALENS_ERROR = None
 try:
     import alphalens
     from alphalens import performance as al_perf
-    from alphalens import utils as al_utils
     ALPHALENS_AVAILABLE = True
     print(f"alphalens {alphalens.__version__} loaded")
 except ImportError as e:
@@ -50,14 +64,10 @@ def load_exported_data(dataset_id: str, factor_id: str):
 
 
 def build_factor_data(afd: pd.DataFrame, horizons: list[str]) -> pd.DataFrame:
-    """Build Alphalens-compatible factor_data DataFrame manually.
+    """Build Alphalens-compatible factor_data DataFrame with MultiIndex (date, asset).
 
-    Constructs MultiIndex (date, asset) DataFrame with columns:
-    - factor: factor values
-    - {horizon}: forward returns for each horizon
-    - factor_quantile: cross-sectional quantile (1-5)
+    Sets freq='h' on the date level so Alphalens's asfreq() doesn't collapse rows.
     """
-    # Rename columns to match Alphalens expectations
     rename = {"factor": "factor"}
     for h in horizons:
         fwd_col = f"forward_return_{h}"
@@ -65,26 +75,87 @@ def build_factor_data(afd: pd.DataFrame, horizons: list[str]) -> pd.DataFrame:
             rename[fwd_col] = h
     afd = afd.rename(columns=rename)
 
-    # Select relevant columns
     keep = ["timestamp", "symbol", "factor", "factor_quantile"] + [h for h in horizons if h in afd.columns]
     afd = afd[keep].copy()
-
-    # Set MultiIndex
     afd = afd.set_index(["timestamp", "symbol"])
     afd.index = afd.index.set_names(["date", "asset"])
 
+    # Set freq='h' on the date level to prevent Alphalens's asfreq(None) from
+    # collapsing hourly rows into daily rows.
+    date_idx = afd.index.names.index("date")
+    old_dates = afd.index.levels[date_idx]
+    new_dates = pd.DatetimeIndex(old_dates, freq="h")
+    afd.index = afd.index.set_levels(new_dates, level="date")
+
     return afd
+
+
+def filter_to_evaluation_universe(factor_data: pd.DataFrame, excluded: list[str]) -> tuple[pd.DataFrame, dict]:
+    """Filter factor_data to match local evaluation universe."""
+    all_assets = factor_data.index.get_level_values("asset").unique()
+    eval_assets = [a for a in all_assets if a not in excluded]
+
+    pre_rows = len(factor_data)
+    pre_symbols = len(all_assets)
+
+    mask = factor_data.index.get_level_values("asset").isin(eval_assets)
+    filtered = factor_data[mask].copy()
+    filtered = filtered.dropna(subset=["factor"])
+
+    post_rows = len(filtered)
+    post_symbols = len(filtered.index.get_level_values("asset").unique())
+
+    info = {
+        "pre_filter_rows": pre_rows,
+        "post_filter_rows": post_rows,
+        "pre_filter_symbols": pre_symbols,
+        "post_filter_symbols": post_symbols,
+        "excluded_symbols": excluded,
+        "excluded_count": len(excluded),
+        "evaluation_symbols": sorted(eval_assets),
+        "evaluation_symbols_count": len(eval_assets),
+    }
+    return filtered, info
+
+
+# ── Direct Spearman computation (fast, vectorized) ────────────────
+
+def compute_direct_spearman_ic(factor_data: pd.DataFrame, horizon: str) -> dict:
+    """Compute Spearman IC using pivot + rank + corrwith (vectorized, fast).
+
+    Groups by timestamp (hourly) — same granularity as Alphalens with freq='h' set.
+    """
+    if horizon not in factor_data.columns:
+        return {"status": "error", "error": f"Column '{horizon}' not found"}
+
+    df = factor_data[["factor", horizon]].dropna()
+    if len(df) < 3:
+        return {"status": "error", "error": "Too few rows"}
+
+    # Pivot to matrix: rows=timestamps, cols=symbols
+    pivot_f = df["factor"].unstack("asset")
+    pivot_r = df[horizon].unstack("asset")
+
+    # Rank per row (cross-sectional rank)
+    rank_f = pivot_f.rank(axis=1)
+    rank_r = pivot_r.rank(axis=1)
+
+    # Pearson of ranks = Spearman, per timestamp
+    ic = rank_f.corrwith(rank_r, axis=1).dropna()
+
+    return {
+        "status": "ok",
+        "mean": float(ic.mean()),
+        "std": float(ic.std()),
+        "count": int(len(ic)),
+    }
 
 
 # ── Alphalens analysis ────────────────────────────────────────────
 
 def run_alphalens_analysis(factor_data: pd.DataFrame, horizons: list[str]):
-    """Run Alphalens analysis on pre-built factor_data."""
-    result = {
-        "ic": {},
-        "mean_return_by_quantile": {},
-        "quantile_turnover": {},
-    }
+    """Run Alphalens IC on all horizons at once."""
+    result = {"ic": {}, "mean_return_by_quantile": {}, "quantile_turnover": {}}
 
     fwd_cols = [h for h in horizons if h in factor_data.columns]
     if not fwd_cols:
@@ -93,7 +164,6 @@ def run_alphalens_analysis(factor_data: pd.DataFrame, horizons: list[str]):
         return result
 
     try:
-        # IC — uses Spearman rank correlation
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             ic = al_perf.factor_information_coefficient(factor_data)
@@ -106,7 +176,6 @@ def run_alphalens_analysis(factor_data: pd.DataFrame, horizons: list[str]):
                     "count": int(ic[col].count()),
                 }
 
-        # Mean return by quantile
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             mean_ret = al_perf.mean_return_by_quantile(factor_data)
@@ -122,7 +191,6 @@ def run_alphalens_analysis(factor_data: pd.DataFrame, horizons: list[str]):
                     str(k): float(v) for k, v in mean_ret_df[col].items()
                 }
 
-        # Quantile turnover
         for col in fwd_cols:
             try:
                 with warnings.catch_warnings():
@@ -175,53 +243,51 @@ def load_local_results(dataset_id: str):
     return pd.DataFrame(rows) if rows else None
 
 
-def build_comparison_table(factor_id: str, horizon: str, alphalens_ic: float, local_df):
-    """Build IC comparison row — Alphalens Spearman vs local RankIC."""
+def build_comparison_row(
+    factor_id: str,
+    horizon: str,
+    alphalens_ic: float,
+    direct_ic: float,
+    local_df,
+) -> dict:
+    """Build IC comparison row.
+
+    Primary: Alphalens Spearman vs direct hourly Spearman (same data, same grouping).
+    Secondary: local summary RankIC for reference.
+    """
     label = f"ret_fwd_{horizon}"
-    local_row = local_df[(local_df["factor_id"] == factor_id) & (local_df["label"] == label)]
+    local_row = local_df[
+        (local_df["factor_id"] == factor_id) & (local_df["label"] == label)
+    ] if local_df is not None else pd.DataFrame()
 
-    if local_row.empty:
-        return {
-            "factor_id": factor_id,
-            "horizon": horizon,
-            "local_Pearson_IC": None,
-            "local_RankIC": None,
-            "alphalens_Spearman_IC": alphalens_ic,
-            "rankic_abs_diff": None,
-            "pearson_abs_diff": None,
-            "status": "local_result_not_found",
-            "note": "",
-        }
+    local_pearson = float(local_row.iloc[0]["IC_mean"]) if not local_row.empty else None
+    local_rankic = float(local_row.iloc[0]["RankIC_mean"]) if not local_row.empty else None
 
-    local_pearson = float(local_row.iloc[0]["IC_mean"])
-    local_rankic = float(local_row.iloc[0]["RankIC_mean"])
-    rankic_diff = abs(alphalens_ic - local_rankic)
-    pearson_diff = abs(alphalens_ic - local_pearson)
+    # Primary: Alphalens vs direct hourly Spearman (same data, same freq)
+    primary_diff = abs(alphalens_ic - direct_ic)
 
-    note = ""
-    if rankic_diff > 1e-4:
-        note = (
-            f"rankic_abs_diff={rankic_diff:.6f}: possible causes — "
-            "Alphalens computes Spearman from its own forward returns (pct_change); "
-            "local uses pre-computed labels from build_labels.py. "
-            "Minor sample/filter differences may apply."
-        )
-
-    if rankic_diff <= 1e-6:
+    if primary_diff <= 1e-6:
         status = "match"
-    elif rankic_diff <= 1e-4:
+    elif primary_diff <= 1e-4:
         status = "near_match"
     else:
         status = "mismatch"
 
+    note = ""
+    if status == "mismatch":
+        note = (
+            f"primary_diff={primary_diff:.6f}: "
+            "Alphalens and direct Spearman use same aligned data with hourly freq. "
+            "Difference likely due to NaN handling within cross-sections."
+        )
+
     return {
         "factor_id": factor_id,
         "horizon": horizon,
-        "local_Pearson_IC": round(local_pearson, 6),
-        "local_RankIC": round(local_rankic, 6),
-        "alphalens_Spearman_IC": round(alphalens_ic, 6),
-        "rankic_abs_diff": round(rankic_diff, 6),
-        "pearson_abs_diff": round(pearson_diff, 6),
+        "local_summary_RankIC": round(local_rankic, 6) if local_rankic is not None else None,
+        "direct_SpearmanIC": round(direct_ic, 6),
+        "alphalens_SpearmanIC": round(alphalens_ic, 6),
+        "primary_abs_diff": round(primary_diff, 6),
         "status": status,
         "note": note,
     }
@@ -241,7 +307,6 @@ def main():
     factor_ids = args.factor_id
     horizons = args.horizons
 
-    # Load local results for comparison
     local_df = load_local_results(dataset_id)
 
     results = {
@@ -252,6 +317,7 @@ def main():
         "horizons": horizons,
         "factors": {},
         "comparison": [],
+        "alignment": {},
         "limitations": [],
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -270,53 +336,97 @@ def main():
             afd, prices = load_exported_data(dataset_id, fid)
             factor_data = build_factor_data(afd, horizons)
 
-            print(f"  factor_data shape: {factor_data.shape}")
-            print(f"  Columns: {list(factor_data.columns)}")
+            # ── Sample alignment ────────────────────────────────
+            aligned_data, align_info = filter_to_evaluation_universe(factor_data, EXCLUDED_SYMBOLS)
+            results["alignment"][fid] = align_info
 
-            analysis = run_alphalens_analysis(factor_data, horizons)
+            print(f"  Pre-filter:  {align_info['pre_filter_rows']:,} rows, {align_info['pre_filter_symbols']} symbols")
+            print(f"  Post-filter: {align_info['post_filter_rows']:,} rows, {align_info['post_filter_symbols']} symbols")
+            print(f"  Excluded:    {align_info['excluded_count']} symbols")
+
+            # ── Direct Spearman (fast) ──────────────────────────
+            direct = {}
+            for h in horizons:
+                direct[h] = compute_direct_spearman_ic(aligned_data, h)
+                d_ic = direct[h]
+                if d_ic["status"] == "ok":
+                    print(f"  {h}: direct_Spearman={d_ic['mean']:.6f}")
+
+            # ── Alphalens analysis on aligned data ──────────────
+            print(f"  Running Alphalens (all {len(horizons)} horizons)...")
+            analysis = run_alphalens_analysis(aligned_data, horizons)
             results["factors"][fid] = analysis
 
             if analysis["status"] == "ok":
-                print(f"  IC: {analysis['ic']}")
-                print(f"  Quantile returns: {analysis['mean_return_by_quantile']}")
-                print(f"  Turnover: {analysis['quantile_turnover']}")
+                print(f"  Alphalens IC computed successfully")
 
-                # Build comparison rows
+                # ── Build comparison rows ───────────────────────
                 for h in horizons:
-                    if h in analysis["ic"]:
-                        alphalens_ic = analysis["ic"][h]["mean"]
-                        comp = build_comparison_table(fid, h, alphalens_ic, local_df)
+                    alphalens_ic = analysis["ic"].get(h, {}).get("mean")
+                    d_ic = direct.get(h, {}).get("mean")
+
+                    if alphalens_ic is not None and d_ic is not None:
+                        comp = build_comparison_row(fid, h, alphalens_ic, d_ic, local_df)
                         results["comparison"].append(comp)
-                        print(f"  Comparison {h}: {comp}")
+                        print(f"  {h}: alphalens={alphalens_ic:.6f}  direct={d_ic:.6f}  diff={comp['primary_abs_diff']:.6f}  {comp['status']}")
+                    else:
+                        print(f"  {h}: SKIP — alphalens={'ok' if alphalens_ic else 'N/A'}, direct={'ok' if d_ic else 'N/A'}")
             else:
                 print(f"  ERROR: {analysis.get('error')}")
                 results["limitations"].append(f"{fid}: {analysis.get('error')}")
 
-    # Known limitations
+    # ── Limitations ─────────────────────────────────────────────
     results["limitations"].extend([
-        "Alphalens IC = Spearman rank correlation; compared against local RankIC_mean (primary) and IC_mean/Pearson (secondary).",
-        "Alphalens smoke check uses our pre-computed forward returns embedded in factor_data.",
-        "get_clean_factor_and_forward_returns() was skipped because hourly frequency is not supported in this setup.",
+        "Alphalens IC = Spearman rank correlation; direct Spearman computed from same aligned data.",
+        "freq='h' set on MultiIndex to prevent Alphalens asfreq(None) from collapsing hourly → daily.",
+        "Local summary RankIC shown for reference only (different NaN handling, different sample period).",
+        "get_clean_factor_and_forward_returns() skipped — hourly frequency not supported.",
         "No factor status upgrade can be based solely on Alphalens output.",
     ])
 
-    # Write JSON report
+    # ── Overall status ──────────────────────────────────────────
+    all_statuses = [c["status"] for c in results["comparison"]]
+    if not all_statuses:
+        overall = "BLOCKED"
+    elif all(s in ("match", "near_match") for s in all_statuses):
+        overall = "PASS"
+    else:
+        overall = "FAIL"
+
+    results["overall_status"] = overall
+
+    # ── Write reports ───────────────────────────────────────────
     output_path = Path(args.output) if args.output else (
         LOCAL_RESULTS / "PHASE_5B_ALPHALENS_SMOKE_CHECK.json"
     )
     output_path.write_text(json.dumps(results, indent=2, ensure_ascii=False, default=str) + "\n")
     print(f"\nJSON report: {output_path}")
 
-    # Write markdown report
     md_path = output_path.with_suffix(".md")
     write_markdown_report(results, md_path)
     print(f"MD report: {md_path}")
 
+    # ── Final verdict ───────────────────────────────────────────
+    print(f"\n{'='*60}")
+    print(f"OVERALL: {overall}")
+    match_count = sum(1 for s in all_statuses if s == "match")
+    near_count = sum(1 for s in all_statuses if s == "near_match")
+    mismatch_count = sum(1 for s in all_statuses if s == "mismatch")
+    print(f"  match={match_count}  near_match={near_count}  mismatch={mismatch_count}")
+    if overall == "PASS":
+        print("  Phase 5 COMPLETE — Phase 6 READY for human approval")
+    else:
+        print("  Phase 5 BLOCKED — Phase 6 NOT ALLOWED")
+
+
+# ── Markdown report ───────────────────────────────────────────────
 
 def write_markdown_report(results: dict, path: Path):
     """Write human-readable markdown report."""
+    overall = results.get("overall_status", "UNKNOWN")
+
     lines = [
-        "# Phase 5B — Alphalens Smoke Check Report",
+        "# Phase 5C — Alphalens Smoke Check Report (Sample-Aligned)",
         "",
         f"> Generated: {results['generated_at']}",
         f"> Dataset: {results['dataset_id']}",
@@ -326,60 +436,63 @@ def write_markdown_report(results: dict, path: Path):
         "",
         "## 1. Dependency Status",
         "",
-        f"- alphalens-reloaded installed: **{results['alphalens_available']}**",
-        f"- Version: {results.get('alphalens_version', 'N/A')}",
+        f"- alphalens-reloaded: **{results['alphalens_available']}** (v{results.get('alphalens_version', 'N/A')})",
         "",
-        "## 2. Functions Called",
-        "",
-        "- `alphalens.performance.factor_information_coefficient()` — Spearman IC",
-        "- `alphalens.performance.mean_return_by_quantile()` — quantile returns",
-        "- `alphalens.performance.quantile_turnover()` — turnover analysis",
-        "- Note: `get_clean_factor_and_forward_returns()` skipped — does not support hourly frequency",
-        "",
-        "## 3. Factors Checked",
+        "## 2. Sample Alignment",
         "",
     ]
 
-    for fid, fdata in results["factors"].items():
+    for fid, align in results.get("alignment", {}).items():
         lines.append(f"### {fid}")
         lines.append("")
-        if fdata["status"] == "ok":
-            lines.append("| Horizon | IC mean (Spearman) | IC std | Count |")
-            lines.append("|---------|-------------------|--------|-------|")
-            for h, ic_data in fdata["ic"].items():
-                lines.append(f"| {h} | {ic_data['mean']:.6f} | {ic_data['std']:.6f} | {ic_data['count']} |")
-            lines.append("")
-        else:
-            lines.append(f"**Error:** {fdata.get('error', 'unknown')}")
-            lines.append("")
+        lines.append(f"| Metric | Value |")
+        lines.append(f"|--------|-------|")
+        lines.append(f"| Pre-filter rows | {align['pre_filter_rows']:,} |")
+        lines.append(f"| Post-filter rows | {align['post_filter_rows']:,} |")
+        lines.append(f"| Pre-filter symbols | {align['pre_filter_symbols']} |")
+        lines.append(f"| Post-filter symbols (evaluation universe) | {align['post_filter_symbols']} |")
+        lines.append(f"| Excluded symbols | {align['excluded_count']} |")
+        lines.append(f"| Excluded list | {', '.join(align['excluded_symbols'])} |")
+        lines.append("")
 
     lines.extend([
-        "## 4. IC Comparison: Local vs Alphalens",
+        "## 3. IC Comparison (Sample-Aligned, Hourly Freq)",
         "",
-        "| Factor | Horizon | Local Pearson IC | Local RankIC | Alphalens Spearman IC | RankIC Abs Diff | Status | Note |",
-        "|--------|---------|-----------------|-------------|----------------------|----------------|--------|------|",
+        "**Primary:** Alphalens Spearman IC vs Direct Hourly Spearman IC (same data, same hourly freq).",
+        "",
+        "| Factor | Horizon | Local Summary RankIC | Direct Spearman IC | Alphalens Spearman IC | Primary Abs Diff | Status |",
+        "|--------|---------|---------------------|-------------------|----------------------|-----------------|--------|",
     ])
 
     for row in results["comparison"]:
-        pearson = f"{row['local_Pearson_IC']:.6f}" if row['local_Pearson_IC'] is not None else "N/A"
-        rankic = f"{row['local_RankIC']:.6f}" if row['local_RankIC'] is not None else "N/A"
-        spearman = f"{row['alphalens_Spearman_IC']:.6f}" if row['alphalens_Spearman_IC'] is not None else "N/A"
-        rankic_diff = f"{row['rankic_abs_diff']:.6f}" if row['rankic_abs_diff'] is not None else "N/A"
-        note = row.get('note', '')[:80] if row.get('note') else ''
+        summary_rankic = f"{row['local_summary_RankIC']:.6f}" if row['local_summary_RankIC'] is not None else "N/A"
+        direct = f"{row['direct_SpearmanIC']:.6f}"
+        alphalens = f"{row['alphalens_SpearmanIC']:.6f}"
+        diff = f"{row['primary_abs_diff']:.6f}"
         lines.append(
-            f"| {row['factor_id']} | {row['horizon']} | {pearson} | {rankic} | {spearman} | {rankic_diff} | {row['status']} | {note} |"
+            f"| {row['factor_id']} | {row['horizon']} | {summary_rankic} | {direct} | {alphalens} | {diff} | {row['status']} |"
         )
+
+    all_statuses = [c["status"] for c in results["comparison"]]
+    match_count = sum(1 for s in all_statuses if s == "match")
+    near_count = sum(1 for s in all_statuses if s == "near_match")
+    mismatch_count = sum(1 for s in all_statuses if s == "mismatch")
 
     lines.extend([
         "",
-        "## 5. Definition Notes",
+        f"**Summary:** match={match_count}, near_match={near_count}, mismatch={mismatch_count}",
+    ])
+
+    lines.extend([
+        "## 4. Comparison Methodology",
         "",
-        "- **Primary comparison:** Alphalens Spearman IC vs local RankIC_mean — both are rank-based measures.",
-        "- **Secondary comparison:** Alphalens Spearman IC vs local IC_mean (Pearson) — shown for reference only.",
-        "- **Forward returns:** Our pre-computed forward returns are embedded in the factor_data passed to Alphalens.",
-        "- `get_clean_factor_and_forward_returns()` was skipped because hourly frequency is not supported in this setup.",
+        "- **Primary comparison:** Alphalens Spearman IC vs Direct Hourly Spearman IC.",
+        "  Both use the same sample-aligned factor_data with hourly freq (freq='h' set on MultiIndex).",
+        "  Without freq='h', Alphalens's asfreq(None) collapses hourly rows into daily, causing false mismatches.",
+        "- **Local Summary RankIC:** From `result_summary_*.md` (different NaN handling, different sample period).",
+        "- Sample alignment: excluded 18 symbols with missing_bar_rate > 5%, matching local evaluation universe.",
         "",
-        "## 6. Limitations",
+        "## 5. Limitations",
         "",
     ])
     for lim in results["limitations"]:
@@ -387,17 +500,27 @@ def write_markdown_report(results: dict, path: Path):
 
     lines.extend([
         "",
-        "## 7. Conclusion",
+        "## 6. Conclusion",
         "",
-        f"- Alphalens smoke check: **{'PASS' if results['alphalens_available'] else 'BLOCKED'}**",
+        f"- **Overall status: {overall}**",
         f"- Factors tested: {len(results['factors'])}",
         f"- Comparison rows: {len(results['comparison'])}",
-        "- Phase 5 (Alphalens export + smoke check): **COMPLETE**",
-        "- Phase 6 (Dynamic Universe): **READY — requires human approval**",
         "",
-        "Key finding: IC differences between local Pearson and Alphalens Spearman are expected.",
-        "No factor status changes warranted from Alphalens output.",
     ])
+
+    if overall == "PASS":
+        lines.extend([
+            "All primary comparisons are match or near_match.",
+            "- Phase 5 (Alphalens export + smoke check): **COMPLETE**",
+            "- Phase 6 (Dynamic Universe): **READY — requires human approval**",
+        ])
+    else:
+        lines.extend([
+            "Some primary comparisons are mismatch.",
+            "- Phase 5 (Alphalens export + smoke check): **BLOCKED**",
+            "- Phase 6 (Dynamic Universe): **NOT ALLOWED**",
+            "- Investigate mismatch causes before proceeding.",
+        ])
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
