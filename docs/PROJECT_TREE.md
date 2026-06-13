@@ -21,90 +21,153 @@ jerry/momentum/
 │     ├─ up_down_wave.yaml
 │     └─ box_consolidation.yaml
 ├─ data/
-│  ├─ raw/           # 原始数据（默认不入库）
-│  ├─ bronze/        # 清洗中间层
-│  ├─ silver/        # 标准化数据（回测主要读取）
-│  └─ features/      # 因子结果
+│  ├─ cache/                # universe data cache (bars, manifest)
+│  │  └─ crypto_top50_usdt_perp_1h/
+│  │     ├─ bars_1h.parquet
+│  │     └─ manifest.json
+│  ├─ features/             # factor values and labels
+│  │  └─ crypto_top50_usdt_perp_1h/
+│  │     ├─ labels.parquet
+│  │     ├─ mom_20h/factor_values.parquet
+│  │     ├─ reversal_5h/factor_values.parquet
+│  │     ├─ volatility_20h/factor_values.parquet
+│  │     ├─ rsi_14h/factor_values.parquet
+│  │     └─ bb_zscore_20h/factor_values.parquet
+│  ├─ raw/                  # raw data (not committed)
+│  ├─ bronze/               # cleaning intermediate
+│  └─ silver/               # standardized data
 ├─ docs/
-│  ├─ ARCHITECTURE.md
-│  ├─ ROADMAP.md
-│  ├─ LEARNING_TRACK.md
-│  ├─ MAINLINE1_STRATEGY_FACTOR_MAP.md
-│  ├─ CANDIDATE_FACTOR_POOL.md
+│  │
+│  │  # ── Navigation & Roadmap ──
+│  ├─ DOCS_INDEX.md              # documentation entry point
+│  ├─ FACTOR_LIBRARY_ROADMAP.md  # Phase 0–10 roadmap (authoritative)
+│  ├─ TODO.md                    # current project board
+│  ├─ ARCHITECTURE.md            # project architecture overview
+│  │
+│  │  # ── Factor Library Core ──
+│  ├─ FACTOR_LIBRARY_SKELETON.md # factor schema, interface, protocol
+│  ├─ FACTOR_LIBRARY_DESIGN.md   # design rationale, universe, labels
+│  ├─ FACTOR_REGISTRY.md         # factor definitions and status
+│  ├─ FACTOR_EVALUATION_STANDARD.md # evaluation criteria
+│  ├─ FACTOR_BACKLOG.md          # factor research queue
+│  ├─ CANDIDATE_FACTOR_POOL.md   # candidate factor ideas
+│  ├─ CRYPTO_FACTOR_PIPELINE_RUNBOOK.md # pipeline execution guide
+│  │
+│  │  # ── Audit & Quality Control ──
 │  ├─ AUDITABLE_FACTOR_RESEARCH_SKILL.md
 │  ├─ RESEARCH_LIFECYCLE.md
-│  ├─ FACTOR_LIBRARY_DESIGN.md
 │  ├─ CODE_TRUST_MAP.md
 │  ├─ BACKTEST_HONESTY_CHECKLIST.md
-│  ├─ SINGLE_FACTOR_REPORT_TEMPLATE.md
-│  ├─ FACTOR_BACKLOG.md
-│  ├─ TODO.md
 │  ├─ DATA_CONTRACT.md
-│  ├─ DATASET_XIAOMI_HK.md
-│  ├─ CHIP_DISTRIBUTION.md
-│  ├─ SIGNALS_UP_DOWN_WAVE.md
-│  ├─ SIGNALS_BOX_CONSOLIDATION.md
+│  │
+│  │  # ── Legacy Strategy & Signal Docs ──
+│  ├─ STRATEGY_SPEC.md
+│  ├─ SIGNAL_PIPELINE.md
+│  ├─ SIGNALS_*.md               # (10 signal docs)
+│  ├─ MAINLINE1_STRATEGY_FACTOR_MAP.md
+│  ├─ BACKTEST_WAVE_HOLD.md
+│  ├─ BACKTEST_VS_LIVE_EXPLAINER.md
+│  ├─ SINGLE_FACTOR_REPORT_TEMPLATE.md
 │  ├─ FOUNDATION_KERNEL_EXTREMA.md
 │  ├─ RESEARCH_PYTRENDLINE.md
-│  ├─ SIGNALS_TRENDLINE_BREAKOUT_NAVIGATOR.md
-│  ├─ BACKTEST_WAVE_HOLD.md
-│  ├─ SIGNAL_PIPELINE.md
+│  ├─ RESEARCH_TRENDLINE_EVENT.md
+│  ├─ TRENDLINE_CONFIRMATION_PROTOCOL.md
+│  ├─ LITERATURE_TRENDLINE_SIGNAL_MAP.md
+│  ├─ CHIP_DISTRIBUTION.md
+│  │
+│  │  # ── Historical & Supporting ──
+│  ├─ ROADMAP.md                 # early M1-M5 roadmap (superseded)
+│  ├─ LEARNING_TRACK.md
+│  ├─ PHASE2A_CHANGELOG.md
+│  ├─ PHASE2A_PAPER_TRADING_PLAN.md
+│  ├─ MANUAL_NARROW_PAPER_LANES.md
+│  ├─ RECENT_PAPER_SEEDS.md
 │  ├─ REPORTING_WEB.md
 │  ├─ REPORT_PIPELINE_REFACTOR.md
+│  ├─ RESEARCH_AUTOMATION_BRIEF.md
+│  ├─ AUTO_OPTIMIZATION_LOOP.md
 │  ├─ MAINTENANCE.md
-│  └─ STRATEGY_SPEC.md
+│  ├─ CROSS_ENGINE_MAPPING.md
+│  ├─ DATASET_XIAOMI_HK.md
+│  │
+│  │  # ── Bot / Rank Operational Docs ──
+│  ├─ BOT2_BOT3_OPERATING_CARD.md
+│  ├─ BOT2_BOT3_POLICY.md
+│  ├─ BOT2_BOT3_STATE.md
+│  ├─ BOT2_STRATEGY_REVIEW_BRIEF.md
+│  ├─ BOT6_PARK_REFRAME_BRIEF.md
+│  ├─ BOT7_QUANT_DIGEST_CRON_PROMPT.txt
+│  ├─ CANARY_32B_PHASE*.md
+│  ├─ CANARY_32B_TODO.md
+│  ├─ PARK_REFRAME_QUEUE.md
+│  ├─ RANK154_ARCHIVE_CLOSEOUT.md
+│  ├─ RANK154_DAILY_PAPER_RUNNER.md
+│  ├─ RANK213_ARCHIVE_CLOSEOUT.md
+│  ├─ RANK213_EVIDENCE_MAP.md
+│  ├─ RANK29_POSTMORTEM_2026-04.md
+│  ├─ RANK29_SHADOWS.md
+│  ├─ RANK32B_WARMUP_CAUSAL_AUDIT_2026-04-07.md
+│  └─ PROJECT_TREE.md
+│
 ├─ reports/
 │  ├─ artifacts/
+│  │  └─ factor_eval/
+│  │     └─ crypto_top50_usdt_perp_1h/
+│  │        ├─ mom_20h/         # metrics.json, result_summary.md
+│  │        ├─ reversal_5h/
+│  │        ├─ volatility_20h/
+│  │        ├─ rsi_14h/
+│  │        └─ bb_zscore_20h/
 │  └─ site/
+│
 ├─ research/
 │  ├─ factor_runs/
-│  │  ├─ _TEMPLATE/
-│  │  │  ├─ status.md
-│  │  │  ├─ factor_memo.md
-│  │  │  ├─ data_contract.md
-│  │  │  ├─ audit_notes.md
-│  │  │  ├─ reproduction.md
-│  │  │  └─ decision.md
-│  │  └─ rank444_rsi_bb_v0/
-│  │     ├─ status.md
-│  │     ├─ factor_memo.md
-│  │     ├─ data_contract.md
-│  │     ├─ audit_notes.md
-│  │     └─ reproduction.md
-│  └─ quant_digests/   # 定时研究笔记 / 文献卡片 / 仓库拆解
+│  │  ├─ _TEMPLATE/             # standard audit dossier template
+│  │  ├─ rank444_rsi_bb_v0/    # legacy rank444 dossier
+│  │  └─ crypto_top50_factor_library/  # ← current active run
+│  │     ├─ PHASE_2B_CLOSEOUT.md
+│  │     ├─ PHASE_2C_PLAN.md
+│  │     ├─ PHASE_2C_CLOSEOUT.md
+│  │     ├─ result_summary.md
+│  │     ├─ data_validation_report.md
+│  │     ├─ pipeline_plan.md
+│  │     ├─ factor_catalog_v0_1.csv
+│  │     ├─ experimental_catalog_v0_1.csv
+│  │     └─ local_artifact_index.md
+│  └─ quant_digests/
+│
+├─ scripts/
+│  ├─ fetch_crypto_top50_bars.py      # fetch OHLCV from Binance
+│  ├─ build_crypto_top50_universe.py  # build universe definition
+│  ├─ build_labels.py                 # calendar-time forward returns
+│  ├─ build_factor_values.py          # compute all registered factors
+│  ├─ evaluate_factors.py             # IC/spread/turnover evaluation
+│  └─ publish_report_site.sh          # publish static report site
+│
 ├─ src/momentum/
 │  ├─ domain/ data/ factors/ signals/ risk/
 │  ├─ portfolio/ engines/ execution/ analytics/ utils/
 │  └─ cli.py
-│     # current kernel/extrema/trendline research modules include:
-│     # - factors/endpoint_nadaraya_watson.py
-│     # - factors/confirmed_extrema.py
-│     # - factors/pytrendline_bridge.py
-│     # - signals/trendline_breakout_navigator.py
+│
 ├─ tests/
+│  └─ unit/
+│     ├─ test_crypto_labels.py            # calendar-time join, gap handling
+│     ├─ test_crypto_factor_values.py     # schema, known_at
+│     └─ test_crypto_factor_eval_smoke.py # IC, direction, gap exclusion
+│
 ├─ notebooks/
-├─ scripts/
 └─ requirements-m1.txt
 ```
 
-说明：`data/raw|bronze|silver|features` 在 `.gitignore` 中默认忽略，用于本地数据管理。
+## Key Navigation
 
-研究生命周期与因子库：
-- `docs/AUDITABLE_FACTOR_RESEARCH_SKILL.md`：可审计研究资产的最低标准。
-- `docs/RESEARCH_LIFECYCLE.md`：旧研究资产 / 新因子想法的标准流转流程。
-- `docs/FACTOR_LIBRARY_DESIGN.md`：因子库定义、第一套 universe、入库标准和评价协议。
-- `research/factor_runs/_TEMPLATE/`：每个研究对象的标准审计卷宗模板。
-- `docs/CODE_TRUST_MAP.md`：文件级代码可信度地图。
-- `docs/FACTOR_BACKLOG.md`：因子研究队列和优先级。
+- **Current mainline:** Factor library (Phase 2C closeout). See `docs/FACTOR_LIBRARY_ROADMAP.md`.
+- **Doc entry point:** `docs/DOCS_INDEX.md` — categorized index of all documentation.
+- **Factor registry:** `docs/FACTOR_REGISTRY.md` — 5 DIAGNOSTIC_PROBE factors, no alpha.
+- **Pipeline scripts:** `scripts/fetch → build_labels → build_factor_values → evaluate_factors`
+- **Tests:** `pytest tests/unit/test_crypto_*.py` (33 tests, all passing)
 
-关键脚本（当前）：
-- `scripts/build_updownwave_report.py`：生成 UpWave/DownWave 研究报告
-- `scripts/build_regime_triplet_report.py`：生成 Regime Triplet（上涨期/震荡期/下跌期）研究报告
-- `scripts/build_box_consolidation_signals.py`：生成横盘/箱体建仓信号
-- `scripts/build_box_consolidation_report.py`：生成 Box Consolidation（窄幅/箱体建仓）研究报告
-- `scripts/build_kernel_extrema_foundation_report.py`：生成 Kernel Extrema Foundation 结构展示报告
-- `scripts/build_pytrendline_report.py`：生成 PyTrendline 趋势线 / breakout 研究报告
-- `scripts/build_trendline_breakout_navigator_report.py`：生成 clean reimplementation 趋势线突破研究报告
-- `scripts/build_updownwave_insights.py`：从 artifacts 快速生成 Q1~Q14 文字洞察
-- `scripts/publish_report_site.sh`：发布静态站点
-- `scripts/run_report_pipeline.py`：报告流水线入口（build/insights/publish/all）
+## Data Note
+
+`data/cache/`, `data/features/`, `reports/artifacts/` contain generated artifacts.
+These are in `.gitignore` (or should be) — regenerate by running the pipeline.
