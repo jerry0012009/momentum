@@ -1,15 +1,16 @@
 # Factor Evaluation: `rsi_14h`
 
 - universe: `crypto_top50_usdt_perp_1h`
-- evaluation_period: `2025-12-14 13:00:00+00:00 ~ 2026-06-12 12:00:00+00:00`
-- generated_at: `2026-06-12T18:20:54Z`
+- evaluation_period: `2025-12-15 09:00:00+00:00 ~ 2026-06-13 08:00:00+00:00`
+- generated_at: `2026-06-13T08:37:03Z`
 - caveat: Static current Top50 diagnostic universe; debug and initial screening only.
+- excluded_symbols (missing_bar_rate > 5%): ['SPACEUSDT']
 
-| label | IC_mean | ICIR | RankIC_mean | RankICIR | spread_mean | spread_t | turnover | coverage | n_ts |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| ret_fwd_1h | 0.009489 | 0.039494 | -0.012953 | -0.070059 | 0.000478 | 3.232530 | 0.211400 | 0.996745 | 4305 |
-| ret_fwd_4h | 0.012549 | 0.051435 | -0.014227 | -0.074908 | 0.001600 | 5.083400 | 0.211392 | 0.996745 | 4302 |
-| ret_fwd_24h | 0.022360 | 0.097922 | -0.000813 | -0.004159 | 0.007881 | 9.748843 | 0.211280 | 0.996745 | 4282 |
-| ret_fwd_72h | 0.028618 | 0.130281 | 0.020265 | 0.110073 | 0.012402 | 8.502747 | 0.211870 | 0.996745 | 4234 |
+| label | direction | IC_mean | ICIR | RankIC_mean | RankICIR | raw_spread | raw_spread_t | dir_adj_spread | dir_adj_t | turnover | coverage | n_ts |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| ret_fwd_1h | negative | 0.009366 | 0.038622 | -0.013611 | -0.073104 | 0.000495 | 3.248631 | -0.000495 | -3.248631 | 0.213811 | 0.996759 | 4305 |
+| ret_fwd_4h | negative | 0.011054 | 0.044840 | -0.015740 | -0.082276 | 0.001591 | 4.917555 | -0.001591 | -4.917555 | 0.213851 | 0.996759 | 4302 |
+| ret_fwd_24h | negative | 0.023057 | 0.101102 | -0.001347 | -0.006896 | 0.008120 | 9.815394 | -0.008120 | -9.815394 | 0.213753 | 0.996759 | 4282 |
+| ret_fwd_72h | negative | 0.028616 | 0.129249 | 0.018668 | 0.100514 | 0.012469 | 8.160661 | -0.012469 | -8.160661 | 0.214031 | 0.996759 | 4234 |
 
 This is factor evaluation, not strategy PnL.
