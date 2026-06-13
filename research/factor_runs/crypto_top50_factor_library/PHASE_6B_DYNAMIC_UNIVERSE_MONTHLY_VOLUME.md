@@ -9,9 +9,9 @@
 ## 1. Goal
 
 Build a monthly-volume dynamic universe builder for the factor library, abstracted
-from rank213's monthly-volume causal universe design. This replaces the static
-`static_current_top50_by_24h_quote_volume` with a rolling monthly selection that
-uses previous-month data only.
+from rank213's monthly-volume causal universe design. This provides a dynamic
+alternative to `static_current_top50_by_24h_quote_volume`; it is not integrated
+into evaluation yet (Phase 6C audit pending).
 
 ## 2. rank213 Reference
 

@@ -18,7 +18,7 @@
 | Phase 3 | Long-window Baseline | **COMPLETE** |
 | Phase 4 | Factor Factory & Evaluation Platform v1 | **COMPLETE** |
 | Phase 5 | Alphalens-compatible Export / External Tool Compatibility | **COMPLETE** |
-| Phase 6 | Dynamic Universe & Survivorship Control | **6B COMPLETE, 6C NOT YET** |
+| Phase 6 | Dynamic Universe & Survivorship Control | **6C AUDIT COMPLETE, 6D NOT YET** |
 | Phase 7 | Large-scale Factor Mining | NOT STARTED |
 | Phase 8 | Candidate Factor Review | NOT STARTED |
 | Phase 9 | Multi-factor Signal Construction | NOT STARTED |
