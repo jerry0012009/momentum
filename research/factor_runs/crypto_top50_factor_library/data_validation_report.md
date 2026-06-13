@@ -58,7 +58,17 @@ Coverage is near-perfect for all 5 registered factors. The small missing fractio
 
 The data_start/data_end mismatches are formatting-only (ISO `T` separator vs space). The actual timestamps are identical.
 
-## 7. Known Caveats
+## 7. Excluded Symbols
+
+Symbols with `missing_bar_rate > 5%` are excluded from factor evaluation (not deleted from raw data):
+
+| Symbol | Missing Rate | Status |
+|--------|-------------|--------|
+| SPACEUSDT | 22.2% | **EXCLUDED from evaluation** |
+
+All other 49 symbols have 0% missing bars.
+
+## 8. Known Caveats
 
 1. **Survivorship bias**: Universe is static current Top50 by 24h quote volume snapshot taken at universe build time. Tokens that were delisted or newly listed during the 180-day evaluation period are not handled — they either appear with incomplete data or are missing entirely.
 2. **Not 30d rolling volume**: `selection_rule` is `static_current_top50_by_24h_quote_volume`, not trailing 30-day. The function `fetch_30d_volume()` in the script was misnamed; it actually reads the 24h ticker. V1 should implement true 30d aggregation.
@@ -67,3 +77,6 @@ The data_start/data_end mismatches are formatting-only (ISO `T` separator vs spa
 5. **Single venue**: Binance USDT-M perps only. Cross-venue liquidity and pricing effects not captured.
 6. **SPACEUSDT data gap**: 958 bars missing (~22%). Likely late listing or temporary delisting during the period. Factor values for this symbol during the gap are NaN.
 7. **Manifest format drift**: `data_start`/`data_end` string format differs between manifest.json (written by fetch script) and what pandas produces when reading parquet. Not a data integrity issue, but worth normalizing in V1.
+8. **Timestamp convention (Phase 2B fix)**: `timestamp = bar_close_time`; `bar_open_time` retained for audit. `factor known_at = bar_close_time`. Previously the fetch script used kline open time as timestamp, which is now corrected.
+9. **Label convention (Phase 2B fix)**: Labels use calendar-time forward returns via merge on `(timestamp + h, symbol)`. Previously used row-shift which would produce incorrect returns across gaps.
+10. **Direction-adjusted spread (Phase 2B fix)**: Evaluation now outputs `direction_adjusted_spread` (Q5-Q1 for positive, Q1-Q5 for negative) and `direction_adjusted_tstat`. Use these for cross-factor comparison instead of raw spread.

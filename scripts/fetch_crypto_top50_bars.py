@@ -22,7 +22,7 @@ LOG = CACHE / "fetch_log.json"
 INTERVAL = "1h"
 LIMIT = 1500
 HOUR_MS = 3_600_000
-COLS = ["timestamp", "symbol", "open", "high", "low", "close", "volume", "quote_volume", "trade_count", "source", "market", "instrument_type", "timeframe"]
+COLS = ["timestamp", "bar_open_time", "bar_close_time", "symbol", "open", "high", "low", "close", "volume", "quote_volume", "trade_count", "source", "market", "instrument_type", "timeframe"]
 
 
 def now_utc() -> datetime:
@@ -84,7 +84,10 @@ def fetch_symbol(symbol: str, start: datetime, end_exclusive: datetime) -> tuple
             if open_ms >= to_ms(end_exclusive):
                 continue
             rows.append({
-                "timestamp": from_ms(open_ms), "symbol": symbol,
+                "bar_open_time": from_ms(open_ms),
+                "bar_close_time": from_ms(open_ms + HOUR_MS),
+                "timestamp": from_ms(open_ms + HOUR_MS),  # timestamp = bar_close_time
+                "symbol": symbol,
                 "open": float(k[1]), "high": float(k[2]), "low": float(k[3]), "close": float(k[4]),
                 "volume": float(k[5]), "quote_volume": float(k[7]), "trade_count": int(k[8]),
                 "source": "binance_fapi", "market": "crypto", "instrument_type": "usdt_margined_perpetual", "timeframe": INTERVAL,

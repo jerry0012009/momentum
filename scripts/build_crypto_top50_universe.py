@@ -209,6 +209,8 @@ def main():
     print("\n▸ Building bars_1h.parquet (empty schema)...")
     bars_schema = pd.DataFrame({
         "timestamp": pd.Series(dtype="datetime64[ns, UTC]"),
+        "bar_open_time": pd.Series(dtype="datetime64[ns, UTC]"),
+        "bar_close_time": pd.Series(dtype="datetime64[ns, UTC]"),
         "symbol": pd.Series(dtype="str"),
         "open": pd.Series(dtype="float64"),
         "high": pd.Series(dtype="float64"),

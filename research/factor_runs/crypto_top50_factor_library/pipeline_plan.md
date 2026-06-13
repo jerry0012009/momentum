@@ -4,6 +4,16 @@
 >
 > **V0 is a debug pipeline, not final factor evidence. It uses static current Top50 by 24h quote volume and is affected by survivorship bias.**
 
+## Phase 2B Fixes (2026-06-13)
+
+Code audit fixes applied to V0 pipeline:
+
+1. **Timestamp semantics**: `timestamp = bar_close_time`; `bar_open_time` retained for audit. `factor known_at = bar_close_time`.
+2. **Label generation**: Calendar-time forward returns via merge on `(timestamp + h, symbol)`. No row-shift across gaps.
+3. **Gap symbol exclusion**: Symbols with `missing_bar_rate > 5%` excluded from evaluation. SPACEUSDT excluded.
+4. **Direction-adjusted spread**: `direction_adjusted_spread` and `direction_adjusted_tstat` added to evaluation output.
+5. **Tests**: 33 unit tests covering labels, factor values, evaluation smoke, direction adjustment, gap handling.
+
 ## Completed
 
 - [x] `data/cache/crypto_top50_usdt_perp_1h/manifest.json`
