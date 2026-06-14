@@ -1,91 +1,124 @@
 #!/usr/bin/env python3
-"""Build forward-return labels for crypto_top50_usdt_perp_1h.
+"""Build forward-return labels for a bars dataset.
 
-Uses calendar-time join: ret_fwd_h = close[timestamp + h hours] / close[timestamp] - 1.
-If the future timestamp does not exist for a symbol (gap), the label is NaN.
-This avoids using row-shift which would produce incorrect returns across gaps.
+Uses calendar-time join: ret_fwd_h = close[timestamp + h hours] / close[timestamp] - 1
+NOT shift(-h) which is row-based and breaks on gaps.
 
-V0 convention: timestamp = bar_close_time.
+Usage:
+    python scripts/build_labels.py --dataset-id crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1
 """
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+
 HORIZONS = [1, 4, 24, 72]
 
 
-def load_bars(bars_path: Path) -> pd.DataFrame:
-    if not bars_path.exists():
-        raise FileNotFoundError(f"bars file not found: {bars_path}")
-    bars = pd.read_parquet(bars_path)
-    if bars.empty:
-        raise ValueError("bars_1h.parquet is empty. Run scripts/fetch_crypto_top50_bars.py first.")
-    missing = {"timestamp", "symbol", "close"} - set(bars.columns)
-    if missing:
-        raise ValueError(f"bars file missing columns: {sorted(missing)}")
-    bars = bars.copy()
-    bars["timestamp"] = pd.to_datetime(bars["timestamp"], utc=True)
-    return bars.sort_values(["symbol", "timestamp"])
-
-
-def build_labels(bars: pd.DataFrame) -> pd.DataFrame:
+def build_labels(bars: pd.DataFrame, horizons: list[int] | None = None) -> pd.DataFrame:
     """Build forward-return labels using calendar-time join.
 
-    For each (timestamp, symbol), look up close at timestamp + h hours.
-    If that future bar does not exist, the label is NaN.
-    This correctly handles gaps: we never substitute a nearby row for a missing hour.
+    For each row (timestamp, symbol), look up close at timestamp + h hours
+    by joining on the exact future timestamp. Gaps produce NaN (no fallback).
 
-    Implementation: create a lookup table of (timestamp, symbol) -> close,
-    then for each row compute target = timestamp + h and merge to find close[target].
+    Args:
+        bars: DataFrame with columns [timestamp, symbol, close]
+        horizons: list of forward horizons in hours (default: [1, 4, 24, 72])
+
+    Returns:
+        DataFrame with columns [timestamp, symbol, ret_fwd_{h}h, ...]
     """
+    if horizons is None:
+        horizons = HORIZONS
+
+    # Base: timestamp + symbol + close
     base = bars[["timestamp", "symbol", "close"]].copy()
-    # Static lookup: (timestamp, symbol) -> close at that timestamp
-    close_lookup = base[["timestamp", "symbol", "close"]].copy()
+    base = base.sort_values(["symbol", "timestamp"]).reset_index(drop=True)
 
-    for h in HORIZONS:
-        target_col = f"_target_ts_{h}"
-        # For each row at time t, the future time is t + h
-        base[target_col] = base["timestamp"] + pd.Timedelta(hours=h)
+    # For each horizon, join future close via calendar-time lookup
+    result = base[["timestamp", "symbol"]].copy()
 
-        # Look up close at (t+h, symbol) from the lookup table
-        future = close_lookup.rename(columns={
-            "timestamp": target_col,
-            "close": f"_close_at_t_plus_{h}",
-        })
-        base = base.merge(future, on=[target_col, "symbol"], how="left")
-        base[f"ret_fwd_{h}h"] = base[f"_close_at_t_plus_{h}"] / base["close"] - 1.0
-        base = base.drop(columns=[f"_close_at_t_plus_{h}", target_col])
+    for h in horizons:
+        # Close lookup: (symbol, timestamp) → close at that timestamp
+        close_lookup = base[["symbol", "timestamp", "close"]].rename(
+            columns={"close": "future_close", "timestamp": "target_ts"}
+        )
 
-    return base.drop(columns=["close"]).sort_values(["timestamp", "symbol"]).reset_index(drop=True)
+        # For each row, compute the target timestamp we want to look up
+        base_with_target = base[["timestamp", "symbol", "close"]].copy()
+        base_with_target["target_ts"] = base_with_target["timestamp"] + pd.Timedelta(hours=h)
+
+        # Left join: find close at (symbol, target_ts)
+        merged = base_with_target.merge(
+            close_lookup,
+            on=["symbol", "target_ts"],
+            how="left",
+        )
+
+        # Forward return: close[timestamp + h] / close[timestamp] - 1
+        ret = merged["future_close"] / base["close"] - 1
+        # Where join failed (gap), future_close is NaN → ret is NaN (correct)
+        result[f"ret_fwd_{h}h"] = ret.values
+
+    return result
 
 
-def main() -> None:
-    p = argparse.ArgumentParser()
-    p.add_argument("--dataset-id", default="crypto_top50_usdt_perp_1h", help="Dataset ID under data/cache/")
+def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--dataset-id", required=True)
+    p.add_argument("--horizons", nargs="+", type=int, default=HORIZONS)
     args = p.parse_args()
 
-    cache = ROOT / "data" / "cache" / args.dataset_id
-    feature = ROOT / "data" / "features" / args.dataset_id
-    bars_path = cache / "bars_1h.parquet"
-    labels_path = feature / "labels.parquet"
+    bars_path = DATA_DIR / "cache" / args.dataset_id / "bars_1h.parquet"
+    output_dir = DATA_DIR / "features" / args.dataset_id
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Build forward-return labels (calendar-time join)")
-    print(f"Dataset: {args.dataset_id}")
-    bars = load_bars(bars_path)
-    labels = build_labels(bars)
-    feature.mkdir(parents=True, exist_ok=True)
+    print(f"Loading bars: {bars_path}")
+    bars = pd.read_parquet(bars_path)
+    print(f"  {len(bars):,} rows, {bars['symbol'].nunique()} symbols")
+
+    print(f"Building labels with horizons: {args.horizons}")
+    labels = build_labels(bars, args.horizons)
+
+    # Write labels
+    labels_path = output_dir / "labels.parquet"
     labels.to_parquet(labels_path, index=False)
-    print(f"input rows:  {len(bars)}")
-    print(f"output rows: {len(labels)}")
-    print(f"output path: {labels_path}")
-    print("missing rate:")
-    print(labels[["ret_fwd_1h", "ret_fwd_4h", "ret_fwd_24h", "ret_fwd_72h"]].isna().mean().to_string())
-    print(f"computed_at: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}")
+    print(f"Wrote: {labels_path} ({len(labels):,} rows)")
+
+    # Write manifest
+    manifest = {
+        "dataset_id": args.dataset_id,
+        "source_bars_path": str(bars_path),
+        "labels_path": str(labels_path),
+        "timestamp_convention": "timestamp = bar_close_time = bar_open_time + 1h",
+        "horizons": args.horizons,
+        "label_definition": "ret_fwd_{h}h = close[timestamp + h hours] / close[timestamp] - 1; calendar-time join, no row-shift",
+        "n_rows": len(labels),
+        "created_at": pd.Timestamp.now(tz="UTC").isoformat(),
+        "script": "scripts/build_labels.py",
+        "known_limitations": [
+            "Calendar-time join: gaps in bars produce NaN labels (no forward-fill).",
+            "Tail rows lack future data — their labels are NaN by design.",
+            "Universe is dynamic_from_current_listed_pool, not true point-in-time.",
+        ],
+    }
+    manifest_path = output_dir / "labels_manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"Wrote: {manifest_path}")
+
+    # Summary
+    print(f"\n=== Label Summary ===")
+    for h in args.horizons:
+        col = f"ret_fwd_{h}h"
+        miss = labels[col].isna().mean()
+        print(f"  {col}: missing={miss:.4f} ({miss*100:.2f}%)")
 
 
 if __name__ == "__main__":

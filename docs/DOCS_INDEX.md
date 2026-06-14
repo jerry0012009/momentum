@@ -100,6 +100,7 @@ These documents belong to the active `crypto_top50_factor_library` research run.
 | `research/.../PHASE_6C_DYNAMIC_UNIVERSE_DATA_COVERAGE.md` | COMPLETE | Phase 6C: coverage audit, 16.2% coverage → new dataset needed | Review Phase 6C completion |
 | `research/.../PHASE_6D_DYNAMIC_UNIVERSE_BARS_1H.md` | CURRENT_RUN | Phase 6D: dynamic universe 1h bars, 266 symbols, 3.3M rows | Review Phase 6D completion |
 | `research/.../PHASE_6D_QA_MEMBERSHIP_COVERAGE.md` | CURRENT_RUN | Phase 6D-QA: membership-aware coverage audit, 0 zero-bar months, labels build ALLOWED | Review Phase 6D-QA completion |
+| `research/.../PHASE_6E_DYNAMIC_LABELS.md` | CURRENT_RUN | Phase 6E: forward-return labels, 3.3M rows, membership-aware missing <0.5%, factor_values ALLOWED | Review Phase 6E completion |
 | `research/.../PHASE_4_FACTOR_FACTORY_V1.md` | CURRENT_RUN | Factor Factory v1 closeout: 11 factors registered, 187 tests pass | Review Phase 4 completion |
 
 Path prefix: `research/factor_runs/crypto_top50_factor_library/`

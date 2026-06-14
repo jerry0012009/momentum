@@ -129,5 +129,6 @@ Phase 6C+ will integrate this universe into the factor evaluation pipeline:
 - Phase 6C: COMPLETE — data coverage audit (16.2% global coverage → new dataset needed)
 - Phase 6D: COMPLETE — dynamic-universe 1h bars dataset (266 symbols, 3.3M rows)
 - Phase 6D-QA: COMPLETE — membership-aware coverage (0 zero-bar months, labels build ALLOWED)
-- Phase 6E: ALLOWED — labels build can proceed
+- Phase 6E: COMPLETE — forward-return labels (3.3M rows, membership-aware missing <0.5%)
+- Phase 6F: ALLOWED — factor_values build can proceed
 - Phase 7: NOT YET — blocked on Phase 6 completion
