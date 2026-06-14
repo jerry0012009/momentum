@@ -15,8 +15,8 @@ import pandas as pd
 
 from factor_specs import FactorSpec
 from factor_ops import (
-    delay, delta, rolling_mean, rolling_std, rolling_corr,
-    zscore, ema, true_range,
+    delay, delta, rolling_mean, rolling_std, rolling_max, rolling_min,
+    rolling_corr, zscore, ema, true_range,
 )
 
 # ── V0 Original 5 Factors ──────────────────────────────────────────
@@ -96,6 +96,189 @@ def _compute_tech_atr(df: pd.DataFrame) -> pd.Series:
     """ATR 14h: rolling mean of True Range over 14 bars."""
     tr = true_range(df["high"], df["low"], df["close"])
     return rolling_mean(tr, 14)
+
+
+# ── Phase 7B: Momentum ────────────────────────────────────────────
+
+def _compute_mom_5h(df: pd.DataFrame) -> pd.Series:
+    """Momentum 5h: close / close_5h_ago - 1."""
+    return df["close"] / delay(df["close"], 5) - 1.0
+
+
+def _compute_mom_10h(df: pd.DataFrame) -> pd.Series:
+    """Momentum 10h: close / close_10h_ago - 1."""
+    return df["close"] / delay(df["close"], 10) - 1.0
+
+
+def _compute_mom_40h(df: pd.DataFrame) -> pd.Series:
+    """Momentum 40h: close / close_40h_ago - 1."""
+    return df["close"] / delay(df["close"], 40) - 1.0
+
+
+# ── Phase 7B: Reversal ────────────────────────────────────────────
+
+def _compute_rev_3h(df: pd.DataFrame) -> pd.Series:
+    """Reversal 3h: -(close / close_3h_ago - 1)."""
+    return -(df["close"] / delay(df["close"], 3) - 1.0)
+
+
+def _compute_rev_10h(df: pd.DataFrame) -> pd.Series:
+    """Reversal 10h: -(close / close_10h_ago - 1)."""
+    return -(df["close"] / delay(df["close"], 10) - 1.0)
+
+
+def _compute_rev_24h(df: pd.DataFrame) -> pd.Series:
+    """Reversal 24h: -(close / close_24h_ago - 1)."""
+    return -(df["close"] / delay(df["close"], 24) - 1.0)
+
+
+# ── Phase 7B: Volatility ──────────────────────────────────────────
+
+def _compute_vol_5h(df: pd.DataFrame) -> pd.Series:
+    """Volatility 5h: rolling std of returns over 5 bars."""
+    ret = df["close"].pct_change()
+    return rolling_std(ret, 5)
+
+
+def _compute_vol_40h(df: pd.DataFrame) -> pd.Series:
+    """Volatility 40h: rolling std of returns over 40 bars."""
+    ret = df["close"].pct_change()
+    return rolling_std(ret, 40)
+
+
+def _compute_vol_ratio_5_20(df: pd.DataFrame) -> pd.Series:
+    """Vol ratio: std(ret,5) / std(ret,20)."""
+    ret = df["close"].pct_change()
+    s5 = rolling_std(ret, 5)
+    s20 = rolling_std(ret, 20)
+    return s5 / s20.replace(0, np.nan)
+
+
+# ── Phase 7B: Range Position ──────────────────────────────────────
+
+def _compute_range_1h(df: pd.DataFrame) -> pd.Series:
+    """Range 1h: (high - low) / close."""
+    h, l, c = df["high"], df["low"], df["close"]
+    return (h - l) / c.replace(0, np.nan)
+
+
+def _compute_range_4h(df: pd.DataFrame) -> pd.Series:
+    """Range 4h: (HH4 - LL4) / close."""
+    hh = rolling_max(df["high"], 4)
+    ll = rolling_min(df["low"], 4)
+    return (hh - ll) / df["close"].replace(0, np.nan)
+
+
+def _compute_range_24h(df: pd.DataFrame) -> pd.Series:
+    """Range 24h: (HH24 - LL24) / close."""
+    hh = rolling_max(df["high"], 24)
+    ll = rolling_min(df["low"], 24)
+    return (hh - ll) / df["close"].replace(0, np.nan)
+
+
+# ── Phase 7B: Price Position ──────────────────────────────────────
+
+def _compute_price_pos_24h(df: pd.DataFrame) -> pd.Series:
+    """Price position 24h: (close - LL24) / (HH24 - LL24 + eps)."""
+    hh = rolling_max(df["high"], 24)
+    ll = rolling_min(df["low"], 24)
+    return (df["close"] - ll) / (hh - ll + 1e-8)
+
+
+def _compute_price_pos_72h(df: pd.DataFrame) -> pd.Series:
+    """Price position 72h: (close - LL72) / (HH72 - LL72 + eps)."""
+    hh = rolling_max(df["high"], 72)
+    ll = rolling_min(df["low"], 72)
+    return (df["close"] - ll) / (hh - ll + 1e-8)
+
+
+# ── Phase 7B: Volume / Quote Volume Zscore ────────────────────────
+
+def _compute_vol_zscore_20h(df: pd.DataFrame) -> pd.Series:
+    """Volume z-score 20h: (volume - SMA20) / STD20."""
+    return zscore(df["volume"], 20)
+
+
+def _compute_vol_zscore_48h(df: pd.DataFrame) -> pd.Series:
+    """Volume z-score 48h: (volume - SMA48) / STD48."""
+    return zscore(df["volume"], 48)
+
+
+def _compute_qvol_zscore_20h(df: pd.DataFrame) -> pd.Series:
+    """Quote volume z-score 20h: (quote_volume - SMA20) / STD20."""
+    return zscore(df["quote_volume"], 20)
+
+
+def _compute_qvol_zscore_48h(df: pd.DataFrame) -> pd.Series:
+    """Quote volume z-score 48h: (quote_volume - SMA48) / STD48."""
+    return zscore(df["quote_volume"], 48)
+
+
+# ── Phase 7B: Trend MA Gap ────────────────────────────────────────
+
+def _compute_ma_gap_5_20(df: pd.DataFrame) -> pd.Series:
+    """MA gap 5/20: (SMA5 - SMA20) / SMA20."""
+    sma5 = rolling_mean(df["close"], 5)
+    sma20 = rolling_mean(df["close"], 20)
+    return (sma5 - sma20) / sma20.replace(0, np.nan)
+
+
+def _compute_ma_gap_10_40(df: pd.DataFrame) -> pd.Series:
+    """MA gap 10/40: (SMA10 - SMA40) / SMA40."""
+    sma10 = rolling_mean(df["close"], 10)
+    sma40 = rolling_mean(df["close"], 40)
+    return (sma10 - sma40) / sma40.replace(0, np.nan)
+
+
+# ── Phase 7B: Breakout Distance ───────────────────────────────────
+
+def _compute_breakout_dist_20h(df: pd.DataFrame) -> pd.Series:
+    """Breakout distance 20h: (close - HH20) / (HH20 - LL20 + eps)."""
+    hh = rolling_max(df["high"], 20)
+    ll = rolling_min(df["low"], 20)
+    return (df["close"] - hh) / (hh - ll + 1e-8)
+
+
+def _compute_breakout_dist_48h(df: pd.DataFrame) -> pd.Series:
+    """Breakout distance 48h: (close - HH48) / (HH48 - LL48 + eps)."""
+    hh = rolling_max(df["high"], 48)
+    ll = rolling_min(df["low"], 48)
+    return (df["close"] - hh) / (hh - ll + 1e-8)
+
+
+# ── Phase 7B: Intraday Candle ─────────────────────────────────────
+
+def _compute_candle_body(df: pd.DataFrame) -> pd.Series:
+    """Candle body: (close - open) / (high - low + eps)."""
+    o, h, l, c = df["open"], df["high"], df["low"], df["close"]
+    return (c - o) / (h - l + 1e-8)
+
+
+def _compute_candle_wick_upper(df: pd.DataFrame) -> pd.Series:
+    """Upper wick: (high - max(open, close)) / (high - low + eps)."""
+    o, h, l, c = df["open"], df["high"], df["low"], df["close"]
+    return (h - pd.concat([o, c], axis=1).max(axis=1)) / (h - l + 1e-8)
+
+
+def _compute_candle_wick_lower(df: pd.DataFrame) -> pd.Series:
+    """Lower wick: (min(open, close) - low) / (high - low + eps)."""
+    o, h, l, c = df["open"], df["high"], df["low"], df["close"]
+    return (pd.concat([o, c], axis=1).min(axis=1) - l) / (h - l + 1e-8)
+
+
+# ── Phase 7B: Cross-Sectional Rank (per-symbol prep) ─────────────
+# These compute the per-symbol metric. Cross-sectional ranking is
+# done at the caller level (build_factor_values.py) after combining
+# all symbols into one DataFrame and grouping by timestamp.
+
+def _compute_xs_rank_ret_1h_prep(df: pd.DataFrame) -> pd.Series:
+    """1h return for cross-sectional ranking."""
+    return df["close"].pct_change()
+
+
+def _compute_xs_rank_vol_prep(df: pd.DataFrame) -> pd.Series:
+    """20h rolling mean volume for cross-sectional ranking."""
+    return rolling_mean(df["volume"], 20)
 
 
 # ── Registry ────────────────────────────────────────────────────────
@@ -181,6 +364,206 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="conditional",
         compute_fn=_compute_tech_atr,
         notes="Average True Range 14 bars",
+    ),
+    # ── Phase 7B: Momentum (3) ───────────────────────────────────
+    FactorSpec(
+        factor_id="mom_5h", family="momentum",
+        required_columns=["close"], lookback_window=5,
+        expected_direction="positive",
+        compute_fn=_compute_mom_5h,
+        notes="close / close_5h_ago - 1",
+    ),
+    FactorSpec(
+        factor_id="mom_10h", family="momentum",
+        required_columns=["close"], lookback_window=10,
+        expected_direction="positive",
+        compute_fn=_compute_mom_10h,
+        notes="close / close_10h_ago - 1",
+    ),
+    FactorSpec(
+        factor_id="mom_40h", family="momentum",
+        required_columns=["close"], lookback_window=40,
+        expected_direction="positive",
+        compute_fn=_compute_mom_40h,
+        notes="close / close_40h_ago - 1",
+    ),
+    # ── Phase 7B: Reversal (3) ───────────────────────────────────
+    FactorSpec(
+        factor_id="rev_3h", family="reversal",
+        required_columns=["close"], lookback_window=3,
+        expected_direction="negative",
+        compute_fn=_compute_rev_3h,
+        notes="-(close / close_3h_ago - 1)",
+    ),
+    FactorSpec(
+        factor_id="rev_10h", family="reversal",
+        required_columns=["close"], lookback_window=10,
+        expected_direction="negative",
+        compute_fn=_compute_rev_10h,
+        notes="-(close / close_10h_ago - 1)",
+    ),
+    FactorSpec(
+        factor_id="rev_24h", family="reversal",
+        required_columns=["close"], lookback_window=24,
+        expected_direction="negative",
+        compute_fn=_compute_rev_24h,
+        notes="-(close / close_24h_ago - 1)",
+    ),
+    # ── Phase 7B: Volatility (3) ─────────────────────────────────
+    FactorSpec(
+        factor_id="vol_5h", family="volatility",
+        required_columns=["close"], lookback_window=6,
+        expected_direction="negative",
+        compute_fn=_compute_vol_5h,
+        notes="rolling std of 1h returns, 5 bars (lookback=6: pct_change needs t-1)",
+    ),
+    FactorSpec(
+        factor_id="vol_40h", family="volatility",
+        required_columns=["close"], lookback_window=41,
+        expected_direction="negative",
+        compute_fn=_compute_vol_40h,
+        notes="rolling std of 1h returns, 40 bars (lookback=41)",
+    ),
+    FactorSpec(
+        factor_id="vol_ratio_5_20", family="volatility",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="conditional",
+        compute_fn=_compute_vol_ratio_5_20,
+        notes="std(ret,5) / std(ret,20)",
+    ),
+    # ── Phase 7B: Range Position (3) ─────────────────────────────
+    FactorSpec(
+        factor_id="range_1h", family="range_position",
+        required_columns=["high", "low", "close"], lookback_window=1,
+        expected_direction="conditional",
+        compute_fn=_compute_range_1h,
+        notes="(high - low) / close",
+    ),
+    FactorSpec(
+        factor_id="range_4h", family="range_position",
+        required_columns=["high", "low", "close"], lookback_window=4,
+        expected_direction="conditional",
+        compute_fn=_compute_range_4h,
+        notes="(HH4 - LL4) / close",
+    ),
+    FactorSpec(
+        factor_id="range_24h", family="range_position",
+        required_columns=["high", "low", "close"], lookback_window=24,
+        expected_direction="conditional",
+        compute_fn=_compute_range_24h,
+        notes="(HH24 - LL24) / close",
+    ),
+    # ── Phase 7B: Price Position (2) ─────────────────────────────
+    FactorSpec(
+        factor_id="price_pos_24h", family="price_position",
+        required_columns=["high", "low", "close"], lookback_window=24,
+        expected_direction="conditional",
+        compute_fn=_compute_price_pos_24h,
+        notes="(close - LL24) / (HH24 - LL24 + eps)",
+    ),
+    FactorSpec(
+        factor_id="price_pos_72h", family="price_position",
+        required_columns=["high", "low", "close"], lookback_window=72,
+        expected_direction="conditional",
+        compute_fn=_compute_price_pos_72h,
+        notes="(close - LL72) / (HH72 - LL72 + eps)",
+    ),
+    # ── Phase 7B: Volume Zscore (2) ──────────────────────────────
+    FactorSpec(
+        factor_id="vol_zscore_20h", family="volume_liquidity",
+        required_columns=["volume"], lookback_window=20,
+        expected_direction="positive",
+        compute_fn=_compute_vol_zscore_20h,
+        notes="(volume - SMA20) / STD20",
+    ),
+    FactorSpec(
+        factor_id="vol_zscore_48h", family="volume_liquidity",
+        required_columns=["volume"], lookback_window=48,
+        expected_direction="positive",
+        compute_fn=_compute_vol_zscore_48h,
+        notes="(volume - SMA48) / STD48",
+    ),
+    # ── Phase 7B: Quote Volume Zscore (2) ────────────────────────
+    FactorSpec(
+        factor_id="qvol_zscore_20h", family="quote_volume_liquidity",
+        required_columns=["quote_volume"], lookback_window=20,
+        expected_direction="positive",
+        compute_fn=_compute_qvol_zscore_20h,
+        notes="(quote_volume - SMA20) / STD20",
+    ),
+    FactorSpec(
+        factor_id="qvol_zscore_48h", family="quote_volume_liquidity",
+        required_columns=["quote_volume"], lookback_window=48,
+        expected_direction="positive",
+        compute_fn=_compute_qvol_zscore_48h,
+        notes="(quote_volume - SMA48) / STD48",
+    ),
+    # ── Phase 7B: Trend MA Gap (2) ───────────────────────────────
+    FactorSpec(
+        factor_id="ma_gap_5_20", family="trend_ma",
+        required_columns=["close"], lookback_window=20,
+        expected_direction="positive",
+        compute_fn=_compute_ma_gap_5_20,
+        notes="(SMA5 - SMA20) / SMA20",
+    ),
+    FactorSpec(
+        factor_id="ma_gap_10_40", family="trend_ma",
+        required_columns=["close"], lookback_window=40,
+        expected_direction="positive",
+        compute_fn=_compute_ma_gap_10_40,
+        notes="(SMA10 - SMA40) / SMA40",
+    ),
+    # ── Phase 7B: Breakout Distance (2) ──────────────────────────
+    FactorSpec(
+        factor_id="breakout_dist_20h", family="breakout",
+        required_columns=["high", "low", "close"], lookback_window=20,
+        expected_direction="positive",
+        compute_fn=_compute_breakout_dist_20h,
+        notes="(close - HH20) / (HH20 - LL20 + eps)",
+    ),
+    FactorSpec(
+        factor_id="breakout_dist_48h", family="breakout",
+        required_columns=["high", "low", "close"], lookback_window=48,
+        expected_direction="positive",
+        compute_fn=_compute_breakout_dist_48h,
+        notes="(close - HH48) / (HH48 - LL48 + eps)",
+    ),
+    # ── Phase 7B: Intraday Candle (3) ────────────────────────────
+    FactorSpec(
+        factor_id="candle_body", family="intraday_candle",
+        required_columns=["open", "high", "low", "close"], lookback_window=1,
+        expected_direction="conditional",
+        compute_fn=_compute_candle_body,
+        notes="(close - open) / (high - low + eps)",
+    ),
+    FactorSpec(
+        factor_id="candle_wick_upper", family="intraday_candle",
+        required_columns=["open", "high", "low", "close"], lookback_window=1,
+        expected_direction="negative",
+        compute_fn=_compute_candle_wick_upper,
+        notes="(high - max(open, close)) / (high - low + eps)",
+    ),
+    FactorSpec(
+        factor_id="candle_wick_lower", family="intraday_candle",
+        required_columns=["open", "high", "low", "close"], lookback_window=1,
+        expected_direction="positive",
+        compute_fn=_compute_candle_wick_lower,
+        notes="(min(open, close) - low) / (high - low + eps)",
+    ),
+    # ── Phase 7B: Cross-Sectional Normalized (2) ─────────────────
+    FactorSpec(
+        factor_id="xs_rank_ret_1h", family="cross_sectional_normalized",
+        required_columns=["close"], lookback_window=2,
+        expected_direction="conditional",
+        compute_fn=_compute_xs_rank_ret_1h_prep,
+        notes="Per-symbol 1h return; cross-sectional rank applied by caller",
+    ),
+    FactorSpec(
+        factor_id="xs_rank_vol", family="cross_sectional_normalized",
+        required_columns=["volume"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_xs_rank_vol_prep,
+        notes="Per-symbol 20h mean volume; cross-sectional rank applied by caller",
     ),
 ]
 

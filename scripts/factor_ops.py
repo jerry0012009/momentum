@@ -57,6 +57,11 @@ def rolling_corr(x: pd.Series, y: pd.Series, n: int) -> pd.Series:
     return x.rolling(n, min_periods=n).corr(y)
 
 
+def rolling_sum(series: pd.Series, n: int) -> pd.Series:
+    """Rolling sum over n periods."""
+    return series.rolling(n, min_periods=n).sum()
+
+
 # ── Ranking ─────────────────────────────────────────────────────────
 
 def ts_rank(series: pd.Series, n: int) -> pd.Series:
