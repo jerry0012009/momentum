@@ -2,7 +2,7 @@
 
 > Date: 2026-06-14
 >
-> Status: COMPLETE
+> Status: COMPLETE (PM documentation correction applied)
 
 ---
 
@@ -12,6 +12,7 @@
 - Factors: 27 selected_for_7B only
 - Inputs: Phase 7C-B build summaries, Phase 7D-B static eval + comparison, Phase 7E classification, Phase 7F redundancy groups
 - No new build/evaluation/redundancy computation
+- Purpose: consolidate Batch-1 diagnostic outputs into a curated factor-library metadata table
 
 ---
 
@@ -50,18 +51,20 @@ Total factors: **27**
 
 ## C. Family Summary
 
+This table follows `phase7g_family_curation_summary.csv`.
+
 | Family | N | Core | Review Dir | Monitor To | Weak | Redundancy | RG groups |
-|--------|---|------|-----------|-----------|------|-----------|-----------|
-| breakout | 2 | 0 | 2 | 0 | 0 | 0 | 1 |
-| cross_sectional_normalized | 2 | 2 | 0 | 0 | 0 | 0 | 0 |
-| intraday_candle | 3 | 0 | 0 | 2 | 1 | 0 | 0 |
+|--------|---|------|------------|------------|------|------------|-----------|
+| breakout | 2 | 0 | 2 | 0 | 0 | 0 | 2 |
+| cross_sectional_normalized | 2 | 1 | 0 | 1 | 0 | 0 | 0 |
+| intraday_candle | 3 | 0 | 2 | 1 | 0 | 0 | 0 |
 | momentum | 3 | 0 | 3 | 0 | 0 | 0 | 1 |
-| price_position | 2 | 1 | 1 | 0 | 0 | 0 | 1 |
-| quote_volume_liquidity | 2 | 0 | 0 | 0 | 0 | 2 | 1 |
-| range_position | 3 | 3 | 0 | 0 | 0 | 0 | 1 |
-| reversal | 3 | 0 | 3 | 0 | 0 | 0 | 1 |
+| price_position | 2 | 1 | 0 | 0 | 0 | 1 | 2 |
+| quote_volume_liquidity | 2 | 0 | 2 | 0 | 0 | 0 | 1 |
+| range_position | 3 | 2 | 0 | 0 | 0 | 1 | 1 |
+| reversal | 3 | 0 | 3 | 0 | 0 | 0 | 2 |
 | trend_ma | 2 | 0 | 2 | 0 | 0 | 0 | 1 |
-| volatility | 3 | 0 | 3 | 0 | 0 | 0 | 1 |
+| volatility | 3 | 2 | 0 | 0 | 1 | 0 | 1 |
 | volume_liquidity | 2 | 0 | 2 | 0 | 0 | 0 | 1 |
 
 ---
@@ -69,7 +72,7 @@ Total factors: **27**
 ## D. Redundancy Review Queue
 
 | group_id | factors | families | representative | max_corr_s | max_corr_d | recommended_review |
-|----------|---------|----------|---------------|-----------|-----------|-------------------|
+|----------|---------|----------|----------------|------------|------------|--------------------|
 | RG1 | breakout_dist_20h; price_pos_24h | breakout; price_position | price_pos_24h | 0.9665 | 0.9507 | REVIEW_DUPLICATE_FORMULAS |
 | RG2 | breakout_dist_48h; price_pos_72h | breakout; price_position | breakout_dist_48h | 0.9119 | 0.8912 | REVIEW_CROSS_FAMILY_EQUIVALENCE |
 | RG3 | ma_gap_10_40; rev_24h | trend_ma; reversal | rev_24h | 0.8503 | 0.8590 | REVIEW_CROSS_FAMILY_EQUIVALENCE |
@@ -81,19 +84,28 @@ Total factors: **27**
 
 ## E. Risk Flags
 
-### Direction mismatch (16 factors)
+### Direction mismatch / formula review (16 factors)
+
 mom_5h, mom_10h, mom_40h, rev_3h, rev_10h, rev_24h, ma_gap_5_20, ma_gap_10_40, breakout_dist_20h, breakout_dist_48h, candle_wick_upper, candle_wick_lower, vol_zscore_20h, vol_zscore_48h, qvol_zscore_20h, qvol_zscore_48h
 
 ### High/extreme turnover (8 factors)
+
 vol_zscore_20h, vol_zscore_48h, qvol_zscore_20h, qvol_zscore_48h, candle_body, candle_wick_upper, candle_wick_lower, xs_rank_ret_1h
 
-### Weak diagnostic (3 factors)
-candle_body (T3), vol_ratio_5_20 (T3), price_pos_72h (T3)
+### TIER_3 weak diagnostic tier (3 factors)
+
+vol_ratio_5_20, price_pos_72h, candle_wick_lower
+
+### recommended_research_use = WEAK_DIAGNOSTIC_ONLY (1 factor)
+
+vol_ratio_5_20
 
 ### Sign flip / unstable (5 factors)
+
 vol_zscore_20h, vol_zscore_48h, qvol_zscore_20h, qvol_zscore_48h, ma_gap_10_40
 
 ### Near-duplicate groups (3 groups)
+
 RG1 (breakout_dist_20h ≈ price_pos_24h), RG4 (mom_10h ≈ -rev_10h), RG5 (vol/qvol zscore cluster)
 
 ---
