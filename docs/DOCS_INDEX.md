@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 7M-A complete; Phase 7M-B pending PM review.
+> Current state: Phase 7M-B complete; Phase 7M-C pending PM review.
 
 ---
 
@@ -91,6 +91,10 @@
 | 7L-R | `phase7l_r_crypto_native_cache_manifest.csv` | Cache manifest (5 artifacts, checksums) |
 | 7L-R2 | `PHASE_7L_R_CACHE_REPRODUCIBILITY.md` | Updated closeout (CLI wiring + manifest fixes) |
 | 7M-A | `PHASE_7M_A_CRYPTO_NATIVE_IMPLEMENTATION.md` | 6 crypto-native diagnostic factors closeout |
+| 7M-B | `PHASE_7M_B_CRYPTO_NATIVE_FACTOR_VALUES.md` | Factor values build closeout |
+| 7M-B | `phase7m_b_crypto_native_dataset_join_summary.csv` | Dataset join summary (static + dynamic) |
+| 7M-B | `phase7m_b_static_factor_values_build_summary.csv` | Static factor_values build summary (6 rows) |
+| 7M-B | `phase7m_b_dynamic_factor_values_build_summary.csv` | Dynamic factor_values build summary (6 rows) |
 
 ---
 
