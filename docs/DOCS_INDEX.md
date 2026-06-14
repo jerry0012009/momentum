@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 7J complete; Phase 7K pending PM review.
+> Current state: Phase 7K complete; Phase 7L pending PM review.
 
 ---
 
@@ -78,6 +78,11 @@
 | 7J | `phase7j_family_gap_analysis.csv` | Family gap analysis (20 families) |
 | 7J | `phase7j_crypto_native_data_readiness.csv` | Crypto-native data readiness audit (11 types) |
 | 7J | `phase7j_batch3_candidate_plan.csv` | Batch-3 candidate plan (14 candidates) |
+| 7K | `PHASE_7K_DATA_CONTRACT_SCHEMA_VERIFICATION.md` | Data contract & schema verification closeout |
+| 7K | `phase7k_bars_schema_audit.csv` | bars_1h.parquet schema audit (static + dynamic) |
+| 7K | `phase7k_taker_field_readiness.csv` | Taker field readiness (3 candidates x 2 datasets) |
+| 7K | `phase7k_funding_rate_schema_audit.csv` | Funding rate schema audit (2 data sources) |
+| 7K | `phase7k_crypto_native_data_contract.md` | Crypto-native data contract (中文) |
 
 ---
 

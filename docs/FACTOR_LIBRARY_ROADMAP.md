@@ -19,8 +19,8 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 7J COMPLETE |
-| Next subphase | Phase 7K — Data Contract or Batch-3 Candidate Selection |
+| Current subphase | Phase 7K COMPLETE |
+| Next subphase | Phase 7L — Limited Crypto-native Factor Implementation (pending PM) |
 | Curated library version | v0.3 |
 | Curated factors | 36 (27 Batch-1 + 9 Batch-2) |
 | Families | 13 |
@@ -73,6 +73,7 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | 7I-D | Batch-2 Redundancy Diagnostics | COMPLETE | 2 redundancy groups found |
 | 7I-E | Batch-2 Curated Library Update | COMPLETE | Curated factor library v0.3 (36 factors) |
 | 7J | Batch-3 Planning & Data Readiness | COMPLETE | Data readiness audit, 14 candidates planned |
+| 7K | Data Contract & Schema Verification | COMPLETE | taker READY_WITH_QUOTE_VARIANT, funding READY_FOR_CONTRACT |
 
 ---
 
@@ -124,20 +125,16 @@ These are stable diagnostic baselines, not alpha factors:
 
 ---
 
-## 6. Next Phase: 7K — Data Contract or Batch-3 Candidate Selection
+## 6. Next Phase: 7L — Limited Crypto-native Factor Implementation
 
-Phase 7J identified 14 Batch-3 candidates across 5 groups. PM review determines next path:
+Phase 7K verified data readiness:
+- **Taker imbalance**: bars_1h.parquet lacks taker fields, but raw klines have them. READY_WITH_QUOTE_VOLUME_VARIANT pending PM confirmation.
+- **Funding rate**: binance_vision data available (679 symbols, 49/50 top50). READY_FOR_CONTRACT pending PM on alignment rules.
 
-**Option A: Data contract first**
-- Build funding_rate ingestion pipeline (unzip→parquet, 8h→1h alignment, known_at semantics)
-- Then implement funding_rate candidates (B3_004-B3_006)
-- Simultaneously implement taker_imbalance + WQ101 candidates
-
-**Option B: OHLCV candidates first**
-- Implement 5 PROPOSE_FOR_PHASE7K candidates (3 taker_imbalance + 2 WQ101)
-- Defer funding_rate until data contract is ready
-
-Key constraint: funding_rate data exists (536 symbols, 2020+) but needs a data contract for 8h→1h alignment and known_at semantics.
+Phase 7L scope (pending PM approval):
+1. Implement 3 taker imbalance factors using quote-volume variant
+2. Build funding rate ingestion pipeline if PM approves contract
+3. All factors remain DIAGNOSTIC_PROBE
 
 ---
 
