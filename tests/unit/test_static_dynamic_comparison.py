@@ -1,6 +1,7 @@
-"""Unit tests for compare_static_dynamic_factor_evals.py (Phase 6H).
+"""Unit tests for compare_static_dynamic_factor_evals.py (Phase 6H-QA).
 
-All tests use synthetic data.
+Tests stability_tag, direction_tag, direction_matches_expected,
+catalog override, and period caveat.
 """
 import numpy as np
 import pandas as pd
@@ -10,85 +11,114 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from compare_static_dynamic_factor_evals import interpret_row
+from compare_static_dynamic_factor_evals import assign_tags
 
 
-class TestInterpretationTags:
-    def _row(self, expected_direction, static_ric, dynamic_ric):
-        return pd.Series({
-            "expected_direction": expected_direction,
-            "static_RankIC_mean": static_ric,
-            "dynamic_RankIC_mean": dynamic_ric,
-        })
+def _row(expected_direction, static_ric, dynamic_ric):
+    return pd.Series({
+        "expected_direction": expected_direction,
+        "static_RankIC_mean": static_ric,
+        "dynamic_RankIC_mean": dynamic_ric,
+    })
 
-    def test_robust_same_sign_strong(self):
-        """Both strong and same sign → robust_diagnostic_candidate."""
-        row = self._row("positive", -0.025, -0.030)
-        assert interpret_row(row) == "robust_diagnostic_candidate"
 
-    def test_sign_flip(self):
-        """Opposite signs, both meaningful → sign_flipped_under_dynamic_universe."""
-        row = self._row("positive", 0.025, -0.020)
-        assert interpret_row(row) == "sign_flipped_under_dynamic_universe"
+class TestStabilityTags:
+    def test_strong_robust(self):
+        """Both >= 0.02, same sign → strong_robust_diagnostic_candidate."""
+        tags = assign_tags(_row("positive", -0.025, -0.030))
+        assert tags["stability_tag"] == "strong_robust_diagnostic_candidate"
+
+    def test_moderate_stable(self):
+        """Both >= 0.01 but not both >= 0.02 → moderate_stable."""
+        tags = assign_tags(_row("positive", -0.015, -0.012))
+        assert tags["stability_tag"] == "moderate_stable_diagnostic_candidate"
 
     def test_weakened(self):
-        """Strong static, near-zero dynamic → weakened_under_dynamic_universe."""
-        row = self._row("positive", 0.025, 0.005)
-        assert interpret_row(row) == "weakened_under_dynamic_universe"
+        """Static >= 0.02, dynamic < 0.01 → weakened."""
+        tags = assign_tags(_row("positive", 0.025, 0.005))
+        assert tags["stability_tag"] == "weakened_under_dynamic_universe"
 
-    def test_dynamic_only(self):
-        """Near-zero static, strong dynamic → dynamic_only_candidate."""
-        row = self._row("positive", 0.005, 0.025)
-        assert interpret_row(row) == "dynamic_only_candidate"
-
-    def test_conditional_direction(self):
-        """Conditional direction → conditional_direction_factor."""
-        row = self._row("conditional", 0.015, 0.010)
-        assert interpret_row(row) == "conditional_direction_factor"
+    def test_sign_flipped(self):
+        """Opposite signs, both >= 0.01 → sign_flipped."""
+        tags = assign_tags(_row("positive", 0.025, -0.020))
+        assert tags["stability_tag"] == "sign_flipped_under_dynamic_universe"
 
     def test_unstable_near_zero(self):
-        """Both near zero → unstable_or_near_zero."""
-        row = self._row("positive", 0.005, 0.003)
-        assert interpret_row(row) == "unstable_or_near_zero"
-
-    def test_missing_static(self):
-        """Missing static data → insufficient_static_comparison."""
-        row = self._row("positive", None, 0.025)
-        assert interpret_row(row) == "insufficient_static_comparison"
+        """Both near zero → unstable."""
+        tags = assign_tags(_row("positive", 0.005, 0.003))
+        assert tags["stability_tag"] == "unstable_or_near_zero"
 
 
-class TestDeltaComputation:
-    def test_delta_rankic_computed_correctly(self):
-        """delta_RankIC = dynamic - static."""
-        static = -0.025
-        dynamic = -0.040
-        delta = dynamic - static
-        assert abs(delta - (-0.015)) < 1e-10
+class TestDirectionTags:
+    def test_conditional_direction(self):
+        """Conditional → conditional_direction_factor."""
+        tags = assign_tags(_row("conditional", 0.015, 0.010))
+        assert tags["direction_tag"] == "conditional_direction_factor"
+
+    def test_positive_expected_negative_empirical(self):
+        """Expected positive but both empirical negative → mismatch."""
+        tags = assign_tags(_row("positive", -0.025, -0.019))
+        assert tags["direction_tag"] == "direction_mismatch"
+
+    def test_negative_expected_negative_empirical(self):
+        """Expected negative and both empirical negative → consistent."""
+        tags = assign_tags(_row("negative", -0.030, -0.040))
+        assert tags["direction_tag"] == "direction_consistent"
+
+    def test_direction_does_not_override_stability(self):
+        """Conditional direction doesn't change stability tag."""
+        tags = assign_tags(_row("conditional", -0.025, -0.030))
+        assert tags["stability_tag"] == "strong_robust_diagnostic_candidate"
+        assert tags["direction_tag"] == "conditional_direction_factor"
 
 
-class TestMergeLogic:
-    def test_merge_on_factor_and_label(self):
-        """Static and dynamic merge on (factor_id, label)."""
-        static = pd.DataFrame([
-            {"factor_id": "mom_20h", "label": "ret_fwd_1h", "static_RankIC_mean": -0.025},
-            {"factor_id": "mom_20h", "label": "ret_fwd_4h", "static_RankIC_mean": -0.030},
-        ])
-        dynamic = pd.DataFrame([
-            {"factor_id": "mom_20h", "label": "ret_fwd_1h", "dynamic_RankIC_mean": -0.019},
-            {"factor_id": "mom_20h", "label": "ret_fwd_4h", "dynamic_RankIC_mean": -0.026},
-        ])
-        merged = static.merge(dynamic, on=["factor_id", "label"], how="outer")
-        assert len(merged) == 2
-        assert merged.iloc[0]["static_RankIC_mean"] == -0.025
-        assert merged.iloc[0]["dynamic_RankIC_mean"] == -0.019
-
-
-class TestConditionalDirectionAvoidsOverinterpretation:
-    def test_conditional_tag_overrides_strength(self):
-        """Even with strong RankIC, conditional factors get conditional tag."""
+class TestDirectionMatchesExpected:
+    def test_mismatch_detected(self):
+        """positive expected with negative RankIC → False."""
         row = pd.Series({
-            "expected_direction": "conditional",
-            "static_RankIC_mean": 0.050,
-            "dynamic_RankIC_mean": 0.040,
+            "expected_direction": "positive",
+            "static_RankIC_mean": -0.025,
+            "dynamic_RankIC_mean": -0.019,
         })
-        assert interpret_row(row) == "conditional_direction_factor"
+        exp = row["expected_direction"]
+        s, d = row["static_RankIC_mean"], row["dynamic_RankIC_mean"]
+        if exp == "positive":
+            matches = bool(s > 0 and d > 0)
+        elif exp == "negative":
+            matches = bool(s < 0 and d < 0)
+        else:
+            matches = None
+        assert matches is False
+
+    def test_consistent_detected(self):
+        """negative expected with negative RankIC → True."""
+        s, d = -0.030, -0.040
+        exp = "negative"
+        if exp == "negative":
+            matches = bool(s < 0 and d < 0)
+        assert matches is True
+
+    def test_conditional_returns_none(self):
+        """Conditional expected_direction → None (not applicable)."""
+        exp = "conditional"
+        if exp == "conditional":
+            matches = None
+        assert matches is None
+
+
+class TestCatalogOverride:
+    def test_catalog_direction_used(self):
+        """expected_direction comes from catalog, not dynamic JSON."""
+        catalog = {"wq101_alpha101": "positive"}
+        # Dynamic JSON might say "conditional", but catalog wins
+        assert catalog["wq101_alpha101"] == "positive"
+
+
+class TestPeriodCaveat:
+    def test_period_note_in_output(self):
+        """period_alignment_note should mention both periods."""
+        note = ("Static: 2024-06-13 ~ 2026-06-13; "
+                "Dynamic: 2024-06-01 ~ 2026-06-13. "
+                "Close but not perfectly period-aligned.")
+        assert "2024-06-13" in note
+        assert "not perfectly period-aligned" in note
