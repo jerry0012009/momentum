@@ -5,11 +5,18 @@ V0 audit improvements:
 - Excludes symbols with missing_bar_rate > 5% (gap symbols)
 - Adds direction-adjusted spread based on factor catalog's expected_direction
 - timestamp = bar_close_time (see build_labels.py)
+
+Phase 7D-A additions:
+- --factor-ids / --candidate-csv / --status for factor subset selection
+- candidate CSV direction source (priority: candidate CSV > old catalog > fallback positive)
+- fail-fast on missing factor_values / count / direction in explicit/candidate mode
+- machine-readable summary CSV output
 """
 from __future__ import annotations
 
 import json
 import argparse
+import csv as _csv
 import math
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,10 +28,44 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 RUN = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
 CATALOG = RUN / "factor_catalog_v0_1.csv"
+CANDIDATE_CSV_DEFAULT = RUN / "factor_mining_candidates_v0_1.csv"
 LABEL_NAMES = ["ret_fwd_1h", "ret_fwd_4h", "ret_fwd_24h", "ret_fwd_72h"]
 MIN_N = 10
 MISSING_BAR_RATE_THRESHOLD = 0.05  # exclude symbols with >5% missing bars
 
+
+# ---------------------------------------------------------------------------
+# Phase 7D-A: factor subset + direction helpers
+# ---------------------------------------------------------------------------
+
+def load_selected_factor_ids(candidate_csv: Path, status: str = "selected_for_7B") -> list[str]:
+    """Load factor_ids from candidate CSV with given status."""
+    with open(candidate_csv) as f:
+        rows = list(_csv.DictReader(f))
+    ids = [r["factor_id"] for r in rows if r["status"] == status]
+    return ids
+
+
+def load_candidate_directions(candidate_csv: Path) -> dict[str, str]:
+    """Load expected_direction from candidate CSV.
+
+    Returns dict: factor_id -> expected_direction.
+    """
+    with open(candidate_csv) as f:
+        rows = list(_csv.DictReader(f))
+    return {r["factor_id"]: r["expected_direction"] for r in rows}
+
+
+def validate_factor_ids(factor_ids: list[str], registry: dict[str, Any]) -> None:
+    """Raise ValueError if any factor_id is not in REGISTRY."""
+    missing = [fid for fid in factor_ids if fid not in registry]
+    if missing:
+        raise ValueError(f"Factor IDs not in REGISTRY: {missing}")
+
+
+# ---------------------------------------------------------------------------
+# Original helpers
+# ---------------------------------------------------------------------------
 
 def clean_float(x: Any) -> float | None:
     try:
@@ -77,11 +118,7 @@ def turnover(sets: list[set[str]]) -> float | None:
 
 
 def compute_missing_bar_rates(bars_path: Path | None = None) -> dict[str, float]:
-    """Compute missing_bar_rate per symbol from bars_1h.parquet.
-
-    Returns dict: symbol -> missing_rate (0.0 to 1.0).
-    Symbols not in the parquet are treated as 100% missing.
-    """
+    """Compute missing_bar_rate per symbol from bars_1h.parquet."""
     if not bars_path.exists():
         return {}
     bars = pd.read_parquet(bars_path)
@@ -99,15 +136,11 @@ def compute_missing_bar_rates(bars_path: Path | None = None) -> dict[str, float]
 
 
 def get_excluded_symbols(missing_rates: dict[str, float], threshold: float = MISSING_BAR_RATE_THRESHOLD) -> set[str]:
-    """Return set of symbols exceeding the missing bar rate threshold."""
     return {sym for sym, rate in missing_rates.items() if rate > threshold}
 
 
 def load_catalog_directions(catalog_path: Path | None = None) -> dict[str, str]:
-    """Load expected_direction from factor catalog CSV.
-
-    Returns dict: factor_id -> expected_direction (positive/negative/conditional).
-    """
+    """Load expected_direction from factor catalog CSV."""
     if catalog_path is None:
         catalog_path = CATALOG
     if not catalog_path.exists():
@@ -128,13 +161,7 @@ def evaluate_one_label(
     label: str,
     expected_direction: str = "positive",
 ) -> dict[str, Any]:
-    """Vectorized evaluation using pivot tables + numpy quintile assignment.
-
-    Now includes direction-adjusted spread:
-    - positive: direction_adjusted_spread = Q5 - Q1
-    - negative: direction_adjusted_spread = Q1 - Q5
-    - conditional: direction_adjusted_spread = None
-    """
+    """Vectorized evaluation using pivot tables + numpy quintile assignment."""
     total = len(df)
     factor_coverage = clean_float(df["factor_value"].notna().mean()) if total else 0.0
     valid = df[["timestamp", "symbol", "factor_value", label]].dropna()
@@ -145,11 +172,9 @@ def evaluate_one_label(
     lb_pivot = valid.pivot_table(index="timestamp", columns="symbol", values=label)
     n_ts = len(fv_pivot)
 
-    # Vectorized IC and RankIC
     ics = fv_pivot.corrwith(lb_pivot, axis=1).dropna().tolist()
     rics = fv_pivot.rank(axis=1).corrwith(lb_pivot.rank(axis=1), axis=1).dropna().tolist()
 
-    # Vectorized quintile spread using numpy
     fv_arr = fv_pivot.values
     lb_arr = lb_pivot.values
     fv_pctile = np.full_like(fv_arr, np.nan)
@@ -185,12 +210,10 @@ def evaluate_one_label(
         if not np.isnan(q1_val) and not np.isnan(q5_val):
             raw_spread = q5_val - q1_val
             raw_spreads.append(raw_spread)
-            # Direction-adjusted spread
             if expected_direction == "positive":
-                dir_adj_spreads.append(raw_spread)  # Q5 - Q1
+                dir_adj_spreads.append(raw_spread)
             elif expected_direction == "negative":
-                dir_adj_spreads.append(q1_val - q5_val)  # Q1 - Q5
-            # conditional: skip (dir_adj_spreads stays empty or partial)
+                dir_adj_spreads.append(q1_val - q5_val)
             bottom_sets.append({symbols[j] for j in range(len(symbols)) if q1_m[j] and not np.isnan(lb_arr[i, j])})
             top_sets.append({symbols[j] for j in range(len(symbols)) if q5_m[j] and not np.isnan(lb_arr[i, j])})
 
@@ -275,6 +298,9 @@ def write_factor_md(factor: str, metrics: dict[str, Any], path: Path, universe: 
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--dataset-id", default="crypto_top50_usdt_perp_1h", help="Dataset ID under data/cache/ and data/features/")
+    p.add_argument("--factor-ids", default=None, help="Comma-separated factor IDs to evaluate")
+    p.add_argument("--candidate-csv", default=None, help="Path to candidate CSV for factor selection and direction lookup")
+    p.add_argument("--status", default="selected_for_7B", help="Status filter for candidate CSV (default: selected_for_7B)")
     args = p.parse_args()
 
     dataset = args.dataset_id
@@ -283,20 +309,89 @@ def main() -> None:
     report = ROOT / "reports" / "artifacts" / "factor_eval" / dataset
     labels_path = feature / "labels.parquet"
 
-    print(f"Evaluate factors")
+    # Determine if explicit/candidate mode
+    explicit_mode = bool(args.factor_ids or args.candidate_csv)
+
+    print(f"Evaluate factors (static)")
     print(f"Dataset: {dataset}")
 
     if not labels_path.exists():
         raise FileNotFoundError("labels.parquet not found; run build_labels.py first")
-    if not CATALOG.exists():
-        raise FileNotFoundError(CATALOG)
 
-    catalog = pd.read_csv(CATALOG)
-    factors = catalog[catalog["implementation_status"] == "IMPLEMENTED"]["factor_id"].tolist()
-    print(f"Catalog: {len(factors)} IMPLEMENTED factors")
+    # Import REGISTRY for factor lookup
+    import sys
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from factor_formula_registry import REGISTRY, REGISTRY_BY_ID
 
-    # Load expected directions from catalog
-    directions = load_catalog_directions(CATALOG)
+    # Determine factor list
+    if args.factor_ids:
+        factors = [s.strip() for s in args.factor_ids.split(",") if s.strip()]
+    elif args.candidate_csv:
+        cand_path = Path(args.candidate_csv)
+        if not cand_path.exists():
+            raise FileNotFoundError(f"Candidate CSV not found: {cand_path}")
+        factors = load_selected_factor_ids(cand_path, args.status)
+    else:
+        # Legacy mode: from old catalog
+        if not CATALOG.exists():
+            raise FileNotFoundError(CATALOG)
+        catalog = pd.read_csv(CATALOG)
+        factors = catalog[catalog["implementation_status"] == "IMPLEMENTED"]["factor_id"].tolist()
+
+    # Validate all factors are in REGISTRY
+    validate_factor_ids(factors, REGISTRY_BY_ID)
+
+    # Expected count check for selected_for_7B
+    if args.candidate_csv and args.status == "selected_for_7B":
+        if len(factors) != 27:
+            raise ValueError(f"Expected exactly 27 selected_for_7B factors, got {len(factors)}")
+
+    print(f"Factors to evaluate: {len(factors)}")
+
+    # Direction lookup: candidate CSV > old catalog > fallback positive
+    candidate_directions: dict[str, str] = {}
+    if args.candidate_csv:
+        candidate_directions = load_candidate_directions(Path(args.candidate_csv))
+
+    catalog_directions = load_catalog_directions(CATALOG) if CATALOG.exists() else {}
+
+    direction_sources: dict[str, str] = {}
+    fallback_factors: list[str] = []
+
+    def get_direction(fid: str) -> tuple[str, str]:
+        if fid in candidate_directions:
+            return candidate_directions[fid], "candidate_csv"
+        if fid in catalog_directions:
+            return catalog_directions[fid], "catalog_csv"
+        return "positive", "fallback_positive"
+
+    for fid in factors:
+        d, src = get_direction(fid)
+        direction_sources[fid] = src
+        if src == "fallback_positive":
+            if explicit_mode:
+                raise ValueError(f"Factor '{fid}' has no direction in candidate CSV or catalog; fallback to positive not allowed in explicit mode")
+            fallback_factors.append(fid)
+
+    if fallback_factors:
+        print(f"WARNING: {len(fallback_factors)} factors using fallback positive direction: {fallback_factors}")
+
+    # Verify all have factor_values
+    features_dir = ROOT / "data" / "features" / dataset
+    available = []
+    missing_fv = []
+    for fid in factors:
+        fv_path = features_dir / fid / "factor_values.parquet"
+        if fv_path.exists():
+            available.append(fid)
+        else:
+            missing_fv.append(fid)
+
+    if missing_fv:
+        if explicit_mode:
+            raise FileNotFoundError(f"Missing factor_values for explicitly requested factors: {missing_fv}")
+        print(f"WARNING: {len(missing_fv)} factors missing factor_values, skipping: {missing_fv}")
+    factors = available
 
     # Compute missing bar rates and exclude gap symbols
     missing_rates = compute_missing_bar_rates(cache / "bars_1h.parquet")
@@ -311,27 +406,24 @@ def main() -> None:
     labels = pd.read_parquet(labels_path)
     labels["timestamp"] = pd.to_datetime(labels["timestamp"], utc=True)
 
-    # Exclude gap symbols from labels
     if excluded:
         labels = labels[~labels["symbol"].isin(excluded)]
 
     period = f"{labels['timestamp'].min()} ~ {labels['timestamp'].max()}"
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     master_rows = []
+    summary_rows = []
 
     for factor in factors:
         fpath = feature / factor / "factor_values.parquet"
-        if not fpath.exists():
-            raise FileNotFoundError(fpath)
         fv = pd.read_parquet(fpath)
         fv["timestamp"] = pd.to_datetime(fv["timestamp"], utc=True)
 
-        # Exclude gap symbols from factor values
         if excluded:
             fv = fv[~fv["symbol"].isin(excluded)]
 
         merged = fv[["timestamp", "symbol", "factor_value"]].merge(labels, on=["timestamp", "symbol"], how="left")
-        expected_dir = directions.get(factor, "positive")
+        expected_dir = get_direction(factor)[0]
         label_metrics = {
             label: evaluate_one_label(merged, label, expected_direction=expected_dir)
             for label in LABEL_NAMES
@@ -349,11 +441,52 @@ def main() -> None:
         outdir.mkdir(parents=True, exist_ok=True)
         (outdir / "metrics.json").write_text(json.dumps(metrics, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
         write_factor_md(factor, metrics, outdir / "result_summary.md", universe=dataset)
+
+        # Get family from candidate CSV
+        family = ""
+        if args.candidate_csv:
+            with open(args.candidate_csv) as f:
+                for row in _csv.DictReader(f):
+                    if row["factor_id"] == factor:
+                        family = row.get("factor_family", "")
+                        break
+
         for label, m in label_metrics.items():
             master_rows.append((factor, label, m))
-        print(f"{factor} -> {outdir}")
+            summary_rows.append({
+                "factor_id": factor,
+                "family": family,
+                "label": label,
+                "expected_direction": m.get("expected_direction", ""),
+                "direction_source": direction_sources.get(factor, ""),
+                "IC_mean": m.get("IC_mean", ""),
+                "ICIR": m.get("ICIR", ""),
+                "RankIC_mean": m.get("RankIC_mean", ""),
+                "RankICIR": m.get("RankICIR", ""),
+                "quantile_spread_mean": m.get("quantile_spread_mean", ""),
+                "direction_adjusted_spread": m.get("direction_adjusted_spread", ""),
+                "turnover": m.get("turnover", ""),
+                "coverage": m.get("coverage", ""),
+                "n_timestamps": m.get("n_timestamps", ""),
+                "n_symbols_avg": m.get("n_symbols_avg", ""),
+                "n_valid_rows": m.get("n_valid_rows", ""),
+            })
+        print(f"  {factor} -> {outdir}")
 
-    # Determine suffix for long-window result summary
+    # Write summary CSV
+    if summary_rows:
+        summary_df = pd.DataFrame(summary_rows)
+        summary_csv_path = report / "factor_eval_static_summary_all_labels.csv"
+        summary_df.to_csv(summary_csv_path, index=False)
+        print(f"Static eval summary (all labels) -> {summary_csv_path} ({len(summary_df)} rows)")
+
+        # Also write ret_fwd_1h only
+        ret_1h_df = summary_df[summary_df["label"] == "ret_fwd_1h"]
+        ret_1h_path = report / "factor_eval_static_summary.csv"
+        ret_1h_df.to_csv(ret_1h_path, index=False)
+        print(f"Static eval summary (ret_fwd_1h) -> {ret_1h_path} ({len(ret_1h_df)} rows)")
+
+    # Write result summary markdown
     suffix = f"_{dataset}" if dataset != "crypto_top50_usdt_perp_1h" else ""
     lines = [
         f"# Crypto Top50 Factor Library — Result Summary {'(' + dataset + ')' if suffix else '(V0.1)'}",
