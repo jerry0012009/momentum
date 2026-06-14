@@ -212,3 +212,53 @@ class TestBuildEvalConsistency:
             cand_dir = cand_dirs[fid]
             assert reg.expected_direction == cand_dir, \
                 f"{fid}: REGISTRY says {reg.expected_direction}, CSV says {cand_dir}"
+
+
+# ---------------------------------------------------------------------------
+# Fail-fast: missing factor_values in explicit/candidate mode
+# ---------------------------------------------------------------------------
+
+class TestFailFast:
+    def test_validate_rejects_unknown_factor(self):
+        """Factor not in REGISTRY must raise ValueError."""
+        with pytest.raises(ValueError, match="not in REGISTRY"):
+            validate_factor_ids(["mom_5h", "nonexistent_xyz"])
+
+    def test_selected_count_exactly_27(self):
+        """selected_for_7B must parse to exactly 27 factors."""
+        ids = load_selected_factor_ids(CANDIDATE_CSV, "selected_for_7B")
+        assert len(ids) == 27, f"Expected 27 selected_for_7B, got {len(ids)}"
+
+    def test_all_27_have_candidate_direction(self):
+        """Every selected_for_7B factor must have explicit direction in candidate CSV.
+        If this fails, evaluate would fallback to positive — which is not allowed."""
+        cand_dirs = load_candidate_directions(CANDIDATE_CSV)
+        ids = load_selected_factor_ids(CANDIDATE_CSV, "selected_for_7B")
+        missing = [fid for fid in ids if fid not in cand_dirs]
+        assert missing == [], f"Factors missing from candidate directions: {missing}"
+
+    def test_no_fallback_positive_in_candidate_directions(self):
+        """All selected_for_7B directions must be positive/negative/conditional,
+        never a fallback to positive."""
+        cand_dirs = load_candidate_directions(CANDIDATE_CSV)
+        ids = load_selected_factor_ids(CANDIDATE_CSV, "selected_for_7B")
+        for fid in ids:
+            d = cand_dirs[fid]
+            assert d in ("positive", "negative", "conditional"), \
+                f"{fid} has invalid direction: {d}"
+
+    def test_calc_group_subset_does_not_leak(self):
+        """When building a subset, other factors must not appear in output."""
+        df = pd.DataFrame({
+            "symbol": ["BTCUSDT"] * 5,
+            "timestamp": pd.date_range("2026-01-01", periods=5, freq="h", tz="UTC"),
+            "open": [100.0, 101.0, 102.0, 103.0, 104.0],
+            "high": [105.0, 106.0, 107.0, 108.0, 109.0],
+            "low": [95.0, 96.0, 97.0, 98.0, 99.0],
+            "close": [102.0, 103.0, 104.0, 105.0, 106.0],
+            "volume": [1000.0] * 5,
+            "quote_volume": [100000.0] * 5,
+        })
+        result = calc_group(df, ["candle_body"])
+        # Only candle_body + timestamp + symbol
+        assert list(result.columns) == ["timestamp", "symbol", "candle_body"]

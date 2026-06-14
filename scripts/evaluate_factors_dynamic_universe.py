@@ -230,9 +230,21 @@ def main():
             available.add(fid)
         else:
             missing_fv.append(fid)
+
+    explicit_mode = bool(args.factor_ids or args.candidate_csv)
+    if missing_fv and explicit_mode:
+        raise FileNotFoundError(
+            f"Missing factor_values for explicitly requested factors: {missing_fv}"
+        )
     if missing_fv:
         print(f"  WARNING: {len(missing_fv)} factors have no factor_values.parquet: {missing_fv}")
     factors = [fid for fid in factors if fid in available]
+
+    # In candidate mode, verify expected count
+    if args.candidate_csv and args.status == "selected_for_7B" and len(factors) != 27:
+        raise ValueError(
+            f"Expected 27 selected_for_7B factors but got {len(factors)}: {factors}"
+        )
 
     print(f"Evaluating {len(factors)} factors")
 
@@ -263,6 +275,11 @@ def main():
         expected_dir, dir_source = get_direction(fid)
         direction_sources[fid] = dir_source
         if dir_source == "fallback_positive":
+            if explicit_mode:
+                raise ValueError(
+                    f"Factor {fid} has no expected_direction in candidate CSV or catalog; "
+                    f"fallback positive is not allowed in explicit/candidate mode"
+                )
             fallback_factors.append(fid)
             print(f"  WARNING: no direction found, fallback to positive")
 
