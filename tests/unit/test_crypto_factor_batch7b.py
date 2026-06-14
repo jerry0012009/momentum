@@ -322,7 +322,7 @@ class TestIntradayCandle:
 
 class TestCrossSectionalRank:
     def test_xs_rank_ret_1h_returns_pct_change(self):
-        """Should return per-symbol pct_change (rank done by caller)."""
+        """compute_fn returns per-symbol pct_change (rank done by postprocess)."""
         df = _make_ohlcv(5)
         result = REGISTRY_BY_ID["xs_rank_ret_1h"].compute_fn(df)
         expected = df["close"].pct_change()
@@ -333,13 +333,52 @@ class TestCrossSectionalRank:
         result = REGISTRY_BY_ID["xs_rank_vol"].compute_fn(df)
         assert result.iloc[:19].isna().all()
 
-    def test_xs_rank_is_per_symbol_not_cross(self):
-        """compute_fn returns per-symbol metric, NOT cross-sectional rank.
-        Cross-sectional rank must be applied by the caller."""
-        df = _make_ohlcv(5, "BTCUSDT")
-        result = REGISTRY_BY_ID["xs_rank_ret_1h"].compute_fn(df)
-        # Should NOT be in [0,1] rank range — raw pct_change can be > 1
-        assert result.abs().max() > 0.001  # non-trivial values
+    def test_postprocess_rank_basic(self):
+        """3 symbols at same timestamp → rank assigns percentile 0.33/0.67/1.0."""
+        from build_factor_values import apply_cross_sectional_postprocess
+        ts = pd.Timestamp("2026-01-01", tz="UTC")
+        wide = pd.DataFrame({
+            "timestamp": [ts] * 3,
+            "symbol": ["A", "B", "C"],
+            "xs_rank_ret_1h": [0.01, 0.03, 0.02],
+            "xs_rank_vol": [100.0, 300.0, 200.0],
+        })
+        result = apply_cross_sectional_postprocess(wide)
+        # A=0.01→0.333, B=0.03→1.0, C=0.02→0.667
+        assert abs(result["xs_rank_ret_1h"].iloc[0] - 1 / 3) < 0.01
+        assert abs(result["xs_rank_ret_1h"].iloc[1] - 1.0) < 0.01
+        assert abs(result["xs_rank_ret_1h"].iloc[2] - 2 / 3) < 0.01
+        # Same pattern for volume
+        assert abs(result["xs_rank_vol"].iloc[0] - 1 / 3) < 0.01
+        assert abs(result["xs_rank_vol"].iloc[1] - 1.0) < 0.01
+        assert abs(result["xs_rank_vol"].iloc[2] - 2 / 3) < 0.01
+
+    def test_postprocess_rank_nan_preserved(self):
+        """NaN inputs stay NaN after ranking."""
+        from build_factor_values import apply_cross_sectional_postprocess
+        ts = pd.Timestamp("2026-01-01", tz="UTC")
+        wide = pd.DataFrame({
+            "timestamp": [ts] * 3,
+            "symbol": ["A", "B", "C"],
+            "xs_rank_ret_1h": [0.01, float("nan"), 0.02],
+            "xs_rank_vol": [100.0, 200.0, float("nan")],
+        })
+        result = apply_cross_sectional_postprocess(wide)
+        assert pd.isna(result["xs_rank_ret_1h"].iloc[1])
+        assert pd.isna(result["xs_rank_vol"].iloc[2])
+
+    def test_postprocess_does_not_touch_other_factors(self):
+        """Non-xs factors must be unchanged."""
+        from build_factor_values import apply_cross_sectional_postprocess
+        ts = pd.Timestamp("2026-01-01", tz="UTC")
+        wide = pd.DataFrame({
+            "timestamp": [ts] * 2,
+            "symbol": ["A", "B"],
+            "xs_rank_ret_1h": [0.01, 0.03],
+            "mom_5h": [0.05, -0.02],
+        })
+        result = apply_cross_sectional_postprocess(wide)
+        pd.testing.assert_series_equal(result["mom_5h"], wide["mom_5h"])
 
 
 # ---------------------------------------------------------------------------

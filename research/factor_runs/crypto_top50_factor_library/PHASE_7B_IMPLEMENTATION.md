@@ -46,10 +46,16 @@ All 27 `selected_for_7B` factors from `factor_mining_candidates_v0_1.csv`:
 
 ## 2. Cross-Sectional Rank Note
 
-`xs_rank_ret_1h` and `xs_rank_vol` compute the per-symbol time-series metric
-(pct_change / rolling mean). The actual cross-sectional rank normalization is
-performed by the caller (`build_factor_values.py`) after combining all symbols
-and grouping by timestamp. This is consistent with the project architecture.
+`xs_rank_ret_1h` and `xs_rank_vol` use a two-stage approach:
+
+1. **Per-symbol compute_fn** (`factor_formula_registry.py`): generates the raw
+   time-series metric (pct_change / rolling mean volume).
+2. **Cross-sectional postprocess** (`build_factor_values.py::apply_cross_sectional_postprocess`):
+   after all symbols are concatenated, groups by `timestamp` and applies
+   `rank(pct=True, method="average")` to produce percentile ranks in [0, 1].
+
+Unit tests in `test_crypto_factor_batch7b.py` cover: basic rank correctness,
+NaN preservation, and isolation from non-xs factors.
 
 ---
 

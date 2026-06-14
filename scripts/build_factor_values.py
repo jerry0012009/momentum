@@ -18,6 +18,23 @@ _sys.path.insert(0, str(Path(__file__).resolve().parent))
 from factor_formula_registry import REGISTRY
 
 
+def apply_cross_sectional_postprocess(wide: pd.DataFrame) -> pd.DataFrame:
+    """Apply cross-sectional rank normalization to xs_rank_* factors.
+
+    For factors that require ranking across symbols at each timestamp,
+    this replaces the per-symbol raw metric with a percentile rank.
+    """
+    wide = wide.copy()
+    xs_factors = ["xs_rank_ret_1h", "xs_rank_vol"]
+    for factor in xs_factors:
+        if factor in wide.columns:
+            wide[factor] = (
+                wide.groupby("timestamp")[factor]
+                .rank(pct=True, method="average")
+            )
+    return wide
+
+
 def calc_group(g: pd.DataFrame) -> pd.DataFrame:
     """Compute all registered factors for a single-symbol group."""
     g = g.copy().sort_values("timestamp")
@@ -54,6 +71,7 @@ def main() -> None:
     for _sym, g in bars.groupby("symbol", sort=False):
         parts.append(calc_group(g))
     wide = pd.concat(parts, ignore_index=True)
+    wide = apply_cross_sectional_postprocess(wide)
 
     computed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     factor_ids = [spec.factor_id for spec in REGISTRY]
