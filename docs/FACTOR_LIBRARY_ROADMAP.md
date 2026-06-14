@@ -19,7 +19,7 @@
 | Phase 4 | Factor Factory & Evaluation Platform v1 | **COMPLETE** |
 | Phase 5 | Alphalens-compatible Export / External Tool Compatibility | **COMPLETE** |
 | Phase 6 | Dynamic Universe & Survivorship Control | **COMPLETE** |
-| Phase 7 | Large-scale Factor Mining | NOT STARTED |
+| Phase 7 | Large-scale Factor Mining | **7A COMPLETE, 7B ALLOWED** |
 | Phase 8 | Candidate Factor Review | NOT STARTED |
 | Phase 9 | Multi-factor Signal Construction | NOT STARTED |
 | Phase 10 | Strategy Backtest with Borrowed Engine | NOT STARTED |
@@ -86,7 +86,7 @@ Build a lightweight factor factory: ops → specs → registry → registry-driv
 - Registry-driven `build_factor_values.py` ✅
 - 187 unit tests passing ✅
 
-**Status:** CURRENT (implementation complete, pending closeout)
+**Status:** COMPLETE
 
 ---
 
@@ -99,7 +99,7 @@ Compatibility layer — not migration.
 - Run 1–2 sample tear sheets for comparison
 - Verify IC / turnover / quantile metrics align
 
-**Status:** NOT STARTED
+**Status:** COMPLETE
 
 ---
 
@@ -112,19 +112,26 @@ Point-in-time TopN universe with survivorship bias handling.
 - Delisted tokens included when active
 - Rerun selected factor diagnostics
 
-**Status:** NOT STARTED
+**Status:** COMPLETE
 
 ---
 
 ### Phase 7: Large-scale Factor Mining
 
-Systematic factor expansion.
+Systematic factor expansion. Protocol + candidate backlog established (7A).
 
 **Sources:** WQ101, GTJA191, Alpha158, technical indicators, crypto-native factors.
 
 **Rule:** All new factors start as `DIAGNOSTIC_PROBE`. No auto-upgrades.
 
-**Status:** NOT STARTED
+**Sub-phases:**
+- **7A:** Protocol & Candidate Backlog ✅ (84 candidates, 15 families, 36 for 7B)
+- **7B:** First Implementation Batch — ALLOWED
+- **7C:** Dynamic-Universe Evaluation of 7B
+- **7D:** Static-vs-Dynamic / Alphalens Validation
+- **7E:** Batch-2 Selection
+
+**Status:** 7A COMPLETE, 7B ALLOWED
 
 ---
 
