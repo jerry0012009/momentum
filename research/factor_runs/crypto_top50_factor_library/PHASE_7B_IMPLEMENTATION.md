@@ -71,7 +71,8 @@ No adjustments were necessary. All formulas match the candidate CSV exactly.
 |------|--------|
 | `scripts/factor_formula_registry.py` | +27 compute functions, +27 REGISTRY entries, +2 imports |
 | `scripts/factor_ops.py` | +1 new op: `rolling_sum` |
-| `tests/unit/test_crypto_factor_batch7b.py` | NEW: 35 tests |
+| `scripts/build_factor_values.py` | Added `apply_cross_sectional_postprocess()` and called it after concatenating per-symbol factor outputs, before writing factor_values |
+| `tests/unit/test_crypto_factor_batch7b.py` | NEW: 37 tests (registry metadata, formula correctness, cross-sectional postprocess) |
 | `research/.../PHASE_7B_IMPLEMENTATION.md` | NEW: this closeout |
 
 ---
@@ -79,10 +80,10 @@ No adjustments were necessary. All formulas match the candidate CSV exactly.
 ## 5. Tests
 
 ```
-80 passed in 1.07s
+82 passed in 1.05s
 ```
 
-- `test_crypto_factor_batch7b.py`: 35/35 pass
+- `test_crypto_factor_batch7b.py`: 37/37 pass
 - `test_crypto_factor_batch1.py`: 24/24 pass (existing, not modified)
 - `test_factor_mining_candidates.py`: 15/15 pass (existing, not modified)
 - `test_crypto_factor_values.py`: skipped (not applicable — no factor_values built)
