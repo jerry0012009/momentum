@@ -37,24 +37,59 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
-import os
+import subprocess
 import sys
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-# ── Defaults ────────────────────────────────────────────────────────
-STATIC_BARS_ID = "crypto_top50_usdt_perp_1h"
-DYNAMIC_BARS_ID = "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
-FUNDING_SOURCE = "data/binance_vision_rank154/data/futures/um/monthly/fundingRate"
-OUTPUT_ROOT = "data/cache"
-REPORT_DIR = "research/factor_runs/crypto_top50_factor_library"
-KLINES_DIR = "data/binance_vision_1h_v1_6/klines"
+
+# ── Config ──────────────────────────────────────────────────────────
+@dataclass
+class CacheBuildConfig:
+    """All paths resolved from CLI args — no module-level globals."""
+
+    static_dataset_id: str
+    dynamic_dataset_id: str
+    funding_source: Path
+    output_root: Path
+    report_dir: Path
+    klines_dir: Path
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> CacheBuildConfig:
+        return cls(
+            static_dataset_id=args.static_dataset_id,
+            dynamic_dataset_id=args.dynamic_dataset_id,
+            funding_source=Path(args.funding_source),
+            output_root=Path(args.output_root),
+            report_dir=Path(args.report_dir),
+            klines_dir=Path(args.klines_dir),
+        )
+
+    def static_bars_path(self) -> Path:
+        return self.output_root / self.static_dataset_id / "bars_1h.parquet"
+
+    def dynamic_bars_path(self) -> Path:
+        return self.output_root / self.dynamic_dataset_id / "bars_1h.parquet"
+
+    def taker_enriched_path(self, dataset_id: str) -> Path:
+        return self.output_root / f"{dataset_id}_taker_enriched" / "bars_1h.parquet"
+
+    def funding_dir(self) -> Path:
+        return self.output_root / "crypto_funding_rate_1h_contract_v1"
+
+    def funding_events_path(self) -> Path:
+        return self.funding_dir() / "funding_rate_events.parquet"
+
+    def funding_aligned_path(self, variant: str) -> Path:
+        return self.funding_dir() / f"funding_rate_1h_aligned_{variant}.parquet"
 
 
+# ── Helpers ─────────────────────────────────────────────────────────
 def sha256_file(path: Path) -> str:
     """Compute SHA-256 of a file (streaming, memory-safe)."""
     h = hashlib.sha256()
@@ -64,9 +99,20 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def load_taker_klines(symbols: list[str]) -> pd.DataFrame:
+def is_git_tracked(path: Path) -> bool:
+    """Check if a path is tracked by git (staged or committed)."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", str(path)],
+            capture_output=True, text=True, timeout=10,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def load_taker_klines(symbols: list[str], klines_dir: Path) -> pd.DataFrame:
     """Load taker fields from raw klines zips for given symbols."""
-    klines_dir = Path(KLINES_DIR)
     frames = []
     for sym in sorted(symbols):
         sym_dir = klines_dir / sym
@@ -100,17 +146,17 @@ def load_taker_klines(symbols: list[str]) -> pd.DataFrame:
     return all_klines
 
 
-def build_taker_enriched(bars_id: str) -> dict:
+# ── Builders ────────────────────────────────────────────────────────
+def build_taker_enriched(bars_id: str, cfg: CacheBuildConfig) -> dict:
     """Build taker enriched bars for a given dataset."""
-    bars_path = Path(f"data/cache/{bars_id}/bars_1h.parquet")
-    out_dir = Path(f"{OUTPUT_ROOT}/{bars_id}_taker_enriched")
-    out_path = out_dir / "bars_1h.parquet"
+    bars_path = cfg.output_root / bars_id / "bars_1h.parquet"
+    out_path = cfg.taker_enriched_path(bars_id)
 
     bars = pd.read_parquet(bars_path)
     source_rows = len(bars)
     syms = sorted(bars["symbol"].unique())
 
-    taker = load_taker_klines(syms)
+    taker = load_taker_klines(syms, cfg.klines_dir)
     enriched = bars.merge(
         taker[["symbol", "bar_open_time", "taker_buy_volume", "taker_buy_quote_volume"]],
         on=["symbol", "bar_open_time"],
@@ -121,7 +167,7 @@ def build_taker_enriched(bars_id: str) -> dict:
         f"Row count mismatch: {len(enriched)} != {source_rows}"
     )
 
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     enriched.to_parquet(out_path, index=False)
 
     tbqv_cov = enriched["taker_buy_quote_volume"].notna().mean()
@@ -146,11 +192,10 @@ def build_taker_enriched(bars_id: str) -> dict:
     }
 
 
-def build_funding_events() -> dict:
+def build_funding_events(cfg: CacheBuildConfig) -> dict:
     """Build funding rate events parquet from raw zips."""
-    fr_dir = Path(FUNDING_SOURCE)
-    out_dir = Path(f"{OUTPUT_ROOT}/crypto_funding_rate_1h_contract_v1")
-    out_path = out_dir / "funding_rate_events.parquet"
+    fr_dir = cfg.funding_source
+    out_path = cfg.funding_events_path()
 
     all_sym_dirs = sorted([d for d in fr_dir.iterdir() if d.is_dir()])
     frames = []
@@ -180,7 +225,7 @@ def build_funding_events() -> dict:
     ].copy()
     events = events.sort_values(["symbol", "calc_time"]).reset_index(drop=True)
 
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     events.to_parquet(out_path, index=False)
 
     return {
@@ -203,12 +248,11 @@ def build_funding_events() -> dict:
     }
 
 
-def build_funding_aligned(bars_id: str, events_path: Path) -> dict:
+def build_funding_aligned(bars_id: str, events_path: Path, cfg: CacheBuildConfig) -> dict:
     """Build funding rate 1h aligned parquet for a given bars dataset."""
-    bars_path = Path(f"data/cache/{bars_id}/bars_1h.parquet")
-    out_dir = Path(f"{OUTPUT_ROOT}/crypto_funding_rate_1h_contract_v1")
-    aligned_name = "static" if "top50_usdt" in bars_id else "dynamic"
-    out_path = out_dir / f"funding_rate_1h_aligned_{aligned_name}.parquet"
+    bars_path = cfg.output_root / bars_id / "bars_1h.parquet"
+    variant = "static" if "top50_usdt" in bars_id else "dynamic"
+    out_path = cfg.funding_aligned_path(variant)
 
     bars = pd.read_parquet(bars_path)
     bars["timestamp"] = bars["timestamp"].astype("datetime64[ns, UTC]")
@@ -268,7 +312,7 @@ def build_funding_aligned(bars_id: str, events_path: Path) -> dict:
     max_age = float(age_valid.max()) if len(age_valid) > 0 else None
 
     return {
-        "dataset_id": aligned_name,
+        "dataset_id": variant,
         "bars_path": str(bars_path),
         "aligned_path": str(out_path),
         "bars_rows": len(bars),
@@ -287,19 +331,31 @@ def build_funding_aligned(bars_id: str, events_path: Path) -> dict:
     }
 
 
-def build_manifest(report_dir: Path) -> pd.DataFrame:
-    """Build cache manifest with checksums and metadata."""
+# ── Manifest ────────────────────────────────────────────────────────
+def build_manifest(cfg: CacheBuildConfig) -> pd.DataFrame:
+    """Build cache manifest with checksums and metadata.
+
+    committed_to_git semantics:
+        - YES: file is tracked by git (verified via git ls-files)
+        - NO_LOCAL_ARTIFACT: generated parquet kept locally, not in GitHub
+        - NO: file exists but not tracked by git
+        - FILE_NOT_FOUND: file does not exist
+
+    size_policy semantics:
+        - SMALL_LOCAL_FILE: < 100MB
+        - LARGE_LOCAL_FILE: >= 100MB (GitHub limit)
+    """
     artifacts = [
         ("taker_enriched_static", "parquet",
-         f"data/cache/{STATIC_BARS_ID}_taker_enriched/bars_1h.parquet"),
+         str(cfg.taker_enriched_path(cfg.static_dataset_id))),
         ("taker_enriched_dynamic", "parquet",
-         f"data/cache/{DYNAMIC_BARS_ID}_taker_enriched/bars_1h.parquet"),
+         str(cfg.taker_enriched_path(cfg.dynamic_dataset_id))),
         ("funding_events", "parquet",
-         "data/cache/crypto_funding_rate_1h_contract_v1/funding_rate_events.parquet"),
+         str(cfg.funding_events_path())),
         ("funding_aligned_static", "parquet",
-         "data/cache/crypto_funding_rate_1h_contract_v1/funding_rate_1h_aligned_static.parquet"),
+         str(cfg.funding_aligned_path("static"))),
         ("funding_aligned_dynamic", "parquet",
-         "data/cache/crypto_funding_rate_1h_contract_v1/funding_rate_1h_aligned_dynamic.parquet"),
+         str(cfg.funding_aligned_path("dynamic"))),
     ]
 
     rows = []
@@ -307,8 +363,9 @@ def build_manifest(report_dir: Path) -> pd.DataFrame:
         p = Path(path)
         exists = p.exists()
         size_bytes = p.stat().st_size if exists else 0
-        is_large = size_bytes > 100 * 1024 * 1024  # 100MB GitHub limit
+        is_large = size_bytes >= 100 * 1024 * 1024
 
+        # Checksum
         if exists and not is_large:
             checksum = sha256_file(p)
         elif exists:
@@ -316,7 +373,21 @@ def build_manifest(report_dir: Path) -> pd.DataFrame:
         else:
             checksum = "FILE_NOT_FOUND"
 
-        committed = "NO_LOCAL_ARTIFACT" if is_large else ("YES" if exists else "NO")
+        # committed_to_git: verify via git ls-files
+        if not exists:
+            committed = "FILE_NOT_FOUND"
+        elif is_git_tracked(p):
+            committed = "YES"
+        else:
+            committed = "NO_LOCAL_ARTIFACT"
+
+        # size_policy
+        if not exists:
+            size_policy = "FILE_NOT_FOUND"
+        elif is_large:
+            size_policy = "LARGE_LOCAL_FILE"
+        else:
+            size_policy = "SMALL_LOCAL_FILE"
 
         # Read metadata for parquet files
         n_rows = n_syms = None
@@ -341,6 +412,7 @@ def build_manifest(report_dir: Path) -> pd.DataFrame:
             "path": path,
             "exists": exists,
             "committed_to_git": committed,
+            "size_policy": size_policy,
             "file_size_bytes": size_bytes,
             "n_rows": n_rows,
             "n_symbols": n_syms,
@@ -349,17 +421,28 @@ def build_manifest(report_dir: Path) -> pd.DataFrame:
             "columns": columns,
             "checksum_sha256": checksum,
             "schema_status": "PASS" if exists else "FILE_NOT_FOUND",
-            "notes": f"Large file ({size_bytes/1024/1024:.1f}MB), local-only" if is_large else "",
+            "notes": (
+                f"Generated parquet, local artifact ({size_bytes / 1024 / 1024:.1f}MB)"
+                if exists else ""
+            ),
         })
 
     manifest = pd.DataFrame(rows)
-    manifest.to_csv(report_dir / "phase7l_r_crypto_native_cache_manifest.csv", index=False)
+    manifest.to_csv(cfg.report_dir / "phase7l_r_crypto_native_cache_manifest.csv", index=False)
     return manifest
 
 
-def validate_caches(report_dir: Path) -> bool:
-    """Validate existing caches against manifest."""
-    manifest_path = report_dir / "phase7l_r_crypto_native_cache_manifest.csv"
+# ── Validate ────────────────────────────────────────────────────────
+def validate_caches(cfg: CacheBuildConfig) -> bool:
+    """Validate existing caches against manifest.
+
+    Checks:
+        1. Each artifact path exists if manifest says exists=True
+        2. Re-compute checksum for small files; reject mismatch
+        3. committed_to_git must be NO_LOCAL_ARTIFACT for all generated parquet
+        4. size_policy must match file size
+    """
+    manifest_path = cfg.report_dir / "phase7l_r_crypto_native_cache_manifest.csv"
     if not manifest_path.exists():
         print("ERROR: Manifest not found. Run build first.")
         return False
@@ -368,89 +451,133 @@ def validate_caches(report_dir: Path) -> bool:
     ok = True
     for _, row in manifest.iterrows():
         p = Path(row["path"])
+        name = row["artifact_name"]
+
+        # 1. Existence
         if row["exists"] and not p.exists():
-            print(f"FAIL: {row['artifact_name']} missing at {row['path']}")
+            print(f"FAIL: {name} missing at {row['path']}")
             ok = False
-        elif row["exists"] and p.exists():
-            # Re-check checksum for small files
-            if row["checksum_sha256"] not in ("SKIPPED_LARGE_FILE", "FILE_NOT_FOUND"):
-                actual = sha256_file(p)
-                if actual != row["checksum_sha256"]:
-                    print(f"WARN: {row['artifact_name']} checksum mismatch (rebuild recommended)")
-                    ok = False
+            continue
+
+        if not row["exists"] or not p.exists():
+            continue
+
+        # 2. Checksum re-verification for small files
+        if row["checksum_sha256"] not in ("SKIPPED_LARGE_FILE", "FILE_NOT_FOUND"):
+            actual = sha256_file(p)
+            if actual != row["checksum_sha256"]:
+                print(f"FAIL: {name} checksum mismatch (rebuild recommended)")
+                ok = False
+
+        # 3. committed_to_git: generated parquet should be NO_LOCAL_ARTIFACT
+        # unless actually tracked by git
+        if row["committed_to_git"] == "YES" and not is_git_tracked(p):
+            print(f"FAIL: {name} claims YES but is NOT git-tracked")
+            ok = False
+
+        # 4. size_policy consistency
+        size_bytes = p.stat().st_size
+        expected_large = size_bytes >= 100 * 1024 * 1024
+        policy = row.get("size_policy", "")
+        if expected_large and policy != "LARGE_LOCAL_FILE":
+            print(f"FAIL: {name} size_policy={policy} but file is {size_bytes/1024/1024:.1f}MB")
+            ok = False
+        elif not expected_large and policy == "LARGE_LOCAL_FILE":
+            print(f"FAIL: {name} size_policy=LARGE_LOCAL_FILE but file is {size_bytes/1024/1024:.1f}MB")
+            ok = False
+
     if ok:
         print("All caches validated OK.")
     return ok
 
 
-def main():
+# ── Main ────────────────────────────────────────────────────────────
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build crypto-native data caches")
     parser.add_argument(
         "--mode", choices=["all", "taker", "funding", "validate"], default="all",
         help="Build mode: all, taker, funding, or validate"
     )
-    parser.add_argument("--static-dataset-id", default="crypto_top50_usdt_perp_1h")
-    parser.add_argument("--dynamic-dataset-id", default="crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1")
-    parser.add_argument("--funding-source", default="data/binance_vision_rank154/data/futures/um/monthly/fundingRate")
-    parser.add_argument("--output-root", default="data/cache")
+    parser.add_argument(
+        "--static-dataset-id", default="crypto_top50_usdt_perp_1h",
+        help="Static bars dataset ID"
+    )
+    parser.add_argument(
+        "--dynamic-dataset-id", default="crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1",
+        help="Dynamic bars dataset ID"
+    )
+    parser.add_argument(
+        "--funding-source", default="data/binance_vision_rank154/data/futures/um/monthly/fundingRate",
+        help="Path to raw funding rate zip directory"
+    )
+    parser.add_argument(
+        "--output-root", default="data/cache",
+        help="Root directory for output caches"
+    )
+    parser.add_argument(
+        "--report-dir", default="research/factor_runs/crypto_top50_factor_library",
+        help="Directory for summary CSVs and manifest"
+    )
+    parser.add_argument(
+        "--klines-dir", default="data/binance_vision_1h_v1_6/klines",
+        help="Directory with raw klines zips"
+    )
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
+    cfg = CacheBuildConfig.from_args(args)
 
-    _cfg = {
-        "static": args.static_dataset_id,
-        "dynamic": args.dynamic_dataset_id,
-        "funding": args.funding_source,
-        "output": args.output_root,
-    }
-
-    report_dir = Path(REPORT_DIR)
-    report_dir.mkdir(parents=True, exist_ok=True)
+    cfg.report_dir.mkdir(parents=True, exist_ok=True)
 
     if args.mode == "validate":
-        ok = validate_caches(report_dir)
+        ok = validate_caches(cfg)
         sys.exit(0 if ok else 1)
 
     # ── Taker ────────────────────────────────────────────────────────
     if args.mode in ("all", "taker"):
         print("=== Building taker enriched bars ===")
         taker_rows = []
-        for ds_id in [_cfg["static"], _cfg["dynamic"]]:
+        for ds_id in [cfg.static_dataset_id, cfg.dynamic_dataset_id]:
             print(f"  {ds_id}...")
-            result = build_taker_enriched(ds_id)
+            result = build_taker_enriched(ds_id, cfg)
             taker_rows.append(result)
             print(f"    {result['enriched_rows']:,} rows, {result['taker_buy_quote_volume_coverage']:.1%} coverage")
 
         taker_df = pd.DataFrame(taker_rows)
-        taker_df.to_csv(report_dir / "phase7l_taker_enriched_bars_summary.csv", index=False)
+        taker_df.to_csv(cfg.report_dir / "phase7l_taker_enriched_bars_summary.csv", index=False)
         print(f"  Saved taker summary ({len(taker_rows)} rows)")
 
     # ── Funding ──────────────────────────────────────────────────────
     if args.mode in ("all", "funding"):
         print("=== Building funding rate caches ===")
         print("  Events...")
-        events_result = build_funding_events()
+        events_result = build_funding_events(cfg)
         print(f"    {events_result['n_events']:,} events, {events_result['n_symbols']} symbols")
 
         events_path = Path(events_result["events_path"])
         pd.DataFrame([events_result]).to_csv(
-            report_dir / "phase7l_funding_events_summary.csv", index=False
+            cfg.report_dir / "phase7l_funding_events_summary.csv", index=False
         )
 
         align_rows = []
-        for ds_id in [_cfg["static"], _cfg["dynamic"]]:
+        for ds_id in [cfg.static_dataset_id, cfg.dynamic_dataset_id]:
             print(f"  Aligning {ds_id}...")
-            result = build_funding_aligned(ds_id, events_path)
+            result = build_funding_aligned(ds_id, events_path, cfg)
             align_rows.append(result)
             print(f"    {result['aligned_rows']:,} rows, {result['funding_rate_coverage']:.1%} coverage")
 
         pd.DataFrame(align_rows).to_csv(
-            report_dir / "phase7l_funding_alignment_summary.csv", index=False
+            cfg.report_dir / "phase7l_funding_alignment_summary.csv", index=False
         )
         print(f"  Saved funding summaries")
 
     # ── Manifest ─────────────────────────────────────────────────────
     if args.mode == "all":
         print("=== Building manifest ===")
-        manifest = build_manifest(report_dir)
+        manifest = build_manifest(cfg)
         print(f"  {len(manifest)} artifacts documented")
 
     print("\nDone.")

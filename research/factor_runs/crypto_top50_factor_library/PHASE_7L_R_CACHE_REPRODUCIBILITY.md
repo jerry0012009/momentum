@@ -1,4 +1,4 @@
-# Phase 7L-R — Cache Reproducibility Closeout
+# Phase 7L-R2 — Cache Reproducibility Fixes Closeout
 
 > Date: 2026-06-14
 >
@@ -8,63 +8,85 @@
 
 ## A. Scope
 
-- Phase 7L-R: cache reproducibility hardening
-- Reproducible script + manifest + validation tests
+- Phase 7L-R2: cache reproducibility hardening fixes
+- Fix CLI wiring, manifest semantics, validate mode, tests
 - No factor implementation, no factor_values build, no evaluation/backtest
 
 ---
 
-## B. Script
+## B. CLI Wiring Fix
 
-| Item | Value |
-|------|-------|
-| Path | `scripts/build_crypto_native_caches.py` |
-| Modes | `all`, `taker`, `funding`, `validate` |
-| Input (bars) | `data/cache/{dataset_id}/bars_1h.parquet` |
-| Input (klines) | `data/binance_vision_1h_v1_6/klines/{SYMBOL}/` |
-| Input (funding) | `data/binance_vision_rank154/data/futures/um/monthly/fundingRate/` |
-| Output (taker) | `data/cache/{dataset_id}_taker_enriched/bars_1h.parquet` |
-| Output (funding) | `data/cache/crypto_funding_rate_1h_contract_v1/` |
+**Before:** `--funding-source`, `--output-root` exposed but not wired to `build_funding_events()`, `build_funding_aligned()`, `build_manifest()`. Functions used module-level globals.
 
----
+**After:** `CacheBuildConfig` dataclass carries all paths. Every builder function receives `cfg: CacheBuildConfig` explicitly. No module-level path globals.
 
-## C. Manifest
+```python
+@dataclass
+class CacheBuildConfig:
+    static_dataset_id: str
+    dynamic_dataset_id: str
+    funding_source: Path
+    output_root: Path
+    report_dir: Path
+    klines_dir: Path
+```
 
-| Item | Value |
-|------|-------|
-| Path | `phase7l_r_crypto_native_cache_manifest.csv` |
-| Artifacts | 5 |
-| Local-only | taker_enriched_dynamic (168.4MB), funding_events (12.3MB), funding_aligned_dynamic (5.7MB) |
-| Checksum policy | SHA-256 for files <100MB; `SKIPPED_LARGE_FILE` for >100MB |
+New CLI args: `--report-dir`, `--klines-dir` also wired through.
 
 ---
 
-## D. Validation
+## C. Manifest `committed_to_git` Fix
 
-| Test | Result |
-|------|--------|
-| Script exists | ✅ |
-| Manifest exists (5 artifacts) | ✅ |
-| Large parquets marked NO_LOCAL_ARTIFACT | ✅ |
-| Taker row_count_match | ✅ |
-| Funding row_count_match | ✅ |
-| Funding max_age ≤ 8h | ✅ |
-| Registry unchanged (47 factors) | ✅ |
-| factor_ops unchanged | ✅ |
-| No factor_values built | ✅ |
-| **Total** | **13/13 PASS** |
+**Before:** Used file size (>100MB → NO_LOCAL_ARTIFACT, else YES). WRONG.
+
+**After:** All 5 generated parquet artifacts → `NO_LOCAL_ARTIFACT`. Uses `git ls-files --error-unmatch` to verify tracking. No generated parquet is in GitHub.
+
+| Artifact | committed_to_git | size_policy |
+|----------|-----------------|-------------|
+| taker_enriched_static | NO_LOCAL_ARTIFACT | SMALL_LOCAL_FILE |
+| taker_enriched_dynamic | NO_LOCAL_ARTIFACT | LARGE_LOCAL_FILE |
+| funding_events | NO_LOCAL_ARTIFACT | SMALL_LOCAL_FILE |
+| funding_aligned_static | NO_LOCAL_ARTIFACT | SMALL_LOCAL_FILE |
+| funding_aligned_dynamic | NO_LOCAL_ARTIFACT | SMALL_LOCAL_FILE |
+
+New `size_policy` field: `SMALL_LOCAL_FILE` (<100MB) or `LARGE_LOCAL_FILE` (>=100MB).
 
 ---
 
-## E. Phase 7M Readiness
+## D. Validate Mode Fix
+
+Now checks:
+1. Artifact existence
+2. Checksum re-verification for small files
+3. `committed_to_git` consistency (YES only if actually git-tracked)
+4. `size_policy` consistency with actual file size
+
+---
+
+## E. Test Results
+
+| Test Class | Tests | Result |
+|-----------|-------|--------|
+| TestScriptExists | 3 | ✅ |
+| TestCLIWiring | 2 | ✅ |
+| TestManifestSemantics | 6 | ✅ |
+| TestTakerSummary | 2 | ✅ |
+| TestFundingAlignment | 2 | ✅ |
+| TestValidateMode | 2 | ✅ |
+| TestNoForbiddenChanges | 2 | ✅ |
+| **Total** | **20** | **20/20 PASS** |
+
+---
+
+## F. Phase 7M Readiness
 
 **Phase 7M limited crypto-native factor implementation is allowed pending PM review.**
 
-Script, manifest, and validation tests all pass. Cache is reproducible from raw data.
+Script, manifest, and validation tests all pass. Cache is reproducible from raw data via `python scripts/build_crypto_native_caches.py --mode all`.
 
 ---
 
-## F. Negative Declarations
+## G. Negative Declarations
 
 No new factors were implemented.
 No factor registry was modified.

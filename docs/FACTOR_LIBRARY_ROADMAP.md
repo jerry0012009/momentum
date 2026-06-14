@@ -19,7 +19,7 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 7L-R COMPLETE |
+| Current subphase | Phase 7L-R2 COMPLETE |
 | Next subphase | Phase 7M — Crypto-native Factor Implementation (pending PM) |
 | Curated library version | v0.3 |
 | Curated factors | 36 (27 Batch-1 + 9 Batch-2) |
@@ -76,6 +76,7 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | 7K | Data Contract & Schema Verification | COMPLETE | taker READY_WITH_QUOTE_VARIANT, funding READY_FOR_CONTRACT |
 | 7L | Canonical Data Cache Construction | COMPLETE | taker enriched bars + funding events + 1h aligned |
 | 7L-R | Cache Reproducibility Hardening | COMPLETE | reproducible script + manifest + 13 tests |
+| 7L-R2 | Cache Reproducibility Fixes | COMPLETE | CLI wiring + manifest semantics + 20 tests |
 
 ---
 

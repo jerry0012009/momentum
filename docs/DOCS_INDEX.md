@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 7L-R complete; Phase 7M pending PM review.
+> Current state: Phase 7L-R2 complete; Phase 7M pending PM review.
 
 ---
 
@@ -89,6 +89,7 @@
 | 7L | `phase7l_funding_alignment_summary.csv` | Funding 1h alignment summary (static + dynamic) |
 | 7L-R | `PHASE_7L_R_CACHE_REPRODUCIBILITY.md` | Cache reproducibility closeout |
 | 7L-R | `phase7l_r_crypto_native_cache_manifest.csv` | Cache manifest (5 artifacts, checksums) |
+| 7L-R2 | `PHASE_7L_R_CACHE_REPRODUCIBILITY.md` | Updated closeout (CLI wiring + manifest fixes) |
 
 ---
 
