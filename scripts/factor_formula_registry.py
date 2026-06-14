@@ -363,6 +363,41 @@ def _compute_ma_gap_20_80(df: pd.DataFrame) -> pd.Series:
     return (sma20 - sma80) / sma80.replace(0, np.nan)
 
 
+# ── Phase 7M-A: Crypto-native (taker + funding) ────────────────────
+
+def _compute_taker_buy_ratio_20h(df: pd.DataFrame) -> pd.Series:
+    """Taker buy ratio 20h: rolling_mean(taker_buy_quote_volume / quote_volume, 20)."""
+    ratio = df["taker_buy_quote_volume"] / df["quote_volume"].replace(0, np.nan)
+    return rolling_mean(ratio, 20)
+
+
+def _compute_taker_buy_zscore_20h(df: pd.DataFrame) -> pd.Series:
+    """Taker buy z-score 20h: zscore(taker_buy_quote_volume / quote_volume, 20)."""
+    ratio = df["taker_buy_quote_volume"] / df["quote_volume"].replace(0, np.nan)
+    return zscore(ratio, 20)
+
+
+def _compute_taker_buy_delta_5h(df: pd.DataFrame) -> pd.Series:
+    """Taker buy delta 5h: ratio - delay(ratio, 5)."""
+    ratio = df["taker_buy_quote_volume"] / df["quote_volume"].replace(0, np.nan)
+    return ratio - delay(ratio, 5)
+
+
+def _compute_funding_rate_level_20h(df: pd.DataFrame) -> pd.Series:
+    """Funding rate level 20h: rolling_mean(funding_rate, 20)."""
+    return rolling_mean(df["funding_rate"], 20)
+
+
+def _compute_funding_rate_zscore_80h(df: pd.DataFrame) -> pd.Series:
+    """Funding rate z-score 80h: zscore(funding_rate, 80)."""
+    return zscore(df["funding_rate"], 80)
+
+
+def _compute_funding_rate_change_24h(df: pd.DataFrame) -> pd.Series:
+    """Funding rate change 24h: funding_rate - delay(funding_rate, 24)."""
+    return df["funding_rate"] - delay(df["funding_rate"], 24)
+
+
 # ── Registry ────────────────────────────────────────────────────────
 
 REGISTRY: list[FactorSpec] = [
@@ -712,6 +747,56 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="positive",
         compute_fn=_compute_ma_gap_20_80,
         notes="(SMA20 - SMA80) / SMA80",
+    ),
+    # ── Phase 7M-A: Taker Imbalance (3) ────────────────────────
+    FactorSpec(
+        factor_id="taker_buy_ratio_20h", family="taker_imbalance",
+        required_columns=["taker_buy_quote_volume", "quote_volume"], lookback_window=20,
+        expected_direction="positive",
+        compute_fn=_compute_taker_buy_ratio_20h,
+        status="DIAGNOSTIC_PROBE",
+        notes="rolling_mean(taker_buy_quote_volume / quote_volume, 20); Requires Phase 7L-R canonical crypto-native cache.",
+    ),
+    FactorSpec(
+        factor_id="taker_buy_zscore_20h", family="taker_imbalance",
+        required_columns=["taker_buy_quote_volume", "quote_volume"], lookback_window=20,
+        expected_direction="positive",
+        compute_fn=_compute_taker_buy_zscore_20h,
+        status="DIAGNOSTIC_PROBE",
+        notes="zscore(taker_buy_quote_volume / quote_volume, 20); Requires Phase 7L-R canonical crypto-native cache.",
+    ),
+    FactorSpec(
+        factor_id="taker_buy_delta_5h", family="taker_imbalance",
+        required_columns=["taker_buy_quote_volume", "quote_volume"], lookback_window=6,
+        expected_direction="positive",
+        compute_fn=_compute_taker_buy_delta_5h,
+        status="DIAGNOSTIC_PROBE",
+        notes="ratio - delay(ratio, 5); lookback=6 for ratio(1)+delay(5); Requires Phase 7L-R canonical crypto-native cache.",
+    ),
+    # ── Phase 7M-A: Funding Rate (3) ───────────────────────────
+    FactorSpec(
+        factor_id="funding_rate_level_20h", family="funding_rate",
+        required_columns=["funding_rate"], lookback_window=20,
+        expected_direction="negative",
+        compute_fn=_compute_funding_rate_level_20h,
+        status="DIAGNOSTIC_PROBE",
+        notes="rolling_mean(funding_rate, 20); high funding = crowded long, mean-revert; Requires Phase 7L-R canonical crypto-native cache.",
+    ),
+    FactorSpec(
+        factor_id="funding_rate_zscore_80h", family="funding_rate",
+        required_columns=["funding_rate"], lookback_window=80,
+        expected_direction="negative",
+        compute_fn=_compute_funding_rate_zscore_80h,
+        status="DIAGNOSTIC_PROBE",
+        notes="zscore(funding_rate, 80); Requires Phase 7L-R canonical crypto-native cache.",
+    ),
+    FactorSpec(
+        factor_id="funding_rate_change_24h", family="funding_rate",
+        required_columns=["funding_rate"], lookback_window=25,
+        expected_direction="negative",
+        compute_fn=_compute_funding_rate_change_24h,
+        status="DIAGNOSTIC_PROBE",
+        notes="funding_rate - delay(funding_rate, 24); fast rise = crowded, expect reversal; Requires Phase 7L-R canonical crypto-native cache.",
     ),
 ]
 
