@@ -132,5 +132,7 @@ Phase 6C+ will integrate this universe into the factor evaluation pipeline:
 - Phase 6E: COMPLETE — forward-return labels (3.3M rows, membership-aware missing <0.5%)
 - Phase 6F: COMPLETE — factor values (11 factors, all selected_missing <0.2%)
 - Phase 6G: COMPLETE — factor evaluation (best RankIC volatility_20h -0.043)
-- Phase 6H: ALLOWED — static-vs-dynamic comparison can proceed
+- Phase 6H: COMPLETE — static-vs-dynamic comparison (19 robust candidates, 0 weakened, 0 sign-flipped)
+- Phase 6: COMPLETE — all sub-phases finished
+- Phase 7: ALLOWED — large-scale factor mining can proceed
 - Phase 7: NOT YET — blocked on Phase 6 completion

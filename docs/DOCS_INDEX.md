@@ -103,6 +103,7 @@ These documents belong to the active `crypto_top50_factor_library` research run.
 | `research/.../PHASE_6E_DYNAMIC_LABELS.md` | CURRENT_RUN | Phase 6E: forward-return labels, 3.3M rows, membership-aware missing <0.5%, factor_values ALLOWED | Review Phase 6E completion |
 | `research/.../PHASE_6F_DYNAMIC_FACTOR_VALUES.md` | CURRENT_RUN | Phase 6F: 11 factors built, all selected_missing <0.2%, Phase 6G ALLOWED | Review Phase 6F completion |
 | `research/.../PHASE_6G_DYNAMIC_FACTOR_EVALUATION.md` | CURRENT_RUN | Phase 6G: 11 factors evaluated, best RankIC volatility_20h (-0.043), Phase 6H ALLOWED | Review Phase 6G completion |
+| `research/.../PHASE_6H_STATIC_DYNAMIC_COMPARISON.md` | CURRENT_RUN | Phase 6H: static-vs-dynamic comparison, 19 robust candidates, Phase 6 COMPLETE | Review Phase 6H completion |
 | `research/.../PHASE_4_FACTOR_FACTORY_V1.md` | CURRENT_RUN | Factor Factory v1 closeout: 11 factors registered, 187 tests pass | Review Phase 4 completion |
 
 Path prefix: `research/factor_runs/crypto_top50_factor_library/`
