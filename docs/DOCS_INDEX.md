@@ -2,7 +2,7 @@
 
 > This is the entry point for all project documentation.
 >
-> Last updated: 2026-06-13 (Phase 4 closeout)
+> Last updated: 2026-06-14 (Phase 7A-QA documentation alignment)
 
 ---
 
@@ -16,7 +16,7 @@
 4. `docs/FACTOR_REGISTRY.md` — what factors exist and their status
 4. This file (`DOCS_INDEX.md`) — find anything else you need
 
-**Current mainline:** Phase 2D (External Factor Priors). The project is building a crypto factor library, not a trading strategy.
+**Current mainline:** Phase 7A-QA / Large-scale Factor Mining preparation. Phase 7B remains blocked pending PM re-review. The project is building a crypto factor library, not a trading strategy.
 
 ---
 
