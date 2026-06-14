@@ -1,195 +1,76 @@
 # Factor Library Roadmap
 
-> This is the canonical roadmap for the momentum project's factor library.
->
-> Each phase builds on the previous. No phase may be skipped.
->
-> See also: `docs/RESEARCH_PHASE_CONSTITUTION.md` for full constraints.
+> Last updated: 2026-06-14 (Phase 7G complete)
 
 ---
 
 ## Current Status
 
-| Phase | Name | Status |
-|-------|------|--------|
-| Phase 0 | Project Positioning & Data Contract | **COMPLETE** |
-| Phase 1 | V0 Engineering Loop | **COMPLETE** |
-| Phase 2 | Evaluation Protocol & Factor Library Skeleton | **COMPLETE** |
-| Phase 3 | Long-window Baseline | **COMPLETE** |
-| Phase 4 | Factor Factory & Evaluation Platform v1 | **COMPLETE** |
-| Phase 5 | Alphalens-compatible Export / External Tool Compatibility | **COMPLETE** |
-| Phase 6 | Dynamic Universe & Survivorship Control | **COMPLETE** |
-| Phase 7 | Large-scale Factor Mining | **7A COMPLETE, 7B BLOCKED** |
-| Phase 8 | Candidate Factor Review | NOT STARTED |
-| Phase 9 | Multi-factor Signal Construction | NOT STARTED |
-| Phase 10 | Strategy Backtest with Borrowed Engine | NOT STARTED |
-| Phase 11 | Cost / Slippage / Capacity / Risk | NOT STARTED |
-| Phase 12 | Paper Trading | NOT STARTED |
-| Phase 13 | Small-capital Live Validation | NOT STARTED |
+**Phase 7G COMPLETE** — 27-factor curated library (v0.2) established.
 
-**No factor promoted to alpha. No strategy backtest started.**
+| Metric | Value |
+|--------|-------|
+| Total factors | 27 |
+| Families | 11 |
+| Diagnostic tiers | T1: 7, T2: 12, T3: 3, T4: 5 |
+| Redundancy groups | 6 |
+| Core diagnostic candidates | 6 |
+| Tests | 115 total |
 
 ---
 
-## Phase Definitions
+## Completed Phases
 
-### Phase 0: Project Positioning & Data Contract
-
-Define what this project is and is not. Choose universe, data source, frequency, storage policy, timestamp convention.
-
-**Status:** COMPLETE
-
----
-
-### Phase 1: V0 Engineering Loop
-
-Build the minimum viable data pipeline: fetch bars → build labels → build factors → evaluate factors. Get 5 simple OHLCV factors through end-to-end.
-
-**Status:** COMPLETE
+| Phase | Status | Key Output |
+|-------|--------|------------|
+| 7A | DONE | 86 candidate factors mined |
+| 7B | DONE | 27 selected_for_7B |
+| 7C-A | DONE | Dynamic factor_values built |
+| 7C-B | DONE | Dynamic evaluation + summary |
+| 7D-A | DONE | Static adapter + comparison plan |
+| 7D-B | DONE | Static evaluation + static-vs-dynamic comparison |
+| 7E | DONE | Diagnostic tier classification (T1/T2/T3/T4) |
+| 7F | DONE | Pairwise redundancy + 6 groups identified |
+| 7G | DONE | Curated library v0.2 + documentation consolidation |
 
 ---
 
-### Phase 2: Evaluation Protocol & Factor Library Skeleton
+## Next: Phase 7H — Batch-2 Factor Mining Preparation
 
-Systematically build the evaluation protocol: data audit, quality gates, factor library skeleton, external factor priors, batch factor evaluation.
+Allowed pending PM review.
 
-Sub-phases:
-- **2A:** V0 Audit — Data & Pipeline ✅
-- **2B:** Lightweight Quality Gate ✅
-- **2C:** Factor Library Skeleton ✅
-- **2D:** External Factor Priors ✅
-- **2E:** Batch Factor Evaluation ✅ (11 factors, all DIAGNOSTIC_PROBE)
-- **2F:** Gate Refinement — DEFERRED
+### Planned scope
+- Mine new candidates from additional data sources or formula variants
+- Apply lessons from Phase 7B-7G (redundancy-aware, turnover-aware, direction-aware)
+- Target: expand library beyond 27 factors while maintaining quality gates
 
-**Status:** COMPLETE
-
----
-
-### Phase 3: Long-window Baseline
-
-Extend data from ~180d to ~2yr. Rerun evaluation. Compare signal stability. Confirm that probe weakness is not a short-window artifact.
-
-**Key result:** IC signs flip between 180d and 2yr for 5/11 factors. No stable signal.
-
-**Status:** COMPLETE
+### Key constraints to carry forward
+- Calendar-time join only
+- Universe = dynamic_from_current_listed_pool
+- No shift(-h), no row-based forward return
+- expected_direction from theory only, never reverse-engineered
+- All new factors: `IMPLEMENTED_PENDING_EVAL` or diagnostic status only
+- No alpha promotion until PM explicit approval
 
 ---
 
-### Phase 4: Factor Factory & Evaluation Platform v1
+## Factor Quality Summary (Phase 7G)
 
-Build a lightweight factor factory: ops → specs → registry → registry-driven compute.
+### CORE_DIAGNOSTIC_CANDIDATE (6 factors)
+These are stable, clean, non-redundant factors suitable as baseline diagnostics:
+- range_24h, range_72h, range_pos_24h (range_position family)
+- cross_sectional_normalized (cross_sectional_normalized family)
+- xs_rank_vol (cross_sectional_normalized family)
+- price_pos_24h (price_position family)
 
-**Deliverables:**
-- `factor_ops.py` — 12 pure-function building blocks ✅
-- `factor_specs.py` — FactorSpec dataclass ✅
-- `factor_formula_registry.py` — 11 factors registered ✅
-- Registry-driven `build_factor_values.py` ✅
-- 187 unit tests passing ✅
+### REVIEW_DIRECTION_OR_FORMULA (16 factors)
+Direction mismatch between static and dynamic evaluation — formula or direction needs review before further use.
 
-**Status:** COMPLETE
+### MONITOR_TURNOVER_RISK (2 factors)
+High/extreme turnover — may have high transaction costs in live trading.
 
----
+### WEAK_DIAGNOSTIC_ONLY (1 factor)
+Weak RankIC signal — use only as secondary diagnostic, not primary.
 
-### Phase 5: Alphalens-compatible Export
-
-Compatibility layer — not migration.
-
-**Scope:**
-- Export `factor_values` + prices into Alphalens-compatible `factor_data` format
-- Run 1–2 sample tear sheets for comparison
-- Verify IC / turnover / quantile metrics align
-
-**Status:** COMPLETE
-
----
-
-### Phase 6: Dynamic Universe & Survivorship Control
-
-Point-in-time TopN universe with survivorship bias handling.
-
-**Scope:**
-- Historical volume-based universe selection
-- Delisted tokens included when active
-- Rerun selected factor diagnostics
-
-**Status:** COMPLETE
-
----
-
-### Phase 7: Large-scale Factor Mining
-
-Systematic factor expansion. Protocol + candidate backlog established (7A).
-
-**Sources:** WQ101, GTJA191, Alpha158, technical indicators, crypto-native factors.
-
-**Rule:** All new factors start as `DIAGNOSTIC_PROBE`. No auto-upgrades.
-
-**Sub-phases:**
-- **7A:** Protocol & Candidate Backlog ✅ (86 candidates, 15 families, 27 selected for 7B across 11 families)
-- **7B:** First Implementation Batch — BLOCKED (pending PM re-review)
-- **7C:** Dynamic-Universe Evaluation of 7B
-- **7D:** Static-vs-Dynamic / Alphalens Validation
-- **7E:** Batch-2 Selection
-
-**Status:** 7A COMPLETE, 7B BLOCKED (pending PM re-review)
-
----
-
-### Phase 8: Candidate Factor Review
-
-Review accumulated DIAGNOSTIC_PROBEs. Promote promising ones to CANDIDATE_REVIEW (requires human review).
-
-**Status:** NOT STARTED
-
----
-
-### Phase 9: Multi-factor Signal Construction
-
-Combine CANDIDATE_FACTOR signals: equal-weight, IC-weight, simple ML.
-
-**Status:** NOT STARTED
-
----
-
-### Phase 10: Strategy Backtest with Borrowed Engine
-
-Backtest multi-factor portfolios using VectorBT or similar.
-
-**Status:** NOT STARTED
-
----
-
-### Phase 11: Cost / Slippage / Capacity / Risk
-
-Slippage, spread, commission, market impact. Drawdown and concentration risk controls.
-
-**Status:** NOT STARTED
-
----
-
-### Phase 12: Paper Trading
-
-Full strategy in paper trading mode.
-
-**Status:** NOT STARTED
-
----
-
-### Phase 13: Small-capital Live Validation
-
-Minimal capital real-world deployment.
-
-**Status:** NOT STARTED
-
----
-
-## Progression Rules
-
-1. **No phase skipping.** Each phase must be completed and reviewed before the next begins.
-2. **No unauthorized roadmap changes.** All changes require human review.
-3. **No unauthorized factor status upgrades.** Status changes require human review.
-4. **No strategy backtest in factor evaluation.** Keep evaluation diagnostic.
-5. **No over-interpretation.** A weak probe ≠ a dead factor family.
-6. **No default tool migration.** Each integration must be justified.
-7. **Human approval required.** Phase transitions require explicit human decision.
-8. **Backward compatible.** Later phases must not break earlier conventions.
+### REDUNDANCY_REVIEW (2 factors)
+Member of a redundancy group, not the representative — review for potential consolidation.
