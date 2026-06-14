@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 7K complete; Phase 7L pending PM review.
+> Current state: Phase 7L complete; Phase 7M pending PM review.
 
 ---
 
@@ -83,6 +83,10 @@
 | 7K | `phase7k_taker_field_readiness.csv` | Taker field readiness (3 candidates x 2 datasets) |
 | 7K | `phase7k_funding_rate_schema_audit.csv` | Funding rate schema audit (2 data sources) |
 | 7K | `phase7k_crypto_native_data_contract.md` | Crypto-native data contract (中文) |
+| 7L | `PHASE_7L_CANONICAL_DATA_CACHE_CONSTRUCTION.md` | Canonical data cache construction closeout |
+| 7L | `phase7l_taker_enriched_bars_summary.csv` | Taker enriched bars summary (static + dynamic) |
+| 7L | `phase7l_funding_events_summary.csv` | Funding events summary (679 symbols) |
+| 7L | `phase7l_funding_alignment_summary.csv` | Funding 1h alignment summary (static + dynamic) |
 
 ---
 

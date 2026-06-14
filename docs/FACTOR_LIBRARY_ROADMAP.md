@@ -19,8 +19,8 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 7K COMPLETE |
-| Next subphase | Phase 7L — Limited Crypto-native Factor Implementation (pending PM) |
+| Current subphase | Phase 7L COMPLETE |
+| Next subphase | Phase 7M — Crypto-native Factor Implementation (pending PM) |
 | Curated library version | v0.3 |
 | Curated factors | 36 (27 Batch-1 + 9 Batch-2) |
 | Families | 13 |
@@ -74,6 +74,7 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | 7I-E | Batch-2 Curated Library Update | COMPLETE | Curated factor library v0.3 (36 factors) |
 | 7J | Batch-3 Planning & Data Readiness | COMPLETE | Data readiness audit, 14 candidates planned |
 | 7K | Data Contract & Schema Verification | COMPLETE | taker READY_WITH_QUOTE_VARIANT, funding READY_FOR_CONTRACT |
+| 7L | Canonical Data Cache Construction | COMPLETE | taker enriched bars + funding events + 1h aligned |
 
 ---
 
@@ -125,16 +126,18 @@ These are stable diagnostic baselines, not alpha factors:
 
 ---
 
-## 6. Next Phase: 7L — Limited Crypto-native Factor Implementation
+## 6. Next Phase: 7M — Crypto-native Factor Implementation
 
-Phase 7K verified data readiness:
-- **Taker imbalance**: bars_1h.parquet lacks taker fields, but raw klines have them. READY_WITH_QUOTE_VOLUME_VARIANT pending PM confirmation.
-- **Funding rate**: binance_vision data available (679 symbols, 49/50 top50). READY_FOR_CONTRACT pending PM on alignment rules.
+Phase 7L built canonical data caches:
+- **Taker enriched bars**: static 75.82% / dynamic 91.73% coverage of taker_buy_quote_volume
+- **Funding rate events**: 679 symbols, 2.1M events, intervals [1,2,4,8]h
+- **Funding 1h aligned**: static 74.29% / dynamic 88.03% coverage, max age ≤ interval
 
-Phase 7L scope (pending PM approval):
-1. Implement 3 taker imbalance factors using quote-volume variant
-2. Build funding rate ingestion pipeline if PM approves contract
-3. All factors remain DIAGNOSTIC_PROBE
+Phase 7M scope (pending PM approval):
+1. Implement taker imbalance factors (taker_buy_ratio_20h, taker_buy_zscore_20h, taker_buy_delta_5h)
+2. Implement funding rate factors (funding_rate_current, funding_rate_ma_3, funding_rate_change_1h)
+3. All factors start as DIAGNOSTIC_PROBE
+4. Use enriched bars cache for taker, aligned cache for funding
 
 ---
 
