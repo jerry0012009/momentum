@@ -2,7 +2,9 @@
 
 > Date: 2026-06-14
 >
-> Status: COMPLETE
+> Status: COMPLETE AS SERVER DRAFT; SUPERSEDED BY PM REVIEW
+
+> PM note: this server-generated plan is accepted as candidate inventory and scoring draft only. The final Batch-2 implementation list is defined by `PHASE_7H_PM_REVIEW.md` and `phase7h_pm_approved_batch2.csv`. Do not use the 18 server `SELECT_NOW` rows below as the Phase 7I implementation list.
 
 ---
 
@@ -21,7 +23,8 @@
 |----------|-------|
 | Total candidates reviewed | 59 |
 | Already in Batch-1 | 27 |
-| **SELECT_NOW** | **18** |
+| Server SELECT_NOW draft | 18 |
+| PM-approved for 7I | 9 |
 | DEFER_REDUNDANT | 22 |
 | DEFER_DIRECTION_UNCLEAR | 19 |
 | DEFER_DATA | 0 |
@@ -38,16 +41,20 @@
 | novelty_vs_batch1 | 0-3 | 3 = new family, 1 = same family as Batch-1 |
 | risk_control | 0-3 | 3 = clear direction + low leakage, 1 = conditional |
 
-**Decision rules:**
+**Decision rules used by server draft:**
 - SELECT_NOW: score >= 10, no conditional direction
 - Formulaic alpha (WQ/a158): requires >= 11 (higher bar for less interpretable formulas)
 - DEFER_REDUNDANT: score 7-9 or formulaic alpha below threshold
 - DEFER_DIRECTION_UNCLEAR: conditional expected_direction
 - DEFER_DATA: requires data source not currently available
 
+PM review found this rule set insufficient because it allowed high-redundancy candidates into server SELECT_NOW.
+
 ---
 
-## C. Selected Batch-2 Candidates (18)
+## C. Server Draft Selected Candidates (18; not final)
+
+The following table is preserved for audit history only. Phase 7I must not implement this full list.
 
 | factor_id | family | score | direction | required_ops | risk_flags |
 |-----------|--------|-------|-----------|-------------|------------|
@@ -69,20 +76,6 @@
 | range_breakdown_20h | breakout | 10 | negative | rolling_max;rolling_min | redundancy=Moderate |
 | breakout_dist_72h | breakout | 10 | positive | rolling_max;rolling_min | redundancy=Moderate |
 | breakout_high_20h | breakout | 10 | positive | rolling_max;rolling_min | redundancy=Moderate |
-
-### Family distribution in SELECT_NOW
-
-| Family | Count | Notes |
-|--------|-------|-------|
-| technical_indicators | 4 | NEW_FAMILY — EMA gap, RSI×2, Williams %R |
-| breakout | 4 | Same family but distinct sub-types |
-| momentum | 2 | Longer horizon + acceleration |
-| reversal | 1 | Longer horizon |
-| trend_ma | 2 | Wider gap + EMA variant |
-| volume_liquidity | 1 | MA-based variant |
-| quote_volume_liquidity | 1 | MA-based variant |
-| wq101_expansion | 1 | Only alpha with clear positive direction |
-| realized_skew_kurtosis | 2 | NEW_FAMILY — downside vol, vol-of-vol |
 
 ---
 
@@ -112,14 +105,10 @@ Expected direction = "conditional" — direction mechanism not clear enough from
 
 Phase 7G identified these issues that inform Batch-2 selection:
 
-1. **Direction mismatch**: 16/27 Batch-1 factors had direction mismatch between static and dynamic evaluation. Batch-2 prioritizes factors with clear theoretical direction (positive/negative over conditional).
-
+1. **Direction mismatch**: 16/27 Batch-1 factors had direction mismatch between static and dynamic evaluation. Batch-2 prioritizes factors with clear theoretical direction.
 2. **High turnover**: 8/27 Batch-1 factors flagged for high/extreme turnover. Batch-2 avoids short-lookback candle/volume factors.
-
-3. **Redundancy**: 6 redundancy groups found in Batch-1. Batch-2 selects new families (technical_indicators, realized_skew_kurtosis) and distinct sub-types within existing families.
-
-4. **Weak diagnostic**: 3/27 Batch-1 factors had weak RankIC. Batch-2 requires score >= 10 to filter out marginal candidates.
-
+3. **Redundancy**: 6 redundancy groups found in Batch-1. Batch-2 should prioritize new families and avoid many same-family lookback variants.
+4. **Weak diagnostic**: 3/27 Batch-1 factors had weak RankIC. Batch-2 requires stronger rationale.
 5. **Dynamic universe not true PIT**: Known limitation carried forward — all evaluations use dynamic_from_current_listed_pool.
 
 ---
@@ -145,10 +134,4 @@ Phase 7G identified these issues that inform Batch-2 selection:
 
 ## G. Phase 7I Readiness
 
-- ✓ Candidate selection CSV exists with 59 candidates scored
-- ✓ SELECT_NOW count = 18 (within 12-18 range)
-- ✓ All SELECT_NOW candidates have clear direction, data ready, ops supported
-- ✓ No implementation was performed
-- ✓ No alpha/status promotion occurred
-
-Phase 7I Batch-2 implementation is allowed pending PM review.
+Phase 7I Batch-2 implementation is allowed pending PM review, but only for the 9 factors listed in `phase7h_pm_approved_batch2.csv` with `approved_for_phase7i = YES`.
