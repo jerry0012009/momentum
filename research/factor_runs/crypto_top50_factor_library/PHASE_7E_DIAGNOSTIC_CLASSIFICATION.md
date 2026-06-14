@@ -87,18 +87,18 @@ Factors where expected_direction does not match static and/or dynamic RankIC sig
 | Family | N | T1 | T2 | T3 | T4 | Notes |
 |--------|---|----|----|----|----|----|
 | range_position | 3 | 3 | 0 | 0 | 0 | All stable diagnostic |
-| cross_sectional_normalized | 2 | 1 | 1 | 0 | 0 | xs_rank_vol T2 (high turnover) |
-| volatility | 3 | 2 | 0 | 1 | 0 | vol_5h T3 (weak RankIC) |
+| cross_sectional_normalized | 2 | 1 | 1 | 0 | 0 | xs_rank_ret_1h T2 (extreme turnover); xs_rank_vol T1 |
+| volatility | 3 | 2 | 0 | 1 | 0 | vol_5h and vol_40h T1; vol_ratio_5_20 T3 (weak) |
 | price_position | 2 | 1 | 0 | 1 | 0 | price_pos_72h T3 (weak) |
 | momentum | 3 | 0 | 3 | 0 | 0 | All T2: direction misaligned |
 | reversal | 3 | 0 | 3 | 0 | 0 | All T2: direction misaligned |
 | breakout | 2 | 0 | 2 | 0 | 0 | All T2: direction misaligned |
-| intraday_candle | 3 | 0 | 2 | 1 | 0 | candle_body T3 (weak); wicks T2 (direction) |
+| intraday_candle | 3 | 0 | 2 | 1 | 0 | candle_body T2 (extreme turnover); candle_wick_upper T2 (direction + extreme turnover); candle_wick_lower T3 (weak + extreme turnover) |
 | trend_ma | 2 | 0 | 1 | 0 | 1 | ma_gap_10_40 T4 (sign flip) |
 | quote_volume_liquidity | 2 | 0 | 0 | 0 | 2 | All T4: sign flips |
 | volume_liquidity | 2 | 0 | 0 | 0 | 2 | All T4: sign flips |
 
-**Redundancy note:** Families with 2+ TIER_1 factors (range_position, volatility, price_position, cross_sectional_normalized) may have within-family correlation — Phase 7F should check.
+**Redundancy note:** Families with 2+ TIER_1 factors (range_position, volatility) should receive first-priority redundancy checks. Families with mixed tiers but structurally similar factors (momentum, reversal, breakout, cross_sectional_normalized, intraday_candle) may receive secondary redundancy checks.
 
 ---
 
