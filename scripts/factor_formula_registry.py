@@ -281,6 +281,88 @@ def _compute_xs_rank_vol_prep(df: pd.DataFrame) -> pd.Series:
     return rolling_mean(df["volume"], 20)
 
 
+# ── Phase 7I-A: Batch-2 Technical Indicators ─────────────────────
+
+def _compute_ema_12_26_gap(df: pd.DataFrame) -> pd.Series:
+    """EMA gap 12/26: (EMA12 - EMA26) / EMA26."""
+    ema12 = ema(df["close"], 12)
+    ema26 = ema(df["close"], 26)
+    return (ema12 - ema26) / ema26.replace(0, np.nan)
+
+
+def _compute_rsi_7h(df: pd.DataFrame) -> pd.Series:
+    """RSI 7h: Wilder RSI with lookback=7."""
+    d = df["close"].diff()
+    up = d.clip(lower=0)
+    down = -d.clip(upper=0)
+    avg_up = up.ewm(alpha=1 / 7, adjust=False, min_periods=7).mean()
+    avg_down = down.ewm(alpha=1 / 7, adjust=False, min_periods=7).mean()
+    rs = avg_up / avg_down.replace(0, np.nan)
+    out = 100 - 100 / (1 + rs)
+    out = out.where(avg_down != 0, 100.0)
+    out = out.where(avg_up != 0, 0.0)
+    return out
+
+
+def _compute_rsi_28h(df: pd.DataFrame) -> pd.Series:
+    """RSI 28h: Wilder RSI with lookback=28."""
+    d = df["close"].diff()
+    up = d.clip(lower=0)
+    down = -d.clip(upper=0)
+    avg_up = up.ewm(alpha=1 / 28, adjust=False, min_periods=28).mean()
+    avg_down = down.ewm(alpha=1 / 28, adjust=False, min_periods=28).mean()
+    rs = avg_up / avg_down.replace(0, np.nan)
+    out = 100 - 100 / (1 + rs)
+    out = out.where(avg_down != 0, 100.0)
+    out = out.where(avg_up != 0, 0.0)
+    return out
+
+
+def _compute_williams_r_14h(df: pd.DataFrame) -> pd.Series:
+    """Williams %R 14h: (HH14 - close) / (HH14 - LL14 + eps), 0-1 scale."""
+    hh = rolling_max(df["high"], 14)
+    ll = rolling_min(df["low"], 14)
+    return (hh - df["close"]) / (hh - ll + 1e-8)
+
+
+# ── Phase 7I-A: Batch-2 Realized Skew/Kurtosis ──────────────────
+
+def _compute_downside_vol_20h(df: pd.DataFrame) -> pd.Series:
+    """Downside volatility 20h: std of negative 1h returns only."""
+    ret = df["close"].pct_change()
+    neg_ret = ret.clip(upper=0)
+    return rolling_std(neg_ret, 20)
+
+
+def _compute_vol_of_vol_20h(df: pd.DataFrame) -> pd.Series:
+    """Vol-of-vol 20h: std of 5h rolling volatility over 20 bars."""
+    ret = df["close"].pct_change()
+    vol_5h = rolling_std(ret, 5)
+    return rolling_std(vol_5h, 20)
+
+
+# ── Phase 7I-A: Batch-2 Momentum / Trend / Volume ────────────────
+
+def _compute_mom_accel_20h(df: pd.DataFrame) -> pd.Series:
+    """Momentum acceleration 20h: mom_20h - delay(mom_20h, 5)."""
+    mom_20h = df["close"] / delay(df["close"], 20) - 1.0
+    return mom_20h - delay(mom_20h, 5)
+
+
+def _compute_qvol_ma_ratio_5_20(df: pd.DataFrame) -> pd.Series:
+    """Quote-volume MA ratio 5/20: SMA(qvol,5) / SMA(qvol,20) - 1."""
+    sma5 = rolling_mean(df["quote_volume"], 5)
+    sma20 = rolling_mean(df["quote_volume"], 20)
+    return sma5 / sma20.replace(0, np.nan) - 1.0
+
+
+def _compute_ma_gap_20_80(df: pd.DataFrame) -> pd.Series:
+    """MA gap 20/80: (SMA20 - SMA80) / SMA80."""
+    sma20 = rolling_mean(df["close"], 20)
+    sma80 = rolling_mean(df["close"], 80)
+    return (sma20 - sma80) / sma80.replace(0, np.nan)
+
+
 # ── Registry ────────────────────────────────────────────────────────
 
 REGISTRY: list[FactorSpec] = [
@@ -563,7 +645,73 @@ REGISTRY: list[FactorSpec] = [
         required_columns=["volume"], lookback_window=20,
         expected_direction="conditional",
         compute_fn=_compute_xs_rank_vol_prep,
-        notes="Per-symbol 20h mean volume; cross-sectional rank applied by caller",
+        notes="Per-symbol 20h rolling mean volume; cross-sectional rank applied by caller",
+    ),
+    # ── Phase 7I-A: Technical Indicators (4) ────────────────────
+    FactorSpec(
+        factor_id="ema_12_26_gap", family="technical_indicators",
+        required_columns=["close"], lookback_window=26,
+        expected_direction="positive",
+        compute_fn=_compute_ema_12_26_gap,
+        notes="(EMA12 - EMA26) / EMA26",
+    ),
+    FactorSpec(
+        factor_id="rsi_7h", family="technical_indicators",
+        required_columns=["close"], lookback_window=8,
+        expected_direction="negative",
+        compute_fn=_compute_rsi_7h,
+        notes="Wilder RSI lookback=7, 0-100 scale; lookback_window=8 for diff(1)+ewm(7)",
+    ),
+    FactorSpec(
+        factor_id="rsi_28h", family="technical_indicators",
+        required_columns=["close"], lookback_window=29,
+        expected_direction="negative",
+        compute_fn=_compute_rsi_28h,
+        notes="Wilder RSI lookback=28, 0-100 scale; lookback_window=29 for diff(1)+ewm(28)",
+    ),
+    FactorSpec(
+        factor_id="williams_r_14h", family="technical_indicators",
+        required_columns=["high", "low", "close"], lookback_window=14,
+        expected_direction="negative",
+        compute_fn=_compute_williams_r_14h,
+        notes="(HH14 - close) / (HH14 - LL14 + eps), 0-1 scale",
+    ),
+    # ── Phase 7I-A: Realized Skew/Kurtosis (2) ─────────────────
+    FactorSpec(
+        factor_id="downside_vol_20h", family="realized_skew_kurtosis",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="negative",
+        compute_fn=_compute_downside_vol_20h,
+        notes="rolling_std(min(ret_1h, 0), 20); lookback=21 for pct_change+std(20)",
+    ),
+    FactorSpec(
+        factor_id="vol_of_vol_20h", family="realized_skew_kurtosis",
+        required_columns=["close"], lookback_window=26,
+        expected_direction="negative",
+        compute_fn=_compute_vol_of_vol_20h,
+        notes="rolling_std(rolling_std(ret, 5), 20); lookback=26 for pct_change+std(5)+std(20)",
+    ),
+    # ── Phase 7I-A: Momentum / Trend / Volume (3) ──────────────
+    FactorSpec(
+        factor_id="mom_accel_20h", family="momentum",
+        required_columns=["close"], lookback_window=25,
+        expected_direction="positive",
+        compute_fn=_compute_mom_accel_20h,
+        notes="mom_20h - delay(mom_20h, 5); lookback=25 for lag(20)+delay(5)",
+    ),
+    FactorSpec(
+        factor_id="qvol_ma_ratio_5_20", family="quote_volume_liquidity",
+        required_columns=["quote_volume"], lookback_window=20,
+        expected_direction="positive",
+        compute_fn=_compute_qvol_ma_ratio_5_20,
+        notes="SMA(quote_volume, 5) / SMA(quote_volume, 20) - 1",
+    ),
+    FactorSpec(
+        factor_id="ma_gap_20_80", family="trend_ma",
+        required_columns=["close"], lookback_window=80,
+        expected_direction="positive",
+        compute_fn=_compute_ma_gap_20_80,
+        notes="(SMA20 - SMA80) / SMA80",
     ),
 ]
 
