@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 7M-B complete; Phase 7M-C pending PM review.
+> Current state: Phase 7M-C complete; Phase 7M-D pending PM review.
 
 ---
 
@@ -95,6 +95,12 @@
 | 7M-B | `phase7m_b_crypto_native_dataset_join_summary.csv` | Dataset join summary (static + dynamic) |
 | 7M-B | `phase7m_b_static_factor_values_build_summary.csv` | Static factor_values build summary (6 rows) |
 | 7M-B | `phase7m_b_dynamic_factor_values_build_summary.csv` | Dynamic factor_values build summary (6 rows) |
+| 7M-C | `PHASE_7M_C_CRYPTO_NATIVE_EVALUATION.md` | Evaluation closeout |
+| 7M-C | `phase7m_crypto_native_factor_metadata.csv` | Factor metadata (6 rows, direction) |
+| 7M-C | `phase7m_c_static_eval_summary_ret_fwd_1h.csv` | Static eval ret_fwd_1h (6 rows) |
+| 7M-C | `phase7m_c_static_eval_summary_all_labels.csv` | Static eval all labels (24 rows) |
+| 7M-C | `phase7m_c_dynamic_eval_summary_ret_fwd_1h.csv` | Dynamic eval ret_fwd_1h (6 rows) |
+| 7M-C | `phase7m_c_dynamic_eval_summary_all_labels.csv` | Dynamic eval all labels (24 rows) |
 
 ---
 
