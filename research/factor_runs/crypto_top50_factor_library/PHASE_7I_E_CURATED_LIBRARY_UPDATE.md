@@ -2,7 +2,7 @@
 
 > Date: 2026-06-14
 >
-> Status: COMPLETE
+> Status: COMPLETE (PM documentation correction applied)
 
 ---
 
@@ -40,9 +40,9 @@
 
 | Role | Count | Factors |
 |------|-------|---------|
-| NOT_IN_REDUNDANCY_GROUP | 5 | rsi_7h, downside_vol_20h, vol_of_vol_20h, mom_accel_20h, ma_gap_20_80 |
-| REPRESENTATIVE_CANDIDATE | 2 | ema_12_26_gap, rsi_7h (wait — rsi_7h is in RG_B2_2) |
-| REDUNDANT_GROUP_MEMBER | 2 | rsi_28h, williams_r_14h |
+| NOT_IN_REDUNDANCY_GROUP | 5 | downside_vol_20h, vol_of_vol_20h, mom_accel_20h, qvol_ma_ratio_5_20, ma_gap_20_80 |
+| REPRESENTATIVE_CANDIDATE | 2 | rsi_28h, rsi_7h |
+| REDUNDANT_GROUP_MEMBER | 2 | ema_12_26_gap, williams_r_14h |
 
 ---
 
