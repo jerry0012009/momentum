@@ -2,7 +2,7 @@
 
 > Date: 2026-06-14
 >
-> Status: COMPLETE
+> Status: COMPLETE (PM documentation correction applied)
 
 ---
 
@@ -37,7 +37,7 @@
 
 | group_id | factors | families | max_static | max_dynamic | representative | notes |
 |----------|---------|----------|------------|-------------|----------------|-------|
-| RG_B2_1 | ema_12_26_gap; rsi_28h | technical_indicators | 0.889 | 0.899 | ema_12_26_gap | EMA gap correlated with RSI |
+| RG_B2_1 | ema_12_26_gap; rsi_28h | technical_indicators | 0.889 | 0.899 | rsi_28h | EMA gap correlated with RSI; representative follows tier priority |
 | RG_B2_2 | rsi_7h; williams_r_14h | technical_indicators | 0.918 | 0.913 | rsi_7h | RSI and Williams %R near-inverse |
 
 ### Highest Redundancy Pairs
@@ -66,7 +66,7 @@ Other families (momentum, quote_volume_liquidity, trend_ma) have 1 factor each �
 ## E. Important Observations
 
 1. **rsi_7h <-> williams_r_14h**: HIGH_REDUNDANCY (|Spearman| ~0.91). Both measure overbought/oversold — expected structural similarity. rsi_7h selected as representative (TIER_1 vs TIER_2, lower turnover).
-2. **ema_12_26_gap <-> rsi_28h**: HIGH_REDUNDANCY (Spearman ~0.89). EMA gap and RSI both trend-following signals at similar timescales. ema_12_26_gap selected as representative (TIER_2, lower turnover).
+2. **ema_12_26_gap <-> rsi_28h**: HIGH_REDUNDANCY (Spearman ~0.89). EMA gap and RSI both trend-following signals at similar timescales. rsi_28h selected as representative because TIER_1 outranks TIER_2 under the PM representative rule.
 3. **downside_vol_20h <-> vol_of_vol_20h**: MODERATE_REDUNDANCY (~0.78-0.82). Both volatility-based, expected partial overlap. Both TIER_1 — worth keeping both for now.
 4. **technical_indicators family** has the most redundancy (4 factors, 6 pairs, 2 HIGH_REDUNDANCY pairs). If pruning needed, this family is the primary target.
 5. **momentum, quote_volume_liquidity, trend_ma** families: single factors, no redundancy risk.
