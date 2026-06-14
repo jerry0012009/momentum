@@ -1,6 +1,6 @@
 # Phase 7E — Diagnostic Factor Classification & Library Curation
 
-> Date: 2026-06-14
+> Date: 2026-06-14 (fix round)
 >
 > Status: COMPLETE
 
@@ -27,8 +27,8 @@
 
 | Tier | Count |
 |------|-------|
-| TIER_1_STABLE_DIAGNOSTIC | 14 |
-| TIER_2_PROMISING_BUT_NEEDS_REVIEW | 5 |
+| TIER_1_STABLE_DIAGNOSTIC | 7 |
+| TIER_2_PROMISING_BUT_NEEDS_REVIEW | 12 |
 | TIER_3_WEAK_DIAGNOSTIC | 3 |
 | TIER_4_UNSTABLE_OR_SIGN_FLIP | 5 |
 
@@ -61,8 +61,6 @@ High turnover is a transaction cost risk flag, not a quality judgment.
 | qvol_zscore_48h | +0.0021 | -0.0060 |
 | ma_gap_10_40 | +0.0006 | -0.0079 |
 
-All sign flips occur in factors with weak absolute RankIC (< 0.01 in at least one regime), suggesting instability rather than regime-dependent signal.
-
 ---
 
 ## E. Direction Mismatch Factors (16)
@@ -71,7 +69,7 @@ Factors where expected_direction does not match static and/or dynamic RankIC sig
 
 **misaligned_both (both static and dynamic RankIC contradict expected_direction):**
 - `mom_5h`, `mom_10h`, `mom_40h` (expected positive, RankIC negative)
-- `rev_3h`, `rev_10h`, `rev_24h` (expected negative, RankIC positive — reversal factors showing positive IC)
+- `rev_3h`, `rev_10h`, `rev_24h` (expected negative, RankIC positive)
 - `ma_gap_5_20`, `breakout_dist_20h`, `breakout_dist_48h` (expected positive, RankIC negative)
 - `candle_wick_upper` (expected negative, RankIC positive)
 - `candle_wick_lower` (expected positive, RankIC negative)
@@ -89,18 +87,18 @@ Factors where expected_direction does not match static and/or dynamic RankIC sig
 | Family | N | T1 | T2 | T3 | T4 | Notes |
 |--------|---|----|----|----|----|----|
 | range_position | 3 | 3 | 0 | 0 | 0 | All stable diagnostic |
-| cross_sectional_normalized | 2 | 2 | 0 | 0 | 0 | Both stable, but extreme turnover |
-| momentum | 3 | 2 | 1 | 0 | 0 | Direction mismatch (expected positive, RankIC negative) |
-| reversal | 3 | 2 | 1 | 0 | 0 | Direction mismatch (expected negative, RankIC positive) |
-| breakout | 2 | 1 | 1 | 0 | 0 | Direction mismatch |
-| intraday_candle | 3 | 1 | 1 | 1 | 0 | Mixed; candle_body T3 due to weak RankIC |
+| cross_sectional_normalized | 2 | 1 | 1 | 0 | 0 | xs_rank_vol T2 (high turnover) |
+| volatility | 3 | 2 | 0 | 1 | 0 | vol_5h T3 (weak RankIC) |
 | price_position | 2 | 1 | 0 | 1 | 0 | price_pos_72h T3 (weak) |
-| volatility | 3 | 2 | 0 | 1 | 0 | vol_5h T3 (weak) |
-| trend_ma | 2 | 0 | 1 | 0 | 1 | ma_gap_10_40 sign flip |
+| momentum | 3 | 0 | 3 | 0 | 0 | All T2: direction misaligned |
+| reversal | 3 | 0 | 3 | 0 | 0 | All T2: direction misaligned |
+| breakout | 2 | 0 | 2 | 0 | 0 | All T2: direction misaligned |
+| intraday_candle | 3 | 0 | 2 | 1 | 0 | candle_body T3 (weak); wicks T2 (direction) |
+| trend_ma | 2 | 0 | 1 | 0 | 1 | ma_gap_10_40 T4 (sign flip) |
 | quote_volume_liquidity | 2 | 0 | 0 | 0 | 2 | All T4: sign flips |
 | volume_liquidity | 2 | 0 | 0 | 0 | 2 | All T4: sign flips |
 
-**Redundancy note:** Families with 2+ TIER_1 factors (range_position, cross_sectional_normalized, momentum, reversal, volatility) may have within-family correlation — Phase 7F should check.
+**Redundancy note:** Families with 2+ TIER_1 factors (range_position, volatility, price_position, cross_sectional_normalized) may have within-family correlation — Phase 7F should check.
 
 ---
 
