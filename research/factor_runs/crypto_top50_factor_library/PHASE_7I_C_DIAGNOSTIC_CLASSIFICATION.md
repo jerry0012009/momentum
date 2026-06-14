@@ -2,7 +2,7 @@
 
 > Date: 2026-06-14
 >
-> Status: COMPLETE
+> Status: COMPLETE (PM documentation correction applied)
 
 ---
 
@@ -32,7 +32,7 @@
 ### Sign Consistency (ret_fwd_1h)
 
 - Same sign: 7/9
-- Sign flip: 2/9 (ema_12_26_gap, qvol_ma_ratio_5_20)
+- Sign flip: 2/9 (`qvol_ma_ratio_5_20`, `ma_gap_20_80`)
 
 ---
 
