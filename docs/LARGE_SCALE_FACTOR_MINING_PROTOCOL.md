@@ -62,7 +62,9 @@ Selection is based on:
 
 ### 3.2 No Multiple Testing Correction (Yet)
 
-Phase 7 does not apply Bonferroni, FDR, or other multiple testing corrections.
+Phase 7 does not use p-value based alpha promotion.
+Batch discipline, out-of-sample checks, static-vs-dynamic comparison, and
+external validation are required before any stronger claim.
 Instead, it controls snooping through:
 - Pre-registered candidate lists (factor_mining_candidates_v0_1.csv)
 - Batch discipline (one batch at a time, full closeout before next)

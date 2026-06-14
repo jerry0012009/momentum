@@ -10,9 +10,9 @@ RUN = Path(__file__).resolve().parents[2] / "research" / "factor_runs" / "crypto
 CSV_PATH = RUN / "factor_mining_candidates_v0_1.csv"
 
 REQUIRED_FAMILIES = [
-    "momentum", "reversal", "volatility", "range_position",
-    "volume_liquidity", "quote_volume_liquidity", "trend_ma",
-    "breakout", "intraday_candle", "cross_sectional_normalized",
+    "momentum", "reversal", "volatility", "range_position", "price_position",
+    "volume_liquidity", "quote_volume_liquidity", "trend_ma", "breakout",
+    "intraday_candle", "cross_sectional_normalized",
     "technical_indicators", "wq101_expansion", "alpha158_expansion",
     "realized_skew_kurtosis",
 ]
@@ -60,7 +60,6 @@ class TestCSVStructure:
         assert (df["priority_batch"] != "").all()
 
     def test_lookback_window_positive(self, df):
-        # Allow NaN only if notes explain
         bad = df[(df["lookback_window"].isna() | (df["lookback_window"] <= 0)) & df["notes"].isna()]
         assert len(bad) == 0, f"Invalid lookback_window without notes: {bad['factor_id'].tolist()}"
 
@@ -78,9 +77,10 @@ class TestFamilyCoverage:
 
 
 class Test7BSelection:
-    def test_7b_count_20_to_30_or_more(self, df):
+    def test_7b_count_between_20_and_30(self, df):
+        """7B must have between 20 and 30 factors (PM acceptance criterion)."""
         selected = df[df["status"] == "selected_for_7B"]
-        assert len(selected) >= 20, f"7B has only {len(selected)} factors"
+        assert 20 <= len(selected) <= 30, f"7B has {len(selected)} factors, must be 20-30"
 
     def test_7b_covers_at_least_6_families(self, df):
         selected = df[df["status"] == "selected_for_7B"]
