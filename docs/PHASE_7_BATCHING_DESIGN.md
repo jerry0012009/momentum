@@ -1,6 +1,8 @@
 # Phase 7 Batching Design
 
-> Version: 1.0 | Phase: 7A
+> Version: 1.1 | Phase: 7A-QA
+>
+> Updated: 2026-06-14 to match current candidate backlog (86 candidates, 27 in 7B)
 
 ---
 
@@ -9,7 +11,7 @@
 | Phase | Name | Scope |
 |-------|------|-------|
 | 7A | Protocol & Candidate Backlog | Protocol doc, candidate CSV, batch design |
-| 7B | First Implementation Batch | Implement 20-30 factors from backlog |
+| 7B | First Implementation Batch | Implement 27 factors from backlog |
 | 7C | Dynamic-Universe Evaluation of 7B | factor_values build + dynamic evaluation |
 | 7D | Static-vs-Dynamic / Alphalens Validation | Comparison + external cross-check |
 | 7E | Batch-2 Selection | Select next batch from backlog |
@@ -32,20 +34,22 @@ A new batch may begin only when:
 - PM reviews and approves
 - No BLOCK status from QA
 
-## 7B First Batch Selection Criteria
+## 7B First Batch (27 factors, 11 families)
 
-Priority: low complexity, low parameter count, existing OHLCV only.
+| Family | 7B Count | Factors |
+|--------|----------|---------|
+| momentum | 3 | mom_5h, mom_10h, mom_40h |
+| reversal | 3 | rev_3h, rev_10h, rev_24h |
+| volatility | 3 | vol_5h, vol_40h, vol_ratio_5_20 |
+| range_position | 3 | range_1h, range_4h, range_24h |
+| price_position | 2 | price_pos_24h, price_pos_72h |
+| volume_liquidity | 2 | vol_zscore_20h, vol_zscore_48h |
+| quote_volume_liquidity | 2 | qvol_zscore_20h, qvol_zscore_48h |
+| trend_ma | 2 | ma_gap_5_20, ma_gap_10_40 |
+| breakout | 2 | breakout_dist_20h, breakout_dist_48h |
+| intraday_candle | 3 | candle_body, candle_wick_upper, candle_wick_lower |
+| cross_sectional_normalized | 2 | xs_rank_ret_1h, xs_rank_vol |
+| **Total** | **27** | |
 
-Selected families (20-30 factors):
-- momentum: 5 (5h, 10h, 40h, 80h, acceleration)
-- reversal: 4 (3h, 10h, 24h, 48h)
-- volatility: 4 (5h, 40h, ratio 5/20, ratio 10/40)
-- range_position: 5 (1h, 4h, 24h, price_pos_24h, price_pos_72h)
-- volume_liquidity: 3 (vol_zscore_20h, vol_zscore_48h, vol_ma_ratio)
-- quote_volume_liquidity: 3 (qvol_zscore_20h, qvol_zscore_48h, qvol_ma_ratio)
-- trend_ma: 3 (ma_gap_5/20, 10/40, 20/80)
-- breakout: 2 (breakout_dist_20h, breakout_dist_48h)
-- intraday_candle: 3 (body, wick_upper, wick_lower)
-- cross_sectional_normalized: 3 (rank_ret, rank_vol, rank_range)
-
-Total: ~35 factors across 10 families.
+Selection criteria: low complexity, low parameter count, existing OHLCV only.
+Not all horizon variants are selected — avoids overfitting to one family.

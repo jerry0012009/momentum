@@ -35,7 +35,7 @@ anti-snooping engineering constraints before implementing any new factors.
 | volume_liquidity | 3 | 2 | 0 | 1 |
 | quote_volume_liquidity | 3 | 2 | 0 | 1 |
 | trend_ma | 5 | 2 | 0 | 3 |
-| breakout | 7 | 2 | 5 | 0 |
+| breakout | 7 | 2 | 2 | 3 |
 | intraday_candle | 6 | 3 | 0 | 3 |
 | cross_sectional_normalized | 6 | 2 | 0 | 4 |
 | technical_indicators | 7 | 0 | 7 | 0 |
@@ -92,8 +92,9 @@ Tests strictly enforce:
 
 ## 9. Whether Phase 7B Is Allowed
 
-**Yes — Phase 7B implementation is allowed.**
+**No — Phase 7B implementation is BLOCKED pending PM re-review.**
 
 - 27 selected_for_7B (within 20-30 range) ✓
 - All 15 families have >= 3 candidates ✓
 - Tests strictly enforce above ✓
+- All docs consistent with CSV ✓

@@ -106,8 +106,8 @@ These documents belong to the active `crypto_top50_factor_library` research run.
 | `research/.../PHASE_6H_STATIC_DYNAMIC_COMPARISON.md` | CURRENT_RUN | Phase 6H: static-vs-dynamic comparison, 19 robust candidates, Phase 6 COMPLETE | Review Phase 6H completion |
 | `docs/LARGE_SCALE_FACTOR_MINING_PROTOCOL.md` | ACTIVE | Phase 7 mining protocol, anti-snooping controls, batch rules | Phase 7 design |
 | `docs/PHASE_7_BATCHING_DESIGN.md` | ACTIVE | Phase 7 batch structure: 7A-7E, completion gates | Phase 7 planning |
-| `research/.../factor_mining_candidates_v0_1.csv` | CURRENT_RUN | 84 candidate factors, 15 families, 36 selected for 7B | Phase 7A backlog |
-| `research/.../PHASE_7A_FACTOR_MINING_PROTOCOL.md` | CURRENT_RUN | Phase 7A closeout: protocol, 84 candidates, 7B ALLOWED | Review Phase 7A completion |
+| `research/.../factor_mining_candidates_v0_1.csv` | CURRENT_RUN | 86 candidate factors, 15 families, 27 selected for 7B across 11 families | Phase 7A backlog |
+| `research/.../PHASE_7A_FACTOR_MINING_PROTOCOL.md` | CURRENT_RUN | Phase 7A closeout: 86 candidates, 27 in 7B, 7B BLOCKED (pending PM re-review) | Review Phase 7A completion |
 | `research/.../PHASE_4_FACTOR_FACTORY_V1.md` | CURRENT_RUN | Factor Factory v1 closeout: 11 factors registered, 187 tests pass | Review Phase 4 completion |
 
 Path prefix: `research/factor_runs/crypto_top50_factor_library/`

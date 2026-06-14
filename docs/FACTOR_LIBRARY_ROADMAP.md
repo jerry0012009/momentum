@@ -19,7 +19,7 @@
 | Phase 4 | Factor Factory & Evaluation Platform v1 | **COMPLETE** |
 | Phase 5 | Alphalens-compatible Export / External Tool Compatibility | **COMPLETE** |
 | Phase 6 | Dynamic Universe & Survivorship Control | **COMPLETE** |
-| Phase 7 | Large-scale Factor Mining | **7A COMPLETE, 7B ALLOWED** |
+| Phase 7 | Large-scale Factor Mining | **7A COMPLETE, 7B BLOCKED** |
 | Phase 8 | Candidate Factor Review | NOT STARTED |
 | Phase 9 | Multi-factor Signal Construction | NOT STARTED |
 | Phase 10 | Strategy Backtest with Borrowed Engine | NOT STARTED |
@@ -125,13 +125,13 @@ Systematic factor expansion. Protocol + candidate backlog established (7A).
 **Rule:** All new factors start as `DIAGNOSTIC_PROBE`. No auto-upgrades.
 
 **Sub-phases:**
-- **7A:** Protocol & Candidate Backlog ✅ (84 candidates, 15 families, 36 for 7B)
-- **7B:** First Implementation Batch — ALLOWED
+- **7A:** Protocol & Candidate Backlog ✅ (86 candidates, 15 families, 27 selected for 7B across 11 families)
+- **7B:** First Implementation Batch — BLOCKED (pending PM re-review)
 - **7C:** Dynamic-Universe Evaluation of 7B
 - **7D:** Static-vs-Dynamic / Alphalens Validation
 - **7E:** Batch-2 Selection
 
-**Status:** 7A COMPLETE, 7B ALLOWED
+**Status:** 7A COMPLETE, 7B BLOCKED (pending PM re-review)
 
 ---
 
