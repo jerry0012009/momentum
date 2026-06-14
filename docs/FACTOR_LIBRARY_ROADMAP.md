@@ -19,14 +19,13 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 7G COMPLETE |
-| Next subphase | Phase 7H — Batch-2 Factor Mining Preparation |
-| Curated library version | v0.2 |
-| Curated factors | 27 selected_for_7B factors |
-| Families | 11 |
-| Diagnostic tiers | T1: 7, T2: 12, T3: 3, T4: 5 |
-| Redundancy groups | 6 |
-| Core diagnostic candidates | 6 |
+| Current subphase | Phase 7I-E COMPLETE |
+| Next subphase | Phase 7J — Batch-3 Planning |
+| Curated library version | v0.3 |
+| Curated factors | 36 (27 Batch-1 + 9 Batch-2) |
+| Families | 13 |
+| Diagnostic tiers | T1: 11, T2: 15, T3: 3, T4: 7 |
+| Redundancy groups | 8 (6 Batch-1 + 2 Batch-2) |
 | Alpha promotion | None |
 | Strategy backtest | Not started |
 | Live / paper trading | Not started |
@@ -37,20 +36,20 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 
 | Phase | Name | Status | Notes |
 |-------|------|--------|-------|
-| Phase 0 | Project Positioning & Data Contract | COMPLETE | Defined crypto perp cross-sectional factor-library scope, not single strategy |
+| Phase 0 | Project Positioning & Data Contract | COMPLETE | Defined crypto perp cross-sectional factor-library scope |
 | Phase 1 | V0 Engineering Loop | COMPLETE | Fetch → labels → factors → evaluation loop |
-| Phase 2 | Evaluation Protocol & Factor Library Skeleton | COMPLETE | V0 audit, quality gates, factor catalog, external priors, Batch 1 baseline |
-| Phase 3 | Long-window Baseline | COMPLETE | 11 simple probes showed no stable long-window signal; used for pipeline validation |
-| Phase 4 | Factor Factory & Evaluation Platform v1 | COMPLETE | Registry-driven factor factory and unified factor_values schema |
-| Phase 5 | Alphalens-compatible Export / External Tool Compatibility | COMPLETE | Compatibility layer, not migration |
-| Phase 6 | Dynamic Universe & Survivorship Control | COMPLETE | Dynamic-universe diagnostics available; current dynamic universe is still not true PIT |
-| Phase 7 | Large-scale Factor Mining | IN PROGRESS | Batch-1 implementation, evaluation, classification, redundancy, and curation complete through 7G |
-| Phase 8 | Candidate Factor Review | NOT STARTED | Requires explicit human review to move DIAGNOSTIC_PROBE → CANDIDATE_REVIEW |
-| Phase 9 | Multi-factor Signal Construction | NOT STARTED | Only CANDIDATE_REVIEW factors may be combined |
-| Phase 10 | Strategy Backtest with Borrowed Engine | NOT STARTED | Use VectorBT / Qlib / Backtrader only after Phase 9 |
-| Phase 11 | Cost / Slippage / Capacity / Risk | NOT STARTED | Transaction cost, turnover, capacity, drawdown, concentration controls |
-| Phase 12 | Paper Trading | NOT STARTED | Full strategy in paper-trading mode |
-| Phase 13 | Small-capital Live Validation | NOT STARTED | Small-capital live validation only after prior gates |
+| Phase 2 | Evaluation Protocol & Factor Library Skeleton | COMPLETE | V0 audit, quality gates, factor catalog |
+| Phase 3 | Long-window Baseline | COMPLETE | 11 simple probes, pipeline validation |
+| Phase 4 | Factor Factory & Evaluation Platform v1 | COMPLETE | Registry-driven factor factory |
+| Phase 5 | Alphalens-compatible Export | COMPLETE | Compatibility layer |
+| Phase 6 | Dynamic Universe & Survivorship Control | COMPLETE | Dynamic-universe diagnostics |
+| Phase 7 | Large-scale Factor Mining | IN PROGRESS | Batch-1+2 complete through 7I-E |
+| Phase 8 | Candidate Factor Review | NOT STARTED | Requires explicit human review |
+| Phase 9 | Multi-factor Signal Construction | NOT STARTED | Only CANDIDATE_REVIEW factors |
+| Phase 10 | Strategy Backtest | NOT STARTED | |
+| Phase 11 | Cost / Slippage / Capacity / Risk | NOT STARTED | |
+| Phase 12 | Paper Trading | NOT STARTED | |
+| Phase 13 | Small-capital Live Validation | NOT STARTED | |
 
 ---
 
@@ -59,64 +58,54 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Subphase | Name | Status | Main Output |
 |----------|------|--------|-------------|
 | 7A | Protocol & Candidate Backlog | COMPLETE | 86 candidate factors, 27 selected_for_7B |
-| 7B | First Implementation Batch | COMPLETE | 27 OHLCV-derived diagnostic factors implemented |
-| 7C-A | Dynamic Adapter Hardening | COMPLETE | Candidate-mode fail-fast and direction handling |
-| 7C-B | Dynamic Factor Build & Evaluation | COMPLETE | Dynamic factor_values and dynamic evaluation summaries |
-| 7D-A | Static Adapter Hardening | COMPLETE | Static evaluator subset/candidate mode and direction handling |
-| 7D-B | Static Evaluation & Static-vs-Dynamic Validation | COMPLETE | Static summaries and static-vs-dynamic comparison |
-| 7E | Diagnostic Classification | COMPLETE | TIER_1/TIER_2/TIER_3/TIER_4 classification |
-| 7F | Redundancy Diagnostics | COMPLETE | 351 static + 351 dynamic pairwise correlations, 6 redundancy groups |
+| 7B | First Implementation Batch | COMPLETE | 27 OHLCV-derived diagnostic factors |
+| 7C-A | Dynamic Adapter Hardening | COMPLETE | Candidate-mode fail-fast |
+| 7C-B | Dynamic Factor Build & Evaluation | COMPLETE | Dynamic factor_values and evaluation |
+| 7D-A | Static Adapter Hardening | COMPLETE | Static evaluator subset/candidate mode |
+| 7D-B | Static Evaluation & Static-vs-Dynamic | COMPLETE | Static summaries and comparison |
+| 7E | Diagnostic Classification | COMPLETE | TIER_1/TIER_2/TIER_3/TIER_4 |
+| 7F | Redundancy Diagnostics | COMPLETE | 351+351 pairwise correlations, 6 groups |
 | 7G | Factor Library Curation | COMPLETE | Curated factor library v0.2 |
-| 7H | Batch-2 Factor Mining Preparation | NEXT | Select next factor batch using lessons from Batch-1 |
+| 7H | Batch-2 Factor Mining Preparation | COMPLETE | 9 PM-approved factors selected |
+| 7I-A | Batch-2 Implementation | COMPLETE | 9 factors implemented |
+| 7I-B | Batch-2 Evaluation | COMPLETE | Static+dynamic eval, 9 factors |
+| 7I-C | Batch-2 Diagnostic Classification | COMPLETE | Tier assignment, direction alignment |
+| 7I-D | Batch-2 Redundancy Diagnostics | COMPLETE | 2 redundancy groups found |
+| 7I-E | Batch-2 Curated Library Update | COMPLETE | Curated factor library v0.3 (36 factors) |
 
 ---
 
-## 4. Curated Library v0.2 Summary
+## 4. Curated Library v0.3 Summary
 
-### 4.1 Recommended research use
+### 4.1 Recommended research use (combined)
 
-| recommended_research_use | Count |
-|--------------------------|-------|
-| CORE_DIAGNOSTIC_CANDIDATE | 6 |
-| REVIEW_DIRECTION_OR_FORMULA | 16 |
-| MONITOR_TURNOVER_RISK | 2 |
-| WEAK_DIAGNOSTIC_ONLY | 1 |
-| REDUNDANCY_REVIEW | 2 |
+| recommended_research_use | Batch-1 | Batch-2 | Total |
+|--------------------------|---------|---------|-------|
+| CORE_DIAGNOSTIC_CANDIDATE | 6 | 4 | 10 |
+| REVIEW_DIRECTION_OR_FORMULA | 16 | 3 | 19 |
+| MONITOR_TURNOVER_RISK | 2 | 0 | 2 |
+| WEAK_DIAGNOSTIC_ONLY | 1 | 0 | 1 |
+| LOW_PRIORITY_RESEARCH | 0 | 2 | 2 |
+| REDUNDANCY_REVIEW | 2 | 0 | 2 |
 
-### 4.2 Core diagnostic candidates
+### 4.2 Batch-2 TIER_1 factors
 
 These are stable diagnostic baselines, not alpha factors:
 
-- `vol_5h`
-- `vol_40h`
-- `range_1h`
-- `range_4h`
-- `price_pos_24h`
-- `xs_rank_vol`
+- `downside_vol_20h` — negative expected direction, |RankIC|=0.035, LOW_TURNOVER
+- `vol_of_vol_20h` — negative expected direction, |RankIC|=0.034, LOW_TURNOVER
+- `rsi_7h` — negative expected direction, |RankIC|=0.024, NORMAL_TURNOVER
+- `rsi_28h` — negative expected direction, |RankIC|=0.018, NORMAL_TURNOVER
 
-### 4.3 Factors requiring direction or formula review
+### 4.3 Batch-2 TIER_4 factors
 
-16 factors are tagged `REVIEW_DIRECTION_OR_FORMULA`, mostly due to expected-direction mismatch, sign instability, or redundancy combined with direction concerns.
+- `qvol_ma_ratio_5_20` — sign flip between static and dynamic
+- `ma_gap_20_80` — sign flip between static and dynamic
 
-### 4.4 Turnover-risk factors
+### 4.4 New families in Batch-2
 
-2 factors are tagged primarily as `MONITOR_TURNOVER_RISK`:
-
-- `candle_body`
-- `xs_rank_ret_1h`
-
-### 4.5 Weak diagnostic only
-
-1 factor is tagged `WEAK_DIAGNOSTIC_ONLY`:
-
-- `vol_ratio_5_20`
-
-### 4.6 Redundancy review
-
-2 factors are tagged primarily as `REDUNDANCY_REVIEW`:
-
-- `range_24h`
-- `price_pos_72h`
+- `technical_indicators` (4 factors): ema_12_26_gap, rsi_7h, rsi_28h, williams_r_14h
+- `realized_skew_kurtosis` (2 factors): downside_vol_20h, vol_of_vol_20h
 
 ---
 
@@ -125,32 +114,26 @@ These are stable diagnostic baselines, not alpha factors:
 - Calendar-time joins only.
 - No `shift(-h)` feature leakage.
 - No row-based forward return construction.
-- expected_direction must come from theory/candidate metadata, never reverse-engineered from evaluation results.
+- expected_direction must come from theory/candidate metadata, never reverse-engineered.
 - All new factors start as diagnostic probes.
 - No alpha promotion without explicit PM/human approval.
 - No factor removal based only on diagnostic classification or redundancy.
 - No strategy backtest before Phase 10.
-- Dynamic universe diagnostics are available, but the current dynamic universe remains `dynamic_from_current_listed_pool`, not true PIT.
+- Dynamic universe diagnostics available but not true PIT.
 
 ---
 
-## 6. Next Phase: 7H — Batch-2 Factor Mining Preparation
+## 6. Next Phase: 7J — Batch-3 Planning
 
-Phase 7H should not implement factors yet. It should prepare Batch-2 candidate selection.
+Phase 7J should plan the next batch of factors based on lessons from Batch-1 and Batch-2.
 
 Expected scope:
 
-1. Review remaining candidates in `factor_mining_candidates_v0_1.csv`.
-2. Use Phase 7G risk lessons: direction mismatch, high turnover, redundancy, weak signals.
-3. Select a controlled Batch-2 candidate set.
-4. Prefer factors that add new families or new structure rather than near-duplicates of Batch-1.
+1. Review remaining candidates in the factor mining backlog.
+2. Apply Batch-2 lessons: direction mismatch risk, sign-flip risk, technical_indicators redundancy.
+3. Select a controlled Batch-3 candidate set.
+4. Consider crypto-native candidates if data contracts allow.
 5. Keep all selected factors diagnostic-only.
-
-Potential Batch-2 sources:
-
-- additional formulaic OHLCV factors with low leakage risk;
-- selected WQ101 / GTJA / Alpha158-style transforms that current factor factory can support;
-- crypto-native candidates only if data availability, schema, and known_at semantics are already controlled.
 
 ---
 

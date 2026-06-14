@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 7G complete; Phase 7H pending PM review.
+> Current state: Phase 7I-E complete; Phase 7J pending PM review.
 
 ---
 
@@ -47,6 +47,33 @@
 | 7G | `phase7g_curated_factor_library_v0_2.csv` | 27-factor curated library v0.2 |
 | 7G | `phase7g_family_curation_summary.csv` | Family curation summary |
 | 7G | `phase7g_redundancy_review_queue.csv` | Redundancy review queue |
+| 7H | `PHASE_7H_BATCH2_SELECTION_PLAN.md` | Batch-2 candidate selection plan |
+| 7H | `phase7h_batch2_candidate_selection.csv` | 59 candidates scored |
+| 7H | `phase7h_operator_gap_analysis.csv` | 11 operator gaps |
+| 7H | `phase7h_pm_approved_batch2.csv` | PM-approved 9 factors |
+| 7I-A | `PHASE_7I_A_BATCH2_IMPLEMENTATION.md` | Batch-2 implementation closeout |
+| 7I-B | `PHASE_7I_B_BATCH2_EVALUATION.md` | Batch-2 evaluation closeout |
+| 7I-B | `phase7i_b_static_factor_values_build_summary.csv` | Static build summary (9 factors) |
+| 7I-B | `phase7i_b_dynamic_factor_values_build_summary.csv` | Dynamic build summary (9 factors) |
+| 7I-B | `phase7i_b_static_eval_summary_ret_fwd_1h.csv` | Static ret_fwd_1h (9 factors) |
+| 7I-B | `phase7i_b_static_eval_summary_all_labels.csv` | Static all labels (36 rows) |
+| 7I-B | `phase7i_b_dynamic_eval_summary_ret_fwd_1h.csv` | Dynamic ret_fwd_1h (9 factors) |
+| 7I-B | `phase7i_b_dynamic_eval_summary_all_labels.csv` | Dynamic all labels (36 rows) |
+| 7I-C | `PHASE_7I_C_DIAGNOSTIC_CLASSIFICATION.md` | Batch-2 classification closeout |
+| 7I-C | `phase7i_c_static_vs_dynamic_comparison_ret_fwd_1h.csv` | Static-vs-dynamic comparison (9 rows) |
+| 7I-C | `phase7i_c_static_vs_dynamic_comparison_all_labels.csv` | Static-vs-dynamic comparison (36 rows) |
+| 7I-C | `phase7i_c_factor_diagnostic_classification.csv` | 9-factor diagnostic classification |
+| 7I-C | `phase7i_c_family_diagnostic_summary.csv` | Family diagnostic summary |
+| 7I-D | `PHASE_7I_D_REDUNDANCY_DIAGNOSTICS.md` | Batch-2 redundancy closeout |
+| 7I-D | `phase7i_d_static_pairwise_correlation.csv` | 36 static pairwise correlations |
+| 7I-D | `phase7i_d_dynamic_pairwise_correlation.csv` | 36 dynamic pairwise correlations |
+| 7I-D | `phase7i_d_redundancy_groups.csv` | 2 redundancy groups |
+| 7I-D | `phase7i_d_family_redundancy_summary.csv` | Family redundancy summary |
+| 7I-E | `PHASE_7I_E_CURATED_LIBRARY_UPDATE.md` | Curated library v0.3 update closeout |
+| 7I-E | `phase7i_e_curated_batch2_library.csv` | 9-factor Batch-2 curated library |
+| 7I-E | `phase7i_e_curated_factor_library_v0_3.csv` | Combined 36-factor curated library v0.3 |
+| 7I-E | `phase7i_e_family_catalog_summary_v0_3.csv` | Family catalog summary v0.3 |
+| 7I-E | `phase7i_e_redundancy_review_queue_v0_3.csv` | Combined redundancy review queue |
 
 ---
 
@@ -54,12 +81,13 @@
 
 | Script | Description |
 |--------|-------------|
-| `scripts/factor_formula_registry.py` | Factor formula registry; includes 27 Phase 7B factors |
+| `scripts/factor_formula_registry.py` | Factor formula registry; includes 38 factors (27 Batch-1 + 9 Batch-2) |
 | `scripts/factor_ops.py` | Reusable factor operators |
-| `scripts/build_factor_values.py` | Build factor_values parquet, including candidate/status subset mode |
+| `scripts/build_factor_values.py` | Build factor_values parquet |
 | `scripts/evaluate_factors.py` | Static factor evaluation |
 | `scripts/evaluate_factors_dynamic_universe.py` | Dynamic-universe factor evaluation |
-| `scripts/analyze_factor_redundancy.py` | Pairwise redundancy and Phase 7F aggregate outputs |
+| `scripts/analyze_factor_redundancy.py` | Pairwise redundancy analysis |
+| `scripts/phase7h_selection.py` | Phase 7H candidate scoring and operator gap analysis |
 
 ---
 
@@ -69,10 +97,13 @@
 |-----------|---------|
 | `tests/unit/test_factor_mining_candidates.py` | Candidate backlog validation |
 | `tests/unit/test_crypto_factor_batch7b.py` | Phase 7B factor implementation tests |
+| `tests/unit/test_crypto_factor_batch7i.py` | Phase 7I-A Batch-2 implementation tests |
 | `tests/unit/test_phase7c_dynamic_adapter.py` | Dynamic evaluator adapter tests |
 | `tests/unit/test_phase7d_static_adapter.py` | Static evaluator adapter tests |
 | `tests/unit/test_phase7f_redundancy.py` | Redundancy analysis tests |
-| `tests/unit/test_phase7g_library_curation.py` | Curated library validation tests |
+| `tests/unit/test_phase7g_library_curation.py` | Curated library v0.2 validation |
+| `tests/unit/test_phase7h_batch2_selection.py` | Phase 7H selection validation |
+| `tests/unit/test_phase7i_curated_library.py` | Curated library v0.3 validation |
 
 ---
 
