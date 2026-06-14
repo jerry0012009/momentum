@@ -19,8 +19,8 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 7I-E COMPLETE |
-| Next subphase | Phase 7J — Batch-3 Planning |
+| Current subphase | Phase 7J COMPLETE |
+| Next subphase | Phase 7K — Data Contract or Batch-3 Candidate Selection |
 | Curated library version | v0.3 |
 | Curated factors | 36 (27 Batch-1 + 9 Batch-2) |
 | Families | 13 |
@@ -72,6 +72,7 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | 7I-C | Batch-2 Diagnostic Classification | COMPLETE | Tier assignment, direction alignment |
 | 7I-D | Batch-2 Redundancy Diagnostics | COMPLETE | 2 redundancy groups found |
 | 7I-E | Batch-2 Curated Library Update | COMPLETE | Curated factor library v0.3 (36 factors) |
+| 7J | Batch-3 Planning & Data Readiness | COMPLETE | Data readiness audit, 14 candidates planned |
 
 ---
 
@@ -123,17 +124,20 @@ These are stable diagnostic baselines, not alpha factors:
 
 ---
 
-## 6. Next Phase: 7J — Batch-3 Planning
+## 6. Next Phase: 7K — Data Contract or Batch-3 Candidate Selection
 
-Phase 7J should plan the next batch of factors based on lessons from Batch-1 and Batch-2.
+Phase 7J identified 14 Batch-3 candidates across 5 groups. PM review determines next path:
 
-Expected scope:
+**Option A: Data contract first**
+- Build funding_rate ingestion pipeline (unzip→parquet, 8h→1h alignment, known_at semantics)
+- Then implement funding_rate candidates (B3_004-B3_006)
+- Simultaneously implement taker_imbalance + WQ101 candidates
 
-1. Review remaining candidates in the factor mining backlog.
-2. Apply Batch-2 lessons: direction mismatch risk, sign-flip risk, technical_indicators redundancy.
-3. Select a controlled Batch-3 candidate set.
-4. Consider crypto-native candidates if data contracts allow.
-5. Keep all selected factors diagnostic-only.
+**Option B: OHLCV candidates first**
+- Implement 5 PROPOSE_FOR_PHASE7K candidates (3 taker_imbalance + 2 WQ101)
+- Defer funding_rate until data contract is ready
+
+Key constraint: funding_rate data exists (536 symbols, 2020+) but needs a data contract for 8h→1h alignment and known_at semantics.
 
 ---
 

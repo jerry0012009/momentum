@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 7I-E complete; Phase 7J pending PM review.
+> Current state: Phase 7J complete; Phase 7K pending PM review.
 
 ---
 
@@ -74,6 +74,10 @@
 | 7I-E | `phase7i_e_curated_factor_library_v0_3.csv` | Combined 36-factor curated library v0.3 |
 | 7I-E | `phase7i_e_family_catalog_summary_v0_3.csv` | Family catalog summary v0.3 |
 | 7I-E | `phase7i_e_redundancy_review_queue_v0_3.csv` | Combined redundancy review queue |
+| 7J | `PHASE_7J_BATCH3_PLANNING.md` | Batch-3 planning and data readiness closeout |
+| 7J | `phase7j_family_gap_analysis.csv` | Family gap analysis (20 families) |
+| 7J | `phase7j_crypto_native_data_readiness.csv` | Crypto-native data readiness audit (11 types) |
+| 7J | `phase7j_batch3_candidate_plan.csv` | Batch-3 candidate plan (14 candidates) |
 
 ---
 
