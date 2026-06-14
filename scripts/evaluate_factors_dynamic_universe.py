@@ -5,14 +5,25 @@ Unlike evaluate_factors.py which uses global missing_bar_rate > 5% to exclude
 symbols (wrong for dynamic universe), this script filters to only rows where
 each symbol is actually selected by the dynamic universe in that month.
 
+Supports optional factor subset via --factor-ids or --candidate-csv + --status.
+When --candidate-csv is provided, expected_direction is loaded from it as
+primary source (fallback: old catalog, then positive with warning).
+
 Usage:
     python scripts/evaluate_factors_dynamic_universe.py \
       --dataset-id crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1 \
       --universe-id crypto_usdt_perp_monthly_volume_top50_current_listed_v1
+
+    # Phase 7C mode: only evaluate 27 selected_for_7B factors
+    python scripts/evaluate_factors_dynamic_universe.py \
+      --dataset-id ... --universe-id ... \
+      --candidate-csv research/factor_runs/crypto_top50_factor_library/factor_mining_candidates_v0_1.csv \
+      --status selected_for_7B
 """
 from __future__ import annotations
 
 import argparse
+import csv as _csv
 import json
 import math
 from datetime import datetime, timezone
@@ -36,6 +47,23 @@ from evaluate_factors import (
     clean_float, avg, std, tstat, ratio, turnover, fmt,
     evaluate_one_label, load_catalog_directions, _empty_metrics,
 )
+
+
+def load_selected_factor_ids(candidate_csv: Path, status: str = "selected_for_7B") -> list[str]:
+    """Load factor_ids from candidate CSV filtered by status."""
+    with open(candidate_csv, newline="") as f:
+        rows = list(_csv.DictReader(f))
+    ids = [r["factor_id"] for r in rows if r["status"] == status]
+    if not ids:
+        raise ValueError(f"No factors with status={status!r} in {candidate_csv}")
+    return ids
+
+
+def load_candidate_directions(candidate_csv: Path) -> dict[str, str]:
+    """Load expected_direction from candidate CSV (all rows, not just selected)."""
+    with open(candidate_csv, newline="") as f:
+        rows = list(_csv.DictReader(f))
+    return {r["factor_id"]: r["expected_direction"] for r in rows}
 
 
 def discover_factors(dataset_id: str) -> list[str]:
@@ -62,27 +90,15 @@ def apply_universe_membership_filter(
     labels: pd.DataFrame,
     snapshots: pd.DataFrame,
 ) -> tuple[pd.DataFrame, int, int, int, int]:
-    """Filter factor values and labels to only selected symbol-months.
-
-    Returns:
-        (merged_df, n_before, n_after, n_selected_symbols, n_selected_months)
-    """
-    # Merge factor values with labels on [timestamp, symbol]
+    """Filter factor values and labels to only selected symbol-months."""
     merged = fv.merge(labels, on=["timestamp", "symbol"], how="inner")
     n_before = len(merged)
-
-    # Add month_str
     merged["month_str"] = merged["timestamp"].dt.strftime("%Y-%m")
-
-    # Build universe lookup: (symbol, month_str)
     snap_lookup = snapshots[["symbol", "month_str"]].drop_duplicates()
-
-    # Inner join: keep only rows where symbol is selected in that month
     filtered = merged.merge(snap_lookup, on=["symbol", "month_str"], how="inner")
     n_after = len(filtered)
     n_symbols = filtered["symbol"].nunique() if n_after > 0 else 0
     n_months = filtered["month_str"].nunique() if n_after > 0 else 0
-
     return filtered, n_before, n_after, n_symbols, n_months
 
 
@@ -144,6 +160,12 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--dataset-id", required=True)
     p.add_argument("--universe-id", required=True)
+    p.add_argument("--factor-ids", default=None,
+                    help="Comma-separated factor_ids to evaluate (default: auto-discover)")
+    p.add_argument("--candidate-csv", default=None,
+                    help="Path to candidate CSV for factor selection and direction lookup")
+    p.add_argument("--status", default="selected_for_7B",
+                    help="Status filter for --candidate-csv (default: selected_for_7B)")
     args = p.parse_args()
 
     output_dir = OUTPUT_BASE / args.dataset_id / args.universe_id
@@ -161,44 +183,89 @@ def main():
     labels["timestamp"] = pd.to_datetime(labels["timestamp"], utc=True)
     print(f"  {len(labels):,} label rows")
 
-    # Load catalog directions
-    directions = load_catalog_directions(CATALOG)
+    # Build direction lookup: candidate CSV (primary) → old catalog (fallback) → positive (last resort)
+    candidate_directions: dict[str, str] = {}
+    if args.candidate_csv:
+        csv_path = Path(args.candidate_csv)
+        if not csv_path.is_absolute():
+            csv_path = ROOT / csv_path
+        candidate_directions = load_candidate_directions(csv_path)
+        print(f"  Loaded {len(candidate_directions)} candidate directions from {csv_path.name}")
 
-    # Pre-filter labels to universe membership (do once, not per-factor)
+    catalog_directions = load_catalog_directions(CATALOG)
+
+    def get_direction(factor_id: str) -> tuple[str, str]:
+        """Return (direction, source) for a factor_id."""
+        if factor_id in candidate_directions:
+            return candidate_directions[factor_id], "candidate_csv"
+        if factor_id in catalog_directions:
+            return catalog_directions[factor_id], "catalog"
+        return "positive", "fallback_positive"
+
+    # Pre-filter labels to universe membership
     labels["month_str"] = labels["timestamp"].dt.strftime("%Y-%m")
     snap_lookup_unique = snapshots[["symbol", "month_str"]].drop_duplicates()
     labels_filt = labels.merge(snap_lookup_unique, on=["symbol", "month_str"], how="inner")
     labels_filt = labels_filt.drop(columns=["month_str"])
     print(f"  Labels after universe filter: {len(labels_filt):,} rows")
 
-    # Discover factors
-    factors = discover_factors(args.dataset_id)
-    print(f"Discovered {len(factors)} factors: {factors}")
+    # Determine which factors to evaluate
+    if args.factor_ids:
+        factors = [s.strip() for s in args.factor_ids.split(",")]
+    elif args.candidate_csv:
+        csv_path = Path(args.candidate_csv)
+        if not csv_path.is_absolute():
+            csv_path = ROOT / csv_path
+        factors = load_selected_factor_ids(csv_path, args.status)
+    else:
+        factors = discover_factors(args.dataset_id)
+
+    # Verify all have factor_values
+    features_dir = ROOT / "data" / "features" / args.dataset_id
+    available = set()
+    missing_fv = []
+    for fid in factors:
+        fv_path = features_dir / fid / "factor_values.parquet"
+        if fv_path.exists():
+            available.add(fid)
+        else:
+            missing_fv.append(fid)
+    if missing_fv:
+        print(f"  WARNING: {len(missing_fv)} factors have no factor_values.parquet: {missing_fv}")
+    factors = [fid for fid in factors if fid in available]
+
+    print(f"Evaluating {len(factors)} factors")
+
+    # Track direction sources
+    direction_sources: dict[str, str] = {}
+    fallback_factors: list[str] = []
 
     # Evaluate each factor
     summary_rows = []
 
     for fid in factors:
         print(f"\n--- {fid} ---")
-        fv_path = ROOT / "data" / "features" / args.dataset_id / fid / "factor_values.parquet"
+        fv_path = features_dir / fid / "factor_values.parquet"
         fv = pd.read_parquet(fv_path)
         fv["timestamp"] = pd.to_datetime(fv["timestamp"], utc=True)
 
-        # Filter fv to selected symbol-months via merge
         fv["month_str"] = fv["timestamp"].dt.strftime("%Y-%m")
         n_before = len(fv)
         fv_filt = fv.merge(snap_lookup_unique, on=["symbol", "month_str"], how="inner")
         fv_filt = fv_filt.drop(columns=["month_str"])
         n_after = len(fv_filt)
 
-        # Merge on [timestamp, symbol]
         filtered = fv_filt.merge(labels_filt, on=["timestamp", "symbol"], how="inner")
         n_symbols = filtered["symbol"].nunique() if len(filtered) > 0 else 0
         n_months = filtered["timestamp"].dt.strftime("%Y-%m").nunique() if len(filtered) > 0 else 0
         print(f"  rows: {n_before:,} → {n_after:,}  symbols: {n_symbols}  months: {n_months}")
 
-        # Evaluate each label
-        expected_dir = directions.get(fid, "positive")
+        expected_dir, dir_source = get_direction(fid)
+        direction_sources[fid] = dir_source
+        if dir_source == "fallback_positive":
+            fallback_factors.append(fid)
+            print(f"  WARNING: no direction found, fallback to positive")
+
         factor_metrics = {}
 
         for label in LABEL_NAMES:
@@ -211,18 +278,17 @@ def main():
             factor_metrics[label] = m
             print(f"  {label}: RankIC={fmt(m.get('RankIC_mean'))} spread={fmt(m.get('direction_adjusted_spread'))}")
 
-        # Write per-factor outputs
         write_factor_json(fid, factor_metrics, output_dir / f"{fid}_dynamic_eval.json",
                           args.dataset_id, args.universe_id, n_before, n_after, n_symbols, n_months)
         write_factor_md(fid, factor_metrics, output_dir / f"{fid}_dynamic_eval.md",
                         args.dataset_id, args.universe_id, n_before, n_after)
 
-        # Summary row: use ret_fwd_1h as primary label
         primary = factor_metrics.get("ret_fwd_1h", {})
         summary_rows.append({
             "factor_id": fid,
             "label": "ret_fwd_1h",
             "expected_direction": expected_dir,
+            "direction_source": dir_source,
             "IC_mean": primary.get("IC_mean"),
             "ICIR": primary.get("ICIR"),
             "RankIC_mean": primary.get("RankIC_mean"),
@@ -243,33 +309,11 @@ def main():
     summary_path.write_text(json.dumps(summary_rows, indent=2, default=str) + "\n", encoding="utf-8")
     print(f"\nWrote summary: {summary_path}")
 
-    # Static vs dynamic comparison (minimal)
-    static_summary_path = RUN / "phase4_factor_eval_summary.csv"
-    if static_summary_path.exists():
-        static_df = pd.read_csv(static_summary_path)
-        comp_rows = []
-        for _, srow in summary_df.iterrows():
-            s = static_df[static_df["factor_id"] == srow["factor_id"]]
-            if s.empty:
-                continue
-            s = s.iloc[0]
-            comp_rows.append({
-                "factor_id": srow["factor_id"],
-                "label": "ret_fwd_1h",
-                "static_RankIC_mean": s.get("RankIC_mean"),
-                "dynamic_RankIC_mean": srow.get("RankIC_mean"),
-                "delta_RankIC": clean_float(float(srow.get("RankIC_mean") or 0) - float(s.get("RankIC_mean") or 0)) if srow.get("RankIC_mean") is not None and s.get("RankIC_mean") is not None else None,
-                "static_direction_adjusted_spread": s.get("direction_adjusted_spread"),
-                "dynamic_direction_adjusted_spread": srow.get("direction_adjusted_spread"),
-                "delta_spread": clean_float(float(srow.get("direction_adjusted_spread") or 0) - float(s.get("direction_adjusted_spread") or 0)) if srow.get("direction_adjusted_spread") is not None and s.get("direction_adjusted_spread") is not None else None,
-            })
-        if comp_rows:
-            comp_df = pd.DataFrame(comp_rows)
-            comp_path = RUN / "phase6g_static_vs_dynamic_minimal_comparison.csv"
-            comp_df.to_csv(comp_path, index=False)
-            print(f"Wrote static-vs-dynamic comparison: {comp_path}")
+    # Report direction sources
+    if fallback_factors:
+        print(f"\nWARNING: {len(fallback_factors)} factors used fallback positive direction: {fallback_factors}")
     else:
-        print("Static summary not found; comparison deferred to Phase 6H")
+        print(f"\nAll {len(factors)} factors have explicit expected_direction (no fallback positive)")
 
 
 if __name__ == "__main__":

@@ -3,19 +3,41 @@
 
 Now uses factor_formula_registry.REGISTRY for all factor computation.
 Iterates FactorSpec list — no hand-coded factor logic in this file.
+
+Supports optional factor subset via --factor-ids or --candidate-csv + --status.
 """
 from __future__ import annotations
 
 import argparse
+import csv as _csv
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Sequence
 
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
-from factor_formula_registry import REGISTRY
+from factor_formula_registry import REGISTRY, REGISTRY_BY_ID
+
+
+def load_selected_factor_ids(candidate_csv: Path, status: str = "selected_for_7B") -> list[str]:
+    """Load factor_ids from candidate CSV filtered by status."""
+    with open(candidate_csv, newline="") as f:
+        rows = list(_csv.DictReader(f))
+    ids = [r["factor_id"] for r in rows if r["status"] == status]
+    if not ids:
+        raise ValueError(f"No factors with status={status!r} in {candidate_csv}")
+    return ids
+
+
+def validate_factor_ids(factor_ids: Sequence[str]) -> None:
+    """Fail fast if any factor_id is not in REGISTRY."""
+    registry_ids = set(REGISTRY_BY_ID.keys())
+    missing = [fid for fid in factor_ids if fid not in registry_ids]
+    if missing:
+        raise ValueError(f"Factor IDs not in REGISTRY: {missing}")
 
 
 def apply_cross_sectional_postprocess(wide: pd.DataFrame) -> pd.DataFrame:
@@ -35,11 +57,18 @@ def apply_cross_sectional_postprocess(wide: pd.DataFrame) -> pd.DataFrame:
     return wide
 
 
-def calc_group(g: pd.DataFrame) -> pd.DataFrame:
-    """Compute all registered factors for a single-symbol group."""
+def calc_group(g: pd.DataFrame, factor_ids: Sequence[str] | None = None) -> pd.DataFrame:
+    """Compute registered factors for a single-symbol group.
+
+    Args:
+        g: DataFrame for one symbol (must have timestamp, OHLCV).
+        factor_ids: If provided, only compute these factor_ids.
+                    If None, compute all REGISTRY factors.
+    """
     g = g.copy().sort_values("timestamp")
     result_cols = ["timestamp", "symbol"]
-    for spec in REGISTRY:
+    specs = REGISTRY if factor_ids is None else [REGISTRY_BY_ID[fid] for fid in factor_ids]
+    for spec in specs:
         g[spec.factor_id] = spec.compute_fn(g)
         result_cols.append(spec.factor_id)
     return g[result_cols]
@@ -49,7 +78,26 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--dataset-id", default="crypto_top50_usdt_perp_1h",
                     help="Dataset ID under data/cache/ and data/features/")
+    p.add_argument("--factor-ids", default=None,
+                    help="Comma-separated factor_ids to build (default: all REGISTRY)")
+    p.add_argument("--candidate-csv", default=None,
+                    help="Path to candidate CSV; use with --status to select factors")
+    p.add_argument("--status", default="selected_for_7B",
+                    help="Status filter for --candidate-csv (default: selected_for_7B)")
     args = p.parse_args()
+
+    # Determine which factors to build
+    if args.factor_ids:
+        factor_ids = [s.strip() for s in args.factor_ids.split(",")]
+    elif args.candidate_csv:
+        csv_path = Path(args.candidate_csv)
+        if not csv_path.is_absolute():
+            csv_path = ROOT / csv_path
+        factor_ids = load_selected_factor_ids(csv_path, args.status)
+    else:
+        factor_ids = [spec.factor_id for spec in REGISTRY]
+
+    validate_factor_ids(factor_ids)
 
     cache = ROOT / "data" / "cache" / args.dataset_id
     feature = ROOT / "data" / "features" / args.dataset_id
@@ -57,7 +105,7 @@ def main() -> None:
 
     print(f"Build factor values (registry mode)")
     print(f"Dataset: {args.dataset_id}")
-    print(f"Registered factors: {len(REGISTRY)}")
+    print(f"Building {len(factor_ids)} factors: {factor_ids}")
 
     if not bars_path.exists():
         raise FileNotFoundError(bars_path)
@@ -69,12 +117,11 @@ def main() -> None:
 
     parts = []
     for _sym, g in bars.groupby("symbol", sort=False):
-        parts.append(calc_group(g))
+        parts.append(calc_group(g, factor_ids))
     wide = pd.concat(parts, ignore_index=True)
     wide = apply_cross_sectional_postprocess(wide)
 
     computed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    factor_ids = [spec.factor_id for spec in REGISTRY]
 
     for name in factor_ids:
         out = wide[["timestamp", "symbol", name]].rename(columns={name: "factor_value"})
