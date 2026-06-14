@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Analyze pairwise factor redundancy via Spearman/Pearson correlation.
 
-Phase 7F diagnostic script. Reads factor_values parquet files, computes
-pairwise correlations, identifies redundancy groups, and writes CSV outputs.
+Two modes:
+  1. Pairwise mode (default): read factor_values parquet, compute pairwise correlations.
+  2. Aggregate mode (--aggregate-phase7f): read static + dynamic pairwise CSVs + classification CSV,
+     generate redundancy groups and family-level summary.
 
-No factor evaluation, no backtest, no alpha promotion.
+Phase 7F diagnostic script. No factor evaluation, no backtest, no alpha promotion.
 """
 from __future__ import annotations
 
@@ -12,7 +14,6 @@ import argparse
 import csv as _csv
 import itertools
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -25,6 +26,13 @@ NEAR_DUPLICATE = 0.95
 HIGH_REDUNDANCY = 0.85
 MODERATE_REDUNDANCY = 0.70
 
+TIER_ORDER = {
+    "TIER_1_STABLE_DIAGNOSTIC": 0,
+    "TIER_2_PROMISING_BUT_NEEDS_REVIEW": 1,
+    "TIER_3_WEAK_DIAGNOSTIC": 2,
+    "TIER_4_UNSTABLE_OR_SIGN_FLIP": 3,
+}
+
 
 def load_selected_factor_ids(candidate_csv: Path, status: str) -> list[str]:
     with open(candidate_csv) as f:
@@ -36,16 +44,21 @@ def load_metadata(candidate_csv: Path) -> dict[str, dict[str, str]]:
     """Load factor_id -> {family, expected_direction, tier} from candidate CSV + classification."""
     with open(candidate_csv) as f:
         rows = list(_csv.DictReader(f))
-    meta = {}
+    meta: dict[str, dict[str, str]] = {}
     for r in rows:
-        meta[r["factor_id"]] = {"family": r["factor_family"], "expected_direction": r["expected_direction"]}
-    # Load tier from classification if available
+        meta[r["factor_id"]] = {
+            "family": r["factor_family"],
+            "expected_direction": r["expected_direction"],
+        }
     cls_path = candidate_csv.parent / "phase7e_factor_diagnostic_classification.csv"
     if cls_path.exists():
         with open(cls_path) as f:
             for r in _csv.DictReader(f):
-                if r["factor_id"] in meta:
-                    meta[r["factor_id"]]["tier"] = r.get("diagnostic_tier", "")
+                fid = r["factor_id"]
+                if fid in meta:
+                    meta[fid]["tier"] = r.get("diagnostic_tier", "")
+                    meta[fid]["max_turnover_1h"] = r.get("max_turnover_1h", "")
+                    meta[fid]["min_coverage_1h"] = r.get("min_coverage_1h", "")
     return meta
 
 
@@ -67,11 +80,8 @@ def compute_pairwise(wide: pd.DataFrame, factor_ids: list[str], meta: dict) -> l
     for i in range(n_factors):
         for j in range(i + 1, n_factors):
             fi, fj = factor_ids[i], factor_ids[j]
-            xi = wide[fi]
-            xj = wide[fj]
-            # Use numpy for speed
-            vi = xi.values
-            vj = xj.values
+            vi = wide[fi].values
+            vj = wide[fj].values
             valid = ~(np.isnan(vi) | np.isnan(vj))
             n = int(valid.sum())
             if n < 30:
@@ -106,9 +116,28 @@ def compute_pairwise(wide: pd.DataFrame, factor_ids: list[str], meta: dict) -> l
     return pairs
 
 
-def find_redundancy_groups(pairs_static: list[dict], pairs_dynamic: list[dict], factor_ids: list[str], meta: dict) -> list[dict]:
+def _rep_score(fid: str, meta: dict[str, dict[str, str]]) -> tuple[int, float, float, str]:
+    """Sort key for representative selection: tier, turnover asc, -coverage, alpha tiebreak."""
+    m = meta.get(fid, {})
+    tier = m.get("tier", "")
+    try:
+        turnover = float(m.get("max_turnover_1h", 99))
+    except (ValueError, TypeError):
+        turnover = 99.0
+    try:
+        coverage = float(m.get("min_coverage_1h", 0))
+    except (ValueError, TypeError):
+        coverage = 0.0
+    return (TIER_ORDER.get(tier, 99), turnover, -coverage, fid)
+
+
+def find_redundancy_groups(
+    pairs_static: list[dict],
+    pairs_dynamic: list[dict],
+    factor_ids: list[str],
+    meta: dict[str, dict[str, str]],
+) -> list[dict]:
     """Find connected components where any pair has abs_spearman >= HIGH_REDUNDANCY in either regime."""
-    # Build adjacency
     adj: dict[str, set[str]] = {fid: set() for fid in factor_ids}
     pair_info: dict[tuple[str, str], dict] = {}
 
@@ -125,15 +154,12 @@ def find_redundancy_groups(pairs_static: list[dict], pairs_dynamic: list[dict], 
                 adj[fi].add(fj)
                 adj[fj].add(fi)
 
-    # BFS for connected components
-    visited = set()
-    groups = []
+    visited: set[str] = set()
+    groups: list[list[str]] = []
     for fid in factor_ids:
-        if fid in visited:
+        if fid in visited or not adj[fid]:
             continue
-        if not adj[fid]:
-            continue
-        component = set()
+        component: set[str] = set()
         queue = [fid]
         while queue:
             node = queue.pop(0)
@@ -147,12 +173,12 @@ def find_redundancy_groups(pairs_static: list[dict], pairs_dynamic: list[dict], 
         if len(component) >= 2:
             groups.append(sorted(component))
 
-    # Build group rows
     group_rows = []
     for gid, members in enumerate(groups, 1):
         families = sorted(set(meta.get(m, {}).get("family", "") for m in members))
-        # Find max and mean abs_corr
-        max_s, max_d, mean_s, mean_d = 0, 0, [], []
+        max_s, max_d = 0.0, 0.0
+        mean_s: list[float] = []
+        mean_d: list[float] = []
         for fi, fj in itertools.combinations(members, 2):
             key = (min(fi, fj), max(fi, fj))
             info = pair_info.get(key, {})
@@ -165,16 +191,8 @@ def find_redundancy_groups(pairs_static: list[dict], pairs_dynamic: list[dict], 
                 max_d = max(max_d, dp["abs_spearman_corr"])
                 mean_d.append(dp["abs_spearman_corr"])
 
-        # Representative: prefer TIER_1, then lowest turnover, then highest coverage
-        def rep_score(fid: str) -> tuple[int, float]:
-            tier = meta.get(fid, {}).get("tier", "")
-            tier_order = {"TIER_1_STABLE_DIAGNOSTIC": 0, "TIER_2_PROMISING_BUT_NEEDS_REVIEW": 1,
-                          "TIER_3_WEAK_DIAGNOSTIC": 2, "TIER_4_UNSTABLE_OR_SIGN_FLIP": 3}
-            return (tier_order.get(tier, 99), 0)  # turnover not available here, just use tier
+        representative = sorted(members, key=lambda f: _rep_score(f, meta))[0]
 
-        representative = sorted(members, key=rep_score)[0]
-
-        # Basis
         basis_parts = []
         if max_s >= HIGH_REDUNDANCY:
             basis_parts.append(f"static_max={max_s:.3f}")
@@ -188,8 +206,8 @@ def find_redundancy_groups(pairs_static: list[dict], pairs_dynamic: list[dict], 
             "n_factors": len(members),
             "max_abs_corr_static": round(max_s, 4),
             "max_abs_corr_dynamic": round(max_d, 4),
-            "mean_abs_corr_static": round(np.mean(mean_s), 4) if mean_s else None,
-            "mean_abs_corr_dynamic": round(np.mean(mean_d), 4) if mean_d else None,
+            "mean_abs_corr_static": round(float(np.mean(mean_s)), 4) if mean_s else None,
+            "mean_abs_corr_dynamic": round(float(np.mean(mean_d)), 4) if mean_d else None,
             "redundancy_basis": "; ".join(basis_parts),
             "representative_candidate": representative,
             "group_notes": "",
@@ -197,49 +215,118 @@ def find_redundancy_groups(pairs_static: list[dict], pairs_dynamic: list[dict], 
     return group_rows
 
 
-def family_redundancy_summary(pairs: list[dict], meta: dict) -> list[dict]:
-    """Summarize redundancy at family level."""
-    fam_data: dict[str, list[dict]] = {}
-    for p in pairs:
-        fi_fam = p["family_i"]
-        if fi_fam not in fam_data:
-            fam_data[fi_fam] = []
-        fam_data[fi_fam].append(p)
-
+def family_redundancy_summary_from_pairwise(pairwise_df: pd.DataFrame) -> list[dict]:
+    """Summarize within-family redundancy using only same_family == True pairs."""
+    same = pairwise_df[pairwise_df["same_family"] == True].copy()
     rows = []
-    for fam, p_list in sorted(fam_data.items()):
+    for fam in sorted(same["family_i"].unique()):
+        p_list = same[same["family_i"] == fam]
         n_pairs = len(p_list)
-        max_s = max((p["abs_spearman_corr"] or 0) for p in p_list)
-        n_high = sum(1 for p in p_list if (p["abs_spearman_corr"] or 0) >= HIGH_REDUNDANCY)
-        n_mod = sum(1 for p in p_list if (p["abs_spearman_corr"] or 0) >= MODERATE_REDUNDANCY)
+        max_s = float(p_list["abs_spearman_corr"].max())
+        n_high = int((p_list["abs_spearman_corr"] >= HIGH_REDUNDANCY).sum())
+        n_mod = int((p_list["abs_spearman_corr"] >= MODERATE_REDUNDANCY).sum())
         if n_high > 0:
             assessment = "HIGH_REDUNDANCY"
         elif n_mod > 0:
             assessment = "MODERATE_REDUNDANCY"
         else:
             assessment = "LOW_REDUNDANCY"
+        all_factors = set(p_list["factor_i"]) | set(p_list["factor_j"])
         rows.append({
             "family": fam,
-            "n_factors": len(set(p["factor_i"] for p in p_list) | set(p["factor_j"] for p in p_list)),
+            "n_factors": len(all_factors),
             "n_pairs": n_pairs,
-            "max_abs_spearman": round(max_s, 4),
-            "n_high_redundancy_pairs": n_high,
-            "n_moderate_redundancy_pairs": n_mod,
+            "max_abs_spearman_static": round(max_s, 4),
+            "max_abs_spearman_dynamic": 0.0,  # filled by caller
+            "n_high_redundancy_pairs_static": n_high,
+            "n_high_redundancy_pairs_dynamic": 0,  # filled by caller
             "redundancy_assessment": assessment,
             "notes": "",
         })
     return rows
 
 
-def main() -> tuple[list[dict], dict, list[str]]:
+def aggregate_phase7f(
+    static_csv: Path,
+    dynamic_csv: Path,
+    classification_csv: Path,
+    out_dir: Path,
+) -> None:
+    """Read pairwise CSVs + classification, generate groups and family summary."""
+    ps = pd.read_csv(static_csv)
+    pd_ = pd.read_csv(dynamic_csv)
+
+    # Load classification for tier/turnover/coverage
+    cls = pd.read_csv(classification_csv)
+    meta: dict[str, dict[str, str]] = {}
+    for _, r in cls.iterrows():
+        meta[r["factor_id"]] = {
+            "family": r.get("family", ""),
+            "tier": r.get("diagnostic_tier", ""),
+            "max_turnover_1h": str(r.get("max_turnover_1h", "")),
+            "min_coverage_1h": str(r.get("min_coverage_1h", "")),
+        }
+
+    factor_ids = sorted(set(ps["factor_i"]) | set(ps["factor_j"]))
+
+    # Convert DataFrames to list-of-dicts for find_redundancy_groups
+    ps_list = ps.to_dict("records")
+    pd_list = pd_.to_dict("records")
+
+    groups = find_redundancy_groups(ps_list, pd_list, factor_ids, meta)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(groups).to_csv(out_dir / "phase7f_redundancy_groups.csv", index=False)
+    print(f"Redundancy groups: {len(groups)}")
+
+    # Family summary: merge static and dynamic same-family pairs
+    fam_s = family_redundancy_summary_from_pairwise(ps)
+    fam_d = family_redundancy_summary_from_pairwise(pd_)
+
+    fam_d_map = {r["family"]: r for r in fam_d}
+    for row in fam_s:
+        fam = row["family"]
+        if fam in fam_d_map:
+            row["max_abs_spearman_dynamic"] = fam_d_map[fam]["max_abs_spearman_static"]
+            row["n_high_redundancy_pairs_dynamic"] = fam_d_map[fam]["n_high_redundancy_pairs_static"]
+            dyn_assess = fam_d_map[fam]["redundancy_assessment"]
+            if dyn_assess == "HIGH_REDUNDANCY" or row["redundancy_assessment"] == "HIGH_REDUNDANCY":
+                row["redundancy_assessment"] = "HIGH_REDUNDANCY"
+            elif dyn_assess == "MODERATE_REDUNDANCY" or row["redundancy_assessment"] == "MODERATE_REDUNDANCY":
+                row["redundancy_assessment"] = "MODERATE_REDUNDANCY"
+
+    pd.DataFrame(fam_s).to_csv(out_dir / "phase7f_family_redundancy_summary.csv", index=False)
+    print(f"Family summary: {len(fam_s)} families")
+
+    for g in groups:
+        print(f"  {g['group_id']}: {g['factors']} | rep={g['representative_candidate']}")
+    for r in fam_s:
+        print(f"  {r['family']}: {r['n_factors']}f {r['n_pairs']}p {r['redundancy_assessment']}")
+
+
+def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--dataset-id", required=True)
-    p.add_argument("--candidate-csv", required=True)
+    p.add_argument("--dataset-id", help="Dataset ID for pairwise mode")
+    p.add_argument("--candidate-csv", help="Candidate CSV path for pairwise mode")
     p.add_argument("--status", default="selected_for_7B")
-    p.add_argument("--out-prefix", required=True, help="Output prefix for CSV files")
+    p.add_argument("--out-prefix", help="Output prefix for pairwise CSV")
     p.add_argument("--sample-step", type=int, default=1, help="Sample every Nth timestamp (1=no sampling)")
+    p.add_argument("--aggregate-phase7f", action="store_true", help="Aggregate mode: generate groups + family summary")
+    p.add_argument("--static-pairwise", help="Static pairwise CSV (aggregate mode)")
+    p.add_argument("--dynamic-pairwise", help="Dynamic pairwise CSV (aggregate mode)")
+    p.add_argument("--classification-csv", help="Classification CSV (aggregate mode)")
+    p.add_argument("--out-dir", help="Output directory (aggregate mode)")
     args = p.parse_args()
 
+    if args.aggregate_phase7f:
+        aggregate_phase7f(
+            static_csv=Path(args.static_pairwise),
+            dynamic_csv=Path(args.dynamic_pairwise),
+            classification_csv=Path(args.classification_csv),
+            out_dir=Path(args.out_dir),
+        )
+        return
+
+    # Pairwise mode
     candidate_csv = Path(args.candidate_csv)
     factor_ids = load_selected_factor_ids(candidate_csv, args.status)
     meta = load_metadata(candidate_csv)
@@ -249,7 +336,6 @@ def main() -> tuple[list[dict], dict, list[str]]:
     print(f"Factors: {len(factor_ids)}")
     print(f"Sample step: {args.sample_step}")
 
-    # Load all factor_values and merge into wide table
     parts = {}
     for fid in factor_ids:
         fv_path = features_dir / fid / "factor_values.parquet"
@@ -263,7 +349,6 @@ def main() -> tuple[list[dict], dict, list[str]]:
     if len(parts) != len(factor_ids):
         print(f"WARNING: only {len(parts)}/{len(factor_ids)} factor_values found")
 
-    # Merge all on (timestamp, symbol)
     print("Merging factor_values into wide table...")
     wide = None
     for fid, fv in parts.items():
@@ -280,25 +365,20 @@ def main() -> tuple[list[dict], dict, list[str]]:
 
     print(f"Wide table: {len(wide)} rows, {len(parts)} factor columns")
 
-    # Compute pairwise correlations
     available_ids = list(parts.keys())
     print("Computing pairwise correlations...")
     pairs = compute_pairwise(wide, available_ids, meta)
     print(f"Pairs computed: {len(pairs)}")
 
-    # Write pairwise CSV
     out_prefix = Path(args.out_prefix)
     out_prefix.parent.mkdir(parents=True, exist_ok=True)
     pairwise_path = Path(f"{out_prefix}_pairwise_correlation.csv")
     pd.DataFrame(pairs).to_csv(pairwise_path, index=False)
     print(f"Pairwise -> {pairwise_path}")
 
-    # Stats
     for level in ["NEAR_DUPLICATE", "HIGH_REDUNDANCY", "MODERATE_REDUNDANCY", "LOW_REDUNDANCY"]:
         cnt = sum(1 for p in pairs if p["redundancy_level"] == level)
         print(f"  {level}: {cnt}")
-
-    return pairs, meta, factor_ids
 
 
 if __name__ == "__main__":
