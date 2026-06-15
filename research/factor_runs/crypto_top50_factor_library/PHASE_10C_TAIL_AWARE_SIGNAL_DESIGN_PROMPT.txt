@@ -1,0 +1,79 @@
+PM 指令：进入 Phase 10C — Tail-aware Signal Policy Design。
+
+中文名称：Phase 10C — 尾部感知信号政策设计。
+
+本阶段是 design-only。不要实现 signal v1，不要运行 backtest，不要进入 Phase 11。
+
+当前 PM 判断：Phase 10B-lite 计算通过，但结论不是简单翻转 signal。问题是：lowest-signal / bucket0 侧有较强正收益，使 long-minus-short mean spread 为负；median spread 多数为正；winsorized/tail-trimmed spread 仍为负但明显缩小。这说明信号存在 tail nonlinearity 和 horizon-specific direction risk。
+
+必须先阅读：
+- PHASE_10A_SIGNAL_BACKTEST_V0.md
+- PHASE_10A_R_DIRECTION_QUANTILE_REPAIR.md
+- PHASE_10B_TAIL_ADDENDUM_CLOSEOUT.md
+- PHASE_10B_PM_REVIEW.md
+- phase10b_robust_spread_addendum.csv
+- phase10b_pm_decision_matrix.csv
+- phase10b_bucket0_top_contributors.csv
+
+禁止：
+- 不改 Phase 9B signal panel
+- 不翻转 signal
+- 不实现 signal v1
+- 不运行 backtest
+- 不覆盖 Phase 10A / 10A-R / 10B 产物
+- 不做成本、滑点、容量
+- 不进入 Phase 11
+- 不做交易或实盘结论
+
+本阶段只产出设计文件和政策表。
+
+新增产物：
+
+1. phase10c_tail_policy_options.csv
+每行一个可选政策。
+字段：policy_id,policy_name,description,handles_bucket0,handles_mean_median_conflict,handles_horizon_direction,complexity,risk,pm_recommendation
+建议至少包含：
+- POLICY_A_KEEP_DIAGNOSTIC_ONLY
+- POLICY_B_USE_MEDIAN_AND_ROBUST_METRICS_ONLY
+- POLICY_C_NEUTRALIZE_BUCKET0_SHORT_LEG
+- POLICY_D_TAIL_AWARE_LONG_SHORT_WITH_BUCKET0_GUARD
+- POLICY_E_HORIZON_SPECIFIC_DIRECTION_POLICY
+
+2. phase10c_horizon_direction_policy.csv
+每个 signal × horizon 一行，共 12 行。
+字段：signal_id,horizon,rankic_direction,mean_spread_direction,median_spread_direction,winsorized_direction,tail_trim_direction,proposed_direction_policy,reason
+proposed_direction_policy 允许：KEEP_ORIGINAL_FOR_DIAGNOSTIC / DO_NOT_SHORT_BUCKET0 / INVERSION_REVIEW_24_72_ONLY / HORIZON_SPECIFIC_REVIEW / BLOCK_SIGNAL_FOR_PHASE11
+
+3. phase10c_signal_v1_design_spec.md
+写出 PM 推荐的 signal v1 设计，不实现。
+必须回答：
+- 是否保留 signal_v0_pm_full_structured 作为核心？
+- 是否禁止直接 short bucket0？
+- 是否用 median/winsorized/tail-aware spread 作为 Phase 10D 的评价指标？
+- 1h/4h 与 24h/72h 是否分开处理？
+- 哪些设计进入 Phase 10D evaluation？
+
+4. phase10c_phase10d_evaluation_protocol.csv
+设计 Phase 10D 应如何评价 signal v1。
+字段：protocol_item,value,notes
+必须包含：signals_to_evaluate,horizons,rankic,mean_spread,median_spread,winsorized_spread,tail_trim_spread,bucket0_guard_check,no_cost_slippage,no_phase11
+
+5. PHASE_10C_TAIL_AWARE_SIGNAL_POLICY_DESIGN.md
+Closeout。必须说明：
+- 10B 发现了什么；
+- PM 修正后的解释是什么；
+- 选了哪个政策；
+- 为什么不直接进入 Phase 11；
+- Phase 10D 应该做什么。
+
+6. phase10c_quality_checks.csv
+字段：check_name,status,detail。status 允许 PASS/WARN/FAIL。
+至少检查：design_only,no_signal_v1_implemented,no_backtest_run,no_phase11_started,phase10d_protocol_exists,quality_no_fail。
+
+建议新增测试：tests/unit/test_phase10c_tail_policy_design.py
+测试：政策表存在；direction policy 12 行；design spec 存在；Phase10D protocol 存在；quality checks 无 FAIL；没有 Phase 11 artifact；没有 signal v1 parquet。
+
+Commit message:
+design(factor-library): specify phase10c tail-aware signal policy
+
+完成后返回：latest commit SHA；新增/修改文件；PM 推荐政策；是否允许 Phase 10D；明确声明没有实现 signal v1、没有 backtest、没有 Phase 11。
