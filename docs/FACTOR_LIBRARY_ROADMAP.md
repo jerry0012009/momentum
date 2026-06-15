@@ -19,8 +19,8 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 8B PM candidate-review decisions applied |
-| Next subphase | Phase 9 Multi-factor Signal Construction (pending PM approval) |
+| Current subphase | Phase 9A-R PM signal architecture specification COMPLETE |
+| Next subphase | Phase 9B signal implementation (pending PM approval after 9A-R review) |
 | Curated library version | v0.4 |
 | Curated factors | 42 (36 v0.3 + 6 crypto-native) |
 | Families | 15 (13 existing + taker_imbalance + funding_rate) |
@@ -44,8 +44,8 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Phase 5 | Alphalens-compatible Export | COMPLETE | Compatibility layer |
 | Phase 6 | Dynamic Universe & Survivorship Control | COMPLETE | Dynamic-universe diagnostics |
 | Phase 7 | Large-scale Factor Mining | COMPLETE | All sub-phases through 7N-R2 complete |
-| Phase 8 | Candidate Factor Review | IN PROGRESS | Phase 8B complete: 10 CANDIDATE_REVIEW, 32 parked; no alpha/backtest |
-| Phase 9 | Multi-factor Signal Construction | NOT STARTED | Only CANDIDATE_REVIEW factors (10 approved by PM) |
+| Phase 8 | Candidate Factor Review | COMPLETE | Phase 8B: 10 CANDIDATE_REVIEW, 32 parked; no alpha/backtest |
+| Phase 9 | Multi-factor Signal Construction | IN PROGRESS | Phase 9A-R design COMPLETE; pending PM approval for 9B implementation |
 | Phase 10 | Strategy Backtest | NOT STARTED | |
 | Phase 11 | Cost / Slippage / Capacity / Risk | NOT STARTED | |
 | Phase 12 | Paper Trading | NOT STARTED | |

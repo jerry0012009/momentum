@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 8B complete; 10 factors in CANDIDATE_REVIEW, 32 parked. v0.4 diagnostic library (42 factors, 15 families).
+> Current state: Phase 9A-R complete; PM signal architecture specified. 10 CANDIDATE_REVIEW, 32 parked. v0.4 diagnostic library (42 factors, 15 families).
 
 ---
 
