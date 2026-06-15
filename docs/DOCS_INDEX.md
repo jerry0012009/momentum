@@ -125,6 +125,9 @@
 | 7N | `phase7n_blockers_and_constraints.csv` | Blockers (7 items) |
 | 7N-R | `PHASE_7N_R_READINESS_QUEUE_REPAIR.md` | Queue repair closeout |
 | 7N-R | `phase7n_r_phase8_review_queue_repaired.csv` | Repaired Phase 8 review queue (42 rows) |
+| 7N-R2 | `PHASE_7N_R2_READINESS_QUEUE_REPAIR.md` | Queue precedence repair closeout |
+| 7N-R2 | `phase7n_r2_phase8_review_queue_repaired.csv` | Repaired queue (42 rows) |
+| 7N-R2 | `phase7n_r2_queue_category_summary.csv` | Category summary (canonical counts) |
 
 ---
 
