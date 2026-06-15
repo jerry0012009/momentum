@@ -177,6 +177,13 @@
 | 10A-R | `phase10a_r_rankic_quantile_reconciliation.csv` | RankIC-quantile reconciliation |
 | 10A-R | `phase10a_r_quality_checks.csv` | 13 quality checks |
 | 10A-R | `tests/unit/test_phase10a_r_direction_quantile_repair.py` | Phase 10A-R tests |
+| 10B | `PHASE_10B_TAIL_ADDENDUM_CLOSEOUT.md` | Phase 10B-lite tail diagnostics closeout |
+| 10B | `scripts/run_phase10b_tail_diagnostics.py` | Phase 10B-lite diagnostic runner |
+| 10B | `phase10b_bucket0_top_contributors.csv` | Bucket 0 top 50 contributors per signal×horizon |
+| 10B | `phase10b_robust_spread_addendum.csv` | Robust spread diagnostics (median, winsorized, tail-trim) |
+| 10B | `phase10b_pm_decision_matrix.csv` | PM decision matrix |
+| 10B | `phase10b_quality_checks.csv` | 9 quality checks |
+| 10B | `tests/unit/test_phase10b_tail_addendum.py` | Phase 10B-lite tests |
 
 
 ---
