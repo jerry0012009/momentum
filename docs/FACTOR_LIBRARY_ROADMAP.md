@@ -19,8 +19,8 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 7M-D-R COMPLETE |
-| Next subphase | Phase 7M-E — Crypto-native Redundancy (pending PM review of 7M-D-R) |
+| Current subphase | Phase 7M-E COMPLETE |
+| Next subphase | PM decision on crypto-native factors |
 | Curated library version | v0.3 |
 | Curated factors | 36 (27 Batch-1 + 9 Batch-2) |
 | Families | 13 |
@@ -82,6 +82,7 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | 7M-C | Crypto-native Static/Dynamic Evaluation | COMPLETE | 6 factors × 4 labels × 2 datasets, 21 tests |
 | 7M-D | Crypto-native Comparison & Classification | COMPLETE | static-vs-dynamic + diagnostic tiers, 20 tests |
 | 7M-D-R | Crypto-native Classification Repair | COMPLETE | fixed all-label merge on (factor_id,label), 24 tests |
+| 7M-E | Crypto-native Redundancy Diagnostics | COMPLETE | pairwise correlation, no redundancy found, 13 tests |
 
 ---
 
@@ -133,18 +134,23 @@ These are stable diagnostic baselines, not alpha factors:
 
 ---
 
-## 6. Next Phase: 7M — Crypto-native Factor Implementation
+## 6. Next Phase: 7M-E — Crypto-native Redundancy Diagnostics
 
-Phase 7L built canonical data caches:
-- **Taker enriched bars**: static 75.82% / dynamic 91.73% coverage of taker_buy_quote_volume
-- **Funding rate events**: 679 symbols, 2.1M events, intervals [1,2,4,8]h
-- **Funding 1h aligned**: static 74.29% / dynamic 88.03% coverage, max age ≤ interval
+Phase 7M-A through 7M-D-R are complete:
+- **7M-A**: 6 crypto-native diagnostic factors implemented (taker 3 + funding 3)
+- **7M-B**: Factor values built for static + dynamic datasets
+- **7M-C**: Static/dynamic evaluation across 4 labels
+- **7M-D**: Static-vs-dynamic comparison and diagnostic classification
+- **7M-D-R**: Repaired all-label merge bug, classification accepted
 
-Phase 7M scope (pending PM approval):
-1. Implement taker imbalance factors (taker_buy_ratio_20h, taker_buy_zscore_20h, taker_buy_delta_5h)
-2. Implement funding rate factors (funding_rate_current, funding_rate_ma_3, funding_rate_change_1h)
-3. All factors start as DIAGNOSTIC_PROBE
-4. Use enriched bars cache for taker, aligned cache for funding
+Phase 7M-E is next, pending PM review:
+- Redundancy diagnostics among 6 crypto-native factors only
+- Pairwise correlation analysis (static + dynamic)
+- Same-family and cross-family redundancy grouping
+- No factor removal
+- No alpha promotion
+- No CANDIDATE_REVIEW
+- No backtest
 
 ---
 

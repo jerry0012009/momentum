@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 7M-D-R complete; Phase 7M-E pending PM review.
+> Current state: Phase 7M-E complete; PM decision pending.
 
 ---
 
@@ -108,6 +108,11 @@
 | 7M-D | `phase7m_d_family_diagnostic_summary.csv` | Family diagnostic summary (2 rows) |
 | 7M-D | `phase7m_d_review_flags.csv` | Review flags |
 | 7M-D-R | `PHASE_7M_D_R_CLASSIFICATION_REPAIR.md` | Classification repair closeout |
+| 7M-E | `PHASE_7M_E_CRYPTO_NATIVE_REDUNDANCY.md` | Redundancy diagnostics closeout |
+| 7M-E | `phase7m_e_static_pairwise_correlation.csv` | Static pairwise Spearman (15 pairs) |
+| 7M-E | `phase7m_e_dynamic_pairwise_correlation.csv` | Dynamic pairwise Spearman (15 pairs) |
+| 7M-E | `phase7m_e_redundancy_groups.csv` | Redundancy groups (none found) |
+| 7M-E | `phase7m_e_family_redundancy_summary.csv` | Family redundancy summary |
 
 ---
 
