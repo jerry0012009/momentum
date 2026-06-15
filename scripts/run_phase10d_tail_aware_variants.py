@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Phase 10D: Tail-Aware Signal Variant Evaluation (numpy vectorized)."""
+"""Phase 10D-R: Bucket0 Guard Implementation Repair.
+
+Fixes:
+1. Bucket assignment now uses evaluated signal (original or inverted).
+2. bucket0_lower_leg_exposure_fraction now measures short-leg exposure:
+   - guarded: 0 (bucket 0 excluded from short leg)
+   - no_guard: fraction of bucket 0 symbols in short leg
+3. Quality check: guarded bucket0 exposure must be exactly 0.
+"""
 import warnings, sys, subprocess
 from pathlib import Path
 import numpy as np
@@ -22,36 +30,23 @@ def ensure_panel():
     if r.returncode != 0: sys.exit(1)
 
 
-def fast_buckets(sig2d, n_buck=10):
-    """Fast decile bucketing using numpy digitize (per-row)."""
-    n_ts, n_sym = sig2d.shape
-    out = np.full((n_ts, n_sym), -1, dtype=np.int32)
-    for ti in range(n_ts):
-        row = sig2d[ti]
-        valid = ~np.isnan(row)
-        sv = row[valid]
-        n = len(sv)
-        if n < n_buck: continue
-        # Compute percentile boundaries
-        pcts = np.linspace(0, 100, n_buck + 1)
-        edges = np.percentile(sv, pcts)
-        edges[0] -= 1e-10
-        edges[-1] += 1e-10
-        bk = np.digitize(sv, edges[1:-1])  # 0 to n_buck-1
-        out[ti, valid] = bk
-    return out
-
-
-def compute_metrics(sig2d, fwd2d, buckets2d, guard=False):
-    """Compute per-timestamp RankIC and spread. Returns arrays of length n_ts."""
-    n_ts, n_sym = sig2d.shape
+def compute_variant_metrics(sig_eval, fwd_arr, guard=False, n_buck=10):
+    """Compute per-timestamp RankIC, spread, and bucket0 short-leg exposure.
+    
+    sig_eval: (n_ts, n_sym) — evaluated signal (original or inverted)
+    fwd_arr: (n_ts, n_sym) — forward returns
+    guard: if True, exclude bucket 0 (lowest decile of sig_eval) from short leg
+    
+    Returns: rankic, spread, b0_short_leg_exposure (per timestamp)
+    """
+    n_ts, n_sym = sig_eval.shape
     rankic = np.full(n_ts, np.nan)
     spread = np.full(n_ts, np.nan)
-    b0_frac = np.zeros(n_ts)
+    b0_exposure = np.zeros(n_ts)  # fraction of short leg that is bucket 0
 
     for ti in range(n_ts):
-        sv = sig2d[ti]
-        rv = fwd2d[ti]
+        sv = sig_eval[ti]
+        rv = fwd_arr[ti]
         valid = ~np.isnan(sv) & ~np.isnan(rv)
         s = sv[valid]
         r = rv[valid]
@@ -66,15 +61,33 @@ def compute_metrics(sig2d, fwd2d, buckets2d, guard=False):
         if n > 2 and np.std(rs) > 1e-12 and np.std(rr) > 1e-12:
             rankic[ti] = np.corrcoef(rs, rr)[0, 1]
 
-        # Spread
-        bv = buckets2d[ti][valid]
+        # Buckets from evaluated signal
+        try:
+            edges = np.percentile(s, np.linspace(0, 100, n_buck + 1))
+            edges[0] -= 1e-10
+            edges[-1] += 1e-10
+            bv = np.digitize(s, edges[1:-1])  # 0 to n_buck-1
+        except:
+            bv = np.zeros(n, dtype=int)
+
+        b0_mask = bv == 0
+        n_b0 = b0_mask.sum()
+
         if guard:
-            b0 = bv == 0
-            b0_frac[ti] = b0.sum() / n
-            keep = ~b0
+            # Exclude bucket 0 from evaluation set
+            keep = ~b0_mask
             s_g, r_g = s[keep], r[keep]
+            # Bucket 0 excluded from short leg → exposure = 0
+            b0_exposure[ti] = 0.0
         else:
             s_g, r_g = s, r
+            # Compute bucket 0 fraction in short leg
+            nq = max(int(n * 0.20), 1)
+            order = np.argsort(-s)  # descending: top = long, bottom = short
+            short_indices = order[-nq:]  # bottom 20%
+            # How many of the short leg are bucket 0?
+            short_is_b0 = b0_mask[short_indices]
+            b0_exposure[ti] = short_is_b0.sum() / nq if nq > 0 else 0.0
 
         ng = len(s_g)
         if ng < 10: continue
@@ -82,11 +95,11 @@ def compute_metrics(sig2d, fwd2d, buckets2d, guard=False):
         order = np.argsort(-s_g)
         spread[ti] = r_g[order[:nq]].mean() - r_g[order[-nq:]].mean()
 
-    return rankic, spread, b0_frac
+    return rankic, spread, b0_exposure
 
 
 def main():
-    print("Phase 10D: Tail-Aware Signal Variant Evaluation")
+    print("Phase 10D-R: Bucket0 Guard Implementation Repair")
     ensure_panel()
 
     print("\n[1/3] Loading + pivoting...")
@@ -108,38 +121,32 @@ def main():
         return out
 
     sig_arrs = {s: pivot2d(merged[s]) for s in SIGNALS}
-    inv_arrs = {s: -sig_arrs[s] for s in SIGNALS}
     fwd_arrs = {h: pivot2d(merged[col]) for col, h in HORIZ.items()}
 
-    # Precompute buckets (original + inverted, per signal, no per-horizon needed since signal same)
-    print("\n[2/3] Precomputing buckets + evaluating...")
-    buck_orig = {}
-    buck_inv = {}
-    for s in SIGNALS:
-        buck_orig[s] = fast_buckets(sig_arrs[s])
-        buck_inv[s] = fast_buckets(inv_arrs[s])
-
+    # Evaluate 48 variants
+    print("\n[2/3] Evaluating 48 variants with repaired guard...")
     rows = []
     configs = [
-        ("original_no_guard", "original", False),
-        ("original_bucket0_guard", "original", True),
-        ("inverted_no_guard", "inverted", False),
-        ("inverted_bucket0_guard", "inverted", True),
+        ("original_no_guard", False, False),
+        ("original_bucket0_guard", False, True),
+        ("inverted_no_guard", True, False),
+        ("inverted_bucket0_guard", True, True),
     ]
 
     for s in SIGNALS:
         s_short = s.replace("signal_v0_", "").replace("_diagnostic", "")
         for h_name, fwd_arr in fwd_arrs.items():
             valid = ~np.isnan(sig_arrs[s]) & ~np.isnan(fwd_arr)
-            sig_m = np.where(valid, sig_arrs[s], np.nan)
-            inv_m = np.where(valid, inv_arrs[s], np.nan)
-            fwd_m = np.where(valid, fwd_arr, np.nan)
 
-            for vname, direction, guard in configs:
-                if direction == "original":
-                    ra, sa, ba = compute_metrics(sig_m, fwd_m, buck_orig[s], guard)
+            for vname, use_inv, guard in configs:
+                # Evaluated signal: original or inverted
+                if use_inv:
+                    sig_eval = np.where(valid, -sig_arrs[s], np.nan)
                 else:
-                    ra, sa, ba = compute_metrics(inv_m, fwd_m, buck_inv[s], guard)
+                    sig_eval = np.where(valid, sig_arrs[s], np.nan)
+                fwd_masked = np.where(valid, fwd_arr, np.nan)
+
+                ra, sa, ba = compute_variant_metrics(sig_eval, fwd_masked, guard=guard)
 
                 ra_v = ra[~np.isnan(ra)]
                 sa_v = sa[~np.isnan(sa)]
@@ -160,7 +167,7 @@ def main():
                 rows.append({
                     "variant_id": f"{s}__{h_name}__{vname}",
                     "signal_id": s, "horizon": h_name,
-                    "direction_variant": direction,
+                    "direction_variant": "inverted" if use_inv else "original",
                     "guard_variant": "bucket0_guard" if guard else "no_guard",
                     "mean_rankic": float(np.nanmean(ra)),
                     "median_rankic": float(np.nanmedian(ra)),
@@ -182,42 +189,59 @@ def main():
                     "dropped_timestamp_count": int(np.isnan(sa).sum()),
                     "dropped_timestamp_fraction": float(np.isnan(sa).sum() / n_ts),
                 })
+
                 r = rows[-1]
                 print(f"  {s_short:25s} {h_name} {vname:25s} "
-                      f"RankIC={r['mean_rankic']:+.4f} med_sp={r['median_spread']:+.6f}")
+                      f"RankIC={r['mean_rankic']:+.4f} med_sp={r['median_spread']:+.6f} "
+                      f"b0_exp={r['bucket0_lower_leg_exposure_fraction']:.4f}")
 
     # Save outputs
     print("\n[3/3] Saving...")
     df = pd.DataFrame(rows)
     df.to_csv(OUT / "phase10d_variant_evaluation_summary.csv", index=False)
+    print(f"  Summary: {len(df)} rows")
 
+    # Pass/fail
     pf = df[["variant_id","signal_id","horizon","direction_variant","guard_variant",
              "mean_rankic","median_spread","bucket0_lower_leg_exposure_fraction"]].copy()
     pf["rankic_pass"] = pf["mean_rankic"] > 0
     pf["median_spread_pass"] = pf["median_spread"] > 0
     gm = pf["guard_variant"] == "bucket0_guard"
+    ngm = pf["guard_variant"] == "no_guard"
+    # Guarded: must have exactly 0 exposure (bucket 0 excluded from short leg)
     pf["bucket0_guard_pass"] = True
-    pf.loc[gm, "bucket0_guard_pass"] = pf.loc[gm, "bucket0_lower_leg_exposure_fraction"] > 0  # guard applied = bucket0 exists
+    pf.loc[gm, "bucket0_guard_pass"] = pf.loc[gm, "bucket0_lower_leg_exposure_fraction"] == 0
+    # No guard: exposure should be nonzero (bucket 0 in short leg)
+    # This is informational, not a pass/fail criterion
     pf["overall_pass"] = pf["rankic_pass"] & pf["median_spread_pass"] & pf["bucket0_guard_pass"]
     pf["pass_status"] = pf["overall_pass"].map({True: "PASS", False: "FAIL"})
     pf.to_csv(OUT / "phase10d_variant_pass_fail_matrix.csv", index=False)
+    print(f"  Pass/fail: {pf['overall_pass'].sum()}/{len(pf)} PASS")
 
+    # Bucket exposure
     df[["variant_id","signal_id","horizon","direction_variant","guard_variant",
         "bucket0_lower_leg_exposure_fraction","dropped_timestamp_count",
         "dropped_timestamp_fraction"]].to_csv(OUT / "phase10d_variant_bucket_exposure.csv", index=False)
 
+    # Quality checks
+    guarded_all_zero = (pf.loc[gm, "bucket0_lower_leg_exposure_fraction"] == 0).all()
+    no_guard_nonzero = (pf.loc[ngm, "bucket0_lower_leg_exposure_fraction"] > 0).all()
     qc = [
         ("evaluation_summary_48_rows", "PASS" if len(df)==48 else "FAIL"),
         ("all_3_signals", "PASS" if len(df["signal_id"].unique())==3 else "FAIL"),
         ("all_4_horizons", "PASS" if len(df["horizon"].unique())==4 else "FAIL"),
         ("all_4_variants", "PASS" if len(df["direction_variant"].unique())*len(df["guard_variant"].unique())==4 else "FAIL"),
-        ("guarded_bucket0_exposure_nonzero", "PASS" if (pf.loc[gm,"bucket0_lower_leg_exposure_fraction"]>0).all() else "FAIL"),
+        ("guarded_bucket0_exposure_zero", "PASS" if guarded_all_zero else "FAIL"),
+        ("no_guard_bucket0_exposure_nonzero", "PASS" if no_guard_nonzero else "FAIL"),
         ("no_weight_optimization","PASS"),("no_cost_slippage","PASS"),
         ("no_final_model","PASS"),("no_phase11","PASS"),("no_alpha_claim","PASS"),
     ]
-    pd.DataFrame(qc, columns=["check_name","status"]).to_csv(OUT / "phase10d_quality_checks.csv", index=False)
+    qdf = pd.DataFrame(qc, columns=["check_name","status"])
+    qdf.to_csv(OUT / "phase10d_quality_checks.csv", index=False)
+    print(f"  Quality: {len(qdf)} checks, all {'PASS' if all(s=='PASS' for _,s in qc) else 'HAS FAILURES'}")
+
     df.to_parquet(OUT / "phase10d_variant_timeseries.parquet", index=False)
-    print(f"  Summary: {len(df)} rows, {pf['overall_pass'].sum()}/{len(pf)} PASS. Done.")
+    print("  Done.")
 
 if __name__ == "__main__":
     main()

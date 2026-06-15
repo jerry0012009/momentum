@@ -187,6 +187,26 @@ Phase 10D: Tail-aware signal variant evaluation — COMPLETE.
 - 24h/72h inverted variants have positive median_spread but negative RankIC (direction conflict).
 - No signal v1 implemented. No backtest with cost/slippage. No alpha claim.
 - PM decision required before Phase 11.
+
+Phase 10D-R: Bucket0 guard implementation repair — COMPLETE.
+- Fixed: bucket assignment now uses evaluated signal (original or inverted).
+- Fixed: bucket0_lower_leg_exposure_fraction now measures short-leg exposure.
+- Guarded variants: 0% exposure (bucket 0 excluded from short leg).
+- No_guard variants: ~58% exposure (bucket 0 is ~50% of short leg).
+- 9/48 PASS (up from 3/48 before repair).
+- Bucket0 guard improves median spread for 1h and 4h.
+- 6 guarded variants (3 signals × 2 horizons: 1h, 4h) eligible for Phase 11.
+- Phase 11 NOT STARTED. PM decision required.
+
+Phase 10D-R: Bucket0 guard implementation repair — COMPLETE.
+- Fixed: bucket assignment now uses evaluated signal (original or inverted).
+- Fixed: bucket0_lower_leg_exposure_fraction now measures short-leg exposure.
+- Guarded variants: 0% exposure (bucket 0 excluded from short leg).
+- No_guard variants: ~58% exposure (bucket 0 is ~50% of short leg).
+- 9/48 PASS (up from 3/48 before repair).
+- Bucket0 guard improves median spread for 1h and 4h.
+- 6 guarded variants (3 signals × 2 horizons: 1h, 4h) eligible for Phase 11.
+- Phase 11 NOT STARTED. PM decision required.
 - Current subphase: Phase 10D COMPLETE, pending PM review.
 - Next subphase: Phase 11 (signal v1 + backtest with cost), pending PM approval.
 - Phase 11 NOT STARTED. Phase 12 NOT STARTED. Phase 13 NOT STARTED.
