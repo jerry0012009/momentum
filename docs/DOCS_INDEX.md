@@ -181,6 +181,10 @@
 | 12B | `phase12b_monitoring_alerts.csv` | Monitoring alerts |
 | 12B | `phase12b_quality_checks.csv` | 15 quality checks |
 | 12B | `tests/unit/test_phase12b_paper_monitoring.py` | Phase 12B tests |
+| 12C | `PHASE_12C_GRAND_TRANSPARENCY_CLOSEOUT.md` | Phase 12C grand transparency closeout |
+| 12C | `phase12c_transparency_quality_checks.csv` | 17 quality checks |
+| 12C | `tests/unit/test_phase12c_transparency_closeout.py` | Phase 12C tests |
+| 12C | `docs/factor_library_transparency/` | Full transparency documentation (8 docs + index) |
 | 10A-R | `PHASE_10A_R_DIRECTION_QUANTILE_REPAIR.md` | Phase 10A-R direction/quantile repair closeout |
 | 10A-R | `scripts/run_phase10a_r_diagnostics.py` | Phase 10A-R diagnostic runner |
 | 10A-R | `phase10a_r_direction_consistency_check.csv` | 3×4 direction consistency check |
