@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 9A-R complete; PM signal architecture specified. 10 CANDIDATE_REVIEW, 32 parked. v0.4 diagnostic library (42 factors, 15 families).
+> Current state: Phase 9A-R2 complete; PM full architecture resolved. 10 CANDIDATE_REVIEW, 32 parked. v0.4 diagnostic library (42 factors, 15 families).
 
 ---
 
@@ -140,6 +140,19 @@
 | 8B | `phase8b_factor_library_v0_5_status.csv` | v0.5 status metadata (42 rows) |
 | 8B | `phase8b_non_candidate_review_queue.csv` | 32 non-candidate factors |
 | 8B | `tests/unit/test_phase8b_candidate_decisions.py` | Phase 8B decision validation tests |
+| 9A-R | `PHASE_9A_R_PM_SIGNAL_ARCHITECTURE.md` | Phase 9A-R PM signal architecture specification closeout |
+| 9A-R | `phase9a_r_factor_role_map.csv` | 10-factor role assignment (4 channels) |
+| 9A-R | `phase9a_r_signal_component_spec.csv` | 4 signal component definitions |
+| 9A-R | `phase9a_r_signal_basket_plan.csv` | 5 basket designs (DESIGN_ONLY) |
+| 9A-R | `phase9a_r_weighting_policy.csv` | PM-specified structural weighting policies |
+| 9A-R | `phase9a_r_transformation_rules.csv` | 7 transformation rules |
+| 9A-R | `phase9a_r_pre_implementation_checklist.csv` | 13 pre-implementation checks |
+| 9A-R | `tests/unit/test_phase9a_r_pm_signal_architecture.py` | Phase 9A-R architecture validation tests |
+| 9A-R2 | `PHASE_9A_R2_PM_ARCHITECTURE_CONSISTENCY.md` | Phase 9A-R2 architecture consistency closeout |
+| 9A-R2 | `phase9a_r2_signal_basket_plan.csv` | Updated 6-basket plan (basket_6 = PM-preferred) |
+| 9A-R2 | `phase9a_r2_weighting_policy.csv` | Updated 6-policy weighting (pm_full_structured added) |
+| 9A-R2 | `phase9a_r2_transformation_rules.csv` | Updated 9 transformation rules |
+| 9A-R2 | `tests/unit/test_phase9a_r2_architecture_consistency.py` | Phase 9A-R2 consistency tests |
 
 
 ---

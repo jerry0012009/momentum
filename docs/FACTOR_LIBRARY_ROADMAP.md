@@ -19,7 +19,7 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 9A-R PM signal architecture specification COMPLETE |
+| Current subphase | Phase 9A-R2 PM architecture consistency COMPLETE |
 | Next subphase | Phase 9B signal implementation (pending PM approval after 9A-R review) |
 | Curated library version | v0.4 |
 | Curated factors | 42 (36 v0.3 + 6 crypto-native) |
@@ -130,41 +130,30 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 
 ---
 
-## 6. Next Phase: PM/human decision on Phase 8A review packet
-
-Phase 7M-A through 7N-R2 are complete:
-- **7M-A**: 6 crypto-native diagnostic factors implemented (taker 3 + funding 3)
-- **7M-B**: Factor values built for static + dynamic datasets
-- **7M-C**: Static/dynamic evaluation across 4 labels
-- **7M-D**: Static-vs-dynamic comparison and diagnostic classification
-- **7M-D-R**: Repaired all-label merge bug, classification accepted
-- **7M-E**: Redundancy diagnostics — no pairs at abs(corr) >= 0.80
-- **7M-F**: Curated library v0.4 (42 factors, 15 families)
-- **7N**: v0.4 library audit & Phase 8 readiness package
-- **7N-R**: Repaired review queue semantics & documentation state
-- **7N-R2**: Repaired queue category precedence logic
-
-Phase 8A review packet prepared:
-- 42-factor human review packet created
-- 10-factor ready shortlist identified
-- Review protocol and decision template defined
-- No factor has entered CANDIDATE_REVIEW
-- No factor has been promoted
-- No backtest has been run
-- v0.4 remains a diagnostic factor library
-- PM/human decision required to act on review packet
+## 6. Next Phase: Phase 9B — Deterministic Signal Panel Implementation, pending PM approval
 
 Phase 8B PM candidate-review decisions applied:
 - PM approved exactly 10 factors for CANDIDATE_REVIEW status
 - 32 factors remain diagnostic / parked / review later
 - CANDIDATE_REVIEW is not alpha; no alpha claim was made
-- No strategy backtest was run
-- No portfolio simulation was run
-- No factor was removed
-- Phase 9 has not started
-- Phase 10 has not started
 
----
+Phase 9A-R PM signal architecture specification:
+- PM-directed structured multi-factor signal architecture (not naive equal-weight)
+- 4 signal channels: risk_pressure, technical_reversion, range_position, liquidity_gate
+- 4 signal components; 5 basket designs (all DESIGN_ONLY)
+- PM-specified structural weights; no optimization; no labels/returns
+- 7 transformation rules; forward returns and labels forbidden
+
+Phase 9A-R2 PM architecture consistency:
+- Resolves basket architecture ambiguity from 9A-R
+- PM-preferred full architecture: basket_6_pm_full_structured_architecture (10 factors)
+- final_score = raw_core_score × liquidity_gate × position_overlay_multiplier
+- basket_3_liquidity_gated_core demoted to intermediate (priority 2)
+- Updated weighting policy (6 policies) and transformation rules (9 rules)
+- All baskets DESIGN_ONLY; no backtest computed
+
+Phase 9 IN PROGRESS (design only). Phase 10 NOT STARTED.
+No backtest / no PnL / no portfolio simulation / no alpha claim.
 
 ## 7. Phase Transition Rule
 
