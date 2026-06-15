@@ -19,7 +19,7 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 10C tail-aware signal policy design COMPLETE |
+| Current subphase | Phase 10C-R metric lineage and direction policy repair COMPLETE |
 | Next subphase | Phase 10B (after PM review of 10A) |
 | Curated library version | v0.4 |
 | Curated factors | 42 (36 v0.3 + 6 crypto-native) |
@@ -164,6 +164,12 @@ Phase 10B-lite: Tail diagnostics addendum — COMPLETE.
 - Phase 11 NOT STARTED (blocked until PM reviews direction policy).
 
 Phase 10C: Tail-aware signal policy design — COMPLETE.
+
+Phase 10C-R: Metric lineage and direction policy repair — COMPLETE.
+- Canonical Phase 10A RankIC is POSITIVE for all 12 signal×horizon combinations.
+- Repaired horizon direction policy separates original vs inverted metrics.
+- Phase 10D protocol: 48 variant evaluations (3 signals × 4 horizons × 4 variants).
+- No direction pre-selected. Phase 10D NOT STARTED (pending PM approval).
 - PM recommended: POLICY_F (bucket 0 guard + horizon-specific direction + multi-metric eval).
 - Signal v1 design spec created (design-only, not implemented).
 - Phase 10D evaluation protocol defined.

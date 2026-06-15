@@ -191,6 +191,12 @@
 | 10C | `phase10c_phase10d_evaluation_protocol.csv` | Phase 10D evaluation protocol (20 items) |
 | 10C | `phase10c_quality_checks.csv` | 11 quality checks |
 | 10C | `tests/unit/test_phase10c_tail_policy_design.py` | Phase 10C tests |
+| 10C-R | `PHASE_10C_R_METRIC_LINEAGE_AND_POLICY_REPAIR.md` | Phase 10C-R closeout — metric lineage and direction policy repair |
+| 10C-R | `phase10c_r_metric_lineage.csv` | Full metric lineage map with source files and phases |
+| 10C-R | `phase10c_r_horizon_direction_policy_repaired.csv` | Repaired 12-row horizon direction policy |
+| 10C-R | `phase10c_r_phase10d_protocol_repaired.csv` | Repaired Phase 10D protocol with 48 variant evaluations |
+| 10C-R | `phase10c_r_quality_checks.csv` | 12 quality checks |
+| 10C-R | `tests/unit/test_phase10c_r_metric_lineage_policy.py` | Phase 10C-R tests |
 
 
 ---
