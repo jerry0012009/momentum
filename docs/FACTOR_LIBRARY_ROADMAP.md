@@ -19,7 +19,7 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 7N COMPLETE |
+| Current subphase | Phase 7N-R2 COMPLETE; Phase 8A review packet prepared |
 | Next subphase | PM/human decision on Phase 8 Candidate Factor Review |
 | Curated library version | v0.4 |
 | Curated factors | 42 (36 v0.3 + 6 crypto-native) |
@@ -43,8 +43,8 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Phase 4 | Factor Factory & Evaluation Platform v1 | COMPLETE | Registry-driven factor factory |
 | Phase 5 | Alphalens-compatible Export | COMPLETE | Compatibility layer |
 | Phase 6 | Dynamic Universe & Survivorship Control | COMPLETE | Dynamic-universe diagnostics |
-| Phase 7 | Large-scale Factor Mining | IN PROGRESS | Batch-1+2 complete through 7I-E |
-| Phase 8 | Candidate Factor Review | NOT STARTED | Requires explicit human review |
+| Phase 7 | Large-scale Factor Mining | COMPLETE | All sub-phases through 7N-R2 complete |
+| Phase 8 | Candidate Factor Review | IN PROGRESS | Phase 8A review packet prepared; no factor promoted |
 | Phase 9 | Multi-factor Signal Construction | NOT STARTED | Only CANDIDATE_REVIEW factors |
 | Phase 10 | Strategy Backtest | NOT STARTED | |
 | Phase 11 | Cost / Slippage / Capacity / Risk | NOT STARTED | |
@@ -86,6 +86,7 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | 7M-F | Crypto-native Curated Library Update | COMPLETE | v0.4 = 42 factors, 15 families, 16 tests |
 | 7N | v0.4 Library Audit & Phase 8 Readiness | COMPLETE | audit, review queue, 7 blockers, 18 tests |
 | 7N-R | Readiness Queue & Documentation Repair | COMPLETE | repaired queue semantics, doc state fix, 21 tests |
+| 7N-R2 | Queue Category Precedence Repair | COMPLETE | repaired queue precedence logic, 10 tests |
 
 ---
 
@@ -129,9 +130,9 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 
 ---
 
-## 6. Next Phase: PM/human decision on Phase 8 Candidate Factor Review
+## 6. Next Phase: PM/human decision on Phase 8A review packet
 
-Phase 7M-A through 7N are complete:
+Phase 7M-A through 7N-R2 are complete:
 - **7M-A**: 6 crypto-native diagnostic factors implemented (taker 3 + funding 3)
 - **7M-B**: Factor values built for static + dynamic datasets
 - **7M-C**: Static/dynamic evaluation across 4 labels
@@ -141,13 +142,17 @@ Phase 7M-A through 7N are complete:
 - **7M-F**: Curated library v0.4 (42 factors, 15 families)
 - **7N**: v0.4 library audit & Phase 8 readiness package
 - **7N-R**: Repaired review queue semantics & documentation state
+- **7N-R2**: Repaired queue category precedence logic
 
-Phase 8 is not started:
+Phase 8A review packet prepared:
+- 42-factor human review packet created
+- 10-factor ready shortlist identified
+- Review protocol and decision template defined
 - No factor has entered CANDIDATE_REVIEW
 - No factor has been promoted
 - No backtest has been run
 - v0.4 remains a diagnostic factor library
-- PM/human decision required to begin Phase 8
+- PM/human decision required to act on review packet
 
 ---
 

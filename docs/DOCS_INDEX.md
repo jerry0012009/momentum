@@ -128,6 +128,12 @@
 | 7N-R2 | `PHASE_7N_R2_READINESS_QUEUE_REPAIR.md` | Queue precedence repair closeout |
 | 7N-R2 | `phase7n_r2_phase8_review_queue_repaired.csv` | Repaired queue (42 rows) |
 | 7N-R2 | `phase7n_r2_queue_category_summary.csv` | Category summary (canonical counts) |
+| 7N-R2 | `tests/unit/test_phase7n_r2_queue_precedence.py` | Queue precedence repair tests |
+| 8A | `PHASE_8A_CANDIDATE_REVIEW_PACKET.md` | Phase 8A human review packet closeout |
+| 8A | `phase8a_human_review_packet.csv` | 42-factor human review packet |
+| 8A | `phase8a_ready_for_human_review_shortlist.csv` | 10-factor ready shortlist |
+| 8A | `phase8a_review_protocol.md` | Human review protocol |
+| 8A | `phase8a_review_decision_template.csv` | Human decision template |
 
 ---
 
@@ -158,6 +164,8 @@
 | `tests/unit/test_phase7g_library_curation.py` | Curated library v0.2 validation |
 | `tests/unit/test_phase7h_batch2_selection.py` | Phase 7H selection validation |
 | `tests/unit/test_phase7i_curated_library.py` | Curated library v0.3 validation |
+| `tests/unit/test_phase7n_r2_queue_precedence.py` | 7N-R2 queue precedence repair tests |
+| `tests/unit/test_phase8a_candidate_review_packet.py` | Phase 8A review packet validation |
 
 ---
 
