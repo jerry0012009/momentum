@@ -1,0 +1,578 @@
+PM 指令：进入 Phase 10B — Tail-aware Signal Diagnostics。
+
+中文名称：Phase 10B — 信号尾部分布与极端值诊断。
+
+本阶段目标不是修收益、不优化策略、不翻转信号、不进入实盘。目标是解释并量化 Phase 10A / 10A-R 中出现的 RankIC 与 quantile spread 分歧：RankIC 多数为正，但 top-bottom spread 为负。当前 10A-R 初步结论是 non-monotonic tail behavior，尤其 bucket 0 极端正收益拉高 bottom leg。本阶段要把这个现象系统拆开，判断它是数据异常、尾部均值污染、真实均值回复结构，还是 horizon-specific signal direction 问题。
+
+---
+
+## 0. 当前项目状态
+
+必须先阅读：
+
+```text
+research/factor_runs/crypto_top50_factor_library/PHASE_10A_SIGNAL_BACKTEST_V0.md
+research/factor_runs/crypto_top50_factor_library/PHASE_10A_R_DIRECTION_QUANTILE_REPAIR.md
+research/factor_runs/crypto_top50_factor_library/phase10a_signal_rankic_summary.csv
+research/factor_runs/crypto_top50_factor_library/phase10a_signal_quantile_spread_summary.csv
+research/factor_runs/crypto_top50_factor_library/phase10a_label_alignment_audit.csv
+research/factor_runs/crypto_top50_factor_library/phase10a_r_direction_consistency_check.csv
+research/factor_runs/crypto_top50_factor_library/phase10a_r_quantile_bucket_returns.csv
+research/factor_runs/crypto_top50_factor_library/phase10a_r_inverted_signal_diagnostic.csv
+research/factor_runs/crypto_top50_factor_library/phase10a_r_rankic_quantile_reconciliation.csv
+scripts/run_phase10a_signal_backtest.py
+scripts/run_phase10a_r_diagnostics.py
+```
+
+必须理解当前事实：
+
+1. Phase 10A 已经评估 3 个 diagnostic signals × 4 horizons。
+2. Phase 10A 是 diagnostic backtest / signal evaluation，不是可交易策略回测。
+3. Phase 10A-R 已经确认：RankIC 与 spread 分歧不是明显脚本 bug。
+4. 当前观察是：bucket 0，也就是最低 signal bucket，有极端正收益，使 bottom 20% outperform top 20%。
+5. Phase 10A 原始 summaries 不要覆盖，不要重写，不要删除。
+
+---
+
+## 1. 禁止事项
+
+本阶段禁止：
+
+1. 不要重新生成 Phase 10A 原始 summaries。
+2. 不要修改 Phase 9B signal panel。
+3. 不要重新训练、重新拟合、重新优化任何权重。
+4. 不要翻转信号作为正式版本。
+5. 不要选择“最好”的 horizon 或 signal。
+6. 不要做成本、滑点、容量分析。
+7. 不要做组合优化。
+8. 不要 paper trading。
+9. 不要 live trading。
+10. 不要 alpha claim。
+11. 不要 tradeable claim。
+12. 不要把任何 signal 标成 production/live/deploy。
+13. 不要删除原始结果。
+14. 不要根据 Phase 10B 结果推进 Phase 11，除非 PM 审阅后明确批准。
+
+---
+
+## 2. 本阶段要回答的问题
+
+Phase 10B 必须回答以下问题：
+
+### Q1. bucket 0 极端收益是否由少数异常样本驱动？
+
+检查：
+
+```text
+signal × horizon × bucket
+bucket 0 内部 return 分布
+mean / median / winsorized mean
+top contributors by symbol-date
+最大单点贡献
+前 1% 样本贡献
+前 5% 样本贡献
+```
+
+### Q2. RankIC 正、spread 负是否主要来自 mean spread 对极端值敏感？
+
+比较：
+
+```text
+mean spread
+median spread
+winsorized spread 1/99
+winsorized spread 5/95
+tail-trimmed spread
+```
+
+### Q3. signal 是否呈现非单调结构？
+
+检查 5 桶和 10 桶：
+
+```text
+bucket_return_mean
+bucket_return_median
+bucket_hit_rate
+bucket_count
+monotonicity_score
+bucket0_anomaly_score
+```
+
+### Q4. 方向是否 horizon-specific？
+
+比较 original vs inverted signal：
+
+```text
+RankIC
+standard spread
+median spread
+winsorized spread
+tail-trimmed spread
+bucket monotonicity
+```
+
+输出每个 signal × horizon 的 direction policy diagnostic。
+
+### Q5. bucket 0 是否可能是数据质量问题？
+
+检查 bucket 0 的 top contributors 是否集中在：
+
+```text
+特定 symbol
+特定日期
+低流动性 symbol
+异常缺失 bars
+极端 forward return
+delisting / relisting 附近
+价格跳变
+```
+
+如果不能确认，就输出 `NEEDS_DATA_AUDIT`，不要猜。
+
+---
+
+## 3. 允许新增脚本
+
+新增：
+
+```text
+scripts/run_phase10b_tail_aware_diagnostics.py
+```
+
+脚本职责：
+
+1. 读取 Phase 9B signal panel 和 Phase 10A 使用的 forward returns。
+2. 复用 Phase 10A 的 calendar timestamp + symbol join 口径。
+3. 不重算 labels。
+4. 不改变信号。
+5. 输出 tail-aware diagnostic artifacts。
+
+如果 `phase10a_signal_backtest_timeseries.parquet` 已经包含足够信息，可以直接复用；如果没有，则从 signal panel 和 existing forward returns 重新 join，但必须保持 Phase 10A join 口径。
+
+---
+
+## 4. 评价对象
+
+必须覆盖 3 个 signals：
+
+```text
+signal_v0_core_only
+signal_v0_pm_full_structured
+signal_v0_family_balanced_diagnostic
+```
+
+必须覆盖 4 个 horizons：
+
+```text
+ret_fwd_1h
+ret_fwd_4h
+ret_fwd_24h
+ret_fwd_72h
+```
+
+共 12 个 signal × horizon 组合。
+
+---
+
+## 5. 必须输出的 artifact
+
+新增以下文件：
+
+```text
+research/factor_runs/crypto_top50_factor_library/phase10b_bucket_return_decomposition_5bucket.csv
+research/factor_runs/crypto_top50_factor_library/phase10b_bucket_return_decomposition_10bucket.csv
+research/factor_runs/crypto_top50_factor_library/phase10b_tail_trimmed_spread_summary.csv
+research/factor_runs/crypto_top50_factor_library/phase10b_median_winsorized_spread_summary.csv
+research/factor_runs/crypto_top50_factor_library/phase10b_bucket0_extreme_event_audit.csv
+research/factor_runs/crypto_top50_factor_library/phase10b_horizon_direction_policy_diagnostic.csv
+research/factor_runs/crypto_top50_factor_library/phase10b_quality_checks.csv
+research/factor_runs/crypto_top50_factor_library/PHASE_10B_TAIL_AWARE_DIAGNOSTICS.md
+```
+
+可选新增：
+
+```text
+tests/unit/test_phase10b_tail_aware_diagnostics.py
+```
+
+---
+
+## 6. 5-bucket / 10-bucket decomposition
+
+### 文件 1：phase10b_bucket_return_decomposition_5bucket.csv
+
+每个 signal × horizon × bucket 一行。
+
+字段至少包括：
+
+```text
+signal_name
+horizon
+bucket_id
+bucket_order
+n_rows
+n_timestamps
+n_symbols_avg
+return_mean
+return_median
+return_std
+return_skew
+return_hit_rate
+return_p01
+return_p05
+return_p25
+return_p75
+return_p95
+return_p99
+max_return
+min_return
+contribution_to_total_mean
+notes
+```
+
+### 文件 2：phase10b_bucket_return_decomposition_10bucket.csv
+
+字段同上，但 bucket 数为 10。
+
+要求：
+
+1. bucket_id 越大，signal 越高。
+2. bucket 0 是最低 signal。
+3. 必须明确排序方向。
+4. 不要因为 spread 为负就改变排序。
+
+---
+
+## 7. tail-trimmed spread summary
+
+新增：
+
+```text
+phase10b_tail_trimmed_spread_summary.csv
+```
+
+每个 signal × horizon 一行。
+
+字段至少包括：
+
+```text
+signal_name
+horizon
+standard_top20_bottom20_spread_mean
+standard_top20_bottom20_spread_median
+tail_trim_exclude_bucket0_spread_mean
+tail_trim_exclude_bucket0_spread_median
+top20_vs_bucket1_spread_mean
+top20_vs_mid_spread_mean
+bucket4_minus_bucket1_mean_5bucket
+bucket9_minus_bucket1_mean_10bucket
+bucket0_mean
+bucket0_median
+bucket0_extreme_contribution
+interpretation
+```
+
+interpretation 允许值：
+
+```text
+TAIL_OUTLIER_DOMINATED
+NON_MONOTONIC_BUT_STABLE
+MIDDLE_MONOTONIC_TAIL_REVERSAL
+NO_CLEAR_PATTERN
+NEEDS_DATA_AUDIT
+```
+
+---
+
+## 8. median / winsorized spread summary
+
+新增：
+
+```text
+phase10b_median_winsorized_spread_summary.csv
+```
+
+每个 signal × horizon 一行。
+
+字段至少包括：
+
+```text
+signal_name
+horizon
+mean_spread
+median_spread
+winsorized_1_99_spread
+winsorized_5_95_spread
+mean_minus_median_gap
+mean_minus_winsorized_gap
+outlier_sensitivity_flag
+notes
+```
+
+outlier_sensitivity_flag 允许值：
+
+```text
+LOW
+MEDIUM
+HIGH
+EXTREME
+```
+
+---
+
+## 9. bucket0 extreme event audit
+
+新增：
+
+```text
+phase10b_bucket0_extreme_event_audit.csv
+```
+
+输出每个 signal × horizon 的 bucket 0 top contributors。可以限制每组 top 100，总行数不宜过大。
+
+字段至少包括：
+
+```text
+signal_name
+horizon
+timestamp
+symbol
+signal_value
+bucket_id
+forward_return
+abs_forward_return
+rank_within_bucket0
+contribution_share_within_bucket0
+is_top_1pct_return
+is_top_5pct_return
+notes
+```
+
+目的：判断 bucket 0 的高收益是否来自少数 symbol-date 极端点。
+
+---
+
+## 10. horizon direction policy diagnostic
+
+新增：
+
+```text
+phase10b_horizon_direction_policy_diagnostic.csv
+```
+
+每个 signal × horizon 一行。
+
+字段至少包括：
+
+```text
+signal_name
+horizon
+original_rankic_mean
+original_rankic_tstat
+original_standard_spread
+original_median_spread
+original_winsorized_spread
+inverted_rankic_mean
+inverted_standard_spread
+inverted_median_spread
+inverted_winsorized_spread
+bucket0_anomaly_score
+middle_monotonicity_score
+tail_monotonicity_score
+recommended_direction_policy
+reason
+```
+
+recommended_direction_policy 允许值：
+
+```text
+KEEP_ORIGINAL_DIRECTION_FOR_NOW
+INVERT_DIRECTION_REVIEW_ONLY
+HORIZON_DEPENDENT_DIRECTION_REVIEW
+RANKIC_ONLY_DIAGNOSTIC
+TAIL_AWARE_REDESIGN_REQUIRED
+BLOCKED_PENDING_DATA_AUDIT
+```
+
+注意：这只是 diagnostic recommendation，不是正式改 signal，不是 alpha，不是 trading rule。
+
+---
+
+## 11. quality checks
+
+新增：
+
+```text
+phase10b_quality_checks.csv
+```
+
+至少包含以下检查：
+
+```text
+input_files_exist
+signal_count_is_3
+horizon_count_is_4
+bucket5_rows_is_60
+bucket10_rows_is_120
+tail_summary_rows_is_12
+winsorized_summary_rows_is_12
+direction_policy_rows_is_12
+no_shift_minus_h_used
+no_signal_rewrite
+no_phase10a_summary_overwrite
+no_cost_slippage_capacity
+no_alpha_claim
+```
+
+字段：
+
+```text
+check_name
+status
+detail
+```
+
+status 只允许：
+
+```text
+PASS
+FAIL
+WARN
+```
+
+---
+
+## 12. closeout 文档
+
+新增：
+
+```text
+research/factor_runs/crypto_top50_factor_library/PHASE_10B_TAIL_AWARE_DIAGNOSTICS.md
+```
+
+必须包括：
+
+### A. Scope
+
+- Phase 10B
+- tail-aware diagnostics only
+- no signal rewrite
+- no backtest regeneration
+- no cost/slippage/capacity
+- no alpha claim
+
+### B. Core finding
+
+回答：
+
+```text
+RankIC/spread discrepancy 是不是主要由 bucket 0 极端值驱动？
+```
+
+### C. Bucket decomposition
+
+概括 5-bucket 和 10-bucket 结果。
+
+### D. Tail-trimmed / median / winsorized spread
+
+说明 standard mean spread 与 robust spread 是否一致。
+
+### E. Bucket0 audit
+
+说明 bucket 0 top contributors 是否集中在少数 symbol/date。
+
+### F. Direction policy diagnostic
+
+说明每个 horizon 是否存在方向冲突。
+
+### G. PM recommendation
+
+只能使用以下建议之一或组合：
+
+```text
+Proceed to Phase 10C tail-aware signal redesign.
+Proceed to Phase 10C data artifact audit before redesign.
+Do not proceed to Phase 11 yet.
+```
+
+不要写“进入实盘”“可交易”“alpha 成立”。
+
+### H. Negative declarations
+
+必须包含：
+
+```text
+No signal was flipped or replaced.
+No Phase 10A summary was regenerated.
+No alpha claim was made.
+No cost/slippage/capacity analysis was run.
+No portfolio optimization was run.
+No paper/live trading was run.
+No production/deployment claim was made.
+Phase 11 was not started.
+Phase 12 was not started.
+Phase 13 was not started.
+```
+
+---
+
+## 13. roadmap/docs 修正
+
+请更新：
+
+```text
+docs/FACTOR_LIBRARY_ROADMAP.md
+docs/DOCS_INDEX.md
+```
+
+要求：
+
+1. 修复 roadmap 中 Phase 10 顶部状态不一致问题。
+2. 当前状态应明确为 Phase 10B tail-aware diagnostics。
+3. Phase 11 仍然 NOT STARTED。
+4. Phase 12 / Phase 13 仍然 NOT STARTED。
+5. 不要把 Phase 10 误写为完整策略回测已完成。
+6. 明确 Phase 10A/10B 都是 diagnostic signal evaluation/backtest diagnostics。
+
+---
+
+## 14. 测试
+
+建议新增：
+
+```text
+tests/unit/test_phase10b_tail_aware_diagnostics.py
+```
+
+至少测试：
+
+1. 5-bucket decomposition 有 60 行。
+2. 10-bucket decomposition 有 120 行。
+3. tail-trimmed spread summary 有 12 行。
+4. median/winsorized summary 有 12 行。
+5. direction policy diagnostic 有 12 行。
+6. quality checks 不含 FAIL。
+7. closeout 不含 alpha/tradeable/live/deploy/production claim。
+8. Phase 10A summary 文件未被覆盖或重新生成。
+9. 不存在 Phase 11 artifact。
+
+---
+
+## 15. Commit
+
+建议 commit message：
+
+```text
+analysis(factor-library): run phase10b tail-aware signal diagnostics
+```
+
+完成后返回：
+
+1. latest commit SHA；
+2. 新增/修改文件；
+3. bucket0 是否是主因；
+4. median/winsorized spread 是否仍为负；
+5. 是否存在少数 symbol/date 极端贡献；
+6. recommended_direction_policy 分布；
+7. 是否允许 Phase 10C；
+8. 明确声明没有 signal flip、没有重写 10A、没有 alpha、没有 cost/slippage/capacity、没有 Phase 11/12/13。
