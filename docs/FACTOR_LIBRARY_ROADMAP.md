@@ -19,7 +19,7 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 10B-lite tail diagnostics COMPLETE |
+| Current subphase | Phase 10C tail-aware signal policy design COMPLETE |
 | Next subphase | Phase 10B (after PM review of 10A) |
 | Curated library version | v0.4 |
 | Curated factors | 42 (36 v0.3 + 6 crypto-native) |
@@ -162,6 +162,12 @@ Phase 10B-lite: Tail diagnostics addendum — COMPLETE.
 - Bucket 0 concentration moderate (~11% top 1%), structural not outlier-driven.
 - Diagnosis: MEAN_SPREAD_OUTLIER_DOMINATED (11/12), ROBUST_SPREAD_STILL_NEGATIVE (1/12).
 - Phase 11 NOT STARTED (blocked until PM reviews direction policy).
+
+Phase 10C: Tail-aware signal policy design — COMPLETE.
+- PM recommended: POLICY_F (bucket 0 guard + horizon-specific direction + multi-metric eval).
+- Signal v1 design spec created (design-only, not implemented).
+- Phase 10D evaluation protocol defined.
+- Phase 10D NOT STARTED (requires PM approval).
 - Evaluating 3 signals × 4 horizons (1h, 4h, 24h, 72h).
 - RankIC + quantile spread. No costs/slippage/capacity.
 - No alpha claim. No tradeable/live claim.

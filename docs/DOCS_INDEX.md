@@ -184,6 +184,13 @@
 | 10B | `phase10b_pm_decision_matrix.csv` | PM decision matrix |
 | 10B | `phase10b_quality_checks.csv` | 9 quality checks |
 | 10B | `tests/unit/test_phase10b_tail_addendum.py` | Phase 10B-lite tests |
+| 10C | `PHASE_10C_TAIL_AWARE_SIGNAL_POLICY_DESIGN.md` | Phase 10C closeout — tail-aware signal policy design |
+| 10C | `phase10c_tail_policy_options.csv` | 6 tail-aware policy options |
+| 10C | `phase10c_horizon_direction_policy.csv` | 12-row horizon-specific direction policy |
+| 10C | `phase10c_signal_v1_design_spec.md` | Signal v1 design spec (design-only) |
+| 10C | `phase10c_phase10d_evaluation_protocol.csv` | Phase 10D evaluation protocol (20 items) |
+| 10C | `phase10c_quality_checks.csv` | 11 quality checks |
+| 10C | `tests/unit/test_phase10c_tail_policy_design.py` | Phase 10C tests |
 
 
 ---
