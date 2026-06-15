@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 9A-R2 complete; PM full architecture resolved. 10 CANDIDATE_REVIEW, 32 parked. v0.4 diagnostic library (42 factors, 15 families).
+> Current state: Phase 9B complete; deterministic signal panels computed. 10 CANDIDATE_REVIEW, 32 parked. v0.4 diagnostic library (42 factors, 15 families).
 
 ---
 
@@ -153,6 +153,14 @@
 | 9A-R2 | `phase9a_r2_weighting_policy.csv` | Updated 6-policy weighting (pm_full_structured added) |
 | 9A-R2 | `phase9a_r2_transformation_rules.csv` | Updated 9 transformation rules |
 | 9A-R2 | `tests/unit/test_phase9a_r2_architecture_consistency.py` | Phase 9A-R2 consistency tests |
+| 9B | `PHASE_9B_DETERMINISTIC_SIGNAL_PANEL.md` | Phase 9B signal panel closeout |
+| 9B | `scripts/build_phase9b_signal_panel.py` | Reproducible signal panel builder |
+| 9B | `phase9b_signal_panel_manifest.csv` | 3-signal manifest |
+| 9B | `phase9b_signal_component_manifest.csv` | 6-component manifest |
+| 9B | `phase9b_signal_coverage_summary.csv` | Coverage and statistics |
+| 9B | `phase9b_signal_quality_checks.csv` | 11 quality checks |
+| 9B | `phase9b_signal_panel.parquet` | 3.3M-row signal panel |
+| 9B | `tests/unit/test_phase9b_signal_panel.py` | Phase 9B signal panel tests |
 
 
 ---
