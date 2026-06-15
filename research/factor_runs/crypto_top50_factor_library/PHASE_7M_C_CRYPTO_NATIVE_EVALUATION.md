@@ -25,6 +25,8 @@
 
 ## C. Evaluation Summary
 
+**CSV files are canonical; this markdown table is a human-readable summary generated from CSV.**
+
 | metric | static | dynamic |
 |--------|--------|---------|
 | ret_fwd_1h rows | 6 | 6 |
@@ -34,40 +36,44 @@
 
 ### Static ret_fwd_1h Results
 
-| factor_id | RankIC_mean | RankICIR | direction_adjusted_spread | coverage |
-|-----------|------------|----------|---------------------------|----------|
-| taker_buy_ratio_20h | -0.003 | -0.13 | -0.012 | 73.3% |
-| taker_buy_zscore_20h | -0.008 | -0.36 | -0.032 | 73.3% |
-| taker_buy_delta_5h | 0.012 | 0.35 | 0.048 | 73.6% |
-| funding_rate_level_20h | 0.011 | 0.33 | 0.044 | 71.7% |
-| funding_rate_zscore_80h | -0.005 | -0.18 | -0.018 | 64.2% |
-| funding_rate_change_24h | -0.004 | -0.12 | -0.014 | 71.7% |
+Source: `phase7m_c_static_eval_summary_ret_fwd_1h.csv`
+
+| factor_id | RankIC_mean | RankICIR | direction_adjusted_spread | coverage | turnover |
+|-----------|------------|----------|---------------------------|----------|----------|
+| taker_buy_ratio_20h | -0.0124 | -0.0810 | -0.000112 | 0.7549 | 0.1469 |
+| taker_buy_zscore_20h | -0.0084 | -0.0525 | -0.000037 | 0.7549 | 0.7713 |
+| taker_buy_delta_5h | -0.0061 | -0.0399 | 0.000061 | 0.7581 | 0.7596 |
+| funding_rate_level_20h | -0.0050 | -0.0284 | -0.000292 | 0.7392 | 0.0405 |
+| funding_rate_zscore_80h | 0.0001 | 0.0008 | 0.000033 | 0.6666 | 0.1156 |
+| funding_rate_change_24h | -0.0003 | -0.0017 | 0.000071 | 0.7383 | 0.1254 |
 
 ### Dynamic ret_fwd_1h Results
 
-| factor_id | RankIC_mean | RankICIR | direction_adjusted_spread | coverage |
-|-----------|------------|----------|---------------------------|----------|
-| taker_buy_ratio_20h | -0.006 | -0.27 | -0.025 | 89.1% |
-| taker_buy_zscore_20h | -0.010 | -0.46 | -0.041 | 89.1% |
-| taker_buy_delta_5h | 0.008 | 0.26 | 0.030 | 89.2% |
-| funding_rate_level_20h | 0.016 | 0.59 | 0.064 | 85.7% |
-| funding_rate_zscore_80h | -0.006 | -0.26 | -0.025 | 73.1% |
-| funding_rate_change_24h | -0.003 | -0.11 | -0.012 | 85.7% |
+Source: `phase7m_c_dynamic_eval_summary_ret_fwd_1h.csv`
+
+| factor_id | RankIC_mean | RankICIR | direction_adjusted_spread | coverage | turnover |
+|-----------|------------|----------|---------------------------|----------|----------|
+| taker_buy_ratio_20h | -0.0044 | -0.0385 | 0.000046 | 0.9357 | 0.1517 |
+| taker_buy_zscore_20h | -0.0104 | -0.0915 | -0.000051 | 0.9357 | 0.7797 |
+| taker_buy_delta_5h | -0.0079 | -0.0719 | -0.000048 | 0.9375 | 0.7699 |
+| funding_rate_level_20h | 0.0109 | 0.0874 | 0.000025 | 0.8774 | 0.0365 |
+| funding_rate_zscore_80h | 0.0033 | 0.0264 | 0.000006 | 0.7737 | 0.1141 |
+| funding_rate_change_24h | 0.0021 | 0.0186 | 0.000015 | 0.8772 | 0.1204 |
 
 ---
 
 ## D. Initial Observations
 
 - RankIC signs:
-  - taker_buy_ratio_20h: negative (weak, |RankIC| < 0.01)
-  - taker_buy_zscore_20h: negative (weak-moderate, |RankIC| ~ 0.01)
-  - taker_buy_delta_5h: positive (weak-moderate, |RankIC| ~ 0.01)
-  - funding_rate_level_20h: positive (moderate, RankIC ~ 0.01-0.02, consistent static/dynamic)
-  - funding_rate_zscore_80h: negative (weak, |RankIC| < 0.01)
-  - funding_rate_change_24h: negative (weak, |RankIC| < 0.01)
-- Coverage: taker ~73%/89%, funding ~64-72%/73-86% (lower for zscore_80h due to warmup)
-- Turnover: all factors ~98-100% (high, typical for hourly factors)
-- Static/dynamic consistency: funding_rate_level_20h most consistent (same sign, similar magnitude)
+  - taker_buy_ratio_20h: negative (weak, RankIC ~ -0.004 to -0.012)
+  - taker_buy_zscore_20h: negative (weak-moderate, RankIC ~ -0.008 to -0.010)
+  - taker_buy_delta_5h: negative (weak, RankIC ~ -0.006 to -0.008)
+  - funding_rate_level_20h: static negative / dynamic positive (sign flip)
+  - funding_rate_zscore_80h: near zero static / weak positive dynamic
+  - funding_rate_change_24h: near zero static / weak positive dynamic
+- Coverage: taker ~75%/94%, funding ~67-74%/77-88% (lower for zscore_80h due to warmup)
+- Turnover: taker_zscore/delta ~77%, others ~4-15%
+- Static/dynamic consistency: taker factors show consistent negative sign; funding factors show sign inconsistency between static and dynamic
 - All direction_source = candidate_csv, zero fallback_positive
 
 ---

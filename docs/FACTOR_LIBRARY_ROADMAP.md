@@ -19,8 +19,8 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 7M-C COMPLETE |
-| Next subphase | Phase 7M-D — Crypto-native Comparison & Classification (pending PM) |
+| Current subphase | Phase 7M-D COMPLETE |
+| Next subphase | PM decision on crypto-native factors |
 | Curated library version | v0.3 |
 | Curated factors | 36 (27 Batch-1 + 9 Batch-2) |
 | Families | 13 |
@@ -80,6 +80,7 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | 7M-A | Limited Crypto-native Factor Implementation | COMPLETE | 6 diagnostic factors (taker 3 + funding 3), 19 tests |
 | 7M-B | Crypto-native Factor Values Build | COMPLETE | static+dynamic factor_values, 12 factor_values, 37 tests |
 | 7M-C | Crypto-native Static/Dynamic Evaluation | COMPLETE | 6 factors × 4 labels × 2 datasets, 21 tests |
+| 7M-D | Crypto-native Comparison & Classification | COMPLETE | static-vs-dynamic + diagnostic tiers, 20 tests |
 
 ---
 

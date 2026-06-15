@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 7M-C complete; Phase 7M-D pending PM review.
+> Current state: Phase 7M-D complete; PM decision pending.
 
 ---
 
@@ -101,6 +101,12 @@
 | 7M-C | `phase7m_c_static_eval_summary_all_labels.csv` | Static eval all labels (24 rows) |
 | 7M-C | `phase7m_c_dynamic_eval_summary_ret_fwd_1h.csv` | Dynamic eval ret_fwd_1h (6 rows) |
 | 7M-C | `phase7m_c_dynamic_eval_summary_all_labels.csv` | Dynamic eval all labels (24 rows) |
+| 7M-D | `PHASE_7M_D_CRYPTO_NATIVE_CLASSIFICATION.md` | Classification closeout |
+| 7M-D | `phase7m_d_static_vs_dynamic_comparison_ret_fwd_1h.csv` | Static vs dynamic comparison (6 rows) |
+| 7M-D | `phase7m_d_static_vs_dynamic_comparison_all_labels.csv` | Static vs dynamic comparison (24 rows) |
+| 7M-D | `phase7m_d_factor_diagnostic_classification.csv` | Diagnostic classification (6 rows) |
+| 7M-D | `phase7m_d_family_diagnostic_summary.csv` | Family diagnostic summary (2 rows) |
+| 7M-D | `phase7m_d_review_flags.csv` | Review flags |
 
 ---
 

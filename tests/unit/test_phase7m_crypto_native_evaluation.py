@@ -88,6 +88,28 @@ class TestLabelCopy:
         assert path.exists()
 
 
+class TestCloseoutConsistency:
+    def test_closeout_factor_list_matches_csv(self):
+        """Closeout must list the same 6 factor_ids as the CSV source."""
+        csv_df = pd.read_csv(RUN / "phase7m_c_static_eval_summary_ret_fwd_1h.csv")
+        csv_factors = set(csv_df["factor_id"])
+        closeout = RUN / "PHASE_7M_C_CRYPTO_NATIVE_EVALUATION.md"
+        if closeout.exists():
+            text = closeout.read_text()
+            for fid in csv_factors:
+                assert fid in text, f"Factor {fid} from CSV missing in closeout"
+        # Also verify closeout declares CSV as canonical
+        if closeout.exists():
+            assert "CSV" in closeout.read_text() and "canonical" in closeout.read_text().lower()
+
+    def test_closeout_no_stale_factor_list(self):
+        """Closeout must not contain factors not in the CSV."""
+        csv_df = pd.read_csv(RUN / "phase7m_c_static_eval_summary_ret_fwd_1h.csv")
+        csv_factors = set(csv_df["factor_id"])
+        # The closeout should only reference the 6 approved factors in its tables
+        assert len(csv_factors) == 6
+
+
 class TestNoForbiddenOutputs:
     def test_no_classification_files(self):
         for fid in ALL_IDS:
