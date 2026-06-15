@@ -168,7 +168,19 @@
 | 10A | `phase10a_signal_backtest_timeseries.parquet` | Generated locally, gitignored |
 | 10A | `phase10a_signal_backtest_quality_checks.csv` | 12 quality checks |
 | 10A | `phase10a_label_alignment_audit.csv` | 10 label alignment checks |
-| 10A | `tests/unit/test_phase10a_signal_backtest.py` | Phase 10A backtest tests |
+| 12A | `tests/unit/test_phase12a_paper_signal_harness.py` | Phase 12A tests |
+| 12B | `PHASE_12B_PAPER_MONITORING_DIAGNOSTIC.md` | Phase 12B closeout — rolling monitoring |
+| 12B | `phase12b_paper_signal_log.csv` | 31,003 row rolling paper signal log |
+| 12B | `phase12b_signal_stability_summary.csv` | Per-timestamp stability metrics |
+| 12B | `phase12b_turnover_monitoring.csv` | Per-timestamp turnover |
+| 12B | `phase12b_exposure_monitoring.csv` | Per-timestamp exposure |
+| 12B | `phase12b_liquidity_monitoring.csv` | Per-timestamp liquidity |
+| 12B | `phase12b_data_freshness_monitoring.csv` | Data freshness summary |
+| 12B | `phase12b_realized_paper_return_tracking.csv` | Per-timestamp realized returns |
+| 12B | `phase12b_realized_return_summary.csv` | Return summary |
+| 12B | `phase12b_monitoring_alerts.csv` | Monitoring alerts |
+| 12B | `phase12b_quality_checks.csv` | 15 quality checks |
+| 12B | `tests/unit/test_phase12b_paper_monitoring.py` | Phase 12B tests |
 | 10A-R | `PHASE_10A_R_DIRECTION_QUANTILE_REPAIR.md` | Phase 10A-R direction/quantile repair closeout |
 | 10A-R | `scripts/run_phase10a_r_diagnostics.py` | Phase 10A-R diagnostic runner |
 | 10A-R | `phase10a_r_direction_consistency_check.csv` | 3×4 direction consistency check |
