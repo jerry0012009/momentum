@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 7M-D complete; PM decision pending.
+> Current state: Phase 7M-D-R complete; Phase 7M-E pending PM review.
 
 ---
 
@@ -107,6 +107,7 @@
 | 7M-D | `phase7m_d_factor_diagnostic_classification.csv` | Diagnostic classification (6 rows) |
 | 7M-D | `phase7m_d_family_diagnostic_summary.csv` | Family diagnostic summary (2 rows) |
 | 7M-D | `phase7m_d_review_flags.csv` | Review flags |
+| 7M-D-R | `PHASE_7M_D_R_CLASSIFICATION_REPAIR.md` | Classification repair closeout |
 
 ---
 
