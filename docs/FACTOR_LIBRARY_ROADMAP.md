@@ -19,7 +19,7 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 10A diagnostic signal backtest v0 IN PROGRESS |
+| Current subphase | Phase 10A-R direction/quantile consistency repair COMPLETE |
 | Next subphase | Phase 10B (after PM review of 10A) |
 | Curated library version | v0.4 |
 | Curated factors | 42 (36 v0.3 + 6 crypto-native) |
@@ -147,7 +147,15 @@ Phase 9B: Deterministic signal panel implementation.
 - phase9b_signal_panel.parquet is generated locally and gitignored.
 - Regenerate with `python scripts/build_phase9b_signal_panel.py`.
 
-Phase 10A: Diagnostic signal backtest v0 — IN PROGRESS.
+Phase 10A: Diagnostic signal backtest v0 — COMPLETE.
+- 3 signals × 4 horizons evaluated. RankIC + quantile spread.
+- Results: RankIC positive, quantile spread negative (inconsistency).
+
+Phase 10A-R: Direction/quantile consistency repair — COMPLETE.
+- Root cause: non-monotonic tail behavior (bucket 0 extreme returns).
+- No script bug found. Inversion diagnostic completed.
+- Phase 10A summaries NOT regenerated (original preserved).
+- Grand transparency/learning closeout postponed until after Phase 12.
 - Evaluating 3 signals × 4 horizons (1h, 4h, 24h, 72h).
 - RankIC + quantile spread. No costs/slippage/capacity.
 - No alpha claim. No tradeable/live claim.

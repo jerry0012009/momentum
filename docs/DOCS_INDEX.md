@@ -169,6 +169,14 @@
 | 10A | `phase10a_signal_backtest_quality_checks.csv` | 12 quality checks |
 | 10A | `phase10a_label_alignment_audit.csv` | 10 label alignment checks |
 | 10A | `tests/unit/test_phase10a_signal_backtest.py` | Phase 10A backtest tests |
+| 10A-R | `PHASE_10A_R_DIRECTION_QUANTILE_REPAIR.md` | Phase 10A-R direction/quantile repair closeout |
+| 10A-R | `scripts/run_phase10a_r_diagnostics.py` | Phase 10A-R diagnostic runner |
+| 10A-R | `phase10a_r_direction_consistency_check.csv` | 3×4 direction consistency check |
+| 10A-R | `phase10a_r_quantile_bucket_returns.csv` | 5/10-bucket monotonicity check |
+| 10A-R | `phase10a_r_inverted_signal_diagnostic.csv` | Inverted signal diagnostic |
+| 10A-R | `phase10a_r_rankic_quantile_reconciliation.csv` | RankIC-quantile reconciliation |
+| 10A-R | `phase10a_r_quality_checks.csv` | 13 quality checks |
+| 10A-R | `tests/unit/test_phase10a_r_direction_quantile_repair.py` | Phase 10A-R tests |
 
 
 ---
