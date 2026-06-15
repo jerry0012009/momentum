@@ -1,6 +1,6 @@
 # Factor Library Roadmap
 
-> Last updated: 2026-06-14
+> Last updated: 2026-06-15
 >
 > Project: crypto perpetual cross-sectional factor research system / factor library.
 
@@ -19,8 +19,8 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 7N-R2 COMPLETE; Phase 8A review packet prepared |
-| Next subphase | PM/human decision on Phase 8 Candidate Factor Review |
+| Current subphase | Phase 8B PM candidate-review decisions applied |
+| Next subphase | Phase 9 Multi-factor Signal Construction (pending PM approval) |
 | Curated library version | v0.4 |
 | Curated factors | 42 (36 v0.3 + 6 crypto-native) |
 | Families | 15 (13 existing + taker_imbalance + funding_rate) |
@@ -44,8 +44,8 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Phase 5 | Alphalens-compatible Export | COMPLETE | Compatibility layer |
 | Phase 6 | Dynamic Universe & Survivorship Control | COMPLETE | Dynamic-universe diagnostics |
 | Phase 7 | Large-scale Factor Mining | COMPLETE | All sub-phases through 7N-R2 complete |
-| Phase 8 | Candidate Factor Review | IN PROGRESS | Phase 8A review packet prepared; no factor promoted |
-| Phase 9 | Multi-factor Signal Construction | NOT STARTED | Only CANDIDATE_REVIEW factors |
+| Phase 8 | Candidate Factor Review | IN PROGRESS | Phase 8B complete: 10 CANDIDATE_REVIEW, 32 parked; no alpha/backtest |
+| Phase 9 | Multi-factor Signal Construction | NOT STARTED | Only CANDIDATE_REVIEW factors (10 approved by PM) |
 | Phase 10 | Strategy Backtest | NOT STARTED | |
 | Phase 11 | Cost / Slippage / Capacity / Risk | NOT STARTED | |
 | Phase 12 | Paper Trading | NOT STARTED | |
@@ -153,6 +153,16 @@ Phase 8A review packet prepared:
 - No backtest has been run
 - v0.4 remains a diagnostic factor library
 - PM/human decision required to act on review packet
+
+Phase 8B PM candidate-review decisions applied:
+- PM approved exactly 10 factors for CANDIDATE_REVIEW status
+- 32 factors remain diagnostic / parked / review later
+- CANDIDATE_REVIEW is not alpha; no alpha claim was made
+- No strategy backtest was run
+- No portfolio simulation was run
+- No factor was removed
+- Phase 9 has not started
+- Phase 10 has not started
 
 ---
 

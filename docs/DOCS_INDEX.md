@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 7N complete; Phase 8 pending PM/human decision. v0.4 diagnostic library (42 factors, 15 families).
+> Current state: Phase 8B complete; 10 factors in CANDIDATE_REVIEW, 32 parked. v0.4 diagnostic library (42 factors, 15 families).
 
 ---
 
@@ -134,6 +134,13 @@
 | 8A | `phase8a_ready_for_human_review_shortlist.csv` | 10-factor ready shortlist |
 | 8A | `phase8a_review_protocol.md` | Human review protocol |
 | 8A | `phase8a_review_decision_template.csv` | Human decision template |
+| 8B | `PHASE_8B_PM_CANDIDATE_DECISIONS.md` | Phase 8B PM candidate decision closeout |
+| 8B | `phase8b_candidate_review_decisions.csv` | 42-row PM decision file |
+| 8B | `phase8b_candidate_review_shortlist.csv` | 10-factor approved shortlist |
+| 8B | `phase8b_factor_library_v0_5_status.csv` | v0.5 status metadata (42 rows) |
+| 8B | `phase8b_non_candidate_review_queue.csv` | 32 non-candidate factors |
+| 8B | `tests/unit/test_phase8b_candidate_decisions.py` | Phase 8B decision validation tests |
+
 
 ---
 
@@ -166,6 +173,7 @@
 | `tests/unit/test_phase7i_curated_library.py` | Curated library v0.3 validation |
 | `tests/unit/test_phase7n_r2_queue_precedence.py` | 7N-R2 queue precedence repair tests |
 | `tests/unit/test_phase8a_candidate_review_packet.py` | Phase 8A review packet validation |
+| `tests/unit/test_phase8b_candidate_decisions.py` | Phase 8B PM decision validation |
 
 ---
 
