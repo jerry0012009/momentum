@@ -20,12 +20,12 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
 | Current subphase | Phase 7M-F COMPLETE |
-| Next subphase | PM decision on curated library v0.4 |
+| Next subphase | Phase 7N — v0.4 Library Audit & Phase 8 Readiness Package |
 | Curated library version | v0.4 |
 | Curated factors | 42 (36 v0.3 + 6 crypto-native) |
 | Families | 15 (13 existing + taker_imbalance + funding_rate) |
-| Diagnostic tiers | T1: 11, T2: 15, T3: 3, T4: 7 |
-| Redundancy groups | 8 (6 Batch-1 + 2 Batch-2) |
+| Diagnostic tiers | T1: 11, T2: 17, T3: 6, T4: 8 |
+| Redundancy groups | 8 (6 Batch-1 + 2 Batch-2) + 2 medium crypto-native review |
 | Alpha promotion | None |
 | Strategy backtest | Not started |
 | Live / paper trading | Not started |
@@ -87,37 +87,29 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 
 ---
 
-## 4. Curated Library v0.3 Summary
+## 4. Curated Library v0.4 Summary
 
 ### 4.1 Recommended research use (combined)
 
-| recommended_research_use | Batch-1 | Batch-2 | Total |
-|--------------------------|---------|---------|-------|
-| CORE_DIAGNOSTIC_CANDIDATE | 6 | 4 | 10 |
-| REVIEW_DIRECTION_OR_FORMULA | 16 | 3 | 19 |
+| recommended_research_use | v0.3 (OHLCV) | v0.4 (crypto-native) | Total |
+|--------------------------|--------------|----------------------|-------|
+| CORE_DIAGNOSTIC_CANDIDATE | 10 | 0 | 10 |
+| REVIEW_DIRECTION_OR_FORMULA | 19 | 3 | 22 |
 | MONITOR_TURNOVER_RISK | 2 | 0 | 2 |
-| WEAK_DIAGNOSTIC_ONLY | 1 | 0 | 1 |
-| LOW_PRIORITY_RESEARCH | 0 | 2 | 2 |
+| WEAK_DIAGNOSTIC_ONLY | 1 | 2 | 3 |
+| LOW_PRIORITY_RESEARCH | 2 | 1 | 3 |
 | REDUNDANCY_REVIEW | 2 | 0 | 2 |
 
-### 4.2 Batch-2 TIER_1 factors
+### 4.2 New crypto-native families in v0.4
 
-These are stable diagnostic baselines, not alpha factors:
+- `taker_imbalance` (3 factors): taker_buy_ratio_20h, taker_buy_zscore_20h, taker_buy_delta_5h
+- `funding_rate` (3 factors): funding_rate_level_20h, funding_rate_zscore_80h, funding_rate_change_24h
 
-- `downside_vol_20h` — negative expected direction, |RankIC|=0.035, LOW_TURNOVER
-- `vol_of_vol_20h` — negative expected direction, |RankIC|=0.034, LOW_TURNOVER
-- `rsi_7h` — negative expected direction, |RankIC|=0.024, NORMAL_TURNOVER
-- `rsi_28h` — negative expected direction, |RankIC|=0.018, NORMAL_TURNOVER
+### 4.3 Crypto-native diagnostic tiers
 
-### 4.3 Batch-2 TIER_4 factors
-
-- `qvol_ma_ratio_5_20` — sign flip between static and dynamic
-- `ma_gap_20_80` — sign flip between static and dynamic
-
-### 4.4 New families in Batch-2
-
-- `technical_indicators` (4 factors): ema_12_26_gap, rsi_7h, rsi_28h, williams_r_14h
-- `realized_skew_kurtosis` (2 factors): downside_vol_20h, vol_of_vol_20h
+- TIER_2: taker_buy_ratio_20h, taker_buy_zscore_20h
+- TIER_3: taker_buy_delta_5h, funding_rate_level_20h, funding_rate_zscore_80h
+- TIER_4: funding_rate_change_24h
 
 ---
 
@@ -135,19 +127,21 @@ These are stable diagnostic baselines, not alpha factors:
 
 ---
 
-## 6. Next Phase: 7M-F — Crypto-native Curated Library Update
+## 6. Next Phase: 7N — v0.4 Library Audit & Phase 8 Readiness Package
 
-Phase 7M-A through 7M-E are complete:
+Phase 7M-A through 7M-F are complete:
 - **7M-A**: 6 crypto-native diagnostic factors implemented (taker 3 + funding 3)
 - **7M-B**: Factor values built for static + dynamic datasets
 - **7M-C**: Static/dynamic evaluation across 4 labels
 - **7M-D**: Static-vs-dynamic comparison and diagnostic classification
 - **7M-D-R**: Repaired all-label merge bug, classification accepted
 - **7M-E**: Redundancy diagnostics — no pairs at abs(corr) >= 0.80
+- **7M-F**: Curated library v0.4 (42 factors, 15 families)
 
-Phase 7M-F is next:
-- Integrate 6 crypto-native diagnostic factors into curated library v0.4
-- No alpha promotion
+Phase 7N is next:
+- Audit v0.4 library integrity
+- Prepare Phase 8 readiness package for PM/human decision
+- No factor promotion
 - No CANDIDATE_REVIEW
 - No backtest
 - No factor removal
