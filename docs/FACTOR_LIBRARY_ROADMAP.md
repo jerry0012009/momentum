@@ -186,7 +186,13 @@ Phase 10D: Tail-aware signal variant evaluation — COMPLETE.
 - 4h bucket0_guard improves median spread but does not pass both criteria.
 - 24h/72h inverted variants have positive median_spread but negative RankIC (direction conflict).
 - No signal v1 implemented. No backtest with cost/slippage. No alpha claim.
-- PM decision required before Phase 11.
+- PM decision required before Phase 12.
+
+Phase 12A: Paper Signal Generation Harness v0 — COMPLETE.
+- Candidate frozen: signal_v0_core_only__1h__original_no_guard (PAPER_SIGNAL_DIAGNOSTIC_ONLY).
+- Latest timestamp: 2026-06-13. 43 symbols with liquidity. 8 upper + 8 lower weighted.
+- Weights: equal-weight +0.0625 (upper) / -0.0625 (lower). Net=0, Gross=1.0.
+- No real execution. No exchange connection. Phase 13 NOT STARTED.
 
 Phase 11A: Cost / Slippage / Turnover / Capacity Diagnostic v0 — COMPLETE.
 - 9 eligible Phase 10D-R variants evaluated.
