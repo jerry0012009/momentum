@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 7M-F complete; curated library v0.4 (42 factors, 15 families); Phase 7N next.
+> Current state: Phase 7N complete; Phase 8 pending PM/human decision. v0.4 diagnostic library (42 factors, 15 families).
 
 ---
 
@@ -123,6 +123,8 @@
 | 7N | `phase7n_family_readiness_summary.csv` | Family readiness (15 rows) |
 | 7N | `phase7n_phase8_review_queue.csv` | Phase 8 review queue (42 rows) |
 | 7N | `phase7n_blockers_and_constraints.csv` | Blockers (7 items) |
+| 7N-R | `PHASE_7N_R_READINESS_QUEUE_REPAIR.md` | Queue repair closeout |
+| 7N-R | `phase7n_r_phase8_review_queue_repaired.csv` | Repaired Phase 8 review queue (42 rows) |
 
 ---
 

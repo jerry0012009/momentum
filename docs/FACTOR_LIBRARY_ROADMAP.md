@@ -19,8 +19,8 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 7M-F COMPLETE |
-| Next subphase | Phase 7N — v0.4 Library Audit & Phase 8 Readiness Package |
+| Current subphase | Phase 7N COMPLETE |
+| Next subphase | PM/human decision on Phase 8 Candidate Factor Review |
 | Curated library version | v0.4 |
 | Curated factors | 42 (36 v0.3 + 6 crypto-native) |
 | Families | 15 (13 existing + taker_imbalance + funding_rate) |
@@ -84,6 +84,8 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | 7M-D-R | Crypto-native Classification Repair | COMPLETE | fixed all-label merge on (factor_id,label), 24 tests |
 | 7M-E | Crypto-native Redundancy Diagnostics | COMPLETE | pairwise correlation, no redundancy found, 13 tests |
 | 7M-F | Crypto-native Curated Library Update | COMPLETE | v0.4 = 42 factors, 15 families, 16 tests |
+| 7N | v0.4 Library Audit & Phase 8 Readiness | COMPLETE | audit, review queue, 7 blockers, 18 tests |
+| 7N-R | Readiness Queue & Documentation Repair | COMPLETE | repaired queue semantics, doc state fix, 21 tests |
 
 ---
 
@@ -127,9 +129,9 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 
 ---
 
-## 6. Next Phase: 7N — v0.4 Library Audit & Phase 8 Readiness Package
+## 6. Next Phase: PM/human decision on Phase 8 Candidate Factor Review
 
-Phase 7M-A through 7M-F are complete:
+Phase 7M-A through 7N are complete:
 - **7M-A**: 6 crypto-native diagnostic factors implemented (taker 3 + funding 3)
 - **7M-B**: Factor values built for static + dynamic datasets
 - **7M-C**: Static/dynamic evaluation across 4 labels
@@ -137,14 +139,15 @@ Phase 7M-A through 7M-F are complete:
 - **7M-D-R**: Repaired all-label merge bug, classification accepted
 - **7M-E**: Redundancy diagnostics — no pairs at abs(corr) >= 0.80
 - **7M-F**: Curated library v0.4 (42 factors, 15 families)
+- **7N**: v0.4 library audit & Phase 8 readiness package
+- **7N-R**: Repaired review queue semantics & documentation state
 
-Phase 7N is next:
-- Audit v0.4 library integrity
-- Prepare Phase 8 readiness package for PM/human decision
-- No factor promotion
-- No CANDIDATE_REVIEW
-- No backtest
-- No factor removal
+Phase 8 is not started:
+- No factor has entered CANDIDATE_REVIEW
+- No factor has been promoted
+- No backtest has been run
+- v0.4 remains a diagnostic factor library
+- PM/human decision required to begin Phase 8
 
 ---
 
