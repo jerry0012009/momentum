@@ -188,6 +188,15 @@ Phase 10D: Tail-aware signal variant evaluation — COMPLETE.
 - No signal v1 implemented. No backtest with cost/slippage. No alpha claim.
 - PM decision required before Phase 11.
 
+Phase 11A: Cost / Slippage / Turnover / Capacity Diagnostic v0 — COMPLETE.
+- 9 eligible Phase 10D-R variants evaluated.
+- 1/9 survives: core_only 1h no_guard (COST_SENSITIVE_CANDIDATE).
+- 8/9 FAILS_COST_DIAGNOSTIC (including all bucket0_guard variants).
+- Bucket0 guard increases turnover without sufficient spread improvement.
+- 4h has higher per-rebalance turnover than 1h (50% vs 18.8%).
+- Capacity data missing (kline volume files empty). Phase 11B needed.
+- Phase 12 NOT STARTED. PM decision required.
+
 Phase 10D-R: Bucket0 guard implementation repair — COMPLETE.
 - Fixed: bucket assignment now uses evaluated signal (original or inverted).
 - Fixed: bucket0_lower_leg_exposure_fraction now measures short-leg exposure.
