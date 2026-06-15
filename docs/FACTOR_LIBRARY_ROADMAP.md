@@ -178,6 +178,19 @@ Phase 10C-R: Metric lineage and direction policy repair — COMPLETE.
 - RankIC + quantile spread. No costs/slippage/capacity.
 - No alpha claim. No tradeable/live claim.
 - Phase 11 NOT STARTED. Phase 12 NOT STARTED. Phase 13 NOT STARTED.
+
+Phase 10D: Tail-aware signal variant evaluation — COMPLETE.
+- 48 variants evaluated (3 signals × 4 horizons × 4 variants: original/inverted × no_guard/bucket0_guard).
+- Pass criteria: RankIC > 0 AND median_spread > 0.
+- Result: 3/48 PASS — all are 1h original_no_guard (core_only, pm_full, family_balanced).
+- 4h bucket0_guard improves median spread but does not pass both criteria.
+- 24h/72h inverted variants have positive median_spread but negative RankIC (direction conflict).
+- No signal v1 implemented. No backtest with cost/slippage. No alpha claim.
+- PM decision required before Phase 11.
+- Current subphase: Phase 10D COMPLETE, pending PM review.
+- Next subphase: Phase 11 (signal v1 + backtest with cost), pending PM approval.
+- Phase 11 NOT STARTED. Phase 12 NOT STARTED. Phase 13 NOT STARTED.
+
 ## 7. Phase Transition Rule
 
 A later phase may start only after:
