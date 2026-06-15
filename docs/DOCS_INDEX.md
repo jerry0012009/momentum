@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 7M-E complete; PM decision pending.
+> Current state: Phase 7M-F complete; curated library v0.4 (42 factors, 15 families); PM decision pending.
 
 ---
 
@@ -113,6 +113,11 @@
 | 7M-E | `phase7m_e_dynamic_pairwise_correlation.csv` | Dynamic pairwise Spearman (15 pairs) |
 | 7M-E | `phase7m_e_redundancy_groups.csv` | Redundancy groups (none found) |
 | 7M-E | `phase7m_e_family_redundancy_summary.csv` | Family redundancy summary |
+| 7M-F | `PHASE_7M_F_CRYPTO_NATIVE_CURATION.md` | Curation closeout |
+| 7M-F | `phase7m_f_curated_crypto_native_library.csv` | Crypto-native curated (6 rows) |
+| 7M-F | `phase7m_f_curated_factor_library_v0_4.csv` | Combined v0.4 library (42 rows) |
+| 7M-F | `phase7m_f_family_catalog_summary_v0_4.csv` | Family catalog v0.4 (15 rows) |
+| 7M-F | `phase7m_f_redundancy_review_queue_v0_4.csv` | Redundancy queue v0.4 (10 rows) |
 
 ---
 

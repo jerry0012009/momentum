@@ -19,11 +19,11 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 7M-E COMPLETE |
-| Next subphase | PM decision on crypto-native factors |
-| Curated library version | v0.3 |
-| Curated factors | 36 (27 Batch-1 + 9 Batch-2) |
-| Families | 13 |
+| Current subphase | Phase 7M-F COMPLETE |
+| Next subphase | PM decision on curated library v0.4 |
+| Curated library version | v0.4 |
+| Curated factors | 42 (36 v0.3 + 6 crypto-native) |
+| Families | 15 (13 existing + taker_imbalance + funding_rate) |
 | Diagnostic tiers | T1: 11, T2: 15, T3: 3, T4: 7 |
 | Redundancy groups | 8 (6 Batch-1 + 2 Batch-2) |
 | Alpha promotion | None |
@@ -83,6 +83,7 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | 7M-D | Crypto-native Comparison & Classification | COMPLETE | static-vs-dynamic + diagnostic tiers, 20 tests |
 | 7M-D-R | Crypto-native Classification Repair | COMPLETE | fixed all-label merge on (factor_id,label), 24 tests |
 | 7M-E | Crypto-native Redundancy Diagnostics | COMPLETE | pairwise correlation, no redundancy found, 13 tests |
+| 7M-F | Crypto-native Curated Library Update | COMPLETE | v0.4 = 42 factors, 15 families, 16 tests |
 
 ---
 
@@ -134,23 +135,22 @@ These are stable diagnostic baselines, not alpha factors:
 
 ---
 
-## 6. Next Phase: 7M-E — Crypto-native Redundancy Diagnostics
+## 6. Next Phase: 7M-F — Crypto-native Curated Library Update
 
-Phase 7M-A through 7M-D-R are complete:
+Phase 7M-A through 7M-E are complete:
 - **7M-A**: 6 crypto-native diagnostic factors implemented (taker 3 + funding 3)
 - **7M-B**: Factor values built for static + dynamic datasets
 - **7M-C**: Static/dynamic evaluation across 4 labels
 - **7M-D**: Static-vs-dynamic comparison and diagnostic classification
 - **7M-D-R**: Repaired all-label merge bug, classification accepted
+- **7M-E**: Redundancy diagnostics — no pairs at abs(corr) >= 0.80
 
-Phase 7M-E is next, pending PM review:
-- Redundancy diagnostics among 6 crypto-native factors only
-- Pairwise correlation analysis (static + dynamic)
-- Same-family and cross-family redundancy grouping
-- No factor removal
+Phase 7M-F is next:
+- Integrate 6 crypto-native diagnostic factors into curated library v0.4
 - No alpha promotion
 - No CANDIDATE_REVIEW
 - No backtest
+- No factor removal
 
 ---
 
