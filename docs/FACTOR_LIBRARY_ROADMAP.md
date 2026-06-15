@@ -19,15 +19,15 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 | Item | Current State |
 |------|---------------|
 | Macro phase | Phase 7 — Large-scale Factor Mining |
-| Current subphase | Phase 9B deterministic signal panel COMPLETE |
-| Next subphase | Phase 9B signal implementation (pending PM approval after 9A-R review) |
+| Current subphase | Phase 10A diagnostic signal backtest v0 IN PROGRESS |
+| Next subphase | Phase 10B (after PM review of 10A) |
 | Curated library version | v0.4 |
 | Curated factors | 42 (36 v0.3 + 6 crypto-native) |
 | Families | 15 (13 existing + taker_imbalance + funding_rate) |
 | Diagnostic tiers | T1: 11, T2: 17, T3: 6, T4: 8 |
 | Redundancy groups | 8 (6 Batch-1 + 2 Batch-2) + 2 medium crypto-native review |
 | Alpha promotion | None |
-| Strategy backtest | Not started |
+| Strategy backtest | Phase 10A diagnostic backtest v0 (no alpha claim) |
 | Live / paper trading | Not started |
 
 ---
@@ -130,47 +130,28 @@ Core rule: **all newly implemented factors remain diagnostic until explicit huma
 
 ---
 
-## 6. Next Phase: Phase 9B — Deterministic Signal Panel Implementation, pending PM approval
+## 6. Phase History Summary
 
-Phase 8B PM candidate-review decisions applied:
-- PM approved exactly 10 factors for CANDIDATE_REVIEW status
-- 32 factors remain diagnostic / parked / review later
-- CANDIDATE_REVIEW is not alpha; no alpha claim was made
+Phase 8B: PM candidate-review decisions applied.
+- 10 factors approved for CANDIDATE_REVIEW; 32 parked.
 
-Phase 9A-R PM signal architecture specification:
-- PM-directed structured multi-factor signal architecture (not naive equal-weight)
-- 4 signal channels: risk_pressure, technical_reversion, range_position, liquidity_gate
-- 4 signal components; 5 basket designs (all DESIGN_ONLY)
-- PM-specified structural weights; no optimization; no labels/returns
-- 7 transformation rules; forward returns and labels forbidden
+Phase 9A-R: PM signal architecture specification.
+- 4 channels, 5 baskets, PM-specified structural weights.
 
-Phase 9A-R2 PM architecture consistency:
-- Resolves basket architecture ambiguity from 9A-R
-- PM-preferred full architecture: basket_6_pm_full_structured_architecture (10 factors)
-- final_score = raw_core_score × liquidity_gate × position_overlay_multiplier
-- basket_3_liquidity_gated_core demoted to intermediate (priority 2)
-- Updated weighting policy (6 policies) and transformation rules (9 rules)
-- All baskets DESIGN_ONLY; no backtest computed
+Phase 9A-R2: PM architecture consistency.
+- PM-preferred: basket_6 (10-factor full structured architecture).
 
-Phase 9A-R2 PM architecture consistency:
-- Resolves basket architecture ambiguity from 9A-R
-- PM-preferred full architecture: basket_6_pm_full_structured_architecture (10 factors)
-- final_score = raw_core_score × liquidity_gate × position_overlay_multiplier
-- basket_3_liquidity_gated_core demoted to intermediate (priority 2)
-- Updated weighting policy (6 policies) and transformation rules (9 rules)
-- All baskets DESIGN_ONLY; no backtest computed
+Phase 9B: Deterministic signal panel implementation.
+- 3 diagnostic signals computed from 10 CANDIDATE_REVIEW factors.
+- signal_v0_pm_full_structured is PM-preferred v0.
+- phase9b_signal_panel.parquet is generated locally and gitignored.
+- Regenerate with `python scripts/build_phase9b_signal_panel.py`.
 
-Phase 9B deterministic signal panel implementation:
-- 3 diagnostic signals computed from 10 CANDIDATE_REVIEW factors
-- signal_v0_core_only: 6-factor core (risk pressure + oscillator)
-- signal_v0_pm_full_structured: 10-factor full architecture (PM-preferred v0)
-- signal_v0_family_balanced_diagnostic: 10-factor equal-channel diagnostic
-- 3.3M rows, 17,801 timestamps, 266 symbols
-- All cross-sectional; no labels/returns used; no optimization
-
-Phase 9 COMPLETE (signal computation). Phase 10 NOT STARTED.
-No backtest / no PnL / no portfolio simulation / no alpha claim.
-
+Phase 10A: Diagnostic signal backtest v0 — IN PROGRESS.
+- Evaluating 3 signals × 4 horizons (1h, 4h, 24h, 72h).
+- RankIC + quantile spread. No costs/slippage/capacity.
+- No alpha claim. No tradeable/live claim.
+- Phase 11 NOT STARTED. Phase 12 NOT STARTED. Phase 13 NOT STARTED.
 ## 7. Phase Transition Rule
 
 A later phase may start only after:

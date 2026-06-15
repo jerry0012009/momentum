@@ -2,7 +2,7 @@
 
 > Last updated: 2026-06-14
 >
-> Current state: Phase 9B complete; deterministic signal panels computed. 10 CANDIDATE_REVIEW, 32 parked. v0.4 diagnostic library (42 factors, 15 families).
+> Current state: Phase 10A diagnostic signal backtest v0 COMPLETE. 10 CANDIDATE_REVIEW, 32 parked. v0.4 diagnostic library (42 factors, 15 families).
 
 ---
 
@@ -159,8 +159,16 @@
 | 9B | `phase9b_signal_component_manifest.csv` | 6-component manifest |
 | 9B | `phase9b_signal_coverage_summary.csv` | Coverage and statistics |
 | 9B | `phase9b_signal_quality_checks.csv` | 11 quality checks |
-| 9B | `phase9b_signal_panel.parquet` | 3.3M-row signal panel |
+| 9B | `phase9b_signal_panel.parquet` | 3.3M-row signal panel (generated locally, gitignored; regenerate with `scripts/build_phase9b_signal_panel.py`) |
 | 9B | `tests/unit/test_phase9b_signal_panel.py` | Phase 9B signal panel tests |
+| 10A | `PHASE_10A_SIGNAL_BACKTEST_V0.md` | Phase 10A diagnostic backtest closeout |
+| 10A | `scripts/run_phase10a_signal_backtest.py` | Reproducible backtest runner |
+| 10A | `phase10a_signal_rankic_summary.csv` | 3 signals × 4 horizons RankIC |
+| 10A | `phase10a_signal_quantile_spread_summary.csv` | 3 signals × 4 horizons quantile spread |
+| 10A | `phase10a_signal_backtest_timeseries.parquet` | Generated locally, gitignored |
+| 10A | `phase10a_signal_backtest_quality_checks.csv` | 12 quality checks |
+| 10A | `phase10a_label_alignment_audit.csv` | 10 label alignment checks |
+| 10A | `tests/unit/test_phase10a_signal_backtest.py` | Phase 10A backtest tests |
 
 
 ---
