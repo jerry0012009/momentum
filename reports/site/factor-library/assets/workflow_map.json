@@ -1,0 +1,176 @@
+{
+  "meta": {
+    "run_id": "crypto_top50_usdt_perp_1h",
+    "description": "Workflow map for the factor library research pipeline. Current run: crypto_top50_usdt_perp_1h. This is the framework's first complete execution, not the framework itself.",
+    "phase": "12D-B",
+    "generated": "2026-06-17",
+    "disclaimer": "Phase 13 NOT STARTED. No real execution. No alpha claim. No production claim."
+  },
+  "phases": [
+    {
+      "id": "phase2",
+      "name": "Factor Prior / 因子先验",
+      "goal": "建立因子先验知识体系，确定候选因子方向",
+      "inputs": ["领域知识", "文献调研", "市场直觉"],
+      "outputs": ["FACTOR_LIBRARY_SKELETON.md", "因子分类框架"],
+      "key_scripts": [],
+      "key_artifacts": ["docs/FACTOR_LIBRARY_SKELETON.md", "docs/FACTOR_LIBRARY_DESIGN.md"],
+      "pm_decision": "确认因子框架设计",
+      "status": "COMPLETE"
+    },
+    {
+      "id": "phase3",
+      "name": "数据验证",
+      "goal": "验证数据源质量、覆盖范围和一致性",
+      "inputs": ["Binance API kline 数据", "universe 定义"],
+      "outputs": ["数据质量报告", "universe 成员表"],
+      "key_scripts": ["scripts/fetch_crypto_top50_bars.py", "scripts/build_crypto_top50_universe.py"],
+      "key_artifacts": ["data/cache/crypto_top50_usdt_perp_1h/bars_1h.parquet"],
+      "pm_decision": "确认数据质量可接受",
+      "status": "COMPLETE"
+    },
+    {
+      "id": "phase4",
+      "name": "Factor Factory",
+      "goal": "批量计算候选因子值",
+      "inputs": ["OHLCV bars", "universe 成员表"],
+      "outputs": ["18 个原始因子值 parquet"],
+      "key_scripts": ["scripts/build_factor_values.py", "scripts/build_crypto_native_factor_values.py"],
+      "key_artifacts": ["data/features/crypto_top50_usdt_perp_1h/{factor}/factor_values.parquet"],
+      "pm_decision": "确认因子计算逻辑正确",
+      "status": "COMPLETE"
+    },
+    {
+      "id": "phase5",
+      "name": "Alphalens Export / Forward Returns",
+      "goal": "计算前瞻收益标签，导出 Alphalens 格式",
+      "inputs": ["因子值", "OHLCV bars"],
+      "outputs": ["forward return labels", "Alphalens tear sheets"],
+      "key_scripts": ["scripts/build_labels.py", "scripts/export_alphalens_factor_data.py"],
+      "key_artifacts": ["data/features/*/labels.parquet", "research/.../alphalens_exports/"],
+      "pm_decision": "确认前瞻收益计算正确",
+      "status": "COMPLETE"
+    },
+    {
+      "id": "phase6",
+      "name": "Dynamic Universe",
+      "goal": "建立动态 universe，按月度成交量排名选取 Top 50",
+      "inputs": ["全量 symbol 成交量数据"],
+      "outputs": ["dynamic universe membership", "monthly rebalance list"],
+      "key_scripts": ["scripts/build_dynamic_universe_monthly_volume.py", "scripts/build_dynamic_universe_bars_1h.py"],
+      "key_artifacts": ["data/cache/crypto_top50_usdt_perp_1h/universe_membership.parquet"],
+      "pm_decision": "确认 universe 选取逻辑合理",
+      "status": "COMPLETE"
+    },
+    {
+      "id": "phase7",
+      "name": "Factor Mining / Curation",
+      "goal": "从 18 个原始因子筛选到 10 个 CANDIDATE_REVIEW",
+      "inputs": ["18 个因子值", "forward returns"],
+      "outputs": ["10 CANDIDATE_REVIEW 因子", "phase7m_f_curated_factor_library_v0_4.csv"],
+      "key_scripts": ["scripts/evaluate_factors.py", "scripts/analyze_factor_redundancy.py"],
+      "key_artifacts": ["research/.../phase7m_f_curated_factor_library_v0_4.csv"],
+      "pm_decision": "确认 10 因子进入人工审查",
+      "status": "COMPLETE"
+    },
+    {
+      "id": "phase8",
+      "name": "Human Review",
+      "goal": "PM 人工审查 42-factor library，批准 10 个 CANDIDATE_REVIEW",
+      "inputs": ["Phase 7 curated library"],
+      "outputs": ["review packet", "candidate review decisions"],
+      "key_scripts": [],
+      "key_artifacts": ["research/.../phase8a_human_review_packet.csv", "research/.../phase8b_candidate_review_decisions.csv"],
+      "pm_decision": "批准 10 个因子进入信号设计",
+      "status": "COMPLETE"
+    },
+    {
+      "id": "phase9",
+      "name": "Signal Design",
+      "goal": "构建 3 个信号变体（core_only, pm_full, family_balanced），生成统一信号面板",
+      "inputs": ["10 个因子值", "forward returns"],
+      "outputs": ["Phase 9B signal panel (3.3M rows)", "信号规格文档"],
+      "key_scripts": ["scripts/build_phase9b_signal_panel.py"],
+      "key_artifacts": ["research/.../phase9b_signal_panel.parquet (214MB)"],
+      "pm_decision": "确认信号构建逻辑",
+      "status": "COMPLETE"
+    },
+    {
+      "id": "phase10",
+      "name": "Signal Evaluation / Tail Diagnostics",
+      "goal": "48 变体网格评估（4 variants × 3 signals × 4 horizons），尾部诊断",
+      "inputs": ["signal panel", "forward returns"],
+      "outputs": ["48 变体评估结果", "9/48 PASS"],
+      "key_scripts": ["scripts/run_phase10a_signal_backtest.py", "scripts/run_phase10d_tail_aware_variants.py"],
+      "key_artifacts": ["research/.../phase10d_variant_evaluation_summary.csv", "research/.../phase10d_variant_timeseries.parquet"],
+      "pm_decision": "确认 9 个变体通过评估",
+      "status": "COMPLETE"
+    },
+    {
+      "id": "phase11",
+      "name": "Cost / Liquidity / Capacity",
+      "goal": "成本/流动性/容量评估，从 9 个变体筛选到 1 个存活",
+      "inputs": ["Phase 10 通过的变体", "turnover data", "volume data"],
+      "outputs": ["1 个存活变体: core_only 1h no_guard", "流动性面板"],
+      "key_scripts": ["scripts/run_phase11a_cost_slippage_capacity.py", "scripts/run_phase11b_liquidity_capacity.py"],
+      "key_artifacts": ["research/.../phase11a_variant_cost_summary.csv", "research/.../phase11b_canonical_liquidity_panel.parquet"],
+      "pm_decision": "确认 core_only 1h no_guard 为唯一存活候选",
+      "status": "COMPLETE"
+    },
+    {
+      "id": "phase12a",
+      "name": "Paper Signal Harness",
+      "goal": "为唯一存活变体构建 paper trading 信号",
+      "inputs": ["core_only 1h no_guard", "流动性面板"],
+      "outputs": ["paper weights (16 symbols)", "signal snapshot"],
+      "key_scripts": ["scripts/run_phase12a_paper_signal_harness.py"],
+      "key_artifacts": ["research/.../phase12a_paper_weights.csv", "research/.../phase12a_latest_signal_snapshot.csv"],
+      "pm_decision": "批准进入 paper monitoring",
+      "status": "COMPLETE"
+    },
+    {
+      "id": "phase12b",
+      "name": "Rolling Paper Monitoring",
+      "goal": "30 天滚动验证，实际换手率监控",
+      "inputs": ["paper signal", "signal panel timestamps"],
+      "outputs": ["31,003 行 paper signal log", "turnover/exposure/liquidity monitoring"],
+      "key_scripts": ["scripts/run_phase12b_paper_monitoring.py"],
+      "key_artifacts": ["research/.../phase12b_paper_signal_log.csv"],
+      "pm_decision": "确认信号在 mid-cost 下存活",
+      "status": "COMPLETE"
+    },
+    {
+      "id": "phase12c",
+      "name": "Transparency Closeout",
+      "goal": "全面透明化文档收尾",
+      "inputs": ["所有阶段产物"],
+      "outputs": ["12 个透明化文档", "factor handbook", "workflow map", "data lineage"],
+      "key_scripts": [],
+      "key_artifacts": ["docs/factor_library_transparency/"],
+      "pm_decision": "Phase 12C COMPLETE",
+      "status": "COMPLETE"
+    },
+    {
+      "id": "phase12d",
+      "name": "Transparency Portal / Repository Map",
+      "goal": "仓库结构审计、文件归属、入口文档修订、工作流可视化",
+      "inputs": ["Phase 12C 透明化文档", "仓库文件结构"],
+      "outputs": ["仓库地图", "文件归属表", "工作流图", "数据血缘图", "管道分层图"],
+      "key_scripts": [],
+      "key_artifacts": ["reports/site/factor-library/repository-map.html", "reports/site/factor-library/workflow-map.html"],
+      "pm_decision": "当前阶段 (Phase 12D-B)",
+      "status": "IN_PROGRESS"
+    },
+    {
+      "id": "phase13",
+      "name": "Paper Execution (Future)",
+      "goal": "扩展验证范围，准备下一个因子库研究 run",
+      "inputs": ["Phase 12 成果"],
+      "outputs": [],
+      "key_scripts": [],
+      "key_artifacts": [],
+      "pm_decision": "NOT STARTED — 无实盘执行，无交易所连接，无 alpha 声明",
+      "status": "NOT_STARTED"
+    }
+  ]
+}
