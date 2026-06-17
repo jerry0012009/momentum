@@ -2,7 +2,7 @@
 
 **Phase:** 12D-A
 **Date:** 2026-06-17
-**Status:** COMPLETE
+**Status:** COMPLETE (revised by Phase 12D-A-R)
 **Predecessor:** Phase 12C (Grand Transparency Closeout)
 
 ---
@@ -15,6 +15,18 @@ Before expanding the factor-library showcase website, establish a clear reposito
 2. Why they live there
 3. Which files are source-of-truth vs generated outputs
 4. Who should edit what
+
+### Framework vs Current Run
+
+**Factor Library Framework** = the reusable, general-purpose factor research pipeline (code in `src/momentum/`, scripts in `scripts/`, configs in `config/`).
+
+**Current Research Run** = `crypto_top50_usdt_perp_1h` — the first complete execution of the framework, targeting Binance USDT-margined perpetual futures top-50 at 1h. Its audit dossier lives in `research/factor_runs/crypto_top50_factor_library/`. This is **one run's archive**, not the entire factor library. Future runs on different universes will produce their own dossiers.
+
+### Disclaimers
+- **No real execution.** No exchange connection, no order placement.
+- **No alpha claim.** Research metrics are in-sample/backtest results.
+- **No production claim.** This is a research pipeline, not a live trading system.
+- **Phase 12C:** COMPLETE. **Phase 13:** NOT STARTED.
 
 ---
 

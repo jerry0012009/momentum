@@ -1,33 +1,46 @@
 # Factor Library Home
 
-**Project:** Momentum — Crypto Cross-Sectional Factor Library
-**Current Phase:** 12D-A (Repository Map & File Ownership Audit)
+**Project:** Momentum — Factor Library Research Framework
+**Current Run ID:** `crypto_top50_usdt_perp_1h`
+**Current Phase:** 12D-A-R (Repository Map Repair)
 **Last Updated:** 2026-06-17
 
 ---
 
 ## What Is This?
 
-This is the **crypto cross-sectional momentum factor library** — a systematic research pipeline that discovers, evaluates, and curates trading factors for crypto perpetual futures (USDT-margined, Binance).
+This project has two distinct layers:
 
-The library follows a strict phase-gated workflow: each phase produces auditable artifacts, gets PM review, and only advances on PASS.
+1. **Factor Library Framework** — a reusable, general-purpose factor research pipeline for systematic discovery, evaluation, and curation of trading factors. It can be applied to different universes, asset classes, and timeframes.
+
+2. **Current Research Run (`crypto_top50_usdt_perp_1h`)** — the first complete execution of that framework, targeting the Binance USDT-margined perpetual futures top-50 universe at 1-hour frequency. **This run is a complete sample and audit archive of the framework, not the framework itself.**
+
+The research run lives in `research/factor_runs/crypto_top50_factor_library/` (273 files). It is the primary audit dossier for this specific run. Future runs on different universes will produce their own audit dossiers.
+
+The framework follows a strict phase-gated workflow: each phase produces auditable artifacts, gets PM review, and only advances on PASS.
 
 ---
 
 ## Quick Navigation
 
-| Document | Purpose |
-|----------|---------|
-| [FACTOR_LIBRARY_ROADMAP.md](FACTOR_LIBRARY_ROADMAP.md) | Phase 0–10 roadmap (authoritative) |
-| [FACTOR_REGISTRY.md](FACTOR_REGISTRY.md) | Factor definitions and status |
-| [FACTOR_LIBRARY_SKELETON.md](FACTOR_LIBRARY_SKELETON.md) | Factor schema, interface, protocol |
-| [FACTOR_LIBRARY_DESIGN.md](FACTOR_LIBRARY_DESIGN.md) | Design rationale, universe, labels |
-| [FACTOR_EVALUATION_STANDARD.md](FACTOR_EVALUATION_STANDARD.md) | Evaluation criteria |
-| [DOCS_INDEX.md](DOCS_INDEX.md) | Full documentation index |
+| Document | Purpose | Status |
+|----------|---------|--------|
+| [FACTOR_LIBRARY_HOME.md](FACTOR_LIBRARY_HOME.md) | **This file** — primary navigation hub | CURRENT |
+| [PROJECT_TREE_UPDATED.md](PROJECT_TREE_UPDATED.md) | Current repository structure | CURRENT |
+| [FACTOR_REGISTRY.md](FACTOR_REGISTRY.md) | Factor definitions and status | CURRENT |
+| [FACTOR_LIBRARY_SKELETON.md](FACTOR_LIBRARY_SKELETON.md) | Factor schema, interface, protocol | CURRENT |
+| [FACTOR_LIBRARY_DESIGN.md](FACTOR_LIBRARY_DESIGN.md) | Design rationale, universe, labels | CURRENT |
+| [FACTOR_EVALUATION_STANDARD.md](FACTOR_EVALUATION_STANDARD.md) | Evaluation criteria | CURRENT |
+| [FACTOR_LIBRARY_ROADMAP.md](FACTOR_LIBRARY_ROADMAP.md) | Early-to-mid phase roadmap | REFERENCE |
+| [DOCS_INDEX.md](DOCS_INDEX.md) | Full documentation index | CURRENT |
+
+> **Note on FACTOR_LIBRARY_ROADMAP.md:** This document covers Phases 0–10 and is a historical roadmap reference. For current Phase 12+ status, use FACTOR_LIBRARY_HOME.md, PROJECT_TREE_UPDATED.md, and the latest Phase closeout documents.
 
 ---
 
 ## Factor Library Transparency (Phase 12C)
+
+Phase 12C (Grand Transparency Closeout) is **COMPLETE**.
 
 The [factor_library_transparency/](factor_library_transparency/) folder contains the Phase 12C transparency documentation:
 
@@ -50,21 +63,58 @@ The [factor_library_transparency/](factor_library_transparency/) folder contains
 See [PROJECT_TREE_UPDATED.md](PROJECT_TREE_UPDATED.md) for the full repository tree.
 
 Key folders:
-- **`research/factor_runs/crypto_top50_factor_library/`** — Primary audit dossier (273 files)
-- **`docs/factor_library_transparency/`** — Human-readable transparency docs
+- **`research/factor_runs/crypto_top50_factor_library/`** — Audit dossier for the `crypto_top50_usdt_perp_1h` research run (273 files). This is **one run's archive**, not the entire factor library.
+- **`docs/factor_library_transparency/`** — Human-readable transparency docs for the current run
 - **`scripts/`** — Reproducible generation logic (601 scripts)
-- **`src/momentum/`** — Core Python package
+- **`src/momentum/`** — Core Python package (the framework itself)
 - **`tests/`** — Test suite protecting logic and assumptions
-- **`reports/site/factor-library/`** — Generated showcase website
+- **`reports/site/factor-library/`** — Generated showcase website (do not edit directly)
+
+---
+
+## Document Status Labels
+
+Documents in this project carry one of the following status labels:
+
+| Label | Meaning |
+|-------|---------|
+| **CURRENT** | Primary reading; up-to-date for Phase 12+ |
+| **REFERENCE** | Useful background but not the primary entry point |
+| **GENERATED** | Produced by scripts; do not hand-edit |
+| **SUPERSEDED** | Replaced by a newer document |
+| **LEGACY** | Historical; preserved for audit trail |
+| **DO_NOT_EDIT** | Managed by pipeline; manual edits will be overwritten |
+
+This phase defines the label taxonomy. Per-document tagging will follow in a later phase if needed.
 
 ---
 
 ## Current Status
 
+**Research Run:** `crypto_top50_usdt_perp_1h`
+
 - **Candidate:** Frozen (core_only 1h no_guard)
 - **30-day rolling:** low-cost net +0.295, mid-cost net +0.209
-- **PM decision required:** Phase 12C transparency closeout or Phase 13 paper execution
+- **Phase 12C:** COMPLETE (Grand Transparency Closeout)
 - **Phase 13:** NOT STARTED
+
+**Important disclaimers:**
+- **No real execution.** No exchange connection, no order placement.
+- **No alpha claim.** Research metrics are in-sample/backtest results.
+- **No production claim.** This is a research pipeline, not a live trading system.
+- **Next steps:** Transparency portal, repository structure, workflow map, documentation governance, and Phase 13A decision preparation.
+
+---
+
+## Source-of-Truth Rules
+
+1. `research/factor_runs/crypto_top50_factor_library/` = audit dossier for the **current `crypto_top50_usdt_perp_1h` research run**
+2. `docs/factor_library_transparency/` = human-readable transparency documentation
+3. `reports/site/factor-library/` = generated website output; **not the sole source of truth**; do not edit directly
+4. `scripts/` = reproducible generation logic
+5. `src/momentum/` = reusable package code
+6. `data/` = generated/cached data; do not hand-edit
+7. `tests/` = protect logic and assumptions
 
 ---
 

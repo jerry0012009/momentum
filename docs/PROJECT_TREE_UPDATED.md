@@ -1,9 +1,12 @@
 # Project Tree — Updated for Phase 12D
 
-**Last Updated:** 2026-06-17
-**Phase:** 12D-A (Repository Map & File Ownership Audit)
+**Last Updated:** 2026-06-17 (Phase 12D-A-R revision)
+**Phase:** 12D-A-R (Repository Map Repair)
+**Current Run ID:** `crypto_top50_usdt_perp_1h`
 
 > This replaces the old Phase 2C `PROJECT_TREE.md`. That file is preserved for historical reference.
+>
+> **Important:** This tree reflects the **current research run** (`crypto_top50_usdt_perp_1h`) within the factor library framework. The framework itself is reusable; this run is its first complete execution.
 
 ```text
 jerry/momentum/
@@ -60,7 +63,7 @@ jerry/momentum/
 │  │
 │  │  # ── Navigation & Roadmap ──
 │  ├─ DOCS_INDEX.md                     # Documentation entry point
-│  ├─ FACTOR_LIBRARY_ROADMAP.md         # Phase 0–10 roadmap (authoritative)
+│  ├─ FACTOR_LIBRARY_ROADMAP.md         # Phase 0–10 roadmap (REFERENCE, not current authority)
 │  ├─ TODO.md                           # Current project board
 │  ├─ ARCHITECTURE.md                   # Project architecture overview
 │  ├─ PROJECT_TREE.md                   # Old Phase 2C tree (historical)
@@ -129,7 +132,8 @@ jerry/momentum/
 ├─ research/                            # Research artifacts
 │  ├─ factor_runs/
 │  │  ├─ _TEMPLATE/                     # Standard audit dossier template
-│  │  └─ crypto_top50_factor_library/   # ← PRIMARY: Current active run (273 files)
+│  │  └─ crypto_top50_factor_library/   # ← Audit dossier for run `crypto_top50_usdt_perp_1h` (273 files)
+│  │     │                              #    This is ONE run's archive, not the entire factor library.
 │  │     │
 │  │     │  # ── Phase Plans & Closeouts ──
 │  │     ├─ PHASE_2B_CLOSEOUT.md
@@ -270,5 +274,18 @@ jerry/momentum/
 - **Factor library entry:** `docs/FACTOR_LIBRARY_HOME.md`
 - **Full doc index:** `docs/DOCS_INDEX.md`
 - **Factor registry:** `docs/FACTOR_REGISTRY.md`
-- **Research dossier:** `research/factor_runs/crypto_top50_factor_library/`
+- **Research dossier (current run):** `research/factor_runs/crypto_top50_factor_library/`
 - **Showcase website:** `reports/site/factor-library/`
+
+---
+
+## Document Status Labels
+
+| Label | Meaning |
+|-------|---------|
+| **CURRENT** | Primary reading; up-to-date for Phase 12+ |
+| **REFERENCE** | Useful background but not the primary entry point |
+| **GENERATED** | Produced by scripts; do not hand-edit |
+| **SUPERSEDED** | Replaced by a newer document |
+| **LEGACY** | Historical; preserved for audit trail |
+| **DO_NOT_EDIT** | Managed by pipeline; manual edits will be overwritten |
