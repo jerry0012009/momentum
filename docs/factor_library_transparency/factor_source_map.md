@@ -1,99 +1,98 @@
-# 因子来源地图 — Factor Source Map
+# Factor Source Map — 因子来源地图
 
-> Phase 12D-C · Run: `crypto_top50_usdt_perp_1h` · Generated: 2026-06-18
+> Phase 12D-C-R · Authority: scripts/build_phase9b_signal_panel.py
+> 修复说明: Phase 9B 当前主线因子以 build_phase9b_signal_panel.py 为准。早期 factor list 只作为历史/实验因子展示。
+
+## 数据范围
+
+| 数据集 | 范围 | 符号数 | 行数 | 来源 |
+|--------|------|--------|------|------|
+| Signal panel | 2024-06-01 → 2026-06-13 | 266 | 3,314,397 | PHASE_9B_DETERMINISTIC_SIGNAL_PANEL.md |
+| Bars 1h (main run) | 2025-12-15 → 2026-06-13 | 50 | ~215K | parquet metadata |
+| Bars 1h (full cache) | 2024-06-01 → 2026-06-13 | 266 | ~3.3M | parquet metadata |
+| Paper monitoring | 2026-05-14 → 2026-06-13 | 43 | 31,003 | PHASE_12B_PAPER_MONITORING_DIAGNOSTIC.md |
+
+## Phase 9B Signal Panel — 10 个因子
+
+权威来源: `scripts/build_phase9b_signal_panel.py` 中的 `FACTOR_IDS`。
+
+### 四通道结构
+
+| 通道 | 因子 | 方向 |
+|------|------|------|
+| RISK_PRESSURE | vol_5h, vol_40h, downside_vol_20h, vol_of_vol_20h | NEGATIVE |
+| TECHNICAL_REVERSION | rsi_7h, rsi_28h | NEGATIVE |
+| LIQUIDITY_GATE | xs_rank_vol | OVERLAY |
+| RANGE_POSITION | range_1h, range_4h, price_pos_24h | OVERLAY |
+
+### 信号变体
+
+#### signal_v0_core_only (存活候选)
+
+```
+risk_pressure = mean(z[vol_5h], z[vol_40h], z[downside_vol_20h], z[vol_of_vol_20h])
+oscillator_exhaustion = mean(z[rsi_7h], z[rsi_28h])
+raw_core_score = 0.60 × risk_pressure + 0.40 × oscillator_exhaustion
+signal_v0_core_only = xs_zscore(raw_core_score)
+```
+
+粗略等效权重: vol 每因子 ≈ 0.60/4 = 0.15, RSI 每因子 ≈ 0.40/2 = 0.20 (非最终线性权重)
+
+- 存活候选: signal_v0_core_only__1h__original_no_guard
+- 核心因子: vol_5h, vol_40h, downside_vol_20h, vol_of_vol_20h, rsi_7h, rsi_28h
+- 状态: PAPER_SIGNAL_DIAGNOSTIC_ONLY, allowed_for_real_execution = FALSE
+
+#### signal_v0_pm_full_structured
+
+```
+signal = xs_zscore(raw_core × liquidity_gate × position_overlay_multiplier)
+liquidity_gate = clip(0.50 + 0.50 × xs_rank_pct(z[xs_rank_vol]), 0.50, 1.00)
+pos_multiplier = clip(1 + 0.15 × pos_timing, 0.85, 1.15)
+```
+
+使用全部 10 个因子。非存活候选。
+
+#### signal_v0_family_balanced_diagnostic
+
+```
+signal = xs_zscore(0.25×risk + 0.25×osc + 0.25×pos_timing + 0.25×(liquidity_gate - 0.75))
+```
+
+使用全部 10 个因子。仅用于诊断。
+
+## 历史/实验因子 (不属于 Phase 9B)
+
+| Factor | Family | Script | In Phase 9B |
+|--------|--------|--------|-------------|
+| mom_20h | momentum | build_factor_values.py | ✗ |
+| reversal_5h | mean_reversion | build_factor_values.py | ✗ |
+| volatility_20h | volatility | build_factor_values.py | ✗ |
+| rsi_14h | technical | build_factor_values.py | ✗ |
+| bb_zscore_20h | technical | build_factor_values.py | ✗ |
+| wq101_alpha101 | alpha | build_factor_values.py | ✗ |
+| wq101_alpha12 | alpha | build_factor_values.py | ✗ |
+| wq101_alpha53 | alpha | build_factor_values.py | ✗ |
+| q158_high_low_range | range | build_factor_values.py | ✗ |
+| tech_macd | technical | build_factor_values.py | ✗ |
+| tech_atr | technical | build_factor_values.py | ✗ |
+
+## Crypto-Native 因子 (不属于 Phase 9B)
+
+| Factor | Script | In Phase 9B |
+|--------|--------|-------------|
+| funding_rate_change_24h | build_crypto_native_factor_values.py | ✗ |
+| funding_rate_level_20h | build_crypto_native_factor_values.py | ✗ |
+| funding_rate_zscore_80h | build_crypto_native_factor_values.py | ✗ |
+| taker_buy_delta_5h | build_crypto_native_factor_values.py | ✗ |
+| taker_buy_ratio_20h | build_crypto_native_factor_values.py | ✗ |
+| taker_buy_zscore_20h | build_crypto_native_factor_values.py | ✗ |
+
+若要使用 crypto-native 因子，应另起 Phase 9C/9D signal design，不要改写 Phase 9B 历史结果。
+
+## 未来信号扩展
+
+后续新增信号时，不应直接覆盖 Phase 9B 结果。应新增 Phase 9C/9D 或抽象 signal_spec/build_signal_panel.py。新信号必须重新走 Phase 10/11/12 评估。
 
 ---
 
-## 1. 因子目录 (Factor Catalog)
-
-### 1.1 build_factor_values.py — 11 基础因子
-
-| # | Factor Name | Family | Status | In Phase 9B | In Surviving | Weight | Notes |
-|---|------------|--------|--------|-------------|--------------|--------|-------|
-| 1 | `mom_20h` | momentum | DIAGNOSTIC_PROBE | ✓ | ✓ | 0.1667 | 20h cross-sectional momentum |
-| 2 | `reversal_5h` | mean_reversion | DIAGNOSTIC_PROBE | ✓ | ✓ | 0.1667 | 5h mean reversion |
-| 3 | `volatility_20h` | volatility | DIAGNOSTIC_PROBE | ✓ | ✓ | 0.1667 | 20h realized vol |
-| 4 | `rsi_14h` | technical | DIAGNOSTIC_PROBE | ✓ | ✓ | 0.1667 | RSI 14h lookback |
-| 5 | `bb_zscore_20h` | technical | DIAGNOSTIC_PROBE | ✓ | ✓ | 0.1667 | Bollinger Band z-score 20h |
-| 6 | `wq101_alpha101` | alpha | DIAGNOSTIC_PROBE | ✓ | ✓ | 0.1667 | WorldQuant Alpha 101 |
-| 7 | `wq101_alpha12` | alpha | DIAGNOSTIC_PROBE | ✓ | ✗ | — | WorldQuant Alpha 12 |
-| 8 | `wq101_alpha53` | alpha | DIAGNOSTIC_PROBE | ✓ | ✗ | — | WorldQuant Alpha 53 |
-| 9 | `q158_high_low_range` | range | DIAGNOSTIC_PROBE | ✓ | ✗ | — | High-low range factor |
-| 10 | `tech_macd` | technical | DIAGNOSTIC_PROBE | ✓ | ✗ | — | MACD indicator |
-| 11 | `tech_atr` | technical | DIAGNOSTIC_PROBE | ✗ | ✗ | — | ATR, not in Phase 9B panel |
-
-**Input data:** bars_1h_universe (2025-12-15 → 2026-06-13)
-**Output:** `data/features/*/factor_values.parquet`
-
-### 1.2 build_crypto_native_factor_values.py — 6 Crypto-Native 特征
-
-| # | Factor Name | Family | Status | In Phase 9B | Notes |
-|---|------------|--------|--------|-------------|-------|
-| 12 | `funding_rate_change_24h` | crypto_native | DIAGNOSTIC_PROBE | ✗ | 24h funding rate change |
-| 13 | `funding_rate_level_20h` | crypto_native | DIAGNOSTIC_PROBE | ✗ | 20h rolling funding rate level |
-| 14 | `funding_rate_zscore_80h` | crypto_native | DIAGNOSTIC_PROBE | ✗ | 80h funding rate z-score |
-| 15 | `taker_buy_delta_5h` | crypto_native | DIAGNOSTIC_PROBE | ✗ | 5h taker buy delta |
-| 16 | `taker_buy_ratio_20h` | crypto_native | DIAGNOSTIC_PROBE | ✗ | 20h taker buy ratio |
-| 17 | `taker_buy_zscore_20h` | crypto_native | DIAGNOSTIC_PROBE | ✗ | 20h taker buy z-score |
-
-**Input data:** funding_rate history, trades/taker data (2025-12-15 → 2026-06-13)
-**Output:** `data/features/*/crypto_native_factor_values.parquet`
-
----
-
-## 2. Phase 9B Signal Panel — 因子如何组成信号
-
-> **📌 说明：** Phase 9B 是当前 run 中已经完整落地和评估的主线 signal panel。它不是未来唯一的因子组合方式。
-
-### 四通道结构 (4-Channel Architecture)
-
-| Channel | # Factors | Factors |
-|---------|-----------|---------|
-| **RISK_PRESSURE_CHANNEL** | 4 | volatility_20h, reversal_5h, bb_zscore_20h, q158_high_low_range |
-| **TECHNICAL_REVERSION_CHANNEL** | 2 | rsi_14h, tech_macd |
-| **LIQUIDITY_GATE_CHANNEL** | 1 | wq101_alpha101 |
-| **RANGE_POSITION_CHANNEL** | 3 | mom_20h, wq101_alpha12, wq101_alpha53 |
-
-### 三个信号变体 (Signal Variants)
-
-| Variant | # Factors | Weight Scheme | Factors |
-|---------|-----------|---------------|---------|
-| `signal_v0_core_only` | 6 | equal (0.1667) | mom_20h, reversal_5h, volatility_20h, rsi_14h, bb_zscore_20h, wq101_alpha101 |
-| `signal_v0_pm_full_structured` | 10 | structured | All 10 panel factors |
-| `signal_v0_family_balanced_diagnostic` | 10 | family_balanced | All 10 panel factors |
-
----
-
-## 3. 存活候选 (Surviving Candidate)
-
-| Field | Value |
-|-------|-------|
-| **名称** | `signal_v0_core_only__1h__original_no_guard` |
-| **因子数量** | 6 (equal weight 0.1667) |
-| **符号数量** | 16 (8 long, 8 short) |
-| **状态** | `PAPER_SIGNAL_DIAGNOSTIC_ONLY` |
-| **allowed_for_real_execution** | `FALSE` |
-
----
-
-## 4. 未来信号扩展指南
-
-> **⚠️ 重要：** 以后在哪里增加新信号？后续新增信号时，不应直接覆盖 Phase 9B 结果。应新增 Phase 9C / 9D 或抽象 `signal_spec` / `build_signal_panel.py`。新信号必须重新走 Phase 10/11/12 评估。
-
-6 个 crypto-native 因子（来自 `build_crypto_native_factor_values.py`）目前尚未加入任何信号变体。这些因子可作为 Phase 9C+ 的候选输入。
-
----
-
-## 5. 数据溯源汇总
-
-| 生成脚本 | 因子数量 | 输出文件 |
-|---------|---------|---------|
-| `scripts/build_factor_values.py` | 11 | `data/features/*/factor_values.parquet` |
-| `scripts/build_crypto_native_factor_values.py` | 6 | `data/features/*/crypto_native_factor_values.parquet` |
-| `scripts/build_factor_values_batch.py` | 批量扩展 | 上述文件的补充 |
-
-**总计：17 个因子（11 基础 + 6 crypto-native）**
-
----
-
-*Phase 12D-C · Generated 2026-06-18*
+Phase 12D-C-R · Phase 13 NOT STARTED · No real execution · No alpha claim · No production claim
