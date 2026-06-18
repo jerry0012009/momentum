@@ -4,7 +4,7 @@
 
 ## 6 大门槛
 
-1. **数据可信度** — PASS
+1. **数据可信度** — PASS (survivorship bias: PARTIAL)
 2. **时间对齐** — PASS
 3. **因子计算** — PASS
 4. **单因子评价** — NOT_COMPUTED（当前 run 主要缺口）
