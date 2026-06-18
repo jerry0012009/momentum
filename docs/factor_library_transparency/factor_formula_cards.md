@@ -3,7 +3,7 @@
 > Phase 12D-D · Authority: scripts/factor_formula_registry.py
 > 本页解释的是因子公式，不是信号评估结果。
 
-## Phase 9B Core — Surviving Candidate (6个)
+## 当前核心信号因子 — 当前核心纸面信号 (6个)
 
 | 因子 | 公式 | Lookback | 方向 | 家族 |
 |------|------|----------|------|------|
@@ -16,7 +16,7 @@
 
 全部经过 cross-sectional winsorize (1st-99th) + z-score。全部 direction-flipped。
 
-## Phase 9B Overlay (4个)
+## 当前信号库 Overlay (4个)
 
 | 因子 | 公式 | Lookback | 角色 |
 |------|------|----------|------|
@@ -43,7 +43,7 @@ Overlay 因子 sign-flipped (mean-reversion hypothesis)。不进入 core_only。
 | tech_macd | EMA(12) - EMA(26) - signal | 26h |
 | tech_atr | rolling_mean(true_range, 14) | 14h |
 
-全部 NOT_PHASE9B, NOT_SURVIVING_CANDIDATE。
+全部 NOT_IN_CURRENT_SIGNAL, NOT_SURVIVING_CANDIDATE。
 
 ## 数据来源
 

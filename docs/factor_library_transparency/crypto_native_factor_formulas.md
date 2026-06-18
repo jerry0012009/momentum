@@ -1,7 +1,7 @@
 # Crypto-Native Factor Formulas
 
-> Phase 12D-D · NOT_PHASE9B · Authority: build_crypto_native_factor_values.py
-> Crypto-native 因子当前未进入 Phase 9B signal panel 或 surviving candidate。
+> Phase 12D-D · NOT_IN_CURRENT_SIGNAL · Authority: build_crypto_native_factor_values.py
+> Crypto-native 因子当前未进入 当前信号库 v0 或 当前核心纸面信号。
 
 ## Funding Rate 因子 (3个)
 

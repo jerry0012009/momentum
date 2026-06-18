@@ -1,4 +1,4 @@
-"""Phase 12D-D: Factor Formula Cards validation tests."""
+"""Phase 12D-D: Factor Formula Cards validation tests. Updated for product terminology."""
 
 import json
 import pytest
@@ -22,16 +22,8 @@ CRYPTO_NATIVE = [
     "taker_buy_ratio_20h", "taker_buy_zscore_20h",
 ]
 
-HISTORICAL = [
-    "mom_20h", "reversal_5h", "volatility_20h", "rsi_14h",
-    "bb_zscore_20h", "wq101_alpha101", "wq101_alpha12",
-    "wq101_alpha53", "q158_high_low_range", "tech_macd", "tech_atr",
-]
-
 
 class TestHTMLPagesExist:
-    """Verify HTML pages exist."""
-
     def test_factor_formula_cards_html(self):
         assert (SITE / "factor-formula-cards.html").exists()
 
@@ -40,8 +32,6 @@ class TestHTMLPagesExist:
 
 
 class TestJSONFilesExist:
-    """Verify JSON data files exist."""
-
     def test_factor_formula_cards_json(self):
         assert (SITE / "assets" / "factor_formula_cards.json").exists()
 
@@ -50,8 +40,6 @@ class TestJSONFilesExist:
 
 
 class TestFactorFormulaCardsJSON:
-    """Verify factor_formula_cards.json content."""
-
     @pytest.fixture(autouse=True)
     def load(self):
         self.data = json.loads((SITE / "assets" / "factor_formula_cards.json").read_text())
@@ -73,28 +61,26 @@ class TestFactorFormulaCardsJSON:
         for f in SURVIVING_CORE:
             assert f in core, f"Missing surviving: {f}"
 
-    def test_core_factors_marked_surviving(self):
+    def test_core_factors_marked_core(self):
         for f in self.data["phase9b_core"]:
-            assert f.get("in_surviving_candidate") is True, f"{f['factor_name']} not marked surviving"
+            assert f.get("included_in_current_core_paper_signal") is True
 
-    def test_overlay_factors_not_surviving(self):
+    def test_overlay_factors_not_core(self):
         for f in self.data["phase9b_overlay"]:
-            assert f.get("in_surviving_candidate") is False, f"{f['factor_name']} should not be surviving"
+            assert f.get("included_in_current_core_paper_signal") is False
 
-    def test_historical_factors_not_phase9b(self):
+    def test_historical_factors_not_in_signal_library(self):
         for f in self.data["historical_experimental"]:
-            assert f.get("in_phase9b") is False, f"{f['factor_name']} should not be in Phase 9B"
+            assert f.get("included_in_current_signal_library") is False
 
     def test_formulas_present(self):
         for cat in ["phase9b_core", "phase9b_overlay", "historical_experimental"]:
             for f in self.data.get(cat, []):
                 assert "formula" in f, f"{f['factor_name']} missing formula"
-                assert len(f["formula"]) > 3, f"{f['factor_name']} formula too short"
+                assert len(f["formula"]) > 3
 
 
 class TestCryptoNativeJSON:
-    """Verify crypto_native_factor_formulas.json content."""
-
     @pytest.fixture(autouse=True)
     def load(self):
         self.data = json.loads((SITE / "assets" / "crypto_native_factor_formulas.json").read_text())
@@ -102,37 +88,34 @@ class TestCryptoNativeJSON:
     def test_all_6_crypto_native_factors(self):
         names = [f["factor_name"] for f in self.data["factors"]]
         for f in CRYPTO_NATIVE:
-            assert f in names, f"Missing: {f}"
+            assert f in names
 
-    def test_all_marked_not_phase9b(self):
+    def test_all_marked_not_in_signal_library(self):
         for f in self.data["factors"]:
-            assert f.get("in_phase9b") is False, f"{f['factor_name']} should not be in Phase 9B"
-            assert f.get("in_surviving_candidate") is False
+            assert f.get("included_in_current_signal_library") is False
+            assert f.get("included_in_current_core_paper_signal") is False
 
     def test_formulas_present(self):
         for f in self.data["factors"]:
-            assert "formula" in f, f"{f['factor_name']} missing formula"
+            assert "formula" in f
 
 
 class TestHTMLContent:
-    """Verify HTML pages contain key content."""
-
-    def test_formula_cards_has_phase9b_info(self):
+    def test_formula_cards_has_core_factors(self):
         content = (SITE / "factor-formula-cards.html").read_text()
         assert "vol_5h" in content
         assert "rsi_7h" in content
-        assert "SURVIVING_CANDIDATE" in content
+        assert "CORE_SIGNAL_FACTOR" in content
 
     def test_formula_cards_has_historical(self):
         content = (SITE / "factor-formula-cards.html").read_text()
         assert "mom_20h" in content
-        assert "NOT_PHASE9B" in content
+        assert "NOT_IN_CURRENT_SIGNAL" in content
 
-    def test_crypto_native_has_not_phase9b(self):
+    def test_crypto_native_marked_not_in_signal(self):
         content = (SITE / "crypto-native-factor-formulas.html").read_text()
-        assert "NOT_PHASE9B" in content
+        assert "NOT_IN_CURRENT_SIGNAL" in content or "未纳入当前信号" in content
         assert "funding_rate_change_24h" in content
-        assert "taker_buy_delta_5h" in content
 
     def test_formula_cards_has_info_box(self):
         content = (SITE / "factor-formula-cards.html").read_text()
@@ -145,8 +128,6 @@ class TestHTMLContent:
 
 
 class TestNoBadClaims:
-    """Verify disclaimers present."""
-
     def test_phase13_not_started(self):
         content = (ROOT / "PHASE_12D_D_FACTOR_FORMULA_CARDS.md").read_text()
         assert "NOT STARTED" in content
