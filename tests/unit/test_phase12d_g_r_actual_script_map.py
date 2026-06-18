@@ -1,4 +1,4 @@
-"""Phase 12D-G-R: actual-script-map.html validation tests."""
+"""Phase 12D-G-R2: actual-script-map.html verification-level tests."""
 
 import json
 import pytest
@@ -8,100 +8,96 @@ SITE = Path("/root/clawd/jerry/momentum/reports/site/factor-library")
 ROOT = Path("/root/clawd/jerry/momentum")
 
 
-class TestFileExistence:
-    def test_html_exists(self):
-        assert (SITE / "actual-script-map.html").exists()
-
-    def test_json_exists(self):
-        assert (SITE / "assets" / "actual_script_map.json").exists()
-
-    def test_md_exists(self):
-        assert (ROOT / "docs" / "factor_library_transparency" / "actual_script_map.md").exists()
-
-
-class TestPageTitle:
-    def test_title_changed(self):
+class TestNoVagueLanguage:
+    def test_no_needs_confirmation(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "因子库真实执行链路与脚本地图" in content
+        assert "需人工确认" not in content
 
-    def test_subtitle(self):
+    def test_no_or_similar(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "本页解释当前因子库" in content
+        assert "或类似" not in content
 
-
-class TestExecutionChain:
-    def test_11_sections(self):
+    def test_no_uncertain(self):
         content = (SITE / "actual-script-map.html").read_text()
-        for i in range(1, 12):
-            assert f">{i}." in content or f"> {i}." in content or f">{i}." in content
+        # "不确定" should not appear unless followed by UNKNOWN_WITH_REASON
+        lines = content.split("\n")
+        for line in lines:
+            if "不确定" in line:
+                assert "UNKNOWN_WITH_REASON" in line
 
-    def test_universe_top50(self):
-        content = (SITE / "actual-script-map.html").read_text()
-        assert "quote_volume" in content
-        assert "Top50" in content
 
-    def test_survivorship_partial(self):
+class TestVerifiedScripts:
+    def test_download_script(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "PARTIAL" in content
-        # Should NOT have PASS near survivorship
+        assert "download_full_binance_1h_universe.py" in content
+
+    def test_universe_script(self):
+        content = (SITE / "actual-script-map.html").read_text()
+        assert "build_crypto_top50_universe.py" in content
+
+    def test_label_script(self):
+        content = (SITE / "actual-script-map.html").read_text()
+        assert "build_labels.py" in content
+
+    def test_phase11_script(self):
+        content = (SITE / "actual-script-map.html").read_text()
+        assert "run_phase11a_cost_slippage_capacity.py" in content
+
+    def test_phase12a_script(self):
+        content = (SITE / "actual-script-map.html").read_text()
+        assert "run_phase12a_paper_signal_harness.py" in content
+
+    def test_phase12b_script(self):
+        content = (SITE / "actual-script-map.html").read_text()
+        assert "run_phase12b_paper_monitoring.py" in content
+
+
+class TestDataCounts:
+    def test_bars_counts(self):
+        content = (SITE / "actual-script-map.html").read_text()
+        assert "3,316,259" in content
+        assert "17,808" in content
+        assert "266" in content
+
+    def test_taker_columns_verified(self):
+        content = (SITE / "actual-script-map.html").read_text()
+        assert "否" in content  # taker columns = no
+
+    def test_label_counts(self):
+        content = (SITE / "actual-script-map.html").read_text()
+        assert "215,061" in content
+        assert "215,011" in content  # ret_fwd_1h non-null
+
+    def test_signal_panel_counts(self):
+        content = (SITE / "actual-script-map.html").read_text()
+        assert "3,314,397" in content
+        assert "17,801" in content
+
+
+class TestSurvivorshipBias:
+    def test_not_pass(self):
+        content = (SITE / "actual-script-map.html").read_text()
         lines = content.split("\n")
         for line in lines:
             if "survivorship" in line.lower() or "Survivorship" in line:
                 assert "PASS" not in line or "PARTIAL" in line
 
-    def test_bars_filtered_vs_full(self):
-        content = (SITE / "actual-script-map.html").read_text()
-        assert "filtered" in content
-        assert "full cache" in content
 
-    def test_factor_values_3_builders(self):
+class TestEvaluationProtocol:
+    def test_all_phases_with_scripts(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "build_factor_values.py" in content
-        assert "build_factor_values_batch.py" in content
-        assert "build_crypto_native" in content
+        assert "run_phase10a_signal_backtest.py" in content
+        assert "run_phase10a_r_diagnostics.py" in content
+        assert "run_phase10b_tail_diagnostics.py" in content
+        assert "run_phase10d_tail_aware_variants.py" in content
 
-    def test_forward_labels_4_horizons(self):
-        content = (SITE / "actual-script-map.html").read_text()
-        assert "1h" in content
-        assert "4h" in content
-        assert "24h" in content
-        assert "72h" in content
-        assert "close-to-close" in content
 
-    def test_signal_panel_not_backtest(self):
+class TestResearchRunLedger:
+    def test_ledger_explained(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "不是回测" in content
-        assert "不是交易" in content
-        assert "不是 paper trade" in content
-
-    def test_signal_variants(self):
-        content = (SITE / "actual-script-map.html").read_text()
-        assert "signal_v0_core_only" in content
-        assert "signal_v0_pm_full_structured" in content
-        assert "signal_v0_family_balanced_diagnostic" in content
-
-    def test_evaluation_protocol(self):
-        content = (SITE / "actual-script-map.html").read_text()
-        assert "10A" in content
-        assert "10D" in content
-        assert "RankIC" in content
-
-    def test_cost_liquidity_separate(self):
-        content = (SITE / "actual-script-map.html").read_text()
-        assert "Phase 11 不是最终交易回测" in content
-
-    def test_paper_monitoring_not_future(self):
-        content = (SITE / "actual-script-map.html").read_text()
-        assert "不是当前后台定时任务" in content or "不是正经 future paper trade" in content
-
-    def test_deployment_apache(self):
-        content = (SITE / "actual-script-map.html").read_text()
-        assert "Apache" in content
-        assert "publish" in content.lower()
-
-    def test_not_factor_library_mainline(self):
-        content = (SITE / "actual-script-map.html").read_text()
-        assert "NOT_FACTOR_LIBRARY_MAINLINE" in content
+        assert "研究运行账本" in content
+        assert "signal panel parquet" in content
+        assert "RankIC CSV" in content
 
 
 class TestNoBadClaims:
