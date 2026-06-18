@@ -1,9 +1,10 @@
 # 真实执行脚本地图 (Actual Script Map)
 
-**Phase 12D-B-R · 真实代码结构与脚本地图修复**
+**Phase 12D-C · 真实代码结构与脚本地图修复**
 
 > 基于实际扫描 `scripts/` (602 文件)、`src/momentum/` (39 文件)、`research/factor_runs/` (273+ 文件) 的真实执行链路。
 > 未编造不存在的脚本。如果某个功能没有明确脚本，标记为"未确认 / 需要人工确认"。
+> 数据范围: 2024-06-01 → 2026-06-13, 266 symbols, 14,365 parquet files。主 run: crypto_top50_usdt_perp_1h (2025-12-15 → 2026-06-13, 50 symbols)
 
 ---
 
@@ -23,9 +24,11 @@
 | 功能 | 文件路径 | 主线 | 输入 | 输出 | 手动运行 | 生成文件 | 测试 | 备注 |
 |------|----------|------|------|------|----------|----------|------|------|
 | 下载全量 1h K线 | `scripts/download_full_binance_1h_universe.py` | ✅ | Binance USDT-perp API | `data/raw/{symbol}/bars_1h.parquet` | ✅ | ✅ | ❌ | 266 symbols, 6,650 parquet files |
-| 构建 crypto-native 缓存 | `scripts/build_crypto_native_caches.py` | ✅ | Binance API (funding, taker, OI) | `data/cache/crypto_native/` | ✅ | ✅ | ❌ | funding rate / taker volume / OI |
+| 构建 crypto-native 缓存 | `scripts/build_crypto_native_caches.py` | ✅ | Binance API (funding, taker, OI) | `data/cache/crypto_native/` | ✅ | ✅ | ❌ | 已下载: funding_rate (3 files, 3.3M rows), taker_volume (嵌入 bars)。未下载: OI, basis, long_short_ratio, liquidations, orderbook_depth |
 
 ## 2. 构建 dynamic universe 用哪些脚本？
+
+> 当前是 dynamic Top50：每月根据上一个完整月 quote_volume 选择 Top 50
 
 | 功能 | 文件路径 | 主线 | 输入 | 输出 | 手动运行 | 生成文件 | 测试 | 备注 |
 |------|----------|------|------|------|----------|----------|------|------|
@@ -37,9 +40,9 @@
 
 | 功能 | 文件路径 | 主线 | 输入 | 输出 | 手动运行 | 生成文件 | 测试 | 备注 |
 |------|----------|------|------|------|----------|----------|------|------|
-| 基础因子 | `scripts/build_factor_values.py` | ✅ | `bars_1h_universe` | `data/features/*/factor_values.parquet` | ✅ | ✅ | ✅ | 18 个基础截面因子 |
+| 基础因子 | `scripts/build_factor_values.py` | ✅ | `bars_1h_universe` | `data/features/*/factor_values.parquet` | ✅ | ✅ | ✅ | 11 个基础截面因子: momentum_1h, momentum_4h, momentum_24h, volatility_24h, volume_zscore, rsi_14, macd_hist, bollinger_pctb, atr_pct, obv_slope, vwap_deviation |
 | 批量因子 | `scripts/build_factor_values_batch.py` | ✅ | bars_1h + `src/momentum/factors/` | `data/features/*/factor_values_batch.parquet` | ✅ | ✅ | ❌ | 多 batch |
-| Crypto-native 因子 | `scripts/build_crypto_native_factor_values.py` | ✅ | crypto_native_caches + bars_1h | `data/features/*/crypto_native_factor_values.parquet` | ✅ | ✅ | ✅ | funding, OI, taker |
+| Crypto-native 因子 | `scripts/build_crypto_native_factor_values.py` | ✅ | crypto_native_caches + bars_1h | `data/features/*/crypto_native_factor_values.parquet` | ✅ | ✅ | ✅ | 6 个 crypto-native 因子: funding_rate_zscore, funding_rate_ma7, taker_buy_ratio, taker_volume_zscore, taker_buy_sell_imbalance, funding_rate_trend |
 
 ## 4. 构建 forward return labels 用哪些脚本？
 
@@ -70,6 +73,8 @@
 | Phase 11B liquidity / capacity | `scripts/run_phase11b_liquidity_capacity.py` | ✅ | phase11a + orderbook + volume | `phase11b_*.csv / .parquet` | ✅ | ✅ | ✅ | bottleneck symbols |
 
 ## 8. 跑 Phase 12A / 12B paper signal 和 monitoring 用哪些脚本？
+
+> Phase 12A/12B：手动运行，本地诊断，不是后台定时任务，不是实盘
 
 | 功能 | 文件路径 | 主线 | 输入 | 输出 | 手动运行 | 生成文件 | 测试 | 备注 |
 |------|----------|------|------|------|----------|----------|------|------|
@@ -132,9 +137,40 @@
 
 ---
 
+## Phase 9B Signal Panel 定位
+
+Phase 9B signal panel 是**当前 run 的主信号面板**，不是"未来才需要"的东西。
+
+- 当前 run 的所有 Phase 10A/10D 评估都基于 Phase 9B signal panel
+- 以后在哪里增加新信号？→ 在 `scripts/build_phase9b_signal_panel.py` 的 signal basket plan 中增加新 variant，或新建 Phase 9C panel
+
+---
+
+## Phase 10A/10D 评估流程定位
+
+Phase 10A/10D 是**信号质量评估协议**，不是回测引擎：
+
+- Phase 10A: RankIC + direction consistency (48 variants)
+- Phase 10D: tail-aware pass/fail matrix
+- 输入: Phase 9B signal panel + forward returns
+- 输出: CSV 结果，供 PM 人工决策
+
+---
+
+## Phase 12A/12B 运行方式
+
+Phase 12A/12B 是**手动本地诊断工具**，不是后台 daemon：
+
+- 手动运行：需要人工触发，不是 cron 定时任务
+- 本地诊断：在本地环境运行，不是部署到服务器
+- 不是实盘：无真实资金，无真实订单
+
+---
+
 ## 重要声明
 
 - 脚本清单基于实际文件系统扫描，未编造不存在的脚本
 - 标记为"非主线"的脚本可能属于其他 rank 研究线或历史遗留
 - Phase 13 NOT STARTED
 - 无实盘执行 · 无 alpha 声明 · 无生产声明
+- Phase 12D-C · 真实代码结构与脚本地图修复
