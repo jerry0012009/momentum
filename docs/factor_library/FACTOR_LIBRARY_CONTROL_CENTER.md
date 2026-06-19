@@ -1,6 +1,6 @@
 # Factor Library Control Center
 
-**Phase:** 12D-H12-B (Reversal Direction Metadata Repair)  
+**Phase:** 12D-H12-C0 (Safe Incremental Evaluation Guard)  
 **Generated:** 2026-06-20  
 **Status:** NOT production. NOT Phase 13. Paper diagnostic only.
 

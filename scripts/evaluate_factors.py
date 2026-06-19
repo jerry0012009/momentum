@@ -95,9 +95,36 @@ def summarize_ic(ic_vals: list[float]) -> dict:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--factor-ids", nargs="*")
+    parser.add_argument("--output-suffix", type=str, default=None,
+                        help="Suffix for output files (e.g. 'scratch_rev3h'). Required for partial runs.")
+    parser.add_argument("--output-dir", type=str, default=None,
+                        help="Custom output directory. Required for partial runs.")
     args = parser.parse_args()
 
+    is_partial = bool(args.factor_ids)
+
+    # Safety guard: partial runs must not overwrite canonical outputs
+    if is_partial and not args.output_suffix and not args.output_dir:
+        print("ERROR: --factor-ids partial evaluation cannot write canonical outputs.", flush=True)
+        print("Use --output-suffix or --output-dir.", flush=True)
+        print("", flush=True)
+        print("Examples:", flush=True)
+        print("  python scripts/evaluate_factors.py --factor-ids rev_3h --output-suffix scratch_rev3h", flush=True)
+        print("  python scripts/evaluate_factors.py --factor-ids rev_3h --output-dir /tmp/eval_scratch/", flush=True)
+        sys.exit(1)
+
+    # Resolve output directory and suffix
+    if args.output_dir:
+        out_dir = Path(args.output_dir)
+    else:
+        out_dir = OUTPUT_DIR
+    suffix = f"_{args.output_suffix}" if args.output_suffix else ""
+
     print("Factor-Level IC Evaluation", flush=True)
+    if is_partial:
+        print(f"  Mode: PARTIAL ({len(args.factor_ids)} factors)", flush=True)
+    else:
+        print("  Mode: FULL (all registered factors)", flush=True)
     print(f"  Features: {FEATURES_DIR}", flush=True)
     print(f"  Labels:   {LABELS_PATH}", flush=True)
     print(f"  Output:   {OUTPUT_DIR}\n", flush=True)
@@ -257,12 +284,13 @@ def main():
     elapsed = time.time() - t_start
 
     # === Write outputs ===
+    out_dir.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(results)
-    csv_path = OUTPUT_DIR / "factor_level_rankic_summary.csv"
+    csv_path = out_dir / f"factor_level_rankic_summary{suffix}.csv"
     df.to_csv(csv_path, index=False)
     print(f"\n  Wrote {csv_path} ({len(df)} rows)", flush=True)
 
-    json_path = OUTPUT_DIR / "factor_level_rankic_summary.json"
+    json_path = out_dir / f"factor_level_rankic_summary{suffix}.json"
     with open(json_path, "w") as f:
         json.dump(results, f, indent=2, default=str)
     print(f"  Wrote {json_path}", flush=True)
@@ -285,15 +313,19 @@ def main():
             "best_adj_ic": round(float(adj.max()), 8) if adj.notna().any() else None,
         })
     cov_df = pd.DataFrame(cov_rows)
-    cov_path = OUTPUT_DIR / "factor_level_coverage_summary.csv"
+    cov_path = out_dir / f"factor_level_coverage_summary{suffix}.csv"
     cov_df.to_csv(cov_path, index=False)
     print(f"  Wrote {cov_path}", flush=True)
 
     # Manifest
     computed_fids = df[df["status"].str.contains("COMPUTED", na=False)]["factor_name"].unique()
     manifest = {
-        "phase": "12D-H8",
+        "phase": "12D-H12-C0",
         "generated": datetime.now(timezone.utc).isoformat(),
+        "run_mode": "partial" if is_partial else "full",
+        "factor_ids": args.factor_ids if is_partial else "ALL",
+        "canonical_output": not is_partial,
+        "output_safety": "scratch_only" if is_partial else "canonical",
         "dataset_id": "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1",
         "labels_path": str(LABELS_PATH),
         "features_dir": str(FEATURES_DIR),
@@ -308,7 +340,7 @@ def main():
         "elapsed_seconds": round(elapsed, 1),
         "disclaimer": "Factor-level IC, not signal-level. Not tradeable alpha.",
     }
-    manifest_path = OUTPUT_DIR / "factor_level_evaluation_manifest.json"
+    manifest_path = out_dir / f"factor_level_evaluation_manifest{suffix}.json"
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
     print(f"  Wrote {manifest_path}", flush=True)
