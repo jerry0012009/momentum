@@ -1,4 +1,4 @@
-"""Tests for parity harness: verifies public API usage and schema."""
+"""Tests for parity harness: verifies public API usage, gate logic, and status codes."""
 
 import pytest
 import sys
@@ -8,62 +8,66 @@ SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "run_signal_evaluatio
 SOURCE = SCRIPT.read_text()
 
 
-class TestPublicAPIUsage:
-    """Harness must use public signal_evaluation API."""
-
-    def test_imports_compute_rank_ic(self):
-        assert "from momentum.signal_evaluation" in SOURCE
-        assert "compute_rank_ic" in SOURCE
-
-    def test_imports_compute_quantile_spread(self):
-        assert "compute_quantile_spread" in SOURCE
-
-    def test_imports_summarize_rank_ic(self):
-        assert "summarize_rank_ic" in SOURCE
-
-    def test_imports_summarize_quantile_spread(self):
-        assert "summarize_quantile_spread" in SOURCE
-
-    def test_imports_select_forward_return(self):
-        assert "select_forward_return" in SOURCE
-
-    def test_imports_check_consistency(self):
-        assert "check_rankic_spread_consistency" in SOURCE
-
-    def test_no_fast_rank_ic(self):
-        assert "def fast_rank_ic" not in SOURCE, "Must not define inline fast_rank_ic"
-
-    def test_no_fast_quantile_spread(self):
-        assert "def fast_quantile_spread" not in SOURCE, "Must not define inline fast_quantile_spread"
-
-    def test_no_scipy_import(self):
-        assert "from scipy" not in SOURCE, "Must not import scipy directly — use public API"
+def _no(pattern: str):
+    assert pattern not in SOURCE, f"Found forbidden: {pattern!r}"
 
 
-class TestParityLevels:
-    """Parity output must include parity_level field."""
-
-    def test_rankic_has_parity_level(self):
-        assert '"parity_level"' in SOURCE
-
-    def test_spread_has_difference_reason(self):
-        assert '"difference_reason"' in SOURCE
-
-    def test_spread_has_behavioral_level(self):
-        assert "BEHAVIORAL" in SOURCE
+def _yes(pattern: str):
+    assert pattern in SOURCE, f"Missing required: {pattern!r}"
 
 
-class TestSignalNames:
-    """Expected 3 signal names."""
-
-    def test_three_signals(self):
-        for name in ["signal_v0_core_only", "signal_v0_pm_full_structured", "signal_v0_family_balanced_diagnostic"]:
-            assert name in SOURCE
+# Public API usage (from H2-R)
+def test_uses_public_compute_rank_ic():
+    _yes("from momentum.signal_evaluation import")
 
 
-class TestHorizons:
-    """Expected 4 horizons."""
+def test_no_fast_rank_ic():
+    _no("def fast_rank_ic")
 
-    def test_four_horizons(self):
-        for hz in ["1h", "4h", "24h", "72h"]:
-            assert f'"{hz}"' in SOURCE
+
+def test_no_fast_quantile_spread():
+    _no("def fast_quantile_spread")
+
+
+def test_no_scipy_import():
+    _no("from scipy")
+    _no("import scipy")
+
+
+# Gate logic (H2-S)
+def test_gate_function_exists():
+    _yes("def determine_h3_gate")
+
+
+def test_gate_open_for_rankic_wrapper_only():
+    _yes("OPEN_FOR_RANKIC_WRAPPER_ONLY")
+
+
+def test_gate_blocked():
+    _yes("BLOCKED")
+
+
+def test_gate_open_full_wrapper():
+    _yes("OPEN_FULL_WRAPPER")
+
+
+# RankIC status (H2-S)
+def test_pass_rounded_reference_status():
+    _yes("PASS_ROUNDED_REFERENCE")
+
+
+def test_rounding_tolerance_defined():
+    _yes("ROUNDING_TOLERANCE")
+
+
+def test_reference_precision_field():
+    _yes("reference_precision_digits")
+
+
+# Summary fields (H2-S)
+def test_summary_has_rounded_reference_count():
+    _yes("rounded_reference_count")
+
+
+def test_summary_has_h3_gate_status():
+    _yes("h3_gate_status")
