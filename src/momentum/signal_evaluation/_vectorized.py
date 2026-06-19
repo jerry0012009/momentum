@@ -16,8 +16,10 @@ def _pivot_to_matrix(df, value_col, group_col="timestamp", symbol_col="symbol"):
 
 
 def _rank_rows(mat):
-    """Rank each row (axis=1), NaN-aware. Returns float64 matrix of ranks."""
-    # Use numpy for speed. NaN gets NaN rank.
+    """Rank each row (axis=1), NaN-aware, average tie-breaking. Returns float64 matrix of ranks.
+
+    Matches scipy.stats.rankdata(method='average') behavior for ties.
+    """
     result = np.full_like(mat, np.nan, dtype=np.float64)
     for i in range(mat.shape[0]):
         row = mat[i]
@@ -25,11 +27,26 @@ def _rank_rows(mat):
         n = valid.sum()
         if n < 2:
             continue
-        # argsort twice gives ranks (0-based)
         valid_vals = row[valid]
+        # argsort twice gives ordinal ranks (1-based)
         order = valid_vals.argsort()
         ranks = np.empty(n, dtype=np.float64)
         ranks[order] = np.arange(1, n + 1, dtype=np.float64)
+
+        # Fix ties: assign average rank to tied values
+        sorted_vals = valid_vals[order]
+        j = 0
+        while j < n:
+            k = j + 1
+            while k < n and sorted_vals[k] == sorted_vals[j]:
+                k += 1
+            if k > j + 1:
+                # Tied values from j to k-1: assign average rank
+                avg_rank = (j + 1 + k) / 2.0  # ranks are 1-based: j+1 to k
+                for t in range(j, k):
+                    ranks[order[t]] = avg_rank
+            j = k
+
         result[i, valid] = ranks
     return result
 
