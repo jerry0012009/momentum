@@ -72,10 +72,13 @@ def rank_ic_from_boundaries(fv_rank: np.ndarray, ret_rank: np.ndarray,
             continue
         xm = x.mean(); ym = y.mean()
         dx = x - xm; dy = y - ym
-        cov = (dx * dy).sum()
-        denom = np.sqrt((dx * dx).sum() * (dy * dy).sum())
-        if denom > 0:
-            ic_vals.append(cov / denom)
+        var_x = (dx * dx).sum()
+        var_y = (dy * dy).sum()
+        if var_x <= 0 or var_y <= 0:
+            continue  # zero variance → undefined correlation (matches API: NaN)
+        ic_val = (dx * dy).sum() / np.sqrt(var_x * var_y)
+        if not np.isnan(ic_val):
+            ic_vals.append(ic_val)
     return ic_vals
 
 
@@ -107,23 +110,13 @@ def main():
         registry = [r for r in registry if r["factor_id"] in args.factor_ids]
     print(f"  Registered factors: {len(registry)}", flush=True)
 
-    # Load labels ONCE and pre-rank all return horizons
-    print("  Loading and pre-ranking labels...", end=" ", flush=True)
+    # Load labels (no pre-ranking — rank on merged subset to match API)
+    print("  Loading labels...", end=" ", flush=True)
     t0 = time.time()
     labels = pd.read_parquet(LABELS_PATH)
     labels["timestamp"] = pd.to_datetime(labels["timestamp"], utc=True)
     labels = labels.sort_values("timestamp").reset_index(drop=True)
-    g_lab = labels.groupby("timestamp")
-    for hz, col in LABEL_COLS.items():
-        labels[f"_rank_{hz}"] = g_lab[col].rank()
-    print(f"done ({time.time() - t0:.1f}s, {len(labels)} rows)", flush=True)
-
-    # Pre-compute group boundaries for labels
-    ts_lab = labels["timestamp"].values
-    _, lab_first = np.unique(ts_lab, return_index=True)
-    lab_boundaries = np.append(lab_first, len(ts_lab))
-    n_ts_lab = len(lab_first)
-    print(f"  {n_ts_lab} unique timestamps\n", flush=True)
+    print(f"done ({time.time() - t0:.1f}s, {len(labels)} rows)\n", flush=True)
 
     results = []
     missing_factors = []
@@ -176,7 +169,24 @@ def main():
                 })
             continue
 
-        # Rank factor values per timestamp
+        # Drop NaN factor_value before ranking (matches API: dropna before pivot)
+        merged = merged.dropna(subset=["factor_value"])
+        if len(merged) == 0:
+            print("NO_VALID_FACTOR_VALUES", flush=True)
+            for hz in LABEL_HORIZONS:
+                results.append({
+                    "factor_name": fid, "category": spec["category"],
+                    "expected_direction": spec["expected_direction"],
+                    "direction_source": "factor_registry", "horizon": hz,
+                    "raw_mean_rank_ic": None, "direction_adjusted_mean_rank_ic": None,
+                    "t_stat": None, "n_periods": 0, "n_symbols_avg": None,
+                    "coverage": 0, "missing_rate": miss_rate,
+                    "used_in_current_signal": fid in SIGNAL_FACTOR_IDS,
+                    "status": "NO_VALID_FACTOR_VALUES", "notes": spec["notes"],
+                })
+            continue
+
+        # Rank factor values per timestamp (on merged subset, same as API)
         g_merged = merged.groupby("timestamp")
         fv_rank = g_merged["factor_value"].rank().values
         coverage = len(merged)
@@ -188,10 +198,10 @@ def main():
         m_boundaries = np.append(m_first, len(ts_m))
         n_ts_m = len(m_first)
 
-        # Compute IC for all 4 horizons
+        # Compute IC for all 4 horizons (single groupby, NaN returns handled by boundary loop)
         horizon_ics = {}
         for hz in LABEL_HORIZONS:
-            ret_rank = merged[f"_rank_{hz}"].values
+            ret_rank = g_merged[LABEL_COLS[hz]].rank().values
             ic_vals = rank_ic_from_boundaries(fv_rank, ret_rank, m_boundaries, n_ts_m)
             horizon_ics[hz] = summarize_ic(ic_vals)
 
