@@ -1,54 +1,57 @@
-# 因子评价
+# Factor-Level IC Evaluation
 
-> Phase 12D-H7 · 研究解释页
+**Phase:** 12D-H8  
+**Generated:** 2026-06-19  
+**Dataset:** crypto_top50_factor_library  
+**Method:** RankIC (Spearman) — rank per timestamp, Pearson of ranks
 
-## 声明
+---
 
-本页展示"单因子层"的注册与评价状态。当前已完成的是 signal-level evaluation。factor-level IC 如未计算则标记 NOT_COMPUTED。本页不是实盘，不是交易建议。
+## Summary
 
-## 概览
+- **Total registered:** 53 factors
+- **Computed IC:** 47 factors (37 COMPUTED + 10 DIRECTION_UNKNOWN)
+- **Missing factor_values:** 6 (taker/funding rate factors)
+- **Active in current signal:** 10 factors (all computed)
+- **Horizons evaluated:** 1h, 4h, 24h, 72h
 
-- 注册因子总数：53
-- 进入当前信号：10（6 negative + 3 overlay + 1 cross-sectional）
-- 候选因子：37
-- 诊断探针：6（taker imbalance + funding rate，需 crypto-native cache）
-- factor-level IC：NOT_COMPUTED
-- signal-level RankIC：COMPUTED
+## Method
 
-## 数据来源
+Each factor's values are loaded from `factor_values.parquet`, merged with forward return labels, ranked per timestamp using Spearman (rank → Pearson of ranks), and aggregated into per-horizon IC summaries.
 
-- 因子注册：`scripts/factor_formula_registry.py`（804 行，53 个 FactorSpec）
-- 信号构建：`scripts/build_phase9b_signal_panel.py`（10 个因子进入当前信号）
-- 信号评价：`scripts/evaluate_signals.py` + `src/momentum/signal_evaluation/`
+Direction adjustment: `positive → raw IC`, `negative → -raw IC`, `conditional → raw IC` (status: DIRECTION_UNKNOWN).
 
-## 信号使用
+## Top 10 by Direction-Adjusted IC (1h)
 
-当前信号 `signal_v0_core_only__1h__original_no_guard` 使用 10 个因子：
+1. volatility_20h: +0.0388 (negative, t=-24.05)
+2. vol_40h: +0.0384 (negative, ★ signal)
+3. vol_5h: +0.0337 (negative, ★ signal)
+4. bb_zscore_20h: +0.0305 (negative, t=-29.53)
+5. rsi_7h: +0.0305 (negative, ★ signal)
+6. vol_of_vol_20h: +0.0303 (negative, ★ signal)
+7. downside_vol_20h: +0.0289 (negative, ★ signal)
+8. rsi_14h: +0.0280 (negative, t=-26.52)
+9. rsi_28h: +0.0253 (negative, ★ signal)
+10. qvol_ma_ratio_5_20: -0.0054 (positive, t=-6.22)
 
-### Negative list（6 个，信号中取负方向）
-- vol_5h, vol_40h
-- downside_vol_20h, vol_of_vol_20h
-- rsi_7h, rsi_28h
+## Output Files
 
-### Overlay（4 个，横截面标准化后叠加）
-- range_1h, range_4h, price_pos_24h
-- xs_rank_vol
+- `research/factor_runs/crypto_top50_factor_library/factor_level_evaluation/factor_level_rankic_summary.csv` — Full factor × horizon IC table
+- `research/factor_runs/crypto_top50_factor_library/factor_level_evaluation/factor_level_rankic_summary.json` — Same as JSON
+- `research/factor_runs/crypto_top50_factor_library/factor_level_evaluation/factor_level_coverage_summary.csv` — Per-factor coverage and status
+- `research/factor_runs/crypto_top50_factor_library/factor_level_evaluation/factor_level_evaluation_manifest.json` — Metadata
 
-## 因子级 IC 状态
+## Script
 
-factor-level IC 尚未计算。当前只有 signal-level RankIC（即 10 个因子组合后的信号 vs forward return 的横截面排序相关性）。
+- `scripts/evaluate_factors.py` — Canonical factor-level evaluator
 
-如果需要评估单个因子的独立贡献，需要新增 factor-level IC evaluator。
+## Important
 
-## 状态枚举
+- Factor-level IC ≠ signal-level RankIC
+- Low IC factors can combine into effective signals
+- Not a tradeable strategy. Paper diagnostic only.
+- Phase 13 NOT STARTED.
 
-| 状态 | 含义 |
-|------|------|
-| ACTIVE_IN_SIGNAL | 已进入当前 signal panel |
-| CANDIDATE | 已注册、已计算 factor values，但未进入当前信号 |
-| DIAGNOSTIC_PROBE | 需要额外数据源（crypto-native cache），当前仅作诊断探针 |
+---
 
-## 关联页面
-
-- [代码结构](actual-script-map.html) — 因子库主链路、目录结构、脚本顺序
-- [信号评价](signal-evaluation-summary.html) — 信号级 RankIC、Spread、Consistency
+*Part of Phase 12D-H8 deliverables.*
