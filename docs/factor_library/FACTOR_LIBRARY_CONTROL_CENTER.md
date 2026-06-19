@@ -1,6 +1,6 @@
 # Factor Library Control Center
 
-**Phase:** 12D-H11 (Core Hardening)  
+**Phase:** 12D-H11-R (Core Hardening — IC Merge Fix)  
 **Generated:** 2026-06-19  
 **Status:** NOT production. NOT Phase 13. Paper diagnostic only.
 

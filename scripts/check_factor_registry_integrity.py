@@ -19,6 +19,7 @@ SCRIPTS = WORK / "scripts"
 FEATURES_DIR = WORK / "data" / "features" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
 IC_CSV = WORK / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_level_evaluation" / "factor_level_rankic_summary.csv"
 OUT_DIR = WORK / "research" / "factor_runs" / "crypto_top50_factor_library"
+RAW_BARS_PATH = WORK / "data" / "cache" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1" / "bars_1h.parquet"
 
 # ── constants ──────────────────────────────────────────────────────────
 VALID_DIRECTIONS = {"positive", "negative", "conditional"}
@@ -31,12 +32,26 @@ SIGNAL_FACTORS = {
     "range_1h", "range_4h", "price_pos_24h",
 }
 
-# Columns that should exist in raw bars (known from data pipeline)
-# NOTE: raw_bars.parquet is not always present; we check against known schema
-KNOWN_RAW_COLUMNS = {
-    "open", "high", "low", "close", "volume", "quote_volume",
-    "taker_buy_quote_volume", "funding_rate",
-}
+# Conservative fallback — only basic OHLCV columns, NO taker/funding
+_FALLBACK_COLUMNS = {"open", "high", "low", "close", "volume", "quote_volume"}
+
+
+def _load_raw_bars_columns() -> set[str]:
+    """Load available columns from raw bars parquet, or use conservative fallback."""
+    if RAW_BARS_PATH.exists():
+        try:
+            import pyarrow.parquet as pq
+            schema = pq.read_schema(str(RAW_BARS_PATH))
+            cols = set(schema.names)
+            print(f"Raw bars schema loaded from parquet: {len(cols)} columns")
+            return cols
+        except Exception as e:
+            print(f"WARNING: failed to read raw bars schema: {e}")
+    print(f"Using conservative fallback columns: {sorted(_FALLBACK_COLUMNS)}")
+    return _FALLBACK_COLUMNS
+
+
+KNOWN_RAW_COLUMNS = _load_raw_bars_columns()
 
 
 def load_registry():

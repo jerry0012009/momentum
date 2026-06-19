@@ -35,10 +35,28 @@ SIGNAL_ROLES = {
     "range_1h": "position_overlay", "range_4h": "position_overlay",
     "price_pos_24h": "position_overlay",
 }
-KNOWN_RAW_COLUMNS = {
-    "open", "high", "low", "close", "volume", "quote_volume",
-    "taker_buy_quote_volume", "funding_rate",
-}
+RAW_BARS_PATH = WORK / "data" / "cache" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1" / "bars_1h.parquet"
+
+# Conservative fallback — only basic OHLCV columns, NO taker/funding
+FALLBACK_COLUMNS = {"open", "high", "low", "close", "volume", "quote_volume"}
+
+
+def load_raw_bars_columns() -> set[str]:
+    """Load available columns from raw bars parquet, or use conservative fallback."""
+    if RAW_BARS_PATH.exists():
+        try:
+            import pyarrow.parquet as pq
+            schema = pq.read_schema(str(RAW_BARS_PATH))
+            cols = set(schema.names)
+            print(f"Raw bars schema loaded from parquet: {len(cols)} columns")
+            return cols
+        except Exception as e:
+            print(f"WARNING: failed to read raw bars schema: {e}")
+    print(f"Using conservative fallback columns: {sorted(FALLBACK_COLUMNS)}")
+    return FALLBACK_COLUMNS
+
+
+KNOWN_RAW_COLUMNS = load_raw_bars_columns()
 
 
 def load_registry():
@@ -48,6 +66,15 @@ def load_registry():
             del sys.modules[mod]
     import factor_formula_registry as ffr
     return ffr.REGISTRY
+
+
+def _read_float(row, *names):
+    """Read first non-empty float from row by trying multiple column names."""
+    for name in names:
+        value = row.get(name)
+        if value not in (None, ""):
+            return float(value)
+    return None
 
 
 def load_ic_data() -> dict:
@@ -62,12 +89,12 @@ def load_ic_data() -> dict:
             if fid not in data:
                 data[fid] = {}
             data[fid][h] = {
-                "raw_ic": float(row["raw_ic"]) if row.get("raw_ic") else None,
-                "adj_ic": float(row["adj_ic"]) if row.get("adj_ic") else None,
-                "t_stat": float(row["t_stat"]) if row.get("t_stat") else None,
-                "n_periods": int(row["n_periods"]) if row.get("n_periods") else 0,
-                "coverage": float(row["coverage"]) if row.get("coverage") else None,
-                "missing_rate": float(row["missing_rate"]) if row.get("missing_rate") else None,
+                "raw_ic": _read_float(row, "raw_ic", "raw_mean_rank_ic"),
+                "adj_ic": _read_float(row, "adj_ic", "direction_adjusted_mean_rank_ic"),
+                "t_stat": _read_float(row, "t_stat"),
+                "n_periods": int(float(row["n_periods"])) if row.get("n_periods") not in (None, "") else 0,
+                "coverage": _read_float(row, "coverage"),
+                "missing_rate": _read_float(row, "missing_rate"),
                 "ic_status": row.get("status", ""),
             }
     return data
@@ -124,14 +151,15 @@ def main():
             fv_status = "NOT_COMPUTED"
 
         # IC status
-        ic_status = "NOT_COMPUTED"
-        if ic_exists:
-            first_h = list(ic_data[fid].values())[0]
-            ic_status = first_h.get("ic_status", "COMPUTED")
-        elif missing_cols:
+        if missing_cols:
             ic_status = "MISSING_INPUT_DATA"
         elif not fv_exists:
             ic_status = "NEEDS_FACTOR_VALUES"
+        elif ic_exists:
+            first_h = list(ic_data[fid].values())[0]
+            ic_status = first_h.get("ic_status", "COMPUTED")
+        else:
+            ic_status = "NOT_COMPUTED"
 
         # IC values (use 1h as primary)
         def get_ic(h, field):
