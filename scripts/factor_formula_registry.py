@@ -412,9 +412,9 @@ REGISTRY: list[FactorSpec] = [
     FactorSpec(
         factor_id="reversal_5h", family="momentum",
         required_columns=["close"], lookback_window=5,
-        expected_direction="negative",
+        expected_direction="positive",
         compute_fn=_compute_reversal_5h,
-        notes="-(close / close_5h_ago - 1)",
+        notes="-(close / close_5h_ago - 1); formula is already sign-inverted to represent reversal hypothesis; higher factor_value means stronger prior loser / stronger reversal signal. expected_direction set to positive to avoid double inversion in direction-adjusted IC.",
     ),
     FactorSpec(
         factor_id="volatility_20h", family="volatility",
@@ -508,23 +508,23 @@ REGISTRY: list[FactorSpec] = [
     FactorSpec(
         factor_id="rev_3h", family="reversal",
         required_columns=["close"], lookback_window=3,
-        expected_direction="negative",
+        expected_direction="positive",
         compute_fn=_compute_rev_3h,
-        notes="-(close / close_3h_ago - 1)",
+        notes="-(close / close_3h_ago - 1); formula is already sign-inverted to represent reversal hypothesis; higher factor_value means stronger prior loser / stronger reversal signal. expected_direction set to positive to avoid double inversion in direction-adjusted IC.",
     ),
     FactorSpec(
         factor_id="rev_10h", family="reversal",
         required_columns=["close"], lookback_window=10,
-        expected_direction="negative",
+        expected_direction="positive",
         compute_fn=_compute_rev_10h,
-        notes="-(close / close_10h_ago - 1)",
+        notes="-(close / close_10h_ago - 1); formula is already sign-inverted to represent reversal hypothesis; higher factor_value means stronger prior loser / stronger reversal signal. expected_direction set to positive to avoid double inversion in direction-adjusted IC.",
     ),
     FactorSpec(
         factor_id="rev_24h", family="reversal",
         required_columns=["close"], lookback_window=24,
-        expected_direction="negative",
+        expected_direction="positive",
         compute_fn=_compute_rev_24h,
-        notes="-(close / close_24h_ago - 1)",
+        notes="-(close / close_24h_ago - 1); formula is already sign-inverted to represent reversal hypothesis; higher factor_value means stronger prior loser / stronger reversal signal. expected_direction set to positive to avoid double inversion in direction-adjusted IC.",
     ),
     # ── Phase 7B: Volatility (3) ─────────────────────────────────
     FactorSpec(

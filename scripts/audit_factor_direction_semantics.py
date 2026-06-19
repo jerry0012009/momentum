@@ -289,6 +289,17 @@ def main():
         # Semantic status
         if lifecycle == "MISSING_INPUT_DATA":
             semantic_status = "MISSING_INPUT_DATA"
+        elif fid in PHASE6H_MISMATCH and raw_1h is not None:
+            # Check if historical mismatch was repaired (expected_direction now matches IC sign)
+            ic_sign_positive = raw_1h > 0
+            direction_now_matches = (
+                (expected_dir == "positive" and ic_sign_positive) or
+                (expected_dir == "negative" and not ic_sign_positive)
+            )
+            if direction_now_matches:
+                semantic_status = "REPAIRED_IN_H12B"
+            else:
+                semantic_status = "HISTORICAL_DIRECTION_MISMATCH"
         elif fid in PHASE6H_MISMATCH:
             semantic_status = "HISTORICAL_DIRECTION_MISMATCH"
         elif expected_dir == "conditional" and in_signal:
