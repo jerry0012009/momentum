@@ -1,74 +1,40 @@
 {
-  "meta": {"phase": "12D-H5", "generated": "2026-06-19", "disclaimer": "研究解释页，不是实盘", "data_source": "actual repository scan"},
-  "active_entrypoint": "scripts/evaluate_signals.py",
-  "reusable_module": "src/momentum/signal_evaluation/",
-  "verified_scripts": {
-    "download": "scripts/download_full_binance_1h_universe.py",
-    "universe": "scripts/build_crypto_top50_universe.py",
-    "labels": "scripts/build_labels.py",
-    "factor_values": "scripts/build_factor_values.py",
-    "factor_values_batch": "scripts/build_factor_values_batch.py",
-    "crypto_native": "scripts/build_crypto_native_factor_values.py",
-    "signal_panel": "scripts/build_phase9b_signal_panel.py",
-    "signal_evaluation": "scripts/evaluate_signals.py",
-    "parity_harness": "scripts/run_signal_evaluation_parity_harness.py",
-    "phase11a": "scripts/run_phase11a_cost_slippage_capacity.py",
-    "phase12a": "scripts/run_phase12a_paper_signal_harness.py",
-    "phase12b": "scripts/run_phase12b_paper_monitoring.py"
+  "meta": {"phase": "12D-H5-R", "generated": "2026-06-19", "disclaimer": "研究解释页，不是实盘", "data_source": "actual repository scan"},
+  "mainline_tree": {
+    "1_data": {"script": "scripts/download_full_binance_1h_universe.py", "output": "data/cache/.../bars_1h.parquet"},
+    "2_universe": {"script": "scripts/build_crypto_top50_universe.py", "output": "universe_snapshots.parquet + universe_membership.parquet"},
+    "3_labels": {"script": "scripts/build_labels.py", "output": "labels.parquet (1h/4h/24h/72h)"},
+    "4_factor_values": {"script": "scripts/build_factor_values.py", "registry": "scripts/factor_formula_registry.py", "reusable": "src/momentum/factors/"},
+    "5_signal_panel": {"script": "scripts/build_phase9b_signal_panel.py", "output": "phase9b_signal_panel.parquet"},
+    "6_signal_evaluation": {"script": "scripts/evaluate_signals.py", "api": "src/momentum/signal_evaluation/", "metrics": ["RankIC", "Quantile Spread", "Direction Consistency"]},
+    "7_cost_liquidity": {"script": "scripts/run_phase11a_cost_slippage_capacity.py"},
+    "8_paper_diagnostic": {"scripts": ["scripts/run_phase12a_paper_signal_harness.py", "scripts/run_phase12b_paper_monitoring.py"]},
+    "9_transparency_site": {"dir": "reports/site/factor-library/"}
   },
-  "archived_scripts": {
-    "location": "archive/legacy_phase_scripts/phase10/",
-    "scripts": [
-      "run_phase10a_signal_backtest.py",
-      "run_phase10a_r_diagnostics.py",
-      "run_phase10b_tail_diagnostics.py",
-      "run_phase10d_tail_aware_variants.py"
-    ],
-    "status": "ARCHIVED — do not use for new research"
+  "active_entrypoints": {"cli": "scripts/evaluate_signals.py", "api_package": "src/momentum/signal_evaluation/", "parity_harness": "scripts/run_signal_evaluation_parity_harness.py"},
+  "extension_points": [
+    {"type": "新增因子", "location": "factor_formula_registry.py / src/momentum/factors/", "note": "先作为 diagnostic factor"},
+    {"type": "新增信号", "location": "build_phase9b_signal_panel.py", "note": "输出统一 schema"},
+    {"type": "新增评价指标", "location": "src/momentum/signal_evaluation/", "note": "加入公共 API"},
+    {"type": "新增 horizon", "location": "scripts/build_labels.py", "note": "增加 horizon 参数"}
+  ],
+  "archived_legacy_scripts": {"location": "archive/legacy_phase_scripts/phase10/", "scripts": ["run_phase10a_signal_backtest.py", "run_phase10a_r_diagnostics.py", "run_phase10b_tail_diagnostics.py", "run_phase10d_tail_aware_variants.py"], "status": "ARCHIVED"},
+  "current_outputs": {
+    "bars": "266 symbols, 3.3M rows, 17,808 timestamps",
+    "universe": "dynamic Top50, ~43-50 symbols/month",
+    "factor_values": "10 factors (6 core + 4 overlay)",
+    "labels": "1h/4h/24h/72h forward returns",
+    "signal_panel": "3 variants × 266 symbols",
+    "evaluation_results": "RankIC + Spread + Consistency CSVs",
+    "cost_liquidity": "phase11a_*.csv, phase11b_*.csv",
+    "paper_diagnostic": "phase12a_*.csv, phase12b_*.csv"
   },
-  "data_counts": {
-    "bars_rows": 3316259,
-    "bars_timestamps": 17808,
-    "bars_symbols": 266,
-    "bars_taker_columns": false,
-    "universe_snapshots_rows": 1250,
-    "universe_snapshots_symbols": 266,
-    "membership_rows": 507,
-    "labels_rows": 215061,
-    "labels_timestamps": 4320,
-    "labels_symbols": 50,
-    "signal_panel_rows": 3314397,
-    "signal_panel_timestamps": 17801,
-    "signal_panel_symbols": 266
+  "current_conclusion": {
+    "rankic": {"1h": 0.0325, "4h": 0.0385, "24h": 0.0416, "72h": 0.0338},
+    "spread": {"1h": -0.000306, "4h": -0.001232, "24h": -0.006742, "72h": -0.016623},
+    "caveat": "RankIC positive but mean spread negative — not a cleanly validated alpha",
+    "action": "CONTINUE_PAPER_DIAGNOSTIC_ONLY",
+    "tradeable_alpha": false
   },
-  "survivorship_bias": "PARTIAL",
-  "taker_columns_in_bars": false,
-  "signal_evaluation_framework": {
-    "active_entrypoint": "scripts/evaluate_signals.py",
-    "reusable_module": "src/momentum/signal_evaluation/",
-    "reusable_input_schema": "timestamp / symbol / signal_value",
-    "spread_modes": {"standard": "pd.qcut quintile boundaries", "legacy_phase10a": "rank-based head/tail"},
-    "metrics": [
-      {"name": "RankIC", "function": "compute_rank_ic + summarize_rank_ic", "status": "active", "reusable": true},
-      {"name": "Quantile Spread", "function": "compute_quantile_spread + summarize_quantile_spread", "status": "active", "reusable": true},
-      {"name": "Direction Consistency", "function": "check_rankic_spread_consistency", "status": "active", "reusable": true},
-      {"name": "Bucket / Tail Diagnostics", "function": "archived (Phase 10B)", "status": "historical", "notes": "results in phase10b_*.csv, not in current evaluate_signals.py"},
-      {"name": "Tail-aware Policy Design", "function": "design stage", "status": "historical", "notes": "not a standard metric, per-signal design"},
-      {"name": "Variant Grid", "function": "archived (Phase 10D)", "status": "historical", "notes": "results in phase10d_*.csv, not in current evaluate_signals.py"}
-    ],
-    "parity_status": {
-      "rankic": "12/12 PASS_ROUNDED_REFERENCE",
-      "spread_legacy": "12/12 PASS_ROUNDED_REFERENCE",
-      "h3_gate": "OPEN_FULL_WRAPPER"
-    },
-    "current_results": {
-      "rankic": {"1h": 0.0325, "4h": 0.0385, "24h": 0.0416, "72h": 0.0338},
-      "quantile_spread": {"1h": -0.000306, "4h": -0.001232, "24h": -0.006742, "72h": -0.016623},
-      "caveat": "RankIC positive but mean spread negative — not a cleanly validated alpha",
-      "cost_liquidity_bridge": {"status": "COST_SENSITIVE"},
-      "current_core_signal_conclusion": "CONTINUE_PAPER_DIAGNOSTIC_ONLY",
-      "tradeable_alpha": false
-    }
-  },
-  "phase13_status": "NOT STARTED"
+  "phase13_status": "NOT_STARTED"
 }
