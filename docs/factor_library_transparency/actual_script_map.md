@@ -1,6 +1,6 @@
 # 因子库真实执行链路与脚本地图
 
-> Phase 12D-H3-R · 研究解释页
+> Phase 12D-H5 · 研究解释页
 
 ## 一句话总览
 
@@ -8,49 +8,51 @@
 
 ## 活跃入口点
 
-**`scripts/evaluate_signals.py`** — 规范的信号评估 CLI 入口，使用 `momentum.signal_evaluation` 公共 API。
+**`scripts/evaluate_signals.py`** — 使用公共 `momentum.signal_evaluation` API 的规范 CLI 入口。
 
-```bash
-python scripts/evaluate_signals.py \
-    --signal-panel <path> --labels <path> \
-    --signals signal_v0_core_only --horizons 1h 4h 24h 72h \
-    --output-dir <dir> [--spread-mode standard|legacy_phase10a]
-```
+旧 Phase 10A/10A-R/10B/10D 脚本已归档至 `archive/legacy_phase_scripts/phase10/`，仅供历史参考。
 
-## 已验证脚本（活跃 pipeline）
+## 当前活跃评价维度
 
-| 功能 | 脚本 |
-|------|------|
-| 数据下载 | `scripts/download_full_binance_1h_universe.py` |
-| Universe | `scripts/build_crypto_top50_universe.py` |
-| Labels | `scripts/build_labels.py` |
-| Factor Values | `scripts/build_factor_values.py` |
-| Signal Panel | `scripts/build_phase9b_signal_panel.py` |
-| **信号评估（活跃入口）** | **`scripts/evaluate_signals.py`** |
-| Parity Harness | `scripts/run_signal_evaluation_parity_harness.py` |
-| Phase 11A | `scripts/run_phase11a_cost_slippage_capacity.py` |
-| Phase 12A | `scripts/run_phase12a_paper_signal_harness.py` |
-| Phase 12B | `scripts/run_phase12b_paper_monitoring.py` |
+| 维度 | 目的 | 脚本 |
+|------|------|------|
+| **RankIC** | 信号排序与未来收益排序的 Spearman correlation | `evaluate_signals.py` |
+| **Quantile Spread** | 高分组与低分组的未来收益差 | `evaluate_signals.py` |
+| **Direction Consistency** | RankIC 方向与 spread 方向是否一致 | `evaluate_signals.py` |
 
-## 已归档脚本（非活跃，仅供历史参考）
+## 历史扩展诊断（不在当前 evaluate_signals.py 中）
 
-以下脚本已归档至 `archive/legacy_phase_scripts/phase10/`：
+| 维度 | 状态 | 结果文件 |
+|------|------|----------|
+| Bucket / Tail Diagnostics | Phase 10B 已归档 | `phase10b_*.csv` |
+| Tail-aware Policy Design | 设计阶段，非标准指标 | 设计文档 |
+| Variant Grid | Phase 10D 已归档 | `phase10d_*.csv` |
 
-| 功能 | 归档位置 | 状态 |
-|------|----------|------|
-| Phase 10A | `archive/.../phase10/run_phase10a_signal_backtest.py` | 归档 |
-| Phase 10A-R | `archive/.../phase10/run_phase10a_r_diagnostics.py` | 归档 |
-| Phase 10B | `archive/.../phase10/run_phase10b_tail_diagnostics.py` | 归档 |
-| Phase 10D | `archive/.../phase10/run_phase10d_tail_aware_variants.py` | 归档 |
+## 旧 Phase 10 脚本归档说明
 
-**不要用于新研究。** 这些脚本使用内联实现，已被公共 `signal_evaluation` API 替代。
+旧脚本已从 `scripts/` 移至 `archive/legacy_phase_scripts/phase10/`：
 
-## 已验证数据
+| 旧脚本 | 原功能 | 当前状态 |
+|--------|--------|----------|
+| `run_phase10a_signal_backtest.py` | RankIC + Spread 初评 | Archived → 功能已整合到 `evaluate_signals.py` |
+| `run_phase10a_r_diagnostics.py` | 方向一致性 | Archived → 功能已整合到 `evaluate_signals.py` |
+| `run_phase10b_tail_diagnostics.py` | Bucket / Tail 诊断 | Archived → 结果保留在 CSV |
+| `run_phase10d_tail_aware_variants.py` | 变体网格评估 | Archived → 结果保留在 CSV |
 
-- Bars: 3,316,259 rows, 266 symbols, 17,808 timestamps, no taker columns
-- Labels: 215,061 rows, 50 symbols, 4 horizons (1h/4h/24h/72h)
-- Signal panel: 3,314,397 rows, 266 symbols, 17,801 timestamps
-- Universe: 1,250 snapshots, 266 symbols, PARTIAL survivorship bias
+## 当前代码结构
 
-## Not for production use.
-No real execution. No alpha claim. Phase 13 NOT STARTED.
+当前 active structure 已完成：
+- `src/momentum/signal_evaluation/` — 公共 API 包（`rank_ic.py`、`quantile_spread.py`、`consistency.py`、`_vectorized.py`）
+- `scripts/evaluate_signals.py` — 规范 CLI 入口
+- `scripts/run_signal_evaluation_parity_harness.py` — parity 测试工具
+- 旧 Phase 10 脚本已归档
+
+未来如需扩展（tail diagnostics、variant grid），应作为新模块加入 `src/momentum/signal_evaluation/`，不恢复旧脚本。
+
+## 当前信号评价结论摘要
+
+当前核心信号 **signal_v0_core_only** 在 RankIC 上显著为正，但 mean quantile spread 为负，**说明它不是一个已经干净验证的 alpha**。当前结论是：该信号可以继续 paper diagnostic，不可解释为可交易策略。
+
+---
+
+*Authority: actual repository scan · Phase 12D-H5 · 2026-06-19*

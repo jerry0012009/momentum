@@ -210,74 +210,48 @@ th{background:#f9fafb;font-weight:600;font-size:13px;color:var(--muted)}
 旧 Phase 10A/10A-R/10B/10D 脚本已归档至 <code>archive/legacy_phase_scripts/phase10/</code>，仅供历史参考。
 </div>
 
-<h3 style="margin:20px 0 12px;font-size:16px">7.1 当前信号评价维度</h3>
+<h3 style="margin:20px 0 12px;font-size:16px">7.1 当前活跃评价维度</h3>
 <table>
-<tr><th>评价维度</th><th>目的</th><th>计算方式</th><th>当前结果（core_only）</th><th>脚本</th><th>可复用</th></tr>
+<tr><th>评价维度</th><th>目的</th><th>当前结果（core_only）</th><th>脚本</th></tr>
 <tr>
   <td><strong>RankIC / 横截面排序预测力</strong></td>
-  <td>判断信号排序和未来收益排序是否相关</td>
-  <td>对每个 timestamp，计算 signal_value 与 future_return 的 Spearman correlation。<br><code>RankIC_{h,t} = SpearmanCorr(rank(signal_t), rank(forward_return_{t→t+h}))</code></td>
+  <td>判断信号排序和未来收益排序是否相关（Spearman correlation）</td>
   <td>1h=0.0325(t=17.6) · 4h=0.0385(t=20.8) · 24h=0.0416(t=22.6) · 72h=0.0338(t=18.1)<br>RankIC 为正且 t-stat 高，说明有横截面排序信息；<strong>但不等于可交易收益</strong></td>
   <td><code>scripts/evaluate_signals.py</code></td>
-  <td>YES</td>
 </tr>
 <tr>
   <td><strong>Quantile Spread / 分组收益</strong></td>
-  <td>判断高分组和低分组的未来收益差</td>
-  <td>按 signal_value 分桶，计算 top bucket 与 bottom bucket 的 forward return 均值差。<br><code>spread_h = mean(return | top) - mean(return | bottom)</code></td>
+  <td>判断高分组和低分组的未来收益差（top bucket - bottom bucket）</td>
   <td>core_only mean spread: 1h=-0.000306 · 4h=-0.001232 · 24h=-0.006742 · 72h=-0.016623<br><strong>⚠️ RankIC 为正但 mean spread 为负</strong>，说明存在 bucket/tail 异常</td>
   <td><code>scripts/evaluate_signals.py</code></td>
-  <td>YES</td>
 </tr>
 <tr>
   <td><strong>Direction / Quantile Consistency</strong></td>
-  <td>检查 RankIC 方向、bucket 排序和 long-short spread 是否一致</td>
-  <td>对比 RankIC 符号与 top-bottom spread 符号</td>
+  <td>检查 RankIC 方向与 top-bottom spread 方向是否一致</td>
   <td>RankIC 正，但 top-bottom mean spread 负，<strong>方向冲突</strong></td>
   <td><code>scripts/evaluate_signals.py</code></td>
-  <td>YES（consistency checker 已整合到公共 API）</td>
-</tr>
-<tr>
-  <td><strong>Bucket / Tail Diagnostics</strong></td>
-  <td>检查极端 bucket 是否支配均值结果</td>
-  <td>检查 bucket0、median spread、winsorized spread、tail-trimmed spread、bucket monotonicity</td>
-  <td>bucket0 / tail behavior 对 mean spread 影响很大；median spread 与 mean spread 方向可能不同。详见 Phase 10B outputs。</td>
-  <td><code>scripts/evaluate_signals.py</code> (with future tail diagnostics module)</td>
-  <td>YES</td>
-</tr>
-<tr>
-  <td><strong>Tail-aware Policy Design</strong></td>
-  <td>设计是否需要 bucket0 guard、方向翻转、tail-aware 规则</td>
-  <td>不是标准评价指标，而是对当前信号异常的设计响应</td>
-  <td>基于 10B 输出设计 guard / direction policy</td>
-  <td>Phase 10C（如无独立脚本，标记为文档/设计阶段）</td>
-  <td>PARTIAL（概念可复用，策略应针对每个信号重新设计）</td>
-</tr>
-<tr>
-  <td><strong>Variant Grid / 信号变体网格评估</strong></td>
-  <td>比较不同 signal variant × horizon × guard × direction policy 的 pass/fail</td>
-  <td>网格遍历所有变体组合，产出 pass/fail matrix</td>
-  <td>当前核心纸面信号为 signal_v0_core_only__1h__original_no_guard。详见 phase10d_variant_pass_fail_matrix.csv。</td>
-  <td><code>scripts/evaluate_signals.py</code> (with future variant grid module)</td>
-  <td>YES（需参数化成 generic variant grid evaluator）</td>
-</tr>
-<tr>
-  <td><strong>Cost / Liquidity Bridge</strong></td>
-  <td>Cost / Liquidity Bridge 不是证明策略可交易，而是检查 gross signal 在加入 execution assumptions 后是否还值得继续观察</td>
-  <td><strong>MIXED / COST_SENSITIVE</strong>。Phase 11A 显示 core_only 1h no_guard 对成本敏感，保守成本下可能被吃掉；Phase 11B 显示容量不是主要瓶颈，但成本仍是核心约束；Phase 12B rolling diagnostic 在最近 30 天窗口中表现较好，但<strong>这不是 future paper trade，也不是最终交易回测</strong></td>
-  <td><code>run_phase11a_cost_slippage_capacity.py</code></td>
-  <td>YES（未来信号也必须通过）</td>
 </tr>
 </table>
+<div class="warn">
+<strong>以下维度属于历史扩展诊断或未来模块，当前 <code>evaluate_signals.py</code> 不直接支持：</strong>
+<ul style="margin:8px 0 0 20px;font-size:13px;line-height:2">
+<li><strong>Bucket / Tail Diagnostics</strong> — 检查极端 bucket 是否支配均值结果。旧 Phase 10B 脚本已归档，结果保留在 <code>phase10b_*.csv</code>。</li>
+<li><strong>Tail-aware Policy Design</strong> — 基于 tail 诊断设计 guard / direction policy。属于设计阶段，不是标准评价指标。</li>
+<li><strong>Variant Grid</strong> — 比较不同 signal variant × horizon × guard × direction policy 的 pass/fail。旧 Phase 10D 脚本已归档，结果保留在 <code>phase10d_*.csv</code>。</li>
+</ul>
+</div>
 
-<h3 style="margin:20px 0 12px;font-size:16px">7.2 阶段脚本与模块化评价框架的关系</h3>
+<h3 style="margin:20px 0 12px;font-size:16px">7.2 旧 Phase 10 脚本归档说明</h3>
+<div class="warn">
+旧 Phase 10A/10A-R/10B/10D 脚本已从 <code>scripts/</code> 移至 <code>archive/legacy_phase_scripts/phase10/</code>。
+原位置保留 deprecated stubs 指向新入口。
+</div>
 <table>
-<tr><th>阶段</th><th>人话名称</th><th>当前脚本</th><th>做了什么</th><th>现在的问题</th><th>未来应抽象成</th></tr>
-<tr><td>10A</td><td>信号 RankIC / Quantile Spread 初评</td><td><code>scripts/evaluate_signals.py</code></td><td>计算 signal-level RankIC、t-stat、quantile spread（已整合到公共 API）</td><td>名字叫 backtest，但实际主要是 signal diagnostic；容易误解为正式交易回测</td><td>SignalRankICEvaluator + QuantileSpreadEvaluator</td></tr>
-<tr><td>10A-R</td><td>方向与分位数一致性修复</td><td><code>scripts/evaluate_signals.py</code></td><td>诊断 RankIC 与 spread 方向冲突（已整合到公共 API）</td><td>属于修复脚本，不应长期作为主接口</td><td>DirectionConsistencyChecker</td></tr>
-<tr><td>10B</td><td>Bucket / Tail 诊断</td><td>Archived</td><td>检查 bucket0、median spread、winsorized spread、tail-trimmed spread（待整合）</td><td>应抽象为通用 tail diagnostics</td><td>BucketTailDiagnostics</td></tr>
-<tr><td>10C</td><td>Tail-aware policy design / 尾部策略设计</td><td>无独立通用 evaluator；属于基于 10B 输出的设计记录</td><td>根据 10B 的 bucket/tail 诊断提出 bucket0 guard、direction policy 等候选处理方式</td><td>设计阶段，不是标准评价指标；每个新信号都应重新设计 policy，不能直接继承旧 guard</td><td>VariantPolicySpec / PolicyDesignNotes（概念可复用，但不属于 evaluator）</td></tr>
-<tr><td>10D</td><td>信号变体网格评估</td><td>Archived</td><td>比较 signal variant × horizon × policy 的 pass/fail（待整合）</td><td>当前与阶段命名和具体信号耦合较强</td><td>GenericVariantGridEvaluator</td></tr>
+<tr><th>旧脚本</th><th>原功能</th><th>当前状态</th><th>结果文件</th></tr>
+<tr><td><code>run_phase10a_signal_backtest.py</code></td><td>RankIC + Quantile Spread 初评</td><td>Archived → 功能已整合到 <code>evaluate_signals.py</code></td><td><code>phase10a_*.csv</code></td></tr>
+<tr><td><code>run_phase10a_r_diagnostics.py</code></td><td>方向与分位数一致性</td><td>Archived → 功能已整合到 <code>evaluate_signals.py</code></td><td><code>phase10a_r_*.csv</code></td></tr>
+<tr><td><code>run_phase10b_tail_diagnostics.py</code></td><td>Bucket / Tail 诊断</td><td>Archived → 结果保留在 CSV，待未来模块化</td><td><code>phase10b_*.csv</code></td></tr>
+<tr><td><code>run_phase10d_tail_aware_variants.py</code></td><td>信号变体网格评估</td><td>Archived → 结果保留在 CSV，待未来模块化</td><td><code>phase10d_*.csv</code></td></tr>
 </table>
 
 <h3 style="margin:20px 0 12px;font-size:16px">7.3 如果未来信号来自机器学习模型，如何复用评价框架？</h3>
@@ -295,12 +269,16 @@ th{background:#f9fafb;font-weight:600;font-size:13px;color:var(--muted)}
 </ul>
 </div>
 
-<h3 style="margin:20px 0 12px;font-size:16px">7.4 当前代码结构判断</h3>
+<h3 style="margin:20px 0 12px;font-size:16px">7.4 当前代码结构</h3>
 <div class="info">
-当前 10A/10B/10D 脚本可以完成本轮研究任务，但长期来看阶段化命名较重，接口不够通用。<strong>建议后续重构为 signal-agnostic evaluation package，把当前阶段脚本改成 wrappers。</strong><br><br>
-建议结构：<br>
-<code>src/momentum/signal_evaluation/</code> — metrics.py, rank_ic.py, quantile_spread.py, bucket_diagnostics.py, tail_diagnostics.py, variant_grid.py, cost_bridge.py, report_schema.py<br>
-<code>scripts/</code> — run_signal_evaluation.py, run_signal_variant_grid.py
+<strong>当前 active structure 已完成：</strong><br>
+<ul style="margin:8px 0 0 20px;font-size:13px;line-height:2">
+<li><code>src/momentum/signal_evaluation/</code> — 公共 API 包：<code>rank_ic.py</code>（向量化 RankIC）、<code>quantile_spread.py</code>（standard + legacy 模式）、<code>consistency.py</code>、<code>_vectorized.py</code>（向量化快路径）</li>
+<li><code>scripts/evaluate_signals.py</code> — 规范 CLI 入口，使用公共 API</li>
+<li><code>scripts/run_signal_evaluation_parity_harness.py</code> — parity 测试工具</li>
+<li>旧 Phase 10 脚本已归档至 <code>archive/legacy_phase_scripts/phase10/</code></li>
+</ul>
+未来如需扩展（tail diagnostics、variant grid），应作为新模块加入 <code>src/momentum/signal_evaluation/</code>，不恢复旧脚本。
 </div>
 
 <h3 style="margin:20px 0 12px;font-size:16px">7.5 当前信号评价结论摘要</h3>
@@ -404,7 +382,7 @@ th{background:#f9fafb;font-weight:600;font-size:13px;color:var(--muted)}
 </div>
 
 <div class="footer">
-<span>Phase 12D-H3-R · Authority: actual repository scan · 2026-06-19</span>
+<span>Phase 12D-H5 · Authority: actual repository scan · 2026-06-19</span>
 <span><a href="index.html">← 首页</a> · <a href="factor-library-operating-manual.html">操作手册</a> · <a href="master-factor-registry.html">因子总表</a></span>
 </div>
 </div></body></html>
