@@ -4,9 +4,10 @@ Input schema for signal evaluation.
 Minimal contract:
 - signal_df: timestamp, symbol, signal_name, signal_value
 - label_df (tidy): timestamp, symbol, horizon, forward_return
-- label_df (wide): timestamp, symbol, fwd_ret_1h, fwd_ret_4h, fwd_ret_24h, fwd_ret_72h
+- label_df (wide): timestamp, symbol, ret_fwd_1h, ret_fwd_4h, ret_fwd_24h, ret_fwd_72h
 
 Long-term recommendation: tidy format (horizon as a column).
+Wide column names match scripts/build_labels.py output.
 """
 
 from dataclasses import dataclass
@@ -37,4 +38,11 @@ class LabelPanelSchema:
 
 WIDE_LABEL_COLUMNS = ["ret_fwd_1h", "ret_fwd_4h", "ret_fwd_24h", "ret_fwd_72h"]
 
-SIGNAL_EVALUATION_VERSION = "0.1.0"
+WIDE_LABEL_MAP = {
+    "1h": "ret_fwd_1h",
+    "4h": "ret_fwd_4h",
+    "24h": "ret_fwd_24h",
+    "72h": "ret_fwd_72h",
+}
+
+SIGNAL_EVALUATION_VERSION = "0.1.1"
