@@ -206,7 +206,8 @@ th{background:#f9fafb;font-weight:600;font-size:13px;color:var(--muted)}
 <p style="font-size:14px;color:var(--muted);margin-bottom:16px">本节解释当前信号不是只靠一个回测结果判断，而是通过 RankIC、分组收益、尾部诊断、变体网格、成本/流动性桥接等维度逐层筛查。</p>
 
 <div class="info">
-<strong>当前 10A/10B/10C/10D 是研究推进过程中的阶段脚本，不是最终模块化框架。</strong>它们的评价逻辑可以复用，但脚本接口还需要抽象成 signal-agnostic evaluator。未来无论信号来自人工因子组合、线性模型、机器学习模型还是 ensemble，只要输出统一的 signal panel：timestamp / symbol / signal_name / signal_value，就应能复用同一套评价框架。
+<strong>活跃入口点：</strong><code>scripts/evaluate_signals.py</code> — 使用公共 <code>momentum.signal_evaluation</code> API 的规范 CLI 入口。<br>
+旧 Phase 10A/10A-R/10B/10D 脚本已归档至 <code>archive/legacy_phase_scripts/phase10/</code>，仅供历史参考。
 </div>
 
 <h3 style="margin:20px 0 12px;font-size:16px">7.1 当前信号评价维度</h3>
@@ -217,7 +218,7 @@ th{background:#f9fafb;font-weight:600;font-size:13px;color:var(--muted)}
   <td>判断信号排序和未来收益排序是否相关</td>
   <td>对每个 timestamp，计算 signal_value 与 future_return 的 Spearman correlation。<br><code>RankIC_{h,t} = SpearmanCorr(rank(signal_t), rank(forward_return_{t→t+h}))</code></td>
   <td>1h=0.0325(t=17.6) · 4h=0.0385(t=20.8) · 24h=0.0416(t=22.6) · 72h=0.0338(t=18.1)<br>RankIC 为正且 t-stat 高，说明有横截面排序信息；<strong>但不等于可交易收益</strong></td>
-  <td><code>run_phase10a_signal_backtest.py</code></td>
+  <td><code>scripts/evaluate_signals.py</code></td>
   <td>YES</td>
 </tr>
 <tr>
@@ -225,7 +226,7 @@ th{background:#f9fafb;font-weight:600;font-size:13px;color:var(--muted)}
   <td>判断高分组和低分组的未来收益差</td>
   <td>按 signal_value 分桶，计算 top bucket 与 bottom bucket 的 forward return 均值差。<br><code>spread_h = mean(return | top) - mean(return | bottom)</code></td>
   <td>core_only mean spread: 1h=-0.000306 · 4h=-0.001232 · 24h=-0.006742 · 72h=-0.016623<br><strong>⚠️ RankIC 为正但 mean spread 为负</strong>，说明存在 bucket/tail 异常</td>
-  <td><code>run_phase10a_signal_backtest.py</code></td>
+  <td><code>scripts/evaluate_signals.py</code></td>
   <td>YES</td>
 </tr>
 <tr>
@@ -233,15 +234,15 @@ th{background:#f9fafb;font-weight:600;font-size:13px;color:var(--muted)}
   <td>检查 RankIC 方向、bucket 排序和 long-short spread 是否一致</td>
   <td>对比 RankIC 符号与 top-bottom spread 符号</td>
   <td>RankIC 正，但 top-bottom mean spread 负，<strong>方向冲突</strong></td>
-  <td><code>run_phase10a_r_diagnostics.py</code></td>
-  <td>YES（应做成通用 consistency checker）</td>
+  <td><code>scripts/evaluate_signals.py</code></td>
+  <td>YES（consistency checker 已整合到公共 API）</td>
 </tr>
 <tr>
   <td><strong>Bucket / Tail Diagnostics</strong></td>
   <td>检查极端 bucket 是否支配均值结果</td>
   <td>检查 bucket0、median spread、winsorized spread、tail-trimmed spread、bucket monotonicity</td>
   <td>bucket0 / tail behavior 对 mean spread 影响很大；median spread 与 mean spread 方向可能不同。详见 Phase 10B outputs。</td>
-  <td><code>run_phase10b_tail_diagnostics.py</code></td>
+  <td><code>scripts/evaluate_signals.py</code> (with future tail diagnostics module)</td>
   <td>YES</td>
 </tr>
 <tr>
@@ -257,7 +258,7 @@ th{background:#f9fafb;font-weight:600;font-size:13px;color:var(--muted)}
   <td>比较不同 signal variant × horizon × guard × direction policy 的 pass/fail</td>
   <td>网格遍历所有变体组合，产出 pass/fail matrix</td>
   <td>当前核心纸面信号为 signal_v0_core_only__1h__original_no_guard。详见 phase10d_variant_pass_fail_matrix.csv。</td>
-  <td><code>run_phase10d_tail_aware_variants.py</code></td>
+  <td><code>scripts/evaluate_signals.py</code> (with future variant grid module)</td>
   <td>YES（需参数化成 generic variant grid evaluator）</td>
 </tr>
 <tr>
@@ -272,11 +273,11 @@ th{background:#f9fafb;font-weight:600;font-size:13px;color:var(--muted)}
 <h3 style="margin:20px 0 12px;font-size:16px">7.2 阶段脚本与模块化评价框架的关系</h3>
 <table>
 <tr><th>阶段</th><th>人话名称</th><th>当前脚本</th><th>做了什么</th><th>现在的问题</th><th>未来应抽象成</th></tr>
-<tr><td>10A</td><td>信号 RankIC / Quantile Spread 初评</td><td><code>run_phase10a_signal_backtest.py</code></td><td>计算 signal-level RankIC、t-stat、quantile spread</td><td>名字叫 backtest，但实际主要是 signal diagnostic；容易误解为正式交易回测</td><td>SignalRankICEvaluator + QuantileSpreadEvaluator</td></tr>
-<tr><td>10A-R</td><td>方向与分位数一致性修复</td><td><code>run_phase10a_r_diagnostics.py</code></td><td>诊断 RankIC 与 spread 方向冲突</td><td>属于修复脚本，不应长期作为主接口</td><td>DirectionConsistencyChecker</td></tr>
-<tr><td>10B</td><td>Bucket / Tail 诊断</td><td><code>run_phase10b_tail_diagnostics.py</code></td><td>检查 bucket0、median spread、winsorized spread、tail-trimmed spread</td><td>应抽象为通用 tail diagnostics</td><td>BucketTailDiagnostics</td></tr>
+<tr><td>10A</td><td>信号 RankIC / Quantile Spread 初评</td><td><code>scripts/evaluate_signals.py</code></td><td>计算 signal-level RankIC、t-stat、quantile spread（已整合到公共 API）</td><td>名字叫 backtest，但实际主要是 signal diagnostic；容易误解为正式交易回测</td><td>SignalRankICEvaluator + QuantileSpreadEvaluator</td></tr>
+<tr><td>10A-R</td><td>方向与分位数一致性修复</td><td><code>scripts/evaluate_signals.py</code></td><td>诊断 RankIC 与 spread 方向冲突（已整合到公共 API）</td><td>属于修复脚本，不应长期作为主接口</td><td>DirectionConsistencyChecker</td></tr>
+<tr><td>10B</td><td>Bucket / Tail 诊断</td><td>Archived</td><td>检查 bucket0、median spread、winsorized spread、tail-trimmed spread（待整合）</td><td>应抽象为通用 tail diagnostics</td><td>BucketTailDiagnostics</td></tr>
 <tr><td>10C</td><td>Tail-aware policy design / 尾部策略设计</td><td>无独立通用 evaluator；属于基于 10B 输出的设计记录</td><td>根据 10B 的 bucket/tail 诊断提出 bucket0 guard、direction policy 等候选处理方式</td><td>设计阶段，不是标准评价指标；每个新信号都应重新设计 policy，不能直接继承旧 guard</td><td>VariantPolicySpec / PolicyDesignNotes（概念可复用，但不属于 evaluator）</td></tr>
-<tr><td>10D</td><td>信号变体网格评估</td><td><code>run_phase10d_tail_aware_variants.py</code></td><td>比较 signal variant × horizon × policy 的 pass/fail</td><td>当前与阶段命名和具体信号耦合较强</td><td>GenericVariantGridEvaluator</td></tr>
+<tr><td>10D</td><td>信号变体网格评估</td><td>Archived</td><td>比较 signal variant × horizon × policy 的 pass/fail（待整合）</td><td>当前与阶段命名和具体信号耦合较强</td><td>GenericVariantGridEvaluator</td></tr>
 </table>
 
 <h3 style="margin:20px 0 12px;font-size:16px">7.3 如果未来信号来自机器学习模型，如何复用评价框架？</h3>
@@ -403,7 +404,7 @@ th{background:#f9fafb;font-weight:600;font-size:13px;color:var(--muted)}
 </div>
 
 <div class="footer">
-<span>Phase 12D-G-R2 · Authority: actual repository scan + venv Python verification · 2026-06-18</span>
+<span>Phase 12D-H3-R · Authority: actual repository scan · 2026-06-19</span>
 <span><a href="index.html">← 首页</a> · <a href="factor-library-operating-manual.html">操作手册</a> · <a href="master-factor-registry.html">因子总表</a></span>
 </div>
 </div></body></html>
