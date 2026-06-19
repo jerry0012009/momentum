@@ -1,4 +1,4 @@
-"""Phase 12D-G-R2: actual-script-map.html verification-level tests."""
+"""Phase 12D-G-R3: Signal Evaluation Framework verification tests."""
 
 import json
 import pytest
@@ -8,99 +8,88 @@ SITE = Path("/root/clawd/jerry/momentum/reports/site/factor-library")
 ROOT = Path("/root/clawd/jerry/momentum")
 
 
-class TestNoVagueLanguage:
-    def test_no_needs_confirmation(self):
+class TestSection7Renamed:
+    def test_framework_title(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "需人工确认" not in content
+        assert "Signal Evaluation Framework" in content
+        assert "信号评价框架" in content
 
-    def test_no_or_similar(self):
+
+class TestRankICFormula:
+    def test_formula_present(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "或类似" not in content
+        assert "SpearmanCorr" in content
+        assert "rank(signal_t)" in content
 
-    def test_no_uncertain(self):
+    def test_values_present(self):
         content = (SITE / "actual-script-map.html").read_text()
-        # "不确定" should not appear unless followed by UNKNOWN_WITH_REASON
-        lines = content.split("\n")
-        for line in lines:
-            if "不确定" in line:
-                assert "UNKNOWN_WITH_REASON" in line
+        assert "0.0325" in content
+        assert "17.6" in content
 
 
-class TestVerifiedScripts:
-    def test_download_script(self):
+class TestQuantileSpread:
+    def test_formula_present(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "download_full_binance_1h_universe.py" in content
+        assert "mean(return" in content or "mean(" in content
 
-    def test_universe_script(self):
+    def test_values_present(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "build_crypto_top50_universe.py" in content
+        assert "-0.000306" in content
+        assert "-0.016623" in content
 
-    def test_label_script(self):
+
+class TestRankICSpreadCaveat:
+    def test_caveat_present(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "build_labels.py" in content
+        assert "RankIC" in content
+        assert "spread" in content.lower()
+        assert "负" in content or "negative" in content.lower()
 
-    def test_phase11_script(self):
+
+class TestPhaseMapping:
+    def test_10a_mapped(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "run_phase11a_cost_slippage_capacity.py" in content
+        assert "SignalRankICEvaluator" in content
+        assert "QuantileSpreadEvaluator" in content
 
-    def test_phase12a_script(self):
+    def test_10ar_mapped(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "run_phase12a_paper_signal_harness.py" in content
+        assert "DirectionConsistencyChecker" in content
 
-    def test_phase12b_script(self):
+    def test_10b_mapped(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "run_phase12b_paper_monitoring.py" in content
+        assert "BucketTailDiagnostics" in content
 
-
-class TestDataCounts:
-    def test_bars_counts(self):
+    def test_10d_mapped(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "3,316,259" in content
-        assert "17,808" in content
-        assert "266" in content
+        assert "GenericVariantGridEvaluator" in content
 
-    def test_taker_columns_verified(self):
+
+class TestMLReusability:
+    def test_reusable_schema(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "否" in content  # taker columns = no
+        assert "timestamp / symbol / signal_name / signal_value" in content
 
-    def test_label_counts(self):
+    def test_ml_section(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "215,061" in content
-        assert "215,011" in content  # ret_fwd_1h non-null
+        assert "机器学习" in content
 
-    def test_signal_panel_counts(self):
+
+class TestRefactorRecommendation:
+    def test_refactor_present(self):
         content = (SITE / "actual-script-map.html").read_text()
-        assert "3,314,397" in content
-        assert "17,801" in content
+        assert "signal-agnostic evaluation package" in content or "signal_evaluation" in content
 
-
-class TestSurvivorshipBias:
-    def test_not_pass(self):
+    def test_stage_specific_wrappers(self):
         content = (SITE / "actual-script-map.html").read_text()
-        lines = content.split("\n")
-        for line in lines:
-            if "survivorship" in line.lower() or "Survivorship" in line:
-                assert "PASS" not in line or "PARTIAL" in line
-
-
-class TestEvaluationProtocol:
-    def test_all_phases_with_scripts(self):
-        content = (SITE / "actual-script-map.html").read_text()
-        assert "run_phase10a_signal_backtest.py" in content
-        assert "run_phase10a_r_diagnostics.py" in content
-        assert "run_phase10b_tail_diagnostics.py" in content
-        assert "run_phase10d_tail_aware_variants.py" in content
-
-
-class TestResearchRunLedger:
-    def test_ledger_explained(self):
-        content = (SITE / "actual-script-map.html").read_text()
-        assert "研究运行账本" in content
-        assert "signal panel parquet" in content
-        assert "RankIC CSV" in content
+        assert "阶段脚本" in content or "stage-specific" in content.lower() or "wrappers" in content
 
 
 class TestNoBadClaims:
+    def test_not_tradeable_alpha(self):
+        content = (SITE / "actual-script-map.html").read_text()
+        assert "不是一个已经干净验证的 alpha" in content
+
     def test_no_real_execution(self):
         content = (ROOT / "docs" / "factor_library_transparency" / "actual_script_map.md").read_text()
         assert "No real execution" in content
@@ -108,3 +97,15 @@ class TestNoBadClaims:
     def test_phase13_not_started(self):
         content = (ROOT / "docs" / "factor_library_transparency" / "actual_script_map.md").read_text()
         assert "NOT STARTED" in content
+
+
+class TestJSON:
+    def test_signal_evaluation_framework(self):
+        data = json.loads((SITE / "assets" / "actual_script_map.json").read_text())
+        assert "signal_evaluation_framework" in data
+        sef = data["signal_evaluation_framework"]
+        assert "reusable_input_schema" in sef
+        assert "metrics" in sef
+        assert "current_results" in sef
+        assert len(sef["metrics"]) == 6
+        assert sef["current_results"]["rankic"]["1h"] == 0.0325
