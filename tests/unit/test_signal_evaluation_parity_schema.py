@@ -16,7 +16,7 @@ def _yes(pattern: str):
     assert pattern in SOURCE, f"Missing required: {pattern!r}"
 
 
-# Public API usage (from H2-R)
+# Public API usage
 def test_uses_public_compute_rank_ic():
     _yes("from momentum.signal_evaluation import")
 
@@ -34,24 +34,24 @@ def test_no_scipy_import():
     _no("import scipy")
 
 
-# Gate logic (H2-S)
+# Gate logic (H2-T)
 def test_gate_function_exists():
     _yes("def determine_h3_gate")
-
-
-def test_gate_open_for_rankic_wrapper_only():
-    _yes("OPEN_FOR_RANKIC_WRAPPER_ONLY")
-
-
-def test_gate_blocked():
-    _yes("BLOCKED")
 
 
 def test_gate_open_full_wrapper():
     _yes("OPEN_FULL_WRAPPER")
 
 
-# RankIC status (H2-S)
+def test_gate_open_standard_v2_only():
+    _yes("OPEN_STANDARD_V2_ONLY")
+
+
+def test_gate_blocked():
+    _yes("BLOCKED")
+
+
+# RankIC status
 def test_pass_rounded_reference_status():
     _yes("PASS_ROUNDED_REFERENCE")
 
@@ -64,7 +64,20 @@ def test_reference_precision_field():
     _yes("reference_precision_digits")
 
 
-# Summary fields (H2-S)
+# Legacy spread mode
+def test_legacy_phase10a_mode_used():
+    _yes('mode="legacy_phase10a"')
+
+
+def test_legacy_mode_in_spread_parity():
+    _yes("spread_legacy")
+
+
+def test_standard_mode_for_reference():
+    _yes("spread_standard")
+
+
+# Summary fields
 def test_summary_has_rounded_reference_count():
     _yes("rounded_reference_count")
 

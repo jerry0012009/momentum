@@ -1,10 +1,10 @@
 # Signal Evaluation Parity Harness
 
-> Phase 12D-H2-S · 2026-06-19
+> Phase 12D-H2-T · 2026-06-19
 
 ## Purpose
 
-Verify that the public `signal_evaluation` API reproduces old Phase 10A outputs. H2-R removed inline functions; H2-S corrects gate logic and RankIC status.
+Verify that the public `signal_evaluation` API reproduces old Phase 10A outputs using legacy_phase10a spread mode.
 
 ## Public API Used
 
@@ -16,43 +16,36 @@ from momentum.signal_evaluation import (
 )
 ```
 
-## Results
+## Spread Modes
 
-### RankIC Parity
+| Mode | Algorithm | Use Case |
+|------|-----------|----------|
+| `standard` (default) | pd.qcut quintile boundaries | New analyses |
+| `legacy_phase10a` | rank-based sort + head/tail | Exact Phase 10A reproducibility |
 
-| Status | Meaning |
-|--------|---------|
-| EXACT | diff ≤ 1e-9 (float64 precision) |
-| PASS_ROUNDED_REFERENCE | diff ≤ 0.5e-6 — old CSV stores 6 decimal places |
-| NEEDS_INVESTIGATION | diff unexplained |
+## Rounding Tolerances
 
-**Current**: 12/12 PASS_ROUNDED_REFERENCE. All diffs ~1e-7, explained by old CSV precision (6 decimal places).
+| Field | Old CSV Precision | Rounding Tolerance |
+|-------|-------------------|--------------------|
+| mean_rankic | 6 decimal places | 0.5e-6 |
+| t_stat | 5 decimal places | 0.5e-4 |
+| mean_spread | 6 decimal places | 0.5e-6 |
+| hit_rate (positive_fraction) | 4 decimal places | 0.5e-4 |
+| n_periods / n_timestamps | exact integer | 0 |
 
-### Quantile Spread Parity
+## H3 Gate Logic
 
-| Status | Meaning |
-|--------|---------|
-| EXACT | Exact match |
-| BEHAVIORAL | Same direction, diff < 2e-3 |
-| NEEDS_INVESTIGATION | Direction mismatch |
+| Gate | Conditions |
+|------|------------|
+| OPEN_FULL_WRAPPER | RankIC pass + spread legacy pass (exact/rounded) |
+| OPEN_STANDARD_V2_ONLY | RankIC pass + spread legacy behavioral only |
+| BLOCKED | Investigate/missing |
 
-**Current**: 12/12 BEHAVIORAL. Root cause: old uses rank-based head/tail, new uses pd.qcut quintile boundaries. See `SIGNAL_EVALUATION_SPREAD_PARITY_INVESTIGATION.md`.
-
-### H3 Gate Status
-
-| Gate | Conditions | Current |
-|------|------------|---------|
-| OPEN_FULL_WRAPPER | All exact | — |
-| OPEN_FOR_RANKIC_WRAPPER_ONLY | RankIC pass + spread behavioral | **✓ Current** |
-| BLOCK_FULL_WRAPPER_UNTIL_SPREAD_EXACT | Spread not exact | — |
-| BLOCKED | Investigate/missing | — |
-
-## Files
+## Output Files
 
 | File | Description |
 |------|-------------|
-| `phase12d_h2_s_signal_eval_parity_rankic.csv` | RankIC parity |
-| `phase12d_h2_s_signal_eval_parity_quantile_spread.csv` | Spread parity |
-| `phase12d_h2_s_signal_eval_parity_summary.csv` | Summary with H3 gate |
-| `SIGNAL_EVALUATION_SPREAD_PARITY_INVESTIGATION.md` | Spread root-cause analysis |
-| `phase12d_h2_s_spread_root_cause.csv` | Root cause data |
+| `phase12d_h2_t_signal_eval_parity_rankic.csv` | RankIC parity |
+| `phase12d_h2_t_signal_eval_parity_spread_legacy.csv` | Spread parity (legacy mode) |
+| `phase12d_h2_t_signal_eval_parity_spread_standard.csv` | Spread parity (standard, reference) |
+| `phase12d_h2_t_signal_eval_parity_summary.csv` | Summary with H3 gate |
