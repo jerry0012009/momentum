@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Signal Evaluation Parity Harness — Phase 12D-H2.
+"""Signal Evaluation Parity Harness — Phase 12D-H2-R.
 
-Recomputes RankIC and Quantile Spread using the new signal_evaluation package
-and compares against old Phase 10A outputs.
-
+Uses the PUBLIC signal_evaluation API to verify parity with old Phase 10A outputs.
+Does NOT use inline fast_rank_ic / fast_quantile_spread.
 Does NOT modify old scripts, old outputs, signal panel, or labels.
 """
 
@@ -15,9 +14,14 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import pandas as pd
 import numpy as np
-from scipy import stats
-from momentum.signal_evaluation.labels import select_forward_return
-from momentum.signal_evaluation.quantile_spread import summarize_quantile_spread
+from momentum.signal_evaluation import (
+    select_forward_return,
+    compute_rank_ic,
+    summarize_rank_ic,
+    compute_quantile_spread,
+    summarize_quantile_spread,
+    check_rankic_spread_consistency,
+)
 
 RUN_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
 SIGNAL_PANEL = RUN_DIR / "phase9b_signal_panel.parquet"
@@ -33,62 +37,49 @@ SIGNAL_NAMES = [
 ]
 HORIZONS = ["1h", "4h", "24h", "72h"]
 
-TOLERANCE = {
-    "mean_rank_ic": 1e-4,    # float64 vs float32 rounding
-    "t_stat": 1e-1,           # df differences (n-2 vs n)
-    "n_periods": 2,           # NaN filtering differs by 0-1 timestamps
-    "mean_spread": 2e-3,      # quantile bucket construction differs
-    "median_spread": 1e-3,
-    "positive_fraction": 1e-2,  # bucket boundary differences
+# RankIC: strict parity (exact match expected)
+RANKIC_TOLERANCE = {
+    "mean_rank_ic": 1e-9,
+    "t_stat": 1e-6,
+    "n_periods": 0,  # exact
+}
+
+# Spread: behavioral compatibility (direction + order of magnitude)
+SPREAD_TOLERANCE = {
+    "mean_spread": 2e-3,      # bucket construction differs
+    "positive_fraction": 1e-2, # bucket boundary differences
+    "n_periods": 2,            # NaN filtering differs
 }
 
 
-def check_parity(new_val, old_val, tol):
+def check_rankic_parity(new_val, old_val, tol):
+    """Strict parity check for RankIC metrics."""
     if new_val is None or (isinstance(new_val, float) and np.isnan(new_val)):
         return "MISSING_NEW"
     if old_val is None or (isinstance(old_val, float) and np.isnan(old_val)):
         return "MISSING_OLD"
     if tol == 0:
-        return "PASS" if int(new_val) == int(old_val) else "FAIL"
-    return "PASS" if abs(float(new_val) - float(old_val)) <= tol else "FAIL"
+        return "EXACT" if int(new_val) == int(old_val) else "NEEDS_INVESTIGATION"
+    diff = abs(float(new_val) - float(old_val))
+    if diff <= tol:
+        return "EXACT"
+    return "NEEDS_INVESTIGATION"
 
 
-def fast_rank_ic(sig_series, ret_series, ts_series):
-    """Vectorized per-timestamp Spearman correlation."""
-    df = pd.DataFrame({"signal": sig_series, "fwd": ret_series, "ts": ts_series}).dropna()
-    results = []
-    for ts, grp in df.groupby("ts"):
-        n = len(grp)
-        if n < 3:
-            results.append({"timestamp": ts, "rank_ic": np.nan, "n_symbols": n})
-            continue
-        rho, _ = stats.spearmanr(grp["signal"], grp["fwd"])
-        results.append({"timestamp": ts, "rank_ic": rho, "n_symbols": n})
-    return pd.DataFrame(results)
-
-
-def fast_quantile_spread(sig_series, ret_series, ts_series, n_quantiles=5):
-    """Vectorized per-timestamp quantile spread."""
-    df = pd.DataFrame({"signal": sig_series, "fwd": ret_series, "ts": ts_series}).dropna()
-    results = []
-    for ts, grp in df.groupby("ts"):
-        n = len(grp)
-        if n < n_quantiles * 2:
-            results.append({"timestamp": ts, "spread": np.nan, "n_top": 0, "n_bottom": 0})
-            continue
-        try:
-            buckets = pd.qcut(grp["signal"], n_quantiles, labels=False, duplicates="drop")
-        except ValueError:
-            results.append({"timestamp": ts, "spread": np.nan, "n_top": 0, "n_bottom": 0})
-            continue
-        top_mask = buckets == buckets.max()
-        bottom_mask = buckets == buckets.min()
-        spread = grp.loc[top_mask, "fwd"].mean() - grp.loc[bottom_mask, "fwd"].mean()
-        results.append({
-            "timestamp": ts, "spread": spread,
-            "n_top": int(top_mask.sum()), "n_bottom": int(bottom_mask.sum()),
-        })
-    return pd.DataFrame(results)
+def check_spread_parity(new_val, old_val, tol, new_dir, old_dir):
+    """Behavioral parity check for spread metrics."""
+    if new_val is None or (isinstance(new_val, float) and np.isnan(new_val)):
+        return "MISSING_NEW", "new_value_missing"
+    if old_val is None or (isinstance(old_val, float) and np.isnan(old_val)):
+        return "MISSING_OLD", "old_value_missing"
+    diff = abs(float(new_val) - float(old_val))
+    if diff <= 1e-9:
+        return "EXACT", "exact_match"
+    if diff <= tol and new_dir == old_dir:
+        return "BEHAVIORAL", f"same_direction_diff={diff:.2e}"
+    if new_dir != old_dir:
+        return "NEEDS_INVESTIGATION", f"direction_mismatch_new={new_dir}_old={old_dir}"
+    return "NEEDS_INVESTIGATION", f"diff={diff:.2e}_exceeds_tolerance={tol:.0e}"
 
 
 def main():
@@ -108,7 +99,7 @@ def main():
             "check_group": "input_check", "total_checks": 1, "pass_count": 0,
             "fail_count": 0, "missing_count": len(missing), "overall_status": "BLOCKED",
         }])
-        summary.to_csv(RUN_DIR / "phase12d_h2_signal_eval_parity_summary.csv", index=False)
+        summary.to_csv(RUN_DIR / "phase12d_h2_r_signal_eval_parity_summary.csv", index=False)
         return
 
     # Load data
@@ -125,39 +116,47 @@ def main():
     print(f"  Shape: {cur_labels.shape}")
 
     old_ric = pd.read_csv(OLD_RANKIC)
-    old_spread = pd.read_csv(OLD_SPREAD)
+    old_spread_df = pd.read_csv(OLD_SPREAD)
 
     # Filter signal panel to old label symbols for parity
     old_label_symbols = set(old_labels["symbol"].unique())
     sp_old = sp[sp["symbol"].isin(old_label_symbols)].copy()
     print(f"SP filtered for old labels: {sp_old.shape}")
 
-    # Pre-merge labels for each horizon (old labels are wide format)
+    # Prepare label dicts for each horizon
+    # Old labels are wide format — use select_forward_return with wide_column_map
+    old_wide_map = {hz: f"ret_fwd_{hz}" for hz in HORIZONS}
     old_label_dict = {}
     for hz in HORIZONS:
-        col = f"ret_fwd_{hz}"
-        old_label_dict[hz] = old_labels[["timestamp", "symbol", col]].rename(columns={col: "forward_return"}).dropna()
+        old_label_dict[hz] = select_forward_return(old_labels, hz, wide_column_map=old_wide_map)
 
-    # Also prepare current labels
     cur_label_dict = {}
     for hz in HORIZONS:
         cur_label_dict[hz] = select_forward_return(cur_labels, hz)
 
-    # --- RankIC parity ---
+    # --- RankIC parity (strict) ---
     ric_rows = []
     for sig in SIGNAL_NAMES:
         for hz in HORIZONS:
             print(f"  RankIC: {sig} × {hz}", end=" ", flush=True)
-            sig_vals = sp_old[["timestamp", "symbol", sig]].rename(columns={sig: "signal_value"}).dropna(subset=["signal_value"])
+
+            # Prepare tidy signal_df
+            sig_df = sp_old[["timestamp", "symbol", sig]].rename(
+                columns={sig: "signal_value"}
+            ).dropna(subset=["signal_value"])
+            sig_df["signal_name"] = sig
+
             label_h = old_label_dict[hz]
 
-            merged = sig_vals.merge(label_h, on=["timestamp", "symbol"], how="inner")
-            ric_ts = fast_rank_ic(merged["signal_value"], merged["forward_return"], merged["timestamp"])
-            n = len(ric_ts)
-            mean_ic = ric_ts["rank_ic"].mean()
-            std_ic = ric_ts["rank_ic"].std()
-            t_stat = mean_ic / std_ic * np.sqrt(n) if std_ic > 0 else np.nan
+            # PUBLIC API CALLS
+            ric_ts = compute_rank_ic(sig_df, label_h)
+            ric_summary = summarize_rank_ic(ric_ts)
 
+            new_mean = ric_summary["mean_rank_ic"]
+            new_t = ric_summary["t_stat"]
+            new_n = ric_summary["n_periods"]
+
+            # Old values
             old_row = old_ric[(old_ric["signal_id"] == sig) & (old_ric["horizon"] == hz)]
             if old_row.empty:
                 old_mean, old_t, old_n = np.nan, np.nan, np.nan
@@ -166,47 +165,65 @@ def main():
                 old_t = old_row["t_stat"].iloc[0]
                 old_n = old_row["n_timestamps"].iloc[0]
 
-            p_mean = check_parity(mean_ic, old_mean, TOLERANCE["mean_rank_ic"])
-            p_t = check_parity(t_stat, old_t, TOLERANCE["t_stat"])
-            p_n = check_parity(n, old_n, TOLERANCE["n_periods"])
+            p_mean = check_rankic_parity(new_mean, old_mean, RANKIC_TOLERANCE["mean_rank_ic"])
+            p_t = check_rankic_parity(new_t, old_t, RANKIC_TOLERANCE["t_stat"])
+            p_n = check_rankic_parity(new_n, old_n, RANKIC_TOLERANCE["n_periods"])
 
-            status = "PASS" if all(p == "PASS" for p in [p_mean, p_t, p_n]) else "FAIL"
-            if any(p.startswith("MISSING") for p in [p_mean, p_t, p_n]):
+            # Overall: EXACT if all EXACT, else NEEDS_INVESTIGATION
+            levels = [p_mean, p_t, p_n]
+            if any(l.startswith("MISSING") for l in levels):
                 status = "MISSING"
+                level = "MISSING"
+            elif all(l == "EXACT" for l in levels):
+                status = "PASS"
+                level = "EXACT"
+            else:
+                status = "NEEDS_INVESTIGATION"
+                level = "INVESTIGATE"
 
-            print(f"new={mean_ic:.6f} old={old_mean:.6f} diff={mean_ic-old_mean if not np.isnan(old_mean) else np.nan:.2e} [{status}]")
+            diff_mean = new_mean - old_mean if not np.isnan(old_mean) else np.nan
+            print(f"new={new_mean:.9f} old={old_mean:.9f} diff={diff_mean:.2e} [{level}]")
 
             ric_rows.append({
                 "signal_name": sig, "horizon": hz,
-                "new_mean_rank_ic": mean_ic, "old_mean_rank_ic": old_mean,
-                "diff_mean_rank_ic": mean_ic - old_mean if not np.isnan(old_mean) else np.nan,
-                "new_t_stat": t_stat, "old_t_stat": old_t,
-                "diff_t_stat": t_stat - old_t if not np.isnan(old_t) else np.nan,
-                "new_n_periods": n, "old_n_periods": int(old_n) if not np.isnan(old_n) else np.nan,
+                "new_mean_rank_ic": new_mean, "old_mean_rank_ic": old_mean,
+                "diff_mean_rank_ic": diff_mean,
+                "new_t_stat": new_t, "old_t_stat": old_t,
+                "diff_t_stat": new_t - old_t if not np.isnan(old_t) else np.nan,
+                "new_n_periods": int(new_n),
+                "old_n_periods": int(old_n) if not np.isnan(old_n) else np.nan,
                 "parity_mean": p_mean, "parity_tstat": p_t, "parity_nperiods": p_n,
                 "parity_status": status,
+                "parity_level": level,
             })
 
     ric_df = pd.DataFrame(ric_rows)
-    ric_df.to_csv(RUN_DIR / "phase12d_h2_signal_eval_parity_rankic.csv", index=False)
+    ric_df.to_csv(RUN_DIR / "phase12d_h2_r_signal_eval_parity_rankic.csv", index=False)
 
-    # --- Quantile Spread parity ---
+    # --- Quantile Spread parity (behavioral) ---
     spread_rows = []
     for sig in SIGNAL_NAMES:
         for hz in HORIZONS:
             print(f"  Spread: {sig} × {hz}", end=" ", flush=True)
-            sig_vals = sp_old[["timestamp", "symbol", sig]].rename(columns={sig: "signal_value"}).dropna(subset=["signal_value"])
+
+            sig_df = sp_old[["timestamp", "symbol", sig]].rename(
+                columns={sig: "signal_value"}
+            ).dropna(subset=["signal_value"])
+            sig_df["signal_name"] = sig
+
             label_h = old_label_dict[hz]
 
-            merged = sig_vals.merge(label_h, on=["timestamp", "symbol"], how="inner")
-            spread_ts = fast_quantile_spread(merged["signal_value"], merged["forward_return"], merged["timestamp"], n_quantiles=5)
-            valid = spread_ts["spread"].dropna()
-            n = len(valid)
-            mean_s = valid.mean()
-            median_s = valid.median()
-            hit = (valid > 0).mean()
+            # PUBLIC API CALLS
+            spread_ts = compute_quantile_spread(sig_df, label_h, n_quantiles=5)
+            spread_summary = summarize_quantile_spread(spread_ts)
 
-            old_row = old_spread[(old_spread["signal_id"] == sig) & (old_spread["horizon"] == hz)]
+            new_mean_s = spread_summary["mean_spread"]
+            new_median_s = spread_summary["median_spread"]
+            new_hit = spread_summary["positive_fraction"]
+            new_n = spread_summary["n_periods"]
+
+            # Old values
+            old_row = old_spread_df[(old_spread_df["signal_id"] == sig) & (old_spread_df["horizon"] == hz)]
             if old_row.empty:
                 old_mean_s, old_hit, old_n = np.nan, np.nan, np.nan
             else:
@@ -214,92 +231,112 @@ def main():
                 old_hit = old_row["hit_rate"].iloc[0]
                 old_n = old_row["n_timestamps"].iloc[0]
 
-            p_mean = check_parity(mean_s, old_mean_s, TOLERANCE["mean_spread"])
-            p_hit = check_parity(hit, old_hit, TOLERANCE["positive_fraction"])
-            p_n = check_parity(n, old_n, TOLERANCE["n_periods"])
+            # Direction: negative = short top bucket, positive = long top bucket
+            new_dir = "negative" if new_mean_s < 0 else "positive"
+            old_dir = "negative" if (not np.isnan(old_mean_s) and old_mean_s < 0) else "positive"
 
-            status = "PASS" if all(p == "PASS" for p in [p_mean, p_hit, p_n]) else "FAIL"
-            if any(p.startswith("MISSING") for p in [p_mean, p_hit, p_n]):
+            p_mean, reason_mean = check_spread_parity(
+                new_mean_s, old_mean_s, SPREAD_TOLERANCE["mean_spread"], new_dir, old_dir)
+            p_hit, reason_hit = check_spread_parity(
+                new_hit, old_hit, SPREAD_TOLERANCE["positive_fraction"], new_dir, old_dir)
+            p_n = check_rankic_parity(new_n, old_n, SPREAD_TOLERANCE["n_periods"])
+
+            levels = [p_mean, p_hit, p_n]
+            if any(l.startswith("MISSING") for l in levels):
                 status = "MISSING"
+                level = "MISSING"
+                reason = "missing_data"
+            elif all(l == "EXACT" for l in levels):
+                status = "PASS"
+                level = "EXACT"
+                reason = "exact_match"
+            elif all(l in ("EXACT", "BEHAVIORAL") for l in levels):
+                status = "PASS"
+                level = "BEHAVIORAL"
+                reason = f"mean:{reason_mean};hit:{reason_hit}"
+            else:
+                status = "NEEDS_INVESTIGATION"
+                level = "INVESTIGATE"
+                reason = f"mean:{reason_mean};hit:{reason_hit}"
 
-            print(f"new={mean_s:.6f} old={old_mean_s:.6f} [{status}]")
+            diff_s = new_mean_s - old_mean_s if not np.isnan(old_mean_s) else np.nan
+            print(f"new={new_mean_s:.6f} old={old_mean_s:.6f} diff={diff_s:.2e} [{level}]")
 
             spread_rows.append({
                 "signal_name": sig, "horizon": hz,
-                "new_mean_spread": mean_s, "old_mean_spread": old_mean_s,
-                "diff_mean_spread": mean_s - old_mean_s if not np.isnan(old_mean_s) else np.nan,
-                "new_median_spread": median_s, "old_median_spread": np.nan,
-                "new_positive_fraction": hit, "old_positive_fraction": old_hit,
-                "diff_positive_fraction": hit - old_hit if not np.isnan(old_hit) else np.nan,
-                "new_n_periods": n, "old_n_periods": int(old_n) if not np.isnan(old_n) else np.nan,
+                "new_mean_spread": new_mean_s, "old_mean_spread": old_mean_s,
+                "diff_mean_spread": diff_s,
+                "new_median_spread": new_median_s, "old_median_spread": np.nan,
+                "new_positive_fraction": new_hit, "old_positive_fraction": old_hit,
+                "diff_positive_fraction": new_hit - old_hit if not np.isnan(old_hit) else np.nan,
+                "new_n_periods": int(new_n),
+                "old_n_periods": int(old_n) if not np.isnan(old_n) else np.nan,
                 "parity_mean": p_mean, "parity_hit": p_hit, "parity_nperiods": p_n,
                 "parity_status": status,
+                "parity_level": level,
+                "difference_reason": reason,
             })
 
     spread_df = pd.DataFrame(spread_rows)
-    spread_df.to_csv(RUN_DIR / "phase12d_h2_signal_eval_parity_quantile_spread.csv", index=False)
+    spread_df.to_csv(RUN_DIR / "phase12d_h2_r_signal_eval_parity_quantile_spread.csv", index=False)
 
-    # --- Consistency check using current labels ---
+    # --- Consistency check using PUBLIC API + current labels ---
     print("\nConsistency check (current labels):")
     cur_label_symbols = set(cur_labels["symbol"].unique())
     sp_cur = sp[sp["symbol"].isin(cur_label_symbols)].copy()
     for sig in SIGNAL_NAMES:
-        sig_vals = sp_cur[["timestamp", "symbol", sig]].rename(columns={sig: "signal_value"}).dropna(subset=["signal_value"])
-        for hz in ["1h"]:
-            label_h = cur_label_dict[hz]
-            merged = sig_vals.merge(label_h, on=["timestamp", "symbol"], how="inner")
-            ric_ts = fast_rank_ic(merged["signal_value"], merged["forward_return"], merged["timestamp"])
-            spread_ts = fast_quantile_spread(merged["signal_value"], merged["forward_return"], merged["timestamp"])
-            ric_s = {
-                "mean_rank_ic": ric_ts["rank_ic"].mean(),
-                "std_rank_ic": ric_ts["rank_ic"].std(),
-                "n_periods": len(ric_ts),
-                "t_stat": ric_ts["rank_ic"].mean() / ric_ts["rank_ic"].std() * np.sqrt(len(ric_ts)),
-                "positive_fraction": (ric_ts["rank_ic"] > 0).mean(),
-            }
-            sp_s = {
-                "mean_spread": spread_ts["spread"].mean(),
-                "median_spread": spread_ts["spread"].median(),
-                "std_spread": spread_ts["spread"].std(),
-                "positive_fraction": (spread_ts["spread"] > 0).mean(),
-                "n_periods": len(spread_ts),
-            }
-            from momentum.signal_evaluation.consistency import check_rankic_spread_consistency
-            result = check_rankic_spread_consistency(ric_s, sp_s)
-            print(f"  {sig} 1h: {result} (IC={ric_s['mean_rank_ic']:.6f}, spread={sp_s['mean_spread']:.6f})")
+        sig_df = sp_cur[["timestamp", "symbol", sig]].rename(
+            columns={sig: "signal_value"}
+        ).dropna(subset=["signal_value"])
+        sig_df["signal_name"] = sig
+
+        label_h = cur_label_dict["1h"]
+
+        # PUBLIC API CALLS
+        ric_ts = compute_rank_ic(sig_df, label_h)
+        ric_s = summarize_rank_ic(ric_ts)
+        spread_ts = compute_quantile_spread(sig_df, label_h)
+        sp_s = summarize_quantile_spread(spread_ts)
+        result = check_rankic_spread_consistency(ric_s, sp_s)
+        print(f"  {sig} 1h: {result} (IC={ric_s['mean_rank_ic']:.6f}, spread={sp_s['mean_spread']:.6f})")
 
     # --- Summary ---
-    ric_pass = (ric_df["parity_status"] == "PASS").sum()
-    ric_fail = (ric_df["parity_status"] == "FAIL").sum()
-    ric_miss = (ric_df["parity_status"] == "MISSING").sum()
-    sp_pass = (spread_df["parity_status"] == "PASS").sum()
-    sp_fail = (spread_df["parity_status"] == "FAIL").sum()
-    sp_miss = (spread_df["parity_status"] == "MISSING").sum()
+    ric_exact = (ric_df["parity_level"] == "EXACT").sum()
+    ric_investigate = (ric_df["parity_level"] == "INVESTIGATE").sum()
+    ric_missing = ric_df["parity_level"].isin(["MISSING", "MISSING_NEW", "MISSING_OLD"]).sum()
 
-    total_pass = ric_pass + sp_pass
-    total_fail = ric_fail + sp_fail
-    total_miss = ric_miss + sp_miss
-    total = total_pass + total_fail + total_miss
+    sp_exact = (spread_df["parity_level"] == "EXACT").sum()
+    sp_behavioral = (spread_df["parity_level"] == "BEHAVIORAL").sum()
+    sp_investigate = (spread_df["parity_level"] == "INVESTIGATE").sum()
+    sp_missing = spread_df["parity_level"].isin(["MISSING", "MISSING_NEW", "MISSING_OLD"]).sum()
 
-    overall = "PASS" if total_fail == 0 and total_miss == 0 else ("NEEDS_INVESTIGATION" if total_fail > 0 else "BLOCKED")
+    ric_ok = ric_exact == len(ric_df)
+    sp_ok = (sp_exact + sp_behavioral) == len(spread_df)
+    overall = "PASS" if ric_ok and sp_ok else "NEEDS_INVESTIGATION"
 
     summary = pd.DataFrame([
         {"check_group": "rankic_parity", "total_checks": len(ric_df),
-         "pass_count": ric_pass, "fail_count": ric_fail, "missing_count": ric_miss,
-         "overall_status": "PASS" if ric_fail == 0 and ric_miss == 0 else "NEEDS_INVESTIGATION"},
+         "exact_count": ric_exact, "investigate_count": ric_investigate,
+         "missing_count": ric_missing,
+         "overall_status": "PASS" if ric_ok else "NEEDS_INVESTIGATION"},
         {"check_group": "quantile_spread_parity", "total_checks": len(spread_df),
-         "pass_count": sp_pass, "fail_count": sp_fail, "missing_count": sp_miss,
-         "overall_status": "PASS" if sp_fail == 0 and sp_miss == 0 else "NEEDS_INVESTIGATION"},
-        {"check_group": "overall", "total_checks": total,
-         "pass_count": total_pass, "fail_count": total_fail, "missing_count": total_miss,
+         "exact_count": sp_exact, "behavioral_count": sp_behavioral,
+         "investigate_count": sp_investigate, "missing_count": sp_missing,
+         "overall_status": "PASS" if sp_ok else "NEEDS_INVESTIGATION"},
+        {"check_group": "overall", "total_checks": len(ric_df) + len(spread_df),
+         "exact_count": ric_exact + sp_exact,
+         "behavioral_count": sp_behavioral,
+         "investigate_count": ric_investigate + sp_investigate,
+         "missing_count": ric_missing + sp_missing,
          "overall_status": overall},
     ])
-    summary.to_csv(RUN_DIR / "phase12d_h2_signal_eval_parity_summary.csv", index=False)
+    summary.to_csv(RUN_DIR / "phase12d_h2_r_signal_eval_parity_summary.csv", index=False)
 
     print(f"\n{'='*60}")
-    print(f"RankIC:    {ric_pass} PASS / {ric_fail} FAIL / {ric_miss} MISSING")
-    print(f"Spread:    {sp_pass} PASS / {sp_fail} FAIL / {sp_miss} MISSING")
+    print(f"RankIC:    {ric_exact} EXACT / {ric_investigate} INVESTIGATE / {ric_missing} MISSING")
+    print(f"Spread:    {sp_exact} EXACT / {sp_behavioral} BEHAVIORAL / {sp_investigate} INVESTIGATE")
     print(f"Overall:   {overall}")
+    print(f"H3 gate:   {'OPEN' if ric_ok and sp_ok else 'BLOCKED — investigate before H3'}")
     print(f"{'='*60}")
 
 

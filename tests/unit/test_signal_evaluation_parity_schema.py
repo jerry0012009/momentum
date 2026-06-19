@@ -1,109 +1,69 @@
-"""Tests for parity harness schema and logic."""
+"""Tests for parity harness: verifies public API usage and schema."""
 
-import pandas as pd
-import numpy as np
 import pytest
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-
-SIGNAL_NAMES = [
-    "signal_v0_core_only",
-    "signal_v0_pm_full_structured",
-    "signal_v0_family_balanced_diagnostic",
-]
-HORIZONS = ["1h", "4h", "24h", "72h"]
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "run_signal_evaluation_parity_harness.py"
+SOURCE = SCRIPT.read_text()
 
 
-class TestSignalPanelTidyConversion:
-    """Wide signal panel can be converted to tidy format."""
+class TestPublicAPIUsage:
+    """Harness must use public signal_evaluation API."""
 
-    def test_melt_to_tidy(self):
-        wide = pd.DataFrame({
-            "timestamp": ["2025-01-01"] * 3,
-            "symbol": ["A", "B", "C"],
-            "signal_v0_core_only": [1.0, 2.0, 3.0],
-            "signal_v0_pm_full_structured": [0.5, 1.5, 2.5],
-        })
-        tidied = wide.melt(
-            id_vars=["timestamp", "symbol"],
-            value_vars=["signal_v0_core_only", "signal_v0_pm_full_structured"],
-            var_name="signal_name",
-            value_name="signal_value",
-        )
-        assert set(tidied.columns) == {"timestamp", "symbol", "signal_name", "signal_value"}
-        assert len(tidied) == 6
+    def test_imports_compute_rank_ic(self):
+        assert "from momentum.signal_evaluation" in SOURCE
+        assert "compute_rank_ic" in SOURCE
 
-    def test_nan_dropped(self):
-        wide = pd.DataFrame({
-            "timestamp": ["2025-01-01"] * 3,
-            "symbol": ["A", "B", "C"],
-            "signal_v0_core_only": [1.0, np.nan, 3.0],
-        })
-        tidied = wide.melt(
-            id_vars=["timestamp", "symbol"],
-            value_vars=["signal_v0_core_only"],
-            var_name="signal_name",
-            value_name="signal_value",
-        ).dropna(subset=["signal_value"])
-        assert len(tidied) == 2
+    def test_imports_compute_quantile_spread(self):
+        assert "compute_quantile_spread" in SOURCE
+
+    def test_imports_summarize_rank_ic(self):
+        assert "summarize_rank_ic" in SOURCE
+
+    def test_imports_summarize_quantile_spread(self):
+        assert "summarize_quantile_spread" in SOURCE
+
+    def test_imports_select_forward_return(self):
+        assert "select_forward_return" in SOURCE
+
+    def test_imports_check_consistency(self):
+        assert "check_rankic_spread_consistency" in SOURCE
+
+    def test_no_fast_rank_ic(self):
+        assert "def fast_rank_ic" not in SOURCE, "Must not define inline fast_rank_ic"
+
+    def test_no_fast_quantile_spread(self):
+        assert "def fast_quantile_spread" not in SOURCE, "Must not define inline fast_quantile_spread"
+
+    def test_no_scipy_import(self):
+        assert "from scipy" not in SOURCE, "Must not import scipy directly — use public API"
+
+
+class TestParityLevels:
+    """Parity output must include parity_level field."""
+
+    def test_rankic_has_parity_level(self):
+        assert '"parity_level"' in SOURCE
+
+    def test_spread_has_difference_reason(self):
+        assert '"difference_reason"' in SOURCE
+
+    def test_spread_has_behavioral_level(self):
+        assert "BEHAVIORAL" in SOURCE
 
 
 class TestSignalNames:
-    """Expected 3 signal names recognized."""
+    """Expected 3 signal names."""
 
     def test_three_signals(self):
-        assert len(SIGNAL_NAMES) == 3
-
-    def test_signal_name_format(self):
-        for name in SIGNAL_NAMES:
-            assert name.startswith("signal_v0_")
+        for name in ["signal_v0_core_only", "signal_v0_pm_full_structured", "signal_v0_family_balanced_diagnostic"]:
+            assert name in SOURCE
 
 
 class TestHorizons:
-    """Expected 4 horizons recognized."""
+    """Expected 4 horizons."""
 
     def test_four_horizons(self):
-        assert len(HORIZONS) == 4
-
-    def test_horizon_values(self):
-        assert set(HORIZONS) == {"1h", "4h", "24h", "72h"}
-
-
-class TestParityStatusLogic:
-    """Parity status logic works correctly."""
-
-    def _check_parity(self, new_val, old_val, tol):
-        """Mirror of the parity check in the harness."""
-        if new_val is None or (isinstance(new_val, float) and np.isnan(new_val)):
-            return "MISSING_NEW"
-        if old_val is None or (isinstance(old_val, float) and np.isnan(old_val)):
-            return "MISSING_OLD"
-        if tol == 0:
-            return "PASS" if int(new_val) == int(old_val) else "FAIL"
-        return "PASS" if abs(float(new_val) - float(old_val)) <= tol else "FAIL"
-
-    def test_pass_within_tolerance(self):
-        assert self._check_parity(0.032482, 0.032482, 1e-6) == "PASS"
-
-    def test_fail_outside_tolerance(self):
-        assert self._check_parity(0.033, 0.032, 1e-6) == "FAIL"
-
-    def test_pass_at_boundary(self):
-        assert self._check_parity(0.032001, 0.032000, 1e-3) == "PASS"
-
-    def test_missing_new(self):
-        assert self._check_parity(np.nan, 0.032, 1e-6) == "MISSING_NEW"
-
-    def test_missing_old(self):
-        assert self._check_parity(0.032, np.nan, 1e-6) == "MISSING_OLD"
-
-    def test_exact_match_n_periods(self):
-        assert self._check_parity(17520, 17520, 0) == "PASS"
-
-    def test_fail_exact_mismatch(self):
-        assert self._check_parity(17521, 17520, 0) == "FAIL"
-
-    def test_pass_n_periods_within_tolerance(self):
-        assert self._check_parity(17520, 17519, 2) == "PASS"
+        for hz in ["1h", "4h", "24h", "72h"]:
+            assert f'"{hz}"' in SOURCE
