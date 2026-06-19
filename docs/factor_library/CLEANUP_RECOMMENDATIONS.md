@@ -10,7 +10,7 @@
 1. **Keep all active mainline scripts as-is.** No changes needed.
 2. **Keep all public pages as-is.** The 4-page public nav is correct and minimal.
 3. **Keep all evaluation outputs as-is.** They are current and valid.
-4. **Keep `evaluate_factors_dynamic_universe.py` in scripts/ but mark as stale.** Do not delete — it is evidence of the old evaluator design.
+4. **Keep `evaluate_factors_dynamic_universe.py` in scripts/ as DEPRECATED_STALE / HISTORICAL_REFERENCE.** Do not delete, do not move, do not re-enable. It is evidence of the old evaluator design. Canonical evaluator: `scripts/evaluate_factors.py`.
 
 ## Deferred Recommendations
 
@@ -32,7 +32,7 @@
 
 - `scripts/export_alphalens_factor_data.py` → archive
 - `scripts/run_alphalens_smoke_check.py` → archive
-- `scripts/evaluate_factors_dynamic_universe.py` → archive (mark as stale)
+- `scripts/evaluate_factors_dynamic_universe.py` → DEPRECATED_STALE / HISTORICAL_REFERENCE (keep in place)
 - Root `PHASE_12D_*.md` files → move to docs/phase_closeout/
 
 ## Needs Human Decision
@@ -41,6 +41,10 @@
 2. **Crypto-native factors:** Should `scripts/build_crypto_native_factor_values.py` be part of the main factor building pipeline?
 3. **Alphalens integration:** Should we revive Alphalens for factor screening, or is it permanently archived?
 4. **Root-level phase docs:** Should they be moved to docs/ or left in root?
+
+## Scope Note
+
+This document covers the factor library research pipeline only. It is not a full momentum repository inventory. Strategy research scripts (~440 files), historical experiments, and non-factor-library files are not individually listed here.
 
 ## Potential Future Directions (Not Recommendations)
 

@@ -33,7 +33,7 @@ build_labels.py
 factor_formula_registry.py (804 lines, 53 factors)
   ↓
 build_factor_values.py
-  → data/features/…/⟨factor⟩/factor_values.parquet (47 factors)
+  → data/features/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/⟨factor⟩/factor_values.parquet (47 factors)
 
 build_phase9b_signal_panel.py
   → research/factor_runs/crypto_top50_factor_library/phase9b_signal_panel.parquet
@@ -80,7 +80,7 @@ check_factor_ic_parity.py (H8-R parity guard)
 | `src/momentum/signal_evaluation/` | Public API: `compute_rank_ic`, `compute_quantile_spread`, `evaluate_signal` |
 | `src/momentum/factors/` | Reusable factor modules (chip_dist, confirmed_extrema, endpoint_nw, pytrendline) |
 | `src/momentum/signals/` | Reusable signal modules (ema_donchian, multi_tf_momentum, etc.) |
-| `src/momentum/strategies/` | Strategy implementations (rank154, rank32c) |
+| `src/momentum/strategies/` | **OUT_OF_SCOPE** — Adjacent strategy research (rank154, rank32c). Not part of factor library mainline. Does not participate in factor registry → factor values → factor IC → signal panel chain. |
 
 ---
 
@@ -91,7 +91,7 @@ check_factor_ic_parity.py (H8-R parity guard)
 | Raw bars | `data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet` |
 | Universe | `data/universe/crypto_usdt_perp_monthly_volume_top50_current_listed_v1/` |
 | Labels | `data/features/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/labels.parquet` |
-| Factor values | `data/features/crypto_top50_usdt_perp_1h/⟨factor⟩/factor_values.parquet` |
+| Factor values | `data/features/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/⟨factor⟩/factor_values.parquet` |
 | Signal panel | `research/factor_runs/crypto_top50_factor_library/phase9b_signal_panel.parquet` |
 
 ---
@@ -151,7 +151,7 @@ check_factor_ic_parity.py (H8-R parity guard)
 
 - Phase 10 scripts: `archive/legacy_phase_scripts/phase10/` (4 files)
 - Old site pages: `reports/site/factor-library/_archive/` (21 pages)
-- Old factor evaluator: `scripts/evaluate_factors_dynamic_universe.py` → HISTORICAL_ARCHIVE
+- Old factor evaluator: `scripts/evaluate_factors_dynamic_universe.py` → DEPRECATED_STALE / HISTORICAL_REFERENCE (broken, cannot run; kept as evidence of old design; canonical evaluator is `scripts/evaluate_factors.py`)
 - Alphalens exports: `research/factor_runs/crypto_top50_factor_library/alphalens_exports/` → HISTORICAL_ARCHIVE
 - Strategy research scripts (~440 files): NOT part of factor library mainline
 
@@ -164,6 +164,8 @@ check_factor_ic_parity.py (H8-R parity guard)
 3. Read `FILE_STATUS_REGISTER.csv` for file-level status
 4. Read `ORPHAN_WORK_AUDIT.md` for orphan risks
 5. Check `phase12d_h9_governance_quality_checks.csv` for quality gate
+6. Check `phase12d_h9_r_governance_consistency_quality_checks.csv` for H9-R consistency gate
+7. **Scope note:** This control center covers the factor library research pipeline only, not the full momentum repository.
 
 ---
 

@@ -9,9 +9,9 @@
 
 ### 1. `scripts/evaluate_factors_dynamic_universe.py`
 
-- **Status:** DEPRECATED_STALE
+- **Status:** DEPRECATED_STALE / HISTORICAL_REFERENCE
 - **Reason:** Imports `evaluate_factors` which did not exist until H8 created a new one. The old import targets a different file with a different API. The script is broken and cannot run.
-- **Action:** Archive. Do not use as evaluator. The canonical evaluator is now `scripts/evaluate_factors.py` (H8/H8-R).
+- **Action:** Keep in place. Do not use as evaluator. Do not move. Do not delete. Do not re-enable. The canonical evaluator is `scripts/evaluate_factors.py` (H8/H8-R). The canonical parity guard is `scripts/check_factor_ic_parity.py` (H8-R).
 
 ### 2. `scripts/compare_static_dynamic_factor_evals.py`
 
