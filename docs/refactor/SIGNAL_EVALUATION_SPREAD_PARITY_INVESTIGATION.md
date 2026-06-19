@@ -4,7 +4,9 @@
 
 ## Summary
 
-New `compute_quantile_spread` and old Phase 10A spread differ by ~1e-3 to 1e-4. Root cause: **different bucket construction algorithms** — old uses rank-based head/tail, new uses pd.qcut quintile boundaries.
+New `compute_quantile_spread` and old Phase 10A spread differ by ~4-8%. Root cause: **different bucket construction algorithms** — old uses rank-based head/tail, new uses pd.qcut quintile boundaries.
+
+---
 
 ## Old Algorithm (Phase 10A)
 
@@ -50,31 +52,99 @@ for ts, grp in merged.groupby(group_col):
 - Bucket sizes may vary (tied values at boundaries)
 - `min_symbols = n_quantiles * 2 = 10`
 
-## Root Cause: 3 Differences
+---
 
-### 1. Bucket Construction Method
-- **Old**: Rank-based (sort + head/tail) — always exactly 10 symbols per leg
-- **New**: qcut (quantile boundaries) — bucket sizes may differ if values cluster at boundaries
+## Mandatory Comparison Points (9/9)
 
-For n=50 with qcut(5), each bucket nominally has 10 symbols. But if signal values cluster near a quantile boundary, qcut may assign 11 to one bucket and 9 to another, while the old script always takes exactly 10.
+### 1. Quantile Definition (5 quantiles?)
 
-### 2. Symbol Membership at Bucket Edges
-- **Old**: `head(10)` after sorting — deterministic, always the 10 highest
-- **New**: `buckets == buckets.max()` — picks all symbols in the top quintile bucket
+| | Old | New |
+|---|---|---|
+| Method | `QUANTILE_FRAC = 0.20` → 5 buckets | `n_quantiles = 5` |
+| Bucket selection | Top/bottom 20% by rank | Top/bottom quintile by qcut |
+| **Match?** | Same quantile count | **Yes** |
 
-If a symbol has a signal value exactly at the 80th percentile:
-- Old: it's in `head(10)` (included in long)
-- New: it's in bucket 4 (included in top) — usually the same, but if there's a tie, qcut may put it in bucket 3
+### 2. Top-Bottom Direction Consistency
 
-### 3. Min Symbols Threshold
-- **Old**: `MIN_CROSS_SECTION = 10`
-- **New**: `n_quantiles * 2 = 10` (same effective threshold)
+| | Old | New |
+|---|---|---|
+| Long leg | `head(n_q)` = highest signals | `buckets == max` = highest quintile |
+| Short leg | `tail(n_q)` = lowest signals | `buckets == min` = lowest quintile |
+| Spread | long_mean - short_mean | top_mean - bottom_mean |
+| **Match?** | Same direction | **Yes** |
 
-This is actually the same, so no difference from this source.
+### 3. Winsorization/Trimming
+
+| | Old | New |
+|---|---|---|
+| Winsorization | None | None |
+| Trimming | None | None |
+| **Match?** | Both raw | **Yes** |
+
+### 4. Per-Timestamp vs All-Timestamp qcut
+
+| | Old | New |
+|---|---|---|
+| Grouping | `df.groupby("ts")` → per-timestamp | `merged.groupby(group_col)` → per-timestamp |
+| Bucketing | Per-timestamp sort + head/tail | Per-timestamp pd.qcut |
+| **Match?** | Both per-timestamp | **Yes** |
+
+### 5. `duplicates="drop"` Usage
+
+| | Old | New |
+|---|---|---|
+| Ties | Not explicitly handled (sort is stable) | `duplicates="drop"` merges tied buckets |
+| Impact | Old always takes n_q symbols | New may have fewer buckets if ties |
+| **Match?** | **No** — tie handling differs | Root cause #2 |
+
+### 6. Symbol Universe (50 vs 266)
+
+| | Old | New |
+|---|---|---|
+| Universe | 50 label symbols only | 266 panel symbols filtered to 50 |
+| Filtering | Inner join with labels → 50 symbols | `sp[sp["symbol"].isin(label_symbols)]` → 50 |
+| **Match?** | Same 50 symbols | **Yes** (after filtering) |
+
+### 7. NaN Filtering Before Binning
+
+| | Old | New |
+|---|---|---|
+| Method | `df.dropna()` before groupby | `grp.dropna()` inside groupby |
+| Columns | signal + fwd + ts | signal_value + forward_return |
+| **Match?** | Same effect | **Yes** |
+
+### 8. Handling of Insufficient Bins per Timestamp
+
+| | Old | New |
+|---|---|---|
+| Threshold | `n < MIN_CROSS_SECTION (10)` → skip | `n < n_quantiles * 2 (10)` → skip |
+| Behavior | Skip timestamp entirely | Return NaN |
+| **Match?** | Same threshold | **Yes** |
+
+### 9. Use of Alphalens vs Current Labels
+
+| | Old | New |
+|---|---|---|
+| Label source | `alphalens_exports/.../forward_returns_long.parquet` | Same file (for parity) |
+| Format | Wide (ret_fwd_1h, etc.) | Converted to tidy via `select_forward_return` |
+| Values | Same numeric values | Same (verified by n_periods match) |
+| **Match?** | Same data | **Yes** |
+
+---
+
+## Root Cause Summary
+
+| # | Difference | Impact | Severity |
+|---|-----------|--------|----------|
+| 1 | Bucket construction (rank vs qcut) | 4-8% spread diff | Low |
+| 2 | Tie handling (duplicates="drop") | Minor bucket membership | Low |
+| 3 | Min symbols threshold | No difference | None |
+
+**Only 2 real differences, both low-impact.**
+
+---
 
 ## Quantified Impact
-
-From the H2-R parity results:
 
 | Signal | Horizon | Old Spread | New Spread | Diff | Diff % |
 |--------|---------|------------|------------|------|--------|
@@ -83,35 +153,66 @@ From the H2-R parity results:
 | core_only | 24h | -0.006742 | -0.006411 | 3.3e-4 | 4.9% |
 | core_only | 72h | -0.016623 | -0.015943 | 6.8e-4 | 4.1% |
 
-Differences are 4-8% of the spread value, consistent with bucket boundary effects.
+---
 
-## Is This Safe?
+## Legacy-Compatible Mode Design (Design Only — NOT Implemented)
 
-**Yes.** Both methods measure the same thing (top vs bottom signal quintile forward return). The differences are:
-- Small (4-8%)
-- Same direction (all negative)
-- Same interpretation (high-signal coins underperform low-signal coins)
+### Proposal
 
-The new method (qcut) is actually **more statistically correct** because it uses proper quantile boundaries rather than arbitrary rank cutoffs.
+Add a `mode` parameter to `compute_quantile_spread`:
 
-## Recommendation
+```python
+def compute_quantile_spread(
+    signal_df, label_df,
+    signal_col="signal_value", return_col="forward_return",
+    group_col="timestamp", n_quantiles=5,
+    mode="standard",           # NEW: "standard" or "legacy_phase10a"
+    quantile_frac=0.20,        # Only used in legacy mode
+) -> pd.DataFrame:
+```
 
-### For H3 Wrapper Refactor
+### Behavior by Mode
 
-**Do NOT add a `legacy_phase10a` mode.** The differences are small, same-direction, and the new method is more correct. Instead:
+| Aspect | `standard` (default) | `legacy_phase10a` |
+|--------|---------------------|-------------------|
+| Bucket method | `pd.qcut(n_quantiles)` | `sort + head/tail` |
+| Bucket size | Variable (qcut boundaries) | Fixed `int(n * quantile_frac)` |
+| Tie handling | `duplicates="drop"` | Stable sort, deterministic |
+| Compatibility | Clean, modern | Exact Phase 10A match |
 
-1. Accept BEHAVIORAL parity as sufficient for H3
-2. Document that wrapper outputs will differ slightly from old Phase 10A (4-8% on spread values)
-3. The RankIC is the primary metric for signal quality — it's exact parity
-4. Spread is secondary — behavioral parity is sufficient
+### Implementation Sketch (NOT implemented)
 
-### H3 Gate Status
+```python
+if mode == "legacy_phase10a":
+    n_q = max(int(n * quantile_frac), 1)
+    ranked = grp.sort_values(signal_col, ascending=False)
+    top = ranked.head(n_q)[return_col].mean()
+    bottom = ranked.tail(n_q)[return_col].mean()
+    spread = top - bottom
+else:  # standard
+    buckets = pd.qcut(grp[signal_col], n_quantiles, labels=False, duplicates="drop")
+    ...
+```
+
+### Recommendation
+
+**Do NOT implement now.** Reasons:
+1. The new method (qcut) is more statistically correct
+2. The 4-8% diff is small and same-direction
+3. Adding legacy mode increases API surface and maintenance burden
+4. If exact backward compatibility is needed later, the design is ready
+
+**If implementing later**: Only do so if a downstream consumer requires exact Phase 10A spread values for comparison. Add deprecation warning on `legacy_phase10a` mode.
+
+---
+
+## H3 Gate Status
 
 | Metric | Status | Gate |
 |--------|--------|------|
 | RankIC | PASS_ROUNDED_REFERENCE | Open |
 | Spread | BEHAVIORAL | Open (with documentation) |
 | n_periods | EXACT | Open |
-| **Overall** | **OPEN_FOR_WRAPPER_REFACTOR** | Proceed to H3 |
+| **Overall** | **OPEN_FOR_RANKIC_WRAPPER_ONLY** | Proceed to H3 |
 
 **Condition**: H3 wrapper must document that spread outputs may differ by 4-8% from old Phase 10A due to quantile construction method. This is expected and acceptable.
