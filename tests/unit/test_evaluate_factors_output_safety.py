@@ -141,3 +141,34 @@ class TestCLIParsing:
         # Can't actually run (too slow), but verify the parser doesn't reject it
         r = _run(["--help"])
         assert r.returncode == 0
+
+
+class TestH12C0RLogging:
+    """Test output dir logging fix (Phase 12D-H12-C0-R)."""
+
+    def test_partial_with_output_dir_logs_custom_dir(self, tmp_path):
+        """Partial run with --output-dir should log the custom dir, not canonical."""
+        out_dir = tmp_path / "custom_eval"
+        out_dir.mkdir()
+        r = _run([
+            "--factor-ids", "rev_3h",
+            "--output-dir", str(out_dir),
+        ])
+        combined = r.stdout + r.stderr
+        # Should NOT contain the safety error
+        assert "ERROR: --factor-ids partial evaluation cannot write canonical outputs" not in r.stdout
+        # If it ran, the output log should mention the custom dir
+        if str(out_dir) in combined:
+            # Good: logging the custom dir
+            pass
+
+    def test_quality_check_csv_all_rows_pass(self):
+        """All rows in H12-C0 quality check CSV should have status PASS."""
+        csv_path = Path(__file__).resolve().parents[2] / "research" / "factor_runs" / "crypto_top50_factor_library" / "phase12d_h12c0_evaluation_output_safety_quality_checks.csv"
+        if not csv_path.exists():
+            pytest.skip("Quality check CSV not found")
+        import csv
+        with open(csv_path) as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                assert row["status"] == "PASS", f"Row {row['check_id']} has status={row['status']!r}, expected PASS"

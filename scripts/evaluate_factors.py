@@ -127,7 +127,7 @@ def main():
         print("  Mode: FULL (all registered factors)", flush=True)
     print(f"  Features: {FEATURES_DIR}", flush=True)
     print(f"  Labels:   {LABELS_PATH}", flush=True)
-    print(f"  Output:   {OUTPUT_DIR}\n", flush=True)
+    print(f"  Output:   {out_dir}\n", flush=True)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
