@@ -1,6 +1,6 @@
 # Factor Library Control Center
 
-**Phase:** 12D-H11-R (Core Hardening — IC Merge Fix)  
+**Phase:** 12D-H12-A (Direction Semantics Audit)  
 **Generated:** 2026-06-19  
 **Status:** NOT production. NOT Phase 13. Paper diagnostic only.
 
