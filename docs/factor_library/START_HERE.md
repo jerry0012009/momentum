@@ -55,7 +55,7 @@ raw bars / 原始K线
 | `scripts/check_factor_catalog_integrity.py` | Catalog integrity self-check |
 | `scripts/audit_factor_direction_semantics.py` | Direction semantics audit |
 | `scripts/build_labels.py` | Forward-return labels (1h/4h/24h/72h) |
-| `scripts/build_crypto_top50_universe.py` | Universe construction |
+| scripts/build_dynamic_universe_monthly_volume.py | Universe construction (monthly volume Top50) |
 | `scripts/download_full_binance_1h_universe.py` | Data download |
 | `scripts/build_phase9b_signal_panel.py` | Signal panel construction |
 | `scripts/evaluate_signals.py` | Signal-level RankIC/Spread evaluation |

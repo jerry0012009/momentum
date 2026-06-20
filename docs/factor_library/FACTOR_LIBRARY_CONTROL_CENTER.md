@@ -23,7 +23,7 @@
 download_full_binance_1h_universe.py
   → data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet
 
-build_crypto_top50_universe.py
+build_dynamic_universe_monthly_volume.py
   → data/universe/crypto_usdt_perp_monthly_volume_top50_current_listed_v1/universe_snapshots.parquet
 
 build_labels.py
@@ -57,7 +57,7 @@ check_factor_ic_parity.py (H8-R parity guard)
 | Script | Role |
 |--------|------|
 | `scripts/download_full_binance_1h_universe.py` | Data download |
-| `scripts/build_crypto_top50_universe.py` | Universe construction |
+| `scripts/build_dynamic_universe_monthly_volume.py` | Universe construction (monthly volume Top50) |
 | `scripts/build_labels.py` | Forward-return labels |
 | `scripts/factor_formula_registry.py` | Factor spec registry (see factor_library_state.md) |
 | `scripts/factor_specs.py` | FactorSpec dataclass |
