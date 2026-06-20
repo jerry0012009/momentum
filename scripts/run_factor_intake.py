@@ -27,6 +27,9 @@ INTAKE_BASE = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" 
 
 sys.path.insert(0, str(SCRIPTS))
 
+# Critical steps whose failure should abort the run
+CRITICAL_STEPS = {"registry_integrity", "partial_evaluation", "conclusion_cards"}
+
 
 def load_registry_ids() -> set[str]:
     """Load all registered factor IDs."""
@@ -128,6 +131,7 @@ def build_quality_checks(
     run_id: str,
     collected: dict,
     registry_integrity_rc: int,
+    command_log: list[dict],
 ) -> Path:
     """Build quality checks CSV."""
     import csv
@@ -181,6 +185,15 @@ def build_quality_checks(
         "evidence": "all outputs contain diagnostic-only disclaimer",
         "notes": "",
     })
+    # QC-08: all critical steps succeeded
+    failed_critical = [e for e in command_log if e["step"] in CRITICAL_STEPS and e["exit_code"] != 0]
+    checks.append({
+        "check_id": "QC-08",
+        "check_name": "all critical steps succeeded",
+        "status": "PASS" if not failed_critical else "FAIL",
+        "evidence": f"{len(failed_critical)} critical failures" if failed_critical else "all critical steps passed",
+        "notes": ", ".join(e["step"] for e in failed_critical) if failed_critical else "",
+    })
     path = run_dir / "quality_checks.csv"
     with open(path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(checks[0].keys()))
@@ -196,6 +209,8 @@ def build_manifest(
     collected: dict,
     elapsed: float,
     dry_run: bool,
+    status: str,
+    command_log: list[dict],
 ) -> Path:
     """Build the intake run manifest."""
     manifest = {
@@ -204,7 +219,9 @@ def build_manifest(
         "factor_ids": factor_ids,
         "n_factors": len(factor_ids),
         "dry_run": dry_run,
+        "status": status,
         "collected_outputs": collected,
+        "command_log": command_log,
         "elapsed_seconds": round(elapsed, 1),
         "disclaimer": "Factor intake diagnostic. Not production. Not live trading. Not signal promotion.",
     }
@@ -251,6 +268,8 @@ def main():
     print()
 
     t_start = time.time()
+    command_log: list[dict] = []
+    has_critical_failure = False
 
     # Step 1: Validate factor IDs
     print("Step 1: Validate factor IDs")
@@ -267,11 +286,19 @@ def main():
 
     # Step 2: Registry integrity check
     print("\nStep 2: Registry integrity check")
-    rc_integrity, _ = run_command(
+    rc_integrity, out_integrity = run_command(
         [sys.executable, str(SCRIPTS / "check_factor_registry_integrity.py")],
         "Registry integrity",
         dry_run=args.dry_run,
     )
+    command_log.append({
+        "step": "registry_integrity",
+        "command": "check_factor_registry_integrity.py",
+        "exit_code": rc_integrity,
+        "output_tail": out_integrity[-500:] if out_integrity else "",
+    })
+    if rc_integrity != 0:
+        has_critical_failure = True
 
     # Step 3: Build factor values (unless skipped)
     if not args.skip_build_values:
@@ -283,17 +310,35 @@ def main():
             if not fv_path.exists():
                 to_build.append(fid)
         if to_build:
-            rc_build, _ = run_command(
+            rc_build, out_build = run_command(
                 [sys.executable, str(SCRIPTS / "build_factor_values.py"),
                  "--dataset-id", args.dataset_id,
                  "--factor-ids", ",".join(to_build)],
                 f"Build factor values ({len(to_build)} factors)",
                 dry_run=args.dry_run,
             )
+            command_log.append({
+                "step": "build_factor_values",
+                "command": f"build_factor_values.py --factor-ids {','.join(to_build)}",
+                "exit_code": rc_build,
+                "output_tail": out_build[-500:] if out_build else "",
+            })
         else:
             print("  All factor_values already exist, skipping build")
+            command_log.append({
+                "step": "build_factor_values",
+                "command": "skipped (all exist)",
+                "exit_code": 0,
+                "output_tail": "",
+            })
     else:
         print("\nStep 3: Skipped (--skip-build-values)")
+        command_log.append({
+            "step": "build_factor_values",
+            "command": "skipped (--skip-build-values)",
+            "exit_code": 0,
+            "output_tail": "",
+        })
 
     # Step 4: Partial evaluation
     print("\nStep 4: Partial evaluation")
@@ -303,7 +348,15 @@ def main():
         "--factor-ids", *factor_ids,
         "--output-suffix", suffix,
     ]
-    rc_eval, _ = run_command(eval_cmd, "Partial evaluation", dry_run=args.dry_run)
+    rc_eval, out_eval = run_command(eval_cmd, "Partial evaluation", dry_run=args.dry_run)
+    command_log.append({
+        "step": "partial_evaluation",
+        "command": f"evaluate_factors.py --factor-ids {' '.join(factor_ids)} --output-suffix {suffix}",
+        "exit_code": rc_eval,
+        "output_tail": out_eval[-500:] if out_eval else "",
+    })
+    if rc_eval != 0:
+        has_critical_failure = True
 
     # Step 5: Collect outputs
     print("\nStep 5: Collect outputs")
@@ -321,55 +374,91 @@ def main():
     if not args.skip_redundancy:
         print("\nStep 6: Redundancy diagnostics")
         redundancy_path = run_dir / "factor_redundancy.csv"
-        rc_red, _ = run_command(
+        rc_red, out_red = run_command(
             [sys.executable, str(SCRIPTS / "build_factor_redundancy.py"),
              "--factor-ids", *factor_ids,
              "--output", str(redundancy_path)],
             "Redundancy diagnostics",
             dry_run=args.dry_run,
         )
+        command_log.append({
+            "step": "redundancy_diagnostics",
+            "command": f"build_factor_redundancy.py --factor-ids {' '.join(factor_ids)}",
+            "exit_code": rc_red,
+            "output_tail": out_red[-500:] if out_red else "",
+        })
     else:
         print("\nStep 6: Skipped (--skip-redundancy)")
+        command_log.append({
+            "step": "redundancy_diagnostics",
+            "command": "skipped (--skip-redundancy)",
+            "exit_code": 0,
+            "output_tail": "",
+        })
 
     # Step 7: Build conclusion cards
     print("\nStep 7: Conclusion cards")
-    cards_path = run_dir / "factor_conclusion_cards.csv"
-    cards_json_path = run_dir / "factor_conclusion_cards.json"
-    rc_cards, _ = run_command(
+    rc_cards, out_cards = run_command(
         [sys.executable, str(SCRIPTS / "build_factor_conclusion_cards.py"),
          "--run-dir", str(run_dir),
          "--factor-ids", *factor_ids],
         "Conclusion cards",
         dry_run=args.dry_run,
     )
+    command_log.append({
+        "step": "conclusion_cards",
+        "command": f"build_factor_conclusion_cards.py --run-dir {run_dir}",
+        "exit_code": rc_cards,
+        "output_tail": out_cards[-500:] if out_cards else "",
+    })
+    if rc_cards != 0:
+        has_critical_failure = True
 
-    # Step 8: Generate report
-    print("\nStep 8: Generate report")
-    rc_report, _ = run_command(
+    # Step 8: Quality checks and manifest (BEFORE report, so report can show metadata)
+    elapsed = time.time() - t_start
+    status = "FAILED" if has_critical_failure else "COMPLETE"
+    print("\nStep 8: Quality checks and manifest")
+    if not args.dry_run:
+        qc_path = build_quality_checks(factor_ids, run_dir, run_id, collected, rc_integrity, command_log)
+        manifest_path = build_manifest(run_id, factor_ids, run_dir, collected, elapsed, args.dry_run, status, command_log)
+        print(f"  Quality checks: {qc_path}")
+        print(f"  Manifest: {manifest_path}")
+        print(f"  Status: {status}")
+    else:
+        print("  [DRY RUN] Would write quality checks and manifest")
+
+    # Step 9: Generate report (AFTER manifest + QC, so it can read metadata)
+    print("\nStep 9: Generate report")
+    rc_report, out_report = run_command(
         [sys.executable, str(SCRIPTS / "generate_intake_report.py"),
          "--run-dir", str(run_dir)],
         "Generate report",
         dry_run=args.dry_run,
     )
-
-    # Step 9: Quality checks and manifest
-    elapsed = time.time() - t_start
-    print("\nStep 9: Quality checks and manifest")
-    if not args.dry_run:
-        qc_path = build_quality_checks(factor_ids, run_dir, run_id, collected, rc_integrity)
-        manifest_path = build_manifest(run_id, factor_ids, run_dir, collected, elapsed, args.dry_run)
-        print(f"  Quality checks: {qc_path}")
-        print(f"  Manifest: {manifest_path}")
-    else:
-        print("  [DRY RUN] Would write quality checks and manifest")
+    command_log.append({
+        "step": "generate_report",
+        "command": f"generate_intake_report.py --run-dir {run_dir}",
+        "exit_code": rc_report,
+        "output_tail": out_report[-500:] if out_report else "",
+    })
 
     # Summary
     elapsed = time.time() - t_start
-    print(f"\n=== Intake Run Complete ({elapsed:.0f}s) ===")
-    print(f"  Run ID: {run_id}")
-    print(f"  Factors: {len(factor_ids)}")
-    print(f"  Output: {run_dir}")
-    print(f"  Disclaimer: Diagnostic only. Not production. Not live trading.")
+    if has_critical_failure:
+        failed_steps = [e["step"] for e in command_log if e["step"] in CRITICAL_STEPS and e["exit_code"] != 0]
+        print(f"\n=== Intake Run FAILED ({elapsed:.0f}s) ===")
+        print(f"  Run ID: {run_id}")
+        print(f"  Factors: {len(factor_ids)}")
+        print(f"  Failed steps: {failed_steps}")
+        print(f"  Output: {run_dir}")
+        print(f"  Status: FAILED")
+        sys.exit(1)
+    else:
+        print(f"\n=== Intake Run Complete ({elapsed:.0f}s) ===")
+        print(f"  Run ID: {run_id}")
+        print(f"  Factors: {len(factor_ids)}")
+        print(f"  Output: {run_dir}")
+        print(f"  Disclaimer: Diagnostic only. Not production. Not live trading.")
 
 
 if __name__ == "__main__":

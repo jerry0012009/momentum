@@ -28,10 +28,16 @@ SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 
-def load_csv(path: Path) -> pd.DataFrame:
-    if path.exists():
-        return pd.read_csv(path)
-    return pd.DataFrame()
+def load_csv(path: Path, name: str | None = None) -> pd.DataFrame:
+    """Load CSV if it exists. Warn if missing. Validate expected columns."""
+    if not path.exists():
+        if name:
+            print(f"  WARN: {name} not found at {path} — will use defaults")
+        return pd.DataFrame()
+    df = pd.read_csv(path)
+    if name and df.empty:
+        print(f"  WARN: {name} is empty at {path}")
+    return df
 
 
 def compute_monthly_stability(period_df: pd.DataFrame, fid: str, hz: str) -> str:
@@ -182,12 +188,12 @@ def build_cards(
 ) -> pd.DataFrame:
     """Build conclusion cards from an intake run directory."""
     # Load all inputs
-    review_df = load_csv(run_dir / "factor_candidate_review.csv")
-    metric_df = load_csv(run_dir / "factor_metric_panel.csv")
-    period_df = load_csv(run_dir / "factor_period_ic_summary.csv")
-    quantile_df = load_csv(run_dir / "factor_quantile_return_summary.csv")
-    redundancy_df = load_csv(run_dir / "factor_redundancy.csv")
-    inventory_df = load_csv(run_dir / "factor_inventory.csv")
+    review_df = load_csv(run_dir / "factor_candidate_review.csv", "candidate_review")
+    metric_df = load_csv(run_dir / "factor_metric_panel.csv", "metric_panel")
+    period_df = load_csv(run_dir / "factor_period_ic_summary.csv", "period_ic_summary")
+    quantile_df = load_csv(run_dir / "factor_quantile_return_summary.csv", "quantile_return_summary")
+    redundancy_df = load_csv(run_dir / "factor_redundancy.csv", "redundancy")
+    inventory_df = load_csv(run_dir / "factor_inventory.csv", "inventory")
 
     # Determine factor IDs
     if factor_ids is None:
