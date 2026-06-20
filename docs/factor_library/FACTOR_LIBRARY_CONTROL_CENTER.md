@@ -8,13 +8,13 @@
 
 ## Current Status
 
-- **53** registered factors in `scripts/factor_formula_registry.py`
-- **47** factors with `factor_values.parquet` computed
+- Registered factors in `scripts/factor_formula_registry.py` — see `factor_library_state.md` (auto-generated)
+- Computed factor_values — see `factor_library_state.md` (auto-generated)
 - **6** taker/funding factors missing `factor_values` (not yet computed)
 - **10** factors used in current signal panel (`signal_v0_core_only`)
 - **3** signal variants: `core_only`, `pm_full_structured`, `family_balanced_diagnostic`
 - **4** horizons: 1h, 4h, 24h, 72h
-- **Phase 13:** NOT STARTED
+- **Phase 13A:** research governance/evaluation in progress. Production/live trading NOT started.
 
 ---
 
@@ -30,10 +30,10 @@ build_crypto_top50_universe.py
 build_labels.py
   → data/features/crypto_top50_usdt_perp_monthly_volume_top50_current_listed_1h_v1/labels.parquet
 
-factor_formula_registry.py (804 lines, 53 factors)
+factor_formula_registry.py (see factor_library_state.md)
   ↓
 build_factor_values.py
-  → data/features/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/⟨factor⟩/factor_values.parquet (47 factors)
+  → data/features/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/⟨factor⟩/factor_values.parquet (see factor_library_state.md)
 
 build_phase9b_signal_panel.py
   → research/factor_runs/crypto_top50_factor_library/phase9b_signal_panel.parquet
@@ -57,7 +57,7 @@ check_factor_ic_parity.py (H8-R parity guard)
 | `scripts/download_full_binance_1h_universe.py` | Data download |
 | `scripts/build_crypto_top50_universe.py` | Universe construction |
 | `scripts/build_labels.py` | Forward-return labels |
-| `scripts/factor_formula_registry.py` | Factor spec registry (53 factors) |
+| `scripts/factor_formula_registry.py` | Factor spec registry (see factor_library_state.md) |
 | `scripts/factor_specs.py` | FactorSpec dataclass |
 | `scripts/factor_ops.py` | Factor building-block operators |
 | `scripts/build_factor_values.py` | Factor value computation |

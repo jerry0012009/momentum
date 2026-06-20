@@ -38,7 +38,7 @@ raw bars / 原始K线
 
 | File | Role / 角色 |
 |------|-------------|
-| `scripts/factor_formula_registry.py` | Factor spec registry (53 factors, 804 lines) |
+| `scripts/factor_formula_registry.py` | Factor spec registry (see factor_library_state.md) |
 | `scripts/factor_specs.py` | FactorSpec dataclass |
 | `scripts/factor_ops.py` | Factor building-block operators |
 | `scripts/build_factor_values.py` | Compute factor values from registry |
@@ -97,8 +97,7 @@ raw bars / 原始K线
 
 ## Current Numbers / 当前数据
 
-- Registered factors: **53**
-- Computed factor_values: **47**
+- Registered factors / computed / missing: see `factor_library_state.json` / `factor_library_state.md` (auto-generated)
 - Missing factor_values: **6** (taker/funding — data source lacks taker fields)
 - Signal panel factors: **10**
 - Signal variants: **3** (core_only, pm_full_structured, family_balanced_diagnostic)

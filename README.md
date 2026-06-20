@@ -24,7 +24,7 @@
 |------|-------------|
 | [Factor Library Home](reports/site/factor-library/index.html) | Entry page |
 | [Code Structure Map](reports/site/factor-library/actual-script-map.html) | Pipeline execution map with 12 nodes |
-| [Factor Evaluation](reports/site/factor-library/factor-evaluation.html) | Factor-level IC evaluation (47 factors) |
+| [Factor Evaluation](reports/site/factor-library/factor-evaluation.html) | Factor-level IC evaluation (see [current state](research/factor_runs/crypto_top50_factor_library/factor_library_state.md)) |
 | [Signal Evaluation](reports/site/factor-library/signal-evaluation-summary.html) | Signal-level RankIC / Spread summary |
 
 ---
