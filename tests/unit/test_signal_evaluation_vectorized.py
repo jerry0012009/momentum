@@ -55,8 +55,17 @@ class TestRankRows:
     def test_constant_row(self):
         mat = np.array([[5.0, 5.0, 5.0]])
         ranked = _rank_rows(mat)
-        # All same value → ranks should be valid
-        assert not any(np.isnan(ranked[0]))
+        # All same value → ranks should be average: (1+2+3)/3 = 2.0
+        np.testing.assert_allclose(ranked[0], [2.0, 2.0, 2.0])
+
+    def test_ties_average_rank(self):
+        """Tied values must get average rank, matching scipy.stats.rankdata(method='average')."""
+        mat = np.array([[3.0, 1.0, 3.0, 2.0, 1.0]])
+        ranked = _rank_rows(mat)
+        # Sorted: 1,1,2,3,3 → ranks: (1+2)/2=1.5, 1.5, 3, (4+5)/2=4.5, 4.5
+        # Original order: 3→4.5, 1→1.5, 3→4.5, 2→3, 1→1.5
+        expected = np.array([[4.5, 1.5, 4.5, 3.0, 1.5]])
+        np.testing.assert_allclose(ranked, expected, atol=1e-10)
 
 
 class TestRowPearson:

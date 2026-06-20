@@ -1,441 +1,446 @@
 #!/usr/bin/env python3
-"""Rebuild factor-evaluation.html — Phase 13A-P1 upgraded version.
+"""Build the public factor evaluation page.
 
-Reads:
-  - factor_level_metric_panel.csv (new in P1)
-  - factor_level_rankic_summary.csv (canonical)
-  - factor_level_coverage_summary.csv
-  - factor_level_long_short_summary.csv
-  - factor_level_period_ic_summary.csv
-  - factor_level_evaluation_manifest.json
-
-Writes:
-  reports/site/factor-library/factor-evaluation.html
+The page is a static, interactive diagnostic browser:
+  - scan-friendly factor table
+  - click a factor to inspect horizon metrics, stability, quantiles, and notes
+  - no backend and no raw CSV dump
 """
+from __future__ import annotations
+
+import html
 import json
-import pandas as pd
 from pathlib import Path
 
+import pandas as pd
+
+
 EVAL_DIR = Path("research/factor_runs/crypto_top50_factor_library/factor_level_evaluation")
+STATE_PATH = Path("research/factor_runs/crypto_top50_factor_library/factor_library_state.json")
 OUT = Path("reports/site/factor-library/factor-evaluation.html")
+HORIZONS = ["1h", "4h", "24h", "72h"]
 
-# Load data
-manifest = json.load(open(EVAL_DIR / "factor_level_evaluation_manifest.json"))
 
-# Try metric panel first (P1), fall back to rankic summary
-mp_path = EVAL_DIR / "factor_level_metric_panel.csv"
-if mp_path.exists():
-    mp = pd.read_csv(mp_path)
-    USE_METRIC_PANEL = True
-else:
-    mp = pd.read_csv(EVAL_DIR / "factor_level_rankic_summary.csv")
-    USE_METRIC_PANEL = False
+def load_csv(name: str) -> pd.DataFrame:
+    path = EVAL_DIR / name
+    return pd.read_csv(path) if path.exists() else pd.DataFrame()
 
-cov = pd.read_csv(EVAL_DIR / "factor_level_coverage_summary.csv")
 
-ls_path = EVAL_DIR / "factor_level_long_short_summary.csv"
-ls_df = pd.read_csv(ls_path) if ls_path.exists() else pd.DataFrame()
+def safe_float(value):
+    if value is None or pd.isna(value):
+        return None
+    return round(float(value), 8)
 
-period_path = EVAL_DIR / "factor_level_period_ic_summary.csv"
-period_df = pd.read_csv(period_path) if period_path.exists() else pd.DataFrame()
 
-# Candidate review (P1-R)
-review_path = EVAL_DIR / "factor_level_candidate_review.csv"
-review_df = pd.read_csv(review_path) if review_path.exists() else pd.DataFrame()
+def fmt(value, digits=4, signed=True):
+    if value is None or pd.isna(value):
+        return "—"
+    sign = "+" if signed else ""
+    return f"{float(value):{sign}.{digits}f}"
 
-horizons = ["1h", "4h", "24h", "72h"]
 
-# Missing factors (from manifest)
-missing_fids = manifest.get("missing_factor_ids", [
-    "taker_buy_ratio_20h", "taker_buy_zscore_20h", "taker_buy_delta_5h",
-    "funding_rate_level_20h", "funding_rate_zscore_80h", "funding_rate_change_24h",
-])
+def fmt_pct(value):
+    if value is None or pd.isna(value):
+        return "—"
+    return f"{float(value) * 100:.1f}%"
 
-# Build rows from metric panel
-rows = []
-for fid in mp["factor_name"].unique():
-    fdf = mp[mp["factor_name"] == fid]
-    spec = fdf.iloc[0]
-    cat = spec.get("category", "unknown")
-    direction = spec.get("expected_direction", "conditional")
-    in_sig = spec.get("used_in_current_signal", False)
-    status = spec.get("status", "UNKNOWN")
-    missing_rate = spec.get("missing_rate", None)
-    coverage = spec.get("coverage", None)
 
-    row = {
-        "factor": fid, "category": cat, "direction": direction,
-        "in_signal": bool(in_sig), "status": str(status),
-        "missing_rate": missing_rate, "coverage": coverage,
+def classify_metric(value, strong=0.03, watch=0.02):
+    if value is None or pd.isna(value):
+        return "muted"
+    v = abs(float(value))
+    if v >= strong:
+        return "strong"
+    if v >= watch:
+        return "watch"
+    return "plain"
+
+
+def stability_summary(period_df: pd.DataFrame, fid: str, horizon: str) -> dict:
+    if period_df.empty:
+        return {"label": "NO_DATA", "positive_ratio": None, "n_months": 0, "worst": None, "best": None}
+    sub = period_df[(period_df["factor_name"] == fid) & (period_df["horizon"] == horizon)]
+    if sub.empty or "direction_adjusted_mean_rank_ic" not in sub:
+        return {"label": "NO_DATA", "positive_ratio": None, "n_months": 0, "worst": None, "best": None}
+    vals = sub["direction_adjusted_mean_rank_ic"].dropna()
+    if vals.empty:
+        return {"label": "NO_DATA", "positive_ratio": None, "n_months": 0, "worst": None, "best": None}
+    ratio = float((vals > 0).mean())
+    n_months = int(vals.shape[0])
+    if ratio >= 0.8:
+        label = "STABLE"
+    elif ratio >= 0.6:
+        label = "MODERATE"
+    elif ratio >= 0.4:
+        label = "MIXED"
+    else:
+        label = "UNSTABLE"
+    best_row = sub.loc[sub["direction_adjusted_mean_rank_ic"].idxmax()]
+    worst_row = sub.loc[sub["direction_adjusted_mean_rank_ic"].idxmin()]
+    return {
+        "label": label,
+        "positive_ratio": round(ratio, 4),
+        "n_months": n_months,
+        "best": {
+            "period": str(best_row.get("period", "")),
+            "adj_ic": safe_float(best_row.get("direction_adjusted_mean_rank_ic")),
+        },
+        "worst": {
+            "period": str(worst_row.get("period", "")),
+            "adj_ic": safe_float(worst_row.get("direction_adjusted_mean_rank_ic")),
+        },
     }
 
-    for hz in horizons:
-        hz_row = fdf[fdf["horizon"] == hz]
-        if len(hz_row) == 0:
-            for k in ["ic", "icir", "t", "n", "win_adj", "ls_mean", "ls_t", "ls_win"]:
-                row[f"{k}_{hz}"] = "—"
-            continue
-        r = hz_row.iloc[0]
 
-        def _fmt(val, fmt="+.4f", none_val="—"):
-            if pd.isna(val):
-                return none_val
-            return f"{val:{fmt}}"
-
-        row[f"ic_{hz}"] = _fmt(r.get("direction_adjusted_mean_rank_ic"))
-        row[f"icir_{hz}"] = _fmt(r.get("direction_adjusted_icir"), ".3f") if pd.notna(r.get("direction_adjusted_icir")) else _fmt(r.get("raw_icir"), ".3f") if pd.notna(r.get("raw_icir")) else "—"
-        row[f"t_{hz}"] = _fmt(r.get("t_stat"), ".1f")
-        row[f"n_{hz}"] = str(int(r["n_periods"])) if pd.notna(r.get("n_periods")) else "—"
-        row[f"win_adj_{hz}"] = _fmt(r.get("ic_win_rate_adjusted"), ".1%", none_val="—")
-        row[f"ls_mean_{hz}"] = _fmt(r.get("long_short_spread_mean"), "+.6f")
-        row[f"ls_t_{hz}"] = _fmt(r.get("long_short_spread_t_stat"), ".2f")
-        row[f"ls_win_{hz}"] = _fmt(r.get("long_short_win_rate"), ".1%", none_val="—")
-
-    rows.append(row)
-
-# Sort: active-in-signal first, then by abs IC 1h
-def sort_key(r):
-    ic_val = r.get("ic_1h", "—")
-    try:
-        abs_ic = abs(float(ic_val.replace("+", "")))
-    except (ValueError, AttributeError):
-        abs_ic = 0
-    return (not r["in_signal"], -abs_ic)
-
-rows.sort(key=sort_key)
-
-# Build top diagnostic sections
-top_ic_rows = [r for r in rows if r.get("ic_1h", "—") not in ("—", "NOT_COMPUTED")]
-top_ic_rows.sort(key=lambda r: -abs(float(r["ic_1h"].replace("+", ""))))
-top_10_ic = top_ic_rows[:10]
-
-top_icir_rows = [r for r in rows if r.get("icir_1h", "—") not in ("—",)]
-top_icir_rows.sort(key=lambda r: -abs(float(r["icir_1h"].replace("+", "").replace("—", "0"))))
-top_10_icir = top_icir_rows[:10]
-
-# Active-in-signal summary
-active_rows = [r for r in rows if r["in_signal"]]
-
-# CSS
-status_colors = {
-    "COMPUTED": ("#22c55e", "#052e16"),
-    "ACTIVE_IN_SIGNAL_COMPUTED": ("#3b82f6", "#1e1b4b"),
-    "DIRECTION_UNKNOWN": ("#f59e0b", "#451a03"),
-    "MISSING_FACTOR_VALUES": ("#ef4444", "#450a0a"),
-    "NO_VALID_PERIODS": ("#6b7280", "#1f2937"),
-}
-
-def status_badge(s):
-    s = str(s)
-    bg, fg = status_colors.get(s, ("#6b7280", "#1f2937"))
-    return f'<span style="background:{bg};color:{fg};padding:2px 8px;border-radius:4px;font-size:11px">{s}</span>'
-
-def sig_mark(in_sig):
-    return "★" if in_sig else ""
-
-def ic_color(val_str):
-    try:
-        v = abs(float(val_str.replace("+", "")))
-    except (ValueError, AttributeError):
-        return "#e2e8f0"
-    if v >= 0.03:
-        return "#22c55e"
-    elif v >= 0.02:
-        return "#f59e0b"
-    return "#e2e8f0"
-
-
-# ── Build HTML ──────────────────────────────────────────────────
-
-# Build candidate review HTML
-candidate_review_html = ""
-if not review_df.empty:
-    bucket_colors = {
-        "ACTIVE_IN_SIGNAL_REVIEW": ("#3b82f6", "#1e1b4b"),
-        "STRONG_DIAGNOSTIC_CANDIDATE": ("#22c55e", "#052e16"),
-        "RANKIC_STRONG_LONGSHORT_WEAK": ("#f59e0b", "#451a03"),
-        "LONGSHORT_STRONG_RANKIC_WEAK": ("#f59e0b", "#451a03"),
-        "CONDITIONAL_DIRECTION_REVIEW": ("#a855f7", "#3b0764"),
-        "MISSING_INPUT": ("#ef4444", "#450a0a"),
-        "WEAK_OR_NOISY": ("#6b7280", "#1f2937"),
-        "METADATA_REVIEW": ("#6b7280", "#1f2937"),
-    }
-    # Group by bucket
-    for bucket_name in ["ACTIVE_IN_SIGNAL_REVIEW", "STRONG_DIAGNOSTIC_CANDIDATE",
-                        "RANKIC_STRONG_LONGSHORT_WEAK", "LONGSHORT_STRONG_RANKIC_WEAK",
-                        "CONDITIONAL_DIRECTION_REVIEW", "MISSING_INPUT",
-                        "WEAK_OR_NOISY", "METADATA_REVIEW"]:
-        bucket_rows = review_df[review_df["review_bucket"] == bucket_name]
-        if bucket_rows.empty:
-            continue
-        bg, fg = bucket_colors.get(bucket_name, ("#6b7280", "#1f2937"))
-        candidate_review_html += f'<h3><span style="background:{bg};color:{fg};padding:2px 8px;border-radius:4px;font-size:12px">{bucket_name}</span> ({len(bucket_rows)})</h3>\n'
-        candidate_review_html += '<table><thead><tr><th>Factor</th><th>Category</th><th>Direction</th><th>Best Adj IC</th><th>Best Adj ICIR</th><th>Best LS Spread</th><th>LS t-stat</th><th>Consistency</th><th>Notes</th></tr></thead><tbody>\n'
-        for _, r in bucket_rows.iterrows():
-            adj_ic_val = r.get("best_adj_ic")
-            adj_icir_val = r.get("best_direction_adjusted_icir")
-            ls_val = r.get("best_long_short_spread")
-            ls_t_val = r.get("best_long_short_t_stat")
-            hz_label = r.get("best_adj_ic_horizon", "")
-            hz_icir_label = r.get("best_direction_adjusted_icir_horizon", "")
-            hz_ls_label = r.get("best_long_short_horizon", "")
-
-            adj_ic_str = f"{adj_ic_val:+.4f} ({hz_label})" if pd.notna(adj_ic_val) else "—"
-            adj_icir_str = f"{adj_icir_val:+.3f} ({hz_icir_label})" if pd.notna(adj_icir_val) else "—"
-            ls_str = f"{ls_val:+.6f} ({hz_ls_label})" if pd.notna(ls_val) else "—"
-            ls_t_str = f"{ls_t_val:.2f}" if pd.notna(ls_t_val) else "—"
-
-            candidate_review_html += f'<tr><td>{r["factor_name"]}</td><td>{r["category"]}</td><td>{r["expected_direction"]}</td>'
-            candidate_review_html += f'<td style="text-align:center">{adj_ic_str}</td><td style="text-align:center">{adj_icir_str}</td>'
-            candidate_review_html += f'<td style="text-align:center">{ls_str}</td><td style="text-align:center">{ls_t_str}</td>'
-            candidate_review_html += f'<td style="text-align:center">{r.get("rankic_longshort_consistency", "—")}</td>'
-            candidate_review_html += f'<td style="font-size:11px;color:#94a3b8">{r.get("review_notes", "")}</td></tr>\n'
-        candidate_review_html += '</tbody></table>\n'
-else:
-    candidate_review_html = '<p style="color:#94a3b8">Candidate review not available.</p>'
-
-# Stats
-n_total = manifest.get("total_registered_factors", len(rows))
-n_computed = manifest.get("computed_factors", 0)
-n_missing = manifest.get("missing_factor_values", len(missing_fids))
-n_signal = manifest.get("active_in_signal", len(active_rows))
-
-# Period stability summary (top/best monthly IC per factor)
-period_stability_rows = []
-if not period_df.empty:
-    for fid in period_df["factor_name"].unique():
-        pdf = period_df[period_df["factor_name"] == fid]
-        for hz in horizons:
-            hz_pdf = pdf[pdf["horizon"] == hz]
-            if hz_pdf.empty:
-                continue
-            adj_col = "direction_adjusted_mean_rank_ic"
-            if adj_col in hz_pdf.columns:
-                best_month = hz_pdf.loc[hz_pdf[adj_col].idxmax()]
-                worst_month = hz_pdf.loc[hz_pdf[adj_col].idxmin()]
-                period_stability_rows.append({
-                    "factor": fid, "horizon": hz,
-                    "best_period": best_month.get("period", ""),
-                    "best_adj_ic": best_month.get(adj_col, 0),
-                    "worst_period": worst_month.get("period", ""),
-                    "worst_adj_ic": worst_month.get(adj_col, 0),
-                    "n_months": len(hz_pdf),
-                })
-
-# Main table rows
-table_rows = ""
-for r in rows:
-    ic_cells = ""
-    for hz in horizons:
-        val = r[f"ic_{hz}"]
-        icir = r[f"icir_{hz}"]
-        win = r[f"win_adj_{hz}"]
-        ls_mean = r[f"ls_mean_{hz}"]
-
-        if val in ("—", "NOT_COMPUTED"):
-            ic_cells += f'<td style="text-align:center;color:#94a3b8" colspan="4">{val}</td>'
+def quantile_shape(quantile_df: pd.DataFrame, fid: str, horizon: str) -> dict:
+    empty = {"label": "NO_DATA", "returns": []}
+    if quantile_df.empty:
+        return empty
+    sub = quantile_df[(quantile_df["factor_name"] == fid) & (quantile_df["horizon"] == horizon)]
+    if sub.empty:
+        return empty
+    buckets = sub[sub["bucket"].astype(str) != "LONG_SHORT"].copy()
+    if buckets.empty:
+        return empty
+    buckets["bucket_num"] = pd.to_numeric(buckets["bucket"], errors="coerce")
+    buckets = buckets.sort_values("bucket_num")
+    returns = [safe_float(v) for v in buckets["mean_forward_return"].tolist()]
+    clean = [v for v in returns if v is not None]
+    if len(clean) < 3:
+        label = "INSUFFICIENT"
+    else:
+        diffs = [clean[i + 1] - clean[i] for i in range(len(clean) - 1)]
+        if all(d > 0 for d in diffs):
+            label = "MONOTONIC_UP"
+        elif all(d < 0 for d in diffs):
+            label = "MONOTONIC_DOWN"
         else:
-            color = ic_color(val)
-            ic_cells += f'<td style="text-align:center;color:{color};font-weight:600">{val}</td>'
-            icir_color = "#94a3b8" if icir == "—" else "#e2e8f0"
-            ic_cells += f'<td style="text-align:center;color:{icir_color};font-size:11px">{icir}</td>'
-            ic_cells += f'<td style="text-align:center;color:#94a3b8;font-size:11px">{win}</td>'
-            ls_color = ic_color(ls_mean) if ls_mean != "—" else "#94a3b8"
-            ic_cells += f'<td style="text-align:center;color:{ls_color};font-size:11px">{ls_mean}</td>'
+            turns = sum(1 for i in range(1, len(diffs)) if diffs[i] * diffs[i - 1] < 0)
+            label = "NEAR_MONOTONIC" if turns <= 1 else "NON_MONOTONIC"
+    return {"label": label, "returns": returns}
 
-    mr_str = f"{r['missing_rate']:.1%}" if pd.notna(r.get("missing_rate")) else "—"
 
-    table_rows += f'''<tr>
-  <td>{sig_mark(r["in_signal"])} {r["factor"]}</td>
-  <td>{r["category"]}</td>
-  <td>{r["direction"]}</td>
-  <td>{status_badge(r["status"])}</td>
-  <td style="text-align:center">{mr_str}</td>
-  {ic_cells}
-</tr>
-'''
+def choose_best_horizon(review_row: pd.Series | None, metric_rows: pd.DataFrame) -> str:
+    if review_row is not None:
+        hz = review_row.get("best_adj_ic_horizon")
+        if isinstance(hz, str) and hz in HORIZONS:
+            return hz
+    if metric_rows.empty:
+        return "1h"
+    rows = metric_rows.copy()
+    rows["abs_adj_ic"] = rows["direction_adjusted_mean_rank_ic"].abs()
+    best = rows.sort_values("abs_adj_ic", ascending=False).iloc[0]
+    return str(best.get("horizon", "1h"))
 
-# Top diagnostic section
-top_diag_html = ""
-for label, data, metric_key, metric_label in [
-    ("Top 10 by Adjusted IC (1h)", top_10_ic, "ic_1h", "Adj IC"),
-    ("Top 10 by ICIR (1h)", top_10_icir, "icir_1h", "ICIR"),
-]:
-    top_diag_html += f'<h3>{label}</h3>\n<table><thead><tr><th>Factor</th><th>Category</th><th>{metric_label}</th><th>Status</th></tr></thead><tbody>\n'
-    for r in data[:10]:
-        val = r.get(metric_key, "—")
-        top_diag_html += f'<tr><td>{sig_mark(r["in_signal"])} {r["factor"]}</td><td>{r["category"]}</td><td style="text-align:center">{val}</td><td>{status_badge(r["status"])}</td></tr>\n'
-    top_diag_html += '</tbody></table>\n'
 
-# Active-in-signal summary
-active_html = '<table><thead><tr><th>Factor</th><th>Category</th><th>Direction</th>'
-for hz in horizons:
-    active_html += f'<th style="text-align:center">IC {hz}</th><th style="text-align:center">ICIR {hz}</th>'
-active_html += '</tr></thead><tbody>\n'
-for r in active_rows:
-    active_html += f'<tr><td>★ {r["factor"]}</td><td>{r["category"]}</td><td>{r["direction"]}</td>'
-    for hz in horizons:
-        val = r.get(f"ic_{hz}", "—")
-        icir = r.get(f"icir_{hz}", "—")
-        color = ic_color(val) if val != "—" else "#94a3b8"
-        active_html += f'<td style="text-align:center;color:{color};font-weight:600">{val}</td>'
-        active_html += f'<td style="text-align:center;color:#94a3b8;font-size:11px">{icir}</td>'
-    active_html += '</tr>\n'
-active_html += '</tbody></table>\n'
+def build_payload() -> tuple[dict, list[dict]]:
+    manifest = json.loads((EVAL_DIR / "factor_level_evaluation_manifest.json").read_text())
+    state = json.loads(STATE_PATH.read_text()) if STATE_PATH.exists() else {}
+    metric_df = load_csv("factor_level_metric_panel.csv")
+    review_df = load_csv("factor_level_candidate_review.csv")
+    period_df = load_csv("factor_level_period_ic_summary.csv")
+    quantile_df = load_csv("factor_level_quantile_return_summary.csv")
+    formula_df = load_csv("factor_level_formula_catalog.csv")
 
-# Missing factors section
-missing_html = '<table><thead><tr><th>Factor</th><th>Category</th><th>Direction</th><th>Reason</th></tr></thead><tbody>\n'
-missing_reason = "Current raw bars (bars_1h.parquet) do not contain taker_buy_quote_volume or funding_rate columns."
-for fid in missing_fids:
-    fdf = mp[mp["factor_name"] == fid] if fid in mp["factor_name"].values else pd.DataFrame()
-    cat = fdf.iloc[0]["category"] if len(fdf) > 0 else "unknown"
-    d = fdf.iloc[0]["expected_direction"] if len(fdf) > 0 else "unknown"
-    missing_html += f'<tr><td>{fid}</td><td>{cat}</td><td>{d}</td><td>{missing_reason}</td></tr>\n'
-missing_html += '</tbody></table>\n'
+    factors: list[dict] = []
+    for fid in sorted(metric_df["factor_name"].unique()):
+        mrows = metric_df[metric_df["factor_name"] == fid]
+        first = mrows.iloc[0]
+        rmatch = review_df[review_df["factor_name"] == fid] if not review_df.empty else pd.DataFrame()
+        review = rmatch.iloc[0] if not rmatch.empty else None
+        fmatch = formula_df[formula_df["factor_name"] == fid] if not formula_df.empty else pd.DataFrame()
+        formula = fmatch.iloc[0] if not fmatch.empty else None
+        best_hz = choose_best_horizon(review, mrows)
+        best_row = mrows[mrows["horizon"] == best_hz].iloc[0] if not mrows[mrows["horizon"] == best_hz].empty else first
 
-# Period stability section
-period_html = ""
-if period_stability_rows:
-    period_html = '<table><thead><tr><th>Factor</th><th>Horizon</th><th>Best Month</th><th>Best Adj IC</th><th>Worst Month</th><th>Worst Adj IC</th><th>Months</th></tr></thead><tbody>\n'
-    # Sort by abs(best_adj_ic) descending
-    period_stability_rows.sort(key=lambda r: -abs(float(r.get("best_adj_ic", 0) or 0)))
-    for r in period_stability_rows[:20]:  # Top 20
-        period_html += f'<tr><td>{r["factor"]}</td><td>{r["horizon"]}</td>'
-        period_html += f'<td>{r["best_period"]}</td><td>{r["best_adj_ic"]:+.4f}</td>'
-        period_html += f'<td>{r["worst_period"]}</td><td>{r["worst_adj_ic"]:+.4f}</td>'
-        period_html += f'<td>{r["n_months"]}</td></tr>\n'
-    period_html += '</tbody></table>\n'
-else:
-    period_html = '<p style="color:#94a3b8">Period IC summary not available.</p>'
+        horizon_metrics = {}
+        for hz in HORIZONS:
+            hrow = mrows[mrows["horizon"] == hz]
+            if hrow.empty:
+                horizon_metrics[hz] = None
+                continue
+            row = hrow.iloc[0]
+            horizon_metrics[hz] = {
+                "adj_ic": safe_float(row.get("direction_adjusted_mean_rank_ic")),
+                "raw_ic": safe_float(row.get("raw_mean_rank_ic")),
+                "adj_icir": safe_float(row.get("direction_adjusted_icir")),
+                "raw_icir": safe_float(row.get("raw_icir")),
+                "t_stat": safe_float(row.get("t_stat")),
+                "win_rate": safe_float(row.get("ic_win_rate_adjusted")),
+                "coverage": safe_float(row.get("coverage")),
+                "missing_rate": safe_float(row.get("missing_rate")),
+                "ls_spread": safe_float(row.get("long_short_spread_mean")),
+                "ls_t": safe_float(row.get("long_short_spread_t_stat")),
+                "ls_win_rate": safe_float(row.get("long_short_win_rate")),
+                "stability": stability_summary(period_df, fid, hz),
+                "quantile": quantile_shape(quantile_df, fid, hz),
+            }
 
-# ── Assemble HTML ───────────────────────────────────────────────
+        review_bucket = str(review.get("review_bucket", "UNKNOWN")) if review is not None else "UNKNOWN"
+        consistency = str(review.get("rankic_longshort_consistency", "N/A")) if review is not None else "N/A"
+        best_adj_ic = safe_float(review.get("best_adj_ic")) if review is not None else safe_float(best_row.get("direction_adjusted_mean_rank_ic"))
+        best_icir = safe_float(review.get("best_direction_adjusted_icir")) if review is not None else safe_float(best_row.get("direction_adjusted_icir"))
+        best_ls = safe_float(review.get("best_long_short_spread")) if review is not None else safe_float(best_row.get("long_short_spread_mean"))
+        best_ls_t = safe_float(review.get("best_long_short_t_stat")) if review is not None else safe_float(best_row.get("long_short_spread_t_stat"))
+        best_win = safe_float(review.get("best_ic_win_rate_adjusted")) if review is not None else safe_float(best_row.get("ic_win_rate_adjusted"))
 
-html = f'''<!DOCTYPE html>
+        factors.append({
+            "factor_id": fid,
+            "family": str(first.get("category", "unknown")),
+            "expected_direction": str(first.get("expected_direction", "unknown")),
+            "status": str(first.get("status", "UNKNOWN")),
+            "used_in_signal": bool(first.get("used_in_current_signal", False)),
+            "required_columns": str(first.get("required_columns", "")),
+            "lookback_window": None if pd.isna(first.get("lookback_window")) else str(first.get("lookback_window")),
+            "formula_proxy": str(formula.get("formula_proxy", first.get("formula_proxy", ""))) if formula is not None else str(first.get("formula_proxy", "")),
+            "review_bucket": review_bucket,
+            "review_notes": str(review.get("review_notes", "")) if review is not None else "",
+            "rankic_longshort_consistency": consistency,
+            "best_horizon": best_hz,
+            "best_adj_ic": best_adj_ic,
+            "best_adj_icir": best_icir,
+            "best_ls_spread": best_ls,
+            "best_ls_t": best_ls_t,
+            "best_win_rate": best_win,
+            "coverage_min": safe_float(review.get("coverage_min")) if review is not None else safe_float(first.get("coverage")),
+            "missing_rate_max": safe_float(review.get("missing_rate_max")) if review is not None else safe_float(first.get("missing_rate")),
+            "horizons": horizon_metrics,
+        })
+
+    summary = {
+        "registered": state.get("registered_factors", manifest.get("total_registered_factors", len(factors))),
+        "computed": state.get("computed_factor_values", manifest.get("computed_factors", 0)),
+        "missing": state.get("missing_factor_values", len(manifest.get("missing_factor_ids", []))),
+        "active_signal_factors": state.get("active_signal_factors", sum(1 for f in factors if f["used_in_signal"])),
+        "generated_at": state.get("generated_at", manifest.get("generated_at", "")),
+    }
+    return summary, factors
+
+
+def build_table_rows(factors: list[dict]) -> str:
+    bucket_rank = {
+        "ACTIVE_IN_SIGNAL_REVIEW": 0,
+        "DIRECTION_REVIEW_REQUIRED": 1,
+        "TAIL_OR_MONOTONICITY_REVIEW_REQUIRED": 2,
+        "CONDITIONAL_DIRECTION_REVIEW": 3,
+        "RANKIC_STRONG_LONGSHORT_WEAK": 4,
+        "LONGSHORT_STRONG_RANKIC_WEAK": 5,
+        "PASS_DIAGNOSTIC": 6,
+        "WEAK_OR_NOISY": 7,
+        "MISSING_INPUT": 8,
+        "METADATA_REVIEW": 9,
+    }
+    sorted_factors = sorted(
+        factors,
+        key=lambda f: (
+            bucket_rank.get(f["review_bucket"], 99),
+            -(abs(f["best_adj_ic"]) if f["best_adj_ic"] is not None else 0),
+        ),
+    )
+    rows = []
+    for f in sorted_factors:
+        fid = html.escape(f["factor_id"])
+        best_ic = fmt(f["best_adj_ic"], 4)
+        best_icir = fmt(f["best_adj_icir"], 3)
+        ls = fmt(f["best_ls_spread"], 5)
+        ls_t = fmt(f["best_ls_t"], 2, signed=False)
+        win = fmt_pct(f["best_win_rate"])
+        missing = fmt_pct(f["missing_rate_max"])
+        signal = "signal" if f["used_in_signal"] else ""
+        bucket = html.escape(f["review_bucket"])
+        rows.append(
+            f"<tr data-factor=\"{fid}\" class=\"factor-row {signal}\">"
+            f"<td><button class=\"factor-link\" type=\"button\">{fid}</button></td>"
+            f"<td>{html.escape(f['family'])}</td>"
+            f"<td>{html.escape(f['expected_direction'])}</td>"
+            f"<td><span class=\"bucket {bucket.lower()}\">{bucket}</span></td>"
+            f"<td>{html.escape(f['best_horizon'])}</td>"
+            f"<td class=\"num {classify_metric(f['best_adj_ic'])}\">{best_ic}</td>"
+            f"<td class=\"num\">{best_icir}</td>"
+            f"<td class=\"num\">{win}</td>"
+            f"<td class=\"num {classify_metric(f['best_ls_spread'], strong=0.002, watch=0.001)}\">{ls}</td>"
+            f"<td class=\"num\">{ls_t}</td>"
+            f"<td>{html.escape(f['rankic_longshort_consistency'])}</td>"
+            f"<td class=\"num\">{missing}</td>"
+            "</tr>"
+        )
+    return "\n".join(rows)
+
+
+def render() -> str:
+    summary, factors = build_payload()
+    payload = json.dumps({"summary": summary, "factors": factors}, ensure_ascii=False, separators=(",", ":"))
+    rows_html = build_table_rows(factors)
+    bucket_counts = pd.Series([f["review_bucket"] for f in factors]).value_counts().to_dict()
+    bucket_cards = "\n".join(
+        f"<div class=\"mini-stat\"><strong>{count}</strong><span>{html.escape(bucket)}</span></div>"
+        for bucket, count in sorted(bucket_counts.items(), key=lambda x: (-x[1], x[0]))
+    )
+    return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Factor-Level IC Evaluation</title>
+<title>Factor Evaluation</title>
 <style>
-body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }}
-h1 {{ color: #f1f5f9; font-size: 22px; margin-bottom: 8px; }}
-h2 {{ color: #cbd5e1; font-size: 16px; margin: 24px 0 12px; }}
-h3 {{ color: #94a3b8; font-size: 14px; margin: 16px 0 8px; }}
-.subtitle {{ color: #94a3b8; font-size: 13px; margin-bottom: 20px; }}
-.stats {{ display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }}
-.stat {{ background: #1e293b; border-radius: 8px; padding: 12px 18px; min-width: 120px; }}
-.stat-val {{ font-size: 24px; font-weight: 700; color: #f1f5f9; }}
-.stat-label {{ font-size: 11px; color: #94a3b8; margin-top: 4px; }}
-table {{ border-collapse: collapse; width: 100%; font-size: 13px; margin: 8px 0; }}
-th {{ background: #1e293b; color: #94a3b8; padding: 8px 10px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; position: sticky; top: 0; }}
-td {{ padding: 6px 10px; border-bottom: 1px solid #1e293b; }}
-tr:hover {{ background: #1e293b40; }}
-.hz-header {{ text-align: center; color: #3b82f6; }}
-.method-box {{ background: #1e293b; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 13px; line-height: 1.6; color: #94a3b8; }}
-.method-box strong {{ color: #e2e8f0; }}
-.method-box ul {{ margin: 4px 0 0 16px; }}
-.parity-box {{ background: #064e3b; border: 1px solid #22c55e; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 13px; line-height: 1.6; color: #a7f3d0; }}
-.parity-box strong {{ color: #6ee7b7; }}
-.alert-box {{ background: #450a0a; border: 1px solid #ef4444; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 13px; line-height: 1.6; color: #fca5a5; }}
-.alert-box strong {{ color: #f87171; }}
-.diagnostic-box {{ background: #1e293b; border: 1px solid #3b82f6; border-radius: 8px; padding: 16px; margin: 16px 0; }}
-.diagnostic-box h3 {{ color: #60a5fa; margin-top: 0; }}
-footer {{ margin-top: 24px; padding-top: 12px; border-top: 1px solid #1e293b; font-size: 12px; color: #64748b; display: flex; gap: 16px; }}
-footer a {{ color: #60a5fa; text-decoration: none; }}
-footer a:hover {{ text-decoration: underline; }}
+:root{{--bg:#0f172a;--panel:#111c31;--panel2:#17243a;--border:#26364f;--text:#e5edf8;--muted:#8ea0b8;--blue:#60a5fa;--green:#34d399;--amber:#fbbf24;--red:#f87171;--purple:#c084fc}}
+*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.5;padding:20px}}
+a{{color:var(--blue);text-decoration:none}}h1{{font-size:24px;margin:0 0 6px}}h2{{font-size:17px;margin:24px 0 10px}}h3{{font-size:14px;margin:16px 0 8px;color:#cbd5e1}}
+.topbar{{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:16px}}.subtitle{{color:var(--muted);font-size:13px}}
+.notice{{background:#2b1820;border:1px solid #7f1d1d;color:#fecaca;border-radius:8px;padding:12px 14px;margin:14px 0;font-size:13px}}
+.stats,.bucket-grid{{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}}.stat,.mini-stat{{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 12px;min-width:110px}}
+.stat strong,.mini-stat strong{{display:block;font-size:22px}}.stat span,.mini-stat span{{color:var(--muted);font-size:11px}}
+.layout{{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(360px,.65fr);gap:16px;align-items:start}}@media(max-width:1100px){{.layout{{grid-template-columns:1fr}}}}
+.card{{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px}}.detail{{position:sticky;top:16px}}
+.controls{{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}}input,select{{background:#0b1220;color:var(--text);border:1px solid var(--border);border-radius:7px;padding:8px 10px;font-size:13px}}input{{min-width:240px;flex:1}}
+table{{width:100%;border-collapse:collapse;font-size:12px}}th{{background:#142035;color:var(--muted);text-align:left;padding:8px;position:sticky;top:0;z-index:1}}td{{border-bottom:1px solid var(--border);padding:7px 8px;vertical-align:middle}}tr.factor-row{{cursor:pointer}}tr.factor-row:hover,tr.factor-row.selected{{background:#1d2d47}}tr.signal td:first-child:before{{content:'★ ';color:var(--blue)}}.num{{text-align:right;font-variant-numeric:tabular-nums}}.strong{{color:var(--green);font-weight:700}}.watch{{color:var(--amber);font-weight:700}}.plain{{color:var(--text)}}.muted{{color:var(--muted)}}
+.factor-link{{background:none;border:0;color:var(--blue);font:inherit;font-weight:650;cursor:pointer;padding:0;text-align:left}}.bucket{{display:inline-block;border-radius:999px;padding:2px 7px;font-size:10px;background:#334155;color:#e2e8f0;white-space:nowrap}}.bucket.active_in_signal_review{{background:#1d4ed8}}.bucket.direction_review_required,.bucket.tail_or_monotonicity_review_required{{background:#7f1d1d}}.bucket.conditional_direction_review{{background:#581c87}}.bucket.missing_input{{background:#991b1b}}.bucket.longshort_strong_rankic_weak,.bucket.rankic_strong_longshort_weak{{background:#92400e}}
+.tabs{{display:flex;gap:6px;margin:10px 0}}.tab{{border:1px solid var(--border);background:#0b1220;color:var(--muted);padding:5px 9px;border-radius:999px;cursor:pointer}}.tab.active{{color:#fff;background:#2563eb;border-color:#2563eb}}
+.metric-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}}@media(max-width:700px){{.metric-grid{{grid-template-columns:1fr 1fr}}}}.metric{{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:8px}}.metric span{{display:block;color:var(--muted);font-size:10px;text-transform:uppercase}}.metric strong{{font-size:15px}}
+.bar-svg{{width:100%;height:120px;background:#0b1220;border:1px solid var(--border);border-radius:8px}}.small{{font-size:12px;color:var(--muted)}}.kv{{display:grid;grid-template-columns:135px 1fr;gap:6px;font-size:12px;margin-top:10px}}.kv div:nth-child(odd){{color:var(--muted)}}.footer{{margin-top:22px;border-top:1px solid var(--border);padding-top:12px;color:var(--muted);font-size:12px;display:flex;gap:12px;flex-wrap:wrap}}
 </style>
 </head>
 <body>
-
-<h1>Factor-Level IC Evaluation</h1>
-<p class="subtitle">Direction-adjusted RankIC (Spearman) · {n_total} registered factors · {n_computed} computed · {n_missing} missing FV · {n_signal} in signal · Phase 13A-P1</p>
-
+<div class="topbar">
+  <div>
+    <h1>Factor Evaluation</h1>
+    <div class="subtitle">Factor-level diagnostics · click any factor for details · generated from canonical evaluation outputs</div>
+  </div>
+  <div class="subtitle"><a href="index.html">Home</a> · <a href="actual-script-map.html">Pipeline Map</a> · <a href="signal-evaluation-summary.html">Signal Evaluation</a></div>
+</div>
+<div class="notice">Diagnostic only. This page evaluates factor behavior; it does not promote factors into signals and does not make production, live trading, tradeability, or alpha claims.</div>
 <div class="stats">
- <div class="stat"><div class="stat-val">{n_total}</div><div class="stat-label">Registered</div></div>
- <div class="stat"><div class="stat-val">{n_computed}</div><div class="stat-label">Computed</div></div>
- <div class="stat"><div class="stat-val">{n_missing}</div><div class="stat-label">Missing FV</div></div>
- <div class="stat"><div class="stat-val">{n_signal}</div><div class="stat-label">In Signal</div></div>
- <div class="stat"><div class="stat-val">4</div><div class="stat-label">Horizons</div></div>
+  <div class="stat"><strong>{summary['registered']}</strong><span>Registered</span></div>
+  <div class="stat"><strong>{summary['computed']}</strong><span>Computed factor_values</span></div>
+  <div class="stat"><strong>{summary['missing']}</strong><span>Missing input/FV</span></div>
+  <div class="stat"><strong>{summary['active_signal_factors']}</strong><span>Active signal factors</span></div>
 </div>
-
-<div class="alert-box">
-<strong>⚠️ 声明 / Disclaimer:</strong> Phase 13A research governance/evaluation work has started. Production/live-trading Phase 13 has NOT started.<br>
-本页是因子层诊断（factor-level diagnostics），不是可交易 alpha。Not tradeable alpha. Not production. Not live trading.
+<div class="card">
+  <h2>Review Bucket Distribution</h2>
+  <div class="bucket-grid">{bucket_cards}</div>
 </div>
-
-<div class="method-box">
-<strong>方法说明 / Methodology</strong>
-<ul>
-<li><strong>Factor-level RankIC:</strong> 每个 timestamp 内 rank(factor_value) 与 rank(forward_return) 的 Pearson 相关系数（等价于 Spearman）。不同于 signal-level RankIC（组合信号 vs forward return）。</li>
-<li><strong>Raw vs Direction-Adjusted IC:</strong> raw IC 是未经方向调整的相关系数。Direction-adjusted: positive→raw, negative→-raw, conditional→raw (标记 DIRECTION_UNKNOWN)。</li>
-<li><strong>Raw ICIR:</strong> mean(raw RankIC) / std(raw RankIC)。衡量原始 IC 的稳定性。</li>
-<li><strong>Direction-Adjusted ICIR:</strong> mean(adjusted IC) / std(adjusted IC)。对 negative 因子取反后计算。页面默认展示 adjusted ICIR 以匹配 adjusted IC。</li>
-<li><strong>IC Win Rate:</strong> per-timestamp IC > 0 的比例。raw = 未经方向调整; adjusted = 方向调整后。</li>
-<li><strong>Quantile Bucket Returns:</strong> 按因子值排序分为 5 个 bucket，计算各 bucket 的平均 forward return。</li>
-<li><strong>Long-Short Spread:</strong> direction-adjusted 排序后 top bucket - bottom bucket 的 mean return 差异。仅用于诊断，不等于可交易 PnL。</li>
-<li><strong>Coverage / Missing Rate:</strong> 因子值覆盖率和缺失率。</li>
-<li><strong>Period IC:</strong> 按月聚合的 IC 统计，用于评估因子在不同市场状态下的稳定性。</li>
-<li><strong>formula_proxy:</strong> 当前使用 FactorSpec.notes 作为公式代理，不是 canonical DSL。</li>
-</ul>
+<div class="layout">
+  <main>
+    <div class="card">
+      <h2>Factor Scoreboard</h2>
+      <div class="small">Best horizon is selected by candidate review. IC/ICIR are direction-adjusted. LS is long-short spread. Divergent factors require review even when IC is strong.</div>
+      <div class="controls">
+        <input id="search" placeholder="Search factor, family, bucket...">
+        <select id="bucketFilter"><option value="">All buckets</option></select>
+        <select id="signalFilter"><option value="">All factors</option><option value="signal">Active in signal</option><option value="non_signal">Not in signal</option></select>
+      </div>
+      <table id="factorTable">
+        <thead><tr><th>Factor</th><th>Family</th><th>Direction</th><th>Bucket</th><th>Best H</th><th>Best IC</th><th>ICIR</th><th>Win</th><th>LS</th><th>LS t</th><th>Consistency</th><th>Missing</th></tr></thead>
+        <tbody>{rows_html}</tbody>
+      </table>
+    </div>
+  </main>
+  <aside class="detail">
+    <div class="card" id="detailCard"><h2>Factor Detail</h2><div class="small">Select a factor from the table.</div></div>
+  </aside>
 </div>
-
-<div class="parity-box">
-<strong>H8-R Parity Check (2026-06-19)</strong><br>
-evaluate_factors.py 与 momentum.signal_evaluation.compute_rank_ic 公共 API 做了抽样 parity 验证。<br>
-测试因子：vol_5h, vol_40h, rsi_7h, range_1h, price_pos_24h × horizons 1h, 24h。<br>
-结果：<strong>10/10 PASS，max mean RankIC diff = 0.00e+00（exact match）</strong>。
+<div class="footer">
+  <span>Generated: {html.escape(str(summary.get('generated_at','')))}</span>
+  <a href="https://github.com/jerry0012009/momentum/tree/main/docs/factor_library/START_HERE.md">Start Here</a>
+  <a href="https://github.com/jerry0012009/momentum/tree/main/docs/factor_library/FACTOR_LIBRARY_CONTROL_CENTER.md">Governance</a>
 </div>
-
-<h2>Active Signal Factors ({n_signal})</h2>
-{active_html}
-
-<h2>Diagnostic Factors — Top Rankings</h2>
-<div class="diagnostic-box">
-{top_diag_html}
-</div>
-
-<h2>Missing Taker/Funding Factors ({n_missing})</h2>
-<div class="alert-box">
-<strong>Missing Factor Values:</strong> 以下 {n_missing} 个因子的 factor_values 尚未计算，因为当前 raw bars (bars_1h.parquet) 不包含 taker_buy_quote_volume 和 funding_rate 字段。<br>
-需要扩展数据下载脚本以包含这些字段后才能计算。
-</div>
-{missing_html}
-
-<h2>Period Stability (Monthly IC)</h2>
-<p style="color:#94a3b8;font-size:13px">按月聚合的 direction-adjusted IC。Top 20 by best monthly IC.</p>
-{period_html}
-
-<h2>Candidate Review / 因子候选诊断</h2>
-<p style="color:#94a3b8;font-size:13px">按 review_bucket 分类的因子候选诊断表。Diagnostic only — not alpha selection.</p>
-{candidate_review_html}
-
-<h2>Full Factor Table</h2>
-<p style="color:#94a3b8;font-size:13px">IC = direction-adjusted RankIC · ICIR = direction-adjusted ICIR (raw ICIR for negative factors differs) · Win = adjusted win rate · LS = long-short spread mean</p>
-<p style="color:#64748b;font-size:11px">Raw ICIR and direction-adjusted ICIR differ for negative-direction factors. The page displays direction-adjusted ICIR by default to match direction-adjusted IC.</p>
-
-<table>
-<thead>
-<tr>
- <th>Factor</th><th>Category</th><th>Direction</th><th>Status</th><th>Missing%</th>
- <th colspan="4" class="hz-header">1h IC / ICIR / Win / LS</th>
- <th colspan="4" class="hz-header">4h IC / ICIR / Win / LS</th>
- <th colspan="4" class="hz-header">24h IC / ICIR / Win / LS</th>
- <th colspan="4" class="hz-header">72h IC / ICIR / Win / LS</th>
-</tr>
-</thead>
-<tbody>
-{table_rows}
-</tbody>
-</table>
-
-<footer>
- <a href="index.html">← 首页</a>
- <a href="actual-script-map.html">代码结构</a>
- <a href="signal-evaluation-summary.html">信号评价</a>
- <a href="https://github.com/jerry0012009/momentum/tree/main/docs/factor_library/FACTOR_LIBRARY_CONTROL_CENTER.md">治理中心</a>
-</footer>
-
+<script id="factorPayload" type="application/json">{html.escape(payload)}</script>
+<script>
+const DATA = JSON.parse(document.getElementById('factorPayload').textContent);
+const factors = DATA.factors;
+const byId = new Map(factors.map(f => [f.factor_id, f]));
+const table = document.getElementById('factorTable');
+const search = document.getElementById('search');
+const bucketFilter = document.getElementById('bucketFilter');
+const signalFilter = document.getElementById('signalFilter');
+const detailCard = document.getElementById('detailCard');
+const horizons = ["1h","4h","24h","72h"];
+const buckets = [...new Set(factors.map(f => f.review_bucket))].sort();
+buckets.forEach(b => {{ const o=document.createElement('option'); o.value=b; o.textContent=b; bucketFilter.appendChild(o); }});
+function esc(v) {{ return String(v ?? '').replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c])); }}
+function num(v,d=4,signed=true) {{ if(v===null || v===undefined || Number.isNaN(v)) return '—'; const sign=signed && v>=0?'+':''; return sign + Number(v).toFixed(d); }}
+function pct(v) {{ if(v===null || v===undefined || Number.isNaN(v)) return '—'; return (Number(v)*100).toFixed(1)+'%'; }}
+function cls(v, strong=0.03, watch=0.02) {{ if(v===null || v===undefined || Number.isNaN(v)) return 'muted'; const a=Math.abs(Number(v)); return a>=strong?'strong':a>=watch?'watch':'plain'; }}
+function barChart(vals) {{
+  const clean = vals.map(v => v===null || v===undefined ? 0 : Number(v));
+  const max = Math.max(...clean.map(v => Math.abs(v)), 0.000001);
+  const w=360,h=110,mid=55,bw=42,gap=22,start=32;
+  let s=`<svg viewBox="0 0 ${{w}} ${{h}}" class="bar-svg" preserveAspectRatio="none"><line x1="8" y1="${{mid}}" x2="${{w-8}}" y2="${{mid}}" stroke="#334155"/>`;
+  clean.forEach((v,i)=>{{ const bh=Math.abs(v)/max*42; const x=start+i*(bw+gap); const y=v>=0?mid-bh:mid; const c=v>=0?'#34d399':'#f87171'; s+=`<rect x="${{x}}" y="${{y}}" width="${{bw}}" height="${{bh}}" fill="${{c}}" rx="3"/><text x="${{x+bw/2}}" y="102" text-anchor="middle" fill="#8ea0b8" font-size="10">Q${{i+1}}</text>`; }});
+  return s+'</svg>';
+}}
+function horizonTabs(f, selected) {{ return `<div class="tabs">${{horizons.map(h => `<button class="tab ${{h===selected?'active':''}}" data-hz="${{h}}">${{h}}</button>`).join('')}}</div>`; }}
+function renderDetail(fid, hz) {{
+  const f = byId.get(fid); if(!f) return;
+  hz = hz || f.best_horizon || '1h';
+  const h = f.horizons[hz] || {{}};
+  const q = h.quantile || {{}};
+  const st = h.stability || {{}};
+  detailCard.innerHTML = `
+    <h2>${{esc(f.factor_id)}}</h2>
+    <div class="small">${{esc(f.family)}} · direction=${{esc(f.expected_direction)}} · best horizon=${{esc(f.best_horizon)}}</div>
+    ${{horizonTabs(f, hz)}}
+    <div class="metric-grid">
+      <div class="metric"><span>Adj IC</span><strong class="${{cls(h.adj_ic)}}">${{num(h.adj_ic,4)}}</strong></div>
+      <div class="metric"><span>Adj ICIR</span><strong>${{num(h.adj_icir,3)}}</strong></div>
+      <div class="metric"><span>IC win rate</span><strong>${{pct(h.win_rate)}}</strong></div>
+      <div class="metric"><span>LS spread</span><strong class="${{cls(h.ls_spread,0.002,0.001)}}">${{num(h.ls_spread,5)}}</strong></div>
+      <div class="metric"><span>LS t-stat</span><strong>${{num(h.ls_t,2,false)}}</strong></div>
+      <div class="metric"><span>Coverage</span><strong>${{pct(h.coverage)}}</strong></div>
+    </div>
+    <h3>Quantile Return Shape</h3>
+    <div class="small">Shape: ${{esc(q.label || 'NO_DATA')}}. Bars show mean forward return by factor quantile for selected horizon.</div>
+    ${{barChart(q.returns || [])}}
+    <h3>Monthly Stability</h3>
+    <div class="metric-grid">
+      <div class="metric"><span>Label</span><strong>${{esc(st.label || 'NO_DATA')}}</strong></div>
+      <div class="metric"><span>Positive months</span><strong>${{pct(st.positive_ratio)}}</strong></div>
+      <div class="metric"><span>Months</span><strong>${{esc(st.n_months ?? 0)}}</strong></div>
+      <div class="metric"><span>Best month</span><strong>${{esc(st.best?.period || '—')}} ${{num(st.best?.adj_ic,4)}}</strong></div>
+      <div class="metric"><span>Worst month</span><strong>${{esc(st.worst?.period || '—')}} ${{num(st.worst?.adj_ic,4)}}</strong></div>
+      <div class="metric"><span>Consistency</span><strong>${{esc(f.rankic_longshort_consistency)}}</strong></div>
+    </div>
+    <h3>Review</h3>
+    <div class="kv">
+      <div>Decision bucket</div><div><span class="bucket ${{esc(f.review_bucket.toLowerCase())}}">${{esc(f.review_bucket)}}</span></div>
+      <div>Review notes</div><div>${{esc(f.review_notes || '—')}}</div>
+      <div>Formula proxy</div><div>${{esc(f.formula_proxy || '—')}}</div>
+      <div>Required columns</div><div>${{esc(f.required_columns || '—')}}</div>
+      <div>Lookback</div><div>${{esc(f.lookback_window || '—')}}</div>
+      <div>Status</div><div>${{esc(f.status)}}</div>
+    </div>`;
+  detailCard.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => renderDetail(fid, btn.dataset.hz)));
+}}
+function applyFilters() {{
+  const q = search.value.toLowerCase();
+  const b = bucketFilter.value;
+  const s = signalFilter.value;
+  table.querySelectorAll('tbody tr').forEach(tr => {{
+    const f = byId.get(tr.dataset.factor);
+    const text = [f.factor_id,f.family,f.expected_direction,f.review_bucket,f.rankic_longshort_consistency].join(' ').toLowerCase();
+    const okQ = !q || text.includes(q);
+    const okB = !b || f.review_bucket === b;
+    const okS = !s || (s==='signal' ? f.used_in_signal : !f.used_in_signal);
+    tr.style.display = okQ && okB && okS ? '' : 'none';
+  }});
+}}
+table.querySelectorAll('tbody tr').forEach(tr => tr.addEventListener('click', () => {{
+  table.querySelectorAll('tr.selected').forEach(r => r.classList.remove('selected'));
+  tr.classList.add('selected');
+  renderDetail(tr.dataset.factor);
+}}));
+[search,bucketFilter,signalFilter].forEach(el => el.addEventListener('input', applyFilters));
+if(factors.length) {{
+  const first = factors.find(f => f.review_bucket === 'DIRECTION_REVIEW_REQUIRED') || factors[0];
+  const row = table.querySelector(`tr[data-factor="${{CSS.escape(first.factor_id)}}"]`);
+  if(row) row.classList.add('selected');
+  renderDetail(first.factor_id);
+}}
+</script>
 </body>
-</html>'''
+</html>"""
 
-OUT.write_text(html, encoding="utf-8")
-print(f"Wrote {OUT} ({len(html)} bytes)")
+
+if __name__ == "__main__":
+    html_out = render()
+    OUT.write_text(html_out, encoding="utf-8")
+    print(f"Wrote {OUT} ({len(html_out)} bytes)")
