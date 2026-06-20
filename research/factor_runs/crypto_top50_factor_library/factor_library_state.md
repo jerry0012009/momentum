@@ -1,6 +1,6 @@
 # Factor Library State
 
-**Generated:** 2026-06-20T15:58:30.544238+00:00
+**Generated:** 2026-06-20T16:27:42.539278+00:00
 **Dataset:** crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1
 
 ## Counts
@@ -24,12 +24,13 @@
 
 ## Candidate Review Distribution
 
-- **STRONG_DIAGNOSTIC_CANDIDATE:** 22
+- **DIRECTION_REVIEW_REQUIRED:** 22
 - **CONDITIONAL_DIRECTION_REVIEW:** 16
 - **ACTIVE_IN_SIGNAL_REVIEW:** 10
-- **LONGSHORT_STRONG_RANKIC_WEAK:** 8
+- **TAIL_OR_MONOTONICITY_REVIEW_REQUIRED:** 8
 - **MISSING_INPUT:** 6
-- **METADATA_REVIEW:** 3
+- **METADATA_REVIEW:** 2
+- **LONGSHORT_STRONG_RANKIC_WEAK:** 1
 
 ## Signal Factor IDs
 
