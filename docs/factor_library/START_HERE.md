@@ -10,7 +10,9 @@ Crypto USDT perpetual cross-sectional momentum factor library research system.
 
 这是一个**加密永续合约截面动量因子库研究系统**。目标是：从原始K线数据出发，通过因子计算、因子评价、信号构建、信号评价的完整流水线，寻找可诊断的横截面排序信息。
 
-**不是实盘。不是交易建议。不是 alpha 验证。Phase 13 尚未开始。**
+**不是实盘。不是交易建议。不是 alpha 验证。**
+
+**当前状态 / Current state:** 自动生成于 `factor_library_state.json` / `factor_library_state.md`。不要手写计数，从此文件读取。
 
 ---
 

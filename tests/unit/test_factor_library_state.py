@@ -68,3 +68,36 @@ def test_state_json_md_output(tmp_path):
     # MD has content
     content = md_path.read_text()
     assert "Factor Library State" in content
+
+
+def test_signal_variants_not_zero():
+    """signal_variants should be > 0 (currently 3 from canonical artifacts)."""
+    from build_factor_library_state import build_state
+    state = build_state()
+    assert state["signal_variants"] > 0, (
+        f"signal_variants is {state['signal_variants']}. "
+        f"Should be derived from canonical signal artifacts (expected 3)."
+    )
+
+
+def test_signal_factor_ids_from_canonical_artifact():
+    """current_signal_factor_ids should come from a canonical artifact, not code constant."""
+    from build_factor_library_state import build_state
+    state = build_state()
+    source = state.get("signal_factor_source", "")
+    assert "FALLBACK" not in source, (
+        f"signal_factor_source is '{source}' — using code constant fallback. "
+        f"Expected canonical artifact (phase9b_signal_component_manifest.csv or similar)."
+    )
+    assert state["active_signal_factors"] == 10, (
+        f"Expected 10 signal factors, got {state['active_signal_factors']}"
+    )
+
+
+def test_no_fallback_warnings_for_signal():
+    """No warnings about signal fallback if canonical artifacts exist."""
+    from build_factor_library_state import build_state
+    state = build_state()
+    for w in state["warnings"]:
+        assert "code constant" not in w.lower(), f"Unexpected fallback warning: {w}"
+        assert "FALLBACK" not in w, f"Unexpected fallback warning: {w}"

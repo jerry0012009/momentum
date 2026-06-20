@@ -2,7 +2,9 @@
 """Generate factor library state — single source of truth for current counts.
 
 Reads canonical sources (registry, factor_values directories, catalog, integrity
-report, candidate review, signal panel manifest). Never hard-codes counts.
+report, candidate review, signal component manifest, signal composition review).
+Never hard-codes counts. Derives signal_factor_ids and signal_variants from
+canonical artifacts; falls back to code constants only with explicit warnings.
 
 Outputs:
   research/factor_runs/crypto_top50_factor_library/factor_library_state.json
@@ -12,6 +14,7 @@ Phase 13A-P3. Not production. Not live trading.
 """
 from __future__ import annotations
 
+import csv
 import json
 import sys
 from collections import Counter
@@ -26,8 +29,14 @@ CATALOG_JSON = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
 INTEGRITY_JSON = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_registry_integrity_report.json"
 OUT_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
 
-# Canonical signal factor IDs — same as build_phase9b_signal_panel.py
-SIGNAL_FACTOR_IDS = {
+# Canonical signal artifacts (in priority order)
+SIGNAL_COMPONENT_MANIFEST = OUT_DIR / "phase9b_signal_component_manifest.csv"
+SIGNAL_FACTOR_REVIEW = OUT_DIR / "signal_composition_review" / "signal_factor_component_review.csv"
+SIGNAL_COMPOSITION_MANIFEST = OUT_DIR / "signal_composition_review" / "signal_composition_review_manifest.json"
+SIGNAL_VARIANT_COMPARISON = OUT_DIR / "signal_composition_review" / "signal_variant_comparison.csv"
+
+# Fallback constant — used only if no canonical artifact is found
+_FALLBACK_SIGNAL_FACTOR_IDS = {
     "vol_5h", "vol_40h", "downside_vol_20h", "vol_of_vol_20h",
     "rsi_7h", "rsi_28h", "xs_rank_vol",
     "range_1h", "range_4h", "price_pos_24h",
@@ -55,10 +64,102 @@ def load_json_if_exists(path: Path) -> dict | None:
 
 def load_csv_if_exists(path: Path) -> list[dict] | None:
     if path.exists():
-        import csv
         with open(path) as f:
             return list(csv.DictReader(f))
     return None
+
+
+def _derive_signal_factor_ids(warnings: list[str]) -> tuple[list[str], str]:
+    """Derive current_signal_factor_ids from canonical artifacts.
+
+    Priority:
+      1. phase9b_signal_component_manifest.csv — extract leaf factor IDs
+      2. signal_composition_review/signal_factor_component_review.csv
+      3. Fallback to code constant + warning
+
+    Returns (sorted_factor_ids, source_description).
+    """
+    # Source 1: signal component manifest
+    if SIGNAL_COMPONENT_MANIFEST.exists():
+        rows = load_csv_if_exists(SIGNAL_COMPONENT_MANIFEST)
+        if rows:
+            # First pass: collect all component IDs
+            component_ids = set()
+            for row in rows:
+                cid = row.get("component_id", "").strip()
+                if cid:
+                    component_ids.add(cid)
+            # Second pass: extract leaf factor IDs (exclude composite components)
+            factor_ids = set()
+            for row in rows:
+                factors_str = row.get("included_factors", "")
+                for f in factors_str.split(","):
+                    f = f.strip()
+                    # Skip empty, composite references containing "+", and known component IDs
+                    if not f:
+                        continue
+                    if "+" in f:
+                        continue
+                    if f in component_ids:
+                        continue
+                    factor_ids.add(f)
+            if factor_ids:
+                return sorted(factor_ids), "phase9b_signal_component_manifest.csv"
+
+    # Source 2: signal factor component review
+    if SIGNAL_FACTOR_REVIEW.exists():
+        rows = load_csv_if_exists(SIGNAL_FACTOR_REVIEW)
+        if rows:
+            factor_ids = set()
+            for row in rows:
+                fid = row.get("factor_id", "") or row.get("factor_name", "")
+                if fid:
+                    factor_ids.add(fid)
+            if factor_ids:
+                return sorted(factor_ids), "signal_factor_component_review.csv"
+
+    # Fallback
+    warnings.append(
+        "current_signal_factor_ids derived from code constant (no canonical signal artifact found). "
+        "Run build_phase9b_signal_panel.py or signal composition review to generate canonical artifacts."
+    )
+    return sorted(_FALLBACK_SIGNAL_FACTOR_IDS), "code_constant_FALLBACK"
+
+
+def _derive_signal_variants(warnings: list[str]) -> tuple[int, str]:
+    """Derive signal_variants from canonical artifacts.
+
+    Priority:
+      1. signal_composition_review_manifest.json — signal_variants field
+      2. signal_variant_comparison.csv — count unique variant names
+      3. Return 0 + warning
+
+    Returns (count, source_description).
+    """
+    # Source 1: composition review manifest
+    if SIGNAL_COMPOSITION_MANIFEST.exists():
+        manifest = load_json_if_exists(SIGNAL_COMPOSITION_MANIFEST)
+        if manifest and "signal_variants" in manifest:
+            return int(manifest["signal_variants"]), "signal_composition_review_manifest.json"
+
+    # Source 2: variant comparison CSV
+    if SIGNAL_VARIANT_COMPARISON.exists():
+        rows = load_csv_if_exists(SIGNAL_VARIANT_COMPARISON)
+        if rows:
+            variants = set()
+            for row in rows:
+                sv = row.get("signal_variant", "")
+                if sv:
+                    variants.add(sv)
+            if variants:
+                return len(variants), "signal_variant_comparison.csv"
+
+    # Fallback
+    warnings.append(
+        "signal_variants set to 0 (no canonical signal variant artifact found). "
+        "Run signal composition review to generate canonical artifacts."
+    )
+    return 0, "no_artifact_FALLBACK"
 
 
 def build_state() -> dict:
@@ -96,13 +197,15 @@ def build_state() -> dict:
     if catalog and "lifecycle_distribution" in catalog:
         lifecycle_dist = Counter(catalog["lifecycle_distribution"])
     else:
+        # Derive signal factor IDs for lifecycle classification
+        signal_ids, _ = _derive_signal_factor_ids([])
         for fs in registry:
             fv_exists = (FEATURES_DIR / fs.factor_id / "factor_values.parquet").exists()
             if fs.factor_id in missing_input_ids:
                 lifecycle_dist["MISSING_INPUT_DATA"] += 1
             elif not fv_exists:
                 lifecycle_dist["BUILDABLE"] += 1
-            elif fs.factor_id in SIGNAL_FACTOR_IDS:
+            elif fs.factor_id in signal_ids:
                 lifecycle_dist["ACTIVE_IN_SIGNAL"] += 1
             elif fs.expected_direction == "conditional":
                 lifecycle_dist["DIAGNOSTIC_ONLY"] += 1
@@ -147,14 +250,6 @@ def build_state() -> dict:
                 })
         best_factors.sort(key=lambda x: abs(x["best_adj_ic"]), reverse=True)
 
-    # Signal variants (from evaluate_signals outputs if present)
-    signal_eval_dir = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "signal_evaluation"
-    signal_variants = 0
-    if signal_eval_dir.exists():
-        for p in signal_eval_dir.iterdir():
-            if p.is_dir() and p.name.startswith("variant_"):
-                signal_variants += 1
-
     # Warnings
     warnings = []
     if len(computed_ids) + len(missing_fv_ids) != len(registered_ids):
@@ -163,6 +258,12 @@ def build_state() -> dict:
         warnings.append(f"{len(missing_input_ids)} factors have missing input data: {', '.join(missing_input_ids)}")
     if not review_data:
         warnings.append("candidate review CSV not found — run evaluate_factors.py first")
+
+    # Derive signal factor IDs from canonical artifacts
+    signal_factor_ids, signal_source = _derive_signal_factor_ids(warnings)
+
+    # Derive signal variants from canonical artifacts
+    signal_variants, variant_source = _derive_signal_variants(warnings)
 
     state = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -175,18 +276,28 @@ def build_state() -> dict:
         "missing_factor_ids": missing_fv_ids,
         "missing_input_factors": len(missing_input_ids),
         "missing_input_factor_ids": missing_input_ids,
-        "active_signal_factors": len(SIGNAL_FACTOR_IDS),
-        "signal_factor_ids": sorted(SIGNAL_FACTOR_IDS),
+        "active_signal_factors": len(signal_factor_ids),
+        "signal_factor_ids": signal_factor_ids,
+        "signal_factor_source": signal_source,
         "signal_variants": signal_variants,
+        "signal_variant_source": variant_source,
         "horizons": LABEL_HORIZONS,
         "factor_lifecycle_distribution": dict(lifecycle_dist),
         "candidate_review_distribution": dict(review_dist),
-        "current_signal_factor_ids": sorted(SIGNAL_FACTOR_IDS),
+        "current_signal_factor_ids": signal_factor_ids,
         "canonical_paths": {
             "features_dir": str(FEATURES_DIR),
             "evaluation_dir": str(EVAL_DIR),
             "catalog_json": str(CATALOG_JSON),
             "integrity_json": str(INTEGRITY_JSON),
+            "candidate_review_csv": str(review_csv_path),
+            "metric_panel_csv": str(metric_csv_path),
+            "signal_component_manifest": str(SIGNAL_COMPONENT_MANIFEST),
+            "signal_factor_component_review": str(SIGNAL_FACTOR_REVIEW),
+            "signal_composition_review_manifest": str(SIGNAL_COMPOSITION_MANIFEST),
+            "signal_variant_comparison": str(SIGNAL_VARIANT_COMPARISON),
+            "phase9b_signal_panel_manifest": str(OUT_DIR / "phase9b_signal_panel_manifest.csv"),
+            "phase9b_signal_panel_parquet": str(OUT_DIR / "phase9b_signal_panel.parquet"),
         },
         "top_factors_by_adj_ic": best_factors[:15],
         "warnings": warnings,
@@ -234,8 +345,14 @@ def write_markdown(state: dict, out_dir: Path) -> Path:
         lines.append("")
     lines.append("## Signal Factor IDs")
     lines.append("")
+    lines.append(f"*Source: {state.get('signal_factor_source', 'unknown')}*")
+    lines.append("")
     for fid in state["current_signal_factor_ids"]:
         lines.append(f"- {fid}")
+    lines.append("")
+    lines.append(f"## Signal Variants: {state['signal_variants']}")
+    lines.append("")
+    lines.append(f"*Source: {state.get('signal_variant_source', 'unknown')}*")
     lines.append("")
     if state["missing_input_factor_ids"]:
         lines.append("## Missing Input Factors")
@@ -275,9 +392,11 @@ def main():
     print(f"  Computed:   {state['computed_factor_values']}")
     print(f"  Missing FV: {state['missing_factor_values']}")
     print(f"  Missing Input: {state['missing_input_factors']}")
-    print(f"  Signal:     {state['active_signal_factors']}")
-    print(f"  Variants:   {state['signal_variants']}")
+    print(f"  Signal:     {state['active_signal_factors']} (source: {state['signal_factor_source']})")
+    print(f"  Variants:   {state['signal_variants']} (source: {state['signal_variant_source']})")
     print(f"  Warnings:   {len(state['warnings'])}")
+    for w in state["warnings"]:
+        print(f"    ⚠️  {w}")
     print(f"Output: {json_path}")
     print(f"Output: {md_path}")
 

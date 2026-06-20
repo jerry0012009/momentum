@@ -1,6 +1,6 @@
 # Factor Library State
 
-**Generated:** 2026-06-20T15:16:20.808722+00:00
+**Generated:** 2026-06-20T15:58:30.544238+00:00
 **Dataset:** crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1
 
 ## Counts
@@ -12,7 +12,7 @@
 | Missing factor_values | 6 |
 | Missing input data | 6 |
 | Active signal factors | 10 |
-| Signal variants | 0 |
+| Signal variants | 3 |
 
 ## Lifecycle Distribution
 
@@ -33,6 +33,8 @@
 
 ## Signal Factor IDs
 
+*Source: phase9b_signal_component_manifest.csv*
+
 - downside_vol_20h
 - price_pos_24h
 - range_1h
@@ -43,6 +45,10 @@
 - vol_5h
 - vol_of_vol_20h
 - xs_rank_vol
+
+## Signal Variants: 3
+
+*Source: signal_composition_review_manifest.json*
 
 ## Missing Input Factors
 
