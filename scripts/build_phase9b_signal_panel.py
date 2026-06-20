@@ -16,7 +16,8 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_BASE = ROOT / "data" / "features" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
+DEFAULT_DATASET_ID = "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
+DATA_BASE = ROOT / "data" / "features" / DEFAULT_DATASET_ID
 OUT_BASE = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
 
 FACTOR_IDS = [
@@ -66,13 +67,37 @@ def xs_rank_pct_np(arr: np.ndarray) -> np.ndarray:
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset-id", type=str, default=DEFAULT_DATASET_ID,
+                        help="Dataset ID (default: %(default)s)")
+    args = parser.parse_args()
+
+    data_base = ROOT / "data" / "features" / args.dataset_id
+
     print("Phase 9B: Building deterministic signal panels")
+    print(f"  Dataset: {args.dataset_id}")
+    print(f"  Features: {data_base}")
+
+    # Preflight: check all 10 factor value files exist
+    missing = []
+    for fid in FACTOR_IDS:
+        fv_path = data_base / fid / "factor_values.parquet"
+        if not fv_path.exists():
+            missing.append((fid, str(fv_path)))
+    if missing:
+        print(f"\nERROR: {len(missing)} factor value file(s) missing:", flush=True)
+        for fid, path in missing:
+            print(f"  {fid}: {path}", flush=True)
+        print(f"  Dataset ID: {args.dataset_id}", flush=True)
+        print(f"  Hint: run build_factor_values.py --dataset-id {args.dataset_id} first", flush=True)
+        sys.exit(1)
 
     # 1. Load and pivot to wide arrays (timestamp × symbol)
     print("[1/6] Loading and pivoting...")
     dfs = []
     for fid in FACTOR_IDS:
-        path = DATA_BASE / fid / "factor_values.parquet"
+        path = data_base / fid / "factor_values.parquet"
         df = pd.read_parquet(path, columns=["timestamp", "symbol", "factor_value"])
         df = df.rename(columns={"factor_value": fid})
         dfs.append(df)

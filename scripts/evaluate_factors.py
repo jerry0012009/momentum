@@ -25,7 +25,8 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-FEATURES_DIR = ROOT / "data" / "features" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
+DEFAULT_DATASET_ID = "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
+FEATURES_DIR = ROOT / "data" / "features" / DEFAULT_DATASET_ID
 LABELS_PATH = FEATURES_DIR / "labels.parquet"
 OUTPUT_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_level_evaluation"
 
@@ -108,7 +109,13 @@ def main():
                         help="Suffix for output files (e.g. 'scratch_rev3h'). Required for partial runs.")
     parser.add_argument("--output-dir", type=str, default=None,
                         help="Custom output directory. Required for partial runs.")
+    parser.add_argument("--dataset-id", type=str, default=DEFAULT_DATASET_ID,
+                        help="Dataset ID (default: %(default)s)")
     args = parser.parse_args()
+
+    # Resolve dataset-dependent paths
+    features_dir = ROOT / "data" / "features" / args.dataset_id
+    labels_path = features_dir / "labels.parquet"
 
     is_partial = bool(args.factor_ids)
 
@@ -134,8 +141,9 @@ def main():
         print(f"  Mode: PARTIAL ({len(args.factor_ids)} factors)", flush=True)
     else:
         print("  Mode: FULL (all registered factors)", flush=True)
-    print(f"  Features: {FEATURES_DIR}", flush=True)
-    print(f"  Labels:   {LABELS_PATH}", flush=True)
+    print(f"  Dataset:  {args.dataset_id}", flush=True)
+    print(f"  Features: {features_dir}", flush=True)
+    print(f"  Labels:   {labels_path}", flush=True)
     print(f"  Output:   {out_dir}\n", flush=True)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -148,8 +156,13 @@ def main():
 
     # Load labels (no pre-ranking — rank on merged subset to match API)
     print("  Loading labels...", end=" ", flush=True)
+    if not labels_path.exists():
+        print(f"\nERROR: labels file not found: {labels_path}", flush=True)
+        print(f"  Dataset ID: {args.dataset_id}", flush=True)
+        print(f"  Expected:   data/features/{args.dataset_id}/labels.parquet", flush=True)
+        sys.exit(1)
     t0 = time.time()
-    labels = pd.read_parquet(LABELS_PATH)
+    labels = pd.read_parquet(labels_path)
     labels["timestamp"] = pd.to_datetime(labels["timestamp"], utc=True)
     labels = labels.sort_values("timestamp").reset_index(drop=True)
     print(f"done ({time.time() - t0:.1f}s, {len(labels)} rows)\n", flush=True)
@@ -164,7 +177,7 @@ def main():
         fid = spec["factor_id"]
         print(f"  [{i + 1}/{len(registry)}] {fid}...", end=" ", flush=True)
 
-        fv_path = FEATURES_DIR / fid / "factor_values.parquet"
+        fv_path = features_dir / fid / "factor_values.parquet"
         if not fv_path.exists():
             missing_factors.append(fid)
             print("MISSING_FACTOR_VALUES", flush=True)
@@ -595,7 +608,7 @@ def main():
     formula_catalog_rows = []
     for spec_entry in registry:
         fid = spec_entry["factor_id"]
-        fv_exists = (FEATURES_DIR / fid / "factor_values.parquet").exists()
+        fv_exists = (features_dir / fid / "factor_values.parquet").exists()
         in_signal = fid in SIGNAL_FACTOR_IDS
         cat_row = cov_df[cov_df["factor_name"] == fid]
         cat_status = cat_row.iloc[0]["status"] if len(cat_row) > 0 else "UNKNOWN"
@@ -638,7 +651,7 @@ def main():
         req_cols_str = "|".join(req_cols) if req_cols else ""
 
         fdf = mp_df[mp_df["factor_name"] == fid]
-        fv_exists = (FEATURES_DIR / fid / "factor_values.parquet").exists()
+        fv_exists = (features_dir / fid / "factor_values.parquet").exists()
 
         # Best adjusted IC across horizons
         best_adj_ic = None
@@ -770,7 +783,7 @@ def main():
     computed_fids = df[df["status"].str.contains("COMPUTED", na=False)]["factor_name"].unique()
     # Also count factors with factor_values but non-COMPUTED status (e.g. DIRECTION_UNKNOWN)
     fids_with_fv = [fid for fid in df["factor_name"].unique()
-                    if (FEATURES_DIR / fid / "factor_values.parquet").exists()
+                    if (features_dir / fid / "factor_values.parquet").exists()
                     and fid not in missing_factors]
     manifest = {
         "phase": "13A-P1",
@@ -779,9 +792,9 @@ def main():
         "factor_ids": args.factor_ids if is_partial else "ALL",
         "canonical_output": not is_partial,
         "output_safety": "scratch_only" if is_partial else "canonical",
-        "dataset_id": "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1",
-        "labels_path": str(LABELS_PATH),
-        "features_dir": str(FEATURES_DIR),
+        "dataset_id": args.dataset_id,
+        "labels_path": str(labels_path),
+        "features_dir": str(features_dir),
         "total_registered_factors": len(registry),
         "computed_factors": len(fids_with_fv),
         "missing_factor_values": len(missing_factors),

@@ -17,6 +17,7 @@ from typing import Sequence
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_DATASET_ID = "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
 from factor_formula_registry import REGISTRY, REGISTRY_BY_ID
@@ -76,7 +77,7 @@ def calc_group(g: pd.DataFrame, factor_ids: Sequence[str] | None = None) -> pd.D
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--dataset-id", default="crypto_top50_usdt_perp_1h",
+    p.add_argument("--dataset-id", default=DEFAULT_DATASET_ID,
                     help="Dataset ID under data/cache/ and data/features/")
     p.add_argument("--factor-ids", default=None,
                     help="Comma-separated factor_ids to build (default: all REGISTRY)")
@@ -108,7 +109,11 @@ def main() -> None:
     print(f"Building {len(factor_ids)} factors: {factor_ids}")
 
     if not bars_path.exists():
-        raise FileNotFoundError(bars_path)
+        print(f"ERROR: bars file not found: {bars_path}", flush=True)
+        print(f"  Dataset ID: {args.dataset_id}", flush=True)
+        print(f"  Expected:   data/cache/{args.dataset_id}/bars_1h.parquet", flush=True)
+        print(f"  Hint: pass --dataset-id explicitly if using a non-default dataset", flush=True)
+        _sys.exit(1)
     bars = pd.read_parquet(bars_path)
     if bars.empty:
         raise ValueError("bars_1h.parquet is empty; fetch bars first")

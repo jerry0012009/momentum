@@ -424,11 +424,12 @@ def main():
             sys.executable, str(SCRIPTS / "evaluate_factors.py"),
             "--factor-ids", *factor_ids,
             "--output-suffix", suffix,
+            "--dataset-id", args.dataset_id,
         ]
         rc_eval, out_eval = run_command(eval_cmd, "Partial evaluation", dry_run=args.dry_run)
         command_log.append({
             "step": "partial_evaluation",
-            "command": f"evaluate_factors.py --factor-ids {' '.join(factor_ids)} --output-suffix {suffix}",
+            "command": f"evaluate_factors.py --factor-ids {' '.join(factor_ids)} --output-suffix {suffix} --dataset-id {args.dataset_id}",
             "exit_code": rc_eval,
             "output_tail": out_eval[-500:] if out_eval else "",
         })
