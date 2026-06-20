@@ -343,9 +343,18 @@ def main():
         dry_run=args.dry_run,
     )
 
-    # Step 8: Quality checks and manifest
+    # Step 8: Generate report
+    print("\nStep 8: Generate report")
+    rc_report, _ = run_command(
+        [sys.executable, str(SCRIPTS / "generate_intake_report.py"),
+         "--run-dir", str(run_dir)],
+        "Generate report",
+        dry_run=args.dry_run,
+    )
+
+    # Step 9: Quality checks and manifest
     elapsed = time.time() - t_start
-    print("\nStep 8: Quality checks and manifest")
+    print("\nStep 9: Quality checks and manifest")
     if not args.dry_run:
         qc_path = build_quality_checks(factor_ids, run_dir, run_id, collected, rc_integrity)
         manifest_path = build_manifest(run_id, factor_ids, run_dir, collected, elapsed, args.dry_run)
