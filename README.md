@@ -1,8 +1,41 @@
 # jerry/momentum
 
+## Current Mainline — Crypto Perpetual Cross-Sectional Factor Library
+
+**Active project:** Crypto USDT perpetual cross-sectional momentum factor library research system.
+
+- **53** registered factors, **47** with computed factor_values, **6** taker/funding factors pending data source
+- **10** factors in current signal panel, **3** signal variants
+- **4** horizons: 1h, 4h, 24h, 72h
+- **Status:** Research diagnostic only. NOT production. NOT live trading. NOT alpha-verified.
+
+### Key Documents
+
+| Document | Description |
+|----------|-------------|
+| [START_HERE.md](docs/factor_library/START_HERE.md) | Entry point — pipeline overview, canonical files, how to extend |
+| [FACTOR_LIBRARY_CONTROL_CENTER.md](docs/factor_library/FACTOR_LIBRARY_CONTROL_CENTER.md) | Governance center — status, scripts, modules, extension points |
+| [FILE_STATUS_REGISTER.csv](docs/factor_library/FILE_STATUS_REGISTER.csv) | File-level status register (active / deprecated / orphan) |
+| [ORPHAN_WORK_AUDIT.md](docs/factor_library/ORPHAN_WORK_AUDIT.md) | Orphan risk audit |
+
+### Public Site
+
+| Page | Description |
+|------|-------------|
+| [Factor Library Home](reports/site/factor-library/index.html) | Entry page |
+| [Code Structure Map](reports/site/factor-library/actual-script-map.html) | Pipeline execution map with 12 nodes |
+| [Factor Evaluation](reports/site/factor-library/factor-evaluation.html) | Factor-level IC evaluation (47 factors) |
+| [Signal Evaluation](reports/site/factor-library/signal-evaluation-summary.html) | Signal-level RankIC / Spread summary |
+
+---
+
+## Historical / Adjacent Research
+
+> The sections below document earlier project phases (M1 single-market Backtrader, Xiaomi HK, box consolidation, regime triplet, etc.). These are preserved for historical reference and are **not** part of the current factor-library mainline.
+
 面向趋势交易研究的量化项目（先做单市场 Backtrader，后续扩展到多市场与模拟盘/实盘）。
 
-## 当前阶段（M1）
+### Historical Phase: M1
 目标：先跑通**单市场回测闭环**，并保持结构可扩展、可维护。
 
 ### 已完成（截至 2026-03-03）
