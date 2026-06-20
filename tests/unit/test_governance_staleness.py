@@ -10,8 +10,13 @@ ROOT = Path(__file__).resolve().parents[2]
 # Files that are actively maintained governance docs (not historical snapshots)
 ACTIVE_GOVERNANCE_FILES = [
     "README.md",
+    "scripts/README.md",
+    "docs/DOCS_INDEX.md",
+    "docs/FACTOR_LIBRARY_HOME.md",
     "docs/factor_library/START_HERE.md",
     "docs/factor_library/FACTOR_LIBRARY_CONTROL_CENTER.md",
+    "docs/factor_library/PROJECT_HANDOFF_FACTOR_LIBRARY.md",
+    "docs/factor_library/factor_library_manifest.json",
     "docs/factor_library/PHASE_13A_P0_CONTROL_SURFACE_REPAIR_SUMMARY.md",
 ]
 
@@ -26,6 +31,11 @@ STALE_PATTERNS = [
     "47 computed",
     "53 factors",
     "47 factors",
+    "registered factors: 53",
+    "computed factors: roughly 47",
+    "\"total_registered\": 53",
+    "\"with_factor_values\": 47",
+    "\"computed_factors\": 47",
     "Phase 13 NOT STARTED",
     "Phase 13 not started",
 ]
@@ -60,3 +70,31 @@ def test_active_public_html_no_stale_counts(pattern):
             continue
         matches = _grep_file(fpath, pattern)
         assert not matches, f"{relpath} contains stale pattern '{pattern}': {matches}"
+
+
+def test_factor_intake_is_documented_as_default_route():
+    """Active docs should point new-factor work to run_factor_intake.py."""
+    required_files = [
+        "README.md",
+        "scripts/README.md",
+        "docs/factor_library/START_HERE.md",
+        "docs/factor_library/FACTOR_LIBRARY_CONTROL_CENTER.md",
+        "docs/factor_library/PROJECT_HANDOFF_FACTOR_LIBRARY.md",
+    ]
+    for relpath in required_files:
+        content = (ROOT / relpath).read_text()
+        assert "run_factor_intake.py" in content, f"{relpath} does not mention run_factor_intake.py"
+
+
+def test_old_portals_marked_superseded():
+    """Old portal docs must not look like current planning authority."""
+    portal_files = [
+        "docs/DOCS_INDEX.md",
+        "docs/FACTOR_LIBRARY_HOME.md",
+        "docs/factor_library_transparency/README.md",
+    ]
+    for relpath in portal_files:
+        content = (ROOT / relpath).read_text()
+        assert "SUPERSEDED" in content or "HISTORICAL_ARCHIVE" in content, (
+            f"{relpath} must be marked as superseded or historical"
+        )

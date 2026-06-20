@@ -545,8 +545,10 @@ def main():
         "output_tail": out_report[-500:] if out_report else "",
     })
 
-    # Final outputs_index refresh (now that report.md exists)
+    # Final manifest/log/index refresh now that report.md and the report command exist.
     if not args.dry_run:
+        manifest_path = build_manifest(run_id, factor_ids, run_dir, collected, elapsed, args.dry_run, status, command_log)
+        cmd_log_path = write_command_log(run_dir, command_log)
         idx_path = write_outputs_index(run_dir, EXPECTED_ARTIFACTS, status)
 
     # Summary

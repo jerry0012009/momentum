@@ -150,3 +150,33 @@ def test_promote_no_signal_panel_promotion():
     content = promote_script.read_text()
     assert "does NOT perform" in content or "not perform" in content.lower() or "out of scope" in content.lower(),         "promote_factor_intake.py must clarify that signal panel promotion is out of scope"
     assert "if appropriate" not in content.lower(),         "promote_factor_intake.py must not use vague 'if appropriate' for signal panel promotion" 
+
+
+def test_manifest_and_command_log_include_report_step(tmp_path):
+    """Final manifest and command_log should include generate_report."""
+    sys.path.insert(0, str(SCRIPTS))
+    import importlib
+
+    mod = importlib.import_module("run_factor_intake")
+    command_log = [
+        {"step": "registry_integrity", "command": "ok", "exit_code": 0, "output_tail": ""},
+        {"step": "generate_report", "command": "report", "exit_code": 0, "output_tail": ""},
+    ]
+
+    mod.build_manifest(
+        run_id="audit_log_test",
+        factor_ids=["rev_1h"],
+        run_dir=tmp_path,
+        collected={},
+        elapsed=1.0,
+        dry_run=False,
+        status="COMPLETE",
+        command_log=command_log,
+    )
+    mod.write_command_log(tmp_path, command_log)
+
+    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    standalone_log = json.loads((tmp_path / "command_log.json").read_text())
+
+    assert manifest["command_log"][-1]["step"] == "generate_report"
+    assert standalone_log[-1]["step"] == "generate_report"
