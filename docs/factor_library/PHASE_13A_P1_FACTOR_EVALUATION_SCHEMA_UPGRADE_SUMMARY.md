@@ -1,5 +1,7 @@
 # Phase 13A-P1: Factor Evaluation Schema Upgrade — Closeout Summary
 
+**Status:** HISTORICAL_CLOSEOUT. Preserved for audit trail only. Counts and next-step notes may be stale. Use `docs/factor_library/START_HERE.md` and `factor_library_state.md`.
+
 **Phase:** 13A-P1
 **Date:** 2026-06-20
 **Type:** Evaluator schema upgrade + public page rebuild. No factor expansion. No signal modification.

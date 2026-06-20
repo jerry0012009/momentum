@@ -4,7 +4,7 @@
 
 **Active project:** Crypto USDT perpetual cross-sectional momentum factor library research system.
 
-- **53** registered factors, **47** with computed factor_values, **6** taker/funding factors pending data source
+- Current factor counts are generated, not hand-written: see [`factor_library_state.md`](research/factor_runs/crypto_top50_factor_library/factor_library_state.md)
 - **10** factors in current signal panel, **3** signal variants
 - **4** horizons: 1h, 4h, 24h, 72h
 - **Status:** Research diagnostic only. NOT production. NOT live trading. NOT alpha-verified.
@@ -17,6 +17,16 @@
 | [FACTOR_LIBRARY_CONTROL_CENTER.md](docs/factor_library/FACTOR_LIBRARY_CONTROL_CENTER.md) | Governance center — status, scripts, modules, extension points |
 | [FILE_STATUS_REGISTER.csv](docs/factor_library/FILE_STATUS_REGISTER.csv) | File-level status register (active / deprecated / orphan) |
 | [ORPHAN_WORK_AUDIT.md](docs/factor_library/ORPHAN_WORK_AUDIT.md) | Orphan risk audit |
+
+### Adding Factors
+
+Use the factor intake workflow. Do not create a parallel factor pipeline.
+
+1. Read [`START_HERE.md`](docs/factor_library/START_HERE.md) and the current state artifact.
+2. Add or adjust `FactorSpec` entries in `scripts/factor_formula_registry.py`, reusing `scripts/factor_ops.py` where possible.
+3. Run `python scripts/run_factor_intake.py --factor-ids <factor_id...> --run-id <run_id>`.
+4. Review the isolated run under `research/factor_runs/crypto_top50_factor_library/factor_intake/<run_id>/`.
+5. Do not add intake factors to `scripts/build_phase9b_signal_panel.py`.
 
 ### Public Site
 

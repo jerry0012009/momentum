@@ -1,6 +1,6 @@
 # Orphan Work Audit
 
-**Phase:** 12D-H9  
+**Status:** Active orphan-risk register for factor-library work
 **Generated:** 2026-06-19
 
 ---
@@ -51,7 +51,14 @@
 
 - **Status:** ORPHAN_REVIEW_REQUIRED
 - **Reason:** Builds crypto-native factor values (Phase 7M-B). This is an alternative factor building pipeline. Some factors in the registry may use crypto-native computations.
-- **Action:** Review. Check if any of the 53 registered factors depend on this script's outputs.
+- **Action:** Review before reuse. Current counts must come from `factor_library_state.md`; do not rely on historical 53-factor references.
+
+### 8. Old documentation portals
+
+- **Status:** SUPERSEDED / HISTORICAL_REFERENCE
+- **Files:** `docs/DOCS_INDEX.md`, `docs/FACTOR_LIBRARY_HOME.md`, `docs/factor_library_transparency/README.md`
+- **Reason:** These paths previously looked like current portals but contained old phase framing or stale counts.
+- **Action:** Keep as redirect/archive pages only. Current entry is `docs/factor_library/START_HERE.md`.
 
 ---
 

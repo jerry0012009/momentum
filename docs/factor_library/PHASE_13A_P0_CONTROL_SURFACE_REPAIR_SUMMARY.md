@@ -1,5 +1,7 @@
 # Phase 13A-P0: Control Surface Repair — Closeout Summary
 
+**Status:** HISTORICAL_CLOSEOUT. Preserved for audit trail only. Do not use for current counts, current entry points, or new-factor workflow. Use `docs/factor_library/START_HERE.md` and `factor_library_state.md`.
+
 **Phase:** 13A-P0
 **Date:** 2026-06-20
 **Type:** Documentation / governance only. No scripts modified. No data modified.

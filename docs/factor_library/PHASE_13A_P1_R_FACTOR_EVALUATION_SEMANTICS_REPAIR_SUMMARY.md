@@ -1,5 +1,7 @@
 # Phase 13A-P1-R: Factor Evaluation Semantics Repair — Closeout Summary
 
+**Status:** HISTORICAL_CLOSEOUT. Preserved for audit trail only. Use current generated artifacts and `START_HERE.md` for active workflow.
+
 **Phase:** 13A-P1-R
 **Date:** 2026-06-20
 **Type:** Semantics repair — ICIR split, metadata fill, candidate review.

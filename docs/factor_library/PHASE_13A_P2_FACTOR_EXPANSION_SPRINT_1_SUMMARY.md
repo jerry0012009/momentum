@@ -1,5 +1,7 @@
 # Phase 13A-P2: Factor Expansion Sprint 1 — Closeout Summary
 
+**Status:** HISTORICAL_CLOSEOUT. Preserved for audit trail only. New factor work now uses `scripts/run_factor_intake.py`; do not reuse the older sprint directory pattern as the default workflow.
+
 **Phase:** 13A-P2
 **Date:** 2026-06-20
 **Type:** First controlled OHLCV factor expansion. Not production. Not live trading.

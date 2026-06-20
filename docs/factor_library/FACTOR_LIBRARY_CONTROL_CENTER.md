@@ -1,8 +1,7 @@
 # Factor Library Control Center
 
-**Phase:** 12D-H12-C0 (Safe Incremental Evaluation Guard)  
 **Generated:** 2026-06-20  
-**Status:** NOT production. NOT Phase 13. Paper diagnostic only.
+**Status:** Factor library research governance. NOT production. NOT live trading.
 
 ---
 
@@ -14,7 +13,7 @@
 - **10** factors used in current signal panel (`signal_v0_core_only`)
 - **3** signal variants: `core_only`, `pm_full_structured`, `family_balanced_diagnostic`
 - **4** horizons: 1h, 4h, 24h, 72h
-- **Phase 13A:** research governance/evaluation in progress. Production/live trading NOT started.
+- Factor intake workflow is active for adding one or many new factors. Production/live trading is not in scope.
 
 ---
 
@@ -44,6 +43,9 @@ evaluate_signals.py (signal-level RankIC/Spread)
 evaluate_factors.py (factor-level RankIC)
   → research/factor_runs/crypto_top50_factor_library/factor_level_evaluation/
 
+run_factor_intake.py (isolated new-factor workflow)
+  → research/factor_runs/crypto_top50_factor_library/factor_intake/<run_id>/
+
 check_factor_ic_parity.py (H8-R parity guard)
   → 10/10 PASS, exact match vs compute_rank_ic API
 ```
@@ -64,6 +66,12 @@ check_factor_ic_parity.py (H8-R parity guard)
 | `scripts/build_phase9b_signal_panel.py` | Signal panel construction |
 | `scripts/evaluate_signals.py` | Signal-level evaluation |
 | `scripts/evaluate_factors.py` | Factor-level IC evaluation |
+| `scripts/run_factor_intake.py` | Standard isolated workflow for adding one or many factors |
+| `scripts/build_factor_redundancy.py` | Current-library redundancy diagnostics |
+| `scripts/build_factor_conclusion_cards.py` | Conservative per-factor conclusion cards |
+| `scripts/generate_intake_report.py` | Readable intake report |
+| `scripts/build_factor_library_state.py` | Generated state JSON/MD; canonical counts |
+| `scripts/promote_factor_intake.py` | Promotion guard only; no automatic signal promotion |
 | `scripts/check_factor_ic_parity.py` | Factor IC parity guard |
 | `scripts/run_signal_evaluation_parity_harness.py` | Signal evaluation parity |
 | `scripts/run_phase11a_cost_slippage_capacity.py` | Cost/slippage diagnostic |
@@ -140,10 +148,41 @@ check_factor_ic_parity.py (H8-R parity guard)
 
 ## Extension Points
 
-- **New factor:** Add to `scripts/factor_formula_registry.py`, then `scripts/build_factor_values.py`
+- **New factor:** Add `FactorSpec` to `scripts/factor_formula_registry.py`, reuse `factor_ops.py` where possible, then run `scripts/run_factor_intake.py --factor-ids <factor_id...> --run-id <run_id>`
+- **New factor operator:** Add a small reusable helper to `scripts/factor_ops.py` only when existing operators cannot express the formula
+- **New factor diagnostics:** Extend `scripts/evaluate_factors.py`, `scripts/build_factor_redundancy.py`, or `scripts/build_factor_conclusion_cards.py`; keep output schemas explicit and tested
 - **New signal:** Modify `scripts/build_phase9b_signal_panel.py`
 - **New evaluation metric:** Add to `scripts/evaluate_factors.py` or `scripts/evaluate_signals.py`
 - **Public site changes:** Edit files in `reports/site/factor-library/`
+
+## Factor Intake Contract
+
+For adding one or many factors, do not start from scratch. The standard command is:
+
+```bash
+python scripts/run_factor_intake.py --factor-ids <factor_id...> --run-id <run_id>
+```
+
+The run directory is:
+
+```text
+research/factor_runs/crypto_top50_factor_library/factor_intake/<run_id>/
+```
+
+Required review artifacts:
+
+- `manifest.json`
+- `command_log.json`
+- `outputs_index.json`
+- `quality_checks.csv`
+- `factor_inventory.csv`
+- `factor_metric_panel.csv`
+- `factor_candidate_review.csv`
+- `factor_redundancy.csv`
+- `factor_conclusion_cards.csv/json`
+- `report.md`
+
+Do not promote intake factors into signals during intake. Do not modify live trading, execution, broker, strategy-live, or exchange API code.
 
 ---
 
@@ -160,12 +199,13 @@ check_factor_ic_parity.py (H8-R parity guard)
 ## PM / AI Audit First Steps
 
 1. Read this file (`FACTOR_LIBRARY_CONTROL_CENTER.md`)
-2. Read `factor_library_manifest.json` for machine-readable state
-3. Read `FILE_STATUS_REGISTER.csv` for file-level status
-4. Read `ORPHAN_WORK_AUDIT.md` for orphan risks
-5. Check `phase12d_h9_governance_quality_checks.csv` for quality gate
-6. Check `phase12d_h9_r_governance_consistency_quality_checks.csv` for H9-R consistency gate
-7. **Scope note:** This control center covers the factor library research pipeline only, not the full momentum repository.
+2. Read `START_HERE.md`
+3. Read `factor_library_state.md` for current counts and warnings
+4. Read `factor_library_manifest.json` for machine-readable file map
+5. Read `FILE_STATUS_REGISTER.csv` for file-level status
+6. Read `ORPHAN_WORK_AUDIT.md` for orphan risks
+7. For adding factors, use `run_factor_intake.py`; do not create a parallel workflow
+8. **Scope note:** This control center covers the factor library research pipeline only, not the full momentum repository.
 
 ---
 

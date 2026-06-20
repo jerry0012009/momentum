@@ -1,6 +1,6 @@
 # START HERE — Factor Library
 
-**Phase:** 13A-P0 | **Language:** 中文 + English
+**Status:** Active factor-library entry point | **Language:** 中文 + English
 
 ---
 
@@ -43,6 +43,12 @@ raw bars / 原始K线
 | `scripts/factor_ops.py` | Factor building-block operators |
 | `scripts/build_factor_values.py` | Compute factor values from registry |
 | `scripts/evaluate_factors.py` | Factor-level RankIC evaluation (H8/H8-R) |
+| `scripts/run_factor_intake.py` | Standard isolated intake runner for new factors |
+| `scripts/build_factor_redundancy.py` | Intake-vs-library redundancy diagnostics |
+| `scripts/build_factor_conclusion_cards.py` | Conservative per-factor diagnostic cards |
+| `scripts/generate_intake_report.py` | Human-readable intake run report |
+| `scripts/build_factor_library_state.py` | Generated JSON/MD state; single source for current counts |
+| `scripts/promote_factor_intake.py` | Guard only; no automatic signal promotion |
 | `scripts/check_factor_ic_parity.py` | Factor IC parity guard (10/10 PASS) |
 | `scripts/check_factor_registry_integrity.py` | Registry integrity linter |
 | `scripts/build_factor_catalog.py` | Build factor catalog CSV/JSON |
@@ -78,11 +84,57 @@ raw bars / 原始K线
 
 ## How to Add a New Factor / 如何新增因子
 
-1. Add FactorSpec to `scripts/factor_formula_registry.py`
-2. Run `scripts/build_factor_values.py` to compute `factor_values.parquet`
-3. Run `scripts/evaluate_factors.py` for factor-level IC
-4. Run `scripts/check_factor_registry_integrity.py` to verify registry integrity
-5. New factors start as **diagnostic** — do NOT add directly to signal panel
+Default route: **use factor intake**. Do not create a parallel factor pipeline, a one-off evaluator, or a new report format unless the existing intake contract cannot support the factor.
+
+Read first:
+
+1. `research/factor_runs/crypto_top50_factor_library/factor_library_state.md`
+2. `scripts/factor_formula_registry.py`
+3. `scripts/factor_specs.py`
+4. `scripts/factor_ops.py`
+5. `scripts/run_factor_intake.py`
+6. `reports/site/factor-library/actual-script-map.html` (click `Factor Intake / 因子入库`)
+7. `docs/factor_library/FILE_STATUS_REGISTER.csv` if you are unsure whether a file is active, archived, or orphaned
+
+Reuse existing code:
+
+- Reuse `FactorSpec` from `scripts/factor_specs.py`.
+- Reuse operators in `scripts/factor_ops.py` when possible.
+- Reuse `scripts/build_factor_values.py` for `factor_values.parquet`.
+- Reuse `scripts/evaluate_factors.py` through the intake runner for partial evaluation.
+- Reuse `scripts/build_factor_redundancy.py`, `scripts/build_factor_conclusion_cards.py`, and `scripts/generate_intake_report.py` for diagnostics and reporting.
+
+Write new code only when needed:
+
+- Add new factor definitions in `scripts/factor_formula_registry.py`.
+- Add small reusable operators to `scripts/factor_ops.py` only if the formula cannot be expressed with existing operators.
+- Add tests only for new behavior, schema guards, or bug fixes.
+- Do not create a new standalone factor-evaluation script, new signal builder, or separate intake report format.
+
+Run:
+
+```bash
+python scripts/run_factor_intake.py --factor-ids <factor_id...> --run-id <run_id>
+python scripts/build_factor_library_state.py
+```
+
+Review:
+
+- `research/factor_runs/crypto_top50_factor_library/factor_intake/<run_id>/manifest.json`
+- `command_log.json`
+- `outputs_index.json`
+- `quality_checks.csv`
+- `factor_conclusion_cards.csv/json`
+- `report.md`
+- `factor_library_state.md`
+
+Rules:
+
+- One or many new factors use the same `--factor-ids <factor_id...>` interface.
+- New factors start as diagnostic research assets.
+- Do not add intake factors to `scripts/build_phase9b_signal_panel.py`.
+- Do not modify live trading, execution, broker, strategy-live, or exchange API code.
+- Do not make production, tradeability, or alpha claims.
 
 ---
 
