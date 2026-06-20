@@ -69,15 +69,18 @@ raw bars / 原始K线
 
 ## Do Not Use / Historical Only
 
-| File | Status |
-|------|--------|
-| `scripts/evaluate_factors_dynamic_universe.py` | DEPRECATED_STALE — broken, cannot run |
-| `scripts/compare_static_dynamic_factor_evals.py` | ORPHAN_REVIEW_REQUIRED |
-| `scripts/export_alphalens_factor_data.py` | HISTORICAL_ARCHIVE (Phase 5B) |
-| `scripts/run_alphalens_smoke_check.py` | HISTORICAL_ARCHIVE (Phase 5B) |
-| `scripts/audit_dynamic_universe_*.py` (3 files) | ORPHAN_REVIEW_REQUIRED |
-| `scripts/build_crypto_native_factor_values.py` | ORPHAN_REVIEW_REQUIRED |
-| Root-level `PHASE_12D_*.md` files | HISTORICAL_ARCHIVE |
+These files were deleted in PM-03 (git history preserves them). Do not recreate.
+
+| Former path | Status |
+|-------------|--------|
+| `scripts/evaluate_factors_dynamic_universe.py` | DELETED (was DEPRECATED_STALE) |
+| `scripts/compare_static_dynamic_factor_evals.py` | DELETED (was ORPHAN) |
+| `scripts/export_alphalens_factor_data.py` | DELETED (was HISTORICAL_ARCHIVE) |
+| `scripts/run_alphalens_smoke_check.py` | DELETED (was HISTORICAL_ARCHIVE) |
+| `scripts/audit_dynamic_universe_*.py` (3 files) | DELETED (was ORPHAN) |
+| `scripts/build_crypto_native_factor_values.py` | DELETED (was ORPHAN) |
+| `scripts/build_factor_values_batch.py` | DELETED (was ORPHAN) |
+| Root-level `PHASE_12D_*.md` (8 files) | MOVED to `docs/factor_library/archive/phase12d/` |
 | `reports/site/factor-library/_archive/` | 21 old pages, not in public navigation |
 
 ---

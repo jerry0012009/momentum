@@ -2,81 +2,54 @@
 
 **Status:** Active orphan-risk register for factor-library work
 **Generated:** 2026-06-19
+**Last updated:** 2026-06-21 (PM-03 batch cleanup)
 
 ---
 
-## HIGH Orphan Risk
+## PM-03 Cleanup Summary
 
-### 1. `scripts/evaluate_factors_dynamic_universe.py`
+The following files were deleted or moved in PM-03. Git history preserves all content.
 
-- **Status:** DEPRECATED_STALE / HISTORICAL_REFERENCE
-- **Reason:** Imports `evaluate_factors` which did not exist until H8 created a new one. The old import targets a different file with a different API. The script is broken and cannot run.
-- **Action:** Keep in place. Do not use as evaluator. Do not move. Do not delete. Do not re-enable. The canonical evaluator is `scripts/evaluate_factors.py` (H8/H8-R). The canonical parity guard is `scripts/check_factor_ic_parity.py` (H8-R).
+### Deleted scripts (9 files)
 
-### 2. `scripts/compare_static_dynamic_factor_evals.py`
+| Former path | Former status | Reason for deletion |
+|-------------|---------------|-------------------|
+| `scripts/evaluate_factors_dynamic_universe.py` | DEPRECATED_STALE | Broken imports; no active code refs |
+| `scripts/compare_static_dynamic_factor_evals.py` | ORPHAN | No active code refs |
+| `scripts/export_alphalens_factor_data.py` | HISTORICAL_ARCHIVE | No active code refs |
+| `scripts/run_alphalens_smoke_check.py` | HISTORICAL_ARCHIVE | No active code refs |
+| `scripts/audit_dynamic_universe_data_coverage.py` | ORPHAN | No active code refs |
+| `scripts/audit_dynamic_universe_factor_values.py` | ORPHAN | No active code refs |
+| `scripts/audit_dynamic_universe_labels.py` | ORPHAN | No active code refs |
+| `scripts/build_crypto_native_factor_values.py` | ORPHAN | No active code refs |
+| `scripts/build_factor_values_batch.py` | ORPHAN | No active code refs |
 
-- **Status:** ORPHAN_REVIEW_REQUIRED
-- **Reason:** Compares old static and dynamic universe evaluations. Both old evaluators are stale. The script may produce misleading results if run against stale outputs.
-- **Action:** Review. If the comparison is still useful, update to use `evaluate_factors.py` output. Otherwise archive.
+### Moved files (8 files)
+
+| Former path | New path |
+|-------------|----------|
+| `PHASE_12D_B_R_ACTUAL_CODE_STRUCTURE_REPAIR.md` | `docs/factor_library/archive/phase12d/` |
+| `PHASE_12D_C_PIPELINE_DETAIL_AND_FACTOR_SOURCE_MAP.md` | `docs/factor_library/archive/phase12d/` |
+| `PHASE_12D_C_R_FACTOR_LINEAGE_REPAIR.md` | `docs/factor_library/archive/phase12d/` |
+| `PHASE_12D_D_FACTOR_FORMULA_CARDS.md` | `docs/factor_library/archive/phase12d/` |
+| `PHASE_12D_E_R_SIGNAL_WALKTHROUGH_REPAIR.md` | `docs/factor_library/archive/phase12d/` |
+| `PHASE_12D_E_SIGNAL_WALKTHROUGH.md` | `docs/factor_library/archive/phase12d/` |
+| `PHASE_12D_F_FACTOR_PERFORMANCE_TRUST_METRICS.md` | `docs/factor_library/archive/phase12d/` |
+| `PHASE_12D_G_OPERATING_MANUAL_MASTER_REGISTRY.md` | `docs/factor_library/archive/phase12d/` |
 
 ---
 
-## MEDIUM Orphan Risk
+## Remaining Items
 
-### 3. `scripts/export_alphalens_factor_data.py`
-
-- **Status:** HISTORICAL_ARCHIVE
-- **Reason:** Exports factor data in Alphalens format. The Alphalens integration was used in Phase 5B and is no longer part of the current pipeline. The exported data exists in `alphalens_exports/` but is not consumed by any active script.
-- **Action:** Archive. Keep exported data as historical evidence.
-
-### 4. `scripts/run_alphalens_smoke_check.py`
-
-- **Status:** HISTORICAL_ARCHIVE
-- **Reason:** Runs Alphalens smoke check on exported data. Phase 5B artifact. No current pipeline depends on it.
-- **Action:** Archive.
-
-### 5. Root-level `PHASE_12D_*.md` files (7 files)
-
-- **Status:** HISTORICAL_ARCHIVE
-- **Reason:** Phase closeout documents sitting in the root directory. They are valuable historical evidence but should be in `docs/` not root.
-- **Action:** Consider moving to `docs/phase_closeout/` in a future cleanup. Do not delete.
-
-### 6. `scripts/audit_dynamic_universe_*.py` (3 files)
-
-- **Status:** ORPHAN_REVIEW_REQUIRED
-- **Reason:** Audit scripts for the dynamic universe pipeline (Phase 6C). The dynamic universe is a secondary pipeline, not the current mainline. These scripts are functional but produce outputs that don't feed into the current main pipeline.
-- **Action:** Review. If dynamic universe becomes active again, these are needed. Otherwise archive.
-
-### 7. `scripts/build_crypto_native_factor_values.py`
-
-- **Status:** ORPHAN_REVIEW_REQUIRED
-- **Reason:** Builds crypto-native factor values (Phase 7M-B). This is an alternative factor building pipeline. Some factors in the registry may use crypto-native computations.
-- **Action:** Review before reuse. Current counts must come from `factor_library_state.md`; do not rely on historical 53-factor references.
-
-### 8. Old documentation portals
+### Old documentation portals
 
 - **Status:** SUPERSEDED / HISTORICAL_REFERENCE
 - **Files:** `docs/DOCS_INDEX.md`, `docs/FACTOR_LIBRARY_HOME.md`, `docs/factor_library_transparency/README.md`
 - **Reason:** These paths previously looked like current portals but contained old phase framing or stale counts.
-- **Action:** Keep as redirect/archive pages only. Current entry is `docs/factor_library/START_HERE.md`.
+- **Action:** Keep as historical. `docs/factor_library_transparency/` classified as HISTORICAL_ARCHIVE in FILE_STATUS_REGISTER.
 
----
+### docs/PROJECT_TREE.md
 
-## LOW Orphan Risk (No Action Needed)
-
-- `scripts/analyze_factor_redundancy.py` — Supporting analysis, still useful
-- `scripts/audit_crypto_factor_results.py` — Supporting audit, still useful
-- `scripts/apply_factor_warning_flags.py` — Warning flag system, still useful
-- `scripts/export_alphalens_factor_data.py` — Historical, clearly archived
-- `scripts/run_alphalens_smoke_check.py` — Historical, clearly archived
-- All `build_rank*.py` scripts — Strategy research artifacts, not factor library
-
----
-
-## Summary
-
-| Risk Level | Count | Action |
-|-----------|-------|--------|
-| HIGH | 2 | Archive or review |
-| MEDIUM | 5 | Archive or move |
-| LOW | 7+ | No action |
+- **Status:** STALE_SNAPSHOT
+- **Reason:** Old static project tree snapshot. No active governance docs link to it.
+- **Action:** Keep as historical reference. Do not rely on it for current structure.

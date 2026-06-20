@@ -190,7 +190,8 @@ Do not promote intake factors into signals during intake. Do not modify live tra
 
 - Phase 10 scripts: `archive/legacy_phase_scripts/phase10/` (4 files)
 - Old site pages: `reports/site/factor-library/_archive/` (21 pages)
-- Old factor evaluator: `scripts/evaluate_factors_dynamic_universe.py` → DEPRECATED_STALE / HISTORICAL_REFERENCE (broken, cannot run; kept as evidence of old design; canonical evaluator is `scripts/evaluate_factors.py`)
+- Phase 12D closeout docs: `docs/factor_library/archive/phase12d/` (8 files, moved from root in PM-03)
+- Stale/orphan scripts: deleted in PM-03 (evaluate_factors_dynamic_universe, compare_static_dynamic, alphalens scripts, audit_dynamic_universe_*, build_crypto_native, build_factor_values_batch). Git history preserves them.
 - Alphalens exports: `research/factor_runs/crypto_top50_factor_library/alphalens_exports/` → HISTORICAL_ARCHIVE
 - Strategy research scripts (~440 files): NOT part of factor library mainline
 
