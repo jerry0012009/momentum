@@ -49,11 +49,32 @@ def generate_report(run_dir: Path) -> str:
     generated_at = manifest.get("generated_at", "") if manifest else ""
     factor_ids = manifest.get("factor_ids", []) if manifest else []
 
+    run_status = manifest.get("status", "unknown") if manifest else "unknown"
+    status_icon = "✅" if run_status == "COMPLETE" else "❌" if run_status == "FAILED" else "❓"
+
     lines.append(f"# Factor Intake Report: {run_id}")
     lines.append("")
+    lines.append(f"**Run status:** {status_icon} {run_status}")
     lines.append(f"**Generated:** {generated_at}")
     lines.append(f"**Factors evaluated:** {len(factor_ids)}")
     lines.append(f"**Factor IDs:** {', '.join(factor_ids)}")
+
+    # Show failed steps for FAILED runs
+    if run_status == "FAILED" and manifest:
+        cmd_log = manifest.get("command_log", [])
+        failed = [e for e in cmd_log if e.get("exit_code", 0) not in (0, -1)]
+        if failed:
+            lines.append("")
+            lines.append("**Failed steps:**")
+            for e in failed:
+                lines.append(f"- ❌ {e['step']}: exit_code={e['exit_code']}")
+                tail = e.get("output_tail", "").strip()
+                if tail:
+                    # Show last 200 chars of error
+                    lines.append(f"  ```")
+                    lines.append(f"  {tail[-200:]}")
+                    lines.append(f"  ```")
+
     lines.append("")
     lines.append("---")
     lines.append("")

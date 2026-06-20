@@ -29,12 +29,17 @@ sys.path.insert(0, str(SCRIPTS))
 
 
 def load_csv(path: Path, name: str | None = None) -> pd.DataFrame:
-    """Load CSV if it exists. Warn if missing. Validate expected columns."""
+    """Load CSV if it exists. Warn if missing or empty. Validate expected columns."""
     if not path.exists():
         if name:
             print(f"  WARN: {name} not found at {path} — will use defaults")
         return pd.DataFrame()
-    df = pd.read_csv(path)
+    try:
+        df = pd.read_csv(path)
+    except pd.errors.EmptyDataError:
+        if name:
+            print(f"  WARN: {name} is empty (no columns) at {path}")
+        return pd.DataFrame()
     if name and df.empty:
         print(f"  WARN: {name} is empty at {path}")
     return df
@@ -195,20 +200,25 @@ def build_cards(
     redundancy_df = load_csv(run_dir / "factor_redundancy.csv", "redundancy")
     inventory_df = load_csv(run_dir / "factor_inventory.csv", "inventory")
 
-    # Determine factor IDs
+    # Determine factor IDs (with schema guards)
     if factor_ids is None:
-        if not review_df.empty:
+        if not review_df.empty and "factor_name" in review_df.columns:
             factor_ids = review_df["factor_name"].tolist()
-        elif not inventory_df.empty:
+        elif not inventory_df.empty and "factor_id" in inventory_df.columns:
             factor_ids = inventory_df["factor_id"].tolist()
         else:
-            print("  ERROR: no factor IDs found in run directory")
+            print("  ERROR: no factor IDs found — review_df or inventory_df missing expected columns")
+            print(f"    review_df columns: {list(review_df.columns)}")
+            print(f"    inventory_df columns: {list(inventory_df.columns)}")
             return pd.DataFrame()
 
     cards = []
     for fid in factor_ids:
-        # From review
-        rev_row = review_df[review_df["factor_name"] == fid]
+        # From review (with schema guard)
+        if review_df.empty or "factor_name" not in review_df.columns:
+            rev_row = pd.DataFrame()
+        else:
+            rev_row = review_df[review_df["factor_name"] == fid]
         if len(rev_row) > 0:
             r = rev_row.iloc[0]
             family = r.get("category", "unknown")

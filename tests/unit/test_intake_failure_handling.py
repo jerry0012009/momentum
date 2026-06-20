@@ -127,3 +127,26 @@ def test_eval_dependent_steps_defined():
     assert "conclusion_cards" in deps
     assert "redundancy_diagnostics" in deps
     assert "collect_outputs" in deps
+
+
+def test_factor_inventory_before_evaluation():
+    """build_factor_inventory should be callable independently of evaluation."""
+    sys.path.insert(0, str(SCRIPTS))
+    import importlib
+    mod = importlib.import_module("run_factor_intake")
+    assert hasattr(mod, "build_factor_inventory")
+
+
+def test_report_shows_run_status():
+    """generate_intake_report must include Run status line."""
+    report_script = SCRIPTS / "generate_intake_report.py"
+    content = report_script.read_text()
+    assert "run_status" in content or "Run status" in content,         "generate_intake_report.py must display Run status in report header"
+
+
+def test_promote_no_signal_panel_promotion():
+    """promote_factor_intake.py must not claim signal panel promotion in this phase."""
+    promote_script = SCRIPTS / "promote_factor_intake.py"
+    content = promote_script.read_text()
+    assert "does NOT perform" in content or "not perform" in content.lower() or "out of scope" in content.lower(),         "promote_factor_intake.py must clarify that signal panel promotion is out of scope"
+    assert "if appropriate" not in content.lower(),         "promote_factor_intake.py must not use vague 'if appropriate' for signal panel promotion" 

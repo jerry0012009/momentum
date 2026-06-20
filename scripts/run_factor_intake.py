@@ -352,6 +352,11 @@ def main():
     if not args.dry_run:
         run_dir.mkdir(parents=True, exist_ok=True)
 
+    # Step 1b: Build factor inventory (ALWAYS — even if later steps fail)
+    if not args.dry_run:
+        inventory_path = build_factor_inventory(factor_ids, run_dir)
+        print(f"  Inventory: {inventory_path}")
+
     # Step 2: Registry integrity check
     print("\nStep 2: Registry integrity check")
     rc_integrity, out_integrity = run_command(
@@ -438,9 +443,7 @@ def main():
             eval_dir = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_level_evaluation"
             if not args.dry_run:
                 collected = collect_evaluation_outputs(eval_dir, run_dir, factor_ids, suffix)
-                inventory_path = build_factor_inventory(factor_ids, run_dir)
                 print(f"  Collected {len(collected)} output files")
-                print(f"  Inventory: {inventory_path}")
             else:
                 print("  [DRY RUN] Would collect outputs")
 

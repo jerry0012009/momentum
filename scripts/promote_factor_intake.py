@@ -150,9 +150,10 @@ def main():
     print("    1. Review the conclusion cards manually")
     print("    2. Update factor_formula_registry.py status")
     print("    3. Rebuild the canonical evaluation")
-    print("    4. Update signal panel if appropriate")
+    print("    4. Phase 13A-P3 does NOT perform factor-to-signal promotion or signal panel modification.")
     print()
-    print("  For Phase 13A-P3, no factors are promoted.")
+    print("  For Phase 13A-P3, promotion guard only prevents canonical pollution.")
+    print("  Signal panel modification is explicitly out of scope for this phase.")
 
 
 if __name__ == "__main__":
