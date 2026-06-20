@@ -715,9 +715,15 @@ def main():
             else:
                 review_bucket = "CONDITIONAL_DIRECTION_REVIEW"
                 review_notes = "Conditional direction; weak or no clear IC signal."
+        elif rl_consistency == "DIVERGENT" and best_adj_ic is not None and abs(best_adj_ic) >= 0.02:
+            review_bucket = "DIRECTION_REVIEW_REQUIRED"
+            review_notes = "RankIC and long-short spread point in opposite directions. Direction semantics need review."
+        elif rl_consistency == "DIVERGENT":
+            review_bucket = "TAIL_OR_MONOTONICITY_REVIEW_REQUIRED"
+            review_notes = "RankIC-longshort divergence detected. Check quantile monotonicity and tail behavior."
         elif best_adj_ic is not None and abs(best_adj_ic) >= 0.02 and best_ls_spread is not None and best_ls_t is not None and abs(best_ls_t) >= 2.0:
             review_bucket = "STRONG_DIAGNOSTIC_CANDIDATE"
-            review_notes = "Strong RankIC and significant long-short spread."
+            review_notes = "Strong RankIC and significant long-short spread. Consistent signals."
         elif best_adj_ic is not None and abs(best_adj_ic) >= 0.02 and (best_ls_spread is None or best_ls_t is None or abs(best_ls_t) < 2.0):
             review_bucket = "RANKIC_STRONG_LONGSHORT_WEAK"
             review_notes = "RankIC suggests signal but long-short spread not significant."
