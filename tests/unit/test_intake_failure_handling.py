@@ -1,4 +1,4 @@
-"""Test run_factor_intake.py failure handling."""
+"""Test run_factor_intake.py failure handling and run directory contract."""
 import json
 import subprocess
 import sys
@@ -12,12 +12,6 @@ SCRIPTS = ROOT / "scripts"
 
 def test_intake_fails_on_critical_step_failure(tmp_path):
     """When a critical step fails, intake run must exit non-zero and mark FAILED."""
-    # Use a factor that exists but trigger a failure by passing invalid dataset-id
-    # to cause build_factor_values to fail, while keeping registry check passing.
-    # Instead, we'll test with a dry-run to verify the structure, then test with
-    # a real failure scenario.
-
-    # First, verify dry-run still works
     result = subprocess.run(
         [sys.executable, str(SCRIPTS / "run_factor_intake.py"),
          "--factor-ids", "rev_1h",
@@ -33,7 +27,6 @@ def test_intake_manifest_has_status_field(tmp_path):
     """Manifest must include status field."""
     run_dir = tmp_path / "test_run"
     run_dir.mkdir()
-    # Create a minimal manifest
     manifest = {
         "run_id": "test",
         "status": "COMPLETE",
@@ -50,7 +43,6 @@ def test_intake_manifest_has_status_field(tmp_path):
 
 def test_intake_manifest_status_failed_on_error():
     """Verify that the manifest schema supports FAILED status."""
-    # This is a structural test — the manifest must be able to represent failure
     manifest = {
         "run_id": "test_fail",
         "status": "FAILED",
@@ -78,12 +70,60 @@ def test_intake_command_log_records_exit_codes():
 
 def test_critical_steps_defined():
     """CRITICAL_STEPS must include the expected steps."""
-    # Import from run_factor_intake
     sys.path.insert(0, str(SCRIPTS))
     import importlib
     mod = importlib.import_module("run_factor_intake")
     assert hasattr(mod, "CRITICAL_STEPS")
     critical = mod.CRITICAL_STEPS
     assert "registry_integrity" in critical
+    assert "build_factor_values" in critical
     assert "partial_evaluation" in critical
     assert "conclusion_cards" in critical
+
+
+def test_outputs_index_schema(tmp_path):
+    """outputs_index.json must list expected artifacts with status."""
+    run_dir = tmp_path / "test_index"
+    run_dir.mkdir()
+    # Create a couple of files
+    (run_dir / "manifest.json").write_text("{}")
+    (run_dir / "quality_checks.csv").write_text("check_id,status\n")
+    # Simulate write_outputs_index
+    expected = ["manifest.json", "quality_checks.csv", "report.md"]
+    index = {}
+    for artifact in expected:
+        p = run_dir / artifact
+        if p.exists():
+            index[artifact] = {"status": "present", "size_bytes": p.stat().st_size}
+        else:
+            index[artifact] = {"status": "missing"}
+    assert index["manifest.json"]["status"] == "present"
+    assert index["report.md"]["status"] == "missing"
+
+
+def test_expected_artifacts_list():
+    """EXPECTED_ARTIFACTS must include all contract artifacts."""
+    sys.path.insert(0, str(SCRIPTS))
+    import importlib
+    mod = importlib.import_module("run_factor_intake")
+    artifacts = mod.EXPECTED_ARTIFACTS
+    required = [
+        "manifest.json", "command_log.json", "outputs_index.json",
+        "factor_inventory.csv", "quality_checks.csv", "report.md",
+        "factor_metric_panel.csv", "factor_candidate_review.csv",
+        "factor_redundancy.csv", "factor_conclusion_cards.csv",
+    ]
+    for r in required:
+        assert r in artifacts, f"Missing expected artifact: {r}"
+
+
+def test_eval_dependent_steps_defined():
+    """EVAL_DEPENDENT_STEPS must include steps that depend on partial evaluation."""
+    sys.path.insert(0, str(SCRIPTS))
+    import importlib
+    mod = importlib.import_module("run_factor_intake")
+    assert hasattr(mod, "EVAL_DEPENDENT_STEPS")
+    deps = mod.EVAL_DEPENDENT_STEPS
+    assert "conclusion_cards" in deps
+    assert "redundancy_diagnostics" in deps
+    assert "collect_outputs" in deps
