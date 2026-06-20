@@ -376,9 +376,9 @@ def main():
         redundancy_path = run_dir / "factor_redundancy.csv"
         rc_red, out_red = run_command(
             [sys.executable, str(SCRIPTS / "build_factor_redundancy.py"),
-             "--factor-ids", *factor_ids,
+             "--intake-factor-ids", *factor_ids,
              "--output", str(redundancy_path)],
-            "Redundancy diagnostics",
+            "Redundancy diagnostics (intake vs baseline)",
             dry_run=args.dry_run,
         )
         command_log.append({
