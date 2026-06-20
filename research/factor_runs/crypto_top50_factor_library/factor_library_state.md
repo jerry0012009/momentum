@@ -1,6 +1,6 @@
 # Factor Library State
 
-**Generated:** 2026-06-20T16:27:42.539278+00:00
+**Generated:** 2026-06-20T17:28:24.278501+00:00
 **Dataset:** crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1
 
 ## Counts
@@ -16,9 +16,8 @@
 
 ## Lifecycle Distribution
 
-- **CANDIDATE:** 27
-- **COMPUTED:** 12
-- **DIAGNOSTIC_ONLY:** 10
+- **CANDIDATE:** 33
+- **DIAGNOSTIC_ONLY:** 16
 - **ACTIVE_IN_SIGNAL:** 10
 - **MISSING_INPUT_DATA:** 6
 
