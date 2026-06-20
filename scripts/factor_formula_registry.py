@@ -16,7 +16,7 @@ import pandas as pd
 from factor_specs import FactorSpec
 from factor_ops import (
     delay, delta, rolling_mean, rolling_std, rolling_max, rolling_min,
-    rolling_corr, zscore, ema, true_range,
+    rolling_corr, rolling_sum, zscore, ema, true_range,
 )
 
 # ── V0 Original 5 Factors ──────────────────────────────────────────
@@ -396,6 +396,85 @@ def _compute_funding_rate_zscore_80h(df: pd.DataFrame) -> pd.Series:
 def _compute_funding_rate_change_24h(df: pd.DataFrame) -> pd.Series:
     """Funding rate change 24h: funding_rate - delay(funding_rate, 24)."""
     return df["funding_rate"] - delay(df["funding_rate"], 24)
+
+
+# ── Phase 13A-P2: Sprint 1 Diagnostic Factors ────────────────────
+
+def _compute_mom_72h(df: pd.DataFrame) -> pd.Series:
+    """Momentum 72h: close / close_72h_ago - 1."""
+    return df["close"] / delay(df["close"], 72) - 1.0
+
+
+def _compute_mom_120h(df: pd.DataFrame) -> pd.Series:
+    """Momentum 120h: close / close_120h_ago - 1."""
+    return df["close"] / delay(df["close"], 120) - 1.0
+
+
+def _compute_rev_1h(df: pd.DataFrame) -> pd.Series:
+    """Reversal 1h: -(close / close_1h_ago - 1)."""
+    return -(df["close"] / delay(df["close"], 1) - 1.0)
+
+
+def _compute_rev_72h(df: pd.DataFrame) -> pd.Series:
+    """Reversal 72h: -(close / close_72h_ago - 1)."""
+    return -(df["close"] / delay(df["close"], 72) - 1.0)
+
+
+def _compute_vol_ratio_20_80(df: pd.DataFrame) -> pd.Series:
+    """Vol ratio 20/80: std(ret,20) / std(ret,80)."""
+    ret = df["close"].pct_change()
+    s20 = rolling_std(ret, 20)
+    s80 = rolling_std(ret, 80)
+    return s20 / s80.replace(0, np.nan)
+
+
+def _compute_realized_skew_20h(df: pd.DataFrame) -> pd.Series:
+    """Realized skewness 20h: rolling skewness of 1h returns over 20 bars."""
+    ret = df["close"].pct_change()
+    return ret.rolling(20, min_periods=20).skew()
+
+
+def _compute_realized_kurt_20h(df: pd.DataFrame) -> pd.Series:
+    """Realized kurtosis 20h: rolling kurtosis of 1h returns over 20 bars."""
+    ret = df["close"].pct_change()
+    return ret.rolling(20, min_periods=20).kurt()
+
+
+def _compute_amihud_illiquidity_20h(df: pd.DataFrame) -> pd.Series:
+    """Amihud illiquidity 20h: rolling mean(abs(ret) / quote_volume, 20)."""
+    ret = df["close"].pct_change().abs()
+    qvol = df["quote_volume"].replace(0, np.nan)
+    illiq = ret / qvol
+    return rolling_mean(illiq, 20)
+
+
+def _compute_qvol_ma_ratio_20_80(df: pd.DataFrame) -> pd.Series:
+    """Quote-volume MA ratio 20/80: SMA(qvol,20) / SMA(qvol,80) - 1."""
+    sma20 = rolling_mean(df["quote_volume"], 20)
+    sma80 = rolling_mean(df["quote_volume"], 80)
+    return sma20 / sma80.replace(0, np.nan) - 1.0
+
+
+def _compute_price_volume_corr_20h(df: pd.DataFrame) -> pd.Series:
+    """Price-volume correlation 20h: rolling corr(ret, pct_change(qvol), 20)."""
+    ret = df["close"].pct_change()
+    qvol_pct = df["quote_volume"].pct_change()
+    return rolling_corr(ret, qvol_pct, 20)
+
+
+def _compute_trend_efficiency_24h(df: pd.DataFrame) -> pd.Series:
+    """Trend efficiency 24h: |close/close_24h_ago - 1| / sum(|ret_1h|, 24)."""
+    net_move = (df["close"] / delay(df["close"], 24) - 1.0).abs()
+    ret = df["close"].pct_change().abs()
+    path_len = rolling_sum(ret, 24)
+    return net_move / path_len.replace(0, np.nan)
+
+
+def _compute_price_pos_120h(df: pd.DataFrame) -> pd.Series:
+    """Price position 120h: (close - LL120) / (HH120 - LL120 + eps)."""
+    hh = rolling_max(df["high"], 120)
+    ll = rolling_min(df["low"], 120)
+    return (df["close"] - ll) / (hh - ll + 1e-8)
 
 
 # ── Registry ────────────────────────────────────────────────────────
@@ -797,6 +876,91 @@ REGISTRY: list[FactorSpec] = [
         compute_fn=_compute_funding_rate_change_24h,
         status="DIAGNOSTIC_PROBE",
         notes="funding_rate - delay(funding_rate, 24); fast rise = crowded, expect reversal; Requires Phase 7L-R canonical crypto-native cache.",
+    ),
+    # ── Phase 13A-P2: Sprint 1 Diagnostic Factors (12) ───────────
+    FactorSpec(
+        factor_id="mom_72h", family="momentum",
+        required_columns=["close"], lookback_window=72,
+        expected_direction="positive",
+        compute_fn=_compute_mom_72h,
+        notes="close / close_72h_ago - 1; medium-horizon trend continuation diagnostic",
+    ),
+    FactorSpec(
+        factor_id="mom_120h", family="momentum",
+        required_columns=["close"], lookback_window=120,
+        expected_direction="positive",
+        compute_fn=_compute_mom_120h,
+        notes="close / close_120h_ago - 1; longer-horizon trend continuation diagnostic",
+    ),
+    FactorSpec(
+        factor_id="rev_1h", family="reversal",
+        required_columns=["close"], lookback_window=1,
+        expected_direction="positive",
+        compute_fn=_compute_rev_1h,
+        notes="-(close / close_1h_ago - 1); very short-term reversal diagnostic",
+    ),
+    FactorSpec(
+        factor_id="rev_72h", family="reversal",
+        required_columns=["close"], lookback_window=72,
+        expected_direction="positive",
+        compute_fn=_compute_rev_72h,
+        notes="-(close / close_72h_ago - 1); medium-horizon reversal diagnostic",
+    ),
+    FactorSpec(
+        factor_id="vol_ratio_20_80", family="volatility",
+        required_columns=["close"], lookback_window=81,
+        expected_direction="conditional",
+        compute_fn=_compute_vol_ratio_20_80,
+        notes="std(ret,20) / std(ret,80); short-vs-long volatility regime diagnostic",
+    ),
+    FactorSpec(
+        factor_id="realized_skew_20h", family="realized_shape",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="conditional",
+        compute_fn=_compute_realized_skew_20h,
+        notes="rolling skewness of 1h returns over 20 bars; asymmetry diagnostic",
+    ),
+    FactorSpec(
+        factor_id="realized_kurt_20h", family="realized_shape",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="conditional",
+        compute_fn=_compute_realized_kurt_20h,
+        notes="rolling kurtosis of 1h returns over 20 bars; tail risk / jumpiness diagnostic",
+    ),
+    FactorSpec(
+        factor_id="amihud_illiquidity_20h", family="liquidity",
+        required_columns=["close", "quote_volume"], lookback_window=21,
+        expected_direction="negative",
+        compute_fn=_compute_amihud_illiquidity_20h,
+        notes="rolling_mean(abs(ret_1h) / quote_volume, 20); higher illiquidity penalized",
+    ),
+    FactorSpec(
+        factor_id="qvol_ma_ratio_20_80", family="quote_volume_liquidity",
+        required_columns=["quote_volume"], lookback_window=80,
+        expected_direction="conditional",
+        compute_fn=_compute_qvol_ma_ratio_20_80,
+        notes="SMA(quote_volume,20) / SMA(quote_volume,80) - 1; medium-vs-long liquidity regime",
+    ),
+    FactorSpec(
+        factor_id="price_volume_corr_20h", family="volume_price",
+        required_columns=["close", "quote_volume"], lookback_window=21,
+        expected_direction="conditional",
+        compute_fn=_compute_price_volume_corr_20h,
+        notes="rolling_corr(ret_1h, pct_change(quote_volume), 20); attention diagnostic",
+    ),
+    FactorSpec(
+        factor_id="trend_efficiency_24h", family="trend_quality",
+        required_columns=["close"], lookback_window=24,
+        expected_direction="positive",
+        compute_fn=_compute_trend_efficiency_24h,
+        notes="abs(close/close_24h_ago-1) / sum(abs(ret_1h),24); cleaner directional move",
+    ),
+    FactorSpec(
+        factor_id="price_pos_120h", family="price_position",
+        required_columns=["high", "low", "close"], lookback_window=120,
+        expected_direction="conditional",
+        compute_fn=_compute_price_pos_120h,
+        notes="(close - LL120) / (HH120 - LL120 + eps); long-window price location diagnostic",
     ),
 ]
 

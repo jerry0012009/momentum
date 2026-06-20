@@ -707,7 +707,7 @@ def main():
             review_notes = "Factor values not computed; raw bars lack required columns."
         elif in_signal:
             review_bucket = "ACTIVE_IN_SIGNAL_REVIEW"
-            review_notes = "Currently used in production signal. Review before modifying."
+            review_notes = "Currently used in current research signal panel. Review before modifying."
         elif d == "conditional":
             if best_adj_ic is not None and abs(best_adj_ic) >= 0.02:
                 review_bucket = "CONDITIONAL_DIRECTION_REVIEW"
