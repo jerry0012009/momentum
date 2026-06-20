@@ -39,6 +39,10 @@ ls_df = pd.read_csv(ls_path) if ls_path.exists() else pd.DataFrame()
 period_path = EVAL_DIR / "factor_level_period_ic_summary.csv"
 period_df = pd.read_csv(period_path) if period_path.exists() else pd.DataFrame()
 
+# Candidate review (P1-R)
+review_path = EVAL_DIR / "factor_level_candidate_review.csv"
+review_df = pd.read_csv(review_path) if review_path.exists() else pd.DataFrame()
+
 horizons = ["1h", "4h", "24h", "72h"]
 
 # Missing factors (from manifest)
@@ -79,7 +83,7 @@ for fid in mp["factor_name"].unique():
             return f"{val:{fmt}}"
 
         row[f"ic_{hz}"] = _fmt(r.get("direction_adjusted_mean_rank_ic"))
-        row[f"icir_{hz}"] = _fmt(r.get("icir"), ".3f") if pd.notna(r.get("icir")) else "—"
+        row[f"icir_{hz}"] = _fmt(r.get("direction_adjusted_icir"), ".3f") if pd.notna(r.get("direction_adjusted_icir")) else _fmt(r.get("raw_icir"), ".3f") if pd.notna(r.get("raw_icir")) else "—"
         row[f"t_{hz}"] = _fmt(r.get("t_stat"), ".1f")
         row[f"n_{hz}"] = str(int(r["n_periods"])) if pd.notna(r.get("n_periods")) else "—"
         row[f"win_adj_{hz}"] = _fmt(r.get("ic_win_rate_adjusted"), ".1%", none_val="—")
@@ -142,6 +146,53 @@ def ic_color(val_str):
 
 
 # ── Build HTML ──────────────────────────────────────────────────
+
+# Build candidate review HTML
+candidate_review_html = ""
+if not review_df.empty:
+    bucket_colors = {
+        "ACTIVE_IN_SIGNAL_REVIEW": ("#3b82f6", "#1e1b4b"),
+        "STRONG_DIAGNOSTIC_CANDIDATE": ("#22c55e", "#052e16"),
+        "RANKIC_STRONG_LONGSHORT_WEAK": ("#f59e0b", "#451a03"),
+        "LONGSHORT_STRONG_RANKIC_WEAK": ("#f59e0b", "#451a03"),
+        "CONDITIONAL_DIRECTION_REVIEW": ("#a855f7", "#3b0764"),
+        "MISSING_INPUT": ("#ef4444", "#450a0a"),
+        "WEAK_OR_NOISY": ("#6b7280", "#1f2937"),
+        "METADATA_REVIEW": ("#6b7280", "#1f2937"),
+    }
+    # Group by bucket
+    for bucket_name in ["ACTIVE_IN_SIGNAL_REVIEW", "STRONG_DIAGNOSTIC_CANDIDATE",
+                        "RANKIC_STRONG_LONGSHORT_WEAK", "LONGSHORT_STRONG_RANKIC_WEAK",
+                        "CONDITIONAL_DIRECTION_REVIEW", "MISSING_INPUT",
+                        "WEAK_OR_NOISY", "METADATA_REVIEW"]:
+        bucket_rows = review_df[review_df["review_bucket"] == bucket_name]
+        if bucket_rows.empty:
+            continue
+        bg, fg = bucket_colors.get(bucket_name, ("#6b7280", "#1f2937"))
+        candidate_review_html += f'<h3><span style="background:{bg};color:{fg};padding:2px 8px;border-radius:4px;font-size:12px">{bucket_name}</span> ({len(bucket_rows)})</h3>\n'
+        candidate_review_html += '<table><thead><tr><th>Factor</th><th>Category</th><th>Direction</th><th>Best Adj IC</th><th>Best Adj ICIR</th><th>Best LS Spread</th><th>LS t-stat</th><th>Consistency</th><th>Notes</th></tr></thead><tbody>\n'
+        for _, r in bucket_rows.iterrows():
+            adj_ic_val = r.get("best_adj_ic")
+            adj_icir_val = r.get("best_direction_adjusted_icir")
+            ls_val = r.get("best_long_short_spread")
+            ls_t_val = r.get("best_long_short_t_stat")
+            hz_label = r.get("best_adj_ic_horizon", "")
+            hz_icir_label = r.get("best_direction_adjusted_icir_horizon", "")
+            hz_ls_label = r.get("best_long_short_horizon", "")
+
+            adj_ic_str = f"{adj_ic_val:+.4f} ({hz_label})" if pd.notna(adj_ic_val) else "—"
+            adj_icir_str = f"{adj_icir_val:+.3f} ({hz_icir_label})" if pd.notna(adj_icir_val) else "—"
+            ls_str = f"{ls_val:+.6f} ({hz_ls_label})" if pd.notna(ls_val) else "—"
+            ls_t_str = f"{ls_t_val:.2f}" if pd.notna(ls_t_val) else "—"
+
+            candidate_review_html += f'<tr><td>{r["factor_name"]}</td><td>{r["category"]}</td><td>{r["expected_direction"]}</td>'
+            candidate_review_html += f'<td style="text-align:center">{adj_ic_str}</td><td style="text-align:center">{adj_icir_str}</td>'
+            candidate_review_html += f'<td style="text-align:center">{ls_str}</td><td style="text-align:center">{ls_t_str}</td>'
+            candidate_review_html += f'<td style="text-align:center">{r.get("rankic_longshort_consistency", "—")}</td>'
+            candidate_review_html += f'<td style="font-size:11px;color:#94a3b8">{r.get("review_notes", "")}</td></tr>\n'
+        candidate_review_html += '</tbody></table>\n'
+else:
+    candidate_review_html = '<p style="color:#94a3b8">Candidate review not available.</p>'
 
 # Stats
 n_total = manifest.get("total_registered_factors", len(rows))
@@ -316,7 +367,8 @@ footer a:hover {{ text-decoration: underline; }}
 <ul>
 <li><strong>Factor-level RankIC:</strong> 每个 timestamp 内 rank(factor_value) 与 rank(forward_return) 的 Pearson 相关系数（等价于 Spearman）。不同于 signal-level RankIC（组合信号 vs forward return）。</li>
 <li><strong>Raw vs Direction-Adjusted IC:</strong> raw IC 是未经方向调整的相关系数。Direction-adjusted: positive→raw, negative→-raw, conditional→raw (标记 DIRECTION_UNKNOWN)。</li>
-<li><strong>ICIR:</strong> mean(raw RankIC) / std(raw RankIC)。衡量 IC 的稳定性。ICIR 越高，因子在时间维度上越稳定。</li>
+<li><strong>Raw ICIR:</strong> mean(raw RankIC) / std(raw RankIC)。衡量原始 IC 的稳定性。</li>
+<li><strong>Direction-Adjusted ICIR:</strong> mean(adjusted IC) / std(adjusted IC)。对 negative 因子取反后计算。页面默认展示 adjusted ICIR 以匹配 adjusted IC。</li>
 <li><strong>IC Win Rate:</strong> per-timestamp IC > 0 的比例。raw = 未经方向调整; adjusted = 方向调整后。</li>
 <li><strong>Quantile Bucket Returns:</strong> 按因子值排序分为 5 个 bucket，计算各 bucket 的平均 forward return。</li>
 <li><strong>Long-Short Spread:</strong> direction-adjusted 排序后 top bucket - bottom bucket 的 mean return 差异。仅用于诊断，不等于可交易 PnL。</li>
@@ -352,8 +404,13 @@ evaluate_factors.py 与 momentum.signal_evaluation.compute_rank_ic 公共 API �
 <p style="color:#94a3b8;font-size:13px">按月聚合的 direction-adjusted IC。Top 20 by best monthly IC.</p>
 {period_html}
 
+<h2>Candidate Review / 因子候选诊断</h2>
+<p style="color:#94a3b8;font-size:13px">按 review_bucket 分类的因子候选诊断表。Diagnostic only — not alpha selection.</p>
+{candidate_review_html}
+
 <h2>Full Factor Table</h2>
-<p style="color:#94a3b8;font-size:13px">IC = direction-adjusted RankIC · ICIR = mean/std · Win = adjusted win rate · LS = long-short spread mean</p>
+<p style="color:#94a3b8;font-size:13px">IC = direction-adjusted RankIC · ICIR = direction-adjusted ICIR (raw ICIR for negative factors differs) · Win = adjusted win rate · LS = long-short spread mean</p>
+<p style="color:#64748b;font-size:11px">Raw ICIR and direction-adjusted ICIR differ for negative-direction factors. The page displays direction-adjusted ICIR by default to match direction-adjusted IC.</p>
 
 <table>
 <thead>

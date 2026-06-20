@@ -52,6 +52,8 @@ def load_factor_registry() -> list[dict]:
         "category": getattr(fs, "family", "unknown"),
         "expected_direction": getattr(fs, "expected_direction", "conditional"),
         "notes": getattr(fs, "notes", ""),
+        "required_columns": getattr(fs, "required_columns", []),
+        "lookback_window": getattr(fs, "lookback_window", None),
     } for fs in REGISTRY]
 
 
@@ -431,25 +433,36 @@ def main():
         ic_list_raw = [v for _, v in detailed_ics.get((fid, hz), [])]
         raw_ic = row.get("raw_mean_rank_ic")
         adj_ic = row.get("direction_adjusted_mean_rank_ic")
+        d = row["expected_direction"]
+
+        # Look up required_columns and lookback_window from registry
+        spec_entry = next((r for r in registry if r["factor_id"] == fid), None)
+        req_cols = spec_entry.get("required_columns", []) if spec_entry else []
+        lb_window = spec_entry.get("lookback_window", None) if spec_entry else None
+        req_cols_str = "|".join(req_cols) if req_cols else ""
 
         if ic_list_raw and len(ic_list_raw) > 1:
             ic_arr = np.array(ic_list_raw)
-            rank_ic_std = float(ic_arr.std(ddof=1))
+            raw_rank_ic_std = float(ic_arr.std(ddof=1))
             raw_mean = float(ic_arr.mean())
-            icir = round(raw_mean / rank_ic_std, 6) if rank_ic_std > 0 else None
+            raw_icir = round(raw_mean / raw_rank_ic_std, 6) if raw_rank_ic_std > 0 else None
             ic_win_raw = float((ic_arr > 0).sum() / len(ic_arr))
-            # Direction-adjusted win rate
-            d = row["expected_direction"]
+            # Direction-adjusted IC series
             if d == "negative":
                 adj_arr = -ic_arr
             elif d == "positive":
                 adj_arr = ic_arr
             else:
                 adj_arr = ic_arr  # conditional → raw
+            adj_rank_ic_std = float(adj_arr.std(ddof=1))
+            adj_mean = float(adj_arr.mean())
+            adj_icir = round(adj_mean / adj_rank_ic_std, 6) if adj_rank_ic_std > 0 else None
             ic_win_adj = float((adj_arr > 0).sum() / len(adj_arr))
         else:
-            rank_ic_std = None
-            icir = None
+            raw_rank_ic_std = None
+            raw_icir = None
+            adj_rank_ic_std = None
+            adj_icir = None
             ic_win_raw = None
             ic_win_adj = None
 
@@ -467,8 +480,11 @@ def main():
             "horizon": hz,
             "raw_mean_rank_ic": raw_ic,
             "direction_adjusted_mean_rank_ic": adj_ic,
-            "rank_ic_std": round(rank_ic_std, 8) if rank_ic_std is not None else None,
-            "icir": icir,
+            "raw_rank_ic_std": round(raw_rank_ic_std, 8) if raw_rank_ic_std is not None else None,
+            "direction_adjusted_rank_ic_std": round(adj_rank_ic_std, 8) if adj_rank_ic_std is not None else None,
+            "raw_icir": raw_icir,
+            "direction_adjusted_icir": adj_icir,
+            "icir": raw_icir,  # backward-compat alias
             "t_stat": row.get("t_stat"),
             "ic_win_rate_raw": round(ic_win_raw, 4) if ic_win_raw is not None else None,
             "ic_win_rate_adjusted": round(ic_win_adj, 4) if ic_win_adj is not None else None,
@@ -479,8 +495,8 @@ def main():
             "used_in_current_signal": row.get("used_in_current_signal"),
             "status": row["status"],
             "formula_proxy": row.get("notes", ""),
-            "required_columns_if_available": "",
-            "lookback_window_if_available": "",
+            "required_columns": req_cols_str,
+            "lookback_window": lb_window,
             "notes": row.get("notes", ""),
             # Long-short fields
             "top_bucket_mean_return": ls_row.get("top_bucket_mean_return") if ls_row else None,
@@ -533,6 +549,10 @@ def main():
                 adj_arr = arr
             win_adj = float((adj_arr > 0).sum() / len(adj_arr))
 
+            # Direction-adjusted ICIR for period
+            adj_std = float(adj_arr.std(ddof=1)) if len(adj_arr) > 1 else 0.0
+            adj_icir_val = round(float(adj_arr.mean()) / adj_std, 6) if adj_std > 0 else None
+
             period_rows.append({
                 "factor_name": fid,
                 "category": spec_entry["category"],
@@ -541,8 +561,11 @@ def main():
                 "period": period,
                 "raw_mean_rank_ic": round(raw_mean, 8),
                 "direction_adjusted_mean_rank_ic": round(adj_mean, 8),
-                "rank_ic_std": round(std, 8),
-                "icir": icir_val,
+                "raw_rank_ic_std": round(std, 8),
+                "direction_adjusted_rank_ic_std": round(adj_std, 8),
+                "raw_icir": icir_val,
+                "direction_adjusted_icir": adj_icir_val,
+                "icir": icir_val,  # backward-compat alias
                 "ic_win_rate_raw": round(win_raw, 4),
                 "ic_win_rate_adjusted": round(win_adj, 4),
                 "n_periods": len(ics),
@@ -603,6 +626,140 @@ def main():
     fc_df.to_csv(fc_csv_path, index=False)
     print(f"  Wrote {fc_csv_path} ({len(fc_df)} rows)", flush=True)
 
+    # G. Candidate review (one row per factor)
+    review_rows = []
+    for spec_entry in registry:
+        fid = spec_entry["factor_id"]
+        d = spec_entry["expected_direction"]
+        cat = spec_entry["category"]
+        in_signal = fid in SIGNAL_FACTOR_IDS
+        req_cols = spec_entry.get("required_columns", [])
+        lb_window = spec_entry.get("lookback_window", None)
+        req_cols_str = "|".join(req_cols) if req_cols else ""
+
+        fdf = mp_df[mp_df["factor_name"] == fid]
+        fv_exists = (FEATURES_DIR / fid / "factor_values.parquet").exists()
+
+        # Best adjusted IC across horizons
+        best_adj_ic = None
+        best_adj_ic_hz = None
+        best_adj_icir = None
+        best_adj_icir_hz = None
+        best_ls_spread = None
+        best_ls_hz = None
+        best_ls_t = None
+        best_win_adj = None
+        cov_min = None
+        miss_max = None
+
+        if len(fdf) > 0 and fv_exists:
+            for hz in LABEL_HORIZONS:
+                hz_row = fdf[fdf["horizon"] == hz]
+                if len(hz_row) == 0:
+                    continue
+                r = hz_row.iloc[0]
+                adj_val = r.get("direction_adjusted_mean_rank_ic")
+                adj_icir_val = r.get("direction_adjusted_icir")
+                ls_val = r.get("long_short_spread_mean")
+                ls_t_val = r.get("long_short_spread_t_stat")
+                win_val = r.get("ic_win_rate_adjusted")
+                cov_val = r.get("coverage")
+                miss_val = r.get("missing_rate")
+
+                if pd.notna(adj_val) and (best_adj_ic is None or abs(adj_val) > abs(best_adj_ic)):
+                    best_adj_ic = adj_val
+                    best_adj_ic_hz = hz
+                if pd.notna(adj_icir_val) and (best_adj_icir is None or abs(adj_icir_val) > abs(best_adj_icir)):
+                    best_adj_icir = adj_icir_val
+                    best_adj_icir_hz = hz
+                if pd.notna(ls_val) and pd.notna(ls_t_val) and (best_ls_spread is None or abs(ls_val) > abs(best_ls_spread)):
+                    best_ls_spread = ls_val
+                    best_ls_hz = hz
+                    best_ls_t = ls_t_val
+                if pd.notna(win_val) and (best_win_adj is None or win_val > best_win_adj):
+                    best_win_adj = win_val
+                if pd.notna(cov_val) and (cov_min is None or cov_val < cov_min):
+                    cov_min = cov_val
+                if pd.notna(miss_val) and (miss_max is None or miss_val > miss_max):
+                    miss_max = miss_val
+
+        # Direction status
+        if d == "conditional":
+            direction_status = "CONDITIONAL"
+        elif d in ("positive", "negative"):
+            direction_status = "KNOWN"
+        else:
+            direction_status = "UNKNOWN"
+
+        # RankIC-LongShort consistency
+        rl_consistency = "N/A"
+        if best_adj_ic is not None and best_ls_spread is not None:
+            ic_sign = 1 if best_adj_ic > 0 else -1
+            ls_sign = 1 if best_ls_spread > 0 else -1
+            if ic_sign == ls_sign:
+                rl_consistency = "CONSISTENT"
+            else:
+                rl_consistency = "DIVERGENT"
+
+        # Review bucket
+        if not fv_exists:
+            review_bucket = "MISSING_INPUT"
+            review_notes = "Factor values not computed; raw bars lack required columns."
+        elif in_signal:
+            review_bucket = "ACTIVE_IN_SIGNAL_REVIEW"
+            review_notes = "Currently used in production signal. Review before modifying."
+        elif d == "conditional":
+            if best_adj_ic is not None and abs(best_adj_ic) >= 0.02:
+                review_bucket = "CONDITIONAL_DIRECTION_REVIEW"
+                review_notes = "Conditional direction but shows IC signal strength."
+            else:
+                review_bucket = "CONDITIONAL_DIRECTION_REVIEW"
+                review_notes = "Conditional direction; weak or no clear IC signal."
+        elif best_adj_ic is not None and abs(best_adj_ic) >= 0.02 and best_ls_spread is not None and best_ls_t is not None and abs(best_ls_t) >= 2.0:
+            review_bucket = "STRONG_DIAGNOSTIC_CANDIDATE"
+            review_notes = "Strong RankIC and significant long-short spread."
+        elif best_adj_ic is not None and abs(best_adj_ic) >= 0.02 and (best_ls_spread is None or best_ls_t is None or abs(best_ls_t) < 2.0):
+            review_bucket = "RANKIC_STRONG_LONGSHORT_WEAK"
+            review_notes = "RankIC suggests signal but long-short spread not significant."
+        elif best_ls_spread is not None and best_ls_t is not None and abs(best_ls_t) >= 2.0 and (best_adj_ic is None or abs(best_adj_ic) < 0.015):
+            review_bucket = "LONGSHORT_STRONG_RANKIC_WEAK"
+            review_notes = "Long-short spread significant but RankIC weak."
+        elif best_adj_ic is not None and abs(best_adj_ic) < 0.01:
+            review_bucket = "WEAK_OR_NOISY"
+            review_notes = "Adjusted IC below 0.01 across all horizons."
+        else:
+            review_bucket = "METADATA_REVIEW"
+            review_notes = "Needs manual review for classification."
+
+        review_rows.append({
+            "factor_name": fid,
+            "category": cat,
+            "expected_direction": d,
+            "status": fdf.iloc[0]["status"] if len(fdf) > 0 else ("MISSING_FACTOR_VALUES" if not fv_exists else "UNKNOWN"),
+            "used_in_current_signal": in_signal,
+            "required_columns": req_cols_str,
+            "lookback_window": lb_window,
+            "best_adj_ic_horizon": best_adj_ic_hz,
+            "best_adj_ic": round(float(best_adj_ic), 8) if best_adj_ic is not None else None,
+            "best_direction_adjusted_icir_horizon": best_adj_icir_hz,
+            "best_direction_adjusted_icir": round(float(best_adj_icir), 6) if best_adj_icir is not None else None,
+            "best_long_short_horizon": best_ls_hz,
+            "best_long_short_spread": round(float(best_ls_spread), 8) if best_ls_spread is not None else None,
+            "best_long_short_t_stat": round(float(best_ls_t), 4) if best_ls_t is not None else None,
+            "best_ic_win_rate_adjusted": round(float(best_win_adj), 4) if best_win_adj is not None else None,
+            "coverage_min": cov_min,
+            "missing_rate_max": miss_max,
+            "direction_status": direction_status,
+            "rankic_longshort_consistency": rl_consistency,
+            "review_bucket": review_bucket,
+            "review_notes": review_notes,
+        })
+
+    review_df = pd.DataFrame(review_rows)
+    review_csv_path = out_dir / f"factor_level_candidate_review{suffix}.csv"
+    review_df.to_csv(review_csv_path, index=False)
+    print(f"  Wrote {review_csv_path} ({len(review_df)} rows)", flush=True)
+
     # Manifest
     computed_fids = df[df["status"].str.contains("COMPUTED", na=False)]["factor_name"].unique()
     # Also count factors with factor_values but non-COMPUTED status (e.g. DIRECTION_UNKNOWN)
@@ -634,7 +791,13 @@ def main():
             "factor_level_quantile_return_summary.csv",
             "factor_level_long_short_summary.csv",
             "factor_level_formula_catalog.csv",
+            "factor_level_candidate_review.csv",
         ],
+        "raw_icir_definition": "mean(raw per-timestamp RankIC) / std(raw per-timestamp RankIC)",
+        "direction_adjusted_icir_definition": "mean(direction-adjusted per-timestamp RankIC) / std(direction-adjusted per-timestamp RankIC); positive→raw, negative→-raw, conditional→raw",
+        "candidate_review_output": "factor_level_candidate_review.csv",
+        "required_columns_source": "FactorSpec.required_columns via factor_formula_registry.py",
+        "lookback_window_source": "FactorSpec.lookback_window via factor_formula_registry.py",
         "elapsed_seconds": round(elapsed, 1),
         "disclaimer": "Factor-level IC, not signal-level. Not tradeable alpha.",
     }
