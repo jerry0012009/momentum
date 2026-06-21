@@ -62,6 +62,11 @@ def rolling_sum(series: pd.Series, n: int) -> pd.Series:
     return series.rolling(n, min_periods=n).sum()
 
 
+def rolling_skew(series: pd.Series, n: int) -> pd.Series:
+    """Rolling skewness over n periods (Fisher definition, bias=True)."""
+    return series.rolling(n, min_periods=n).skew()
+
+
 # ── Ranking ─────────────────────────────────────────────────────────
 
 def ts_rank(series: pd.Series, n: int) -> pd.Series:

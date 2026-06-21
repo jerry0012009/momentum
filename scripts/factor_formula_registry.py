@@ -16,7 +16,7 @@ import pandas as pd
 from factor_specs import FactorSpec
 from factor_ops import (
     delay, delta, rolling_mean, rolling_std, rolling_max, rolling_min,
-    rolling_corr, rolling_sum, zscore, ema, true_range,
+    rolling_corr, rolling_sum, rolling_skew, zscore, ema, true_range,
 )
 
 # ── V0 Original 5 Factors ──────────────────────────────────────────
@@ -82,6 +82,49 @@ def _compute_q158_high_low_range(df: pd.DataFrame) -> pd.Series:
     """Alpha158 High-Low Range: (high - low) / close."""
     h, l, c = df["high"], df["low"], df["close"]
     return (h - l) / c.replace(0, np.nan)
+
+
+# ── PM-09: Alpha158-Inspired Batch 1 ──────────────────────────────
+
+def _compute_vwap_dev_20h(df: pd.DataFrame) -> pd.Series:
+    """VWAP Deviation 20h: (close - vwap_20h) / vwap_20h."""
+    c, v = df["close"], df["volume"]
+    vwap = rolling_sum(c * v, 20) / rolling_sum(v, 20).replace(0, np.nan)
+    return (c - vwap) / vwap.replace(0, np.nan)
+
+
+def _compute_wvma_20h(df: pd.DataFrame) -> pd.Series:
+    """Volume-Weighted Volatility 20h: std(ret*vol, 20) / mean(vol, 20)."""
+    ret = df["close"].pct_change()
+    v = df["volume"]
+    numer = rolling_std(ret * v, 20)
+    denom = rolling_mean(v, 20).replace(0, np.nan)
+    return numer / denom
+
+
+def _compute_vol_ret_corr_20h(df: pd.DataFrame) -> pd.Series:
+    """Volume-Return Correlation 20h: corr(ret, delta(volume,1), 20)."""
+    ret = df["close"].pct_change()
+    vol_chg = delta(df["volume"], 1)
+    return rolling_corr(ret, vol_chg, 20)
+
+
+def _compute_intraday_ret(df: pd.DataFrame) -> pd.Series:
+    """Intraday Return (1h bar): (close - open) / open."""
+    o, c = df["open"], df["close"]
+    return (c - o) / o.replace(0, np.nan)
+
+
+def _compute_klow_close(df: pd.DataFrame) -> pd.Series:
+    """Lower Wick / Close: (min(open, close) - low) / close."""
+    o, l, c = df["open"], df["low"], df["close"]
+    return (np.minimum(o, c) - l) / c.replace(0, np.nan)
+
+
+def _compute_ksft_5h(df: pd.DataFrame) -> pd.Series:
+    """Short-Window Skewness 5h: rolling skewness of 1h returns over 5 bars."""
+    ret = df["close"].pct_change()
+    return rolling_skew(ret, 5)
 
 
 def _compute_tech_macd(df: pd.DataFrame) -> pd.Series:
@@ -545,6 +588,49 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="conditional",
         compute_fn=_compute_q158_high_low_range,
         notes="(high - low) / close",
+    ),
+    # PM-09: Alpha158-Inspired Batch 1
+    FactorSpec(
+        factor_id="vwap_dev_20h", family="alpha158_ohlcv",
+        required_columns=["close", "volume"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_vwap_dev_20h,
+        notes="(close - vwap_20h) / vwap_20h; vwap_20h = sum(close*vol,20)/sum(vol,20)",
+    ),
+    FactorSpec(
+        factor_id="wvma_20h", family="alpha158_ohlcv",
+        required_columns=["close", "volume"], lookback_window=21,
+        expected_direction="negative",
+        compute_fn=_compute_wvma_20h,
+        notes="rolling_std(ret*vol,20) / rolling_mean(vol,20); volume-weighted volatility",
+    ),
+    FactorSpec(
+        factor_id="vol_ret_corr_20h", family="alpha158_ohlcv",
+        required_columns=["close", "volume"], lookback_window=21,
+        expected_direction="conditional",
+        compute_fn=_compute_vol_ret_corr_20h,
+        notes="rolling_corr(ret_1h, delta(volume,1), 20); return-volume correlation",
+    ),
+    FactorSpec(
+        factor_id="intraday_ret", family="alpha158_ohlcv",
+        required_columns=["open", "close"], lookback_window=1,
+        expected_direction="conditional",
+        compute_fn=_compute_intraday_ret,
+        notes="(close - open) / open; 1h bar open-to-close return",
+    ),
+    FactorSpec(
+        factor_id="klow_close", family="alpha158_ohlcv",
+        required_columns=["open", "low", "close"], lookback_window=1,
+        expected_direction="positive",
+        compute_fn=_compute_klow_close,
+        notes="(min(open,close) - low) / close; lower wick as fraction of close",
+    ),
+    FactorSpec(
+        factor_id="ksft_5h", family="alpha158_ohlcv",
+        required_columns=["close"], lookback_window=6,
+        expected_direction="conditional",
+        compute_fn=_compute_ksft_5h,
+        notes="rolling_skewness(ret_1h, 5); short-window return skewness",
     ),
     # Batch 1: Technical
     FactorSpec(
