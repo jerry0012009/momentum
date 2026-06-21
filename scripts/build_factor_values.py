@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET_ID = "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
 TAKER_BARS_PATH = ROOT / "data" / "cache" / f"{DEFAULT_DATASET_ID}_taker_enriched" / "bars_1h.parquet"
 TAKER_REQUIRED_COLUMNS = {"taker_buy_volume", "taker_buy_quote_volume"}
+FUNDING_RATE_PATH = ROOT / "data" / "cache" / "crypto_funding_rate_1h_contract_v1" / "funding_rate_1h_aligned_dynamic.parquet"
+FUNDING_REQUIRED_COLUMNS = {"funding_rate"}
 
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -83,6 +85,11 @@ def _needs_taker_source(spec) -> bool:
     return bool(set(spec.required_columns) & TAKER_REQUIRED_COLUMNS)
 
 
+def _needs_funding_source(spec) -> bool:
+    """Check if a factor spec requires funding_rate column."""
+    return bool(set(spec.required_columns) & FUNDING_REQUIRED_COLUMNS)
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--dataset-id", default=DEFAULT_DATASET_ID,
@@ -123,9 +130,10 @@ def main() -> None:
         print(f"  Hint: pass --dataset-id explicitly if using a non-default dataset", flush=True)
         _sys.exit(1)
 
-    # Split factors into taker and non-taker groups
+    # Split factors into taker, funding, and ordinary groups
     taker_factor_ids = [fid for fid in factor_ids if _needs_taker_source(REGISTRY_BY_ID[fid])]
-    non_taker_factor_ids = [fid for fid in factor_ids if fid not in taker_factor_ids]
+    funding_factor_ids = [fid for fid in factor_ids if _needs_funding_source(REGISTRY_BY_ID[fid])]
+    ordinary_factor_ids = [fid for fid in factor_ids if fid not in taker_factor_ids and fid not in funding_factor_ids]
 
     bars = pd.read_parquet(bars_path)
     if bars.empty:
@@ -134,14 +142,13 @@ def main() -> None:
     bars = bars.sort_values(["symbol", "timestamp"])
 
     parts = []
-    # Build non-taker factors from canonical bars
-    if non_taker_factor_ids:
-        print(f"  Source: canonical bars ({len(non_taker_factor_ids)} factors)")
+    # Build ordinary factors from canonical bars
+    if ordinary_factor_ids:
+        print(f"  Source: canonical bars ({len(ordinary_factor_ids)} factors)")
         for _sym, g in bars.groupby("symbol", sort=False):
-            parts.append(calc_group(g, non_taker_factor_ids))
+            parts.append(calc_group(g, ordinary_factor_ids))
 
     # Build taker factors from taker-enriched bars
-    taker_bars = None
     if taker_factor_ids:
         if not TAKER_BARS_PATH.exists():
             print(f"ERROR: taker-enriched bars not found: {TAKER_BARS_PATH}")
@@ -156,6 +163,23 @@ def main() -> None:
         print(f"  Source: taker-enriched bars ({len(taker_factor_ids)} factors)")
         for _sym, g in taker_bars.groupby("symbol", sort=False):
             parts.append(calc_group(g, taker_factor_ids))
+
+    # Build funding factors from canonical bars merged with funding data
+    if funding_factor_ids:
+        if not FUNDING_RATE_PATH.exists():
+            print(f"ERROR: funding rate file not found: {FUNDING_RATE_PATH}")
+            _sys.exit(1)
+        funding = pd.read_parquet(FUNDING_RATE_PATH, columns=["timestamp", "symbol", "funding_rate"])
+        funding["timestamp"] = pd.to_datetime(funding["timestamp"], utc=True)
+        if funding.duplicated(["timestamp", "symbol"]).any():
+            print("ERROR: funding rate file has duplicate row keys")
+            _sys.exit(1)
+        funding_null_rate = funding["funding_rate"].isna().mean()
+        print(f"  Source: canonical bars + funding_rate (dynamic) ({len(funding_factor_ids)} factors, funding null={funding_null_rate:.1%})")
+        # Merge funding into bars in memory
+        merged = bars.merge(funding[["timestamp", "symbol", "funding_rate"]], on=["timestamp", "symbol"], how="left")
+        for _sym, g in merged.groupby("symbol", sort=False):
+            parts.append(calc_group(g, funding_factor_ids))
 
     wide = pd.concat(parts, ignore_index=True)
     wide = apply_cross_sectional_postprocess(wide)

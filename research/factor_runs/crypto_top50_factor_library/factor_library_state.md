@@ -1,6 +1,6 @@
 # Factor Library State
 
-**Generated:** 2026-06-21T05:44:36.210639+00:00
+**Generated:** 2026-06-21T06:59:25.073881+00:00
 **Dataset:** crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1
 
 ## Counts
@@ -8,9 +8,9 @@
 | Metric | Count |
 |--------|-------|
 | Registered factors | 71 |
-| Computed factor_values | 68 |
-| Missing factor_values | 3 |
-| Missing input data | 3 |
+| Computed factor_values | 71 |
+| Missing factor_values | 0 |
+| Missing input data | 0 |
 | Active signal factors | 10 |
 | Signal variants | 3 |
 
@@ -50,12 +50,6 @@
 
 *Source: signal_composition_review_manifest.json*
 
-## Missing Input Factors
-
-- funding_rate_level_20h
-- funding_rate_zscore_80h
-- funding_rate_change_24h
-
 ## Top Factors by Adjusted IC
 
 | factor_id | best_adj_ic | horizon |
@@ -75,10 +69,6 @@
 | rev_1h | +0.036506 | 1h |
 | rev_3h | +0.034385 | 1h |
 | rsi_14h | +0.033554 | 4h |
-
-## Warnings
-
-- 3 factors have missing input data: funding_rate_level_20h, funding_rate_zscore_80h, funding_rate_change_24h
 
 ---
 *Diagnostic only. Not production. Not live trading.*
