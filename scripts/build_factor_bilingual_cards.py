@@ -546,11 +546,31 @@ def main():
                     if isinstance(d, dict):
                         diagnostics_by_id[d.get("factor_id", "")] = d
 
+    # Load overrides
+    overrides_path = out_dir / "factor_card_overrides.json"
+    overrides: dict[str, dict] = {}
+    if overrides_path.exists():
+        with open(overrides_path) as f:
+            overrides = json.load(f)
+        print(f"  Loaded {len(overrides)} overrides from {overrides_path.name}")
+
     # Build cards
     cards = []
+    changed_count = 0
     for spec in REGISTRY:
         diag = diagnostics_by_id.get(spec.factor_id)
-        cards.append(build_card(spec, diag))
+        card = build_card(spec, diag)
+
+        # Apply overrides
+        ov = overrides.get(spec.factor_id)
+        if ov:
+            for key, val in ov.items():
+                if key in card and val is not None:
+                    if card[key] != val:
+                        changed_count += 1
+                    card[key] = val
+
+        cards.append(card)
 
     # Write CSV
     import csv
@@ -567,6 +587,26 @@ def main():
         json.dump(cards, f, indent=2, ensure_ascii=False)
     print(f"  Wrote {json_path}")
 
+    # QA Report
+    qa_path = out_dir / "factor_card_qa_report.csv"
+    qa_rows = []
+    for c in cards:
+        needs_human = c["metadata_quality"] in {"AUTO_GENERATED_REVIEW_REQUIRED", "NEEDS_REVIEW", "FORMULA_AMBIGUOUS", "DIRECTION_AMBIGUOUS"}
+        qa_rows.append({
+            "factor_id": c["factor_id"],
+            "metadata_quality": c["metadata_quality"],
+            "qa_notes_zh": c["intuition_zh"][:80],
+            "qa_notes_en": c["intuition_en"][:80],
+            "changed_in_pm14b": "yes" if c["factor_id"] in overrides else "no",
+            "needs_human_review": "yes" if needs_human else "no",
+            "reason": c.get("review_required_flag", ""),
+        })
+    with open(qa_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=qa_rows[0].keys())
+        writer.writeheader()
+        writer.writerows(qa_rows)
+    print(f"  Wrote {qa_path} ({len(qa_rows)} rows)")
+
     # Manifest
     from collections import Counter
     mq_dist = dict(Counter(c["metadata_quality"] for c in cards))
@@ -578,10 +618,12 @@ def main():
         "input_files": [
             "scripts/factor_formula_registry.py",
             "research/.../factor_diagnostics/factor_diagnostics_summary.json",
+            "research/.../factor_metadata/factor_card_overrides.json",
         ],
         "output_files": [
             str(csv_path.relative_to(ROOT)),
             str(json_path.relative_to(ROOT)),
+            str(qa_path.relative_to(ROOT)),
         ],
         "required_fields": [
             "factor_id", "family", "lifecycle_status",
@@ -596,6 +638,8 @@ def main():
         ],
         "metadata_quality_distribution": mq_dist,
         "data_source_type_distribution": ds_dist,
+        "cards_changed_in_pm14b": sum(1 for c in cards if c["factor_id"] in overrides),
+        "total_field_overrides_applied": changed_count,
         "validation_status": "PASS",
         "warnings": [],
         "non_change_statement": "No factor formulas, signal panel, or public pages modified.",
