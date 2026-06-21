@@ -18,6 +18,9 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET_ID = "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
+TAKER_BARS_PATH = ROOT / "data" / "cache" / f"{DEFAULT_DATASET_ID}_taker_enriched" / "bars_1h.parquet"
+TAKER_REQUIRED_COLUMNS = {"taker_buy_volume", "taker_buy_quote_volume"}
+
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
 from factor_formula_registry import REGISTRY, REGISTRY_BY_ID
@@ -75,6 +78,11 @@ def calc_group(g: pd.DataFrame, factor_ids: Sequence[str] | None = None) -> pd.D
     return g[result_cols]
 
 
+def _needs_taker_source(spec) -> bool:
+    """Check if a factor spec requires taker columns."""
+    return bool(set(spec.required_columns) & TAKER_REQUIRED_COLUMNS)
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--dataset-id", default=DEFAULT_DATASET_ID,
@@ -114,6 +122,11 @@ def main() -> None:
         print(f"  Expected:   data/cache/{args.dataset_id}/bars_1h.parquet", flush=True)
         print(f"  Hint: pass --dataset-id explicitly if using a non-default dataset", flush=True)
         _sys.exit(1)
+
+    # Split factors into taker and non-taker groups
+    taker_factor_ids = [fid for fid in factor_ids if _needs_taker_source(REGISTRY_BY_ID[fid])]
+    non_taker_factor_ids = [fid for fid in factor_ids if fid not in taker_factor_ids]
+
     bars = pd.read_parquet(bars_path)
     if bars.empty:
         raise ValueError("bars_1h.parquet is empty; fetch bars first")
@@ -121,8 +134,29 @@ def main() -> None:
     bars = bars.sort_values(["symbol", "timestamp"])
 
     parts = []
-    for _sym, g in bars.groupby("symbol", sort=False):
-        parts.append(calc_group(g, factor_ids))
+    # Build non-taker factors from canonical bars
+    if non_taker_factor_ids:
+        print(f"  Source: canonical bars ({len(non_taker_factor_ids)} factors)")
+        for _sym, g in bars.groupby("symbol", sort=False):
+            parts.append(calc_group(g, non_taker_factor_ids))
+
+    # Build taker factors from taker-enriched bars
+    taker_bars = None
+    if taker_factor_ids:
+        if not TAKER_BARS_PATH.exists():
+            print(f"ERROR: taker-enriched bars not found: {TAKER_BARS_PATH}")
+            _sys.exit(1)
+        taker_bars = pd.read_parquet(TAKER_BARS_PATH)
+        taker_bars["timestamp"] = pd.to_datetime(taker_bars["timestamp"], utc=True)
+        taker_bars = taker_bars.sort_values(["symbol", "timestamp"])
+        missing_cols = TAKER_REQUIRED_COLUMNS - set(taker_bars.columns)
+        if missing_cols:
+            print(f"ERROR: taker-enriched bars missing columns: {missing_cols}")
+            _sys.exit(1)
+        print(f"  Source: taker-enriched bars ({len(taker_factor_ids)} factors)")
+        for _sym, g in taker_bars.groupby("symbol", sort=False):
+            parts.append(calc_group(g, taker_factor_ids))
+
     wide = pd.concat(parts, ignore_index=True)
     wide = apply_cross_sectional_postprocess(wide)
 

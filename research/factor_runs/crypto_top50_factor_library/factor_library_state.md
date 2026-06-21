@@ -1,6 +1,6 @@
 # Factor Library State
 
-**Generated:** 2026-06-21T04:48:15.808054+00:00
+**Generated:** 2026-06-21T05:44:36.210639+00:00
 **Dataset:** crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1
 
 ## Counts
@@ -8,9 +8,9 @@
 | Metric | Count |
 |--------|-------|
 | Registered factors | 71 |
-| Computed factor_values | 65 |
-| Missing factor_values | 6 |
-| Missing input data | 6 |
+| Computed factor_values | 68 |
+| Missing factor_values | 3 |
+| Missing input data | 3 |
 | Active signal factors | 10 |
 | Signal variants | 3 |
 
@@ -52,9 +52,6 @@
 
 ## Missing Input Factors
 
-- taker_buy_ratio_20h
-- taker_buy_zscore_20h
-- taker_buy_delta_5h
 - funding_rate_level_20h
 - funding_rate_zscore_80h
 - funding_rate_change_24h
@@ -81,7 +78,7 @@
 
 ## Warnings
 
-- 6 factors have missing input data: taker_buy_ratio_20h, taker_buy_zscore_20h, taker_buy_delta_5h, funding_rate_level_20h, funding_rate_zscore_80h, funding_rate_change_24h
+- 3 factors have missing input data: funding_rate_level_20h, funding_rate_zscore_80h, funding_rate_change_24h
 
 ---
 *Diagnostic only. Not production. Not live trading.*

@@ -178,6 +178,9 @@ def build_state() -> dict:
             missing_fv_ids.append(fid)
 
     # Missing input factors (from registry integrity report or catalog)
+    # Exclude factors that already have computed factor_values — if FV exists,
+    # the factor was successfully built despite its source columns not being in
+    # the canonical bars (e.g. taker factors using taker-enriched bars).
     integrity = load_json_if_exists(INTEGRITY_JSON)
     catalog = load_json_if_exists(CATALOG_JSON)
     missing_input_ids = []
@@ -191,6 +194,9 @@ def build_state() -> dict:
             f["factor_id"] for f in catalog["factors"]
             if f.get("lifecycle_status") == "MISSING_INPUT_DATA"
         ]
+    # Remove factors that have been computed (factor_values exist)
+    computed_set = set(computed_ids)
+    missing_input_ids = [fid for fid in missing_input_ids if fid not in computed_set]
 
     # Lifecycle distribution
     lifecycle_dist = Counter()
