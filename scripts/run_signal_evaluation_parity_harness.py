@@ -24,8 +24,8 @@ from momentum.signal_evaluation import (
 
 RUN_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
 SIGNAL_PANEL = RUN_DIR / "phase9b_signal_panel.parquet"
-OLD_LABEL_FILE = RUN_DIR / "alphalens_exports" / "crypto_top50_usdt_perp_1h_long_v1" / "wq101_alpha53" / "forward_returns_long.parquet"
-LABEL_FILE = ROOT / "data" / "features" / "crypto_top50_usdt_perp_1h" / "labels.parquet"
+OLD_LABEL_FILE = ROOT / "data" / "features" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1" / "labels.parquet"
+LABEL_FILE = ROOT / "data" / "features" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1" / "labels.parquet"
 OLD_RANKIC = RUN_DIR / "phase10a_signal_rankic_summary.csv"
 OLD_SPREAD = RUN_DIR / "phase10a_signal_quantile_spread_summary.csv"
 

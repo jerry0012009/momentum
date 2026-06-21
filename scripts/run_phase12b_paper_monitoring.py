@@ -49,7 +49,7 @@ def main():
     # Build forward return lookup (timestamp+symbol -> ret_fwd_1h)
     fwd_dfs = {}
     for h in ["1h", "4h", "24h", "72h"]:
-        fp = OUT / "alphalens_exports" / "crypto_top50_usdt_perp_1h_long_v1" / "wq101_alpha53" / f"forward_returns_long.parquet"
+        fp = ROOT / "data" / "features" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1" / "labels.parquet"
         if fp.exists():
             fwd = pd.read_parquet(fp)
             if "ret_fwd_1h" in fwd.columns:

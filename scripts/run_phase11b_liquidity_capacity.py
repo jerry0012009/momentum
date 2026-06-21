@@ -12,7 +12,7 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
-FWD = OUT / "alphalens_exports" / "crypto_top50_usdt_perp_1h_long_v1" / "wq101_alpha53" / "forward_returns_long.parquet"
+FWD = ROOT / "data" / "features" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1" / "labels.parquet"
 PQ = OUT / "phase9b_signal_panel.parquet"
 KLINE_DIR = ROOT / "data" / "cache" / "dynamic_universe_build" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1" / "kline_1h"
 BUILD = ROOT / "scripts" / "build_phase9b_signal_panel.py"

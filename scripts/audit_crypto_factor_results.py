@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-UNIVERSE = "crypto_top50_usdt_perp_1h"
+UNIVERSE = "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
 CACHE = ROOT / "data" / "cache" / UNIVERSE
 FEATURE = ROOT / "data" / "features" / UNIVERSE
 REPORT = ROOT / "reports" / "artifacts" / "factor_eval" / UNIVERSE
@@ -322,7 +322,7 @@ def write_summary(sign_df: pd.DataFrame, month_df: pd.DataFrame,
     lines = [
         "# V0.1 Factor Audit Summary", "",
         f"- generated_at: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
-        "- universe: crypto_top50_usdt_perp_1h",
+        f"- universe: {UNIVERSE}",
         "- evaluation_period: 2025-12-14 ~ 2026-06-12", "",
     ]
 
