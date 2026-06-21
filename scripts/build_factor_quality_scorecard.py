@@ -54,7 +54,8 @@ PATH_QA = META_DIR / "factor_card_qa_report.csv"
 PATH_QUANTILE = EVAL_DIR / "factor_level_quantile_return_summary.csv"
 PATH_QUANTILE_PERIOD = EVAL_DIR / "factor_level_period_quantile_return_summary.csv"
 PATH_METRIC_PANEL = EVAL_DIR / "factor_level_metric_panel.csv"
-PATH_REDUNDANCY = EVAL_DIR / "factor_redundancy.csv"
+PATH_REDUNDANCY = DIAG_DIR / "factor_pairwise_redundancy.csv"
+PATH_REDUNDANCY_SUMMARY = DIAG_DIR / "factor_redundancy_summary.csv"
 
 PATH_STATE = BASE / "factor_library_state.json"
 
@@ -146,6 +147,17 @@ def load_redundancy() -> pd.DataFrame:
     try:
         df = pd.read_csv(PATH_REDUNDANCY)
         if "factor_i" in df.columns:
+            return df
+        return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
+def load_redundancy_summary() -> pd.DataFrame:
+    """Load per-factor redundancy summary from PM-18."""
+    try:
+        df = pd.read_csv(PATH_REDUNDANCY_SUMMARY)
+        if "factor_id" in df.columns:
             return df
         return pd.DataFrame()
     except Exception:
@@ -369,12 +381,32 @@ def score_direction_interpretability(metadata_quality: str) -> float:
 def score_redundancy_novelty(
     redundancy_map: dict[str, dict[str, Any]],
     factor_id: str,
+    summary_map: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[float, str]:
-    """6.7 redundancy_novelty_score. Returns (score, confidence)."""
-    entry = redundancy_map.get(factor_id)
+    """6.7 redundancy_novelty_score. Returns (score, confidence).
+    Uses PM-18 redundancy summary if available, falls back to pairwise map.
+    """
+    # Prefer summary map from PM-18
+    if summary_map and factor_id in summary_map:
+        entry = summary_map[factor_id]
+        conf = entry.get("redundancy_confidence", "LOW")
+        novelty = entry.get("novelty_assessment", "INSUFFICIENT_OVERLAP")
+        strongest = entry.get("strongest_redundancy_level", "")
 
+        if novelty == "HIGHLY_REDUNDANT":
+            return 20.0, conf
+        elif novelty == "MODERATELY_REDUNDANT":
+            return 40.0, conf
+        elif novelty == "LIKELY_DISTINCT":
+            return 70.0, conf
+        elif novelty == "INSUFFICIENT_OVERLAP":
+            return 40.0, "LOW"
+        else:
+            return 50.0, conf
+
+    # Fallback to pairwise map
+    entry = redundancy_map.get(factor_id)
     if entry is None:
-        # No explicit redundancy evidence
         return 50.0, "LOW"
 
     level = entry.get("redundancy_level", "")
@@ -585,6 +617,7 @@ def build_scorecard() -> pd.DataFrame:
     qa = load_qa_report()
     quantile_df = load_quantile_summary()
     redundancy_df = load_redundancy()
+    redundancy_summary = load_redundancy_summary()
     state = load_library_state()
 
     registered_ids = state.get("registered_factor_ids", [])
@@ -593,11 +626,27 @@ def build_scorecard() -> pd.DataFrame:
     print(f"[PM-16B] {len(cards)} rows in bilingual cards")
     print(f"[PM-16B] {len(qa)} rows in QA report")
     print(f"[PM-16B] {len(quantile_df)} rows in quantile summary")
-    print(f"[PM-16B] {len(redundancy_df)} rows in redundancy")
+    print(f"[PM-16B] {len(redundancy_df)} rows in pairwise redundancy")
+    print(f"[PM-16B] {len(redundancy_summary)} rows in redundancy summary")
 
     # Build lookups
     quantile_shapes = compute_quantile_shapes(quantile_df)
     redundancy_map = build_redundancy_map(redundancy_df)
+
+    # Build summary map from PM-18 redundancy summary
+    summary_map: dict[str, dict[str, Any]] = {}
+    if not redundancy_summary.empty:
+        for _, row in redundancy_summary.iterrows():
+            fid = str(row.get("factor_id", "")).strip()
+            summary_map[fid] = {
+                "redundancy_confidence": str(row.get("redundancy_confidence", "LOW")).strip(),
+                "novelty_assessment": str(row.get("novelty_assessment", "INSUFFICIENT_OVERLAP")).strip(),
+                "nearest_factor": str(row.get("nearest_factor", "")).strip(),
+                "nearest_abs_spearman_corr": _safe_float(row.get("nearest_abs_spearman_corr", 0)),
+                "strongest_redundancy_level": str(row.get("strongest_redundancy_level", "")).strip(),
+                "n_high_redundancy_pairs": int(row.get("n_high_redundancy_pairs", 0)),
+                "n_valid_pairs": int(row.get("n_valid_pairs", 0)),
+            }
 
     # Score each factor
     rows = []
@@ -654,7 +703,7 @@ def build_scorecard() -> pd.DataFrame:
         stab_score = score_stability(monthly_ic_positive_rate, ls_pmr, ls_max_dd)
         quant_label, quant_score = get_quantile_shape_for_factor(quantile_shapes, fid, best_horizon)
         dir_score = score_direction_interpretability(metadata_quality)
-        red_score, red_conf = score_redundancy_novelty(redundancy_map, fid)
+        red_score, red_conf = score_redundancy_novelty(redundancy_map, fid, summary_map)
 
         scores = {
             "computation_integrity": comp_score,
@@ -668,7 +717,7 @@ def build_scorecard() -> pd.DataFrame:
 
         final_score = compute_final_score(scores)
 
-        has_red_evidence = fid in redundancy_map
+        has_red_evidence = fid in redundancy_map or fid in summary_map
         quality_class = assign_quality_class(
             final_score, metadata_quality, comp_score,
             pred_score, port_score, stab_score, dir_score,
