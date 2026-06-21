@@ -83,24 +83,39 @@ def build_monthly_ic_series(input_dir: Path) -> tuple[pd.DataFrame, bool]:
 # 2. Monthly long-short series (from quantile returns if period-level available)
 # ---------------------------------------------------------------------------
 def build_monthly_ls_series(input_dir: Path) -> tuple[pd.DataFrame, bool]:
-    """Attempt to build monthly LS series from quantile return summary.
-
-    Current evaluate_factors.py aggregates quantile returns across all time,
-    so period-level LS is NOT available. Returns empty DataFrame + False.
-    """
-    path = input_dir / "factor_level_quantile_return_summary.csv"
+    """Build monthly LS series from period_long_short_summary."""
+    path = input_dir / "factor_level_period_long_short_summary.csv"
     if not path.exists():
+        print(f"  WARNING: {path} not found", flush=True)
         return pd.DataFrame(), False
 
     df = pd.read_csv(path)
-    # Check if there's a period/month column
-    for c in ["period", "month", "date", "timestamp"]:
-        if c in df.columns:
-            # If found, we could build monthly LS — but current output doesn't have it
-            pass
+    if len(df) == 0:
+        return pd.DataFrame(), False
 
-    # Current output has no period column — monthly LS unavailable
-    return pd.DataFrame(), False
+    fcol = _find_factor_col(df)
+
+    rows = []
+    for _, r in df.iterrows():
+        ls_ret = r.get("long_short_return")
+        if pd.isna(ls_ret):
+            continue
+        rows.append({
+            "factor_id": r[fcol],
+            "horizon": str(r[HORIZON_COL]),
+            "month": str(r["period"]),
+            "long_short_return": _safe_float(ls_ret),
+            "long_leg_return": _safe_float(r.get("long_leg_return")),
+            "short_leg_return": _safe_float(r.get("short_leg_return")),
+            "n_long": int(r["n_timestamps"]) if pd.notna(r.get("n_timestamps")) else None,
+            "n_short": int(r["n_timestamps"]) if pd.notna(r.get("n_timestamps")) else None,
+            "positive_ls": bool(r.get("positive_ls", False)),
+        })
+
+    out = pd.DataFrame(rows)
+    if len(out) > 0:
+        out = out.sort_values(["factor_id", "horizon", "month"]).reset_index(drop=True)
+    return out, len(out) > 0
 
 
 # ---------------------------------------------------------------------------

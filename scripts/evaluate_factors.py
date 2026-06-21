@@ -171,6 +171,7 @@ def main():
     missing_factors = []
     detailed_ics = {}  # (fid, hz) -> list of (timestamp, ic_val)
     quantile_long_short = []  # quantile + long-short rows
+    period_quantile_long_short = []  # period-level quantile + long-short rows
     t_start = time.time()
 
     for i, spec in enumerate(registry):
@@ -350,6 +351,54 @@ def main():
                 "long_short_spread_t_stat": round(ls_t, 4) if ls_t is not None else None,
                 "long_short_win_rate": round(ls_win, 4) if ls_win is not None else None,
             })
+
+            # --- Period-level (monthly) quantile returns and long-short ---
+            bucket_ts_period = bucket_ts.copy()
+            bucket_ts_period.index = pd.to_datetime(bucket_ts_period.index)
+            bucket_ts_period["_period"] = bucket_ts_period.index.to_period("M")
+
+            for period_val, period_grp in bucket_ts_period.groupby("_period"):
+                period_str = str(period_val)
+                # Per-bucket period stats
+                for b in range(QUANTILE_BUCKETS):
+                    if b in period_grp.columns:
+                        pbr = period_grp[b].dropna()
+                        if len(pbr) > 0:
+                            period_quantile_long_short.append({
+                                "factor_name": fid, "category": spec["category"],
+                                "expected_direction": spec["expected_direction"],
+                                "horizon": hz, "period": period_str,
+                                "bucket": b, "bucket_label": f"Q{b+1}",
+                                "mean_forward_return": round(float(pbr.mean()), 8),
+                                "median_forward_return": round(float(pbr.median()), 8),
+                                "n_timestamps": int(len(pbr)),
+                                "n_obs": None,
+                                "status": base_status,
+                            })
+
+                # Period long-short
+                if QUANTILE_BUCKETS - 1 in period_grp.columns and 0 in period_grp.columns:
+                    p_ls = period_grp[QUANTILE_BUCKETS - 1] - period_grp[0]
+                    p_ls = p_ls.dropna()
+                    if len(p_ls) > 0:
+                        p_ls_mean = float(p_ls.mean())
+                        p_top_mean = float(period_grp[QUANTILE_BUCKETS - 1].dropna().mean()) if len(period_grp[QUANTILE_BUCKETS - 1].dropna()) > 0 else None
+                        p_bot_mean = float(period_grp[0].dropna().mean()) if len(period_grp[0].dropna()) > 0 else None
+                        period_quantile_long_short.append({
+                            "factor_name": fid, "category": spec["category"],
+                            "expected_direction": spec["expected_direction"],
+                            "horizon": hz, "period": period_str,
+                            "bucket": "LONG_SHORT", "bucket_label": "Long-Short",
+                            "mean_forward_return": round(p_ls_mean, 8),
+                            "median_forward_return": None,
+                            "n_timestamps": int(len(p_ls)),
+                            "n_obs": None,
+                            "status": base_status,
+                            "long_short_return": round(p_ls_mean, 8),
+                            "long_leg_return": round(p_top_mean, 8) if p_top_mean is not None else None,
+                            "short_leg_return": round(p_bot_mean, 8) if p_bot_mean is not None else None,
+                            "positive_ls": bool(p_ls_mean > 0),
+                        })
 
         # Print summary and build results
         d = spec["expected_direction"]
@@ -603,6 +652,20 @@ def main():
     ls_csv_path = out_dir / f"factor_level_long_short_summary{suffix}.csv"
     ls_df.to_csv(ls_csv_path, index=False)
     print(f"  Wrote {ls_csv_path} ({len(ls_df)} rows)", flush=True)
+
+    # D2. Period-level quantile return summary (monthly)
+    pqr_rows = [r for r in period_quantile_long_short if r.get("bucket") != "LONG_SHORT"]
+    pqr_df = pd.DataFrame(pqr_rows)
+    pqr_csv_path = out_dir / f"factor_level_period_quantile_return_summary{suffix}.csv"
+    pqr_df.to_csv(pqr_csv_path, index=False)
+    print(f"  Wrote {pqr_csv_path} ({len(pqr_df)} rows)", flush=True)
+
+    # E2. Period-level long-short summary (monthly)
+    pls_rows = [r for r in period_quantile_long_short if r.get("bucket") == "LONG_SHORT"]
+    pls_df = pd.DataFrame(pls_rows)
+    pls_csv_path = out_dir / f"factor_level_period_long_short_summary{suffix}.csv"
+    pls_df.to_csv(pls_csv_path, index=False)
+    print(f"  Wrote {pls_csv_path} ({len(pls_df)} rows)", flush=True)
 
     # F. Formula catalog
     formula_catalog_rows = []
