@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Build the bilingual factor evaluation page.
+"""Build the bilingual factor evaluation page with integrated quality scorecard.
 
-Reads 6 CSV data sources from the crypto_top50_factor_library and produces
+Reads 7+ CSV/JSON data sources from the crypto_top50_factor_library and produces
 a single static HTML file with embedded JSON, CSS, and JS.
 
 Data sources:
@@ -11,6 +11,8 @@ Data sources:
   4. factor_diagnostics/factor_cumulative_long_short_curve.csv
   5. factor_metadata/factor_bilingual_cards.csv
   6. factor_metadata/factor_card_qa_report.csv
+  7. factor_diagnostics/factor_quality_scorecard.csv
+  8. factor_diagnostics/factor_quality_scorecard_manifest.json
 """
 from __future__ import annotations
 
@@ -47,6 +49,12 @@ def load_csv(path: Path) -> pd.DataFrame:
     return pd.read_csv(path) if path.exists() else pd.DataFrame()
 
 
+def load_json(path: Path) -> dict:
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return {}
+
+
 # ── Build JSON payload ──────────────────────────────────────────────────────
 def build_payload() -> dict:
     diag = load_csv(DIAG_DIR / "factor_diagnostics_summary.csv")
@@ -55,10 +63,21 @@ def build_payload() -> dict:
     cum_series = load_csv(DIAG_DIR / "factor_cumulative_long_short_curve.csv")
     cards = load_csv(META_DIR / "factor_bilingual_cards.csv")
     qa = load_csv(META_DIR / "factor_card_qa_report.csv")
+    scorecard = load_csv(DIAG_DIR / "factor_quality_scorecard.csv")
+    manifest = load_json(DIAG_DIR / "factor_quality_scorecard_manifest.json")
 
     # ── Summary stats ──
     all_months = sorted(ic_series["month"].unique().tolist()) if not ic_series.empty else []
     quality_counts = cards["metadata_quality"].value_counts().to_dict() if not cards.empty else {}
+
+    # Scorecard summary stats
+    sc_class_counts = {}
+    sc_confidence_counts = {}
+    sc_action_counts = {}
+    if not scorecard.empty:
+        sc_class_counts = scorecard["final_quality_class"].value_counts().to_dict()
+        sc_confidence_counts = scorecard["score_confidence"].value_counts().to_dict()
+        sc_action_counts = scorecard["recommended_next_action"].value_counts().to_dict()
 
     summary = {
         "factor_count": len(diag),
@@ -66,6 +85,10 @@ def build_payload() -> dict:
         "months": all_months,
         "month_count": len(all_months),
         "quality_counts": quality_counts,
+        "scorecard_class_counts": sc_class_counts,
+        "scorecard_confidence_counts": sc_confidence_counts,
+        "scorecard_action_counts": sc_action_counts,
+        "scorecard_manifest": manifest,
     }
 
     # ── Build lookup dicts ──
@@ -79,12 +102,18 @@ def build_payload() -> dict:
         for _, r in qa.iterrows():
             qa_map[r["factor_id"]] = r
 
+    scorecard_map = {}
+    if not scorecard.empty:
+        for _, r in scorecard.iterrows():
+            scorecard_map[r["factor_id"]] = r
+
     # ── Build factor list ──
     factors = []
     for _, drow in diag.iterrows():
         fid = str(drow["factor_id"])
         card = card_map.get(fid)
         qa_row = qa_map.get(fid)
+        sc_row = scorecard_map.get(fid)
 
         # Time series for this factor (all horizons)
         fic = ic_series[ic_series["factor_id"] == fid] if not ic_series.empty else pd.DataFrame()
@@ -120,7 +149,7 @@ def build_payload() -> dict:
             })
 
         # Cumulative LS for best horizon
-        fcum_best = fcum[fcum["horizon"] == best_hz].sort_values("month") if not fcum.empty else pd.DataFrame()
+        fcum_best = fcum[fcum["horizon"] == best_hz].sort_values("month") if not cum_series.empty else pd.DataFrame()
         cum_curve = []
         for _, r in fcum_best.iterrows():
             cum_curve.append({
@@ -133,6 +162,7 @@ def build_payload() -> dict:
         # Card data
         c = card if card is not None else {}
         q = qa_row if qa_row is not None else {}
+        sc = sc_row if sc_row is not None else {}
 
         factor = {
             "factor_id": fid,
@@ -189,6 +219,27 @@ def build_payload() -> dict:
             "qa_notes_en": ss(q.get("qa_notes_en", "")),
             "needs_human_review": ss(q.get("needs_human_review", "")),
             "qa_reason": ss(q.get("reason", "")),
+
+            # Scorecard (PM-16B / PM-17)
+            "final_quality_class": ss(sc.get("final_quality_class", "")),
+            "final_quality_score": sf(sc.get("final_quality_score")),
+            "score_confidence": ss(sc.get("score_confidence", "")),
+            "computation_integrity_score": sf(sc.get("computation_integrity_score")),
+            "predictive_ranking_score": sf(sc.get("predictive_ranking_score")),
+            "portfolio_extraction_score": sf(sc.get("portfolio_extraction_score")),
+            "stability_score": sf(sc.get("stability_score")),
+            "quantile_shape_score": sf(sc.get("quantile_shape_score")),
+            "direction_interpretability_score": sf(sc.get("direction_interpretability_score")),
+            "redundancy_novelty_score": sf(sc.get("redundancy_novelty_score")),
+            "redundancy_confidence": ss(sc.get("redundancy_confidence", "")),
+            "quantile_shape": ss(sc.get("quantile_shape", "")),
+            "main_strengths_zh": ss(sc.get("main_strengths_zh", "")),
+            "main_weaknesses_zh": ss(sc.get("main_weaknesses_zh", "")),
+            "main_strengths_en": ss(sc.get("main_strengths_en", "")),
+            "main_weaknesses_en": ss(sc.get("main_weaknesses_en", "")),
+            "review_notes_zh": ss(sc.get("review_notes_zh", "")),
+            "review_notes_en": ss(sc.get("review_notes_en", "")),
+            "recommended_next_action": ss(sc.get("recommended_next_action", "")),
 
             # Time series
             "monthly_ic": monthly_ic,
@@ -263,6 +314,37 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 .section-divider{border-top:1px solid var(--border);margin:12px 0 8px}
 .small{font-size:11px;color:var(--muted)}
 .footer{margin-top:20px;border-top:1px solid var(--border);padding-top:10px;color:var(--muted);font-size:11px;display:flex;gap:12px;flex-wrap:wrap}
+
+/* ── Scorecard styles ── */
+.sc-class-badge{display:inline-block;border-radius:999px;padding:3px 10px;font-size:10px;font-weight:600;white-space:nowrap}
+.sc-class-badge.strong_research{background:#166534;color:#bbf7d0}
+.sc-class-badge.promising{background:#92400e;color:#fef3c7}
+.sc-class-badge.review_req{background:#7f1d1d;color:#fecaca}
+.sc-class-badge.other_class{background:#334155;color:#e2e8f0}
+.sc-confidence-badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:9px;font-weight:600;white-space:nowrap}
+.sc-confidence-badge.high-conf{background:#166534;color:#bbf7d0}
+.sc-confidence-badge.medium-conf{background:#92400e;color:#fef3c7}
+.sc-confidence-badge.low-conf{background:#7f1d1d;color:#fecaca}
+.sc-action-badge{display:inline-block;border-radius:999px;padding:2px 7px;font-size:9px;background:#334155;color:#e2e8f0;white-space:nowrap}
+.sc-bar-wrap{display:flex;align-items:center;gap:6px;margin:3px 0;font-size:10px}
+.sc-bar-label{width:200px;flex-shrink:0;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-bar-track{flex:1;height:14px;background:#0b1220;border:1px solid var(--border);border-radius:4px;overflow:hidden;min-width:60px}
+.sc-bar-fill{height:100%;border-radius:3px;display:flex;align-items:center;justify-content:flex-end;padding-right:4px;font-size:9px;font-weight:600;color:#fff;min-width:24px}
+.sc-bar-fill.sc-green{background:#22c55e}
+.sc-bar-fill.sc-yellow{background:#eab308;color:#1a1a1a}
+.sc-bar-fill.sc-red{background:#ef4444}
+.sc-score-bar{margin:6px 0}
+.sc-score-bar-track{height:20px;background:#0b1220;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.sc-score-bar-fill{height:100%;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff}
+.sc-summary-grid{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.sc-summary-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px 12px;min-width:140px;text-align:center}
+.sc-summary-card strong{display:block;font-size:20px}
+.sc-summary-card span{color:var(--muted);font-size:10px;display:block}
+.sc-caveat{background:#1a1a2e;border:1px solid #3b3b5c;color:#c4b5fd;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:11px;line-height:1.6}
+.sc-caveat strong{color:#e9d5ff}
+.sc-strengths{color:var(--green);font-size:11px}
+.sc-weaknesses{color:var(--amber);font-size:11px}
+.sc-review-notes{color:var(--muted);font-size:11px;font-style:italic}
 </style>
 </head>
 <body>
@@ -281,16 +363,22 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 
 <div id="statsSection"></div>
 
+<div id="scorecardSummarySection"></div>
+
+<div id="caveatsSection"></div>
+
 <div class="layout">
   <main>
     <div class="card">
       <h2>Factor Scoreboard 因子排行榜</h2>
-      <div class="small">Click column headers to sort. 点击列头排序。Best horizon metrics from diagnostics. 最优视野指标来自诊断摘要。</div>
+      <div class="small">Click column headers to sort. 点击列头排序。Default sort: quality score descending (研究分诊分数，非交易建议). Best horizon metrics from diagnostics. 最优视野指标来自诊断摘要。</div>
       <div class="controls">
         <input type="text" id="search" placeholder="搜索因子 / Search factor...">
         <select id="familyFilter"><option value="">All families 全部家族</option></select>
         <select id="qualityFilter"><option value="">All quality 全部质量</option></select>
         <select id="horizonFilter"><option value="">All horizons 全部视野</option></select>
+        <select id="scClassFilter"><option value="">All quality classes 全部质量分类</option></select>
+        <select id="scConfFilter"><option value="">All confidence 全部置信度</option></select>
       </div>
       <div class="table-wrap">
         <table id="factorTable">
@@ -298,7 +386,10 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
             <th data-col="factor_id">Factor</th>
             <th data-col="name_zh">名称 Name</th>
             <th data-col="family_zh">Family 家族</th>
-            <th data-col="metadata_quality">Quality 质量</th>
+            <th data-col="final_quality_class">Quality Class 质量分类</th>
+            <th data-col="final_quality_score">Score 分数</th>
+            <th data-col="score_confidence">Confidence 置信度</th>
+            <th data-col="metadata_quality">Meta Quality 元数据</th>
             <th data-col="best_horizon">Best H 最优视野</th>
             <th data-col="rankic_mean">RankIC</th>
             <th data-col="rankic_ir">ICIR</th>
@@ -308,6 +399,7 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
             <th data-col="long_short_max_drawdown">Max DD 最大回撤</th>
             <th data-col="long_short_positive_month_rate">LS Win% LS胜率</th>
             <th data-col="coverage_rate">Coverage 覆盖率</th>
+            <th data-col="recommended_next_action">Main Action 建议动作</th>
             <th data-col="decision_bucket">Decision 决策</th>
           </tr></thead>
           <tbody id="tableBody"></tbody>
@@ -346,8 +438,38 @@ const QUALITY_LABELS = {
 };
 const DIR_LABELS = {positive:'正向', negative:'负向', conditional:'条件式'};
 
+// ── Scorecard label maps ──
+const SC_CLASS_LABELS = {
+  STRONG_RESEARCH_CANDIDATE: {zh:'强研究候选', en:'STRONG_RESEARCH_CANDIDATE', cls:'strong_research'},
+  PROMISING_BUT_INCONSISTENT: {zh:'有前景但不一致', en:'PROMISING_BUT_INCONSISTENT', cls:'promising'},
+  REVIEW_REQUIRED: {zh:'需复核', en:'REVIEW_REQUIRED', cls:'review_req'},
+  DIRECTION_DEPENDENT: {zh:'方向依赖', en:'DIRECTION_DEPENDENT', cls:'other_class'},
+  REDUNDANT_OR_WEAK: {zh:'冗余或弱', en:'REDUNDANT_OR_WEAK', cls:'other_class'},
+  INSUFFICIENT_EVIDENCE: {zh:'证据不足', en:'INSUFFICIENT_EVIDENCE', cls:'other_class'}
+};
+const SC_CONF_LABELS = {
+  HIGH: {zh:'高', cls:'high-conf'},
+  MEDIUM: {zh:'中', cls:'medium-conf'},
+  LOW: {zh:'低', cls:'low-conf'}
+};
+const SC_ACTION_LABELS = {
+  KEEP_FOR_RESEARCH_REVIEW: {zh:'保留研究复核', en:'KEEP_FOR_RESEARCH_REVIEW'},
+  REVIEW_FORMULA_OR_METADATA: {zh:'复核公式或元数据', en:'REVIEW_FORMULA_OR_METADATA'}
+};
+
+// Sub-score bilingual labels
+const SUB_SCORE_LABELS = {
+  computation_integrity_score: '计算完整性 Computation',
+  predictive_ranking_score: '预测排名 Predictive',
+  portfolio_extraction_score: '组合提取 Portfolio',
+  stability_score: '稳定性 Stability',
+  quantile_shape_score: '分位形状 Quantile',
+  direction_interpretability_score: '方向可解释性 Direction',
+  redundancy_novelty_score: '冗余新颖性 Redundancy'
+};
+
 // ── Helpers ──
-function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function esc(v){return String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function num(v,d=4,signed=true){if(v===null||v===undefined||Number.isNaN(v))return '—';const s=signed&&v>=0?'+':'';return s+Number(v).toFixed(d)}
 function pct(v){if(v===null||v===undefined||Number.isNaN(v))return '—';return(Number(v)*100).toFixed(1)+'%'}
 function mcls(v,strong=0.03,watch=0.02){if(v===null||v===undefined||Number.isNaN(v))return 'muted-c';const a=Math.abs(Number(v));return a>=strong?'strong':a>=watch?'watch':'plain'}
@@ -359,6 +481,38 @@ function dirBadge(d){
   const lbl=DIR_LABELS[d]||d;
   const cls=d==='positive'?'positive':d==='negative'?'negative':'conditional';
   return `<span class="dir-badge ${cls}">${esc(lbl)} / ${esc(d)}</span>`;
+}
+function scClassBadge(cls){
+  const l=SC_CLASS_LABELS[cls]||{zh:cls,en:cls,cls:'other_class'};
+  return `<span class="sc-class-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+function scConfBadge(conf){
+  const l=SC_CONF_LABELS[conf]||{zh:conf,cls:''};
+  return `<span class="sc-confidence-badge ${l.cls}">${esc(l.zh)} / ${esc(conf)}</span>`;
+}
+function scActionBadge(action){
+  const l=SC_ACTION_LABELS[action]||{zh:action,en:action};
+  return `<span class="sc-action-badge">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+function scBarColor(v){if(v===null||v===undefined)return 'sc-red';return v>=70?'sc-green':v>=40?'sc-yellow':'sc-red'}
+function scScoreBar(score,label){
+  if(score===null||score===undefined)return '';
+  const w=Math.max(2,Math.min(100,Number(score)));
+  const c=scBarColor(score);
+  return `<div class="sc-score-bar">
+    <div style="font-size:10px;color:var(--muted);margin-bottom:2px">${esc(label)}</div>
+    <div class="sc-score-bar-track"><div class="sc-score-bar-fill ${c}" style="width:${w}%">${Number(score).toFixed(1)}</div></div>
+  </div>`;
+}
+function scSubBar(key,score){
+  if(score===null||score===undefined)return '';
+  const w=Math.max(2,Math.min(100,Number(score)));
+  const c=scBarColor(score);
+  const label=SUB_SCORE_LABELS[key]||key;
+  return `<div class="sc-bar-wrap">
+    <span class="sc-bar-label" title="${esc(label)}">${esc(label)}</span>
+    <div class="sc-bar-track"><div class="sc-bar-fill ${c}" style="width:${w}%">${Number(score).toFixed(0)}</div></div>
+  </div>`;
 }
 
 // ── Stats section ──
@@ -376,18 +530,70 @@ function dirBadge(d){
   `;
 })();
 
+// ── Scorecard summary section ──
+(function(){
+  const el=document.getElementById('scorecardSummarySection');
+  const cc=S.scorecard_class_counts||{};
+  const conf=S.scorecard_confidence_counts||{};
+  const strong=cc.STRONG_RESEARCH_CANDIDATE||0;
+  const review=cc.REVIEW_REQUIRED||0;
+  const promising=cc.PROMISING_BUT_INCONSISTENT||0;
+  const high=conf.HIGH||0;
+  const med=conf.MEDIUM||0;
+  const low=conf.LOW||0;
+
+  el.innerHTML=`
+    <h2 style="margin-bottom:6px">Factor Quality Scorecard Summary 因子质量记分卡概要</h2>
+    <div class="sc-summary-grid">
+      <div class="sc-summary-card"><strong style="color:var(--green)">${strong}</strong><span>Strong Research Candidates<br>强研究候选</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--amber)">${promising}</strong><span>Promising But Inconsistent<br>有前景但不一致</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--red)">${review}</strong><span>Review Required<br>需复核</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--green)">${high}</strong><span>High Confidence<br>高置信度</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--amber)">${med}</strong><span>Medium Confidence<br>中置信度</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--red)">${low}</strong><span>Low Confidence<br>低置信度</span></div>
+    </div>
+    <div class="sc-caveat">
+      <strong>⚠ 冗余置信度大部分为 LOW，因冗余矩阵仅覆盖 6/2485 对。PM-18 将扩展。</strong><br>
+      <span style="color:var(--muted)">Redundancy confidence is mostly LOW — the redundancy matrix covers only 6/2485 pairs. PM-18 will expand coverage.</span>
+    </div>
+  `;
+})();
+
+// ── Interpretation caveats section ──
+(function(){
+  const el=document.getElementById('caveatsSection');
+  el.innerHTML=`
+    <div class="sc-caveat" style="margin-top:6px">
+      <strong>Scorecard Interpretation 记分卡解读</strong><br>
+      <div style="margin-top:6px">
+        <span class="sc-class-badge strong_research" style="font-size:9px">STRONG_RESEARCH_CANDIDATE</span> = 强研究证据，<strong>不是</strong>可部署策略 / strong research evidence, <strong>NOT</strong> a deployable strategy<br>
+        <span class="sc-class-badge promising" style="font-size:9px">PROMISING_BUT_INCONSISTENT</span> = 有意义但混合的证据 / meaningful evidence but mixed<br>
+        <span class="sc-class-badge review_req" style="font-size:9px">REVIEW_REQUIRED</span> = 需在质量判断前复核 / needs review before quality judgment<br><br>
+        <span style="color:var(--muted)">Score confidence may be capped by sparse redundancy confidence / 分数置信度可能因冗余置信度稀疏而受限 (仅 6/2485 对) / redundancy confidence coverage</span><br>
+        <strong style="color:#e9d5ff">本记分卡为研究分诊工具，不是交易建议 / This scorecard is a research triage tool, not a trading recommendation</strong>
+      </div>
+    </div>
+  `;
+})();
+
 // ── Populate filters ──
 const families=[...new Set(factors.map(f=>f.family_zh||f.family))].sort();
 const qualities=[...new Set(factors.map(f=>f.metadata_quality))].sort();
+const scClasses=[...new Set(factors.map(f=>f.final_quality_class).filter(Boolean))].sort();
+const scConfs=['HIGH','MEDIUM','LOW'];
 const familyFilter=document.getElementById('familyFilter');
 const qualityFilter=document.getElementById('qualityFilter');
 const horizonFilter=document.getElementById('horizonFilter');
+const scClassFilter=document.getElementById('scClassFilter');
+const scConfFilter=document.getElementById('scConfFilter');
 families.forEach(f=>{const o=document.createElement('option');o.value=f;o.textContent=f;familyFilter.appendChild(o)});
 qualities.forEach(q=>{const o=document.createElement('option');o.value=q;o.textContent=(QUALITY_LABELS[q]||{zh:q}).zh+' / '+q;qualityFilter.appendChild(o)});
 S.horizons.forEach(h=>{const o=document.createElement('option');o.value=h;o.textContent=h;horizonFilter.appendChild(o)});
+scClasses.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=(SC_CLASS_LABELS[c]||{zh:c}).zh+' / '+c;scClassFilter.appendChild(o)});
+scConfs.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=(SC_CONF_LABELS[c]||{zh:c}).zh+' / '+c;scConfFilter.appendChild(o)});
 
-// ── Sort state ──
-let sortCol='long_short_sharpe';
+// ── Sort state (default: final_quality_score descending) ──
+let sortCol='final_quality_score';
 let sortDir=-1; // -1=desc
 
 // ── Render table ──
@@ -396,13 +602,17 @@ function renderTable(){
   const fam=familyFilter.value;
   const qual=qualityFilter.value;
   const hz=horizonFilter.value;
+  const scCls=scClassFilter.value;
+  const scConf=scConfFilter.value;
 
   let filtered=factors.filter(f=>{
-    const text=[f.factor_id,f.name_zh,f.name_en,f.family_zh,f.family,f.decision_bucket].join(' ').toLowerCase();
+    const text=[f.factor_id,f.name_zh,f.name_en,f.family_zh,f.family,f.decision_bucket,f.final_quality_class,f.recommended_next_action].join(' ').toLowerCase();
     if(q&&!text.includes(q))return false;
     if(fam&&(f.family_zh!==fam&&f.family!==fam))return false;
     if(qual&&f.metadata_quality!==qual)return false;
     if(hz&&f.best_horizon!==hz)return false;
+    if(scCls&&f.final_quality_class!==scCls)return false;
+    if(scConf&&f.score_confidence!==scConf)return false;
     return true;
   });
 
@@ -420,6 +630,9 @@ function renderTable(){
       <td><button class="factor-link" type="button">${fid}</button></td>
       <td><span class="zh">${esc(f.name_zh)}</span><br><span class="en small">${esc(f.name_en)}</span></td>
       <td>${esc(f.family_zh||f.family)}</td>
+      <td>${scClassBadge(f.final_quality_class)}</td>
+      <td class="num">${f.final_quality_score!==null&&f.final_quality_score!==undefined?Number(f.final_quality_score).toFixed(1):'—'}</td>
+      <td>${f.score_confidence?scConfBadge(f.score_confidence):'—'}</td>
       <td>${qualBadge(f.metadata_quality)}</td>
       <td>${esc(f.best_horizon)}</td>
       <td class="num ${mcls(f.rankic_mean)}">${num(f.rankic_mean)}</td>
@@ -430,17 +643,10 @@ function renderTable(){
       <td class="num">${pct(f.long_short_max_drawdown)}</td>
       <td class="num">${pct(f.long_short_positive_month_rate)}</td>
       <td class="num">${pct(f.coverage_rate)}</td>
+      <td>${f.recommended_next_action?scActionBadge(f.recommended_next_action):'—'}</td>
       <td><span class="bucket-badge">${esc(f.decision_bucket)}</span></td>
     </tr>`;
   }).join('');
-
-  // Update sort arrows
-  document.querySelectorAll('#factorTable th').forEach(th=>{
-    const col=th.dataset.col;
-    const arrow=col===sortCol?(sortDir>0?'▲':'▼'):'';
-    const base=th.textContent.replace(/[▲▼]/g,'').trim();
-    // We rebuild text from data attribute
-  });
 
   // Re-attach row click
   tbody.querySelectorAll('tr').forEach(tr=>tr.addEventListener('click',()=>{
@@ -589,6 +795,42 @@ function renderDetail(fid){
 
   const metricRow=(label,val,cls='')=>`<div class="metric"><span>${label}</span><strong class="${cls}">${val}</strong></div>`;
 
+  // Build scorecard section HTML
+  let scorecardHtml='';
+  if(f.final_quality_class){
+    const subScores=[
+      ['computation_integrity_score',f.computation_integrity_score],
+      ['predictive_ranking_score',f.predictive_ranking_score],
+      ['portfolio_extraction_score',f.portfolio_extraction_score],
+      ['stability_score',f.stability_score],
+      ['quantile_shape_score',f.quantile_shape_score],
+      ['direction_interpretability_score',f.direction_interpretability_score],
+      ['redundancy_novelty_score',f.redundancy_novelty_score],
+    ];
+    const subBarsHtml=subScores.map(([k,v])=>scSubBar(k,v)).join('');
+
+    scorecardHtml=`
+      <div class="section-divider"></div>
+      <h3>Factor Quality Scorecard / 因子质量记分卡</h3>
+      <div style="margin:6px 0">
+        ${scClassBadge(f.final_quality_class)}
+        ${f.score_confidence?scConfBadge(f.score_confidence):''}
+        ${f.redundancy_confidence?`<span class="sc-confidence-badge" style="background:#334155;color:#e2e8f0">Redundancy confidence 冗余置信度: ${esc(f.redundancy_confidence)}</span>`:''}
+      </div>
+      ${scScoreBar(f.final_quality_score,'Quality Score 质量分数')}
+      ${f.recommended_next_action?`<div style="margin:6px 0"><strong style="font-size:11px;color:var(--muted)">Recommended Action 建议动作:</strong> ${scActionBadge(f.recommended_next_action)}</div>`:''}
+
+      ${f.main_strengths_zh||f.main_strengths_en?`<div style="margin:6px 0"><div class="sc-strengths"><strong>Strengths 优势:</strong></div><div class="bilingual"><div class="zh" style="font-size:11px">${esc(f.main_strengths_zh)}</div><div class="en" style="font-size:10px">${esc(f.main_strengths_en)}</div></div></div>`:''}
+      ${f.main_weaknesses_zh||f.main_weaknesses_en?`<div style="margin:6px 0"><div class="sc-weaknesses"><strong>Weaknesses 弱点:</strong></div><div class="bilingual"><div class="zh" style="font-size:11px">${esc(f.main_weaknesses_zh)}</div><div class="en" style="font-size:10px">${esc(f.main_weaknesses_en)}</div></div></div>`:''}
+      ${f.review_notes_zh||f.review_notes_en?`<div style="margin:6px 0"><div class="sc-review-notes"><strong>Review Notes 复核说明:</strong></div><div class="bilingual"><div class="zh" style="font-size:11px">${esc(f.review_notes_zh)}</div><div class="en" style="font-size:10px">${esc(f.review_notes_en)}</div></div></div>`:''}
+
+      <div style="margin-top:8px">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:4px;font-weight:600">Sub-Scores 子分数 (7 dimensions 维度):</div>
+        ${subBarsHtml}
+      </div>
+    `;
+  }
+
   card.innerHTML=`
     <h2>${esc(f.factor_id)}</h2>
     <div class="bilingual">
@@ -596,6 +838,8 @@ function renderDetail(fid){
       <div class="en">${esc(f.name_en)}</div>
     </div>
     <div class="small">${esc(f.family_zh||f.family)} · ${esc(f.family_en||'')} · ${dirBadge(f.expected_direction)} · best=${esc(f.best_horizon)}</div>
+
+    ${f.final_quality_class?`<div style="margin:8px 0">${scClassBadge(f.final_quality_class)} ${f.final_quality_score!==null?`<span style="font-size:13px;font-weight:700">${Number(f.final_quality_score).toFixed(1)}</span>`:''} ${f.score_confidence?scConfBadge(f.score_confidence):''}</div>`:''}
 
     <div class="section-divider"></div>
     <h3>Formula 公式</h3>
@@ -653,6 +897,8 @@ function renderDetail(fid){
       <div>Source Warning 源警告</div><div>${esc(f.source_warning||'—')}</div>
     </div>
 
+    ${scorecardHtml}
+
     <div class="section-divider"></div>
     <h3>Monthly RankIC 月度RankIC (${esc(f.best_horizon)})</h3>
     <div class="chart-container">
@@ -683,11 +929,12 @@ function renderDetail(fid){
 
 // ── Init ──
 const searchEl=document.getElementById('search');
-[searchEl,familyFilter,qualityFilter,horizonFilter].forEach(el=>el.addEventListener('input',renderTable));
-[familyFilter,qualityFilter,horizonFilter].forEach(el=>el.addEventListener('change',renderTable));
+[searchEl,familyFilter,qualityFilter,horizonFilter,scClassFilter,scConfFilter].forEach(el=>el.addEventListener('input',renderTable));
+[familyFilter,qualityFilter,horizonFilter,scClassFilter,scConfFilter].forEach(el=>el.addEventListener('change',renderTable));
 
 // Set initial sort arrow
-document.querySelector(`th[data-col="${sortCol}"]`).innerHTML+=' ▼';
+const initSortTh=document.querySelector(`th[data-col="${sortCol}"]`);
+if(initSortTh) initSortTh.innerHTML+=' ▼';
 
 renderTable();
 if(factors.length)renderDetail(factors[0].factor_id);
