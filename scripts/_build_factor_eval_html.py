@@ -21,6 +21,8 @@ Data sources:
 from __future__ import annotations
 
 import json
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -610,6 +612,21 @@ def build_payload() -> dict:
     summary["recommended_action_counts"] = recommended_action_counts
     summary["profile_manifest_source_artifacts"] = profile_manifest.get("source_artifacts", [])
     summary["component_weights"] = profile_payload.get("component_weights", {})
+
+    # PM-40: Add page generation time and data last modified time
+    summary["page_generation_time"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    latest_mtime = 0.0
+    for _p in list(DIAG_DIR.glob("*.csv")) + list(DIAG_DIR.glob("*.json")):
+        try:
+            mt = _p.stat().st_mtime
+            if mt > latest_mtime:
+                latest_mtime = mt
+        except OSError:
+            pass
+    if latest_mtime > 0:
+        summary["data_last_modified"] = datetime.fromtimestamp(latest_mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    else:
+        summary["data_last_modified"] = ""
 
     return {"summary": summary, "factors": factors}
 
@@ -1678,6 +1695,12 @@ function renderDetail(fid){
         ${subBarsHtml}
       </div>
     `;
+  } else {
+    scorecardHtml=`
+      <div class="section-divider"></div>
+      <h3>Factor Quality Scorecard / 因子质量记分卡</h3>
+      <div style="margin:6px 0;font-size:11px;color:var(--muted)">N/A — No quality scorecard data available<br>无质量记分卡数据</div>
+    `;
   }
 
   card.innerHTML=`
@@ -1706,11 +1729,18 @@ function renderDetail(fid){
     <h3>Known Limitations 已知局限</h3>
     <div class="bilingual"><div class="zh">${esc(f.known_limitations_zh)}</div><div class="en">${esc(f.known_limitations_en)}</div></div>
 
+    <div class="section-divider"></div>
+    <h3>Source Info & Timestamps 源信息与时间戳</h3>
     <div class="kv">
-      <div>Data Source 数据源</div><div>${esc(f.data_source_type)}</div>
-      <div>Required Columns 必要列</div><div>${esc(f.required_columns)}</div>
-      <div>Horizon Notes 视野说明</div><div>${esc(f.horizon_notes_zh)}<br><span class="small">${esc(f.horizon_notes_en)}</span></div>
-      <div>Status Explanation 状态说明</div><div>${esc(f.status_explanation_zh)}<br><span class="small">${esc(f.status_explanation_en)}</span></div>
+      <div>Data Source 数据源</div><div>${esc(f.data_source_type) || '<span style="color:var(--muted)">N/A</span>'}</div>
+      <div>Source Fields 源字段</div><div>${esc(f.source_fields) || '<span style="color:var(--muted)">N/A</span>'}</div>
+      <div>Required Columns 必要列</div><div>${esc(f.required_columns) || '<span style="color:var(--muted)">N/A</span>'}</div>
+      <div>Horizon Notes 视野说明</div><div>${esc(f.horizon_notes_zh)||'<span style="color:var(--muted)">N/A</span>'}<br><span class="small">${esc(f.horizon_notes_en)}</span></div>
+      <div>Status Explanation 状态说明</div><div>${esc(f.status_explanation_zh)||'<span style="color:var(--muted)">N/A</span>'}<br><span class="small">${esc(f.status_explanation_en)}</span></div>
+    </div>
+    <div style="margin-top:8px;font-size:10px;color:var(--muted)">
+      <div>Page Generated 页面生成: ${esc(S.page_generation_time||'N/A')}</div>
+      <div>Data Last Modified 数据最后更新: ${esc(S.data_last_modified||'N/A')}</div>
     </div>
 
     <div class="section-divider"></div>
@@ -1957,7 +1987,7 @@ function renderDetail(fid){
       <strong>⚠ This is a research diagnostic, not a strategy / 这是研究诊断，不是交易策略</strong><br>
       <span style="color:var(--muted)">Equal-weight long/short at 1h horizon. No slippage/order book modeling. 等权多空，1h视野，无滑点/订单簿建模。</span>
     </div>
-    `:''}
+    `:`<div class="section-divider"></div><h3>Single-Factor Paper Portfolio / 单因子纸面组合</h3><div style="margin:6px 0;font-size:11px;color:var(--muted)">N/A — No paper portfolio data available<br>无纸面组合数据</div>`}
 
     ${f.regime_dependency_class?`
     <div class="section-divider"></div>
@@ -2036,7 +2066,7 @@ function renderDetail(fid){
       <span style="color:var(--muted)">BTC regime labels classify market conditions ex-post. Factor performance differences across regimes are informational, not actionable timing signals.<br>
       BTC市场状态标签为事后分类。因子在不同状态下的表现差异仅供参考，不构成可操作的择时信号。</span>
     </div>
-    `:''}
+    `:`<div class="section-divider"></div><h3>BTC / Market Regime Diagnostics / BTC / 市场状态诊断</h3><div style="margin:6px 0;font-size:11px;color:var(--muted)">N/A — No regime diagnostics data available<br>无市场状态诊断数据</div>`}
 
     ${(()=>{
       const ss=f.shape_stability;
@@ -2145,9 +2175,15 @@ function renderDetail(fid){
           ${st.stability_score!==null&&st.stability_score!==undefined?metricRow('Stability Score 稳定性分数',num(st.stability_score,1)):''}
           ${st.ic_positive_month_rate!==null&&st.ic_positive_month_rate!==undefined?metricRow('IC Win% IC月胜率',pct(st.ic_positive_month_rate)):''}
           ${sh.monotonicity_score!==null&&sh.monotonicity_score!==undefined?metricRow('Monotonicity 单调性',num(sh.monotonicity_score,2)):''}
+          ${sh.monotonicity_class?metricRow('Mono. Class 单调性分类','<span style="font-size:10px">'+esc(sh.monotonicity_class)+'</span>'):''}
+          ${sh.q_spread_return!==null&&sh.q_spread_return!==undefined?metricRow('Q Spread Return 分位收益差',num(sh.q_spread_return,6)):''}
+          ${sh.q_spearman_corr!==null&&sh.q_spearman_corr!==undefined?metricRow('Q Spearman ρ 分位Spearman',num(sh.q_spearman_corr,4)):''}
+          ${sh.positive_spread_month_rate!==null&&sh.positive_spread_month_rate!==undefined?metricRow('Positive Spread% 正差月率',pct(sh.positive_spread_month_rate)):''}
           ${dc.direction_aware_spearman_corr!==null&&dc.direction_aware_spearman_corr!==undefined?metricRow('Dir-aware ρ 方向感知Spearman',num(dc.direction_aware_spearman_corr,4)):''}
           ${dc.direction_aware_monotonicity_class?metricRow('Decile Mono. 十分位单调性','<span style="font-size:10px">'+esc(dc.direction_aware_monotonicity_class)+'</span>'):''}
           ${dc.tail_concentration_class?metricRow('Tail Conc. 尾部集中度',dc.tail_concentration_class?tailConcBadge(dc.tail_concentration_class):'—'):''}
+          ${st.recent_vs_full_ic_delta!==null&&st.recent_vs_full_ic_delta!==undefined?metricRow('Recent ΔIC 近期IC变化',num(st.recent_vs_full_ic_delta,4)):''}
+          ${st.recent_vs_full_ls_delta!==null&&st.recent_vs_full_ls_delta!==undefined?metricRow('Recent ΔLS 近期LS变化',num(st.recent_vs_full_ls_delta,6)):''}
         </div>
 
         ${qr.length?`
@@ -2235,7 +2271,7 @@ function renderDetail(fid){
       <span style="font-size:10px">Capacity estimates assume uniform daily volume distribution; real liquidity is clustered. Participation rates show how much of daily selected-basket volume a notional allocation would consume. Lower is better.<br>
       容量估计假设每日成交量均匀分布；真实流动性是集中的。参与率显示特定名义金额占每日选中篮子成交量的比例，越低越好。</span>
     </div>
-    `:''}
+    `:`<div class="section-divider"></div><h3>Capacity / Liquidity Proxy Diagnostics / 容量 / 流动性代理诊断</h3><div style="margin:6px 0;font-size:11px;color:var(--muted)">N/A — No capacity/liquidity data available<br>无容量/流动性数据</div>`}
 
     ${f.profile_class?`
     <div class="section-divider"></div>
@@ -2314,6 +2350,14 @@ function renderDetail(fid){
       ${evBlockBadge('LevelEval',f.ev_has_factor_level_evaluation)}
       ${evBlockBadge('Profile',f.ev_has_unified_profile)}
     </div>
+    ${(()=>{
+      const evBlocks=[f.ev_has_quality_scorecard,f.ev_has_diagnostics_summary,f.ev_has_redundancy_summary,f.ev_has_redundancy_cluster_members,f.ev_has_marginal_information,f.ev_has_paper_summary,f.ev_has_fee_sensitivity,f.ev_has_regime_exposure,f.ev_has_quantile_shape,f.ev_has_rolling_stability,f.ev_has_decile_shape,f.ev_has_capacity_liquidity,f.ev_has_factor_values,f.ev_has_factor_level_evaluation,f.ev_has_unified_profile];
+      const present=evBlocks.filter(Boolean).length;
+      const total=evBlocks.length;
+      const rate=total?Math.round(present/total*100):0;
+      const color=rate>=80?'var(--green)':rate>=60?'var(--amber)':'var(--red)';
+      return `<div style="margin:4px 0;font-size:10px;color:var(--muted)">Evidence completeness 证据完整率: <strong style="color:${color}">${present}/${total} (${rate}%)</strong>${f.evidence_completeness_rate!==null?' · Profile rate 画像完整率: '+pct(f.evidence_completeness_rate):''}</div>`;
+    })()}
 
     ${f.source_artifacts?`
     <h4 style="margin:10px 0 4px;font-size:11px;color:var(--muted)">Source Lineage 源工件 (${f.source_artifact_count||0})</h4>
@@ -2326,7 +2370,7 @@ function renderDetail(fid){
       <span style="color:var(--muted)">Profile scores summarize evidence completeness and cross-dimensional quality. They do not select signals, construct portfolios, or recommend trading.<br>
       画像分数汇总证据完整性与跨维度质量。它不选择信号、不构建组合，也不构成交易建议。不是交易策略。</span>
     </div>
-    `:''}
+    `:`<div class="section-divider"></div><h3>Unified Factor Profile / 统一因子画像</h3><div style="margin:6px 0;font-size:11px;color:var(--muted)">N/A — No unified profile data available<br>无统一画像数据</div>`}
   `;
 }
 
@@ -2342,7 +2386,7 @@ if(initSortTh) initSortTh.innerHTML+=' ▼';
 renderTable();
 if(factors.length)renderDetail(factors[0].factor_id);
 
-document.getElementById('genTime').textContent='Generated: '+new Date().toISOString().slice(0,16);
+document.getElementById('genTime').textContent='Generated: '+(S.page_generation_time||new Date().toISOString().slice(0,16));
 </script>
 </body>
 </html>"""
