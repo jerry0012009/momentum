@@ -14,6 +14,9 @@ Data sources:
   7. factor_diagnostics/factor_quality_scorecard.csv
   8. factor_diagnostics/factor_quality_scorecard_manifest.json
   9. factor_diagnostics/single_factor_paper_page_payload.json (PM-22)
+  10. factor_diagnostics/factor_regime_diagnostics_payload.json (PM-24)
+  11. factor_diagnostics/factor_regime_exposure_summary.csv (PM-24)
+  12. factor_diagnostics/factor_regime_summary.csv (PM-24)
 """
 from __future__ import annotations
 
@@ -73,6 +76,11 @@ def build_payload() -> dict:
     for pf in paper_payload.get("factors", []):
         paper_map[pf["factor_id"]] = pf
 
+    # PM-24: Load BTC market regime diagnostics
+    regime_payload = load_json(DIAG_DIR / "factor_regime_diagnostics_payload.json")
+    regime_exposure = load_csv(DIAG_DIR / "factor_regime_exposure_summary.csv")
+    regime_summary = load_csv(DIAG_DIR / "factor_regime_summary.csv")
+
     # ── Summary stats ──
     all_months = sorted(ic_series["month"].unique().tolist()) if not ic_series.empty else []
     quality_counts = cards["metadata_quality"].value_counts().to_dict() if not cards.empty else {}
@@ -128,6 +136,12 @@ def build_payload() -> dict:
     summary["paper_viability_counts"] = paper_class_counts
     summary["cost_sensitivity_counts"] = cost_class_counts
 
+    # PM-24: Regime summary stats
+    summary["regime_class_counts"] = regime_payload.get("dependency_class_distribution", {})
+    summary["regime_distributions"] = regime_payload.get("regime_distributions", {})
+    summary["regime_month_range"] = regime_payload.get("month_range", [])
+    summary["regime_n_months"] = regime_payload.get("n_months", 0)
+
     # ── Build lookup dicts ──
     card_map = {}
     if not cards.empty:
@@ -143,6 +157,28 @@ def build_payload() -> dict:
     if not scorecard.empty:
         for _, r in scorecard.iterrows():
             scorecard_map[r["factor_id"]] = r
+
+    # PM-24: Regime lookup maps
+    regime_map = {}
+    if not regime_exposure.empty:
+        for _, r in regime_exposure.iterrows():
+            regime_map[r["factor_id"]] = r
+
+    # Regime detail map: factor_id -> list of regime summary rows
+    regime_detail_map: dict[str, list[dict]] = {}
+    if not regime_summary.empty:
+        for _, r in regime_summary.iterrows():
+            fid = r["factor_id"]
+            if fid not in regime_detail_map:
+                regime_detail_map[fid] = []
+            regime_detail_map[fid].append({
+                "dimension": ss(r["regime_dimension"]),
+                "regime": ss(r["regime_value"]),
+                "n_months": int(r["n_months"]) if not pd.isna(r.get("n_months")) else 0,
+                "mean": sf(r["mean"]),
+                "positive_rate": sf(r["positive_rate"]),
+                "metric_type": ss(r["metric_type"]),
+            })
 
     # ── Build factor list ──
     factors = []
@@ -319,6 +355,25 @@ def build_payload() -> dict:
                 "monthly_return_series": paper.get("monthly_return_series", []),
             })
 
+        # PM-24: Merge regime diagnostics into factor
+        rg = regime_map.get(fid)
+        if rg is not None:
+            factor.update({
+                "regime_dependency_class": ss(rg.get("regime_dependency_class", "")),
+                "paper_return_btc_corr": sf(rg.get("paper_return_btc_corr")),
+                "paper_return_btc_beta": sf(rg.get("paper_return_btc_beta")),
+                "long_short_btc_corr": sf(rg.get("long_short_btc_corr")),
+                "long_short_btc_beta": sf(rg.get("long_short_btc_beta")),
+                "ic_btc_return_corr": sf(rg.get("ic_btc_return_corr")),
+                "bull_minus_bear_paper_return": sf(rg.get("bull_minus_bear_paper_return")),
+                "highvol_minus_lowvol_paper_return": sf(rg.get("highvol_minus_lowvol_paper_return")),
+                "drawdown_minus_normal_paper_return": sf(rg.get("drawdown_minus_normal_paper_return")),
+                "main_regime_note_zh": ss(rg.get("main_regime_note_zh", "")),
+                "main_regime_note_en": ss(rg.get("main_regime_note_en", "")),
+            })
+        # Add regime summary data for charts
+        factor["regime_detail"] = regime_detail_map.get(fid, [])
+
         factors.append(factor)
 
     return {"summary": summary, "factors": factors}
@@ -432,6 +487,16 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 .paper-badge.cost_insufficient{background:#334155;color:#e2e8f0}
 .paper-caveat{background:#1a1a2e;border:1px solid #3b3b5c;color:#c4b5fd;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:11px;line-height:1.6}
 .paper-caveat strong{color:#e9d5ff}
+
+/* ── Regime dependency badges (PM-24) ── */
+.regime-badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:600;white-space:nowrap}
+.regime-badge.REGIME_ROBUST{background:#166534;color:#bbf7d0}
+.regime-badge.BULL_DEPENDENT{background:#92400e;color:#fef3c7}
+.regime-badge.BEAR_DEPENDENT{background:#7f1d1d;color:#fecaca}
+.regime-badge.VOL_DEPENDENT{background:#581c87;color:#e9d5ff}
+.regime-badge.DRAWDOWN_FRAGILE{background:#450a0a;color:#fecaca}
+.regime-caveat{background:#1a1a2e;border:1px solid #3b3b5c;color:#c4b5fd;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:11px;line-height:1.6}
+.regime-caveat strong{color:#e9d5ff}
 </style>
 </head>
 <body>
@@ -453,6 +518,7 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 <div id="scorecardSummarySection"></div>
 
 <div id="paperSummarySection"></div>
+<div id="regimeSummarySection"></div>
 
 <div id="caveatsSection"></div>
 
@@ -469,6 +535,7 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
         <select id="scClassFilter"><option value="">All quality classes 全部质量分类</option></select>
         <select id="scConfFilter"><option value="">All confidence 全部置信度</option></select>
         <select id="paperViabFilter"><option value="">All paper viab. 纸面可行性</option></select>
+        <select id="regimeFilter"><option value="">All regime dep. 市场状态依赖</option></select>
       </div>
       <div class="table-wrap">
         <table id="factorTable">
@@ -501,6 +568,11 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
             <th data-col="fee_10bps_total_return">10bps Ret 10bps收益</th>
             <th data-col="break_even_fee_bps">B/E Fee 盈亏平衡</th>
             <th data-col="paper_avg_turnover">Avg TO 平均换手</th>
+            <th data-col="regime_dependency_class">Regime Dep. 状态依赖</th>
+            <th data-col="paper_return_btc_beta">BTC Beta</th>
+            <th data-col="paper_return_btc_corr">BTC Corr</th>
+            <th data-col="bull_minus_bear_paper_return">Bull-Bear Δ</th>
+            <th data-col="drawdown_minus_normal_paper_return">DD Fragility 回撤脆弱</th>
           </tr></thead>
           <tbody id="tableBody"></tbody>
         </table>
@@ -604,6 +676,19 @@ function paperViabBadge(cls){
 function costSensBadge(cls){
   const l=COST_SENS_LABELS[cls]||{zh:cls||'—',en:cls||'—',cls:''};
   return `<span class="paper-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+
+// PM-24: Regime dependency labels
+const REGIME_CLASS_LABELS = {
+  REGIME_ROBUST: {zh:'跨市场稳健', en:'REGIME_ROBUST', cls:'REGIME_ROBUST'},
+  BULL_DEPENDENT: {zh:'牛市依赖', en:'BULL_DEPENDENT', cls:'BULL_DEPENDENT'},
+  BEAR_DEPENDENT: {zh:'熊市依赖', en:'BEAR_DEPENDENT', cls:'BEAR_DEPENDENT'},
+  VOL_DEPENDENT: {zh:'波动率依赖', en:'VOL_DEPENDENT', cls:'VOL_DEPENDENT'},
+  DRAWDOWN_FRAGILE: {zh:'回撤脆弱', en:'DRAWDOWN_FRAGILE', cls:'DRAWDOWN_FRAGILE'}
+};
+function regimeBadge(cls){
+  const l=REGIME_CLASS_LABELS[cls]||{zh:cls||'—',en:cls||'—',cls:''};
+  return `<span class="regime-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
 }
 
 // ── Helpers ──
@@ -750,6 +835,45 @@ function scSubBar(key,score){
   `;
 })();
 
+// ── PM-24: Regime summary section ──
+(function(){
+  const el=document.getElementById('regimeSummarySection');
+  const rc=S.regime_class_counts||{};
+  const rd=S.regime_distributions||{};
+  const trend=rd.trend||{};
+  const vol=rd.volatility||{};
+  const dd=rd.drawdown||{};
+  const robust=rc.REGIME_ROBUST||0;
+  const bullDep=rc.BULL_DEPENDENT||0;
+  const bearDep=rc.BEAR_DEPENDENT||0;
+  const volDep=rc.VOL_DEPENDENT||0;
+  const ddFrag=rc.DRAWDOWN_FRAGILE||0;
+  const monthRange=S.regime_month_range||[];
+  const nMonths=S.regime_n_months||0;
+  el.innerHTML=`
+    <h2 style="margin-bottom:6px">BTC / Market Regime Diagnostics Summary · BTC / 市场状态诊断概要</h2>
+    <div class="sc-summary-grid">
+      <div class="sc-summary-card"><strong style="color:var(--green)">${robust}</strong><span>Regime Robust<br>跨市场稳健</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--amber)">${bullDep}</strong><span>Bull Dependent<br>牛市依赖</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--red)">${bearDep}</strong><span>Bear Dependent<br>熊市依赖</span></div>
+      <div class="sc-summary-card"><strong style="color:#a855f7">${volDep}</strong><span>Vol Dependent<br>波动率依赖</span></div>
+      <div class="sc-summary-card"><strong style="color:#dc2626">${ddFrag}</strong><span>DD Fragile<br>回撤脆弱</span></div>
+    </div>
+    <div style="margin:8px 0;font-size:11px;color:var(--muted)">
+      <strong>BTC Regime Coverage 市场状态覆盖:</strong>
+      BULL ${trend.BULL||0} / BEAR ${trend.BEAR||0} / SIDEWAYS ${trend.SIDEWAYS||0} ·
+      HIGH_VOL ${vol.HIGH_VOL||0} / LOW_VOL ${vol.LOW_VOL||0} ·
+      NORMAL ${dd.NORMAL||0} / DEEP_DRAWDOWN ${dd.DEEP_DRAWDOWN||0}
+      <span style="margin-left:8px">${monthRange.length?monthRange[0]+' → '+monthRange[1]:''} (${nMonths} months)</span>
+    </div>
+    <div class="regime-caveat">
+      <strong>⚠ Regime diagnostics identify conditional behavior, not trade rules / 市场状态诊断识别条件行为，非交易规则</strong><br>
+      <span style="color:var(--muted)">Regime labels are ex-post classifications of BTC market conditions. They show how factor returns vary with market state, but do not predict future regime transitions or constitute timing signals.<br>
+      市场状态标签是事后分类。展示因子收益如何随市场状态变化，但不预测未来状态转换或构成择时信号。</span>
+    </div>
+  `;
+})();
+
 // ── Interpretation caveats section ──
 (function(){
   const el=document.getElementById('caveatsSection');
@@ -786,6 +910,10 @@ scConfs.forEach(c=>{const o=document.createElement('option');o.value=c;o.textCon
 const paperViabFilter=document.getElementById('paperViabFilter');
 const paperViabs=[...new Set(factors.map(f=>f.paper_viability_class).filter(Boolean))].sort();
 paperViabs.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=(PAPER_VIAB_LABELS[p]||{zh:p}).zh+' / '+p;paperViabFilter.appendChild(o)});
+// PM-24: Regime dependency filter
+const regimeFilter=document.getElementById('regimeFilter');
+const regimeClasses=[...new Set(factors.map(f=>f.regime_dependency_class).filter(Boolean))].sort();
+regimeClasses.forEach(r=>{const o=document.createElement('option');o.value=r;o.textContent=(REGIME_CLASS_LABELS[r]||{zh:r}).zh+' / '+r;regimeFilter.appendChild(o)});
 
 // ── Sort state (default: final_quality_score descending) ──
 let sortCol='final_quality_score';
@@ -800,6 +928,7 @@ function renderTable(){
   const scCls=scClassFilter.value;
   const scConf=scConfFilter.value;
   const pViab=paperViabFilter.value;
+  const rCls=regimeFilter.value;
 
   let filtered=factors.filter(f=>{
     const text=[f.factor_id,f.name_zh,f.name_en,f.family_zh,f.family,f.decision_bucket,f.final_quality_class,f.recommended_next_action,f.paper_viability_class,f.cost_sensitivity_class].join(' ').toLowerCase();
@@ -810,6 +939,7 @@ function renderTable(){
     if(scCls&&f.final_quality_class!==scCls)return false;
     if(scConf&&f.score_confidence!==scConf)return false;
     if(pViab&&f.paper_viability_class!==pViab)return false;
+    if(rCls&&f.regime_dependency_class!==rCls)return false;
     return true;
   });
 
@@ -852,6 +982,11 @@ function renderTable(){
       <td class="num">${f.fee_10bps_total_return!==null&&f.fee_10bps_total_return!==undefined?num(f.fee_10bps_total_return,2):'—'}</td>
       <td class="num">${f.break_even_fee_bps!==null&&f.break_even_fee_bps!==undefined?Math.round(Number(f.break_even_fee_bps))+'bps':'—'}</td>
       <td class="num">${f.paper_avg_turnover!==null&&f.paper_avg_turnover!==undefined?pct(f.paper_avg_turnover):'—'}</td>
+      <td>${f.regime_dependency_class?regimeBadge(f.regime_dependency_class):'—'}</td>
+      <td class="num">${f.paper_return_btc_beta!==null&&f.paper_return_btc_beta!==undefined?num(f.paper_return_btc_beta,4):'—'}</td>
+      <td class="num">${f.paper_return_btc_corr!==null&&f.paper_return_btc_corr!==undefined?num(f.paper_return_btc_corr,4):'—'}</td>
+      <td class="num ${f.bull_minus_bear_paper_return!==null?((f.bull_minus_bear_paper_return>=0?'strong':'watch')):''}">${f.bull_minus_bear_paper_return!==null&&f.bull_minus_bear_paper_return!==undefined?num(f.bull_minus_bear_paper_return,4):'—'}</td>
+      <td class="num ${f.drawdown_minus_normal_paper_return!==null?((f.drawdown_minus_normal_paper_return<0?'watch':'plain')):''}">${f.drawdown_minus_normal_paper_return!==null&&f.drawdown_minus_normal_paper_return!==undefined?num(f.drawdown_minus_normal_paper_return,4):'—'}</td>
     </tr>`;
   }).join('');
 
@@ -1243,13 +1378,92 @@ function renderDetail(fid){
       <span style="color:var(--muted)">Equal-weight long/short at 1h horizon. No slippage/order book modeling. 等权多空，1h视野，无滑点/订单簿建模。</span>
     </div>
     `:''}
+
+    ${f.regime_dependency_class?`
+    <div class="section-divider"></div>
+    <h3>BTC / Market Regime Diagnostics / BTC / 市场状态诊断</h3>
+    <div style="margin:6px 0">
+      ${regimeBadge(f.regime_dependency_class)}
+      ${f.main_regime_note_zh?`<span style="font-size:11px;margin-left:6px">${esc(f.main_regime_note_zh)} / ${esc(f.main_regime_note_en)}</span>`:''}
+    </div>
+    <div class="metric-grid">
+      ${metricRow('Paper-BTC Corr',num(f.paper_return_btc_corr,4))}
+      ${metricRow('Paper-BTC Beta',num(f.paper_return_btc_beta,4))}
+      ${metricRow('LS-BTC Corr',num(f.long_short_btc_corr,4))}
+      ${metricRow('LS-BTC Beta',num(f.long_short_btc_beta,4))}
+      ${metricRow('IC-BTC Corr',num(f.ic_btc_return_corr,4))}
+      ${metricRow('Bull−Bear Δ',num(f.bull_minus_bear_paper_return,4),f.bull_minus_bear_paper_return!==null?(f.bull_minus_bear_paper_return>=0?'strong':'watch'):'')}
+      ${metricRow('HV−LV Δ',num(f.highvol_minus_lowvol_paper_return,4))}
+      ${metricRow('DD−Normal Δ',num(f.drawdown_minus_normal_paper_return,4),f.drawdown_minus_normal_paper_return!==null?(f.drawdown_minus_normal_paper_return<0?'watch':''):'')}
+    </div>
+    ${(()=>{
+      const rd=f.regime_detail||[];
+      if(!rd.length)return '<div class="small">No regime detail data</div>';
+      // Helper: get regime data for a specific dimension+metric
+      function getRegimeMeans(dimension,metricType){
+        return rd.filter(r=>r.dimension===dimension&&r.metric_type===metricType)
+          .map(r=>({regime:r.regime,mean:r.mean||0,positive_rate:r.positive_rate||0,n_months:r.n_months}));
+      }
+      function regimeBarChart(items,label,w,h){
+        if(!items.length)return '';
+        const padL=70,padR=10,padT=10,padB=20;
+        const cw=w-padL-padR,ch=h-padT-padB;
+        const maxAbs=Math.max(0.000001,...items.map(d=>Math.abs(d.mean)));
+        const bw=Math.max(20,Math.min(60,Math.floor(cw/items.length)-8));
+        function yPos(v){return padT+ch/2-(v/maxAbs)*(ch/2)}
+        let svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto">';
+        const mid=padT+ch/2;
+        svg+='<line x1="'+padL+'" y1="'+mid+'" x2="'+(w-padR)+'" y2="'+mid+'" stroke="#334155" stroke-dasharray="3"/>';
+        items.forEach((d,i)=>{
+          const x=padL+(i/items.length)*cw+(cw/items.length-bw)/2;
+          const barH=Math.abs(d.mean/maxAbs)*(ch/2);
+          const y=d.mean>=0?mid-barH:mid;
+          const c=d.mean>=0?'#34d399':'#f87171';
+          svg+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+barH+'" fill="'+c+'" rx="2"/>';
+          svg+='<text x="'+(x+bw/2)+'" y="'+(h-2)+'" text-anchor="middle" fill="#8ea0b8" font-size="8">'+esc(d.regime)+'</text>';
+          svg+='<text x="'+(x+bw/2)+'" y="'+(y-3)+'" text-anchor="middle" fill="#8ea0b8" font-size="7">'+num(d.mean,4)+'</text>';
+        });
+        svg+='<text x="4" y="'+mid+'" fill="#8ea0b8" font-size="8" dominant-baseline="middle">0</text>';
+        svg+='<text x="4" y="'+padT+'" fill="#8ea0b8" font-size="7">'+label+'</text>';
+        svg+='</svg>';
+        return svg;
+      }
+      const trendPr=getRegimeMeans('btc_trend_regime','paper_return');
+      const trendIc=getRegimeMeans('btc_trend_regime','ic_rank');
+      const volPr=getRegimeMeans('btc_vol_regime','paper_return');
+      const ddPr=getRegimeMeans('btc_drawdown_regime','paper_return');
+      return `
+        <div class="chart-container">
+          <div class="chart-title">Paper Return by Trend Regime · 趋势状态纸面收益</div>
+          ${regimeBarChart(trendPr,'Paper Return',300,110)}
+        </div>
+        <div class="chart-container">
+          <div class="chart-title">RankIC by Trend Regime · 趋势状态RankIC</div>
+          ${regimeBarChart(trendIc,'RankIC',300,110)}
+        </div>
+        <div class="chart-container">
+          <div class="chart-title">Paper Return by Volatility Regime · 波动率状态纸面收益</div>
+          ${regimeBarChart(volPr,'Paper Return',250,110)}
+        </div>
+        <div class="chart-container">
+          <div class="chart-title">Paper Return by Drawdown Regime · 回撤状态纸面收益</div>
+          ${regimeBarChart(ddPr,'Paper Return',250,110)}
+        </div>
+      `;
+    })()}
+    <div class="regime-caveat">
+      <strong>⚠ Regime diagnostics identify conditional behavior, not trade rules / 市场状态诊断识别条件行为，非交易规则</strong><br>
+      <span style="color:var(--muted)">BTC regime labels classify market conditions ex-post. Factor performance differences across regimes are informational, not actionable timing signals.<br>
+      BTC市场状态标签为事后分类。因子在不同状态下的表现差异仅供参考，不构成可操作的择时信号。</span>
+    </div>
+    `:''}
   `;
 }
 
 // ── Init ──
 const searchEl=document.getElementById('search');
-[searchEl,familyFilter,qualityFilter,horizonFilter,scClassFilter,scConfFilter,paperViabFilter].forEach(el=>el.addEventListener('input',renderTable));
-[familyFilter,qualityFilter,horizonFilter,scClassFilter,scConfFilter,paperViabFilter].forEach(el=>el.addEventListener('change',renderTable));
+[searchEl,familyFilter,qualityFilter,horizonFilter,scClassFilter,scConfFilter,paperViabFilter,regimeFilter].forEach(el=>el.addEventListener('input',renderTable));
+[familyFilter,qualityFilter,horizonFilter,scClassFilter,scConfFilter,paperViabFilter,regimeFilter].forEach(el=>el.addEventListener('change',renderTable));
 
 // Set initial sort arrow
 const initSortTh=document.querySelector(`th[data-col="${sortCol}"]`);
