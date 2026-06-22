@@ -246,3 +246,14 @@ After running `run_factor_intake.py`, complete the remaining evidence with:
 - `evaluate_factors.py --factor-ids` → 生成 period IC（但 canonical CSV 需手动合并）
 - `build_single_factor_paper_page_payload.py` → 生成 paper payload（需手动运行）
 - `_build_factor_eval_html.py` → 构建 HTML（需手动运行）
+
+## PM-40C 教训：Scorecard 过期检测与 Redundancy 数据来源统一（2026-06-22）
+
+**核心教训：** scorecard 数据可能在 factor-level evaluation 之前计算，导致所有底层指标为 0。页面需要检测并覆盖过期 scorecard。
+
+**三个修复：**
+1. **Scorecard 过期检测：** 检查 `rankic_mean=0 且 coverage_rate=0`，用 unified profile 数据覆盖
+2. **Redundancy 来源统一：** 当 cluster/marginal 来自 PM-37 时，隐藏旧 pairwise 字段，显示 profile 字段
+3. **空字段解释：** LS Std/Ann Return/Ann Vol/Max DD 为空时显示 "not available from factor-level summary; see paper portfolio diagnostics"
+
+**QA 检查：** `pm40c_consistency` 验证 scorecard 不与 profile 冲突、redundancy 不与 cluster 冲突
