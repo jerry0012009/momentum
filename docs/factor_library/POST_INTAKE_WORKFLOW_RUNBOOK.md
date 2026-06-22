@@ -391,3 +391,40 @@ This produces:
 - `factor_regime_diagnostics_payload.json` — page payload
 
 If `factor_monthly_ic_series.csv` is missing new factors, merge from canonical `factor_level_period_ic_summary.csv` before running the regime script.
+
+## 13. Post-Intake Workflow Completion (PM-43A)
+
+After new factor intake, run the full post-intake workflow:
+
+```bash
+# Option A: Automated runner
+python scripts/run_post_intake_workflow_completion.py --factor-ids rev_2h,mom_vol_adjusted_20h
+
+# Option B: Manual step-by-step (if runner fails)
+python scripts/evaluate_factors.py --factor-ids rev_2h
+python scripts/build_single_factor_paper_portfolio_diagnostics.py
+python scripts/build_factor_pairwise_redundancy_matrix.py --factor-ids rev_2h
+python scripts/build_factor_redundancy_cluster_diagnostics.py
+python scripts/build_factor_market_regime_diagnostics.py --canonical-ic-path research/factor_runs/crypto_top50_factor_library/factor_level_evaluation/factor_level_period_ic_summary.csv
+python scripts/build_factor_quality_scorecard.py
+python scripts/build_unified_factor_profile.py
+python scripts/_build_factor_eval_html.py
+```
+
+### Integrity Check
+
+After completion, verify with:
+
+```bash
+python scripts/check_post_intake_workflow_integrity.py --factor-ids rev_2h
+```
+
+All 11 checks must pass before entering factor interpretation.
+
+### Scorecard Canonical Fallback (PM-43A)
+
+`build_factor_quality_scorecard.py` now automatically falls back to canonical factor-level evaluation data when `factor_diagnostics_summary.csv` has NaN. No manual merge needed.
+
+### Regime IC Merge (PM-43A)
+
+`build_factor_market_regime_diagnostics.py --canonical-ic-path <path>` automatically merges missing factors from canonical period IC. Use this when running regime diagnostics after new factor intake.

@@ -284,3 +284,28 @@ After running `run_factor_intake.py`, complete the remaining evidence with:
 - `INSUFFICIENT_REGIME_DATA` 会在数据不足时明确显示
 
 **Workflow 要求：** 新因子 intake 后，必须确保 `factor_monthly_ic_series.csv` 包含新因子，然后重新运行 `build_factor_market_regime_diagnostics.py`。
+
+## PM-43A 教训：Post-Intake Workflow 必须完整执行（2026-06-23）
+
+**核心教训：** 新因子不是跑完 intake 就结束。必须完成 post-intake workflow completion，包括：
+1. Factor-level evaluation (evaluate_factors.py)
+2. Paper portfolio diagnostics
+3. Pairwise redundancy (build_factor_pairwise_redundancy_matrix.py --factor-ids)
+4. Redundancy cluster + marginal information
+5. Regime/BTC diagnostics (build_factor_market_regime_diagnostics.py --canonical-ic-path)
+6. Scorecard refresh (build_factor_quality_scorecard.py — now has canonical fallback)
+7. Unified profile refresh
+8. Page build + QA
+
+**关键修复：**
+- Scorecard 现在从 canonical factor-level evaluation 读取 RankIC/LS 数据，不再依赖 stale diagnostics summary
+- Regime 脚本支持 `--canonical-ic-path` 自动合并缺失因子的 monthly IC
+- Pairwise redundancy 支持 `--factor-ids` 增量计算
+
+**自动化工具：**
+- `scripts/run_post_intake_workflow_completion.py --factor-ids fid1,fid2` — 自动跑完所有步骤
+- `scripts/check_post_intake_workflow_integrity.py --factor-ids fid1,fid2` — 检查 11 个完整性维度
+
+**Page builder fallback 只是防御，不是 canonical source。** Canonical 数据来自 evaluate_factors.py、paper payload、regime script、scorecard 等 pipeline 输出。
+
+**新因子必须通过 post-intake workflow integrity checker 才能进入 interpretation。**
