@@ -24,6 +24,7 @@ Stages (in pipeline order):
     metadata             Build bilingual factor cards (cheap)
     scorecard            Build quality scorecard (cheap)
     redundancy           Pairwise redundancy matrix (EXPENSIVE)
+    regime               BTC market regime diagnostics (PM-23) (cheap)
     page                 Rebuild factor-evaluation.html (cheap)
     state                Regenerate factor_library_state.json/md (cheap)
 
@@ -123,6 +124,18 @@ STAGES: list[dict] = [
         "commands": [
             ("build_factor_pairwise_redundancy_matrix", [
                 "python", str(SCRIPTS / "build_factor_pairwise_redundancy_matrix.py"),
+            ]),
+        ],
+    },
+    {
+        "name": "regime",
+        "description": "BTC market regime diagnostics (PM-23)",
+        "expensive": False,
+        "commands": [
+            ("build_factor_market_regime_diagnostics", [
+                "python", str(SCRIPTS / "build_factor_market_regime_diagnostics.py"),
+                "--btc-symbol", "auto",
+                "--fee-bps", "10",
             ]),
         ],
     },
