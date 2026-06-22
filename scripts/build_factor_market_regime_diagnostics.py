@@ -246,6 +246,8 @@ def main() -> int:
                         help="Output directory for diagnostics files")
     parser.add_argument("--min-months-per-regime", type=int, default=3,
                         help="Min months per regime bucket for reliable stats")
+    parser.add_argument("--canonical-ic-path", type=str, default=None,
+                        help="Path to canonical factor_level_period_ic_summary.csv for IC merge")
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -277,6 +279,26 @@ def main() -> int:
     ic_df = pd.read_csv(out_dir / PATH_MONTHLY_IC)
     ls_df = pd.read_csv(out_dir / PATH_MONTHLY_LS)
     paper_df = pd.read_csv(out_dir / PATH_PAPER_MONTHLY)
+
+    # ── PM-43A: Merge canonical IC if old diagnostics is missing factors ──
+    if args.canonical_ic_path:
+        canon_ic = pd.read_csv(args.canonical_ic_path)
+        missing_fids = set(ls_df["factor_id"].unique()) | set(paper_df["factor_id"].unique())
+        missing_fids -= set(ic_df["factor_id"].unique())
+        if missing_fids:
+            print(f"  Canonical IC merge: {len(missing_fids)} factors missing from old IC, merging from canonical")
+            canon_sub = canon_ic[canon_ic["factor_name"].isin(missing_fids)].copy()
+            canon_sub = canon_sub.rename(columns={
+                "factor_name": "factor_id",
+                "period": "month",
+                "raw_mean_rank_ic": "rank_ic",
+                "direction_adjusted_mean_rank_ic": "rank_ic_adj",
+                "n_periods": "n_obs",
+            })
+            canon_sub["positive_ic"] = canon_sub["rank_ic"] > 0
+            canon_sub = canon_sub[["factor_id", "horizon", "month", "rank_ic", "rank_ic_adj", "n_obs", "positive_ic"]]
+            ic_df = pd.concat([ic_df, canon_sub], ignore_index=True)
+            print(f"  After merge: {ic_df['factor_id'].nunique()} factors in IC")
 
     # Filter paper to fee_bps
     paper_df = paper_df[paper_df["fee_bps"] == args.fee_bps].copy()

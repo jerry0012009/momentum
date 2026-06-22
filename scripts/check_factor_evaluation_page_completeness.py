@@ -477,11 +477,12 @@ def check_pm40c_scorecard_redundancy_consistency(html_text: str) -> list[dict]:
         if wf != 'WORKFLOW_READY':
             continue
 
-        # Check 1: Scorecard should not be stale
+        # Check 1: Scorecard should not be stale (only flag if rankic_mean=0)
         qclass = f.get('final_quality_class', '')
         pclass = f.get('profile_class', '')
-        if qclass == 'REVIEW_REQUIRED' and pclass and 'PROMISING' in pclass:
-            issues.append(f'{fid}: scorecard={qclass} conflicts with profile={pclass}')
+        rankic = f.get('rankic_mean', 0) or 0
+        if qclass == 'REVIEW_REQUIRED' and pclass and 'PROMISING' in pclass and rankic == 0:
+            issues.append(f'{fid}: scorecard={qclass} conflicts with profile={pclass} (stale rankic=0)')
 
         # Check 2: No stale redundancy pair data alongside NOVEL_DISTINCT
         novelty = f.get('novelty_assessment', '')

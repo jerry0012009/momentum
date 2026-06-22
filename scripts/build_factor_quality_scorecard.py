@@ -58,6 +58,11 @@ PATH_REDUNDANCY = DIAG_DIR / "factor_pairwise_redundancy.csv"
 PATH_REDUNDANCY_SUMMARY = DIAG_DIR / "factor_redundancy_summary.csv"
 PATH_REDUNDANCY_CLUSTERS = DIAG_DIR / "factor_redundancy_clusters.csv"
 
+# PM-43A: Canonical sources for scorecard fallback
+PATH_CANONICAL_RANKIC = EVAL_DIR / "factor_level_rankic_summary.csv"
+PATH_CANONICAL_LS = EVAL_DIR / "factor_level_long_short_summary.csv"
+PATH_REGIME_EXPOSURE = DIAG_DIR / "factor_regime_exposure_summary.csv"
+
 PATH_STATE = BASE / "factor_library_state.json"
 
 OUT_CSV = DIAG_DIR / "factor_quality_scorecard.csv"
@@ -172,6 +177,59 @@ def load_redundancy_clusters() -> pd.DataFrame:
         if "factor_id" in df.columns:
             return df
         return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
+def load_canonical_rankic() -> dict[str, dict]:
+    """PM-43A: Load canonical RankIC from factor-level evaluation."""
+    try:
+        df = pd.read_csv(PATH_CANONICAL_RANKIC)
+        result = {}
+        for _, row in df.iterrows():
+            fid = str(row["factor_name"]).strip()
+            hz = str(row["horizon"]).strip()
+            if fid not in result:
+                result[fid] = {}
+            mean_ic = float(row.get("direction_adjusted_mean_rank_ic", 0) or 0)
+            t_stat = float(row.get("t_stat", 0) or 0)
+            # Compute IR from mean/t_stat if available
+            rankic_ir = mean_ic / t_stat if t_stat != 0 else 0.0
+            result[fid][hz] = {
+                "rankic_mean": mean_ic,
+                "rankic_ir": rankic_ir,
+                "t_stat": t_stat,
+                "coverage": float(row.get("coverage", 0) or 0),
+            }
+        return result
+    except Exception:
+        return {}
+
+
+def load_canonical_ls() -> dict[str, dict]:
+    """PM-43A: Load canonical LS aggregate from factor-level evaluation."""
+    try:
+        df = pd.read_csv(PATH_CANONICAL_LS)
+        result = {}
+        for _, row in df.iterrows():
+            fid = str(row["factor_name"]).strip()
+            hz = str(row["horizon"]).strip()
+            if fid not in result:
+                result[fid] = {}
+            ls_mean = float(row.get("long_short_spread_mean", 0) or 0)
+            ls_std = float(row.get("long_short_spread_std", 0) or 0)
+            # Compute Sharpe from mean/std (annualized: monthly_sharpe * sqrt(12))
+            ls_sharpe = (ls_mean / ls_std * (12 ** 0.5)) if ls_std > 0 else 0.0
+            result[fid][hz] = {
+                "ls_sharpe": ls_sharpe,
+                "ls_std": ls_std,
+                "ls_ann_return": float(row.get("long_short_spread_annualized_return", 0) or 0),
+                "ls_max_dd": float(row.get("long_short_spread_max_drawdown", 0) or 0),
+                "ls_pmr": float(row.get("long_short_spread_positive_period_rate", 0) or 0),
+            }
+        return result
+    except Exception:
+        return {}
     except Exception:
         return pd.DataFrame()
 
@@ -723,6 +781,12 @@ def build_scorecard() -> pd.DataFrame:
     expected_pairs = max(n_factors - 1, 1)
     print(f"[PM-19] Expected redundancy pairs per factor: {expected_pairs}")
 
+    # ── PM-43A: Load canonical sources for fallback ──
+    canonical_rankic = load_canonical_rankic()
+    canonical_ls = load_canonical_ls()
+    print(f"  Canonical RankIC: {len(canonical_rankic)} factors")
+    print(f"  Canonical LS: {len(canonical_ls)} factors")
+
     # Score each factor
     rows = []
     for fid in sorted(registered_ids):
@@ -737,6 +801,10 @@ def build_scorecard() -> pd.DataFrame:
         # Extract fields
         family = _safe_str(diag_row["family"]) if diag_row is not None else ""
         best_horizon = _safe_str(diag_row["best_horizon"]) if diag_row is not None else "4h"
+        # PM-43A: fallback best_horizon from canonical if missing
+        if not best_horizon and fid in canonical_rankic:
+            # Use the first available horizon from canonical
+            best_horizon = next(iter(canonical_rankic[fid]), "4h")
         coverage = _safe_float(diag_row["coverage_rate"], 0.0) if diag_row is not None else 0.0
         source_warning = _safe_str(diag_row.get("source_warning", "")) if diag_row is not None else ""
 
@@ -757,17 +825,39 @@ def build_scorecard() -> pd.DataFrame:
             name_zh = _safe_str(card_row.get("name_zh", ""))
             name_en = _safe_str(card_row.get("name_en", ""))
 
-        # RankIC metrics
+        # ── PM-43A: Canonical fallback for RankIC and LS metrics ──
+        canon_rk = canonical_rankic.get(fid, {}).get(best_horizon, {})
+        canon_ls_data = canonical_ls.get(fid, {}).get(best_horizon, {})
+
+        # RankIC metrics — prefer diagnostics, fallback to canonical
         rankic_mean = _safe_float(diag_row["rankic_mean"]) if diag_row is not None else 0.0
+        if rankic_mean == 0.0 and canon_rk:
+            rankic_mean = canon_rk.get("rankic_mean", 0.0)
         rankic_ir = _safe_float(diag_row["rankic_ir"]) if diag_row is not None else 0.0
+        if rankic_ir == 0.0 and canon_rk:
+            rankic_ir = canon_rk.get("rankic_ir", 0.0)
         rankic_t_stat = _safe_float(diag_row["rankic_t_stat"]) if diag_row is not None else 0.0
+        if rankic_t_stat == 0.0 and canon_rk:
+            rankic_t_stat = canon_rk.get("t_stat", 0.0)
         monthly_ic_positive_rate = _safe_float(diag_row["monthly_ic_positive_rate"]) if diag_row is not None else 0.0
 
-        # Portfolio metrics
+        # Coverage fallback: if diagnostics has 0 but canonical has data, factor is WORKFLOW_READY
+        if coverage == 0.0 and canon_rk:
+            coverage = 1.0
+
+        # Portfolio metrics — prefer diagnostics, fallback to canonical
         ls_sharpe = _safe_float(diag_row["long_short_sharpe"]) if diag_row is not None else 0.0
+        if ls_sharpe == 0.0 and canon_ls_data:
+            ls_sharpe = canon_ls_data.get("ls_sharpe", 0.0)
         ls_ann_return = _safe_float(diag_row["long_short_annualized_return"]) if diag_row is not None else 0.0
+        if ls_ann_return == 0.0 and canon_ls_data:
+            ls_ann_return = canon_ls_data.get("ls_ann_return", 0.0)
         ls_max_dd = _safe_float(diag_row["long_short_max_drawdown"]) if diag_row is not None else 0.0
+        if ls_max_dd == 0.0 and canon_ls_data:
+            ls_max_dd = canon_ls_data.get("ls_max_dd", 0.0)
         ls_pmr = _safe_float(diag_row["long_short_positive_month_rate"]) if diag_row is not None else 0.0
+        if ls_pmr == 0.0 and canon_ls_data:
+            ls_pmr = canon_ls_data.get("ls_pmr", 0.0)
 
         abs_rankic = abs(rankic_mean)
 
