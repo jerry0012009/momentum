@@ -481,12 +481,33 @@ def build_evidence_matrix(factor_ids: list[str]) -> tuple[list[dict], dict]:
         except Exception:
             pass
 
-    # Load state for registry_or_data_status
+    # Check existence of factor-level evaluation artifacts
+    fle_artifact_names = [
+        "factor_level_rankic_summary.csv",
+        "factor_level_period_quantile_return_summary.csv",
+        "factor_level_metric_panel.csv",
+    ]
+    fle_artifacts_present = all((eval_dir / a).exists() for a in fle_artifact_names)
+
+    # Features directory for per-factor factor_values.parquet
+    features_dir = ROOT / "data" / "features" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
+
+    # Derive global registry_or_data_status from state's factor_lifecycle_distribution
     try:
         state = load_state()
-        reg_status = state.get("data_status", "UNKNOWN")
+        lifecycle_dist = state.get("factor_lifecycle_distribution", {})
+        if lifecycle_dist.get("MISSING_INPUT_DATA", 0) > 0:
+            global_reg_status = "MISSING_INPUT_DATA"
+        else:
+            global_reg_status = "OK"
     except Exception:
-        reg_status = "UNKNOWN"
+        global_reg_status = "UNKNOWN"
+
+    # Load per-factor lifecycle_status from diagnostics_summary for per-factor reg_status
+    ds_df = load_csv_safe("factor_diagnostics_summary.csv")
+    ds_lifecycle_map = {}
+    if ds_df is not None and "factor_id" in ds_df.columns and "lifecycle_status" in ds_df.columns:
+        ds_lifecycle_map = dict(zip(ds_df["factor_id"], ds_df["lifecycle_status"]))
 
     rows = []
 
@@ -512,10 +533,37 @@ def build_evidence_matrix(factor_ids: list[str]) -> tuple[list[dict], dict]:
         row["n_required_evidence_blocks"] = n_required
         row["evidence_completeness_rate"] = round(n_available / len(EVIDENCE_BLOCKS), 4) if EVIDENCE_BLOCKS else 0.0
 
-        if n_available == len(EVIDENCE_BLOCKS):
+        # Additional columns — truthfully check actual file existence
+        fv_path = features_dir / fid / "factor_values.parquet"
+        has_fv = fv_path.exists()
+        row["has_factor_values"] = str(has_fv)
+
+        # Check factor-level evaluation: rankic file uses 'factor_name' not 'factor_id'
+        has_fle = False
+        if rankic_df is not None and fle_artifacts_present:
+            name_col = "factor_name" if "factor_name" in rankic_df.columns else "factor_id"
+            if name_col in rankic_df.columns and fid in rankic_df[name_col].values:
+                has_fle = True
+        row["has_factor_level_evaluation"] = str(has_fle)
+        row["has_unified_profile"] = str(True)  # self-reference — we are building it now
+        row["registry_or_data_status"] = ds_lifecycle_map.get(fid, global_reg_status)
+
+        # ── Evidence status must account for factor_values and factor-level evaluation ──
+        # These are gating requirements: if missing, evidence cannot be COMPLETE
+        per_factor_reg_status = ds_lifecycle_map.get(fid, global_reg_status)
+        is_missing_input = (per_factor_reg_status == "MISSING_INPUT_DATA")
+        all_evidence_blocks_present = (n_available == len(EVIDENCE_BLOCKS))
+        all_required_blocks_present = (n_available >= n_required)
+        has_core_gates = has_fv and has_fle and fle_artifacts_present
+
+        if all_evidence_blocks_present and has_core_gates and not is_missing_input:
             status = "COMPLETE"
-        elif n_available >= n_required:
+        elif all_evidence_blocks_present and has_core_gates and is_missing_input:
+            status = "COMPLETE_WITH_WARNINGS"  # all evidence present but upstream data flagged
+        elif all_required_blocks_present and has_core_gates:
             status = "COMPLETE_WITH_WARNINGS"
+        elif not has_fv or not has_fle:
+            status = "BLOCKED"
         elif n_available > 0:
             status = "INCOMPLETE"
         else:
@@ -524,17 +572,6 @@ def build_evidence_matrix(factor_ids: list[str]) -> tuple[list[dict], dict]:
         row["evidence_status"] = status
         row["missing_evidence_blocks"] = "|".join(missing_blocks) if missing_blocks else ""
         row["stale_evidence_blocks"] = "|".join(stale_blocks) if stale_blocks else ""
-
-        # Additional columns
-        fv_path = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_values" / f"{fid}.parquet"
-        row["has_factor_values"] = str(fv_path.exists())
-        row["has_factor_level_evaluation"] = str(
-            rankic_df is not None
-            and "factor_id" in rankic_df.columns
-            and fid in rankic_df["factor_id"].values
-        )
-        row["has_unified_profile"] = str(True)  # self-reference — we are building it now
-        row["registry_or_data_status"] = reg_status
 
         rows.append(row)
 
@@ -687,7 +724,10 @@ def classify_profile(
     member_role: str,
     profile_score: float,
 ) -> tuple[str, str]:
-    """Determine profile class and research action."""
+    """Determine profile class and research action.
+
+    PM-32C: Tightened classification to reduce BROAD_WATCHLIST collapse.
+    """
     # Incomplete evidence gate
     if evidence_completeness_rate < 0.7:
         return "INCOMPLETE_EVIDENCE", "COMPLETE_MISSING_EVIDENCE"
@@ -696,32 +736,71 @@ def classify_profile(
     if profile_score < 20:
         return "INSUFFICIENT_DATA", "INSUFFICIENT_DATA_REVIEW"
 
-    # Classify by dominant pattern
-    is_high_quality = standalone_score >= 70 and paper_score >= 60
+    # Derived flags
+    is_high_quality = standalone_score >= 65 and paper_score >= 55
+    is_good_quality = standalone_score >= 50 and paper_score >= 40
     is_redundant = redundancy_score < 40 and cluster_size > 1
     is_regime_dep = regime_score < 50
     is_capacity_constrained = capacity_score < 40
     is_stability_weak = stability_score < 40
     is_unique = redundancy_score >= 70
-    is_weak = standalone_score < 50 or paper_score < 40
+    has_high_marginal = marginal_score >= 65
+    is_weak = standalone_score < 45 and paper_score < 35
+    is_stability_positive = stability_score >= 70
 
-    if is_high_quality and is_unique:
+    # ── Priority-ordered classification ──
+
+    # 1. HIGH_QUALITY_DISTINCT: strong quality, distinct singleton, high marginal info
+    if is_high_quality and is_unique and has_high_marginal:
         return "HIGH_QUALITY_DISTINCT", "PRIORITIZE_FOR_REVIEW"
+
+    # 2. HIGH_QUALITY_BUT_REDUNDANT: strong quality but cluster-correlated
     if is_high_quality and is_redundant:
         if member_role in ("CLUSTER_REPRESENTATIVE",):
             return "HIGH_QUALITY_BUT_REDUNDANT", "KEEP_AS_CLUSTER_REFERENCE"
         return "HIGH_QUALITY_BUT_REDUNDANT", "REVIEW_AS_REDUNDANT_ALTERNATIVE"
-    if is_high_quality and is_capacity_constrained:
+
+    # 3. HIGH_QUALITY_DISTINCT (backup: unique but marginal lower)
+    if is_high_quality and is_unique:
+        return "HIGH_QUALITY_DISTINCT", "PRIORITIZE_FOR_REVIEW"
+
+    # 4. STABLE_BUT_CAPACITY_CONSTRAINED: stable signal, positive paper, but capacity-limited
+    if is_stability_positive and is_good_quality and is_capacity_constrained:
         return "STABLE_BUT_CAPACITY_CONSTRAINED", "WATCH_FOR_CAPACITY_RISK"
-    if is_high_quality and is_regime_dep:
+
+    # 5. PROMISING_BUT_REGIME_DEPENDENT: decent quality but regime-dependent
+    if is_good_quality and is_regime_dep and not is_weak:
         return "PROMISING_BUT_REGIME_DEPENDENT", "WATCH_FOR_REGIME_DEPENDENCE"
+
+    # 6. UNIQUE_BUT_WEAK: singleton/distinct but weak quality/paper
     if is_unique and is_weak:
         return "UNIQUE_BUT_WEAK", "KEEP_AS_DIAGNOSTIC_PROBE"
-    if is_stability_weak and standalone_score >= 50:
+
+    # 7. UNIQUE_BUT_WEAK: singleton with low paper but decent shape/stability
+    if is_unique and (paper_score < 40 or standalone_score < 45):
+        return "UNIQUE_BUT_WEAK", "KEEP_AS_DIAGNOSTIC_PROBE"
+
+    # 8. LOW_PRIORITY_DIAGNOSTIC: weak across most dimensions
+    if is_weak and is_stability_weak:
+        return "LOW_PRIORITY_DIAGNOSTIC", "LOWER_PRIORITY_REVIEW"
+
+    # 9. PROMISING_BUT_REGIME_DEPENDENT: regime-dependent even if quality moderate
+    if is_regime_dep and profile_score >= 35:
+        return "PROMISING_BUT_REGIME_DEPENDENT", "WATCH_FOR_REGIME_DEPENDENCE"
+
+    # 10. STABLE_BUT_CAPACITY_CONSTRAINED: capacity constrained even at lower quality
+    if is_capacity_constrained and is_stability_positive:
+        return "STABLE_BUT_CAPACITY_CONSTRAINED", "WATCH_FOR_CAPACITY_RISK"
+
+    # 11. LOW_PRIORITY_DIAGNOSTIC: low overall score
+    if profile_score < 35:
+        return "LOW_PRIORITY_DIAGNOSTIC", "LOWER_PRIORITY_REVIEW"
+
+    # 12. BROAD_WATCHLIST: remaining moderate factors
+    if is_stability_weak:
         return "BROAD_WATCHLIST", "WATCH_FOR_STABILITY_RISK"
-    if profile_score >= 35:
-        return "BROAD_WATCHLIST", "LOWER_PRIORITY_REVIEW"
-    return "LOW_PRIORITY_DIAGNOSTIC", "LOWER_PRIORITY_REVIEW"
+
+    return "BROAD_WATCHLIST", "LOWER_PRIORITY_REVIEW"
 
 
 def profile_confidence(score_confidence: str, evidence_completeness_rate: float) -> str:
@@ -793,8 +872,12 @@ def _pick_best_horizon_row(df: pd.DataFrame, fid: str, best_horizon: str) -> dic
 
 def build_unified_profile(factor_ids: list[str], state: dict) -> tuple[list[dict], list[dict]]:
     """Build unified profile rows and component score rows."""
-    # registry_or_data_status from state
-    reg_status = state.get("data_status", "UNKNOWN")
+    # Global registry_or_data_status from state — derive from lifecycle distribution
+    lifecycle_dist = state.get("factor_lifecycle_distribution", {})
+    if lifecycle_dist.get("MISSING_INPUT_DATA", 0) > 0:
+        global_reg_status = "MISSING_INPUT_DATA"
+    else:
+        global_reg_status = "OK"
 
     # Load all input data
     sc_df = load_csv_safe("factor_quality_scorecard.csv")
@@ -918,12 +1001,47 @@ def build_unified_profile(factor_ids: list[str], state: dict) -> tuple[list[dict
             "factor_decile_shape_summary.csv", "factor_capacity_liquidity_summary.csv",
         ]
 
+        # Additional core gates: check factor_values.parquet and factor-level evaluation
+        features_dir = ROOT / "data" / "features" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
+        fv_exists = (features_dir / fid / "factor_values.parquet").exists()
+        eval_dir = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_level_evaluation"
+        rankic_path = eval_dir / "factor_level_rankic_summary.csv"
+        rankic_df_local = None
+        if rankic_path.exists():
+            try:
+                rankic_df_local = pd.read_csv(rankic_path)
+            except Exception:
+                pass
+        fle_name_col = "factor_name" if rankic_df_local is not None and "factor_name" in rankic_df_local.columns else "factor_id"
+        fle_exists = (
+            rankic_df_local is not None
+            and fle_name_col in rankic_df_local.columns
+            and fid in rankic_df_local[fle_name_col].values
+        )
+        fle_artifacts_present = all(
+            (eval_dir / a).exists() for a in [
+                "factor_level_rankic_summary.csv",
+                "factor_level_period_quantile_return_summary.csv",
+                "factor_level_metric_panel.csv",
+            ]
+        )
+
+        has_core_gates = fv_exists and fle_exists and fle_artifacts_present
         n_required_blocks = sum(1 for _, (_, req) in EVIDENCE_BLOCKS.items() if req)
-        if evidence_completeness_rate >= 1.0:
+
+        # Derive per-factor registry_or_data_status
+        ds_lifecycle_map_local = {}
+        if ds_df is not None and "factor_id" in ds_df.columns and "lifecycle_status" in ds_df.columns:
+            ds_lifecycle_map_local = dict(zip(ds_df["factor_id"], ds_df["lifecycle_status"]))
+        reg_status = ds_lifecycle_map_local.get(fid, global_reg_status)
+
+        if evidence_completeness_rate >= 1.0 and has_core_gates:
             ev_status = "COMPLETE"
-        elif evidence_completeness_rate >= n_required_blocks / len(EVIDENCE_BLOCKS):
+        elif evidence_blocks_present >= n_required_blocks and has_core_gates:
             ev_status = "COMPLETE_WITH_WARNINGS"
-        elif evidence_completeness_rate > 0:
+        elif not fv_exists or not fle_exists:
+            ev_status = "BLOCKED"
+        elif evidence_blocks_present > 0:
             ev_status = "INCOMPLETE"
         else:
             ev_status = "BLOCKED"
@@ -966,18 +1084,25 @@ def build_unified_profile(factor_ids: list[str], state: dict) -> tuple[list[dict
         missing_or_stale = []
         if ev_status in ("INCOMPLETE", "BLOCKED"):
             missing_or_stale.append("evidence_incomplete")
+        if not fv_exists:
+            missing_or_stale.append("factor_values.parquet")
+        if not fle_exists or not fle_artifacts_present:
+            missing_or_stale.append("factor_level_evaluation")
         if evidence_completeness_rate < 1.0:
             for block_name in EVIDENCE_BLOCKS:
                 local_df = _local_dfs.get(block_name)
                 if local_df is None or "factor_id" not in local_df.columns or fid not in local_df["factor_id"].values:
                     missing_or_stale.append(block_name)
 
-        if not missing_or_stale and ev_status == "COMPLETE":
-            wf_ready = "WORKFLOW_READY"
-        elif not missing_or_stale and ev_status == "COMPLETE_WITH_WARNINGS":
-            wf_ready = "WORKFLOW_READY_WITH_WARNINGS"
-        elif ev_status == "BLOCKED":
+        # BLOCKED if factor_values or factor-level evaluation missing
+        if not fv_exists or not fle_exists or not fle_artifacts_present:
             wf_ready = "WORKFLOW_BLOCKED"
+        elif ev_status == "COMPLETE" and not missing_or_stale:
+            wf_ready = "WORKFLOW_READY"
+        elif ev_status == "COMPLETE_WITH_WARNINGS":
+            wf_ready = "WORKFLOW_READY_WITH_WARNINGS"
+        elif ev_status in ("INCOMPLETE", "BLOCKED"):
+            wf_ready = "WORKFLOW_INCOMPLETE"
         else:
             wf_ready = "WORKFLOW_INCOMPLETE"
 
