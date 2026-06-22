@@ -62,6 +62,7 @@ raw bars / 原始K线
 | `src/momentum/signal_evaluation/` | Public API: compute_rank_ic, compute_quantile_spread |
 | `src/momentum/factors/` | Reusable factor modules |
 | `docs/factor_library/FACTOR_LIBRARY_CONTROL_CENTER.md` | Governance center |
+| `docs/factor_library/REGENERATION_CONTRACT.md` | Canonical pipeline & refresh contract |
 | `docs/factor_library/FILE_STATUS_REGISTER.csv` | File status register |
 | `docs/factor_library/ORPHAN_WORK_AUDIT.md` | Orphan audit |
 
@@ -153,7 +154,7 @@ Rules:
 ## Current Numbers / 当前数据
 
 - Registered factors / computed / missing: see `factor_library_state.json` / `factor_library_state.md` (auto-generated)
-- Missing factor_values: **6** (taker/funding — data source lacks taker fields)
+- Missing factor_values: see `factor_library_state.json` (auto-generated)
 - Signal panel factors: **10**
 - Signal variants: **3** (core_only, pm_full_structured, family_balanced_diagnostic)
 - Horizons: **4** (1h, 4h, 24h, 72h)

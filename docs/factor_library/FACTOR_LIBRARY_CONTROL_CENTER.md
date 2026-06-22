@@ -9,7 +9,6 @@
 
 - Registered factors in `scripts/factor_formula_registry.py` — see `factor_library_state.md` (auto-generated)
 - Computed factor_values — see `factor_library_state.md` (auto-generated)
-- **6** taker/funding factors missing `factor_values` (not yet computed)
 - **10** factors used in current signal panel (`signal_v0_core_only`)
 - **3** signal variants: `core_only`, `pm_full_structured`, `family_balanced_diagnostic`
 - **4** horizons: 1h, 4h, 24h, 72h
@@ -148,6 +147,7 @@ check_factor_ic_parity.py (H8-R parity guard)
 
 ## Extension Points
 
+- **Factor library refresh:** `scripts/run_factor_library_refresh.py` — see `docs/factor_library/REGENERATION_CONTRACT.md` for the canonical pipeline contract
 - **New factor:** Add `FactorSpec` to `scripts/factor_formula_registry.py`, reuse `factor_ops.py` where possible, then run `scripts/run_factor_intake.py --factor-ids <factor_id...> --run-id <run_id>`
 - **New factor operator:** Add a small reusable helper to `scripts/factor_ops.py` only when existing operators cannot express the formula
 - **New factor diagnostics:** Extend `scripts/evaluate_factors.py`, `scripts/build_factor_redundancy.py`, or `scripts/build_factor_conclusion_cards.py`; keep output schemas explicit and tested
@@ -201,12 +201,13 @@ Do not promote intake factors into signals during intake. Do not modify live tra
 
 1. Read this file (`FACTOR_LIBRARY_CONTROL_CENTER.md`)
 2. Read `START_HERE.md`
-3. Read `factor_library_state.md` for current counts and warnings
-4. Read `factor_library_manifest.json` for machine-readable file map
-5. Read `FILE_STATUS_REGISTER.csv` for file-level status
-6. Read `ORPHAN_WORK_AUDIT.md` for orphan risks
-7. For adding factors, use `run_factor_intake.py`; do not create a parallel workflow
-8. **Scope note:** This control center covers the factor library research pipeline only, not the full momentum repository.
+3. Read `REGENERATION_CONTRACT.md` for the canonical pipeline and orchestration
+4. Read `factor_library_state.md` for current counts and warnings
+5. Read `factor_library_manifest.json` for machine-readable file map
+6. Read `FILE_STATUS_REGISTER.csv` for file-level status
+7. Read `ORPHAN_WORK_AUDIT.md` for orphan risks
+8. For adding factors, use `run_factor_intake.py`; do not create a parallel workflow
+9. **Scope note:** This control center covers the factor library research pipeline only, not the full momentum repository.
 
 ---
 
