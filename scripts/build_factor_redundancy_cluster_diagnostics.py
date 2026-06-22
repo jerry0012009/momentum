@@ -91,12 +91,12 @@ def _member_role(is_representative: bool, cluster_size: int,
                  redundancy_to_rep: float) -> str:
     """Determine member role within cluster."""
     if cluster_size == 1:
-        return "distinct_singleton"
+        return "DISTINCT_SINGLETON"
     if is_representative:
-        return "cluster_representative"
+        return "CLUSTER_REPRESENTATIVE"
     if redundancy_to_rep >= 0.90:
-        return "mostly_redundant"
-    return "moderately_redundant"
+        return "REDUNDANT_HIGH_QUALITY_ALTERNATIVE"
+    return "LOWER_MARGINAL_INFORMATION_MEMBER"
 
 
 def _marginal_info_class(score: float, cluster_size: int) -> str:
@@ -117,7 +117,7 @@ def _interpret_cluster_zh(cluster_class: str, size: int, families: list[str]) ->
     if size == 1:
         return f"独立因子，无高冗余关联。家族: {fam_str}"
     if "LARGE" in cluster_class:
-        return f"大型冗余簇({size}个因子)，建议仅保留代表性因子。家族: {fam_str}"
+        return f"大型冗余簇({size}个因子)，该簇存在较高信息重叠，代表因子可作为后续比较基准；其他成员需结合边际信息、稳定性、容量与状态表现进一步评估。家族: {fam_str}"
     if "MEDIUM" in cluster_class:
         return f"中型冗余簇({size}个因子)，存在显著信息重叠。家族: {fam_str}"
     return f"小型冗余簇({size}个因子)。家族: {fam_str}"
@@ -128,26 +128,30 @@ def _interpret_cluster_en(cluster_class: str, size: int, families: list[str]) ->
     if size == 1:
         return f"Standalone factor with no high-redundancy links. Families: {fam_str}"
     if "LARGE" in cluster_class:
-        return f"Large redundancy cluster ({size} factors) — keep representative only. Families: {fam_str}"
+        return f"Large redundancy cluster ({size} factors) — high information overlap. Representative factor provides a useful reference point for this cluster. Families: {fam_str}"
     if "MEDIUM" in cluster_class:
         return f"Medium redundancy cluster ({size} factors) — significant information overlap. Families: {fam_str}"
     return f"Small redundancy cluster ({size} factors). Families: {fam_str}"
 
 
 def _interpret_member_zh(role: str, rep_id: str, red_score: float) -> str:
-    if role == "distinct_singleton":
+    if role == "DISTINCT_SINGLETON":
         return "独立因子，提供独特信息"
-    if role == "cluster_representative":
+    if role == "CLUSTER_REPRESENTATIVE":
         return "该簇的质量最高因子，作为簇代表"
-    return f"与代表因子 {rep_id} 相关性 {red_score:.2f}，信息冗余度{'高' if red_score >= 0.90 else '中等'}"
+    if role == "REDUNDANT_HIGH_QUALITY_ALTERNATIVE":
+        return f"与代表因子 {rep_id} 相关性 {red_score:.2f}，信息冗余度高，需结合边际信息、稳定性、容量与状态表现进一步评估"
+    return f"与代表因子 {rep_id} 相关性 {red_score:.2f}，信息冗余度中等，需结合边际信息、稳定性、容量与状态表现进一步评估"
 
 
 def _interpret_member_en(role: str, rep_id: str, red_score: float) -> str:
-    if role == "distinct_singleton":
+    if role == "DISTINCT_SINGLETON":
         return "Standalone factor providing unique information"
-    if role == "cluster_representative":
+    if role == "CLUSTER_REPRESENTATIVE":
         return "Highest quality factor in cluster — serves as cluster representative"
-    return f"Redundancy {red_score:.2f} with representative {rep_id} — {'highly' if red_score >= 0.90 else 'moderately'} redundant"
+    if role == "REDUNDANT_HIGH_QUALITY_ALTERNATIVE":
+        return f"Redundancy {red_score:.2f} with representative {rep_id} — high overlap; requires marginal-information review before combination"
+    return f"Redundancy {red_score:.2f} with representative {rep_id} — moderate overlap; requires marginal-information review before combination"
 
 
 def _marginal_reason_zh(cls: str, score: float) -> str:
@@ -498,7 +502,7 @@ def compute_marginal_information(member_rows: list[dict],
         if cluster_size > 1:
             rep_id = ""
             for r in member_rows:
-                if r["cluster_id"] == md["cluster_id"] and r["member_role"] == "cluster_representative":
+                if r["cluster_id"] == md["cluster_id"] and r["member_role"] == "CLUSTER_REPRESENTATIVE":
                     rep_id = r["factor_id"]
                     break
             nearest_better = rep_id if rep_id != fid else ""
@@ -553,7 +557,7 @@ def write_outputs(diag_dir: Path, cluster_summaries: list[dict],
         diag_dir / "factor_redundancy_cluster_members.csv", index=False)
 
     # 3. Representatives only
-    reps = [m for m in member_rows if m["member_role"] == "cluster_representative"]
+    reps = [m for m in member_rows if m["member_role"] == "CLUSTER_REPRESENTATIVE"]
     pd.DataFrame(reps).to_csv(
         diag_dir / "factor_redundancy_cluster_representatives.csv", index=False)
 
