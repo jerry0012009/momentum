@@ -81,6 +81,10 @@ def build_payload() -> dict:
     regime_exposure = load_csv(DIAG_DIR / "factor_regime_exposure_summary.csv")
     regime_summary = load_csv(DIAG_DIR / "factor_regime_summary.csv")
 
+    # PM-28: Load shape stability and decile shape payloads
+    shape_stability_payload = load_json(DIAG_DIR / "factor_shape_stability_payload.json")
+    decile_shape_payload = load_json(DIAG_DIR / "factor_decile_shape_payload.json")
+
     # ── Summary stats ──
     all_months = sorted(ic_series["month"].unique().tolist()) if not ic_series.empty else []
     quality_counts = cards["metadata_quality"].value_counts().to_dict() if not cards.empty else {}
@@ -179,6 +183,15 @@ def build_payload() -> dict:
                 "positive_rate": sf(r["positive_rate"]),
                 "metric_type": ss(r["metric_type"]),
             })
+
+    # PM-28: Shape stability and decile shape lookup maps
+    ss_map: dict[str, dict] = {}
+    for sf_entry in shape_stability_payload.get("factors", []):
+        ss_map[sf_entry["factor_id"]] = sf_entry
+
+    ds_map: dict[str, dict] = {}
+    for ds_entry in decile_shape_payload.get("factors", []):
+        ds_map[ds_entry["factor_id"]] = ds_entry
 
     # ── Build factor list ──
     factors = []
@@ -378,6 +391,48 @@ def build_payload() -> dict:
         # Add regime summary data for charts
         factor["regime_detail"] = regime_detail_map.get(fid, [])
 
+        # PM-28: Merge shape stability and decile shape data
+        ss_entry = ss_map.get(fid, {})
+        ds_entry = ds_map.get(fid, {})
+        if ss_entry or ds_entry:
+            shape_data = {}
+            for hz in HORIZONS:
+                hz_shape: dict = {}
+                # Shape + stability from PM-26 payload
+                hz_ss = ss_entry.get("horizons", {}).get(hz, {})
+                if hz_ss:
+                    hz_shape["shape"] = hz_ss.get("shape", {})
+                    hz_shape["stability"] = hz_ss.get("stability", {})
+                # Decile from PM-27B payload
+                hz_ds = ds_entry.get("horizons", {}).get(hz, {})
+                if hz_ds:
+                    eodr = hz_ds.get("expected_order_decile_returns", [])
+                    hz_shape["decile"] = {
+                        "expected_direction": hz_ds.get("expected_direction", ""),
+                        "direction_handling": hz_ds.get("direction_handling", ""),
+                        "expected_d10_minus_d1_spread": hz_ds.get("expected_d10_minus_d1_spread"),
+                        "direction_aware_slope": hz_ds.get("direction_aware_slope"),
+                        "direction_aware_spearman_corr": hz_ds.get("direction_aware_spearman_corr"),
+                        "direction_aware_monotonicity_score": hz_ds.get("direction_aware_monotonicity_score"),
+                        "direction_aware_monotonicity_class": hz_ds.get("direction_aware_monotonicity_class", ""),
+                        "tail_concentration_score": hz_ds.get("tail_concentration_score"),
+                        "tail_concentration_class": hz_ds.get("tail_concentration_class", ""),
+                        "decile_shape_class": hz_ds.get("decile_shape_class", ""),
+                        "q5_shape_class_from_pm26": hz_ds.get("q5_shape_class_from_pm26", ""),
+                        "shape_consistency_with_q5": hz_ds.get("shape_consistency_with_q5", ""),
+                        "note_zh": hz_ds.get("note_zh", ""),
+                        "note_en": hz_ds.get("note_en", ""),
+                    }
+                    # Derive Q1–Q5 mean returns from expected_order_decile_returns (D1+D2=Q1 … D9+D10=Q5)
+                    if len(eodr) == 10:
+                        hz_shape["q_returns"] = [
+                            (eodr[i * 2] + eodr[i * 2 + 1]) / 2.0 for i in range(5)
+                        ]
+                    # Raw expected-order decile returns for D1–D10 chart
+                    hz_shape["decile"]["expected_order_decile_returns"] = eodr
+                shape_data[hz] = hz_shape
+            factor["shape_stability"] = shape_data
+
         factors.append(factor)
 
     return {"summary": summary, "factors": factors}
@@ -501,6 +556,29 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 .regime-badge.DRAWDOWN_FRAGILE{background:#450a0a;color:#fecaca}
 .regime-caveat{background:#1a1a2e;border:1px solid #3b3b5c;color:#c4b5fd;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:11px;line-height:1.6}
 .regime-caveat strong{color:#e9d5ff}
+
+/* ── Shape / stability / decile badges (PM-28) ── */
+.shape-badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:600;white-space:nowrap}
+.shape-badge.EXCELLENT_MONOTONIC{background:#166534;color:#bbf7d0}
+.shape-badge.WEAK_MONOTONIC{background:#92400e;color:#fef3c7}
+.shape-badge.NON_MONOTONIC{background:#7f1d1d;color:#fecaca}
+.shape-badge.DECILE_MONOTONIC_STRONG{background:#166534;color:#bbf7d0}
+.shape-badge.DECILE_MONOTONIC_WEAK{background:#92400e;color:#fef3c7}
+.shape-badge.DECILE_NONLINEAR{background:#581c87;color:#e9d5ff}
+.shape-badge.DECILE_REVEALS_NONLINEARITY{background:#581c87;color:#e9d5ff}
+.shape-badge.CONSISTENT{background:#166534;color:#bbf7d0}
+.shape-badge.STABLE_POSITIVE{background:#166534;color:#bbf7d0}
+.shape-badge.STABLE_WEAK{background:#92400e;color:#fef3c7}
+.shape-badge.STABLE_NEGATIVE{background:#7f1d1d;color:#fecaca}
+.shape-badge.UNSTABLE{background:#450a0a;color:#fecaca}
+.shape-badge.TAIL_DOMINANT{background:#581c87;color:#e9d5ff}
+.shape-badge.MODERATE{background:#334155;color:#e2e8f0}
+.shape-badge.BOTH_TAILS_U_SHAPED{background:#581c87;color:#e9d5ff}
+.shape-badge.NONLINEAR_MIXED{background:#7f1d1d;color:#fecaca}
+.shape-badge.COST_SENSITIVE{background:#92400e;color:#fef3c7}
+.shape-badge.COST_COLLAPSED{background:#7f1d1d;color:#fecaca}
+.shape-caveat{background:#1a1a2e;border:1px solid #3b3b5c;color:#c4b5fd;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:11px;line-height:1.6}
+.shape-caveat strong{color:#e9d5ff}
 </style>
 </head>
 <body>
@@ -693,6 +771,58 @@ const REGIME_CLASS_LABELS = {
 function regimeBadge(cls){
   const l=REGIME_CLASS_LABELS[cls]||{zh:cls||'—',en:cls||'—',cls:''};
   return `<span class="regime-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+
+// PM-28: Shape / stability / decile label maps
+const QUANTILE_SHAPE_LABELS = {
+  EXCELLENT_MONOTONIC: {zh:'优秀单调',en:'EXCELLENT_MONOTONIC',cls:'EXCELLENT_MONOTONIC'},
+  WEAK_MONOTONIC: {zh:'弱单调',en:'WEAK_MONOTONIC',cls:'WEAK_MONOTONIC'},
+  NON_MONOTONIC: {zh:'非单调',en:'NON_MONOTONIC',cls:'NON_MONOTONIC'}
+};
+const STABILITY_CLASS_LABELS = {
+  STABLE_POSITIVE: {zh:'稳定正向',en:'STABLE_POSITIVE',cls:'STABLE_POSITIVE'},
+  STABLE_WEAK: {zh:'稳定偏弱',en:'STABLE_WEAK',cls:'STABLE_WEAK'},
+  STABLE_NEGATIVE: {zh:'稳定负向',en:'STABLE_NEGATIVE',cls:'STABLE_NEGATIVE'},
+  UNSTABLE: {zh:'不稳定',en:'UNSTABLE',cls:'UNSTABLE'}
+};
+const DECILE_SHAPE_LABELS = {
+  DECILE_MONOTONIC_STRONG: {zh:'十分位强单调',en:'DECILE_MONOTONIC_STRONG',cls:'DECILE_MONOTONIC_STRONG'},
+  DECILE_MONOTONIC_WEAK: {zh:'十分位弱单调',en:'DECILE_MONOTONIC_WEAK',cls:'DECILE_MONOTONIC_WEAK'},
+  BOTH_TAILS_U_SHAPED: {zh:'U型双尾',en:'BOTH_TAILS_U_SHAPED',cls:'BOTH_TAILS_U_SHAPED'},
+  NONLINEAR_MIXED: {zh:'非线性混合',en:'NONLINEAR_MIXED',cls:'NONLINEAR_MIXED'}
+};
+const SHAPE_CONSISTENCY_LABELS = {
+  CONSISTENT: {zh:'一致',en:'CONSISTENT',cls:'CONSISTENT'},
+  DECILE_REVEALS_NONLINEARITY: {zh:'十分位揭示非线性',en:'DECILE_REVEALS_NONLINEARITY',cls:'DECILE_REVEALS_NONLINEARITY'},
+  DECILE_REVEALS_TAIL_EFFECT: {zh:'十分位揭示尾部效应',en:'DECILE_REVEALS_TAIL_EFFECT',cls:'DECILE_REVEALS_NONLINEARITY'}
+};
+const TAIL_CONC_LABELS = {
+  TAIL_DOMINANT: {zh:'尾部主导',en:'TAIL_DOMINANT',cls:'TAIL_DOMINANT'},
+  MODERATE: {zh:'中等',en:'MODERATE',cls:'MODERATE'}
+};
+const DIR_HANDLING_LABELS = {
+  negative_flipped: {zh:'负向(已翻转)',en:'negative (flipped)',cls:''},
+  positive_asis: {zh:'正向(保持)',en:'positive (as-is)',cls:''}
+};
+function shapeBadge(cls){
+  const l=QUANTILE_SHAPE_LABELS[cls]||{zh:cls||'—',en:cls||'—',cls:''};
+  return `<span class="shape-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+function stabilityBadge(cls){
+  const l=STABILITY_CLASS_LABELS[cls]||{zh:cls||'—',en:cls||'—',cls:''};
+  return `<span class="shape-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+function decileShapeBadge(cls){
+  const l=DECILE_SHAPE_LABELS[cls]||{zh:cls||'—',en:cls||'—',cls:''};
+  return `<span class="shape-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+function shapeConsistencyBadge(cls){
+  const l=SHAPE_CONSISTENCY_LABELS[cls]||{zh:cls||'—',en:cls||'—',cls:''};
+  return `<span class="shape-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+function tailConcBadge(cls){
+  const l=TAIL_CONC_LABELS[cls]||{zh:cls||'—',en:cls||'—',cls:''};
+  return `<span class="shape-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
 }
 
 // ── Helpers ──
@@ -1534,6 +1664,152 @@ function renderDetail(fid){
       BTC市场状态标签为事后分类。因子在不同状态下的表现差异仅供参考，不构成可操作的择时信号。</span>
     </div>
     `:''}
+
+    ${(()=>{
+      const ss=f.shape_stability;
+      if(!ss)return '';
+      const hz=ss[f.best_horizon];
+      if(!hz)return '';
+      const sh=hz.shape||{};
+      const st=hz.stability||{};
+      const dc=hz.decile||{};
+      const qr=hz.q_returns||[];
+      const eodr=dc.expected_order_decile_returns||[];
+      if(!sh.quantile_shape_class&&!st.stability_class&&!dc.decile_shape_class)return '';
+
+      // Q1–Q5 bar chart
+      function qBarChart(returns,w,h){
+        if(!returns||returns.length===0)return '<div class="small">No data</div>';
+        const padL=60,padR=10,padT=10,padB=22;
+        const cw=w-padL-padR,ch=h-padT-padB;
+        const maxAbs=Math.max(0.000001,...returns.map(v=>Math.abs(v)));
+        const bw=Math.max(16,Math.min(50,Math.floor(cw/returns.length)-8));
+        function yPos(v){return padT+ch/2-(v/maxAbs)*(ch/2)}
+        let svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto">';
+        const mid=padT+ch/2;
+        svg+='<line x1="'+padL+'" y1="'+mid+'" x2="'+(w-padR)+'" y2="'+mid+'" stroke="#334155" stroke-dasharray="3"/>';
+        returns.forEach((v,i)=>{
+          const x=padL+(i/returns.length)*cw+(cw/returns.length-bw)/2;
+          const barH=Math.abs(v/maxAbs)*(ch/2);
+          const y=v>=0?mid-barH:mid;
+          const c=v>=0?'#34d399':'#f87171';
+          svg+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+barH+'" fill="'+c+'" rx="2"/>';
+          svg+='<text x="'+(x+bw/2)+'" y="'+(h-4)+'" text-anchor="middle" fill="#8ea0b8" font-size="10">Q'+(i+1)+'</text>';
+          svg+='<text x="'+(x+bw/2)+'" y="'+(y-3)+'" text-anchor="middle" fill="#8ea0b8" font-size="7">'+num(v,5)+'</text>';
+        });
+        svg+='<text x="4" y="'+mid+'" fill="#8ea0b8" font-size="8" dominant-baseline="middle">0</text>';
+        svg+='</svg>';
+        return svg;
+      }
+
+      // D1–D10 bar chart
+      function decileBarChart(returns,w,h){
+        if(!returns||returns.length===0)return '<div class="small">No data</div>';
+        const padL=60,padR=10,padT=10,padB=22;
+        const cw=w-padL-padR,ch=h-padT-padB;
+        const maxAbs=Math.max(0.000001,...returns.map(v=>Math.abs(v)));
+        const bw=Math.max(10,Math.min(30,Math.floor(cw/returns.length)-4));
+        function yPos(v){return padT+ch/2-(v/maxAbs)*(ch/2)}
+        let svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto">';
+        const mid=padT+ch/2;
+        svg+='<line x1="'+padL+'" y1="'+mid+'" x2="'+(w-padR)+'" y2="'+mid+'" stroke="#334155" stroke-dasharray="3"/>';
+        returns.forEach((v,i)=>{
+          const x=padL+(i/returns.length)*cw+(cw/returns.length-bw)/2;
+          const barH=Math.abs(v/maxAbs)*(ch/2);
+          const y=v>=0?mid-barH:mid;
+          const c=v>=0?'#34d399':'#f87171';
+          svg+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+barH+'" fill="'+c+'" rx="1"/>';
+          svg+='<text x="'+(x+bw/2)+'" y="'+(h-4)+'" text-anchor="middle" fill="#8ea0b8" font-size="9">D'+(i+1)+'</text>';
+          svg+='<text x="'+(x+bw/2)+'" y="'+(y-3)+'" text-anchor="middle" fill="#8ea0b8" font-size="6">'+num(v,5)+'</text>';
+        });
+        svg+='<text x="4" y="'+mid+'" fill="#8ea0b8" font-size="8" dominant-baseline="middle">0</text>';
+        svg+='</svg>';
+        return svg;
+      }
+
+      // Stability metrics mini-chart (bars for 3M/6M values)
+      function stabilityMiniChart(st,w,h){
+        const items=[];
+        if(st.rolling_ic_3m_mean_latest!==null&&st.rolling_ic_3m_mean_latest!==undefined) items.push({label:'IC 3M',val:st.rolling_ic_3m_mean_latest});
+        if(st.rolling_ic_6m_mean_latest!==null&&st.rolling_ic_6m_mean_latest!==undefined) items.push({label:'IC 6M',val:st.rolling_ic_6m_mean_latest});
+        if(st.rolling_ls_3m_mean_latest!==null&&st.rolling_ls_3m_mean_latest!==undefined) items.push({label:'LS 3M',val:st.rolling_ls_3m_mean_latest});
+        if(st.rolling_ls_6m_mean_latest!==null&&st.rolling_ls_6m_mean_latest!==undefined) items.push({label:'LS 6M',val:st.rolling_ls_6m_mean_latest});
+        if(!items.length)return '';
+        const padL=60,padR=10,padT=10,padB=22;
+        const cw=w-padL-padR,ch=h-padT-padB;
+        const maxAbs=Math.max(0.000001,...items.map(d=>Math.abs(d.val)));
+        const bw=Math.max(20,Math.min(60,Math.floor(cw/items.length)-8));
+        function yPos(v){return padT+ch/2-(v/maxAbs)*(ch/2)}
+        let svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto">';
+        const mid=padT+ch/2;
+        svg+='<line x1="'+padL+'" y1="'+mid+'" x2="'+(w-padR)+'" y2="'+mid+'" stroke="#334155" stroke-dasharray="3"/>';
+        items.forEach((d,i)=>{
+          const x=padL+(i/items.length)*cw+(cw/items.length-bw)/2;
+          const barH=Math.abs(d.val/maxAbs)*(ch/2);
+          const y=d.val>=0?mid-barH:mid;
+          const c=d.val>=0?'#34d399':'#f87171';
+          svg+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+barH+'" fill="'+c+'" rx="2"/>';
+          svg+='<text x="'+(x+bw/2)+'" y="'+(h-4)+'" text-anchor="middle" fill="#8ea0b8" font-size="9">'+esc(d.label)+'</text>';
+          svg+='<text x="'+(x+bw/2)+'" y="'+(y-3)+'" text-anchor="middle" fill="#8ea0b8" font-size="7">'+num(d.val,5)+'</text>';
+        });
+        svg+='<text x="4" y="'+mid+'" fill="#8ea0b8" font-size="8" dominant-baseline="middle">0</text>';
+        svg+='</svg>';
+        return svg;
+      }
+
+      return `
+        <div class="section-divider"></div>
+        <h3>Quantile Shape & Rolling Stability / 分位收益形状与滚动稳定性</h3>
+        <div style="margin:6px 0;display:flex;gap:6px;flex-wrap:wrap">
+          ${sh.quantile_shape_class?shapeBadge(sh.quantile_shape_class):''}
+          ${st.stability_class?stabilityBadge(st.stability_class):''}
+          ${dc.decile_shape_class?decileShapeBadge(dc.decile_shape_class):''}
+          ${dc.shape_consistency_with_q5?shapeConsistencyBadge(dc.shape_consistency_with_q5):''}
+          ${dc.expected_direction?`<span class="shape-badge" style="background:#334155;color:#e2e8f0">Dir: ${esc(dc.expected_direction)}</span>`:''}
+          ${dc.direction_handling?`<span class="shape-badge" style="background:#334155;color:#e2e8f0">${esc(dc.direction_handling)}</span>`:''}
+        </div>
+        <div class="metric-grid">
+          ${st.stability_score!==null&&st.stability_score!==undefined?metricRow('Stability Score 稳定性分数',num(st.stability_score,1)):''}
+          ${st.ic_positive_month_rate!==null&&st.ic_positive_month_rate!==undefined?metricRow('IC Win% IC月胜率',pct(st.ic_positive_month_rate)):''}
+          ${sh.monotonicity_score!==null&&sh.monotonicity_score!==undefined?metricRow('Monotonicity 单调性',num(sh.monotonicity_score,2)):''}
+          ${dc.direction_aware_spearman_corr!==null&&dc.direction_aware_spearman_corr!==undefined?metricRow('Dir-aware ρ 方向感知Spearman',num(dc.direction_aware_spearman_corr,4)):''}
+          ${dc.direction_aware_monotonicity_class?metricRow('Decile Mono. 十分位单调性','<span style="font-size:10px">'+esc(dc.direction_aware_monotonicity_class)+'</span>'):''}
+          ${dc.tail_concentration_class?metricRow('Tail Conc. 尾部集中度',dc.tail_concentration_class?tailConcBadge(dc.tail_concentration_class):'—'):''}
+        </div>
+
+        ${qr.length?`
+        <div class="chart-container">
+          <div class="chart-title">Q1–Q5 Quantile Shape (expected-order mean returns) · 分位收益形状（预期方向排序）</div>
+          ${qBarChart(qr,500,130)}
+        </div>`:''}
+
+        ${eodr.length?`
+        <div class="chart-container">
+          <div class="chart-title">Expected-order decile D1–D10 returns · 预期方向十分位收益</div>
+          ${decileBarChart(eodr,600,130)}
+        </div>`:''}
+
+        ${(()=>{
+          const sChart=stabilityMiniChart(st,400,110);
+          if(!sChart)return '';
+          return '<div class="chart-container"><div class="chart-title">Rolling IC/LS (3M & 6M latest) · 滚动IC/LS</div>'+sChart+'</div>';
+        })()}
+
+        ${sh.note_zh||dc.note_zh||st.note_zh?`
+        <div style="margin:6px 0">
+          ${sh.note_zh?`<div class="bilingual"><div class="zh" style="font-size:11px"><strong>Q5 Shape 分位形状:</strong> ${esc(sh.note_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(sh.note_en)}</div></div>`:''}
+          ${st.note_zh?`<div class="bilingual" style="margin-top:4px"><div class="zh" style="font-size:11px"><strong>Stability 稳定性:</strong> ${esc(st.note_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(st.note_en)}</div></div>`:''}
+          ${dc.note_zh?`<div class="bilingual" style="margin-top:4px"><div class="zh" style="font-size:11px"><strong>Decile 十分位:</strong> ${esc(dc.note_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(dc.note_en)}</div></div>`:''}
+        </div>`:''}
+
+        ${dc.shape_consistency_with_q5?`
+        <div class="shape-caveat">
+          <strong>⚠ Shape consistency 形状一致性:</strong> ${esc(dc.shape_consistency_with_q5)}<br>
+          <span style="color:var(--muted)">Q5 quantile classification: ${esc(dc.q5_shape_class_from_pm26||'—')}. Decile shape may reveal nonlinear effects not visible in 5-bucket quantile analysis.<br>
+          Q5分位分类: ${esc(dc.q5_shape_class_from_pm26||'—')}。十分位形状可能揭示5桶分位分析中不可见的非线性效应。</span>
+        </div>`:''}
+      `;
+    })()}
   `;
 }
 
