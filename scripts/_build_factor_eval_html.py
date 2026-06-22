@@ -105,6 +105,14 @@ def build_payload() -> dict:
     cap_liq_payload = load_json(DIAG_DIR / "factor_capacity_liquidity_payload.json")
     cap_liq_summary = load_csv(DIAG_DIR / "factor_capacity_liquidity_summary.csv")
 
+    # PM-35: Load factor-level evaluation data (fallback for new factors)
+    EVAL_DIR = BASE / "factor_level_evaluation"
+    feval_rankic = load_csv(EVAL_DIR / "factor_level_rankic_summary.csv")
+    feval_ls = load_csv(EVAL_DIR / "factor_level_long_short_summary.csv")
+    feval_period_ic = load_csv(EVAL_DIR / "factor_level_period_ic_summary.csv")
+    feval_period_ls = load_csv(EVAL_DIR / "factor_level_period_long_short_summary.csv")
+    feval_coverage = load_csv(EVAL_DIR / "factor_level_coverage_summary.csv")
+
     # PM-33: Load unified profile workflow data
     profile_payload = load_json(DIAG_DIR / "factor_profile_payload.json")
     unified_profile_list = profile_payload.get("factors", [])
@@ -243,6 +251,32 @@ def build_payload() -> dict:
         for _, r in component_scores_csv.iterrows():
             cs_map[str(r["factor_id"])] = r.to_dict()
 
+    # PM-35: Factor-level evaluation lookup maps
+    feval_rankic_map: dict[tuple, object] = {}
+    if not feval_rankic.empty:
+        for _, r in feval_rankic.iterrows():
+            feval_rankic_map[(r["factor_name"], r["horizon"])] = r
+
+    feval_ls_map: dict[tuple, object] = {}
+    if not feval_ls.empty:
+        for _, r in feval_ls.iterrows():
+            feval_ls_map[(r["factor_name"], r["horizon"])] = r
+
+    feval_pic_map: dict[tuple, object] = {}
+    if not feval_period_ic.empty:
+        for _, r in feval_period_ic.iterrows():
+            feval_pic_map[(r["factor_name"], r["horizon"], r["period"])] = r
+
+    feval_pls_map: dict[tuple, object] = {}
+    if not feval_period_ls.empty:
+        for _, r in feval_period_ls.iterrows():
+            feval_pls_map[(r["factor_name"], r["horizon"], r["period"])] = r
+
+    feval_cov_map: dict[str, object] = {}
+    if not feval_coverage.empty:
+        for _, r in feval_coverage.iterrows():
+            feval_cov_map[r["factor_name"]] = r
+
     # ── Build factor list ──
     factors = []
     for _, drow in diag.iterrows():
@@ -256,7 +290,14 @@ def build_payload() -> dict:
         fls = ls_series[ls_series["factor_id"] == fid] if not ls_series.empty else pd.DataFrame()
         fcum = cum_series[cum_series["factor_id"] == fid] if not cum_series.empty else pd.DataFrame()
 
-        best_hz = ss(drow.get("best_horizon", "1h")) or "1h"
+        best_hz = ss(drow.get("best_horizon", ""))
+        if not best_hz:
+            # Fallback to factor-level coverage best horizon
+            cov_row = feval_cov_map.get(fid)
+            if cov_row is not None:
+                best_hz = ss(cov_row.get("best_adj_ic_horizon", "")) or ""
+        if not best_hz:
+            best_hz = "1h"
 
         # Monthly IC for best horizon
         fic_best = fic[fic["horizon"] == best_hz].sort_values("month") if not fic.empty else pd.DataFrame()
@@ -269,6 +310,20 @@ def build_payload() -> dict:
                 "n_obs": int(r["n_obs"]) if not pd.isna(r.get("n_obs")) else None,
                 "positive_ic": bool(r["positive_ic"]) if not pd.isna(r.get("positive_ic")) else None,
             })
+
+        # PM-35: If no monthly IC from old diagnostics, try factor-level period IC
+        if not monthly_ic and not feval_period_ic.empty:
+            for (fz, hz, period), row in feval_pic_map.items():
+                if fz == fid and hz == best_hz:
+                    adj_val = sf(row.get("direction_adjusted_mean_rank_ic"))
+                    monthly_ic.append({
+                        "month": str(period),
+                        "rank_ic": sf(row.get("raw_mean_rank_ic")),
+                        "rank_ic_adj": adj_val,
+                        "n_obs": int(row["n_periods"]) if not pd.isna(row.get("n_periods")) else None,
+                        "positive_ic": bool(adj_val > 0) if adj_val is not None else None,
+                    })
+            monthly_ic.sort(key=lambda x: x["month"])
 
         # Monthly LS for best horizon
         fls_best = fls[fls["horizon"] == best_hz].sort_values("month") if not fls.empty else pd.DataFrame()
@@ -283,6 +338,23 @@ def build_payload() -> dict:
                 "n_short": int(r["n_short"]) if not pd.isna(r.get("n_short")) else None,
                 "positive_ls": bool(r["positive_ls"]) if not pd.isna(r.get("positive_ls")) else None,
             })
+
+        # PM-35: If no monthly LS from old diagnostics, try factor-level period LS
+        if not monthly_ls and not feval_period_ls.empty:
+            for (fz, hz, period), row in feval_pls_map.items():
+                if fz == fid and hz == best_hz:
+                    n_obs_val = int(row["n_obs"]) if not pd.isna(row.get("n_obs")) else None
+                    ls_ret = sf(row.get("long_short_return"))
+                    monthly_ls.append({
+                        "month": str(period),
+                        "long_short_return": ls_ret,
+                        "long_leg_return": sf(row.get("long_leg_return")),
+                        "short_leg_return": sf(row.get("short_leg_return")),
+                        "n_long": n_obs_val,
+                        "n_short": n_obs_val,
+                        "positive_ls": bool(row.get("positive_ls", False)) if not pd.isna(row.get("positive_ls")) else None,
+                    })
+            monthly_ls.sort(key=lambda x: x["month"])
 
         # Cumulative LS for best horizon
         fcum_best = fcum[fcum["horizon"] == best_hz].sort_values("month") if not cum_series.empty else pd.DataFrame()
@@ -393,6 +465,48 @@ def build_payload() -> dict:
             "monthly_ls": monthly_ls,
             "cum_curve": cum_curve,
         }
+
+        # PM-35: Merge factor-level eval data as fallback for missing diagnostics
+        if factor["rankic_mean"] is None:
+            feval_row = feval_rankic_map.get((fid, best_hz))
+            if feval_row is not None:
+                factor["rankic_mean"] = sf(feval_row.get("direction_adjusted_mean_rank_ic"))
+                # direction_adjusted_rank_ic_std is only in period IC summary, not rankic summary
+                factor["rankic_t_stat"] = sf(feval_row.get("t_stat"))
+                # coverage in rankic summary is a raw count; derive rate from missing_rate
+                missing_rate = sf(feval_row.get("missing_rate"))
+                factor["coverage_rate"] = round(1.0 - missing_rate, 6) if missing_rate is not None else None
+                if not ss(factor.get("best_horizon")):
+                    factor["best_horizon"] = best_hz
+
+            # Also try LS data for missing LS metrics
+            feval_ls_row = feval_ls_map.get((fid, best_hz))
+            if feval_ls_row is not None:
+                if factor.get("long_short_mean") is None:
+                    factor["long_short_mean"] = sf(feval_ls_row.get("long_short_spread_mean"))
+                if factor.get("long_short_sharpe") is None:
+                    factor["long_short_sharpe"] = sf(feval_ls_row.get("long_short_spread_t_stat"))
+                if factor.get("long_short_positive_month_rate") is None:
+                    factor["long_short_positive_month_rate"] = sf(feval_ls_row.get("long_short_win_rate"))
+
+            # Clear source_warning if we found data
+            if factor.get("rankic_mean") is not None and factor.get("source_warning"):
+                old_warn = factor["source_warning"]
+                factor["source_warning"] = old_warn.replace("no_horizon_data", "").replace("monthly_ls_unavailable", "").strip("; ")
+
+        # PM-35: Also try factor-level period IC for rankic_std / rankic_ir
+        if factor.get("rankic_std") is None and not feval_period_ic.empty:
+            feval_pic_row = feval_pic_map.get((fid, best_hz))
+            if feval_pic_row is not None:
+                factor["rankic_std"] = sf(feval_pic_row.get("direction_adjusted_rank_ic_std"))
+                if factor.get("rankic_ir") is None:
+                    factor["rankic_ir"] = sf(feval_pic_row.get("direction_adjusted_icir"))
+
+        # PM-35: Compute monthly_ic_positive_rate if still None and we have data
+        if factor.get("monthly_ic_positive_rate") is None and monthly_ic:
+            adj_vals = [m["rank_ic_adj"] for m in monthly_ic if m.get("rank_ic_adj") is not None]
+            if adj_vals:
+                factor["monthly_ic_positive_rate"] = round(sum(1 for v in adj_vals if v > 0) / len(adj_vals), 4)
 
         # PM-22 / PM-22B: Merge paper diagnostics into factor
         paper = paper_map.get(fid, {})
