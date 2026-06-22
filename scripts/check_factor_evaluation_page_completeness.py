@@ -447,6 +447,61 @@ def check_per_factor_detail_completeness(html_text: str) -> list[dict]:
         ))
     return results
 
+
+def check_pm40c_scorecard_redundancy_consistency(html_text: str) -> list[dict]:
+    """PM-40C: Verify scorecard and redundancy consistency for new factors.
+
+    For WORKFLOW_READY factors:
+    1. Scorecard should not show stale REVIEW_REQUIRED when profile says PROMISING
+    2. Redundancy should not show Valid Pairs 0/75 alongside NOVEL_DISTINCT
+    3. No unexplained no_horizon_data / monthly_ls_unavailable in source_warning
+    """
+    import re as _re
+    import json as _json
+    results = []
+    PM35 = ['rev_2h', 'mom_vol_adjusted_20h', 'range_breakout_vol_confirm_20h',
+            'volume_pressure_20h', 'xs_rank_mom_accel']
+
+    m = _re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>', html_text, _re.DOTALL)
+    if not m:
+        results.append(_fail('pm40c_payload', 'PM-40C scorecard/redundancy consistency', 'factorPayload not found'))
+        return results
+
+    data = _json.loads(m.group(1))
+    issues = []
+    for f in data.get('factors', []):
+        fid = f.get('factor_id', '')
+        if fid not in PM35:
+            continue
+        wf = f.get('workflow_ready_status', '')
+        if wf != 'WORKFLOW_READY':
+            continue
+
+        # Check 1: Scorecard should not be stale
+        qclass = f.get('final_quality_class', '')
+        pclass = f.get('profile_class', '')
+        if qclass == 'REVIEW_REQUIRED' and pclass and 'PROMISING' in pclass:
+            issues.append(f'{fid}: scorecard={qclass} conflicts with profile={pclass}')
+
+        # Check 2: No stale redundancy pair data alongside NOVEL_DISTINCT
+        novelty = f.get('novelty_assessment', '')
+        pairs = f.get('valid_redundancy_pair_count')
+        if novelty in ('NOVEL_DISTINCT', 'REDUNDANT_NOVELTY_DERIVED') and pairs == 0:
+            issues.append(f'{fid}: novelty={novelty} but valid_pairs=0 (stale)')
+
+        # Check 3: No stale source warnings
+        sw = f.get('source_warning', '')
+        if 'no_horizon_data' in sw:
+            issues.append(f'{fid}: source_warning has no_horizon_data')
+        if 'monthly_ls_unavailable' in sw:
+            issues.append(f'{fid}: source_warning has monthly_ls_unavailable')
+
+    if issues:
+        results.append(_fail('pm40c_consistency', 'PM-40C scorecard/redundancy consistency', '; '.join(issues)))
+    else:
+        results.append(_pass('pm40c_consistency', 'PM-40C scorecard/redundancy consistency', f'{len(PM35)} factors consistent'))
+    return results
+
 def check_section_markers(html_text: str) -> list[dict]:
     """Check each required section marker set."""
     results = []
@@ -576,6 +631,7 @@ def main() -> int:
     all_checks.append(check_new_factor_metrics_populated(html_text))
     all_checks.extend(check_pm40b_display_consistency(html_text))
     all_checks.extend(check_per_factor_detail_completeness(html_text))
+    all_checks.extend(check_pm40c_scorecard_redundancy_consistency(html_text))
 
     # 4. Section markers
     all_checks.extend(check_section_markers(html_text))

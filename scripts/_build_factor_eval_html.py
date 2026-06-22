@@ -657,6 +657,42 @@ def build_payload() -> dict:
             })
 
         # PM-33: Merge component scores
+        # PM-40C: Scorecard override from unified profile when scorecard is stale
+        # Scorecard is stale when its underlying metrics are all zero/None
+        # (computed before factor-level evaluation was available)
+        if hasattr(sc, "get"):
+            sc_rankic = sf(sc.get("rankic_mean"))
+            sc_coverage = sf(sc.get("coverage_rate"))
+            scorecard_is_stale = (sc_rankic is None or sc_rankic == 0) and (sc_coverage is None or sc_coverage == 0)
+            if scorecard_is_stale and factor.get("profile_score") is not None:
+                # Override stale scorecard with unified profile data
+                factor["final_quality_score"] = factor["profile_score"]
+                factor["final_quality_class"] = factor.get("profile_class", "")
+                factor["recommended_next_action"] = factor.get("recommended_research_action", "")
+                factor["score_confidence"] = factor.get("profile_confidence", "")
+                factor["review_notes_en"] = factor.get("profile_summary_en", "")
+                factor["review_notes_zh"] = factor.get("profile_summary_zh", "")
+                factor["main_strengths_en"] = factor.get("primary_strength_en", "")
+                factor["main_strengths_zh"] = factor.get("primary_strength_zh", "")
+                factor["main_weaknesses_en"] = factor.get("primary_risk_en", "")
+                factor["main_weaknesses_zh"] = factor.get("primary_risk_zh", "")
+                # Redundancy fields from profile
+                mi = factor.get("marginal_information_class", "")
+                if mi == "DISTINCT_SINGLETON":
+                    factor["novelty_assessment"] = "NOVEL_DISTINCT"
+                    factor["strongest_redundancy_level"] = "LOW_REDUNDANCY"
+                elif mi == "MOSTLY_REDUNDANT":
+                    factor["novelty_assessment"] = "REDUNDANT_NOVELTY_DERIVED"
+                    factor["strongest_redundancy_level"] = "MODERATE_REDUNDANCY"
+                # Clear stale redundancy pair data
+                factor["valid_redundancy_pair_count"] = None
+                factor["expected_redundancy_pair_count"] = None
+                factor["valid_redundancy_pair_coverage"] = None
+                factor["insufficient_overlap_pair_count"] = None
+                factor["nearest_factor"] = None
+                factor["nearest_abs_spearman_corr"] = None
+                factor["redundancy_source"] = "unified_profile"
+
         cs = cs_map.get(fid, {})
         if cs:
             factor.update({
@@ -693,6 +729,22 @@ def build_payload() -> dict:
                 "ev_has_unified_profile": bool(ev.get("has_unified_profile", False)),
             })
 
+
+        # PM-40C: Clear stale old redundancy fields that conflict with profile
+        if factor.get("workflow_ready_status") == "WORKFLOW_READY":
+            # If profile has real cluster data but old scorecard has stale pair counts
+            profile_cid = factor.get("profile_cluster_id")
+            sc_pair_count = factor.get("valid_redundancy_pair_count")
+            if profile_cid is not None and (sc_pair_count is None or sc_pair_count == 0):
+                # Old scorecard has no valid pairs — clear stale fields
+                factor["valid_redundancy_pair_count"] = None
+                factor["expected_redundancy_pair_count"] = None
+                factor["valid_redundancy_pair_coverage"] = None
+                factor["insufficient_overlap_pair_count"] = None
+                factor["nearest_factor"] = None
+                factor["nearest_abs_spearman_corr"] = None
+                # Mark that redundancy data comes from unified profile, not pairwise
+                factor["redundancy_source"] = "unified_profile"
         # PM-40B: Reconcile old redundancy with unified profile
         if factor.get("redundancy_cluster_id") is None or factor.get("redundancy_cluster_id") == -1:
             profile_cid = factor.get("profile_cluster_id")
@@ -711,6 +763,17 @@ def build_payload() -> dict:
                 factor["redundancy_level"] = "LOW_REDUNDANCY"
             elif mi == "MOSTLY_REDUNDANT":
                 factor["redundancy_level"] = "MODERATE_REDUNDANCY"
+
+
+        # PM-40C: Add unavailable reasons for empty LS metrics
+        ls_std = factor.get("long_short_std")
+        ls_ann_ret = factor.get("long_short_annualized_return")
+        ls_ann_vol = factor.get("long_short_annualized_vol")
+        ls_max_dd = factor.get("long_short_max_drawdown")
+        if any(v is None for v in [ls_std, ls_ann_ret, ls_ann_vol, ls_max_dd]):
+            factor["ls_metrics_unavailable_reason"] = "not available from factor-level summary; see paper portfolio diagnostics"
+        else:
+            factor["ls_metrics_unavailable_reason"] = None
 
         factors.append(factor)
 
@@ -1903,6 +1966,7 @@ function renderDetail(fid){
       ${metricRow('LS Win Rate LS月胜率',pct(f.long_short_positive_month_rate))}
       ${metricRow('Coverage 覆盖率',pct(f.coverage_rate))}
     </div>
+    ${f.ls_metrics_unavailable_reason?`<div style="margin:4px 0;font-size:10px;color:var(--muted);font-style:italic">${esc(f.ls_metrics_unavailable_reason)}</div>`:''}
 
     <div class="kv" style="margin-top:8px">
       <div>Redundancy 冗余度</div><div>${esc(f.redundancy_level)}</div>
@@ -1918,13 +1982,20 @@ function renderDetail(fid){
     <h3>Redundancy & Novelty / 冗余与新颖性</h3>
     <div class="kv">
       <div>Novelty Assessment 新颖性评估</div><div>${f.novelty_assessment?noveltyBadge(f.novelty_assessment):'—'}</div>
-      <div>Nearest Factor 最近相似因子</div><div>${esc(f.nearest_factor||'—')}</div>
-      <div>Nearest abs Spearman 最近|Spearman|</div><div>${f.nearest_abs_spearman_corr!==null?Number(f.nearest_abs_spearman_corr).toFixed(4):'—'}</div>
+      ${f.redundancy_source!=='unified_profile'?`
+        <div>Nearest Factor 最近相似因子</div><div>${esc(f.nearest_factor||'—')}</div>
+        <div>Nearest abs Spearman 最近|Spearman|</div><div>${f.nearest_abs_spearman_corr!==null?Number(f.nearest_abs_spearman_corr).toFixed(4):'—'}</div>
+      `:`
+        <div>Marginal Info 边际信息</div><div>${esc(f.marginal_information_class||'—')}</div>
+        <div>Cluster Role 聚类角色</div><div>${esc(f.cluster_member_role||'—')}</div>
+      `}
       <div>Strongest Redundancy 最强冗余等级</div><div>${f.strongest_redundancy_level?redundancyLevelBadge(f.strongest_redundancy_level):'—'}</div>
       <div>Redundancy Confidence 冗余置信度</div><div>${f.redundancy_confidence?scConfBadge(f.redundancy_confidence):'—'}</div>
-      <div>Valid Pairs 有效对</div><div>${f.valid_redundancy_pair_count!==null?Math.round(Number(f.valid_redundancy_pair_count))+' / '+Math.round(Number(f.expected_redundancy_pair_count)):'—'}</div>
-      <div>Valid Pair Coverage 有效对覆盖率</div><div>${f.valid_redundancy_pair_coverage!==null?pct(f.valid_redundancy_pair_coverage):'—'}</div>
-      <div>Insufficient Overlap 重叠不足对</div><div>${f.insufficient_overlap_pair_count!==null?Math.round(Number(f.insufficient_overlap_pair_count)):'—'}</div>
+      ${f.redundancy_source!=='unified_profile'?`
+        <div>Valid Pairs 有效对</div><div>${f.valid_redundancy_pair_count!==null?Math.round(Number(f.valid_redundancy_pair_count))+' / '+Math.round(Number(f.expected_redundancy_pair_count)):'—'}</div>
+        <div>Valid Pair Coverage 有效对覆盖率</div><div>${f.valid_redundancy_pair_coverage!==null?pct(f.valid_redundancy_pair_coverage):'—'}</div>
+        <div>Insufficient Overlap 重叠不足对</div><div>${f.insufficient_overlap_pair_count!==null?Math.round(Number(f.insufficient_overlap_pair_count)):'—'}</div>
+      `:''}
       <div>Cluster 聚类</div><div>${f.redundancy_cluster_id!==null?'#'+Math.round(Number(f.redundancy_cluster_id))+' ('+Math.round(Number(f.redundancy_cluster_size||0))+' factors)':'—'}</div>
     </div>
     <div style="margin-top:6px;font-size:10px;color:var(--muted)">
