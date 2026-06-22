@@ -1,5 +1,7 @@
 # PM-38 Prompt — Post-Intake Factor Interpretation and Direction-Semantics Review
 
+**SUPERSEDED / DEFERRED:** This prompt was not executed as PM-38. Use after PM-38B as PM-39 if factor interpretation remains the next task.
+
 You are the server-side engineering AI working inside the `jerry0012009/momentum` repository.
 
 This task follows PM-37:

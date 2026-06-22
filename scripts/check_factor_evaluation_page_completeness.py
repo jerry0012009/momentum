@@ -268,6 +268,84 @@ def check_section_markers(html_text: str) -> list[dict]:
     return results
 
 
+def check_entrypoint_doc_alignment() -> list[dict]:
+    """Check that entrypoint docs reference post-intake workflow docs."""
+    results = []
+
+    start_here = ROOT / "docs" / "factor_library" / "START_HERE.md"
+    control_center = ROOT / "docs" / "factor_library" / "FACTOR_LIBRARY_CONTROL_CENTER.md"
+    regen_contract = ROOT / "docs" / "factor_library" / "REGENERATION_CONTRACT.md"
+
+    # Check 1: START_HERE.md contains POST_INTAKE_WORKFLOW_RUNBOOK.md
+    if start_here.exists():
+        txt = start_here.read_text(encoding="utf-8")
+        if "POST_INTAKE_WORKFLOW_RUNBOOK.md" in txt:
+            results.append(_pass(
+                "doc_align_start_here",
+                "START_HERE.md references POST_INTAKE_WORKFLOW_RUNBOOK.md",
+                "Found",
+            ))
+        else:
+            results.append(_fail(
+                "doc_align_start_here",
+                "START_HERE.md references POST_INTAKE_WORKFLOW_RUNBOOK.md",
+                "Not found",
+                "Add section referencing POST_INTAKE_WORKFLOW_RUNBOOK.md",
+            ))
+    else:
+        results.append(_fail("doc_align_start_here", "START_HERE.md exists", "File not found"))
+
+    # Check 2: FACTOR_LIBRARY_CONTROL_CENTER.md contains POST_INTAKE_WORKFLOW_RUNBOOK.md
+    if control_center.exists():
+        txt = control_center.read_text(encoding="utf-8")
+        if "POST_INTAKE_WORKFLOW_RUNBOOK.md" in txt:
+            results.append(_pass(
+                "doc_align_control_center",
+                "FACTOR_LIBRARY_CONTROL_CENTER.md references POST_INTAKE_WORKFLOW_RUNBOOK.md",
+                "Found",
+            ))
+        else:
+            results.append(_fail(
+                "doc_align_control_center",
+                "FACTOR_LIBRARY_CONTROL_CENTER.md references POST_INTAKE_WORKFLOW_RUNBOOK.md",
+                "Not found",
+                "Add reference to POST_INTAKE_WORKFLOW_RUNBOOK.md in Extension Points or Audit First Steps",
+            ))
+    else:
+        results.append(_fail("doc_align_control_center", "FACTOR_LIBRARY_CONTROL_CENTER.md exists", "File not found"))
+
+    # Check 3: REGENERATION_CONTRACT.md contains POST_INTAKE_WORKFLOW_RUNBOOK.md or RESOURCE_AWARE_REFRESH_GUIDE.md
+    if regen_contract.exists():
+        txt = regen_contract.read_text(encoding="utf-8")
+        has_runbook = "POST_INTAKE_WORKFLOW_RUNBOOK.md" in txt
+        has_guide = "RESOURCE_AWARE_REFRESH_GUIDE.md" in txt
+        if has_runbook and has_guide:
+            results.append(_pass(
+                "doc_align_regen_contract",
+                "REGENERATION_CONTRACT.md references post-intake docs",
+                "Found both POST_INTAKE_WORKFLOW_RUNBOOK.md and RESOURCE_AWARE_REFRESH_GUIDE.md",
+            ))
+        elif has_runbook or has_guide:
+            found = "POST_INTAKE_WORKFLOW_RUNBOOK.md" if has_runbook else "RESOURCE_AWARE_REFRESH_GUIDE.md"
+            results.append(_fail(
+                "doc_align_regen_contract",
+                "REGENERATION_CONTRACT.md references post-intake docs",
+                f"Found only {found}",
+                "Add missing reference",
+            ))
+        else:
+            results.append(_fail(
+                "doc_align_regen_contract",
+                "REGENERATION_CONTRACT.md references post-intake docs",
+                "Not found",
+                "Add section referencing POST_INTAKE_WORKFLOW_RUNBOOK.md and RESOURCE_AWARE_REFRESH_GUIDE.md",
+            ))
+    else:
+        results.append(_fail("doc_align_regen_contract", "REGENERATION_CONTRACT.md exists", "File not found"))
+
+    return results
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -297,6 +375,9 @@ def main() -> int:
 
     # 4. Section markers
     all_checks.extend(check_section_markers(html_text))
+
+    # 5. Entrypoint doc alignment (PM-38B)
+    all_checks.extend(check_entrypoint_doc_alignment())
 
     # Write outputs
     _write_reports(all_checks)

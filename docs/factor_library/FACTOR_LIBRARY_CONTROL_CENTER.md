@@ -149,11 +149,13 @@ check_factor_ic_parity.py (H8-R parity guard)
 
 - **Factor library refresh:** `scripts/run_factor_library_refresh.py` — see `docs/factor_library/REGENERATION_CONTRACT.md` for the canonical pipeline contract
 - **New factor:** Add `FactorSpec` to `scripts/factor_formula_registry.py`, reuse `factor_ops.py` where possible, then run `scripts/run_factor_intake.py --factor-ids <factor_id...> --run-id <run_id>`
+- **Post-intake completion (small batches):** After intake, use the resource-aware runbook (`docs/factor_library/POST_INTAKE_WORKFLOW_RUNBOOK.md`) to complete remaining diagnostics incrementally. See also `docs/factor_library/RESOURCE_AWARE_REFRESH_GUIDE.md` for OOM avoidance and merge guidance.
 - **New factor operator:** Add a small reusable helper to `scripts/factor_ops.py` only when existing operators cannot express the formula
 - **New factor diagnostics:** Extend `scripts/evaluate_factors.py`, `scripts/build_factor_redundancy.py`, or `scripts/build_factor_conclusion_cards.py`; keep output schemas explicit and tested
 - **New signal:** Modify `scripts/build_phase9b_signal_panel.py`
 - **New evaluation metric:** Add to `scripts/evaluate_factors.py` or `scripts/evaluate_signals.py`
 - **Public site changes:** Edit files in `reports/site/factor-library/`
+- **Signal/live/strategy code:** OUT OF SCOPE. Do not modify `src/momentum/strategies/`, broker, execution, or exchange API code.
 
 ## Factor Intake Contract
 
@@ -207,7 +209,10 @@ Do not promote intake factors into signals during intake. Do not modify live tra
 6. Read `FILE_STATUS_REGISTER.csv` for file-level status
 7. Read `ORPHAN_WORK_AUDIT.md` for orphan risks
 8. For adding factors, use `run_factor_intake.py`; do not create a parallel workflow
-9. **Scope note:** This control center covers the factor library research pipeline only, not the full momentum repository.
+9. For post-intake completion, read `docs/factor_library/POST_INTAKE_WORKFLOW_RUNBOOK.md` (resource-aware incremental diagnostics)
+10. For OOM avoidance and batch guidance, read `docs/factor_library/RESOURCE_AWARE_REFRESH_GUIDE.md`
+11. Run `scripts/check_factor_evaluation_page_completeness.py` after page rebuilds
+12. **Scope note:** This control center covers the factor library research pipeline only, not the full momentum repository. Signal/live/strategy code remains out of scope.
 
 ---
 

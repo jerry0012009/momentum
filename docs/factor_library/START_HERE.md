@@ -151,6 +151,20 @@ Rules:
 
 ---
 
+## Resource-Aware Post-Intake Workflow / 资源感知的入库后工作流
+
+After PM-35 through PM-37, the factor library supports incremental diagnostics. **Future factor intake should prefer incremental/missing-only diagnostics over a blind full refresh**, especially on the 15GB development server (no swap).
+
+After running `run_factor_intake.py`, complete the remaining evidence with:
+
+1. **Post-Intake Workflow Runbook** — `docs/factor_library/POST_INTAKE_WORKFLOW_RUNBOOK.md` — step-by-step guide for completing 12/12 evidence after a controlled intake batch
+2. **Resource-Aware Refresh Guide** — `docs/factor_library/RESOURCE_AWARE_REFRESH_GUIDE.md` — how to avoid OOM, use `--factor-ids` / `--only-missing`, and merge paper portfolio outputs safely
+3. **Page Completeness QA** — `scripts/check_factor_evaluation_page_completeness.py` — verifies the public HTML page has all expected factors, sections, and disclaimers
+
+**Key rule:** Do not run a full library refresh (`--stage all --expensive-ok`) as the default after adding a small batch of 3–5 new factors. Use the resource-aware runbook instead.
+
+---
+
 ## Current Numbers / 当前数据
 
 - Registered factors / computed / missing: see `factor_library_state.json` / `factor_library_state.md` (auto-generated)

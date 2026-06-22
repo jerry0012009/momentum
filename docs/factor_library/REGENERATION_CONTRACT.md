@@ -372,3 +372,74 @@ Available presets: `all`, `cheap`, `page-only`, `scorecard-only`, `metadata-only
 │  python scripts/run_factor_library_refresh.py --stage page  │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 10. Post-Intake Completion Path (Resource-Aware)
+
+After a controlled intake batch (3–5 factors), **do not default to full refresh**. Use the resource-aware post-intake workflow instead.
+
+### 10.1 Why not full refresh after small intake?
+
+- Full refresh loads all 75+ factor parquets simultaneously → ~12GB peak RAM → OOM on 15GB/no-swap server
+- Full refresh touches unrelated diagnostic files → noisy git diffs
+- Full refresh is only appropriate after bulk structural changes (>10 factors or data source changes)
+
+### 10.2 Recommended path: incremental completion
+
+Follow `docs/factor_library/POST_INTAKE_WORKFLOW_RUNBOOK.md`:
+
+1. **intake** → `run_factor_intake.py --factor-ids <ids> --run-id <id>` (produces factor_values + partial eval)
+2. **factor_values** → already produced by intake
+3. **eval** → already produced by intake (partial evaluation)
+4. **partial diagnostics** → decile-shape + capacity-liquidity with `--factor-ids <ids>`
+5. **decile + capacity** → incremental, loads only specified factors
+6. **redundancy + cluster + marginal + rolling** → `--factor-ids <ids>` for pairwise, full for cluster
+7. **profile + staleness + page QA** → cheap stages, run normally
+
+### 10.3 Evidence closure after controlled intake
+
+| Evidence item | Source | Notes |
+|---|---|---|
+| factor_values.parquet | intake runner | Already computed |
+| RankIC evaluation | intake runner | Partial evaluation for intake factors |
+| Period IC series | intake runner | Collected from partial eval |
+| Quantile returns | intake runner | Collected from partial eval |
+| Long-short summary | intake runner | Collected from partial eval |
+| Decile-shape diagnostics | `build_factor_decile_shape_diagnostics.py --factor-ids` | Incremental |
+| Capacity-liquidity diagnostics | `build_factor_capacity_liquidity_diagnostics.py --factor-ids` | Incremental |
+| Pairwise redundancy | `build_factor_pairwise_redundancy_matrix.py --factor-ids` | O(k×n) not O(n²) |
+| Redundancy cluster | `build_factor_redundancy_cluster_diagnostics.py` | Requires full matrix |
+| Paper portfolio | `build_single_factor_paper_portfolio_diagnostics.py --factor-ids` | Merge into existing CSV |
+| Unified profile | `build_unified_factor_profile.py` | Cheap |
+| Page completeness QA | `check_factor_evaluation_page_completeness.py` | After page rebuild |
+
+### 10.4 Heavy stages and subset flags
+
+| Script | `--factor-ids` | `--only-missing` | `--expensive-ok` |
+|---|---|---|---|
+| `build_factor_values.py` | ✅ | ❌ | ❌ |
+| `evaluate_factors.py` | ✅ | ❌ | ❌ |
+| `build_factor_decile_shape_diagnostics.py` | ✅ | ✅ | ❌ |
+| `build_factor_capacity_liquidity_diagnostics.py` | ✅ | ✅ | ❌ |
+| `build_factor_pairwise_redundancy_matrix.py` | ✅ | ❌ | ❌ |
+| `build_factor_shape_stability_diagnostics.py` | ✅ | ✅ | ❌ |
+| `build_single_factor_paper_portfolio_diagnostics.py` | ✅ | ❌ | ❌ |
+| `run_factor_library_refresh.py` (orchestrator) | ❌ | ❌ | ✅ (gate for expensive stages) |
+
+`--expensive-ok` is a flag for `run_factor_library_refresh.py` only, not for individual diagnostic scripts.
+
+### 10.5 Page completeness QA
+
+After rebuilding the public page, run:
+
+```bash
+python scripts/check_factor_evaluation_page_completeness.py
+```
+
+This checks: file existence/size, factor coverage from unified profile CSV, PM-35 factor presence, and all required section markers (workflow, evidence, paper portfolio, regime, quantile shape, decile, capacity, redundancy, marginal, disclaimer).
+
+### 10.6 Resource-aware reference docs
+
+- **Post-Intake Workflow Runbook:** `docs/factor_library/POST_INTAKE_WORKFLOW_RUNBOOK.md`
+- **Resource-Aware Refresh Guide:** `docs/factor_library/RESOURCE_AWARE_REFRESH_GUIDE.md`
