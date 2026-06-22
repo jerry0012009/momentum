@@ -24,6 +24,7 @@ Stages (in pipeline order):
     metadata             Build bilingual factor cards (cheap)
     scorecard            Build quality scorecard (cheap)
     redundancy           Pairwise redundancy matrix (EXPENSIVE)
+    cluster              Redundancy cluster + marginal information diagnostics (PM-31) (cheap)
     paper-diagnostics    Single-factor paper portfolio diagnostics (EXPENSIVE)
     paper-page-payload   Build single-factor paper page payload (cheap)
     regime               BTC market regime diagnostics (PM-23) (cheap)
@@ -127,6 +128,16 @@ STAGES: list[dict] = [
         "commands": [
             ("build_factor_pairwise_redundancy_matrix", [
                 "python", str(SCRIPTS / "build_factor_pairwise_redundancy_matrix.py"),
+            ]),
+        ],
+    },
+    {
+        "name": "cluster",
+        "description": "Redundancy cluster and marginal information diagnostics (PM-31)",
+        "expensive": False,
+        "commands": [
+            ("build_factor_redundancy_cluster_diagnostics", [
+                "python", str(SCRIPTS / "build_factor_redundancy_cluster_diagnostics.py"),
             ]),
         ],
     },
