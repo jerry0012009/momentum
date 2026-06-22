@@ -374,3 +374,20 @@ LS aggregate statistics are now canonical outputs from `evaluate_factors.py`, wr
 **After new factor intake:** These fields are automatically populated by `evaluate_factors.py`. No separate step needed.
 
 **Page builder fallback:** `_build_factor_eval_html.py` reads these from canonical LS summary when old diagnostics fields are empty.
+
+## 12. Market Regime / BTC Diagnostics — workflow reintegration (PM-42)
+
+After new factor intake, ensure `factor_monthly_ic_series.csv` includes new factors, then run:
+
+```bash
+python scripts/build_factor_market_regime_diagnostics.py \
+  --btc-symbol auto --fee-bps 10 \
+  --output-dir research/factor_runs/crypto_top50_factor_library/factor_diagnostics
+```
+
+This produces:
+- `factor_regime_exposure_summary.csv` — per-factor BTC corr, regime class, bull-bear Δ
+- `factor_regime_summary.csv` — per-factor per-regime mean/std/positive_rate
+- `factor_regime_diagnostics_payload.json` — page payload
+
+If `factor_monthly_ic_series.csv` is missing new factors, merge from canonical `factor_level_period_ic_summary.csv` before running the regime script.

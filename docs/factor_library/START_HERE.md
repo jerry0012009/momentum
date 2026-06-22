@@ -269,3 +269,18 @@ After running `run_factor_intake.py`, complete the remaining evidence with:
 **年化规则：** monthly × 12 (return), monthly × √12 (vol), `annualization_method = "monthly_x12"`
 
 **新字段：** `long_short_spread_std`, `long_short_spread_annualized_return`, `long_short_spread_annualized_vol`, `long_short_spread_max_drawdown`, `long_short_spread_positive_period_rate`, `n_monthly_periods`, `annualization_method`
+
+## PM-42 教训：Market Regime / BTC Diagnostics 已有脚本，只需重新整合（2026-06-23）
+
+**核心教训：** `build_factor_market_regime_diagnostics.py`（PM-23/PM-24）已计算所有 regime/BTC 字段。PM-35 因子显示 `INSUFFICIENT_REGIME_DATA` 的根因是 `factor_monthly_ic_series.csv` 缺少这 5 个因子。
+
+**修复：** 将 PM-35 的 monthly IC 数据从 canonical `factor_level_period_ic_summary.csv` 合并到 `factor_monthly_ic_series.csv`，然后重新运行 regime 脚本。
+
+**关键字段：** `paper_return_btc_corr`, `paper_return_btc_beta`, `long_short_btc_corr`, `long_short_btc_beta`, `ic_btc_return_corr`, `bull_minus_bear_paper_return`, `highvol_minus_lowvol_paper_return`, `drawdown_minus_normal_paper_return`, `regime_dependency_class`
+
+**重要澄清：**
+- Regime labels 是 ex-post diagnostics，不是交易时机信号
+- BTC correlation/beta 是 research diagnostics，不是执行信号
+- `INSUFFICIENT_REGIME_DATA` 会在数据不足时明确显示
+
+**Workflow 要求：** 新因子 intake 后，必须确保 `factor_monthly_ic_series.csv` 包含新因子，然后重新运行 `build_factor_market_regime_diagnostics.py`。
