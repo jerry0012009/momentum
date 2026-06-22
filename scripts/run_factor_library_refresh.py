@@ -24,7 +24,10 @@ Stages (in pipeline order):
     metadata             Build bilingual factor cards (cheap)
     scorecard            Build quality scorecard (cheap)
     redundancy           Pairwise redundancy matrix (EXPENSIVE)
+    paper-diagnostics    Single-factor paper portfolio diagnostics (EXPENSIVE)
+    paper-page-payload   Build single-factor paper page payload (cheap)
     regime               BTC market regime diagnostics (PM-23) (cheap)
+    staleness            Check factor library staleness (cheap)
     page                 Rebuild factor-evaluation.html (cheap)
     state                Regenerate factor_library_state.json/md (cheap)
 
@@ -128,6 +131,26 @@ STAGES: list[dict] = [
         ],
     },
     {
+        "name": "paper-diagnostics",
+        "description": "Single-factor paper portfolio diagnostics (EXPENSIVE)",
+        "expensive": True,
+        "commands": [
+            ("build_single_factor_paper_portfolio_diagnostics", [
+                "python", str(SCRIPTS / "build_single_factor_paper_portfolio_diagnostics.py"),
+            ]),
+        ],
+    },
+    {
+        "name": "paper-page-payload",
+        "description": "Build single-factor paper page payload",
+        "expensive": False,
+        "commands": [
+            ("build_single_factor_paper_page_payload", [
+                "python", str(SCRIPTS / "build_single_factor_paper_page_payload.py"),
+            ]),
+        ],
+    },
+    {
         "name": "regime",
         "description": "BTC market regime diagnostics (PM-23)",
         "expensive": False,
@@ -136,6 +159,16 @@ STAGES: list[dict] = [
                 "python", str(SCRIPTS / "build_factor_market_regime_diagnostics.py"),
                 "--btc-symbol", "auto",
                 "--fee-bps", "10",
+            ]),
+        ],
+    },
+    {
+        "name": "staleness",
+        "description": "Check factor library staleness",
+        "expensive": False,
+        "commands": [
+            ("check_factor_library_staleness", [
+                "python", str(SCRIPTS / "check_factor_library_staleness.py"),
             ]),
         ],
     },

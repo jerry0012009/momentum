@@ -37,7 +37,10 @@ factor registry (scripts/factor_formula_registry.py)
   → quality scorecard (scripts/build_factor_quality_scorecard.py)
   → pairwise redundancy matrix (scripts/build_factor_pairwise_redundancy_matrix.py) [EXPENSIVE]
   → refreshed scorecard (scripts/build_factor_quality_scorecard.py)
+  → paper portfolio diagnostics (scripts/build_single_factor_paper_portfolio_diagnostics.py) [EXPENSIVE]
+  → paper page payload (scripts/build_single_factor_paper_page_payload.py) [CHEAP]
   → market regime diagnostics (scripts/build_factor_market_regime_diagnostics.py) [CHEAP]
+  → staleness check (scripts/check_factor_library_staleness.py) [CHEAP]
   → factor-evaluation page (scripts/_build_factor_eval_html.py)
   → factor_library_state (scripts/build_factor_library_state.py)
 ```
@@ -180,6 +183,9 @@ python scripts/run_factor_library_refresh.py --stage cheap
 | `build_factor_pairwise_redundancy_matrix.py` | **EXPENSIVE** | Loads and correlates all 71 factors pairwise |
 | `_build_factor_eval_html.py` | **Cheap** | Reads pre-computed CSVs/JSONs, generates HTML |
 | `build_factor_market_regime_diagnostics.py` | **Cheap** | Reads pre-computed diagnostics CSVs + BTC bars |
+| `build_single_factor_paper_portfolio_diagnostics.py` | **EXPENSIVE** | Runs paper portfolio backtests per factor |
+| `build_single_factor_paper_page_payload.py` | **Cheap** | Builds JSON payload for paper section of page |
+| `check_factor_library_staleness.py` | **Cheap** | Checks artifact coverage, redundancy, staleness |
 | `build_factor_library_state.py` | **Cheap** | Reads pre-computed artifacts, generates state |
 
 ---
@@ -240,6 +246,7 @@ market_regime_monthly_labels.csv, factor_regime_*.csv, factor_regime_diagnostics
   ← factor_monthly_ic_series.csv
   ← factor_monthly_long_short_series.csv
   ← single_factor_paper_monthly_returns.csv
+    (PM-21B paper monthly returns dependency)
 
 factor-evaluation.html
   ← factor_diagnostics_summary
@@ -318,7 +325,7 @@ The `scripts/run_factor_library_refresh.py` script provides:
 - Stdout logging of every command
 - Fail-fast on any non-zero exit code
 
-Available stages: `registry-integrity`, `catalog`, `values`, `direction-audit`, `evaluate`, `diagnostics`, `metadata`, `scorecard`, `redundancy`, `regime`, `page`, `state`
+Available stages: `registry-integrity`, `catalog`, `values`, `direction-audit`, `evaluate`, `diagnostics`, `metadata`, `scorecard`, `redundancy`, `paper-diagnostics`, `paper-page-payload`, `regime`, `staleness`, `page`, `state`
 
 Available presets: `all`, `cheap`, `page-only`, `scorecard-only`, `metadata-only`, `diagnostics-only`, `redundancy-only`
 
