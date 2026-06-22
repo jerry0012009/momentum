@@ -224,3 +224,25 @@ After running `run_factor_intake.py`, complete the remaining evidence with:
 **预防规则：**
 1. 新增因子 batch 后，验证 `factor_level_period_ic_summary.csv` 包含所有新因子
 2. 如果 period IC 缺失，至少确保 rankic 汇总有数据（作为 fallback 展示）
+
+## PM-40B 完整教训：6 层修复经验（2026-06-22）
+
+**核心教训：** 新因子 12/12 evidence complete 不等于页面所有 legacy sections 自动完整。
+
+**三层根因：**
+1. **数据层：** period IC 数据在 batch 文件中，未合并到 canonical CSV → Monthly RankIC 为空
+2. **Payload 层：** paper payload 未重新生成 → Paper section 显示 N/A
+3. **Builder 层：** 字段映射错误（key 维度不匹配）、redundancy fallback 缺失
+
+**必须遵守的 post-intake 检查清单：**
+1. ✅ 合并 period IC batch 数据到 canonical CSV
+2. ✅ 运行 `build_single_factor_paper_page_payload.py` 重新生成 paper payload
+3. ✅ 验证 `rankic_std` / `rankic_ir` 从 period IC 数据计算
+4. ✅ 检查 redundancy section 与 Unified Profile 一致性
+5. ✅ 运行 `check_factor_evaluation_page_completeness.py`（22 项检查）
+6. ✅ 部署后 `curl -I` 验证 HTTP 200
+
+**关键脚本依赖：**
+- `evaluate_factors.py --factor-ids` → 生成 period IC（但 canonical CSV 需手动合并）
+- `build_single_factor_paper_page_payload.py` → 生成 paper payload（需手动运行）
+- `_build_factor_eval_html.py` → 构建 HTML（需手动运行）

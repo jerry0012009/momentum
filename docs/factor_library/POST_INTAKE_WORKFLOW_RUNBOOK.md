@@ -340,3 +340,19 @@ Only additions to registry and incremental diagnostics are permitted.
 - `rev_2h`, `mom_vol_adjusted_20h`, `range_breakout_vol_confirm_20h`, `volume_pressure_20h`, `xs_rank_mom_accel`
 
 **Prevention:** After any new factor intake batch, verify that the HTML builder can resolve metrics for ALL new factors. Add a check to `check_factor_evaluation_page_completeness.py` that validates: for each factor in the page payload, if `rankic_mean` is None and `ev_has_factor_level_evaluation` is True, flag as incomplete.
+
+## 10. Post-intake payload regeneration checklist (PM-40B 教训)
+
+After adding new factors to the factor library, the following payloads must be regenerated:
+
+| Payload | Script | Manual? |
+|---------|--------|---------|
+| `factor_level_period_ic_summary.csv` | `evaluate_factors.py` + manual merge from batch CSV | Yes — merge batch → canonical |
+| `single_factor_paper_page_payload.json` | `build_single_factor_paper_page_payload.py` | Yes — must run manually |
+| `factor_shape_stability_payload.json` | `build_factor_shape_stability_diagnostics.py` | Usually auto |
+| `factor_capacity_liquidity_payload.json` | `build_factor_capacity_liquidity_diagnostics.py` | Usually auto |
+| `factor_profile_payload.json` | `build_unified_factor_profile.py` | Usually auto |
+
+**Critical:** `rankic_std` and `rankic_ir` are NOT in `factor_diagnostics_summary.csv` or `factor_level_rankic_summary.csv`. They must be computed from period IC data. The HTML builder now computes them from `monthly_ic` if they're None.
+
+**QA command:** `python scripts/check_factor_evaluation_page_completeness.py` (22 checks including per-factor detail completeness)
