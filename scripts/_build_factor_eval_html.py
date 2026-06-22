@@ -1306,7 +1306,7 @@ function renderDetail(fid){
       ${metricRow('B/E Fee 盈亏平衡',f.break_even_fee_bps!==null&&f.break_even_fee_bps!==undefined?Math.round(Number(f.break_even_fee_bps))+' bps':'—')}
       ${metricRow('0bps Return',num(f.fee_0bps_total_return,2))}
       ${metricRow('5bps Return',num(f.fee_5bps_total_return,2))}
-      ${metricRow('10bps Return',num(f.fee_10bps_total_return,2),f.fee_10bps_total_return!==null&&f.fee_10bps_total_return<0?'':''}
+      ${metricRow('10bps Return',num(f.fee_10bps_total_return,2),f.fee_10bps_total_return!==null&&f.fee_10bps_total_return<0?'':'')}
       ${metricRow('20bps Return',num(f.fee_20bps_total_return,2))}
     </div>
     ${f.main_diagnostic_note_zh||f.main_diagnostic_note_en?`<div class="bilingual" style="margin:6px 0"><div class="zh" style="font-size:11px">${esc(f.main_diagnostic_note_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(f.main_diagnostic_note_en)}</div></div>`:''}
