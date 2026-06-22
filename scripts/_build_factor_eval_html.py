@@ -85,6 +85,10 @@ def build_payload() -> dict:
     shape_stability_payload = load_json(DIAG_DIR / "factor_shape_stability_payload.json")
     decile_shape_payload = load_json(DIAG_DIR / "factor_decile_shape_payload.json")
 
+    # PM-30: Load capacity / liquidity proxy diagnostics
+    cap_liq_payload = load_json(DIAG_DIR / "factor_capacity_liquidity_payload.json")
+    cap_liq_summary = load_csv(DIAG_DIR / "factor_capacity_liquidity_summary.csv")
+
     # ── Summary stats ──
     all_months = sorted(ic_series["month"].unique().tolist()) if not ic_series.empty else []
     quality_counts = cards["metadata_quality"].value_counts().to_dict() if not cards.empty else {}
@@ -192,6 +196,12 @@ def build_payload() -> dict:
     ds_map: dict[str, dict] = {}
     for ds_entry in decile_shape_payload.get("factors", []):
         ds_map[ds_entry["factor_id"]] = ds_entry
+
+    # PM-30: Capacity / liquidity lookup maps (CSV has more detail than JSON)
+    cap_liq_csv_map: dict[str, dict] = {}
+    if not cap_liq_summary.empty:
+        for _, r in cap_liq_summary.iterrows():
+            cap_liq_csv_map[str(r["factor_id"])] = r.to_dict()
 
     # ── Build factor list ──
     factors = []
@@ -433,7 +443,49 @@ def build_payload() -> dict:
                 shape_data[hz] = hz_shape
             factor["shape_stability"] = shape_data
 
+        # PM-30: Merge capacity / liquidity proxy diagnostics
+        cl_row = cap_liq_csv_map.get(fid)
+        if cl_row:
+            factor.update({
+                "cap_liq_proxy_method": ss(cl_row.get("liquidity_proxy_method", "")),
+                "cap_liq_capacity_risk_class": ss(cl_row.get("capacity_risk_class", "")),
+                "cap_liq_liquidity_risk_class": ss(cl_row.get("liquidity_risk_class", "")),
+                "cap_liq_capacity_liquidity_class": ss(cl_row.get("capacity_liquidity_class", "")),
+                "cap_liq_volume_concentration_class": ss(cl_row.get("volume_concentration_class", "")),
+                "cap_liq_factor_quality_cross_flag": ss(cl_row.get("factor_quality_cross_flag", "")),
+                "cap_liq_avg_turnover": sf(cl_row.get("avg_turnover")),
+                "cap_liq_median_turnover": sf(cl_row.get("median_turnover")),
+                "cap_liq_p90_turnover": sf(cl_row.get("p90_turnover")),
+                "cap_liq_selected_basket_volume_median": sf(cl_row.get("selected_basket_volume_median")),
+                "cap_liq_selected_basket_volume_p10": sf(cl_row.get("selected_basket_volume_p10")),
+                "cap_liq_selected_symbol_count_median": sf(cl_row.get("selected_symbol_count_median")),
+                "cap_liq_long_basket_volume_median": sf(cl_row.get("long_basket_volume_median")),
+                "cap_liq_short_basket_volume_median": sf(cl_row.get("short_basket_volume_median")),
+                "cap_liq_low_volume_symbol_share": sf(cl_row.get("low_volume_symbol_share")),
+                "cap_liq_selected_top_symbol_volume_share_median": sf(cl_row.get("selected_top_symbol_volume_share_median")),
+                "cap_liq_capacity_at_1pct": sf(cl_row.get("capacity_at_1pct_participation_selected")),
+                "cap_liq_capacity_at_5pct": sf(cl_row.get("capacity_at_5pct_participation_selected")),
+                "cap_liq_capacity_at_10pct": sf(cl_row.get("capacity_at_10pct_participation_selected")),
+                "cap_liq_participation_100k_median": sf(cl_row.get("participation_100000_selected_median")),
+                "cap_liq_participation_100k_p10": sf(cl_row.get("participation_100000_selected_p10")),
+                "cap_liq_participation_1M_median": sf(cl_row.get("participation_1000000_selected_median")),
+                "cap_liq_participation_1M_p10": sf(cl_row.get("participation_1000000_selected_p10")),
+                "cap_liq_participation_10M_median": sf(cl_row.get("participation_10000000_selected_median")),
+                "cap_liq_participation_10M_p10": sf(cl_row.get("participation_10000000_selected_p10")),
+            })
+
         factors.append(factor)
+
+    # PM-30: Capacity / liquidity summary stats (after factors are built)
+    cap_liq_class_counts: dict[str, int] = {}
+    for f in factors:
+        clc = f.get("cap_liq_capacity_liquidity_class", "")
+        if clc:
+            cap_liq_class_counts[clc] = cap_liq_class_counts.get(clc, 0) + 1
+        cf = f.get("cap_liq_factor_quality_cross_flag", "")
+        if cf:
+            cap_liq_class_counts[cf] = cap_liq_class_counts.get(cf, 0) + 1
+    summary["cap_liq_class_counts"] = cap_liq_class_counts
 
     return {"summary": summary, "factors": factors}
 
@@ -579,6 +631,23 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 .shape-badge.COST_COLLAPSED{background:#7f1d1d;color:#fecaca}
 .shape-caveat{background:#1a1a2e;border:1px solid #3b3b5c;color:#c4b5fd;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:11px;line-height:1.6}
 .shape-caveat strong{color:#e9d5ff}
+
+/* ── Capacity / liquidity badges (PM-30) ── */
+.cap-badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:600;white-space:nowrap}
+.cap-badge.CAPACITY_FRIENDLY{background:#166534;color:#bbf7d0}
+.cap-badge.MODERATE_CAPACITY_RISK{background:#92400e;color:#fef3c7}
+.cap-badge.CAPACITY_FRAGILE{background:#7f1d1d;color:#fecaca}
+.cap-badge.LIQUIDITY_FRAGILE{background:#7f1d1d;color:#fecaca}
+.cap-badge.LIQUIDITY_ADEQUATE{background:#166534;color:#bbf7d0}
+.cap-badge.WATCH_LIQUIDITY{background:#92400e;color:#fef3c7}
+.cap-badge.WATCH_BOTH{background:#7f1d1d;color:#fecaca}
+.cap-badge.CAPACITY_OK{background:#166534;color:#bbf7d0}
+.cap-badge.DIVERSIFIED_LIQUIDITY{background:#166534;color:#bbf7d0}
+.cap-badge.CONCENTRATED_LIQUIDITY{background:#92400e;color:#fef3c7}
+.cap-badge.STABLE_BUT_TOO_ILLIQUID{background:#7f1d1d;color:#fecaca}
+.cap-badge.NONE_FLAG{background:#334155;color:#e2e8f0}
+.cap-caveat{background:#1a1a2e;border:1px solid #3b3b5c;color:#c4b5fd;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:11px;line-height:1.6}
+.cap-caveat strong{color:#e9d5ff}
 </style>
 </head>
 <body>
@@ -601,6 +670,7 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 
 <div id="paperSummarySection"></div>
 <div id="regimeSummarySection"></div>
+<div id="capLiqSummarySection"></div>
 
 <div id="caveatsSection"></div>
 
@@ -825,6 +895,33 @@ function tailConcBadge(cls){
   return `<span class="shape-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
 }
 
+// PM-30: Capacity / liquidity label maps
+const CAP_RISK_LABELS = {
+  CAPACITY_FRIENDLY: {zh:'容量友好',en:'CAPACITY_FRIENDLY',cls:'CAPACITY_FRIENDLY'},
+  MODERATE_CAPACITY_RISK: {zh:'中等容量风险',en:'MODERATE_CAPACITY_RISK',cls:'MODERATE_CAPACITY_RISK'},
+  CAPACITY_FRAGILE: {zh:'容量脆弱',en:'CAPACITY_FRAGILE',cls:'CAPACITY_FRAGILE'}
+};
+const LIQ_RISK_LABELS = {
+  LIQUIDITY_FRAGILE: {zh:'流动性脆弱',en:'LIQUIDITY_FRAGILE',cls:'LIQUIDITY_FRAGILE'},
+  LIQUIDITY_ADEQUATE: {zh:'流动性充足',en:'LIQUIDITY_ADEQUATE',cls:'LIQUIDITY_ADEQUATE'}
+};
+const CAP_LIQ_CLASS_LABELS = {
+  WATCH_LIQUIDITY: {zh:'关注流动性',en:'WATCH_LIQUIDITY',cls:'WATCH_LIQUIDITY'},
+  WATCH_BOTH: {zh:'关注两者',en:'WATCH_BOTH',cls:'WATCH_BOTH'},
+  CAPACITY_OK: {zh:'容量正常',en:'CAPACITY_OK',cls:'CAPACITY_OK'}
+};
+const VOL_CONC_LABELS = {
+  DIVERSIFIED_LIQUIDITY: {zh:'分散流动性',en:'DIVERSIFIED_LIQUIDITY',cls:'DIVERSIFIED_LIQUIDITY'},
+  CONCENTRATED_LIQUIDITY: {zh:'集中流动性',en:'CONCENTRATED_LIQUIDITY',cls:'CONCENTRATED_LIQUIDITY'}
+};
+const CROSS_FLAG_LABELS = {
+  STABLE_BUT_TOO_ILLIQUID: {zh:'稳定但流动性不足',en:'STABLE_BUT_TOO_ILLIQUID',cls:'STABLE_BUT_TOO_ILLIQUID'}
+};
+function capBadge(cls,map){
+  const l=map[cls]||{zh:cls||'—',en:cls||'—',cls:cls||''};
+  return `<span class="cap-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+
 // ── Helpers ──
 function esc(v){return String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function num(v,d=4,signed=true){if(v===null||v===undefined||Number.isNaN(v))return '—';const s=signed&&v>=0?'+':'';return s+Number(v).toFixed(d)}
@@ -1004,6 +1101,37 @@ function scSubBar(key,score){
       <strong>⚠ Regime diagnostics identify conditional behavior, not trade rules / 市场状态诊断识别条件行为，非交易规则</strong><br>
       <span style="color:var(--muted)">Regime labels are ex-post classifications of BTC market conditions. They show how factor returns vary with market state, but do not predict future regime transitions or constitute timing signals.<br>
       市场状态标签是事后分类。展示因子收益如何随市场状态变化，但不预测未来状态转换或构成择时信号。</span>
+    </div>
+  `;
+})();
+
+// ── PM-30: Capacity / liquidity summary section ──
+(function(){
+  const el=document.getElementById('capLiqSummarySection');
+  if(!el)return;
+  const clc=S.cap_liq_class_counts||{};
+  const crr=clc.CAPACITY_FRIENDLY||0;
+  const cmr=clc.MODERATE_CAPACITY_RISK||0;
+  const cfr=clc.CAPACITY_FRAGILE||0;
+  const lfr=clc.LIQUIDITY_FRAGILE||0;
+  const wcl=clc.WATCH_LIQUIDITY||0;
+  const wcb=clc.WATCH_BOTH||0;
+  const illq=clc.STABLE_BUT_TOO_ILLIQUID||0;
+  el.innerHTML=`
+    <h2 style="margin-bottom:6px">Capacity / Liquidity Proxy Summary · 容量 / 流动性代理概要</h2>
+    <div class="sc-summary-grid">
+      <div class="sc-summary-card"><strong style="color:var(--green)">${crr}</strong><span>Capacity Friendly<br>容量友好</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--amber)">${cmr}</strong><span>Moderate Cap Risk<br>中等容量风险</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--red)">${cfr}</strong><span>Capacity Fragile<br>容量脆弱</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--red)">${lfr}</strong><span>Liquidity Fragile<br>流动性脆弱</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--amber)">${wcl}</strong><span>Watch Liquidity<br>关注流动性</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--red)">${wcb}</strong><span>Watch Both<br>关注两者</span></div>
+      <div class="sc-summary-card"><strong style="color:#dc2626">${illq}</strong><span>Stable but Illiquid<br>稳定但流动性不足</span></div>
+    </div>
+    <div class="cap-caveat">
+      <strong>⚠ Selected-basket proxy warning · 选中篮子代理警告</strong><br>
+      <span style="color:var(--muted)">These are capacity/liquidity proxies based on selected-basket volume and turnover. They are not order-book simulation, slippage estimates, or real execution capacity.<br>
+      这些是基于选中篮子成交量与换手率的容量 / 流动性代理指标，不是订单簿模拟、滑点估计或真实可交易容量结论。</span>
     </div>
   `;
 })();
@@ -1810,6 +1938,59 @@ function renderDetail(fid){
         </div>`:''}
       `;
     })()}
+
+    ${f.cap_liq_capacity_risk_class?`
+    <div class="section-divider"></div>
+    <h3>Capacity / Liquidity Proxy Diagnostics / 容量 / 流动性代理诊断</h3>
+    <div style="margin:6px 0;display:flex;gap:6px;flex-wrap:wrap">
+      ${capBadge(f.cap_liq_capacity_risk_class,CAP_RISK_LABELS)}
+      ${capBadge(f.cap_liq_liquidity_risk_class,LIQ_RISK_LABELS)}
+      ${capBadge(f.cap_liq_capacity_liquidity_class,CAP_LIQ_CLASS_LABELS)}
+      ${f.cap_liq_volume_concentration_class?capBadge(f.cap_liq_volume_concentration_class,VOL_CONC_LABELS):''}
+      ${f.cap_liq_factor_quality_cross_flag?capBadge(f.cap_liq_factor_quality_cross_flag,CROSS_FLAG_LABELS):''}
+    </div>
+    <div style="margin:4px 0;font-size:10px;color:var(--muted)">Proxy Method 代理方法: ${esc(f.cap_liq_proxy_method||'—')}</div>
+    <div class="metric-grid">
+      ${f.cap_liq_avg_turnover!==null&&f.cap_liq_avg_turnover!==undefined?metricRow('Avg Turnover 平均换手',num(f.cap_liq_avg_turnover,4,false)):''}
+      ${f.cap_liq_median_turnover!==null&&f.cap_liq_median_turnover!==undefined?metricRow('Median Turnover 中位换手',num(f.cap_liq_median_turnover,4,false)):''}
+      ${f.cap_liq_p90_turnover!==null&&f.cap_liq_p90_turnover!==undefined?metricRow('P90 Turnover 90分位换手',num(f.cap_liq_p90_turnover,4,false)):''}
+      ${f.cap_liq_selected_basket_volume_median!==null&&f.cap_liq_selected_basket_volume_median!==undefined?metricRow('Basket Vol Median 选中篮子成交量中位',f.cap_liq_selected_basket_volume_median!==null?Number(f.cap_liq_selected_basket_volume_median).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_selected_basket_volume_p10!==null&&f.cap_liq_selected_basket_volume_p10!==undefined?metricRow('Basket Vol P10 选中篮子成交量P10',f.cap_liq_selected_basket_volume_p10!==null?Number(f.cap_liq_selected_basket_volume_p10).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_selected_symbol_count_median!==null?metricRow('Symbol Count Med 中位符号数',f.cap_liq_selected_symbol_count_median!==null?Math.round(Number(f.cap_liq_selected_symbol_count_median)):'—'):''}
+      ${f.cap_liq_long_basket_volume_median!==null&&f.cap_liq_long_basket_volume_median!==undefined?metricRow('Long Basket Vol 多头篮子成交量',f.cap_liq_long_basket_volume_median!==null?Number(f.cap_liq_long_basket_volume_median).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_short_basket_volume_median!==null&&f.cap_liq_short_basket_volume_median!==undefined?metricRow('Short Basket Vol 空头篮子成交量',f.cap_liq_short_basket_volume_median!==null?Number(f.cap_liq_short_basket_volume_median).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_low_volume_symbol_share!==null&&f.cap_liq_low_volume_symbol_share!==undefined?metricRow('Low-Vol Share 低成交量占比',pct(f.cap_liq_low_volume_symbol_share)):''}
+      ${f.cap_liq_selected_top_symbol_volume_share_median!==null?metricRow('Top Symbol Vol Share Med 头部成交量占比中位',pct(f.cap_liq_selected_top_symbol_volume_share_median)):''}
+    </div>
+
+    <div style="margin-top:8px;font-size:11px;font-weight:600;color:var(--muted)">Capacity Estimates 容量估计 (USD)</div>
+    <div class="metric-grid">
+      ${f.cap_liq_capacity_at_1pct!==null&&f.cap_liq_capacity_at_1pct!==undefined?metricRow('1% Participation 参与率1%',f.cap_liq_capacity_at_1pct!==null?'$'+Number(f.cap_liq_capacity_at_1pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_capacity_at_5pct!==null&&f.cap_liq_capacity_at_5pct!==undefined?metricRow('5% Participation 参与率5%',f.cap_liq_capacity_at_5pct!==null?'$'+Number(f.cap_liq_capacity_at_5pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_capacity_at_10pct!==null&&f.cap_liq_capacity_at_10pct!==undefined?metricRow('10% Participation 参与率10%',f.cap_liq_capacity_at_10pct!==null?'$'+Number(f.cap_liq_capacity_at_10pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+    </div>
+
+    <div style="margin-top:8px;font-size:11px;font-weight:600;color:var(--muted)">Participation Rates by Notional 参与率（按名义金额）</div>
+    <div class="metric-grid">
+      ${f.cap_liq_participation_100k_median!==null&&f.cap_liq_participation_100k_median!==undefined?metricRow('$100K Median',pct(f.cap_liq_participation_100k_median)):''}
+      ${f.cap_liq_participation_100k_p10!==null&&f.cap_liq_participation_100k_p10!==undefined?metricRow('$100K P10',pct(f.cap_liq_participation_100k_p10)):''}
+      ${f.cap_liq_participation_1M_median!==null&&f.cap_liq_participation_1M_median!==undefined?metricRow('$1M Median',pct(f.cap_liq_participation_1M_median)):''}
+      ${f.cap_liq_participation_1M_p10!==null&&f.cap_liq_participation_1M_p10!==undefined?metricRow('$1M P10',pct(f.cap_liq_participation_1M_p10)):''}
+      ${f.cap_liq_participation_10M_median!==null&&f.cap_liq_participation_10M_median!==undefined?metricRow('$10M Median',pct(f.cap_liq_participation_10M_median)):''}
+      ${f.cap_liq_participation_10M_p10!==null&&f.cap_liq_participation_10M_p10!==undefined?metricRow('$10M P10',pct(f.cap_liq_participation_10M_p10)):''}
+    </div>
+
+    <div class="cap-caveat">
+      <strong>⚠ Selected-basket proxy warning · 选中篮子代理警告</strong><br>
+      <span style="color:var(--muted)">These are capacity/liquidity proxies based on selected-basket volume and turnover. They are not order-book simulation, slippage estimates, or real execution capacity.<br>
+      这些是基于选中篮子成交量与换手率的容量 / 流动性代理指标，不是订单簿模拟、滑点估计或真实可交易容量结论。</span>
+    </div>
+    <div style="margin-top:6px;font-size:10px;color:var(--muted)">
+      <strong>Interpretation 解读:</strong><br>
+      <span style="font-size:10px">Capacity estimates assume uniform daily volume distribution; real liquidity is clustered. Participation rates show how much of daily selected-basket volume a notional allocation would consume. Lower is better.<br>
+      容量估计假设每日成交量均匀分布；真实流动性是集中的。参与率显示特定名义金额占每日选中篮子成交量的比例，越低越好。</span>
+    </div>
+    `:''}
   `;
 }
 
