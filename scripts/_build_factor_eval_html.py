@@ -479,7 +479,7 @@ def build_payload() -> dict:
                 if not ss(factor.get("best_horizon")):
                     factor["best_horizon"] = best_hz
 
-            # Also try LS data for missing LS metrics
+            # Also try LS data for missing LS metrics (PM-41: includes aggregates)
             feval_ls_row = feval_ls_map.get((fid, best_hz))
             if feval_ls_row is not None:
                 if factor.get("long_short_mean") is None:
@@ -488,6 +488,15 @@ def build_payload() -> dict:
                     factor["long_short_sharpe"] = sf(feval_ls_row.get("long_short_spread_t_stat"))
                 if factor.get("long_short_positive_month_rate") is None:
                     factor["long_short_positive_month_rate"] = sf(feval_ls_row.get("long_short_win_rate"))
+                # PM-41: LS aggregate fields from canonical factor-level evaluation
+                if factor.get("long_short_std") is None:
+                    factor["long_short_std"] = sf(feval_ls_row.get("long_short_spread_std"))
+                if factor.get("long_short_annualized_return") is None:
+                    factor["long_short_annualized_return"] = sf(feval_ls_row.get("long_short_spread_annualized_return"))
+                if factor.get("long_short_annualized_vol") is None:
+                    factor["long_short_annualized_vol"] = sf(feval_ls_row.get("long_short_spread_annualized_vol"))
+                if factor.get("long_short_max_drawdown") is None:
+                    factor["long_short_max_drawdown"] = sf(feval_ls_row.get("long_short_spread_max_drawdown"))
 
             # Clear source_warning if we found data
             if factor.get("rankic_mean") is not None and factor.get("source_warning"):

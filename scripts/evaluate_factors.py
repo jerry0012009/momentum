@@ -335,7 +335,9 @@ def main():
                 ls_mean, ls_t, ls_win, top_mean, bot_mean = None, None, None, None, None
 
             ls_status = base_status
-            quantile_long_short.append({
+            # PM-41: LS summary row is appended AFTER the period loop
+            # so we can include monthly aggregate stats.
+            _ls_summary_pending = {
                 "factor_name": fid, "category": spec["category"],
                 "expected_direction": spec["expected_direction"],
                 "horizon": hz, "bucket": "LONG_SHORT",
@@ -350,9 +352,18 @@ def main():
                 "long_short_spread_mean": round(ls_mean, 8) if ls_mean is not None else None,
                 "long_short_spread_t_stat": round(ls_t, 4) if ls_t is not None else None,
                 "long_short_win_rate": round(ls_win, 4) if ls_win is not None else None,
-            })
+                # PM-41: monthly aggregate fields (populated after period loop)
+                "long_short_spread_std": None,
+                "long_short_spread_annualized_return": None,
+                "long_short_spread_annualized_vol": None,
+                "long_short_spread_max_drawdown": None,
+                "long_short_spread_positive_period_rate": None,
+                "n_monthly_periods": 0,
+                "annualization_method": "monthly_x12",
+            }
 
             # --- Period-level (monthly) quantile returns and long-short ---
+            monthly_ls_returns = []  # PM-41: collect monthly LS for aggregate stats
             bucket_ts_period = bucket_ts.copy()
             bucket_ts_period.index = pd.to_datetime(bucket_ts_period.index)
             bucket_ts_period["_period"] = bucket_ts_period.index.to_period("M")
@@ -399,6 +410,31 @@ def main():
                             "short_leg_return": round(p_bot_mean, 8) if p_bot_mean is not None else None,
                             "positive_ls": bool(p_ls_mean > 0),
                         })
+                        monthly_ls_returns.append(p_ls_mean)  # PM-41: collect for aggregate
+
+            # PM-41: Compute LS aggregate stats from monthly period returns
+            if _ls_summary_pending is not None:
+                if monthly_ls_returns and len(monthly_ls_returns) >= 2:
+                    import numpy as _np
+                    _ls_arr_monthly = _np.array(monthly_ls_returns, dtype=float)
+                    _ls_std_m = float(_ls_arr_monthly.std(ddof=1))
+                    _ls_mean_m = float(_ls_arr_monthly.mean())
+                    _n_m = len(_ls_arr_monthly)
+                    _annualization_factor = 12  # monthly periods
+                    _ls_ann_ret = _ls_mean_m * _annualization_factor
+                    _ls_ann_vol = _ls_std_m * _np.sqrt(_annualization_factor)
+                    _ls_cum = _np.cumprod(1 + _ls_arr_monthly)
+                    _ls_peak = _np.maximum.accumulate(_ls_cum)
+                    _ls_dd = (_ls_cum - _ls_peak) / _ls_peak
+                    _ls_max_dd = float(_ls_dd.min())
+                    _ls_pos_rate = float((_ls_arr_monthly > 0).sum() / _n_m)
+                    _ls_summary_pending["long_short_spread_std"] = round(_ls_std_m, 8)
+                    _ls_summary_pending["long_short_spread_annualized_return"] = round(_ls_ann_ret, 8)
+                    _ls_summary_pending["long_short_spread_annualized_vol"] = round(_ls_ann_vol, 8)
+                    _ls_summary_pending["long_short_spread_max_drawdown"] = round(_ls_max_dd, 8)
+                    _ls_summary_pending["long_short_spread_positive_period_rate"] = round(_ls_pos_rate, 4)
+                    _ls_summary_pending["n_monthly_periods"] = _n_m
+                quantile_long_short.append(_ls_summary_pending)
 
         # Print summary and build results
         d = spec["expected_direction"]
@@ -566,6 +602,14 @@ def main():
             "long_short_spread_mean": ls_row.get("long_short_spread_mean") if ls_row else None,
             "long_short_spread_t_stat": ls_row.get("long_short_spread_t_stat") if ls_row else None,
             "long_short_win_rate": ls_row.get("long_short_win_rate") if ls_row else None,
+            # PM-41: LS aggregate fields from monthly period returns
+            "long_short_spread_std": ls_row.get("long_short_spread_std") if ls_row else None,
+            "long_short_spread_annualized_return": ls_row.get("long_short_spread_annualized_return") if ls_row else None,
+            "long_short_spread_annualized_vol": ls_row.get("long_short_spread_annualized_vol") if ls_row else None,
+            "long_short_spread_max_drawdown": ls_row.get("long_short_spread_max_drawdown") if ls_row else None,
+            "long_short_spread_positive_period_rate": ls_row.get("long_short_spread_positive_period_rate") if ls_row else None,
+            "n_monthly_periods": ls_row.get("n_monthly_periods") if ls_row else None,
+            "annualization_method": ls_row.get("annualization_method") if ls_row else None,
         })
 
     mp_df = pd.DataFrame(metric_rows)
