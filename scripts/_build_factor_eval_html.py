@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the bilingual factor evaluation page with integrated quality scorecard.
 
-Reads 7+ CSV/JSON data sources from the crypto_top50_factor_library and produces
+Reads 8+ CSV/JSON data sources from the crypto_top50_factor_library and produces
 a single static HTML file with embedded JSON, CSS, and JS.
 
 Data sources:
@@ -13,6 +13,7 @@ Data sources:
   6. factor_metadata/factor_card_qa_report.csv
   7. factor_diagnostics/factor_quality_scorecard.csv
   8. factor_diagnostics/factor_quality_scorecard_manifest.json
+  9. factor_diagnostics/single_factor_paper_page_payload.json (PM-22)
 """
 from __future__ import annotations
 
@@ -66,6 +67,12 @@ def build_payload() -> dict:
     scorecard = load_csv(DIAG_DIR / "factor_quality_scorecard.csv")
     manifest = load_json(DIAG_DIR / "factor_quality_scorecard_manifest.json")
 
+    # PM-22: Load single-factor paper payload
+    paper_payload = load_json(DIAG_DIR / "single_factor_paper_page_payload.json")
+    paper_map = {}
+    for pf in paper_payload.get("factors", []):
+        paper_map[pf["factor_id"]] = pf
+
     # ── Summary stats ──
     all_months = sorted(ic_series["month"].unique().tolist()) if not ic_series.empty else []
     quality_counts = cards["metadata_quality"].value_counts().to_dict() if not cards.empty else {}
@@ -107,6 +114,19 @@ def build_payload() -> dict:
         "largest_cluster_size": sc_largest_cluster,
         "scorecard_manifest": manifest,
     }
+
+    # PM-22: Paper viability summary counts
+    paper_class_counts = {}
+    cost_class_counts = {}
+    for pf in paper_payload.get("factors", []):
+        pvc = pf.get("paper_viability_class", "")
+        csc = pf.get("cost_sensitivity_class", "")
+        if pvc:
+            paper_class_counts[pvc] = paper_class_counts.get(pvc, 0) + 1
+        if csc:
+            cost_class_counts[csc] = cost_class_counts.get(csc, 0) + 1
+    summary["paper_viability_counts"] = paper_class_counts
+    summary["cost_sensitivity_counts"] = cost_class_counts
 
     # ── Build lookup dicts ──
     card_map = {}
@@ -274,6 +294,31 @@ def build_payload() -> dict:
             "monthly_ls": monthly_ls,
             "cum_curve": cum_curve,
         }
+
+        # PM-22: Merge paper diagnostics into factor
+        paper = paper_map.get(fid, {})
+        if paper:
+            factor.update({
+                "paper_viability_class": paper.get("paper_viability_class", ""),
+                "cost_sensitivity_class": paper.get("cost_sensitivity_class", ""),
+                "gross_sharpe": paper.get("gross_sharpe"),
+                "gross_total_return": paper.get("gross_total_return"),
+                "paper_max_drawdown": paper.get("max_drawdown"),
+                "paper_positive_month_rate": paper.get("positive_month_rate"),
+                "paper_avg_turnover": paper.get("avg_turnover"),
+                "paper_median_turnover": paper.get("median_turnover"),
+                "break_even_fee_bps": paper.get("break_even_fee_bps"),
+                "fee_0bps_total_return": paper.get("fee_0bps_total_return"),
+                "fee_5bps_total_return": paper.get("fee_5bps_total_return"),
+                "fee_10bps_total_return": paper.get("fee_10bps_total_return"),
+                "fee_20bps_total_return": paper.get("fee_20bps_total_return"),
+                "main_diagnostic_note_zh": paper.get("main_diagnostic_note_zh", ""),
+                "main_diagnostic_note_en": paper.get("main_diagnostic_note_en", ""),
+                "monthly_nav_series_compact": paper.get("monthly_nav_series_compact", {}),
+                "fee_sensitivity_series": paper.get("fee_sensitivity_series", []),
+                "monthly_return_series": paper.get("monthly_return_series", []),
+            })
+
         factors.append(factor)
 
     return {"summary": summary, "factors": factors}
@@ -373,6 +418,20 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 .sc-strengths{color:var(--green);font-size:11px}
 .sc-weaknesses{color:var(--amber);font-size:11px}
 .sc-review-notes{color:var(--muted);font-size:11px;font-style:italic}
+
+/* ── Paper diagnostics styles (PM-22) ── */
+.paper-badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:600;white-space:nowrap}
+.paper-badge.paper_strong{background:#166534;color:#bbf7d0}
+.paper-badge.paper_promising{background:#92400e;color:#fef3c7}
+.paper-badge.paper_mixed{background:#7f1d1d;color:#fecaca}
+.paper-badge.paper_weak{background:#450a0a;color:#fecaca}
+.paper-badge.paper_review{background:#581c87;color:#e9d5ff}
+.paper-badge.cost_robust{background:#166534;color:#bbf7d0}
+.paper-badge.cost_sensitive{background:#92400e;color:#fef3c7}
+.paper-badge.cost_collapsed{background:#7f1d1d;color:#fecaca}
+.paper-badge.cost_insufficient{background:#334155;color:#e2e8f0}
+.paper-caveat{background:#1a1a2e;border:1px solid #3b3b5c;color:#c4b5fd;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:11px;line-height:1.6}
+.paper-caveat strong{color:#e9d5ff}
 </style>
 </head>
 <body>
@@ -393,6 +452,8 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 
 <div id="scorecardSummarySection"></div>
 
+<div id="paperSummarySection"></div>
+
 <div id="caveatsSection"></div>
 
 <div class="layout">
@@ -407,6 +468,7 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
         <select id="horizonFilter"><option value="">All horizons 全部视野</option></select>
         <select id="scClassFilter"><option value="">All quality classes 全部质量分类</option></select>
         <select id="scConfFilter"><option value="">All confidence 全部置信度</option></select>
+        <select id="paperViabFilter"><option value="">All paper viab. 纸面可行性</option></select>
       </div>
       <div class="table-wrap">
         <table id="factorTable">
@@ -434,6 +496,11 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
             <th data-col="redundancy_cluster_id">Cluster 聚类</th>
             <th data-col="recommended_next_action">Main Action 建议动作</th>
             <th data-col="decision_bucket">Decision 决策</th>
+            <th data-col="paper_viability_class">Paper Viab. 纸面可行性</th>
+            <th data-col="cost_sensitivity_class">Cost Sens. 费用敏感</th>
+            <th data-col="fee_10bps_total_return">10bps Ret 10bps收益</th>
+            <th data-col="break_even_fee_bps">B/E Fee 盈亏平衡</th>
+            <th data-col="paper_avg_turnover">Avg TO 平均换手</th>
           </tr></thead>
           <tbody id="tableBody"></tbody>
         </table>
@@ -515,6 +582,29 @@ const SUB_SCORE_LABELS = {
   direction_interpretability_score: '方向可解释性 Direction',
   redundancy_novelty_score: '冗余新颖性 Redundancy'
 };
+
+// PM-22: Paper diagnostics labels
+const PAPER_VIAB_LABELS = {
+  PAPER_STRONG: {zh:'纸面强', en:'PAPER_STRONG', cls:'paper_strong'},
+  PAPER_PROMISING: {zh:'纸面有前景', en:'PAPER_PROMISING', cls:'paper_promising'},
+  PAPER_MIXED: {zh:'纸面混合', en:'PAPER_MIXED', cls:'paper_mixed'},
+  PAPER_WEAK: {zh:'纸面弱', en:'PAPER_WEAK', cls:'paper_weak'},
+  PAPER_REVIEW_REQUIRED: {zh:'纸面需复核', en:'PAPER_REVIEW_REQUIRED', cls:'paper_review'}
+};
+const COST_SENS_LABELS = {
+  COST_ROBUST: {zh:'费用稳健', en:'COST_ROBUST', cls:'cost_robust'},
+  COST_SENSITIVE: {zh:'费用敏感', en:'COST_SENSITIVE', cls:'cost_sensitive'},
+  COST_COLLAPSED: {zh:'费用崩溃', en:'COST_COLLAPSED', cls:'cost_collapsed'},
+  INSUFFICIENT_DATA: {zh:'数据不足', en:'INSUFFICIENT_DATA', cls:'cost_insufficient'}
+};
+function paperViabBadge(cls){
+  const l=PAPER_VIAB_LABELS[cls]||{zh:cls||'—',en:cls||'—',cls:''};
+  return `<span class="paper-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+function costSensBadge(cls){
+  const l=COST_SENS_LABELS[cls]||{zh:cls||'—',en:cls||'—',cls:''};
+  return `<span class="paper-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
 
 // ── Helpers ──
 function esc(v){return String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -626,6 +716,40 @@ function scSubBar(key,score){
   `;
 })();
 
+// ── PM-22: Paper diagnostics summary section ──
+(function(){
+  const el=document.getElementById('paperSummarySection');
+  const pvc=S.paper_viability_counts||{};
+  const csc=S.cost_sensitivity_counts||{};
+  const strong=pvc.PAPER_STRONG||0;
+  const promising=pvc.PAPER_PROMISING||0;
+  const mixed=pvc.PAPER_MIXED||0;
+  const weak=pvc.PAPER_WEAK||0;
+  const review=pvc.PAPER_REVIEW_REQUIRED||0;
+  const robust=csc.COST_ROBUST||0;
+  const sensitive=csc.COST_SENSITIVE||0;
+  const collapsed=csc.COST_COLLAPSED||0;
+
+  el.innerHTML=`
+    <h2 style="margin-bottom:6px">Single-Factor Paper Portfolio Summary 单因子纸面组合概要</h2>
+    <div class="sc-summary-grid">
+      <div class="sc-summary-card"><strong style="color:var(--green)">${strong}</strong><span>Paper Strong<br>纸面强</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--amber)">${promising}</strong><span>Paper Promising<br>纸面有前景</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--red)">${mixed}</strong><span>Paper Mixed<br>纸面混合</span></div>
+      <div class="sc-summary-card"><strong style="color:#dc2626">${weak}</strong><span>Paper Weak<br>纸面弱</span></div>
+      <div class="sc-summary-card"><strong style="color:#a855f7">${review}</strong><span>Review Required<br>需复核</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--green)">${robust}</strong><span>Cost Robust<br>费用稳健</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--amber)">${sensitive}</strong><span>Cost Sensitive<br>费用敏感</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--red)">${collapsed}</strong><span>Cost Collapsed<br>费用崩溃</span></div>
+    </div>
+    <div class="paper-caveat">
+      <strong>⚠ 单因子纸面组合仅为研究诊断 / Single-factor paper portfolio is a research diagnostic only</strong><br>
+      <span style="color:var(--muted)">Equal-weight long/short at 1h horizon. No slippage/order book. Not a backtest. Not a strategy.<br>
+      等权多空，1h视野，无滑点/订单簿。不是回测。不是交易策略。</span>
+    </div>
+  `;
+})();
+
 // ── Interpretation caveats section ──
 (function(){
   const el=document.getElementById('caveatsSection');
@@ -658,6 +782,10 @@ qualities.forEach(q=>{const o=document.createElement('option');o.value=q;o.textC
 S.horizons.forEach(h=>{const o=document.createElement('option');o.value=h;o.textContent=h;horizonFilter.appendChild(o)});
 scClasses.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=(SC_CLASS_LABELS[c]||{zh:c}).zh+' / '+c;scClassFilter.appendChild(o)});
 scConfs.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=(SC_CONF_LABELS[c]||{zh:c}).zh+' / '+c;scConfFilter.appendChild(o)});
+// PM-22: Paper viability filter
+const paperViabFilter=document.getElementById('paperViabFilter');
+const paperViabs=[...new Set(factors.map(f=>f.paper_viability_class).filter(Boolean))].sort();
+paperViabs.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=(PAPER_VIAB_LABELS[p]||{zh:p}).zh+' / '+p;paperViabFilter.appendChild(o)});
 
 // ── Sort state (default: final_quality_score descending) ──
 let sortCol='final_quality_score';
@@ -671,15 +799,17 @@ function renderTable(){
   const hz=horizonFilter.value;
   const scCls=scClassFilter.value;
   const scConf=scConfFilter.value;
+  const pViab=paperViabFilter.value;
 
   let filtered=factors.filter(f=>{
-    const text=[f.factor_id,f.name_zh,f.name_en,f.family_zh,f.family,f.decision_bucket,f.final_quality_class,f.recommended_next_action].join(' ').toLowerCase();
+    const text=[f.factor_id,f.name_zh,f.name_en,f.family_zh,f.family,f.decision_bucket,f.final_quality_class,f.recommended_next_action,f.paper_viability_class,f.cost_sensitivity_class].join(' ').toLowerCase();
     if(q&&!text.includes(q))return false;
     if(fam&&(f.family_zh!==fam&&f.family!==fam))return false;
     if(qual&&f.metadata_quality!==qual)return false;
     if(hz&&f.best_horizon!==hz)return false;
     if(scCls&&f.final_quality_class!==scCls)return false;
     if(scConf&&f.score_confidence!==scConf)return false;
+    if(pViab&&f.paper_viability_class!==pViab)return false;
     return true;
   });
 
@@ -717,6 +847,11 @@ function renderTable(){
       <td class="num">${f.redundancy_cluster_id!==null&&f.redundancy_cluster_id!==undefined?Math.round(Number(f.redundancy_cluster_id)):'—'}</td>
       <td>${f.recommended_next_action?scActionBadge(f.recommended_next_action):'—'}</td>
       <td><span class="bucket-badge">${esc(f.decision_bucket)}</span></td>
+      <td>${f.paper_viability_class?paperViabBadge(f.paper_viability_class):'—'}</td>
+      <td>${f.cost_sensitivity_class?costSensBadge(f.cost_sensitivity_class):'—'}</td>
+      <td class="num">${f.fee_10bps_total_return!==null&&f.fee_10bps_total_return!==undefined?num(f.fee_10bps_total_return,2):'—'}</td>
+      <td class="num">${f.break_even_fee_bps!==null&&f.break_even_fee_bps!==undefined?Math.round(Number(f.break_even_fee_bps))+'bps':'—'}</td>
+      <td class="num">${f.paper_avg_turnover!==null&&f.paper_avg_turnover!==undefined?pct(f.paper_avg_turnover):'—'}</td>
     </tr>`;
   }).join('');
 
@@ -1014,13 +1149,107 @@ function renderDetail(fid){
       ${metricRow('LS Month Win% 月胜率',pct(f.long_short_positive_month_rate))}
       ${metricRow('LS Sharpe',num(f.long_short_sharpe,2),mcls(f.long_short_sharpe,1.5,0.8))}
     </div>
+
+    ${f.paper_viability_class?`
+    <div class="section-divider"></div>
+    <h3>Single-Factor Paper Portfolio / 单因子纸面组合</h3>
+    <div style="margin:6px 0">
+      ${paperViabBadge(f.paper_viability_class)}
+      ${f.cost_sensitivity_class?costSensBadge(f.cost_sensitivity_class):''}
+    </div>
+    <div class="metric-grid">
+      ${metricRow('Gross Sharpe 毛夏普',num(f.gross_sharpe,2))}
+      ${metricRow('Gross Return 毛收益',num(f.gross_total_return,2))}
+      ${metricRow('Max DD 最大回撤',pct(f.paper_max_drawdown))}
+      ${metricRow('Positive Mo% 月胜率',pct(f.paper_positive_month_rate))}
+      ${metricRow('Avg Turnover 平均换手',pct(f.paper_avg_turnover))}
+      ${metricRow('Median Turnover 中位换手',pct(f.paper_median_turnover))}
+      ${metricRow('B/E Fee 盈亏平衡',f.break_even_fee_bps!==null&&f.break_even_fee_bps!==undefined?Math.round(Number(f.break_even_fee_bps))+' bps':'—')}
+      ${metricRow('0bps Return',num(f.fee_0bps_total_return,2))}
+      ${metricRow('5bps Return',num(f.fee_5bps_total_return,2))}
+      ${metricRow('10bps Return',num(f.fee_10bps_total_return,2),f.fee_10bps_total_return!==null&&f.fee_10bps_total_return<0?'':''}
+      ${metricRow('20bps Return',num(f.fee_20bps_total_return,2))}
+    </div>
+    ${f.main_diagnostic_note_zh||f.main_diagnostic_note_en?`<div class="bilingual" style="margin:6px 0"><div class="zh" style="font-size:11px">${esc(f.main_diagnostic_note_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(f.main_diagnostic_note_en)}</div></div>`:''}
+
+    <div class="chart-container">
+      <div class="chart-title">Monthly NAV: 0bps (blue) vs 10bps (red) · 月度净值: 0bps(蓝) vs 10bps(红)</div>
+      ${(()=>{
+        const nav0=f.monthly_nav_series_compact&&f.monthly_nav_series_compact['0']?f.monthly_nav_series_compact['0']:[];
+        const nav10=f.monthly_nav_series_compact&&f.monthly_nav_series_compact['10']?f.monthly_nav_series_compact['10']:[];
+        if(!nav0.length&&!nav10.length)return '<div class="small">No data</div>';
+        const allPts=[...nav0.map(d=>d.nav),...nav10.map(d=>d.nav)];
+        const ymin=Math.min(0,...allPts),ymax=Math.max(0,...allPts);
+        const yrange=ymax-ymin||1;
+        const w=600,h=150,padL=50,padR=10,padT=10,padB=20;
+        const cw=w-padL-padR,ch=h-padT-padB;
+        const maxLen=Math.max(nav0.length,nav10.length,1);
+        function xPos(i){return padL+(i/(maxLen-1||1))*cw}
+        function yPos(v){return padT+ch-((v-ymin)/yrange)*ch}
+        let svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto">';
+        svg+='<line x1="'+padL+'" y1="'+yPos(0)+'" x2="'+(w-padR)+'" y2="'+yPos(0)+'" stroke="#334155" stroke-dasharray="3"/>';
+        if(nav0.length>1){svg+='<polyline points="'+nav0.map((d,i)=>xPos(i)+','+yPos(d.nav)).join(' ')+'" fill="none" stroke="#60a5fa" stroke-width="1.5"/>';}
+        if(nav10.length>1){svg+='<polyline points="'+nav10.map((d,i)=>xPos(i)+','+yPos(d.nav)).join(' ')+'" fill="none" stroke="#f87171" stroke-width="1.5"/>';}
+        const step=Math.max(1,Math.floor(maxLen/6));
+        nav0.forEach((d,i)=>{if(i%step===0||i===nav0.length-1){svg+='<text x="'+xPos(i)+'" y="'+(h-2)+'" text-anchor="middle" fill="#8ea0b8" font-size="8">'+esc(d.month)+'</text>'}});
+        svg+='<text x="4" y="'+yPos(0)+'" fill="#8ea0b8" font-size="8" dominant-baseline="middle">0</text>';
+        svg+='<text x="4" y="'+padT+'" fill="#8ea0b8" font-size="8">'+num(ymax,3)+'</text>';
+        svg+='<text x="4" y="'+(h-padB)+'" fill="#8ea0b8" font-size="8">'+num(ymin,3)+'</text>';
+        svg+='</svg>';
+        return svg;
+      })()}
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-title">Fee Sensitivity: Total Return & Sharpe by fee_bps · 费用敏感性</div>
+      ${(()=>{
+        const fs=f.fee_sensitivity_series||[];
+        if(!fs.length)return '<div class="small">No data</div>';
+        const w=600,h=120,padL=50,padR=10,padT=10,padB=20;
+        const cw=w-padL-padR,ch=h-padT-padB;
+        const vals=fs.map(d=>d.total_return||0);
+        const maxAbs=Math.max(0.001,...vals.map(v=>Math.abs(v)));
+        const bw=Math.max(8,Math.min(30,Math.floor(cw/fs.length)-4));
+        function yPos(v){return padT+ch/2-(v/maxAbs)*(ch/2)}
+        let svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto">';
+        const mid=padT+ch/2;
+        svg+='<line x1="'+padL+'" y1="'+mid+'" x2="'+(w-padR)+'" y2="'+mid+'" stroke="#334155" stroke-dasharray="3"/>';
+        fs.forEach((d,i)=>{
+          const v=d.total_return||0;
+          const x=padL+(i/fs.length)*cw+(cw/fs.length-bw)/2;
+          const barH=Math.abs(v/maxAbs)*(ch/2);
+          const y=v>=0?mid-barH:mid;
+          const c=v>=0?'#34d399':'#f87171';
+          svg+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+barH+'" fill="'+c+'" rx="2"/>';
+          svg+='<text x="'+(x+bw/2)+'" y="'+(h-2)+'" text-anchor="middle" fill="#8ea0b8" font-size="8">'+d.fee_bps+'bps</text>';
+        });
+        svg+='<text x="4" y="'+mid+'" fill="#8ea0b8" font-size="8" dominant-baseline="middle">0</text>';
+        svg+='</svg>';
+        return svg;
+      })()}
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-title">Monthly Returns (10bps) · 月度收益 (10bps)</div>
+      ${(()=>{
+        const mr=f.monthly_return_series||[];
+        if(!mr.length)return '<div class="small">No data</div>';
+        return svgBarChart(mr,'monthly_return',600,120);
+      })()}
+    </div>
+
+    <div class="paper-caveat">
+      <strong>⚠ This is a research diagnostic, not a strategy / 这是研究诊断，不是交易策略</strong><br>
+      <span style="color:var(--muted)">Equal-weight long/short at 1h horizon. No slippage/order book modeling. 等权多空，1h视野，无滑点/订单簿建模。</span>
+    </div>
+    `:''}
   `;
 }
 
 // ── Init ──
 const searchEl=document.getElementById('search');
-[searchEl,familyFilter,qualityFilter,horizonFilter,scClassFilter,scConfFilter].forEach(el=>el.addEventListener('input',renderTable));
-[familyFilter,qualityFilter,horizonFilter,scClassFilter,scConfFilter].forEach(el=>el.addEventListener('change',renderTable));
+[searchEl,familyFilter,qualityFilter,horizonFilter,scClassFilter,scConfFilter,paperViabFilter].forEach(el=>el.addEventListener('input',renderTable));
+[familyFilter,qualityFilter,horizonFilter,scClassFilter,scConfFilter,paperViabFilter].forEach(el=>el.addEventListener('change',renderTable));
 
 // Set initial sort arrow
 const initSortTh=document.querySelector(`th[data-col="${sortCol}"]`);
