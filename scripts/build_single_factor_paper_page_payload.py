@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Build compact JSON payload for single-factor paper diagnostics page (PM-22).
+"""Build compact JSON payload for single-factor paper diagnostics page (PM-21B).
 
-Reads PM-21 outputs:
+Reads PM-21B compact outputs:
   - single_factor_paper_summary.csv
   - single_factor_paper_monthly_returns.csv
   - single_factor_fee_sensitivity.csv
-  - single_factor_paper_turnover.csv (timestamp-level)
+  - single_factor_paper_turnover.csv (already monthly from PM-21B)
+  - single_factor_paper_leg_decomposition.csv
+  - single_factor_paper_drawdown_curve.csv
 
 Produces:
   - factor_diagnostics/single_factor_paper_page_payload.json
-  - factor_diagnostics/single_factor_paper_turnover.csv (monthly aggregated)
 """
 from __future__ import annotations
 
@@ -24,10 +25,11 @@ DIAG_DIR = BASE / "factor_diagnostics"
 SUMMARY_CSV = DIAG_DIR / "single_factor_paper_summary.csv"
 MONTHLY_CSV = DIAG_DIR / "single_factor_paper_monthly_returns.csv"
 FEE_CSV = DIAG_DIR / "single_factor_fee_sensitivity.csv"
-TURNOVER_TS_CSV = DIAG_DIR / "single_factor_paper_turnover.csv"
+TURNOVER_CSV = DIAG_DIR / "single_factor_paper_turnover.csv"
+LEG_CSV = DIAG_DIR / "single_factor_paper_leg_decomposition.csv"
+DRAWDOWN_CSV = DIAG_DIR / "single_factor_paper_drawdown_curve.csv"
 
 OUT_PAYLOAD = DIAG_DIR / "single_factor_paper_page_payload.json"
-OUT_TURNOVER = DIAG_DIR / "single_factor_paper_turnover.csv"
 
 TARGET_FEE_BPS = [0, 5, 10, 20]
 
@@ -38,35 +40,22 @@ def sf(v):
     return round(float(v), 6)
 
 
-def build_turnover_monthly():
-    """Aggregate timestamp-level turnover into monthly stats."""
-    df = pd.read_csv(TURNOVER_TS_CSV)
-    df["month"] = pd.to_datetime(df["timestamp"]).dt.to_period("M").astype(str)
-    monthly = (
-        df.groupby(["factor_id", "month"])["turnover"]
-        .agg(avg_turnover="mean", median_turnover="median", max_turnover="max", n_observations="count")
-        .reset_index()
-    )
-    monthly.to_csv(OUT_TURNOVER, index=False)
-    print(f"  Wrote {OUT_TURNOVER} ({len(monthly)} rows)")
-    return monthly
-
-
 def build_payload():
     summary = pd.read_csv(SUMMARY_CSV)
     monthly = pd.read_csv(MONTHLY_CSV)
     fee_sens = pd.read_csv(FEE_CSV)
-    turnover_mo = build_turnover_monthly()
+    turnover_mo = pd.read_csv(TURNOVER_CSV)
+    leg = pd.read_csv(LEG_CSV)
+    drawdown = pd.read_csv(DRAWDOWN_CSV)
 
     factors = []
     for _, row in summary.iterrows():
         fid = str(row["factor_id"])
 
-        # Monthly returns for this factor, fee_bps in TARGET_FEE_BPS
+        # Monthly returns for this factor
         fmo = monthly[monthly["factor_id"] == fid]
 
-        # Build monthly_nav_series_compact: compound monthly returns to NAV
-        # for each target fee level
+        # Build monthly_nav_series_compact
         nav_series = {}
         for fb in TARGET_FEE_BPS:
             sub = fmo[fmo["fee_bps"] == fb].sort_values("month")
@@ -100,6 +89,38 @@ def build_payload():
                 "fee_bps": 10,
             })
 
+        # Turnover series (already monthly)
+        fturn = turnover_mo[turnover_mo["factor_id"] == fid].sort_values("month")
+        turnover_series = []
+        for _, r in fturn.iterrows():
+            turnover_series.append({
+                "month": str(r["month"]),
+                "avg_turnover": sf(r["avg_turnover"]),
+                "median_turnover": sf(r["median_turnover"]),
+            })
+
+        # Leg decomposition series (at fee_bps=10)
+        fleg = leg[(leg["factor_id"] == fid) & (leg["fee_bps"] == 10)].sort_values("month")
+        leg_series = []
+        for _, r in fleg.iterrows():
+            leg_series.append({
+                "month": str(r["month"]),
+                "long_leg_return": sf(r["long_leg_return"]),
+                "short_leg_return": sf(r["short_leg_return"]),
+                "net_long_short_return": sf(r["net_long_short_return"]),
+            })
+
+        # Drawdown series (at fee_bps=10)
+        fdd = drawdown[(drawdown["factor_id"] == fid) & (drawdown["fee_bps"] == 10)].sort_values("month")
+        drawdown_series = []
+        for _, r in fdd.iterrows():
+            drawdown_series.append({
+                "month": str(r["month"]),
+                "nav": sf(r["nav"]),
+                "drawdown": sf(r["drawdown"]),
+                "monthly_return": sf(r["monthly_return"]),
+            })
+
         # Fee-specific total returns
         fee_map = {}
         for _, r in ffee.iterrows():
@@ -125,11 +146,14 @@ def build_payload():
             "monthly_nav_series_compact": nav_series,
             "fee_sensitivity_series": fee_sensitivity_series,
             "monthly_return_series": monthly_return_series,
+            "turnover_series": turnover_series,
+            "leg_decomposition_series": leg_series,
+            "drawdown_series": drawdown_series,
         })
 
     payload = {
-        "pm": "PM-22",
-        "description": "Single-factor paper portfolio page payload",
+        "pm": "PM-21B",
+        "description": "Single-factor paper portfolio page payload (reproducible)",
         "factor_count": len(factors),
         "factors": factors,
     }
@@ -138,6 +162,6 @@ def build_payload():
 
 
 if __name__ == "__main__":
-    print("Building single-factor paper page payload...")
+    print("Building single-factor paper page payload (PM-21B)...")
     build_payload()
     print("Done.")

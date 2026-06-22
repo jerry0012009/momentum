@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-PM-21: Single-Factor Paper Portfolio Diagnostics (optimized)
-============================================================
+PM-21B: Reproducible Single-Factor Paper Portfolio Diagnostics
+==============================================================
 
-Optimized: uses boolean indexing + numpy groupby where possible.
-Processes one factor at a time.
-
+Repaired version. Generates all compact outputs from committed inputs.
 NOT a backtest. NOT a trading strategy. Research diagnostics only.
 """
 
@@ -219,11 +217,13 @@ def compute_diagnostics(merged: pd.DataFrame, top_frac: float, bottom_frac: floa
     avg_turnover = float(turnover.mean())
     median_turnover = float(np.median(turnover))
 
-    # Monthly records per fee
+    # Monthly records per fee — compound hourly net returns within each month
     monthly_records = []
     for fee_bps in fee_bps_list:
+        net_ret_hourly = ls_returns - turnover * fee_bps / 10000
         for m in range(n_months):
-            net_m = monthly_gross_ret[m] - monthly_turnover[m] * fee_bps / 10000 * 24
+            mask = month_inverse == m
+            net_m = float(np.prod(1 + net_ret_hourly[mask]) - 1)
             monthly_records.append({
                 "month": month_ids[m],
                 "fee_bps": fee_bps,
@@ -291,6 +291,59 @@ def compute_diagnostics(merged: pd.DataFrame, top_frac: float, bottom_frac: floa
         note_zh = "中等表现，需结合其他指标评估"
         note_en = "Moderate performance, evaluate with other metrics"
 
+    # Monthly turnover records
+    turnover_records = []
+    for m in range(n_months):
+        mask = month_inverse == m
+        t = turnover[mask]
+        turnover_records.append({
+            "month": month_ids[m],
+            "avg_turnover": float(t.mean()),
+            "median_turnover": float(np.median(t)),
+            "max_turnover": float(t.max()),
+            "n_observations": int(mask.sum()),
+        })
+
+    # Monthly leg decomposition per fee — compound hourly returns within month
+    leg_records = []
+    for fee_bps in fee_bps_list:
+        net_ret_hourly = ls_returns - turnover * fee_bps / 10000
+        for m in range(n_months):
+            mask = month_inverse == m
+            long_m = float(np.prod(1 + long_returns[mask]) - 1)
+            short_m = float(np.prod(1 + short_returns[mask]) - 1)
+            ls_m = float(np.prod(1 + ls_returns[mask]) - 1)
+            net_m = float(np.prod(1 + net_ret_hourly[mask]) - 1)
+            leg_records.append({
+                "month": month_ids[m],
+                "fee_bps": fee_bps,
+                "long_leg_return": long_m,
+                "short_leg_return": short_m,
+                "long_short_return": ls_m,
+                "gross_long_short_return": ls_m,
+                "net_long_short_return": net_m,
+            })
+
+    # Monthly drawdown curve per fee
+    drawdown_records = []
+    for fee_bps in fee_bps_list:
+        net_ret_hourly = ls_returns - turnover * fee_bps / 10000
+        nav = 1.0
+        peak = 1.0
+        for m in range(n_months):
+            mask = month_inverse == m
+            monthly_net = float(np.prod(1 + net_ret_hourly[mask]) - 1)
+            nav *= (1 + monthly_net)
+            peak = max(peak, nav)
+            dd = (peak - nav) / peak if peak > 0 else 0.0
+            drawdown_records.append({
+                "month": month_ids[m],
+                "fee_bps": fee_bps,
+                "nav": nav,
+                "drawdown": dd,
+                "monthly_return": monthly_net,
+            })
+
     return {
         "n_timestamps": n_ts,
         "avg_long_count": int(n_longs.mean()),
@@ -316,6 +369,9 @@ def compute_diagnostics(merged: pd.DataFrame, top_frac: float, bottom_frac: floa
         "nav_curves": nav_curves,
         "monthly_records": monthly_records,
         "fee_results": fee_results,
+        "turnover_records": turnover_records,
+        "leg_records": leg_records,
+        "drawdown_records": drawdown_records,
     }
 
 
@@ -356,6 +412,9 @@ def main() -> int:
     nav_curves_all = []
     monthly_all = []
     fee_sensitivity_all = []
+    turnover_all = []
+    leg_all = []
+    drawdown_all = []
     processed = 0
     errors = 0
 
@@ -406,6 +465,15 @@ def main() -> int:
                 "avg_turnover": result["avg_turnover"],
             })
 
+        for rec in result["turnover_records"]:
+            turnover_all.append({"factor_id": fid, **rec})
+
+        for rec in result["leg_records"]:
+            leg_all.append({"factor_id": fid, **rec})
+
+        for rec in result["drawdown_records"]:
+            drawdown_all.append({"factor_id": fid, **rec})
+
         processed += 1
         if (i + 1) % 10 == 0:
             print(f"  [{i+1}/{len(factor_ids)}] {processed} processed, {time.time()-t0:.1f}s")
@@ -430,9 +498,18 @@ def main() -> int:
     fee_df = pd.DataFrame(fee_sensitivity_all)
     fee_df.to_csv(output_dir / "single_factor_fee_sensitivity.csv", index=False)
 
+    turnover_df = pd.DataFrame(turnover_all)
+    turnover_df.to_csv(output_dir / "single_factor_paper_turnover.csv", index=False)
+
+    leg_df = pd.DataFrame(leg_all)
+    leg_df.to_csv(output_dir / "single_factor_paper_leg_decomposition.csv", index=False)
+
+    drawdown_df = pd.DataFrame(drawdown_all)
+    drawdown_df.to_csv(output_dir / "single_factor_paper_drawdown_curve.csv", index=False)
+
     manifest = {
-        "pm": "PM-21",
-        "description": "Single-factor paper portfolio diagnostics",
+        "pm": "PM-21B",
+        "description": "Reproducible single-factor paper portfolio diagnostics",
         "horizon": args.horizon,
         "top_frac": args.top_frac,
         "bottom_frac": args.bottom_frac,
@@ -446,9 +523,11 @@ def main() -> int:
         "outputs": [
             "single_factor_paper_summary.csv",
             "single_factor_paper_summary.json",
-            "single_factor_paper_nav_curves.csv",
             "single_factor_paper_monthly_returns.csv",
             "single_factor_fee_sensitivity.csv",
+            "single_factor_paper_turnover.csv",
+            "single_factor_paper_leg_decomposition.csv",
+            "single_factor_paper_drawdown_curve.csv",
             "single_factor_paper_manifest.json",
         ],
         "warnings": [
@@ -462,7 +541,7 @@ def main() -> int:
         json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
     )
 
-    print(f"\n[PM-21] Outputs: summary={len(summary_rows)}, nav={len(nav_df)}, monthly={len(monthly_all)}, fee={len(fee_sensitivity_all)}")
+    print(f"\n[PM-21B] Outputs: summary={len(summary_rows)}, monthly={len(monthly_all)}, fee={len(fee_sensitivity_all)}, turnover={len(turnover_all)}, leg={len(leg_all)}, drawdown={len(drawdown_all)}")
 
     if not summary_df.empty:
         print(f"\nViability:\n{summary_df['paper_viability_class'].value_counts().to_string()}")
