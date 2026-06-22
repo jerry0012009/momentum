@@ -651,6 +651,8 @@ def build_payload() -> dict:
                 "marginal_information_class": ss(up.get("marginal_information_class", "")),
                 "source_artifact_count": int(up.get("source_artifact_count", 0)) if up.get("source_artifact_count") else 0,
                 "source_artifacts": ss(up.get("source_artifacts", "")),
+                "profile_cluster_id": sf(up.get("cluster_id")),
+                "profile_cluster_size": sf(up.get("cluster_size")),
             })
 
         # PM-33: Merge component scores
@@ -689,6 +691,25 @@ def build_payload() -> dict:
                 "ev_has_factor_level_evaluation": bool(ev.get("has_factor_level_evaluation", False)),
                 "ev_has_unified_profile": bool(ev.get("has_unified_profile", False)),
             })
+
+        # PM-40B: Reconcile old redundancy with unified profile
+        if factor.get("redundancy_cluster_id") is None or factor.get("redundancy_cluster_id") == -1:
+            profile_cid = factor.get("profile_cluster_id")
+            if profile_cid is not None:
+                factor["redundancy_cluster_id"] = profile_cid
+                factor["redundancy_cluster_size"] = factor.get("profile_cluster_size", 1)
+        if not factor.get("novelty_assessment") or factor.get("novelty_assessment") == "INSUFFICIENT_OVERLAP":
+            role = factor.get("cluster_member_role", "")
+            if role == "DISTINCT_SINGLETON":
+                factor["novelty_assessment"] = "NOVEL_DISTINCT"
+            elif role and "REDUNDANT" in role:
+                factor["novelty_assessment"] = "REDUNDANT_NOVELTY_DERIVED"
+        if not factor.get("redundancy_level") or factor.get("redundancy_level") == "UNKNOWN":
+            mi = factor.get("marginal_information_class", "")
+            if mi == "DISTINCT_SINGLETON":
+                factor["redundancy_level"] = "LOW_REDUNDANCY"
+            elif mi == "MOSTLY_REDUNDANT":
+                factor["redundancy_level"] = "MODERATE_REDUNDANCY"
 
         factors.append(factor)
 
@@ -1914,7 +1935,11 @@ function renderDetail(fid){
     <h3>Monthly RankIC 月度RankIC (${esc(f.best_horizon)})</h3>
     <div class="chart-container">
       <div class="chart-title">Monthly RankIC (adj) · 月度调整RankIC</div>
-      ${svgLineChart(f.monthly_ic,'rank_ic_adj',600,140)}
+      ${f.monthly_ic&&f.monthly_ic.length>0
+        ? svgLineChart(f.monthly_ic,'rank_ic_adj',600,140)
+        : (f.rankic_mean!==null&&f.rankic_mean!==undefined
+          ? '<div style="padding:12px;color:var(--muted);font-size:12px">📊 Summary RankIC available: <strong>'+num(f.rankic_mean)+'</strong> (t='+num(f.rankic_t_stat,2,false)+')<br>Monthly IC series unavailable — factor-level evaluation provides aggregate stats only.<br>月度IC序列暂不可用 — 因子级评价仅提供汇总统计。</div>'
+          : '<div class="small">No data</div>')}
     </div>
 
     <h3>Monthly Long-Short Return 月度多空收益 (${esc(f.best_horizon)})</h3>
