@@ -89,6 +89,15 @@ def build_payload() -> dict:
     cap_liq_payload = load_json(DIAG_DIR / "factor_capacity_liquidity_payload.json")
     cap_liq_summary = load_csv(DIAG_DIR / "factor_capacity_liquidity_summary.csv")
 
+    # PM-33: Load unified profile workflow data
+    profile_payload = load_json(DIAG_DIR / "factor_profile_payload.json")
+    unified_profile_list = profile_payload.get("factors", [])
+    evidence_matrix_csv = load_csv(DIAG_DIR / "factor_evaluation_evidence_matrix.csv")
+    component_scores_csv = load_csv(DIAG_DIR / "factor_profile_component_scores.csv")
+    profile_manifest = load_json(DIAG_DIR / "factor_profile_manifest.json")
+    workflow_contract = load_json(DIAG_DIR / "factor_evaluation_workflow_contract.json")
+    evidence_matrix_json = load_json(DIAG_DIR / "factor_evaluation_evidence_matrix.json")
+
     # ── Summary stats ──
     all_months = sorted(ic_series["month"].unique().tolist()) if not ic_series.empty else []
     quality_counts = cards["metadata_quality"].value_counts().to_dict() if not cards.empty else {}
@@ -202,6 +211,21 @@ def build_payload() -> dict:
     if not cap_liq_summary.empty:
         for _, r in cap_liq_summary.iterrows():
             cap_liq_csv_map[str(r["factor_id"])] = r.to_dict()
+
+    # PM-33: Unified profile lookup maps
+    up_map: dict[str, dict] = {}
+    for up in unified_profile_list:
+        up_map[up["factor_id"]] = up
+
+    ev_map: dict[str, dict] = {}
+    if not evidence_matrix_csv.empty:
+        for _, r in evidence_matrix_csv.iterrows():
+            ev_map[str(r["factor_id"])] = r.to_dict()
+
+    cs_map: dict[str, dict] = {}
+    if not component_scores_csv.empty:
+        for _, r in component_scores_csv.iterrows():
+            cs_map[str(r["factor_id"])] = r.to_dict()
 
     # ── Build factor list ──
     factors = []
@@ -474,6 +498,68 @@ def build_payload() -> dict:
                 "cap_liq_participation_10M_p10": sf(cl_row.get("participation_10000000_selected_p10")),
             })
 
+        # PM-33: Merge unified profile data
+        up = up_map.get(fid, {})
+        if up:
+            factor.update({
+                "profile_score": sf(up.get("profile_score")),
+                "profile_class": ss(up.get("profile_class", "")),
+                "profile_confidence": ss(up.get("profile_confidence", "")),
+                "workflow_ready_status": ss(up.get("workflow_ready_status", "")),
+                "evidence_status": ss(up.get("evidence_status", "")),
+                "evidence_completeness_rate": sf(up.get("evidence_completeness_rate")),
+                "registry_or_data_status": ss(up.get("registry_or_data_status", "")),
+                "recommended_research_action": ss(up.get("recommended_research_action", "")),
+                "primary_strength_zh": ss(up.get("primary_strength_zh", "")),
+                "primary_strength_en": ss(up.get("primary_strength_en", "")),
+                "primary_risk_zh": ss(up.get("primary_risk_zh", "")),
+                "primary_risk_en": ss(up.get("primary_risk_en", "")),
+                "profile_summary_zh": ss(up.get("profile_summary_zh", "")),
+                "profile_summary_en": ss(up.get("profile_summary_en", "")),
+                "workflow_missing_or_stale_blocks": ss(up.get("workflow_missing_or_stale_blocks", "")),
+                "cluster_member_role": ss(up.get("cluster_member_role", "")),
+                "marginal_information_class": ss(up.get("marginal_information_class", "")),
+                "source_artifact_count": int(up.get("source_artifact_count", 0)) if up.get("source_artifact_count") else 0,
+                "source_artifacts": ss(up.get("source_artifacts", "")),
+            })
+
+        # PM-33: Merge component scores
+        cs = cs_map.get(fid, {})
+        if cs:
+            factor.update({
+                "comp_standalone_quality": sf(cs.get("comp_standalone_quality")),
+                "comp_paper": sf(cs.get("comp_paper")),
+                "comp_cost": sf(cs.get("comp_cost")),
+                "comp_regime": sf(cs.get("comp_regime")),
+                "comp_shape": sf(cs.get("comp_shape")),
+                "comp_stability": sf(cs.get("comp_stability")),
+                "comp_capacity": sf(cs.get("comp_capacity")),
+                "comp_redundancy": sf(cs.get("comp_redundancy")),
+                "comp_marginal_info": sf(cs.get("comp_marginal_info")),
+                "comp_evidence_completeness": sf(cs.get("comp_evidence_completeness")),
+            })
+
+        # PM-33: Merge evidence matrix
+        ev = ev_map.get(fid, {})
+        if ev:
+            factor.update({
+                "ev_has_quality_scorecard": bool(ev.get("has_quality_scorecard", False)),
+                "ev_has_diagnostics_summary": bool(ev.get("has_diagnostics_summary", False)),
+                "ev_has_redundancy_summary": bool(ev.get("has_redundancy_summary", False)),
+                "ev_has_redundancy_cluster_members": bool(ev.get("has_redundancy_cluster_members", False)),
+                "ev_has_marginal_information": bool(ev.get("has_marginal_information", False)),
+                "ev_has_paper_summary": bool(ev.get("has_paper_summary", False)),
+                "ev_has_fee_sensitivity": bool(ev.get("has_fee_sensitivity", False)),
+                "ev_has_regime_exposure": bool(ev.get("has_regime_exposure", False)),
+                "ev_has_quantile_shape": bool(ev.get("has_quantile_shape", False)),
+                "ev_has_rolling_stability": bool(ev.get("has_rolling_stability", False)),
+                "ev_has_decile_shape": bool(ev.get("has_decile_shape", False)),
+                "ev_has_capacity_liquidity": bool(ev.get("has_capacity_liquidity", False)),
+                "ev_has_factor_values": bool(ev.get("has_factor_values", False)),
+                "ev_has_factor_level_evaluation": bool(ev.get("has_factor_level_evaluation", False)),
+                "ev_has_unified_profile": bool(ev.get("has_unified_profile", False)),
+            })
+
         factors.append(factor)
 
     # PM-30: Capacity / liquidity summary stats (after factors are built)
@@ -486,6 +572,30 @@ def build_payload() -> dict:
         if cf:
             cap_liq_class_counts[cf] = cap_liq_class_counts.get(cf, 0) + 1
     summary["cap_liq_class_counts"] = cap_liq_class_counts
+
+    # PM-33: Unified profile workflow summary stats
+    summary["workflow_version"] = workflow_contract.get("workflow_version", profile_manifest.get("workflow_version", ""))
+    summary["number_of_stages"] = len(workflow_contract.get("stage_order", []))
+    summary["evidence_status_distribution"] = evidence_matrix_json.get("evidence_status_distribution", {})
+    summary["mean_completeness_rate"] = evidence_matrix_json.get("mean_completeness_rate", 0)
+    profile_class_counts: dict[str, int] = {}
+    workflow_ready_counts: dict[str, int] = {}
+    recommended_action_counts: dict[str, int] = {}
+    for up in unified_profile_list:
+        pc = up.get("profile_class", "")
+        wr = up.get("workflow_ready_status", "")
+        ra = up.get("recommended_research_action", "")
+        if pc:
+            profile_class_counts[pc] = profile_class_counts.get(pc, 0) + 1
+        if wr:
+            workflow_ready_counts[wr] = workflow_ready_counts.get(wr, 0) + 1
+        if ra:
+            recommended_action_counts[ra] = recommended_action_counts.get(ra, 0) + 1
+    summary["profile_class_counts"] = profile_class_counts
+    summary["workflow_ready_counts"] = workflow_ready_counts
+    summary["recommended_action_counts"] = recommended_action_counts
+    summary["profile_manifest_source_artifacts"] = profile_manifest.get("source_artifacts", [])
+    summary["component_weights"] = profile_payload.get("component_weights", {})
 
     return {"summary": summary, "factors": factors}
 
@@ -648,6 +758,25 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 .cap-badge.NONE_FLAG{background:#334155;color:#e2e8f0}
 .cap-caveat{background:#1a1a2e;border:1px solid #3b3b5c;color:#c4b5fd;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:11px;line-height:1.6}
 .cap-caveat strong{color:#e9d5ff}
+
+/* ── PM-33: Unified profile badges ── */
+.profile-class-badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:600;white-space:nowrap}
+.profile-class-badge.BROAD_WATCHLIST{background:#334155;color:#e2e8f0}
+.profile-class-badge.PROMISING_BUT_REGIME_DEPENDENT{background:#92400e;color:#fef3c7}
+.profile-class-badge.UNIQUE_BUT_WEAK{background:#7f1d1d;color:#fecaca}
+.workflow-ready-badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:600;white-space:nowrap}
+.workflow-ready-badge.WORKFLOW_READY{background:#166534;color:#bbf7d0}
+.workflow-ready-badge.WORKFLOW_NOT_READY{background:#7f1d1d;color:#fecaca}
+.evidence-badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:600;white-space:nowrap}
+.evidence-badge.COMPLETE{background:#166534;color:#bbf7d0}
+.evidence-badge.COMPLETE_WITH_WARNINGS{background:#92400e;color:#fef3c7}
+.evidence-badge.INCOMPLETE{background:#7f1d1d;color:#fecaca}
+.research-action-badge{display:inline-block;border-radius:999px;padding:2px 7px;font-size:9px;background:#334155;color:#e2e8f0;white-space:nowrap}
+.ev-block-badge{display:inline-block;border-radius:4px;padding:2px 6px;font-size:9px;font-weight:600;white-space:nowrap}
+.ev-block-badge.ev-pass{background:#166534;color:#bbf7d0}
+.ev-block-badge.ev-miss{background:#7f1d1d;color:#fecaca}
+.up-caveat{background:#1a1a2e;border:1px solid #3b3b5c;color:#c4b5fd;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:11px;line-height:1.6}
+.up-caveat strong{color:#e9d5ff}
 </style>
 </head>
 <body>
@@ -671,6 +800,8 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 <div id="paperSummarySection"></div>
 <div id="regimeSummarySection"></div>
 <div id="capLiqSummarySection"></div>
+
+<div id="unifiedWorkflowSummarySection"></div>
 
 <div id="caveatsSection"></div>
 
@@ -922,6 +1053,47 @@ function capBadge(cls,map){
   return `<span class="cap-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
 }
 
+// PM-33: Unified profile label maps
+const PROFILE_CLASS_LABELS = {
+  BROAD_WATCHLIST: {zh:'广泛观察',en:'BROAD_WATCHLIST',cls:'BROAD_WATCHLIST'},
+  PROMISING_BUT_REGIME_DEPENDENT: {zh:'有前景但状态依赖',en:'PROMISING_BUT_REGIME_DEPENDENT',cls:'PROMISING_BUT_REGIME_DEPENDENT'},
+  UNIQUE_BUT_WEAK: {zh:'独立但偏弱',en:'UNIQUE_BUT_WEAK',cls:'UNIQUE_BUT_WEAK'}
+};
+const WORKFLOW_READY_LABELS = {
+  WORKFLOW_READY: {zh:'工作流就绪',en:'WORKFLOW_READY',cls:'WORKFLOW_READY'},
+  WORKFLOW_NOT_READY: {zh:'工作流未就绪',en:'WORKFLOW_NOT_READY',cls:'WORKFLOW_NOT_READY'}
+};
+const EVIDENCE_STATUS_LABELS = {
+  COMPLETE: {zh:'完整',en:'COMPLETE',cls:'COMPLETE'},
+  COMPLETE_WITH_WARNINGS: {zh:'完整(有警告)',en:'COMPLETE_WITH_WARNINGS',cls:'COMPLETE_WITH_WARNINGS'},
+  INCOMPLETE: {zh:'不完整',en:'INCOMPLETE',cls:'INCOMPLETE'}
+};
+const RESEARCH_ACTION_LABELS = {
+  LOWER_PRIORITY_REVIEW: {zh:'降低优先级复核',en:'LOWER_PRIORITY_REVIEW'},
+  WATCH_FOR_STABILITY_RISK: {zh:'关注稳定性风险',en:'WATCH_FOR_STABILITY_RISK'},
+  WATCH_FOR_REGIME_DEPENDENCE: {zh:'关注状态依赖',en:'WATCH_FOR_REGIME_DEPENDENCE'},
+  KEEP_AS_DIAGNOSTIC_PROBE: {zh:'保留为诊断探针',en:'KEEP_AS_DIAGNOSTIC_PROBE'}
+};
+function profileClassBadge(cls){
+  const l=PROFILE_CLASS_LABELS[cls]||{zh:cls||'—',en:cls||'—',cls:''};
+  return `<span class="profile-class-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+function workflowReadyBadge(cls){
+  const l=WORKFLOW_READY_LABELS[cls]||{zh:cls||'—',en:cls||'—',cls:''};
+  return `<span class="workflow-ready-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+function evidenceStatusBadge(cls){
+  const l=EVIDENCE_STATUS_LABELS[cls]||{zh:cls||'—',en:cls||'—',cls:''};
+  return `<span class="evidence-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+function researchActionBadge(cls){
+  const l=RESEARCH_ACTION_LABELS[cls]||{zh:cls||'—',en:cls||'—'};
+  return `<span class="research-action-badge">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+function evBlockBadge(label,pass){
+  return `<span class="ev-block-badge ${pass?'ev-pass':'ev-miss'}">${esc(label)}: ${pass?'✓':'✗'}</span>`;
+}
+
 // ── Helpers ──
 function esc(v){return String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function num(v,d=4,signed=true){if(v===null||v===undefined||Number.isNaN(v))return '—';const s=signed&&v>=0?'+':'';return s+Number(v).toFixed(d)}
@@ -1132,6 +1304,65 @@ function scSubBar(key,score){
       <strong>⚠ Selected-basket proxy warning · 选中篮子代理警告</strong><br>
       <span style="color:var(--muted)">These are capacity/liquidity proxies based on selected-basket volume and turnover. They are not order-book simulation, slippage estimates, or real execution capacity.<br>
       这些是基于选中篮子成交量与换手率的容量 / 流动性代理指标，不是订单簿模拟、滑点估计或真实可交易容量结论。</span>
+    </div>
+  `;
+})();
+
+// ── PM-33: Unified Factor Evaluation Workflow summary section ──
+(function(){
+  const el=document.getElementById('unifiedWorkflowSummarySection');
+  if(!el)return;
+  const wv=S.workflow_version||'';
+  const nstg=S.number_of_stages||0;
+  const esd=S.evidence_status_distribution||{};
+  const wrc=S.workflow_ready_counts||{};
+  const pcc=S.profile_class_counts||{};
+  const rac=S.recommended_action_counts||{};
+  const mcr=S.mean_completeness_rate||0;
+  const cw=S.component_weights||{};
+  const sa=S.profile_manifest_source_artifacts||[];
+
+  const esdHtml=Object.entries(esd).map(([k,v])=>{
+    const l=EVIDENCE_STATUS_LABELS[k]||{zh:k,cls:''};
+    return `<div class="sc-summary-card"><strong style="color:${k==='COMPLETE'?'var(--green)':'var(--amber)'}">${v}</strong><span>${esc(l.zh)}<br>${esc(k)}</span></div>`;
+  }).join('');
+  const wrcHtml=Object.entries(wrc).map(([k,v])=>{
+    const l=WORKFLOW_READY_LABELS[k]||{zh:k,cls:''};
+    return `<div class="sc-summary-card"><strong style="color:var(--green)">${v}</strong><span>${esc(l.zh)}<br>${esc(k)}</span></div>`;
+  }).join('');
+  const pccHtml=Object.entries(pcc).map(([k,v])=>{
+    const l=PROFILE_CLASS_LABELS[k]||{zh:k,cls:''};
+    const c=k==='BROAD_WATCHLIST'?'var(--muted)':k==='PROMISING_BUT_REGIME_DEPENDENT'?'var(--amber)':'var(--red)';
+    return `<div class="sc-summary-card"><strong style="color:${c}">${v}</strong><span>${esc(l.zh)}<br>${esc(k)}</span></div>`;
+  }).join('');
+  const racHtml=Object.entries(rac).map(([k,v])=>{
+    const l=RESEARCH_ACTION_LABELS[k]||{zh:k};
+    return `<div class="sc-summary-card"><strong>${v}</strong><span>${esc(l.zh)}<br>${esc(k)}</span></div>`;
+  }).join('');
+
+  el.innerHTML=`
+    <h2 style="margin-bottom:6px">Unified Factor Evaluation Workflow / 统一因子评价工作流</h2>
+    <div class="stats">
+      <div class="stat"><strong>${esc(wv)}</strong><span>Workflow Version 工作流版本</span></div>
+      <div class="stat"><strong>${nstg}</strong><span>Stages 阶段数</span></div>
+      <div class="stat"><strong>${(mcr*100).toFixed(0)}%</strong><span>Mean Evidence Completeness 平均证据完整率</span></div>
+      <div class="stat"><strong>${sa.length}</strong><span>Source Artifacts 源工件数</span></div>
+    </div>
+    <h3 style="margin:10px 0 4px">Evidence Status Distribution 证据状态分布</h3>
+    <div class="sc-summary-grid">${esdHtml}</div>
+    <h3 style="margin:10px 0 4px">Workflow Ready Status 工作流就绪状态</h3>
+    <div class="sc-summary-grid">${wrcHtml}</div>
+    <h3 style="margin:10px 0 4px">Profile Class Distribution 画像分类分布</h3>
+    <div class="sc-summary-grid">${pccHtml}</div>
+    <h3 style="margin:10px 0 4px">Recommended Research Action Distribution 建议研究动作分布</h3>
+    <div class="sc-summary-grid">${racHtml}</div>
+    <h3 style="margin:10px 0 4px">Component Weights 组件权重</h3>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;font-size:10px">
+      ${Object.entries(cw).map(([k,v])=>`<span class="bucket-badge">${esc(k)}: ${(v*100).toFixed(0)}%</span>`).join(' ')}
+    </div>
+    <div class="up-caveat">
+      <strong>⚠ Unified profiles are research diagnostics. They summarize evidence; they do not select signals, construct portfolios, or recommend trading.</strong><br>
+      <span style="color:var(--muted)">统一因子画像是研究性诊断汇总，用于整理证据；它不选择信号、不构建组合，也不构成交易建议。不是交易策略。</span>
     </div>
   `;
 })();
@@ -1989,6 +2220,97 @@ function renderDetail(fid){
       <strong>Interpretation 解读:</strong><br>
       <span style="font-size:10px">Capacity estimates assume uniform daily volume distribution; real liquidity is clustered. Participation rates show how much of daily selected-basket volume a notional allocation would consume. Lower is better.<br>
       容量估计假设每日成交量均匀分布；真实流动性是集中的。参与率显示特定名义金额占每日选中篮子成交量的比例，越低越好。</span>
+    </div>
+    `:''}
+
+    ${f.profile_class?`
+    <div class="section-divider"></div>
+    <h3>Unified Factor Profile / 统一因子画像</h3>
+    <div style="margin:6px 0;display:flex;gap:6px;flex-wrap:wrap">
+      ${profileClassBadge(f.profile_class)}
+      ${f.workflow_ready_status?workflowReadyBadge(f.workflow_ready_status):''}
+      ${f.evidence_status?evidenceStatusBadge(f.evidence_status):''}
+      ${f.profile_confidence?scConfBadge(f.profile_confidence):''}
+      ${f.recommended_research_action?researchActionBadge(f.recommended_research_action):''}
+    </div>
+    <div class="metric-grid">
+      ${f.profile_score!==null&&f.profile_score!==undefined?metricRow('Profile Score 画像分数','<strong style="font-size:16px">'+Number(f.profile_score).toFixed(1)+'</strong>/100'):''}
+      ${f.evidence_completeness_rate!==null?metricRow('Evidence Completeness 证据完整率',pct(f.evidence_completeness_rate)):''}
+      ${f.registry_or_data_status?metricRow('Registry Status 注册状态',esc(f.registry_or_data_status)):''}
+      ${f.cluster_member_role?metricRow('Cluster Role 聚类角色',esc(f.cluster_member_role)):''}
+      ${f.marginal_information_class?metricRow('Marginal Info 边际信息',esc(f.marginal_information_class)):''}
+      ${f.source_artifact_count?metricRow('Source Artifacts 源工件数',f.source_artifact_count):''}
+    </div>
+
+    ${f.primary_strength_zh||f.primary_risk_zh?`
+    <div style="margin:6px 0">
+      ${f.primary_strength_zh?`<div class="bilingual"><div class="zh" style="font-size:11px"><strong style="color:var(--green)">Strength 优势:</strong> ${esc(f.primary_strength_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(f.primary_strength_en)}</div></div>`:''}
+      ${f.primary_risk_zh?`<div class="bilingual" style="margin-top:4px"><div class="zh" style="font-size:11px"><strong style="color:var(--amber)">Risk 风险:</strong> ${esc(f.primary_risk_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(f.primary_risk_en)}</div></div>`:''}
+    </div>`:''}
+
+    ${f.profile_summary_zh?`
+    <div class="bilingual" style="margin:6px 0;background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:8px">
+      <div class="zh" style="font-size:12px">${esc(f.profile_summary_zh)}</div>
+      <div class="en" style="font-size:10px;color:var(--muted)">${esc(f.profile_summary_en)}</div>
+    </div>`:''}
+
+    ${f.workflow_missing_or_stale_blocks?`
+    <div style="margin:6px 0;font-size:11px;color:var(--amber)">⚠ Missing/stale blocks 缺失/过时模块: ${esc(f.workflow_missing_or_stale_blocks)}</div>`:''}
+
+    <h4 style="margin:10px 0 4px;font-size:11px;color:var(--muted)">Component Scores 组件分数 (10 dimensions 维度)</h4>
+    ${(()=>{
+      const comps=[
+        ['standalone_quality','独立质量',f.comp_standalone_quality],
+        ['paper','纸面组合',f.comp_paper],
+        ['cost','费用',f.comp_cost],
+        ['regime','市场状态',f.comp_regime],
+        ['shape','形状',f.comp_shape],
+        ['stability','稳定性',f.comp_stability],
+        ['capacity','容量',f.comp_capacity],
+        ['redundancy','冗余',f.comp_redundancy],
+        ['marginal_info','边际信息',f.comp_marginal_info],
+        ['evidence_completeness','证据完整',f.comp_evidence_completeness],
+      ];
+      const hasAny=comps.some(c=>c[2]!==null&&c[2]!==undefined);
+      if(!hasAny)return '<div class="small">No component scores</div>';
+      return comps.map(([key,label,score])=>{
+        if(score===null||score===undefined)return '';
+        const w=Math.max(2,Math.min(100,Number(score)));
+        const c=scBarColor(score);
+        return `<div class="sc-bar-wrap"><span class="sc-bar-label" title="${esc(label)}">${esc(label)}</span><div class="sc-bar-track"><div class="sc-bar-fill ${c}" style="width:${w}%">${Number(score).toFixed(0)}</div></div></div>`;
+      }).join('')+
+      `<div class="sc-bar-wrap" style="margin-top:4px;border-top:1px solid var(--border);padding-top:4px"><span class="sc-bar-label" style="font-weight:700">Profile Score 画像分数</span><div class="sc-bar-track"><div class="sc-bar-fill ${scBarColor(f.profile_score)}" style="width:${Math.max(2,Math.min(100,Number(f.profile_score||0)))}%">${Number(f.profile_score||0).toFixed(1)}</div></div></div>`;
+    })()}
+
+    <h4 style="margin:10px 0 4px;font-size:11px;color:var(--muted)">Evidence Matrix 证据矩阵 (15 blocks 模块)</h4>
+    <div style="display:flex;gap:3px;flex-wrap:wrap;margin:4px 0">
+      ${evBlockBadge('Scorecard',f.ev_has_quality_scorecard)}
+      ${evBlockBadge('Diagnostics',f.ev_has_diagnostics_summary)}
+      ${evBlockBadge('Redundancy',f.ev_has_redundancy_summary)}
+      ${evBlockBadge('Cluster',f.ev_has_redundancy_cluster_members)}
+      ${evBlockBadge('Marginal',f.ev_has_marginal_information)}
+      ${evBlockBadge('Paper',f.ev_has_paper_summary)}
+      ${evBlockBadge('FeeSens',f.ev_has_fee_sensitivity)}
+      ${evBlockBadge('Regime',f.ev_has_regime_exposure)}
+      ${evBlockBadge('QShape',f.ev_has_quantile_shape)}
+      ${evBlockBadge('RollStab',f.ev_has_rolling_stability)}
+      ${evBlockBadge('Decile',f.ev_has_decile_shape)}
+      ${evBlockBadge('CapLiq',f.ev_has_capacity_liquidity)}
+      ${evBlockBadge('Values',f.ev_has_factor_values)}
+      ${evBlockBadge('LevelEval',f.ev_has_factor_level_evaluation)}
+      ${evBlockBadge('Profile',f.ev_has_unified_profile)}
+    </div>
+
+    ${f.source_artifacts?`
+    <h4 style="margin:10px 0 4px;font-size:11px;color:var(--muted)">Source Lineage 源工件 (${f.source_artifact_count||0})</h4>
+    <div style="display:flex;gap:3px;flex-wrap:wrap;font-size:9px">
+      ${f.source_artifacts.split('|').map(a=>`<span class="bucket-badge">${esc(a)}</span>`).join(' ')}
+    </div>`:''}
+
+    <div class="up-caveat">
+      <strong>⚠ Unified profiles are research diagnostics, not trading signals / 统一画像是研究诊断，非交易信号</strong><br>
+      <span style="color:var(--muted)">Profile scores summarize evidence completeness and cross-dimensional quality. They do not select signals, construct portfolios, or recommend trading.<br>
+      画像分数汇总证据完整性与跨维度质量。它不选择信号、不构建组合，也不构成交易建议。不是交易策略。</span>
     </div>
     `:''}
   `;
