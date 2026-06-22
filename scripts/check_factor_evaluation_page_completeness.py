@@ -351,6 +351,102 @@ def check_pm40b_display_consistency(html_text: str) -> list[dict]:
         ))
     return results
 
+
+def check_per_factor_detail_completeness(html_text: str) -> list[dict]:
+    """Per-factor detail completeness for PM-35 new factors.
+
+    For each of the 5 PM-35 factors, verify:
+    1. Best Horizon Metrics not empty (rankic_mean, rankic_t_stat)
+    2. Monthly RankIC: has data or explanatory message (not bare 'No data')
+    3. Monthly LS: has data entries
+    4. Redundancy: cluster_id not -1, novelty not INSUFFICIENT_OVERLAP
+    5. Source Warning: no stale no_horizon_data / monthly_ls_unavailable
+    6. Unified Profile: workflow_ready_status, evidence_status populated
+    """
+    import re as _re
+    import json as _json
+    results = []
+    PM35 = ['rev_2h', 'mom_vol_adjusted_20h', 'range_breakout_vol_confirm_20h',
+            'volume_pressure_20h', 'xs_rank_mom_accel']
+
+    m = _re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>', html_text, _re.DOTALL)
+    if not m:
+        results.append(_fail('pf_detail_payload', 'Per-factor detail completeness', 'factorPayload not found'))
+        return results
+    try:
+        data = _json.loads(m.group(1))
+    except _json.JSONDecodeError:
+        results.append(_fail('pf_detail_payload', 'Per-factor detail completeness', 'JSON parse error'))
+        return results
+
+    all_pass = True
+    issues = []
+    factor_results = []
+    for f in data.get('factors', []):
+        fid = f.get('factor_id', '')
+        if fid not in PM35:
+            continue
+        fid_issues = []
+
+        # 1. Best Horizon Metrics
+        if f.get('rankic_mean') is None:
+            fid_issues.append('rankic_mean=None')
+        if f.get('rankic_t_stat') is None:
+            fid_issues.append('rankic_t_stat=None')
+
+        # 2. Monthly RankIC: has data or has rankic_mean as fallback
+        mic = f.get('monthly_ic', [])
+        if len(mic) == 0 and f.get('rankic_mean') is None:
+            fid_issues.append('monthly_ic empty AND no rankic_mean fallback')
+
+        # 3. Monthly LS
+        mls = f.get('monthly_ls', [])
+        if len(mls) == 0:
+            fid_issues.append('monthly_ls empty')
+
+        # 4. Redundancy
+        cid = f.get('redundancy_cluster_id')
+        if cid == -1 or cid is None:
+            fid_issues.append(f'redundancy_cluster_id={cid}')
+        nov = f.get('novelty_assessment', '')
+        if nov == 'INSUFFICIENT_OVERLAP':
+            fid_issues.append('novelty_assessment=INSUFFICIENT_OVERLAP')
+
+        # 5. Source Warning
+        sw = f.get('source_warning', '')
+        if 'no_horizon_data' in sw:
+            fid_issues.append('source_warning has no_horizon_data')
+        if 'monthly_ls_unavailable' in sw:
+            fid_issues.append('source_warning has monthly_ls_unavailable')
+
+        # 6. Unified Profile
+        wf = f.get('workflow_ready_status', '')
+        es = f.get('evidence_status', '')
+        if not wf:
+            fid_issues.append('workflow_ready_status empty')
+        if not es:
+            fid_issues.append('evidence_status empty')
+
+        if fid_issues:
+            all_pass = False
+            issues.append(f'{fid}: {" | ".join(fid_issues)}')
+        factor_results.append((fid, len(fid_issues) == 0))
+
+    if all_pass:
+        results.append(_pass(
+            'pf_detail_completeness',
+            'Per-factor detail completeness (PM-35)',
+            f'{len(factor_results)} factors all pass',
+        ))
+    else:
+        results.append(_fail(
+            'pf_detail_completeness',
+            'Per-factor detail completeness (PM-35)',
+            f'{len(issues)} factors with issues',
+            '; '.join(issues),
+        ))
+    return results
+
 def check_section_markers(html_text: str) -> list[dict]:
     """Check each required section marker set."""
     results = []
@@ -479,6 +575,7 @@ def main() -> int:
     all_checks.append(check_pm35_factors(html_text))
     all_checks.append(check_new_factor_metrics_populated(html_text))
     all_checks.extend(check_pm40b_display_consistency(html_text))
+    all_checks.extend(check_per_factor_detail_completeness(html_text))
 
     # 4. Section markers
     all_checks.extend(check_section_markers(html_text))

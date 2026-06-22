@@ -494,13 +494,14 @@ def build_payload() -> dict:
                 old_warn = factor["source_warning"]
                 factor["source_warning"] = old_warn.replace("no_horizon_data", "").replace("monthly_ls_unavailable", "").strip("; ")
 
-        # PM-35: Also try factor-level period IC for rankic_std / rankic_ir
-        if factor.get("rankic_std") is None and not feval_period_ic.empty:
-            feval_pic_row = feval_pic_map.get((fid, best_hz))
-            if feval_pic_row is not None:
-                factor["rankic_std"] = sf(feval_pic_row.get("direction_adjusted_rank_ic_std"))
-                if factor.get("rankic_ir") is None:
-                    factor["rankic_ir"] = sf(feval_pic_row.get("direction_adjusted_icir"))
+        # PM-35: Compute rankic_std / rankic_ir from monthly_ic if still None
+        if factor.get("rankic_std") is None and monthly_ic:
+            adj_vals = [m["rank_ic_adj"] for m in monthly_ic if m.get("rank_ic_adj") is not None]
+            if len(adj_vals) > 1:
+                import statistics
+                factor["rankic_std"] = round(statistics.stdev(adj_vals), 8)
+                if factor.get("rankic_ir") is None and factor["rankic_std"] > 0:
+                    factor["rankic_ir"] = round(statistics.mean(adj_vals) / factor["rankic_std"], 6)
 
         # PM-35: Compute monthly_ic_positive_rate if still None and we have data
         if factor.get("monthly_ic_positive_rate") is None and monthly_ic:
