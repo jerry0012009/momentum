@@ -37,6 +37,7 @@ factor registry (scripts/factor_formula_registry.py)
   → quality scorecard (scripts/build_factor_quality_scorecard.py)
   → pairwise redundancy matrix (scripts/build_factor_pairwise_redundancy_matrix.py) [EXPENSIVE]
   → redundancy cluster + marginal information (scripts/build_factor_redundancy_cluster_diagnostics.py) [PM-31]
+  → unified factor profile + workflow contract + evidence matrix (scripts/build_unified_factor_profile.py) [PM-32]
   → refreshed scorecard (scripts/build_factor_quality_scorecard.py)
   → paper portfolio diagnostics (scripts/build_single_factor_paper_portfolio_diagnostics.py) [EXPENSIVE]
   → paper page payload (scripts/build_single_factor_paper_page_payload.py) [CHEAP]

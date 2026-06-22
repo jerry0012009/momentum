@@ -25,6 +25,7 @@ Stages (in pipeline order):
     scorecard            Build quality scorecard (cheap)
     redundancy           Pairwise redundancy matrix (EXPENSIVE)
     cluster              Redundancy cluster + marginal information diagnostics (PM-31) (cheap)
+    profile              Unified factor evaluation workflow profile (PM-32) (cheap)
     paper-diagnostics    Single-factor paper portfolio diagnostics (EXPENSIVE)
     paper-page-payload   Build single-factor paper page payload (cheap)
     regime               BTC market regime diagnostics (PM-23) (cheap)
@@ -138,6 +139,16 @@ STAGES: list[dict] = [
         "commands": [
             ("build_factor_redundancy_cluster_diagnostics", [
                 "python", str(SCRIPTS / "build_factor_redundancy_cluster_diagnostics.py"),
+            ]),
+        ],
+    },
+    {
+        "name": "profile",
+        "description": "Unified factor evaluation workflow profile (PM-32)",
+        "expensive": False,
+        "commands": [
+            ("build_unified_factor_profile", [
+                "python", str(SCRIPTS / "build_unified_factor_profile.py"),
             ]),
         ],
     },

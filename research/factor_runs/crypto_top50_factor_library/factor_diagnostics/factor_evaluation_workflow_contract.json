@@ -1,0 +1,628 @@
+{
+  "workflow_name": "factor_evaluation_workflow",
+  "workflow_version": "1.0.0",
+  "purpose": "Canonical evaluation pipeline for the crypto top-50 factor library: from registry through diagnostics, redundancy, paper portfolio, regime analysis, unified profile, and page-ready outputs.",
+  "not_production_disclaimer": "This workflow and all its outputs are research diagnostics ONLY. NOT production. NOT live trading. NOT investment advice. No factor should be deployed, traded, or used for allocation without independent validation.",
+  "generated_at": "2026-06-22T15:17:35.741887+00:00",
+  "stage_order": [
+    "registry-integrity",
+    "catalog",
+    "values",
+    "direction-audit",
+    "evaluate",
+    "diagnostics",
+    "metadata",
+    "scorecard",
+    "redundancy",
+    "cluster",
+    "paper-diagnostics",
+    "paper-page-payload",
+    "regime",
+    "quantile-shape",
+    "rolling-stability",
+    "decile-shape",
+    "capacity-liquidity",
+    "profile",
+    "staleness",
+    "page",
+    "state"
+  ],
+  "stage_definitions": [
+    {
+      "stage_id": "registry-integrity",
+      "display_name_zh": "注册表完整性检查",
+      "display_name_en": "Registry Integrity Check",
+      "script": "scripts/check_factor_registry_integrity.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_formula_registry.py"
+      ],
+      "outputs": [
+        "factor_registry_integrity_report.csv",
+        "factor_registry_integrity_report.json"
+      ],
+      "must_run_after": [],
+      "what_it_answers_zh": "注册表中的因子定义是否完整、无重复、无冲突？",
+      "what_it_answers_en": "Are factor definitions in the registry complete, non-duplicate, and conflict-free?"
+    },
+    {
+      "stage_id": "catalog",
+      "display_name_zh": "因子目录构建",
+      "display_name_en": "Factor Catalog Build",
+      "script": "scripts/build_factor_catalog.py + scripts/check_factor_catalog_integrity.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_formula_registry.py"
+      ],
+      "outputs": [
+        "factor_catalog.csv",
+        "factor_catalog.json"
+      ],
+      "must_run_after": [
+        "registry-integrity"
+      ],
+      "what_it_answers_zh": "注册表中定义了哪些因子？它们的元数据和分类是否正确？",
+      "what_it_answers_en": "Which factors are defined in the registry? Is their metadata and classification correct?"
+    },
+    {
+      "stage_id": "values",
+      "display_name_zh": "因子值计算",
+      "display_name_en": "Factor Value Computation",
+      "script": "scripts/build_factor_values.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_formula_registry.py",
+        "raw bars parquet"
+      ],
+      "outputs": [
+        "factor_values.parquet (per factor)"
+      ],
+      "must_run_after": [
+        "catalog"
+      ],
+      "what_it_answers_zh": "每个因子在给定行情数据上的数值序列是什么？",
+      "what_it_answers_en": "What are the time-series values for each factor on the given market data?"
+    },
+    {
+      "stage_id": "direction-audit",
+      "display_name_zh": "方向语义审计",
+      "display_name_en": "Direction Semantics Audit",
+      "script": "scripts/audit_factor_direction_semantics.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_formula_registry.py"
+      ],
+      "outputs": [
+        "direction_semantics_audit/"
+      ],
+      "must_run_after": [
+        "values"
+      ],
+      "what_it_answers_zh": "每个因子的预期方向（正/负）是否与实际IC方向一致？",
+      "what_it_answers_en": "Does each factor's expected direction match its actual IC direction?"
+    },
+    {
+      "stage_id": "evaluate",
+      "display_name_zh": "因子级评估（昂贵）",
+      "display_name_en": "Factor-Level Evaluation (EXPENSIVE)",
+      "script": "scripts/evaluate_factors.py",
+      "is_expensive": true,
+      "inputs": [
+        "factor_values.parquet",
+        "labels.parquet"
+      ],
+      "outputs": [
+        "factor_level_rankic_summary.csv",
+        "factor_level_quantile_return_summary.csv",
+        "..."
+      ],
+      "must_run_after": [
+        "direction-audit"
+      ],
+      "what_it_answers_zh": "每个因子在4个时间窗口上的RankIC、分位数回报、覆盖率等统计量是多少？",
+      "what_it_answers_en": "What are the RankIC, quantile returns, coverage, and other statistics for each factor across 4 horizons?"
+    },
+    {
+      "stage_id": "diagnostics",
+      "display_name_zh": "诊断指标构建",
+      "display_name_en": "Diagnostics Metrics Build",
+      "script": "scripts/build_factor_diagnostics_metrics.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_level_evaluation/",
+        "factor_library_state.json"
+      ],
+      "outputs": [
+        "factor_diagnostics_summary.csv",
+        "factor_monthly_ic_series.csv",
+        "factor_monthly_long_short_series.csv"
+      ],
+      "must_run_after": [
+        "evaluate"
+      ],
+      "what_it_answers_zh": "每个因子的关键诊断指标（RankIC、夏普比率、最大回撤等）是什么？",
+      "what_it_answers_en": "What are the key diagnostic metrics (RankIC, Sharpe, max drawdown, etc.) for each factor?"
+    },
+    {
+      "stage_id": "metadata",
+      "display_name_zh": "双语元数据卡片",
+      "display_name_en": "Bilingual Factor Cards",
+      "script": "scripts/build_factor_bilingual_cards.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_formula_registry.py"
+      ],
+      "outputs": [
+        "factor_bilingual_cards.csv",
+        "factor_bilingual_cards.json"
+      ],
+      "must_run_after": [
+        "diagnostics"
+      ],
+      "what_it_answers_zh": "每个因子的中英文描述、分类和元数据卡片内容是什么？",
+      "what_it_answers_en": "What are the bilingual descriptions, classifications, and metadata card contents for each factor?"
+    },
+    {
+      "stage_id": "scorecard",
+      "display_name_zh": "质量评分卡",
+      "display_name_en": "Quality Scorecard",
+      "script": "scripts/build_factor_quality_scorecard.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_diagnostics_summary.csv",
+        "factor_monthly_ic_series.csv",
+        "factor_bilingual_cards.csv"
+      ],
+      "outputs": [
+        "factor_quality_scorecard.csv",
+        "factor_quality_scorecard.json"
+      ],
+      "must_run_after": [
+        "metadata"
+      ],
+      "what_it_answers_zh": "每个因子的综合质量评分是多少？属于哪个质量等级？",
+      "what_it_answers_en": "What is the comprehensive quality score for each factor? What quality class does it belong to?"
+    },
+    {
+      "stage_id": "redundancy",
+      "display_name_zh": "两两冗余矩阵（昂贵）",
+      "display_name_en": "Pairwise Redundancy Matrix (EXPENSIVE)",
+      "script": "scripts/build_factor_pairwise_redundancy_matrix.py",
+      "is_expensive": true,
+      "inputs": [
+        "factor_values.parquet (all)",
+        "factor_bilingual_cards.csv"
+      ],
+      "outputs": [
+        "factor_pairwise_redundancy.csv",
+        "factor_redundancy_matrix_pearson.csv",
+        "factor_redundancy_matrix_spearman.csv"
+      ],
+      "must_run_after": [
+        "scorecard"
+      ],
+      "what_it_answers_zh": "任意两个因子之间的皮尔逊和斯皮尔曼相关性是多少？哪些因子是冗余的？",
+      "what_it_answers_en": "What are the Pearson and Spearman correlations between any two factors? Which factors are redundant?"
+    },
+    {
+      "stage_id": "cluster",
+      "display_name_zh": "冗余聚类与边际信息（PM-31）",
+      "display_name_en": "Redundancy Clustering & Marginal Information (PM-31)",
+      "script": "scripts/build_factor_redundancy_cluster_diagnostics.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_pairwise_redundancy.csv",
+        "factor_quality_scorecard.csv"
+      ],
+      "outputs": [
+        "factor_redundancy_cluster_members.csv",
+        "factor_marginal_information_summary.csv",
+        "factor_redundancy_summary.csv"
+      ],
+      "must_run_after": [
+        "redundancy"
+      ],
+      "what_it_answers_zh": "因子聚类结果是什么？每个因子的边际信息增量是多少？",
+      "what_it_answers_en": "What are the factor clusters? What is the marginal information value of each factor?"
+    },
+    {
+      "stage_id": "paper-diagnostics",
+      "display_name_zh": "单因子纸面组合诊断（昂贵）",
+      "display_name_en": "Single-Factor Paper Portfolio Diagnostics (EXPENSIVE)",
+      "script": "scripts/build_single_factor_paper_portfolio_diagnostics.py",
+      "is_expensive": true,
+      "inputs": [
+        "factor_values.parquet (all)",
+        "bars_1h.parquet"
+      ],
+      "outputs": [
+        "single_factor_paper_summary.csv",
+        "single_factor_fee_sensitivity.csv"
+      ],
+      "must_run_after": [
+        "cluster"
+      ],
+      "what_it_answers_zh": "如果只用这一个因子构建纸面组合，扣除不同费率后表现如何？",
+      "what_it_answers_en": "If only this factor is used to build a paper portfolio, how does it perform at different fee levels?"
+    },
+    {
+      "stage_id": "paper-page-payload",
+      "display_name_zh": "纸面组合页面载荷",
+      "display_name_en": "Paper Page Payload",
+      "script": "scripts/build_single_factor_paper_page_payload.py",
+      "is_expensive": false,
+      "inputs": [
+        "single_factor_paper_summary.csv"
+      ],
+      "outputs": [
+        "paper_page_payload.json"
+      ],
+      "must_run_after": [
+        "paper-diagnostics"
+      ],
+      "what_it_answers_zh": "纸面组合诊断结果如何格式化为页面可用的JSON载荷？",
+      "what_it_answers_en": "How are the paper portfolio diagnostic results formatted into a page-ready JSON payload?"
+    },
+    {
+      "stage_id": "regime",
+      "display_name_zh": "市场状态诊断（PM-23）",
+      "display_name_en": "Market Regime Diagnostics (PM-23)",
+      "script": "scripts/build_factor_market_regime_diagnostics.py",
+      "is_expensive": false,
+      "inputs": [
+        "bars_1h.parquet (BTC)",
+        "factor_monthly_ic_series.csv",
+        "single_factor_paper_summary.csv"
+      ],
+      "outputs": [
+        "factor_regime_exposure_summary.csv",
+        "factor_regime_diagnostics_payload.json"
+      ],
+      "must_run_after": [
+        "paper-diagnostics"
+      ],
+      "what_it_answers_zh": "因子在牛市/熊市/高波动/回撤期间的表现有何差异？",
+      "what_it_answers_en": "How does the factor perform during bull/bear/high-vol/drawdown regimes?"
+    },
+    {
+      "stage_id": "quantile-shape",
+      "display_name_zh": "分位数形状诊断",
+      "display_name_en": "Quantile Shape Diagnostics",
+      "script": "scripts/build_factor_quantile_shape_diagnostics.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_level_evaluation/"
+      ],
+      "outputs": [
+        "factor_quantile_shape_summary.csv"
+      ],
+      "must_run_after": [
+        "evaluate"
+      ],
+      "what_it_answers_zh": "因子分位数回报是否呈单调递增/递减形状？",
+      "what_it_answers_en": "Do quantile returns show monotonic increasing/decreasing shape?"
+    },
+    {
+      "stage_id": "rolling-stability",
+      "display_name_zh": "滚动稳定性诊断",
+      "display_name_en": "Rolling Stability Diagnostics",
+      "script": "scripts/build_factor_rolling_stability_diagnostics.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_level_evaluation/"
+      ],
+      "outputs": [
+        "factor_rolling_stability_summary.csv"
+      ],
+      "must_run_after": [
+        "evaluate"
+      ],
+      "what_it_answers_zh": "因子的IC和夏普比率在滚动窗口中是否稳定？",
+      "what_it_answers_en": "Are the factor's IC and Sharpe ratio stable across rolling windows?"
+    },
+    {
+      "stage_id": "decile-shape",
+      "display_name_zh": "十分位形状诊断",
+      "display_name_en": "Decile Shape Diagnostics",
+      "script": "scripts/build_factor_decile_shape_diagnostics.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_level_evaluation/"
+      ],
+      "outputs": [
+        "factor_decile_shape_summary.csv"
+      ],
+      "must_run_after": [
+        "evaluate"
+      ],
+      "what_it_answers_zh": "因子十分位回报的非线性特征（U型、单调等）是什么？",
+      "what_it_answers_en": "What are the nonlinearity characteristics (U-shape, monotonic, etc.) of decile returns?"
+    },
+    {
+      "stage_id": "capacity-liquidity",
+      "display_name_zh": "容量与流动性诊断",
+      "display_name_en": "Capacity & Liquidity Diagnostics",
+      "script": "scripts/build_factor_capacity_liquidity_diagnostics.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_values.parquet",
+        "bars_1h.parquet"
+      ],
+      "outputs": [
+        "factor_capacity_liquidity_summary.csv"
+      ],
+      "must_run_after": [
+        "paper-diagnostics"
+      ],
+      "what_it_answers_zh": "因子在不同资金规模下的可执行容量和流动性风险是什么？",
+      "what_it_answers_en": "What is the executable capacity and liquidity risk at different capital levels?"
+    },
+    {
+      "stage_id": "profile",
+      "display_name_zh": "统一因子画像（PM-32）",
+      "display_name_en": "Unified Factor Profile (PM-32)",
+      "script": "scripts/build_unified_factor_profile.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_quality_scorecard.csv",
+        "factor_diagnostics_summary.csv",
+        "factor_redundancy_summary.csv",
+        "factor_redundancy_cluster_members.csv",
+        "factor_marginal_information_summary.csv",
+        "single_factor_paper_summary.csv",
+        "single_factor_fee_sensitivity.csv",
+        "factor_regime_exposure_summary.csv",
+        "factor_quantile_shape_summary.csv",
+        "factor_rolling_stability_summary.csv",
+        "factor_decile_shape_summary.csv",
+        "factor_capacity_liquidity_summary.csv",
+        "factor_library_state.json"
+      ],
+      "outputs": [
+        "factor_evaluation_workflow_contract.json",
+        "factor_evaluation_evidence_matrix.csv",
+        "factor_evaluation_evidence_matrix.json",
+        "factor_unified_profile_summary.csv",
+        "factor_unified_profile_summary.json",
+        "factor_profile_component_scores.csv",
+        "factor_profile_payload.json",
+        "factor_profile_manifest.json"
+      ],
+      "must_run_after": [
+        "scorecard",
+        "cluster",
+        "paper-diagnostics",
+        "regime",
+        "quantile-shape",
+        "rolling-stability",
+        "decile-shape",
+        "capacity-liquidity"
+      ],
+      "what_it_answers_zh": "综合所有诊断维度，每个因子的统一画像、评分和优先级是什么？",
+      "what_it_answers_en": "Across all diagnostic dimensions, what is the unified profile, score, and priority for each factor?"
+    },
+    {
+      "stage_id": "staleness",
+      "display_name_zh": "过时性检查",
+      "display_name_en": "Staleness Check",
+      "script": "scripts/check_factor_library_staleness.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_library_state.json",
+        "factor_diagnostics_summary.csv",
+        "..."
+      ],
+      "outputs": [
+        "factor_library_staleness_report.csv",
+        "factor_library_staleness_report.json"
+      ],
+      "must_run_after": [
+        "profile"
+      ],
+      "what_it_answers_zh": "哪些产物已经过时？需要重新运行哪些阶段？",
+      "what_it_answers_en": "Which artifacts are stale? Which stages need to be re-run?"
+    },
+    {
+      "stage_id": "page",
+      "display_name_zh": "页面构建",
+      "display_name_en": "Page Build",
+      "script": "scripts/_build_factor_eval_html.py",
+      "is_expensive": false,
+      "inputs": [
+        "factor_diagnostics_summary.csv",
+        "factor_quality_scorecard.csv",
+        "..."
+      ],
+      "outputs": [
+        "factor-evaluation.html"
+      ],
+      "must_run_after": [
+        "staleness"
+      ],
+      "what_it_answers_zh": "所有诊断结果如何渲染为人类可读的因子评估页面？",
+      "what_it_answers_en": "How are all diagnostic results rendered into a human-readable factor evaluation page?"
+    },
+    {
+      "stage_id": "state",
+      "display_name_zh": "状态文件生成",
+      "display_name_en": "State File Generation",
+      "script": "scripts/build_factor_library_state.py",
+      "is_expensive": false,
+      "inputs": [
+        "(all upstream artifacts)"
+      ],
+      "outputs": [
+        "factor_library_state.json",
+        "factor_library_state.md"
+      ],
+      "must_run_after": [
+        "page"
+      ],
+      "what_it_answers_zh": "当前因子库的完整状态快照是什么？",
+      "what_it_answers_en": "What is the complete state snapshot of the current factor library?"
+    }
+  ],
+  "required_outputs_by_stage": {
+    "registry-integrity": [
+      "factor_registry_integrity_report.csv",
+      "factor_registry_integrity_report.json"
+    ],
+    "catalog": [
+      "factor_catalog.csv",
+      "factor_catalog.json"
+    ],
+    "values": [
+      "factor_values.parquet (per factor)"
+    ],
+    "direction-audit": [
+      "direction_semantics_audit/"
+    ],
+    "evaluate": [
+      "factor_level_rankic_summary.csv",
+      "factor_level_quantile_return_summary.csv",
+      "..."
+    ],
+    "diagnostics": [
+      "factor_diagnostics_summary.csv",
+      "factor_monthly_ic_series.csv",
+      "factor_monthly_long_short_series.csv"
+    ],
+    "metadata": [
+      "factor_bilingual_cards.csv",
+      "factor_bilingual_cards.json"
+    ],
+    "scorecard": [
+      "factor_quality_scorecard.csv",
+      "factor_quality_scorecard.json"
+    ],
+    "redundancy": [
+      "factor_pairwise_redundancy.csv",
+      "factor_redundancy_matrix_pearson.csv",
+      "factor_redundancy_matrix_spearman.csv"
+    ],
+    "cluster": [
+      "factor_redundancy_cluster_members.csv",
+      "factor_marginal_information_summary.csv",
+      "factor_redundancy_summary.csv"
+    ],
+    "paper-diagnostics": [
+      "single_factor_paper_summary.csv",
+      "single_factor_fee_sensitivity.csv"
+    ],
+    "paper-page-payload": [
+      "paper_page_payload.json"
+    ],
+    "regime": [
+      "factor_regime_exposure_summary.csv",
+      "factor_regime_diagnostics_payload.json"
+    ],
+    "quantile-shape": [
+      "factor_quantile_shape_summary.csv"
+    ],
+    "rolling-stability": [
+      "factor_rolling_stability_summary.csv"
+    ],
+    "decile-shape": [
+      "factor_decile_shape_summary.csv"
+    ],
+    "capacity-liquidity": [
+      "factor_capacity_liquidity_summary.csv"
+    ],
+    "profile": [
+      "factor_evaluation_workflow_contract.json",
+      "factor_evaluation_evidence_matrix.csv",
+      "factor_evaluation_evidence_matrix.json",
+      "factor_unified_profile_summary.csv",
+      "factor_unified_profile_summary.json",
+      "factor_profile_component_scores.csv",
+      "factor_profile_payload.json",
+      "factor_profile_manifest.json"
+    ],
+    "staleness": [
+      "factor_library_staleness_report.csv",
+      "factor_library_staleness_report.json"
+    ],
+    "page": [
+      "factor-evaluation.html"
+    ],
+    "state": [
+      "factor_library_state.json",
+      "factor_library_state.md"
+    ]
+  },
+  "expensive_stage_flags": {
+    "registry-integrity": false,
+    "catalog": false,
+    "values": false,
+    "direction-audit": false,
+    "evaluate": true,
+    "diagnostics": false,
+    "metadata": false,
+    "scorecard": false,
+    "redundancy": true,
+    "cluster": false,
+    "paper-diagnostics": true,
+    "paper-page-payload": false,
+    "regime": false,
+    "quantile-shape": false,
+    "rolling-stability": false,
+    "decile-shape": false,
+    "capacity-liquidity": false,
+    "profile": false,
+    "staleness": false,
+    "page": false,
+    "state": false
+  },
+  "rerun_rules": {
+    "factor_added": "Run from 'values' through 'state' (--stage all --expensive-ok)",
+    "evaluation_updated": "Run from 'diagnostics' through 'state'",
+    "redundancy_updated": "Run from 'cluster' through 'state'",
+    "scorecard_updated": "Run from 'profile' through 'state'",
+    "any_upstream_changed": "Always regenerate 'state' last"
+  },
+  "factor_added_required_stages": [
+    "values",
+    "direction-audit",
+    "evaluate",
+    "diagnostics",
+    "metadata",
+    "scorecard",
+    "redundancy",
+    "cluster",
+    "paper-diagnostics",
+    "paper-page-payload",
+    "regime",
+    "quantile-shape",
+    "rolling-stability",
+    "decile-shape",
+    "capacity-liquidity",
+    "profile",
+    "staleness",
+    "page",
+    "state"
+  ],
+  "profile_required_inputs": [
+    "quality_scorecard",
+    "diagnostics_summary",
+    "redundancy_summary",
+    "redundancy_cluster_members",
+    "marginal_information",
+    "paper_summary",
+    "fee_sensitivity",
+    "regime_exposure",
+    "quantile_shape",
+    "rolling_stability",
+    "decile_shape",
+    "capacity_liquidity"
+  ],
+  "page_ready_required_outputs": [
+    "factor_evaluation_workflow_contract.json",
+    "factor_unified_profile_summary.csv",
+    "factor_unified_profile_summary.json",
+    "factor_profile_payload.json",
+    "factor_profile_manifest.json",
+    "factor_evaluation_evidence_matrix.csv",
+    "factor_evaluation_evidence_matrix.json",
+    "factor_profile_component_scores.csv"
+  ]
+}
