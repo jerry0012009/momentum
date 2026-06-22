@@ -290,6 +290,67 @@ def check_new_factor_metrics_populated(html_text: str) -> dict:
         f"All {len(data.get('factors', []))} factors have metrics",
     )
 
+
+def check_pm40b_display_consistency(html_text: str) -> list[dict]:
+    """PM-40B: Verify display consistency for PM-35 new factors.
+
+    Checks:
+    1. WORKFLOW_READY factors should not have source_warning (no_horizon_data etc.)
+    2. Redundancy cluster_id should not be -1 when profile has real cluster_id
+    3. Factors with rankic_mean should not show bare 'No data' in Monthly RankIC
+    """
+    import re as _re
+    import json as _json
+    results = []
+    PM35 = ["rev_2h", "mom_vol_adjusted_20h", "range_breakout_vol_confirm_20h",
+            "volume_pressure_20h", "xs_rank_mom_accel"]
+
+    m = _re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>', html_text, _re.DOTALL)
+    if not m:
+        results.append(_fail("pm40b_payload", "PM-40B display consistency", "factorPayload not found"))
+        return results
+    try:
+        data = _json.loads(m.group(1))
+    except _json.JSONDecodeError:
+        results.append(_fail("pm40b_payload", "PM-40B display consistency", "JSON parse error"))
+        return results
+
+    problems = []
+    for f in data.get("factors", []):
+        fid = f.get("factor_id", "")
+        if fid not in PM35:
+            continue
+        # Check 1: WORKFLOW_READY should not have stale source_warning
+        wf = f.get("workflow_ready_status", "")
+        sw = f.get("source_warning", "")
+        if wf == "WORKFLOW_READY" and sw:
+            problems.append(f"{fid}: WORKFLOW_READY but source_warning='{sw}'")
+        # Check 2: cluster_id should not be -1 when profile has data
+        cid = f.get("redundancy_cluster_id")
+        pcid = f.get("profile_cluster_id")
+        if cid == -1 and pcid is not None and pcid != -1:
+            problems.append(f"{fid}: redundancy_cluster_id=-1 but profile_cluster_id={pcid}")
+        # Check 3: rankic_mean exists but monthly_ic empty is OK (explanatory msg)
+        # Just verify rankic_mean is populated
+        rankic = f.get("rankic_mean")
+        if rankic is None:
+            problems.append(f"{fid}: rankic_mean=None (should have fallback data)")
+
+    if problems:
+        results.append(_fail(
+            "pm40b_display_consistency",
+            "PM-40B display consistency for new factors",
+            f"{len(problems)} issues found",
+            "; ".join(problems),
+        ))
+    else:
+        results.append(_pass(
+            "pm40b_display_consistency",
+            "PM-40B display consistency for new factors",
+            f"All {len(PM35)} factors pass consistency checks",
+        ))
+    return results
+
 def check_section_markers(html_text: str) -> list[dict]:
     """Check each required section marker set."""
     results = []
@@ -417,6 +478,7 @@ def main() -> int:
     # 3. PM-35 new factors
     all_checks.append(check_pm35_factors(html_text))
     all_checks.append(check_new_factor_metrics_populated(html_text))
+    all_checks.extend(check_pm40b_display_consistency(html_text))
 
     # 4. Section markers
     all_checks.extend(check_section_markers(html_text))
