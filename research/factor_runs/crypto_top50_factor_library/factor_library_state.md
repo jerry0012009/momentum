@@ -1,14 +1,14 @@
 # Factor Library State
 
-**Generated:** 2026-06-21T06:59:25.073881+00:00
+**Generated:** 2026-06-22T19:32:39.539632+00:00
 **Dataset:** crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1
 
 ## Counts
 
 | Metric | Count |
 |--------|-------|
-| Registered factors | 71 |
-| Computed factor_values | 71 |
+| Registered factors | 76 |
+| Computed factor_values | 76 |
 | Missing factor_values | 0 |
 | Missing input data | 0 |
 | Active signal factors | 10 |
@@ -16,20 +16,22 @@
 
 ## Lifecycle Distribution
 
-- **CANDIDATE:** 33
-- **DIAGNOSTIC_ONLY:** 16
+- **CANDIDATE:** 35
+- **DIAGNOSTIC_ONLY:** 20
 - **ACTIVE_IN_SIGNAL:** 10
 - **MISSING_INPUT_DATA:** 6
+- **COMPUTED:** 5
 
 ## Candidate Review Distribution
 
-- **DIRECTION_REVIEW_REQUIRED:** 22
-- **CONDITIONAL_DIRECTION_REVIEW:** 16
+- **DIRECTION_REVIEW_REQUIRED:** 27
+- **CONDITIONAL_DIRECTION_REVIEW:** 20
+- **TAIL_OR_MONOTONICITY_REVIEW_REQUIRED:** 14
 - **ACTIVE_IN_SIGNAL_REVIEW:** 10
-- **TAIL_OR_MONOTONICITY_REVIEW_REQUIRED:** 8
-- **MISSING_INPUT:** 6
 - **METADATA_REVIEW:** 2
 - **LONGSHORT_STRONG_RANKIC_WEAK:** 1
+- **STRONG_DIAGNOSTIC_CANDIDATE:** 1
+- **RANKIC_STRONG_LONGSHORT_WEAK:** 1
 
 ## Signal Factor IDs
 
@@ -63,12 +65,12 @@
 | downside_vol_20h | +0.089635 | 72h |
 | vol_5h | +0.080509 | 72h |
 | vol_of_vol_20h | +0.080223 | 72h |
+| wvma_20h | +0.076279 | 72h |
 | xs_rank_vol | -0.068675 | 72h |
+| klow_close | -0.054766 | 72h |
+| funding_rate_level_20h | -0.044669 | 72h |
 | price_volume_corr_20h | -0.040248 | 24h |
-| xs_rank_ret_1h | -0.036506 | 1h |
-| rev_1h | +0.036506 | 1h |
-| rev_3h | +0.034385 | 1h |
-| rsi_14h | +0.033554 | 4h |
+| vol_ret_corr_20h | -0.037671 | 24h |
 
 ---
 *Diagnostic only. Not production. Not live trading.*

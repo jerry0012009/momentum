@@ -53,7 +53,7 @@ def apply_cross_sectional_postprocess(wide: pd.DataFrame) -> pd.DataFrame:
     this replaces the per-symbol raw metric with a percentile rank.
     """
     wide = wide.copy()
-    xs_factors = ["xs_rank_ret_1h", "xs_rank_vol"]
+    xs_factors = ["xs_rank_ret_1h", "xs_rank_vol", "xs_rank_mom_accel"]
     for factor in xs_factors:
         if factor in wide.columns:
             wide[factor] = (

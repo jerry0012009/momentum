@@ -94,6 +94,24 @@ def zscore(series: pd.Series, n: int) -> pd.Series:
 
 # ── Math transforms ─────────────────────────────────────────────────
 
+def sign(series: pd.Series) -> pd.Series:
+    """Element-wise sign: -1, 0, or +1.
+
+    Returns NaN where input is NaN.
+    """
+    return pd.Series(np.sign(series), index=series.index)
+
+
+def where(cond: pd.Series, x: pd.Series, y: pd.Series | float) -> pd.Series:
+    """Conditional element-wise selection.
+
+    Returns x[i] where cond[i] is True, y[i] otherwise.
+    NaN propagates: if cond is NaN, result is NaN.
+    Supports scalar y (default value when cond is False/NaN).
+    """
+    return x.where(cond, y)
+
+
 def signed_power(series: pd.Series, a: float) -> pd.Series:
     """sign(x) * |x|^a.
 

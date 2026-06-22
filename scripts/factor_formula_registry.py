@@ -17,6 +17,7 @@ from factor_specs import FactorSpec
 from factor_ops import (
     delay, delta, rolling_mean, rolling_std, rolling_max, rolling_min,
     rolling_corr, rolling_sum, rolling_skew, zscore, ema, true_range,
+    sign, where,
 )
 
 # ── V0 Original 5 Factors ──────────────────────────────────────────
@@ -518,6 +519,54 @@ def _compute_price_pos_120h(df: pd.DataFrame) -> pd.Series:
     hh = rolling_max(df["high"], 120)
     ll = rolling_min(df["low"], 120)
     return (df["close"] - ll) / (hh - ll + 1e-8)
+
+
+# ── PM-35: Batch-01 Controlled Factor Intake ─────────────────────
+
+def _compute_rev_2h(df: pd.DataFrame) -> pd.Series:
+    """Short-term reversal 2h: -(close / close_2h_ago - 1)."""
+    return -(df["close"] / delay(df["close"], 2) - 1.0)
+
+
+def _compute_mom_vol_adjusted_20h(df: pd.DataFrame) -> pd.Series:
+    """Volatility-adjusted momentum 20h: mom_20h / rolling_std(ret, 20).
+
+    Safe for zero/near-zero volatility: replaces zeros/NaNs with NaN.
+    """
+    mom_20h = df["close"] / delay(df["close"], 20) - 1.0
+    ret = df["close"].pct_change()
+    vol = rolling_std(ret, 20)
+    return mom_20h / vol.replace(0, np.nan)
+
+
+def _compute_range_breakout_vol_confirm_20h(df: pd.DataFrame) -> pd.Series:
+    """Volume-confirmed range breakout 20h.
+
+    Measures position in range [0,1] and multiplies by volume zscore when near high.
+    breakout_dist = (close - low_20) / (high_20 - low_20)
+    Returns breakout_dist * zscore(volume, 20) when breakout_dist > 0.8, else NaN.
+    """
+    hh = rolling_max(df["high"], 20)
+    ll = rolling_min(df["low"], 20)
+    breakout_dist = (df["close"] - ll) / (hh - ll + 1e-8)
+    vol_z = zscore(df["volume"], 20)
+    return where(breakout_dist > 0.8, breakout_dist * vol_z, np.nan)
+
+
+def _compute_volume_pressure_20h(df: pd.DataFrame) -> pd.Series:
+    """Volume pressure 20h: rolling_mean(sign(delta(close, 1)) * volume, 20)."""
+    close_delta = delta(df["close"], 1)
+    return rolling_mean(sign(close_delta) * df["volume"], 20)
+
+
+def _compute_xs_rank_mom_accel_prep(df: pd.DataFrame) -> pd.Series:
+    """Momentum acceleration for cross-sectional ranking.
+
+    Per-symbol: mom_20h - delay(mom_20h, 5).
+    Cross-sectional rank applied by caller (build_factor_values.py).
+    """
+    mom_20h = df["close"] / delay(df["close"], 20) - 1.0
+    return mom_20h - delay(mom_20h, 5)
 
 
 # ── Registry ────────────────────────────────────────────────────────
@@ -1047,6 +1096,42 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="conditional",
         compute_fn=_compute_price_pos_120h,
         notes="(close - LL120) / (HH120 - LL120 + eps); long-window price location diagnostic",
+    ),
+    # ── PM-35: Batch-01 Controlled Factor Intake (5) ───────────────
+    FactorSpec(
+        factor_id="rev_2h", family="reversal",
+        required_columns=["close"], lookback_window=2,
+        expected_direction="positive",
+        compute_fn=_compute_rev_2h,
+        notes="-(close / close_2h_ago - 1); short-term reversal",
+    ),
+    FactorSpec(
+        factor_id="mom_vol_adjusted_20h", family="momentum",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="positive",
+        compute_fn=_compute_mom_vol_adjusted_20h,
+        notes="mom_20h / rolling_std(pct_change(close), 20); volatility-adjusted momentum; safe for zero vol",
+    ),
+    FactorSpec(
+        factor_id="range_breakout_vol_confirm_20h", family="breakout",
+        required_columns=["high", "low", "close", "volume"], lookback_window=20,
+        expected_direction="positive",
+        compute_fn=_compute_range_breakout_vol_confirm_20h,
+        notes="breakout_dist_20h * zscore(volume, 20) when breakout_dist_20h > 0; volume-confirmed breakout",
+    ),
+    FactorSpec(
+        factor_id="volume_pressure_20h", family="volume_price",
+        required_columns=["close", "volume"], lookback_window=21,
+        expected_direction="positive",
+        compute_fn=_compute_volume_pressure_20h,
+        notes="rolling_mean(sign(delta(close, 1)) * volume, 20); directional volume pressure",
+    ),
+    FactorSpec(
+        factor_id="xs_rank_mom_accel", family="cross_sectional_normalized",
+        required_columns=["close"], lookback_window=25,
+        expected_direction="positive",
+        compute_fn=_compute_xs_rank_mom_accel_prep,
+        notes="Per-symbol momentum acceleration (mom_20h - delay(mom_20h, 5)); cross-sectional rank applied by caller",
     ),
 ]
 
