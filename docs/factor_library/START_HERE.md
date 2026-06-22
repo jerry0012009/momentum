@@ -196,3 +196,31 @@ After running `run_factor_intake.py`, complete the remaining evidence with:
 | best_horizon | factor_diagnostics_summary.csv | factor_level_coverage_summary.csv |
 | Monthly IC 系列 | factor_monthly_ic_series.csv | factor_level_period_ic_summary.csv |
 | Monthly LS 系列 | factor_monthly_long_short_series.csv | factor_level_period_long_short_summary.csv |
+
+## PM-40B 教训：Redundancy 与 Unified Profile 的数据来源冲突
+
+**问题：** 页面旧 Redundancy section 读 `factor_redundancy_summary.csv`（PM-18/PM-19），新因子在该 CSV 中是 None。Unified Profile 有真实数据（cluster_id, cluster_role, marginal_class）。两个 section 显示矛盾信息。
+
+**根因：** 旧 redundancy 计算只覆盖了有足够 pairwise overlap 的因子。新因子因为入池时间短，pairwise 覆盖不足，结果是 `INSUFFICIENT_OVERLAP`。但 Unified Profile 的 cluster/marginal 评估使用了不同的方法（基于 factor profile），可以给出结果。
+
+**修复模式：** HTML builder 在 merge 所有数据源后，做 reconciliation post-processing：
+- 旧 redundancy 为空 → 用 profile 数据 fallback
+- cluster_id = -1 → 用 profile_cluster_id
+- novelty_assessment = INSUFFICIENT_OVERLAP → 从 cluster_member_role 推导
+
+**预防规则：**
+1. 新增因子后，必须检查旧 section（redundancy, scorecard, shape）是否与 Unified Profile 一致
+2. QA 脚本 `pm40b_display_consistency` 检查：WORKFLOW_READY 因子不应有 source_warning、cluster_id 不应是 -1
+3. 当两个数据源冲突时，以 Unified Profile 为准（它是最新的综合评估）
+
+## PM-40B 教训：Monthly IC 数据缺口
+
+**问题：** `factor_level_period_ic_summary.csv` 只有 71 个因子，5 个 PM-35 新因子没有 period IC 数据。导致 Monthly RankIC 图表为空。
+
+**根因：** factor-level evaluation 的 period IC 计算没有覆盖所有因子。rankic/LS 汇总有（76 个），但 period-level 没有。
+
+**修复：** Monthly IC 为空时，显示解释性说明（summary RankIC 值 + 月度序列不可用），而不是裸 "No data"。
+
+**预防规则：**
+1. 新增因子 batch 后，验证 `factor_level_period_ic_summary.csv` 包含所有新因子
+2. 如果 period IC 缺失，至少确保 rankic 汇总有数据（作为 fallback 展示）
