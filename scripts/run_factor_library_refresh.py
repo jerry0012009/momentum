@@ -25,10 +25,13 @@ Stages (in pipeline order):
     scorecard            Build quality scorecard (cheap)
     redundancy           Pairwise redundancy matrix (EXPENSIVE)
     cluster              Redundancy cluster + marginal information diagnostics (PM-31) (cheap)
-    profile              Unified factor evaluation workflow profile (PM-32) (cheap)
     paper-diagnostics    Single-factor paper portfolio diagnostics (EXPENSIVE)
     paper-page-payload   Build single-factor paper page payload (cheap)
     regime               BTC market regime diagnostics (PM-23) (cheap)
+    shape-stability      Quantile shape + rolling stability diagnostics (cheap)
+    decile-shape         Decile shape diagnostics (cheap)
+    capacity-liquidity   Capacity & liquidity diagnostics (cheap)
+    profile              Unified factor evaluation workflow profile (PM-32) (cheap)
     staleness            Check factor library staleness (cheap)
     page                 Rebuild factor-evaluation.html (cheap)
     state                Regenerate factor_library_state.json/md (cheap)
@@ -143,16 +146,6 @@ STAGES: list[dict] = [
         ],
     },
     {
-        "name": "profile",
-        "description": "Unified factor evaluation workflow profile (PM-32)",
-        "expensive": False,
-        "commands": [
-            ("build_unified_factor_profile", [
-                "python", str(SCRIPTS / "build_unified_factor_profile.py"),
-            ]),
-        ],
-    },
-    {
         "name": "paper-diagnostics",
         "description": "Single-factor paper portfolio diagnostics (EXPENSIVE)",
         "expensive": True,
@@ -181,6 +174,46 @@ STAGES: list[dict] = [
                 "python", str(SCRIPTS / "build_factor_market_regime_diagnostics.py"),
                 "--btc-symbol", "auto",
                 "--fee-bps", "10",
+            ]),
+        ],
+    },
+    {
+        "name": "shape-stability",
+        "description": "Quantile shape + rolling stability diagnostics",
+        "expensive": False,
+        "commands": [
+            ("build_factor_shape_stability_diagnostics", [
+                "python", str(SCRIPTS / "build_factor_shape_stability_diagnostics.py"),
+            ]),
+        ],
+    },
+    {
+        "name": "decile-shape",
+        "description": "Decile shape diagnostics",
+        "expensive": False,
+        "commands": [
+            ("build_factor_decile_shape_diagnostics", [
+                "python", str(SCRIPTS / "build_factor_decile_shape_diagnostics.py"),
+            ]),
+        ],
+    },
+    {
+        "name": "capacity-liquidity",
+        "description": "Capacity & liquidity diagnostics",
+        "expensive": False,
+        "commands": [
+            ("build_factor_capacity_liquidity_diagnostics", [
+                "python", str(SCRIPTS / "build_factor_capacity_liquidity_diagnostics.py"),
+            ]),
+        ],
+    },
+    {
+        "name": "profile",
+        "description": "Unified factor evaluation workflow profile (PM-32)",
+        "expensive": False,
+        "commands": [
+            ("build_unified_factor_profile", [
+                "python", str(SCRIPTS / "build_unified_factor_profile.py"),
             ]),
         ],
     },

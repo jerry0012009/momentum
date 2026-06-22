@@ -164,6 +164,15 @@ def run_checks(expected_n: int, source: str, strict: bool) -> list[dict]:
         ("coverage_cumulative_ls", DIAG_DIR / "factor_cumulative_long_short_curve.csv", "diagnostics"),
         ("coverage_paper_summary", DIAG_DIR / "single_factor_paper_summary.csv", "paper-diagnostics"),
         ("coverage_state", STATE_PATH, "state"),
+        # Profile / workflow output files (PM-32)
+        ("coverage_workflow_contract", DIAG_DIR / "factor_evaluation_workflow_contract.json", "profile"),
+        ("coverage_evidence_matrix_csv", DIAG_DIR / "factor_evaluation_evidence_matrix.csv", "profile"),
+        ("coverage_evidence_matrix_json", DIAG_DIR / "factor_evaluation_evidence_matrix.json", "profile"),
+        ("coverage_unified_profile_csv", DIAG_DIR / "factor_unified_profile_summary.csv", "profile"),
+        ("coverage_unified_profile_json", DIAG_DIR / "factor_unified_profile_summary.json", "profile"),
+        ("coverage_profile_component_scores", DIAG_DIR / "factor_profile_component_scores.csv", "profile"),
+        ("coverage_profile_payload", DIAG_DIR / "factor_profile_payload.json", "profile"),
+        ("coverage_profile_manifest", DIAG_DIR / "factor_profile_manifest.json", "profile"),
     ]
 
     for check_id, path, stage in coverage_artifacts:

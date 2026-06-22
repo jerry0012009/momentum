@@ -37,11 +37,13 @@ factor registry (scripts/factor_formula_registry.py)
   → quality scorecard (scripts/build_factor_quality_scorecard.py)
   → pairwise redundancy matrix (scripts/build_factor_pairwise_redundancy_matrix.py) [EXPENSIVE]
   → redundancy cluster + marginal information (scripts/build_factor_redundancy_cluster_diagnostics.py) [PM-31]
-  → unified factor profile + workflow contract + evidence matrix (scripts/build_unified_factor_profile.py) [PM-32]
-  → refreshed scorecard (scripts/build_factor_quality_scorecard.py)
   → paper portfolio diagnostics (scripts/build_single_factor_paper_portfolio_diagnostics.py) [EXPENSIVE]
   → paper page payload (scripts/build_single_factor_paper_page_payload.py) [CHEAP]
   → market regime diagnostics (scripts/build_factor_market_regime_diagnostics.py) [CHEAP]
+  → shape-stability diagnostics (scripts/build_factor_shape_stability_diagnostics.py) [CHEAP]
+  → decile-shape diagnostics (scripts/build_factor_decile_shape_diagnostics.py) [CHEAP]
+  → capacity-liquidity diagnostics (scripts/build_factor_capacity_liquidity_diagnostics.py) [CHEAP]
+  → unified factor profile + workflow contract + evidence matrix (scripts/build_unified_factor_profile.py) [PM-32]
   → staleness check (scripts/check_factor_library_staleness.py) [CHEAP]
   → factor-evaluation page (scripts/_build_factor_eval_html.py)
   → factor_library_state (scripts/build_factor_library_state.py)
@@ -327,7 +329,7 @@ The `scripts/run_factor_library_refresh.py` script provides:
 - Stdout logging of every command
 - Fail-fast on any non-zero exit code
 
-Available stages: `registry-integrity`, `catalog`, `values`, `direction-audit`, `evaluate`, `diagnostics`, `metadata`, `scorecard`, `redundancy`, `paper-diagnostics`, `paper-page-payload`, `regime`, `staleness`, `page`, `state`
+Available stages: `registry-integrity`, `catalog`, `values`, `direction-audit`, `evaluate`, `diagnostics`, `metadata`, `scorecard`, `redundancy`, `cluster`, `paper-diagnostics`, `paper-page-payload`, `regime`, `shape-stability`, `decile-shape`, `capacity-liquidity`, `profile`, `staleness`, `page`, `state`
 
 Available presets: `all`, `cheap`, `page-only`, `scorecard-only`, `metadata-only`, `diagnostics-only`, `redundancy-only`
 

@@ -272,28 +272,16 @@ def build_workflow_contract() -> dict:
             "what_it_answers_en": "How does the factor perform during bull/bear/high-vol/drawdown regimes?",
         },
         {
-            "stage_id": "quantile-shape",
-            "display_name_zh": "分位数形状诊断",
-            "display_name_en": "Quantile Shape Diagnostics",
-            "script": "scripts/build_factor_quantile_shape_diagnostics.py",
+            "stage_id": "shape-stability",
+            "display_name_zh": "分位数形状与滚动稳定性诊断",
+            "display_name_en": "Quantile Shape & Rolling Stability Diagnostics",
+            "script": "scripts/build_factor_shape_stability_diagnostics.py",
             "is_expensive": False,
             "inputs": ["factor_level_evaluation/"],
-            "outputs": ["factor_quantile_shape_summary.csv"],
-            "must_run_after": ["evaluate"],
-            "what_it_answers_zh": "因子分位数回报是否呈单调递增/递减形状？",
-            "what_it_answers_en": "Do quantile returns show monotonic increasing/decreasing shape?",
-        },
-        {
-            "stage_id": "rolling-stability",
-            "display_name_zh": "滚动稳定性诊断",
-            "display_name_en": "Rolling Stability Diagnostics",
-            "script": "scripts/build_factor_rolling_stability_diagnostics.py",
-            "is_expensive": False,
-            "inputs": ["factor_level_evaluation/"],
-            "outputs": ["factor_rolling_stability_summary.csv"],
-            "must_run_after": ["evaluate"],
-            "what_it_answers_zh": "因子的IC和夏普比率在滚动窗口中是否稳定？",
-            "what_it_answers_en": "Are the factor's IC and Sharpe ratio stable across rolling windows?",
+            "outputs": ["factor_quantile_shape_summary.csv", "factor_rolling_stability_summary.csv"],
+            "must_run_after": ["regime"],
+            "what_it_answers_zh": "因子分位数回报是否呈单调形状？IC和夏普比率在滚动窗口中是否稳定？",
+            "what_it_answers_en": "Do quantile returns show monotonic shape? Are IC and Sharpe stable across rolling windows?",
         },
         {
             "stage_id": "decile-shape",
@@ -303,7 +291,7 @@ def build_workflow_contract() -> dict:
             "is_expensive": False,
             "inputs": ["factor_level_evaluation/"],
             "outputs": ["factor_decile_shape_summary.csv"],
-            "must_run_after": ["evaluate"],
+            "must_run_after": ["shape-stability"],
             "what_it_answers_zh": "因子十分位回报的非线性特征（U型、单调等）是什么？",
             "what_it_answers_en": "What are the nonlinearity characteristics (U-shape, monotonic, etc.) of decile returns?",
         },
@@ -315,7 +303,7 @@ def build_workflow_contract() -> dict:
             "is_expensive": False,
             "inputs": ["factor_values.parquet", "bars_1h.parquet"],
             "outputs": ["factor_capacity_liquidity_summary.csv"],
-            "must_run_after": ["paper-diagnostics"],
+            "must_run_after": ["decile-shape"],
             "what_it_answers_zh": "因子在不同资金规模下的可执行容量和流动性风险是什么？",
             "what_it_answers_en": "What is the executable capacity and liquidity risk at different capital levels?",
         },
@@ -343,7 +331,7 @@ def build_workflow_contract() -> dict:
             ],
             "must_run_after": [
                 "scorecard", "cluster", "paper-diagnostics", "regime",
-                "quantile-shape", "rolling-stability", "decile-shape", "capacity-liquidity",
+                "shape-stability", "decile-shape", "capacity-liquidity",
             ],
             "what_it_answers_zh": "综合所有诊断维度，每个因子的统一画像、评分和优先级是什么？",
             "what_it_answers_en": "Across all diagnostic dimensions, what is the unified profile, score, and priority for each factor?",
@@ -412,8 +400,8 @@ def build_workflow_contract() -> dict:
         "factor_added_required_stages": [
             "values", "direction-audit", "evaluate", "diagnostics", "metadata",
             "scorecard", "redundancy", "cluster", "paper-diagnostics",
-            "paper-page-payload", "regime", "quantile-shape", "rolling-stability",
-            "decile-shape", "capacity-liquidity", "profile", "staleness", "page", "state",
+            "paper-page-payload", "regime",
+            "shape-stability", "decile-shape", "capacity-liquidity", "profile", "staleness", "page", "state",
         ],
         "profile_required_inputs": list(EVIDENCE_BLOCKS.keys()),
         "page_ready_required_outputs": [
@@ -430,6 +418,45 @@ def build_workflow_contract() -> dict:
     return contract
 
 
+def compute_contract_alignment_checks(contract_stage_order: list[str]) -> dict:
+    """Compare contract stage_order with runner STAGE_NAMES.
+    
+    Imports run_factor_library_refresh.STAGE_NAMES at call time.
+    """
+    import importlib.util
+    runner_path = SCRIPTS / "run_factor_library_refresh.py"
+    spec = importlib.util.spec_from_file_location("_runner", str(runner_path))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    runner_stages = list(mod.STAGE_NAMES)
+    contract_stages = list(contract_stage_order)
+
+    runner_set = set(runner_stages)
+    contract_set = set(contract_stages)
+
+    checks = {
+        "runner_stage_order_matches_contract": runner_stages == contract_stages,
+        "regen_contract_mentions_profile_after_upstream_diagnostics": (
+            "profile" in contract_stages
+            and "capacity-liquidity" in contract_stages
+            and contract_stages.index("profile") > contract_stages.index("capacity-liquidity")
+        ),
+        "profile_stage_after_capacity_liquidity": (
+            "profile" in contract_stages
+            and "capacity-liquidity" in contract_stages
+            and contract_stages.index("profile") > contract_stages.index("capacity-liquidity")
+        ),
+        "profile_stage_before_staleness": (
+            "profile" in contract_stages
+            and "staleness" in contract_stages
+            and contract_stages.index("profile") < contract_stages.index("staleness")
+        ),
+        "missing_runner_stages": sorted(runner_set - contract_set),
+        "extra_contract_stages_not_in_runner": sorted(contract_set - runner_set),
+    }
+    return checks
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # SECTION 2: Evidence Matrix
 # ═══════════════════════════════════════════════════════════════════════════
@@ -444,6 +471,23 @@ def build_evidence_matrix(factor_ids: list[str]) -> tuple[list[dict], dict]:
         evidence_dfs[block_name] = load_csv_safe(filename)
 
     n_required = sum(1 for _, (_, req) in EVIDENCE_BLOCKS.items() if req)
+    # Load additional check data
+    eval_dir = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_level_evaluation"
+    rankic_path = eval_dir / "factor_level_rankic_summary.csv"
+    rankic_df = None
+    if rankic_path.exists():
+        try:
+            rankic_df = pd.read_csv(rankic_path)
+        except Exception:
+            pass
+
+    # Load state for registry_or_data_status
+    try:
+        state = load_state()
+        reg_status = state.get("data_status", "UNKNOWN")
+    except Exception:
+        reg_status = "UNKNOWN"
+
     rows = []
 
     for fid in factor_ids:
@@ -480,6 +524,17 @@ def build_evidence_matrix(factor_ids: list[str]) -> tuple[list[dict], dict]:
         row["evidence_status"] = status
         row["missing_evidence_blocks"] = "|".join(missing_blocks) if missing_blocks else ""
         row["stale_evidence_blocks"] = "|".join(stale_blocks) if stale_blocks else ""
+
+        # Additional columns
+        fv_path = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_values" / f"{fid}.parquet"
+        row["has_factor_values"] = str(fv_path.exists())
+        row["has_factor_level_evaluation"] = str(
+            rankic_df is not None
+            and "factor_id" in rankic_df.columns
+            and fid in rankic_df["factor_id"].values
+        )
+        row["has_unified_profile"] = str(True)  # self-reference — we are building it now
+        row["registry_or_data_status"] = reg_status
 
         rows.append(row)
 
@@ -738,6 +793,9 @@ def _pick_best_horizon_row(df: pd.DataFrame, fid: str, best_horizon: str) -> dic
 
 def build_unified_profile(factor_ids: list[str], state: dict) -> tuple[list[dict], list[dict]]:
     """Build unified profile rows and component score rows."""
+    # registry_or_data_status from state
+    reg_status = state.get("data_status", "UNKNOWN")
+
     # Load all input data
     sc_df = load_csv_safe("factor_quality_scorecard.csv")
     ds_df = load_csv_safe("factor_diagnostics_summary.csv")
@@ -901,7 +959,30 @@ def build_unified_profile(factor_ids: list[str], state: dict) -> tuple[list[dict
             "recommended_research_action": research_action,
             "source_artifact_count": len(source_artifacts),
             "source_artifacts": "|".join(source_artifacts),
+            "registry_or_data_status": reg_status,
         }
+
+        # Workflow readiness assessment
+        missing_or_stale = []
+        if ev_status in ("INCOMPLETE", "BLOCKED"):
+            missing_or_stale.append("evidence_incomplete")
+        if evidence_completeness_rate < 1.0:
+            for block_name in EVIDENCE_BLOCKS:
+                local_df = _local_dfs.get(block_name)
+                if local_df is None or "factor_id" not in local_df.columns or fid not in local_df["factor_id"].values:
+                    missing_or_stale.append(block_name)
+
+        if not missing_or_stale and ev_status == "COMPLETE":
+            wf_ready = "WORKFLOW_READY"
+        elif not missing_or_stale and ev_status == "COMPLETE_WITH_WARNINGS":
+            wf_ready = "WORKFLOW_READY_WITH_WARNINGS"
+        elif ev_status == "BLOCKED":
+            wf_ready = "WORKFLOW_BLOCKED"
+        else:
+            wf_ready = "WORKFLOW_INCOMPLETE"
+
+        profile_row["workflow_ready_status"] = wf_ready
+        profile_row["workflow_missing_or_stale_blocks"] = "|".join(missing_or_stale) if missing_or_stale else ""
 
         component_row = {
             "factor_id": fid,
@@ -955,6 +1036,9 @@ def build_payload(profile_rows: list[dict], component_rows: list[dict]) -> dict:
             "primary_risk_en": row["primary_risk_en"],
             "profile_summary_zh": row["profile_summary_zh"],
             "profile_summary_en": row["profile_summary_en"],
+            "registry_or_data_status": row.get("registry_or_data_status", ""),
+            "workflow_ready_status": row.get("workflow_ready_status", ""),
+            "workflow_missing_or_stale_blocks": row.get("workflow_missing_or_stale_blocks", ""),
             "component_scores": {k.replace("comp_", ""): comp.get(k, 0) for k in comp if k.startswith("comp_")},
         })
 
@@ -1082,6 +1166,13 @@ def main() -> int:
     # ── 1. Workflow contract ─────────────────────────────────────────────
     print("\n[1/6] Building workflow contract...")
     contract = build_workflow_contract()
+    # Compute alignment checks
+    try:
+        alignment = compute_contract_alignment_checks(contract["stage_order"])
+        contract["contract_alignment_checks"] = alignment
+    except Exception as exc:
+        print(f"  WARNING: Could not compute alignment checks: {exc}")
+        contract["contract_alignment_checks"] = {"error": str(exc)}
     contract_path = out_dir / "factor_evaluation_workflow_contract.json"
     with open(contract_path, "w") as f:
         json.dump(contract, f, indent=2, ensure_ascii=False)
