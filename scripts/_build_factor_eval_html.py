@@ -74,10 +74,22 @@ def build_payload() -> dict:
     sc_class_counts = {}
     sc_confidence_counts = {}
     sc_action_counts = {}
+    sc_red_conf_counts = {}
+    sc_novelty_counts = {}
+    sc_red_level_counts = {}
+    sc_cluster_count = 0
+    sc_largest_cluster = 0
     if not scorecard.empty:
         sc_class_counts = scorecard["final_quality_class"].value_counts().to_dict()
         sc_confidence_counts = scorecard["score_confidence"].value_counts().to_dict()
         sc_action_counts = scorecard["recommended_next_action"].value_counts().to_dict()
+        sc_red_conf_counts = scorecard["redundancy_confidence"].value_counts().to_dict() if "redundancy_confidence" in scorecard.columns else {}
+        sc_novelty_counts = scorecard["novelty_assessment"].value_counts().to_dict() if "novelty_assessment" in scorecard.columns else {}
+        sc_red_level_counts = scorecard["strongest_redundancy_level"].value_counts().to_dict() if "strongest_redundancy_level" in scorecard.columns else {}
+        if "redundancy_cluster_id" in scorecard.columns:
+            sc_cluster_count = scorecard["redundancy_cluster_id"].nunique()
+        if "redundancy_cluster_size" in scorecard.columns:
+            sc_largest_cluster = int(scorecard["redundancy_cluster_size"].max())
 
     summary = {
         "factor_count": len(diag),
@@ -88,6 +100,11 @@ def build_payload() -> dict:
         "scorecard_class_counts": sc_class_counts,
         "scorecard_confidence_counts": sc_confidence_counts,
         "scorecard_action_counts": sc_action_counts,
+        "scorecard_red_conf_counts": sc_red_conf_counts,
+        "scorecard_novelty_counts": sc_novelty_counts,
+        "scorecard_red_level_counts": sc_red_level_counts,
+        "cluster_count": sc_cluster_count,
+        "largest_cluster_size": sc_largest_cluster,
         "scorecard_manifest": manifest,
     }
 
@@ -221,6 +238,17 @@ def build_payload() -> dict:
             "qa_reason": ss(q.get("reason", "")),
 
             # Scorecard (PM-16B / PM-17)
+            # PM-19: Redundancy detail fields
+            "valid_redundancy_pair_count": sf(sc.get("valid_redundancy_pair_count")),
+            "expected_redundancy_pair_count": sf(sc.get("expected_redundancy_pair_count")),
+            "valid_redundancy_pair_coverage": sf(sc.get("valid_redundancy_pair_coverage")),
+            "insufficient_overlap_pair_count": sf(sc.get("insufficient_overlap_pair_count")),
+            "nearest_factor": ss(sc.get("nearest_factor", "")),
+            "nearest_abs_spearman_corr": sf(sc.get("nearest_abs_spearman_corr")),
+            "strongest_redundancy_level": ss(sc.get("strongest_redundancy_level", "")),
+            "novelty_assessment": ss(sc.get("novelty_assessment", "")),
+            "redundancy_cluster_id": sf(sc.get("redundancy_cluster_id")),
+            "redundancy_cluster_size": sf(sc.get("redundancy_cluster_size")),
             "final_quality_class": ss(sc.get("final_quality_class", "")),
             "final_quality_score": sf(sc.get("final_quality_score")),
             "score_confidence": ss(sc.get("score_confidence", "")),
@@ -399,6 +427,11 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
             <th data-col="long_short_max_drawdown">Max DD 最大回撤</th>
             <th data-col="long_short_positive_month_rate">LS Win% LS胜率</th>
             <th data-col="coverage_rate">Coverage 覆盖率</th>
+            <th data-col="novelty_assessment">Novelty 新颖性</th>
+            <th data-col="nearest_factor">Nearest 最近因子</th>
+            <th data-col="strongest_redundancy_level">Redundancy 冗余</th>
+            <th data-col="redundancy_confidence">Red Conf 冗余置信度</th>
+            <th data-col="redundancy_cluster_id">Cluster 聚类</th>
             <th data-col="recommended_next_action">Main Action 建议动作</th>
             <th data-col="decision_bucket">Decision 决策</th>
           </tr></thead>
@@ -456,6 +489,21 @@ const SC_ACTION_LABELS = {
   KEEP_FOR_RESEARCH_REVIEW: {zh:'保留研究复核', en:'KEEP_FOR_RESEARCH_REVIEW'},
   REVIEW_FORMULA_OR_METADATA: {zh:'复核公式或元数据', en:'REVIEW_FORMULA_OR_METADATA'}
 };
+// PM-19: Novelty and redundancy level labels
+const NOVELTY_LABELS = {
+  HIGHLY_REDUNDANT: {zh:'高度冗余', en:'HIGHLY_REDUNDANT', cls:'needs_review'},
+  MODERATELY_REDUNDANT: {zh:'中度冗余', en:'MODERATELY_REDUNDANT', cls:'direction_ambiguous'},
+  LIKELY_DISTINCT: {zh:'可能独立', en:'LIKELY_DISTINCT', cls:'complete'},
+  NEEDS_REVIEW: {zh:'需复核', en:'NEEDS_REVIEW', cls:'direction_ambiguous'},
+  INSUFFICIENT_OVERLAP: {zh:'重叠不足', en:'INSUFFICIENT_OVERLAP', cls:'formula_ambiguous'}
+};
+const REDUNDANCY_LEVEL_LABELS = {
+  NEAR_DUPLICATE: {zh:'近似重复', en:'NEAR_DUPLICATE', cls:'needs_review'},
+  HIGH_REDUNDANCY: {zh:'高度冗余', en:'HIGH_REDUNDANCY', cls:'needs_review'},
+  MODERATE_REDUNDANCY: {zh:'中度冗余', en:'MODERATE_REDUNDANCY', cls:'direction_ambiguous'},
+  LOW_REDUNDANCY: {zh:'低冗余', en:'LOW_REDUNDANCY', cls:'complete'},
+  INSUFFICIENT_OVERLAP: {zh:'重叠不足', en:'INSUFFICIENT_OVERLAP', cls:'formula_ambiguous'}
+};
 
 // Sub-score bilingual labels
 const SUB_SCORE_LABELS = {
@@ -493,6 +541,14 @@ function scConfBadge(conf){
 function scActionBadge(action){
   const l=SC_ACTION_LABELS[action]||{zh:action,en:action};
   return `<span class="sc-action-badge">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+function noveltyBadge(nov){
+  const l=NOVELTY_LABELS[nov]||{zh:nov,en:nov,cls:''};
+  return `<span class="quality-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+function redundancyLevelBadge(lev){
+  const l=REDUNDANCY_LEVEL_LABELS[lev]||{zh:lev,en:lev,cls:''};
+  return `<span class="quality-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
 }
 function scBarColor(v){if(v===null||v===undefined)return 'sc-red';return v>=70?'sc-green':v>=40?'sc-yellow':'sc-red'}
 function scScoreBar(score,label){
@@ -542,6 +598,13 @@ function scSubBar(key,score){
   const med=conf.MEDIUM||0;
   const low=conf.LOW||0;
 
+  // PM-19: Redundancy stats
+  const redLevel=S.scorecard_red_level_counts||{};
+  const nearDup=redLevel.NEAR_DUPLICATE||0;
+  const highRed=redLevel.HIGH_REDUNDANCY||0;
+  const clusters=S.cluster_count||0;
+  const largestCluster=S.largest_cluster_size||0;
+
   el.innerHTML=`
     <h2 style="margin-bottom:6px">Factor Quality Scorecard Summary 因子质量记分卡概要</h2>
     <div class="sc-summary-grid">
@@ -551,10 +614,14 @@ function scSubBar(key,score){
       <div class="sc-summary-card"><strong style="color:var(--green)">${high}</strong><span>High Confidence<br>高置信度</span></div>
       <div class="sc-summary-card"><strong style="color:var(--amber)">${med}</strong><span>Medium Confidence<br>中置信度</span></div>
       <div class="sc-summary-card"><strong style="color:var(--red)">${low}</strong><span>Low Confidence<br>低置信度</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--red)">${nearDup}</strong><span>Near-Duplicate Pairs<br>近似重复对</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--amber)">${highRed}</strong><span>High-Redundancy Pairs<br>高度冗余对</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--green)">${clusters}</strong><span>Redundancy Clusters<br>冗余聚类</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--amber)">${largestCluster}</strong><span>Largest Cluster<br>最大聚类</span></div>
     </div>
     <div class="sc-caveat">
-      <strong>⚠ 冗余置信度大部分为 LOW，因冗余矩阵仅覆盖 6/2485 对。PM-18 将扩展。</strong><br>
-      <span style="color:var(--muted)">Redundancy confidence is mostly LOW — the redundancy matrix covers only 6/2485 pairs. PM-18 will expand coverage.</span>
+      <strong>⚠ 冗余矩阵已扩展至 2485/2485 对（PM-18）。置信度基于有效对覆盖率。</strong><br>
+      <span style="color:var(--muted)">Redundancy matrix expanded to 2485/2485 pairs (PM-18). Confidence based on valid-pair coverage.</span>
     </div>
   `;
 })();
@@ -569,7 +636,7 @@ function scSubBar(key,score){
         <span class="sc-class-badge strong_research" style="font-size:9px">STRONG_RESEARCH_CANDIDATE</span> = 强研究证据，<strong>不是</strong>可部署策略 / strong research evidence, <strong>NOT</strong> a deployable strategy<br>
         <span class="sc-class-badge promising" style="font-size:9px">PROMISING_BUT_INCONSISTENT</span> = 有意义但混合的证据 / meaningful evidence but mixed<br>
         <span class="sc-class-badge review_req" style="font-size:9px">REVIEW_REQUIRED</span> = 需在质量判断前复核 / needs review before quality judgment<br><br>
-        <span style="color:var(--muted)">Score confidence may be capped by sparse redundancy confidence / 分数置信度可能因冗余置信度稀疏而受限 (仅 6/2485 对) / redundancy confidence coverage</span><br>
+        <span style="color:var(--muted)">Score confidence may be capped by sparse redundancy confidence / 分数置信度可能因冗余置信度稀疏而受限 / redundancy confidence coverage</span><br>
         <strong style="color:#e9d5ff">本记分卡为研究分诊工具，不是交易建议 / This scorecard is a research triage tool, not a trading recommendation</strong>
       </div>
     </div>
@@ -643,6 +710,11 @@ function renderTable(){
       <td class="num">${pct(f.long_short_max_drawdown)}</td>
       <td class="num">${pct(f.long_short_positive_month_rate)}</td>
       <td class="num">${pct(f.coverage_rate)}</td>
+      <td>${f.novelty_assessment?`<span class="bucket-badge">${esc(f.novelty_assessment)}</span>`:'—'}</td>
+      <td>${esc(f.nearest_factor||'—')}</td>
+      <td>${esc(f.strongest_redundancy_level||'—')}</td>
+      <td>${f.redundancy_confidence?scConfBadge(f.redundancy_confidence):'—'}</td>
+      <td class="num">${f.redundancy_cluster_id!==null&&f.redundancy_cluster_id!==undefined?Math.round(Number(f.redundancy_cluster_id)):'—'}</td>
       <td>${f.recommended_next_action?scActionBadge(f.recommended_next_action):'—'}</td>
       <td><span class="bucket-badge">${esc(f.decision_bucket)}</span></td>
     </tr>`;
@@ -898,6 +970,24 @@ function renderDetail(fid){
     </div>
 
     ${scorecardHtml}
+
+    <div class="section-divider"></div>
+    <h3>Redundancy & Novelty / 冗余与新颖性</h3>
+    <div class="kv">
+      <div>Novelty Assessment 新颖性评估</div><div>${f.novelty_assessment?noveltyBadge(f.novelty_assessment):'—'}</div>
+      <div>Nearest Factor 最近相似因子</div><div>${esc(f.nearest_factor||'—')}</div>
+      <div>Nearest abs Spearman 最近|Spearman|</div><div>${f.nearest_abs_spearman_corr!==null?Number(f.nearest_abs_spearman_corr).toFixed(4):'—'}</div>
+      <div>Strongest Redundancy 最强冗余等级</div><div>${f.strongest_redundancy_level?redundancyLevelBadge(f.strongest_redundancy_level):'—'}</div>
+      <div>Redundancy Confidence 冗余置信度</div><div>${f.redundancy_confidence?scConfBadge(f.redundancy_confidence):'—'}</div>
+      <div>Valid Pairs 有效对</div><div>${f.valid_redundancy_pair_count!==null?Math.round(Number(f.valid_redundancy_pair_count))+' / '+Math.round(Number(f.expected_redundancy_pair_count)):'—'}</div>
+      <div>Valid Pair Coverage 有效对覆盖率</div><div>${f.valid_redundancy_pair_coverage!==null?pct(f.valid_redundancy_pair_coverage):'—'}</div>
+      <div>Insufficient Overlap 重叠不足对</div><div>${f.insufficient_overlap_pair_count!==null?Math.round(Number(f.insufficient_overlap_pair_count)):'—'}</div>
+      <div>Cluster 聚类</div><div>${f.redundancy_cluster_id!==null?'#'+Math.round(Number(f.redundancy_cluster_id))+' ('+Math.round(Number(f.redundancy_cluster_size||0))+' factors)':'—'}</div>
+    </div>
+    <div style="margin-top:6px;font-size:10px;color:var(--muted)">
+      冗余分析是研究相似性诊断，不是删除因子的理由。高冗余因子可保留用于方向/视野多样性。
+      <br>Redundancy analysis is a research similarity diagnostic, not a reason by itself to delete a factor. High-redundancy factors may be retained for direction/horizon diversity.
+    </div>
 
     <div class="section-divider"></div>
     <h3>Monthly RankIC 月度RankIC (${esc(f.best_horizon)})</h3>

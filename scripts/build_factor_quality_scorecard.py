@@ -56,6 +56,7 @@ PATH_QUANTILE_PERIOD = EVAL_DIR / "factor_level_period_quantile_return_summary.c
 PATH_METRIC_PANEL = EVAL_DIR / "factor_level_metric_panel.csv"
 PATH_REDUNDANCY = DIAG_DIR / "factor_pairwise_redundancy.csv"
 PATH_REDUNDANCY_SUMMARY = DIAG_DIR / "factor_redundancy_summary.csv"
+PATH_REDUNDANCY_CLUSTERS = DIAG_DIR / "factor_redundancy_clusters.csv"
 
 PATH_STATE = BASE / "factor_library_state.json"
 
@@ -164,6 +165,17 @@ def load_redundancy_summary() -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def load_redundancy_clusters() -> pd.DataFrame:
+    """Load per-factor cluster assignment from PM-18."""
+    try:
+        df = pd.read_csv(PATH_REDUNDANCY_CLUSTERS)
+        if "factor_id" in df.columns:
+            return df
+        return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
 def load_library_state() -> dict:
     with open(PATH_STATE, "r") as f:
         return json.load(f)
@@ -258,6 +270,48 @@ def build_redundancy_map(redundancy_df: pd.DataFrame) -> dict[str, dict[str, Any
                 }
 
     return rmap
+
+
+# ── PM-19: Calibrated redundancy confidence ─────────────────────────────────
+
+def compute_calibrated_redundancy_confidence(
+    n_valid_pairs: int,
+    expected_pairs: int,
+    strongest_level: str,
+    novelty: str,
+) -> str:
+    """
+    PM-19: Calibrate redundancy confidence based on valid-pair coverage,
+    not on absence of insufficient-overlap pairs.
+
+    A factor should not be globally penalized merely because a subset of
+    its pairs has insufficient overlap (newer/shorter-horizon factors
+    naturally have fewer overlapping observations with longer-horizon ones).
+
+    Logic:
+      HIGH:   valid-pair coverage >= 70% AND >= 40 valid pairs
+      MEDIUM: valid-pair coverage >= 40% AND >= 20 valid pairs
+      Also MEDIUM/HIGH if the factor has clear high-redundancy evidence
+      (NEAR_DUPLICATE or HIGH_REDUNDANCY) even with fewer valid pairs.
+      LOW:    otherwise
+    """
+    if expected_pairs <= 0:
+        return "LOW"
+
+    coverage = n_valid_pairs / expected_pairs
+
+    # High-redundancy evidence overrides low coverage for confidence
+    has_strong_evidence = strongest_level in ("NEAR_DUPLICATE", "HIGH_REDUNDANCY")
+
+    if coverage >= 0.70 and n_valid_pairs >= 40:
+        return "HIGH"
+    elif coverage >= 0.40 and n_valid_pairs >= 20:
+        return "MEDIUM"
+    elif has_strong_evidence and n_valid_pairs >= 4:
+        # Factor has clear redundancy signal despite low overlap coverage
+        return "MEDIUM"
+    else:
+        return "LOW"
 
 
 # ── Dimension scoring functions ──────────────────────────────────────────────
@@ -382,14 +436,17 @@ def score_redundancy_novelty(
     redundancy_map: dict[str, dict[str, Any]],
     factor_id: str,
     summary_map: dict[str, dict[str, Any]] | None = None,
+    calibrated_confidence: str = "LOW",
 ) -> tuple[float, str]:
     """6.7 redundancy_novelty_score. Returns (score, confidence).
     Uses PM-18 redundancy summary if available, falls back to pairwise map.
+    PM-19: Uses calibrated_confidence instead of PM-18 blanket LOW.
     """
     # Prefer summary map from PM-18
     if summary_map and factor_id in summary_map:
         entry = summary_map[factor_id]
-        conf = entry.get("redundancy_confidence", "LOW")
+        # PM-19: use calibrated confidence instead of PM-18 blanket LOW
+        conf = calibrated_confidence
         novelty = entry.get("novelty_assessment", "INSUFFICIENT_OVERLAP")
         strongest = entry.get("strongest_redundancy_level", "")
 
@@ -618,6 +675,7 @@ def build_scorecard() -> pd.DataFrame:
     quantile_df = load_quantile_summary()
     redundancy_df = load_redundancy()
     redundancy_summary = load_redundancy_summary()
+    redundancy_clusters = load_redundancy_clusters()
     state = load_library_state()
 
     registered_ids = state.get("registered_factor_ids", [])
@@ -628,6 +686,7 @@ def build_scorecard() -> pd.DataFrame:
     print(f"[PM-16B] {len(quantile_df)} rows in quantile summary")
     print(f"[PM-16B] {len(redundancy_df)} rows in pairwise redundancy")
     print(f"[PM-16B] {len(redundancy_summary)} rows in redundancy summary")
+    print(f"[PM-16B] {len(redundancy_clusters)} rows in redundancy clusters")
 
     # Build lookups
     quantile_shapes = compute_quantile_shapes(quantile_df)
@@ -647,6 +706,22 @@ def build_scorecard() -> pd.DataFrame:
                 "n_high_redundancy_pairs": int(row.get("n_high_redundancy_pairs", 0)),
                 "n_valid_pairs": int(row.get("n_valid_pairs", 0)),
             }
+
+    # Build cluster map from PM-18 clusters
+    cluster_map: dict[str, dict[str, Any]] = {}
+    if not redundancy_clusters.empty:
+        for _, row in redundancy_clusters.iterrows():
+            fid = str(row.get("factor_id", "")).strip()
+            cluster_map[fid] = {
+                "cluster_id": int(row.get("cluster_id", -1)),
+                "cluster_size": int(row.get("cluster_size", 1)),
+                "cluster_members": str(row.get("cluster_members", "")).strip(),
+            }
+
+    # PM-19: Compute expected pair count (N-1 for N registered factors)
+    n_factors = len(registered_ids)
+    expected_pairs = max(n_factors - 1, 1)
+    print(f"[PM-19] Expected redundancy pairs per factor: {expected_pairs}")
 
     # Score each factor
     rows = []
@@ -703,7 +778,18 @@ def build_scorecard() -> pd.DataFrame:
         stab_score = score_stability(monthly_ic_positive_rate, ls_pmr, ls_max_dd)
         quant_label, quant_score = get_quantile_shape_for_factor(quantile_shapes, fid, best_horizon)
         dir_score = score_direction_interpretability(metadata_quality)
-        red_score, red_conf = score_redundancy_novelty(redundancy_map, fid, summary_map)
+
+        # PM-19: Compute calibrated redundancy confidence
+        summ = summary_map.get(fid, {})
+        n_valid = summ.get("n_valid_pairs", 0)
+        strongest_lvl = summ.get("strongest_redundancy_level", "")
+        novelty_val = summ.get("novelty_assessment", "INSUFFICIENT_OVERLAP")
+        cal_conf = compute_calibrated_redundancy_confidence(
+            n_valid, expected_pairs, strongest_lvl, novelty_val,
+        )
+        red_score, red_conf = score_redundancy_novelty(
+            redundancy_map, fid, summary_map, cal_conf,
+        )
 
         scores = {
             "computation_integrity": comp_score,
@@ -771,6 +857,33 @@ def build_scorecard() -> pd.DataFrame:
             "review_notes_en": notes["notes_en"],
             "recommended_next_action": next_action,
         }
+
+        # PM-19: Add calibrated redundancy detail fields
+        insuff_count = 0
+        if not redundancy_df.empty:
+            mask_i = redundancy_df["factor_i"].astype(str).str.strip() == fid
+            mask_j = redundancy_df["factor_j"].astype(str).str.strip() == fid
+            pairs_for_fid = redundancy_df[mask_i | mask_j]
+            insuff_count = int((pairs_for_fid["redundancy_level"] == "INSUFFICIENT_OVERLAP").sum())
+
+        nearest_fid = summ.get("nearest_factor", "")
+        nearest_corr = summ.get("nearest_abs_spearman_corr", 0.0)
+        cl = cluster_map.get(fid, {})
+        cl_id = cl.get("cluster_id", -1)
+        cl_size = cl.get("cluster_size", 1)
+        cl_members = cl.get("cluster_members", "")
+
+        row["valid_redundancy_pair_count"] = n_valid
+        row["expected_redundancy_pair_count"] = expected_pairs
+        row["valid_redundancy_pair_coverage"] = round(n_valid / expected_pairs, 4) if expected_pairs > 0 else 0.0
+        row["insufficient_overlap_pair_count"] = insuff_count
+        row["nearest_factor"] = nearest_fid
+        row["nearest_abs_spearman_corr"] = round(nearest_corr, 6) if nearest_corr else 0.0
+        row["strongest_redundancy_level"] = strongest_lvl
+        row["novelty_assessment"] = novelty_val
+        row["redundancy_cluster_id"] = cl_id
+        row["redundancy_cluster_size"] = cl_size
+
         rows.append(row)
 
     df = pd.DataFrame(rows)
@@ -788,6 +901,12 @@ def build_scorecard() -> pd.DataFrame:
         "main_strengths_zh", "main_weaknesses_zh", "main_strengths_en",
         "main_weaknesses_en", "review_notes_zh", "review_notes_en",
         "recommended_next_action",
+        # PM-19 redundancy detail fields
+        "valid_redundancy_pair_count", "expected_redundancy_pair_count",
+        "valid_redundancy_pair_coverage", "insufficient_overlap_pair_count",
+        "nearest_factor", "nearest_abs_spearman_corr",
+        "strongest_redundancy_level", "novelty_assessment",
+        "redundancy_cluster_id", "redundancy_cluster_size",
     ]
     df = df[col_order]
 
@@ -818,6 +937,11 @@ def write_manifest(df: pd.DataFrame) -> None:
     for c in ("HIGH", "MEDIUM", "LOW"):
         conf_dist.setdefault(c, 0)
 
+    # PM-19: Redundancy confidence distribution
+    red_conf_dist = df["redundancy_confidence"].value_counts().to_dict()
+    for c in ("HIGH", "MEDIUM", "LOW"):
+        red_conf_dist.setdefault(c, 0)
+
     action_dist = df["recommended_next_action"].value_counts().to_dict()
 
     # Score statistics
@@ -844,6 +968,7 @@ def write_manifest(df: pd.DataFrame) -> None:
         "dimension_weights": DIMENSION_WEIGHTS,
         "quality_class_distribution": class_dist,
         "score_confidence_distribution": conf_dist,
+        "redundancy_confidence_distribution": red_conf_dist,
         "recommended_action_distribution": action_dist,
         "score_statistics": score_stats,
         "quality_classes": QUALITY_CLASSES,
@@ -892,6 +1017,11 @@ def main() -> int:
     print("\nSCORE CONFIDENCE DISTRIBUTION:")
     for conf in ("HIGH", "MEDIUM", "LOW"):
         count = len(df[df["score_confidence"] == conf])
+        print(f"  {conf}: {count}")
+
+    print("\nREDUNDANCY CONFIDENCE DISTRIBUTION (PM-19 calibrated):")
+    for conf in ("HIGH", "MEDIUM", "LOW"):
+        count = len(df[df["redundancy_confidence"] == conf])
         print(f"  {conf}: {count}")
 
     print(f"\nFinal score range: {df['final_quality_score'].min():.1f} – {df['final_quality_score'].max():.1f}")
