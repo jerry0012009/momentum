@@ -382,8 +382,8 @@ def build_rolling_stability(
         # Positive month rates
         ic_pos_rate = float(np.mean(ic_vals > 0)) if n_months > 0 else 0.0
         ls_pos_rate = float(np.mean(ls_vals > 0)) if len(ls_vals) > 0 else 0.0
-        row["ic_positive_month_rate"] = round(ic_pos_rate, 4)
-        row["ls_positive_month_rate"] = round(ls_pos_rate, 4)
+        row["ic_positive_month_rate"] = round(ic_pos_rate, 4) if not np.isnan(ic_pos_rate) else None
+        row["ls_positive_month_rate"] = round(ls_pos_rate, 4) if not np.isnan(ls_pos_rate) else None
 
         # Recent 6m vs full period
         recent_n = min(6, n_months)

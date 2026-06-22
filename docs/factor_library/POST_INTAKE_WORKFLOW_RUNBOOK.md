@@ -282,3 +282,32 @@ During intake, **DO NOT** modify:
 - ❌ Broker, execution, or exchange API code
 
 Only additions to registry and incremental diagnostics are permitted.
+
+## 8. NaN in JSON payload — critical pitfall
+
+**Symptom:** `factor-evaluation.html` fails to load with `Uncaught SyntaxError: Unexpected token 'N' ... is not valid JSON`
+
+**Root cause:** Python's `json.dumps()` outputs `NaN` for `float('nan')` by default. JavaScript's `JSON.parse()` cannot parse `NaN` — it's not valid JSON.
+
+**Where it happens:** Diagnostic scripts that compute rolling statistics, positive month rates, or stability metrics may produce `NaN` when data is insufficient (e.g., empty monthly IC series). If these `NaN` values are not converted to `None`/`null` before JSON serialization, the HTML page breaks silently.
+
+**Prevention:**
+1. **Source script guard:** Always use `round(val, N) if not np.isnan(val) else None` when assigning float values from numpy computations.
+2. **HTML builder defense:** `_build_factor_eval_html.py` has a `_sanitize_nan()` function that recursively replaces `NaN`/`inf` with `null` in all loaded JSON data. This is the safety net.
+3. **Post-build validation:** After regenerating `factor-evaluation.html`, always verify:
+   ```bash
+   python3 -c "
+   import re, json
+   from pathlib import Path
+   txt = Path('reports/site/factor-library/factor-evaluation.html').read_text()
+   nans = len(re.findall(r'\\\\bNaN\\\\b', txt.replace('Number.isNaN', '')))
+   print(f'Data NaN count: {nans}')
+   m = re.search(r'<script id=\"factorPayload\" type=\"application/json\">(.*?)</script>', txt, re.DOTALL)
+   if m:
+       data = json.loads(m.group(1))
+       print(f'JSON valid. Factors: {len(data.get(\"factors\",[]))}')
+   "
+   ```
+4. **Known vulnerable fields:** `ic_positive_month_rate`, `recent_vs_full_ic_delta`, `recent_vs_full_ls_delta` in `factor_shape_stability_payload.json` — these come from `build_factor_shape_stability_diagnostics.py` and will be `NaN` when a factor has empty monthly IC data but `n_months > 0` from LS data.
+
+**Fix:** Regenerate the page after fixing the source script, then deploy to `/var/www/momentum-report/factor-library/`.

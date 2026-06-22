@@ -259,3 +259,18 @@ Do **not** commit to GitHub:
 - ❌ Generated HTML (>5MB)
 
 These belong in `.gitignore`. Keep them local or in object storage.
+
+## 8. Post-rebuild JSON validity check
+
+After any page rebuild (`_build_factor_eval_html.py`), verify the embedded JSON is valid:
+
+```bash
+python3 -c "
+import re, json; from pathlib import Path
+txt = Path('reports/site/factor-library/factor-evaluation.html').read_text()
+data = json.loads(re.search(r'<script id=\"factorPayload\" type=\"application/json\">(.*?)</script>', txt, re.DOTALL).group(1))
+print(f'JSON valid. {len(data[\"factors\"])} factors')
+"
+```
+
+If this fails with `NaN` error, the source diagnostic CSV/JSON has unguarded NaN values. Fix the source script, re-run diagnostics, then rebuild page. See POST_INTAKE_WORKFLOW_RUNBOOK.md §8 for details.
