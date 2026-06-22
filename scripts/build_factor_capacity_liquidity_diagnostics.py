@@ -285,6 +285,34 @@ def compute_selected_basket_volume_metrics(
 # Main
 # ---------------------------------------------------------------------------
 
+def _resolve_target_factor_ids(
+    args: argparse.Namespace, diag_dir: Path,
+) -> tuple[list[str] | None, bool]:
+    """Return (target_ids, is_subset_mode) based on CLI args.
+
+    If neither --factor-ids nor --only-missing is set, returns (None, False)
+    meaning "process all factors" (original behavior).
+    """
+    if args.factor_ids:
+        ids = [s.strip() for s in args.factor_ids.split(",") if s.strip()]
+        return ids, True
+    if args.only_missing:
+        evidence_path = diag_dir / "factor_evaluation_evidence_matrix.csv"
+        if not evidence_path.exists():
+            print(f"  WARNING: evidence matrix not found at {evidence_path}, falling back to all factors")
+            return None, False
+        ev = pd.read_csv(evidence_path)
+        if "has_capacity_liquidity" not in ev.columns:
+            print("  WARNING: 'has_capacity_liquidity' column not in evidence matrix, falling back to all factors")
+            return None, False
+        missing = ev[ev["has_capacity_liquidity"] == False]["factor_id"].tolist()  # noqa: E712
+        print(f"  --only-missing: {len(missing)} factors missing capacity/liquidity")
+        if not missing:
+            return [], True
+        return missing, True
+    return None, False
+
+
 def main():
     parser = argparse.ArgumentParser(description="PM-29B capacity/liquidity diagnostics (selected-basket proxy)")
     parser.add_argument("--notionals", default="100000,1000000,10000000",
@@ -293,9 +321,18 @@ def main():
                         help="Sample every N hours (default: 4, set to 1 for full precision)")
     parser.add_argument("--max-factors", type=int, default=0,
                         help="Limit number of factors (0=all)")
+    parser.add_argument("--factor-ids", type=str, default=None,
+                        help="PM-36: Comma-separated factor IDs to compute (subset mode)")
+    parser.add_argument("--only-missing", action="store_true", default=False,
+                        help="PM-36: Auto-detect factors missing capacity/liquidity from evidence matrix")
     args = parser.parse_args()
     notionals = sorted([int(x) for x in args.notionals.split(",")])
     sample_hours = args.sample_hours
+
+    # PM-36: Resolve subset mode
+    target_factor_ids, is_subset_mode = _resolve_target_factor_ids(args, DIAG)
+    if is_subset_mode:
+        print(f"[PM-29B] SUBSET MODE: processing {len(target_factor_ids or [])} target factor(s)")
 
     print(f"[PM-29B] Notionals: {notionals}")
     print(f"[PM-29B] Sample interval: every {sample_hours}h")
@@ -395,6 +432,20 @@ def main():
     all_factors = load_registered_factors()
     if args.max_factors > 0:
         all_factors = all_factors[:args.max_factors]
+
+    # PM-36: Filter to target subset if requested
+    if is_subset_mode and target_factor_ids is not None:
+        all_factor_set = set(all_factors)
+        valid_targets = [fid for fid in target_factor_ids if fid in all_factor_set]
+        invalid = [fid for fid in target_factor_ids if fid not in all_factor_set]
+        if invalid:
+            print(f"[PM-29B] WARNING: {len(invalid)} target IDs not in registered list (skipped): {invalid[:5]}...")
+        all_factors = valid_targets
+        print(f"[PM-29B] Target factors to compute: {len(all_factors)}")
+        if not all_factors:
+            print("[PM-29B] No factors need computation. Outputs already up to date.")
+            return 0
+
     print(f"[PM-29B] Processing {len(all_factors)} factors")
 
     # -----------------------------------------------------------------------
@@ -717,6 +768,57 @@ def main():
     # -----------------------------------------------------------------------
     summary_out = pd.DataFrame(summary_rows)
     monthly_out = pd.DataFrame(monthly_rows)
+
+    # ── PM-36: Merge with existing outputs if in subset mode ──────────────
+    if is_subset_mode and target_factor_ids:
+        target_set = set(target_factor_ids)
+
+        # Merge summary
+        existing_summary_path = DIAG / "factor_capacity_liquidity_summary.csv"
+        if existing_summary_path.exists():
+            existing_summary = pd.read_csv(existing_summary_path)
+            existing_summary = existing_summary[~existing_summary["factor_id"].isin(target_set)]
+            summary_out = pd.concat([existing_summary, summary_out], ignore_index=True)
+            print(f"[PM-29B] MERGED summary: {len(summary_out)} factors ({len(existing_summary)} existing + new)")
+
+        # Merge monthly
+        existing_monthly_path = DIAG / "factor_capacity_liquidity_monthly.csv"
+        if existing_monthly_path.exists():
+            existing_monthly = pd.read_csv(existing_monthly_path)
+            existing_monthly = existing_monthly[~existing_monthly["factor_id"].isin(target_set)]
+            monthly_out = pd.concat([existing_monthly, monthly_out], ignore_index=True)
+            print(f"[PM-29B] MERGED monthly: {len(monthly_out)} rows ({len(existing_monthly)} existing + new)")
+
+        # Rebuild summary_rows and payload_factors from merged data for JSON output
+        summary_rows = summary_out.to_dict("records")
+        # Rebuild payload_factors from merged summary_out
+        payload_factors = []
+        for _, srow in summary_out.iterrows():
+            pf = {
+                "factor_id": srow["factor_id"],
+                "liquidity_proxy_method": srow.get("liquidity_proxy_method"),
+                "capacity_risk_class": srow.get("capacity_risk_class"),
+                "liquidity_risk_class": srow.get("liquidity_risk_class"),
+                "capacity_liquidity_class": srow.get("capacity_liquidity_class"),
+                "volume_concentration_class": srow.get("volume_concentration_class"),
+                "factor_quality_cross_flag": srow.get("factor_quality_cross_flag"),
+                "flags": srow.get("flags", "NONE").split("|") if srow.get("flags") and srow.get("flags") != "NONE" else [],
+                "avg_turnover": round(float(srow.get("avg_turnover", 0)), 4),
+                "p90_turnover": round(float(srow.get("p90_turnover", 0)), 4),
+                "avg_total_names": int(srow.get("avg_total_names", 36)),
+                "selected_symbol_count_median": round(float(srow.get("selected_symbol_count_median", 0)), 1) if pd.notna(srow.get("selected_symbol_count_median")) else None,
+                "selected_basket_volume_median": round(float(srow.get("selected_basket_volume_median", 0)), 2),
+                "selected_basket_volume_p10": round(float(srow.get("selected_basket_volume_p10", 0)), 2),
+                "selected_top_symbol_volume_share_median": round(float(srow.get("selected_top_symbol_volume_share_median", 0)), 4) if pd.notna(srow.get("selected_top_symbol_volume_share_median")) else None,
+                "low_volume_symbol_share": round(float(srow.get("low_volume_symbol_share", 0)), 4) if pd.notna(srow.get("low_volume_symbol_share")) else None,
+                "participation_10m": srow.get("participation_10000000"),
+                "capacity_usd_10m": srow.get("capacity_usd_10000000"),
+                "gross_sharpe": round(float(srow.get("gross_sharpe", 0)), 2) if pd.notna(srow.get("gross_sharpe")) else None,
+                "cost_sensitivity_class": srow.get("cost_sensitivity_class"),
+                "stability_class": srow.get("stability_class"),
+                "regime_dependency_class": srow.get("regime_dependency_class"),
+            }
+            payload_factors.append(pf)
 
     if summary_out.empty:
         print("[PM-29B] ERROR: No factors processed. Check factor values and volume overlap.")

@@ -21,10 +21,13 @@ Outputs (to factor_diagnostics/):
 
 Usage:
     python scripts/build_factor_decile_shape_diagnostics.py
+    python scripts/build_factor_decile_shape_diagnostics.py --factor-ids mom_ret_24h,vwap_distance_1h
+    python scripts/build_factor_decile_shape_diagnostics.py --only-missing
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import time
@@ -346,11 +349,53 @@ def generate_notes(
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+def _resolve_target_factor_ids(args: argparse.Namespace) -> tuple[list[str] | None, bool]:
+    """Return (target_ids, is_subset_mode) based on CLI args.
+
+    If neither --factor-ids nor --only-missing is set, returns (None, False)
+    meaning "process all factors" (original behavior).
+    """
+    if args.factor_ids:
+        ids = [s.strip() for s in args.factor_ids.split(",") if s.strip()]
+        return ids, True
+    if args.only_missing:
+        evidence_path = DIAG_DIR / "factor_evaluation_evidence_matrix.csv"
+        if not evidence_path.exists():
+            print(f"  WARNING: evidence matrix not found at {evidence_path}, falling back to all factors")
+            return None, False
+        ev = pd.read_csv(evidence_path)
+        if "has_decile_shape" not in ev.columns:
+            print("  WARNING: 'has_decile_shape' column not in evidence matrix, falling back to all factors")
+            return None, False
+        missing = ev[ev["has_decile_shape"] == False]["factor_id"].tolist()  # noqa: E712
+        print(f"  --only-missing: {len(missing)} factors missing decile shape")
+        if not missing:
+            return [], True
+        return missing, True
+    return None, False
+
+
 def main() -> None:
     t_start = time.time()
     print("=" * 70)
     print("PM-27B: Direction-aware decile-level quantile shape diagnostics")
     print("=" * 70)
+
+    # ── CLI args (PM-36: incremental subset support) ──────────────────────
+    parser = argparse.ArgumentParser(description="PM-27B decile shape diagnostics")
+    parser.add_argument(
+        "--factor-ids", type=str, default=None,
+        help="Comma-separated factor IDs to compute (subset mode).",
+    )
+    parser.add_argument(
+        "--only-missing", action="store_true", default=False,
+        help="Auto-detect factors missing decile shape from evidence matrix.",
+    )
+    args = parser.parse_args()
+
+    target_factor_ids, is_subset_mode = _resolve_target_factor_ids(args)
+    if is_subset_mode:
+        print(f"  SUBSET MODE: processing {len(target_factor_ids or [])} target factor(s)")
 
     # Ensure output dir
     DIAG_DIR.mkdir(parents=True, exist_ok=True)
@@ -359,6 +404,20 @@ def main() -> None:
     state = json.loads(STATE_PATH.read_text())
     factor_ids = state["computed_factor_ids"]
     print(f"  Factors from state: {len(factor_ids)}")
+
+    # Filter to target subset if requested
+    if is_subset_mode and target_factor_ids is not None:
+        # Validate that target IDs exist in state
+        state_set = set(factor_ids)
+        valid_targets = [fid for fid in target_factor_ids if fid in state_set]
+        invalid = [fid for fid in target_factor_ids if fid not in state_set]
+        if invalid:
+            print(f"  WARNING: {len(invalid)} target IDs not in state (skipped): {invalid[:5]}...")
+        factor_ids = valid_targets
+        print(f"  Target factors to compute: {len(factor_ids)}")
+        if not factor_ids:
+            print("  No factors need computation. Outputs already up to date.")
+            return
 
     # Load expected_direction from registry
     direction_map = load_direction_map()
@@ -496,6 +555,26 @@ def main() -> None:
     print(f"\n  Total decile return rows: {len(ret_df)}")
     print(f"  Unique factors: {ret_df['factor_id'].nunique()}")
 
+    # ── PM-36: Merge with existing outputs if in subset mode ──────────────
+    if is_subset_mode and target_factor_ids:
+        target_set = set(target_factor_ids)
+
+        # Load existing return summary and drop rows for target factors
+        ret_csv_path = DIAG_DIR / "factor_decile_return_summary.csv"
+        if ret_csv_path.exists():
+            existing_ret = pd.read_csv(ret_csv_path)
+            existing_ret = existing_ret[~existing_ret["factor_id"].isin(target_set)]
+            ret_df = pd.concat([existing_ret, ret_df], ignore_index=True)
+            print(f"  MERGED return summary: {len(ret_df)} rows (kept {len(existing_ret)} existing + {len(ret_df) - len(existing_ret)} new)")
+
+        # Load existing timeseries and drop rows for target factors
+        ts_csv_path_existing = DIAG_DIR / "factor_decile_shape_timeseries.csv"
+        if ts_csv_path_existing.exists():
+            existing_ts = pd.read_csv(ts_csv_path_existing)
+            existing_ts = existing_ts[~existing_ts["factor_id"].isin(target_set)]
+            # Extend timeseries_rows with existing (non-target) rows
+            # We'll merge after building ts_df below
+
     # Save raw return summary
     ret_csv = DIAG_DIR / "factor_decile_return_summary.csv"
     ret_df.to_csv(ret_csv, index=False)
@@ -626,6 +705,30 @@ def main() -> None:
         shape_rows.append(row)
 
     shape_df = pd.DataFrame(shape_rows)
+
+    # ── PM-36: Merge shape summary with existing if in subset mode ────────
+    if is_subset_mode and target_factor_ids:
+        target_set = set(target_factor_ids)
+
+        # Load existing shape summary and drop rows for target factors
+        existing_shape_path = DIAG_DIR / "factor_decile_shape_summary.csv"
+        if existing_shape_path.exists():
+            existing_shape = pd.read_csv(existing_shape_path)
+            existing_shape = existing_shape[~existing_shape["factor_id"].isin(target_set)]
+            # Merge: take all columns from both, preferring new rows for target factors
+            shape_df = pd.concat([existing_shape, shape_df], ignore_index=True)
+            # Also rebuild shape_rows for JSON output
+            shape_rows = shape_df.to_dict("records")
+            print(f"  MERGED shape summary: {len(shape_df)} rows ({len(existing_shape)} existing + new)")
+
+        # Load existing timeseries and drop rows for target factors
+        existing_ts_path = DIAG_DIR / "factor_decile_shape_timeseries.csv"
+        if existing_ts_path.exists():
+            existing_ts = pd.read_csv(existing_ts_path)
+            existing_ts = existing_ts[~existing_ts["factor_id"].isin(target_set)]
+            existing_ts_rows = existing_ts.to_dict("records")
+            timeseries_rows = existing_ts_rows + timeseries_rows
+            print(f"  MERGED timeseries: {len(timeseries_rows)} rows ({len(existing_ts_rows)} existing + new)")
 
     # Save shape summary CSV
     shape_csv = DIAG_DIR / "factor_decile_shape_summary.csv"
