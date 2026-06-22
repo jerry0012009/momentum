@@ -246,6 +246,50 @@ def check_pm35_factors(html_text: str) -> dict:
     )
 
 
+
+def check_new_factor_metrics_populated(html_text: str) -> dict:
+    """Verify factors with factor-level evaluation data have populated metrics.
+
+    This catches the PM-40 issue where new factors showed blank Best Horizon Metrics
+    because the HTML builder only read from old diagnostics files.
+    """
+    import re as _re
+    import json as _json
+    m = _re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>', html_text, _re.DOTALL)
+    if not m:
+        return _fail(
+            "new_factor_metrics",
+            "New factor metrics populated",
+            "factorPayload not found",
+        )
+    try:
+        data = _json.loads(m.group(1))
+    except _json.JSONDecodeError:
+        return _fail(
+            "new_factor_metrics",
+            "New factor metrics populated",
+            "JSON parse error",
+        )
+    problems = []
+    for f in data.get("factors", []):
+        fid = f.get("factor_id", "")
+        has_level_eval = f.get("ev_has_factor_level_evaluation", False)
+        rankic = f.get("rankic_mean")
+        if has_level_eval and rankic is None:
+            problems.append(f"{fid}: rankic_mean=None despite having factor-level evaluation")
+    if problems:
+        return _fail(
+            "new_factor_metrics",
+            "New factor metrics populated",
+            f"{len(problems)} factors with missing metrics",
+            "; ".join(problems[:5]),
+        )
+    return _pass(
+        "new_factor_metrics",
+        "New factor metrics populated",
+        f"All {len(data.get('factors', []))} factors have metrics",
+    )
+
 def check_section_markers(html_text: str) -> list[dict]:
     """Check each required section marker set."""
     results = []
@@ -372,6 +416,7 @@ def main() -> int:
 
     # 3. PM-35 new factors
     all_checks.append(check_pm35_factors(html_text))
+    all_checks.append(check_new_factor_metrics_populated(html_text))
 
     # 4. Section markers
     all_checks.extend(check_section_markers(html_text))

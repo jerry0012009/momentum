@@ -311,3 +311,32 @@ Only additions to registry and incremental diagnostics are permitted.
 4. **Known vulnerable fields:** `ic_positive_month_rate`, `recent_vs_full_ic_delta`, `recent_vs_full_ls_delta` in `factor_shape_stability_payload.json` — these come from `build_factor_shape_stability_diagnostics.py` and will be `NaN` when a factor has empty monthly IC data but `n_months > 0` from LS data.
 
 **Fix:** Regenerate the page after fixing the source script, then deploy to `/var/www/momentum-report/factor-library/`.
+
+## 9. Data source hierarchy for page builder — critical pattern
+
+**Problem:** The HTML page builder (`_build_factor_eval_html.py`) reads metrics from multiple data sources. When new factors are added via controlled intake, the OLD diagnostics files may not have horizon-level metrics, while the NEW factor-level evaluation files do. If the builder only reads from old sources, new factors show as blank.
+
+**Data source hierarchy (OLD → NEW):**
+
+| Metric | Old source (may be empty for new factors) | New source (always populated) |
+|--------|------------------------------------------|-------------------------------|
+| rankic_mean, rankic_t_stat | `factor_diagnostics_summary.csv` | `factor_level_rankic_summary.csv` |
+| long_short_mean, sharpe | `factor_diagnostics_summary.csv` | `factor_level_long_short_summary.csv` |
+| best_horizon | `factor_diagnostics_summary.csv` | `factor_level_coverage_summary.csv` |
+| Monthly IC series | `factor_monthly_ic_series.csv` | `factor_level_period_ic_summary.csv` |
+| Monthly LS series | `factor_monthly_long_short_series.csv` | `factor_level_period_long_short_summary.csv` |
+
+**Key difference:** Old files use `factor_id` as key; new files use `factor_name` (same values).
+
+**Column mapping (old → new):**
+- `rankic_mean` → `direction_adjusted_mean_rank_ic`
+- `rankic_t_stat` → `t_stat`
+- `coverage_rate` → `1 - missing_rate` (coverage column is raw count, not rate)
+- `monthly_ic_positive_rate` → computed from period IC data
+
+**Builder fix pattern:** The builder now loads BOTH old and new sources, builds lookup maps keyed by `(factor_name, horizon)`, and falls back to factor-level data when diagnostics has None/NaN.
+
+**5 factors affected by this issue (PM-35 batch):**
+- `rev_2h`, `mom_vol_adjusted_20h`, `range_breakout_vol_confirm_20h`, `volume_pressure_20h`, `xs_rank_mom_accel`
+
+**Prevention:** After any new factor intake batch, verify that the HTML builder can resolve metrics for ALL new factors. Add a check to `check_factor_evaluation_page_completeness.py` that validates: for each factor in the page payload, if `rankic_mean` is None and `ev_has_factor_level_evaluation` is True, flag as incomplete.
