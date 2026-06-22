@@ -6,6 +6,11 @@ Builds quantile shape diagnostics (monotonicity, tail concentration, slope)
 and rolling stability diagnostics (IC/LS rolling windows, deterioration detection)
 for all registered factors across 4 horizons.
 
+Usage:
+    python scripts/build_factor_shape_stability_diagnostics.py
+    python scripts/build_factor_shape_stability_diagnostics.py --factor-ids rev_2h,mom_vol_adjusted_20h
+    python scripts/build_factor_shape_stability_diagnostics.py --only-missing
+
 Outputs (7 files):
   - factor_quantile_shape_summary.csv + .json
   - factor_rolling_stability_summary.csv + .json
@@ -29,6 +34,7 @@ BASE = Path("research/factor_runs/crypto_top50_factor_library")
 DIAG = BASE / "factor_diagnostics"
 EVAL = BASE / "factor_level_evaluation"
 STATE_FILE = BASE / "factor_library_state.json"
+EVAL_MATRIX_CSV = DIAG / "factor_evaluation_evidence_matrix.csv"
 
 QR_FILE = EVAL / "factor_level_period_quantile_return_summary.csv"
 LS_PERIOD_FILE = EVAL / "factor_level_period_long_short_summary.csv"
@@ -499,10 +505,31 @@ def main():
     parser = argparse.ArgumentParser(description="PM-26: Quantile Shape & Rolling Stability Diagnostics")
     parser.add_argument("--min-months", type=int, default=6, help="Minimum months for classification")
     parser.add_argument("--rolling-windows", type=str, default="3,6", help="Comma-separated rolling windows")
+    parser.add_argument("--factor-ids", type=str, default=None,
+                        help="Comma-separated list of factor IDs to compute (incremental mode)")
+    parser.add_argument("--only-missing", action="store_true",
+                        help="Auto-detect factors missing shape/stability from evidence matrix")
     args = parser.parse_args()
 
     rolling_windows = [int(x) for x in args.rolling_windows.split(",")]
     min_months = args.min_months
+
+    # Resolve target factor IDs
+    target_ids = None
+    if args.factor_ids:
+        target_ids = set(fid.strip() for fid in args.factor_ids.split(",") if fid.strip())
+        print(f"[PM-26] --factor-ids: targeting {len(target_ids)} factors: {sorted(target_ids)}")
+    if args.only_missing:
+        ev = pd.read_csv(EVAL_MATRIX_CSV)
+        missing_shape = set(ev[ev["has_quantile_shape"] == False]["factor_id"].tolist())
+        missing_stab = set(ev[ev["has_rolling_stability"] == False]["factor_id"].tolist())
+        missing = missing_shape | missing_stab
+        print(f"[PM-26] --only-missing: {len(missing)} factors missing shape/stability")
+        if target_ids:
+            target_ids |= missing
+        else:
+            target_ids = missing
+    incremental = target_ids is not None
 
     print("Loading data...")
     qr_df = pd.read_csv(QR_FILE)
@@ -515,43 +542,107 @@ def main():
     if "factor_name" in qr_df.columns and "factor_id" not in qr_df.columns:
         qr_df = qr_df.rename(columns={"factor_name": "factor_id"})
 
-    print(f"  Quantile data: {len(qr_df)} rows, {qr_df['factor_id'].nunique()} factors")
-    print(f"  IC series: {len(ic_df)} rows, {ic_df['factor_id'].nunique()} factors")
-    print(f"  LS series: {len(ls_df)} rows, {ls_df['factor_id'].nunique()} factors")
-
     # Load state
     with open(STATE_FILE) as f:
         state = json.load(f)
     n_registered = state.get("registered_factors", 71)
 
-    # ── Build quantile shape ───────────────────────────────────────────
-    print("Building quantile shape diagnostics...")
-    shape_df = build_quantile_shape(qr_df, diag_df)
-    print(f"  → {len(shape_df)} rows ({shape_df['factor_id'].nunique()} factors × {shape_df['horizon'].nunique()} horizons)")
+    if incremental:
+        # Validate target IDs
+        all_known = set(qr_df["factor_id"].unique()) | set(ic_df["factor_id"].unique())
+        unknown = target_ids - all_known
+        if unknown:
+            print(f"  ⚠️  Unknown factor IDs (no data): {sorted(unknown)}")
+            target_ids -= unknown
 
-    # ── Build rolling stability ────────────────────────────────────────
-    print("Building rolling stability diagnostics...")
-    stab_df = build_rolling_stability(ic_df, ls_df, rolling_windows)
-    print(f"  → {len(stab_df)} rows ({stab_df['factor_id'].nunique()} factors × {stab_df['horizon'].nunique()} horizons)")
+        # Filter data to target factors
+        qr_target = qr_df[qr_df["factor_id"].isin(target_ids)]
+        ic_target = ic_df[ic_df["factor_id"].isin(target_ids)]
+        ls_target = ls_df[ls_df["factor_id"].isin(target_ids)]
 
-    # ── Build timeseries ───────────────────────────────────────────────
-    print("Building timeseries...")
-    ts_df = build_timeseries(ic_df, ls_df)
-    print(f"  → {len(ts_df)} rows ({ts_df['factor_id'].nunique()} factors)")
+        print(f"  Quantile data (target): {len(qr_target)} rows, {qr_target['factor_id'].nunique()} factors")
+        print(f"  IC series (target): {len(ic_target)} rows, {ic_target['factor_id'].nunique()} factors")
+        print(f"  LS series (target): {len(ls_target)} rows, {ls_target['factor_id'].nunique()} factors")
 
-    # ── Build payload ──────────────────────────────────────────────────
+        # Build for target factors only
+        print("Building quantile shape diagnostics (incremental)...")
+        new_shape_df = build_quantile_shape(qr_target, diag_df)
+
+        print("Building rolling stability diagnostics (incremental)...")
+        new_stab_df = build_rolling_stability(ic_target, ls_target, rolling_windows)
+
+        # For factors with no IC/LS data, add placeholder rows with INSUFFICIENT_HISTORY
+        target_with_stab = set(new_stab_df["factor_id"].unique()) if not new_stab_df.empty else set()
+        target_no_stab = target_ids - target_with_stab
+        if target_no_stab:
+            print(f"  {len(target_no_stab)} factors have no IC/LS data, adding INSUFFICIENT_HISTORY placeholders")
+            placeholder_rows = []
+            for fid in sorted(target_no_stab):
+                for hz in sorted(ic_df["horizon"].unique()):
+                    placeholder_rows.append({
+                        "factor_id": fid, "horizon": hz, "n_months": 0,
+                        "stability_score": 0.0, "stability_class": "INSUFFICIENT_HISTORY",
+                        "main_stability_note_zh": _stability_notes_zh("INSUFFICIENT_HISTORY"),
+                        "main_stability_note_en": _stability_notes_en("INSUFFICIENT_HISTORY"),
+                    })
+            if placeholder_rows:
+                placeholder_df = pd.DataFrame(placeholder_rows)
+                new_stab_df = pd.concat([new_stab_df, placeholder_df], ignore_index=True)
+
+        print("Building timeseries (incremental)...")
+        new_ts_df = build_timeseries(ic_target, ls_target)
+
+        # Merge with existing outputs
+        shape_csv = DIAG / "factor_quantile_shape_summary.csv"
+        stab_csv = DIAG / "factor_rolling_stability_summary.csv"
+        ts_csv = DIAG / "factor_shape_stability_timeseries.csv"
+
+        def _merge_csv(path, new_df):
+            if path.exists():
+                old = pd.read_csv(path)
+                old = old[~old["factor_id"].isin(target_ids)]
+                merged = pd.concat([old, new_df], ignore_index=True)
+                return merged
+            return new_df
+
+        shape_df = _merge_csv(shape_csv, new_shape_df)
+        stab_df = _merge_csv(stab_csv, new_stab_df)
+        ts_df = _merge_csv(ts_csv, new_ts_df)
+
+        print(f"  → Shape: {len(shape_df)} rows ({shape_df['factor_id'].nunique()} factors total)")
+        print(f"  → Stability: {len(stab_df)} rows ({stab_df['factor_id'].nunique()} factors total)")
+        print(f"  → Timeseries: {len(ts_df)} rows ({ts_df['factor_id'].nunique()} factors total)")
+
+    else:
+        print(f"  Quantile data: {len(qr_df)} rows, {qr_df['factor_id'].nunique()} factors")
+        print(f"  IC series: {len(ic_df)} rows, {ic_df['factor_id'].nunique()} factors")
+        print(f"  LS series: {len(ls_df)} rows, {ls_df['factor_id'].nunique()} factors")
+
+        # ── Build quantile shape ───────────────────────────────────────────
+        print("Building quantile shape diagnostics...")
+        shape_df = build_quantile_shape(qr_df, diag_df)
+        print(f"  → {len(shape_df)} rows ({shape_df['factor_id'].nunique()} factors × {shape_df['horizon'].nunique()} horizons)")
+
+        # ── Build rolling stability ────────────────────────────────────────
+        print("Building rolling stability diagnostics...")
+        stab_df = build_rolling_stability(ic_df, ls_df, rolling_windows)
+        print(f"  → {len(stab_df)} rows ({stab_df['factor_id'].nunique()} factors × {stab_df['horizon'].nunique()} horizons)")
+
+        # ── Build timeseries ───────────────────────────────────────────────
+        print("Building timeseries...")
+        ts_df = build_timeseries(ic_df, ls_df)
+        print(f"  → {len(ts_df)} rows ({ts_df['factor_id'].nunique()} factors)")
+
+    # ── Build payload (always from ALL factors in shape/stab) ─────────────
     print("Building payload...")
     payload = build_payload(shape_df, stab_df)
     print(f"  → {payload['n_factors']} factors in payload")
 
-    # ── Write outputs ──────────────────────────────────────────────────
+    # ── Write outputs ──────────────────────────────────────────────────────
     DIAG.mkdir(parents=True, exist_ok=True)
 
-    shape_csv = DIAG / "factor_quantile_shape_summary.csv"
     shape_json = DIAG / "factor_quantile_shape_summary.json"
-    stab_csv = DIAG / "factor_rolling_stability_summary.csv"
     stab_json = DIAG / "factor_rolling_stability_summary.json"
-    ts_csv = DIAG / "factor_shape_stability_timeseries.csv"
     payload_json = DIAG / "factor_shape_stability_payload.json"
     manifest_json = DIAG / "factor_shape_stability_manifest.json"
 
@@ -576,6 +667,8 @@ def main():
         "rolling_windows": rolling_windows,
         "min_months": min_months,
         "payload_bytes": len(json.dumps(payload, default=str)),
+        "incremental_mode": incremental,
+        "target_factor_ids": sorted(target_ids) if target_ids else None,
         "outputs": [
             str(shape_csv),
             str(shape_json),
@@ -594,6 +687,14 @@ def main():
     print(f"\n✅ All outputs written to {DIAG}/")
     print(f"   Shape classes: {shape_df['quantile_shape_class'].value_counts().to_dict()}")
     print(f"   Stability classes: {stab_df['stability_class'].value_counts().to_dict()}")
+
+    if incremental:
+        print(f"\n   Incremental factors verified:")
+        for tid in sorted(target_ids):
+            in_shape = tid in shape_df["factor_id"].values
+            in_stab = tid in stab_df["factor_id"].values
+            in_payload = any(f["factor_id"] == tid for f in payload["factors"])
+            print(f"     ✅ {tid}: shape={in_shape}, stability={in_stab}, payload={in_payload}")
 
 
 if __name__ == "__main__":

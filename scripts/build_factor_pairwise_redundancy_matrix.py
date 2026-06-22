@@ -10,6 +10,8 @@ store as compact arrays, compute all pairwise correlations.
 Usage:
     python scripts/build_factor_pairwise_redundancy_matrix.py
     python scripts/build_factor_pairwise_redundancy_matrix.py --sample-step 3
+    python scripts/build_factor_pairwise_redundancy_matrix.py --factor-ids rev_2h,mom_vol_adjusted_20h
+    python scripts/build_factor_pairwise_redundancy_matrix.py --only-missing
 """
 from __future__ import annotations
 
@@ -101,9 +103,13 @@ def load_all_factors_sampled(factor_ids, sample_step, max_rows):
     return cache
 
 
-def compute_all_pairs(factor_ids, cache, family_map, min_obs):
-    pairs = list(combinations(factor_ids, 2))
-    print(f"[PM-18] Computing {len(pairs)} pairwise correlations...")
+def compute_all_pairs(factor_ids, cache, family_map, min_obs, target_ids=None):
+    if target_ids is not None:
+        pairs = [(fi, fj) for fi, fj in combinations(factor_ids, 2)
+                 if fi in target_ids or fj in target_ids]
+    else:
+        pairs = list(combinations(factor_ids, 2))
+    print(f"[PM-18] Computing {len(pairs)} pairwise correlations{' (incremental mode)' if target_ids else ''}...")
     t0 = time.time()
 
     rows = []
@@ -276,24 +282,57 @@ def detect_clusters(pairwise_df, factor_ids, threshold=0.80):
     return pd.DataFrame(rows)
 
 
+EVAL_MATRIX_CSV = BASE / "factor_diagnostics" / "factor_evaluation_evidence_matrix.csv"
+
+
+def _resolve_target_ids(args):
+    """Resolve --factor-ids and --only-missing into a set of target factor IDs."""
+    target_ids = set()
+    if args.factor_ids:
+        target_ids = set(fid.strip() for fid in args.factor_ids.split(",") if fid.strip())
+        print(f"[PM-18] --factor-ids: targeting {len(target_ids)} factors: {sorted(target_ids)}")
+    if args.only_missing:
+        ev = pd.read_csv(EVAL_MATRIX_CSV)
+        missing = set(ev[ev["has_redundancy_summary"] == False]["factor_id"].tolist())
+        print(f"[PM-18] --only-missing: {len(missing)} factors missing redundancy summary")
+        target_ids |= missing
+    return target_ids if target_ids else None
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sample-step", type=int, default=3)
     parser.add_argument("--max-sampled-rows", type=int, default=50000)
     parser.add_argument("--min-pairwise-obs", type=int, default=1000)
     parser.add_argument("--output-dir", type=str, default=str(BASE / "factor_diagnostics"))
+    parser.add_argument("--factor-ids", type=str, default=None,
+                        help="Comma-separated list of factor IDs to compute (incremental mode)")
+    parser.add_argument("--only-missing", action="store_true",
+                        help="Auto-detect factors missing redundancy summary from evidence matrix")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    target_ids = _resolve_target_ids(args)
+    incremental = target_ids is not None
+
     print("=" * 70)
     print("PM-18: Full Pairwise Factor Redundancy Matrix Builder")
+    if incremental:
+        print("  MODE: INCREMENTAL (targeting specific factors)")
     print("=" * 70)
     print(f"  sample_step={args.sample_step}  max_rows={args.max_sampled_rows}  min_obs={args.min_pairwise_obs}")
 
     factor_ids, family_map = load_factor_metadata()
     print(f"[PM-18] {len(factor_ids)} registered factors")
+
+    # Validate target IDs exist in registered factors
+    if target_ids:
+        unknown = target_ids - set(factor_ids)
+        if unknown:
+            print(f"  ⚠️  Unknown factor IDs (not in registry): {sorted(unknown)}")
+            target_ids -= unknown
 
     t_start = time.time()
 
@@ -312,15 +351,53 @@ def main():
         all_ts |= ts
     print(f"  Total unique timestamps across all factors: {len(all_ts)}")
 
-    pairwise_df = compute_all_pairs(loaded_ids, cache, family_map, args.min_pairwise_obs)
-    del cache
+    if incremental:
+        # Incremental mode: compute only pairs involving target factors
+        new_pairwise_df = compute_all_pairs(loaded_ids, cache, family_map, args.min_pairwise_obs, target_ids=target_ids)
+        del cache
 
-    pairwise_df = pairwise_df.sort_values("abs_spearman_corr", ascending=False, na_position="last").reset_index(drop=True)
+        new_pairwise_df = new_pairwise_df.sort_values("abs_spearman_corr", ascending=False, na_position="last").reset_index(drop=True)
 
-    summary_df = build_factor_summary(pairwise_df, loaded_ids, family_map)
-    spearman_mat = build_correlation_matrix(pairwise_df, loaded_ids, "spearman_corr")
-    pearson_mat = build_correlation_matrix(pairwise_df, loaded_ids, "pearson_corr")
-    clusters_df = detect_clusters(pairwise_df, loaded_ids, threshold=HIGH_REDUNDANCY_THRESH)
+        # Load existing pairwise data and merge
+        existing_pw_path = output_dir / "factor_pairwise_redundancy.csv"
+        if existing_pw_path.exists():
+            print(f"[PM-18] Loading existing pairwise data from {existing_pw_path.name}...")
+            old_pw = pd.read_csv(existing_pw_path)
+            # Drop any old rows involving target factors
+            mask = (old_pw["factor_i"].isin(target_ids)) | (old_pw["factor_j"].isin(target_ids))
+            kept = old_pw[~mask]
+            print(f"  Kept {len(kept)} existing rows, dropped {mask.sum()} rows involving target factors")
+            # Merge: drop unnamed index column if present
+            kept = kept.drop(columns=[c for c in kept.columns if c.startswith("Unnamed")], errors="ignore")
+            new_pairwise_df = new_pairwise_df.drop(columns=[c for c in new_pairwise_df.columns if c.startswith("Unnamed")], errors="ignore")
+            pairwise_df = pd.concat([kept, new_pairwise_df], ignore_index=True)
+        else:
+            print(f"[PM-18] No existing pairwise file found, starting fresh")
+            pairwise_df = new_pairwise_df
+
+        pairwise_df = pairwise_df.sort_values("abs_spearman_corr", ascending=False, na_position="last").reset_index(drop=True)
+
+        # Rebuild summary/clusters/matrices from ALL factors in merged pairwise data
+        all_pw_factors = sorted(set(pairwise_df["factor_i"].tolist() + pairwise_df["factor_j"].tolist()))
+        print(f"[PM-18] Merged pairwise: {len(pairwise_df)} pairs covering {len(all_pw_factors)} factors")
+
+        # Use loaded_ids (all registered) for summary so every factor gets a row
+        summary_df = build_factor_summary(pairwise_df, loaded_ids, family_map)
+        spearman_mat = build_correlation_matrix(pairwise_df, loaded_ids, "spearman_corr")
+        pearson_mat = build_correlation_matrix(pairwise_df, loaded_ids, "pearson_corr")
+        clusters_df = detect_clusters(pairwise_df, loaded_ids, threshold=HIGH_REDUNDANCY_THRESH)
+
+    else:
+        # Full mode: compute all pairs
+        pairwise_df = compute_all_pairs(loaded_ids, cache, family_map, args.min_pairwise_obs)
+        del cache
+
+        pairwise_df = pairwise_df.sort_values("abs_spearman_corr", ascending=False, na_position="last").reset_index(drop=True)
+
+        summary_df = build_factor_summary(pairwise_df, loaded_ids, family_map)
+        spearman_mat = build_correlation_matrix(pairwise_df, loaded_ids, "spearman_corr")
+        pearson_mat = build_correlation_matrix(pairwise_df, loaded_ids, "pearson_corr")
+        clusters_df = detect_clusters(pairwise_df, loaded_ids, threshold=HIGH_REDUNDANCY_THRESH)
 
     elapsed = time.time() - t_start
 
@@ -339,6 +416,8 @@ def main():
         "total_factors": len(loaded_ids),
         "total_pairs": len(pairwise_df),
         "expected_pairs": len(loaded_ids) * (len(loaded_ids) - 1) // 2,
+        "incremental_mode": incremental,
+        "target_factor_ids": sorted(target_ids) if target_ids else None,
         "sampling": {"sample_step": args.sample_step, "max_sampled_rows": args.max_sampled_rows, "min_pairwise_obs": args.min_pairwise_obs, "method": "daily_grid_alignment"},
         "thresholds": {"near_duplicate": NEAR_DUPLICATE_THRESH, "high_redundancy": HIGH_REDUNDANCY_THRESH, "moderate_redundancy": MODERATE_REDUNDANCY_THRESH},
         "redundancy_distribution": pairwise_df["redundancy_level"].value_counts().to_dict(),
@@ -361,16 +440,25 @@ def main():
     print(f"\nCLUSTERS: {clusters_df['cluster_id'].nunique()}")
     print(f"Elapsed: {elapsed:.1f}s")
 
-    n_exp = len(loaded_ids) * (len(loaded_ids) - 1) // 2
-    errs = []
-    if len(pairwise_df) != n_exp:
-        errs.append(f"Pairs {len(pairwise_df)} != {n_exp}")
-    if len(summary_df) != len(loaded_ids):
-        errs.append(f"Summary {len(summary_df)} != {len(loaded_ids)}")
-    if errs:
-        for e in errs: print(f"  ❌ {e}")
-        return 1
-    print(f"\n✅ PASS: {len(pairwise_df)} pairs, {len(summary_df)} factors")
+    if incremental:
+        # Validate target factors appear in output
+        pw_factors = set(pairwise_df["factor_i"].tolist() + pairwise_df["factor_j"].tolist())
+        for tid in sorted(target_ids):
+            in_pw = tid in pw_factors
+            in_summary = tid in summary_df["factor_id"].values
+            print(f"  ✅ {tid}: pairwise={in_pw}, summary={in_summary}")
+        print(f"\n✅ INCREMENTAL PASS: {len(pairwise_df)} pairs, {len(summary_df)} factors")
+    else:
+        n_exp = len(loaded_ids) * (len(loaded_ids) - 1) // 2
+        errs = []
+        if len(pairwise_df) != n_exp:
+            errs.append(f"Pairs {len(pairwise_df)} != {n_exp}")
+        if len(summary_df) != len(loaded_ids):
+            errs.append(f"Summary {len(summary_df)} != {len(loaded_ids)}")
+        if errs:
+            for e in errs: print(f"  ❌ {e}")
+            return 1
+        print(f"\n✅ PASS: {len(pairwise_df)} pairs, {len(summary_df)} factors")
     return 0
 
 
