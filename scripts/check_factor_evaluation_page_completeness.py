@@ -490,12 +490,23 @@ def check_pm40c_scorecard_redundancy_consistency(html_text: str) -> list[dict]:
         if novelty in ('NOVEL_DISTINCT', 'REDUNDANT_NOVELTY_DERIVED') and pairs == 0:
             issues.append(f'{fid}: novelty={novelty} but valid_pairs=0 (stale)')
 
-        # Check 3: No stale source warnings
+        # Check 3: No stale warnings anywhere in factor JSON
         sw = f.get('source_warning', '')
-        if 'no_horizon_data' in sw:
-            issues.append(f'{fid}: source_warning has no_horizon_data')
-        if 'monthly_ls_unavailable' in sw:
-            issues.append(f'{fid}: source_warning has monthly_ls_unavailable')
+        rn_zh = f.get('review_notes_zh', '')
+        rn_en = f.get('review_notes_en', '')
+        has_monthly_ic = bool(f.get('monthly_ic'))
+        has_monthly_ls = bool(f.get('monthly_ls'))
+        for field_name, val in [('source_warning', sw), ('review_notes_zh', rn_zh), ('review_notes_en', rn_en)]:
+            if 'no_horizon_data' in val:
+                if has_monthly_ic:
+                    issues.append(f'{fid}: {field_name} has no_horizon_data but monthly_ic exists')
+                else:
+                    issues.append(f'{fid}: {field_name} has no_horizon_data')
+            if 'monthly_ls_unavailable' in val:
+                if has_monthly_ls:
+                    issues.append(f'{fid}: {field_name} has monthly_ls_unavailable but monthly_ls exists')
+                else:
+                    issues.append(f'{fid}: {field_name} has monthly_ls_unavailable')
 
     if issues:
         results.append(_fail('pm40c_consistency', 'PM-40C scorecard/redundancy consistency', '; '.join(issues)))

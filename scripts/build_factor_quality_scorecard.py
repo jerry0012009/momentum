@@ -904,6 +904,11 @@ def build_scorecard() -> pd.DataFrame:
         # Strengths/weaknesses
         sw = generate_strengths_weaknesses(scores)
 
+        # PM-43A: Clear stale source_warning when canonical data confirms factor has data
+        if source_warning and rankic_mean != 0.0:
+            for stale_warn in ("no_horizon_data", "monthly_ls_unavailable"):
+                source_warning = source_warning.replace(stale_warn, "").strip("; ")
+
         # Review notes
         qa_zh = _safe_str(qa_row.get("qa_notes_zh", "")) if qa_row is not None else ""
         qa_en = _safe_str(qa_row.get("qa_notes_en", "")) if qa_row is not None else ""
