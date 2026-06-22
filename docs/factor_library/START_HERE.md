@@ -173,3 +173,26 @@ After running `run_factor_intake.py`, complete the remaining evidence with:
 - Signal variants: **3** (core_only, pm_full_structured, family_balanced_diagnostic)
 - Horizons: **4** (1h, 4h, 24h, 72h)
 - Public pages: **4** (index, code structure, factor evaluation, signal evaluation)
+
+## Lessons Learned: Data Source Hierarchy for Page Builder
+
+**PM-40 教训（2026-06-23）：** 新因子在公开页面显示空白指标。
+
+**根因：** HTML builder 只从旧诊断文件（`factor_diagnostics_summary.csv`）读数据。新因子的 horizon metrics 在旧文件中是 NaN，但 factor-level evaluation 文件有完整数据。builder 没有 merge 两个来源。
+
+**修复：** builder 现在同时加载旧诊断 + 新 factor-level evaluation 数据，用 `(factor_name, horizon)` 做 lookup，旧数据为空时 fallback 到新数据。
+
+**预防规则（必须遵守）：**
+1. 新增因子 intake batch 后，必须检查 `_build_factor_eval_html.py` 是否有该因子的数据源
+2. `check_factor_evaluation_page_completeness.py` 现在有 `new_factor_metrics` 检查：验证有 `ev_has_factor_level_evaluation=True` 的因子必须有 `rankic_mean`
+3. 详细数据源映射见 `POST_INTAKE_WORKFLOW_RUNBOOK.md §9`
+
+**数据源层级：**
+
+| 数据 | 旧来源（可能为空） | 新来源（始终完整） |
+|------|-------------------|-------------------|
+| rankic_mean, t_stat | factor_diagnostics_summary.csv | factor_level_rankic_summary.csv |
+| long_short_mean, sharpe | factor_diagnostics_summary.csv | factor_level_long_short_summary.csv |
+| best_horizon | factor_diagnostics_summary.csv | factor_level_coverage_summary.csv |
+| Monthly IC 系列 | factor_monthly_ic_series.csv | factor_level_period_ic_summary.csv |
+| Monthly LS 系列 | factor_monthly_long_short_series.csv | factor_level_period_long_short_summary.csv |
