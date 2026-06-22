@@ -331,7 +331,7 @@ def build_payload() -> dict:
             "cum_curve": cum_curve,
         }
 
-        # PM-22: Merge paper diagnostics into factor
+        # PM-22 / PM-22B: Merge paper diagnostics into factor
         paper = paper_map.get(fid, {})
         if paper:
             factor.update({
@@ -353,6 +353,10 @@ def build_payload() -> dict:
                 "monthly_nav_series_compact": paper.get("monthly_nav_series_compact", {}),
                 "fee_sensitivity_series": paper.get("fee_sensitivity_series", []),
                 "monthly_return_series": paper.get("monthly_return_series", []),
+                # PM-22B: New series from repaired PM-21B payload
+                "turnover_series": paper.get("turnover_series", []),
+                "leg_decomposition_series": paper.get("leg_decomposition_series", []),
+                "drawdown_series": paper.get("drawdown_series", []),
             })
 
         # PM-24: Merge regime diagnostics into factor
@@ -1372,6 +1376,79 @@ function renderDetail(fid){
         return svgBarChart(mr,'monthly_return',600,120);
       })()}
     </div>
+
+    ${(()=>{
+      const ts=f.turnover_series||[];
+      if(!ts.length)return '';
+      return `
+        <div class="chart-container">
+          <div class="chart-title">Monthly Turnover · 月度换手率</div>
+          ${svgLineChart(ts,'avg_turnover',600,120,{color:'#fbbf24'})}
+        </div>`;
+    })()}
+
+    ${(()=>{
+      const ld=f.leg_decomposition_series||[];
+      if(!ld.length)return '';
+      const w=600,h=140,padL=50,padR=10,padT=10,padB=20;
+      const cw=w-padL-padR,ch=h-padT-padB;
+      const longVals=ld.map(d=>Number(d.long_leg_return)||0);
+      const shortVals=ld.map(d=>Number(d.short_leg_return)||0);
+      const netVals=ld.map(d=>Number(d.net_long_short_return)||0);
+      const allVals=[...longVals,...shortVals,...netVals];
+      const ymin=Math.min(0,...allVals),ymax=Math.max(0,...allVals);
+      const yrange=ymax-ymin||1;
+      function xPos(i){return padL+(i/(ld.length-1||1))*cw}
+      function yPos(v){return padT+ch-((v-ymin)/yrange)*ch}
+      let svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto">';
+      svg+='<line x1="'+padL+'" y1="'+yPos(0)+'" x2="'+(w-padR)+'" y2="'+yPos(0)+'" stroke="#334155" stroke-dasharray="3"/>';
+      const lp=ld.map((d,i)=>xPos(i)+','+yPos(Number(d.long_leg_return)||0)).join(' ');
+      const sp=ld.map((d,i)=>xPos(i)+','+yPos(Number(d.short_leg_return)||0)).join(' ');
+      const np=ld.map((d,i)=>xPos(i)+','+yPos(Number(d.net_long_short_return)||0)).join(' ');
+      svg+='<polyline points="'+lp+'" fill="none" stroke="#34d399" stroke-width="1.2"/>';
+      svg+='<polyline points="'+sp+'" fill="none" stroke="#f87171" stroke-width="1.2"/>';
+      svg+='<polyline points="'+np+'" fill="none" stroke="#60a5fa" stroke-width="1.5"/>';
+      const step=Math.max(1,Math.floor(ld.length/6));
+      ld.forEach((d,i)=>{if(i%step===0||i===ld.length-1){svg+='<text x="'+xPos(i)+'" y="'+(h-2)+'" text-anchor="middle" fill="#8ea0b8" font-size="8">'+esc(d.month)+'</text>'}});
+      svg+='<text x="4" y="'+yPos(0)+'" fill="#8ea0b8" font-size="8" dominant-baseline="middle">0</text>';
+      svg+='<text x="4" y="'+padT+'" fill="#8ea0b8" font-size="7">'+num(ymax,4)+'</text>';
+      svg+='<text x="4" y="'+(h-padB)+'" fill="#8ea0b8" font-size="7">'+num(ymin,4)+'</text>';
+      svg+='<text x="'+(w-padR)+'" y="'+padT+'" text-anchor="end" fill="#34d399" font-size="8">Long</text>';
+      svg+='<text x="'+(w-padR)+'" y="'+(padT+10)+'" text-anchor="end" fill="#f87171" font-size="8">Short</text>';
+      svg+='<text x="'+(w-padR)+'" y="'+(padT+20)+'" text-anchor="end" fill="#60a5fa" font-size="8">Net L/S</text>';
+      svg+='</svg>';
+      return '<div class="chart-container"><div class="chart-title">Leg Decomposition: Long (green) / Short (red) / Net L/S (blue) · 多空腿分解</div>'+svg+'</div>';
+    })()}
+
+    ${(()=>{
+      const dd=f.drawdown_series||[];
+      if(!dd.length)return '';
+      const w=600,h=140,padL=50,padR=10,padT=10,padB=20;
+      const cw=w-padL-padR,ch=h-padT-padB;
+      const navVals=dd.map(d=>Number(d.nav)||0);
+      const ddVals=dd.map(d=>Number(d.drawdown)||0);
+      const navMax=Math.max(0,...navVals),navMin=Math.min(0,...navVals);
+      const navRange=navMax-navMin||1;
+      function xPos(i){return padL+(i/(dd.length-1||1))*cw}
+      function navY(v){return padT+ch-((v-navMin)/navRange)*ch}
+      const ddMax=Math.max(0.001,...ddVals);
+      function ddY(v){return padT+ch-(v/ddMax)*ch}
+      let svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto">';
+      svg+='<line x1="'+padL+'" y1="'+navY(1)+'" x2="'+(w-padR)+'" y2="'+navY(1)+'" stroke="#334155" stroke-dasharray="3"/>';
+      if(dd.length>1){let ddPath='M'+xPos(0)+','+ddY(0);dd.forEach((d,i)=>{ddPath+=' L'+xPos(i)+','+ddY(Number(d.drawdown)||0)});ddPath+=' L'+xPos(dd.length-1)+','+ddY(0)+' Z';svg+='<path d="'+ddPath+'" fill="#f8717122" stroke="none"/>';}
+      const navPts=dd.map((d,i)=>xPos(i)+','+navY(Number(d.nav)||0)).join(' ');
+      const ddPts=dd.map((d,i)=>xPos(i)+','+ddY(Number(d.drawdown)||0)).join(' ');
+      svg+='<polyline points="'+navPts+'" fill="none" stroke="#60a5fa" stroke-width="1.5"/>';
+      svg+='<polyline points="'+ddPts+'" fill="none" stroke="#f87171" stroke-width="1" stroke-dasharray="3"/>';
+      const step=Math.max(1,Math.floor(dd.length/6));
+      dd.forEach((d,i)=>{if(i%step===0||i===dd.length-1){svg+='<text x="'+xPos(i)+'" y="'+(h-2)+'" text-anchor="middle" fill="#8ea0b8" font-size="8">'+esc(d.month)+'</text>'}});
+      svg+='<text x="4" y="'+navY(navMax)+'" fill="#8ea0b8" font-size="7">'+num(navMax,3)+'</text>';
+      svg+='<text x="4" y="'+navY(navMin)+'" fill="#8ea0b8" font-size="7">'+num(navMin,3)+'</text>';
+      svg+='<text x="'+(w-padR)+'" y="'+padT+'" text-anchor="end" fill="#60a5fa" font-size="8">NAV (blue)</text>';
+      svg+='<text x="'+(w-padR)+'" y="'+(padT+10)+'" text-anchor="end" fill="#f87171" font-size="8">Drawdown (red)</text>';
+      svg+='</svg>';
+      return '<div class="chart-container"><div class="chart-title">Paper Portfolio NAV & Drawdown (10bps) · 纸面组合净值与回撤</div>'+svg+'</div>';
+    })()}
 
     <div class="paper-caveat">
       <strong>⚠ This is a research diagnostic, not a strategy / 这是研究诊断，不是交易策略</strong><br>
