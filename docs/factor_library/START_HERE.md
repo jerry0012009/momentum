@@ -309,3 +309,34 @@ After running `run_factor_intake.py`, complete the remaining evidence with:
 **Page builder fallback 只是防御，不是 canonical source。** Canonical 数据来自 evaluate_factors.py、paper payload、regime script、scorecard 等 pipeline 输出。
 
 **新因子必须通过 post-intake workflow integrity checker 才能进入 interpretation。**
+
+## PM-44: Factor Evaluation Layer v0.1 Freeze (2026-06-23)
+
+**当前阶段：factor evaluation layer v0.1 — STABLE**
+
+### 系统边界
+
+Factor evaluation layer 只负责"这个因子值不值得继续研究"。不涉及信号构建、仓位管理、交易执行。
+
+**属于 evaluation：** RankIC, LS, paper portfolio, fee sensitivity, regime/BTC, shape, stability, capacity, redundancy, scorecard, profile, page。
+
+**不属于 evaluation：** signal panel, entry/exit rules, position sizing, portfolio construction, live trading。
+
+### 新因子完整流程
+
+1. 在 `factor_ops.py` 注册因子
+2. 运行 `build_factor_values.py` 计算因子值
+3. 运行 `run_post_intake_workflow_completion.py --factor-ids <fid>` 完成所有 evaluation 步骤
+4. 运行 `check_post_intake_workflow_integrity.py --factor-ids <fid>` 确认 11/11 PASS
+5. 运行 `check_factor_evaluation_page_completeness.py` 确认页面完整
+6. 确认 public page 可访问
+
+### 关键文档
+
+- `FACTOR_EVALUATION_LAYER_V0_1.md` — 系统边界和数据块定义
+- `POST_INTAKE_WORKFLOW_RUNBOOK.md` — 详细步骤
+- `NEW_FACTOR_INTAKE_REPRODUCIBILITY_TEST_PLAN.md` — 复现性测试计划
+
+### Canonical vs Defensive
+
+Canonical 数据来自 evaluate_factors.py、paper payload、regime script、scorecard 等 pipeline 输出。Page builder fallback 只是防御，不是 canonical source。
