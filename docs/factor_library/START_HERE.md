@@ -257,3 +257,15 @@ After running `run_factor_intake.py`, complete the remaining evidence with:
 3. **空字段解释：** LS Std/Ann Return/Ann Vol/Max DD 为空时显示 "not available from factor-level summary; see paper portfolio diagnostics"
 
 **QA 检查：** `pm40c_consistency` 验证 scorecard 不与 profile 冲突、redundancy 不与 cluster 冲突
+
+## PM-41 教训：LS aggregate metrics 是 canonical 输出，不是 page-only fallback（2026-06-22）
+
+**核心教训：** LS 聚合统计量（std, ann_return, ann_vol, max_dd, positive_period_rate）应该在 `evaluate_factors.py` 中作为 canonical 输出计算，而不是让 HTML builder 承担计算职责。
+
+**修复：**
+1. `evaluate_factors.py` 新增 7 个字段到 `factor_level_long_short_summary.csv`
+2. `_build_factor_eval_html.py` 从 canonical LS summary 读取这些字段作为 fallback
+
+**年化规则：** monthly × 12 (return), monthly × √12 (vol), `annualization_method = "monthly_x12"`
+
+**新字段：** `long_short_spread_std`, `long_short_spread_annualized_return`, `long_short_spread_annualized_vol`, `long_short_spread_max_drawdown`, `long_short_spread_positive_period_rate`, `n_monthly_periods`, `annualization_method`

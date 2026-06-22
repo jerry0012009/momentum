@@ -356,3 +356,21 @@ After adding new factors to the factor library, the following payloads must be r
 **Critical:** `rankic_std` and `rankic_ir` are NOT in `factor_diagnostics_summary.csv` or `factor_level_rankic_summary.csv`. They must be computed from period IC data. The HTML builder now computes them from `monthly_ic` if they're None.
 
 **QA command:** `python scripts/check_factor_evaluation_page_completeness.py` (22 checks including per-factor detail completeness)
+
+## 11. LS aggregate metrics — canonical outputs (PM-41)
+
+LS aggregate statistics are now canonical outputs from `evaluate_factors.py`, written to `factor_level_long_short_summary.csv`:
+
+| Field | Source | Annualization |
+|-------|--------|---------------|
+| `long_short_spread_std` | monthly period LS std(ddof=1) | N/A |
+| `long_short_spread_annualized_return` | monthly mean × 12 | monthly_x12 |
+| `long_short_spread_annualized_vol` | monthly std × √12 | monthly_x12 |
+| `long_short_spread_max_drawdown` | min(cumulative drawdown) | N/A |
+| `long_short_spread_positive_period_rate` | count(r>0) / count(r) | N/A |
+| `n_monthly_periods` | count of monthly periods | N/A |
+| `annualization_method` | "monthly_x12" | Fixed |
+
+**After new factor intake:** These fields are automatically populated by `evaluate_factors.py`. No separate step needed.
+
+**Page builder fallback:** `_build_factor_eval_html.py` reads these from canonical LS summary when old diagnostics fields are empty.
