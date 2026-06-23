@@ -181,6 +181,90 @@ def check_scorecard_not_stale(fid: str) -> dict:
         return {"status": "ERROR", "detail": str(e)}
 
 
+def check_quantile_shape(fid: str) -> dict:
+    """Check if factor has quantile shape diagnostics."""
+    try:
+        df = pd.read_csv(DIAG_DIR / "factor_quantile_shape_summary.csv")
+        rows = df[df["factor_id"] == fid]
+        if rows.empty:
+            return {"status": "MISSING", "detail": "Not in factor_quantile_shape_summary.csv"}
+        row = rows.iloc[0]
+        shape = row.get("quantile_shape_class", "")
+        return {"status": "OK", "detail": f"shape={shape}"}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
+
+
+def check_rolling_stability(fid: str) -> dict:
+    """Check if factor has rolling stability diagnostics."""
+    try:
+        df = pd.read_csv(DIAG_DIR / "factor_rolling_stability_summary.csv")
+        rows = df[df["factor_id"] == fid]
+        if rows.empty:
+            return {"status": "MISSING", "detail": "Not in factor_rolling_stability_summary.csv"}
+        row = rows.iloc[0]
+        stability = row.get("rolling_stability_class", "")
+        if stability == "INSUFFICIENT_HISTORY":
+            return {"status": "WARNING", "detail": "INSUFFICIENT_HISTORY"}
+        return {"status": "OK", "detail": f"stability={stability}"}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
+
+
+def check_decile_shape(fid: str) -> dict:
+    """Check if factor has decile shape diagnostics."""
+    try:
+        df = pd.read_csv(DIAG_DIR / "factor_decile_shape_summary.csv")
+        rows = df[df["factor_id"] == fid]
+        if rows.empty:
+            return {"status": "MISSING", "detail": "Not in factor_decile_shape_summary.csv"}
+        row = rows.iloc[0]
+        shape = row.get("decile_shape_class", "")
+        return {"status": "OK", "detail": f"shape={shape}"}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
+
+
+def check_capacity_liquidity(fid: str) -> dict:
+    """Check if factor has capacity/liquidity diagnostics."""
+    try:
+        df = pd.read_csv(DIAG_DIR / "factor_capacity_liquidity_summary.csv")
+        rows = df[df["factor_id"] == fid]
+        if rows.empty:
+            return {"status": "MISSING", "detail": "Not in factor_capacity_liquidity_summary.csv"}
+        row = rows.iloc[0]
+        cls = row.get("capacity_class", "")
+        return {"status": "OK", "detail": f"class={cls}"}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
+
+
+def check_cumulative_ls(fid: str) -> dict:
+    """Check if factor has cumulative LS curve data."""
+    try:
+        df = pd.read_csv(DIAG_DIR / "factor_cumulative_long_short_curve.csv")
+        rows = df[df["factor_id"] == fid]
+        if rows.empty:
+            return {"status": "MISSING", "detail": "Not in factor_cumulative_long_short_curve.csv"}
+        return {"status": "OK", "detail": f"{len(rows)} rows"}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
+
+
+def check_factor_values(fid: str) -> dict:
+    """Check if factor has computed factor_values."""
+    # Check canonical data/features path (same as build_factor_library_state.py)
+    features_dir = ROOT / "data" / "features" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
+    fv_path = features_dir / fid / "factor_values.parquet"
+    if fv_path.exists():
+        return {"status": "OK", "detail": "factor_values.parquet exists"}
+    # Fallback: check research path
+    fv_path2 = BASE / "factor_values" / fid / "factor_values.parquet"
+    if fv_path2.exists():
+        return {"status": "OK", "detail": "factor_values.parquet exists (research)"}
+    return {"status": "MISSING", "detail": f"Not found in data/features or research/factor_runs"}
+
+
 def check_unified_profile(fid: str) -> dict:
     """Check if factor has unified profile."""
     try:
@@ -198,12 +282,18 @@ def check_unified_profile(fid: str) -> dict:
 # ── Main checks ────────────────────────────────────────────────────────────
 
 ALL_CHECKS = [
+    ("factor_values", check_factor_values),
     ("factor_level_rankic", check_factor_level_rankic),
     ("period_ic", check_period_ic),
     ("period_ls", check_period_ls),
     ("ls_aggregate", check_ls_aggregate),
+    ("cumulative_ls", check_cumulative_ls),
     ("paper_payload", check_paper_payload),
     ("regime_btc", check_regime_btc),
+    ("quantile_shape", check_quantile_shape),
+    ("rolling_stability", check_rolling_stability),
+    ("decile_shape", check_decile_shape),
+    ("capacity_liquidity", check_capacity_liquidity),
     ("pairwise_redundancy", check_pairwise_redundancy),
     ("cluster", check_cluster),
     ("marginal_info", check_marginal_info),
