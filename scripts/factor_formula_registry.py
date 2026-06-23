@@ -559,6 +559,18 @@ def _compute_volume_pressure_20h(df: pd.DataFrame) -> pd.Series:
     return rolling_mean(sign(close_delta) * df["volume"], 20)
 
 
+def _compute_up_down_vol_ratio_20h(df: pd.DataFrame) -> pd.Series:
+    """Up-down volume ratio 20h: sum(vol where ret>0, 20) / sum(vol, 20).
+
+    Measures buying pressure as fraction of total volume.
+    Higher values = more volume on up bars = bullish participation.
+    """
+    ret = df["close"].pct_change()
+    up_vol = (df["volume"] * (ret > 0).astype(float))
+    total_vol = rolling_sum(df["volume"], 20)
+    return rolling_sum(up_vol, 20) / total_vol.replace(0, np.nan)
+
+
 def _compute_xs_rank_mom_accel_prep(df: pd.DataFrame) -> pd.Series:
     """Momentum acceleration for cross-sectional ranking.
 
@@ -1125,6 +1137,14 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="positive",
         compute_fn=_compute_volume_pressure_20h,
         notes="rolling_mean(sign(delta(close, 1)) * volume, 20); directional volume pressure",
+    ),
+    # PM-45: Batch02 — Alpha158-derived single factor
+    FactorSpec(
+        factor_id="up_down_vol_ratio_20h", family="alpha158_ohlcv",
+        required_columns=["close", "volume"], lookback_window=20,
+        expected_direction="positive",
+        compute_fn=_compute_up_down_vol_ratio_20h,
+        notes="sum(vol*(ret>0),20)/sum(vol,20); buying pressure ratio; higher = bullish volume dominance",
     ),
     FactorSpec(
         factor_id="xs_rank_mom_accel", family="cross_sectional_normalized",
