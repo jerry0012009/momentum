@@ -126,6 +126,15 @@ def build_payload() -> dict:
     pm49_reviews = load_json(DIAG_DIR / "recent_factor_interpretation_review.json")
     pm49_map = {r["factor_id"]: r for r in pm49_reviews.get("reviews", [])}
 
+    # PM-51: Load metric glossary
+    import json as _json
+    _glossary_path = Path(__file__).parent / "factor_metric_glossary.json"
+    if _glossary_path.exists():
+        with open(_glossary_path) as _gf:
+            metric_glossary = _json.load(_gf)
+    else:
+        metric_glossary = {}
+
     # ── Summary stats ──
     all_months = sorted(ic_series["month"].unique().tolist()) if not ic_series.empty else []
     quality_counts = cards["metadata_quality"].value_counts().to_dict() if not cards.empty else {}
@@ -850,7 +859,7 @@ def build_payload() -> dict:
     else:
         summary["data_last_modified"] = ""
 
-    return {"summary": summary, "factors": factors}
+    return {"summary": summary, "factors": factors, "metric_glossary": metric_glossary}
 
 
 # ── HTML template ───────────────────────────────────────────────────────────
@@ -1040,6 +1049,34 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 .tooltip-content strong { color: #f1f5f9; }
 .tooltip-content .tt-warn { color: #fbbf24; }
 
+/* ── PM-51: Detail panel (click-expanded) ── */
+.detail-panel { position: fixed; z-index: 10000; background: #0f172a; border: 1px solid #475569; border-radius: 12px; max-width: 420px; min-width: 320px; max-height: 80vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.6); font-size: 13px; color: #cbd5e1; }
+.detail-header { padding: 12px 16px; border-bottom: 1px solid #334155; display: flex; align-items: center; gap: 8px; position: sticky; top: 0; background: #0f172a; z-index: 1; }
+.detail-header strong { color: #f1f5f9; flex: 1; }
+.detail-close { cursor: pointer; color: #64748b; font-size: 18px; padding: 0 4px; }
+.detail-close:hover { color: #f87171; }
+.detail-body { padding: 12px 16px; }
+.detail-section { margin-bottom: 10px; }
+.detail-label { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 3px; }
+.detail-warn { color: #fbbf24; }
+.detail-linked { display: inline-block; padding: 2px 8px; margin: 2px; background: #1e293b; border: 1px solid #334155; border-radius: 4px; font-size: 11px; cursor: pointer; color: #60a5fa; }
+.detail-linked:hover { background: #334155; }
+
+/* ── PM-51: Inference guardrail badges ── */
+.guard-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; vertical-align: middle; }
+.guard-evidence { background: #1e3a5f; color: #93c5fd; }
+.guard-interpretation { background: #3b2f63; color: #c4b5fd; }
+.guard-inference { background: #365314; color: #bef264; }
+.guard-notsignal { background: #451a1a; color: #fca5a5; }
+.guard-validation { background: #451a03; color: #fdba74; }
+.guard-diagnostic { background: #1e3a5f; color: #93c5fd; }
+
+/* ── PM-51: Chart reading guide ── */
+.chart-guide { background: #1e293b; border: 1px solid #334155; border-radius: 6px; margin: 8px 0; font-size: 12px; }
+.chart-guide summary { padding: 6px 12px; cursor: pointer; color: #94a3b8; font-size: 11px; }
+.chart-guide summary:hover { color: #e2e8f0; }
+.chart-guide-body { padding: 0 12px 10px; color: #94a3b8; line-height: 1.6; }
+
 /* ── PM-49: How-to-Read section styles ── */
 .how-to-read { background: #1e293b; border: 1px solid #334155; border-radius: 8px; margin: 16px 0; }
 .how-to-read summary { padding: 12px 16px; cursor: pointer; font-weight: 600; color: #94a3b8; }
@@ -1202,6 +1239,7 @@ const DATA = JSON.parse(document.getElementById('factorPayload').textContent);
 const S = DATA.summary;
 const factors = DATA.factors;
 const byId = new Map(factors.map(f => [f.factor_id, f]));
+const METRIC_GLOSSARY = DATA.metric_glossary || {};
 
 // ── Quality label map ──
 const QUALITY_LABELS = {
@@ -1413,45 +1451,53 @@ function evBlockBadge(label,pass){
   return `<span class="ev-block-badge ${pass?'ev-pass':'ev-miss'}">${esc(label)}: ${pass?'✓':'✗'}</span>`;
 }
 
-// ── PM-49: Glossary & Tooltip helpers ──
-const GLOSSARY = {
-  'RankIC Mean': { what: '排序信息系数均值。因子值与未来收益的Spearman相关系数。', high: '绝对值越大，预测力越强。', warn: '不是收益！IC=0.03不意味着3%收益。', signal: false },
-  'IC t-stat': { what: 'RankIC的t统计量。衡量IC是否显著不同于0。', high: '|t|>2 通常认为显著。', warn: '显著不等于有经济意义。', signal: false },
-  'ICIR': { what: 'IC Information Ratio = IC均值/IC标准差。', high: '越高越稳定。', warn: '不考虑交易成本。', signal: false },
-  'LS Mean': { what: '多空组合月均收益。做多top bucket、做空bottom bucket。', high: '越高越好。', warn: '不含交易成本，不可直接交易。', signal: false },
-  'LS Sharpe': { what: '多空组合Sharpe比率。', high: '>1较好，>2优秀。', warn: '基于历史数据，不代表未来。', signal: false },
-  'Ann Return': { what: '多空组合年化收益。', high: '越高越好。', warn: '不含滑点和冲击成本。', signal: false },
-  'Max Drawdown': { what: '多空组合最大回撤。', high: '绝对值越小越好。', warn: '历史最大回撤不代表未来上限。', signal: false },
-  'Paper Gross Return': { what: '纸面组合总收益（未扣费）。', high: '越高越好。', warn: '不是实盘收益。', signal: false },
-  'Fee Sensitivity': { what: '费用敏感度。因子在扣除费用后的表现衰减。', high: 'COST_ROBUST=不敏感，COST_COLLAPSED=高度敏感。', warn: 'COST_COLLAPSED的因子在实际交易中可能无利可图。', signal: false },
-  'Breakeven Fee': { what: '盈亏平衡费用。超过此费用，策略亏损。', high: '越高越好（可以承受更高费用）。', warn: '仅考虑费用，不含滑点。', signal: false },
-  'Paper-BTC Corr': { what: '纸面组合收益与BTC收益的相关性。', high: '绝对值越低越好（独立于BTC）。', warn: '高相关意味着BTC下跌时也会亏损。', signal: false },
-  'LS-BTC Corr': { what: '多空收益与BTC收益的相关性。', high: '绝对值越低越好。', warn: '正相关=牛市偏多，负相关=熊市偏多。', signal: false },
-  'Bull-Bear Δ': { what: '牛市vs熊市环境下因子表现差异。', high: '绝对值越大=越依赖市场状态。', warn: 'REGIME_ROBUST最稳定。', signal: false },
-  'Quantile Shape': { what: '因子值分5组后的收益分布形状。', high: 'MONOTONIC=最好（单调递增/递减）。', warn: 'U型=两端好中间差，可能非线性。', signal: false },
-  'Decile Shape': { what: '因子值分10组后的收益分布。', high: '方向一致的单调递增/递减最好。', warn: 'NONLINEAR_MIXED需要额外分析。', signal: false },
-  'Rolling Stability': { what: '因子IC/收益在滚动窗口中的稳定性。', high: 'STABLE=最好。', warn: 'INSUFFICIENT_HISTORY=数据不足。', signal: false },
-  'Capacity/Liquidity': { what: '因子的容量/流动性评估。', high: '低风险=可承载更大资金。', warn: 'WATCH_BOTH=需要关注。', signal: false },
-  'Redundancy': { what: '与其他因子的相关性。', high: 'DISTINCT=信息独特。', warn: 'HIGH_REDUNDANCY=可能被其他因子替代。', signal: false },
-  'Marginal Info': { what: '加入组合后的边际信息贡献。', high: 'HIGH=加入后显著提升。', warn: 'LOW=加入后提升不大。', signal: false },
-  'Quality Score': { what: '综合质量评分（0-100）。', high: '越高越好。', warn: '不是交易信号！仅是研究评估。', signal: false },
-  'Profile Score': { what: '统一画像评分（0-100）。', high: '越高越好。', warn: '不是交易信号！仅是研究评估。', signal: false }
-};
+// ── PM-51: Enhanced Glossary & Tooltip + Click-expanded detail ──
+// Backward compat: GLOSSARY now reads from METRIC_GLOSSARY (loaded from JSON)
+const GLOSSARY = new Proxy(METRIC_GLOSSARY, {
+  get(target, prop) {
+    const g = target[prop];
+    if (!g) return null;
+    return { what: g.tooltip_zh, high: g.high_zh, warn: g.misread_zh, signal: g.signal !== 'NOT_A_SIGNAL' };
+  }
+});
 
-function renderTooltip(term) {
-  const g = GLOSSARY[term];
-  if (!g) return term;
-  const html = `<strong>${term}</strong><br>${g.what}<br><strong>高/低:</strong> ${g.high}<br><span class="tt-warn">⚠️ ${g.warn}</span>${g.signal ? '<br><span class="tt-warn">可作为信号</span>' : '<br><em style="color:#64748b">非交易信号</em>'}`;
-  return `<span class="tooltip-trigger" onmouseenter="showTip(this,event,'${term}')" onmousemove="moveTip(event)" onmouseleave="hideTip()">${term}</span>`;
+// Signal status badge helper
+function signalBadge(status) {
+  const map = {
+    'RESEARCH_DIAGNOSTIC_ONLY': {label:'📊 Evidence', cls:'guard-evidence', tip:'机器计算的历史证据'},
+    'SUPPORTS_FACTOR_REVIEW': {label:'🔬 Diagnostic', cls:'guard-diagnostic', tip:'支持因子研究复核'},
+    'REQUIRES_SIGNAL_LEVEL_VALIDATION': {label:'⚠️ Needs Validation', cls:'guard-validation', tip:'需要信号级验证'},
+    'NOT_A_SIGNAL': {label:'🚫 Not a Signal', cls:'guard-notsignal', tip:'不是交易信号'}
+  };
+  const m = map[status] || map['NOT_A_SIGNAL'];
+  return `<span class="guard-badge ${m.cls}" title="${m.tip}">${m.label}</span>`;
 }
 
-// Global tooltip singleton
+// Inference guardrail labels
+const GUARD_LABELS = {
+  evidence: '<span class="guard-badge guard-evidence">📊 Evidence</span>',
+  interpretation: '<span class="guard-badge guard-interpretation">🔬 Interpretation</span>',
+  inference: '<span class="guard-badge guard-inference">💡 Inference</span>',
+  notsignal: '<span class="guard-badge guard-notsignal">🚫 Not a Signal</span>',
+  needsval: '<span class="guard-badge guard-validation">⚠️ Requires Validation</span>'
+};
+
+// Global tooltip singleton (hover - brief)
 const _tipDiv = document.createElement('div');
 _tipDiv.className = 'tooltip-content';
 document.body.appendChild(_tipDiv);
+
+// Global expanded detail panel (click - full)
+const _detailPanel = document.createElement('div');
+_detailPanel.className = 'detail-panel';
+_detailPanel.style.display = 'none';
+document.body.appendChild(_detailPanel);
+let _detailOpen = false;
+
 function showTip(el, ev, term) {
-  const g = GLOSSARY[term]; if (!g) return;
-  _tipDiv.innerHTML = `<strong>${term}</strong><br>${g.what}<br><strong>高/低:</strong> ${g.high}<br><span class="tt-warn">⚠️ ${g.warn}</span>${g.signal ? '<br><span class="tt-warn">可作为信号</span>' : '<br><em style="color:#64748b">非交易信号</em>'}`;
+  const g = METRIC_GLOSSARY[term]; if (!g) return;
+  const signalHtml = signalBadge(g.signal);
+  _tipDiv.innerHTML = `<strong>${term}</strong> ${signalHtml}<br>${g.tooltip_zh}<br><em style="color:#64748b;font-size:11px">点击展开详细解释 / Click for details</em>`;
   _tipDiv.style.visibility = 'visible'; _tipDiv.style.opacity = '1';
   moveTip(ev);
 }
@@ -1463,6 +1509,183 @@ function moveTip(ev) {
   _tipDiv.style.left = x + 'px'; _tipDiv.style.top = y + 'px';
 }
 function hideTip() { _tipDiv.style.visibility = 'hidden'; _tipDiv.style.opacity = '0'; }
+
+function toggleDetail(term, ev) {
+  ev.stopPropagation();
+  if (_detailOpen && _detailPanel.dataset.term === term) {
+    _detailPanel.style.display = 'none'; _detailOpen = false; return;
+  }
+  const g = METRIC_GLOSSARY[term]; if (!g) return;
+  _detailPanel.dataset.term = term;
+  const signalHtml = signalBadge(g.signal);
+  const linked = (g.linked||[]).map(l => `<span class="detail-linked" onclick="toggleDetail('${l}',event)">${l}</span>`).join(' ');
+  _detailPanel.innerHTML = `
+    <div class="detail-header">
+      <strong>${g.display_zh} / ${g.display_en}</strong> ${signalHtml}
+      <span class="detail-close" onclick="_detailPanel.style.display='none';_detailOpen=false">✕</span>
+    </div>
+    <div class="detail-body">
+      <div class="detail-section">
+        <div class="detail-label">📖 它是什么 / What</div>
+        <div>${g.tooltip_zh}<br><em style="color:#94a3b8">${g.tooltip_en}</em></div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label">🔢 怎么算 / Formula</div>
+        <div>${g.formula_zh}<br><em style="color:#94a3b8">${g.formula_en}</em></div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label">📁 数据来源 / Source</div>
+        <div><code>${g.source_file}</code> → <code>${g.source_columns}</code></div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label">⬆️ 高值含义 / High = </div>
+        <div>${g.high_zh}</div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label">⬇️ 低值含义 / Low = </div>
+        <div>${g.low_zh}</div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label">⚠️ 常见误读 / Misreading</div>
+        <div class="detail-warn">${g.misread_zh}</div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label">${GUARD_LABELS.inference} 可以推断 / Can Infer</div>
+        <div>${g.infer_zh}</div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label">${GUARD_LABELS.notsignal} 不能推断 / Cannot Infer</div>
+        <div>${g.cannot_infer_zh}</div>
+      </div>
+      ${linked ? `<div class="detail-section"><div class="detail-label">🔗 关联指标 / Linked</div><div>${linked}</div></div>` : ''}
+    </div>`;
+  _detailPanel.style.display = 'block'; _detailOpen = true;
+  // Position near click
+  let x = Math.min(ev.clientX - 200, window.innerWidth - 440);
+  let y = Math.min(ev.clientY + 10, window.innerHeight - _detailPanel.offsetHeight - 20);
+  if (x < 10) x = 10; if (y < 10) y = 10;
+  _detailPanel.style.left = x + 'px'; _detailPanel.style.top = y + 'px';
+}
+
+// Close detail panel on outside click
+document.addEventListener('click', (e) => {
+  if (_detailOpen && !_detailPanel.contains(e.target) && !e.target.closest('.tooltip-trigger')) {
+    _detailPanel.style.display = 'none'; _detailOpen = false;
+  }
+});
+
+function renderTooltip(term) {
+  const g = METRIC_GLOSSARY[term];
+  if (!g) return term;
+  return `<span class="tooltip-trigger" onmouseenter="showTip(this,event,'${term}')" onmousemove="moveTip(event)" onmouseleave="hideTip()" onclick="toggleDetail('${term}',event)">${term}</span>`;
+}
+
+// Chart reading guide helper
+function chartGuide(title, guide) {
+  return `<details class="chart-guide"><summary>📖 How to read: ${title}</summary><div class="chart-guide-body">${guide}</div></details>`;
+}
+
+const CHART_GUIDES = {
+  monthlyIC: chartGuide('Monthly RankIC', `
+    <strong>看什么：</strong>每月IC值的走势和正负分布。<br>
+    <strong>横轴：</strong>月份（2024-06 至 2026-06）。<br>
+    <strong>纵轴：</strong>RankIC值（Spearman相关系数）。<br>
+    <strong>上升：</strong>因子排序能力增强。<br>
+    <strong>好：</strong>多数月份IC为正且稳定。<br>
+    <strong>风险：</strong>IC大幅波动或持续为负。<br>
+    ${GUARD_LABELS.evidence} 机器计算的历史IC，${GUARD_LABELS.notsignal} 不是交易信号。
+  `),
+  monthlyLS: chartGuide('Monthly Long-Short Return', `
+    <strong>看什么：</strong>每月多空收益的正负和幅度。<br>
+    <strong>横轴：</strong>月份。<br>
+    <strong>纵轴：</strong>月度多空收益（%）。<br>
+    <strong>上升：</strong>多空收益增加。<br>
+    <strong>好：</strong>多数月份为正。<br>
+    <strong>风险：</strong>大幅亏损月份。<br>
+    ${GUARD_LABELS.evidence} 毛收益，未扣费。${GUARD_LABELS.notsignal} 不是可交易收益。
+  `),
+  cumLS: chartGuide('Cumulative Long-Short Curve', `
+    <strong>看什么：</strong>累计收益的趋势和回撤。<br>
+    <strong>横轴：</strong>月份。<br>
+    <strong>纵轴：</strong>累计收益（%）。<br>
+    <strong>上升：</strong>收益累积。<br>
+    <strong>好：</strong>稳定上升，回撤小。<br>
+    <strong>风险：</strong>大幅回撤或长期横盘。<br>
+    ${GUARD_LABELS.evidence} 毛收益曲线。${GUARD_LABELS.inference} 可以判断收益趋势，但不能推断实盘表现。
+  `),
+  paperNav: chartGuide('Paper Portfolio NAV', `
+    <strong>看什么：</strong>纸面组合净值走势，含不同费率。<br>
+    <strong>横轴：</strong>月份。<br>
+    <strong>纵轴：</strong>NAV（起始=1.0）。<br>
+    <strong>上升：</strong>净值增长。<br>
+    <strong>好：</strong>所有费率曲线都在1.0以上。<br>
+    <strong>风险：</strong>10bps/20bps曲线大幅低于0bps。<br>
+    ${GUARD_LABELS.evidence} 纸面净值，${GUARD_LABELS.notsignal} 不是实盘净值。
+  `),
+  feeSensitivity: chartGuide('Fee Sensitivity', `
+    <strong>看什么：</strong>不同费率下的累计收益。<br>
+    <strong>横轴：</strong>手续费（bps）。<br>
+    <strong>纵轴：</strong>累计收益。<br>
+    <strong>下降快：</strong>费用敏感。<br>
+    <strong>好：</strong>曲线平缓（COST_ROBUST）。<br>
+    <strong>风险：</strong>在合理费率下（5-10bps）收益为负。<br>
+    ${GUARD_LABELS.evidence} 历史费率敏感度。${GUARD_LABELS.inference} 可以判断成本容忍度，但不含滑点。
+  `),
+  turnover: chartGuide('Monthly Turnover', `
+    <strong>看什么：</strong>月度换手率走势。<br>
+    <strong>横轴：</strong>月份。<br>
+    <strong>纵轴：</strong>换手率。<br>
+    <strong>高：</strong>交易频繁，成本高。<br>
+    <strong>好：</strong>换手率稳定且低。<br>
+    <strong>风险：</strong>换手率突然飙升。<br>
+    ${GUARD_LABELS.evidence} 历史换手率。${GUARD_LABELS.inference} 可以估算成本，但不能推断滑点。
+  `),
+  regimeIC: chartGuide('Regime: IC by Market State', `
+    <strong>看什么：</strong>不同市场状态下IC的差异。<br>
+    <strong>横轴：</strong>市场状态（牛/熊/横盘，高/低波动）。<br>
+    <strong>纵轴：</strong>IC均值。<br>
+    <strong>差异大：</strong>因子依赖市场环境。<br>
+    <strong>好：</strong>各状态下IC都为正（REGIME_ROBUST）。<br>
+    <strong>风险：</strong>仅在特定状态下有效。<br>
+    ${GUARD_LABELS.evidence} 历史状态IC。${GUARD_LABELS.inference} 可以判断适用范围，但不能推断未来状态。
+  `),
+  regimeLS: chartGuide('Regime: LS by Market State', `
+    <strong>看什么：</strong>不同市场状态下多空收益的差异。<br>
+    <strong>横轴：</strong>市场状态。<br>
+    <strong>纵轴：</strong>多空收益均值。<br>
+    <strong>差异大：</strong>策略依赖市场环境。<br>
+    <strong>好：</strong>各状态下都盈利。<br>
+    <strong>风险：</strong>熊市大幅亏损。<br>
+    ${GUARD_LABELS.evidence} 历史状态收益。${GUARD_LABELS.notsignal} 不是交易建议。
+  `),
+  regimePaper: chartGuide('Regime: Paper Return by State', `
+    <strong>看什么：</strong>不同市场状态下纸面收益。<br>
+    <strong>横轴：</strong>市场状态。<br>
+    <strong>纵轴：</strong>纸面月均收益。<br>
+    <strong>差异大：</strong>策略依赖市场环境。<br>
+    <strong>好：</strong>各状态下都盈利。<br>
+    <strong>风险：</strong>深度回撤期大幅亏损。<br>
+    ${GUARD_LABELS.evidence} 历史纸面收益。${GUARD_LABELS.notsignal} 不是实盘收益。
+  `),
+  quantileShape: chartGuide('Q1-Q5 Quantile Shape', `
+    <strong>看什么：</strong>5个分位组的收益分布。<br>
+    <strong>横轴：</strong>分位组（Q1=最低，Q5=最高）。<br>
+    <strong>纵轴：</strong>月均收益。<br>
+    <strong>单调递增：</strong>因子值越高收益越高（MONOTONIC_GOOD）。<br>
+    <strong>好：</strong>单调且Spread大。<br>
+    <strong>风险：</strong>U型或无规律。<br>
+    ${GUARD_LABELS.evidence} 历史分位收益。${GUARD_LABELS.inference} 可以判断分层能力，但不能推断未来分层。
+  `),
+  decileShape: chartGuide('D1-D10 Decile Shape', `
+    <strong>看什么：</strong>10个十分位组的收益分布。<br>
+    <strong>横轴：</strong>十分位（D1=最低，D10=最高）。<br>
+    <strong>纵轴：</strong>月均收益。<br>
+    <strong>单调递增：</strong>因子分层能力强。<br>
+    <strong>好：</strong>单调且尾部收益高。<br>
+    <strong>风险：</strong>仅尾部有效（TAIL_DOMINATED）。<br>
+    ${GUARD_LABELS.evidence} 历史十分位收益。${GUARD_LABELS.inference} 可以判断细粒度分层，但噪声更大。
+  `)
+};
 
 function renderRedFlags(flags) {
   if (!flags || !flags.length) return '';
@@ -2120,18 +2343,18 @@ function renderDetail(fid){
     <h3>Best Horizon Metrics 最优视野指标 (${esc(f.best_horizon)})</h3>
     <div class="metric-grid">
       ${metricRow(renderTooltip('RankIC Mean'),num(f.rankic_mean),mcls(f.rankic_mean))}
-      ${metricRow('RankIC Std',num(f.rankic_std,4,false))}
+      ${metricRow(renderTooltip('RankIC Std'),num(f.rankic_std,4,false))}
       ${metricRow(renderTooltip('ICIR'),num(f.rankic_ir,3))}
       ${metricRow(renderTooltip('IC t-stat'),num(f.rankic_t_stat,2,false))}
-      ${metricRow('IC Win Rate IC胜率',pct(f.monthly_ic_positive_rate))}
+      ${metricRow(renderTooltip('IC Win Rate'),pct(f.monthly_ic_positive_rate))}
       ${metricRow(renderTooltip('LS Mean'),num(f.long_short_mean,6))}
-      ${metricRow('LS Std LS标准差',num(f.long_short_std,6))}
+      ${metricRow(renderTooltip('LS Std'),num(f.long_short_std,6))}
       ${metricRow(renderTooltip('LS Sharpe'),num(f.long_short_sharpe,2),mcls(f.long_short_sharpe,1.5,0.8))}
       ${metricRow(renderTooltip('Ann Return'),pct(f.long_short_annualized_return))}
-      ${metricRow('Ann Vol 年化波动',pct(f.long_short_annualized_vol))}
+      ${metricRow(renderTooltip('Ann Vol'),pct(f.long_short_annualized_vol))}
       ${metricRow(renderTooltip('Max Drawdown'),pct(f.long_short_max_drawdown))}
-      ${metricRow('LS Win Rate LS月胜率',pct(f.long_short_positive_month_rate))}
-      ${metricRow('Coverage 覆盖率',pct(f.coverage_rate))}
+      ${metricRow(renderTooltip('LS Win Rate'),pct(f.long_short_positive_month_rate))}
+      ${metricRow(renderTooltip('Coverage'),pct(f.coverage_rate))}
     </div>
     ${f.ls_metrics_unavailable_reason?`<div style="margin:4px 0;font-size:10px;color:var(--muted);font-style:italic">${esc(f.ls_metrics_unavailable_reason)}</div>`:''}
 
@@ -2174,6 +2397,7 @@ function renderDetail(fid){
 
     <div class="section-divider"></div>
     <h3>Monthly RankIC 月度RankIC (${esc(f.best_horizon)})</h3>
+    ${CHART_GUIDES.monthlyIC}
     <div class="chart-container">
       <div class="chart-title">Monthly RankIC (adj) · 月度调整RankIC</div>
       ${f.monthly_ic&&f.monthly_ic.length>0
@@ -2184,12 +2408,14 @@ function renderDetail(fid){
     </div>
 
     <h3>Monthly Long-Short Return 月度多空收益 (${esc(f.best_horizon)})</h3>
+    ${CHART_GUIDES.monthlyLS}
     <div class="chart-container">
       <div class="chart-title">Monthly LS Return · 月度多空收益</div>
       ${svgBarChart(f.monthly_ls,'long_short_return',600,120)}
     </div>
 
     <h3>Cumulative Long-Short Curve 累计多空曲线 (${esc(f.best_horizon)})</h3>
+    ${CHART_GUIDES.cumLS}
     <div class="chart-container">
       <div class="chart-title">Cumulative LS (blue) with drawdown (red) · 累计多空(蓝)及回撤(红)</div>
       ${svgCumCurve(f.cum_curve,600,160)}
@@ -2199,28 +2425,29 @@ function renderDetail(fid){
     <div class="metric-grid">
       ${metricRow('Max DD 最大回撤',pct(f.long_short_max_drawdown))}
       ${metricRow('LS Month Win% 月胜率',pct(f.long_short_positive_month_rate))}
-      ${metricRow('LS Sharpe',num(f.long_short_sharpe,2),mcls(f.long_short_sharpe,1.5,0.8))}
+      ${metricRow(renderTooltip('LS Sharpe'),num(f.long_short_sharpe,2),mcls(f.long_short_sharpe,1.5,0.8))}
     </div>
 
     ${f.paper_viability_class?`
     <div class="section-divider"></div>
     <h3>Single-Factor Paper Portfolio / 单因子纸面组合</h3>
+    ${CHART_GUIDES.paperNav}
     <div style="margin:6px 0">
       ${paperViabBadge(f.paper_viability_class)}
       ${f.cost_sensitivity_class?costSensBadge(f.cost_sensitivity_class):''}
     </div>
     <div class="metric-grid">
-      ${metricRow('Gross Sharpe 毛夏普',num(f.gross_sharpe,2))}
-      ${metricRow('Gross Return 毛收益',num(f.gross_total_return,2))}
+      ${metricRow(renderTooltip('Gross Sharpe'),num(f.gross_sharpe,2))}
+      ${metricRow(renderTooltip('Gross Return'),num(f.gross_total_return,2))}
       ${metricRow('Max DD 最大回撤',pct(f.paper_max_drawdown))}
-      ${metricRow('Positive Mo% 月胜率',pct(f.paper_positive_month_rate))}
-      ${metricRow('Avg Turnover 平均换手',pct(f.paper_avg_turnover))}
-      ${metricRow('Median Turnover 中位换手',pct(f.paper_median_turnover))}
-      ${metricRow('B/E Fee 盈亏平衡',f.break_even_fee_bps!==null&&f.break_even_fee_bps!==undefined?Math.round(Number(f.break_even_fee_bps))+' bps':'—')}
-      ${metricRow('0bps Return',num(f.fee_0bps_total_return,2))}
-      ${metricRow('5bps Return',num(f.fee_5bps_total_return,2))}
-      ${metricRow('10bps Return',num(f.fee_10bps_total_return,2),f.fee_10bps_total_return!==null&&f.fee_10bps_total_return<0?'':'')}
-      ${metricRow('20bps Return',num(f.fee_20bps_total_return,2))}
+      ${metricRow(renderTooltip('Positive Mo%'),pct(f.paper_positive_month_rate))}
+      ${metricRow(renderTooltip('Avg Turnover'),pct(f.paper_avg_turnover))}
+      ${metricRow(renderTooltip('Median Turnover'),pct(f.paper_median_turnover))}
+      ${metricRow(renderTooltip('B/E Fee'),f.break_even_fee_bps!==null&&f.break_even_fee_bps!==undefined?Math.round(Number(f.break_even_fee_bps))+' bps':'—')}
+      ${metricRow(renderTooltip('0bps Return'),num(f.fee_0bps_total_return,2))}
+      ${metricRow(renderTooltip('5bps Return'),num(f.fee_5bps_total_return,2))}
+      ${metricRow(renderTooltip('10bps Return'),num(f.fee_10bps_total_return,2),f.fee_10bps_total_return!==null&&f.fee_10bps_total_return<0?'':'')}
+      ${metricRow(renderTooltip('20bps Return'),num(f.fee_20bps_total_return,2))}
     </div>
     ${f.main_diagnostic_note_zh||f.main_diagnostic_note_en?`<div class="bilingual" style="margin:6px 0"><div class="zh" style="font-size:11px">${esc(f.main_diagnostic_note_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(f.main_diagnostic_note_en)}</div></div>`:''}
 
@@ -2253,6 +2480,7 @@ function renderDetail(fid){
     </div>
 
     <div class="chart-container">
+      ${CHART_GUIDES.feeSensitivity}
       <div class="chart-title">Fee Sensitivity: Total Return & Sharpe by fee_bps · 费用敏感性</div>
       ${(()=>{
         const fs=f.fee_sensitivity_series||[];
@@ -2372,19 +2600,20 @@ function renderDetail(fid){
     ${f.regime_dependency_class?`
     <div class="section-divider"></div>
     <h3>BTC / Market Regime Diagnostics / BTC / 市场状态诊断</h3>
+    ${CHART_GUIDES.regimeIC}
     <div style="margin:6px 0">
       ${regimeBadge(f.regime_dependency_class)}
       ${f.main_regime_note_zh?`<span style="font-size:11px;margin-left:6px">${esc(f.main_regime_note_zh)} / ${esc(f.main_regime_note_en)}</span>`:''}
     </div>
     <div class="metric-grid">
-      ${metricRow('Paper-BTC Corr',num(f.paper_return_btc_corr,4))}
-      ${metricRow('Paper-BTC Beta',num(f.paper_return_btc_beta,4))}
-      ${metricRow('LS-BTC Corr',num(f.long_short_btc_corr,4))}
-      ${metricRow('LS-BTC Beta',num(f.long_short_btc_beta,4))}
-      ${metricRow('IC-BTC Corr',num(f.ic_btc_return_corr,4))}
-      ${metricRow('Bull−Bear Δ',num(f.bull_minus_bear_paper_return,4),f.bull_minus_bear_paper_return!==null?(f.bull_minus_bear_paper_return>=0?'strong':'watch'):'')}
-      ${metricRow('HV−LV Δ',num(f.highvol_minus_lowvol_paper_return,4))}
-      ${metricRow('DD−Normal Δ',num(f.drawdown_minus_normal_paper_return,4),f.drawdown_minus_normal_paper_return!==null?(f.drawdown_minus_normal_paper_return<0?'watch':''):'')}
+      ${metricRow(renderTooltip('Paper-BTC Corr'),num(f.paper_return_btc_corr,4))}
+      ${metricRow(renderTooltip('Paper-BTC Beta'),num(f.paper_return_btc_beta,4))}
+      ${metricRow(renderTooltip('LS-BTC Corr'),num(f.long_short_btc_corr,4))}
+      ${metricRow(renderTooltip('LS-BTC Beta'),num(f.long_short_btc_beta,4))}
+      ${metricRow(renderTooltip('IC-BTC Corr'),num(f.ic_btc_return_corr,4))}
+      ${metricRow(renderTooltip('Bull−Bear Δ'),num(f.bull_minus_bear_paper_return,4),f.bull_minus_bear_paper_return!==null?(f.bull_minus_bear_paper_return>=0?'strong':'watch'):'')}
+      ${metricRow(renderTooltip('HV−LV Δ'),num(f.highvol_minus_lowvol_paper_return,4))}
+      ${metricRow(renderTooltip('DD−Normal Δ'),num(f.drawdown_minus_normal_paper_return,4),f.drawdown_minus_normal_paper_return!==null?(f.drawdown_minus_normal_paper_return<0?'watch':''):'')}
     </div>
     ${(()=>{
       const rd=f.regime_detail||[];
@@ -2543,6 +2772,7 @@ function renderDetail(fid){
       return `
         <div class="section-divider"></div>
         <h3>Quantile Shape & Rolling Stability / 分位收益形状与滚动稳定性</h3>
+    ${CHART_GUIDES.quantileShape}
         <div style="margin:6px 0;display:flex;gap:6px;flex-wrap:wrap">
           ${sh.quantile_shape_class?shapeBadge(sh.quantile_shape_class):''}
           ${st.stability_class?stabilityBadge(st.stability_class):''}
@@ -2552,18 +2782,18 @@ function renderDetail(fid){
           ${dc.direction_handling?`<span class="shape-badge" style="background:#334155;color:#e2e8f0">${esc(dc.direction_handling)}</span>`:''}
         </div>
         <div class="metric-grid">
-          ${st.stability_score!==null&&st.stability_score!==undefined?metricRow('Stability Score 稳定性分数',num(st.stability_score,1)):''}
+          ${st.stability_score!==null&&st.stability_score!==undefined?metricRow(renderTooltip('Stability Score'),num(st.stability_score,1)):''}
           ${st.ic_positive_month_rate!==null&&st.ic_positive_month_rate!==undefined?metricRow('IC Win% IC月胜率',pct(st.ic_positive_month_rate)):''}
           ${sh.monotonicity_score!==null&&sh.monotonicity_score!==undefined?metricRow('Monotonicity 单调性',num(sh.monotonicity_score,2)):''}
           ${sh.monotonicity_class?metricRow('Mono. Class 单调性分类','<span style="font-size:10px">'+esc(sh.monotonicity_class)+'</span>'):''}
-          ${sh.q_spread_return!==null&&sh.q_spread_return!==undefined?metricRow('Q Spread Return 分位收益差',num(sh.q_spread_return,6)):''}
-          ${sh.q_spearman_corr!==null&&sh.q_spearman_corr!==undefined?metricRow('Q Spearman ρ 分位Spearman',num(sh.q_spearman_corr,4)):''}
-          ${sh.positive_spread_month_rate!==null&&sh.positive_spread_month_rate!==undefined?metricRow('Positive Spread% 正差月率',pct(sh.positive_spread_month_rate)):''}
-          ${dc.direction_aware_spearman_corr!==null&&dc.direction_aware_spearman_corr!==undefined?metricRow('Dir-aware ρ 方向感知Spearman',num(dc.direction_aware_spearman_corr,4)):''}
-          ${dc.direction_aware_monotonicity_class?metricRow('Decile Mono. 十分位单调性','<span style="font-size:10px">'+esc(dc.direction_aware_monotonicity_class)+'</span>'):''}
-          ${dc.tail_concentration_class?metricRow('Tail Conc. 尾部集中度',dc.tail_concentration_class?tailConcBadge(dc.tail_concentration_class):'—'):''}
-          ${st.recent_vs_full_ic_delta!==null&&st.recent_vs_full_ic_delta!==undefined?metricRow('Recent ΔIC 近期IC变化',num(st.recent_vs_full_ic_delta,4)):''}
-          ${st.recent_vs_full_ls_delta!==null&&st.recent_vs_full_ls_delta!==undefined?metricRow('Recent ΔLS 近期LS变化',num(st.recent_vs_full_ls_delta,6)):''}
+          ${sh.q_spread_return!==null&&sh.q_spread_return!==undefined?metricRow(renderTooltip('Q Spread Return'),num(sh.q_spread_return,6)):''}
+          ${sh.q_spearman_corr!==null&&sh.q_spearman_corr!==undefined?metricRow(renderTooltip('Q Spearman'),num(sh.q_spearman_corr,4)):''}
+          ${sh.positive_spread_month_rate!==null&&sh.positive_spread_month_rate!==undefined?metricRow(renderTooltip('Positive Spread%'),pct(sh.positive_spread_month_rate)):''}
+          ${dc.direction_aware_spearman_corr!==null&&dc.direction_aware_spearman_corr!==undefined?metricRow(renderTooltip('Dir-aware ρ'),num(dc.direction_aware_spearman_corr,4)):''}
+          ${dc.direction_aware_monotonicity_class?metricRow(renderTooltip('Decile Mono.'),'<span style="font-size:10px">'+esc(dc.direction_aware_monotonicity_class)+'</span>'):''}
+          ${dc.tail_concentration_class?metricRow(renderTooltip('Tail Conc.'),dc.tail_concentration_class?tailConcBadge(dc.tail_concentration_class):'—'):''}
+          ${st.recent_vs_full_ic_delta!==null&&st.recent_vs_full_ic_delta!==undefined?metricRow(renderTooltip('Recent ΔIC'),num(st.recent_vs_full_ic_delta,4)):''}
+          ${st.recent_vs_full_ls_delta!==null&&st.recent_vs_full_ls_delta!==undefined?metricRow(renderTooltip('Recent ΔLS'),num(st.recent_vs_full_ls_delta,6)):''}
         </div>
 
         ${qr.length?`
@@ -2612,33 +2842,33 @@ function renderDetail(fid){
     </div>
     <div style="margin:4px 0;font-size:10px;color:var(--muted)">Proxy Method 代理方法: ${esc(f.cap_liq_proxy_method||'—')}</div>
     <div class="metric-grid">
-      ${f.cap_liq_avg_turnover!==null&&f.cap_liq_avg_turnover!==undefined?metricRow('Avg Turnover 平均换手',num(f.cap_liq_avg_turnover,4,false)):''}
-      ${f.cap_liq_median_turnover!==null&&f.cap_liq_median_turnover!==undefined?metricRow('Median Turnover 中位换手',num(f.cap_liq_median_turnover,4,false)):''}
-      ${f.cap_liq_p90_turnover!==null&&f.cap_liq_p90_turnover!==undefined?metricRow('P90 Turnover 90分位换手',num(f.cap_liq_p90_turnover,4,false)):''}
-      ${f.cap_liq_selected_basket_volume_median!==null&&f.cap_liq_selected_basket_volume_median!==undefined?metricRow('Basket Vol Median 选中篮子成交量中位',f.cap_liq_selected_basket_volume_median!==null?Number(f.cap_liq_selected_basket_volume_median).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
-      ${f.cap_liq_selected_basket_volume_p10!==null&&f.cap_liq_selected_basket_volume_p10!==undefined?metricRow('Basket Vol P10 选中篮子成交量P10',f.cap_liq_selected_basket_volume_p10!==null?Number(f.cap_liq_selected_basket_volume_p10).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_avg_turnover!==null&&f.cap_liq_avg_turnover!==undefined?metricRow(renderTooltip('Avg Turnover'),num(f.cap_liq_avg_turnover,4,false)):''}
+      ${f.cap_liq_median_turnover!==null&&f.cap_liq_median_turnover!==undefined?metricRow(renderTooltip('Median Turnover'),num(f.cap_liq_median_turnover,4,false)):''}
+      ${f.cap_liq_p90_turnover!==null&&f.cap_liq_p90_turnover!==undefined?metricRow(renderTooltip('P90 Turnover'),num(f.cap_liq_p90_turnover,4,false)):''}
+      ${f.cap_liq_selected_basket_volume_median!==null&&f.cap_liq_selected_basket_volume_median!==undefined?metricRow(renderTooltip('Basket Vol Median'),f.cap_liq_selected_basket_volume_median!==null?Number(f.cap_liq_selected_basket_volume_median).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_selected_basket_volume_p10!==null&&f.cap_liq_selected_basket_volume_p10!==undefined?metricRow(renderTooltip('Basket Vol P10'),f.cap_liq_selected_basket_volume_p10!==null?Number(f.cap_liq_selected_basket_volume_p10).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
       ${f.cap_liq_selected_symbol_count_median!==null?metricRow('Symbol Count Med 中位符号数',f.cap_liq_selected_symbol_count_median!==null?Math.round(Number(f.cap_liq_selected_symbol_count_median)):'—'):''}
       ${f.cap_liq_long_basket_volume_median!==null&&f.cap_liq_long_basket_volume_median!==undefined?metricRow('Long Basket Vol 多头篮子成交量',f.cap_liq_long_basket_volume_median!==null?Number(f.cap_liq_long_basket_volume_median).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
       ${f.cap_liq_short_basket_volume_median!==null&&f.cap_liq_short_basket_volume_median!==undefined?metricRow('Short Basket Vol 空头篮子成交量',f.cap_liq_short_basket_volume_median!==null?Number(f.cap_liq_short_basket_volume_median).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
-      ${f.cap_liq_low_volume_symbol_share!==null&&f.cap_liq_low_volume_symbol_share!==undefined?metricRow('Low-Vol Share 低成交量占比',pct(f.cap_liq_low_volume_symbol_share)):''}
-      ${f.cap_liq_selected_top_symbol_volume_share_median!==null?metricRow('Top Symbol Vol Share Med 头部成交量占比中位',pct(f.cap_liq_selected_top_symbol_volume_share_median)):''}
+      ${f.cap_liq_low_volume_symbol_share!==null&&f.cap_liq_low_volume_symbol_share!==undefined?metricRow(renderTooltip('Low-Vol Share'),pct(f.cap_liq_low_volume_symbol_share)):''}
+      ${f.cap_liq_selected_top_symbol_volume_share_median!==null?metricRow(renderTooltip('Top Symbol Vol Share'),pct(f.cap_liq_selected_top_symbol_volume_share_median)):''}
     </div>
 
     <div style="margin-top:8px;font-size:11px;font-weight:600;color:var(--muted)">Capacity Estimates 容量估计 (USD)</div>
     <div class="metric-grid">
-      ${f.cap_liq_capacity_at_1pct!==null&&f.cap_liq_capacity_at_1pct!==undefined?metricRow('1% Participation 参与率1%',f.cap_liq_capacity_at_1pct!==null?'$'+Number(f.cap_liq_capacity_at_1pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
-      ${f.cap_liq_capacity_at_5pct!==null&&f.cap_liq_capacity_at_5pct!==undefined?metricRow('5% Participation 参与率5%',f.cap_liq_capacity_at_5pct!==null?'$'+Number(f.cap_liq_capacity_at_5pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
-      ${f.cap_liq_capacity_at_10pct!==null&&f.cap_liq_capacity_at_10pct!==undefined?metricRow('10% Participation 参与率10%',f.cap_liq_capacity_at_10pct!==null?'$'+Number(f.cap_liq_capacity_at_10pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_capacity_at_1pct!==null&&f.cap_liq_capacity_at_1pct!==undefined?metricRow(renderTooltip('1% Participation'),f.cap_liq_capacity_at_1pct!==null?'$'+Number(f.cap_liq_capacity_at_1pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_capacity_at_5pct!==null&&f.cap_liq_capacity_at_5pct!==undefined?metricRow(renderTooltip('5% Participation'),f.cap_liq_capacity_at_5pct!==null?'$'+Number(f.cap_liq_capacity_at_5pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_capacity_at_10pct!==null&&f.cap_liq_capacity_at_10pct!==undefined?metricRow(renderTooltip('10% Participation'),f.cap_liq_capacity_at_10pct!==null?'$'+Number(f.cap_liq_capacity_at_10pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
     </div>
 
     <div style="margin-top:8px;font-size:11px;font-weight:600;color:var(--muted)">Participation Rates by Notional 参与率（按名义金额）</div>
     <div class="metric-grid">
-      ${f.cap_liq_participation_100k_median!==null&&f.cap_liq_participation_100k_median!==undefined?metricRow('$100K Median',pct(f.cap_liq_participation_100k_median)):''}
-      ${f.cap_liq_participation_100k_p10!==null&&f.cap_liq_participation_100k_p10!==undefined?metricRow('$100K P10',pct(f.cap_liq_participation_100k_p10)):''}
-      ${f.cap_liq_participation_1M_median!==null&&f.cap_liq_participation_1M_median!==undefined?metricRow('$1M Median',pct(f.cap_liq_participation_1M_median)):''}
-      ${f.cap_liq_participation_1M_p10!==null&&f.cap_liq_participation_1M_p10!==undefined?metricRow('$1M P10',pct(f.cap_liq_participation_1M_p10)):''}
-      ${f.cap_liq_participation_10M_median!==null&&f.cap_liq_participation_10M_median!==undefined?metricRow('$10M Median',pct(f.cap_liq_participation_10M_median)):''}
-      ${f.cap_liq_participation_10M_p10!==null&&f.cap_liq_participation_10M_p10!==undefined?metricRow('$10M P10',pct(f.cap_liq_participation_10M_p10)):''}
+      ${f.cap_liq_participation_100k_median!==null&&f.cap_liq_participation_100k_median!==undefined?metricRow(renderTooltip('$100K Median'),pct(f.cap_liq_participation_100k_median)):''}
+      ${f.cap_liq_participation_100k_p10!==null&&f.cap_liq_participation_100k_p10!==undefined?metricRow(renderTooltip('$100K P10'),pct(f.cap_liq_participation_100k_p10)):''}
+      ${f.cap_liq_participation_1M_median!==null&&f.cap_liq_participation_1M_median!==undefined?metricRow(renderTooltip('$1M Median'),pct(f.cap_liq_participation_1M_median)):''}
+      ${f.cap_liq_participation_1M_p10!==null&&f.cap_liq_participation_1M_p10!==undefined?metricRow(renderTooltip('$1M P10'),pct(f.cap_liq_participation_1M_p10)):''}
+      ${f.cap_liq_participation_10M_median!==null&&f.cap_liq_participation_10M_median!==undefined?metricRow(renderTooltip('$10M Median'),pct(f.cap_liq_participation_10M_median)):''}
+      ${f.cap_liq_participation_10M_p10!==null&&f.cap_liq_participation_10M_p10!==undefined?metricRow(renderTooltip('$10M P10'),pct(f.cap_liq_participation_10M_p10)):''}
     </div>
 
     <div class="cap-caveat">
@@ -2664,11 +2894,11 @@ function renderDetail(fid){
       ${f.recommended_research_action?researchActionBadge(f.recommended_research_action):''}
     </div>
     <div class="metric-grid">
-      ${f.profile_score!==null&&f.profile_score!==undefined?metricRow('Profile Score 画像分数','<strong style="font-size:16px">'+Number(f.profile_score).toFixed(1)+'</strong>/100'):''}
-      ${f.evidence_completeness_rate!==null?metricRow('Evidence Completeness 证据完整率',pct(f.evidence_completeness_rate)):''}
+      ${f.profile_score!==null&&f.profile_score!==undefined?metricRow(renderTooltip('Profile Score'),'<strong style="font-size:16px">'+Number(f.profile_score).toFixed(1)+'</strong>/100'):''}
+      ${f.evidence_completeness_rate!==null?metricRow(renderTooltip('Evidence Completeness'),pct(f.evidence_completeness_rate)):''}
       ${f.registry_or_data_status?metricRow('Registry Status 注册状态',esc(f.registry_or_data_status)):''}
-      ${f.cluster_member_role?metricRow('Cluster Role 聚类角色',esc(f.cluster_member_role)):''}
-      ${f.marginal_information_class?metricRow('Marginal Info 边际信息',esc(f.marginal_information_class)):''}
+      ${f.cluster_member_role?metricRow(renderTooltip('Cluster Role'),esc(f.cluster_member_role)):''}
+      ${f.marginal_information_class?metricRow(renderTooltip('Marginal Info'),esc(f.marginal_information_class)):''}
       ${f.source_artifact_count?metricRow('Source Artifacts 源工件数',f.source_artifact_count):''}
     </div>
 
