@@ -859,6 +859,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Factor Library — Evaluation 因子评价</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
 <style>
 :root{--bg:#0f172a;--panel:#111c31;--panel2:#17243a;--border:#26364f;--text:#e5edf8;--muted:#8ea0b8;--blue:#60a5fa;--green:#34d399;--amber:#fbbf24;--red:#f87171;--purple:#c084fc}
 *{box-sizing:border-box}
@@ -1033,9 +1034,9 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 .up-caveat strong{color:#e9d5ff}
 
 /* ── PM-49: Tooltip styles ── */
-.tooltip-trigger { position: relative; cursor: help; border-bottom: 1px dashed rgba(148,163,184,0.4); }
-.tooltip-trigger:hover .tooltip-content { display: block; }
-.tooltip-content { display: none; position: absolute; z-index: 100; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px 16px; max-width: 400px; font-size: 13px; line-height: 1.6; color: #cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,0.4); top: 100%; left: 0; margin-top: 4px; }
+.tooltip-trigger { position: relative; cursor: help; border-bottom: 1px dashed rgba(148,163,184,0.4); display: inline; }
+.tooltip-content { visibility: hidden; opacity: 0; position: fixed; z-index: 9999; background: #1e293b; border: 1px solid #475569; border-radius: 8px; padding: 10px 14px; max-width: 320px; min-width: 200px; font-size: 12px; line-height: 1.6; color: #cbd5e1; box-shadow: 0 8px 24px rgba(0,0,0,0.5); transition: opacity 0.15s ease; pointer-events: none; }
+.tooltip-trigger:hover .tooltip-content { visibility: visible; opacity: 1; }
 .tooltip-content strong { color: #f1f5f9; }
 .tooltip-content .tt-warn { color: #fbbf24; }
 
@@ -1440,8 +1441,28 @@ const GLOSSARY = {
 function renderTooltip(term) {
   const g = GLOSSARY[term];
   if (!g) return term;
-  return `<span class="tooltip-trigger">${term}<span class="tooltip-content"><strong>${term}</strong><br>${g.what}<br><strong>高/低:</strong> ${g.high}<br><span class="tt-warn">⚠️ ${g.warn}</span>${g.signal ? '<br><span class="tt-warn">可作为信号</span>' : '<br><em style="color:#64748b">非交易信号</em>'}</span></span>`;
+  const html = `<strong>${term}</strong><br>${g.what}<br><strong>高/低:</strong> ${g.high}<br><span class="tt-warn">⚠️ ${g.warn}</span>${g.signal ? '<br><span class="tt-warn">可作为信号</span>' : '<br><em style="color:#64748b">非交易信号</em>'}`;
+  return `<span class="tooltip-trigger" onmouseenter="showTip(this,event,'${term}')" onmousemove="moveTip(event)" onmouseleave="hideTip()">${term}</span>`;
 }
+
+// Global tooltip singleton
+const _tipDiv = document.createElement('div');
+_tipDiv.className = 'tooltip-content';
+document.body.appendChild(_tipDiv);
+function showTip(el, ev, term) {
+  const g = GLOSSARY[term]; if (!g) return;
+  _tipDiv.innerHTML = `<strong>${term}</strong><br>${g.what}<br><strong>高/低:</strong> ${g.high}<br><span class="tt-warn">⚠️ ${g.warn}</span>${g.signal ? '<br><span class="tt-warn">可作为信号</span>' : '<br><em style="color:#64748b">非交易信号</em>'}`;
+  _tipDiv.style.visibility = 'visible'; _tipDiv.style.opacity = '1';
+  moveTip(ev);
+}
+function moveTip(ev) {
+  let x = ev.clientX + 12, y = ev.clientY + 12;
+  const r = _tipDiv.getBoundingClientRect();
+  if (x + 320 > window.innerWidth) x = ev.clientX - 330;
+  if (y + r.height > window.innerHeight) y = ev.clientY - r.height - 12;
+  _tipDiv.style.left = x + 'px'; _tipDiv.style.top = y + 'px';
+}
+function hideTip() { _tipDiv.style.visibility = 'hidden'; _tipDiv.style.opacity = '0'; }
 
 function renderRedFlags(flags) {
   if (!flags || !flags.length) return '';
