@@ -581,6 +581,21 @@ def _compute_xs_rank_mom_accel_prep(df: pd.DataFrame) -> pd.Series:
     return mom_20h - delay(mom_20h, 5)
 
 
+def _compute_clv_20h(df: pd.DataFrame) -> pd.Series:
+    """Close Location Value 20h: mean(((close - low) - (high - close)) / (high - low + eps), 20).
+
+    CLV measures where the close is within the high-low range of each bar.
+    - CLV = +1: close at high (buyers dominate)
+    - CLV = -1: close at low (sellers dominate)
+    - CLV = 0: close at midpoint
+
+    Taking the 20h mean captures sustained buying/selling pressure.
+    """
+    h, l, c = df["high"], df["low"], df["close"]
+    clv_single = ((c - l) - (h - c)) / (h - l + 1e-8)
+    return rolling_mean(clv_single, 20)
+
+
 # ── Registry ────────────────────────────────────────────────────────
 
 REGISTRY: list[FactorSpec] = [
@@ -1152,6 +1167,14 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="positive",
         compute_fn=_compute_xs_rank_mom_accel_prep,
         notes="Per-symbol momentum acceleration (mom_20h - delay(mom_20h, 5)); cross-sectional rank applied by caller",
+    ),
+    # PM-47: Batch03 — Alpha158 OHLC range/location factor
+    FactorSpec(
+        factor_id="clv_20h", family="alpha158_ohlc_range",
+        required_columns=["high", "low", "close"], lookback_window=20,
+        expected_direction="positive",
+        compute_fn=_compute_clv_20h,
+        notes="mean(((close-low)-(high-close))/(high-low+eps), 20); Close Location Value; +1=close at high, -1=close at low",
     ),
 ]
 
