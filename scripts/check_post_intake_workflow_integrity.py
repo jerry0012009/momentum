@@ -70,19 +70,35 @@ def check_period_ls(fid: str) -> dict:
 
 
 def check_ls_aggregate(fid: str) -> dict:
-    """Check if factor has LS aggregate metrics (PM-41)."""
+    """Check if factor has LS aggregate metrics (PM-41).
+
+    Two sources (same fallback as _build_factor_eval_html.py):
+      1. factor_diagnostics_summary.csv — primary, has long_short_sharpe / long_short_max_drawdown
+      2. factor_level_long_short_summary.csv — canonical, has long_short_spread_std / long_short_spread_annualized_return
+    Report MISSING only if BOTH sources have NaN for the factor.
+    """
     try:
+        # Source 1: diagnostics summary (primary — same as page builder drow)
+        diag_path = DIAG_DIR / "factor_diagnostics_summary.csv"
+        if diag_path.exists():
+            diag = pd.read_csv(diag_path)
+            diag_row = diag[diag["factor_id"] == fid]
+            if not diag_row.empty:
+                s = diag_row.iloc[0]
+                if pd.notna(s.get("long_short_sharpe")) or pd.notna(s.get("long_short_max_drawdown")):
+                    return {"status": "OK", "detail": f"diagnostics summary: sharpe={s.get('long_short_sharpe')}, max_dd={s.get('long_short_max_drawdown')}"}
+
+        # Source 2: canonical LS summary (fallback — same as page builder feval_ls_map)
         df = pd.read_csv(EVAL_DIR / "factor_level_long_short_summary.csv")
         rows = df[df["factor_name"] == fid]
-        if rows.empty:
-            return {"status": "MISSING", "detail": "Not in factor_level_long_short_summary.csv"}
-        # Check if aggregate fields are populated
-        sample = rows.iloc[0]
-        has_std = pd.notna(sample.get("long_short_spread_std"))
-        has_ann = pd.notna(sample.get("long_short_spread_annualized_return"))
-        if not has_std and not has_ann:
-            return {"status": "MISSING", "detail": "LS aggregate fields are NaN"}
-        return {"status": "OK", "detail": f"{len(rows)} horizon(s), aggregate present"}
+        if not rows.empty:
+            sample = rows.iloc[0]
+            has_std = pd.notna(sample.get("long_short_spread_std"))
+            has_ann = pd.notna(sample.get("long_short_spread_annualized_return"))
+            if has_std or has_ann:
+                return {"status": "OK", "detail": f"{len(rows)} horizon(s), canonical aggregate present"}
+
+        return {"status": "MISSING", "detail": "LS aggregate fields are NaN in both diagnostics and canonical sources"}
     except Exception as e:
         return {"status": "ERROR", "detail": str(e)}
 
