@@ -93,7 +93,23 @@ After new factor intake, run:
 python scripts/run_post_intake_workflow_completion.py --factor-ids <ids>
 ```
 
-11 stages: evaluate → paper-diagnostics → paper-page-payload → redundancy → cluster → regime → scorecard → profile → page → page-qa → integrity-qa
+**15 stages** (PM-46 updated runner):
+
+1. **evaluate** — factor-level RankIC/LS evaluation
+2. **paper-diagnostics** — single-factor paper portfolio diagnostics
+3. **paper-page-payload** — paper page JSON payload
+4. **diagnostics-metrics** — cumulative LS, monthly IC/LS series, diagnostics summary
+5. **redundancy** — pairwise Spearman redundancy matrix
+6. **cluster** — redundancy cluster + marginal information
+7. **regime** — BTC/market regime diagnostics (uses canonical IC/LS merge)
+8. **shape-stability** — quantile shape + rolling stability
+9. **decile** — direction-aware decile shape
+10. **capacity** — capacity/liquidity proxy diagnostics
+11. **scorecard** — weighted quality scorecard
+12. **profile** — unified factor profile + evidence matrix
+13. **page** — rebuild factor-evaluation.html
+14. **page-qa** — 26-check page completeness
+15. **integrity-qa** — 19-dimension workflow integrity check
 
 Verify with:
 
@@ -135,13 +151,18 @@ python scripts/check_factor_registry_integrity.py
 
 ## 10. Recommended Next Stage
 
-**PM-49**: Signal Construction Layer v0.1
+**Primary: PM-49 — Factor Interpretation / Research Review Layer**
 
-- Factor selection from v0.1 evaluation
-- Multi-factor combination methodology
-- Entry/exit logic
-- Position sizing
-- Portfolio construction
-- Backtest with transaction costs
+- Explain factor mechanism (why does this factor predict?)
+- Review `expected_direction` against empirical evidence
+- Classify each factor: keep / review / repair / low priority
+- Prepare candidate pool for signal construction
+- No signal construction yet
 
-Or: **PM-49 (alternative)** — v0.1 tag + deployment hardening (Docker, CI, automated refresh).
+**Alternative: PM-49 — v0.1 tag + deployment hardening**
+- Git tag `v0.1-eval-layer`
+- Docker/CI for automated refresh
+- Monitoring + alerting
+
+**Future (not next): Signal Construction Layer v0.1**
+Signal construction should only start after factor interpretation and candidate selection are complete.
