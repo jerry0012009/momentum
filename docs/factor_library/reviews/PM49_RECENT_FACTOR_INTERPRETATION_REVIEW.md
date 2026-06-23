@@ -12,28 +12,30 @@
 | Factor | Research Decision | Direction Status | Profile Score | Key Issue |
 |--------|------------------|-----------------|---------------|-----------|
 | rev_2h | LOWER_PRIORITY_REVIEW | DIRECTION_ALIGNED | 49.85 | IC强但LS弱，成本敏感 |
-| mom_vol_adjusted_20h | FORMULA_REVIEW_REQUIRED | EXPECTED_DIRECTION_CONFLICT | 44.64 | IC全部为负，与expected相反 |
-| range_breakout_vol_confirm_20h | FORMULA_REVIEW_REQUIRED | EXPECTED_DIRECTION_CONFLICT | 37.53 | IC全部为负，BTC beta敏感 |
-| volume_pressure_20h | DIRECTION_REVIEW_REQUIRED | EXPECTED_DIRECTION_CONFLICT | 47.69 | IC全部为负，可能expected_direction反了 |
-| xs_rank_mom_accel | DIRECTION_REVIEW_REQUIRED | EXPECTED_DIRECTION_CONFLICT | 47.99 | IC全部为负，加速度方向待确认 |
-| up_down_vol_ratio_20h | DIRECTION_REVIEW_REQUIRED | EXPECTED_DIRECTION_CONFLICT | 44.64 | IC全部为负，bear dependent |
+| mom_vol_adjusted_20h | DIRECTION_SEMANTICS_REVIEW_REQUIRED | EXPECTED_DIRECTION_CONFLICT | 44.64 | IC全部为负，与expected相反 |
+| range_breakout_vol_confirm_20h | DIRECTION_SEMANTICS_REVIEW_REQUIRED | EXPECTED_DIRECTION_CONFLICT | 37.53 | IC全部为负，BTC beta敏感 |
+| volume_pressure_20h | DIRECTION_SEMANTICS_REVIEW_REQUIRED | EXPECTED_DIRECTION_CONFLICT | 47.69 | IC全部为负，可能expected_direction反了 |
+| xs_rank_mom_accel | DIRECTION_SEMANTICS_REVIEW_REQUIRED | EXPECTED_DIRECTION_CONFLICT | 47.99 | IC全部为负，加速度方向待确认 |
+| up_down_vol_ratio_20h | DIRECTION_SEMANTICS_REVIEW_REQUIRED | EXPECTED_DIRECTION_CONFLICT | 44.64 | IC全部为负，bear dependent |
 | clv_20h | CANDIDATE_POOL_WATCHLIST | SHORT_HORIZON_REVERSAL | 51.90 | 短期IC负，长期(72h)转正 |
 
 ---
 
 ## 最值得保留的因子
 
-**clv_20h** (Close Location Value) — 唯一一个在最佳 horizon 上 empirical direction 与 expected direction 对齐的因子。72h RankIC = +0.018 (t=18.5)，机制清晰（close 在 high-low 区间的位置），distinct singleton（信息独特）。虽然 standalone 质量偏弱，但作为 diagnostic probe 和未来 candidate pool 成员有研究价值。
+- **clv_20h** (Close Location Value) — best horizon 72h 与 expected_direction 对齐（IC=+0.018, t=18.5）。短期 horizon shows reversal pattern（1h IC=-0.003）。机制清晰（close 在 high-low 区间的位置），distinct singleton（信息独特）。虽然 standalone 质量偏弱（UNIQUE_BUT_WEAK），但作为 diagnostic probe 和未来 candidate pool 成员有研究价值。Direction status = SHORT_HORIZON_REVERSAL。
 
 **rev_2h** (2h Reversal) — IC 方向完全对齐（1h RankIC = +0.036, t=29.8），但 LS 收益很薄且 cost collapsed。机制简单清晰。适合作为 reversal family 的 baseline 对比因子。
 
-## 需要方向/公式复核的因子
+## 需要方向语义复核的因子 (DIRECTION_SEMANTICS_REVIEW_REQUIRED)
 
-- **mom_vol_adjusted_20h**: IC 全部为负（与 expected positive 冲突）。公式本身 `mom_20h / rolling_std` 逻辑合理，但 empirical evidence 表明高波动调整后的动量在 crypto 中是反向信号。需确认 expected_direction 是否应改为 negative。
-- **range_breakout_vol_confirm_20h**: IC 全部为负。breakout + volume confirm 的组合在 crypto 中捕捉的是 mean reversion 而非 breakout continuation。BTC beta = 0.008（敏感），需复核公式逻辑。
-- **volume_pressure_20h**: IC 全部为负。`sign(delta(close)) * volume` 的方向性成交量指标在 crypto 中可能反映的是 selling pressure（下跌时放量）。expected_direction 可能需要反转。
-- **xs_rank_mom_accel**: IC 全部为负。动量加速度（mom_20h - delay(mom_20h,5)）的 cross-sectional rank，empirical 显示 deceleration 才是预测信号。expected_direction 待确认。
-- **up_down_vol_ratio_20h**: IC 全部为负。`sum(vol*(ret>0),20)/sum(vol,20)` 本意是捕捉 bullish volume dominance，但 empirical 显示高 ratio 预测负收益。bear dependent，可能反映的是 capitulation dynamics。
+以下 5 个因子的 IC 在所有 horizon 上均为负，与 expected positive 冲突。这不意味着因子无效，而是需要进一步研究 direction semantics 在 crypto 市场中的含义。
+
+- **mom_vol_adjusted_20h**: IC 全部为负（4h t=-25.0）。可能原因：crypto 中低波动调整后的动量实际是反向信号。
+- **range_breakout_vol_confirm_20h**: IC 全部为负（24h t=-18.8）。breakout + volume confirm 在 crypto 中可能捕捉的是 exhaustion 而非 continuation。
+- **volume_pressure_20h**: IC 全部为负（24h t=-16.3）。directional volume 在 crypto 中可能反映 selling pressure 而非 buying pressure。
+- **xs_rank_mom_accel**: IC 全部为负（4h t=-21.0）。deceleration 在 crypto 中可能是 continuation 信号。
+- **up_down_vol_ratio_20h**: IC 全部为负（4h t=-23.1）。bear dependent，高 ratio 可能反映 retail buying frenzy。
 
 ## 只是 Diagnostic 的因子
 
@@ -82,9 +84,10 @@ formula: -(close / close_2h_ago - 1)
 - RankIC mean: +0.036 (1h)
 - RankIC t-stat: +29.8
 - LS mean: +7.1e-5 (1h), 衰减至 -2.0e-3 (72h)
-- LS Sharpe: 数据不足（canonical LS 无聚合字段）
-- Ann Return: 数据不足
-- Max Drawdown: 数据不足
+- LS Sharpe: 1.73 (1h, canonical source)
+- Ann Return: +0.09% (1h, canonical source)
+- Max Drawdown: -0.06% (1h, canonical source)
+- LS Win Rate: 56% (1h, canonical source)
 - Paper viability: PAPER_MIXED
 - Fee sensitivity: COST_COLLAPSED（成本敏感，fee_breakeven 不可用）
 - Regime/BTC class: REGIME_ROBUST, LS-BTC Corr = -0.037（低相关）
@@ -155,14 +158,9 @@ notes: safe for zero vol
 - Profile class: BROAD_WATCHLIST
 - Evidence completeness: 数据不足
 
-**Research Decision: FORMULA_REVIEW_REQUIRED**
+**Research Decision: DIRECTION_SEMANTICS_REVIEW_REQUIRED**
 
-IC 方向与 expected 完全相反。可能原因：
-1. 在 crypto 中，低波动调整后的动量实际是反向信号（高波动环境下的 momentum 才有效）
-2. expected_direction 设置错误，应为 negative
-3. 公式中 `rolling_std` 的窗口（20h）可能与动量窗口（20h）产生 look-ahead bias
-
-建议：复核 expected_direction，或考虑将公式改为 `mom_20h * rolling_std(...)`（高波动动量）。
+IC 方向与 expected 完全相反。公式逻辑 `mom_20h / rolling_std` 本身合理，但 empirical evidence 表明在 crypto 中，低波动调整后的动量可能是反向信号。需要进一步研究 direction semantics 在 crypto 市场中的含义，不建议直接修改公式。
 
 ---
 
@@ -216,12 +214,9 @@ notes: volume-confirmed breakout
 - Profile score: 37.53/100
 - Profile class: PROMISING_BUT_REGIME_DEPENDENT
 
-**Research Decision: FORMULA_REVIEW_REQUIRED**
+**Research Decision: DIRECTION_SEMANTICS_REVIEW_REQUIRED**
 
-IC 方向与 expected 完全相反。在 crypto 中，"放量突破" 实际上可能捕捉的是 breakout exhaustion（突破后的力竭），而非 breakout continuation。BTC beta 敏感（+0.008），说明与市场整体走势高度相关。建议：
-1. 复核 breakout 信号在 crypto 中的有效性
-2. 考虑是否应做双向突破（包括下突破）
-3. 或将 expected_direction 改为 negative（突破后反转）
+IC 方向与 expected 完全相反。在 crypto 中，"放量突破" 可能捕捉的是 breakout exhaustion 而非 continuation。BTC beta 敏感（+0.008）。需要进一步研究 direction semantics，不建议直接修改公式或 expected_direction。
 
 ---
 
@@ -272,14 +267,9 @@ notes: directional volume pressure
 - Profile score: 47.69/100
 - Profile class: BROAD_WATCHLIST
 
-**Research Decision: DIRECTION_REVIEW_REQUIRED**
+**Research Decision: DIRECTION_SEMANTICS_REVIEW_REQUIRED**
 
-IC 方向与 expected 相反。可能原因：
-1. 在 crypto 中，下跌放量（selling pressure / capitulation）反而是反转信号的前兆
-2. `sign(delta(close)) * volume` 捕捉的可能是 selling panic（下跌时成交量放大），而非 bullish pressure
-3. expected_direction 可能需要反转为 negative
-
-建议：复核 expected_direction，或考虑改为 `sign(delta(close)) * volume` 的反向（selling pressure 信号）。
+IC 方向与 expected 相反。在 crypto 中，下跌放量（selling pressure / capitulation）可能是反转信号的前兆，而非 bullish pressure。需要进一步研究 direction semantics，不建议直接修改 expected_direction。
 
 ---
 
@@ -330,9 +320,9 @@ notes: Per-symbol momentum acceleration; cross-sectional rank applied by caller
 - Profile score: 47.99/100
 - Profile class: BROAD_WATCHLIST
 
-**Research Decision: DIRECTION_REVIEW_REQUIRED**
+**Research Decision: DIRECTION_SEMANTICS_REVIEW_REQUIRED**
 
-IC 方向与 expected 相反。在 crypto 中，动量 deceleration（加速度为负）可能是 continuation 信号（当前趋势正在减速但尚未反转）。建议复核 expected_direction 是否应为 negative。
+IC 方向与 expected 相反。在 crypto 中，动量 deceleration（加速度为负）可能是 continuation 信号。需要进一步研究 direction semantics，不建议直接修改 expected_direction。
 
 ---
 
@@ -383,12 +373,9 @@ notes: buying pressure ratio; higher = bullish volume dominance
 - Profile score: 44.64/100
 - Profile class: PROMISING_BUT_REGIME_DEPENDENT
 
-**Research Decision: DIRECTION_REVIEW_REQUIRED**
+**Research Decision: DIRECTION_SEMANTICS_REVIEW_REQUIRED**
 
-IC 方向与 expected 完全相反。可能原因：
-1. 在 crypto 中，高上涨成交量占比可能反映的是 retail buying frenzy（散户追涨），随后反转
-2. 或者下跌时的缩量（low selling volume）反而是 bearish signal（缺乏 buying interest）
-3. expected_direction 可能需要反转为 negative
+IC 方向与 expected 完全相反。高上涨成交量占比在 crypto 中可能反映 retail buying frenzy，随后反转。bear dependent。需要进一步研究 direction semantics，不建议直接修改 expected_direction。
 
 ---
 

@@ -122,6 +122,10 @@ def build_payload() -> dict:
     workflow_contract = load_json(DIAG_DIR / "factor_evaluation_workflow_contract.json")
     evidence_matrix_json = load_json(DIAG_DIR / "factor_evaluation_evidence_matrix.json")
 
+    # PM-49: Load factor interpretation review
+    pm49_reviews = load_json(DIAG_DIR / "recent_factor_interpretation_review.json")
+    pm49_map = {r["factor_id"]: r for r in pm49_reviews.get("reviews", [])}
+
     # ── Summary stats ──
     all_months = sorted(ic_series["month"].unique().tolist()) if not ic_series.empty else []
     quality_counts = cards["metadata_quality"].value_counts().to_dict() if not cards.empty else {}
@@ -784,6 +788,16 @@ def build_payload() -> dict:
         else:
             factor["ls_metrics_unavailable_reason"] = None
 
+        # PM-49: Add factor interpretation data
+        pm49 = pm49_map.get(fid, {})
+        factor["pm49_research_decision"] = pm49.get("research_decision", "")
+        factor["pm49_direction_status"] = pm49.get("direction_status", "")
+        factor["pm49_main_issue_zh"] = pm49.get("main_issue_zh", "")
+        factor["pm49_main_issue_en"] = pm49.get("main_issue_en", "")
+        factor["pm49_suggested_action_zh"] = pm49.get("suggested_action_zh", "")
+        factor["pm49_suggested_action_en"] = pm49.get("suggested_action_en", "")
+        factor["pm49_red_flags"] = pm49.get("red_flags", [])
+
         factors.append(factor)
 
     # PM-30: Capacity / liquidity summary stats (after factors are built)
@@ -1017,6 +1031,48 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 .ev-block-badge.ev-miss{background:#7f1d1d;color:#fecaca}
 .up-caveat{background:#1a1a2e;border:1px solid #3b3b5c;color:#c4b5fd;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:11px;line-height:1.6}
 .up-caveat strong{color:#e9d5ff}
+
+/* ── PM-49: Tooltip styles ── */
+.tooltip-trigger { position: relative; cursor: help; border-bottom: 1px dashed rgba(148,163,184,0.4); }
+.tooltip-trigger:hover .tooltip-content { display: block; }
+.tooltip-content { display: none; position: absolute; z-index: 100; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px 16px; max-width: 400px; font-size: 13px; line-height: 1.6; color: #cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,0.4); top: 100%; left: 0; margin-top: 4px; }
+.tooltip-content strong { color: #f1f5f9; }
+.tooltip-content .tt-warn { color: #fbbf24; }
+
+/* ── PM-49: How-to-Read section styles ── */
+.how-to-read { background: #1e293b; border: 1px solid #334155; border-radius: 8px; margin: 16px 0; }
+.how-to-read summary { padding: 12px 16px; cursor: pointer; font-weight: 600; color: #94a3b8; }
+.how-to-read summary:hover { color: #e2e8f0; }
+.how-to-read-body { padding: 0 16px 16px; font-size: 14px; line-height: 1.8; color: #94a3b8; }
+.how-to-read-body ol { padding-left: 20px; }
+.how-to-read-body .warn { color: #fbbf24; font-weight: 600; }
+
+/* ── PM-49: Research interpretation badge styles ── */
+.pm49-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin: 2px; }
+.pm49-decision { background: #312e81; color: #a5b4fc; }
+.pm49-direction-aligned { background: #064e3b; color: #6ee7b7; }
+.pm49-direction-conflict { background: #7f1d1d; color: #fca5a5; }
+.pm49-direction-reversal { background: #78350f; color: #fcd34d; }
+.pm49-not-signal { background: #44403c; color: #a8a29e; font-style: italic; }
+
+/* ── PM-49: Red flag badge styles ── */
+.rf-badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 700; margin: 1px; text-transform: uppercase; letter-spacing: 0.5px; }
+.rf-DIRECTION_CONFLICT { background: #7f1d1d; color: #fca5a5; }
+.rf-SHORT_HORIZON_REVERSAL { background: #78350f; color: #fcd34d; }
+.rf-COST_COLLAPSED { background: #4c1d95; color: #c4b5fd; }
+.rf-REGIME_DEPENDENT { background: #1e3a5f; color: #93c5fd; }
+.rf-HIGH_REDUNDANCY { background: #3f3f46; color: #a1a1aa; }
+.rf-LOW_MARGINAL_INFO { background: #3f3f46; color: #a1a1aa; }
+.rf-FORMULA_REVIEW_CANDIDATE { background: #7f1d1d; color: #fca5a5; }
+.rf-DIRECTION_SEMANTICS_REVIEW_REQUIRED { background: #7f1d1d; color: #fca5a5; }
+.rf-CANDIDATE_POOL_WATCHLIST { background: #064e3b; color: #6ee7b7; }
+.rf-DIAGNOSTIC_ONLY { background: #44403c; color: #a8a29e; }
+
+/* ── PM-49: Evidence vs Judgment section styles ── */
+.evidence-section { border-left: 3px solid #3b82f6; padding-left: 12px; margin: 8px 0; }
+.judgment-section { border-left: 3px solid #f59e0b; padding-left: 12px; margin: 8px 0; background: rgba(245,158,11,0.05); border-radius: 0 4px 4px 0; padding: 8px 12px; }
+.judgment-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #f59e0b; font-weight: 700; margin-bottom: 4px; }
+.evidence-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #3b82f6; font-weight: 700; margin-bottom: 4px; }
 </style>
 </head>
 <body>
@@ -1032,6 +1088,27 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 </div>
 
 <div class="disclaimer">⚠ 仅作研究诊断 · Diagnostic only — this page evaluates factor behavior for research; it does not promote factors into signals and does not make production or alpha claims.</div>
+
+<details class="how-to-read">
+  <summary>📖 如何阅读本页 / How to Read This Page</summary>
+  <div class="how-to-read-body">
+    <p><strong>阅读顺序 / Reading Order:</strong></p>
+    <ol>
+      <li><strong>Evidence Completeness</strong> — 数据完整性，不等于因子好</li>
+      <li><strong>RankIC</strong> — 排序信息系数，不是收益</li>
+      <li><strong>Long-Short</strong> — 多空收益，不是交易策略</li>
+      <li><strong>Paper Portfolio</strong> — 纸面组合诊断，不是实盘</li>
+      <li><strong>Fee Sensitivity</strong> — 成本敏感度</li>
+      <li><strong>Regime/BTC</strong> — 市场状态依赖</li>
+      <li><strong>Quantile/Decile Shape</strong> — 收益分布形状</li>
+      <li><strong>Capacity/Liquidity</strong> — 容量和流动性</li>
+      <li><strong>Redundancy/Marginal</strong> — 冗余和边际信息</li>
+      <li><strong>Scorecard/Profile</strong> — 综合评分</li>
+      <li><strong>Research Interpretation</strong> — PM-49 研究解释（Judgment，非信号）</li>
+    </ol>
+    <p class="warn">⚠️ Evidence complete ≠ 因子好 | RankIC ≠ 收益 | Paper ≠ 交易策略 | Profile Score ≠ 交易建议 | Research Interpretation ≠ Signal</p>
+  </div>
+</details>
 
 <div id="statsSection"></div>
 
@@ -1333,6 +1410,59 @@ function researchActionBadge(cls){
 }
 function evBlockBadge(label,pass){
   return `<span class="ev-block-badge ${pass?'ev-pass':'ev-miss'}">${esc(label)}: ${pass?'✓':'✗'}</span>`;
+}
+
+// ── PM-49: Glossary & Tooltip helpers ──
+const GLOSSARY = {
+  'RankIC Mean': { what: '排序信息系数均值。因子值与未来收益的Spearman相关系数。', high: '绝对值越大，预测力越强。', warn: '不是收益！IC=0.03不意味着3%收益。', signal: false },
+  'IC t-stat': { what: 'RankIC的t统计量。衡量IC是否显著不同于0。', high: '|t|>2 通常认为显著。', warn: '显著不等于有经济意义。', signal: false },
+  'ICIR': { what: 'IC Information Ratio = IC均值/IC标准差。', high: '越高越稳定。', warn: '不考虑交易成本。', signal: false },
+  'LS Mean': { what: '多空组合月均收益。做多top bucket、做空bottom bucket。', high: '越高越好。', warn: '不含交易成本，不可直接交易。', signal: false },
+  'LS Sharpe': { what: '多空组合Sharpe比率。', high: '>1较好，>2优秀。', warn: '基于历史数据，不代表未来。', signal: false },
+  'Ann Return': { what: '多空组合年化收益。', high: '越高越好。', warn: '不含滑点和冲击成本。', signal: false },
+  'Max Drawdown': { what: '多空组合最大回撤。', high: '绝对值越小越好。', warn: '历史最大回撤不代表未来上限。', signal: false },
+  'Paper Gross Return': { what: '纸面组合总收益（未扣费）。', high: '越高越好。', warn: '不是实盘收益。', signal: false },
+  'Fee Sensitivity': { what: '费用敏感度。因子在扣除费用后的表现衰减。', high: 'COST_ROBUST=不敏感，COST_COLLAPSED=高度敏感。', warn: 'COST_COLLAPSED的因子在实际交易中可能无利可图。', signal: false },
+  'Breakeven Fee': { what: '盈亏平衡费用。超过此费用，策略亏损。', high: '越高越好（可以承受更高费用）。', warn: '仅考虑费用，不含滑点。', signal: false },
+  'Paper-BTC Corr': { what: '纸面组合收益与BTC收益的相关性。', high: '绝对值越低越好（独立于BTC）。', warn: '高相关意味着BTC下跌时也会亏损。', signal: false },
+  'LS-BTC Corr': { what: '多空收益与BTC收益的相关性。', high: '绝对值越低越好。', warn: '正相关=牛市偏多，负相关=熊市偏多。', signal: false },
+  'Bull-Bear Δ': { what: '牛市vs熊市环境下因子表现差异。', high: '绝对值越大=越依赖市场状态。', warn: 'REGIME_ROBUST最稳定。', signal: false },
+  'Quantile Shape': { what: '因子值分5组后的收益分布形状。', high: 'MONOTONIC=最好（单调递增/递减）。', warn: 'U型=两端好中间差，可能非线性。', signal: false },
+  'Decile Shape': { what: '因子值分10组后的收益分布。', high: '方向一致的单调递增/递减最好。', warn: 'NONLINEAR_MIXED需要额外分析。', signal: false },
+  'Rolling Stability': { what: '因子IC/收益在滚动窗口中的稳定性。', high: 'STABLE=最好。', warn: 'INSUFFICIENT_HISTORY=数据不足。', signal: false },
+  'Capacity/Liquidity': { what: '因子的容量/流动性评估。', high: '低风险=可承载更大资金。', warn: 'WATCH_BOTH=需要关注。', signal: false },
+  'Redundancy': { what: '与其他因子的相关性。', high: 'DISTINCT=信息独特。', warn: 'HIGH_REDUNDANCY=可能被其他因子替代。', signal: false },
+  'Marginal Info': { what: '加入组合后的边际信息贡献。', high: 'HIGH=加入后显著提升。', warn: 'LOW=加入后提升不大。', signal: false },
+  'Quality Score': { what: '综合质量评分（0-100）。', high: '越高越好。', warn: '不是交易信号！仅是研究评估。', signal: false },
+  'Profile Score': { what: '统一画像评分（0-100）。', high: '越高越好。', warn: '不是交易信号！仅是研究评估。', signal: false }
+};
+
+function renderTooltip(term) {
+  const g = GLOSSARY[term];
+  if (!g) return term;
+  return `<span class="tooltip-trigger">${term}<span class="tooltip-content"><strong>${term}</strong><br>${g.what}<br><strong>高/低:</strong> ${g.high}<br><span class="tt-warn">⚠️ ${g.warn}</span>${g.signal ? '<br><span class="tt-warn">可作为信号</span>' : '<br><em style="color:#64748b">非交易信号</em>'}</span></span>`;
+}
+
+function renderRedFlags(flags) {
+  if (!flags || !flags.length) return '';
+  return flags.map(f => `<span class="rf-badge rf-${f}">${f.replace(/_/g, ' ')}</span>`).join('');
+}
+
+function renderPM49Interpretation(f) {
+  if (!f.pm49_research_decision) return '';
+  const dirClass = f.pm49_direction_status === 'DIRECTION_ALIGNED' ? 'pm49-direction-aligned' :
+                   f.pm49_direction_status === 'EXPECTED_DIRECTION_CONFLICT' ? 'pm49-direction-conflict' :
+                   f.pm49_direction_status === 'SHORT_HORIZON_REVERSAL' ? 'pm49-direction-reversal' : '';
+  return `
+    <div class="judgment-section">
+      <div class="judgment-label">🔬 Research Interpretation (PM-49 Judgment — 非交易信号)</div>
+      <div style="margin:6px 0">${renderRedFlags(f.pm49_red_flags)}</div>
+      <div style="margin:4px 0"><strong>Research Decision:</strong> <span class="pm49-badge pm49-decision">${f.pm49_research_decision}</span></div>
+      <div style="margin:4px 0"><strong>Direction Status:</strong> <span class="pm49-badge ${dirClass}">${f.pm49_direction_status}</span></div>
+      <div style="margin:4px 0"><strong>Issue:</strong> ${esc(f.pm49_main_issue_zh)}</div>
+      <div style="margin:4px 0"><strong>Suggested Action:</strong> ${esc(f.pm49_suggested_action_zh)}</div>
+      <div class="pm49-not-signal" style="margin-top:8px">⚠️ 以上为研究判断，不是交易信号。Factor evaluation indicates... requires further signal-level validation.</div>
+    </div>`;
 }
 
 // ── Helpers ──
@@ -1965,23 +2095,26 @@ function renderDetail(fid){
     ${f.qa_reason?`<div class="small">Reason: ${esc(f.qa_reason)}</div>`:''}
 
     <div class="section-divider"></div>
+    <div class="evidence-label">📊 Evidence — 机器计算指标</div>
     <h3>Best Horizon Metrics 最优视野指标 (${esc(f.best_horizon)})</h3>
     <div class="metric-grid">
-      ${metricRow('RankIC Mean',num(f.rankic_mean),mcls(f.rankic_mean))}
+      ${metricRow(renderTooltip('RankIC Mean'),num(f.rankic_mean),mcls(f.rankic_mean))}
       ${metricRow('RankIC Std',num(f.rankic_std,4,false))}
-      ${metricRow('ICIR',num(f.rankic_ir,3))}
-      ${metricRow('IC t-stat',num(f.rankic_t_stat,2,false))}
+      ${metricRow(renderTooltip('ICIR'),num(f.rankic_ir,3))}
+      ${metricRow(renderTooltip('IC t-stat'),num(f.rankic_t_stat,2,false))}
       ${metricRow('IC Win Rate IC胜率',pct(f.monthly_ic_positive_rate))}
-      ${metricRow('LS Mean LS均值',num(f.long_short_mean,6))}
+      ${metricRow(renderTooltip('LS Mean'),num(f.long_short_mean,6))}
       ${metricRow('LS Std LS标准差',num(f.long_short_std,6))}
-      ${metricRow('Sharpe',num(f.long_short_sharpe,2),mcls(f.long_short_sharpe,1.5,0.8))}
-      ${metricRow('Ann Return 年化收益',pct(f.long_short_annualized_return))}
+      ${metricRow(renderTooltip('LS Sharpe'),num(f.long_short_sharpe,2),mcls(f.long_short_sharpe,1.5,0.8))}
+      ${metricRow(renderTooltip('Ann Return'),pct(f.long_short_annualized_return))}
       ${metricRow('Ann Vol 年化波动',pct(f.long_short_annualized_vol))}
-      ${metricRow('Max Drawdown 最大回撤',pct(f.long_short_max_drawdown))}
+      ${metricRow(renderTooltip('Max Drawdown'),pct(f.long_short_max_drawdown))}
       ${metricRow('LS Win Rate LS月胜率',pct(f.long_short_positive_month_rate))}
       ${metricRow('Coverage 覆盖率',pct(f.coverage_rate))}
     </div>
     ${f.ls_metrics_unavailable_reason?`<div style="margin:4px 0;font-size:10px;color:var(--muted);font-style:italic">${esc(f.ls_metrics_unavailable_reason)}</div>`:''}
+
+    ${renderPM49Interpretation(f)}
 
     <div class="kv" style="margin-top:8px">
       <div>Redundancy 冗余度</div><div>${esc(f.redundancy_level)}</div>
