@@ -866,11 +866,12 @@ h3{font-size:13px;margin:14px 0 6px;color:#cbd5e1}
 .quality-badge.direction_ambiguous{background:#92400e;color:#fef3c7}
 .quality-badge.needs_review{background:#7f1d1d;color:#fecaca}
 .quality-badge.formula_ambiguous{background:#581c87;color:#e9d5ff}
-.layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(340px,.6fr);gap:14px;align-items:start}
-@media(max-width:1100px){.layout{grid-template-columns:1fr}}
+.layout{display:flex;flex-direction:column;gap:14px}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px}
-.detail{position:sticky;top:16px}
+.detail{scroll-margin-top:12px}
 .controls{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.back-to-table{display:inline-flex;align-items:center;gap:4px;background:#142035;border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;margin-bottom:8px;transition:background .15s}
+.back-to-table:hover{background:#1d2d47;color:var(--text)}
 input,select{background:#0b1220;color:var(--text);border:1px solid var(--border);border-radius:7px;padding:6px 8px;font-size:12px}
 input[type="text"]{min-width:200px;flex:1}
 table{width:100%;border-collapse:collapse;font-size:11px}
@@ -1046,7 +1047,7 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 
 <div class="layout">
   <main>
-    <div class="card">
+    <div class="card" id="scoreboardCard" style="scroll-margin-top:12px">
       <h2>Factor Scoreboard 因子排行榜</h2>
       <div class="small">Click column headers to sort. 点击列头排序。Default sort: quality score descending (研究分诊分数，非交易建议). Best horizon metrics from diagnostics. 最优视野指标来自诊断摘要。</div>
       <div class="controls">
@@ -1103,6 +1104,7 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
   </main>
   <aside class="detail">
     <div class="card" id="detailCard">
+      <button class="back-to-table" onclick="document.getElementById('scoreboardCard').scrollIntoView({behavior:'smooth',block:'start'})">↑ 回到因子列表 / Back to table</button>
       <h2>Factor Detail 因子详情</h2>
       <div class="small">Select a factor from the table.<br>从表格中选择一个因子查看详情。</div>
     </div>
@@ -1727,6 +1729,9 @@ function renderTable(){
     tbody.querySelectorAll('tr.selected').forEach(r=>r.classList.remove('selected'));
     tr.classList.add('selected');
     renderDetail(tr.dataset.factor);
+    // Scroll detail card into full view
+    const dc=document.getElementById('detailCard');
+    if(dc)dc.scrollIntoView({behavior:'smooth',block:'start'});
   }));
 }
 
@@ -1912,6 +1917,7 @@ function renderDetail(fid){
   }
 
   card.innerHTML=`
+    <button class="back-to-table" onclick="document.getElementById('scoreboardCard').scrollIntoView({behavior:'smooth',block:'start'})">↑ 回到因子列表 / Back to table</button>
     <h2>${esc(f.factor_id)}</h2>
     <div class="bilingual">
       <div class="zh" style="font-size:15px;font-weight:600">${esc(f.name_zh)}</div>

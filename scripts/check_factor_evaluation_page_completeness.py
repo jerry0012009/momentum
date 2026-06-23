@@ -614,6 +614,71 @@ def check_entrypoint_doc_alignment() -> list[dict]:
     return results
 
 
+def check_pm46b_metadata_display(html_text: str) -> list[dict]:
+    """PM-46B: Check that new factors have source metadata and LS-BTC corr in HTML."""
+    results = []
+    import re, json as _json
+
+    # Extract factor payload from HTML
+    m = re.search(r"type=\"application/json\">(.*?)</script>", html_text, re.DOTALL)
+    if not m:
+        results.append(_fail("pm46b_payload", "PM-46B payload extraction", "Could not extract JSON payload"))
+        return results
+
+    try:
+        data = _json.loads(m.group(1))
+    except Exception as e:
+        results.append(_fail("pm46b_payload", "PM-46B payload extraction", f"JSON parse error: {e}"))
+        return results
+
+    # Check PM-45 new factor specifically
+    for f in data.get("factors", []):
+        fid = f.get("factor_id", "")
+        if fid != "up_down_vol_ratio_20h":
+            continue
+
+        # Check source metadata
+        ds = f.get("data_source_type", "")
+        sf = f.get("source_fields", "")
+        rc = f.get("required_columns", "")
+        if ds and sf and rc:
+            results.append(_pass("pm46b_source_metadata",
+                                 "PM-46B source metadata for up_down_vol_ratio_20h",
+                                 f"data_source={ds}, source_fields={sf}, required_columns={rc}"))
+        else:
+            results.append(_fail("pm46b_source_metadata",
+                                 "PM-46B source metadata for up_down_vol_ratio_20h",
+                                 f"data_source={ds}, source_fields={sf}, required_columns={rc}"))
+
+        # Check LS-BTC corr
+        ls_corr = f.get("long_short_btc_corr")
+        if ls_corr is not None:
+            results.append(_pass("pm46b_ls_btc_corr",
+                                 "PM-46B LS-BTC Corr for up_down_vol_ratio_20h",
+                                 f"ls_btc_corr={ls_corr}"))
+        else:
+            results.append(_fail("pm46b_ls_btc_corr",
+                                 "PM-46B LS-BTC Corr for up_down_vol_ratio_20h",
+                                 "long_short_btc_corr is null/missing"))
+
+        # Check shape Q5 classification (best horizon = 4h)
+        ss = f.get("shape_stability", {})
+        hz4 = ss.get("4h", {})
+        dec = hz4.get("decile", {})
+        q5 = dec.get("q5_shape_class_from_pm26", "")
+        if q5:
+            results.append(_pass("pm46b_shape_q5",
+                                 "PM-46B Shape Q5 classification for up_down_vol_ratio_20h",
+                                 f"q5_shape_class={q5}"))
+        else:
+            results.append(_fail("pm46b_shape_q5",
+                                 "PM-46B Shape Q5 classification for up_down_vol_ratio_20h",
+                                 "q5_shape_class_from_pm26 is empty"))
+        break
+
+    return results
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -650,6 +715,9 @@ def main() -> int:
 
     # 5. Entrypoint doc alignment (PM-38B)
     all_checks.extend(check_entrypoint_doc_alignment())
+
+    # 6. PM-46B metadata display checks
+    all_checks.extend(check_pm46b_metadata_display(html_text))
 
     # Write outputs
     _write_reports(all_checks)

@@ -248,6 +248,8 @@ def main() -> int:
                         help="Min months per regime bucket for reliable stats")
     parser.add_argument("--canonical-ic-path", type=str, default=None,
                         help="Path to canonical factor_level_period_ic_summary.csv for IC merge")
+    parser.add_argument("--canonical-ls-path", type=str, default=None,
+                        help="Path to canonical factor_level_period_long_short_summary.csv for LS merge")
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -299,6 +301,32 @@ def main() -> int:
             canon_sub = canon_sub[["factor_id", "horizon", "month", "rank_ic", "rank_ic_adj", "n_obs", "positive_ic"]]
             ic_df = pd.concat([ic_df, canon_sub], ignore_index=True)
             print(f"  After merge: {ic_df['factor_id'].nunique()} factors in IC")
+
+    # ── PM-46B: Merge canonical LS if old diagnostics is missing factors ──
+    if args.canonical_ls_path:
+        canon_ls = pd.read_csv(args.canonical_ls_path)
+        missing_ls_fids = set(ic_df["factor_id"].unique()) | set(paper_df["factor_id"].unique())
+        missing_ls_fids -= set(ls_df["factor_id"].unique())
+        if missing_ls_fids:
+            print(f"  Canonical LS merge: {len(missing_ls_fids)} factors missing from old LS, merging from canonical")
+            canon_ls_sub = canon_ls[canon_ls["factor_name"].isin(missing_ls_fids)].copy()
+            canon_ls_sub = canon_ls_sub.rename(columns={
+                "factor_name": "factor_id",
+                "period": "month",
+            })
+            # Keep only the columns that match old LS format
+            keep_cols = ["factor_id", "horizon", "month", "long_short_return"]
+            for extra_col in ["long_leg_return", "short_leg_return", "n_obs", "positive_ls"]:
+                if extra_col in canon_ls_sub.columns:
+                    keep_cols.append(extra_col)
+            canon_ls_sub = canon_ls_sub[[c for c in keep_cols if c in canon_ls_sub.columns]]
+            # Rename n_obs to n_long/n_short for compatibility
+            if "n_obs" in canon_ls_sub.columns:
+                canon_ls_sub["n_long"] = canon_ls_sub["n_obs"]
+                canon_ls_sub["n_short"] = canon_ls_sub["n_obs"]
+                canon_ls_sub = canon_ls_sub.drop(columns=["n_obs"])
+            ls_df = pd.concat([ls_df, canon_ls_sub], ignore_index=True)
+            print(f"  After merge: {ls_df['factor_id'].nunique()} factors in LS")
 
     # Filter paper to fee_bps
     paper_df = paper_df[paper_df["fee_bps"] == args.fee_bps].copy()

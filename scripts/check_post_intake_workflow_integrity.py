@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
 DIAG_DIR = BASE / "factor_diagnostics"
 EVAL_DIR = BASE / "factor_level_evaluation"
+META_DIR = BASE / "factor_metadata"
 STATE_PATH = BASE / "factor_library_state.json"
 
 # ── Check definitions ──────────────────────────────────────────────────────
@@ -279,6 +280,47 @@ def check_unified_profile(fid: str) -> dict:
         return {"status": "ERROR", "detail": str(e)}
 
 
+def check_ls_btc_corr(fid: str) -> dict:
+    """PM-46B: Check LS-BTC correlation is not blank for factors with monthly LS."""
+    try:
+        df = pd.read_csv(DIAG_DIR / "factor_regime_exposure_summary.csv")
+        rows = df[df["factor_id"] == fid]
+        if rows.empty:
+            return {"status": "MISSING", "detail": "Not in factor_regime_exposure_summary.csv"}
+        row = rows.iloc[0]
+        ls_corr = row.get("long_short_btc_corr")
+        if pd.isna(ls_corr):
+            # Check if factor has monthly LS data
+            ls_df = pd.read_csv(EVAL_DIR / "factor_level_period_long_short_summary.csv")
+            has_ls = not ls_df[ls_df["factor_name"] == fid].empty
+            if has_ls:
+                return {"status": "FAIL", "detail": "LS-BTC Corr is NaN despite having monthly LS data"}
+            return {"status": "OK", "detail": "No monthly LS data, corr N/A is valid"}
+        return {"status": "OK", "detail": f"ls_btc_corr={float(ls_corr):.4f}"}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
+
+
+def check_source_metadata(fid: str) -> dict:
+    """PM-46B: Check source fields / required columns are not N/A."""
+    try:
+        cards = pd.read_csv(META_DIR / "factor_bilingual_cards.csv")
+        rows = cards[cards["factor_id"] == fid]
+        if rows.empty:
+            return {"status": "MISSING", "detail": "Not in factor_bilingual_cards.csv"}
+        row = rows.iloc[0]
+        issues = []
+        for col in ["data_source_type", "source_fields", "required_columns"]:
+            val = row.get(col)
+            if pd.isna(val) or str(val).strip() == "":
+                issues.append(f"{col}=N/A")
+        if issues:
+            return {"status": "FAIL", "detail": f"Missing metadata: {', '.join(issues)}"}
+        return {"status": "OK", "detail": "All source metadata present"}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
+
+
 # ── Main checks ────────────────────────────────────────────────────────────
 
 ALL_CHECKS = [
@@ -299,6 +341,8 @@ ALL_CHECKS = [
     ("marginal_info", check_marginal_info),
     ("scorecard_not_stale", check_scorecard_not_stale),
     ("unified_profile", check_unified_profile),
+    ("ls_btc_corr", check_ls_btc_corr),
+    ("source_metadata", check_source_metadata),
 ]
 
 
