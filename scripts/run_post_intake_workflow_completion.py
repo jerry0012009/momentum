@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -156,7 +157,7 @@ STAGES = [
         "description": "Factor-level RankIC evaluation (EXPENSIVE, temp output + merge)",
         "expensive": True,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "evaluate_factors.py"),
+            sys.executable, str(SCRIPTS / "evaluate_factors.py"),
             "--factor-ids", ",".join(fids),
             "--output-suffix", "batch",
         ],
@@ -167,7 +168,7 @@ STAGES = [
         "description": "Single-factor paper portfolio diagnostics (EXPENSIVE, temp output + merge)",
         "expensive": True,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "build_single_factor_paper_portfolio_diagnostics.py"),
+            sys.executable, str(SCRIPTS / "build_single_factor_paper_portfolio_diagnostics.py"),
             "--factor-ids", ",".join(fids),
             "--output-dir", str(TMP_PAPER),
         ],
@@ -178,7 +179,7 @@ STAGES = [
         "description": "Build single-factor paper page payload",
         "expensive": False,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "build_single_factor_paper_page_payload.py"),
+            sys.executable, str(SCRIPTS / "build_single_factor_paper_page_payload.py"),
         ],
     },
     {
@@ -186,7 +187,7 @@ STAGES = [
         "description": "Build diagnostics metrics (cumulative LS curve, etc.)",
         "expensive": False,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "build_factor_diagnostics_metrics.py"),
+            sys.executable, str(SCRIPTS / "build_factor_diagnostics_metrics.py"),
             "--input-dir", str(EVAL_DIR),
             "--state-path", str(STATE_PATH),
             "--output-dir", str(DIAG_DIR),
@@ -197,7 +198,7 @@ STAGES = [
         "description": "Pairwise redundancy matrix (EXPENSIVE)",
         "expensive": True,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "build_factor_pairwise_redundancy_matrix.py"),
+            sys.executable, str(SCRIPTS / "build_factor_pairwise_redundancy_matrix.py"),
             "--factor-ids", ",".join(fids),
         ],
     },
@@ -206,7 +207,7 @@ STAGES = [
         "description": "Redundancy cluster + marginal information",
         "expensive": False,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "build_factor_redundancy_cluster_diagnostics.py"),
+            sys.executable, str(SCRIPTS / "build_factor_redundancy_cluster_diagnostics.py"),
         ],
     },
     {
@@ -214,7 +215,7 @@ STAGES = [
         "description": "BTC market regime diagnostics (with canonical IC merge)",
         "expensive": False,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "build_factor_market_regime_diagnostics.py"),
+            sys.executable, str(SCRIPTS / "build_factor_market_regime_diagnostics.py"),
             "--btc-symbol", "auto",
             "--fee-bps", "10",
             "--canonical-ic-path", str(EVAL_DIR / "factor_level_period_ic_summary.csv"),
@@ -225,7 +226,7 @@ STAGES = [
         "description": "Quantile shape + rolling stability diagnostics",
         "expensive": False,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "build_factor_shape_stability_diagnostics.py"),
+            sys.executable, str(SCRIPTS / "build_factor_shape_stability_diagnostics.py"),
             "--factor-ids", ",".join(fids),
         ],
     },
@@ -234,7 +235,7 @@ STAGES = [
         "description": "Direction-aware decile shape diagnostics",
         "expensive": False,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "build_factor_decile_shape_diagnostics.py"),
+            sys.executable, str(SCRIPTS / "build_factor_decile_shape_diagnostics.py"),
             "--factor-ids", ",".join(fids),
         ],
     },
@@ -243,7 +244,7 @@ STAGES = [
         "description": "Capacity/liquidity proxy diagnostics",
         "expensive": False,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "build_factor_capacity_liquidity_diagnostics.py"),
+            sys.executable, str(SCRIPTS / "build_factor_capacity_liquidity_diagnostics.py"),
             "--factor-ids", ",".join(fids),
         ],
     },
@@ -252,7 +253,7 @@ STAGES = [
         "description": "Quality scorecard refresh (with canonical fallback)",
         "expensive": False,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "build_factor_quality_scorecard.py"),
+            sys.executable, str(SCRIPTS / "build_factor_quality_scorecard.py"),
         ],
     },
     {
@@ -260,7 +261,7 @@ STAGES = [
         "description": "Unified factor profile refresh",
         "expensive": False,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "build_unified_factor_profile.py"),
+            sys.executable, str(SCRIPTS / "build_unified_factor_profile.py"),
         ],
     },
     {
@@ -268,7 +269,7 @@ STAGES = [
         "description": "Rebuild factor-evaluation.html",
         "expensive": False,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "_build_factor_eval_html.py"),
+            sys.executable, str(SCRIPTS / "_build_factor_eval_html.py"),
         ],
     },
     {
@@ -276,7 +277,7 @@ STAGES = [
         "description": "Page completeness QA",
         "expensive": False,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "check_factor_evaluation_page_completeness.py"),
+            sys.executable, str(SCRIPTS / "check_factor_evaluation_page_completeness.py"),
         ],
     },
     {
@@ -284,7 +285,7 @@ STAGES = [
         "description": "Post-intake workflow integrity QA",
         "expensive": False,
         "build_cmd": lambda fids: [
-            "python", str(SCRIPTS / "check_post_intake_workflow_integrity.py"),
+            sys.executable, str(SCRIPTS / "check_post_intake_workflow_integrity.py"),
             "--factor-ids", ",".join(fids),
         ],
     },
@@ -308,7 +309,13 @@ def run_command(label: str, cmd: list[str], dry_run: bool) -> int:
         return 0
 
     t0 = time.time()
-    result = subprocess.run(cmd, cwd=str(ROOT))
+    venv_bin = str(ROOT / ".venv" / "bin")
+    env = {**os.environ, "VIRTUAL_ENV": str(ROOT / ".venv"),
+           "PATH": venv_bin + ":" + os.environ.get("PATH", "")}
+    # Use momentum venv python, not the one that launched this script
+    venv_python = str(ROOT / ".venv" / "bin" / "python")
+    cmd[0] = venv_python
+    result = subprocess.run(cmd, cwd=str(ROOT), env=env)
     elapsed = time.time() - t0
 
     if result.returncode != 0:

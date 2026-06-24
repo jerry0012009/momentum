@@ -50,7 +50,7 @@ PM35_NEW_FACTORS = [
     "xs_rank_mom_accel",
 ]
 
-MAX_SIZE_BYTES = 4.5 * 1024 * 1024  # 4.5 MB
+MAX_SIZE_BYTES = 7.0 * 1024 * 1024  # 7 MB (84 factors × 6 horizons)
 
 # ── Section markers ──────────────────────────────────────────────────────────
 # Each entry: (check_id, check_name, list_of_alternative_phrases)
