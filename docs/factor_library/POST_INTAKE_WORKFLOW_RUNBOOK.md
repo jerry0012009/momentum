@@ -504,3 +504,23 @@ python scripts/check_factor_evaluation_page_completeness.py
 - Robust outputs are research diagnostics, not trading signals.
 - Robust outputs do NOT alter scorecard or best_horizon unless a future PM explicitly changes that.
 - Paper/fee subsets are documented limitations, not failures.
+
+### 14.6 Core vs Optional Workflow Boundary (PM-58)
+
+**Core full-universe diagnostics** are mandatory for every active factor. Missing any core diagnostic = workflow FAIL.
+
+**Optional deep-dive diagnostics** (paper simulation, fee sensitivity, paper robust, fee cost-collapse) are candidate-only. Their absence is NOT a failure. Their presence is labeled "Optional evidence only" on the page.
+
+**Hard rules:**
+- Paper/fee absence must NOT be labeled "Missing" — use "Not run — optional"
+- Paper/fee presence must NOT be treated as core requirement
+- Paper/fee do NOT affect scorecard or best_horizon
+- Robust RankIC and LS are core, not optional
+- Cap is a conditional core input source, not a downstream diagnostic
+
+**Page behavior:**
+- Paper/fee sections are collapsed under "Optional Deep-dive Evidence" (default collapsed)
+- Summary table columns for paper/fee are labeled "opt"
+- How to Read section clarifies optional vs core reading path
+
+See `FACTOR_EVALUATION_WORKFLOW_BOUNDARY.md` for full specification.

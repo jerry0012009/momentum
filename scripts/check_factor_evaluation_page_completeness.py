@@ -1077,6 +1077,89 @@ def check_pm57_return_side_robust(html_text: str) -> list[dict]:
     return results
 
 
+def check_pm58_core_vs_optional(html_text: str) -> list[dict]:
+    """PM-58: Core vs Optional workflow boundary checks.
+
+    Checks:
+    1. Optional Deep-dive Evidence section exists
+    2. Summary table columns labeled 'opt'
+    3. Paper/fee NOT in main reading order
+    4. Robust RankIC/LS ARE in main reading order
+    """
+    results = []
+
+    # Check 1: Optional Deep-dive Evidence section
+    if "Optional Deep-dive Evidence" in html_text:
+        results.append(_pass("pm58_optional_section",
+                             "PM-58 Optional Deep-dive Evidence section exists",
+                             "Found"))
+    else:
+        results.append(_fail("pm58_optional_section",
+                             "PM-58 Optional Deep-dive Evidence section exists",
+                             "Not found"))
+
+    # Check 2: Summary table columns labeled 'opt'
+    if '<span class="optional-label">opt</span>' in html_text:
+        results.append(_pass("pm58_opt_label",
+                             "PM-58 summary table columns labeled optional",
+                             "opt label found"))
+    else:
+        results.append(_fail("pm58_opt_label",
+                             "PM-58 summary table columns labeled optional",
+                             "opt label not found"))
+
+    # Check 3: Paper/fee NOT in main reading order
+    # The How to Read section should NOT list Paper Portfolio or Fee Sensitivity in the main order
+    how_to_read_match = re.search(r'阅读顺序.*?</ol>', html_text, re.DOTALL)
+    if how_to_read_match:
+        reading_order = how_to_read_match.group(0)
+        has_paper_in_order = "Paper Portfolio" in reading_order and "Paper Portfolio" in reading_order.split("Optional")[0] if "Optional" in reading_order else "Paper Portfolio" in reading_order
+        # Paper Portfolio should NOT be in the main ordered list
+        if "Paper Portfolio" not in reading_order.split("Optional")[0] if "Optional" in reading_order else "Paper Portfolio" not in reading_order:
+            results.append(_pass("pm58_paper_not_in_reading_order",
+                                 "PM-58 Paper Portfolio NOT in main reading order",
+                                 "Correctly excluded"))
+        else:
+            results.append(_fail("pm58_paper_not_in_reading_order",
+                                 "PM-58 Paper Portfolio NOT in main reading order",
+                                 "Still in main reading order"))
+    else:
+        results.append(_pass("pm58_paper_not_in_reading_order",
+                             "PM-58 Paper Portfolio NOT in main reading order",
+                             "How to Read section not found (cannot verify)"))
+
+    # Check 4: Robust RankIC/LS ARE in main reading order
+    how_to_read_match = re.search(r'阅读顺序.*?</ol>', html_text, re.DOTALL)
+    if how_to_read_match:
+        reading_order = how_to_read_match.group(0)
+        has_rankic_robust = "RankIC Robust" in reading_order
+        has_ls_robust = "LS Robust" in reading_order
+        if has_rankic_robust and has_ls_robust:
+            results.append(_pass("pm58_robust_in_reading_order",
+                                 "PM-58 Robust RankIC/LS in main reading order",
+                                 "Both present"))
+        else:
+            results.append(_fail("pm58_robust_in_reading_order",
+                                 "PM-58 Robust RankIC/LS in main reading order",
+                                 f"RankIC Robust: {has_rankic_robust}, LS Robust: {has_ls_robust}"))
+    else:
+        results.append(_fail("pm58_robust_in_reading_order",
+                             "PM-58 Robust RankIC/LS in main reading order",
+                             "How to Read section not found"))
+
+    # Check 5: optional-deep-dive CSS class exists
+    if "optional-deep-dive" in html_text:
+        results.append(_pass("pm58_optional_css",
+                             "PM-58 optional-deep-dive CSS class present",
+                             "Found"))
+    else:
+        results.append(_fail("pm58_optional_css",
+                             "PM-58 optional-deep-dive CSS class present",
+                             "Not found"))
+
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Check factor-evaluation.html completeness."
@@ -1123,6 +1206,9 @@ def main() -> int:
 
     # 9. PM-57 return-side robust diagnostics page integration
     all_checks.extend(check_pm57_return_side_robust(html_text))
+
+    # 10. PM-58 core vs optional workflow boundary
+    all_checks.extend(check_pm58_core_vs_optional(html_text))
 
     # Write outputs
     _write_reports(all_checks)

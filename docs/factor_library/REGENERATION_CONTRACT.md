@@ -473,3 +473,28 @@ python scripts/check_post_intake_workflow_integrity.py --all-active
 - Robust outputs do NOT alter scorecard or best_horizon
 - Paper/fee subsets are documented limitations, not failures
 - RankIC robust and LS robust are full-universe required; missing any active factor = FAIL
+
+### 10.8 Core vs Optional boundary (PM-58)
+
+**Core diagnostics** (all 84 factors required):
+- RankIC robust (84×4)
+- LS robust (84×4)
+- All existing core diagnostics (shape, decile, capacity, etc.)
+
+**Optional diagnostics** (candidate-only, not required):
+- Paper simulation: only run for candidate factors under evaluation
+- Fee sensitivity: only run for candidate factors under evaluation
+- Paper/fee robust: byproducts of optional paper/fee runs
+
+**Cap source contract:**
+- Cap is a conditional core input source for cap-based factors
+- Source: `CAP_POINT_IN_TIME_APPROXIMATE`
+- Not a downstream diagnostic
+- See `CAP_DATA_SOURCE_CONTRACT.md`
+
+**Regeneration after adding factors:**
+1. Run full core workflow
+2. Run consistency checker (must PASS)
+3. Run integrity QA --all-active (must PASS)
+4. Run page QA (must PASS)
+5. Paper/fee are NOT required for new factors unless they are candidates

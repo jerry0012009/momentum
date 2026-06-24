@@ -246,3 +246,59 @@ Do not promote intake factors into signals during intake. Do not modify live tra
 7. **Historical archive:** ~440 strategy research scripts, 4 phase10 scripts, 21 archive pages
 8. **Deprecated/stale:** evaluate_factors_dynamic_universe.py, old alphalens smoke check
 9. **Orphan review required:** 7 files (see ORPHAN_WORK_AUDIT.md)
+
+15. **PM-58 Core Workflow Boundary:** Core vs Optional diagnostics are now strictly separated.
+
+### Core Full-Universe Required Diagnostics
+
+These are mandatory for every active factor (currently 84):
+
+| # | Diagnostic | Full-Universe | Gate |
+|---|-----------|---------------|------|
+| 1 | registry / FactorSpec | ✓ | consistency |
+| 2 | factor_values | ✓ | consistency |
+| 3 | RankIC summary | ✓ | consistency |
+| 4 | long-short summary | ✓ | consistency |
+| 5 | diagnostics summary | ✓ | consistency |
+| 6 | shape | ✓ | consistency |
+| 7 | rolling stability | ✓ | consistency |
+| 8 | decile | ✓ | consistency |
+| 9 | capacity | ✓ | consistency |
+| 10 | regime | ✓ | consistency |
+| 11 | redundancy | ✓ | consistency |
+| 12 | scorecard | ✓ | consistency |
+| 13 | profile | ✓ | consistency |
+| 14 | bilingual card | ✓ | consistency |
+| 15 | page payload | ✓ | page QA |
+| 16 | RankIC robust significance | ✓ (84×4) | integrity QA |
+| 17 | LS robust significance | ✓ (84×4) | integrity QA |
+| 18 | active workflow consistency | ✓ | checker |
+| 19 | all-active integrity QA | ✓ | integrity |
+| 20 | page QA | ✓ | page QA |
+
+### Conditional Input Sources
+
+| Source | Condition | Contract |
+|--------|-----------|----------|
+| cap (market-cap proxy) | Only for cap-based factors | CAP_DATA_SOURCE_CONTRACT.md |
+
+### Optional Deep-dive Diagnostics (candidate-only)
+
+| Diagnostic | Coverage | Blocks reading? |
+|-----------|----------|-----------------|
+| Paper simulation | 5/84 (documented subset) | NO |
+| Paper robust | 5/84 (documented subset) | NO |
+| Fee sensitivity | 13/84 (documented subset) | NO |
+| Fee cost-collapse | 13/84 (documented subset) | NO |
+
+### Decision Rules
+
+```
+Paper simulation decision: OPTIONAL_CANDIDATE_ONLY
+Fee sensitivity decision:  OPTIONAL_CANDIDATE_ONLY
+Cap source decision:       KEEP_AS_CONDITIONAL_CORE_SOURCE
+Robust RankIC decision:    KEEP_AS_CORE_SINGLE_FACTOR_EVALUATION
+Robust LS decision:        KEEP_AS_CORE_SINGLE_FACTOR_EVALUATION
+```
+
+See `FACTOR_EVALUATION_WORKFLOW_BOUNDARY.md` for full specification.

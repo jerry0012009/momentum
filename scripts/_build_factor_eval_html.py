@@ -1427,6 +1427,13 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 .robust-table th{background:#142035;color:var(--muted);padding:4px 6px;text-align:right;white-space:nowrap;font-size:9px}
 .robust-table td{padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums}
 .robust-table td:first-child,.robust-table th:first-child{text-align:left}
+/* PM-58: Optional deep-dive section */
+.optional-deep-dive{margin:12px 0;border:1px dashed var(--border);border-radius:8px;overflow:hidden}
+.optional-deep-dive summary{padding:8px 12px;cursor:pointer;font-weight:600;font-size:13px;color:var(--amber);background:rgba(245,158,11,0.06);user-select:none}
+.optional-deep-dive summary:hover{background:rgba(245,158,11,0.1)}
+.optional-deep-dive .inner{padding:8px 12px}
+.optional-label{display:inline-block;border-radius:999px;padding:1px 6px;font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;background:#334155;color:#94a3b8;margin-left:4px;vertical-align:middle}
+
 .horizon-summary-table td:first-child{text-align:left;font-weight:600}
 .horizon-summary-table tr.best-row{background:#1e3a5f20}
 .horizon-summary-table tr.best-row td:first-child::after{content:' ★ Best';font-size:8px;color:var(--green);font-weight:400}
@@ -1464,9 +1471,9 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
     <ol>
       <li><strong>Evidence Completeness</strong> — 数据完整性，不等于因子好</li>
       <li><strong>RankIC</strong> — 排序信息系数，不是收益</li>
+      <li><strong>RankIC Robust</strong> — 稳健显著性修正 (Newey-West)，不是新因子</li>
       <li><strong>Long-Short</strong> — 多空收益，不是交易策略</li>
-      <li><strong>Paper Portfolio</strong> — 纸面组合诊断，不是实盘</li>
-      <li><strong>Fee Sensitivity</strong> — 成本敏感度</li>
+      <li><strong>LS Robust</strong> — 多空收益稳健性，不是策略模拟</li>
       <li><strong>Regime/BTC</strong> — 市场状态依赖</li>
       <li><strong>Quantile/Decile Shape</strong> — 收益分布形状</li>
       <li><strong>Capacity/Liquidity</strong> — 容量和流动性</li>
@@ -1474,7 +1481,8 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
       <li><strong>Scorecard/Profile</strong> — 综合评分</li>
       <li><strong>Research Interpretation</strong> — PM-49 研究解释（Judgment，非信号）</li>
     </ol>
-    <p class="warn">⚠️ Evidence complete ≠ 因子好 | RankIC ≠ 收益 | Paper ≠ 交易策略 | Profile Score ≠ 交易建议 | Research Interpretation ≠ Signal</p>
+    <p style="font-size:12px;color:#64748b;margin-top:8px">📌 <strong>Optional Deep-dive Evidence</strong>（Paper Portfolio / Fee Sensitivity）折叠在页面底部，属于 candidate-only optional 模块，不在 core reading path 中。</p>
+    <p class="warn">⚠️ Evidence complete ≠ 因子好 | RankIC ≠ 收益 | Robust ≠ 交易信号 | Paper ≠ 交易策略 | Profile Score ≠ 交易建议 | Research Interpretation ≠ Signal</p>
 
     <h4 style="color:#cbd5e1;margin-top:16px">🕐 How to Read Horizons / 如何阅读不同视野</h4>
     <ol>
@@ -1558,8 +1566,8 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
             <th data-col="redundancy_cluster_id">Cluster 聚类</th>
             <th data-col="recommended_next_action">Main Action 建议动作</th>
             <th data-col="decision_bucket">Decision 决策</th>
-            <th data-col="paper_viability_class">Paper Viab. 纸面可行性</th>
-            <th data-col="cost_sensitivity_class">Cost Sens. 费用敏感</th>
+            <th data-col="paper_viability_class">Paper Viab. 纸面可行性 <span class="optional-label">opt</span></th>
+            <th data-col="cost_sensitivity_class">Cost Sens. 费用敏感 <span class="optional-label">opt</span></th>
             <th data-col="fee_10bps_total_return">10bps Ret 10bps收益</th>
             <th data-col="break_even_fee_bps">B/E Fee 盈亏平衡</th>
             <th data-col="paper_avg_turnover">Avg TO 平均换手</th>
@@ -3053,7 +3061,10 @@ function renderDetail(fid){
 
     ${f.paper_viability_class?`
     <div class="section-divider"></div>
-    <h3>Single-Factor Paper Portfolio / 单因子纸面组合</h3>
+    <details class="optional-deep-dive">
+      <summary>Optional Deep-dive Evidence / 可选深挖证据 <span class="optional-label">NOT CORE</span></summary>
+      <div class="inner">
+    <h3 style="margin-top:4px">Single-Factor Paper Portfolio / 单因子纸面组合 <span class="optional-label">optional</span></h3>
     ${CHART_GUIDES.paperNav}
     <div style="margin:6px 0">
       ${paperViabBadge(f.paper_viability_class)}
@@ -3222,7 +3233,9 @@ function renderDetail(fid){
       <strong>⚠ This is a research diagnostic, not a strategy / 这是研究诊断，不是交易策略</strong><br>
       <span style="color:var(--muted)">Equal-weight long/short at 1h horizon. No slippage/order book modeling. 等权多空，1h视野，无滑点/订单簿建模。</span>
     </div>
-    `:`<div class="section-divider"></div><h3>Single-Factor Paper Portfolio / 单因子纸面组合</h3><div style="margin:6px 0;font-size:11px;color:var(--muted)">N/A — No paper portfolio data available<br>无纸面组合数据</div>`}
+      </div>
+    </details>
+    `:`<details class="optional-deep-dive" open><summary>Optional Deep-dive Evidence / 可选深挖证据 <span class="optional-label">NOT CORE</span></summary><div class="inner"><div style="margin:6px 0;font-size:11px;color:var(--muted)">No optional deep-dive data available for this factor / 该因子无深挖数据</div></div></details>`}
 
     ${f.regime_dependency_class?`
     <div class="section-divider"></div>
