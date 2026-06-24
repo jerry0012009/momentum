@@ -813,6 +813,110 @@ def check_pm53b_active_universe_consistency(html_text: str) -> list[dict]:
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+def check_pm55_robust_significance(html_text: str) -> list[dict]:
+    """PM-55: Robust significance page integration checks.
+
+    1. 84/84 factors have robust_rankic payload
+    2. Each factor has 4 horizons in robust_rankic
+    3. All-Horizon Table has robust columns
+    4. Best Horizon Metrics has robust t-stat
+    5. funding_rate_zscore_80h shows NAIVE_ONLY_SIGNIFICANT
+    """
+    import re as _re
+    import json as _json
+    results = []
+
+    # Extract payload
+    m = _re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>',
+                   html_text, _re.DOTALL)
+    if not m:
+        results.append(_fail("pm55_payload", "PM-55 payload extraction",
+                             "factorPayload not found"))
+        return results
+    try:
+        data = _json.loads(m.group(1))
+    except _json.JSONDecodeError:
+        results.append(_fail("pm55_payload", "PM-55 payload extraction", "JSON parse error"))
+        return results
+
+    factors = data.get("factors", [])
+    n_total = len(factors)
+
+    # Check 1: all factors have robust_rankic
+    has_robust = sum(1 for f in factors if "robust_rankic" in f and f["robust_rankic"])
+    if has_robust != n_total:
+        results.append(_fail("pm55_robust_payload", "PM-55 all factors have robust_rankic",
+                             f"{has_robust}/{n_total}"))
+    else:
+        results.append(_pass("pm55_robust_payload", "PM-55 all factors have robust_rankic",
+                             f"{has_robust}/{n_total}"))
+
+    # Check 2: each factor has 4 horizons
+    missing_horizons = 0
+    for f in factors:
+        rr = f.get("robust_rankic", {})
+        for h in ["1h", "4h", "24h", "72h"]:
+            if h not in rr:
+                missing_horizons += 1
+    if missing_horizons > 0:
+        results.append(_fail("pm55_horizon_coverage", "PM-55 all 4 horizons present",
+                             f"{missing_horizons} missing horizon entries"))
+    else:
+        results.append(_pass("pm55_horizon_coverage", "PM-55 all 4 horizons present",
+                             "All 84×4 horizon entries present"))
+
+    # Check 3: All-Horizon Table has robust columns
+    has_robust_col = "Robust t</th>" in html_text
+    has_class_col = "Robust Class</th>" in html_text
+    has_inflation_col = "Inflation</th>" in html_text
+    has_overlap_col = "Overlap</th>" in html_text
+    if all([has_robust_col, has_class_col, has_inflation_col, has_overlap_col]):
+        results.append(_pass("pm55_all_horizon_table", "PM-55 All-Horizon Table has robust columns",
+                             "Robust t, Robust Class, Inflation, Overlap"))
+    else:
+        missing = []
+        if not has_robust_col: missing.append("Robust t")
+        if not has_class_col: missing.append("Robust Class")
+        if not has_inflation_col: missing.append("Inflation")
+        if not has_overlap_col: missing.append("Overlap")
+        results.append(_fail("pm55_all_horizon_table", "PM-55 All-Horizon Table has robust columns",
+                             f"Missing: {', '.join(missing)}"))
+
+    # Check 4: Best Horizon Metrics has robust t-stat label
+    has_robust_label = "Robust t-stat" in html_text
+    has_naive_label = "Naive t-stat" in html_text
+    if has_robust_label and has_naive_label:
+        results.append(_pass("pm55_best_horizon_robust", "PM-55 Best Horizon has robust t-stat",
+                             "Both Naive t-stat and Robust t-stat labels present"))
+    else:
+        results.append(_fail("pm55_best_horizon_robust", "PM-55 Best Horizon has robust t-stat",
+                             f"robust_label={has_robust_label}, naive_label={has_naive_label}"))
+
+    # Check 5: funding_rate_zscore_80h shows NAIVE_ONLY_SIGNIFICANT
+    frz = next((f for f in factors if f["factor_id"] == "funding_rate_zscore_80h"), None)
+    if frz:
+        rr = frz.get("robust_rankic", {})
+        naive_only_horizons = []
+        for h in ["1h", "4h", "24h", "72h"]:
+            r = rr.get(h, {})
+            if r.get("significance_class_robust") == "NAIVE_ONLY_SIGNIFICANT":
+                naive_only_horizons.append(h)
+        if naive_only_horizons:
+            results.append(_pass("pm55_naive_only_example",
+                                 "PM-55 funding_rate_zscore_80h shows NAIVE_ONLY_SIGNIFICANT",
+                                 f"NAIVE_ONLY at: {', '.join(naive_only_horizons)}"))
+        else:
+            results.append(_fail("pm55_naive_only_example",
+                                 "PM-55 funding_rate_zscore_80h shows NAIVE_ONLY_SIGNIFICANT",
+                                 f"No NAIVE_ONLY found; classes: {[rr.get(h, {}).get('significance_class_robust') for h in ['1h','4h','24h','72h']]}"))
+    else:
+        results.append(_fail("pm55_naive_only_example",
+                             "PM-55 funding_rate_zscore_80h shows NAIVE_ONLY_SIGNIFICANT",
+                             "Factor not found in payload"))
+
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Check factor-evaluation.html completeness."
@@ -853,6 +957,9 @@ def main() -> int:
 
     # 7. PM-53B active universe consistency guard
     all_checks.extend(check_pm53b_active_universe_consistency(html_text))
+
+    # 8. PM-55 robust significance page integration
+    all_checks.extend(check_pm55_robust_significance(html_text))
 
     # Write outputs
     _write_reports(all_checks)

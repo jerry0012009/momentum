@@ -105,6 +105,13 @@ def build_payload() -> dict:
     cap_liq_payload = load_json(DIAG_DIR / "factor_capacity_liquidity_payload.json")
     cap_liq_summary = load_csv(DIAG_DIR / "factor_capacity_liquidity_summary.csv")
 
+    # PM-55: Load robust RankIC significance
+    robust_rankic_csv = load_csv(DIAG_DIR / "factor_rankic_robust_significance_summary.csv")
+    robust_rankic_map = {}
+    if not robust_rankic_csv.empty:
+        for _, r in robust_rankic_csv.iterrows():
+            robust_rankic_map[(ss(r["factor_id"]), ss(r["horizon"]))] = r
+
     # PM-35: Load factor-level evaluation data (fallback for new factors)
     EVAL_DIR = BASE / "factor_level_evaluation"
     feval_rankic = load_csv(EVAL_DIR / "factor_level_rankic_summary.csv")
@@ -860,6 +867,29 @@ def build_payload() -> dict:
                 hm["rankic_std"] = None
             horizon_metrics[hz] = hm
 
+            # PM-55: Add robust significance to horizon_metrics
+            rob = robust_rankic_map.get((fid, hz))
+            if rob is not None:
+                hm["robust_t_stat"] = sf(rob.get("robust_t_stat"))
+                hm["robust_se"] = sf(rob.get("robust_standard_error"))
+                hm["nw_lag"] = int(rob["nw_lag"]) if not pd.isna(rob.get("nw_lag")) else None
+                hm["n_months"] = int(rob["n_months"]) if not pd.isna(rob.get("n_months")) else None
+                hm["effective_n"] = sf(rob.get("effective_n_proxy"))
+                hm["tstat_inflation"] = sf(rob.get("tstat_inflation_ratio"))
+                hm["sig_class_naive"] = ss(rob.get("significance_class_naive"))
+                hm["sig_class_robust"] = ss(rob.get("significance_class_robust"))
+                hm["overlap_warning"] = ss(rob.get("overlap_warning"))
+            else:
+                hm["robust_t_stat"] = None
+                hm["robust_se"] = None
+                hm["nw_lag"] = None
+                hm["n_months"] = None
+                hm["effective_n"] = None
+                hm["tstat_inflation"] = None
+                hm["sig_class_naive"] = ""
+                hm["sig_class_robust"] = ""
+                hm["overlap_warning"] = ""
+
             # Monthly IC series for this horizon
             fic_hz = ic_series[(ic_series["factor_id"] == fid) & (ic_series["horizon"] == hz)].sort_values("month") if not ic_series.empty else pd.DataFrame()
             hmic = []
@@ -941,6 +971,27 @@ def build_payload() -> dict:
         factor["horizon_monthly_ls"] = horizon_monthly_ls
         factor["horizon_cumulative_ls"] = horizon_cumulative_ls
         factor["horizon_pattern"] = horizon_pattern
+
+        # PM-55: Per-factor robust_rankic summary
+        robust_rankic = {}
+        for hz in HORIZONS:
+            rob = robust_rankic_map.get((fid, hz))
+            if rob is not None:
+                robust_rankic[hz] = {
+                    "naive_t_stat": sf(rob.get("naive_t_stat")),
+                    "robust_t_stat": sf(rob.get("robust_t_stat")),
+                    "newey_west_se": sf(rob.get("robust_standard_error")),
+                    "nw_lag": int(rob["nw_lag"]) if not pd.isna(rob.get("nw_lag")) else None,
+                    "n_months": int(rob["n_months"]) if not pd.isna(rob.get("n_months")) else None,
+                    "effective_n_proxy": sf(rob.get("effective_n_proxy")),
+                    "tstat_inflation_ratio": sf(rob.get("tstat_inflation_ratio")),
+                    "significance_class_naive": ss(rob.get("significance_class_naive")),
+                    "significance_class_robust": ss(rob.get("significance_class_robust")),
+                    "overlap_warning": ss(rob.get("overlap_warning")),
+                }
+            else:
+                robust_rankic[hz] = {k: "Unavailable" for k in ["naive_t_stat","robust_t_stat","newey_west_se","nw_lag","n_months","effective_n_proxy","tstat_inflation_ratio","significance_class_naive","significance_class_robust","overlap_warning"]}
+        factor["robust_rankic"] = robust_rankic
 
         factors.append(factor)
 
@@ -1158,6 +1209,21 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 .cap-caveat{background:#1a1a2e;border:1px solid #3b3b5c;color:#c4b5fd;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:11px;line-height:1.6}
 .cap-caveat strong{color:#e9d5ff}
 
+/* ── PM-55: Robust significance badges ── */
+.robust-badge{display:inline-block;border-radius:999px;padding:2px 7px;font-size:9px;white-space:nowrap}
+.robust-badge.ROBUST_SIGNIFICANT_POSITIVE,.robust-badge.ROBUST_SIGNIFICANT_NEGATIVE{background:#166534;color:#bbf7d0}
+.robust-badge.NAIVE_ONLY_SIGNIFICANT{background:#92400e;color:#fef3c7}
+.robust-badge.NOT_SIGNIFICANT{background:#475569;color:#cbd5e1}
+.robust-badge.INSUFFICIENT_PERIODS{background:#334155;color:#94a3b8}
+.overlap-badge{display:inline-block;border-radius:999px;padding:2px 7px;font-size:9px;white-space:nowrap}
+.overlap-badge.NO_MAJOR_OVERLAP{background:#166534;color:#bbf7d0}
+.overlap-badge.MODERATE_OVERLAP{background:#92400e;color:#fef3c7}
+.overlap-badge.HIGH_OVERLAP{background:#7f1d1d;color:#fecaca}
+.overlap-badge.SEVERE_OVERLAP{background:#dc2626;color:#fff}
+.inflation-badge{display:inline-block;border-radius:999px;padding:2px 7px;font-size:9px;white-space:nowrap;background:#334155;color:#e2e8f0}
+.inflation-badge.high-inflation{background:#92400e;color:#fef3c7}
+.inflation-badge.severe-inflation{background:#7f1d1d;color:#fecaca}
+
 /* ── PM-33: Unified profile badges ── */
 .profile-class-badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:600;white-space:nowrap}
 .profile-class-badge.BROAD_WATCHLIST{background:#334155;color:#e2e8f0}
@@ -1318,6 +1384,22 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
       <li><strong>All-Horizon Summary Table</strong> 中 ⚠️ = 该视野RankIC方向与expected_direction冲突；⚡ = IC显著但LS弱（IC-LS Tension）。</li>
     </ol>
     <p class="warn">⚠️ Horizon comparison is a research diagnostic, not a trading signal. 视野对比是研究诊断工具，不是交易信号。</p>
+
+    <h4 style="color:#cbd5e1;margin-top:16px">📊 Robust Significance / 稳健显著性 (PM-55)</h4>
+    <p style="font-size:13px;line-height:1.7;color:#94a3b8">
+      <strong>Robust t-stat</strong> adjusts the interpretation of RankIC significance under overlapping forward-return labels. It does not replace the original RankIC, does not change best_horizon, and does not make a factor tradable. When naive t-stat is high but robust t-stat is weak, the factor requires more conservative interpretation.
+      <br><br>
+      <strong>Robust t-stat</strong> 在重叠前瞻收益标签下调整 RankIC 显著性解读。它不替代原始 RankIC，不改变 best_horizon，不使因子可交易。当 Naive t-stat 高但 Robust t-stat 弱时，因子需要更保守的解读。
+    </p>
+    <p style="font-size:12px;color:#94a3b8">
+      <strong>Key terms:</strong>
+      • <strong>Naive t-stat</strong> = standard t-stat assuming independence (may be inflated for 24h/72h)
+      • <strong>Robust t-stat</strong> = Newey-West corrected t-stat on monthly IC aggregates
+      • <strong>Inflation ratio</strong> = |naive| / |robust|; >2 suggests substantial inflation
+      • <strong>Overlap warning</strong> = degree of forward-return overlap (1h=low, 72h=severe)
+      • <strong>Significance classes</strong>: ROBUST_SIGNIFICANT (credible), NAIVE_ONLY_SIGNIFICANT (possibly inflated), NOT_SIGNIFICANT, INSUFFICIENT_PERIODS
+    </p>
+    <p class="warn">⚠️ Robust significance is a research diagnostic. It does NOT change best_horizon, scorecard, or factor tradability. 稳健显著性是研究诊断，不改变 best_horizon、评分卡或因子可交易性。</p>
   </div>
 </details>
 
@@ -1750,11 +1832,20 @@ function switchHorizon(fid, hz) {
   }
 }
 function buildMetricGrid(hm) {
+  const robClass = hm.sig_class_robust || '';
+  const robBadge = robClass ? `<span class="robust-badge ${robClass}">${robClass.replace(/_/g,' ')}</span>` : '';
+  const robVal = hm.robust_t_stat != null ? Number(hm.robust_t_stat).toFixed(2) : 'Unavailable';
+  const overlapWarn = hm.overlap_warning || '';
+  const overlapBadge = overlapWarn ? `<span class="overlap-badge ${overlapWarn}">${overlapWarn.replace(/_/g,' ')}</span>` : '';
+  const inflation = hm.tstat_inflation;
+  const inflCls = inflation !== null && inflation !== undefined && Number(inflation) > 3 ? 'severe-inflation' : (inflation !== null && inflation !== undefined && Number(inflation) > 2 ? 'high-inflation' : '');
+  const inflBadge = inflation !== null && inflation !== undefined ? `<span class="inflation-badge ${inflCls}">×${Number(inflation).toFixed(1)}</span>` : '';
   const rows = [
     ['RankIC Mean', hm.rankic_mean, mcls(hm.rankic_mean)],
     ['RankIC Std', hm.rankic_std != null ? Number(hm.rankic_std).toFixed(4) : '—', ''],
     ['ICIR', hm.rankic_ir != null ? Number(hm.rankic_ir).toFixed(3) : '—', ''],
-    ['IC t-stat', hm.rankic_t_stat != null ? Number(hm.rankic_t_stat).toFixed(2) : '—', ''],
+    ['Naive t-stat', hm.rankic_t_stat != null ? Number(hm.rankic_t_stat).toFixed(2) : '—', ''],
+    ['Robust t-stat', `${robVal} ${robBadge} ${overlapBadge} ${inflBadge}`, ''],
     ['IC Win Rate', hm.monthly_ic_positive_rate != null ? (Number(hm.monthly_ic_positive_rate)*100).toFixed(1)+'%' : '—', ''],
     ['LS Mean', hm.long_short_mean != null ? (Number(hm.long_short_mean)>=0?'+':'')+Number(hm.long_short_mean).toFixed(6) : '—', ''],
     ['LS Std', hm.long_short_std != null ? Number(hm.long_short_std).toFixed(6) : '—', ''],
@@ -1776,7 +1867,7 @@ function buildAllHorizonTable(f) {
   const hzs = ['1h','4h','24h','72h'];
   const bestHz = f.best_horizon;
   const expDir = f.expected_direction;
-  let html = '<table class="horizon-summary-table"><thead><tr><th>Horizon</th><th>RankIC</th><th>t-stat</th><th>ICIR</th><th>IC Win%</th><th>LS Sharpe</th><th>Ann Ret</th><th>MaxDD</th><th>LS Win%</th><th>Coverage</th></tr></thead><tbody>';
+  let html = '<table class="horizon-summary-table"><thead><tr><th>Horizon</th><th>RankIC</th><th>Naive t</th><th>Robust t</th><th>Robust Class</th><th>Inflation</th><th>Overlap</th><th>ICIR</th><th>IC Win%</th><th>LS Sharpe</th><th>Ann Ret</th><th>MaxDD</th><th>LS Win%</th><th>Coverage</th></tr></thead><tbody>';
   hzs.forEach(hz => {
     const hm = f.horizon_metrics[hz] || {};
     const isBest = hz === bestHz;
@@ -1794,10 +1885,23 @@ function buildAllHorizonTable(f) {
     const tension = tStat !== null && tStat !== undefined && Math.abs(tStat) > 2.0 && (lsSharpe === null || lsSharpe === undefined || Math.abs(lsSharpe) < 0.8);
     const rankicCls = conflict ? 'conflict-cell' : '';
     const tensionCls = tension ? 'tension-cell' : '';
+    // Robust significance
+    const robClass = hm.sig_class_robust || '';
+    const robBadgeHtml = robClass ? '<span class="robust-badge '+robClass+'">'+robClass.replace(/_/g,' ')+'</span>' : '—';
+    const overlapWarn = hm.overlap_warning || '';
+    const overlapBadgeHtml = overlapWarn ? '<span class="overlap-badge '+overlapWarn+'">'+overlapWarn.replace(/_/g,' ')+'</span>' : '—';
+    const inflation = hm.tstat_inflation;
+    const inflCls = inflation !== null && inflation !== undefined && Number(inflation) > 3 ? 'severe-inflation' : (inflation !== null && inflation !== undefined && Number(inflation) > 2 ? 'high-inflation' : '');
+    const inflBadgeHtml = inflation !== null && inflation !== undefined ? '<span class="inflation-badge '+inflCls+'">×'+Number(inflation).toFixed(1)+'</span>' : '—';
+    const robVal = hm.robust_t_stat != null && hm.robust_t_stat !== undefined ? Number(hm.robust_t_stat).toFixed(2) : '—';
     html += `<tr class="${rowCls}">`;
     html += `<td>${hz}${conflict?' ⚠️':''}${tension?' ⚡':''}</td>`;
     html += `<td class="${rankicCls}">${hm.rankic_mean != null ? Number(hm.rankic_mean).toFixed(5) : '—'}</td>`;
     html += `<td>${hm.rankic_t_stat != null ? Number(hm.rankic_t_stat).toFixed(2) : '—'}</td>`;
+    html += `<td>${robVal}</td>`;
+    html += `<td>${robBadgeHtml}</td>`;
+    html += `<td>${inflBadgeHtml}</td>`;
+    html += `<td>${overlapBadgeHtml}</td>`;
     html += `<td>${hm.rankic_ir != null ? Number(hm.rankic_ir).toFixed(3) : '—'}</td>`;
     html += `<td>${hm.monthly_ic_positive_rate != null ? (Number(hm.monthly_ic_positive_rate)*100).toFixed(1)+'%' : '—'}</td>`;
     html += `<td class="${tensionCls}">${hm.long_short_sharpe != null ? Number(hm.long_short_sharpe).toFixed(2) : '—'}</td>`;
@@ -1809,6 +1913,7 @@ function buildAllHorizonTable(f) {
   });
   html += '</tbody></table>';
   html += '<div style="font-size:9px;color:var(--muted);margin:2px 0">⚠️ = direction conflicts with expected_direction | ⚡ = IC-LS tension (significant IC but weak LS) | ★ Best = best_horizon</div>';
+  html += '<div style="font-size:9px;color:var(--muted)">Robust t-stat uses Newey-West SE on monthly IC aggregates. Does not change best_horizon. When naive is high but robust is weak, interpret conservatively.</div>';
   html += '<div style="font-size:9px;color:var(--muted)">Horizon comparison is a research diagnostic, not a trading signal. 视野对比是研究诊断，不是交易信号。</div>';
   return html;
 }
@@ -2686,7 +2791,8 @@ function renderDetail(fid){
       ${metricRow(renderTooltip('RankIC Mean'),num(f.rankic_mean),mcls(f.rankic_mean))}
       ${metricRow(renderTooltip('RankIC Std'),num(f.rankic_std,4,false))}
       ${metricRow(renderTooltip('ICIR'),num(f.rankic_ir,3))}
-      ${metricRow(renderTooltip('IC t-stat'),num(f.rankic_t_stat,2,false))}
+      ${metricRow(renderTooltip('Naive t-stat'),num(f.rankic_t_stat,2,false))}
+      ${(() => { const hm = f.horizon_metrics ? f.horizon_metrics[f.best_horizon] || {} : {}; const robT = hm.robust_t_stat; const robClass = hm.sig_class_robust || ''; const robBadge = robClass ? '<span class="robust-badge '+robClass+'">'+robClass.replace(/_/g,' ')+'</span>' : ''; const overlapWarn = hm.overlap_warning || ''; const overlapBadge = overlapWarn ? '<span class="overlap-badge '+overlapWarn+'">'+overlapWarn.replace(/_/g,' ')+'</span>' : ''; const inflation = hm.tstat_inflation; const inflCls = inflation !== null && inflation !== undefined && Number(inflation) > 3 ? 'severe-inflation' : (inflation !== null && inflation !== undefined && Number(inflation) > 2 ? 'high-inflation' : ''); const inflBadge = inflation !== null && inflation !== undefined ? '<span class="inflation-badge '+inflCls+'">×'+Number(inflation).toFixed(1)+'</span>' : ''; const robVal = robT !== null && robT !== undefined ? Number(robT).toFixed(2) : 'Unavailable'; return metricRow(renderTooltip('Robust t-stat'), robVal+' '+robBadge+' '+overlapBadge+' '+inflBadge); })()}
       ${metricRow(renderTooltip('IC Win Rate'),pct(f.monthly_ic_positive_rate))}
       ${metricRow(renderTooltip('LS Mean'),num(f.long_short_mean,6))}
       ${metricRow(renderTooltip('LS Std'),num(f.long_short_std,6))}
