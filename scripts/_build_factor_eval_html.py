@@ -1937,7 +1937,7 @@ function buildHorizonSwitch(f, containerId) {
   hzs.forEach(hz => {
     const isBest = hz === bestHz;
     const active = hz === bestHz ? 'active' : '';
-    html += `<button class="horizon-btn ${active}" onclick="switchHorizon('${f.factor_id}','${hz}')">${hz}${isBest?'<span class="best-tag">Best</span>':''}</button>`;
+    html += `<button class="horizon-btn ${active}" data-hz="${hz}" onclick="switchHorizon('${f.factor_id}','${hz}')">${hz}${isBest?'<span class="best-tag">Best</span>':''}</button>`;
   });
   html += '<span class="horizon-alt-label" id="hz-alt-label-'+f.factor_id+'"></span>';
   html += '</div>';
@@ -2002,7 +2002,7 @@ function switchHorizon(fid, hz) {
   const container = document.getElementById('hz-switch-'+fid);
   if (container) {
     container.querySelectorAll('.horizon-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.textContent.includes(hz));
+      btn.classList.toggle('active', btn.dataset.hz === hz);
     });
   }
 }
@@ -2022,13 +2022,13 @@ function buildMetricGrid(hm) {
     ['Naive t-stat', hm.rankic_t_stat != null ? Number(hm.rankic_t_stat).toFixed(2) : '—', ''],
     ['Robust t-stat', `${robVal} ${robBadge} ${overlapBadge} ${inflBadge}`, ''],
     ['IC Win Rate', hm.monthly_ic_positive_rate != null ? (Number(hm.monthly_ic_positive_rate)*100).toFixed(1)+'%'+(hm.ic_positive_months!=null?' ('+hm.ic_positive_months+'/'+hm.ic_total_months+')':'') : '—', ''],
-    ['LS Edge Mean', hm.long_short_mean != null ? (Number(hm.long_short_mean)>=0?'+':'')+Number(hm.long_short_mean*100).toFixed(4)+'%' : '—', ''],
-    ['Monthly Edge Std', hm.long_short_std != null ? Number(hm.long_short_std*100).toFixed(4)+'%' : '—', ''],
-    ['Monthly Edge Sharpe', hm.long_short_sharpe != null ? Number(hm.long_short_sharpe).toFixed(2) : '—', mcls(hm.long_short_sharpe,1.5,0.8)],
-    ['Annualized LS Edge', hm.long_short_annualized_return != null ? (Number(hm.long_short_annualized_return)*100).toFixed(1)+'%' : '—', ''],
-    ['Monthly Edge Vol', hm.long_short_annualized_vol != null ? (Number(hm.long_short_annualized_vol)*100).toFixed(1)+'%' : '—', ''],
-    ['Edge Curve Max DD', hm.long_short_max_drawdown != null ? (Number(hm.long_short_max_drawdown)*100).toFixed(1)+'%' : '—', ''],
-    ['Monthly Edge Win Rate', hm.long_short_positive_month_rate != null ? (Number(hm.long_short_positive_month_rate)*100).toFixed(1)+'%' : '—', ''],
+    ['LS Mean', hm.long_short_mean != null ? (Number(hm.long_short_mean)>=0?'+':'')+Number(hm.long_short_mean*100).toFixed(4)+'%' : '—', ''],
+    ['LS Std', hm.long_short_std != null ? Number(hm.long_short_std*100).toFixed(4)+'%' : '—', ''],
+    ['LS Sharpe', hm.long_short_sharpe != null ? Number(hm.long_short_sharpe).toFixed(2) : '—', mcls(hm.long_short_sharpe,1.5,0.8)],
+    ['Ann Return', hm.long_short_annualized_return != null ? (Number(hm.long_short_annualized_return)*100).toFixed(1)+'%' : '—', ''],
+    ['Ann Vol', hm.long_short_annualized_vol != null ? (Number(hm.long_short_annualized_vol)*100).toFixed(1)+'%' : '—', ''],
+    ['Max Drawdown', hm.long_short_max_drawdown != null ? (Number(hm.long_short_max_drawdown)*100).toFixed(1)+'%' : '—', ''],
+    ['LS Win Rate', hm.long_short_positive_month_rate != null ? (Number(hm.long_short_positive_month_rate)*100).toFixed(1)+'%' : '—', ''],
     ['Coverage', hm.coverage_rate != null ? (Number(hm.coverage_rate)*100).toFixed(1)+'%' : '—', ''],
   ];
   return rows.map(([label, val, cls]) => {
