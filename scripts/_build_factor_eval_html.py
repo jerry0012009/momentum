@@ -1179,7 +1179,7 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 
 /* ── PM-49: Tooltip styles ── */
 .tooltip-trigger { position: relative; cursor: help; border-bottom: 1px dashed rgba(148,163,184,0.4); display: inline; }
-.tooltip-content { visibility: hidden; opacity: 0; position: fixed; z-index: 9999; background: #1e293b; border: 1px solid #475569; border-radius: 8px; padding: 10px 14px; max-width: 320px; min-width: 200px; font-size: 12px; line-height: 1.6; color: #cbd5e1; box-shadow: 0 8px 24px rgba(0,0,0,0.5); transition: opacity 0.15s ease; pointer-events: none; }
+.tooltip-content { visibility: hidden; opacity: 0; position: fixed; z-index: 9999; background: #1e293b; border: 1px solid #475569; border-radius: 8px; padding: 10px 14px; max-width: 420px; min-width: 200px; font-size: 12px; line-height: 1.6; color: #cbd5e1; box-shadow: 0 8px 24px rgba(0,0,0,0.5); transition: opacity 0.15s ease; pointer-events: none; }
 .tooltip-trigger:hover .tooltip-content { visibility: visible; opacity: 1; }
 .tooltip-content strong { color: #f1f5f9; }
 .tooltip-content .tt-warn { color: #fbbf24; }
@@ -1828,14 +1828,15 @@ let _detailOpen = false;
 function showTip(el, ev, term) {
   const g = METRIC_GLOSSARY[term]; if (!g) return;
   const signalHtml = signalBadge(g.signal);
-  _tipDiv.innerHTML = `<strong>${term}</strong> ${signalHtml}<br>${g.tooltip_zh}<br><em style="color:#64748b;font-size:11px">点击展开详细解释 / Click for details</em>`;
+  const benchHint = g.benchmark_zh ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #334155;font-size:11px;color:#94a3b8"><strong style="color:#60a5fa">📏 参照:</strong> ${g.benchmark_zh.split('\n').filter(l=>l.startsWith('•')).slice(0,3).join('<br>')}</div>` : '';
+  _tipDiv.innerHTML = `<strong>${term}</strong> ${signalHtml}<br>${g.tooltip_zh}${benchHint}<br><em style="color:#64748b;font-size:11px">点击展开详细解释 / Click for details</em>`;
   _tipDiv.style.visibility = 'visible'; _tipDiv.style.opacity = '1';
   moveTip(ev);
 }
 function moveTip(ev) {
   let x = ev.clientX + 12, y = ev.clientY + 12;
   const r = _tipDiv.getBoundingClientRect();
-  if (x + 320 > window.innerWidth) x = ev.clientX - 330;
+  if (x + 420 > window.innerWidth) x = ev.clientX - 430;
   if (y + r.height > window.innerHeight) y = ev.clientY - r.height - 12;
   _tipDiv.style.left = x + 'px'; _tipDiv.style.top = y + 'px';
 }
@@ -1876,6 +1877,11 @@ function toggleDetail(term, ev) {
         <div class="detail-label">⬇️ 低值含义 / Low = </div>
         <div>${g.low_zh}</div>
       </div>
+      ${g.benchmark_zh ? `<div class="detail-section">
+        <div class="detail-label">📏 行业参照范围 / Industry Benchmarks</div>
+        <div style="white-space:pre-line;font-size:12px;line-height:1.7;color:#cbd5e1">${g.benchmark_zh.replace(/\n/g,'<br>')}</div>
+        ${g.benchmark_en ? `<div style="margin-top:6px;white-space:pre-line;font-size:11px;line-height:1.6;color:#94a3b8">${g.benchmark_en.replace(/\n/g,'<br>')}</div>` : ''}
+      </div>` : ''}
       <div class="detail-section">
         <div class="detail-label">⚠️ 常见误读 / Misreading</div>
         <div class="detail-warn">${g.misread_zh}</div>
