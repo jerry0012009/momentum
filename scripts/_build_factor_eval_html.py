@@ -807,6 +807,141 @@ def build_payload() -> dict:
         factor["pm49_suggested_action_en"] = pm49.get("suggested_action_en", "")
         factor["pm49_red_flags"] = pm49.get("red_flags", [])
 
+        # PM-52: Per-horizon data
+        horizon_metrics = {}
+        horizon_monthly_ic = {}
+        horizon_monthly_ls = {}
+        horizon_cumulative_ls = {}
+
+        for hz in HORIZONS:
+            rk = feval_rankic_map.get((fid, hz))
+            ls = feval_ls_map.get((fid, hz))
+            hm = {}
+            if rk is not None:
+                hm["rankic_mean"] = sf(rk.get("direction_adjusted_mean_rank_ic"))
+                hm["rankic_t_stat"] = sf(rk.get("t_stat"))
+                n_periods = sf(rk.get("n_periods"))
+                t_val = sf(rk.get("t_stat"))
+                if n_periods and t_val and n_periods > 0:
+                    hm["rankic_ir"] = round(t_val / (n_periods ** 0.5), 6)
+                else:
+                    hm["rankic_ir"] = None
+                missing_rate = sf(rk.get("missing_rate"))
+                hm["coverage_rate"] = round(1.0 - missing_rate, 6) if missing_rate is not None else None
+            else:
+                hm["rankic_mean"] = None
+                hm["rankic_t_stat"] = None
+                hm["rankic_ir"] = None
+                hm["coverage_rate"] = None
+            if ls is not None:
+                hm["long_short_mean"] = sf(ls.get("long_short_spread_mean"))
+                hm["long_short_std"] = sf(ls.get("long_short_spread_std"))
+                hm["long_short_sharpe"] = sf(ls.get("long_short_spread_t_stat"))
+                hm["long_short_annualized_return"] = sf(ls.get("long_short_spread_annualized_return"))
+                hm["long_short_annualized_vol"] = sf(ls.get("long_short_spread_annualized_vol"))
+                hm["long_short_max_drawdown"] = sf(ls.get("long_short_spread_max_drawdown"))
+                hm["long_short_positive_month_rate"] = sf(ls.get("long_short_spread_positive_period_rate"))
+            else:
+                hm["long_short_mean"] = None
+                hm["long_short_std"] = None
+                hm["long_short_sharpe"] = None
+                hm["long_short_annualized_return"] = None
+                hm["long_short_annualized_vol"] = None
+                hm["long_short_max_drawdown"] = None
+                hm["long_short_positive_month_rate"] = None
+            # Compute ic_win_rate from monthly IC series
+            fic_hz = ic_series[(ic_series["factor_id"] == fid) & (ic_series["horizon"] == hz)] if not ic_series.empty else pd.DataFrame()
+            if not fic_hz.empty:
+                adj_vals = [sf(r["rank_ic_adj"]) for _, r in fic_hz.iterrows() if sf(r["rank_ic_adj"]) is not None]
+                hm["monthly_ic_positive_rate"] = round(sum(1 for v in adj_vals if v > 0) / len(adj_vals), 4) if adj_vals else None
+                hm["rankic_std"] = round(float(pd.Series(adj_vals).std()), 8) if len(adj_vals) > 1 else None
+            else:
+                hm["monthly_ic_positive_rate"] = None
+                hm["rankic_std"] = None
+            horizon_metrics[hz] = hm
+
+            # Monthly IC series for this horizon
+            fic_hz = ic_series[(ic_series["factor_id"] == fid) & (ic_series["horizon"] == hz)].sort_values("month") if not ic_series.empty else pd.DataFrame()
+            hmic = []
+            for _, r in fic_hz.iterrows():
+                hmic.append({
+                    "month": ss(r["month"]),
+                    "rank_ic": sf(r["rank_ic"]),
+                    "rank_ic_adj": sf(r["rank_ic_adj"]),
+                    "n_obs": int(r["n_obs"]) if not pd.isna(r.get("n_obs")) else None,
+                    "positive_ic": bool(r["positive_ic"]) if not pd.isna(r.get("positive_ic")) else None,
+                })
+            horizon_monthly_ic[hz] = hmic
+
+            # Monthly LS series for this horizon
+            fls_hz = ls_series[(ls_series["factor_id"] == fid) & (ls_series["horizon"] == hz)].sort_values("month") if not ls_series.empty else pd.DataFrame()
+            hmls = []
+            for _, r in fls_hz.iterrows():
+                hmls.append({
+                    "month": ss(r["month"]),
+                    "long_short_return": sf(r["long_short_return"]),
+                    "long_leg_return": sf(r["long_leg_return"]),
+                    "short_leg_return": sf(r["short_leg_return"]),
+                    "n_long": int(r["n_long"]) if not pd.isna(r.get("n_long")) else None,
+                    "n_short": int(r["n_short"]) if not pd.isna(r.get("n_short")) else None,
+                    "positive_ls": bool(r["positive_ls"]) if not pd.isna(r.get("positive_ls")) else None,
+                })
+            horizon_monthly_ls[hz] = hmls
+
+            # Cumulative LS curve for this horizon
+            fc_hz = cum_series[(cum_series["factor_id"] == fid) & (cum_series["horizon"] == hz)].sort_values("month") if not cum_series.empty else pd.DataFrame()
+            hmcl = []
+            for _, r in fc_hz.iterrows():
+                hmcl.append({
+                    "month": ss(r["month"]),
+                    "long_short_return": sf(r["long_short_return"]),
+                    "cum_long_short_return": sf(r["cum_long_short_return"]),
+                    "drawdown": sf(r["drawdown"]),
+                })
+            horizon_cumulative_ls[hz] = hmcl
+
+        # Classify horizon pattern
+        significant_horizons = []
+        direction_signs = []
+        for hz in HORIZONS:
+            hm = horizon_metrics.get(hz, {})
+            t = hm.get("rankic_t_stat")
+            mean = hm.get("rankic_mean")
+            if t is not None and mean is not None:
+                is_sig = abs(t) > 2.0
+                if is_sig:
+                    significant_horizons.append(hz)
+                direction_signs.append(1 if mean > 0 else -1)
+
+        short_sig = [h for h in significant_horizons if h in ("1h", "4h")]
+        long_sig = [h for h in significant_horizons if h in ("24h", "72h")]
+
+        if len(set(direction_signs)) > 1 and significant_horizons:
+            horizon_pattern = "HORIZON_REVERSAL"
+        elif len(significant_horizons) >= 2:
+            sig_means = [horizon_metrics[h]["rankic_mean"] for h in significant_horizons if horizon_metrics.get(h, {}).get("rankic_mean") is not None]
+            if len(set(1 if m > 0 else -1 for m in sig_means)) == 1:
+                horizon_pattern = "HORIZON_CONSISTENT_POSITIVE" if sig_means[0] > 0 else "HORIZON_CONSISTENT_NEGATIVE"
+            else:
+                horizon_pattern = "MIXED_WEAK"
+        elif short_sig and not long_sig:
+            horizon_pattern = "SHORT_TERM_ONLY"
+        elif long_sig and not short_sig:
+            horizon_pattern = "LONG_TERM_ONLY"
+        elif len(significant_horizons) == 1:
+            horizon_pattern = "SINGLE_HORIZON_SPIKE"
+        elif not significant_horizons:
+            any_data = any(horizon_metrics.get(h, {}).get("rankic_mean") is not None for h in HORIZONS)
+            horizon_pattern = "MIXED_WEAK" if any_data else "INSUFFICIENT_HORIZON_DATA"
+        else:
+            horizon_pattern = "MIXED_WEAK"
+
+        factor["horizon_metrics"] = horizon_metrics
+        factor["horizon_monthly_ic"] = horizon_monthly_ic
+        factor["horizon_monthly_ls"] = horizon_monthly_ls
+        factor["horizon_cumulative_ls"] = horizon_cumulative_ls
+        factor["horizon_pattern"] = horizon_pattern
+
         factors.append(factor)
 
     # PM-30: Capacity / liquidity summary stats (after factors are built)
@@ -1111,6 +1246,33 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 .judgment-section { border-left: 3px solid #f59e0b; padding-left: 12px; margin: 8px 0; background: rgba(245,158,11,0.05); border-radius: 0 4px 4px 0; padding: 8px 12px; }
 .judgment-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #f59e0b; font-weight: 700; margin-bottom: 4px; }
 .evidence-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #3b82f6; font-weight: 700; margin-bottom: 4px; }
+
+/* ── PM-52: Horizon Transparency Layer ── */
+.horizon-switch{display:flex;gap:4px;margin:8px 0;flex-wrap:wrap;align-items:center}
+.horizon-btn{background:#142035;border:1px solid var(--border);border-radius:6px;padding:4px 12px;font-size:11px;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap}
+.horizon-btn:hover{background:#1d2d47;color:var(--text)}
+.horizon-btn.active{background:#1e3a5f;border-color:var(--blue);color:var(--blue);font-weight:600}
+.horizon-btn .best-tag{font-size:8px;background:var(--green);color:#000;border-radius:3px;padding:1px 4px;margin-left:4px;font-weight:700}
+.horizon-btn.active .best-tag{background:var(--green);color:#000}
+.horizon-alt-label{font-size:10px;color:var(--amber);margin-left:8px;font-style:italic}
+.horizon-summary-table{width:100%;border-collapse:collapse;font-size:10px;margin:8px 0}
+.horizon-summary-table th{background:#142035;color:var(--muted);padding:4px 6px;text-align:right;white-space:nowrap;font-size:9px}
+.horizon-summary-table th:first-child{text-align:left}
+.horizon-summary-table td{padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums}
+.horizon-summary-table td:first-child{text-align:left;font-weight:600}
+.horizon-summary-table tr.best-row{background:#1e3a5f20}
+.horizon-summary-table tr.best-row td:first-child::after{content:' ★ Best';font-size:8px;color:var(--green);font-weight:400}
+.horizon-summary-table .conflict-cell{color:var(--red)}
+.horizon-summary-table .tension-cell{color:var(--amber)}
+.horizon-pattern-badge{display:inline-block;border-radius:999px;padding:2px 8px;font-size:9px;font-weight:600;white-space:nowrap;margin-left:8px}
+.horizon-pattern-badge.hz-consistent-pos{background:#166534;color:#bbf7d0}
+.horizon-pattern-badge.hz-consistent-neg{background:#7f1d1d;color:#fecaca}
+.horizon-pattern-badge.hz-short-only{background:#92400e;color:#fef3c7}
+.horizon-pattern-badge.hz-long-only{background:#581c87;color:#e9d5ff}
+.horizon-pattern-badge.hz-reversal{background:#991b1b;color:#fecaca}
+.horizon-pattern-badge.hz-spike{background:#78350f;color:#fef3c7}
+.horizon-pattern-badge.hz-mixed{background:#334155;color:#e2e8f0}
+.horizon-pattern-badge.hz-insufficient{background:#1e293b;color:#94a3b8}
 </style>
 </head>
 <body>
@@ -1145,6 +1307,17 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
       <li><strong>Research Interpretation</strong> — PM-49 研究解释（Judgment，非信号）</li>
     </ol>
     <p class="warn">⚠️ Evidence complete ≠ 因子好 | RankIC ≠ 收益 | Paper ≠ 交易策略 | Profile Score ≠ 交易建议 | Research Interpretation ≠ Signal</p>
+
+    <h4 style="color:#cbd5e1;margin-top:16px">🕐 How to Read Horizons / 如何阅读不同视野</h4>
+    <ol>
+      <li><strong>Best Horizon</strong> 是历史评价中综合表现最值得关注的视野，不代表其他视野也好。</li>
+      <li><strong>多个视野同向</strong>（HORIZON_CONSISTENT），说明因子方向更稳健。</li>
+      <li><strong>只有一个视野好</strong>（SINGLE_HORIZON_SPIKE），可能是 horizon-specific，也可能是偶然。</li>
+      <li><strong>短期和长期方向相反</strong>（HORIZON_REVERSAL），说明因子可能存在 horizon-dependent semantics——短期是反转，长期是动量。</li>
+      <li><strong>Horizon Switch</strong> 是研究诊断工具，不是交易周期选择器。不能因为某个 horizon 好就直接做信号。</li>
+      <li><strong>All-Horizon Summary Table</strong> 中 ⚠️ = 该视野RankIC方向与expected_direction冲突；⚡ = IC显著但LS弱（IC-LS Tension）。</li>
+    </ol>
+    <p class="warn">⚠️ Horizon comparison is a research diagnostic, not a trading signal. 视野对比是研究诊断工具，不是交易信号。</p>
   </div>
 </details>
 
@@ -1481,6 +1654,164 @@ const GUARD_LABELS = {
   notsignal: '<span class="guard-badge guard-notsignal">🚫 Not a Signal</span>',
   needsval: '<span class="guard-badge guard-validation">⚠️ Requires Validation</span>'
 };
+
+// ── PM-52: Horizon Pattern Classification Labels ──
+const HORIZON_PATTERN_LABELS = {
+  HORIZON_CONSISTENT_POSITIVE: {zh:'视野一致正向',en:'HORIZON_CONSISTENT_POSITIVE',cls:'hz-consistent-pos',tip:'四个视野RankIC同向为正且至少两个显著'},
+  HORIZON_CONSISTENT_NEGATIVE: {zh:'视野一致负向',en:'HORIZON_CONSISTENT_NEGATIVE',cls:'hz-consistent-neg',tip:'四个视野RankIC同向为负且至少两个显著'},
+  SHORT_TERM_ONLY: {zh:'仅短期有效',en:'SHORT_TERM_ONLY',cls:'hz-short-only',tip:'仅1h/4h视野显著'},
+  LONG_TERM_ONLY: {zh:'仅长期有效',en:'LONG_TERM_ONLY',cls:'hz-long-only',tip:'仅24h/72h视野显著'},
+  HORIZON_REVERSAL: {zh:'视野反转',en:'HORIZON_REVERSAL',cls:'hz-reversal',tip:'短期与长期RankIC方向相反'},
+  SINGLE_HORIZON_SPIKE: {zh:'单视野尖峰',en:'SINGLE_HORIZON_SPIKE',cls:'hz-spike',tip:'仅一个视野显著，其他接近零'},
+  MIXED_WEAK: {zh:'混合偏弱',en:'MIXED_WEAK',cls:'hz-mixed',tip:'各视野信号弱或混乱'},
+  INSUFFICIENT_HORIZON_DATA: {zh:'视野数据不足',en:'INSUFFICIENT_HORIZON_DATA',cls:'hz-insufficient',tip:'缺少视野数据'}
+};
+function horizonPatternBadge(pat) {
+  const l = HORIZON_PATTERN_LABELS[pat];
+  if (!l) return '';
+  return `<span class="horizon-pattern-badge ${l.cls}" title="${esc(l.tip)}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+
+// ── PM-52: Horizon Switch Logic ──
+function buildHorizonSwitch(f, containerId) {
+  const hzs = ['1h','4h','24h','72h'];
+  const bestHz = f.best_horizon;
+  let html = '<div class="horizon-switch">';
+  hzs.forEach(hz => {
+    const isBest = hz === bestHz;
+    const active = hz === bestHz ? 'active' : '';
+    html += `<button class="horizon-btn ${active}" onclick="switchHorizon('${f.factor_id}','${hz}')">${hz}${isBest?'<span class="best-tag">Best</span>':''}</button>`;
+  });
+  html += '<span class="horizon-alt-label" id="hz-alt-label-'+f.factor_id+'"></span>';
+  html += '</div>';
+  return html;
+}
+function switchHorizon(fid, hz) {
+  const f = DATA.factors.find(x => x.factor_id === fid);
+  if (!f || !f.horizon_metrics) return;
+  const hm = f.horizon_metrics[hz];
+  if (!hm) return;
+  // Update metric grid
+  const grid = document.getElementById('hz-metrics-'+fid);
+  if (grid) {
+    grid.innerHTML = buildMetricGrid(hm);
+  }
+  // Update title
+  const title = document.getElementById('hz-title-'+fid);
+  if (title) {
+    const isBest = hz === f.best_horizon;
+    title.innerHTML = isBest
+      ? `Best Horizon Metrics 最优视野指标 (${hz})`
+      : `Horizon Metrics 视野指标 (${hz}) <span class="horizon-alt-label">Alternative Horizon / 对照视野</span>`;
+  }
+  // Update monthly IC chart
+  const icChart = document.getElementById('hz-ic-chart-'+fid);
+  if (icChart && f.horizon_monthly_ic && f.horizon_monthly_ic[hz]) {
+    const icData = f.horizon_monthly_ic[hz];
+    if (icData.length > 0) {
+      icChart.innerHTML = svgLineChart(icData, 'rank_ic_adj', 600, 140);
+    } else {
+      icChart.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:12px">No monthly IC data for this horizon.</div>';
+    }
+  }
+  // Update monthly IC title
+  const icTitle = document.getElementById('hz-ic-title-'+fid);
+  if (icTitle) icTitle.textContent = `Monthly RankIC 月度RankIC (${hz})`;
+  // Update monthly LS chart
+  const lsChart = document.getElementById('hz-ls-chart-'+fid);
+  if (lsChart && f.horizon_monthly_ls && f.horizon_monthly_ls[hz]) {
+    const lsData = f.horizon_monthly_ls[hz];
+    if (lsData.length > 0) {
+      lsChart.innerHTML = svgBarChart(lsData, 'long_short_return', 600, 120);
+    } else {
+      lsChart.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:12px">No monthly LS data for this horizon.</div>';
+    }
+  }
+  const lsTitle = document.getElementById('hz-ls-title-'+fid);
+  if (lsTitle) lsTitle.textContent = `Monthly Long-Short Return 月度多空收益 (${hz})`;
+  // Update cumulative LS chart
+  const cumChart = document.getElementById('hz-cum-chart-'+fid);
+  if (cumChart && f.horizon_cumulative_ls && f.horizon_cumulative_ls[hz]) {
+    const cumData = f.horizon_cumulative_ls[hz];
+    if (cumData.length > 0) {
+      cumChart.innerHTML = svgCumCurve(cumData, 600, 160);
+    } else {
+      cumChart.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:12px">No cumulative LS data for this horizon.</div>';
+    }
+  }
+  const cumTitle = document.getElementById('hz-cum-title-'+fid);
+  if (cumTitle) cumTitle.textContent = `Cumulative Long-Short Curve 累计多空曲线 (${hz})`;
+  // Update active button state
+  const container = document.getElementById('hz-switch-'+fid);
+  if (container) {
+    container.querySelectorAll('.horizon-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.textContent.includes(hz));
+    });
+  }
+}
+function buildMetricGrid(hm) {
+  const rows = [
+    ['RankIC Mean', hm.rankic_mean, mcls(hm.rankic_mean)],
+    ['RankIC Std', hm.rankic_std != null ? Number(hm.rankic_std).toFixed(4) : '—', ''],
+    ['ICIR', hm.rankic_ir != null ? Number(hm.rankic_ir).toFixed(3) : '—', ''],
+    ['IC t-stat', hm.rankic_t_stat != null ? Number(hm.rankic_t_stat).toFixed(2) : '—', ''],
+    ['IC Win Rate', hm.monthly_ic_positive_rate != null ? (Number(hm.monthly_ic_positive_rate)*100).toFixed(1)+'%' : '—', ''],
+    ['LS Mean', hm.long_short_mean != null ? (Number(hm.long_short_mean)>=0?'+':'')+Number(hm.long_short_mean).toFixed(6) : '—', ''],
+    ['LS Std', hm.long_short_std != null ? Number(hm.long_short_std).toFixed(6) : '—', ''],
+    ['LS Sharpe', hm.long_short_sharpe != null ? Number(hm.long_short_sharpe).toFixed(2) : '—', mcls(hm.long_short_sharpe,1.5,0.8)],
+    ['Ann Return', hm.long_short_annualized_return != null ? (Number(hm.long_short_annualized_return)*100).toFixed(1)+'%' : '—', ''],
+    ['Ann Vol', hm.long_short_annualized_vol != null ? (Number(hm.long_short_annualized_vol)*100).toFixed(1)+'%' : '—', ''],
+    ['Max Drawdown', hm.long_short_max_drawdown != null ? (Number(hm.long_short_max_drawdown)*100).toFixed(1)+'%' : '—', ''],
+    ['LS Win Rate', hm.long_short_positive_month_rate != null ? (Number(hm.long_short_positive_month_rate)*100).toFixed(1)+'%' : '—', ''],
+    ['Coverage', hm.coverage_rate != null ? (Number(hm.coverage_rate)*100).toFixed(1)+'%' : '—', ''],
+  ];
+  return rows.map(([label, val, cls]) => {
+    const v = val === null || val === undefined || val === '—' ? '—' : val;
+    const c = cls || (v === '—' ? 'muted-c' : '');
+    return `<div class="metric"><span>${label}</span><strong class="${c}">${v}</strong></div>`;
+  }).join('');
+}
+function buildAllHorizonTable(f) {
+  if (!f.horizon_metrics) return '';
+  const hzs = ['1h','4h','24h','72h'];
+  const bestHz = f.best_horizon;
+  const expDir = f.expected_direction;
+  let html = '<table class="horizon-summary-table"><thead><tr><th>Horizon</th><th>RankIC</th><th>t-stat</th><th>ICIR</th><th>IC Win%</th><th>LS Sharpe</th><th>Ann Ret</th><th>MaxDD</th><th>LS Win%</th><th>Coverage</th></tr></thead><tbody>';
+  hzs.forEach(hz => {
+    const hm = f.horizon_metrics[hz] || {};
+    const isBest = hz === bestHz;
+    const rowCls = isBest ? 'best-row' : '';
+    // Check direction conflict
+    const rankicMean = hm.rankic_mean;
+    let conflict = false;
+    if (rankicMean !== null && rankicMean !== undefined && expDir) {
+      if (expDir === 'positive' && rankicMean < 0) conflict = true;
+      if (expDir === 'negative' && rankicMean > 0) conflict = true;
+    }
+    // Check IC-LS tension: significant IC but weak LS
+    const tStat = hm.rankic_t_stat;
+    const lsSharpe = hm.long_short_sharpe;
+    const tension = tStat !== null && tStat !== undefined && Math.abs(tStat) > 2.0 && (lsSharpe === null || lsSharpe === undefined || Math.abs(lsSharpe) < 0.8);
+    const rankicCls = conflict ? 'conflict-cell' : '';
+    const tensionCls = tension ? 'tension-cell' : '';
+    html += `<tr class="${rowCls}">`;
+    html += `<td>${hz}${conflict?' ⚠️':''}${tension?' ⚡':''}</td>`;
+    html += `<td class="${rankicCls}">${hm.rankic_mean != null ? Number(hm.rankic_mean).toFixed(5) : '—'}</td>`;
+    html += `<td>${hm.rankic_t_stat != null ? Number(hm.rankic_t_stat).toFixed(2) : '—'}</td>`;
+    html += `<td>${hm.rankic_ir != null ? Number(hm.rankic_ir).toFixed(3) : '—'}</td>`;
+    html += `<td>${hm.monthly_ic_positive_rate != null ? (Number(hm.monthly_ic_positive_rate)*100).toFixed(1)+'%' : '—'}</td>`;
+    html += `<td class="${tensionCls}">${hm.long_short_sharpe != null ? Number(hm.long_short_sharpe).toFixed(2) : '—'}</td>`;
+    html += `<td>${hm.long_short_annualized_return != null ? (Number(hm.long_short_annualized_return)*100).toFixed(1)+'%' : '—'}</td>`;
+    html += `<td>${hm.long_short_max_drawdown != null ? (Number(hm.long_short_max_drawdown)*100).toFixed(1)+'%' : '—'}</td>`;
+    html += `<td>${hm.long_short_positive_month_rate != null ? (Number(hm.long_short_positive_month_rate)*100).toFixed(1)+'%' : '—'}</td>`;
+    html += `<td>${hm.coverage_rate != null ? (Number(hm.coverage_rate)*100).toFixed(1)+'%' : '—'}</td>`;
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  html += '<div style="font-size:9px;color:var(--muted);margin:2px 0">⚠️ = direction conflicts with expected_direction | ⚡ = IC-LS tension (significant IC but weak LS) | ★ Best = best_horizon</div>';
+  html += '<div style="font-size:9px;color:var(--muted)">Horizon comparison is a research diagnostic, not a trading signal. 视野对比是研究诊断，不是交易信号。</div>';
+  return html;
+}
 
 // Global tooltip singleton (hover - brief)
 const _tipDiv = document.createElement('div');
@@ -2340,8 +2671,12 @@ function renderDetail(fid){
 
     <div class="section-divider"></div>
     <div class="evidence-label">📊 Evidence — 机器计算指标</div>
-    <h3>Best Horizon Metrics 最优视野指标 (${esc(f.best_horizon)})</h3>
-    <div class="metric-grid">
+    <div style="display:flex;align-items:center;gap:8px;margin:4px 0">
+      <h3 id="hz-title-${f.factor_id}" style="margin:0">Best Horizon Metrics 最优视野指标 (${esc(f.best_horizon)})</h3>
+      ${f.horizon_pattern?horizonPatternBadge(f.horizon_pattern):''}
+    </div>
+    <div id="hz-switch-${f.factor_id}">${buildHorizonSwitch(f)}</div>
+    <div id="hz-metrics-${f.factor_id}" class="metric-grid">
       ${metricRow(renderTooltip('RankIC Mean'),num(f.rankic_mean),mcls(f.rankic_mean))}
       ${metricRow(renderTooltip('RankIC Std'),num(f.rankic_std,4,false))}
       ${metricRow(renderTooltip('ICIR'),num(f.rankic_ir,3))}
@@ -2357,6 +2692,8 @@ function renderDetail(fid){
       ${metricRow(renderTooltip('Coverage'),pct(f.coverage_rate))}
     </div>
     ${f.ls_metrics_unavailable_reason?`<div style="margin:4px 0;font-size:10px;color:var(--muted);font-style:italic">${esc(f.ls_metrics_unavailable_reason)}</div>`:''}
+
+    ${f.horizon_metrics?`<h3 style="margin-top:12px">All-Horizon Summary 全视野摘要</h3>${buildAllHorizonTable(f)}`:''}
 
     ${renderPM49Interpretation(f)}
 
@@ -2396,29 +2733,35 @@ function renderDetail(fid){
     </div>
 
     <div class="section-divider"></div>
-    <h3>Monthly RankIC 月度RankIC (${esc(f.best_horizon)})</h3>
+    <h3 id="hz-ic-title-${f.factor_id}">Monthly RankIC 月度RankIC (${esc(f.best_horizon)})</h3>
     ${CHART_GUIDES.monthlyIC}
     <div class="chart-container">
       <div class="chart-title">Monthly RankIC (adj) · 月度调整RankIC</div>
+      <div id="hz-ic-chart-${f.factor_id}">
       ${f.monthly_ic&&f.monthly_ic.length>0
         ? svgLineChart(f.monthly_ic,'rank_ic_adj',600,140)
         : (f.rankic_mean!==null&&f.rankic_mean!==undefined
           ? '<div style="padding:12px;color:var(--muted);font-size:12px">📊 Summary RankIC available: <strong>'+num(f.rankic_mean)+'</strong> (t='+num(f.rankic_t_stat,2,false)+')<br>Monthly IC series unavailable — factor-level evaluation provides aggregate stats only.<br>月度IC序列暂不可用 — 因子级评价仅提供汇总统计。</div>'
           : '<div class="small">No data</div>')}
+      </div>
     </div>
 
-    <h3>Monthly Long-Short Return 月度多空收益 (${esc(f.best_horizon)})</h3>
+    <h3 id="hz-ls-title-${f.factor_id}">Monthly Long-Short Return 月度多空收益 (${esc(f.best_horizon)})</h3>
     ${CHART_GUIDES.monthlyLS}
     <div class="chart-container">
       <div class="chart-title">Monthly LS Return · 月度多空收益</div>
+      <div id="hz-ls-chart-${f.factor_id}">
       ${svgBarChart(f.monthly_ls,'long_short_return',600,120)}
+      </div>
     </div>
 
-    <h3>Cumulative Long-Short Curve 累计多空曲线 (${esc(f.best_horizon)})</h3>
+    <h3 id="hz-cum-title-${f.factor_id}">Cumulative Long-Short Curve 累计多空曲线 (${esc(f.best_horizon)})</h3>
     ${CHART_GUIDES.cumLS}
     <div class="chart-container">
       <div class="chart-title">Cumulative LS (blue) with drawdown (red) · 累计多空(蓝)及回撤(红)</div>
+      <div id="hz-cum-chart-${f.factor_id}">
       ${svgCumCurve(f.cum_curve,600,160)}
+      </div>
     </div>
 
     <h3>Drawdown Summary 回撤概要</h3>
