@@ -112,7 +112,7 @@ New "Robust Significance" section with bilingual (EN/CN) explanation:
 |---------|---------|----------|-------|-----------|---------|
 | 1h | +6.31 | -0.18 | NAIVE_ONLY_SIGNIFICANT | ×34.9 | NO_MAJOR_OVERLAP |
 | 4h | +10.66 | +0.02 | NAIVE_ONLY_SIGNIFICANT | ×611.2 | MODERATE_OVERLAP |
-| 24h | — | — | (not checked) | — | HIGH_OVERLAP |
+| 24h | +16.11 | +2.55 | ROBUST_SIGNIFICANT_POSITIVE | ×6.3 | HIGH_OVERLAP |
 | 72h | +8.07 | +0.03 | NAIVE_ONLY_SIGNIFICANT | ×283.5 | SEVERE_OVERLAP |
 
 ### a101_volume_cap_alpha_min_80_80 (robust cap factor)

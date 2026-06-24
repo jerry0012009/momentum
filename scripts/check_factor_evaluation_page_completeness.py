@@ -153,7 +153,7 @@ def check_file_exists_and_size() -> tuple[dict | None, str | None]:
         return (
             _fail(
                 "file_size",
-                "HTML file size < 4.5MB",
+                "HTML file size < 7.0MB",
                 f"{size / 1024 / 1024:.2f} MB",
                 f"Exceeds {MAX_SIZE_BYTES / 1024 / 1024:.1f} MB limit",
             ),
@@ -163,7 +163,7 @@ def check_file_exists_and_size() -> tuple[dict | None, str | None]:
     return (
         _pass(
             "file_exists_and_size",
-            "HTML file exists and size < 4.5MB",
+            "HTML file exists and size < 7.0MB",
             f"{size / 1024 / 1024:.2f} MB, {len(text)} chars",
         ),
         text,
