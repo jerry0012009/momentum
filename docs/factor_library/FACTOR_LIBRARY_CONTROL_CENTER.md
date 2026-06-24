@@ -212,7 +212,14 @@ Do not promote intake factors into signals during intake. Do not modify live tra
 9. For post-intake completion, read `docs/factor_library/POST_INTAKE_WORKFLOW_RUNBOOK.md` (resource-aware incremental diagnostics)
 10. For OOM avoidance and batch guidance, read `docs/factor_library/RESOURCE_AWARE_REFRESH_GUIDE.md`
 11. Run `scripts/check_factor_evaluation_page_completeness.py` after page rebuilds
-12. **Scope note:** This control center covers the factor library research pipeline only, not the full momentum repository. Signal/live/strategy code remains out of scope.
+12. **PM-53B consistency gate:** After any new factor or partial workflow, run all three:
+    ```bash
+    python scripts/check_active_factor_workflow_consistency.py
+    python scripts/check_factor_evaluation_page_completeness.py
+    python scripts/check_post_intake_workflow_integrity.py --all-active
+    ```
+    All three must PASS before proceeding. See `POST_INTAKE_WORKFLOW_RUNBOOK.md` §14.
+13. **Scope note:** This control center covers the factor library research pipeline only, not the full momentum repository. Signal/live/strategy code remains out of scope.
 
 ---
 

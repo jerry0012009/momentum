@@ -679,6 +679,138 @@ def check_pm46b_metadata_display(html_text: str) -> list[dict]:
     return results
 
 
+def check_pm53b_active_universe_consistency(html_text: str) -> list[dict]:
+    """PM-53B: Active factor universe consistency guard.
+
+    Checks:
+    1. Page visible factor count == active factor count (from state JSON)
+    2. Every visible factor has required diagnostics presence flags
+    3. Every active factor has shape/decile/capacity/profile/scorecard availability
+    4. If any factor is visible but missing required downstream diagnostics, FAIL
+    """
+    import csv as _csv
+    import re as _re
+    import json as _json
+    results = []
+
+    state_path = (
+        ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
+        / "factor_library_state.json"
+    )
+    if not state_path.exists():
+        results.append(_fail("pm53b_state", "PM-53B state file exists",
+                             "File not found", str(state_path)))
+        return results
+
+    state = _json.loads(state_path.read_text())
+    active_fids = set(state.get("registered_factor_ids", []))
+    n_active = len(active_fids)
+
+    # Extract page payload
+    m = _re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>',
+                   html_text, _re.DOTALL)
+    if not m:
+        results.append(_fail("pm53b_payload", "PM-53B payload extraction",
+                             "factorPayload not found"))
+        return results
+    try:
+        data = _json.loads(m.group(1))
+    except _json.JSONDecodeError:
+        results.append(_fail("pm53b_payload", "PM-53B payload extraction", "JSON parse error"))
+        return results
+
+    page_fids = set()
+    factor_data = {}
+    for f in data.get("factors", []):
+        fid = f.get("factor_id", "")
+        if fid:
+            page_fids.add(fid)
+            factor_data[fid] = f
+
+    n_page = len(page_fids)
+
+    # Check 1: page count == active count
+    if n_page != n_active:
+        missing_from_page = sorted(active_fids - page_fids)
+        extra_in_page = sorted(page_fids - active_fids)
+        detail = f"page={n_page} vs active={n_active}"
+        notes_parts = []
+        if missing_from_page:
+            notes_parts.append(f"missing_from_page: {', '.join(missing_from_page[:10])}")
+        if extra_in_page:
+            notes_parts.append(f"extra_in_page: {', '.join(extra_in_page[:5])}")
+        results.append(_fail("pm53b_count_match", "PM-53B page factor count == active count",
+                             detail, "; ".join(notes_parts)))
+    else:
+        results.append(_pass("pm53b_count_match", "PM-53B page factor count == active count",
+                             f"{n_page} factors"))
+
+    # Check 2 & 3: every factor has required diagnostics
+    # Required presence: shape, decile, capacity, profile, scorecard
+    diag_dir = (
+        ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
+        / "factor_diagnostics"
+    )
+    required_csvs = {
+        "shape": diag_dir / "factor_quantile_shape_summary.csv",
+        "decile": diag_dir / "factor_decile_shape_summary.csv",
+        "capacity": diag_dir / "factor_capacity_liquidity_summary.csv",
+        "scorecard": diag_dir / "factor_quality_scorecard.csv",
+        "profile": diag_dir / "factor_unified_profile_summary.csv",
+    }
+
+    # Build per-table factor sets
+    table_factor_sets = {}
+    for name, path in required_csvs.items():
+        if path.exists():
+            try:
+                with open(path, newline="", encoding="utf-8") as f:
+                    reader = _csv.DictReader(f)
+                    key = "factor_id" if "factor_id" in (reader.fieldnames or []) else "factor_name"
+                    ids = set()
+                    for row in reader:
+                        val = row.get(key, "").strip()
+                        if val:
+                            ids.add(val)
+                    table_factor_sets[name] = ids
+            except Exception:
+                table_factor_sets[name] = set()
+        else:
+            table_factor_sets[name] = set()
+
+    # Check each visible factor
+    incomplete_factors = []
+    for fid in sorted(page_fids):
+        missing_tables = []
+        for name, ids in table_factor_sets.items():
+            if fid not in ids:
+                missing_tables.append(name)
+        if missing_tables:
+            incomplete_factors.append((fid, missing_tables))
+
+    if incomplete_factors:
+        details = "; ".join(
+            f"{fid}: missing {', '.join(tables)}"
+            for fid, tables in incomplete_factors[:10]
+        )
+        if len(incomplete_factors) > 10:
+            details += f"; ... and {len(incomplete_factors) - 10} more"
+        results.append(_fail(
+            "pm53b_factor_diagnostics",
+            "PM-53B all visible factors have required diagnostics",
+            f"{len(incomplete_factors)}/{n_page} factors incomplete",
+            details,
+        ))
+    else:
+        results.append(_pass(
+            "pm53b_factor_diagnostics",
+            "PM-53B all visible factors have required diagnostics",
+            f"All {n_page} factors have shape/decile/capacity/scorecard/profile",
+        ))
+
+    return results
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -718,6 +850,9 @@ def main() -> int:
 
     # 6. PM-46B metadata display checks
     all_checks.extend(check_pm46b_metadata_display(html_text))
+
+    # 7. PM-53B active universe consistency guard
+    all_checks.extend(check_pm53b_active_universe_consistency(html_text))
 
     # Write outputs
     _write_reports(all_checks)

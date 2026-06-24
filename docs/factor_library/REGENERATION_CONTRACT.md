@@ -316,6 +316,13 @@ Future AI agents working on the factor library MUST follow these rules:
 9. **Do not skip the dependency order.** The pipeline has strict upstream→downstream dependencies.
 10. **Run `--dry-run` first** before any expensive stage.
 11. **Use the intake workflow** (`run_factor_intake.py`) for adding new factors. Do not bypass it.
+12. **PM-53B consistency gate:** After any new factor intake or partial workflow, run all three checks before proceeding:
+    ```bash
+    python scripts/check_active_factor_workflow_consistency.py
+    python scripts/check_factor_evaluation_page_completeness.py
+    python scripts/check_post_intake_workflow_integrity.py --all-active
+    ```
+    If any check fails, fix the missing diagnostics before proceeding. Do NOT skip this step.
 
 ---
 

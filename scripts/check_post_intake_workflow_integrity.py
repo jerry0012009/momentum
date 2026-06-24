@@ -385,6 +385,10 @@ def main() -> int:
         help="Check all registered factors",
     )
     parser.add_argument(
+        "--all-active", action="store_true",
+        help="PM-53B: Check all active factors with active-universe consistency gate",
+    )
+    parser.add_argument(
         "--output-dir", type=str, default=str(DIAG_DIR),
         help="Output directory for reports",
     )
@@ -392,7 +396,7 @@ def main() -> int:
 
     if args.factor_ids:
         fids = [f.strip() for f in args.factor_ids.split(",") if f.strip()]
-    elif args.all:
+    elif args.all or args.all_active:
         if not STATE_PATH.exists():
             print("ERROR: factor_library_state.json not found")
             return 1
@@ -468,6 +472,71 @@ def main() -> int:
     print(f"  WARN: {total_warn}")
     print(f"\n  CSV: {csv_path}")
     print(f"  JSON: {json_path}")
+
+    # PM-53B: Active-universe consistency table (--all-active mode)
+    if args.all_active:
+        print(f"\n{'='*60}")
+        print("Active-Universe Count Consistency (PM-53B)")
+        print(f"{'='*60}")
+        n_active = len(fids)
+        active_set = set(fids)
+        consistency_tables = [
+            ("rankic", EVAL_DIR / "factor_level_rankic_summary.csv", "factor_name"),
+            ("long_short", EVAL_DIR / "factor_level_long_short_summary.csv", "factor_name"),
+            ("diagnostics_summary", DIAG_DIR / "factor_diagnostics_summary.csv", "factor_id"),
+            ("shape", DIAG_DIR / "factor_quantile_shape_summary.csv", "factor_id"),
+            ("rolling_stability", DIAG_DIR / "factor_rolling_stability_summary.csv", "factor_id"),
+            ("decile", DIAG_DIR / "factor_decile_shape_summary.csv", "factor_id"),
+            ("capacity", DIAG_DIR / "factor_capacity_liquidity_summary.csv", "factor_id"),
+            ("scorecard", DIAG_DIR / "factor_quality_scorecard.csv", "factor_id"),
+            ("redundancy_summary", DIAG_DIR / "factor_redundancy_summary.csv", "factor_id"),
+            ("regime_exposure", DIAG_DIR / "factor_regime_exposure_summary.csv", "factor_id"),
+            ("profile", DIAG_DIR / "factor_unified_profile_summary.csv", "factor_id"),
+            ("bilingual_cards", META_DIR / "factor_bilingual_cards.csv", "factor_id"),
+        ]
+        consistency_rows = []
+        any_consistency_fail = False
+        for name, path, key_col in consistency_tables:
+            if not path.exists():
+                print(f"  ✗ {name:30s}: FILE MISSING (expected {n_active})")
+                consistency_rows.append({"table": name, "count": 0, "expected": n_active, "status": "MISSING_FILE"})
+                any_consistency_fail = True
+                continue
+            try:
+                import csv as _csv
+                ids = set()
+                with open(path, newline="", encoding="utf-8") as f:
+                    reader = _csv.DictReader(f)
+                    actual_key = key_col
+                    if actual_key not in (reader.fieldnames or []):
+                        actual_key = "factor_id" if "factor_id" in (reader.fieldnames or []) else "factor_name"
+                    for row in reader:
+                        val = row.get(actual_key, "").strip()
+                        if val:
+                            ids.add(val)
+                missing = active_set - ids
+                status = "PASS" if not missing else "FAIL"
+                icon = "✓" if status == "PASS" else "✗"
+                print(f"  {icon} {name:30s}: {len(ids):3d}/{n_active}  {status}")
+                if missing:
+                    print(f"    missing: {', '.join(sorted(missing)[:5])}")
+                    any_consistency_fail = True
+                consistency_rows.append({"table": name, "count": len(ids), "expected": n_active, "status": status,
+                                         "missing_count": len(missing)})
+            except Exception as e:
+                print(f"  ✗ {name:30s}: ERROR — {e}")
+                consistency_rows.append({"table": name, "count": 0, "expected": n_active, "status": "ERROR"})
+                any_consistency_fail = True
+
+        consistency_verdict = "PASS" if not any_consistency_fail else "FAIL"
+        print(f"\n  Active count consistency: {consistency_verdict}")
+        # Append consistency data to JSON report
+        json_report["active_universe_consistency"] = {
+            "active_count": n_active,
+            "tables": consistency_rows,
+            "verdict": consistency_verdict,
+        }
+        json_path.write_text(json.dumps(json_report, indent=2, default=str))
 
     return 1 if total_fail > 0 else 0
 

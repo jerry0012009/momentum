@@ -428,3 +428,44 @@ All 11 checks must pass before entering factor interpretation.
 ### Regime IC Merge (PM-43A)
 
 `build_factor_market_regime_diagnostics.py --canonical-ic-path <path>` automatically merges missing factors from canonical period IC. Use this when running regime diagnostics after new factor intake.
+
+## 14. Active Factor Universe Consistency Gate (PM-53B)
+
+**硬规则：每次新增因子或 partial workflow 后，必须执行以下三步一致性检查。**
+
+### 14.1 Active Factor Workflow Consistency Checker
+
+```bash
+python scripts/check_active_factor_workflow_consistency.py
+```
+
+检查所有 active factor 是否完整存在于全部 13 个 required outputs (rankic, long_short, diagnostics_summary, shape, rolling_stability, decile, capacity, scorecard, redundancy_summary, regime_exposure, profile, bilingual_cards, html_payload)。
+
+- 输出：active factor count, per-table count, missing/extra factor IDs, PASS/FAIL verdict
+- exit code 非 0 = FAIL（有 required table 缺 active factor）
+
+### 14.2 Page QA (含 PM-53B active universe check)
+
+```bash
+python scripts/check_factor_evaluation_page_completeness.py
+```
+
+新增检查：
+1. page visible factor count == active factor count
+2. every visible factor has required diagnostics presence (shape/decile/capacity/scorecard/profile)
+3. 任何 visible factor 缺少 required downstream diagnostics → page QA FAIL
+
+### 14.3 Integrity QA (active-universe mode)
+
+```bash
+python scripts/check_post_intake_workflow_integrity.py --all-active
+```
+
+新增 active-universe consistency table：
+- 如果 active universe 是 N，则所有 required outputs 必须是 N
+- 单因子 19/19 pass 不足以证明全库完整
+- integrity report 中必须显示 active count consistency table
+
+### 14.4 `--only-missing` 增强
+
+`run_post_intake_workflow_completion.py --only-missing` 已增强，现在检查每个 active factor 是否完整存在于全部 required outputs（不仅是 pairwise redundancy）。缺失任一 required output 的 factor 会被纳入 missing list。

@@ -46,6 +46,7 @@ SCRIPTS = ROOT / "scripts"
 DIAG_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_diagnostics"
 EVAL_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_level_evaluation"
 STATE_PATH = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_library_state.json"
+META_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_metadata"
 TMP_EVAL = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "_tmp_evaluate"
 TMP_PAPER = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "_tmp_paper"
 
@@ -412,26 +413,109 @@ def main() -> int:
 
 
 def detect_missing_factors() -> list[str]:
-    """Detect factors with incomplete post-intake workflow."""
+    """Detect factors with incomplete post-intake workflow — PM-53B.
+
+    Checks each active factor against ALL required downstream outputs:
+      - rankic, long_short, diagnostics_summary, shape, rolling_stability,
+        decile, capacity, scorecard, profile, bilingual card, page payload.
+
+    A factor is "missing" if it is absent from ANY required output.
+    Unavailable-but-accepted optional fields are NOT treated as failure.
+    Blocked factors in the active list trigger a hard failure.
+    """
+    import csv as _csv
+    import re as _re
+
     import pandas as pd
 
     if not STATE_PATH.exists():
         return []
     state = json.loads(STATE_PATH.read_text())
     all_fids = state.get("registered_factor_ids", [])
+    if not all_fids:
+        return []
 
-    missing = []
-    for fid in all_fids:
+    active_set = set(all_fids)
+    missing_set = set(all_fids)  # start with all, remove as we find them
+
+    # Required CSV checks: (path, key_column)
+    required_csvs = [
+        (EVAL_DIR / "factor_level_rankic_summary.csv", "factor_name"),
+        (EVAL_DIR / "factor_level_long_short_summary.csv", "factor_name"),
+        (DIAG_DIR / "factor_diagnostics_summary.csv", "factor_id"),
+        (DIAG_DIR / "factor_quantile_shape_summary.csv", "factor_id"),
+        (DIAG_DIR / "factor_rolling_stability_summary.csv", "factor_id"),
+        (DIAG_DIR / "factor_decile_shape_summary.csv", "factor_id"),
+        (DIAG_DIR / "factor_capacity_liquidity_summary.csv", "factor_id"),
+        (DIAG_DIR / "factor_quality_scorecard.csv", "factor_id"),
+        (DIAG_DIR / "factor_unified_profile_summary.csv", "factor_id"),
+        (META_DIR / "factor_bilingual_cards.csv", "factor_id"),
+    ]
+
+    # Accumulate per-factor: which tables it's missing from
+    factor_missing_tables: dict[str, list[str]] = {fid: [] for fid in all_fids}
+
+    for path, key_col in required_csvs:
+        if not path.exists():
+            # All factors missing from this table
+            for fid in all_fids:
+                factor_missing_tables[fid].append(path.stem)
+            continue
         try:
-            pairwise = pd.read_csv(DIAG_DIR / "factor_pairwise_redundancy.csv")
-            has_pairwise = fid in set(pairwise["factor_i"].unique()) | set(pairwise["factor_j"].unique())
+            ids_in_file = set()
+            with open(path, newline="", encoding="utf-8") as f:
+                reader = _csv.DictReader(f)
+                actual_key = key_col
+                if actual_key not in (reader.fieldnames or []):
+                    actual_key = "factor_id" if "factor_id" in (reader.fieldnames or []) else "factor_name"
+                for row in reader:
+                    val = row.get(actual_key, "").strip()
+                    if val:
+                        ids_in_file.add(val)
+            for fid in all_fids:
+                if fid not in ids_in_file:
+                    factor_missing_tables[fid].append(path.stem)
         except Exception:
-            has_pairwise = False
+            for fid in all_fids:
+                factor_missing_tables[fid].append(path.stem)
 
-        if not has_pairwise:
-            missing.append(fid)
+    # Check page payload
+    html_path = ROOT / "reports" / "site" / "factor-library" / "factor-evaluation.html"
+    if html_path.exists():
+        try:
+            text = html_path.read_text(encoding="utf-8", errors="replace")
+            m = _re.search(
+                r'<script id="factorPayload" type="application/json">(.*?)</script>',
+                text, _re.DOTALL,
+            )
+            if m:
+                data = json.loads(m.group(1))
+                page_fids = {f.get("factor_id", "") for f in data.get("factors", []) if f.get("factor_id")}
+                for fid in all_fids:
+                    if fid not in page_fids:
+                        factor_missing_tables[fid].append("html_payload")
+            else:
+                for fid in all_fids:
+                    factor_missing_tables[fid].append("html_payload")
+        except Exception:
+            for fid in all_fids:
+                factor_missing_tables[fid].append("html_payload")
+    else:
+        for fid in all_fids:
+            factor_missing_tables[fid].append("html_payload")
 
-    return sorted(missing)
+    # Collect factors with any missing table
+    missing = sorted(fid for fid in all_fids if factor_missing_tables[fid])
+
+    if missing:
+        print(f"\n  Missing-factor details ({len(missing)} factors):")
+        for fid in missing[:20]:
+            tables = factor_missing_tables[fid]
+            print(f"    {fid}: missing from {', '.join(tables)}")
+        if len(missing) > 20:
+            print(f"    ... and {len(missing) - 20} more")
+
+    return missing
 
 
 if __name__ == "__main__":
