@@ -557,6 +557,13 @@ def build_payload() -> dict:
             if adj_vals:
                 factor["monthly_ic_positive_rate"] = round(sum(1 for v in adj_vals if v > 0) / len(adj_vals), 4)
 
+        # Always compute ic counts from monthly IC series if available
+        if monthly_ic and factor.get("ic_total_months") is None:
+            adj_vals = [m["rank_ic_adj"] for m in monthly_ic if m.get("rank_ic_adj") is not None]
+            if adj_vals:
+                factor["ic_positive_months"] = sum(1 for v in adj_vals if v > 0)
+                factor["ic_total_months"] = len(adj_vals)
+
         # PM-22 / PM-22B: Merge paper diagnostics into factor
         paper = paper_map.get(fid, {})
         if paper:
@@ -880,9 +887,13 @@ def build_payload() -> dict:
             if not fic_hz.empty:
                 adj_vals = [sf(r["rank_ic_adj"]) for _, r in fic_hz.iterrows() if sf(r["rank_ic_adj"]) is not None]
                 hm["monthly_ic_positive_rate"] = round(sum(1 for v in adj_vals if v > 0) / len(adj_vals), 4) if adj_vals else None
+                hm["ic_positive_months"] = sum(1 for v in adj_vals if v > 0) if adj_vals else None
+                hm["ic_total_months"] = len(adj_vals) if adj_vals else None
                 hm["rankic_std"] = round(float(pd.Series(adj_vals).std()), 8) if len(adj_vals) > 1 else None
             else:
                 hm["monthly_ic_positive_rate"] = None
+                hm["ic_positive_months"] = None
+                hm["ic_total_months"] = None
                 hm["rankic_std"] = None
             horizon_metrics[hz] = hm
 
@@ -1956,9 +1967,8 @@ function buildMetricGrid(hm) {
     ['ICIR', hm.rankic_ir != null ? Number(hm.rankic_ir).toFixed(3) : '—', ''],
     ['Naive t-stat', hm.rankic_t_stat != null ? Number(hm.rankic_t_stat).toFixed(2) : '—', ''],
     ['Robust t-stat', `${robVal} ${robBadge} ${overlapBadge} ${inflBadge}`, ''],
-    ['IC Win Rate', hm.monthly_ic_positive_rate != null ? (Number(hm.monthly_ic_positive_rate)*100).toFixed(1)+'%' : '—', ''],
-    ['LS Mean', hm.long_short_mean != null ? (Number(hm.long_short_mean)>=0?'+':'')+Number(hm.long_short_mean).toFixed(6) : '—', ''],
-    ['LS Std', hm.long_short_std != null ? Number(hm.long_short_std).toFixed(6) : '—', ''],
+    ['IC Win Rate', hm.monthly_ic_positive_rate != null ? (Number(hm.monthly_ic_positive_rate)*100).toFixed(1)+'%'+(hm.ic_positive_months!=null?' ('+hm.ic_positive_months+'/'+hm.ic_total_months+')':'') : '—', ''],
+    ['LS Mean', hm.long_short_mean != null ? (Number(hm.long_short_mean)>=0?'+':'')+Number(hm.long_short_mean*100).toFixed(4)+'%' : '—', ''],\n    ['LS Std', hm.long_short_std != null ? Number(hm.long_short_std*100).toFixed(4)+'%' : '—', ''],
     ['LS Sharpe', hm.long_short_sharpe != null ? Number(hm.long_short_sharpe).toFixed(2) : '—', mcls(hm.long_short_sharpe,1.5,0.8)],
     ['Ann Return', hm.long_short_annualized_return != null ? (Number(hm.long_short_annualized_return)*100).toFixed(1)+'%' : '—', ''],
     ['Ann Vol', hm.long_short_annualized_vol != null ? (Number(hm.long_short_annualized_vol)*100).toFixed(1)+'%' : '—', ''],
@@ -2013,7 +2023,7 @@ function buildAllHorizonTable(f) {
     html += `<td>${inflBadgeHtml}</td>`;
     html += `<td>${overlapBadgeHtml}</td>`;
     html += `<td>${hm.rankic_ir != null ? Number(hm.rankic_ir).toFixed(3) : '—'}</td>`;
-    html += `<td>${hm.monthly_ic_positive_rate != null ? (Number(hm.monthly_ic_positive_rate)*100).toFixed(1)+'%' : '—'}</td>`;
+    html += `<td>${hm.monthly_ic_positive_rate != null ? (Number(hm.monthly_ic_positive_rate)*100).toFixed(1)+'%'+(hm.ic_positive_months!=null?' ('+hm.ic_positive_months+'/'+hm.ic_total_months+')':'') : '—'}</td>`;
     html += `<td class="${tensionCls}">${hm.long_short_sharpe != null ? Number(hm.long_short_sharpe).toFixed(2) : '—'}</td>`;
     html += `<td>${hm.long_short_annualized_return != null ? (Number(hm.long_short_annualized_return)*100).toFixed(1)+'%' : '—'}</td>`;
     html += `<td>${hm.long_short_max_drawdown != null ? (Number(hm.long_short_max_drawdown)*100).toFixed(1)+'%' : '—'}</td>`;
@@ -2624,7 +2634,7 @@ function renderTable(){
       <td>${esc(f.best_horizon)}</td>
       <td class="num ${mcls(f.rankic_mean)}">${num(f.rankic_mean)}</td>
       <td class="num">${num(f.rankic_ir,3)}</td>
-      <td class="num">${pct(f.monthly_ic_positive_rate)}</td>
+      <td class="num">${pct(f.monthly_ic_positive_rate)}${f.ic_positive_months!=null?' ('+f.ic_positive_months+'/'+f.ic_total_months+')':''}</td>
       <td class="num ${mcls(f.long_short_sharpe,1.5,0.8)}">${num(f.long_short_sharpe,2)}</td>
       <td class="num">${pct(f.long_short_annualized_return)}</td>
       <td class="num">${pct(f.long_short_max_drawdown)}</td>
@@ -2903,7 +2913,7 @@ function renderDetail(fid){
       ${metricRow(renderTooltip('ICIR'),num(f.rankic_ir,3))}
       ${metricRow(renderTooltip('Naive t-stat'),num(f.rankic_t_stat,2,false))}
       ${(() => { const hm = f.horizon_metrics ? f.horizon_metrics[f.best_horizon] || {} : {}; const robT = hm.robust_t_stat; const robClass = hm.sig_class_robust || ''; const robBadge = robClass ? '<span class="robust-badge '+robClass+'">'+robClass.replace(/_/g,' ')+'</span>' : ''; const overlapWarn = hm.overlap_warning || ''; const overlapBadge = overlapWarn ? '<span class="overlap-badge '+overlapWarn+'">'+overlapWarn.replace(/_/g,' ')+'</span>' : ''; const inflation = hm.tstat_inflation; const inflCls = inflation !== null && inflation !== undefined && Number(inflation) > 3 ? 'severe-inflation' : (inflation !== null && inflation !== undefined && Number(inflation) > 2 ? 'high-inflation' : ''); const inflBadge = inflation !== null && inflation !== undefined ? '<span class="inflation-badge '+inflCls+'">×'+Number(inflation).toFixed(1)+'</span>' : ''; const robVal = robT !== null && robT !== undefined ? Number(robT).toFixed(2) : 'Unavailable'; return metricRow(renderTooltip('Robust t-stat'), robVal+' '+robBadge+' '+overlapBadge+' '+inflBadge); })()}
-      ${metricRow(renderTooltip('IC Win Rate'),pct(f.monthly_ic_positive_rate))}
+      ${metricRow(renderTooltip('IC Win Rate'),pct(f.monthly_ic_positive_rate)+(f.ic_positive_months!=null?' ('+f.ic_positive_months+'/'+f.ic_total_months+')':''))}
       ${metricRow(renderTooltip('LS Mean'),num(f.long_short_mean,6))}
       ${metricRow(renderTooltip('LS Std'),num(f.long_short_std,6))}
       ${metricRow(renderTooltip('LS Sharpe'),num(f.long_short_sharpe,2),mcls(f.long_short_sharpe,1.5,0.8))}
