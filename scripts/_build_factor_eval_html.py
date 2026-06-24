@@ -1828,7 +1828,7 @@ let _detailOpen = false;
 function showTip(el, ev, term) {
   const g = METRIC_GLOSSARY[term]; if (!g) return;
   const signalHtml = signalBadge(g.signal);
-  const benchHint = g.benchmark_zh ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #334155;font-size:11px;color:#94a3b8"><strong style="color:#60a5fa">📏 参照:</strong> ${g.benchmark_zh.split('\n').filter(l=>l.startsWith('•')).slice(0,3).join('<br>')}</div>` : '';
+  const benchHint = g.benchmark_zh ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #334155;font-size:11px;color:#94a3b8"><strong style="color:#60a5fa">📏 研究参考:</strong> ${g.benchmark_zh.split('\n').filter(l=>l.startsWith('•')).slice(0,3).join('<br>')}</div>` : '';
   _tipDiv.innerHTML = `<strong>${term}</strong> ${signalHtml}<br>${g.tooltip_zh}${benchHint}<br><em style="color:#64748b;font-size:11px">点击展开详细解释 / Click for details</em>`;
   _tipDiv.style.visibility = 'visible'; _tipDiv.style.opacity = '1';
   moveTip(ev);
@@ -1878,7 +1878,7 @@ function toggleDetail(term, ev) {
         <div>${g.low_zh}</div>
       </div>
       ${g.benchmark_zh ? `<div class="detail-section">
-        <div class="detail-label">📏 行业参照范围 / Industry Benchmarks</div>
+        <div class="detail-label">📏 研究参考 / Research Heuristic</div>
         <div style="white-space:pre-line;font-size:12px;line-height:1.7;color:#cbd5e1">${g.benchmark_zh.replace(/\n/g,'<br>')}</div>
         ${g.benchmark_en ? `<div style="margin-top:6px;white-space:pre-line;font-size:11px;line-height:1.6;color:#94a3b8">${g.benchmark_en.replace(/\n/g,'<br>')}</div>` : ''}
       </div>` : ''}
