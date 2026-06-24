@@ -112,6 +112,25 @@ def build_payload() -> dict:
         for _, r in robust_rankic_csv.iterrows():
             robust_rankic_map[(ss(r["factor_id"]), ss(r["horizon"]))] = r
 
+    # PM-57: Load return-side robust diagnostics
+    ls_robust_csv = load_csv(DIAG_DIR / "factor_ls_robust_significance_summary.csv")
+    ls_robust_map = {}
+    if not ls_robust_csv.empty:
+        for _, r in ls_robust_csv.iterrows():
+            ls_robust_map[(ss(r["factor_id"]), ss(r["horizon"]))] = r
+
+    paper_robust_csv = load_csv(DIAG_DIR / "factor_paper_robust_significance_summary.csv")
+    paper_robust_map = {}
+    if not paper_robust_csv.empty:
+        for _, r in paper_robust_csv.iterrows():
+            paper_robust_map[ss(r["factor_id"])] = r
+
+    fee_robust_csv = load_csv(DIAG_DIR / "factor_fee_robust_significance_summary.csv")
+    fee_robust_map = {}
+    if not fee_robust_csv.empty:
+        for _, r in fee_robust_csv.iterrows():
+            fee_robust_map[ss(r["factor_id"])] = r
+
     # PM-35: Load factor-level evaluation data (fallback for new factors)
     EVAL_DIR = BASE / "factor_level_evaluation"
     feval_rankic = load_csv(EVAL_DIR / "factor_level_rankic_summary.csv")
@@ -993,6 +1012,73 @@ def build_payload() -> dict:
                 robust_rankic[hz] = {k: "Unavailable" for k in ["naive_t_stat","robust_t_stat","newey_west_se","nw_lag","n_months","effective_n_proxy","tstat_inflation_ratio","significance_class_naive","significance_class_robust","overlap_warning"]}
         factor["robust_rankic"] = robust_rankic
 
+        # PM-57: Per-factor return-side robust diagnostics
+        ls_robust = {}
+        for hz in HORIZONS:
+            rob = ls_robust_map.get((fid, hz))
+            if rob is not None:
+                ls_robust[hz] = {
+                    "return_mean": sf(rob.get("return_mean")),
+                    "naive_t_stat": sf(rob.get("naive_t_stat")),
+                    "robust_t_stat": sf(rob.get("robust_t_stat")),
+                    "robust_standard_error": sf(rob.get("robust_standard_error")),
+                    "nw_lag": int(rob["nw_lag"]) if not pd.isna(rob.get("nw_lag")) else None,
+                    "n_periods": int(rob["n_periods"]) if not pd.isna(rob.get("n_periods")) else None,
+                    "effective_n_proxy": sf(rob.get("effective_n_proxy")),
+                    "tstat_inflation_ratio": sf(rob.get("tstat_inflation_ratio")),
+                    "bootstrap_ci_low": sf(rob.get("bootstrap_ci_low")),
+                    "bootstrap_ci_high": sf(rob.get("bootstrap_ci_high")),
+                    "bootstrap_sign_consistency": sf(rob.get("bootstrap_sign_consistency")),
+                    "return_robust_class": ss(rob.get("return_robust_class")),
+                    "overlap_warning": ss(rob.get("overlap_warning")),
+                }
+            else:
+                ls_robust[hz] = {k: "Unavailable" for k in [
+                    "return_mean", "naive_t_stat", "robust_t_stat", "robust_standard_error",
+                    "nw_lag", "n_periods", "effective_n_proxy", "tstat_inflation_ratio",
+                    "bootstrap_ci_low", "bootstrap_ci_high", "bootstrap_sign_consistency",
+                    "return_robust_class", "overlap_warning"]}
+
+        # Paper robust (documented subset — only ~5 factors)
+        paper_robust = None
+        paper_row = paper_robust_map.get(fid)
+        if paper_row is not None:
+            paper_robust = {
+                "return_mean": sf(paper_row.get("return_mean")),
+                "naive_t_stat": sf(paper_row.get("naive_t_stat")),
+                "robust_t_stat": sf(paper_row.get("robust_t_stat")),
+                "bootstrap_ci_low": sf(paper_row.get("bootstrap_ci_low")),
+                "bootstrap_ci_high": sf(paper_row.get("bootstrap_ci_high")),
+                "bootstrap_sign_consistency": sf(paper_row.get("bootstrap_sign_consistency")),
+                "return_robust_class": ss(paper_row.get("return_robust_class")),
+                "n_periods": int(paper_row["n_periods"]) if not pd.isna(paper_row.get("n_periods")) else None,
+            }
+
+        # Fee cost-collapse (documented subset — only ~13 factors)
+        fee_robust = None
+        fee_row = fee_robust_map.get(fid)
+        if fee_row is not None:
+            fee_robust = {
+                "gross_annualized_return": sf(fee_row.get("gross_annualized_return")),
+                "net_annualized_return": sf(fee_row.get("net_annualized_return")),
+                "return_decay": sf(fee_row.get("return_decay")),
+                "gross_sharpe": sf(fee_row.get("gross_sharpe")),
+                "net_sharpe": sf(fee_row.get("net_sharpe")),
+                "sharpe_decay": sf(fee_row.get("sharpe_decay")),
+                "cost_status": ss(fee_row.get("cost_status")),
+            }
+
+        factor["return_robust"] = {
+            "ls": ls_robust,
+            "paper": paper_robust,
+            "fee": fee_robust,
+            "coverage": {
+                "ls_robust": "FULL_UNIVERSE",
+                "paper_robust": "DOCUMENTED_SUBSET" if paper_robust else "UNAVAILABLE",
+                "fee_robust": "DOCUMENTED_SUBSET" if fee_robust else "UNAVAILABLE",
+            },
+        }
+
         factors.append(factor)
 
     # PM-30: Capacity / liquidity summary stats (after factors are built)
@@ -1215,6 +1301,18 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 .robust-badge.NAIVE_ONLY_SIGNIFICANT{background:#92400e;color:#fef3c7}
 .robust-badge.NOT_SIGNIFICANT{background:#475569;color:#cbd5e1}
 .robust-badge.INSUFFICIENT_PERIODS{background:#334155;color:#94a3b8}
+/* ── PM-57: Return-side robust badges ── */
+.ret-robust-badge{display:inline-block;border-radius:999px;padding:2px 7px;font-size:9px;white-space:nowrap}
+.ret-robust-badge.RETURN_ROBUST_POSITIVE{background:#166534;color:#bbf7d0}
+.ret-robust-badge.RETURN_ROBUST_NEGATIVE{background:#991b1b;color:#fecaca}
+.ret-robust-badge.NAIVE_ONLY_RETURN_SIGNIFICANT{background:#92400e;color:#fef3c7}
+.ret-robust-badge.RETURN_NOT_SIGNIFICANT{background:#475569;color:#cbd5e1}
+.ret-robust-badge.RETURN_COST_COLLAPSED{background:#7f1d1d;color:#fca5a5}
+.ret-robust-badge.INSUFFICIENT_PERIODS{background:#334155;color:#94a3b8}
+.ret-robust-badge.UNSTABLE_SIGN{background:#78350f;color:#fde68a}
+.cost-status-badge{display:inline-block;border-radius:999px;padding:2px 7px;font-size:9px;white-space:nowrap}
+.cost-status-badge.RETURN_COST_COLLAPSED{background:#7f1d1d;color:#fca5a5}
+.cost-status-badge.COST_SURVIVED{background:#166534;color:#bbf7d0}
 .overlap-badge{display:inline-block;border-radius:999px;padding:2px 7px;font-size:9px;white-space:nowrap}
 .overlap-badge.NO_MAJOR_OVERLAP{background:#166534;color:#bbf7d0}
 .overlap-badge.MODERATE_OVERLAP{background:#92400e;color:#fef3c7}
@@ -1325,6 +1423,10 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
 .horizon-summary-table th{background:#142035;color:var(--muted);padding:4px 6px;text-align:right;white-space:nowrap;font-size:9px}
 .horizon-summary-table th:first-child{text-align:left}
 .horizon-summary-table td{padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums}
+.robust-table{width:100%;border-collapse:collapse;font-size:10px;margin:8px 0}
+.robust-table th{background:#142035;color:var(--muted);padding:4px 6px;text-align:right;white-space:nowrap;font-size:9px}
+.robust-table td{padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums}
+.robust-table td:first-child,.robust-table th:first-child{text-align:left}
 .horizon-summary-table td:first-child{text-align:left;font-weight:600}
 .horizon-summary-table tr.best-row{background:#1e3a5f20}
 .horizon-summary-table tr.best-row td:first-child::after{content:' ★ Best';font-size:8px;color:var(--green);font-weight:400}
@@ -2883,6 +2985,72 @@ function renderDetail(fid){
       ${metricRow(renderTooltip('LS Sharpe'),num(f.long_short_sharpe,2),mcls(f.long_short_sharpe,1.5,0.8))}
     </div>
 
+    ${(()=>{
+      const rr = f.return_robust;
+      if (!rr || !rr.ls) return '';
+      const lsH = f.best_horizon;
+      const lsData = rr.ls[lsH];
+      if (!lsData || lsData.robust_t_stat === 'Unavailable') return '';
+      const rClass = lsData.return_robust_class || '';
+      const rBadge = rClass ? '<span class="ret-robust-badge '+rClass+'">'+rClass.replace(/_/g,' ')+'</span>' : '';
+      const overlap = lsData.overlap_warning || '';
+      const oBadge = overlap ? '<span class="overlap-badge '+overlap+'">'+overlap.replace(/_/g,' ')+'</span>' : '';
+      const inflation = lsData.tstat_inflation_ratio;
+      const inflCls = inflation !== null && inflation !== undefined && Number(inflation) > 3 ? 'severe-inflation' : (inflation !== null && inflation !== undefined && Number(inflation) > 2 ? 'high-inflation' : '');
+      const inflBadge = inflation !== null && inflation !== undefined ? '<span class="inflation-badge '+inflCls+'">×'+Number(inflation).toFixed(1)+'</span>' : '';
+      const ciLow = lsData.bootstrap_ci_low !== null && lsData.bootstrap_ci_low !== undefined ? Number(lsData.bootstrap_ci_low).toFixed(5) : '—';
+      const ciHigh = lsData.bootstrap_ci_high !== null && lsData.bootstrap_ci_high !== undefined ? Number(lsData.bootstrap_ci_high).toFixed(5) : '—';
+      const signCons = lsData.bootstrap_sign_consistency;
+      const signStr = signCons !== null && signCons !== undefined ? (Number(signCons)*100).toFixed(0)+'%' : '—';
+      return `
+      <div class="section-divider"></div>
+      <h3>📊 LS Return Robust Diagnostics / 多空收益稳健诊断 (PM-57)</h3>
+      <details class="chart-guide"><summary>📖 How to read: LS Robust Diagnostics</summary><div class="chart-guide-body">
+        <strong>LS robust</strong>回答多空收益转化是否统计稳健。RankIC 稳健性回答排序关系是否稳健；LS 稳健性回答收益转化是否稳健。两者都稳健的因子，研究可信度更高。<br>
+        <strong>LS robust</strong> answers whether long-short return translation is statistically robust. RankIC robust answers whether ranking relation is robust; LS robust answers whether return translation is robust. Factors robust on both have higher research credibility.<br><br>
+        <strong>Robust t-stat</strong> = Newey-West corrected t-stat on monthly LS returns.<br>
+        <strong>Bootstrap 95% CI</strong> = block bootstrap confidence interval for mean LS return.<br>
+        <strong>Sign consistency</strong> = fraction of bootstrap samples with same sign as mean.<br>
+        <strong>Return robust class</strong>: RETURN_ROBUST_POSITIVE (credible), NAIVE_ONLY_RETURN_SIGNIFICANT (possibly inflated), RETURN_NOT_SIGNIFICANT, INSUFFICIENT_PERIODS.<br>
+        ⚠️ LS robust diagnostics are research diagnostics, NOT trading signals. 多空收益稳健诊断是研究诊断，不是交易信号。
+      </div></details>
+      <div class="metric-grid">
+        ${metricRow('Horizon', esc(lsH))}
+        ${metricRow('LS Mean Return', num(lsData.return_mean, 5))}
+        ${metricRow('Naive t-stat', num(lsData.naive_t_stat, 2))}
+        ${metricRow('Robust t-stat', num(lsData.robust_t_stat, 2, false)+' '+rBadge)}
+        ${metricRow('NW Lag', lsData.nw_lag !== null ? lsData.nw_lag : '—')}
+        ${metricRow('Periods', lsData.n_periods !== null ? lsData.n_periods : '—')}
+        ${metricRow('Bootstrap 95% CI', ciLow+' to '+ciHigh)}
+        ${metricRow('Sign Consistency', signStr)}
+        ${metricRow('Inflation', inflBadge || '—')}
+        ${metricRow('Overlap', oBadge || '—')}
+      </div>
+      ${(()=>{
+        // All-horizon LS robust table
+        const horizons = ['1h','4h','24h','72h'];
+        const allAvail = horizons.every(h => rr.ls[h] && rr.ls[h].robust_t_stat !== 'Unavailable');
+        if (!allAvail) return '';
+        let rows = '';
+        horizons.forEach(h => {
+          const d = rr.ls[h];
+          const rc = d.return_robust_class || '';
+          const rb = rc ? '<span class="ret-robust-badge '+rc+'">'+rc.replace(/_/g,' ')+'</span>' : '';
+          const ciL = d.bootstrap_ci_low !== null && d.bootstrap_ci_low !== undefined ? Number(d.bootstrap_ci_low).toFixed(5) : '—';
+          const ciH2 = d.bootstrap_ci_high !== null && d.bootstrap_ci_high !== undefined ? Number(d.bootstrap_ci_high).toFixed(5) : '—';
+          const sc = d.bootstrap_sign_consistency;
+          const scStr = sc !== null && sc !== undefined ? (Number(sc)*100).toFixed(0)+'%' : '—';
+          const inf = d.tstat_inflation_ratio;
+          const infStr = inf !== null && inf !== undefined ? '×'+Number(inf).toFixed(1) : '—';
+          const ov = d.overlap_warning || '';
+          const ovB = ov ? '<span class="overlap-badge '+ov+'">'+ov.replace(/_/g,' ')+'</span>' : '—';
+          rows += '<tr><td>'+esc(h)+'</td><td>'+num(d.return_mean,5)+'</td><td>'+num(d.naive_t_stat,2)+'</td><td>'+num(d.robust_t_stat,2)+'</td><td>'+rb+'</td><td>'+ciL+' – '+ciH2+'</td><td>'+scStr+'</td><td>'+infStr+'</td><td>'+ovB+'</td></tr>';
+        });
+        return '<div style="margin-top:8px"><table class="robust-table"><thead><tr><th>Horizon</th><th>LS Mean</th><th>Naive t</th><th>Robust t</th><th>Class</th><th>Bootstrap 95% CI</th><th>Sign %</th><th>Inflation</th><th>Overlap</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+      })()}
+      `;
+    })()}
+
     ${f.paper_viability_class?`
     <div class="section-divider"></div>
     <h3>Single-Factor Paper Portfolio / 单因子纸面组合</h3>
@@ -2890,6 +3058,8 @@ function renderDetail(fid){
     <div style="margin:6px 0">
       ${paperViabBadge(f.paper_viability_class)}
       ${f.cost_sensitivity_class?costSensBadge(f.cost_sensitivity_class):''}
+      ${(()=>{const rr=f.return_robust;if(!rr||!rr.paper)return '';const p=rr.paper;const rc=p.return_robust_class||'';return rc?'<span class="ret-robust-badge '+rc+'">Paper: '+rc.replace(/_/g,' ')+'</span>':'';})()}
+      ${(()=>{const rr=f.return_robust;if(!rr||!rr.fee)return '';const cs=rr.fee.cost_status||'';return cs?'<span class="cost-status-badge '+cs+'">'+cs.replace(/_/g,' ')+'</span>':'';})()}
     </div>
     <div class="metric-grid">
       ${metricRow(renderTooltip('Gross Sharpe'),num(f.gross_sharpe,2))}
@@ -2903,6 +3073,8 @@ function renderDetail(fid){
       ${metricRow(renderTooltip('5bps Return'),num(f.fee_5bps_total_return,2))}
       ${metricRow(renderTooltip('10bps Return'),num(f.fee_10bps_total_return,2),f.fee_10bps_total_return!==null&&f.fee_10bps_total_return<0?'':'')}
       ${metricRow(renderTooltip('20bps Return'),num(f.fee_20bps_total_return,2))}
+      ${(()=>{const rr=f.return_robust;if(!rr||!rr.paper)return '';const p=rr.paper;return metricRow('Paper Robust t',num(p.robust_t_stat,2))+' '+metricRow('Paper Bootstrap CI',(p.bootstrap_ci_low!==null?Number(p.bootstrap_ci_low).toFixed(5):'—')+' to '+(p.bootstrap_ci_high!==null?Number(p.bootstrap_ci_high).toFixed(5):'—'))+' '+metricRow('Paper Sign %',p.bootstrap_sign_consistency!==null?(Number(p.bootstrap_sign_consistency)*100).toFixed(0)+'%':'—');})()}
+      ${(()=>{const rr=f.return_robust;if(!rr||!rr.fee)return '';const fc=rr.fee;return metricRow('Fee: Gross Sharpe',num(fc.gross_sharpe,2))+' '+metricRow('Fee: Net Sharpe',num(fc.net_sharpe,2))+' '+metricRow('Fee: Sharpe Decay',num(fc.sharpe_decay,2));})()}
     </div>
     ${f.main_diagnostic_note_zh||f.main_diagnostic_note_en?`<div class="bilingual" style="margin:6px 0"><div class="zh" style="font-size:11px">${esc(f.main_diagnostic_note_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(f.main_diagnostic_note_en)}</div></div>`:''}
 

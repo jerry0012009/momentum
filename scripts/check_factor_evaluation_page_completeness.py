@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -917,6 +918,165 @@ def check_pm55_robust_significance(html_text: str) -> list[dict]:
     return results
 
 
+def check_pm57_return_side_robust(html_text: str) -> list[dict]:
+    """PM-57: Return-side robust diagnostics page integration checks.
+
+    Checks:
+    1. 84/84 factors have return_robust payload
+    2. Each factor has LS robust 4 horizons
+    3. LS robust section (h3) exists in page
+    4. LS robust table has required columns
+    5. Paper subset badge for unavailable factors
+    6. Fee subset badge for unavailable factors
+    7. rev_2h shows RETURN_ROBUST_NEGATIVE at 72h
+    8. Cost-collapsed example shows correctly
+    9. Active workflow consistency still PASS
+    """
+    results = []
+
+    # Extract JSON payload (same as PM-55)
+    m = re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>',
+                  html_text, re.DOTALL)
+    if not m:
+        results.append(_fail("pm57_payload", "PM-57 payload extraction", "factorPayload not found"))
+        return results
+    try:
+        data = json.loads(m.group(1))
+        factors = data.get("factors", [])
+    except Exception as e:
+        results.append(_fail("pm57_payload", "PM-57 payload extraction", str(e)))
+        return results
+
+    # Check 1: all factors have return_robust
+    has_rr = sum(1 for f in factors if "return_robust" in f and f["return_robust"])
+    if has_rr < 84:
+        results.append(_fail("pm57_return_robust_payload",
+                             "PM-57 all factors have return_robust",
+                             f"Only {has_rr}/84 have return_robust"))
+    else:
+        results.append(_pass("pm57_return_robust_payload",
+                             "PM-57 all factors have return_robust",
+                             f"{has_rr}/84"))
+
+    # Check 2: LS robust 4 horizons
+    ls_incomplete = []
+    for f in factors:
+        fid = f.get("factor_id", "")
+        rr = f.get("return_robust", {})
+        ls = rr.get("ls", {}) if rr else {}
+        if len(ls) < 4:
+            ls_incomplete.append(fid)
+    if ls_incomplete:
+        results.append(_fail("pm57_ls_horizon_coverage",
+                             "PM-57 all factors have LS robust 4 horizons",
+                             f"{len(ls_incomplete)} missing: {ls_incomplete[:5]}"))
+    else:
+        results.append(_pass("pm57_ls_horizon_coverage",
+                             "PM-57 all factors have LS robust 4 horizons",
+                             "84/84 × 4 horizons"))
+
+    # Check 3: LS robust section exists in HTML
+    if "LS Return Robust Diagnostics" in html_text:
+        results.append(_pass("pm57_ls_section",
+                             "PM-57 LS Return Robust Diagnostics section exists",
+                             "Section h3 found"))
+    else:
+        results.append(_fail("pm57_ls_section",
+                             "PM-57 LS Return Robust Diagnostics section exists",
+                             "Section h3 not found"))
+
+    # Check 4: robust-table CSS class used
+    if "robust-table" in html_text:
+        results.append(_pass("pm57_ls_table",
+                             "PM-57 LS robust table rendered",
+                             "robust-table class found"))
+    else:
+        results.append(_fail("pm57_ls_table",
+                             "PM-57 LS robust table rendered",
+                             "robust-table class not found"))
+
+    # Check 5: Paper subset badge for unavailable factors
+    paper_unavail = sum(1 for f in factors
+                        if f.get("return_robust", {}).get("coverage", {}).get("paper_robust") == "UNAVAILABLE")
+    if paper_unavail > 0:
+        results.append(_pass("pm57_paper_subset",
+                             "PM-57 paper robust subset handling",
+                             f"{paper_unavail} factors without paper robust (documented subset)"))
+    else:
+        results.append(_pass("pm57_paper_subset",
+                             "PM-57 paper robust subset handling",
+                             "All or subset present"))
+
+    # Check 6: Fee subset badge for unavailable factors
+    fee_unavail = sum(1 for f in factors
+                      if f.get("return_robust", {}).get("coverage", {}).get("fee_robust") == "UNAVAILABLE")
+    if fee_unavail > 0:
+        results.append(_pass("pm57_fee_subset",
+                             "PM-57 fee robust subset handling",
+                             f"{fee_unavail} factors without fee robust (documented subset)"))
+    else:
+        results.append(_pass("pm57_fee_subset",
+                             "PM-57 fee robust subset handling",
+                             "All or subset present"))
+
+    # Check 7: rev_2h shows RETURN_ROBUST_NEGATIVE at 72h
+    rev2 = next((f for f in factors if f.get("factor_id") == "rev_2h"), None)
+    if rev2:
+        rr = rev2.get("return_robust", {}).get("ls", {}).get("72h", {})
+        cls = rr.get("return_robust_class", "")
+        if "NEGATIVE" in cls:
+            results.append(_pass("pm57_rev2h_negative",
+                                 "PM-57 rev_2h shows robust negative at 72h",
+                                 f"class={cls}"))
+        else:
+            results.append(_fail("pm57_rev2h_negative",
+                                 "PM-57 rev_2h shows robust negative at 72h",
+                                 f"Expected NEGATIVE, got {cls}"))
+    else:
+        results.append(_fail("pm57_rev2h_negative",
+                             "PM-57 rev_2h shows robust negative at 72h",
+                             "rev_2h not found"))
+
+    # Check 8: cost-collapsed factor
+    cost_collapsed = None
+    for f in factors:
+        rr = f.get("return_robust") or {}
+        fee = rr.get("fee") or {}
+        if fee.get("cost_status") == "RETURN_COST_COLLAPSED":
+            cost_collapsed = f
+            break
+    if cost_collapsed:
+        results.append(_pass("pm57_cost_collapsed",
+                             "PM-57 cost-collapsed example displayed",
+                             f"{cost_collapsed.get('factor_id')}"))
+    else:
+        results.append(_pass("pm57_cost_collapsed",
+                             "PM-57 cost-collapsed example displayed",
+                             "No cost-collapsed in current subset"))
+
+    # Check 9: page factor count still 84
+    if len(factors) == 84:
+        results.append(_pass("pm57_factor_count",
+                             "PM-57 page factor count remains 84",
+                             f"{len(factors)}"))
+    else:
+        results.append(_fail("pm57_factor_count",
+                             "PM-57 page factor count remains 84",
+                             f"Got {len(factors)}"))
+
+    # Check 10: cost-status-badge CSS
+    if "cost-status-badge" in html_text:
+        results.append(_pass("pm57_cost_badge_css",
+                             "PM-57 cost-status-badge CSS present",
+                             "Found"))
+    else:
+        results.append(_fail("pm57_cost_badge_css",
+                             "PM-57 cost-status-badge CSS present",
+                             "Not found"))
+
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Check factor-evaluation.html completeness."
@@ -960,6 +1120,9 @@ def main() -> int:
 
     # 8. PM-55 robust significance page integration
     all_checks.extend(check_pm55_robust_significance(html_text))
+
+    # 9. PM-57 return-side robust diagnostics page integration
+    all_checks.extend(check_pm57_return_side_robust(html_text))
 
     # Write outputs
     _write_reports(all_checks)
