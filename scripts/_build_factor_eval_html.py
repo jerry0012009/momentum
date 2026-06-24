@@ -3051,6 +3051,15 @@ function renderDetail(fid){
       </div>
     </div>
 
+    <details class="chart-guide" open><summary>📖 LS Evidence Reading Order / LS 证据阅读顺序</summary><div class="chart-guide-body">
+      <strong>1. Edge Diagnostics Summary</strong> — 看因子是否有正向 LS edge，以及这个 edge 在月份之间是否稳定。<br>
+      <em>Check whether the factor has a positive LS edge and whether that edge is stable across months.</em><br><br>
+      <strong>2. Robust LS Diagnostics</strong> — 看这个 LS edge 在 Newey-West / bootstrap 修正后是否仍然稳健。<br>
+      <em>Check whether the LS edge remains statistically robust after Newey-West / bootstrap correction.</em><br><br>
+      <strong>3. Period-Level Window Diagnostics</strong> — 这是月度 period-level 描述统计，只作为补充。它不是 true per-bar investment-window diagnostics，也不是独立交易胜率。<br>
+      <em>Monthly period-level descriptive statistics only. Not true per-bar investment-window data. Not independent trade win rate.</em>
+    </div></details>
+
     <h3>Edge Diagnostics Summary 边缘诊断概要</h3>
     <div class="metric-grid">
       ${metricRow('Edge Curve Max DD',pct(f.long_short_max_drawdown))}
@@ -3058,24 +3067,6 @@ function renderDetail(fid){
       ${metricRow(renderTooltip('LS Sharpe'),num(f.long_short_sharpe,2),mcls(f.long_short_sharpe,1.5,0.8))}
     </div>
     <p style="font-size:10px;color:#64748b;margin-top:4px">Edge diagnostics are monthly per-bar LS edge stability metrics. Not portfolio metrics. Edge 诊断是月度 per-bar LS edge 稳定性指标，不是组合指标。</p>
-
-    <h3>Period-Level Window Diagnostics 月度窗口诊断 (${esc(f.best_horizon)})</h3>
-    ${(() => {
-      const wd = f.window_diagnostics && f.window_diagnostics[f.best_horizon];
-      if (!wd) return '<div class="small">Window diagnostics unavailable</div>';
-      const overlapLabel = {'LOW_OVERLAP':'🟢 Low','MODERATE_OVERLAP':'🟡 Moderate','HIGH_OVERLAP':'🟠 High','VERY_HIGH_OVERLAP':'🔴 Very High'}[wd.overlap_warning] || wd.overlap_warning;
-      return '<div class="metric-grid">' +
-        metricRow('Window LS Mean', pct(wd.window_ls_mean)) +
-        metricRow('Window LS Win Rate', pct(wd.window_ls_win_rate)) +
-        metricRow('Window LS Sharpe', num(wd.window_ls_sharpe,2)) +
-        metricRow('Window LS Ann Vol', pct(wd.window_ls_ann_vol)) +
-        metricRow('n_windows', num(wd.n_windows,0)) +
-        metricRow('Overlap Level', overlapLabel) +
-        (wd.nonoverlap_available ? metricRow('Non-overlap Win Rate', pct(wd.nonoverlap_window_ls_win_rate)) + metricRow('Non-overlap n_windows', num(wd.nonoverlap_n_windows,0)) : '') +
-        '</div>' +
-        '<p style="font-size:10px;color:#64748b;margin-top:4px">⚠️ 当前实现使用 factor_level_period_long_short_summary.csv 中的月度 period LS return，每个月视为一个 window 记录。这不是真正逐 K 线的投资窗口数据。Window LS Win Rate 不是独立交易胜率。真正的逐 K 线 / 非重叠投资窗口诊断需要 raw per-bar LS return 输出，后续再做。</p>' +
-        '<p style="font-size:10px;color:#64748b;margin-top:2px">Current implementation uses monthly period LS returns. Each monthly period = one window. Not true per-bar investment-window data. Not independent trade win rate. True per-bar / non-overlapping diagnostics require raw per-bar LS output and are deferred.</p>';
-    })()}
 
     ${(()=>{
       const rr = f.return_robust;
@@ -3096,8 +3087,10 @@ function renderDetail(fid){
       const signStr = signCons !== null && signCons !== undefined ? (Number(signCons)*100).toFixed(0)+'%' : '—';
       return `
       <div class="section-divider"></div>
-      <h3>📊 LS Return Robust Diagnostics / 多空收益稳健诊断 (PM-57)</h3>
-      <details class="chart-guide"><summary>📖 How to read: LS Robust Diagnostics</summary><div class="chart-guide-body">
+      <h3>📊 Robust LS Diagnostics 稳健 LS 诊断</h3>
+      <p style="font-size:11px;color:#94a3b8;margin:4px 0 8px">Robust LS Diagnostics 用于检验 LS edge 在 Newey-West / bootstrap 修正后是否仍然稳健。它不是又一张原始收益表。<br>
+      <em style="font-size:10px">Tests whether the LS edge remains statistically robust after Newey-West / bootstrap correction. Not another raw return table.</em></p>
+      <details class="chart-guide"><summary>📖 How to read: Robust LS Diagnostics</summary><div class="chart-guide-body">
         <strong>LS robust</strong>回答多空收益转化是否统计稳健。RankIC 稳健性回答排序关系是否稳健；LS 稳健性回答收益转化是否稳健。两者都稳健的因子，研究可信度更高。<br>
         <strong>LS robust</strong> answers whether long-short return translation is statistically robust. RankIC robust answers whether ranking relation is robust; LS robust answers whether return translation is robust. Factors robust on both have higher research credibility.<br><br>
         <strong>Robust t-stat</strong> = Newey-West corrected t-stat on monthly LS returns.<br>
@@ -3108,7 +3101,7 @@ function renderDetail(fid){
       </div></details>
       <div class="metric-grid">
         ${metricRow('Horizon', esc(lsH))}
-        ${metricRow('LS Mean Return', lsData.return_mean!=null?(Number(lsData.return_mean)>=0?'+':'')+Number(lsData.return_mean*100).toFixed(4)+'%':'—')}
+        ${metricRow('Robust-tested LS Mean', lsData.return_mean!=null?(Number(lsData.return_mean)>=0?'+':'')+Number(lsData.return_mean*100).toFixed(4)+'%':'—')}
         ${metricRow('Naive t-stat', num(lsData.naive_t_stat, 2))}
         ${metricRow('Robust t-stat', num(lsData.robust_t_stat, 2, false)+' '+rBadge)}
         ${metricRow('NW Lag', lsData.nw_lag !== null ? lsData.nw_lag : '—')}
@@ -3125,25 +3118,28 @@ function renderDetail(fid){
         if (!allAvail) return '';
         let rows = '';
         horizons.forEach(h => {
-          const d = rr.ls[h];
-          const rc = d.return_robust_class || '';
-          const rb = rc ? '<span class="ret-robust-badge '+rc+'">'+rc.replace(/_/g,' ')+'</span>' : '';
-          const ciL = d.bootstrap_ci_low !== null && d.bootstrap_ci_low !== undefined ? Number(d.bootstrap_ci_low).toFixed(5) : '—';
-          const ciH2 = d.bootstrap_ci_high !== null && d.bootstrap_ci_high !== undefined ? Number(d.bootstrap_ci_high).toFixed(5) : '—';
-          const sc = d.bootstrap_sign_consistency;
-          const scStr = sc !== null && sc !== undefined ? (Number(sc)*100).toFixed(0)+'%' : '—';
-          const inf = d.tstat_inflation_ratio;
-          const infStr = inf !== null && inf !== undefined ? '×'+Number(inf).toFixed(1) : '—';
-          const ov = d.overlap_warning || '';
-          const ovB = ov ? '<span class="overlap-badge '+ov+'">'+ov.replace(/_/g,' ')+'</span>' : '—';
-          rows += '<tr><td>'+esc(h)+'</td><td>'+(d.return_mean!=null?(Number(d.return_mean)>=0?'+':'')+Number(d.return_mean*100).toFixed(4)+'%':'—')+'</td><td>'+num(d.naive_t_stat,2)+'</td><td>'+num(d.robust_t_stat,2)+'</td><td>'+rb+'</td><td>'+ciL+' – '+ciH2+'</td><td>'+scStr+'</td><td>'+infStr+'</td><td>'+ovB+'</td></tr>';
-        });
-        return '<div style="margin-top:8px"><table class="robust-table"><thead><tr><th>Horizon</th><th>LS Mean</th><th>Naive t</th><th>Robust t</th><th>Class</th><th>Bootstrap 95% CI</th><th>Sign %</th><th>Inflation</th><th>Overlap</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-      })()}
-      `;
-    })()}
+          <details class="secondary-diagnostics period-window-diagnostics" style="margin-top:12px">
+            <summary>Period-Level Window Diagnostics 月度窗口诊断（补充 / secondary）</summary>
+            <p style="font-size:11px;color:#fbbf24;margin:8px 0">⚠️ 基于月度 period LS records 派生，不是真正逐 K 线投资窗口数据，也不是独立交易胜率。<br>
+            <em>Derived from monthly period LS records. Not true per-bar investment-window data. Not independent trade win rate.</em></p>
+            ${(() => {
+              const wd = f.window_diagnostics && f.window_diagnostics[f.best_horizon];
+              if (!wd) return '<div class="small">Window diagnostics unavailable</div>';
+              const overlapLabel = {'LOW_OVERLAP':'🟢 Low','MODERATE_OVERLAP':'🟡 Moderate','HIGH_OVERLAP':'🟠 High','VERY_HIGH_OVERLAP':'🔴 Very High'}[wd.overlap_warning] || wd.overlap_warning;
+              const sharpeCaution = wd.window_ls_sharpe !== null && wd.window_ls_sharpe !== undefined && Math.abs(Number(wd.window_ls_sharpe)) > 5;
+              return '<div class="metric-grid">' +
+                metricRow('Window LS Mean', pct(wd.window_ls_mean)) +
+                metricRow('Window LS Win Rate', pct(wd.window_ls_win_rate)) +
+                metricRow('Window LS Sharpe', num(wd.window_ls_sharpe,2) + (sharpeCaution ? ' <span class="ret-robust-badge RETURN_NOT_SIGNIFICANT" style="font-size:8px">DESCRIPTIVE ONLY</span>' : '') + ' <span style="font-size:8px;color:#94a3b8">⚠️ Not portfolio Sharpe / 不是组合 Sharpe</span>') +
+                metricRow('Window LS Ann Vol', pct(wd.window_ls_ann_vol) + ' <span style="font-size:8px;color:#94a3b8">⚠️ Descriptive only / 仅描述统计</span>') +
+                metricRow('n_windows', num(wd.n_windows,0)) +
+                metricRow('Overlap Level', overlapLabel) +
+                (wd.nonoverlap_available ? metricRow('Non-overlap Win Rate', pct(wd.nonoverlap_window_ls_win_rate)) + metricRow('Non-overlap n_windows', num(wd.nonoverlap_n_windows,0)) : '') +
+                '</div>';
+            })()}
+          </details>
 
-    ${f.paper_viability_class?`
+          ${f.paper_viability_class?`
     <div class="section-divider"></div>
     <details class="optional-deep-dive">
       <summary>Optional Deep-dive Evidence / 可选深挖证据 <span class="optional-label">NOT CORE</span></summary>
