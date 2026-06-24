@@ -109,11 +109,18 @@ def ts_alpha_wide(y_wide: pd.DataFrame, x_wide: pd.DataFrame, window: int) -> pd
         beta = cov(y, x) / var(x)
         alpha = mean(y) - beta * mean(x)
     If var(x) == 0, alpha = NaN.
+
+    y_wide and x_wide may have different columns/index; aligned to intersection.
     """
-    result = pd.DataFrame(index=y_wide.index, columns=y_wide.columns, dtype=float)
-    for col in y_wide.columns:
-        y = y_wide[col]
-        x = x_wide[col]
+    common_cols = y_wide.columns.intersection(x_wide.columns)
+    common_idx = y_wide.index.intersection(x_wide.index)
+    y_a = y_wide.loc[common_idx, common_cols]
+    x_a = x_wide.loc[common_idx, common_cols]
+
+    result = pd.DataFrame(np.nan, index=common_idx, columns=common_cols, dtype=float)
+    for col in common_cols:
+        y = y_a[col]
+        x = x_a[col]
         result[col] = _rolling_alpha_vectorized(y.values, x.values, window)
     return result
 

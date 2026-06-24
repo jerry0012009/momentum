@@ -22,6 +22,8 @@ TAKER_BARS_PATH = ROOT / "data" / "cache" / f"{DEFAULT_DATASET_ID}_taker_enriche
 TAKER_REQUIRED_COLUMNS = {"taker_buy_volume", "taker_buy_quote_volume"}
 FUNDING_RATE_PATH = ROOT / "data" / "cache" / "crypto_funding_rate_1h_contract_v1" / "funding_rate_1h_aligned_dynamic.parquet"
 FUNDING_REQUIRED_COLUMNS = {"funding_rate"}
+MARKET_CAP_PATH = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "market_cap_1h_aligned.parquet"
+CAP_REQUIRED_COLUMNS = {"cap"}
 
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -90,6 +92,11 @@ def _needs_funding_source(spec) -> bool:
     return bool(set(spec.required_columns) & FUNDING_REQUIRED_COLUMNS)
 
 
+def _needs_cap_source(spec) -> bool:
+    """Check if a factor spec requires cap column."""
+    return bool(set(spec.required_columns) & CAP_REQUIRED_COLUMNS)
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--dataset-id", default=DEFAULT_DATASET_ID,
@@ -100,6 +107,8 @@ def main() -> None:
                     help="Path to candidate CSV; use with --status to select factors")
     p.add_argument("--status", default="selected_for_7B",
                     help="Status filter for --candidate-csv (default: selected_for_7B)")
+    p.add_argument("--allow-blocked", action="store_true",
+                    help="Allow blocked factors (e.g. missing cap) without non-zero exit")
     args = p.parse_args()
 
     # Determine which factors to build
@@ -183,26 +192,75 @@ def main() -> None:
             parts.append(calc_group(g, funding_factor_ids))
 
     # Build panel factors (cross-sectional, need all symbols at once)
+    blocked_factors = []
     if panel_factor_ids:
         print(f"  Source: panel computation ({len(panel_factor_ids)} factors)")
-        for fid in panel_factor_ids:
+        # Split panel factors into cap-needing and non-cap-needing
+        cap_panel_ids = [fid for fid in panel_factor_ids if _needs_cap_source(REGISTRY_BY_ID[fid])]
+        non_cap_panel_ids = [fid for fid in panel_factor_ids if not _needs_cap_source(REGISTRY_BY_ID[fid])]
+
+        # Load cap data if needed
+        bars_with_cap = None
+        if cap_panel_ids:
+            if not MARKET_CAP_PATH.exists():
+                print(f"  ERROR: Market cap file not found: {MARKET_CAP_PATH}")
+                print(f"  Run: python scripts/build_crypto_market_cap_1h.py first")
+                for fid in cap_panel_ids:
+                    blocked_factors.append((fid, f"Missing market cap file: {MARKET_CAP_PATH}"))
+                    print(f"  BLOCKED: {fid} — missing market cap file")
+                cap_panel_ids = []
+            else:
+                cap_df = pd.read_parquet(MARKET_CAP_PATH, columns=["timestamp", "symbol", "cap", "cap_source_timestamp", "cap_known_at", "cap_quality_flag"])
+                cap_df["timestamp"] = pd.to_datetime(cap_df["timestamp"], utc=True)
+                if cap_df.duplicated(["timestamp", "symbol"]).any():
+                    print("  ERROR: Market cap file has duplicate row keys")
+                    _sys.exit(1)
+                cap_coverage = cap_df["cap"].notna().mean()
+                print(f"  Market cap loaded: {len(cap_df)} rows, coverage={cap_coverage:.1%}")
+                bars_with_cap = bars.merge(cap_df, on=["timestamp", "symbol"], how="left")
+                print(f"  bars_with_cap: {len(bars_with_cap)} rows, cap coverage after merge={bars_with_cap['cap'].notna().mean():.1%}")
+
+        # Process non-cap panel factors
+        for fid in non_cap_panel_ids:
             spec = REGISTRY_BY_ID[fid]
-            # Validate required columns
             missing_cols = set(spec.required_columns) - set(bars.columns)
             if missing_cols:
+                blocked_factors.append((fid, f"Missing columns: {missing_cols}"))
                 print(f"  BLOCKED: {fid} — missing columns: {missing_cols}")
                 continue
             try:
                 factor_df = spec.panel_compute_fn(bars)
-                # Validate output format
                 expected_cols = {"timestamp", "symbol", fid}
                 if not expected_cols.issubset(set(factor_df.columns)):
                     print(f"  ERROR: {fid} — panel_compute_fn returned columns {factor_df.columns.tolist()}, expected {expected_cols}")
+                    blocked_factors.append((fid, f"Bad output columns: {factor_df.columns.tolist()}"))
                     continue
                 factor_df = factor_df[["timestamp", "symbol", fid]]
                 parts.append(factor_df)
                 print(f"  {fid}: panel computed, rows={len(factor_df)} coverage={factor_df[fid].notna().mean():.3%}")
             except Exception as e:
+                blocked_factors.append((fid, str(e)))
+                print(f"  BLOCKED: {fid} — {e}")
+
+        # Process cap panel factors
+        for fid in cap_panel_ids:
+            if bars_with_cap is None:
+                blocked_factors.append((fid, "bars_with_cap not available"))
+                print(f"  BLOCKED: {fid} — bars_with_cap not available")
+                continue
+            spec = REGISTRY_BY_ID[fid]
+            try:
+                factor_df = spec.panel_compute_fn(bars_with_cap)
+                expected_cols = {"timestamp", "symbol", fid}
+                if not expected_cols.issubset(set(factor_df.columns)):
+                    print(f"  ERROR: {fid} — panel_compute_fn returned columns {factor_df.columns.tolist()}, expected {expected_cols}")
+                    blocked_factors.append((fid, f"Bad output columns: {factor_df.columns.tolist()}"))
+                    continue
+                factor_df = factor_df[["timestamp", "symbol", fid]]
+                parts.append(factor_df)
+                print(f"  {fid}: panel computed (with cap), rows={len(factor_df)} coverage={factor_df[fid].notna().mean():.3%}")
+            except Exception as e:
+                blocked_factors.append((fid, str(e)))
                 print(f"  BLOCKED: {fid} — {e}")
 
     wide = pd.concat(parts, ignore_index=True)
@@ -210,7 +268,12 @@ def main() -> None:
 
     computed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    # Track which factors were actually computed
+    computed_factor_ids = set()
     for name in factor_ids:
+        if name not in wide.columns:
+            continue
+        computed_factor_ids.add(name)
         out = wide[["timestamp", "symbol", name]].rename(columns={name: "factor_value"})
         out.insert(2, "factor_name", name)
         out["known_at"] = out["timestamp"]
@@ -223,6 +286,19 @@ def main() -> None:
         target = target_dir / "factor_values.parquet"
         out.to_parquet(target, index=False)
         print(f"  {name}: rows={len(out)} coverage={out['factor_value'].notna().mean():.3%}")
+
+    # Report blocked factors
+    if blocked_factors:
+        print(f"\nBlocked factors: {len(blocked_factors)}")
+        for fid, reason in blocked_factors:
+            print(f"  {fid}: {reason}")
+        if not args.allow_blocked:
+            _sys.exit(1)
+
+    # Report which requested factors were not computed
+    missed = [fid for fid in factor_ids if fid not in computed_factor_ids and fid not in [b[0] for b in blocked_factors]]
+    if missed:
+        print(f"\nWARNING: These requested factors were not computed and not blocked: {missed}")
 
 
 if __name__ == "__main__":

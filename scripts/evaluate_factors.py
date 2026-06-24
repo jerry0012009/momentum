@@ -104,7 +104,8 @@ def summarize_ic(ic_vals: list[float]) -> dict:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--factor-ids", nargs="*")
+    parser.add_argument("--factor-ids", nargs="*",
+                        help="Factor IDs to evaluate (space or comma separated)")
     parser.add_argument("--output-suffix", type=str, default=None,
                         help="Suffix for output files (e.g. 'scratch_rev3h'). Required for partial runs.")
     parser.add_argument("--output-dir", type=str, default=None,
@@ -118,6 +119,9 @@ def main():
     labels_path = features_dir / "labels.parquet"
 
     is_partial = bool(args.factor_ids)
+    # Support comma-separated factor IDs (from post-intake workflow)
+    if args.factor_ids and len(args.factor_ids) == 1 and "," in args.factor_ids[0]:
+        args.factor_ids = [s.strip() for s in args.factor_ids[0].split(",") if s.strip()]
 
     # Safety guard: partial runs must not overwrite canonical outputs
     if is_partial and not args.output_suffix and not args.output_dir:
