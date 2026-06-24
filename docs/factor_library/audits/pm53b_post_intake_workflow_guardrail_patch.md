@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-24
 **Status:** Research diagnostics. NOT production. NOT live trading.
-**Verdict:** PENDING (see QA results below)
+**Verdict:** PM53B_WORKFLOW_GUARDRAIL_PASS
 
 ---
 
@@ -122,20 +122,97 @@ New `--all-active` flag for `check_post_intake_workflow_integrity.py`:
 
 ## 8. QA Result on Current 84-Factor Library
 
-**Note:** QA results depend on PM-53A completing the data computation for the 4 missing factors. Results below reflect the state at PM-53B script creation time.
+### 8.1 Consistency Checker (`check_active_factor_workflow_consistency.py`)
 
-(PENDING — to be filled after running QA checks)
+```
+Active factor count: 84
+Tables checked: 13
+PASS: 13  |  FAIL: 0
+Verdict: PASS
+```
+
+All 13 required tables (rankic, long_short, diagnostics_summary, shape, rolling_stability, decile, capacity, scorecard, redundancy_summary, regime_exposure, profile, bilingual_cards, html_payload) contain exactly 84/84 active factors.
+
+### 8.2 `--only-missing` Result
+
+```
+All factors have complete workflow. Nothing to do.
+```
+
+Returns empty list — no factors with incomplete workflow.
+
+### 8.3 Page QA (`check_factor_evaluation_page_completeness.py`)
+
+```
+Total: 28  |  PASS: 28  |  FAIL: 0
+```
+
+Including PM-53B checks:
+- `pm53b_count_match`: PASS — page 84 factors == active 84 factors
+- `pm53b_factor_diagnostics`: PASS — all 84 factors have shape/decile/capacity/scorecard/profile
+
+### 8.4 Integrity QA (`check_post_intake_workflow_integrity.py --all-active`)
+
+```
+Factors: 84
+Total checks: 1596
+PASS: 1596
+FAIL: 0
+WARN: 0
+
+Active-Universe Count Consistency (PM-53B):
+  All 12 tables: 84/84 PASS
+  Active count consistency: PASS
+```
+
+### 8.5 Active Factor Count Consistency
+
+| Table | Count | Expected | Status |
+|-------|-------|----------|--------|
+| rankic | 84 | 84 | PASS |
+| long_short | 84 | 84 | PASS |
+| diagnostics_summary | 84 | 84 | PASS |
+| shape | 84 | 84 | PASS |
+| rolling_stability | 84 | 84 | PASS |
+| decile | 84 | 84 | PASS |
+| capacity | 84 | 84 | PASS |
+| scorecard | 84 | 84 | PASS |
+| redundancy_summary | 84 | 84 | PASS |
+| regime_exposure | 84 | 84 | PASS |
+| profile | 84 | 84 | PASS |
+| bilingual_cards | 84 | 84 | PASS |
+| html_payload | 84 | 84 | PASS |
 
 ---
 
 ## 9. Remaining Limitations
 
-1. **PM-53A dependency:** The consistency gate will FAIL until PM-53A completes computing capacity diagnostics for the 4 non-cap Alpha101 factors. This is expected and correct — the gate is working as designed.
-2. **HTML payload check depends on page rebuild:** If the page is not rebuilt after diagnostics are updated, the HTML payload check will show stale results. Always rebuild page after running diagnostics.
-3. **No automated fix:** The checker reports missing factors but does not automatically fix them. Operators must run the appropriate diagnostic scripts.
+1. **HTML payload check depends on page rebuild:** If the page is not rebuilt after diagnostics are updated, the HTML payload check will show stale results. Always rebuild page after running diagnostics.
+2. **No automated fix:** The checker reports missing factors but does not automatically fix them. Operators must run the appropriate diagnostic scripts.
+3. **Consistency check is structural, not semantic:** The checker verifies factor IDs are present in tables but does not validate data quality (NaN rates, value ranges, etc.).
 
 ---
 
-## 10. Recommended Next PM
+## 10. PM-53B Closure Verification (2026-06-24)
+
+All acceptance criteria verified:
+
+| Check | Result |
+|-------|--------|
+| `check_active_factor_workflow_consistency.py` | PASS — 13/13 tables, 84/84, exit 0 |
+| `--only-missing --dry-run` | "All factors have complete workflow. Nothing to do." — exit 0 |
+| `check_factor_evaluation_page_completeness.py` | PASS — 28/28, exit 0 |
+| `check_post_intake_workflow_integrity.py --all-active` | PASS — 1596/1596, 12/12 consistency, exit 0 |
+| Active factor count | 84 |
+| All required output counts | 84/84 across all 13 tables |
+| PM-53B verdict | PM53B_WORKFLOW_GUARDRAIL_PASS |
+| No formula/direction/factor_values/cap/signal changes | ✓ |
+| No trading recommendation | ✓ |
+
+**PM-53B is CLOSED.**
+
+---
+
+## 11. Recommended Next PM
 
 - PM-54: Automated consistency-triggered diagnostic completion (auto-detect missing factors and auto-run the required diagnostic stages)
