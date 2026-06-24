@@ -582,6 +582,73 @@ def _check_pm58b_ls_annualization_consistency() -> list[dict]:
     return results
 
 
+def _check_pm58c_window_diagnostics() -> list[dict]:
+    """PM-58C: Verify window diagnostics CSV integrity.
+
+    Checks:
+    1. factor_ls_window_diagnostics.csv exists
+    2. n_rows == n_factors × n_horizons
+    3. window_ls_win_rate in [0, 1]
+    4. overlap_warning is one of LOW_OVERLAP, MODERATE_OVERLAP, HIGH_OVERLAP, VERY_HIGH_OVERLAP
+    """
+    results = []
+    wd_path = DIAG_DIR / "factor_ls_window_diagnostics.csv"
+    if not wd_path.exists():
+        results.append({"check": "pm58c_window_diag_file", "status": "MISSING",
+                         "detail": "factor_ls_window_diagnostics.csv not found"})
+        return results
+
+    VALID_OVERLAP = {"LOW_OVERLAP", "MODERATE_OVERLAP", "HIGH_OVERLAP", "VERY_HIGH_OVERLAP"}
+
+    try:
+        df = pd.read_csv(wd_path)
+    except Exception as e:
+        results.append({"check": "pm58c_window_diag_read", "status": "ERROR",
+                         "detail": str(e)})
+        return results
+
+    # Check 1: row count == factors × horizons
+    n_rows = len(df)
+    n_factors = df["factor_id"].nunique()
+    n_horizons = df["horizon"].nunique()
+    expected = n_factors * n_horizons
+    if n_rows != expected:
+        results.append({"check": "pm58c_row_count", "status": "FAIL",
+                         "detail": f"n_rows={n_rows}, expected {n_factors}×{n_horizons}={expected}"})
+    else:
+        results.append({"check": "pm58c_row_count", "status": "OK",
+                         "detail": f"{n_rows} rows = {n_factors} factors × {n_horizons} horizons"})
+
+    # Check 2: window_ls_win_rate in [0, 1]
+    if "window_ls_win_rate" in df.columns:
+        bad = df[(df["window_ls_win_rate"] < 0) | (df["window_ls_win_rate"] > 1)]
+        if len(bad) > 0:
+            results.append({"check": "pm58c_win_rate_range", "status": "FAIL",
+                             "detail": f"{len(bad)} rows have window_ls_win_rate outside [0,1]"})
+        else:
+            results.append({"check": "pm58c_win_rate_range", "status": "OK",
+                             "detail": f"all {n_rows} rows in [0,1]"})
+    else:
+        results.append({"check": "pm58c_win_rate_range", "status": "MISSING",
+                         "detail": "column window_ls_win_rate not found"})
+
+    # Check 3: overlap_warning is valid
+    if "overlap_warning" in df.columns:
+        invalid = df[~df["overlap_warning"].isin(VALID_OVERLAP)]
+        if len(invalid) > 0:
+            bad_vals = sorted(invalid["overlap_warning"].unique())
+            results.append({"check": "pm58c_overlap_warning_values", "status": "FAIL",
+                             "detail": f"invalid values: {bad_vals}"})
+        else:
+            results.append({"check": "pm58c_overlap_warning_values", "status": "OK",
+                             "detail": f"all {n_rows} rows valid ({sorted(df['overlap_warning'].unique())})"})
+    else:
+        results.append({"check": "pm58c_overlap_warning_values", "status": "MISSING",
+                         "detail": "column overlap_warning not found"})
+
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Post-Intake Workflow Integrity Checker — PM-43A",
@@ -788,6 +855,25 @@ def main() -> int:
             "checks": pm58b_results,
             "verdict": pm58b_verdict,
         }
+
+        # PM-58C: Window diagnostics integrity
+        print(f"\n{'='*60}")
+        print("Window Diagnostics (PM-58C)")
+        print(f"{'='*60}")
+        pm58c_results = _check_pm58c_window_diagnostics()
+        pm58c_fail = False
+        for r in pm58c_results:
+            icon = "✓" if r["status"] in ("OK", "PASS") else "✗"
+            print(f"  {icon} {r['check']:35s}: {r['detail']}")
+            if r["status"] not in ("OK", "PASS"):
+                pm58c_fail = True
+        pm58c_verdict = "PASS" if not pm58c_fail else "FAIL"
+        print(f"\n  Window diagnostics: {pm58c_verdict}")
+        json_report["pm58c_window_diagnostics"] = {
+            "checks": pm58c_results,
+            "verdict": pm58c_verdict,
+        }
+
         json_path.write_text(json.dumps(json_report, indent=2, default=str))
 
     return 1 if total_fail > 0 else 0

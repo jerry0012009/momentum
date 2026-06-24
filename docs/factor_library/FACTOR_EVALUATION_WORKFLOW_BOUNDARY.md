@@ -202,3 +202,10 @@ Future factor intake must generate these fields as part of the standard evaluati
 - bars_per_year: 1h=8760, 4h=2190, 24h=365, 72h≈122
 - LS Sharpe / Ann Vol are monthly edge stability metrics (×√12), not portfolio Sharpe/Vol
 - These are research diagnostics, not portfolio metrics or trading signals
+
+**LS Metric Semantics (PM-58C):**
+- **Edge Diagnostics** = monthly per-bar LS edge stability (LS Edge Mean, Monthly Edge Std, Monthly Edge Sharpe, Annualized LS Edge, Monthly Edge Vol, Edge Curve Max DD, Monthly Edge Win Rate)
+- **Window Diagnostics** = per-evaluation-window LS stats from `factor_ls_window_diagnostics.csv`
+- Window LS Win Rate for 24h/72h is NOT independent trade win rate (heavy overlap)
+- Neither edge nor window diagnostics are portfolio metrics or trading signals
+- New factor intake must run `build_ls_window_diagnostics.py` after `evaluate_factors.py`

@@ -131,6 +131,13 @@ def build_payload() -> dict:
         for _, r in fee_robust_csv.iterrows():
             fee_robust_map[ss(r["factor_id"])] = r
 
+    # PM-58C: Load window diagnostics
+    window_diag_csv = load_csv(DIAG_DIR / "factor_ls_window_diagnostics.csv")
+    window_diag_map = {}
+    if not window_diag_csv.empty:
+        for _, r in window_diag_csv.iterrows():
+            window_diag_map[(ss(r["factor_id"]), ss(r["horizon"]))] = r
+
     # PM-35: Load factor-level evaluation data (fallback for new factors)
     EVAL_DIR = BASE / "factor_level_evaluation"
     feval_rankic = load_csv(EVAL_DIR / "factor_level_rankic_summary.csv")
@@ -1090,6 +1097,26 @@ def build_payload() -> dict:
             },
         }
 
+        # PM-58C: Inject window diagnostics per horizon
+        factor["window_diagnostics"] = {}
+        for hz in HORIZONS:
+            wrow = window_diag_map.get((fid, hz))
+            if wrow is not None:
+                factor["window_diagnostics"][hz] = {
+                    "n_windows": sf(wrow.get("n_windows")),
+                    "window_ls_mean": sf(wrow.get("window_ls_mean")),
+                    "window_ls_std": sf(wrow.get("window_ls_std")),
+                    "window_ls_win_rate": sf(wrow.get("window_ls_win_rate")),
+                    "window_ls_ann_edge": sf(wrow.get("window_ls_ann_edge")),
+                    "window_ls_ann_vol": sf(wrow.get("window_ls_ann_vol")),
+                    "window_ls_sharpe": sf(wrow.get("window_ls_sharpe")),
+                    "bars_per_year": sf(wrow.get("bars_per_year")),
+                    "overlap_warning": ss(wrow.get("overlap_warning", "")),
+                    "nonoverlap_available": bool(wrow.get("nonoverlap_available", False)),
+                    "nonoverlap_n_windows": sf(wrow.get("nonoverlap_n_windows")),
+                    "nonoverlap_window_ls_win_rate": sf(wrow.get("nonoverlap_window_ls_win_rate")),
+                }
+
         factors.append(factor)
 
     # PM-30: Capacity / liquidity summary stats (after factors are built)
@@ -1521,6 +1548,32 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
       • <strong>Significance classes</strong>: ROBUST_SIGNIFICANT (credible), NAIVE_ONLY_SIGNIFICANT (possibly inflated), NOT_SIGNIFICANT, INSUFFICIENT_PERIODS
     </p>
     <p class="warn">⚠️ Robust significance is a research diagnostic. It does NOT change best_horizon, scorecard, or factor tradability. 稳健显著性是研究诊断，不改变 best_horizon、评分卡或因子可交易性。</p>
+
+    <h4 style="color:#cbd5e1;margin-top:16px">📏 LS Metrics Semantics / LS 指标语义 (PM-58C)</h4>
+    <p style="font-size:13px;line-height:1.7;color:#94a3b8">
+      <strong>Edge Diagnostics</strong> answer: <em>Is the factor's average long-short edge stable across months?</em><br>
+      <strong>Window Diagnostics</strong> answer: <em>How often does each evaluation horizon window produce positive LS spread?</em><br>
+      Neither is a live trading metric. Paper portfolio diagnostics, if available, are optional candidate-only portfolio-style evidence.
+    </p>
+    <p style="font-size:13px;line-height:1.7;color:#94a3b8">
+      <strong>Edge Diagnostics（边缘诊断）</strong>回答：这个因子的平均多空 edge 是否在月份之间稳定？<br>
+      <strong>Window Diagnostics（窗口诊断）</strong>回答：每次 1h/4h/24h/72h evaluation window 的 long-short spread 有多少比例为正？<br>
+      两者都不是实盘交易指标。Paper portfolio diagnostics 如果存在，只是候选因子的 optional portfolio-style evidence。
+    </p>
+    <p style="font-size:12px;color:#94a3b8">
+      <strong>Key formulas:</strong><br>
+      • <strong>monthly_edge_m</strong> = mean(per-bar LS return within month m)<br>
+      • <strong>LS Edge Mean</strong> = mean(monthly_edge_m) across valid months<br>
+      • <strong>Monthly Edge Std</strong> = std(monthly_edge_m, ddof=1)<br>
+      • <strong>Monthly Edge Sharpe</strong> = mean/std × √12 — monthly edge stability, NOT portfolio Sharpe<br>
+      • <strong>Annualized LS Edge</strong> = mean × bars_per_year — annualized edge, NOT portfolio return<br>
+      • <strong>Monthly Edge Vol</strong> = std × √12 — monthly edge volatility, NOT portfolio volatility<br>
+      • <strong>Edge Curve Max DD</strong> = max drawdown of cumprod(1 + monthly_edge_m) — NOT portfolio max drawdown<br>
+      • <strong>Monthly Edge Win Rate</strong> = count(edge > 0) / count(valid months) — monthly stability, NOT trade win rate<br>
+      • <strong>Window LS Win Rate</strong> = count(window LS > 0) / count(valid windows) — per-window positive rate<br>
+      &nbsp;&nbsp;⚠️ 24h/72h windows overlap heavily when sampled every 1h. NOT independent trade win rate.
+    </p>
+    <p class="warn">⚠️ LS metrics are factor edge diagnostics, not portfolio backtest results. LS 指标是因子边缘诊断，不是组合回测结果。</p>
   </div>
 </details>
 
@@ -1565,10 +1618,10 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
             <th data-col="rankic_mean">RankIC</th>
             <th data-col="rankic_ir">ICIR</th>
             <th data-col="monthly_ic_positive_rate">IC Win% IC胜率</th>
-            <th data-col="long_short_sharpe">Sharpe</th>
-            <th data-col="long_short_annualized_return">Ann Ret 年化收益</th>
-            <th data-col="long_short_max_drawdown">Max DD 最大回撤</th>
-            <th data-col="long_short_positive_month_rate">LS Win% LS胜率</th>
+            <th data-col="long_short_sharpe">Monthly Edge Sharpe 月度Edge夏普</th>
+            <th data-col="long_short_annualized_return">Ann LS Edge 年化Edge</th>
+            <th data-col="long_short_max_drawdown">Edge Max DD Edge回撤</th>
+            <th data-col="long_short_positive_month_rate">Edge Win% Edge胜率</th>
             <th data-col="coverage_rate">Coverage 覆盖率</th>
             <th data-col="novelty_assessment">Novelty 新颖性</th>
             <th data-col="nearest_factor">Nearest 最近因子</th>
@@ -1968,13 +2021,13 @@ function buildMetricGrid(hm) {
     ['Naive t-stat', hm.rankic_t_stat != null ? Number(hm.rankic_t_stat).toFixed(2) : '—', ''],
     ['Robust t-stat', `${robVal} ${robBadge} ${overlapBadge} ${inflBadge}`, ''],
     ['IC Win Rate', hm.monthly_ic_positive_rate != null ? (Number(hm.monthly_ic_positive_rate)*100).toFixed(1)+'%'+(hm.ic_positive_months!=null?' ('+hm.ic_positive_months+'/'+hm.ic_total_months+')':'') : '—', ''],
-    ['LS Mean', hm.long_short_mean != null ? (Number(hm.long_short_mean)>=0?'+':'')+Number(hm.long_short_mean*100).toFixed(4)+'%' : '—', ''],
-    ['LS Std', hm.long_short_std != null ? Number(hm.long_short_std*100).toFixed(4)+'%' : '—', ''],
-    ['LS Sharpe', hm.long_short_sharpe != null ? Number(hm.long_short_sharpe).toFixed(2) : '—', mcls(hm.long_short_sharpe,1.5,0.8)],
-    ['Ann Return', hm.long_short_annualized_return != null ? (Number(hm.long_short_annualized_return)*100).toFixed(1)+'%' : '—', ''],
-    ['Ann Vol', hm.long_short_annualized_vol != null ? (Number(hm.long_short_annualized_vol)*100).toFixed(1)+'%' : '—', ''],
-    ['Max Drawdown', hm.long_short_max_drawdown != null ? (Number(hm.long_short_max_drawdown)*100).toFixed(1)+'%' : '—', ''],
-    ['LS Win Rate', hm.long_short_positive_month_rate != null ? (Number(hm.long_short_positive_month_rate)*100).toFixed(1)+'%' : '—', ''],
+    ['LS Edge Mean', hm.long_short_mean != null ? (Number(hm.long_short_mean)>=0?'+':'')+Number(hm.long_short_mean*100).toFixed(4)+'%' : '—', ''],
+    ['Monthly Edge Std', hm.long_short_std != null ? Number(hm.long_short_std*100).toFixed(4)+'%' : '—', ''],
+    ['Monthly Edge Sharpe', hm.long_short_sharpe != null ? Number(hm.long_short_sharpe).toFixed(2) : '—', mcls(hm.long_short_sharpe,1.5,0.8)],
+    ['Annualized LS Edge', hm.long_short_annualized_return != null ? (Number(hm.long_short_annualized_return)*100).toFixed(1)+'%' : '—', ''],
+    ['Monthly Edge Vol', hm.long_short_annualized_vol != null ? (Number(hm.long_short_annualized_vol)*100).toFixed(1)+'%' : '—', ''],
+    ['Edge Curve Max DD', hm.long_short_max_drawdown != null ? (Number(hm.long_short_max_drawdown)*100).toFixed(1)+'%' : '—', ''],
+    ['Monthly Edge Win Rate', hm.long_short_positive_month_rate != null ? (Number(hm.long_short_positive_month_rate)*100).toFixed(1)+'%' : '—', ''],
     ['Coverage', hm.coverage_rate != null ? (Number(hm.coverage_rate)*100).toFixed(1)+'%' : '—', ''],
   ];
   return rows.map(([label, val, cls]) => {
@@ -1988,7 +2041,7 @@ function buildAllHorizonTable(f) {
   const hzs = ['1h','4h','24h','72h'];
   const bestHz = f.best_horizon;
   const expDir = f.expected_direction;
-  let html = '<table class="horizon-summary-table"><thead><tr><th>Horizon</th><th>RankIC</th><th>Naive t</th><th>Robust t</th><th>Robust Class</th><th>Inflation</th><th>Overlap</th><th>ICIR</th><th>IC Win%</th><th>LS Sharpe</th><th>Ann Ret</th><th>MaxDD</th><th>LS Win%</th><th>Coverage</th></tr></thead><tbody>';
+  let html = '<table class="horizon-summary-table"><thead><tr><th>Horizon</th><th>RankIC</th><th>Naive t</th><th>Robust t</th><th>Robust Class</th><th>Inflation</th><th>Overlap</th><th>ICIR</th><th>IC Win%</th><th>Edge Sharpe</th><th>Ann Edge</th><th>Edge MaxDD</th><th>Edge Win%</th><th>Coverage</th></tr></thead><tbody>';
   hzs.forEach(hz => {
     const hm = f.horizon_metrics[hz] || {};
     const isBest = hz === bestHz;
@@ -2997,12 +3050,30 @@ function renderDetail(fid){
       </div>
     </div>
 
-    <h3>Drawdown Summary 回撤概要</h3>
+    <h3>Edge Diagnostics Summary 边缘诊断概要</h3>
     <div class="metric-grid">
-      ${metricRow('Max DD 最大回撤',pct(f.long_short_max_drawdown))}
-      ${metricRow('LS Month Win% 月胜率',pct(f.long_short_positive_month_rate))}
+      ${metricRow('Edge Curve Max DD',pct(f.long_short_max_drawdown))}
+      ${metricRow('Monthly Edge Win Rate',pct(f.long_short_positive_month_rate))}
       ${metricRow(renderTooltip('LS Sharpe'),num(f.long_short_sharpe,2),mcls(f.long_short_sharpe,1.5,0.8))}
     </div>
+    <p style="font-size:10px;color:#64748b;margin-top:4px">Edge diagnostics are monthly per-bar LS edge stability metrics. Not portfolio metrics. Edge 诊断是月度 per-bar LS edge 稳定性指标，不是组合指标。</p>
+
+    <h3>Window Diagnostics 窗口诊断 (${esc(f.best_horizon)})</h3>
+    ${(() => {
+      const wd = f.window_diagnostics && f.window_diagnostics[f.best_horizon];
+      if (!wd) return '<div class="small">Window diagnostics unavailable</div>';
+      const overlapLabel = {'LOW_OVERLAP':'🟢 Low','MODERATE_OVERLAP':'🟡 Moderate','HIGH_OVERLAP':'🟠 High','VERY_HIGH_OVERLAP':'🔴 Very High'}[wd.overlap_warning] || wd.overlap_warning;
+      return '<div class="metric-grid">' +
+        metricRow('Window LS Mean', pct(wd.window_ls_mean)) +
+        metricRow('Window LS Win Rate', pct(wd.window_ls_win_rate)) +
+        metricRow('Window LS Sharpe', num(wd.window_ls_sharpe,2)) +
+        metricRow('Window LS Ann Vol', pct(wd.window_ls_ann_vol)) +
+        metricRow('n_windows', num(wd.n_windows,0)) +
+        metricRow('Overlap Level', overlapLabel) +
+        (wd.nonoverlap_available ? metricRow('Non-overlap Win Rate', pct(wd.nonoverlap_window_ls_win_rate)) + metricRow('Non-overlap n_windows', num(wd.nonoverlap_n_windows,0)) : '') +
+        '</div>' +
+        '<p style="font-size:10px;color:#64748b;margin-top:4px">⚠️ Window diagnostics use monthly period LS returns. For 24h/72h horizons sampled at 1h, windows overlap heavily. NOT independent trade win rate. 窗口诊断使用月度 period LS 收益。24h/72h horizon 在 1h 采样下高度重叠，不是独立交易胜率。</p>';
+    })()}
 
     ${(()=>{
       const rr = f.return_robust;

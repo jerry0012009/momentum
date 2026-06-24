@@ -492,6 +492,107 @@ def main() -> int:
     if ls_ann_result["status"] != "PASS":
         any_fail = True
 
+    # PM-58C: Window diagnostics CSV integrity
+    print()
+    print("  --- Window Diagnostics (PM-58C) ---")
+    window_diag_path = DIAG_DIR / "factor_ls_window_diagnostics.csv"
+    pm58c_result = {"check_id": "pm58c_window_diagnostics",
+                     "description": "Window diagnostics CSV integrity (PM-58C)",
+                     "status": "PASS", "error": "", "details": []}
+
+    BARS_PER_YEAR_PM58C = {"1h": 8760, "4h": 2190, "24h": 365, "72h": 365 / 3}
+    VALID_OVERLAP_WARNINGS = {"LOW_OVERLAP", "MODERATE_OVERLAP", "HIGH_OVERLAP", "VERY_HIGH_OVERLAP"}
+
+    if window_diag_path.exists():
+        try:
+            wd_df = _pd.read_csv(window_diag_path)
+            n_rows = len(wd_df)
+            n_factors = wd_df["factor_id"].nunique()
+            n_horizons = wd_df["horizon"].nunique()
+            expected_rows = n_factors * n_horizons
+
+            # Check 1: row count == factors × horizons
+            if n_rows != expected_rows:
+                pm58c_result["status"] = "FAIL"
+                pm58c_result["details"].append(
+                    f"Row count mismatch: {n_rows} rows, {n_factors} factors × {n_horizons} horizons = {expected_rows}")
+                any_fail = True
+            else:
+                pm58c_result["details"].append(
+                    f"Row count: {n_rows} = {n_factors} factors × {n_horizons} horizons ✓")
+
+            # Check 2: window_ls_win_rate in [0, 1]
+            if "window_ls_win_rate" in wd_df.columns:
+                bad_wr = wd_df[(wd_df["window_ls_win_rate"] < 0) | (wd_df["window_ls_win_rate"] > 1)]
+                if len(bad_wr) > 0:
+                    pm58c_result["status"] = "FAIL"
+                    pm58c_result["details"].append(
+                        f"window_ls_win_rate out of [0,1]: {len(bad_wr)} rows")
+                    any_fail = True
+                else:
+                    pm58c_result["details"].append(
+                        f"window_ls_win_rate: all {n_rows} rows in [0,1] ✓")
+            else:
+                pm58c_result["status"] = "FAIL"
+                pm58c_result["details"].append("Missing column: window_ls_win_rate")
+                any_fail = True
+
+            # Check 3: overlap_warning is valid
+            if "overlap_warning" in wd_df.columns:
+                invalid_ow = wd_df[~wd_df["overlap_warning"].isin(VALID_OVERLAP_WARNINGS)]
+                if len(invalid_ow) > 0:
+                    pm58c_result["status"] = "FAIL"
+                    pm58c_result["details"].append(
+                        f"Invalid overlap_warning values: {sorted(invalid_ow['overlap_warning'].unique())}")
+                    any_fail = True
+                else:
+                    pm58c_result["details"].append(
+                        f"overlap_warning: all {n_rows} rows valid ({sorted(wd_df['overlap_warning'].unique())}) ✓")
+            else:
+                pm58c_result["status"] = "FAIL"
+                pm58c_result["details"].append("Missing column: overlap_warning")
+                any_fail = True
+
+            # Check 4: bars_per_year matches BARS_PER_YEAR mapping
+            if "bars_per_year" in wd_df.columns and "horizon" in wd_df.columns:
+                bpy_mismatch = 0
+                for _, row in wd_df.iterrows():
+                    hz = row["horizon"]
+                    actual_bpy = float(row["bars_per_year"])
+                    expected_bpy = BARS_PER_YEAR_PM58C.get(hz)
+                    if expected_bpy is not None:
+                        if abs(actual_bpy - expected_bpy) > 0.01:
+                            bpy_mismatch += 1
+                if bpy_mismatch > 0:
+                    pm58c_result["status"] = "FAIL"
+                    pm58c_result["details"].append(
+                        f"bars_per_year mismatch: {bpy_mismatch} rows")
+                    any_fail = True
+                else:
+                    pm58c_result["details"].append(
+                        f"bars_per_year: all {n_rows} rows match BARS_PER_YEAR mapping ✓")
+            else:
+                pm58c_result["status"] = "FAIL"
+                pm58c_result["details"].append("Missing column: bars_per_year or horizon")
+                any_fail = True
+
+        except Exception as e:
+            pm58c_result["status"] = "ERROR"
+            pm58c_result["error"] = str(e)
+            any_fail = True
+    else:
+        pm58c_result["status"] = "FAIL"
+        pm58c_result["error"] = f"File not found: {window_diag_path}"
+        any_fail = True
+
+    all_results.append(pm58c_result)
+    icon = "✓" if pm58c_result["status"] == "PASS" else "✗"
+    print(f"  {icon} [{'pm58c_window_diagnostics':25s}] {pm58c_result['status']}")
+    for d in pm58c_result["details"]:
+        print(f"    {d}")
+    if pm58c_result["error"]:
+        print(f"    error: {pm58c_result['error']}")
+
     # Documented subset outputs (informational, not full-universe required)
     robust_subset_tables = [
         ("paper_robust", "Paper robust significance (subset: 5 factors)",

@@ -381,6 +381,34 @@ These are research diagnostics, not portfolio metrics or trading signals.
 
 **Page builder fallback:** `_build_factor_eval_html.py` reads these from canonical LS summary when old diagnostics fields are empty.
 
+## 11B. Window Diagnostics (PM-58C)
+
+After new factor intake, run window diagnostics to generate per-horizon window-level LS stats:
+
+```bash
+.venv/bin/python scripts/build_ls_window_diagnostics.py \
+  --period-path research/factor_runs/crypto_top50_factor_library/factor_level_evaluation/factor_level_period_long_short_summary.csv \
+  --output-dir research/factor_runs/crypto_top50_factor_library/factor_diagnostics
+```
+
+This produces:
+- `factor_ls_window_diagnostics.csv` — per-factor per-horizon window stats
+- `factor_ls_window_diagnostics.json` — metadata and overlap warnings
+
+**Fields:** n_windows, window_ls_mean, window_ls_std, window_ls_win_rate, window_ls_ann_edge, window_ls_ann_vol, window_ls_sharpe, bars_per_year, overlap_warning, nonoverlap_available, nonoverlap_window_ls_win_rate.
+
+**Overlap warnings:** 1h=LOW_OVERLAP, 4h=MODERATE_OVERLAP, 24h=HIGH_OVERLAP, 72h=VERY_HIGH_OVERLAP.
+
+**Metric semantics (PM-58C):**
+- **Edge Diagnostics** = monthly per-bar LS edge stability (LS Edge Mean, Monthly Edge Std, Monthly Edge Sharpe, Annualized LS Edge, Monthly Edge Vol, Edge Curve Max DD, Monthly Edge Win Rate)
+- **Window Diagnostics** = per-evaluation-window LS stats (Window LS Mean, Window LS Win Rate, Window LS Sharpe, etc.)
+- Neither is a portfolio metric or trading signal.
+- Window LS Win Rate for 24h/72h is NOT an independent trade win rate due to heavy overlap.
+
+**After new factor intake:** Run this script after `evaluate_factors.py` populates `factor_level_period_long_short_summary.csv`.
+
+**QA command:** `python scripts/check_factor_evaluation_page_completeness.py` (PM-58C checks verify edge semantics)
+
 ## 12. Market Regime / BTC Diagnostics — workflow reintegration (PM-42)
 
 After new factor intake, ensure `factor_monthly_ic_series.csv` includes new factors, then run:

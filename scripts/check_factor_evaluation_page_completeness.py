@@ -1301,6 +1301,194 @@ def check_pm58b_annualization_html(html_text: str) -> list[dict]:
     return results
 
 
+def check_pm58c_ls_metric_semantics(html_text: str) -> list[dict]:
+    """PM-58C: Verify LS metric descriptions use edge semantics, not portfolio semantics.
+
+    Checks:
+    1. "Portfolio Sharpe" NOT used as LS Sharpe description (allow negations)
+    2. "Portfolio volatility" NOT used as Ann Vol description (allow negations)
+    3. "Portfolio max drawdown" NOT used as Max DD description (allow negations)
+    4. "Edge Diagnostics Summary" or "边缘诊断" section EXISTS
+    5. "Window Diagnostics" or "窗口诊断" section EXISTS
+    6. "Monthly Edge Win Rate" or "月度 Edge 胜率" EXISTS
+    7. "LS Edge Mean" or "LS Edge 均值" EXISTS
+    8. "overlap" or "Overlap" mentioned near window diagnostics
+    """
+    results = []
+    html_lower = html_text.lower()
+
+    # ── Check 1: "Portfolio Sharpe" NOT used affirmatively as LS Sharpe description ──
+    # Allow negation patterns: "not portfolio sharpe", "不是组合sharpe"
+    portfolio_sharpe_affirmative = False
+    # Look for "portfolio sharpe" not preceded by negation words
+    for m in re.finditer(r"(?<!\bnot )(?<!non-)(?<!\bno )portfolio sharpe", html_lower):
+        # Check it's not in a negation context
+        start = max(0, m.start() - 30)
+        context = html_lower[start:m.start()]
+        if not any(neg in context for neg in ["not ", "non-", "no ", "不是", "并非", "avoid"]):
+            portfolio_sharpe_affirmative = True
+            break
+
+    if portfolio_sharpe_affirmative:
+        results.append(_fail(
+            "pm58c_no_portfolio_sharpe",
+            "PM-58C: LS Sharpe description does NOT use 'Portfolio Sharpe'",
+            "Found affirmative 'Portfolio Sharpe' — should use edge semantics",
+            "LS Sharpe describes monthly edge stability, not portfolio Sharpe",
+        ))
+    else:
+        results.append(_pass(
+            "pm58c_no_portfolio_sharpe",
+            "PM-58C: LS Sharpe description does NOT use 'Portfolio Sharpe'",
+            "Confirmed: no affirmative 'Portfolio Sharpe' found",
+        ))
+
+    # ── Check 2: "Portfolio volatility" NOT used affirmatively ──
+    portfolio_vol_affirmative = False
+    for m in re.finditer(r"(?<!\bnot )(?<!non-)portfolio volatilit", html_lower):
+        start = max(0, m.start() - 30)
+        context = html_lower[start:m.start()]
+        if not any(neg in context for neg in ["not ", "non-", "不是", "并非", "avoid"]):
+            portfolio_vol_affirmative = True
+            break
+
+    if portfolio_vol_affirmative:
+        results.append(_fail(
+            "pm58c_no_portfolio_volatility",
+            "PM-58C: Ann Vol description does NOT use 'Portfolio volatility'",
+            "Found affirmative 'Portfolio volatility' — should use edge semantics",
+        ))
+    else:
+        results.append(_pass(
+            "pm58c_no_portfolio_volatility",
+            "PM-58C: Ann Vol description does NOT use 'Portfolio volatility'",
+            "Confirmed: no affirmative 'Portfolio volatility' found",
+        ))
+
+    # ── Check 3: "Portfolio max drawdown" NOT used affirmatively ──
+    portfolio_dd_affirmative = False
+    for m in re.finditer(r"(?<!\bnot )(?<!non-)portfolio max drawdown", html_lower):
+        start = max(0, m.start() - 30)
+        context = html_lower[start:m.start()]
+        if not any(neg in context for neg in ["not ", "non-", "不是", "并非", "avoid"]):
+            portfolio_dd_affirmative = True
+            break
+
+    if portfolio_dd_affirmative:
+        results.append(_fail(
+            "pm58c_no_portfolio_max_drawdown",
+            "PM-58C: Max DD description does NOT use 'Portfolio max drawdown'",
+            "Found affirmative 'Portfolio max drawdown' — should use edge semantics",
+        ))
+    else:
+        results.append(_pass(
+            "pm58c_no_portfolio_max_drawdown",
+            "PM-58C: Max DD description does NOT use 'Portfolio max drawdown'",
+            "Confirmed: no affirmative 'Portfolio max drawdown' found",
+        ))
+
+    # ── Check 4: "Edge Diagnostics Summary" or "边缘诊断" EXISTS ──
+    has_edge_diag = ("Edge Diagnostics" in html_text or "边缘诊断" in html_text)
+    if has_edge_diag:
+        matched = []
+        if "Edge Diagnostics" in html_text:
+            matched.append("Edge Diagnostics")
+        if "边缘诊断" in html_text:
+            matched.append("边缘诊断")
+        results.append(_pass(
+            "pm58c_edge_diagnostics_section",
+            "PM-58C: Edge Diagnostics Summary / 边缘诊断 section exists",
+            f"Matched: {', '.join(matched)}",
+        ))
+    else:
+        results.append(_fail(
+            "pm58c_edge_diagnostics_section",
+            "PM-58C: Edge Diagnostics Summary / 边缘诊断 section exists",
+            "Not found",
+            "Expected 'Edge Diagnostics' or '边缘诊断' in HTML",
+        ))
+
+    # ── Check 5: "Window Diagnostics" or "窗口诊断" EXISTS ──
+    has_window_diag = ("Window Diagnostics" in html_text or "窗口诊断" in html_text)
+    if has_window_diag:
+        matched = []
+        if "Window Diagnostics" in html_text:
+            matched.append("Window Diagnostics")
+        if "窗口诊断" in html_text:
+            matched.append("窗口诊断")
+        results.append(_pass(
+            "pm58c_window_diagnostics_section",
+            "PM-58C: Window Diagnostics / 窗口诊断 section exists",
+            f"Matched: {', '.join(matched)}",
+        ))
+    else:
+        results.append(_fail(
+            "pm58c_window_diagnostics_section",
+            "PM-58C: Window Diagnostics / 窗口诊断 section exists",
+            "Not found",
+            "Expected 'Window Diagnostics' or '窗口诊断' in HTML",
+        ))
+
+    # ── Check 6: "Monthly Edge Win Rate" or "月度 Edge 胜率" EXISTS ──
+    has_edge_win_rate = ("Monthly Edge Win Rate" in html_text or "月度 Edge 胜率" in html_text)
+    if has_edge_win_rate:
+        matched = []
+        if "Monthly Edge Win Rate" in html_text:
+            matched.append("Monthly Edge Win Rate")
+        if "月度 Edge 胜率" in html_text:
+            matched.append("月度 Edge 胜率")
+        results.append(_pass(
+            "pm58c_monthly_edge_win_rate",
+            "PM-58C: Monthly Edge Win Rate / 月度 Edge 胜率 exists",
+            f"Matched: {', '.join(matched)}",
+        ))
+    else:
+        results.append(_fail(
+            "pm58c_monthly_edge_win_rate",
+            "PM-58C: Monthly Edge Win Rate / 月度 Edge 胜率 exists",
+            "Not found",
+        ))
+
+    # ── Check 7: "LS Edge Mean" or "LS Edge 均值" EXISTS ──
+    has_edge_mean = ("LS Edge Mean" in html_text or "LS Edge 均值" in html_text)
+    if has_edge_mean:
+        matched = []
+        if "LS Edge Mean" in html_text:
+            matched.append("LS Edge Mean")
+        if "LS Edge 均值" in html_text:
+            matched.append("LS Edge 均值")
+        results.append(_pass(
+            "pm58c_ls_edge_mean",
+            "PM-58C: LS Edge Mean / LS Edge 均值 exists",
+            f"Matched: {', '.join(matched)}",
+        ))
+    else:
+        results.append(_fail(
+            "pm58c_ls_edge_mean",
+            "PM-58C: LS Edge Mean / LS Edge 均值 exists",
+            "Not found",
+        ))
+
+    # ── Check 8: "overlap" or "Overlap" mentioned near window diagnostics ──
+    # Search for 'overlap' or 'Overlap' anywhere in the HTML (window diagnostics context)
+    has_overlap = ("overlap" in html_lower or "Overlap" in html_text)
+    if has_overlap:
+        results.append(_pass(
+            "pm58c_overlap_mention",
+            "PM-58C: Overlap mentioned near window diagnostics",
+            "Found 'overlap' / 'Overlap' in page (window diagnostics context)",
+        ))
+    else:
+        results.append(_fail(
+            "pm58c_overlap_mention",
+            "PM-58C: Overlap mentioned near window diagnostics",
+            "Not found",
+            "Expected 'overlap' or 'Overlap' in window diagnostics context",
+        ))
+
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Check factor-evaluation.html completeness."
@@ -1356,6 +1544,9 @@ def main() -> int:
 
     # 12. PM-58B LS annualization canonical alignment
     all_checks.extend(check_pm58b_annualization_html(html_text))
+
+    # 13. PM-58C LS metric semantics (edge vs portfolio)
+    all_checks.extend(check_pm58c_ls_metric_semantics(html_text))
 
     # Write outputs
     _write_reports(all_checks)

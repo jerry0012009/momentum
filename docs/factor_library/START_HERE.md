@@ -268,6 +268,13 @@ After running `run_factor_intake.py`, complete the remaining evidence with:
 
 **年化规则 (PM-58B)：** per-bar LS mean × bars_per_year (return), monthly × √12 (vol/sharpe), `annualization_method = "per_bar_mean_x_bars_per_year"`. bars_per_year: 1h=8760, 4h=2190, 24h=365, 72h≈122.
 
+**LS 指标语义 (PM-58C)：**
+- **Edge Diagnostics（边缘诊断）** = 月度 per-bar LS edge 稳定性指标。不是组合指标。
+  - LS Edge Mean / Monthly Edge Std / Monthly Edge Sharpe / Annualized LS Edge / Monthly Edge Vol / Edge Curve Max DD / Monthly Edge Win Rate
+- **Window Diagnostics（窗口诊断）** = 每次 evaluation window 的 LS 统计。24h/72h 高度重叠，不是独立交易胜率。
+  - Window LS Mean / Window LS Win Rate / Window LS Sharpe / Window LS Ann Vol
+- 新因子 intake 后需运行 `build_ls_window_diagnostics.py` 生成 window diagnostics。
+
 **新字段：** `long_short_spread_std`, `long_short_spread_annualized_return`, `long_short_spread_annualized_vol`, `long_short_spread_max_drawdown`, `long_short_spread_positive_period_rate`, `n_monthly_periods`, `annualization_method`
 
 ## PM-42 教训：Market Regime / BTC Diagnostics 已有脚本，只需重新整合（2026-06-23）
