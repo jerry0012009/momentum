@@ -339,6 +339,60 @@ def check_source_metadata(fid: str) -> dict:
 
 # ── Main checks ────────────────────────────────────────────────────────────
 
+def check_rankic_robust(fid: str) -> dict:
+    """PM-54/56A: Check RankIC robust significance for all 4 horizons."""
+    path = DIAG_DIR / "factor_rankic_robust_significance_summary.csv"
+    if not path.exists():
+        return {"status": "MISSING", "detail": "factor_rankic_robust_significance_summary.csv not found"}
+    try:
+        df = pd.read_csv(path)
+        sub = df[df["factor_id"] == fid]
+        if sub.empty:
+            return {"status": "MISSING", "detail": f"{fid} not in rankic robust summary"}
+        horizons = set(sub["horizon"].unique())
+        expected = {"1h", "4h", "24h", "72h"}
+        missing_hz = expected - horizons
+        if missing_hz:
+            return {"status": "MISSING", "detail": f"missing horizons: {sorted(missing_hz)}"}
+        # Check required fields
+        required_fields = ["naive_t_stat", "robust_t_stat", "nw_lag", "n_months",
+                           "robust_standard_error", "tstat_inflation_ratio",
+                           "significance_class_robust", "overlap_warning"]
+        for field in required_fields:
+            if field not in sub.columns:
+                return {"status": "ERROR", "detail": f"missing column: {field}"}
+        return {"status": "OK", "detail": f"4 horizons, {len(sub)} rows"}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
+
+
+def check_ls_robust(fid: str) -> dict:
+    """PM-56/56A: Check LS robust significance for all 4 horizons."""
+    path = DIAG_DIR / "factor_ls_robust_significance_summary.csv"
+    if not path.exists():
+        return {"status": "MISSING", "detail": "factor_ls_robust_significance_summary.csv not found"}
+    try:
+        df = pd.read_csv(path)
+        sub = df[df["factor_id"] == fid]
+        if sub.empty:
+            return {"status": "MISSING", "detail": f"{fid} not in LS robust summary"}
+        horizons = set(sub["horizon"].unique())
+        expected = {"1h", "4h", "24h", "72h"}
+        missing_hz = expected - horizons
+        if missing_hz:
+            return {"status": "MISSING", "detail": f"missing horizons: {sorted(missing_hz)}"}
+        # Check required fields
+        required_fields = ["naive_t_stat", "robust_t_stat", "nw_lag", "n_periods",
+                           "robust_standard_error", "tstat_inflation_ratio",
+                           "return_robust_class", "overlap_warning"]
+        for field in required_fields:
+            if field not in sub.columns:
+                return {"status": "ERROR", "detail": f"missing column: {field}"}
+        return {"status": "OK", "detail": f"4 horizons, {len(sub)} rows"}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
+
+
 ALL_CHECKS = [
     ("factor_values", check_factor_values),
     ("factor_level_rankic", check_factor_level_rankic),
@@ -359,6 +413,8 @@ ALL_CHECKS = [
     ("unified_profile", check_unified_profile),
     ("ls_btc_corr", check_ls_btc_corr),
     ("source_metadata", check_source_metadata),
+    ("rankic_robust", check_rankic_robust),
+    ("ls_robust", check_ls_robust),
 ]
 
 
@@ -493,6 +549,9 @@ def main() -> int:
             ("regime_exposure", DIAG_DIR / "factor_regime_exposure_summary.csv", "factor_id"),
             ("profile", DIAG_DIR / "factor_unified_profile_summary.csv", "factor_id"),
             ("bilingual_cards", META_DIR / "factor_bilingual_cards.csv", "factor_id"),
+            # PM-56A: Robust diagnostics (full-universe required)
+            ("rankic_robust", DIAG_DIR / "factor_rankic_robust_significance_summary.csv", "factor_id"),
+            ("ls_robust", DIAG_DIR / "factor_ls_robust_significance_summary.csv", "factor_id"),
         ]
         consistency_rows = []
         any_consistency_fail = False

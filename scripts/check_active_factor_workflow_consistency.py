@@ -262,6 +262,79 @@ def main() -> int:
     if html_result["status"] != "PASS":
         any_fail = True
 
+    # ── PM-56A: Robust diagnostics (full-universe required) ────────────────
+    print()
+    print("  --- Robust Diagnostics (PM-54/56) ---")
+
+    robust_full_tables = [
+        ("rankic_robust", "RankIC robust significance",
+         DIAG_DIR / "factor_rankic_robust_significance_summary.csv", "factor_id"),
+        ("ls_robust", "LS robust significance",
+         DIAG_DIR / "factor_ls_robust_significance_summary.csv", "factor_id"),
+    ]
+
+    for check_id, desc, path, key_col in robust_full_tables:
+        result = check_csv_table(active_set, path, key_col)
+        result["check_id"] = check_id
+        result["description"] = desc
+        all_results.append(result)
+
+        # Also check horizon coverage: expect 4 horizons per factor
+        horizon_ok = False
+        if path.exists() and result["status"] == "PASS":
+            try:
+                import pandas as _pd
+                rdf = _pd.read_csv(path)
+                hz_col = "horizon"
+                if hz_col in rdf.columns:
+                    fid_col = key_col if key_col in rdf.columns else "factor_id"
+                    n_horizons = rdf[hz_col].nunique()
+                    # Check each active factor has 4 horizons
+                    fid_hz = rdf.groupby(fid_col)[hz_col].nunique()
+                    missing_hz = {fid: 4 - cnt for fid, cnt in fid_hz.items()
+                                  if fid in active_set and cnt < 4}
+                    horizon_ok = n_horizons == 4 and not missing_hz
+                    result["horizon_count"] = int(n_horizons)
+                    result["horizon_ok"] = horizon_ok
+                    if not horizon_ok:
+                        result["status"] = "FAIL"
+                        any_fail = True
+            except Exception:
+                pass
+
+        icon = "✓" if result["status"] == "PASS" else "✗"
+        hz_str = f" (4 horizons ✓)" if horizon_ok else ""
+        print(f"  {icon} [{check_id:25s}] {result['count']}/{n_active}  {result['status']}{hz_str}")
+        if result["missing"]:
+            print(f"    missing: {', '.join(result['missing'][:10])}")
+        if result["error"]:
+            print(f"    error:   {result['error']}")
+        if result["status"] != "PASS":
+            any_fail = True
+
+    # Documented subset outputs (informational, not full-universe required)
+    robust_subset_tables = [
+        ("paper_robust", "Paper robust significance (subset: 5 factors)",
+         DIAG_DIR / "factor_paper_robust_significance_summary.csv", "factor_id"),
+        ("fee_robust", "Fee cost-collapse diagnostics (subset: 13 factors)",
+         DIAG_DIR / "factor_fee_robust_significance_summary.csv", "factor_id"),
+    ]
+
+    print()
+    print("  --- Documented Subset Outputs (informational) ---")
+    for check_id, desc, path, key_col in robust_subset_tables:
+        if not path.exists():
+            print(f"  ⚠ [{check_id:25s}] FILE MISSING — {desc}")
+            continue
+        try:
+            import pandas as _pd
+            sdf = _pd.read_csv(path)
+            n_rows = len(sdf)
+            n_factors = sdf[key_col].nunique() if key_col in sdf.columns else 0
+            print(f"  ✓ [{check_id:25s}] {n_factors} factors, {n_rows} rows  (documented subset)")
+        except Exception as e:
+            print(f"  ⚠ [{check_id:25s}] ERROR — {e}")
+
     # Summary
     n_pass = sum(1 for r in all_results if r["status"] == "PASS")
     n_fail = sum(1 for r in all_results if r["status"] != "PASS")

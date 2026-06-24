@@ -219,7 +219,19 @@ Do not promote intake factors into signals during intake. Do not modify live tra
     python scripts/check_post_intake_workflow_integrity.py --all-active
     ```
     All three must PASS before proceeding. See `POST_INTAKE_WORKFLOW_RUNBOOK.md` §14.
-13. **Scope note:** This control center covers the factor library research pipeline only, not the full momentum repository. Signal/live/strategy code remains out of scope.
+13. **PM-56A robust diagnostics gate:** Robust RankIC and LS diagnostics are now required outputs:
+    ```bash
+    python scripts/compute_rankic_robust_significance.py
+    python scripts/compute_return_robust_significance.py
+    python scripts/check_active_factor_workflow_consistency.py
+    python scripts/check_post_intake_workflow_integrity.py --all-active
+    ```
+    - RankIC robust: 84 factors × 4 horizons (full-universe required)
+    - LS robust: 84 factors × 4 horizons (full-universe required)
+    - Paper/fee robust: documented subsets (informational)
+    - Robust outputs are research diagnostics, NOT trading signals
+    - Robust outputs do NOT alter scorecard/best_horizon
+14. **Scope note:** This control center covers the factor library research pipeline only, not the full momentum repository. Signal/live/strategy code remains out of scope.
 
 ---
 

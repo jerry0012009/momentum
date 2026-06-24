@@ -104,7 +104,9 @@ def classify_return_robust(naive_t: float, robust_t: float, mean_ret: float,
     if math.isnan(naive_t) or math.isnan(robust_t):
         return "INSUFFICIENT_PERIODS"
 
-    # Cost-collapsed: gross robust significant but fee-adjusted not
+    # Fee cost-collapsed: used when gross/fee robust t-stats are both available
+    # (e.g., from time-series analysis). For fee sensitivity (non-time-series),
+    # the Sharpe-based rule is used in the fee section below.
     if fee_robust_t is not None and gross_robust_t is not None:
         if not math.isnan(fee_robust_t) and not math.isnan(gross_robust_t):
             if abs(gross_robust_t) >= 2.0 and abs(fee_robust_t) < 2.0:

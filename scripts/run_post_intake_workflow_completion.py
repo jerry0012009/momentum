@@ -258,6 +258,22 @@ STAGES = [
         ],
     },
     {
+        "name": "rankic-robust-significance",
+        "description": "PM-54: RankIC robust significance (Newey-West + bootstrap)",
+        "expensive": False,
+        "build_cmd": lambda fids: [
+            sys.executable, str(SCRIPTS / "compute_rankic_robust_significance.py"),
+        ],
+    },
+    {
+        "name": "return-robust-significance",
+        "description": "PM-56: Return-side robust significance (LS + paper + fee)",
+        "expensive": False,
+        "build_cmd": lambda fids: [
+            sys.executable, str(SCRIPTS / "compute_return_robust_significance.py"),
+        ],
+    },
+    {
         "name": "profile",
         "description": "Unified factor profile refresh",
         "expensive": False,
@@ -450,6 +466,9 @@ def detect_missing_factors() -> list[str]:
         (DIAG_DIR / "factor_quality_scorecard.csv", "factor_id"),
         (DIAG_DIR / "factor_unified_profile_summary.csv", "factor_id"),
         (META_DIR / "factor_bilingual_cards.csv", "factor_id"),
+        # PM-54/56: Robust diagnostics (full-universe required)
+        (DIAG_DIR / "factor_rankic_robust_significance_summary.csv", "factor_id"),
+        (DIAG_DIR / "factor_ls_robust_significance_summary.csv", "factor_id"),
     ]
 
     # Accumulate per-factor: which tables it's missing from

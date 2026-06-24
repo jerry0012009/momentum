@@ -469,3 +469,38 @@ python scripts/check_post_intake_workflow_integrity.py --all-active
 ### 14.4 `--only-missing` 增强
 
 `run_post_intake_workflow_completion.py --only-missing` 已增强，现在检查每个 active factor 是否完整存在于全部 required outputs（不仅是 pairwise redundancy）。缺失任一 required output 的 factor 会被纳入 missing list。
+
+### 14.5 Robust Diagnostics Integration (PM-56A)
+
+**Hard rule:** After any new factor intake or partial workflow, the following robust diagnostics must be generated and validated before factor review or page interpretation:
+
+```bash
+# Generate robust diagnostics
+python scripts/compute_rankic_robust_significance.py
+python scripts/compute_return_robust_significance.py
+
+# Validate
+python scripts/check_active_factor_workflow_consistency.py
+python scripts/check_post_intake_workflow_integrity.py --all-active
+python scripts/check_factor_evaluation_page_completeness.py
+```
+
+**Full-universe required outputs:**
+- `factor_rankic_robust_significance_summary.csv` — 84 factors × 4 horizons = 336 rows
+- `factor_ls_robust_significance_summary.csv` — 84 factors × 4 horizons = 336 rows
+
+**Documented subset outputs (informational, not full-universe required):**
+- `factor_paper_robust_significance_summary.csv` — 5 factors × 1 horizon (documented subset)
+- `factor_fee_robust_significance_summary.csv` — 13 factors (documented subset)
+
+**Workflow stage names:**
+- `rankic-robust-significance` — runs `compute_rankic_robust_significance.py`
+- `return-robust-significance` — runs `compute_return_robust_significance.py`
+
+**`--only-missing` behavior:**
+`run_post_intake_workflow_completion.py --only-missing` now detects missing robust RankIC and robust LS outputs. A factor missing from either robust output is flagged.
+
+**Important:**
+- Robust outputs are research diagnostics, not trading signals.
+- Robust outputs do NOT alter scorecard or best_horizon unless a future PM explicitly changes that.
+- Paper/fee subsets are documented limitations, not failures.

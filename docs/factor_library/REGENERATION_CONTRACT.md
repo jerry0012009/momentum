@@ -450,3 +450,26 @@ This checks: file existence/size, factor coverage from unified profile CSV, PM-3
 
 - **Post-Intake Workflow Runbook:** `docs/factor_library/POST_INTAKE_WORKFLOW_RUNBOOK.md`
 - **Resource-Aware Refresh Guide:** `docs/factor_library/RESOURCE_AWARE_REFRESH_GUIDE.md`
+
+### 10.7 Robust diagnostics gate (PM-56A)
+
+After any new factor intake or partial workflow, robust diagnostics must be generated and validated:
+
+```bash
+python scripts/compute_rankic_robust_significance.py
+python scripts/compute_return_robust_significance.py
+python scripts/check_active_factor_workflow_consistency.py
+python scripts/check_post_intake_workflow_integrity.py --all-active
+```
+
+**Required outputs:**
+- `factor_rankic_robust_significance_summary.csv` — 84 factors × 4 horizons (full-universe)
+- `factor_ls_robust_significance_summary.csv` — 84 factors × 4 horizons (full-universe)
+- `factor_paper_robust_significance_summary.csv` — documented subset (5 factors)
+- `factor_fee_robust_significance_summary.csv` — documented subset (13 factors)
+
+**Rules:**
+- Robust outputs are research diagnostics, NOT trading signals
+- Robust outputs do NOT alter scorecard or best_horizon
+- Paper/fee subsets are documented limitations, not failures
+- RankIC robust and LS robust are full-universe required; missing any active factor = FAIL
