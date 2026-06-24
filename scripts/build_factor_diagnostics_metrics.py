@@ -252,6 +252,10 @@ def build_diagnostics_summary(
                 ic_positive_rate = _safe_float(mic["positive_ic"].mean())
 
         # Monthly LS stats (if available)
+        # NOTE: ls_mean = mean(per-bar LS returns), NOT a cumulative monthly return.
+        # - Ann Return: multiply by bars-per-year (horizon-aware)
+        # - Sharpe/Vol: annualize from monthly aggregates using ×√12 (standard monthly annualization)
+        _BARS_PER_YEAR = {"1h": 8760, "4h": 2190, "24h": 365, "72h": 365 / 3}
         ls_mean = ls_std = ls_sharpe = ls_ann_ret = ls_ann_vol = ls_max_dd = ls_pos_rate = None
         if len(monthly_ls) > 0 and best_hz:
             mls = monthly_ls[(monthly_ls["factor_id"] == fid) & (monthly_ls["horizon"] == best_hz)]
@@ -260,9 +264,10 @@ def build_diagnostics_summary(
                 if len(ls_arr) > 0:
                     ls_mean = _safe_float(np.mean(ls_arr))
                     ls_std = _safe_float(np.std(ls_arr, ddof=1)) if len(ls_arr) > 1 else 0.0
+                    bpy = _BARS_PER_YEAR.get(best_hz, 8760)
                     if ls_std and ls_std > 0:
                         ls_sharpe = _safe_float(ls_mean / ls_std * np.sqrt(12))
-                    ls_ann_ret = _safe_float(ls_mean * 12)
+                    ls_ann_ret = _safe_float(ls_mean * bpy)
                     ls_ann_vol = _safe_float(ls_std * np.sqrt(12)) if ls_std else None
                     ls_pos_rate = _safe_float(np.mean(ls_arr > 0))
 
@@ -431,9 +436,9 @@ def main() -> None:
         "metric_formula_definitions": {
             "monthly_ic": "Monthly mean of daily rank IC from period_ic_summary",
             "monthly_ic_positive_rate": "Fraction of months with positive direction-adjusted IC",
-            "long_short_sharpe": "mean(monthly_LS) / std(monthly_LS) * sqrt(12) — requires monthly LS",
-            "long_short_annualized_return": "mean(monthly_LS) * 12 — requires monthly LS",
-            "long_short_annualized_vol": "std(monthly_LS) * sqrt(12) — requires monthly LS",
+            "long_short_sharpe": "mean(monthly_LS) / std(monthly_LS) * sqrt(12) — monthly annualization (not per-bar)",
+            "long_short_annualized_return": "mean(per-bar_LS) * bars_per_year — bars_per_year = {1h:8760, 4h:2190, 24h:365, 72h:122}",
+            "long_short_annualized_vol": "std(monthly_LS) * sqrt(12) — monthly annualization (not per-bar)",
             "long_short_max_drawdown": "min(cum_LS / rolling_peak - 1) — requires monthly LS",
             "cumulative_ls": "cumulative product of (1 + monthly_LS) - 1 — requires monthly LS",
         },
