@@ -1,15 +1,15 @@
 # Factor Library State
 
-**Generated:** 2026-06-22T23:46:10.378105+00:00
+**Generated:** 2026-06-24T03:20:54.036367+00:00
 **Dataset:** crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1
 
 ## Counts
 
 | Metric | Count |
 |--------|-------|
-| Registered factors | 77 |
-| Computed factor_values | 76 |
-| Missing factor_values | 1 |
+| Registered factors | 84 |
+| Computed factor_values | 84 |
+| Missing factor_values | 0 |
 | Missing input data | 0 |
 | Active signal factors | 10 |
 | Signal variants | 3 |
@@ -26,7 +26,7 @@
 
 - **DIRECTION_REVIEW_REQUIRED:** 27
 - **CONDITIONAL_DIRECTION_REVIEW:** 20
-- **TAIL_OR_MONOTONICITY_REVIEW_REQUIRED:** 14
+- **TAIL_OR_MONOTONICITY_REVIEW_REQUIRED:** 15
 - **ACTIVE_IN_SIGNAL_REVIEW:** 10
 - **METADATA_REVIEW:** 2
 - **LONGSHORT_STRONG_RANKIC_WEAK:** 1
@@ -67,10 +67,10 @@
 | vol_of_vol_20h | +0.080223 | 72h |
 | wvma_20h | +0.076279 | 72h |
 | xs_rank_vol | -0.068675 | 72h |
+| a101_volume_cap_alpha_min_80_80 | +0.058173 | 72h |
+| a101_volume_cap_alpha_min_56_84 | +0.057475 | 72h |
 | klow_close | -0.054766 | 72h |
 | funding_rate_level_20h | -0.044669 | 72h |
-| price_volume_corr_20h | -0.040248 | 24h |
-| vol_ret_corr_20h | -0.037671 | 24h |
 
 ---
 *Diagnostic only. Not production. Not live trading.*
