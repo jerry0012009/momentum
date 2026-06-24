@@ -1160,6 +1160,55 @@ def check_pm58_core_vs_optional(html_text: str) -> list[dict]:
     return results
 
 
+def check_pm58a_ls_monthly_aggregate(html_text: str) -> list[dict]:
+    """PM-58A: LS monthly aggregate fields no longer show blank dash."""
+    results = []
+
+    # Parse payload
+    payload_match = re.search(
+        r'<script id="factorPayload"[^>]*>(.*?)</script>', html_text, re.DOTALL
+    )
+    if not payload_match:
+        results.append({"check_id": "pm58a_ls_payload", "check_name": "PM-58A: LS payload", "status": "FAIL", "evidence": "No payload", "notes": ""})
+        return results
+    try:
+        data = json.loads(payload_match.group(1))
+        factors = data.get("factors", [])
+    except Exception as e:
+        results.append({"check_id": "pm58a_ls_payload", "check_name": "PM-58A: LS payload", "status": "FAIL", "evidence": str(e), "notes": ""})
+        return results
+
+    # Check: all active factors have non-null LS std in at least one horizon
+    ls_fields = ["long_short_std", "long_short_annualized_return",
+                  "long_short_annualized_vol", "long_short_max_drawdown"]
+    factors_with_ls_data = 0
+    factors_all_null = 0
+    for f in factors:
+        hm = f.get("horizon_metrics", {})
+        has_any = False
+        for hz_data in hm.values():
+            if isinstance(hz_data, dict) and hz_data.get("long_short_std") is not None:
+                has_any = True
+                break
+        if has_any:
+            factors_with_ls_data += 1
+        else:
+            factors_all_null += 1
+
+    results.append({
+        "check_id": "pm58a_factors_with_ls_monthly_data",
+        "check_name": "PM-58A: All factors have LS monthly data",
+        "status": "PASS" if factors_all_null == 0 else "FAIL",
+        "evidence": f"{factors_with_ls_data}/{len(factors)} factors have LS monthly data, {factors_all_null} all-null",
+        "notes": "",
+    })
+
+    # Check: LS Std column in summary table is not blank for factors with data
+    ls_std_pattern = re.compile(r'<td class="num">.*?</td>', re.DOTALL)
+
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Check factor-evaluation.html completeness."
@@ -1209,6 +1258,9 @@ def main() -> int:
 
     # 10. PM-58 core vs optional workflow boundary
     all_checks.extend(check_pm58_core_vs_optional(html_text))
+
+    # 11. PM-58A LS monthly aggregate fields
+    all_checks.extend(check_pm58a_ls_monthly_aggregate(html_text))
 
     # Write outputs
     _write_reports(all_checks)

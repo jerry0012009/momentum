@@ -426,6 +426,70 @@ def run_checks(fid: str) -> dict[str, dict]:
     return results
 
 
+def check_ls_monthly_aggregate_completeness() -> list[dict]:
+    """PM-58A: Check all active factors have complete LS monthly aggregate fields."""
+    results = []
+    state = json.loads(STATE_PATH.read_text())
+    active_ids = set(state.get("registered_factor_ids", []))
+    
+    ls_path = EVAL_DIR / "factor_level_long_short_summary.csv"
+    if not ls_path.exists():
+        results.append({"check": "pm58a_ls_monthly", "status": "MISSING", "detail": "LS summary file not found"})
+        return results
+    
+    df = pd.read_csv(ls_path)
+    active_df = df[df["factor_name"].isin(active_ids)]
+    
+    required_fields = [
+        "long_short_spread_std", "long_short_spread_annualized_return",
+        "long_short_spread_annualized_vol", "long_short_spread_max_drawdown",
+        "long_short_spread_positive_period_rate", "n_monthly_periods",
+    ]
+    
+    # Check coverage
+    n_expected = len(active_ids) * 4
+    n_actual = len(active_df)
+    if n_actual < n_expected:
+        results.append({
+            "check": "pm58a_ls_row_coverage",
+            "status": "FAIL",
+            "detail": f"Expected {n_expected} rows, found {n_actual}",
+        })
+    
+    # Check each required field
+    for fld in required_fields:
+        n_null = active_df[fld].isna().sum()
+        if n_null > 0:
+            results.append({
+                "check": f"pm58a_{fld}",
+                "status": "FAIL",
+                "detail": f"{n_null}/{n_actual} null",
+            })
+        else:
+            results.append({
+                "check": f"pm58a_{fld}",
+                "status": "OK",
+                "detail": f"{n_actual}/{n_actual} non-null",
+            })
+    
+    # Check n_monthly_periods >= 2
+    low = (active_df["n_monthly_periods"] < 2).sum()
+    if low > 0:
+        results.append({
+            "check": "pm58a_n_monthly_periods_min",
+            "status": "FAIL",
+            "detail": f"{low} rows have n_monthly_periods < 2",
+        })
+    else:
+        results.append({
+            "check": "pm58a_n_monthly_periods_min",
+            "status": "OK",
+            "detail": f"All {n_actual} rows have n_monthly_periods >= 2",
+        })
+    
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Post-Intake Workflow Integrity Checker — PM-43A",
@@ -589,11 +653,30 @@ def main() -> int:
 
         consistency_verdict = "PASS" if not any_consistency_fail else "FAIL"
         print(f"\n  Active count consistency: {consistency_verdict}")
+        
+        # PM-58A: LS monthly aggregate field completeness
+        print(f"\n{'='*60}")
+        print("LS Monthly Aggregate Fields (PM-58A)")
+        print(f"{'='*60}")
+        pm58a_results = check_ls_monthly_aggregate_completeness()
+        pm58a_fail = False
+        for r in pm58a_results:
+            icon = "✓" if r["status"] in ("OK", "PASS") else "✗"
+            print(f"  {icon} {r['check']:35s}: {r['detail']}")
+            if r["status"] not in ("OK", "PASS"):
+                pm58a_fail = True
+        pm58a_verdict = "PASS" if not pm58a_fail else "FAIL"
+        print(f"\n  LS monthly aggregate: {pm58a_verdict}")
+        
         # Append consistency data to JSON report
         json_report["active_universe_consistency"] = {
             "active_count": n_active,
             "tables": consistency_rows,
             "verdict": consistency_verdict,
+        }
+        json_report["ls_monthly_aggregate"] = {
+            "checks": pm58a_results,
+            "verdict": pm58a_verdict,
         }
         json_path.write_text(json.dumps(json_report, indent=2, default=str))
 

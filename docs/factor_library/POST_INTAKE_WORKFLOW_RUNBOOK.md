@@ -524,3 +524,15 @@ python scripts/check_factor_evaluation_page_completeness.py
 - How to Read section clarifies optional vs core reading path
 
 See `FACTOR_EVALUATION_WORKFLOW_BOUNDARY.md` for full specification.
+
+### 14.7 LS Monthly Aggregate Fields (PM-58A)
+
+LS monthly aggregate fields are **core LS summary fields**. Missing fields block reading.
+
+Required fields per active factor × 4 horizons:
+- `long_short_spread_std`, `long_short_spread_annualized_return`, `long_short_spread_annualized_vol`
+- `long_short_spread_max_drawdown`, `long_short_spread_positive_period_rate`, `n_monthly_periods`
+
+**Normal path:** `evaluate_factors.py` PM-41 logic computes these during intake.
+**Historical repair:** `backfill_ls_monthly_aggregate_fields.py` reads from `factor_monthly_long_short_series.csv`.
+**QA gate:** `check_active_factor_workflow_consistency.py` + `check_post_intake_workflow_integrity.py --all-active`.

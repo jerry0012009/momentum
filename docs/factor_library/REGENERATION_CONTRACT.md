@@ -498,3 +498,11 @@ python scripts/check_post_intake_workflow_integrity.py --all-active
 3. Run integrity QA --all-active (must PASS)
 4. Run page QA (must PASS)
 5. Paper/fee are NOT required for new factors unless they are candidates
+
+### 10.9 LS Monthly Aggregate Fields (PM-58A)
+
+**Status:** Core LS summary fields.
+
+All 84 active factors × 4 horizons must have non-null LS monthly aggregate fields.
+Missing fields block reading. Future intake must generate these fields.
+Backfill script exists only for historical repair.

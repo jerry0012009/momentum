@@ -312,6 +312,56 @@ def main() -> int:
         if result["status"] != "PASS":
             any_fail = True
 
+    # PM-58A: LS monthly aggregate field completeness
+    print()
+    print("  --- LS Monthly Aggregate Fields (PM-58A) ---")
+    import pandas as _pd
+    ls_path = EVAL_DIR / "factor_level_long_short_summary.csv"
+    ls_required_fields = [
+        "long_short_spread_std", "long_short_spread_annualized_return",
+        "long_short_spread_annualized_vol", "long_short_spread_max_drawdown",
+        "long_short_spread_positive_period_rate", "n_monthly_periods",
+    ]
+    if ls_path.exists():
+        lsdf = _pd.read_csv(ls_path)
+        ls_active = lsdf[lsdf["factor_name"].isin(active_set)]
+        n_ls_rows = len(ls_active)
+        n_expected = n_active * 4
+        ls_result = {
+            "check_id": "ls_monthly_aggregate",
+            "description": "LS monthly aggregate fields (PM-58A)",
+            "count": n_ls_rows,
+            "expected": n_expected,
+            "status": "PASS",
+            "missing_fields": [],
+            "error": "",
+        }
+        if n_ls_rows < n_expected:
+            ls_result["status"] = "FAIL"
+            ls_result["error"] = f"Expected {n_expected} rows, found {n_ls_rows}"
+        for fld in ls_required_fields:
+            n_null = ls_active[fld].isna().sum()
+            if n_null > 0:
+                ls_result["status"] = "FAIL"
+                ls_result["missing_fields"].append(f"{fld}: {n_null} null")
+        # Check n_monthly_periods >= 2
+        if "n_monthly_periods" in ls_active.columns:
+            low = (ls_active["n_monthly_periods"] < 2).sum()
+            if low > 0:
+                ls_result["status"] = "FAIL"
+                ls_result["missing_fields"].append(f"n_monthly_periods < 2: {low} rows")
+        all_results.append(ls_result)
+        icon = "✓" if ls_result["status"] == "PASS" else "✗"
+        print(f"  {icon} [{'ls_monthly_aggregate':25s}] {n_ls_rows}/{n_expected}  {ls_result['status']}")
+        if ls_result["missing_fields"]:
+            for mf in ls_result["missing_fields"]:
+                print(f"    {mf}")
+        if ls_result["status"] != "PASS":
+            any_fail = True
+    else:
+        print(f"  ✗ [{'ls_monthly_aggregate':25s}] FILE MISSING")
+        any_fail = True
+
     # Documented subset outputs (informational, not full-universe required)
     robust_subset_tables = [
         ("paper_robust", "Paper robust significance (subset: 5 factors)",

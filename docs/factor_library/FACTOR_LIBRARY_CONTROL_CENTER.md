@@ -302,3 +302,5 @@ Robust LS decision:        KEEP_AS_CORE_SINGLE_FACTOR_EVALUATION
 ```
 
 See `FACTOR_EVALUATION_WORKFLOW_BOUNDARY.md` for full specification.
+
+16. **PM-58A LS Monthly Aggregate Backfill:** LS monthly aggregate fields (std, ann_return, ann_vol, max_drawdown, positive_period_rate, n_monthly_periods) are now core LS summary fields. 284/336 rows backfilled from monthly LS series. All 84×4 = 336 rows now complete. Backfill script: `scripts/backfill_ls_monthly_aggregate_fields.py`. Future intake must generate these fields via evaluate_factors.py PM-41 logic.

@@ -180,3 +180,19 @@ Cap source decision:       KEEP_AS_CONDITIONAL_CORE_SOURCE
 Robust RankIC decision:    KEEP_AS_CORE_SINGLE_FACTOR_EVALUATION
 Robust LS decision:        KEEP_AS_CORE_SINGLE_FACTOR_EVALUATION
 ```
+
+## 7. LS Monthly Aggregate Fields (PM-58A)
+
+**Status:** Core LS summary fields (not optional).
+
+All 84 active factors × 4 horizons must have non-null:
+- `long_short_spread_std`
+- `long_short_spread_annualized_return`
+- `long_short_spread_annualized_vol`
+- `long_short_spread_max_drawdown`
+- `long_short_spread_positive_period_rate`
+- `n_monthly_periods` (≥ 2)
+
+These fields are computed by `evaluate_factors.py` PM-41 logic during normal intake.
+`backfill_ls_monthly_aggregate_fields.py` exists only for historical repair of pre-PM-41 factors.
+Future factor intake must generate these fields as part of the standard evaluation pipeline.
