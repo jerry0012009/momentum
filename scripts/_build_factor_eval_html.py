@@ -1968,7 +1968,8 @@ function buildMetricGrid(hm) {
     ['Naive t-stat', hm.rankic_t_stat != null ? Number(hm.rankic_t_stat).toFixed(2) : '—', ''],
     ['Robust t-stat', `${robVal} ${robBadge} ${overlapBadge} ${inflBadge}`, ''],
     ['IC Win Rate', hm.monthly_ic_positive_rate != null ? (Number(hm.monthly_ic_positive_rate)*100).toFixed(1)+'%'+(hm.ic_positive_months!=null?' ('+hm.ic_positive_months+'/'+hm.ic_total_months+')':'') : '—', ''],
-    ['LS Mean', hm.long_short_mean != null ? (Number(hm.long_short_mean)>=0?'+':'')+Number(hm.long_short_mean*100).toFixed(4)+'%' : '—', ''],\n    ['LS Std', hm.long_short_std != null ? Number(hm.long_short_std*100).toFixed(4)+'%' : '—', ''],
+    ['LS Mean', hm.long_short_mean != null ? (Number(hm.long_short_mean)>=0?'+':'')+Number(hm.long_short_mean*100).toFixed(4)+'%' : '—', ''],
+    ['LS Std', hm.long_short_std != null ? Number(hm.long_short_std*100).toFixed(4)+'%' : '—', ''],
     ['LS Sharpe', hm.long_short_sharpe != null ? Number(hm.long_short_sharpe).toFixed(2) : '—', mcls(hm.long_short_sharpe,1.5,0.8)],
     ['Ann Return', hm.long_short_annualized_return != null ? (Number(hm.long_short_annualized_return)*100).toFixed(1)+'%' : '—', ''],
     ['Ann Vol', hm.long_short_annualized_vol != null ? (Number(hm.long_short_annualized_vol)*100).toFixed(1)+'%' : '—', ''],
@@ -2914,8 +2915,8 @@ function renderDetail(fid){
       ${metricRow(renderTooltip('Naive t-stat'),num(f.rankic_t_stat,2,false))}
       ${(() => { const hm = f.horizon_metrics ? f.horizon_metrics[f.best_horizon] || {} : {}; const robT = hm.robust_t_stat; const robClass = hm.sig_class_robust || ''; const robBadge = robClass ? '<span class="robust-badge '+robClass+'">'+robClass.replace(/_/g,' ')+'</span>' : ''; const overlapWarn = hm.overlap_warning || ''; const overlapBadge = overlapWarn ? '<span class="overlap-badge '+overlapWarn+'">'+overlapWarn.replace(/_/g,' ')+'</span>' : ''; const inflation = hm.tstat_inflation; const inflCls = inflation !== null && inflation !== undefined && Number(inflation) > 3 ? 'severe-inflation' : (inflation !== null && inflation !== undefined && Number(inflation) > 2 ? 'high-inflation' : ''); const inflBadge = inflation !== null && inflation !== undefined ? '<span class="inflation-badge '+inflCls+'">×'+Number(inflation).toFixed(1)+'</span>' : ''; const robVal = robT !== null && robT !== undefined ? Number(robT).toFixed(2) : 'Unavailable'; return metricRow(renderTooltip('Robust t-stat'), robVal+' '+robBadge+' '+overlapBadge+' '+inflBadge); })()}
       ${metricRow(renderTooltip('IC Win Rate'),pct(f.monthly_ic_positive_rate)+(f.ic_positive_months!=null?' ('+f.ic_positive_months+'/'+f.ic_total_months+')':''))}
-      ${metricRow(renderTooltip('LS Mean'),num(f.long_short_mean,6))}
-      ${metricRow(renderTooltip('LS Std'),num(f.long_short_std,6))}
+      ${metricRow(renderTooltip('LS Mean'),f.long_short_mean!=null?(Number(f.long_short_mean)>=0?'+':'')+Number(f.long_short_mean*100).toFixed(4)+'%':'—')}
+      ${metricRow(renderTooltip('LS Std'),f.long_short_std!=null?Number(f.long_short_std*100).toFixed(4)+'%':'—')}
       ${metricRow(renderTooltip('LS Sharpe'),num(f.long_short_sharpe,2),mcls(f.long_short_sharpe,1.5,0.8))}
       ${metricRow(renderTooltip('Ann Return'),pct(f.long_short_annualized_return))}
       ${metricRow(renderTooltip('Ann Vol'),pct(f.long_short_annualized_vol))}
@@ -3034,7 +3035,7 @@ function renderDetail(fid){
       </div></details>
       <div class="metric-grid">
         ${metricRow('Horizon', esc(lsH))}
-        ${metricRow('LS Mean Return', num(lsData.return_mean, 5))}
+        ${metricRow('LS Mean Return', lsData.return_mean!=null?(Number(lsData.return_mean)>=0?'+':'')+Number(lsData.return_mean*100).toFixed(4)+'%':'—')}
         ${metricRow('Naive t-stat', num(lsData.naive_t_stat, 2))}
         ${metricRow('Robust t-stat', num(lsData.robust_t_stat, 2, false)+' '+rBadge)}
         ${metricRow('NW Lag', lsData.nw_lag !== null ? lsData.nw_lag : '—')}
@@ -3062,7 +3063,7 @@ function renderDetail(fid){
           const infStr = inf !== null && inf !== undefined ? '×'+Number(inf).toFixed(1) : '—';
           const ov = d.overlap_warning || '';
           const ovB = ov ? '<span class="overlap-badge '+ov+'">'+ov.replace(/_/g,' ')+'</span>' : '—';
-          rows += '<tr><td>'+esc(h)+'</td><td>'+num(d.return_mean,5)+'</td><td>'+num(d.naive_t_stat,2)+'</td><td>'+num(d.robust_t_stat,2)+'</td><td>'+rb+'</td><td>'+ciL+' – '+ciH2+'</td><td>'+scStr+'</td><td>'+infStr+'</td><td>'+ovB+'</td></tr>';
+          rows += '<tr><td>'+esc(h)+'</td><td>'+(d.return_mean!=null?(Number(d.return_mean)>=0?'+':'')+Number(d.return_mean*100).toFixed(4)+'%':'—')+'</td><td>'+num(d.naive_t_stat,2)+'</td><td>'+num(d.robust_t_stat,2)+'</td><td>'+rb+'</td><td>'+ciL+' – '+ciH2+'</td><td>'+scStr+'</td><td>'+infStr+'</td><td>'+ovB+'</td></tr>';
         });
         return '<div style="margin-top:8px"><table class="robust-table"><thead><tr><th>Horizon</th><th>LS Mean</th><th>Naive t</th><th>Robust t</th><th>Class</th><th>Bootstrap 95% CI</th><th>Sign %</th><th>Inflation</th><th>Overlap</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
       })()}
