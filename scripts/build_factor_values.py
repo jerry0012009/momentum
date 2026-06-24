@@ -130,10 +130,11 @@ def main() -> None:
         print(f"  Hint: pass --dataset-id explicitly if using a non-default dataset", flush=True)
         _sys.exit(1)
 
-    # Split factors into taker, funding, and ordinary groups
+    # Split factors into taker, funding, ordinary, and panel groups
     taker_factor_ids = [fid for fid in factor_ids if _needs_taker_source(REGISTRY_BY_ID[fid])]
     funding_factor_ids = [fid for fid in factor_ids if _needs_funding_source(REGISTRY_BY_ID[fid])]
-    ordinary_factor_ids = [fid for fid in factor_ids if fid not in taker_factor_ids and fid not in funding_factor_ids]
+    panel_factor_ids = [fid for fid in factor_ids if REGISTRY_BY_ID[fid].compute_scope == "panel"]
+    ordinary_factor_ids = [fid for fid in factor_ids if fid not in taker_factor_ids and fid not in funding_factor_ids and fid not in panel_factor_ids]
 
     bars = pd.read_parquet(bars_path)
     if bars.empty:
@@ -180,6 +181,29 @@ def main() -> None:
         merged = bars.merge(funding[["timestamp", "symbol", "funding_rate"]], on=["timestamp", "symbol"], how="left")
         for _sym, g in merged.groupby("symbol", sort=False):
             parts.append(calc_group(g, funding_factor_ids))
+
+    # Build panel factors (cross-sectional, need all symbols at once)
+    if panel_factor_ids:
+        print(f"  Source: panel computation ({len(panel_factor_ids)} factors)")
+        for fid in panel_factor_ids:
+            spec = REGISTRY_BY_ID[fid]
+            # Validate required columns
+            missing_cols = set(spec.required_columns) - set(bars.columns)
+            if missing_cols:
+                print(f"  BLOCKED: {fid} — missing columns: {missing_cols}")
+                continue
+            try:
+                factor_df = spec.panel_compute_fn(bars)
+                # Validate output format
+                expected_cols = {"timestamp", "symbol", fid}
+                if not expected_cols.issubset(set(factor_df.columns)):
+                    print(f"  ERROR: {fid} — panel_compute_fn returned columns {factor_df.columns.tolist()}, expected {expected_cols}")
+                    continue
+                factor_df = factor_df[["timestamp", "symbol", fid]]
+                parts.append(factor_df)
+                print(f"  {fid}: panel computed, rows={len(factor_df)} coverage={factor_df[fid].notna().mean():.3%}")
+            except Exception as e:
+                print(f"  BLOCKED: {fid} — {e}")
 
     wide = pd.concat(parts, ignore_index=True)
     wide = apply_cross_sectional_postprocess(wide)

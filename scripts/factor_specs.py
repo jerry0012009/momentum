@@ -20,14 +20,22 @@ class FactorSpec:
         expected_direction: "positive", "negative", or "conditional".
             Must be set from domain knowledge, NOT from evaluation results.
         compute_fn: (DataFrame) -> Series. Receives a single-symbol group.
+            Only used when compute_scope == "single_symbol".
         status: Current evaluation status (default "DIAGNOSTIC_PROBE").
         notes: Free-text notes.
+        compute_scope: "single_symbol" (default) or "panel".
+            If "panel", panel_compute_fn is called with the full multi-symbol bars.
+        panel_compute_fn: (DataFrame) -> DataFrame. Receives full bars (all symbols).
+            Must return DataFrame with [timestamp, symbol, factor_id] columns.
+            Only used when compute_scope == "panel".
     """
     factor_id: str
     family: str
     required_columns: list[str]
     lookback_window: int
     expected_direction: str
-    compute_fn: Callable[[pd.DataFrame], pd.Series]
+    compute_fn: Callable[[pd.DataFrame], pd.Series] = None  # type: ignore[assignment]
     status: str = "DIAGNOSTIC_PROBE"
     notes: str = ""
+    compute_scope: str = "single_symbol"
+    panel_compute_fn: Callable[[pd.DataFrame], pd.DataFrame] | None = None

@@ -130,9 +130,13 @@ def main():
         if fs.expected_direction not in VALID_DIRECTIONS:
             issues.append(f"INVALID expected_direction: '{fs.expected_direction}'")
 
-        # 6. compute_fn callable
-        if not callable(fs.compute_fn):
-            issues.append("compute_fn is not callable")
+        # 6. compute_fn callable (or panel_compute_fn for panel-scope factors)
+        if fs.compute_scope == "panel":
+            if not callable(fs.panel_compute_fn):
+                issues.append("panel_compute_fn is not callable for panel-scope factor")
+        else:
+            if not callable(fs.compute_fn):
+                issues.append("compute_fn is not callable")
 
         # 7. status
         status = fs.status or "DIAGNOSTIC_PROBE"
@@ -195,7 +199,7 @@ def main():
 
         # classify critical vs soft
         for iss in issues:
-            if iss.startswith("CRITICAL") or iss.startswith("INVALID") or iss.startswith("DUPLICATE") or iss == "compute_fn is not callable":
+            if iss.startswith("CRITICAL") or iss.startswith("INVALID") or iss.startswith("DUPLICATE") or iss == "compute_fn is not callable" or "panel_compute_fn is not callable" in iss:
                 critical_issues.append(f"{fs.factor_id}: {iss}")
 
         rows.append({
