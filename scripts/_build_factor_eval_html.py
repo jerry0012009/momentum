@@ -1768,7 +1768,7 @@ function buildMetricGrid(hm) {
   return rows.map(([label, val, cls]) => {
     const v = val === null || val === undefined || val === '—' ? '—' : val;
     const c = cls || (v === '—' ? 'muted-c' : '');
-    return `<div class="metric"><span>${label}</span><strong class="${c}">${v}</strong></div>`;
+    return `<div class="metric"><span>${renderTooltip(label)}</span><strong class="${c}">${v}</strong></div>`;
   }).join('');
 }
 function buildAllHorizonTable(f) {
