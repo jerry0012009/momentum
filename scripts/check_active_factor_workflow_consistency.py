@@ -362,6 +362,136 @@ def main() -> int:
         print(f"  ✗ [{'ls_monthly_aggregate':25s}] FILE MISSING")
         any_fail = True
 
+    # PM-58B: LS annualization consistency (bars_per_year formula)
+    print()
+    print("  --- LS Annualization Consistency (PM-58B) ---")
+    ls_ann_result = {"check_id": "pm58b_annualization",
+                     "description": "LS annualization consistency (PM-58B)",
+                     "status": "PASS", "error": "", "details": []}
+    ls_path = EVAL_DIR / "factor_level_long_short_summary.csv"
+    diag_path = DIAG_DIR / "factor_diagnostics_summary.csv"
+    BARS_PER_YEAR = {"1h": 8760, "4h": 2190, "24h": 365, "72h": 365 / 3}
+
+    if ls_path.exists() and diag_path.exists():
+        try:
+            ls_df = _pd.read_csv(ls_path)
+            diag_df = _pd.read_csv(diag_path)
+
+            # Check 1: ann_ret in LS summary == monthly_ls_mean × bars_per_year
+            # NOTE: long_short_spread_mean is per-bar mean, NOT monthly mean.
+            # The canonical formula uses monthly_ls_mean from monthly series CSV.
+            monthly_path = DIAG_DIR / "factor_monthly_long_short_series.csv"
+            if monthly_path.exists():
+                monthly_df = _pd.read_csv(monthly_path)
+                monthly_agg = monthly_df.groupby(["factor_id", "horizon"]).agg(
+                    monthly_mean=("long_short_return", "mean")
+                ).reset_index()
+                monthly_agg = monthly_agg.rename(columns={"factor_id": "factor_name"})
+                ls_merged = _pd.merge(
+                    ls_df[ls_df["long_short_spread_annualized_return"].notna()],
+                    monthly_agg, on=["factor_name", "horizon"], how="inner"
+                )
+                ls_merged["bpy"] = ls_merged["horizon"].map(BARS_PER_YEAR)
+                ls_merged["expected"] = ls_merged["monthly_mean"] * ls_merged["bpy"]
+                ls_merged["abs_diff"] = (
+                    ls_merged["long_short_spread_annualized_return"] - ls_merged["expected"]
+                ).abs()
+                # Relative tolerance for large values
+                ls_merged["rel_diff"] = ls_merged["abs_diff"] / ls_merged["expected"].abs().clip(lower=1e-12)
+                bad_formula = ls_merged[(ls_merged["abs_diff"] > 1e-8) & (ls_merged["rel_diff"] > 1e-6)]
+                if len(bad_formula) > 0:
+                    ls_ann_result["status"] = "FAIL"
+                    ls_ann_result["details"].append(
+                        f"LS summary: {len(bad_formula)} rows ann_ret != monthly_mean × bars_per_year")
+                    any_fail = True
+                else:
+                    ls_ann_result["details"].append(
+                        f"LS summary: {len(ls_merged)} rows pass monthly_mean × bars_per_year (tolerance 1e-6)")
+
+            # Check 2: Cross-validate LS summary vs diagnostics ann ret
+            if "long_short_annualized_return" in diag_df.columns:
+                diag_sub = diag_df[diag_df["long_short_annualized_return"].notna()][
+                    ["factor_id", "best_horizon", "long_short_annualized_return"]
+                ].copy()
+                diag_sub = diag_sub.rename(columns={
+                    "factor_id": "factor_name", "best_horizon": "horizon",
+                    "long_short_annualized_return": "diag_ann_ret",
+                })
+                ls_sub = ls_df[ls_df["long_short_spread_annualized_return"].notna()][
+                    ["factor_name", "horizon", "long_short_spread_annualized_return"]
+                ].copy()
+                ls_sub = ls_sub.rename(columns={
+                    "long_short_spread_annualized_return": "ls_ann_ret",
+                })
+                merged = _pd.merge(diag_sub, ls_sub,
+                                   on=["factor_name", "horizon"], how="inner")
+                if len(merged) > 0:
+                    merged["cross_diff"] = (
+                        merged["diag_ann_ret"] - merged["ls_ann_ret"]
+                    ).abs()
+                    bad_cross = merged[merged["cross_diff"] > 1e-4]
+                    if len(bad_cross) > 0:
+                        ls_ann_result["status"] = "FAIL"
+                        ls_ann_result["details"].append(
+                            f"Cross-validation: {len(bad_cross)} factor+horizon pairs "
+                            f"disagree between LS summary and diagnostics")
+                        any_fail = True
+                    else:
+                        ls_ann_result["details"].append(
+                            f"Cross-validation: {len(merged)} pairs agree (tolerance 1e-6)")
+                else:
+                    ls_ann_result["details"].append("Cross-validation: no matching pairs found")
+
+                # Check 3: diagnostics ann ret matches monthly_mean × bars_per_year
+                # NOTE: diagnostics long_short_mean comes from monthly LS series (same as backfill)
+                if "long_short_mean" in diag_df.columns and monthly_path.exists():
+                    diag_merged = _pd.merge(
+                        diag_df[diag_df["long_short_annualized_return"].notna()],
+                        monthly_agg, left_on=["factor_id", "best_horizon"],
+                        right_on=["factor_name", "horizon"], how="inner"
+                    )
+                    if len(diag_merged) > 0:
+                        diag_merged["bpy"] = diag_merged["best_horizon"].map(BARS_PER_YEAR)
+                        diag_merged["expected"] = (
+                            diag_merged["monthly_mean"] * diag_merged["bpy"]
+                        )
+                        diag_merged["abs_diff"] = (
+                            diag_merged["long_short_annualized_return"]
+                            - diag_merged["expected"]
+                        ).abs()
+                        diag_merged["rel_diff"] = diag_merged["abs_diff"] / diag_merged["expected"].abs().clip(lower=1e-12)
+                        bad_diag = diag_merged[(diag_merged["abs_diff"] > 1e-4) | ((diag_merged["abs_diff"] > 1e-8) & (diag_merged["rel_diff"] > 1e-3))]
+                        if len(bad_diag) > 0:
+                            ls_ann_result["status"] = "FAIL"
+                            ls_ann_result["details"].append(
+                                f"Diagnostics: {len(bad_diag)} rows ann_ret != monthly_mean × bars_per_year")
+                            any_fail = True
+                        else:
+                            ls_ann_result["details"].append(
+                                f"Diagnostics: {len(diag_merged)} rows pass monthly_mean × bars_per_year")
+
+            if ls_ann_result["status"] == "PASS" and not ls_ann_result["details"]:
+                ls_ann_result["details"].append("All checks passed")
+
+        except Exception as e:
+            ls_ann_result["status"] = "ERROR"
+            ls_ann_result["error"] = str(e)
+            any_fail = True
+    else:
+        ls_ann_result["status"] = "MISSING_FILE"
+        ls_ann_result["error"] = "LS summary or diagnostics summary not found"
+        any_fail = True
+
+    all_results.append(ls_ann_result)
+    icon = "✓" if ls_ann_result["status"] == "PASS" else "✗"
+    print(f"  {icon} [{'pm58b_annualization':25s}] {ls_ann_result['status']}")
+    for d in ls_ann_result["details"]:
+        print(f"    {d}")
+    if ls_ann_result["error"]:
+        print(f"    error: {ls_ann_result['error']}")
+    if ls_ann_result["status"] != "PASS":
+        any_fail = True
+
     # Documented subset outputs (informational, not full-universe required)
     robust_subset_tables = [
         ("paper_robust", "Paper robust significance (subset: 5 factors)",

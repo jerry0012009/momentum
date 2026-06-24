@@ -357,19 +357,25 @@ After adding new factors to the factor library, the following payloads must be r
 
 **QA command:** `python scripts/check_factor_evaluation_page_completeness.py` (22 checks including per-factor detail completeness)
 
-## 11. LS aggregate metrics — canonical outputs (PM-41)
+## 11. LS aggregate metrics — canonical outputs (PM-41, PM-58B)
 
 LS aggregate statistics are now canonical outputs from `evaluate_factors.py`, written to `factor_level_long_short_summary.csv`:
 
 | Field | Source | Annualization |
 |-------|--------|---------------|
 | `long_short_spread_std` | monthly period LS std(ddof=1) | N/A |
-| `long_short_spread_annualized_return` | monthly mean × 12 | monthly_x12 |
-| `long_short_spread_annualized_vol` | monthly std × √12 | monthly_x12 |
+| `long_short_spread_annualized_return` | per-bar LS mean × bars_per_year | per_bar_mean_x_bars_per_year |
+| `long_short_spread_annualized_vol` | monthly std × √12 | monthly edge stability |
 | `long_short_spread_max_drawdown` | min(cumulative drawdown) | N/A |
 | `long_short_spread_positive_period_rate` | count(r>0) / count(r) | N/A |
 | `n_monthly_periods` | count of monthly periods | N/A |
-| `annualization_method` | "monthly_x12" | Fixed |
+| `annualization_method` | "per_bar_mean_x_bars_per_year" | PM-58B canonical |
+
+**bars_per_year mapping (PM-58B):** 1h=8760, 4h=2190, 24h=365, 72h≈122.
+
+**LS Sharpe / Ann Vol** are monthly edge stability metrics (×√12), not portfolio Sharpe/Vol.
+**Ann Return** is annualized per-bar LS edge, not portfolio cumulative annual return.
+These are research diagnostics, not portfolio metrics or trading signals.
 
 **After new factor intake:** These fields are automatically populated by `evaluate_factors.py`. No separate step needed.
 

@@ -489,6 +489,98 @@ def check_ls_monthly_aggregate_completeness() -> list[dict]:
     
     return results
 
+def _check_pm58b_ls_annualization_consistency() -> list[dict]:
+    """PM-58B: Verify LS annualized return uses horizon-aware bars_per_year formula.
+
+    Checks:
+    1. For every row with non-null ann ret and mean, ann_ret == mean × bars_per_year
+    2. annualization_method == "per_bar_mean_x_bars_per_year" for all rows with non-null ann ret
+    """
+    results = []
+    ls_path = EVAL_DIR / "factor_level_long_short_summary.csv"
+    if not ls_path.exists():
+        results.append({"check": "pm58b_annualization", "status": "MISSING",
+                         "detail": "factor_level_long_short_summary.csv not found"})
+        return results
+
+    BARS_PER_YEAR = {"1h": 8760, "4h": 2190, "24h": 365, "72h": 365 / 3}
+
+    df = pd.read_csv(ls_path)
+    required_cols = ["horizon", "long_short_spread_mean",
+                     "long_short_spread_annualized_return", "annualization_method"]
+    missing_cols = [c for c in required_cols if c not in df.columns]
+    if missing_cols:
+        results.append({"check": "pm58b_annualization", "status": "MISSING",
+                         "detail": f"Missing columns: {missing_cols}"})
+        return results
+
+    ann_ret_notnull = df[df["long_short_spread_annualized_return"].notna()]
+
+    # Check 1: annualization_method == "per_bar_mean_x_bars_per_year"
+    wrong_method = ann_ret_notnull[
+        ann_ret_notnull["annualization_method"] != "per_bar_mean_x_bars_per_year"
+    ]
+    if len(wrong_method) > 0:
+        sample = wrong_method[["factor_name", "horizon", "annualization_method"]].head(5)
+        results.append({
+            "check": "pm58b_annualization_method",
+            "status": "FAIL",
+            "detail": f"{len(wrong_method)} rows have wrong annualization_method; "
+                      f"sample: {sample.to_dict('records')}",
+        })
+    else:
+        results.append({
+            "check": "pm58b_annualization_method",
+            "status": "OK",
+            "detail": f"All {len(ann_ret_notnull)} rows have "
+                      "annualization_method=per_bar_mean_x_bars_per_year",
+        })
+
+    # Check 2: ann_ret == monthly_ls_mean × bars_per_year (within tolerance)
+    # NOTE: long_short_spread_mean is per-bar mean, NOT monthly mean.
+    # The canonical formula uses monthly_ls_mean from monthly series CSV.
+    monthly_path = DIAG_DIR / "factor_monthly_long_short_series.csv"
+    if not monthly_path.exists():
+        results.append({"check": "pm58b_annualization_formula", "status": "MISSING",
+                         "detail": "factor_monthly_long_short_series.csv not found"})
+        return results
+
+    monthly_df = pd.read_csv(monthly_path)
+    monthly_agg = monthly_df.groupby(["factor_id", "horizon"]).agg(
+        monthly_mean=("long_short_return", "mean")
+    ).reset_index()
+    monthly_agg = monthly_agg.rename(columns={"factor_id": "factor_name"})
+
+    check_df = df[df["long_short_spread_annualized_return"].notna()].copy()
+    check_df = pd.merge(check_df, monthly_agg, on=["factor_name", "horizon"], how="inner")
+    check_df["bpy"] = check_df["horizon"].map(BARS_PER_YEAR)
+    check_df["expected"] = check_df["monthly_mean"] * check_df["bpy"]
+    check_df["abs_diff"] = (
+        check_df["long_short_spread_annualized_return"] - check_df["expected"]
+    ).abs()
+    check_df["rel_diff"] = check_df["abs_diff"] / check_df["expected"].abs().clip(lower=1e-30)
+
+    bad = check_df[(check_df["abs_diff"] > 1e-8) & (check_df["rel_diff"] > 1e-6)]
+    if len(bad) > 0:
+        sample = bad[["factor_name", "horizon",
+                       "monthly_mean", "long_short_spread_annualized_return",
+                       "expected"]].head(5)
+        results.append({
+            "check": "pm58b_annualization_formula",
+            "status": "FAIL",
+            "detail": f"{len(bad)} rows have ann_ret != monthly_mean × bars_per_year; "
+                      f"sample: {sample.to_dict('records')}",
+        })
+    else:
+        results.append({
+            "check": "pm58b_annualization_formula",
+            "status": "OK",
+            "detail": f"All {len(check_df)} rows pass monthly_mean × bars_per_year consistency "
+                      f"(tolerance: abs<=1e-8 or rel<=1e-6)",
+        })
+
+    return results
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -667,7 +759,21 @@ def main() -> int:
                 pm58a_fail = True
         pm58a_verdict = "PASS" if not pm58a_fail else "FAIL"
         print(f"\n  LS monthly aggregate: {pm58a_verdict}")
-        
+
+        # PM-58B: LS annualization consistency (bars_per_year formula)
+        print(f"\n{'='*60}")
+        print("LS Annualization Consistency (PM-58B)")
+        print(f"{'='*60}")
+        pm58b_results = _check_pm58b_ls_annualization_consistency()
+        pm58b_fail = False
+        for r in pm58b_results:
+            icon = "✓" if r["status"] in ("OK", "PASS") else "✗"
+            print(f"  {icon} {r['check']:35s}: {r['detail']}")
+            if r["status"] not in ("OK", "PASS"):
+                pm58b_fail = True
+        pm58b_verdict = "PASS" if not pm58b_fail else "FAIL"
+        print(f"\n  LS annualization consistency: {pm58b_verdict}")
+
         # Append consistency data to JSON report
         json_report["active_universe_consistency"] = {
             "active_count": n_active,
@@ -677,6 +783,10 @@ def main() -> int:
         json_report["ls_monthly_aggregate"] = {
             "checks": pm58a_results,
             "verdict": pm58a_verdict,
+        }
+        json_report["ls_annualization_consistency"] = {
+            "checks": pm58b_results,
+            "verdict": pm58b_verdict,
         }
         json_path.write_text(json.dumps(json_report, indent=2, default=str))
 

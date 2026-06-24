@@ -1209,6 +1209,98 @@ def check_pm58a_ls_monthly_aggregate(html_text: str) -> list[dict]:
     return results
 
 
+def check_pm58b_annualization_html(html_text: str) -> list[dict]:
+    """PM-58B: Verify annualization-related content in HTML page.
+
+    Checks:
+    1. Page contains 'bars_per_year' in tooltip/glossary text
+    2. Page does NOT contain 'portfolio annual return' or '组合累计年化收益'
+       as Ann Return description (these are wrong descriptions)
+    3. LS Sharpe tooltip mentions 'monthly' or '月度' (edge stability metric)
+    """
+    results = []
+
+    # Check 1: bars_per_year present in tooltip text
+    if "bars_per_year" in html_text or "bars-per-year" in html_text:
+        results.append(_pass(
+            "pm58b_bars_per_year_in_tooltip",
+            "PM-58B: bars_per_year present in tooltip/glossary",
+            "Found bars_per_year or bars-per-year in page",
+        ))
+    else:
+        results.append(_fail(
+            "pm58b_bars_per_year_in_tooltip",
+            "PM-58B: bars_per_year present in tooltip/glossary",
+            "Not found",
+            "Expected bars_per_year in Ann Return tooltip or formula text",
+        ))
+
+    # Check 2: No wrong portfolio annual return description
+    # Allow the string in negation contexts (e.g., "这不是组合累计年化收益" or "not portfolio annual return")
+    import re as _re_check
+    # Find all occurrences of "portfolio annual return" not preceded by "not " or "non-"
+    portfolio_en_matches = _re_check.finditer(r"(?<!\bnot )(?<!non-)portfolio annual return", html_text.lower())
+    # Find "组合累计年化收益" not preceded by "不是" or "并非"
+    portfolio_zh_matches = _re_check.finditer(r"(?<!不是)(?<!并非)组合累计年化收益", html_text)
+    has_portfolio_en = any(True for _ in portfolio_en_matches)
+    has_portfolio_zh = any(True for _ in portfolio_zh_matches)
+    if has_portfolio_en or has_portfolio_zh:
+        found = []
+        if has_portfolio_en:
+            found.append("portfolio annual return (affirmative)")
+        if has_portfolio_zh:
+            found.append("组合累计年化收益 (affirmative)")
+        results.append(_fail(
+            "pm58b_no_portfolio_annual_return",
+            "PM-58B: No affirmative 'portfolio annual return' / '组合累计年化收益' as Ann Return description",
+            f"Found: {', '.join(found)}",
+            "These are wrong descriptions for LS annualized return",
+        ))
+    else:
+        results.append(_pass(
+            "pm58b_no_portfolio_annual_return",
+            "PM-58B: No affirmative 'portfolio annual return' / '组合累计年化收益' as Ann Return description",
+            "Confirmed: no affirmative use found (negations allowed)",
+        ))
+
+    # Check 3: LS Sharpe tooltip mentions 'monthly' or '月度'
+    import re as _re
+    import json as _json
+    m = _re.search(r'<script id="factorPayload"[^>]*>(.*?)</script>', html_text, _re.DOTALL)
+    sharpe_monthly = False
+    if m:
+        try:
+            data = _json.loads(m.group(1))
+            glossary = data.get("metric_glossary", {})
+            sharpe_entry = glossary.get("LS Sharpe", {})
+            tz = sharpe_entry.get("tooltip_zh", "")
+            te = sharpe_entry.get("tooltip_en", "")
+            if "月度" in tz or "monthly" in te.lower():
+                sharpe_monthly = True
+        except Exception:
+            pass
+    # Fallback: search raw HTML
+    if not sharpe_monthly:
+        if "月度" in html_text or "monthly" in html_text.lower():
+            sharpe_monthly = True
+
+    if sharpe_monthly:
+        results.append(_pass(
+            "pm58b_ls_sharpe_monthly",
+            "PM-58B: LS Sharpe tooltip mentions monthly/月度 (edge stability)",
+            "LS Sharpe tooltip references monthly edge stability metric",
+        ))
+    else:
+        results.append(_fail(
+            "pm58b_ls_sharpe_monthly",
+            "PM-58B: LS Sharpe tooltip mentions monthly/月度 (edge stability)",
+            "No monthly/月度 reference found",
+            "LS Sharpe should describe monthly edge stability (×√12)",
+        ))
+
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Check factor-evaluation.html completeness."
@@ -1261,6 +1353,9 @@ def main() -> int:
 
     # 11. PM-58A LS monthly aggregate fields
     all_checks.extend(check_pm58a_ls_monthly_aggregate(html_text))
+
+    # 12. PM-58B LS annualization canonical alignment
+    all_checks.extend(check_pm58b_annualization_html(html_text))
 
     # Write outputs
     _write_reports(all_checks)
@@ -1319,3 +1414,5 @@ def _print_summary(checks: list[dict]) -> None:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+

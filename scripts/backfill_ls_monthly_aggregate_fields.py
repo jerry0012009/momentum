@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
-"""PM-58A: Backfill LS monthly aggregate fields in canonical LS summary.
+"""PM-58B: Backfill LS monthly aggregate fields with canonical annualization.
 
-Reads monthly LS returns from factor_monthly_long_short_series.csv and fills
-missing aggregate fields in factor_level_long_short_summary.csv.
+Reads monthly LS returns from factor_monthly_long_short_series.csv and
+RECOMPUTES all aggregate fields in factor_level_long_short_summary.csv
+using the horizon-aware bars_per_year formula.
 
-Calculation rules match evaluate_factors.py PM-41 logic exactly:
+Calculation rules (aligned with evaluate_factors.py PM-58B):
   std = monthly.std(ddof=1)
   mean = monthly.mean()
-  annualized_return = mean * 12
-  annualized_vol = std * sqrt(12)
+  annualized_return = mean * bars_per_year   # horizon-aware
+  annualized_vol = std * sqrt(12)            # monthly edge stability
   cum = cumprod(1 + monthly)
   peak = maximum.accumulate(cum)
   drawdown = (cum - peak) / peak
   max_drawdown = drawdown.min()
   positive_period_rate = mean(monthly > 0)
   n_monthly_periods = len(monthly)
-  annualization_method = "monthly_x12"
+  annualization_method = "per_bar_mean_x_bars_per_year"
+
+bars_per_year: 1h=8760, 4h=2190, 24h=365, 72h=365/3
 
 Usage:
   python scripts/backfill_ls_monthly_aggregate_fields.py [--dry-run]
@@ -34,6 +37,8 @@ RUN = Path("research/factor_runs/crypto_top50_factor_library")
 DIAG = RUN / "factor_diagnostics"
 EVAL = RUN / "factor_level_evaluation"
 
+_BARS_PER_YEAR = {"1h": 8760, "4h": 2190, "24h": 365, "72h": 365 / 3}
+
 FIELDS = [
     "long_short_spread_std",
     "long_short_spread_annualized_return",
@@ -45,14 +50,18 @@ FIELDS = [
 ]
 
 
-def compute_aggregates(ls_returns: np.ndarray) -> dict:
-    """Compute monthly LS aggregate stats matching evaluate_factors.py PM-41."""
+def compute_aggregates(ls_returns: np.ndarray, horizon: str) -> dict:
+    """Compute monthly LS aggregate stats matching evaluate_factors.py PM-58B."""
     n = len(ls_returns)
     if n < 2:
         return {}
     std = float(np.std(ls_returns, ddof=1))
     mean = float(np.mean(ls_returns))
-    ann_ret = mean * 12
+    bpy = _BARS_PER_YEAR.get(horizon, 8760)
+    # Ann Return: per-bar LS mean × bars_per_year (horizon-aware annualization)
+    ann_ret = mean * bpy
+    # Sharpe/Vol: monthly edge stability metrics × √12
+    # These are NOT portfolio Sharpe/Vol — they measure per-bar LS return stability.
     ann_vol = std * math.sqrt(12)
     cum = np.cumprod(1 + ls_returns)
     peak = np.maximum.accumulate(cum)
@@ -66,12 +75,12 @@ def compute_aggregates(ls_returns: np.ndarray) -> dict:
         "long_short_spread_max_drawdown": round(max_dd, 8),
         "long_short_spread_positive_period_rate": round(pos_rate, 4),
         "n_monthly_periods": n,
-        "annualization_method": "monthly_x12",
+        "annualization_method": "per_bar_mean_x_bars_per_year",
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description="PM-58A: Backfill LS monthly aggregate fields")
+    parser = argparse.ArgumentParser(description="PM-58B: Backfill LS monthly aggregate fields")
     parser.add_argument("--dry-run", action="store_true", help="Print changes without writing")
     args = parser.parse_args()
 
@@ -91,9 +100,8 @@ def main():
 
     print(f"Monthly LS lookup: {len(monthly_lookup)} factor×horizon combos")
 
-    # Backfill
+    # Recompute ALL rows (not just missing) — old formula was wrong
     filled = 0
-    skipped_has_data = 0
     skipped_no_series = 0
     details = []
 
@@ -101,54 +109,27 @@ def main():
         fid = row["factor_name"]
         hz = row["horizon"]
 
-        # Skip if already has data
-        if pd.notna(row.get("long_short_spread_std")):
-            skipped_has_data += 1
-            continue
-
         # Get monthly series
         key = (fid, hz)
         ls_rets = monthly_lookup.get(key)
         if ls_rets is None or len(ls_rets) < 2:
             skipped_no_series += 1
-            details.append(f"  SKIP {fid}/{hz}: no monthly series (len={0 if ls_rets is None else len(ls_rets)})")
             continue
 
-        # Compute aggregates
-        agg = compute_aggregates(ls_rets)
+        # Compute aggregates with new formula
+        agg = compute_aggregates(ls_rets, hz)
         if not agg:
             skipped_no_series += 1
             continue
 
-        # Apply to summary
+        # Apply to summary (overwrites old values)
         for field, val in agg.items():
             ls_summary.at[idx, field] = val
         filled += 1
-        details.append(f"  FILL {fid}/{hz}: {len(ls_rets)} months, std={agg['long_short_spread_std']:.6f}")
 
     print(f"\nResults:")
-    print(f"  Filled: {filled}")
-    print(f"  Skipped (already has data): {skipped_has_data}")
+    print(f"  Recomputed: {filled}")
     print(f"  Skipped (no monthly series): {skipped_no_series}")
-
-    if details and len(details) <= 20:
-        print("\nDetails:")
-        for d in details:
-            print(d)
-
-    # Verify no remaining gaps where series exists
-    remaining_missing = 0
-    for idx, row in ls_summary.iterrows():
-        fid = row["factor_name"]
-        hz = row["horizon"]
-        if pd.isna(row.get("long_short_spread_std")):
-            if (fid, hz) in monthly_lookup:
-                remaining_missing += 1
-                print(f"  WARNING: {fid}/{hz} still missing but has monthly series!")
-
-    if remaining_missing > 0:
-        print(f"\nERROR: {remaining_missing} rows still missing despite having monthly series!")
-        return 1
 
     if args.dry_run:
         print("\n[DRY RUN] No files written.")

@@ -266,7 +266,7 @@ After running `run_factor_intake.py`, complete the remaining evidence with:
 1. `evaluate_factors.py` 新增 7 个字段到 `factor_level_long_short_summary.csv`
 2. `_build_factor_eval_html.py` 从 canonical LS summary 读取这些字段作为 fallback
 
-**年化规则：** monthly × 12 (return), monthly × √12 (vol), `annualization_method = "monthly_x12"`
+**年化规则 (PM-58B)：** per-bar LS mean × bars_per_year (return), monthly × √12 (vol/sharpe), `annualization_method = "per_bar_mean_x_bars_per_year"`. bars_per_year: 1h=8760, 4h=2190, 24h=365, 72h≈122.
 
 **新字段：** `long_short_spread_std`, `long_short_spread_annualized_return`, `long_short_spread_annualized_vol`, `long_short_spread_max_drawdown`, `long_short_spread_positive_period_rate`, `n_monthly_periods`, `annualization_method`
 

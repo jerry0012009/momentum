@@ -193,6 +193,12 @@ All 84 active factors × 4 horizons must have non-null:
 - `long_short_spread_positive_period_rate`
 - `n_monthly_periods` (≥ 2)
 
-These fields are computed by `evaluate_factors.py` PM-41 logic during normal intake.
+These fields are computed by `evaluate_factors.py` PM-41/PM-58B logic during normal intake.
 `backfill_ls_monthly_aggregate_fields.py` exists only for historical repair of pre-PM-41 factors.
 Future factor intake must generate these fields as part of the standard evaluation pipeline.
+
+**LS Annualized Return (PM-58B canonical):**
+- Ann Return = per-bar LS mean × bars_per_year (horizon-aware)
+- bars_per_year: 1h=8760, 4h=2190, 24h=365, 72h≈122
+- LS Sharpe / Ann Vol are monthly edge stability metrics (×√12), not portfolio Sharpe/Vol
+- These are research diagnostics, not portfolio metrics or trading signals

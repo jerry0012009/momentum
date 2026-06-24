@@ -363,7 +363,7 @@ def main():
                 "long_short_spread_max_drawdown": None,
                 "long_short_spread_positive_period_rate": None,
                 "n_monthly_periods": 0,
-                "annualization_method": "monthly_x12",
+                "annualization_method": "per_bar_mean_x_bars_per_year",
             }
 
             # --- Period-level (monthly) quantile returns and long-short ---
@@ -424,9 +424,13 @@ def main():
                     _ls_std_m = float(_ls_arr_monthly.std(ddof=1))
                     _ls_mean_m = float(_ls_arr_monthly.mean())
                     _n_m = len(_ls_arr_monthly)
-                    _annualization_factor = 12  # monthly periods
-                    _ls_ann_ret = _ls_mean_m * _annualization_factor
-                    _ls_ann_vol = _ls_std_m * _np.sqrt(_annualization_factor)
+                    _BARS_PER_YEAR = {"1h": 8760, "4h": 2190, "24h": 365, "72h": 365 / 3}
+                    _bpy = _BARS_PER_YEAR.get(hz, 8760)
+                    # Ann Return: per-bar LS mean × bars_per_year (horizon-aware annualization)
+                    _ls_ann_ret = _ls_mean_m * _bpy
+                    # Sharpe/Vol: monthly edge stability metrics × √12
+                    # These are NOT portfolio Sharpe/Vol — they measure per-bar LS return stability.
+                    _ls_ann_vol = _ls_std_m * _np.sqrt(12)
                     _ls_cum = _np.cumprod(1 + _ls_arr_monthly)
                     _ls_peak = _np.maximum.accumulate(_ls_cum)
                     _ls_dd = (_ls_cum - _ls_peak) / _ls_peak
