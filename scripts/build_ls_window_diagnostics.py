@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""PM-58C: Build LS window diagnostics from period summary.
+"""PM-58C/58D: Build Period-Level LS Window Diagnostics.
 
-Reads factor_level_period_long_short_summary.csv and computes per-factor-horizon
-window-level LS statistics. Each monthly period is treated as a "window".
+Reads factor_level_period_long_short_summary.csv and computes
+per-factor, per-horizon monthly period-level LS statistics.
+Each row in the period summary is a monthly period-level aggregate.
+This is NOT raw per-bar investment-window data.
 
 These are RESEARCH DIAGNOSTICS, not portfolio metrics.
 For 24h/72h horizons sampled at 1h, evaluation windows overlap heavily.

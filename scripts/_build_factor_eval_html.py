@@ -1552,12 +1552,12 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
     <h4 style="color:#cbd5e1;margin-top:16px">📏 LS Metrics Semantics / LS 指标语义 (PM-58C)</h4>
     <p style="font-size:13px;line-height:1.7;color:#94a3b8">
       <strong>Edge Diagnostics</strong> answer: <em>Is the factor's average long-short edge stable across months?</em><br>
-      <strong>Window Diagnostics</strong> answer: <em>How often does each evaluation horizon window produce positive LS spread?</em><br>
+      <strong>Period-Level Window Diagnostics</strong> answer: <em>How often does each monthly period produce positive LS spread?</em> (monthly period-level, not true per-bar window)<br>
       Neither is a live trading metric. Paper portfolio diagnostics, if available, are optional candidate-only portfolio-style evidence.
     </p>
     <p style="font-size:13px;line-height:1.7;color:#94a3b8">
       <strong>Edge Diagnostics（边缘诊断）</strong>回答：这个因子的平均多空 edge 是否在月份之间稳定？<br>
-      <strong>Window Diagnostics（窗口诊断）</strong>回答：每次 1h/4h/24h/72h evaluation window 的 long-short spread 有多少比例为正？<br>
+      <strong>Period-Level Window Diagnostics（月度窗口诊断）</strong>回答：每个月度 period 的 LS spread 有多少比例为正？（月度 period 级别，不是逐 K 线窗口）<br>
       两者都不是实盘交易指标。Paper portfolio diagnostics 如果存在，只是候选因子的 optional portfolio-style evidence。
     </p>
     <p style="font-size:12px;color:#94a3b8">
@@ -1570,8 +1570,9 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
       • <strong>Monthly Edge Vol</strong> = std × √12 — monthly edge volatility, NOT portfolio volatility<br>
       • <strong>Edge Curve Max DD</strong> = max drawdown of cumprod(1 + monthly_edge_m) — NOT portfolio max drawdown<br>
       • <strong>Monthly Edge Win Rate</strong> = count(edge > 0) / count(valid months) — monthly stability, NOT trade win rate<br>
-      • <strong>Window LS Win Rate</strong> = count(window LS > 0) / count(valid windows) — per-window positive rate<br>
-      &nbsp;&nbsp;⚠️ 24h/72h windows overlap heavily when sampled every 1h. NOT independent trade win rate.
+      • <strong>Window LS Win Rate</strong> = count(period LS > 0) / count(valid months) — monthly period-level positive rate<br>
+      &nbsp;&nbsp;⚠️ Current: monthly period-level, not true per-bar window. 24h/72h overlap heavily. NOT independent trade win rate.<br>
+      &nbsp;&nbsp;True per-bar / non-overlapping investment-window diagnostics require raw per-bar LS output and are deferred.
     </p>
     <p class="warn">⚠️ LS metrics are factor edge diagnostics, not portfolio backtest results. LS 指标是因子边缘诊断，不是组合回测结果。</p>
   </div>
@@ -3058,7 +3059,7 @@ function renderDetail(fid){
     </div>
     <p style="font-size:10px;color:#64748b;margin-top:4px">Edge diagnostics are monthly per-bar LS edge stability metrics. Not portfolio metrics. Edge 诊断是月度 per-bar LS edge 稳定性指标，不是组合指标。</p>
 
-    <h3>Window Diagnostics 窗口诊断 (${esc(f.best_horizon)})</h3>
+    <h3>Period-Level Window Diagnostics 月度窗口诊断 (${esc(f.best_horizon)})</h3>
     ${(() => {
       const wd = f.window_diagnostics && f.window_diagnostics[f.best_horizon];
       if (!wd) return '<div class="small">Window diagnostics unavailable</div>';
@@ -3072,7 +3073,8 @@ function renderDetail(fid){
         metricRow('Overlap Level', overlapLabel) +
         (wd.nonoverlap_available ? metricRow('Non-overlap Win Rate', pct(wd.nonoverlap_window_ls_win_rate)) + metricRow('Non-overlap n_windows', num(wd.nonoverlap_n_windows,0)) : '') +
         '</div>' +
-        '<p style="font-size:10px;color:#64748b;margin-top:4px">⚠️ Window diagnostics use monthly period LS returns. For 24h/72h horizons sampled at 1h, windows overlap heavily. NOT independent trade win rate. 窗口诊断使用月度 period LS 收益。24h/72h horizon 在 1h 采样下高度重叠，不是独立交易胜率。</p>';
+        '<p style="font-size:10px;color:#64748b;margin-top:4px">⚠️ 当前实现使用 factor_level_period_long_short_summary.csv 中的月度 period LS return，每个月视为一个 window 记录。这不是真正逐 K 线的投资窗口数据。Window LS Win Rate 不是独立交易胜率。真正的逐 K 线 / 非重叠投资窗口诊断需要 raw per-bar LS return 输出，后续再做。</p>' +
+        '<p style="font-size:10px;color:#64748b;margin-top:2px">Current implementation uses monthly period LS returns. Each monthly period = one window. Not true per-bar investment-window data. Not independent trade win rate. True per-bar / non-overlapping diagnostics require raw per-bar LS output and are deferred.</p>';
     })()}
 
     ${(()=>{
