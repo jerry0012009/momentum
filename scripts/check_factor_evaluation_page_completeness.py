@@ -1638,6 +1638,95 @@ def check_pm59a_reading_order(html: str) -> list[dict]:
     return checks
 
 
+def check_pm59a_fix2_dom_order(html: str) -> list[dict]:
+    """PM-59A-UI-FIX2: Check real DOM order and structural integrity."""
+    checks = []
+
+    # Find the renderDetail card.innerHTML template area
+    tpl_start = html.find('card.innerHTML=')
+    if tpl_start < 0:
+        tpl_start = html.find('class="back-to-table"')
+    tpl_end = html.find('card.querySelector', tpl_start) if tpl_start >= 0 else -1
+    if tpl_end < 0:
+        tpl_end = tpl_start + 200000
+    tpl = html[tpl_start:tpl_end] if tpl_start >= 0 else html
+
+    # Find positions of key markers within the template
+    markers = {
+        'reading_order': tpl.find('Evidence Reading Order'),
+        'definition': tpl.find('Factor Definition'),
+        'block1': tpl.find('Block 1'),
+        'block2': tpl.find('Block 2'),
+        'block3': tpl.find('Block 3'),
+        'block4': tpl.find('Block 4'),
+        'block5': tpl.find('Block 5'),
+        'block6': tpl.find('Block 6'),
+        'optional': tpl.find('optional-deep-dive'),
+    }
+
+    # Check all markers found
+    for name, pos in markers.items():
+        checks.append(_c(
+            f'fix2_{name}_exists',
+            f'{name} marker exists in HTML',
+            'PASS' if pos >= 0 else 'FAIL',
+        ))
+
+    # Check real DOM order
+    order_ok = all(
+        markers[a] < markers[b]
+        for a, b in [
+            ('reading_order', 'definition'),
+            ('definition', 'block1'),
+            ('block1', 'block2'),
+            ('block2', 'block3'),
+            ('block3', 'block4'),
+            ('block4', 'block5'),
+            ('block5', 'block6'),
+            ('block6', 'optional'),
+        ]
+        if markers[a] >= 0 and markers[b] >= 0
+    )
+    order_str = ' → '.join(
+        f'{k}({v})' for k, v in sorted(markers.items(), key=lambda x: x[1]) if v >= 0
+    )
+    checks.append(_c(
+        'fix2_dom_order',
+        'Real DOM order: reading < def < B1 < B2 < B3 < B4 < B5 < B6 < optional',
+        'PASS' if order_ok else 'FAIL',
+        evidence=order_str[:200],
+    ))
+
+    # Block 3 must exist as labeled section
+    checks.append(_c(
+        'fix2_block3_labeled',
+        'Block 3 — Shape & Stability exists as labeled section',
+        'PASS' if 'Block 3' in html and 'Shape' in html else 'FAIL',
+    ))
+
+    # Scorecard must be after Block 6
+    sc_pos = tpl.find('scorecardHtml')
+    b6_pos = markers.get('block6', -1)
+    checks.append(_c(
+        'fix2_scorecard_after_block6',
+        'Factor Quality Scorecard positioned after Block 6',
+        'PASS' if sc_pos >= 0 and b6_pos >= 0 and sc_pos > b6_pos else 'FAIL',
+    ))
+
+    # Details tag count (rendered HTML)
+    import re
+    details_open = len(re.findall(r'<details', html))
+    details_close = len(re.findall(r'</details>', html))
+    checks.append(_c(
+        'fix2_details_tag_balance',
+        f'<details> tag balance ({details_open} open, {details_close} close)',
+        'PASS' if details_open == details_close else 'FAIL',
+        evidence=f'open={details_open}, close={details_close}',
+    ))
+
+    return checks
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Check factor-evaluation.html completeness."
@@ -1702,6 +1791,9 @@ def main() -> int:
 
     # 15. PM-59A-UI Evidence Reading Order
     all_checks.extend(check_pm59a_reading_order(html_text))
+
+    # 16. PM-59A-UI-FIX2 Real DOM order & structural checks
+    all_checks.extend(check_pm59a_fix2_dom_order(html_text))
 
     # Write outputs
     _write_reports(all_checks)
