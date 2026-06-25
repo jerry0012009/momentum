@@ -239,6 +239,20 @@ Do not hand-edit display pages to fix a result. Fix the data source or page buil
 
 不要手改页面来“修结果”。要改数据源或页面生成器，然后重建页面。
 
+### HTML / Page Interpretation Source Files
+
+These files generate or validate the factor-evaluation display layer. Edit these sources or their input data, not generated HTML.
+
+这些文件属于展示解释层源码。页面显示错了，优先改这些文件或它们的输入数据，不要手改生成后的 HTML。
+
+| File | Purpose |
+|------|---------|
+| `scripts/_build_factor_eval_html.py` | Builds `reports/site/factor-library/factor-evaluation.html` |
+| `scripts/factor_metric_glossary.json` | Metric glossary and tooltip source |
+| `scripts/check_factor_evaluation_page_completeness.py` | Page QA and completeness checks |
+| `scripts/build_single_factor_paper_page_payload.py` | Paper diagnostics payload |
+| `scripts/build_unified_factor_profile.py` | Unified factor profile payload |
+
 ---
 
 ## Supporting References / 支持参考
