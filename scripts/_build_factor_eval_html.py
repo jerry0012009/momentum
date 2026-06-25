@@ -2386,11 +2386,11 @@ function renderPaperCoreMetrics(f){
   const to=f.paper_avg_turnover;
   const toStr=to!==null&&to!==undefined?(Number(to)*100).toFixed(1)+'%':'\u2014';
   return '<div class="metric-grid">'
-    +metricRow('Cost Survival Class / \u6210\u672c\u751f\u5b58\u5206\u7c7b','<span class="paper-badge '+(COST_SENS_LABELS[csc]||{cls:''}).cls+'">'+esc(cscLabel.zh)+' / '+esc(cscLabel.en)+'</span>')
-    +metricRow('10bps Net Return / 10bps \u6210\u672c\u540e\u7d2f\u8ba1\u6536\u76ca',ret10Str)
-    +metricRow('Break-even Fee / \u76c8\u4e8f\u5e73\u8861\u624b\u7eed\u8d39',befStr+befWarn)
-    +metricRow('Avg Turnover / \u5e73\u5747\u6362\u624b',toStr+'<div style="font-size:10px;color:var(--muted)">\u9ad8\u6362\u624b\u662f\u6210\u672c\u574e\u5854\u4e3b\u56e0</div>')
-    +metricRow('Paper Max Drawdown / \u7eb8\u9762\u6700\u5927\u56de\u64a4',ddStr+'<div style="font-size:10px;color:var(--muted)">\u8def\u5f84\u98ce\u9669\uff1b\u4e0d\u662f\u5b9e\u76d8\u56de\u64a4</div>')
+    +metricRow(renderTooltip('Cost Survival Class')+' / \u6210\u672c\u751f\u5b58\u5206\u7c7b','<span class="paper-badge '+(COST_SENS_LABELS[csc]||{cls:''}).cls+'">'+esc(cscLabel.zh)+' / '+esc(cscLabel.en)+'</span>')
+    +metricRow(renderTooltip('10bps Net Return')+' / 10bps \u6210\u672c\u540e\u7d2f\u8ba1\u6536\u76ca',ret10Str)
+    +metricRow(renderTooltip('Break-even Fee')+' / \u76c8\u4e8f\u5e73\u8861\u624b\u7eed\u8d39',befStr+befWarn)
+    +metricRow(renderTooltip('Avg Turnover')+' / \u5e73\u5747\u6362\u624b',toStr+'<div style="font-size:10px;color:var(--muted)">\u9ad8\u6362\u624b\u662f\u6210\u672c\u574e\u5854\u4e3b\u56e0</div>')
+    +metricRow(renderTooltip('Paper Max Drawdown')+' / \u7eb8\u9762\u6700\u5927\u56de\u64a4',ddStr+'<div style="font-size:10px;color:var(--muted)">\u8def\u5f84\u98ce\u9669\uff1b\u4e0d\u662f\u5b9e\u76d8\u56de\u64a4</div>')
   +'</div>';
 }
 function renderPaperSecondaryMetrics(f){

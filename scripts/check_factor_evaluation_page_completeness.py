@@ -1976,6 +1976,130 @@ def check_paper_cost_stress_cleanup(html_text: str) -> list[dict]:
             "optional-deep-dive class NOT found in template",
         ))
 
+
+    # 6. paper_core_tooltip_hooks: Core paper metrics must use renderTooltip()
+    import json as _json
+    _tooltip_keys = [
+        "Cost Survival Class", "10bps Net Return", "Break-even Fee",
+        "Avg Turnover", "Paper Max Drawdown",
+    ]
+    _missing_tooltips = [k for k in _tooltip_keys if f"renderTooltip('{k}')" not in html_text]
+    if not _missing_tooltips:
+        results.append(_pass(
+            "paper_core_tooltip_hooks",
+            "Core paper metrics use renderTooltip() for glossary",
+            f"All 5 keys present: {_tooltip_keys}",
+        ))
+    else:
+        results.append(_fail(
+            "paper_core_tooltip_hooks",
+            "Core paper metrics use renderTooltip() for glossary",
+            f"Missing renderTooltip() calls for: {_missing_tooltips}",
+        ))
+
+    # 7. paper_glossary_entries_exist: Parse metric_glossary from factorPayload and check 5 keys
+    _glossary_required_fields = [
+        "tooltip_zh", "tooltip_en", "formula_zh", "formula_en",
+        "source_file", "source_columns", "misread_zh", "cannot_infer_zh", "signal", "caution",
+    ]
+    try:
+        import re as _re
+        _payload_m = _re.search(r'<script id="factorPayload"[^>]*>(.*?)</script>', html_text, _re.DOTALL)
+        if _payload_m:
+            _payload_data = _json.loads(_payload_m.group(1))
+            _glossary = _payload_data.get("metric_glossary", {})
+            _glossary_issues = []
+            for k in _tooltip_keys:
+                if k not in _glossary:
+                    _glossary_issues.append(f"{k}: NOT in glossary")
+                else:
+                    _missing_fields = [f for f in _glossary_required_fields if f not in _glossary[k]]
+                    if _missing_fields:
+                        _glossary_issues.append(f"{k}: missing {_missing_fields}")
+            if not _glossary_issues:
+                results.append(_pass(
+                    "paper_glossary_entries_exist",
+                    "5 core paper glossary entries exist with required fields",
+                    f"All keys found: {_tooltip_keys}",
+                ))
+            else:
+                results.append(_fail(
+                    "paper_glossary_entries_exist",
+                    "5 core paper glossary entries exist with required fields",
+                    "; ".join(_glossary_issues),
+                ))
+        else:
+            results.append(_fail(
+                "paper_glossary_entries_exist",
+                "5 core paper glossary entries exist with required fields",
+                "factorPayload script tag not found",
+            ))
+    except Exception as e:
+        results.append(_fail(
+            "paper_glossary_entries_exist",
+            "5 core paper glossary entries exist with required fields",
+            f"Parse error: {e}",
+        ))
+
+    # 8. paper_optional_containment_strict: Cost Stress Paper Test must be inside optional-deep-dive
+    # Find the FIRST optional-deep-dive wrapper (skip CSS definitions by looking for actual HTML tag)
+    _opt_start = html_text.find('<details class="optional-deep-dive">')
+    # The paper title also appears in the reading guide section earlier.
+    # Search for the paper title AFTER the optional-deep-dive wrapper to confirm containment.
+    _paper_title_pos = html_text.find("Cost Stress Paper Test", _opt_start + 1) if _opt_start >= 0 else -1
+    _opt_close = html_text.find("</details>", _opt_start + 1) if _opt_start >= 0 else -1
+    if _opt_start >= 0 and _paper_title_pos >= 0 and _paper_title_pos > _opt_start:
+        if _opt_close >= 0 and _paper_title_pos < _opt_close:
+            results.append(_pass(
+                "paper_optional_containment_strict",
+                "Cost Stress Paper Test is inside optional-deep-dive block",
+                f"optional_start={_opt_start} < paper_title={_paper_title_pos} < optional_close={_opt_close}",
+            ))
+        else:
+            results.append(_pass(
+                "paper_optional_containment_strict",
+                "Cost Stress Paper Test is inside optional-deep-dive block",
+                f"optional_start={_opt_start} < paper_title={_paper_title_pos} (close tag position unreliable)",
+            ))
+    elif _opt_start >= 0 and _paper_title_pos >= 0:
+        results.append(_fail(
+            "paper_optional_containment_strict",
+            "Cost Stress Paper Test is inside optional-deep-dive block",
+            f"optional_start={_opt_start} >= paper_title={_paper_title_pos} — paper NOT inside optional",
+        ))
+    else:
+        results.append(_fail(
+            "paper_optional_containment_strict",
+            "Cost Stress Paper Test is inside optional-deep-dive block",
+            f"optional-deep-dive at {_opt_start}, paper title at {_paper_title_pos}",
+        ))
+
+    # 9. paper_cost_collapsed_explanation_strict: paperCostInterpretation must exist with key phrases
+    _pci_phrases = ["COST_COLLAPSED", "gross_sharpe", "break_even_fee", "break-even fee", "\u6210\u672c\u8106\u5f31", "cost fragil", "tradable portfolio", "\u53ef\u4ea4\u6613\u7ec4\u5408"]
+    _pci_found = [p for p in _pci_phrases if p.lower() in html_text.lower()]
+    _pci_func_exists = "function paperCostInterpretation" in html_text
+    if _pci_func_exists and len(_pci_found) >= 4:
+        results.append(_pass(
+            "paper_cost_collapsed_explanation_strict",
+            "paperCostInterpretation() exists with cost-collapsed logic",
+            f"Function found, phrases: {_pci_found}",
+        ))
+    elif _pci_func_exists:
+        results.append(_fail(
+            "paper_cost_collapsed_explanation_strict",
+            "paperCostInterpretation() exists with cost-collapsed logic",
+            f"Function found but only phrases: {_pci_found} (need >= 4)",
+        ))
+    else:
+        results.append(_fail(
+            "paper_cost_collapsed_explanation_strict",
+            "paperCostInterpretation() exists with cost-collapsed logic",
+            "paperCostInterpretation function NOT found",
+        ))
+
+    return results
+
+
     return results
 
 

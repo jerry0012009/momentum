@@ -124,6 +124,42 @@ def check_paper_payload(fid: str) -> dict:
         return {"status": "ERROR", "detail": str(e)}
 
 
+def check_paper_summary(fid: str) -> dict:
+    """Check if factor has paper summary diagnostics.
+    Paper diagnostics are workflow-required artifacts but user-facing display is optional/deep-dive.
+    纸面诊断是 workflow required evidence，但页面展示属于 optional deep-dive。
+    """
+    try:
+        csv_path = DIAG_DIR / "single_factor_paper_summary.csv"
+        if not csv_path.exists():
+            return {"status": "MISSING", "detail": "single_factor_paper_summary.csv not found"}
+        df = pd.read_csv(csv_path)
+        key_col = "factor_id" if "factor_id" in df.columns else df.columns[0]
+        if fid in set(df[key_col].astype(str)):
+            return {"status": "OK", "detail": "Present in paper summary"}
+        return {"status": "MISSING", "detail": f"{fid} not in single_factor_paper_summary.csv"}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
+
+
+def check_fee_sensitivity(fid: str) -> dict:
+    """Check if factor has fee sensitivity diagnostics.
+    Paper diagnostics are workflow-required artifacts but user-facing display is optional/deep-dive.
+    纸面诊断是 workflow required evidence，但页面展示属于 optional deep-dive。
+    """
+    try:
+        csv_path = DIAG_DIR / "single_factor_fee_sensitivity.csv"
+        if not csv_path.exists():
+            return {"status": "MISSING", "detail": "single_factor_fee_sensitivity.csv not found"}
+        df = pd.read_csv(csv_path)
+        key_col = "factor_id" if "factor_id" in df.columns else df.columns[0]
+        if fid in set(df[key_col].astype(str)):
+            return {"status": "OK", "detail": "Present in fee sensitivity"}
+        return {"status": "MISSING", "detail": f"{fid} not in single_factor_fee_sensitivity.csv"}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
+
+
 def check_regime_btc(fid: str) -> dict:
     """Check if factor has regime/BTC diagnostics."""
     try:
@@ -428,6 +464,8 @@ ALL_CHECKS = [
     ("ls_aggregate", check_ls_aggregate),
     ("cumulative_ls", check_cumulative_ls),
     ("paper_payload", check_paper_payload),
+    ("paper_summary", check_paper_summary),
+    ("fee_sensitivity", check_fee_sensitivity),
     ("regime_btc", check_regime_btc),
     ("quantile_shape", check_quantile_shape),
     ("rolling_stability", check_rolling_stability),

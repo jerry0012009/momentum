@@ -469,6 +469,10 @@ def detect_missing_factors() -> list[str]:
         # PM-54/56: Robust diagnostics (full-universe required)
         (DIAG_DIR / "factor_rankic_robust_significance_summary.csv", "factor_id"),
         (DIAG_DIR / "factor_ls_robust_significance_summary.csv", "factor_id"),
+        # Paper diagnostics: workflow-required artifacts (display is optional/deep-dive)
+        # 纸面诊断是 workflow required evidence，但页面展示属于 optional deep-dive
+        (DIAG_DIR / "single_factor_paper_summary.csv", "factor_id"),
+        (DIAG_DIR / "single_factor_fee_sensitivity.csv", "factor_id"),
     ]
 
     # Accumulate per-factor: which tables it's missing from
@@ -522,6 +526,28 @@ def detect_missing_factors() -> list[str]:
     else:
         for fid in all_fids:
             factor_missing_tables[fid].append("html_payload")
+
+    # Check paper page payload
+    paper_payload_path = DIAG_DIR / "single_factor_paper_page_payload.json"
+    if paper_payload_path.exists():
+        try:
+            payload = json.loads(paper_payload_path.read_text())
+            factors = payload.get("factors", [])
+            if isinstance(factors, list):
+                fids_in_payload = {f["factor_id"] for f in factors if "factor_id" in f}
+            elif isinstance(factors, dict):
+                fids_in_payload = set(factors.keys())
+            else:
+                fids_in_payload = set()
+            for fid in all_fids:
+                if fid not in fids_in_payload:
+                    factor_missing_tables[fid].append("single_factor_paper_page_payload")
+        except Exception:
+            for fid in all_fids:
+                factor_missing_tables[fid].append("single_factor_paper_page_payload")
+    else:
+        for fid in all_fids:
+            factor_missing_tables[fid].append("single_factor_paper_page_payload")
 
     # Collect factors with any missing table
     missing = sorted(fid for fid in all_fids if factor_missing_tables[fid])
