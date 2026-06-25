@@ -2373,6 +2373,7 @@ function paperCostInterpretation(f){
   }
   return '';
 }
+function metricRow(label,val,cls=''){return `<div class="metric"><span>${label}</span><strong class="${cls}">${val}</strong></div>`}
 function renderPaperCoreMetrics(f){
   const csc=f.cost_sensitivity_class||'';
   const cscLabel=COST_SENS_LABELS[csc]||{zh:csc||'\u2014',en:csc||'\u2014'};
