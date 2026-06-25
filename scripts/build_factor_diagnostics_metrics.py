@@ -158,6 +158,7 @@ def build_cumulative_ls_curve(monthly_ls: pd.DataFrame) -> tuple[pd.DataFrame, b
 # ---------------------------------------------------------------------------
 def build_diagnostics_summary(
     input_dir: Path,
+    output_dir: Path,
     state: dict,
     monthly_ic: pd.DataFrame,
     monthly_ls: pd.DataFrame,
@@ -173,8 +174,12 @@ def build_diagnostics_summary(
     cov = pd.read_csv(cov_path) if cov_path.exists() else pd.DataFrame()
     fcol_cov = _find_factor_col(cov) if len(cov) > 0 else None
 
-    rd_path = input_dir / "factor_redundancy.csv"
-    rd = pd.read_csv(rd_path) if rd_path.exists() else pd.DataFrame()
+    # PM-59A-UI-DATA-LINEAGE-CLEANUP: Use canonical PM-18 redundancy summary
+    # Redundancy summary lives in output_dir (produced by redundancy stage), not input_dir
+    rd_sum_path = output_dir / "factor_redundancy_summary.csv"
+    if not rd_sum_path.exists():
+        rd_sum_path = input_dir / "factor_redundancy_summary.csv"
+    rd_sum = pd.read_csv(rd_sum_path) if rd_sum_path.exists() else pd.DataFrame()
 
     cr_path = input_dir / "factor_level_candidate_review.csv"
     cr = pd.read_csv(cr_path) if cr_path.exists() else pd.DataFrame()
@@ -190,16 +195,16 @@ def build_diagnostics_summary(
             if f["factor_id"] not in registry:
                 registry[f["factor_id"]] = f
 
-    # Build redundancy lookup
+    # Build redundancy lookup from canonical PM-18 redundancy summary
     rd_lookup = {}
-    if len(rd) > 0 and "factor_i" in rd.columns:
-        for _, r in rd.iterrows():
-            fi, fj = r["factor_i"], r["factor_j"]
-            level = r.get("redundancy_level", "UNKNOWN")
-            if fi not in rd_lookup or level in ("HIGH", "MODERATE"):
-                rd_lookup[fi] = {"level": level, "nearest": fj}
-            if fj not in rd_lookup or level in ("HIGH", "MODERATE"):
-                rd_lookup[fj] = {"level": level, "nearest": fi}
+    if len(rd_sum) > 0 and "factor_id" in rd_sum.columns:
+        for _, r in rd_sum.iterrows():
+            fid = r["factor_id"]
+            rd_lookup[fid] = {
+                "level": r.get("strongest_redundancy_level", "UNKNOWN"),
+                "nearest": r.get("nearest_factor", ""),
+                "source": "PM18_FACTOR_REDUNDANCY_SUMMARY",
+            }
 
     # Build candidate review lookup
     cr_lookup = {}
@@ -277,9 +282,11 @@ def build_diagnostics_summary(
             if len(cls) > 0 and "drawdown" in cls.columns:
                 ls_max_dd = _safe_float(cls["drawdown"].min())
 
-        # Redundancy
-        rd_level = rd_lookup.get(fid, {}).get("level", "UNKNOWN")
-        rd_nearest = rd_lookup.get(fid, {}).get("nearest", "")
+        # Redundancy (from canonical PM-18 source)
+        rd_entry = rd_lookup.get(fid, {})
+        rd_level = rd_entry.get("level", "UNKNOWN")
+        rd_nearest = rd_entry.get("nearest", "")
+        rd_source = rd_entry.get("source", "unavailable_or_not_run")
 
         # Decision bucket
         cr_info = cr_lookup.get(fid, {})
@@ -315,6 +322,7 @@ def build_diagnostics_summary(
             "coverage_rate": cov_rate,
             "redundancy_level": rd_level,
             "nearest_redundant_factor": rd_nearest,
+            "redundancy_source": rd_source,
             "decision_bucket": decision_bucket,
             "recommended_action": recommended_action,
             "source_warning": ";".join(warnings) if warnings else "",
@@ -390,7 +398,7 @@ def main() -> None:
 
     # 4. Diagnostics summary
     print("Building diagnostics summary...", flush=True)
-    summary = build_diagnostics_summary(input_dir, state, monthly_ic, monthly_ls, cumulative_ls)
+    summary = build_diagnostics_summary(input_dir, output_dir, state, monthly_ic, monthly_ls, cumulative_ls)
     csv_path = output_dir / "factor_diagnostics_summary.csv"
     summary.to_csv(csv_path, index=False)
     print(f"  Wrote {csv_path} ({len(summary)} factors)", flush=True)
@@ -416,7 +424,7 @@ def main() -> None:
             "long_short_summary": str(input_dir / "factor_level_long_short_summary.csv"),
             "candidate_review": str(input_dir / "factor_level_candidate_review.csv"),
             "coverage_summary": str(input_dir / "factor_level_coverage_summary.csv"),
-            "redundancy": str(input_dir / "factor_redundancy.csv"),
+            "redundancy": str(output_dir / "factor_redundancy_summary.csv"),
             "state": str(state_path),
         },
         "output_files": [

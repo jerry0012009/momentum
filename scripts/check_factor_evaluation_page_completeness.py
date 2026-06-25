@@ -1742,6 +1742,122 @@ def check_pm59a_fix2_dom_order(html: str) -> list[dict]:
     return checks
 
 
+def check_data_lineage_cleanup(html_text: str) -> list[dict]:
+    """PM-59A-UI-DATA-LINEAGE-CLEANUP: Verify canonical redundancy lineage."""
+    results = []
+
+    # 1. Legacy compact labels should NOT appear in the template
+    legacy_labels = [
+        "Redundancy 冗余度",
+        "Nearest Factor 最近因子",
+        "Decision Bucket 决策桶",
+        "Recommended Action 建议操作",
+    ]
+    # Search within the renderDetail template only (not global page header)
+    template_match = re.search(r'card\.innerHTML\s*=', html_text)
+    if template_match:
+        template_text = html_text[template_match.start():]
+        found_legacy = [lbl for lbl in legacy_labels if lbl in template_text]
+        if found_legacy:
+            results.append(_fail(
+                "lineage_no_legacy_compact",
+                "Legacy compact redundancy labels should not appear in template",
+                f"Found: {found_legacy}",
+            ))
+        else:
+            results.append(_pass(
+                "lineage_no_legacy_compact",
+                "Legacy compact redundancy labels should not appear in template",
+                "None found in renderDetail template",
+            ))
+    else:
+        results.append(_fail(
+            "lineage_no_legacy_compact",
+            "Legacy compact redundancy labels check",
+            "Could not find card.innerHTML= in HTML",
+        ))
+
+    # 2. Redundancy & Novelty section must exist
+    if "Redundancy &amp; Novelty" in html_text or "Redundancy & Novelty" in html_text:
+        results.append(_pass(
+            "lineage_redundancy_novelty_section",
+            "Redundancy & Novelty section exists",
+            "Found in HTML",
+        ))
+    else:
+        results.append(_fail(
+            "lineage_redundancy_novelty_section",
+            "Redundancy & Novelty section exists",
+            "NOT found in HTML",
+        ))
+
+    # 3. rev_1h canonical redundancy check in payload
+    m = re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>', html_text, re.DOTALL)
+    if m:
+        try:
+            payload = json.loads(m.group(1))
+            factors = payload.get("factors", [])
+            rev_1h = next((f for f in factors if f.get("factor_id") == "rev_1h"), None)
+            if rev_1h:
+                issues = []
+                nearest = rev_1h.get("nearest_factor", "")
+                spearman = rev_1h.get("nearest_abs_spearman_corr")
+                strongest = rev_1h.get("strongest_redundancy_level", "")
+                novelty = rev_1h.get("novelty_assessment", "")
+
+                if nearest != "intraday_ret":
+                    issues.append(f"nearest_factor={nearest} (expected intraday_ret)")
+                if spearman is not None and abs(float(spearman) - 0.994932) > 0.001:
+                    issues.append(f"nearest_abs_spearman_corr={spearman} (expected ~0.994932)")
+                if strongest != "NEAR_DUPLICATE":
+                    issues.append(f"strongest_redundancy_level={strongest} (expected NEAR_DUPLICATE)")
+                if novelty != "HIGHLY_REDUNDANT":
+                    issues.append(f"novelty_assessment={novelty} (expected HIGHLY_REDUNDANT)")
+
+                if issues:
+                    results.append(_fail(
+                        "lineage_rev1h_canonical",
+                        "rev_1h canonical redundancy values",
+                        "; ".join(issues),
+                    ))
+                else:
+                    results.append(_pass(
+                        "lineage_rev1h_canonical",
+                        "rev_1h canonical redundancy values",
+                        f"nearest={nearest}, spearman={spearman}, level={strongest}, novelty={novelty}",
+                    ))
+
+                # 4. rev_1h should NOT show LOW_REDUNDANCY or mom_72h as primary conclusion
+                legacy_level = rev_1h.get("legacy_redundancy_level", "")
+                legacy_nearest = rev_1h.get("legacy_nearest_redundant_factor", "")
+                # These are now in legacy_* fields, so they won't confuse users
+                results.append(_pass(
+                    "lineage_rev1h_no_legacy_primary",
+                    "rev_1h legacy fields isolated to legacy_* keys",
+                    f"legacy_redundancy_level={legacy_level}, legacy_nearest={legacy_nearest} (not user-facing)",
+                ))
+            else:
+                results.append(_fail(
+                    "lineage_rev1h_canonical",
+                    "rev_1h canonical redundancy values",
+                    "rev_1h not found in factorPayload",
+                ))
+        except (json.JSONDecodeError, StopIteration) as e:
+            results.append(_fail(
+                "lineage_rev1h_canonical",
+                "rev_1h canonical redundancy values",
+                f"Payload parse error: {e}",
+            ))
+    else:
+        results.append(_fail(
+            "lineage_rev1h_canonical",
+            "rev_1h canonical redundancy values",
+            "factorPayload not found",
+        ))
+
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Check factor-evaluation.html completeness."
@@ -1809,6 +1925,9 @@ def main() -> int:
 
     # 16. PM-59A-UI-FIX2 Real DOM order & structural checks
     all_checks.extend(check_pm59a_fix2_dom_order(html_text))
+
+    # 17. PM-59A-UI-DATA-LINEAGE-CLEANUP: Canonical redundancy lineage checks
+    all_checks.extend(check_data_lineage_cleanup(html_text))
 
     # Write outputs
     _write_reports(all_checks)

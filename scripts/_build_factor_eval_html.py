@@ -469,8 +469,8 @@ def build_payload() -> dict:
             "long_short_max_drawdown": sf(drow.get("long_short_max_drawdown")),
             "long_short_positive_month_rate": sf(drow.get("long_short_positive_month_rate")),
             "coverage_rate": sf(drow.get("coverage_rate")),
-            "redundancy_level": ss(drow.get("redundancy_level", "")),
-            "nearest_redundant_factor": ss(drow.get("nearest_redundant_factor", "")),
+            "legacy_redundancy_level": ss(drow.get("redundancy_level", "")),
+            "legacy_nearest_redundant_factor": ss(drow.get("nearest_redundant_factor", "")),
             "decision_bucket": ss(drow.get("decision_bucket", "")),
             "recommended_action": ss(drow.get("recommended_action", "")),
             "source_warning": ss(drow.get("source_warning", "")),
@@ -826,13 +826,9 @@ def build_payload() -> dict:
                 factor["novelty_assessment"] = "NOVEL_DISTINCT"
             elif role and "REDUNDANT" in role:
                 factor["novelty_assessment"] = "REDUNDANT_NOVELTY_DERIVED"
-        if not factor.get("redundancy_level") or factor.get("redundancy_level") == "UNKNOWN":
-            mi = factor.get("marginal_information_class", "")
-            if mi == "DISTINCT_SINGLETON":
-                factor["redundancy_level"] = "LOW_REDUNDANCY"
-            elif mi == "MOSTLY_REDUNDANT":
-                factor["redundancy_level"] = "MODERATE_REDUNDANCY"
 
+        # PM-59A-UI-DATA-LINEAGE-CLEANUP: Removed legacy redundancy_level fallback
+        # (was backfilling from marginal_information_class, not canonical PM-18 source)
 
         # PM-40C: Add unavailable reasons for empty LS metrics
         ls_std = factor.get("long_short_std")
@@ -3051,14 +3047,6 @@ function renderDetail(fid){
     ${f.horizon_metrics?`<details style="margin-top:8px"><summary style="font-weight:600">All-Horizon Summary 全视野摘要</summary>${buildAllHorizonTable(f)}</details>`:''}
 
     ${renderPM49Interpretation(f)}
-
-    <div class="kv" style="margin-top:8px">
-      <div>Redundancy 冗余度</div><div>${esc(f.redundancy_level)}</div>
-      <div>Nearest Factor 最近因子</div><div>${esc(f.nearest_redundant_factor||'—')}</div>
-      <div>Decision Bucket 决策桶</div><div><span class="bucket-badge">${esc(f.decision_bucket)}</span></div>
-      <div>Recommended Action 建议操作</div><div>${esc(f.recommended_action||'—')}</div>
-      <div>Source Warning 源警告</div><div>${esc(f.source_warning||'—')}</div>
-    </div>
 
     ${scorecardHtml}
 
