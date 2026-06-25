@@ -1,7 +1,9 @@
 # Factor Library Control Center
 
 **Generated:** 2026-06-20  
-**Status:** Factor library research governance. NOT production. NOT live trading.
+**Status:** Supporting reference, not the developer entry point. Use `docs/factor_library/START_HERE.md` first. NOT production. NOT live trading.
+
+This file is a pipeline/status snapshot. It should not become a second START_HERE or a place to add new workflow rules.
 
 ---
 
@@ -154,7 +156,7 @@ check_factor_ic_parity.py (H8-R parity guard)
 - **New factor diagnostics:** Extend `scripts/evaluate_factors.py`, `scripts/build_factor_redundancy.py`, or `scripts/build_factor_conclusion_cards.py`; keep output schemas explicit and tested
 - **New signal:** Modify `scripts/build_phase9b_signal_panel.py`
 - **New evaluation metric:** Add to `scripts/evaluate_factors.py` or `scripts/evaluate_signals.py`
-- **Public site changes:** Edit files in `reports/site/factor-library/`
+- **Public site changes:** Treat `reports/site/factor-library/` as generated/display output. Change the source data or page builder, then rebuild.
 - **Signal/live/strategy code:** OUT OF SCOPE. Do not modify `src/momentum/strategies/`, broker, execution, or exchange API code.
 
 ## Factor Intake Contract
@@ -199,11 +201,13 @@ Do not promote intake factors into signals during intake. Do not modify live tra
 
 ---
 
-## PM / AI Audit First Steps
+## PM / AI Audit Reference Path
 
-1. Read this file (`FACTOR_LIBRARY_CONTROL_CENTER.md`)
-2. Read `START_HERE.md`
-3. Read `REGENERATION_CONTRACT.md` for the canonical pipeline and orchestration
+This is a supporting reference path for deeper audits. The normal developer entry point remains `START_HERE.md`.
+
+1. Read `START_HERE.md`
+2. Read this file only if you need the detailed pipeline/status snapshot
+3. Read `REGENERATION_CONTRACT.md` for full refresh order and orchestration
 4. Read `factor_library_state.md` for current counts and warnings
 5. Read `factor_library_manifest.json` for machine-readable file map
 6. Read `FILE_STATUS_REGISTER.csv` for file-level status

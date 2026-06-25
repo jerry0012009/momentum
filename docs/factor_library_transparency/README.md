@@ -5,12 +5,15 @@
 This directory preserves earlier transparency documentation for audit evidence.
 It is not the current factor-library control surface.
 
-Use these current entry points instead:
+Use the current developer entry point instead:
 
 - `docs/factor_library/START_HERE.md`
-- `docs/factor_library/FACTOR_LIBRARY_CONTROL_CENTER.md`
-- `research/factor_runs/crypto_top50_factor_library/factor_library_state.md`
-- `reports/site/factor-library/index.html`
+
+Supporting references:
+
+- `docs/factor_library/FACTOR_LIBRARY_CONTROL_CENTER.md` — supporting pipeline snapshot, not a second entry point
+- `research/factor_runs/crypto_top50_factor_library/factor_library_state.md` — generated current state
+- `reports/site/factor-library/index.html` — display page, not a developer control surface
 
 Important:
 

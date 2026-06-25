@@ -2,6 +2,8 @@
 
 Generated: 2026-06-20
 
+**Status:** Historical handoff/context note, not the current developer entry point. Use `docs/factor_library/START_HERE.md` first for current factor-library work.
+
 This document is intended to be pasted into a new conversation so work can continue with context. It records the user's goals, working style, current repository state, recent phase history, and near-term plan.
 
 ---
