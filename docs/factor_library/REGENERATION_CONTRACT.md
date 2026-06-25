@@ -33,6 +33,7 @@ factor registry (scripts/factor_formula_registry.py)
   → direction semantics audit (scripts/audit_factor_direction_semantics.py)
   → factor-level evaluation (scripts/evaluate_factors.py)           [EXPENSIVE]
   → diagnostics metrics (scripts/build_factor_diagnostics_metrics.py)
+  → overlapping sleeve strategy diagnostics (scripts/build_factor_overlapping_sleeve_strategy_diagnostics.py) [EXPENSIVE, OPTIONAL-BUT-STANDARD]
   → bilingual factor cards (scripts/build_factor_bilingual_cards.py)
   → quality scorecard (scripts/build_factor_quality_scorecard.py)
   → pairwise redundancy matrix (scripts/build_factor_pairwise_redundancy_matrix.py) [EXPENSIVE]
@@ -191,6 +192,7 @@ python scripts/run_factor_library_refresh.py --stage cheap
 | `build_single_factor_paper_page_payload.py` | **Cheap** | Builds JSON payload for paper section of page |
 | `check_factor_library_staleness.py` | **Cheap** | Checks artifact coverage, redundancy, staleness |
 | `build_factor_library_state.py` | **Cheap** | Reads pre-computed artifacts, generates state |
+| `build_factor_overlapping_sleeve_strategy_diagnostics.py` | **EXPENSIVE** | Loads factor_values + 1h bars, computes overlapping sleeve returns |
 
 ---
 
@@ -420,6 +422,7 @@ Follow `docs/factor_library/POST_INTAKE_WORKFLOW_RUNBOOK.md`:
 | Paper portfolio | `build_single_factor_paper_portfolio_diagnostics.py --factor-ids` | Merge into existing CSV |
 | Unified profile | `build_unified_factor_profile.py` | Cheap |
 | Page completeness QA | `check_factor_evaluation_page_completeness.py` | After page rebuild |
+| Overlapping sleeve strategy | `build_factor_overlapping_sleeve_strategy_diagnostics.py --factor-ids` | Incremental, optional-but-standard |
 
 ### 10.4 Heavy stages and subset flags
 
@@ -433,8 +436,11 @@ Follow `docs/factor_library/POST_INTAKE_WORKFLOW_RUNBOOK.md`:
 | `build_factor_shape_stability_diagnostics.py` | ✅ | ✅ | ❌ |
 | `build_single_factor_paper_portfolio_diagnostics.py` | ✅ | ❌ | ❌ |
 | `run_factor_library_refresh.py` (orchestrator) | ❌ | ❌ | ✅ (gate for expensive stages) |
+| `build_factor_overlapping_sleeve_strategy_diagnostics.py` | ✅ | ✅ | ❌ |
 
 `--expensive-ok` is a flag for `run_factor_library_refresh.py` only, not for individual diagnostic scripts.
+
+**PM-59A note:** Overlapping sleeve strategy diagnostics is optional-but-standard, not a hard gate. Supports `--factor-ids`, `--only-missing`, `--max-factors`, `--overwrite`. Conditional direction factors are skipped automatically.
 
 ### 10.5 Page completeness QA
 

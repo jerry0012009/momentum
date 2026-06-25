@@ -409,6 +409,24 @@ This produces:
 
 **QA command:** `python scripts/check_factor_evaluation_page_completeness.py` (PM-58C checks verify edge semantics)
 
+## 11C. Overlapping Sleeve Strategy Diagnostics (PM-59A)
+
+After new factor intake, run overlapping sleeve strategy diagnostics:
+
+```bash
+python scripts/build_factor_overlapping_sleeve_strategy_diagnostics.py \
+  --factor-ids new_factor_1 new_factor_2 \
+  --only-missing
+```
+
+This produces:
+- `factor_overlapping_sleeve_strategy_summary.csv` — per-factor strategy metrics
+- `overlapping_sleeve_strategy_returns/<factor_id>__<horizon>.parquet` — hourly return series
+
+**Key:** Do NOT run full refresh. Use `--factor-ids` for small batches.
+**Note:** PM-59A is optional-but-standard. Not required for workflow_ready status.
+**Conditional direction factors are skipped automatically.
+
 ## 12. Market Regime / BTC Diagnostics — workflow reintegration (PM-42)
 
 After new factor intake, ensure `factor_monthly_ic_series.csv` includes new factors, then run:

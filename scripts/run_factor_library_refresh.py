@@ -21,6 +21,7 @@ Stages (in pipeline order):
     direction-audit      Audit factor direction semantics (cheap)
     evaluate             Factor-level RankIC evaluation (EXPENSIVE)
     diagnostics          Build diagnostics metrics (cheap)
+    overlapping-sleeve-strategy  Overlapping sleeve strategy diagnostics (EXPENSIVE)
     metadata             Build bilingual factor cards (cheap)
     scorecard            Build quality scorecard (cheap)
     redundancy           Pairwise redundancy matrix (EXPENSIVE)
@@ -106,6 +107,16 @@ STAGES: list[dict] = [
                 "--input-dir", str(ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_level_evaluation"),
                 "--state-path", str(ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_library_state.json"),
                 "--output-dir", str(ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_diagnostics"),
+            ]),
+        ],
+    },
+    {
+        "name": "overlapping-sleeve-strategy",
+        "description": "Overlapping sleeve strategy diagnostics (PM-59A, EXPENSIVE)",
+        "expensive": True,
+        "commands": [
+            ("build_factor_overlapping_sleeve_strategy_diagnostics", [
+                "python", str(SCRIPTS / "build_factor_overlapping_sleeve_strategy_diagnostics.py"),
             ]),
         ],
     },
@@ -257,6 +268,7 @@ PRESETS = {
     "metadata-only": ["metadata"],
     "diagnostics-only": ["diagnostics"],
     "redundancy-only": ["redundancy"],
+    "strategy-diagnostics-only": ["overlapping-sleeve-strategy"],
 }
 
 
@@ -329,6 +341,28 @@ def main() -> int:
         action="store_true",
         help="Allow expensive stages (evaluate, redundancy) to run.",
     )
+    parser.add_argument(
+        "--factor-ids",
+        type=str,
+        default=None,
+        help="Comma-separated factor IDs (passed to supporting stages).",
+    )
+    parser.add_argument(
+        "--only-missing",
+        action="store_true",
+        help="Only process missing outputs (passed to supporting stages).",
+    )
+    parser.add_argument(
+        "--max-factors",
+        type=int,
+        default=None,
+        help="Maximum factors to process (passed to supporting stages).",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing outputs (passed to supporting stages).",
+    )
     args = parser.parse_args()
 
     if args.stage is None:
@@ -347,11 +381,25 @@ def main() -> int:
     stages = resolve_stages(args.stage)
     check_expensive(stages, args.expensive_ok)
 
+    # Build passthrough args for supporting stages
+    PASSTHROUGH_STAGES = {"overlapping-sleeve-strategy"}
+    passthrough_args: list[str] = []
+    if args.factor_ids:
+        passthrough_args.extend(["--factor-ids", args.factor_ids])
+    if args.only_missing:
+        passthrough_args.append("--only-missing")
+    if args.max_factors is not None:
+        passthrough_args.extend(["--max-factors", str(args.max_factors)])
+    if args.overwrite:
+        passthrough_args.append("--overwrite")
+
     if args.dry_run:
         print("DRY RUN — commands will be printed but not executed.\n")
 
     print(f"Stages to run: {' → '.join(stages)}")
     print(f"Expensive OK: {args.expensive_ok}")
+    if passthrough_args:
+        print(f"Passthrough args: {' '.join(passthrough_args)}")
 
     total_start = time.time()
     for stage_name in stages:
@@ -361,7 +409,11 @@ def main() -> int:
         print(f"{'#'*60}")
 
         for label, cmd in stage["commands"]:
-            rc = run_command(label, cmd, args.dry_run)
+            # Augment command with passthrough args if stage supports them
+            effective_cmd = cmd[:]
+            if stage_name in PASSTHROUGH_STAGES and passthrough_args:
+                effective_cmd = cmd + passthrough_args
+            rc = run_command(label, effective_cmd, args.dry_run)
             if rc != 0:
                 print(f"\nABORTED: stage '{stage_name}' failed at '{label}'.")
                 print(f"Fix the error and re-run from this stage.")

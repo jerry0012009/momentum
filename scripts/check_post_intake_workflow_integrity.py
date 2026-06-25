@@ -392,6 +392,33 @@ def check_ls_robust(fid: str) -> dict:
     except Exception as e:
         return {"status": "ERROR", "detail": str(e)}
 
+def check_overlapping_sleeve_strategy(fid: str) -> dict:
+    """PM-59A: Check overlapping sleeve strategy diagnostics (OPTIONAL, WARNING only)."""
+    summary_path = DIAG_DIR / "factor_overlapping_sleeve_strategy_summary.csv"
+    if not summary_path.exists():
+        return {"status": "WARNING", "detail": "PM-59A summary not found (optional diagnostic)"}
+    try:
+        df = pd.read_csv(summary_path)
+        rows = df[df["factor_id"] == fid]
+        if rows.empty:
+            # Check if factor has best_horizon — if not, skip is expected
+            cov_path = EVAL_DIR / "factor_level_coverage_summary.csv"
+            if cov_path.exists():
+                cov = pd.read_csv(cov_path)
+                has_hz = fid in set(cov["factor_name"])
+            else:
+                has_hz = False
+            if has_hz:
+                return {"status": "WARNING", "detail": "PM-59A summary missing for eligible factor"}
+            return {"status": "OK", "detail": "Factor not eligible for PM-59A (no best_horizon)"}
+        row = rows.iloc[0]
+        status = row.get("status", "UNKNOWN")
+        if status == "OK":
+            return {"status": "OK", "detail": f"PM-59A OK, horizon={row.get('horizon')}, sharpe={row.get('gross_sharpe')}"}
+        return {"status": "WARNING", "detail": f"PM-59A status={status}, skip_reason={row.get('skip_reason')}"}
+    except Exception as e:
+        return {"status": "WARNING", "detail": f"PM-59A check error: {e}"}
+
 
 ALL_CHECKS = [
     ("factor_values", check_factor_values),
@@ -415,6 +442,7 @@ ALL_CHECKS = [
     ("source_metadata", check_source_metadata),
     ("rankic_robust", check_rankic_robust),
     ("ls_robust", check_ls_robust),
+    ("overlapping_sleeve_strategy", check_overlapping_sleeve_strategy),
 ]
 
 
