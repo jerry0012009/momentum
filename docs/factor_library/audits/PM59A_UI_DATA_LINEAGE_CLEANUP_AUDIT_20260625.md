@@ -3,23 +3,25 @@
 **Date:** 2026-06-25
 **Status:** COMPLETE
 
-## 1. Source of `redundancy_level` / `nearest_redundant_factor` in `factor_diagnostics_summary.csv`
+## 1. Before cleanup: Source of `redundancy_level` / `nearest_redundant_factor` in `factor_diagnostics_summary.csv`
+
+> **Before cleanup (pre-a851527).** See §6 for post-cleanup state.
 
 **Source script:** `scripts/build_factor_diagnostics_metrics.py` (L176, L194-202, L281-282, L316-317)
 
-The script reads `factor_redundancy.csv` (old pairwise file, **does not exist** in current repo).
-When the file is missing, `rd_lookup` is empty → all factors get `redundancy_level = UNKNOWN`, `nearest_redundant_factor = ""`.
+The script read `factor_redundancy.csv` (old pairwise file, **did not exist** in repo).
+When the file was missing, `rd_lookup` was empty → all factors got `redundancy_level = UNKNOWN`, `nearest_redundant_factor = ""`.
 
-For `rev_1h` specifically: the CSV currently shows `redundancy_level = LOW_REDUNDANCY`, `nearest_redundant_factor = mom_72h`.
-This is stale data from a previous run when `factor_redundancy.csv` existed. The current workflow no longer produces this file.
+For `rev_1h` specifically: the CSV showed `redundancy_level = LOW_REDUNDANCY`, `nearest_redundant_factor = mom_72h`.
+This was stale data from a previous run when `factor_redundancy.csv` existed.
 
-**Secondary fallback** in `_build_factor_eval_html.py` (L829-834): when `redundancy_level == UNKNOWN`, it backfills from `marginal_information_class`:
+**Secondary fallback** in `_build_factor_eval_html.py` (L829-834): when `redundancy_level == UNKNOWN`, it backfilled from `marginal_information_class`:
 - `DISTINCT_SINGLETON` → `LOW_REDUNDANCY`
 - `MOSTLY_REDUNDANT` → `MODERATE_REDUNDANCY`
 
-This fallback uses cluster-derived data, NOT the PM-18 canonical redundancy summary.
+This fallback used cluster-derived data, NOT the PM-18 canonical redundancy summary. **Now removed.**
 
-## 2. Source of `nearest_factor` / `strongest_redundancy_level` in `factor_redundancy_summary.csv`
+## 2. Before cleanup: Source of `nearest_factor` / `strongest_redundancy_level` in `factor_redundancy_summary.csv`
 
 **Source script:** `scripts/build_factor_pairwise_redundancy_matrix.py` → `build_factor_redundancy_cluster_diagnostics.py`
 
@@ -67,3 +69,13 @@ For `rev_1h`, the legacy block shows `LOW_REDUNDANCY / mom_72h` while the canoni
 2. Fix `build_factor_diagnostics_metrics.py` to read from canonical `factor_redundancy_summary.csv`
 3. Remove/rename legacy fields in payload
 4. Add QA checks to prevent regression
+
+## 6. Post-cleanup verification
+
+After commit a851527:
+- Legacy compact redundancy block has been removed from factor-evaluation.html.
+- Redundancy & Novelty is the only user-facing redundancy section.
+- `factor_diagnostics_summary.csv` now reads canonical PM-18 redundancy summary (`factor_redundancy_summary.csv`).
+- `rev_1h` uses `nearest_factor=intraday_ret`, `nearest_abs_spearman_corr=0.994932`, `strongest_redundancy_level=NEAR_DUPLICATE`, `novelty_assessment=HIGHLY_REDUNDANT`.
+- Page QA includes `lineage_no_legacy_compact` and `lineage_rev1h_canonical`.
+- Legacy fields isolated to `legacy_*` prefix in payload (not user-facing).

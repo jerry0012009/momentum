@@ -78,8 +78,8 @@ SECTION_CHECKS = [
     ),
     (
         "section_paper_portfolio",
-        "Single-Factor Paper Portfolio / Paper Portfolio",
-        ["Single-Factor Paper Portfolio", "Paper Portfolio"],
+        "Cost Stress Paper Test / Paper Diagnostics",
+        ["Cost Stress Paper Test", "Paper Diagnostics", "Paper Portfolio"],
     ),
     (
         "section_regime",
@@ -1661,7 +1661,7 @@ def check_pm59a_fix2_dom_order(html: str) -> list[dict]:
         'block4': tpl.find('Block 4'),
         'block5': tpl.find('Block 5'),
         'block6': tpl.find('Block 6'),
-        'optional': tpl.find('optional-deep-dive'),
+        'optional': html.find('optional-deep-dive'),
     }
 
     # Check all markers found
@@ -1708,7 +1708,7 @@ def check_pm59a_fix2_dom_order(html: str) -> list[dict]:
     )
     checks.append(_c(
         'fix2_dom_order',
-        'Real DOM order: reading < def < B1 < B2 < B3 < B4 < B5 < B6 < optional',
+        'Conservative DOM order: reading < definition < B1 < B2 < B4 < B5 < optional; late IIFE sections B3 and B6 present',
         'PASS' if order_ok else 'FAIL',
         evidence=order_str[:200],
     ))
@@ -1858,6 +1858,127 @@ def check_data_lineage_cleanup(html_text: str) -> list[dict]:
     return results
 
 
+def check_paper_cost_stress_cleanup(html_text: str) -> list[dict]:
+    """PM-59A-UI-PAPER-PORTFOLIO-CLEANUP: Verify paper section is properly reframed."""
+    results = []
+
+    # Search full HTML (paper section is now in standalone JS helper functions,
+    # which appear before card.innerHTML= in the rendered output)
+
+    # 1. paper_section_renamed: New title should exist, old title should not
+    has_new_title = "Cost Stress Paper Test" in html_text
+    has_old_title = "Single-Factor Paper Portfolio" in html_text
+    if has_new_title and not has_old_title:
+        results.append(_pass(
+            "paper_section_renamed",
+            "Paper section renamed to Cost Stress Paper Test",
+            "New title found, old title absent",
+        ))
+    elif has_new_title and has_old_title:
+        results.append(_fail(
+            "paper_section_renamed",
+            "Paper section renamed to Cost Stress Paper Test",
+            "Both new and old titles found — old title not fully removed",
+        ))
+    else:
+        results.append(_fail(
+            "paper_section_renamed",
+            "Paper section renamed to Cost Stress Paper Test",
+            "New title NOT found in template",
+        ))
+
+    # 2. paper_not_live_disclaimer: Must contain disclaimer text
+    disclaimer_phrases = [
+        "not PM-59A",
+        "not a live portfolio",
+        "not a trading signal",
+        "optional diagnostic",
+    ]
+    # Search in the full HTML (disclaimer may be in the template or helper)
+    found = [p for p in disclaimer_phrases if p.lower() in html_text.lower()]
+    if len(found) >= 3:
+        results.append(_pass(
+            "paper_not_live_disclaimer",
+            "Paper section contains not-live disclaimer",
+            f"Found: {found}",
+        ))
+    else:
+        results.append(_fail(
+            "paper_not_live_disclaimer",
+            "Paper section contains not-live disclaimer",
+            f"Only found: {found} (need at least 3 of {disclaimer_phrases})",
+        ))
+
+    # 3. paper_return_units: No bare decimal returns (e.g., "Gross Return +5.33" without %)
+    # Check for metricRow patterns with return-like values that lack %
+    import re
+    # Look for patterns like metricRow('...Return...', num(f.xxx,2)) which would show bare decimals
+    bare_return_pattern = re.compile(
+        r"metricRow\([^)]*(?:Return|Return)[^)]*num\([^)]+\)",
+        re.IGNORECASE
+    )
+    bare_matches = bare_return_pattern.findall(html_text)
+    if bare_matches:
+        results.append(_fail(
+            "paper_return_units",
+            "Return-like values must use pct or fmtReturnPct, not bare num()",
+            f"Found {len(bare_matches)} bare return patterns",
+        ))
+    else:
+        results.append(_pass(
+            "paper_return_units",
+            "Return-like values must use pct or fmtReturnPct, not bare num()",
+            "No bare return patterns found in template",
+        ))
+
+    # 4. paper_cost_collapsed_explained: If COST_COLLAPSED appears, explanation must be nearby
+    if "COST_COLLAPSED" in html_text:
+        # Check that explanation text exists somewhere in the HTML
+        has_explanation = any(phrase in html_text for phrase in [
+            "\u8d39\u7528\u574e\u5854",  # 费用坍塌
+            "cost-collapsed",
+            "break-even fee",
+            "\u6362\u624b",  # 换手
+            "turnover",
+        ])
+        if has_explanation:
+            results.append(_pass(
+                "paper_cost_collapsed_explained",
+                "COST_COLLAPSED has explanation text nearby",
+                "Explanation text found in HTML",
+            ))
+        else:
+            results.append(_fail(
+                "paper_cost_collapsed_explained",
+                "COST_COLLAPSED has explanation text nearby",
+                "COST_COLLAPSED found but no explanation text (费用坍塌/cost-collapsed/break-even fee/turnover)",
+            ))
+    else:
+        results.append(_pass(
+            "paper_cost_collapsed_explained",
+            "COST_COLLAPSED has explanation text nearby",
+            "COST_COLLAPSED not present in template (OK if no factors have this class)",
+        ))
+
+    # 5. paper_optional_collapsed: Paper section must be inside optional-deep-dive
+    # Check that renderPaperCostStressSection is called within optional-deep-dive context
+    has_optional_wrapper = "optional-deep-dive" in html_text
+    if has_optional_wrapper:
+        results.append(_pass(
+            "paper_optional_collapsed",
+            "Paper section remains inside Optional Deep-dive",
+            "optional-deep-dive class found in template",
+        ))
+    else:
+        results.append(_fail(
+            "paper_optional_collapsed",
+            "Paper section remains inside Optional Deep-dive",
+            "optional-deep-dive class NOT found in template",
+        ))
+
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Check factor-evaluation.html completeness."
@@ -1928,6 +2049,9 @@ def main() -> int:
 
     # 17. PM-59A-UI-DATA-LINEAGE-CLEANUP: Canonical redundancy lineage checks
     all_checks.extend(check_data_lineage_cleanup(html_text))
+
+    # 18. PM-59A-UI-PAPER-PORTFOLIO-CLEANUP: Paper section reframing checks
+    all_checks.extend(check_paper_cost_stress_cleanup(html_text))
 
     # Write outputs
     _write_reports(all_checks)

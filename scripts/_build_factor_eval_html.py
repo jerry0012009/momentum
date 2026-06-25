@@ -1551,7 +1551,7 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
       <li><strong>Scorecard/Profile</strong> — 综合评分</li>
       <li><strong>Research Interpretation</strong> — PM-49 研究解释（Judgment，非信号）</li>
     </ol>
-    <p style="font-size:12px;color:#64748b;margin-top:8px">📌 <strong>Optional Deep-dive Evidence</strong>（Paper Portfolio / Fee Sensitivity）折叠在页面底部，属于 candidate-only optional 模块，不在 core reading path 中。</p>
+    <p style="font-size:12px;color:#64748b;margin-top:8px">📌 <strong>Optional Deep-dive Evidence</strong>（Cost Stress Paper Test / Fee Sensitivity）折叠在页面底部，属于 candidate-only optional 模块，不在 core reading path 中。</p>
     <p class="warn">⚠️ Evidence complete ≠ 因子好 | RankIC ≠ 收益 | Robust ≠ 交易信号 | Paper ≠ 交易策略 | Profile Score ≠ 交易建议 | Research Interpretation ≠ Signal</p>
 
     <h4 style="color:#cbd5e1;margin-top:16px">🕐 How to Read Horizons / 如何阅读不同视野</h4>
@@ -2262,7 +2262,7 @@ const CHART_GUIDES = {
     <strong>风险：</strong>大幅回撤或长期横盘。<br>
     ${GUARD_LABELS.evidence} 毛收益曲线。${GUARD_LABELS.inference} 可以判断收益趋势，但不能推断实盘表现。
   `),
-  paperNav: chartGuide('Paper Portfolio NAV', `
+  paperNav: chartGuide('Cost Stress Paper NAV', `
     <strong>看什么：</strong>纸面组合净值走势，含不同费率。<br>
     <strong>横轴：</strong>月份。<br>
     <strong>纵轴：</strong>NAV（起始=1.0）。<br>
@@ -2362,6 +2362,97 @@ function renderPM49Interpretation(f) {
 function esc(v){return String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function num(v,d=4,signed=true){if(v===null||v===undefined||Number.isNaN(v))return '—';const s=signed&&v>=0?'+':'';return s+Number(v).toFixed(d)}
 function pct(v){if(v===null||v===undefined||Number.isNaN(v))return '—';return(Number(v)*100).toFixed(1)+'%'}
+function fmtReturnPct(v){if(v===null||v===undefined||Number.isNaN(v))return '—';const n=Number(v);const pct=(n*100).toFixed(1);return n>=0?'+'+pct+'%':pct+'%'}
+function paperCostInterpretation(f){
+  const gs=f.gross_sharpe,csc=f.cost_sensitivity_class,bef=f.break_even_fee_bps,ret10=f.fee_10bps_total_return;
+  if(!gs&&!csc)return '';
+  const isCollapsed=csc==='COST_COLLAPSED';
+  const strongGross=gs!==null&&gs!==undefined&&Number(gs)>1.5;
+  if(strongGross&&isCollapsed){
+    return '<div class="bilingual" style="margin:6px 0;padding:6px 10px;border-left:3px solid #ef4444;background:rgba(239,68,68,0.05);font-size:11px"><div class="zh"><strong>\u6210\u672c\u8106\u5f31\u89e3\u91ca\uff1a</strong>\u6bdb\u6536\u76ca\u7eb8\u9762\u6307\u6807\u770b\u8d77\u6765\u5f3a\uff0c\u4f46\u8be5\u56e0\u5b50\u8d39\u7528\u574e\u5854\uff1a\u76c8\u4e8f\u5e73\u8861\u624b\u7eed\u8d39'+(bef!==null&&bef!==undefined?'\u53ea\u6709 '+Math.round(Number(bef))+' bps':'\u6781\u4f4e')+'\uff0c10bps/20bps \u6210\u672c\u5047\u8bbe\u4e0b\u7eb8\u9762\u51c0\u503c\u88ab\u6467\u6bc1\u3002\u56e0\u6b64\u8fd9\u91cc\u7684\u7ed3\u8bba\u662f"\u6210\u672c\u8106\u5f31"\uff0c\u4e0d\u662f"\u53ef\u4ea4\u6613\u7ec4\u5408"\u3002</div><div class="en" style="color:var(--muted)"><strong>Cost fragility note:</strong> Gross paper metrics look strong, but the factor is cost-collapsed: break-even fee'+(bef!==null&&bef!==undefined?' is only '+Math.round(Number(bef))+' bps':' is very low')+' and 10bps/20bps fee assumptions destroy the paper NAV. Treat this as evidence of cost fragility, not as a tradable portfolio.</div></div>';
+  }
+  return '';
+}
+function renderPaperCoreMetrics(f){
+  const csc=f.cost_sensitivity_class||'';
+  const cscLabel=COST_SENS_LABELS[csc]||{zh:csc||'\u2014',en:csc||'\u2014'};
+  const bef=f.break_even_fee_bps;
+  const befStr=bef!==null&&bef!==undefined?Math.round(Number(bef))+' bps':'\u2014';
+  const befWarn=bef!==null&&bef!==undefined&&Number(bef)<5?' <span style="color:#ef4444;font-size:10px">\u26a0 &lt;5bps: \u6781\u5ea6\u6210\u672c\u654f\u611f</span>':'';
+  const ret10=f.fee_10bps_total_return;
+  const ret10Str=ret10===-1?'<span style="color:#ef4444">-100.0% (capital path collapsed)</span>':fmtReturnPct(ret10);
+  const dd=f.paper_max_drawdown;
+  const ddStr=dd!==null&&dd!==undefined?(Number(dd)<0?'':'-')+(Math.abs(Number(dd))*100).toFixed(1)+'%':'\u2014';
+  const to=f.paper_avg_turnover;
+  const toStr=to!==null&&to!==undefined?(Number(to)*100).toFixed(1)+'%':'\u2014';
+  return '<div class="metric-grid">'
+    +metricRow('Cost Survival Class / \u6210\u672c\u751f\u5b58\u5206\u7c7b','<span class="paper-badge '+(COST_SENS_LABELS[csc]||{cls:''}).cls+'">'+esc(cscLabel.zh)+' / '+esc(cscLabel.en)+'</span>')
+    +metricRow('10bps Net Return / 10bps \u6210\u672c\u540e\u7d2f\u8ba1\u6536\u76ca',ret10Str)
+    +metricRow('Break-even Fee / \u76c8\u4e8f\u5e73\u8861\u624b\u7eed\u8d39',befStr+befWarn)
+    +metricRow('Avg Turnover / \u5e73\u5747\u6362\u624b',toStr+'<div style="font-size:10px;color:var(--muted)">\u9ad8\u6362\u624b\u662f\u6210\u672c\u574e\u5854\u4e3b\u56e0</div>')
+    +metricRow('Paper Max Drawdown / \u7eb8\u9762\u6700\u5927\u56de\u64a4',ddStr+'<div style="font-size:10px;color:var(--muted)">\u8def\u5f84\u98ce\u9669\uff1b\u4e0d\u662f\u5b9e\u76d8\u56de\u64a4</div>')
+  +'</div>';
+}
+function renderPaperSecondaryMetrics(f){
+  const hasReturnSeries=(f.fee_0bps_total_return!==null&&f.fee_0bps_total_return!==undefined)||
+    (f.fee_5bps_total_return!==null&&f.fee_5bps_total_return!==undefined)||
+    (f.fee_20bps_total_return!==null&&f.fee_20bps_total_return!==undefined);
+  const rr=f.return_robust||{};
+  const rp=rr.paper||{};
+  const rf=rr.fee||{};
+  let inner='<div class="metric-grid">';
+  inner+=metricRow(renderTooltip('Gross Sharpe'),num(f.gross_sharpe,2));
+  inner+=metricRow(renderTooltip('Gross Return'),fmtReturnPct(f.gross_total_return));
+  inner+=metricRow(renderTooltip('Positive Mo%'),pct(f.paper_positive_month_rate));
+  if(hasReturnSeries){
+    inner+=metricRow(renderTooltip('0bps Return'),fmtReturnPct(f.fee_0bps_total_return));
+    inner+=metricRow(renderTooltip('5bps Return'),fmtReturnPct(f.fee_5bps_total_return));
+    inner+=metricRow(renderTooltip('20bps Return'),fmtReturnPct(f.fee_20bps_total_return));
+  }
+  if(rp.robust_t_stat!==null&&rp.robust_t_stat!==undefined){
+    inner+=metricRow('Paper Robust t',num(rp.robust_t_stat,2));
+  }
+  if(rp.bootstrap_ci_low!==null&&rp.bootstrap_ci_low!==undefined){
+    inner+=metricRow('Paper Bootstrap CI',Number(rp.bootstrap_ci_low).toFixed(5)+' to '+Number(rp.bootstrap_ci_high).toFixed(5));
+  }
+  if(rp.bootstrap_sign_consistency!==null&&rp.bootstrap_sign_consistency!==undefined){
+    inner+=metricRow('Paper Sign %',(Number(rp.bootstrap_sign_consistency)*100).toFixed(0)+'%');
+  }
+  if(rf.gross_sharpe!==null&&rf.gross_sharpe!==undefined){
+    inner+=metricRow('Fee: Gross Sharpe',num(rf.gross_sharpe,2));
+    inner+=metricRow('Fee: Net Sharpe',num(rf.net_sharpe,2));
+    inner+=metricRow('Fee: Sharpe Decay',num(rf.sharpe_decay,2));
+  }
+  inner+='</div>';
+  if(!hasReturnSeries){
+    inner+='<div style="margin:4px 0;font-size:11px;color:var(--muted)">\u5206\u8d39\u7387\u7d2f\u8ba1\u6536\u76ca\u5e8f\u5217\u4e0d\u53ef\u7528\uff1b\u5982\u6709\u6570\u636e\uff0c\u8bf7\u53c2\u8003\u8d39\u7528\u654f\u611f\u6027\u56fe\u3002 / Fee-specific return series unavailable; see fee sensitivity chart if available.</div>';
+  }
+  return '<details style="margin:6px 0"><summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--amber)">0bps Gross Upper Bound / 0bps \u7406\u8bba\u4e0a\u9650 \u25b8</summary><div class="inner">'+inner+'</div></details>';
+}
+function renderPaperCostStressSection(f){
+  if(!f.paper_viability_class&&!f.cost_sensitivity_class&&!f.gross_sharpe){
+    return '<details class="optional-deep-dive" open><summary>Optional Deep-dive Evidence / \u53ef\u9009\u6df1\u6316\u8bc1\u636e <span class="optional-label">NOT CORE</span></summary><div class="inner"><div style="margin:6px 0;font-size:11px;color:var(--muted)">No optional deep-dive data available for this factor / \u8be5\u56e0\u5b50\u65e0\u6df1\u6316\u6570\u636e</div></div></details>';
+  }
+  let html='<details class="optional-deep-dive">'
+    +'<summary>Optional Deep-dive Evidence / \u53ef\u9009\u6df1\u6316\u8bc1\u636e <span class="optional-label">NOT CORE</span></summary>'
+    +'<div class="inner">'
+    +'<h3 style="margin-top:4px">Cost Stress Paper Test / \u6210\u672c\u538b\u529b\u7eb8\u9762\u6d4b\u8bd5 <span class="optional-label">optional</span></h3>'
+    +CHART_GUIDES.paperNav
+    +'<div style="margin:6px 0;padding:6px 10px;border:1px dashed var(--border);border-radius:6px;font-size:11px;color:var(--muted)">'
+    +'<strong>\u26a0 Optional diagnostic only.</strong> This tests whether a single factor\'s simple 1h equal-weight long-short paper edge survives turnover and fee assumptions. It is not PM-59A, not a live portfolio, and not a trading signal.<br>'
+    +'<span style="color:var(--text-muted)">\u8fd9\u662f\u53ef\u9009\u7814\u7a76\u8bca\u65ad\uff0c\u53ea\u6d4b\u8bd5\u5355\u4e2a\u56e0\u5b50\u7684 1h \u7b49\u6743\u591a\u7a7a\u7eb8\u9762 edge \u5728\u6362\u624b\u548c\u624b\u7eed\u8d39\u5047\u8bbe\u4e0b\u662f\u5426\u4f1a\u574e\u5854\u3002\u5b83\u4e0d\u662f PM-59A\uff0c\u4e0d\u662f\u5b9e\u76d8\u7ec4\u5408\uff0c\u4e5f\u4e0d\u662f\u4ea4\u6613\u4fe1\u53f7\u3002</span>'
+    +'</div>'
+    +'<div style="margin:4px 0">'
+    +(f.paper_viability_class?paperViabBadge(f.paper_viability_class):'')
+    +(f.cost_sensitivity_class?costSensBadge(f.cost_sensitivity_class):'')
+    +'</div>';
+  html+=renderPaperCoreMetrics(f);
+  html+=paperCostInterpretation(f);
+  html+=renderPaperSecondaryMetrics(f);
+  html+='</div></details>';
+  return html;
+}
+
 function mcls(v,strong=0.03,watch=0.02){if(v===null||v===undefined||Number.isNaN(v))return 'muted-c';const a=Math.abs(Number(v));return a>=strong?'strong':a>=watch?'watch':'plain'}
 function qualBadge(q){
   const l=QUALITY_LABELS[q]||{zh:q,en:q,cls:''};
@@ -2483,7 +2574,7 @@ function scSubBar(key,score){
   const collapsed=csc.COST_COLLAPSED||0;
 
   el.innerHTML=`
-    <h2 style="margin-bottom:6px">Single-Factor Paper Portfolio Summary 单因子纸面组合概要</h2>
+    <h2 style="margin-bottom:6px">Cost Stress Paper Test Summary 成本压力纸面测试概要</h2>
     <div class="sc-summary-grid">
       <div class="sc-summary-card"><strong style="color:var(--green)">${strong}</strong><span>Paper Strong<br>纸面强</span></div>
       <div class="sc-summary-card"><strong style="color:var(--amber)">${promising}</strong><span>Paper Promising<br>纸面有前景</span></div>
@@ -2495,7 +2586,7 @@ function scSubBar(key,score){
       <div class="sc-summary-card"><strong style="color:var(--red)">${collapsed}</strong><span>Cost Collapsed<br>费用崩溃</span></div>
     </div>
     <div class="paper-caveat">
-      <strong>⚠ 单因子纸面组合仅为研究诊断 / Single-factor paper portfolio is a research diagnostic only</strong><br>
+      <strong>⚠ Cost Stress Paper Test: optional diagnostic only / 成本压力纸面测试：仅作可选诊断</strong><br>
       <span style="color:var(--muted)">Equal-weight long/short at 1h horizon. No slippage/order book. Not a backtest. Not a strategy.<br>
       等权多空，1h视野，无滑点/订单簿。不是回测。不是交易策略。</span>
     </div>
@@ -2963,8 +3054,8 @@ function renderDetail(fid){
       <em>Overlap adjustment, window checks, market-state splits.</em><br><br>
       <strong>6. Constraints &amp; Novelty</strong> — 容量、流动性、冗余、边际信息。<br>
       <em>Capacity, liquidity, redundancy, marginal information.</em><br><br>
-      <strong>7. Optional Deep-dive</strong> — paper portfolio、fee sensitivity、raw charts。<br>
-      <em>Paper portfolio, fee sensitivity, raw charts.</em>
+      <strong>7. Optional Deep-dive</strong> — cost stress paper test、fee sensitivity、raw charts。<br>
+      <em>Cost stress paper test, fee sensitivity, raw charts.</em>
     </div></details>
 
     <details open style="margin:8px 0">
@@ -3151,9 +3242,7 @@ function renderDetail(fid){
       })()}
 
 
-    ${f.paper_viability_class?`
-    
-<div class="section-divider"></div>
+    <div class="section-divider"></div>
     <div class="evidence-label">📊 Block 5 — Robustness &amp; Regime / 稳健性与条件性</div>
     <p style="font-size:10px;color:#94a3b8;margin:2px 0">Does the evidence survive overlap adjustment, window checks, and market-state splits?<br>
     证据是否经得住 overlap 修正、窗口检查和市场状态分割？</p>
@@ -3255,181 +3344,8 @@ function renderDetail(fid){
     `; })()}
 
     <div class="section-divider"></div>
-    <details class="optional-deep-dive">
-      <summary>Optional Deep-dive Evidence / 可选深挖证据 <span class="optional-label">NOT CORE</span></summary>
-      <div class="inner">
-    <h3 style="margin-top:4px">Single-Factor Paper Portfolio / 单因子纸面组合 <span class="optional-label">optional</span></h3>
-    ${CHART_GUIDES.paperNav}
-    <div style="margin:6px 0">
-      ${paperViabBadge(f.paper_viability_class)}
-      ${f.cost_sensitivity_class?costSensBadge(f.cost_sensitivity_class):''}
-      ${(()=>{const rr=f.return_robust;if(!rr||!rr.paper)return '';const p=rr.paper;const rc=p.return_robust_class||'';return rc?'<span class="ret-robust-badge '+rc+'">Paper: '+rc.replace(/_/g,' ')+'</span>':'';})()}
-      ${(()=>{const rr=f.return_robust;if(!rr||!rr.fee)return '';const cs=rr.fee.cost_status||'';return cs?'<span class="cost-status-badge '+cs+'">'+cs.replace(/_/g,' ')+'</span>':'';})()}
-    </div>
-    <div class="metric-grid">
-      ${metricRow(renderTooltip('Gross Sharpe'),num(f.gross_sharpe,2))}
-      ${metricRow(renderTooltip('Gross Return'),num(f.gross_total_return,2))}
-      ${metricRow('Max DD 最大回撤',pct(f.paper_max_drawdown))}
-      ${metricRow(renderTooltip('Positive Mo%'),pct(f.paper_positive_month_rate))}
-      ${metricRow(renderTooltip('Avg Turnover'),pct(f.paper_avg_turnover))}
-      ${metricRow(renderTooltip('Median Turnover'),pct(f.paper_median_turnover))}
-      ${metricRow(renderTooltip('B/E Fee'),f.break_even_fee_bps!==null&&f.break_even_fee_bps!==undefined?Math.round(Number(f.break_even_fee_bps))+' bps':'—')}
-      ${metricRow(renderTooltip('0bps Return'),num(f.fee_0bps_total_return,2))}
-      ${metricRow(renderTooltip('5bps Return'),num(f.fee_5bps_total_return,2))}
-      ${metricRow(renderTooltip('10bps Return'),num(f.fee_10bps_total_return,2),f.fee_10bps_total_return!==null&&f.fee_10bps_total_return<0?'':'')}
-      ${metricRow(renderTooltip('20bps Return'),num(f.fee_20bps_total_return,2))}
-      ${(()=>{const rr=f.return_robust;if(!rr||!rr.paper)return '';const p=rr.paper;return metricRow('Paper Robust t',num(p.robust_t_stat,2))+' '+metricRow('Paper Bootstrap CI',(p.bootstrap_ci_low!==null?Number(p.bootstrap_ci_low).toFixed(5):'—')+' to '+(p.bootstrap_ci_high!==null?Number(p.bootstrap_ci_high).toFixed(5):'—'))+' '+metricRow('Paper Sign %',p.bootstrap_sign_consistency!==null?(Number(p.bootstrap_sign_consistency)*100).toFixed(0)+'%':'—');})()}
-      ${(()=>{const rr=f.return_robust;if(!rr||!rr.fee)return '';const fc=rr.fee;return metricRow('Fee: Gross Sharpe',num(fc.gross_sharpe,2))+' '+metricRow('Fee: Net Sharpe',num(fc.net_sharpe,2))+' '+metricRow('Fee: Sharpe Decay',num(fc.sharpe_decay,2));})()}
-    </div>
-    ${f.main_diagnostic_note_zh||f.main_diagnostic_note_en?`<div class="bilingual" style="margin:6px 0"><div class="zh" style="font-size:11px">${esc(f.main_diagnostic_note_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(f.main_diagnostic_note_en)}</div></div>`:''}
+    ${renderPaperCostStressSection(f)}
 
-    <div class="chart-container">
-      <div class="chart-title">Monthly NAV: 0bps (blue) vs 10bps (red) · 月度净值: 0bps(蓝) vs 10bps(红)</div>
-      ${(()=>{
-        const nav0=f.monthly_nav_series_compact&&f.monthly_nav_series_compact['0']?f.monthly_nav_series_compact['0']:[];
-        const nav10=f.monthly_nav_series_compact&&f.monthly_nav_series_compact['10']?f.monthly_nav_series_compact['10']:[];
-        if(!nav0.length&&!nav10.length)return '<div class="small">No data</div>';
-        const allPts=[...nav0.map(d=>d.nav),...nav10.map(d=>d.nav)];
-        const ymin=Math.min(0,...allPts),ymax=Math.max(0,...allPts);
-        const yrange=ymax-ymin||1;
-        const w=600,h=150,padL=50,padR=10,padT=10,padB=20;
-        const cw=w-padL-padR,ch=h-padT-padB;
-        const maxLen=Math.max(nav0.length,nav10.length,1);
-        function xPos(i){return padL+(i/(maxLen-1||1))*cw}
-        function yPos(v){return padT+ch-((v-ymin)/yrange)*ch}
-        let svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto">';
-        svg+='<line x1="'+padL+'" y1="'+yPos(0)+'" x2="'+(w-padR)+'" y2="'+yPos(0)+'" stroke="#334155" stroke-dasharray="3"/>';
-        if(nav0.length>1){svg+='<polyline points="'+nav0.map((d,i)=>xPos(i)+','+yPos(d.nav)).join(' ')+'" fill="none" stroke="#60a5fa" stroke-width="1.5"/>';}
-        if(nav10.length>1){svg+='<polyline points="'+nav10.map((d,i)=>xPos(i)+','+yPos(d.nav)).join(' ')+'" fill="none" stroke="#f87171" stroke-width="1.5"/>';}
-        const step=Math.max(1,Math.floor(maxLen/6));
-        nav0.forEach((d,i)=>{if(i%step===0||i===nav0.length-1){svg+='<text x="'+xPos(i)+'" y="'+(h-2)+'" text-anchor="middle" fill="#8ea0b8" font-size="8">'+esc(d.month)+'</text>'}});
-        svg+='<text x="4" y="'+yPos(0)+'" fill="#8ea0b8" font-size="8" dominant-baseline="middle">0</text>';
-        svg+='<text x="4" y="'+padT+'" fill="#8ea0b8" font-size="8">'+num(ymax,3)+'</text>';
-        svg+='<text x="4" y="'+(h-padB)+'" fill="#8ea0b8" font-size="8">'+num(ymin,3)+'</text>';
-        svg+='</svg>';
-        return svg;
-      })()}
-    </div>
-
-    <div class="chart-container">
-      ${CHART_GUIDES.feeSensitivity}
-      <div class="chart-title">Fee Sensitivity: Total Return & Sharpe by fee_bps · 费用敏感性</div>
-      ${(()=>{
-        const fs=f.fee_sensitivity_series||[];
-        if(!fs.length)return '<div class="small">No data</div>';
-        const w=600,h=120,padL=50,padR=10,padT=10,padB=20;
-        const cw=w-padL-padR,ch=h-padT-padB;
-        const vals=fs.map(d=>d.total_return||0);
-        const maxAbs=Math.max(0.001,...vals.map(v=>Math.abs(v)));
-        const bw=Math.max(8,Math.min(30,Math.floor(cw/fs.length)-4));
-        function yPos(v){return padT+ch/2-(v/maxAbs)*(ch/2)}
-        let svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto">';
-        const mid=padT+ch/2;
-        svg+='<line x1="'+padL+'" y1="'+mid+'" x2="'+(w-padR)+'" y2="'+mid+'" stroke="#334155" stroke-dasharray="3"/>';
-        fs.forEach((d,i)=>{
-          const v=d.total_return||0;
-          const x=padL+(i/fs.length)*cw+(cw/fs.length-bw)/2;
-          const barH=Math.abs(v/maxAbs)*(ch/2);
-          const y=v>=0?mid-barH:mid;
-          const c=v>=0?'#34d399':'#f87171';
-          svg+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+barH+'" fill="'+c+'" rx="2"/>';
-          svg+='<text x="'+(x+bw/2)+'" y="'+(h-2)+'" text-anchor="middle" fill="#8ea0b8" font-size="8">'+d.fee_bps+'bps</text>';
-        });
-        svg+='<text x="4" y="'+mid+'" fill="#8ea0b8" font-size="8" dominant-baseline="middle">0</text>';
-        svg+='</svg>';
-        return svg;
-      })()}
-    </div>
-
-    <div class="chart-container">
-      <div class="chart-title">Monthly Returns (10bps) · 月度收益 (10bps)</div>
-      ${(()=>{
-        const mr=f.monthly_return_series||[];
-        if(!mr.length)return '<div class="small">No data</div>';
-        return svgBarChart(mr,'monthly_return',600,120);
-      })()}
-    </div>
-
-    ${(()=>{
-      const ts=f.turnover_series||[];
-      if(!ts.length)return '';
-      return `
-        <div class="chart-container">
-          <div class="chart-title">Monthly Turnover · 月度换手率</div>
-          ${svgLineChart(ts,'avg_turnover',600,120,{color:'#fbbf24'})}
-        </div>`;
-    })()}
-
-    ${(()=>{
-      const ld=f.leg_decomposition_series||[];
-      if(!ld.length)return '';
-      const w=600,h=140,padL=50,padR=10,padT=10,padB=20;
-      const cw=w-padL-padR,ch=h-padT-padB;
-      const longVals=ld.map(d=>Number(d.long_leg_return)||0);
-      const shortVals=ld.map(d=>Number(d.short_leg_return)||0);
-      const netVals=ld.map(d=>Number(d.net_long_short_return)||0);
-      const allVals=[...longVals,...shortVals,...netVals];
-      const ymin=Math.min(0,...allVals),ymax=Math.max(0,...allVals);
-      const yrange=ymax-ymin||1;
-      function xPos(i){return padL+(i/(ld.length-1||1))*cw}
-      function yPos(v){return padT+ch-((v-ymin)/yrange)*ch}
-      let svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto">';
-      svg+='<line x1="'+padL+'" y1="'+yPos(0)+'" x2="'+(w-padR)+'" y2="'+yPos(0)+'" stroke="#334155" stroke-dasharray="3"/>';
-      const lp=ld.map((d,i)=>xPos(i)+','+yPos(Number(d.long_leg_return)||0)).join(' ');
-      const sp=ld.map((d,i)=>xPos(i)+','+yPos(Number(d.short_leg_return)||0)).join(' ');
-      const np=ld.map((d,i)=>xPos(i)+','+yPos(Number(d.net_long_short_return)||0)).join(' ');
-      svg+='<polyline points="'+lp+'" fill="none" stroke="#34d399" stroke-width="1.2"/>';
-      svg+='<polyline points="'+sp+'" fill="none" stroke="#f87171" stroke-width="1.2"/>';
-      svg+='<polyline points="'+np+'" fill="none" stroke="#60a5fa" stroke-width="1.5"/>';
-      const step=Math.max(1,Math.floor(ld.length/6));
-      ld.forEach((d,i)=>{if(i%step===0||i===ld.length-1){svg+='<text x="'+xPos(i)+'" y="'+(h-2)+'" text-anchor="middle" fill="#8ea0b8" font-size="8">'+esc(d.month)+'</text>'}});
-      svg+='<text x="4" y="'+yPos(0)+'" fill="#8ea0b8" font-size="8" dominant-baseline="middle">0</text>';
-      svg+='<text x="4" y="'+padT+'" fill="#8ea0b8" font-size="7">'+num(ymax,4)+'</text>';
-      svg+='<text x="4" y="'+(h-padB)+'" fill="#8ea0b8" font-size="7">'+num(ymin,4)+'</text>';
-      svg+='<text x="'+(w-padR)+'" y="'+padT+'" text-anchor="end" fill="#34d399" font-size="8">Long</text>';
-      svg+='<text x="'+(w-padR)+'" y="'+(padT+10)+'" text-anchor="end" fill="#f87171" font-size="8">Short</text>';
-      svg+='<text x="'+(w-padR)+'" y="'+(padT+20)+'" text-anchor="end" fill="#60a5fa" font-size="8">Net L/S</text>';
-      svg+='</svg>';
-      return '<div class="chart-container"><div class="chart-title">Leg Decomposition: Long (green) / Short (red) / Net L/S (blue) · 多空腿分解</div>'+svg+'</div>';
-    })()}
-
-    ${(()=>{
-      const dd=f.drawdown_series||[];
-      if(!dd.length)return '';
-      const w=600,h=140,padL=50,padR=10,padT=10,padB=20;
-      const cw=w-padL-padR,ch=h-padT-padB;
-      const navVals=dd.map(d=>Number(d.nav)||0);
-      const ddVals=dd.map(d=>Number(d.drawdown)||0);
-      const navMax=Math.max(0,...navVals),navMin=Math.min(0,...navVals);
-      const navRange=navMax-navMin||1;
-      function xPos(i){return padL+(i/(dd.length-1||1))*cw}
-      function navY(v){return padT+ch-((v-navMin)/navRange)*ch}
-      const ddMax=Math.max(0.001,...ddVals);
-      function ddY(v){return padT+ch-(v/ddMax)*ch}
-      let svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto">';
-      svg+='<line x1="'+padL+'" y1="'+navY(1)+'" x2="'+(w-padR)+'" y2="'+navY(1)+'" stroke="#334155" stroke-dasharray="3"/>';
-      if(dd.length>1){let ddPath='M'+xPos(0)+','+ddY(0);dd.forEach((d,i)=>{ddPath+=' L'+xPos(i)+','+ddY(Number(d.drawdown)||0)});ddPath+=' L'+xPos(dd.length-1)+','+ddY(0)+' Z';svg+='<path d="'+ddPath+'" fill="#f8717122" stroke="none"/>';}
-      const navPts=dd.map((d,i)=>xPos(i)+','+navY(Number(d.nav)||0)).join(' ');
-      const ddPts=dd.map((d,i)=>xPos(i)+','+ddY(Number(d.drawdown)||0)).join(' ');
-      svg+='<polyline points="'+navPts+'" fill="none" stroke="#60a5fa" stroke-width="1.5"/>';
-      svg+='<polyline points="'+ddPts+'" fill="none" stroke="#f87171" stroke-width="1" stroke-dasharray="3"/>';
-      const step=Math.max(1,Math.floor(dd.length/6));
-      dd.forEach((d,i)=>{if(i%step===0||i===dd.length-1){svg+='<text x="'+xPos(i)+'" y="'+(h-2)+'" text-anchor="middle" fill="#8ea0b8" font-size="8">'+esc(d.month)+'</text>'}});
-      svg+='<text x="4" y="'+navY(navMax)+'" fill="#8ea0b8" font-size="7">'+num(navMax,3)+'</text>';
-      svg+='<text x="4" y="'+navY(navMin)+'" fill="#8ea0b8" font-size="7">'+num(navMin,3)+'</text>';
-      svg+='<text x="'+(w-padR)+'" y="'+padT+'" text-anchor="end" fill="#60a5fa" font-size="8">NAV (blue)</text>';
-      svg+='<text x="'+(w-padR)+'" y="'+(padT+10)+'" text-anchor="end" fill="#f87171" font-size="8">Drawdown (red)</text>';
-      svg+='</svg>';
-      return '<div class="chart-container"><div class="chart-title">Paper Portfolio NAV & Drawdown (10bps) · 纸面组合净值与回撤</div>'+svg+'</div>';
-    })()}
-
-    <div class="paper-caveat">
-      <strong>⚠ This is a research diagnostic, not a strategy / 这是研究诊断，不是交易策略</strong><br>
-      <span style="color:var(--muted)">Equal-weight long/short at 1h horizon. No slippage/order book modeling. 等权多空，1h视野，无滑点/订单簿建模。</span>
-    </div>
-      </div>
-    </details>
-    `:`<details class="optional-deep-dive" open><summary>Optional Deep-dive Evidence / 可选深挖证据 <span class="optional-label">NOT CORE</span></summary><div class="inner"><div style="margin:6px 0;font-size:11px;color:var(--muted)">No optional deep-dive data available for this factor / 该因子无深挖数据</div></div></details>`}
 
     ${f.regime_dependency_class?`
     <div class="section-divider"></div>
