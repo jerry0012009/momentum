@@ -3060,72 +3060,64 @@ function renderDetail(fid){
       <div>Source Warning 源警告</div><div>${esc(f.source_warning||'—')}</div>
     </div>
 
+    ${scorecardHtml}
+
     <div class="section-divider"></div>
-    <div class="evidence-label">📊 Block 3 — Shape &amp; Stability / 分层形状与稳定性</div>
-    <p style="font-size:10px;color:#94a3b8;margin:2px 0">Is the edge structurally distributed across ranks, or driven by tail/noise?<br>
-    收益是否沿分位组稳定分布，还是来自尾部、单月或偶然噪声？</p>
-        <h3>Quantile Shape & Rolling Stability / 分位收益形状与滚动稳定性</h3>
-    ${CHART_GUIDES.quantileShape}
-        <div style="margin:6px 0;display:flex;gap:6px;flex-wrap:wrap">
-          ${sh.quantile_shape_class?shapeBadge(sh.quantile_shape_class):''}
-          ${st.stability_class?stabilityBadge(st.stability_class):''}
-          ${dc.decile_shape_class?decileShapeBadge(dc.decile_shape_class):''}
-          ${dc.shape_consistency_with_q5?shapeConsistencyBadge(dc.shape_consistency_with_q5):''}
-          ${dc.expected_direction?`<span class="shape-badge" style="background:#334155;color:#e2e8f0">Dir: ${esc(dc.expected_direction)}</span>`:''}
-          ${dc.direction_handling?`<span class="shape-badge" style="background:#334155;color:#e2e8f0">${esc(dc.direction_handling)}</span>`:''}
-        </div>
-        <div class="metric-grid">
-          ${st.stability_score!==null&&st.stability_score!==undefined?metricRow(renderTooltip('Stability Score'),num(st.stability_score,1)):''}
-          ${st.ic_positive_month_rate!==null&&st.ic_positive_month_rate!==undefined?metricRow('IC Win% IC月胜率',pct(st.ic_positive_month_rate)):''}
-          ${sh.monotonicity_score!==null&&sh.monotonicity_score!==undefined?metricRow('Monotonicity 单调性',num(sh.monotonicity_score,2)):''}
-          ${sh.monotonicity_class?metricRow('Mono. Class 单调性分类','<span style="font-size:10px">'+esc(sh.monotonicity_class)+'</span>'):''}
-          ${sh.q_spread_return!==null&&sh.q_spread_return!==undefined?metricRow(renderTooltip('Q Spread Return'),num(sh.q_spread_return,6)):''}
-          ${sh.q_spearman_corr!==null&&sh.q_spearman_corr!==undefined?metricRow(renderTooltip('Q Spearman'),num(sh.q_spearman_corr,4)):''}
-          ${sh.positive_spread_month_rate!==null&&sh.positive_spread_month_rate!==undefined?metricRow(renderTooltip('Positive Spread%'),pct(sh.positive_spread_month_rate)):''}
-          ${dc.direction_aware_spearman_corr!==null&&dc.direction_aware_spearman_corr!==undefined?metricRow(renderTooltip('Dir-aware ρ'),num(dc.direction_aware_spearman_corr,4)):''}
-          ${dc.direction_aware_monotonicity_class?metricRow(renderTooltip('Decile Mono.'),'<span style="font-size:10px">'+esc(dc.direction_aware_monotonicity_class)+'</span>'):''}
-          ${dc.tail_concentration_class?metricRow(renderTooltip('Tail Conc.'),dc.tail_concentration_class?tailConcBadge(dc.tail_concentration_class):'—'):''}
-          ${st.recent_vs_full_ic_delta!==null&&st.recent_vs_full_ic_delta!==undefined?metricRow(renderTooltip('Recent ΔIC'),num(st.recent_vs_full_ic_delta,4)):''}
-          ${st.recent_vs_full_ls_delta!==null&&st.recent_vs_full_ls_delta!==undefined?metricRow(renderTooltip('Recent ΔLS'),num(st.recent_vs_full_ls_delta,6)):''}
-        </div>
+    <h3>Redundancy & Novelty / 冗余与新颖性</h3>
+    <div class="kv">
+      <div>Novelty Assessment 新颖性评估</div><div>${f.novelty_assessment?noveltyBadge(f.novelty_assessment):'—'}</div>
+      ${f.redundancy_source!=='unified_profile'?`
+        <div>Nearest Factor 最近相似因子</div><div>${esc(f.nearest_factor||'—')}</div>
+        <div>Nearest abs Spearman 最近|Spearman|</div><div>${f.nearest_abs_spearman_corr!==null?Number(f.nearest_abs_spearman_corr).toFixed(4):'—'}</div>
+      `:`
+        <div>Marginal Info 边际信息</div><div>${esc(f.marginal_information_class||'—')}</div>
+        <div>Cluster Role 聚类角色</div><div>${esc(f.cluster_member_role||'—')}</div>
+      `}
+      <div>Strongest Redundancy 最强冗余等级</div><div>${f.strongest_redundancy_level?redundancyLevelBadge(f.strongest_redundancy_level):'—'}</div>
+      <div>Redundancy Confidence 冗余置信度</div><div>${f.redundancy_confidence?scConfBadge(f.redundancy_confidence):'—'}</div>
+      ${f.redundancy_source!=='unified_profile'?`
+        <div>Valid Pairs 有效对</div><div>${f.valid_redundancy_pair_count!==null?Math.round(Number(f.valid_redundancy_pair_count))+' / '+Math.round(Number(f.expected_redundancy_pair_count)):'—'}</div>
+        <div>Valid Pair Coverage 有效对覆盖率</div><div>${f.valid_redundancy_pair_coverage!==null?pct(f.valid_redundancy_pair_coverage):'—'}</div>
+        <div>Insufficient Overlap 重叠不足对</div><div>${f.insufficient_overlap_pair_count!==null?Math.round(Number(f.insufficient_overlap_pair_count)):'—'}</div>
+      `:''}
+      <div>Cluster 聚类</div><div>${f.redundancy_cluster_id!==null?'#'+Math.round(Number(f.redundancy_cluster_id))+' ('+Math.round(Number(f.redundancy_cluster_size||0))+' factors)':'—'}</div>
+    </div>
+    <div style="margin-top:6px;font-size:10px;color:var(--muted)">
+      冗余分析是研究相似性诊断，不是删除因子的理由。高冗余因子可保留用于方向/视野多样性。
+      <br>Redundancy analysis is a research similarity diagnostic, not a reason by itself to delete a factor. High-redundancy factors may be retained for direction/horizon diversity.
+    </div>
 
-        ${qr.length?`
-        <div class="chart-container">
-          <div class="chart-title">Q1–Q5 Quantile Shape (expected-order mean returns) · 分位收益形状（预期方向排序）</div>
-          ${qBarChart(qr,500,130)}
-        </div>`:''}
-
-        ${eodr.length?`
-        <div class="chart-container">
-          <div class="chart-title">Expected-order decile D1–D10 returns · 预期方向十分位收益</div>
-          ${decileBarChart(eodr,600,130)}
-        </div>`:''}
-
-        ${(()=>{
-          const sChart=stabilityMiniChart(st,400,110);
-          if(!sChart)return '';
-          return '<div class="chart-container"><div class="chart-title">Rolling IC/LS (3M & 6M latest) · 滚动IC/LS</div>'+sChart+'</div>';
-        })()}
-
-        ${sh.note_zh||dc.note_zh||st.note_zh?`
-        <div style="margin:6px 0">
-          ${sh.note_zh?`<div class="bilingual"><div class="zh" style="font-size:11px"><strong>Q5 Shape 分位形状:</strong> ${esc(sh.note_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(sh.note_en)}</div></div>`:''}
-          ${st.note_zh?`<div class="bilingual" style="margin-top:4px"><div class="zh" style="font-size:11px"><strong>Stability 稳定性:</strong> ${esc(st.note_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(st.note_en)}</div></div>`:''}
-          ${dc.note_zh?`<div class="bilingual" style="margin-top:4px"><div class="zh" style="font-size:11px"><strong>Decile 十分位:</strong> ${esc(dc.note_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(dc.note_en)}</div></div>`:''}
-        </div>`:''}
-
-        ${dc.shape_consistency_with_q5?`
-        <div class="shape-caveat">
-          <strong>⚠ Shape consistency 形状一致性:</strong> ${esc(dc.shape_consistency_with_q5)}<br>
-          <span style="color:var(--muted)">Q5 quantile classification: ${esc(dc.q5_shape_class_from_pm26||'—')}. Decile shape may reveal nonlinear effects not visible in 5-bucket quantile analysis.<br>
-          Q5分位分类: ${esc(dc.q5_shape_class_from_pm26||'—')}。十分位形状可能揭示5桶分位分析中不可见的非线性效应。</span>
-        </div>`:''}
-      `;
-    })()}
-
-    ${f.cap_liq_capacity_risk_class?`
     <div class="section-divider"></div>
-    `; })()}
+    <h3 id="hz-ic-title-${f.factor_id}">Monthly RankIC 月度RankIC (${esc(f.best_horizon)})</h3>
+    ${CHART_GUIDES.monthlyIC}
+    <div class="chart-container">
+      <div class="chart-title">Monthly RankIC (adj) · 月度调整RankIC</div>
+      <div id="hz-ic-chart-${f.factor_id}">
+      ${f.monthly_ic&&f.monthly_ic.length>0
+        ? svgLineChart(f.monthly_ic,'rank_ic_adj',600,140)
+        : (f.rankic_mean!==null&&f.rankic_mean!==undefined
+          ? '<div style="padding:12px;color:var(--muted);font-size:12px">📊 Summary RankIC available: <strong>'+num(f.rankic_mean)+'</strong> (t='+num(f.rankic_t_stat,2,false)+')<br>Monthly IC series unavailable — factor-level evaluation provides aggregate stats only.<br>月度IC序列暂不可用 — 因子级评价仅提供汇总统计。</div>'
+          : '<div class="small">No data</div>')}
+      </div>
+    </div>
+
+    <h3 id="hz-ls-title-${f.factor_id}">Monthly Long-Short Return 月度多空收益 (${esc(f.best_horizon)})</h3>
+    ${CHART_GUIDES.monthlyLS}
+    <div class="chart-container">
+      <div class="chart-title">Monthly LS Return · 月度多空收益</div>
+      <div id="hz-ls-chart-${f.factor_id}">
+      ${svgBarChart(f.monthly_ls,'long_short_return',600,120)}
+      </div>
+    </div>
+
+    <h3 id="hz-cum-title-${f.factor_id}">Cumulative Long-Short Curve 累计多空曲线 (${esc(f.best_horizon)})</h3>
+    ${CHART_GUIDES.cumLS}
+    <div class="chart-container">
+      <div class="chart-title">Cumulative LS (blue) with drawdown (red) · 累计多空(蓝)及回撤(红)</div>
+      <div id="hz-cum-chart-${f.factor_id}">
+      ${svgCumCurve(f.cum_curve,600,160)}
+      </div>
+    </div>
 
     <div class="section-divider"></div>
     <div class="evidence-label">📊 Block 4 — Strategy Path Diagnostics / 策略路径诊断</div>
@@ -3170,7 +3162,10 @@ function renderDetail(fid){
           '</div>';
       })()}
 
-    <div class="section-divider"></div>
+
+    ${f.paper_viability_class?`
+    
+<div class="section-divider"></div>
     <div class="evidence-label">📊 Block 5 — Robustness &amp; Regime / 稳健性与条件性</div>
     <p style="font-size:10px;color:#94a3b8;margin:2px 0">Does the evidence survive overlap adjustment, window checks, and market-state splits?<br>
     证据是否经得住 overlap 修正、窗口检查和市场状态分割？</p>
@@ -3269,189 +3264,8 @@ function renderDetail(fid){
           '</div>';
       })()}
     </details>
+    `; })()}
 
-    <div class="section-divider"></div>
-    <div class="evidence-label">📊 Block 6 — Constraints &amp; Novelty / 约束与独立性</div>
-    <p style="font-size:10px;color:#94a3b8;margin:2px 0">Even if the factor has evidence, is it liquid, non-redundant, and worth further research?<br>
-    即使因子有证据，它是否具备容量、流动性、独立信息和继续研究价值？</p>
-
-    ${scorecardHtml}
-
-    <div class="section-divider"></div>
-    <h3>Redundancy & Novelty / 冗余与新颖性</h3>
-    <div class="kv">
-      <div>Novelty Assessment 新颖性评估</div><div>${f.novelty_assessment?noveltyBadge(f.novelty_assessment):'—'}</div>
-      ${f.redundancy_source!=='unified_profile'?`
-        <div>Nearest Factor 最近相似因子</div><div>${esc(f.nearest_factor||'—')}</div>
-        <div>Nearest abs Spearman 最近|Spearman|</div><div>${f.nearest_abs_spearman_corr!==null?Number(f.nearest_abs_spearman_corr).toFixed(4):'—'}</div>
-      `:`
-        <div>Marginal Info 边际信息</div><div>${esc(f.marginal_information_class||'—')}</div>
-        <div>Cluster Role 聚类角色</div><div>${esc(f.cluster_member_role||'—')}</div>
-      `}
-      <div>Strongest Redundancy 最强冗余等级</div><div>${f.strongest_redundancy_level?redundancyLevelBadge(f.strongest_redundancy_level):'—'}</div>
-      <div>Redundancy Confidence 冗余置信度</div><div>${f.redundancy_confidence?scConfBadge(f.redundancy_confidence):'—'}</div>
-      ${f.redundancy_source!=='unified_profile'?`
-        <div>Valid Pairs 有效对</div><div>${f.valid_redundancy_pair_count!==null?Math.round(Number(f.valid_redundancy_pair_count))+' / '+Math.round(Number(f.expected_redundancy_pair_count)):'—'}</div>
-        <div>Valid Pair Coverage 有效对覆盖率</div><div>${f.valid_redundancy_pair_coverage!==null?pct(f.valid_redundancy_pair_coverage):'—'}</div>
-        <div>Insufficient Overlap 重叠不足对</div><div>${f.insufficient_overlap_pair_count!==null?Math.round(Number(f.insufficient_overlap_pair_count)):'—'}</div>
-      `:''}
-      <div>Cluster 聚类</div><div>${f.redundancy_cluster_id!==null?'#'+Math.round(Number(f.redundancy_cluster_id))+' ('+Math.round(Number(f.redundancy_cluster_size||0))+' factors)':'—'}</div>
-    </div>
-    <div style="margin-top:6px;font-size:10px;color:var(--muted)">
-      冗余分析是研究相似性诊断，不是删除因子的理由。高冗余因子可保留用于方向/视野多样性。
-      <br>Redundancy analysis is a research similarity diagnostic, not a reason by itself to delete a factor. High-redundancy factors may be retained for direction/horizon diversity.
-    </div>
-    <h3>Capacity / Liquidity Proxy Diagnostics / 容量 / 流动性代理诊断</h3>
-    <div style="margin:6px 0;display:flex;gap:6px;flex-wrap:wrap">
-      ${capBadge(f.cap_liq_capacity_risk_class,CAP_RISK_LABELS)}
-      ${capBadge(f.cap_liq_liquidity_risk_class,LIQ_RISK_LABELS)}
-      ${capBadge(f.cap_liq_capacity_liquidity_class,CAP_LIQ_CLASS_LABELS)}
-      ${f.cap_liq_volume_concentration_class?capBadge(f.cap_liq_volume_concentration_class,VOL_CONC_LABELS):''}
-      ${f.cap_liq_factor_quality_cross_flag?capBadge(f.cap_liq_factor_quality_cross_flag,CROSS_FLAG_LABELS):''}
-    </div>
-    <div style="margin:4px 0;font-size:10px;color:var(--muted)">Proxy Method 代理方法: ${esc(f.cap_liq_proxy_method||'—')}</div>
-    <div class="metric-grid">
-      ${f.cap_liq_avg_turnover!==null&&f.cap_liq_avg_turnover!==undefined?metricRow(renderTooltip('Avg Turnover'),num(f.cap_liq_avg_turnover,4,false)):''}
-      ${f.cap_liq_median_turnover!==null&&f.cap_liq_median_turnover!==undefined?metricRow(renderTooltip('Median Turnover'),num(f.cap_liq_median_turnover,4,false)):''}
-      ${f.cap_liq_p90_turnover!==null&&f.cap_liq_p90_turnover!==undefined?metricRow(renderTooltip('P90 Turnover'),num(f.cap_liq_p90_turnover,4,false)):''}
-      ${f.cap_liq_selected_basket_volume_median!==null&&f.cap_liq_selected_basket_volume_median!==undefined?metricRow(renderTooltip('Basket Vol Median'),f.cap_liq_selected_basket_volume_median!==null?Number(f.cap_liq_selected_basket_volume_median).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
-      ${f.cap_liq_selected_basket_volume_p10!==null&&f.cap_liq_selected_basket_volume_p10!==undefined?metricRow(renderTooltip('Basket Vol P10'),f.cap_liq_selected_basket_volume_p10!==null?Number(f.cap_liq_selected_basket_volume_p10).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
-      ${f.cap_liq_selected_symbol_count_median!==null?metricRow('Symbol Count Med 中位符号数',f.cap_liq_selected_symbol_count_median!==null?Math.round(Number(f.cap_liq_selected_symbol_count_median)):'—'):''}
-      ${f.cap_liq_long_basket_volume_median!==null&&f.cap_liq_long_basket_volume_median!==undefined?metricRow('Long Basket Vol 多头篮子成交量',f.cap_liq_long_basket_volume_median!==null?Number(f.cap_liq_long_basket_volume_median).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
-      ${f.cap_liq_short_basket_volume_median!==null&&f.cap_liq_short_basket_volume_median!==undefined?metricRow('Short Basket Vol 空头篮子成交量',f.cap_liq_short_basket_volume_median!==null?Number(f.cap_liq_short_basket_volume_median).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
-      ${f.cap_liq_low_volume_symbol_share!==null&&f.cap_liq_low_volume_symbol_share!==undefined?metricRow(renderTooltip('Low-Vol Share'),pct(f.cap_liq_low_volume_symbol_share)):''}
-      ${f.cap_liq_selected_top_symbol_volume_share_median!==null?metricRow(renderTooltip('Top Symbol Vol Share'),pct(f.cap_liq_selected_top_symbol_volume_share_median)):''}
-    </div>
-
-    <div style="margin-top:8px;font-size:11px;font-weight:600;color:var(--muted)">Capacity Estimates 容量估计 (USD)</div>
-    <div class="metric-grid">
-      ${f.cap_liq_capacity_at_1pct!==null&&f.cap_liq_capacity_at_1pct!==undefined?metricRow(renderTooltip('1% Participation'),f.cap_liq_capacity_at_1pct!==null?'$'+Number(f.cap_liq_capacity_at_1pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
-      ${f.cap_liq_capacity_at_5pct!==null&&f.cap_liq_capacity_at_5pct!==undefined?metricRow(renderTooltip('5% Participation'),f.cap_liq_capacity_at_5pct!==null?'$'+Number(f.cap_liq_capacity_at_5pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
-      ${f.cap_liq_capacity_at_10pct!==null&&f.cap_liq_capacity_at_10pct!==undefined?metricRow(renderTooltip('10% Participation'),f.cap_liq_capacity_at_10pct!==null?'$'+Number(f.cap_liq_capacity_at_10pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
-    </div>
-
-    <div style="margin-top:8px;font-size:11px;font-weight:600;color:var(--muted)">Participation Rates by Notional 参与率（按名义金额）</div>
-    <div class="metric-grid">
-      ${f.cap_liq_participation_100k_median!==null&&f.cap_liq_participation_100k_median!==undefined?metricRow(renderTooltip('$100K Median'),pct(f.cap_liq_participation_100k_median)):''}
-      ${f.cap_liq_participation_100k_p10!==null&&f.cap_liq_participation_100k_p10!==undefined?metricRow(renderTooltip('$100K P10'),pct(f.cap_liq_participation_100k_p10)):''}
-      ${f.cap_liq_participation_1M_median!==null&&f.cap_liq_participation_1M_median!==undefined?metricRow(renderTooltip('$1M Median'),pct(f.cap_liq_participation_1M_median)):''}
-      ${f.cap_liq_participation_1M_p10!==null&&f.cap_liq_participation_1M_p10!==undefined?metricRow(renderTooltip('$1M P10'),pct(f.cap_liq_participation_1M_p10)):''}
-      ${f.cap_liq_participation_10M_median!==null&&f.cap_liq_participation_10M_median!==undefined?metricRow(renderTooltip('$10M Median'),pct(f.cap_liq_participation_10M_median)):''}
-      ${f.cap_liq_participation_10M_p10!==null&&f.cap_liq_participation_10M_p10!==undefined?metricRow(renderTooltip('$10M P10'),pct(f.cap_liq_participation_10M_p10)):''}
-    </div>
-
-    <div class="cap-caveat">
-      <strong>⚠ Selected-basket proxy warning · 选中篮子代理警告</strong><br>
-      <span style="color:var(--muted)">These are capacity/liquidity proxies based on selected-basket volume and turnover. They are not order-book simulation, slippage estimates, or real execution capacity.<br>
-      这些是基于选中篮子成交量与换手率的容量 / 流动性代理指标，不是订单簿模拟、滑点估计或真实可交易容量结论。</span>
-    </div>
-    <div style="margin-top:6px;font-size:10px;color:var(--muted)">
-      <strong>Interpretation 解读:</strong><br>
-      <span style="font-size:10px">Capacity estimates assume uniform daily volume distribution; real liquidity is clustered. Participation rates show how much of daily selected-basket volume a notional allocation would consume. Lower is better.<br>
-      容量估计假设每日成交量均匀分布；真实流动性是集中的。参与率显示特定名义金额占每日选中篮子成交量的比例，越低越好。</span>
-    </div>
-    `:`<div class="section-divider"></div><h3>Capacity / Liquidity Proxy Diagnostics / 容量 / 流动性代理诊断</h3><div style="margin:6px 0;font-size:11px;color:var(--muted)">N/A — No capacity/liquidity data available<br>无容量/流动性数据</div>`}
-
-    ${f.profile_class?`
-    <div class="section-divider"></div>
-    <h3>Unified Factor Profile / 统一因子画像</h3>
-    <div style="margin:6px 0;display:flex;gap:6px;flex-wrap:wrap">
-      ${profileClassBadge(f.profile_class)}
-      ${f.workflow_ready_status?workflowReadyBadge(f.workflow_ready_status):''}
-      ${f.evidence_status?evidenceStatusBadge(f.evidence_status):''}
-      ${f.profile_confidence?scConfBadge(f.profile_confidence):''}
-      ${f.recommended_research_action?researchActionBadge(f.recommended_research_action):''}
-    </div>
-    <div class="metric-grid">
-      ${f.profile_score!==null&&f.profile_score!==undefined?metricRow(renderTooltip('Profile Score'),'<strong style="font-size:16px">'+Number(f.profile_score).toFixed(1)+'</strong>/100'):''}
-      ${f.evidence_completeness_rate!==null?metricRow(renderTooltip('Evidence Completeness'),pct(f.evidence_completeness_rate)):''}
-      ${f.registry_or_data_status?metricRow('Registry Status 注册状态',esc(f.registry_or_data_status)):''}
-      ${f.cluster_member_role?metricRow(renderTooltip('Cluster Role'),esc(f.cluster_member_role)):''}
-      ${f.marginal_information_class?metricRow(renderTooltip('Marginal Info'),esc(f.marginal_information_class)):''}
-      ${f.source_artifact_count?metricRow('Source Artifacts 源工件数',f.source_artifact_count):''}
-    </div>
-
-    ${f.primary_strength_zh||f.primary_risk_zh?`
-    <div style="margin:6px 0">
-      ${f.primary_strength_zh?`<div class="bilingual"><div class="zh" style="font-size:11px"><strong style="color:var(--green)">Strength 优势:</strong> ${esc(f.primary_strength_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(f.primary_strength_en)}</div></div>`:''}
-      ${f.primary_risk_zh?`<div class="bilingual" style="margin-top:4px"><div class="zh" style="font-size:11px"><strong style="color:var(--amber)">Risk 风险:</strong> ${esc(f.primary_risk_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(f.primary_risk_en)}</div></div>`:''}
-    </div>`:''}
-
-    ${f.profile_summary_zh?`
-    <div class="bilingual" style="margin:6px 0;background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:8px">
-      <div class="zh" style="font-size:12px">${esc(f.profile_summary_zh)}</div>
-      <div class="en" style="font-size:10px;color:var(--muted)">${esc(f.profile_summary_en)}</div>
-    </div>`:''}
-
-    ${f.workflow_missing_or_stale_blocks?`
-    <div style="margin:6px 0;font-size:11px;color:var(--amber)">⚠ Missing/stale blocks 缺失/过时模块: ${esc(f.workflow_missing_or_stale_blocks)}</div>`:''}
-
-    <h4 style="margin:10px 0 4px;font-size:11px;color:var(--muted)">Component Scores 组件分数 (10 dimensions 维度)</h4>
-    ${(()=>{
-      const comps=[
-        ['standalone_quality','独立质量',f.comp_standalone_quality],
-        ['paper','纸面组合',f.comp_paper],
-        ['cost','费用',f.comp_cost],
-        ['regime','市场状态',f.comp_regime],
-        ['shape','形状',f.comp_shape],
-        ['stability','稳定性',f.comp_stability],
-        ['capacity','容量',f.comp_capacity],
-        ['redundancy','冗余',f.comp_redundancy],
-        ['marginal_info','边际信息',f.comp_marginal_info],
-        ['evidence_completeness','证据完整',f.comp_evidence_completeness],
-      ];
-      const hasAny=comps.some(c=>c[2]!==null&&c[2]!==undefined);
-      if(!hasAny)return '<div class="small">No component scores</div>';
-      return comps.map(([key,label,score])=>{
-        if(score===null||score===undefined)return '';
-        const w=Math.max(2,Math.min(100,Number(score)));
-        const c=scBarColor(score);
-        return `<div class="sc-bar-wrap"><span class="sc-bar-label" title="${esc(label)}">${esc(label)}</span><div class="sc-bar-track"><div class="sc-bar-fill ${c}" style="width:${w}%">${Number(score).toFixed(0)}</div></div></div>`;
-      }).join('')+
-      `<div class="sc-bar-wrap" style="margin-top:4px;border-top:1px solid var(--border);padding-top:4px"><span class="sc-bar-label" style="font-weight:700">Profile Score 画像分数</span><div class="sc-bar-track"><div class="sc-bar-fill ${scBarColor(f.profile_score)}" style="width:${Math.max(2,Math.min(100,Number(f.profile_score||0)))}%">${Number(f.profile_score||0).toFixed(1)}</div></div></div>`;
-    })()}
-
-    <h4 style="margin:10px 0 4px;font-size:11px;color:var(--muted)">Evidence Matrix 证据矩阵 (15 blocks 模块)</h4>
-    <div style="display:flex;gap:3px;flex-wrap:wrap;margin:4px 0">
-      ${evBlockBadge('Scorecard',f.ev_has_quality_scorecard)}
-      ${evBlockBadge('Diagnostics',f.ev_has_diagnostics_summary)}
-      ${evBlockBadge('Redundancy',f.ev_has_redundancy_summary)}
-      ${evBlockBadge('Cluster',f.ev_has_redundancy_cluster_members)}
-      ${evBlockBadge('Marginal',f.ev_has_marginal_information)}
-      ${evBlockBadge('Paper',f.ev_has_paper_summary)}
-      ${evBlockBadge('FeeSens',f.ev_has_fee_sensitivity)}
-      ${evBlockBadge('Regime',f.ev_has_regime_exposure)}
-      ${evBlockBadge('QShape',f.ev_has_quantile_shape)}
-      ${evBlockBadge('RollStab',f.ev_has_rolling_stability)}
-      ${evBlockBadge('Decile',f.ev_has_decile_shape)}
-      ${evBlockBadge('CapLiq',f.ev_has_capacity_liquidity)}
-      ${evBlockBadge('Values',f.ev_has_factor_values)}
-      ${evBlockBadge('LevelEval',f.ev_has_factor_level_evaluation)}
-      ${evBlockBadge('Profile',f.ev_has_unified_profile)}
-    </div>
-    ${(()=>{
-      const evBlocks=[f.ev_has_quality_scorecard,f.ev_has_diagnostics_summary,f.ev_has_redundancy_summary,f.ev_has_redundancy_cluster_members,f.ev_has_marginal_information,f.ev_has_paper_summary,f.ev_has_fee_sensitivity,f.ev_has_regime_exposure,f.ev_has_quantile_shape,f.ev_has_rolling_stability,f.ev_has_decile_shape,f.ev_has_capacity_liquidity,f.ev_has_factor_values,f.ev_has_factor_level_evaluation,f.ev_has_unified_profile];
-      const present=evBlocks.filter(Boolean).length;
-      const total=evBlocks.length;
-      const rate=total?Math.round(present/total*100):0;
-      const color=rate>=80?'var(--green)':rate>=60?'var(--amber)':'var(--red)';
-      return `<div style="margin:4px 0;font-size:10px;color:var(--muted)">Evidence completeness 证据完整率: <strong style="color:${color}">${present}/${total} (${rate}%)</strong>${f.evidence_completeness_rate!==null?' · Profile rate 画像完整率: '+pct(f.evidence_completeness_rate):''}</div>`;
-    })()}
-
-    ${f.source_artifacts?`
-    <h4 style="margin:10px 0 4px;font-size:11px;color:var(--muted)">Source Lineage 源工件 (${f.source_artifact_count||0})</h4>
-    <div style="display:flex;gap:3px;flex-wrap:wrap;font-size:9px">
-      ${f.source_artifacts.split('|').map(a=>`<span class="bucket-badge">${esc(a)}</span>`).join(' ')}
-    </div>`:''}
-
-    <div class="up-caveat">
-      <strong>⚠ Unified profiles are research diagnostics, not trading signals / 统一画像是研究诊断，非交易信号</strong><br>
-      <span style="color:var(--muted)">Profile scores summarize evidence completeness and cross-dimensional quality. They do not select signals, construct portfolios, or recommend trading.<br>
-      画像分数汇总证据完整性与跨维度质量。它不选择信号、不构建组合，也不构成交易建议。不是交易策略。</span>
-    </div>
-    `:`<div class="section-divider"></div><h3>Unified Factor Profile / 统一因子画像</h3><div style="margin:6px 0;font-size:11px;color:var(--muted)">N/A — No unified profile data available<br>无统一画像数据</div>`}
-
-    ${f.paper_viability_class?`
     <div class="section-divider"></div>
     <details class="optional-deep-dive">
       <summary>Optional Deep-dive Evidence / 可选深挖证据 <span class="optional-label">NOT CORE</span></summary>
@@ -3803,41 +3617,224 @@ function renderDetail(fid){
 
       return `
         <div class="section-divider"></div>
-
-    <details class="chart-guide" style="margin:8px 0"><summary>📊 Monthly Charts / 月度图表</summary>
-
     <div class="section-divider"></div>
-    <h3 id="hz-ic-title-${f.factor_id}">Monthly RankIC 月度RankIC (${esc(f.best_horizon)})</h3>
-    ${CHART_GUIDES.monthlyIC}
-    <div class="chart-container">
-      <div class="chart-title">Monthly RankIC (adj) · 月度调整RankIC</div>
-      <div id="hz-ic-chart-${f.factor_id}">
-      ${f.monthly_ic&&f.monthly_ic.length>0
-        ? svgLineChart(f.monthly_ic,'rank_ic_adj',600,140)
-        : (f.rankic_mean!==null&&f.rankic_mean!==undefined
-          ? '<div style="padding:12px;color:var(--muted);font-size:12px">📊 Summary RankIC available: <strong>'+num(f.rankic_mean)+'</strong> (t='+num(f.rankic_t_stat,2,false)+')<br>Monthly IC series unavailable — factor-level evaluation provides aggregate stats only.<br>月度IC序列暂不可用 — 因子级评价仅提供汇总统计。</div>'
-          : '<div class="small">No data</div>')}
-      </div>
+    <div class="evidence-label">📊 Block 3 — Shape &amp; Stability / 分层形状与稳定性</div>
+    <p style="font-size:10px;color:#94a3b8;margin:2px 0">Is the edge structurally distributed across ranks, or driven by tail/noise?<br>
+    收益是否沿分位组稳定分布，还是来自尾部、单月或偶然噪声？</p>
+        <h3>Quantile Shape & Rolling Stability / 分位收益形状与滚动稳定性</h3>
+    ${CHART_GUIDES.quantileShape}
+        <div style="margin:6px 0;display:flex;gap:6px;flex-wrap:wrap">
+          ${sh.quantile_shape_class?shapeBadge(sh.quantile_shape_class):''}
+          ${st.stability_class?stabilityBadge(st.stability_class):''}
+          ${dc.decile_shape_class?decileShapeBadge(dc.decile_shape_class):''}
+          ${dc.shape_consistency_with_q5?shapeConsistencyBadge(dc.shape_consistency_with_q5):''}
+          ${dc.expected_direction?`<span class="shape-badge" style="background:#334155;color:#e2e8f0">Dir: ${esc(dc.expected_direction)}</span>`:''}
+          ${dc.direction_handling?`<span class="shape-badge" style="background:#334155;color:#e2e8f0">${esc(dc.direction_handling)}</span>`:''}
+        </div>
+        <div class="metric-grid">
+          ${st.stability_score!==null&&st.stability_score!==undefined?metricRow(renderTooltip('Stability Score'),num(st.stability_score,1)):''}
+          ${st.ic_positive_month_rate!==null&&st.ic_positive_month_rate!==undefined?metricRow('IC Win% IC月胜率',pct(st.ic_positive_month_rate)):''}
+          ${sh.monotonicity_score!==null&&sh.monotonicity_score!==undefined?metricRow('Monotonicity 单调性',num(sh.monotonicity_score,2)):''}
+          ${sh.monotonicity_class?metricRow('Mono. Class 单调性分类','<span style="font-size:10px">'+esc(sh.monotonicity_class)+'</span>'):''}
+          ${sh.q_spread_return!==null&&sh.q_spread_return!==undefined?metricRow(renderTooltip('Q Spread Return'),num(sh.q_spread_return,6)):''}
+          ${sh.q_spearman_corr!==null&&sh.q_spearman_corr!==undefined?metricRow(renderTooltip('Q Spearman'),num(sh.q_spearman_corr,4)):''}
+          ${sh.positive_spread_month_rate!==null&&sh.positive_spread_month_rate!==undefined?metricRow(renderTooltip('Positive Spread%'),pct(sh.positive_spread_month_rate)):''}
+          ${dc.direction_aware_spearman_corr!==null&&dc.direction_aware_spearman_corr!==undefined?metricRow(renderTooltip('Dir-aware ρ'),num(dc.direction_aware_spearman_corr,4)):''}
+          ${dc.direction_aware_monotonicity_class?metricRow(renderTooltip('Decile Mono.'),'<span style="font-size:10px">'+esc(dc.direction_aware_monotonicity_class)+'</span>'):''}
+          ${dc.tail_concentration_class?metricRow(renderTooltip('Tail Conc.'),dc.tail_concentration_class?tailConcBadge(dc.tail_concentration_class):'—'):''}
+          ${st.recent_vs_full_ic_delta!==null&&st.recent_vs_full_ic_delta!==undefined?metricRow(renderTooltip('Recent ΔIC'),num(st.recent_vs_full_ic_delta,4)):''}
+          ${st.recent_vs_full_ls_delta!==null&&st.recent_vs_full_ls_delta!==undefined?metricRow(renderTooltip('Recent ΔLS'),num(st.recent_vs_full_ls_delta,6)):''}
+        </div>
+
+        ${qr.length?`
+        <div class="chart-container">
+          <div class="chart-title">Q1–Q5 Quantile Shape (expected-order mean returns) · 分位收益形状（预期方向排序）</div>
+          ${qBarChart(qr,500,130)}
+        </div>`:''}
+
+        ${eodr.length?`
+        <div class="chart-container">
+          <div class="chart-title">Expected-order decile D1–D10 returns · 预期方向十分位收益</div>
+          ${decileBarChart(eodr,600,130)}
+        </div>`:''}
+
+        ${(()=>{
+          const sChart=stabilityMiniChart(st,400,110);
+          if(!sChart)return '';
+          return '<div class="chart-container"><div class="chart-title">Rolling IC/LS (3M & 6M latest) · 滚动IC/LS</div>'+sChart+'</div>';
+        })()}
+
+        ${sh.note_zh||dc.note_zh||st.note_zh?`
+        <div style="margin:6px 0">
+          ${sh.note_zh?`<div class="bilingual"><div class="zh" style="font-size:11px"><strong>Q5 Shape 分位形状:</strong> ${esc(sh.note_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(sh.note_en)}</div></div>`:''}
+          ${st.note_zh?`<div class="bilingual" style="margin-top:4px"><div class="zh" style="font-size:11px"><strong>Stability 稳定性:</strong> ${esc(st.note_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(st.note_en)}</div></div>`:''}
+          ${dc.note_zh?`<div class="bilingual" style="margin-top:4px"><div class="zh" style="font-size:11px"><strong>Decile 十分位:</strong> ${esc(dc.note_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(dc.note_en)}</div></div>`:''}
+        </div>`:''}
+
+        ${dc.shape_consistency_with_q5?`
+        <div class="shape-caveat">
+          <strong>⚠ Shape consistency 形状一致性:</strong> ${esc(dc.shape_consistency_with_q5)}<br>
+          <span style="color:var(--muted)">Q5 quantile classification: ${esc(dc.q5_shape_class_from_pm26||'—')}. Decile shape may reveal nonlinear effects not visible in 5-bucket quantile analysis.<br>
+          Q5分位分类: ${esc(dc.q5_shape_class_from_pm26||'—')}。十分位形状可能揭示5桶分位分析中不可见的非线性效应。</span>
+        </div>`:''}
+      `;
+    })()}
+
+    ${f.cap_liq_capacity_risk_class?`
+    <div class="section-divider"></div>
+    <div class="section-divider"></div>
+    <div class="evidence-label">📊 Block 6 — Constraints &amp; Novelty / 约束与独立性</div>
+    <p style="font-size:10px;color:#94a3b8;margin:2px 0">Even if the factor has evidence, is it liquid, non-redundant, and worth further research?<br>
+    即使因子有证据，它是否具备容量、流动性、独立信息和继续研究价值？</p>
+    <h3>Capacity / Liquidity Proxy Diagnostics / 容量 / 流动性代理诊断</h3>
+    <div style="margin:6px 0;display:flex;gap:6px;flex-wrap:wrap">
+      ${capBadge(f.cap_liq_capacity_risk_class,CAP_RISK_LABELS)}
+      ${capBadge(f.cap_liq_liquidity_risk_class,LIQ_RISK_LABELS)}
+      ${capBadge(f.cap_liq_capacity_liquidity_class,CAP_LIQ_CLASS_LABELS)}
+      ${f.cap_liq_volume_concentration_class?capBadge(f.cap_liq_volume_concentration_class,VOL_CONC_LABELS):''}
+      ${f.cap_liq_factor_quality_cross_flag?capBadge(f.cap_liq_factor_quality_cross_flag,CROSS_FLAG_LABELS):''}
+    </div>
+    <div style="margin:4px 0;font-size:10px;color:var(--muted)">Proxy Method 代理方法: ${esc(f.cap_liq_proxy_method||'—')}</div>
+    <div class="metric-grid">
+      ${f.cap_liq_avg_turnover!==null&&f.cap_liq_avg_turnover!==undefined?metricRow(renderTooltip('Avg Turnover'),num(f.cap_liq_avg_turnover,4,false)):''}
+      ${f.cap_liq_median_turnover!==null&&f.cap_liq_median_turnover!==undefined?metricRow(renderTooltip('Median Turnover'),num(f.cap_liq_median_turnover,4,false)):''}
+      ${f.cap_liq_p90_turnover!==null&&f.cap_liq_p90_turnover!==undefined?metricRow(renderTooltip('P90 Turnover'),num(f.cap_liq_p90_turnover,4,false)):''}
+      ${f.cap_liq_selected_basket_volume_median!==null&&f.cap_liq_selected_basket_volume_median!==undefined?metricRow(renderTooltip('Basket Vol Median'),f.cap_liq_selected_basket_volume_median!==null?Number(f.cap_liq_selected_basket_volume_median).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_selected_basket_volume_p10!==null&&f.cap_liq_selected_basket_volume_p10!==undefined?metricRow(renderTooltip('Basket Vol P10'),f.cap_liq_selected_basket_volume_p10!==null?Number(f.cap_liq_selected_basket_volume_p10).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_selected_symbol_count_median!==null?metricRow('Symbol Count Med 中位符号数',f.cap_liq_selected_symbol_count_median!==null?Math.round(Number(f.cap_liq_selected_symbol_count_median)):'—'):''}
+      ${f.cap_liq_long_basket_volume_median!==null&&f.cap_liq_long_basket_volume_median!==undefined?metricRow('Long Basket Vol 多头篮子成交量',f.cap_liq_long_basket_volume_median!==null?Number(f.cap_liq_long_basket_volume_median).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_short_basket_volume_median!==null&&f.cap_liq_short_basket_volume_median!==undefined?metricRow('Short Basket Vol 空头篮子成交量',f.cap_liq_short_basket_volume_median!==null?Number(f.cap_liq_short_basket_volume_median).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_low_volume_symbol_share!==null&&f.cap_liq_low_volume_symbol_share!==undefined?metricRow(renderTooltip('Low-Vol Share'),pct(f.cap_liq_low_volume_symbol_share)):''}
+      ${f.cap_liq_selected_top_symbol_volume_share_median!==null?metricRow(renderTooltip('Top Symbol Vol Share'),pct(f.cap_liq_selected_top_symbol_volume_share_median)):''}
     </div>
 
-    <h3 id="hz-ls-title-${f.factor_id}">Monthly Long-Short Return 月度多空收益 (${esc(f.best_horizon)})</h3>
-    ${CHART_GUIDES.monthlyLS}
-    <div class="chart-container">
-      <div class="chart-title">Monthly LS Return · 月度多空收益</div>
-      <div id="hz-ls-chart-${f.factor_id}">
-      ${svgBarChart(f.monthly_ls,'long_short_return',600,120)}
-      </div>
+    <div style="margin-top:8px;font-size:11px;font-weight:600;color:var(--muted)">Capacity Estimates 容量估计 (USD)</div>
+    <div class="metric-grid">
+      ${f.cap_liq_capacity_at_1pct!==null&&f.cap_liq_capacity_at_1pct!==undefined?metricRow(renderTooltip('1% Participation'),f.cap_liq_capacity_at_1pct!==null?'$'+Number(f.cap_liq_capacity_at_1pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_capacity_at_5pct!==null&&f.cap_liq_capacity_at_5pct!==undefined?metricRow(renderTooltip('5% Participation'),f.cap_liq_capacity_at_5pct!==null?'$'+Number(f.cap_liq_capacity_at_5pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
+      ${f.cap_liq_capacity_at_10pct!==null&&f.cap_liq_capacity_at_10pct!==undefined?metricRow(renderTooltip('10% Participation'),f.cap_liq_capacity_at_10pct!==null?'$'+Number(f.cap_liq_capacity_at_10pct).toLocaleString('en',{maximumFractionDigits:0}):'—'):''}
     </div>
 
-    <h3 id="hz-cum-title-${f.factor_id}">Cumulative Long-Short Curve 累计多空曲线 (${esc(f.best_horizon)})</h3>
-    ${CHART_GUIDES.cumLS}
-    <div class="chart-container">
-      <div class="chart-title">Cumulative LS (blue) with drawdown (red) · 累计多空(蓝)及回撤(红)</div>
-      <div id="hz-cum-chart-${f.factor_id}">
-      ${svgCumCurve(f.cum_curve,600,160)}
-      </div>
+    <div style="margin-top:8px;font-size:11px;font-weight:600;color:var(--muted)">Participation Rates by Notional 参与率（按名义金额）</div>
+    <div class="metric-grid">
+      ${f.cap_liq_participation_100k_median!==null&&f.cap_liq_participation_100k_median!==undefined?metricRow(renderTooltip('$100K Median'),pct(f.cap_liq_participation_100k_median)):''}
+      ${f.cap_liq_participation_100k_p10!==null&&f.cap_liq_participation_100k_p10!==undefined?metricRow(renderTooltip('$100K P10'),pct(f.cap_liq_participation_100k_p10)):''}
+      ${f.cap_liq_participation_1M_median!==null&&f.cap_liq_participation_1M_median!==undefined?metricRow(renderTooltip('$1M Median'),pct(f.cap_liq_participation_1M_median)):''}
+      ${f.cap_liq_participation_1M_p10!==null&&f.cap_liq_participation_1M_p10!==undefined?metricRow(renderTooltip('$1M P10'),pct(f.cap_liq_participation_1M_p10)):''}
+      ${f.cap_liq_participation_10M_median!==null&&f.cap_liq_participation_10M_median!==undefined?metricRow(renderTooltip('$10M Median'),pct(f.cap_liq_participation_10M_median)):''}
+      ${f.cap_liq_participation_10M_p10!==null&&f.cap_liq_participation_10M_p10!==undefined?metricRow(renderTooltip('$10M P10'),pct(f.cap_liq_participation_10M_p10)):''}
     </div>
-    </details>
+
+    <div class="cap-caveat">
+      <strong>⚠ Selected-basket proxy warning · 选中篮子代理警告</strong><br>
+      <span style="color:var(--muted)">These are capacity/liquidity proxies based on selected-basket volume and turnover. They are not order-book simulation, slippage estimates, or real execution capacity.<br>
+      这些是基于选中篮子成交量与换手率的容量 / 流动性代理指标，不是订单簿模拟、滑点估计或真实可交易容量结论。</span>
+    </div>
+    <div style="margin-top:6px;font-size:10px;color:var(--muted)">
+      <strong>Interpretation 解读:</strong><br>
+      <span style="font-size:10px">Capacity estimates assume uniform daily volume distribution; real liquidity is clustered. Participation rates show how much of daily selected-basket volume a notional allocation would consume. Lower is better.<br>
+      容量估计假设每日成交量均匀分布；真实流动性是集中的。参与率显示特定名义金额占每日选中篮子成交量的比例，越低越好。</span>
+    </div>
+    `:`<div class="section-divider"></div><h3>Capacity / Liquidity Proxy Diagnostics / 容量 / 流动性代理诊断</h3><div style="margin:6px 0;font-size:11px;color:var(--muted)">N/A — No capacity/liquidity data available<br>无容量/流动性数据</div>`}
+
+    ${f.profile_class?`
+    <div class="section-divider"></div>
+    <h3>Unified Factor Profile / 统一因子画像</h3>
+    <div style="margin:6px 0;display:flex;gap:6px;flex-wrap:wrap">
+      ${profileClassBadge(f.profile_class)}
+      ${f.workflow_ready_status?workflowReadyBadge(f.workflow_ready_status):''}
+      ${f.evidence_status?evidenceStatusBadge(f.evidence_status):''}
+      ${f.profile_confidence?scConfBadge(f.profile_confidence):''}
+      ${f.recommended_research_action?researchActionBadge(f.recommended_research_action):''}
+    </div>
+    <div class="metric-grid">
+      ${f.profile_score!==null&&f.profile_score!==undefined?metricRow(renderTooltip('Profile Score'),'<strong style="font-size:16px">'+Number(f.profile_score).toFixed(1)+'</strong>/100'):''}
+      ${f.evidence_completeness_rate!==null?metricRow(renderTooltip('Evidence Completeness'),pct(f.evidence_completeness_rate)):''}
+      ${f.registry_or_data_status?metricRow('Registry Status 注册状态',esc(f.registry_or_data_status)):''}
+      ${f.cluster_member_role?metricRow(renderTooltip('Cluster Role'),esc(f.cluster_member_role)):''}
+      ${f.marginal_information_class?metricRow(renderTooltip('Marginal Info'),esc(f.marginal_information_class)):''}
+      ${f.source_artifact_count?metricRow('Source Artifacts 源工件数',f.source_artifact_count):''}
+    </div>
+
+    ${f.primary_strength_zh||f.primary_risk_zh?`
+    <div style="margin:6px 0">
+      ${f.primary_strength_zh?`<div class="bilingual"><div class="zh" style="font-size:11px"><strong style="color:var(--green)">Strength 优势:</strong> ${esc(f.primary_strength_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(f.primary_strength_en)}</div></div>`:''}
+      ${f.primary_risk_zh?`<div class="bilingual" style="margin-top:4px"><div class="zh" style="font-size:11px"><strong style="color:var(--amber)">Risk 风险:</strong> ${esc(f.primary_risk_zh)}</div><div class="en" style="font-size:10px;color:var(--muted)">${esc(f.primary_risk_en)}</div></div>`:''}
+    </div>`:''}
+
+    ${f.profile_summary_zh?`
+    <div class="bilingual" style="margin:6px 0;background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:8px">
+      <div class="zh" style="font-size:12px">${esc(f.profile_summary_zh)}</div>
+      <div class="en" style="font-size:10px;color:var(--muted)">${esc(f.profile_summary_en)}</div>
+    </div>`:''}
+
+    ${f.workflow_missing_or_stale_blocks?`
+    <div style="margin:6px 0;font-size:11px;color:var(--amber)">⚠ Missing/stale blocks 缺失/过时模块: ${esc(f.workflow_missing_or_stale_blocks)}</div>`:''}
+
+    <h4 style="margin:10px 0 4px;font-size:11px;color:var(--muted)">Component Scores 组件分数 (10 dimensions 维度)</h4>
+    ${(()=>{
+      const comps=[
+        ['standalone_quality','独立质量',f.comp_standalone_quality],
+        ['paper','纸面组合',f.comp_paper],
+        ['cost','费用',f.comp_cost],
+        ['regime','市场状态',f.comp_regime],
+        ['shape','形状',f.comp_shape],
+        ['stability','稳定性',f.comp_stability],
+        ['capacity','容量',f.comp_capacity],
+        ['redundancy','冗余',f.comp_redundancy],
+        ['marginal_info','边际信息',f.comp_marginal_info],
+        ['evidence_completeness','证据完整',f.comp_evidence_completeness],
+      ];
+      const hasAny=comps.some(c=>c[2]!==null&&c[2]!==undefined);
+      if(!hasAny)return '<div class="small">No component scores</div>';
+      return comps.map(([key,label,score])=>{
+        if(score===null||score===undefined)return '';
+        const w=Math.max(2,Math.min(100,Number(score)));
+        const c=scBarColor(score);
+        return `<div class="sc-bar-wrap"><span class="sc-bar-label" title="${esc(label)}">${esc(label)}</span><div class="sc-bar-track"><div class="sc-bar-fill ${c}" style="width:${w}%">${Number(score).toFixed(0)}</div></div></div>`;
+      }).join('')+
+      `<div class="sc-bar-wrap" style="margin-top:4px;border-top:1px solid var(--border);padding-top:4px"><span class="sc-bar-label" style="font-weight:700">Profile Score 画像分数</span><div class="sc-bar-track"><div class="sc-bar-fill ${scBarColor(f.profile_score)}" style="width:${Math.max(2,Math.min(100,Number(f.profile_score||0)))}%">${Number(f.profile_score||0).toFixed(1)}</div></div></div>`;
+    })()}
+
+    <h4 style="margin:10px 0 4px;font-size:11px;color:var(--muted)">Evidence Matrix 证据矩阵 (15 blocks 模块)</h4>
+    <div style="display:flex;gap:3px;flex-wrap:wrap;margin:4px 0">
+      ${evBlockBadge('Scorecard',f.ev_has_quality_scorecard)}
+      ${evBlockBadge('Diagnostics',f.ev_has_diagnostics_summary)}
+      ${evBlockBadge('Redundancy',f.ev_has_redundancy_summary)}
+      ${evBlockBadge('Cluster',f.ev_has_redundancy_cluster_members)}
+      ${evBlockBadge('Marginal',f.ev_has_marginal_information)}
+      ${evBlockBadge('Paper',f.ev_has_paper_summary)}
+      ${evBlockBadge('FeeSens',f.ev_has_fee_sensitivity)}
+      ${evBlockBadge('Regime',f.ev_has_regime_exposure)}
+      ${evBlockBadge('QShape',f.ev_has_quantile_shape)}
+      ${evBlockBadge('RollStab',f.ev_has_rolling_stability)}
+      ${evBlockBadge('Decile',f.ev_has_decile_shape)}
+      ${evBlockBadge('CapLiq',f.ev_has_capacity_liquidity)}
+      ${evBlockBadge('Values',f.ev_has_factor_values)}
+      ${evBlockBadge('LevelEval',f.ev_has_factor_level_evaluation)}
+      ${evBlockBadge('Profile',f.ev_has_unified_profile)}
+    </div>
+    ${(()=>{
+      const evBlocks=[f.ev_has_quality_scorecard,f.ev_has_diagnostics_summary,f.ev_has_redundancy_summary,f.ev_has_redundancy_cluster_members,f.ev_has_marginal_information,f.ev_has_paper_summary,f.ev_has_fee_sensitivity,f.ev_has_regime_exposure,f.ev_has_quantile_shape,f.ev_has_rolling_stability,f.ev_has_decile_shape,f.ev_has_capacity_liquidity,f.ev_has_factor_values,f.ev_has_factor_level_evaluation,f.ev_has_unified_profile];
+      const present=evBlocks.filter(Boolean).length;
+      const total=evBlocks.length;
+      const rate=total?Math.round(present/total*100):0;
+      const color=rate>=80?'var(--green)':rate>=60?'var(--amber)':'var(--red)';
+      return `<div style="margin:4px 0;font-size:10px;color:var(--muted)">Evidence completeness 证据完整率: <strong style="color:${color}">${present}/${total} (${rate}%)</strong>${f.evidence_completeness_rate!==null?' · Profile rate 画像完整率: '+pct(f.evidence_completeness_rate):''}</div>`;
+    })()}
+
+    ${f.source_artifacts?`
+    <h4 style="margin:10px 0 4px;font-size:11px;color:var(--muted)">Source Lineage 源工件 (${f.source_artifact_count||0})</h4>
+    <div style="display:flex;gap:3px;flex-wrap:wrap;font-size:9px">
+      ${f.source_artifacts.split('|').map(a=>`<span class="bucket-badge">${esc(a)}</span>`).join(' ')}
+    </div>`:''}
+
+    <div class="up-caveat">
+      <strong>⚠ Unified profiles are research diagnostics, not trading signals / 统一画像是研究诊断，非交易信号</strong><br>
+      <span style="color:var(--muted)">Profile scores summarize evidence completeness and cross-dimensional quality. They do not select signals, construct portfolios, or recommend trading.<br>
+      画像分数汇总证据完整性与跨维度质量。它不选择信号、不构建组合，也不构成交易建议。不是交易策略。</span>
+    </div>
+    `:`<div class="section-divider"></div><h3>Unified Factor Profile / 统一因子画像</h3><div style="margin:6px 0;font-size:11px;color:var(--muted)">N/A — No unified profile data available<br>无统一画像数据</div>`}
   `;
 }
 
