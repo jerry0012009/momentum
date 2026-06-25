@@ -3154,6 +3154,7 @@ function renderDetail(fid){
           '</div>';
       })()}
     </details>
+    `; })()}
 
     ${f.paper_viability_class?`
     <div class="section-divider"></div>
