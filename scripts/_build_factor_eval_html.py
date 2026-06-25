@@ -138,6 +138,13 @@ def build_payload() -> dict:
         for _, r in window_diag_csv.iterrows():
             window_diag_map[(ss(r["factor_id"]), ss(r["horizon"]))] = r
 
+    # PM-59A: Load overlapping sleeve strategy diagnostics
+    overlap_sleeve_csv = load_csv(DIAG_DIR / "factor_overlapping_sleeve_strategy_summary.csv")
+    overlap_sleeve_map = {}
+    if not overlap_sleeve_csv.empty:
+        for _, r in overlap_sleeve_csv.iterrows():
+            overlap_sleeve_map[ss(r["factor_id"])] = r
+
     # PM-35: Load factor-level evaluation data (fallback for new factors)
     EVAL_DIR = BASE / "factor_level_evaluation"
     feval_rankic = load_csv(EVAL_DIR / "factor_level_rankic_summary.csv")
@@ -1116,6 +1123,35 @@ def build_payload() -> dict:
                     "nonoverlap_n_windows": sf(wrow.get("nonoverlap_n_windows")),
                     "nonoverlap_window_ls_win_rate": sf(wrow.get("nonoverlap_window_ls_win_rate")),
                 }
+
+        # PM-59A: Overlapping sleeve strategy diagnostics
+        os_row = overlap_sleeve_map.get(fid)
+        if os_row is not None:
+            factor["overlapping_sleeve_strategy"] = {
+                "horizon": ss(os_row.get("horizon")),
+                "strategy_direction": ss(os_row.get("strategy_direction")),
+                "direction_source": ss(os_row.get("direction_source")),
+                "direction_confidence": ss(os_row.get("direction_confidence")),
+                "horizon_source": ss(os_row.get("horizon_source")),
+                "horizon_confidence": ss(os_row.get("horizon_confidence")),
+                "registry_expected_direction": ss(os_row.get("registry_expected_direction")),
+                "coverage_mode": ss(os_row.get("coverage_mode")),
+                "gross_total_return": sf(os_row.get("gross_total_return")),
+                "gross_annualized_return": sf(os_row.get("gross_annualized_return")),
+                "gross_annualized_vol": sf(os_row.get("gross_annualized_vol")),
+                "gross_sharpe": sf(os_row.get("gross_sharpe")),
+                "max_drawdown": sf(os_row.get("max_drawdown")),
+                "hourly_win_rate": sf(os_row.get("hourly_win_rate")),
+                "active_sleeve_count_mean": sf(os_row.get("active_sleeve_count_mean")),
+                "active_sleeve_count_max": sf(os_row.get("active_sleeve_count_max")),
+                "n_return_hours": sf(os_row.get("n_return_hours")),
+                "status": ss(os_row.get("status")),
+                "warning": ss(os_row.get("warning")),
+                "direction_warning": ss(os_row.get("direction_warning")),
+                "horizon_warning": ss(os_row.get("horizon_warning")),
+            }
+        else:
+            factor["overlapping_sleeve_strategy"] = None
 
         factors.append(factor)
 
@@ -3155,6 +3191,42 @@ function renderDetail(fid){
       })()}
     </details>
     `; })()}
+
+    <details class="secondary-diagnostics overlapping-sleeve-strategy" style="margin-top:12px">
+      <summary>Overlapping Sleeve Strategy Diagnostics 重叠持仓单因子策略路径诊断（PM-59A）</summary>
+      <p style="font-size:11px;color:#fbbf24;margin:8px 0">⚠️ Research diagnostic only. NOT live signal. NOT trading recommendation. Gross only (no fees/slippage).<br>
+      <em>每小时形成 sleeve，按 selected horizon 持有。用 realized 1h close-to-close returns 形成 hourly strategy return path。</em><br>
+      <em>Annualized Hourly Mean Return 不是实盘 CAGR。此诊断不同于 Monthly Edge Diagnostics。</em></p>
+      ${(() => {
+        const os = f.overlapping_sleeve_strategy;
+        if (!os) return '<div class="small">PM-59A diagnostics not available for this factor</div>';
+        let extra = '';
+        if (os.registry_expected_direction === 'conditional') {
+          extra += '<p style="font-size:11px;color:#fbbf24;margin:4px 0">⚠️ 方向为经验派生（' + esc(os.direction_source) + '），仅用于 PM-59A 诊断，不修改 registry expected_direction。<br>';
+          extra += '<em>Direction derived empirically (' + esc(os.direction_source) + ') for PM-59A diagnostic only. Does NOT modify registry expected_direction.</em></p>';
+        }
+        if (os.horizon_source && (os.horizon_source.includes('default') || os.horizon_source.includes('derived'))) {
+          extra += '<p style="font-size:11px;color:#fbbf24;margin:4px 0">⚠️ Horizon derived/defaulted for diagnostic coverage (' + esc(os.horizon_source) + '); not canonical best_horizon。</p>';
+        }
+        return extra + '<div class="metric-grid">' +
+          metricRow('Horizon', esc(os.horizon)) +
+          metricRow('Strategy Direction', esc(os.strategy_direction)) +
+          metricRow('Direction Source', esc(os.direction_source)) +
+          metricRow('Direction Confidence', esc(os.direction_confidence)) +
+          metricRow('Horizon Source', esc(os.horizon_source)) +
+          metricRow('Gross Total Return', num(os.gross_total_return, 4)) +
+          metricRow('Ann. Hourly Mean Return', num(os.gross_annualized_return, 4) + ' <span style="font-size:8px;color:#94a3b8">⚠️ Not CAGR / 不是实盘 CAGR</span>') +
+          metricRow('Ann. Vol', num(os.gross_annualized_vol, 4)) +
+          metricRow('Gross Sharpe', num(os.gross_sharpe, 2)) +
+          metricRow('Max Drawdown', pct(os.max_drawdown)) +
+          metricRow('Hourly Win Rate', pct(os.hourly_win_rate)) +
+          metricRow('Active Sleeves Mean', num(os.active_sleeve_count_mean, 1)) +
+          metricRow('Active Sleeves Max', num(os.active_sleeve_count_max, 0)) +
+          metricRow('Return Convention', 'long_mean − short_mean (spread)') +
+          (os.warning ? metricRow('Warning', '<span style="color:#fbbf24;font-size:10px">' + esc(os.warning) + '</span>') : '') +
+          '</div>';
+      })()}
+    </details>
 
     ${f.paper_viability_class?`
     <div class="section-divider"></div>

@@ -1,236 +1,145 @@
-# PM-59A: Overlapping Sleeve Strategy Diagnostics — Audit
-
-**Verdict:** `PM59A_OVERLAPPING_SLEEVE_STRATEGY_DIAGNOSTICS_PASS_WITH_LIMITATIONS`
-
-**Date:** 2026-06-25
-
----
+# PM-59A: Overlapping Sleeve Strategy Diagnostics
 
 ## 1. Problem Statement
 
-Monthly edge diagnostics (per-snapshot RankIC, long–short spread, hit-rate) are computed on
-independent monthly cross-sections. They do **not** represent the return path of a real
-strategy because:
+Monthly edge diagnostics (PM-58A) and period-level window diagnostics (PM-58C) cannot answer:
+- What is the real hourly strategy return path if best_horizon = 72h?
+- What is the real annualized vol, Sharpe, max drawdown at hourly frequency?
+- How do these differ from monthly edge estimates?
 
-- Each month is treated as an isolated cross-section; there is no carry-over of positions
-  from one month to the next.
-- The diagnostics assume a frictionless instantaneous rebalance at month boundaries with
-  no overlap, whereas a real sleeve-based strategy holds positions that span rebalance
-  dates.
-- Compounding, drawdowns, and persistence of alpha across months are invisible in the
-  snapshot-level metrics.
+PM-59A adds a **single-factor overlapping sleeve strategy diagnostic** that computes
+realized hourly returns using overlapping sleeves held for each factor's best horizon.
 
-**PM-59A** introduces an overlapping-sleeve back-test that constructs a realistic
-multi-sleeve portfolio path, producing strategy-level return series, Sharpe, drawdown,
-and turnover metrics that reflect how the factors would actually be traded.
+## 2. Methodology: Overlapping Sleeve Portfolio
 
----
+For each factor with best_horizon = h:
 
-## 2. Overlapping Sleeve Methodology
-
-### Sleeve Formation
-
-At each **monthly rebalance date** (first UTC-available bar of each calendar month):
-
-1. The universe for that month is loaded from `universe_snapshots.parquet` (see §5).
-2. Each factor is cross-sectionally scored over the universe.
-3. Symbols are ranked by factor score; the **top 20 %** (by count) form the **long sleeve**
-   and the **bottom 20 %** form the **short sleeve**.
-4. Within each sleeve, positions are **equal-weighted** (1/N long, 1/N short).
-
-### Sleeve Holding & Overlap
-
-- A sleeve opened at rebalance date *t* is **held for exactly one month** (until the next
-  rebalance date *t+1*).
-- At any calendar date, multiple sleeves may be active simultaneously because the previous
-  month's sleeve has not yet expired when the new month's sleeve is opened.
-- The **aggregate portfolio return** on any given day is the **equal-weighted average of all
-  active sleeves' returns** on that day.
-
-### Aggregation
-
-- Daily sleeve returns are compounded to produce the strategy equity curve.
-- Strategy-level statistics (annualized return, Sharpe ratio, max drawdown, monthly
-  turnover) are derived from this compounded series.
-
----
+1. **Every hour** `t`: cross-sectional rank of factor values within dynamic universe
+2. **Direction handling:**
+   - Registry positive/negative → direct alignment
+   - Registry conditional → empirical direction from RankIC (primary) or LS spread (fallback)
+     - `direction_source = empirical_rankic_at_selected_horizon` or `empirical_ls_at_selected_horizon`
+     - If both missing: default positive with `direction_confidence = low`
+     - This does NOT modify registry expected_direction
+3. **Basket formation:** long top 20%, short bottom 20%, equal-weight per leg
+4. **Sleeve holds h hours**, contributing realized 1h returns each hour
+5. **Strategy hourly return** at τ = mean of all active sleeves' returns at τ
+6. **NOT** using h-hour forward label as strategy return
+7. **NOT** using monthly edge as strategy path
 
 ## 3. Return Timestamp Convention
 
-Returns follow a **forward-looking, start-timestamp-labeled** convention:
-
 ```
-realized_1h_return[return_start_ts] = close[return_start_ts + 1h] / close[return_start_ts] - 1
+realized_1h_return[return_start_ts, symbol] = close[return_start_ts + 1h] / close[return_start_ts] - 1
 ```
 
-- The timestamp key is the **observation time** (when the position would be entered),
-  **not** the close time.
-- This ensures causal alignment: a decision made at `return_start_ts` uses only information
-  available up to that point; the return is realized over the subsequent interval.
-- For daily sleeves, the same convention extends: `close[day+1] / close[day] - 1`, labeled
-  by the entry day.
-
----
+- `return_start_ts = entry_ts + (holding_offset - 1) hours`
+- `holding_offset` ranges from 1 to h
+- First hour's return uses `return_start_ts = entry_ts`
 
 ## 4. Spread Convention
 
-The strategy-level spread is:
-
 ```
-long_mean_minus_short_mean_spread = mean(return_long_sleeve) − mean(return_short_sleeve)
+sleeve_hourly_return = mean(long_leg_returns) - mean(short_leg_returns)
 ```
 
-This is the **cross-sleeve mean difference**, not a per-symbol mean spread. Concretely:
-
-- Compute the equal-weighted return of all long symbols → `r_long`
-- Compute the equal-weighted return of all short symbols → `r_short`
-- Spread = `r_long − r_short` (positive when the factor is working as expected)
-
-**Important:** This is **not** `mean(symbol_level_spread)` where each symbol's spread would
-be computed individually. The portfolio-level spread respects actual position weights.
-
----
+NOT symbol-level contribution mean (which would halve the spread).
 
 ## 5. Universe Source
 
-The tradable universe for each month is sourced from:
+`universe_snapshots.parquet` (monthly volume top 50 eligible symbols).
+Factor values are joined with universe snapshots by month to filter eligible symbols.
+Consistent with `evaluate_factors.py` and `build_factor_values.py`.
 
-```
-universe_snapshots.parquet
-```
+## 6. Factor Discovery
 
-- **Filter:** Monthly volume-ranked, **top 50** symbols by 30-day trailing USD volume.
-- **Cadence:** One snapshot per calendar month (first available bar).
-- **Provenance:** Generated by the upstream data pipeline; PM-59A is a read-only consumer.
+**Source:** `factor_library_state.json` → `computed_factor_ids` (currently 84 factors).
 
-No hardcoded symbol lists are used. If a symbol drops out of the top-50 volume rank, it
-is naturally excluded from that month's sleeves.
+No hardcoded factor list. New factors registered through intake automatically enter PM-59A.
 
----
+**Eligibility filter:** only requires `factor_values.parquet` to exist and be non-empty.
 
-## 6. Factor Discovery Source
+**Direction derivation:**
+- 50 factors: registry positive/negative → direct
+- 29 factors: registry conditional → empirical RankIC/LS direction
+- 5 factors: missing best_horizon → derived from abs RankIC/LS
 
-Factors are discovered dynamically at runtime from three sources:
-
-| Source | Role |
-|---|---|
-| `factor_library_state.json` | Canonical registry of all factor IDs, metadata, expected directions |
-| `coverage_summary` | Per-factor data-availability stats (min/max dates, symbol count, NaN rate) |
-| `factor_library/registry.py` | Python-side registry providing formula callables and configuration |
-
-**No hardcoded factor list** is maintained within PM-59A. Any factor that (a) appears in the
-state file, (b) has sufficient coverage, and (c) is registered in `registry.py` is
-automatically eligible for sleeve diagnostics.
-
----
+**Horizon derivation:**
+- 79 factors: from `factor_level_coverage_summary.csv` (best_adj_ic_horizon)
+- 5 factors: derived from max abs RankIC across horizons
 
 ## 7. Workflow Integration
 
-PM-59A is integrated into `run_factor_library_refresh.py` as a discrete pipeline stage:
+**Stage:** `overlapping-sleeve-strategy` in `run_factor_library_refresh.py`
+**Position:** after `diagnostics`, before `metadata`
+**Marked as:** EXPENSIVE, OPTIONAL-BUT-STANDARD
 
-```
-┌─────────────────────────────────┐
-│  1. Factor value computation    │
-│  2. Per-snapshot diagnostics    │  ← existing (RankIC, LS spread, hit-rate)
-│  3. **PM-59A sleeve backtest**  │  ← NEW stage
-│  4. Metadata / manifest write   │
-│  5. Scorecard generation        │
-└─────────────────────────────────┘
-```
-
-- Runs **after** per-snapshot diagnostics (needs factor scores already computed).
-- Runs **before** metadata finalization (so manifest can include sleeve stats).
-- Failure in PM-59A does **not** block the rest of the pipeline; it logs warnings and
-  continues.
-
----
+Supports parameter passthrough:
+- `--factor-ids` (subset mode)
+- `--only-missing` (incremental)
+- `--max-factors` (debug)
+- `--overwrite` (recompute)
 
 ## 8. Output Files
 
-| File | Format | Contents |
-|---|---|---|
-| `sleeve_strategy_summary.csv` | CSV | One row per factor: Sharpe, CAGR, max DD, turnover, spread, hit-rate |
-| `sleeve_strategy_summary.json` | JSON | Same data, machine-readable, includes parameter hash |
-| `sleeve_strategy_manifest.json` | JSON | Run metadata: timestamp, universe hash, factor list, config params |
-| `sleeve_{factor_id}.parquet` | Parquet | Per-factor daily return series, equity curve, position log |
+```
+research/factor_runs/crypto_top50_factor_library/factor_diagnostics/
+├── factor_overlapping_sleeve_strategy_summary.csv
+├── factor_overlapping_sleeve_strategy_summary.json
+├── factor_overlapping_sleeve_strategy_manifest.json
+├── overlapping_sleeve_strategy_returns/
+│   └── <factor_id>__<horizon>.parquet
+├── overlapping_sleeve_strategy_qa_report.csv
+└── overlapping_sleeve_strategy_qa_report.json
+```
 
-All outputs land under the factor library output directory (configured in
-`run_factor_library_refresh.py`).
-
----
+Per-factor parquet columns: `timestamp`, `strategy_hourly_return`, `active_sleeve_count`,
+`cumulative_gross_return`, `drawdown`.
 
 ## 9. Resource Controls
 
-| Flag | Effect |
-|---|---|
-| `--factor-ids F1 F2 …` | Run PM-59A only for specified factor IDs |
-| `--only-missing` | Skip factors that already have a sleeve parquet on disk |
-| `--max-factors N` | Cap the number of factors processed in this run |
-| `--overwrite` | Re-compute and overwrite existing sleeve parquets |
-
-**Streaming architecture:** Factors are processed one at a time (factor-by-factor). Each
-factor's sleeve backtest is fully streamed—daily returns are written to the parquet
-incrementally so peak memory stays bounded regardless of the number of trading days.
-
----
+- Factor-by-factor streaming (single factor ~5-30s)
+- Pre-loads universe + returns panel once (~80MB)
+- Per-factor: loads factor_values (~240MB), merges, computes, writes, frees
+- Total runtime for 84 factors: ~20 minutes
+- Supports `--only-missing` for incremental runs
 
 ## 10. QA Results
 
-> **PLACEHOLDER** — To be populated after the first full pipeline run with PM-59A enabled.
-
-| Metric | Expected | Actual | Status |
-|---|---|---|---|
-| Sleeve parquet row count ≈ trading days | TBD | — | ⬜ |
-| Sharpe sign matches expected_direction | TBD | — | ⬜ |
-| Max drawdown < 100 % | TBD | — | ⬜ |
-| No NaN in equity curve after warmup | TBD | — | ⬜ |
-| Turnover bounded [0, 2] | TBD | — | ⬜ |
-| Summary CSV row count = factor count | TBD | — | ⬜ |
-
----
+23/23 checks PASS:
+- Coverage: 84/84 computed factors have rows
+- Conditional direction: 29 factors use empirical direction (not registry)
+- Default horizon: 5 factors use derived horizon
+- No duplicates, no prohibited language, no hardcoded factor list
+- Active sleeve count bounds verified per horizon
+- Return alignment spot check: PASS
+- All metrics in valid ranges
 
 ## 11. No Unauthorized Changes
 
-PM-59A is a **read-only diagnostic overlay**. It does **not** modify:
-
-- ❌ Factor formulas or computation logic
-- ❌ `expected_direction` assignments
-- ❌ `factor_values` parquet files (reads only)
-- ❌ `best_horizon` selection logic
-- ❌ Scorecard metrics (RankIC, LS spread, hit-rate)
-- ❌ Robust diagnostics (bootstrap, sub-period, decay)
-- ❌ Live / execution code paths
-
-PM-59A **only writes** to its own dedicated output files (§8). It is additive; disabling
-or removing it leaves all other pipeline outputs unchanged.
-
----
+PM-59A does NOT modify:
+- Factor formulas
+- Registry expected_direction
+- Factor values computation
+- Best horizon canonical selection
+- Scorecard / quality score
+- RankIC / LS / robust RankIC / robust LS values
+- `src/momentum/strategies/`
+- Broker / execution / exchange API
+- Live signal / portfolio allocation
 
 ## 12. Remaining Limitations
 
-| # | Limitation | Impact | Mitigation Path |
-|---|---|---|---|
-| L1 | **Fixed 20 % quantile** for long/short sleeves | May not be optimal; some factors work better at top/bottom decile | Parameterize quantile as config |
-| L2 | **Equal-weight** within sleeves | Ignores signal strength; concentrated signals diluted | Add score-weighted sleeves |
-| L3 | **No transaction fees or slippage** | Overstates net returns; turnover cost invisible | Add configurable fee model |
-| L4 | **Warmup period** excluded from stats but not from equity curve | Early curve may look noisy | Trim equity curve start explicitly |
-| L5 | **Arithmetic annualization** (`(1+r_daily)^252-1`) | Slight bias vs. log-return compounding | Switch to log-compounded CAGR |
-| L6 | **Conditional direction skipped** | Factors with ambiguous expected_direction are excluded entirely | Implement sign-flip heuristic |
-| L7 | **No HTML page integration** | Sleeve results not rendered in the factor library HTML viewer | Add HTML section in future PR |
-
----
+1. **Fixed quantile:** top/bottom 20% (10 symbols each in 50-symbol universe)
+2. **Equal-weight baskets:** no volatility weighting or risk parity
+3. **Gross only:** no fees, slippage, or transaction costs
+4. **Warmup period:** first h hours have fewer active sleeves (expected behavior)
+5. **Arithmetic annualization:** `mean_hourly × 8760`, not geometric CAGR
+6. **Conditional direction:** empirical in-sample, not prior alpha direction
+7. **Default horizon rows:** diagnostic fallback, not canonical best_horizon
+8. **No PM-59B:** non-overlap offset ensemble not yet implemented
+9. **No HTML deep integration:** basic metric grid only, no hourly return charts
 
 ## Verdict
 
-**PM59A_OVERLAPPING_SLEEVE_STRATEGY_DIAGNOSTICS_PASS_WITH_LIMITATIONS**
-
-The overlapping-sleeve methodology is correctly implemented: sleeves are formed from
-monthly universe snapshots, held for one month with proper overlap, and aggregated into a
-realistic strategy return series. The return timestamp and spread conventions are
-consistent with the rest of the factor library. Factor discovery is fully dynamic with no
-hardcoded lists. The stage is properly positioned in the pipeline and its outputs are
-cleanly isolated.
-
-The limitations above (L1–L7) are acknowledged and tracked. None represent correctness
-issues; they are scope constraints and modeling simplifications that will be addressed in
-subsequent iterations.
+`PM59A_OVERLAPPING_SLEEVE_STRATEGY_DIAGNOSTICS_PASS_WITH_LIMITATIONS`

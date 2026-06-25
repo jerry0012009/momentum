@@ -143,6 +143,19 @@ def _fail(check_id: str, check_name: str, evidence: str, notes: str = "") -> dic
     }
 
 
+def _c(
+    check_id: str,
+    check_name: str,
+    status: str,
+    evidence: str = "",
+    notes: str = "",
+) -> dict:
+    """Generic check builder — dispatches to _pass or _fail based on status."""
+    if status == "PASS":
+        return _pass(check_id, check_name, evidence, notes)
+    return _fail(check_id, check_name, evidence, notes)
+
+
 # ── Checks ───────────────────────────────────────────────────────────────────
 
 def check_file_exists_and_size() -> tuple[dict | None, str | None]:
@@ -1489,6 +1502,86 @@ def check_pm58c_ls_metric_semantics(html_text: str) -> list[dict]:
     return results
 
 
+def check_pm59a_overlapping_sleeve_strategy(html: str) -> list[dict]:
+    """PM-59A: Check overlapping sleeve strategy diagnostics section."""
+    checks = []
+    # English title
+    checks.append(_c(
+        "pm59a_section_title_en",
+        "PM-59A: Overlapping Sleeve Strategy Diagnostics section exists",
+        "PASS" if "Overlapping Sleeve Strategy Diagnostics" in html else "FAIL",
+        evidence="found" if "Overlapping Sleeve Strategy Diagnostics" in html else "not found",
+    ))
+    # Chinese title
+    checks.append(_c(
+        "pm59a_section_title_zh",
+        "PM-59A: 重叠持仓单因子策略路径诊断 section exists",
+        "PASS" if "重叠持仓单因子策略路径诊断" in html else "FAIL",
+        evidence="found" if "重叠持仓单因子策略路径诊断" in html else "not found",
+    ))
+    # Research diagnostic only
+    checks.append(_c(
+        "pm59a_research_diagnostic",
+        "PM-59A: 'research diagnostic only' disclaimer present",
+        "PASS" if "Research diagnostic only" in html or "research diagnostic only" in html.lower() else "FAIL",
+    ))
+    # Not live signal
+    checks.append(_c(
+        "pm59a_not_live",
+        "PM-59A: 'NOT live signal' disclaimer present",
+        "PASS" if "NOT live signal" in html else "FAIL",
+    ))
+    # Not trading recommendation
+    checks.append(_c(
+        "pm59a_not_trading",
+        "PM-59A: 'NOT trading recommendation' disclaimer present",
+        "PASS" if "NOT trading recommendation" in html else "FAIL",
+    ))
+    # Gross only
+    checks.append(_c(
+        "pm59a_gross_only",
+        "PM-59A: 'Gross only' disclaimer present",
+        "PASS" if "Gross only" in html or "gross only" in html.lower() else "FAIL",
+    ))
+    # Annualized Hourly Mean Return
+    checks.append(_c(
+        "pm59a_ann_hourly",
+        "PM-59A: 'Ann. Hourly Mean Return' metric present",
+        "PASS" if "Hourly Mean Return" in html else "FAIL",
+    ))
+    # Not CAGR
+    checks.append(_c(
+        "pm59a_not_cagr",
+        "PM-59A: 'Not CAGR' disclaimer present",
+        "PASS" if "Not CAGR" in html or "不是实盘 CAGR" in html else "FAIL",
+    ))
+    # Strategy Direction
+    checks.append(_c(
+        "pm59a_strategy_direction",
+        "PM-59A: 'Strategy Direction' field present",
+        "PASS" if "Strategy Direction" in html else "FAIL",
+    ))
+    # Direction Source
+    checks.append(_c(
+        "pm59a_direction_source",
+        "PM-59A: 'Direction Source' field present",
+        "PASS" if "Direction Source" in html else "FAIL",
+    ))
+    # active_sleeve_count
+    checks.append(_c(
+        "pm59a_sleeve_count",
+        "PM-59A: 'Active Sleeve' count present",
+        "PASS" if "Active Sleeve" in html else "FAIL",
+    ))
+    # PM-59A in factorPayload
+    checks.append(_c(
+        "pm59a_in_payload",
+        "PM-59A: 'overlapping_sleeve_strategy' in factorPayload JSON",
+        "PASS" if "overlapping_sleeve_strategy" in html else "FAIL",
+    ))
+    return checks
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Check factor-evaluation.html completeness."
@@ -1547,6 +1640,9 @@ def main() -> int:
 
     # 13. PM-58C LS metric semantics (edge vs portfolio)
     all_checks.extend(check_pm58c_ls_metric_semantics(html_text))
+
+    # 14. PM-59A Overlapping Sleeve Strategy Diagnostics
+    all_checks.extend(check_pm59a_overlapping_sleeve_strategy(html_text))
 
     # Write outputs
     _write_reports(all_checks)
