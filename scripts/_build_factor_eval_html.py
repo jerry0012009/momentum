@@ -3118,28 +3118,44 @@ function renderDetail(fid){
         if (!allAvail) return '';
         let rows = '';
         horizons.forEach(h => {
-          <details class="secondary-diagnostics period-window-diagnostics" style="margin-top:12px">
-            <summary>Period-Level Window Diagnostics 月度窗口诊断（补充 / secondary）</summary>
-            <p style="font-size:11px;color:#fbbf24;margin:8px 0">⚠️ 基于月度 period LS records 派生，不是真正逐 K 线投资窗口数据，也不是独立交易胜率。<br>
-            <em>Derived from monthly period LS records. Not true per-bar investment-window data. Not independent trade win rate.</em></p>
-            ${(() => {
-              const wd = f.window_diagnostics && f.window_diagnostics[f.best_horizon];
-              if (!wd) return '<div class="small">Window diagnostics unavailable</div>';
-              const overlapLabel = {'LOW_OVERLAP':'🟢 Low','MODERATE_OVERLAP':'🟡 Moderate','HIGH_OVERLAP':'🟠 High','VERY_HIGH_OVERLAP':'🔴 Very High'}[wd.overlap_warning] || wd.overlap_warning;
-              const sharpeCaution = wd.window_ls_sharpe !== null && wd.window_ls_sharpe !== undefined && Math.abs(Number(wd.window_ls_sharpe)) > 5;
-              return '<div class="metric-grid">' +
-                metricRow('Window LS Mean', pct(wd.window_ls_mean)) +
-                metricRow('Window LS Win Rate', pct(wd.window_ls_win_rate)) +
-                metricRow('Window LS Sharpe', num(wd.window_ls_sharpe,2) + (sharpeCaution ? ' <span class="ret-robust-badge RETURN_NOT_SIGNIFICANT" style="font-size:8px">DESCRIPTIVE ONLY</span>' : '') + ' <span style="font-size:8px;color:#94a3b8">⚠️ Not portfolio Sharpe / 不是组合 Sharpe</span>') +
-                metricRow('Window LS Ann Vol', pct(wd.window_ls_ann_vol) + ' <span style="font-size:8px;color:#94a3b8">⚠️ Descriptive only / 仅描述统计</span>') +
-                metricRow('n_windows', num(wd.n_windows,0)) +
-                metricRow('Overlap Level', overlapLabel) +
-                (wd.nonoverlap_available ? metricRow('Non-overlap Win Rate', pct(wd.nonoverlap_window_ls_win_rate)) + metricRow('Non-overlap n_windows', num(wd.nonoverlap_n_windows,0)) : '') +
-                '</div>';
-            })()}
-          </details>
+          const d = rr.ls[h];
+          const rc = d.return_robust_class || '';
+          const rb = rc ? '<span class="ret-robust-badge '+rc+'">'+rc.replace(/_/g,' ')+'</span>' : '';
+          const ciL = d.bootstrap_ci_low !== null && d.bootstrap_ci_low !== undefined ? Number(d.bootstrap_ci_low).toFixed(5) : '—';
+          const ciH2 = d.bootstrap_ci_high !== null && d.bootstrap_ci_high !== undefined ? Number(d.bootstrap_ci_high).toFixed(5) : '—';
+          const sc = d.bootstrap_sign_consistency;
+          const scStr = sc !== null && sc !== undefined ? (Number(sc)*100).toFixed(0)+'%' : '—';
+          const inf = d.tstat_inflation_ratio;
+          const infStr = inf !== null && inf !== undefined ? '×'+Number(inf).toFixed(1) : '—';
+          const ov = d.overlap_warning || '';
+          const ovB = ov ? '<span class="overlap-badge '+ov+'">'+ov.replace(/_/g,' ')+'</span>' : '—';
+          rows += '<tr><td>'+esc(h)+'</td><td>'+(d.return_mean!=null?(Number(d.return_mean)>=0?'+':'')+Number(d.return_mean*100).toFixed(4)+'%':'—')+'</td><td>'+num(d.naive_t_stat,2)+'</td><td>'+num(d.robust_t_stat,2)+'</td><td>'+rb+'</td><td>'+ciL+' – '+ciH2+'</td><td>'+scStr+'</td><td>'+infStr+'</td><td>'+ovB+'</td></tr>';
+        });
+        return '<div style="margin-top:8px"><table class="robust-table"><thead><tr><th>Horizon</th><th>LS Mean</th><th>Naive t</th><th>Robust t</th><th>Class</th><th>Bootstrap 95% CI</th><th>Sign %</th><th>Inflation</th><th>Overlap</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+      })()}
 
-          ${f.paper_viability_class?`
+    <details class="secondary-diagnostics period-window-diagnostics" style="margin-top:12px">
+      <summary>Period-Level Window Diagnostics 月度窗口诊断（补充 / secondary）</summary>
+      <p style="font-size:11px;color:#fbbf24;margin:8px 0">⚠️ 基于月度 period LS records 派生，不是真正逐 K 线投资窗口数据，也不是独立交易胜率。<br>
+      <em>Derived from monthly period LS records. Not true per-bar investment-window data. Not independent trade win rate.</em></p>
+      ${(() => {
+        const wd = f.window_diagnostics && f.window_diagnostics[f.best_horizon];
+        if (!wd) return '<div class="small">Window diagnostics unavailable</div>';
+        const overlapLabel = {'LOW_OVERLAP':'🟢 Low','MODERATE_OVERLAP':'🟡 Moderate','HIGH_OVERLAP':'🟠 High','VERY_HIGH_OVERLAP':'🔴 Very High'}[wd.overlap_warning] || wd.overlap_warning;
+        const sharpeCaution = wd.window_ls_sharpe !== null && wd.window_ls_sharpe !== undefined && Math.abs(Number(wd.window_ls_sharpe)) > 5;
+        return '<div class="metric-grid">' +
+          metricRow('Window LS Mean', pct(wd.window_ls_mean)) +
+          metricRow('Window LS Win Rate', pct(wd.window_ls_win_rate)) +
+          metricRow('Window LS Sharpe', num(wd.window_ls_sharpe,2) + (sharpeCaution ? ' <span class="ret-robust-badge RETURN_NOT_SIGNIFICANT" style="font-size:8px">DESCRIPTIVE ONLY</span>' : '') + ' <span style="font-size:8px;color:#94a3b8">⚠️ Not portfolio Sharpe / 不是组合 Sharpe</span>') +
+          metricRow('Window LS Ann Vol', pct(wd.window_ls_ann_vol) + ' <span style="font-size:8px;color:#94a3b8">⚠️ Descriptive only / 仅描述统计</span>') +
+          metricRow('n_windows', num(wd.n_windows,0)) +
+          metricRow('Overlap Level', overlapLabel) +
+          (wd.nonoverlap_available ? metricRow('Non-overlap Win Rate', pct(wd.nonoverlap_window_ls_win_rate)) + metricRow('Non-overlap n_windows', num(wd.nonoverlap_n_windows,0)) : '') +
+          '</div>';
+      })()}
+    </details>
+
+    ${f.paper_viability_class?`
     <div class="section-divider"></div>
     <details class="optional-deep-dive">
       <summary>Optional Deep-dive Evidence / 可选深挖证据 <span class="optional-label">NOT CORE</span></summary>
