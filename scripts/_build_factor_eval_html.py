@@ -2954,6 +2954,26 @@ function renderDetail(fid){
 
     ${f.final_quality_class?`<div style="margin:8px 0">${scClassBadge(f.final_quality_class)} ${f.final_quality_score!==null?`<span style="font-size:13px;font-weight:700">${Number(f.final_quality_score).toFixed(1)}</span>`:''} ${f.score_confidence?scConfBadge(f.score_confidence):''}</div>`:''}
 
+    <details class="chart-guide" open style="margin:12px 0"><summary>📖 Evidence Reading Order / 证据阅读顺序</summary><div class="chart-guide-body">
+      <strong>1. Ranking Evidence</strong> — 因子值是否能排序未来收益？<br>
+      <em>Does the factor rank future returns cross-sectionally?</em><br><br>
+      <strong>2. Monthly Edge</strong> — 排序能否转成截面多空 edge？<br>
+      <em>Can the ranking translate into a monthly cross-sectional long-short edge?</em><br><br>
+      <strong>3. Shape &amp; Stability</strong> — 收益是否来自稳定分层，而不是单点噪声？<br>
+      <em>Is the edge structurally distributed across ranks?</em><br><br>
+      <strong>4. Strategy Path (PM-59A)</strong> — hourly overlapping sleeve 真实路径诊断。<br>
+      <em>Hourly overlapping-sleeve strategy path diagnostics.</em><br><br>
+      <strong>5. Robustness &amp; Regime</strong> — 统计稳健、overlap、市场状态依赖。<br>
+      <em>Overlap adjustment, window checks, market-state splits.</em><br><br>
+      <strong>6. Constraints &amp; Novelty</strong> — 容量、流动性、冗余、边际信息。<br>
+      <em>Capacity, liquidity, redundancy, marginal information.</em><br><br>
+      <strong>7. Optional Deep-dive</strong> — paper portfolio、fee sensitivity、raw charts。<br>
+      <em>Paper portfolio, fee sensitivity, raw charts.</em>
+    </div></details>
+
+    <details open style="margin:8px 0">
+      <summary style="font-weight:600;font-size:14px">Factor Definition / 因子定义</summary>
+      <div style="padding-left:8px">
     <div class="section-divider"></div>
     <h3>Formula 公式</h3>
     <div class="formula-block">
@@ -2990,11 +3010,15 @@ function renderDetail(fid){
     ${f.needs_human_review==='yes'?'<div style="color:var(--amber);font-size:11px;margin:4px 0">⚠ Needs human review 需人工复核</div>':''}
     ${f.qa_notes_zh?`<div class="bilingual"><div class="zh" style="font-size:11px">${esc(f.qa_notes_zh)}</div><div class="en" style="font-size:10px">${esc(f.qa_notes_en)}</div></div>`:''}
     ${f.qa_reason?`<div class="small">Reason: ${esc(f.qa_reason)}</div>`:''}
+      </div>
+    </details>
 
     <div class="section-divider"></div>
-    <div class="evidence-label">📊 Evidence — 机器计算指标</div>
+    <div class="evidence-label">📊 Block 1 — Predictive Ranking Evidence / 排序预测证据</div>
+    <p style="font-size:10px;color:#94a3b8;margin:2px 0">This block answers: does the factor rank future returns cross-sectionally? RankIC is not return. It is not a trading signal.<br>
+    这一部分回答：因子值是否具有截面排序未来收益的能力。RankIC 不是收益，不是交易信号。</p>
     <div style="display:flex;align-items:center;gap:8px;margin:4px 0">
-      <h3 id="hz-title-${f.factor_id}" style="margin:0">Best Horizon Metrics 最优视野指标 (${esc(f.best_horizon)})</h3>
+      <h3 id="hz-title-${f.factor_id}" style="margin:0">Ranking Evidence at ${esc(f.best_horizon)}</h3>
       ${f.horizon_pattern?horizonPatternBadge(f.horizon_pattern):''}
     </div>
     <div id="hz-switch-${f.factor_id}">${buildHorizonSwitch(f)}</div>
@@ -3004,7 +3028,16 @@ function renderDetail(fid){
       ${metricRow(renderTooltip('ICIR'),num(f.rankic_ir,3))}
       ${metricRow(renderTooltip('Naive t-stat'),num(f.rankic_t_stat,2,false))}
       ${(() => { const hm = f.horizon_metrics ? f.horizon_metrics[f.best_horizon] || {} : {}; const robT = hm.robust_t_stat; const robClass = hm.sig_class_robust || ''; const robBadge = robClass ? '<span class="robust-badge '+robClass+'">'+robClass.replace(/_/g,' ')+'</span>' : ''; const overlapWarn = hm.overlap_warning || ''; const overlapBadge = overlapWarn ? '<span class="overlap-badge '+overlapWarn+'">'+overlapWarn.replace(/_/g,' ')+'</span>' : ''; const inflation = hm.tstat_inflation; const inflCls = inflation !== null && inflation !== undefined && Number(inflation) > 3 ? 'severe-inflation' : (inflation !== null && inflation !== undefined && Number(inflation) > 2 ? 'high-inflation' : ''); const inflBadge = inflation !== null && inflation !== undefined ? '<span class="inflation-badge '+inflCls+'">×'+Number(inflation).toFixed(1)+'</span>' : ''; const robVal = robT !== null && robT !== undefined ? Number(robT).toFixed(2) : 'Unavailable'; return metricRow(renderTooltip('Robust t-stat'), robVal+' '+robBadge+' '+overlapBadge+' '+inflBadge); })()}
-      ${metricRow(renderTooltip('IC Win Rate'),pct(f.monthly_ic_positive_rate)+(f.ic_positive_months!=null?' ('+f.ic_positive_months+'/'+f.ic_total_months+')':''))}
+      ${metricRow(renderTooltip('Coverage'),pct(f.coverage_rate))}
+    </div>
+
+    <div class="section-divider"></div>
+    <div class="evidence-label">📊 Block 2 — Monthly Edge Extraction / 月度 Edge 提取</div>
+    <p style="font-size:10px;color:#94a3b8;margin:2px 0">This block answers: if we form monthly long-short baskets from the factor ranking, is there a directional edge?<br>
+    这一部分回答：按照因子排序形成月度截面多空组合时，是否存在方向性 edge。<br>
+    These are monthly edge diagnostics, not hourly strategy-path returns and not live portfolio metrics.<br>
+    这些是月度 Edge 诊断，不是 PM-59A 的 hourly 策略路径，也不是实盘组合指标。</p>
+    <div class="metric-grid">
       ${metricRow(renderTooltip('LS Mean'),f.long_short_mean!=null?(Number(f.long_short_mean)>=0?'+':'')+Number(f.long_short_mean*100).toFixed(4)+'%':'—')}
       ${metricRow(renderTooltip('LS Std'),f.long_short_std!=null?Number(f.long_short_std*100).toFixed(4)+'%':'—')}
       ${metricRow(renderTooltip('LS Sharpe'),num(f.long_short_sharpe,2),mcls(f.long_short_sharpe,1.5,0.8))}
@@ -3012,11 +3045,10 @@ function renderDetail(fid){
       ${metricRow(renderTooltip('Ann Vol'),pct(f.long_short_annualized_vol))}
       ${metricRow(renderTooltip('Max Drawdown'),pct(f.long_short_max_drawdown))}
       ${metricRow(renderTooltip('LS Win Rate'),pct(f.long_short_positive_month_rate))}
-      ${metricRow(renderTooltip('Coverage'),pct(f.coverage_rate))}
     </div>
     ${f.ls_metrics_unavailable_reason?`<div style="margin:4px 0;font-size:10px;color:var(--muted);font-style:italic">${esc(f.ls_metrics_unavailable_reason)}</div>`:''}
 
-    ${f.horizon_metrics?`<h3 style="margin-top:12px">All-Horizon Summary 全视野摘要</h3>${buildAllHorizonTable(f)}`:''}
+    ${f.horizon_metrics?`<details style="margin-top:8px"><summary style="font-weight:600">All-Horizon Summary 全视野摘要</summary>${buildAllHorizonTable(f)}</details>`:''}
 
     ${renderPM49Interpretation(f)}
 
@@ -3087,22 +3119,18 @@ function renderDetail(fid){
       </div>
     </div>
 
-    <details class="chart-guide" open><summary>📖 LS Evidence Reading Order / LS 证据阅读顺序</summary><div class="chart-guide-body">
-      <strong>1. Edge Diagnostics Summary</strong> — 看因子是否有正向 LS edge，以及这个 edge 在月份之间是否稳定。<br>
-      <em>Check whether the factor has a positive LS edge and whether that edge is stable across months.</em><br><br>
-      <strong>2. Robust LS Diagnostics</strong> — 看这个 LS edge 在 Newey-West / bootstrap 修正后是否仍然稳健。<br>
-      <em>Check whether the LS edge remains statistically robust after Newey-West / bootstrap correction.</em><br><br>
-      <strong>3. Period-Level Window Diagnostics</strong> — 这是月度 period-level 描述统计，只作为补充。它不是 true per-bar investment-window diagnostics，也不是独立交易胜率。<br>
-      <em>Monthly period-level descriptive statistics only. Not true per-bar investment-window data. Not independent trade win rate.</em>
-    </div></details>
+    <div class="section-divider"></div>
+    <div class="evidence-label">📊 Block 5 — Robustness &amp; Regime / 稳健性与条件性</div>
+    <p style="font-size:10px;color:#94a3b8;margin:2px 0">Does the evidence survive overlap adjustment, window checks, and market-state splits?<br>
+    证据是否经得住 overlap 修正、窗口检查和市场状态分割？</p>
 
     <h3>Edge Diagnostics Summary 边缘诊断概要</h3>
     <div class="metric-grid">
-      ${metricRow('Edge Curve Max DD',pct(f.long_short_max_drawdown))}
-      ${metricRow('Monthly Edge Win Rate',pct(f.long_short_positive_month_rate))}
+      ${metricRow(renderTooltip('Max Drawdown'),pct(f.long_short_max_drawdown))}
+      ${metricRow(renderTooltip('LS Win Rate'),pct(f.long_short_positive_month_rate))}
       ${metricRow(renderTooltip('LS Sharpe'),num(f.long_short_sharpe,2),mcls(f.long_short_sharpe,1.5,0.8))}
     </div>
-    <p style="font-size:10px;color:#64748b;margin-top:4px">Edge diagnostics are monthly per-bar LS edge stability metrics. Not portfolio metrics. Edge 诊断是月度 per-bar LS edge 稳定性指标，不是组合指标。</p>
+    <p style="font-size:10px;color:#64748b;margin-top:4px">These are Monthly Edge metrics, not PM-59A strategy path metrics. Edge 诊断是月度 per-bar LS edge 稳定性指标，不是组合指标。这些是 Monthly Edge 指标，不是 PM-59A 策略路径指标。</p>
 
     ${(()=>{
       const rr = f.return_robust;
@@ -3192,35 +3220,43 @@ function renderDetail(fid){
     </details>
     `; })()}
 
-    <details class="secondary-diagnostics overlapping-sleeve-strategy" style="margin-top:12px">
-      <summary>Overlapping Sleeve Strategy Diagnostics 重叠持仓单因子策略路径诊断（PM-59A）</summary>
-      <p style="font-size:11px;color:#fbbf24;margin:8px 0">⚠️ Research diagnostic only. NOT live signal. NOT trading recommendation. Gross only (no fees/slippage).<br>
-      <em>每小时形成 sleeve，按 selected horizon 持有。用 realized 1h close-to-close returns 形成 hourly strategy return path。</em><br>
-      <em>Annualized Hourly Mean Return 不是实盘 CAGR。此诊断不同于 Monthly Edge Diagnostics。</em></p>
+    <div class="section-divider"></div>
+    <div class="evidence-label">📊 Block 4 — Strategy Path Diagnostics / 策略路径诊断</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin:4px 0">
+      <span class="sc-confidence-badge" style="background:#1e3a5f;color:#93c5fd">GROSS ONLY</span>
+      <span class="sc-confidence-badge" style="background:#1e3a5f;color:#93c5fd">RESEARCH DIAGNOSTIC</span>
+      <span class="sc-confidence-badge" style="background:#1e3a5f;color:#93c5fd">NOT LIVE</span>
+      <span class="sc-confidence-badge" style="background:#1e3a5f;color:#93c5fd">NOT TRADING</span>
+      <span class="sc-confidence-badge" style="background:#1e3a5f;color:#93c5fd">HOURLY PATH</span>
+    </div>
+    <h3>Overlapping Sleeve Strategy Diagnostics / 重叠持仓单因子策略路径诊断（PM-59A）</h3>
+    <p style="font-size:11px;color:#94a3b8;margin:4px 0">Research diagnostic only. NOT live signal. NOT trading recommendation. Gross only (no fees/slippage).<br>
+    <em>每小时形成 sleeve，按 selected horizon 持有。用 realized 1h close-to-close returns 形成 hourly strategy return path。</em><br>
+    <em>Annualized Hourly Mean Return 不是实盘 CAGR。Gross Sharpe 和 Max Drawdown 基于 PM-59A hourly strategy path 计算，不同于 Monthly Edge Diagnostics。</em></p>
       ${(() => {
         const os = f.overlapping_sleeve_strategy;
         if (!os) return '<div class="small">PM-59A diagnostics not available for this factor</div>';
         let extra = '';
         if (os.registry_expected_direction === 'conditional') {
-          extra += '<p style="font-size:11px;color:#fbbf24;margin:4px 0">⚠️ 方向为经验派生（' + esc(os.direction_source) + '），仅用于 PM-59A 诊断，不修改 registry expected_direction。<br>';
+          extra += '<p style="font-size:11px;color:#fbbf24;margin:4px 0"><span class="sc-confidence-badge" style="background:#78350f;color:#fbbf24">EMPIRICAL DIRECTION</span> 方向为经验派生（' + esc(os.direction_source) + '），仅用于 PM-59A 诊断，不修改 registry expected_direction。<br>';
           extra += '<em>Direction derived empirically (' + esc(os.direction_source) + ') for PM-59A diagnostic only. Does NOT modify registry expected_direction.</em></p>';
         }
         if (os.horizon_source && (os.horizon_source.includes('default') || os.horizon_source.includes('derived'))) {
-          extra += '<p style="font-size:11px;color:#fbbf24;margin:4px 0">⚠️ Horizon derived/defaulted for diagnostic coverage (' + esc(os.horizon_source) + '); not canonical best_horizon。</p>';
+          extra += '<p style="font-size:11px;color:#fbbf24;margin:4px 0"><span class="sc-confidence-badge" style="background:#78350f;color:#fbbf24">DERIVED HORIZON</span> Horizon derived/defaulted for diagnostic coverage (' + esc(os.horizon_source) + '); not canonical best_horizon。</p>';
         }
         return extra + '<div class="metric-grid">' +
           metricRow('Horizon', esc(os.horizon)) +
-          metricRow('Strategy Direction', esc(os.strategy_direction)) +
-          metricRow('Direction Source', esc(os.direction_source)) +
+          metricRow(renderTooltip('Strategy Direction'), esc(os.strategy_direction)) +
+          metricRow(renderTooltip('Direction Source'), esc(os.direction_source)) +
           metricRow('Direction Confidence', esc(os.direction_confidence)) +
-          metricRow('Horizon Source', esc(os.horizon_source)) +
-          metricRow('Gross Total Return', num(os.gross_total_return, 4)) +
-          metricRow('Ann. Hourly Mean Return', num(os.gross_annualized_return, 4) + ' <span style="font-size:8px;color:#94a3b8">⚠️ Not CAGR / 不是实盘 CAGR</span>') +
+          metricRow(renderTooltip('Horizon Source'), esc(os.horizon_source)) +
+          metricRow(renderTooltip('PM-59A Gross Total Return'), num(os.gross_total_return, 4)) +
+          metricRow(renderTooltip('Ann. Hourly Mean Return'), num(os.gross_annualized_return, 4) + ' <span style="font-size:8px;color:#94a3b8">⚠️ Not CAGR / 不是实盘 CAGR</span>') +
           metricRow('Ann. Vol', num(os.gross_annualized_vol, 4)) +
-          metricRow('Gross Sharpe', num(os.gross_sharpe, 2)) +
-          metricRow('Max Drawdown', pct(os.max_drawdown)) +
-          metricRow('Hourly Win Rate', pct(os.hourly_win_rate)) +
-          metricRow('Active Sleeves Mean', num(os.active_sleeve_count_mean, 1)) +
+          metricRow(renderTooltip('PM-59A Gross Sharpe'), num(os.gross_sharpe, 2)) +
+          metricRow(renderTooltip('PM-59A Strategy Max Drawdown'), pct(os.max_drawdown)) +
+          metricRow(renderTooltip('Hourly Win Rate'), pct(os.hourly_win_rate)) +
+          metricRow(renderTooltip('Active Sleeves Mean'), num(os.active_sleeve_count_mean, 1)) +
           metricRow('Active Sleeves Max', num(os.active_sleeve_count_max, 0)) +
           metricRow('Return Convention', 'long_mean − short_mean (spread)') +
           (os.warning ? metricRow('Warning', '<span style="color:#fbbf24;font-size:10px">' + esc(os.warning) + '</span>') : '') +

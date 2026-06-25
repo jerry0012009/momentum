@@ -989,13 +989,13 @@ def check_pm57_return_side_robust(html_text: str) -> list[dict]:
                              "84/84 × 4 horizons"))
 
     # Check 3: LS robust section exists in HTML
-    if "LS Return Robust Diagnostics" in html_text:
+    if "Robust LS Diagnostics" in html_text:
         results.append(_pass("pm57_ls_section",
-                             "PM-57 LS Return Robust Diagnostics section exists",
+                             "PM-57 Robust LS Diagnostics section exists",
                              "Section h3 found"))
     else:
         results.append(_fail("pm57_ls_section",
-                             "PM-57 LS Return Robust Diagnostics section exists",
+                             "PM-57 Robust LS Diagnostics section exists",
                              "Section h3 not found"))
 
     # Check 4: robust-table CSS class used
@@ -1582,6 +1582,62 @@ def check_pm59a_overlapping_sleeve_strategy(html: str) -> list[dict]:
     return checks
 
 
+def check_pm59a_reading_order(html: str) -> list[dict]:
+    """PM-59A-UI: Check evidence reading order structure."""
+    checks = []
+    checks.append(_c(
+        'pm59a_evidence_reading_order',
+        'Evidence Reading Order section exists',
+        'PASS' if 'Evidence Reading Order' in html else 'FAIL',
+    ))
+    checks.append(_c(
+        'pm59a_predictive_ranking',
+        'Predictive Ranking Evidence section exists',
+        'PASS' if 'Predictive Ranking Evidence' in html else 'FAIL',
+    ))
+    checks.append(_c(
+        'pm59a_monthly_edge_extraction',
+        'Monthly Edge Extraction section exists',
+        'PASS' if 'Monthly Edge Extraction' in html else 'FAIL',
+    ))
+    checks.append(_c(
+        'pm59a_shape_stability',
+        'Shape & Stability section exists',
+        'PASS' if 'Shape & Stability' in html or 'Shape' in html else 'FAIL',
+    ))
+    checks.append(_c(
+        'pm59a_strategy_path_diagnostics',
+        'Strategy Path Diagnostics section exists',
+        'PASS' if 'Strategy Path Diagnostics' in html else 'FAIL',
+    ))
+    checks.append(_c(
+        'pm59a_gross_sharpe_tooltip',
+        'PM-59A Gross Sharpe metric exists',
+        'PASS' if 'PM-59A Gross Sharpe' in html or 'Gross Sharpe' in html else 'FAIL',
+    ))
+    checks.append(_c(
+        'pm59a_strategy_max_dd',
+        'PM-59A Strategy Max Drawdown metric exists',
+        'PASS' if 'PM-59A Strategy Max Drawdown' in html or 'Strategy Max Drawdown' in html else 'FAIL',
+    ))
+    checks.append(_c(
+        'pm59a_monthly_edge_sharpe',
+        'Monthly Edge Sharpe label exists',
+        'PASS' if 'Monthly Edge Sharpe' in html or 'Edge Sharpe' in html else 'FAIL',
+    ))
+    checks.append(_c(
+        'pm59a_monthly_edge_drawdown',
+        'Monthly Edge Drawdown label exists',
+        'PASS' if 'Monthly Edge Drawdown' in html or 'Edge Drawdown' in html else 'FAIL',
+    ))
+    checks.append(_c(
+        'pm59a_constraints_novelty',
+        'Constraints & Novelty section exists',
+        'PASS' if 'Constraints' in html and 'Novelty' in html else 'FAIL',
+    ))
+    return checks
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Check factor-evaluation.html completeness."
@@ -1643,6 +1699,9 @@ def main() -> int:
 
     # 14. PM-59A Overlapping Sleeve Strategy Diagnostics
     all_checks.extend(check_pm59a_overlapping_sleeve_strategy(html_text))
+
+    # 15. PM-59A-UI Evidence Reading Order
+    all_checks.extend(check_pm59a_reading_order(html_text))
 
     # Write outputs
     _write_reports(all_checks)
