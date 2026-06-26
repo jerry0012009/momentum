@@ -52,6 +52,11 @@ def rolling_max(series: pd.Series, n: int) -> pd.Series:
     return series.rolling(n, min_periods=n).max()
 
 
+def rolling_quantile(series: pd.Series, n: int, q: float) -> pd.Series:
+    """Rolling quantile over n periods."""
+    return series.rolling(n, min_periods=n).quantile(q)
+
+
 def rolling_corr(x: pd.Series, y: pd.Series, n: int) -> pd.Series:
     """Rolling Pearson correlation over n periods."""
     return x.rolling(n, min_periods=n).corr(y)

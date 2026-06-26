@@ -16,8 +16,8 @@ import pandas as pd
 from factor_specs import FactorSpec
 from factor_ops import (
     delay, delta, rolling_mean, rolling_std, rolling_max, rolling_min,
-    rolling_corr, rolling_sum, rolling_skew, zscore, ema, true_range,
-    sign, where,
+    rolling_quantile, rolling_corr, rolling_sum, rolling_skew, ts_rank,
+    zscore, ema, true_range, sign, where,
 )
 
 # ── V0 Original 5 Factors ──────────────────────────────────────────
@@ -120,6 +120,46 @@ def _compute_q158_rsv_20h(df: pd.DataFrame) -> pd.Series:
     hh = rolling_max(df["high"], 20)
     ll = rolling_min(df["low"], 20)
     return (df["close"] - ll) / (hh - ll + 1e-12)
+
+
+def _compute_q158_qtlu_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 QTLU20: Quantile(close, 20, 0.8) / close."""
+    c = df["close"]
+    return rolling_quantile(c, 20, 0.8) / c.replace(0, np.nan)
+
+
+def _compute_q158_qtld_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 QTLD20: Quantile(close, 20, 0.2) / close."""
+    c = df["close"]
+    return rolling_quantile(c, 20, 0.2) / c.replace(0, np.nan)
+
+
+def _compute_q158_rank_close_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 RANK20: percentile rank of close within the past 20 bars."""
+    return ts_rank(df["close"], 20)
+
+
+def _compute_q158_cntp_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 CNTP20: fraction of the past 20 bars with close > previous close."""
+    up = (df["close"] > delay(df["close"], 1)).astype(float)
+    up = up.where(delay(df["close"], 1).notna(), np.nan)
+    return rolling_mean(up, 20)
+
+
+def _compute_q158_cntn_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 CNTN20: fraction of the past 20 bars with close < previous close."""
+    down = (df["close"] < delay(df["close"], 1)).astype(float)
+    down = down.where(delay(df["close"], 1).notna(), np.nan)
+    return rolling_mean(down, 20)
+
+
+def _compute_q158_sumd_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 SUMD20: (sum(up moves) - sum(down moves)) / sum(abs moves)."""
+    d = delta(df["close"], 1)
+    up = d.clip(lower=0)
+    down = (-d).clip(lower=0)
+    denom = rolling_sum(d.abs(), 20)
+    return (rolling_sum(up, 20) - rolling_sum(down, 20)) / (denom + 1e-12)
 
 
 # ── PM-09: Alpha158-Inspired Batch 1 ──────────────────────────────
@@ -744,6 +784,49 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="conditional",
         compute_fn=_compute_q158_rsv_20h,
         notes="Alpha158 RSV20: (close - Min(low,20)) / (Max(high,20) - Min(low,20) + eps); 1h adaptation of rolling price position",
+    ),
+    # Public Alpha158 rolling batch 02
+    FactorSpec(
+        factor_id="q158_qtlu_20h", family="alpha158_rolling",
+        required_columns=["close"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_qtlu_20h,
+        notes="Alpha158 QTLU20: Quantile(close,20,0.8) / close; 1h adaptation of upper rolling close quantile",
+    ),
+    FactorSpec(
+        factor_id="q158_qtld_20h", family="alpha158_rolling",
+        required_columns=["close"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_qtld_20h,
+        notes="Alpha158 QTLD20: Quantile(close,20,0.2) / close; 1h adaptation of lower rolling close quantile",
+    ),
+    FactorSpec(
+        factor_id="q158_rank_close_20h", family="alpha158_rolling",
+        required_columns=["close"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_rank_close_20h,
+        notes="Alpha158 RANK20: Rank(close,20); current close percentile within the past 20 one-hour bars",
+    ),
+    FactorSpec(
+        factor_id="q158_cntp_20h", family="alpha158_rolling",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="positive",
+        compute_fn=_compute_q158_cntp_20h,
+        notes="Alpha158 CNTP20: Mean(close > Ref(close,1),20); fraction of up bars over the past 20 one-hour bars",
+    ),
+    FactorSpec(
+        factor_id="q158_cntn_20h", family="alpha158_rolling",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="negative",
+        compute_fn=_compute_q158_cntn_20h,
+        notes="Alpha158 CNTN20: Mean(close < Ref(close,1),20); fraction of down bars over the past 20 one-hour bars",
+    ),
+    FactorSpec(
+        factor_id="q158_sumd_20h", family="alpha158_rolling",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="positive",
+        compute_fn=_compute_q158_sumd_20h,
+        notes="Alpha158 SUMD20: (Sum(up moves,20)-Sum(down moves,20))/(Sum(abs moves,20)+eps); signed move dominance",
     ),
     # PM-09: Alpha158-Inspired Batch 1
     FactorSpec(
