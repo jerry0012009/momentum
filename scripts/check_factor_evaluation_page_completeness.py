@@ -51,7 +51,9 @@ PM35_NEW_FACTORS = [
     "xs_rank_mom_accel",
 ]
 
-MAX_SIZE_BYTES = 7.0 * 1024 * 1024  # 7 MB (84 factors × 6 horizons)
+BASE_MAX_SIZE_BYTES = 7.0 * 1024 * 1024  # 7 MB baseline for 84 factors.
+BASE_FACTOR_COUNT = 84
+INCREMENTAL_SIZE_PER_FACTOR_BYTES = 0.10 * 1024 * 1024
 
 # ── Section markers ──────────────────────────────────────────────────────────
 # Each entry: (check_id, check_name, list_of_alternative_phrases)
@@ -158,18 +160,45 @@ def _c(
 
 # ── Checks ───────────────────────────────────────────────────────────────────
 
+def _factor_count_from_profile() -> int | None:
+    if not PROFILE_CSV.exists():
+        return None
+    try:
+        with open(PROFILE_CSV, newline="", encoding="utf-8") as f:
+            return sum(1 for row in csv.DictReader(f) if row.get("factor_id", "").strip())
+    except Exception:
+        return None
+
+
+def _max_size_bytes_for_factor_count(factor_count: int | None) -> float:
+    if factor_count is None or factor_count <= BASE_FACTOR_COUNT:
+        return BASE_MAX_SIZE_BYTES
+    return BASE_MAX_SIZE_BYTES + (
+        factor_count - BASE_FACTOR_COUNT
+    ) * INCREMENTAL_SIZE_PER_FACTOR_BYTES
+
+
 def check_file_exists_and_size() -> tuple[dict | None, str | None]:
     """Returns (check_result, html_text_or_None)."""
     if not HTML.exists():
         return _fail("file_exists", "HTML file exists", "File not found", str(HTML)), None
     size = HTML.stat().st_size
-    if size > MAX_SIZE_BYTES:
+    factor_count = _factor_count_from_profile()
+    max_size_bytes = _max_size_bytes_for_factor_count(factor_count)
+    max_size_mb = max_size_bytes / 1024 / 1024
+    factor_count_note = (
+        f"factor_count={factor_count}, baseline={BASE_FACTOR_COUNT}, "
+        f"increment={INCREMENTAL_SIZE_PER_FACTOR_BYTES / 1024 / 1024:.2f}MB/factor"
+        if factor_count is not None
+        else "factor_count unavailable; using baseline limit"
+    )
+    if size > max_size_bytes:
         return (
             _fail(
                 "file_size",
-                "HTML file size < 7.0MB",
+                f"HTML file size <= {max_size_mb:.1f}MB",
                 f"{size / 1024 / 1024:.2f} MB",
-                f"Exceeds {MAX_SIZE_BYTES / 1024 / 1024:.1f} MB limit",
+                f"Exceeds {max_size_mb:.1f} MB limit; {factor_count_note}",
             ),
             None,
         )
@@ -177,8 +206,9 @@ def check_file_exists_and_size() -> tuple[dict | None, str | None]:
     return (
         _pass(
             "file_exists_and_size",
-            "HTML file exists and size < 7.0MB",
+            f"HTML file exists and size <= {max_size_mb:.1f}MB",
             f"{size / 1024 / 1024:.2f} MB, {len(text)} chars",
+            factor_count_note,
         ),
         text,
     )
@@ -830,7 +860,7 @@ def check_pm53b_active_universe_consistency(html_text: str) -> list[dict]:
 def check_pm55_robust_significance(html_text: str) -> list[dict]:
     """PM-55: Robust significance page integration checks.
 
-    1. 84/84 factors have robust_rankic payload
+    1. All page factors have robust_rankic payload
     2. Each factor has 4 horizons in robust_rankic
     3. All-Horizon Table has robust columns
     4. Best Horizon Metrics has robust t-stat
@@ -877,7 +907,7 @@ def check_pm55_robust_significance(html_text: str) -> list[dict]:
                              f"{missing_horizons} missing horizon entries"))
     else:
         results.append(_pass("pm55_horizon_coverage", "PM-55 all 4 horizons present",
-                             "All 84×4 horizon entries present"))
+                             f"All {n_total}×4 horizon entries present"))
 
     # Check 3: All-Horizon Table has robust columns
     has_robust_col = "Robust t</th>" in html_text
@@ -935,7 +965,7 @@ def check_pm57_return_side_robust(html_text: str) -> list[dict]:
     """PM-57: Return-side robust diagnostics page integration checks.
 
     Checks:
-    1. 84/84 factors have return_robust payload
+    1. All page factors have return_robust payload
     2. Each factor has LS robust 4 horizons
     3. LS robust section (h3) exists in page
     4. LS robust table has required columns
@@ -961,15 +991,16 @@ def check_pm57_return_side_robust(html_text: str) -> list[dict]:
         return results
 
     # Check 1: all factors have return_robust
+    n_total = len(factors)
     has_rr = sum(1 for f in factors if "return_robust" in f and f["return_robust"])
-    if has_rr < 84:
+    if has_rr < n_total:
         results.append(_fail("pm57_return_robust_payload",
                              "PM-57 all factors have return_robust",
-                             f"Only {has_rr}/84 have return_robust"))
+                             f"Only {has_rr}/{n_total} have return_robust"))
     else:
         results.append(_pass("pm57_return_robust_payload",
                              "PM-57 all factors have return_robust",
-                             f"{has_rr}/84"))
+                             f"{has_rr}/{n_total}"))
 
     # Check 2: LS robust 4 horizons
     ls_incomplete = []
@@ -986,7 +1017,7 @@ def check_pm57_return_side_robust(html_text: str) -> list[dict]:
     else:
         results.append(_pass("pm57_ls_horizon_coverage",
                              "PM-57 all factors have LS robust 4 horizons",
-                             "84/84 × 4 horizons"))
+                             f"{n_total}/{n_total} × 4 horizons"))
 
     # Check 3: LS robust section exists in HTML
     if "Robust LS Diagnostics" in html_text:
@@ -1067,15 +1098,18 @@ def check_pm57_return_side_robust(html_text: str) -> list[dict]:
                              "PM-57 cost-collapsed example displayed",
                              "No cost-collapsed in current subset"))
 
-    # Check 9: page factor count still 84
-    if len(factors) == 84:
+    # Check 9: page factor count matches current profile count
+    expected_count = _factor_count_from_profile()
+    if expected_count is None:
+        expected_count = len(factors)
+    if len(factors) == expected_count:
         results.append(_pass("pm57_factor_count",
-                             "PM-57 page factor count remains 84",
+                             "PM-57 page factor count matches profile",
                              f"{len(factors)}"))
     else:
         results.append(_fail("pm57_factor_count",
-                             "PM-57 page factor count remains 84",
-                             f"Got {len(factors)}"))
+                             "PM-57 page factor count matches profile",
+                             f"Got {len(factors)}, expected {expected_count}"))
 
     # Check 10: cost-status-badge CSS
     if "cost-status-badge" in html_text:
@@ -2234,5 +2268,3 @@ def _print_summary(checks: list[dict]) -> None:
 
 if __name__ == "__main__":
     sys.exit(main())
-
-

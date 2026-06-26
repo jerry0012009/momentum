@@ -123,6 +123,14 @@ Default route: use factor intake. Do not create a parallel pipeline.
 
 默认走 factor intake，不要另起一套流程。
 
+For public factor-library expansion, use the compact manifest first:
+
+- `docs/factor_library/public_factor_candidate_manifest.csv`
+
+For Alpha101 / Alpha158 intake, every candidate should record formula source, field mapping, required operators, compute scope, timeframe mapping, expected direction, implementation status, and skip reason when blocked.
+
+公开因子库扩展先看这个紧凑 manifest。Alpha101 / Alpha158 候选必须记录公式来源、字段映射、所需 operator、计算范围、时间尺度映射、方向语义、实现状态，以及无法实现原因。
+
 1. Add or adjust a `FactorSpec` in `scripts/factor_formula_registry.py`.
 2. Reuse `scripts/factor_ops.py` where possible.
 3. Add a small operator only if the formula cannot be expressed with existing operators.
