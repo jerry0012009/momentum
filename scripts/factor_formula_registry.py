@@ -246,6 +246,66 @@ def _compute_q158_cord_20h(df: pd.DataFrame) -> pd.Series:
     return rolling_corr(close_ratio, np.log(volume_ratio + 1.0), 20)
 
 
+def _compute_q158_sump_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 SUMP20: total positive close move divided by total absolute close move."""
+    d = delta(df["close"], 1)
+    gain = d.clip(lower=0)
+    denom = rolling_sum(d.abs(), 20)
+    return rolling_sum(gain, 20) / (denom + 1e-12)
+
+
+def _compute_q158_sumn_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 SUMN20: total negative close move divided by total absolute close move."""
+    d = delta(df["close"], 1)
+    loss = (-d).clip(lower=0)
+    denom = rolling_sum(d.abs(), 20)
+    return rolling_sum(loss, 20) / (denom + 1e-12)
+
+
+def _compute_q158_vma_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 VMA20: rolling mean volume divided by current volume."""
+    v = df["volume"]
+    return rolling_mean(v, 20) / (v + 1e-12)
+
+
+def _compute_q158_vstd_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 VSTD20: rolling volume standard deviation divided by current volume."""
+    v = df["volume"]
+    return rolling_std(v, 20) / (v + 1e-12)
+
+
+def _compute_q158_wvma_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 WVMA20: std(abs(close/ref(close,1)-1)*volume,20) divided by its mean."""
+    close_ratio = df["close"] / delay(df["close"], 1).replace(0, np.nan) - 1.0
+    weighted_abs_ret = close_ratio.abs() * df["volume"]
+    return rolling_std(weighted_abs_ret, 20) / (rolling_mean(weighted_abs_ret, 20) + 1e-12)
+
+
+def _compute_q158_vsump_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 VSUMP20: positive volume change share of total absolute volume change."""
+    d = delta(df["volume"], 1)
+    gain = d.clip(lower=0)
+    denom = rolling_sum(d.abs(), 20)
+    return rolling_sum(gain, 20) / (denom + 1e-12)
+
+
+def _compute_q158_vsumn_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 VSUMN20: negative volume change share of total absolute volume change."""
+    d = delta(df["volume"], 1)
+    loss = (-d).clip(lower=0)
+    denom = rolling_sum(d.abs(), 20)
+    return rolling_sum(loss, 20) / (denom + 1e-12)
+
+
+def _compute_q158_vsumd_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 VSUMD20: signed volume change dominance over total absolute volume change."""
+    d = delta(df["volume"], 1)
+    gain = d.clip(lower=0)
+    loss = (-d).clip(lower=0)
+    denom = rolling_sum(d.abs(), 20)
+    return (rolling_sum(gain, 20) - rolling_sum(loss, 20)) / (denom + 1e-12)
+
+
 # ── PM-09: Alpha158-Inspired Batch 1 ──────────────────────────────
 
 def _compute_vwap_dev_20h(df: pd.DataFrame) -> pd.Series:
@@ -1011,6 +1071,63 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="conditional",
         compute_fn=_compute_q158_cord_20h,
         notes="Alpha158 CORD20: Corr(close/Ref(close,1), Log(volume/Ref(volume,1)+1),20); rolling return-volume change correlation",
+    ),
+    # Public Alpha158 rolling batch 05
+    FactorSpec(
+        factor_id="q158_sump_20h", family="alpha158_rolling_direction",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="positive",
+        compute_fn=_compute_q158_sump_20h,
+        notes="Alpha158 SUMP20: Sum(max(close-Ref(close,1),0),20)/(Sum(abs(close-Ref(close,1)),20)+eps); positive close-move share",
+    ),
+    FactorSpec(
+        factor_id="q158_sumn_20h", family="alpha158_rolling_direction",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="negative",
+        compute_fn=_compute_q158_sumn_20h,
+        notes="Alpha158 SUMN20: Sum(max(Ref(close,1)-close,0),20)/(Sum(abs(close-Ref(close,1)),20)+eps); negative close-move share",
+    ),
+    FactorSpec(
+        factor_id="q158_vma_20h", family="alpha158_rolling_volume",
+        required_columns=["volume"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_vma_20h,
+        notes="Alpha158 VMA20: Mean(volume,20)/(volume+eps); rolling average volume normalized by current volume",
+    ),
+    FactorSpec(
+        factor_id="q158_vstd_20h", family="alpha158_rolling_volume",
+        required_columns=["volume"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_vstd_20h,
+        notes="Alpha158 VSTD20: Std(volume,20)/(volume+eps); rolling volume dispersion normalized by current volume",
+    ),
+    FactorSpec(
+        factor_id="q158_wvma_20h", family="alpha158_rolling_volume",
+        required_columns=["close", "volume"], lookback_window=21,
+        expected_direction="negative",
+        compute_fn=_compute_q158_wvma_20h,
+        notes="Alpha158 WVMA20: Std(abs(close/Ref(close,1)-1)*volume,20)/(Mean(abs(close/Ref(close,1)-1)*volume,20)+eps); volume-weighted absolute-return volatility ratio",
+    ),
+    FactorSpec(
+        factor_id="q158_vsump_20h", family="alpha158_rolling_volume",
+        required_columns=["volume"], lookback_window=21,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_vsump_20h,
+        notes="Alpha158 VSUMP20: Sum(max(volume-Ref(volume,1),0),20)/(Sum(abs(volume-Ref(volume,1)),20)+eps); positive volume-change share",
+    ),
+    FactorSpec(
+        factor_id="q158_vsumn_20h", family="alpha158_rolling_volume",
+        required_columns=["volume"], lookback_window=21,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_vsumn_20h,
+        notes="Alpha158 VSUMN20: Sum(max(Ref(volume,1)-volume,0),20)/(Sum(abs(volume-Ref(volume,1)),20)+eps); negative volume-change share",
+    ),
+    FactorSpec(
+        factor_id="q158_vsumd_20h", family="alpha158_rolling_volume",
+        required_columns=["volume"], lookback_window=21,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_vsumd_20h,
+        notes="Alpha158 VSUMD20: (Sum(max(volume-Ref(volume,1),0),20)-Sum(max(Ref(volume,1)-volume,0),20))/(Sum(abs(volume-Ref(volume,1)),20)+eps); signed volume-change dominance",
     ),
     # PM-09: Alpha158-Inspired Batch 1
     FactorSpec(
