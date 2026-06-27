@@ -1,6 +1,6 @@
 # Factor Library State
 
-**Generated:** 2026-06-27T15:15:05.621467+00:00
+**Generated:** 2026-06-27T16:23:45.940843+00:00
 **Dataset:** crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1
 
 ## Counts
