@@ -17,7 +17,8 @@ from factor_specs import FactorSpec
 from factor_ops import (
     delay, delta, rolling_mean, rolling_std, rolling_max, rolling_min,
     rolling_quantile, rolling_corr, rolling_sum, rolling_skew, ts_rank,
-    zscore, ema, true_range, sign, where,
+    rolling_slope, rolling_rsquare, rolling_residual, rolling_idxmax,
+    rolling_idxmin, zscore, ema, true_range, sign, where,
 )
 
 # ── V0 Original 5 Factors ──────────────────────────────────────────
@@ -160,6 +161,38 @@ def _compute_q158_sumd_20h(df: pd.DataFrame) -> pd.Series:
     down = (-d).clip(lower=0)
     denom = rolling_sum(d.abs(), 20)
     return (rolling_sum(up, 20) - rolling_sum(down, 20)) / (denom + 1e-12)
+
+
+def _compute_q158_beta_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 BETA20: Slope(close, 20) / close."""
+    c = df["close"]
+    return rolling_slope(c, 20) / c.replace(0, np.nan)
+
+
+def _compute_q158_rsqr_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 RSQR20: R-squared of rolling close trend over 20 bars."""
+    return rolling_rsquare(df["close"], 20)
+
+
+def _compute_q158_resi_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 RESI20: latest residual from rolling close trend, normalized by close."""
+    c = df["close"]
+    return rolling_residual(c, 20) / c.replace(0, np.nan)
+
+
+def _compute_q158_imax_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 IMAX20: bars since latest 20-bar high, divided by 20."""
+    return rolling_idxmax(df["high"], 20) / 20.0
+
+
+def _compute_q158_imin_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 IMIN20: bars since latest 20-bar low, divided by 20."""
+    return rolling_idxmin(df["low"], 20) / 20.0
+
+
+def _compute_q158_imxd_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 IMXD20: (IdxMax(high,20) - IdxMin(low,20)) / 20."""
+    return (rolling_idxmax(df["high"], 20) - rolling_idxmin(df["low"], 20)) / 20.0
 
 
 # ── PM-09: Alpha158-Inspired Batch 1 ──────────────────────────────
@@ -827,6 +860,49 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="positive",
         compute_fn=_compute_q158_sumd_20h,
         notes="Alpha158 SUMD20: (Sum(up moves,20)-Sum(down moves,20))/(Sum(abs moves,20)+eps); signed move dominance",
+    ),
+    # Public Alpha158 rolling batch 03
+    FactorSpec(
+        factor_id="q158_beta_20h", family="alpha158_rolling_regression",
+        required_columns=["close"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_beta_20h,
+        notes="Alpha158 BETA20: Slope(close,20) / close; rolling linear trend slope normalized by current close",
+    ),
+    FactorSpec(
+        factor_id="q158_rsqr_20h", family="alpha158_rolling_regression",
+        required_columns=["close"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_rsqr_20h,
+        notes="Alpha158 RSQR20: Rsquare(close,20); rolling linear trend fit quality",
+    ),
+    FactorSpec(
+        factor_id="q158_resi_20h", family="alpha158_rolling_regression",
+        required_columns=["close"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_resi_20h,
+        notes="Alpha158 RESI20: Resi(close,20) / close; latest residual from rolling linear trend normalized by current close",
+    ),
+    FactorSpec(
+        factor_id="q158_imax_20h", family="alpha158_rolling_position",
+        required_columns=["high"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_imax_20h,
+        notes="Alpha158 IMAX20: IdxMax(high,20) / 20; bars since latest 20h high, scaled by window",
+    ),
+    FactorSpec(
+        factor_id="q158_imin_20h", family="alpha158_rolling_position",
+        required_columns=["low"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_imin_20h,
+        notes="Alpha158 IMIN20: IdxMin(low,20) / 20; bars since latest 20h low, scaled by window",
+    ),
+    FactorSpec(
+        factor_id="q158_imxd_20h", family="alpha158_rolling_position",
+        required_columns=["high", "low"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_imxd_20h,
+        notes="Alpha158 IMXD20: (IdxMax(high,20)-IdxMin(low,20)) / 20; relative recency of high versus low",
     ),
     # PM-09: Alpha158-Inspired Batch 1
     FactorSpec(
