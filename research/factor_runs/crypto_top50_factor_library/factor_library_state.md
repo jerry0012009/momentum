@@ -1,14 +1,14 @@
 # Factor Library State
 
-**Generated:** 2026-06-27T03:06:28.182146+00:00
+**Generated:** 2026-06-27T03:47:36.472832+00:00
 **Dataset:** crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1
 
 ## Counts
 
 | Metric | Count |
 |--------|-------|
-| Registered factors | 102 |
-| Computed factor_values | 102 |
+| Registered factors | 110 |
+| Computed factor_values | 110 |
 | Missing factor_values | 0 |
 | Missing input data | 0 |
 | Active signal factors | 10 |
@@ -64,13 +64,13 @@
 | q158_high_low_range | -0.090894 | 72h |
 | range_1h | -0.090894 | 72h |
 | downside_vol_20h | +0.089635 | 72h |
+| q158_std_20h | +0.082791 | 72h |
 | vol_5h | +0.080509 | 72h |
 | vol_of_vol_20h | +0.080223 | 72h |
 | wvma_20h | +0.076279 | 72h |
 | xs_rank_vol | -0.068675 | 72h |
 | a101_volume_xs_z_mean_neg_112h | +0.068354 | 72h |
-| a101_volume_low_alpha_min_84_120 | +0.062473 | 72h |
-| a101_volume_high_alpha_min_84_84 | +0.058513 | 72h |
+| q158_min_20h | +0.067445 | 72h |
 
 ---
 *Diagnostic only. Not production. Not live trading.*
