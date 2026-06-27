@@ -1839,10 +1839,19 @@ def check_data_lineage_cleanup(html_text: str) -> list[dict]:
                 strongest = rev_1h.get("strongest_redundancy_level", "")
                 novelty = rev_1h.get("novelty_assessment", "")
 
-                if nearest != "intraday_ret":
-                    issues.append(f"nearest_factor={nearest} (expected intraday_ret)")
-                if spearman is not None and abs(float(spearman) - 0.994932) > 0.001:
-                    issues.append(f"nearest_abs_spearman_corr={spearman} (expected ~0.994932)")
+                candle_body_equivalents = {
+                    "intraday_ret",
+                    "q158_kmid_open",
+                    "q158_open_close_0h",
+                    "candle_body",
+                }
+                if nearest not in candle_body_equivalents:
+                    issues.append(
+                        f"nearest_factor={nearest} "
+                        f"(expected one of {sorted(candle_body_equivalents)})"
+                    )
+                if spearman is not None and float(spearman) < 0.99:
+                    issues.append(f"nearest_abs_spearman_corr={spearman} (expected >=0.99)")
                 if strongest != "NEAR_DUPLICATE":
                     issues.append(f"strongest_redundancy_level={strongest} (expected NEAR_DUPLICATE)")
                 if novelty != "HIGHLY_REDUNDANT":

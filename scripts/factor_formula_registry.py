@@ -92,16 +92,40 @@ def _compute_q158_klen_open(df: pd.DataFrame) -> pd.Series:
     return (h - l) / o.replace(0, np.nan)
 
 
+def _compute_q158_kmid_open(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 KMID: (close - open) / open."""
+    o, c = df["open"], df["close"]
+    return (c - o) / o.replace(0, np.nan)
+
+
+def _compute_q158_kmid_range(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 KMID2: (close - open) / (high - low + eps)."""
+    o, h, l, c = df["open"], df["high"], df["low"], df["close"]
+    return (c - o) / (h - l + 1e-12)
+
+
 def _compute_q158_kup_open(df: pd.DataFrame) -> pd.Series:
     """Alpha158 KUP: (high - max(open, close)) / open."""
     o, h, c = df["open"], df["high"], df["close"]
     return (h - pd.concat([o, c], axis=1).max(axis=1)) / o.replace(0, np.nan)
 
 
+def _compute_q158_kup_range(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 KUP2: (high - max(open, close)) / (high - low + eps)."""
+    o, h, l, c = df["open"], df["high"], df["low"], df["close"]
+    return (h - pd.concat([o, c], axis=1).max(axis=1)) / (h - l + 1e-12)
+
+
 def _compute_q158_klow_open(df: pd.DataFrame) -> pd.Series:
     """Alpha158 KLOW: (min(open, close) - low) / open."""
     o, l, c = df["open"], df["low"], df["close"]
     return (pd.concat([o, c], axis=1).min(axis=1) - l) / o.replace(0, np.nan)
+
+
+def _compute_q158_klow_range(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 KLOW2: (min(open, close) - low) / (high - low + eps)."""
+    o, h, l, c = df["open"], df["high"], df["low"], df["close"]
+    return (pd.concat([o, c], axis=1).min(axis=1) - l) / (h - l + 1e-12)
 
 
 def _compute_q158_ksft_open(df: pd.DataFrame) -> pd.Series:
@@ -121,6 +145,11 @@ def _compute_q158_rsv_20h(df: pd.DataFrame) -> pd.Series:
     hh = rolling_max(df["high"], 20)
     ll = rolling_min(df["low"], 20)
     return (df["close"] - ll) / (hh - ll + 1e-12)
+
+
+def _compute_q158_open_close_0h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 OPEN0: current open divided by current close."""
+    return df["open"] / df["close"].replace(0, np.nan)
 
 
 def _compute_q158_qtlu_20h(df: pd.DataFrame) -> pd.Series:
@@ -894,6 +923,21 @@ REGISTRY: list[FactorSpec] = [
         compute_fn=_compute_q158_klen_open,
         notes="Alpha158 KLEN: (high - low) / open; 1h kbar range length normalized by open",
     ),
+    # Public Alpha158 kbar / price batch 06
+    FactorSpec(
+        factor_id="q158_kmid_open", family="alpha158_kbar",
+        required_columns=["open", "close"], lookback_window=1,
+        expected_direction="positive",
+        compute_fn=_compute_q158_kmid_open,
+        notes="Alpha158 KMID: (close - open) / open; 1h candle body return normalized by open",
+    ),
+    FactorSpec(
+        factor_id="q158_kmid_range", family="alpha158_kbar",
+        required_columns=["open", "high", "low", "close"], lookback_window=1,
+        expected_direction="positive",
+        compute_fn=_compute_q158_kmid_range,
+        notes="Alpha158 KMID2: (close - open) / (high - low + eps); signed candle body normalized by range",
+    ),
     FactorSpec(
         factor_id="q158_kup_open", family="alpha158_kbar",
         required_columns=["open", "high", "close"], lookback_window=1,
@@ -902,11 +946,25 @@ REGISTRY: list[FactorSpec] = [
         notes="Alpha158 KUP: (high - max(open, close)) / open; upper shadow normalized by open",
     ),
     FactorSpec(
+        factor_id="q158_kup_range", family="alpha158_kbar",
+        required_columns=["open", "high", "low", "close"], lookback_window=1,
+        expected_direction="negative",
+        compute_fn=_compute_q158_kup_range,
+        notes="Alpha158 KUP2: (high - max(open, close)) / (high - low + eps); upper shadow normalized by range",
+    ),
+    FactorSpec(
         factor_id="q158_klow_open", family="alpha158_kbar",
         required_columns=["open", "low", "close"], lookback_window=1,
         expected_direction="positive",
         compute_fn=_compute_q158_klow_open,
         notes="Alpha158 KLOW: (min(open, close) - low) / open; lower shadow normalized by open",
+    ),
+    FactorSpec(
+        factor_id="q158_klow_range", family="alpha158_kbar",
+        required_columns=["open", "high", "low", "close"], lookback_window=1,
+        expected_direction="positive",
+        compute_fn=_compute_q158_klow_range,
+        notes="Alpha158 KLOW2: (min(open, close) - low) / (high - low + eps); lower shadow normalized by range",
     ),
     FactorSpec(
         factor_id="q158_ksft_open", family="alpha158_kbar",
@@ -928,6 +986,13 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="conditional",
         compute_fn=_compute_q158_rsv_20h,
         notes="Alpha158 RSV20: (close - Min(low,20)) / (Max(high,20) - Min(low,20) + eps); 1h adaptation of rolling price position",
+    ),
+    FactorSpec(
+        factor_id="q158_open_close_0h", family="alpha158_price",
+        required_columns=["open", "close"], lookback_window=1,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_open_close_0h,
+        notes="Alpha158 OPEN0: open / close; current open normalized by current close from Alpha158 price feature block",
     ),
     # Public Alpha158 rolling batch 02
     FactorSpec(

@@ -14,18 +14,20 @@ Stages (in pipeline order):
     1.  factor-level evaluation (EXPENSIVE) — temp output + auto-merge
     2.  paper portfolio diagnostics (EXPENSIVE) — temp output + auto-merge
     3.  paper page payload
-    4.  diagnostics metrics (cumulative LS curve, etc.)
-    5.  pairwise redundancy (EXPENSIVE)
-    6.  redundancy cluster + marginal information
-    7.  regime/BTC diagnostics (with canonical IC merge)
-    8.  shape + stability diagnostics (quantile shape, rolling stability)
-    9.  decile shape diagnostics
-    10. capacity/liquidity diagnostics
-    11. scorecard refresh
-    12. unified profile refresh
-    13. page build
-    14. page completeness QA
-    15. post-intake workflow integrity QA
+    4.  state refresh
+    5.  diagnostics metrics (cumulative LS curve, etc.)
+    6.  pairwise redundancy (EXPENSIVE)
+    7.  redundancy cluster + marginal information
+    8.  regime/BTC diagnostics (with canonical IC merge)
+    9.  shape + stability diagnostics (quantile shape, rolling stability)
+    10. decile shape diagnostics
+    11. capacity/liquidity diagnostics
+    12. scorecard refresh
+    13. robust significance refresh
+    14. unified profile refresh
+    15. page build
+    16. page completeness QA
+    17. post-intake workflow integrity QA
 
 NOT production. NOT live trading. Research diagnostics only.
 """
@@ -181,6 +183,14 @@ STAGES = [
         "expensive": False,
         "build_cmd": lambda fids: [
             sys.executable, str(SCRIPTS / "build_single_factor_paper_page_payload.py"),
+        ],
+    },
+    {
+        "name": "state",
+        "description": "Refresh factor library state before state-dependent diagnostics",
+        "expensive": False,
+        "build_cmd": lambda fids: [
+            sys.executable, str(SCRIPTS / "build_factor_library_state.py"),
         ],
     },
     {
