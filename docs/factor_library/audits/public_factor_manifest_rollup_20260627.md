@@ -6,8 +6,9 @@ This audit records the current controlled public-factor intake state for the
 compact manifest:
 
 - `docs/factor_library/public_factor_candidate_manifest.csv`
-- 53 Alpha158 factors from Qlib Alpha158DL formula families and existing local
-  Alpha158 support.
+- 53 implemented Alpha158 factors from Qlib Alpha158DL formula families and
+  existing local Alpha158 support.
+- 6 skipped Alpha158 duplicate dispositions with explicit skip reasons.
 - 6 curated Alpha101 panel factors from the local Alpha101 migration layer.
 - 3 existing WorldQuant 101 proxy factors already registered as `wq101_*`.
 
@@ -31,11 +32,11 @@ The compact manifest now records, for every candidate:
 
 Current manifest row counts:
 
-| source_family | rows |
+| source_family | implemented rows | skipped rows | total rows |
 | --- | ---: |
-| alpha158 | 53 |
-| alpha101 | 9 |
-| total | 62 |
+| alpha158 | 53 | 6 | 59 |
+| alpha101 | 9 | 0 | 9 |
+| total | 62 | 6 | 68 |
 
 The `existing_support_backfill_20260627` rows are metadata backfills for factors
 that were already registered and computed before the public manifest existed:
@@ -57,6 +58,20 @@ Alpha158-derived but whose factor IDs predated the `q158_` prefix convention:
 - `ksft_5h`
 - `up_down_vol_ratio_20h`
 - `clv_20h`
+
+The `skipped_duplicate_20260627` rows are explicit no-implementation
+dispositions. They keep the public candidate checklist auditable without adding
+parallel aliases for formulas already covered by registered factors:
+
+- `q158_roc_5h_skipped` duplicates `mom_5h` horizon coverage.
+- `q158_roc_10h_skipped` duplicates `mom_10h` horizon coverage.
+- `q158_roc_72h_skipped` duplicates `mom_72h` horizon coverage.
+- `q158_roc_120h_skipped` duplicates `mom_120h` horizon coverage.
+- `q158_ksft_20h_skipped` duplicates `realized_skew_20h`.
+- `q158_volume_xs_rank_skipped` duplicates `xs_rank_vol`.
+
+Skipped rows are not registry entries and are intentionally excluded from
+factor-value and post-intake integrity factor ID lists.
 
 ## Current Workflow Evidence
 

@@ -13,6 +13,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from factor_formula_registry import REGISTRY_BY_ID  # noqa: E402
 
 MANIFEST = ROOT / "docs" / "factor_library" / "public_factor_candidate_manifest.csv"
+SKIPPED_STATUSES = {
+    "skipped_duplicate_20260627",
+}
 
 REQUIRED_COLUMNS = [
     "factor_id",
@@ -47,17 +50,25 @@ def test_public_manifest_registry_and_metadata_parity(rows: list[dict[str, str]]
 
     for row in rows:
         factor_id = row["factor_id"]
+        status = row["implementation_status"]
         spec = REGISTRY_BY_ID.get(factor_id)
-        assert spec is not None, f"{factor_id} missing from registry"
         assert row["source_family"] in {"alpha101", "alpha158"}
         assert row["compute_scope"] in valid_scopes
         assert row["expected_direction"] in valid_directions
-        assert row["lookback"] == str(spec.lookback_window)
 
         for column in REQUIRED_COLUMNS:
             if column == "skip_reason":
                 continue
             assert row[column], f"{factor_id} missing {column}"
+
+        if status in SKIPPED_STATUSES:
+            assert spec is None, f"{factor_id} is skipped but exists in registry"
+            assert row["skip_reason"], f"{factor_id} skipped without skip_reason"
+            continue
+
+        assert spec is not None, f"{factor_id} missing from registry"
+        assert not row["skip_reason"], f"{factor_id} implemented row has skip_reason"
+        assert row["lookback"] == str(spec.lookback_window)
 
 
 def test_public_registry_factors_are_manifested(rows: list[dict[str, str]]) -> None:
@@ -75,11 +86,20 @@ def test_public_registry_factors_are_manifested(rows: list[dict[str, str]]) -> N
 
 
 def test_public_manifest_counts_and_batch_sizes(rows: list[dict[str, str]]) -> None:
-    counts = {
+    implemented_counts = {
+        family: sum(
+            row["source_family"] == family
+            and row["implementation_status"] not in SKIPPED_STATUSES
+            for row in rows
+        )
+        for family in {"alpha101", "alpha158"}
+    }
+    total_counts = {
         family: sum(row["source_family"] == family for row in rows)
         for family in {"alpha101", "alpha158"}
     }
-    assert counts == {"alpha101": 9, "alpha158": 53}
+    assert implemented_counts == {"alpha101": 9, "alpha158": 53}
+    assert total_counts == {"alpha101": 9, "alpha158": 59}
 
     batches: dict[str, int] = {}
     for row in rows:
@@ -90,6 +110,8 @@ def test_public_manifest_counts_and_batch_sizes(rows: list[dict[str, str]]) -> N
             "existing_support_backfill_20260627",
             "existing_alpha158_family_backfill_20260627",
         }:
+            batches[status] = batches.get(status, 0) + 1
+        elif status in SKIPPED_STATUSES:
             batches[status] = batches.get(status, 0) + 1
 
     assert batches
