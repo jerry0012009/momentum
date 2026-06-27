@@ -152,6 +152,31 @@ def _compute_q158_open_close_0h(df: pd.DataFrame) -> pd.Series:
     return df["open"] / df["close"].replace(0, np.nan)
 
 
+def _compute_q158_high_close_0h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 HIGH0: current high divided by current close."""
+    return df["high"] / df["close"].replace(0, np.nan)
+
+
+def _compute_q158_low_close_0h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 LOW0: current low divided by current close."""
+    return df["low"] / df["close"].replace(0, np.nan)
+
+
+def _compute_q158_open_close_1h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 OPEN1: previous open divided by current close."""
+    return delay(df["open"], 1) / df["close"].replace(0, np.nan)
+
+
+def _compute_q158_high_close_1h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 HIGH1: previous high divided by current close."""
+    return delay(df["high"], 1) / df["close"].replace(0, np.nan)
+
+
+def _compute_q158_low_close_1h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 LOW1: previous low divided by current close."""
+    return delay(df["low"], 1) / df["close"].replace(0, np.nan)
+
+
 def _compute_q158_qtlu_20h(df: pd.DataFrame) -> pd.Series:
     """Alpha158 QTLU20: Quantile(close, 20, 0.8) / close."""
     c = df["close"]
@@ -993,6 +1018,42 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="conditional",
         compute_fn=_compute_q158_open_close_0h,
         notes="Alpha158 OPEN0: open / close; current open normalized by current close from Alpha158 price feature block",
+    ),
+    # Public Alpha158 price batch 07
+    FactorSpec(
+        factor_id="q158_high_close_0h", family="alpha158_price",
+        required_columns=["high", "close"], lookback_window=1,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_high_close_0h,
+        notes="Alpha158 HIGH0: high / close; current high normalized by current close from Alpha158 price feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_low_close_0h", family="alpha158_price",
+        required_columns=["low", "close"], lookback_window=1,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_low_close_0h,
+        notes="Alpha158 LOW0: low / close; current low normalized by current close from Alpha158 price feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_open_close_1h", family="alpha158_price",
+        required_columns=["open", "close"], lookback_window=2,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_open_close_1h,
+        notes="Alpha158 OPEN1: Ref(open,1) / close; previous open normalized by current close from Alpha158 price feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_high_close_1h", family="alpha158_price",
+        required_columns=["high", "close"], lookback_window=2,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_high_close_1h,
+        notes="Alpha158 HIGH1: Ref(high,1) / close; previous high normalized by current close from Alpha158 price feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_low_close_1h", family="alpha158_price",
+        required_columns=["low", "close"], lookback_window=2,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_low_close_1h,
+        notes="Alpha158 LOW1: Ref(low,1) / close; previous low normalized by current close from Alpha158 price feature block",
     ),
     # Public Alpha158 rolling batch 02
     FactorSpec(
