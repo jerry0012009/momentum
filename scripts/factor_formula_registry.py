@@ -195,6 +195,57 @@ def _compute_q158_imxd_20h(df: pd.DataFrame) -> pd.Series:
     return (rolling_idxmax(df["high"], 20) - rolling_idxmin(df["low"], 20)) / 20.0
 
 
+def _compute_q158_roc_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 ROC20: close 20 bars ago divided by current close."""
+    c = df["close"]
+    return delay(c, 20) / c.replace(0, np.nan)
+
+
+def _compute_q158_ma_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 MA20: rolling mean close divided by current close."""
+    c = df["close"]
+    return rolling_mean(c, 20) / c.replace(0, np.nan)
+
+
+def _compute_q158_std_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 STD20: rolling close standard deviation divided by current close."""
+    c = df["close"]
+    return rolling_std(c, 20) / c.replace(0, np.nan)
+
+
+def _compute_q158_max_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 MAX20: rolling 20-bar high divided by current close."""
+    c = df["close"]
+    return rolling_max(df["high"], 20) / c.replace(0, np.nan)
+
+
+def _compute_q158_min_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 MIN20: rolling 20-bar low divided by current close."""
+    c = df["close"]
+    return rolling_min(df["low"], 20) / c.replace(0, np.nan)
+
+
+def _compute_q158_cntd_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 CNTD20: up-close fraction minus down-close fraction over 20 bars."""
+    prev_close = delay(df["close"], 1)
+    up = (df["close"] > prev_close).astype(float).where(prev_close.notna(), np.nan)
+    down = (df["close"] < prev_close).astype(float).where(prev_close.notna(), np.nan)
+    return rolling_mean(up, 20) - rolling_mean(down, 20)
+
+
+def _compute_q158_corr_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 CORR20: corr(close, log(volume + 1), 20)."""
+    log_volume = np.log(df["volume"].clip(lower=0) + 1.0)
+    return rolling_corr(df["close"], log_volume, 20)
+
+
+def _compute_q158_cord_20h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 CORD20: corr(close/Ref(close,1), log(volume/Ref(volume,1)+1), 20)."""
+    close_ratio = df["close"] / delay(df["close"], 1).replace(0, np.nan)
+    volume_ratio = df["volume"] / delay(df["volume"], 1).replace(0, np.nan)
+    return rolling_corr(close_ratio, np.log(volume_ratio + 1.0), 20)
+
+
 # ── PM-09: Alpha158-Inspired Batch 1 ──────────────────────────────
 
 def _compute_vwap_dev_20h(df: pd.DataFrame) -> pd.Series:
@@ -903,6 +954,63 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="conditional",
         compute_fn=_compute_q158_imxd_20h,
         notes="Alpha158 IMXD20: (IdxMax(high,20)-IdxMin(low,20)) / 20; relative recency of high versus low",
+    ),
+    # Public Alpha158 rolling batch 04
+    FactorSpec(
+        factor_id="q158_roc_20h", family="alpha158_rolling_price",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_roc_20h,
+        notes="Alpha158 ROC20: Ref(close,20) / close; 1h adaptation of 20-bar rate-of-change ratio",
+    ),
+    FactorSpec(
+        factor_id="q158_ma_20h", family="alpha158_rolling_price",
+        required_columns=["close"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_ma_20h,
+        notes="Alpha158 MA20: Mean(close,20) / close; rolling average normalized by current close",
+    ),
+    FactorSpec(
+        factor_id="q158_std_20h", family="alpha158_rolling_price",
+        required_columns=["close"], lookback_window=20,
+        expected_direction="negative",
+        compute_fn=_compute_q158_std_20h,
+        notes="Alpha158 STD20: Std(close,20) / close; rolling close dispersion normalized by current close",
+    ),
+    FactorSpec(
+        factor_id="q158_max_20h", family="alpha158_rolling_price",
+        required_columns=["high", "close"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_max_20h,
+        notes="Alpha158 MAX20: Max(high,20) / close; rolling high normalized by current close",
+    ),
+    FactorSpec(
+        factor_id="q158_min_20h", family="alpha158_rolling_price",
+        required_columns=["low", "close"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_min_20h,
+        notes="Alpha158 MIN20: Min(low,20) / close; rolling low normalized by current close",
+    ),
+    FactorSpec(
+        factor_id="q158_cntd_20h", family="alpha158_rolling_direction",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="positive",
+        compute_fn=_compute_q158_cntd_20h,
+        notes="Alpha158 CNTD20: Mean(close > Ref(close,1),20) - Mean(close < Ref(close,1),20); signed up/down bar balance",
+    ),
+    FactorSpec(
+        factor_id="q158_corr_20h", family="alpha158_rolling_volume_price",
+        required_columns=["close", "volume"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_corr_20h,
+        notes="Alpha158 CORR20: Corr(close, Log(volume+1),20); rolling price-volume level correlation",
+    ),
+    FactorSpec(
+        factor_id="q158_cord_20h", family="alpha158_rolling_volume_price",
+        required_columns=["close", "volume"], lookback_window=21,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_cord_20h,
+        notes="Alpha158 CORD20: Corr(close/Ref(close,1), Log(volume/Ref(volume,1)+1),20); rolling return-volume change correlation",
     ),
     # PM-09: Alpha158-Inspired Batch 1
     FactorSpec(
