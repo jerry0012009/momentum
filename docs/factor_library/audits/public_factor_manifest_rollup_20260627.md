@@ -6,7 +6,7 @@ This audit records the current controlled public-factor intake state for the
 compact manifest:
 
 - `docs/factor_library/public_factor_candidate_manifest.csv`
-- 45 Alpha158 factors from Qlib Alpha158DL formula families and existing local
+- 53 Alpha158 factors from Qlib Alpha158DL formula families and existing local
   Alpha158 support.
 - 6 curated Alpha101 panel factors from the local Alpha101 migration layer.
 - 3 existing WorldQuant 101 proxy factors already registered as `wq101_*`.
@@ -33,9 +33,9 @@ Current manifest row counts:
 
 | source_family | rows |
 | --- | ---: |
-| alpha158 | 45 |
+| alpha158 | 53 |
 | alpha101 | 9 |
-| total | 54 |
+| total | 62 |
 
 The `existing_support_backfill_20260627` rows are metadata backfills for factors
 that were already registered and computed before the public manifest existed:
@@ -44,6 +44,19 @@ that were already registered and computed before the public manifest existed:
 - `wq101_alpha101`
 - `wq101_alpha12`
 - `wq101_alpha53`
+
+The `existing_alpha158_family_backfill_20260627` rows are metadata backfills
+for already registered and computed factors whose registry families are
+Alpha158-derived but whose factor IDs predated the `q158_` prefix convention:
+
+- `vwap_dev_20h`
+- `wvma_20h`
+- `vol_ret_corr_20h`
+- `intraday_ret`
+- `klow_close`
+- `ksft_5h`
+- `up_down_vol_ratio_20h`
+- `clv_20h`
 
 ## Current Workflow Evidence
 
@@ -64,16 +77,16 @@ Result:
 Full public-manifest integrity command:
 
 ```bash
-python scripts/check_post_intake_workflow_integrity.py --factor-ids q158_high_low_range,wq101_alpha101,wq101_alpha12,wq101_alpha53,q158_klen_open,q158_kup_open,q158_klow_open,q158_ksft_open,q158_ksft_range,q158_rsv_20h,q158_qtlu_20h,q158_qtld_20h,q158_rank_close_20h,q158_cntp_20h,q158_cntn_20h,q158_sumd_20h,q158_beta_20h,q158_rsqr_20h,q158_resi_20h,q158_imax_20h,q158_imin_20h,q158_imxd_20h,q158_roc_20h,q158_ma_20h,q158_std_20h,q158_max_20h,q158_min_20h,q158_cntd_20h,q158_corr_20h,q158_cord_20h,q158_sump_20h,q158_sumn_20h,q158_vma_20h,q158_vstd_20h,q158_wvma_20h,q158_vsump_20h,q158_vsumn_20h,q158_vsumd_20h,q158_kmid_open,q158_kmid_range,q158_kup_range,q158_klow_range,q158_open_close_0h,q158_high_close_0h,q158_low_close_0h,q158_open_close_1h,q158_high_close_1h,q158_low_close_1h,a101_volume_xs_z_mean_neg_112h,a101_vol_xs_z_product_112h,a101_volume_low_alpha_min_84_120,a101_volume_high_alpha_min_84_84,a101_volume_cap_alpha_min_80_80,a101_volume_cap_alpha_min_56_84
+python scripts/check_post_intake_workflow_integrity.py --factor-ids q158_high_low_range,vwap_dev_20h,wvma_20h,vol_ret_corr_20h,intraday_ret,klow_close,ksft_5h,up_down_vol_ratio_20h,clv_20h,wq101_alpha101,wq101_alpha12,wq101_alpha53,q158_klen_open,q158_kup_open,q158_klow_open,q158_ksft_open,q158_ksft_range,q158_rsv_20h,q158_qtlu_20h,q158_qtld_20h,q158_rank_close_20h,q158_cntp_20h,q158_cntn_20h,q158_sumd_20h,q158_beta_20h,q158_rsqr_20h,q158_resi_20h,q158_imax_20h,q158_imin_20h,q158_imxd_20h,q158_roc_20h,q158_ma_20h,q158_std_20h,q158_max_20h,q158_min_20h,q158_cntd_20h,q158_corr_20h,q158_cord_20h,q158_sump_20h,q158_sumn_20h,q158_vma_20h,q158_vstd_20h,q158_wvma_20h,q158_vsump_20h,q158_vsumn_20h,q158_vsumd_20h,q158_kmid_open,q158_kmid_range,q158_kup_range,q158_klow_range,q158_open_close_0h,q158_high_close_0h,q158_low_close_0h,q158_open_close_1h,q158_high_close_1h,q158_low_close_1h,a101_volume_xs_z_mean_neg_112h,a101_vol_xs_z_product_112h,a101_volume_low_alpha_min_84_120,a101_volume_high_alpha_min_84_84,a101_volume_cap_alpha_min_80_80,a101_volume_cap_alpha_min_56_84
 ```
 
 Result:
 
-- Factors checked: 54
-- Total checks: 1296
-- PASS: 1243
+- Factors checked: 62
+- Total checks: 1488
+- PASS: 1431
 - FAIL: 0
-- WARN: 53
+- WARN: 57
 
 The warnings are optional PM-59A overlapping-sleeve summaries missing for
 eligible diagnostic factors. They do not indicate missing factor_values,

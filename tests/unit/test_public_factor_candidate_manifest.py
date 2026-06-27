@@ -60,12 +60,16 @@ def test_public_manifest_registry_and_metadata_parity(rows: list[dict[str, str]]
             assert row[column], f"{factor_id} missing {column}"
 
 
-def test_public_registry_prefixes_are_manifested(rows: list[dict[str, str]]) -> None:
+def test_public_registry_factors_are_manifested(rows: list[dict[str, str]]) -> None:
     manifest_ids = {row["factor_id"] for row in rows}
     public_registry_ids = {
         factor_id
-        for factor_id in REGISTRY_BY_ID
-        if factor_id.startswith(("q158_", "a101_", "wq101_"))
+        for factor_id, spec in REGISTRY_BY_ID.items()
+        if (
+            factor_id.startswith(("q158_", "a101_", "wq101_"))
+            or spec.family.startswith(("alpha158", "alpha101"))
+            or spec.family == "wq101"
+        )
     }
     assert public_registry_ids <= manifest_ids
 
@@ -75,14 +79,17 @@ def test_public_manifest_counts_and_batch_sizes(rows: list[dict[str, str]]) -> N
         family: sum(row["source_family"] == family for row in rows)
         for family in {"alpha101", "alpha158"}
     }
-    assert counts == {"alpha101": 9, "alpha158": 45}
+    assert counts == {"alpha101": 9, "alpha158": 53}
 
     batches: dict[str, int] = {}
     for row in rows:
         status = row["implementation_status"]
         if status.startswith("implemented_batch_"):
             batches[status] = batches.get(status, 0) + 1
-        elif status == "existing_support_backfill_20260627":
+        elif status in {
+            "existing_support_backfill_20260627",
+            "existing_alpha158_family_backfill_20260627",
+        }:
             batches[status] = batches.get(status, 0) + 1
 
     assert batches
