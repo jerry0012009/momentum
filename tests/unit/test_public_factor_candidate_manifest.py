@@ -17,6 +17,11 @@ SKIPPED_STATUSES = {
     "skipped_duplicate_20260627",
     "skipped_missing_industry_neutralization_20260627",
 }
+BACKFILL_STATUSES = {
+    "existing_support_backfill_20260627",
+    "existing_alpha158_family_backfill_20260627",
+    "already_registered",
+}
 
 REQUIRED_COLUMNS = [
     "factor_id",
@@ -56,6 +61,11 @@ def test_public_manifest_registry_and_metadata_parity(rows: list[dict[str, str]]
         assert row["source_family"] in {"alpha101", "alpha158"}
         assert row["compute_scope"] in valid_scopes
         assert row["expected_direction"] in valid_directions
+        assert (
+            status.startswith("implemented_batch_")
+            or status in BACKFILL_STATUSES
+            or status in SKIPPED_STATUSES
+        ), f"{factor_id} has unknown implementation_status {status}"
 
         for column in REQUIRED_COLUMNS:
             if column == "skip_reason":
@@ -63,10 +73,12 @@ def test_public_manifest_registry_and_metadata_parity(rows: list[dict[str, str]]
             assert row[column], f"{factor_id} missing {column}"
 
         if status in SKIPPED_STATUSES:
+            assert factor_id.endswith("_skipped")
             assert spec is None, f"{factor_id} is skipped but exists in registry"
             assert row["skip_reason"], f"{factor_id} skipped without skip_reason"
             continue
 
+        assert not factor_id.endswith("_skipped")
         assert spec is not None, f"{factor_id} missing from registry"
         assert not row["skip_reason"], f"{factor_id} implemented row has skip_reason"
         assert row["lookback"] == str(spec.lookback_window)
@@ -107,10 +119,7 @@ def test_public_manifest_counts_and_batch_sizes(rows: list[dict[str, str]]) -> N
         status = row["implementation_status"]
         if status.startswith("implemented_batch_"):
             batches[status] = batches.get(status, 0) + 1
-        elif status in {
-            "existing_support_backfill_20260627",
-            "existing_alpha158_family_backfill_20260627",
-        }:
+        elif status in BACKFILL_STATUSES:
             batches[status] = batches.get(status, 0) + 1
         elif status in SKIPPED_STATUSES:
             batches[status] = batches.get(status, 0) + 1

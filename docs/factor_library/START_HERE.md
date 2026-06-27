@@ -131,6 +131,14 @@ For Alpha101 / Alpha158 intake, every candidate should record formula source, fi
 
 公开因子库扩展先看这个紧凑 manifest。Alpha101 / Alpha158 候选必须记录公式来源、字段映射、所需 operator、计算范围、时间尺度映射、方向语义、实现状态，以及无法实现原因。
 
+Manifest status rules:
+
+- Implemented rows use `implemented_batch_*`, `existing_*_backfill_*`, or `already_registered`; they must have a registry `FactorSpec`, no `skip_reason`, and are included in factor-value / intake / post-intake QA factor ID lists.
+- Skipped rows use `skipped_*`, keep a non-empty `skip_reason`, use a `_skipped` factor ID suffix, and are not registry entries. They document duplicate formulas, unavailable fields, or blocked operators without creating parallel aliases.
+- When running QA from the manifest, filter out skipped rows before calling `run_factor_intake.py`, `run_post_intake_workflow_completion.py`, or `check_post_intake_workflow_integrity.py`.
+
+Manifest 状态规则：已实现行必须对应 registry；跳过行必须写明原因、使用 `_skipped` 后缀，并且不进入 factor_values / intake / post-intake QA 的 factor-id 列表。
+
 1. Add or adjust a `FactorSpec` in `scripts/factor_formula_registry.py`.
 2. Reuse `scripts/factor_ops.py` where possible.
 3. Add a small operator only if the formula cannot be expressed with existing operators.
