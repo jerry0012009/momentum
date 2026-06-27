@@ -15,6 +15,7 @@ from factor_formula_registry import REGISTRY_BY_ID  # noqa: E402
 MANIFEST = ROOT / "docs" / "factor_library" / "public_factor_candidate_manifest.csv"
 SKIPPED_STATUSES = {
     "skipped_duplicate_20260627",
+    "skipped_missing_industry_neutralization_20260627",
 }
 
 REQUIRED_COLUMNS = [
@@ -99,7 +100,7 @@ def test_public_manifest_counts_and_batch_sizes(rows: list[dict[str, str]]) -> N
         for family in {"alpha101", "alpha158"}
     }
     assert implemented_counts == {"alpha101": 9, "alpha158": 53}
-    assert total_counts == {"alpha101": 9, "alpha158": 59}
+    assert total_counts == {"alpha101": 15, "alpha158": 59}
 
     batches: dict[str, int] = {}
     for row in rows:

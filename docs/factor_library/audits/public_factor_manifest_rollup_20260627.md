@@ -11,6 +11,8 @@ compact manifest:
 - 6 skipped Alpha158 duplicate dispositions with explicit skip reasons.
 - 6 curated Alpha101 panel factors from the local Alpha101 migration layer.
 - 3 existing WorldQuant 101 proxy factors already registered as `wq101_*`.
+- 6 skipped WorldQuant 101 formulas blocked by missing equity
+  industry/sector-neutralization inputs.
 
 The manifest is the expansion checklist. The registry remains the only factor
 definition entry point.
@@ -35,8 +37,8 @@ Current manifest row counts:
 | source_family | implemented rows | skipped rows | total rows |
 | --- | ---: |
 | alpha158 | 53 | 6 | 59 |
-| alpha101 | 9 | 0 | 9 |
-| total | 62 | 6 | 68 |
+| alpha101 | 9 | 6 | 15 |
+| total | 62 | 12 | 74 |
 
 The `existing_support_backfill_20260627` rows are metadata backfills for factors
 that were already registered and computed before the public manifest existed:
@@ -72,6 +74,22 @@ parallel aliases for formulas already covered by registered factors:
 
 Skipped rows are not registry entries and are intentionally excluded from
 factor-value and post-intake integrity factor ID lists.
+
+The `skipped_missing_industry_neutralization_20260627` rows are Alpha101
+formulas whose published definitions require `IndNeutralize(..., IndClass.*)`.
+They are blocked until the project has an approved crypto sector/industry
+taxonomy and reusable neutralization operator:
+
+- `wq101_alpha58_indneutralize_skipped`
+- `wq101_alpha59_indneutralize_skipped`
+- `wq101_alpha67_indneutralize_skipped`
+- `wq101_alpha69_indneutralize_skipped`
+- `wq101_alpha70_indneutralize_skipped`
+- `wq101_alpha93_indneutralize_skipped`
+
+These rows are sourced from the 101 Formulaic Alphas definitions and the
+DolphinDB WQ101 classification of formulas that require industry information.
+No ad hoc crypto bucket proxy was introduced.
 
 ## Current Workflow Evidence
 
