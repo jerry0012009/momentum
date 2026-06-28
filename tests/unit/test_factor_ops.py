@@ -8,7 +8,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from factor_ops import (
     delay, delta, rolling_mean, rolling_std, rolling_min, rolling_max,
-    rolling_corr, ts_rank, zscore, signed_power, ema, true_range,
+    rolling_corr, ts_rank, zscore, panel_indneutralize, signed_power, ema,
+    true_range,
 )
 
 
@@ -146,6 +147,61 @@ class TestZscore:
         result = zscore(s, 4)
         # Constant → std=0 → NaN
         assert np.isnan(result.iloc[3])
+
+
+# ── panel_indneutralize ─────────────────────────────────────────────
+
+class TestPanelIndNeutralize:
+    def test_demeans_within_timestamp_and_group(self):
+        ts = pd.to_datetime([
+            "2026-01-01 00:00Z", "2026-01-01 00:00Z",
+            "2026-01-01 00:00Z", "2026-01-01 00:00Z",
+            "2026-01-01 01:00Z", "2026-01-01 01:00Z",
+        ])
+        values = _series([1.0, 3.0, 10.0, 14.0, 5.0, 9.0])
+        groups = pd.Series(["L1", "L1", "L2", "L2", "L1", "L1"])
+
+        result = panel_indneutralize(values, groups, pd.Series(ts))
+
+        expected = _series([-1.0, 1.0, -2.0, 2.0, -2.0, 2.0])
+        pd.testing.assert_series_equal(result, expected)
+
+    def test_missing_values_and_groups_stay_nan(self):
+        ts = pd.Series(pd.to_datetime(["2026-01-01 00:00Z"] * 4))
+        values = _series([1.0, 3.0, np.nan, 7.0])
+        groups = pd.Series(["L1", "L1", "L1", None])
+
+        result = panel_indneutralize(values, groups, ts)
+
+        assert result.iloc[0] == pytest.approx(-1.0)
+        assert result.iloc[1] == pytest.approx(1.0)
+        assert np.isnan(result.iloc[2])
+        assert np.isnan(result.iloc[3])
+
+    def test_min_group_size_blocks_singletons(self):
+        ts = pd.Series(pd.to_datetime(["2026-01-01 00:00Z"] * 3))
+        values = _series([1.0, 3.0, 10.0])
+        groups = pd.Series(["L1", "L1", "L2"])
+
+        result = panel_indneutralize(values, groups, ts)
+
+        assert result.iloc[0] == pytest.approx(-1.0)
+        assert result.iloc[1] == pytest.approx(1.0)
+        assert np.isnan(result.iloc[2])
+
+    def test_min_group_size_can_be_relaxed(self):
+        ts = pd.Series(pd.to_datetime(["2026-01-01 00:00Z"] * 2))
+        values = _series([1.0, 10.0])
+        groups = pd.Series(["L1", "L2"])
+
+        result = panel_indneutralize(values, groups, ts, min_group_size=1)
+
+        assert result.iloc[0] == pytest.approx(0.0)
+        assert result.iloc[1] == pytest.approx(0.0)
+
+    def test_length_mismatch_raises(self):
+        with pytest.raises(ValueError):
+            panel_indneutralize(_series([1.0, 2.0]), pd.Series(["L1"]), pd.Series([1, 1]))
 
 
 # ── signed_power ────────────────────────────────────────────────────

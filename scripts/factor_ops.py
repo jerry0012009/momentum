@@ -154,6 +154,40 @@ def zscore(series: pd.Series, n: int) -> pd.Series:
     return (series - mu) / sigma.replace(0, np.nan)
 
 
+def panel_indneutralize(
+    values: pd.Series,
+    groups: pd.Series,
+    timestamps: pd.Series,
+    min_group_size: int = 2,
+) -> pd.Series:
+    """Cross-sectional group demeaning within each timestamp.
+
+    This is the reusable primitive for Alpha101-style IndNeutralize once an
+    approved point-in-time crypto taxonomy is available. It does not load or
+    infer groups; callers must pass already validated group membership.
+    """
+    if not (len(values) == len(groups) == len(timestamps)):
+        raise ValueError("values, groups, and timestamps must have the same length")
+    if min_group_size < 1:
+        raise ValueError("min_group_size must be >= 1")
+
+    frame = pd.DataFrame({
+        "value": values,
+        "group": groups,
+        "timestamp": timestamps,
+    }, index=values.index)
+    valid = frame["value"].notna() & frame["group"].notna() & frame["timestamp"].notna()
+    group_keys = [frame.loc[valid, "timestamp"], frame.loc[valid, "group"]]
+    counts = frame.loc[valid, "value"].groupby(group_keys, sort=False).transform("count")
+    means = frame.loc[valid, "value"].groupby(group_keys, sort=False).transform("mean")
+
+    out = pd.Series(np.nan, index=values.index, dtype=float)
+    neutralized = frame.loc[valid, "value"] - means
+    neutralized = neutralized.where(counts >= min_group_size)
+    out.loc[neutralized.index] = neutralized
+    return out
+
+
 # ── Math transforms ─────────────────────────────────────────────────
 
 def sign(series: pd.Series) -> pd.Series:

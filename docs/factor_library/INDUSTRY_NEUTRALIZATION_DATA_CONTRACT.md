@@ -37,7 +37,6 @@ The current crypto factor library does not have:
 
 - an approved crypto sector/industry/subindustry taxonomy;
 - point-in-time symbol-to-group membership;
-- a reusable neutralization operator;
 - a `build_factor_values.py` source branch that supplies group columns to
   panel factors.
 
@@ -73,13 +72,13 @@ Point-in-time rule:
 
 ## 4. Required Operator
 
-Add one reusable panel operator only after the taxonomy exists:
+The reusable pure operator is available in `scripts/factor_ops.py`:
 
 ```text
-panel_indneutralize(values, groups, timestamp, symbol)
+panel_indneutralize(values, groups, timestamps, min_group_size=2)
 ```
 
-Required behavior:
+Required behavior, covered by unit tests:
 
 - operate cross-sectionally within each timestamp;
 - subtract the group mean from each symbol's value;
@@ -88,8 +87,10 @@ Required behavior:
 - never use future group assignments;
 - return a Series aligned to the input rows.
 
-The operator belongs in the existing factor/operator layer. Do not create a
-parallel factor workflow or a one-off Alpha101 evaluator.
+The operator does not load, infer, or validate a taxonomy. The remaining blocker
+is the approved point-in-time taxonomy data source plus a `build_factor_values.py`
+source branch that supplies `sector`, `industry`, and `subindustry` columns to
+panel factors.
 
 ## 5. Required Workflow Extension
 
