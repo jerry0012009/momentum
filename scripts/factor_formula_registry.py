@@ -207,6 +207,26 @@ def _compute_q158_low_close_3h(df: pd.DataFrame) -> pd.Series:
     return delay(df["low"], 3) / df["close"].replace(0, np.nan)
 
 
+def _compute_q158_open_close_4h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 OPEN4: open from four bars ago divided by current close."""
+    return delay(df["open"], 4) / df["close"].replace(0, np.nan)
+
+
+def _compute_q158_high_close_4h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 HIGH4: high from four bars ago divided by current close."""
+    return delay(df["high"], 4) / df["close"].replace(0, np.nan)
+
+
+def _compute_q158_low_close_4h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 LOW4: low from four bars ago divided by current close."""
+    return delay(df["low"], 4) / df["close"].replace(0, np.nan)
+
+
+def _compute_q158_close_close_4h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 CLOSE4: close from four bars ago divided by current close."""
+    return delay(df["close"], 4) / df["close"].replace(0, np.nan)
+
+
 def _compute_q158_volume_ratio_1h(df: pd.DataFrame) -> pd.Series:
     """Alpha158 VOLUME1: previous volume divided by current volume."""
     return delay(df["volume"], 1) / (df["volume"] + 1e-12)
@@ -1147,6 +1167,35 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="conditional",
         compute_fn=_compute_q158_low_close_3h,
         notes="Alpha158 LOW3: Ref(low,3) / close; three-bar lagged low normalized by current close from Alpha158 price feature block",
+    ),
+    # Public Alpha158 price batch 10
+    FactorSpec(
+        factor_id="q158_open_close_4h", family="alpha158_price",
+        required_columns=["open", "close"], lookback_window=5,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_open_close_4h,
+        notes="Alpha158 OPEN4: Ref(open,4) / close; four-bar lagged open normalized by current close from Alpha158 price feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_high_close_4h", family="alpha158_price",
+        required_columns=["high", "close"], lookback_window=5,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_high_close_4h,
+        notes="Alpha158 HIGH4: Ref(high,4) / close; four-bar lagged high normalized by current close from Alpha158 price feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_low_close_4h", family="alpha158_price",
+        required_columns=["low", "close"], lookback_window=5,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_low_close_4h,
+        notes="Alpha158 LOW4: Ref(low,4) / close; four-bar lagged low normalized by current close from Alpha158 price feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_close_close_4h", family="alpha158_price",
+        required_columns=["close"], lookback_window=5,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_close_close_4h,
+        notes="Alpha158 CLOSE4: Ref(close,4) / close; four-bar lagged close normalized by current close from Alpha158 price feature block",
     ),
     # Public Alpha158 volume batch 09
     FactorSpec(
