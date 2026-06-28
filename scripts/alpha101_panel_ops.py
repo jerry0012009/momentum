@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from numpy.lib.stride_tricks import sliding_window_view
 
 
 # ── Pivot helpers ─────────────────────────────────────────────────────
@@ -125,20 +126,42 @@ def rolling_sum_wide(wide: pd.DataFrame, window: int) -> pd.DataFrame:
     return wide.rolling(window=window, min_periods=window).sum()
 
 
+def decay_linear_wide(wide: pd.DataFrame, window: int) -> pd.DataFrame:
+    """Linear-decay weighted moving average over time for each symbol column."""
+    weights = np.arange(1, window + 1, dtype=float)
+    weights = weights / weights.sum()
+    result = pd.DataFrame(np.nan, index=wide.index, columns=wide.columns, dtype=float)
+    for col in wide.columns:
+        vals = wide[col].to_numpy(dtype=float, copy=False)
+        if len(vals) < window:
+            continue
+        windows = sliding_window_view(vals, window_shape=window)
+        valid = np.isfinite(windows).all(axis=1)
+        out = np.full(len(vals), np.nan)
+        dot = np.full(len(windows), np.nan)
+        dot[valid] = windows[valid] @ weights
+        out[window - 1:] = dot
+        result[col] = out
+    return result
+
+
 def ts_rank_wide(wide: pd.DataFrame, window: int) -> pd.DataFrame:
     """Percentile rank of the latest value within each symbol's rolling window."""
-    def _rank_last_pct(x: np.ndarray) -> float:
-        last = x[-1]
-        if np.isnan(last):
-            return np.nan
-        valid = x[~np.isnan(x)]
-        if len(valid) < window:
-            return np.nan
-        less = np.sum(valid < last)
-        equal = np.sum(valid == last)
-        return (less + (equal + 1) / 2) / len(valid)
-
-    return wide.rolling(window=window, min_periods=window).apply(_rank_last_pct, raw=True)
+    result = pd.DataFrame(np.nan, index=wide.index, columns=wide.columns, dtype=float)
+    for col in wide.columns:
+        vals = wide[col].to_numpy(dtype=float, copy=False)
+        if len(vals) < window:
+            continue
+        windows = sliding_window_view(vals, window_shape=window)
+        valid = np.isfinite(windows).all(axis=1)
+        last = windows[:, -1]
+        less = (windows < last[:, None]).sum(axis=1)
+        equal = (windows == last[:, None]).sum(axis=1)
+        ranks = (less + (equal + 1) / 2) / window
+        out = np.full(len(vals), np.nan)
+        out[window - 1:] = np.where(valid & np.isfinite(last), ranks, np.nan)
+        result[col] = out
+    return result
 
 
 def _rolling_product_series(vals: np.ndarray, window: int) -> np.ndarray:
@@ -300,6 +323,14 @@ def _vwap_wide(bars: pd.DataFrame) -> pd.DataFrame:
         work["_vwap"] = work["quote_volume"] / work["volume"].replace(0, np.nan)
         return to_wide(work, "_vwap")
     return to_wide(bars, "close")
+
+
+def _min_wide(left: pd.DataFrame, right: pd.DataFrame) -> pd.DataFrame:
+    """Elementwise minimum after aligning two wide panels."""
+    left, right = left.align(right, join="inner", axis=None)
+    result = left.where(left <= right, right)
+    result[left.isna() | right.isna()] = np.nan
+    return result
 
 
 def compute_wq101_alpha32(bars: pd.DataFrame) -> pd.DataFrame:
@@ -562,3 +593,150 @@ def compute_wq101_alpha75(bars: pd.DataFrame) -> pd.DataFrame:
     result = (left < right).astype(float)
     result[left.isna() | right.isna()] = np.nan
     return from_wide(result, "wq101_alpha75")
+
+
+def compute_wq101_alpha77(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#77: min(rank(decay_linear(mid-vwap,20)), rank(decay_linear(corr(mid,adv40,3),6)))."""
+    high = to_wide(bars, "high")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    mid = (high + low) / 2
+    adv40 = rolling_mean_wide(volume, 40)
+    left = xs_rank(decay_linear_wide((((mid + high) - (vwap + high))), 20))
+    right = xs_rank(decay_linear_wide(rolling_corr_wide(mid, adv40, 3), 6))
+    return from_wide(_min_wide(left, right), "wq101_alpha77")
+
+
+def compute_wq101_alpha78(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#78: rank(corr(sum(low/vwap blend,20),sum(adv40,20),7)) ^ rank(corr(rank(vwap),rank(volume),6))."""
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    adv40 = rolling_mean_wide(volume, 40)
+    blended = low * 0.352233 + vwap * (1 - 0.352233)
+    left = xs_rank(rolling_corr_wide(rolling_sum_wide(blended, 20), rolling_sum_wide(adv40, 20), 7))
+    right = xs_rank(rolling_corr_wide(xs_rank(vwap), xs_rank(volume), 6))
+    left, right = left.align(right, join="inner", axis=None)
+    result = left.pow(right)
+    result[left.isna() | right.isna()] = np.nan
+    return from_wide(result, "wq101_alpha78")
+
+
+def compute_wq101_alpha83(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#83: rank(delay(range/avg_close,2))*rank(rank(volume)) / ((range/avg_close)/(vwap-close))."""
+    close = to_wide(bars, "close")
+    high = to_wide(bars, "high")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    range_scaled = (high - low) / (rolling_sum_wide(close, 5) / 5).replace(0, np.nan)
+    denom = (range_scaled / (vwap - close).replace(0, np.nan)).replace(0, np.nan)
+    result = (xs_rank(range_scaled.shift(2)) * xs_rank(xs_rank(volume))) / denom
+    return from_wide(result, "wq101_alpha83")
+
+
+def compute_wq101_alpha85(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#85: rank(corr(high/close blend,adv30,10)) ^ rank(corr(ts_rank(mid,4),ts_rank(volume,10),7))."""
+    close = to_wide(bars, "close")
+    high = to_wide(bars, "high")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    adv30 = rolling_mean_wide(volume, 30)
+    blended = high * 0.876703 + close * (1 - 0.876703)
+    left = xs_rank(rolling_corr_wide(blended, adv30, 10))
+    right = xs_rank(rolling_corr_wide(ts_rank_wide((high + low) / 2, 4), ts_rank_wide(volume, 10), 7))
+    left, right = left.align(right, join="inner", axis=None)
+    result = left.pow(right)
+    result[left.isna() | right.isna()] = np.nan
+    return from_wide(result, "wq101_alpha85")
+
+
+def compute_wq101_alpha86(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#86: -1 * (ts_rank(corr(close,sum(adv20,15),6),20) < rank(close-vwap))."""
+    open_w = to_wide(bars, "open")
+    close = to_wide(bars, "close")
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    adv20 = rolling_mean_wide(volume, 20)
+    left = ts_rank_wide(rolling_corr_wide(close, rolling_sum_wide(adv20, 15), 6), 20)
+    right = xs_rank((open_w + close) - (vwap + open_w))
+    left, right = left.align(right, join="inner", axis=None)
+    result = -1 * (left < right).astype(float)
+    result[left.isna() | right.isna()] = np.nan
+    return from_wide(result, "wq101_alpha86")
+
+
+def compute_wq101_alpha88(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#88: min(rank(decay_linear(rank(open)+rank(low)-rank(high)-rank(close),8)), ts_rank(decay_linear(corr(ts_rank(close,8),ts_rank(adv60,21),8),7),3))."""
+    open_w = to_wide(bars, "open")
+    close = to_wide(bars, "close")
+    high = to_wide(bars, "high")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    adv60 = rolling_mean_wide(volume, 60)
+    left_raw = (xs_rank(open_w) + xs_rank(low)) - (xs_rank(high) + xs_rank(close))
+    left = xs_rank(decay_linear_wide(left_raw, 8))
+    right_corr = rolling_corr_wide(ts_rank_wide(close, 8), ts_rank_wide(adv60, 21), 8)
+    right = ts_rank_wide(decay_linear_wide(right_corr, 7), 3)
+    return from_wide(_min_wide(left, right), "wq101_alpha88")
+
+
+def compute_wq101_alpha92(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#92: min(ts_rank(decay_linear(mid+close < low+open,15),19), ts_rank(decay_linear(corr(rank(low),rank(adv30),8),7),7))."""
+    open_w = to_wide(bars, "open")
+    close = to_wide(bars, "close")
+    high = to_wide(bars, "high")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    adv30 = rolling_mean_wide(volume, 30)
+    condition = ((((high + low) / 2) + close) < (low + open_w)).astype(float)
+    condition[open_w.isna() | close.isna() | high.isna() | low.isna()] = np.nan
+    left = ts_rank_wide(decay_linear_wide(condition, 15), 19)
+    right = ts_rank_wide(decay_linear_wide(rolling_corr_wide(xs_rank(low), xs_rank(adv30), 8), 7), 7)
+    return from_wide(_min_wide(left, right), "wq101_alpha92")
+
+
+def compute_wq101_alpha94(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#94: -rank(vwap-ts_min(vwap,12)) ^ ts_rank(corr(ts_rank(vwap,20),ts_rank(adv60,4),18),3)."""
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    adv60 = rolling_mean_wide(volume, 60)
+    left = xs_rank(vwap - rolling_min_wide(vwap, 12))
+    right = ts_rank_wide(rolling_corr_wide(ts_rank_wide(vwap, 20), ts_rank_wide(adv60, 4), 18), 3)
+    left, right = left.align(right, join="inner", axis=None)
+    result = -1 * left.pow(right)
+    result[left.isna() | right.isna()] = np.nan
+    return from_wide(result, "wq101_alpha94")
+
+
+def compute_wq101_alpha95(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#95: rank(open-ts_min(open,12)) < ts_rank(rank(corr(sum(mid,19),sum(adv40,19),13))^5,12)."""
+    open_w = to_wide(bars, "open")
+    high = to_wide(bars, "high")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    adv40 = rolling_mean_wide(volume, 40)
+    mid = (high + low) / 2
+    left = xs_rank(open_w - rolling_min_wide(open_w, 12))
+    corr = rolling_corr_wide(rolling_sum_wide(mid, 19), rolling_sum_wide(adv40, 19), 13)
+    right = ts_rank_wide(xs_rank(corr).pow(5), 12)
+    left, right = left.align(right, join="inner", axis=None)
+    result = (left < right).astype(float)
+    result[left.isna() | right.isna()] = np.nan
+    return from_wide(result, "wq101_alpha95")
+
+
+def compute_wq101_alpha99(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#99: -1 * (rank(corr(sum(mid,20),sum(adv60,20),9)) < rank(corr(low,volume,6)))."""
+    high = to_wide(bars, "high")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    adv60 = rolling_mean_wide(volume, 60)
+    mid = (high + low) / 2
+    left = xs_rank(rolling_corr_wide(rolling_sum_wide(mid, 20), rolling_sum_wide(adv60, 20), 9))
+    right = xs_rank(rolling_corr_wide(low, volume, 6))
+    left, right = left.align(right, join="inner", axis=None)
+    result = -1 * (left < right).astype(float)
+    result[left.isna() | right.isna()] = np.nan
+    return from_wide(result, "wq101_alpha99")
