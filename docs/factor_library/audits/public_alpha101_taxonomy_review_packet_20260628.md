@@ -142,7 +142,7 @@ Manually review the prioritized symbols, fill point-in-time
 `sector`/`industry`/`subindustry` values, set approved rows to `OK`, then run:
 
 ```bash
-.venv/bin/python scripts/check_crypto_industry_taxonomy_review_source.py --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv
+.venv/bin/python scripts/check_crypto_industry_taxonomy_review_source.py --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet
 .venv/bin/python scripts/build_crypto_industry_taxonomy_artifact.py --input-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv --output data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet
 .venv/bin/python scripts/check_crypto_industry_taxonomy_contract.py --path data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet
 .venv/bin/python scripts/check_crypto_industry_taxonomy_coverage.py --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet --taxonomy-path data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet --min-full-coverage 0.98
