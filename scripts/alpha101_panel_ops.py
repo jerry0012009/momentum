@@ -81,6 +81,16 @@ def rolling_min_wide(wide: pd.DataFrame, window: int) -> pd.DataFrame:
     return wide.rolling(window=window, min_periods=window).min()
 
 
+def rolling_max_wide(wide: pd.DataFrame, window: int) -> pd.DataFrame:
+    """Rolling max over time for each symbol column."""
+    return wide.rolling(window=window, min_periods=window).max()
+
+
+def rolling_std_wide(wide: pd.DataFrame, window: int) -> pd.DataFrame:
+    """Rolling sample standard deviation over time for each symbol column."""
+    return wide.rolling(window=window, min_periods=window).std(ddof=1)
+
+
 def rolling_product_wide(wide: pd.DataFrame, window: int) -> pd.DataFrame:
     """Rolling product over time for each symbol column.
 
@@ -338,3 +348,64 @@ def compute_wq101_alpha45(bars: pd.DataFrame) -> pd.DataFrame:
     corr_sum = rolling_corr_wide(rolling_sum_wide(close, 5), rolling_sum_wide(close, 20), 2)
     result = -1 * xs_rank(delayed_mean) * corr_cv * xs_rank(corr_sum)
     return from_wide(result, "wq101_alpha45")
+
+
+def compute_wq101_alpha34(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#34: rank((1-rank(std(ret,2)/std(ret,5))) + (1-rank(delta(close,1))))."""
+    close = to_wide(bars, "close")
+    returns = close / close.shift(1) - 1.0
+    vol_ratio = rolling_std_wide(returns, 2) / rolling_std_wide(returns, 5).replace(0, np.nan)
+    close_delta = close - close.shift(1)
+    result = xs_rank((1 - xs_rank(vol_ratio)) + (1 - xs_rank(close_delta)))
+    return from_wide(result, "wq101_alpha34")
+
+
+def compute_wq101_alpha40(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#40: -rank(std(high,10)) * corr(high,volume,10)."""
+    high = to_wide(bars, "high")
+    volume = to_wide(bars, "volume")
+    result = -1 * xs_rank(rolling_std_wide(high, 10)) * rolling_corr_wide(high, volume, 10)
+    return from_wide(result, "wq101_alpha40")
+
+
+def compute_wq101_alpha42(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#42: rank(vwap-close) / rank(vwap+close)."""
+    close = to_wide(bars, "close")
+    vwap = _vwap_wide(bars)
+    result = xs_rank(vwap - close) / xs_rank(vwap + close).replace(0, np.nan)
+    return from_wide(result, "wq101_alpha42")
+
+
+def compute_wq101_alpha50(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#50: -ts_max(rank(corr(rank(volume),rank(vwap),5)),5)."""
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    corr = rolling_corr_wide(xs_rank(volume), xs_rank(vwap), 5)
+    result = -1 * rolling_max_wide(xs_rank(corr), 5)
+    return from_wide(result, "wq101_alpha50")
+
+
+def compute_wq101_alpha55(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#55: -corr(rank((close-ts_min(low,12))/(ts_max(high,12)-ts_min(low,12))),rank(volume),6)."""
+    close = to_wide(bars, "close")
+    high = to_wide(bars, "high")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    low_12 = rolling_min_wide(low, 12)
+    denom = (rolling_max_wide(high, 12) - low_12).replace(0, np.nan)
+    position = (close - low_12) / denom
+    result = -1 * rolling_corr_wide(xs_rank(position), xs_rank(volume), 6)
+    return from_wide(result, "wq101_alpha55")
+
+
+def compute_wq101_alpha60(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#60: -((2*scale(rank(clv*volume)))-scale(rank(ts_argmax(close,10))))."""
+    close = to_wide(bars, "close")
+    high = to_wide(bars, "high")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    clv = ((close - low) - (high - close)) / (high - low).replace(0, np.nan)
+    ranked_flow = xs_rank(clv * volume)
+    argmax_close = close.rolling(window=10, min_periods=10).apply(lambda x: int(np.nanargmax(x[::-1])), raw=True)
+    result = -1 * ((2 * xs_scale(ranked_flow)) - xs_scale(xs_rank(argmax_close)))
+    return from_wide(result, "wq101_alpha60")
