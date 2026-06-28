@@ -317,9 +317,20 @@ def _compute_q158_beta_20h(df: pd.DataFrame) -> pd.Series:
     return rolling_slope(c, 20) / c.replace(0, np.nan)
 
 
+def _compute_q158_beta_30h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 BETA30: Slope(close, 30) / close."""
+    c = df["close"]
+    return rolling_slope(c, 30) / c.replace(0, np.nan)
+
+
 def _compute_q158_rsqr_20h(df: pd.DataFrame) -> pd.Series:
     """Alpha158 RSQR20: R-squared of rolling close trend over 20 bars."""
     return rolling_rsquare(df["close"], 20)
+
+
+def _compute_q158_rsqr_30h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 RSQR30: R-squared of rolling close trend over 30 bars."""
+    return rolling_rsquare(df["close"], 30)
 
 
 def _compute_q158_resi_20h(df: pd.DataFrame) -> pd.Series:
@@ -328,9 +339,20 @@ def _compute_q158_resi_20h(df: pd.DataFrame) -> pd.Series:
     return rolling_residual(c, 20) / c.replace(0, np.nan)
 
 
+def _compute_q158_resi_30h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 RESI30: latest residual from rolling close trend, normalized by close."""
+    c = df["close"]
+    return rolling_residual(c, 30) / c.replace(0, np.nan)
+
+
 def _compute_q158_imax_20h(df: pd.DataFrame) -> pd.Series:
     """Alpha158 IMAX20: bars since latest 20-bar high, divided by 20."""
     return rolling_idxmax(df["high"], 20) / 20.0
+
+
+def _compute_q158_imax_30h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 IMAX30: bars since latest 30-bar high, divided by 30."""
+    return rolling_idxmax(df["high"], 30) / 30.0
 
 
 def _compute_q158_imin_20h(df: pd.DataFrame) -> pd.Series:
@@ -1426,12 +1448,27 @@ REGISTRY: list[FactorSpec] = [
         compute_fn=_compute_q158_beta_20h,
         notes="Alpha158 BETA20: Slope(close,20) / close; rolling linear trend slope normalized by current close",
     ),
+    # Public Alpha158 rolling regression/position batch 16
+    FactorSpec(
+        factor_id="q158_beta_30h", family="alpha158_rolling_regression",
+        required_columns=["close"], lookback_window=30,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_beta_30h,
+        notes="Alpha158 BETA30: Slope(close,30) / close; medium rolling linear trend slope normalized by current close",
+    ),
     FactorSpec(
         factor_id="q158_rsqr_20h", family="alpha158_rolling_regression",
         required_columns=["close"], lookback_window=20,
         expected_direction="conditional",
         compute_fn=_compute_q158_rsqr_20h,
         notes="Alpha158 RSQR20: Rsquare(close,20); rolling linear trend fit quality",
+    ),
+    FactorSpec(
+        factor_id="q158_rsqr_30h", family="alpha158_rolling_regression",
+        required_columns=["close"], lookback_window=30,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_rsqr_30h,
+        notes="Alpha158 RSQR30: Rsquare(close,30); medium rolling linear trend fit quality",
     ),
     FactorSpec(
         factor_id="q158_resi_20h", family="alpha158_rolling_regression",
@@ -1441,11 +1478,25 @@ REGISTRY: list[FactorSpec] = [
         notes="Alpha158 RESI20: Resi(close,20) / close; latest residual from rolling linear trend normalized by current close",
     ),
     FactorSpec(
+        factor_id="q158_resi_30h", family="alpha158_rolling_regression",
+        required_columns=["close"], lookback_window=30,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_resi_30h,
+        notes="Alpha158 RESI30: Resi(close,30) / close; latest residual from medium rolling linear trend normalized by current close",
+    ),
+    FactorSpec(
         factor_id="q158_imax_20h", family="alpha158_rolling_position",
         required_columns=["high"], lookback_window=20,
         expected_direction="conditional",
         compute_fn=_compute_q158_imax_20h,
         notes="Alpha158 IMAX20: IdxMax(high,20) / 20; bars since latest 20h high, scaled by window",
+    ),
+    FactorSpec(
+        factor_id="q158_imax_30h", family="alpha158_rolling_position",
+        required_columns=["high"], lookback_window=30,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_imax_30h,
+        notes="Alpha158 IMAX30: IdxMax(high,30) / 30; bars since latest 30h high, scaled by window",
     ),
     FactorSpec(
         factor_id="q158_imin_20h", family="alpha158_rolling_position",

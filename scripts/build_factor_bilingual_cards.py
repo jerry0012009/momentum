@@ -397,6 +397,10 @@ FACTOR_NAMES: dict[str, tuple[str, str]] = {
     "q158_qtlu_30h": ("Alpha158 QTLU30 / Close", "Alpha158 30期上分位价/当前收盘价"),
     "q158_qtld_30h": ("Alpha158 QTLD30 / Close", "Alpha158 30期下分位价/当前收盘价"),
     "q158_rank_close_30h": ("Alpha158 RANK30 Close", "Alpha158 30期收盘价时序排名"),
+    "q158_beta_30h": ("Alpha158 BETA30 / Close", "Alpha158 30期趋势斜率/当前收盘价"),
+    "q158_rsqr_30h": ("Alpha158 RSQR30", "Alpha158 30期趋势拟合度"),
+    "q158_resi_30h": ("Alpha158 RESI30 / Close", "Alpha158 30期趋势残差/当前收盘价"),
+    "q158_imax_30h": ("Alpha158 IMAX30 High Recency", "Alpha158 30期最高价新近度"),
 }
 
 # Per-factor formula overrides
@@ -506,6 +510,10 @@ FACTOR_FORMULAS: dict[str, tuple[str, str]] = {
     "q158_qtlu_30h": ("Quantile(close, 30, 0.8) / close", "30期收盘价80%分位数 / 当前收盘价"),
     "q158_qtld_30h": ("Quantile(close, 30, 0.2) / close", "30期收盘价20%分位数 / 当前收盘价"),
     "q158_rank_close_30h": ("Rank(close, 30)", "当前收盘价在30期窗口内的百分位排名"),
+    "q158_beta_30h": ("Slope(close, 30) / close", "30期收盘价线性斜率 / 当前收盘价"),
+    "q158_rsqr_30h": ("Rsquare(close, 30)", "30期收盘价线性趋势R平方"),
+    "q158_resi_30h": ("Resi(close, 30) / close", "30期线性趋势最新残差 / 当前收盘价"),
+    "q158_imax_30h": ("IdxMax(high, 30) / 30", "30期最高价距当前的条数 / 30"),
 }
 
 # Per-factor known limitations
@@ -556,6 +564,10 @@ FACTOR_LIMITATIONS: dict[str, tuple[str, str]] = {
     "q158_qtlu_30h": ("Medium-window upper quantile normalized by current close; overlaps with rolling high and trend diagnostics.", "中周期上分位价相对当前收盘价；与滚动高点和趋势诊断可能重叠。"),
     "q158_qtld_30h": ("Medium-window lower quantile normalized by current close; overlaps with rolling low and reversal diagnostics.", "中周期下分位价相对当前收盘价；与滚动低点和反转诊断可能重叠。"),
     "q158_rank_close_30h": ("Medium-window time-series rank; direction depends on continuation versus mean-reversion regime.", "中周期时序排名；方向取决于延续或均值回归状态。"),
+    "q158_beta_30h": ("Medium-window rolling trend slope; direction depends on continuation versus exhaustion.", "中周期滚动趋势斜率；方向取决于趋势延续或衰竭状态。"),
+    "q158_rsqr_30h": ("Measures trend fit quality rather than direction; high values can occur in both uptrends and downtrends.", "衡量趋势拟合质量而非方向；高值可能同时出现在上涨和下跌趋势中。"),
+    "q158_resi_30h": ("Latest residual from a rolling trend line; sensitive to local deviations and trend-window choice.", "滚动趋势线最新残差；对局部偏离和趋势窗口选择敏感。"),
+    "q158_imax_30h": ("Recency of the rolling high; can overlap with breakout and range-position diagnostics.", "滚动最高价的新近度；可能与突破和区间位置诊断重叠。"),
 }
 
 
