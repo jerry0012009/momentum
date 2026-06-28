@@ -350,6 +350,14 @@ def _min_wide(left: pd.DataFrame, right: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def _max_wide(left: pd.DataFrame, right: pd.DataFrame) -> pd.DataFrame:
+    """Elementwise maximum after aligning two wide panels."""
+    left, right = left.align(right, join="inner", axis=None)
+    result = left.where(left >= right, right)
+    result[left.isna() | right.isna()] = np.nan
+    return result
+
+
 def compute_wq101_alpha32(bars: pd.DataFrame) -> pd.DataFrame:
     """WQ101 Alpha#32: scale(mean(close,7)-close) + 20*scale(corr(vwap,delay(close,5),230))."""
     close = to_wide(bars, "close")
@@ -558,6 +566,147 @@ def compute_wq101_alpha27(bars: pd.DataFrame) -> pd.DataFrame:
     result[ranked.notna() & (ranked > 0.5)] = -1.0
     result[ranked.notna() & (ranked <= 0.5)] = 1.0
     return from_wide(result, "wq101_alpha27")
+
+
+def compute_wq101_alpha29(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#29: nested close-delta rank scale plus delayed negative return ts-rank."""
+    close = to_wide(bars, "close")
+    returns = close / close.shift(1) - 1.0
+    close_delta5 = close - close.shift(5)
+    ranked_delta = xs_rank(xs_rank(-1 * xs_rank(close_delta5)))
+    scaled = xs_scale(np.log(rolling_min_wide(ranked_delta, 2).replace(0, np.nan)))
+    left = rolling_min_wide(xs_rank(xs_rank(scaled)), 5)
+    right = ts_rank_wide((-1 * returns).shift(6), 5)
+    return from_wide(left + right, "wq101_alpha29")
+
+
+def compute_wq101_alpha31(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#31: decayed close-delta rank plus short delta rank and ADV-low corr scale sign."""
+    close = to_wide(bars, "close")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    close_delta10 = close - close.shift(10)
+    rank1 = xs_rank(xs_rank(xs_rank(decay_linear_wide(-1 * xs_rank(xs_rank(close_delta10)), 10))))
+    rank2 = xs_rank(-1 * (close - close.shift(3)))
+    adv20 = rolling_mean_wide(volume, 20)
+    corr_scale_sign = np.sign(xs_scale(rolling_corr_wide(adv20, low, 12)))
+    return from_wide(rank1 + rank2 + corr_scale_sign, "wq101_alpha31")
+
+
+def compute_wq101_alpha36(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#36: weighted blend of candle/volume correlation, return rank, VWAP/ADV corr, and mean-close state."""
+    open_w = to_wide(bars, "open")
+    close = to_wide(bars, "close")
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    returns = close / close.shift(1) - 1.0
+    adv20 = rolling_mean_wide(volume, 20)
+    part1 = 2.21 * xs_rank(rolling_corr_wide(close - open_w, volume.shift(1), 15))
+    part2 = 0.7 * xs_rank(open_w - close)
+    part3 = 0.73 * xs_rank(ts_rank_wide((-1 * returns).shift(6), 5))
+    part4 = xs_rank(rolling_corr_wide(vwap, adv20, 6).abs())
+    part5 = 0.6 * xs_rank((rolling_sum_wide(close, 200) / 200 - open_w) * (close - open_w))
+    return from_wide(part1 + part2 + part3 + part4 + part5, "wq101_alpha36")
+
+
+def compute_wq101_alpha39(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#39: close delta gated by decayed relative volume rank and long return-sum rank."""
+    close = to_wide(bars, "close")
+    volume = to_wide(bars, "volume")
+    returns = close / close.shift(1) - 1.0
+    adv20 = rolling_mean_wide(volume, 20)
+    rel_vol_decay = decay_linear_wide(volume / adv20.replace(0, np.nan), 9)
+    left = -1 * xs_rank((close - close.shift(7)) * (1 - xs_rank(rel_vol_decay)))
+    right = 1 + xs_rank(rolling_sum_wide(returns, 250))
+    return from_wide(left * right, "wq101_alpha39")
+
+
+def compute_wq101_alpha57(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#57: -(close-vwap) divided by decayed rank of close ts-argmax."""
+    close = to_wide(bars, "close")
+    vwap = _vwap_wide(bars)
+    denom = decay_linear_wide(xs_rank(rolling_idxmax_wide(close, 30)), 2).replace(0, np.nan)
+    return from_wide(-1 * (close - vwap) / denom, "wq101_alpha57")
+
+
+def compute_wq101_alpha62(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#62: -1 gate comparing VWAP/ADV correlation rank with an OHLC rank condition."""
+    open_w = to_wide(bars, "open")
+    high = to_wide(bars, "high")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    adv20 = rolling_mean_wide(volume, 20)
+    left = xs_rank(rolling_corr_wide(vwap, rolling_sum_wide(adv20, 22), 10))
+    rank_condition = ((xs_rank(open_w) + xs_rank(open_w)) < (xs_rank((high + low) / 2) + xs_rank(high))).astype(float)
+    rank_condition[open_w.isna() | high.isna() | low.isna()] = np.nan
+    right = xs_rank(rank_condition)
+    left, right = left.align(right, join="inner", axis=None)
+    result = -1 * (left < right).astype(float)
+    result[left.isna() | right.isna()] = np.nan
+    return from_wide(result, "wq101_alpha62")
+
+
+def compute_wq101_alpha64(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#64: -1 gate comparing decayed open/low ADV correlation with blended mid/VWAP delta rank."""
+    open_w = to_wide(bars, "open")
+    high = to_wide(bars, "high")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    adv120 = rolling_mean_wide(volume, 120)
+    left_blend = open_w * 0.178404 + low * (1 - 0.178404)
+    left = xs_rank(rolling_corr_wide(rolling_sum_wide(left_blend, 13), rolling_sum_wide(adv120, 13), 17))
+    right_blend = ((high + low) / 2) * 0.178404 + vwap * (1 - 0.178404)
+    right = xs_rank(right_blend - right_blend.shift(4))
+    left, right = left.align(right, join="inner", axis=None)
+    result = -1 * (left < right).astype(float)
+    result[left.isna() | right.isna()] = np.nan
+    return from_wide(result, "wq101_alpha64")
+
+
+def compute_wq101_alpha66(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#66: negative sum of decayed VWAP-delta rank and decayed intrabar-location ts-rank."""
+    open_w = to_wide(bars, "open")
+    high = to_wide(bars, "high")
+    low = to_wide(bars, "low")
+    vwap = _vwap_wide(bars)
+    left = xs_rank(decay_linear_wide(vwap - vwap.shift(4), 7))
+    location = (low - vwap) / (open_w - ((high + low) / 2)).replace(0, np.nan)
+    right = ts_rank_wide(decay_linear_wide(location, 11), 7)
+    left, right = left.align(right, join="inner", axis=None)
+    result = -1 * (left + right)
+    result[left.isna() | right.isna()] = np.nan
+    return from_wide(result, "wq101_alpha66")
+
+
+def compute_wq101_alpha71(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#71: max of two decayed time-rank branches using close/ADV corr and low-open/VWAP rank."""
+    open_w = to_wide(bars, "open")
+    close = to_wide(bars, "close")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    adv180 = rolling_mean_wide(volume, 180)
+    left_corr = rolling_corr_wide(ts_rank_wide(close, 3), ts_rank_wide(adv180, 12), 18)
+    left = ts_rank_wide(decay_linear_wide(left_corr, 4), 16)
+    right = ts_rank_wide(decay_linear_wide(xs_rank((low + open_w) - (vwap + vwap)).pow(2), 16), 4)
+    return from_wide(_max_wide(left, right), "wq101_alpha71")
+
+
+def compute_wq101_alpha72(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#72: ratio of decayed mid/ADV correlation rank to decayed VWAP/volume ts-rank correlation rank."""
+    high = to_wide(bars, "high")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    adv40 = rolling_mean_wide(volume, 40)
+    left = xs_rank(decay_linear_wide(rolling_corr_wide((high + low) / 2, adv40, 9), 10))
+    right = xs_rank(decay_linear_wide(rolling_corr_wide(ts_rank_wide(vwap, 4), ts_rank_wide(volume, 19), 7), 3))
+    left, right = left.align(right, join="inner", axis=None)
+    result = left / right.replace(0, np.nan)
+    result[left.isna() | right.isna()] = np.nan
+    return from_wide(result, "wq101_alpha72")
 
 
 def compute_wq101_alpha33(bars: pd.DataFrame) -> pd.DataFrame:
