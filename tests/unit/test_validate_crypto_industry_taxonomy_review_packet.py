@@ -131,3 +131,29 @@ def test_packet_validation_reports_are_written(tmp_path: Path):
 
     assert out_json.exists()
     assert out_csv.exists()
+    assert out_json.name == "industry_taxonomy_review_packet_validation.json"
+    assert out_csv.name == "industry_taxonomy_review_packet_validation_checks.csv"
+
+
+def test_packet_validation_reports_support_custom_stem(tmp_path: Path):
+    report = validate_review_packet(_packet())
+
+    out_json, out_csv = write_packet_validation_reports(
+        report,
+        tmp_path,
+        report_stem="industry_taxonomy_review_batch_002_validation",
+    )
+
+    assert out_json.name == "industry_taxonomy_review_batch_002_validation.json"
+    assert out_csv.name == "industry_taxonomy_review_batch_002_validation_checks.csv"
+
+
+def test_packet_validation_report_stem_must_not_be_path(tmp_path: Path):
+    report = validate_review_packet(_packet())
+
+    try:
+        write_packet_validation_reports(report, tmp_path, report_stem="bad/name")
+    except ValueError as exc:
+        assert "file stem" in str(exc)
+    else:
+        raise AssertionError("expected report_stem path to be rejected")

@@ -293,10 +293,19 @@ def validate_review_packet_from_paths(
     return report
 
 
-def write_packet_validation_reports(report: dict[str, object], out_dir: Path = DEFAULT_OUT_DIR) -> tuple[Path, Path]:
+def write_packet_validation_reports(
+    report: dict[str, object],
+    out_dir: Path = DEFAULT_OUT_DIR,
+    report_stem: str = "industry_taxonomy_review_packet_validation",
+) -> tuple[Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_json = out_dir / "industry_taxonomy_review_packet_validation.json"
-    out_csv = out_dir / "industry_taxonomy_review_packet_validation_checks.csv"
+    stem = str(report_stem).strip()
+    if not stem:
+        raise ValueError("report_stem must be non-empty")
+    if "/" in stem or "\\" in stem:
+        raise ValueError("report_stem must be a file stem, not a path")
+    out_json = out_dir / f"{stem}.json"
+    out_csv = out_dir / f"{stem}_checks.csv"
     out_json.write_text(json.dumps(report, indent=2, default=str) + "\n")
     pd.DataFrame(report["checks"]).to_csv(out_csv, index=False)
     return out_json, out_csv
@@ -308,6 +317,7 @@ def main() -> int:
     parser.add_argument("--source-csv", default=str(DEFAULT_SOURCE), help="Current taxonomy source CSV")
     parser.add_argument("--bars-path", default=str(DEFAULT_BARS), help="Factor bars parquet for point-in-time checks")
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR), help="Output diagnostics directory")
+    parser.add_argument("--report-stem", default="industry_taxonomy_review_packet_validation", help="Output report file stem under --out-dir")
     parser.add_argument("--allow-no-ok", action="store_true", help="Allow structural validation before any rows are approved")
     args = parser.parse_args()
 
@@ -332,7 +342,7 @@ def main() -> int:
         print(f"  latest_bar_timestamp: {report['latest_bar_timestamp']}")
     print(f"  overall_pass: {report['overall_pass']}")
     print(f"  blocker: {report['blocker']}")
-    out_json, out_csv = write_packet_validation_reports(report, Path(args.out_dir))
+    out_json, out_csv = write_packet_validation_reports(report, Path(args.out_dir), report_stem=args.report_stem)
     print(f"Saved: {out_json}")
     print(f"Saved: {out_csv}")
     return 0 if report["overall_pass"] else 1

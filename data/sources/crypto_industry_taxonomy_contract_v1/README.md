@@ -34,6 +34,11 @@ python scripts/validate_crypto_industry_taxonomy_review_packet.py \
   --packet-csv research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_review_batch_001.csv \
   --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
   --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet
+python scripts/validate_crypto_industry_taxonomy_review_packet.py \
+  --packet-csv research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_review_batch_002.csv \
+  --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
+  --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet \
+  --report-stem industry_taxonomy_review_batch_002_validation
 python scripts/apply_crypto_industry_taxonomy_review_packet.py \
   --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
   --packet-csv research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_review_batch_001.csv \
@@ -91,4 +96,6 @@ source checker before replacing the committed source workbook.
 `validate_crypto_industry_taxonomy_review_packet.py` is the pre-apply gate for
 reviewed packets. It fails by default when no rows are marked
 `target_quality_flag == OK`; use `--allow-no-ok` only for structural checks of a
-blank packet before manual review is complete.
+blank packet before manual review is complete. Use `--report-stem` to write
+batch-specific reports such as `industry_taxonomy_review_batch_002_validation`
+without replacing the default current-packet gate report.
