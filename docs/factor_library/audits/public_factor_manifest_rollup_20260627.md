@@ -6,7 +6,7 @@ This audit records the current controlled public-factor intake state for the
 compact manifest:
 
 - `docs/factor_library/public_factor_candidate_manifest.csv`
-- 91 implemented Alpha158 factors from Qlib Alpha158DL formula families and
+- 95 implemented Alpha158 factors from Qlib Alpha158DL formula families and
   existing local Alpha158 support.
 - 6 skipped Alpha158 duplicate dispositions with explicit skip reasons.
 - 6 curated Alpha101 panel factors from the local Alpha101 migration layer.
@@ -36,9 +36,9 @@ Current manifest row counts:
 
 | source_family | implemented rows | skipped rows | total rows |
 | --- | ---: | ---: | ---: |
-| alpha158 | 91 | 6 | 97 |
+| alpha158 | 95 | 6 | 101 |
 | alpha101 | 9 | 6 | 15 |
-| total | 100 | 12 | 112 |
+| total | 104 | 12 | 116 |
 
 The `existing_support_backfill_20260627` rows are metadata backfills for factors
 that were already registered and computed before the public manifest existed:
@@ -101,8 +101,8 @@ python scripts/build_factor_library_state.py
 
 Result:
 
-- Registered factors: 166
-- Computed factor_values: 166
+- Registered factors: 170
+- Computed factor_values: 170
 - Missing factor_values: 0
 - Missing input data: 0
 - Warnings: 0
@@ -110,16 +110,16 @@ Result:
 Full public-manifest integrity command:
 
 ```bash
-python scripts/check_post_intake_workflow_integrity.py --factor-ids <100 implemented public manifest factor IDs>
+python scripts/check_post_intake_workflow_integrity.py --factor-ids <104 implemented public manifest factor IDs>
 ```
 
 Result:
 
-- Factors checked: 100
-- Total checks: 2400
-- PASS: 2305
+- Factors checked: 104
+- Total checks: 2496
+- PASS: 2397
 - FAIL: 0
-- WARN: 95
+- WARN: 99
 
 The warnings are optional PM-59A overlapping-sleeve summaries missing for
 eligible diagnostic factors. They do not indicate missing factor_values,
@@ -137,6 +137,14 @@ Result:
 - Total checks: 108
 - PASS: 108
 - FAIL: 0
+
+Latest page/state evidence:
+
+- Factor evaluation page factor count: 170.
+- Workflow-ready factors: 170.
+- Evidence status: 164 `COMPLETE`, 6 `COMPLETE_WITH_WARNINGS`.
+- Redundancy pair rows: 14,365.
+- Redundancy clusters: 71.
 
 ## Guardrails Confirmed
 

@@ -401,6 +401,10 @@ FACTOR_NAMES: dict[str, tuple[str, str]] = {
     "q158_rsqr_30h": ("Alpha158 RSQR30", "Alpha158 30期趋势拟合度"),
     "q158_resi_30h": ("Alpha158 RESI30 / Close", "Alpha158 30期趋势残差/当前收盘价"),
     "q158_imax_30h": ("Alpha158 IMAX30 High Recency", "Alpha158 30期最高价新近度"),
+    "q158_cntp_30h": ("Alpha158 CNTP30 Up-Bar Share", "Alpha158 30期上涨K线占比"),
+    "q158_cntn_30h": ("Alpha158 CNTN30 Down-Bar Share", "Alpha158 30期下跌K线占比"),
+    "q158_cntd_30h": ("Alpha158 CNTD30 Up-Down Balance", "Alpha158 30期涨跌K线差"),
+    "q158_sumd_30h": ("Alpha158 SUMD30 Signed Move Dominance", "Alpha158 30期涨跌幅主导度"),
 }
 
 # Per-factor formula overrides
@@ -514,6 +518,10 @@ FACTOR_FORMULAS: dict[str, tuple[str, str]] = {
     "q158_rsqr_30h": ("Rsquare(close, 30)", "30期收盘价线性趋势R平方"),
     "q158_resi_30h": ("Resi(close, 30) / close", "30期线性趋势最新残差 / 当前收盘价"),
     "q158_imax_30h": ("IdxMax(high, 30) / 30", "30期最高价距当前的条数 / 30"),
+    "q158_cntp_30h": ("Mean(close > Ref(close, 1), 30)", "30期内收盘价上涨K线占比"),
+    "q158_cntn_30h": ("Mean(close < Ref(close, 1), 30)", "30期内收盘价下跌K线占比"),
+    "q158_cntd_30h": ("Mean(close > Ref(close, 1), 30) - Mean(close < Ref(close, 1), 30)", "30期上涨K线占比 - 30期下跌K线占比"),
+    "q158_sumd_30h": ("(Sum(up moves, 30) - Sum(down moves, 30)) / Sum(abs moves, 30)", "(30期上涨幅度和 - 30期下跌幅度和) / 30期绝对变动和"),
 }
 
 # Per-factor known limitations
@@ -568,6 +576,10 @@ FACTOR_LIMITATIONS: dict[str, tuple[str, str]] = {
     "q158_rsqr_30h": ("Measures trend fit quality rather than direction; high values can occur in both uptrends and downtrends.", "衡量趋势拟合质量而非方向；高值可能同时出现在上涨和下跌趋势中。"),
     "q158_resi_30h": ("Latest residual from a rolling trend line; sensitive to local deviations and trend-window choice.", "滚动趋势线最新残差；对局部偏离和趋势窗口选择敏感。"),
     "q158_imax_30h": ("Recency of the rolling high; can overlap with breakout and range-position diagnostics.", "滚动最高价的新近度；可能与突破和区间位置诊断重叠。"),
+    "q158_cntp_30h": ("Medium-window up-bar share; can overlap with momentum and persistence diagnostics.", "中周期上涨K线占比；可能与动量和延续性诊断重叠。"),
+    "q158_cntn_30h": ("Medium-window down-bar share; negative direction can overlap with reversal and downside persistence diagnostics.", "中周期下跌K线占比；负向方向可能与反转和下行延续诊断重叠。"),
+    "q158_cntd_30h": ("Medium-window signed up/down bar balance; direction depends on trend persistence versus exhaustion.", "中周期涨跌K线差；方向取决于趋势延续或衰竭状态。"),
+    "q158_sumd_30h": ("Medium-window signed move dominance; can be redundant with momentum and bar-count direction factors.", "中周期涨跌幅主导度；可能与动量和涨跌K线计数方向因子冗余。"),
 }
 
 

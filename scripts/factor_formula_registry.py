@@ -295,11 +295,25 @@ def _compute_q158_cntp_20h(df: pd.DataFrame) -> pd.Series:
     return rolling_mean(up, 20)
 
 
+def _compute_q158_cntp_30h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 CNTP30: fraction of the past 30 bars with close > previous close."""
+    up = (df["close"] > delay(df["close"], 1)).astype(float)
+    up = up.where(delay(df["close"], 1).notna(), np.nan)
+    return rolling_mean(up, 30)
+
+
 def _compute_q158_cntn_20h(df: pd.DataFrame) -> pd.Series:
     """Alpha158 CNTN20: fraction of the past 20 bars with close < previous close."""
     down = (df["close"] < delay(df["close"], 1)).astype(float)
     down = down.where(delay(df["close"], 1).notna(), np.nan)
     return rolling_mean(down, 20)
+
+
+def _compute_q158_cntn_30h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 CNTN30: fraction of the past 30 bars with close < previous close."""
+    down = (df["close"] < delay(df["close"], 1)).astype(float)
+    down = down.where(delay(df["close"], 1).notna(), np.nan)
+    return rolling_mean(down, 30)
 
 
 def _compute_q158_sumd_20h(df: pd.DataFrame) -> pd.Series:
@@ -309,6 +323,15 @@ def _compute_q158_sumd_20h(df: pd.DataFrame) -> pd.Series:
     down = (-d).clip(lower=0)
     denom = rolling_sum(d.abs(), 20)
     return (rolling_sum(up, 20) - rolling_sum(down, 20)) / (denom + 1e-12)
+
+
+def _compute_q158_sumd_30h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 SUMD30: (sum(up moves) - sum(down moves)) / sum(abs moves)."""
+    d = delta(df["close"], 1)
+    up = d.clip(lower=0)
+    down = (-d).clip(lower=0)
+    denom = rolling_sum(d.abs(), 30)
+    return (rolling_sum(up, 30) - rolling_sum(down, 30)) / (denom + 1e-12)
 
 
 def _compute_q158_beta_20h(df: pd.DataFrame) -> pd.Series:
@@ -497,6 +520,14 @@ def _compute_q158_cntd_20h(df: pd.DataFrame) -> pd.Series:
     up = (df["close"] > prev_close).astype(float).where(prev_close.notna(), np.nan)
     down = (df["close"] < prev_close).astype(float).where(prev_close.notna(), np.nan)
     return rolling_mean(up, 20) - rolling_mean(down, 20)
+
+
+def _compute_q158_cntd_30h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 CNTD30: up-close fraction minus down-close fraction over 30 bars."""
+    prev_close = delay(df["close"], 1)
+    up = (df["close"] > prev_close).astype(float).where(prev_close.notna(), np.nan)
+    down = (df["close"] < prev_close).astype(float).where(prev_close.notna(), np.nan)
+    return rolling_mean(up, 30) - rolling_mean(down, 30)
 
 
 def _compute_q158_corr_20h(df: pd.DataFrame) -> pd.Series:
@@ -1426,6 +1457,14 @@ REGISTRY: list[FactorSpec] = [
         compute_fn=_compute_q158_cntp_20h,
         notes="Alpha158 CNTP20: Mean(close > Ref(close,1),20); fraction of up bars over the past 20 one-hour bars",
     ),
+    # Public Alpha158 rolling direction batch 17
+    FactorSpec(
+        factor_id="q158_cntp_30h", family="alpha158_rolling_direction",
+        required_columns=["close"], lookback_window=31,
+        expected_direction="positive",
+        compute_fn=_compute_q158_cntp_30h,
+        notes="Alpha158 CNTP30: Mean(close > Ref(close,1),30); fraction of up bars over the past 30 one-hour bars",
+    ),
     FactorSpec(
         factor_id="q158_cntn_20h", family="alpha158_rolling",
         required_columns=["close"], lookback_window=21,
@@ -1434,11 +1473,25 @@ REGISTRY: list[FactorSpec] = [
         notes="Alpha158 CNTN20: Mean(close < Ref(close,1),20); fraction of down bars over the past 20 one-hour bars",
     ),
     FactorSpec(
+        factor_id="q158_cntn_30h", family="alpha158_rolling_direction",
+        required_columns=["close"], lookback_window=31,
+        expected_direction="negative",
+        compute_fn=_compute_q158_cntn_30h,
+        notes="Alpha158 CNTN30: Mean(close < Ref(close,1),30); fraction of down bars over the past 30 one-hour bars",
+    ),
+    FactorSpec(
         factor_id="q158_sumd_20h", family="alpha158_rolling",
         required_columns=["close"], lookback_window=21,
         expected_direction="positive",
         compute_fn=_compute_q158_sumd_20h,
         notes="Alpha158 SUMD20: (Sum(up moves,20)-Sum(down moves,20))/(Sum(abs moves,20)+eps); signed move dominance",
+    ),
+    FactorSpec(
+        factor_id="q158_sumd_30h", family="alpha158_rolling_direction",
+        required_columns=["close"], lookback_window=31,
+        expected_direction="positive",
+        compute_fn=_compute_q158_sumd_30h,
+        notes="Alpha158 SUMD30: (Sum(up moves,30)-Sum(down moves,30))/(Sum(abs moves,30)+eps); signed move dominance",
     ),
     # Public Alpha158 rolling batch 03
     FactorSpec(
@@ -1670,6 +1723,13 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="positive",
         compute_fn=_compute_q158_cntd_20h,
         notes="Alpha158 CNTD20: Mean(close > Ref(close,1),20) - Mean(close < Ref(close,1),20); signed up/down bar balance",
+    ),
+    FactorSpec(
+        factor_id="q158_cntd_30h", family="alpha158_rolling_direction",
+        required_columns=["close"], lookback_window=31,
+        expected_direction="positive",
+        compute_fn=_compute_q158_cntd_30h,
+        notes="Alpha158 CNTD30: Mean(close > Ref(close,1),30) - Mean(close < Ref(close,1),30); signed up/down bar balance",
     ),
     FactorSpec(
         factor_id="q158_corr_20h", family="alpha158_rolling_volume_price",
