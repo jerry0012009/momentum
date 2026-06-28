@@ -73,6 +73,12 @@ def validate_taxonomy_contract(df: pd.DataFrame) -> list[dict[str, object]]:
     )
 
     ok = df["quality_flag"] == "OK"
+    _check_row(
+        checks,
+        "has_ok_rows",
+        ok.any(),
+        f"{int(ok.sum())} OK rows",
+    )
     missing_known = ok & df["known_at"].isna()
     missing_effective = ok & df["effective_from"].isna()
     _check_row(

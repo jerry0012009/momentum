@@ -30,7 +30,8 @@ python scripts/check_crypto_industry_taxonomy_coverage.py \
 
 Only `quality_flag == OK` rows are eligible for factor computation. `REVIEW` and
 `BLOCKED` rows are retained for audit, but they are ignored by
-`build_factor_values.py`.
+`build_factor_values.py`. A source CSV with only `REVIEW`/`BLOCKED` rows fails
+the artifact contract and will not produce `symbol_taxonomy.parquet`.
 
 The template file is intentionally not a valid taxonomy artifact because it has
 no reviewed rows.

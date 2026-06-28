@@ -127,8 +127,10 @@ python scripts/build_crypto_industry_taxonomy_artifact.py \
 ```
 
 The builder writes `data/cache/.../symbol_taxonomy.parquet` only after the
-contract checks pass. On failure it removes any stale output parquet so
-`build_factor_values.py` cannot accidentally consume an invalid taxonomy.
+contract checks pass. The contract requires at least one `OK` row; a
+review-only workbook is not a valid artifact. On failure the builder removes
+any stale output parquet so `build_factor_values.py` cannot accidentally
+consume an invalid taxonomy.
 
 `scripts/build_factor_values.py` now has a guarded source branch for taxonomy
 panel factors:

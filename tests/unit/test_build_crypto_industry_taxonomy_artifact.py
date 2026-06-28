@@ -75,3 +75,20 @@ def test_schema_only_template_does_not_build_artifact(tmp_path: Path):
 
     assert not _status(checks, "non_empty")
     assert not output.exists()
+
+
+def test_review_only_source_does_not_build_artifact(tmp_path: Path):
+    input_csv = tmp_path / "symbol_taxonomy.csv"
+    output = tmp_path / "cache" / "symbol_taxonomy.parquet"
+    output.parent.mkdir(parents=True)
+    pd.DataFrame({"stale": [1]}).to_parquet(output, index=False)
+
+    review = _valid_rows()
+    review["quality_flag"] = "REVIEW"
+    review[["sector", "industry", "subindustry"]] = ""
+    review.to_csv(input_csv, index=False)
+
+    checks = build_taxonomy_artifact(input_csv, output)
+
+    assert not _status(checks, "has_ok_rows")
+    assert not output.exists()

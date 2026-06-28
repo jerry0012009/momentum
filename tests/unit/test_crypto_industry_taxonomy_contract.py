@@ -97,3 +97,13 @@ def test_non_ok_rows_do_not_need_group_fields():
     assert _status(checks, "ok_rows_have_sector")
     assert _status(checks, "ok_rows_have_industry")
     assert _status(checks, "ok_rows_have_subindustry")
+
+
+def test_review_only_rows_are_not_a_valid_artifact():
+    df = _valid_taxonomy()
+    df["quality_flag"] = "REVIEW"
+    df[["sector", "industry", "subindustry"]] = None
+
+    checks = validate_taxonomy_contract(df)
+
+    assert not _status(checks, "has_ok_rows")
