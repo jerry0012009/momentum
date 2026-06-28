@@ -138,6 +138,7 @@ until the industry-neutralization data contract is satisfied:
 - `data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.template.csv`
 - `python scripts/build_crypto_industry_taxonomy_artifact.py --input-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv --output data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet`
 - `python scripts/check_crypto_industry_taxonomy_contract.py --path data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet`
+- `python scripts/check_crypto_industry_taxonomy_coverage.py --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet --taxonomy-path data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet --min-full-coverage 0.98`
 
 需要 `IndNeutralize(..., IndClass.*)` 的 Alpha101 公式，在行业/板块中性化数据契约满足前保持 skipped，不要用临时 crypto 分桶或时间序列去均值替代。
 

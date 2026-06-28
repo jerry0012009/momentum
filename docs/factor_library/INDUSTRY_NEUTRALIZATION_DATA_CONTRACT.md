@@ -133,11 +133,17 @@ Before any taxonomy artifact can be used, run:
 ```bash
 python scripts/check_crypto_industry_taxonomy_contract.py \
   --path data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet
+python scripts/check_crypto_industry_taxonomy_coverage.py \
+  --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet \
+  --taxonomy-path data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet \
+  --min-full-coverage 0.98
 ```
 
 The validator checks required columns, quality-flag domain, known/effective
 timestamps, group-field completeness for `OK` rows, and overlapping effective
-windows.
+windows. The coverage checker verifies that the point-in-time taxonomy covers
+the current factor bars before any industry-neutralized Alpha101 row can move
+from skipped to implemented.
 
 To unblock the skipped Alpha101 rows, the workflow must add:
 
@@ -145,10 +151,12 @@ To unblock the skipped Alpha101 rows, the workflow must add:
 2. a reviewed source CSV under `data/sources/crypto_industry_taxonomy_contract_v1/`;
 3. a generated parquet artifact under `data/cache/crypto_industry_taxonomy_contract_v1/`;
 4. a passing `check_crypto_industry_taxonomy_contract.py` result;
-5. `FactorSpec` rows whose `required_columns` include the exact group columns;
-6. manifest rows changed from `skipped_missing_industry_neutralization_*` to a
+5. a passing `check_crypto_industry_taxonomy_coverage.py` result against the
+   factor bars used by the intake run;
+6. `FactorSpec` rows whose `required_columns` include the exact group columns;
+7. manifest rows changed from `skipped_missing_industry_neutralization_*` to a
    small `implemented_batch_*` status only after factor values and QA pass;
-7. unit tests that prove skipped rows are not registered until the data contract
+8. unit tests that prove skipped rows are not registered until the data contract
    is satisfied, and implemented rows have registry parity after migration.
 
 ## 6. Disallowed Shortcuts
