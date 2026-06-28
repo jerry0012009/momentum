@@ -11,12 +11,14 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from factor_formula_registry import REGISTRY_BY_ID  # noqa: E402
+from check_crypto_industry_taxonomy_contract import TAXONOMY_PATH, check_contract  # noqa: E402
 
 MANIFEST = ROOT / "docs" / "factor_library" / "public_factor_candidate_manifest.csv"
 SKIPPED_STATUSES = {
     "skipped_duplicate_20260627",
     "skipped_missing_industry_neutralization_20260627",
 }
+TAXONOMY_GROUP_COLUMNS = {"sector", "industry", "subindustry"}
 BACKFILL_STATUSES = {
     "existing_support_backfill_20260627",
     "existing_alpha158_family_backfill_20260627",
@@ -127,3 +129,36 @@ def test_public_manifest_counts_and_batch_sizes(rows: list[dict[str, str]]) -> N
     assert batches
     for batch_id, count in batches.items():
         assert 4 <= count <= 8, f"{batch_id} has {count} factors"
+
+
+def test_alpha101_indneutralize_rows_require_taxonomy_gate(rows: list[dict[str, str]]) -> None:
+    indneutralize_rows = [
+        row
+        for row in rows
+        if row["source_family"] == "alpha101" and "indneutralize" in row["required_ops"].split("|")
+    ]
+    assert indneutralize_rows
+
+    implemented_indneutralize_rows = [
+        row for row in indneutralize_rows if row["implementation_status"] not in SKIPPED_STATUSES
+    ]
+    if implemented_indneutralize_rows:
+        checks = check_contract(TAXONOMY_PATH)
+        assert all(c["passed"] for c in checks), checks
+
+    for row in indneutralize_rows:
+        factor_id = row["factor_id"]
+        status = row["implementation_status"]
+        required_columns = set(row["required_columns"].split("|"))
+        assert required_columns & TAXONOMY_GROUP_COLUMNS, f"{factor_id} lacks taxonomy group column"
+
+        if status in SKIPPED_STATUSES:
+            assert status == "skipped_missing_industry_neutralization_20260627"
+            assert factor_id.endswith("_skipped")
+            assert REGISTRY_BY_ID.get(factor_id) is None
+            continue
+
+        spec = REGISTRY_BY_ID.get(factor_id)
+        assert spec is not None, f"{factor_id} implemented without registry spec"
+        assert spec.compute_scope == "panel"
+        assert set(spec.required_columns) & TAXONOMY_GROUP_COLUMNS
