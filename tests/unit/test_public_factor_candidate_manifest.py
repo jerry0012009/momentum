@@ -28,6 +28,7 @@ BACKFILL_STATUSES = {
     "implemented_alpha101_ohlcv_batch_02",
     "implemented_alpha101_panel_batch_03",
     "implemented_alpha101_panel_batch_04",
+    "implemented_alpha101_panel_batch_05",
 }
 
 REQUIRED_COLUMNS = [
@@ -118,8 +119,8 @@ def test_public_manifest_counts_and_batch_sizes(rows: list[dict[str, str]]) -> N
         family: sum(row["source_family"] == family for row in rows)
         for family in {"alpha101", "alpha158"}
     }
-    assert implemented_counts == {"alpha101": 31, "alpha158": 95}
-    assert total_counts == {"alpha101": 37, "alpha158": 101}
+    assert implemented_counts == {"alpha101": 37, "alpha158": 95}
+    assert total_counts == {"alpha101": 43, "alpha158": 101}
 
     batches: dict[str, int] = {}
     for row in rows:
