@@ -10,6 +10,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 from init_crypto_industry_taxonomy_review import (  # noqa: E402
+    DEFAULT_BARS,
+    DEFAULT_OUTPUT,
     TAXONOMY_COLUMNS,
     init_review_csv,
     initialize_review_taxonomy,
@@ -90,3 +92,16 @@ def test_init_review_csv_writes_output_when_overwrite_enabled(tmp_path: Path):
     written = pd.read_csv(output_csv)
     assert list(written.columns) == TAXONOMY_COLUMNS
     assert set(written["quality_flag"]) == {"REVIEW"}
+
+
+def test_committed_review_workbook_matches_current_bars():
+    bars = pd.read_parquet(DEFAULT_BARS, columns=["timestamp", "symbol"])
+    expected = initialize_review_taxonomy(
+        bars,
+        known_at="2026-06-28T00:00:00Z",
+        taxonomy_version="reviewed_v1",
+        source="manual_review",
+    )
+    committed = pd.read_csv(DEFAULT_OUTPUT).fillna("")
+
+    pd.testing.assert_frame_equal(committed[TAXONOMY_COLUMNS], expected)
