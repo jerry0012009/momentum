@@ -29,6 +29,9 @@ from pathlib import Path
 # ── Paths ────────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent
 HTML = ROOT / "reports" / "site" / "factor-library" / "factor-evaluation.html"
+ASSET_JSON = (
+    ROOT / "reports" / "site" / "factor-library" / "assets" / "factor_evaluation.json"
+)
 PROFILE_CSV = (
     ROOT
     / "research"
@@ -270,6 +273,159 @@ def check_csv_factor_coverage(html_text: str) -> list[dict]:
                 f"{len(factor_ids)}/{len(factor_ids)} found",
             )
         )
+    return results
+
+
+def _extract_html_payload(html_text: str) -> dict | None:
+    m = re.search(
+        r'<script id="factorPayload" type="application/json">(.*?)</script>',
+        html_text,
+        re.DOTALL,
+    )
+    if not m:
+        return None
+    return json.loads(m.group(1))
+
+
+def check_factor_evaluation_asset_parity(html_text: str) -> list[dict]:
+    """Check the public JSON asset stays in sync with the embedded page payload."""
+    results: list[dict] = []
+    expected_count = _factor_count_from_profile()
+    if not ASSET_JSON.exists():
+        return [
+            _fail(
+                "factor_eval_asset_exists",
+                "factor_evaluation.json asset exists",
+                "File not found",
+                str(ASSET_JSON),
+            )
+        ]
+
+    try:
+        asset = json.loads(ASSET_JSON.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return [
+            _fail(
+                "factor_eval_asset_json",
+                "factor_evaluation.json asset is valid JSON",
+                str(exc),
+                str(ASSET_JSON),
+            )
+        ]
+
+    try:
+        embedded = _extract_html_payload(html_text)
+    except Exception as exc:
+        return [
+            _fail(
+                "factor_eval_payload_json",
+                "Embedded factorPayload is valid JSON",
+                str(exc),
+            )
+        ]
+    if embedded is None:
+        return [
+            _fail(
+                "factor_eval_payload_exists",
+                "Embedded factorPayload exists",
+                "factorPayload not found",
+            )
+        ]
+
+    asset_ids = [str(f.get("factor_id", "")).strip() for f in asset.get("factors", []) if f.get("factor_id")]
+    embedded_ids = [
+        str(f.get("factor_id", "")).strip()
+        for f in embedded.get("factors", [])
+        if f.get("factor_id")
+    ]
+    asset_count = len(asset_ids)
+    embedded_count = len(embedded_ids)
+
+    if expected_count is not None and asset_count != expected_count:
+        results.append(
+            _fail(
+                "factor_eval_asset_count",
+                "factor_evaluation.json factor count matches profile CSV",
+                f"asset={asset_count}, profile={expected_count}",
+            )
+        )
+    else:
+        results.append(
+            _pass(
+                "factor_eval_asset_count",
+                "factor_evaluation.json factor count matches profile CSV",
+                f"asset={asset_count}, profile={expected_count}",
+            )
+        )
+
+    if asset_ids != embedded_ids:
+        missing_in_asset = sorted(set(embedded_ids) - set(asset_ids))
+        missing_in_html = sorted(set(asset_ids) - set(embedded_ids))
+        results.append(
+            _fail(
+                "factor_eval_asset_payload_parity",
+                "factor_evaluation.json factor IDs match embedded factorPayload",
+                f"asset={asset_count}, embedded={embedded_count}",
+                (
+                    f"missing_in_asset={missing_in_asset[:10]}, "
+                    f"missing_in_html={missing_in_html[:10]}"
+                ),
+            )
+        )
+    else:
+        results.append(
+            _pass(
+                "factor_eval_asset_payload_parity",
+                "factor_evaluation.json factor IDs match embedded factorPayload",
+                f"{asset_count}/{embedded_count} factor IDs match",
+            )
+        )
+
+    asset_summary = asset.get("summary", {})
+    asset_summary_count = asset_summary.get("factor_count")
+    embedded_summary_count = embedded.get("summary", {}).get("factor_count")
+    if asset_summary_count != embedded_summary_count or asset_summary_count != asset_count:
+        results.append(
+            _fail(
+                "factor_eval_asset_summary_count",
+                "factor_evaluation.json summary count matches payload count",
+                (
+                    f"asset_summary={asset_summary_count}, "
+                    f"embedded_summary={embedded_summary_count}, factors={asset_count}"
+                ),
+            )
+        )
+    else:
+        results.append(
+            _pass(
+                "factor_eval_asset_summary_count",
+                "factor_evaluation.json summary count matches payload count",
+                f"summary={asset_summary_count}, factors={asset_count}",
+            )
+        )
+
+    if asset.get("version") == "factor_evaluation_compact_v1" and asset_summary.get(
+        "asset_type"
+    ) == "factor_evaluation_compact_audit":
+        results.append(
+            _pass(
+                "factor_eval_asset_compact_contract",
+                "factor_evaluation.json uses compact public audit contract",
+                f"version={asset.get('version')}, factors={asset_count}",
+            )
+        )
+    else:
+        results.append(
+            _fail(
+                "factor_eval_asset_compact_contract",
+                "factor_evaluation.json uses compact public audit contract",
+                (
+                    f"version={asset.get('version')}, "
+                    f"asset_type={asset_summary.get('asset_type')}"
+                ),
+            )
+        )
+
     return results
 
 
@@ -2167,6 +2323,7 @@ def main() -> int:
 
     # 2. CSV factor coverage
     all_checks.extend(check_csv_factor_coverage(html_text))
+    all_checks.extend(check_factor_evaluation_asset_parity(html_text))
 
     # 3. PM-35 new factors
     all_checks.append(check_pm35_factors(html_text))
@@ -2234,7 +2391,9 @@ def _write_reports(checks: list[dict]) -> None:
     # CSV
     with open(REPORT_CSV, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
-            f, fieldnames=["check_id", "check_name", "status", "evidence", "notes"]
+            f,
+            fieldnames=["check_id", "check_name", "status", "evidence", "notes"],
+            lineterminator="\n",
         )
         writer.writeheader()
         writer.writerows(checks)

@@ -32,6 +32,7 @@ BASE = Path("research/factor_runs/crypto_top50_factor_library")
 DIAG_DIR = BASE / "factor_diagnostics"
 META_DIR = BASE / "factor_metadata"
 OUT = Path("reports/site/factor-library/factor-evaluation.html")
+OUT_JSON = Path("reports/site/factor-library/assets/factor_evaluation.json")
 
 HORIZONS = ["1h", "4h", "24h", "72h"]
 
@@ -3762,16 +3763,64 @@ document.getElementById('genTime').textContent='Generated: '+(S.page_generation_
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
-def render() -> str:
-    payload = build_payload()
+def render_payload(payload: dict) -> str:
     payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     # Escape for embedding in <script> tag
     payload_json = payload_json.replace("<", "\\u003c").replace("</", "<\\/")
     return HTML_TEMPLATE.replace("PAYLOAD_PLACEHOLDER", payload_json)
 
 
+def render() -> str:
+    return render_payload(build_payload())
+
+
+def build_asset_payload(payload: dict) -> dict:
+    """Build a compact public audit asset from the full embedded page payload."""
+    summary = dict(payload.get("summary", {}))
+    summary["factor_count"] = len(payload.get("factors", []))
+    summary["asset_type"] = "factor_evaluation_compact_audit"
+    summary["source_page"] = "factor-evaluation.html"
+    summary["note"] = (
+        "Compact public audit asset. The full interactive payload is embedded "
+        "in factor-evaluation.html."
+    )
+    compact_factors = []
+    for factor in payload.get("factors", []):
+        compact_factors.append(
+            {
+                "factor_id": factor.get("factor_id"),
+                "family": factor.get("family"),
+                "lifecycle_status": factor.get("lifecycle_status"),
+                "expected_direction": factor.get("expected_direction"),
+                "best_horizon": factor.get("best_horizon"),
+                "metadata_quality": factor.get("metadata_quality"),
+                "final_quality_class": factor.get("final_quality_class"),
+                "workflow_ready_status": factor.get("workflow_ready_status"),
+                "evidence_status": factor.get("evidence_status"),
+                "source_fields": factor.get("source_fields"),
+                "required_columns": factor.get("required_columns"),
+            }
+        )
+    return {
+        "version": "factor_evaluation_compact_v1",
+        "generated_at": summary.get("page_generation_time")
+        or summary.get("data_last_modified"),
+        "summary": summary,
+        "factors": compact_factors,
+    }
+
+
 if __name__ == "__main__":
-    html_out = render()
+    payload = build_payload()
+    asset_payload = _sanitize_nan(payload)
+    html_out = render_payload(asset_payload)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(html_out, encoding="utf-8")
+    compact_asset_payload = build_asset_payload(asset_payload)
+    OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
+    OUT_JSON.write_text(
+        json.dumps(compact_asset_payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
     print(f"Wrote {OUT} ({len(html_out):,} bytes)")
+    print(f"Wrote {OUT_JSON} ({OUT_JSON.stat().st_size:,} bytes)")
