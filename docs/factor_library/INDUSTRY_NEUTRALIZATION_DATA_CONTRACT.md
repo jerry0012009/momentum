@@ -37,8 +37,6 @@ The current crypto factor library does not have:
 
 - an approved crypto sector/industry/subindustry taxonomy;
 - point-in-time symbol-to-group membership;
-- a `build_factor_values.py` source branch that supplies group columns to
-  panel factors.
 
 Existing project documentation explicitly warns that crypto has no direct
 industry neutralization equivalent. Therefore the blocked Alpha101 formulas must
@@ -88,22 +86,30 @@ Required behavior, covered by unit tests:
 - return a Series aligned to the input rows.
 
 The operator does not load, infer, or validate a taxonomy. The remaining blocker
-is the approved point-in-time taxonomy data source plus a `build_factor_values.py`
-source branch that supplies `sector`, `industry`, and `subindustry` columns to
-panel factors.
+is the approved point-in-time taxonomy data source.
 
 ## 5. Required Workflow Extension
+
+`scripts/build_factor_values.py` now has a guarded source branch for taxonomy
+panel factors:
+
+- it triggers only when a registered panel `FactorSpec` declares one of
+  `sector`, `industry`, or `subindustry` in `required_columns`;
+- it expects `data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet`;
+- it uses `known_at`, `effective_from`, and `effective_to` to merge only
+  mappings known and effective at each bar timestamp;
+- it only accepts taxonomy rows with `quality_flag == "OK"`;
+- if the taxonomy file is missing, taxonomy factors are blocked rather than
+  approximated.
 
 To unblock the skipped Alpha101 rows, the workflow must add:
 
 1. a data contract document for the taxonomy source;
 2. a generated or reviewed taxonomy artifact under `data/`;
-3. a `build_factor_values.py` source branch that loads taxonomy columns for
-   panel factors requiring `sector`, `industry`, or `subindustry`;
-4. `FactorSpec` rows whose `required_columns` include the exact group columns;
-5. manifest rows changed from `skipped_missing_industry_neutralization_*` to a
+3. `FactorSpec` rows whose `required_columns` include the exact group columns;
+4. manifest rows changed from `skipped_missing_industry_neutralization_*` to a
    small `implemented_batch_*` status only after factor values and QA pass;
-6. unit tests that prove skipped rows are not registered until the data contract
+5. unit tests that prove skipped rows are not registered until the data contract
    is satisfied, and implemented rows have registry parity after migration.
 
 ## 6. Disallowed Shortcuts

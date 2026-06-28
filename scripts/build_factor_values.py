@@ -24,6 +24,20 @@ FUNDING_RATE_PATH = ROOT / "data" / "cache" / "crypto_funding_rate_1h_contract_v
 FUNDING_REQUIRED_COLUMNS = {"funding_rate"}
 MARKET_CAP_PATH = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "market_cap_1h_aligned.parquet"
 CAP_REQUIRED_COLUMNS = {"cap"}
+TAXONOMY_PATH = ROOT / "data" / "cache" / "crypto_industry_taxonomy_contract_v1" / "symbol_taxonomy.parquet"
+TAXONOMY_GROUP_COLUMNS = {"sector", "industry", "subindustry"}
+TAXONOMY_REQUIRED_COLUMNS = {
+    "symbol",
+    "known_at",
+    "effective_from",
+    "effective_to",
+    "sector",
+    "industry",
+    "subindustry",
+    "taxonomy_version",
+    "source",
+    "quality_flag",
+}
 
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -95,6 +109,72 @@ def _needs_funding_source(spec) -> bool:
 def _needs_cap_source(spec) -> bool:
     """Check if a factor spec requires cap column."""
     return bool(set(spec.required_columns) & CAP_REQUIRED_COLUMNS)
+
+
+def _needs_taxonomy_source(spec) -> bool:
+    """Check if a factor spec requires crypto taxonomy group columns."""
+    return bool(set(spec.required_columns) & TAXONOMY_GROUP_COLUMNS)
+
+
+def merge_point_in_time_taxonomy(bars: pd.DataFrame, taxonomy: pd.DataFrame) -> pd.DataFrame:
+    """Attach point-in-time sector/industry/subindustry columns to bars.
+
+    Eligible taxonomy rows must have quality_flag == "OK", known_at <= timestamp,
+    and an effective interval covering the bar timestamp. If multiple mappings
+    are eligible, the latest known/effective mapping wins.
+    """
+    missing_bars = {"timestamp", "symbol"} - set(bars.columns)
+    if missing_bars:
+        raise ValueError(f"bars missing taxonomy join columns: {missing_bars}")
+    missing_taxonomy = TAXONOMY_REQUIRED_COLUMNS - set(taxonomy.columns)
+    if missing_taxonomy:
+        raise ValueError(f"taxonomy missing required columns: {missing_taxonomy}")
+
+    bars_work = bars.copy()
+    bars_work["timestamp"] = pd.to_datetime(bars_work["timestamp"], utc=True)
+    bars_work["_taxonomy_row_id"] = range(len(bars_work))
+
+    tax = taxonomy.copy()
+    for col in ["known_at", "effective_from", "effective_to"]:
+        tax[col] = pd.to_datetime(tax[col], utc=True, errors="coerce")
+    tax = tax[tax["quality_flag"] == "OK"].copy()
+
+    merged = bars_work[["_taxonomy_row_id", "timestamp", "symbol"]].merge(
+        tax,
+        on="symbol",
+        how="left",
+    )
+    valid = (
+        merged["known_at"].notna()
+        & merged["effective_from"].notna()
+        & (merged["known_at"] <= merged["timestamp"])
+        & (merged["effective_from"] <= merged["timestamp"])
+        & (merged["effective_to"].isna() | (merged["timestamp"] < merged["effective_to"]))
+    )
+    latest = (
+        merged.loc[valid]
+        .sort_values(["_taxonomy_row_id", "known_at", "effective_from"])
+        .groupby("_taxonomy_row_id", sort=False)
+        .tail(1)
+    )
+    selected = latest[
+        [
+            "_taxonomy_row_id",
+            "sector",
+            "industry",
+            "subindustry",
+            "taxonomy_version",
+            "source",
+            "quality_flag",
+        ]
+    ].rename(
+        columns={
+            "source": "taxonomy_source",
+            "quality_flag": "taxonomy_quality_flag",
+        }
+    )
+    out = bars_work.merge(selected, on="_taxonomy_row_id", how="left")
+    return out.drop(columns=["_taxonomy_row_id"])
 
 
 def main() -> None:
@@ -195,9 +275,13 @@ def main() -> None:
     blocked_factors = []
     if panel_factor_ids:
         print(f"  Source: panel computation ({len(panel_factor_ids)} factors)")
-        # Split panel factors into cap-needing and non-cap-needing
+        # Split panel factors by extra data needs.
         cap_panel_ids = [fid for fid in panel_factor_ids if _needs_cap_source(REGISTRY_BY_ID[fid])]
-        non_cap_panel_ids = [fid for fid in panel_factor_ids if not _needs_cap_source(REGISTRY_BY_ID[fid])]
+        taxonomy_panel_ids = [fid for fid in panel_factor_ids if _needs_taxonomy_source(REGISTRY_BY_ID[fid])]
+        plain_panel_ids = [
+            fid for fid in panel_factor_ids
+            if fid not in cap_panel_ids and fid not in taxonomy_panel_ids
+        ]
 
         # Load cap data if needed
         bars_with_cap = None
@@ -220,8 +304,22 @@ def main() -> None:
                 bars_with_cap = bars.merge(cap_df, on=["timestamp", "symbol"], how="left")
                 print(f"  bars_with_cap: {len(bars_with_cap)} rows, cap coverage after merge={bars_with_cap['cap'].notna().mean():.1%}")
 
-        # Process non-cap panel factors
-        for fid in non_cap_panel_ids:
+        # Load taxonomy data if needed
+        bars_with_taxonomy = None
+        bars_with_cap_taxonomy = None
+        if taxonomy_panel_ids:
+            if not TAXONOMY_PATH.exists():
+                print(f"  ERROR: Crypto taxonomy file not found: {TAXONOMY_PATH}")
+            else:
+                taxonomy_df = pd.read_parquet(TAXONOMY_PATH)
+                bars_with_taxonomy = merge_point_in_time_taxonomy(bars, taxonomy_df)
+                coverage = bars_with_taxonomy[list(TAXONOMY_GROUP_COLUMNS)].notna().all(axis=1).mean()
+                print(f"  Taxonomy loaded: {len(taxonomy_df)} rows, full group coverage after merge={coverage:.1%}")
+                if bars_with_cap is not None:
+                    bars_with_cap_taxonomy = merge_point_in_time_taxonomy(bars_with_cap, taxonomy_df)
+
+        # Process plain panel factors
+        for fid in plain_panel_ids:
             spec = REGISTRY_BY_ID[fid]
             missing_cols = set(spec.required_columns) - set(bars.columns)
             if missing_cols:
@@ -242,15 +340,35 @@ def main() -> None:
                 blocked_factors.append((fid, str(e)))
                 print(f"  BLOCKED: {fid} — {e}")
 
-        # Process cap panel factors
-        for fid in cap_panel_ids:
-            if bars_with_cap is None:
-                blocked_factors.append((fid, "bars_with_cap not available"))
-                print(f"  BLOCKED: {fid} — bars_with_cap not available")
-                continue
+        # Process extra-source panel factors
+        for fid in [fid for fid in panel_factor_ids if fid not in plain_panel_ids]:
             spec = REGISTRY_BY_ID[fid]
+            needs_cap = _needs_cap_source(spec)
+            needs_taxonomy = _needs_taxonomy_source(spec)
+            if needs_cap and needs_taxonomy:
+                panel_input = bars_with_cap_taxonomy
+                source_label = "with cap + taxonomy"
+            elif needs_cap:
+                panel_input = bars_with_cap
+                source_label = "with cap"
+            elif needs_taxonomy:
+                panel_input = bars_with_taxonomy
+                source_label = "with taxonomy"
+            else:
+                panel_input = bars
+                source_label = "plain"
+
+            if panel_input is None:
+                blocked_factors.append((fid, f"required panel source not available: {source_label}"))
+                print(f"  BLOCKED: {fid} — required panel source not available: {source_label}")
+                continue
+            missing_cols = set(spec.required_columns) - set(panel_input.columns)
+            if missing_cols:
+                blocked_factors.append((fid, f"Missing columns: {missing_cols}"))
+                print(f"  BLOCKED: {fid} — missing columns: {missing_cols}")
+                continue
             try:
-                factor_df = spec.panel_compute_fn(bars_with_cap)
+                factor_df = spec.panel_compute_fn(panel_input)
                 expected_cols = {"timestamp", "symbol", fid}
                 if not expected_cols.issubset(set(factor_df.columns)):
                     print(f"  ERROR: {fid} — panel_compute_fn returned columns {factor_df.columns.tolist()}, expected {expected_cols}")
@@ -258,7 +376,7 @@ def main() -> None:
                     continue
                 factor_df = factor_df[["timestamp", "symbol", fid]]
                 parts.append(factor_df)
-                print(f"  {fid}: panel computed (with cap), rows={len(factor_df)} coverage={factor_df[fid].notna().mean():.3%}")
+                print(f"  {fid}: panel computed ({source_label}), rows={len(factor_df)} coverage={factor_df[fid].notna().mean():.3%}")
             except Exception as e:
                 blocked_factors.append((fid, str(e)))
                 print(f"  BLOCKED: {fid} — {e}")
