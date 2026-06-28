@@ -73,6 +73,11 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert taxonomy["source_ok_row_count"] == 0
     assert taxonomy["source_ready_to_build_artifact"] is False
     assert taxonomy["source_missing_required_ok_groups"] == "industry|sector|subindustry"
+    assert taxonomy["source_bar_last_timestamp"] == "2026-06-13T00:00:00Z"
+    assert taxonomy["source_ok_rows_known_by_last_bar"] == 0
+    assert taxonomy["source_ok_symbols_known_by_last_bar"] == 0
+    assert taxonomy["source_ok_rows_known_after_last_bar"] == 0
+    assert taxonomy["source_ok_known_at_blocks_bars"] is False
     assert taxonomy["artifact_exists"] is False
     assert taxonomy["contract_pass"] is False
     assert taxonomy["coverage_pass"] is False

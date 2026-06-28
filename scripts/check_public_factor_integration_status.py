@@ -145,7 +145,11 @@ def summarize_taxonomy_readiness(
         for group in str(row.get("taxonomy_required_groups", "")).split("|")
         if group
     })
-    review_source = summarize_review_source(source_path, required_groups=set(required_groups))
+    review_source = summarize_review_source(
+        source_path,
+        required_groups=set(required_groups),
+        bars_path=DEFAULT_BARS,
+    )
 
     ok_rows = int(review_source.get("ok_row_count", 0))
     blocker = ""
@@ -168,6 +172,12 @@ def summarize_taxonomy_readiness(
         "source_ok_row_count": ok_rows,
         "source_ready_to_build_artifact": bool(review_source.get("ready_to_build_artifact")),
         "source_missing_required_ok_groups": review_source.get("missing_required_ok_groups", ""),
+        "source_bars_path": str(review_source.get("bars_path", "")),
+        "source_bar_last_timestamp": str(review_source.get("bar_last_timestamp", "")),
+        "source_ok_rows_known_by_last_bar": int(review_source.get("ok_rows_known_by_last_bar", 0) or 0),
+        "source_ok_symbols_known_by_last_bar": int(review_source.get("ok_symbols_known_by_last_bar", 0) or 0),
+        "source_ok_rows_known_after_last_bar": int(review_source.get("ok_rows_known_after_last_bar", 0) or 0),
+        "source_ok_known_at_blocks_bars": bool(review_source.get("ok_known_at_blocks_bars", False)),
         "artifact_path": str(artifact_path),
         "artifact_exists": artifact_path.exists(),
         "contract_pass": contract_pass,
