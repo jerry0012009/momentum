@@ -146,7 +146,7 @@ until the industry-neutralization data contract is satisfied:
 - `python scripts/check_crypto_industry_taxonomy_coverage.py --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet --taxonomy-path data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet --min-full-coverage 0.98`
 
 需要 `IndNeutralize(..., IndClass.*)` 的 Alpha101 公式，在行业/板块中性化数据契约满足前保持 skipped，不要用临时 crypto 分桶或时间序列去均值替代。
-`build_crypto_industry_taxonomy_review_priority.py` 只按 bars 里的 quote_volume 排人工审核优先级，并可附带 CoinGecko 映射证据、CoinGecko category 审核证据和 blocked Alpha101 factor IDs；它不推断或填充 sector/industry/subindustry，也不会把 REVIEW 行改成 OK。
+`build_crypto_industry_taxonomy_review_priority.py` 只按 bars 里的 quote_volume 排人工审核优先级，并可附带 CoinGecko 映射证据、CoinGecko category 审核证据、blocked Alpha101 factor IDs，以及已人工标记 `OK` 行的 point-in-time 覆盖率预览；它不推断或填充 sector/industry/subindustry，也不会把 REVIEW 行改成 OK。正式解锁仍必须通过 artifact、contract 和 coverage gate。
 
 Manifest status rules:
 

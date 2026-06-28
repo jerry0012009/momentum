@@ -9,6 +9,7 @@ parquet artifact consumed by factor computation.
 from __future__ import annotations
 
 import argparse
+import math
 import json
 import sys
 import time
@@ -275,6 +276,85 @@ def summarize_indneutralize_blockers(manifest_csv: Path) -> dict[str, object]:
     }
 
 
+def summarize_ok_review_coverage_preview(
+    taxonomy: pd.DataFrame,
+    bars: pd.DataFrame,
+    group_columns: list[str] | None = None,
+    min_full_coverage: float = 0.98,
+) -> dict[str, object]:
+    """Preview coverage from OK review rows without building an artifact.
+
+    This mirrors the point-in-time eligibility used by factor computation, but
+    it is review-only. The parquet artifact and formal coverage gate still have
+    to pass before IndNeutralize factors can be unskipped.
+    """
+    group_columns = group_columns or GROUP_COLUMNS
+    _require_columns(taxonomy, REQUIRED_COLUMNS, "taxonomy")
+    _require_columns(bars, {"timestamp", "symbol"}, "bars")
+
+    bars_work = bars[["timestamp", "symbol"]].copy()
+    bars_work["timestamp"] = pd.to_datetime(bars_work["timestamp"], utc=True, errors="coerce")
+    bars_work["symbol"] = bars_work["symbol"].astype(str)
+    bars_work["_review_bar_row_id"] = range(len(bars_work))
+
+    bar_rows = int(len(bars_work))
+    bar_symbols = int(bars_work["symbol"].nunique())
+    threshold_rows = int(math.ceil(bar_rows * min_full_coverage)) if bar_rows else 0
+
+    tax = taxonomy.copy().fillna("")
+    tax["symbol"] = tax["symbol"].astype(str)
+    for col in ["known_at", "effective_from", "effective_to"]:
+        tax[col] = pd.to_datetime(tax[col], utc=True, errors="coerce")
+    full_group = tax[group_columns].apply(lambda s: s.astype(str).str.strip().str.len().gt(0)).all(axis=1)
+    ok_full = tax[(tax["quality_flag"].astype(str).eq("OK")) & full_group].copy()
+
+    if ok_full.empty or bars_work.empty:
+        return {
+            "review_ok_full_group_rows": int(len(ok_full)),
+            "review_ok_full_group_symbols": int(ok_full["symbol"].nunique()) if "symbol" in ok_full else 0,
+            "review_ok_covered_symbols": 0,
+            "review_ok_symbol_coverage_rate": 0.0,
+            "review_ok_full_group_bar_rows": 0,
+            "review_ok_full_group_coverage_rate": 0.0,
+            "review_ok_bar_rows_needed_for_98pct": threshold_rows,
+            "review_ok_bar_rows_remaining_to_98pct": threshold_rows,
+            "review_ok_symbol_coverage_pass_at_98pct": False,
+            "review_ok_full_group_coverage_pass_at_98pct": False,
+            "review_ok_ready_to_build_artifact_preview": False,
+            "review_ok_coverage_note": "Preview only; formal artifact contract and coverage checks are still required.",
+        }
+
+    merged = bars_work.merge(ok_full, on="symbol", how="left")
+    valid = (
+        merged["known_at"].notna()
+        & (merged["known_at"] <= merged["timestamp"])
+        & merged["effective_from"].notna()
+        & (merged["effective_from"] <= merged["timestamp"])
+        & (merged["effective_to"].isna() | (merged["timestamp"] < merged["effective_to"]))
+    )
+    covered = merged.loc[valid, ["_review_bar_row_id", "symbol"]].drop_duplicates("_review_bar_row_id")
+    covered_rows = int(len(covered))
+    covered_symbols = int(covered["symbol"].nunique()) if covered_rows else 0
+    symbol_coverage_rate = covered_symbols / bar_symbols if bar_symbols else 0.0
+    full_group_coverage_rate = covered_rows / bar_rows if bar_rows else 0.0
+    symbol_pass = symbol_coverage_rate >= min_full_coverage
+    full_group_pass = full_group_coverage_rate >= min_full_coverage
+    return {
+        "review_ok_full_group_rows": int(len(ok_full)),
+        "review_ok_full_group_symbols": int(ok_full["symbol"].nunique()),
+        "review_ok_covered_symbols": covered_symbols,
+        "review_ok_symbol_coverage_rate": float(symbol_coverage_rate),
+        "review_ok_full_group_bar_rows": covered_rows,
+        "review_ok_full_group_coverage_rate": float(full_group_coverage_rate),
+        "review_ok_bar_rows_needed_for_98pct": threshold_rows,
+        "review_ok_bar_rows_remaining_to_98pct": max(0, threshold_rows - covered_rows),
+        "review_ok_symbol_coverage_pass_at_98pct": bool(symbol_pass),
+        "review_ok_full_group_coverage_pass_at_98pct": bool(full_group_pass),
+        "review_ok_ready_to_build_artifact_preview": bool(symbol_pass and full_group_pass),
+        "review_ok_coverage_note": "Preview only; formal artifact contract and coverage checks are still required.",
+    }
+
+
 def build_review_priority(
     taxonomy: pd.DataFrame,
     bars: pd.DataFrame,
@@ -445,6 +525,7 @@ def build_review_priority(
         "quote_volume_share_at_98pct_bar_coverage": quote_at_98,
         "coverage_gate_note": "Coverage gate uses bar rows and symbol coverage; quote-volume priority alone is not sufficient.",
     }
+    summary.update(summarize_ok_review_coverage_preview(taxonomy, bars, group_columns=group_columns))
     return priority, summary
 
 
@@ -564,6 +645,8 @@ def main() -> int:
     print(f"  top_20_quote_volume_share: {summary['top_20_quote_volume_share']:.4f}")
     print(f"  top_20_bar_count_share: {summary['top_20_bar_count_share']:.4f}")
     print(f"  rank_to_98pct_bar_coverage: {summary['review_priority_rank_to_98pct_bar_coverage']}")
+    print(f"  review_ok_full_group_coverage_rate: {summary['review_ok_full_group_coverage_rate']:.4f}")
+    print(f"  review_ok_bar_rows_remaining_to_98pct: {summary['review_ok_bar_rows_remaining_to_98pct']}")
     print("  note: no taxonomy groups were inferred or filled")
     print(f"Saved: {out_json}")
     print(f"Saved: {out_csv}")

@@ -54,4 +54,7 @@ to infer or fill taxonomy groups. The review queue may include CoinGecko mapping
 evidence, optional cached CoinGecko category evidence, and the Alpha101
 IndNeutralize factor IDs blocked by the taxonomy contract, but those fields are
 context for reviewers, not approval. Category evidence fetches are optional and
-rate-limited; only successful `OK` category rows are persisted.
+rate-limited; only successful `OK` category rows are persisted. The priority
+status also includes a preview of point-in-time bar coverage from manually
+approved `quality_flag == OK` rows with all group fields filled. That preview is
+not a substitute for the parquet artifact, contract check, or coverage gate.

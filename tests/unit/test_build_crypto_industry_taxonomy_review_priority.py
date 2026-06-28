@@ -14,6 +14,7 @@ from build_crypto_industry_taxonomy_review_priority import (  # noqa: E402
     fetch_coingecko_category_evidence,
     load_optional_coingecko_map,
     load_optional_coingecko_category_evidence,
+    summarize_ok_review_coverage_preview,
     summarize_indneutralize_blockers,
     summarize_bars_by_symbol,
     write_coingecko_category_evidence,
@@ -34,6 +35,12 @@ def _taxonomy() -> pd.DataFrame:
         "source": ["manual_review"] * 3,
         "quality_flag": ["OK", "REVIEW", "OK"],
     })
+
+
+def _taxonomy_known_before_bars() -> pd.DataFrame:
+    taxonomy = _taxonomy()
+    taxonomy["known_at"] = "2025-12-31T00:00:00Z"
+    return taxonomy
 
 
 def _bars() -> pd.DataFrame:
@@ -133,6 +140,50 @@ def test_review_priority_ranks_by_quote_volume_and_marks_actions():
     assert summary["review_priority_rank_to_98pct_bar_coverage"] == 4
     assert summary["quote_volume_share_at_98pct_bar_coverage"] == 1.0
     assert "bar rows" in summary["coverage_gate_note"]
+    assert summary["review_ok_full_group_rows"] == 2
+    assert summary["review_ok_full_group_symbols"] == 2
+    assert summary["review_ok_covered_symbols"] == 0
+    assert summary["review_ok_full_group_bar_rows"] == 0
+    assert summary["review_ok_full_group_coverage_rate"] == 0.0
+    assert summary["review_ok_bar_rows_needed_for_98pct"] == 6
+    assert summary["review_ok_bar_rows_remaining_to_98pct"] == 6
+    assert summary["review_ok_ready_to_build_artifact_preview"] is False
+
+
+def test_ok_review_coverage_preview_counts_only_ok_full_group_rows():
+    preview = summarize_ok_review_coverage_preview(_taxonomy_known_before_bars(), _bars())
+
+    assert preview["review_ok_full_group_rows"] == 2
+    assert preview["review_ok_covered_symbols"] == 2
+    assert preview["review_ok_symbol_coverage_rate"] == pytest.approx(2 / 4)
+    assert preview["review_ok_full_group_bar_rows"] == 4
+    assert preview["review_ok_full_group_coverage_rate"] == pytest.approx(4 / 6)
+    assert preview["review_ok_full_group_coverage_pass_at_98pct"] is False
+    assert "Preview only" in preview["review_ok_coverage_note"]
+
+
+def test_ok_review_coverage_preview_respects_known_at():
+    preview = summarize_ok_review_coverage_preview(_taxonomy(), _bars())
+
+    assert preview["review_ok_full_group_rows"] == 2
+    assert preview["review_ok_covered_symbols"] == 0
+    assert preview["review_ok_full_group_bar_rows"] == 0
+    assert preview["review_ok_bar_rows_remaining_to_98pct"] == 6
+    assert preview["review_ok_ready_to_build_artifact_preview"] is False
+
+
+def test_ok_review_coverage_preview_reports_zero_before_manual_approval():
+    taxonomy = _taxonomy()
+    taxonomy["quality_flag"] = "REVIEW"
+
+    preview = summarize_ok_review_coverage_preview(taxonomy, _bars())
+
+    assert preview["review_ok_full_group_rows"] == 0
+    assert preview["review_ok_covered_symbols"] == 0
+    assert preview["review_ok_full_group_bar_rows"] == 0
+    assert preview["review_ok_bar_rows_needed_for_98pct"] == 6
+    assert preview["review_ok_bar_rows_remaining_to_98pct"] == 6
+    assert preview["review_ok_ready_to_build_artifact_preview"] is False
 
 
 def test_review_priority_does_not_fill_taxonomy_groups():

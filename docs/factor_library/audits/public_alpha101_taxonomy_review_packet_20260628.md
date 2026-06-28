@@ -60,6 +60,9 @@ Current packet summary:
 - Symbols needing review: 266
 - Symbols with CoinGecko mapping evidence: 242
 - Symbols with cached CoinGecko category evidence: 11
+- Manually approved full-group review rows: 0
+- Current approved review-row bar coverage preview: 0.00%
+- Bar rows remaining before the 98% preview threshold: 3,249,934
 - Blocked Alpha101 IndNeutralize factors: 18
 - Required groups: `industry|sector|subindustry`
 - Top 20 symbols by quote volume cover 78.85% of observed quote volume
@@ -72,6 +75,11 @@ Current packet summary:
 The coverage gate uses point-in-time full-group bar coverage and symbol
 coverage, not quote volume. The quote-volume ranking is still useful for review
 order, but it cannot be treated as the unlock threshold by itself.
+The approved-row coverage preview is computed only from manual `quality_flag ==
+OK` rows where `sector`, `industry`, and `subindustry` are all filled. It is a
+review-progress indicator only; the parquet artifact, contract check, and formal
+coverage gate are still required before any IndNeutralize factor can be
+unskipped.
 
 CoinGecko category evidence has been cached for the first 11 symbols in the
 current review-priority order. A conservative request cadence is required:
@@ -85,6 +93,7 @@ This packet does not:
 
 - infer `sector`, `industry`, or `subindustry`;
 - treat CoinGecko categories as approved taxonomy groups;
+- treat review-row coverage preview as formal artifact approval;
 - change any taxonomy row from `REVIEW` to `OK`;
 - build `symbol_taxonomy.parquet`;
 - register new factors;
