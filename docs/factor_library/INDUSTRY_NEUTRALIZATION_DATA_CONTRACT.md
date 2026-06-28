@@ -96,6 +96,14 @@ The reviewed source file should live at:
 data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv
 ```
 
+Start from the schema-only template:
+
+```text
+data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.template.csv
+```
+
+The template is intentionally not a valid artifact; it has no reviewed rows.
+
 Build the validated parquet artifact with:
 
 ```bash

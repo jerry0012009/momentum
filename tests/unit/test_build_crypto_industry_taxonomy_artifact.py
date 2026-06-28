@@ -62,3 +62,16 @@ def test_build_taxonomy_artifact_removes_stale_output_when_contract_fails(tmp_pa
     assert not _status(checks, "required_columns")
     assert not output.exists()
     assert (output.parent / "industry_taxonomy_contract_check.json").exists()
+
+
+def test_schema_only_template_does_not_build_artifact(tmp_path: Path):
+    input_csv = tmp_path / "symbol_taxonomy.template.csv"
+    output = tmp_path / "cache" / "symbol_taxonomy.parquet"
+    input_csv.write_text(
+        "symbol,known_at,effective_from,effective_to,sector,industry,subindustry,taxonomy_version,source,quality_flag\n"
+    )
+
+    checks = build_taxonomy_artifact(input_csv, output)
+
+    assert not _status(checks, "non_empty")
+    assert not output.exists()
