@@ -385,6 +385,10 @@ FACTOR_NAMES: dict[str, tuple[str, str]] = {
     "q158_std_10h": ("Alpha158 STD10 / Close", "Alpha158 10期价格标准差/当前收盘价"),
     "q158_max_10h": ("Alpha158 MAX10 / Close", "Alpha158 10期最高价/当前收盘价"),
     "q158_min_10h": ("Alpha158 MIN10 / Close", "Alpha158 10期最低价/当前收盘价"),
+    "q158_ma_30h": ("Alpha158 MA30 / Close", "Alpha158 30期均价/当前收盘价"),
+    "q158_std_30h": ("Alpha158 STD30 / Close", "Alpha158 30期价格标准差/当前收盘价"),
+    "q158_max_30h": ("Alpha158 MAX30 / Close", "Alpha158 30期最高价/当前收盘价"),
+    "q158_min_30h": ("Alpha158 MIN30 / Close", "Alpha158 30期最低价/当前收盘价"),
 }
 
 # Per-factor formula overrides
@@ -482,6 +486,10 @@ FACTOR_FORMULAS: dict[str, tuple[str, str]] = {
     "q158_std_10h": ("Std(close, 10) / close", "10期收盘价标准差 / 当前收盘价"),
     "q158_max_10h": ("Max(high, 10) / close", "10期最高价 / 当前收盘价"),
     "q158_min_10h": ("Min(low, 10) / close", "10期最低价 / 当前收盘价"),
+    "q158_ma_30h": ("Mean(close, 30) / close", "30期收盘均价 / 当前收盘价"),
+    "q158_std_30h": ("Std(close, 30) / close", "30期收盘价标准差 / 当前收盘价"),
+    "q158_max_30h": ("Max(high, 30) / close", "30期最高价 / 当前收盘价"),
+    "q158_min_30h": ("Min(low, 30) / close", "30期最低价 / 当前收盘价"),
 }
 
 # Per-factor known limitations
@@ -520,6 +528,10 @@ FACTOR_LIMITATIONS: dict[str, tuple[str, str]] = {
     "q158_std_10h": ("Medium-short rolling price dispersion; sensitive to volatility clustering and low-liquidity bars.", "中短周期价格离散度；对波动聚集和低流动性K线敏感。"),
     "q158_max_10h": ("Medium-short rolling high normalized by current close; can overlap with breakout/range-position diagnostics.", "中短周期最高价相对当前收盘价；可能与突破/区间位置诊断重叠。"),
     "q158_min_10h": ("Medium-short rolling low normalized by current close; can overlap with reversal/range-position diagnostics.", "中短周期最低价相对当前收盘价；可能与反转/区间位置诊断重叠。"),
+    "q158_ma_30h": ("Medium rolling price average normalized by current close; high redundancy risk with trend and moving-average gap factors.", "中周期滚动均价相对当前收盘价；与趋势和均线差因子存在高冗余风险。"),
+    "q158_std_30h": ("Medium rolling price dispersion; sensitive to volatility regime shifts and low-liquidity bars.", "中周期价格离散度；对波动状态切换和低流动性K线敏感。"),
+    "q158_max_30h": ("Medium rolling high normalized by current close; can overlap with breakout/range-position diagnostics.", "中周期最高价相对当前收盘价；可能与突破/区间位置诊断重叠。"),
+    "q158_min_30h": ("Medium rolling low normalized by current close; can overlap with reversal/range-position diagnostics.", "中周期最低价相对当前收盘价；可能与反转/区间位置诊断重叠。"),
 }
 
 

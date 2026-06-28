@@ -6,7 +6,7 @@ This audit records the current controlled public-factor intake state for the
 compact manifest:
 
 - `docs/factor_library/public_factor_candidate_manifest.csv`
-- 75 implemented Alpha158 factors from Qlib Alpha158DL formula families and
+- 79 implemented Alpha158 factors from Qlib Alpha158DL formula families and
   existing local Alpha158 support.
 - 6 skipped Alpha158 duplicate dispositions with explicit skip reasons.
 - 6 curated Alpha101 panel factors from the local Alpha101 migration layer.
@@ -36,9 +36,9 @@ Current manifest row counts:
 
 | source_family | implemented rows | skipped rows | total rows |
 | --- | ---: | ---: | ---: |
-| alpha158 | 75 | 6 | 81 |
+| alpha158 | 79 | 6 | 85 |
 | alpha101 | 9 | 6 | 15 |
-| total | 84 | 12 | 96 |
+| total | 88 | 12 | 100 |
 
 The `existing_support_backfill_20260627` rows are metadata backfills for factors
 that were already registered and computed before the public manifest existed:
@@ -101,8 +101,8 @@ python scripts/build_factor_library_state.py
 
 Result:
 
-- Registered factors: 150
-- Computed factor_values: 150
+- Registered factors: 154
+- Computed factor_values: 154
 - Missing factor_values: 0
 - Missing input data: 0
 - Warnings: 0
@@ -110,16 +110,16 @@ Result:
 Full public-manifest integrity command:
 
 ```bash
-python scripts/check_post_intake_workflow_integrity.py --factor-ids <84 implemented public manifest factor IDs>
+python scripts/check_post_intake_workflow_integrity.py --factor-ids <88 implemented public manifest factor IDs>
 ```
 
 Result:
 
-- Factors checked: 84
-- Total checks: 2016
-- PASS: 1937
+- Factors checked: 88
+- Total checks: 2112
+- PASS: 2029
 - FAIL: 0
-- WARN: 79
+- WARN: 83
 
 The warnings are optional PM-59A overlapping-sleeve summaries missing for
 eligible diagnostic factors. They do not indicate missing factor_values,
