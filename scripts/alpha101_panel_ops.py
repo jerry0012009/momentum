@@ -58,6 +58,17 @@ def xs_winsorize(wide: pd.DataFrame, std: float = 4.0) -> pd.DataFrame:
     return wide.clip(lower=lower, upper=upper, axis=0)
 
 
+def xs_rank(wide: pd.DataFrame) -> pd.DataFrame:
+    """Cross-sectional percentile rank at each timestamp."""
+    return wide.rank(axis=1, pct=True, method="average")
+
+
+def xs_scale(wide: pd.DataFrame) -> pd.DataFrame:
+    """WorldQuant-style cross-sectional scale: x / sum(abs(x)) per timestamp."""
+    denom = wide.abs().sum(axis=1).replace(0, np.nan)
+    return wide.div(denom, axis=0)
+
+
 # ── Time-series operators (wide format) ──────────────────────────────
 
 def rolling_mean_wide(wide: pd.DataFrame, window: int) -> pd.DataFrame:
@@ -80,6 +91,39 @@ def rolling_product_wide(wide: pd.DataFrame, window: int) -> pd.DataFrame:
     for col in wide.columns:
         result[col] = _rolling_product_series(wide[col].values, window)
     return result
+
+
+def rolling_corr_wide(x_wide: pd.DataFrame, y_wide: pd.DataFrame, window: int) -> pd.DataFrame:
+    """Rolling Pearson correlation over time for aligned wide panels."""
+    common_cols = x_wide.columns.intersection(y_wide.columns)
+    common_idx = x_wide.index.intersection(y_wide.index)
+    x_a = x_wide.loc[common_idx, common_cols]
+    y_a = y_wide.loc[common_idx, common_cols]
+    out = pd.DataFrame(np.nan, index=common_idx, columns=common_cols, dtype=float)
+    for col in common_cols:
+        out[col] = x_a[col].rolling(window=window, min_periods=window).corr(y_a[col])
+    return out
+
+
+def rolling_sum_wide(wide: pd.DataFrame, window: int) -> pd.DataFrame:
+    """Rolling sum over time for each symbol column."""
+    return wide.rolling(window=window, min_periods=window).sum()
+
+
+def ts_rank_wide(wide: pd.DataFrame, window: int) -> pd.DataFrame:
+    """Percentile rank of the latest value within each symbol's rolling window."""
+    def _rank_last_pct(x: np.ndarray) -> float:
+        last = x[-1]
+        if np.isnan(last):
+            return np.nan
+        valid = x[~np.isnan(x)]
+        if len(valid) < window:
+            return np.nan
+        less = np.sum(valid < last)
+        equal = np.sum(valid == last)
+        return (less + (equal + 1) / 2) / len(valid)
+
+    return wide.rolling(window=window, min_periods=window).apply(_rank_last_pct, raw=True)
 
 
 def _rolling_product_series(vals: np.ndarray, window: int) -> np.ndarray:
@@ -233,3 +277,64 @@ def compute_a101_volume_high_alpha_min_84_84(bars: pd.DataFrame) -> pd.DataFrame
     alpha = ts_alpha_wide(vol_wide, high_wide, 84)
     result = rolling_min_wide(alpha, 84)
     return from_wide(result, "a101_volume_high_alpha_min_84_84")
+
+
+def _vwap_wide(bars: pd.DataFrame) -> pd.DataFrame:
+    if "quote_volume" in bars.columns:
+        work = bars.copy()
+        work["_vwap"] = work["quote_volume"] / work["volume"].replace(0, np.nan)
+        return to_wide(work, "_vwap")
+    return to_wide(bars, "close")
+
+
+def compute_wq101_alpha32(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#32: scale(mean(close,7)-close) + 20*scale(corr(vwap,delay(close,5),230))."""
+    close = to_wide(bars, "close")
+    vwap = _vwap_wide(bars)
+    part1 = xs_scale(rolling_mean_wide(close, 7) - close)
+    part2 = 20 * xs_scale(rolling_corr_wide(vwap, close.shift(5), 230))
+    return from_wide(part1 + part2, "wq101_alpha32")
+
+
+def compute_wq101_alpha33(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#33: rank(-1 * (1 - open / close))."""
+    open_w = to_wide(bars, "open")
+    close = to_wide(bars, "close")
+    raw = -1 * (1 - (open_w / close.replace(0, np.nan)))
+    return from_wide(xs_rank(raw), "wq101_alpha33")
+
+
+def compute_wq101_alpha37(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#37: rank(corr(delay(open-close,1),close,200)) + rank(open-close)."""
+    open_w = to_wide(bars, "open")
+    close = to_wide(bars, "close")
+    spread = open_w - close
+    corr = rolling_corr_wide(spread.shift(1), close, 200)
+    return from_wide(xs_rank(corr) + xs_rank(spread), "wq101_alpha37")
+
+
+def compute_wq101_alpha38(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#38: -rank(ts_rank(close,10)) * rank(close/open)."""
+    open_w = to_wide(bars, "open")
+    close = to_wide(bars, "close")
+    tsr = ts_rank_wide(close, 10)
+    ratio = close / open_w.replace(0, np.nan)
+    return from_wide(-1 * xs_rank(tsr) * xs_rank(ratio), "wq101_alpha38")
+
+
+def compute_wq101_alpha44(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#44: -correlation(high, rank(volume), 5)."""
+    high = to_wide(bars, "high")
+    volume = to_wide(bars, "volume")
+    return from_wide(-1 * rolling_corr_wide(high, xs_rank(volume), 5), "wq101_alpha44")
+
+
+def compute_wq101_alpha45(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#45: -rank(mean(delay(close,5),20))*corr(close,volume,2)*rank(corr(sum(close,5),sum(close,20),2))."""
+    close = to_wide(bars, "close")
+    volume = to_wide(bars, "volume")
+    delayed_mean = rolling_mean_wide(close.shift(5), 20)
+    corr_cv = rolling_corr_wide(close, volume, 2)
+    corr_sum = rolling_corr_wide(rolling_sum_wide(close, 5), rolling_sum_wide(close, 20), 2)
+    result = -1 * xs_rank(delayed_mean) * corr_cv * xs_rank(corr_sum)
+    return from_wide(result, "wq101_alpha45")

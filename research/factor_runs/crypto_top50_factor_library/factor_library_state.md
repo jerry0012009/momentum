@@ -1,14 +1,14 @@
 # Factor Library State
 
-**Generated:** 2026-06-28T12:55:08.475961+00:00
+**Generated:** 2026-06-28T13:56:16.903771+00:00
 **Dataset:** crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1
 
 ## Counts
 
 | Metric | Count |
 |--------|-------|
-| Registered factors | 180 |
-| Computed factor_values | 180 |
+| Registered factors | 186 |
+| Computed factor_values | 186 |
 | Missing factor_values | 0 |
 | Missing input data | 0 |
 | Active signal factors | 10 |

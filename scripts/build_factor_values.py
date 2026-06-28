@@ -96,6 +96,21 @@ def calc_group(g: pd.DataFrame, factor_ids: Sequence[str] | None = None) -> pd.D
     return g[result_cols]
 
 
+def combine_factor_parts(parts: Sequence[pd.DataFrame]) -> pd.DataFrame:
+    """Combine per-source factor frames into one wide [timestamp, symbol, factors] table."""
+    if not parts:
+        raise ValueError("No factor parts were computed")
+    wide = pd.concat(parts, ignore_index=True, sort=False)
+    if wide.duplicated(["timestamp", "symbol"]).any():
+        factor_cols = [c for c in wide.columns if c not in {"timestamp", "symbol"}]
+        wide = (
+            wide.groupby(["timestamp", "symbol"], sort=False)[factor_cols]
+            .first()
+            .reset_index()
+        )
+    return wide
+
+
 def _needs_taker_source(spec) -> bool:
     """Check if a factor spec requires taker columns."""
     return bool(set(spec.required_columns) & TAKER_REQUIRED_COLUMNS)
@@ -381,7 +396,7 @@ def main() -> None:
                 blocked_factors.append((fid, str(e)))
                 print(f"  BLOCKED: {fid} — {e}")
 
-    wide = pd.concat(parts, ignore_index=True)
+    wide = combine_factor_parts(parts)
     wide = apply_cross_sectional_postprocess(wide)
 
     computed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
