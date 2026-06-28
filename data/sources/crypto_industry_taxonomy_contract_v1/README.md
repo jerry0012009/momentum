@@ -16,6 +16,9 @@ python scripts/init_crypto_industry_taxonomy_review.py \
   --known-at 2026-06-28T00:00:00Z \
   --taxonomy-version reviewed_v1 \
   --source manual_review
+python scripts/build_crypto_industry_taxonomy_review_priority.py \
+  --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
+  --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet
 # Fill sector/industry/subindustry, then change reviewed rows from REVIEW to OK.
 python scripts/check_crypto_industry_taxonomy_review_source.py \
   --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv
@@ -37,3 +40,9 @@ the artifact contract and will not produce `symbol_taxonomy.parquet`.
 
 The template file is intentionally not a valid taxonomy artifact because it has
 no reviewed rows.
+
+`build_crypto_industry_taxonomy_review_priority.py` writes
+`industry_taxonomy_review_priority.csv` and
+`industry_taxonomy_review_priority_status.json` under factor diagnostics. It is
+only a manual review queue based on observed `quote_volume`; it must not be used
+to infer or fill taxonomy groups.

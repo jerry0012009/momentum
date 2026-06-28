@@ -27,6 +27,7 @@ def test_start_here_contains_public_factor_and_taxonomy_entrypoints():
         "docs/factor_library/INDUSTRY_NEUTRALIZATION_DATA_CONTRACT.md",
         "data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.template.csv",
         "scripts/init_crypto_industry_taxonomy_review.py",
+        "scripts/build_crypto_industry_taxonomy_review_priority.py",
         "scripts/build_crypto_industry_taxonomy_artifact.py",
         "scripts/check_crypto_industry_taxonomy_contract.py",
         "scripts/check_crypto_industry_taxonomy_coverage.py",

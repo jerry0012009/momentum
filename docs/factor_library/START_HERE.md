@@ -138,12 +138,14 @@ until the industry-neutralization data contract is satisfied:
 - `docs/factor_library/INDUSTRY_NEUTRALIZATION_DATA_CONTRACT.md`
 - `data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.template.csv`
 - `python scripts/init_crypto_industry_taxonomy_review.py --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet --output-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv --known-at 2026-06-28T00:00:00Z --taxonomy-version reviewed_v1 --source manual_review`
+- `python scripts/build_crypto_industry_taxonomy_review_priority.py --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet`
 - `python scripts/check_crypto_industry_taxonomy_review_source.py --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv`
 - `python scripts/build_crypto_industry_taxonomy_artifact.py --input-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv --output data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet`
 - `python scripts/check_crypto_industry_taxonomy_contract.py --path data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet`
 - `python scripts/check_crypto_industry_taxonomy_coverage.py --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet --taxonomy-path data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet --min-full-coverage 0.98`
 
 需要 `IndNeutralize(..., IndClass.*)` 的 Alpha101 公式，在行业/板块中性化数据契约满足前保持 skipped，不要用临时 crypto 分桶或时间序列去均值替代。
+`build_crypto_industry_taxonomy_review_priority.py` 只按 bars 里的 quote_volume 排人工审核优先级，不推断或填充 sector/industry/subindustry。
 
 Manifest status rules:
 
