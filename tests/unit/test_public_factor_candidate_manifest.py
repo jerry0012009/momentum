@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from factor_formula_registry import REGISTRY_BY_ID  # noqa: E402
 from check_crypto_industry_taxonomy_contract import TAXONOMY_PATH, check_contract  # noqa: E402
+from check_crypto_industry_taxonomy_coverage import DEFAULT_BARS, check_coverage  # noqa: E402
 
 MANIFEST = ROOT / "docs" / "factor_library" / "public_factor_candidate_manifest.csv"
 SKIPPED_STATUSES = {
@@ -145,6 +146,12 @@ def test_alpha101_indneutralize_rows_require_taxonomy_gate(rows: list[dict[str, 
     if implemented_indneutralize_rows:
         checks = check_contract(TAXONOMY_PATH)
         assert all(c["passed"] for c in checks), checks
+        _summary, coverage_checks, _symbol_coverage = check_coverage(
+            DEFAULT_BARS,
+            TAXONOMY_PATH,
+            min_full_coverage=0.98,
+        )
+        assert all(c["passed"] for c in coverage_checks), coverage_checks
 
     for row in indneutralize_rows:
         factor_id = row["factor_id"]
