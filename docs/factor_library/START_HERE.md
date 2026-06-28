@@ -135,6 +135,7 @@ Alpha101 formulas that require `IndNeutralize(..., IndClass.*)` are blocked
 until the industry-neutralization data contract is satisfied:
 
 - `docs/factor_library/INDUSTRY_NEUTRALIZATION_DATA_CONTRACT.md`
+- `python scripts/check_crypto_industry_taxonomy_contract.py --path data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet`
 
 需要 `IndNeutralize(..., IndClass.*)` 的 Alpha101 公式，在行业/板块中性化数据契约满足前保持 skipped，不要用临时 crypto 分桶或时间序列去均值替代。
 

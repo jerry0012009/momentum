@@ -102,14 +102,26 @@ panel factors:
 - if the taxonomy file is missing, taxonomy factors are blocked rather than
   approximated.
 
+Before any taxonomy artifact can be used, run:
+
+```bash
+python scripts/check_crypto_industry_taxonomy_contract.py \
+  --path data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet
+```
+
+The validator checks required columns, quality-flag domain, known/effective
+timestamps, group-field completeness for `OK` rows, and overlapping effective
+windows.
+
 To unblock the skipped Alpha101 rows, the workflow must add:
 
 1. a data contract document for the taxonomy source;
 2. a generated or reviewed taxonomy artifact under `data/`;
-3. `FactorSpec` rows whose `required_columns` include the exact group columns;
-4. manifest rows changed from `skipped_missing_industry_neutralization_*` to a
+3. a passing `check_crypto_industry_taxonomy_contract.py` result;
+4. `FactorSpec` rows whose `required_columns` include the exact group columns;
+5. manifest rows changed from `skipped_missing_industry_neutralization_*` to a
    small `implemented_batch_*` status only after factor values and QA pass;
-5. unit tests that prove skipped rows are not registered until the data contract
+6. unit tests that prove skipped rows are not registered until the data contract
    is satisfied, and implemented rows have registry parity after migration.
 
 ## 6. Disallowed Shortcuts
