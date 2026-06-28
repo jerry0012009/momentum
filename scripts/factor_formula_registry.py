@@ -80,6 +80,58 @@ def _compute_wq101_alpha53(df: pd.DataFrame) -> pd.Series:
     return -1 * pos.diff(9)
 
 
+def _compute_wq101_alpha6(df: pd.DataFrame) -> pd.Series:
+    """WQ101 Alpha#6: -correlation(open, volume, 10)."""
+    return -1 * rolling_corr(df["open"], df["volume"], 10)
+
+
+def _compute_wq101_alpha9(df: pd.DataFrame) -> pd.Series:
+    """WQ101 Alpha#9: signed reversal of close delta unless 5-bar moves agree."""
+    close_delta = delta(df["close"], 1)
+    min_delta = rolling_min(close_delta, 5)
+    max_delta = rolling_max(close_delta, 5)
+    valid = min_delta.notna() & max_delta.notna()
+    trend_agrees = (min_delta > 0) | (max_delta < 0)
+    out = pd.Series(np.nan, index=df.index, dtype=float)
+    out.loc[valid & trend_agrees] = close_delta.loc[valid & trend_agrees]
+    out.loc[valid & ~trend_agrees] = -close_delta.loc[valid & ~trend_agrees]
+    return out
+
+
+def _compute_wq101_alpha21(df: pd.DataFrame) -> pd.Series:
+    """WQ101 Alpha#21: close mean/std state with volume/adv20 fallback."""
+    close = df["close"]
+    volume = df["volume"]
+    mean_close_8 = rolling_mean(close, 8)
+    std_close_8 = rolling_std(close, 8)
+    mean_close_2 = rolling_mean(close, 2)
+    adv20 = rolling_mean(volume, 20)
+
+    valid = mean_close_8.notna() & std_close_8.notna() & mean_close_2.notna() & adv20.notna()
+    out = pd.Series(np.nan, index=df.index, dtype=float)
+    upper_break = (mean_close_8 + std_close_8) < mean_close_2
+    lower_break = mean_close_2 < (mean_close_8 - std_close_8)
+    volume_active = (volume / adv20.replace(0, np.nan)) >= 1
+    out.loc[valid & upper_break] = -1.0
+    out.loc[valid & ~upper_break & lower_break] = 1.0
+    out.loc[valid & ~upper_break & ~lower_break & volume_active] = 1.0
+    out.loc[valid & ~upper_break & ~lower_break & ~volume_active] = -1.0
+    return out
+
+
+def _compute_wq101_alpha41(df: pd.DataFrame) -> pd.Series:
+    """WQ101 Alpha#41: sqrt(high * low) - vwap."""
+    vwap = df["quote_volume"] / df["volume"].replace(0, np.nan)
+    return np.sqrt(df["high"] * df["low"]) - vwap
+
+
+def _compute_wq101_alpha54(df: pd.DataFrame) -> pd.Series:
+    """WQ101 Alpha#54: (-1*((low-close)*open^5))/((low-high)*close^5)."""
+    o, h, l, c = df["open"], df["high"], df["low"], df["close"]
+    denom = (l - h) * (c ** 5)
+    return (-1 * ((l - c) * (o ** 5))) / denom.replace(0, np.nan)
+
+
 def _compute_q158_high_low_range(df: pd.DataFrame) -> pd.Series:
     """Alpha158 High-Low Range: (high - low) / close."""
     h, l, c = df["high"], df["low"], df["close"]
@@ -1174,6 +1226,42 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="conditional",
         compute_fn=_compute_wq101_alpha53,
         notes="-delta(intraday_position, 9); lookback=10 because diff(9) needs t and t-9",
+    ),
+    # Public Alpha101 OHLCV/VWAP batch 01
+    FactorSpec(
+        factor_id="wq101_alpha6", family="wq101",
+        required_columns=["open", "volume"], lookback_window=10,
+        expected_direction="conditional",
+        compute_fn=_compute_wq101_alpha6,
+        notes="WorldQuant 101 Alpha#6: -correlation(open, volume, 10); daily equity formula adapted to ten 1h bars",
+    ),
+    FactorSpec(
+        factor_id="wq101_alpha9", family="wq101",
+        required_columns=["close"], lookback_window=6,
+        expected_direction="conditional",
+        compute_fn=_compute_wq101_alpha9,
+        notes="WorldQuant 101 Alpha#9: conditional sign of delta(close,1) using 5-bar min/max of close delta; lookback=6 includes delta warmup",
+    ),
+    FactorSpec(
+        factor_id="wq101_alpha21", family="wq101",
+        required_columns=["close", "volume"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_wq101_alpha21,
+        notes="WorldQuant 101 Alpha#21: close mean/std state with volume/adv20 branch; daily equity formula adapted to 1h bars",
+    ),
+    FactorSpec(
+        factor_id="wq101_alpha41", family="wq101",
+        required_columns=["high", "low", "volume", "quote_volume"], lookback_window=1,
+        expected_direction="conditional",
+        compute_fn=_compute_wq101_alpha41,
+        notes="WorldQuant 101 Alpha#41: sqrt(high*low)-vwap; vwap derived as quote_volume/volume from canonical bars",
+    ),
+    FactorSpec(
+        factor_id="wq101_alpha54", family="wq101",
+        required_columns=["open", "high", "low", "close"], lookback_window=1,
+        expected_direction="conditional",
+        compute_fn=_compute_wq101_alpha54,
+        notes="WorldQuant 101 Alpha#54: (-1*((low-close)*open^5))/((low-high)*close^5); OHLC-only 1h adaptation",
     ),
     # Batch 1: Alpha158
     FactorSpec(
