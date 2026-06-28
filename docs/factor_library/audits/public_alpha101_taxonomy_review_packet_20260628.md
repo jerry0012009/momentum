@@ -39,6 +39,7 @@ unskipped.
 manual review queue with:
 
 - CoinGecko mapping evidence from the market-cap workflow when available;
+- optional CoinGecko category evidence cached as review-only metadata;
 - required taxonomy groups for the blocked Alpha101 formulas;
 - the count and IDs of blocked Alpha101 factors affected by taxonomy approval;
 - an explicit review-only note stating that groups must be manually filled
@@ -49,6 +50,7 @@ Generated packet:
 ```text
 research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_review_priority.csv
 research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_review_priority_status.json
+research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_coingecko_category_evidence.csv
 ```
 
 Current packet summary:
@@ -57,6 +59,7 @@ Current packet summary:
 - Bar rows: 3,316,259
 - Symbols needing review: 266
 - Symbols with CoinGecko mapping evidence: 242
+- Symbols with cached CoinGecko category evidence: 11
 - Blocked Alpha101 IndNeutralize factors: 18
 - Required groups: `industry|sector|subindustry`
 - Top 20 symbols by quote volume cover 78.85% of observed quote volume
@@ -70,11 +73,18 @@ The coverage gate uses point-in-time full-group bar coverage and symbol
 coverage, not quote volume. The quote-volume ranking is still useful for review
 order, but it cannot be treated as the unlock threshold by itself.
 
+CoinGecko category evidence has been cached for the first 11 symbols in the
+current review-priority order. A conservative request cadence is required:
+CoinGecko free-tier requests returned HTTP 429 during the attempt to fetch the
+next symbols. The cache persists only successful `OK` category rows; rate-limit
+errors are not retained as source evidence.
+
 ## Guardrails
 
 This packet does not:
 
 - infer `sector`, `industry`, or `subindustry`;
+- treat CoinGecko categories as approved taxonomy groups;
 - change any taxonomy row from `REVIEW` to `OK`;
 - build `symbol_taxonomy.parquet`;
 - register new factors;
@@ -89,14 +99,17 @@ Commands run:
 .venv/bin/python -m pytest tests/unit/test_build_crypto_industry_taxonomy_review_priority.py -q
 .venv/bin/python -m py_compile scripts/build_crypto_industry_taxonomy_review_priority.py
 .venv/bin/python scripts/build_crypto_industry_taxonomy_review_priority.py --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet
+.venv/bin/python scripts/build_crypto_industry_taxonomy_review_priority.py --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet --fetch-coingecko-categories --category-fetch-limit 5 --category-fetch-delay 6.5
+.venv/bin/python scripts/build_crypto_industry_taxonomy_review_priority.py --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet --fetch-coingecko-categories --category-fetch-limit 15 --category-fetch-delay 6.5
 ```
 
 Results:
 
-- Review-priority unit tests: 7 passed
+- Review-priority unit tests: 9 passed
 - Script compilation: pass
 - Review packet regenerated with 266 rows, 18 blocked-factor context, and
   explicit 98% bar-row coverage threshold fields
+- CoinGecko category evidence cached for 11 review-priority symbols
 
 ## Next Valid Step
 

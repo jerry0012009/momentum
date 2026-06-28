@@ -19,6 +19,11 @@ python scripts/init_crypto_industry_taxonomy_review.py \
 python scripts/build_crypto_industry_taxonomy_review_priority.py \
   --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
   --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet
+python scripts/build_crypto_industry_taxonomy_review_priority.py \
+  --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
+  --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet \
+  --fetch-coingecko-categories \
+  --category-fetch-limit 5
 # Fill sector/industry/subindustry, then change reviewed rows from REVIEW to OK.
 python scripts/check_crypto_industry_taxonomy_review_source.py \
   --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv
@@ -46,5 +51,7 @@ no reviewed rows.
 `industry_taxonomy_review_priority_status.json` under factor diagnostics. It is
 only a manual review queue based on observed `quote_volume`; it must not be used
 to infer or fill taxonomy groups. The review queue may include CoinGecko mapping
-evidence and the Alpha101 IndNeutralize factor IDs blocked by the taxonomy
-contract, but those fields are context for reviewers, not approval.
+evidence, optional cached CoinGecko category evidence, and the Alpha101
+IndNeutralize factor IDs blocked by the taxonomy contract, but those fields are
+context for reviewers, not approval. Category evidence fetches are optional and
+rate-limited; only successful `OK` category rows are persisted.

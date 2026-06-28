@@ -11,9 +11,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 from build_crypto_industry_taxonomy_review_priority import (  # noqa: E402
     build_review_priority,
+    fetch_coingecko_category_evidence,
     load_optional_coingecko_map,
+    load_optional_coingecko_category_evidence,
     summarize_indneutralize_blockers,
     summarize_bars_by_symbol,
+    write_coingecko_category_evidence,
     write_priority_reports,
 )
 
@@ -71,10 +74,18 @@ def test_review_priority_ranks_by_quote_volume_and_marks_actions():
         "map_source": ["manual_override", "auto", "auto"],
         "notes": ["reviewed", "ambiguous", ""],
     })
+    category_evidence = pd.DataFrame({
+        "coingecko_id": ["aaa-token", "bbb-token"],
+        "coingecko_primary_category": ["Layer 1 (L1)", "Meme"],
+        "coingecko_categories": ["Layer 1 (L1)|Smart Contract Platform", "Meme|AI"],
+        "coingecko_category_count": [2, 2],
+        "coingecko_category_status": ["OK", "OK"],
+    })
     priority, summary = build_review_priority(
         _taxonomy(),
         _bars(),
         coingecko_map=coingecko_map,
+        coingecko_category_evidence=category_evidence,
         blocker_summary=blocker_summary,
     )
 
@@ -99,6 +110,8 @@ def test_review_priority_ranks_by_quote_volume_and_marks_actions():
     assert priority.loc[priority["symbol"] == "BBBUSDT", "missing_group_count"].iloc[0] == 3
     assert priority.loc[priority["symbol"] == "BBBUSDT", "coingecko_id"].iloc[0] == "bbb-token"
     assert priority.loc[priority["symbol"] == "BBBUSDT", "coingecko_map_status"].iloc[0] == "CHECK"
+    assert priority.loc[priority["symbol"] == "BBBUSDT", "coingecko_primary_category"].iloc[0] == "Meme"
+    assert priority.loc[priority["symbol"] == "BBBUSDT", "coingecko_category_count"].iloc[0] == 2
     assert priority.loc[priority["symbol"] == "DDDUSDT", "coingecko_id"].iloc[0] == ""
     assert priority.loc[priority["symbol"] == "AAAUSDT", "indneutralize_required_groups"].iloc[0] == "industry|sector|subindustry"
     assert priority.loc[priority["symbol"] == "AAAUSDT", "blocked_alpha101_factor_count_if_approved"].iloc[0] == 18
@@ -110,6 +123,7 @@ def test_review_priority_ranks_by_quote_volume_and_marks_actions():
     assert summary["symbols_missing_from_taxonomy"] == 1
     assert summary["symbols_needing_review"] == 2
     assert summary["symbols_with_coingecko_mapping"] == 3
+    assert summary["symbols_with_coingecko_categories"] == 2
     assert summary["blocked_alpha101_indneutralize_factor_count"] == 18
     assert summary["required_taxonomy_groups_for_unblock"] == "industry|sector|subindustry"
     assert summary["top_symbol"] == "BBBUSDT"
@@ -137,6 +151,77 @@ def test_load_optional_coingecko_map_handles_missing_file(tmp_path: Path):
 
     assert result.empty
     assert {"symbol", "coingecko_id", "map_status", "map_source", "notes"} <= set(result.columns)
+
+
+def test_load_optional_coingecko_category_evidence_handles_missing_file(tmp_path: Path):
+    result = load_optional_coingecko_category_evidence(tmp_path / "missing.csv")
+
+    assert result.empty
+    assert {"coingecko_id", "coingecko_categories", "coingecko_category_status"} <= set(result.columns)
+
+
+def test_fetch_coingecko_category_evidence_uses_cache_and_records_categories():
+    class FakeResponse:
+        def __init__(self, payload: dict[str, object]):
+            self._payload = payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return self._payload
+
+    requested: list[str] = []
+
+    def fake_get(url: str, params: dict[str, str], timeout: int) -> FakeResponse:
+        requested.append(url.rsplit("/", 1)[-1])
+        return FakeResponse({
+            "symbol": "bbb",
+            "name": "BBB Token",
+            "categories": ["Layer 1 (L1)", "Smart Contract Platform"],
+        })
+
+    existing = pd.DataFrame({
+        "coingecko_id": ["aaa-token"],
+        "coingecko_symbol": ["aaa"],
+        "coingecko_name": ["AAA Token"],
+        "coingecko_primary_category": ["Meme"],
+        "coingecko_categories": ["Meme"],
+        "coingecko_category_count": [1],
+        "coingecko_category_status": ["OK"],
+        "coingecko_category_source": ["coingecko_coins_id_categories"],
+        "coingecko_category_fetched_at": ["2026-06-28T00:00:00+00:00"],
+        "coingecko_category_error": [""],
+    })
+
+    result = fetch_coingecko_category_evidence(
+        ["aaa-token", "bbb-token"],
+        existing,
+        delay_seconds=0,
+        requests_get=fake_get,
+    )
+
+    assert requested == ["bbb-token"]
+    bbb = result[result["coingecko_id"] == "bbb-token"].iloc[0]
+    assert bbb["coingecko_primary_category"] == "Layer 1 (L1)"
+    assert bbb["coingecko_categories"] == "Layer 1 (L1)|Smart Contract Platform"
+    assert bbb["coingecko_category_count"] == 2
+    assert bbb["coingecko_category_status"] == "OK"
+
+
+def test_write_coingecko_category_evidence_persists_only_ok_rows(tmp_path: Path):
+    evidence = pd.DataFrame({
+        "coingecko_id": ["aaa-token", "bbb-token"],
+        "coingecko_primary_category": ["Meme", ""],
+        "coingecko_categories": ["Meme", ""],
+        "coingecko_category_count": [1, 0],
+        "coingecko_category_status": ["OK", "ERROR"],
+    })
+
+    out = write_coingecko_category_evidence(evidence, tmp_path / "category.csv")
+    result = pd.read_csv(out)
+
+    assert result["coingecko_id"].tolist() == ["aaa-token"]
 
 
 def test_summarize_indneutralize_blockers_from_manifest(tmp_path: Path):

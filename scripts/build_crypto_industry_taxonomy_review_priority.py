@@ -11,10 +11,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+import requests
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET_ID = "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
@@ -23,8 +25,11 @@ DEFAULT_SOURCE = ROOT / "data" / "sources" / "crypto_industry_taxonomy_contract_
 DEFAULT_COINGECKO_MAP = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "symbol_id_map.csv"
 DEFAULT_PUBLIC_MANIFEST = ROOT / "docs" / "factor_library" / "public_factor_candidate_manifest.csv"
 DEFAULT_OUT_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_diagnostics"
+DEFAULT_COINGECKO_CATEGORY_EVIDENCE = DEFAULT_OUT_DIR / "industry_taxonomy_coingecko_category_evidence.csv"
 GROUP_COLUMNS = ["sector", "industry", "subindustry"]
 SKIPPED_INDUSTRY_STATUS = "skipped_missing_industry_neutralization_20260627"
+COINGECKO_COIN_URL = "https://api.coingecko.com/api/v3/coins/{coingecko_id}"
+REQUEST_TIMEOUT = 30
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_crypto_industry_taxonomy_contract import REQUIRED_COLUMNS  # noqa: E402
@@ -53,6 +58,10 @@ def _empty_priority_frame() -> pd.DataFrame:
             "coingecko_map_status",
             "coingecko_map_source",
             "coingecko_mapping_notes",
+            "coingecko_primary_category",
+            "coingecko_categories",
+            "coingecko_category_count",
+            "coingecko_category_status",
             "indneutralize_required_groups",
             "blocked_alpha101_factor_count_if_approved",
             "blocked_alpha101_factor_ids",
@@ -110,6 +119,131 @@ def load_optional_coingecko_map(path: Path) -> pd.DataFrame:
     return out.drop_duplicates("symbol", keep="first")
 
 
+def _empty_category_evidence_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "coingecko_id",
+            "coingecko_symbol",
+            "coingecko_name",
+            "coingecko_primary_category",
+            "coingecko_categories",
+            "coingecko_category_count",
+            "coingecko_category_status",
+            "coingecko_category_source",
+            "coingecko_category_fetched_at",
+            "coingecko_category_error",
+        ]
+    )
+
+
+def load_optional_coingecko_category_evidence(path: Path) -> pd.DataFrame:
+    """Load optional CoinGecko category evidence for manual taxonomy review."""
+    if not path.exists():
+        return _empty_category_evidence_frame()
+    df = pd.read_csv(path).fillna("")
+    missing = {"coingecko_id"} - set(df.columns)
+    if missing:
+        raise ValueError(f"coingecko category evidence missing required columns: {sorted(missing)}")
+    out = _empty_category_evidence_frame()
+    for col in out.columns:
+        out[col] = df[col] if col in df.columns else ""
+    out["coingecko_id"] = out["coingecko_id"].astype(str)
+    return out.drop_duplicates("coingecko_id", keep="last")
+
+
+def fetch_coingecko_category_evidence(
+    coingecko_ids: list[str],
+    existing: pd.DataFrame | None = None,
+    *,
+    force: bool = False,
+    delay_seconds: float = 6.5,
+    limit: int | None = None,
+    requests_get=requests.get,
+) -> pd.DataFrame:
+    """Fetch CoinGecko categories as review evidence, never as taxonomy approval."""
+    existing = existing if existing is not None else _empty_category_evidence_frame()
+    if existing.empty:
+        existing = _empty_category_evidence_frame()
+    existing_ids = set()
+    if not force and "coingecko_id" in existing.columns and "coingecko_category_status" in existing.columns:
+        ok_existing = existing[existing["coingecko_category_status"].astype(str).eq("OK")]
+        existing_ids = set(ok_existing["coingecko_id"].astype(str))
+
+    ids = []
+    for coingecko_id in coingecko_ids:
+        cid = str(coingecko_id).strip()
+        if not cid or cid in existing_ids or cid in ids:
+            continue
+        ids.append(cid)
+    if limit is not None:
+        ids = ids[:max(0, int(limit))]
+
+    fetched_rows = []
+    for idx, coingecko_id in enumerate(ids, start=1):
+        if idx > 1 and delay_seconds > 0:
+            time.sleep(delay_seconds)
+        fetched_at = datetime.now(timezone.utc).isoformat()
+        try:
+            resp = requests_get(
+                COINGECKO_COIN_URL.format(coingecko_id=coingecko_id),
+                params={
+                    "localization": "false",
+                    "tickers": "false",
+                    "market_data": "false",
+                    "community_data": "false",
+                    "developer_data": "false",
+                    "sparkline": "false",
+                },
+                timeout=REQUEST_TIMEOUT,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            categories = [str(c).strip() for c in payload.get("categories", []) if str(c).strip()]
+            fetched_rows.append({
+                "coingecko_id": coingecko_id,
+                "coingecko_symbol": str(payload.get("symbol", "")),
+                "coingecko_name": str(payload.get("name", "")),
+                "coingecko_primary_category": categories[0] if categories else "",
+                "coingecko_categories": "|".join(categories),
+                "coingecko_category_count": len(categories),
+                "coingecko_category_status": "OK",
+                "coingecko_category_source": "coingecko_coins_id_categories",
+                "coingecko_category_fetched_at": fetched_at,
+                "coingecko_category_error": "",
+            })
+        except Exception as exc:
+            fetched_rows.append({
+                "coingecko_id": coingecko_id,
+                "coingecko_symbol": "",
+                "coingecko_name": "",
+                "coingecko_primary_category": "",
+                "coingecko_categories": "",
+                "coingecko_category_count": 0,
+                "coingecko_category_status": "ERROR",
+                "coingecko_category_source": "coingecko_coins_id_categories",
+                "coingecko_category_fetched_at": fetched_at,
+                "coingecko_category_error": str(exc),
+            })
+
+    fetched = pd.DataFrame(fetched_rows)
+    if fetched.empty:
+        return existing.copy()
+    combined = pd.concat([existing, fetched], ignore_index=True)
+    columns = _empty_category_evidence_frame().columns.tolist()
+    for col in columns:
+        if col not in combined.columns:
+            combined[col] = ""
+    return combined[columns].drop_duplicates("coingecko_id", keep="last")
+
+
+def write_coingecko_category_evidence(evidence: pd.DataFrame, path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if "coingecko_category_status" in evidence.columns:
+        evidence = evidence[evidence["coingecko_category_status"].astype(str).eq("OK")].copy()
+    evidence.to_csv(path, index=False)
+    return path
+
+
 def summarize_indneutralize_blockers(manifest_csv: Path) -> dict[str, object]:
     """Summarize currently skipped Alpha101 IndNeutralize rows for review context."""
     if not manifest_csv.exists():
@@ -146,6 +280,7 @@ def build_review_priority(
     bars: pd.DataFrame,
     group_columns: list[str] | None = None,
     coingecko_map: pd.DataFrame | None = None,
+    coingecko_category_evidence: pd.DataFrame | None = None,
     blocker_summary: dict[str, object] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Join taxonomy review rows with bars stats and rank manual review priority."""
@@ -191,6 +326,31 @@ def build_review_priority(
         merged["coingecko_mapping_notes"] = ""
     for col in ["coingecko_id", "coingecko_map_status", "coingecko_map_source", "coingecko_mapping_notes"]:
         merged[col] = merged[col].fillna("").astype(str)
+    if coingecko_category_evidence is not None and not coingecko_category_evidence.empty:
+        cat = coingecko_category_evidence.copy().fillna("")
+        _require_columns(cat, {"coingecko_id"}, "coingecko_category_evidence")
+        keep_cols = [
+            "coingecko_id",
+            "coingecko_primary_category",
+            "coingecko_categories",
+            "coingecko_category_count",
+            "coingecko_category_status",
+        ]
+        for col in keep_cols:
+            if col not in cat.columns:
+                cat[col] = ""
+        merged = merged.merge(cat[keep_cols], on="coingecko_id", how="left")
+    else:
+        merged["coingecko_primary_category"] = ""
+        merged["coingecko_categories"] = ""
+        merged["coingecko_category_count"] = 0
+        merged["coingecko_category_status"] = ""
+    for col in ["coingecko_primary_category", "coingecko_categories", "coingecko_category_status"]:
+        merged[col] = merged[col].fillna("").astype(str)
+    merged["coingecko_category_count"] = pd.to_numeric(
+        merged["coingecko_category_count"],
+        errors="coerce",
+    ).fillna(0).astype(int)
 
     merged["quality_flag"] = merged["quality_flag"].fillna("MISSING_FROM_TAXONOMY")
     for col in group_columns:
@@ -225,11 +385,15 @@ def build_review_priority(
     )
     merged["blocked_alpha101_factor_ids"] = str(blocker_summary.get("blocked_factor_ids", ""))
     mapped = merged["coingecko_id"].fillna("").astype(str).str.len().gt(0)
+    has_categories = merged["coingecko_category_count"].gt(0)
     merged["review_packet_note"] = (
         "review_only_not_approved; fill sector/industry/subindustry manually before OK"
     )
     merged.loc[~mapped, "review_packet_note"] = (
         "review_only_not_approved; missing coingecko mapping evidence; fill groups manually before OK"
+    )
+    merged.loc[mapped & ~has_categories, "review_packet_note"] = (
+        "review_only_not_approved; mapped coingecko id but no category evidence; fill groups manually before OK"
     )
 
     merged = merged.sort_values(
@@ -265,6 +429,7 @@ def build_review_priority(
         "symbols_needing_review": int((priority["review_action"] != "already_ok").sum()),
         "ok_symbols": int((priority["review_action"] == "already_ok").sum()),
         "symbols_with_coingecko_mapping": int(priority["coingecko_id"].astype(str).str.len().gt(0).sum()),
+        "symbols_with_coingecko_categories": int(priority["coingecko_category_count"].gt(0).sum()),
         "blocked_alpha101_indneutralize_factor_count": int(
             blocker_summary.get("blocked_factor_count", 0) or 0
         ),
@@ -287,6 +452,7 @@ def build_priority_from_paths(
     taxonomy_csv: Path,
     bars_path: Path,
     coingecko_map_csv: Path = DEFAULT_COINGECKO_MAP,
+    coingecko_category_csv: Path = DEFAULT_COINGECKO_CATEGORY_EVIDENCE,
     manifest_csv: Path = DEFAULT_PUBLIC_MANIFEST,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     if not taxonomy_csv.exists():
@@ -297,8 +463,15 @@ def build_priority_from_paths(
     taxonomy = pd.read_csv(taxonomy_csv)
     bars = pd.read_parquet(bars_path, columns=["timestamp", "symbol", "quote_volume"])
     coingecko_map = load_optional_coingecko_map(coingecko_map_csv)
+    coingecko_category_evidence = load_optional_coingecko_category_evidence(coingecko_category_csv)
     blocker_summary = summarize_indneutralize_blockers(manifest_csv)
-    return build_review_priority(taxonomy, bars, coingecko_map=coingecko_map, blocker_summary=blocker_summary)
+    return build_review_priority(
+        taxonomy,
+        bars,
+        coingecko_map=coingecko_map,
+        coingecko_category_evidence=coingecko_category_evidence,
+        blocker_summary=blocker_summary,
+    )
 
 
 def write_priority_reports(
@@ -328,7 +501,12 @@ def main() -> int:
     parser.add_argument("--source-csv", default=str(DEFAULT_SOURCE), help="Taxonomy review source CSV")
     parser.add_argument("--bars-path", default=str(DEFAULT_BARS), help="Factor bars parquet path")
     parser.add_argument("--coingecko-map-csv", default=str(DEFAULT_COINGECKO_MAP), help="Optional symbol->CoinGecko evidence CSV")
+    parser.add_argument("--coingecko-category-csv", default=str(DEFAULT_COINGECKO_CATEGORY_EVIDENCE), help="Optional CoinGecko category evidence CSV")
     parser.add_argument("--public-manifest", default=str(DEFAULT_PUBLIC_MANIFEST), help="Public factor manifest for blocked-factor context")
+    parser.add_argument("--fetch-coingecko-categories", action="store_true", help="Fetch and cache CoinGecko category evidence before building the review packet")
+    parser.add_argument("--category-fetch-delay", type=float, default=6.5, help="Seconds between CoinGecko category requests")
+    parser.add_argument("--category-fetch-limit", type=int, default=None, help="Optional max CoinGecko ids to fetch this run")
+    parser.add_argument("--force-category-refresh", action="store_true", help="Refetch CoinGecko categories even when cached OK evidence exists")
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR), help="Output diagnostics directory")
     args = parser.parse_args()
 
@@ -340,10 +518,36 @@ def main() -> int:
     print(f"  bars:       {bars_path}")
 
     try:
+        category_csv = Path(args.coingecko_category_csv)
+        if args.fetch_coingecko_categories:
+            coingecko_map = load_optional_coingecko_map(Path(args.coingecko_map_csv))
+            existing_categories = load_optional_coingecko_category_evidence(category_csv)
+            taxonomy = pd.read_csv(taxonomy_csv)
+            bars = pd.read_parquet(bars_path, columns=["timestamp", "symbol", "quote_volume"])
+            blocker_summary = summarize_indneutralize_blockers(Path(args.public_manifest))
+            base_priority, _base_summary = build_review_priority(
+                taxonomy,
+                bars,
+                coingecko_map=coingecko_map,
+                coingecko_category_evidence=existing_categories,
+                blocker_summary=blocker_summary,
+            )
+            ordered_ids = base_priority["coingecko_id"].dropna().astype(str).tolist()
+            category_evidence = fetch_coingecko_category_evidence(
+                ordered_ids,
+                existing_categories,
+                force=args.force_category_refresh,
+                delay_seconds=args.category_fetch_delay,
+                limit=args.category_fetch_limit,
+            )
+            write_coingecko_category_evidence(category_evidence, category_csv)
+            print(f"  category_evidence_rows: {len(category_evidence)}")
+            print(f"Saved category evidence: {category_csv}")
         priority, summary = build_priority_from_paths(
             taxonomy_csv,
             bars_path,
             Path(args.coingecko_map_csv),
+            category_csv,
             Path(args.public_manifest),
         )
     except Exception as exc:
@@ -354,6 +558,7 @@ def main() -> int:
     print(f"  rows: {summary['row_count']}")
     print(f"  symbols_needing_review: {summary['symbols_needing_review']}")
     print(f"  symbols_with_coingecko_mapping: {summary['symbols_with_coingecko_mapping']}")
+    print(f"  symbols_with_coingecko_categories: {summary['symbols_with_coingecko_categories']}")
     print(f"  blocked_indneutralize_factors: {summary['blocked_alpha101_indneutralize_factor_count']}")
     print(f"  top_symbol: {summary['top_symbol']}")
     print(f"  top_20_quote_volume_share: {summary['top_20_quote_volume_share']:.4f}")
