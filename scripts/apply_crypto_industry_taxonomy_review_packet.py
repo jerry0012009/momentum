@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""Apply manually reviewed taxonomy batch packet targets to a source CSV.
+
+This helper only copies explicit reviewer target fields into the reviewed
+taxonomy source workbook. It does not infer taxonomy groups, approve CoinGecko
+categories, build the parquet artifact, or register factors.
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_SOURCE = ROOT / "data" / "sources" / "crypto_industry_taxonomy_contract_v1" / "symbol_taxonomy.csv"
+DEFAULT_PACKET = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_diagnostics" / "industry_taxonomy_review_batch_001.csv"
+TARGET_COLUMNS = [
+    "target_sector",
+    "target_industry",
+    "target_subindustry",
+    "target_quality_flag",
+    "target_known_at",
+    "target_effective_from",
+]
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from check_crypto_industry_taxonomy_contract import REQUIRED_COLUMNS, VALID_QUALITY_FLAGS  # noqa: E402
+
+
+def _require_columns(df: pd.DataFrame, required: set[str], name: str) -> None:
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"{name} missing required columns: {sorted(missing)}")
+
+
+def apply_review_packet(source: pd.DataFrame, packet: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Return updated source and a summary after applying explicit OK targets."""
+    _require_columns(source, REQUIRED_COLUMNS, "source")
+    _require_columns(packet, {"symbol", *TARGET_COLUMNS}, "packet")
+
+    updated = source.copy().fillna("")
+    updated["symbol"] = updated["symbol"].astype(str)
+    packet_work = packet.copy().fillna("")
+    packet_work["symbol"] = packet_work["symbol"].astype(str)
+    packet_work["target_quality_flag"] = packet_work["target_quality_flag"].astype(str)
+
+    bad_flags = sorted(set(packet_work["target_quality_flag"]) - (VALID_QUALITY_FLAGS | {""}))
+    if bad_flags:
+        raise ValueError(f"packet has invalid target_quality_flag values: {bad_flags}")
+
+    duplicate_symbols = sorted(packet_work.loc[packet_work["symbol"].duplicated(), "symbol"].unique().tolist())
+    if duplicate_symbols:
+        raise ValueError(f"packet has duplicate symbols: {duplicate_symbols}")
+
+    approved = packet_work[packet_work["target_quality_flag"].eq("OK")].copy()
+    if approved.empty:
+        return updated, {
+            "packet_rows": int(len(packet_work)),
+            "approved_packet_rows": 0,
+            "updated_rows": 0,
+            "updated_symbols": "",
+            "skipped_packet_rows": int(len(packet_work)),
+            "note": "No target_quality_flag == OK rows to apply.",
+        }
+
+    missing_source = sorted(set(approved["symbol"]) - set(updated["symbol"]))
+    if missing_source:
+        raise ValueError(f"approved packet symbols missing from source: {missing_source}")
+
+    for target_col in TARGET_COLUMNS:
+        missing = approved[target_col].astype(str).str.strip().eq("")
+        if missing.any():
+            symbols = approved.loc[missing, "symbol"].astype(str).tolist()
+            raise ValueError(f"approved packet rows missing {target_col}: {symbols}")
+
+    timestamp_cols = ["target_known_at", "target_effective_from"]
+    for col in timestamp_cols:
+        parsed = pd.to_datetime(approved[col], utc=True, errors="coerce")
+        if parsed.isna().any():
+            symbols = approved.loc[parsed.isna(), "symbol"].astype(str).tolist()
+            raise ValueError(f"approved packet rows have invalid {col}: {symbols}")
+
+    source_idx_by_symbol = {symbol: idx for idx, symbol in updated["symbol"].items()}
+    updated_symbols: list[str] = []
+    for row in approved.itertuples(index=False):
+        symbol = str(row.symbol)
+        idx = source_idx_by_symbol[symbol]
+        updated.loc[idx, "sector"] = str(row.target_sector).strip()
+        updated.loc[idx, "industry"] = str(row.target_industry).strip()
+        updated.loc[idx, "subindustry"] = str(row.target_subindustry).strip()
+        updated.loc[idx, "quality_flag"] = str(row.target_quality_flag).strip()
+        updated.loc[idx, "known_at"] = str(row.target_known_at).strip()
+        updated.loc[idx, "effective_from"] = str(row.target_effective_from).strip()
+        updated_symbols.append(symbol)
+
+    return updated, {
+        "packet_rows": int(len(packet_work)),
+        "approved_packet_rows": int(len(approved)),
+        "updated_rows": int(len(updated_symbols)),
+        "updated_symbols": "|".join(updated_symbols),
+        "skipped_packet_rows": int(len(packet_work) - len(approved)),
+        "note": "Applied explicit OK target rows only; run source, artifact, contract, and coverage gates next.",
+    }
+
+
+def apply_review_packet_from_paths(source_csv: Path, packet_csv: Path, output_csv: Path) -> dict[str, object]:
+    if not source_csv.exists():
+        raise FileNotFoundError(f"Source CSV not found: {source_csv}")
+    if not packet_csv.exists():
+        raise FileNotFoundError(f"Packet CSV not found: {packet_csv}")
+    source = pd.read_csv(source_csv).fillna("")
+    packet = pd.read_csv(packet_csv).fillna("")
+    updated, summary = apply_review_packet(source, packet)
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    updated.to_csv(output_csv, index=False)
+    return {
+        **summary,
+        "source_csv": str(source_csv),
+        "packet_csv": str(packet_csv),
+        "output_csv": str(output_csv),
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--source-csv", default=str(DEFAULT_SOURCE), help="Current taxonomy source CSV")
+    parser.add_argument("--packet-csv", default=str(DEFAULT_PACKET), help="Reviewed batch packet CSV")
+    parser.add_argument("--output-csv", required=True, help="Output taxonomy source CSV path")
+    args = parser.parse_args()
+
+    try:
+        summary = apply_review_packet_from_paths(
+            Path(args.source_csv),
+            Path(args.packet_csv),
+            Path(args.output_csv),
+        )
+    except Exception as exc:
+        print(f"ERROR: {exc}", flush=True)
+        return 1
+
+    print("Applied crypto industry taxonomy review packet")
+    for key, value in summary.items():
+        print(f"  {key}: {value}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -145,6 +145,7 @@ Manually review the prioritized symbols, fill point-in-time
 `sector`/`industry`/`subindustry` values, set approved rows to `OK`, then run:
 
 ```bash
+.venv/bin/python scripts/apply_crypto_industry_taxonomy_review_packet.py --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv --packet-csv research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_review_batch_001.csv --output-csv /tmp/symbol_taxonomy.reviewed.csv
 .venv/bin/python scripts/check_crypto_industry_taxonomy_review_source.py --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet
 .venv/bin/python scripts/build_crypto_industry_taxonomy_artifact.py --input-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv --output data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet
 .venv/bin/python scripts/check_crypto_industry_taxonomy_contract.py --path data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet

@@ -24,6 +24,10 @@ python scripts/build_crypto_industry_taxonomy_review_priority.py \
   --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet \
   --fetch-coingecko-categories \
   --category-fetch-limit 5
+python scripts/apply_crypto_industry_taxonomy_review_packet.py \
+  --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
+  --packet-csv research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_review_batch_001.csv \
+  --output-csv /tmp/symbol_taxonomy.reviewed.csv
 # Fill sector/industry/subindustry, then change reviewed rows from REVIEW to OK.
 python scripts/check_crypto_industry_taxonomy_review_source.py \
   --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
@@ -67,3 +71,8 @@ point-in-time join rule. Review batches are work planning only; they do not
 approve taxonomy rows. Batch packet target columns are reviewer workspace only;
 approved values still have to be copied into `symbol_taxonomy.csv` and pass the
 source, artifact, contract, and coverage gates.
+`apply_crypto_industry_taxonomy_review_packet.py` copies only explicit
+`target_quality_flag == OK` rows from a reviewed packet and requires all target
+group and timing fields for those rows. It does not infer groups or approve
+CoinGecko evidence. Prefer writing to a temporary CSV first and running the
+source checker before replacing the committed source workbook.
