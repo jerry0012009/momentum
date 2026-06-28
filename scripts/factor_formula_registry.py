@@ -207,6 +207,26 @@ def _compute_q158_low_close_3h(df: pd.DataFrame) -> pd.Series:
     return delay(df["low"], 3) / df["close"].replace(0, np.nan)
 
 
+def _compute_q158_volume_ratio_1h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 VOLUME1: previous volume divided by current volume."""
+    return delay(df["volume"], 1) / (df["volume"] + 1e-12)
+
+
+def _compute_q158_volume_ratio_2h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 VOLUME2: volume from two bars ago divided by current volume."""
+    return delay(df["volume"], 2) / (df["volume"] + 1e-12)
+
+
+def _compute_q158_volume_ratio_3h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 VOLUME3: volume from three bars ago divided by current volume."""
+    return delay(df["volume"], 3) / (df["volume"] + 1e-12)
+
+
+def _compute_q158_volume_ratio_4h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 VOLUME4: volume from four bars ago divided by current volume."""
+    return delay(df["volume"], 4) / (df["volume"] + 1e-12)
+
+
 def _compute_q158_qtlu_20h(df: pd.DataFrame) -> pd.Series:
     """Alpha158 QTLU20: Quantile(close, 20, 0.8) / close."""
     c = df["close"]
@@ -1127,6 +1147,35 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="conditional",
         compute_fn=_compute_q158_low_close_3h,
         notes="Alpha158 LOW3: Ref(low,3) / close; three-bar lagged low normalized by current close from Alpha158 price feature block",
+    ),
+    # Public Alpha158 volume batch 09
+    FactorSpec(
+        factor_id="q158_volume_ratio_1h", family="alpha158_volume",
+        required_columns=["volume"], lookback_window=2,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_volume_ratio_1h,
+        notes="Alpha158 VOLUME1: Ref(volume,1)/(volume+1e-12); previous volume normalized by current volume from Alpha158 volume feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_volume_ratio_2h", family="alpha158_volume",
+        required_columns=["volume"], lookback_window=3,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_volume_ratio_2h,
+        notes="Alpha158 VOLUME2: Ref(volume,2)/(volume+1e-12); two-bar lagged volume normalized by current volume from Alpha158 volume feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_volume_ratio_3h", family="alpha158_volume",
+        required_columns=["volume"], lookback_window=4,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_volume_ratio_3h,
+        notes="Alpha158 VOLUME3: Ref(volume,3)/(volume+1e-12); three-bar lagged volume normalized by current volume from Alpha158 volume feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_volume_ratio_4h", family="alpha158_volume",
+        required_columns=["volume"], lookback_window=5,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_volume_ratio_4h,
+        notes="Alpha158 VOLUME4: Ref(volume,4)/(volume+1e-12); four-bar lagged volume normalized by current volume from Alpha158 volume feature block",
     ),
     # Public Alpha158 rolling batch 02
     FactorSpec(

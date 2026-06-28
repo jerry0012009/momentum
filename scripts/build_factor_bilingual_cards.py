@@ -120,6 +120,16 @@ FAMILY_META: dict[str, dict] = {
             "conditional": ("Direction is conditional: normalized price-location can reflect continuation, reversal pressure, or redundant price level context.", "方向为条件式：标准化价格位置可能反映延续、反转压力，或仅提供冗余价格位置背景。"),
         },
     },
+    "alpha158_volume": {
+        "family_en": "Alpha158 Volume",
+        "family_zh": "Alpha158 成交量标准化",
+        "data_source_type": "HYBRID",
+        "intuition_template_en": "Alpha158 lagged volume ratio over a {lookback}-bar window. It compares prior volume with current volume to diagnose short-horizon volume expansion or fade.",
+        "intuition_template_zh": "Alpha158滞后成交量比率，使用{lookback}根K线窗口，将前期成交量与当前成交量比较，用于诊断短周期成交量扩张或衰退。",
+        "direction_explanation": {
+            "conditional": ("Direction is conditional: lagged/current volume can mark fading attention, fresh participation, stress selling, or redundant liquidity context.", "方向为条件式：滞后/当前成交量可能表示关注度衰退、新资金参与、压力抛售，或仅提供冗余流动性背景。"),
+        },
+    },
     "range_position": {
         "family_en": "Range Position",
         "family_zh": "区间位置",
@@ -359,6 +369,10 @@ FACTOR_NAMES: dict[str, tuple[str, str]] = {
     "q158_open_close_3h": ("Alpha158 OPEN3 / Close", "Alpha158 前3期开盘价/当前收盘价"),
     "q158_high_close_3h": ("Alpha158 HIGH3 / Close", "Alpha158 前3期最高价/当前收盘价"),
     "q158_low_close_3h": ("Alpha158 LOW3 / Close", "Alpha158 前3期最低价/当前收盘价"),
+    "q158_volume_ratio_1h": ("Alpha158 VOLUME1 Ratio", "Alpha158 前1期成交量/当前成交量"),
+    "q158_volume_ratio_2h": ("Alpha158 VOLUME2 Ratio", "Alpha158 前2期成交量/当前成交量"),
+    "q158_volume_ratio_3h": ("Alpha158 VOLUME3 Ratio", "Alpha158 前3期成交量/当前成交量"),
+    "q158_volume_ratio_4h": ("Alpha158 VOLUME4 Ratio", "Alpha158 前4期成交量/当前成交量"),
 }
 
 # Per-factor formula overrides
@@ -440,6 +454,10 @@ FACTOR_FORMULAS: dict[str, tuple[str, str]] = {
     "q158_open_close_3h": ("Ref(open, 3) / close", "前3期开盘价 / 当前收盘价"),
     "q158_high_close_3h": ("Ref(high, 3) / close", "前3期最高价 / 当前收盘价"),
     "q158_low_close_3h": ("Ref(low, 3) / close", "前3期最低价 / 当前收盘价"),
+    "q158_volume_ratio_1h": ("Ref(volume, 1) / (volume + 1e-12)", "前1期成交量 / (当前成交量 + 1e-12)"),
+    "q158_volume_ratio_2h": ("Ref(volume, 2) / (volume + 1e-12)", "前2期成交量 / (当前成交量 + 1e-12)"),
+    "q158_volume_ratio_3h": ("Ref(volume, 3) / (volume + 1e-12)", "前3期成交量 / (当前成交量 + 1e-12)"),
+    "q158_volume_ratio_4h": ("Ref(volume, 4) / (volume + 1e-12)", "前4期成交量 / (当前成交量 + 1e-12)"),
 }
 
 # Per-factor known limitations
@@ -462,6 +480,10 @@ FACTOR_LIMITATIONS: dict[str, tuple[str, str]] = {
     "q158_open_close_3h": ("Raw lagged normalized price feature; high redundancy risk with reversal and existing Alpha158 price-location factors.", "原始滞后标准化价格特征；与反转和已有Alpha158价格位置因子存在高冗余风险。"),
     "q158_high_close_3h": ("Raw lagged normalized price feature; high redundancy risk with candle, range, and existing Alpha158 price-location factors.", "原始滞后标准化价格特征；与K线、区间和已有Alpha158价格位置因子存在高冗余风险。"),
     "q158_low_close_3h": ("Raw lagged normalized price feature; high redundancy risk with candle, range, and existing Alpha158 price-location factors.", "原始滞后标准化价格特征；与K线、区间和已有Alpha158价格位置因子存在高冗余风险。"),
+    "q158_volume_ratio_1h": ("Raw lagged volume ratio; can be unstable when current volume is tiny and may overlap with volume z-score/liquidity diagnostics.", "原始滞后成交量比率；当前成交量很小时可能不稳定，并可能与成交量Z分数/流动性诊断重叠。"),
+    "q158_volume_ratio_2h": ("Raw lagged volume ratio; can be unstable when current volume is tiny and may overlap with volume z-score/liquidity diagnostics.", "原始滞后成交量比率；当前成交量很小时可能不稳定，并可能与成交量Z分数/流动性诊断重叠。"),
+    "q158_volume_ratio_3h": ("Raw lagged volume ratio; can be unstable when current volume is tiny and may overlap with volume z-score/liquidity diagnostics.", "原始滞后成交量比率；当前成交量很小时可能不稳定，并可能与成交量Z分数/流动性诊断重叠。"),
+    "q158_volume_ratio_4h": ("Raw lagged volume ratio; can be unstable when current volume is tiny and may overlap with volume z-score/liquidity diagnostics.", "原始滞后成交量比率；当前成交量很小时可能不稳定，并可能与成交量Z分数/流动性诊断重叠。"),
 }
 
 
