@@ -23,6 +23,7 @@ OUT_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "f
 TAXONOMY_SOURCE = ROOT / "data" / "sources" / "crypto_industry_taxonomy_contract_v1" / "symbol_taxonomy.csv"
 TAXONOMY_ARTIFACT = ROOT / "data" / "cache" / "crypto_industry_taxonomy_contract_v1" / "symbol_taxonomy.parquet"
 SKIPPED_PREFIX = "skipped_"
+TAXONOMY_GROUP_COLUMNS = {"sector", "industry", "subindustry"}
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from factor_formula_registry import REGISTRY_BY_ID  # noqa: E402
@@ -33,6 +34,16 @@ from check_crypto_industry_taxonomy_coverage import DEFAULT_BARS, check_coverage
 def load_manifest(path: Path = MANIFEST) -> list[dict[str, str]]:
     with path.open(newline="") as handle:
         return list(csv.DictReader(handle))
+
+
+def taxonomy_groups_for_row(row: dict[str, str]) -> list[str]:
+    """Return required taxonomy group columns for an Alpha101 skipped manifest row."""
+    required_columns = {
+        col.strip()
+        for col in row.get("required_columns", "").split("|")
+        if col.strip()
+    }
+    return sorted(required_columns & TAXONOMY_GROUP_COLUMNS)
 
 
 def summarize_manifest(rows: list[dict[str, str]]) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
@@ -64,6 +75,7 @@ def summarize_manifest(rows: list[dict[str, str]]) -> tuple[list[dict[str, objec
             "skipped_present_ids": "|".join(skipped_in_registry),
         })
         for row in skipped:
+            taxonomy_groups = taxonomy_groups_for_row(row)
             skipped_rows.append({
                 "source_family": family,
                 "factor_id": row["factor_id"],
@@ -71,6 +83,9 @@ def summarize_manifest(rows: list[dict[str, str]]) -> tuple[list[dict[str, objec
                 "skip_reason": row["skip_reason"],
                 "required_columns": row["required_columns"],
                 "required_ops": row["required_ops"],
+                "taxonomy_required_groups": "|".join(taxonomy_groups),
+                "taxonomy_blocker": bool(taxonomy_groups),
+                "ready_for_unskip": False,
             })
     return summary, skipped_rows
 
@@ -83,6 +98,7 @@ def load_state(path: Path = STATE) -> dict[str, object]:
 def summarize_taxonomy_readiness(
     source_path: Path = TAXONOMY_SOURCE,
     artifact_path: Path = TAXONOMY_ARTIFACT,
+    skipped_rows: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     source_exists = source_path.exists()
     source_rows = 0
@@ -125,6 +141,17 @@ def summarize_taxonomy_readiness(
     elif not coverage_pass:
         blocker = "taxonomy_coverage_failed"
 
+    taxonomy_skipped = [
+        row for row in (skipped_rows or [])
+        if row.get("source_family") == "alpha101" and row.get("taxonomy_blocker")
+    ]
+    required_groups = sorted({
+        group
+        for row in taxonomy_skipped
+        for group in str(row.get("taxonomy_required_groups", "")).split("|")
+        if group
+    })
+
     return {
         "source_path": str(source_path),
         "source_exists": source_exists,
@@ -137,6 +164,9 @@ def summarize_taxonomy_readiness(
         "coverage_error": coverage_error,
         "ready_for_indneutralize_unskip": contract_pass and coverage_pass,
         "blocker": blocker,
+        "blocked_alpha101_factor_count": len(taxonomy_skipped),
+        "blocked_alpha101_factor_ids": "|".join(row["factor_id"] for row in taxonomy_skipped),
+        "required_taxonomy_groups": "|".join(required_groups),
     }
 
 
@@ -159,7 +189,7 @@ def build_status_report(
         },
         "family_summary": family_summary,
         "skipped_rows": skipped_rows,
-        "taxonomy_readiness": summarize_taxonomy_readiness(),
+        "taxonomy_readiness": summarize_taxonomy_readiness(skipped_rows=skipped_rows),
     }
 
 
@@ -168,7 +198,7 @@ def write_status_report(report: dict[str, object], out_dir: Path = OUT_DIR) -> t
     out_json = out_dir / "public_factor_integration_status.json"
     out_summary = out_dir / "public_factor_integration_status_by_family.csv"
     out_skipped = out_dir / "public_factor_integration_skipped_rows.csv"
-    out_json.write_text(json.dumps(report, indent=2, default=str))
+    out_json.write_text(json.dumps(report, indent=2, default=str) + "\n")
     pd.DataFrame(report["family_summary"]).to_csv(out_summary, index=False)
     pd.DataFrame(report["skipped_rows"]).to_csv(out_skipped, index=False)
     return out_json, out_summary, out_skipped

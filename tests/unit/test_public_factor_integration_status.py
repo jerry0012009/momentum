@@ -45,6 +45,19 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     skipped_ids = {row["factor_id"] for row in report["skipped_rows"]}
     assert "wq101_alpha58_indneutralize_skipped" in skipped_ids
     assert "q158_roc_5h_skipped" in skipped_ids
+    alpha101_taxonomy_blocked = [
+        row for row in report["skipped_rows"]
+        if row["source_family"] == "alpha101" and row["taxonomy_blocker"]
+    ]
+    assert len(alpha101_taxonomy_blocked) == 6
+    assert all(row["ready_for_unskip"] is False for row in alpha101_taxonomy_blocked)
+    required_by_id = {
+        row["factor_id"]: row["taxonomy_required_groups"]
+        for row in alpha101_taxonomy_blocked
+    }
+    assert required_by_id["wq101_alpha58_indneutralize_skipped"] == "sector"
+    assert required_by_id["wq101_alpha59_indneutralize_skipped"] == "industry"
+    assert required_by_id["wq101_alpha67_indneutralize_skipped"] == "sector|subindustry"
 
     taxonomy = report["taxonomy_readiness"]
     assert taxonomy["source_exists"] is True
@@ -55,6 +68,8 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert taxonomy["coverage_pass"] is False
     assert taxonomy["ready_for_indneutralize_unskip"] is False
     assert taxonomy["blocker"] == "taxonomy_review_has_no_ok_rows"
+    assert taxonomy["blocked_alpha101_factor_count"] == 6
+    assert taxonomy["required_taxonomy_groups"] == "industry|sector|subindustry"
 
 
 def test_public_factor_integration_status_writes_reports(tmp_path: Path):
