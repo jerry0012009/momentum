@@ -15,6 +15,7 @@ from build_crypto_industry_taxonomy_review_priority import (  # noqa: E402
     load_optional_coingecko_map,
     load_optional_coingecko_category_evidence,
     summarize_ok_review_coverage_preview,
+    summarize_review_temporal_alignment,
     summarize_indneutralize_blockers,
     summarize_bars_by_symbol,
     write_coingecko_category_evidence,
@@ -148,6 +149,9 @@ def test_review_priority_ranks_by_quote_volume_and_marks_actions():
     assert summary["review_ok_bar_rows_needed_for_98pct"] == 6
     assert summary["review_ok_bar_rows_remaining_to_98pct"] == 6
     assert summary["review_ok_ready_to_build_artifact_preview"] is False
+    assert summary["taxonomy_known_at_blocks_current_bars"] is True
+    assert summary["taxonomy_rows_known_by_last_bar"] == 0
+    assert summary["taxonomy_rows_known_after_last_bar"] == 3
 
 
 def test_ok_review_coverage_preview_counts_only_ok_full_group_rows():
@@ -170,6 +174,25 @@ def test_ok_review_coverage_preview_respects_known_at():
     assert preview["review_ok_full_group_bar_rows"] == 0
     assert preview["review_ok_bar_rows_remaining_to_98pct"] == 6
     assert preview["review_ok_ready_to_build_artifact_preview"] is False
+
+
+def test_review_temporal_alignment_flags_known_at_after_bars():
+    summary = summarize_review_temporal_alignment(_taxonomy(), _bars())
+
+    assert summary["review_source_bar_last_timestamp"] == "2026-01-01T01:00:00Z"
+    assert summary["taxonomy_known_at_min"] == "2026-06-28T00:00:00Z"
+    assert summary["taxonomy_rows_known_by_last_bar"] == 0
+    assert summary["taxonomy_rows_known_after_last_bar"] == 3
+    assert summary["taxonomy_known_at_blocks_current_bars"] is True
+    assert "after the latest bar" in summary["taxonomy_temporal_alignment_note"]
+
+
+def test_review_temporal_alignment_passes_when_rows_are_known_by_bars():
+    summary = summarize_review_temporal_alignment(_taxonomy_known_before_bars(), _bars())
+
+    assert summary["taxonomy_rows_known_by_last_bar"] == 3
+    assert summary["taxonomy_rows_known_after_last_bar"] == 0
+    assert summary["taxonomy_known_at_blocks_current_bars"] is False
 
 
 def test_ok_review_coverage_preview_reports_zero_before_manual_approval():

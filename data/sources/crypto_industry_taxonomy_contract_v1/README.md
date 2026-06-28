@@ -57,4 +57,7 @@ context for reviewers, not approval. Category evidence fetches are optional and
 rate-limited; only successful `OK` category rows are persisted. The priority
 status also includes a preview of point-in-time bar coverage from manually
 approved `quality_flag == OK` rows with all group fields filled. That preview is
-not a substitute for the parquet artifact, contract check, or coverage gate.
+not a substitute for the parquet artifact, contract check, or coverage gate. It
+also reports whether review rows are `known_at` before the latest evaluated bar;
+rows known after the evaluation window cannot cover that window under the
+point-in-time join rule.

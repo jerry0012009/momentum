@@ -63,6 +63,9 @@ Current packet summary:
 - Manually approved full-group review rows: 0
 - Current approved review-row bar coverage preview: 0.00%
 - Bar rows remaining before the 98% preview threshold: 3,249,934
+- Current bars end: `2026-06-13T00:00:00Z`
+- Current taxonomy `known_at`: `2026-06-28T00:00:00Z`
+- Taxonomy rows known by latest bar: 0
 - Blocked Alpha101 IndNeutralize factors: 18
 - Required groups: `industry|sector|subindustry`
 - Top 20 symbols by quote volume cover 78.85% of observed quote volume
@@ -80,6 +83,13 @@ OK` rows where `sector`, `industry`, and `subindustry` are all filled. It is a
 review-progress indicator only; the parquet artifact, contract check, and formal
 coverage gate are still required before any IndNeutralize factor can be
 unskipped.
+The current source workbook is also temporally newer than the evaluation bars:
+`known_at=2026-06-28T00:00:00Z` while the latest bar in the current factor
+library run is `2026-06-13T00:00:00Z`. Under the point-in-time join rule, these
+rows would not cover the current historical window even if their groups were
+filled and marked `OK`. Before artifact build, the review must either align the
+taxonomy `known_at`/effective dates to defensible source timestamps or refresh
+the evaluation bars so the taxonomy is known by the evaluated timestamps.
 
 CoinGecko category evidence has been cached for the first 11 symbols in the
 current review-priority order. A conservative request cadence is required:

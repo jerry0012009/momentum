@@ -355,6 +355,55 @@ def summarize_ok_review_coverage_preview(
     }
 
 
+def summarize_review_temporal_alignment(
+    taxonomy: pd.DataFrame,
+    bars: pd.DataFrame,
+) -> dict[str, object]:
+    """Summarize whether taxonomy known_at can cover the current bars window."""
+    _require_columns(taxonomy, {"symbol", "known_at"}, "taxonomy")
+    _require_columns(bars, {"timestamp", "symbol"}, "bars")
+
+    bar_ts = pd.to_datetime(bars["timestamp"], utc=True, errors="coerce").dropna()
+    tax = taxonomy[["symbol", "known_at"]].copy().fillna("")
+    tax["symbol"] = tax["symbol"].astype(str)
+    tax["known_at"] = pd.to_datetime(tax["known_at"], utc=True, errors="coerce")
+
+    if bar_ts.empty:
+        return {
+            "review_source_bar_first_timestamp": "",
+            "review_source_bar_last_timestamp": "",
+            "taxonomy_known_at_min": "",
+            "taxonomy_known_at_max": "",
+            "taxonomy_rows_known_by_last_bar": 0,
+            "taxonomy_symbols_known_by_last_bar": 0,
+            "taxonomy_rows_known_after_last_bar": int(len(tax)),
+            "taxonomy_known_at_blocks_current_bars": True,
+            "taxonomy_temporal_alignment_note": "Bars timestamps are unavailable; cannot prove point-in-time taxonomy coverage.",
+        }
+
+    first_bar = bar_ts.min()
+    last_bar = bar_ts.max()
+    known = tax["known_at"].notna()
+    known_by_last_bar = known & (tax["known_at"] <= last_bar)
+    known_after_last_bar = known & (tax["known_at"] > last_bar)
+    blocks_current = bool(len(tax) > 0 and not known_by_last_bar.any())
+    return {
+        "review_source_bar_first_timestamp": first_bar.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "review_source_bar_last_timestamp": last_bar.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "taxonomy_known_at_min": tax.loc[known, "known_at"].min().strftime("%Y-%m-%dT%H:%M:%SZ") if known.any() else "",
+        "taxonomy_known_at_max": tax.loc[known, "known_at"].max().strftime("%Y-%m-%dT%H:%M:%SZ") if known.any() else "",
+        "taxonomy_rows_known_by_last_bar": int(known_by_last_bar.sum()),
+        "taxonomy_symbols_known_by_last_bar": int(tax.loc[known_by_last_bar, "symbol"].nunique()),
+        "taxonomy_rows_known_after_last_bar": int(known_after_last_bar.sum()),
+        "taxonomy_known_at_blocks_current_bars": blocks_current,
+        "taxonomy_temporal_alignment_note": (
+            "Current taxonomy known_at is after the latest bar; approved rows would not cover this historical evaluation window."
+            if blocks_current
+            else "Some taxonomy rows are known by the latest bar; formal point-in-time coverage checks still apply."
+        ),
+    }
+
+
 def build_review_priority(
     taxonomy: pd.DataFrame,
     bars: pd.DataFrame,
@@ -526,6 +575,7 @@ def build_review_priority(
         "coverage_gate_note": "Coverage gate uses bar rows and symbol coverage; quote-volume priority alone is not sufficient.",
     }
     summary.update(summarize_ok_review_coverage_preview(taxonomy, bars, group_columns=group_columns))
+    summary.update(summarize_review_temporal_alignment(taxonomy, bars))
     return priority, summary
 
 
