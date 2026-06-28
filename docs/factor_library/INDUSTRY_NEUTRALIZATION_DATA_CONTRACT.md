@@ -104,6 +104,20 @@ data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.template.csv
 
 The template is intentionally not a valid artifact; it has no reviewed rows.
 
+Initialize a review CSV from the factor bars:
+
+```bash
+python scripts/init_crypto_industry_taxonomy_review.py \
+  --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet \
+  --output-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
+  --known-at 2026-06-28T00:00:00Z \
+  --taxonomy-version reviewed_v1 \
+  --source manual_review
+```
+
+The initializer creates one `REVIEW` row per current factor-bar symbol and
+leaves group fields empty. It is a review workbook, not an approved taxonomy.
+
 Build the validated parquet artifact with:
 
 ```bash
