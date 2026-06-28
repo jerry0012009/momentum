@@ -90,6 +90,24 @@ is the approved point-in-time taxonomy data source.
 
 ## 5. Required Workflow Extension
 
+The reviewed source file should live at:
+
+```text
+data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv
+```
+
+Build the validated parquet artifact with:
+
+```bash
+python scripts/build_crypto_industry_taxonomy_artifact.py \
+  --input-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
+  --output data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet
+```
+
+The builder writes `data/cache/.../symbol_taxonomy.parquet` only after the
+contract checks pass. On failure it removes any stale output parquet so
+`build_factor_values.py` cannot accidentally consume an invalid taxonomy.
+
 `scripts/build_factor_values.py` now has a guarded source branch for taxonomy
 panel factors:
 
@@ -116,12 +134,13 @@ windows.
 To unblock the skipped Alpha101 rows, the workflow must add:
 
 1. a data contract document for the taxonomy source;
-2. a generated or reviewed taxonomy artifact under `data/`;
-3. a passing `check_crypto_industry_taxonomy_contract.py` result;
-4. `FactorSpec` rows whose `required_columns` include the exact group columns;
-5. manifest rows changed from `skipped_missing_industry_neutralization_*` to a
+2. a reviewed source CSV under `data/sources/crypto_industry_taxonomy_contract_v1/`;
+3. a generated parquet artifact under `data/cache/crypto_industry_taxonomy_contract_v1/`;
+4. a passing `check_crypto_industry_taxonomy_contract.py` result;
+5. `FactorSpec` rows whose `required_columns` include the exact group columns;
+6. manifest rows changed from `skipped_missing_industry_neutralization_*` to a
    small `implemented_batch_*` status only after factor values and QA pass;
-6. unit tests that prove skipped rows are not registered until the data contract
+7. unit tests that prove skipped rows are not registered until the data contract
    is satisfied, and implemented rows have registry parity after migration.
 
 ## 6. Disallowed Shortcuts

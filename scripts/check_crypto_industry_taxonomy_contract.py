@@ -141,6 +141,26 @@ def check_contract(path: Path = TAXONOMY_PATH) -> list[dict[str, object]]:
     return checks
 
 
+def write_check_reports(
+    checks: list[dict[str, object]],
+    out_dir: Path,
+    checked_path: Path,
+) -> tuple[Path, Path]:
+    """Write JSON/CSV contract check reports and return their paths."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    result = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "path": str(checked_path),
+        "overall_pass": all(bool(c["passed"]) for c in checks),
+        "checks": checks,
+    }
+    out_json = out_dir / "industry_taxonomy_contract_check.json"
+    out_csv = out_dir / "industry_taxonomy_contract_check.csv"
+    out_json.write_text(json.dumps(result, indent=2, default=str))
+    pd.DataFrame(checks).to_csv(out_csv, index=False)
+    return out_json, out_csv
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", default=str(TAXONOMY_PATH), help="Taxonomy parquet path")
@@ -156,18 +176,7 @@ def main() -> int:
         print(f"  {status} {check['check']}: {check['detail']}")
     print(f"\nOverall: {'PASS' if all_passed else 'FAIL'}")
 
-    out_dir = path.parent
-    out_dir.mkdir(parents=True, exist_ok=True)
-    result = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "path": str(path),
-        "overall_pass": all_passed,
-        "checks": checks,
-    }
-    out_json = out_dir / "industry_taxonomy_contract_check.json"
-    out_csv = out_dir / "industry_taxonomy_contract_check.csv"
-    out_json.write_text(json.dumps(result, indent=2, default=str))
-    pd.DataFrame(checks).to_csv(out_csv, index=False)
+    out_json, out_csv = write_check_reports(checks, path.parent, path)
     print(f"Saved: {out_json}")
     print(f"Saved: {out_csv}")
     return 0 if all_passed else 1
