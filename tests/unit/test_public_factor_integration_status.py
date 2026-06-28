@@ -63,6 +63,9 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert taxonomy["source_exists"] is True
     assert taxonomy["source_rows"] == 266
     assert taxonomy["source_quality_counts"] == {"REVIEW": 266}
+    assert taxonomy["source_ok_row_count"] == 0
+    assert taxonomy["source_ready_to_build_artifact"] is False
+    assert taxonomy["source_missing_required_ok_groups"] == "industry|sector|subindustry"
     assert taxonomy["artifact_exists"] is False
     assert taxonomy["contract_pass"] is False
     assert taxonomy["coverage_pass"] is False

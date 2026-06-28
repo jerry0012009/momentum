@@ -138,6 +138,7 @@ until the industry-neutralization data contract is satisfied:
 - `docs/factor_library/INDUSTRY_NEUTRALIZATION_DATA_CONTRACT.md`
 - `data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.template.csv`
 - `python scripts/init_crypto_industry_taxonomy_review.py --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet --output-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv --known-at 2026-06-28T00:00:00Z --taxonomy-version reviewed_v1 --source manual_review`
+- `python scripts/check_crypto_industry_taxonomy_review_source.py --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv`
 - `python scripts/build_crypto_industry_taxonomy_artifact.py --input-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv --output data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet`
 - `python scripts/check_crypto_industry_taxonomy_contract.py --path data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet`
 - `python scripts/check_crypto_industry_taxonomy_coverage.py --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet --taxonomy-path data/cache/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.parquet --min-full-coverage 0.98`

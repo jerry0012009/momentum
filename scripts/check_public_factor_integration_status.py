@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from factor_formula_registry import REGISTRY_BY_ID  # noqa: E402
 from check_crypto_industry_taxonomy_contract import check_contract  # noqa: E402
 from check_crypto_industry_taxonomy_coverage import DEFAULT_BARS, check_coverage  # noqa: E402
+from check_crypto_industry_taxonomy_review_source import summarize_review_source  # noqa: E402
 
 
 def load_manifest(path: Path = MANIFEST) -> list[dict[str, str]]:
@@ -101,15 +102,6 @@ def summarize_taxonomy_readiness(
     skipped_rows: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     source_exists = source_path.exists()
-    source_rows = 0
-    quality_counts: dict[str, int] = {}
-    if source_exists:
-        source_df = pd.read_csv(source_path)
-        source_rows = int(len(source_df))
-        quality_counts = {
-            str(k): int(v)
-            for k, v in source_df["quality_flag"].value_counts(dropna=False).to_dict().items()
-        }
 
     contract_checks = check_contract(artifact_path)
     contract_pass = all(bool(c["passed"]) for c in contract_checks)
@@ -128,19 +120,6 @@ def summarize_taxonomy_readiness(
     else:
         coverage_error = f"Taxonomy file not found: {artifact_path}"
 
-    ok_rows = quality_counts.get("OK", 0)
-    blocker = ""
-    if not source_exists:
-        blocker = "taxonomy_source_missing"
-    elif ok_rows == 0:
-        blocker = "taxonomy_review_has_no_ok_rows"
-    elif not artifact_path.exists():
-        blocker = "taxonomy_artifact_missing"
-    elif not contract_pass:
-        blocker = "taxonomy_contract_failed"
-    elif not coverage_pass:
-        blocker = "taxonomy_coverage_failed"
-
     taxonomy_skipped = [
         row for row in (skipped_rows or [])
         if row.get("source_family") == "alpha101" and row.get("taxonomy_blocker")
@@ -151,12 +130,29 @@ def summarize_taxonomy_readiness(
         for group in str(row.get("taxonomy_required_groups", "")).split("|")
         if group
     })
+    review_source = summarize_review_source(source_path, required_groups=set(required_groups))
+
+    ok_rows = int(review_source.get("ok_row_count", 0))
+    blocker = ""
+    if not source_exists:
+        blocker = "taxonomy_source_missing"
+    elif not review_source.get("ready_to_build_artifact"):
+        blocker = str(review_source.get("blocker") or "taxonomy_review_source_checks_failed")
+    elif not artifact_path.exists():
+        blocker = "taxonomy_artifact_missing"
+    elif not contract_pass:
+        blocker = "taxonomy_contract_failed"
+    elif not coverage_pass:
+        blocker = "taxonomy_coverage_failed"
 
     return {
         "source_path": str(source_path),
         "source_exists": source_exists,
-        "source_rows": source_rows,
-        "source_quality_counts": quality_counts,
+        "source_rows": review_source.get("row_count", 0),
+        "source_quality_counts": review_source.get("quality_counts", {}),
+        "source_ok_row_count": ok_rows,
+        "source_ready_to_build_artifact": bool(review_source.get("ready_to_build_artifact")),
+        "source_missing_required_ok_groups": review_source.get("missing_required_ok_groups", ""),
         "artifact_path": str(artifact_path),
         "artifact_exists": artifact_path.exists(),
         "contract_pass": contract_pass,
