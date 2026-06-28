@@ -177,6 +177,36 @@ def _compute_q158_low_close_1h(df: pd.DataFrame) -> pd.Series:
     return delay(df["low"], 1) / df["close"].replace(0, np.nan)
 
 
+def _compute_q158_open_close_2h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 OPEN2: open from two bars ago divided by current close."""
+    return delay(df["open"], 2) / df["close"].replace(0, np.nan)
+
+
+def _compute_q158_high_close_2h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 HIGH2: high from two bars ago divided by current close."""
+    return delay(df["high"], 2) / df["close"].replace(0, np.nan)
+
+
+def _compute_q158_low_close_2h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 LOW2: low from two bars ago divided by current close."""
+    return delay(df["low"], 2) / df["close"].replace(0, np.nan)
+
+
+def _compute_q158_open_close_3h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 OPEN3: open from three bars ago divided by current close."""
+    return delay(df["open"], 3) / df["close"].replace(0, np.nan)
+
+
+def _compute_q158_high_close_3h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 HIGH3: high from three bars ago divided by current close."""
+    return delay(df["high"], 3) / df["close"].replace(0, np.nan)
+
+
+def _compute_q158_low_close_3h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 LOW3: low from three bars ago divided by current close."""
+    return delay(df["low"], 3) / df["close"].replace(0, np.nan)
+
+
 def _compute_q158_qtlu_20h(df: pd.DataFrame) -> pd.Series:
     """Alpha158 QTLU20: Quantile(close, 20, 0.8) / close."""
     c = df["close"]
@@ -1054,6 +1084,49 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="conditional",
         compute_fn=_compute_q158_low_close_1h,
         notes="Alpha158 LOW1: Ref(low,1) / close; previous low normalized by current close from Alpha158 price feature block",
+    ),
+    # Public Alpha158 price batch 08
+    FactorSpec(
+        factor_id="q158_open_close_2h", family="alpha158_price",
+        required_columns=["open", "close"], lookback_window=3,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_open_close_2h,
+        notes="Alpha158 OPEN2: Ref(open,2) / close; two-bar lagged open normalized by current close from Alpha158 price feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_high_close_2h", family="alpha158_price",
+        required_columns=["high", "close"], lookback_window=3,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_high_close_2h,
+        notes="Alpha158 HIGH2: Ref(high,2) / close; two-bar lagged high normalized by current close from Alpha158 price feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_low_close_2h", family="alpha158_price",
+        required_columns=["low", "close"], lookback_window=3,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_low_close_2h,
+        notes="Alpha158 LOW2: Ref(low,2) / close; two-bar lagged low normalized by current close from Alpha158 price feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_open_close_3h", family="alpha158_price",
+        required_columns=["open", "close"], lookback_window=4,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_open_close_3h,
+        notes="Alpha158 OPEN3: Ref(open,3) / close; three-bar lagged open normalized by current close from Alpha158 price feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_high_close_3h", family="alpha158_price",
+        required_columns=["high", "close"], lookback_window=4,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_high_close_3h,
+        notes="Alpha158 HIGH3: Ref(high,3) / close; three-bar lagged high normalized by current close from Alpha158 price feature block",
+    ),
+    FactorSpec(
+        factor_id="q158_low_close_3h", family="alpha158_price",
+        required_columns=["low", "close"], lookback_window=4,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_low_close_3h,
+        notes="Alpha158 LOW3: Ref(low,3) / close; three-bar lagged low normalized by current close from Alpha158 price feature block",
     ),
     # Public Alpha158 rolling batch 02
     FactorSpec(

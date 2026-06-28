@@ -110,6 +110,16 @@ FAMILY_META: dict[str, dict] = {
             "conditional": ("Direction set to conditional. Requires empirical diagnostics.", "方向设为条件式。需实证诊断。"),
         },
     },
+    "alpha158_price": {
+        "family_en": "Alpha158 Price",
+        "family_zh": "Alpha158 价格标准化",
+        "data_source_type": "HYBRID",
+        "intuition_template_en": "Alpha158 normalized price-location feature over a {lookback}-bar lag window. It compares lagged OHLC levels with current close.",
+        "intuition_template_zh": "Alpha158价格标准化特征，使用{lookback}根K线滞后窗口，将滞后的OHLC价位与当前收盘价比较。",
+        "direction_explanation": {
+            "conditional": ("Direction is conditional: normalized price-location can reflect continuation, reversal pressure, or redundant price level context.", "方向为条件式：标准化价格位置可能反映延续、反转压力，或仅提供冗余价格位置背景。"),
+        },
+    },
     "range_position": {
         "family_en": "Range Position",
         "family_zh": "区间位置",
@@ -343,6 +353,12 @@ FACTOR_NAMES: dict[str, tuple[str, str]] = {
     "amihud_illiquidity_20h": ("20h Amihud Illiquidity", "20小时Amihud非流动性"),
     "price_volume_corr_20h": ("20h Price-Volume Correlation", "20小时量价相关性"),
     "trend_efficiency_24h": ("24h Trend Efficiency", "24小时趋势效率"),
+    "q158_open_close_2h": ("Alpha158 OPEN2 / Close", "Alpha158 前2期开盘价/当前收盘价"),
+    "q158_high_close_2h": ("Alpha158 HIGH2 / Close", "Alpha158 前2期最高价/当前收盘价"),
+    "q158_low_close_2h": ("Alpha158 LOW2 / Close", "Alpha158 前2期最低价/当前收盘价"),
+    "q158_open_close_3h": ("Alpha158 OPEN3 / Close", "Alpha158 前3期开盘价/当前收盘价"),
+    "q158_high_close_3h": ("Alpha158 HIGH3 / Close", "Alpha158 前3期最高价/当前收盘价"),
+    "q158_low_close_3h": ("Alpha158 LOW3 / Close", "Alpha158 前3期最低价/当前收盘价"),
 }
 
 # Per-factor formula overrides
@@ -418,6 +434,12 @@ FACTOR_FORMULAS: dict[str, tuple[str, str]] = {
     "amihud_illiquidity_20h": ("mean(|ret| / qvol, 20)", "20期|收益|/成交额均值"),
     "price_volume_corr_20h": ("corr(ret, pctchg(qvol), 20)", "收益与成交额变化的20期相关系数"),
     "trend_efficiency_24h": ("|ret_24h| / sum(|ret_1h|, 24)", "24小时收益绝对值 / 24期小时收益绝对值之和"),
+    "q158_open_close_2h": ("Ref(open, 2) / close", "前2期开盘价 / 当前收盘价"),
+    "q158_high_close_2h": ("Ref(high, 2) / close", "前2期最高价 / 当前收盘价"),
+    "q158_low_close_2h": ("Ref(low, 2) / close", "前2期最低价 / 当前收盘价"),
+    "q158_open_close_3h": ("Ref(open, 3) / close", "前3期开盘价 / 当前收盘价"),
+    "q158_high_close_3h": ("Ref(high, 3) / close", "前3期最高价 / 当前收盘价"),
+    "q158_low_close_3h": ("Ref(low, 3) / close", "前3期最低价 / 当前收盘价"),
 }
 
 # Per-factor known limitations
@@ -434,6 +456,12 @@ FACTOR_LIMITATIONS: dict[str, tuple[str, str]] = {
     "vol_of_vol_20h": ("Nested std computation requires 26 bars; sparse for new symbols.", "嵌套标准差计算需要26根K线；新标的数据稀疏。"),
     "ma_gap_20_80": ("80-bar lookback means slow startup; missing data for newer symbols.", "80根K线回溯意味着启动慢；新标的数据缺失。"),
     "price_pos_120h": ("120h lookback; may not have full history for all symbols.", "120小时回溯；部分标的历史可能不完整。"),
+    "q158_open_close_2h": ("Raw lagged normalized price feature; high redundancy risk with reversal and existing Alpha158 price-location factors.", "原始滞后标准化价格特征；与反转和已有Alpha158价格位置因子存在高冗余风险。"),
+    "q158_high_close_2h": ("Raw lagged normalized price feature; high redundancy risk with candle, range, and existing Alpha158 price-location factors.", "原始滞后标准化价格特征；与K线、区间和已有Alpha158价格位置因子存在高冗余风险。"),
+    "q158_low_close_2h": ("Raw lagged normalized price feature; high redundancy risk with candle, range, and existing Alpha158 price-location factors.", "原始滞后标准化价格特征；与K线、区间和已有Alpha158价格位置因子存在高冗余风险。"),
+    "q158_open_close_3h": ("Raw lagged normalized price feature; high redundancy risk with reversal and existing Alpha158 price-location factors.", "原始滞后标准化价格特征；与反转和已有Alpha158价格位置因子存在高冗余风险。"),
+    "q158_high_close_3h": ("Raw lagged normalized price feature; high redundancy risk with candle, range, and existing Alpha158 price-location factors.", "原始滞后标准化价格特征；与K线、区间和已有Alpha158价格位置因子存在高冗余风险。"),
+    "q158_low_close_3h": ("Raw lagged normalized price feature; high redundancy risk with candle, range, and existing Alpha158 price-location factors.", "原始滞后标准化价格特征；与K线、区间和已有Alpha158价格位置因子存在高冗余风险。"),
 }
 
 
@@ -449,6 +477,8 @@ def _get_source_fields(spec: FactorSpec) -> str:
 
 def _get_metadata_quality(spec: FactorSpec) -> str:
     """Determine metadata quality flag."""
+    if spec.factor_id.startswith("q158_"):
+        return "SOURCE_MAPPED_REVIEW_REQUIRED"
     if spec.status == "DIAGNOSTIC_PROBE":
         return "AUTO_GENERATED_REVIEW_REQUIRED"
     if spec.expected_direction == "conditional":
@@ -655,10 +685,17 @@ def main():
         "factor_id", "name_en", "name_zh", "formula_en", "formula_zh",
         "intuition_en", "intuition_zh", "metadata_quality",
     ]
-    allowed_mq = {"COMPLETE", "NEEDS_REVIEW", "FORMULA_AMBIGUOUS", "DIRECTION_AMBIGUOUS", "AUTO_GENERATED_REVIEW_REQUIRED"}
+    allowed_mq = {
+        "COMPLETE",
+        "NEEDS_REVIEW",
+        "FORMULA_AMBIGUOUS",
+        "DIRECTION_AMBIGUOUS",
+        "AUTO_GENERATED_REVIEW_REQUIRED",
+        "SOURCE_MAPPED_REVIEW_REQUIRED",
+    }
 
-    if len(cards) != 71:
-        errors.append(f"Expected 71 cards, got {len(cards)}")
+    if len(cards) != len(REGISTRY):
+        errors.append(f"Expected {len(REGISTRY)} cards from registry, got {len(cards)}")
 
     ids = [c["factor_id"] for c in cards]
     if len(set(ids)) != len(ids):

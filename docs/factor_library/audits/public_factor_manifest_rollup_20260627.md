@@ -6,7 +6,7 @@ This audit records the current controlled public-factor intake state for the
 compact manifest:
 
 - `docs/factor_library/public_factor_candidate_manifest.csv`
-- 53 implemented Alpha158 factors from Qlib Alpha158DL formula families and
+- 59 implemented Alpha158 factors from Qlib Alpha158DL formula families and
   existing local Alpha158 support.
 - 6 skipped Alpha158 duplicate dispositions with explicit skip reasons.
 - 6 curated Alpha101 panel factors from the local Alpha101 migration layer.
@@ -35,10 +35,10 @@ The compact manifest now records, for every candidate:
 Current manifest row counts:
 
 | source_family | implemented rows | skipped rows | total rows |
-| --- | ---: |
-| alpha158 | 53 | 6 | 59 |
+| --- | ---: | ---: | ---: |
+| alpha158 | 59 | 6 | 65 |
 | alpha101 | 9 | 6 | 15 |
-| total | 62 | 12 | 74 |
+| total | 68 | 12 | 80 |
 
 The `existing_support_backfill_20260627` rows are metadata backfills for factors
 that were already registered and computed before the public manifest existed:
@@ -101,8 +101,8 @@ python scripts/build_factor_library_state.py
 
 Result:
 
-- Registered factors: 128
-- Computed factor_values: 128
+- Registered factors: 134
+- Computed factor_values: 134
 - Missing factor_values: 0
 - Missing input data: 0
 - Warnings: 0
@@ -110,16 +110,16 @@ Result:
 Full public-manifest integrity command:
 
 ```bash
-python scripts/check_post_intake_workflow_integrity.py --factor-ids q158_high_low_range,vwap_dev_20h,wvma_20h,vol_ret_corr_20h,intraday_ret,klow_close,ksft_5h,up_down_vol_ratio_20h,clv_20h,wq101_alpha101,wq101_alpha12,wq101_alpha53,q158_klen_open,q158_kup_open,q158_klow_open,q158_ksft_open,q158_ksft_range,q158_rsv_20h,q158_qtlu_20h,q158_qtld_20h,q158_rank_close_20h,q158_cntp_20h,q158_cntn_20h,q158_sumd_20h,q158_beta_20h,q158_rsqr_20h,q158_resi_20h,q158_imax_20h,q158_imin_20h,q158_imxd_20h,q158_roc_20h,q158_ma_20h,q158_std_20h,q158_max_20h,q158_min_20h,q158_cntd_20h,q158_corr_20h,q158_cord_20h,q158_sump_20h,q158_sumn_20h,q158_vma_20h,q158_vstd_20h,q158_wvma_20h,q158_vsump_20h,q158_vsumn_20h,q158_vsumd_20h,q158_kmid_open,q158_kmid_range,q158_kup_range,q158_klow_range,q158_open_close_0h,q158_high_close_0h,q158_low_close_0h,q158_open_close_1h,q158_high_close_1h,q158_low_close_1h,a101_volume_xs_z_mean_neg_112h,a101_vol_xs_z_product_112h,a101_volume_low_alpha_min_84_120,a101_volume_high_alpha_min_84_84,a101_volume_cap_alpha_min_80_80,a101_volume_cap_alpha_min_56_84
+python scripts/check_post_intake_workflow_integrity.py --factor-ids <68 implemented public manifest factor IDs>
 ```
 
 Result:
 
-- Factors checked: 62
-- Total checks: 1488
-- PASS: 1431
+- Factors checked: 68
+- Total checks: 1632
+- PASS: 1569
 - FAIL: 0
-- WARN: 57
+- WARN: 63
 
 The warnings are optional PM-59A overlapping-sleeve summaries missing for
 eligible diagnostic factors. They do not indicate missing factor_values,
