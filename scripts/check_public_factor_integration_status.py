@@ -20,10 +20,14 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "docs" / "factor_library" / "public_factor_candidate_manifest.csv"
 STATE = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_library_state.json"
 OUT_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_diagnostics"
+TAXONOMY_SOURCE = ROOT / "data" / "sources" / "crypto_industry_taxonomy_contract_v1" / "symbol_taxonomy.csv"
+TAXONOMY_ARTIFACT = ROOT / "data" / "cache" / "crypto_industry_taxonomy_contract_v1" / "symbol_taxonomy.parquet"
 SKIPPED_PREFIX = "skipped_"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from factor_formula_registry import REGISTRY_BY_ID  # noqa: E402
+from check_crypto_industry_taxonomy_contract import check_contract  # noqa: E402
+from check_crypto_industry_taxonomy_coverage import DEFAULT_BARS, check_coverage  # noqa: E402
 
 
 def load_manifest(path: Path = MANIFEST) -> list[dict[str, str]]:
@@ -76,6 +80,66 @@ def load_state(path: Path = STATE) -> dict[str, object]:
         return json.load(handle)
 
 
+def summarize_taxonomy_readiness(
+    source_path: Path = TAXONOMY_SOURCE,
+    artifact_path: Path = TAXONOMY_ARTIFACT,
+) -> dict[str, object]:
+    source_exists = source_path.exists()
+    source_rows = 0
+    quality_counts: dict[str, int] = {}
+    if source_exists:
+        source_df = pd.read_csv(source_path)
+        source_rows = int(len(source_df))
+        quality_counts = {
+            str(k): int(v)
+            for k, v in source_df["quality_flag"].value_counts(dropna=False).to_dict().items()
+        }
+
+    contract_checks = check_contract(artifact_path)
+    contract_pass = all(bool(c["passed"]) for c in contract_checks)
+    coverage_pass = False
+    coverage_error = ""
+    if artifact_path.exists():
+        try:
+            _summary, coverage_checks, _symbol_coverage = check_coverage(
+                DEFAULT_BARS,
+                artifact_path,
+                min_full_coverage=0.98,
+            )
+            coverage_pass = all(bool(c["passed"]) for c in coverage_checks)
+        except Exception as exc:
+            coverage_error = str(exc)
+    else:
+        coverage_error = f"Taxonomy file not found: {artifact_path}"
+
+    ok_rows = quality_counts.get("OK", 0)
+    blocker = ""
+    if not source_exists:
+        blocker = "taxonomy_source_missing"
+    elif ok_rows == 0:
+        blocker = "taxonomy_review_has_no_ok_rows"
+    elif not artifact_path.exists():
+        blocker = "taxonomy_artifact_missing"
+    elif not contract_pass:
+        blocker = "taxonomy_contract_failed"
+    elif not coverage_pass:
+        blocker = "taxonomy_coverage_failed"
+
+    return {
+        "source_path": str(source_path),
+        "source_exists": source_exists,
+        "source_rows": source_rows,
+        "source_quality_counts": quality_counts,
+        "artifact_path": str(artifact_path),
+        "artifact_exists": artifact_path.exists(),
+        "contract_pass": contract_pass,
+        "coverage_pass": coverage_pass,
+        "coverage_error": coverage_error,
+        "ready_for_indneutralize_unskip": contract_pass and coverage_pass,
+        "blocker": blocker,
+    }
+
+
 def build_status_report(
     manifest_path: Path = MANIFEST,
     state_path: Path = STATE,
@@ -95,6 +159,7 @@ def build_status_report(
         },
         "family_summary": family_summary,
         "skipped_rows": skipped_rows,
+        "taxonomy_readiness": summarize_taxonomy_readiness(),
     }
 
 
@@ -131,6 +196,15 @@ def main() -> int:
             f"  {row['source_family']}: total={row['manifest_total']} "
             f"accounted={row['accounted_non_skipped']} skipped={row['skipped']}"
         )
+    taxonomy = report["taxonomy_readiness"]
+    print(
+        "  taxonomy: "
+        f"source_rows={taxonomy['source_rows']} "
+        f"quality={taxonomy['source_quality_counts']} "
+        f"artifact_exists={taxonomy['artifact_exists']} "
+        f"ready={taxonomy['ready_for_indneutralize_unskip']} "
+        f"blocker={taxonomy['blocker']}"
+    )
     out_json, out_summary, out_skipped = write_status_report(report, Path(args.out_dir))
     print(f"Saved: {out_json}")
     print(f"Saved: {out_summary}")

@@ -46,6 +46,16 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert "wq101_alpha58_indneutralize_skipped" in skipped_ids
     assert "q158_roc_5h_skipped" in skipped_ids
 
+    taxonomy = report["taxonomy_readiness"]
+    assert taxonomy["source_exists"] is True
+    assert taxonomy["source_rows"] == 266
+    assert taxonomy["source_quality_counts"] == {"REVIEW": 266}
+    assert taxonomy["artifact_exists"] is False
+    assert taxonomy["contract_pass"] is False
+    assert taxonomy["coverage_pass"] is False
+    assert taxonomy["ready_for_indneutralize_unskip"] is False
+    assert taxonomy["blocker"] == "taxonomy_review_has_no_ok_rows"
+
 
 def test_public_factor_integration_status_writes_reports(tmp_path: Path):
     report = build_status_report()
@@ -61,5 +71,5 @@ def test_committed_public_factor_integration_status_is_current():
     current = build_status_report()
     committed = json.loads((OUT_DIR / "public_factor_integration_status.json").read_text())
 
-    for key in ["state", "family_summary", "skipped_rows"]:
+    for key in ["state", "family_summary", "skipped_rows", "taxonomy_readiness"]:
         assert committed[key] == current[key]
