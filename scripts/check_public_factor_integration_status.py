@@ -23,6 +23,7 @@ OUT_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "f
 TAXONOMY_SOURCE = ROOT / "data" / "sources" / "crypto_industry_taxonomy_contract_v1" / "symbol_taxonomy.csv"
 TAXONOMY_ARTIFACT = ROOT / "data" / "cache" / "crypto_industry_taxonomy_contract_v1" / "symbol_taxonomy.parquet"
 TAXONOMY_PACKET_VALIDATION = OUT_DIR / "industry_taxonomy_review_packet_validation.json"
+TAXONOMY_PACKET_ROLLUP = OUT_DIR / "industry_taxonomy_review_batch_validation_rollup.json"
 CAP_ARTIFACT = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "market_cap_1h_aligned.parquet"
 CAP_CONTRACT_CHECK = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "market_cap_contract_check.json"
 CAP_QUALITY_REPORT = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "market_cap_quality_report.csv"
@@ -162,6 +163,57 @@ def summarize_taxonomy_packet_validation(path: Path = TAXONOMY_PACKET_VALIDATION
     }
 
 
+def summarize_taxonomy_packet_rollup(path: Path = TAXONOMY_PACKET_ROLLUP) -> dict[str, object]:
+    """Return compact status for all batch-specific taxonomy packet validations."""
+    if not path.exists():
+        return {
+            "packet_rollup_path": str(path),
+            "packet_rollup_exists": False,
+            "packet_rollup_blocker": "packet_rollup_missing",
+            "packet_rollup_batch_count": 0,
+            "packet_rollup_ready_to_apply_batch_count": 0,
+            "packet_rollup_blocked_batch_count": 0,
+            "packet_rollup_total_packet_rows": 0,
+            "packet_rollup_total_approved_rows": 0,
+            "packet_rollup_approved_bar_count_share_sum": None,
+            "packet_rollup_approved_quote_volume_share_sum": None,
+            "packet_rollup_ready_to_apply_batch_ids": "",
+            "packet_rollup_blocked_batch_ids": "",
+        }
+    try:
+        payload = json.loads(path.read_text())
+        summary = payload.get("summary", {})
+    except Exception as exc:
+        return {
+            "packet_rollup_path": str(path),
+            "packet_rollup_exists": True,
+            "packet_rollup_blocker": f"packet_rollup_unreadable:{exc}",
+            "packet_rollup_batch_count": 0,
+            "packet_rollup_ready_to_apply_batch_count": 0,
+            "packet_rollup_blocked_batch_count": 0,
+            "packet_rollup_total_packet_rows": 0,
+            "packet_rollup_total_approved_rows": 0,
+            "packet_rollup_approved_bar_count_share_sum": None,
+            "packet_rollup_approved_quote_volume_share_sum": None,
+            "packet_rollup_ready_to_apply_batch_ids": "",
+            "packet_rollup_blocked_batch_ids": "",
+        }
+    return {
+        "packet_rollup_path": str(path),
+        "packet_rollup_exists": True,
+        "packet_rollup_blocker": "",
+        "packet_rollup_batch_count": int(summary.get("batch_report_count", 0) or 0),
+        "packet_rollup_ready_to_apply_batch_count": int(summary.get("ready_to_apply_batch_count", 0) or 0),
+        "packet_rollup_blocked_batch_count": int(summary.get("blocked_batch_count", 0) or 0),
+        "packet_rollup_total_packet_rows": int(summary.get("total_packet_rows", 0) or 0),
+        "packet_rollup_total_approved_rows": int(summary.get("total_approved_packet_rows", 0) or 0),
+        "packet_rollup_approved_bar_count_share_sum": summary.get("approved_bar_count_share_sum"),
+        "packet_rollup_approved_quote_volume_share_sum": summary.get("approved_quote_volume_share_sum"),
+        "packet_rollup_ready_to_apply_batch_ids": str(summary.get("ready_to_apply_batch_ids", "")),
+        "packet_rollup_blocked_batch_ids": str(summary.get("blocked_batch_ids", "")),
+    }
+
+
 def summarize_taxonomy_readiness(
     source_path: Path = TAXONOMY_SOURCE,
     artifact_path: Path = TAXONOMY_ARTIFACT,
@@ -202,6 +254,7 @@ def summarize_taxonomy_readiness(
         bars_path=DEFAULT_BARS,
     )
     packet_validation = summarize_taxonomy_packet_validation()
+    packet_rollup = summarize_taxonomy_packet_rollup()
 
     ok_rows = int(review_source.get("ok_row_count", 0))
     blocker = ""
@@ -231,6 +284,7 @@ def summarize_taxonomy_readiness(
         "source_ok_rows_known_after_last_bar": int(review_source.get("ok_rows_known_after_last_bar", 0) or 0),
         "source_ok_known_at_blocks_bars": bool(review_source.get("ok_known_at_blocks_bars", False)),
         **packet_validation,
+        **packet_rollup,
         "artifact_path": str(artifact_path),
         "artifact_exists": artifact_path.exists(),
         "contract_pass": contract_pass,
@@ -372,6 +426,8 @@ def main() -> int:
         f"quality={taxonomy['source_quality_counts']} "
         f"packet_pass={taxonomy['packet_validation_pass']} "
         f"packet_blocker={taxonomy['packet_validation_blocker']} "
+        f"rollup_ready={taxonomy['packet_rollup_ready_to_apply_batch_count']} "
+        f"rollup_blocked={taxonomy['packet_rollup_blocked_batch_count']} "
         f"artifact_exists={taxonomy['artifact_exists']} "
         f"ready={taxonomy['ready_for_indneutralize_unskip']} "
         f"blocker={taxonomy['blocker']}"
