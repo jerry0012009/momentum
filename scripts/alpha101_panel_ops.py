@@ -642,6 +642,22 @@ def compute_wq101_alpha57(bars: pd.DataFrame) -> pd.DataFrame:
     return from_wide(-1 * (close - vwap) / denom, "wq101_alpha57")
 
 
+def compute_wq101_alpha56(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#56: -rank(ret-sum ratio) * rank(returns * cap)."""
+    if "cap" not in bars.columns:
+        raise ValueError("Column 'cap' not found in bars. Cannot compute wq101_alpha56.")
+    close = to_wide(bars, "close")
+    cap = to_wide(bars, "cap")
+    returns = close / close.shift(1) - 1.0
+    denom = rolling_sum_wide(rolling_sum_wide(returns, 2), 3).replace(0, np.nan)
+    left = xs_rank(rolling_sum_wide(returns, 10) / denom)
+    right = xs_rank(returns * cap)
+    left, right = left.align(right, join="inner", axis=None)
+    result = -1 * left * right
+    result[left.isna() | right.isna()] = np.nan
+    return from_wide(result, "wq101_alpha56")
+
+
 def compute_wq101_alpha62(bars: pd.DataFrame) -> pd.DataFrame:
     """WQ101 Alpha#62: -1 gate comparing VWAP/ADV correlation rank with an OHLC rank condition."""
     open_w = to_wide(bars, "open")

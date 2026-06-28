@@ -22,16 +22,16 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     report = build_status_report()
 
     assert report["state"] == {
-        "registered_factors": 248,
-        "computed_factor_values": 248,
+        "registered_factors": 249,
+        "computed_factor_values": 249,
         "missing_factor_values": 0,
         "missing_input_factors": 0,
     }
 
     alpha101 = _family(report, "alpha101")
     assert alpha101["manifest_total"] == 107
-    assert alpha101["accounted_non_skipped"] == 87
-    assert alpha101["skipped"] == 20
+    assert alpha101["accounted_non_skipped"] == 88
+    assert alpha101["skipped"] == 19
     assert alpha101["registry_missing_non_skipped"] == 0
     assert alpha101["skipped_present_in_registry"] == 0
 
@@ -44,14 +44,13 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
 
     skipped_ids = {row["factor_id"] for row in report["skipped_rows"]}
     assert "wq101_alpha58_indneutralize_skipped" in skipped_ids
-    assert "wq101_alpha56_cap_skipped" in skipped_ids
+    assert "wq101_alpha56_cap_skipped" not in skipped_ids
     assert "q158_roc_5h_skipped" in skipped_ids
     cap_blocked = [
         row for row in report["skipped_rows"]
         if row["source_family"] == "alpha101" and row["cap_blocker"]
     ]
-    assert [row["factor_id"] for row in cap_blocked] == ["wq101_alpha56_cap_skipped"]
-    assert cap_blocked[0]["ready_for_unskip"] is False
+    assert cap_blocked == []
     alpha101_taxonomy_blocked = [
         row for row in report["skipped_rows"]
         if row["source_family"] == "alpha101" and row["taxonomy_blocker"]
@@ -85,15 +84,15 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     cap = report["cap_readiness"]
     assert cap["artifact_exists"] is True
     assert cap["contract_check_exists"] is True
-    assert cap["contract_pass"] is False
-    assert cap["ready_for_cap_unskip"] is False
-    assert cap["blocker"] == "cap_contract_failed"
-    assert cap["overall_coverage"] == "89.0% (FAIL)"
-    assert cap["symbol_coverage_summary"] == "234 symbols >= 90%, 32 symbols < 80%"
-    assert cap["low_coverage_symbol_count"] == 31
+    assert cap["contract_pass"] is True
+    assert cap["ready_for_cap_unskip"] is True
+    assert cap["blocker"] == ""
+    assert cap["overall_coverage"] == "90.2% (PASS)"
+    assert cap["symbol_coverage_summary"] == "237 symbols >= 90%, 29 symbols < 80%"
+    assert cap["low_coverage_symbol_count"] == 28
     assert "EDUUSDT" in cap["low_coverage_symbols"]
-    assert cap["blocked_alpha101_factor_count"] == 1
-    assert cap["blocked_alpha101_factor_ids"] == "wq101_alpha56_cap_skipped"
+    assert cap["blocked_alpha101_factor_count"] == 0
+    assert cap["blocked_alpha101_factor_ids"] == ""
 
 
 def test_public_factor_integration_status_writes_reports(tmp_path: Path):

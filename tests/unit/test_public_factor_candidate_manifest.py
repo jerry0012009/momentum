@@ -37,6 +37,10 @@ BACKFILL_STATUSES = {
     "implemented_alpha101_panel_batch_09",
     "implemented_alpha101_panel_batch_10",
     "implemented_alpha101_panel_batch_11",
+    "implemented_alpha101_cap_batch_12",
+}
+SINGLE_FACTOR_BATCH_STATUSES = {
+    "implemented_alpha101_cap_batch_12",
 }
 
 REQUIRED_COLUMNS = [
@@ -127,7 +131,7 @@ def test_public_manifest_counts_and_batch_sizes(rows: list[dict[str, str]]) -> N
         family: sum(row["source_family"] == family for row in rows)
         for family in {"alpha101", "alpha158"}
     }
-    assert implemented_counts == {"alpha101": 87, "alpha158": 95}
+    assert implemented_counts == {"alpha101": 88, "alpha158": 95}
     assert total_counts == {"alpha101": 107, "alpha158": 101}
 
     batches: dict[str, int] = {}
@@ -140,6 +144,9 @@ def test_public_manifest_counts_and_batch_sizes(rows: list[dict[str, str]]) -> N
 
     assert batches
     for batch_id, count in batches.items():
+        if batch_id in SINGLE_FACTOR_BATCH_STATUSES:
+            assert count == 1, f"{batch_id} should only contain its unblocked cap factor"
+            continue
         assert 4 <= count <= 12, f"{batch_id} has {count} factors"
 
 

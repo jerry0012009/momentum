@@ -174,6 +174,79 @@ def fetch_circulating_supply() -> pd.DataFrame:
     return df
 
 
+def fetch_circulating_supply_by_ids(coingecko_ids: list[str]) -> pd.DataFrame:
+    """Fetch current circulating supply for explicit CoinGecko ids.
+
+    This supplements the top-pages universe for manually mapped long-tail
+    futures symbols whose CoinGecko ids are known but not present in the first
+    pages of /coins/markets.
+    """
+    ids = sorted({str(cid).strip() for cid in coingecko_ids if str(cid).strip()})
+    if not ids:
+        return pd.DataFrame()
+
+    print(f"Fetching CoinGecko circulating supply for {len(ids)} explicit ids ...", flush=True)
+    all_rows = []
+    batch_size = 200
+    for start in range(0, len(ids), batch_size):
+        batch = ids[start:start + batch_size]
+        data = cg_get("/coins/markets", {
+            "vs_currency": "usd",
+            "ids": ",".join(batch),
+            "sparkline": "false",
+        })
+        if data is None:
+            continue
+        all_rows.extend(data)
+        print(f"  IDs {start + 1}-{start + len(batch)}: {len(data)} coins", flush=True)
+
+    rows = []
+    for c in all_rows:
+        rows.append({
+            "coingecko_id": c["id"],
+            "cg_symbol": c["symbol"].lower(),
+            "cg_name": c["name"],
+            "circulating_supply": c.get("circulating_supply"),
+            "total_supply": c.get("total_supply"),
+            "max_supply": c.get("max_supply"),
+            "current_market_cap": c.get("market_cap"),
+            "current_price": c.get("current_price"),
+        })
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df = df[df["circulating_supply"].notna() & (df["circulating_supply"] > 0)]
+    print(f"  {len(df)} explicit-id coins with circulating supply > 0", flush=True)
+    return df
+
+
+def augment_supply_for_manual_overrides(cg_supply: pd.DataFrame, overrides: pd.DataFrame) -> pd.DataFrame:
+    """Ensure manual override ids have supply rows when available."""
+    if overrides.empty or "coingecko_id" not in overrides.columns:
+        return cg_supply
+    if "coingecko_id" not in cg_supply.columns:
+        cg_supply = pd.DataFrame(columns=[
+            "coingecko_id", "cg_symbol", "cg_name", "circulating_supply",
+            "total_supply", "max_supply", "current_market_cap", "current_price",
+        ])
+    ids = (
+        overrides["coingecko_id"]
+        .dropna()
+        .astype(str)
+        .str.strip()
+    )
+    ids = [cid for cid in ids if cid]
+    existing_ids = set(cg_supply["coingecko_id"].dropna().astype(str).str.strip())
+    missing_ids = sorted(set(ids) - existing_ids)
+    if not missing_ids:
+        return cg_supply
+    extra = fetch_circulating_supply_by_ids(missing_ids)
+    if extra.empty:
+        return cg_supply
+    combined = pd.concat([cg_supply, extra], ignore_index=True)
+    return combined.drop_duplicates("coingecko_id", keep="first")
+
+
 # ── Fetch Binance historical daily prices ─────────────────────────
 
 def fetch_binance_daily_klines(symbol: str, start_ms: int, end_ms: int) -> pd.DataFrame:
@@ -210,6 +283,7 @@ def build_symbol_mapping(symbols: list[str], cg_supply: pd.DataFrame) -> tuple[p
     if OVERRIDES_PATH.exists():
         overrides = pd.read_csv(OVERRIDES_PATH)
         print(f"Loaded {len(overrides)} manual overrides from {OVERRIDES_PATH}")
+        cg_supply = augment_supply_for_manual_overrides(cg_supply, overrides)
 
     # Build CG symbol index (lowercase → list of ids)
     cg_by_symbol = {}

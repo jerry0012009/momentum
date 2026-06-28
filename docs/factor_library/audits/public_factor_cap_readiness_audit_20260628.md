@@ -1,5 +1,20 @@
 # Public Factor Cap Readiness Audit - 2026-06-28
 
+## Superseded Status
+
+This audit captured the intermediate state where the market-cap artifact existed
+but failed the 90.0% coverage gate. It is superseded by
+`public_alpha101_cap_batch12_20260628.md`.
+
+Current state after the follow-up fix:
+
+- Market-cap contract pass: true
+- Overall coverage: 90.2%, pass against the 90.0% gate
+- Public cap readiness: ready for cap unskip
+- `wq101_alpha56` is implemented and no longer skipped
+
+The historical findings below are kept for traceability.
+
 ## Scope
 
 This audit updates the public Alpha101/Alpha158 integration blocker state for

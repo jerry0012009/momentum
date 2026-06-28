@@ -1493,6 +1493,14 @@ REGISTRY: list[FactorSpec] = [
         panel_compute_fn=lambda bars: __import__('alpha101_panel_ops').compute_wq101_alpha57(bars),
     ),
     FactorSpec(
+        factor_id="wq101_alpha56", family="wq101",
+        required_columns=["close", "cap"], lookback_window=11,
+        expected_direction="conditional",
+        notes="WorldQuant 101 Alpha#56: -rank(sum(returns,10)/sum(sum(returns,2),3))*rank(returns*cap); requires market_cap_1h_aligned.parquet merged as cap",
+        compute_scope="panel",
+        panel_compute_fn=lambda bars: __import__('alpha101_panel_ops').compute_wq101_alpha56(bars),
+    ),
+    FactorSpec(
         factor_id="wq101_alpha62", family="wq101",
         required_columns=["open", "high", "low", "volume", "quote_volume"], lookback_window=51,
         expected_direction="conditional",
