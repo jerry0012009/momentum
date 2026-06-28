@@ -80,6 +80,19 @@ def test_review_priority_ranks_by_quote_volume_and_marks_actions():
 
     assert priority["symbol"].tolist() == ["BBBUSDT", "AAAUSDT", "DDDUSDT", "CCCUSDT"]
     assert priority["review_priority_rank"].tolist() == [1, 2, 3, 4]
+    assert priority["bar_count_share"].round(6).tolist() == [
+        round(1 / 6, 6),
+        round(2 / 6, 6),
+        round(1 / 6, 6),
+        round(2 / 6, 6),
+    ]
+    assert priority["cumulative_bar_count_share"].round(6).tolist() == [
+        round(1 / 6, 6),
+        round(3 / 6, 6),
+        round(4 / 6, 6),
+        1.0,
+    ]
+    assert priority["coverage_gate_98_reached_here"].tolist() == [False, False, False, True]
     assert priority.loc[priority["symbol"] == "BBBUSDT", "review_action"].iloc[0] == "review_groups"
     assert priority.loc[priority["symbol"] == "AAAUSDT", "review_action"].iloc[0] == "already_ok"
     assert priority.loc[priority["symbol"] == "DDDUSDT", "review_action"].iloc[0] == "add_taxonomy_row"
@@ -93,6 +106,7 @@ def test_review_priority_ranks_by_quote_volume_and_marks_actions():
     assert summary["row_count"] == 4
     assert summary["taxonomy_rows"] == 3
     assert summary["bar_symbols"] == 4
+    assert summary["bar_rows"] == 6
     assert summary["symbols_missing_from_taxonomy"] == 1
     assert summary["symbols_needing_review"] == 2
     assert summary["symbols_with_coingecko_mapping"] == 3
@@ -100,6 +114,11 @@ def test_review_priority_ranks_by_quote_volume_and_marks_actions():
     assert summary["required_taxonomy_groups_for_unblock"] == "industry|sector|subindustry"
     assert summary["top_symbol"] == "BBBUSDT"
     assert summary["quote_volume_sum"] == 1025.0
+    assert summary["top_20_bar_count_share"] == 1.0
+    assert summary["top_50_bar_count_share"] == 1.0
+    assert summary["review_priority_rank_to_98pct_bar_coverage"] == 4
+    assert summary["quote_volume_share_at_98pct_bar_coverage"] == 1.0
+    assert "bar rows" in summary["coverage_gate_note"]
 
 
 def test_review_priority_does_not_fill_taxonomy_groups():

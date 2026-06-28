@@ -54,12 +54,21 @@ research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_tax
 Current packet summary:
 
 - Rows: 266
+- Bar rows: 3,316,259
 - Symbols needing review: 266
 - Symbols with CoinGecko mapping evidence: 242
 - Blocked Alpha101 IndNeutralize factors: 18
 - Required groups: `industry|sector|subindustry`
 - Top 20 symbols by quote volume cover 78.85% of observed quote volume
 - Top 50 symbols by quote volume cover 86.98% of observed quote volume
+- Top 20 symbols by quote volume cover 10.08% of bar rows
+- Top 50 symbols by quote volume cover 24.98% of bar rows
+- The 98% bar-row coverage gate is first reached at review rank 249 under the
+  current quote-volume priority order
+
+The coverage gate uses point-in-time full-group bar coverage and symbol
+coverage, not quote volume. The quote-volume ranking is still useful for review
+order, but it cannot be treated as the unlock threshold by itself.
 
 ## Guardrails
 
@@ -86,7 +95,8 @@ Results:
 
 - Review-priority unit tests: 7 passed
 - Script compilation: pass
-- Review packet regenerated with 266 rows and 18 blocked-factor context
+- Review packet regenerated with 266 rows, 18 blocked-factor context, and
+  explicit 98% bar-row coverage threshold fields
 
 ## Next Valid Step
 

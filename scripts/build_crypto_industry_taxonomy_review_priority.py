@@ -37,6 +37,9 @@ def _empty_priority_frame() -> pd.DataFrame:
             "symbol",
             "quality_flag",
             "bar_count",
+            "bar_count_share",
+            "cumulative_bar_count_share",
+            "coverage_gate_98_reached_here",
             "first_seen",
             "last_seen",
             "quote_volume_sum",
@@ -197,6 +200,11 @@ def build_review_priority(
         merged[missing_col] = merged[col].fillna("").astype(str).str.len().eq(0)
 
     merged["bar_count"] = merged["bar_count"].fillna(0).astype(int)
+    total_bar_count = int(merged["bar_count"].sum())
+    if total_bar_count > 0:
+        merged["bar_count_share"] = merged["bar_count"] / total_bar_count
+    else:
+        merged["bar_count_share"] = 0.0
     merged["quote_volume_sum"] = merged["quote_volume_sum"].fillna(0.0).astype(float)
     total_quote_volume = float(merged["quote_volume_sum"].sum())
     if total_quote_volume > 0:
@@ -230,6 +238,11 @@ def build_review_priority(
         kind="mergesort",
     ).reset_index(drop=True)
     merged["review_priority_rank"] = range(1, len(merged) + 1)
+    merged["cumulative_bar_count_share"] = merged["bar_count_share"].cumsum()
+    merged["coverage_gate_98_reached_here"] = (
+        (merged["cumulative_bar_count_share"] >= 0.98)
+        & (merged["cumulative_bar_count_share"].shift(fill_value=0.0) < 0.98)
+    )
     merged["cumulative_quote_volume_share"] = merged["quote_volume_share"].cumsum()
 
     for col in ["first_seen", "last_seen"]:
@@ -240,10 +253,14 @@ def build_review_priority(
 
     out_cols = _empty_priority_frame().columns.tolist()
     priority = merged[out_cols].copy()
+    gate_rows = priority[priority["coverage_gate_98_reached_here"]]
+    rank_to_98 = int(gate_rows.iloc[0]["review_priority_rank"]) if len(gate_rows) else 0
+    quote_at_98 = float(gate_rows.iloc[0]["cumulative_quote_volume_share"]) if len(gate_rows) else 0.0
     summary = {
         "row_count": int(len(priority)),
         "taxonomy_rows": int(len(taxonomy)),
         "bar_symbols": int(stats["symbol"].nunique()),
+        "bar_rows": total_bar_count,
         "symbols_missing_from_taxonomy": int((priority["review_action"] == "add_taxonomy_row").sum()),
         "symbols_needing_review": int((priority["review_action"] != "already_ok").sum()),
         "ok_symbols": int((priority["review_action"] == "already_ok").sum()),
@@ -257,6 +274,11 @@ def build_review_priority(
         "top_symbol": str(priority.iloc[0]["symbol"]) if len(priority) else "",
         "top_20_quote_volume_share": float(priority.head(20)["quote_volume_share"].sum()) if len(priority) else 0.0,
         "top_50_quote_volume_share": float(priority.head(50)["quote_volume_share"].sum()) if len(priority) else 0.0,
+        "top_20_bar_count_share": float(priority.head(20)["bar_count_share"].sum()) if len(priority) else 0.0,
+        "top_50_bar_count_share": float(priority.head(50)["bar_count_share"].sum()) if len(priority) else 0.0,
+        "review_priority_rank_to_98pct_bar_coverage": rank_to_98,
+        "quote_volume_share_at_98pct_bar_coverage": quote_at_98,
+        "coverage_gate_note": "Coverage gate uses bar rows and symbol coverage; quote-volume priority alone is not sufficient.",
     }
     return priority, summary
 
@@ -335,6 +357,8 @@ def main() -> int:
     print(f"  blocked_indneutralize_factors: {summary['blocked_alpha101_indneutralize_factor_count']}")
     print(f"  top_symbol: {summary['top_symbol']}")
     print(f"  top_20_quote_volume_share: {summary['top_20_quote_volume_share']:.4f}")
+    print(f"  top_20_bar_count_share: {summary['top_20_bar_count_share']:.4f}")
+    print(f"  rank_to_98pct_bar_coverage: {summary['review_priority_rank_to_98pct_bar_coverage']}")
     print("  note: no taxonomy groups were inferred or filled")
     print(f"Saved: {out_json}")
     print(f"Saved: {out_csv}")
