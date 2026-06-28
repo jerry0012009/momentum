@@ -23,6 +23,7 @@ def test_start_here_contains_public_factor_and_taxonomy_entrypoints():
 
     required = [
         "docs/factor_library/public_factor_candidate_manifest.csv",
+        "scripts/check_public_factor_integration_status.py",
         "docs/factor_library/INDUSTRY_NEUTRALIZATION_DATA_CONTRACT.md",
         "data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.template.csv",
         "scripts/init_crypto_industry_taxonomy_review.py",

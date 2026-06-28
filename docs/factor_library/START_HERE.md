@@ -126,6 +126,7 @@ Default route: use factor intake. Do not create a parallel pipeline.
 For public factor-library expansion, use the compact manifest first:
 
 - `docs/factor_library/public_factor_candidate_manifest.csv`
+- `python scripts/check_public_factor_integration_status.py`
 
 For Alpha101 / Alpha158 intake, every candidate should record formula source, field mapping, required operators, compute scope, timeframe mapping, expected direction, implementation status, and skip reason when blocked.
 
