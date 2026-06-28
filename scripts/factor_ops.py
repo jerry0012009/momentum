@@ -137,9 +137,19 @@ def ts_rank(series: pd.Series, n: int) -> pd.Series:
     Returns value in [0, 1]. NaN for first n-1 rows.
     Uses rank(pct=True) on the rolling window.
     """
-    return series.rolling(n, min_periods=n).apply(
-        lambda x: pd.Series(x).rank(pct=True).iloc[-1], raw=False
-    )
+    def _rank_last_pct(x: np.ndarray) -> float:
+        last = x[-1]
+        if np.isnan(last):
+            return np.nan
+        valid = x[~np.isnan(x)]
+        if len(valid) < n:
+            return np.nan
+        less = np.sum(valid < last)
+        equal = np.sum(valid == last)
+        # Match pandas rank(pct=True) with method="average" for the last value.
+        return (less + (equal + 1) / 2) / len(valid)
+
+    return series.rolling(n, min_periods=n).apply(_rank_last_pct, raw=True)
 
 
 # ── Normalization ───────────────────────────────────────────────────

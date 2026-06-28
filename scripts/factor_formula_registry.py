@@ -132,6 +132,68 @@ def _compute_wq101_alpha54(df: pd.DataFrame) -> pd.Series:
     return (-1 * ((l - c) * (o ** 5))) / denom.replace(0, np.nan)
 
 
+def _compute_wq101_alpha23(df: pd.DataFrame) -> pd.Series:
+    """WQ101 Alpha#23: high breakout state with negative high delta."""
+    high = df["high"]
+    high_mean_20 = rolling_mean(high, 20)
+    out = pd.Series(np.nan, index=df.index, dtype=float)
+    valid = high_mean_20.notna()
+    breakout = high_mean_20 < high
+    out.loc[valid & breakout] = (-1 * delta(high, 2)).loc[valid & breakout]
+    out.loc[valid & ~breakout] = 0.0
+    return out
+
+
+def _compute_wq101_alpha24(df: pd.DataFrame) -> pd.Series:
+    """WQ101 Alpha#24: long mean-drift state or short close delta."""
+    close = df["close"]
+    mean_close_100 = rolling_mean(close, 100)
+    drift = delta(mean_close_100, 100) / delay(close, 100).replace(0, np.nan)
+    low_100 = rolling_min(close, 100)
+    slow_branch = -1 * (close - low_100)
+    fast_branch = -1 * delta(close, 3)
+    out = pd.Series(np.nan, index=df.index, dtype=float)
+    valid = drift.notna()
+    out.loc[valid & (drift <= 0.05)] = slow_branch.loc[valid & (drift <= 0.05)]
+    out.loc[valid & (drift > 0.05)] = fast_branch.loc[valid & (drift > 0.05)]
+    return out
+
+
+def _compute_wq101_alpha46(df: pd.DataFrame) -> pd.Series:
+    """WQ101 Alpha#46: 20/10-bar close slope state with delta fallback."""
+    close = df["close"]
+    slope_gap = ((delay(close, 20) - delay(close, 10)) / 10) - ((delay(close, 10) - close) / 10)
+    out = pd.Series(np.nan, index=df.index, dtype=float)
+    valid = slope_gap.notna()
+    out.loc[valid & (slope_gap > 0.25)] = -1.0
+    out.loc[valid & (slope_gap < 0)] = 1.0
+    middle = valid & (slope_gap <= 0.25) & (slope_gap >= 0)
+    out.loc[middle] = (-1 * delta(close, 1)).loc[middle]
+    return out
+
+
+def _compute_wq101_alpha49(df: pd.DataFrame) -> pd.Series:
+    """WQ101 Alpha#49: 20/10-bar close slope state or short close delta."""
+    close = df["close"]
+    slope_gap = ((delay(close, 20) - delay(close, 10)) / 10) - ((delay(close, 10) - close) / 10)
+    out = pd.Series(np.nan, index=df.index, dtype=float)
+    valid = slope_gap.notna()
+    out.loc[valid & (slope_gap < -0.1)] = 1.0
+    out.loc[valid & (slope_gap >= -0.1)] = (-1 * delta(close, 1)).loc[valid & (slope_gap >= -0.1)]
+    return out
+
+
+def _compute_wq101_alpha51(df: pd.DataFrame) -> pd.Series:
+    """WQ101 Alpha#51: Alpha#49-style close slope state with tighter threshold."""
+    close = df["close"]
+    slope_gap = ((delay(close, 20) - delay(close, 10)) / 10) - ((delay(close, 10) - close) / 10)
+    out = pd.Series(np.nan, index=df.index, dtype=float)
+    valid = slope_gap.notna()
+    out.loc[valid & (slope_gap < -0.05)] = 1.0
+    out.loc[valid & (slope_gap >= -0.05)] = (-1 * delta(close, 1)).loc[valid & (slope_gap >= -0.05)]
+    return out
+
+
 def _compute_q158_high_low_range(df: pd.DataFrame) -> pd.Series:
     """Alpha158 High-Low Range: (high - low) / close."""
     h, l, c = df["high"], df["low"], df["close"]
@@ -1262,6 +1324,42 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="conditional",
         compute_fn=_compute_wq101_alpha54,
         notes="WorldQuant 101 Alpha#54: (-1*((low-close)*open^5))/((low-high)*close^5); OHLC-only 1h adaptation",
+    ),
+    # Public Alpha101 OHLCV batch 02
+    FactorSpec(
+        factor_id="wq101_alpha23", family="wq101",
+        required_columns=["high"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_wq101_alpha23,
+        notes="WorldQuant 101 Alpha#23: if mean(high,20) < high then -delta(high,2) else 0; adapted to 1h bars",
+    ),
+    FactorSpec(
+        factor_id="wq101_alpha24", family="wq101",
+        required_columns=["close"], lookback_window=200,
+        expected_direction="conditional",
+        compute_fn=_compute_wq101_alpha24,
+        notes="WorldQuant 101 Alpha#24: long moving-average drift branch over 100 bars else -delta(close,3); adapted to 1h bars",
+    ),
+    FactorSpec(
+        factor_id="wq101_alpha46", family="wq101",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="conditional",
+        compute_fn=_compute_wq101_alpha46,
+        notes="WorldQuant 101 Alpha#46: 20/10-bar close slope state with -delta(close,1) fallback; adapted to 1h bars",
+    ),
+    FactorSpec(
+        factor_id="wq101_alpha49", family="wq101",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="conditional",
+        compute_fn=_compute_wq101_alpha49,
+        notes="WorldQuant 101 Alpha#49: if 20/10-bar close slope gap < -0.1 then 1 else -delta(close,1); adapted to 1h bars",
+    ),
+    FactorSpec(
+        factor_id="wq101_alpha51", family="wq101",
+        required_columns=["close"], lookback_window=21,
+        expected_direction="conditional",
+        compute_fn=_compute_wq101_alpha51,
+        notes="WorldQuant 101 Alpha#51: if 20/10-bar close slope gap < -0.05 then 1 else -delta(close,1); adapted to 1h bars",
     ),
     # Batch 1: Alpha158
     FactorSpec(
