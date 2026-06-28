@@ -52,6 +52,7 @@ research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_tax
 research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_review_priority_status.json
 research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_coingecko_category_evidence.csv
 research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_review_batch_plan.csv
+research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_review_batch_001.csv
 ```
 
 Current packet summary:
@@ -69,6 +70,7 @@ Current packet summary:
 - Taxonomy rows known by latest bar: 0
 - Manual review batch size: 12 symbols
 - Manual review batches: 23
+- Current emitted review packet: batch 1 with 12 symbols
 - The 98% bar-row coverage gate falls in review batch 21 under the current
   priority order
 - Blocked Alpha101 IndNeutralize factors: 18
@@ -110,6 +112,7 @@ This packet does not:
 - treat CoinGecko categories as approved taxonomy groups;
 - treat review-row coverage preview as formal artifact approval;
 - treat review batches as approvals;
+- treat batch packet target columns as source-of-truth taxonomy rows;
 - change any taxonomy row from `REVIEW` to `OK`;
 - build `symbol_taxonomy.parquet`;
 - register new factors;

@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 from build_crypto_industry_taxonomy_review_priority import (  # noqa: E402
+    build_review_batch_packet,
     build_review_batch_plan,
     build_review_priority,
     fetch_coingecko_category_evidence,
@@ -177,6 +178,32 @@ def test_review_batch_plan_rejects_invalid_batch_size():
 
     with pytest.raises(ValueError, match="batch_size"):
         build_review_batch_plan(priority, batch_size=0)
+
+
+def test_review_batch_packet_contains_evidence_and_blank_targets():
+    priority, _summary = build_review_priority(_taxonomy(), _bars())
+
+    packet = build_review_batch_packet(priority, batch_id=1, batch_size=2)
+
+    assert packet["review_batch_id"].tolist() == [1, 1]
+    assert packet["review_priority_rank"].tolist() == [1, 2]
+    assert packet["symbol"].tolist() == ["BBBUSDT", "AAAUSDT"]
+    assert packet["target_sector"].tolist() == ["", ""]
+    assert packet["target_industry"].tolist() == ["", ""]
+    assert packet["target_subindustry"].tolist() == ["", ""]
+    assert packet["target_quality_flag"].tolist() == ["REVIEW", "REVIEW"]
+    assert packet["target_known_at"].tolist() == ["", ""]
+    assert packet["target_effective_from"].tolist() == ["", ""]
+    assert all("not taxonomy approval" in note for note in packet["review_packet_note"])
+
+
+def test_review_batch_packet_rejects_invalid_ids():
+    priority, _summary = build_review_priority(_taxonomy(), _bars())
+
+    with pytest.raises(ValueError, match="batch_id"):
+        build_review_batch_packet(priority, batch_id=0, batch_size=2)
+    with pytest.raises(ValueError, match="batch_size"):
+        build_review_batch_packet(priority, batch_id=1, batch_size=0)
 
 
 def test_ok_review_coverage_preview_counts_only_ok_full_group_rows():
@@ -368,19 +395,24 @@ def test_missing_quote_volume_column_fails():
 def test_priority_reports_are_written(tmp_path: Path):
     priority, summary = build_review_priority(_taxonomy(), _bars())
     batch_plan = build_review_batch_plan(priority, batch_size=2)
+    batch_packet = build_review_batch_packet(priority, batch_id=1, batch_size=2)
 
-    out_json, out_csv, out_batch_csv = write_priority_reports(
+    out_json, out_csv, out_batch_csv, out_packet_csv = write_priority_reports(
         priority,
         batch_plan,
+        batch_packet,
         summary,
         tmp_path / "out",
         tmp_path / "symbol_taxonomy.csv",
         tmp_path / "bars.parquet",
+        packet_batch_id=1,
     )
 
     assert out_json.exists()
     assert out_csv.exists()
     assert out_batch_csv.exists()
+    assert out_packet_csv.exists()
     status = out_json.read_text()
     assert "No taxonomy groups are inferred" in status
     assert "industry_taxonomy_review_batch_plan.csv" in status
+    assert "industry_taxonomy_review_batch_001.csv" in status
