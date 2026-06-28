@@ -111,8 +111,8 @@ def test_public_manifest_counts_and_batch_sizes(rows: list[dict[str, str]]) -> N
         family: sum(row["source_family"] == family for row in rows)
         for family in {"alpha101", "alpha158"}
     }
-    assert implemented_counts == {"alpha101": 9, "alpha158": 79}
-    assert total_counts == {"alpha101": 15, "alpha158": 85}
+    assert implemented_counts == {"alpha101": 9, "alpha158": 83}
+    assert total_counts == {"alpha101": 15, "alpha158": 89}
 
     batches: dict[str, int] = {}
     for row in rows:
