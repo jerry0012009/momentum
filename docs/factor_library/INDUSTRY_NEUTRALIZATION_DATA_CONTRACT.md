@@ -11,7 +11,7 @@ This is not a production, live-trading, tradeability, or alpha claim.
 
 ## 1. Current State
 
-The public manifest currently has 6 skipped Alpha101 rows blocked by
+The public manifest currently has 18 skipped Alpha101 rows blocked by
 industry/sector neutralization:
 
 | factor_id | required neutralization group |
@@ -22,6 +22,18 @@ industry/sector neutralization:
 | `wq101_alpha69_indneutralize_skipped` | `IndClass.industry` |
 | `wq101_alpha70_indneutralize_skipped` | `IndClass.industry` |
 | `wq101_alpha93_indneutralize_skipped` | `IndClass.industry` |
+| `wq101_alpha48_indneutralize_skipped` | `IndClass.subindustry` |
+| `wq101_alpha63_indneutralize_skipped` | `IndClass.industry` |
+| `wq101_alpha76_indneutralize_skipped` | `IndClass.sector` |
+| `wq101_alpha79_indneutralize_skipped` | `IndClass.sector` |
+| `wq101_alpha80_indneutralize_skipped` | `IndClass.industry` |
+| `wq101_alpha82_indneutralize_skipped` | `IndClass.sector` |
+| `wq101_alpha87_indneutralize_skipped` | `IndClass.industry` |
+| `wq101_alpha89_indneutralize_skipped` | `IndClass.industry` |
+| `wq101_alpha90_indneutralize_skipped` | `IndClass.subindustry` |
+| `wq101_alpha91_indneutralize_skipped` | `IndClass.industry` |
+| `wq101_alpha97_indneutralize_skipped` | `IndClass.industry` |
+| `wq101_alpha100_indneutralize_skipped` | `IndClass.subindustry` |
 
 These rows must remain skipped until this contract is satisfied. They are not
 registry entries and must stay excluded from factor-value, intake, post-intake,
@@ -193,5 +205,19 @@ The current public-factor integration has covered the auditable and supported
 portion of Alpha158 and Alpha101 in the compact manifest. The remaining
 Alpha101 industry-neutralized formulas are correctly blocked, not forgotten.
 
-Next valid implementation step is a taxonomy/data-source project, not formula
-registration.
+The current review packet is:
+
+```text
+research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_review_priority.csv
+```
+
+It ranks 266 symbols by observed `quote_volume`, joins available CoinGecko
+mapping evidence from the market-cap workflow, and records the 18 blocked
+Alpha101 factor IDs that would become eligible after an approved taxonomy passes
+contract and coverage gates. It remains review-only: it does not infer
+`sector`, `industry`, or `subindustry`, does not change any `quality_flag` to
+`OK`, and does not build `symbol_taxonomy.parquet`.
+
+Next valid implementation step is to manually review and approve a
+point-in-time taxonomy source, then run the artifact, contract, and coverage
+gates before any formula registration.

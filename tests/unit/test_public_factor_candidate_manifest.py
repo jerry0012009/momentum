@@ -187,3 +187,18 @@ def test_alpha101_indneutralize_rows_require_taxonomy_gate(rows: list[dict[str, 
         assert spec is not None, f"{factor_id} implemented without registry spec"
         assert spec.compute_scope == "panel"
         assert set(spec.required_columns) & TAXONOMY_GROUP_COLUMNS
+
+
+def test_indneutralize_contract_lists_current_manifest_blockers(rows: list[dict[str, str]]) -> None:
+    contract = (ROOT / "docs" / "factor_library" / "INDUSTRY_NEUTRALIZATION_DATA_CONTRACT.md").read_text()
+    blocked_ids = [
+        row["factor_id"]
+        for row in rows
+        if row["source_family"] == "alpha101"
+        and row["implementation_status"] == "skipped_missing_industry_neutralization_20260627"
+    ]
+
+    assert len(blocked_ids) == 18
+    assert "currently has 18 skipped Alpha101 rows" in contract
+    for factor_id in blocked_ids:
+        assert factor_id in contract

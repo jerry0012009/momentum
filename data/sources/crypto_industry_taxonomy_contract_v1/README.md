@@ -45,4 +45,6 @@ no reviewed rows.
 `industry_taxonomy_review_priority.csv` and
 `industry_taxonomy_review_priority_status.json` under factor diagnostics. It is
 only a manual review queue based on observed `quote_volume`; it must not be used
-to infer or fill taxonomy groups.
+to infer or fill taxonomy groups. The review queue may include CoinGecko mapping
+evidence and the Alpha101 IndNeutralize factor IDs blocked by the taxonomy
+contract, but those fields are context for reviewers, not approval.
