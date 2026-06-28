@@ -479,3 +479,86 @@ def compute_wq101_alpha52(bars: pd.DataFrame) -> pd.DataFrame:
     ret_mean_gap = (rolling_sum_wide(returns, 240) - rolling_sum_wide(returns, 20)) / 220
     result = -1 * (min_low_5 - min_low_5.shift(5)) * xs_rank(ret_mean_gap) * ts_rank_wide(volume, 5)
     return from_wide(result, "wq101_alpha52")
+
+
+def compute_wq101_alpha47(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#47: rank(1/close)*volume/adv20*high*rank(high-close)/(sum(high,5)/5)-rank(vwap-delay(vwap,5))."""
+    close = to_wide(bars, "close")
+    high = to_wide(bars, "high")
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    adv20 = rolling_mean_wide(volume, 20)
+    high_mean_5 = rolling_sum_wide(high, 5) / 5
+    part1 = xs_rank(1 / close.replace(0, np.nan)) * (volume / adv20.replace(0, np.nan)) * high * xs_rank(high - close)
+    result = (part1 / high_mean_5.replace(0, np.nan)) - xs_rank(vwap - vwap.shift(5))
+    return from_wide(result, "wq101_alpha47")
+
+
+def compute_wq101_alpha61(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#61: rank(vwap-ts_min(vwap,16)) < rank(corr(vwap,adv180,18))."""
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    adv180 = rolling_mean_wide(volume, 180)
+    part1 = xs_rank(vwap - rolling_min_wide(vwap, 16))
+    part2 = xs_rank(rolling_corr_wide(vwap, adv180, 18))
+    result = (part1 < part2).astype(float)
+    result[part1.isna() | part2.isna()] = np.nan
+    return from_wide(result, "wq101_alpha61")
+
+
+def compute_wq101_alpha65(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#65: (rank(corr(open*0.00817205+vwap*0.99182795,sum(adv60,9),6)) < rank(open-ts_min(open,14))) * -1."""
+    open_w = to_wide(bars, "open")
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    adv60 = rolling_mean_wide(volume, 60)
+    blended = open_w * 0.00817205 + vwap * (1 - 0.00817205)
+    part1 = xs_rank(rolling_corr_wide(blended, rolling_sum_wide(adv60, 9), 6))
+    part2 = xs_rank(open_w - rolling_min_wide(open_w, 14))
+    result = -1 * (part1 < part2).astype(float)
+    result[part1.isna() | part2.isna()] = np.nan
+    return from_wide(result, "wq101_alpha65")
+
+
+def compute_wq101_alpha68(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#68: (ts_rank(corr(rank(high),rank(adv15),9),14) < rank(delta(close*0.518371+low*0.481629,1))) * -1."""
+    close = to_wide(bars, "close")
+    high = to_wide(bars, "high")
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    adv15 = rolling_mean_wide(volume, 15)
+    part1 = ts_rank_wide(rolling_corr_wide(xs_rank(high), xs_rank(adv15), 9), 14)
+    blended = close * 0.518371 + low * (1 - 0.518371)
+    part2 = xs_rank(blended - blended.shift(1))
+    result = -1 * (part1 < part2).astype(float)
+    result[part1.isna() | part2.isna()] = np.nan
+    return from_wide(result, "wq101_alpha68")
+
+
+def compute_wq101_alpha74(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#74: (rank(corr(close,sum(adv30,37),15)) < rank(corr(rank(high*0.0261661+vwap*0.9738339),rank(volume),11))) * -1."""
+    close = to_wide(bars, "close")
+    high = to_wide(bars, "high")
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    adv30 = rolling_mean_wide(volume, 30)
+    blended = high * 0.0261661 + vwap * (1 - 0.0261661)
+    part1 = xs_rank(rolling_corr_wide(close, rolling_sum_wide(adv30, 37), 15))
+    part2 = xs_rank(rolling_corr_wide(xs_rank(blended), xs_rank(volume), 11))
+    result = -1 * (part1 < part2).astype(float)
+    result[part1.isna() | part2.isna()] = np.nan
+    return from_wide(result, "wq101_alpha74")
+
+
+def compute_wq101_alpha75(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#75: rank(corr(vwap,volume,4)) < rank(corr(rank(low),rank(adv50),12))."""
+    low = to_wide(bars, "low")
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    adv50 = rolling_mean_wide(volume, 50)
+    left = xs_rank(rolling_corr_wide(vwap, volume, 4))
+    right = xs_rank(rolling_corr_wide(xs_rank(low), xs_rank(adv50), 12))
+    left, right = left.align(right, join="inner", axis=None)
+    result = (left < right).astype(float)
+    result[left.isna() | right.isna()] = np.nan
+    return from_wide(result, "wq101_alpha75")
