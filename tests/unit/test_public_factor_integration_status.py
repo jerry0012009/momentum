@@ -22,15 +22,15 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     report = build_status_report()
 
     assert report["state"] == {
-        "registered_factors": 224,
-        "computed_factor_values": 224,
+        "registered_factors": 234,
+        "computed_factor_values": 234,
         "missing_factor_values": 0,
         "missing_input_factors": 0,
     }
 
     alpha101 = _family(report, "alpha101")
-    assert alpha101["manifest_total"] == 69
-    assert alpha101["accounted_non_skipped"] == 63
+    assert alpha101["manifest_total"] == 79
+    assert alpha101["accounted_non_skipped"] == 73
     assert alpha101["skipped"] == 6
     assert alpha101["registry_missing_non_skipped"] == 0
     assert alpha101["skipped_present_in_registry"] == 0
