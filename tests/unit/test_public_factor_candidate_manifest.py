@@ -18,6 +18,8 @@ MANIFEST = ROOT / "docs" / "factor_library" / "public_factor_candidate_manifest.
 SKIPPED_STATUSES = {
     "skipped_duplicate_20260627",
     "skipped_missing_industry_neutralization_20260627",
+    "skipped_missing_market_cap_20260628",
+    "skipped_low_coverage_20260628",
 }
 TAXONOMY_GROUP_COLUMNS = {"sector", "industry", "subindustry"}
 BACKFILL_STATUSES = {
@@ -34,6 +36,7 @@ BACKFILL_STATUSES = {
     "implemented_alpha101_panel_batch_08",
     "implemented_alpha101_panel_batch_09",
     "implemented_alpha101_panel_batch_10",
+    "implemented_alpha101_panel_batch_11",
 }
 
 REQUIRED_COLUMNS = [
@@ -124,8 +127,8 @@ def test_public_manifest_counts_and_batch_sizes(rows: list[dict[str, str]]) -> N
         family: sum(row["source_family"] == family for row in rows)
         for family in {"alpha101", "alpha158"}
     }
-    assert implemented_counts == {"alpha101": 83, "alpha158": 95}
-    assert total_counts == {"alpha101": 89, "alpha158": 101}
+    assert implemented_counts == {"alpha101": 87, "alpha158": 95}
+    assert total_counts == {"alpha101": 107, "alpha158": 101}
 
     batches: dict[str, int] = {}
     for row in rows:
@@ -133,8 +136,6 @@ def test_public_manifest_counts_and_batch_sizes(rows: list[dict[str, str]]) -> N
         if status.startswith("implemented_batch_"):
             batches[status] = batches.get(status, 0) + 1
         elif status in BACKFILL_STATUSES:
-            batches[status] = batches.get(status, 0) + 1
-        elif status in SKIPPED_STATUSES:
             batches[status] = batches.get(status, 0) + 1
 
     assert batches

@@ -358,6 +358,19 @@ def _max_wide(left: pd.DataFrame, right: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def _signed_power_wide(base: pd.DataFrame, exponent: pd.DataFrame) -> pd.DataFrame:
+    """WorldQuant signedpower(base, exponent) on aligned wide panels."""
+    base, exponent = base.align(exponent, join="inner", axis=None)
+    base_values = base.to_numpy(dtype=float)
+    exponent_values = exponent.to_numpy(dtype=float)
+    out = np.full(base_values.shape, np.nan, dtype=float)
+    finite = np.isfinite(base_values) & np.isfinite(exponent_values)
+    valid = finite & ((base_values != 0) | (exponent_values > 0))
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        out[valid] = np.sign(base_values[valid]) * np.power(np.abs(base_values[valid]), exponent_values[valid])
+    return pd.DataFrame(out, index=base.index, columns=base.columns)
+
+
 def compute_wq101_alpha32(bars: pd.DataFrame) -> pd.DataFrame:
     """WQ101 Alpha#32: scale(mean(close,7)-close) + 20*scale(corr(vwap,delay(close,5),230))."""
     close = to_wide(bars, "close")
@@ -707,6 +720,58 @@ def compute_wq101_alpha72(bars: pd.DataFrame) -> pd.DataFrame:
     result = left / right.replace(0, np.nan)
     result[left.isna() | right.isna()] = np.nan
     return from_wide(result, "wq101_alpha72")
+
+
+def compute_wq101_alpha73(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#73: negative max of two decayed rank branches using VWAP and open/low blend."""
+    open_w = to_wide(bars, "open")
+    low = to_wide(bars, "low")
+    vwap = _vwap_wide(bars)
+    left = xs_rank(decay_linear_wide(vwap - vwap.shift(5), 3))
+    blend = open_w * 0.147155 + low * (1 - 0.147155)
+    right_raw = ((blend - blend.shift(2)) / blend.replace(0, np.nan)) * -1
+    right = ts_rank_wide(decay_linear_wide(right_raw, 3), 17)
+    return from_wide(-1 * _max_wide(left, right), "wq101_alpha73")
+
+
+def compute_wq101_alpha81(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#81: -1 gate comparing ADV/VWAP ranked product with VWAP-volume rank correlation."""
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    adv10 = rolling_mean_wide(volume, 10)
+    left_corr = rolling_corr_wide(vwap, rolling_sum_wide(adv10, 50), 8)
+    product_input = xs_rank(xs_rank(left_corr).pow(4))
+    left = xs_rank(np.log(rolling_product_wide(product_input, 15).replace(0, np.nan)))
+    right = xs_rank(rolling_corr_wide(xs_rank(vwap), xs_rank(volume), 5))
+    left, right = left.align(right, join="inner", axis=None)
+    result = -1 * (left < right).astype(float)
+    result[left.isna() | right.isna()] = np.nan
+    return from_wide(result, "wq101_alpha81")
+
+
+def compute_wq101_alpha84(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#84: signedpower(ts_rank(vwap-ts_max(vwap,15),21), delta(close,5))."""
+    close = to_wide(bars, "close")
+    vwap = _vwap_wide(bars)
+    base = ts_rank_wide(vwap - rolling_max_wide(vwap, 15), 21)
+    exponent = close - close.shift(5)
+    return from_wide(_signed_power_wide(base, exponent), "wq101_alpha84")
+
+
+def compute_wq101_alpha98(bars: pd.DataFrame) -> pd.DataFrame:
+    """WQ101 Alpha#98: decayed VWAP/ADV correlation rank minus decayed open/ADV argmin rank."""
+    open_w = to_wide(bars, "open")
+    volume = to_wide(bars, "volume")
+    vwap = _vwap_wide(bars)
+    adv5 = rolling_mean_wide(volume, 5)
+    adv15 = rolling_mean_wide(volume, 15)
+    left = xs_rank(decay_linear_wide(rolling_corr_wide(vwap, rolling_sum_wide(adv5, 26), 5), 7))
+    right_corr = rolling_corr_wide(xs_rank(open_w), xs_rank(adv15), 21)
+    right = xs_rank(decay_linear_wide(ts_rank_wide(rolling_idxmin_wide(right_corr, 9), 7), 8))
+    left, right = left.align(right, join="inner", axis=None)
+    result = left - right
+    result[left.isna() | right.isna()] = np.nan
+    return from_wide(result, "wq101_alpha98")
 
 
 def compute_wq101_alpha33(bars: pd.DataFrame) -> pd.DataFrame:

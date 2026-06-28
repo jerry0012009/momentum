@@ -1532,6 +1532,39 @@ REGISTRY: list[FactorSpec] = [
         compute_scope="panel",
         panel_compute_fn=lambda bars: __import__('alpha101_panel_ops').compute_wq101_alpha72(bars),
     ),
+    # Public Alpha101 OHLCV/VWAP/ADV panel batch 11
+    FactorSpec(
+        factor_id="wq101_alpha73", family="wq101",
+        required_columns=["open", "low", "volume", "quote_volume"], lookback_window=26,
+        expected_direction="conditional",
+        notes="WorldQuant 101 Alpha#73: -max(rank(decay_linear(delta(vwap,5),3)),ts_rank(decay_linear(-delta(open/low blend,2)/blend,3),17))",
+        compute_scope="panel",
+        panel_compute_fn=lambda bars: __import__('alpha101_panel_ops').compute_wq101_alpha73(bars),
+    ),
+    FactorSpec(
+        factor_id="wq101_alpha81", family="wq101",
+        required_columns=["volume", "quote_volume"], lookback_window=82,
+        expected_direction="conditional",
+        notes="WorldQuant 101 Alpha#81: -1 boolean gate comparing ranked product of VWAP/adv10 correlation with VWAP-volume rank correlation",
+        compute_scope="panel",
+        panel_compute_fn=lambda bars: __import__('alpha101_panel_ops').compute_wq101_alpha81(bars),
+    ),
+    FactorSpec(
+        factor_id="wq101_alpha84", family="wq101",
+        required_columns=["close", "volume", "quote_volume"], lookback_window=35,
+        expected_direction="conditional",
+        notes="WorldQuant 101 Alpha#84: signedpower(ts_rank(vwap-ts_max(vwap,15),21),delta(close,5))",
+        compute_scope="panel",
+        panel_compute_fn=lambda bars: __import__('alpha101_panel_ops').compute_wq101_alpha84(bars),
+    ),
+    FactorSpec(
+        factor_id="wq101_alpha98", family="wq101",
+        required_columns=["open", "volume", "quote_volume"], lookback_window=55,
+        expected_direction="conditional",
+        notes="WorldQuant 101 Alpha#98: decayed rank of VWAP/sum(adv5) correlation minus decayed rank of argmin open/adv15 correlation",
+        compute_scope="panel",
+        panel_compute_fn=lambda bars: __import__('alpha101_panel_ops').compute_wq101_alpha98(bars),
+    ),
     # Public Alpha101 OHLCV/VWAP batch 01
     FactorSpec(
         factor_id="wq101_alpha6", family="wq101",
