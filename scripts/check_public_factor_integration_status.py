@@ -22,6 +22,7 @@ STATE = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "fac
 OUT_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_diagnostics"
 TAXONOMY_SOURCE = ROOT / "data" / "sources" / "crypto_industry_taxonomy_contract_v1" / "symbol_taxonomy.csv"
 TAXONOMY_ARTIFACT = ROOT / "data" / "cache" / "crypto_industry_taxonomy_contract_v1" / "symbol_taxonomy.parquet"
+TAXONOMY_PACKET_VALIDATION = OUT_DIR / "industry_taxonomy_review_packet_validation.json"
 CAP_ARTIFACT = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "market_cap_1h_aligned.parquet"
 CAP_CONTRACT_CHECK = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "market_cap_contract_check.json"
 CAP_QUALITY_REPORT = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "market_cap_quality_report.csv"
@@ -111,6 +112,56 @@ def load_state(path: Path = STATE) -> dict[str, object]:
         return json.load(handle)
 
 
+def summarize_taxonomy_packet_validation(path: Path = TAXONOMY_PACKET_VALIDATION) -> dict[str, object]:
+    """Return compact status for the current manual taxonomy review packet gate."""
+    if not path.exists():
+        return {
+            "packet_validation_path": str(path),
+            "packet_validation_exists": False,
+            "packet_validation_pass": False,
+            "packet_validation_blocker": "packet_validation_missing",
+            "packet_rows": 0,
+            "packet_approved_rows": 0,
+            "packet_approved_symbols": "",
+            "packet_approved_bar_count_share": None,
+            "packet_approved_quote_volume_share": None,
+            "packet_latest_bar_timestamp": "",
+            "packet_allow_no_ok": False,
+            "packet_csv": "",
+        }
+    try:
+        payload = json.loads(path.read_text())
+    except Exception as exc:
+        return {
+            "packet_validation_path": str(path),
+            "packet_validation_exists": True,
+            "packet_validation_pass": False,
+            "packet_validation_blocker": f"packet_validation_unreadable:{exc}",
+            "packet_rows": 0,
+            "packet_approved_rows": 0,
+            "packet_approved_symbols": "",
+            "packet_approved_bar_count_share": None,
+            "packet_approved_quote_volume_share": None,
+            "packet_latest_bar_timestamp": "",
+            "packet_allow_no_ok": False,
+            "packet_csv": "",
+        }
+    return {
+        "packet_validation_path": str(path),
+        "packet_validation_exists": True,
+        "packet_validation_pass": bool(payload.get("overall_pass", False)),
+        "packet_validation_blocker": str(payload.get("blocker", "")),
+        "packet_rows": int(payload.get("packet_rows", 0) or 0),
+        "packet_approved_rows": int(payload.get("approved_packet_rows", 0) or 0),
+        "packet_approved_symbols": str(payload.get("approved_symbols", "")),
+        "packet_approved_bar_count_share": payload.get("approved_bar_count_share"),
+        "packet_approved_quote_volume_share": payload.get("approved_quote_volume_share"),
+        "packet_latest_bar_timestamp": str(payload.get("latest_bar_timestamp", "")),
+        "packet_allow_no_ok": bool(payload.get("allow_no_ok", False)),
+        "packet_csv": str(payload.get("packet_csv", "")),
+    }
+
+
 def summarize_taxonomy_readiness(
     source_path: Path = TAXONOMY_SOURCE,
     artifact_path: Path = TAXONOMY_ARTIFACT,
@@ -150,6 +201,7 @@ def summarize_taxonomy_readiness(
         required_groups=set(required_groups),
         bars_path=DEFAULT_BARS,
     )
+    packet_validation = summarize_taxonomy_packet_validation()
 
     ok_rows = int(review_source.get("ok_row_count", 0))
     blocker = ""
@@ -178,6 +230,7 @@ def summarize_taxonomy_readiness(
         "source_ok_symbols_known_by_last_bar": int(review_source.get("ok_symbols_known_by_last_bar", 0) or 0),
         "source_ok_rows_known_after_last_bar": int(review_source.get("ok_rows_known_after_last_bar", 0) or 0),
         "source_ok_known_at_blocks_bars": bool(review_source.get("ok_known_at_blocks_bars", False)),
+        **packet_validation,
         "artifact_path": str(artifact_path),
         "artifact_exists": artifact_path.exists(),
         "contract_pass": contract_pass,
@@ -317,6 +370,8 @@ def main() -> int:
         "  taxonomy: "
         f"source_rows={taxonomy['source_rows']} "
         f"quality={taxonomy['source_quality_counts']} "
+        f"packet_pass={taxonomy['packet_validation_pass']} "
+        f"packet_blocker={taxonomy['packet_validation_blocker']} "
         f"artifact_exists={taxonomy['artifact_exists']} "
         f"ready={taxonomy['ready_for_indneutralize_unskip']} "
         f"blocker={taxonomy['blocker']}"

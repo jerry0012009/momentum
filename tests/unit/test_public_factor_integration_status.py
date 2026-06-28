@@ -78,6 +78,16 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert taxonomy["source_ok_symbols_known_by_last_bar"] == 0
     assert taxonomy["source_ok_rows_known_after_last_bar"] == 0
     assert taxonomy["source_ok_known_at_blocks_bars"] is False
+    assert taxonomy["packet_validation_exists"] is True
+    assert taxonomy["packet_validation_pass"] is False
+    assert taxonomy["packet_validation_blocker"] == "packet_has_no_ok_target_rows"
+    assert taxonomy["packet_rows"] == 12
+    assert taxonomy["packet_approved_rows"] == 0
+    assert taxonomy["packet_approved_symbols"] == ""
+    assert taxonomy["packet_approved_bar_count_share"] == 0.0
+    assert taxonomy["packet_approved_quote_volume_share"] == 0.0
+    assert taxonomy["packet_latest_bar_timestamp"] == "2026-06-13T00:00:00Z"
+    assert taxonomy["packet_allow_no_ok"] is False
     assert taxonomy["artifact_exists"] is False
     assert taxonomy["contract_pass"] is False
     assert taxonomy["coverage_pass"] is False
