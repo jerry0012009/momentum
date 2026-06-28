@@ -325,6 +325,30 @@ def _compute_q158_roc_20h(df: pd.DataFrame) -> pd.Series:
     return delay(c, 20) / c.replace(0, np.nan)
 
 
+def _compute_q158_ma_5h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 MA5: rolling mean close divided by current close."""
+    c = df["close"]
+    return rolling_mean(c, 5) / c.replace(0, np.nan)
+
+
+def _compute_q158_std_5h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 STD5: rolling close standard deviation divided by current close."""
+    c = df["close"]
+    return rolling_std(c, 5) / c.replace(0, np.nan)
+
+
+def _compute_q158_max_5h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 MAX5: rolling 5-bar high divided by current close."""
+    c = df["close"]
+    return rolling_max(df["high"], 5) / c.replace(0, np.nan)
+
+
+def _compute_q158_min_5h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 MIN5: rolling 5-bar low divided by current close."""
+    c = df["close"]
+    return rolling_min(df["low"], 5) / c.replace(0, np.nan)
+
+
 def _compute_q158_ma_20h(df: pd.DataFrame) -> pd.Series:
     """Alpha158 MA20: rolling mean close divided by current close."""
     c = df["close"]
@@ -1319,6 +1343,35 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="conditional",
         compute_fn=_compute_q158_roc_20h,
         notes="Alpha158 ROC20: Ref(close,20) / close; 1h adaptation of 20-bar rate-of-change ratio",
+    ),
+    # Public Alpha158 rolling price batch 11
+    FactorSpec(
+        factor_id="q158_ma_5h", family="alpha158_rolling_price",
+        required_columns=["close"], lookback_window=5,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_ma_5h,
+        notes="Alpha158 MA5: Mean(close,5) / close; 1h adaptation of short rolling average normalized by current close",
+    ),
+    FactorSpec(
+        factor_id="q158_std_5h", family="alpha158_rolling_price",
+        required_columns=["close"], lookback_window=5,
+        expected_direction="negative",
+        compute_fn=_compute_q158_std_5h,
+        notes="Alpha158 STD5: Std(close,5) / close; short rolling close dispersion normalized by current close",
+    ),
+    FactorSpec(
+        factor_id="q158_max_5h", family="alpha158_rolling_price",
+        required_columns=["high", "close"], lookback_window=5,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_max_5h,
+        notes="Alpha158 MAX5: Max(high,5) / close; short rolling high normalized by current close",
+    ),
+    FactorSpec(
+        factor_id="q158_min_5h", family="alpha158_rolling_price",
+        required_columns=["low", "close"], lookback_window=5,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_min_5h,
+        notes="Alpha158 MIN5: Min(low,5) / close; short rolling low normalized by current close",
     ),
     FactorSpec(
         factor_id="q158_ma_20h", family="alpha158_rolling_price",

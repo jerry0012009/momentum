@@ -377,6 +377,10 @@ FACTOR_NAMES: dict[str, tuple[str, str]] = {
     "q158_volume_ratio_2h": ("Alpha158 VOLUME2 Ratio", "Alpha158 前2期成交量/当前成交量"),
     "q158_volume_ratio_3h": ("Alpha158 VOLUME3 Ratio", "Alpha158 前3期成交量/当前成交量"),
     "q158_volume_ratio_4h": ("Alpha158 VOLUME4 Ratio", "Alpha158 前4期成交量/当前成交量"),
+    "q158_ma_5h": ("Alpha158 MA5 / Close", "Alpha158 5期均价/当前收盘价"),
+    "q158_std_5h": ("Alpha158 STD5 / Close", "Alpha158 5期价格标准差/当前收盘价"),
+    "q158_max_5h": ("Alpha158 MAX5 / Close", "Alpha158 5期最高价/当前收盘价"),
+    "q158_min_5h": ("Alpha158 MIN5 / Close", "Alpha158 5期最低价/当前收盘价"),
 }
 
 # Per-factor formula overrides
@@ -466,6 +470,10 @@ FACTOR_FORMULAS: dict[str, tuple[str, str]] = {
     "q158_volume_ratio_2h": ("Ref(volume, 2) / (volume + 1e-12)", "前2期成交量 / (当前成交量 + 1e-12)"),
     "q158_volume_ratio_3h": ("Ref(volume, 3) / (volume + 1e-12)", "前3期成交量 / (当前成交量 + 1e-12)"),
     "q158_volume_ratio_4h": ("Ref(volume, 4) / (volume + 1e-12)", "前4期成交量 / (当前成交量 + 1e-12)"),
+    "q158_ma_5h": ("Mean(close, 5) / close", "5期收盘均价 / 当前收盘价"),
+    "q158_std_5h": ("Std(close, 5) / close", "5期收盘价标准差 / 当前收盘价"),
+    "q158_max_5h": ("Max(high, 5) / close", "5期最高价 / 当前收盘价"),
+    "q158_min_5h": ("Min(low, 5) / close", "5期最低价 / 当前收盘价"),
 }
 
 # Per-factor known limitations
@@ -496,6 +504,10 @@ FACTOR_LIMITATIONS: dict[str, tuple[str, str]] = {
     "q158_volume_ratio_2h": ("Raw lagged volume ratio; can be unstable when current volume is tiny and may overlap with volume z-score/liquidity diagnostics.", "原始滞后成交量比率；当前成交量很小时可能不稳定，并可能与成交量Z分数/流动性诊断重叠。"),
     "q158_volume_ratio_3h": ("Raw lagged volume ratio; can be unstable when current volume is tiny and may overlap with volume z-score/liquidity diagnostics.", "原始滞后成交量比率；当前成交量很小时可能不稳定，并可能与成交量Z分数/流动性诊断重叠。"),
     "q158_volume_ratio_4h": ("Raw lagged volume ratio; can be unstable when current volume is tiny and may overlap with volume z-score/liquidity diagnostics.", "原始滞后成交量比率；当前成交量很小时可能不稳定，并可能与成交量Z分数/流动性诊断重叠。"),
+    "q158_ma_5h": ("Short rolling price average normalized by current close; high redundancy risk with short-horizon momentum and price-location factors.", "短周期滚动均价相对当前收盘价；与短周期动量和价格位置因子存在高冗余风险。"),
+    "q158_std_5h": ("Short rolling price dispersion; sensitive to intraday volatility spikes and low-liquidity bars.", "短周期价格离散度；对日内波动尖峰和低流动性K线敏感。"),
+    "q158_max_5h": ("Short rolling high normalized by current close; can overlap with breakout/range-position diagnostics.", "短周期最高价相对当前收盘价；可能与突破/区间位置诊断重叠。"),
+    "q158_min_5h": ("Short rolling low normalized by current close; can overlap with reversal/range-position diagnostics.", "短周期最低价相对当前收盘价；可能与反转/区间位置诊断重叠。"),
 }
 
 
