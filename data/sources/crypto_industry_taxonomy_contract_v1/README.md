@@ -39,6 +39,7 @@ python scripts/validate_crypto_industry_taxonomy_review_packet.py \
   --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
   --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet \
   --report-stem industry_taxonomy_review_batch_002_validation
+python scripts/build_crypto_industry_taxonomy_review_validation_rollup.py
 python scripts/apply_crypto_industry_taxonomy_review_packet.py \
   --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
   --packet-csv research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_review_batch_001.csv \
@@ -99,3 +100,6 @@ reviewed packets. It fails by default when no rows are marked
 blank packet before manual review is complete. Use `--report-stem` to write
 batch-specific reports such as `industry_taxonomy_review_batch_002_validation`
 without replacing the default current-packet gate report.
+`build_crypto_industry_taxonomy_review_validation_rollup.py` summarizes all
+batch-specific validation reports into JSON/CSV so reviewers can see which
+packets are ready to apply and which remain blocked.
