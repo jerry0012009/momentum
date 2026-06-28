@@ -46,6 +46,12 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert "wq101_alpha58_indneutralize_skipped" in skipped_ids
     assert "wq101_alpha56_cap_skipped" in skipped_ids
     assert "q158_roc_5h_skipped" in skipped_ids
+    cap_blocked = [
+        row for row in report["skipped_rows"]
+        if row["source_family"] == "alpha101" and row["cap_blocker"]
+    ]
+    assert [row["factor_id"] for row in cap_blocked] == ["wq101_alpha56_cap_skipped"]
+    assert cap_blocked[0]["ready_for_unskip"] is False
     alpha101_taxonomy_blocked = [
         row for row in report["skipped_rows"]
         if row["source_family"] == "alpha101" and row["taxonomy_blocker"]
@@ -76,6 +82,19 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert taxonomy["blocked_alpha101_factor_count"] == 18
     assert taxonomy["required_taxonomy_groups"] == "industry|sector|subindustry"
 
+    cap = report["cap_readiness"]
+    assert cap["artifact_exists"] is True
+    assert cap["contract_check_exists"] is True
+    assert cap["contract_pass"] is False
+    assert cap["ready_for_cap_unskip"] is False
+    assert cap["blocker"] == "cap_contract_failed"
+    assert cap["overall_coverage"] == "89.0% (FAIL)"
+    assert cap["symbol_coverage_summary"] == "234 symbols >= 90%, 32 symbols < 80%"
+    assert cap["low_coverage_symbol_count"] == 31
+    assert "EDUUSDT" in cap["low_coverage_symbols"]
+    assert cap["blocked_alpha101_factor_count"] == 1
+    assert cap["blocked_alpha101_factor_ids"] == "wq101_alpha56_cap_skipped"
+
 
 def test_public_factor_integration_status_writes_reports(tmp_path: Path):
     report = build_status_report()
@@ -91,5 +110,5 @@ def test_committed_public_factor_integration_status_is_current():
     current = build_status_report()
     committed = json.loads((OUT_DIR / "public_factor_integration_status.json").read_text())
 
-    for key in ["state", "family_summary", "skipped_rows", "taxonomy_readiness"]:
+    for key in ["state", "family_summary", "skipped_rows", "taxonomy_readiness", "cap_readiness"]:
         assert committed[key] == current[key]

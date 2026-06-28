@@ -22,8 +22,12 @@ STATE = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "fac
 OUT_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_diagnostics"
 TAXONOMY_SOURCE = ROOT / "data" / "sources" / "crypto_industry_taxonomy_contract_v1" / "symbol_taxonomy.csv"
 TAXONOMY_ARTIFACT = ROOT / "data" / "cache" / "crypto_industry_taxonomy_contract_v1" / "symbol_taxonomy.parquet"
+CAP_ARTIFACT = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "market_cap_1h_aligned.parquet"
+CAP_CONTRACT_CHECK = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "market_cap_contract_check.json"
+CAP_QUALITY_REPORT = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "market_cap_quality_report.csv"
 SKIPPED_PREFIX = "skipped_"
 TAXONOMY_GROUP_COLUMNS = {"sector", "industry", "subindustry"}
+CAP_COLUMNS = {"cap"}
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from factor_formula_registry import REGISTRY_BY_ID  # noqa: E402
@@ -45,6 +49,16 @@ def taxonomy_groups_for_row(row: dict[str, str]) -> list[str]:
         if col.strip()
     }
     return sorted(required_columns & TAXONOMY_GROUP_COLUMNS)
+
+
+def cap_required_for_row(row: dict[str, str]) -> bool:
+    """Return whether a skipped row needs the market-cap contract artifact."""
+    required_columns = {
+        col.strip()
+        for col in row.get("required_columns", "").split("|")
+        if col.strip()
+    }
+    return bool(required_columns & CAP_COLUMNS)
 
 
 def summarize_manifest(rows: list[dict[str, str]]) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
@@ -86,6 +100,7 @@ def summarize_manifest(rows: list[dict[str, str]]) -> tuple[list[dict[str, objec
                 "required_ops": row["required_ops"],
                 "taxonomy_required_groups": "|".join(taxonomy_groups),
                 "taxonomy_blocker": bool(taxonomy_groups),
+                "cap_blocker": cap_required_for_row(row),
                 "ready_for_unskip": False,
             })
     return summary, skipped_rows
@@ -166,6 +181,70 @@ def summarize_taxonomy_readiness(
     }
 
 
+def _load_cap_contract_status(path: Path = CAP_CONTRACT_CHECK) -> tuple[bool, dict[str, str], str]:
+    if not path.exists():
+        return False, {}, f"contract_check_missing:{path}"
+    try:
+        payload = json.loads(path.read_text())
+    except Exception as exc:
+        return False, {}, f"contract_check_unreadable:{exc}"
+    checks = payload.get("checks", [])
+    details = {str(row.get("check")): str(row.get("detail", "")) for row in checks}
+    return bool(payload.get("overall_pass")), details, ""
+
+
+def summarize_cap_readiness(
+    artifact_path: Path = CAP_ARTIFACT,
+    contract_check_path: Path = CAP_CONTRACT_CHECK,
+    quality_report_path: Path = CAP_QUALITY_REPORT,
+    skipped_rows: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    cap_skipped = [
+        row for row in (skipped_rows or [])
+        if row.get("source_family") == "alpha101" and row.get("cap_blocker")
+    ]
+    contract_pass, contract_details, contract_error = _load_cap_contract_status(contract_check_path)
+
+    low_coverage_symbols = ""
+    low_coverage_symbol_count = 0
+    if quality_report_path.exists():
+        try:
+            quality = pd.read_csv(quality_report_path)
+            if {"symbol", "cap_quality_status"}.issubset(quality.columns):
+                low = quality[quality["cap_quality_status"].astype(str) == "LOW_COVERAGE"]
+                low_coverage_symbol_count = int(len(low))
+                low_coverage_symbols = "|".join(low["symbol"].astype(str).tolist())
+        except Exception as exc:
+            low_coverage_symbols = f"quality_report_unreadable:{exc}"
+
+    if not artifact_path.exists():
+        blocker = "cap_artifact_missing"
+    elif contract_error:
+        blocker = contract_error
+    elif not contract_pass:
+        blocker = "cap_contract_failed"
+    else:
+        blocker = ""
+
+    return {
+        "artifact_path": str(artifact_path),
+        "artifact_exists": artifact_path.exists(),
+        "contract_check_path": str(contract_check_path),
+        "contract_check_exists": contract_check_path.exists(),
+        "contract_pass": contract_pass,
+        "overall_coverage": contract_details.get("overall_coverage", ""),
+        "symbol_coverage_summary": contract_details.get("symbol_coverage_summary", ""),
+        "quality_report_path": str(quality_report_path),
+        "quality_report_exists": quality_report_path.exists(),
+        "low_coverage_symbol_count": low_coverage_symbol_count,
+        "low_coverage_symbols": low_coverage_symbols,
+        "ready_for_cap_unskip": artifact_path.exists() and contract_pass,
+        "blocker": blocker,
+        "blocked_alpha101_factor_count": len(cap_skipped),
+        "blocked_alpha101_factor_ids": "|".join(row["factor_id"] for row in cap_skipped),
+    }
+
+
 def build_status_report(
     manifest_path: Path = MANIFEST,
     state_path: Path = STATE,
@@ -186,6 +265,7 @@ def build_status_report(
         "family_summary": family_summary,
         "skipped_rows": skipped_rows,
         "taxonomy_readiness": summarize_taxonomy_readiness(skipped_rows=skipped_rows),
+        "cap_readiness": summarize_cap_readiness(skipped_rows=skipped_rows),
     }
 
 
@@ -230,6 +310,15 @@ def main() -> int:
         f"artifact_exists={taxonomy['artifact_exists']} "
         f"ready={taxonomy['ready_for_indneutralize_unskip']} "
         f"blocker={taxonomy['blocker']}"
+    )
+    cap = report["cap_readiness"]
+    print(
+        "  cap: "
+        f"artifact_exists={cap['artifact_exists']} "
+        f"contract_pass={cap['contract_pass']} "
+        f"ready={cap['ready_for_cap_unskip']} "
+        f"blocker={cap['blocker']} "
+        f"coverage={cap['overall_coverage']}"
     )
     out_json, out_summary, out_skipped = write_status_report(report, Path(args.out_dir))
     print(f"Saved: {out_json}")
