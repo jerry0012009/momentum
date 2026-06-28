@@ -393,6 +393,10 @@ FACTOR_NAMES: dict[str, tuple[str, str]] = {
     "q158_std_60h": ("Alpha158 STD60 / Close", "Alpha158 60期价格标准差/当前收盘价"),
     "q158_max_60h": ("Alpha158 MAX60 / Close", "Alpha158 60期最高价/当前收盘价"),
     "q158_min_60h": ("Alpha158 MIN60 / Close", "Alpha158 60期最低价/当前收盘价"),
+    "q158_rsv_30h": ("Alpha158 RSV30 Price Position", "Alpha158 30期RSV价格位置"),
+    "q158_qtlu_30h": ("Alpha158 QTLU30 / Close", "Alpha158 30期上分位价/当前收盘价"),
+    "q158_qtld_30h": ("Alpha158 QTLD30 / Close", "Alpha158 30期下分位价/当前收盘价"),
+    "q158_rank_close_30h": ("Alpha158 RANK30 Close", "Alpha158 30期收盘价时序排名"),
 }
 
 # Per-factor formula overrides
@@ -498,6 +502,10 @@ FACTOR_FORMULAS: dict[str, tuple[str, str]] = {
     "q158_std_60h": ("Std(close, 60) / close", "60期收盘价标准差 / 当前收盘价"),
     "q158_max_60h": ("Max(high, 60) / close", "60期最高价 / 当前收盘价"),
     "q158_min_60h": ("Min(low, 60) / close", "60期最低价 / 当前收盘价"),
+    "q158_rsv_30h": ("(close - Min(low, 30)) / (Max(high, 30) - Min(low, 30) + eps)", "(收盘价 - 30期最低价) / (30期最高价 - 30期最低价 + eps)"),
+    "q158_qtlu_30h": ("Quantile(close, 30, 0.8) / close", "30期收盘价80%分位数 / 当前收盘价"),
+    "q158_qtld_30h": ("Quantile(close, 30, 0.2) / close", "30期收盘价20%分位数 / 当前收盘价"),
+    "q158_rank_close_30h": ("Rank(close, 30)", "当前收盘价在30期窗口内的百分位排名"),
 }
 
 # Per-factor known limitations
@@ -544,6 +552,10 @@ FACTOR_LIMITATIONS: dict[str, tuple[str, str]] = {
     "q158_std_60h": ("Medium-long rolling price dispersion; sensitive to regime shifts and long volatility clustering.", "中长周期价格离散度；对状态切换和长周期波动聚集敏感。"),
     "q158_max_60h": ("Medium-long rolling high normalized by current close; can overlap with breakout/range-position diagnostics.", "中长周期最高价相对当前收盘价；可能与突破/区间位置诊断重叠。"),
     "q158_min_60h": ("Medium-long rolling low normalized by current close; can overlap with reversal/range-position diagnostics.", "中长周期最低价相对当前收盘价；可能与反转/区间位置诊断重叠。"),
+    "q158_rsv_30h": ("Medium-window range position; can flip interpretation between breakout continuation and overbought reversal.", "中周期区间位置；在突破延续和超买反转之间可能出现方向解释切换。"),
+    "q158_qtlu_30h": ("Medium-window upper quantile normalized by current close; overlaps with rolling high and trend diagnostics.", "中周期上分位价相对当前收盘价；与滚动高点和趋势诊断可能重叠。"),
+    "q158_qtld_30h": ("Medium-window lower quantile normalized by current close; overlaps with rolling low and reversal diagnostics.", "中周期下分位价相对当前收盘价；与滚动低点和反转诊断可能重叠。"),
+    "q158_rank_close_30h": ("Medium-window time-series rank; direction depends on continuation versus mean-reversion regime.", "中周期时序排名；方向取决于延续或均值回归状态。"),
 }
 
 

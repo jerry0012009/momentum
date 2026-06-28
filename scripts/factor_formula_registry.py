@@ -147,6 +147,13 @@ def _compute_q158_rsv_20h(df: pd.DataFrame) -> pd.Series:
     return (df["close"] - ll) / (hh - ll + 1e-12)
 
 
+def _compute_q158_rsv_30h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 RSV30: (close - LL30) / (HH30 - LL30 + eps)."""
+    hh = rolling_max(df["high"], 30)
+    ll = rolling_min(df["low"], 30)
+    return (df["close"] - ll) / (hh - ll + 1e-12)
+
+
 def _compute_q158_open_close_0h(df: pd.DataFrame) -> pd.Series:
     """Alpha158 OPEN0: current open divided by current close."""
     return df["open"] / df["close"].replace(0, np.nan)
@@ -253,15 +260,32 @@ def _compute_q158_qtlu_20h(df: pd.DataFrame) -> pd.Series:
     return rolling_quantile(c, 20, 0.8) / c.replace(0, np.nan)
 
 
+def _compute_q158_qtlu_30h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 QTLU30: Quantile(close, 30, 0.8) / close."""
+    c = df["close"]
+    return rolling_quantile(c, 30, 0.8) / c.replace(0, np.nan)
+
+
 def _compute_q158_qtld_20h(df: pd.DataFrame) -> pd.Series:
     """Alpha158 QTLD20: Quantile(close, 20, 0.2) / close."""
     c = df["close"]
     return rolling_quantile(c, 20, 0.2) / c.replace(0, np.nan)
 
 
+def _compute_q158_qtld_30h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 QTLD30: Quantile(close, 30, 0.2) / close."""
+    c = df["close"]
+    return rolling_quantile(c, 30, 0.2) / c.replace(0, np.nan)
+
+
 def _compute_q158_rank_close_20h(df: pd.DataFrame) -> pd.Series:
     """Alpha158 RANK20: percentile rank of close within the past 20 bars."""
     return ts_rank(df["close"], 20)
+
+
+def _compute_q158_rank_close_30h(df: pd.DataFrame) -> pd.Series:
+    """Alpha158 RANK30: percentile rank of close within the past 30 bars."""
+    return ts_rank(df["close"], 30)
 
 
 def _compute_q158_cntp_20h(df: pd.DataFrame) -> pd.Series:
@@ -1178,6 +1202,14 @@ REGISTRY: list[FactorSpec] = [
         compute_fn=_compute_q158_rsv_20h,
         notes="Alpha158 RSV20: (close - Min(low,20)) / (Max(high,20) - Min(low,20) + eps); 1h adaptation of rolling price position",
     ),
+    # Public Alpha158 rolling position batch 15
+    FactorSpec(
+        factor_id="q158_rsv_30h", family="alpha158_rolling",
+        required_columns=["high", "low", "close"], lookback_window=30,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_rsv_30h,
+        notes="Alpha158 RSV30: (close - Min(low,30)) / (Max(high,30) - Min(low,30) + eps); 1h adaptation of medium rolling price position",
+    ),
     FactorSpec(
         factor_id="q158_open_close_0h", family="alpha158_price",
         required_columns=["open", "close"], lookback_window=1,
@@ -1331,6 +1363,13 @@ REGISTRY: list[FactorSpec] = [
         notes="Alpha158 QTLU20: Quantile(close,20,0.8) / close; 1h adaptation of upper rolling close quantile",
     ),
     FactorSpec(
+        factor_id="q158_qtlu_30h", family="alpha158_rolling",
+        required_columns=["close"], lookback_window=30,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_qtlu_30h,
+        notes="Alpha158 QTLU30: Quantile(close,30,0.8) / close; 1h adaptation of medium upper rolling close quantile",
+    ),
+    FactorSpec(
         factor_id="q158_qtld_20h", family="alpha158_rolling",
         required_columns=["close"], lookback_window=20,
         expected_direction="conditional",
@@ -1338,11 +1377,25 @@ REGISTRY: list[FactorSpec] = [
         notes="Alpha158 QTLD20: Quantile(close,20,0.2) / close; 1h adaptation of lower rolling close quantile",
     ),
     FactorSpec(
+        factor_id="q158_qtld_30h", family="alpha158_rolling",
+        required_columns=["close"], lookback_window=30,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_qtld_30h,
+        notes="Alpha158 QTLD30: Quantile(close,30,0.2) / close; 1h adaptation of medium lower rolling close quantile",
+    ),
+    FactorSpec(
         factor_id="q158_rank_close_20h", family="alpha158_rolling",
         required_columns=["close"], lookback_window=20,
         expected_direction="conditional",
         compute_fn=_compute_q158_rank_close_20h,
         notes="Alpha158 RANK20: Rank(close,20); current close percentile within the past 20 one-hour bars",
+    ),
+    FactorSpec(
+        factor_id="q158_rank_close_30h", family="alpha158_rolling",
+        required_columns=["close"], lookback_window=30,
+        expected_direction="conditional",
+        compute_fn=_compute_q158_rank_close_30h,
+        notes="Alpha158 RANK30: Rank(close,30); current close percentile within the past 30 one-hour bars",
     ),
     FactorSpec(
         factor_id="q158_cntp_20h", family="alpha158_rolling",
