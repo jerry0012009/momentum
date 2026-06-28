@@ -131,6 +131,13 @@ For Alpha101 / Alpha158 intake, every candidate should record formula source, fi
 
 公开因子库扩展先看这个紧凑 manifest。Alpha101 / Alpha158 候选必须记录公式来源、字段映射、所需 operator、计算范围、时间尺度映射、方向语义、实现状态，以及无法实现原因。
 
+Alpha101 formulas that require `IndNeutralize(..., IndClass.*)` are blocked
+until the industry-neutralization data contract is satisfied:
+
+- `docs/factor_library/INDUSTRY_NEUTRALIZATION_DATA_CONTRACT.md`
+
+需要 `IndNeutralize(..., IndClass.*)` 的 Alpha101 公式，在行业/板块中性化数据契约满足前保持 skipped，不要用临时 crypto 分桶或时间序列去均值替代。
+
 Manifest status rules:
 
 - Implemented rows use `implemented_batch_*`, `existing_*_backfill_*`, or `already_registered`; they must have a registry `FactorSpec`, no `skip_reason`, and are included in factor-value / intake / post-intake QA factor ID lists.

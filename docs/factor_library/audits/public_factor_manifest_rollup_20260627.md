@@ -78,7 +78,9 @@ factor-value and post-intake integrity factor ID lists.
 The `skipped_missing_industry_neutralization_20260627` rows are Alpha101
 formulas whose published definitions require `IndNeutralize(..., IndClass.*)`.
 They are blocked until the project has an approved crypto sector/industry
-taxonomy and reusable neutralization operator:
+taxonomy and reusable neutralization operator. The data-source and operator
+requirements are now recorded in
+`docs/factor_library/INDUSTRY_NEUTRALIZATION_DATA_CONTRACT.md`:
 
 - `wq101_alpha58_indneutralize_skipped`
 - `wq101_alpha59_indneutralize_skipped`
@@ -163,3 +165,8 @@ batch, run only missing or named-factor workflow steps, and require one manifest
 row per candidate before implementation. If a formula needs a new operator, add
 one reusable operator in the existing operator layer and keep using the existing
 intake and post-intake workflow.
+
+For the remaining Alpha101 `IndNeutralize(..., IndClass.*)` formulas, the next
+valid step is not formula registration. First satisfy the industry
+neutralization data contract with reviewed point-in-time sector, industry, and
+subindustry membership plus one reusable panel neutralization operator.
