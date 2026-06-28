@@ -48,9 +48,10 @@ no reviewed rows.
 
 `build_crypto_industry_taxonomy_review_priority.py` writes
 `industry_taxonomy_review_priority.csv` and
-`industry_taxonomy_review_priority_status.json` under factor diagnostics. It is
-only a manual review queue based on observed `quote_volume`; it must not be used
-to infer or fill taxonomy groups. The review queue may include CoinGecko mapping
+`industry_taxonomy_review_priority_status.json` under factor diagnostics, plus
+`industry_taxonomy_review_batch_plan.csv` for manual review batching. It is only
+a manual review queue based on observed `quote_volume`; it must not be used to
+infer or fill taxonomy groups. The review queue may include CoinGecko mapping
 evidence, optional cached CoinGecko category evidence, and the Alpha101
 IndNeutralize factor IDs blocked by the taxonomy contract, but those fields are
 context for reviewers, not approval. Category evidence fetches are optional and
@@ -60,4 +61,5 @@ approved `quality_flag == OK` rows with all group fields filled. That preview is
 not a substitute for the parquet artifact, contract check, or coverage gate. It
 also reports whether review rows are `known_at` before the latest evaluated bar;
 rows known after the evaluation window cannot cover that window under the
-point-in-time join rule.
+point-in-time join rule. Review batches are work planning only; they do not
+approve taxonomy rows.

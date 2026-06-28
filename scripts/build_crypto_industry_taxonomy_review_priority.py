@@ -27,6 +27,7 @@ DEFAULT_COINGECKO_MAP = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract
 DEFAULT_PUBLIC_MANIFEST = ROOT / "docs" / "factor_library" / "public_factor_candidate_manifest.csv"
 DEFAULT_OUT_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_diagnostics"
 DEFAULT_COINGECKO_CATEGORY_EVIDENCE = DEFAULT_OUT_DIR / "industry_taxonomy_coingecko_category_evidence.csv"
+DEFAULT_REVIEW_BATCH_SIZE = 12
 GROUP_COLUMNS = ["sector", "industry", "subindustry"]
 SKIPPED_INDUSTRY_STATUS = "skipped_missing_industry_neutralization_20260627"
 COINGECKO_COIN_URL = "https://api.coingecko.com/api/v3/coins/{coingecko_id}"
@@ -76,6 +77,26 @@ def _require_columns(df: pd.DataFrame, required: set[str], name: str) -> None:
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"{name} missing required columns: {sorted(missing)}")
+
+
+def _empty_batch_plan_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "review_batch_id",
+            "review_rank_start",
+            "review_rank_end",
+            "symbol_count",
+            "symbols",
+            "batch_bar_count",
+            "batch_bar_count_share",
+            "cumulative_bar_count_share",
+            "batch_quote_volume_sum",
+            "batch_quote_volume_share",
+            "cumulative_quote_volume_share",
+            "contains_98pct_bar_gate",
+            "review_batch_note",
+        ]
+    )
 
 
 def summarize_bars_by_symbol(bars: pd.DataFrame) -> pd.DataFrame:
@@ -404,6 +425,50 @@ def summarize_review_temporal_alignment(
     }
 
 
+def build_review_batch_plan(priority: pd.DataFrame, batch_size: int = DEFAULT_REVIEW_BATCH_SIZE) -> pd.DataFrame:
+    """Chunk review priority rows into manual batches without approving rows."""
+    _require_columns(
+        priority,
+        {
+            "review_priority_rank",
+            "symbol",
+            "bar_count",
+            "bar_count_share",
+            "quote_volume_sum",
+            "quote_volume_share",
+            "coverage_gate_98_reached_here",
+        },
+        "priority",
+    )
+    if batch_size < 1:
+        raise ValueError("batch_size must be >= 1")
+    if priority.empty:
+        return _empty_batch_plan_frame()
+
+    work = priority.sort_values("review_priority_rank", kind="mergesort").reset_index(drop=True).copy()
+    work["review_batch_id"] = (work.index // int(batch_size)) + 1
+    work["_cumulative_bar_count_share"] = work["bar_count_share"].cumsum()
+    work["_cumulative_quote_volume_share"] = work["quote_volume_share"].cumsum()
+    rows = []
+    for batch_id, group in work.groupby("review_batch_id", sort=True):
+        rows.append({
+            "review_batch_id": int(batch_id),
+            "review_rank_start": int(group["review_priority_rank"].min()),
+            "review_rank_end": int(group["review_priority_rank"].max()),
+            "symbol_count": int(len(group)),
+            "symbols": "|".join(group["symbol"].astype(str).tolist()),
+            "batch_bar_count": int(group["bar_count"].sum()),
+            "batch_bar_count_share": float(group["bar_count_share"].sum()),
+            "cumulative_bar_count_share": float(group["_cumulative_bar_count_share"].iloc[-1]),
+            "batch_quote_volume_sum": float(group["quote_volume_sum"].sum()),
+            "batch_quote_volume_share": float(group["quote_volume_share"].sum()),
+            "cumulative_quote_volume_share": float(group["_cumulative_quote_volume_share"].iloc[-1]),
+            "contains_98pct_bar_gate": bool(group["coverage_gate_98_reached_here"].any()),
+            "review_batch_note": "manual_review_only; does_not_approve_or_fill_taxonomy",
+        })
+    return pd.DataFrame(rows, columns=_empty_batch_plan_frame().columns)
+
+
 def build_review_priority(
     taxonomy: pd.DataFrame,
     bars: pd.DataFrame,
@@ -607,24 +672,29 @@ def build_priority_from_paths(
 
 def write_priority_reports(
     priority: pd.DataFrame,
+    batch_plan: pd.DataFrame,
     summary: dict[str, object],
     out_dir: Path,
     taxonomy_csv: Path,
     bars_path: Path,
-) -> tuple[Path, Path]:
+) -> tuple[Path, Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
+    out_json = out_dir / "industry_taxonomy_review_priority_status.json"
+    out_csv = out_dir / "industry_taxonomy_review_priority.csv"
+    out_batch_csv = out_dir / "industry_taxonomy_review_batch_plan.csv"
     result = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "taxonomy_csv": str(taxonomy_csv),
         "bars_path": str(bars_path),
+        "priority_csv": str(out_csv),
+        "batch_plan_csv": str(out_batch_csv),
         "summary": summary,
-        "note": "Review priority only; CoinGecko mapping is evidence, not approval. No taxonomy groups are inferred or filled.",
+        "note": "Review priority only; CoinGecko mapping and batch plans are evidence, not approval. No taxonomy groups are inferred or filled.",
     }
-    out_json = out_dir / "industry_taxonomy_review_priority_status.json"
-    out_csv = out_dir / "industry_taxonomy_review_priority.csv"
     out_json.write_text(json.dumps(result, indent=2, default=str) + "\n")
     priority.to_csv(out_csv, index=False)
-    return out_json, out_csv
+    batch_plan.to_csv(out_batch_csv, index=False)
+    return out_json, out_csv, out_batch_csv
 
 
 def main() -> int:
@@ -638,6 +708,7 @@ def main() -> int:
     parser.add_argument("--category-fetch-delay", type=float, default=6.5, help="Seconds between CoinGecko category requests")
     parser.add_argument("--category-fetch-limit", type=int, default=None, help="Optional max CoinGecko ids to fetch this run")
     parser.add_argument("--force-category-refresh", action="store_true", help="Refetch CoinGecko categories even when cached OK evidence exists")
+    parser.add_argument("--review-batch-size", type=int, default=DEFAULT_REVIEW_BATCH_SIZE, help="Manual taxonomy review symbols per batch")
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR), help="Output diagnostics directory")
     args = parser.parse_args()
 
@@ -685,7 +756,24 @@ def main() -> int:
         print(f"ERROR: {exc}", flush=True)
         return 1
 
-    out_json, out_csv = write_priority_reports(priority, summary, out_dir, taxonomy_csv, bars_path)
+    try:
+        batch_plan = build_review_batch_plan(priority, batch_size=args.review_batch_size)
+    except Exception as exc:
+        print(f"ERROR: {exc}", flush=True)
+        return 1
+    summary["review_batch_size"] = int(args.review_batch_size)
+    summary["review_batch_count"] = int(len(batch_plan))
+    gate_batches = batch_plan[batch_plan["contains_98pct_bar_gate"]] if not batch_plan.empty else pd.DataFrame()
+    summary["review_batch_id_to_98pct_bar_coverage"] = int(gate_batches.iloc[0]["review_batch_id"]) if len(gate_batches) else 0
+
+    out_json, out_csv, out_batch_csv = write_priority_reports(
+        priority,
+        batch_plan,
+        summary,
+        out_dir,
+        taxonomy_csv,
+        bars_path,
+    )
     print(f"  rows: {summary['row_count']}")
     print(f"  symbols_needing_review: {summary['symbols_needing_review']}")
     print(f"  symbols_with_coingecko_mapping: {summary['symbols_with_coingecko_mapping']}")
@@ -697,9 +785,13 @@ def main() -> int:
     print(f"  rank_to_98pct_bar_coverage: {summary['review_priority_rank_to_98pct_bar_coverage']}")
     print(f"  review_ok_full_group_coverage_rate: {summary['review_ok_full_group_coverage_rate']:.4f}")
     print(f"  review_ok_bar_rows_remaining_to_98pct: {summary['review_ok_bar_rows_remaining_to_98pct']}")
+    print(f"  review_batch_size: {summary['review_batch_size']}")
+    print(f"  review_batch_count: {summary['review_batch_count']}")
+    print(f"  batch_to_98pct_bar_coverage: {summary['review_batch_id_to_98pct_bar_coverage']}")
     print("  note: no taxonomy groups were inferred or filled")
     print(f"Saved: {out_json}")
     print(f"Saved: {out_csv}")
+    print(f"Saved: {out_batch_csv}")
     return 0
 
 

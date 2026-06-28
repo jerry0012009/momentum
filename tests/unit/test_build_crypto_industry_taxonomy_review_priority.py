@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 from build_crypto_industry_taxonomy_review_priority import (  # noqa: E402
+    build_review_batch_plan,
     build_review_priority,
     fetch_coingecko_category_evidence,
     load_optional_coingecko_map,
@@ -152,6 +153,30 @@ def test_review_priority_ranks_by_quote_volume_and_marks_actions():
     assert summary["taxonomy_known_at_blocks_current_bars"] is True
     assert summary["taxonomy_rows_known_by_last_bar"] == 0
     assert summary["taxonomy_rows_known_after_last_bar"] == 3
+
+
+def test_review_batch_plan_chunks_priority_without_approval():
+    priority, _summary = build_review_priority(_taxonomy(), _bars())
+
+    plan = build_review_batch_plan(priority, batch_size=2)
+
+    assert plan["review_batch_id"].tolist() == [1, 2]
+    assert plan["review_rank_start"].tolist() == [1, 3]
+    assert plan["review_rank_end"].tolist() == [2, 4]
+    assert plan["symbol_count"].tolist() == [2, 2]
+    assert plan["symbols"].tolist() == ["BBBUSDT|AAAUSDT", "DDDUSDT|CCCUSDT"]
+    assert plan["batch_bar_count"].tolist() == [3, 3]
+    assert plan["batch_bar_count_share"].tolist() == pytest.approx([0.5, 0.5])
+    assert plan["cumulative_bar_count_share"].tolist() == pytest.approx([0.5, 1.0])
+    assert plan["contains_98pct_bar_gate"].tolist() == [False, True]
+    assert all("manual_review_only" in note for note in plan["review_batch_note"])
+
+
+def test_review_batch_plan_rejects_invalid_batch_size():
+    priority, _summary = build_review_priority(_taxonomy(), _bars())
+
+    with pytest.raises(ValueError, match="batch_size"):
+        build_review_batch_plan(priority, batch_size=0)
 
 
 def test_ok_review_coverage_preview_counts_only_ok_full_group_rows():
@@ -342,9 +367,11 @@ def test_missing_quote_volume_column_fails():
 
 def test_priority_reports_are_written(tmp_path: Path):
     priority, summary = build_review_priority(_taxonomy(), _bars())
+    batch_plan = build_review_batch_plan(priority, batch_size=2)
 
-    out_json, out_csv = write_priority_reports(
+    out_json, out_csv, out_batch_csv = write_priority_reports(
         priority,
+        batch_plan,
         summary,
         tmp_path / "out",
         tmp_path / "symbol_taxonomy.csv",
@@ -353,4 +380,7 @@ def test_priority_reports_are_written(tmp_path: Path):
 
     assert out_json.exists()
     assert out_csv.exists()
-    assert "No taxonomy groups are inferred" in out_json.read_text()
+    assert out_batch_csv.exists()
+    status = out_json.read_text()
+    assert "No taxonomy groups are inferred" in status
+    assert "industry_taxonomy_review_batch_plan.csv" in status
