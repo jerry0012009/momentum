@@ -555,6 +555,35 @@ def check_factor_evaluation_asset_parity(html_text: str) -> list[dict]:
     return results
 
 
+def check_public_source_family_ui(html_text: str) -> list[dict]:
+    """Check source_family is visible and filterable in the public page UI."""
+    required_snippets = [
+        'id="sourceFamilyFilter"',
+        "sourceFamilies=[...new Set",
+        "sourceFamilyFilter.appendChild",
+        "sourceFam&&f.source_family!==sourceFam",
+        "Alpha101 source",
+        "Alpha158 source",
+    ]
+    missing = [snippet for snippet in required_snippets if snippet not in html_text]
+    if missing:
+        return [
+            _fail(
+                "factor_eval_public_source_family_ui",
+                "factor_evaluation exposes public source_family UI",
+                f"{len(missing)} missing snippets",
+                "; ".join(missing),
+            )
+        ]
+    return [
+        _pass(
+            "factor_eval_public_source_family_ui",
+            "factor_evaluation exposes public source_family UI",
+            "source family filter and Alpha101/Alpha158 summary cards present",
+        )
+    ]
+
+
 def check_pm35_factors(html_text: str) -> dict:
     """Check PM-35 five new factors appear in HTML."""
     missing = [fid for fid in PM35_NEW_FACTORS if fid not in html_text]
@@ -2450,6 +2479,7 @@ def main() -> int:
     # 2. CSV factor coverage
     all_checks.extend(check_csv_factor_coverage(html_text))
     all_checks.extend(check_factor_evaluation_asset_parity(html_text))
+    all_checks.extend(check_public_source_family_ui(html_text))
 
     # 3. PM-35 new factors
     all_checks.append(check_pm35_factors(html_text))

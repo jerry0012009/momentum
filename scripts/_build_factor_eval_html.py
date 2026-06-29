@@ -1666,6 +1666,7 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
       <div class="small">Click column headers to sort. 点击列头排序。Default sort: quality score descending (研究分诊分数，非交易建议). Best horizon metrics from diagnostics. 最优视野指标来自诊断摘要。</div>
       <div class="controls">
         <input type="text" id="search" placeholder="搜索因子 / Search factor...">
+        <select id="sourceFamilyFilter"><option value="">All public sources 全部公开来源</option></select>
         <select id="familyFilter"><option value="">All families 全部家族</option></select>
         <select id="qualityFilter"><option value="">All quality 全部质量</option></select>
         <select id="horizonFilter"><option value="">All horizons 全部视野</option></select>
@@ -2546,10 +2547,17 @@ function scSubBar(key,score){
 (function(){
   const el=document.getElementById('statsSection');
   const qc=S.quality_counts||{};
+  const sourceCounts=factors.reduce((acc,f)=>{
+    const source=f.source_family||'other';
+    acc[source]=(acc[source]||0)+1;
+    return acc;
+  },{});
   const qcHtml=Object.entries(qc).map(([k,v])=>`<div class="quality-badge ${(QUALITY_LABELS[k]||{cls:''}).cls}" style="font-size:11px;padding:4px 10px"><strong>${v}</strong> ${esc((QUALITY_LABELS[k]||{zh:k,en:k}).zh)} / ${esc((QUALITY_LABELS[k]||{zh:k,en:k}).en)}</div>`).join('');
   el.innerHTML=`
     <div class="stats">
       <div class="stat"><strong>${S.factor_count}</strong><span>Factors 因子数</span></div>
+      <div class="stat"><strong>${sourceCounts.alpha101||0}</strong><span>Alpha101 source 已接入</span></div>
+      <div class="stat"><strong>${sourceCounts.alpha158||0}</strong><span>Alpha158 source 已接入</span></div>
       <div class="stat"><strong>${S.horizons.join(' / ')}</strong><span>Horizons 视野</span></div>
       <div class="stat"><strong>${S.month_count}</strong><span>Months covered 月份数</span></div>
     </div>
@@ -2778,15 +2786,18 @@ function scSubBar(key,score){
 })();
 
 // ── Populate filters ──
+const sourceFamilies=[...new Set(factors.map(f=>f.source_family).filter(Boolean))].sort();
 const families=[...new Set(factors.map(f=>f.family_zh||f.family))].sort();
 const qualities=[...new Set(factors.map(f=>f.metadata_quality))].sort();
 const scClasses=[...new Set(factors.map(f=>f.final_quality_class).filter(Boolean))].sort();
 const scConfs=['HIGH','MEDIUM','LOW'];
+const sourceFamilyFilter=document.getElementById('sourceFamilyFilter');
 const familyFilter=document.getElementById('familyFilter');
 const qualityFilter=document.getElementById('qualityFilter');
 const horizonFilter=document.getElementById('horizonFilter');
 const scClassFilter=document.getElementById('scClassFilter');
 const scConfFilter=document.getElementById('scConfFilter');
+sourceFamilies.forEach(f=>{const o=document.createElement('option');o.value=f;o.textContent=f;sourceFamilyFilter.appendChild(o)});
 families.forEach(f=>{const o=document.createElement('option');o.value=f;o.textContent=f;familyFilter.appendChild(o)});
 qualities.forEach(q=>{const o=document.createElement('option');o.value=q;o.textContent=(QUALITY_LABELS[q]||{zh:q}).zh+' / '+q;qualityFilter.appendChild(o)});
 S.horizons.forEach(h=>{const o=document.createElement('option');o.value=h;o.textContent=h;horizonFilter.appendChild(o)});
@@ -2808,6 +2819,7 @@ let sortDir=-1; // -1=desc
 // ── Render table ──
 function renderTable(){
   const q=document.getElementById('search').value.toLowerCase();
+  const sourceFam=sourceFamilyFilter.value;
   const fam=familyFilter.value;
   const qual=qualityFilter.value;
   const hz=horizonFilter.value;
@@ -2819,6 +2831,7 @@ function renderTable(){
   let filtered=factors.filter(f=>{
     const text=[f.factor_id,f.name_zh,f.name_en,f.source_family,f.family_zh,f.family,f.decision_bucket,f.final_quality_class,f.recommended_next_action,f.paper_viability_class,f.cost_sensitivity_class].join(' ').toLowerCase();
     if(q&&!text.includes(q))return false;
+    if(sourceFam&&f.source_family!==sourceFam)return false;
     if(fam&&(f.family_zh!==fam&&f.family!==fam))return false;
     if(qual&&f.metadata_quality!==qual)return false;
     if(hz&&f.best_horizon!==hz)return false;
@@ -3782,8 +3795,8 @@ function renderDetail(fid){
 
 // ── Init ──
 const searchEl=document.getElementById('search');
-[searchEl,familyFilter,qualityFilter,horizonFilter,scClassFilter,scConfFilter,paperViabFilter,regimeFilter].forEach(el=>el.addEventListener('input',renderTable));
-[familyFilter,qualityFilter,horizonFilter,scClassFilter,scConfFilter,paperViabFilter,regimeFilter].forEach(el=>el.addEventListener('change',renderTable));
+[searchEl,sourceFamilyFilter,familyFilter,qualityFilter,horizonFilter,scClassFilter,scConfFilter,paperViabFilter,regimeFilter].forEach(el=>el.addEventListener('input',renderTable));
+[sourceFamilyFilter,familyFilter,qualityFilter,horizonFilter,scClassFilter,scConfFilter,paperViabFilter,regimeFilter].forEach(el=>el.addEventListener('change',renderTable));
 
 // Set initial sort arrow
 const initSortTh=document.querySelector(`th[data-col="${sortCol}"]`);
