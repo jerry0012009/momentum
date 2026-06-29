@@ -274,6 +274,36 @@ def summarize_taxonomy_packet_coverage(path: Path = TAXONOMY_PACKET_COVERAGE) ->
     }
 
 
+def summarize_taxonomy_group_readiness(
+    taxonomy_skipped: list[dict[str, object]],
+    review_source: dict[str, object],
+) -> list[dict[str, object]]:
+    """Return per taxonomy-group unblock status for skipped IndNeutralize rows."""
+    ok_groups = {
+        group
+        for group in str(review_source.get("ok_groups_present", "")).split("|")
+        if group
+    }
+    rows: list[dict[str, object]] = []
+    for group in sorted(TAXONOMY_GROUP_COLUMNS):
+        factor_ids = sorted(
+            str(row["factor_id"])
+            for row in taxonomy_skipped
+            if group in str(row.get("taxonomy_required_groups", "")).split("|")
+        )
+        if not factor_ids:
+            continue
+        group_ready = group in ok_groups
+        rows.append({
+            "taxonomy_group": group,
+            "ready": group_ready,
+            "blocker": "" if group_ready else f"taxonomy_review_missing_ok_{group}",
+            "blocked_alpha101_factor_count": len(factor_ids),
+            "blocked_alpha101_factor_ids": "|".join(factor_ids),
+        })
+    return rows
+
+
 def summarize_taxonomy_readiness(
     source_path: Path = TAXONOMY_SOURCE,
     artifact_path: Path = TAXONOMY_ARTIFACT,
@@ -312,6 +342,10 @@ def summarize_taxonomy_readiness(
         source_path,
         required_groups=set(required_groups),
         bars_path=DEFAULT_BARS,
+    )
+    taxonomy_group_readiness = summarize_taxonomy_group_readiness(
+        taxonomy_skipped,
+        review_source,
     )
     packet_validation = summarize_taxonomy_packet_validation()
     packet_rollup = summarize_taxonomy_packet_rollup()
@@ -362,6 +396,7 @@ def summarize_taxonomy_readiness(
         "blocked_alpha101_factor_count": len(taxonomy_skipped),
         "blocked_alpha101_factor_ids": "|".join(row["factor_id"] for row in taxonomy_skipped),
         "required_taxonomy_groups": "|".join(required_groups),
+        "taxonomy_group_readiness": taxonomy_group_readiness,
     }
 
 

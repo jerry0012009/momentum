@@ -130,6 +130,23 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert taxonomy["blocker"] == "taxonomy_review_has_no_ok_rows"
     assert taxonomy["blocked_alpha101_factor_count"] == 18
     assert taxonomy["required_taxonomy_groups"] == "industry|sector|subindustry"
+    group_readiness = {
+        row["taxonomy_group"]: row
+        for row in taxonomy["taxonomy_group_readiness"]
+    }
+    assert set(group_readiness) == {"industry", "sector", "subindustry"}
+    assert group_readiness["industry"]["ready"] is False
+    assert group_readiness["industry"]["blocker"] == "taxonomy_review_missing_ok_industry"
+    assert group_readiness["industry"]["blocked_alpha101_factor_count"] == 10
+    assert "wq101_alpha59_indneutralize_skipped" in group_readiness["industry"]["blocked_alpha101_factor_ids"]
+    assert group_readiness["sector"]["ready"] is False
+    assert group_readiness["sector"]["blocker"] == "taxonomy_review_missing_ok_sector"
+    assert group_readiness["sector"]["blocked_alpha101_factor_count"] == 5
+    assert "wq101_alpha58_indneutralize_skipped" in group_readiness["sector"]["blocked_alpha101_factor_ids"]
+    assert group_readiness["subindustry"]["ready"] is False
+    assert group_readiness["subindustry"]["blocker"] == "taxonomy_review_missing_ok_subindustry"
+    assert group_readiness["subindustry"]["blocked_alpha101_factor_count"] == 4
+    assert "wq101_alpha48_indneutralize_skipped" in group_readiness["subindustry"]["blocked_alpha101_factor_ids"]
 
     cap = report["cap_readiness"]
     assert cap["artifact_exists"] is True
