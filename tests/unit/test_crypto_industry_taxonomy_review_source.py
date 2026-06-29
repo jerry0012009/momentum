@@ -52,7 +52,7 @@ def _status(report: dict[str, object], check: str) -> bool:
 
 def test_valid_review_source_is_ready_to_build_artifact(tmp_path: Path):
     df = _rows()
-    df["known_at"] = "2025-12-31T00:00:00Z"
+    df["known_at"] = "2026-01-01T00:00:00Z"
     report = summarize_review_source(
         _write(df, tmp_path / "symbol_taxonomy.csv"),
         required_groups={"sector", "industry", "subindustry"},
@@ -95,6 +95,40 @@ def test_ok_rows_known_after_bars_are_not_ready(tmp_path: Path):
     assert report["ok_rows_known_after_last_bar"] == 2
     assert report["ok_known_at_blocks_bars"] is True
     assert not _status(report, "ok_rows_known_by_latest_bar")
+
+
+def test_duplicate_symbols_are_not_ready(tmp_path: Path):
+    df = _rows()
+    df.loc[1, "symbol"] = "AAAUSDT"
+
+    report = summarize_review_source(_write(df, tmp_path / "symbol_taxonomy.csv"))
+
+    assert report["ready_to_build_artifact"] is False
+    assert report["blocker"] == "taxonomy_review_source_checks_failed"
+    assert not _status(report, "symbol_unique")
+
+
+def test_ok_rows_with_invalid_known_at_are_not_ready(tmp_path: Path):
+    df = _rows()
+    df.loc[0, "known_at"] = "not-a-date"
+
+    report = summarize_review_source(_write(df, tmp_path / "symbol_taxonomy.csv"))
+
+    assert report["ready_to_build_artifact"] is False
+    assert report["blocker"] == "taxonomy_review_source_checks_failed"
+    assert not _status(report, "ok_rows_have_valid_known_at")
+
+
+def test_ok_effective_from_after_known_at_is_not_ready(tmp_path: Path):
+    df = _rows()
+    df["known_at"] = "2026-01-01T00:00:00Z"
+    df.loc[0, "effective_from"] = "2026-01-02T00:00:00Z"
+
+    report = summarize_review_source(_write(df, tmp_path / "symbol_taxonomy.csv"))
+
+    assert report["ready_to_build_artifact"] is False
+    assert report["blocker"] == "taxonomy_review_source_checks_failed"
+    assert not _status(report, "ok_effective_from_not_after_known_at")
 
 
 def test_ok_rows_missing_required_group_are_not_ready(tmp_path: Path):

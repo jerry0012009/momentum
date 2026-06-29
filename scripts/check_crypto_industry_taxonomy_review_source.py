@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -144,6 +145,43 @@ def summarize_review_source(
 
     symbol_count = int(df["symbol"].astype(str).str.len().gt(0).sum())
     _check(checks, "symbol_non_empty", symbol_count == len(df), f"{symbol_count}/{len(df)} non-empty")
+    duplicate_symbols = sorted(df.loc[df["symbol"].astype(str).duplicated(), "symbol"].astype(str).unique())
+    _check(
+        checks,
+        "symbol_unique",
+        not duplicate_symbols,
+        f"Duplicates: {duplicate_symbols}" if duplicate_symbols else "No duplicates",
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        known_at = pd.to_datetime(df["known_at"], utc=True, errors="coerce")
+        effective_from = pd.to_datetime(df["effective_from"], utc=True, errors="coerce")
+    missing_known_at = ok & known_at.isna()
+    missing_effective_from = ok & effective_from.isna()
+    _check(
+        checks,
+        "ok_rows_have_valid_known_at",
+        not bool(missing_known_at.any()),
+        f"{int(missing_known_at.sum())} OK rows missing/invalid known_at",
+    )
+    _check(
+        checks,
+        "ok_rows_have_valid_effective_from",
+        not bool(missing_effective_from.any()),
+        f"{int(missing_effective_from.sum())} OK rows missing/invalid effective_from",
+    )
+    effective_after_known = ok & known_at.notna() & effective_from.notna() & (effective_from > known_at)
+    _check(
+        checks,
+        "ok_effective_from_not_after_known_at",
+        not bool(effective_after_known.any()),
+        (
+            f"Symbols: {df.loc[effective_after_known, 'symbol'].astype(str).tolist()}"
+            if bool(effective_after_known.any())
+            else "All OK rows have effective_from <= known_at"
+        ),
+    )
 
     bar_last_timestamp = ""
     ok_rows_known_by_last_bar = 0
@@ -163,7 +201,6 @@ def summarize_review_source(
             else:
                 last_bar = bar_ts.max()
                 bar_last_timestamp = last_bar.strftime("%Y-%m-%dT%H:%M:%SZ")
-                known_at = pd.to_datetime(df["known_at"], utc=True, errors="coerce")
                 ok_known_by_last_bar = ok & known_at.notna() & (known_at <= last_bar)
                 ok_known_after_last_bar = ok & known_at.notna() & (known_at > last_bar)
                 ok_rows_known_by_last_bar = int(ok_known_by_last_bar.sum())

@@ -97,6 +97,10 @@ CoinGecko evidence. It reuses the packet validator before writing output; rows
 with `effective_from > known_at` or `known_at`/`effective_from` after the latest
 bar are rejected. Prefer writing to a temporary CSV first and running the source
 checker before replacing the committed source workbook.
+`check_crypto_industry_taxonomy_review_source.py` is the source-level gate. It
+checks required columns, unique symbols, quality flag domain, complete group
+fields for `OK` rows, valid `known_at`/`effective_from`, and
+`effective_from <= known_at` before artifact build.
 `validate_crypto_industry_taxonomy_review_packet.py` is the pre-apply gate for
 reviewed packets. It fails by default when no rows are marked
 `target_quality_flag == OK`; use `--allow-no-ok` only for structural checks of a
