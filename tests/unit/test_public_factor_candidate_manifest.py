@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from factor_formula_registry import REGISTRY_BY_ID  # noqa: E402
 from check_crypto_industry_taxonomy_contract import TAXONOMY_PATH, check_contract  # noqa: E402
 from check_crypto_industry_taxonomy_coverage import DEFAULT_BARS, check_coverage  # noqa: E402
+from check_public_factor_integration_status import build_status_report  # noqa: E402
 
 MANIFEST = ROOT / "docs" / "factor_library" / "public_factor_candidate_manifest.csv"
 SKIPPED_STATUSES = {
@@ -187,6 +188,26 @@ def test_alpha101_indneutralize_rows_require_taxonomy_gate(rows: list[dict[str, 
         assert spec is not None, f"{factor_id} implemented without registry spec"
         assert spec.compute_scope == "panel"
         assert set(spec.required_columns) & TAXONOMY_GROUP_COLUMNS
+
+
+def test_alpha101_indneutralize_rows_stay_skipped_until_taxonomy_ready(rows: list[dict[str, str]]) -> None:
+    report = build_status_report()
+    taxonomy = report["taxonomy_readiness"]
+    indneutralize_rows = [
+        row
+        for row in rows
+        if row["source_family"] == "alpha101" and "indneutralize" in row["required_ops"].split("|")
+    ]
+
+    assert taxonomy["ready_for_indneutralize_unskip"] is False
+    assert taxonomy["blocker"] == "taxonomy_review_has_no_ok_rows"
+    assert len(indneutralize_rows) == taxonomy["blocked_alpha101_factor_count"] == 18
+    assert all(
+        row["implementation_status"] == "skipped_missing_industry_neutralization_20260627"
+        for row in indneutralize_rows
+    )
+    assert all(row["factor_id"].endswith("_skipped") for row in indneutralize_rows)
+    assert all(row["factor_id"] not in REGISTRY_BY_ID for row in indneutralize_rows)
 
 
 def test_indneutralize_contract_lists_current_manifest_blockers(rows: list[dict[str, str]]) -> None:
