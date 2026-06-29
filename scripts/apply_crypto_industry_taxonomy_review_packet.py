@@ -18,6 +18,13 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE = ROOT / "data" / "sources" / "crypto_industry_taxonomy_contract_v1" / "symbol_taxonomy.csv"
 DEFAULT_PACKET = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_diagnostics" / "industry_taxonomy_review_batch_001.csv"
+DEFAULT_BARS = (
+    ROOT
+    / "data"
+    / "cache"
+    / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
+    / "bars_1h.parquet"
+)
 TARGET_COLUMNS = [
     "target_sector",
     "target_industry",
@@ -30,6 +37,10 @@ BATCH_PACKET_RE = re.compile(r"industry_taxonomy_review_batch_(\d+)\.csv$")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_crypto_industry_taxonomy_contract import REQUIRED_COLUMNS, VALID_QUALITY_FLAGS  # noqa: E402
+from validate_crypto_industry_taxonomy_review_packet import (  # noqa: E402
+    _latest_bar_timestamp,
+    validate_review_packet,
+)
 
 
 def _require_columns(df: pd.DataFrame, required: set[str], name: str) -> None:
@@ -43,10 +54,41 @@ def _batch_id_from_path(path: Path) -> int:
     return int(match.group(1)) if match else 0
 
 
-def apply_review_packet(source: pd.DataFrame, packet: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, object]]:
+def _raise_if_packet_validation_fails(
+    source: pd.DataFrame,
+    packet: pd.DataFrame,
+    *,
+    latest_bar: pd.Timestamp | None = None,
+) -> None:
+    report = validate_review_packet(
+        packet,
+        source=source,
+        latest_bar=latest_bar,
+        allow_no_ok=True,
+    )
+    failed = [row for row in report["checks"] if not bool(row["passed"])]
+    approved_rows = int(report.get("approved_packet_rows", 0) or 0)
+    blocking_failed = [
+        row
+        for row in failed
+        if not (approved_rows == 0 and row["check"] == "has_ok_target_rows")
+    ]
+    if blocking_failed:
+        failed_checks = "|".join(str(row["check"]) for row in blocking_failed)
+        blocker = report.get("blocker") or "packet_validation_checks_failed"
+        raise ValueError(f"packet failed validation before apply: {blocker}; checks={failed_checks}")
+
+
+def apply_review_packet(
+    source: pd.DataFrame,
+    packet: pd.DataFrame,
+    *,
+    latest_bar: pd.Timestamp | None = None,
+) -> tuple[pd.DataFrame, dict[str, object]]:
     """Return updated source and a summary after applying explicit OK targets."""
     _require_columns(source, REQUIRED_COLUMNS, "source")
     _require_columns(packet, {"symbol", *TARGET_COLUMNS}, "packet")
+    _raise_if_packet_validation_fails(source, packet, latest_bar=latest_bar)
 
     updated = source.copy().fillna("")
     updated["symbol"] = updated["symbol"].astype(str)
@@ -113,7 +155,12 @@ def apply_review_packet(source: pd.DataFrame, packet: pd.DataFrame) -> tuple[pd.
     }
 
 
-def apply_review_packets(source: pd.DataFrame, packets: list[pd.DataFrame]) -> tuple[pd.DataFrame, dict[str, object]]:
+def apply_review_packets(
+    source: pd.DataFrame,
+    packets: list[pd.DataFrame],
+    *,
+    latest_bar: pd.Timestamp | None = None,
+) -> tuple[pd.DataFrame, dict[str, object]]:
     """Return updated source and summary after sequentially applying packets."""
     if not packets:
         raise ValueError("at least one packet is required")
@@ -122,7 +169,7 @@ def apply_review_packets(source: pd.DataFrame, packets: list[pd.DataFrame]) -> t
     packet_summaries: list[dict[str, object]] = []
     updated_symbols: list[str] = []
     for index, packet in enumerate(packets, start=1):
-        updated, summary = apply_review_packet(updated, packet)
+        updated, summary = apply_review_packet(updated, packet, latest_bar=latest_bar)
         packet_summaries.append({"packet_index": index, **summary})
         symbols = str(summary.get("updated_symbols", ""))
         if symbols:
@@ -140,8 +187,14 @@ def apply_review_packets(source: pd.DataFrame, packets: list[pd.DataFrame]) -> t
     }
 
 
-def apply_review_packet_from_paths(source_csv: Path, packet_csv: Path, output_csv: Path) -> dict[str, object]:
-    return apply_review_packets_from_paths(source_csv, [packet_csv], output_csv)
+def apply_review_packet_from_paths(
+    source_csv: Path,
+    packet_csv: Path,
+    output_csv: Path,
+    *,
+    bars_path: Path | None = None,
+) -> dict[str, object]:
+    return apply_review_packets_from_paths(source_csv, [packet_csv], output_csv, bars_path=bars_path)
 
 
 def packet_paths_from_glob(packet_glob: str) -> list[Path]:
@@ -150,7 +203,13 @@ def packet_paths_from_glob(packet_glob: str) -> list[Path]:
     return sorted(packet_paths, key=lambda path: (_batch_id_from_path(path), str(path)))
 
 
-def apply_review_packets_from_paths(source_csv: Path, packet_csvs: list[Path], output_csv: Path) -> dict[str, object]:
+def apply_review_packets_from_paths(
+    source_csv: Path,
+    packet_csvs: list[Path],
+    output_csv: Path,
+    *,
+    bars_path: Path | None = None,
+) -> dict[str, object]:
     if not source_csv.exists():
         raise FileNotFoundError(f"Source CSV not found: {source_csv}")
     if not packet_csvs:
@@ -160,7 +219,15 @@ def apply_review_packets_from_paths(source_csv: Path, packet_csvs: list[Path], o
         raise FileNotFoundError(f"Packet CSV not found: {missing_packets}")
     source = pd.read_csv(source_csv).fillna("")
     packets = [pd.read_csv(packet_csv).fillna("") for packet_csv in packet_csvs]
-    updated, summary = apply_review_packets(source, packets)
+    latest_bar = None
+    if bars_path is not None:
+        checks: list[dict[str, object]] = []
+        latest_bar = _latest_bar_timestamp(bars_path, checks)
+        failed = [row for row in checks if not bool(row["passed"])]
+        if failed:
+            failed_checks = "|".join(str(row["check"]) for row in failed)
+            raise ValueError(f"bars failed validation before apply: checks={failed_checks}")
+    updated, summary = apply_review_packets(source, packets, latest_bar=latest_bar)
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     updated.to_csv(output_csv, index=False)
     return {
@@ -181,6 +248,11 @@ def main() -> int:
         help="Reviewed batch packet CSV; pass multiple times to apply several packets in order",
     )
     parser.add_argument("--packet-glob", default="", help="Glob for reviewed batch packet CSVs")
+    parser.add_argument(
+        "--bars-path",
+        default=str(DEFAULT_BARS),
+        help="Bars parquet used to reject reviewed rows known/effective after the latest evaluated bar",
+    )
     parser.add_argument("--output-csv", required=True, help="Output taxonomy source CSV path")
     args = parser.parse_args()
 
@@ -195,6 +267,7 @@ def main() -> int:
             Path(args.source_csv),
             packet_csvs,
             Path(args.output_csv),
+            bars_path=Path(args.bars_path),
         )
     except Exception as exc:
         print(f"ERROR: {exc}", flush=True)

@@ -82,11 +82,27 @@ def test_apply_review_packet_requires_complete_ok_targets():
         apply_review_packet(_source(), packet)
 
 
+def test_apply_review_packet_rejects_effective_from_after_known_at():
+    packet = _packet()
+    packet.loc[0, "target_effective_from"] = "2026-01-01T00:00:00Z"
+
+    with pytest.raises(ValueError, match="ok_effective_from_not_after_known_at"):
+        apply_review_packet(_source(), packet)
+
+
+def test_apply_review_packet_rejects_known_at_after_latest_bar():
+    packet = _packet()
+    latest_bar = pd.Timestamp("2025-12-30T00:00:00Z", tz="UTC")
+
+    with pytest.raises(ValueError, match="ok_known_at_not_after_latest_bar"):
+        apply_review_packet(_source(), packet, latest_bar=latest_bar)
+
+
 def test_apply_review_packet_rejects_invalid_target_quality_flag():
     packet = _packet()
     packet.loc[0, "target_quality_flag"] = "APPROVED"
 
-    with pytest.raises(ValueError, match="invalid target_quality_flag"):
+    with pytest.raises(ValueError, match="target_quality_flag_domain"):
         apply_review_packet(_source(), packet)
 
 

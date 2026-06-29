@@ -43,6 +43,7 @@ python scripts/build_crypto_industry_taxonomy_review_validation_rollup.py
 python scripts/apply_crypto_industry_taxonomy_review_packet.py \
   --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
   --packet-csv research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_review_batch_001.csv \
+  --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet \
   --output-csv /tmp/symbol_taxonomy.reviewed.csv
 python scripts/check_crypto_industry_taxonomy_review_source.py \
   --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
@@ -92,8 +93,10 @@ source, artifact, contract, and coverage gates.
 `apply_crypto_industry_taxonomy_review_packet.py` copies only explicit
 `target_quality_flag == OK` rows from a reviewed packet and requires all target
 group and timing fields for those rows. It does not infer groups or approve
-CoinGecko evidence. Prefer writing to a temporary CSV first and running the
-source checker before replacing the committed source workbook.
+CoinGecko evidence. It reuses the packet validator before writing output; rows
+with `effective_from > known_at` or `known_at`/`effective_from` after the latest
+bar are rejected. Prefer writing to a temporary CSV first and running the source
+checker before replacing the committed source workbook.
 `validate_crypto_industry_taxonomy_review_packet.py` is the pre-apply gate for
 reviewed packets. It fails by default when no rows are marked
 `target_quality_flag == OK`; use `--allow-no-ok` only for structural checks of a

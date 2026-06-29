@@ -173,6 +173,22 @@ windows. The coverage checker verifies that the point-in-time taxonomy covers
 the current factor bars before any industry-neutralized Alpha101 row can move
 from skipped to implemented.
 
+After a batch packet has been manually reviewed and validated, apply only the
+explicit `target_quality_flag == OK` rows to a temporary source CSV:
+
+```bash
+python scripts/apply_crypto_industry_taxonomy_review_packet.py \
+  --source-csv data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.csv \
+  --packet-csv research/factor_runs/crypto_top50_factor_library/factor_diagnostics/industry_taxonomy_review_batch_001.csv \
+  --bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet \
+  --output-csv /tmp/symbol_taxonomy.reviewed.csv
+```
+
+The apply helper reuses the review-packet validator before writing output. It
+does not infer groups, does not approve CoinGecko evidence, and rejects OK rows
+whose `known_at` or `effective_from` timestamps are not valid for the current
+bar window.
+
 To unblock the skipped Alpha101 rows, the workflow must add:
 
 1. a data contract document for the taxonomy source;
