@@ -132,6 +132,14 @@ For Alpha101 / Alpha158 intake, every candidate should record formula source, fi
 
 公开因子库扩展先看这个紧凑 manifest。Alpha101 / Alpha158 候选必须记录公式来源、字段映射、所需 operator、计算范围、时间尺度映射、方向语义、实现状态，以及无法实现原因。
 
+Current public-factor scope: the manifest has 208 rows. Alpha101 has 107 rows
+because it includes all 101 public WQ101 numbered formulas plus 6 existing
+`a101_*` proxy/support factors; 88 are implemented and 19 remain skipped.
+Alpha158 currently has 101 Qlib Alpha158-derived rows that are mapped to the
+available 1h crypto OHLCV workflow; 95 are implemented and 6 duplicate rows are
+skipped. This is the intended stopping point until a reviewed taxonomy unblocks
+the remaining Alpha101 `IndNeutralize` formulas.
+
 Alpha101 formulas that require `IndNeutralize(..., IndClass.*)` are blocked
 until the industry-neutralization data contract is satisfied:
 
