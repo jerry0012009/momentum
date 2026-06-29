@@ -516,12 +516,34 @@ def build_status_report(
     }
 
 
+def _without_generated_at(report: dict[str, object]) -> dict[str, object]:
+    """Return report content relevant for semantic status comparisons."""
+    return {key: value for key, value in report.items() if key != "generated_at"}
+
+
+def write_status_json_if_changed(report: dict[str, object], out_json: Path) -> None:
+    """Write status JSON only when semantic content changed.
+
+    The report embeds a generation timestamp. Preserving the existing file when
+    only that timestamp changed keeps repeated status checks from dirtying the
+    worktree during factor-intake QA.
+    """
+    if out_json.exists():
+        try:
+            current = json.loads(out_json.read_text())
+        except Exception:
+            current = None
+        if isinstance(current, dict) and _without_generated_at(current) == _without_generated_at(report):
+            return
+    out_json.write_text(json.dumps(report, indent=2, default=str) + "\n")
+
+
 def write_status_report(report: dict[str, object], out_dir: Path = OUT_DIR) -> tuple[Path, Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_json = out_dir / "public_factor_integration_status.json"
     out_summary = out_dir / "public_factor_integration_status_by_family.csv"
     out_skipped = out_dir / "public_factor_integration_skipped_rows.csv"
-    out_json.write_text(json.dumps(report, indent=2, default=str) + "\n")
+    write_status_json_if_changed(report, out_json)
     pd.DataFrame(report["family_summary"]).to_csv(out_summary, index=False)
     pd.DataFrame(report["skipped_rows"]).to_csv(out_skipped, index=False)
     return out_json, out_summary, out_skipped

@@ -12,6 +12,7 @@ from check_public_factor_integration_status import (  # noqa: E402
     build_status_report,
     mark_skipped_rows_ready,
     summarize_taxonomy_packet_rollup,
+    write_status_json_if_changed,
     write_status_report,
 )
 
@@ -170,6 +171,40 @@ def test_public_factor_integration_status_writes_reports(tmp_path: Path):
     assert out_json.exists()
     assert out_summary.exists()
     assert out_skipped.exists()
+
+
+def test_status_json_write_preserves_file_when_only_generated_at_changes(tmp_path: Path):
+    out_json = tmp_path / "status.json"
+    original = {
+        "generated_at": "2026-01-01T00:00:00+00:00",
+        "state": {"registered_factors": 1},
+    }
+    updated_timestamp_only = {
+        "generated_at": "2026-01-02T00:00:00+00:00",
+        "state": {"registered_factors": 1},
+    }
+    out_json.write_text(json.dumps(original, indent=2) + "\n")
+
+    write_status_json_if_changed(updated_timestamp_only, out_json)
+
+    assert json.loads(out_json.read_text()) == original
+
+
+def test_status_json_write_updates_file_when_semantic_content_changes(tmp_path: Path):
+    out_json = tmp_path / "status.json"
+    original = {
+        "generated_at": "2026-01-01T00:00:00+00:00",
+        "state": {"registered_factors": 1},
+    }
+    changed = {
+        "generated_at": "2026-01-02T00:00:00+00:00",
+        "state": {"registered_factors": 2},
+    }
+    out_json.write_text(json.dumps(original, indent=2) + "\n")
+
+    write_status_json_if_changed(changed, out_json)
+
+    assert json.loads(out_json.read_text()) == changed
 
 
 def test_taxonomy_packet_rollup_supports_reviewed_prefix(tmp_path: Path):
