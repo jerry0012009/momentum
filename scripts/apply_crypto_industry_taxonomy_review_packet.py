@@ -168,12 +168,26 @@ def apply_review_packets(
     updated = source.copy()
     packet_summaries: list[dict[str, object]] = []
     updated_symbols: list[str] = []
+    approved_symbol_sources: dict[str, int] = {}
     for index, packet in enumerate(packets, start=1):
         updated, summary = apply_review_packet(updated, packet, latest_bar=latest_bar)
         packet_summaries.append({"packet_index": index, **summary})
         symbols = str(summary.get("updated_symbols", ""))
         if symbols:
-            updated_symbols.extend(symbols.split("|"))
+            packet_symbols = [symbol for symbol in symbols.split("|") if symbol]
+            duplicate_symbols = [
+                symbol for symbol in packet_symbols
+                if symbol in approved_symbol_sources
+            ]
+            if duplicate_symbols:
+                detail = "|".join(
+                    f"{symbol}:packet_{approved_symbol_sources[symbol]}->packet_{index}"
+                    for symbol in sorted(duplicate_symbols)
+                )
+                raise ValueError(f"approved symbols duplicated across packets: {detail}")
+            for symbol in packet_symbols:
+                approved_symbol_sources[symbol] = index
+            updated_symbols.extend(packet_symbols)
 
     return updated, {
         "packet_count": int(len(packets)),

@@ -145,6 +145,19 @@ def test_apply_review_packets_applies_multiple_packets_in_order():
     assert len(summary["packet_summaries"]) == 2
 
 
+def test_apply_review_packets_rejects_duplicate_ok_symbol_across_packets():
+    duplicate = _packet()
+    duplicate.loc[1, "target_quality_flag"] = "REVIEW"
+    duplicate.loc[0, "target_sector"] = "Layer1Alt"
+    duplicate.loc[0, "target_industry"] = "Layer1Alt.Network"
+    duplicate.loc[0, "target_subindustry"] = "Layer1Alt.Network.Native"
+    duplicate.loc[0, "target_known_at"] = "2025-12-30T00:00:00Z"
+    duplicate.loc[0, "target_effective_from"] = "2024-06-01T01:00:00Z"
+
+    with pytest.raises(ValueError, match="approved symbols duplicated across packets"):
+        apply_review_packets(_source(), [_packet(), duplicate])
+
+
 def test_apply_review_packets_rejects_empty_packet_list():
     with pytest.raises(ValueError, match="at least one packet"):
         apply_review_packets(_source(), [])
