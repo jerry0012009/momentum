@@ -486,6 +486,10 @@ ALL_CHECKS = [
 ]
 
 
+def _has_non_pass_result(results: list[dict]) -> bool:
+    return any(r["status"] not in ("OK", "PASS") for r in results)
+
+
 def run_checks(fid: str) -> dict[str, dict]:
     """Run all checks for a single factor."""
     results = {}
@@ -628,7 +632,14 @@ def _check_pm58b_ls_annualization_consistency() -> list[dict]:
     ).abs()
     check_df["rel_diff"] = check_df["abs_diff"] / check_df["expected"].abs().clip(lower=1e-30)
 
-    bad = check_df[(check_df["abs_diff"] > 1e-8) & (check_df["rel_diff"] > 1e-6)]
+    # Monthly LS CSV values are serialized to finite decimal precision; the
+    # 1h annualization multiplier can amplify one-CSV-ulp mean differences.
+    check_df["abs_tolerance"] = check_df["bpy"] * 5e-9 + 1e-8
+    rel_tolerance = 5e-5
+    bad = check_df[
+        (check_df["abs_diff"] > check_df["abs_tolerance"])
+        & (check_df["rel_diff"] > rel_tolerance)
+    ]
     if len(bad) > 0:
         sample = bad[["factor_name", "horizon",
                        "monthly_mean", "long_short_spread_annualized_return",
@@ -644,7 +655,7 @@ def _check_pm58b_ls_annualization_consistency() -> list[dict]:
             "check": "pm58b_annualization_formula",
             "status": "OK",
             "detail": f"All {len(check_df)} rows pass monthly_mean × bars_per_year consistency "
-                      f"(tolerance: abs<=1e-8 or rel<=1e-6)",
+                      f"(tolerance: horizon-aware CSV rounding abs or rel<={rel_tolerance:g})",
         })
 
     return results
@@ -827,6 +838,7 @@ def main() -> int:
     print(f"  JSON: {json_path}")
 
     # PM-53B: Active-universe consistency table (--all-active mode)
+    all_active_fail = False
     if args.all_active:
         print(f"\n{'='*60}")
         print("Active-Universe Count Consistency (PM-53B)")
@@ -885,6 +897,7 @@ def main() -> int:
                 any_consistency_fail = True
 
         consistency_verdict = "PASS" if not any_consistency_fail else "FAIL"
+        all_active_fail = all_active_fail or any_consistency_fail
         print(f"\n  Active count consistency: {consistency_verdict}")
         
         # PM-58A: LS monthly aggregate field completeness
@@ -892,13 +905,12 @@ def main() -> int:
         print("LS Monthly Aggregate Fields (PM-58A)")
         print(f"{'='*60}")
         pm58a_results = check_ls_monthly_aggregate_completeness()
-        pm58a_fail = False
+        pm58a_fail = _has_non_pass_result(pm58a_results)
         for r in pm58a_results:
             icon = "✓" if r["status"] in ("OK", "PASS") else "✗"
             print(f"  {icon} {r['check']:35s}: {r['detail']}")
-            if r["status"] not in ("OK", "PASS"):
-                pm58a_fail = True
         pm58a_verdict = "PASS" if not pm58a_fail else "FAIL"
+        all_active_fail = all_active_fail or pm58a_fail
         print(f"\n  LS monthly aggregate: {pm58a_verdict}")
 
         # PM-58B: LS annualization consistency (bars_per_year formula)
@@ -906,13 +918,12 @@ def main() -> int:
         print("LS Annualization Consistency (PM-58B)")
         print(f"{'='*60}")
         pm58b_results = _check_pm58b_ls_annualization_consistency()
-        pm58b_fail = False
+        pm58b_fail = _has_non_pass_result(pm58b_results)
         for r in pm58b_results:
             icon = "✓" if r["status"] in ("OK", "PASS") else "✗"
             print(f"  {icon} {r['check']:35s}: {r['detail']}")
-            if r["status"] not in ("OK", "PASS"):
-                pm58b_fail = True
         pm58b_verdict = "PASS" if not pm58b_fail else "FAIL"
+        all_active_fail = all_active_fail or pm58b_fail
         print(f"\n  LS annualization consistency: {pm58b_verdict}")
 
         # Append consistency data to JSON report
@@ -935,13 +946,12 @@ def main() -> int:
         print("Window Diagnostics (PM-58C)")
         print(f"{'='*60}")
         pm58c_results = _check_pm58c_window_diagnostics()
-        pm58c_fail = False
+        pm58c_fail = _has_non_pass_result(pm58c_results)
         for r in pm58c_results:
             icon = "✓" if r["status"] in ("OK", "PASS") else "✗"
             print(f"  {icon} {r['check']:35s}: {r['detail']}")
-            if r["status"] not in ("OK", "PASS"):
-                pm58c_fail = True
         pm58c_verdict = "PASS" if not pm58c_fail else "FAIL"
+        all_active_fail = all_active_fail or pm58c_fail
         print(f"\n  Window diagnostics: {pm58c_verdict}")
         json_report["pm58c_window_diagnostics"] = {
             "checks": pm58c_results,
@@ -950,7 +960,7 @@ def main() -> int:
 
         json_path.write_text(json.dumps(json_report, indent=2, default=str))
 
-    return 1 if total_fail > 0 else 0
+    return 1 if total_fail > 0 or all_active_fail else 0
 
 
 if __name__ == "__main__":

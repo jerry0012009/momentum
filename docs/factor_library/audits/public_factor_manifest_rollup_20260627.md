@@ -1,4 +1,4 @@
-# Public Alpha101 / Alpha158 Manifest Rollup - 2026-06-27
+# Public Alpha101 / Alpha158 Manifest Rollup - 2026-06-29
 
 ## Scope
 
@@ -9,10 +9,11 @@ compact manifest:
 - 95 implemented Alpha158 factors from Qlib Alpha158DL formula families and
   existing local Alpha158 support.
 - 6 skipped Alpha158 duplicate dispositions with explicit skip reasons.
-- 6 curated Alpha101 panel factors from the local Alpha101 migration layer.
-- 3 existing WorldQuant 101 proxy factors already registered as `wq101_*`.
-- 6 skipped WorldQuant 101 formulas blocked by missing equity
-  industry/sector-neutralization inputs.
+- 88 implemented WorldQuant Alpha101 factors, including existing `wq101_*`
+  backfills, OHLCV/panel batches, and the market-cap-supported Alpha56 row.
+- 18 skipped WorldQuant 101 formulas blocked by missing reviewed
+  industry/sector/subindustry neutralization inputs.
+- 1 skipped WorldQuant 101 formula blocked by low current crypto coverage.
 
 The manifest is the expansion checklist. The registry remains the only factor
 definition entry point.
@@ -37,8 +38,8 @@ Current manifest row counts:
 | source_family | implemented rows | skipped rows | total rows |
 | --- | ---: | ---: | ---: |
 | alpha158 | 95 | 6 | 101 |
-| alpha101 | 9 | 6 | 15 |
-| total | 104 | 12 | 116 |
+| alpha101 | 88 | 19 | 107 |
+| total | 183 | 25 | 208 |
 
 The `existing_support_backfill_20260627` rows are metadata backfills for factors
 that were already registered and computed before the public manifest existed:
@@ -77,9 +78,9 @@ factor-value and post-intake integrity factor ID lists.
 
 The `skipped_missing_industry_neutralization_20260627` rows are Alpha101
 formulas whose published definitions require `IndNeutralize(..., IndClass.*)`.
-They are blocked until the project has an approved crypto sector/industry
-taxonomy and reusable neutralization operator. The data-source and operator
-requirements are now recorded in
+They are blocked until the project has an approved crypto sector/industry/
+subindustry taxonomy and reusable neutralization operator. The data-source and
+operator requirements are now recorded in
 `docs/factor_library/INDUSTRY_NEUTRALIZATION_DATA_CONTRACT.md`:
 
 - `wq101_alpha58_indneutralize_skipped`
@@ -88,10 +89,29 @@ requirements are now recorded in
 - `wq101_alpha69_indneutralize_skipped`
 - `wq101_alpha70_indneutralize_skipped`
 - `wq101_alpha93_indneutralize_skipped`
+- `wq101_alpha48_indneutralize_skipped`
+- `wq101_alpha63_indneutralize_skipped`
+- `wq101_alpha76_indneutralize_skipped`
+- `wq101_alpha79_indneutralize_skipped`
+- `wq101_alpha80_indneutralize_skipped`
+- `wq101_alpha82_indneutralize_skipped`
+- `wq101_alpha87_indneutralize_skipped`
+- `wq101_alpha89_indneutralize_skipped`
+- `wq101_alpha90_indneutralize_skipped`
+- `wq101_alpha91_indneutralize_skipped`
+- `wq101_alpha97_indneutralize_skipped`
+- `wq101_alpha100_indneutralize_skipped`
 
 These rows are sourced from the 101 Formulaic Alphas definitions and the
 DolphinDB WQ101 classification of formulas that require industry information.
 No ad hoc crypto bucket proxy was introduced.
+
+The `skipped_low_coverage_20260628` row is:
+
+- `wq101_alpha96_low_coverage_skipped`
+
+It remains skipped because the current crypto data coverage is too low for a
+defensible implementation.
 
 ## Current Workflow Evidence
 
@@ -103,25 +123,29 @@ python scripts/build_factor_library_state.py
 
 Result:
 
-- Registered factors: 170
-- Computed factor_values: 170
+- Registered factors: 249
+- Computed factor_values: 249
 - Missing factor_values: 0
 - Missing input data: 0
 - Warnings: 0
 
-Full public-manifest integrity command:
+Full active-universe integrity command:
 
 ```bash
-python scripts/check_post_intake_workflow_integrity.py --factor-ids <104 implemented public manifest factor IDs>
+python scripts/check_post_intake_workflow_integrity.py --all-active --output-dir /tmp/public_factor_integrity_audit
 ```
 
 Result:
 
-- Factors checked: 104
-- Total checks: 2496
-- PASS: 2397
+- Factors checked: 249
+- Total checks: 5976
+- PASS: 5777
 - FAIL: 0
-- WARN: 99
+- WARN: 199
+- Active-universe consistency: PASS, 14/14 tables at 249/249.
+- PM-58A LS monthly aggregate: PASS.
+- PM-58B LS annualization consistency: PASS.
+- PM-58C window diagnostics: PASS.
 
 The warnings are optional PM-59A overlapping-sleeve summaries missing for
 eligible diagnostic factors. They do not indicate missing factor_values,
@@ -136,17 +160,17 @@ python scripts/check_factor_evaluation_page_completeness.py
 
 Result:
 
-- Total checks: 108
-- PASS: 108
+- Total checks: 115
+- PASS: 115
 - FAIL: 0
 
 Latest page/state evidence:
 
-- Factor evaluation page factor count: 170.
-- Workflow-ready factors: 170.
-- Evidence status: 164 `COMPLETE`, 6 `COMPLETE_WITH_WARNINGS`.
-- Redundancy pair rows: 14,365.
-- Redundancy clusters: 71.
+- Factor evaluation page factor count: 249.
+- Workflow-ready factors: 249.
+- Evidence status: 243 `COMPLETE`, 6 `COMPLETE_WITH_WARNINGS`.
+- Public source-family payload count: `alpha101=88`, `alpha158=95`.
+- Redundancy clusters: 142.
 
 ## Guardrails Confirmed
 
@@ -160,11 +184,11 @@ Latest page/state evidence:
 
 ## Next Batch Guidance
 
-Future Alpha101 / Alpha158 additions should stay small. Prefer 4-6 factors per
-batch, run only missing or named-factor workflow steps, and require one manifest
-row per candidate before implementation. If a formula needs a new operator, add
-one reusable operator in the existing operator layer and keep using the existing
-intake and post-intake workflow.
+Future Alpha101 / Alpha158 additions should be grouped by formula/data-source
+similarity and remain resource-aware. Batches of roughly 8-12 Alpha101 factors
+are acceptable when they share inputs/operators; each batch still needs manifest
+rows first, then intake, post-intake, all-active integrity, page QA, redundancy
+diagnostics, and a functional commit.
 
 For the remaining Alpha101 `IndNeutralize(..., IndClass.*)` formulas, the next
 valid step is not formula registration. First satisfy the industry
