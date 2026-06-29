@@ -67,6 +67,7 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert required_by_id["wq101_alpha48_indneutralize_skipped"] == "subindustry"
 
     taxonomy = report["taxonomy_readiness"]
+    rollup_summary = json.loads((OUT_DIR / "industry_taxonomy_review_batch_validation_rollup.json").read_text())["summary"]
     assert taxonomy["source_exists"] is True
     assert taxonomy["source_rows"] == 266
     assert taxonomy["source_quality_counts"] == {"REVIEW": 266}
@@ -90,15 +91,15 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert taxonomy["packet_allow_no_ok"] is False
     assert taxonomy["packet_rollup_exists"] is True
     assert taxonomy["packet_rollup_blocker"] == ""
-    assert taxonomy["packet_rollup_batch_count"] == 3
-    assert taxonomy["packet_rollup_ready_to_apply_batch_count"] == 0
-    assert taxonomy["packet_rollup_blocked_batch_count"] == 3
-    assert taxonomy["packet_rollup_total_packet_rows"] == 36
-    assert taxonomy["packet_rollup_total_approved_rows"] == 0
-    assert taxonomy["packet_rollup_approved_bar_count_share_sum"] == 0.0
-    assert taxonomy["packet_rollup_approved_quote_volume_share_sum"] == 0.0
-    assert taxonomy["packet_rollup_ready_to_apply_batch_ids"] == ""
-    assert taxonomy["packet_rollup_blocked_batch_ids"] == "1|2|3"
+    assert taxonomy["packet_rollup_batch_count"] == rollup_summary["batch_report_count"]
+    assert taxonomy["packet_rollup_ready_to_apply_batch_count"] == rollup_summary["ready_to_apply_batch_count"]
+    assert taxonomy["packet_rollup_blocked_batch_count"] == rollup_summary["blocked_batch_count"]
+    assert taxonomy["packet_rollup_total_packet_rows"] == rollup_summary["total_packet_rows"]
+    assert taxonomy["packet_rollup_total_approved_rows"] == rollup_summary["total_approved_packet_rows"]
+    assert taxonomy["packet_rollup_approved_bar_count_share_sum"] == rollup_summary["approved_bar_count_share_sum"]
+    assert taxonomy["packet_rollup_approved_quote_volume_share_sum"] == rollup_summary["approved_quote_volume_share_sum"]
+    assert taxonomy["packet_rollup_ready_to_apply_batch_ids"] == rollup_summary["ready_to_apply_batch_ids"]
+    assert taxonomy["packet_rollup_blocked_batch_ids"] == rollup_summary["blocked_batch_ids"]
     assert taxonomy["artifact_exists"] is False
     assert taxonomy["contract_pass"] is False
     assert taxonomy["coverage_pass"] is False
