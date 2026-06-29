@@ -8,6 +8,8 @@ categories, build the parquet artifact, or register factors.
 from __future__ import annotations
 
 import argparse
+import glob
+import re
 import sys
 from pathlib import Path
 
@@ -24,6 +26,7 @@ TARGET_COLUMNS = [
     "target_known_at",
     "target_effective_from",
 ]
+BATCH_PACKET_RE = re.compile(r"industry_taxonomy_review_batch_(\d+)\.csv$")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_crypto_industry_taxonomy_contract import REQUIRED_COLUMNS, VALID_QUALITY_FLAGS  # noqa: E402
@@ -33,6 +36,11 @@ def _require_columns(df: pd.DataFrame, required: set[str], name: str) -> None:
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"{name} missing required columns: {sorted(missing)}")
+
+
+def _batch_id_from_path(path: Path) -> int:
+    match = BATCH_PACKET_RE.match(path.name)
+    return int(match.group(1)) if match else 0
 
 
 def apply_review_packet(source: pd.DataFrame, packet: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, object]]:
@@ -136,6 +144,12 @@ def apply_review_packet_from_paths(source_csv: Path, packet_csv: Path, output_cs
     return apply_review_packets_from_paths(source_csv, [packet_csv], output_csv)
 
 
+def packet_paths_from_glob(packet_glob: str) -> list[Path]:
+    paths = [Path(path) for path in glob.glob(packet_glob)]
+    packet_paths = [path for path in paths if BATCH_PACKET_RE.match(path.name)]
+    return sorted(packet_paths, key=lambda path: (_batch_id_from_path(path), str(path)))
+
+
 def apply_review_packets_from_paths(source_csv: Path, packet_csvs: list[Path], output_csv: Path) -> dict[str, object]:
     if not source_csv.exists():
         raise FileNotFoundError(f"Source CSV not found: {source_csv}")
@@ -166,11 +180,17 @@ def main() -> int:
         default=None,
         help="Reviewed batch packet CSV; pass multiple times to apply several packets in order",
     )
+    parser.add_argument("--packet-glob", default="", help="Glob for reviewed batch packet CSVs")
     parser.add_argument("--output-csv", required=True, help="Output taxonomy source CSV path")
     args = parser.parse_args()
 
     try:
-        packet_csvs = [Path(path) for path in (args.packet_csv or [str(DEFAULT_PACKET)])]
+        if args.packet_glob:
+            packet_csvs = packet_paths_from_glob(args.packet_glob)
+            if not packet_csvs:
+                raise FileNotFoundError(f"No batch packet CSVs matched: {args.packet_glob}")
+        else:
+            packet_csvs = [Path(path) for path in (args.packet_csv or [str(DEFAULT_PACKET)])]
         summary = apply_review_packets_from_paths(
             Path(args.source_csv),
             packet_csvs,

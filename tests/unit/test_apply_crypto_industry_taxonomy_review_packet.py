@@ -14,6 +14,7 @@ from apply_crypto_industry_taxonomy_review_packet import (  # noqa: E402
     apply_review_packet_from_paths,
     apply_review_packets,
     apply_review_packets_from_paths,
+    packet_paths_from_glob,
 )
 
 
@@ -158,3 +159,43 @@ def test_apply_review_packets_from_paths_writes_output_for_multiple_packets(tmp_
     assert summary["packet_csv"] == f"{first_csv}|{second_csv}"
     assert written.loc[written["symbol"] == "AAAUSDT", "quality_flag"].iloc[0] == "OK"
     assert written.loc[written["symbol"] == "BBBUSDT", "quality_flag"].iloc[0] == "OK"
+
+
+def test_packet_paths_from_glob_filters_and_sorts_batch_packets(tmp_path: Path):
+    diag = tmp_path / "diag"
+    diag.mkdir()
+    for name in [
+        "industry_taxonomy_review_batch_010.csv",
+        "industry_taxonomy_review_batch_002_validation_checks.csv",
+        "industry_taxonomy_review_batch_002.csv",
+        "industry_taxonomy_review_batch_validation_rollup.csv",
+    ]:
+        (diag / name).write_text("symbol\n")
+
+    paths = packet_paths_from_glob(str(diag / "industry_taxonomy_review_batch_*.csv"))
+
+    assert [path.name for path in paths] == [
+        "industry_taxonomy_review_batch_002.csv",
+        "industry_taxonomy_review_batch_010.csv",
+    ]
+
+
+def test_apply_review_packets_from_glob_output_matches_noop_source(tmp_path: Path):
+    source_csv = tmp_path / "source.csv"
+    first_csv = tmp_path / "industry_taxonomy_review_batch_001.csv"
+    second_csv = tmp_path / "industry_taxonomy_review_batch_002.csv"
+    output_csv = tmp_path / "out" / "symbol_taxonomy.csv"
+    packet = _packet()
+    packet["target_quality_flag"] = "REVIEW"
+    _source().to_csv(source_csv, index=False)
+    packet.to_csv(first_csv, index=False)
+    packet.to_csv(second_csv, index=False)
+
+    paths = packet_paths_from_glob(str(tmp_path / "industry_taxonomy_review_batch_*.csv"))
+    summary = apply_review_packets_from_paths(source_csv, paths, output_csv)
+    written = pd.read_csv(output_csv).fillna("")
+
+    assert summary["packet_count"] == 2
+    assert summary["approved_packet_rows"] == 0
+    assert summary["updated_rows"] == 0
+    assert written.equals(_source())
