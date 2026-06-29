@@ -11,6 +11,7 @@ from check_public_factor_integration_status import (  # noqa: E402
     OUT_DIR,
     build_status_report,
     mark_skipped_rows_ready,
+    summarize_taxonomy_packet_rollup,
     write_status_report,
 )
 
@@ -102,6 +103,15 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert taxonomy["packet_rollup_approved_quote_volume_share_sum"] == rollup_summary["approved_quote_volume_share_sum"]
     assert taxonomy["packet_rollup_ready_to_apply_batch_ids"] == rollup_summary["ready_to_apply_batch_ids"]
     assert taxonomy["packet_rollup_blocked_batch_ids"] == rollup_summary["blocked_batch_ids"]
+    assert taxonomy["reviewed_packet_rollup_exists"] is False
+    assert taxonomy["reviewed_packet_rollup_blocker"] == "reviewed_packet_rollup_missing"
+    assert taxonomy["reviewed_packet_rollup_batch_count"] == 0
+    assert taxonomy["reviewed_packet_rollup_ready_to_apply_batch_count"] == 0
+    assert taxonomy["reviewed_packet_rollup_blocked_batch_count"] == 0
+    assert taxonomy["reviewed_packet_rollup_total_packet_rows"] == 0
+    assert taxonomy["reviewed_packet_rollup_total_approved_rows"] == 0
+    assert taxonomy["reviewed_packet_rollup_ready_to_apply_batch_ids"] == ""
+    assert taxonomy["reviewed_packet_rollup_blocked_batch_ids"] == ""
     assert taxonomy["packet_coverage_exists"] is True
     assert taxonomy["packet_coverage_pass"] is True
     assert taxonomy["packet_coverage_blocker"] == ""
@@ -143,6 +153,44 @@ def test_public_factor_integration_status_writes_reports(tmp_path: Path):
     assert out_json.exists()
     assert out_summary.exists()
     assert out_skipped.exists()
+
+
+def test_taxonomy_packet_rollup_supports_reviewed_prefix(tmp_path: Path):
+    rollup_path = tmp_path / "industry_taxonomy_review_batch_validation_rollup.json"
+    rollup_path.write_text(json.dumps({
+        "summary": {
+            "batch_report_count": 2,
+            "ready_to_apply_batch_count": 1,
+            "blocked_batch_count": 1,
+            "total_packet_rows": 20,
+            "total_approved_packet_rows": 8,
+            "approved_bar_count_share_sum": 0.25,
+            "approved_quote_volume_share_sum": 0.3,
+            "ready_to_apply_batch_ids": "1",
+            "blocked_batch_ids": "2",
+        },
+        "batches": [],
+    }))
+
+    summary = summarize_taxonomy_packet_rollup(
+        rollup_path,
+        prefix="reviewed_packet_rollup",
+    )
+
+    assert summary == {
+        "reviewed_packet_rollup_path": str(rollup_path),
+        "reviewed_packet_rollup_exists": True,
+        "reviewed_packet_rollup_blocker": "",
+        "reviewed_packet_rollup_batch_count": 2,
+        "reviewed_packet_rollup_ready_to_apply_batch_count": 1,
+        "reviewed_packet_rollup_blocked_batch_count": 1,
+        "reviewed_packet_rollup_total_packet_rows": 20,
+        "reviewed_packet_rollup_total_approved_rows": 8,
+        "reviewed_packet_rollup_approved_bar_count_share_sum": 0.25,
+        "reviewed_packet_rollup_approved_quote_volume_share_sum": 0.3,
+        "reviewed_packet_rollup_ready_to_apply_batch_ids": "1",
+        "reviewed_packet_rollup_blocked_batch_ids": "2",
+    }
 
 
 def test_mark_skipped_rows_ready_uses_required_gate_statuses():
