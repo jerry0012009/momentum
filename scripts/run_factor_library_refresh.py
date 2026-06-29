@@ -48,6 +48,8 @@ import sys
 import time
 from pathlib import Path
 
+from public_factor_manifest_guard import raise_for_skipped_public_factor_ids
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
 
@@ -380,6 +382,17 @@ def main() -> int:
 
     stages = resolve_stages(args.stage)
     check_expensive(stages, args.expensive_ok)
+
+    if args.factor_ids:
+        factor_ids = [fid.strip() for fid in args.factor_ids.split(",") if fid.strip()]
+        try:
+            raise_for_skipped_public_factor_ids(
+                factor_ids,
+                action="factor-library refreshed",
+            )
+        except ValueError as exc:
+            print(f"ERROR: {exc}")
+            return 1
 
     # Build passthrough args for supporting stages
     PASSTHROUGH_STAGES = {"overlapping-sleeve-strategy"}

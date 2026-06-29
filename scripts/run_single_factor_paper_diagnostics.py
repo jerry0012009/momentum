@@ -34,6 +34,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from public_factor_manifest_guard import raise_for_skipped_public_factor_ids
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET_ID = "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
 FEATURES_DIR = ROOT / "data" / "features" / DEFAULT_DATASET_ID
@@ -367,6 +369,16 @@ def main():
     print(f"  Output:       {out_dir}")
     print()
 
+    if args.factor_ids:
+        try:
+            raise_for_skipped_public_factor_ids(
+                args.factor_ids,
+                action="legacy single-factor paper diagnosed",
+            )
+        except ValueError as exc:
+            print(f"ERROR: {exc}")
+            return 1
+
     # Load registry
     registry = load_factor_registry()
     if args.factor_ids:
@@ -633,4 +645,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

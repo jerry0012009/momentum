@@ -27,6 +27,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from public_factor_manifest_guard import raise_for_skipped_public_factor_ids
+
 # ── Constants ────────────────────────────────────────────────────────────────
 WORKSPACE = Path(__file__).resolve().parent.parent
 DATASET_ID = "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
@@ -810,6 +812,18 @@ def main() -> int:
     print("PM-59A: Overlapping Sleeve Strategy Diagnostics")
     print("=" * 70)
 
+    requested_ids: set[str] | None = None
+    if args.factor_ids:
+        requested_ids = {fid.strip() for fid in args.factor_ids.split(",") if fid.strip()}
+        try:
+            raise_for_skipped_public_factor_ids(
+                sorted(requested_ids),
+                action="overlapping-sleeve diagnosed",
+            )
+        except ValueError as exc:
+            print(f"ERROR: {exc}")
+            return 1
+
     # ── Load metadata ────────────────────────────────────────────────────
     print("\n[1/5] Loading metadata...")
     direction_map = load_direction_map()
@@ -878,10 +892,9 @@ def main() -> int:
     # ── Apply filters ────────────────────────────────────────────────────
     to_process = all_targets[:]
 
-    if args.factor_ids:
-        target_ids = set(fid.strip() for fid in args.factor_ids.split(","))
-        to_process = [f for f in to_process if f["factor_id"] in target_ids]
-        invalid = target_ids - {f["factor_id"] for f in to_process}
+    if requested_ids:
+        to_process = [f for f in to_process if f["factor_id"] in requested_ids]
+        invalid = requested_ids - {f["factor_id"] for f in to_process}
         if invalid:
             print(f"\n  WARNING: requested factor_ids not found or skipped: {sorted(invalid)}")
 
