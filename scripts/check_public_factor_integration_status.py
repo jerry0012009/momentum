@@ -24,6 +24,7 @@ TAXONOMY_SOURCE = ROOT / "data" / "sources" / "crypto_industry_taxonomy_contract
 TAXONOMY_ARTIFACT = ROOT / "data" / "cache" / "crypto_industry_taxonomy_contract_v1" / "symbol_taxonomy.parquet"
 TAXONOMY_PACKET_VALIDATION = OUT_DIR / "industry_taxonomy_review_packet_validation.json"
 TAXONOMY_PACKET_ROLLUP = OUT_DIR / "industry_taxonomy_review_batch_validation_rollup.json"
+TAXONOMY_PACKET_COVERAGE = OUT_DIR / "industry_taxonomy_review_packet_coverage.json"
 CAP_ARTIFACT = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "market_cap_1h_aligned.parquet"
 CAP_CONTRACT_CHECK = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "market_cap_contract_check.json"
 CAP_QUALITY_REPORT = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1" / "market_cap_quality_report.csv"
@@ -214,6 +215,56 @@ def summarize_taxonomy_packet_rollup(path: Path = TAXONOMY_PACKET_ROLLUP) -> dic
     }
 
 
+def summarize_taxonomy_packet_coverage(path: Path = TAXONOMY_PACKET_COVERAGE) -> dict[str, object]:
+    """Return compact status for review packet set coverage QA."""
+    if not path.exists():
+        return {
+            "packet_coverage_path": str(path),
+            "packet_coverage_exists": False,
+            "packet_coverage_pass": False,
+            "packet_coverage_blocker": "packet_coverage_missing",
+            "packet_coverage_candidate_file_count": 0,
+            "packet_coverage_file_count": 0,
+            "packet_coverage_source_rows": 0,
+            "packet_coverage_rows": 0,
+            "packet_coverage_unique_symbols": 0,
+            "packet_coverage_missing_source_symbols": "",
+            "packet_coverage_extra_symbols": "",
+            "packet_coverage_duplicate_symbols": "",
+        }
+    try:
+        payload = json.loads(path.read_text())
+    except Exception as exc:
+        return {
+            "packet_coverage_path": str(path),
+            "packet_coverage_exists": True,
+            "packet_coverage_pass": False,
+            "packet_coverage_blocker": f"packet_coverage_unreadable:{exc}",
+            "packet_coverage_candidate_file_count": 0,
+            "packet_coverage_file_count": 0,
+            "packet_coverage_source_rows": 0,
+            "packet_coverage_rows": 0,
+            "packet_coverage_unique_symbols": 0,
+            "packet_coverage_missing_source_symbols": "",
+            "packet_coverage_extra_symbols": "",
+            "packet_coverage_duplicate_symbols": "",
+        }
+    return {
+        "packet_coverage_path": str(path),
+        "packet_coverage_exists": True,
+        "packet_coverage_pass": bool(payload.get("overall_pass", False)),
+        "packet_coverage_blocker": str(payload.get("blocker", "")),
+        "packet_coverage_candidate_file_count": int(payload.get("candidate_file_count", 0) or 0),
+        "packet_coverage_file_count": int(payload.get("packet_file_count", 0) or 0),
+        "packet_coverage_source_rows": int(payload.get("source_rows", 0) or 0),
+        "packet_coverage_rows": int(payload.get("packet_rows", 0) or 0),
+        "packet_coverage_unique_symbols": int(payload.get("unique_packet_symbols", 0) or 0),
+        "packet_coverage_missing_source_symbols": str(payload.get("missing_source_symbols", "")),
+        "packet_coverage_extra_symbols": str(payload.get("extra_packet_symbols", "")),
+        "packet_coverage_duplicate_symbols": str(payload.get("duplicate_packet_symbols", "")),
+    }
+
+
 def summarize_taxonomy_readiness(
     source_path: Path = TAXONOMY_SOURCE,
     artifact_path: Path = TAXONOMY_ARTIFACT,
@@ -255,6 +306,7 @@ def summarize_taxonomy_readiness(
     )
     packet_validation = summarize_taxonomy_packet_validation()
     packet_rollup = summarize_taxonomy_packet_rollup()
+    packet_coverage = summarize_taxonomy_packet_coverage()
 
     ok_rows = int(review_source.get("ok_row_count", 0))
     blocker = ""
@@ -285,6 +337,7 @@ def summarize_taxonomy_readiness(
         "source_ok_known_at_blocks_bars": bool(review_source.get("ok_known_at_blocks_bars", False)),
         **packet_validation,
         **packet_rollup,
+        **packet_coverage,
         "artifact_path": str(artifact_path),
         "artifact_exists": artifact_path.exists(),
         "contract_pass": contract_pass,
@@ -428,6 +481,8 @@ def main() -> int:
         f"packet_blocker={taxonomy['packet_validation_blocker']} "
         f"rollup_ready={taxonomy['packet_rollup_ready_to_apply_batch_count']} "
         f"rollup_blocked={taxonomy['packet_rollup_blocked_batch_count']} "
+        f"coverage_pass={taxonomy['packet_coverage_pass']} "
+        f"coverage_rows={taxonomy['packet_coverage_rows']} "
         f"artifact_exists={taxonomy['artifact_exists']} "
         f"ready={taxonomy['ready_for_indneutralize_unskip']} "
         f"blocker={taxonomy['blocker']}"

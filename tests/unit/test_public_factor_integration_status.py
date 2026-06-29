@@ -68,6 +68,7 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
 
     taxonomy = report["taxonomy_readiness"]
     rollup_summary = json.loads((OUT_DIR / "industry_taxonomy_review_batch_validation_rollup.json").read_text())["summary"]
+    coverage_summary = json.loads((OUT_DIR / "industry_taxonomy_review_packet_coverage.json").read_text())
     assert taxonomy["source_exists"] is True
     assert taxonomy["source_rows"] == 266
     assert taxonomy["source_quality_counts"] == {"REVIEW": 266}
@@ -100,6 +101,17 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert taxonomy["packet_rollup_approved_quote_volume_share_sum"] == rollup_summary["approved_quote_volume_share_sum"]
     assert taxonomy["packet_rollup_ready_to_apply_batch_ids"] == rollup_summary["ready_to_apply_batch_ids"]
     assert taxonomy["packet_rollup_blocked_batch_ids"] == rollup_summary["blocked_batch_ids"]
+    assert taxonomy["packet_coverage_exists"] is True
+    assert taxonomy["packet_coverage_pass"] is True
+    assert taxonomy["packet_coverage_blocker"] == ""
+    assert taxonomy["packet_coverage_candidate_file_count"] == coverage_summary["candidate_file_count"]
+    assert taxonomy["packet_coverage_file_count"] == coverage_summary["packet_file_count"]
+    assert taxonomy["packet_coverage_source_rows"] == coverage_summary["source_rows"]
+    assert taxonomy["packet_coverage_rows"] == coverage_summary["packet_rows"]
+    assert taxonomy["packet_coverage_unique_symbols"] == coverage_summary["unique_packet_symbols"]
+    assert taxonomy["packet_coverage_missing_source_symbols"] == ""
+    assert taxonomy["packet_coverage_extra_symbols"] == ""
+    assert taxonomy["packet_coverage_duplicate_symbols"] == ""
     assert taxonomy["artifact_exists"] is False
     assert taxonomy["contract_pass"] is False
     assert taxonomy["coverage_pass"] is False
