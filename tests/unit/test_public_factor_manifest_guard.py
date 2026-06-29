@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPTS = ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS))
 
 from public_factor_manifest_guard import (  # noqa: E402
     find_skipped_public_factor_ids,
@@ -43,3 +45,22 @@ def test_raise_for_skipped_public_factor_ids_uses_action_word():
             action="evaluated",
             skipped_public_factor_ids={"wq101_alpha58_indneutralize_skipped"},
         )
+
+
+def test_factor_id_cli_scripts_use_public_manifest_skip_guard():
+    """Any factor-library CLI accepting explicit factor IDs must reject skipped public rows."""
+    scripts_with_factor_ids: list[str] = []
+    unguarded: list[str] = []
+    for path in sorted(SCRIPTS.glob("*.py")):
+        text = path.read_text(errors="ignore")
+        if "--factor-ids" not in text and "args.factor_ids" not in text:
+            continue
+        scripts_with_factor_ids.append(path.name)
+        if (
+            "raise_for_skipped_public_factor_ids" not in text
+            and "find_skipped_public_factor_ids" not in text
+        ):
+            unguarded.append(path.name)
+
+    assert scripts_with_factor_ids, "Expected at least one factor-id CLI script"
+    assert not unguarded, f"Factor-id CLI scripts missing public manifest skip guard: {unguarded}"
