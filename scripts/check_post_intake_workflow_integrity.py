@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from public_factor_manifest_guard import raise_for_skipped_public_factor_ids
+
 ROOT = Path(__file__).resolve().parents[1]
 BASE = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
 DIAG_DIR = BASE / "factor_diagnostics"
@@ -749,6 +751,12 @@ def main() -> int:
         fids = sorted(state.get("registered_factor_ids", []))
     else:
         print("ERROR: Must specify --factor-ids or --all")
+        return 1
+
+    try:
+        raise_for_skipped_public_factor_ids(fids, action="post-intake integrity checked")
+    except ValueError as exc:
+        print(f"ERROR: {exc}")
         return 1
 
     out_dir = Path(args.output_dir)

@@ -43,6 +43,8 @@ import sys
 import time
 from pathlib import Path
 
+from public_factor_manifest_guard import raise_for_skipped_public_factor_ids
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
 DIAG_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_diagnostics"
@@ -392,6 +394,12 @@ def main() -> int:
         print(f"Auto-detected {len(fids)} factors with incomplete workflow: {fids}")
     else:
         print("ERROR: Must specify --factor-ids or --only-missing")
+        return 1
+
+    try:
+        raise_for_skipped_public_factor_ids(fids, action="post-intake processed")
+    except ValueError as exc:
+        print(f"ERROR: {exc}")
         return 1
 
     # Resolve stages
