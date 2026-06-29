@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from validate_crypto_industry_taxonomy_review_packet import (  # noqa: E402
     validate_review_packet,
     validate_review_packet_from_paths,
+    validate_review_packets_from_glob,
     write_packet_validation_reports,
 )
 
@@ -157,3 +158,34 @@ def test_packet_validation_report_stem_must_not_be_path(tmp_path: Path):
         assert "file stem" in str(exc)
     else:
         raise AssertionError("expected report_stem path to be rejected")
+
+
+def test_validate_review_packets_from_glob_writes_batch_reports(tmp_path: Path):
+    packet1 = tmp_path / "industry_taxonomy_review_batch_001.csv"
+    packet2 = tmp_path / "industry_taxonomy_review_batch_002.csv"
+    source_csv = tmp_path / "source.csv"
+    out_dir = tmp_path / "out"
+    _packet().to_csv(packet1, index=False)
+    packet_no_ok = _packet()
+    packet_no_ok["target_quality_flag"] = "REVIEW"
+    packet_no_ok.to_csv(packet2, index=False)
+    _source().to_csv(source_csv, index=False)
+
+    summary = validate_review_packets_from_glob(
+        str(tmp_path / "industry_taxonomy_review_batch_*.csv"),
+        source_csv=source_csv,
+        bars_path=_write_bars(tmp_path / "bars.parquet"),
+        out_dir=out_dir,
+    )
+
+    assert summary["packet_count"] == 2
+    assert summary["passed_count"] == 1
+    assert summary["failed_count"] == 1
+    assert summary["overall_pass"] is False
+    assert summary["total_packet_rows"] == 4
+    assert summary["total_approved_packet_rows"] == 1
+    assert str(packet2) in summary["failed_packets"]
+    assert (out_dir / "industry_taxonomy_review_batch_001_validation.json").exists()
+    assert (out_dir / "industry_taxonomy_review_batch_001_validation_checks.csv").exists()
+    assert (out_dir / "industry_taxonomy_review_batch_002_validation.json").exists()
+    assert (out_dir / "industry_taxonomy_review_batch_002_validation_checks.csv").exists()

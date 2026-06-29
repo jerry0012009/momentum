@@ -9,7 +9,9 @@ factors.
 from __future__ import annotations
 
 import argparse
+import glob
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,6 +45,7 @@ TARGET_COLUMNS = [
     "target_known_at",
     "target_effective_from",
 ]
+BATCH_PACKET_RE = re.compile(r"industry_taxonomy_review_batch_(\d+)\.csv$")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_crypto_industry_taxonomy_contract import REQUIRED_COLUMNS, VALID_QUALITY_FLAGS  # noqa: E402
@@ -311,15 +314,97 @@ def write_packet_validation_reports(
     return out_json, out_csv
 
 
+def _batch_report_stem(packet_csv: Path) -> str:
+    match = BATCH_PACKET_RE.match(packet_csv.name)
+    if match:
+        return f"industry_taxonomy_review_batch_{int(match.group(1)):03d}_validation"
+    return f"{packet_csv.stem}_validation"
+
+
+def validate_review_packets_from_glob(
+    packet_glob: str,
+    *,
+    source_csv: Path | None = None,
+    bars_path: Path | None = None,
+    allow_no_ok: bool = False,
+    out_dir: Path = DEFAULT_OUT_DIR,
+) -> dict[str, object]:
+    paths = sorted((Path(path) for path in glob.glob(packet_glob)), key=lambda path: (_batch_report_stem(path), str(path)))
+    paths = [path for path in paths if BATCH_PACKET_RE.match(path.name)]
+    if not paths:
+        raise FileNotFoundError(f"No batch packet CSVs matched: {packet_glob}")
+
+    reports: list[dict[str, object]] = []
+    output_jsons: list[str] = []
+    output_csvs: list[str] = []
+    for packet_csv in paths:
+        report = validate_review_packet_from_paths(
+            packet_csv,
+            source_csv=source_csv,
+            bars_path=bars_path,
+            allow_no_ok=allow_no_ok,
+        )
+        out_json, out_csv = write_packet_validation_reports(
+            report,
+            out_dir,
+            report_stem=_batch_report_stem(packet_csv),
+        )
+        reports.append(report)
+        output_jsons.append(str(out_json))
+        output_csvs.append(str(out_csv))
+
+    failed = [report for report in reports if not bool(report["overall_pass"])]
+    return {
+        "packet_glob": packet_glob,
+        "packet_count": int(len(reports)),
+        "passed_count": int(len(reports) - len(failed)),
+        "failed_count": int(len(failed)),
+        "total_packet_rows": int(sum(int(report["packet_rows"]) for report in reports)),
+        "total_approved_packet_rows": int(sum(int(report["approved_packet_rows"]) for report in reports)),
+        "failed_packets": "|".join(str(report["packet_csv"]) for report in failed),
+        "output_jsons": "|".join(output_jsons),
+        "output_csvs": "|".join(output_csvs),
+        "overall_pass": not failed,
+        "reports": reports,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--packet-csv", default=str(DEFAULT_PACKET), help="Reviewed batch packet CSV")
+    parser.add_argument("--packet-glob", default="", help="Glob for batch packet CSVs; writes one report per packet")
     parser.add_argument("--source-csv", default=str(DEFAULT_SOURCE), help="Current taxonomy source CSV")
     parser.add_argument("--bars-path", default=str(DEFAULT_BARS), help="Factor bars parquet for point-in-time checks")
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR), help="Output diagnostics directory")
     parser.add_argument("--report-stem", default="industry_taxonomy_review_packet_validation", help="Output report file stem under --out-dir")
     parser.add_argument("--allow-no-ok", action="store_true", help="Allow structural validation before any rows are approved")
     args = parser.parse_args()
+
+    if args.packet_glob:
+        try:
+            summary = validate_review_packets_from_glob(
+                args.packet_glob,
+                source_csv=Path(args.source_csv) if args.source_csv else None,
+                bars_path=Path(args.bars_path) if args.bars_path else None,
+                allow_no_ok=bool(args.allow_no_ok),
+                out_dir=Path(args.out_dir),
+            )
+        except Exception as exc:
+            print(f"ERROR: {exc}", flush=True)
+            return 1
+
+        print("Crypto industry taxonomy review packet batch validation")
+        print(f"  packet_glob: {summary['packet_glob']}")
+        print(f"  packet_count: {summary['packet_count']}")
+        print(f"  passed_count: {summary['passed_count']}")
+        print(f"  failed_count: {summary['failed_count']}")
+        print(f"  total_packet_rows: {summary['total_packet_rows']}")
+        print(f"  total_approved_packet_rows: {summary['total_approved_packet_rows']}")
+        if summary["failed_packets"]:
+            print(f"  failed_packets: {summary['failed_packets']}")
+        print(f"Saved JSON reports: {summary['output_jsons']}")
+        print(f"Saved check CSVs: {summary['output_csvs']}")
+        return 0 if summary["overall_pass"] else 1
 
     try:
         report = validate_review_packet_from_paths(
