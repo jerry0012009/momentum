@@ -52,6 +52,15 @@ def ss(v):
     return str(v).strip()
 
 
+def first_nonempty(*values) -> str:
+    """Return the first non-empty safe string from left to right."""
+    for value in values:
+        text = ss(value)
+        if text:
+            return text
+    return ""
+
+
 def load_csv(path: Path) -> pd.DataFrame:
     return pd.read_csv(path) if path.exists() else pd.DataFrame()
 
@@ -428,9 +437,9 @@ def build_payload() -> dict:
 
         factor = {
             "factor_id": fid,
-            "family": ss(drow.get("family", "")),
-            "lifecycle_status": ss(drow.get("lifecycle_status", "")),
-            "expected_direction": ss(drow.get("expected_direction", "")),
+            "family": first_nonempty(c.get("family", ""), drow.get("family", "")),
+            "lifecycle_status": first_nonempty(c.get("lifecycle_status", ""), drow.get("lifecycle_status", "")),
+            "expected_direction": first_nonempty(c.get("expected_direction", ""), drow.get("expected_direction", "")),
             "best_horizon": best_hz,
 
             # Bilingual card
@@ -454,7 +463,7 @@ def build_payload() -> dict:
             "review_required_flag": ss(c.get("review_required_flag", "")),
             "metadata_quality": ss(c.get("metadata_quality", drow.get("metadata_quality", ""))),
             "source_fields": ss(c.get("source_fields", "")),
-            "required_columns": ss(c.get("required_columns", drow.get("required_columns", ""))),
+            "required_columns": first_nonempty(c.get("required_columns", ""), drow.get("required_columns", "")),
 
             # Diagnostics metrics
             "rankic_mean": sf(drow.get("rankic_mean")),

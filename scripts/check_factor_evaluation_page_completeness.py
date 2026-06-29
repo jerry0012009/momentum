@@ -40,6 +40,14 @@ PROFILE_CSV = (
     / "factor_diagnostics"
     / "factor_unified_profile_summary.csv"
 )
+CARDS_CSV = (
+    ROOT
+    / "research"
+    / "factor_runs"
+    / "crypto_top50_factor_library"
+    / "factor_metadata"
+    / "factor_bilingual_cards.csv"
+)
 OUTPUT_DIR = (
     ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_diagnostics"
 )
@@ -171,6 +179,20 @@ def _factor_count_from_profile() -> int | None:
             return sum(1 for row in csv.DictReader(f) if row.get("factor_id", "").strip())
     except Exception:
         return None
+
+
+def _family_map_from_cards() -> dict[str, str]:
+    if not CARDS_CSV.exists():
+        return {}
+    try:
+        with open(CARDS_CSV, newline="", encoding="utf-8") as f:
+            return {
+                row.get("factor_id", "").strip(): row.get("family", "").strip()
+                for row in csv.DictReader(f)
+                if row.get("factor_id", "").strip()
+            }
+    except Exception:
+        return {}
 
 
 def _max_size_bytes_for_factor_count(factor_count: int | None) -> float:
@@ -423,6 +445,43 @@ def check_factor_evaluation_asset_parity(html_text: str) -> list[dict]:
                     f"version={asset.get('version')}, "
                     f"asset_type={asset_summary.get('asset_type')}"
                 ),
+            )
+        )
+
+    card_family = _family_map_from_cards()
+    missing_payload_family = [
+        str(f.get("factor_id", "")).strip()
+        for f in embedded.get("factors", [])
+        if card_family.get(str(f.get("factor_id", "")).strip())
+        and not str(f.get("family", "") or "").strip()
+    ]
+    missing_asset_family = [
+        str(f.get("factor_id", "")).strip()
+        for f in asset.get("factors", [])
+        if card_family.get(str(f.get("factor_id", "")).strip())
+        and not str(f.get("family", "") or "").strip()
+    ]
+    if missing_payload_family or missing_asset_family:
+        results.append(
+            _fail(
+                "factor_eval_family_metadata",
+                "factor_evaluation payload family metadata populated from cards",
+                (
+                    f"embedded_missing={len(missing_payload_family)}, "
+                    f"asset_missing={len(missing_asset_family)}"
+                ),
+                (
+                    f"embedded={missing_payload_family[:10]}, "
+                    f"asset={missing_asset_family[:10]}"
+                ),
+            )
+        )
+    else:
+        results.append(
+            _pass(
+                "factor_eval_family_metadata",
+                "factor_evaluation payload family metadata populated from cards",
+                f"{asset_count} asset factors / {embedded_count} embedded factors checked",
             )
         )
 
