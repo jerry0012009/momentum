@@ -28,6 +28,10 @@ def test_start_here_contains_public_factor_and_taxonomy_entrypoints():
         "data/sources/crypto_industry_taxonomy_contract_v1/symbol_taxonomy.template.csv",
         "scripts/init_crypto_industry_taxonomy_review.py",
         "scripts/build_crypto_industry_taxonomy_review_priority.py",
+        "scripts/validate_crypto_industry_taxonomy_review_packet.py",
+        "scripts/build_crypto_industry_taxonomy_review_validation_rollup.py",
+        "scripts/apply_crypto_industry_taxonomy_review_packet.py",
+        "scripts/check_crypto_industry_taxonomy_review_source.py",
         "scripts/build_crypto_industry_taxonomy_artifact.py",
         "scripts/check_crypto_industry_taxonomy_contract.py",
         "scripts/check_crypto_industry_taxonomy_coverage.py",
@@ -40,6 +44,10 @@ def test_start_here_contains_public_factor_and_taxonomy_entrypoints():
     ]
     for needle in required:
         assert needle in text
+
+    assert "industry_taxonomy_reviewed_packets" in text
+    assert "--bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet --output-csv /tmp/symbol_taxonomy.reviewed.csv" in text
+    assert "effective_from <= known_at" in text
 
 
 def test_start_here_keeps_factor_intake_boundaries_visible():
