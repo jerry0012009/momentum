@@ -12,7 +12,11 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "evaluate_factors.py"
+SCRIPTS = SCRIPT.parent
 PYTHON = sys.executable
+sys.path.insert(0, str(SCRIPTS))
+
+from evaluate_factors import validate_partial_factor_ids  # noqa: E402
 
 
 def _run(args: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -61,6 +65,38 @@ class TestOutputSafetyGuard:
             "--output-dir", str(out_dir),
         ])
         assert "ERROR: --factor-ids partial evaluation cannot write canonical outputs" not in r.stdout
+
+    def test_partial_unknown_factor_id_exits_nonzero(self, tmp_path):
+        """--factor-ids should fail fast for IDs not in registry."""
+        out_dir = tmp_path / "eval"
+        out_dir.mkdir()
+        r = _run([
+            "--factor-ids", "nonexistent_factor_xyz",
+            "--output-dir", str(out_dir),
+        ])
+        combined = r.stdout + r.stderr
+        assert r.returncode != 0
+        assert "Factor IDs not in REGISTRY" in combined
+
+    def test_partial_skipped_public_factor_id_exits_nonzero(self, tmp_path):
+        """--factor-ids should fail fast for public manifest skipped rows."""
+        out_dir = tmp_path / "eval"
+        out_dir.mkdir()
+        r = _run([
+            "--factor-ids", "wq101_alpha58_indneutralize_skipped",
+            "--output-dir", str(out_dir),
+        ])
+        combined = r.stdout + r.stderr
+        assert r.returncode != 0
+        assert "Public manifest skipped factor IDs cannot be evaluated" in combined
+
+    def test_partial_skipped_public_guard_catches_misregistered_id(self):
+        """Skipped public rows are rejected even if they appear in registry IDs."""
+        with pytest.raises(ValueError, match="Public manifest skipped factor IDs cannot be evaluated"):
+            validate_partial_factor_ids(
+                ["wq101_alpha58_indneutralize_skipped"],
+                {"wq101_alpha58_indneutralize_skipped"},
+            )
 
     def test_full_run_does_not_require_output_suffix(self):
         """Full run (no --factor-ids) should not require --output-suffix."""

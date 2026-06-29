@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sys
 import time
@@ -29,6 +30,7 @@ DEFAULT_DATASET_ID = "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1
 FEATURES_DIR = ROOT / "data" / "features" / DEFAULT_DATASET_ID
 LABELS_PATH = FEATURES_DIR / "labels.parquet"
 OUTPUT_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_level_evaluation"
+PUBLIC_FACTOR_MANIFEST = ROOT / "docs" / "factor_library" / "public_factor_candidate_manifest.csv"
 
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -56,6 +58,29 @@ def load_factor_registry() -> list[dict]:
         "required_columns": getattr(fs, "required_columns", []),
         "lookback_window": getattr(fs, "lookback_window", None),
     } for fs in REGISTRY]
+
+
+def load_skipped_public_factor_ids(path: Path = PUBLIC_FACTOR_MANIFEST) -> set[str]:
+    """Load public manifest factor IDs that are explicitly skipped."""
+    if not path.exists():
+        return set()
+    with path.open(newline="") as handle:
+        return {
+            row["factor_id"]
+            for row in csv.DictReader(handle)
+            if row.get("implementation_status", "").startswith("skipped_")
+        }
+
+
+def validate_partial_factor_ids(factor_ids: list[str], registry_ids: set[str]) -> None:
+    """Fail fast for unknown or explicitly skipped public factor IDs."""
+    skipped_public = load_skipped_public_factor_ids()
+    skipped = [fid for fid in factor_ids if fid in skipped_public]
+    if skipped:
+        raise ValueError(f"Public manifest skipped factor IDs cannot be evaluated: {skipped}")
+    missing = [fid for fid in factor_ids if fid not in registry_ids]
+    if missing:
+        raise ValueError(f"Factor IDs not in REGISTRY: {missing}")
 
 
 def rank_ic_from_boundaries(fv_rank: np.ndarray, ret_rank: np.ndarray,
@@ -140,6 +165,18 @@ def main():
         out_dir = OUTPUT_DIR
     suffix = f"_{args.output_suffix}" if args.output_suffix else ""
 
+    # Validate partial factor IDs before loading large artifacts.
+    registry = load_factor_registry()
+    if args.factor_ids:
+        try:
+            validate_partial_factor_ids(
+                args.factor_ids,
+                {r["factor_id"] for r in registry},
+            )
+        except ValueError as exc:
+            print(f"ERROR: {exc}", flush=True)
+            sys.exit(1)
+
     print("Factor-Level IC Evaluation", flush=True)
     if is_partial:
         print(f"  Mode: PARTIAL ({len(args.factor_ids)} factors)", flush=True)
@@ -152,8 +189,7 @@ def main():
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Load registry
-    registry = load_factor_registry()
+    # Filter registry for the requested partial run.
     if args.factor_ids:
         registry = [r for r in registry if r["factor_id"] in args.factor_ids]
     print(f"  Registered factors: {len(registry)}", flush=True)
