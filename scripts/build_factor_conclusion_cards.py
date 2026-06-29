@@ -27,6 +27,8 @@ SCRIPTS = ROOT / "scripts"
 
 sys.path.insert(0, str(SCRIPTS))
 
+from public_factor_manifest_guard import raise_for_skipped_public_factor_ids
+
 
 def load_csv(path: Path, name: str | None = None) -> pd.DataFrame:
     """Load CSV if it exists. Warn if missing or empty. Validate expected columns."""
@@ -211,6 +213,8 @@ def build_cards(
             print(f"    review_df columns: {list(review_df.columns)}")
             print(f"    inventory_df columns: {list(inventory_df.columns)}")
             return pd.DataFrame()
+
+    raise_for_skipped_public_factor_ids(factor_ids, action="conclusion-carded")
 
     cards = []
     for fid in factor_ids:

@@ -39,6 +39,8 @@ DEFAULT_OUTPUT = ROOT / "research" / "factor_runs" / "crypto_top50_factor_librar
 
 sys.path.insert(0, str(SCRIPTS))
 
+from public_factor_manifest_guard import raise_for_skipped_public_factor_ids
+
 # Redundancy thresholds
 NEAR_DUPLICATE = 0.95
 HIGH_REDUNDANCY = 0.85
@@ -296,6 +298,14 @@ def main():
         # Intake mode
         intake_ids = args.intake_factor_ids
         baseline_ids = args.baseline_factor_ids
+        try:
+            raise_for_skipped_public_factor_ids(
+                [*intake_ids, *(baseline_ids or [])],
+                action="redundancy checked",
+            )
+        except ValueError as exc:
+            print(f"  ERROR: {exc}")
+            sys.exit(1)
         print(f"Factor Redundancy Diagnostics (intake mode)")
         print(f"  Intake factors: {len(intake_ids)}")
         print(f"  Baseline factors: {'all computed (excl. intake)' if baseline_ids is None else len(baseline_ids)}")
@@ -313,6 +323,11 @@ def main():
         # Library mode
         if args.factor_ids:
             factor_ids = args.factor_ids
+            try:
+                raise_for_skipped_public_factor_ids(factor_ids, action="redundancy checked")
+            except ValueError as exc:
+                print(f"  ERROR: {exc}")
+                sys.exit(1)
         else:
             for mod in ["factor_formula_registry"]:
                 if mod in sys.modules:
