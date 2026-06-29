@@ -11,9 +11,9 @@ sys.path.insert(0, str(SCRIPTS))
 
 INTAKE_BASE = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_intake"
 
-from run_factor_intake import (  # noqa: E402
+from public_factor_manifest_guard import (  # noqa: E402
+    find_skipped_public_factor_ids,
     load_skipped_public_factor_ids,
-    validate_not_skipped_public_factor_ids,
 )
 
 
@@ -55,7 +55,7 @@ def test_skipped_public_factor_ids_loaded_from_manifest():
 def test_validate_not_skipped_public_factor_ids_flags_blocked_manifest_ids():
     skipped = {"wq101_alpha58_indneutralize_skipped", "q158_roc_5h_skipped"}
 
-    invalid = validate_not_skipped_public_factor_ids(
+    invalid = find_skipped_public_factor_ids(
         ["rev_1h", "wq101_alpha58_indneutralize_skipped"],
         skipped,
     )

@@ -38,11 +38,11 @@ TAXONOMY_REQUIRED_COLUMNS = {
     "source",
     "quality_flag",
 }
-PUBLIC_FACTOR_MANIFEST = ROOT / "docs" / "factor_library" / "public_factor_candidate_manifest.csv"
 
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parent))
 from factor_formula_registry import REGISTRY, REGISTRY_BY_ID
+from public_factor_manifest_guard import raise_for_skipped_public_factor_ids
 
 
 def load_selected_factor_ids(candidate_csv: Path, status: str = "selected_for_7B") -> list[str]:
@@ -61,28 +61,6 @@ def validate_factor_ids(factor_ids: Sequence[str]) -> None:
     missing = [fid for fid in factor_ids if fid not in registry_ids]
     if missing:
         raise ValueError(f"Factor IDs not in REGISTRY: {missing}")
-
-
-def load_skipped_public_factor_ids(path: Path = PUBLIC_FACTOR_MANIFEST) -> set[str]:
-    """Load public manifest factor IDs that are explicitly skipped."""
-    if not path.exists():
-        return set()
-    with path.open(newline="") as handle:
-        return {
-            row["factor_id"]
-            for row in _csv.DictReader(handle)
-            if row.get("implementation_status", "").startswith("skipped_")
-        }
-
-
-def validate_not_skipped_public_factor_ids(
-    factor_ids: Sequence[str],
-    skipped_public_factor_ids: set[str],
-) -> None:
-    """Fail fast if requested factor IDs are explicitly skipped public rows."""
-    skipped = [fid for fid in factor_ids if fid in skipped_public_factor_ids]
-    if skipped:
-        raise ValueError(f"Public manifest skipped factor IDs cannot be built: {skipped}")
 
 
 def apply_cross_sectional_postprocess(wide: pd.DataFrame) -> pd.DataFrame:
@@ -241,7 +219,7 @@ def main() -> None:
         factor_ids = [spec.factor_id for spec in REGISTRY]
 
     validate_factor_ids(factor_ids)
-    validate_not_skipped_public_factor_ids(factor_ids, load_skipped_public_factor_ids())
+    raise_for_skipped_public_factor_ids(factor_ids, action="built")
 
     cache = ROOT / "data" / "cache" / args.dataset_id
     feature = ROOT / "data" / "features" / args.dataset_id

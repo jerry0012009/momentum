@@ -15,7 +15,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import sys
 import time
@@ -30,7 +29,6 @@ DEFAULT_DATASET_ID = "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1
 FEATURES_DIR = ROOT / "data" / "features" / DEFAULT_DATASET_ID
 LABELS_PATH = FEATURES_DIR / "labels.parquet"
 OUTPUT_DIR = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_level_evaluation"
-PUBLIC_FACTOR_MANIFEST = ROOT / "docs" / "factor_library" / "public_factor_candidate_manifest.csv"
 
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -60,24 +58,10 @@ def load_factor_registry() -> list[dict]:
     } for fs in REGISTRY]
 
 
-def load_skipped_public_factor_ids(path: Path = PUBLIC_FACTOR_MANIFEST) -> set[str]:
-    """Load public manifest factor IDs that are explicitly skipped."""
-    if not path.exists():
-        return set()
-    with path.open(newline="") as handle:
-        return {
-            row["factor_id"]
-            for row in csv.DictReader(handle)
-            if row.get("implementation_status", "").startswith("skipped_")
-        }
-
-
 def validate_partial_factor_ids(factor_ids: list[str], registry_ids: set[str]) -> None:
     """Fail fast for unknown or explicitly skipped public factor IDs."""
-    skipped_public = load_skipped_public_factor_ids()
-    skipped = [fid for fid in factor_ids if fid in skipped_public]
-    if skipped:
-        raise ValueError(f"Public manifest skipped factor IDs cannot be evaluated: {skipped}")
+    from public_factor_manifest_guard import raise_for_skipped_public_factor_ids
+    raise_for_skipped_public_factor_ids(factor_ids, action="evaluated")
     missing = [fid for fid in factor_ids if fid not in registry_ids]
     if missing:
         raise ValueError(f"Factor IDs not in REGISTRY: {missing}")
