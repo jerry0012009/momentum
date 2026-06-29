@@ -27,6 +27,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from public_factor_manifest_guard import raise_for_skipped_public_factor_ids
+
 ROOT = Path(__file__).resolve().parents[1]
 FEATURES_DIR = ROOT / "data" / "features" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
 BASE = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library"
@@ -315,6 +317,15 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     target_ids = _resolve_target_ids(args)
+    if target_ids:
+        try:
+            raise_for_skipped_public_factor_ids(
+                sorted(target_ids),
+                action="pairwise-redundancy diagnosed",
+            )
+        except ValueError as exc:
+            print(f"ERROR: {exc}")
+            return 1
     incremental = target_ids is not None
 
     print("=" * 70)

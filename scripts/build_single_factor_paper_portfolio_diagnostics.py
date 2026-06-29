@@ -16,6 +16,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from public_factor_manifest_guard import raise_for_skipped_public_factor_ids
+
 REPO = Path(__file__).resolve().parent.parent
 DATA_BASE = REPO / "data" / "features" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
 DIAG_DIR = REPO / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_diagnostics"
@@ -387,8 +389,22 @@ def main() -> int:
     args = parser.parse_args()
 
     fee_bps_list = [int(x) for x in args.fee_bps_list.split(",")]
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.factor_ids:
+        factor_ids = [x.strip() for x in args.factor_ids.split(",") if x.strip()]
+        try:
+            raise_for_skipped_public_factor_ids(
+                factor_ids,
+                action="single-factor paper diagnosed",
+            )
+        except ValueError as exc:
+            print(f"ERROR: {exc}")
+            return 1
+    else:
+        factor_ids = load_registered_factors()
+
+    if args.max_factors > 0:
+        factor_ids = factor_ids[:args.max_factors]
 
     print(f"[PM-21] Loading labels...")
     t0 = time.time()
@@ -398,13 +414,8 @@ def main() -> int:
     directions = load_factor_directions()
     scorecard_classes = load_scorecard_classes()
 
-    if args.factor_ids:
-        factor_ids = [x.strip() for x in args.factor_ids.split(",")]
-    else:
-        factor_ids = load_registered_factors()
-
-    if args.max_factors > 0:
-        factor_ids = factor_ids[:args.max_factors]
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"[PM-21] Processing {len(factor_ids)} factors, horizon={args.horizon}, fees={fee_bps_list}")
 
