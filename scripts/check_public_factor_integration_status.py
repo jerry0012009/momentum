@@ -415,12 +415,40 @@ def summarize_cap_readiness(
     }
 
 
+def mark_skipped_rows_ready(
+    skipped_rows: list[dict[str, object]],
+    *,
+    taxonomy_readiness: dict[str, object],
+    cap_readiness: dict[str, object],
+) -> list[dict[str, object]]:
+    taxonomy_ready = bool(taxonomy_readiness.get("ready_for_indneutralize_unskip", False))
+    cap_ready = bool(cap_readiness.get("ready_for_cap_unskip", False))
+    marked: list[dict[str, object]] = []
+    for row in skipped_rows:
+        needs_taxonomy = bool(row.get("taxonomy_blocker", False))
+        needs_cap = bool(row.get("cap_blocker", False))
+        ready = bool(
+            (not needs_taxonomy or taxonomy_ready)
+            and (not needs_cap or cap_ready)
+            and (needs_taxonomy or needs_cap)
+        )
+        marked.append({**row, "ready_for_unskip": ready})
+    return marked
+
+
 def build_status_report(
     manifest_path: Path = MANIFEST,
     state_path: Path = STATE,
 ) -> dict[str, object]:
     rows = load_manifest(manifest_path)
     family_summary, skipped_rows = summarize_manifest(rows)
+    taxonomy_readiness = summarize_taxonomy_readiness(skipped_rows=skipped_rows)
+    cap_readiness = summarize_cap_readiness(skipped_rows=skipped_rows)
+    skipped_rows = mark_skipped_rows_ready(
+        skipped_rows,
+        taxonomy_readiness=taxonomy_readiness,
+        cap_readiness=cap_readiness,
+    )
     state = load_state(state_path)
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -434,8 +462,8 @@ def build_status_report(
         },
         "family_summary": family_summary,
         "skipped_rows": skipped_rows,
-        "taxonomy_readiness": summarize_taxonomy_readiness(skipped_rows=skipped_rows),
-        "cap_readiness": summarize_cap_readiness(skipped_rows=skipped_rows),
+        "taxonomy_readiness": taxonomy_readiness,
+        "cap_readiness": cap_readiness,
     }
 
 

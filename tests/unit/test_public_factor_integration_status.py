@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from check_public_factor_integration_status import (  # noqa: E402
     OUT_DIR,
     build_status_report,
+    mark_skipped_rows_ready,
     write_status_report,
 )
 
@@ -142,6 +143,43 @@ def test_public_factor_integration_status_writes_reports(tmp_path: Path):
     assert out_json.exists()
     assert out_summary.exists()
     assert out_skipped.exists()
+
+
+def test_mark_skipped_rows_ready_uses_required_gate_statuses():
+    rows = [
+        {"factor_id": "tax", "taxonomy_blocker": True, "cap_blocker": False, "ready_for_unskip": False},
+        {"factor_id": "cap", "taxonomy_blocker": False, "cap_blocker": True, "ready_for_unskip": False},
+        {"factor_id": "both", "taxonomy_blocker": True, "cap_blocker": True, "ready_for_unskip": False},
+        {"factor_id": "other", "taxonomy_blocker": False, "cap_blocker": False, "ready_for_unskip": False},
+    ]
+
+    marked = mark_skipped_rows_ready(
+        rows,
+        taxonomy_readiness={"ready_for_indneutralize_unskip": True},
+        cap_readiness={"ready_for_cap_unskip": False},
+    )
+    ready_by_id = {row["factor_id"]: row["ready_for_unskip"] for row in marked}
+
+    assert ready_by_id == {
+        "tax": True,
+        "cap": False,
+        "both": False,
+        "other": False,
+    }
+
+    marked = mark_skipped_rows_ready(
+        rows,
+        taxonomy_readiness={"ready_for_indneutralize_unskip": True},
+        cap_readiness={"ready_for_cap_unskip": True},
+    )
+    ready_by_id = {row["factor_id"]: row["ready_for_unskip"] for row in marked}
+
+    assert ready_by_id == {
+        "tax": True,
+        "cap": True,
+        "both": True,
+        "other": False,
+    }
 
 
 def test_committed_public_factor_integration_status_is_current():
