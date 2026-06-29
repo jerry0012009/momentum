@@ -90,15 +90,15 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert taxonomy["packet_allow_no_ok"] is False
     assert taxonomy["packet_rollup_exists"] is True
     assert taxonomy["packet_rollup_blocker"] == ""
-    assert taxonomy["packet_rollup_batch_count"] == 2
+    assert taxonomy["packet_rollup_batch_count"] == 3
     assert taxonomy["packet_rollup_ready_to_apply_batch_count"] == 0
-    assert taxonomy["packet_rollup_blocked_batch_count"] == 2
-    assert taxonomy["packet_rollup_total_packet_rows"] == 24
+    assert taxonomy["packet_rollup_blocked_batch_count"] == 3
+    assert taxonomy["packet_rollup_total_packet_rows"] == 36
     assert taxonomy["packet_rollup_total_approved_rows"] == 0
     assert taxonomy["packet_rollup_approved_bar_count_share_sum"] == 0.0
     assert taxonomy["packet_rollup_approved_quote_volume_share_sum"] == 0.0
     assert taxonomy["packet_rollup_ready_to_apply_batch_ids"] == ""
-    assert taxonomy["packet_rollup_blocked_batch_ids"] == "1|2"
+    assert taxonomy["packet_rollup_blocked_batch_ids"] == "1|2|3"
     assert taxonomy["artifact_exists"] is False
     assert taxonomy["contract_pass"] is False
     assert taxonomy["coverage_pass"] is False
