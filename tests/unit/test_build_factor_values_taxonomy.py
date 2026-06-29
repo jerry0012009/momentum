@@ -9,7 +9,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from build_factor_values import merge_point_in_time_taxonomy  # noqa: E402
+from build_factor_values import (  # noqa: E402
+    load_skipped_public_factor_ids,
+    merge_point_in_time_taxonomy,
+    validate_not_skipped_public_factor_ids,
+)
 
 
 def _bars() -> pd.DataFrame:
@@ -85,3 +89,19 @@ def test_merge_point_in_time_taxonomy_requires_contract_columns():
 
     with pytest.raises(ValueError, match="taxonomy missing required columns"):
         merge_point_in_time_taxonomy(_bars(), taxonomy)
+
+
+def test_build_factor_values_loads_skipped_public_factor_ids():
+    skipped = load_skipped_public_factor_ids()
+
+    assert "wq101_alpha58_indneutralize_skipped" in skipped
+    assert "q158_roc_5h_skipped" in skipped
+    assert "wq101_alpha56" not in skipped
+
+
+def test_build_factor_values_rejects_skipped_public_factor_ids():
+    with pytest.raises(ValueError, match="Public manifest skipped factor IDs cannot be built"):
+        validate_not_skipped_public_factor_ids(
+            ["rev_1h", "wq101_alpha58_indneutralize_skipped"],
+            {"wq101_alpha58_indneutralize_skipped"},
+        )
