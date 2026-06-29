@@ -15,10 +15,10 @@ def _valid_taxonomy() -> pd.DataFrame:
     return pd.DataFrame({
         "symbol": ["AAAUSDT", "AAAUSDT", "BBBUSDT", "CCCUSDT"],
         "known_at": pd.to_datetime([
-            "2025-12-31 00:00Z",
+            "2026-01-01 00:00Z",
             "2026-02-01 00:00Z",
-            "2025-12-31 00:00Z",
-            "2025-12-31 00:00Z",
+            "2026-01-01 00:00Z",
+            "2026-01-01 00:00Z",
         ]),
         "effective_from": pd.to_datetime([
             "2026-01-01 00:00Z",
@@ -86,6 +86,15 @@ def test_overlapping_ok_windows_fail():
     checks = validate_taxonomy_contract(df)
 
     assert not _status(checks, "no_overlapping_ok_effective_windows")
+
+
+def test_ok_effective_from_after_known_at_fails():
+    df = _valid_taxonomy()
+    df.loc[0, "known_at"] = pd.Timestamp("2025-12-31 00:00Z")
+
+    checks = validate_taxonomy_contract(df)
+
+    assert not _status(checks, "ok_effective_from_not_after_known_at")
 
 
 def test_non_ok_rows_do_not_need_group_fields():

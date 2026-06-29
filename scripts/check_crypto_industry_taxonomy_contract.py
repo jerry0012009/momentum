@@ -101,6 +101,19 @@ def validate_taxonomy_contract(df: pd.DataFrame) -> list[dict[str, object]]:
         not bad_interval.any(),
         f"{int(bad_interval.sum())} rows with effective_to <= effective_from",
     )
+    effective_after_known = ok & df["known_at"].notna() & df["effective_from"].notna() & (
+        df["effective_from"] > df["known_at"]
+    )
+    _check_row(
+        checks,
+        "ok_effective_from_not_after_known_at",
+        not effective_after_known.any(),
+        (
+            f"{int(effective_after_known.sum())} OK rows with effective_from > known_at"
+            if effective_after_known.any()
+            else "All OK rows have effective_from <= known_at"
+        ),
+    )
 
     for col in GROUP_COLUMNS:
         missing_group = ok & df[col].isna()

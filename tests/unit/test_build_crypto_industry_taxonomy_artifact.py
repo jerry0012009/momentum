@@ -14,7 +14,7 @@ from build_crypto_industry_taxonomy_artifact import build_taxonomy_artifact  # n
 def _valid_rows() -> pd.DataFrame:
     return pd.DataFrame({
         "symbol": ["AAAUSDT", "AAAUSDT", "BBBUSDT"],
-        "known_at": ["2025-12-31 00:00Z", "2026-02-01 00:00Z", "2025-12-31 00:00Z"],
+        "known_at": ["2026-01-01 00:00Z", "2026-02-01 00:00Z", "2026-01-01 00:00Z"],
         "effective_from": ["2026-01-01 00:00Z", "2026-02-01 00:00Z", "2026-01-01 00:00Z"],
         "effective_to": ["2026-02-01 00:00Z", "", ""],
         "sector": ["L1", "L1", "L2"],

@@ -168,10 +168,10 @@ python scripts/check_crypto_industry_taxonomy_coverage.py \
 ```
 
 The validator checks required columns, quality-flag domain, known/effective
-timestamps, group-field completeness for `OK` rows, and overlapping effective
-windows. The coverage checker verifies that the point-in-time taxonomy covers
-the current factor bars before any industry-neutralized Alpha101 row can move
-from skipped to implemented.
+timestamps, `effective_from <= known_at`, group-field completeness for `OK`
+rows, and overlapping effective windows. The coverage checker verifies that the
+point-in-time taxonomy covers the current factor bars before any
+industry-neutralized Alpha101 row can move from skipped to implemented.
 
 After a batch packet has been manually reviewed and validated, apply only the
 explicit `target_quality_flag == OK` rows to a temporary source CSV:
