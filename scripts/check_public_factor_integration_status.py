@@ -114,6 +114,26 @@ def summarize_manifest(rows: list[dict[str, str]]) -> tuple[list[dict[str, objec
     return summary, skipped_rows
 
 
+def summarize_registry_guard(family_summary: list[dict[str, object]]) -> dict[str, object]:
+    """Summarize manifest-vs-registry guardrails for public factor candidates."""
+    registry_missing_ids: list[str] = []
+    skipped_present_ids: list[str] = []
+    for row in family_summary:
+        registry_missing_ids.extend(
+            fid for fid in str(row.get("registry_missing_ids", "")).split("|") if fid
+        )
+        skipped_present_ids.extend(
+            fid for fid in str(row.get("skipped_present_ids", "")).split("|") if fid
+        )
+    return {
+        "non_skipped_missing_registry_count": len(registry_missing_ids),
+        "non_skipped_missing_registry_ids": "|".join(registry_missing_ids),
+        "skipped_present_in_registry_count": len(skipped_present_ids),
+        "skipped_present_in_registry_ids": "|".join(skipped_present_ids),
+        "pass": not registry_missing_ids and not skipped_present_ids,
+    }
+
+
 def load_state(path: Path = STATE) -> dict[str, object]:
     with path.open() as handle:
         return json.load(handle)
@@ -491,6 +511,7 @@ def build_status_report(
 ) -> dict[str, object]:
     rows = load_manifest(manifest_path)
     family_summary, skipped_rows = summarize_manifest(rows)
+    registry_guard = summarize_registry_guard(family_summary)
     taxonomy_readiness = summarize_taxonomy_readiness(skipped_rows=skipped_rows)
     cap_readiness = summarize_cap_readiness(skipped_rows=skipped_rows)
     skipped_rows = mark_skipped_rows_ready(
@@ -510,6 +531,7 @@ def build_status_report(
             "missing_input_factors": state.get("missing_input_factors"),
         },
         "family_summary": family_summary,
+        "registry_guard": registry_guard,
         "skipped_rows": skipped_rows,
         "taxonomy_readiness": taxonomy_readiness,
         "cap_readiness": cap_readiness,

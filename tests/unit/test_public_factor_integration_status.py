@@ -45,6 +45,15 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert alpha158["registry_missing_non_skipped"] == 0
     assert alpha158["skipped_present_in_registry"] == 0
 
+    registry_guard = report["registry_guard"]
+    assert registry_guard == {
+        "non_skipped_missing_registry_count": 0,
+        "non_skipped_missing_registry_ids": "",
+        "skipped_present_in_registry_count": 0,
+        "skipped_present_in_registry_ids": "",
+        "pass": True,
+    }
+
     skipped_ids = {row["factor_id"] for row in report["skipped_rows"]}
     assert "wq101_alpha58_indneutralize_skipped" in skipped_ids
     assert "wq101_alpha56_cap_skipped" not in skipped_ids
@@ -286,5 +295,5 @@ def test_committed_public_factor_integration_status_is_current():
     current = build_status_report()
     committed = json.loads((OUT_DIR / "public_factor_integration_status.json").read_text())
 
-    for key in ["state", "family_summary", "skipped_rows", "taxonomy_readiness", "cap_readiness"]:
+    for key in ["state", "family_summary", "registry_guard", "skipped_rows", "taxonomy_readiness", "cap_readiness"]:
         assert committed[key] == current[key]
