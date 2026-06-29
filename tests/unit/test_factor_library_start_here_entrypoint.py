@@ -48,6 +48,7 @@ def test_start_here_contains_public_factor_and_taxonomy_entrypoints():
     assert "industry_taxonomy_reviewed_packets" in text
     assert "--bars-path data/cache/crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1/bars_1h.parquet --output-csv /tmp/symbol_taxonomy.reviewed.csv" in text
     assert "effective_from <= known_at" in text
+    assert "跨 packet 重复 OK 会被 apply 拒绝" in text
 
 
 def test_start_here_keeps_factor_intake_boundaries_visible():
