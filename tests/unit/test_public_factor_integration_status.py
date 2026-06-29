@@ -273,6 +273,61 @@ def test_taxonomy_packet_rollup_supports_reviewed_prefix(tmp_path: Path):
     }
 
 
+def test_taxonomy_readiness_requires_source_gate_even_when_artifact_checks_pass(
+    tmp_path: Path,
+    monkeypatch,
+):
+    import check_public_factor_integration_status as status_mod
+
+    artifact = tmp_path / "symbol_taxonomy.parquet"
+    artifact.write_text("placeholder")
+    source = tmp_path / "symbol_taxonomy.csv"
+    source.write_text("placeholder")
+
+    monkeypatch.setattr(
+        status_mod,
+        "summarize_review_source",
+        lambda *_args, **_kwargs: {
+            "row_count": 1,
+            "quality_counts": {"REVIEW": 1},
+            "ok_row_count": 0,
+            "missing_required_ok_groups": "industry|sector|subindustry",
+            "bars_path": "bars.parquet",
+            "bar_last_timestamp": "2026-06-13T00:00:00Z",
+            "ok_rows_known_by_last_bar": 0,
+            "ok_symbols_known_by_last_bar": 0,
+            "ok_rows_known_after_last_bar": 0,
+            "ok_known_at_blocks_bars": False,
+            "ready_to_build_artifact": False,
+            "blocker": "taxonomy_review_has_no_ok_rows",
+            "checks": [{"check": "has_ok_rows", "passed": False, "detail": "0 OK rows"}],
+        },
+    )
+    monkeypatch.setattr(
+        status_mod,
+        "check_contract",
+        lambda _path: [{"check": "contract", "passed": True, "detail": "ok"}],
+    )
+    monkeypatch.setattr(
+        status_mod,
+        "check_coverage",
+        lambda *_args, **_kwargs: ({}, [{"check": "coverage", "passed": True, "detail": "ok"}], {}),
+    )
+
+    taxonomy = status_mod.summarize_taxonomy_readiness(
+        source_path=source,
+        artifact_path=artifact,
+        skipped_rows=[],
+    )
+
+    assert taxonomy["artifact_exists"] is True
+    assert taxonomy["contract_pass"] is True
+    assert taxonomy["coverage_pass"] is True
+    assert taxonomy["source_ready_to_build_artifact"] is False
+    assert taxonomy["ready_for_indneutralize_unskip"] is False
+    assert taxonomy["blocker"] == "taxonomy_review_has_no_ok_rows"
+
+
 def test_mark_skipped_rows_ready_uses_required_gate_statuses():
     rows = [
         {"factor_id": "tax", "taxonomy_blocker": True, "cap_blocker": False, "ready_for_unskip": False},

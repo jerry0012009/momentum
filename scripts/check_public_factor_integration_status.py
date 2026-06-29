@@ -427,6 +427,14 @@ def summarize_taxonomy_readiness(
     elif not coverage_pass:
         blocker = "taxonomy_coverage_failed"
 
+    taxonomy_ready = (
+        source_exists
+        and bool(review_source.get("ready_to_build_artifact"))
+        and artifact_path.exists()
+        and contract_pass
+        and coverage_pass
+    )
+
     return {
         "source_path": str(source_path),
         "source_exists": source_exists,
@@ -451,7 +459,7 @@ def summarize_taxonomy_readiness(
         "contract_pass": contract_pass,
         "coverage_pass": coverage_pass,
         "coverage_error": coverage_error,
-        "ready_for_indneutralize_unskip": contract_pass and coverage_pass,
+        "ready_for_indneutralize_unskip": taxonomy_ready,
         "blocker": blocker,
         "blocked_alpha101_factor_count": len(taxonomy_skipped),
         "blocked_alpha101_factor_ids": "|".join(row["factor_id"] for row in taxonomy_skipped),
