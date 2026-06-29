@@ -30,6 +30,7 @@ Phase 13A-P3. Not production. Not live trading.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import subprocess
 import sys
@@ -41,6 +42,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
 FEATURES_DIR = ROOT / "data" / "features" / "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
 INTAKE_BASE = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_intake"
+PUBLIC_FACTOR_MANIFEST = ROOT / "docs" / "factor_library" / "public_factor_candidate_manifest.csv"
 
 sys.path.insert(0, str(SCRIPTS))
 
@@ -84,6 +86,26 @@ def load_registry_ids() -> set[str]:
 def validate_factor_ids(factor_ids: list[str], registry_ids: set[str]) -> list[str]:
     """Return list of invalid factor IDs."""
     return [fid for fid in factor_ids if fid not in registry_ids]
+
+
+def load_skipped_public_factor_ids(path: Path = PUBLIC_FACTOR_MANIFEST) -> set[str]:
+    """Load public manifest factor IDs that are explicitly skipped."""
+    if not path.exists():
+        return set()
+    with path.open(newline="") as handle:
+        return {
+            row["factor_id"]
+            for row in csv.DictReader(handle)
+            if row.get("implementation_status", "").startswith("skipped_")
+        }
+
+
+def validate_not_skipped_public_factor_ids(
+    factor_ids: list[str],
+    skipped_public_factor_ids: set[str],
+) -> list[str]:
+    """Return requested IDs that are explicitly skipped in the public manifest."""
+    return [fid for fid in factor_ids if fid in skipped_public_factor_ids]
 
 
 def run_command(cmd: list[str], description: str, dry_run: bool = False) -> tuple[int, str]:
@@ -345,6 +367,13 @@ def main():
     invalid = validate_factor_ids(factor_ids, registry_ids)
     if invalid:
         print(f"  ERROR: Unknown factor IDs: {invalid}")
+        sys.exit(1)
+    skipped_public = validate_not_skipped_public_factor_ids(
+        factor_ids,
+        load_skipped_public_factor_ids(),
+    )
+    if skipped_public:
+        print(f"  ERROR: Public manifest skipped factor IDs cannot be intaken: {skipped_public}")
         sys.exit(1)
     print(f"  All {len(factor_ids)} factor IDs validated against registry ({len(registry_ids)} total)")
 

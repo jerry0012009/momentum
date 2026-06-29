@@ -11,6 +11,11 @@ sys.path.insert(0, str(SCRIPTS))
 
 INTAKE_BASE = ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_intake"
 
+from run_factor_intake import (  # noqa: E402
+    load_skipped_public_factor_ids,
+    validate_not_skipped_public_factor_ids,
+)
+
 
 def test_intake_dry_run():
     """run_factor_intake.py --dry-run should succeed."""
@@ -37,6 +42,25 @@ def test_intake_validates_unknown_factor_ids():
         capture_output=True, text=True, cwd=str(ROOT),
     )
     assert result.returncode != 0 or "Unknown factor IDs" in result.stdout or "Unknown factor IDs" in result.stderr
+
+
+def test_skipped_public_factor_ids_loaded_from_manifest():
+    skipped = load_skipped_public_factor_ids()
+
+    assert "wq101_alpha58_indneutralize_skipped" in skipped
+    assert "q158_roc_5h_skipped" in skipped
+    assert "wq101_alpha56" not in skipped
+
+
+def test_validate_not_skipped_public_factor_ids_flags_blocked_manifest_ids():
+    skipped = {"wq101_alpha58_indneutralize_skipped", "q158_roc_5h_skipped"}
+
+    invalid = validate_not_skipped_public_factor_ids(
+        ["rev_1h", "wq101_alpha58_indneutralize_skipped"],
+        skipped,
+    )
+
+    assert invalid == ["wq101_alpha58_indneutralize_skipped"]
 
 
 def test_intake_creates_directory(tmp_path):
