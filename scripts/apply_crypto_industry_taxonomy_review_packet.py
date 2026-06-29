@@ -105,20 +105,54 @@ def apply_review_packet(source: pd.DataFrame, packet: pd.DataFrame) -> tuple[pd.
     }
 
 
+def apply_review_packets(source: pd.DataFrame, packets: list[pd.DataFrame]) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Return updated source and summary after sequentially applying packets."""
+    if not packets:
+        raise ValueError("at least one packet is required")
+
+    updated = source.copy()
+    packet_summaries: list[dict[str, object]] = []
+    updated_symbols: list[str] = []
+    for index, packet in enumerate(packets, start=1):
+        updated, summary = apply_review_packet(updated, packet)
+        packet_summaries.append({"packet_index": index, **summary})
+        symbols = str(summary.get("updated_symbols", ""))
+        if symbols:
+            updated_symbols.extend(symbols.split("|"))
+
+    return updated, {
+        "packet_count": int(len(packets)),
+        "packet_rows": int(sum(int(row["packet_rows"]) for row in packet_summaries)),
+        "approved_packet_rows": int(sum(int(row["approved_packet_rows"]) for row in packet_summaries)),
+        "updated_rows": int(sum(int(row["updated_rows"]) for row in packet_summaries)),
+        "updated_symbols": "|".join(updated_symbols),
+        "skipped_packet_rows": int(sum(int(row["skipped_packet_rows"]) for row in packet_summaries)),
+        "packet_summaries": packet_summaries,
+        "note": "Applied explicit OK target rows from reviewed packets only; run source, artifact, contract, and coverage gates next.",
+    }
+
+
 def apply_review_packet_from_paths(source_csv: Path, packet_csv: Path, output_csv: Path) -> dict[str, object]:
+    return apply_review_packets_from_paths(source_csv, [packet_csv], output_csv)
+
+
+def apply_review_packets_from_paths(source_csv: Path, packet_csvs: list[Path], output_csv: Path) -> dict[str, object]:
     if not source_csv.exists():
         raise FileNotFoundError(f"Source CSV not found: {source_csv}")
-    if not packet_csv.exists():
-        raise FileNotFoundError(f"Packet CSV not found: {packet_csv}")
+    if not packet_csvs:
+        raise ValueError("At least one packet CSV is required")
+    missing_packets = [str(packet_csv) for packet_csv in packet_csvs if not packet_csv.exists()]
+    if missing_packets:
+        raise FileNotFoundError(f"Packet CSV not found: {missing_packets}")
     source = pd.read_csv(source_csv).fillna("")
-    packet = pd.read_csv(packet_csv).fillna("")
-    updated, summary = apply_review_packet(source, packet)
+    packets = [pd.read_csv(packet_csv).fillna("") for packet_csv in packet_csvs]
+    updated, summary = apply_review_packets(source, packets)
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     updated.to_csv(output_csv, index=False)
     return {
         **summary,
         "source_csv": str(source_csv),
-        "packet_csv": str(packet_csv),
+        "packet_csv": "|".join(str(packet_csv) for packet_csv in packet_csvs),
         "output_csv": str(output_csv),
     }
 
@@ -126,14 +160,20 @@ def apply_review_packet_from_paths(source_csv: Path, packet_csv: Path, output_cs
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-csv", default=str(DEFAULT_SOURCE), help="Current taxonomy source CSV")
-    parser.add_argument("--packet-csv", default=str(DEFAULT_PACKET), help="Reviewed batch packet CSV")
+    parser.add_argument(
+        "--packet-csv",
+        action="append",
+        default=None,
+        help="Reviewed batch packet CSV; pass multiple times to apply several packets in order",
+    )
     parser.add_argument("--output-csv", required=True, help="Output taxonomy source CSV path")
     args = parser.parse_args()
 
     try:
-        summary = apply_review_packet_from_paths(
+        packet_csvs = [Path(path) for path in (args.packet_csv or [str(DEFAULT_PACKET)])]
+        summary = apply_review_packets_from_paths(
             Path(args.source_csv),
-            Path(args.packet_csv),
+            packet_csvs,
             Path(args.output_csv),
         )
     except Exception as exc:

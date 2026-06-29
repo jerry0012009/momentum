@@ -12,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from apply_crypto_industry_taxonomy_review_packet import (  # noqa: E402
     apply_review_packet,
     apply_review_packet_from_paths,
+    apply_review_packets,
+    apply_review_packets_from_paths,
 )
 
 
@@ -100,3 +102,59 @@ def test_apply_review_packet_from_paths_writes_output(tmp_path: Path):
     assert output_csv.exists()
     assert summary["updated_rows"] == 1
     assert written.loc[written["symbol"] == "AAAUSDT", "quality_flag"].iloc[0] == "OK"
+
+
+def test_apply_review_packets_applies_multiple_packets_in_order():
+    second = _packet()
+    second["target_quality_flag"] = ["REVIEW", "OK"]
+    second["target_sector"] = ["", "DeFi"]
+    second["target_industry"] = ["", "DeFi.Protocol"]
+    second["target_subindustry"] = ["", "DeFi.Protocol.Utility"]
+    second["target_known_at"] = ["", "2025-12-30T00:00:00Z"]
+    second["target_effective_from"] = ["", "2024-06-01T01:00:00Z"]
+
+    updated, summary = apply_review_packets(_source(), [_packet(), second])
+
+    aaa = updated[updated["symbol"] == "AAAUSDT"].iloc[0]
+    bbb = updated[updated["symbol"] == "BBBUSDT"].iloc[0]
+    assert aaa["quality_flag"] == "OK"
+    assert bbb["sector"] == "DeFi"
+    assert bbb["quality_flag"] == "OK"
+    assert summary["packet_count"] == 2
+    assert summary["packet_rows"] == 4
+    assert summary["approved_packet_rows"] == 2
+    assert summary["updated_rows"] == 2
+    assert summary["updated_symbols"] == "AAAUSDT|BBBUSDT"
+    assert len(summary["packet_summaries"]) == 2
+
+
+def test_apply_review_packets_rejects_empty_packet_list():
+    with pytest.raises(ValueError, match="at least one packet"):
+        apply_review_packets(_source(), [])
+
+
+def test_apply_review_packets_from_paths_writes_output_for_multiple_packets(tmp_path: Path):
+    source_csv = tmp_path / "source.csv"
+    first_csv = tmp_path / "packet_001.csv"
+    second_csv = tmp_path / "packet_002.csv"
+    output_csv = tmp_path / "out" / "symbol_taxonomy.csv"
+    second = _packet()
+    second["target_quality_flag"] = ["REVIEW", "OK"]
+    second["target_sector"] = ["", "DeFi"]
+    second["target_industry"] = ["", "DeFi.Protocol"]
+    second["target_subindustry"] = ["", "DeFi.Protocol.Utility"]
+    second["target_known_at"] = ["", "2025-12-30T00:00:00Z"]
+    second["target_effective_from"] = ["", "2024-06-01T01:00:00Z"]
+
+    _source().to_csv(source_csv, index=False)
+    _packet().to_csv(first_csv, index=False)
+    second.to_csv(second_csv, index=False)
+
+    summary = apply_review_packets_from_paths(source_csv, [first_csv, second_csv], output_csv)
+    written = pd.read_csv(output_csv).fillna("")
+
+    assert summary["packet_count"] == 2
+    assert summary["updated_rows"] == 2
+    assert summary["packet_csv"] == f"{first_csv}|{second_csv}"
+    assert written.loc[written["symbol"] == "AAAUSDT", "quality_flag"].iloc[0] == "OK"
+    assert written.loc[written["symbol"] == "BBBUSDT", "quality_flag"].iloc[0] == "OK"
