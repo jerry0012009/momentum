@@ -37,6 +37,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats as sp_stats
 
+from public_factor_manifest_guard import raise_for_skipped_public_factor_ids
+
 # ── Constants ────────────────────────────────────────────────────────────────
 WORKSPACE = Path(__file__).resolve().parent.parent
 DATASET_ID = "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
@@ -396,6 +398,15 @@ def main() -> None:
     target_factor_ids, is_subset_mode = _resolve_target_factor_ids(args)
     if is_subset_mode:
         print(f"  SUBSET MODE: processing {len(target_factor_ids or [])} target factor(s)")
+    if target_factor_ids:
+        try:
+            raise_for_skipped_public_factor_ids(
+                target_factor_ids,
+                action="decile-shape diagnosed",
+            )
+        except ValueError as exc:
+            print(f"ERROR: {exc}")
+            return 1
 
     # Ensure output dir
     DIAG_DIR.mkdir(parents=True, exist_ok=True)
@@ -836,4 +847,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

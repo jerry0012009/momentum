@@ -31,6 +31,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from public_factor_manifest_guard import raise_for_skipped_public_factor_ids
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -333,6 +335,15 @@ def main():
     target_factor_ids, is_subset_mode = _resolve_target_factor_ids(args, DIAG)
     if is_subset_mode:
         print(f"[PM-29B] SUBSET MODE: processing {len(target_factor_ids or [])} target factor(s)")
+    if target_factor_ids:
+        try:
+            raise_for_skipped_public_factor_ids(
+                target_factor_ids,
+                action="capacity/liquidity diagnosed",
+            )
+        except ValueError as exc:
+            print(f"ERROR: {exc}")
+            return 1
 
     print(f"[PM-29B] Notionals: {notionals}")
     print(f"[PM-29B] Sample interval: every {sample_hours}h")

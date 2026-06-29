@@ -29,6 +29,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats as sp_stats
 
+from public_factor_manifest_guard import raise_for_skipped_public_factor_ids
+
 # ── Paths ──────────────────────────────────────────────────────────────────
 BASE = Path("research/factor_runs/crypto_top50_factor_library")
 DIAG = BASE / "factor_diagnostics"
@@ -530,6 +532,15 @@ def main():
         else:
             target_ids = missing
     incremental = target_ids is not None
+    if target_ids:
+        try:
+            raise_for_skipped_public_factor_ids(
+                sorted(target_ids),
+                action="shape/stability diagnosed",
+            )
+        except ValueError as exc:
+            print(f"ERROR: {exc}")
+            return 1
 
     print("Loading data...")
     qr_df = pd.read_csv(QR_FILE)
@@ -698,4 +709,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)
