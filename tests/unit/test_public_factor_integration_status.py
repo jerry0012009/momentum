@@ -92,6 +92,25 @@ def test_public_factor_integration_status_matches_current_manifest_and_state():
     assert taxonomy["source_ok_symbols_known_by_last_bar"] == 0
     assert taxonomy["source_ok_rows_known_after_last_bar"] == 0
     assert taxonomy["source_ok_known_at_blocks_bars"] is False
+    assert taxonomy["source_check_pass"] is False
+    assert taxonomy["source_check_count"] == 13
+    assert taxonomy["source_failed_check_count"] == 5
+    assert taxonomy["source_failed_checks"] == (
+        "has_ok_rows|ok_rows_have_industry|ok_rows_have_sector|"
+        "ok_rows_have_subindustry|required_groups_have_ok_rows"
+    )
+    assert taxonomy["source_check_required_columns_pass"] is True
+    assert taxonomy["source_check_required_columns_detail"] == "All present"
+    assert taxonomy["source_check_quality_flag_domain_pass"] is True
+    assert taxonomy["source_check_has_ok_rows_pass"] is False
+    assert taxonomy["source_check_has_ok_rows_detail"] == "0 OK rows"
+    assert taxonomy["source_check_required_groups_have_ok_rows_pass"] is False
+    assert taxonomy["source_check_symbol_non_empty_pass"] is True
+    assert taxonomy["source_check_symbol_unique_pass"] is True
+    assert taxonomy["source_check_ok_rows_have_valid_known_at_pass"] is True
+    assert taxonomy["source_check_ok_rows_have_valid_effective_from_pass"] is True
+    assert taxonomy["source_check_ok_effective_from_not_after_known_at_pass"] is True
+    assert taxonomy["source_check_ok_rows_known_by_latest_bar_pass"] is True
     assert taxonomy["packet_validation_exists"] is True
     assert taxonomy["packet_validation_pass"] is False
     assert taxonomy["packet_validation_blocker"] == "packet_has_no_ok_target_rows"

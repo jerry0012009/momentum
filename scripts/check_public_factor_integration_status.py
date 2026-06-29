@@ -36,6 +36,18 @@ CAP_QUALITY_REPORT = ROOT / "data" / "cache" / "crypto_market_cap_1h_contract_v1
 SKIPPED_PREFIX = "skipped_"
 TAXONOMY_GROUP_COLUMNS = {"sector", "industry", "subindustry"}
 CAP_COLUMNS = {"cap"}
+SOURCE_CHECK_STATUS_NAMES = [
+    "required_columns",
+    "quality_flag_domain",
+    "has_ok_rows",
+    "required_groups_have_ok_rows",
+    "symbol_non_empty",
+    "symbol_unique",
+    "ok_rows_have_valid_known_at",
+    "ok_rows_have_valid_effective_from",
+    "ok_effective_from_not_after_known_at",
+    "ok_rows_known_by_latest_bar",
+]
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from factor_formula_registry import REGISTRY_BY_ID  # noqa: E402
@@ -324,6 +336,33 @@ def summarize_taxonomy_group_readiness(
     return rows
 
 
+def summarize_taxonomy_source_checks(review_source: dict[str, object]) -> dict[str, object]:
+    """Return compact source-level check status for public reporting."""
+    checks = [
+        check for check in review_source.get("checks", [])
+        if isinstance(check, dict)
+    ]
+    check_by_name = {str(check.get("check", "")): check for check in checks}
+    failed_checks = sorted(
+        str(check.get("check", ""))
+        for check in checks
+        if check.get("check") and not bool(check.get("passed", False))
+    )
+    status: dict[str, object] = {
+        "source_check_pass": bool(checks) and not failed_checks,
+        "source_check_count": len(checks),
+        "source_failed_check_count": len(failed_checks),
+        "source_failed_checks": "|".join(failed_checks),
+    }
+    for name in SOURCE_CHECK_STATUS_NAMES:
+        check = check_by_name.get(name, {})
+        status[f"source_check_{name}_pass"] = (
+            bool(check.get("passed", False)) if check else False
+        )
+        status[f"source_check_{name}_detail"] = str(check.get("detail", ""))
+    return status
+
+
 def summarize_taxonomy_readiness(
     source_path: Path = TAXONOMY_SOURCE,
     artifact_path: Path = TAXONOMY_ARTIFACT,
@@ -402,6 +441,7 @@ def summarize_taxonomy_readiness(
         "source_ok_symbols_known_by_last_bar": int(review_source.get("ok_symbols_known_by_last_bar", 0) or 0),
         "source_ok_rows_known_after_last_bar": int(review_source.get("ok_rows_known_after_last_bar", 0) or 0),
         "source_ok_known_at_blocks_bars": bool(review_source.get("ok_known_at_blocks_bars", False)),
+        **summarize_taxonomy_source_checks(review_source),
         **packet_validation,
         **packet_rollup,
         **reviewed_packet_rollup,
@@ -598,6 +638,8 @@ def main() -> int:
         "  taxonomy: "
         f"source_rows={taxonomy['source_rows']} "
         f"quality={taxonomy['source_quality_counts']} "
+        f"source_check_pass={taxonomy['source_check_pass']} "
+        f"source_failed={taxonomy['source_failed_check_count']} "
         f"packet_pass={taxonomy['packet_validation_pass']} "
         f"packet_blocker={taxonomy['packet_validation_blocker']} "
         f"rollup_ready={taxonomy['packet_rollup_ready_to_apply_batch_count']} "
