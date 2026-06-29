@@ -48,6 +48,7 @@ CARDS_CSV = (
     / "factor_metadata"
     / "factor_bilingual_cards.csv"
 )
+PUBLIC_MANIFEST = ROOT / "docs" / "factor_library" / "public_factor_candidate_manifest.csv"
 OUTPUT_DIR = (
     ROOT / "research" / "factor_runs" / "crypto_top50_factor_library" / "factor_diagnostics"
 )
@@ -61,6 +62,12 @@ PM35_NEW_FACTORS = [
     "volume_pressure_20h",
     "xs_rank_mom_accel",
 ]
+SKIPPED_PUBLIC_STATUSES = {
+    "skipped_duplicate_20260627",
+    "skipped_missing_industry_neutralization_20260627",
+    "skipped_missing_market_cap_20260628",
+    "skipped_low_coverage_20260628",
+}
 
 BASE_MAX_SIZE_BYTES = 7.0 * 1024 * 1024  # 7 MB baseline for 84 factors.
 BASE_FACTOR_COUNT = 84
@@ -190,6 +197,23 @@ def _family_map_from_cards() -> dict[str, str]:
                 row.get("factor_id", "").strip(): row.get("family", "").strip()
                 for row in csv.DictReader(f)
                 if row.get("factor_id", "").strip()
+            }
+    except Exception:
+        return {}
+
+
+def _implemented_public_manifest_map() -> dict[str, str]:
+    if not PUBLIC_MANIFEST.exists():
+        return {}
+    try:
+        with open(PUBLIC_MANIFEST, newline="", encoding="utf-8") as f:
+            rows = csv.DictReader(f)
+            return {
+                row.get("factor_id", "").strip(): row.get("source_family", "").strip()
+                for row in rows
+                if row.get("factor_id", "").strip()
+                and row.get("source_family", "").strip()
+                and row.get("implementation_status", "").strip() not in SKIPPED_PUBLIC_STATUSES
             }
     except Exception:
         return {}
@@ -482,6 +506,49 @@ def check_factor_evaluation_asset_parity(html_text: str) -> list[dict]:
                 "factor_eval_family_metadata",
                 "factor_evaluation payload family metadata populated from cards",
                 f"{asset_count} asset factors / {embedded_count} embedded factors checked",
+            )
+        )
+
+    public_manifest = _implemented_public_manifest_map()
+    embedded_source = {
+        str(f.get("factor_id", "")).strip(): str(f.get("source_family", "") or "").strip()
+        for f in embedded.get("factors", [])
+        if f.get("factor_id")
+    }
+    asset_source = {
+        str(f.get("factor_id", "")).strip(): str(f.get("source_family", "") or "").strip()
+        for f in asset.get("factors", [])
+        if f.get("factor_id")
+    }
+    public_source_problems = []
+    for factor_id, source_family in public_manifest.items():
+        if embedded_source.get(factor_id) != source_family:
+            public_source_problems.append(
+                f"embedded:{factor_id}={embedded_source.get(factor_id, '')}/{source_family}"
+            )
+        if asset_source.get(factor_id) != source_family:
+            public_source_problems.append(
+                f"asset:{factor_id}={asset_source.get(factor_id, '')}/{source_family}"
+            )
+    source_counts = {
+        "alpha101": sum(1 for family in public_manifest.values() if family == "alpha101"),
+        "alpha158": sum(1 for family in public_manifest.values() if family == "alpha158"),
+    }
+    if public_source_problems:
+        results.append(
+            _fail(
+                "factor_eval_public_source_family",
+                "factor_evaluation source_family matches public manifest",
+                f"{len(public_source_problems)} mismatches",
+                "; ".join(public_source_problems[:10]),
+            )
+        )
+    else:
+        results.append(
+            _pass(
+                "factor_eval_public_source_family",
+                "factor_evaluation source_family matches public manifest",
+                f"alpha101={source_counts['alpha101']}, alpha158={source_counts['alpha158']}",
             )
         )
 

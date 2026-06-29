@@ -31,10 +31,17 @@ import pandas as pd
 BASE = Path("research/factor_runs/crypto_top50_factor_library")
 DIAG_DIR = BASE / "factor_diagnostics"
 META_DIR = BASE / "factor_metadata"
+PUBLIC_MANIFEST = Path("docs/factor_library/public_factor_candidate_manifest.csv")
 OUT = Path("reports/site/factor-library/factor-evaluation.html")
 OUT_JSON = Path("reports/site/factor-library/assets/factor_evaluation.json")
 
 HORIZONS = ["1h", "4h", "24h", "72h"]
+SKIPPED_PUBLIC_STATUSES = {
+    "skipped_duplicate_20260627",
+    "skipped_missing_industry_neutralization_20260627",
+    "skipped_missing_market_cap_20260628",
+    "skipped_low_coverage_20260628",
+}
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -63,6 +70,23 @@ def first_nonempty(*values) -> str:
 
 def load_csv(path: Path) -> pd.DataFrame:
     return pd.read_csv(path) if path.exists() else pd.DataFrame()
+
+
+def load_public_source_family_map(path: Path = PUBLIC_MANIFEST) -> dict[str, str]:
+    manifest = load_csv(path)
+    if manifest.empty:
+        return {}
+    required = {"factor_id", "source_family", "implementation_status"}
+    if not required <= set(manifest.columns):
+        return {}
+    implemented = manifest[
+        ~manifest["implementation_status"].astype(str).isin(SKIPPED_PUBLIC_STATUSES)
+    ]
+    return {
+        ss(row["factor_id"]): ss(row["source_family"])
+        for _, row in implemented.iterrows()
+        if ss(row["factor_id"]) and ss(row["source_family"])
+    }
 
 
 def _sanitize_nan(obj):
@@ -247,6 +271,8 @@ def build_payload() -> dict:
     summary["regime_n_months"] = regime_payload.get("n_months", 0)
 
     # ── Build lookup dicts ──
+    public_source_family_map = load_public_source_family_map()
+
     card_map = {}
     if not cards.empty:
         for _, r in cards.iterrows():
@@ -437,6 +463,7 @@ def build_payload() -> dict:
 
         factor = {
             "factor_id": fid,
+            "source_family": public_source_family_map.get(fid, ""),
             "family": first_nonempty(c.get("family", ""), drow.get("family", "")),
             "lifecycle_status": first_nonempty(c.get("lifecycle_status", ""), drow.get("lifecycle_status", "")),
             "expected_direction": first_nonempty(c.get("expected_direction", ""), drow.get("expected_direction", "")),
@@ -2790,7 +2817,7 @@ function renderTable(){
   const rCls=regimeFilter.value;
 
   let filtered=factors.filter(f=>{
-    const text=[f.factor_id,f.name_zh,f.name_en,f.family_zh,f.family,f.decision_bucket,f.final_quality_class,f.recommended_next_action,f.paper_viability_class,f.cost_sensitivity_class].join(' ').toLowerCase();
+    const text=[f.factor_id,f.name_zh,f.name_en,f.source_family,f.family_zh,f.family,f.decision_bucket,f.final_quality_class,f.recommended_next_action,f.paper_viability_class,f.cost_sensitivity_class].join(' ').toLowerCase();
     if(q&&!text.includes(q))return false;
     if(fam&&(f.family_zh!==fam&&f.family!==fam))return false;
     if(qual&&f.metadata_quality!==qual)return false;
@@ -3048,7 +3075,7 @@ function renderDetail(fid){
       <div class="zh" style="font-size:15px;font-weight:600">${esc(f.name_zh)}</div>
       <div class="en">${esc(f.name_en)}</div>
     </div>
-    <div class="small">${esc(f.family_zh||f.family)} · ${esc(f.family_en||'')} · ${dirBadge(f.expected_direction)} · best=${esc(f.best_horizon)}</div>
+    <div class="small">${esc(f.source_family||'public')} · ${esc(f.family_zh||f.family)} · ${esc(f.family_en||'')} · ${dirBadge(f.expected_direction)} · best=${esc(f.best_horizon)}</div>
 
     ${f.final_quality_class?`<div style="margin:8px 0">${scClassBadge(f.final_quality_class)} ${f.final_quality_score!==null?`<span style="font-size:13px;font-weight:700">${Number(f.final_quality_score).toFixed(1)}</span>`:''} ${f.score_confidence?scConfBadge(f.score_confidence):''}</div>`:''}
 
@@ -3798,6 +3825,7 @@ def build_asset_payload(payload: dict) -> dict:
         compact_factors.append(
             {
                 "factor_id": factor.get("factor_id"),
+                "source_family": factor.get("source_family"),
                 "family": factor.get("family"),
                 "lifecycle_status": factor.get("lifecycle_status"),
                 "expected_direction": factor.get("expected_direction"),
