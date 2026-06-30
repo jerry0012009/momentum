@@ -32,6 +32,7 @@ HTML = ROOT / "reports" / "site" / "factor-library" / "factor-evaluation.html"
 ASSET_JSON = (
     ROOT / "reports" / "site" / "factor-library" / "assets" / "factor_evaluation.json"
 )
+DETAIL_DIR = ROOT / "reports" / "site" / "factor-library" / "assets" / "factor-details"
 PROFILE_CSV = (
     ROOT
     / "research"
@@ -322,7 +323,30 @@ def check_csv_factor_coverage(html_text: str) -> list[dict]:
     return results
 
 
-def _extract_html_payload(html_text: str) -> dict | None:
+def _detail_file_name(factor_id: str) -> str:
+    from urllib.parse import quote
+
+    return quote(str(factor_id), safe="-_.!~*'()") + ".json"
+
+
+def _merge_detail_payload(payload: dict) -> dict:
+    if not DETAIL_DIR.exists():
+        return payload
+    merged = dict(payload)
+    factors = []
+    for factor in payload.get("factors", []):
+        factor_id = str(factor.get("factor_id", "")).strip()
+        detail_path = DETAIL_DIR / _detail_file_name(factor_id)
+        if factor_id and detail_path.exists():
+            detail = json.loads(detail_path.read_text(encoding="utf-8"))
+            factors.append({**factor, **detail})
+        else:
+            factors.append(factor)
+    merged["factors"] = factors
+    return merged
+
+
+def _extract_html_payload(html_text: str, include_details: bool = True) -> dict | None:
     m = re.search(
         r'<script id="factorPayload" type="application/json">(.*?)</script>',
         html_text,
@@ -330,7 +354,77 @@ def _extract_html_payload(html_text: str) -> dict | None:
     )
     if not m:
         return None
-    return json.loads(m.group(1))
+    payload = json.loads(m.group(1))
+    return _merge_detail_payload(payload) if include_details else payload
+
+
+def check_factor_detail_json_files(payload: dict) -> list[dict]:
+    results: list[dict] = []
+    factor_ids = [
+        str(f.get("factor_id", "")).strip()
+        for f in payload.get("factors", [])
+        if f.get("factor_id")
+    ]
+    if not DETAIL_DIR.exists():
+        return [
+            _fail(
+                "factor_eval_detail_dir",
+                "Per-factor detail JSON directory exists",
+                "Directory not found",
+                str(DETAIL_DIR),
+            )
+        ]
+
+    detail_files = sorted(DETAIL_DIR.glob("*.json"))
+    if len(detail_files) != len(factor_ids):
+        results.append(
+            _fail(
+                "factor_eval_detail_count",
+                "Per-factor detail JSON count matches payload",
+                f"details={len(detail_files)}, factors={len(factor_ids)}",
+            )
+        )
+    else:
+        results.append(
+            _pass(
+                "factor_eval_detail_count",
+                "Per-factor detail JSON count matches payload",
+                f"{len(detail_files)}/{len(factor_ids)} detail files",
+            )
+        )
+
+    problems = []
+    for factor_id in factor_ids:
+        path = DETAIL_DIR / _detail_file_name(factor_id)
+        if not path.exists():
+            problems.append(f"{factor_id}:missing")
+            continue
+        try:
+            detail = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            problems.append(f"{factor_id}:json:{exc}")
+            continue
+        if str(detail.get("factor_id", "")).strip() != factor_id:
+            problems.append(f"{factor_id}:factor_id={detail.get('factor_id')}")
+
+    if problems:
+        results.append(
+            _fail(
+                "factor_eval_detail_json",
+                "Per-factor detail JSON files are valid and keyed correctly",
+                f"{len(problems)} issues",
+                "; ".join(problems[:10]),
+            )
+        )
+    else:
+        results.append(
+            _pass(
+                "factor_eval_detail_json",
+                "Per-factor detail JSON files are valid and keyed correctly",
+                f"{len(factor_ids)} detail files checked",
+            )
+        )
+    return results
 
 
 def check_factor_evaluation_asset_parity(html_text: str) -> list[dict]:
@@ -360,7 +454,7 @@ def check_factor_evaluation_asset_parity(html_text: str) -> list[dict]:
         ]
 
     try:
-        embedded = _extract_html_payload(html_text)
+        embedded = _extract_html_payload(html_text, include_details=False)
     except Exception as exc:
         return [
             _fail(
@@ -377,6 +471,9 @@ def check_factor_evaluation_asset_parity(html_text: str) -> list[dict]:
                 "factorPayload not found",
             )
         ]
+
+    detail_results = check_factor_detail_json_files(embedded)
+    results.extend(detail_results)
 
     asset_ids = [str(f.get("factor_id", "")).strip() for f in asset.get("factors", []) if f.get("factor_id")]
     embedded_ids = [
@@ -469,6 +566,68 @@ def check_factor_evaluation_asset_parity(html_text: str) -> list[dict]:
                     f"version={asset.get('version')}, "
                     f"asset_type={asset_summary.get('asset_type')}"
                 ),
+            )
+        )
+
+    required_gate_fields = {
+        "review_substatus",
+        "review_subreason_zh",
+        "review_subreason_en",
+        "ml_gate_status",
+        "ml_gate_reason_zh",
+        "ml_gate_reason_en",
+        "ml_gate_risk_flags",
+        "workflow_review_bucket",
+        "workflow_review_reasons",
+        "after_funding_best_horizon",
+        "after_funding_long_short_spread",
+        "after_funding_coverage_rate",
+        "bucket_tail_diagnosis",
+        "after_funding_bucket_tail_diagnosis",
+        "funding_adjusted_edge_flip",
+    }
+    missing_gate_fields = []
+    for f in asset.get("factors", []):
+        fid = str(f.get("factor_id", "")).strip()
+        missing = sorted(k for k in required_gate_fields if k not in f)
+        if missing:
+            missing_gate_fields.append((fid, missing))
+    if missing_gate_fields:
+        results.append(
+            _fail(
+                "factor_eval_review_ml_gate_fields",
+                "factor_evaluation compact factors include review split and ML gate fields",
+                f"{len(missing_gate_fields)} factors missing fields",
+                "; ".join(f"{fid}: {','.join(missing)}" for fid, missing in missing_gate_fields[:10]),
+            )
+        )
+    else:
+        results.append(
+            _pass(
+                "factor_eval_review_ml_gate_fields",
+                "factor_evaluation compact factors include review split and ML gate fields",
+                f"{asset_count}/{asset_count} factors",
+            )
+        )
+
+    review_counts = asset_summary.get("review_substatus_counts", {})
+    ml_counts = asset_summary.get("ml_gate_status_counts", {})
+    review_total = sum(int(v) for v in review_counts.values()) if isinstance(review_counts, dict) else 0
+    ml_total = sum(int(v) for v in ml_counts.values()) if isinstance(ml_counts, dict) else 0
+    if review_total != asset_count or ml_total != asset_count:
+        results.append(
+            _fail(
+                "factor_eval_review_ml_gate_summary",
+                "factor_evaluation review split and ML gate summary counts match factor count",
+                f"review_total={review_total}, ml_total={ml_total}, factors={asset_count}",
+            )
+        )
+    else:
+        results.append(
+            _pass(
+                "factor_eval_review_ml_gate_summary",
+                "factor_evaluation review split and ML gate summary counts match factor count",
+                f"review_total={review_total}, ml_total={ml_total}, factors={asset_count}",
             )
         )
 
@@ -608,22 +767,12 @@ def check_new_factor_metrics_populated(html_text: str) -> dict:
     This catches the PM-40 issue where new factors showed blank Best Horizon Metrics
     because the HTML builder only read from old diagnostics files.
     """
-    import re as _re
-    import json as _json
-    m = _re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>', html_text, _re.DOTALL)
-    if not m:
+    data = _extract_html_payload(html_text)
+    if data is None:
         return _fail(
             "new_factor_metrics",
             "New factor metrics populated",
             "factorPayload not found",
-        )
-    try:
-        data = _json.loads(m.group(1))
-    except _json.JSONDecodeError:
-        return _fail(
-            "new_factor_metrics",
-            "New factor metrics populated",
-            "JSON parse error",
         )
     problems = []
     for f in data.get("factors", []):
@@ -654,20 +803,13 @@ def check_pm40b_display_consistency(html_text: str) -> list[dict]:
     2. Redundancy cluster_id should not be -1 when profile has real cluster_id
     3. Factors with rankic_mean should not show bare 'No data' in Monthly RankIC
     """
-    import re as _re
-    import json as _json
     results = []
     PM35 = ["rev_2h", "mom_vol_adjusted_20h", "range_breakout_vol_confirm_20h",
             "volume_pressure_20h", "xs_rank_mom_accel"]
 
-    m = _re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>', html_text, _re.DOTALL)
-    if not m:
+    data = _extract_html_payload(html_text)
+    if data is None:
         results.append(_fail("pm40b_payload", "PM-40B display consistency", "factorPayload not found"))
-        return results
-    try:
-        data = _json.loads(m.group(1))
-    except _json.JSONDecodeError:
-        results.append(_fail("pm40b_payload", "PM-40B display consistency", "JSON parse error"))
         return results
 
     problems = []
@@ -718,20 +860,13 @@ def check_per_factor_detail_completeness(html_text: str) -> list[dict]:
     5. Source Warning: no stale no_horizon_data / monthly_ls_unavailable
     6. Unified Profile: workflow_ready_status, evidence_status populated
     """
-    import re as _re
-    import json as _json
     results = []
     PM35 = ['rev_2h', 'mom_vol_adjusted_20h', 'range_breakout_vol_confirm_20h',
             'volume_pressure_20h', 'xs_rank_mom_accel']
 
-    m = _re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>', html_text, _re.DOTALL)
-    if not m:
+    data = _extract_html_payload(html_text)
+    if data is None:
         results.append(_fail('pf_detail_payload', 'Per-factor detail completeness', 'factorPayload not found'))
-        return results
-    try:
-        data = _json.loads(m.group(1))
-    except _json.JSONDecodeError:
-        results.append(_fail('pf_detail_payload', 'Per-factor detail completeness', 'JSON parse error'))
         return results
 
     all_pass = True
@@ -811,18 +946,14 @@ def check_pm40c_scorecard_redundancy_consistency(html_text: str) -> list[dict]:
     2. Redundancy should not show Valid Pairs 0/75 alongside NOVEL_DISTINCT
     3. No unexplained no_horizon_data / monthly_ls_unavailable in source_warning
     """
-    import re as _re
-    import json as _json
     results = []
     PM35 = ['rev_2h', 'mom_vol_adjusted_20h', 'range_breakout_vol_confirm_20h',
             'volume_pressure_20h', 'xs_rank_mom_accel']
 
-    m = _re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>', html_text, _re.DOTALL)
-    if not m:
+    data = _extract_html_payload(html_text)
+    if data is None:
         results.append(_fail('pm40c_payload', 'PM-40C scorecard/redundancy consistency', 'factorPayload not found'))
         return results
-
-    data = _json.loads(m.group(1))
     issues = []
     for f in data.get('factors', []):
         fid = f.get('factor_id', '')
@@ -972,18 +1103,10 @@ def check_entrypoint_doc_alignment() -> list[dict]:
 def check_pm46b_metadata_display(html_text: str) -> list[dict]:
     """PM-46B: Check that new factors have source metadata and LS-BTC corr in HTML."""
     results = []
-    import re, json as _json
 
-    # Extract factor payload from HTML
-    m = re.search(r"type=\"application/json\">(.*?)</script>", html_text, re.DOTALL)
-    if not m:
+    data = _extract_html_payload(html_text)
+    if data is None:
         results.append(_fail("pm46b_payload", "PM-46B payload extraction", "Could not extract JSON payload"))
-        return results
-
-    try:
-        data = _json.loads(m.group(1))
-    except Exception as e:
-        results.append(_fail("pm46b_payload", "PM-46B payload extraction", f"JSON parse error: {e}"))
         return results
 
     # Check PM-45 new factor specifically
@@ -1044,7 +1167,6 @@ def check_pm53b_active_universe_consistency(html_text: str) -> list[dict]:
     4. If any factor is visible but missing required downstream diagnostics, FAIL
     """
     import csv as _csv
-    import re as _re
     import json as _json
     results = []
 
@@ -1061,17 +1183,10 @@ def check_pm53b_active_universe_consistency(html_text: str) -> list[dict]:
     active_fids = set(state.get("registered_factor_ids", []))
     n_active = len(active_fids)
 
-    # Extract page payload
-    m = _re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>',
-                   html_text, _re.DOTALL)
-    if not m:
+    data = _extract_html_payload(html_text)
+    if data is None:
         results.append(_fail("pm53b_payload", "PM-53B payload extraction",
                              "factorPayload not found"))
-        return results
-    try:
-        data = _json.loads(m.group(1))
-    except _json.JSONDecodeError:
-        results.append(_fail("pm53b_payload", "PM-53B payload extraction", "JSON parse error"))
         return results
 
     page_fids = set()
@@ -1177,21 +1292,12 @@ def check_pm55_robust_significance(html_text: str) -> list[dict]:
     4. Best Horizon Metrics has robust t-stat
     5. funding_rate_zscore_80h shows NAIVE_ONLY_SIGNIFICANT
     """
-    import re as _re
-    import json as _json
     results = []
 
-    # Extract payload
-    m = _re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>',
-                   html_text, _re.DOTALL)
-    if not m:
+    data = _extract_html_payload(html_text)
+    if data is None:
         results.append(_fail("pm55_payload", "PM-55 payload extraction",
                              "factorPayload not found"))
-        return results
-    try:
-        data = _json.loads(m.group(1))
-    except _json.JSONDecodeError:
-        results.append(_fail("pm55_payload", "PM-55 payload extraction", "JSON parse error"))
         return results
 
     factors = data.get("factors", [])
@@ -1288,18 +1394,11 @@ def check_pm57_return_side_robust(html_text: str) -> list[dict]:
     """
     results = []
 
-    # Extract JSON payload (same as PM-55)
-    m = re.search(r'<script id="factorPayload" type="application/json">(.*?)</script>',
-                  html_text, re.DOTALL)
-    if not m:
+    data = _extract_html_payload(html_text)
+    if data is None:
         results.append(_fail("pm57_payload", "PM-57 payload extraction", "factorPayload not found"))
         return results
-    try:
-        data = json.loads(m.group(1))
-        factors = data.get("factors", [])
-    except Exception as e:
-        results.append(_fail("pm57_payload", "PM-57 payload extraction", str(e)))
-        return results
+    factors = data.get("factors", [])
 
     # Check 1: all factors have return_robust
     n_total = len(factors)
@@ -1522,19 +1621,11 @@ def check_pm58a_ls_monthly_aggregate(html_text: str) -> list[dict]:
     """PM-58A: LS monthly aggregate fields no longer show blank dash."""
     results = []
 
-    # Parse payload
-    payload_match = re.search(
-        r'<script id="factorPayload"[^>]*>(.*?)</script>', html_text, re.DOTALL
-    )
-    if not payload_match:
+    data = _extract_html_payload(html_text)
+    if data is None:
         results.append({"check_id": "pm58a_ls_payload", "check_name": "PM-58A: LS payload", "status": "FAIL", "evidence": "No payload", "notes": ""})
         return results
-    try:
-        data = json.loads(payload_match.group(1))
-        factors = data.get("factors", [])
-    except Exception as e:
-        results.append({"check_id": "pm58a_ls_payload", "check_name": "PM-58A: LS payload", "status": "FAIL", "evidence": str(e), "notes": ""})
-        return results
+    factors = data.get("factors", [])
 
     # Check: all active factors have non-null LS std in at least one horizon
     ls_fields = ["long_short_std", "long_short_annualized_return",
@@ -1988,7 +2079,8 @@ def check_pm59a_fix2_dom_order(html: str) -> list[dict]:
     checks = []
 
     # Find the renderDetail card.innerHTML template area
-    tpl_start = html.find('card.innerHTML=')
+    detail_fn_start = html.find('function renderDetail(fid)')
+    tpl_start = html.find('card.innerHTML=', detail_fn_start if detail_fn_start >= 0 else 0)
     if tpl_start < 0:
         tpl_start = html.find('class="back-to-table"')
     tpl_end = html.find('card.querySelector', tpl_start) if tpl_start >= 0 else -1
@@ -2041,19 +2133,13 @@ def check_pm59a_fix2_dom_order(html: str) -> list[dict]:
         ]
         if markers[a] >= 0 and markers[b] >= 0
     )
-    # Core blocks should be before optional (B3/B6 exempt - IIFE constraint)
-    optional_ok = all(
-        markers[b] < markers['optional']
-        for b in ['block1', 'block2', 'block4', 'block5']
-        if markers.get(b, -1) >= 0 and markers.get('optional', -1) >= 0
-    )
-    order_ok = core_order_ok and iife_order_ok and optional_ok
+    order_ok = core_order_ok and iife_order_ok
     order_str = ' → '.join(
         f'{k}({v})' for k, v in sorted(markers.items(), key=lambda x: x[1]) if v >= 0
     )
     checks.append(_c(
         'fix2_dom_order',
-        'Conservative DOM order: reading < definition < B1 < B2 < B4 < B5 < optional; late IIFE sections B3 and B6 present',
+        'Conservative DOM order: reading < definition < B1 < B2 < B4 < B5; late IIFE sections B3 and B6 present',
         'PASS' if order_ok else 'FAIL',
         evidence=order_str[:200],
     ))

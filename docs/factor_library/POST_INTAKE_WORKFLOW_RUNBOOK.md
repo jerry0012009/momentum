@@ -588,3 +588,36 @@ Required fields per active factor × 4 horizons:
 **Normal path:** `evaluate_factors.py` PM-41 logic computes these during intake.
 **Historical repair:** `backfill_ls_monthly_aggregate_fields.py` reads from `factor_monthly_long_short_series.csv`.
 **QA gate:** `check_active_factor_workflow_consistency.py` + `check_post_intake_workflow_integrity.py --all-active`.
+
+### 14.8 Funding / Cost / Tail Review Fields
+
+`evaluate_factors.py` now treats funding-aware diagnostics as part of the factor evaluation workflow. The default run tries to locate the aligned funding cache for the selected dataset and adds after-funding labels without replacing the canonical price-only labels.
+
+Required behavior:
+- price-only RankIC / spread remains available for ranking-information analysis.
+- after-funding RankIC / spread is written when funding coverage is complete for the forward window.
+- funding coverage is explicit; missing funding windows stay null and are not filled with zero.
+- funding intervals are read from `funding_interval_hours`; 1h, 4h, 8h, and mixed intervals are converted to hourly cost before forward-window summing.
+- bucket tail diagnosis and funding-adjusted edge flip flags flow into `factor_level_candidate_review.csv`, `factor_quality_scorecard.csv`, page JSON, and the factor evaluation page.
+
+Core commands:
+
+```bash
+python scripts/evaluate_factors.py
+python scripts/build_factor_quality_scorecard.py
+python scripts/_build_factor_eval_html.py
+python scripts/check_factor_evaluation_page_completeness.py
+```
+
+Useful research planning command:
+
+```bash
+python scripts/build_factor_workflow_research_plan.py
+```
+
+This writes:
+- `factor_workflow_universe_contrast_plan.csv`
+- `crypto_native_next_factor_candidates.csv`
+- `factor_workflow_research_plan.json`
+
+These artifacts are research planning outputs. They do not create production signals and do not make trading claims.

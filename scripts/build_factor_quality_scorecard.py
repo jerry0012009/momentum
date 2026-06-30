@@ -54,6 +54,7 @@ PATH_QA = META_DIR / "factor_card_qa_report.csv"
 PATH_QUANTILE = EVAL_DIR / "factor_level_quantile_return_summary.csv"
 PATH_QUANTILE_PERIOD = EVAL_DIR / "factor_level_period_quantile_return_summary.csv"
 PATH_METRIC_PANEL = EVAL_DIR / "factor_level_metric_panel.csv"
+PATH_CANDIDATE_REVIEW = EVAL_DIR / "factor_level_candidate_review.csv"
 PATH_REDUNDANCY = DIAG_DIR / "factor_pairwise_redundancy.csv"
 PATH_REDUNDANCY_SUMMARY = DIAG_DIR / "factor_redundancy_summary.csv"
 PATH_REDUNDANCY_CLUSTERS = DIAG_DIR / "factor_redundancy_clusters.csv"
@@ -62,6 +63,9 @@ PATH_REDUNDANCY_CLUSTERS = DIAG_DIR / "factor_redundancy_clusters.csv"
 PATH_CANONICAL_RANKIC = EVAL_DIR / "factor_level_rankic_summary.csv"
 PATH_CANONICAL_LS = EVAL_DIR / "factor_level_long_short_summary.csv"
 PATH_REGIME_EXPOSURE = DIAG_DIR / "factor_regime_exposure_summary.csv"
+PATH_RANKIC_ROBUST = DIAG_DIR / "factor_rankic_robust_significance_summary.csv"
+PATH_LS_ROBUST = DIAG_DIR / "factor_ls_robust_significance_summary.csv"
+PATH_FEE_ROBUST = DIAG_DIR / "factor_fee_robust_significance_summary.csv"
 
 PATH_STATE = BASE / "factor_library_state.json"
 
@@ -91,6 +95,10 @@ QUALITY_CLASSES = [
 ]
 
 METADATA_QUALITY_VALUES = {"COMPLETE", "DIRECTION_AMBIGUOUS", "NEEDS_REVIEW", "FORMULA_AMBIGUOUS"}
+
+RANKIC_ROBUST_CLASSES = {"ROBUST_SIGNIFICANT_POSITIVE", "ROBUST_SIGNIFICANT_NEGATIVE"}
+LS_ROBUST_CLASSES = {"RETURN_ROBUST_POSITIVE", "RETURN_ROBUST_NEGATIVE"}
+HIGH_REDUNDANCY_LEVELS = {"NEAR_DUPLICATE", "HIGH_REDUNDANCY"}
 
 
 # ── Utility helpers ──────────────────────────────────────────────────────────
@@ -230,8 +238,132 @@ def load_canonical_ls() -> dict[str, dict]:
         return result
     except Exception:
         return {}
+
+
+def load_rankic_robust() -> dict[tuple[str, str], dict[str, Any]]:
+    """Load robust RankIC interpretation keyed by (factor_id, horizon)."""
+    try:
+        df = pd.read_csv(PATH_RANKIC_ROBUST)
     except Exception:
-        return pd.DataFrame()
+        return {}
+    if not {"factor_id", "horizon"}.issubset(df.columns):
+        return {}
+    result: dict[tuple[str, str], dict[str, Any]] = {}
+    for _, row in df.iterrows():
+        fid = str(row.get("factor_id", "")).strip()
+        hz = str(row.get("horizon", "")).strip()
+        result[(fid, hz)] = {
+            "significance_class_robust": _safe_str(row.get("significance_class_robust", "")),
+            "robust_t_stat": _safe_float(row.get("robust_t_stat", 0.0)),
+            "overlap_warning": _safe_str(row.get("overlap_warning", "")),
+        }
+    return result
+
+
+def load_ls_robust() -> dict[tuple[str, str], dict[str, Any]]:
+    """Load robust long-short return interpretation keyed by (factor_id, horizon)."""
+    try:
+        df = pd.read_csv(PATH_LS_ROBUST)
+    except Exception:
+        return {}
+    if not {"factor_id", "horizon"}.issubset(df.columns):
+        return {}
+    result: dict[tuple[str, str], dict[str, Any]] = {}
+    for _, row in df.iterrows():
+        fid = str(row.get("factor_id", "")).strip()
+        hz = str(row.get("horizon", "")).strip()
+        result[(fid, hz)] = {
+            "return_robust_class": _safe_str(row.get("return_robust_class", "")),
+            "robust_t_stat": _safe_float(row.get("robust_t_stat", 0.0)),
+        }
+    return result
+
+
+def load_fee_robust() -> dict[str, dict[str, Any]]:
+    """Load cost stress summary keyed by factor_id."""
+    try:
+        df = pd.read_csv(PATH_FEE_ROBUST)
+    except Exception:
+        return {}
+    if "factor_id" not in df.columns:
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for _, row in df.iterrows():
+        fid = str(row.get("factor_id", "")).strip()
+        result[fid] = {
+            "cost_status": _safe_str(row.get("cost_status", "")),
+            "net_sharpe": _safe_float(row.get("net_sharpe", 0.0)),
+            "net_annualized_return": _safe_float(row.get("net_annualized_return", 0.0)),
+        }
+    return result
+
+
+def load_candidate_review() -> dict[str, dict[str, Any]]:
+    try:
+        df = pd.read_csv(PATH_CANDIDATE_REVIEW)
+    except Exception:
+        return {}
+    if "factor_name" not in df.columns:
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for _, row in df.iterrows():
+        fid = str(row.get("factor_name", "")).strip()
+        result[fid] = {
+            "review_bucket": _safe_str(row.get("review_bucket", "")),
+            "review_reasons": _safe_str(row.get("review_reasons", "")),
+            "best_after_funding_long_short_horizon": _safe_str(row.get("best_after_funding_long_short_horizon", "")),
+            "best_after_funding_long_short_spread": _safe_float(row.get("best_after_funding_long_short_spread", np.nan), np.nan),
+            "best_after_funding_coverage_rate": _safe_float(row.get("best_after_funding_coverage_rate", np.nan), np.nan),
+            "best_bucket_tail_diagnosis": _safe_str(row.get("best_bucket_tail_diagnosis", "")),
+            "best_after_funding_bucket_tail_diagnosis": _safe_str(row.get("best_after_funding_bucket_tail_diagnosis", "")),
+            "funding_adjusted_edge_flip": str(row.get("funding_adjusted_edge_flip", "")).lower() == "true",
+        }
+    return result
+
+
+def load_workflow_review_summary() -> dict[str, dict[str, Any]]:
+    """Load funding/tail workflow fields for every factor in the canonical metric panel."""
+    try:
+        metric = pd.read_csv(PATH_METRIC_PANEL)
+    except Exception:
+        return load_candidate_review()
+    required = {
+        "factor_name",
+        "horizon",
+        "after_funding_long_short_spread_mean",
+        "after_funding_coverage_rate",
+        "bucket_tail_diagnosis",
+        "after_funding_bucket_tail_diagnosis",
+        "funding_adjusted_edge_flip",
+    }
+    if not required.issubset(metric.columns):
+        return load_candidate_review()
+
+    result: dict[str, dict[str, Any]] = {}
+    metric = metric.copy()
+    metric["_af_abs"] = pd.to_numeric(metric["after_funding_long_short_spread_mean"], errors="coerce").abs()
+    for fid, fdf in metric.groupby("factor_name", sort=False):
+        best = fdf.dropna(subset=["_af_abs"])
+        if best.empty:
+            continue
+        row = best.loc[best["_af_abs"].idxmax()]
+        flips = fdf["funding_adjusted_edge_flip"].map(lambda x: str(x).lower() == "true").any()
+        result[str(fid)] = {
+            "review_bucket": "",
+            "review_reasons": "",
+            "best_after_funding_long_short_horizon": _safe_str(row.get("horizon", "")),
+            "best_after_funding_long_short_spread": _safe_float(row.get("after_funding_long_short_spread_mean", np.nan), np.nan),
+            "best_after_funding_coverage_rate": _safe_float(row.get("after_funding_coverage_rate", np.nan), np.nan),
+            "best_bucket_tail_diagnosis": _safe_str(row.get("bucket_tail_diagnosis", "")),
+            "best_after_funding_bucket_tail_diagnosis": _safe_str(row.get("after_funding_bucket_tail_diagnosis", "")),
+            "funding_adjusted_edge_flip": bool(flips),
+        }
+
+    for fid, review in load_candidate_review().items():
+        base = result.get(fid, {})
+        merged = {**base, **{k: v for k, v in review.items() if v not in ("", None)}}
+        result[fid] = merged
+    return result
 
 
 def load_library_state() -> dict:
@@ -722,6 +854,151 @@ def generate_review_notes(
     }
 
 
+def classify_review_and_ml_gate(
+    *,
+    metadata_quality: str,
+    quality_class: str,
+    coverage: float,
+    rankic_mean: float,
+    ls_ann_return: float,
+    comp_score: float,
+    quantile_shape: str,
+    strongest_redundancy_level: str,
+    rankic_robust_class: str,
+    ls_robust_class: str,
+    cost_status: str,
+    workflow_review_bucket: str = "",
+    workflow_review_reasons: str = "",
+    after_funding_coverage_rate: float = np.nan,
+    after_funding_ls_spread: float = np.nan,
+    bucket_tail_diagnosis: str = "",
+    after_funding_bucket_tail_diagnosis: str = "",
+    funding_adjusted_edge_flip: bool = False,
+) -> dict[str, str]:
+    """Split coarse review status into actionable review and ML feature-gate states."""
+    risk_flags: list[str] = []
+
+    rankic_sign = 1 if rankic_mean > 0 else (-1 if rankic_mean < 0 else 0)
+    ls_sign = 1 if ls_ann_return > 0 else (-1 if ls_ann_return < 0 else 0)
+    direction_conflict = rankic_sign != 0 and ls_sign != 0 and rankic_sign != ls_sign
+
+    if direction_conflict:
+        risk_flags.append("rankic_ls_direction_conflict")
+    if strongest_redundancy_level in HIGH_REDUNDANCY_LEVELS:
+        risk_flags.append("high_redundancy")
+    if cost_status in {"RETURN_COST_COLLAPSED", "COST_COLLAPSED"}:
+        risk_flags.append("cost_collapsed")
+    if "cost too thin" in workflow_review_reasons:
+        risk_flags.append("cost_too_thin")
+    if funding_adjusted_edge_flip or "funding-adjusted edge flips" in workflow_review_reasons:
+        risk_flags.append("funding_adjusted_edge_flip")
+    if not math.isnan(after_funding_coverage_rate) and after_funding_coverage_rate < 0.80:
+        risk_flags.append("funding_coverage_insufficient")
+    if not math.isnan(after_funding_ls_spread) and ls_ann_return > 0 and after_funding_ls_spread <= 0:
+        risk_flags.append("funding_adjusted_edge_nonpositive")
+    tail_labels = {bucket_tail_diagnosis, after_funding_bucket_tail_diagnosis}
+    if "TAIL_CONCENTRATED_NEGATIVE_MEAN" in tail_labels or "tail_concentrated_negative_mean" in workflow_review_reasons:
+        risk_flags.append("tail_concentrated")
+    if "MEAN_SPREAD_OUTLIER_DOMINATED" in tail_labels or "mean_spread_outlier_dominated" in workflow_review_reasons:
+        risk_flags.append("mean_median_split")
+    if quantile_shape == "NON_MONOTONIC":
+        risk_flags.append("non_monotonic_quantiles")
+    if rankic_robust_class not in RANKIC_ROBUST_CLASSES:
+        risk_flags.append("rankic_not_robust")
+    if ls_robust_class and ls_robust_class not in LS_ROBUST_CLASSES:
+        risk_flags.append("ls_not_robust")
+    if coverage < 0.80:
+        risk_flags.append("low_coverage")
+
+    if metadata_quality == "FORMULA_AMBIGUOUS":
+        review_substatus = "REVIEW_FORMULA"
+        review_zh = "公式或字段映射存在歧义，先复核计算定义。"
+        review_en = "Formula or field mapping is ambiguous; review the computation definition first."
+        ml_status = "ML_HOLD"
+        ml_zh = "公式未确认前不进入机器学习特征池。"
+        ml_en = "Hold out of the ML feature pool until the formula is confirmed."
+    elif comp_score < 50 or quality_class == "INSUFFICIENT_EVIDENCE" or coverage < 0.50:
+        review_substatus = "HOLD_INSUFFICIENT_EVIDENCE"
+        review_zh = "计算完整性或覆盖率不足，当前证据不够。"
+        review_en = "Computation integrity or coverage is too weak for current evidence."
+        ml_status = "ML_HOLD"
+        ml_zh = "证据不足，暂不进入机器学习。"
+        ml_en = "Insufficient evidence; keep out of ML for now."
+    elif metadata_quality == "NEEDS_REVIEW":
+        review_substatus = "REVIEW_METADATA_ONLY"
+        review_zh = "主要是批量接入后的元数据/解释待补齐，不等于因子失效。"
+        review_en = "Mainly metadata/explanation cleanup after bulk intake; not evidence that the factor failed."
+        ml_status = "ML_READY_WITH_CAUTION"
+        ml_zh = "可作为候选特征进入机器学习，但带元数据风险标记。"
+        ml_en = "Eligible as an ML candidate feature with a metadata risk flag."
+        risk_flags.append("metadata_needs_review")
+    elif (
+        funding_adjusted_edge_flip
+        or "funding-adjusted edge flips" in workflow_review_reasons
+        or (not math.isnan(after_funding_ls_spread) and ls_ann_return > 0 and after_funding_ls_spread <= 0)
+        or (not math.isnan(after_funding_coverage_rate) and after_funding_coverage_rate < 0.80)
+    ):
+        review_substatus = "REVIEW_FUNDING_ADJUSTED_ECONOMICS"
+        review_zh = "资金费率覆盖不足或扣 funding 后收益边际翻转；price-only spread 不能单独作为经济证据。"
+        review_en = "Funding coverage is insufficient or the edge flips after funding; price-only spread is not enough economic evidence."
+        ml_status = "ML_READY_WITH_CAUTION"
+        ml_zh = "可作为候选特征，但需保留 funding-adjusted 风险标记。"
+        ml_en = "Eligible as a candidate feature with funding-adjusted risk flags retained."
+    elif metadata_quality == "DIRECTION_AMBIGUOUS" or direction_conflict:
+        review_substatus = "REVIEW_DIRECTION_SEMANTICS"
+        review_zh = "方向语义需复核；不要人工预设正负方向。"
+        review_en = "Direction semantics need review; do not hard-code a positive/negative sign."
+        ml_status = "ML_READY_WITH_CAUTION"
+        ml_zh = "可进机器学习，但让模型学习符号，人工方向不作为约束。"
+        ml_en = "Eligible for ML, but let the model learn the sign rather than constraining it manually."
+    elif strongest_redundancy_level in HIGH_REDUNDANCY_LEVELS:
+        review_substatus = "REVIEW_REDUNDANCY"
+        review_zh = "因子本身可用性未否定，但与已有因子高度重叠。"
+        review_en = "The factor is not rejected, but it overlaps heavily with existing factors."
+        ml_status = "ML_READY_WITH_CAUTION"
+        ml_zh = "可进机器学习候选，但同一冗余簇应限额或选代表。"
+        ml_en = "Eligible with caution; cap the redundancy cluster or select representatives."
+    elif quantile_shape == "NON_MONOTONIC" or cost_status in {"RETURN_COST_COLLAPSED", "COST_COLLAPSED"}:
+        review_substatus = "REVIEW_ECONOMIC_TENSION"
+        review_zh = "排序信号与收益提取、成本或分位形状之间存在张力。"
+        review_en = "There is tension between ranking evidence and return extraction, costs, or quantile shape."
+        ml_status = "ML_READY_WITH_CAUTION"
+        ml_zh = "可作为候选特征，但不要按单因子多空收益直接解释。"
+        ml_en = "Eligible as a candidate feature, but do not interpret it as a standalone long-short edge."
+    elif workflow_review_bucket == "TAIL_OR_MONOTONICITY_REVIEW_REQUIRED" or "tail" in workflow_review_reasons:
+        review_substatus = "REVIEW_BUCKET_TAIL"
+        review_zh = "分桶尾部或 mean/median split 需要复核；不要只看平均 spread。"
+        review_en = "Bucket tails or mean/median split need review; do not rely on mean spread alone."
+        ml_status = "ML_READY_WITH_CAUTION"
+        ml_zh = "可作为候选特征，但需保留 tail 风险标记。"
+        ml_en = "Eligible as a candidate feature with tail-risk flags retained."
+    else:
+        review_substatus = "REVIEW_CLEAR"
+        review_zh = "未触发主要复核阻断项。"
+        review_en = "No major review blocker was triggered."
+        ml_status = "ML_READY"
+        ml_zh = "可进入第一版机器学习候选特征池。"
+        ml_en = "Eligible for the first ML candidate feature pool."
+
+    if ml_status == "ML_READY" and risk_flags:
+        ml_status = "ML_READY_WITH_CAUTION"
+        ml_zh = "可进机器学习，但需保留风险标记。"
+        ml_en = "Eligible for ML with risk flags retained."
+
+    # Stable ordering keeps CSV diffs readable.
+    risk_flags = sorted(set(risk_flags))
+
+    return {
+        "review_substatus": review_substatus,
+        "review_subreason_zh": review_zh,
+        "review_subreason_en": review_en,
+        "ml_gate_status": ml_status,
+        "ml_gate_reason_zh": ml_zh,
+        "ml_gate_reason_en": ml_en,
+        "ml_gate_risk_flags": "|".join(risk_flags),
+    }
+
+
 # ── Main scorecard builder ──────────────────────────────────────────────────
 
 def build_scorecard() -> pd.DataFrame:
@@ -735,6 +1012,7 @@ def build_scorecard() -> pd.DataFrame:
     redundancy_summary = load_redundancy_summary()
     redundancy_clusters = load_redundancy_clusters()
     state = load_library_state()
+    candidate_review = load_workflow_review_summary()
 
     registered_ids = state.get("registered_factor_ids", [])
     print(f"[PM-16B] {len(registered_ids)} registered factors in library state")
@@ -745,6 +1023,7 @@ def build_scorecard() -> pd.DataFrame:
     print(f"[PM-16B] {len(redundancy_df)} rows in pairwise redundancy")
     print(f"[PM-16B] {len(redundancy_summary)} rows in redundancy summary")
     print(f"[PM-16B] {len(redundancy_clusters)} rows in redundancy clusters")
+    print(f"[PM-16B] {len(candidate_review)} rows in workflow review summary")
 
     # Build lookups
     quantile_shapes = compute_quantile_shapes(quantile_df)
@@ -786,6 +1065,13 @@ def build_scorecard() -> pd.DataFrame:
     canonical_ls = load_canonical_ls()
     print(f"  Canonical RankIC: {len(canonical_rankic)} factors")
     print(f"  Canonical LS: {len(canonical_ls)} factors")
+
+    rankic_robust = load_rankic_robust()
+    ls_robust = load_ls_robust()
+    fee_robust = load_fee_robust()
+    print(f"  Robust RankIC rows: {len(rankic_robust)}")
+    print(f"  Robust LS rows: {len(ls_robust)}")
+    print(f"  Fee robust rows: {len(fee_robust)}")
 
     # Score each factor
     rows = []
@@ -917,6 +1203,31 @@ def build_scorecard() -> pd.DataFrame:
             source_warning, red_conf,
         )
 
+        rr = rankic_robust.get((fid, best_horizon), {})
+        lr = ls_robust.get((fid, best_horizon), {})
+        fr = fee_robust.get(fid, {})
+        cr = candidate_review.get(fid, {})
+        review_gate = classify_review_and_ml_gate(
+            metadata_quality=metadata_quality,
+            quality_class=quality_class,
+            coverage=coverage,
+            rankic_mean=rankic_mean,
+            ls_ann_return=ls_ann_return,
+            comp_score=comp_score,
+            quantile_shape=quant_label,
+            strongest_redundancy_level=strongest_lvl,
+            rankic_robust_class=_safe_str(rr.get("significance_class_robust", "")),
+            ls_robust_class=_safe_str(lr.get("return_robust_class", "")),
+            cost_status=_safe_str(fr.get("cost_status", "")),
+            workflow_review_bucket=_safe_str(cr.get("review_bucket", "")),
+            workflow_review_reasons=_safe_str(cr.get("review_reasons", "")),
+            after_funding_coverage_rate=_safe_float(cr.get("best_after_funding_coverage_rate", np.nan), np.nan),
+            after_funding_ls_spread=_safe_float(cr.get("best_after_funding_long_short_spread", np.nan), np.nan),
+            bucket_tail_diagnosis=_safe_str(cr.get("best_bucket_tail_diagnosis", "")),
+            after_funding_bucket_tail_diagnosis=_safe_str(cr.get("best_after_funding_bucket_tail_diagnosis", "")),
+            funding_adjusted_edge_flip=bool(cr.get("funding_adjusted_edge_flip", False)),
+        )
+
         row = {
             "factor_id": fid,
             "name_zh": name_zh,
@@ -951,6 +1262,23 @@ def build_scorecard() -> pd.DataFrame:
             "review_notes_zh": notes["notes_zh"],
             "review_notes_en": notes["notes_en"],
             "recommended_next_action": next_action,
+            "review_substatus": review_gate["review_substatus"],
+            "review_subreason_zh": review_gate["review_subreason_zh"],
+            "review_subreason_en": review_gate["review_subreason_en"],
+            "ml_gate_status": review_gate["ml_gate_status"],
+            "ml_gate_reason_zh": review_gate["ml_gate_reason_zh"],
+            "ml_gate_reason_en": review_gate["ml_gate_reason_en"],
+            "ml_gate_risk_flags": review_gate["ml_gate_risk_flags"],
+            "workflow_review_bucket": _safe_str(cr.get("review_bucket", "")),
+            "workflow_review_reasons": _safe_str(cr.get("review_reasons", "")),
+            "after_funding_best_horizon": _safe_str(cr.get("best_after_funding_long_short_horizon", "")),
+            "after_funding_long_short_spread": round(_safe_float(cr.get("best_after_funding_long_short_spread", np.nan), np.nan), 8)
+            if not math.isnan(_safe_float(cr.get("best_after_funding_long_short_spread", np.nan), np.nan)) else np.nan,
+            "after_funding_coverage_rate": round(_safe_float(cr.get("best_after_funding_coverage_rate", np.nan), np.nan), 6)
+            if not math.isnan(_safe_float(cr.get("best_after_funding_coverage_rate", np.nan), np.nan)) else np.nan,
+            "bucket_tail_diagnosis": _safe_str(cr.get("best_bucket_tail_diagnosis", "")),
+            "after_funding_bucket_tail_diagnosis": _safe_str(cr.get("best_after_funding_bucket_tail_diagnosis", "")),
+            "funding_adjusted_edge_flip": bool(cr.get("funding_adjusted_edge_flip", False)),
         }
 
         # PM-19: Add calibrated redundancy detail fields
@@ -995,7 +1323,13 @@ def build_scorecard() -> pd.DataFrame:
         "long_short_max_drawdown", "long_short_positive_month_rate", "quantile_shape",
         "main_strengths_zh", "main_weaknesses_zh", "main_strengths_en",
         "main_weaknesses_en", "review_notes_zh", "review_notes_en",
-        "recommended_next_action",
+        "recommended_next_action", "review_substatus", "review_subreason_zh",
+        "review_subreason_en", "ml_gate_status", "ml_gate_reason_zh",
+        "ml_gate_reason_en", "ml_gate_risk_flags",
+        "workflow_review_bucket", "workflow_review_reasons",
+        "after_funding_best_horizon", "after_funding_long_short_spread",
+        "after_funding_coverage_rate", "bucket_tail_diagnosis",
+        "after_funding_bucket_tail_diagnosis", "funding_adjusted_edge_flip",
         # PM-19 redundancy detail fields
         "valid_redundancy_pair_count", "expected_redundancy_pair_count",
         "valid_redundancy_pair_coverage", "insufficient_overlap_pair_count",
@@ -1038,6 +1372,8 @@ def write_manifest(df: pd.DataFrame) -> None:
         red_conf_dist.setdefault(c, 0)
 
     action_dist = df["recommended_next_action"].value_counts().to_dict()
+    review_substatus_dist = df["review_substatus"].value_counts().to_dict()
+    ml_gate_dist = df["ml_gate_status"].value_counts().to_dict()
 
     # Score statistics
     score_cols = [
@@ -1065,6 +1401,8 @@ def write_manifest(df: pd.DataFrame) -> None:
         "score_confidence_distribution": conf_dist,
         "redundancy_confidence_distribution": red_conf_dist,
         "recommended_action_distribution": action_dist,
+        "review_substatus_distribution": review_substatus_dist,
+        "ml_gate_status_distribution": ml_gate_dist,
         "score_statistics": score_stats,
         "quality_classes": QUALITY_CLASSES,
         "input_files": [
@@ -1118,6 +1456,14 @@ def main() -> int:
     for conf in ("HIGH", "MEDIUM", "LOW"):
         count = len(df[df["redundancy_confidence"] == conf])
         print(f"  {conf}: {count}")
+
+    print("\nREVIEW SUBSTATUS DISTRIBUTION:")
+    for status, count in df["review_substatus"].value_counts().items():
+        print(f"  {status}: {count}")
+
+    print("\nML GATE STATUS DISTRIBUTION:")
+    for status, count in df["ml_gate_status"].value_counts().items():
+        print(f"  {status}: {count}")
 
     print(f"\nFinal score range: {df['final_quality_score'].min():.1f} – {df['final_quality_score'].max():.1f}")
     print(f"Mean final score: {df['final_quality_score'].mean():.1f}")

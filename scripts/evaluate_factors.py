@@ -23,6 +23,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from funding_adjusted_labels import add_funding_adjusted_returns, infer_funding_aligned_path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATASET_ID = "crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1"
@@ -35,6 +36,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 LABEL_HORIZONS = ["1h", "4h", "24h", "72h"]
 LABEL_COLS = {h: f"ret_fwd_{h}" for h in LABEL_HORIZONS}
+AFTER_FUNDING_LABEL_COLS = {h: f"ret_fwd_{h}_after_funding" for h in LABEL_HORIZONS}
 MIN_SYMBOLS = 10
 QUANTILE_BUCKETS = 5
 
@@ -111,6 +113,37 @@ def summarize_ic(ic_vals: list[float]) -> dict:
     return {"mean": float(m), "t_stat": float(t), "n_periods": len(arr)}
 
 
+def tail_diagnosis(mean_spread, median_spread, top_tail_share, bottom_tail_share) -> str:
+    if mean_spread is None or pd.isna(mean_spread):
+        return "INSUFFICIENT"
+    med = 0.0 if median_spread is None or pd.isna(median_spread) else float(median_spread)
+    mean = float(mean_spread)
+    tail_share = max(
+        0.0 if top_tail_share is None or pd.isna(top_tail_share) else float(top_tail_share),
+        0.0 if bottom_tail_share is None or pd.isna(bottom_tail_share) else float(bottom_tail_share),
+    )
+    if mean > 0 and med > 0:
+        return "DIRECTIONALLY_CLEAN_THIN_EDGE"
+    if mean < 0 and med > 0:
+        return "MEAN_SPREAD_OUTLIER_DOMINATED"
+    if mean < 0 and med < 0 and tail_share >= 0.10:
+        return "TAIL_CONCENTRATED_NEGATIVE_MEAN"
+    if mean < 0 and med < 0:
+        return "ROBUST_SPREAD_NEGATIVE"
+    return "MIXED_OR_WEAK"
+
+
+def tail_abs_share(values: pd.Series, q: float = 0.99) -> float | None:
+    arr = values.dropna().abs()
+    if len(arr) == 0:
+        return None
+    denom = float(arr.sum())
+    if denom <= 0:
+        return 0.0
+    cutoff = float(arr.quantile(q))
+    return float(arr[arr >= cutoff].sum() / denom)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--factor-ids", nargs="*",
@@ -121,11 +154,20 @@ def main():
                         help="Custom output directory. Required for partial runs.")
     parser.add_argument("--dataset-id", type=str, default=DEFAULT_DATASET_ID,
                         help="Dataset ID (default: %(default)s)")
+    parser.add_argument("--funding-aligned-path", type=str, default=None,
+                        help="Optional funding_rate_1h_aligned parquet path. Defaults from dataset id.")
+    parser.add_argument("--skip-funding-adjusted", action="store_true",
+                        help="Skip funding-adjusted label diagnostics.")
     args = parser.parse_args()
 
     # Resolve dataset-dependent paths
     features_dir = ROOT / "data" / "features" / args.dataset_id
     labels_path = features_dir / "labels.parquet"
+    funding_aligned_path = (
+        Path(args.funding_aligned_path)
+        if args.funding_aligned_path
+        else infer_funding_aligned_path(ROOT, args.dataset_id)
+    )
 
     is_partial = bool(args.factor_ids)
     # Support comma-separated factor IDs (from post-intake workflow)
@@ -169,6 +211,7 @@ def main():
     print(f"  Dataset:  {args.dataset_id}", flush=True)
     print(f"  Features: {features_dir}", flush=True)
     print(f"  Labels:   {labels_path}", flush=True)
+    print(f"  Funding:  {'SKIPPED' if args.skip_funding_adjusted else funding_aligned_path}", flush=True)
     print(f"  Output:   {out_dir}\n", flush=True)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -189,6 +232,20 @@ def main():
     labels = pd.read_parquet(labels_path)
     labels["timestamp"] = pd.to_datetime(labels["timestamp"], utc=True)
     labels = labels.sort_values("timestamp").reset_index(drop=True)
+    funding_manifest = {
+        "status": "FUNDING_ADJUSTED_SKIPPED",
+        "funding_aligned_path": str(funding_aligned_path),
+        "coverage_by_horizon": [],
+    }
+    if not args.skip_funding_adjusted:
+        labels, funding_manifest = add_funding_adjusted_returns(
+            labels,
+            funding_aligned_path,
+            LABEL_HORIZONS,
+        )
+    label_keep_cols = ["timestamp", "symbol"] + list(LABEL_COLS.values())
+    label_keep_cols += [c for c in AFTER_FUNDING_LABEL_COLS.values() if c in labels.columns]
+    labels = labels[label_keep_cols]
     print(f"done ({time.time() - t0:.1f}s, {len(labels)} rows)\n", flush=True)
 
     results = []
@@ -227,7 +284,7 @@ def main():
         miss_rate = round(1.0 - n_valid / n_total, 6) if n_total > 0 else 1.0
 
         # Merge with labels (all horizons at once)
-        merged = fv.merge(labels, on=["timestamp", "symbol"], how="inner")
+        merged = fv.merge(labels, on=["timestamp", "symbol"], how="inner", sort=False, copy=False)
         merged = merged.sort_values("timestamp").reset_index(drop=True)
 
         if len(merged) == 0:
@@ -276,12 +333,20 @@ def main():
 
         # Compute IC for all 4 horizons (single groupby, NaN returns handled by boundary loop)
         horizon_ics = {}
+        horizon_ics_after_funding = {}
         # Get the actual timestamps from merged data (sorted by group boundaries)
         ts_unique = merged["timestamp"].values[m_boundaries[:-1]]
         for hz in LABEL_HORIZONS:
             ret_rank = g_merged[LABEL_COLS[hz]].rank().values
             ic_vals, valid_ts_indices = rank_ic_from_boundaries(fv_rank, ret_rank, m_boundaries, n_ts_m)
             horizon_ics[hz] = summarize_ic(ic_vals)
+            af_col = AFTER_FUNDING_LABEL_COLS[hz]
+            if af_col in merged.columns:
+                af_ret_rank = g_merged[af_col].rank().values
+                af_ic_vals, _ = rank_ic_from_boundaries(fv_rank, af_ret_rank, m_boundaries, n_ts_m)
+                horizon_ics_after_funding[hz] = summarize_ic(af_ic_vals)
+            else:
+                horizon_ics_after_funding[hz] = {"mean": None, "t_stat": None, "n_periods": 0}
             # Store raw IC values with timestamps for detailed analysis
             # valid_ts_indices maps IC values back to their timestamp positions
             valid_ts = ts_unique[valid_ts_indices] if len(valid_ts_indices) > 0 else np.array([])
@@ -324,6 +389,11 @@ def main():
 
             # Compute per-timestamp bucket means, then aggregate
             bucket_ts = hz_merged.groupby(["timestamp", "bucket"])[ret_col].mean().unstack(fill_value=np.nan)
+            af_col = AFTER_FUNDING_LABEL_COLS[hz]
+            if af_col in hz_merged.columns:
+                bucket_ts_af = hz_merged.groupby(["timestamp", "bucket"])[af_col].mean().unstack(fill_value=np.nan)
+            else:
+                bucket_ts_af = pd.DataFrame(index=bucket_ts.index)
 
             for b in range(QUANTILE_BUCKETS):
                 if b in bucket_ts.columns:
@@ -358,6 +428,38 @@ def main():
             else:
                 ls_mean, ls_t, ls_win, top_mean, bot_mean = None, None, None, None, None
 
+            af_ls_arr = None
+            af_mean = af_median = af_t = af_win = af_top_mean = af_bot_mean = None
+            af_coverage_rate = None
+            af_top_tail_share = af_bottom_tail_share = None
+            if QUANTILE_BUCKETS - 1 in bucket_ts_af.columns and 0 in bucket_ts_af.columns:
+                af_ls_spread = (bucket_ts_af[QUANTILE_BUCKETS - 1] - bucket_ts_af[0]).dropna()
+                af_ls_arr = af_ls_spread.values
+                if len(af_ls_arr) > 0:
+                    af_mean = float(af_ls_arr.mean())
+                    af_median = float(np.median(af_ls_arr))
+                    af_std = float(af_ls_arr.std(ddof=1)) if len(af_ls_arr) > 1 else 0.0
+                    af_t = af_mean / (af_std / np.sqrt(len(af_ls_arr))) if af_std > 0 else 0.0
+                    af_win = float((af_ls_arr > 0).sum() / len(af_ls_arr))
+                    af_top = bucket_ts_af[QUANTILE_BUCKETS - 1].dropna()
+                    af_bot = bucket_ts_af[0].dropna()
+                    af_top_mean = float(af_top.mean()) if len(af_top) else None
+                    af_bot_mean = float(af_bot.mean()) if len(af_bot) else None
+                    af_top_tail_share = tail_abs_share(af_top)
+                    af_bottom_tail_share = tail_abs_share(af_bot)
+                    af_coverage_rate = len(af_ls_spread) / len(ls_spread) if len(ls_spread) else None
+
+            ls_median = float(np.median(ls_arr)) if ls_arr is not None and len(ls_arr) > 0 else None
+            top_tail_share = tail_abs_share(bucket_ts[QUANTILE_BUCKETS - 1]) if QUANTILE_BUCKETS - 1 in bucket_ts.columns else None
+            bottom_tail_share = tail_abs_share(bucket_ts[0]) if 0 in bucket_ts.columns else None
+            price_tail_label = tail_diagnosis(ls_mean, ls_median, top_tail_share, bottom_tail_share)
+            af_tail_label = tail_diagnosis(af_mean, af_median, af_top_tail_share, af_bottom_tail_share)
+            funding_flip = (
+                ls_mean is not None and af_mean is not None
+                and np.sign(ls_mean) != 0 and np.sign(af_mean) != 0
+                and np.sign(ls_mean) != np.sign(af_mean)
+            )
+
             ls_status = base_status
             # PM-41: LS summary row is appended AFTER the period loop
             # so we can include monthly aggregate stats.
@@ -374,8 +476,21 @@ def main():
                 "top_bucket_mean_return": round(top_mean, 8) if top_mean is not None else None,
                 "bottom_bucket_mean_return": round(bot_mean, 8) if bot_mean is not None else None,
                 "long_short_spread_mean": round(ls_mean, 8) if ls_mean is not None else None,
+                "long_short_spread_median": round(ls_median, 8) if ls_median is not None else None,
                 "long_short_spread_t_stat": round(ls_t, 4) if ls_t is not None else None,
                 "long_short_win_rate": round(ls_win, 4) if ls_win is not None else None,
+                "top_bucket_top1pct_abs_share": round(top_tail_share, 6) if top_tail_share is not None else None,
+                "bottom_bucket_top1pct_abs_share": round(bottom_tail_share, 6) if bottom_tail_share is not None else None,
+                "bucket_tail_diagnosis": price_tail_label,
+                "after_funding_top_bucket_mean_return": round(af_top_mean, 8) if af_top_mean is not None else None,
+                "after_funding_bottom_bucket_mean_return": round(af_bot_mean, 8) if af_bot_mean is not None else None,
+                "after_funding_long_short_spread_mean": round(af_mean, 8) if af_mean is not None else None,
+                "after_funding_long_short_spread_median": round(af_median, 8) if af_median is not None else None,
+                "after_funding_long_short_spread_t_stat": round(af_t, 4) if af_t is not None else None,
+                "after_funding_long_short_win_rate": round(af_win, 4) if af_win is not None else None,
+                "after_funding_coverage_rate": round(af_coverage_rate, 6) if af_coverage_rate is not None else None,
+                "after_funding_bucket_tail_diagnosis": af_tail_label,
+                "funding_adjusted_edge_flip": bool(funding_flip),
                 # PM-41: monthly aggregate fields (populated after period loop)
                 "long_short_spread_std": None,
                 "long_short_spread_annualized_return": None,
@@ -390,7 +505,7 @@ def main():
             monthly_ls_returns = []  # PM-41: collect monthly LS for aggregate stats
             bucket_ts_period = bucket_ts.copy()
             bucket_ts_period.index = pd.to_datetime(bucket_ts_period.index)
-            bucket_ts_period["_period"] = bucket_ts_period.index.to_period("M")
+            bucket_ts_period["_period"] = bucket_ts_period.index.tz_convert(None).to_period("M")
 
             for period_val, period_grp in bucket_ts_period.groupby("_period"):
                 period_str = str(period_val)
@@ -469,10 +584,13 @@ def main():
         any_computed = False
         for hz in LABEL_HORIZONS:
             ic = horizon_ics[hz]
+            af_ic = horizon_ics_after_funding.get(hz, {"mean": None, "t_stat": None, "n_periods": 0})
             if ic["n_periods"] > 0:
                 any_computed = True
                 raw = ic["mean"]
                 adj = -raw if d == "negative" else raw
+                af_raw = af_ic["mean"]
+                af_adj = -af_raw if (af_raw is not None and d == "negative") else af_raw
                 status = "COMPUTED"
                 if d not in ("positive", "negative"):
                     status = "DIRECTION_UNKNOWN"
@@ -484,6 +602,10 @@ def main():
                     "direction_source": "factor_registry", "horizon": hz,
                     "raw_mean_rank_ic": round(raw, 8),
                     "direction_adjusted_mean_rank_ic": round(adj, 8),
+                    "after_funding_raw_mean_rank_ic": round(af_raw, 8) if af_raw is not None else None,
+                    "after_funding_direction_adjusted_mean_rank_ic": round(af_adj, 8) if af_adj is not None else None,
+                    "after_funding_t_stat": round(af_ic["t_stat"], 4) if af_ic.get("t_stat") is not None else None,
+                    "after_funding_n_periods": af_ic.get("n_periods", 0),
                     "t_stat": round(ic["t_stat"], 4),
                     "n_periods": ic["n_periods"],
                     "n_symbols_avg": round(n_symbols_avg, 1),
@@ -498,6 +620,10 @@ def main():
                     "expected_direction": d,
                     "direction_source": "factor_registry", "horizon": hz,
                     "raw_mean_rank_ic": None, "direction_adjusted_mean_rank_ic": None,
+                    "after_funding_raw_mean_rank_ic": None,
+                    "after_funding_direction_adjusted_mean_rank_ic": None,
+                    "after_funding_t_stat": None,
+                    "after_funding_n_periods": 0,
                     "t_stat": None, "n_periods": 0, "n_symbols_avg": None,
                     "coverage": coverage, "missing_rate": miss_rate,
                     "used_in_current_signal": fid in SIGNAL_FACTOR_IDS,
@@ -559,6 +685,8 @@ def main():
         ic_list_raw = [v for _, v in detailed_ics.get((fid, hz), [])]
         raw_ic = row.get("raw_mean_rank_ic")
         adj_ic = row.get("direction_adjusted_mean_rank_ic")
+        af_raw_ic = row.get("after_funding_raw_mean_rank_ic")
+        af_adj_ic = row.get("after_funding_direction_adjusted_mean_rank_ic")
         d = row["expected_direction"]
 
         # Look up required_columns and lookback_window from registry
@@ -606,6 +734,10 @@ def main():
             "horizon": hz,
             "raw_mean_rank_ic": raw_ic,
             "direction_adjusted_mean_rank_ic": adj_ic,
+            "after_funding_raw_mean_rank_ic": af_raw_ic,
+            "after_funding_direction_adjusted_mean_rank_ic": af_adj_ic,
+            "after_funding_t_stat": row.get("after_funding_t_stat"),
+            "after_funding_n_periods": row.get("after_funding_n_periods"),
             "raw_rank_ic_std": round(raw_rank_ic_std, 8) if raw_rank_ic_std is not None else None,
             "direction_adjusted_rank_ic_std": round(adj_rank_ic_std, 8) if adj_rank_ic_std is not None else None,
             "raw_icir": raw_icir,
@@ -628,8 +760,21 @@ def main():
             "top_bucket_mean_return": ls_row.get("top_bucket_mean_return") if ls_row else None,
             "bottom_bucket_mean_return": ls_row.get("bottom_bucket_mean_return") if ls_row else None,
             "long_short_spread_mean": ls_row.get("long_short_spread_mean") if ls_row else None,
+            "long_short_spread_median": ls_row.get("long_short_spread_median") if ls_row else None,
             "long_short_spread_t_stat": ls_row.get("long_short_spread_t_stat") if ls_row else None,
             "long_short_win_rate": ls_row.get("long_short_win_rate") if ls_row else None,
+            "top_bucket_top1pct_abs_share": ls_row.get("top_bucket_top1pct_abs_share") if ls_row else None,
+            "bottom_bucket_top1pct_abs_share": ls_row.get("bottom_bucket_top1pct_abs_share") if ls_row else None,
+            "bucket_tail_diagnosis": ls_row.get("bucket_tail_diagnosis") if ls_row else None,
+            "after_funding_top_bucket_mean_return": ls_row.get("after_funding_top_bucket_mean_return") if ls_row else None,
+            "after_funding_bottom_bucket_mean_return": ls_row.get("after_funding_bottom_bucket_mean_return") if ls_row else None,
+            "after_funding_long_short_spread_mean": ls_row.get("after_funding_long_short_spread_mean") if ls_row else None,
+            "after_funding_long_short_spread_median": ls_row.get("after_funding_long_short_spread_median") if ls_row else None,
+            "after_funding_long_short_spread_t_stat": ls_row.get("after_funding_long_short_spread_t_stat") if ls_row else None,
+            "after_funding_long_short_win_rate": ls_row.get("after_funding_long_short_win_rate") if ls_row else None,
+            "after_funding_coverage_rate": ls_row.get("after_funding_coverage_rate") if ls_row else None,
+            "after_funding_bucket_tail_diagnosis": ls_row.get("after_funding_bucket_tail_diagnosis") if ls_row else None,
+            "funding_adjusted_edge_flip": ls_row.get("funding_adjusted_edge_flip") if ls_row else None,
             # PM-41: LS aggregate fields from monthly period returns
             "long_short_spread_std": ls_row.get("long_short_spread_std") if ls_row else None,
             "long_short_spread_annualized_return": ls_row.get("long_short_spread_annualized_return") if ls_row else None,
@@ -796,6 +941,12 @@ def main():
         best_ls_spread = None
         best_ls_hz = None
         best_ls_t = None
+        best_af_ls_spread = None
+        best_af_ls_hz = None
+        best_af_coverage = None
+        best_tail_label = None
+        best_af_tail_label = None
+        any_funding_flip = False
         best_win_adj = None
         cov_min = None
         miss_max = None
@@ -810,6 +961,8 @@ def main():
                 adj_icir_val = r.get("direction_adjusted_icir")
                 ls_val = r.get("long_short_spread_mean")
                 ls_t_val = r.get("long_short_spread_t_stat")
+                af_ls_val = r.get("after_funding_long_short_spread_mean")
+                af_cov_val = r.get("after_funding_coverage_rate")
                 win_val = r.get("ic_win_rate_adjusted")
                 cov_val = r.get("coverage")
                 miss_val = r.get("missing_rate")
@@ -824,6 +977,14 @@ def main():
                     best_ls_spread = ls_val
                     best_ls_hz = hz
                     best_ls_t = ls_t_val
+                    best_tail_label = r.get("bucket_tail_diagnosis")
+                    best_af_tail_label = r.get("after_funding_bucket_tail_diagnosis")
+                if pd.notna(af_ls_val) and (best_af_ls_spread is None or abs(af_ls_val) > abs(best_af_ls_spread)):
+                    best_af_ls_spread = af_ls_val
+                    best_af_ls_hz = hz
+                    best_af_coverage = af_cov_val if pd.notna(af_cov_val) else None
+                if bool(r.get("funding_adjusted_edge_flip")):
+                    any_funding_flip = True
                 if pd.notna(win_val) and (best_win_adj is None or win_val > best_win_adj):
                     best_win_adj = win_val
                 if pd.notna(cov_val) and (cov_min is None or cov_val < cov_min):
@@ -849,6 +1010,22 @@ def main():
             else:
                 rl_consistency = "DIVERGENT"
 
+        review_reasons = []
+        if best_af_coverage is not None and best_af_coverage < 0.80:
+            review_reasons.append("funding coverage insufficient")
+        if any_funding_flip:
+            review_reasons.append("funding-adjusted edge flips")
+        if best_af_ls_spread is not None and best_ls_spread is not None and best_ls_spread > 0 and best_af_ls_spread <= 0:
+            review_reasons.append("positive price-only spread turns non-positive after funding")
+        if rl_consistency == "DIVERGENT":
+            review_reasons.append("RankIC/spread direction conflict")
+        if best_tail_label in {"TAIL_CONCENTRATED_NEGATIVE_MEAN", "MEAN_SPREAD_OUTLIER_DOMINATED"}:
+            review_reasons.append(best_tail_label.lower())
+        if best_af_tail_label in {"TAIL_CONCENTRATED_NEGATIVE_MEAN", "MEAN_SPREAD_OUTLIER_DOMINATED"}:
+            review_reasons.append("after_funding_" + str(best_af_tail_label).lower())
+        if best_ls_spread is not None and abs(best_ls_spread) < 0.0002:
+            review_reasons.append("cost too thin")
+
         # Review bucket
         if not fv_exists:
             review_bucket = "MISSING_INPUT"
@@ -863,12 +1040,18 @@ def main():
             else:
                 review_bucket = "CONDITIONAL_DIRECTION_REVIEW"
                 review_notes = "Conditional direction; weak or no clear IC signal."
+        elif any_funding_flip or (best_af_ls_spread is not None and best_ls_spread is not None and best_ls_spread > 0 and best_af_ls_spread <= 0):
+            review_bucket = "FUNDING_ADJUSTED_REVIEW_REQUIRED"
+            review_notes = "Price-only edge weakens or flips after funding adjustment. Do not use price-only spread as economic evidence."
         elif rl_consistency == "DIVERGENT" and best_adj_ic is not None and abs(best_adj_ic) >= 0.02:
             review_bucket = "DIRECTION_REVIEW_REQUIRED"
             review_notes = "RankIC and long-short spread point in opposite directions. Direction semantics need review."
         elif rl_consistency == "DIVERGENT":
             review_bucket = "TAIL_OR_MONOTONICITY_REVIEW_REQUIRED"
             review_notes = "RankIC-longshort divergence detected. Check quantile monotonicity and tail behavior."
+        elif best_tail_label in {"TAIL_CONCENTRATED_NEGATIVE_MEAN", "MEAN_SPREAD_OUTLIER_DOMINATED"}:
+            review_bucket = "TAIL_OR_MONOTONICITY_REVIEW_REQUIRED"
+            review_notes = "Bucket tail diagnostics show mean/median split or tail-concentrated negative mean."
         elif best_adj_ic is not None and abs(best_adj_ic) >= 0.02 and best_ls_spread is not None and best_ls_t is not None and abs(best_ls_t) >= 2.0:
             review_bucket = "STRONG_DIAGNOSTIC_CANDIDATE"
             review_notes = "Strong RankIC and significant long-short spread. Consistent signals."
@@ -900,12 +1083,19 @@ def main():
             "best_long_short_horizon": best_ls_hz,
             "best_long_short_spread": round(float(best_ls_spread), 8) if best_ls_spread is not None else None,
             "best_long_short_t_stat": round(float(best_ls_t), 4) if best_ls_t is not None else None,
+            "best_after_funding_long_short_horizon": best_af_ls_hz,
+            "best_after_funding_long_short_spread": round(float(best_af_ls_spread), 8) if best_af_ls_spread is not None else None,
+            "best_after_funding_coverage_rate": round(float(best_af_coverage), 6) if best_af_coverage is not None else None,
+            "best_bucket_tail_diagnosis": best_tail_label,
+            "best_after_funding_bucket_tail_diagnosis": best_af_tail_label,
+            "funding_adjusted_edge_flip": any_funding_flip,
             "best_ic_win_rate_adjusted": round(float(best_win_adj), 4) if best_win_adj is not None else None,
             "coverage_min": cov_min,
             "missing_rate_max": miss_max,
             "direction_status": direction_status,
             "rankic_longshort_consistency": rl_consistency,
             "review_bucket": review_bucket,
+            "review_reasons": "|".join(sorted(set(review_reasons))),
             "review_notes": review_notes,
         })
 
@@ -929,6 +1119,7 @@ def main():
         "output_safety": "scratch_only" if is_partial else "canonical",
         "dataset_id": args.dataset_id,
         "labels_path": str(labels_path),
+        "funding_adjustment": funding_manifest,
         "features_dir": str(features_dir),
         "total_registered_factors": len(registry),
         "computed_factors": len(fids_with_fv),
@@ -946,6 +1137,12 @@ def main():
             "factor_level_long_short_summary.csv",
             "factor_level_formula_catalog.csv",
             "factor_level_candidate_review.csv",
+        ],
+        "funding_aware_outputs": [
+            "after_funding_* columns in factor_level_rankic_summary.csv",
+            "after_funding_* columns in factor_level_metric_panel.csv",
+            "after_funding_* and bucket_tail_diagnosis columns in factor_level_long_short_summary.csv",
+            "funding/cost/tail review reasons in factor_level_candidate_review.csv",
         ],
         "raw_icir_definition": "mean(raw per-timestamp RankIC) / std(raw per-timestamp RankIC)",
         "direction_adjusted_icir_definition": "mean(direction-adjusted per-timestamp RankIC) / std(direction-adjusted per-timestamp RankIC); positive→raw, negative→-raw, conditional→raw",
