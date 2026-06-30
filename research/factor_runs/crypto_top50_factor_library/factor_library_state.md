@@ -1,14 +1,14 @@
 # Factor Library State
 
-**Generated:** 2026-06-28T21:30:14.825849+00:00
+**Generated:** 2026-06-29T19:37:43.831143+00:00
 **Dataset:** crypto_usdt_perp_monthly_volume_top50_current_listed_1h_v1
 
 ## Counts
 
 | Metric | Count |
 |--------|-------|
-| Registered factors | 249 |
-| Computed factor_values | 249 |
+| Registered factors | 257 |
+| Computed factor_values | 257 |
 | Missing factor_values | 0 |
 | Missing input data | 0 |
 | Active signal factors | 10 |
@@ -24,13 +24,12 @@
 
 ## Candidate Review Distribution
 
-- **DIRECTION_REVIEW_REQUIRED:** 27
-- **CONDITIONAL_DIRECTION_REVIEW:** 25
-- **TAIL_OR_MONOTONICITY_REVIEW_REQUIRED:** 15
-- **ACTIVE_IN_SIGNAL_REVIEW:** 10
-- **METADATA_REVIEW:** 2
-- **STRONG_DIAGNOSTIC_CANDIDATE:** 2
-- **LONGSHORT_STRONG_RANKIC_WEAK:** 1
+- **DIRECTION_REVIEW_REQUIRED:** 41
+- **FUNDING_ADJUSTED_REVIEW_REQUIRED:** 17
+- **TAIL_OR_MONOTONICITY_REVIEW_REQUIRED:** 17
+- **CONDITIONAL_DIRECTION_REVIEW:** 12
+- **LONGSHORT_STRONG_RANKIC_WEAK:** 2
+- **METADATA_REVIEW:** 1
 - **RANKIC_STRONG_LONGSHORT_WEAK:** 1
 
 ## Signal Factor IDs
@@ -58,6 +57,7 @@
 |-----------|-------------|---------|
 | vol_40h | +0.103597 | 72h |
 | volatility_20h | +0.100062 | 72h |
+| range_compression_breakout_48h | +0.094244 | 72h |
 | range_24h | -0.094086 | 72h |
 | range_4h | -0.092339 | 72h |
 | q158_klen_open | -0.090915 | 72h |
@@ -70,7 +70,6 @@
 | q158_std_60h | +0.080723 | 72h |
 | vol_5h | +0.080509 | 72h |
 | vol_of_vol_20h | +0.080223 | 72h |
-| wvma_20h | +0.076279 | 72h |
 
 ---
 *Diagnostic only. Not production. Not live trading.*

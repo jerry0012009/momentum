@@ -24,6 +24,7 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import pandas as pd
 
@@ -34,6 +35,7 @@ META_DIR = BASE / "factor_metadata"
 PUBLIC_MANIFEST = Path("docs/factor_library/public_factor_candidate_manifest.csv")
 OUT = Path("reports/site/factor-library/factor-evaluation.html")
 OUT_JSON = Path("reports/site/factor-library/assets/factor_evaluation.json")
+DETAIL_DIR = Path("reports/site/factor-library/assets/factor-details")
 
 HORIZONS = ["1h", "4h", "24h", "72h"]
 SKIPPED_PUBLIC_STATUSES = {
@@ -42,6 +44,8 @@ SKIPPED_PUBLIC_STATUSES = {
     "skipped_missing_market_cap_20260628",
     "skipped_low_coverage_20260628",
 }
+
+DETAIL_URL_SAFE = "-_.!~*'()"
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -100,6 +104,10 @@ def _sanitize_nan(obj):
     if isinstance(obj, list):
         return [_sanitize_nan(v) for v in obj]
     return obj
+
+
+def detail_file_name(factor_id: str) -> str:
+    return quote(str(factor_id), safe=DETAIL_URL_SAFE) + ".json"
 
 
 def load_json(path: Path) -> dict:
@@ -220,12 +228,16 @@ def build_payload() -> dict:
     sc_red_conf_counts = {}
     sc_novelty_counts = {}
     sc_red_level_counts = {}
+    review_substatus_counts = {}
+    ml_gate_status_counts = {}
     sc_cluster_count = 0
     sc_largest_cluster = 0
     if not scorecard.empty:
         sc_class_counts = scorecard["final_quality_class"].value_counts().to_dict()
         sc_confidence_counts = scorecard["score_confidence"].value_counts().to_dict()
         sc_action_counts = scorecard["recommended_next_action"].value_counts().to_dict()
+        review_substatus_counts = scorecard["review_substatus"].value_counts().to_dict() if "review_substatus" in scorecard.columns else {}
+        ml_gate_status_counts = scorecard["ml_gate_status"].value_counts().to_dict() if "ml_gate_status" in scorecard.columns else {}
         sc_red_conf_counts = scorecard["redundancy_confidence"].value_counts().to_dict() if "redundancy_confidence" in scorecard.columns else {}
         sc_novelty_counts = scorecard["novelty_assessment"].value_counts().to_dict() if "novelty_assessment" in scorecard.columns else {}
         sc_red_level_counts = scorecard["strongest_redundancy_level"].value_counts().to_dict() if "strongest_redundancy_level" in scorecard.columns else {}
@@ -243,6 +255,8 @@ def build_payload() -> dict:
         "scorecard_class_counts": sc_class_counts,
         "scorecard_confidence_counts": sc_confidence_counts,
         "scorecard_action_counts": sc_action_counts,
+        "review_substatus_counts": review_substatus_counts,
+        "ml_gate_status_counts": ml_gate_status_counts,
         "scorecard_red_conf_counts": sc_red_conf_counts,
         "scorecard_novelty_counts": sc_novelty_counts,
         "scorecard_red_level_counts": sc_red_level_counts,
@@ -549,6 +563,21 @@ def build_payload() -> dict:
             "review_notes_zh": ss(sc.get("review_notes_zh", "")),
             "review_notes_en": ss(sc.get("review_notes_en", "")),
             "recommended_next_action": ss(sc.get("recommended_next_action", "")),
+            "review_substatus": ss(sc.get("review_substatus", "")),
+            "review_subreason_zh": ss(sc.get("review_subreason_zh", "")),
+            "review_subreason_en": ss(sc.get("review_subreason_en", "")),
+            "ml_gate_status": ss(sc.get("ml_gate_status", "")),
+            "ml_gate_reason_zh": ss(sc.get("ml_gate_reason_zh", "")),
+            "ml_gate_reason_en": ss(sc.get("ml_gate_reason_en", "")),
+            "ml_gate_risk_flags": ss(sc.get("ml_gate_risk_flags", "")),
+            "workflow_review_bucket": ss(sc.get("workflow_review_bucket", "")),
+            "workflow_review_reasons": ss(sc.get("workflow_review_reasons", "")),
+            "after_funding_best_horizon": ss(sc.get("after_funding_best_horizon", "")),
+            "after_funding_long_short_spread": sf(sc.get("after_funding_long_short_spread")),
+            "after_funding_coverage_rate": sf(sc.get("after_funding_coverage_rate")),
+            "bucket_tail_diagnosis": ss(sc.get("bucket_tail_diagnosis", "")),
+            "after_funding_bucket_tail_diagnosis": ss(sc.get("after_funding_bucket_tail_diagnosis", "")),
+            "funding_adjusted_edge_flip": ss(sc.get("funding_adjusted_edge_flip", "")),
 
             # Time series
             "monthly_ic": monthly_ic,
@@ -782,6 +811,10 @@ def build_payload() -> dict:
                 factor["main_strengths_zh"] = factor.get("primary_strength_zh", "")
                 factor["main_weaknesses_en"] = factor.get("primary_risk_en", "")
                 factor["main_weaknesses_zh"] = factor.get("primary_risk_zh", "")
+                factor["review_substatus"] = factor.get("review_substatus") or "REVIEW_METADATA_ONLY"
+                factor["ml_gate_status"] = factor.get("ml_gate_status") or "ML_READY_WITH_CAUTION"
+                factor["ml_gate_reason_zh"] = factor.get("ml_gate_reason_zh") or "来自统一画像回退；进入机器学习前保留元数据风险标记。"
+                factor["ml_gate_reason_en"] = factor.get("ml_gate_reason_en") or "Unified profile fallback; keep metadata risk flags before ML use."
                 # Redundancy fields from profile
                 mi = factor.get("marginal_information_class", "")
                 if mi == "DISTINCT_SINGLETON":
@@ -1672,6 +1705,8 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
         <select id="horizonFilter"><option value="">All horizons 全部视野</option></select>
         <select id="scClassFilter"><option value="">All quality classes 全部质量分类</option></select>
         <select id="scConfFilter"><option value="">All confidence 全部置信度</option></select>
+        <select id="reviewSubstatusFilter"><option value="">All review reasons 全部复核原因</option></select>
+        <select id="mlGateFilter"><option value="">All ML gates 全部ML状态</option></select>
         <select id="paperViabFilter"><option value="">All paper viab. 纸面可行性</option></select>
         <select id="regimeFilter"><option value="">All regime dep. 市场状态依赖</option></select>
       </div>
@@ -1684,6 +1719,8 @@ tr.factor-row{cursor:pointer}tr.factor-row:hover,tr.factor-row.selected{backgrou
             <th data-col="final_quality_class">Quality Class 质量分类</th>
             <th data-col="final_quality_score">Score 分数</th>
             <th data-col="score_confidence">Confidence 置信度</th>
+            <th data-col="review_substatus">Review Reason 复核原因</th>
+            <th data-col="ml_gate_status">ML Gate</th>
             <th data-col="metadata_quality">Meta Quality 元数据</th>
             <th data-col="best_horizon">Best H 最优视野</th>
             <th data-col="rankic_mean">RankIC</th>
@@ -1739,7 +1776,52 @@ const DATA = JSON.parse(document.getElementById('factorPayload').textContent);
 const S = DATA.summary;
 const factors = DATA.factors;
 const byId = new Map(factors.map(f => [f.factor_id, f]));
+const detailCache = new Map();
 const METRIC_GLOSSARY = DATA.metric_glossary || {};
+
+async function getFactorDetail(fid) {
+  if (detailCache.has(fid)) return detailCache.get(fid);
+  const base = byId.get(fid) || {factor_id: fid};
+  const resp = await fetch(`assets/factor-details/${encodeURIComponent(fid)}.json`);
+  if (!resp.ok) throw new Error(`detail fetch failed: ${resp.status}`);
+  const detail = {...base, ...(await resp.json())};
+  detailCache.set(fid, detail);
+  byId.set(fid, detail);
+  const idx = factors.findIndex(f => f.factor_id === fid);
+  if (idx >= 0) factors[idx] = detail;
+  return detail;
+}
+
+function renderDetailLoading(fid) {
+  const card=document.getElementById('detailCard');
+  if(!card)return;
+  card.innerHTML=`
+    <button class="back-to-table" onclick="document.getElementById('scoreboardCard').scrollIntoView({behavior:'smooth',block:'start'})">↑ 回到因子列表 / Back to table</button>
+    <h2>${esc(fid)}</h2>
+    <div class="small">Loading factor detail...<br>正在加载因子详情...</div>
+  `;
+}
+
+function renderDetailError(fid, err) {
+  const card=document.getElementById('detailCard');
+  if(!card)return;
+  card.innerHTML=`
+    <button class="back-to-table" onclick="document.getElementById('scoreboardCard').scrollIntoView({behavior:'smooth',block:'start'})">↑ 回到因子列表 / Back to table</button>
+    <h2>${esc(fid)}</h2>
+    <div class="small" style="color:var(--red)">Factor detail failed to load.<br>因子详情加载失败。</div>
+    <div class="small">${esc(err && err.message ? err.message : String(err||''))}</div>
+  `;
+}
+
+async function selectFactor(fid) {
+  renderDetailLoading(fid);
+  try {
+    await getFactorDetail(fid);
+    renderDetail(fid);
+  } catch (err) {
+    renderDetailError(fid, err);
+  }
+}
 
 // ── Quality label map ──
 const QUALITY_LABELS = {
@@ -1767,6 +1849,21 @@ const SC_CONF_LABELS = {
 const SC_ACTION_LABELS = {
   KEEP_FOR_RESEARCH_REVIEW: {zh:'保留研究复核', en:'KEEP_FOR_RESEARCH_REVIEW'},
   REVIEW_FORMULA_OR_METADATA: {zh:'复核公式或元数据', en:'REVIEW_FORMULA_OR_METADATA'}
+};
+const REVIEW_SUBSTATUS_LABELS = {
+  REVIEW_CLEAR: {zh:'复核清晰', en:'REVIEW_CLEAR', cls:'complete'},
+  REVIEW_METADATA_ONLY: {zh:'元数据待补', en:'REVIEW_METADATA_ONLY', cls:'direction_ambiguous'},
+  REVIEW_DIRECTION_SEMANTICS: {zh:'方向语义复核', en:'REVIEW_DIRECTION_SEMANTICS', cls:'direction_ambiguous'},
+  REVIEW_REDUNDANCY: {zh:'冗余复核', en:'REVIEW_REDUNDANCY', cls:'needs_review'},
+  REVIEW_ECONOMIC_TENSION: {zh:'收益张力复核', en:'REVIEW_ECONOMIC_TENSION', cls:'direction_ambiguous'},
+  REVIEW_FORMULA: {zh:'公式复核', en:'REVIEW_FORMULA', cls:'formula_ambiguous'},
+  HOLD_INSUFFICIENT_EVIDENCE: {zh:'证据不足', en:'HOLD_INSUFFICIENT_EVIDENCE', cls:'formula_ambiguous'}
+};
+const ML_GATE_LABELS = {
+  ML_READY: {zh:'ML可用', en:'ML_READY', cls:'complete'},
+  ML_READY_WITH_CAUTION: {zh:'ML可用-带风险', en:'ML_READY_WITH_CAUTION', cls:'direction_ambiguous'},
+  ML_REVIEW_FIRST: {zh:'先复核', en:'ML_REVIEW_FIRST', cls:'needs_review'},
+  ML_HOLD: {zh:'暂不进ML', en:'ML_HOLD', cls:'formula_ambiguous'}
 };
 // PM-19: Novelty and redundancy level labels
 const NOVELTY_LABELS = {
@@ -2013,8 +2110,8 @@ function buildHorizonSwitch(f, containerId) {
   html += '</div>';
   return html;
 }
-function switchHorizon(fid, hz) {
-  const f = DATA.factors.find(x => x.factor_id === fid);
+async function switchHorizon(fid, hz) {
+  const f = await getFactorDetail(fid);
   if (!f || !f.horizon_metrics) return;
   const hm = f.horizon_metrics[hz];
   if (!hm) return;
@@ -2514,6 +2611,14 @@ function scActionBadge(action){
   const l=SC_ACTION_LABELS[action]||{zh:action,en:action};
   return `<span class="sc-action-badge">${esc(l.zh)} / ${esc(l.en)}</span>`;
 }
+function reviewSubstatusBadge(status){
+  const l=REVIEW_SUBSTATUS_LABELS[status]||{zh:status||'—',en:status||'—',cls:''};
+  return `<span class="quality-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
+function mlGateBadge(status){
+  const l=ML_GATE_LABELS[status]||{zh:status||'—',en:status||'—',cls:''};
+  return `<span class="quality-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
+}
 function noveltyBadge(nov){
   const l=NOVELTY_LABELS[nov]||{zh:nov,en:nov,cls:''};
   return `<span class="quality-badge ${l.cls}">${esc(l.zh)} / ${esc(l.en)}</span>`;
@@ -2576,6 +2681,10 @@ function scSubBar(key,score){
   const high=conf.HIGH||0;
   const med=conf.MEDIUM||0;
   const low=conf.LOW||0;
+  const ml=S.ml_gate_status_counts||{};
+  const mlReady=ml.ML_READY||0;
+  const mlCaution=ml.ML_READY_WITH_CAUTION||0;
+  const mlHold=ml.ML_HOLD||0;
 
   // PM-19: Redundancy stats
   const redLevel=S.scorecard_red_level_counts||{};
@@ -2593,6 +2702,9 @@ function scSubBar(key,score){
       <div class="sc-summary-card"><strong style="color:var(--green)">${high}</strong><span>High Confidence<br>高置信度</span></div>
       <div class="sc-summary-card"><strong style="color:var(--amber)">${med}</strong><span>Medium Confidence<br>中置信度</span></div>
       <div class="sc-summary-card"><strong style="color:var(--red)">${low}</strong><span>Low Confidence<br>低置信度</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--green)">${mlReady}</strong><span>ML Ready<br>机器学习可用</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--amber)">${mlCaution}</strong><span>ML Ready w/ Caution<br>带风险可用</span></div>
+      <div class="sc-summary-card"><strong style="color:var(--red)">${mlHold}</strong><span>ML Hold<br>暂不进ML</span></div>
       <div class="sc-summary-card"><strong style="color:var(--red)">${nearDup}</strong><span>Near-Duplicate Pairs<br>近似重复对</span></div>
       <div class="sc-summary-card"><strong style="color:var(--amber)">${highRed}</strong><span>High-Redundancy Pairs<br>高度冗余对</span></div>
       <div class="sc-summary-card"><strong style="color:var(--green)">${clusters}</strong><span>Redundancy Clusters<br>冗余聚类</span></div>
@@ -2791,18 +2903,24 @@ const families=[...new Set(factors.map(f=>f.family_zh||f.family))].sort();
 const qualities=[...new Set(factors.map(f=>f.metadata_quality))].sort();
 const scClasses=[...new Set(factors.map(f=>f.final_quality_class).filter(Boolean))].sort();
 const scConfs=['HIGH','MEDIUM','LOW'];
+const reviewSubstatuses=[...new Set(factors.map(f=>f.review_substatus).filter(Boolean))].sort();
+const mlGateStatuses=[...new Set(factors.map(f=>f.ml_gate_status).filter(Boolean))].sort();
 const sourceFamilyFilter=document.getElementById('sourceFamilyFilter');
 const familyFilter=document.getElementById('familyFilter');
 const qualityFilter=document.getElementById('qualityFilter');
 const horizonFilter=document.getElementById('horizonFilter');
 const scClassFilter=document.getElementById('scClassFilter');
 const scConfFilter=document.getElementById('scConfFilter');
+const reviewSubstatusFilter=document.getElementById('reviewSubstatusFilter');
+const mlGateFilter=document.getElementById('mlGateFilter');
 sourceFamilies.forEach(f=>{const o=document.createElement('option');o.value=f;o.textContent=f;sourceFamilyFilter.appendChild(o)});
 families.forEach(f=>{const o=document.createElement('option');o.value=f;o.textContent=f;familyFilter.appendChild(o)});
 qualities.forEach(q=>{const o=document.createElement('option');o.value=q;o.textContent=(QUALITY_LABELS[q]||{zh:q}).zh+' / '+q;qualityFilter.appendChild(o)});
 S.horizons.forEach(h=>{const o=document.createElement('option');o.value=h;o.textContent=h;horizonFilter.appendChild(o)});
 scClasses.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=(SC_CLASS_LABELS[c]||{zh:c}).zh+' / '+c;scClassFilter.appendChild(o)});
 scConfs.forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=(SC_CONF_LABELS[c]||{zh:c}).zh+' / '+c;scConfFilter.appendChild(o)});
+reviewSubstatuses.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=(REVIEW_SUBSTATUS_LABELS[s]||{zh:s}).zh+' / '+s;reviewSubstatusFilter.appendChild(o)});
+mlGateStatuses.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=(ML_GATE_LABELS[s]||{zh:s}).zh+' / '+s;mlGateFilter.appendChild(o)});
 // PM-22: Paper viability filter
 const paperViabFilter=document.getElementById('paperViabFilter');
 const paperViabs=[...new Set(factors.map(f=>f.paper_viability_class).filter(Boolean))].sort();
@@ -2825,11 +2943,13 @@ function renderTable(){
   const hz=horizonFilter.value;
   const scCls=scClassFilter.value;
   const scConf=scConfFilter.value;
+  const reviewSub=reviewSubstatusFilter.value;
+  const mlGate=mlGateFilter.value;
   const pViab=paperViabFilter.value;
   const rCls=regimeFilter.value;
 
   let filtered=factors.filter(f=>{
-    const text=[f.factor_id,f.name_zh,f.name_en,f.source_family,f.family_zh,f.family,f.decision_bucket,f.final_quality_class,f.recommended_next_action,f.paper_viability_class,f.cost_sensitivity_class].join(' ').toLowerCase();
+    const text=[f.factor_id,f.name_zh,f.name_en,f.source_family,f.family_zh,f.family,f.decision_bucket,f.final_quality_class,f.recommended_next_action,f.review_substatus,f.ml_gate_status,f.ml_gate_risk_flags,f.paper_viability_class,f.cost_sensitivity_class].join(' ').toLowerCase();
     if(q&&!text.includes(q))return false;
     if(sourceFam&&f.source_family!==sourceFam)return false;
     if(fam&&(f.family_zh!==fam&&f.family!==fam))return false;
@@ -2837,6 +2957,8 @@ function renderTable(){
     if(hz&&f.best_horizon!==hz)return false;
     if(scCls&&f.final_quality_class!==scCls)return false;
     if(scConf&&f.score_confidence!==scConf)return false;
+    if(reviewSub&&f.review_substatus!==reviewSub)return false;
+    if(mlGate&&f.ml_gate_status!==mlGate)return false;
     if(pViab&&f.paper_viability_class!==pViab)return false;
     if(rCls&&f.regime_dependency_class!==rCls)return false;
     return true;
@@ -2859,6 +2981,8 @@ function renderTable(){
       <td>${scClassBadge(f.final_quality_class)}</td>
       <td class="num">${f.final_quality_score!==null&&f.final_quality_score!==undefined?Number(f.final_quality_score).toFixed(1):'—'}</td>
       <td>${f.score_confidence?scConfBadge(f.score_confidence):'—'}</td>
+      <td>${f.review_substatus?reviewSubstatusBadge(f.review_substatus):'—'}</td>
+      <td>${f.ml_gate_status?mlGateBadge(f.ml_gate_status):'—'}</td>
       <td>${qualBadge(f.metadata_quality)}</td>
       <td>${esc(f.best_horizon)}</td>
       <td class="num ${mcls(f.rankic_mean)}">${num(f.rankic_mean)}</td>
@@ -2893,7 +3017,7 @@ function renderTable(){
   tbody.querySelectorAll('tr').forEach(tr=>tr.addEventListener('click',()=>{
     tbody.querySelectorAll('tr.selected').forEach(r=>r.classList.remove('selected'));
     tr.classList.add('selected');
-    renderDetail(tr.dataset.factor);
+    selectFactor(tr.dataset.factor);
     // Scroll detail card into full view
     const dc=document.getElementById('detailCard');
     if(dc)dc.scrollIntoView({behavior:'smooth',block:'start'});
@@ -3063,6 +3187,21 @@ function renderDetail(fid){
       </div>
       ${scScoreBar(f.final_quality_score,'Quality Score 质量分数')}
       ${f.recommended_next_action?`<div style="margin:6px 0"><strong style="font-size:11px;color:var(--muted)">Recommended Action 建议动作:</strong> ${scActionBadge(f.recommended_next_action)}</div>`:''}
+      ${f.review_substatus||f.ml_gate_status?`<div style="margin:6px 0"><strong style="font-size:11px;color:var(--muted)">Review Split / ML Gate:</strong> ${f.review_substatus?reviewSubstatusBadge(f.review_substatus):''} ${f.ml_gate_status?mlGateBadge(f.ml_gate_status):''}</div>`:''}
+      ${f.review_subreason_zh||f.review_subreason_en?`<div style="margin:6px 0"><div class="sc-review-notes"><strong>Review Reason 复核原因:</strong></div><div class="bilingual"><div class="zh" style="font-size:11px">${esc(f.review_subreason_zh)}</div><div class="en" style="font-size:10px">${esc(f.review_subreason_en)}</div></div></div>`:''}
+      ${f.ml_gate_reason_zh||f.ml_gate_reason_en?`<div style="margin:6px 0"><div class="sc-review-notes"><strong>ML Gate 机器学习准入:</strong></div><div class="bilingual"><div class="zh" style="font-size:11px">${esc(f.ml_gate_reason_zh)}</div><div class="en" style="font-size:10px">${esc(f.ml_gate_reason_en)}</div></div></div>`:''}
+      ${f.ml_gate_risk_flags?`<div style="margin:6px 0"><strong style="font-size:11px;color:var(--muted)">Risk Flags 风险标记:</strong> ${f.ml_gate_risk_flags.split('|').filter(Boolean).map(x=>`<span class="bucket-badge">${esc(x)}</span>`).join(' ')}</div>`:''}
+      ${f.workflow_review_bucket||f.workflow_review_reasons||f.after_funding_long_short_spread!==null||f.bucket_tail_diagnosis?`
+        <div style="margin:6px 0">
+          <div class="sc-review-notes"><strong>Funding / Cost / Tail Workflow 资金费率、成本与尾部诊断:</strong></div>
+          <div style="font-size:11px;line-height:1.7">
+            ${f.workflow_review_bucket?`<span class="bucket-badge">${esc(f.workflow_review_bucket)}</span>`:''}
+            ${f.workflow_review_reasons?f.workflow_review_reasons.split('|').filter(Boolean).map(x=>`<span class="bucket-badge">${esc(x)}</span>`).join(' '):''}
+            ${f.after_funding_best_horizon?`<div>After-funding LS (${esc(f.after_funding_best_horizon)}): <strong>${fmtReturnPct(f.after_funding_long_short_spread)}</strong> · coverage ${pct(f.after_funding_coverage_rate)}</div>`:''}
+            ${f.bucket_tail_diagnosis?`<div>Price-only tail: <strong>${esc(f.bucket_tail_diagnosis)}</strong>${f.after_funding_bucket_tail_diagnosis?` · after-funding tail: <strong>${esc(f.after_funding_bucket_tail_diagnosis)}</strong>`:''}</div>`:''}
+          </div>
+        </div>
+      `:''}
 
       ${f.main_strengths_zh||f.main_strengths_en?`<div style="margin:6px 0"><div class="sc-strengths"><strong>Strengths 优势:</strong></div><div class="bilingual"><div class="zh" style="font-size:11px">${esc(f.main_strengths_zh)}</div><div class="en" style="font-size:10px">${esc(f.main_strengths_en)}</div></div></div>`:''}
       ${f.main_weaknesses_zh||f.main_weaknesses_en?`<div style="margin:6px 0"><div class="sc-weaknesses"><strong>Weaknesses 弱点:</strong></div><div class="bilingual"><div class="zh" style="font-size:11px">${esc(f.main_weaknesses_zh)}</div><div class="en" style="font-size:10px">${esc(f.main_weaknesses_en)}</div></div></div>`:''}
@@ -3803,7 +3942,6 @@ const initSortTh=document.querySelector(`th[data-col="${sortCol}"]`);
 if(initSortTh) initSortTh.innerHTML+=' ▼';
 
 renderTable();
-if(factors.length)renderDetail(factors[0].factor_id);
 
 document.getElementById('genTime').textContent='Generated: '+(S.page_generation_time||new Date().toISOString().slice(0,16));
 </script>
@@ -3823,50 +3961,66 @@ def render() -> str:
     return render_payload(build_payload())
 
 
-def build_asset_payload(payload: dict) -> dict:
-    """Build a compact public audit asset from the full embedded page payload."""
+def build_compact_payload(payload: dict) -> dict:
+    """Keep first-render payload small by moving nested detail data to per-factor JSON."""
     summary = dict(payload.get("summary", {}))
     summary["factor_count"] = len(payload.get("factors", []))
     summary["asset_type"] = "factor_evaluation_compact_audit"
     summary["source_page"] = "factor-evaluation.html"
     summary["note"] = (
-        "Compact public audit asset. The full interactive payload is embedded "
-        "in factor-evaluation.html."
+        "Compact first-render payload. Per-factor detail JSON is available "
+        "under assets/factor-details/."
     )
     compact_factors = []
     for factor in payload.get("factors", []):
-        compact_factors.append(
-            {
-                "factor_id": factor.get("factor_id"),
-                "source_family": factor.get("source_family"),
-                "family": factor.get("family"),
-                "lifecycle_status": factor.get("lifecycle_status"),
-                "expected_direction": factor.get("expected_direction"),
-                "best_horizon": factor.get("best_horizon"),
-                "metadata_quality": factor.get("metadata_quality"),
-                "final_quality_class": factor.get("final_quality_class"),
-                "workflow_ready_status": factor.get("workflow_ready_status"),
-                "evidence_status": factor.get("evidence_status"),
-                "source_fields": factor.get("source_fields"),
-                "required_columns": factor.get("required_columns"),
-            }
-        )
+        compact = {
+            key: value
+            for key, value in factor.items()
+            if not isinstance(value, (list, dict))
+        }
+        compact["detail_json"] = f"assets/factor-details/{detail_file_name(compact.get('factor_id', ''))}"
+        compact_factors.append(compact)
     return {
         "version": "factor_evaluation_compact_v1",
         "generated_at": summary.get("page_generation_time")
         or summary.get("data_last_modified"),
         "summary": summary,
         "factors": compact_factors,
+        "metric_glossary": payload.get("metric_glossary", {}),
     }
+
+
+def build_asset_payload(payload: dict) -> dict:
+    """Build the public compact JSON asset used by the page first render."""
+    return build_compact_payload(payload)
+
+
+def write_detail_payloads(payload: dict) -> None:
+    DETAIL_DIR.mkdir(parents=True, exist_ok=True)
+    wanted = set()
+    for factor in payload.get("factors", []):
+        factor_id = ss(factor.get("factor_id"))
+        if not factor_id:
+            continue
+        name = detail_file_name(factor_id)
+        wanted.add(name)
+        (DETAIL_DIR / name).write_text(
+            json.dumps(factor, ensure_ascii=False, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+    for path in DETAIL_DIR.glob("*.json"):
+        if path.name not in wanted:
+            path.unlink()
 
 
 if __name__ == "__main__":
     payload = build_payload()
     asset_payload = _sanitize_nan(payload)
-    html_out = render_payload(asset_payload)
+    compact_asset_payload = build_asset_payload(asset_payload)
+    write_detail_payloads(asset_payload)
+    html_out = render_payload(compact_asset_payload)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(html_out, encoding="utf-8")
-    compact_asset_payload = build_asset_payload(asset_payload)
     OUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     OUT_JSON.write_text(
         json.dumps(compact_asset_payload, indent=2, ensure_ascii=False) + "\n",
@@ -3874,3 +4028,4 @@ if __name__ == "__main__":
     )
     print(f"Wrote {OUT} ({len(html_out):,} bytes)")
     print(f"Wrote {OUT_JSON} ({OUT_JSON.stat().st_size:,} bytes)")
+    print(f"Wrote {len(compact_asset_payload.get('factors', []))} detail files to {DETAIL_DIR}")

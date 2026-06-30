@@ -1059,6 +1059,18 @@ def _compute_taker_buy_delta_5h(df: pd.DataFrame) -> pd.Series:
     return ratio - delay(ratio, 5)
 
 
+def _compute_taker_flow_momentum_20h(df: pd.DataFrame) -> pd.Series:
+    """Taker flow momentum 20h: taker ratio minus its 20h lag."""
+    ratio = df["taker_buy_quote_volume"] / df["quote_volume"].replace(0, np.nan)
+    return ratio - delay(ratio, 20)
+
+
+def _compute_taker_flow_persistence_40h(df: pd.DataFrame) -> pd.Series:
+    """Taker flow persistence 40h: autocorrelation of taker ratio with its 1h lag."""
+    ratio = df["taker_buy_quote_volume"] / df["quote_volume"].replace(0, np.nan)
+    return rolling_corr(ratio, delay(ratio, 1), 40)
+
+
 def _compute_funding_rate_level_20h(df: pd.DataFrame) -> pd.Series:
     """Funding rate level 20h: rolling_mean(funding_rate, 20)."""
     return rolling_mean(df["funding_rate"], 20)
@@ -1072,6 +1084,17 @@ def _compute_funding_rate_zscore_80h(df: pd.DataFrame) -> pd.Series:
 def _compute_funding_rate_change_24h(df: pd.DataFrame) -> pd.Series:
     """Funding rate change 24h: funding_rate - delay(funding_rate, 24)."""
     return df["funding_rate"] - delay(df["funding_rate"], 24)
+
+
+def _compute_funding_rate_skew_20h(df: pd.DataFrame) -> pd.Series:
+    """Funding rate skew 20h: rolling skewness of funding_rate."""
+    return rolling_skew(df["funding_rate"], 20)
+
+
+def _compute_funding_rate_momentum_20h(df: pd.DataFrame) -> pd.Series:
+    """Funding rate momentum 20h: funding_rate_change_24h minus its 20h lag."""
+    change_24h = df["funding_rate"] - delay(df["funding_rate"], 24)
+    return change_24h - delay(change_24h, 20)
 
 
 # ── Phase 13A-P2: Sprint 1 Diagnostic Factors ────────────────────
@@ -1171,6 +1194,20 @@ def _compute_mom_vol_adjusted_20h(df: pd.DataFrame) -> pd.Series:
     return mom_20h / vol.replace(0, np.nan)
 
 
+def _compute_vol_adj_mom_40h(df: pd.DataFrame) -> pd.Series:
+    """Volatility-adjusted momentum 40h: mom_40h / rolling_std(ret, 40)."""
+    mom_40h = df["close"] / delay(df["close"], 40) - 1.0
+    ret = df["close"].pct_change()
+    vol = rolling_std(ret, 40)
+    return mom_40h / vol.replace(0, np.nan)
+
+
+def _compute_range_compression_breakout_48h(df: pd.DataFrame) -> pd.Series:
+    """Range compression 48h: negative std of normalized intrabar range."""
+    intrabar_range = (df["high"] - df["low"]) / df["close"].replace(0, np.nan)
+    return -rolling_std(intrabar_range, 48)
+
+
 def _compute_range_breakout_vol_confirm_20h(df: pd.DataFrame) -> pd.Series:
     """Volume-confirmed range breakout 20h.
 
@@ -1189,6 +1226,22 @@ def _compute_volume_pressure_20h(df: pd.DataFrame) -> pd.Series:
     """Volume pressure 20h: rolling_mean(sign(delta(close, 1)) * volume, 20)."""
     close_delta = delta(df["close"], 1)
     return rolling_mean(sign(close_delta) * df["volume"], 20)
+
+
+def _compute_volume_pressure_asymmetry_40h(df: pd.DataFrame) -> pd.Series:
+    """Volume pressure asymmetry 40h: up-volume minus down-volume over total volume."""
+    ret = df["close"].pct_change()
+    up_vol = df["volume"].where(ret > 0, 0.0)
+    down_vol = df["volume"].where(ret < 0, 0.0)
+    total_vol = rolling_sum(df["volume"], 40)
+    return (rolling_sum(up_vol, 40) - rolling_sum(down_vol, 40)) / total_vol.replace(0, np.nan)
+
+
+def _compute_amihud_change_20h(df: pd.DataFrame) -> pd.Series:
+    """Amihud change 20h: amihud_20h minus its 20h lag."""
+    ret = df["close"].pct_change().abs()
+    amihud = rolling_mean(ret / df["quote_volume"].replace(0, np.nan), 20)
+    return amihud - delay(amihud, 20)
 
 
 def _compute_up_down_vol_ratio_20h(df: pd.DataFrame) -> pd.Series:
@@ -2898,6 +2951,22 @@ REGISTRY: list[FactorSpec] = [
         status="DIAGNOSTIC_PROBE",
         notes="ratio - delay(ratio, 5); lookback=6 for ratio(1)+delay(5); Requires Phase 7L-R canonical crypto-native cache.",
     ),
+    FactorSpec(
+        factor_id="taker_flow_momentum_20h", family="taker_imbalance",
+        required_columns=["taker_buy_quote_volume", "quote_volume"], lookback_window=21,
+        expected_direction="positive",
+        compute_fn=_compute_taker_flow_momentum_20h,
+        status="DIAGNOSTIC_PROBE",
+        notes="taker_buy_quote_volume/quote_volume minus its 20h lag; taker flow momentum from crypto-native expansion backlog.",
+    ),
+    FactorSpec(
+        factor_id="taker_flow_persistence_40h", family="taker_imbalance",
+        required_columns=["taker_buy_quote_volume", "quote_volume"], lookback_window=41,
+        expected_direction="positive",
+        compute_fn=_compute_taker_flow_persistence_40h,
+        status="DIAGNOSTIC_PROBE",
+        notes="rolling_corr(taker_ratio, delay(taker_ratio,1), 40); taker flow persistence from crypto-native expansion backlog.",
+    ),
     # ── Phase 7M-A: Funding Rate (3) ───────────────────────────
     FactorSpec(
         factor_id="funding_rate_level_20h", family="funding_rate",
@@ -2922,6 +2991,22 @@ REGISTRY: list[FactorSpec] = [
         compute_fn=_compute_funding_rate_change_24h,
         status="DIAGNOSTIC_PROBE",
         notes="funding_rate - delay(funding_rate, 24); fast rise = crowded, expect reversal; Requires Phase 7L-R canonical crypto-native cache.",
+    ),
+    FactorSpec(
+        factor_id="funding_rate_skew_20h", family="funding_rate",
+        required_columns=["funding_rate"], lookback_window=20,
+        expected_direction="conditional",
+        compute_fn=_compute_funding_rate_skew_20h,
+        status="DIAGNOSTIC_PROBE",
+        notes="rolling_skew(funding_rate, 20); funding distribution asymmetry from crypto-native expansion backlog.",
+    ),
+    FactorSpec(
+        factor_id="funding_rate_momentum_20h", family="funding_rate",
+        required_columns=["funding_rate"], lookback_window=45,
+        expected_direction="negative",
+        compute_fn=_compute_funding_rate_momentum_20h,
+        status="DIAGNOSTIC_PROBE",
+        notes="funding_rate_change_24h - delay(funding_rate_change_24h,20); higher-order funding dynamics from expansion backlog.",
     ),
     # ── Phase 13A-P2: Sprint 1 Diagnostic Factors (12) ───────────
     FactorSpec(
@@ -3024,6 +3109,20 @@ REGISTRY: list[FactorSpec] = [
         notes="mom_20h / rolling_std(pct_change(close), 20); volatility-adjusted momentum; safe for zero vol",
     ),
     FactorSpec(
+        factor_id="vol_adj_mom_40h", family="momentum",
+        required_columns=["close"], lookback_window=41,
+        expected_direction="positive",
+        compute_fn=_compute_vol_adj_mom_40h,
+        notes="mom_40h / rolling_std(pct_change(close), 40); medium-horizon volatility-adjusted momentum from crypto-native expansion backlog",
+    ),
+    FactorSpec(
+        factor_id="range_compression_breakout_48h", family="breakout",
+        required_columns=["high", "low", "close"], lookback_window=48,
+        expected_direction="positive",
+        compute_fn=_compute_range_compression_breakout_48h,
+        notes="-rolling_std((high-low)/close, 48); low range volatility as pre-breakout compression proxy from expansion backlog",
+    ),
+    FactorSpec(
         factor_id="range_breakout_vol_confirm_20h", family="breakout",
         required_columns=["high", "low", "close", "volume"], lookback_window=20,
         expected_direction="positive",
@@ -3036,6 +3135,20 @@ REGISTRY: list[FactorSpec] = [
         expected_direction="positive",
         compute_fn=_compute_volume_pressure_20h,
         notes="rolling_mean(sign(delta(close, 1)) * volume, 20); directional volume pressure",
+    ),
+    FactorSpec(
+        factor_id="volume_pressure_asymmetry_40h", family="volume_price",
+        required_columns=["close", "volume"], lookback_window=40,
+        expected_direction="positive",
+        compute_fn=_compute_volume_pressure_asymmetry_40h,
+        notes="(sum(up_vol,40)-sum(down_vol,40))/sum(volume,40); up/down volume pressure asymmetry from expansion backlog",
+    ),
+    FactorSpec(
+        factor_id="amihud_change_20h", family="liquidity",
+        required_columns=["close", "quote_volume"], lookback_window=41,
+        expected_direction="negative",
+        compute_fn=_compute_amihud_change_20h,
+        notes="amihud_20h - delay(amihud_20h,20); change in illiquidity stress from expansion backlog",
     ),
     # PM-45: Batch02 — Alpha158-derived single factor
     FactorSpec(

@@ -16,6 +16,17 @@ h1{font-size:28px;font-weight:700;margin-bottom:4px}.subtitle{color:var(--muted)
 .info{background:#eff6ff;border-left:4px solid var(--accent);padding:12px 16px;border-radius:0 8px 8px 0;margin:12px 0;font-size:13px}
 .pass{background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600}
 .fail{background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600}
+.warn{background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600}
+.pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:12px;font-weight:600}
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:12px 0 18px}
+.metric{border:1px solid var(--border);border-radius:8px;background:#f9fafb;padding:14px}
+.metric .label{font-size:12px;color:var(--muted);margin-bottom:4px}.metric .value{font-size:22px;font-weight:700}.metric .note{font-size:12px;color:var(--muted);margin-top:4px}
+.answer-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin:14px 0}
+.answer{border:1px solid var(--border);border-radius:8px;background:#f9fafb;padding:14px}.answer h3{font-size:14px;margin-bottom:8px}.answer p{font-size:14px;color:var(--text)}
+.dense-list{font-size:14px;margin-left:20px;line-height:1.85}.dense-list li{margin-bottom:4px}
+.verdict{background:#fff7ed;border-left:4px solid var(--amber);padding:12px 16px;border-radius:0 8px 8px 0;margin:12px 0;font-size:14px}
+.section-note{font-size:13px;color:var(--muted);margin:8px 0 12px}
+.table-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:14px;margin:12px 0}th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border)}
 th{background:#f9fafb;font-weight:600;font-size:13px;color:var(--muted)}td.num{text-align:right;font-family:monospace}
 tr.current{background:#f0fdf4;font-weight:600}
@@ -43,6 +54,245 @@ tr.current{background:#f0fdf4;font-weight:600}
     <tr><td>Pass/Fail</td><td><span class="pass">PASS</span></td></tr>
     <tr><td>数据来源</td><td>phase10d_variant_pass_fail_matrix.csv</td></tr>
   </table>
+</div>
+
+<!-- 100 Factor Signal Audit -->
+<div class="card" style="border-left:4px solid #d97706">
+  <h2>100 因子 Signal 审计结论</h2>
+  <div class="verdict">
+    <strong>结论：</strong>这版 100 因子 signal 不是简单“模型没调好”，更准确地说是：
+    因子有排序信息，但可交易经济边际太薄；组合目标主要在优化 RankIC，没有把手续费、资金费率、尾部 bucket 和换手作为硬约束。
+    因此它能在 RankIC 上看起来更好，却在 long-short spread 和扣成本后失败。
+  </div>
+  <div class="answer-grid">
+    <div class="answer">
+      <h3>100 个因子怎么用的？</h3>
+      <p>
+        这不是当前 Phase 9B 的 10 因子 core_only 纸面信号，而是
+        <code>ml_signal_prototype</code> 离线原型：从 232 个可用候选中选 100 个，
+        用 IC 加权混合、Ridge、浅层树三类模型分别生成 1h/4h/24h/72h 的横截面排名分数。
+      </p>
+    </div>
+    <div class="answer">
+      <h3>为什么跑不赢手续费？</h3>
+      <p>
+        1h 方向相对干净，但 median gross spread 只有约 0.009%-0.021%，
+        full long-short 换手接近 98%-107%，break-even 成本只有 0.87-2.13 bps；
+        测试的 3/7/10/15 bps full-LS 成本场景下，1h 全部失败。
+      </p>
+    </div>
+    <div class="answer">
+      <h3>因子弱还是模型组合弱？</h3>
+      <p>
+        两者都有，但主因不是模型形式。三类模型都出现类似问题：12 个 model-horizon 里 9 个
+        RankIC/spread 方向冲突。说明问题来自特征池经济质量、方向语义、尾部样本和组合目标约束，而不是 Ridge 或树模型单点故障。
+      </p>
+    </div>
+  </div>
+
+  <h3 style="font-size:15px;margin:18px 0 8px">因子池质量证据</h3>
+  <ul class="dense-list">
+    <li>入选来源：Alpha101 / WorldQuant 49 个，Alpha158 25 个，已有基础/crypto-native 因子 26 个。</li>
+    <li>审核状态偏弱：75 个只是 <code>REVIEW_METADATA_ONLY</code>，只有 1 个是 <code>REVIEW_CLEAR</code>。</li>
+    <li>风险标记很集中：75 个 <code>ls_not_robust</code>，52 个 <code>rankic_ls_direction_conflict</code>，36 个 <code>cost_collapsed</code>，36 个 <code>non_monotonic_quantiles</code>，31 个 <code>high_redundancy</code>。</li>
+    <li>单因子 long-short 质量不稳：100 个入选因子的 long-short Sharpe 中位数只有 0.26，43 个为负。</li>
+    <li>冗余仍然存在：16 个 high redundancy，15 个 near duplicate；cluster cap 降低了重复度，但没有把经济弱因子剔干净。</li>
+  </ul>
+
+  <h3 style="font-size:15px;margin:18px 0 8px">模型与成本证据</h3>
+  <ul class="dense-list">
+    <li>RankIC 确实提高：1h 约 0.044-0.052，72h 约 0.095-0.102，高于旧 10 因子 signal 的 1h 0.0325、72h 0.0338。</li>
+    <li>但 spread 没同步改善：4h/24h/72h 大多数 mean spread 为负，9/12 个 model-horizon 被标记为方向冲突。</li>
+    <li>1h 的正 spread 太薄：Ridge 1h median spread 约 0.0209%，full-LS 换手约 98.5%，break-even 约 2.13 bps；IC 加权 1h break-even 约 1.90 bps；浅树 1h 只有 0.87 bps。</li>
+    <li>资金费率进一步恶化：在约 71% 覆盖样本上，1h 三个模型的 median spread 扣 funding 后都转负。</li>
+    <li>72h Ridge 的 median spread 能过部分成本场景，但 mean spread 为负，扣 funding 后大幅转负，不应作为可交易通过项。</li>
+  </ul>
+
+  <div class="info">
+    操作建议：这版 100 因子结果只能当研究诊断或候选排序器，不应升为 composite/live signal。
+    下一步应先做成本感知的特征筛选、funding-adjusted label、尾部 bucket 处理、低换手约束和 out-of-sample universe 对照，再谈扩大因子或调模型。
+  </div>
+</div>
+
+<!-- LS/IC Aligned Experiment -->
+<div class="card" id="ls-ic-experiment-card" style="border-left:4px solid #059669">
+  <h2>LS/IC 同向因子池实验</h2>
+  <div class="verdict">
+    <strong>结论：</strong>有希望，但不是全面可交易。把 100 因子改成“RankIC 与 LS 同向、更适合 LS”的因子池后，
+    gross LS 形状和扣成本前的 cost survival 明显改善；真正值得继续研究的是
+    <code>ic_weighted_blend</code> 的 24h/72h 和 <code>ridge</code> 的 72h。
+    1h 仍被高换手和手续费压制，资金费率调整后中长 horizon 仍会翻负，所以还不能升为实盘或 composite signal。
+  </div>
+  <div class="answer-grid">
+    <div class="answer">
+      <h3>筛选后剩多少？</h3>
+      <p>
+        240 个 eligible 因子里，LS/IC policy pool 只有 55 个；cluster cap 后实际选 42 个。
+        严格无方向冲突、无 LS 风险、无 cost collapsed、非高冗余的只有 2 个，其余 40 个是 fallback 同向因子。
+      </p>
+    </div>
+    <div class="answer">
+      <h3>比原 100 因子好吗？</h3>
+      <p>
+        好一些：RankIC/spread 同向从 3/12 提升到 7/12，full-LS 成本场景通过数从 3/48 提升到 14/48。
+        这说明“先筛 LS 友好因子”比默认 top100 更合理。
+      </p>
+    </div>
+    <div class="answer">
+      <h3>最大问题还在什么？</h3>
+      <p>
+        Funding。24h/72h 在纯价格 label 下很强，但 aligned funding 覆盖样本上 median spread 会转负。
+        所以下一步必须直接用 funding/net-return label，而不是只在事后做 funding diagnostic。
+      </p>
+    </div>
+  </div>
+  <p class="section-note" id="ls-ic-headline">正在加载 LS/IC 同向实验摘要...</p>
+  <div class="metric-grid" id="ls-ic-metrics"></div>
+  <h3 style="font-size:15px;margin:18px 0 8px">关键对照</h3>
+  <div class="table-wrap">
+    <table id="ls-ic-key-table">
+      <tr><th>实验</th><th>模型</th><th>Horizon</th><th>Mean RankIC</th><th>Median Spread</th><th>Break-even</th><th>成本场景通过</th><th>Funding 后 Median</th></tr>
+    </table>
+  </div>
+  <h3 style="font-size:15px;margin:18px 0 8px">研究解释与建议</h3>
+  <ul id="ls-ic-takeaways" class="dense-list"></ul>
+  <ul id="ls-ic-recommendations" class="dense-list" style="margin-top:8px"></ul>
+</div>
+
+<!-- After Funding Label Experiment -->
+<div class="card" id="after-funding-experiment-card" style="border-left:4px solid #dc2626">
+  <h2>After-funding Label 训练实验</h2>
+  <div class="verdict">
+    <strong>结论：</strong>按你的思路把 funding 进入 label 后，模型没有被救回来。
+    我们用 scorecard 里已有的 after-funding 结果筛因子，并把训练目标改成
+    <code>ret_fwd_*_after_funding</code>。结果是 RankIC 仍然显著为正，但净 long-short spread 不能提取出来：
+    4h/24h/72h 的 median spread 全部为负，1h 虽略正但 break-even 只有约 0.5-0.7 bps。
+  </div>
+  <div class="answer-grid">
+    <div class="answer">
+      <h3>怎么落地的？</h3>
+      <p>
+        先从 239 个 ML-eligible 因子里按 after-funding LS、coverage、tail 形状筛选；
+        policy pool 为 107 个，最终选 60 个，其中 24 个是严格净 LS 因子。
+      </p>
+    </div>
+    <div class="answer">
+      <h3>模型学到东西了吗？</h3>
+      <p>
+        学到了排序信息：after-funding label 下 12 个 model-horizon 的 RankIC 都为正。
+        但排序相关性没有转化为 top-minus-bottom 的净收益。
+      </p>
+    </div>
+    <div class="answer">
+      <h3>下一步是什么？</h3>
+      <p>
+        不能再只优化 RankIC。下一步要直接优化净 bucket spread、低换手、tail-aware top/bottom 选择，
+        或在模型后加 portfolio optimizer。
+      </p>
+    </div>
+  </div>
+  <p class="section-note" id="after-funding-headline">正在加载 after-funding 实验摘要...</p>
+  <div class="metric-grid" id="after-funding-metrics"></div>
+  <h3 style="font-size:15px;margin:18px 0 8px">After-funding 关键结果</h3>
+  <div class="table-wrap">
+    <table id="after-funding-key-table">
+      <tr><th>模型</th><th>Horizon</th><th>Mean RankIC</th><th>Median Net Spread</th><th>Break-even</th><th>成本场景通过</th><th>一致性</th></tr>
+    </table>
+  </div>
+  <h3 style="font-size:15px;margin:18px 0 8px">研究解释与建议</h3>
+  <ul id="after-funding-takeaways" class="dense-list"></ul>
+  <ul id="after-funding-recommendations" class="dense-list" style="margin-top:8px"></ul>
+</div>
+
+<!-- LS Utility Target Experiment -->
+<div class="card" id="ls-utility-experiment-card" style="border-left:4px solid #7c3aed">
+  <h2>LS Utility Target 训练实验</h2>
+  <div class="verdict">
+    <strong>结论：</strong>可以把 LS 作为训练因变量，但这轮结果仍然没有变成可交易信号。
+    我们把训练目标改成 after-funding 的截面选边效用：
+    每个 timestamp/horizon 里，未来净收益 top 20% 标为 <code>+1</code>，
+    bottom 20% 标为 <code>-1</code>，中间 60% 标为 <code>0</code>。
+    评估仍然用真实 <code>ret_fwd_*_after_funding</code>。结果是 1h 仍太薄，
+    4h/24h/72h 的净 LS spread 继续为负，full-LS 成本场景通过仍是 0/48。
+  </div>
+  <div class="answer-grid">
+    <div class="answer">
+      <h3>和上一轮有什么不同？</h3>
+      <p>
+        上一轮是直接回归 after-funding return；这一轮训练目标更贴近 LS 策略，
+        明确奖励排进多头尾部、惩罚排进空头尾部。
+      </p>
+    </div>
+    <div class="answer">
+      <h3>有没有改善？</h3>
+      <p>
+        没有足够改善。RankIC 仍为正，但只有 3/12 行 median spread 为正，
+        且都集中在 1h，break-even 只有不到 1 bps。
+      </p>
+    </div>
+    <div class="answer">
+      <h3>说明什么？</h3>
+      <p>
+        现在瓶颈不是“label 没考虑 funding”，也不只是“训练目标不是 LS”。
+        真正的问题是 top/bottom portfolio extraction、换手成本和尾部控制。
+      </p>
+    </div>
+  </div>
+  <p class="section-note" id="ls-utility-headline">正在加载 LS utility 实验摘要...</p>
+  <div class="metric-grid" id="ls-utility-metrics"></div>
+  <h3 style="font-size:15px;margin:18px 0 8px">LS Utility 关键结果</h3>
+  <div class="table-wrap">
+    <table id="ls-utility-key-table">
+      <tr><th>模型</th><th>Horizon</th><th>Mean RankIC</th><th>Median Net Spread</th><th>Break-even</th><th>成本场景通过</th><th>一致性</th></tr>
+    </table>
+  </div>
+  <h3 style="font-size:15px;margin:18px 0 8px">研究解释与建议</h3>
+  <ul id="ls-utility-takeaways" class="dense-list"></ul>
+  <ul id="ls-utility-recommendations" class="dense-list" style="margin-top:8px"></ul>
+</div>
+
+<!-- Rank-Weighted Portfolio Experiment -->
+<div class="card" id="rank-weighted-experiment-card" style="border-left:4px solid #0f766e">
+  <h2>Rank-weighted Portfolio 实验</h2>
+  <div class="verdict">
+    <strong>结论：</strong>把 top20/short20 改成全截面连续加权后，组合确实更贴近 RankIC，
+    但这次仍然没有把 after-funding edge 变成稳定可交易收益。最好的 72h 版本在低成本下 median 能勉强为正，
+    但 mean 仍为负，整体仍不适合推广。
+  </div>
+  <div class="answer-grid">
+    <div class="answer">
+      <h3>怎么做的？</h3>
+      <p>
+        使用 after-funding RankIC 训练出来的 3×4 模型信号。每个 timestamp 内按 score 转成连续多空权重，
+        gross exposure 归一到 1，并比较 raw、EMA 平滑、no-trade band 三种组合版本。
+      </p>
+    </div>
+    <div class="answer">
+      <h3>有没有更好？</h3>
+      <p>
+        比硬切 bucket 稍好，但不够。36 个 model/horizon/variant 里，只有 7 个 gross median 为正；
+        扣 7bps 成本后只有 1 个 median 为正，且 mean 为负。
+      </p>
+    </div>
+    <div class="answer">
+      <h3>说明什么？</h3>
+      <p>
+        连续加权减少了 bucket 构造问题，但没有修复经济边际太薄和尾部损失问题。
+        当前模型分数还不能直接转成稳定组合收益。
+      </p>
+    </div>
+  </div>
+  <p class="section-note" id="rank-weighted-headline">正在加载 rank-weighted 组合摘要...</p>
+  <div class="metric-grid" id="rank-weighted-metrics"></div>
+  <h3 style="font-size:15px;margin:18px 0 8px">最佳版本</h3>
+  <div class="table-wrap">
+    <table id="rank-weighted-key-table">
+      <tr><th>模型</th><th>Horizon</th><th>Variant</th><th>Cost</th><th>Median Net</th><th>Mean Net</th><th>通过</th></tr>
+    </table>
+  </div>
+  <h3 style="font-size:15px;margin:18px 0 8px">研究解释与建议</h3>
+  <ul id="rank-weighted-takeaways" class="dense-list"></ul>
+  <ul id="rank-weighted-recommendations" class="dense-list" style="margin-top:8px"></ul>
 </div>
 
 <!-- RankIC Table -->
@@ -97,6 +347,64 @@ tr.current{background:#f0fdf4;font-weight:600}
   </ul>
 </div>
 
+<!-- ML Signal Prototype -->
+<div class="card" id="ml-prototype-card" style="border-left:4px solid #d97706">
+  <h2>ML 信号原型研究结果</h2>
+  <div class="info">
+    数据来源：<code>research/factor_runs/crypto_top50_factor_library/ml_signal_prototype/</code>。
+    这是离线研究诊断，不是实盘信号。
+  </div>
+  <p class="section-note" id="ml-headline">正在加载 ML 原型摘要...</p>
+
+  <div class="metric-grid" id="ml-metrics"></div>
+
+  <h3 style="font-size:15px;margin:18px 0 8px">模型对比</h3>
+  <p class="section-note">
+    Baseline 是 IC 加权混合；Ridge 是当前主模型；Shallow tree 是浅层树挑战模型。
+    表中 spread 为 top bucket - bottom bucket，方向与 RankIC 不一致时会标记为 WARN。
+  </p>
+  <div class="table-wrap">
+    <table id="ml-model-table">
+      <tr><th>模型</th><th>Horizon</th><th>Mean RankIC</th><th>RankIC IR</th><th>Mean Spread</th><th>换手 Proxy</th><th>一致性</th></tr>
+    </table>
+  </div>
+
+  <h3 style="font-size:15px;margin:18px 0 8px">入选特征结构</h3>
+  <div class="table-wrap">
+    <table id="ml-feature-source-table">
+      <tr><th>来源</th><th>入选数量</th></tr>
+    </table>
+  </div>
+
+  <h3 style="font-size:15px;margin:18px 0 8px">质量检查</h3>
+  <div class="table-wrap">
+    <table id="ml-quality-table">
+      <tr><th>检查项</th><th>状态</th><th>说明</th></tr>
+    </table>
+  </div>
+
+  <h3 style="font-size:15px;margin:18px 0 8px">成本、资金费率与方向冲突</h3>
+  <p class="section-note" id="ml-cost-note"></p>
+  <div class="table-wrap">
+    <table id="ml-cost-table">
+      <tr><th>模型</th><th>Horizon</th><th>Median Spread</th><th>Full LS 换手</th><th>Break-even 成本</th><th>4 场景通过</th></tr>
+    </table>
+  </div>
+  <div class="table-wrap">
+    <table id="ml-conflict-table">
+      <tr><th>Horizon</th><th>方向冲突行数</th><th>总行数</th><th>冲突比例</th></tr>
+    </table>
+  </div>
+  <p class="section-note" id="ml-funding-note"></p>
+  <p class="section-note" id="ml-tail-note"></p>
+  <p class="section-note" id="ml-universe-note"></p>
+  <p class="section-note" id="ml-factor-plan-note"></p>
+
+  <h3 style="font-size:15px;margin:18px 0 8px">研究解释与建议</h3>
+  <ul id="ml-takeaways" style="font-size:14px;margin-left:20px;line-height:1.9"></ul>
+  <ul id="ml-recommendations" style="font-size:14px;margin-left:20px;line-height:1.9;margin-top:8px"></ul>
+</div>
+
 <!-- Cost/Liquidity -->
 <div class="card">
   <h2>成本与流动性状态</h2>
@@ -137,5 +445,396 @@ tr.current{background:#f0fdf4;font-weight:600}
   <span><a href="index.html">← 首页</a> · <a href="actual-script-map.html">代码结构</a> · <a href="factor-evaluation.html">因子评价</a> · <a href="https://github.com/jerry0012009/momentum/tree/main/docs/factor_library/FACTOR_LIBRARY_CONTROL_CENTER.md">治理中心</a></span>
 </div>
 </div>
+<script>
+const fmt = {
+  num(v, digits = 4) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toFixed(digits) : "";
+  },
+  pct(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? (n * 100).toFixed(4) + "%" : "";
+  },
+  pct1(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? (n * 100).toFixed(1) + "%" : "";
+  },
+  bps(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toFixed(2) + " bps" : "N/A";
+  },
+  statusBadge(status) {
+    const s = String(status || "");
+    const cls = s === "PASS" ? "pass" : s === "FAIL" ? "fail" : "warn";
+    return `<span class="${cls}">${s}</span>`;
+  },
+  consistencyBadge(status) {
+    return status === "CONSISTENT_POSITIVE"
+      ? '<span class="pass">同向正</span>'
+      : '<span class="warn">方向冲突</span>';
+  }
+};
+
+const arr = (value) => Array.isArray(value) ? value : [];
+
+function appendRow(table, cells) {
+  const tr = document.createElement("tr");
+  tr.innerHTML = cells.map((c) => `<td>${c}</td>`).join("");
+  table.appendChild(tr);
+}
+
+function renderMlPrototype(data) {
+  const interpretation = data.interpretation || {};
+  const fs = data.feature_selection || {};
+  const models = data.models || {};
+  const checks = arr(data.quality_checks);
+  const families = arr(models.families);
+  document.getElementById("ml-headline").textContent = interpretation.headline || "ML 原型摘要已加载。";
+  const metrics = [
+    ["候选因子", fs.eligible_factors ?? "N/A", "ml_gate_status != ML_HOLD"],
+    ["入选特征", fs.selected_factors ?? "N/A", fs.target_range ? `目标区间 ${fs.target_range}` : "目标区间未设置"],
+    ["模型组合", families.length, families.join(" / ") || "N/A"],
+    ["方向冲突", `${models.direction_conflict_count ?? "N/A"}/${models.model_horizon_rows ?? "N/A"}`, "RankIC 与 LS spread 不同向"],
+  ];
+  document.getElementById("ml-metrics").innerHTML = metrics.map(([label, value, note]) => `
+    <div class="metric"><div class="label">${label}</div><div class="value">${value}</div><div class="note">${note}</div></div>
+  `).join("");
+
+  const modelTable = document.getElementById("ml-model-table");
+  arr(models.comparison).forEach((row) => {
+    appendRow(modelTable, [
+      row.model,
+      row.horizon,
+      `<span class="num">${fmt.num(row.mean_rankic, 4)}</span>`,
+      `<span class="num">${fmt.num(row.rankic_ir, 3)}</span>`,
+      `<span class="num">${fmt.pct(row.mean_spread)}</span>`,
+      `<span class="num">${fmt.num(row.turnover_proxy, 3)}</span>`,
+      fmt.consistencyBadge(row.consistency),
+    ]);
+  });
+
+  const sourceTable = document.getElementById("ml-feature-source-table");
+  arr(fs.source_distribution).forEach((row) => appendRow(sourceTable, [row.source, `<span class="num">${row.count}</span>`]));
+
+  const qualityTable = document.getElementById("ml-quality-table");
+  checks.forEach((row) => appendRow(qualityTable, [row.check, fmt.statusBadge(row.status), row.detail]));
+
+  if (data.cost_direction_research) {
+    const cdr = data.cost_direction_research;
+    document.getElementById("ml-cost-note").textContent = cdr.cost_model_note || "";
+    const survivalRows = arr(cdr.cost_survival);
+    const statsRows = arr(cdr.signal_stats);
+    const survival = new Map(survivalRows.map((row) => [`${row.model}|${row.horizon}`, row]));
+    const costTable = document.getElementById("ml-cost-table");
+    statsRows.forEach((row) => {
+      const s = survival.get(`${row.model}|${row.horizon}`) || {};
+      appendRow(costTable, [
+        row.model,
+        row.horizon,
+        `<span class="num">${fmt.pct(row.median_spread)}</span>`,
+        `<span class="num">${fmt.pct1(row.long_short_turnover_mean)}</span>`,
+        `<span class="num">${fmt.bps(row.break_even_cost_bps_full_ls)}</span>`,
+        `${s.full_ls_scenarios_survived || 0}/${s.scenarios_total || 4}`,
+      ]);
+    });
+
+    const conflictTable = document.getElementById("ml-conflict-table");
+    arr(cdr.direction_conflicts && cdr.direction_conflicts.monthly_conflict_by_horizon).forEach((row) => {
+      appendRow(conflictTable, [
+        row.horizon,
+        row.conflict_model_month_rows,
+        row.model_month_rows,
+        `<span class="num">${fmt.pct1(row.conflict_fraction)}</span>`,
+      ]);
+    });
+
+    const fa = data.funding_adjusted || cdr.funding_adjustment || {};
+    const coverageRows = arr(fa.coverage_by_horizon);
+    const fundingRows = arr(fa.comparison || (data.funding_adjusted && data.funding_adjusted.comparison));
+    const coverage = coverageRows.length
+      ? coverageRows.map((x) => `${x.horizon}:${fmt.pct1(x.coverage_rate)}`).join(" / ")
+      : "N/A";
+    const oneHour = fundingRows.filter((x) => x.horizon === "1h");
+    const oneHourText = oneHour.length
+      ? oneHour.map((x) => `${x.model} ${fmt.pct(x.before_median_spread)} -> ${fmt.pct(x.after_funding_median_spread)}`).join("；")
+      : "1h before/after 数据未生成";
+    document.getElementById("ml-funding-note").textContent =
+      `资金费率：canonical label 是纯价格 forward return。Aligned funding partial diagnostic 覆盖率 ${coverage}；` +
+      `覆盖样本上 1h median spread 为 ${oneHourText}。结论：funding 会实质改变经济判断，不能把当前结果直接当作可交易净收益。`;
+
+    const tail = data.tail_audit || cdr.tail_diagnostics;
+    if (tail) {
+      const counts = tail.diagnosis_counts || {};
+      document.getElementById("ml-tail-note").textContent =
+        `Bucket tail：clean-thin=${counts.DIRECTIONALLY_CLEAN_THIN_EDGE || 0}，mean/median split=${counts.MEAN_SPREAD_OUTLIER_DOMINATED || 0}，` +
+        `tail-concentrated negative=${counts.TAIL_CONCENTRATED_NEGATIVE_MEAN || 0}。这和 paper signal 的 Phase 10B 尾部结论一致。`;
+    }
+  }
+
+  if (data.universe_research) {
+    const findings = data.universe_research.findings || {};
+    const available = arr(findings.available_for_contrast).length;
+    const missing = arr(findings.missing_requested_universes).join(" / ") || "无";
+    document.getElementById("ml-universe-note").textContent =
+      `Universe：现有 ${available} 个数据集可做最小对照；仍缺 ${missing}。` +
+      `${findings.top50_current_listed_limitation || "active dynamic universe 仍需继续审计 survivorship limitation。"}`;
+  }
+
+  if (data.crypto_native_factor_plan) {
+    const findings = data.crypto_native_factor_plan.findings || {};
+    const themes = arr(findings.top_themes).slice(0, 4).join(" / ") || "待生成";
+    document.getElementById("ml-factor-plan-note").textContent =
+      `因子扩展优先级：${themes}；${findings.defer || "高复杂数据源暂缓到 canonical data contract 就绪后"}。`;
+  }
+
+  document.getElementById("ml-takeaways").innerHTML = arr(interpretation.takeaways)
+    .map((x) => `<li>${x}</li>`)
+    .join("");
+  document.getElementById("ml-recommendations").innerHTML = arr(interpretation.recommendations)
+    .map((x) => `<li><strong>建议：</strong>${x}</li>`)
+    .join("");
+}
+
+function findRunRow(run, model, horizon) {
+  return arr(run && run.rows).find((row) => row.model === model && row.horizon === horizon) || {};
+}
+
+function renderLsIcExperiment(data) {
+  const interp = data.interpretation || {};
+  const base = data.baseline_100_factor || {};
+  const exp = data.ls_ic_aligned || {};
+  document.getElementById("ls-ic-headline").textContent = interp.headline || "LS/IC 同向实验摘要已加载。";
+
+  const metrics = [
+    ["原 100 因子", `${base.consistent_rows ?? "N/A"}/${base.model_horizon_rows ?? "N/A"}`, "RankIC/spread 同向行"],
+    ["同向池", `${exp.selected_factors ?? "N/A"} 个`, `${exp.policy_pool_factors ?? "N/A"} 个 policy pool；严格 ${exp.selected_strict_ls_ic_aligned ?? "N/A"} 个`],
+    ["同向后", `${exp.consistent_rows ?? "N/A"}/${exp.model_horizon_rows ?? "N/A"}`, "RankIC/spread 同向行"],
+    ["成本通过", `${exp.full_ls_scenarios_survived ?? "N/A"}/${exp.full_ls_scenarios_total ?? "N/A"}`, `原 100 因子 ${base.full_ls_scenarios_survived ?? "N/A"}/${base.full_ls_scenarios_total ?? "N/A"}`],
+  ];
+  document.getElementById("ls-ic-metrics").innerHTML = metrics.map(([label, value, note]) => `
+    <div class="metric"><div class="label">${label}</div><div class="value">${value}</div><div class="note">${note}</div></div>
+  `).join("");
+
+  const keyRows = [
+    ["100因子", base, "ridge", "1h"],
+    ["100因子", base, "ridge", "72h"],
+    ["LS/IC同向", exp, "ic_weighted_blend", "24h"],
+    ["LS/IC同向", exp, "ic_weighted_blend", "72h"],
+    ["LS/IC同向", exp, "ridge", "72h"],
+    ["LS/IC同向", exp, "shallow_tree", "72h"],
+  ];
+  const table = document.getElementById("ls-ic-key-table");
+  keyRows.forEach(([label, run, model, horizon]) => {
+    const row = findRunRow(run, model, horizon);
+    appendRow(table, [
+      label,
+      model,
+      horizon,
+      `<span class="num">${fmt.num(row.mean_rankic, 4)}</span>`,
+      `<span class="num">${fmt.pct(row.median_spread)}</span>`,
+      `<span class="num">${fmt.bps(row.break_even_cost_bps_full_ls)}</span>`,
+      `${row.full_ls_scenarios_survived ?? 0}/4`,
+      `<span class="num">${fmt.pct(row.after_funding_median_spread)}</span>`,
+    ]);
+  });
+
+  document.getElementById("ls-ic-takeaways").innerHTML = arr(interp.takeaways)
+    .map((x) => `<li>${x}</li>`)
+    .join("");
+  document.getElementById("ls-ic-recommendations").innerHTML = arr(interp.recommendations)
+    .map((x) => `<li><strong>建议：</strong>${x}</li>`)
+    .join("");
+}
+
+function renderAfterFundingExperiment(data) {
+  const interp = data.interpretation || {};
+  const run = data.runs && data.runs.after_funding_label ? data.runs.after_funding_label : {};
+  document.getElementById("after-funding-headline").textContent = interp.headline || "After-funding 实验摘要已加载。";
+
+  const metrics = [
+    ["筛选池", run.policy_pool_factors ?? "N/A", `selected ${run.selected_factors ?? "N/A"}；严格 ${run.selected_strict ?? "N/A"}`],
+    ["Label", run.label_mode || "after_funding", run.selection_policy || "after_funding_ls"],
+    ["同向行", `${run.consistent_rows ?? "N/A"}/${run.model_horizon_rows ?? "N/A"}`, "RankIC/spread 同向"],
+    ["成本通过", `${run.cost_survival ?? "N/A"}/${run.cost_total ?? "N/A"}`, "full-LS fee/slippage scenarios"],
+  ];
+  document.getElementById("after-funding-metrics").innerHTML = metrics.map(([label, value, note]) => `
+    <div class="metric"><div class="label">${label}</div><div class="value">${value}</div><div class="note">${note}</div></div>
+  `).join("");
+
+  const keyRows = [
+    ["ic_weighted_blend", "1h"],
+    ["ridge", "1h"],
+    ["ic_weighted_blend", "24h"],
+    ["ridge", "24h"],
+    ["ic_weighted_blend", "72h"],
+    ["ridge", "72h"],
+  ];
+  const table = document.getElementById("after-funding-key-table");
+  keyRows.forEach(([model, horizon]) => {
+    const row = findRunRow(run, model, horizon);
+    appendRow(table, [
+      model,
+      horizon,
+      `<span class="num">${fmt.num(row.mean_rankic, 4)}</span>`,
+      `<span class="num">${fmt.pct(row.median_spread)}</span>`,
+      `<span class="num">${fmt.bps(row.break_even_cost_bps_full_ls)}</span>`,
+      `${row.full_ls_scenarios_survived ?? 0}/4`,
+      fmt.consistencyBadge(row.consistency),
+    ]);
+  });
+
+  document.getElementById("after-funding-takeaways").innerHTML = arr(interp.takeaways)
+    .map((x) => `<li>${x}</li>`)
+    .join("");
+  document.getElementById("after-funding-recommendations").innerHTML = arr(interp.recommendations)
+    .map((x) => `<li><strong>建议：</strong>${x}</li>`)
+    .join("");
+}
+
+function renderLsUtilityExperiment(data) {
+  const interp = data.interpretation || {};
+  const run = data.runs && data.runs.ls_utility_after_funding ? data.runs.ls_utility_after_funding : {};
+  document.getElementById("ls-utility-headline").textContent = interp.headline || "LS utility 实验摘要已加载。";
+
+  const metrics = [
+    ["训练目标", run.label_mode || "ls_utility_after_funding", "top quintile +1 / bottom quintile -1 / middle 0"],
+    ["筛选池", run.policy_pool_factors ?? "N/A", `selected ${run.selected_factors ?? "N/A"}；严格 ${run.selected_strict ?? "N/A"}`],
+    ["Median 正值", `${run.positive_median_rows ?? "N/A"}/${run.model_horizon_rows ?? "N/A"}`, "after-funding median spread > 0"],
+    ["成本通过", `${run.cost_survival ?? "N/A"}/${run.cost_total ?? "N/A"}`, "full-LS fee/slippage scenarios"],
+  ];
+  document.getElementById("ls-utility-metrics").innerHTML = metrics.map(([label, value, note]) => `
+    <div class="metric"><div class="label">${label}</div><div class="value">${value}</div><div class="note">${note}</div></div>
+  `).join("");
+
+  const keyRows = [
+    ["ic_weighted_blend", "1h"],
+    ["ridge", "1h"],
+    ["shallow_tree", "1h"],
+    ["ic_weighted_blend", "24h"],
+    ["ridge", "24h"],
+    ["ic_weighted_blend", "72h"],
+    ["ridge", "72h"],
+    ["shallow_tree", "72h"],
+  ];
+  const table = document.getElementById("ls-utility-key-table");
+  keyRows.forEach(([model, horizon]) => {
+    const row = findRunRow(run, model, horizon);
+    appendRow(table, [
+      model,
+      horizon,
+      `<span class="num">${fmt.num(row.mean_rankic, 4)}</span>`,
+      `<span class="num">${fmt.pct(row.median_spread)}</span>`,
+      `<span class="num">${fmt.bps(row.break_even_cost_bps_full_ls)}</span>`,
+      `${row.full_ls_scenarios_survived ?? 0}/4`,
+      fmt.consistencyBadge(row.consistency),
+    ]);
+  });
+
+  document.getElementById("ls-utility-takeaways").innerHTML = arr(interp.takeaways)
+    .map((x) => `<li>${x}</li>`)
+    .join("");
+  document.getElementById("ls-utility-recommendations").innerHTML = arr(interp.recommendations)
+    .map((x) => `<li><strong>建议：</strong>${x}</li>`)
+    .join("");
+}
+
+function renderRankWeightedExperiment(data) {
+  const interp = data.interpretation || {};
+  const exp = data.experiment || {};
+  document.getElementById("rank-weighted-headline").textContent = interp.headline || "Rank-weighted 组合摘要已加载。";
+
+  const survival = exp.cost_survival_by_bps || {};
+  const metrics = [
+    ["组合版本", arr(exp.variants).length, arr(exp.variants).join(" / ") || "N/A"],
+    ["Gross 正值", `${exp.gross_positive_rows ?? "N/A"}/${exp.base_rows ?? "N/A"}`, "median gross return > 0"],
+    ["7bps 通过", `${survival["7.0"] ?? "N/A"}/${exp.base_rows ?? "N/A"}`, "median net return > 0"],
+    ["15bps 通过", `${survival["15.0"] ?? "N/A"}/${exp.base_rows ?? "N/A"}`, "median net return > 0"],
+  ];
+  document.getElementById("rank-weighted-metrics").innerHTML = metrics.map(([label, value, note]) => `
+    <div class="metric"><div class="label">${label}</div><div class="value">${value}</div><div class="note">${note}</div></div>
+  `).join("");
+
+  const table = document.getElementById("rank-weighted-key-table");
+  arr(exp.best_3bps).slice(0, 3).forEach((row) => {
+    appendRow(table, [
+      row.model,
+      row.horizon,
+      row.variant,
+      `${fmt.num(row.cost_bps, 0)} bps`,
+      `<span class="num">${fmt.pct(row.median_net_return)}</span>`,
+      `<span class="num">${fmt.pct(row.mean_net_return)}</span>`,
+      row.survives_median_net ? '<span class="pass">median</span>' : '<span class="fail">fail</span>',
+    ]);
+  });
+  arr(exp.best_7bps).slice(0, 3).forEach((row) => {
+    appendRow(table, [
+      row.model,
+      row.horizon,
+      row.variant,
+      `${fmt.num(row.cost_bps, 0)} bps`,
+      `<span class="num">${fmt.pct(row.median_net_return)}</span>`,
+      `<span class="num">${fmt.pct(row.mean_net_return)}</span>`,
+      row.survives_median_net ? '<span class="pass">median</span>' : '<span class="fail">fail</span>',
+    ]);
+  });
+
+  document.getElementById("rank-weighted-takeaways").innerHTML = arr(interp.takeaways)
+    .map((x) => `<li>${x}</li>`)
+    .join("");
+  document.getElementById("rank-weighted-recommendations").innerHTML = arr(interp.recommendations)
+    .map((x) => `<li><strong>建议：</strong>${x}</li>`)
+    .join("");
+}
+
+fetch("assets/signal_ml_prototype_summary.json")
+  .then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  })
+  .then(renderMlPrototype)
+  .catch((err) => {
+    document.getElementById("ml-headline").innerHTML = `<span class="fail">加载失败</span> ${err.message}`;
+  });
+
+fetch("assets/signal_ml_ls_ic_aligned_summary.json")
+  .then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  })
+  .then(renderLsIcExperiment)
+  .catch((err) => {
+    document.getElementById("ls-ic-headline").innerHTML = `<span class="fail">加载失败</span> ${err.message}`;
+  });
+
+fetch("assets/signal_ml_after_funding_summary.json")
+  .then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  })
+  .then(renderAfterFundingExperiment)
+  .catch((err) => {
+    document.getElementById("after-funding-headline").innerHTML = `<span class="fail">加载失败</span> ${err.message}`;
+  });
+
+fetch("assets/signal_ml_ls_utility_summary.json")
+  .then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  })
+  .then(renderLsUtilityExperiment)
+  .catch((err) => {
+    document.getElementById("ls-utility-headline").innerHTML = `<span class="fail">加载失败</span> ${err.message}`;
+  });
+
+fetch("assets/signal_ml_rank_weighted_summary.json")
+  .then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  })
+  .then(renderRankWeightedExperiment)
+  .catch((err) => {
+    document.getElementById("rank-weighted-headline").innerHTML = `<span class="fail">加载失败</span> ${err.message}`;
+  });
+</script>
 </body>
 </html>
