@@ -88,6 +88,7 @@ exec /usr/bin/tmux -u -S /run/ops-tmux/default "$@"
 - paste: page-level textarea sends external text into the active pane (`send_text`)
 - copy-mode help: page includes instructions + explicit `退出复制模式` button
 - terminal-side scroll rail: right side of the tmux iframe includes `上滚 / 下滚` buttons; long-press repeats for phone-friendly history browsing
+- window tabs: `/ops/api.php?state=1` returns all tmux windows with lightweight status metadata (`idle`, `running`, `needs_approval`, `paused`), and `/ops/` renders them as switchable tabs above the terminal
 
 ## Mobile paste behavior
 Directly pasting from another app into the embedded ttyd terminal is unreliable on mobile browsers, especially inside an iframe. The intended workflow is:

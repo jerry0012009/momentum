@@ -82,6 +82,52 @@ assert_contains() {
   echo "[OK] $msg"
 }
 
+assert_window_status() {
+  local json="$1"
+  local window_name="$2"
+  local expected_status="$3"
+  local msg="$4"
+  printf '%s' "$json" | python3 -c '
+import json
+import sys
+
+window_name, expected_status, msg = sys.argv[1:4]
+data = json.load(sys.stdin)
+for window in data.get("windows", []):
+    if window.get("name") == window_name:
+        got = window.get("status")
+        if got != expected_status:
+            print(f"[FAIL] {msg} | expect={expected_status} got={got}", file=sys.stderr)
+            sys.exit(1)
+        for key in ("statusLabel", "statusIcon", "statusClass", "currentCommand", "panes"):
+            if key not in window:
+                print(f"[FAIL] {msg} | missing {key}", file=sys.stderr)
+                sys.exit(1)
+        print(f"[OK] {msg} => {got}")
+        sys.exit(0)
+print(f"[FAIL] {msg} | window not found: {window_name}", file=sys.stderr)
+sys.exit(1)
+' "$window_name" "$expected_status" "$msg"
+}
+
+assert_current_status() {
+  local json="$1"
+  local expected_status="$2"
+  local msg="$3"
+  printf '%s' "$json" | python3 -c '
+import json
+import sys
+
+expected_status, msg = sys.argv[1:3]
+data = json.load(sys.stdin)
+got = (data.get("currentWindow") or {}).get("status")
+if got != expected_status:
+    print(f"[FAIL] {msg} | expect={expected_status} got={got}", file=sys.stderr)
+    sys.exit(1)
+print(f"[OK] {msg} => {got}")
+' "$expected_status" "$msg"
+}
+
 start_server_if_needed
 
 echo "== create session $SESSION =="
@@ -90,6 +136,8 @@ tmux resize-window -t "$SESSION":0 -x 220 -y 70
 tmux split-window -h -t "$SESSION":0 'bash'
 tmux new-window -t "$SESSION" -n second 'bash'
 tmux resize-window -t "$SESSION":1 -x 220 -y 70
+tmux new-window -t "$SESSION" -n runner 'sleep 60'
+tmux new-window -t "$SESSION" -n approval 'sh -lc "printf \"Approval required [y/N]\\n\"; sleep 60"'
 tmux select-window -t "$SESSION":0
 
 cat_pane=$(tmux list-panes -t "$SESSION":0 -F '#{pane_id} #{pane_current_command}' | awk '$2=="cat"{print $1; exit}')
@@ -102,6 +150,21 @@ echo "== basic state =="
 state_json=$(api_get_state)
 assert_eq "$(printf '%s' "$state_json" | json_field ok)" "true" "state endpoint ok"
 assert_eq "$(printf '%s' "$state_json" | json_field session)" "$SESSION" "state endpoint session"
+window_snapshot_count=$(printf '%s' "$state_json" | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("windows", [])))')
+if [[ "$window_snapshot_count" -lt 4 ]]; then
+  echo "[FAIL] snapshot includes created windows | got=$window_snapshot_count" >&2
+  exit 1
+fi
+echo "[OK] snapshot includes created windows => $window_snapshot_count"
+assert_window_status "$state_json" "runner" "running" "window tab marks running command"
+assert_window_status "$state_json" "approval" "needs_approval" "window tab marks approval prompt"
+
+resp=$(api_post_raw "{\"action\":\"window_focus\",\"session\":\"${SESSION}\",\"window\":\"1\"}")
+assert_eq "$(printf '%s' "$resp" | json_field ok)" "true" "window_focus to #1 ok"
+focused=$(tmux display-message -p -t "$SESSION" '#{window_index}')
+assert_eq "$focused" "1" "window_focus actually switched"
+resp=$(api_post_raw "{\"action\":\"window_focus\",\"session\":\"${SESSION}\",\"window\":\"0\"}")
+assert_eq "$(printf '%s' "$resp" | json_field ok)" "true" "window_focus back to #0 ok"
 
 echo "== pane navigation =="
 pane_before=$(tmux display-message -p -t "$SESSION":0 '#{pane_index}')
@@ -215,6 +278,7 @@ assert_eq "$(tmux display-message -p -t "$cat_pane" '#{pane_in_mode}')" "0" "cop
 resp=$(api_post copy_mode)
 assert_eq "$(printf '%s' "$resp" | json_field ok)" "true" "copy_mode ok"
 assert_eq "$(tmux display-message -p -t "$cat_pane" '#{pane_in_mode}')" "1" "copy_mode entered"
+assert_current_status "$resp" "paused" "current tab marks copy mode paused"
 resp=$(api_post page_up)
 assert_eq "$(printf '%s' "$resp" | json_field ok)" "true" "page_up ok"
 resp=$(api_post page_down)

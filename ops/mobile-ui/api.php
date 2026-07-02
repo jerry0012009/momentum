@@ -75,17 +75,25 @@ function current_state(string $session): string {
     return $state['stdout'];
 }
 
-function parse_window_line(string $line): ?array {
+function parse_window_line(string $line, string $session): ?array {
     $parts = explode("\t", $line);
     if (count($parts) < 5) {
         return null;
     }
+    $status = infer_window_status($parts[5] ?? '', (int) ($parts[6] ?? 0), capture_window_text($session, $parts[0] ?? ''));
     return [
         'index' => (int) $parts[0],
         'id' => $parts[1],
         'name' => $parts[2],
         'active' => $parts[3] === '1',
         'automaticRename' => $parts[4] === '1',
+        'currentCommand' => $parts[5] ?? '',
+        'copyMode' => ($parts[6] ?? '') === '1',
+        'panes' => (int) ($parts[7] ?? 0),
+        'status' => $status['status'],
+        'statusLabel' => $status['label'],
+        'statusIcon' => $status['icon'],
+        'statusClass' => $status['class'],
     ];
 }
 
@@ -95,7 +103,7 @@ function list_windows_meta(string $session): array {
         '-t',
         $session,
         '-F',
-        '#{window_index}' . "\t" . '#{window_id}' . "\t" . '#{window_name}' . "\t" . '#{?window_active,1,0}' . "\t" . '#{?automatic-rename,1,0}',
+        '#{window_index}' . "\t" . '#{window_id}' . "\t" . '#{window_name}' . "\t" . '#{?window_active,1,0}' . "\t" . '#{?automatic-rename,1,0}' . "\t" . '#{pane_current_command}' . "\t" . '#{pane_in_mode}' . "\t" . '#{window_panes}',
     ]);
     if ($result['code'] !== 0) {
         return [];
@@ -106,12 +114,49 @@ function list_windows_meta(string $session): array {
         if ($line === '') {
             continue;
         }
-        $parsed = parse_window_line($line);
+        $parsed = parse_window_line($line, $session);
         if ($parsed !== null) {
             $windows[] = $parsed;
         }
     }
     return $windows;
+}
+
+function capture_window_text(string $session, string $windowIndex): string {
+    if ($session === '' || !preg_match('/^\d{1,4}$/', $windowIndex)) {
+        return '';
+    }
+    $result = tmux_run(['capture-pane', '-p', '-t', $session . ':' . $windowIndex, '-S', '-35']);
+    if ($result['code'] !== 0) {
+        return '';
+    }
+    return $result['stdout'];
+}
+
+function infer_window_status(string $command, int $copyMode, string $screenText): array {
+    $screen = function_exists('mb_strtolower') ? mb_strtolower($screenText, 'UTF-8') : strtolower($screenText);
+    $command = trim($command);
+    $commandKey = strtolower($command);
+
+    if (preg_match('/\b(approve|approval|allow|deny|permission|escalat)\b/u', $screen)
+        || preg_match('/\b(confirm|proceed)\b.{0,40}(\?|\[(y\/n|y\/N|yes\/no)\])/iu', $screenText)
+        || preg_match('/(需要|批准|确认|允许).{0,12}(执行|继续|命令|操作)/u', $screen)
+        || preg_match('/\[(y\/n|yes\/no|allow|deny)\]/iu', $screenText)) {
+        return ['status' => 'needs_approval', 'label' => '需要确认', 'icon' => '!', 'class' => 'needs-approval'];
+    }
+
+    if ($copyMode === 1
+        || preg_match('/\b(paused|suspended|stopped|press .{0,20} to continue)\b/u', $screen)
+        || preg_match('/\[(paused|suspended|stopped)\]/u', $screen)) {
+        return ['status' => 'paused', 'label' => '暂停/浏览', 'icon' => 'II', 'class' => 'paused'];
+    }
+
+    $idleCommands = ['bash', 'zsh', 'sh', 'fish', 'tmux', 'login', 'sudo', 'su'];
+    if ($commandKey !== '' && !in_array($commandKey, $idleCommands, true)) {
+        return ['status' => 'running', 'label' => '运行中', 'icon' => '>', 'class' => 'running'];
+    }
+
+    return ['status' => 'idle', 'label' => '空闲', 'icon' => '-', 'class' => 'idle'];
 }
 
 function current_window_from_display(string $session): ?array {
@@ -147,6 +192,7 @@ function session_snapshot(string $session): array {
             $windows[$index]['active'] = true;
             $windows[$index]['name'] = $currentWindow['name'];
             $windows[$index]['automaticRename'] = $currentWindow['automaticRename'];
+            $currentWindow = $windows[$index];
             continue;
         }
         if ($currentWindow !== null) {

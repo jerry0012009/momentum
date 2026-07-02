@@ -169,31 +169,81 @@ header('Expires: 0');
 
     .window-list {
       display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 2px 0 4px;
+      scrollbar-width: thin;
     }
 
     .window-chip {
-      min-height: 34px;
-      padding: 6px 10px;
-      border-radius: 999px;
+      min-height: 42px;
+      padding: 7px 10px;
+      border-radius: 10px;
       font-size: 12px;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       width: auto;
-      min-width: 0;
+      min-width: 150px;
+      flex: 0 0 auto;
+      text-align: left;
     }
 
     .window-chip.is-active {
-      background: linear-gradient(180deg, rgba(43,213,118,0.28), rgba(43,213,118,0.12));
-      border-color: rgba(43,213,118,0.32);
+      background: linear-gradient(180deg, rgba(94,161,255,0.26), rgba(94,161,255,0.12));
+      border-color: rgba(94,161,255,0.42);
     }
 
-    .window-chip-index {
+    .window-status-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 22px;
+      font-size: 10px;
+      font-weight: 800;
+      color: #06111f;
+      background: var(--muted);
+    }
+
+    .window-chip.status-running .window-status-icon {
+      background: var(--ok);
+    }
+
+    .window-chip.status-needs-approval .window-status-icon {
+      background: #ffd166;
+    }
+
+    .window-chip.status-paused .window-status-icon {
+      background: #b58cff;
+    }
+
+    .window-chip.status-idle .window-status-icon {
+      background: #9fb0d9;
+    }
+
+    .window-chip-main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .window-chip-top {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .window-chip-index,
+    .window-chip-status {
       color: #cfe0ff;
       opacity: 0.78;
       font-size: 11px;
+      white-space: nowrap;
     }
 
     .window-chip-name {
@@ -203,6 +253,16 @@ header('Expires: 0');
       white-space: nowrap;
       font-family: inherit;
       letter-spacing: 0;
+    }
+
+    .window-chip-sub {
+      max-width: clamp(120px, 38vw, 260px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
     }
 
     .terminal-actions {
@@ -296,6 +356,7 @@ header('Expires: 0');
     button.danger { background: linear-gradient(180deg, rgba(255,107,107,0.22), rgba(255,107,107,0.12)); }
     button.wide { grid-column: span 2; }
     button.full { grid-column: 1 / -1; }
+    button:disabled { opacity: 1; cursor: default; }
 
     .terminal-stage {
       display: flex;
@@ -969,10 +1030,24 @@ header('Expires: 0');
         return;
       }
       windows.forEach((windowMeta) => {
+        const statusClass = windowMeta.statusClass || windowMeta.status || 'idle';
+        const statusLabel = windowMeta.statusLabel || '未知';
+        const command = windowMeta.currentCommand || '';
+        const panes = Number(windowMeta.panes || 0);
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = `window-chip${windowMeta.active ? ' is-active' : ' secondary'}`;
-        button.title = `切换到窗口 #${windowMeta.index}`;
+        button.className = `window-chip status-${statusClass}${windowMeta.active ? ' is-active' : ' secondary'}`;
+        button.title = `窗口 #${windowMeta.index} · ${statusLabel}${command ? ` · ${command}` : ''}`;
+
+        const icon = document.createElement('span');
+        icon.className = 'window-status-icon';
+        icon.textContent = windowMeta.statusIcon || '-';
+
+        const main = document.createElement('span');
+        main.className = 'window-chip-main';
+
+        const top = document.createElement('span');
+        top.className = 'window-chip-top';
 
         const index = document.createElement('span');
         index.className = 'window-chip-index';
@@ -982,7 +1057,17 @@ header('Expires: 0');
         name.className = 'window-chip-name';
         name.textContent = windowMeta.name || `window-${windowMeta.index}`;
 
-        button.append(index, name);
+        const status = document.createElement('span');
+        status.className = 'window-chip-status';
+        status.textContent = statusLabel;
+
+        const sub = document.createElement('span');
+        sub.className = 'window-chip-sub';
+        sub.textContent = `${command || 'shell'}${panes > 1 ? ` · ${panes} panes` : ''}`;
+
+        top.append(index, name, status);
+        main.append(top, sub);
+        button.append(icon, main);
         if (windowMeta.id === activeWindowId) {
           button.disabled = true;
         } else {
@@ -1006,8 +1091,10 @@ header('Expires: 0');
         automaticRename: null
       } : null);
       const alias = currentWindow?.name || data.windowLabel || data.currentAlias || parsedWindow?.name || '未命名窗口';
+      const currentStatus = currentWindow?.statusLabel ? ` · ${currentWindow.statusLabel}` : '';
+      const currentCommand = currentWindow?.currentCommand ? ` · ${currentWindow.currentCommand}` : '';
       const aliasMeta = currentWindow
-        ? `窗口 #${currentWindow.index}${typeof currentWindow.automaticRename === 'boolean' ? ` · ${currentWindow.automaticRename ? '自动改名开启' : '自动改名关闭'}` : ''}`
+        ? `窗口 #${currentWindow.index}${currentStatus}${currentCommand}${typeof currentWindow.automaticRename === 'boolean' ? ` · ${currentWindow.automaticRename ? '自动改名开启' : '自动改名关闭'}` : ''}`
         : '当前窗口信息不可用';
 
       windowAliasDisplay.textContent = alias;
